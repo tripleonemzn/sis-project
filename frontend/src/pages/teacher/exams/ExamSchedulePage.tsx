@@ -2,11 +2,16 @@ import { useState, useEffect } from 'react';
 import { useParams, useNavigate } from 'react-router-dom';
 import { toast } from 'react-hot-toast';
 import { Calendar, Clock, ArrowLeft, Save } from 'lucide-react';
-import { examService } from '../../../services/exam.service';
+import { examService, normalizeExamProgramCode } from '../../../services/exam.service';
 import type { ExamPacket } from '../../../services/exam.service';
 import { teacherAssignmentService } from '../../../services/teacherAssignment.service';
 import type { TeacherAssignment } from '../../../services/teacherAssignment.service';
 // import api from '../../../services/api';
+
+const canTeacherDirectSchedulePacket = (packet?: Pick<ExamPacket, 'programCode' | 'type'> | null) => {
+    const normalized = normalizeExamProgramCode(packet?.programCode || packet?.type);
+    return ['FORMATIF', 'FORMATIVE', 'UH', 'ULANGAN_HARIAN'].includes(normalized);
+};
 
 export const ExamSchedulePage = () => {
     const { id } = useParams();
@@ -85,6 +90,11 @@ export const ExamSchedulePage = () => {
     };
 
     const handleSave = async () => {
+        if (!packet || !canTeacherDirectSchedulePacket(packet)) {
+            toast.error('Jadwal program ini diatur oleh Wakasek Kurikulum.');
+            return;
+        }
+
         const selectedSchedules = schedules.filter(s => s.isSelected);
         if (selectedSchedules.length === 0) {
             toast.error('Pilih minimal satu kelas');
@@ -140,82 +150,91 @@ export const ExamSchedulePage = () => {
             <div className="bg-white rounded-xl shadow-sm border border-gray-100 overflow-hidden">
                 <div className="p-6 border-b border-gray-100 flex justify-between items-center">
                     <h2 className="text-lg font-semibold text-gray-800">Pilih Kelas & Waktu</h2>
-                    <button 
-                        onClick={handleSave}
-                        disabled={loading}
-                        className="flex items-center gap-2 bg-blue-600 text-white px-4 py-2 rounded-lg hover:bg-blue-700 disabled:opacity-50"
-                    >
-                        {loading ? 'Menyimpan...' : <><Save className="w-4 h-4" /> Simpan Jadwal</>}
-                    </button>
+                    {canTeacherDirectSchedulePacket(packet) ? (
+                        <button 
+                            onClick={handleSave}
+                            disabled={loading}
+                            className="flex items-center gap-2 bg-blue-600 text-white px-4 py-2 rounded-lg hover:bg-blue-700 disabled:opacity-50"
+                        >
+                            {loading ? 'Menyimpan...' : <><Save className="w-4 h-4" /> Simpan Jadwal</>}
+                        </button>
+                    ) : null}
                 </div>
                 
-                <div className="p-0">
-                    <table className="w-full">
-                        <thead className="bg-gray-50 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
-                            <tr>
-                                <th className="px-6 py-3 w-10">
-                                    <label htmlFor="select-all" className="sr-only">Pilih Semua Kelas</label>
-                                    <input 
-                                        id="select-all"
-                                        name="selectAll"
-                                        type="checkbox" 
-                                        onChange={(e) => {
-                                        const checked = e.target.checked;
-                                        setSchedules(schedules.map(s => ({ ...s, isSelected: checked })));
-                                    }} />
-                                </th>
-                                <th className="px-6 py-3">Kelas</th>
-                                <th className="px-6 py-3">Waktu Mulai</th>
-                                <th className="px-6 py-3">Waktu Selesai</th>
-                            </tr>
-                        </thead>
-                        <tbody className="divide-y divide-gray-200">
-                            {classes.map((cls) => {
-                                const schedule = schedules.find(s => s.classId === cls.id) || { isSelected: false, startTime: '', endTime: '' };
-                                return (
-                                    <tr key={cls.id} className={schedule.isSelected ? 'bg-blue-50' : ''}>
-                                        <td className="px-6 py-4">
-                                            <label htmlFor={`select-class-${cls.id}`} className="sr-only">Pilih Kelas {cls.name}</label>
-                                            <input 
-                                                id={`select-class-${cls.id}`}
-                                                name={`select_class_${cls.id}`}
-                                                type="checkbox" 
-                                                checked={schedule.isSelected}
-                                                onChange={(e) => handleScheduleChange(cls.id, 'isSelected', e.target.checked)}
-                                                className="rounded border-gray-300 text-blue-600 focus:ring-blue-500"
-                                            />
-                                        </td>
-                                        <td className="px-6 py-4 font-medium text-gray-900">{cls.name}</td>
-                                        <td className="px-6 py-4">
-                                            <label htmlFor={`start-time-${cls.id}`} className="sr-only">Waktu Mulai {cls.name}</label>
-                                            <input 
-                                                id={`start-time-${cls.id}`}
-                                                name={`start_time_${cls.id}`}
-                                                type="datetime-local" 
-                                                disabled={!schedule.isSelected}
-                                                value={schedule.startTime}
-                                                onChange={(e) => handleScheduleChange(cls.id, 'startTime', e.target.value)}
-                                                className="block w-full rounded-md border-gray-300 shadow-sm focus:border-blue-500 focus:ring-blue-500 sm:text-sm disabled:bg-gray-100 disabled:text-gray-400"
-                                            />
-                                        </td>
-                                        <td className="px-6 py-4">
-                                            <label htmlFor={`end-time-${cls.id}`} className="sr-only">Waktu Selesai {cls.name}</label>
-                                            <input 
-                                                id={`end-time-${cls.id}`}
-                                                name={`end_time_${cls.id}`}
-                                                type="datetime-local" 
-                                                disabled={!schedule.isSelected}
-                                                value={schedule.endTime}
-                                                onChange={(e) => handleScheduleChange(cls.id, 'endTime', e.target.value)}
-                                                className="block w-full rounded-md border-gray-300 shadow-sm focus:border-blue-500 focus:ring-blue-500 sm:text-sm disabled:bg-gray-100 disabled:text-gray-400"
-                                            />
-                                        </td>
-                                    </tr>
-                                );
-                            })}
-                        </tbody>
-                    </table>
-                </div>
+                {canTeacherDirectSchedulePacket(packet) ? (
+                    <div className="p-0">
+                        <table className="w-full">
+                            <thead className="bg-gray-50 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
+                                <tr>
+                                    <th className="px-6 py-3 w-10">
+                                        <label htmlFor="select-all" className="sr-only">Pilih Semua Kelas</label>
+                                        <input 
+                                            id="select-all"
+                                            name="selectAll"
+                                            type="checkbox" 
+                                            onChange={(e) => {
+                                            const checked = e.target.checked;
+                                            setSchedules(schedules.map(s => ({ ...s, isSelected: checked })));
+                                        }} />
+                                    </th>
+                                    <th className="px-6 py-3">Kelas</th>
+                                    <th className="px-6 py-3">Waktu Mulai</th>
+                                    <th className="px-6 py-3">Waktu Selesai</th>
+                                </tr>
+                            </thead>
+                            <tbody className="divide-y divide-gray-200">
+                                {classes.map((cls) => {
+                                    const schedule = schedules.find(s => s.classId === cls.id) || { isSelected: false, startTime: '', endTime: '' };
+                                    return (
+                                        <tr key={cls.id} className={schedule.isSelected ? 'bg-blue-50' : ''}>
+                                            <td className="px-6 py-4">
+                                                <label htmlFor={`select-class-${cls.id}`} className="sr-only">Pilih Kelas {cls.name}</label>
+                                                <input 
+                                                    id={`select-class-${cls.id}`}
+                                                    name={`select_class_${cls.id}`}
+                                                    type="checkbox" 
+                                                    checked={schedule.isSelected}
+                                                    onChange={(e) => handleScheduleChange(cls.id, 'isSelected', e.target.checked)}
+                                                    className="rounded border-gray-300 text-blue-600 focus:ring-blue-500"
+                                                />
+                                            </td>
+                                            <td className="px-6 py-4 font-medium text-gray-900">{cls.name}</td>
+                                            <td className="px-6 py-4">
+                                                <label htmlFor={`start-time-${cls.id}`} className="sr-only">Waktu Mulai {cls.name}</label>
+                                                <input 
+                                                    id={`start-time-${cls.id}`}
+                                                    name={`start_time_${cls.id}`}
+                                                    type="datetime-local" 
+                                                    disabled={!schedule.isSelected}
+                                                    value={schedule.startTime}
+                                                    onChange={(e) => handleScheduleChange(cls.id, 'startTime', e.target.value)}
+                                                    className="block w-full rounded-md border-gray-300 shadow-sm focus:border-blue-500 focus:ring-blue-500 sm:text-sm disabled:bg-gray-100 disabled:text-gray-400"
+                                                />
+                                            </td>
+                                            <td className="px-6 py-4">
+                                                <label htmlFor={`end-time-${cls.id}`} className="sr-only">Waktu Selesai {cls.name}</label>
+                                                <input 
+                                                    id={`end-time-${cls.id}`}
+                                                    name={`end_time_${cls.id}`}
+                                                    type="datetime-local" 
+                                                    disabled={!schedule.isSelected}
+                                                    value={schedule.endTime}
+                                                    onChange={(e) => handleScheduleChange(cls.id, 'endTime', e.target.value)}
+                                                    className="block w-full rounded-md border-gray-300 shadow-sm focus:border-blue-500 focus:ring-blue-500 sm:text-sm disabled:bg-gray-100 disabled:text-gray-400"
+                                                />
+                                            </td>
+                                        </tr>
+                                    );
+                                })}
+                            </tbody>
+                        </table>
+                    </div>
+                ) : (
+                    <div className="px-6 py-5 text-sm text-slate-600">
+                        Jadwal untuk program ini dikelola oleh Wakasek Kurikulum. Guru hanya dapat menjadwalkan langsung
+                        packet Ulangan Harian/Formatif.
+                    </div>
+                )}
             </div>
         </div>
     );

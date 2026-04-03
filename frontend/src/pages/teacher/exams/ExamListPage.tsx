@@ -136,6 +136,11 @@ const buildAssignmentDisplayLabel = (assignment: TeacherAssignment): string => {
     return `${subjectName} — ${className} — ${teacherName}`;
 };
 
+const canTeacherDirectSchedulePacket = (packet?: Pick<ExamPacket, 'programCode' | 'type'> | null) => {
+    const normalized = normalizeExamProgramCode(packet?.programCode || packet?.type);
+    return ['FORMATIF', 'FORMATIVE', 'UH', 'ULANGAN_HARIAN'].includes(normalized);
+};
+
 export const ExamListPage = () => {
     const location = useLocation();
     const navigate = useNavigate();
@@ -545,6 +550,11 @@ export const ExamListPage = () => {
     };
 
     const openScheduleModal = async (packet: ExamPacket) => {
+        if (!canTeacherDirectSchedulePacket(packet)) {
+            toast.error('Jadwal program ini diatur oleh Wakasek Kurikulum.');
+            return;
+        }
+
         setIsScheduleLoading(true);
         setSchedulePacket(packet);
         setIsScheduleModalOpen(true);
@@ -618,6 +628,10 @@ export const ExamListPage = () => {
     const handleSaveScheduleModal = async () => {
         if (!schedulePacket || !activeAcademicYear?.id) {
             toast.error('Data jadwal tidak valid.');
+            return;
+        }
+        if (!canTeacherDirectSchedulePacket(schedulePacket)) {
+            toast.error('Jadwal program ini diatur oleh Wakasek Kurikulum.');
             return;
         }
 
@@ -871,14 +885,16 @@ export const ExamListPage = () => {
 
                             {/* Actions */}
                             <div className="pt-3 border-t border-gray-100 space-y-2">
-                                <div className="grid grid-cols-3 gap-2">
-                                    <button 
-                                        onClick={() => openScheduleModal(packet)}
-                                        className="px-2 py-1.5 bg-blue-50 text-blue-600 text-xs font-bold rounded-lg hover:bg-blue-600 hover:text-white transition-all flex items-center justify-center gap-1 border border-blue-100"
-                                    >
-                                        <Calendar className="w-3 h-3" />
-                                        Jadwal
-                                    </button>
+                                <div className={`grid gap-2 ${canTeacherDirectSchedulePacket(packet) ? 'grid-cols-3' : 'grid-cols-2'}`}>
+                                    {canTeacherDirectSchedulePacket(packet) ? (
+                                        <button 
+                                            onClick={() => openScheduleModal(packet)}
+                                            className="px-2 py-1.5 bg-blue-50 text-blue-600 text-xs font-bold rounded-lg hover:bg-blue-600 hover:text-white transition-all flex items-center justify-center gap-1 border border-blue-100"
+                                        >
+                                            <Calendar className="w-3 h-3" />
+                                            Jadwal
+                                        </button>
+                                    ) : null}
                                     <button 
                                         onClick={() => navigate(`/teacher/exams/${packet.id}/item-analysis`)}
                                         className="px-2 py-1.5 bg-emerald-50 text-emerald-700 text-xs font-bold rounded-lg hover:bg-emerald-600 hover:text-white transition-all flex items-center justify-center gap-1 border border-emerald-100"
@@ -894,6 +910,11 @@ export const ExamListPage = () => {
                                         Submisi
                                     </button>
                                 </div>
+                                {!canTeacherDirectSchedulePacket(packet) ? (
+                                    <p className="text-[11px] text-slate-500">
+                                        Jadwal program ini dibuat oleh Wakasek Kurikulum.
+                                    </p>
+                                ) : null}
 
                                 <div className="flex items-center justify-end gap-1">
                                     <button 

@@ -1764,6 +1764,7 @@ async function findReusablePacketForSessionGroup(params: {
     startTime: Date;
 }): Promise<{
     id: number;
+    authorId: number;
     subjectId: number;
     academicYearId: number;
     semester: Semester;
@@ -1802,6 +1803,7 @@ async function findReusablePacketForSessionGroup(params: {
         orderBy: [{ updatedAt: 'desc' }, { id: 'desc' }],
         select: {
             id: true,
+            authorId: true,
             subjectId: true,
             academicYearId: true,
             semester: true,
@@ -2573,6 +2575,78 @@ async function assertBkkExamScheduleManagementAccess(req: Request) {
     if (!allowed) {
         throw new ApiError(403, 'Hanya tim Humas/BKK yang dapat mengatur tes untuk lowongan.');
     }
+}
+
+async function resolveAcademicScheduleActor(req: Request) {
+    const authUser = (req as Request & { user?: { id?: number | string; role?: string } }).user;
+    const authUserId = Number(authUser?.id || 0);
+    const authRole = String(authUser?.role || '').trim().toUpperCase();
+
+    if (authRole === 'ADMIN') {
+        return {
+            userId: authUserId,
+            role: authRole,
+            isTeacher: false,
+            isCurriculumManager: true,
+        };
+    }
+
+    if (authRole !== 'TEACHER' || !Number.isFinite(authUserId) || authUserId <= 0) {
+        return {
+            userId: authUserId,
+            role: authRole,
+            isTeacher: false,
+            isCurriculumManager: false,
+        };
+    }
+
+    const profile = await prisma.user.findUnique({
+        where: { id: authUserId },
+        select: { additionalDuties: true },
+    });
+    const duties = (profile?.additionalDuties || []).map((item) => String(item || '').trim().toUpperCase());
+
+    return {
+        userId: authUserId,
+        role: authRole,
+        isTeacher: true,
+        isCurriculumManager:
+            duties.includes('WAKASEK_KURIKULUM') || duties.includes('SEKRETARIS_KURIKULUM'),
+    };
+}
+
+async function assertAcademicExamScheduleManagementAccess(
+    req: Request,
+    options: {
+        programCode?: unknown;
+        packetAuthorId?: unknown;
+        allowPacketAuthorForNonScheduled?: boolean;
+    },
+) {
+    const actor = await resolveAcademicScheduleActor(req);
+    if (actor.role === 'ADMIN' || actor.isCurriculumManager) return;
+
+    const isNonScheduledProgram = isNonScheduledExamProgramCode(options.programCode);
+    const packetAuthorId = Number(options.packetAuthorId || 0);
+    if (
+        actor.isTeacher &&
+        isNonScheduledProgram &&
+        options.allowPacketAuthorForNonScheduled &&
+        Number.isFinite(packetAuthorId) &&
+        packetAuthorId > 0 &&
+        packetAuthorId === actor.userId
+    ) {
+        return;
+    }
+
+    if (isNonScheduledProgram) {
+        throw new ApiError(
+            403,
+            'Jadwal Ulangan Harian (UH/Formatif) hanya bisa diatur oleh guru pemilik packet atau tim kurikulum.',
+        );
+    }
+
+    throw new ApiError(403, 'Jadwal ujian akademik hanya bisa diatur oleh Wakasek/sekretaris kurikulum.');
 }
 
 function resolveScheduleDateTime(input: {
@@ -5567,6 +5641,7 @@ export const createSchedule = asyncHandler(async (req: Request, res: Response) =
 
     let packet: {
         id: number;
+        authorId: number;
         subjectId: number;
         academicYearId: number;
         semester: Semester;
@@ -5582,6 +5657,7 @@ export const createSchedule = asyncHandler(async (req: Request, res: Response) =
             where: { id: parsedPacketId },
             select: {
                 id: true,
+                authorId: true,
                 subjectId: true,
                 academicYearId: true,
                 semester: true,
@@ -5616,6 +5692,15 @@ export const createSchedule = asyncHandler(async (req: Request, res: Response) =
             400,
             'Program Ulangan Harian (UH/Formatif) hanya bisa dijadwalkan dari packet ujian guru yang sudah dibuat.',
         );
+    }
+    if (parsedJobVacancyId) {
+        await assertBkkExamScheduleManagementAccess(req);
+    } else {
+        await assertAcademicExamScheduleManagementAccess(req, {
+            programCode: normalizedExamType,
+            packetAuthorId: packet?.authorId,
+            allowPacketAuthorForNonScheduled: true,
+        });
     }
 
     const scheduleScopeConfig = await resolveProgramScopeConfig({
@@ -5652,7 +5737,6 @@ export const createSchedule = asyncHandler(async (req: Request, res: Response) =
         throw new ApiError(400, 'Tes BKK wajib dikaitkan ke lowongan.');
     }
     if (parsedJobVacancyId) {
-        await assertBkkExamScheduleManagementAccess(req);
         const vacancy = await prisma.jobVacancy.findUnique({
             where: { id: parsedJobVacancyId },
             select: { id: true },
@@ -5799,6 +5883,7 @@ export const createSchedule = asyncHandler(async (req: Request, res: Response) =
                     },
                     select: {
                         id: true,
+                        authorId: true,
                         subjectId: true,
                         academicYearId: true,
                         semester: true,
@@ -5874,6 +5959,7 @@ export const updateSchedule = asyncHandler(async (req: Request, res: Response) =
             examType: true,
             packet: {
                 select: {
+                    authorId: true,
                     academicYearId: true,
                     programCode: true,
                     type: true,
@@ -5886,6 +5972,16 @@ export const updateSchedule = asyncHandler(async (req: Request, res: Response) =
     }
     if (existingSchedule.jobVacancyId) {
         await assertBkkExamScheduleManagementAccess(req);
+    } else {
+        await assertAcademicExamScheduleManagementAccess(req, {
+            programCode:
+                existingSchedule.packet?.programCode ||
+                existingSchedule.examType ||
+                existingSchedule.packet?.type ||
+                null,
+            packetAuthorId: existingSchedule.packet?.authorId,
+            allowPacketAuthorForNonScheduled: true,
+        });
     }
 
     const parsedProctorId =
@@ -5950,6 +6046,12 @@ export const deleteSchedule = asyncHandler(async (req: Request, res: Response) =
     }
     if (schedule.jobVacancyId) {
         await assertBkkExamScheduleManagementAccess(req);
+    } else {
+        await assertAcademicExamScheduleManagementAccess(req, {
+            programCode: schedule.packet?.programCode || schedule.examType || schedule.packet?.type || null,
+            packetAuthorId: schedule.packet?.authorId,
+            allowPacketAuthorForNonScheduled: true,
+        });
     }
 
     // Only block if packet exists AND has content AND has completed sessions

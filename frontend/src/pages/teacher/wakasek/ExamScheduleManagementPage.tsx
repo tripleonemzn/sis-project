@@ -1218,8 +1218,8 @@ const ExamScheduleManagementPage = () => {
               )}
 
               {/* Date & Time */}
-              <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-                <div className="md:col-span-2">
+              <div className="grid grid-cols-1 gap-4 md:grid-cols-3">
+                <div className="md:col-span-3">
                   <label htmlFor="sessionId" className="block text-sm font-medium text-gray-700 mb-2">
                     Sesi Ujian (Opsional)
                   </label>
