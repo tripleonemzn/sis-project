@@ -4,6 +4,7 @@ import { useQuery } from '@tanstack/react-query';
 import { Pressable, RefreshControl, ScrollView, Text, View } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { AppLoadingScreen } from '../../../src/components/AppLoadingScreen';
+import { MobileSummaryCard } from '../../../src/components/MobileSummaryCard';
 import { QueryStateView } from '../../../src/components/QueryStateView';
 import { useAuth } from '../../../src/features/auth/AuthProvider';
 import { adminApi } from '../../../src/features/admin/adminApi';
@@ -14,25 +15,6 @@ import {
 } from '../../../src/features/tutor/tutorAccess';
 import { getStandardPagePadding } from '../../../src/lib/ui/pageLayout';
 import { BRAND_COLORS } from '../../../src/config/brand';
-
-function SummaryCard({ title, value, subtitle }: { title: string; value: string; subtitle: string }) {
-  return (
-    <View
-      style={{
-        flex: 1,
-        backgroundColor: '#fff',
-        borderWidth: 1,
-        borderColor: '#dbe7fb',
-        borderRadius: 12,
-        padding: 12,
-      }}
-    >
-      <Text style={{ color: '#64748b', fontSize: 11 }}>{title}</Text>
-      <Text style={{ color: BRAND_COLORS.textDark, fontWeight: '700', fontSize: 20, marginTop: 3 }}>{value}</Text>
-      <Text style={{ color: BRAND_COLORS.textMuted, fontSize: 11, marginTop: 2 }}>{subtitle}</Text>
-    </View>
-  );
-}
 
 export default function TutorDashboardScreen() {
   const router = useRouter();
@@ -98,22 +80,32 @@ export default function TutorDashboardScreen() {
 
       <View style={{ flexDirection: 'row', marginHorizontal: -4, marginBottom: 12 }}>
         <View style={{ flex: 1, paddingHorizontal: 4 }}>
-          <SummaryCard
+          <MobileSummaryCard
             title="Total Assignment"
             value={String(extracurricularAssignments.length)}
             subtitle="Seluruh assignment pembina ekskul"
+            iconName="clipboard"
+            accentColor="#2563eb"
           />
         </View>
         <View style={{ flex: 1, paddingHorizontal: 4 }}>
-          <SummaryCard title="Ekskul Aktif" value={String(uniqueEkskulCount)} subtitle="Jumlah ekskul yang diampu" />
+          <MobileSummaryCard
+            title="Ekskul Aktif"
+            value={String(uniqueEkskulCount)}
+            subtitle="Jumlah ekskul yang diampu"
+            iconName="activity"
+            accentColor="#16a34a"
+          />
         </View>
       </View>
 
       <View style={{ marginBottom: 12 }}>
-        <SummaryCard
+        <MobileSummaryCard
           title="Assignment Aktif"
           value={String(activeAssignments.length)}
           subtitle="Status aktif pada tahun berjalan"
+          iconName="check-square"
+          accentColor="#0f766e"
         />
       </View>
 

@@ -5,6 +5,7 @@ import { Alert, Pressable, RefreshControl, ScrollView, Text, TextInput, View } f
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { Feather } from '@expo/vector-icons';
 import { AppLoadingScreen } from '../../../../src/components/AppLoadingScreen';
+import { MobileSummaryCard } from '../../../../src/components/MobileSummaryCard';
 import { QueryStateView } from '../../../../src/components/QueryStateView';
 import { BRAND_COLORS } from '../../../../src/config/brand';
 import { useAuth } from '../../../../src/features/auth/AuthProvider';
@@ -53,25 +54,6 @@ function formatDateTime(value: string | null | undefined) {
     hour: '2-digit',
     minute: '2-digit',
   });
-}
-
-function SummaryCard({ title, value, subtitle }: { title: string; value: string; subtitle: string }) {
-  return (
-    <View
-      style={{
-        backgroundColor: '#fff',
-        borderWidth: 1,
-        borderColor: '#dbe7fb',
-        borderRadius: 12,
-        padding: 12,
-        flex: 1,
-      }}
-    >
-      <Text style={{ color: '#64748b', fontSize: 11 }}>{title}</Text>
-      <Text style={{ color: BRAND_COLORS.textDark, fontWeight: '700', fontSize: 20, marginTop: 4 }}>{value}</Text>
-      <Text style={{ color: BRAND_COLORS.textMuted, fontSize: 11, marginTop: 2 }}>{subtitle}</Text>
-    </View>
-  );
 }
 
 export default function TeacherProctoringDetailScreen() {
@@ -214,13 +196,31 @@ export default function TeacherProctoringDetailScreen() {
 
           <View style={{ flexDirection: 'row', marginHorizontal: -4, marginBottom: 10 }}>
             <View style={{ flex: 1, paddingHorizontal: 4 }}>
-              <SummaryCard title="Total Siswa" value={String(students.length)} subtitle="Peserta kelas" />
+              <MobileSummaryCard
+                title="Total Siswa"
+                value={String(students.length)}
+                subtitle="Peserta kelas"
+                iconName="users"
+                accentColor="#2563eb"
+              />
             </View>
             <View style={{ flex: 1, paddingHorizontal: 4 }}>
-              <SummaryCard title="Mengerjakan" value={String(inProgressCount)} subtitle="Sedang berlangsung" />
+              <MobileSummaryCard
+                title="Mengerjakan"
+                value={String(inProgressCount)}
+                subtitle="Sedang berlangsung"
+                iconName="play-circle"
+                accentColor="#0f766e"
+              />
             </View>
             <View style={{ flex: 1, paddingHorizontal: 4 }}>
-              <SummaryCard title="Selesai" value={String(completedCount)} subtitle={`Absen ${absentCount}`} />
+              <MobileSummaryCard
+                title="Selesai"
+                value={String(completedCount)}
+                subtitle={`Absen ${absentCount}`}
+                iconName="check-circle"
+                accentColor="#16a34a"
+              />
             </View>
           </View>
 

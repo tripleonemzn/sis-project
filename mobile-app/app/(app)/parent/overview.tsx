@@ -3,6 +3,7 @@ import { useMemo } from 'react';
 import { Pressable, RefreshControl, ScrollView, Text, View } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { AppLoadingScreen } from '../../../src/components/AppLoadingScreen';
+import { MobileSummaryCard } from '../../../src/components/MobileSummaryCard';
 import { QueryStateView } from '../../../src/components/QueryStateView';
 import { OfflineCacheNotice } from '../../../src/components/OfflineCacheNotice';
 import { useAuth } from '../../../src/features/auth/AuthProvider';
@@ -10,25 +11,6 @@ import { useParentChildrenQuery } from '../../../src/features/parent/useParentCh
 import { useParentFinanceOverviewQuery } from '../../../src/features/parent/useParentFinanceOverviewQuery';
 import { getStandardPagePadding } from '../../../src/lib/ui/pageLayout';
 import { BRAND_COLORS } from '../../../src/config/brand';
-
-function SummaryCard({ title, value, subtitle }: { title: string; value: string; subtitle: string }) {
-  return (
-    <View
-      style={{
-        flex: 1,
-        backgroundColor: '#fff',
-        borderWidth: 1,
-        borderColor: '#dbe7fb',
-        borderRadius: 12,
-        padding: 12,
-      }}
-    >
-      <Text style={{ color: '#64748b', fontSize: 11 }}>{title}</Text>
-      <Text style={{ color: BRAND_COLORS.textDark, fontWeight: '700', fontSize: 20, marginTop: 3 }}>{value}</Text>
-      <Text style={{ color: BRAND_COLORS.textMuted, fontSize: 11, marginTop: 2 }}>{subtitle}</Text>
-    </View>
-  );
-}
 
 function formatCurrency(value: number) {
   return new Intl.NumberFormat('id-ID', {
@@ -89,26 +71,42 @@ export default function ParentOverviewScreen() {
 
       <View style={{ flexDirection: 'row', marginHorizontal: -4, marginBottom: 8 }}>
         <View style={{ flex: 1, paddingHorizontal: 4 }}>
-          <SummaryCard title="Jumlah Anak" value={String(summary?.childCount || children.length)} subtitle="Terhubung ke akun ini" />
+          <MobileSummaryCard
+            title="Jumlah Anak"
+            value={String(summary?.childCount || children.length)}
+            subtitle="Terhubung ke akun ini"
+            iconName="users"
+            accentColor="#2563eb"
+          />
         </View>
         <View style={{ flex: 1, paddingHorizontal: 4 }}>
-          <SummaryCard title="Total Transaksi" value={String(summary?.totalRecords || 0)} subtitle="Riwayat pembayaran" />
+          <MobileSummaryCard
+            title="Total Transaksi"
+            value={String(summary?.totalRecords || 0)}
+            subtitle="Riwayat pembayaran"
+            iconName="repeat"
+            accentColor="#0f766e"
+          />
         </View>
       </View>
 
       <View style={{ flexDirection: 'row', marginHorizontal: -4, marginBottom: 12 }}>
         <View style={{ flex: 1, paddingHorizontal: 4 }}>
-          <SummaryCard
+          <MobileSummaryCard
             title="Sudah Dibayar"
             value={formatCurrency(summary?.paidAmount || 0)}
             subtitle="Nominal terbayar"
+            iconName="check-circle"
+            accentColor="#16a34a"
           />
         </View>
         <View style={{ flex: 1, paddingHorizontal: 4 }}>
-          <SummaryCard
+          <MobileSummaryCard
             title="Belum Lunas"
             value={formatCurrency(Number(summary?.pendingAmount || 0) + Number(summary?.partialAmount || 0))}
             subtitle="Pending + parsial"
+            iconName="alert-circle"
+            accentColor="#f59e0b"
           />
         </View>
       </View>

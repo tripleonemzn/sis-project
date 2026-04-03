@@ -4,6 +4,8 @@ import { useQuery } from '@tanstack/react-query';
 import { Pressable, RefreshControl, ScrollView, Text, TextInput, View } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { AppLoadingScreen } from '../../../../src/components/AppLoadingScreen';
+import { MobileSelectField } from '../../../../src/components/MobileSelectField';
+import { MobileSummaryCard } from '../../../../src/components/MobileSummaryCard';
 import { QueryStateView } from '../../../../src/components/QueryStateView';
 import { BRAND_COLORS } from '../../../../src/config/brand';
 import { academicYearApi } from '../../../../src/features/academicYear/academicYearApi';
@@ -32,25 +34,6 @@ function formatTime(value?: string | null) {
   const date = new Date(value);
   if (Number.isNaN(date.getTime())) return '-';
   return date.toLocaleTimeString('id-ID', { hour: '2-digit', minute: '2-digit' });
-}
-
-function SummaryCard({ title, value, subtitle, accent }: { title: string; value: number; subtitle: string; accent: string }) {
-  return (
-    <View
-      style={{
-        backgroundColor: '#fff',
-        borderWidth: 1,
-        borderColor: accent,
-        borderRadius: 12,
-        padding: 12,
-        flex: 1,
-      }}
-    >
-      <Text style={{ color: '#64748b', fontSize: 11 }}>{title}</Text>
-      <Text style={{ color: BRAND_COLORS.textDark, fontWeight: '700', fontSize: 22, marginTop: 6 }}>{value}</Text>
-      <Text style={{ color: BRAND_COLORS.textMuted, fontSize: 12, marginTop: 4 }}>{subtitle}</Text>
-    </View>
-  );
 }
 
 export default function PrincipalExamReportsScreen() {
@@ -102,6 +85,10 @@ export default function PrincipalExamReportsScreen() {
     });
     return Array.from(options).sort((a, b) => a.localeCompare(b));
   }, [rows]);
+  const examTypeOptions = useMemo(
+    () => [{ value: 'ALL', label: 'Semua Jenis Ujian' }, ...examTypes.map((item) => ({ value: item, label: item }))],
+    [examTypes],
+  );
 
   if (isLoading) return <AppLoadingScreen message="Memuat berita acara ujian..." />;
   if (!isAuthenticated) return <Redirect href="/welcome" />;
@@ -165,44 +152,13 @@ export default function PrincipalExamReportsScreen() {
           }}
         />
         <Text style={{ color: BRAND_COLORS.textDark, fontWeight: '700', marginBottom: 8 }}>Jenis Ujian</Text>
-        <View style={{ flexDirection: 'row', flexWrap: 'wrap', gap: 8 }}>
-          <Pressable
-            onPress={() => setExamTypeFilter('ALL')}
-            style={{
-              borderWidth: 1,
-              borderColor: examTypeFilter === 'ALL' ? BRAND_COLORS.blue : '#d5e1f5',
-              backgroundColor: examTypeFilter === 'ALL' ? '#e9f1ff' : '#fff',
-              borderRadius: 999,
-              paddingHorizontal: 12,
-              paddingVertical: 8,
-            }}
-          >
-            <Text style={{ color: examTypeFilter === 'ALL' ? BRAND_COLORS.navy : BRAND_COLORS.textMuted, fontWeight: '700', fontSize: 12 }}>
-              Semua
-            </Text>
-          </Pressable>
-          {examTypes.map((item) => {
-            const active = examTypeFilter === item;
-            return (
-              <Pressable
-                key={item}
-                onPress={() => setExamTypeFilter(item)}
-                style={{
-                  borderWidth: 1,
-                  borderColor: active ? BRAND_COLORS.blue : '#d5e1f5',
-                  backgroundColor: active ? '#e9f1ff' : '#fff',
-                  borderRadius: 999,
-                  paddingHorizontal: 12,
-                  paddingVertical: 8,
-                }}
-              >
-                <Text style={{ color: active ? BRAND_COLORS.navy : BRAND_COLORS.textMuted, fontWeight: '700', fontSize: 12 }}>
-                  {item}
-                </Text>
-              </Pressable>
-            );
-          })}
-        </View>
+        <MobileSelectField
+          label="Jenis Ujian"
+          value={examTypeFilter}
+          options={examTypeOptions}
+          onChange={(next) => setExamTypeFilter(next || 'ALL')}
+          placeholder="Pilih jenis ujian"
+        />
       </View>
 
       {reportsQuery.isLoading ? <QueryStateView type="loading" message="Memuat berita acara pengawas..." /> : null}
@@ -212,16 +168,40 @@ export default function PrincipalExamReportsScreen() {
 
       <View style={{ flexDirection: 'row', flexWrap: 'wrap', marginHorizontal: -4, marginBottom: 12 }}>
         <View style={{ width: '50%', paddingHorizontal: 4, marginBottom: 8 }}>
-          <SummaryCard title="Ruang Aktif" value={summary.totalRooms} subtitle="Total ruang pada filter" accent="#bfdbfe" />
+          <MobileSummaryCard
+            title="Ruang Aktif"
+            value={String(summary.totalRooms)}
+            subtitle="Total ruang pada filter"
+            iconName="home"
+            accentColor="#2563eb"
+          />
         </View>
         <View style={{ width: '50%', paddingHorizontal: 4, marginBottom: 8 }}>
-          <SummaryCard title="Sudah Melapor" value={summary.reportedRooms} subtitle="Ruang yang sudah submit" accent="#bbf7d0" />
+          <MobileSummaryCard
+            title="Sudah Melapor"
+            value={String(summary.reportedRooms)}
+            subtitle="Ruang yang sudah submit"
+            iconName="check-circle"
+            accentColor="#16a34a"
+          />
         </View>
         <View style={{ width: '50%', paddingHorizontal: 4, marginBottom: 8 }}>
-          <SummaryCard title="Peserta Hadir" value={summary.totalPresent} subtitle="Peserta tercatat hadir" accent="#d5e1f5" />
+          <MobileSummaryCard
+            title="Peserta Hadir"
+            value={String(summary.totalPresent)}
+            subtitle="Peserta tercatat hadir"
+            iconName="users"
+            accentColor="#0f766e"
+          />
         </View>
         <View style={{ width: '50%', paddingHorizontal: 4, marginBottom: 8 }}>
-          <SummaryCard title="Tidak Hadir" value={summary.totalAbsent} subtitle="Perlu validasi lanjutan" accent="#fecaca" />
+          <MobileSummaryCard
+            title="Tidak Hadir"
+            value={String(summary.totalAbsent)}
+            subtitle="Perlu validasi lanjutan"
+            iconName="alert-circle"
+            accentColor="#dc2626"
+          />
         </View>
       </View>
 

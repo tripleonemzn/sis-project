@@ -5,6 +5,8 @@ import { Pressable, RefreshControl, ScrollView, Text, TextInput, View } from 're
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { Feather } from '@expo/vector-icons';
 import { AppLoadingScreen } from '../../../../src/components/AppLoadingScreen';
+import { MobileSelectField } from '../../../../src/components/MobileSelectField';
+import { MobileSummaryCard } from '../../../../src/components/MobileSummaryCard';
 import { QueryStateView } from '../../../../src/components/QueryStateView';
 import { BRAND_COLORS } from '../../../../src/config/brand';
 import { useAuth } from '../../../../src/features/auth/AuthProvider';
@@ -63,53 +65,6 @@ function matchTimeFilter(schedule: ProctorScheduleSummary, filter: TimeFilter) {
   return examDate < todayStart;
 }
 
-function FilterChip({
-  active,
-  label,
-  onPress,
-}: {
-  active: boolean;
-  label: string;
-  onPress: () => void;
-}) {
-  return (
-    <Pressable
-      onPress={onPress}
-      style={{
-        borderWidth: 1,
-        borderColor: active ? BRAND_COLORS.blue : '#d5e1f5',
-        backgroundColor: active ? '#e9f1ff' : '#fff',
-        borderRadius: 999,
-        paddingHorizontal: 12,
-        paddingVertical: 7,
-      }}
-    >
-      <Text style={{ color: active ? BRAND_COLORS.navy : BRAND_COLORS.textMuted, fontWeight: '700', fontSize: 12 }}>
-        {label}
-      </Text>
-    </Pressable>
-  );
-}
-
-function SummaryCard({ title, value, subtitle }: { title: string; value: string; subtitle: string }) {
-  return (
-    <View
-      style={{
-        backgroundColor: '#fff',
-        borderWidth: 1,
-        borderColor: '#dbe7fb',
-        borderRadius: 12,
-        padding: 12,
-        flex: 1,
-      }}
-    >
-      <Text style={{ color: '#64748b', fontSize: 11 }}>{title}</Text>
-      <Text style={{ color: BRAND_COLORS.textDark, fontWeight: '700', fontSize: 20, marginTop: 4 }}>{value}</Text>
-      <Text style={{ color: BRAND_COLORS.textMuted, fontSize: 11, marginTop: 2 }}>{subtitle}</Text>
-    </View>
-  );
-}
-
 export default function TeacherProctoringScheduleScreen() {
   const router = useRouter();
   const insets = useSafeAreaInsets();
@@ -119,6 +74,21 @@ export default function TeacherProctoringScheduleScreen() {
   const [timeFilter, setTimeFilter] = useState<TimeFilter>('TODAY');
   const [modeFilter, setModeFilter] = useState<ModeFilter>('PROCTOR');
   const [search, setSearch] = useState('');
+  const modeFilterOptions = useMemo(
+    () => [
+      { value: 'PROCTOR', label: 'Sebagai Pengawas' },
+      { value: 'AUTHOR', label: 'Sebagai Penulis' },
+    ],
+    [],
+  );
+  const timeFilterOptions = useMemo(
+    () => [
+      { value: 'TODAY', label: 'Hari Ini' },
+      { value: 'UPCOMING', label: 'Akan Datang' },
+      { value: 'HISTORY', label: 'Riwayat' },
+    ],
+    [],
+  );
 
   const scheduleQuery = useQuery({
     queryKey: ['mobile-proctoring-schedules', modeFilter],
@@ -192,16 +162,30 @@ export default function TeacherProctoringScheduleScreen() {
 
       <View style={{ flexDirection: 'row', marginHorizontal: -4, marginBottom: 10 }}>
         <View style={{ flex: 1, paddingHorizontal: 4 }}>
-          <SummaryCard title="Total Jadwal" value={String(summary.total)} subtitle="Semua jadwal aktif" />
+          <MobileSummaryCard
+            title="Total Jadwal"
+            value={String(summary.total)}
+            subtitle="Semua jadwal aktif"
+            iconName="calendar"
+            accentColor="#2563eb"
+          />
         </View>
         <View style={{ flex: 1, paddingHorizontal: 4 }}>
-          <SummaryCard title="Sedang Jalan" value={String(summary.activeNow)} subtitle="Sesi aktif saat ini" />
+          <MobileSummaryCard
+            title="Sedang Jalan"
+            value={String(summary.activeNow)}
+            subtitle="Sesi aktif saat ini"
+            iconName="play-circle"
+            accentColor="#16a34a"
+          />
         </View>
         <View style={{ flex: 1, paddingHorizontal: 4 }}>
-          <SummaryCard
+          <MobileSummaryCard
             title="Peserta Aktif"
             value={String(summary.totalParticipants)}
             subtitle="Total sesi siswa"
+            iconName="users"
+            accentColor="#0f766e"
           />
         </View>
       </View>
@@ -216,11 +200,13 @@ export default function TeacherProctoringScheduleScreen() {
           marginBottom: 10,
         }}
       >
-        <Text style={{ color: BRAND_COLORS.textDark, fontWeight: '700', marginBottom: 8 }}>Mode Akses</Text>
-        <View style={{ flexDirection: 'row', gap: 8 }}>
-          <FilterChip active={modeFilter === 'PROCTOR'} label="Sebagai Pengawas" onPress={() => setModeFilter('PROCTOR')} />
-          <FilterChip active={modeFilter === 'AUTHOR'} label="Sebagai Penulis" onPress={() => setModeFilter('AUTHOR')} />
-        </View>
+        <MobileSelectField
+          label="Mode Akses"
+          value={modeFilter}
+          options={modeFilterOptions}
+          onChange={(next) => setModeFilter((next as ModeFilter) || 'PROCTOR')}
+          placeholder="Pilih mode akses"
+        />
       </View>
 
       <View
@@ -233,12 +219,13 @@ export default function TeacherProctoringScheduleScreen() {
           marginBottom: 10,
         }}
       >
-        <Text style={{ color: BRAND_COLORS.textDark, fontWeight: '700', marginBottom: 8 }}>Waktu</Text>
-        <View style={{ flexDirection: 'row', gap: 8 }}>
-          <FilterChip active={timeFilter === 'TODAY'} label="Hari Ini" onPress={() => setTimeFilter('TODAY')} />
-          <FilterChip active={timeFilter === 'UPCOMING'} label="Akan Datang" onPress={() => setTimeFilter('UPCOMING')} />
-          <FilterChip active={timeFilter === 'HISTORY'} label="Riwayat" onPress={() => setTimeFilter('HISTORY')} />
-        </View>
+        <MobileSelectField
+          label="Waktu"
+          value={timeFilter}
+          options={timeFilterOptions}
+          onChange={(next) => setTimeFilter((next as TimeFilter) || 'TODAY')}
+          placeholder="Pilih rentang waktu"
+        />
       </View>
 
       <View
