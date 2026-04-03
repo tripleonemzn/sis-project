@@ -4,6 +4,9 @@ import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { Alert, Pressable, RefreshControl, ScrollView, Switch, Text, TextInput, View } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { AppLoadingScreen } from '../../components/AppLoadingScreen';
+import { MobileMenuTabBar } from '../../components/MobileMenuTabBar';
+import { MobileSelectField } from '../../components/MobileSelectField';
+import { MobileSummaryCard as SummaryCard } from '../../components/MobileSummaryCard';
 import { QueryStateView } from '../../components/QueryStateView';
 import { useAuth } from '../auth/AuthProvider';
 import { BRAND_COLORS } from '../../config/brand';
@@ -171,36 +174,6 @@ function createDefaultMembershipForm(): MembershipFormState {
   };
 }
 
-function SummaryCard({
-  title,
-  value,
-  subtitle,
-  accent,
-}: {
-  title: string;
-  value: string;
-  subtitle: string;
-  accent: string;
-}) {
-  return (
-    <View
-      style={{
-        backgroundColor: '#fff',
-        borderWidth: 1,
-        borderColor: '#dbe7fb',
-        borderRadius: 14,
-        padding: 12,
-        flexBasis: '48%',
-        flexGrow: 1,
-      }}
-    >
-      <Text style={{ color: '#64748b', fontSize: 11 }}>{title}</Text>
-      <Text style={{ color: accent, fontWeight: '800', fontSize: 24, marginTop: 4 }}>{value}</Text>
-      <Text style={{ color: BRAND_COLORS.textMuted, fontSize: 11, marginTop: 2 }}>{subtitle}</Text>
-    </View>
-  );
-}
-
 function SectionCard({
   title,
   subtitle,
@@ -227,34 +200,6 @@ function SectionCard({
       </View>
       {children}
     </View>
-  );
-}
-
-function FilterChip({
-  label,
-  active,
-  onPress,
-}: {
-  label: string;
-  active: boolean;
-  onPress: () => void;
-}) {
-  return (
-    <Pressable
-      onPress={onPress}
-      style={{
-        backgroundColor: active ? '#e9f1ff' : '#fff',
-        borderWidth: 1,
-        borderColor: active ? BRAND_COLORS.blue : '#d5e1f5',
-        borderRadius: 999,
-        paddingHorizontal: 12,
-        paddingVertical: 8,
-      }}
-    >
-      <Text style={{ color: active ? BRAND_COLORS.navy : BRAND_COLORS.textMuted, fontWeight: '800', fontSize: 12 }}>
-        {label}
-      </Text>
-    </Pressable>
   );
 }
 
@@ -450,6 +395,63 @@ export function TeacherOsisManagementModuleScreen() {
   const selectedPosition = useMemo(
     () => positions.find((position) => position.id === Number(membershipForm.positionId)) || null,
     [membershipForm.positionId, positions],
+  );
+  const osisModuleItems = useMemo(
+    () => [
+      { key: 'management', label: 'Struktur & Nilai', iconName: 'users' as const },
+      { key: 'election', label: 'Pemilihan OSIS', iconName: 'clipboard' as const },
+      { key: 'vote', label: 'Pemungutan Suara', iconName: 'check-square' as const },
+      { key: 'inventory', label: 'Inventaris OSIS', iconName: 'package' as const },
+    ],
+    [],
+  );
+  const managementPeriodOptions = useMemo(
+    () => managementPeriods.map((period) => ({ value: String(period.id), label: period.title })),
+    [managementPeriods],
+  );
+  const electionPeriodOptions = useMemo(
+    () => [
+      { value: '', label: 'Tanpa Tautan' },
+      ...((electionPeriodsQuery.data || [])
+        .filter((period) => period.status === 'CLOSED')
+        .map((period) => ({ value: String(period.id), label: period.title }))),
+    ],
+    [electionPeriodsQuery.data],
+  );
+  const managementStatusOptions = useMemo(
+    () => [
+      { value: 'DRAFT', label: 'Draft' },
+      { value: 'ACTIVE', label: 'Aktif' },
+      { value: 'CLOSED', label: 'Closed' },
+    ],
+    [],
+  );
+  const divisionOptions = useMemo(
+    () => [
+      { value: '', label: 'Tanpa Divisi' },
+      ...divisions.map((division) => ({ value: String(division.id), label: division.name })),
+    ],
+    [divisions],
+  );
+  const semesterOptions = useMemo(
+    () => [
+      { value: 'ODD', label: 'Semester Ganjil' },
+      { value: 'EVEN', label: 'Semester Genap' },
+    ],
+    [],
+  );
+  const membershipPositionOptions = useMemo(
+    () => positions.map((position) => ({ value: String(position.id), label: position.name })),
+    [positions],
+  );
+  const assessmentGradeOptions = useMemo(
+    () => [
+      { value: 'SB', label: 'Sangat Baik (SB)' },
+      { value: 'B', label: 'Baik (B)' },
+      { value: 'C', label: 'Cukup (C)' },
+      { value: 'K', label: 'Kurang (K)' },
+    ],
+    [],
   );
 
   const refreshManagementData = async () => {
@@ -790,28 +792,28 @@ export function TeacherOsisManagementModuleScreen() {
         Kelola periode kepengurusan, struktur organisasi, anggota, pengajuan masuk, dan penilaian OSIS.
       </Text>
 
-      <View style={{ flexDirection: 'row', flexWrap: 'wrap', gap: 8, marginBottom: 12 }}>
-        <View style={{ backgroundColor: '#e9f1ff', borderWidth: 1, borderColor: BRAND_COLORS.blue, borderRadius: 999, paddingHorizontal: 12, paddingVertical: 8 }}>
-          <Text style={{ color: BRAND_COLORS.navy, fontWeight: '800', fontSize: 12 }}>Struktur & Nilai</Text>
-        </View>
-        <Pressable
-          onPress={() => router.push('/teacher/osis/election' as never)}
-          style={{ backgroundColor: '#fff', borderWidth: 1, borderColor: '#d5e1f5', borderRadius: 999, paddingHorizontal: 12, paddingVertical: 8 }}
-        >
-          <Text style={{ color: BRAND_COLORS.textMuted, fontWeight: '700', fontSize: 12 }}>Pemilihan OSIS</Text>
-        </Pressable>
-        <Pressable
-          onPress={() => router.push('/teacher/osis/vote' as never)}
-          style={{ backgroundColor: '#fff', borderWidth: 1, borderColor: '#d5e1f5', borderRadius: 999, paddingHorizontal: 12, paddingVertical: 8 }}
-        >
-          <Text style={{ color: BRAND_COLORS.textMuted, fontWeight: '700', fontSize: 12 }}>Pemungutan Suara</Text>
-        </Pressable>
-        <Pressable
-          onPress={() => router.push('/teacher/osis/inventory' as never)}
-          style={{ backgroundColor: '#fff', borderWidth: 1, borderColor: '#d5e1f5', borderRadius: 999, paddingHorizontal: 12, paddingVertical: 8 }}
-        >
-          <Text style={{ color: BRAND_COLORS.textMuted, fontWeight: '700', fontSize: 12 }}>Kelola Inventaris OSIS</Text>
-        </Pressable>
+      <View
+        style={{
+          backgroundColor: '#fff',
+          borderWidth: 1,
+          borderColor: '#dbe7fb',
+          borderRadius: 14,
+          padding: 8,
+          marginBottom: 12,
+        }}
+      >
+        <MobileMenuTabBar
+          items={osisModuleItems}
+          activeKey="management"
+          onChange={(key) => {
+            if (key === 'election') router.push('/teacher/osis/election' as never);
+            if (key === 'vote') router.push('/teacher/osis/vote' as never);
+            if (key === 'inventory') router.push('/teacher/osis/inventory' as never);
+          }}
+          minTabWidth={86}
+          maxTabWidth={112}
+          compact
+        />
       </View>
 
       <SectionCard title="Kesiapan OSIS" subtitle={activeYearQuery.data?.name || 'Tahun ajaran aktif belum ditemukan'}>
@@ -820,26 +822,23 @@ export function TeacherOsisManagementModuleScreen() {
           <Text style={{ color: readinessTone.text, marginTop: 4 }}>{readinessQuery.data?.message || 'Belum ada status readiness.'}</Text>
         </View>
         <View style={{ flexDirection: 'row', flexWrap: 'wrap', gap: 8 }}>
-          <SummaryCard title="Periode" value={String(stats.totalPeriods)} subtitle="Kepengurusan OSIS" accent="#2563eb" />
-          <SummaryCard title="Aktif" value={String(stats.activePeriods)} subtitle="Status ACTIVE" accent="#059669" />
-          <SummaryCard title="Divisi" value={String(stats.totalDivisions)} subtitle="Pada periode terpilih" accent="#7c3aed" />
-          <SummaryCard title="Jabatan" value={String(stats.totalPositions)} subtitle="Struktur organisasi" accent="#d97706" />
-          <SummaryCard title="Anggota" value={String(stats.totalMembers)} subtitle="Per semester terpilih" accent="#0f766e" />
-          <SummaryCard title="Pengajuan" value={String(stats.pendingRequests)} subtitle="Menunggu tindak lanjut" accent="#c2410c" />
+          <SummaryCard title="Periode" value={String(stats.totalPeriods)} subtitle="Kepengurusan OSIS" iconName="calendar" accentColor="#2563eb" />
+          <SummaryCard title="Aktif" value={String(stats.activePeriods)} subtitle="Status ACTIVE" iconName="check-circle" accentColor="#059669" />
+          <SummaryCard title="Divisi" value={String(stats.totalDivisions)} subtitle="Pada periode terpilih" iconName="layout" accentColor="#7c3aed" />
+          <SummaryCard title="Jabatan" value={String(stats.totalPositions)} subtitle="Struktur organisasi" iconName="briefcase" accentColor="#d97706" />
+          <SummaryCard title="Anggota" value={String(stats.totalMembers)} subtitle="Per semester terpilih" iconName="users" accentColor="#0f766e" />
+          <SummaryCard title="Pengajuan" value={String(stats.pendingRequests)} subtitle="Menunggu tindak lanjut" iconName="inbox" accentColor="#c2410c" />
         </View>
       </SectionCard>
 
       <SectionCard title="Periode Kepengurusan" subtitle="Hubungkan hasil pemilihan, catat transisi, lalu aktifkan periode OSIS.">
-        <View style={{ flexDirection: 'row', flexWrap: 'wrap', gap: 8 }}>
-          {(managementPeriodsQuery.data || []).map((period) => (
-            <FilterChip
-              key={period.id}
-              label={period.title}
-              active={selectedPeriod?.id === period.id}
-              onPress={() => setSelectedPeriodId(period.id)}
-            />
-          ))}
-        </View>
+        <MobileSelectField
+          label="Periode Kepengurusan"
+          value={selectedPeriod ? String(selectedPeriod.id) : ''}
+          options={managementPeriodOptions}
+          onChange={(next) => setSelectedPeriodId(next ? Number(next) : null)}
+          placeholder="Pilih periode kepengurusan"
+        />
 
         <View style={{ flexDirection: 'row', gap: 8 }}>
           <Pressable
@@ -887,19 +886,12 @@ export function TeacherOsisManagementModuleScreen() {
               <Input value={periodForm.description} onChangeText={(value) => setPeriodForm((prev) => ({ ...prev, description: value }))} placeholder="Catatan singkat periode kepengurusan" multiline />
             </Field>
             <Field label="Hubungkan ke Periode Pemilihan">
-              <View style={{ flexDirection: 'row', flexWrap: 'wrap', gap: 8 }}>
-                <FilterChip label="Tanpa Tautan" active={!periodForm.electionPeriodId} onPress={() => setPeriodForm((prev) => ({ ...prev, electionPeriodId: '' }))} />
-                {(electionPeriodsQuery.data || [])
-                  .filter((period) => period.status === 'CLOSED')
-                  .map((period) => (
-                    <FilterChip
-                      key={period.id}
-                      label={period.title}
-                      active={periodForm.electionPeriodId === String(period.id)}
-                      onPress={() => setPeriodForm((prev) => ({ ...prev, electionPeriodId: String(period.id) }))}
-                    />
-                  ))}
-              </View>
+              <MobileSelectField
+                value={periodForm.electionPeriodId}
+                options={electionPeriodOptions}
+                onChange={(next) => setPeriodForm((prev) => ({ ...prev, electionPeriodId: next || '' }))}
+                placeholder="Pilih periode pemilihan"
+              />
             </Field>
             <Field label="Mulai">
               <Input value={periodForm.startAt} onChangeText={(value) => setPeriodForm((prev) => ({ ...prev, startAt: value }))} placeholder="YYYY-MM-DD" />
@@ -917,16 +909,12 @@ export function TeacherOsisManagementModuleScreen() {
               <Input value={periodForm.transitionNotes} onChangeText={(value) => setPeriodForm((prev) => ({ ...prev, transitionNotes: value }))} placeholder="Catatan mubes / pelantikan / serah terima" multiline />
             </Field>
             <Field label="Status">
-              <View style={{ flexDirection: 'row', flexWrap: 'wrap', gap: 8 }}>
-                {(['DRAFT', 'ACTIVE', 'CLOSED'] as const).map((status) => (
-                  <FilterChip
-                    key={status}
-                    label={status}
-                    active={periodForm.status === status}
-                    onPress={() => setPeriodForm((prev) => ({ ...prev, status }))}
-                  />
-                ))}
-              </View>
+              <MobileSelectField
+                value={periodForm.status}
+                options={managementStatusOptions}
+                onChange={(next) => setPeriodForm((prev) => ({ ...prev, status: (next as ManagementPeriodFormState['status']) || 'DRAFT' }))}
+                placeholder="Pilih status periode"
+              />
             </Field>
             <View style={{ flexDirection: 'row', gap: 8 }}>
               <Pressable onPress={() => setPeriodFormVisible(false)} style={{ flex: 1, borderWidth: 1, borderColor: '#cbd5e1', borderRadius: 12, paddingVertical: 12, alignItems: 'center' }}>
@@ -984,17 +972,12 @@ export function TeacherOsisManagementModuleScreen() {
               <View style={{ backgroundColor: '#fff', borderWidth: 1, borderColor: '#dbe7fb', borderRadius: 12, padding: 12, gap: 10 }}>
                 <Text style={{ color: BRAND_COLORS.textDark, fontWeight: '800' }}>{positionForm.id ? 'Edit Jabatan' : 'Jabatan Baru'}</Text>
                 <Field label="Divisi">
-                  <View style={{ flexDirection: 'row', flexWrap: 'wrap', gap: 8 }}>
-                    <FilterChip label="Tanpa Divisi" active={!positionForm.divisionId} onPress={() => setPositionForm((prev) => ({ ...prev, divisionId: '' }))} />
-                    {divisions.map((division) => (
-                      <FilterChip
-                        key={division.id}
-                        label={division.name}
-                        active={positionForm.divisionId === String(division.id)}
-                        onPress={() => setPositionForm((prev) => ({ ...prev, divisionId: String(division.id) }))}
-                      />
-                    ))}
-                  </View>
+                  <MobileSelectField
+                    value={positionForm.divisionId}
+                    options={divisionOptions}
+                    onChange={(next) => setPositionForm((prev) => ({ ...prev, divisionId: next || '' }))}
+                    placeholder="Pilih divisi"
+                  />
                 </Field>
                 <Field label="Nama Jabatan">
                   <Input value={positionForm.name} onChangeText={(value) => setPositionForm((prev) => ({ ...prev, name: value }))} placeholder="Contoh: Ketua OSIS" />
@@ -1086,10 +1069,13 @@ export function TeacherOsisManagementModuleScreen() {
           <Text style={{ color: BRAND_COLORS.textMuted }}>Pilih periode kepengurusan terlebih dahulu.</Text>
         ) : (
           <>
-            <View style={{ flexDirection: 'row', gap: 8 }}>
-              <FilterChip label="Semester Ganjil" active={semester === 'ODD'} onPress={() => setSemester('ODD')} />
-              <FilterChip label="Semester Genap" active={semester === 'EVEN'} onPress={() => setSemester('EVEN')} />
-            </View>
+            <MobileSelectField
+              label="Semester"
+              value={semester}
+              options={semesterOptions}
+              onChange={(next) => setSemester((next as SemesterFilter) || 'EVEN')}
+              placeholder="Pilih semester"
+            />
             <Pressable onPress={() => { setMembershipForm(createDefaultMembershipForm()); setMembershipFormVisible((prev) => !prev); }} style={{ backgroundColor: '#fff', borderWidth: 1, borderColor: '#c7d6f5', borderRadius: 12, paddingVertical: 12, alignItems: 'center' }}>
               <Text style={{ color: BRAND_COLORS.navy, fontWeight: '800' }}>{membershipFormVisible ? 'Tutup Form Anggota' : 'Tambah Anggota OSIS'}</Text>
             </Pressable>
@@ -1136,22 +1122,19 @@ export function TeacherOsisManagementModuleScreen() {
                   </View>
                 </Field>
                 <Field label="Pilih Jabatan">
-                  <View style={{ flexDirection: 'row', flexWrap: 'wrap', gap: 8 }}>
-                    {positions.map((position) => (
-                      <FilterChip
-                        key={position.id}
-                        label={position.name}
-                        active={membershipForm.positionId === String(position.id)}
-                        onPress={() =>
-                          setMembershipForm((prev) => ({
-                            ...prev,
-                            positionId: String(position.id),
-                            divisionId: position.divisionId ? String(position.divisionId) : '',
-                          }))
-                        }
-                      />
-                    ))}
-                  </View>
+                  <MobileSelectField
+                    value={membershipForm.positionId}
+                    options={membershipPositionOptions}
+                    onChange={(next) => {
+                      const position = positions.find((item) => String(item.id) === String(next));
+                      setMembershipForm((prev) => ({
+                        ...prev,
+                        positionId: next || '',
+                        divisionId: position?.divisionId ? String(position.divisionId) : '',
+                      }));
+                    }}
+                    placeholder="Pilih jabatan OSIS"
+                  />
                 </Field>
                 <Field label="Divisi">
                   <Input value={selectedPosition?.division?.name || divisions.find((division) => division.id === Number(membershipForm.divisionId))?.name || '-'} onChangeText={() => {}} placeholder="Dipilih otomatis dari jabatan" />
@@ -1261,10 +1244,13 @@ export function TeacherOsisManagementModuleScreen() {
       </SectionCard>
 
       <SectionCard title="Template Nilai & Penilaian" subtitle="Atur template predikat dan isi nilai anggota OSIS untuk semester terpilih.">
-        <View style={{ flexDirection: 'row', gap: 8 }}>
-          <FilterChip label="Semester Ganjil" active={semester === 'ODD'} onPress={() => setSemester('ODD')} />
-          <FilterChip label="Semester Genap" active={semester === 'EVEN'} onPress={() => setSemester('EVEN')} />
-        </View>
+        <MobileSelectField
+          label="Semester"
+          value={semester}
+          options={semesterOptions}
+          onChange={(next) => setSemester((next as SemesterFilter) || 'EVEN')}
+          placeholder="Pilih semester"
+        />
 
         <View style={{ gap: 10 }}>
           {(['SB', 'B', 'C', 'K'] as const).map((predicate) => (
@@ -1309,16 +1295,12 @@ export function TeacherOsisManagementModuleScreen() {
           <View style={{ borderWidth: 1, borderColor: '#dbe7fb', borderRadius: 12, padding: 12, gap: 10 }}>
             <Text style={{ color: BRAND_COLORS.textDark, fontWeight: '800' }}>Input Penilaian</Text>
             <Field label="Predikat">
-              <View style={{ flexDirection: 'row', flexWrap: 'wrap', gap: 8 }}>
-                {(['SB', 'B', 'C', 'K'] as const).map((grade) => (
-                  <FilterChip
-                    key={grade}
-                    label={grade}
-                    active={assessmentDraft.grade === grade}
-                    onPress={() => setAssessmentDraft((prev) => (prev ? { ...prev, grade } : prev))}
-                  />
-                ))}
-              </View>
+              <MobileSelectField
+                value={assessmentDraft.grade}
+                options={assessmentGradeOptions}
+                onChange={(next) => setAssessmentDraft((prev) => (prev ? { ...prev, grade: next || 'B' } : prev))}
+                placeholder="Pilih predikat"
+              />
             </Field>
             <Field label="Deskripsi Penilaian">
               <Input

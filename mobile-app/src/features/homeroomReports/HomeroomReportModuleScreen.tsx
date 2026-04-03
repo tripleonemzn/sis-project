@@ -12,6 +12,9 @@ import {
 import { Feather } from '@expo/vector-icons';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { AppLoadingScreen } from '../../components/AppLoadingScreen';
+import { MobileMenuTabBar } from '../../components/MobileMenuTabBar';
+import { MobileSelectField } from '../../components/MobileSelectField';
+import { MobileSummaryCard as SummaryCard } from '../../components/MobileSummaryCard';
 import { QueryStateView } from '../../components/QueryStateView';
 import { BRAND_COLORS } from '../../config/brand';
 import { academicYearApi } from '../academicYear/academicYearApi';
@@ -253,103 +256,6 @@ function averageFrom(values: Array<number | null | undefined>) {
   return valid.reduce((acc, item) => acc + item, 0) / valid.length;
 }
 
-function FilterChip({
-  active,
-  label,
-  onPress,
-}: {
-  active: boolean;
-  label: string;
-  onPress: () => void;
-}) {
-  return (
-    <Pressable
-      onPress={onPress}
-      style={{
-        borderWidth: 1,
-        borderColor: active ? BRAND_COLORS.blue : '#d5e1f5',
-        backgroundColor: active ? '#e9f1ff' : '#fff',
-        borderRadius: 999,
-        paddingHorizontal: 12,
-        paddingVertical: 7,
-      }}
-    >
-      <Text style={{ color: active ? BRAND_COLORS.navy : BRAND_COLORS.textMuted, fontWeight: '700', fontSize: 12 }}>
-        {label}
-      </Text>
-    </Pressable>
-  );
-}
-
-function SummaryCard({
-  title,
-  value,
-  subtitle,
-}: {
-  title: string;
-  value: string;
-  subtitle: string;
-}) {
-  return (
-    <View
-      style={{
-        backgroundColor: '#fff',
-        borderWidth: 1,
-        borderColor: '#dbe7fb',
-        borderRadius: 12,
-        padding: 12,
-        flex: 1,
-      }}
-    >
-      <Text style={{ color: '#64748b', fontSize: 11 }}>{title}</Text>
-      <Text style={{ color: BRAND_COLORS.textDark, fontWeight: '700', fontSize: 20, marginTop: 4 }}>{value}</Text>
-      <Text style={{ color: BRAND_COLORS.textMuted, fontSize: 11, marginTop: 2 }}>{subtitle}</Text>
-    </View>
-  );
-}
-
-function TabButton({
-  active,
-  label,
-  icon,
-  onPress,
-}: {
-  active: boolean;
-  label: string;
-  icon: keyof typeof Feather.glyphMap;
-  onPress: () => void;
-}) {
-  return (
-    <Pressable
-      onPress={onPress}
-      style={{
-        width: '50%',
-        paddingHorizontal: 4,
-        marginBottom: 8,
-      }}
-    >
-      <View
-        style={{
-          borderWidth: 1,
-          borderColor: active ? BRAND_COLORS.blue : '#d5e1f5',
-          backgroundColor: active ? '#e9f1ff' : '#fff',
-          borderRadius: 10,
-          paddingVertical: 10,
-          alignItems: 'center',
-          flexDirection: 'row',
-          justifyContent: 'center',
-          gap: 6,
-        }}
-      >
-        <Feather name={icon} size={14} color={active ? BRAND_COLORS.navy : BRAND_COLORS.textMuted} />
-        <Text style={{ color: active ? BRAND_COLORS.navy : BRAND_COLORS.textMuted, fontWeight: '700', fontSize: 12 }}>
-          {label}
-        </Text>
-      </View>
-    </Pressable>
-  );
-}
-
 function EmptyState({ message }: { message: string }) {
   return (
     <View
@@ -526,6 +432,22 @@ export function HomeroomReportModuleScreen({
     requestedProgramHint === 'FINAL_EVEN' ? 'EVEN' : 'ODD',
   );
   const [search, setSearch] = useState('');
+  const semesterOptions = useMemo(
+    () => [
+      { value: 'ODD', label: 'Semester Ganjil' },
+      { value: 'EVEN', label: 'Semester Genap' },
+    ],
+    [],
+  );
+  const reportTabItems = useMemo(
+    () => [
+      { key: 'RAPOR', label: 'Rapor Siswa', iconName: 'file-text' as const },
+      { key: 'LEDGER', label: 'Leger Nilai', iconName: 'layers' as const },
+      { key: 'EXTRACURRICULAR', label: 'Ekstrakurikuler', iconName: 'activity' as const },
+      { key: 'RANKING', label: 'Peringkat', iconName: 'bar-chart-2' as const },
+    ],
+    [],
+  );
 
   const isAllowed = user?.role === 'TEACHER' && isHomeroomTeacher(user?.additionalDuties, user?.teacherClasses?.length);
 
@@ -1587,10 +1509,13 @@ export function HomeroomReportModuleScreen({
       >
         <Text style={{ color: BRAND_COLORS.textDark, fontWeight: '700', marginBottom: 8 }}>Semester</Text>
         {!isSemesterLockedByProgram && moduleConfig.allowSemesterSwitch ? (
-          <View style={{ flexDirection: 'row', gap: 8 }}>
-            <FilterChip active={semester === 'ODD'} label="Ganjil" onPress={() => setSemester('ODD')} />
-            <FilterChip active={semester === 'EVEN'} label="Genap" onPress={() => setSemester('EVEN')} />
-          </View>
+          <MobileSelectField
+            label="Semester Aktif"
+            value={semester}
+            options={semesterOptions}
+            onChange={(next) => setSemester((next as HomeroomSemester) || 'ODD')}
+            placeholder="Pilih semester"
+          />
         ) : (
           <View
             style={{
@@ -1644,17 +1569,14 @@ export function HomeroomReportModuleScreen({
           marginBottom: 12,
         }}
       >
-        <View style={{ flexDirection: 'row', flexWrap: 'wrap', marginHorizontal: -4 }}>
-          <TabButton active={activeTab === 'RAPOR'} label="Rapor Siswa" icon="file-text" onPress={() => setActiveTab('RAPOR')} />
-          <TabButton active={activeTab === 'LEDGER'} label="Leger Nilai" icon="layers" onPress={() => setActiveTab('LEDGER')} />
-          <TabButton
-            active={activeTab === 'EXTRACURRICULAR'}
-            label="Ekstrakurikuler"
-            icon="activity"
-            onPress={() => setActiveTab('EXTRACURRICULAR')}
-          />
-          <TabButton active={activeTab === 'RANKING'} label="Peringkat" icon="bar-chart-2" onPress={() => setActiveTab('RANKING')} />
-        </View>
+        <MobileMenuTabBar
+          items={reportTabItems}
+          activeKey={activeTab}
+          onChange={(key) => setActiveTab(key as TabKey)}
+          minTabWidth={84}
+          maxTabWidth={112}
+          compact
+        />
       </View>
 
       {classDetailQuery.isLoading && activeTab === 'RAPOR' ? <QueryStateView type="loading" message="Memuat data siswa..." /> : null}

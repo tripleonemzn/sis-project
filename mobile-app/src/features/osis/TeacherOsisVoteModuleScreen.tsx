@@ -12,6 +12,8 @@ import {
 } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { AppLoadingScreen } from '../../components/AppLoadingScreen';
+import { MobileMenuTabBar } from '../../components/MobileMenuTabBar';
+import { MobileSummaryCard as SummaryCard } from '../../components/MobileSummaryCard';
 import { QueryStateView } from '../../components/QueryStateView';
 import { useAuth } from '../auth/AuthProvider';
 import { BRAND_COLORS } from '../../config/brand';
@@ -68,36 +70,6 @@ function toEmbedUrl(raw?: string | null) {
 function toYoutubeThumbnailUrl(raw?: string | null) {
   const videoId = extractYoutubeVideoId(raw);
   return videoId ? `https://img.youtube.com/vi/${videoId}/hqdefault.jpg` : null;
-}
-
-function SummaryCard({
-  title,
-  value,
-  subtitle,
-  accent,
-}: {
-  title: string;
-  value: string;
-  subtitle: string;
-  accent: string;
-}) {
-  return (
-    <View
-      style={{
-        backgroundColor: '#fff',
-        borderWidth: 1,
-        borderColor: '#dbe7fb',
-        borderRadius: 14,
-        padding: 12,
-        flexBasis: '48%',
-        flexGrow: 1,
-      }}
-    >
-      <Text style={{ color: '#64748b', fontSize: 11 }}>{title}</Text>
-      <Text style={{ color: accent, fontWeight: '800', fontSize: 24, marginTop: 4 }}>{value}</Text>
-      <Text style={{ color: BRAND_COLORS.textMuted, fontSize: 11, marginTop: 2 }}>{subtitle}</Text>
-    </View>
-  );
 }
 
 function SectionCard({
@@ -175,6 +147,15 @@ export function TeacherOsisVoteModuleScreen() {
       remainingVoters: quickCount?.remainingVoters || 0,
     };
   }, [election?.candidates.length, quickCount]);
+  const osisModuleItems = useMemo(
+    () => [
+      { key: 'management', label: 'Struktur & Nilai', iconName: 'users' as const },
+      { key: 'election', label: 'Pemilihan OSIS', iconName: 'clipboard' as const },
+      { key: 'vote', label: 'Pemungutan Suara', iconName: 'check-square' as const },
+      { key: 'inventory', label: 'Inventaris OSIS', iconName: 'package' as const },
+    ],
+    [],
+  );
 
   if (isLoading) return <AppLoadingScreen message="Memuat pemungutan suara OSIS..." />;
   if (!isAuthenticated) return <Redirect href="/welcome" />;
@@ -210,28 +191,28 @@ export function TeacherOsisVoteModuleScreen() {
         Pantau pemilihan aktif, quick count, dan gunakan hak suara pembina OSIS bila diperlukan.
       </Text>
 
-      <View style={{ flexDirection: 'row', flexWrap: 'wrap', gap: 8, marginBottom: 12 }}>
-        <Pressable
-          onPress={() => router.push('/teacher/osis/management' as never)}
-          style={{ backgroundColor: '#fff', borderWidth: 1, borderColor: '#d5e1f5', borderRadius: 999, paddingHorizontal: 12, paddingVertical: 8 }}
-        >
-          <Text style={{ color: BRAND_COLORS.textMuted, fontWeight: '700', fontSize: 12 }}>Struktur & Nilai</Text>
-        </Pressable>
-        <Pressable
-          onPress={() => router.push('/teacher/osis/election' as never)}
-          style={{ backgroundColor: '#fff', borderWidth: 1, borderColor: '#d5e1f5', borderRadius: 999, paddingHorizontal: 12, paddingVertical: 8 }}
-        >
-          <Text style={{ color: BRAND_COLORS.textMuted, fontWeight: '700', fontSize: 12 }}>Pemilihan OSIS</Text>
-        </Pressable>
-        <View style={{ backgroundColor: '#e9f1ff', borderWidth: 1, borderColor: BRAND_COLORS.blue, borderRadius: 999, paddingHorizontal: 12, paddingVertical: 8 }}>
-          <Text style={{ color: BRAND_COLORS.navy, fontWeight: '800', fontSize: 12 }}>Pemungutan Suara</Text>
-        </View>
-        <Pressable
-          onPress={() => router.push('/teacher/osis/inventory' as never)}
-          style={{ backgroundColor: '#fff', borderWidth: 1, borderColor: '#d5e1f5', borderRadius: 999, paddingHorizontal: 12, paddingVertical: 8 }}
-        >
-          <Text style={{ color: BRAND_COLORS.textMuted, fontWeight: '700', fontSize: 12 }}>Kelola Inventaris OSIS</Text>
-        </Pressable>
+      <View
+        style={{
+          backgroundColor: '#fff',
+          borderWidth: 1,
+          borderColor: '#dbe7fb',
+          borderRadius: 14,
+          padding: 8,
+          marginBottom: 12,
+        }}
+      >
+        <MobileMenuTabBar
+          items={osisModuleItems}
+          activeKey="vote"
+          onChange={(key) => {
+            if (key === 'management') router.push('/teacher/osis/management' as never);
+            if (key === 'election') router.push('/teacher/osis/election' as never);
+            if (key === 'inventory') router.push('/teacher/osis/inventory' as never);
+          }}
+          minTabWidth={86}
+          maxTabWidth={112}
+          compact
+        />
       </View>
 
       {electionQuery.isLoading ? <QueryStateView type="loading" message="Memuat pemilihan aktif..." /> : null}
@@ -257,10 +238,10 @@ export function TeacherOsisVoteModuleScreen() {
               <Text style={{ color: BRAND_COLORS.textMuted, lineHeight: 20 }}>{election.description}</Text>
             ) : null}
             <View style={{ flexDirection: 'row', flexWrap: 'wrap', gap: 8 }}>
-              <SummaryCard title="Calon Aktif" value={String(stats.totalCandidates)} subtitle="Kandidat pada periode ini" accent="#2563eb" />
-              <SummaryCard title="Suara Masuk" value={String(stats.totalVotes)} subtitle="Total vote terkirim" accent="#7c3aed" />
-              <SummaryCard title="Turnout" value={`${stats.turnoutPercentage}%`} subtitle="Partisipasi pemilih" accent="#059669" />
-              <SummaryCard title="Belum Voting" value={String(stats.remainingVoters)} subtitle="Pemilih tersisa" accent="#d97706" />
+              <SummaryCard title="Calon Aktif" value={String(stats.totalCandidates)} subtitle="Kandidat pada periode ini" iconName="users" accentColor="#2563eb" />
+              <SummaryCard title="Suara Masuk" value={String(stats.totalVotes)} subtitle="Total vote terkirim" iconName="check-square" accentColor="#7c3aed" />
+              <SummaryCard title="Turnout" value={`${stats.turnoutPercentage}%`} subtitle="Partisipasi pemilih" iconName="bar-chart-2" accentColor="#059669" />
+              <SummaryCard title="Belum Voting" value={String(stats.remainingVoters)} subtitle="Pemilih tersisa" iconName="clock" accentColor="#d97706" />
             </View>
             {selectedCandidate ? (
               <View style={{ backgroundColor: '#ecfdf5', borderWidth: 1, borderColor: '#a7f3d0', borderRadius: 12, padding: 12 }}>

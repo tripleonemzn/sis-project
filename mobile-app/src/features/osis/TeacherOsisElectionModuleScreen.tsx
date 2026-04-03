@@ -4,6 +4,9 @@ import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { Alert, Pressable, RefreshControl, ScrollView, Switch, Text, TextInput, View } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { AppLoadingScreen } from '../../components/AppLoadingScreen';
+import { MobileMenuTabBar } from '../../components/MobileMenuTabBar';
+import { MobileSelectField } from '../../components/MobileSelectField';
+import { MobileSummaryCard as SummaryCard } from '../../components/MobileSummaryCard';
 import { QueryStateView } from '../../components/QueryStateView';
 import { useAuth } from '../auth/AuthProvider';
 import { BRAND_COLORS } from '../../config/brand';
@@ -91,36 +94,6 @@ function createDefaultCandidateForm(candidateNumber = 1): CandidateFormState {
   };
 }
 
-function SummaryCard({
-  title,
-  value,
-  subtitle,
-  accent,
-}: {
-  title: string;
-  value: string;
-  subtitle: string;
-  accent: string;
-}) {
-  return (
-    <View
-      style={{
-        backgroundColor: '#fff',
-        borderWidth: 1,
-        borderColor: '#dbe7fb',
-        borderRadius: 14,
-        padding: 12,
-        flexBasis: '48%',
-        flexGrow: 1,
-      }}
-    >
-      <Text style={{ color: '#64748b', fontSize: 11 }}>{title}</Text>
-      <Text style={{ color: accent, fontWeight: '800', fontSize: 24, marginTop: 4 }}>{value}</Text>
-      <Text style={{ color: BRAND_COLORS.textMuted, fontSize: 11, marginTop: 2 }}>{subtitle}</Text>
-    </View>
-  );
-}
-
 function SectionCard({
   title,
   subtitle,
@@ -147,34 +120,6 @@ function SectionCard({
       </View>
       {children}
     </View>
-  );
-}
-
-function FilterChip({
-  label,
-  active,
-  onPress,
-}: {
-  label: string;
-  active: boolean;
-  onPress: () => void;
-}) {
-  return (
-    <Pressable
-      onPress={onPress}
-      style={{
-        backgroundColor: active ? '#e9f1ff' : '#fff',
-        borderWidth: 1,
-        borderColor: active ? BRAND_COLORS.blue : '#d5e1f5',
-        borderRadius: 999,
-        paddingHorizontal: 12,
-        paddingVertical: 8,
-      }}
-    >
-      <Text style={{ color: active ? BRAND_COLORS.navy : BRAND_COLORS.textMuted, fontWeight: '800', fontSize: 12 }}>
-        {label}
-      </Text>
-    </Pressable>
   );
 }
 
@@ -378,6 +323,27 @@ export function TeacherOsisElectionModuleScreen() {
     () => eligibleStudentsQuery.data?.find((student) => student.id === Number(candidateForm.studentId)) || null,
     [candidateForm.studentId, eligibleStudentsQuery.data],
   );
+  const osisModuleItems = useMemo(
+    () => [
+      { key: 'management', label: 'Struktur & Nilai', iconName: 'users' as const },
+      { key: 'election', label: 'Pemilihan OSIS', iconName: 'clipboard' as const },
+      { key: 'vote', label: 'Pemungutan Suara', iconName: 'check-square' as const },
+      { key: 'inventory', label: 'Inventaris OSIS', iconName: 'package' as const },
+    ],
+    [],
+  );
+  const periodOptions = useMemo(
+    () => periods.map((period) => ({ value: String(period.id), label: period.title })),
+    [periods],
+  );
+  const periodStatusOptions = useMemo(
+    () => [
+      { value: 'DRAFT', label: 'Draft' },
+      { value: 'PUBLISHED', label: 'Published' },
+      { value: 'CLOSED', label: 'Closed' },
+    ],
+    [],
+  );
 
   const openCreatePeriod = () => {
     setPeriodMode('create');
@@ -460,36 +426,36 @@ export function TeacherOsisElectionModuleScreen() {
         Kelola periode pemilihan, kandidat, quick count, dan finalisasi hasil dari mobile.
       </Text>
 
-      <View style={{ flexDirection: 'row', flexWrap: 'wrap', gap: 8, marginBottom: 12 }}>
-        <Pressable
-          onPress={() => router.push('/teacher/osis/management' as never)}
-          style={{ backgroundColor: '#fff', borderWidth: 1, borderColor: '#d5e1f5', borderRadius: 999, paddingHorizontal: 12, paddingVertical: 8 }}
-        >
-          <Text style={{ color: BRAND_COLORS.textMuted, fontWeight: '700', fontSize: 12 }}>Struktur & Nilai</Text>
-        </Pressable>
-        <View style={{ backgroundColor: '#e9f1ff', borderWidth: 1, borderColor: BRAND_COLORS.blue, borderRadius: 999, paddingHorizontal: 12, paddingVertical: 8 }}>
-          <Text style={{ color: BRAND_COLORS.navy, fontWeight: '800', fontSize: 12 }}>Pemilihan OSIS</Text>
-        </View>
-        <Pressable
-          onPress={() => router.push('/teacher/osis/vote' as never)}
-          style={{ backgroundColor: '#fff', borderWidth: 1, borderColor: '#d5e1f5', borderRadius: 999, paddingHorizontal: 12, paddingVertical: 8 }}
-        >
-          <Text style={{ color: BRAND_COLORS.textMuted, fontWeight: '700', fontSize: 12 }}>Pemungutan Suara</Text>
-        </Pressable>
-        <Pressable
-          onPress={() => router.push('/teacher/osis/inventory' as never)}
-          style={{ backgroundColor: '#fff', borderWidth: 1, borderColor: '#d5e1f5', borderRadius: 999, paddingHorizontal: 12, paddingVertical: 8 }}
-        >
-          <Text style={{ color: BRAND_COLORS.textMuted, fontWeight: '700', fontSize: 12 }}>Kelola Inventaris OSIS</Text>
-        </Pressable>
+      <View
+        style={{
+          backgroundColor: '#fff',
+          borderWidth: 1,
+          borderColor: '#dbe7fb',
+          borderRadius: 14,
+          padding: 8,
+          marginBottom: 12,
+        }}
+      >
+        <MobileMenuTabBar
+          items={osisModuleItems}
+          activeKey="election"
+          onChange={(key) => {
+            if (key === 'management') router.push('/teacher/osis/management' as never);
+            if (key === 'vote') router.push('/teacher/osis/vote' as never);
+            if (key === 'inventory') router.push('/teacher/osis/inventory' as never);
+          }}
+          minTabWidth={86}
+          maxTabWidth={112}
+          compact
+        />
       </View>
 
       <SectionCard title="Ringkasan Pemilihan" subtitle={activeYearQuery.data?.name || 'Tahun ajaran aktif belum ditemukan'}>
         <View style={{ flexDirection: 'row', flexWrap: 'wrap', gap: 8 }}>
-          <SummaryCard title="Total Periode" value={String(stats.totalPeriods)} subtitle="Semua periode pemilihan" accent="#2563eb" />
-          <SummaryCard title="Periode Aktif" value={String(stats.activePeriods)} subtitle="Status published" accent="#059669" />
-          <SummaryCard title="Calon Aktif" value={String(stats.activeCandidates)} subtitle="Pada periode terpilih" accent="#7c3aed" />
-          <SummaryCard title="Suara Masuk" value={String(stats.totalVotes)} subtitle="Quick count periode terpilih" accent="#d97706" />
+          <SummaryCard title="Total Periode" value={String(stats.totalPeriods)} subtitle="Semua periode pemilihan" iconName="calendar" accentColor="#2563eb" />
+          <SummaryCard title="Periode Aktif" value={String(stats.activePeriods)} subtitle="Status published" iconName="check-circle" accentColor="#059669" />
+          <SummaryCard title="Calon Aktif" value={String(stats.activeCandidates)} subtitle="Pada periode terpilih" iconName="users" accentColor="#7c3aed" />
+          <SummaryCard title="Suara Masuk" value={String(stats.totalVotes)} subtitle="Quick count periode terpilih" iconName="bar-chart-2" accentColor="#d97706" />
         </View>
       </SectionCard>
 
@@ -500,16 +466,13 @@ export function TeacherOsisElectionModuleScreen() {
         ) : null}
         {!periodsQuery.isLoading && !periodsQuery.isError ? (
           <View style={{ gap: 10 }}>
-            <View style={{ flexDirection: 'row', flexWrap: 'wrap', gap: 8 }}>
-              {periods.map((period) => (
-                <FilterChip
-                  key={period.id}
-                  label={period.title}
-                  active={selectedPeriod?.id === period.id}
-                  onPress={() => setSelectedPeriodId(period.id)}
-                />
-              ))}
-            </View>
+            <MobileSelectField
+              label="Periode Pemilihan"
+              value={selectedPeriod ? String(selectedPeriod.id) : ''}
+              options={periodOptions}
+              onChange={(next) => setSelectedPeriodId(next ? Number(next) : null)}
+              placeholder="Pilih periode pemilihan"
+            />
 
             <View style={{ flexDirection: 'row', gap: 8 }}>
               <Pressable
@@ -582,16 +545,12 @@ export function TeacherOsisElectionModuleScreen() {
                   <Input value={periodForm.endAt} onChangeText={(value) => setPeriodForm((prev) => ({ ...prev, endAt: value }))} placeholder="YYYY-MM-DDTHH:MM" />
                 </Field>
                 <Field label="Status">
-                  <View style={{ flexDirection: 'row', flexWrap: 'wrap', gap: 8 }}>
-                    {(['DRAFT', 'PUBLISHED', 'CLOSED'] as const).map((status) => (
-                      <FilterChip
-                        key={status}
-                        label={status}
-                        active={periodForm.status === status}
-                        onPress={() => setPeriodForm((prev) => ({ ...prev, status }))}
-                      />
-                    ))}
-                  </View>
+                  <MobileSelectField
+                    value={periodForm.status}
+                    options={periodStatusOptions}
+                    onChange={(next) => setPeriodForm((prev) => ({ ...prev, status: (next as PeriodFormState['status']) || 'DRAFT' }))}
+                    placeholder="Pilih status periode"
+                  />
                 </Field>
                 <View style={{ flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', gap: 12 }}>
                   <Text style={{ color: BRAND_COLORS.textDark, fontWeight: '700' }}>Aktifkan Quick Count</Text>
