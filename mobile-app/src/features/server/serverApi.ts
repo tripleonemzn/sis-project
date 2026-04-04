@@ -98,6 +98,7 @@ export type ServerMonitoringResponse = {
     loadAvg15: number;
     coreCount: number;
     loadPerCore: number;
+    busyPercent: number;
     status: 'OK' | 'WARNING' | 'DANGER';
   };
   memory: {

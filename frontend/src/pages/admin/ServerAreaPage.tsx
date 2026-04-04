@@ -104,6 +104,7 @@ type MonitoringResponse = {
     loadAvg15: number;
     coreCount: number;
     loadPerCore: number;
+    busyPercent: number;
     status: 'OK' | 'WARNING' | 'DANGER';
   };
   memory: {
@@ -290,6 +291,11 @@ const ServerAreaPage: React.FC = () => {
     refetchIntervalInBackground: false,
     refetchOnWindowFocus: false,
   });
+
+  const cpuBarWidth = (busyPercent: number, loadPerCore: number) => {
+    const loadPressurePercent = Math.min(100, (loadPerCore / 2) * 100);
+    return Math.max(Math.min(100, busyPercent), loadPressurePercent);
+  };
 
   const storageQuery = useQuery({
     queryKey: ['admin-server-storage'],
@@ -780,7 +786,7 @@ const ServerAreaPage: React.FC = () => {
               Load 1m: {data.cpu.loadAvg1.toFixed(2)} ({data.cpu.coreCount} core)
             </p>
             <p className="text-xs text-gray-500 mb-2">
-              Load/core: {data.cpu.loadPerCore.toFixed(2)}
+              CPU Busy {formatPercent(data.cpu.busyPercent)} • Load/core: {data.cpu.loadPerCore.toFixed(2)}
             </p>
             <div className="h-2 rounded-full bg-gray-100 overflow-hidden">
               <div
@@ -791,11 +797,11 @@ const ServerAreaPage: React.FC = () => {
                     ? 'h-2 bg-yellow-400'
                     : 'h-2 bg-emerald-500'
                 }
-                style={{ width: `${Math.min(100, data.cpu.loadPerCore * 100)}%` }}
+                style={{ width: `${cpuBarWidth(data.cpu.busyPercent, data.cpu.loadPerCore)}%` }}
               />
             </div>
             <p className="mt-2 text-[11px] text-gray-500">
-              Aman jika load per core berada di bawah 1.2 secara konsisten.
+              Status CPU membaca beban nyata (busy %) dan load/core agar lonjakan penuh tidak tetap terlihat hijau.
             </p>
           </div>
 

@@ -99,9 +99,10 @@ function pickOverallStatus(storage: StorageOverviewResponse, monitoring: ServerM
   const highRoot = usedRoot >= storage.summary.thresholdDangerPercent;
   const warnRoot = usedRoot >= storage.summary.thresholdWarningPercent;
   const cpuLoadPerCore = monitoring?.cpu.loadPerCore ?? 0;
+  const cpuBusyPercent = monitoring?.cpu.busyPercent ?? 0;
   const mem = monitoring?.memory.usedPercent ?? 0;
-  const highLoad = cpuLoadPerCore >= 1.2 || mem >= 90;
-  const warnLoad = cpuLoadPerCore >= 0.8 || mem >= 75;
+  const highLoad = cpuLoadPerCore >= 2 || cpuBusyPercent >= 90 || mem >= 90;
+  const warnLoad = cpuLoadPerCore >= 1.2 || cpuBusyPercent >= 75 || mem >= 75;
 
   if (highRoot || highLoad) {
     return { label: 'Perlu Perhatian', tone: 'danger' as const };
@@ -734,7 +735,7 @@ export default function AdminServerAreaScreen() {
     const storage = monitoring.storage;
     const bandwidth = monitoring.bandwidth;
 
-    const cpuBarWidth = Math.min(100, cpu.loadPerCore * 100);
+    const cpuBarWidth = Math.max(Math.min(100, cpu.busyPercent), Math.min(100, (cpu.loadPerCore / 2) * 100));
     const memoryBarWidth = Math.min(100, memory.usedPercent);
     const storageBarWidth = storage.root ? Math.min(100, storage.root.usedPercent) : 0;
     const bandwidthBarWidth =
@@ -762,7 +763,7 @@ export default function AdminServerAreaScreen() {
             Load 1m: {cpu.loadAvg1.toFixed(2)} ({cpu.coreCount} core)
           </Text>
           <Text style={{ fontSize: 12, color: '#6b7280', marginBottom: 6 }}>
-            Load/core: {cpu.loadPerCore.toFixed(2)}
+            CPU Busy {formatPercent(cpu.busyPercent)} • Load/core: {cpu.loadPerCore.toFixed(2)}
           </Text>
           <View
             style={{

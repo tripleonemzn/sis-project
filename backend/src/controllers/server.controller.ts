@@ -372,6 +372,7 @@ const getPrimaryInterfaceStats = async () => {
 const BANDWIDTH_SAMPLE_INTERVAL_MS = 3000;
 const BANDWIDTH_SAMPLE_TTL_MS = 20000;
 const MONITORING_CACHE_TTL_MS = 4000;
+const CPU_USAGE_SAMPLE_WINDOW_MS = 200;
 let bandwidthSampleTimer: NodeJS.Timeout | null = null;
 let bandwidthSamplePromise: Promise<void> | null = null;
 let monitoringMetricsCache: { atMs: number; data: Record<string, unknown> } | null = null;
@@ -391,6 +392,36 @@ let latestBandwidthSample:
       sampledAtMs: number;
     }
   | null = null;
+
+const wait = (ms: number) => new Promise((resolve) => setTimeout(resolve, ms));
+
+const readCpuBusySnapshot = () => {
+  const cpus = os.cpus() || [];
+  return cpus.reduce(
+    (accumulator, cpu) => {
+      const times = cpu.times;
+      const total = times.user + times.nice + times.sys + times.idle + times.irq;
+      return {
+        total: accumulator.total + total,
+        idle: accumulator.idle + times.idle,
+      };
+    },
+    { total: 0, idle: 0 },
+  );
+};
+
+const sampleCpuBusyPercent = async () => {
+  const start = readCpuBusySnapshot();
+  await wait(CPU_USAGE_SAMPLE_WINDOW_MS);
+  const end = readCpuBusySnapshot();
+  const totalDelta = end.total - start.total;
+  const idleDelta = end.idle - start.idle;
+  if (!Number.isFinite(totalDelta) || totalDelta <= 0) {
+    return 0;
+  }
+  const busyPercent = ((totalDelta - idleDelta) / totalDelta) * 100;
+  return Number(Math.min(100, Math.max(0, busyPercent)).toFixed(2));
+};
 
 const computeBandwidthSample = async () => {
   if (bandwidthSamplePromise) {
@@ -663,6 +694,7 @@ export const getMonitoringMetrics = asyncHandler(async (req: AuthRequest, res: R
   const cpus = os.cpus() || [];
   const coreCount = cpus.length || 1;
   const loadPerCore = loadAvg[0] / coreCount;
+  const busyPercent = await sampleCpuBusyPercent();
 
   const { stdout } = await execAsync('df -P -B1 /');
   const rootUsages = parseDfOutput(stdout);
@@ -672,7 +704,8 @@ export const getMonitoringMetrics = asyncHandler(async (req: AuthRequest, res: R
   await computeBandwidthSample();
   const bandwidthSample = readCachedBandwidthSample();
 
-  const cpuStatus = loadPerCore >= 2 ? 'DANGER' : loadPerCore >= 1.2 ? 'WARNING' : 'OK';
+  const cpuStatus =
+    busyPercent >= 90 || loadPerCore >= 2 ? 'DANGER' : busyPercent >= 75 || loadPerCore >= 1.2 ? 'WARNING' : 'OK';
   const memoryStatus =
     memorySnapshot.usedPercent >= 90 ? 'DANGER' : memorySnapshot.usedPercent >= 75 ? 'WARNING' : 'OK';
   const storageStatus = rootUsage ? rootUsage.status : 'OK';
@@ -693,6 +726,7 @@ export const getMonitoringMetrics = asyncHandler(async (req: AuthRequest, res: R
       loadAvg15: loadAvg[2],
       coreCount,
       loadPerCore,
+      busyPercent,
       status: cpuStatus,
     },
     memory: {
