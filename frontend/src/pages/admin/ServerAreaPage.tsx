@@ -772,11 +772,6 @@ const ServerAreaPage: React.FC = () => {
             <p className="text-xs text-gray-500 mb-2">
               {formatBytes(data.memory.usedBytes)} dari {formatBytes(data.memory.totalBytes)}
             </p>
-            {typeof data.memory.availableBytes === 'number' && (
-              <p className="text-[11px] text-gray-500 mb-2">
-                Tersedia efektif: {formatBytes(data.memory.availableBytes)}
-              </p>
-            )}
             <div className="h-2 rounded-full bg-gray-100 overflow-hidden">
               <div
                 className={
