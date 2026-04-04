@@ -10,6 +10,16 @@ Dokumen ini adalah policy kerja default untuk setiap sesi baru yang mengerjakan 
    - Jangan mengubah backend, infra, auth, data flow inti, atau konfigurasi production jika tidak benar-benar diperlukan untuk task.
    - Jika ada beberapa opsi implementasi, pilih opsi yang paling minim risiko untuk layanan yang sedang aktif dipakai user.
    - Jangan melakukan perubahan destruktif, cleanup agresif, reset, atau rollback file yang tidak diminta user.
+   - Setiap perubahan juga wajib menjaga **server tetap sehat**: jangan sampai memicu service down, restart loop, CPU/load spike, lonjakan koneksi database, reconnect websocket berulang, polling agresif, atau perilaku runtime lain yang membuat aplikasi melambat/tidak wajar.
+   - Jika task menyentuh area yang bisa memengaruhi performa runtime seperti backend, query database, cache, realtime/websocket, polling/refetch, notifikasi broadcast, background timer, cron, queue, atau halaman frontend/mobile yang sering memanggil API, selalu pilih desain yang paling aman dan hemat beban.
+   - Hindari implementasi yang berisiko tinggi seperti:
+     - query tanpa batas yang bisa membesar seiring data
+     - polling terlalu rapat
+     - retry/reconnect terlalu agresif
+     - loop/background process tanpa guard
+     - fan-out request yang tidak dibatasi
+     - render/refetch frontend yang memicu spam request ke backend
+   - Jika ada potensi tradeoff antara kecepatan implementasi dan kesehatan server, selalu pilih kesehatan server.
 
 2. **Web dan mobile harus 1:1**
    - Setiap pengembangan fitur harus menjaga parity antara web dan mobile.
@@ -57,6 +67,12 @@ Dokumen ini adalah policy kerja default untuk setiap sesi baru yang mengerjakan 
      - dirapikan
      - tidak meninggalkan state setengah jadi
    - Jangan publish perubahan yang belum lolos verifikasi dasar.
+   - Jika perubahan menyentuh jalur runtime/production, lakukan sanity-check tambahan sebelum menganggap aman:
+     - pastikan build/lint/typecheck yang relevan lolos
+     - pastikan tidak ada indikasi error startup/restart loop
+     - pastikan health check dasar tetap normal
+     - pastikan perubahan tidak memperkenalkan pola akses yang berisiko membebani server
+   - Jika setelah perubahan ada gejala tidak normal pada server, hentikan rollout lanjutan dan utamakan containment/perbaikan stabilitas terlebih dahulu.
 
 6. **Wajib lapor progress saat bertahap**
    - Jika pekerjaan dikerjakan per batch/wave, setelah setiap batch selesai wajib laporkan:
@@ -85,6 +101,11 @@ Dokumen ini adalah policy kerja default untuk setiap sesi baru yang mengerjakan 
 ## Checklist Verifikasi Minimum
 
 9. **Verifikasi minimum sebelum dianggap selesai**
+   - Untuk perubahan backend atau perubahan lain yang bisa memengaruhi runtime server:
+     - `cd backend && npm run build`
+     - jika memang perubahan harus live: `cd backend && npm run service:health`
+   - Untuk perubahan query/realtime/polling/frontend-mobile yang berpotensi menambah beban server:
+     - lakukan sanity check bahwa implementasi tidak agresif dan tetap punya guardrail yang aman
    - Untuk mobile:
      - `cd mobile-app && npm run typecheck`
      - `cd mobile-app && npm run audit:parity:check`
@@ -121,4 +142,3 @@ Dokumen ini adalah policy kerja default untuk setiap sesi baru yang mengerjakan 
    - status publish/live bila ada
    - progress % bila pekerjaan masih bertahap
    - konfirmasi bahwa worktree sudah clean
-
