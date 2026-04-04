@@ -95,6 +95,8 @@ function normalizeProgramCode(raw: unknown): string | null {
     return normalized;
 }
 
+const CURRICULUM_EXAM_MANAGER_LABEL = 'Wakasek Kurikulum atau Sekretaris Kurikulum';
+
 function normalizeSubjectIdentity(rawName: unknown, rawCode: unknown): { name: string; code: string } {
     return {
         name: String(rawName || '').trim(),
@@ -6672,7 +6674,7 @@ export const revokeScheduleMakeupAccess = asyncHandler(async (req: Request, res:
         data: {
             userId: parsedStudentId,
             title: 'Jadwal Susulan Dibatalkan',
-            message: 'Jadwal susulan ujian Anda telah dicabut. Hubungi sekolah bila membutuhkan klarifikasi.',
+            message: `Jadwal susulan ujian Anda telah dicabut. Hubungi ${CURRICULUM_EXAM_MANAGER_LABEL} bila membutuhkan klarifikasi.`,
             type: 'EXAM',
             data: {
                 scheduleId,

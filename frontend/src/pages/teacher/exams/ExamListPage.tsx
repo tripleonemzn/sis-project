@@ -61,6 +61,8 @@ const PROGRAM_BADGE_CLASSES = [
     'bg-cyan-50 text-cyan-700 border border-cyan-100',
 ];
 
+const CURRICULUM_EXAM_MANAGER_LABEL = 'Wakasek Kurikulum / Sekretaris Kurikulum';
+
 const badgeClassByProgramCode = (raw: unknown) => {
     const normalized = normalizeExamProgramCode(raw);
     if (!normalized) return PROGRAM_BADGE_CLASSES[0];
@@ -551,7 +553,7 @@ export const ExamListPage = () => {
 
     const openScheduleModal = async (packet: ExamPacket) => {
         if (!canTeacherDirectSchedulePacket(packet)) {
-            toast.error('Jadwal program ini diatur oleh Wakasek Kurikulum.');
+            toast.error(`Jadwal program ini diatur oleh ${CURRICULUM_EXAM_MANAGER_LABEL}.`);
             return;
         }
 
@@ -631,7 +633,7 @@ export const ExamListPage = () => {
             return;
         }
         if (!canTeacherDirectSchedulePacket(schedulePacket)) {
-            toast.error('Jadwal program ini diatur oleh Wakasek Kurikulum.');
+            toast.error(`Jadwal program ini diatur oleh ${CURRICULUM_EXAM_MANAGER_LABEL}.`);
             return;
         }
 
@@ -827,7 +829,7 @@ export const ExamListPage = () => {
                     <FileQuestion className="w-12 h-12 text-gray-400 mx-auto mb-3" />
                     <h3 className="text-lg font-medium text-gray-900">Program ujian belum tersedia</h3>
                     <p className="text-gray-500 mt-1">
-                        Minta Wakasek Kurikulum menambahkan konfigurasi program ujian terlebih dahulu.
+                        Minta {CURRICULUM_EXAM_MANAGER_LABEL} menambahkan konfigurasi program ujian terlebih dahulu.
                     </p>
                 </div>
             ) : !selectedSemester ? (
@@ -912,7 +914,7 @@ export const ExamListPage = () => {
                                 </div>
                                 {!canTeacherDirectSchedulePacket(packet) ? (
                                     <p className="text-[11px] text-slate-500">
-                                        Jadwal program ini dibuat oleh Wakasek Kurikulum.
+                                        Jadwal program ini dibuat oleh {CURRICULUM_EXAM_MANAGER_LABEL}.
                                     </p>
                                 ) : null}
 

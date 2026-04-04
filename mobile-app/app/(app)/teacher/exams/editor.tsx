@@ -38,6 +38,8 @@ type QuestionDraft = {
 
 type EditorSection = 'INFO' | 'QUESTIONS';
 
+const CURRICULUM_EXAM_MANAGER_LABEL = 'Wakasek Kurikulum / Sekretaris Kurikulum';
+
 function createId(prefix: string) {
   return `${prefix}-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`;
 }
@@ -815,7 +817,7 @@ export default function TeacherExamEditorScreen() {
           }}
         >
           <Text style={{ color: '#991b1b', fontSize: 12 }}>
-            Program ujian belum tersedia. Minta Wakasek Kurikulum menambahkan Program Ujian terlebih dahulu.
+            Program ujian belum tersedia. Minta {CURRICULUM_EXAM_MANAGER_LABEL} menambahkan Program Ujian terlebih dahulu.
           </Text>
         </View>
       )}

@@ -655,6 +655,7 @@ const EXAM_SECTION_ITEMS: Array<{ key: ExamHubSection; label: string; iconName: 
   { key: 'MENGAWAS', label: 'Jadwal Mengawas', iconName: 'user-check' },
   { key: 'PROGRAM', label: 'Program Ujian', iconName: 'layout' },
 ];
+const CURRICULUM_EXAM_MANAGER_LABEL = 'Wakasek Kurikulum / Sekretaris Kurikulum';
 
 export default function TeacherWakakurExamsScreen() {
   const router = useRouter();
@@ -3373,7 +3374,7 @@ export default function TeacherWakakurExamsScreen() {
       <MobileDetailModal
         visible={makeupModalVisible}
         title="Kelola Ujian Susulan"
-        subtitle="Atur susulan per siswa yang belum sempat mengikuti ujian reguler."
+        subtitle={`${CURRICULUM_EXAM_MANAGER_LABEL} mengatur susulan per siswa yang belum sempat mengikuti ujian reguler.`}
         iconName="clock"
         accentColor="#1d4ed8"
         onClose={closeMakeupModal}
@@ -3405,7 +3406,7 @@ export default function TeacherWakakurExamsScreen() {
               {formatDateTime(makeupOverview?.schedule.endTime || selectedMakeupSchedule.endTime)}
             </Text>
             <Text style={{ color: '#1d4ed8', fontSize: 11, marginTop: 8 }}>
-              Susulan formal hanya untuk siswa yang belum mulai ujian reguler, dan waktunya harus sesudah jadwal reguler berakhir.
+              Susulan formal hanya untuk siswa yang belum mulai ujian reguler, waktunya harus sesudah jadwal reguler berakhir, dan diatur oleh {CURRICULUM_EXAM_MANAGER_LABEL}.
             </Text>
           </View>
         ) : null}

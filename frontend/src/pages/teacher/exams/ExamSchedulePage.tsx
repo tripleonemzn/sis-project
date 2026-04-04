@@ -13,6 +13,8 @@ const canTeacherDirectSchedulePacket = (packet?: Pick<ExamPacket, 'programCode' 
     return ['FORMATIF', 'FORMATIVE', 'UH', 'ULANGAN_HARIAN'].includes(normalized);
 };
 
+const CURRICULUM_EXAM_MANAGER_LABEL = 'Wakasek Kurikulum / Sekretaris Kurikulum';
+
 export const ExamSchedulePage = () => {
     const { id } = useParams();
     const navigate = useNavigate();
@@ -91,7 +93,7 @@ export const ExamSchedulePage = () => {
 
     const handleSave = async () => {
         if (!packet || !canTeacherDirectSchedulePacket(packet)) {
-            toast.error('Jadwal program ini diatur oleh Wakasek Kurikulum.');
+            toast.error(`Jadwal program ini diatur oleh ${CURRICULUM_EXAM_MANAGER_LABEL}.`);
             return;
         }
 
@@ -231,7 +233,7 @@ export const ExamSchedulePage = () => {
                     </div>
                 ) : (
                     <div className="px-6 py-5 text-sm text-slate-600">
-                        Jadwal untuk program ini dikelola oleh Wakasek Kurikulum. Guru hanya dapat menjadwalkan langsung
+                        Jadwal untuk program ini dikelola oleh {CURRICULUM_EXAM_MANAGER_LABEL}. Guru hanya dapat menjadwalkan langsung
                         packet Ulangan Harian/Formatif.
                     </div>
                 )}

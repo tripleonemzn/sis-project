@@ -194,6 +194,8 @@ const getMakeupStateMeta = (state?: string | null) => {
   };
 };
 
+const CURRICULUM_EXAM_MANAGER_LABEL = 'Wakasek Kurikulum / Sekretaris Kurikulum';
+
 const ExamScheduleManagementPage = () => {
   const [searchParams, setSearchParams] = useSearchParams();
   const programParamKey = 'jadwalProgram';
@@ -1254,7 +1256,7 @@ const ExamScheduleManagementPage = () => {
               <div>
                 <h2 className="text-xl font-bold text-gray-900">Kelola Ujian Susulan</h2>
                 <p className="text-sm text-gray-500 mt-1">
-                  Atur susulan per siswa untuk jadwal kelas yang belum sempat mengikuti ujian reguler.
+                  {CURRICULUM_EXAM_MANAGER_LABEL} mengatur susulan per siswa untuk jadwal kelas yang belum sempat mengikuti ujian reguler.
                 </p>
               </div>
               <button onClick={closeMakeupModal} className="text-gray-400 hover:text-gray-600">
@@ -1299,7 +1301,7 @@ const ExamScheduleManagementPage = () => {
                     </div>
                   </div>
                   <p className="text-xs text-blue-700 mt-3">
-                    Susulan formal hanya untuk siswa yang belum mulai ujian reguler. Waktu susulan harus sesudah jadwal reguler berakhir.
+                    Susulan formal hanya untuk siswa yang belum mulai ujian reguler. Waktu susulan harus sesudah jadwal reguler berakhir dan diatur oleh {CURRICULUM_EXAM_MANAGER_LABEL}.
                   </p>
                 </div>
               ) : null}
