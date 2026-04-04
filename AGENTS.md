@@ -113,30 +113,47 @@ Dokumen ini adalah policy kerja default untuk setiap sesi baru yang mengerjakan 
      - publish OTA sesuai workflow existing project
    - Untuk area lain, lakukan verifikasi minimum yang relevan dengan scope perubahan.
 
-10. **Jangan klaim selesai jika belum benar-benar rapi**
+10. **Red flag stabilitas yang wajib dicurigai sebelum publish**
+   - Anggap perubahan **berisiko tinggi** jika mengandung salah satu pola berikut:
+     - endpoint baru tanpa pagination / limit / filter aman
+     - query berantai `N+1`, include terlalu dalam, atau fetch data jauh lebih besar dari kebutuhan layar
+     - refetch pada setiap render, focus, tab switch, atau state change tanpa guard yang jelas
+     - polling dengan interval rapat atau tetap berjalan saat screen/background tidak aktif
+     - reconnect websocket/realtime tanpa backoff/cooldown
+     - mutation yang memicu refetch banyak query sekaligus tanpa pembatasan
+     - cache invalidation terlalu luas sehingga satu aksi kecil menyegarkan terlalu banyak halaman
+     - cron/timer/background loop yang tidak punya guard, dedupe, atau stop condition
+     - broadcast notifikasi / fan-out request tanpa batching atau pembatasan penerima
+     - UI list/dashboard yang memicu banyak request paralel saat halaman dibuka
+   - Jika salah satu red flag muncul, jangan lanjut publish sebelum:
+     - diperkecil blast radius-nya
+     - diberi limit/guard/cache/backoff yang memadai
+     - dijelaskan dengan jujur di laporan verifikasi jika memang masih ada residual risk
+
+11. **Jangan klaim selesai jika belum benar-benar rapi**
    - Jika masih ada mismatch istilah, parity, selector, tab, dropdown, atau state UI yang tidak konsisten, itu belum dianggap final.
    - Jika ada batas verifikasi, sampaikan jujur apa yang sudah diverifikasi dan apa yang belum.
 
 ## Aturan Khusus Project Ini
 
-11. **Paritas mobile-web adalah aturan inti**
+12. **Paritas mobile-web adalah aturan inti**
    - Project ini punya banyak role dan modul lintas domain.
    - Karena itu, perubahan tidak boleh hanya benar di satu role lalu dibiarkan tidak konsisten di role lain yang memakai pola screen/komponen sama.
    - Jika menemukan issue yang polanya sama di banyak modul, utamakan refactor sistemik daripada patch titik-per-titik.
 
-12. **Fokus user-friendly**
+13. **Fokus user-friendly**
    - Hindari UI yang ambigu, terlalu teknis, atau berbeda makna antar platform.
    - Istilah yang sudah pernah dirapikan agar nyaman dibaca user harus dipertahankan konsisten.
    - Jika web menggunakan pola yang lebih jelas, mobile harus mengikuti arah yang sama, bukan membuat interpretasi baru sendiri.
 
-13. **Jaga efisiensi token dan konteks**
+14. **Jaga efisiensi token dan konteks**
    - Untuk pekerjaan panjang, lebih baik kerja per batch yang jelas daripada terlalu sering bolak-balik revisi kecil.
    - Update ke user boleh ringkas, tetapi tetap harus informatif.
    - Hindari penjelasan panjang yang tidak menambah nilai praktis bagi user.
 
 ## Default Close-Out
 
-14. **Penutupan pekerjaan minimal harus memuat**
+15. **Penutupan pekerjaan minimal harus memuat**
    - apa yang dikerjakan
    - verifikasi yang dijalankan
    - status publish/live bila ada
