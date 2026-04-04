@@ -37,6 +37,7 @@ type ServerInfoResponse = {
   };
   storage: {
     filesystem: string;
+    fstype?: string | null;
     sizeBytes: number;
     usedBytes: number;
     availableBytes: number;
@@ -52,6 +53,7 @@ type ServerInfoResponse = {
 type StorageOverviewResponse = {
   volumes: {
     filesystem: string;
+    fstype?: string | null;
     sizeBytes: number;
     usedBytes: number;
     availableBytes: number;
@@ -205,6 +207,35 @@ const formatBytes = (value: number) => {
 };
 
 const formatPercent = (value: number) => `${value.toFixed(1)}%`;
+
+const toTitleCase = (value: string) =>
+  value
+    .split(/[_-]+/)
+    .filter(Boolean)
+    .map((part) => part.charAt(0).toUpperCase() + part.slice(1).toLowerCase())
+    .join(' ');
+
+const formatStorageMountLabel = (mountpoint: string) => {
+  if (mountpoint === '/') {
+    return { title: 'Root Server', subtitle: '/' };
+  }
+  if (mountpoint === '/boot') {
+    return { title: 'Boot', subtitle: '/boot' };
+  }
+  if (mountpoint === '/boot/efi') {
+    return { title: 'EFI Boot', subtitle: '/boot/efi' };
+  }
+
+  const segments = mountpoint.split('/').filter(Boolean);
+  if (segments.length === 0) {
+    return { title: mountpoint, subtitle: null };
+  }
+
+  const lastSegment = segments[segments.length - 1];
+  const title = toTitleCase(lastSegment);
+  const subtitle = mountpoint === `/${lastSegment}` ? null : mountpoint;
+  return { title, subtitle };
+};
 type HealthStatus = 'OK' | 'WARNING' | 'DANGER';
 
 const normalizeHealthStatus = (status: unknown): HealthStatus => {
@@ -641,45 +672,54 @@ const ServerAreaPage: React.FC = () => {
                 </tr>
               </thead>
               <tbody>
-                {data.volumes.map((vol) => (
-                  <tr key={`${vol.filesystem}-${vol.mountpoint}`} className="border-b border-gray-50">
-                    <td className="py-2 pr-4 text-gray-900">{vol.mountpoint}</td>
-                    <td className="py-2 pr-4 text-xs text-gray-500">{vol.filesystem}</td>
-                    <td className="py-2 pr-4 text-right">{formatBytes(vol.sizeBytes)}</td>
-                    <td className="py-2 pr-4 text-right">{formatBytes(vol.usedBytes)}</td>
-                    <td className="py-2 pr-4 text-right">{formatBytes(vol.availableBytes)}</td>
-                    <td className="py-2 pr-4 text-right">{formatPercent(vol.usedPercent)}</td>
-                    <td className="py-2 pr-4 text-right">
-                      <span className={statusBadgeClass(normalizeHealthStatus(vol.status))}>
-                        {statusText(normalizeHealthStatus(vol.status))}
-                      </span>
-                    </td>
-                  </tr>
-                ))}
+                {data.volumes.map((vol) => {
+                  const mountLabel = formatStorageMountLabel(vol.mountpoint);
+                  return (
+                    <tr key={`${vol.filesystem}-${vol.mountpoint}`} className="border-b border-gray-50">
+                      <td className="py-2 pr-4">
+                        <div className="min-w-[220px]">
+                          <p className="text-sm font-medium text-gray-900">{mountLabel.title}</p>
+                          {mountLabel.subtitle && (
+                            <p className="text-[11px] text-gray-500 break-all">{mountLabel.subtitle}</p>
+                          )}
+                        </div>
+                      </td>
+                      <td className="py-2 pr-4 text-xs text-gray-500">
+                        <div className="space-y-0.5">
+                          <p className="text-xs text-gray-700">{vol.filesystem}</p>
+                          {vol.fstype && <p className="text-[11px] text-gray-500 uppercase">{vol.fstype}</p>}
+                        </div>
+                      </td>
+                      <td className="py-2 pr-4 text-right">{formatBytes(vol.sizeBytes)}</td>
+                      <td className="py-2 pr-4 text-right">{formatBytes(vol.usedBytes)}</td>
+                      <td className="py-2 pr-4 text-right">{formatBytes(vol.availableBytes)}</td>
+                      <td className="py-2 pr-4 text-right">{formatPercent(vol.usedPercent)}</td>
+                      <td className="py-2 pr-4 text-right">
+                        <span className={statusBadgeClass(normalizeHealthStatus(vol.status))}>
+                          {statusText(normalizeHealthStatus(vol.status))}
+                        </span>
+                      </td>
+                    </tr>
+                  );
+                })}
               </tbody>
             </table>
           </div>
         </div>
 
-        <div className="bg-white rounded-xl border border-gray-200 p-4">
-          <div className="flex items-center justify-between mb-3">
-            <div>
-              <p className="text-xs font-semibold text-gray-500 tracking-wide uppercase">Storage Baru</p>
-              <p className="text-sm font-medium text-gray-900 mt-0.5">Device Belum Terformat/Ter-mount</p>
+        {data.unmountedDevices.length > 0 && (
+          <div className="bg-white rounded-xl border border-gray-200 p-4">
+            <div className="flex items-center justify-between mb-3">
+              <div>
+                <p className="text-xs font-semibold text-gray-500 tracking-wide uppercase">Storage Baru</p>
+                <p className="text-sm font-medium text-gray-900 mt-0.5">Device Belum Terformat/Ter-mount</p>
+              </div>
+              <div className="flex items-center gap-2 text-xs text-amber-700 bg-amber-50 border border-amber-200 px-3 py-1 rounded-full">
+                <AlertTriangle size={14} />
+                <span>Eksekusi format tetap dilakukan manual via terminal.</span>
+              </div>
             </div>
-            <div className="flex items-center gap-2 text-xs text-amber-700 bg-amber-50 border border-amber-200 px-3 py-1 rounded-full">
-              <AlertTriangle size={14} />
-              <span>Eksekusi format tetap dilakukan manual via terminal.</span>
-            </div>
-          </div>
 
-          {data.unmountedDevices.length === 0 && (
-            <p className="text-sm text-gray-500">
-              Tidak ada device baru yang terdeteksi. Tambahkan storage fisik baru di server untuk melihatnya di sini.
-            </p>
-          )}
-
-          {data.unmountedDevices.length > 0 && (
             <div className="space-y-3">
               {data.suggestedActions.map((item) => (
                 <div
@@ -710,8 +750,8 @@ const ServerAreaPage: React.FC = () => {
                 </div>
               ))}
             </div>
-          )}
-        </div>
+          </div>
+        )}
       </div>
     );
   };

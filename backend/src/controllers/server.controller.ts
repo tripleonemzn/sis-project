@@ -14,6 +14,7 @@ const execAsync = promisify(exec);
 
 type StorageUsage = {
   filesystem: string;
+  fstype: string | null;
   sizeBytes: number;
   usedBytes: number;
   availableBytes: number;
@@ -126,6 +127,48 @@ const parsePositiveInt = (value: unknown, fallbackValue: number): number => {
   return Number.isFinite(parsed) && parsed > 0 ? parsed : fallbackValue;
 };
 
+const EXCLUDED_STORAGE_FSTYPES = new Set([
+  'tmpfs',
+  'devtmpfs',
+  'overlay',
+  'squashfs',
+  'proc',
+  'procfs',
+  'sysfs',
+  'cgroup2',
+  'cgroup',
+  'efivarfs',
+  'securityfs',
+  'pstore',
+  'bpf',
+  'tracefs',
+  'configfs',
+  'debugfs',
+  'mqueue',
+  'hugetlbfs',
+  'fusectl',
+  'autofs',
+  'binfmt_misc',
+  'rpc_pipefs',
+]);
+
+const EXCLUDED_STORAGE_MOUNT_PREFIXES = ['/run', '/proc', '/sys', '/dev'];
+
+const shouldIncludeStorageUsage = (usage: StorageUsage): boolean => {
+  const fstype = String(usage.fstype || '').toLowerCase();
+  if (EXCLUDED_STORAGE_FSTYPES.has(fstype)) return false;
+  if (!usage.mountpoint) return false;
+  if (usage.mountpoint.includes('/docker-data/overlay2/')) return false;
+  if (
+    EXCLUDED_STORAGE_MOUNT_PREFIXES.some(
+      (prefix) => usage.mountpoint === prefix || usage.mountpoint.startsWith(`${prefix}/`),
+    )
+  ) {
+    return false;
+  }
+  return true;
+};
+
 const parseDfOutput = (output: string): StorageUsage[] => {
   const lines = output
     .split('\n')
@@ -138,15 +181,23 @@ const parseDfOutput = (output: string): StorageUsage[] => {
     const parts = line.split(/\s+/);
     if (parts.length < 6) continue;
     const filesystem = parts[0];
-    const sizeBytes = Number(parts[1]);
-    const usedBytes = Number(parts[2]);
-    const availableBytes = Number(parts[3]);
-    const usedPercentRaw = parts[4].replace('%', '');
-    const mountpoint = parts[5];
+    const hasFilesystemTypeColumn = !Number.isFinite(Number(parts[1]));
+    const fstype = hasFilesystemTypeColumn ? parts[1] : null;
+    const sizeIndex = hasFilesystemTypeColumn ? 2 : 1;
+    const usedIndex = hasFilesystemTypeColumn ? 3 : 2;
+    const availableIndex = hasFilesystemTypeColumn ? 4 : 3;
+    const usedPercentIndex = hasFilesystemTypeColumn ? 5 : 4;
+    const mountpointIndex = hasFilesystemTypeColumn ? 6 : 5;
+    const sizeBytes = Number(parts[sizeIndex]);
+    const usedBytes = Number(parts[usedIndex]);
+    const availableBytes = Number(parts[availableIndex]);
+    const usedPercentRaw = String(parts[usedPercentIndex] || '').replace('%', '');
+    const mountpoint = parts[mountpointIndex];
     if (!Number.isFinite(sizeBytes) || sizeBytes <= 0) continue;
     const usedPercent = Number(usedPercentRaw);
     result.push({
       filesystem,
+      fstype,
       sizeBytes,
       usedBytes,
       availableBytes,
@@ -423,9 +474,9 @@ export const getServerInfo = asyncHandler(async (req: AuthRequest, res: Response
   const cpus = os.cpus() || [];
   const memorySnapshot = await readLinuxMemorySnapshot();
 
-  const dfResult = await execAsync('df -P -B1');
+  const dfResult = await execAsync('df -PT -B1');
   const storageRaw = parseDfOutput(dfResult.stdout);
-  const storage = storageRaw.map((item) => classifyStorageStatus(item));
+  const storage = storageRaw.filter(shouldIncludeStorageUsage).map((item) => classifyStorageStatus(item));
 
   let gpuInfo: string | null = null;
   try {
@@ -474,17 +525,25 @@ export const getStorageOverview = asyncHandler(async (req: AuthRequest, res: Res
     throw new ApiError(403, 'Dilarang: Hak akses tidak mencukupi');
   }
 
-  const { stdout } = await execAsync('df -P -B1');
-  const usages = parseDfOutput(stdout).map((item) => classifyStorageStatus(item));
+  const { stdout } = await execAsync('df -PT -B1');
+  const usages = parseDfOutput(stdout).filter(shouldIncludeStorageUsage).map((item) => classifyStorageStatus(item));
 
   const lsblk = await readLsblk();
   const unmountedDevices: any[] = [];
   const disks: { name: string; sizeBytes: number; model: string | null; mediaType: string | null }[] = [];
   if (lsblk && Array.isArray(lsblk.blockdevices)) {
+    const subtreeHasMountedVolume = (node: any): boolean => {
+      const mountpoint = node.mountpoint || node.MOUNTPOINT || null;
+      if (mountpoint) return true;
+      if (!Array.isArray(node.children)) return false;
+      return node.children.some((child: any) => subtreeHasMountedVolume(child));
+    };
+
     const walk = (nodes: any[]) => {
       for (const node of nodes) {
         const type = String(node.type || node.TYPE || '').toLowerCase();
         const mountpoint = node.mountpoint || node.MOUNTPOINT || null;
+        const children = Array.isArray(node.children) ? node.children : [];
         const size = Number(node.size || node.SIZE || 0);
         const rotaRaw = node.rota ?? node.ROTA;
         const tranRaw = node.tran ?? node.TRAN;
@@ -496,6 +555,8 @@ export const getStorageOverview = asyncHandler(async (req: AuthRequest, res: Res
             : null;
         const name = node.name || node.NAME;
         const model = node.model || node.MODEL || null;
+        const fstype = node.fstype || node.FSTYPE || null;
+        const fstypeLower = typeof fstype === 'string' ? fstype.toLowerCase() : '';
         const nameLower = String(name || '').toLowerCase();
         const tranLower = typeof tranRaw === 'string' ? tranRaw.toLowerCase() : '';
         let mediaType: string | null = null;
@@ -514,17 +575,24 @@ export const getStorageOverview = asyncHandler(async (req: AuthRequest, res: Res
             mediaType,
           });
         }
-        if ((type === 'disk' || type === 'part') && !mountpoint && size > 0) {
+        const hasMountedDescendant = children.some((child: any) => subtreeHasMountedVolume(child));
+        const isEligibleNewDevice =
+          (type === 'disk' || type === 'part') &&
+          !mountpoint &&
+          size > 0 &&
+          !hasMountedDescendant &&
+          fstypeLower !== 'lvm2_member';
+        if (isEligibleNewDevice) {
           unmountedDevices.push({
             name,
             sizeBytes: size,
             model,
-            fstype: node.fstype || node.FSTYPE || null,
+            fstype,
             state: node.state || node.STATE || null,
           });
         }
-        if (Array.isArray(node.children)) {
-          walk(node.children);
+        if (children.length > 0) {
+          walk(children);
         }
       }
     };
