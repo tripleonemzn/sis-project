@@ -2698,6 +2698,7 @@ model ExamSitting {
   semester       Semester?
   startTime      DateTime?
   students       ExamSittingStudent[]
+  layout         ExamSittingLayout?
   academicYear   AcademicYear         @relation(fields: [academicYearId], references: [id])
   proctor        User?                @relation("SittingProctor", fields: [proctorId], references: [id])
   programSession ExamProgramSession?  @relation("ExamProgramSessionSittings", fields: [sessionId], references: [id], onDelete: SetNull)
@@ -2714,6 +2715,83 @@ model ExamSittingStudent {
 
   @@unique([sittingId, studentId])
   @@map("exam_sitting_students")
+}
+
+enum ExamSittingLayoutCellType {
+  SEAT
+  AISLE
+}
+
+model ExamSittingLayout {
+  id            Int                     @id @default(autoincrement())
+  sittingId      Int                    @unique
+  rows           Int                    @default(1)
+  columns        Int                    @default(1)
+  notes          String?
+  generatedAt    DateTime?
+  generatedById  Int?
+  createdAt      DateTime               @default(now())
+  updatedAt      DateTime               @updatedAt
+  sitting        ExamSitting            @relation(fields: [sittingId], references: [id], onDelete: Cascade)
+  cells          ExamSittingLayoutCell[]
+
+  @@map("exam_sitting_layouts")
+}
+
+model ExamSittingLayoutCell {
+  id          Int                       @id @default(autoincrement())
+  layoutId     Int
+  rowIndex     Int
+  columnIndex  Int
+  cellType     ExamSittingLayoutCellType @default(SEAT)
+  seatLabel    String?
+  studentId    Int?
+  notes        String?
+  createdAt    DateTime                  @default(now())
+  updatedAt    DateTime                  @updatedAt
+  layout       ExamSittingLayout         @relation(fields: [layoutId], references: [id], onDelete: Cascade)
+
+  @@unique([layoutId, rowIndex, columnIndex])
+  @@unique([layoutId, studentId])
+  @@index([layoutId, cellType])
+  @@map("exam_sitting_layout_cells")
+}
+
+enum ExamGeneratedCardStatus {
+  ACTIVE
+  REVOKED
+}
+
+model ExamGeneratedCard {
+  id                       Int                     @id @default(autoincrement())
+  academicYearId           Int
+  programCode             String
+  semester                Semester
+  studentId               Int
+  status                  ExamGeneratedCardStatus @default(ACTIVE)
+  generatedAt             DateTime
+  generatedById           Int
+  revokedAt               DateTime?
+  revokedReason           String?
+  principalName           String
+  principalBarcodeDataUrl String?
+  headTuName              String
+  schoolName              String
+  headerTitle             String
+  headerSubtitle          String?
+  studentName             String
+  studentUsername         String?
+  nis                     String?
+  nisn                    String?
+  className               String?
+  payload                 Json
+  createdAt               DateTime                @default(now())
+  updatedAt               DateTime                @updatedAt
+
+  @@unique([academicYearId, programCode, semester, studentId])
+  @@index([studentId, status, generatedAt])
+  @@index([academicYearId, programCode, semester, status])
+  @@map("exam_generated_cards")
 }
 
 model UkkScheme {

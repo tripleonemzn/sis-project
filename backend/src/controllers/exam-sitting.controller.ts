@@ -586,6 +586,7 @@ export const getExamSittings = asyncHandler(async (req: Request, res: Response) 
         include: {
             proctor: { select: { id: true, name: true } },
             programSession: { select: { id: true, label: true, displayOrder: true } },
+            layout: { select: { id: true, rows: true, columns: true, generatedAt: true, updatedAt: true } },
             _count: { select: { students: true } }
         },
         orderBy: { startTime: 'desc' }
@@ -652,6 +653,7 @@ export const getExamSittingDetail = asyncHandler(async (req: Request, res: Respo
         include: {
             proctor: { select: { id: true, name: true } },
             programSession: { select: { id: true, label: true, displayOrder: true } },
+            layout: { select: { id: true, rows: true, columns: true, generatedAt: true, updatedAt: true } },
             students: {
                 include: {
                     student: {

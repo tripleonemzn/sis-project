@@ -43,7 +43,7 @@ import {
 } from '../../../src/features/exams/types';
 import { getStandardPagePadding } from '../../../src/lib/ui/pageLayout';
 
-type ExamHubSection = 'JADWAL' | 'RUANG' | 'MENGAWAS' | 'PROGRAM';
+type ExamHubSection = 'JADWAL' | 'RUANG' | 'DENAH' | 'MENGAWAS' | 'PROGRAM';
 type ExamTypeFilter = 'ALL' | ExamDisplayType;
 type ExamSummaryId =
   | 'schedules'
@@ -299,7 +299,8 @@ function extractClassNameFromSittingStudent(student: ExamSittingStudentRow): str
   return String(student.class_name || '').trim();
 }
 
-function formatDateTime(value: string) {
+function formatDateTime(value?: string | null) {
+  if (!value) return '-';
   const date = new Date(value);
   if (Number.isNaN(date.getTime())) return '-';
   return date.toLocaleString('id-ID', {
@@ -652,6 +653,7 @@ function createNewComponentDraft(rows: GradeComponentDraft[]): GradeComponentDra
 const EXAM_SECTION_ITEMS: Array<{ key: ExamHubSection; label: string; iconName: React.ComponentProps<typeof Feather>['name'] }> = [
   { key: 'JADWAL', label: 'Jadwal Ujian', iconName: 'calendar' },
   { key: 'RUANG', label: 'Ruang Ujian', iconName: 'home' },
+  { key: 'DENAH', label: 'Generate Denah Ruang', iconName: 'grid' },
   { key: 'MENGAWAS', label: 'Jadwal Mengawas', iconName: 'user-check' },
   { key: 'PROGRAM', label: 'Program Ujian', iconName: 'layout' },
 ];
@@ -1817,7 +1819,7 @@ export default function TeacherWakakurExamsScreen() {
       </View>
 
       <Text style={{ color: BRAND_COLORS.textMuted, marginBottom: 10 }}>
-        Pengelolaan jadwal ujian, ruang ujian, jadwal mengawas, dan program ujian.
+        Pengelolaan jadwal ujian, ruang ujian, generate denah ruang, jadwal mengawas, dan program ujian.
       </Text>
 
       <MobileMenuTabBar
@@ -1863,7 +1865,7 @@ export default function TeacherWakakurExamsScreen() {
             <TextInput
               value={search}
               onChangeText={setSearch}
-              placeholder="Cari mapel, kelas, ruang, atau pengawas"
+              placeholder="Cari mapel, kelas, ruang, pengawas, atau status denah"
               placeholderTextColor="#94a3b8"
               style={{ flex: 1, color: BRAND_COLORS.textDark, paddingVertical: 10, paddingHorizontal: 10 }}
             />
@@ -3173,6 +3175,141 @@ export default function TeacherWakakurExamsScreen() {
                     }}
                   >
                     <Text style={{ color: BRAND_COLORS.textMuted }}>Belum ada data ruang ujian sesuai filter.</Text>
+                  </View>
+                )
+              ) : null}
+
+              {section === 'DENAH' ? (
+                managedSittings.length > 0 ? (
+                  managedSittings.map((sitting) => {
+                    const hasLayout = Boolean(sitting.layout?.id);
+                    return (
+                      <View
+                        key={`layout-${sitting.id}`}
+                        style={{
+                          backgroundColor: '#fff',
+                          borderWidth: 1,
+                          borderColor: '#dbe7fb',
+                          borderRadius: 12,
+                          padding: 12,
+                          marginBottom: 10,
+                        }}
+                      >
+                        <View style={{ flexDirection: 'row', justifyContent: 'space-between', marginBottom: 4, gap: 8 }}>
+                          <Text style={{ color: BRAND_COLORS.textDark, fontWeight: '700', fontSize: 16, flex: 1 }}>
+                            {sitting.roomName || '-'}
+                          </Text>
+                          <Text
+                            style={{
+                              color: hasLayout ? '#047857' : '#b45309',
+                              fontWeight: '700',
+                            }}
+                          >
+                            {hasLayout ? 'Siap Edit' : 'Belum Digenerate'}
+                          </Text>
+                        </View>
+
+                        <Text style={{ color: BRAND_COLORS.textMuted, marginBottom: 2, fontSize: 12 }}>
+                          {formatDateTime(String(sitting.startTime || ''))} - {formatDateTime(String(sitting.endTime || ''))}
+                        </Text>
+                        <Text style={{ color: BRAND_COLORS.textMuted, marginBottom: 6, fontSize: 12 }}>
+                          Program: {examTypeLabel(normalizeProgramCode(sitting.examType))} • Sesi: {sitting.sessionLabel || '-'}
+                        </Text>
+
+                        <View style={{ flexDirection: 'row', flexWrap: 'wrap', gap: 8, marginBottom: 8 }}>
+                          <View
+                            style={{
+                              borderRadius: 999,
+                              borderWidth: 1,
+                              borderColor: '#dbe7fb',
+                              backgroundColor: '#f8fafc',
+                              paddingHorizontal: 10,
+                              paddingVertical: 6,
+                            }}
+                          >
+                            <Text style={{ color: '#475569', fontSize: 12, fontWeight: '700' }}>
+                              {sitting.studentCount} siswa
+                            </Text>
+                          </View>
+                          {sitting.layout ? (
+                            <View
+                              style={{
+                                borderRadius: 999,
+                                borderWidth: 1,
+                                borderColor: '#bfdbfe',
+                                backgroundColor: '#eff6ff',
+                                paddingHorizontal: 10,
+                                paddingVertical: 6,
+                              }}
+                            >
+                              <Text style={{ color: '#1d4ed8', fontSize: 12, fontWeight: '700' }}>
+                                {sitting.layout.rows} x {sitting.layout.columns}
+                              </Text>
+                            </View>
+                          ) : null}
+                          <View
+                            style={{
+                              borderRadius: 999,
+                              borderWidth: 1,
+                              borderColor: hasLayout ? '#a7f3d0' : '#fde68a',
+                              backgroundColor: hasLayout ? '#ecfdf5' : '#fffbeb',
+                              paddingHorizontal: 10,
+                              paddingVertical: 6,
+                            }}
+                          >
+                            <Text
+                              style={{
+                                color: hasLayout ? '#047857' : '#b45309',
+                                fontSize: 12,
+                                fontWeight: '700',
+                              }}
+                            >
+                              {hasLayout
+                                ? `Update ${formatDateTime(sitting.layout?.updatedAt || sitting.layout?.generatedAt || null)}`
+                                : 'Perlu generate awal'}
+                            </Text>
+                          </View>
+                        </View>
+
+                        <Text style={{ color: '#64748b', fontSize: 12, marginBottom: 8 }}>
+                          Kelas: {sitting.classes.length > 0 ? sitting.classes.join(', ') : '-'}
+                        </Text>
+
+                        <Pressable
+                          onPress={() =>
+                            router.push(`/teacher/wakakur-room-layout?sittingId=${encodeURIComponent(String(sitting.id))}` as never)
+                          }
+                          style={{
+                            borderWidth: 1,
+                            borderColor: '#bfdbfe',
+                            backgroundColor: '#eff6ff',
+                            borderRadius: 8,
+                            paddingVertical: 9,
+                            alignItems: 'center',
+                          }}
+                        >
+                          <Text style={{ color: '#1d4ed8', fontWeight: '700', fontSize: 12 }}>
+                            {hasLayout ? 'Buka Editor Denah' : 'Generate Denah Ruang'}
+                          </Text>
+                        </Pressable>
+                      </View>
+                    );
+                  })
+                ) : (
+                  <View
+                    style={{
+                      borderWidth: 1,
+                      borderColor: '#cbd5e1',
+                      borderStyle: 'dashed',
+                      borderRadius: 10,
+                      padding: 16,
+                      backgroundColor: '#fff',
+                      marginBottom: 10,
+                    }}
+                  >
+                    <Text style={{ color: BRAND_COLORS.textMuted }}>
+                      Belum ada data ruang ujian untuk generate denah sesuai filter.
+                    </Text>
                   </View>
                 )
               ) : null}

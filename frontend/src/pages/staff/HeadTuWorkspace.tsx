@@ -47,6 +47,7 @@ import {
 } from '../public/candidateShared';
 import { getStaffDivisionLabel, resolveStaffDivision } from '../../utils/staffRole';
 import { DashboardWelcomeCard } from '../../components/common/DashboardWelcomeCard';
+import { HeadTuExamCardsPanel } from '../../components/staff/HeadTuExamCardsPanel';
 
 function matchesSearch(term: string, values: Array<string | number | null | undefined>) {
   if (!term) return true;
@@ -317,15 +318,12 @@ const HeadTuWorkspace = () => {
   const [studentSearch, setStudentSearch] = useState('');
   const [teacherSearch, setTeacherSearch] = useState('');
   const [permissionSearch, setPermissionSearch] = useState('');
-  const [examCardSearch, setExamCardSearch] = useState('');
   const [letterArchiveSearch, setLetterArchiveSearch] = useState('');
   const [letterArchiveTypeFilter, setLetterArchiveTypeFilter] = useState<'ALL' | OfficeLetterType>('ALL');
   const [candidateLetterSearch, setCandidateLetterSearch] = useState('');
   const [selectedCandidateLetterId, setSelectedCandidateLetterId] = useState<number | null>(null);
   const [candidateLetterForm, setCandidateLetterForm] = useState<CandidateLetterFormState>(emptyCandidateLetterForm);
   const [candidateOfficialLetterFile, setCandidateOfficialLetterFile] = useState<File | null>(null);
-  const [examCardClassFilter, setExamCardClassFilter] = useState<string>('ALL');
-  const [examCardExamTypeFilter, setExamCardExamTypeFilter] = useState<string>('ALL');
   const [letterType, setLetterType] = useState<OfficeLetterType>('STUDENT_CERTIFICATE');
   const [selectedRecipientId, setSelectedRecipientId] = useState('');
   const [letterPurpose, setLetterPurpose] = useState('');
@@ -669,7 +667,7 @@ const HeadTuWorkspace = () => {
 
   const examCardsQuery = useQuery({
     queryKey: ['head-tu-exam-cards', activeYear?.id || 'none'],
-    enabled: Boolean(activeYear?.id) && (isExamCardsPage || isDashboardPage),
+    enabled: Boolean(activeYear?.id) && isDashboardPage,
     staleTime: 60_000,
     refetchOnWindowFocus: false,
     queryFn: async () => {
@@ -759,7 +757,6 @@ const HeadTuWorkspace = () => {
   const normalizedStudentSearch = studentSearch.trim().toLowerCase();
   const normalizedTeacherSearch = teacherSearch.trim().toLowerCase();
   const normalizedPermissionSearch = permissionSearch.trim().toLowerCase();
-  const normalizedExamCardSearch = examCardSearch.trim().toLowerCase();
 
   const filteredStudents = useMemo(
     () =>
@@ -852,43 +849,6 @@ const HeadTuWorkspace = () => {
       a.studentName.localeCompare(b.studentName, 'id-ID', { sensitivity: 'base' }),
     );
   }, [examCardDetails]);
-
-  const examCardClassOptions = useMemo(
-    () =>
-      Array.from(new Set(examCardRows.map((row) => row.className).filter(Boolean))).sort((a, b) =>
-        a.localeCompare(b, 'id-ID', { sensitivity: 'base' }),
-      ),
-    [examCardRows],
-  );
-
-  const examCardExamTypeOptions = useMemo(
-    () =>
-      Array.from(
-        new Set(
-          examCardRows.flatMap((row) => row.entries.map((entry) => entry.examType).filter(Boolean)),
-        ),
-      ).sort((a, b) => a.localeCompare(b, 'id-ID', { sensitivity: 'base' })),
-    [examCardRows],
-  );
-
-  const filteredExamCardRows = useMemo(
-    () =>
-      examCardRows.filter((row) => {
-        const matchesKeyword = matchesSearch(normalizedExamCardSearch, [
-          row.studentName,
-          row.nis,
-          row.nisn,
-          row.className,
-          ...row.entries.flatMap((entry) => [entry.examType, entry.roomName, entry.sessionLabel]),
-        ]);
-        const matchesClass = examCardClassFilter === 'ALL' || row.className === examCardClassFilter;
-        const matchesExamType =
-          examCardExamTypeFilter === 'ALL' ||
-          row.entries.some((entry) => entry.examType === examCardExamTypeFilter);
-        return matchesKeyword && matchesClass && matchesExamType;
-      }),
-    [examCardRows, normalizedExamCardSearch, examCardClassFilter, examCardExamTypeFilter],
-  );
 
   useEffect(() => {
     if (!isLettersPage) return;
@@ -1194,77 +1154,6 @@ const HeadTuWorkspace = () => {
         issueDate: letter.printedAt || letter.createdAt,
       }),
     );
-  };
-
-  const buildExamCardsHtml = (rows: ExamCardRow[]) => `
-    <div class="page-title">
-      <h2>SMKS Karya Guna Bhakti 2</h2>
-      <p class="muted small">Tata Usaha • ${escapeHtml(activeYear?.name || '-')}</p>
-      <h1 style="margin-top: 12px;">Kartu Ujian</h1>
-    </div>
-    ${rows
-      .map(
-        (row) => `
-          <div class="card">
-            <h3 style="margin-bottom: 10px;">${escapeHtml(row.studentName)}</h3>
-            <div class="meta">
-              <div class="meta-row"><strong>NIS</strong><span>:</span><span>${escapeHtml(row.nis || '-')}</span></div>
-              <div class="meta-row"><strong>NISN</strong><span>:</span><span>${escapeHtml(row.nisn || '-')}</span></div>
-              <div class="meta-row"><strong>Kelas</strong><span>:</span><span>${escapeHtml(row.className)}</span></div>
-            </div>
-            <table class="table">
-              <thead>
-                <tr>
-                  <th>Jenis Ujian</th>
-                  <th>Ruang</th>
-                  <th>Sesi</th>
-                  <th>Mulai</th>
-                  <th>Selesai</th>
-                </tr>
-              </thead>
-              <tbody>
-                ${row.entries
-                  .map(
-                    (entry) => `
-                      <tr>
-                        <td>${escapeHtml(entry.examType)}</td>
-                        <td>${escapeHtml(entry.roomName)}</td>
-                        <td>${escapeHtml(entry.sessionLabel || '-')}</td>
-                        <td>${escapeHtml(formatDateTime(entry.startTime))}</td>
-                        <td>${escapeHtml(formatDateTime(entry.endTime))}</td>
-                      </tr>
-                    `,
-                  )
-                  .join('')}
-              </tbody>
-            </table>
-          </div>
-        `,
-      )
-      .join('')}
-    <div class="signature-grid">
-      <div class="signature-box">
-        <p>Mengetahui,</p>
-        <p><strong>Kepala Sekolah</strong></p>
-        <div class="spacer"></div>
-        <p><strong>${escapeHtml(principalSigner?.name || '-')}</strong></p>
-      </div>
-      <div class="signature-box">
-        <p>Bekasi, ${escapeHtml(formatDate(new Date().toISOString()))}</p>
-        <p><strong>Kepala Tata Usaha</strong></p>
-        <div class="spacer"></div>
-        <p><strong>${escapeHtml(currentUser?.name || '-')}</strong></p>
-      </div>
-    </div>
-  `;
-
-  const handlePrintSingleExamCard = (row: ExamCardRow) => {
-    openPrintWindow(`Kartu Ujian - ${row.studentName}`, buildExamCardsHtml([row]));
-  };
-
-  const handlePrintAllExamCards = () => {
-    if (filteredExamCardRows.length === 0) return;
-    openPrintWindow('Kartu Ujian', buildExamCardsHtml(filteredExamCardRows));
   };
 
   if (isStudentsPage) {
@@ -1998,139 +1887,7 @@ const HeadTuWorkspace = () => {
   }
 
   if (isExamCardsPage) {
-    return (
-      <div className="space-y-6">
-        <div className="flex flex-col gap-3 md:flex-row md:items-start md:justify-between">
-          <div>
-            <h2 className="text-2xl font-bold text-gray-900">Kartu Ujian</h2>
-            <p className="mt-1 text-sm text-gray-500">Cetak kartu ujian siswa berdasarkan data ruang, sesi, dan peserta ujian yang aktif.</p>
-          </div>
-          <div className="flex flex-col sm:flex-row gap-2">
-            <button
-              type="button"
-              onClick={() => void examCardsQuery.refetch()}
-              className="px-4 py-2 rounded-lg border border-gray-300 text-sm text-gray-700 hover:bg-gray-50"
-            >
-              Muat Ulang
-            </button>
-            <button
-              type="button"
-              onClick={handlePrintAllExamCards}
-              disabled={filteredExamCardRows.length === 0}
-              className="inline-flex items-center justify-center rounded-lg bg-blue-600 px-4 py-2 text-sm font-semibold text-white hover:bg-blue-700 disabled:bg-blue-200 disabled:cursor-not-allowed"
-            >
-              <Printer className="w-4 h-4 mr-2" />
-              Print Semua
-            </button>
-          </div>
-        </div>
-
-        <div className="bg-white rounded-xl border border-gray-100 shadow-sm p-4 flex flex-col md:flex-row gap-3 md:items-center md:justify-between">
-          <div className="flex w-full flex-col gap-3 md:flex-row md:items-center">
-            <div className="relative w-full md:max-w-md">
-              <Search className="w-4 h-4 text-gray-400 absolute left-3 top-1/2 -translate-y-1/2" />
-              <input
-                type="text"
-                value={examCardSearch}
-                onChange={(event) => setExamCardSearch(event.target.value)}
-                placeholder="Cari nama siswa, NISN, kelas, ruang, atau jenis ujian..."
-                className="w-full pl-9 pr-3 py-2 border border-gray-300 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-blue-500/60"
-              />
-            </div>
-            <select
-              value={examCardClassFilter}
-              onChange={(event) => setExamCardClassFilter(event.target.value)}
-              className="w-full rounded-lg border border-gray-300 px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500/60 md:max-w-xs"
-            >
-              <option value="ALL">Semua kelas</option>
-              {examCardClassOptions.map((className) => (
-                <option key={className} value={className}>
-                  {className}
-                </option>
-              ))}
-            </select>
-            <select
-              value={examCardExamTypeFilter}
-              onChange={(event) => setExamCardExamTypeFilter(event.target.value)}
-              className="w-full rounded-lg border border-gray-300 px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500/60 md:max-w-xs"
-            >
-              <option value="ALL">Semua jenis ujian</option>
-              {examCardExamTypeOptions.map((examType) => (
-                <option key={examType} value={examType}>
-                  {examType}
-                </option>
-              ))}
-            </select>
-          </div>
-          <div className="text-sm text-gray-500">
-            {filteredExamCardRows.length} siswa • {examCardRows.length} total data kartu
-          </div>
-        </div>
-
-        <div className="bg-white rounded-xl border border-gray-100 shadow-sm overflow-hidden">
-          {examCardsQuery.isLoading ? (
-            <div className="py-10 flex items-center justify-center">
-              <Loader2 className="w-6 h-6 animate-spin text-blue-600" />
-            </div>
-          ) : filteredExamCardRows.length === 0 ? (
-            <div className="py-10 text-center text-sm text-gray-500">Belum ada data kartu ujian yang bisa ditampilkan.</div>
-          ) : (
-            <div className="overflow-x-auto">
-              <table className="min-w-full divide-y divide-gray-200">
-                <thead className="bg-gray-50">
-                  <tr>
-                    <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Siswa</th>
-                    <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Identitas</th>
-                    <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Kelas</th>
-                    <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Jadwal Ujian</th>
-                    <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Aksi</th>
-                  </tr>
-                </thead>
-                <tbody className="bg-white divide-y divide-gray-200">
-                  {filteredExamCardRows.map((row) => (
-                    <tr key={row.studentId}>
-                      <td className="px-6 py-4 text-sm text-gray-900">
-                        <div className="font-medium">{row.studentName}</div>
-                        <div className="text-xs text-gray-500">@{row.username}</div>
-                      </td>
-                      <td className="px-6 py-4 text-sm text-gray-600">
-                        <div>NIS: {row.nis || '-'}</div>
-                        <div>NISN: {row.nisn || '-'}</div>
-                      </td>
-                      <td className="px-6 py-4 text-sm text-gray-600">{row.className}</td>
-                      <td className="px-6 py-4 text-sm text-gray-600">
-                        <div className="space-y-2">
-                          {row.entries.map((entry) => (
-                            <div key={`${row.studentId}-${entry.sittingId}`} className="rounded-lg border border-gray-100 px-3 py-2">
-                              <div className="font-medium text-gray-900">{entry.examType}</div>
-                              <div className="text-xs text-gray-500 mt-1">
-                                Ruang {entry.roomName}
-                                {entry.sessionLabel ? ` • ${entry.sessionLabel}` : ''}
-                              </div>
-                              <div className="text-xs text-gray-500">{formatDateTime(entry.startTime)} - {formatDateTime(entry.endTime)}</div>
-                            </div>
-                          ))}
-                        </div>
-                      </td>
-                      <td className="px-6 py-4 text-sm text-gray-600">
-                        <button
-                          type="button"
-                          onClick={() => handlePrintSingleExamCard(row)}
-                          className="inline-flex items-center rounded-lg border border-blue-200 bg-white px-3 py-2 text-sm font-semibold text-blue-700 hover:bg-blue-50"
-                        >
-                          <Printer className="w-4 h-4 mr-2" />
-                          Print
-                        </button>
-                      </td>
-                    </tr>
-                  ))}
-                </tbody>
-              </table>
-            </div>
-          )}
-        </div>
-      </div>
-    );
+    return <HeadTuExamCardsPanel />;
   }
 
   if (isFinancePage) {

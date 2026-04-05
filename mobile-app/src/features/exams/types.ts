@@ -358,6 +358,13 @@ export type ExamSittingListItem = {
     id: number;
     name: string;
   } | null;
+  layout?: {
+    id: number;
+    rows: number;
+    columns: number;
+    generatedAt?: string | null;
+    updatedAt?: string | null;
+  } | null;
   _count?: {
     students: number;
   };

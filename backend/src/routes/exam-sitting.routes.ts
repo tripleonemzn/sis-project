@@ -9,6 +9,11 @@ import {
     updateSittingStudents,
     deleteSitting
 } from '../controllers/exam-sitting.controller';
+import {
+    generateExamSittingLayout,
+    getExamSittingLayout,
+    updateExamSittingLayout,
+} from '../controllers/exam-sitting-layout.controller';
 import { verifyJWT as authenticate, verifyRole as authorize } from '../middlewares/auth.middleware';
 
 const router = Router();
@@ -23,6 +28,9 @@ router.post('/', authorize(['ADMIN', 'TEACHER']), createExamSitting);
 
 // Detail and Update
 router.get('/:id', getExamSittingDetail);
+router.get('/:id/layout', authorize(['ADMIN', 'TEACHER']), getExamSittingLayout);
+router.post('/:id/layout/generate', authorize(['ADMIN', 'TEACHER']), generateExamSittingLayout);
+router.put('/:id/layout', authorize(['ADMIN', 'TEACHER']), updateExamSittingLayout);
 router.put('/:id', authorize(['ADMIN', 'TEACHER']), updateExamSitting);
 router.put('/:id/students', authorize(['ADMIN', 'TEACHER']), updateSittingStudents);
 router.delete('/:id', authorize(['ADMIN', 'TEACHER']), deleteSitting);

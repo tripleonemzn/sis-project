@@ -1,7 +1,7 @@
 import { useMemo, useState } from 'react';
 import { Redirect, useLocalSearchParams, useRouter } from 'expo-router';
 import { useQuery } from '@tanstack/react-query';
-import { Alert, Modal, Pressable, RefreshControl, ScrollView, Text, TextInput, View } from 'react-native';
+import { Alert, Image, Modal, Pressable, RefreshControl, ScrollView, Text, TextInput, View } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { AppLoadingScreen } from '../../src/components/AppLoadingScreen';
 import { MobileSelectField } from '../../src/components/MobileSelectField';
@@ -12,6 +12,7 @@ import { StudentExamItem } from '../../src/features/exams/types';
 import { useStudentExamsQuery } from '../../src/features/exams/useStudentExamsQuery';
 import { getStandardPagePadding } from '../../src/lib/ui/pageLayout';
 import { examApi, ExamProgramItem } from '../../src/features/exams/examApi';
+import { examCardApi } from '../../src/features/examCards/examCardApi';
 
 type StatusFilter = 'ALL' | 'OPEN' | 'MAKEUP' | 'UPCOMING' | 'MISSED' | 'COMPLETED';
 type ExamLabelMap = Record<string, string>;
@@ -147,6 +148,17 @@ export default function StudentExamsScreen() {
   const [filterMenuOpen, setFilterMenuOpen] = useState(false);
   const [draftTypeFilter, setDraftTypeFilter] = useState<'ALL' | string>(lockedProgramCode || 'ALL');
   const [draftStatusFilter, setDraftStatusFilter] = useState<StatusFilter>('ALL');
+  const studentExamCardsQuery = useQuery({
+    queryKey: ['mobile-student-exam-cards', user?.id || 'anon'],
+    enabled:
+      isAuthenticated &&
+      !isCandidateMode &&
+      !isApplicantMode &&
+      !applicantVerificationLocked &&
+      user?.role === 'STUDENT',
+    staleTime: 60_000,
+    queryFn: () => examCardApi.getMyCards(),
+  });
 
   const examProgramsQuery = useQuery({
     queryKey: ['mobile-student-exam-programs'],
@@ -265,8 +277,19 @@ export default function StudentExamsScreen() {
       contentContainerStyle={pageContentPadding}
       refreshControl={
         <RefreshControl
-          refreshing={examsQuery.isFetching && !examsQuery.isLoading}
-          onRefresh={() => examsQuery.refetch()}
+          refreshing={
+            (examsQuery.isFetching && !examsQuery.isLoading) ||
+            (!isCandidateMode &&
+              !isApplicantMode &&
+              studentExamCardsQuery.isFetching &&
+              !studentExamCardsQuery.isLoading)
+          }
+          onRefresh={() => {
+            void examsQuery.refetch();
+            if (!isCandidateMode && !isApplicantMode) {
+              void studentExamCardsQuery.refetch();
+            }
+          }}
         />
       }
     >
@@ -296,6 +319,220 @@ export default function StudentExamsScreen() {
           <Text style={{ color: '#92400e' }}>
             Akun pelamar Anda belum diverifikasi. Lengkapi profil pelamar lalu tunggu verifikasi admin sebelum mengikuti Tes BKK.
           </Text>
+        </View>
+      ) : null}
+
+      {!isCandidateMode && !isApplicantMode ? (
+        <View
+          style={{
+            borderWidth: 1,
+            borderColor: '#dbe7fb',
+            backgroundColor: '#fff',
+            borderRadius: 16,
+            padding: 14,
+            marginBottom: 12,
+          }}
+        >
+          <View style={{ flexDirection: 'row', justifyContent: 'space-between', alignItems: 'flex-start', gap: 12 }}>
+            <View style={{ flex: 1 }}>
+              <Text style={{ color: '#0f172a', fontSize: 18, fontWeight: '700' }}>Kartu Ujian Digital</Text>
+              <Text style={{ color: '#64748b', marginTop: 4 }}>
+                Kartu ujian akan muncul di sini setelah dipublikasikan oleh Kepala TU.
+              </Text>
+            </View>
+            <View
+              style={{
+                borderRadius: 999,
+                borderWidth: 1,
+                borderColor: '#bfdbfe',
+                backgroundColor: '#eff6ff',
+                paddingHorizontal: 10,
+                paddingVertical: 6,
+              }}
+            >
+              <Text style={{ color: '#1d4ed8', fontWeight: '700', fontSize: 12 }}>
+                {studentExamCardsQuery.data?.length || 0} kartu
+              </Text>
+            </View>
+          </View>
+
+          {studentExamCardsQuery.isLoading ? (
+            <View
+              style={{
+                marginTop: 12,
+                borderWidth: 1,
+                borderColor: '#cbd5e1',
+                borderStyle: 'dashed',
+                borderRadius: 12,
+                padding: 12,
+                backgroundColor: '#fff',
+              }}
+            >
+              <Text style={{ color: '#64748b' }}>Memuat kartu ujian digital...</Text>
+            </View>
+          ) : studentExamCardsQuery.isError ? (
+            <View
+              style={{
+                marginTop: 12,
+                borderWidth: 1,
+                borderColor: '#fecaca',
+                borderRadius: 12,
+                padding: 12,
+                backgroundColor: '#fff1f2',
+              }}
+            >
+              <Text style={{ color: '#be123c', fontWeight: '700' }}>Gagal memuat kartu ujian digital.</Text>
+              <Pressable
+                onPress={() => studentExamCardsQuery.refetch()}
+                style={{
+                  marginTop: 10,
+                  borderRadius: 10,
+                  borderWidth: 1,
+                  borderColor: '#fecdd3',
+                  backgroundColor: '#fff',
+                  paddingVertical: 9,
+                  alignItems: 'center',
+                }}
+              >
+                <Text style={{ color: '#be123c', fontWeight: '700' }}>Coba Lagi</Text>
+              </Pressable>
+            </View>
+          ) : studentExamCardsQuery.data && studentExamCardsQuery.data.length > 0 ? (
+            <View style={{ marginTop: 12, gap: 10 }}>
+              {studentExamCardsQuery.data.map((card) => (
+                <View
+                  key={card.id}
+                  style={{
+                    borderWidth: 1,
+                    borderColor: '#bfdbfe',
+                    borderRadius: 16,
+                    backgroundColor: '#f8fbff',
+                    padding: 12,
+                  }}
+                >
+                  <View
+                    style={{
+                      borderBottomWidth: 1,
+                      borderBottomColor: '#dbe7fb',
+                      paddingBottom: 10,
+                      marginBottom: 10,
+                    }}
+                  >
+                    <Text style={{ color: '#2563eb', fontSize: 11, fontWeight: '800', letterSpacing: 1.2 }}>
+                      {card.payload.schoolName.toUpperCase()}
+                    </Text>
+                    <Text style={{ color: '#0f172a', fontSize: 16, fontWeight: '800', marginTop: 6 }}>
+                      {card.payload.headerTitle}
+                    </Text>
+                    <Text style={{ color: '#64748b', marginTop: 4 }}>{card.payload.headerSubtitle}</Text>
+                    <Text style={{ color: '#64748b', fontSize: 12, marginTop: 6 }}>
+                      Generate: {formatDateTime(card.generatedAt)}
+                    </Text>
+                  </View>
+
+                  <View style={{ gap: 10 }}>
+                    <View
+                      style={{
+                        borderWidth: 1,
+                        borderColor: '#dbe7fb',
+                        borderRadius: 12,
+                        backgroundColor: '#fff',
+                        padding: 10,
+                      }}
+                    >
+                      <Text style={{ color: '#64748b', fontSize: 11, fontWeight: '700', letterSpacing: 0.6 }}>
+                        IDENTITAS SISWA
+                      </Text>
+                      <Text style={{ color: '#0f172a', fontWeight: '700', marginTop: 8 }}>
+                        {card.payload.student.name}
+                      </Text>
+                      <Text style={{ color: '#475569', marginTop: 4, fontSize: 12 }}>
+                        NIS: {card.payload.student.nis || '-'}
+                      </Text>
+                      <Text style={{ color: '#475569', marginTop: 2, fontSize: 12 }}>
+                        NISN: {card.payload.student.nisn || '-'}
+                      </Text>
+                      <Text style={{ color: '#475569', marginTop: 2, fontSize: 12 }}>
+                        Kelas: {card.payload.student.className || '-'}
+                      </Text>
+                    </View>
+
+                    <View
+                      style={{
+                        borderWidth: 1,
+                        borderColor: '#dbe7fb',
+                        borderRadius: 12,
+                        backgroundColor: '#fff',
+                        padding: 10,
+                      }}
+                    >
+                      <Text style={{ color: '#64748b', fontSize: 11, fontWeight: '700', letterSpacing: 0.6 }}>
+                        LEGALITAS
+                      </Text>
+                      <Text style={{ color: '#0f172a', fontWeight: '700', marginTop: 8 }}>
+                        {card.payload.legality.principalName}
+                      </Text>
+                      <Text style={{ color: '#475569', marginTop: 4, fontSize: 12 }}>
+                        {card.payload.legality.signatureLabel}
+                      </Text>
+                      {card.payload.legality.principalBarcodeDataUrl ? (
+                        <Image
+                          source={{ uri: card.payload.legality.principalBarcodeDataUrl }}
+                          style={{
+                            width: 88,
+                            height: 88,
+                            marginTop: 10,
+                            borderRadius: 10,
+                            borderWidth: 1,
+                            borderColor: '#dbe7fb',
+                            backgroundColor: '#fff',
+                          }}
+                          resizeMode="contain"
+                        />
+                      ) : null}
+                    </View>
+
+                    {card.payload.entries.map((entry) => (
+                      <View
+                        key={`${card.id}-${entry.sittingId}`}
+                        style={{
+                          borderWidth: 1,
+                          borderColor: '#dbe7fb',
+                          borderRadius: 12,
+                          backgroundColor: '#fff',
+                          padding: 10,
+                        }}
+                      >
+                        <Text style={{ color: '#0f172a', fontWeight: '700' }}>{entry.roomName}</Text>
+                        <Text style={{ color: '#64748b', marginTop: 4, fontSize: 12 }}>
+                          {entry.sessionLabel || '-'} • Kursi {entry.seatLabel || '-'}
+                        </Text>
+                        <Text style={{ color: '#64748b', marginTop: 4, fontSize: 12 }}>
+                          {formatDateTime(entry.startTime || '')} - {formatDateTime(entry.endTime || '')}
+                        </Text>
+                      </View>
+                    ))}
+                  </View>
+                </View>
+              ))}
+            </View>
+          ) : (
+            <View
+              style={{
+                marginTop: 12,
+                borderWidth: 1,
+                borderColor: '#cbd5e1',
+                borderStyle: 'dashed',
+                borderRadius: 12,
+                padding: 12,
+                backgroundColor: '#fff',
+              }}
+            >
+              <Text style={{ color: '#64748b' }}>
+                Belum ada kartu ujian digital yang dipublikasikan untuk akun Anda.
+              </Text>
+            </View>
+          )}
         </View>
       ) : null}
 

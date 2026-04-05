@@ -9,6 +9,7 @@ import {
   normalizeExamProgramCode,
   type ExamProgram,
 } from '../../services/exam.service'
+import { examCardService } from '../../services/examCard.service'
 import { 
   FileText, 
   Calendar, 
@@ -306,6 +307,16 @@ export default function StudentExamsPage() {
   const [examProgramLabels, setExamProgramLabels] = useState<ExamProgramLabelMap>({})
   const [examPrograms, setExamPrograms] = useState<ExamProgram[]>([])
   const [serverTimeDrift, setServerTimeDrift] = useState<ServerTimeDriftState | null>(null)
+  const studentExamCardsQuery = useQuery({
+    queryKey: ['student-exam-cards-web'],
+    enabled: !isCandidateMode && !isApplicantMode && !applicantVerificationLocked,
+    staleTime: 60_000,
+    refetchOnWindowFocus: false,
+    queryFn: async () => {
+      const response = await examCardService.getMyCards()
+      return response.data.cards || []
+    },
+  })
 
   useEffect(() => {
     const forceExitFullscreen = async () => {
@@ -865,6 +876,92 @@ export default function StudentExamsPage() {
               </p>
             </div>
           </div>
+        </div>
+      ) : null}
+
+      {!isCandidateMode && !isApplicantMode ? (
+        <div className="rounded-xl border border-gray-200 bg-white p-5 shadow-sm">
+          <div className="flex flex-col gap-2 md:flex-row md:items-start md:justify-between">
+            <div>
+              <h2 className="text-lg font-semibold text-gray-900">Kartu Ujian Digital</h2>
+              <p className="mt-1 text-sm text-gray-500">
+                Kartu ujian akan muncul di sini setelah dipublikasikan oleh Kepala TU.
+              </p>
+            </div>
+            <div className="rounded-full bg-blue-50 px-3 py-1 text-xs font-semibold text-blue-700">
+              {studentExamCardsQuery.data?.length || 0} kartu
+            </div>
+          </div>
+
+          {studentExamCardsQuery.isLoading ? (
+            <div className="mt-4 rounded-lg border border-dashed border-gray-300 px-4 py-6 text-sm text-gray-500">
+              Memuat kartu ujian digital...
+            </div>
+          ) : studentExamCardsQuery.data && studentExamCardsQuery.data.length > 0 ? (
+            <div className="mt-4 grid gap-4 lg:grid-cols-2">
+              {studentExamCardsQuery.data.map((card) => (
+                <div key={card.id} className="rounded-2xl border border-blue-100 bg-gradient-to-br from-blue-50 via-white to-sky-50 p-4">
+                  <div className="flex items-start justify-between gap-3 border-b border-blue-100 pb-3">
+                    <div>
+                      <div className="text-xs font-semibold uppercase tracking-[0.18em] text-blue-600">
+                        {card.payload.schoolName}
+                      </div>
+                      <h3 className="mt-2 text-lg font-bold text-gray-900">{card.payload.headerTitle}</h3>
+                      <p className="mt-1 text-sm text-gray-500">{card.payload.headerSubtitle}</p>
+                    </div>
+                    <div className="rounded-xl border border-blue-200 bg-white px-3 py-2 text-right text-xs text-gray-500">
+                      <div>Generate</div>
+                      <div className="mt-1 font-semibold text-gray-900">{formatDateTimeLong(card.generatedAt)}</div>
+                    </div>
+                  </div>
+
+                  <div className="mt-4 grid gap-3 md:grid-cols-2">
+                    <div className="rounded-xl border border-white/80 bg-white/90 p-3">
+                      <div className="text-[11px] font-semibold uppercase tracking-wide text-gray-500">Identitas</div>
+                      <div className="mt-2 text-sm text-gray-700 space-y-1">
+                        <div className="font-semibold text-gray-900">{card.payload.student.name}</div>
+                        <div>NIS: {card.payload.student.nis || '-'}</div>
+                        <div>NISN: {card.payload.student.nisn || '-'}</div>
+                        <div>Kelas: {card.payload.student.className || '-'}</div>
+                      </div>
+                    </div>
+                    <div className="rounded-xl border border-white/80 bg-white/90 p-3">
+                      <div className="text-[11px] font-semibold uppercase tracking-wide text-gray-500">Legalitas</div>
+                      <div className="mt-2 text-sm text-gray-700 space-y-2">
+                        <div className="font-semibold text-gray-900">{card.payload.legality.principalName}</div>
+                        <div>{card.payload.legality.signatureLabel}</div>
+                        {card.payload.legality.principalBarcodeDataUrl ? (
+                          <img
+                            src={card.payload.legality.principalBarcodeDataUrl}
+                            alt="Barcode Kepala Sekolah"
+                            className="h-20 w-20 rounded-lg border border-gray-200 bg-white p-1"
+                          />
+                        ) : null}
+                      </div>
+                    </div>
+                  </div>
+
+                  <div className="mt-4 space-y-2">
+                    {card.payload.entries.map((entry) => (
+                      <div key={`${card.id}-${entry.sittingId}`} className="rounded-xl border border-blue-100 bg-white px-3 py-3 text-sm text-gray-700">
+                        <div className="font-semibold text-gray-900">{entry.roomName}</div>
+                        <div className="mt-1 text-xs text-gray-500">
+                          {entry.sessionLabel || '-'} • Kursi {entry.seatLabel || '-'}
+                        </div>
+                        <div className="mt-1 text-xs text-gray-500">
+                          {formatDateTimeLong(entry.startTime || '')} - {formatDateTimeLong(entry.endTime || '')}
+                        </div>
+                      </div>
+                    ))}
+                  </div>
+                </div>
+              ))}
+            </div>
+          ) : (
+            <div className="mt-4 rounded-lg border border-dashed border-gray-300 px-4 py-6 text-sm text-gray-500">
+              Belum ada kartu ujian digital yang dipublikasikan untuk akun Anda.
+            </div>
+          )}
         </div>
       ) : null}
 

@@ -4,7 +4,8 @@ import ExamScheduleManagementPage from './ExamScheduleManagementPage';
 import ExamSittingManagementPage from './ExamSittingManagementPage';
 import ExamProctorManagementPage from './ExamProctorManagementPage';
 import ExamProgramManagementPage from './ExamProgramManagementPage';
-import { Calendar, FolderCog, School, UserCheck } from 'lucide-react';
+import ExamRoomLayoutManagementPage from './ExamRoomLayoutManagementPage';
+import { Calendar, FolderCog, LayoutPanelTop, School, UserCheck } from 'lucide-react';
 
 export default function ExamManagementHubPage() {
   const [searchParams, setSearchParams] = useSearchParams();
@@ -20,6 +21,7 @@ export default function ExamManagementHubPage() {
     { id: 'program', label: 'Program Ujian', icon: FolderCog },
     { id: 'jadwal', label: 'Jadwal Ujian', icon: Calendar },
     { id: 'ruang', label: 'Ruang Ujian', icon: School },
+    { id: 'denah', label: 'Generate Denah Ruang', icon: LayoutPanelTop },
     { id: 'mengawas', label: 'Jadwal Mengawas', icon: UserCheck },
   ]), []);
 
@@ -59,6 +61,8 @@ export default function ExamManagementHubPage() {
             <ExamScheduleManagementPage />
           ) : active === 'ruang' ? (
             <ExamSittingManagementPage />
+          ) : active === 'denah' ? (
+            <ExamRoomLayoutManagementPage />
           ) : active === 'mengawas' ? (
             <ExamProctorManagementPage />
           ) : (
