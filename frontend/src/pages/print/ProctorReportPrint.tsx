@@ -1,3 +1,4 @@
+import { useRef } from 'react';
 import { useQuery } from '@tanstack/react-query';
 import { useNavigate, useParams } from 'react-router-dom';
 import { ArrowLeft, Printer, RefreshCw } from 'lucide-react';
@@ -67,6 +68,253 @@ function formatExamHeadingLabel(label?: string | null) {
   return normalized.toUpperCase();
 }
 
+function escapeHtml(value?: string | null) {
+  return String(value || '')
+    .replace(/&/g, '&amp;')
+    .replace(/</g, '&lt;')
+    .replace(/>/g, '&gt;')
+    .replace(/"/g, '&quot;')
+    .replace(/'/g, '&#39;');
+}
+
+function escapeMultilineHtml(value?: string | null) {
+  return escapeHtml(value).replace(/\n/g, '<br />');
+}
+
+function resolveAbsoluteAssetUrl(value?: string | null) {
+  const raw = String(value || '').trim();
+  if (!raw) return '';
+  if (/^(data:|https?:)/i.test(raw)) return raw;
+  if (typeof window === 'undefined') return raw;
+  return new URL(raw, window.location.origin).toString();
+}
+
+function buildProctorReportPrintHtml(params: {
+  snapshot: ProctorReportDocumentSnapshot;
+  verificationQrDataUrl: string;
+}) {
+  const { snapshot, verificationQrDataUrl } = params;
+  const headerFontSize = '12pt';
+  const contentFontSize = '11pt';
+  const noteFontSize = '8pt';
+  const logoUrl = resolveAbsoluteAssetUrl(snapshot.schoolLogoPath);
+
+  return `<!DOCTYPE html>
+  <html>
+    <head>
+      <meta charset="utf-8" />
+      <title>${escapeHtml(snapshot.title)} - ${escapeHtml(snapshot.documentNumber)}</title>
+      <style>
+        @page { size: A4 portrait; margin: 2.5cm; }
+        html, body {
+          margin: 0;
+          padding: 0;
+          background: #ffffff;
+          color: #0f172a;
+          -webkit-print-color-adjust: exact;
+          print-color-adjust: exact;
+        }
+        body {
+          font-family: ui-sans-serif, system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
+          font-size: ${contentFontSize};
+          line-height: 1.6;
+        }
+        .sheet { width: 100%; }
+        .header-wrap { text-align: center; }
+        .header-group {
+          display: inline-flex;
+          align-items: center;
+          justify-content: center;
+          gap: 2cm;
+        }
+        .logo {
+          width: 112px;
+          height: 112px;
+          object-fit: contain;
+          flex-shrink: 0;
+        }
+        .header-text { text-align: center; }
+        .header-line {
+          font-size: ${headerFontSize};
+          line-height: 1.35;
+          font-weight: 700;
+          text-transform: uppercase;
+          letter-spacing: 0.02em;
+        }
+        .rule-top {
+          margin-top: 16px;
+          border-top: 1px solid #0f172a;
+        }
+        .rule-bottom {
+          margin-top: 4px;
+          border-top: 2px solid #0f172a;
+        }
+        .meta-row {
+          margin-top: 16px;
+          display: flex;
+          justify-content: space-between;
+          align-items: flex-start;
+          gap: 12px;
+        }
+        .meta-chip {
+          border: 1px solid #cbd5e1;
+          background: #f8fafc;
+          border-radius: 10px;
+          padding: 8px 12px;
+          font-size: ${contentFontSize};
+        }
+        .meta-note {
+          border: 1px solid #a7f3d0;
+          background: #ecfdf5;
+          color: #065f46;
+          border-radius: 10px;
+          padding: 8px 12px;
+          font-size: ${noteFontSize};
+        }
+        .narrative {
+          margin-top: 24px;
+          text-align: justify;
+          font-size: ${contentFontSize};
+          line-height: 1.8;
+        }
+        .counts {
+          margin-top: 24px;
+          display: grid;
+          row-gap: 10px;
+          font-size: ${contentFontSize};
+        }
+        .count-row {
+          display: grid;
+          grid-template-columns: 230px 16px 1fr;
+        }
+        .note-title {
+          margin-top: 28px;
+          font-weight: 700;
+          font-size: ${contentFontSize};
+        }
+        .note-box {
+          margin-top: 12px;
+          min-height: 190px;
+          border: 1px solid #0f172a;
+          border-radius: 14px;
+          padding: 0.55cm 0.65cm;
+          font-size: ${contentFontSize};
+          line-height: 1.75;
+          white-space: pre-wrap;
+        }
+        .signature-row {
+          margin-top: 36px;
+          display: flex;
+          justify-content: flex-end;
+        }
+        .signature-box {
+          width: 300px;
+          text-align: center;
+          font-size: ${contentFontSize};
+        }
+        .signature-label {
+          font-size: ${contentFontSize};
+        }
+        .qr-wrap {
+          margin-top: 16px;
+          display: flex;
+          justify-content: center;
+        }
+        .qr {
+          width: 104px;
+          height: 104px;
+          object-fit: contain;
+          border: 1px solid #cbd5e1;
+          border-radius: 12px;
+          background: #ffffff;
+          padding: 8px;
+        }
+        .signature-name {
+          margin-top: 28px;
+          font-size: ${contentFontSize};
+          font-weight: 700;
+        }
+        .signature-rule {
+          margin-top: 10px;
+          border-top: 1px solid #94a3b8;
+        }
+        .signature-note {
+          margin-top: 10px;
+          font-size: ${noteFontSize};
+          line-height: 1.5;
+          color: #475569;
+        }
+        .verify-box {
+          margin-top: 24px;
+          border: 1px dashed #cbd5e1;
+          border-radius: 14px;
+          background: #f8fafc;
+          padding: 12px 16px;
+          font-size: ${noteFontSize};
+          line-height: 1.5;
+          color: #475569;
+        }
+        .verify-url {
+          margin-top: 4px;
+          word-break: break-all;
+          font-weight: 600;
+          color: #334155;
+        }
+      </style>
+    </head>
+    <body>
+      <div class="sheet">
+        <div class="header-wrap">
+          <div class="header-group">
+            <img src="${escapeHtml(logoUrl)}" alt="Logo KGB2" class="logo" />
+            <div class="header-text">
+              <div class="header-line">${escapeHtml(snapshot.title)}</div>
+              <div class="header-line">${escapeHtml(formatExamHeadingLabel(snapshot.examLabel))}</div>
+              <div class="header-line">${escapeHtml(snapshot.schoolName)}</div>
+              <div class="header-line">Tahun Ajaran ${escapeHtml(snapshot.academicYearName)}</div>
+            </div>
+          </div>
+        </div>
+        <div class="rule-top"></div>
+        <div class="rule-bottom"></div>
+
+        <div class="meta-row">
+          <div class="meta-chip"><strong>No. Dokumen:</strong> ${escapeHtml(snapshot.documentNumber)}</div>
+          <div class="meta-note">Diverifikasi melalui QR internal SIS KGB2</div>
+        </div>
+
+        <div class="narrative">${escapeHtml(snapshot.narrative)}</div>
+
+        <div class="counts">
+          <div class="count-row"><div>Jumlah Peserta Seharusnya</div><div>:</div><div>${snapshot.counts.expectedParticipants}</div></div>
+          <div class="count-row"><div>Jumlah Peserta yang tidak hadir</div><div>:</div><div>${snapshot.counts.absentParticipants}</div></div>
+          <div class="count-row"><div>Jumlah Peserta yang hadir</div><div>:</div><div>${snapshot.counts.presentParticipants}</div></div>
+        </div>
+
+        <div class="note-title">Catatan Pengawas selama Ujian berlangsung.</div>
+        <div class="note-box">${escapeMultilineHtml(snapshot.notes || 'Tidak ada catatan tambahan dari pengawas.')}</div>
+
+        <div class="signature-row">
+          <div class="signature-box">
+            <div class="signature-label">Pengawas,</div>
+            <div class="qr-wrap">
+              <img src="${escapeHtml(verificationQrDataUrl)}" alt="QR Verifikasi Berita Acara" class="qr" />
+            </div>
+            <div class="signature-name">${escapeHtml(snapshot.proctor.name)}</div>
+            <div class="signature-rule"></div>
+            <div class="signature-note">${escapeHtml(snapshot.proctor.signatureLabel)} Dokumen dikirim ke Kurikulum pada ${escapeHtml(formatDateTime(snapshot.submittedAt))}.</div>
+          </div>
+        </div>
+
+        <div class="verify-box">
+          ${escapeHtml(snapshot.verification.note)}
+          <div class="verify-url">${escapeHtml(snapshot.verification.verificationUrl)}</div>
+        </div>
+      </div>
+    </body>
+  </html>`;
+}
+
 export default function ProctorReportPrint() {
   const navigate = useNavigate();
   const { reportId } = useParams<{ reportId: string }>();
@@ -74,6 +322,7 @@ export default function ProctorReportPrint() {
   const headerFontSize = '12pt';
   const contentFontSize = '11pt';
   const noteFontSize = '8pt';
+  const printIframeRef = useRef<HTMLIFrameElement>(null);
 
   const documentQuery = useQuery({
     queryKey: ['proctor-report-document', parsedReportId],
@@ -111,9 +360,22 @@ export default function ProctorReportPrint() {
   }
 
   const { snapshot, verificationQrDataUrl } = documentQuery.data;
+  const handlePrint = () => {
+    const iframe = printIframeRef.current;
+    if (!iframe || !iframe.contentWindow) return;
+    const printDoc = iframe.contentWindow.document;
+    const html = buildProctorReportPrintHtml({ snapshot, verificationQrDataUrl });
+    printDoc.open();
+    printDoc.write(html);
+    printDoc.close();
+    window.setTimeout(() => {
+      iframe.contentWindow?.focus();
+      iframe.contentWindow?.print();
+    }, 500);
+  };
 
   return (
-    <div className="min-h-screen bg-slate-100 py-6 print:bg-white print:py-0">
+    <div className="proctor-report-root min-h-screen bg-slate-100 py-6 print:bg-white print:py-0">
       <style>{`
         @page {
           size: A4 portrait;
@@ -148,7 +410,7 @@ export default function ProctorReportPrint() {
         </button>
         <button
           type="button"
-          onClick={() => window.print()}
+          onClick={handlePrint}
           className="inline-flex items-center rounded-lg bg-blue-600 px-4 py-2 text-sm font-semibold text-white hover:bg-blue-700"
         >
           <Printer className="mr-2 h-4 w-4" />
@@ -250,6 +512,12 @@ export default function ProctorReportPrint() {
           <div className="mt-1 break-all font-medium text-slate-700" style={{ fontSize: noteFontSize }}>{snapshot.verification.verificationUrl}</div>
         </div>
       </div>
+
+      <iframe
+        ref={printIframeRef}
+        title="print-proctor-report-frame"
+        style={{ display: 'none' }}
+      />
     </div>
   );
 }

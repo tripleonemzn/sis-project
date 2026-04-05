@@ -1,3 +1,4 @@
+import { useRef } from 'react';
 import { useQuery } from '@tanstack/react-query';
 import { useNavigate, useParams } from 'react-router-dom';
 import { ArrowLeft, Printer, RefreshCw } from 'lucide-react';
@@ -76,6 +77,317 @@ function formatExamHeadingLabel(label?: string | null) {
   return normalized.toUpperCase();
 }
 
+function escapeHtml(value?: string | null) {
+  return String(value || '')
+    .replace(/&/g, '&amp;')
+    .replace(/</g, '&lt;')
+    .replace(/>/g, '&gt;')
+    .replace(/"/g, '&quot;')
+    .replace(/'/g, '&#39;');
+}
+
+function resolveAbsoluteAssetUrl(value?: string | null) {
+  const raw = String(value || '').trim();
+  if (!raw) return '';
+  if (/^(data:|https?:)/i.test(raw)) return raw;
+  if (typeof window === 'undefined') return raw;
+  return new URL(raw, window.location.origin).toString();
+}
+
+function buildProctorAttendancePrintHtml(params: {
+  snapshot: ProctorAttendanceDocumentSnapshot;
+  verificationQrDataUrl: string;
+}) {
+  const { snapshot, verificationQrDataUrl } = params;
+  const headerFontSize = '12pt';
+  const contentFontSize = '11pt';
+  const noteFontSize = '8pt';
+  const logoUrl = resolveAbsoluteAssetUrl(snapshot.schoolLogoPath);
+  const participantRows = snapshot.participants
+    .map((participant, index) => {
+      const statusLine =
+        participant.status === 'PRESENT'
+          ? `${participant.statusLabel} | Mulai ${participant.startTimeLabel} • Selesai ${participant.submitTimeLabel}`
+          : participant.statusLabel;
+      const statusColor = participant.status === 'PRESENT' ? '#047857' : '#be123c';
+      return `
+        <tr>
+          <td>${index + 1}</td>
+          <td><strong>${escapeHtml(participant.name)}</strong></td>
+          <td>${escapeHtml(participant.nis || '-')}</td>
+          <td>${escapeHtml(participant.className || '-')}</td>
+          <td style="color:${statusColor}; font-weight:600;">${escapeHtml(statusLine)}</td>
+          <td>${escapeHtml(participant.absentReason || '-')}</td>
+        </tr>
+      `;
+    })
+    .join('');
+
+  return `<!DOCTYPE html>
+  <html>
+    <head>
+      <meta charset="utf-8" />
+      <title>${escapeHtml(snapshot.title)} - ${escapeHtml(snapshot.documentNumber)}</title>
+      <style>
+        @page { size: A4 portrait; margin: 2.5cm; }
+        html, body {
+          margin: 0;
+          padding: 0;
+          background: #ffffff;
+          color: #0f172a;
+          -webkit-print-color-adjust: exact;
+          print-color-adjust: exact;
+        }
+        body {
+          font-family: ui-sans-serif, system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
+          font-size: ${contentFontSize};
+          line-height: 1.6;
+        }
+        .sheet { width: 100%; }
+        .header-wrap { text-align: center; }
+        .header-group {
+          display: inline-flex;
+          align-items: center;
+          justify-content: center;
+          gap: 2cm;
+        }
+        .logo {
+          width: 112px;
+          height: 112px;
+          object-fit: contain;
+          flex-shrink: 0;
+        }
+        .header-line {
+          font-size: ${headerFontSize};
+          line-height: 1.35;
+          font-weight: 700;
+          text-transform: uppercase;
+          letter-spacing: 0.02em;
+        }
+        .rule-top {
+          margin-top: 16px;
+          border-top: 1px solid #0f172a;
+        }
+        .rule-bottom {
+          margin-top: 4px;
+          border-top: 2px solid #0f172a;
+        }
+        .meta-row {
+          margin-top: 16px;
+          display: flex;
+          justify-content: space-between;
+          align-items: flex-start;
+          gap: 12px;
+        }
+        .meta-chip {
+          border: 1px solid #cbd5e1;
+          background: #f8fafc;
+          border-radius: 10px;
+          padding: 8px 12px;
+          font-size: ${contentFontSize};
+        }
+        .meta-note {
+          border: 1px solid #a7f3d0;
+          background: #ecfdf5;
+          color: #065f46;
+          border-radius: 10px;
+          padding: 8px 12px;
+          font-size: ${noteFontSize};
+        }
+        .detail-grid {
+          margin-top: 24px;
+          display: grid;
+          grid-template-columns: 1fr 1fr;
+          gap: 14px 40px;
+          font-size: ${contentFontSize};
+        }
+        .detail-col {
+          display: grid;
+          row-gap: 8px;
+        }
+        .detail-row {
+          display: grid;
+          grid-template-columns: 170px 16px 1fr;
+        }
+        .summary-grid {
+          margin-top: 24px;
+          display: grid;
+          grid-template-columns: 1fr 1fr 1fr;
+          gap: 12px;
+        }
+        .summary-box {
+          border-radius: 14px;
+          border: 1px solid #cbd5e1;
+          background: #f8fafc;
+          padding: 12px 16px;
+          font-size: ${contentFontSize};
+        }
+        .summary-box.success {
+          border-color: #a7f3d0;
+          background: #ecfdf5;
+          color: #065f46;
+        }
+        .summary-box.danger {
+          border-color: #fecdd3;
+          background: #fff1f2;
+          color: #9f1239;
+        }
+        .summary-label {
+          font-size: ${contentFontSize};
+          font-weight: 700;
+          text-transform: uppercase;
+          letter-spacing: 0.02em;
+        }
+        .summary-value {
+          margin-top: 4px;
+          font-size: ${contentFontSize};
+          font-weight: 700;
+        }
+        table {
+          width: 100%;
+          margin-top: 24px;
+          border-collapse: collapse;
+          font-size: ${contentFontSize};
+        }
+        th, td {
+          border: 1px solid #cbd5e1;
+          padding: 8px 10px;
+          text-align: left;
+          vertical-align: top;
+        }
+        thead th {
+          background: #f1f5f9;
+          font-weight: 700;
+        }
+        .footer-row {
+          margin-top: 36px;
+          display: flex;
+          justify-content: space-between;
+          align-items: flex-start;
+          gap: 24px;
+        }
+        .footer-note {
+          max-width: 470px;
+          font-size: ${noteFontSize};
+          line-height: 1.5;
+          color: #475569;
+        }
+        .signature-box {
+          width: 260px;
+          text-align: center;
+        }
+        .signature-label {
+          font-size: ${contentFontSize};
+        }
+        .qr {
+          margin-top: 16px;
+          width: 104px;
+          height: 104px;
+          object-fit: contain;
+        }
+        .signature-name {
+          margin-top: 28px;
+          font-size: ${contentFontSize};
+          font-weight: 700;
+        }
+        .signature-rule {
+          margin-top: 10px;
+          border-top: 1px solid #94a3b8;
+        }
+        .signature-note {
+          margin-top: 10px;
+          font-size: ${noteFontSize};
+          line-height: 1.5;
+          color: #475569;
+        }
+      </style>
+    </head>
+    <body>
+      <div class="sheet">
+        <div class="header-wrap">
+          <div class="header-group">
+            <img src="${escapeHtml(logoUrl)}" alt="Logo KGB2" class="logo" />
+            <div>
+              <div class="header-line">${escapeHtml(snapshot.title)}</div>
+              <div class="header-line">${escapeHtml(formatExamHeadingLabel(snapshot.examLabel))}</div>
+              <div class="header-line">${escapeHtml(snapshot.schoolName)}</div>
+              <div class="header-line">Tahun Ajaran ${escapeHtml(snapshot.academicYearName)}</div>
+            </div>
+          </div>
+        </div>
+        <div class="rule-top"></div>
+        <div class="rule-bottom"></div>
+
+        <div class="meta-row">
+          <div class="meta-chip"><strong>No. Dokumen:</strong> ${escapeHtml(snapshot.documentNumber)}</div>
+          <div class="meta-note">Diverifikasi melalui QR internal SIS KGB2</div>
+        </div>
+
+        <div class="detail-grid">
+          <div class="detail-col">
+            <div class="detail-row"><div>Mata Pelajaran</div><div>:</div><div>${escapeHtml(snapshot.schedule.subjectName)}</div></div>
+            <div class="detail-row"><div>Tanggal Pelaksanaan</div><div>:</div><div>${escapeHtml(snapshot.schedule.executionDateLabel)}</div></div>
+            <div class="detail-row"><div>Waktu Pelaksanaan</div><div>:</div><div>${escapeHtml(snapshot.schedule.startTimeLabel)} - ${escapeHtml(snapshot.schedule.endTimeLabel)} WIB</div></div>
+          </div>
+          <div class="detail-col">
+            <div class="detail-row"><div>Ruangan</div><div>:</div><div>${escapeHtml(snapshot.schedule.roomName)}</div></div>
+            <div class="detail-row"><div>Sesi</div><div>:</div><div>${escapeHtml(snapshot.schedule.sessionLabel || '-')}</div></div>
+            <div class="detail-row"><div>Kelas / Rombel</div><div>:</div><div>${escapeHtml(snapshot.schedule.classNames.join(', ') || '-')}</div></div>
+          </div>
+        </div>
+
+        <div class="summary-grid">
+          <div class="summary-box">
+            <div class="summary-label">Peserta Seharusnya</div>
+            <div class="summary-value">${snapshot.counts.expectedParticipants}</div>
+          </div>
+          <div class="summary-box success">
+            <div class="summary-label">Hadir</div>
+            <div class="summary-value">${snapshot.counts.presentParticipants}</div>
+          </div>
+          <div class="summary-box danger">
+            <div class="summary-label">Tidak Hadir</div>
+            <div class="summary-value">${snapshot.counts.absentParticipants}</div>
+          </div>
+        </div>
+
+        <table>
+          <thead>
+            <tr>
+              <th>No</th>
+              <th>Nama Siswa</th>
+              <th>NIS</th>
+              <th>Kelas / Rombel</th>
+              <th>Status</th>
+              <th>Keterangan</th>
+            </tr>
+          </thead>
+          <tbody>
+            ${participantRows}
+          </tbody>
+        </table>
+
+        <div class="footer-row">
+          <div class="footer-note">
+            <div>${escapeHtml(snapshot.verification.note)}</div>
+            <div style="margin-top: 8px;">Dokumen dibuat dari laporan pengawas yang telah dikirim ke Kurikulum.</div>
+            <div style="margin-top: 8px;">Dikirim pada ${escapeHtml(formatDateTime(snapshot.submittedAt))}.</div>
+          </div>
+          <div class="signature-box">
+            <div class="signature-label">Pengawas,</div>
+            <div style="display:flex; justify-content:center;">
+              <img src="${escapeHtml(verificationQrDataUrl)}" alt="QR Verifikasi Daftar Hadir" class="qr" />
+            </div>
+            <div class="signature-name">${escapeHtml(snapshot.proctor.name)}</div>
+            <div class="signature-rule"></div>
+            <div class="signature-note">${escapeHtml(snapshot.proctor.signatureLabel)} Dokumen dikirim ke Kurikulum pada ${escapeHtml(formatDateTime(snapshot.submittedAt))}.</div>
+          </div>
+        </div>
+      </div>
+    </body>
+  </html>`;
+}
+
 export default function ProctorAttendancePrint() {
   const navigate = useNavigate();
   const { reportId } = useParams<{ reportId: string }>();
@@ -83,6 +395,7 @@ export default function ProctorAttendancePrint() {
   const headerFontSize = '12pt';
   const contentFontSize = '11pt';
   const noteFontSize = '8pt';
+  const printIframeRef = useRef<HTMLIFrameElement>(null);
 
   const documentQuery = useQuery({
     queryKey: ['proctor-attendance-document', parsedReportId],
@@ -120,9 +433,22 @@ export default function ProctorAttendancePrint() {
   }
 
   const { snapshot, verificationQrDataUrl } = documentQuery.data;
+  const handlePrint = () => {
+    const iframe = printIframeRef.current;
+    if (!iframe || !iframe.contentWindow) return;
+    const printDoc = iframe.contentWindow.document;
+    const html = buildProctorAttendancePrintHtml({ snapshot, verificationQrDataUrl });
+    printDoc.open();
+    printDoc.write(html);
+    printDoc.close();
+    window.setTimeout(() => {
+      iframe.contentWindow?.focus();
+      iframe.contentWindow?.print();
+    }, 500);
+  };
 
   return (
-    <div className="min-h-screen bg-slate-100 py-6 print:bg-white print:py-0">
+    <div className="proctor-attendance-root min-h-screen bg-slate-100 py-6 print:bg-white print:py-0">
       <style>{`
         @page {
           size: A4 portrait;
@@ -160,7 +486,7 @@ export default function ProctorAttendancePrint() {
         </button>
         <button
           type="button"
-          onClick={() => window.print()}
+          onClick={handlePrint}
           className="inline-flex items-center rounded-lg bg-blue-600 px-4 py-2 text-sm font-semibold text-white hover:bg-blue-700"
         >
           <Printer className="mr-2 h-4 w-4" />
@@ -333,6 +659,12 @@ export default function ProctorAttendancePrint() {
           </div>
         </div>
       </div>
+
+      <iframe
+        ref={printIframeRef}
+        title="print-proctor-attendance-frame"
+        style={{ display: 'none' }}
+      />
     </div>
   );
 }
