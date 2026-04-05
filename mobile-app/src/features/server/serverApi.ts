@@ -130,11 +130,40 @@ export type ServerMonitoringResponse = {
     totalUsers: number;
     totalConnections: number;
     sampledAt: string;
+    graceWindowSeconds: number;
     byRole: {
       role: string;
       count: number;
     }[];
+    byPlatform: {
+      platform: 'WEB' | 'ANDROID' | 'IOS' | 'UNKNOWN';
+      count: number;
+    }[];
   };
+};
+
+export type OnlineUsersResponse = {
+  totalUsers: number;
+  totalConnections: number;
+  sampledAt: string;
+  graceWindowSeconds: number;
+  byRole: {
+    role: string;
+    count: number;
+  }[];
+  byPlatform: {
+    platform: 'WEB' | 'ANDROID' | 'IOS' | 'UNKNOWN';
+    count: number;
+  }[];
+  users: {
+    id: number;
+    username: string;
+    name: string;
+    role: string;
+    platforms: Array<'WEB' | 'ANDROID' | 'IOS' | 'UNKNOWN'>;
+    totalConnections: number;
+    lastSeenAt: string;
+  }[];
 };
 
 export type WebmailResetResponse = {
@@ -196,6 +225,11 @@ export const serverApi = {
 
   async getMonitoring() {
     const response = await apiClient.get<ApiEnvelope<ServerMonitoringResponse>>('/server/monitoring');
+    return response.data.data;
+  },
+
+  async getOnlineUsers() {
+    const response = await apiClient.get<ApiEnvelope<OnlineUsersResponse>>('/server/online-users');
     return response.data.data;
   },
 

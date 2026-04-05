@@ -1,5 +1,5 @@
 import { useEffect } from 'react';
-import { AppState } from 'react-native';
+import { AppState, Platform } from 'react-native';
 import { useQueryClient } from '@tanstack/react-query';
 import { ENV } from '../../config/env';
 import { tokenStorage } from '../../lib/storage/tokenStorage';
@@ -19,7 +19,8 @@ function buildRealtimeWsUrl(token: string) {
   const normalizedBase = String(ENV.API_BASE_URL || '').trim().replace(/\/+$/, '');
   if (!normalizedBase) return null;
   const wsBase = normalizedBase.replace(/^https:/i, 'wss:').replace(/^http:/i, 'ws:');
-  return `${wsBase}/realtime/ws?token=${encodeURIComponent(token)}`;
+  const client = Platform.OS === 'android' ? 'android' : Platform.OS === 'ios' ? 'ios' : 'unknown';
+  return `${wsBase}/realtime/ws?token=${encodeURIComponent(token)}&client=${encodeURIComponent(client)}`;
 }
 
 export function useMobileRealtimeSync(enabled: boolean) {
@@ -102,6 +103,17 @@ export function useMobileRealtimeSync(enabled: boolean) {
           try {
             const payload = JSON.parse(event.data) as RealtimeEventPayload;
             if (payload?.type === 'READY') return;
+            if (payload?.type === 'PRESENCE') {
+              void queryClient.invalidateQueries({
+                queryKey: ['mobile-admin-server-online-users'],
+                refetchType: 'active',
+              });
+              void queryClient.invalidateQueries({
+                queryKey: ['mobile-admin-server-monitoring'],
+                refetchType: 'active',
+              });
+              return;
+            }
           } catch {
             // noop
           }

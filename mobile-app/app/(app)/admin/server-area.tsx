@@ -20,6 +20,7 @@ import { BRAND_COLORS } from '../../../src/config/brand';
 import { useAuth } from '../../../src/features/auth/AuthProvider';
 import {
   serverApi,
+  type OnlineUsersResponse,
   type ServerInfoResponse,
   type ServerMonitoringResponse,
   type StorageOverviewResponse,
@@ -34,7 +35,7 @@ const REFRESH_INTERVAL = {
   info: 20000,
   storage: 20000,
   monitoring: 5000,
-  online: 5000,
+  online: 15000,
   webmail: 15000,
 } as const;
 
@@ -109,6 +110,28 @@ function formatRoleLabel(role: string) {
   if (normalized === 'EXAMINER') return 'Penguji';
   if (normalized === 'EXTRACURRICULAR_TUTOR') return 'Tutor Ekstrakurikuler';
   return normalized || 'User';
+}
+
+function formatPlatformLabel(platform: string) {
+  const normalized = String(platform || '').trim().toUpperCase();
+  if (normalized === 'WEB') return 'Web';
+  if (normalized === 'ANDROID') return 'Android';
+  if (normalized === 'IOS') return 'iOS';
+  return 'Lainnya';
+}
+
+function getPlatformColors(platform: string) {
+  const normalized = String(platform || '').trim().toUpperCase();
+  if (normalized === 'WEB') {
+    return { backgroundColor: '#eff6ff', borderColor: '#bfdbfe', textColor: '#1d4ed8' };
+  }
+  if (normalized === 'ANDROID') {
+    return { backgroundColor: '#ecfdf5', borderColor: '#a7f3d0', textColor: '#047857' };
+  }
+  if (normalized === 'IOS') {
+    return { backgroundColor: '#f5f3ff', borderColor: '#ddd6fe', textColor: '#6d28d9' };
+  }
+  return { backgroundColor: '#f3f4f6', borderColor: '#d1d5db', textColor: '#4b5563' };
 }
 
 function pickOverallStatus(storage: StorageOverviewResponse, monitoring: ServerMonitoringResponse | undefined) {
@@ -193,8 +216,15 @@ export default function AdminServerAreaScreen() {
     queryKey: ['mobile-admin-server-monitoring'],
     queryFn: () => serverApi.getMonitoring(),
     enabled: isAuthenticated && user?.role === 'ADMIN',
-    refetchInterval:
-      activeTab === 'monitoring' ? REFRESH_INTERVAL.monitoring : activeTab === 'online' ? REFRESH_INTERVAL.online : false,
+    refetchInterval: activeTab === 'monitoring' ? REFRESH_INTERVAL.monitoring : false,
+    refetchIntervalInBackground: false,
+  });
+
+  const onlineUsersQuery = useQuery({
+    queryKey: ['mobile-admin-server-online-users'],
+    queryFn: () => serverApi.getOnlineUsers(),
+    enabled: isAuthenticated && user?.role === 'ADMIN' && activeTab === 'online',
+    refetchInterval: activeTab === 'online' ? REFRESH_INTERVAL.online : false,
     refetchIntervalInBackground: false,
   });
 
@@ -214,6 +244,7 @@ export default function AdminServerAreaScreen() {
     (infoQuery.isFetching && !infoQuery.isLoading) ||
     (storageQuery.isFetching && !storageQuery.isLoading) ||
     (monitoringQuery.isFetching && !monitoringQuery.isLoading) ||
+    (onlineUsersQuery.isFetching && !onlineUsersQuery.isLoading) ||
     (webmailResetHistoryQuery.isFetching && !webmailResetHistoryQuery.isLoading);
 
   const status = useMemo(() => {
@@ -999,8 +1030,8 @@ export default function AdminServerAreaScreen() {
     );
   };
 
-  const renderOnlineUsersTab = (monitoring: ServerMonitoringResponse | undefined) => {
-    if (monitoringQuery.isLoading && !monitoring) {
+  const renderOnlineUsersTab = (onlineUsers: OnlineUsersResponse | undefined) => {
+    if (onlineUsersQuery.isLoading && !onlineUsers) {
       return (
         <View style={{ paddingVertical: 24, alignItems: 'center' }}>
           <ActivityIndicator size="small" color="#2563eb" />
@@ -1008,17 +1039,17 @@ export default function AdminServerAreaScreen() {
       );
     }
 
-    if (monitoringQuery.isError) {
+    if (onlineUsersQuery.isError) {
       return (
         <QueryStateView
           type="error"
           message="Gagal memuat data user online."
-          onRetry={() => monitoringQuery.refetch()}
+          onRetry={() => onlineUsersQuery.refetch()}
         />
       );
     }
 
-    if (!monitoring) {
+    if (!onlineUsers) {
       return (
         <View
           style={{
@@ -1034,8 +1065,9 @@ export default function AdminServerAreaScreen() {
       );
     }
 
-    const onlineUsers = monitoring.onlineUsers;
     const roleItems = onlineUsers?.byRole || [];
+    const platformItems = (onlineUsers?.byPlatform || []).filter((item) => item.count > 0);
+    const userItems = onlineUsers?.users || [];
 
     return (
       <View style={{ gap: 12 }}>
@@ -1056,7 +1088,7 @@ export default function AdminServerAreaScreen() {
               {String(onlineUsers.totalUsers || 0)}
             </Text>
             <Text style={{ fontSize: 12, color: '#6b7280', marginTop: 4 }}>
-              User unik yang sedang mengakses aplikasi.
+              User unik yang sedang aktif di web, Android, atau iOS.
             </Text>
           </View>
 
@@ -1094,8 +1126,65 @@ export default function AdminServerAreaScreen() {
             Snapshot Realtime
           </Text>
           <Text style={{ fontSize: 12, color: '#6b7280' }}>
-            Diambil {formatDateTime(onlineUsers.sampledAt)}
+            Diambil {formatDateTime(onlineUsers.sampledAt)} • Grace {onlineUsers.graceWindowSeconds} detik
           </Text>
+        </View>
+
+        <View
+          style={{
+            borderRadius: 12,
+            backgroundColor: '#ffffff',
+            borderWidth: 1,
+            borderColor: '#e5e7eb',
+            padding: 14,
+          }}
+        >
+          <Text style={{ fontSize: 13, fontWeight: '600', color: '#111827', marginBottom: 8 }}>
+            Breakdown Platform
+          </Text>
+          {platformItems.length > 0 ? (
+            <View style={{ gap: 8 }}>
+              {platformItems.map((item) => (
+                <View
+                  key={item.platform}
+                  style={{
+                    borderRadius: 10,
+                    borderWidth: 1,
+                    borderColor: '#e5e7eb',
+                    backgroundColor: '#f9fafb',
+                    paddingHorizontal: 12,
+                    paddingVertical: 10,
+                    flexDirection: 'row',
+                    alignItems: 'center',
+                    justifyContent: 'space-between',
+                  }}
+                >
+                  <View style={{ flex: 1, marginRight: 12 }}>
+                    <Text style={{ fontSize: 13, fontWeight: '600', color: '#111827' }}>
+                      {formatPlatformLabel(item.platform)}
+                    </Text>
+                    <Text style={{ fontSize: 11, color: '#6b7280' }}>{item.platform}</Text>
+                  </View>
+                  <View
+                    style={{
+                      minWidth: 46,
+                      paddingHorizontal: 10,
+                      paddingVertical: 6,
+                      borderRadius: 999,
+                      backgroundColor: '#eff6ff',
+                      borderWidth: 1,
+                      borderColor: '#bfdbfe',
+                      alignItems: 'center',
+                    }}
+                  >
+                    <Text style={{ fontSize: 13, fontWeight: '700', color: '#2563eb' }}>{item.count}</Text>
+                  </View>
+                </View>
+              ))}
+            </View>
+          ) : (
+            <Text style={{ fontSize: 12, color: '#6b7280' }}>Belum ada platform aktif yang terdeteksi.</Text>
+          )}
         </View>
 
         <View
@@ -1160,6 +1249,87 @@ export default function AdminServerAreaScreen() {
         <View
           style={{
             borderRadius: 12,
+            backgroundColor: '#ffffff',
+            borderWidth: 1,
+            borderColor: '#e5e7eb',
+            padding: 14,
+          }}
+        >
+          <Text style={{ fontSize: 13, fontWeight: '600', color: '#111827', marginBottom: 8 }}>
+            Daftar User Aktif
+          </Text>
+          {userItems.length > 0 ? (
+            <View style={{ gap: 8 }}>
+              {userItems.map((item) => (
+                <View
+                  key={item.id}
+                  style={{
+                    borderRadius: 10,
+                    borderWidth: 1,
+                    borderColor: '#e5e7eb',
+                    backgroundColor: '#f9fafb',
+                    paddingHorizontal: 12,
+                    paddingVertical: 10,
+                    gap: 8,
+                  }}
+                >
+                  <View style={{ gap: 4 }}>
+                    <Text style={{ fontSize: 14, fontWeight: '700', color: '#111827' }}>{item.name}</Text>
+                    <Text style={{ fontSize: 12, color: '#6b7280' }}>
+                      @{item.username} • {formatRoleLabel(item.role)}
+                    </Text>
+                    <Text style={{ fontSize: 12, color: '#6b7280' }}>
+                      Terlihat {formatDateTime(item.lastSeenAt)}
+                    </Text>
+                  </View>
+
+                  <View style={{ flexDirection: 'row', flexWrap: 'wrap', gap: 8 }}>
+                    {item.platforms.map((platform) => {
+                      const colors = getPlatformColors(platform);
+                      return (
+                        <View
+                          key={`${item.id}-${platform}`}
+                          style={{
+                            borderRadius: 999,
+                            paddingHorizontal: 10,
+                            paddingVertical: 5,
+                            backgroundColor: colors.backgroundColor,
+                            borderWidth: 1,
+                            borderColor: colors.borderColor,
+                          }}
+                        >
+                          <Text style={{ fontSize: 11, fontWeight: '700', color: colors.textColor }}>
+                            {formatPlatformLabel(platform)}
+                          </Text>
+                        </View>
+                      );
+                    })}
+                    <View
+                      style={{
+                        borderRadius: 999,
+                        paddingHorizontal: 10,
+                        paddingVertical: 5,
+                        backgroundColor: '#ffffff',
+                        borderWidth: 1,
+                        borderColor: '#d1d5db',
+                      }}
+                    >
+                      <Text style={{ fontSize: 11, fontWeight: '600', color: '#4b5563' }}>
+                        {String(item.totalConnections)} koneksi
+                      </Text>
+                    </View>
+                  </View>
+                </View>
+              ))}
+            </View>
+          ) : (
+            <Text style={{ fontSize: 12, color: '#6b7280' }}>Belum ada user yang sedang aktif saat ini.</Text>
+          )}
+        </View>
+
+        <View
+          style={{
+            borderRadius: 12,
             backgroundColor: '#eff6ff',
             borderWidth: 1,
             borderColor: '#bfdbfe',
@@ -1168,8 +1338,11 @@ export default function AdminServerAreaScreen() {
         >
           <Text style={{ fontSize: 13, fontWeight: '600', color: '#1d4ed8', marginBottom: 6 }}>Catatan</Text>
           <Text style={{ fontSize: 12, color: '#1e3a8a', lineHeight: 18 }}>
-            Data ini menghitung user yang memang masih tersambung ke kanal realtime aplikasi. Satu user bisa membuka lebih
-            dari satu koneksi, jadi total koneksi bisa lebih besar dari total user.
+            Total user online dihitung unik per user, walau user yang sama aktif di beberapa platform sekaligus.
+            Breakdown platform menunjukkan user tersebut aktif di mana saja: Web, Android, atau iOS.
+          </Text>
+          <Text style={{ fontSize: 12, color: '#1e3a8a', lineHeight: 18 }}>
+            Grace window singkat dipakai agar user tidak langsung hilang saat reconnect kecil atau pindah jaringan.
           </Text>
         </View>
       </View>
@@ -1410,6 +1583,7 @@ export default function AdminServerAreaScreen() {
   const info = infoQuery.data;
   const storage = storageQuery.data;
   const monitoring = monitoringQuery.data;
+  const onlineUsers = onlineUsersQuery.data;
 
   return (
     <ScrollView
@@ -1422,6 +1596,7 @@ export default function AdminServerAreaScreen() {
             infoQuery.refetch();
             storageQuery.refetch();
             monitoringQuery.refetch();
+            onlineUsersQuery.refetch();
             if (activeTab === 'webmail') {
               webmailResetHistoryQuery.refetch();
             }
@@ -1435,7 +1610,7 @@ export default function AdminServerAreaScreen() {
       {activeTab === 'info' && renderInfoTab(info)}
       {activeTab === 'storage' && renderStorageTab(storage)}
       {activeTab === 'monitoring' && renderMonitoringTab(monitoring)}
-      {activeTab === 'online' && renderOnlineUsersTab(monitoring)}
+      {activeTab === 'online' && renderOnlineUsersTab(onlineUsers)}
       {activeTab === 'webmail' && renderWebmailTab()}
     </ScrollView>
   );

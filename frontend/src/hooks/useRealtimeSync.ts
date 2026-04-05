@@ -50,7 +50,7 @@ type RealtimeMutationPayload = {
 
 function buildRealtimeWsUrl(token: string) {
   const protocol = window.location.protocol === 'https:' ? 'wss:' : 'ws:';
-  return `${protocol}//${window.location.host}/api/realtime/ws?token=${encodeURIComponent(token)}`;
+  return `${protocol}//${window.location.host}/api/realtime/ws?token=${encodeURIComponent(token)}&client=web`;
 }
 
 export function useRealtimeSync(enabled: boolean) {
@@ -210,6 +210,10 @@ export function useRealtimeSync(enabled: boolean) {
           }
         }
         if (payload?.type === 'READY') return;
+        if (payload?.type === 'PRESENCE') {
+          scheduleInvalidate(['admin-server-online-users', 'admin-server-monitoring']);
+          return;
+        }
         if (payload?.type === 'MUTATION' && typeof payload.path === 'string') {
           if (shouldSkipGlobalInvalidate(payload.path)) return;
           const targets = resolveQueryKeyPrefixes(payload.path);

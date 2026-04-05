@@ -138,11 +138,40 @@ type MonitoringResponse = {
     totalUsers: number;
     totalConnections: number;
     sampledAt: string;
+    graceWindowSeconds: number;
     byRole: {
       role: string;
       count: number;
     }[];
+    byPlatform: {
+      platform: 'WEB' | 'ANDROID' | 'IOS' | 'UNKNOWN';
+      count: number;
+    }[];
   };
+};
+
+type OnlineUsersResponse = {
+  totalUsers: number;
+  totalConnections: number;
+  sampledAt: string;
+  graceWindowSeconds: number;
+  byRole: {
+    role: string;
+    count: number;
+  }[];
+  byPlatform: {
+    platform: 'WEB' | 'ANDROID' | 'IOS' | 'UNKNOWN';
+    count: number;
+  }[];
+  users: {
+    id: number;
+    username: string;
+    name: string;
+    role: string;
+    platforms: Array<'WEB' | 'ANDROID' | 'IOS' | 'UNKNOWN'>;
+    totalConnections: number;
+    lastSeenAt: string;
+  }[];
 };
 
 type WebmailResetResponse = {
@@ -201,7 +230,7 @@ const REFRESH_INTERVAL = {
   info: 20000,
   storage: 20000,
   monitoring: 5000,
-  online: 5000,
+  online: 15000,
   webmail: 15000,
 } as const;
 
@@ -261,6 +290,22 @@ const formatRoleLabel = (role: string) => {
   if (normalized === 'EXAMINER') return 'Penguji';
   if (normalized === 'EXTRACURRICULAR_TUTOR') return 'Tutor Ekstrakurikuler';
   return normalized || 'User';
+};
+
+const formatPlatformLabel = (platform: string) => {
+  const normalized = String(platform || '').trim().toUpperCase();
+  if (normalized === 'WEB') return 'Web';
+  if (normalized === 'ANDROID') return 'Android';
+  if (normalized === 'IOS') return 'iOS';
+  return 'Lainnya';
+};
+
+const platformBadgeClass = (platform: string) => {
+  const normalized = String(platform || '').trim().toUpperCase();
+  if (normalized === 'WEB') return 'bg-blue-50 text-blue-700 border-blue-200';
+  if (normalized === 'ANDROID') return 'bg-emerald-50 text-emerald-700 border-emerald-200';
+  if (normalized === 'IOS') return 'bg-violet-50 text-violet-700 border-violet-200';
+  return 'bg-gray-100 text-gray-700 border-gray-200';
 };
 
 type HealthStatus = 'OK' | 'WARNING' | 'DANGER';
@@ -341,9 +386,20 @@ const ServerAreaPage: React.FC = () => {
       const response = await api.get<ApiEnvelope<MonitoringResponse>>('/server/monitoring');
       return response.data.data;
     },
-    enabled: activeTab === 'monitoring' || activeTab === 'online',
-    refetchInterval:
-      activeTab === 'monitoring' ? REFRESH_INTERVAL.monitoring : activeTab === 'online' ? REFRESH_INTERVAL.online : false,
+    enabled: activeTab === 'monitoring',
+    refetchInterval: activeTab === 'monitoring' ? REFRESH_INTERVAL.monitoring : false,
+    refetchIntervalInBackground: false,
+    refetchOnWindowFocus: false,
+  });
+
+  const onlineUsersQuery = useQuery({
+    queryKey: ['admin-server-online-users'],
+    queryFn: async () => {
+      const response = await api.get<ApiEnvelope<OnlineUsersResponse>>('/server/online-users');
+      return response.data.data;
+    },
+    enabled: activeTab === 'online',
+    refetchInterval: activeTab === 'online' ? REFRESH_INTERVAL.online : false,
     refetchIntervalInBackground: false,
     refetchOnWindowFocus: false,
   });
@@ -977,16 +1033,19 @@ const ServerAreaPage: React.FC = () => {
   };
 
   const renderOnlineUsersTab = () => {
-    if (monitoringQuery.isLoading) {
+    if (onlineUsersQuery.isLoading) {
       return <p className="text-sm text-gray-500">Memuat data user online...</p>;
     }
-    if (monitoringQuery.error) {
+    if (onlineUsersQuery.error) {
       return <p className="text-sm text-red-600">Gagal memuat data user online.</p>;
     }
-    if (!monitoringQuery.data) return null;
+    if (!onlineUsersQuery.data) return null;
 
-    const onlineUsers = monitoringQuery.data.onlineUsers;
+    const onlineUsers = onlineUsersQuery.data;
     const roleItems = onlineUsers.byRole || [];
+    const platformItems = onlineUsers.byPlatform || [];
+    const visiblePlatformItems = platformItems.filter((item) => item.count > 0);
+    const userItems = onlineUsers.users || [];
 
     return (
       <div className="space-y-6">
@@ -999,7 +1058,7 @@ const ServerAreaPage: React.FC = () => {
               </span>
             </div>
             <p className="text-3xl font-bold text-gray-900">{onlineUsers.totalUsers.toLocaleString('id-ID')}</p>
-            <p className="mt-1 text-xs text-gray-500">Jumlah user unik yang sedang mengakses aplikasi.</p>
+            <p className="mt-1 text-xs text-gray-500">Jumlah user unik yang sedang aktif di web, Android, atau iOS.</p>
           </div>
 
           <div className="bg-white rounded-xl border border-gray-200 p-4">
@@ -1021,8 +1080,43 @@ const ServerAreaPage: React.FC = () => {
             <p className="text-base font-semibold text-gray-900">
               {new Date(onlineUsers.sampledAt).toLocaleTimeString('id-ID')}
             </p>
-            <p className="mt-1 text-xs text-gray-500">Data diambil langsung dari koneksi aktif websocket.</p>
+            <p className="mt-1 text-xs text-gray-500">
+              Realtime dengan grace window {onlineUsers.graceWindowSeconds} detik agar tidak flicker saat reconnect singkat.
+            </p>
           </div>
+        </div>
+
+        <div className="bg-white rounded-xl border border-gray-200 p-4">
+          <div className="flex items-center justify-between mb-3">
+            <div>
+              <p className="text-xs font-semibold text-gray-500 tracking-wide uppercase">Breakdown Platform</p>
+              <p className="text-sm font-medium text-gray-900 mt-0.5">User unik aktif per platform</p>
+            </div>
+          </div>
+
+          {visiblePlatformItems.length > 0 ? (
+            <div className="grid grid-cols-1 md:grid-cols-3 gap-3">
+              {visiblePlatformItems.map((item) => (
+                <div
+                  key={item.platform}
+                  className="rounded-xl border border-gray-100 px-4 py-3 flex items-center justify-between bg-gray-50/70"
+                >
+                  <div>
+                    <p className="text-sm font-semibold text-gray-900">{formatPlatformLabel(item.platform)}</p>
+                    <p className="text-[11px] text-gray-500">{item.platform}</p>
+                  </div>
+                  <div className="text-right">
+                    <p className="text-2xl font-bold text-blue-700">{item.count.toLocaleString('id-ID')}</p>
+                    <p className="text-[11px] text-gray-500">user</p>
+                  </div>
+                </div>
+              ))}
+            </div>
+          ) : (
+            <div className="rounded-xl border border-dashed border-gray-200 px-4 py-6 text-sm text-gray-500">
+              Belum ada platform aktif yang terdeteksi saat ini.
+            </div>
+          )}
         </div>
 
         <div className="bg-white rounded-xl border border-gray-200 p-4">
@@ -1058,14 +1152,63 @@ const ServerAreaPage: React.FC = () => {
           )}
         </div>
 
+        <div className="bg-white rounded-xl border border-gray-200 p-4">
+          <div className="flex items-center justify-between mb-3">
+            <div>
+              <p className="text-xs font-semibold text-gray-500 tracking-wide uppercase">Daftar User Aktif</p>
+              <p className="text-sm font-medium text-gray-900 mt-0.5">Satu user dihitung satu kali walau aktif di banyak platform</p>
+            </div>
+          </div>
+
+          {userItems.length > 0 ? (
+            <div className="space-y-3">
+              {userItems.map((item) => (
+                <div
+                  key={item.id}
+                  className="rounded-xl border border-gray-100 px-4 py-3 bg-gray-50/70 flex flex-col gap-2 lg:flex-row lg:items-center lg:justify-between"
+                >
+                  <div>
+                    <p className="text-sm font-semibold text-gray-900">{item.name}</p>
+                    <div className="flex flex-wrap items-center gap-x-2 gap-y-1 mt-1 text-xs text-gray-500">
+                      <span>@{item.username}</span>
+                      <span>•</span>
+                      <span>{formatRoleLabel(item.role)}</span>
+                      <span>•</span>
+                      <span>Terlihat {new Date(item.lastSeenAt).toLocaleTimeString('id-ID')}</span>
+                    </div>
+                  </div>
+
+                  <div className="flex flex-wrap items-center gap-2">
+                    {item.platforms.map((platform) => (
+                      <span
+                        key={`${item.id}-${platform}`}
+                        className={`inline-flex items-center rounded-full border px-2.5 py-1 text-xs font-semibold ${platformBadgeClass(platform)}`}
+                      >
+                        {formatPlatformLabel(platform)}
+                      </span>
+                    ))}
+                    <span className="inline-flex items-center rounded-full border border-gray-200 bg-white px-2.5 py-1 text-xs font-medium text-gray-600">
+                      {item.totalConnections.toLocaleString('id-ID')} koneksi
+                    </span>
+                  </div>
+                </div>
+              ))}
+            </div>
+          ) : (
+            <div className="rounded-xl border border-dashed border-gray-200 px-4 py-6 text-sm text-gray-500">
+              Belum ada user yang sedang aktif di aplikasi saat ini.
+            </div>
+          )}
+        </div>
+
         <div className="bg-blue-50 border border-blue-100 text-xs text-blue-800 rounded-xl p-4 flex gap-3">
           <Network size={18} className="flex-shrink-0 mt-0.5" />
           <div className="space-y-1">
             <p className="font-semibold text-sm">Catatan</p>
             <ul className="list-disc list-inside space-y-0.5">
-              <li>Angka ini menghitung user yang memang masih tersambung ke kanal realtime aplikasi.</li>
-              <li>Satu user bisa membuka lebih dari satu koneksi, jadi total koneksi bisa lebih besar dari total user.</li>
-              <li>Jika user menutup aplikasi atau koneksinya putus, angka akan turun otomatis pada refresh berikutnya.</li>
+              <li>Total user online dihitung unik per user, meski user yang sama aktif di beberapa device sekaligus.</li>
+              <li>Breakdown platform menunjukkan user tersebut aktif di mana saja: Web, Android, atau iOS.</li>
+              <li>Grace window singkat dipakai agar user tidak langsung hilang saat reconnect kecil atau pindah jaringan.</li>
             </ul>
           </div>
         </div>

@@ -4,6 +4,7 @@ import { roleMiddleware } from '../middleware/role';
 import {
   getWebmailResetHistory,
   getMonitoringMetrics,
+  getOnlineUsers,
   getServerInfo,
   getStorageOverview,
   resetWebmailMailboxPassword,
@@ -17,6 +18,7 @@ router.use(roleMiddleware(['ADMIN']));
 router.get('/info', getServerInfo);
 router.get('/storage', getStorageOverview);
 router.get('/monitoring', getMonitoringMetrics);
+router.get('/online-users', getOnlineUsers);
 router.get('/webmail/reset-history', getWebmailResetHistory);
 router.post('/webmail/reset-mailbox-password', resetWebmailMailboxPassword);
 

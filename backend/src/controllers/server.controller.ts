@@ -9,7 +9,11 @@ import { ApiError, ApiResponse, asyncHandler } from '../utils/api';
 import { AuthRequest } from '../middleware/auth';
 import prisma from '../utils/prisma';
 import { writeAuditLog } from '../utils/auditLog';
-import { getRealtimePresenceSnapshot } from '../realtime/realtimeGateway';
+import {
+  getRealtimePresenceSnapshot,
+  type RealtimePresencePlatform,
+  type RealtimePresenceSnapshot,
+} from '../realtime/realtimeGateway';
 
 const execAsync = promisify(exec);
 
@@ -42,8 +46,105 @@ const WEBMAIL_PASSWORD_UPPERCASE = 'ABCDEFGHJKLMNPQRSTUVWXYZ';
 const WEBMAIL_PASSWORD_LOWERCASE = 'abcdefghijkmnpqrstuvwxyz';
 const WEBMAIL_PASSWORD_NUMBERS = '23456789';
 const WEBMAIL_PASSWORD_SYMBOLS = '!@#$%^&*()-_=+';
+const ONLINE_USER_IDENTITY_CACHE_TTL_MS = 60_000;
+
+type OnlineUserIdentity = {
+  id: number;
+  username: string;
+  name: string;
+  role: string;
+};
+
+type OnlineUserDetail = {
+  id: number;
+  username: string;
+  name: string;
+  role: string;
+  platforms: RealtimePresencePlatform[];
+  totalConnections: number;
+  lastSeenAt: string;
+};
+
+type OnlineUsersResponse = Omit<RealtimePresenceSnapshot, 'users'> & {
+  users: OnlineUserDetail[];
+};
+
+const onlineUserIdentityCache = new Map<number, { expiresAtMs: number; user: OnlineUserIdentity | null }>();
 
 const toMaybeString = (value: unknown): string => String(value ?? '').trim();
+
+const buildOnlineUsersResponse = async (snapshot: RealtimePresenceSnapshot): Promise<OnlineUsersResponse> => {
+  const userIds = snapshot.users.map((item) => item.userId);
+  const nowMs = Date.now();
+  const identities = new Map<number, OnlineUserIdentity | null>();
+  const missingUserIds: number[] = [];
+
+  userIds.forEach((userId) => {
+    const cached = onlineUserIdentityCache.get(userId);
+    if (cached && cached.expiresAtMs > nowMs) {
+      identities.set(userId, cached.user);
+      return;
+    }
+    missingUserIds.push(userId);
+  });
+
+  if (missingUserIds.length > 0) {
+    const rows = await prisma.user.findMany({
+      where: { id: { in: missingUserIds } },
+      select: {
+        id: true,
+        username: true,
+        name: true,
+        role: true,
+      },
+    });
+    const fetched = new Map<number, OnlineUserIdentity>();
+    rows.forEach((row) => {
+      const value = {
+        id: row.id,
+        username: row.username,
+        name: row.name,
+        role: row.role,
+      };
+      fetched.set(row.id, value);
+      identities.set(row.id, value);
+      onlineUserIdentityCache.set(row.id, {
+        expiresAtMs: nowMs + ONLINE_USER_IDENTITY_CACHE_TTL_MS,
+        user: value,
+      });
+    });
+
+    missingUserIds.forEach((userId) => {
+      if (fetched.has(userId)) return;
+      identities.set(userId, null);
+      onlineUserIdentityCache.set(userId, {
+        expiresAtMs: nowMs + Math.min(ONLINE_USER_IDENTITY_CACHE_TTL_MS, 15_000),
+        user: null,
+      });
+    });
+  }
+
+  return {
+    totalUsers: snapshot.totalUsers,
+    totalConnections: snapshot.totalConnections,
+    byRole: snapshot.byRole,
+    byPlatform: snapshot.byPlatform,
+    sampledAt: snapshot.sampledAt,
+    graceWindowSeconds: snapshot.graceWindowSeconds,
+    users: snapshot.users.map((item) => {
+      const identity = identities.get(item.userId);
+      return {
+        id: item.userId,
+        username: identity?.username || `user-${item.userId}`,
+        name: identity?.name || `User ${item.userId}`,
+        role: identity?.role || item.role,
+        platforms: item.platforms,
+        totalConnections: item.totalConnections,
+        lastSeenAt: item.lastSeenAt,
+      };
+    }),
+  };
+};
 
 const isValidEmail = (value: string): boolean => /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(value);
 
@@ -720,6 +821,8 @@ export const getMonitoringMetrics = asyncHandler(async (req: AuthRequest, res: R
     }
   }
 
+  const realtimePresence = await getRealtimePresenceSnapshot();
+
   const data = {
     cpu: {
       loadAvg1: loadAvg[0],
@@ -751,7 +854,14 @@ export const getMonitoringMetrics = asyncHandler(async (req: AuthRequest, res: R
           status: bandwidthStatus,
         }
       : null,
-    onlineUsers: getRealtimePresenceSnapshot(),
+    onlineUsers: {
+      totalUsers: realtimePresence.totalUsers,
+      totalConnections: realtimePresence.totalConnections,
+      sampledAt: realtimePresence.sampledAt,
+      byRole: realtimePresence.byRole,
+      byPlatform: realtimePresence.byPlatform,
+      graceWindowSeconds: realtimePresence.graceWindowSeconds,
+    },
   };
   if (data.bandwidth) {
     monitoringMetricsCache = { atMs: Date.now(), data };
@@ -760,6 +870,17 @@ export const getMonitoringMetrics = asyncHandler(async (req: AuthRequest, res: R
   }
 
   const response = new ApiResponse(200, data, 'Monitoring server berhasil diambil');
+  res.status(response.statusCode).json(response);
+});
+
+export const getOnlineUsers = asyncHandler(async (req: AuthRequest, res: Response) => {
+  if (!req.user || req.user.role !== 'ADMIN') {
+    throw new ApiError(403, 'Dilarang: Hak akses tidak mencukupi');
+  }
+
+  const snapshot = await getRealtimePresenceSnapshot();
+  const data = await buildOnlineUsersResponse(snapshot);
+  const response = new ApiResponse(200, data, 'Data user online berhasil diambil');
   res.status(response.statusCode).json(response);
 });
 
