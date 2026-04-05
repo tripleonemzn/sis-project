@@ -3,15 +3,10 @@ import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { Box, Loader2, Plus, Search, Warehouse, X } from 'lucide-react';
 import toast from 'react-hot-toast';
 import { useLocation, useSearchParams } from 'react-router-dom';
-import { academicYearService } from '../../services/academicYear.service';
 import { tutorService } from '../../services/tutor.service';
 import { isOsisExtracurricularCategory, type ExtracurricularCategory } from '../../features/extracurricular/category';
-
-interface AcademicYear {
-  id: number;
-  name: string;
-  isActive: boolean;
-}
+import { useActiveAcademicYear } from '../../hooks/useActiveAcademicYear';
+import { ActiveAcademicYearNotice } from '../../components/ActiveAcademicYearNotice';
 
 interface InventoryItem {
   id: number;
@@ -60,7 +55,6 @@ export const TutorInventoryPage = () => {
   const scopeLabelLower = selectedScope === 'osis' ? 'OSIS' : 'ekskul';
   const scopeTitle = selectedScope === 'osis' ? 'Kelola Inventaris OSIS' : 'Kelola Inventaris';
   const [search, setSearch] = useState('');
-  const [selectedAcademicYearId, setSelectedAcademicYearId] = useState<number | null>(null);
   const [isCreateModalOpen, setIsCreateModalOpen] = useState(false);
   const [targetAssignmentId, setTargetAssignmentId] = useState<number | null>(null);
   const [itemName, setItemName] = useState('');
@@ -70,25 +64,11 @@ export const TutorInventoryPage = () => {
   const [minorDamageQty, setMinorDamageQty] = useState(0);
   const [majorDamageQty, setMajorDamageQty] = useState(0);
   const queryClient = useQueryClient();
+  const { data: activeAcademicYear, isLoading: isLoadingActiveAcademicYear } = useActiveAcademicYear();
 
-  const { data: academicYearData } = useQuery({
-    queryKey: ['academic-years', 'tutor-inventory'],
-    queryFn: () => academicYearService.list({ page: 1, limit: 100 }),
-  });
+  const effectiveYearId = Number(activeAcademicYear?.id || activeAcademicYear?.academicYearId || 0) || undefined;
 
-  const academicYears: AcademicYear[] = useMemo(
-    () => (academicYearData?.data?.academicYears || academicYearData?.academicYears || []) as AcademicYear[],
-    [academicYearData],
-  );
-
-  const activeYear = useMemo(
-    () => academicYears.find((row) => row.isActive) || academicYears[0] || null,
-    [academicYears],
-  );
-
-  const effectiveYearId = selectedAcademicYearId || activeYear?.id || undefined;
-
-  const { data, isLoading, isFetching, refetch } = useQuery({
+  const { data, isLoading } = useQuery({
     queryKey: ['tutor-inventory-overview', effectiveYearId],
     queryFn: () => tutorService.getInventoryOverview(effectiveYearId),
     enabled: !!effectiveYearId,
@@ -196,22 +176,19 @@ export const TutorInventoryPage = () => {
         </button>
       </div>
 
-      <div className="bg-white rounded-xl border border-gray-200 shadow-sm p-4 flex flex-col lg:flex-row lg:items-center gap-3">
-        <div className="flex items-center gap-2">
-          <span className="text-sm font-medium text-gray-700">Tahun Ajaran</span>
-          <select
-            className="px-3 py-2 border border-gray-300 rounded-lg bg-white text-sm"
-            value={effectiveYearId || ''}
-            onChange={(e) => setSelectedAcademicYearId(Number(e.target.value))}
-          >
-            {academicYears.map((year) => (
-              <option key={year.id} value={year.id}>
-                {year.name} {year.isActive ? '(Aktif)' : ''}
-              </option>
-            ))}
-          </select>
-        </div>
+      <ActiveAcademicYearNotice
+        name={activeAcademicYear?.name}
+        semester={activeAcademicYear?.semester}
+        helperText="Data inventaris pembina di halaman ini otomatis mengikuti tahun ajaran aktif yang tampil di header aplikasi."
+      />
 
+      {!isLoadingActiveAcademicYear && !effectiveYearId ? (
+        <div className="rounded-xl border border-amber-200 bg-amber-50 px-4 py-3 text-sm text-amber-800">
+          Tahun ajaran aktif belum tersedia. Aktifkan tahun ajaran terlebih dahulu agar inventaris pembina tidak ambigu.
+        </div>
+      ) : null}
+
+      <div className="bg-white rounded-xl border border-gray-200 shadow-sm p-4 flex flex-col lg:flex-row lg:items-center gap-3">
         <div className="relative flex-1 max-w-md">
           <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-gray-400" />
           <input
@@ -221,14 +198,6 @@ export const TutorInventoryPage = () => {
             className="w-full pl-9 pr-3 py-2 border border-gray-300 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-blue-500/60"
           />
         </div>
-
-        <button
-          type="button"
-          onClick={() => refetch()}
-          className="inline-flex items-center justify-center px-3 py-2 rounded-lg border border-gray-300 text-sm font-medium text-gray-700 hover:bg-gray-50"
-        >
-          {isFetching ? <Loader2 className="w-4 h-4 animate-spin" /> : 'Muat Ulang'}
-        </button>
       </div>
 
       <div className="space-y-4">

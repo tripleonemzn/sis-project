@@ -4,6 +4,7 @@ import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { Pressable, RefreshControl, ScrollView, Text, TextInput, View } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { AppLoadingScreen } from '../../../src/components/AppLoadingScreen';
+import { MobileActiveAcademicYearNotice } from '../../../src/components/MobileActiveAcademicYearNotice';
 import { QueryStateView } from '../../../src/components/QueryStateView';
 import { BRAND_COLORS } from '../../../src/config/brand';
 import { useAuth } from '../../../src/features/auth/AuthProvider';
@@ -35,7 +36,6 @@ export default function TutorInventoryScreen() {
   }, [params.assignmentId]);
 
   const [search, setSearch] = useState('');
-  const [selectedYearId, setSelectedYearId] = useState<number | null>(null);
   const [formVisible, setFormVisible] = useState(false);
   const [targetAssignmentId, setTargetAssignmentId] = useState<number | null>(null);
   const [itemName, setItemName] = useState('');
@@ -45,16 +45,14 @@ export default function TutorInventoryScreen() {
   const [minorDamageQty, setMinorDamageQty] = useState('0');
   const [majorDamageQty, setMajorDamageQty] = useState('0');
 
-  const yearsQuery = useQuery({
-    queryKey: ['mobile-tutor-inventory-years'],
+  const activeYearQuery = useQuery({
+    queryKey: ['mobile-tutor-inventory-active-year'],
     enabled: isAuthenticated && hasTutorWorkspaceAccess,
     staleTime: 5 * 60 * 1000,
-    queryFn: () => adminApi.listAcademicYears({ page: 1, limit: 100 }),
+    queryFn: () => adminApi.getActiveAcademicYear(),
   });
 
-  const years = useMemo(() => yearsQuery.data?.items || [], [yearsQuery.data?.items]);
-  const activeYear = useMemo(() => years.find((year) => year.isActive) || years[0] || null, [years]);
-  const effectiveYearId = selectedYearId || activeYear?.id || undefined;
+  const effectiveYearId = Number(activeYearQuery.data?.id || 0) || undefined;
 
   const inventoryQuery = useQuery({
     queryKey: ['mobile-tutor-inventory-overview', effectiveYearId],
@@ -155,9 +153,9 @@ export default function TutorInventoryScreen() {
       contentContainerStyle={pagePadding}
       refreshControl={
         <RefreshControl
-          refreshing={yearsQuery.isFetching || inventoryQuery.isFetching}
+          refreshing={activeYearQuery.isFetching || inventoryQuery.isFetching}
           onRefresh={() => {
-            void yearsQuery.refetch();
+            void activeYearQuery.refetch();
             void inventoryQuery.refetch();
           }}
         />
@@ -172,6 +170,12 @@ export default function TutorInventoryScreen() {
           : 'Data inventaris ini terhubung dari modul Sarpras (Fasilitas Ekskul).'}
       </Text>
 
+      <MobileActiveAcademicYearNotice
+        name={activeYearQuery.data?.name}
+        semester={activeYearQuery.data?.semester}
+        helperText="Data inventaris pembina di mobile otomatis mengikuti tahun ajaran aktif yang tampil di header aplikasi."
+      />
+
       <View
         style={{
           backgroundColor: '#fff',
@@ -183,41 +187,6 @@ export default function TutorInventoryScreen() {
           gap: 10,
         }}
       >
-        <Text style={{ color: BRAND_COLORS.textDark, fontWeight: '700' }}>Tahun Ajaran</Text>
-        {yearsQuery.isLoading ? (
-          <QueryStateView type="loading" message="Memuat tahun ajaran..." />
-        ) : years.length > 0 ? (
-          <View style={{ flexDirection: 'row', flexWrap: 'wrap', marginHorizontal: -4 }}>
-            {years.map((year) => {
-              const selected = Number(effectiveYearId) === Number(year.id);
-              return (
-                <View key={year.id} style={{ width: '50%', paddingHorizontal: 4, marginBottom: 8 }}>
-                  <Pressable
-                    onPress={() => setSelectedYearId(year.id)}
-                    style={{
-                      borderWidth: 1,
-                      borderColor: selected ? BRAND_COLORS.blue : '#d6e2f7',
-                      backgroundColor: selected ? '#e9f1ff' : '#fff',
-                      borderRadius: 10,
-                      paddingVertical: 8,
-                      paddingHorizontal: 10,
-                    }}
-                  >
-                    <Text style={{ color: selected ? BRAND_COLORS.navy : BRAND_COLORS.textDark, fontWeight: '700' }}>
-                      {year.name}
-                    </Text>
-                    <Text style={{ color: BRAND_COLORS.textMuted, fontSize: 11, marginTop: 2 }}>
-                      {year.isActive ? 'Aktif' : 'Arsip'}
-                    </Text>
-                  </Pressable>
-                </View>
-              );
-            })}
-          </View>
-        ) : (
-          <Text style={{ color: BRAND_COLORS.textMuted }}>Data tahun ajaran belum tersedia.</Text>
-        )}
-
         <TextInput
           value={search}
           onChangeText={setSearch}

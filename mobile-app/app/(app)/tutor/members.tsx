@@ -4,6 +4,7 @@ import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { Pressable, RefreshControl, ScrollView, Text, TextInput, View } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { AppLoadingScreen } from '../../../src/components/AppLoadingScreen';
+import { MobileActiveAcademicYearNotice } from '../../../src/components/MobileActiveAcademicYearNotice';
 import { QueryStateView } from '../../../src/components/QueryStateView';
 import { useAuth } from '../../../src/features/auth/AuthProvider';
 import { adminApi } from '../../../src/features/admin/adminApi';
@@ -291,6 +292,12 @@ export default function TutorMembersScreen() {
       <Text style={{ color: BRAND_COLORS.textMuted, marginBottom: 12 }}>
         Input nilai ekstrakurikuler sesuai Program Ujian aktif dan semester.
       </Text>
+
+      <MobileActiveAcademicYearNotice
+        name={activeYearQuery.data?.name}
+        semester={activeYearQuery.data?.semester}
+        helperText="Operasional anggota dan nilai pembina di mobile otomatis mengikuti tahun ajaran aktif yang tampil di header aplikasi."
+      />
 
       <View
         style={{

@@ -6,7 +6,6 @@ import {
   type ExtracurricularAttendanceStatus,
   type TutorAssignmentSummary,
 } from '../../services/tutor.service';
-import { academicYearService } from '../../services/academicYear.service';
 import { examService, type ExamProgram } from '../../services/exam.service';
 import { Trophy, Save, Loader2, Filter, ClipboardCheck } from 'lucide-react';
 import toast from 'react-hot-toast';
@@ -15,6 +14,8 @@ import {
   getExtracurricularTutorAssignments,
   getOsisTutorAssignments,
 } from '../../features/tutor/tutorAccess';
+import { useActiveAcademicYear } from '../../hooks/useActiveAcademicYear';
+import { ActiveAcademicYearNotice } from '../../components/ActiveAcademicYearNotice';
 
 type Semester = 'ODD' | 'EVEN';
 
@@ -193,44 +194,14 @@ export const TutorMembersPage = () => {
   const [semester, setSemester] = useState<Semester>('ODD');
   const [reportType, setReportType] = useState('');
   const [attendanceWeekKey, setAttendanceWeekKey] = useState(getCurrentWeekKey());
-  const [selectedAcademicYearIdState, setSelectedAcademicYearIdState] = useState<number | null>(null);
   const [selectedAssignmentIdState, setSelectedAssignmentIdState] = useState<number | null>(null);
   const [attendanceSessionsPerWeekDraft, setAttendanceSessionsPerWeekDraft] = useState(1);
   const [attendanceEdits, setAttendanceEdits] = useState<Record<number, Record<number, ExtracurricularAttendanceStatus | ''>>>({});
-
-  const { data: academicYearData } = useQuery({
-    queryKey: ['academic-years', 'active'],
-    queryFn: () => academicYearService.list({ page: 1, limit: 100 }),
-  });
-
-  const academicYears = useMemo<AcademicYear[]>(
-    () =>
-      (academicYearData?.data?.academicYears || academicYearData?.academicYears || []) as AcademicYear[],
-    [academicYearData],
-  );
-  
-  const activeAcademicYear = useMemo(() => {
-    return academicYears.find((ay) => ay.isActive) || academicYears[0];
-  }, [academicYears]);
-  const requestedAcademicYearId = Number(searchParams.get('academicYearId') || 0);
-  const selectedAcademicYearId = useMemo(() => {
-    if (
-      selectedAcademicYearIdState &&
-      academicYears.some((year) => Number(year.id) === Number(selectedAcademicYearIdState))
-    ) {
-      return selectedAcademicYearIdState;
-    }
-    if (
-      requestedAcademicYearId &&
-      academicYears.some((year) => Number(year.id) === Number(requestedAcademicYearId))
-    ) {
-      return requestedAcademicYearId;
-    }
-    return activeAcademicYear?.id ?? null;
-  }, [academicYears, activeAcademicYear?.id, requestedAcademicYearId, selectedAcademicYearIdState]);
+  const { data: activeAcademicYear, isLoading: isLoadingActiveAcademicYear } = useActiveAcademicYear();
+  const selectedAcademicYearId = Number(activeAcademicYear?.id || activeAcademicYear?.academicYearId || 0) || null;
 
   // Fetch assignments for the selected academic year to populate Ekskul dropdown
-  const { data: assignmentsData } = useQuery({
+  const { data: assignmentsData, isLoading: isLoadingAssignments } = useQuery({
     queryKey: ['tutor-assignments', selectedAcademicYearId],
     queryFn: () => tutorService.getAssignments(selectedAcademicYearId!),
     enabled: !!selectedAcademicYearId,
@@ -278,8 +249,8 @@ export const TutorMembersPage = () => {
     const nextParams = new URLSearchParams(searchParams);
     let shouldReplace = false;
 
-    if (String(selectedAcademicYearId) !== String(searchParams.get('academicYearId') || '')) {
-      nextParams.set('academicYearId', String(selectedAcademicYearId));
+    if (nextParams.has('academicYearId')) {
+      nextParams.delete('academicYearId');
       shouldReplace = true;
     }
 
@@ -735,27 +706,8 @@ export const TutorMembersPage = () => {
             {selectedScope === 'osis' ? 'Kelola anggota dan nilai OSIS' : 'Kelola nilai dan anggota'}
           </p>
         </div>
-        
-        <div className="flex flex-wrap gap-3">
-          <div className="flex items-center gap-2 bg-white p-2 rounded-lg border border-gray-200 shadow-sm">
-            <Filter size={16} className="text-gray-500" />
-            <select
-              value={selectedAcademicYearId || ''}
-              onChange={(e) => {
-                const nextYearId = Number(e.target.value || 0) || null;
-                setSelectedAcademicYearIdState(nextYearId);
-                setSelectedAssignmentIdState(null);
-              }}
-              className="bg-transparent border-0 text-sm font-medium text-gray-700 focus:ring-0 cursor-pointer"
-            >
-              {academicYears.map((year) => (
-                <option key={year.id} value={year.id}>
-                  {year.name} {year.isActive ? '(Aktif)' : ''}
-                </option>
-              ))}
-            </select>
-          </div>
 
+        <div className="flex flex-wrap gap-3">
           <div className="flex items-center gap-2 bg-white p-2 rounded-lg border border-gray-200 shadow-sm">
             <Filter size={16} className="text-gray-500" />
             <select
@@ -811,6 +763,18 @@ export const TutorMembersPage = () => {
         </div>
       </div>
 
+      <ActiveAcademicYearNotice
+        name={activeAcademicYear?.name}
+        semester={activeAcademicYear?.semester}
+        helperText="Operasional anggota, nilai, dan absensi pembina di halaman ini otomatis mengikuti tahun ajaran aktif yang tampil di header aplikasi."
+      />
+
+      {!isLoadingActiveAcademicYear && !selectedAcademicYearId ? (
+        <div className="rounded-xl border border-amber-200 bg-amber-50 px-4 py-3 text-sm text-amber-800">
+          Tahun ajaran aktif belum tersedia. Aktifkan tahun ajaran terlebih dahulu agar operasional pembina tidak ambigu.
+        </div>
+      ) : null}
+
       <div className="bg-white rounded-xl shadow-sm border border-gray-100 overflow-hidden">
         <div className="p-6 border-b border-gray-100 flex items-center justify-between">
           <div className="flex items-center gap-3">
@@ -822,7 +786,7 @@ export const TutorMembersPage = () => {
                 {selectedReportProgram?.label || selectedReportBaseType || '-'}
               </p>
               <p className="text-xs text-gray-400">
-                Tahun ajaran: {academicYears.find((year) => year.id === selectedAcademicYearId)?.name || '-'}
+                Tahun ajaran: {activeAcademicYear?.name || '-'}
               </p>
             </div>
           </div>
@@ -850,9 +814,9 @@ export const TutorMembersPage = () => {
           </div>
         </div>
 
-        {visibleAssignments.length === 0 ? (
+        {!isLoadingAssignments && visibleAssignments.length === 0 ? (
           <div className="px-6 py-5 border-b border-gray-100 bg-amber-50/60 text-sm text-amber-800">
-            Belum ada assignment {selectedScope === 'osis' ? 'OSIS' : 'pembina'} untuk tahun ajaran yang dipilih.
+            Belum ada assignment {selectedScope === 'osis' ? 'OSIS' : 'pembina'} untuk tahun ajaran aktif.
           </div>
         ) : null}
 

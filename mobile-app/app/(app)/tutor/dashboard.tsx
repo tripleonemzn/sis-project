@@ -4,6 +4,7 @@ import { useQuery } from '@tanstack/react-query';
 import { Pressable, RefreshControl, ScrollView, Text, View } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { AppLoadingScreen } from '../../../src/components/AppLoadingScreen';
+import { MobileActiveAcademicYearNotice } from '../../../src/components/MobileActiveAcademicYearNotice';
 import { MobileSummaryCard } from '../../../src/components/MobileSummaryCard';
 import { QueryStateView } from '../../../src/components/QueryStateView';
 import { useAuth } from '../../../src/features/auth/AuthProvider';
@@ -77,6 +78,12 @@ export default function TutorDashboardScreen() {
       <Text style={{ color: BRAND_COLORS.textMuted, marginBottom: 12 }}>
         Pantau assignment pembina ekstrakurikuler pada periode berjalan.
       </Text>
+
+      <MobileActiveAcademicYearNotice
+        name={activeYearQuery.data?.name}
+        semester={activeYearQuery.data?.semester}
+        helperText="Assignment pembina ekstrakurikuler di mobile otomatis mengikuti tahun ajaran aktif yang tampil di header aplikasi."
+      />
 
       <View style={{ flexDirection: 'row', marginHorizontal: -4, marginBottom: 12 }}>
         <View style={{ flex: 1, paddingHorizontal: 4 }}>
