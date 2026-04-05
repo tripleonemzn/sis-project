@@ -1,7 +1,7 @@
 import { useMemo, useState } from 'react';
 import { Redirect, useRouter } from 'expo-router';
-import { useQuery } from '@tanstack/react-query';
-import { Pressable, RefreshControl, ScrollView, Text, TextInput, View } from 'react-native';
+import { useMutation, useQuery } from '@tanstack/react-query';
+import { Alert, Pressable, RefreshControl, ScrollView, Text, TextInput, View } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { AppLoadingScreen } from '../../components/AppLoadingScreen';
 import { ExamHtmlContent, plainTextFromExamRichText } from '../../components/ExamHtmlContent';
@@ -116,6 +116,21 @@ export function TeacherQuestionBankModuleScreen() {
         type: type || undefined,
         search: search.trim() || undefined,
       }),
+  });
+
+  const deleteQuestionMutation = useMutation({
+    mutationFn: async (questionId: number) => adminApi.deleteExamQuestion(questionId),
+    onSuccess: async (_, questionId) => {
+      Alert.alert('Berhasil', 'Soal bank berhasil dihapus.');
+      setExpandedQuestionId((prev) => (prev === questionId ? null : prev));
+      await questionsQuery.refetch();
+    },
+    onError: (error) => {
+      const message =
+        (error as { response?: { data?: { message?: string } } })?.response?.data?.message ||
+        'Tidak dapat menghapus soal bank.';
+      Alert.alert('Gagal', message);
+    },
   });
 
   const questionItems = questionsQuery.data?.items || [];
@@ -338,7 +353,35 @@ export function TeacherQuestionBankModuleScreen() {
                     <Text style={{ color: '#0f172a', fontWeight: '700', flex: 1, paddingRight: 8 }}>
                       #{item.id} • {getQuestionTypeLabel(item.type)}
                     </Text>
-                    <Text style={{ color: '#64748b', fontSize: 11 }}>{item.points ? `${item.points} poin` : '-'}</Text>
+                    <View style={{ alignItems: 'flex-end', gap: 6 }}>
+                      <Text style={{ color: '#64748b', fontSize: 11 }}>{item.points ? `${item.points} poin` : '-'}</Text>
+                      <Pressable
+                        onPress={() =>
+                          Alert.alert('Hapus Soal Bank', 'Apakah Anda yakin ingin menghapus soal ini dari bank soal?', [
+                            { text: 'Batal', style: 'cancel' },
+                            {
+                              text: deleteQuestionMutation.isPending ? 'Menghapus...' : 'Hapus',
+                              style: 'destructive',
+                              onPress: () => {
+                                void deleteQuestionMutation.mutateAsync(item.id);
+                              },
+                            },
+                          ])
+                        }
+                        disabled={deleteQuestionMutation.isPending}
+                        style={{
+                          borderWidth: 1,
+                          borderColor: '#fecaca',
+                          backgroundColor: '#fff5f5',
+                          borderRadius: 999,
+                          paddingHorizontal: 10,
+                          paddingVertical: 5,
+                          opacity: deleteQuestionMutation.isPending ? 0.6 : 1,
+                        }}
+                      >
+                        <Text style={{ color: '#b91c1c', fontSize: 11, fontWeight: '700' }}>Hapus</Text>
+                      </Pressable>
+                    </View>
                   </View>
                   <Text style={{ color: '#64748b', fontSize: 12 }}>
                     {item.bank?.subject?.code || '-'} {item.bank?.subject?.name || '-'} • {item.bank?.academicYear?.name || '-'} •{' '}

@@ -6,6 +6,7 @@ import type { Question } from '../../../services/exam.service';
 import { academicYearService } from '../../../services/academicYear.service';
 import { toast } from 'react-hot-toast';
 import { enhanceQuestionHtml } from '../../../utils/questionMedia';
+import { ConfirmationModal } from '../../common/ConfirmationModal';
 
 interface QuestionBankViewProps {
     subjects: { id: number; name: string }[];
@@ -32,10 +33,12 @@ export const QuestionBankView = ({ subjects }: QuestionBankViewProps) => {
 
     // Pagination
     const [page, setPage] = useState(1);
+    const [questionToDelete, setQuestionToDelete] = useState<Question | null>(null);
+    const [deletingQuestionId, setDeletingQuestionId] = useState<number | string | null>(null);
     // const [totalPages, setTotalPages] = useState(1); // Derived from query data
 
     // React Query for fetching questions
-    const { data: queryData, isLoading } = useQuery({
+    const { data: queryData, isLoading, refetch } = useQuery({
         queryKey: ['bank-questions', { page, ...filters, search: activeSearch }], // Override search with activeSearch
         queryFn: async () => {
             const res = await examService.getQuestions({
@@ -81,21 +84,22 @@ export const QuestionBankView = ({ subjects }: QuestionBankViewProps) => {
         setActiveSearch(filters.search);
     };
 
-    const handleDelete = async (id: string) => {
-        if (!window.confirm('Apakah Anda yakin ingin menghapus soal ini?')) return;
+    const handleDelete = async () => {
+        if (!questionToDelete) return;
+        setDeletingQuestionId(questionToDelete.id);
         try {
-            // Placeholder usage to avoid TS unused error
-            console.log('Deleting question:', id);
-            
-            // TODO: Implement delete service call
-            // await examService.deleteBankQuestion(id);
-            // After delete, refetch
-            // refetch(); 
-            
-            toast.error('Fitur hapus belum tersedia di frontend service');
+            await examService.deleteQuestion(questionToDelete.id);
+            toast.success('Soal bank berhasil dihapus.');
+            setQuestionToDelete(null);
+            await refetch();
         } catch (error) {
             console.error(error);
-            toast.error('Gagal menghapus soal');
+            const message =
+                (error as { response?: { data?: { message?: string } } })?.response?.data?.message ||
+                'Gagal menghapus soal.';
+            toast.error(message);
+        } finally {
+            setDeletingQuestionId(null);
         }
     };
 
@@ -243,7 +247,7 @@ export const QuestionBankView = ({ subjects }: QuestionBankViewProps) => {
                                             But we can add it later. For now, just Delete.
                                         */}
                                         <button 
-                                            onClick={() => handleDelete(q.id)}
+                                            onClick={() => setQuestionToDelete(q)}
                                             className="p-2 text-gray-400 hover:text-red-600 hover:bg-red-50 rounded-lg transition-colors" 
                                             title="Hapus"
                                         >
@@ -279,6 +283,21 @@ export const QuestionBankView = ({ subjects }: QuestionBankViewProps) => {
                     </button>
                 </div>
             )}
+
+            <ConfirmationModal
+                open={Boolean(questionToDelete)}
+                title="Hapus Soal Bank"
+                message="Apakah Anda yakin ingin menghapus soal ini dari bank soal? Tindakan ini tidak memengaruhi hasil ujian yang sudah tersimpan."
+                confirmLabel={deletingQuestionId !== null ? 'Menghapus...' : 'Ya, Hapus'}
+                cancelLabel="Batal"
+                confirmVariant="danger"
+                confirmDisabled={deletingQuestionId !== null}
+                onCancel={() => {
+                    if (deletingQuestionId !== null) return;
+                    setQuestionToDelete(null);
+                }}
+                onConfirm={handleDelete}
+            />
         </div>
     );
 };

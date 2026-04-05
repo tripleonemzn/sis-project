@@ -120,6 +120,26 @@ export interface Question {
         questionCard?: QuestionCard;
         itemAnalysis?: QuestionItemAnalysis;
     };
+    bank?: {
+        id: number;
+        title?: string;
+        semester?: 'ODD' | 'EVEN' | null;
+        classLevel?: string | null;
+        subject?: {
+            id: number;
+            name: string;
+            code: string;
+        } | null;
+        academicYear?: {
+            id: number;
+            name: string;
+        } | null;
+        author?: {
+            id?: number;
+            name?: string;
+            username?: string;
+        } | null;
+    } | null;
 }
 
 export interface ExamPacket {
@@ -616,6 +636,19 @@ export const examService = {
     getQuestions: async (params?: { subjectId?: number; academicYearId?: number; semester?: string; type?: string; search?: string; page?: number; limit?: number }) => {
         const response = await api.get('/exams/questions', { params });
         return response.data;
+    },
+    deleteQuestion: async (id: number | string) => {
+        const response = await api.delete(`/exams/questions/${id}`);
+        return response.data as {
+            statusCode: number;
+            success: boolean;
+            message: string;
+            data: {
+                id: number;
+                bankId: number;
+                bankDeleted: boolean;
+            };
+        };
     },
     getPacketById: async (id: number) => {
         const response = await api.get(`/exams/packets/${id}`);

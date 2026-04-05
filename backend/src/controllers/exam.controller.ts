@@ -5520,6 +5520,67 @@ export const getQuestions = asyncHandler(async (req: Request, res: Response) => 
     }));
 });
 
+export const deleteQuestion = asyncHandler(async (req: Request, res: Response) => {
+    const questionId = Number(req.params.id);
+    if (!Number.isFinite(questionId) || questionId <= 0) {
+        throw new ApiError(400, 'ID soal tidak valid.');
+    }
+
+    const user = (req as any).user as { id: number; role: string };
+    const normalizedRole = String(user?.role || '')
+        .trim()
+        .toUpperCase();
+
+    const question = await prisma.question.findUnique({
+        where: { id: questionId },
+        include: {
+            bank: {
+                select: {
+                    id: true,
+                    authorId: true,
+                },
+            },
+        },
+    });
+
+    if (!question?.bank) {
+        throw new ApiError(404, 'Soal bank tidak ditemukan.');
+    }
+
+    if (normalizedRole !== 'ADMIN') {
+        const authorId = Number(question.bank.authorId || 0);
+        if (!authorId || authorId !== Number(user?.id || 0)) {
+            throw new ApiError(403, 'Hanya pembuat soal atau admin yang dapat menghapus soal ini.');
+        }
+    }
+
+    const result = await prisma.$transaction(async (tx) => {
+        await tx.question.delete({
+            where: { id: question.id },
+        });
+
+        const remainingQuestionCount = await tx.question.count({
+            where: { bankId: question.bank.id },
+        });
+
+        let bankDeleted = false;
+        if (remainingQuestionCount === 0) {
+            await tx.questionBank.delete({
+                where: { id: question.bank.id },
+            });
+            bankDeleted = true;
+        }
+
+        return {
+            id: question.id,
+            bankId: question.bank.id,
+            bankDeleted,
+        };
+    });
+
+    res.json(new ApiResponse(200, result, 'Soal bank berhasil dihapus.'));
+});
+
 // ==========================================
 // Schedule Management
 // ==========================================

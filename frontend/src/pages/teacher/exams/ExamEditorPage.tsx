@@ -28,6 +28,7 @@ import { teacherAssignmentService } from '../../../services/teacherAssignment.se
 import type { TeacherAssignment } from '../../../services/teacherAssignment.service';
 import api from '../../../services/api';
 import { QuestionBankModal } from '../../../components/teacher/exams/QuestionBankModal';
+import { ConfirmationModal } from '../../../components/common/ConfirmationModal';
 import type { UserWrite } from '../../../types/auth';
 
 // Extended Question interface for UI state and Backend Payload compatibility
@@ -403,6 +404,7 @@ export const ExamEditorPage = () => {
     const isSubmittingRef = React.useRef(false);
     // Ref to track if draft has been loaded to prevent double question initialization
     const draftLoadedRef = React.useRef(false);
+    const draftPromptShownRef = React.useRef(false);
     // Ref for autosave debounce
     const saveTimeoutRef = React.useRef<ReturnType<typeof setTimeout> | null>(null);
     const quillEditorRef = useRef<ReactQuill | null>(null);
@@ -449,6 +451,11 @@ export const ExamEditorPage = () => {
     const [activeQuestionId, setActiveQuestionId] = useState<string | null>(null);
     const [isQuestionBankOpen, setIsQuestionBankOpen] = useState(false);
     const [showQuestionSupportPanel, setShowQuestionSupportPanel] = useState(true);
+    const [questionPendingDeleteId, setQuestionPendingDeleteId] = useState<string | null>(null);
+    const [draftRestorePrompt, setDraftRestorePrompt] = useState<{
+        draftRaw: unknown;
+        preferences: Record<string, unknown>;
+    } | null>(null);
 
     const routeState = (location.state as {
         type?: ExamType;
@@ -623,79 +630,16 @@ export const ExamEditorPage = () => {
     
     // Restore draft on mount (only for create mode)
     useEffect(() => {
-        if (isEditMode || presetPacketDraft || draftLoadedRef.current) return;
-
-        const isRecord = (value: unknown): value is Record<string, unknown> =>
-            typeof value === 'object' && value !== null;
+        if (isEditMode || presetPacketDraft || draftLoadedRef.current || draftPromptShownRef.current) return;
 
         const prefs = (userData?.data?.preferences ?? {}) as Record<string, unknown>;
         const draftRaw = prefs['exam_draft'];
         if (!draftRaw) return;
-
-        if (!window.confirm('Ditemukan draft ujian yang belum tersimpan. Apakah Anda ingin melanjutkannya?')) {
-            if (userId) {
-                updateProfileMutation.mutate({
-                    preferences: { ...prefs, exam_draft: null },
-                });
-            }
-            return;
-        }
-
-        let draft: { form?: Partial<PacketForm>; questions?: unknown } | null = null;
-        if (typeof draftRaw === 'string') {
-            try {
-                const parsed = JSON.parse(draftRaw) as unknown;
-                if (isRecord(parsed)) {
-                    draft = parsed as { form?: Partial<PacketForm>; questions?: unknown };
-                }
-            } catch (e) {
-                console.error('Failed to parse draft', e);
-            }
-        } else if (isRecord(draftRaw)) {
-            draft = draftRaw as { form?: Partial<PacketForm>; questions?: unknown };
-        }
-        if (!draft) return;
-
-        const form = draft.form;
-        if (form) {
-            if (typeof form.title === 'string') setValue('title', form.title);
-            if (typeof form.description === 'string') setValue('description', form.description);
-            if (typeof form.duration === 'number') setValue('duration', form.duration);
-            if (typeof form.publishedQuestionCount === 'number') {
-                setValue('publishedQuestionCount', form.publishedQuestionCount);
-            }
-            if (typeof form.instructions === 'string') setValue('instructions', form.instructions);
-            if (typeof form.subjectId === 'number') setValue('subjectId', form.subjectId);
-
-            if (presetFixedSemester === 'ODD' || presetFixedSemester === 'EVEN') {
-                setValue('semester', presetFixedSemester);
-            }
-
-            if (typeof form.saveToBank === 'boolean') setValue('saveToBank', form.saveToBank);
-
-            const programCodeSource =
-                typeof presetProgramCode === 'string' && presetProgramCode
-                    ? presetProgramCode
-                    : typeof form.programCode === 'string'
-                      ? form.programCode
-                      : typeof form.type === 'string'
-                        ? form.type
-                        : '';
-            setValue('programCode', normalizeExamProgramCode(programCodeSource));
-        }
-
-        if (Array.isArray(draft.questions) && draft.questions.length > 0) {
-            const restoredQuestions = (draft.questions as ExtendedQuestion[]).map((question) => ({
-                ...question,
-                content: sanitizeQuestionHtml(question.content),
-                blueprint: normalizeBlueprint(question.blueprint),
-                questionCard: normalizeQuestionCard(question.questionCard),
-            }));
-            setQuestions(restoredQuestions);
-            setActiveQuestionId(restoredQuestions[0].id);
-            draftLoadedRef.current = true;
-            toast.success('Draft ujian sebelumnya berhasil dipulihkan', { icon: '📝' });
-        }
+        draftPromptShownRef.current = true;
+        setDraftRestorePrompt({
+            draftRaw,
+            preferences: prefs,
+        });
     }, [isEditMode, userData, presetFixedSemester, presetPacketDraft, presetProgramCode, setValue, updateProfileMutation, userId]);
 
     useEffect(() => {
@@ -1181,16 +1125,91 @@ export const ExamEditorPage = () => {
         }
     };
 
+    const restoreDraftFromPrompt = () => {
+        if (!draftRestorePrompt) return;
+
+        const isRecord = (value: unknown): value is Record<string, unknown> =>
+            typeof value === 'object' && value !== null;
+
+        const draftRaw = draftRestorePrompt.draftRaw;
+        let draft: { form?: Partial<PacketForm>; questions?: unknown } | null = null;
+        if (typeof draftRaw === 'string') {
+            try {
+                const parsed = JSON.parse(draftRaw) as unknown;
+                if (isRecord(parsed)) {
+                    draft = parsed as { form?: Partial<PacketForm>; questions?: unknown };
+                }
+            } catch (e) {
+                console.error('Failed to parse draft', e);
+            }
+        } else if (isRecord(draftRaw)) {
+            draft = draftRaw as { form?: Partial<PacketForm>; questions?: unknown };
+        }
+
+        if (!draft) {
+            setDraftRestorePrompt(null);
+            return;
+        }
+
+        const form = draft.form;
+        if (form) {
+            if (typeof form.title === 'string') setValue('title', form.title);
+            if (typeof form.description === 'string') setValue('description', form.description);
+            if (typeof form.duration === 'number') setValue('duration', form.duration);
+            if (typeof form.publishedQuestionCount === 'number') {
+                setValue('publishedQuestionCount', form.publishedQuestionCount);
+            }
+            if (typeof form.instructions === 'string') setValue('instructions', form.instructions);
+            if (typeof form.subjectId === 'number') setValue('subjectId', form.subjectId);
+
+            if (presetFixedSemester === 'ODD' || presetFixedSemester === 'EVEN') {
+                setValue('semester', presetFixedSemester);
+            }
+
+            if (typeof form.saveToBank === 'boolean') setValue('saveToBank', form.saveToBank);
+
+            const programCodeSource =
+                typeof presetProgramCode === 'string' && presetProgramCode
+                    ? presetProgramCode
+                    : typeof form.programCode === 'string'
+                      ? form.programCode
+                      : typeof form.type === 'string'
+                        ? form.type
+                        : '';
+            setValue('programCode', normalizeExamProgramCode(programCodeSource));
+        }
+
+        if (Array.isArray(draft.questions) && draft.questions.length > 0) {
+            const restoredQuestions = (draft.questions as ExtendedQuestion[]).map((question) => ({
+                ...question,
+                content: sanitizeQuestionHtml(question.content),
+                blueprint: normalizeBlueprint(question.blueprint),
+                questionCard: normalizeQuestionCard(question.questionCard),
+            }));
+            setQuestions(restoredQuestions);
+            setActiveQuestionId(restoredQuestions[0]?.id || null);
+            draftLoadedRef.current = true;
+            toast.success('Draft ujian sebelumnya berhasil dipulihkan', { icon: '📝' });
+        }
+
+        setDraftRestorePrompt(null);
+    };
+
+    const discardDraftFromPrompt = () => {
+        if (draftRestorePrompt && userId) {
+            updateProfileMutation.mutate({
+                preferences: { ...draftRestorePrompt.preferences, exam_draft: null },
+            });
+        }
+        setDraftRestorePrompt(null);
+    };
+
     const handleDeleteQuestion = (qId: string) => {
         if (questions.length <= 1) {
             toast.error('Minimal harus ada 1 soal');
             return;
         }
-
-        if (window.confirm('Apakah Anda yakin ingin menghapus soal ini?')) {
-            removeQuestion(qId);
-            toast.success('Soal berhasil dihapus');
-        }
+        setQuestionPendingDeleteId(qId);
     };
 
     const updateQuestion = (qId: string | null, updates: Partial<ExtendedQuestion>) => {
@@ -2484,6 +2503,32 @@ export const ExamEditorPage = () => {
             {/* Media Upload Modal - Only used for manual triggers if needed, but we used direct inputs now */}
             {/* Keeping it minimal or removing if unused. Based on new design, we use direct inputs/buttons. */}
             {/* However, the upload functions use `mediaTarget` state, so the direct inputs update that state and call upload immediately. */}
+            <ConfirmationModal
+                open={Boolean(draftRestorePrompt)}
+                title="Lanjutkan Draft Ujian?"
+                message="Ditemukan draft ujian yang belum tersimpan. Apakah Anda ingin melanjutkan draft tersebut?"
+                confirmLabel="Ya, Lanjutkan"
+                cancelLabel="Mulai Baru"
+                onCancel={discardDraftFromPrompt}
+                onConfirm={restoreDraftFromPrompt}
+            />
+
+            <ConfirmationModal
+                open={Boolean(questionPendingDeleteId)}
+                title="Hapus Soal"
+                message="Apakah Anda yakin ingin menghapus soal ini dari editor ujian?"
+                confirmLabel="Ya, Hapus"
+                cancelLabel="Batal"
+                confirmVariant="danger"
+                onCancel={() => setQuestionPendingDeleteId(null)}
+                onConfirm={() => {
+                    if (!questionPendingDeleteId) return;
+                    removeQuestion(questionPendingDeleteId);
+                    setQuestionPendingDeleteId(null);
+                    toast.success('Soal berhasil dihapus');
+                }}
+            />
+
             {isQuestionBankOpen && (
                 <QuestionBankModal
                     onClose={() => setIsQuestionBankOpen(false)}

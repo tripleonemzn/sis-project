@@ -1940,6 +1940,15 @@ export const adminApi = {
     );
   },
 
+  async deleteExamQuestion(id: number) {
+    const response = await apiClient.delete<ApiEnvelope<{
+      id: number;
+      bankId: number;
+      bankDeleted: boolean;
+    }>>(`/exams/questions/${id}`);
+    return response.data?.data || null;
+  },
+
   async listExamPackets(params?: {
     type?: AdminExamType | string;
     subjectId?: number;

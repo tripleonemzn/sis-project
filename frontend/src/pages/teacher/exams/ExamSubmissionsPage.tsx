@@ -1,8 +1,7 @@
 import { useMemo, useState } from 'react';
-import { useMutation, useQuery } from '@tanstack/react-query';
+import { useQuery } from '@tanstack/react-query';
 import { useNavigate, useParams } from 'react-router-dom';
 import { ArrowLeft, Eye, RefreshCw, X } from 'lucide-react';
-import { toast } from 'react-hot-toast';
 import { examService } from '../../../services/exam.service';
 import { liveQueryOptions } from '../../../lib/query/liveQuery';
 
@@ -60,8 +59,6 @@ export const ExamSubmissionsPage = () => {
   const [statusFilter, setStatusFilter] = useState<SessionStatusFilter>('');
   const [page, setPage] = useState(1);
   const [selectedSessionId, setSelectedSessionId] = useState<number | null>(null);
-  const [scoreDrafts, setScoreDrafts] = useState<Record<number, string>>({});
-  const [savingSessionId, setSavingSessionId] = useState<number | null>(null);
 
   const submissionsQuery = useQuery({
     queryKey: ['exam-packet-submissions', packetId, statusFilter, page],
@@ -91,71 +88,6 @@ export const ExamSubmissionsPage = () => {
     if (!selectedSessionId || !submissionsQuery.data) return null;
     return submissionsQuery.data.sessions.find((item) => item.sessionId === selectedSessionId) || null;
   }, [selectedSessionId, submissionsQuery.data]);
-
-  const saveScoreMutation = useMutation({
-    mutationFn: async (payload: { sessionId: number; score: number }) => {
-      const response = await examService.updateSessionScore(payload.sessionId, payload.score);
-      return response.data;
-    },
-    onSuccess: async (_, payload) => {
-      toast.success('Nilai berhasil disimpan.');
-      setScoreDrafts((prev) => ({
-        ...prev,
-        [payload.sessionId]: payload.score.toString(),
-      }));
-      await submissionsQuery.refetch();
-      if (selectedSessionId === payload.sessionId) {
-        await sessionDetailQuery.refetch();
-      }
-    },
-    onError: (error: any) => {
-      const message = error?.response?.data?.message || 'Gagal menyimpan nilai.';
-      toast.error(message);
-    },
-    onSettled: () => {
-      setSavingSessionId(null);
-    },
-  });
-
-  const handleSaveScore = (params: {
-    sessionId: number;
-    status: string;
-    currentScore: number | null;
-    rawScore: string;
-  }) => {
-    const normalizedStatus = String(params.status || '').toUpperCase();
-    if (!['COMPLETED', 'TIMEOUT'].includes(normalizedStatus)) {
-      toast.error('Nilai hanya bisa diubah untuk sesi yang sudah selesai/timeout.');
-      return;
-    }
-
-    const normalizedInput = params.rawScore.replace(',', '.').trim();
-    if (!normalizedInput) {
-      toast.error('Nilai wajib diisi.');
-      return;
-    }
-
-    const parsed = Number.parseFloat(normalizedInput);
-    if (!Number.isFinite(parsed) || parsed < 0 || parsed > 100) {
-      toast.error('Nilai harus berada pada rentang 0 sampai 100.');
-      return;
-    }
-
-    const normalizedScore = Math.round(parsed * 100) / 100;
-    const normalizedCurrentScore =
-      typeof params.currentScore === 'number' ? Math.round(params.currentScore * 100) / 100 : null;
-
-    if (normalizedCurrentScore !== null && normalizedCurrentScore === normalizedScore) {
-      toast('Nilai belum berubah.');
-      return;
-    }
-
-    setSavingSessionId(params.sessionId);
-    saveScoreMutation.mutate({
-      sessionId: params.sessionId,
-      score: normalizedScore,
-    });
-  };
 
   const summary = submissionsQuery.data?.summary;
   const packet = submissionsQuery.data?.packet;
@@ -292,67 +224,12 @@ export const ExamSubmissionsPage = () => {
                           </span>
                         </td>
                         <td className="px-4 py-3 text-gray-700">
-                          {(() => {
-                            const normalizedStatus = String(item.status || '').toUpperCase();
-                            const canEdit = normalizedStatus === 'COMPLETED' || normalizedStatus === 'TIMEOUT';
-                            const draftScore = scoreDrafts[item.sessionId] ?? (item.score === null ? '' : String(item.score));
-                            const normalizedInput = draftScore.replace(',', '.').trim();
-                            const parsedDraft = Number.parseFloat(normalizedInput);
-                            const hasValidDraft =
-                              normalizedInput !== '' &&
-                              Number.isFinite(parsedDraft) &&
-                              parsedDraft >= 0 &&
-                              parsedDraft <= 100;
-                            const normalizedDraftScore = hasValidDraft ? Math.round(parsedDraft * 100) / 100 : null;
-                            const normalizedCurrentScore =
-                              typeof item.score === 'number' ? Math.round(item.score * 100) / 100 : null;
-                            const isChanged = normalizedDraftScore !== null && normalizedDraftScore !== normalizedCurrentScore;
-                            const isSavingRow = savingSessionId === item.sessionId && saveScoreMutation.isPending;
-
-                            return (
-                              <div className="space-y-1">
-                                <div className="flex items-center gap-2">
-                                  <input
-                                    type="number"
-                                    min={0}
-                                    max={100}
-                                    step={0.01}
-                                    value={draftScore}
-                                    disabled={!canEdit || isSavingRow}
-                                    onChange={(event) => {
-                                      const nextValue = event.target.value;
-                                      setScoreDrafts((prev) => ({
-                                        ...prev,
-                                        [item.sessionId]: nextValue,
-                                      }));
-                                    }}
-                                    className={`w-24 px-2 py-1 rounded border text-xs ${
-                                      canEdit
-                                        ? 'border-gray-300 focus:outline-none focus:ring-2 focus:ring-blue-200'
-                                        : 'border-gray-200 bg-gray-100 text-gray-400 cursor-not-allowed'
-                                    }`}
-                                  />
-                                  <button
-                                    onClick={() =>
-                                      handleSaveScore({
-                                        sessionId: item.sessionId,
-                                        status: item.status,
-                                        currentScore: item.score,
-                                        rawScore: draftScore,
-                                      })
-                                    }
-                                    disabled={!canEdit || !hasValidDraft || !isChanged || saveScoreMutation.isPending}
-                                    className="inline-flex items-center px-2 py-1 rounded-md border border-blue-200 bg-blue-50 text-blue-700 hover:bg-blue-100 text-xs font-semibold disabled:opacity-50 disabled:cursor-not-allowed"
-                                  >
-                                    {isSavingRow ? 'Menyimpan...' : 'Simpan'}
-                                  </button>
-                                </div>
-                                {!canEdit ? (
-                                  <p className="text-[11px] text-gray-400">Edit aktif setelah sesi selesai/timeout.</p>
-                                ) : null}
-                              </div>
-                            );
-                          })()}
+                          <div className="space-y-1">
+                            <p className="text-sm font-semibold text-gray-900">
+                              {item.score === null ? '-' : item.score.toFixed(2)}
+                            </p>
+                            <p className="text-[11px] text-gray-400">Nilai tampil otomatis dan tidak dapat diedit dari halaman ini.</p>
+                          </div>
                         </td>
                         <td className="px-4 py-3 text-xs text-gray-700 space-y-1">
                           <p>
