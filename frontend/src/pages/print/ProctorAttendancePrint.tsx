@@ -82,6 +82,8 @@ export default function ProctorAttendancePrint() {
   const { reportId } = useParams<{ reportId: string }>();
   const [searchParams] = useSearchParams();
   const autoPrint = searchParams.get('autoprint') === '1';
+  const printMode = searchParams.get('printMode');
+  const isIframePrint = printMode === 'iframe';
   const parsedReportId = Number(reportId || 0);
 
   const documentQuery = useQuery({
@@ -93,7 +95,7 @@ export default function ProctorAttendancePrint() {
     },
   });
 
-  const triggerPrint = useCallback(async () => {
+  const preparePrintLayout = useCallback(async () => {
     if (typeof document === 'undefined') return;
 
     if ('fonts' in document) {
@@ -141,9 +143,13 @@ export default function ProctorAttendancePrint() {
     });
 
     document.body.getBoundingClientRect();
+  }, []);
+
+  const triggerPrint = useCallback(async () => {
+    await preparePrintLayout();
     window.focus();
     window.print();
-  }, []);
+  }, [preparePrintLayout]);
 
   useEffect(() => {
     if (!autoPrint || !documentQuery.data) return;
@@ -152,6 +158,22 @@ export default function ProctorAttendancePrint() {
     };
     void printWhenReady();
   }, [autoPrint, documentQuery.data, triggerPrint]);
+
+  useEffect(() => {
+    if (!isIframePrint || !documentQuery.data || typeof window === 'undefined' || window.parent === window) return;
+    const notifyParent = async () => {
+      await preparePrintLayout();
+      window.parent.postMessage(
+        {
+          type: 'sis:proctor-print-ready',
+          documentType: 'attendance',
+          reportId: parsedReportId,
+        },
+        window.location.origin,
+      );
+    };
+    void notifyParent();
+  }, [documentQuery.data, isIframePrint, parsedReportId, preparePrintLayout]);
 
   if (!Number.isFinite(parsedReportId) || parsedReportId <= 0) {
     return <div className="min-h-screen bg-slate-100 p-6 text-sm text-rose-700">ID daftar hadir tidak valid.</div>;
@@ -243,14 +265,14 @@ export default function ProctorAttendancePrint() {
               className="proctor-attendance-print-image h-[112px] w-[112px] shrink-0 object-contain"
             />
             <div className="text-center">
-              <div className="text-[26px] font-semibold tracking-wide text-slate-900">{snapshot.title}</div>
-              <div className="mt-1 text-[18px] font-semibold uppercase tracking-wide text-slate-900">
+              <div className="text-[22px] font-semibold tracking-wide text-slate-900">{snapshot.title}</div>
+              <div className="mt-1 text-[15px] font-semibold uppercase tracking-wide text-slate-900">
                 {formatExamHeadingLabel(snapshot.examLabel)}
               </div>
-              <div className="mt-1 text-[18px] font-semibold uppercase tracking-wide text-slate-900">
+              <div className="mt-1 text-[15px] font-semibold uppercase tracking-wide text-slate-900">
                 {snapshot.schoolName}
               </div>
-              <div className="mt-1 text-[18px] font-semibold uppercase tracking-wide text-slate-900">
+              <div className="mt-1 text-[14px] font-semibold uppercase tracking-wide text-slate-900">
                 Tahun Ajaran {snapshot.academicYearName}
               </div>
             </div>
@@ -260,7 +282,7 @@ export default function ProctorAttendancePrint() {
         <div className="mt-4 border-t border-slate-900" />
         <div className="mt-1 border-t-2 border-slate-900" />
 
-        <div className="mt-4 flex flex-wrap items-start justify-between gap-4 text-sm text-slate-700">
+        <div className="mt-4 flex flex-wrap items-start justify-between gap-4 text-[12px] text-slate-700">
           <div className="rounded-lg border border-slate-200 bg-slate-50 px-3 py-2">
             <span className="font-semibold text-slate-900">No. Dokumen:</span> {snapshot.documentNumber}
           </div>
@@ -269,7 +291,7 @@ export default function ProctorAttendancePrint() {
           </div>
         </div>
 
-        <div className="mt-6 grid grid-cols-2 gap-x-10 gap-y-3 text-[16px] text-slate-900">
+        <div className="mt-6 grid grid-cols-2 gap-x-10 gap-y-3 text-[13px] text-slate-900">
           <div className="grid gap-2">
             <div className="grid grid-cols-[170px_16px_1fr]">
               <div>Mata Pelajaran</div>
@@ -311,20 +333,20 @@ export default function ProctorAttendancePrint() {
         <div className="mt-6 grid grid-cols-1 gap-3 md:grid-cols-3">
           <div className="rounded-xl border border-slate-200 bg-slate-50 px-4 py-3">
             <div className="text-xs font-semibold uppercase tracking-wide text-slate-500">Peserta Seharusnya</div>
-            <div className="mt-1 text-2xl font-semibold text-slate-900">{snapshot.counts.expectedParticipants}</div>
+            <div className="mt-1 text-[20px] font-semibold text-slate-900">{snapshot.counts.expectedParticipants}</div>
           </div>
           <div className="rounded-xl border border-emerald-200 bg-emerald-50 px-4 py-3">
             <div className="text-xs font-semibold uppercase tracking-wide text-emerald-700">Hadir</div>
-            <div className="mt-1 text-2xl font-semibold text-emerald-800">{snapshot.counts.presentParticipants}</div>
+            <div className="mt-1 text-[20px] font-semibold text-emerald-800">{snapshot.counts.presentParticipants}</div>
           </div>
           <div className="rounded-xl border border-rose-200 bg-rose-50 px-4 py-3">
             <div className="text-xs font-semibold uppercase tracking-wide text-rose-700">Tidak Hadir</div>
-            <div className="mt-1 text-2xl font-semibold text-rose-800">{snapshot.counts.absentParticipants}</div>
+            <div className="mt-1 text-[20px] font-semibold text-rose-800">{snapshot.counts.absentParticipants}</div>
           </div>
         </div>
 
         <div className="mt-8 overflow-hidden rounded-xl border border-slate-300">
-          <table className="proctor-attendance-table min-w-full border-collapse text-[13px] text-slate-900">
+          <table className="proctor-attendance-table min-w-full border-collapse text-[11px] text-slate-900">
             <thead className="bg-slate-100">
               <tr>
                 <th className="border border-slate-300 px-3 py-2 text-left font-semibold">No</th>
@@ -346,7 +368,7 @@ export default function ProctorAttendancePrint() {
                   <td className="border border-slate-300 px-3 py-2 align-top">{participant.className || '-'}</td>
                   <td className="border border-slate-300 px-3 py-2 align-top">
                     <div
-                      className={`text-[12px] ${
+                      className={`text-[11px] ${
                         participant.status === 'PRESENT'
                           ? 'font-semibold text-emerald-700'
                           : 'font-semibold text-rose-700'
@@ -371,24 +393,24 @@ export default function ProctorAttendancePrint() {
         </div>
 
         <div className="mt-10 flex items-start justify-between gap-6">
-          <div className="max-w-xl text-xs leading-6 text-slate-600">
+          <div className="max-w-xl text-[11px] leading-5 text-slate-600">
             <div>{snapshot.verification.note}</div>
             <div className="mt-2">Dokumen dibuat dari laporan pengawas yang telah dikirim ke Kurikulum.</div>
             <div className="mt-2">Dikirim pada {formatDateTime(snapshot.submittedAt)}.</div>
           </div>
 
           <div className="w-64 shrink-0 text-center">
-            <div className="text-[18px] text-slate-900">Pengawas,</div>
+            <div className="text-[14px] text-slate-900">Pengawas,</div>
             <div className="mt-4 flex justify-center">
               <img
                 src={verificationQrDataUrl}
                 alt="QR Verifikasi Daftar Hadir"
-                className="proctor-attendance-print-image h-28 w-28 object-contain"
+                className="proctor-attendance-print-image h-[104px] w-[104px] object-contain"
               />
             </div>
-            <div className="mt-8 text-[18px] font-semibold text-slate-900">{snapshot.proctor.name}</div>
+            <div className="mt-7 text-[14px] font-semibold text-slate-900">{snapshot.proctor.name}</div>
             <div className="mt-3 border-t border-slate-400" />
-            <div className="mt-3 text-xs leading-5 text-slate-600">
+            <div className="mt-3 text-[11px] leading-5 text-slate-600">
               {snapshot.proctor.signatureLabel} Dokumen dikirim ke Kurikulum pada {formatDateTime(snapshot.submittedAt)}.
             </div>
           </div>

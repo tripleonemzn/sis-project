@@ -73,6 +73,8 @@ export default function ProctorReportPrint() {
   const { reportId } = useParams<{ reportId: string }>();
   const [searchParams] = useSearchParams();
   const autoPrint = searchParams.get('autoprint') === '1';
+  const printMode = searchParams.get('printMode');
+  const isIframePrint = printMode === 'iframe';
   const parsedReportId = Number(reportId || 0);
 
   const documentQuery = useQuery({
@@ -84,7 +86,7 @@ export default function ProctorReportPrint() {
     },
   });
 
-  const triggerPrint = useCallback(async () => {
+  const preparePrintLayout = useCallback(async () => {
     if (typeof document === 'undefined') return;
 
     if ('fonts' in document) {
@@ -132,9 +134,13 @@ export default function ProctorReportPrint() {
     });
 
     document.body.getBoundingClientRect();
+  }, []);
+
+  const triggerPrint = useCallback(async () => {
+    await preparePrintLayout();
     window.focus();
     window.print();
-  }, []);
+  }, [preparePrintLayout]);
 
   useEffect(() => {
     if (!autoPrint || !documentQuery.data) return;
@@ -143,6 +149,22 @@ export default function ProctorReportPrint() {
     };
     void printWhenReady();
   }, [autoPrint, documentQuery.data, triggerPrint]);
+
+  useEffect(() => {
+    if (!isIframePrint || !documentQuery.data || typeof window === 'undefined' || window.parent === window) return;
+    const notifyParent = async () => {
+      await preparePrintLayout();
+      window.parent.postMessage(
+        {
+          type: 'sis:proctor-print-ready',
+          documentType: 'report',
+          reportId: parsedReportId,
+        },
+        window.location.origin,
+      );
+    };
+    void notifyParent();
+  }, [documentQuery.data, isIframePrint, parsedReportId, preparePrintLayout]);
 
   if (!Number.isFinite(parsedReportId) || parsedReportId <= 0) {
     return <div className="min-h-screen bg-slate-100 p-6 text-sm text-rose-700">ID berita acara tidak valid.</div>;
@@ -231,14 +253,14 @@ export default function ProctorReportPrint() {
               className="proctor-report-print-image h-[112px] w-[112px] shrink-0 object-contain"
             />
             <div className="text-center">
-              <div className="text-[26px] font-semibold tracking-wide text-slate-900">{snapshot.title}</div>
-              <div className="mt-1 text-[18px] font-semibold uppercase tracking-wide text-slate-900">
+              <div className="text-[22px] font-semibold tracking-wide text-slate-900">{snapshot.title}</div>
+              <div className="mt-1 text-[15px] font-semibold uppercase tracking-wide text-slate-900">
                 {formatExamHeadingLabel(snapshot.examLabel)}
               </div>
-              <div className="mt-1 text-[18px] font-semibold uppercase tracking-wide text-slate-900">
+              <div className="mt-1 text-[15px] font-semibold uppercase tracking-wide text-slate-900">
                 {snapshot.schoolName}
               </div>
-              <div className="mt-1 text-[18px] font-semibold uppercase tracking-wide text-slate-900">
+              <div className="mt-1 text-[14px] font-semibold uppercase tracking-wide text-slate-900">
                 Tahun Ajaran {snapshot.academicYearName}
               </div>
             </div>
@@ -248,7 +270,7 @@ export default function ProctorReportPrint() {
         <div className="mt-4 border-t border-slate-900" />
         <div className="mt-1 border-t-2 border-slate-900" />
 
-        <div className="mt-4 flex flex-wrap items-start justify-between gap-4 text-sm text-slate-700">
+        <div className="mt-4 flex flex-wrap items-start justify-between gap-4 text-[12px] text-slate-700">
           <div className="rounded-lg border border-slate-200 bg-slate-50 px-3 py-2">
             <span className="font-semibold text-slate-900">No. Dokumen:</span> {snapshot.documentNumber}
           </div>
@@ -257,57 +279,57 @@ export default function ProctorReportPrint() {
           </div>
         </div>
 
-        <div className="mt-8 text-[18px] leading-10 text-slate-900">
+        <div className="mt-7 text-[14px] leading-8 text-slate-900">
           <p className="text-justify">{snapshot.narrative}</p>
         </div>
 
-        <div className="mt-8 grid gap-3 text-[19px] text-slate-900">
-          <div className="grid grid-cols-[280px_16px_1fr]">
+        <div className="mt-7 grid gap-2.5 text-[14px] text-slate-900">
+          <div className="grid grid-cols-[230px_16px_1fr]">
             <div>Jumlah Peserta Seharusnya</div>
             <div>:</div>
             <div>{snapshot.counts.expectedParticipants}</div>
           </div>
-          <div className="grid grid-cols-[280px_16px_1fr]">
+          <div className="grid grid-cols-[230px_16px_1fr]">
             <div>Jumlah Peserta yang tidak hadir</div>
             <div>:</div>
             <div>{snapshot.counts.absentParticipants}</div>
           </div>
-          <div className="grid grid-cols-[280px_16px_1fr]">
+          <div className="grid grid-cols-[230px_16px_1fr]">
             <div>Jumlah Peserta yang hadir</div>
             <div>:</div>
             <div>{snapshot.counts.presentParticipants}</div>
           </div>
         </div>
 
-        <div className="mt-10">
-          <div className="text-[19px] text-slate-900">Catatan Pengawas selama Ujian berlangsung.</div>
+        <div className="mt-8">
+          <div className="text-[14px] font-semibold text-slate-900">Catatan Pengawas selama Ujian berlangsung.</div>
           <div
-            className="mt-3 min-h-[210px] rounded-xl border border-slate-900 text-[18px] leading-8 text-slate-900 whitespace-pre-wrap"
+            className="mt-3 min-h-[190px] rounded-xl border border-slate-900 text-[13px] leading-7 text-slate-900 whitespace-pre-wrap"
             style={{ padding: '0.55cm 0.65cm' }}
           >
             <p>{snapshot.notes || 'Tidak ada catatan tambahan dari pengawas.'}</p>
           </div>
         </div>
 
-        <div className="mt-12 flex justify-end">
-          <div className="w-full max-w-[320px] text-center text-[18px] text-slate-900">
+        <div className="mt-10 flex justify-end">
+          <div className="w-full max-w-[300px] text-center text-[14px] text-slate-900">
             <div className="font-medium">Pengawas,</div>
             <div className="mt-4 flex justify-center">
               <img
                 src={verificationQrDataUrl}
                 alt="QR Verifikasi Berita Acara"
-                className="proctor-report-print-image h-28 w-28 rounded-xl border border-slate-200 bg-white p-2"
+                className="proctor-report-print-image h-[104px] w-[104px] rounded-xl border border-slate-200 bg-white p-2"
               />
             </div>
-            <div className="mt-8 font-semibold">{snapshot.proctor.name}</div>
+            <div className="mt-7 text-[14px] font-semibold">{snapshot.proctor.name}</div>
             <div className="mt-3 border-t border-slate-400" />
-            <div className="mt-3 text-sm leading-6 text-slate-600">
+            <div className="mt-3 text-[11px] leading-5 text-slate-600">
               {snapshot.proctor.signatureLabel} Dokumen dikirim ke Kurikulum pada {formatDateTime(snapshot.submittedAt)}.
             </div>
           </div>
         </div>
 
-        <div className="mt-8 rounded-xl border border-dashed border-slate-300 bg-slate-50 px-4 py-3 text-sm text-slate-600">
+        <div className="mt-7 rounded-xl border border-dashed border-slate-300 bg-slate-50 px-4 py-3 text-[11px] leading-5 text-slate-600">
           {snapshot.verification.note}
           <div className="mt-1 break-all font-medium text-slate-700">{snapshot.verification.verificationUrl}</div>
         </div>

@@ -1,7 +1,7 @@
 import { useEffect, useMemo, useState } from 'react';
 import { Redirect, useLocalSearchParams, useRouter } from 'expo-router';
 import { useMutation, useQuery } from '@tanstack/react-query';
-import { Alert, Pressable, RefreshControl, ScrollView, Text, TextInput, View } from 'react-native';
+import { Alert, Modal, Pressable, RefreshControl, ScrollView, Text, TextInput, View } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { Feather } from '@expo/vector-icons';
 import { AppLoadingScreen } from '../../../../src/components/AppLoadingScreen';
@@ -74,7 +74,7 @@ export default function TeacherProctoringDetailScreen() {
   const pagePadding = getStandardPagePadding(insets, { bottom: 120 });
 
   const [notes, setNotes] = useState('');
-  const [isReportPanelOpen, setIsReportPanelOpen] = useState(false);
+  const [isReportModalOpen, setIsReportModalOpen] = useState(false);
 
   const detailQuery = useQuery({
     queryKey: ['mobile-proctoring-detail', parsedScheduleId],
@@ -381,7 +381,7 @@ export default function TeacherProctoringDetailScreen() {
               ) : null}
             </View>
             <Pressable
-              onPress={() => setIsReportPanelOpen((prev) => !prev)}
+              onPress={() => setIsReportModalOpen(true)}
               style={{
                 borderWidth: 1,
                 borderColor: reportSubmitted ? '#a7f3d0' : '#bfdbfe',
@@ -393,159 +393,205 @@ export default function TeacherProctoringDetailScreen() {
               }}
             >
               <Text style={{ color: reportSubmitted ? '#047857' : '#1d4ed8', fontWeight: '700' }}>
-                {isReportPanelOpen ? 'Tutup Berita Acara' : reportSubmitted ? 'Lihat Berita Acara' : 'Buka Berita Acara'}
+                {reportSubmitted ? 'Lihat Berita Acara' : 'Buka Berita Acara'}
               </Text>
             </Pressable>
+          </View>
+        </>
+      ) : null}
 
-            {isReportPanelOpen ? (
+      <Modal
+        visible={isReportModalOpen}
+        animationType="slide"
+        transparent
+        onRequestClose={() => setIsReportModalOpen(false)}
+      >
+        <View
+          style={{
+            flex: 1,
+            backgroundColor: 'rgba(15, 23, 42, 0.45)',
+            justifyContent: 'center',
+            paddingHorizontal: 16,
+            paddingVertical: 24,
+          }}
+        >
+          <View
+            style={{
+              maxHeight: '92%',
+              borderRadius: 18,
+              backgroundColor: '#fff',
+              overflow: 'hidden',
+              borderWidth: 1,
+              borderColor: '#e2e8f0',
+            }}
+          >
+            <View
+              style={{
+                flexDirection: 'row',
+                justifyContent: 'space-between',
+                alignItems: 'flex-start',
+                gap: 12,
+                paddingHorizontal: 16,
+                paddingVertical: 14,
+                borderBottomWidth: 1,
+                borderBottomColor: '#e2e8f0',
+              }}
+            >
+              <View style={{ flex: 1 }}>
+                <Text style={{ color: BRAND_COLORS.textDark, fontWeight: '700', fontSize: 16 }}>Pratinjau Berita Acara</Text>
+                <Text style={{ color: '#64748b', fontSize: 12, marginTop: 4, lineHeight: 18 }}>
+                  {reportSubmitted
+                    ? 'Berita acara ini sudah dikirim ke Kurikulum dan tampil sebagai arsip pengawas.'
+                    : 'Tinjau isi dokumen resmi sebelum dikirim ke Kurikulum.'}
+                </Text>
+              </View>
+              <Pressable
+                onPress={() => setIsReportModalOpen(false)}
+                style={{
+                  width: 36,
+                  height: 36,
+                  borderRadius: 999,
+                  borderWidth: 1,
+                  borderColor: '#e2e8f0',
+                  alignItems: 'center',
+                  justifyContent: 'center',
+                }}
+              >
+                <Feather name="x" size={18} color="#64748b" />
+              </Pressable>
+            </View>
+
+            <ScrollView
+              style={{ backgroundColor: '#fff' }}
+              contentContainerStyle={{ padding: 16, gap: 12 }}
+              showsVerticalScrollIndicator={false}
+            >
+              <View
+                style={{
+                  alignSelf: 'flex-start',
+                  borderWidth: 1,
+                  borderColor: reportSubmitted ? '#a7f3d0' : '#cbd5e1',
+                  borderRadius: 999,
+                  paddingHorizontal: 10,
+                  paddingVertical: 4,
+                  backgroundColor: reportSubmitted ? '#ecfdf5' : '#fff',
+                }}
+              >
+                <Text style={{ color: reportSubmitted ? '#047857' : '#475569', fontSize: 11, fontWeight: '700' }}>
+                  {reportSubmitted ? 'ARSIP' : 'DRAFT'}
+                </Text>
+              </View>
+
+              {reportSubmitted ? (
+                <View
+                  style={{
+                    borderWidth: 1,
+                    borderColor: '#a7f3d0',
+                    backgroundColor: '#ecfdf5',
+                    borderRadius: 10,
+                    padding: 10,
+                  }}
+                >
+                  <Text style={{ color: '#047857', fontWeight: '700' }}>Berita acara sudah terkirim ke Kurikulum.</Text>
+                  <Text style={{ color: '#047857', fontSize: 12, marginTop: 4 }}>
+                    Dokumen resmi diverifikasi dan dicetak dari sisi Wakasek Kurikulum / sekretaris.
+                  </Text>
+                </View>
+              ) : null}
+
               <View
                 style={{
                   borderWidth: 1,
                   borderColor: '#cbd5e1',
-                  borderRadius: 14,
+                  borderRadius: 12,
                   padding: 12,
-                  backgroundColor: '#f8fafc',
-                  marginBottom: 8,
+                  backgroundColor: '#fff',
                 }}
               >
-                <View style={{ flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center' }}>
-                  <View style={{ flex: 1, paddingRight: 8 }}>
-                    <Text style={{ color: BRAND_COLORS.textDark, fontWeight: '700' }}>Pratinjau Berita Acara</Text>
-                    <Text style={{ color: '#64748b', fontSize: 12, marginTop: 2 }}>
-                      {reportSubmitted
-                        ? 'Berita acara ini sudah dikirim ke Kurikulum dan tampil sebagai arsip pengawas.'
-                        : 'Tinjau isi dokumen resmi sebelum dikirim ke Kurikulum.'}
-                    </Text>
-                  </View>
-                  <View
-                    style={{
-                      borderWidth: 1,
-                      borderColor: reportSubmitted ? '#a7f3d0' : '#cbd5e1',
-                      borderRadius: 999,
-                      paddingHorizontal: 10,
-                      paddingVertical: 4,
-                      backgroundColor: reportSubmitted ? '#ecfdf5' : '#fff',
-                    }}
-                  >
-                    <Text style={{ color: reportSubmitted ? '#047857' : '#475569', fontSize: 11, fontWeight: '700' }}>
-                      {reportSubmitted ? 'ARSIP' : 'DRAFT'}
-                    </Text>
-                  </View>
+                <Text style={{ color: BRAND_COLORS.textDark, textAlign: 'center', fontSize: 17, fontWeight: '800' }}>
+                  BERITA ACARA
+                </Text>
+                <Text style={{ color: BRAND_COLORS.textDark, textAlign: 'center', fontSize: 12, fontWeight: '700', marginTop: 4 }}>
+                  {previewExamHeading}
+                </Text>
+                <Text style={{ color: BRAND_COLORS.textDark, textAlign: 'center', fontSize: 12, fontWeight: '700', marginTop: 2 }}>
+                  SMKS KARYA GUNA BHAKTI 2
+                </Text>
+                <Text style={{ color: BRAND_COLORS.textDark, textAlign: 'center', fontSize: 11, fontWeight: '700', marginTop: 2 }}>
+                  Tahun Ajaran {detailQuery.data?.schedule?.academicYearName || '-'}
+                </Text>
+                <View style={{ borderTopWidth: 1, borderTopColor: '#0f172a', marginTop: 12 }} />
+                <View style={{ borderTopWidth: 2, borderTopColor: '#0f172a', marginTop: 4 }} />
+                <Text style={{ color: '#0f172a', fontSize: 12, lineHeight: 20, marginTop: 12 }}>
+                  {previewNarrative}
+                </Text>
+                <View style={{ marginTop: 12, gap: 6 }}>
+                  <Text style={{ color: '#0f172a', fontSize: 12 }}>Jumlah Peserta Seharusnya: {students.length}</Text>
+                  <Text style={{ color: '#0f172a', fontSize: 12 }}>Jumlah Peserta yang tidak hadir: {absentCount}</Text>
+                  <Text style={{ color: '#0f172a', fontSize: 12 }}>Jumlah Peserta yang hadir: {presentCount}</Text>
                 </View>
-
-                {reportSubmitted ? (
-                  <View
-                    style={{
-                      borderWidth: 1,
-                      borderColor: '#a7f3d0',
-                      backgroundColor: '#ecfdf5',
-                      borderRadius: 10,
-                      padding: 10,
-                      marginTop: 10,
-                    }}
-                  >
-                    <Text style={{ color: '#047857', fontWeight: '700' }}>Berita acara sudah terkirim ke Kurikulum.</Text>
-                    <Text style={{ color: '#047857', fontSize: 12, marginTop: 4 }}>
-                      Dokumen resmi diverifikasi dan dicetak dari sisi Wakasek Kurikulum / sekretaris.
-                    </Text>
-                  </View>
-                ) : null}
-
-                <View
+                <Text style={{ color: '#0f172a', fontSize: 12, marginTop: 12, fontWeight: '700' }}>
+                  Catatan Pengawas selama Ujian berlangsung.
+                </Text>
+                <TextInput
+                  value={notes}
+                  onChangeText={setNotes}
+                  placeholder="Catatan Pengawas selama Ujian berlangsung"
                   style={{
                     borderWidth: 1,
-                    borderColor: '#cbd5e1',
-                    borderRadius: 12,
-                    padding: 12,
-                    backgroundColor: '#fff',
-                    marginTop: 10,
+                    borderColor: reportSubmitted ? '#e2e8f0' : '#cbd5e1',
+                    borderRadius: 14,
+                    paddingHorizontal: 14,
+                    paddingVertical: 14,
+                    minHeight: 128,
+                    textAlignVertical: 'top',
+                    marginTop: 8,
+                    color: reportSubmitted ? '#64748b' : '#0f172a',
+                    backgroundColor: reportSubmitted ? '#f8fafc' : '#fff',
+                    lineHeight: 20,
+                    fontSize: 12,
                   }}
-                >
-                  <Text style={{ color: BRAND_COLORS.textDark, textAlign: 'center', fontSize: 18, fontWeight: '800' }}>
-                    BERITA ACARA
+                  placeholderTextColor="#94a3b8"
+                  multiline
+                  editable={!reportSubmitted}
+                />
+                {reportSubmitted ? (
+                  <Text style={{ color: '#64748b', fontSize: 12, marginTop: 8 }}>
+                    Catatan tidak bisa diubah lagi karena berita acara sudah masuk arsip setelah dikirim ke Kurikulum.
                   </Text>
-                  <Text style={{ color: BRAND_COLORS.textDark, textAlign: 'center', fontSize: 13, fontWeight: '700', marginTop: 4 }}>
-                    {previewExamHeading}
-                  </Text>
-                  <Text style={{ color: BRAND_COLORS.textDark, textAlign: 'center', fontSize: 13, fontWeight: '700', marginTop: 2 }}>
-                    SMKS KARYA GUNA BHAKTI 2
-                  </Text>
-                  <Text style={{ color: BRAND_COLORS.textDark, textAlign: 'center', fontSize: 13, fontWeight: '700', marginTop: 2 }}>
-                    Tahun Ajaran {detailQuery.data?.schedule?.academicYearName || '-'}
-                  </Text>
-                  <View style={{ borderTopWidth: 1, borderTopColor: '#0f172a', marginTop: 12 }} />
-                  <View style={{ borderTopWidth: 2, borderTopColor: '#0f172a', marginTop: 4 }} />
-                  <Text style={{ color: '#0f172a', fontSize: 13, lineHeight: 22, marginTop: 12 }}>
-                    {previewNarrative}
-                  </Text>
-                  <View style={{ marginTop: 12, gap: 6 }}>
-                    <Text style={{ color: '#0f172a', fontSize: 13 }}>Jumlah Peserta Seharusnya: {students.length}</Text>
-                    <Text style={{ color: '#0f172a', fontSize: 13 }}>Jumlah Peserta yang tidak hadir: {absentCount}</Text>
-                    <Text style={{ color: '#0f172a', fontSize: 13 }}>Jumlah Peserta yang hadir: {presentCount}</Text>
-                  </View>
-                  <Text style={{ color: '#0f172a', fontSize: 13, marginTop: 12, fontWeight: '700' }}>
-                    Catatan Pengawas selama Ujian berlangsung.
-                  </Text>
-                  <TextInput
-                    value={notes}
-                    onChangeText={setNotes}
-                    placeholder="Catatan Pengawas selama Ujian berlangsung"
-                    style={{
-                      borderWidth: 1,
-                      borderColor: reportSubmitted ? '#e2e8f0' : '#cbd5e1',
-                      borderRadius: 14,
-                      paddingHorizontal: 14,
-                      paddingVertical: 14,
-                      minHeight: 128,
-                      textAlignVertical: 'top',
-                      marginTop: 8,
-                      color: reportSubmitted ? '#64748b' : '#0f172a',
-                      backgroundColor: reportSubmitted ? '#f8fafc' : '#fff',
-                      lineHeight: 22,
-                    }}
-                    placeholderTextColor="#94a3b8"
-                    multiline
-                    editable={!reportSubmitted}
-                  />
-                  {reportSubmitted ? (
-                    <Text style={{ color: '#64748b', fontSize: 12, marginTop: 8 }}>
-                      Catatan tidak bisa diubah lagi karena berita acara sudah masuk arsip setelah dikirim ke Kurikulum.
-                    </Text>
-                  ) : null}
-                  <Text style={{ color: '#64748b', fontSize: 12, marginTop: 8 }}>Waktu pelaksanaan: {previewTimeLabel}</Text>
-                </View>
-
-                <Pressable
-                  onPress={() => {
-                    Alert.alert('Konfirmasi', 'Kirim berita acara ujian ini ke Kurikulum?', [
-                      { text: 'Batal', style: 'cancel' },
-                      {
-                        text: 'Kirim',
-                        onPress: () => {
-                          void submitMutation.mutateAsync();
-                        },
-                      },
-                    ]);
-                  }}
-                  style={{
-                    backgroundColor: BRAND_COLORS.blue,
-                    borderRadius: 10,
-                    paddingVertical: 10,
-                    alignItems: 'center',
-                    marginTop: 12,
-                    opacity: submitMutation.isPending || reportSubmitted ? 0.6 : 1,
-                  }}
-                  disabled={submitMutation.isPending || reportSubmitted}
-                >
-                  <Text style={{ color: '#fff', fontWeight: '700' }}>
-                    {submitMutation.isPending ? 'Menyimpan...' : reportSubmitted ? 'Terkirim ke Kurikulum' : 'Kirim ke Kurikulum'}
-                  </Text>
-                </Pressable>
+                ) : null}
+                <Text style={{ color: '#64748b', fontSize: 12, marginTop: 8 }}>Waktu pelaksanaan: {previewTimeLabel}</Text>
               </View>
-            ) : null}
+
+              <Pressable
+                onPress={() => {
+                  Alert.alert('Konfirmasi', 'Kirim berita acara ujian ini ke Kurikulum?', [
+                    { text: 'Batal', style: 'cancel' },
+                    {
+                      text: 'Kirim',
+                      onPress: () => {
+                        void submitMutation.mutateAsync();
+                      },
+                    },
+                  ]);
+                }}
+                style={{
+                  backgroundColor: reportSubmitted ? '#059669' : BRAND_COLORS.blue,
+                  borderRadius: 10,
+                  paddingVertical: 12,
+                  alignItems: 'center',
+                  opacity: submitMutation.isPending || reportSubmitted ? 0.6 : 1,
+                }}
+                disabled={submitMutation.isPending || reportSubmitted}
+              >
+                <Text style={{ color: '#fff', fontWeight: '700' }}>
+                  {submitMutation.isPending ? 'Menyimpan...' : reportSubmitted ? 'Terkirim ke Kurikulum' : 'Kirim ke Kurikulum'}
+                </Text>
+              </Pressable>
+            </ScrollView>
           </View>
-        </>
-      ) : null}
+        </View>
+      </Modal>
     </ScrollView>
   );
 }
