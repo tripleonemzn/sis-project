@@ -310,6 +310,7 @@ const buildSidebarCrumbLookup = (roleSegment: string, user: User | null): Record
           info: 'Info Server',
           storage: 'Manajemen Storage',
           monitoring: 'Monitoring Server',
+          online: 'User Online',
           webmail: 'Webmail',
         };
 

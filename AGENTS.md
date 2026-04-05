@@ -91,6 +91,8 @@ Dokumen ini adalah policy kerja default untuk setiap sesi baru yang mengerjakan 
 
 8. **UI/frontend harus selalu up to date untuk ujicoba**
    - Jika perubahan menyentuh web/mobile UI yang dipakai tester, hasilnya harus dirilis sesuai workflow existing project.
+   - Jika ada pengembangan menu, sub-menu, tab, atau fitur baru yang muncul di navigasi user, pastikan breadcrumb juga ikut disesuaikan agar konteks halaman tetap jelas dan konsisten.
+   - Jangan menambah fitur/menu baru dengan breadcrumb yang tertinggal, salah label, atau tidak mengenali tab aktif.
    - Untuk mobile tester:
      - jalankan verifikasi dasar
      - publish OTA ke channel yang dipakai tester jika task memang harus langsung diuji
