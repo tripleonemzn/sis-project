@@ -32,6 +32,14 @@ type VerificationResponse = {
       name: string;
     };
   };
+  attendanceDocument?: {
+    documentNumber: string;
+    counts: {
+      expectedParticipants: number;
+      absentParticipants: number;
+      presentParticipants: number;
+    };
+  } | null;
 };
 
 function formatDateTime(value?: string | null) {
@@ -93,7 +101,7 @@ export default function ProctorReportVerificationPage() {
               </div>
               <h1 className="mt-4 text-center text-2xl font-bold text-slate-900">Dokumen Terverifikasi</h1>
               <p className="mt-2 text-center text-sm text-slate-600">
-                Dokumen berita acara ini terdaftar di sistem SIS KGB2 dan dinyatakan valid.
+                Dokumen ujian ini terdaftar di sistem SIS KGB2 dan dinyatakan valid.
               </p>
 
               <div className="mt-8 grid gap-4 rounded-2xl border border-emerald-100 bg-emerald-50/60 p-5 text-sm text-slate-700">
@@ -137,6 +145,20 @@ export default function ProctorReportVerificationPage() {
                   </div>
                 </div>
               </div>
+
+              {verificationQuery.data.attendanceDocument ? (
+                <div className="mt-6 rounded-2xl border border-sky-200 bg-sky-50/70 p-5 text-sm text-slate-700">
+                  <div className="text-xs font-semibold uppercase tracking-wide text-sky-700">Daftar Hadir Digital</div>
+                  <div className="mt-2 font-semibold text-slate-900">
+                    {verificationQuery.data.attendanceDocument.documentNumber}
+                  </div>
+                  <div className="mt-2">
+                    Seharusnya {verificationQuery.data.attendanceDocument.counts.expectedParticipants} • Hadir{' '}
+                    {verificationQuery.data.attendanceDocument.counts.presentParticipants} • Tidak hadir{' '}
+                    {verificationQuery.data.attendanceDocument.counts.absentParticipants}
+                  </div>
+                </div>
+              ) : null}
 
               {verificationQuery.data.snapshot.schedule.classNames.length > 0 ? (
                 <div className="mt-6 rounded-2xl border border-slate-200 bg-slate-50 p-5 text-sm text-slate-700">

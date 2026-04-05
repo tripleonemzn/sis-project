@@ -1417,7 +1417,7 @@ const ExamProctorManagementPage = () => {
                       {row.report ? (
                         <div className="flex min-w-[220px] flex-col gap-2">
                           <div className="text-xs text-gray-500">
-                            {row.report.documentNumber || 'Nomor dokumen akan dibuat saat preview dibuka.'}
+                            BA: {row.report.documentNumber || 'Nomor dokumen dibuat saat preview dibuka.'}
                           </div>
                           <div className="flex flex-wrap gap-2">
                             <button
@@ -1426,7 +1426,7 @@ const ExamProctorManagementPage = () => {
                               className="inline-flex items-center rounded-lg border border-blue-200 bg-blue-50 px-3 py-2 text-xs font-semibold text-blue-700 hover:bg-blue-100"
                             >
                               <FileText size={13} className="mr-1.5" />
-                              Lihat Dokumen
+                              Lihat BA
                             </button>
                             <button
                               type="button"
@@ -1434,7 +1434,23 @@ const ExamProctorManagementPage = () => {
                               className="inline-flex items-center rounded-lg border border-emerald-200 bg-emerald-50 px-3 py-2 text-xs font-semibold text-emerald-700 hover:bg-emerald-100"
                             >
                               <FileText size={13} className="mr-1.5" />
-                              Print
+                              Print BA
+                            </button>
+                            <button
+                              type="button"
+                              onClick={() => window.open(`/print/proctor-attendance/${row.report?.id}`, '_blank', 'noopener')}
+                              className="inline-flex items-center rounded-lg border border-amber-200 bg-amber-50 px-3 py-2 text-xs font-semibold text-amber-700 hover:bg-amber-100"
+                            >
+                              <FileText size={13} className="mr-1.5" />
+                              Lihat Daftar Hadir
+                            </button>
+                            <button
+                              type="button"
+                              onClick={() => window.open(`/print/proctor-attendance/${row.report?.id}?autoprint=1`, '_blank', 'noopener')}
+                              className="inline-flex items-center rounded-lg border border-violet-200 bg-violet-50 px-3 py-2 text-xs font-semibold text-violet-700 hover:bg-violet-100"
+                            >
+                              <FileText size={13} className="mr-1.5" />
+                              Print Daftar Hadir
                             </button>
                           </div>
                         </div>

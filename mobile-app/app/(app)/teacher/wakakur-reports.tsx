@@ -551,7 +551,7 @@ export default function TeacherWakakurReportsScreen() {
                 {proctorSummaryQuery.data.latestReportedRows.length > 0 ? (
                   <View style={{ marginTop: 12 }}>
                     <Text style={{ color: BRAND_COLORS.textDark, fontWeight: '700', marginBottom: 8 }}>
-                      Dokumen Berita Acara Masuk
+                      Dokumen Pengawas Masuk
                     </Text>
                     {proctorSummaryQuery.data.latestReportedRows.map((row, index) => (
                       <View
@@ -569,7 +569,7 @@ export default function TeacherWakakurReportsScreen() {
                           {row.room || 'Belum ditentukan'}
                         </Text>
                         <Text style={{ color: '#64748b', fontSize: 12, marginTop: 2 }}>
-                          {row.report?.documentNumber || 'Nomor dokumen akan dibuat saat preview dibuka.'}
+                          BA: {row.report?.documentNumber || 'Nomor dokumen dibuat saat preview dibuka.'}
                         </Text>
                         <Text style={{ color: '#64748b', fontSize: 12, marginTop: 2 }}>
                           Pengawas: {row.report?.proctor?.name || '-'}
@@ -591,7 +591,7 @@ export default function TeacherWakakurReportsScreen() {
                                 backgroundColor: '#eff6ff',
                               }}
                             >
-                              <Text style={{ color: '#1d4ed8', fontWeight: '700' }}>Lihat Dokumen</Text>
+                              <Text style={{ color: '#1d4ed8', fontWeight: '700' }}>Lihat BA</Text>
                             </Pressable>
                           ) : null}
                           {row.report?.id ? (
@@ -610,7 +610,45 @@ export default function TeacherWakakurReportsScreen() {
                                 backgroundColor: '#ecfdf5',
                               }}
                             >
-                              <Text style={{ color: '#15803d', fontWeight: '700' }}>Print</Text>
+                              <Text style={{ color: '#15803d', fontWeight: '700' }}>Print BA</Text>
+                            </Pressable>
+                          ) : null}
+                          {row.report?.id ? (
+                            <Pressable
+                              onPress={() => {
+                                void openExternalUrl(`${getWebBaseUrl()}/print/proctor-attendance/${row.report?.id}`);
+                              }}
+                              style={{
+                                flex: 1,
+                                minWidth: 120,
+                                borderWidth: 1,
+                                borderColor: '#fde68a',
+                                borderRadius: 10,
+                                paddingVertical: 10,
+                                alignItems: 'center',
+                                backgroundColor: '#fffbeb',
+                              }}
+                            >
+                              <Text style={{ color: '#b45309', fontWeight: '700' }}>Lihat Daftar Hadir</Text>
+                            </Pressable>
+                          ) : null}
+                          {row.report?.id ? (
+                            <Pressable
+                              onPress={() => {
+                                void openExternalUrl(`${getWebBaseUrl()}/print/proctor-attendance/${row.report?.id}?autoprint=1`);
+                              }}
+                              style={{
+                                flex: 1,
+                                minWidth: 120,
+                                borderWidth: 1,
+                                borderColor: '#ddd6fe',
+                                borderRadius: 10,
+                                paddingVertical: 10,
+                                alignItems: 'center',
+                                backgroundColor: '#f5f3ff',
+                              }}
+                            >
+                              <Text style={{ color: '#6d28d9', fontWeight: '700' }}>Print Daftar Hadir</Text>
                             </Pressable>
                           ) : null}
                           {row.report?.verificationUrl ? (

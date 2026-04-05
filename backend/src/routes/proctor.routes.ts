@@ -5,6 +5,7 @@ import {
   submitBeritaAcara,
   getProctoringReports,
   getProctoringReportDocument,
+  getProctoringAttendanceDocument,
 } from '../controllers/proctor.controller';
 import { authMiddleware } from '../middleware/auth';
 import { roleMiddleware } from '../middleware/role';
@@ -17,6 +18,7 @@ router.get('/schedules', roleMiddleware(['TEACHER', 'ADMIN']), getProctorSchedul
 router.get('/schedules/:scheduleId', roleMiddleware(['TEACHER', 'ADMIN']), getProctoringDetail);
 router.post('/schedules/:scheduleId/report', roleMiddleware(['TEACHER', 'ADMIN']), submitBeritaAcara);
 router.get('/reports/:reportId/document', roleMiddleware(['TEACHER', 'ADMIN', 'PRINCIPAL']), getProctoringReportDocument);
+router.get('/reports/:reportId/attendance-document', roleMiddleware(['TEACHER', 'ADMIN', 'PRINCIPAL']), getProctoringAttendanceDocument);
 router.get('/reports', roleMiddleware(['TEACHER', 'ADMIN', 'PRINCIPAL']), getProctoringReports);
 
 export default router;
