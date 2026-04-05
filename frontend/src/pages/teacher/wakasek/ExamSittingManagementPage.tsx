@@ -12,7 +12,8 @@ import {
 import { useSearchParams } from 'react-router-dom';
 import api from '../../../services/api';
 import { toast } from 'react-hot-toast';
-import type { AcademicYear } from '../../../services/academicYear.service';
+import { ActiveAcademicYearNotice } from '../../../components/ActiveAcademicYearNotice';
+import { useActiveAcademicYear } from '../../../hooks/useActiveAcademicYear';
 import { examService, type ExamProgram, type ExamProgramSession } from '../../../services/exam.service';
 import { isNonScheduledExamProgram, resolveProgramCodeFromParam } from '../../../lib/examProgramMenu';
 
@@ -105,13 +106,13 @@ const getStudentClassName = (student: Student): string =>
 const ExamSittingManagementPage = () => {
   const [searchParams, setSearchParams] = useSearchParams();
   const programParamKey = 'ruangProgram';
+  const { data: activeAcademicYear } = useActiveAcademicYear();
 
   // State
   const [sittings, setSittings] = useState<ExamSitting[]>([]);
   const [loading, setLoading] = useState(true);
   const [detailsLoading, setDetailsLoading] = useState(false); // New state for details fetching
-  const [academicYears, setAcademicYears] = useState<AcademicYear[]>([]);
-  const [selectedAcademicYear, setSelectedAcademicYear] = useState<string>('');
+  const selectedAcademicYear = activeAcademicYear?.id ? String(activeAcademicYear.id) : '';
   const [examPrograms, setExamPrograms] = useState<ExamProgram[]>([]);
   const [activeProgramCode, setActiveProgramCode] = useState<string>('');
   const [programSessions, setProgramSessions] = useState<ExamProgramSession[]>([]);
@@ -229,20 +230,10 @@ const ExamSittingManagementPage = () => {
   useEffect(() => {
     const fetchInitialData = async () => {
       try {
-        const [ayRes, classRes, roomRes] = await Promise.all([
-          api.get('/academic-years?limit=100'),
+        const [classRes, roomRes] = await Promise.all([
           api.get('/classes?limit=100'),
           api.get('/inventory/rooms')
         ]);
-
-        const ays = ayRes.data?.data?.academicYears || ayRes.data?.data || [];
-        setAcademicYears(ays);
-        
-        // Set default active academic year
-        const activeAy = ays.find((a: AcademicYear) => a.isActive);
-        if (activeAy) setSelectedAcademicYear(activeAy.id.toString());
-        else if (ays.length > 0) setSelectedAcademicYear(ays[0].id.toString());
-        else setLoading(false);
 
         setClasses(classRes.data?.data?.classes || []);
         setSarprasRooms(Array.isArray(roomRes.data?.data) ? roomRes.data.data : []);
@@ -339,6 +330,8 @@ const ExamSittingManagementPage = () => {
     if (selectedAcademicYear) {
       void fetchPrograms();
     } else {
+      setExamPrograms([]);
+      setActiveProgramCode('');
       setLoading(false);
     }
   }, [selectedAcademicYear, fetchPrograms]);
@@ -364,6 +357,13 @@ const ExamSittingManagementPage = () => {
     if (!showModal) return;
     void fetchProgramSessions(formData.academicYearId || selectedAcademicYear, activeProgramCode);
   }, [showModal, formData.academicYearId, selectedAcademicYear, activeProgramCode, fetchProgramSessions]);
+
+  useEffect(() => {
+    if (!selectedAcademicYear) return;
+    setFormData((prev) =>
+      prev.academicYearId === selectedAcademicYear ? prev : { ...prev, academicYearId: selectedAcademicYear },
+    );
+  }, [selectedAcademicYear]);
 
   useEffect(() => {
     if (!showModal) return;
@@ -509,7 +509,7 @@ const ExamSittingManagementPage = () => {
     setFormData({
       roomName: sitting.roomName,
       sessionId: sitting.sessionId ? String(sitting.sessionId) : matchedSession ? String(matchedSession.id) : '',
-      academicYearId: sitting.academicYearId?.toString() || selectedAcademicYear || '',
+      academicYearId: selectedAcademicYear || sitting.academicYearId?.toString() || '',
       semester: sitting.semester || 'ODD'
     });
     setNewSessionLabel('');
@@ -532,6 +532,11 @@ const ExamSittingManagementPage = () => {
       toast.error('Ruang ujian harus berasal dari daftar ruang yang tersedia.');
       return;
     }
+    const academicYearId = Number(formData.academicYearId || selectedAcademicYear || 0);
+    if (!academicYearId) {
+      toast.error('Tahun ajaran aktif belum tersedia.');
+      return;
+    }
     try {
       // Logic: User wants only Room Name and Students in this flow.
       // Time/Date/Proctor are removed.
@@ -539,7 +544,7 @@ const ExamSittingManagementPage = () => {
       const payload = {
         roomName: formData.roomName,
         sessionId: formData.sessionId ? Number(formData.sessionId) : null,
-        academicYearId: formData.academicYearId,
+        academicYearId,
         examType: activeProgramCode,
         programCode: activeProgramCode,
         semester: activeProgram?.fixedSemester || formData.semester || 'ODD',
@@ -568,7 +573,7 @@ const ExamSittingManagementPage = () => {
     const academicYearId = Number(formData.academicYearId || selectedAcademicYear || 0);
     const label = newSessionLabel.trim();
     if (!academicYearId) {
-      toast.error('Pilih tahun ajaran dulu sebelum menambah sesi.');
+      toast.error('Tahun ajaran aktif belum tersedia.');
       return;
     }
     if (!activeProgramCode) {
@@ -1012,6 +1017,13 @@ const ExamSittingManagementPage = () => {
           </div>
         </div>
 
+        <ActiveAcademicYearNotice
+          className="mt-4"
+          name={activeAcademicYear?.name}
+          semester={activeAcademicYear?.semester}
+          helperText="Ruang ujian dan komposisi siswa di halaman ini selalu mengikuti tahun ajaran aktif sesuai header aplikasi."
+        />
+
         {/* Tabs */}
         <div className="bg-white p-4 rounded-xl shadow-sm border border-gray-200 mt-6">
           {visiblePrograms.length === 0 ? (
@@ -1140,20 +1152,19 @@ const ExamSittingManagementPage = () => {
             </div>
             
             <form onSubmit={handleSave} className="space-y-4">
-              {/* Academic Year - Only visible if creating new or if backend supports editing it */}
               <div>
-                <label htmlFor="academicYearId" className="block text-sm font-medium text-gray-700 mb-1">Tahun Ajaran</label>
-                <select
-                  id="academicYearId"
-                  value={formData.academicYearId}
-                  onChange={(e) => setFormData({ ...formData, academicYearId: e.target.value })}
-                  className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500"
-                >
-                  <option value="">Pilih Tahun Ajaran</option>
-                  {academicYears.map(ay => (
-                    <option key={ay.id} value={ay.id.toString()}>{ay.name} ({ay.isActive ? 'Aktif' : 'Tidak Aktif'})</option>
-                  ))}
-                </select>
+                <label className="block text-sm font-medium text-gray-700 mb-1">Tahun Ajaran</label>
+                <div className="rounded-lg border border-blue-100 bg-blue-50 px-3 py-3">
+                  <div className="flex flex-wrap items-center justify-between gap-2">
+                    <span className="text-sm font-semibold text-gray-900">{activeAcademicYear?.name || '-'}</span>
+                    <span className="rounded-full bg-emerald-100 px-2.5 py-1 text-[11px] font-semibold text-emerald-700">
+                      Aktif
+                    </span>
+                  </div>
+                  <p className="mt-1 text-xs text-blue-700">
+                    Ruang ujian ini otomatis tersimpan ke tahun ajaran aktif sesuai header aplikasi.
+                  </p>
+                </div>
               </div>
 
               {activeProgram?.fixedSemester ? (

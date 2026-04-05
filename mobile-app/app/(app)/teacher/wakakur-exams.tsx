@@ -14,6 +14,7 @@ import { Feather } from '@expo/vector-icons';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { AppLoadingScreen } from '../../../src/components/AppLoadingScreen';
 import { MobileDetailModal } from '../../../src/components/MobileDetailModal';
+import { MobileActiveAcademicYearNotice } from '../../../src/components/MobileActiveAcademicYearNotice';
 import { MobileMenuTabBar } from '../../../src/components/MobileMenuTabBar';
 import { MobileSelectField } from '../../../src/components/MobileSelectField';
 import { MobileSummaryCard } from '../../../src/components/MobileSummaryCard';
@@ -717,7 +718,7 @@ export default function TeacherWakakurExamsScreen() {
     enabled: isAuthenticated && user?.role === 'TEACHER',
     queryFn: async () => {
       try {
-        return await academicYearApi.getActive();
+        return await academicYearApi.getActive({ allowStaleOnError: true });
       } catch {
         return null;
       }
@@ -1835,6 +1836,12 @@ export default function TeacherWakakurExamsScreen() {
       <Text style={{ color: BRAND_COLORS.textMuted, marginBottom: 10 }}>
         Pengelolaan jadwal ujian, ruang ujian, generate denah ruang, jadwal mengawas, dan program ujian.
       </Text>
+
+      <MobileActiveAcademicYearNotice
+        name={activeYearQuery.data?.name}
+        semester={activeYearQuery.data?.semester}
+        helperText="Semua data operasional di modul ini otomatis mengikuti tahun ajaran aktif yang tampil di header aplikasi."
+      />
 
       <MobileMenuTabBar
         items={EXAM_SECTION_ITEMS}

@@ -2,16 +2,17 @@ import { useCallback, useEffect, useMemo, useState } from 'react';
 import {
   AlertTriangle,
   CheckCircle2,
-  Layers3,
   Loader2,
+  Layers3,
   PencilRuler,
   Save,
   Sparkles,
   X,
 } from 'lucide-react';
 import { toast } from 'react-hot-toast';
+import { ActiveAcademicYearNotice } from '../../../components/ActiveAcademicYearNotice';
+import { useActiveAcademicYear } from '../../../hooks/useActiveAcademicYear';
 import api from '../../../services/api';
-import type { AcademicYear } from '../../../services/academicYear.service';
 import { examService, type ExamProgram } from '../../../services/exam.service';
 import { isNonScheduledExamProgram } from '../../../lib/examProgramMenu';
 
@@ -231,8 +232,8 @@ function getStudentClassName(student?: LayoutStudent | null) {
 }
 
 export default function ExamRoomLayoutManagementPage() {
-  const [academicYears, setAcademicYears] = useState<AcademicYear[]>([]);
-  const [selectedAcademicYear, setSelectedAcademicYear] = useState<string>('');
+  const { data: activeAcademicYear, isLoading: loadingActiveAcademicYear } = useActiveAcademicYear();
+  const selectedAcademicYear = activeAcademicYear?.id ? String(activeAcademicYear.id) : '';
   const [programs, setPrograms] = useState<ExamProgram[]>([]);
   const [activeProgramCode, setActiveProgramCode] = useState('');
   const [sittings, setSittings] = useState<SittingRow[]>([]);
@@ -240,7 +241,6 @@ export default function ExamRoomLayoutManagementPage() {
   const [detail, setDetail] = useState<LayoutDetail | null>(null);
   const [draft, setDraft] = useState<LayoutDraft | null>(null);
   const [roomSearch, setRoomSearch] = useState('');
-  const [loadingInitial, setLoadingInitial] = useState(true);
   const [loadingSittings, setLoadingSittings] = useState(false);
   const [loadingDetail, setLoadingDetail] = useState(false);
   const [saving, setSaving] = useState(false);
@@ -258,11 +258,6 @@ export default function ExamRoomLayoutManagementPage() {
         .filter((program) => Boolean(program.isActive) && !isNonScheduledExamProgram(program))
         .sort((a, b) => a.order - b.order || a.label.localeCompare(b.label, 'id-ID')),
     [programs],
-  );
-
-  const activeAcademicYear = useMemo(
-    () => academicYears.find((item) => String(item.id) === selectedAcademicYear) || null,
-    [academicYears, selectedAcademicYear],
   );
 
   const selectedSitting = useMemo(
@@ -353,22 +348,6 @@ export default function ExamRoomLayoutManagementPage() {
     return rows;
   }, [draft]);
 
-  const fetchInitialData = useCallback(async () => {
-    setLoadingInitial(true);
-    try {
-      const response = await api.get('/academic-years?limit=100');
-      const rows = (response.data?.data?.academicYears || response.data?.data || []) as AcademicYear[];
-      setAcademicYears(rows);
-      const activeYear = rows.find((item) => item.isActive) || rows[0] || null;
-      setSelectedAcademicYear(activeYear ? String(activeYear.id) : '');
-    } catch (error) {
-      console.error(error);
-      toast.error('Gagal memuat tahun ajaran.');
-    } finally {
-      setLoadingInitial(false);
-    }
-  }, []);
-
   const fetchPrograms = useCallback(async () => {
     if (!selectedAcademicYear) {
       setPrograms([]);
@@ -448,10 +427,6 @@ export default function ExamRoomLayoutManagementPage() {
       setLoadingDetail(false);
     }
   }, []);
-
-  useEffect(() => {
-    void fetchInitialData();
-  }, [fetchInitialData]);
 
   useEffect(() => {
     if (!selectedAcademicYear) return;
@@ -641,7 +616,7 @@ export default function ExamRoomLayoutManagementPage() {
     toast.success('Penempatan siswa per rombel berhasil diterapkan.');
   }, [draft, placementGroups]);
 
-  if (loadingInitial) {
+  if (loadingActiveAcademicYear) {
     return (
       <div className="rounded-xl border border-gray-200 bg-white p-8 text-center text-sm text-gray-500">
         <Loader2 className="mx-auto mb-3 h-5 w-5 animate-spin text-blue-600" />
@@ -662,26 +637,11 @@ export default function ExamRoomLayoutManagementPage() {
 
         <div className="rounded-xl border border-gray-100 bg-white p-4 shadow-sm">
           <div className="grid gap-4 md:grid-cols-[280px_minmax(0,1fr)]">
-            <div>
-              <label className="mb-1 block text-xs font-semibold uppercase tracking-wide text-gray-500">
-                Tahun Ajaran Aktif
-              </label>
-              <div className="flex items-center justify-between rounded-lg border border-gray-200 bg-gray-50 px-3 py-2 text-sm">
-                <span className="font-medium text-gray-800">{activeAcademicYear?.name || '-'}</span>
-                <span
-                  className={`rounded-full px-2.5 py-1 text-[11px] font-semibold ${
-                    activeAcademicYear?.isActive
-                      ? 'bg-emerald-100 text-emerald-700'
-                      : 'bg-amber-100 text-amber-700'
-                  }`}
-                >
-                  {activeAcademicYear?.isActive ? 'Aktif' : 'Belum aktif'}
-                </span>
-              </div>
-              <p className="mt-1 text-xs text-gray-500">
-                Denah otomatis mengikuti tahun ajaran yang sedang aktif.
-              </p>
-            </div>
+            <ActiveAcademicYearNotice
+              name={activeAcademicYear?.name}
+              semester={activeAcademicYear?.semester}
+              helperText="Denah ruang di halaman ini otomatis mengikuti tahun ajaran aktif sesuai header aplikasi."
+            />
             <div>
               <label className="mb-1 block text-xs font-semibold uppercase tracking-wide text-gray-500">
                 Program Ujian

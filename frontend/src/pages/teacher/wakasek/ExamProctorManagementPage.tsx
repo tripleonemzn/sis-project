@@ -20,18 +20,13 @@ import { useSearchParams } from 'react-router-dom';
 import api from '../../../services/api';
 import { toast } from 'react-hot-toast';
 import { format } from 'date-fns';
+import { ActiveAcademicYearNotice } from '../../../components/ActiveAcademicYearNotice';
+import { useActiveAcademicYear } from '../../../hooks/useActiveAcademicYear';
 import { examService, type ExamProgram } from '../../../services/exam.service';
 import { isNonScheduledExamProgram, resolveProgramCodeFromParam } from '../../../lib/examProgramMenu';
 // import { id } from 'date-fns/locale'; // Unused
 
 // --- Interfaces ---
-
-interface AcademicYear {
-  id: number;
-  name: string;
-  semester: string;
-  isActive: boolean;
-}
 
 interface Teacher {
   id: number;
@@ -366,6 +361,7 @@ const ExamProctorManagementPage = () => {
   const [searchParams, setSearchParams] = useSearchParams();
   const programParamKey = 'mengawasProgram';
   const dateParamKey = 'mengawasDate';
+  const { data: activeAcademicYear } = useActiveAcademicYear();
   const [examPrograms, setExamPrograms] = useState<ExamProgram[]>([]);
   const [activeProgramCode, setActiveProgramCode] = useState<string>('');
   const [schedules, setSchedules] = useState<ExamSchedule[]>([]);
@@ -377,7 +373,7 @@ const ExamProctorManagementPage = () => {
   const [reportMode, setReportMode] = useState<'daily' | 'archive'>('daily');
   const [reportDateFrom, setReportDateFrom] = useState<string>(() => String(searchParams.get('mengawasReportFrom') || ''));
   const [reportDateTo, setReportDateTo] = useState<string>(() => String(searchParams.get('mengawasReportTo') || ''));
-  const [selectedAcademicYear, setSelectedAcademicYear] = useState<string>('');
+  const selectedAcademicYear = activeAcademicYear?.id ? String(activeAcademicYear.id) : '';
   const [proctorReports, setProctorReports] = useState<ProctorReportRow[]>([]);
   const [proctorReportSummary, setProctorReportSummary] = useState<ProctorReportSummary>({
     totalRooms: 0,
@@ -425,26 +421,6 @@ const ExamProctorManagementPage = () => {
     () => String(searchParams.get(programParamKey) || '').trim().toUpperCase(),
     [searchParams],
   );
-
-  // --- Fetch Initial Data ---
-  useEffect(() => {
-    const fetchInitialData = async () => {
-      try {
-        const ayRes = await api.get('/academic-years?limit=100');
-
-        const ays = ayRes.data?.data?.academicYears || ayRes.data?.data || [];
-        // setAcademicYears(ays); // Removed unused state setter
-
-        const activeAy = ays.find((ay: AcademicYear) => ay.isActive);
-        if (activeAy) setSelectedAcademicYear(activeAy.id.toString());
-        else if (ays.length > 0) setSelectedAcademicYear(ays[0].id.toString());
-      } catch (err) {
-        console.error(err);
-        toast.error('Gagal memuat data awal');
-      }
-    };
-    fetchInitialData();
-  }, []);
 
   const fetchTeachers = useCallback(async () => {
     try {
@@ -505,7 +481,10 @@ const ExamProctorManagementPage = () => {
     if (selectedAcademicYear) {
       void fetchPrograms();
       void fetchTeachers();
+      return;
     }
+    setExamPrograms([]);
+    setActiveProgramCode('');
   }, [selectedAcademicYear, fetchPrograms, fetchTeachers]);
 
   // --- Fetch Room Mappings (From ExamSitting) ---
@@ -958,6 +937,13 @@ const ExamProctorManagementPage = () => {
           Atur pengawas berdasarkan <span className="font-semibold text-gray-700">Ruang Ujian</span>. 
           Ruang ujian otomatis terdeteksi dari data "Kelola Ruang Ujian", dan daftar pengawas menampilkan semua guru.
         </p>
+
+        <ActiveAcademicYearNotice
+          className="mt-4"
+          name={activeAcademicYear?.name}
+          semester={activeAcademicYear?.semester}
+          helperText="Jadwal mengawas di halaman ini selalu mengikuti tahun ajaran aktif sesuai header aplikasi."
+        />
         
         <div className="flex flex-wrap items-center gap-4 mt-6">
           {/* Filters */}

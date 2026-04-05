@@ -14,7 +14,8 @@ import { toast } from 'react-hot-toast';
 import { format } from 'date-fns';
 import { id } from 'date-fns/locale';
 import { useSearchParams } from 'react-router-dom';
-import type { AcademicYear } from '../../../services/academicYear.service';
+import { ActiveAcademicYearNotice } from '../../../components/ActiveAcademicYearNotice';
+import { useActiveAcademicYear } from '../../../hooks/useActiveAcademicYear';
 import {
   examService,
   type ExamPacket,
@@ -199,6 +200,7 @@ const CURRICULUM_EXAM_MANAGER_LABEL = 'Wakasek Kurikulum / Sekretaris Kurikulum'
 const ExamScheduleManagementPage = () => {
   const [searchParams, setSearchParams] = useSearchParams();
   const programParamKey = 'jadwalProgram';
+  const { data: activeAcademicYear } = useActiveAcademicYear();
   const [examPrograms, setExamPrograms] = useState<ExamProgram[]>([]);
   const [activeProgramCode, setActiveProgramCode] = useState<string>('');
   const [schedules, setSchedules] = useState<ExamSchedule[]>([]);
@@ -227,9 +229,7 @@ const ExamScheduleManagementPage = () => {
   const [classes, setClasses] = useState<ClassData[]>([]);
   const [candidatePackets, setCandidatePackets] = useState<ExamPacket[]>([]);
   const [assignmentOptions, setAssignmentOptions] = useState<TeacherAssignmentOption[]>([]);
-  const [academicYears, setAcademicYears] = useState<AcademicYear[]>([]);
-  // selectedAcademicYear used for filtering list (default to active)
-  const [selectedAcademicYear, setSelectedAcademicYear] = useState<string>('');
+  const selectedAcademicYear = activeAcademicYear?.id ? String(activeAcademicYear.id) : '';
   
   const [formData, setFormData] = useState({
     subjectId: '',
@@ -378,29 +378,6 @@ const ExamScheduleManagementPage = () => {
     () => String(searchParams.get(programParamKey) || '').trim().toUpperCase(),
     [searchParams],
   );
-
-  // Fetch initial data
-  useEffect(() => {
-    fetchInitialData();
-  }, []);
-
-  const fetchInitialData = async () => {
-    try {
-      const response = await api.get('/academic-years?limit=100');
-      const ayData = response.data?.data?.academicYears || response.data?.data || ([] as AcademicYear[]);
-      setAcademicYears(ayData);
-      
-      // Set default selected academic year (active one)
-      const activeAy = ayData.find((ay: AcademicYear) => ay.isActive);
-      if (activeAy) {
-        setSelectedAcademicYear(activeAy.id.toString());
-      } else if (ayData.length > 0) {
-        setSelectedAcademicYear(ayData[0].id.toString());
-      }
-    } catch (error) {
-      console.error('Error fetching academic years:', error);
-    }
-  };
 
   const fetchPrograms = useCallback(async () => {
     if (!selectedAcademicYear) {
@@ -569,7 +546,10 @@ const ExamScheduleManagementPage = () => {
   useEffect(() => {
     if (selectedAcademicYear) {
       void fetchPrograms();
+      return;
     }
+    setExamPrograms([]);
+    setActiveProgramCode('');
   }, [fetchPrograms, selectedAcademicYear]);
 
   useEffect(() => {
@@ -591,19 +571,21 @@ const ExamScheduleManagementPage = () => {
 
   // Auto-set Semester & Academic Year when Modal opens
   useEffect(() => {
-    if (showModal) {
-      const activeAy = academicYears.find((ay: AcademicYear) => ay.isActive);
-      const defaultAyId = activeAy ? activeAy.id.toString() : (academicYears[0]?.id.toString() || '');
-      
-      const defaultSemester = activeProgram?.fixedSemester || formData.semester || 'ODD';
+    if (!showModal) return;
+    const defaultSemester = activeProgram?.fixedSemester || formData.semester || 'ODD';
+    setFormData((prev) => ({
+      ...prev,
+      academicYearId: selectedAcademicYear || prev.academicYearId,
+      semester: defaultSemester,
+    }));
+  }, [showModal, activeProgram, formData.semester, selectedAcademicYear]);
 
-      setFormData(prev => ({
-        ...prev,
-        academicYearId: prev.academicYearId || defaultAyId,
-        semester: defaultSemester
-      }));
-    }
-  }, [showModal, activeProgram, academicYears, formData.semester]);
+  useEffect(() => {
+    if (!selectedAcademicYear) return;
+    setFormData((prev) =>
+      prev.academicYearId === selectedAcademicYear ? prev : { ...prev, academicYearId: selectedAcademicYear },
+    );
+  }, [selectedAcademicYear]);
 
   useEffect(() => {
     if (showModal) {
@@ -739,7 +721,7 @@ const ExamScheduleManagementPage = () => {
     const academicYearId = Number(formData.academicYearId || selectedAcademicYear || 0);
     const label = newSessionLabel.trim();
     if (!academicYearId) {
-      toast.error('Pilih tahun ajaran dulu sebelum menambah sesi.');
+      toast.error('Tahun ajaran aktif belum tersedia.');
       return;
     }
     if (!activeProgramCode) {
@@ -1010,6 +992,13 @@ const ExamScheduleManagementPage = () => {
             </button>
           </div>
         </div>
+
+        <ActiveAcademicYearNotice
+          className="mt-4"
+          name={activeAcademicYear?.name}
+          semester={activeAcademicYear?.semester}
+          helperText="Jadwal ujian di halaman ini selalu mengikuti tahun ajaran aktif sesuai keterangan di header aplikasi."
+        />
 
         {/* Tabs */}
         <div className="bg-white p-4 rounded-xl shadow-sm border border-gray-200 mt-6">
@@ -1511,20 +1500,19 @@ const ExamScheduleManagementPage = () => {
             </div>
             
             <form onSubmit={handleSubmit} className="p-6 space-y-6">
-              {/* Academic Year - Only visible when creating */}
               <div>
-                <label htmlFor="academicYearId" className="block text-sm font-medium text-gray-700 mb-1">Tahun Ajaran</label>
-                <select
-                  id="academicYearId"
-                  value={formData.academicYearId}
-                  onChange={(e) => setFormData({ ...formData, academicYearId: e.target.value })}
-                  className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500"
-                >
-                  <option value="">Pilih Tahun Ajaran</option>
-                  {academicYears.map(ay => (
-                    <option key={ay.id} value={ay.id.toString()}>{ay.name} ({ay.isActive ? 'Aktif' : 'Tidak Aktif'})</option>
-                  ))}
-                </select>
+                <label className="block text-sm font-medium text-gray-700 mb-1">Tahun Ajaran</label>
+                <div className="rounded-lg border border-blue-100 bg-blue-50 px-3 py-3">
+                  <div className="flex flex-wrap items-center justify-between gap-2">
+                    <span className="text-sm font-semibold text-gray-900">{activeAcademicYear?.name || '-'}</span>
+                    <span className="rounded-full bg-emerald-100 px-2.5 py-1 text-[11px] font-semibold text-emerald-700">
+                      Aktif
+                    </span>
+                  </div>
+                  <p className="mt-1 text-xs text-blue-700">
+                    Jadwal ini otomatis tersimpan ke tahun ajaran aktif sesuai header aplikasi.
+                  </p>
+                </div>
               </div>
 
               {activeProgram?.fixedSemester ? (
