@@ -3190,38 +3190,54 @@ export default function TeacherWakakurExamsScreen() {
                           backgroundColor: '#fff',
                           borderWidth: 1,
                           borderColor: '#dbe7fb',
-                          borderRadius: 12,
-                          padding: 12,
+                          borderRadius: 16,
+                          padding: 14,
                           marginBottom: 10,
                         }}
                       >
-                        <View style={{ flexDirection: 'row', justifyContent: 'space-between', marginBottom: 4, gap: 8 }}>
-                          <Text style={{ color: BRAND_COLORS.textDark, fontWeight: '700', fontSize: 16, flex: 1 }}>
-                            {sitting.roomName || '-'}
-                          </Text>
-                          <Text
-                            style={{
-                              color: hasLayout ? '#047857' : '#b45309',
-                              fontWeight: '700',
-                            }}
-                          >
-                            {hasLayout ? 'Siap Edit' : 'Belum Digenerate'}
-                          </Text>
-                        </View>
-
-                        <Text style={{ color: BRAND_COLORS.textMuted, marginBottom: 2, fontSize: 12 }}>
-                          {formatDateTime(String(sitting.startTime || ''))} - {formatDateTime(String(sitting.endTime || ''))}
-                        </Text>
-                        <Text style={{ color: BRAND_COLORS.textMuted, marginBottom: 6, fontSize: 12 }}>
-                          Program: {examTypeLabel(normalizeProgramCode(sitting.examType))} • Sesi: {sitting.sessionLabel || '-'}
-                        </Text>
-
-                        <View style={{ flexDirection: 'row', flexWrap: 'wrap', gap: 8, marginBottom: 8 }}>
+                        <View
+                          style={{
+                            flexDirection: 'row',
+                            justifyContent: 'space-between',
+                            alignItems: 'flex-start',
+                            gap: 12,
+                          }}
+                        >
+                          <View style={{ flex: 1 }}>
+                            <Text style={{ color: BRAND_COLORS.textDark, fontWeight: '800', fontSize: 16 }}>
+                              {sitting.roomName || '-'}
+                            </Text>
+                            <Text style={{ color: BRAND_COLORS.textMuted, marginTop: 3, fontSize: 12 }}>
+                              {formatDateTime(String(sitting.startTime || ''))} - {formatDateTime(String(sitting.endTime || ''))}
+                            </Text>
+                            <Text style={{ color: BRAND_COLORS.textMuted, marginTop: 3, fontSize: 12 }}>
+                              {examTypeLabel(normalizeProgramCode(sitting.examType))} • Sesi {sitting.sessionLabel || '-'}
+                            </Text>
+                          </View>
                           <View
                             style={{
                               borderRadius: 999,
-                              borderWidth: 1,
-                              borderColor: '#dbe7fb',
+                              backgroundColor: hasLayout ? '#ecfdf5' : '#fffbeb',
+                              paddingHorizontal: 10,
+                              paddingVertical: 6,
+                            }}
+                          >
+                            <Text
+                              style={{
+                                color: hasLayout ? '#047857' : '#b45309',
+                                fontWeight: '800',
+                                fontSize: 11,
+                              }}
+                            >
+                              {hasLayout ? 'Siap Edit' : 'Belum Digenerate'}
+                            </Text>
+                          </View>
+                        </View>
+
+                        <View style={{ flexDirection: 'row', flexWrap: 'wrap', gap: 8, marginTop: 10 }}>
+                          <View
+                            style={{
+                              borderRadius: 999,
                               backgroundColor: '#f8fafc',
                               paddingHorizontal: 10,
                               paddingVertical: 6,
@@ -3235,8 +3251,6 @@ export default function TeacherWakakurExamsScreen() {
                             <View
                               style={{
                                 borderRadius: 999,
-                                borderWidth: 1,
-                                borderColor: '#bfdbfe',
                                 backgroundColor: '#eff6ff',
                                 paddingHorizontal: 10,
                                 paddingVertical: 6,
@@ -3250,16 +3264,14 @@ export default function TeacherWakakurExamsScreen() {
                           <View
                             style={{
                               borderRadius: 999,
-                              borderWidth: 1,
-                              borderColor: hasLayout ? '#a7f3d0' : '#fde68a',
-                              backgroundColor: hasLayout ? '#ecfdf5' : '#fffbeb',
+                              backgroundColor: '#f8fafc',
                               paddingHorizontal: 10,
                               paddingVertical: 6,
                             }}
                           >
                             <Text
                               style={{
-                                color: hasLayout ? '#047857' : '#b45309',
+                                color: '#475569',
                                 fontSize: 12,
                                 fontWeight: '700',
                               }}
@@ -3271,7 +3283,7 @@ export default function TeacherWakakurExamsScreen() {
                           </View>
                         </View>
 
-                        <Text style={{ color: '#64748b', fontSize: 12, marginBottom: 8 }}>
+                        <Text style={{ color: '#64748b', fontSize: 12, marginTop: 10 }}>
                           Kelas: {sitting.classes.length > 0 ? sitting.classes.join(', ') : '-'}
                         </Text>
 
@@ -3280,16 +3292,17 @@ export default function TeacherWakakurExamsScreen() {
                             router.push(`/teacher/wakakur-room-layout?sittingId=${encodeURIComponent(String(sitting.id))}` as never)
                           }
                           style={{
+                            marginTop: 12,
                             borderWidth: 1,
                             borderColor: '#bfdbfe',
-                            backgroundColor: '#eff6ff',
-                            borderRadius: 8,
-                            paddingVertical: 9,
+                            backgroundColor: hasLayout ? '#eff6ff' : '#fff',
+                            borderRadius: 12,
+                            paddingVertical: 11,
                             alignItems: 'center',
                           }}
                         >
                           <Text style={{ color: '#1d4ed8', fontWeight: '700', fontSize: 12 }}>
-                            {hasLayout ? 'Buka Editor Denah' : 'Generate Denah Ruang'}
+                            {hasLayout ? 'Buka Editor Denah' : 'Setup Denah Ruang'}
                           </Text>
                         </Pressable>
                       </View>

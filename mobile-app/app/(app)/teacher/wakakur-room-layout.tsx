@@ -12,8 +12,8 @@ import {
 } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { AppLoadingScreen } from '../../../src/components/AppLoadingScreen';
+import { MobileDetailModal } from '../../../src/components/MobileDetailModal';
 import { MobileSelectField } from '../../../src/components/MobileSelectField';
-import { MobileSummaryCard } from '../../../src/components/MobileSummaryCard';
 import { QueryStateView } from '../../../src/components/QueryStateView';
 import { BRAND_COLORS } from '../../../src/config/brand';
 import { useAuth } from '../../../src/features/auth/AuthProvider';
@@ -22,9 +22,10 @@ import {
   type ExamLayoutCell,
   type ExamLayoutCellType,
   type ExamLayoutDetail,
+  type ExamLayoutStudent,
 } from '../../../src/features/examLayouts/examLayoutApi';
-import { getStandardPagePadding } from '../../../src/lib/ui/pageLayout';
 import { notifyApiError, notifySuccess } from '../../../src/lib/ui/feedback';
+import { getStandardPagePadding } from '../../../src/lib/ui/pageLayout';
 
 type LayoutDraftCell = {
   rowIndex: number;
@@ -67,6 +68,11 @@ function formatDateTime(value?: string | null) {
     hour: '2-digit',
     minute: '2-digit',
   });
+}
+
+function formatStudentMeta(student?: ExamLayoutStudent | null) {
+  if (!student) return '-';
+  return [student.className, student.nis || student.nisn].filter(Boolean).join(' • ') || '-';
 }
 
 function buildPositionKey(rowIndex: number, columnIndex: number) {
@@ -122,41 +128,6 @@ function createDraftFromDetail(detail: ExamLayoutDetail): LayoutDraft | null {
   };
 }
 
-function resizeDraft(draft: LayoutDraft, nextRows: number, nextColumns: number): LayoutDraft {
-  const rows = clampGridSize(nextRows);
-  const columns = clampGridSize(nextColumns);
-  const currentMap = new Map<string, LayoutDraftCell>();
-  draft.cells.forEach((cell) => {
-    currentMap.set(buildPositionKey(cell.rowIndex, cell.columnIndex), cell);
-  });
-
-  const cells: LayoutDraftCell[] = [];
-  for (let rowIndex = 0; rowIndex < rows; rowIndex += 1) {
-    for (let columnIndex = 0; columnIndex < columns; columnIndex += 1) {
-      const current = currentMap.get(buildPositionKey(rowIndex, columnIndex));
-      const cellType = current?.cellType || 'SEAT';
-      cells.push({
-        rowIndex,
-        columnIndex,
-        cellType,
-        seatLabel:
-          cellType === 'SEAT'
-            ? String(current?.seatLabel || '').trim() || getSeatLabel(rowIndex, columnIndex)
-            : '',
-        studentId: current?.studentId ?? null,
-        notes: current?.notes || '',
-      });
-    }
-  }
-
-  return {
-    ...draft,
-    rows,
-    columns,
-    cells,
-  };
-}
-
 function numericInputValue(value: string, fallback: number) {
   const parsed = Number(value);
   if (!Number.isFinite(parsed)) return fallback;
@@ -178,6 +149,7 @@ export default function TeacherWakakurRoomLayoutScreen() {
   const [generateRowsInput, setGenerateRowsInput] = useState('4');
   const [generateColumnsInput, setGenerateColumnsInput] = useState('4');
   const [generateNotes, setGenerateNotes] = useState('');
+  const [setupModalVisible, setSetupModalVisible] = useState(false);
 
   const detailQuery = useQuery({
     queryKey: ['mobile-wakakur-room-layout-detail', sittingId],
@@ -195,7 +167,7 @@ export default function TeacherWakakurRoomLayoutScreen() {
       String(detailQuery.data.layout?.columns || detailQuery.data.meta.suggestedDimensions.columns),
     );
     setGenerateNotes(String(detailQuery.data.layout?.notes || '').trim());
-    if (nextDraft?.cells?.length) {
+    if (nextDraft?.cells.length) {
       setSelectedCellKey((current) =>
         nextDraft.cells.some((cell) => buildPositionKey(cell.rowIndex, cell.columnIndex) === current)
           ? current
@@ -206,10 +178,25 @@ export default function TeacherWakakurRoomLayoutScreen() {
     setSelectedCellKey('');
   }, [detailQuery.data]);
 
+  useEffect(() => {
+    if (!draft?.cells.length) {
+      setSelectedCellKey('');
+      return;
+    }
+    setSelectedCellKey((current) => {
+      const exists = draft.cells.some((cell) => buildPositionKey(cell.rowIndex, cell.columnIndex) === current);
+      return exists ? current : buildPositionKey(draft.cells[0].rowIndex, draft.cells[0].columnIndex);
+    });
+  }, [draft]);
+
   const selectedCell = useMemo(
     () => draft?.cells.find((cell) => buildPositionKey(cell.rowIndex, cell.columnIndex) === selectedCellKey) || null,
     [draft?.cells, selectedCellKey],
   );
+
+  const studentMap = useMemo(() => {
+    return new Map((detailQuery.data?.students || []).map((student) => [student.id, student] as const));
+  }, [detailQuery.data?.students]);
 
   const assignedStudentIds = useMemo(() => {
     const ids = new Set<number>();
@@ -224,11 +211,29 @@ export default function TeacherWakakurRoomLayoutScreen() {
     return students.filter((student) => !assignedStudentIds.has(student.id));
   }, [assignedStudentIds, detailQuery.data?.students]);
 
+  const missingStudentsPreview = useMemo(() => {
+    if (unassignedStudents.length === 0) return '';
+    const names = unassignedStudents.slice(0, 3).map((student) => student.name);
+    if (unassignedStudents.length <= 3) return names.join(', ');
+    return `${names.join(', ')} +${unassignedStudents.length - 3} lainnya`;
+  }, [unassignedStudents]);
+
+  const seatStats = useMemo(() => {
+    const seatCells = draft?.cells.filter((cell) => cell.cellType === 'SEAT') || [];
+    const filledSeats = seatCells.filter((cell) => typeof cell.studentId === 'number' && cell.studentId > 0).length;
+    return {
+      totalSeats: seatCells.length,
+      filledSeats,
+      aisleCount: draft?.cells.filter((cell) => cell.cellType === 'AISLE').length || 0,
+      studentCount: detailQuery.data?.meta.studentCount || 0,
+    };
+  }, [detailQuery.data?.meta.studentCount, draft]);
+
   const availableStudentOptions = useMemo(() => {
     const students = detailQuery.data?.students || [];
     const currentStudentId = selectedCell?.studentId ?? null;
     return [
-      { value: '', label: 'Kosongkan Kursi' },
+      { value: '', label: 'Belum dipasang' },
       ...students
         .filter((student) => !assignedStudentIds.has(student.id) || student.id === currentStudentId)
         .map((student) => ({
@@ -238,15 +243,23 @@ export default function TeacherWakakurRoomLayoutScreen() {
     ];
   }, [assignedStudentIds, detailQuery.data?.students, selectedCell?.studentId]);
 
-  const summary = useMemo(() => {
-    const seatCells = draft?.cells.filter((cell) => cell.cellType === 'SEAT') || [];
-    const filledSeats = seatCells.filter((cell) => typeof cell.studentId === 'number' && cell.studentId > 0).length;
-    return {
-      studentCount: detailQuery.data?.meta.studentCount || 0,
-      totalSeats: seatCells.length,
-      unassignedCount: Math.max(0, (detailQuery.data?.meta.studentCount || 0) - filledSeats),
-    };
-  }, [detailQuery.data?.meta.studentCount, draft]);
+  const gridRows = useMemo(() => {
+    if (!draft) return [];
+    const rows: LayoutDraftCell[][] = [];
+    for (let rowIndex = 0; rowIndex < draft.rows; rowIndex += 1) {
+      rows.push(
+        draft.cells
+          .filter((cell) => cell.rowIndex === rowIndex)
+          .sort((a, b) => a.columnIndex - b.columnIndex),
+      );
+    }
+    return rows;
+  }, [draft]);
+
+  const selectedStudent = useMemo(() => {
+    if (!selectedCell?.studentId) return null;
+    return studentMap.get(selectedCell.studentId) || null;
+  }, [selectedCell?.studentId, studentMap]);
 
   const updateDraftCell = (rowIndex: number, columnIndex: number, updater: (cell: LayoutDraftCell) => LayoutDraftCell) => {
     setDraft((current) => {
@@ -268,6 +281,7 @@ export default function TeacherWakakurRoomLayoutScreen() {
         notes: generateNotes.trim() || null,
       }),
     onSuccess: async () => {
+      setSetupModalVisible(false);
       notifySuccess('Denah ruang berhasil digenerate.');
       await Promise.all([
         detailQuery.refetch(),
@@ -327,120 +341,610 @@ export default function TeacherWakakurRoomLayoutScreen() {
   if (detailQuery.isLoading && !detailQuery.data) return <AppLoadingScreen message="Memuat detail denah..." />;
 
   return (
-    <ScrollView
-      style={{ flex: 1, backgroundColor: '#f8fafc' }}
-      contentContainerStyle={pagePadding}
-      refreshControl={
-        <RefreshControl
-          refreshing={detailQuery.isFetching && !detailQuery.isLoading}
-          onRefresh={() => {
-            void detailQuery.refetch();
-          }}
-          tintColor={BRAND_COLORS.blue}
-        />
-      }
-    >
-      <View style={{ flexDirection: 'row', alignItems: 'center', marginBottom: 8 }}>
-        <Pressable
-          onPress={() => router.back()}
-          style={{
-            width: 36,
-            height: 36,
-            borderRadius: 10,
-            backgroundColor: '#fff',
-            borderWidth: 1,
-            borderColor: '#d6e0f2',
-            alignItems: 'center',
-            justifyContent: 'center',
-          }}
-        >
-          <Feather name="arrow-left" size={18} color={BRAND_COLORS.textDark} />
-        </Pressable>
-        <Text style={{ marginLeft: 10, color: BRAND_COLORS.textDark, fontSize: 22, fontWeight: '700' }}>
-          Generate Denah Ruang
+    <>
+      <ScrollView
+        style={{ flex: 1, backgroundColor: '#f8fafc' }}
+        contentContainerStyle={pagePadding}
+        refreshControl={
+          <RefreshControl
+            refreshing={detailQuery.isFetching && !detailQuery.isLoading}
+            onRefresh={() => {
+              void detailQuery.refetch();
+            }}
+            tintColor={BRAND_COLORS.blue}
+          />
+        }
+      >
+        <View style={{ flexDirection: 'row', alignItems: 'center', marginBottom: 8 }}>
+          <Pressable
+            onPress={() => router.back()}
+            style={{
+              width: 36,
+              height: 36,
+              borderRadius: 10,
+              backgroundColor: '#fff',
+              borderWidth: 1,
+              borderColor: '#d6e0f2',
+              alignItems: 'center',
+              justifyContent: 'center',
+            }}
+          >
+            <Feather name="arrow-left" size={18} color={BRAND_COLORS.textDark} />
+          </Pressable>
+          <Text style={{ marginLeft: 10, color: BRAND_COLORS.textDark, fontSize: 22, fontWeight: '700' }}>
+            Generate Denah Ruang
+          </Text>
+        </View>
+
+        <Text style={{ color: BRAND_COLORS.textMuted, marginBottom: 12 }}>
+          Setup denah lewat popup, lalu lanjutkan edit posisi kursi dan siswa di editor penuh.
         </Text>
-      </View>
 
-      <Text style={{ color: BRAND_COLORS.textMuted, marginBottom: 12 }}>
-        Generate denah awal per ruang, lalu edit kursi, lorong, dan penempatan siswa secara fleksibel.
-      </Text>
+        {detailQuery.isError ? (
+          <QueryStateView
+            type="error"
+            message="Gagal memuat detail denah ruang."
+            onRetry={() => detailQuery.refetch()}
+          />
+        ) : null}
 
-      {detailQuery.isError ? (
-        <QueryStateView
-          type="error"
-          message="Gagal memuat detail denah ruang."
-          onRetry={() => detailQuery.refetch()}
-        />
-      ) : null}
+        {detailQuery.data ? (
+          <>
+            <View
+              style={{
+                backgroundColor: '#fff',
+                borderWidth: 1,
+                borderColor: '#dbe7fb',
+                borderRadius: 18,
+                padding: 14,
+                marginBottom: 14,
+              }}
+            >
+              <View
+                style={{
+                  flexDirection: 'row',
+                  alignItems: 'flex-start',
+                  justifyContent: 'space-between',
+                  gap: 12,
+                }}
+              >
+                <View style={{ flex: 1 }}>
+                  <View
+                    style={{
+                      alignSelf: 'flex-start',
+                      borderRadius: 999,
+                      backgroundColor: '#eff6ff',
+                      paddingHorizontal: 10,
+                      paddingVertical: 5,
+                    }}
+                  >
+                    <Text style={{ color: '#1d4ed8', fontWeight: '700', fontSize: 12 }}>
+                      {detailQuery.data.sitting.roomName}
+                    </Text>
+                  </View>
+                  <Text style={{ color: BRAND_COLORS.textDark, fontWeight: '800', fontSize: 18, marginTop: 12 }}>
+                    {detailQuery.data.sitting.examType}
+                  </Text>
+                  <Text style={{ color: BRAND_COLORS.textMuted, marginTop: 4 }}>
+                    {formatDateTime(detailQuery.data.sitting.startTime)} - {formatDateTime(detailQuery.data.sitting.endTime)}
+                  </Text>
+                  <Text style={{ color: BRAND_COLORS.textMuted, marginTop: 4, fontSize: 12 }}>
+                    Sesi {detailQuery.data.sitting.programSession?.label || detailQuery.data.sitting.sessionLabel || '-'}
+                  </Text>
+                </View>
 
-      {detailQuery.data ? (
-        <>
-          <View style={{ flexDirection: 'row', flexWrap: 'wrap', gap: 10, marginBottom: 14 }}>
-            <MobileSummaryCard
-              title="Peserta Ruang"
-              value={String(summary.studentCount)}
-              subtitle={detailQuery.data.sitting.roomName}
-              iconName="users"
-              accentColor="#1d4ed8"
-            />
-            <MobileSummaryCard
-              title="Kursi Aktif"
-              value={String(summary.totalSeats)}
-              subtitle={`${draft?.rows || 0} x ${draft?.columns || 0}`}
-              iconName="grid"
-              accentColor="#047857"
-            />
-            <MobileSummaryCard
-              title="Belum Ditempatkan"
-              value={String(summary.unassignedCount)}
-              subtitle="Siswa tanpa kursi"
-              iconName="user-x"
-              accentColor="#c2410c"
-            />
-          </View>
+                <Pressable
+                  onPress={() => setSetupModalVisible(true)}
+                  style={{
+                    borderRadius: 12,
+                    borderWidth: 1,
+                    borderColor: '#bfdbfe',
+                    backgroundColor: '#eff6ff',
+                    paddingHorizontal: 12,
+                    paddingVertical: 10,
+                  }}
+                  >
+                  <Text style={{ color: '#1d4ed8', fontWeight: '700', fontSize: 12 }}>
+                    {draft ? 'Setup Ulang Denah' : 'Setup Denah'}
+                  </Text>
+                </Pressable>
+              </View>
 
-          <View
-            style={{
-              backgroundColor: '#fff',
-              borderWidth: 1,
-              borderColor: '#dbe7fb',
-              borderRadius: 18,
-              padding: 14,
-              marginBottom: 14,
-            }}
-          >
-            <Text style={{ color: BRAND_COLORS.textDark, fontWeight: '800', fontSize: 16 }}>
-              Informasi Ruang Ujian
-            </Text>
-            <Text style={{ color: BRAND_COLORS.textMuted, marginTop: 4 }}>
-              {detailQuery.data.sitting.roomName} • {detailQuery.data.sitting.sessionLabel || '-'}
-            </Text>
-            <Text style={{ color: BRAND_COLORS.textMuted, marginTop: 6, fontSize: 12 }}>
-              {formatDateTime(detailQuery.data.sitting.startTime)} - {formatDateTime(detailQuery.data.sitting.endTime)}
-            </Text>
-            <Text style={{ color: BRAND_COLORS.textMuted, marginTop: 4, fontSize: 12 }}>
-              Program: {detailQuery.data.sitting.examType}
-            </Text>
-          </View>
+              <View style={{ flexDirection: 'row', flexWrap: 'wrap', gap: 8, marginTop: 14 }}>
+                <View
+                  style={{
+                    borderRadius: 999,
+                    backgroundColor: '#f1f5f9',
+                    paddingHorizontal: 10,
+                    paddingVertical: 6,
+                  }}
+                >
+                  <Text style={{ color: '#475569', fontWeight: '700', fontSize: 12 }}>
+                    {seatStats.studentCount} peserta
+                  </Text>
+                </View>
+                {draft ? (
+                  <>
+                    <View
+                      style={{
+                        borderRadius: 999,
+                        backgroundColor: '#f1f5f9',
+                        paddingHorizontal: 10,
+                        paddingVertical: 6,
+                      }}
+                    >
+                      <Text style={{ color: '#475569', fontWeight: '700', fontSize: 12 }}>
+                        {seatStats.totalSeats} kursi
+                      </Text>
+                    </View>
+                    <View
+                      style={{
+                        borderRadius: 999,
+                        backgroundColor: '#f1f5f9',
+                        paddingHorizontal: 10,
+                        paddingVertical: 6,
+                      }}
+                    >
+                      <Text style={{ color: '#475569', fontWeight: '700', fontSize: 12 }}>
+                        {seatStats.filledSeats} terisi
+                      </Text>
+                    </View>
+                  </>
+                ) : null}
+                {detailQuery.data.layout ? (
+                  <View
+                    style={{
+                      borderRadius: 999,
+                      backgroundColor: '#eff6ff',
+                      paddingHorizontal: 10,
+                      paddingVertical: 6,
+                    }}
+                  >
+                    <Text style={{ color: '#1d4ed8', fontWeight: '700', fontSize: 12 }}>
+                      {detailQuery.data.layout.rows} x {detailQuery.data.layout.columns}
+                    </Text>
+                  </View>
+                ) : null}
+              </View>
 
-          <View
-            style={{
-              backgroundColor: '#fff',
-              borderWidth: 1,
-              borderColor: '#dbe7fb',
-              borderRadius: 18,
-              padding: 14,
-              marginBottom: 14,
-            }}
-          >
-            <Text style={{ color: BRAND_COLORS.textDark, fontWeight: '800', fontSize: 16 }}>
-              Generate Ulang Denah
-            </Text>
-            <Text style={{ color: BRAND_COLORS.textMuted, marginTop: 4 }}>
-              Generate akan menyusun ulang kursi otomatis. Gunakan ini saat layout awal perlu dibuat ulang.
-            </Text>
+              {draft ? (
+                <Pressable
+                  onPress={() => saveMutation.mutate()}
+                  disabled={saveMutation.isPending}
+                  style={{
+                    marginTop: 14,
+                    borderRadius: 12,
+                    paddingVertical: 11,
+                    alignItems: 'center',
+                    backgroundColor: saveMutation.isPending ? '#94a3b8' : BRAND_COLORS.blue,
+                  }}
+                >
+                  <Text style={{ color: '#fff', fontWeight: '700' }}>
+                    {saveMutation.isPending ? 'Menyimpan...' : 'Simpan Denah'}
+                  </Text>
+                </Pressable>
+              ) : null}
+            </View>
 
-            <View style={{ flexDirection: 'row', gap: 10, marginTop: 12 }}>
+            {!draft ? (
+              <View
+                style={{
+                  backgroundColor: '#fff',
+                  borderWidth: 1,
+                  borderStyle: 'dashed',
+                  borderColor: '#bfdbfe',
+                  borderRadius: 18,
+                  padding: 20,
+                  alignItems: 'center',
+                }}
+              >
+                <Feather name="grid" size={28} color="#1d4ed8" />
+                <Text style={{ color: BRAND_COLORS.textDark, fontWeight: '800', fontSize: 17, marginTop: 12 }}>
+                  Denah Belum Dibuat
+                </Text>
+                <Text
+                  style={{
+                    color: BRAND_COLORS.textMuted,
+                    marginTop: 6,
+                    textAlign: 'center',
+                    lineHeight: 20,
+                  }}
+                >
+                  Buka popup setup denah untuk menentukan ukuran grid awal sebelum editor penuh dipakai.
+                </Text>
+                <Pressable
+                  onPress={() => setSetupModalVisible(true)}
+                  style={{
+                    marginTop: 14,
+                    borderRadius: 12,
+                    paddingHorizontal: 14,
+                    paddingVertical: 11,
+                    backgroundColor: BRAND_COLORS.blue,
+                  }}
+                >
+                  <Text style={{ color: '#fff', fontWeight: '700' }}>Setup Denah</Text>
+                </Pressable>
+              </View>
+            ) : (
+              <>
+                <View
+                  style={{
+                    backgroundColor: unassignedStudents.length > 0 ? '#fffbeb' : '#ecfdf5',
+                    borderWidth: 1,
+                    borderColor: unassignedStudents.length > 0 ? '#fcd34d' : '#86efac',
+                    borderRadius: 16,
+                    padding: 14,
+                    marginBottom: 14,
+                  }}
+                >
+                  <View style={{ flexDirection: 'row', alignItems: 'flex-start' }}>
+                    <Feather
+                      name={unassignedStudents.length > 0 ? 'alert-triangle' : 'check-circle'}
+                      size={16}
+                      color={unassignedStudents.length > 0 ? '#b45309' : '#15803d'}
+                      style={{ marginTop: 2, marginRight: 10 }}
+                    />
+                    <View style={{ flex: 1 }}>
+                      <Text
+                        style={{
+                          color: unassignedStudents.length > 0 ? '#92400e' : '#166534',
+                          fontWeight: '800',
+                          fontSize: 14,
+                        }}
+                      >
+                        {unassignedStudents.length > 0
+                          ? `${unassignedStudents.length} siswa belum ditempatkan`
+                          : 'Semua siswa sudah mendapat kursi'}
+                      </Text>
+                      <Text
+                        style={{
+                          color: unassignedStudents.length > 0 ? '#92400e' : '#166534',
+                          marginTop: 4,
+                          fontSize: 12,
+                          lineHeight: 18,
+                        }}
+                      >
+                        {unassignedStudents.length > 0
+                          ? `Kursi kosong diberi tanda amber. ${missingStudentsPreview}`
+                          : 'Denah siap dipakai untuk kebutuhan ujian dan kartu digital.'}
+                      </Text>
+                    </View>
+                  </View>
+                </View>
+
+                <View
+                  style={{
+                    backgroundColor: '#fff',
+                    borderWidth: 1,
+                    borderColor: '#dbe7fb',
+                    borderRadius: 18,
+                    padding: 14,
+                    marginBottom: 14,
+                  }}
+                >
+                  <Text style={{ color: BRAND_COLORS.textDark, fontWeight: '800', fontSize: 16 }}>
+                    Editor Denah
+                  </Text>
+                  <Text style={{ color: BRAND_COLORS.textMuted, marginTop: 4 }}>
+                    Ketuk kursi untuk mengubah jenis sel, label bangku, dan penempatan siswa.
+                  </Text>
+
+                  <ScrollView horizontal showsHorizontalScrollIndicator={false} style={{ marginTop: 14 }}>
+                    <View style={{ paddingBottom: 2 }}>
+                      {gridRows.map((row, rowIndex) => (
+                        <View key={`row-${rowIndex}`} style={{ flexDirection: 'row', marginBottom: 10 }}>
+                          {row.map((cell) => {
+                            const isSelected =
+                              buildPositionKey(cell.rowIndex, cell.columnIndex) === selectedCellKey;
+                            const isSeat = cell.cellType === 'SEAT';
+                            const assignedStudent =
+                              typeof cell.studentId === 'number' ? studentMap.get(cell.studentId) || null : null;
+                            const isEmptySeat = isSeat && !assignedStudent;
+
+                            return (
+                              <Pressable
+                                key={`cell-${cell.rowIndex}-${cell.columnIndex}`}
+                                onPress={() => setSelectedCellKey(buildPositionKey(cell.rowIndex, cell.columnIndex))}
+                                style={{
+                                  width: 128,
+                                  minHeight: 118,
+                                  marginRight: 10,
+                                  borderRadius: 18,
+                                  borderWidth: 1,
+                                  borderColor: isSelected
+                                    ? '#2563eb'
+                                    : isSeat
+                                      ? isEmptySeat
+                                        ? '#f59e0b'
+                                        : '#bfdbfe'
+                                      : '#cbd5e1',
+                                  backgroundColor: isSelected
+                                    ? '#dbeafe'
+                                    : isSeat
+                                      ? isEmptySeat
+                                        ? '#fffbeb'
+                                        : '#ffffff'
+                                      : '#f8fafc',
+                                  padding: 12,
+                                  justifyContent: 'space-between',
+                                }}
+                              >
+                                <View>
+                                  <View style={{ flexDirection: 'row', justifyContent: 'space-between', gap: 8 }}>
+                                    <View
+                                      style={{
+                                        borderRadius: 999,
+                                        paddingHorizontal: 8,
+                                        paddingVertical: 4,
+                                        backgroundColor: isSeat ? '#eff6ff' : '#e2e8f0',
+                                      }}
+                                    >
+                                      <Text
+                                        style={{
+                                          color: isSeat ? '#1d4ed8' : '#475569',
+                                          fontSize: 11,
+                                          fontWeight: '800',
+                                        }}
+                                      >
+                                        {isSeat ? cell.seatLabel || getSeatLabel(cell.rowIndex, cell.columnIndex) : 'LORONG'}
+                                      </Text>
+                                    </View>
+                                    <Text style={{ color: '#94a3b8', fontSize: 11, fontWeight: '700' }}>
+                                      {cell.rowIndex + 1}-{cell.columnIndex + 1}
+                                    </Text>
+                                  </View>
+
+                                  <Text
+                                    numberOfLines={2}
+                                    style={{
+                                      color: BRAND_COLORS.textDark,
+                                      fontSize: 13,
+                                      fontWeight: '800',
+                                      marginTop: 12,
+                                    }}
+                                  >
+                                    {isSeat
+                                      ? assignedStudent?.name || 'Belum ditempatkan'
+                                      : 'Lorong / ruang kosong'}
+                                  </Text>
+                                </View>
+
+                                <Text
+                                  numberOfLines={2}
+                                  style={{
+                                    color: isSeat ? '#64748b' : '#94a3b8',
+                                    fontSize: 11,
+                                    lineHeight: 16,
+                                  }}
+                                >
+                                  {isSeat
+                                    ? assignedStudent
+                                      ? formatStudentMeta(assignedStudent)
+                                      : 'Pilih siswa dari panel editor.'
+                                    : 'Dipakai untuk jalur pengawas atau jarak antar kursi.'}
+                                </Text>
+                              </Pressable>
+                            );
+                          })}
+                        </View>
+                      ))}
+                    </View>
+                  </ScrollView>
+                </View>
+
+                {selectedCell ? (
+                  <View
+                    style={{
+                      backgroundColor: '#fff',
+                      borderWidth: 1,
+                      borderColor: '#dbe7fb',
+                      borderRadius: 18,
+                      padding: 14,
+                    }}
+                  >
+                    <View
+                      style={{
+                        flexDirection: 'row',
+                        alignItems: 'flex-start',
+                        justifyContent: 'space-between',
+                        gap: 12,
+                        marginBottom: 10,
+                      }}
+                    >
+                      <View style={{ flex: 1 }}>
+                        <Text style={{ color: BRAND_COLORS.textDark, fontWeight: '800', fontSize: 16 }}>
+                          Editor Sel {getSeatLabel(selectedCell.rowIndex, selectedCell.columnIndex)}
+                        </Text>
+                        <Text style={{ color: BRAND_COLORS.textMuted, marginTop: 4 }}>
+                          Panel ini dipakai untuk mengatur isi sel tanpa membuat grid terlihat penuh form.
+                        </Text>
+                      </View>
+                      <View
+                        style={{
+                          borderRadius: 999,
+                          backgroundColor: '#f1f5f9',
+                          paddingHorizontal: 10,
+                          paddingVertical: 6,
+                        }}
+                      >
+                        <Text style={{ color: '#475569', fontWeight: '700', fontSize: 12 }}>
+                          Posisi {selectedCell.rowIndex + 1}-{selectedCell.columnIndex + 1}
+                        </Text>
+                      </View>
+                    </View>
+
+                    <MobileSelectField
+                      label="Jenis Sel"
+                      value={selectedCell.cellType}
+                      options={[
+                        { value: 'SEAT', label: 'Kursi' },
+                        { value: 'AISLE', label: 'Lorong' },
+                      ]}
+                      onChange={(value) =>
+                        updateDraftCell(selectedCell.rowIndex, selectedCell.columnIndex, (cell) =>
+                          value === 'AISLE'
+                            ? { ...cell, cellType: 'AISLE', seatLabel: '', studentId: null }
+                            : {
+                                ...cell,
+                                cellType: 'SEAT',
+                                seatLabel:
+                                  cell.seatLabel || getSeatLabel(selectedCell.rowIndex, selectedCell.columnIndex),
+                              },
+                        )
+                      }
+                    />
+
+                    {selectedCell.cellType === 'SEAT' ? (
+                      <>
+                        <Text style={{ fontSize: 12, color: '#64748b', marginBottom: 6 }}>Label Kursi</Text>
+                        <TextInput
+                          value={selectedCell.seatLabel}
+                          onChangeText={(value) =>
+                            updateDraftCell(selectedCell.rowIndex, selectedCell.columnIndex, (cell) => ({
+                              ...cell,
+                              seatLabel: value,
+                            }))
+                          }
+                          placeholder={getSeatLabel(selectedCell.rowIndex, selectedCell.columnIndex)}
+                          placeholderTextColor="#94a3b8"
+                          style={{
+                            borderWidth: 1,
+                            borderColor: '#cbd5e1',
+                            backgroundColor: '#fff',
+                            borderRadius: 12,
+                            paddingHorizontal: 12,
+                            paddingVertical: 10,
+                            color: BRAND_COLORS.textDark,
+                            marginBottom: 10,
+                          }}
+                        />
+
+                        <MobileSelectField
+                          label="Siswa"
+                          value={selectedCell.studentId ? String(selectedCell.studentId) : ''}
+                          options={availableStudentOptions}
+                          onChange={(value) =>
+                            updateDraftCell(selectedCell.rowIndex, selectedCell.columnIndex, (cell) => ({
+                              ...cell,
+                              studentId: value ? Number(value) : null,
+                            }))
+                          }
+                          placeholder="Pilih siswa"
+                          helperText={
+                            unassignedStudents.length > 0
+                              ? `${unassignedStudents.length} siswa belum ditempatkan.`
+                              : 'Semua siswa sudah ditempatkan.'
+                          }
+                          maxHeight={260}
+                        />
+
+                        <View
+                          style={{
+                            borderWidth: 1,
+                            borderColor: '#e2e8f0',
+                            backgroundColor: '#f8fafc',
+                            borderRadius: 14,
+                            padding: 12,
+                            marginBottom: 10,
+                          }}
+                        >
+                          <Text style={{ color: BRAND_COLORS.textDark, fontWeight: '700', fontSize: 13 }}>
+                            {selectedStudent?.name || 'Kursi ini belum ditempati siswa'}
+                          </Text>
+                          <Text style={{ color: BRAND_COLORS.textMuted, marginTop: 4, fontSize: 12 }}>
+                            {selectedStudent ? formatStudentMeta(selectedStudent) : 'Pilih siswa dari dropdown di atas.'}
+                          </Text>
+                        </View>
+                      </>
+                    ) : null}
+
+                    <Text style={{ fontSize: 12, color: '#64748b', marginBottom: 6 }}>Catatan Sel</Text>
+                    <TextInput
+                      value={selectedCell.notes}
+                      onChangeText={(value) =>
+                        updateDraftCell(selectedCell.rowIndex, selectedCell.columnIndex, (cell) => ({
+                          ...cell,
+                          notes: value,
+                        }))
+                      }
+                      multiline
+                      placeholder="Contoh: kursi cadangan, lorong utama, atau catatan khusus."
+                      placeholderTextColor="#94a3b8"
+                      style={{
+                        minHeight: 76,
+                        borderWidth: 1,
+                        borderColor: '#cbd5e1',
+                        backgroundColor: '#fff',
+                        borderRadius: 12,
+                        paddingHorizontal: 12,
+                        paddingVertical: 10,
+                        color: BRAND_COLORS.textDark,
+                        textAlignVertical: 'top',
+                      }}
+                    />
+
+                    <Text style={{ fontSize: 12, color: '#64748b', marginTop: 10, marginBottom: 6 }}>
+                      Catatan Denah
+                    </Text>
+                    <TextInput
+                      value={draft.notes}
+                      onChangeText={(value) => setDraft((current) => (current ? { ...current, notes: value } : current))}
+                      multiline
+                      placeholder="Tambahkan catatan umum untuk pengawas atau pelaksanaan di ruang ini."
+                      placeholderTextColor="#94a3b8"
+                      style={{
+                        minHeight: 82,
+                        borderWidth: 1,
+                        borderColor: '#cbd5e1',
+                        backgroundColor: '#fff',
+                        borderRadius: 12,
+                        paddingHorizontal: 12,
+                        paddingVertical: 10,
+                        color: BRAND_COLORS.textDark,
+                        textAlignVertical: 'top',
+                      }}
+                    />
+                  </View>
+                ) : null}
+              </>
+            )}
+          </>
+        ) : null}
+      </ScrollView>
+
+      <MobileDetailModal
+        visible={setupModalVisible}
+        title="Setup Denah Ruang"
+        subtitle="Atur ukuran grid awal lewat popup, lalu lanjutkan penyesuaian di editor penuh."
+        iconName="grid"
+        accentColor="#1d4ed8"
+        onClose={() => setSetupModalVisible(false)}
+      >
+        {detailQuery.data ? (
+          <View>
+            <View
+              style={{
+                borderWidth: 1,
+                borderColor: '#bfdbfe',
+                backgroundColor: '#eff6ff',
+                borderRadius: 14,
+                padding: 12,
+                marginBottom: 14,
+              }}
+            >
+              <Text style={{ color: '#1d4ed8', fontWeight: '800', fontSize: 15 }}>
+                {detailQuery.data.sitting.roomName}
+              </Text>
+              <Text style={{ color: '#1e40af', marginTop: 4, fontSize: 12 }}>
+                {formatDateTime(detailQuery.data.sitting.startTime)} - {formatDateTime(detailQuery.data.sitting.endTime)}
+              </Text>
+              <Text style={{ color: '#1e40af', marginTop: 4, fontSize: 12 }}>
+                {detailQuery.data.sitting.examType} • Sesi{' '}
+                {detailQuery.data.sitting.programSession?.label || detailQuery.data.sitting.sessionLabel || '-'}
+              </Text>
+            </View>
+
+            <View style={{ flexDirection: 'row', gap: 10 }}>
               <View style={{ flex: 1 }}>
                 <Text style={{ fontSize: 12, color: '#64748b', marginBottom: 6 }}>Baris</Text>
                 <TextInput
@@ -477,17 +981,36 @@ export default function TeacherWakakurRoomLayoutScreen() {
               </View>
             </View>
 
-            <Text style={{ fontSize: 12, color: '#64748b', marginTop: 10, marginBottom: 6 }}>
+            <View
+              style={{
+                borderWidth: 1,
+                borderColor: '#e2e8f0',
+                backgroundColor: '#f8fafc',
+                borderRadius: 12,
+                padding: 12,
+                marginTop: 12,
+              }}
+            >
+              <Text style={{ color: BRAND_COLORS.textDark, fontWeight: '700' }}>
+                {detailQuery.data.meta.studentCount} siswa pada ruang ini
+              </Text>
+              <Text style={{ color: BRAND_COLORS.textMuted, marginTop: 4, fontSize: 12 }}>
+                Rekomendasi saat ini: {detailQuery.data.meta.suggestedDimensions.rows} x{' '}
+                {detailQuery.data.meta.suggestedDimensions.columns}
+              </Text>
+            </View>
+
+            <Text style={{ fontSize: 12, color: '#64748b', marginTop: 12, marginBottom: 6 }}>
               Catatan Denah
             </Text>
             <TextInput
               value={generateNotes}
               onChangeText={setGenerateNotes}
               multiline
-              placeholder="Contoh: Baris tengah disiapkan untuk lorong utama."
+              placeholder="Contoh: baris tengah dijadikan lorong utama untuk pengawas."
               placeholderTextColor="#94a3b8"
               style={{
-                minHeight: 86,
+                minHeight: 88,
                 borderWidth: 1,
                 borderColor: '#cbd5e1',
                 backgroundColor: '#fff',
@@ -503,423 +1026,24 @@ export default function TeacherWakakurRoomLayoutScreen() {
               onPress={() => generateMutation.mutate()}
               disabled={generateMutation.isPending}
               style={{
-                marginTop: 12,
+                marginTop: 14,
                 borderRadius: 12,
-                paddingVertical: 11,
+                paddingVertical: 12,
                 alignItems: 'center',
                 backgroundColor: generateMutation.isPending ? '#94a3b8' : BRAND_COLORS.blue,
               }}
             >
               <Text style={{ color: '#fff', fontWeight: '700' }}>
-                {generateMutation.isPending ? 'Memproses...' : 'Generate Denah Ruang'}
+                {generateMutation.isPending
+                  ? 'Memproses...'
+                  : detailQuery.data.layout
+                    ? 'Generate Ulang Denah'
+                    : 'Buat Denah Awal'}
               </Text>
             </Pressable>
           </View>
-
-          {draft ? (
-            <>
-              <View
-                style={{
-                  backgroundColor: '#fff',
-                  borderWidth: 1,
-                  borderColor: '#dbe7fb',
-                  borderRadius: 18,
-                  padding: 14,
-                  marginBottom: 14,
-                }}
-              >
-                <Text style={{ color: BRAND_COLORS.textDark, fontWeight: '800', fontSize: 16 }}>
-                  Editor Denah
-                </Text>
-                <Text style={{ color: BRAND_COLORS.textMuted, marginTop: 4 }}>
-                  Pilih kotak kursi untuk edit label, jenis sel, dan siswa. Lorong bisa dipakai untuk ruang kosong.
-                </Text>
-
-                <View style={{ flexDirection: 'row', gap: 10, marginTop: 12 }}>
-                  <View style={{ flex: 1 }}>
-                    <Text style={{ fontSize: 12, color: '#64748b', marginBottom: 6 }}>Baris</Text>
-                    <View style={{ flexDirection: 'row', alignItems: 'center', gap: 8 }}>
-                      <Pressable
-                        onPress={() => setDraft((current) => (current ? resizeDraft(current, current.rows - 1, current.columns) : current))}
-                        style={{
-                          width: 40,
-                          height: 40,
-                          borderRadius: 12,
-                          alignItems: 'center',
-                          justifyContent: 'center',
-                          backgroundColor: '#eff6ff',
-                          borderWidth: 1,
-                          borderColor: '#bfdbfe',
-                        }}
-                      >
-                        <Feather name="minus" size={16} color="#1d4ed8" />
-                      </Pressable>
-                      <View
-                        style={{
-                          flex: 1,
-                          borderWidth: 1,
-                          borderColor: '#cbd5e1',
-                          borderRadius: 12,
-                          paddingVertical: 10,
-                          alignItems: 'center',
-                          backgroundColor: '#fff',
-                        }}
-                      >
-                        <Text style={{ color: BRAND_COLORS.textDark, fontWeight: '700' }}>{draft.rows}</Text>
-                      </View>
-                      <Pressable
-                        onPress={() => setDraft((current) => (current ? resizeDraft(current, current.rows + 1, current.columns) : current))}
-                        style={{
-                          width: 40,
-                          height: 40,
-                          borderRadius: 12,
-                          alignItems: 'center',
-                          justifyContent: 'center',
-                          backgroundColor: '#eff6ff',
-                          borderWidth: 1,
-                          borderColor: '#bfdbfe',
-                        }}
-                      >
-                        <Feather name="plus" size={16} color="#1d4ed8" />
-                      </Pressable>
-                    </View>
-                  </View>
-                  <View style={{ flex: 1 }}>
-                    <Text style={{ fontSize: 12, color: '#64748b', marginBottom: 6 }}>Kolom</Text>
-                    <View style={{ flexDirection: 'row', alignItems: 'center', gap: 8 }}>
-                      <Pressable
-                        onPress={() => setDraft((current) => (current ? resizeDraft(current, current.rows, current.columns - 1) : current))}
-                        style={{
-                          width: 40,
-                          height: 40,
-                          borderRadius: 12,
-                          alignItems: 'center',
-                          justifyContent: 'center',
-                          backgroundColor: '#eff6ff',
-                          borderWidth: 1,
-                          borderColor: '#bfdbfe',
-                        }}
-                      >
-                        <Feather name="minus" size={16} color="#1d4ed8" />
-                      </Pressable>
-                      <View
-                        style={{
-                          flex: 1,
-                          borderWidth: 1,
-                          borderColor: '#cbd5e1',
-                          borderRadius: 12,
-                          paddingVertical: 10,
-                          alignItems: 'center',
-                          backgroundColor: '#fff',
-                        }}
-                      >
-                        <Text style={{ color: BRAND_COLORS.textDark, fontWeight: '700' }}>{draft.columns}</Text>
-                      </View>
-                      <Pressable
-                        onPress={() => setDraft((current) => (current ? resizeDraft(current, current.rows, current.columns + 1) : current))}
-                        style={{
-                          width: 40,
-                          height: 40,
-                          borderRadius: 12,
-                          alignItems: 'center',
-                          justifyContent: 'center',
-                          backgroundColor: '#eff6ff',
-                          borderWidth: 1,
-                          borderColor: '#bfdbfe',
-                        }}
-                      >
-                        <Feather name="plus" size={16} color="#1d4ed8" />
-                      </Pressable>
-                    </View>
-                  </View>
-                </View>
-
-                <Text style={{ fontSize: 12, color: '#64748b', marginTop: 12, marginBottom: 6 }}>
-                  Catatan Layout
-                </Text>
-                <TextInput
-                  value={draft.notes}
-                  onChangeText={(value) => setDraft((current) => (current ? { ...current, notes: value } : current))}
-                  multiline
-                  placeholder="Catatan umum denah ruang"
-                  placeholderTextColor="#94a3b8"
-                  style={{
-                    minHeight: 76,
-                    borderWidth: 1,
-                    borderColor: '#cbd5e1',
-                    backgroundColor: '#fff',
-                    borderRadius: 12,
-                    paddingHorizontal: 12,
-                    paddingVertical: 10,
-                    color: BRAND_COLORS.textDark,
-                    textAlignVertical: 'top',
-                  }}
-                />
-              </View>
-
-              <View
-                style={{
-                  backgroundColor: '#fff',
-                  borderWidth: 1,
-                  borderColor: '#dbe7fb',
-                  borderRadius: 18,
-                  padding: 14,
-                  marginBottom: 14,
-                }}
-              >
-                <Text style={{ color: BRAND_COLORS.textDark, fontWeight: '800', fontSize: 16 }}>
-                  Grid Denah
-                </Text>
-                <Text style={{ color: BRAND_COLORS.textMuted, marginTop: 4 }}>
-                  Ketuk sel untuk memilih kursi yang ingin diedit.
-                </Text>
-
-                <ScrollView horizontal showsHorizontalScrollIndicator={false} style={{ marginTop: 12 }}>
-                  <View>
-                    {Array.from({ length: draft.rows }, (_, rowIndex) => (
-                      <View key={`row-${rowIndex}`} style={{ flexDirection: 'row', marginBottom: 8 }}>
-                        {Array.from({ length: draft.columns }, (_, columnIndex) => {
-                          const cell =
-                            draft.cells.find(
-                              (item) => item.rowIndex === rowIndex && item.columnIndex === columnIndex,
-                            ) || null;
-                          const isActive =
-                            buildPositionKey(rowIndex, columnIndex) === selectedCellKey;
-                          const isSeat = cell?.cellType === 'SEAT';
-                          const assignedStudent =
-                            typeof cell?.studentId === 'number'
-                              ? detailQuery.data.students.find((student) => student.id === cell.studentId) || null
-                              : null;
-
-                          return (
-                            <Pressable
-                              key={`cell-${rowIndex}-${columnIndex}`}
-                              onPress={() => setSelectedCellKey(buildPositionKey(rowIndex, columnIndex))}
-                              style={{
-                                width: 86,
-                                minHeight: 78,
-                                marginRight: 8,
-                                borderRadius: 14,
-                                borderWidth: 1,
-                                borderColor: isActive ? '#2563eb' : isSeat ? '#bfdbfe' : '#d1d5db',
-                                backgroundColor: isActive
-                                  ? '#dbeafe'
-                                  : isSeat
-                                    ? assignedStudent
-                                      ? '#eff6ff'
-                                      : '#f8fafc'
-                                    : '#f3f4f6',
-                                padding: 8,
-                                justifyContent: 'space-between',
-                              }}
-                            >
-                              <Text
-                                style={{
-                                  color: isSeat ? '#1e3a8a' : '#6b7280',
-                                  fontSize: 11,
-                                  fontWeight: '800',
-                                }}
-                              >
-                                {isSeat ? cell?.seatLabel || getSeatLabel(rowIndex, columnIndex) : 'LORONG'}
-                              </Text>
-                              <Text
-                                numberOfLines={2}
-                                style={{
-                                  color: isSeat ? BRAND_COLORS.textDark : '#6b7280',
-                                  fontSize: 11,
-                                  fontWeight: assignedStudent ? '700' : '500',
-                                }}
-                              >
-                                {isSeat ? assignedStudent?.name || 'Belum ditempati' : 'Kosong'}
-                              </Text>
-                            </Pressable>
-                          );
-                        })}
-                      </View>
-                    ))}
-                  </View>
-                </ScrollView>
-              </View>
-
-              {selectedCell ? (
-                <View
-                  style={{
-                    backgroundColor: '#fff',
-                    borderWidth: 1,
-                    borderColor: '#dbe7fb',
-                    borderRadius: 18,
-                    padding: 14,
-                    marginBottom: 14,
-                  }}
-                >
-                  <Text style={{ color: BRAND_COLORS.textDark, fontWeight: '800', fontSize: 16 }}>
-                    Edit Sel {getSeatLabel(selectedCell.rowIndex, selectedCell.columnIndex)}
-                  </Text>
-                  <Text style={{ color: BRAND_COLORS.textMuted, marginTop: 4 }}>
-                    Atur jenis sel, label kursi, siswa, dan catatan per posisi.
-                  </Text>
-
-                  <MobileSelectField
-                    label="Jenis Sel"
-                    value={selectedCell.cellType}
-                    options={[
-                      { value: 'SEAT', label: 'Kursi' },
-                      { value: 'AISLE', label: 'Lorong' },
-                    ]}
-                    onChange={(value) =>
-                      updateDraftCell(selectedCell.rowIndex, selectedCell.columnIndex, (cell) =>
-                        value === 'AISLE'
-                          ? { ...cell, cellType: 'AISLE', seatLabel: '', studentId: null }
-                          : {
-                              ...cell,
-                              cellType: 'SEAT',
-                              seatLabel: cell.seatLabel || getSeatLabel(cell.rowIndex, cell.columnIndex),
-                            },
-                      )
-                    }
-                  />
-
-                  {selectedCell.cellType === 'SEAT' ? (
-                    <>
-                      <Text style={{ fontSize: 12, color: '#64748b', marginBottom: 6 }}>Label Kursi</Text>
-                      <TextInput
-                        value={selectedCell.seatLabel}
-                        onChangeText={(value) =>
-                          updateDraftCell(selectedCell.rowIndex, selectedCell.columnIndex, (cell) => ({
-                            ...cell,
-                            seatLabel: value,
-                          }))
-                        }
-                        placeholder={getSeatLabel(selectedCell.rowIndex, selectedCell.columnIndex)}
-                        placeholderTextColor="#94a3b8"
-                        style={{
-                          borderWidth: 1,
-                          borderColor: '#cbd5e1',
-                          backgroundColor: '#fff',
-                          borderRadius: 12,
-                          paddingHorizontal: 12,
-                          paddingVertical: 10,
-                          color: BRAND_COLORS.textDark,
-                          marginBottom: 8,
-                        }}
-                      />
-
-                      <MobileSelectField
-                        label="Peserta"
-                        value={selectedCell.studentId ? String(selectedCell.studentId) : ''}
-                        options={availableStudentOptions}
-                        onChange={(value) =>
-                          updateDraftCell(selectedCell.rowIndex, selectedCell.columnIndex, (cell) => ({
-                            ...cell,
-                            studentId: value ? Number(value) : null,
-                          }))
-                        }
-                        placeholder="Pilih siswa"
-                        helperText={`${unassignedStudents.length} siswa belum ditempatkan`}
-                        maxHeight={260}
-                      />
-                    </>
-                  ) : null}
-
-                  <Text style={{ fontSize: 12, color: '#64748b', marginBottom: 6 }}>Catatan Sel</Text>
-                  <TextInput
-                    value={selectedCell.notes}
-                    onChangeText={(value) =>
-                      updateDraftCell(selectedCell.rowIndex, selectedCell.columnIndex, (cell) => ({
-                        ...cell,
-                        notes: value,
-                      }))
-                    }
-                    multiline
-                    placeholder="Opsional, misalnya kursi cadangan atau lorong utama"
-                    placeholderTextColor="#94a3b8"
-                    style={{
-                      minHeight: 76,
-                      borderWidth: 1,
-                      borderColor: '#cbd5e1',
-                      backgroundColor: '#fff',
-                      borderRadius: 12,
-                      paddingHorizontal: 12,
-                      paddingVertical: 10,
-                      color: BRAND_COLORS.textDark,
-                      textAlignVertical: 'top',
-                    }}
-                  />
-
-                  <Pressable
-                    onPress={() => saveMutation.mutate()}
-                    disabled={saveMutation.isPending}
-                    style={{
-                      marginTop: 12,
-                      borderRadius: 12,
-                      paddingVertical: 11,
-                      alignItems: 'center',
-                      backgroundColor: saveMutation.isPending ? '#94a3b8' : '#0f766e',
-                    }}
-                  >
-                    <Text style={{ color: '#fff', fontWeight: '700' }}>
-                      {saveMutation.isPending ? 'Menyimpan...' : 'Simpan Denah'}
-                    </Text>
-                  </Pressable>
-                </View>
-              ) : null}
-
-              <View
-                style={{
-                  backgroundColor: '#fff',
-                  borderWidth: 1,
-                  borderColor: '#dbe7fb',
-                  borderRadius: 18,
-                  padding: 14,
-                }}
-              >
-                <Text style={{ color: BRAND_COLORS.textDark, fontWeight: '800', fontSize: 16 }}>
-                  Siswa Belum Ditempatkan
-                </Text>
-                <Text style={{ color: BRAND_COLORS.textMuted, marginTop: 4 }}>
-                  Pantau siapa saja yang belum mendapat kursi sebelum menyimpan denah final.
-                </Text>
-
-                <View style={{ marginTop: 12, gap: 8 }}>
-                  {unassignedStudents.length === 0 ? (
-                    <View
-                      style={{
-                        borderWidth: 1,
-                        borderColor: '#bbf7d0',
-                        backgroundColor: '#f0fdf4',
-                        borderRadius: 12,
-                        padding: 12,
-                      }}
-                    >
-                      <Text style={{ color: '#166534', fontWeight: '700' }}>
-                        Semua siswa pada ruang ini sudah mendapat kursi.
-                      </Text>
-                    </View>
-                  ) : (
-                    unassignedStudents.map((student) => (
-                      <View
-                        key={student.id}
-                        style={{
-                          borderWidth: 1,
-                          borderColor: '#e2e8f0',
-                          borderRadius: 12,
-                          backgroundColor: '#f8fafc',
-                          padding: 10,
-                        }}
-                      >
-                        <Text style={{ color: BRAND_COLORS.textDark, fontWeight: '700' }}>{student.name}</Text>
-                        <Text style={{ color: BRAND_COLORS.textMuted, marginTop: 2, fontSize: 12 }}>
-                          {student.className || '-'} • NIS {student.nis || '-'}
-                        </Text>
-                      </View>
-                    ))
-                  )}
-                </View>
-              </View>
-            </>
-          ) : null}
-        </>
-      ) : null}
-    </ScrollView>
+        ) : null}
+      </MobileDetailModal>
+    </>
   );
 }
