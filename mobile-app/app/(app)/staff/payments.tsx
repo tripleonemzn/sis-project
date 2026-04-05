@@ -13,6 +13,7 @@ import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { Feather } from '@expo/vector-icons';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { AppLoadingScreen } from '../../../src/components/AppLoadingScreen';
+import { MobileActiveAcademicYearNotice } from '../../../src/components/MobileActiveAcademicYearNotice';
 import { QueryStateView } from '../../../src/components/QueryStateView';
 import { useAuth } from '../../../src/features/auth/AuthProvider';
 import { openWebModuleRoute } from '../../../src/lib/navigation/webModuleRoute';
@@ -2849,6 +2850,12 @@ export default function StaffPaymentsScreen() {
         <Text style={{ color: '#1e3a8a', fontSize: 12, lineHeight: 18 }}>{activeSectionHint.description}</Text>
       </View>
 
+      <MobileActiveAcademicYearNotice
+        name={activeYearQuery.data?.name}
+        semester={activeYearQuery.data?.semester}
+        helperText="Operasional keuangan di mobile otomatis mengikuti tahun ajaran aktif yang tampil di header aplikasi."
+      />
+
       {isOverviewSection ? (
       <View
         style={{
@@ -2860,10 +2867,6 @@ export default function StaffPaymentsScreen() {
           marginBottom: 12,
         }}
       >
-        <Text style={{ color: '#334155', fontSize: 12, marginBottom: 8 }}>
-          Tahun ajaran aktif: <Text style={{ color: BRAND_COLORS.textDark, fontWeight: '700' }}>{activeYearQuery.data?.name || '-'}</Text>
-        </Text>
-
         <View style={{ flexDirection: 'row', flexWrap: 'wrap', marginHorizontal: -4 }}>
           <View style={{ width: '50%', paddingHorizontal: 4, marginBottom: 8 }}>
             <View style={{ backgroundColor: '#eff6ff', borderWidth: 1, borderColor: '#bfdbfe', borderRadius: 10, padding: 10 }}>

@@ -7,7 +7,6 @@ import {
   type BudgetRequest,
   type UpdateBudgetRequestStatusPayload,
 } from '../../../../services/budgetRequest.service';
-import { academicYearService, type AcademicYear } from '../../../../services/academicYear.service';
 import { authService } from '../../../../services/auth.service';
 import {
   budgetLpjService,
@@ -21,6 +20,8 @@ import {
   summarizeAdvisorDuties,
 } from '../../../../utils/advisorDuty';
 import toast from 'react-hot-toast';
+import { useActiveAcademicYear } from '../../../../hooks/useActiveAcademicYear';
+import { ActiveAcademicYearNotice } from '../../../../components/ActiveAcademicYearNotice';
 
 type BudgetApprovalContextUser = {
   role?: string;
@@ -55,7 +56,6 @@ export const BudgetApprovalPage = () => {
   const isKesiswaanApprover =
     userDuties.includes('WAKASEK_KESISWAAN') || userDuties.includes('SEKRETARIS_KESISWAAN');
 
-  const [selectedYearId, setSelectedYearId] = useState<number | 'all'>('all');
   const [statusFilter, setStatusFilter] = useState<BudgetStatusFilter>('ALL');
   const [search, setSearch] = useState('');
   const [selectedForApprove, setSelectedForApprove] = useState<BudgetRequest | null>(null);
@@ -69,18 +69,8 @@ export const BudgetApprovalPage = () => {
     budget: null,
   });
 
-  const { data: yearsData } = useQuery({
-    queryKey: ['academic-years', 'for-budgets'],
-    queryFn: () => academicYearService.list({ page: 1, limit: 100 }),
-  });
-
-  const academicYears: AcademicYear[] =
-    yearsData?.data?.academicYears || yearsData?.academicYears || [];
-
-  const activeYear = academicYears.find((y) => y.isActive) || academicYears[0];
-
-  const effectiveYearId =
-    selectedYearId === 'all' ? undefined : selectedYearId || activeYear?.id;
+  const { data: activeAcademicYear, isLoading: isLoadingActiveAcademicYear } = useActiveAcademicYear();
+  const effectiveYearId = Number(activeAcademicYear?.id || activeAcademicYear?.academicYearId || 0) || undefined;
 
   const { data: budgetsData, isLoading } = useQuery({
     queryKey: ['budget-requests', 'sarpras', effectiveYearId],
@@ -89,7 +79,7 @@ export const BudgetApprovalPage = () => {
         academicYearId: effectiveYearId,
         view: 'approver',
     }),
-    enabled: !!user,
+    enabled: !!user && !!effectiveYearId,
     ...liveQueryOptions,
   });
 
@@ -307,6 +297,18 @@ export const BudgetApprovalPage = () => {
         </div>
       </div>
 
+      <ActiveAcademicYearNotice
+        name={activeAcademicYear?.name}
+        semester={activeAcademicYear?.semester}
+        helperText="Persetujuan pengajuan anggaran operasional di halaman ini otomatis mengikuti tahun ajaran aktif yang tampil di header aplikasi."
+      />
+
+      {!isLoadingActiveAcademicYear && !effectiveYearId ? (
+        <div className="rounded-xl border border-amber-200 bg-amber-50 px-4 py-3 text-sm text-amber-800">
+          Tahun ajaran aktif belum tersedia. Aktifkan tahun ajaran terlebih dahulu agar approval anggaran Sarpras tidak ambigu.
+        </div>
+      ) : null}
+
       <div className="bg-white rounded-xl shadow-sm border border-gray-100 p-4 flex flex-col md:flex-row md:items-center md:justify-between gap-4">
         <div className="flex flex-wrap gap-3 items-center">
           <div className="relative">
@@ -339,31 +341,6 @@ export const BudgetApprovalPage = () => {
             </select>
           </div>
 
-          <div className="flex items-center gap-2">
-            <span className="text-xs font-medium text-gray-500 uppercase tracking-wider">
-              Tahun Ajaran
-            </span>
-            <select
-              value={selectedYearId === 'all' ? 'all' : String(selectedYearId || activeYear?.id || '')}
-              onChange={(e) => {
-                const value = e.target.value;
-                if (value === 'all') {
-                  setSelectedYearId('all');
-                } else {
-                  setSelectedYearId(Number(value));
-                }
-              }}
-              className="border border-gray-300 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500/60"
-            >
-              <option value="all">Semua</option>
-              {academicYears.map((year) => (
-                <option key={year.id} value={year.id}>
-                  {year.name}
-                  {year.isActive ? ' (Aktif)' : ''}
-                </option>
-              ))}
-            </select>
-          </div>
         </div>
 
         <div className="flex flex-col items-end">

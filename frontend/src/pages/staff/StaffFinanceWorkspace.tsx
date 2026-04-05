@@ -1,7 +1,6 @@
 import { useState, useMemo } from 'react';
 import { Link, useLocation } from 'react-router-dom';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
-import { academicYearService, type AcademicYear } from '../../services/academicYear.service';
 import {
   budgetRequestService,
   type BudgetRequest,
@@ -25,6 +24,8 @@ import { userService } from '../../services/user.service';
 import toast from 'react-hot-toast';
 import { isFinanceStaffProfile } from '../../utils/staffRole';
 import { DashboardWelcomeCard } from '../../components/common/DashboardWelcomeCard';
+import { useActiveAcademicYear } from '../../hooks/useActiveAcademicYear';
+import { ActiveAcademicYearNotice } from '../../components/ActiveAcademicYearNotice';
 
 type FinanceWorkspaceSection =
   | 'overview'
@@ -135,18 +136,8 @@ export const StaffFinanceWorkspace = () => {
   const isFinanceStaff =
     isFinanceStaffProfile(currentUser, { allowAdmin: true }) || financeDuties.includes('BENDAHARA');
 
-  const { data: yearsData } = useQuery({
-    queryKey: ['academic-years', 'staff-finance'],
-    queryFn: () => academicYearService.list({ page: 1, limit: 100 }),
-    enabled: isPaymentsPage || isDashboardPage,
-  });
-
-  const academicYears: AcademicYear[] =
-    yearsData?.data?.academicYears || yearsData?.academicYears || [];
-
-  const activeYear = academicYears.find((y) => y.isActive) || academicYears[0];
-
-  const [selectedYearId, setSelectedYearId] = useState<number | 'all'>('all');
+  const { data: activeAcademicYear, isLoading: isLoadingActiveAcademicYear } = useActiveAcademicYear();
+  const activeYearId = Number(activeAcademicYear?.id || activeAcademicYear?.academicYearId || 0) || undefined;
   const [statusFilter, setStatusFilter] = useState<'ALL' | 'PENDING' | 'APPROVED' | 'REJECTED'>(
     'ALL',
   );
@@ -157,19 +148,14 @@ export const StaffFinanceWorkspace = () => {
   const [selectedFinanceLpj, setSelectedFinanceLpj] = useState<FinanceLpjInvoice | null>(null);
   const [financeNoteDraft, setFinanceNoteDraft] = useState('');
 
-  const effectiveYearId = useMemo(
-    () => (selectedYearId === 'all' ? undefined : selectedYearId || activeYear?.id),
-    [selectedYearId, activeYear],
-  );
-
   const { data: budgetsData, isLoading } = useQuery({
-    queryKey: ['budget-requests', 'staff', isPaymentsPage ? effectiveYearId : 'all'],
+    queryKey: ['budget-requests', 'staff', activeYearId || 'none'],
     queryFn: () =>
       budgetRequestService.list({
-        academicYearId: isPaymentsPage ? effectiveYearId : undefined,
+        academicYearId: activeYearId,
         view: 'approver',
       }),
-    enabled: shouldLoadBudgets && (isAdminPage || !!activeYear),
+    enabled: shouldLoadBudgets && !!activeYearId,
   });
 
   const allBudgets: BudgetRequest[] = useMemo(
@@ -241,12 +227,12 @@ export const StaffFinanceWorkspace = () => {
 
   const students = useMemo(() => studentsQuery.data?.data || [], [studentsQuery.data?.data]);
   const dashboardSnapshotQuery = useQuery({
-    queryKey: ['staff-finance-dashboard', activeYear?.id || 'none'],
+    queryKey: ['staff-finance-dashboard', activeYearId || 'none'],
     queryFn: () =>
       staffFinanceService.listReports({
-        academicYearId: activeYear?.id,
+        academicYearId: activeYearId,
       }),
-    enabled: isDashboardPage && Boolean(activeYear?.id),
+    enabled: isDashboardPage && Boolean(activeYearId),
     staleTime: 60_000,
     refetchOnWindowFocus: false,
   });
@@ -466,7 +452,7 @@ export const StaffFinanceWorkspace = () => {
           user={currentUser}
           eyebrow="Staff Keuangan"
           subtitle="Ringkasan tagihan siswa, kolektibilitas pembayaran, dan prioritas operasional tersedia di workspace ini."
-          meta={activeYear?.name ? `Tahun ajaran aktif: ${activeYear.name}` : undefined}
+          meta={activeAcademicYear?.name ? `Tahun ajaran aktif: ${activeAcademicYear.name}` : undefined}
           tone="violet"
           className="mt-10"
           fallbackName="Staff Keuangan"
@@ -772,6 +758,18 @@ export const StaffFinanceWorkspace = () => {
         </div>
       </div>
 
+      <ActiveAcademicYearNotice
+        name={activeAcademicYear?.name}
+        semester={activeAcademicYear?.semester}
+        helperText="Approval pengajuan anggaran operasional di halaman ini otomatis mengikuti tahun ajaran aktif yang tampil di header aplikasi."
+      />
+
+      {!isLoadingActiveAcademicYear && !activeYearId ? (
+        <div className="rounded-xl border border-amber-200 bg-amber-50 px-4 py-3 text-sm text-amber-800">
+          Tahun ajaran aktif belum tersedia. Aktifkan tahun ajaran terlebih dahulu agar approval anggaran keuangan tidak ambigu.
+        </div>
+      ) : null}
+
       <div className="bg-white rounded-xl shadow-sm border border-gray-100 p-4 flex flex-col md:flex-row md:items-center md:justify-between gap-4">
         <div className="flex flex-wrap gap-3 items-center">
           <div className="relative">
@@ -798,32 +796,6 @@ export const StaffFinanceWorkspace = () => {
               <option value="PENDING">Menunggu</option>
               <option value="APPROVED">Disetujui</option>
               <option value="REJECTED">Ditolak</option>
-            </select>
-          </div>
-
-          <div className="flex items-center gap-2">
-            <span className="text-xs font-medium text-gray-500 uppercase tracking-wider">
-              Tahun Ajaran
-            </span>
-            <select
-              value={selectedYearId === 'all' ? 'all' : String(selectedYearId || activeYear?.id || '')}
-              onChange={(e) => {
-                const value = e.target.value;
-                if (value === 'all') {
-                  setSelectedYearId('all');
-                } else {
-                  setSelectedYearId(Number(value));
-                }
-              }}
-              className="border border-gray-300 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500/60"
-            >
-              <option value="all">Semua</option>
-              {academicYears.map((year) => (
-                <option key={year.id} value={year.id}>
-                  {year.name}
-                  {year.isActive ? ' (Aktif)' : ''}
-                </option>
-              ))}
             </select>
           </div>
         </div>

@@ -14,6 +14,7 @@ import { Feather } from '@expo/vector-icons';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { AppLoadingScreen } from '../../../src/components/AppLoadingScreen';
 import { MobileDetailModal } from '../../../src/components/MobileDetailModal';
+import { MobileActiveAcademicYearNotice } from '../../../src/components/MobileActiveAcademicYearNotice';
 import { MobileSelectField } from '../../../src/components/MobileSelectField';
 import { MobileSummaryCard } from '../../../src/components/MobileSummaryCard';
 import { QueryStateView } from '../../../src/components/QueryStateView';
@@ -404,6 +405,12 @@ export default function TeacherSarprasBudgetsScreen() {
         Verifikasi pengajuan anggaran unit sekolah
         {activeYearQuery.data?.name ? ` • ${activeYearQuery.data.name}` : ''}.
       </Text>
+
+      <MobileActiveAcademicYearNotice
+        name={activeYearQuery.data?.name}
+        semester={activeYearQuery.data?.semester}
+        helperText="Approval pengajuan anggaran operasional di mobile otomatis mengikuti tahun ajaran aktif yang tampil di header aplikasi."
+      />
 
       <View style={{ flexDirection: 'row', flexWrap: 'wrap', justifyContent: 'space-between', marginBottom: 12 }}>
         {summaryCards.map((item) => (
