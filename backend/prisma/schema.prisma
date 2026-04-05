@@ -192,6 +192,9 @@ model User {
   grantedExamMakeupAccesses                          ExamScheduleMakeupAccess[]          @relation("ExamMakeupGrantedBy")
   revokedExamMakeupAccesses                          ExamScheduleMakeupAccess[]          @relation("ExamMakeupRevokedBy")
   studentPermissions                                 StudentPermission[]                 @relation("StudentPermissions")
+  homeroomBookEntries                                HomeroomBookEntry[]                @relation("HomeroomBookStudent")
+  createdHomeroomBookEntries                         HomeroomBookEntry[]                @relation("HomeroomBookCreatedBy")
+  updatedHomeroomBookEntries                         HomeroomBookEntry[]                @relation("HomeroomBookUpdatedBy")
   academicMemberships                                StudentAcademicMembership[]
   promotionRunsCreated                               PromotionRun[]                      @relation("PromotionRunCreatedBy")
   promotionRunItems                                  PromotionRunItem[]                  @relation("PromotionRunStudent")
@@ -363,6 +366,7 @@ model AcademicYear {
   studentExamRestrictions        StudentExamRestriction[]
   studentExamProgramRestrictions StudentExamProgramRestriction[]
   studentPermissions             StudentPermission[]
+  homeroomBookEntries            HomeroomBookEntry[]
   reportDates                    ReportDate[]
   ekskulTutorAssignments         EkstrakurikulerTutorAssignment[]
   ekskulEnrollments              EkstrakurikulerEnrollment[]
@@ -540,6 +544,55 @@ model StudentPermission {
   @@map("student_permissions")
 }
 
+model HomeroomBookEntry {
+  id                         Int                   @id @default(autoincrement())
+  studentId                  Int
+  classId                    Int
+  academicYearId             Int
+  createdById                Int
+  updatedById                Int?
+  entryType                  HomeroomBookEntryType
+  status                     HomeroomBookStatus    @default(ACTIVE)
+  title                      String
+  summary                    String
+  notes                      String?
+  incidentDate               DateTime
+  relatedSemester            Semester?
+  relatedProgramCode         String?
+  visibilityToPrincipal      Boolean               @default(true)
+  visibilityToStudentAffairs Boolean               @default(true)
+  createdAt                  DateTime              @default(now())
+  updatedAt                  DateTime              @updatedAt
+
+  student      User                     @relation("HomeroomBookStudent", fields: [studentId], references: [id], onDelete: Cascade)
+  class        Class                    @relation(fields: [classId], references: [id], onDelete: Cascade)
+  academicYear AcademicYear             @relation(fields: [academicYearId], references: [id], onDelete: Cascade)
+  createdBy    User                     @relation("HomeroomBookCreatedBy", fields: [createdById], references: [id], onDelete: Cascade)
+  updatedBy    User?                    @relation("HomeroomBookUpdatedBy", fields: [updatedById], references: [id], onDelete: SetNull)
+  attachments  HomeroomBookAttachment[]
+
+  @@index([academicYearId, classId, createdAt])
+  @@index([studentId, academicYearId, entryType, status])
+  @@index([academicYearId, relatedSemester, relatedProgramCode, entryType, status])
+  @@map("homeroom_book_entries")
+}
+
+model HomeroomBookAttachment {
+  id           Int               @id @default(autoincrement())
+  entryId       Int
+  fileUrl       String
+  fileName      String
+  originalName  String
+  mimeType      String
+  fileSize      Int
+  createdAt     DateTime          @default(now())
+
+  entry         HomeroomBookEntry @relation(fields: [entryId], references: [id], onDelete: Cascade)
+
+  @@index([entryId, createdAt])
+  @@map("homeroom_book_attachments")
+}
+
 model BpBkCounseling {
   id                 Int                  @id @default(autoincrement())
   studentId          Int
@@ -644,6 +697,7 @@ model Class {
   financeAdjustmentRules  FinanceAdjustmentRule[]
   studentBehaviors        StudentBehavior[]
   bpbkCounselings         BpBkCounseling[]
+  homeroomBookEntries     HomeroomBookEntry[]
   libraryBookLoans        LibraryBookLoan[]
   academicMemberships     StudentAcademicMembership[]
   sourcePromotionMappings PromotionClassMapping[]     @relation("PromotionSourceClass")
@@ -3042,6 +3096,17 @@ enum ApprovalStatus {
   PENDING
   APPROVED
   REJECTED
+}
+
+enum HomeroomBookEntryType {
+  EXAM_FINANCE_EXCEPTION
+  STUDENT_CASE_REPORT
+}
+
+enum HomeroomBookStatus {
+  ACTIVE
+  RESOLVED
+  CANCELLED
 }
 
 enum TeachingResourceEntryStatus {

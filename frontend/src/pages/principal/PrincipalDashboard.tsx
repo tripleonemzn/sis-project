@@ -48,6 +48,7 @@ import {
   AlertTriangle,
   Gauge,
   Clock3,
+  BookOpenText,
 } from 'lucide-react';
 import toast from 'react-hot-toast';
 import api from '../../services/api';
@@ -63,6 +64,7 @@ import { OsisElectionMonitoringPage } from '../common/OsisElectionMonitoringPage
 import { getMenuItems, type MenuItem } from '../../components/layout/Sidebar';
 import type { User } from '../../types/auth';
 import { DashboardWelcomeCard } from '../../components/common/DashboardWelcomeCard';
+import HomeroomBookPanel from '../../components/homeroom/HomeroomBookPanel';
 
 type StatTone = 'blue' | 'orange' | 'red' | 'teal';
 
@@ -3002,6 +3004,12 @@ const PrincipalOperationalMonitoringPage = () => {
 const PrincipalStudentsPage = () => {
   const [search, setSearch] = useState('');
   const [classFilter, setClassFilter] = useState<string>('ALL');
+  const [activeTab, setActiveTab] = useState<'students' | 'homeroom_book'>('students');
+  const activeYearQuery = useQuery({
+    queryKey: ['principal-students-active-year'],
+    queryFn: academicYearService.getActiveSafe,
+    staleTime: 5 * 60 * 1000,
+  });
 
   const studentsQuery = useQuery({
     queryKey: ['principal-students-page'],
@@ -3045,10 +3053,45 @@ const PrincipalStudentsPage = () => {
   return (
     <div className="space-y-6">
       <div>
-        <h2 className="text-2xl font-bold text-gray-900">Data Siswa</h2>
-        <p className="mt-1 text-sm text-gray-500">Daftar siswa aktif untuk monitoring Kepala Sekolah.</p>
+        <h2 className="text-2xl font-bold text-gray-900">
+          {activeTab === 'students' ? 'Data Siswa' : 'Buku Wali Kelas'}
+        </h2>
+        <p className="mt-1 text-sm text-gray-500">
+          {activeTab === 'students'
+            ? 'Daftar siswa aktif untuk monitoring Kepala Sekolah.'
+            : 'Monitoring pengecualian ujian finance dan laporan kasus siswa dari wali kelas.'}
+        </p>
       </div>
 
+      <div className="inline-flex rounded-xl border border-gray-200 bg-white p-1 shadow-sm">
+        <button
+          type="button"
+          onClick={() => setActiveTab('students')}
+          className={`rounded-lg px-4 py-2 text-sm font-medium transition-colors ${
+            activeTab === 'students' ? 'bg-blue-50 text-blue-700' : 'text-gray-600 hover:bg-gray-50'
+          }`}
+        >
+          <span className="inline-flex items-center gap-2">
+            <GraduationCap className="h-4 w-4" />
+            Data Siswa
+          </span>
+        </button>
+        <button
+          type="button"
+          onClick={() => setActiveTab('homeroom_book')}
+          className={`rounded-lg px-4 py-2 text-sm font-medium transition-colors ${
+            activeTab === 'homeroom_book' ? 'bg-blue-50 text-blue-700' : 'text-gray-600 hover:bg-gray-50'
+          }`}
+        >
+          <span className="inline-flex items-center gap-2">
+            <BookOpenText className="h-4 w-4" />
+            Buku Wali Kelas
+          </span>
+        </button>
+      </div>
+
+      {activeTab === 'students' ? (
+      <>
       <div className="bg-white rounded-xl shadow-sm border border-gray-100 p-4 flex flex-col md:flex-row gap-3 md:items-center md:justify-between">
         <div className="flex flex-wrap gap-3 items-center">
           <div className="relative">
@@ -3132,6 +3175,13 @@ const PrincipalStudentsPage = () => {
           </div>
         )}
       </div>
+      </>
+      ) : (
+        <HomeroomBookPanel
+          mode="principal"
+          academicYearId={activeYearQuery.data?.data?.id}
+        />
+      )}
 
     </div>
   );

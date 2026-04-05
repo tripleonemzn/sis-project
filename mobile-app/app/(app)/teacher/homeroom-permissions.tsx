@@ -14,6 +14,7 @@ import { Feather } from '@expo/vector-icons';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { AppLoadingScreen } from '../../../src/components/AppLoadingScreen';
 import { MobileDetailModal } from '../../../src/components/MobileDetailModal';
+import { MobileMenuTabBar } from '../../../src/components/MobileMenuTabBar';
 import { MobileSelectField } from '../../../src/components/MobileSelectField';
 import { MobileSummaryCard } from '../../../src/components/MobileSummaryCard';
 import { QueryStateView } from '../../../src/components/QueryStateView';
@@ -22,6 +23,8 @@ import { ENV } from '../../../src/config/env';
 import { useAuth } from '../../../src/features/auth/AuthProvider';
 import { academicYearApi } from '../../../src/features/academicYear/academicYearApi';
 import { adminApi } from '../../../src/features/admin/adminApi';
+import { examApi } from '../../../src/features/exams/examApi';
+import HomeroomBookMobilePanel from '../../../src/features/homeroomBook/HomeroomBookMobilePanel';
 import { permissionApi } from '../../../src/features/permissions/permissionApi';
 import { PermissionStatus, PermissionType, StudentPermission } from '../../../src/features/permissions/types';
 import { getStandardPagePadding } from '../../../src/lib/ui/pageLayout';
@@ -29,6 +32,7 @@ import { openWebModuleRoute } from '../../../src/lib/navigation/webModuleRoute';
 
 type StatusFilter = 'ALL' | PermissionStatus;
 type TypeFilter = 'ALL' | PermissionType;
+type HomeroomPermissionTab = 'IZIN' | 'BUKU_WALI_KELAS';
 
 const STATUS_LABEL: Record<StatusFilter, string> = {
   ALL: 'Semua',
@@ -93,6 +97,7 @@ export default function TeacherHomeroomPermissionsScreen() {
 
   const [statusFilter, setStatusFilter] = useState<StatusFilter>('PENDING');
   const [typeFilter, setTypeFilter] = useState<TypeFilter>('ALL');
+  const [activeTab, setActiveTab] = useState<HomeroomPermissionTab>('IZIN');
   const [search, setSearch] = useState('');
   const [selectedClassId, setSelectedClassId] = useState<number | null>(null);
   const [rejectionNotes, setRejectionNotes] = useState<Record<number, string>>({});
@@ -123,6 +128,18 @@ export default function TeacherHomeroomPermissionsScreen() {
         teacherId: user?.id,
       });
       return result.items;
+    },
+  });
+
+  const examProgramsQuery = useQuery({
+    queryKey: ['mobile-homeroom-book-exam-programs', activeYearQuery.data?.id],
+    enabled: isAuthenticated && !!isAllowed && !!activeYearQuery.data?.id && activeTab === 'BUKU_WALI_KELAS',
+    queryFn: async () => {
+      const result = await examApi.getExamPrograms({
+        academicYearId: Number(activeYearQuery.data?.id),
+        roleContext: 'student',
+      });
+      return result.programs || [];
     },
   });
 
@@ -320,19 +337,40 @@ export default function TeacherHomeroomPermissionsScreen() {
       contentContainerStyle={pagePadding}
       refreshControl={
         <RefreshControl
-          refreshing={activeYearQuery.isFetching || classesQuery.isFetching || permissionsQuery.isFetching}
+          refreshing={
+            activeYearQuery.isFetching ||
+            classesQuery.isFetching ||
+            permissionsQuery.isFetching ||
+            examProgramsQuery.isFetching
+          }
           onRefresh={() => {
             void activeYearQuery.refetch();
             void classesQuery.refetch();
             void permissionsQuery.refetch();
+            void examProgramsQuery.refetch();
           }}
         />
       }
     >
-      <Text style={{ fontSize: 24, fontWeight: '700', marginBottom: 6, color: BRAND_COLORS.textDark }}>Persetujuan Izin</Text>
-      <Text style={{ color: BRAND_COLORS.textMuted, marginBottom: 12 }}>
-        Verifikasi pengajuan izin siswa pada kelas wali.
+      <Text style={{ fontSize: 24, fontWeight: '700', marginBottom: 6, color: BRAND_COLORS.textDark }}>
+        {activeTab === 'IZIN' ? 'Persetujuan Izin' : 'Buku Wali Kelas'}
       </Text>
+      <Text style={{ color: BRAND_COLORS.textMuted, marginBottom: 12 }}>
+        {activeTab === 'IZIN'
+          ? 'Verifikasi pengajuan izin siswa pada kelas wali.'
+          : 'Kelola pengecualian ujian finance dan laporan kasus siswa pada kelas wali.'}
+      </Text>
+
+      <MobileMenuTabBar
+        items={[
+          { key: 'IZIN', label: 'Daftar Izin', iconName: 'file-text' },
+          { key: 'BUKU_WALI_KELAS', label: 'Buku Wali', iconName: 'book-open' },
+        ]}
+        activeKey={activeTab}
+        onChange={(key) => setActiveTab(key as HomeroomPermissionTab)}
+        style={{ marginBottom: 12 }}
+        contentContainerStyle={{ paddingRight: 8 }}
+      />
 
       {classesQuery.isLoading ? <QueryStateView type="loading" message="Memuat kelas wali..." /> : null}
       {classesQuery.isError ? (
@@ -399,6 +437,8 @@ export default function TeacherHomeroomPermissionsScreen() {
         </View>
       ) : null}
 
+      {activeTab === 'IZIN' ? (
+      <>
       <View style={{ flexDirection: 'row', flexWrap: 'wrap', marginHorizontal: -4, marginBottom: 12 }}>
         {[
           {
@@ -763,6 +803,15 @@ export default function TeacherHomeroomPermissionsScreen() {
           </View>
         </View>
       </MobileDetailModal>
+      </>
+      ) : (
+        <HomeroomBookMobilePanel
+          mode="homeroom"
+          academicYearId={activeYearQuery.data?.id}
+          classId={effectiveSelectedClassId}
+          examPrograms={examProgramsQuery.data || []}
+        />
+      )}
 
     </ScrollView>
   );

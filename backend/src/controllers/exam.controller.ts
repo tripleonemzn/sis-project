@@ -8,6 +8,8 @@ import {
     Semester,
     GradeComponentType,
     GradeEntryMode,
+    HomeroomBookEntryType,
+    HomeroomBookStatus,
     JobApplicationAssessmentStageCode,
     JobApplicationStatus,
     Prisma,
@@ -668,6 +670,31 @@ async function buildAutomaticExamRestrictionMap(params: {
         }),
     ]);
 
+    const financeExceptionProgramCode =
+        financePolicy.programCode || normalizeProgramCode(params.programCode || params.examType);
+    const financeExceptions = financeExceptionProgramCode
+        ? await prisma.homeroomBookEntry.findMany({
+              where: {
+                  studentId: { in: studentIds },
+                  academicYearId: params.academicYearId,
+                  entryType: HomeroomBookEntryType.EXAM_FINANCE_EXCEPTION,
+                  status: HomeroomBookStatus.ACTIVE,
+                  relatedSemester: params.semester,
+                  relatedProgramCode: financeExceptionProgramCode,
+              },
+              select: {
+                  id: true,
+                  studentId: true,
+              },
+              orderBy: [{ updatedAt: 'desc' }, { id: 'desc' }],
+          })
+        : [];
+    const financeExceptionStudentIds = new Set<number>();
+    financeExceptions.forEach((entry) => {
+        if (financeExceptionStudentIds.has(entry.studentId)) return;
+        financeExceptionStudentIds.add(entry.studentId);
+    });
+
     const subjectIds = Array.from(
         new Set(
             teacherAssignments
@@ -788,12 +815,13 @@ async function buildAutomaticExamRestrictionMap(params: {
             finance,
             policy: financePolicy,
         });
+        const financeExceptionGranted = financeEvaluation.blocked && financeExceptionStudentIds.has(studentId);
 
         const flags: AutomaticExamRestrictionFlags = {
             belowKkm: belowKkmSubjects.length > 0,
             financeOutstanding: financeEvaluation.hasOutstanding,
             financeOverdue: financeEvaluation.hasOverdue,
-            financeBlocked: financeEvaluation.blocked,
+            financeBlocked: financeEvaluation.blocked && !financeExceptionGranted,
         };
 
         const reasonParts: string[] = [];

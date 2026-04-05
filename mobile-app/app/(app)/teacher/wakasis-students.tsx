@@ -21,11 +21,12 @@ import { useAuth } from '../../../src/features/auth/AuthProvider';
 import { academicYearApi } from '../../../src/features/academicYear/academicYearApi';
 import { AdminClass, AdminUser, adminApi } from '../../../src/features/admin/adminApi';
 import { attendanceRecapApi } from '../../../src/features/attendanceRecap/attendanceRecapApi';
+import HomeroomBookMobilePanel from '../../../src/features/homeroomBook/HomeroomBookMobilePanel';
 import { kesiswaanApi } from '../../../src/features/kesiswaan/kesiswaanApi';
 import { KesiswaanTutorAssignment } from '../../../src/features/kesiswaan/types';
 import { getStandardPagePadding } from '../../../src/lib/ui/pageLayout';
 
-type StudentSection = 'RINGKASAN' | 'SISWA' | 'ORTU' | 'PEMBINA' | 'EKSKUL' | 'ABSENSI';
+type StudentSection = 'RINGKASAN' | 'SISWA' | 'ORTU' | 'PEMBINA' | 'EKSKUL' | 'ABSENSI' | 'BUKU_WALI_KELAS';
 type StudentSummaryId = 'students' | 'parents' | 'advisors' | 'clubs';
 
 type AttendanceClassRow = {
@@ -84,6 +85,7 @@ const SECTION_ITEMS: Array<{ key: StudentSection; label: string; iconName: React
   { key: 'PEMBINA', label: 'Pembina', iconName: 'shield' },
   { key: 'EKSKUL', label: 'Ekstrakurikuler', iconName: 'activity' },
   { key: 'ABSENSI', label: 'Absensi', iconName: 'check-square' },
+  { key: 'BUKU_WALI_KELAS', label: 'Buku Wali', iconName: 'book-open' },
 ];
 
 function StatusBadge({ status }: { status: string | null | undefined }) {
@@ -112,6 +114,7 @@ function getSearchPlaceholder(section: StudentSection) {
   if (section === 'PEMBINA') return 'Cari pembina ekskul atau guru aktif';
   if (section === 'EKSKUL') return 'Cari ekstrakurikuler';
   if (section === 'ABSENSI') return 'Cari nama kelas';
+  if (section === 'BUKU_WALI_KELAS') return 'Cari entri Buku Wali Kelas';
   return 'Cari data kesiswaan';
 }
 
@@ -562,32 +565,34 @@ export default function TeacherWakasisStudentsScreen() {
             maxTabWidth={110}
           />
 
-          <View
-            style={{
-              flexDirection: 'row',
-              alignItems: 'center',
-              backgroundColor: '#fff',
-              borderRadius: 10,
-              borderWidth: 1,
-              borderColor: '#d6e0f2',
-              paddingHorizontal: 12,
-              marginBottom: 12,
-            }}
-          >
-            <Feather name="search" size={16} color={BRAND_COLORS.textMuted} />
-            <TextInput
-              value={search}
-              onChangeText={setSearch}
-              placeholder={getSearchPlaceholder(section)}
-              placeholderTextColor="#94a3b8"
+          {section !== 'BUKU_WALI_KELAS' ? (
+            <View
               style={{
-                flex: 1,
-                paddingHorizontal: 8,
-                paddingVertical: 10,
-                color: BRAND_COLORS.textDark,
+                flexDirection: 'row',
+                alignItems: 'center',
+                backgroundColor: '#fff',
+                borderRadius: 10,
+                borderWidth: 1,
+                borderColor: '#d6e0f2',
+                paddingHorizontal: 12,
+                marginBottom: 12,
               }}
-            />
-          </View>
+            >
+              <Feather name="search" size={16} color={BRAND_COLORS.textMuted} />
+              <TextInput
+                value={search}
+                onChangeText={setSearch}
+                placeholder={getSearchPlaceholder(section)}
+                placeholderTextColor="#94a3b8"
+                style={{
+                  flex: 1,
+                  paddingHorizontal: 8,
+                  paddingVertical: 10,
+                  color: BRAND_COLORS.textDark,
+                }}
+              />
+            </View>
+          ) : null}
 
           {section === 'RINGKASAN' ? (
             <>
@@ -778,6 +783,13 @@ export default function TeacherWakasisStudentsScreen() {
                 </Text>
               ) : null}
             </View>
+          ) : null}
+
+          {section === 'BUKU_WALI_KELAS' ? (
+            <HomeroomBookMobilePanel
+              mode="student_affairs"
+              academicYearId={activeYearQuery.data?.id}
+            />
           ) : null}
 
           {section === 'PEMBINA' ? (

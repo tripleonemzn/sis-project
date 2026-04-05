@@ -4,9 +4,12 @@ import { useQuery } from '@tanstack/react-query';
 import { Pressable, RefreshControl, ScrollView, Text, TextInput, View } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { AppLoadingScreen } from '../../../src/components/AppLoadingScreen';
+import { MobileMenuTabBar } from '../../../src/components/MobileMenuTabBar';
 import { QueryStateView } from '../../../src/components/QueryStateView';
+import { academicYearApi } from '../../../src/features/academicYear/academicYearApi';
 import { useAuth } from '../../../src/features/auth/AuthProvider';
 import { adminApi } from '../../../src/features/admin/adminApi';
+import HomeroomBookMobilePanel from '../../../src/features/homeroomBook/HomeroomBookMobilePanel';
 import { getStandardPagePadding } from '../../../src/lib/ui/pageLayout';
 import { BRAND_COLORS } from '../../../src/config/brand';
 
@@ -18,6 +21,18 @@ export default function PrincipalStudentsScreen() {
 
   const [search, setSearch] = useState('');
   const [classFilter, setClassFilter] = useState<string>('ALL');
+  const [section, setSection] = useState<'SISWA' | 'BUKU_WALI_KELAS'>('SISWA');
+  const activeYearQuery = useQuery({
+    queryKey: ['mobile-principal-students-active-year'],
+    enabled: isAuthenticated && user?.role === 'PRINCIPAL',
+    queryFn: async () => {
+      try {
+        return await academicYearApi.getActive({ allowStaleOnError: true });
+      } catch {
+        return null;
+      }
+    },
+  });
 
   const studentsQuery = useQuery({
     queryKey: ['mobile-principal-students'],
@@ -69,141 +84,175 @@ export default function PrincipalStudentsScreen() {
       style={{ flex: 1, backgroundColor: '#f8fafc' }}
       contentContainerStyle={pagePadding}
       refreshControl={
-        <RefreshControl refreshing={studentsQuery.isFetching && !studentsQuery.isLoading} onRefresh={() => studentsQuery.refetch()} />
-      }
-    >
-      <Text style={{ fontSize: 24, fontWeight: '700', color: BRAND_COLORS.textDark, marginBottom: 6 }}>Data Siswa</Text>
-      <Text style={{ color: BRAND_COLORS.textMuted, marginBottom: 12 }}>
-        Monitoring data siswa lintas kelas untuk kebutuhan kepala sekolah.
-      </Text>
-
-      <View
-        style={{
-          backgroundColor: '#fff',
-          borderWidth: 1,
-          borderColor: '#dbe7fb',
-          borderRadius: 12,
-          padding: 12,
-          marginBottom: 12,
-        }}
-      >
-        <TextInput
-          value={search}
-          onChangeText={setSearch}
-          placeholder="Cari nama, username, NIS, kelas"
-          placeholderTextColor="#95a3be"
-          style={{
-            borderWidth: 1,
-            borderColor: '#d6e2f7',
-            borderRadius: 10,
-            paddingHorizontal: 12,
-            paddingVertical: 10,
-            color: BRAND_COLORS.textDark,
-            backgroundColor: '#fff',
-            marginBottom: 10,
+        <RefreshControl
+          refreshing={
+            section === 'SISWA'
+              ? studentsQuery.isFetching && !studentsQuery.isLoading
+              : activeYearQuery.isFetching && !activeYearQuery.isLoading
+          }
+          onRefresh={() => {
+            if (section === 'SISWA') {
+              studentsQuery.refetch();
+              return;
+            }
+            activeYearQuery.refetch();
           }}
         />
+      }
+    >
+      <Text style={{ fontSize: 24, fontWeight: '700', color: BRAND_COLORS.textDark, marginBottom: 6 }}>
+        {section === 'SISWA' ? 'Data Siswa' : 'Buku Wali Kelas'}
+      </Text>
+      <Text style={{ color: BRAND_COLORS.textMuted, marginBottom: 12 }}>
+        {section === 'SISWA'
+          ? 'Monitoring data siswa lintas kelas untuk kebutuhan kepala sekolah.'
+          : 'Monitoring pengecualian ujian finance dan laporan kasus siswa dari wali kelas.'}
+      </Text>
 
-        <View style={{ flexDirection: 'row', flexWrap: 'wrap', marginHorizontal: -4, marginBottom: 8 }}>
-          <View style={{ width: '50%', paddingHorizontal: 4, marginBottom: 8 }}>
-            <Pressable
-              onPress={() => setClassFilter('ALL')}
-              style={{
-                borderWidth: 1,
-                borderColor: classFilter === 'ALL' ? BRAND_COLORS.blue : '#d6e2f7',
-                backgroundColor: classFilter === 'ALL' ? '#e9f1ff' : '#fff',
-                borderRadius: 10,
-                paddingVertical: 8,
-                alignItems: 'center',
-              }}
-            >
-              <Text style={{ color: classFilter === 'ALL' ? BRAND_COLORS.navy : BRAND_COLORS.textMuted, fontWeight: '700' }}>
-                Semua Kelas
-              </Text>
-            </Pressable>
-          </View>
+      <MobileMenuTabBar
+        items={[
+          { key: 'SISWA', label: 'Data Siswa', iconName: 'users' },
+          { key: 'BUKU_WALI_KELAS', label: 'Buku Wali', iconName: 'book-open' },
+        ]}
+        activeKey={section}
+        onChange={(value) => setSection(value as 'SISWA' | 'BUKU_WALI_KELAS')}
+        style={{ marginBottom: 12 }}
+        contentContainerStyle={{ paddingRight: 8 }}
+      />
 
-          {classOptions.slice(0, 7).map((option) => (
-            <View key={option.id} style={{ width: '50%', paddingHorizontal: 4, marginBottom: 8 }}>
+      {section === 'SISWA' ? (
+        <>
+        <View
+          style={{
+            backgroundColor: '#fff',
+            borderWidth: 1,
+            borderColor: '#dbe7fb',
+            borderRadius: 12,
+            padding: 12,
+            marginBottom: 12,
+          }}
+        >
+          <TextInput
+            value={search}
+            onChangeText={setSearch}
+            placeholder="Cari nama, username, NIS, kelas"
+            placeholderTextColor="#95a3be"
+            style={{
+              borderWidth: 1,
+              borderColor: '#d6e2f7',
+              borderRadius: 10,
+              paddingHorizontal: 12,
+              paddingVertical: 10,
+              color: BRAND_COLORS.textDark,
+              backgroundColor: '#fff',
+              marginBottom: 10,
+            }}
+          />
+
+          <View style={{ flexDirection: 'row', flexWrap: 'wrap', marginHorizontal: -4, marginBottom: 8 }}>
+            <View style={{ width: '50%', paddingHorizontal: 4, marginBottom: 8 }}>
               <Pressable
-                onPress={() => setClassFilter(option.id)}
+                onPress={() => setClassFilter('ALL')}
                 style={{
                   borderWidth: 1,
-                  borderColor: classFilter === option.id ? BRAND_COLORS.blue : '#d6e2f7',
-                  backgroundColor: classFilter === option.id ? '#e9f1ff' : '#fff',
+                  borderColor: classFilter === 'ALL' ? BRAND_COLORS.blue : '#d6e2f7',
+                  backgroundColor: classFilter === 'ALL' ? '#e9f1ff' : '#fff',
                   borderRadius: 10,
                   paddingVertical: 8,
                   alignItems: 'center',
                 }}
               >
-                <Text
-                  numberOfLines={1}
-                  style={{ color: classFilter === option.id ? BRAND_COLORS.navy : BRAND_COLORS.textMuted, fontWeight: '700' }}
-                >
-                  {option.name}
+                <Text style={{ color: classFilter === 'ALL' ? BRAND_COLORS.navy : BRAND_COLORS.textMuted, fontWeight: '700' }}>
+                  Semua Kelas
                 </Text>
               </Pressable>
             </View>
-          ))}
+
+            {classOptions.slice(0, 7).map((option) => (
+              <View key={option.id} style={{ width: '50%', paddingHorizontal: 4, marginBottom: 8 }}>
+                <Pressable
+                  onPress={() => setClassFilter(option.id)}
+                  style={{
+                    borderWidth: 1,
+                    borderColor: classFilter === option.id ? BRAND_COLORS.blue : '#d6e2f7',
+                    backgroundColor: classFilter === option.id ? '#e9f1ff' : '#fff',
+                    borderRadius: 10,
+                    paddingVertical: 8,
+                    alignItems: 'center',
+                  }}
+                >
+                  <Text
+                    numberOfLines={1}
+                    style={{ color: classFilter === option.id ? BRAND_COLORS.navy : BRAND_COLORS.textMuted, fontWeight: '700' }}
+                  >
+                    {option.name}
+                  </Text>
+                </Pressable>
+              </View>
+            ))}
+          </View>
+
+          <Text style={{ color: BRAND_COLORS.textMuted, fontSize: 12 }}>
+            Total siswa terfilter: <Text style={{ color: BRAND_COLORS.textDark, fontWeight: '700' }}>{filteredStudents.length}</Text>
+          </Text>
         </View>
 
-        <Text style={{ color: BRAND_COLORS.textMuted, fontSize: 12 }}>
-          Total siswa terfilter: <Text style={{ color: BRAND_COLORS.textDark, fontWeight: '700' }}>{filteredStudents.length}</Text>
-        </Text>
-      </View>
+        {studentsQuery.isLoading ? <QueryStateView type="loading" message="Mengambil data siswa..." /> : null}
+        {studentsQuery.isError ? (
+          <QueryStateView type="error" message="Gagal memuat data siswa." onRetry={() => studentsQuery.refetch()} />
+        ) : null}
 
-      {studentsQuery.isLoading ? <QueryStateView type="loading" message="Mengambil data siswa..." /> : null}
-      {studentsQuery.isError ? (
-        <QueryStateView type="error" message="Gagal memuat data siswa." onRetry={() => studentsQuery.refetch()} />
-      ) : null}
-
-      {!studentsQuery.isLoading && !studentsQuery.isError ? (
-        filteredStudents.length > 0 ? (
-          filteredStudents.map((item) => (
+        {!studentsQuery.isLoading && !studentsQuery.isError ? (
+          filteredStudents.length > 0 ? (
+            filteredStudents.map((item) => (
+              <View
+                key={item.id}
+                style={{
+                  backgroundColor: '#fff',
+                  borderWidth: 1,
+                  borderColor: '#dbe7fb',
+                  borderRadius: 12,
+                  padding: 12,
+                  marginBottom: 10,
+                }}
+              >
+                <Text style={{ color: BRAND_COLORS.textDark, fontWeight: '700', fontSize: 15 }}>{item.name}</Text>
+                <Text style={{ color: BRAND_COLORS.textMuted, marginTop: 3 }}>@{item.username}</Text>
+                <Text style={{ color: '#475569', marginTop: 6 }}>
+                  Kelas: <Text style={{ color: BRAND_COLORS.textDark, fontWeight: '600' }}>{item.studentClass?.name || '-'}</Text>
+                </Text>
+                <Text style={{ color: '#475569', marginTop: 2 }}>
+                  NIS / NISN:{' '}
+                  <Text style={{ color: BRAND_COLORS.textDark, fontWeight: '600' }}>
+                    {item.nis || '-'} / {item.nisn || '-'}
+                  </Text>
+                </Text>
+                <Text style={{ color: '#475569', marginTop: 2 }}>
+                  Status: <Text style={{ color: BRAND_COLORS.textDark, fontWeight: '600' }}>{item.studentStatus || '-'}</Text>
+                </Text>
+              </View>
+            ))
+          ) : (
             <View
-              key={item.id}
               style={{
-                backgroundColor: '#fff',
+                borderRadius: 10,
                 borderWidth: 1,
-                borderColor: '#dbe7fb',
-                borderRadius: 12,
-                padding: 12,
+                borderColor: '#cbd5e1',
+                borderStyle: 'dashed',
+                backgroundColor: '#fff',
+                padding: 14,
                 marginBottom: 10,
               }}
             >
-              <Text style={{ color: BRAND_COLORS.textDark, fontWeight: '700', fontSize: 15 }}>{item.name}</Text>
-              <Text style={{ color: BRAND_COLORS.textMuted, marginTop: 3 }}>@{item.username}</Text>
-              <Text style={{ color: '#475569', marginTop: 6 }}>
-                Kelas: <Text style={{ color: BRAND_COLORS.textDark, fontWeight: '600' }}>{item.studentClass?.name || '-'}</Text>
-              </Text>
-              <Text style={{ color: '#475569', marginTop: 2 }}>
-                NIS / NISN:{' '}
-                <Text style={{ color: BRAND_COLORS.textDark, fontWeight: '600' }}>
-                  {item.nis || '-'} / {item.nisn || '-'}
-                </Text>
-              </Text>
-              <Text style={{ color: '#475569', marginTop: 2 }}>
-                Status: <Text style={{ color: BRAND_COLORS.textDark, fontWeight: '600' }}>{item.studentStatus || '-'}</Text>
-              </Text>
+              <Text style={{ color: BRAND_COLORS.textDark, fontWeight: '700', marginBottom: 4 }}>Tidak ada data</Text>
+              <Text style={{ color: BRAND_COLORS.textMuted }}>Tidak ada siswa sesuai filter saat ini.</Text>
             </View>
-          ))
-        ) : (
-          <View
-            style={{
-              borderRadius: 10,
-              borderWidth: 1,
-              borderColor: '#cbd5e1',
-              borderStyle: 'dashed',
-              backgroundColor: '#fff',
-              padding: 14,
-              marginBottom: 10,
-            }}
-          >
-            <Text style={{ color: BRAND_COLORS.textDark, fontWeight: '700', marginBottom: 4 }}>Tidak ada data</Text>
-            <Text style={{ color: BRAND_COLORS.textMuted }}>Tidak ada siswa sesuai filter saat ini.</Text>
-          </View>
-        )
-      ) : null}
+          )
+        ) : null}
+        </>
+      ) : (
+        <HomeroomBookMobilePanel mode="principal" academicYearId={activeYearQuery.data?.id} />
+      )}
 
       <Pressable
         onPress={() => router.replace('/home')}

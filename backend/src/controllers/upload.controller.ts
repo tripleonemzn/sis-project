@@ -154,6 +154,18 @@ const financeProofStorage = multer.diskStorage({
   },
 });
 
+const homeroomBookStorage = multer.diskStorage({
+  destination: (req, file, cb) => {
+    const uploadDir = path.resolve(__dirname, '../../../../uploads/homeroom-book');
+    ensureDir(uploadDir);
+    cb(null, uploadDir);
+  },
+  filename: (req, file, cb) => {
+    const uniqueSuffix = Date.now() + '-' + Math.round(Math.random() * 1e9);
+    cb(null, uniqueSuffix + path.extname(file.originalname));
+  },
+});
+
 export const questionImageUpload = multer({
   storage: questionImageStorage,
   limits: { fileSize: 2 * 1024 * 1024 }, // 2MB
@@ -211,6 +223,20 @@ export const financeProofUpload = multer({
     } else {
       cb(new Error('Bukti pembayaran harus berupa gambar atau PDF.'));
     }
+  },
+});
+
+export const homeroomBookUpload = multer({
+  storage: homeroomBookStorage,
+  limits: { fileSize: 500 * 1024 },
+  fileFilter: (req, file, cb) => {
+    const normalizedMime = String(file.mimetype || '').toLowerCase();
+    const allowedMimeTypes = ['application/pdf', 'image/jpeg', 'image/jpg', 'image/png'];
+    if (allowedMimeTypes.includes(normalizedMime)) {
+      cb(null, true);
+      return;
+    }
+    cb(new Error('Lampiran Buku Wali Kelas hanya boleh berformat PDF, JPG, JPEG, atau PNG.'));
   },
 });
 
@@ -336,6 +362,22 @@ export const uploadInternshipFile = asyncHandler(async (req: Request, res: Respo
     originalname: req.file.originalname,
     mimetype: req.file.mimetype
   }, 'File PKL berhasil diunggah'));
+});
+
+export const uploadHomeroomBookFile = asyncHandler(async (req: Request, res: Response) => {
+  if (!req.file) {
+    throw new ApiError(400, 'Tidak ada file Buku Wali Kelas yang diunggah');
+  }
+
+  const fileUrl = `/api/uploads/homeroom-book/${req.file.filename}`;
+
+  res.status(200).json(new ApiResponse(200, {
+    url: fileUrl,
+    filename: req.file.filename,
+    originalname: req.file.originalname,
+    mimetype: req.file.mimetype,
+    size: req.file.size,
+  }, 'Lampiran Buku Wali Kelas berhasil diunggah'));
 });
 
 export const uploadFinanceProofFile = asyncHandler(async (req: Request, res: Response) => {

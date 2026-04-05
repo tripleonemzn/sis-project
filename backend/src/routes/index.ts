@@ -49,6 +49,7 @@ import bpbkRoutes from './bpbk.routes';
 import teachingResourceProgramRoutes from './teachingResourceProgram.routes';
 import officeRoutes from './office.routes';
 import osisRoutes from './osis.routes';
+import homeroomBookRoutes from './homeroomBook.routes';
 
 const router = Router();
 
@@ -102,5 +103,6 @@ router.use('/bpbk', bpbkRoutes);
 router.use('/teaching-resources', teachingResourceProgramRoutes);
 router.use('/office', officeRoutes);
 router.use('/osis', osisRoutes);
+router.use('/homeroom-book', homeroomBookRoutes);
 
 export default router;

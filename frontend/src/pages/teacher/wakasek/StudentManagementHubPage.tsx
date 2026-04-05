@@ -1,14 +1,25 @@
 import { useCallback, useMemo } from 'react';
+import { useQuery } from '@tanstack/react-query';
 import { useSearchParams } from 'react-router-dom';
-import { Trophy, GraduationCap, Users, BarChart3 } from 'lucide-react';
+import { Trophy, GraduationCap, Users, BarChart3, BookOpenText } from 'lucide-react';
 import { ExtracurricularPage } from '../../admin/extracurriculars/ExtracurricularPage';
 import { StudentManagementPage } from '../../admin/users/StudentManagementPage';
 import { UserList } from '../../admin/users/UserList';
 import { AttendanceRecapPage } from '../../admin/academic/AttendanceRecapPage';
+import { academicYearService } from '../../../services/academicYear.service';
+import HomeroomBookPanel from '../../../components/homeroom/HomeroomBookPanel';
 
 export default function StudentManagementHubPage() {
   const [searchParams, setSearchParams] = useSearchParams();
   const active = searchParams.get('section') || 'ekskul';
+  const activeYearQuery = useQuery({
+    queryKey: ['wakasis-student-management-active-year'],
+    queryFn: async () => {
+      const response = await academicYearService.getActive();
+      return response.data;
+    },
+    staleTime: 5 * 60 * 1000,
+  });
 
   const setActive = useCallback((next: string) => {
     const params = new URLSearchParams(searchParams);
@@ -22,6 +33,7 @@ export default function StudentManagementHubPage() {
     { id: 'ortu', label: 'Kelola Orang Tua', icon: Users },
     { id: 'pembina', label: 'Kelola Tutor Eksternal', icon: Users },
     { id: 'absensi', label: 'Rekap Absensi', icon: BarChart3 },
+    { id: 'buku-wali-kelas', label: 'Buku Wali Kelas', icon: BookOpenText },
   ]), []);
 
   return (
@@ -30,7 +42,7 @@ export default function StudentManagementHubPage() {
         <h1 className="text-2xl font-bold text-gray-900">Kelola Kesiswaan</h1>
         <p className="text-gray-500">
           Akses ekstrakurikuler, data siswa, orang tua, tutor eksternal, dan rekap absensi.
-          Penugasan guru aktif sebagai pembina dikelola dari menu Ekstrakurikuler.
+          Penugasan guru aktif sebagai pembina dikelola dari menu Ekstrakurikuler, termasuk monitoring Buku Wali Kelas secara read only.
         </p>
       </div>
 
@@ -73,6 +85,11 @@ export default function StudentManagementHubPage() {
                 fixedRole="EXTRACURRICULAR_TUTOR" 
                 title="Kelola Tutor Eksternal" 
                 description="Kelola akun tutor eksternal atau pembina non-guru. Guru aktif sebagai pembina dikelola dari menu Ekstrakurikuler."
+              />
+            ) : active === 'buku-wali-kelas' ? (
+              <HomeroomBookPanel
+                mode="student_affairs"
+                academicYearId={activeYearQuery.data?.id}
               />
             ) : (
               <AttendanceRecapPage />

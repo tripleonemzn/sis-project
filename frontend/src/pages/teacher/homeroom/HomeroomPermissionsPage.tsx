@@ -11,7 +11,8 @@ import {
   CheckCircle, 
   XCircle, 
   FileText,
-  ShieldAlert
+  ShieldAlert,
+  BookOpenText,
 } from 'lucide-react';
 import { format } from 'date-fns';
 import { id as idLocale } from 'date-fns/locale';
@@ -23,6 +24,7 @@ import { academicYearService } from '../../../services/academicYear.service';
 import { authService } from '../../../services/auth.service';
 import { examService, type ExamRestriction } from '../../../services/exam.service';
 import { liveQueryOptions } from '../../../lib/query/liveQuery';
+import HomeroomBookPanel from '../../../components/homeroom/HomeroomBookPanel';
 
 interface ExamRestrictionsResponse {
   restrictions: ExamRestriction[];
@@ -65,7 +67,7 @@ export const HomeroomPermissionsPage = () => {
   const user = contextUser || authData?.data;
   const userId = user?.id;
   const queryClient = useQueryClient();
-  type ActiveTab = 'permissions' | 'exam_restrictions';
+  type ActiveTab = 'permissions' | 'exam_restrictions' | 'homeroom_book';
   const [activeTabOverride, setActiveTabOverride] = useState<ActiveTab | null>(null);
 
   // Get Active Academic Year
@@ -98,7 +100,9 @@ export const HomeroomPermissionsPage = () => {
   const savedActiveTab = useMemo<ActiveTab>(() => {
     const prefs = userData?.data?.preferences as Record<string, unknown> | undefined;
     const savedTab = String(prefs?.['homeroom-permissions-active-tab'] || '');
-    return savedTab === 'exam_restrictions' ? 'exam_restrictions' : 'permissions';
+    if (savedTab === 'exam_restrictions') return 'exam_restrictions';
+    if (savedTab === 'homeroom_book') return 'homeroom_book';
+    return 'permissions';
   }, [userData?.data?.preferences]);
 
   const activeTab: ActiveTab = activeTabOverride || savedActiveTab;
@@ -143,7 +147,7 @@ export const HomeroomPermissionsPage = () => {
       });
       return res?.data?.programs || [];
     },
-    enabled: !!activeAcademicYear?.id && activeTab === 'exam_restrictions',
+    enabled: !!activeAcademicYear?.id && (activeTab === 'exam_restrictions' || activeTab === 'homeroom_book'),
     ...liveQueryOptions,
   });
 
@@ -355,7 +359,7 @@ export const HomeroomPermissionsPage = () => {
       <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4">
         <div>
           <h1 className="text-2xl font-bold text-gray-900">Persetujuan Izin</h1>
-          <p className="text-gray-500 mt-1">Kelola perizinan dan akses ujian siswa</p>
+          <p className="text-gray-500 mt-1">Kelola perizinan, akses ujian, dan Buku Wali Kelas siswa</p>
         </div>
       </div>
 
@@ -389,6 +393,19 @@ export const HomeroomPermissionsPage = () => {
                 <div className="flex items-center gap-2">
                   <ShieldAlert size={16} />
                   <span>Akses Ujian</span>
+                </div>
+              </button>
+              <button
+                onClick={() => handleTabChange('homeroom_book')}
+                className={`px-4 py-2 text-sm font-medium rounded-md transition-colors ${
+                  activeTab === 'homeroom_book'
+                    ? 'bg-blue-50 text-blue-700'
+                    : 'text-gray-600 hover:text-gray-900 hover:bg-gray-50'
+                }`}
+              >
+                <div className="flex items-center gap-2">
+                  <BookOpenText size={16} />
+                  <span>Buku Wali Kelas</span>
                 </div>
               </button>
             </div>
@@ -436,6 +453,7 @@ export const HomeroomPermissionsPage = () => {
         </div>
 
         {/* Search & Limit Toolbar */}
+        {activeTab !== 'homeroom_book' ? (
         <div className="p-4 border-b border-gray-200 bg-white flex flex-col sm:flex-row gap-4 justify-between items-center">
           <div className="relative w-full sm:w-72">
             <div className="absolute inset-y-0 left-0 pl-3 flex items-center pointer-events-none">
@@ -470,8 +488,19 @@ export const HomeroomPermissionsPage = () => {
             </select>
           </div>
         </div>
+        ) : null}
 
         {/* Content Table */}
+        {activeTab === 'homeroom_book' ? (
+          <div className="p-4">
+            <HomeroomBookPanel
+              mode="homeroom"
+              academicYearId={activeAcademicYear?.id}
+              classId={homeroomClass?.id}
+              examPrograms={examPrograms}
+            />
+          </div>
+        ) : (
         <div className="overflow-x-auto">
           {activeTab === 'permissions' ? (
               /* Permissions Table */
@@ -777,8 +806,10 @@ export const HomeroomPermissionsPage = () => {
             </table>
           )}
         </div>
+        )}
 
         {/* Pagination Footer */}
+        {activeTab !== 'homeroom_book' ? (
         <div className="px-6 py-4 border-t border-gray-100 flex items-center justify-between bg-gray-50/50">
           <div className="text-sm text-gray-500">
             Menampilkan{' '}
@@ -816,6 +847,7 @@ export const HomeroomPermissionsPage = () => {
             </button>
           </div>
         </div>
+        ) : null}
       </div>
     </div>
   );

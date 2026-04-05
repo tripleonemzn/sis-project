@@ -15,7 +15,9 @@ import {
     financeProofUpload,
     uploadFinanceProofFile,
     internshipUpload,
-    uploadInternshipFile
+    uploadInternshipFile,
+    homeroomBookUpload,
+    uploadHomeroomBookFile
 } from '../controllers/upload.controller';
 import { authMiddleware } from '../middleware/auth';
 import { roleMiddleware } from '../middleware/role';
@@ -51,5 +53,8 @@ router.post('/finance-proof', roleMiddleware(['STUDENT', 'PARENT']), financeProo
 
 // Upload File PKL (Siswa)
 router.post('/internship', roleMiddleware(['STUDENT']), internshipUpload.single('file'), uploadInternshipFile);
+
+// Upload Lampiran Buku Wali Kelas (Wali Kelas)
+router.post('/homeroom-book', roleMiddleware(['TEACHER']), homeroomBookUpload.single('file'), uploadHomeroomBookFile);
 
 export default router;
