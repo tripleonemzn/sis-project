@@ -89,6 +89,18 @@ function formatSessionSummary(sessionLabel?: string | null) {
   return `Sesi ${value}`;
 }
 
+function compareClassName(a: string, b: string) {
+  return String(a || '').localeCompare(String(b || ''), 'id-ID', {
+    numeric: true,
+    sensitivity: 'base',
+  });
+}
+
+function getStudentClassName(student?: ExamLayoutStudent | null) {
+  const value = String(student?.className || '').trim();
+  return value || 'Tanpa Rombel';
+}
+
 function buildPositionKey(rowIndex: number, columnIndex: number) {
   return `${rowIndex}:${columnIndex}`;
 }
@@ -159,11 +171,11 @@ export default function TeacherWakakurRoomLayoutScreen() {
   const isAllowed = user?.role === 'TEACHER' && hasCurriculumDuty(user?.additionalDuties);
 
   const [draft, setDraft] = useState<LayoutDraft | null>(null);
-  const [selectedCellKey, setSelectedCellKey] = useState('');
   const [generateRowsInput, setGenerateRowsInput] = useState('4');
   const [generateColumnsInput, setGenerateColumnsInput] = useState('4');
   const [generateNotes, setGenerateNotes] = useState('');
   const [setupModalVisible, setSetupModalVisible] = useState(false);
+  const [placementClassOrder, setPlacementClassOrder] = useState<string[]>([]);
 
   const detailQuery = useQuery({
     queryKey: ['mobile-wakakur-room-layout-detail', sittingId],
@@ -181,32 +193,18 @@ export default function TeacherWakakurRoomLayoutScreen() {
       String(detailQuery.data.layout?.columns || detailQuery.data.meta.suggestedDimensions.columns),
     );
     setGenerateNotes(String(detailQuery.data.layout?.notes || '').trim());
-    if (nextDraft?.cells.length) {
-      setSelectedCellKey((current) =>
-        nextDraft.cells.some((cell) => buildPositionKey(cell.rowIndex, cell.columnIndex) === current)
-          ? current
-          : buildPositionKey(nextDraft.cells[0].rowIndex, nextDraft.cells[0].columnIndex),
-      );
-      return;
-    }
-    setSelectedCellKey('');
   }, [detailQuery.data]);
 
   useEffect(() => {
-    if (!draft?.cells.length) {
-      setSelectedCellKey('');
-      return;
-    }
-    setSelectedCellKey((current) => {
-      const exists = draft.cells.some((cell) => buildPositionKey(cell.rowIndex, cell.columnIndex) === current);
-      return exists ? current : buildPositionKey(draft.cells[0].rowIndex, draft.cells[0].columnIndex);
+    const nextLabels = Array.from(
+      new Set((detailQuery.data?.students || []).map((student) => getStudentClassName(student))),
+    ).sort(compareClassName);
+    setPlacementClassOrder((current) => {
+      const preserved = current.filter((label) => nextLabels.includes(label));
+      const additions = nextLabels.filter((label) => !preserved.includes(label));
+      return [...preserved, ...additions];
     });
-  }, [draft]);
-
-  const selectedCell = useMemo(
-    () => draft?.cells.find((cell) => buildPositionKey(cell.rowIndex, cell.columnIndex) === selectedCellKey) || null,
-    [draft?.cells, selectedCellKey],
-  );
+  }, [detailQuery.data?.students]);
 
   const studentMap = useMemo(() => {
     return new Map((detailQuery.data?.students || []).map((student) => [student.id, student] as const));
@@ -232,6 +230,27 @@ export default function TeacherWakakurRoomLayoutScreen() {
     return `${names.join(', ')} +${unassignedStudents.length - 3} lainnya`;
   }, [unassignedStudents]);
 
+  const placementGroups = useMemo(() => {
+    const classMap = new Map<string, ExamLayoutStudent[]>();
+    (detailQuery.data?.students || []).forEach((student) => {
+      const className = getStudentClassName(student);
+      const bucket = classMap.get(className) || [];
+      bucket.push(student);
+      classMap.set(className, bucket);
+    });
+
+    const orderedLabels = placementClassOrder.filter((className) => classMap.has(className));
+    const remainingLabels = Array.from(classMap.keys())
+      .filter((className) => !orderedLabels.includes(className))
+      .sort(compareClassName);
+
+    return [...orderedLabels, ...remainingLabels].map((className) => ({
+      className,
+      students: classMap.get(className) || [],
+      count: (classMap.get(className) || []).length,
+    }));
+  }, [detailQuery.data?.students, placementClassOrder]);
+
   const seatStats = useMemo(() => {
     const seatCells = draft?.cells.filter((cell) => cell.cellType === 'SEAT') || [];
     const filledSeats = seatCells.filter((cell) => typeof cell.studentId === 'number' && cell.studentId > 0).length;
@@ -242,20 +261,6 @@ export default function TeacherWakakurRoomLayoutScreen() {
       studentCount: detailQuery.data?.meta.studentCount || 0,
     };
   }, [detailQuery.data?.meta.studentCount, draft]);
-
-  const availableStudentOptions = useMemo(() => {
-    const students = detailQuery.data?.students || [];
-    const currentStudentId = selectedCell?.studentId ?? null;
-    return [
-      { value: '', label: 'Belum dipasang' },
-      ...students
-        .filter((student) => !assignedStudentIds.has(student.id) || student.id === currentStudentId)
-        .map((student) => ({
-          value: String(student.id),
-          label: `${student.name}${student.className ? ` • ${student.className}` : ''}`,
-        })),
-    ];
-  }, [assignedStudentIds, detailQuery.data?.students, selectedCell?.studentId]);
 
   const gridRows = useMemo(() => {
     if (!draft) return [];
@@ -270,20 +275,83 @@ export default function TeacherWakakurRoomLayoutScreen() {
     return rows;
   }, [draft]);
 
-  const selectedStudent = useMemo(() => {
-    if (!selectedCell?.studentId) return null;
-    return studentMap.get(selectedCell.studentId) || null;
-  }, [selectedCell?.studentId, studentMap]);
+  const applyPlacementByClassOrder = () => {
+    if (!draft || placementGroups.length === 0) return;
 
-  const updateDraftCell = (rowIndex: number, columnIndex: number, updater: (cell: LayoutDraftCell) => LayoutDraftCell) => {
-    setDraft((current) => {
-      if (!current) return current;
-      return {
-        ...current,
-        cells: current.cells.map((cell) =>
-          cell.rowIndex === rowIndex && cell.columnIndex === columnIndex ? updater(cell) : cell,
-        ),
-      };
+    const seatColumns = Array.from({ length: draft.columns }, (_, columnIndex) =>
+      draft.cells
+        .filter((cell) => cell.columnIndex === columnIndex && cell.cellType === 'SEAT')
+        .sort((a, b) => a.rowIndex - b.rowIndex),
+    ).filter((column) => column.length > 0);
+
+    const groupOrder = placementGroups.map((group) => group.className);
+    const remainingByGroup = new Map<string, ExamLayoutStudent[]>(
+      placementGroups.map((group) => [group.className, [...group.students]]),
+    );
+    const nextAssignments = new Map<string, number | null>();
+
+    draft.cells.forEach((cell) => {
+      if (cell.cellType === 'SEAT') {
+        nextAssignments.set(buildPositionKey(cell.rowIndex, cell.columnIndex), null);
+      }
+    });
+
+    let groupCursor = 0;
+
+    seatColumns.forEach((columnCells) => {
+      if (groupOrder.length === 0) return;
+      let activeGroupName: string | null = null;
+
+      for (let attempt = 0; attempt < groupOrder.length; attempt += 1) {
+        const candidateIndex = (groupCursor + attempt) % groupOrder.length;
+        const candidateName = groupOrder[candidateIndex];
+        if ((remainingByGroup.get(candidateName) || []).length > 0) {
+          activeGroupName = candidateName;
+          groupCursor = (candidateIndex + 1) % groupOrder.length;
+          break;
+        }
+      }
+
+      if (!activeGroupName) return;
+      const queue = remainingByGroup.get(activeGroupName) || [];
+
+      columnCells.forEach((cell) => {
+        const student = queue.shift() || null;
+        nextAssignments.set(buildPositionKey(cell.rowIndex, cell.columnIndex), student?.id || null);
+      });
+    });
+
+    setDraft((current) =>
+      current
+        ? {
+            ...current,
+            cells: current.cells.map((cell) =>
+              cell.cellType === 'SEAT'
+                ? {
+                    ...cell,
+                    studentId: nextAssignments.get(buildPositionKey(cell.rowIndex, cell.columnIndex)) ?? null,
+                  }
+                : {
+                    ...cell,
+                    studentId: null,
+                  },
+            ),
+          }
+        : current,
+    );
+
+    notifySuccess('Penempatan siswa per rombel berhasil diterapkan.');
+  };
+
+  const movePlacementClass = (index: number, direction: -1 | 1) => {
+    setPlacementClassOrder((current) => {
+      const nextIndex = index + direction;
+      if (index < 0 || nextIndex < 0 || index >= current.length || nextIndex >= current.length) {
+        return current;
+      }
+      const next = [...current];
+      [next[index], next[nextIndex]] = [next[nextIndex], next[index]];
+      return next;
     });
   };
 
@@ -391,7 +459,7 @@ export default function TeacherWakakurRoomLayoutScreen() {
         </View>
 
         <Text style={{ color: BRAND_COLORS.textMuted, marginBottom: 12 }}>
-          Setup denah lewat popup, lalu lanjutkan edit posisi kursi dan siswa di editor penuh.
+          Setup denah lewat popup, lalu lanjutkan atur penempatan siswa per rombel di editor penuh.
         </Text>
 
         {detailQuery.isError ? (
@@ -642,7 +710,7 @@ export default function TeacherWakakurRoomLayoutScreen() {
                     Editor Denah
                   </Text>
                   <Text style={{ color: BRAND_COLORS.textMuted, marginTop: 4 }}>
-                    Ketuk kursi untuk mengubah jenis sel, label bangku, dan penempatan siswa.
+                    Denah ditampilkan sebagai preview. Pengaturan utama dilakukan dari panel rombel di bawah.
                   </Text>
 
                   <ScrollView horizontal showsHorizontalScrollIndicator={false} style={{ marginTop: 14 }}>
@@ -650,37 +718,30 @@ export default function TeacherWakakurRoomLayoutScreen() {
                       {gridRows.map((row, rowIndex) => (
                         <View key={`row-${rowIndex}`} style={{ flexDirection: 'row', marginBottom: 10 }}>
                           {row.map((cell) => {
-                            const isSelected =
-                              buildPositionKey(cell.rowIndex, cell.columnIndex) === selectedCellKey;
                             const isSeat = cell.cellType === 'SEAT';
                             const assignedStudent =
                               typeof cell.studentId === 'number' ? studentMap.get(cell.studentId) || null : null;
                             const isEmptySeat = isSeat && !assignedStudent;
 
                             return (
-                              <Pressable
+                              <View
                                 key={`cell-${cell.rowIndex}-${cell.columnIndex}`}
-                                onPress={() => setSelectedCellKey(buildPositionKey(cell.rowIndex, cell.columnIndex))}
                                 style={{
                                   width: 128,
                                   minHeight: 118,
                                   marginRight: 10,
                                   borderRadius: 18,
                                   borderWidth: 1,
-                                  borderColor: isSelected
-                                    ? '#2563eb'
-                                    : isSeat
-                                      ? isEmptySeat
-                                        ? '#f59e0b'
-                                        : '#bfdbfe'
-                                      : '#cbd5e1',
-                                  backgroundColor: isSelected
-                                    ? '#dbeafe'
-                                    : isSeat
-                                      ? isEmptySeat
-                                        ? '#fffbeb'
-                                        : '#ffffff'
-                                      : '#f8fafc',
+                                  borderColor: isSeat
+                                    ? isEmptySeat
+                                      ? '#f59e0b'
+                                      : '#bfdbfe'
+                                    : '#cbd5e1',
+                                  backgroundColor: isSeat
+                                    ? isEmptySeat
+                                      ? '#fffbeb'
+                                      : '#ffffff'
+                                    : '#f8fafc',
                                   padding: 12,
                                   justifyContent: 'space-between',
                                 }}
@@ -736,10 +797,10 @@ export default function TeacherWakakurRoomLayoutScreen() {
                                   {isSeat
                                     ? assignedStudent
                                       ? formatStudentMeta(assignedStudent)
-                                      : 'Pilih siswa dari panel editor.'
+                                      : 'Penempatan mengikuti urutan rombel.'
                                     : 'Dipakai untuk jalur pengawas atau jarak antar kursi.'}
                                 </Text>
-                              </Pressable>
+                              </View>
                             );
                           })}
                         </View>
@@ -748,180 +809,161 @@ export default function TeacherWakakurRoomLayoutScreen() {
                   </ScrollView>
                 </View>
 
-                {selectedCell ? (
+                <View
+                  style={{
+                    backgroundColor: '#fff',
+                    borderWidth: 1,
+                    borderColor: '#dbe7fb',
+                    borderRadius: 18,
+                    padding: 14,
+                  }}
+                >
                   <View
                     style={{
-                      backgroundColor: '#fff',
-                      borderWidth: 1,
-                      borderColor: '#dbe7fb',
-                      borderRadius: 18,
-                      padding: 14,
+                      flexDirection: 'row',
+                      alignItems: 'flex-start',
+                      justifyContent: 'space-between',
+                      gap: 12,
+                      marginBottom: 10,
                     }}
                   >
-                    <View
+                    <View style={{ flex: 1 }}>
+                      <Text style={{ color: BRAND_COLORS.textDark, fontWeight: '800', fontSize: 16 }}>
+                        Pengaturan Penempatan Rombel
+                      </Text>
+                      <Text style={{ color: BRAND_COLORS.textMuted, marginTop: 4 }}>
+                        Pola penempatan mengikuti kolom vertikal: kolom pertama untuk rombel pertama, kolom kedua untuk rombel kedua, lalu berulang selang sampai semua siswa terpasang.
+                      </Text>
+                    </View>
+                    <Pressable
+                      onPress={applyPlacementByClassOrder}
                       style={{
-                        flexDirection: 'row',
-                        alignItems: 'flex-start',
-                        justifyContent: 'space-between',
-                        gap: 12,
-                        marginBottom: 10,
+                        borderRadius: 12,
+                        paddingHorizontal: 12,
+                        paddingVertical: 10,
+                        backgroundColor: BRAND_COLORS.blue,
                       }}
                     >
-                      <View style={{ flex: 1 }}>
-                        <Text style={{ color: BRAND_COLORS.textDark, fontWeight: '800', fontSize: 16 }}>
-                          Editor Sel {getSeatLabel(selectedCell.rowIndex, selectedCell.columnIndex)}
-                        </Text>
-                        <Text style={{ color: BRAND_COLORS.textMuted, marginTop: 4 }}>
-                          Panel ini dipakai untuk mengatur isi sel tanpa membuat grid terlihat penuh form.
-                        </Text>
-                      </View>
+                      <Text style={{ color: '#fff', fontWeight: '700', fontSize: 12 }}>
+                        Terapkan Penempatan
+                      </Text>
+                    </Pressable>
+                  </View>
+
+                  <View style={{ gap: 10 }}>
+                    {placementGroups.length === 0 ? (
                       <View
                         style={{
-                          borderRadius: 999,
-                          backgroundColor: '#f1f5f9',
-                          paddingHorizontal: 10,
-                          paddingVertical: 6,
+                          borderWidth: 1,
+                          borderStyle: 'dashed',
+                          borderColor: '#cbd5e1',
+                          borderRadius: 14,
+                          padding: 12,
                         }}
                       >
-                        <Text style={{ color: '#475569', fontWeight: '700', fontSize: 12 }}>
-                          Posisi {selectedCell.rowIndex + 1}-{selectedCell.columnIndex + 1}
+                        <Text style={{ color: BRAND_COLORS.textMuted }}>
+                          Belum ada rombel siswa yang bisa dipetakan ke denah ini.
                         </Text>
                       </View>
-                    </View>
-
-                    <MobileSelectField
-                      label="Jenis Sel"
-                      value={selectedCell.cellType}
-                      options={[
-                        { value: 'SEAT', label: 'Kursi' },
-                        { value: 'AISLE', label: 'Lorong' },
-                      ]}
-                      onChange={(value) =>
-                        updateDraftCell(selectedCell.rowIndex, selectedCell.columnIndex, (cell) =>
-                          value === 'AISLE'
-                            ? { ...cell, cellType: 'AISLE', seatLabel: '', studentId: null }
-                            : {
-                                ...cell,
-                                cellType: 'SEAT',
-                                seatLabel:
-                                  cell.seatLabel || getSeatLabel(selectedCell.rowIndex, selectedCell.columnIndex),
-                              },
-                        )
-                      }
-                    />
-
-                    {selectedCell.cellType === 'SEAT' ? (
-                      <>
-                        <Text style={{ fontSize: 12, color: '#64748b', marginBottom: 6 }}>Label Kursi</Text>
-                        <TextInput
-                          value={selectedCell.seatLabel}
-                          onChangeText={(value) =>
-                            updateDraftCell(selectedCell.rowIndex, selectedCell.columnIndex, (cell) => ({
-                              ...cell,
-                              seatLabel: value,
-                            }))
-                          }
-                          placeholder={getSeatLabel(selectedCell.rowIndex, selectedCell.columnIndex)}
-                          placeholderTextColor="#94a3b8"
-                          style={{
-                            borderWidth: 1,
-                            borderColor: '#cbd5e1',
-                            backgroundColor: '#fff',
-                            borderRadius: 12,
-                            paddingHorizontal: 12,
-                            paddingVertical: 10,
-                            color: BRAND_COLORS.textDark,
-                            marginBottom: 10,
-                          }}
-                        />
-
-                        <MobileSelectField
-                          label="Siswa"
-                          value={selectedCell.studentId ? String(selectedCell.studentId) : ''}
-                          options={availableStudentOptions}
-                          onChange={(value) =>
-                            updateDraftCell(selectedCell.rowIndex, selectedCell.columnIndex, (cell) => ({
-                              ...cell,
-                              studentId: value ? Number(value) : null,
-                            }))
-                          }
-                          placeholder="Pilih siswa"
-                          helperText={
-                            unassignedStudents.length > 0
-                              ? `${unassignedStudents.length} siswa belum ditempatkan.`
-                              : 'Semua siswa sudah ditempatkan.'
-                          }
-                          maxHeight={260}
-                        />
-
+                    ) : (
+                      placementGroups.map((group, index) => (
                         <View
+                          key={group.className}
                           style={{
                             borderWidth: 1,
                             borderColor: '#e2e8f0',
-                            backgroundColor: '#f8fafc',
                             borderRadius: 14,
+                            backgroundColor: '#f8fafc',
                             padding: 12,
-                            marginBottom: 10,
+                            flexDirection: 'row',
+                            alignItems: 'center',
+                            justifyContent: 'space-between',
+                            gap: 10,
                           }}
                         >
-                          <Text style={{ color: BRAND_COLORS.textDark, fontWeight: '700', fontSize: 13 }}>
-                            {selectedStudent?.name || 'Kursi ini belum ditempati siswa'}
-                          </Text>
-                          <Text style={{ color: BRAND_COLORS.textMuted, marginTop: 4, fontSize: 12 }}>
-                            {selectedStudent ? formatStudentMeta(selectedStudent) : 'Pilih siswa dari dropdown di atas.'}
-                          </Text>
+                          <View style={{ flex: 1 }}>
+                            <Text style={{ color: BRAND_COLORS.textDark, fontWeight: '700', fontSize: 14 }}>
+                              {group.className}
+                            </Text>
+                            <Text style={{ color: BRAND_COLORS.textMuted, marginTop: 4, fontSize: 12 }}>
+                              {group.count} siswa • giliran kolom ke-{index + 1}
+                            </Text>
+                          </View>
+                          <View style={{ flexDirection: 'row', gap: 8 }}>
+                            <Pressable
+                              onPress={() => movePlacementClass(index, -1)}
+                              disabled={index === 0}
+                              style={{
+                                borderWidth: 1,
+                                borderColor: '#cbd5e1',
+                                borderRadius: 10,
+                                paddingHorizontal: 10,
+                                paddingVertical: 8,
+                                backgroundColor: index === 0 ? '#f8fafc' : '#fff',
+                                opacity: index === 0 ? 0.55 : 1,
+                              }}
+                            >
+                              <Text style={{ color: '#475569', fontWeight: '700', fontSize: 12 }}>Naik</Text>
+                            </Pressable>
+                            <Pressable
+                              onPress={() => movePlacementClass(index, 1)}
+                              disabled={index === placementGroups.length - 1}
+                              style={{
+                                borderWidth: 1,
+                                borderColor: '#cbd5e1',
+                                borderRadius: 10,
+                                paddingHorizontal: 10,
+                                paddingVertical: 8,
+                                backgroundColor: index === placementGroups.length - 1 ? '#f8fafc' : '#fff',
+                                opacity: index === placementGroups.length - 1 ? 0.55 : 1,
+                              }}
+                            >
+                              <Text style={{ color: '#475569', fontWeight: '700', fontSize: 12 }}>Turun</Text>
+                            </Pressable>
+                          </View>
                         </View>
-                      </>
-                    ) : null}
-
-                    <Text style={{ fontSize: 12, color: '#64748b', marginBottom: 6 }}>Catatan Sel</Text>
-                    <TextInput
-                      value={selectedCell.notes}
-                      onChangeText={(value) =>
-                        updateDraftCell(selectedCell.rowIndex, selectedCell.columnIndex, (cell) => ({
-                          ...cell,
-                          notes: value,
-                        }))
-                      }
-                      multiline
-                      placeholder="Contoh: kursi cadangan, lorong utama, atau catatan khusus."
-                      placeholderTextColor="#94a3b8"
-                      style={{
-                        minHeight: 76,
-                        borderWidth: 1,
-                        borderColor: '#cbd5e1',
-                        backgroundColor: '#fff',
-                        borderRadius: 12,
-                        paddingHorizontal: 12,
-                        paddingVertical: 10,
-                        color: BRAND_COLORS.textDark,
-                        textAlignVertical: 'top',
-                      }}
-                    />
-
-                    <Text style={{ fontSize: 12, color: '#64748b', marginTop: 10, marginBottom: 6 }}>
-                      Catatan Denah
-                    </Text>
-                    <TextInput
-                      value={draft.notes}
-                      onChangeText={(value) => setDraft((current) => (current ? { ...current, notes: value } : current))}
-                      multiline
-                      placeholder="Tambahkan catatan umum untuk pengawas atau pelaksanaan di ruang ini."
-                      placeholderTextColor="#94a3b8"
-                      style={{
-                        minHeight: 82,
-                        borderWidth: 1,
-                        borderColor: '#cbd5e1',
-                        backgroundColor: '#fff',
-                        borderRadius: 12,
-                        paddingHorizontal: 12,
-                        paddingVertical: 10,
-                        color: BRAND_COLORS.textDark,
-                        textAlignVertical: 'top',
-                      }}
-                    />
+                      ))
+                    )}
                   </View>
-                ) : null}
+
+                  <View
+                    style={{
+                      borderWidth: 1,
+                      borderColor: '#bfdbfe',
+                      backgroundColor: '#eff6ff',
+                      borderRadius: 14,
+                      padding: 12,
+                      marginTop: 12,
+                    }}
+                  >
+                    <Text style={{ color: '#1d4ed8', fontWeight: '700' }}>Pola yang diterapkan</Text>
+                    <Text style={{ color: '#1e40af', marginTop: 4, fontSize: 12, lineHeight: 18 }}>
+                      Contoh: A1-E1 untuk rombel pertama, A2-E2 untuk rombel kedua, lalu kolom berikutnya kembali mengikuti urutan rombel yang tersisa.
+                    </Text>
+                  </View>
+
+                  <Text style={{ fontSize: 12, color: '#64748b', marginTop: 12, marginBottom: 6 }}>
+                    Catatan Denah
+                  </Text>
+                  <TextInput
+                    value={draft.notes}
+                    onChangeText={(value) => setDraft((current) => (current ? { ...current, notes: value } : current))}
+                    multiline
+                    placeholder="Tambahkan catatan umum untuk pengawas atau pelaksanaan di ruang ini."
+                    placeholderTextColor="#94a3b8"
+                    style={{
+                      minHeight: 82,
+                      borderWidth: 1,
+                      borderColor: '#cbd5e1',
+                      backgroundColor: '#fff',
+                      borderRadius: 12,
+                      paddingHorizontal: 12,
+                      paddingVertical: 10,
+                      color: BRAND_COLORS.textDark,
+                      textAlignVertical: 'top',
+                    }}
+                  />
+                </View>
               </>
             )}
           </>

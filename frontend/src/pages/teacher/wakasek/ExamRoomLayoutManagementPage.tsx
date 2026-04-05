@@ -5,7 +5,6 @@ import {
   Layers3,
   Loader2,
   PencilRuler,
-  RefreshCw,
   Save,
   Sparkles,
   X,
@@ -219,6 +218,18 @@ function formatSessionSummary(sessionLabel?: string | null) {
   return `Sesi ${value}`;
 }
 
+function compareClassName(a: string, b: string) {
+  return String(a || '').localeCompare(String(b || ''), 'id-ID', {
+    numeric: true,
+    sensitivity: 'base',
+  });
+}
+
+function getStudentClassName(student?: LayoutStudent | null) {
+  const value = String(student?.className || '').trim();
+  return value || 'Tanpa Rombel';
+}
+
 export default function ExamRoomLayoutManagementPage() {
   const [academicYears, setAcademicYears] = useState<AcademicYear[]>([]);
   const [selectedAcademicYear, setSelectedAcademicYear] = useState<string>('');
@@ -228,7 +239,6 @@ export default function ExamRoomLayoutManagementPage() {
   const [selectedSittingId, setSelectedSittingId] = useState<number | null>(null);
   const [detail, setDetail] = useState<LayoutDetail | null>(null);
   const [draft, setDraft] = useState<LayoutDraft | null>(null);
-  const [selectedCellKey, setSelectedCellKey] = useState('');
   const [roomSearch, setRoomSearch] = useState('');
   const [loadingInitial, setLoadingInitial] = useState(true);
   const [loadingSittings, setLoadingSittings] = useState(false);
@@ -237,6 +247,7 @@ export default function ExamRoomLayoutManagementPage() {
   const [generating, setGenerating] = useState(false);
   const [isEditorModalOpen, setIsEditorModalOpen] = useState(false);
   const [isGenerateModalOpen, setIsGenerateModalOpen] = useState(false);
+  const [placementClassOrder, setPlacementClassOrder] = useState<string[]>([]);
   const [generateRows, setGenerateRows] = useState(4);
   const [generateColumns, setGenerateColumns] = useState(4);
   const [generateNotes, setGenerateNotes] = useState('');
@@ -249,14 +260,14 @@ export default function ExamRoomLayoutManagementPage() {
     [programs],
   );
 
+  const activeAcademicYear = useMemo(
+    () => academicYears.find((item) => String(item.id) === selectedAcademicYear) || null,
+    [academicYears, selectedAcademicYear],
+  );
+
   const selectedSitting = useMemo(
     () => sittings.find((item) => item.id === selectedSittingId) || null,
     [sittings, selectedSittingId],
-  );
-
-  const selectedCell = useMemo(
-    () => draft?.cells.find((cell) => buildPositionKey(cell.rowIndex, cell.columnIndex) === selectedCellKey) || null,
-    [draft?.cells, selectedCellKey],
   );
 
   const assignedStudentIds = useMemo(() => {
@@ -290,6 +301,27 @@ export default function ExamRoomLayoutManagementPage() {
     if (unassignedStudents.length <= 3) return names.join(', ');
     return `${names.join(', ')} +${unassignedStudents.length - 3} lainnya`;
   }, [unassignedStudents]);
+
+  const placementGroups = useMemo(() => {
+    const classMap = new Map<string, LayoutStudent[]>();
+    (detail?.students || []).forEach((student) => {
+      const className = getStudentClassName(student);
+      const bucket = classMap.get(className) || [];
+      bucket.push(student);
+      classMap.set(className, bucket);
+    });
+
+    const orderedLabels = placementClassOrder.filter((className) => classMap.has(className));
+    const remainingLabels = Array.from(classMap.keys())
+      .filter((className) => !orderedLabels.includes(className))
+      .sort(compareClassName);
+
+    return [...orderedLabels, ...remainingLabels].map((className) => ({
+      className,
+      students: classMap.get(className) || [],
+      count: (classMap.get(className) || []).length,
+    }));
+  }, [detail?.students, placementClassOrder]);
 
   const filteredSittings = useMemo(() => {
     const keyword = roomSearch.trim().toLowerCase();
@@ -434,7 +466,6 @@ export default function ExamRoomLayoutManagementPage() {
     if (!selectedSittingId) {
       setDetail(null);
       setDraft(null);
-      setSelectedCellKey('');
       return;
     }
     void fetchLayoutDetail(selectedSittingId);
@@ -446,33 +477,15 @@ export default function ExamRoomLayoutManagementPage() {
   }, [selectedSittingId]);
 
   useEffect(() => {
-    if (!draft?.cells?.length) {
-      setSelectedCellKey('');
-      return;
-    }
-    setSelectedCellKey((current) => {
-      const stillExists = draft.cells.some(
-        (cell) => buildPositionKey(cell.rowIndex, cell.columnIndex) === current,
-      );
-      if (stillExists) return current;
-      return buildPositionKey(draft.cells[0].rowIndex, draft.cells[0].columnIndex);
+    const nextLabels = Array.from(
+      new Set((detail?.students || []).map((student) => getStudentClassName(student))),
+    ).sort(compareClassName);
+    setPlacementClassOrder((current) => {
+      const preserved = current.filter((label) => nextLabels.includes(label));
+      const additions = nextLabels.filter((label) => !preserved.includes(label));
+      return [...preserved, ...additions];
     });
-  }, [draft]);
-
-  const updateDraftCell = useCallback(
-    (rowIndex: number, columnIndex: number, updater: (cell: DraftCell) => DraftCell) => {
-      setDraft((current) => {
-        if (!current) return current;
-        return {
-          ...current,
-          cells: current.cells.map((cell) =>
-            cell.rowIndex === rowIndex && cell.columnIndex === columnIndex ? updater(cell) : cell,
-          ),
-        };
-      });
-    },
-    [],
-  );
+  }, [detail?.students]);
 
   const handleGenerate = useCallback(async () => {
     if (!selectedSittingId) return;
@@ -535,13 +548,6 @@ export default function ExamRoomLayoutManagementPage() {
     }
   }, [draft, fetchLayoutDetail, fetchSittings, selectedSittingId]);
 
-  const handleRefresh = useCallback(() => {
-    void fetchSittings();
-    if (selectedSittingId) {
-      void fetchLayoutDetail(selectedSittingId);
-    }
-  }, [fetchLayoutDetail, fetchSittings, selectedSittingId]);
-
   const handleOpenEditor = useCallback((sittingId: number) => {
     setSelectedSittingId(sittingId);
     setIsEditorModalOpen(true);
@@ -553,8 +559,87 @@ export default function ExamRoomLayoutManagementPage() {
     setSelectedSittingId(null);
     setDetail(null);
     setDraft(null);
-    setSelectedCellKey('');
   }, []);
+
+  const movePlacementClass = useCallback((index: number, direction: -1 | 1) => {
+    setPlacementClassOrder((current) => {
+      const nextIndex = index + direction;
+      if (index < 0 || nextIndex < 0 || index >= current.length || nextIndex >= current.length) {
+        return current;
+      }
+      const next = [...current];
+      [next[index], next[nextIndex]] = [next[nextIndex], next[index]];
+      return next;
+    });
+  }, []);
+
+  const applyPlacementByClassOrder = useCallback(() => {
+    if (!draft || placementGroups.length === 0) return;
+
+    const seatColumns = Array.from({ length: draft.columns }, (_, columnIndex) =>
+      draft.cells
+        .filter((cell) => cell.columnIndex === columnIndex && cell.cellType === 'SEAT')
+        .sort((a, b) => a.rowIndex - b.rowIndex),
+    ).filter((column) => column.length > 0);
+
+    const groupOrder = placementGroups.map((group) => group.className);
+    const remainingByGroup = new Map<string, LayoutStudent[]>(
+      placementGroups.map((group) => [group.className, [...group.students]]),
+    );
+    const nextAssignments = new Map<string, number | null>();
+
+    draft.cells.forEach((cell) => {
+      if (cell.cellType === 'SEAT') {
+        nextAssignments.set(buildPositionKey(cell.rowIndex, cell.columnIndex), null);
+      }
+    });
+
+    let groupCursor = 0;
+
+    seatColumns.forEach((columnCells) => {
+      if (groupOrder.length === 0) return;
+      let activeGroupName: string | null = null;
+
+      for (let attempt = 0; attempt < groupOrder.length; attempt += 1) {
+        const candidateIndex = (groupCursor + attempt) % groupOrder.length;
+        const candidateName = groupOrder[candidateIndex];
+        if ((remainingByGroup.get(candidateName) || []).length > 0) {
+          activeGroupName = candidateName;
+          groupCursor = (candidateIndex + 1) % groupOrder.length;
+          break;
+        }
+      }
+
+      if (!activeGroupName) return;
+      const queue = remainingByGroup.get(activeGroupName) || [];
+
+      columnCells.forEach((cell) => {
+        const student = queue.shift() || null;
+        nextAssignments.set(buildPositionKey(cell.rowIndex, cell.columnIndex), student?.id || null);
+      });
+    });
+
+    setDraft((current) =>
+      current
+        ? {
+            ...current,
+            cells: current.cells.map((cell) =>
+              cell.cellType === 'SEAT'
+                ? {
+                    ...cell,
+                    studentId: nextAssignments.get(buildPositionKey(cell.rowIndex, cell.columnIndex)) ?? null,
+                  }
+                : {
+                    ...cell,
+                    studentId: null,
+                  },
+            ),
+          }
+        : current,
+    );
+
+    toast.success('Penempatan siswa per rombel berhasil diterapkan.');
+  }, [draft, placementGroups]);
 
   if (loadingInitial) {
     return (
@@ -568,70 +653,56 @@ export default function ExamRoomLayoutManagementPage() {
   return (
     <>
       <div className="space-y-6">
-        <div className="flex flex-col gap-3 lg:flex-row lg:items-start lg:justify-between">
-          <div>
-            <h2 className="text-2xl font-bold text-gray-900">Generate Denah Ruang</h2>
-            <p className="mt-1 text-sm text-gray-500">
-              Pilih ruang ujian, lakukan setup denah lewat popup, lalu edit posisi kursi secara fokus di area editor penuh.
-            </p>
-          </div>
-          <button
-            type="button"
-            onClick={handleRefresh}
-            className="inline-flex items-center justify-center rounded-lg border border-gray-300 bg-white px-4 py-2 text-sm font-semibold text-gray-700 hover:bg-gray-50"
-          >
-            <RefreshCw className="mr-2 h-4 w-4" />
-            Muat Ulang
-          </button>
+        <div>
+          <h2 className="text-2xl font-bold text-gray-900">Generate Denah Ruang</h2>
+          <p className="mt-1 text-sm text-gray-500">
+            Pilih ruang ujian, lakukan setup denah lewat popup, lalu atur penempatan siswa per rombel secara fokus saat denah dibuka.
+          </p>
         </div>
 
         <div className="rounded-xl border border-gray-100 bg-white p-4 shadow-sm">
-          <div className="grid gap-3 md:grid-cols-[220px_minmax(0,1fr)]">
+          <div className="grid gap-4 md:grid-cols-[280px_minmax(0,1fr)]">
             <div>
               <label className="mb-1 block text-xs font-semibold uppercase tracking-wide text-gray-500">
-                Tahun Ajaran
+                Tahun Ajaran Aktif
               </label>
-              <select
-                value={selectedAcademicYear}
-                onChange={(event) => setSelectedAcademicYear(event.target.value)}
-                className="w-full rounded-lg border border-gray-300 px-3 py-2 text-sm focus:border-blue-500 focus:outline-none"
-              >
-                {academicYears.map((academicYear) => (
-                  <option key={academicYear.id} value={academicYear.id}>
-                    {academicYear.name}
-                  </option>
-                ))}
-              </select>
+              <div className="flex items-center justify-between rounded-lg border border-gray-200 bg-gray-50 px-3 py-2 text-sm">
+                <span className="font-medium text-gray-800">{activeAcademicYear?.name || '-'}</span>
+                <span
+                  className={`rounded-full px-2.5 py-1 text-[11px] font-semibold ${
+                    activeAcademicYear?.isActive
+                      ? 'bg-emerald-100 text-emerald-700'
+                      : 'bg-amber-100 text-amber-700'
+                  }`}
+                >
+                  {activeAcademicYear?.isActive ? 'Aktif' : 'Belum aktif'}
+                </span>
+              </div>
+              <p className="mt-1 text-xs text-gray-500">
+                Denah otomatis mengikuti tahun ajaran yang sedang aktif.
+              </p>
             </div>
             <div>
               <label className="mb-1 block text-xs font-semibold uppercase tracking-wide text-gray-500">
                 Program Ujian
               </label>
-              <div className="flex flex-wrap gap-2">
-                {visiblePrograms.length === 0 ? (
-                  <div className="rounded-lg border border-dashed border-gray-300 px-3 py-2 text-sm text-gray-500">
-                    Belum ada program ujian terjadwal.
-                  </div>
-                ) : (
-                  visiblePrograms.map((program) => {
-                    const isActive = activeProgramCode === program.code;
-                    return (
-                      <button
-                        key={program.code}
-                        type="button"
-                        onClick={() => setActiveProgramCode(program.code)}
-                        className={`rounded-full border px-3 py-2 text-sm font-medium transition-colors ${
-                          isActive
-                            ? 'border-blue-600 bg-blue-50 text-blue-700'
-                            : 'border-gray-200 bg-white text-gray-600 hover:border-gray-300 hover:text-gray-800'
-                        }`}
-                      >
-                        {program.label}
-                      </button>
-                    );
-                  })
-                )}
-              </div>
+              {visiblePrograms.length === 0 ? (
+                <div className="rounded-lg border border-dashed border-gray-300 px-3 py-2 text-sm text-gray-500">
+                  Belum ada program ujian terjadwal.
+                </div>
+              ) : (
+                <select
+                  value={activeProgramCode}
+                  onChange={(event) => setActiveProgramCode(event.target.value)}
+                  className="w-full rounded-lg border border-gray-300 bg-white px-3 py-2 text-sm focus:border-blue-500 focus:outline-none"
+                >
+                  {visiblePrograms.map((program) => (
+                    <option key={program.code} value={program.code}>
+                      {program.label}
+                    </option>
+                  ))}
+                </select>
+              )}
             </div>
           </div>
         </div>
@@ -649,7 +720,7 @@ export default function ExamRoomLayoutManagementPage() {
                 type="text"
                 value={roomSearch}
                 onChange={(event) => setRoomSearch(event.target.value)}
-                placeholder="Cari ruang, sesi, atau program..."
+                placeholder="Cari ruang atau sesi..."
                 className="w-full rounded-lg border border-gray-300 px-3 py-2 text-sm focus:border-blue-500 focus:outline-none"
               />
             </div>
@@ -738,7 +809,7 @@ export default function ExamRoomLayoutManagementPage() {
             onClick={(event) => event.stopPropagation()}
           >
             <div className="border-b border-slate-200 bg-white px-5 py-4 sm:px-6">
-              <div className="flex flex-col gap-4 xl:flex-row xl:items-start xl:justify-between">
+              <div className="flex items-start justify-between gap-4">
                 <div>
                   <div className="inline-flex items-center rounded-full bg-blue-50 px-3 py-1 text-xs font-semibold text-blue-700">
                     <Layers3 className="mr-2 h-3.5 w-3.5" />
@@ -761,7 +832,16 @@ export default function ExamRoomLayoutManagementPage() {
                     )}
                   </p>
                 </div>
+                <button
+                  type="button"
+                  onClick={handleCloseEditor}
+                  className="rounded-lg border border-gray-200 bg-white p-2 text-gray-500 hover:bg-gray-50"
+                >
+                  <X className="h-4 w-4" />
+                </button>
+              </div>
 
+              <div className="mt-4 flex flex-wrap gap-2">
                 <div className="flex flex-wrap gap-2">
                   <button
                     type="button"
@@ -782,14 +862,6 @@ export default function ExamRoomLayoutManagementPage() {
                       Simpan Denah
                     </button>
                   ) : null}
-                  <button
-                    type="button"
-                    onClick={handleCloseEditor}
-                    className="inline-flex items-center justify-center rounded-lg border border-gray-300 bg-white px-4 py-2 text-sm font-semibold text-gray-700 hover:bg-gray-50"
-                  >
-                    <X className="mr-2 h-4 w-4" />
-                    Tutup Denah
-                  </button>
                 </div>
               </div>
 
@@ -874,7 +946,7 @@ export default function ExamRoomLayoutManagementPage() {
                     <div className="border-b border-gray-100 px-5 py-4">
                       <h3 className="text-lg font-semibold text-gray-900">Editor Denah</h3>
                       <p className="mt-1 text-sm text-gray-500">
-                        Klik satu kursi untuk mengubah jenis sel, label kursi, dan penempatan siswa. Editor ini hanya muncul saat Anda membuka denah.
+                        Denah ditampilkan sebagai preview penempatan. Pengaturan utama dilakukan dari panel penempatan rombel di bawah.
                       </p>
                     </div>
 
@@ -885,24 +957,18 @@ export default function ExamRoomLayoutManagementPage() {
                             {row.map((cell) => {
                               const currentStudent =
                                 detail?.students.find((student) => student.id === cell.studentId) || null;
-                              const isSelected =
-                                buildPositionKey(cell.rowIndex, cell.columnIndex) === selectedCellKey;
                               const isSeat = cell.cellType === 'SEAT';
                               const isEmptySeat = isSeat && !currentStudent;
 
                               return (
-                                <button
+                                <div
                                   key={`${cell.rowIndex}-${cell.columnIndex}`}
-                                  type="button"
-                                  onClick={() => setSelectedCellKey(buildPositionKey(cell.rowIndex, cell.columnIndex))}
-                                  className={`min-h-[132px] w-[168px] rounded-2xl border p-4 text-left transition-all ${
-                                    isSelected
-                                      ? 'border-blue-500 bg-blue-50 shadow-sm'
-                                      : isSeat
-                                        ? isEmptySeat
-                                          ? 'border-amber-200 bg-amber-50/80 hover:border-amber-300'
-                                          : 'border-blue-100 bg-white hover:border-blue-200'
-                                        : 'border-slate-200 bg-slate-50 hover:border-slate-300'
+                                  className={`min-h-[132px] w-[168px] rounded-2xl border p-4 text-left ${
+                                    isSeat
+                                      ? isEmptySeat
+                                        ? 'border-amber-200 bg-amber-50/80'
+                                        : 'border-blue-100 bg-white'
+                                      : 'border-slate-200 bg-slate-50'
                                   }`}
                                 >
                                   <div className="flex items-center justify-between gap-2">
@@ -926,11 +992,11 @@ export default function ExamRoomLayoutManagementPage() {
                                       {isSeat
                                         ? currentStudent
                                           ? formatStudentMeta(currentStudent)
-                                          : 'Pilih siswa dari panel editor di bawah.'
+                                          : 'Penempatan mengikuti pengaturan rombel.'
                                         : 'Gunakan untuk jalur pengawas atau jarak antar kursi.'}
                                     </div>
                                   </div>
-                                </button>
+                                </div>
                               );
                             })}
                           </div>
@@ -939,174 +1005,89 @@ export default function ExamRoomLayoutManagementPage() {
                     </div>
                   </div>
 
-                  {selectedCell ? (
-                    <div className="rounded-xl border border-gray-100 bg-white p-5 shadow-sm">
-                      <div className="flex flex-col gap-2 lg:flex-row lg:items-start lg:justify-between">
-                        <div>
-                          <h3 className="text-lg font-semibold text-gray-900">
-                            Editor Sel {getSeatLabel(selectedCell.rowIndex, selectedCell.columnIndex)}
-                          </h3>
-                          <p className="mt-1 text-sm text-gray-500">
-                            Perubahan dilakukan di panel ini agar grid tetap bersih dan mudah dibaca.
-                          </p>
-                        </div>
-                        <div className="rounded-full bg-gray-100 px-3 py-1 text-xs font-semibold text-gray-600">
-                          Posisi {selectedCell.rowIndex + 1}-{selectedCell.columnIndex + 1}
-                        </div>
+                  <div className="rounded-xl border border-gray-100 bg-white p-5 shadow-sm">
+                    <div className="flex flex-col gap-3 xl:flex-row xl:items-start xl:justify-between">
+                      <div>
+                        <h3 className="text-lg font-semibold text-gray-900">Pengaturan Penempatan Rombel</h3>
+                        <p className="mt-1 text-sm text-gray-500">
+                          Pola penempatan mengikuti kolom vertikal: kolom pertama untuk rombel pertama, kolom kedua untuk rombel kedua, lalu berulang selang sampai semua siswa terpasang.
+                        </p>
+                      </div>
+                      <button
+                        type="button"
+                        onClick={() => applyPlacementByClassOrder()}
+                        className="inline-flex items-center justify-center rounded-lg bg-blue-600 px-4 py-2 text-sm font-semibold text-white hover:bg-blue-700"
+                      >
+                        Terapkan Penempatan
+                      </button>
+                    </div>
+
+                    <div className="mt-4 grid gap-4 xl:grid-cols-[minmax(0,1fr)_360px]">
+                      <div className="space-y-3">
+                        {placementGroups.length === 0 ? (
+                          <div className="rounded-xl border border-dashed border-gray-300 px-4 py-5 text-sm text-gray-500">
+                            Belum ada rombel siswa yang bisa dipetakan ke denah ini.
+                          </div>
+                        ) : (
+                          placementGroups.map((group, index) => (
+                            <div
+                              key={group.className}
+                              className="flex items-center justify-between rounded-xl border border-gray-200 bg-gray-50 px-4 py-3"
+                            >
+                              <div>
+                                <div className="text-sm font-semibold text-gray-900">{group.className}</div>
+                                <div className="mt-1 text-xs text-gray-500">
+                                  {group.count} siswa • giliran kolom ke-{index + 1}
+                                </div>
+                              </div>
+                              <div className="flex gap-2">
+                                <button
+                                  type="button"
+                                  onClick={() => movePlacementClass(index, -1)}
+                                  disabled={index === 0}
+                                  className="rounded-lg border border-gray-300 bg-white px-3 py-2 text-xs font-semibold text-gray-600 hover:bg-gray-50 disabled:cursor-not-allowed disabled:opacity-50"
+                                >
+                                  Naik
+                                </button>
+                                <button
+                                  type="button"
+                                  onClick={() => movePlacementClass(index, 1)}
+                                  disabled={index === placementGroups.length - 1}
+                                  className="rounded-lg border border-gray-300 bg-white px-3 py-2 text-xs font-semibold text-gray-600 hover:bg-gray-50 disabled:cursor-not-allowed disabled:opacity-50"
+                                >
+                                  Turun
+                                </button>
+                              </div>
+                            </div>
+                          ))
+                        )}
                       </div>
 
-                      <div className="mt-4 grid gap-4 xl:grid-cols-[220px_minmax(0,1fr)]">
-                        <div className="space-y-3">
-                          <div>
-                            <label className="mb-1 block text-xs font-semibold uppercase tracking-wide text-gray-500">
-                              Jenis Sel
-                            </label>
-                            <div className="grid grid-cols-2 gap-2">
-                              {(['SEAT', 'AISLE'] as LayoutCellType[]).map((type) => {
-                                const active = selectedCell.cellType === type;
-                                return (
-                                  <button
-                                    key={type}
-                                    type="button"
-                                    onClick={() =>
-                                      updateDraftCell(selectedCell.rowIndex, selectedCell.columnIndex, (cell) =>
-                                        type === 'AISLE'
-                                          ? { ...cell, cellType: 'AISLE', seatLabel: '', studentId: null }
-                                          : {
-                                              ...cell,
-                                              cellType: 'SEAT',
-                                              seatLabel:
-                                                cell.seatLabel ||
-                                                getSeatLabel(selectedCell.rowIndex, selectedCell.columnIndex),
-                                            },
-                                      )
-                                    }
-                                    className={`rounded-lg border px-3 py-2 text-sm font-semibold ${
-                                      active
-                                        ? 'border-blue-500 bg-blue-50 text-blue-700'
-                                        : 'border-gray-300 bg-white text-gray-600 hover:bg-gray-50'
-                                    }`}
-                                  >
-                                    {type === 'SEAT' ? 'Kursi' : 'Lorong'}
-                                  </button>
-                                );
-                              })}
-                            </div>
+                      <div className="space-y-4">
+                        <div className="rounded-xl border border-blue-100 bg-blue-50 px-4 py-3 text-sm text-blue-800">
+                          <div className="font-semibold">Pola yang diterapkan</div>
+                          <div className="mt-1 text-xs">
+                            Contoh: A1-E1 untuk rombel pertama, A2-E2 untuk rombel kedua, lalu kolom berikutnya kembali mengikuti urutan rombel yang tersisa.
                           </div>
-
-                          {selectedCell.cellType === 'SEAT' ? (
-                            <div>
-                              <label className="mb-1 block text-xs font-semibold uppercase tracking-wide text-gray-500">
-                                Label Kursi
-                              </label>
-                              <input
-                                type="text"
-                                value={selectedCell.seatLabel}
-                                onChange={(event) =>
-                                  updateDraftCell(selectedCell.rowIndex, selectedCell.columnIndex, (cell) => ({
-                                    ...cell,
-                                    seatLabel: event.target.value,
-                                  }))
-                                }
-                                className="w-full rounded-lg border border-gray-300 px-3 py-2 text-sm focus:border-blue-500 focus:outline-none"
-                                placeholder={getSeatLabel(selectedCell.rowIndex, selectedCell.columnIndex)}
-                              />
-                            </div>
-                          ) : null}
                         </div>
 
-                        <div className="space-y-4">
-                          {selectedCell.cellType === 'SEAT' ? (
-                            <div className="grid gap-4 lg:grid-cols-[minmax(0,1fr)_260px]">
-                              <div>
-                                <label className="mb-1 block text-xs font-semibold uppercase tracking-wide text-gray-500">
-                                  Siswa
-                                </label>
-                                <select
-                                  value={selectedCell.studentId || ''}
-                                  onChange={(event) =>
-                                    updateDraftCell(selectedCell.rowIndex, selectedCell.columnIndex, (cell) => ({
-                                      ...cell,
-                                      studentId: event.target.value ? Number(event.target.value) : null,
-                                    }))
-                                  }
-                                  className="w-full rounded-lg border border-gray-300 px-3 py-2 text-sm focus:border-blue-500 focus:outline-none"
-                                >
-                                  <option value="">Belum dipasang</option>
-                                  {(detail?.students || []).map((student) => {
-                                    const isUsedByOtherSeat =
-                                      assignedStudentIds.has(student.id) && student.id !== selectedCell.studentId;
-                                    return (
-                                      <option key={student.id} value={student.id} disabled={isUsedByOtherSeat}>
-                                        {[student.className, student.name].filter(Boolean).join(' • ')}
-                                      </option>
-                                    );
-                                  })}
-                                </select>
-                                <p className="mt-2 text-xs text-gray-500">
-                                  {unassignedStudents.length > 0
-                                    ? `${unassignedStudents.length} siswa belum ditempatkan.`
-                                    : 'Semua siswa sudah ditempatkan.'}
-                                </p>
-                              </div>
-
-                              <div className="rounded-xl border border-gray-200 bg-gray-50 px-4 py-3 text-sm text-gray-600">
-                                {selectedCell.studentId ? (
-                                  (() => {
-                                    const currentStudent =
-                                      detail?.students.find((student) => student.id === selectedCell.studentId) || null;
-                                    return currentStudent ? (
-                                      <>
-                                        <div className="font-semibold text-gray-900">{currentStudent.name}</div>
-                                        <div className="mt-1 text-xs">{formatStudentMeta(currentStudent)}</div>
-                                      </>
-                                    ) : (
-                                      <div>Siswa tidak ditemukan.</div>
-                                    );
-                                  })()
-                                ) : (
-                                  <div>Kursi ini belum ditempati siswa.</div>
-                                )}
-                              </div>
-                            </div>
-                          ) : null}
-
-                          <div>
-                            <label className="mb-1 block text-xs font-semibold uppercase tracking-wide text-gray-500">
-                              Catatan Sel
-                            </label>
-                            <textarea
-                              value={selectedCell.notes}
-                              onChange={(event) =>
-                                updateDraftCell(selectedCell.rowIndex, selectedCell.columnIndex, (cell) => ({
-                                  ...cell,
-                                  notes: event.target.value,
-                                }))
-                              }
-                              rows={3}
-                              className="w-full rounded-lg border border-gray-300 px-3 py-2 text-sm focus:border-blue-500 focus:outline-none"
-                              placeholder="Contoh: kursi cadangan, lorong pengawas, atau catatan khusus."
-                            />
-                          </div>
-
-                          <div>
-                            <label className="mb-1 block text-xs font-semibold uppercase tracking-wide text-gray-500">
-                              Catatan Denah
-                            </label>
-                            <textarea
-                              value={draft.notes}
-                              onChange={(event) =>
-                                setDraft((current) => (current ? { ...current, notes: event.target.value } : current))
-                              }
-                              rows={3}
-                              className="w-full rounded-lg border border-gray-300 px-3 py-2 text-sm focus:border-blue-500 focus:outline-none"
-                              placeholder="Tambahkan catatan umum untuk pengawas atau pelaksanaan di ruang ini."
-                            />
-                          </div>
+                        <div>
+                          <label className="mb-1 block text-xs font-semibold uppercase tracking-wide text-gray-500">
+                            Catatan Denah
+                          </label>
+                          <textarea
+                            value={draft.notes}
+                            onChange={(event) =>
+                              setDraft((current) => (current ? { ...current, notes: event.target.value } : current))
+                            }
+                            rows={5}
+                            className="w-full rounded-lg border border-gray-300 px-3 py-2 text-sm focus:border-blue-500 focus:outline-none"
+                            placeholder="Tambahkan catatan umum untuk pengawas atau pelaksanaan di ruang ini."
+                          />
                         </div>
                       </div>
                     </div>
-                  ) : null}
+                  </div>
                 </div>
               )}
             </div>
