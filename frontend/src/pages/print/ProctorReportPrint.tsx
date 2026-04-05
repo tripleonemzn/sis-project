@@ -1,4 +1,4 @@
-import { useEffect } from 'react';
+import { useCallback, useEffect } from 'react';
 import { useQuery } from '@tanstack/react-query';
 import { useNavigate, useParams, useSearchParams } from 'react-router-dom';
 import { ArrowLeft, Printer, RefreshCw } from 'lucide-react';
@@ -84,57 +84,65 @@ export default function ProctorReportPrint() {
     },
   });
 
-  useEffect(() => {
-    if (!autoPrint || !documentQuery.data) return;
-    let cancelled = false;
-    const waitForImagesAndPrint = async () => {
-      if (typeof document !== 'undefined' && 'fonts' in document) {
-        try {
-          await (document as Document & { fonts?: { ready?: Promise<unknown> } }).fonts?.ready;
-        } catch {
-          // ignore
-        }
+  const triggerPrint = useCallback(async () => {
+    if (typeof document === 'undefined') return;
+
+    if ('fonts' in document) {
+      try {
+        await (document as Document & { fonts?: { ready?: Promise<unknown> } }).fonts?.ready;
+      } catch {
+        // ignore
       }
-      const images = Array.from(
-        document.querySelectorAll<HTMLImageElement>('.proctor-report-print-image'),
-      );
-      await Promise.all(
-        images.map(
-          (image) =>
-            new Promise<void>((resolve) => {
-              if (image.complete) {
-                resolve();
-                return;
-              }
-              image.addEventListener('load', () => resolve(), { once: true });
-              image.addEventListener('error', () => resolve(), { once: true });
-            }),
-        ),
-      );
-      for (let attempt = 0; attempt < 30; attempt += 1) {
-        const hasContent = Boolean(
-          document.querySelector('.proctor-report-shell')?.textContent?.replace(/\s+/g, '').trim(),
-        );
-        if (hasContent) break;
-        await new Promise<void>((resolve) => window.setTimeout(resolve, 120));
-      }
-      await new Promise<void>((resolve) => {
+    }
+
+    const images = Array.from(
+      document.querySelectorAll<HTMLImageElement>('.proctor-report-print-image'),
+    );
+    await Promise.all(
+      images.map(
+        (image) =>
+          new Promise<void>((resolve) => {
+            if (image.complete) {
+              resolve();
+              return;
+            }
+            image.addEventListener('load', () => resolve(), { once: true });
+            image.addEventListener('error', () => resolve(), { once: true });
+          }),
+      ),
+    );
+
+    for (let attempt = 0; attempt < 40; attempt += 1) {
+      const shell = document.querySelector<HTMLElement>('.proctor-report-shell');
+      const contentReady = document.querySelector('[data-proctor-report-ready="true"]');
+      const hasText = Boolean(shell?.textContent?.replace(/\s+/g, '').trim());
+      const hasLayout = (shell?.getBoundingClientRect().height || 0) > 320;
+      if (contentReady && hasText && hasLayout) break;
+      await new Promise<void>((resolve) => window.setTimeout(resolve, 150));
+    }
+
+    await new Promise<void>((resolve) => {
+      window.requestAnimationFrame(() => {
         window.requestAnimationFrame(() => {
           window.requestAnimationFrame(() => {
-            window.setTimeout(resolve, 320);
+            window.setTimeout(resolve, 700);
           });
         });
       });
-      if (!cancelled) {
-        window.focus();
-        window.print();
-      }
+    });
+
+    document.body.getBoundingClientRect();
+    window.focus();
+    window.print();
+  }, []);
+
+  useEffect(() => {
+    if (!autoPrint || !documentQuery.data) return;
+    const printWhenReady = async () => {
+      await triggerPrint();
     };
-    void waitForImagesAndPrint();
-    return () => {
-      cancelled = true;
-    };
-  }, [autoPrint, documentQuery.data]);
+    void printWhenReady();
+  }, [autoPrint, documentQuery.data, triggerPrint]);
 
   if (!Number.isFinite(parsedReportId) || parsedReportId <= 0) {
     return <div className="min-h-screen bg-slate-100 p-6 text-sm text-rose-700">ID berita acara tidak valid.</div>;
@@ -168,7 +176,7 @@ export default function ProctorReportPrint() {
     <div className="min-h-screen bg-slate-100 py-6 print:bg-white print:py-0">
       <style>{`
         @page {
-          size: A4;
+          size: A4 portrait;
           margin: 2.5cm;
         }
         @media print {
@@ -201,8 +209,7 @@ export default function ProctorReportPrint() {
         <button
           type="button"
           onClick={() => {
-            window.focus();
-            window.print();
+            void triggerPrint();
           }}
           className="inline-flex items-center rounded-lg bg-blue-600 px-4 py-2 text-sm font-semibold text-white hover:bg-blue-700"
         >
@@ -213,14 +220,15 @@ export default function ProctorReportPrint() {
 
       <div
         className="proctor-report-shell mx-auto max-w-5xl rounded-2xl border border-slate-200 bg-white shadow-sm"
-        style={{ padding: '2.5cm' }}
+        style={{ maxWidth: '210mm', minHeight: '297mm', padding: '2.5cm' }}
+        data-proctor-report-ready="true"
       >
         <div className="flex justify-center">
-          <div className="inline-flex items-center justify-center gap-5">
+          <div className="inline-flex items-center justify-center" style={{ columnGap: '2cm' }}>
             <img
               src={snapshot.schoolLogoPath}
               alt="Logo KGB2"
-              className="proctor-report-print-image h-[86px] w-[86px] shrink-0 object-contain"
+              className="proctor-report-print-image h-[112px] w-[112px] shrink-0 object-contain"
             />
             <div className="text-center">
               <div className="text-[26px] font-semibold tracking-wide text-slate-900">{snapshot.title}</div>

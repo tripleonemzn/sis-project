@@ -1,4 +1,4 @@
-import { useEffect } from 'react';
+import { useCallback, useEffect } from 'react';
 import { useQuery } from '@tanstack/react-query';
 import { useNavigate, useParams, useSearchParams } from 'react-router-dom';
 import { ArrowLeft, Printer, RefreshCw } from 'lucide-react';
@@ -93,57 +93,65 @@ export default function ProctorAttendancePrint() {
     },
   });
 
-  useEffect(() => {
-    if (!autoPrint || !documentQuery.data) return;
-    let cancelled = false;
-    const waitForImagesAndPrint = async () => {
-      if (typeof document !== 'undefined' && 'fonts' in document) {
-        try {
-          await (document as Document & { fonts?: { ready?: Promise<unknown> } }).fonts?.ready;
-        } catch {
-          // ignore
-        }
+  const triggerPrint = useCallback(async () => {
+    if (typeof document === 'undefined') return;
+
+    if ('fonts' in document) {
+      try {
+        await (document as Document & { fonts?: { ready?: Promise<unknown> } }).fonts?.ready;
+      } catch {
+        // ignore
       }
-      const images = Array.from(
-        document.querySelectorAll<HTMLImageElement>('.proctor-attendance-print-image'),
-      );
-      await Promise.all(
-        images.map(
-          (image) =>
-            new Promise<void>((resolve) => {
-              if (image.complete) {
-                resolve();
-                return;
-              }
-              image.addEventListener('load', () => resolve(), { once: true });
-              image.addEventListener('error', () => resolve(), { once: true });
-            }),
-        ),
-      );
-      for (let attempt = 0; attempt < 30; attempt += 1) {
-        const hasContent = Boolean(
-          document.querySelector('.proctor-attendance-shell')?.textContent?.replace(/\s+/g, '').trim(),
-        );
-        if (hasContent) break;
-        await new Promise<void>((resolve) => window.setTimeout(resolve, 120));
-      }
-      await new Promise<void>((resolve) => {
+    }
+
+    const images = Array.from(
+      document.querySelectorAll<HTMLImageElement>('.proctor-attendance-print-image'),
+    );
+    await Promise.all(
+      images.map(
+        (image) =>
+          new Promise<void>((resolve) => {
+            if (image.complete) {
+              resolve();
+              return;
+            }
+            image.addEventListener('load', () => resolve(), { once: true });
+            image.addEventListener('error', () => resolve(), { once: true });
+          }),
+      ),
+    );
+
+    for (let attempt = 0; attempt < 40; attempt += 1) {
+      const shell = document.querySelector<HTMLElement>('.proctor-attendance-shell');
+      const contentReady = document.querySelector('[data-proctor-attendance-ready="true"]');
+      const hasText = Boolean(shell?.textContent?.replace(/\s+/g, '').trim());
+      const hasLayout = (shell?.getBoundingClientRect().height || 0) > 320;
+      if (contentReady && hasText && hasLayout) break;
+      await new Promise<void>((resolve) => window.setTimeout(resolve, 150));
+    }
+
+    await new Promise<void>((resolve) => {
+      window.requestAnimationFrame(() => {
         window.requestAnimationFrame(() => {
           window.requestAnimationFrame(() => {
-            window.setTimeout(resolve, 320);
+            window.setTimeout(resolve, 700);
           });
         });
       });
-      if (!cancelled) {
-        window.focus();
-        window.print();
-      }
+    });
+
+    document.body.getBoundingClientRect();
+    window.focus();
+    window.print();
+  }, []);
+
+  useEffect(() => {
+    if (!autoPrint || !documentQuery.data) return;
+    const printWhenReady = async () => {
+      await triggerPrint();
     };
-    void waitForImagesAndPrint();
-    return () => {
-      cancelled = true;
-    };
-  }, [autoPrint, documentQuery.data]);
+    void printWhenReady();
+  }, [autoPrint, documentQuery.data, triggerPrint]);
 
   if (!Number.isFinite(parsedReportId) || parsedReportId <= 0) {
     return <div className="min-h-screen bg-slate-100 p-6 text-sm text-rose-700">ID daftar hadir tidak valid.</div>;
@@ -177,7 +185,7 @@ export default function ProctorAttendancePrint() {
     <div className="min-h-screen bg-slate-100 py-6 print:bg-white print:py-0">
       <style>{`
         @page {
-          size: A4;
+          size: A4 portrait;
           margin: 2.5cm;
         }
         @media print {
@@ -213,8 +221,7 @@ export default function ProctorAttendancePrint() {
         <button
           type="button"
           onClick={() => {
-            window.focus();
-            window.print();
+            void triggerPrint();
           }}
           className="inline-flex items-center rounded-lg bg-blue-600 px-4 py-2 text-sm font-semibold text-white hover:bg-blue-700"
         >
@@ -225,14 +232,15 @@ export default function ProctorAttendancePrint() {
 
       <div
         className="proctor-attendance-shell mx-auto max-w-6xl rounded-2xl border border-slate-200 bg-white shadow-sm"
-        style={{ padding: '2.5cm' }}
+        style={{ maxWidth: '210mm', minHeight: '297mm', padding: '2.5cm' }}
+        data-proctor-attendance-ready="true"
       >
         <div className="flex justify-center">
-          <div className="inline-flex items-center justify-center gap-5">
+          <div className="inline-flex items-center justify-center" style={{ columnGap: '2cm' }}>
             <img
               src={snapshot.schoolLogoPath}
               alt="Logo KGB2"
-              className="proctor-attendance-print-image h-[86px] w-[86px] shrink-0 object-contain"
+              className="proctor-attendance-print-image h-[112px] w-[112px] shrink-0 object-contain"
             />
             <div className="text-center">
               <div className="text-[26px] font-semibold tracking-wide text-slate-900">{snapshot.title}</div>
@@ -261,40 +269,42 @@ export default function ProctorAttendancePrint() {
           </div>
         </div>
 
-        <div className="mt-6 grid gap-2 text-[16px] text-slate-900">
-          <div className="grid grid-cols-[180px_16px_1fr]">
-            <div>Mata Pelajaran</div>
-            <div>:</div>
-            <div>{snapshot.schedule.subjectName}</div>
-          </div>
-          <div className="grid grid-cols-[180px_16px_1fr]">
-            <div>Tanggal Pelaksanaan</div>
-            <div>:</div>
-            <div>{snapshot.schedule.executionDateLabel}</div>
-          </div>
-          <div className="grid grid-cols-[180px_16px_1fr]">
-            <div>Waktu Pelaksanaan</div>
-            <div>:</div>
-            <div>
-              {snapshot.schedule.startTimeLabel} - {snapshot.schedule.endTimeLabel} WIB
+        <div className="mt-6 grid grid-cols-2 gap-x-10 gap-y-3 text-[16px] text-slate-900">
+          <div className="grid gap-2">
+            <div className="grid grid-cols-[170px_16px_1fr]">
+              <div>Mata Pelajaran</div>
+              <div>:</div>
+              <div>{snapshot.schedule.subjectName}</div>
+            </div>
+            <div className="grid grid-cols-[170px_16px_1fr]">
+              <div>Tanggal Pelaksanaan</div>
+              <div>:</div>
+              <div>{snapshot.schedule.executionDateLabel}</div>
+            </div>
+            <div className="grid grid-cols-[170px_16px_1fr]">
+              <div>Waktu Pelaksanaan</div>
+              <div>:</div>
+              <div>
+                {snapshot.schedule.startTimeLabel} - {snapshot.schedule.endTimeLabel} WIB
+              </div>
             </div>
           </div>
-          <div className="grid grid-cols-[180px_16px_1fr]">
-            <div>Ruangan</div>
-            <div>:</div>
-            <div>{snapshot.schedule.roomName}</div>
-          </div>
-          {snapshot.schedule.sessionLabel ? (
-            <div className="grid grid-cols-[180px_16px_1fr]">
+          <div className="grid gap-2">
+            <div className="grid grid-cols-[150px_16px_1fr]">
+              <div>Ruangan</div>
+              <div>:</div>
+              <div>{snapshot.schedule.roomName}</div>
+            </div>
+            <div className="grid grid-cols-[150px_16px_1fr]">
               <div>Sesi</div>
               <div>:</div>
-              <div>{snapshot.schedule.sessionLabel}</div>
+              <div>{snapshot.schedule.sessionLabel || '-'}</div>
             </div>
-          ) : null}
-          <div className="grid grid-cols-[180px_16px_1fr]">
-            <div>Kelas / Rombel</div>
-            <div>:</div>
-            <div>{snapshot.schedule.classNames.join(', ') || '-'}</div>
+            <div className="grid grid-cols-[150px_16px_1fr]">
+              <div>Kelas / Rombel</div>
+              <div>:</div>
+              <div>{snapshot.schedule.classNames.join(', ') || '-'}</div>
+            </div>
           </div>
         </div>
 
@@ -335,14 +345,21 @@ export default function ProctorAttendancePrint() {
                   <td className="border border-slate-300 px-3 py-2 align-top">{participant.nis || '-'}</td>
                   <td className="border border-slate-300 px-3 py-2 align-top">{participant.className || '-'}</td>
                   <td className="border border-slate-300 px-3 py-2 align-top">
-                    <div className={participant.status === 'PRESENT' ? 'font-semibold text-emerald-700' : 'font-semibold text-rose-700'}>
+                    <div
+                      className={`text-[12px] ${
+                        participant.status === 'PRESENT'
+                          ? 'font-semibold text-emerald-700'
+                          : 'font-semibold text-rose-700'
+                      }`}
+                    >
                       {participant.statusLabel}
+                      {participant.status === 'PRESENT' ? (
+                        <span className="font-normal text-slate-600">
+                          {' '}
+                          | Mulai {participant.startTimeLabel} • Selesai {participant.submitTimeLabel}
+                        </span>
+                      ) : null}
                     </div>
-                    {participant.status === 'PRESENT' ? (
-                      <div className="mt-1 text-[11px] text-slate-500">
-                        Mulai {participant.startTimeLabel} • Selesai {participant.submitTimeLabel}
-                      </div>
-                    ) : null}
                   </td>
                   <td className="border border-slate-300 px-3 py-2 align-top whitespace-pre-wrap">
                     {participant.absentReason || '-'}
