@@ -1482,6 +1482,7 @@ export const getProctoringDetail = asyncHandler(async (req: Request, res: Respon
         include: {
             packet: { select: { title: true, subject: { select: { name: true } }, authorId: true, subjectId: true, academicYearId: true } },
             subject: { select: { id: true, name: true } },
+            academicYear: { select: { name: true } },
             class: { select: { id: true, name: true } },
             proctor: { select: { id: true, name: true } },
             proctoringReports: true
@@ -1847,12 +1848,15 @@ export const getProctoringDetail = asyncHandler(async (req: Request, res: Respon
 
     const subjectName = schedule.packet?.subject?.name || schedule.subject?.name || '-';
     const displayTitle = schedule.packet?.title || `Ujian ${subjectName}`;
+    const examLabel = await resolveExamProgramLabel(resolvedAcademicYearId, schedule.examType);
 
     res.json(new ApiResponse(200, {
         schedule: {
             ...schedule,
             subjectName,
             displayTitle,
+            examLabel,
+            academicYearName: schedule.academicYear?.name || null,
             classNames:
                 sittingParticipantClassNames.length > 0 ? sittingParticipantClassNames : monitoredClassNames,
             teacherNames,

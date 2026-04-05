@@ -40,6 +40,8 @@ export type ProctorScheduleDetail = {
     room: string | null;
     token?: string | null;
     displayTitle?: string;
+    examLabel?: string;
+    academicYearName?: string | null;
     subjectName?: string;
     classNames?: string[];
     packet: {

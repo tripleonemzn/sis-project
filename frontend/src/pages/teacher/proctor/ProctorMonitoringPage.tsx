@@ -1,6 +1,6 @@
 import React, { useState, useEffect, useCallback, useRef } from 'react';
 import { useParams, useNavigate } from 'react-router-dom';
-import { ArrowLeft, RefreshCw, Save, Clock, BookOpen, UserCircle2, MapPin } from 'lucide-react';
+import { ArrowLeft, RefreshCw, Save, Clock, BookOpen, UserCircle2, MapPin, FileText } from 'lucide-react';
 import api from '../../../services/api';
 import { toast } from 'react-hot-toast';
 
@@ -34,8 +34,11 @@ interface ExamSchedule {
   endTime: string;
   room: string | null;
   token: string | null;
+  examType?: string | null;
   serverNow?: string;
   displayTitle?: string;
+  examLabel?: string;
+  academicYearName?: string | null;
   subjectName?: string;
   classNames?: string[];
   teacherNames?: string[];
@@ -63,6 +66,11 @@ function mergeProctorReportNotes(notes?: string | null, incident?: string | null
   return [String(notes || '').trim(), String(incident || '').trim()].filter(Boolean).join('\n\n');
 }
 
+function normalizeExamHeading(label?: string | null) {
+  const normalized = String(label || '').replace(/^ujian\s+/i, '').trim();
+  return normalized ? normalized.toUpperCase() : 'UJIAN';
+}
+
 const ProctorMonitoringPage: React.FC = () => {
   const { id: scheduleId } = useParams<{ id: string }>();
   const navigate = useNavigate();
@@ -77,6 +85,7 @@ const ProctorMonitoringPage: React.FC = () => {
   const [notes, setNotes] = useState('');
   const [submittingReport, setSubmittingReport] = useState(false);
   const [reportSubmitted, setReportSubmitted] = useState(false);
+  const [isReportPanelOpen, setIsReportPanelOpen] = useState(false);
   const hasHydratedExistingReportRef = useRef(false);
 
   const fetchData = useCallback(async (options?: { silent?: boolean }) => {
@@ -209,6 +218,7 @@ const ProctorMonitoringPage: React.FC = () => {
 
   const title = schedule.displayTitle || schedule.packet?.title || `Ujian ${schedule.subjectName || schedule.packet?.subject?.name || '-'}`;
   const subjectName = schedule.subjectName || schedule.packet?.subject?.name || '-';
+  const examHeading = normalizeExamHeading(schedule.examLabel || schedule.examType || title);
   const classNames = schedule.classNames?.length ? schedule.classNames : (schedule.class?.name ? [schedule.class.name] : ['-']);
   const teacherNames = schedule.teacherNames?.length ? schedule.teacherNames : ['-'];
   const orderedClassNames = [...classNames].sort(compareClassName);
@@ -238,16 +248,21 @@ const ProctorMonitoringPage: React.FC = () => {
   const previewWeekday = Number.isNaN(previewDate.getTime())
     ? '-'
     : previewDate.toLocaleDateString('id-ID', { weekday: 'long' });
-  const previewDateLabel = Number.isNaN(previewDate.getTime())
+  const previewDay = Number.isNaN(previewDate.getTime())
     ? '-'
-    : previewDate.toLocaleDateString('id-ID', { day: 'numeric', month: 'long', year: 'numeric' });
+    : previewDate.toLocaleDateString('id-ID', { day: 'numeric' });
+  const previewMonth = Number.isNaN(previewDate.getTime())
+    ? '-'
+    : previewDate.toLocaleDateString('id-ID', { month: 'long' });
+  const previewYear = Number.isNaN(previewDate.getTime())
+    ? '-'
+    : previewDate.toLocaleDateString('id-ID', { year: 'numeric' });
   const previewNarrative =
-    `Pada hari ini, ${previewWeekday} tanggal ${previewDateLabel} telah dilaksanakan ${title} mulai pukul ` +
+    `Pada hari ini, ${previewWeekday} tanggal ${previewDay} bulan ${previewMonth} tahun ${previewYear} ` +
+    `telah dilaksanakan ${examHeading} Mata Pelajaran ${subjectName} mulai pukul ` +
     `${new Date(schedule.startTime).toLocaleTimeString('id-ID', { hour: '2-digit', minute: '2-digit' })} ` +
     `sampai dengan pukul ${new Date(schedule.endTime).toLocaleTimeString('id-ID', { hour: '2-digit', minute: '2-digit' })} ` +
     `di ruang ${schedule.room || 'Belum ditentukan'}.`;
-  const previewNotes = notes.trim() || 'Catatan pengawas belum diisi.';
-
   return (
     <div className="space-y-5">
       <div className="bg-white rounded-lg border border-gray-200 p-4">
@@ -415,99 +430,141 @@ const ProctorMonitoringPage: React.FC = () => {
               <h3 className="text-lg font-medium text-gray-900">Berita Acara</h3>
             </div>
             <div className="p-6 space-y-4">
-              <div>
-                <label className="block text-sm font-medium text-gray-700">Catatan Pengawas selama Ujian berlangsung</label>
-                <textarea
-                  className="mt-2 block w-full rounded-xl border border-gray-300 px-4 py-3 shadow-sm focus:border-indigo-500 focus:ring-indigo-500 sm:text-sm leading-7"
-                  rows={6}
-                  placeholder="Contoh: Ujian berjalan lancar, seluruh siswa hadir, tidak ada kendala perangkat..."
-                  value={notes}
-                  onChange={(e) => setNotes(e.target.value)}
-                  readOnly={reportSubmitted}
-                />
-              </div>
-              {reportSubmitted ? (
-                <div className="rounded-lg border border-emerald-200 bg-emerald-50 px-3 py-3 text-sm text-emerald-800">
-                  <div className="font-semibold">Berita acara sudah terkirim ke Kurikulum.</div>
-                  <div className="mt-1">Cetak dan distribusi dokumen resmi menjadi tanggung jawab Wakasek Kurikulum / sekretaris.</div>
-                  {latestReport?.documentNumber ? (
-                    <div className="mt-2 text-xs font-medium text-emerald-900">No. Dokumen: {latestReport.documentNumber}</div>
-                  ) : null}
-                  {latestReport?.id ? (
-                    <button
-                      type="button"
-                      onClick={() => window.open(`/print/proctor-report/${latestReport.id}`, '_blank', 'noopener')}
-                      className="mt-3 inline-flex items-center rounded-lg border border-emerald-300 bg-white px-3 py-2 text-xs font-semibold text-emerald-700 hover:bg-emerald-100"
-                    >
-                      Lihat Dokumen Resmi
-                    </button>
-                  ) : null}
-                </div>
-              ) : (
-                <div className="rounded-lg border border-blue-200 bg-blue-50 px-3 py-3 text-sm text-blue-800">
-                  Setelah dikirim, berita acara akan diteruskan ke Kurikulum sebagai dokumen resmi untuk diverifikasi dan dicetak.
-                </div>
-              )}
               <div className="rounded-xl border border-slate-200 bg-slate-50 p-4">
-                <div className="flex items-center justify-between gap-3">
+                <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
                   <div>
-                    <h4 className="text-sm font-semibold text-slate-900">Pratinjau Berita Acara</h4>
-                    <p className="mt-1 text-xs text-slate-600">Pengawas dapat meninjau isi berita acara sebelum dikirim ke Kurikulum.</p>
-                  </div>
-                  <div className="rounded-full border border-slate-200 bg-white px-3 py-1 text-[11px] font-semibold uppercase tracking-wide text-slate-600">
-                    Draft
-                  </div>
-                </div>
-                <div className="mt-4 rounded-xl border border-slate-300 bg-white px-5 py-5">
-                  <div className="text-center text-slate-900">
-                    <div className="text-xl font-semibold tracking-wide">BERITA ACARA</div>
-                    <div className="mt-1 text-sm font-semibold uppercase">{title}</div>
-                    <div className="mt-1 text-sm font-semibold uppercase">SMKS KARYA GUNA BHAKTI 2</div>
-                  </div>
-                  <div className="mt-4 border-t border-slate-900" />
-                  <div className="mt-1 border-t-2 border-slate-900" />
-                  <p className="mt-5 text-sm leading-7 text-slate-800 text-justify">{previewNarrative}</p>
-                  <div className="mt-5 grid gap-2 text-sm text-slate-900">
-                    <div className="grid grid-cols-[220px_16px_1fr]">
-                      <div>Jumlah Peserta Seharusnya</div>
-                      <div>:</div>
-                      <div>{orderedStudents.length}</div>
+                    <div className="text-sm font-semibold text-slate-900">
+                      {reportSubmitted ? 'Berita acara sudah dikirim' : 'Siapkan berita acara sebelum dikirim'}
                     </div>
-                    <div className="grid grid-cols-[220px_16px_1fr]">
-                      <div>Jumlah Peserta yang tidak hadir</div>
-                      <div>:</div>
-                      <div>{Math.max(0, orderedStudents.length - orderedStudents.filter((student) => !!student.startTime).length)}</div>
+                    <div className="mt-1 text-xs leading-5 text-slate-600">
+                      {reportSubmitted
+                        ? 'Setelah terkirim, berita acara menjadi arsip dan catatan pengawas bersifat read-only dari sisi pengawas.'
+                        : 'Buka panel berita acara untuk meninjau preview dokumen, mengisi catatan pengawas, lalu kirim ke Kurikulum.'}
                     </div>
-                    <div className="grid grid-cols-[220px_16px_1fr]">
-                      <div>Jumlah Peserta yang hadir</div>
-                      <div>:</div>
-                      <div>{orderedStudents.filter((student) => !!student.startTime).length}</div>
-                    </div>
+                    {latestReport?.documentNumber ? (
+                      <div className="mt-2 text-xs font-medium text-slate-500">No. Dokumen: {latestReport.documentNumber}</div>
+                    ) : null}
                   </div>
-                  <div className="mt-6">
-                    <div className="text-sm font-medium text-slate-900">Catatan Pengawas selama Ujian berlangsung.</div>
-                    <div className="mt-2 min-h-[140px] whitespace-pre-wrap rounded-xl border border-slate-300 bg-slate-50 px-4 py-4 text-sm leading-7 text-slate-800">
-                      {previewNotes}
-                    </div>
-                  </div>
+                  <button
+                    type="button"
+                    onClick={() => setIsReportPanelOpen((prev) => !prev)}
+                    className={`inline-flex items-center justify-center rounded-lg border px-4 py-2 text-sm font-semibold ${
+                      reportSubmitted
+                        ? 'border-emerald-200 bg-emerald-50 text-emerald-700 hover:bg-emerald-100'
+                        : 'border-indigo-200 bg-indigo-50 text-indigo-700 hover:bg-indigo-100'
+                    }`}
+                  >
+                    <FileText className="mr-2 h-4 w-4" />
+                    {isReportPanelOpen ? 'Tutup Berita Acara' : reportSubmitted ? 'Lihat Berita Acara' : 'Buka Berita Acara'}
+                  </button>
                 </div>
               </div>
-              <button 
-                className={`w-full flex justify-center items-center px-4 py-2 border border-transparent rounded-md shadow-sm text-sm font-medium text-white focus:outline-none focus:ring-2 focus:ring-offset-2 disabled:opacity-50 ${
-                  reportSubmitted
-                    ? 'bg-emerald-600 hover:bg-emerald-700 focus:ring-emerald-500'
-                    : 'bg-indigo-600 hover:bg-indigo-700 focus:ring-indigo-500'
-                }`}
-                onClick={handleSubmitReport}
-                disabled={submittingReport || reportSubmitted}
-              >
-                <Save className="h-4 w-4 mr-2" />
-                {submittingReport
-                  ? 'Menyimpan...'
-                  : reportSubmitted
-                    ? 'Terkirim ke Kurikulum'
-                    : 'Kirim ke Kurikulum'}
-              </button>
+
+              {isReportPanelOpen ? (
+                <div className="rounded-xl border border-slate-200 bg-slate-50 p-4">
+                  <div className="flex items-center justify-between gap-3">
+                    <div>
+                      <h4 className="text-sm font-semibold text-slate-900">Pratinjau Berita Acara</h4>
+                      <p className="mt-1 text-xs text-slate-600">
+                        {reportSubmitted
+                          ? 'Berita acara ini sudah dikirim ke Kurikulum dan tampil sebagai arsip pengawas.'
+                          : 'Tinjau isi dokumen resmi sebelum dikirim ke Kurikulum.'}
+                      </p>
+                    </div>
+                    <div className={`rounded-full border px-3 py-1 text-[11px] font-semibold uppercase tracking-wide ${
+                      reportSubmitted
+                        ? 'border-emerald-200 bg-emerald-50 text-emerald-700'
+                        : 'border-slate-200 bg-white text-slate-600'
+                    }`}>
+                      {reportSubmitted ? 'Arsip' : 'Draft'}
+                    </div>
+                  </div>
+
+                  {reportSubmitted ? (
+                    <div className="mt-4 rounded-lg border border-emerald-200 bg-emerald-50 px-3 py-3 text-sm text-emerald-800">
+                      <div className="font-semibold">Berita acara sudah terkirim ke Kurikulum.</div>
+                      <div className="mt-1">Cetak dan distribusi dokumen resmi menjadi tanggung jawab Wakasek Kurikulum / sekretaris.</div>
+                      {latestReport?.id ? (
+                        <button
+                          type="button"
+                          onClick={() => window.open(`/print/proctor-report/${latestReport.id}`, '_blank', 'noopener')}
+                          className="mt-3 inline-flex items-center rounded-lg border border-emerald-300 bg-white px-3 py-2 text-xs font-semibold text-emerald-700 hover:bg-emerald-100"
+                        >
+                          Lihat Dokumen Resmi
+                        </button>
+                      ) : null}
+                    </div>
+                  ) : null}
+
+                  <div className="mt-4 rounded-xl border border-slate-300 bg-white px-5 py-5">
+                    <div className="text-center text-slate-900">
+                      <div className="text-xl font-semibold tracking-wide">BERITA ACARA</div>
+                      <div className="mt-1 text-sm font-semibold uppercase">{examHeading}</div>
+                      <div className="mt-1 text-sm font-semibold uppercase">SMKS KARYA GUNA BHAKTI 2</div>
+                      <div className="mt-1 text-sm font-semibold uppercase">
+                        Tahun Ajaran {schedule.academicYearName || '-'}
+                      </div>
+                    </div>
+                    <div className="mt-4 border-t border-slate-900" />
+                    <div className="mt-1 border-t-2 border-slate-900" />
+                    <p className="mt-5 text-sm leading-7 text-slate-800 text-justify">{previewNarrative}</p>
+                    <div className="mt-5 grid gap-2 text-sm text-slate-900">
+                      <div className="grid grid-cols-[220px_16px_1fr]">
+                        <div>Jumlah Peserta Seharusnya</div>
+                        <div>:</div>
+                        <div>{orderedStudents.length}</div>
+                      </div>
+                      <div className="grid grid-cols-[220px_16px_1fr]">
+                        <div>Jumlah Peserta yang tidak hadir</div>
+                        <div>:</div>
+                        <div>{Math.max(0, orderedStudents.length - orderedStudents.filter((student) => !!student.startTime).length)}</div>
+                      </div>
+                      <div className="grid grid-cols-[220px_16px_1fr]">
+                        <div>Jumlah Peserta yang hadir</div>
+                        <div>:</div>
+                        <div>{orderedStudents.filter((student) => !!student.startTime).length}</div>
+                      </div>
+                    </div>
+                    <div className="mt-6">
+                      <label className="block text-sm font-medium text-slate-900">Catatan Pengawas selama Ujian berlangsung</label>
+                      <textarea
+                        className={`mt-2 block w-full rounded-xl border px-4 py-4 shadow-sm sm:text-sm leading-7 ${
+                          reportSubmitted
+                            ? 'border-slate-200 bg-slate-100 text-slate-600'
+                            : 'border-gray-300 bg-white text-slate-900 focus:border-indigo-500 focus:ring-indigo-500'
+                        }`}
+                        rows={6}
+                        placeholder="Contoh: Ujian berjalan lancar, seluruh siswa hadir, tidak ada kendala perangkat..."
+                        value={notes}
+                        onChange={(e) => setNotes(e.target.value)}
+                        readOnly={reportSubmitted}
+                      />
+                      {reportSubmitted ? (
+                        <p className="mt-2 text-xs text-slate-500">
+                          Catatan tidak bisa diubah lagi karena berita acara sudah masuk arsip setelah dikirim ke Kurikulum.
+                        </p>
+                      ) : null}
+                    </div>
+                  </div>
+
+                  <button
+                    className={`mt-4 w-full flex justify-center items-center px-4 py-2 border border-transparent rounded-md shadow-sm text-sm font-medium text-white focus:outline-none focus:ring-2 focus:ring-offset-2 disabled:opacity-50 ${
+                      reportSubmitted
+                        ? 'bg-emerald-600 hover:bg-emerald-700 focus:ring-emerald-500'
+                        : 'bg-indigo-600 hover:bg-indigo-700 focus:ring-indigo-500'
+                    }`}
+                    onClick={handleSubmitReport}
+                    disabled={submittingReport || reportSubmitted}
+                  >
+                    <Save className="h-4 w-4 mr-2" />
+                    {submittingReport
+                      ? 'Menyimpan...'
+                      : reportSubmitted
+                        ? 'Terkirim ke Kurikulum'
+                        : 'Kirim ke Kurikulum'}
+                  </button>
+                </div>
+              ) : null}
             </div>
           </div>
         </div>

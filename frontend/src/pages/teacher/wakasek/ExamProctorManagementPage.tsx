@@ -932,6 +932,41 @@ const ExamProctorManagementPage = () => {
     }
   };
 
+  const openPrintDocument = useCallback((path: string) => {
+    const printWindow = window.open(path, '_blank');
+    if (!printWindow) {
+      toast.error('Popup print diblokir browser. Izinkan popup lalu coba lagi.');
+      return;
+    }
+
+    const startedAt = Date.now();
+    const tryPrint = () => {
+      if (printWindow.closed) return;
+      try {
+        const readyState = printWindow.document?.readyState;
+        const hasContent = Boolean(
+          printWindow.document?.body?.textContent?.replace(/\s+/g, '').trim(),
+        );
+        if (readyState === 'complete' && hasContent) {
+          printWindow.focus();
+          printWindow.print();
+          return;
+        }
+      } catch {
+        // wait until same-origin document is fully ready
+      }
+
+      if (Date.now() - startedAt < 20_000) {
+        window.setTimeout(tryPrint, 250);
+        return;
+      }
+
+      toast.error('Dokumen print belum siap dibuka. Coba gunakan tombol lihat dokumen lalu print manual.');
+    };
+
+    window.setTimeout(tryPrint, 500);
+  }, []);
+
   return (
     <div className="space-y-6 w-full pb-20">
       {/* Header */}
@@ -1430,7 +1465,7 @@ const ExamProctorManagementPage = () => {
                             </button>
                             <button
                               type="button"
-                              onClick={() => window.open(`/print/proctor-report/${row.report?.id}?autoprint=1`, '_blank', 'noopener')}
+                              onClick={() => openPrintDocument(`/print/proctor-report/${row.report?.id}`)}
                               className="inline-flex items-center rounded-lg border border-emerald-200 bg-emerald-50 px-3 py-2 text-xs font-semibold text-emerald-700 hover:bg-emerald-100"
                             >
                               <FileText size={13} className="mr-1.5" />
@@ -1446,7 +1481,7 @@ const ExamProctorManagementPage = () => {
                             </button>
                             <button
                               type="button"
-                              onClick={() => window.open(`/print/proctor-attendance/${row.report?.id}?autoprint=1`, '_blank', 'noopener')}
+                              onClick={() => openPrintDocument(`/print/proctor-attendance/${row.report?.id}`)}
                               className="inline-flex items-center rounded-lg border border-violet-200 bg-violet-50 px-3 py-2 text-xs font-semibold text-violet-700 hover:bg-violet-100"
                             >
                               <FileText size={13} className="mr-1.5" />

@@ -72,9 +72,9 @@ function formatDateTime(value?: string | null) {
 }
 
 function formatExamHeadingLabel(label?: string | null) {
-  const normalized = String(label || '').trim();
+  const normalized = String(label || '').replace(/^ujian\s+/i, '').trim();
   if (!normalized) return 'UJIAN';
-  return /^ujian\b/i.test(normalized) ? normalized.toUpperCase() : `UJIAN ${normalized.toUpperCase()}`;
+  return normalized.toUpperCase();
 }
 
 export default function ProctorAttendancePrint() {
@@ -97,6 +97,13 @@ export default function ProctorAttendancePrint() {
     if (!autoPrint || !documentQuery.data) return;
     let cancelled = false;
     const waitForImagesAndPrint = async () => {
+      if (typeof document !== 'undefined' && 'fonts' in document) {
+        try {
+          await (document as Document & { fonts?: { ready?: Promise<unknown> } }).fonts?.ready;
+        } catch {
+          // ignore
+        }
+      }
       const images = Array.from(
         document.querySelectorAll<HTMLImageElement>('.proctor-attendance-print-image'),
       );
@@ -113,14 +120,22 @@ export default function ProctorAttendancePrint() {
             }),
         ),
       );
+      for (let attempt = 0; attempt < 30; attempt += 1) {
+        const hasContent = Boolean(
+          document.querySelector('.proctor-attendance-shell')?.textContent?.replace(/\s+/g, '').trim(),
+        );
+        if (hasContent) break;
+        await new Promise<void>((resolve) => window.setTimeout(resolve, 120));
+      }
       await new Promise<void>((resolve) => {
         window.requestAnimationFrame(() => {
           window.requestAnimationFrame(() => {
-            window.setTimeout(resolve, 180);
+            window.setTimeout(resolve, 320);
           });
         });
       });
       if (!cancelled) {
+        window.focus();
         window.print();
       }
     };
@@ -197,7 +212,10 @@ export default function ProctorAttendancePrint() {
         </button>
         <button
           type="button"
-          onClick={() => window.print()}
+          onClick={() => {
+            window.focus();
+            window.print();
+          }}
           className="inline-flex items-center rounded-lg bg-blue-600 px-4 py-2 text-sm font-semibold text-white hover:bg-blue-700"
         >
           <Printer className="mr-2 h-4 w-4" />
@@ -209,24 +227,24 @@ export default function ProctorAttendancePrint() {
         className="proctor-attendance-shell mx-auto max-w-6xl rounded-2xl border border-slate-200 bg-white shadow-sm"
         style={{ padding: '2.5cm' }}
       >
-        <div className="flex items-start gap-4">
-          <div className="flex w-24 shrink-0 justify-center">
+        <div className="flex justify-center">
+          <div className="inline-flex items-center justify-center gap-5">
             <img
               src={snapshot.schoolLogoPath}
               alt="Logo KGB2"
-              className="proctor-attendance-print-image h-[86px] w-[86px] object-contain"
+              className="proctor-attendance-print-image h-[86px] w-[86px] shrink-0 object-contain"
             />
-          </div>
-          <div className="flex-1 text-center">
-            <div className="text-[26px] font-semibold tracking-wide text-slate-900">{snapshot.title}</div>
-            <div className="mt-1 text-[18px] font-semibold uppercase tracking-wide text-slate-900">
-              {formatExamHeadingLabel(snapshot.examLabel)}
-            </div>
-            <div className="mt-1 text-[18px] font-semibold uppercase tracking-wide text-slate-900">
-              {snapshot.schoolName}
-            </div>
-            <div className="mt-1 text-[18px] font-semibold uppercase tracking-wide text-slate-900">
-              Tahun Ajaran {snapshot.academicYearName}
+            <div className="text-center">
+              <div className="text-[26px] font-semibold tracking-wide text-slate-900">{snapshot.title}</div>
+              <div className="mt-1 text-[18px] font-semibold uppercase tracking-wide text-slate-900">
+                {formatExamHeadingLabel(snapshot.examLabel)}
+              </div>
+              <div className="mt-1 text-[18px] font-semibold uppercase tracking-wide text-slate-900">
+                {snapshot.schoolName}
+              </div>
+              <div className="mt-1 text-[18px] font-semibold uppercase tracking-wide text-slate-900">
+                Tahun Ajaran {snapshot.academicYearName}
+              </div>
             </div>
           </div>
         </div>
@@ -351,8 +369,11 @@ export default function ProctorAttendancePrint() {
                 className="proctor-attendance-print-image h-28 w-28 object-contain"
               />
             </div>
-            <div className="mt-3 text-[18px] font-semibold text-slate-900">{snapshot.proctor.name}</div>
-            <div className="mt-2 text-xs leading-5 text-slate-600">{snapshot.proctor.signatureLabel}</div>
+            <div className="mt-8 text-[18px] font-semibold text-slate-900">{snapshot.proctor.name}</div>
+            <div className="mt-3 border-t border-slate-400" />
+            <div className="mt-3 text-xs leading-5 text-slate-600">
+              {snapshot.proctor.signatureLabel} Dokumen dikirim ke Kurikulum pada {formatDateTime(snapshot.submittedAt)}.
+            </div>
           </div>
         </div>
       </div>
