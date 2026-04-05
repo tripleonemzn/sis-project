@@ -2362,8 +2362,8 @@ model ExamProctoringReport {
   proctorId           Int
   notes               String?
   incident            String?
-  documentNumber      String?      @unique
-  verificationToken   String?      @unique
+  documentNumber      String?
+  verificationToken   String?
   documentSnapshot    Json?
   createdAt           DateTime     @default(now())
   scheduleId          Int
