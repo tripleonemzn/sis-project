@@ -39,6 +39,18 @@ type RealtimeMutationEvent = {
 let wsServer: WebSocketServer | null = null;
 let heartbeatInterval: NodeJS.Timeout | null = null;
 
+export type RealtimePresenceRoleCount = {
+  role: string;
+  count: number;
+};
+
+export type RealtimePresenceSnapshot = {
+  totalUsers: number;
+  totalConnections: number;
+  byRole: RealtimePresenceRoleCount[];
+  sampledAt: string;
+};
+
 function nextEventId() {
   return `${Date.now().toString(36)}_${Math.random().toString(36).slice(2, 10)}`;
 }
@@ -201,4 +213,53 @@ export function broadcastMutationEvent(payload: RealtimeMutationEventPayload) {
       // skip dead socket
     }
   }
+}
+
+export function getRealtimePresenceSnapshot(): RealtimePresenceSnapshot {
+  if (!wsServer) {
+    return {
+      totalUsers: 0,
+      totalConnections: 0,
+      byRole: [],
+      sampledAt: new Date().toISOString(),
+    };
+  }
+
+  const uniqueUsers = new Map<number, ClientContext>();
+  const roleBuckets = new Map<string, Set<number>>();
+  let totalConnections = 0;
+
+  for (const socket of wsServer.clients) {
+    if (socket.readyState !== WebSocket.OPEN) continue;
+    const client = socket as RealtimeSocket;
+    const context = client.context;
+    if (!context || !Number.isInteger(context.userId) || (context.userId ?? 0) <= 0) continue;
+    const userId = Number(context.userId);
+
+    totalConnections += 1;
+    uniqueUsers.set(userId, context);
+
+    const normalizedRole = String(context.role || 'UNKNOWN').trim().toUpperCase() || 'UNKNOWN';
+    if (!roleBuckets.has(normalizedRole)) {
+      roleBuckets.set(normalizedRole, new Set<number>());
+    }
+    roleBuckets.get(normalizedRole)?.add(userId);
+  }
+
+  const byRole = Array.from(roleBuckets.entries())
+    .map(([role, userIds]) => ({
+      role,
+      count: userIds.size,
+    }))
+    .sort((left, right) => {
+      if (right.count !== left.count) return right.count - left.count;
+      return left.role.localeCompare(right.role);
+    });
+
+  return {
+    totalUsers: uniqueUsers.size,
+    totalConnections,
+    byRole,
+    sampledAt: new Date().toISOString(),
+  };
 }

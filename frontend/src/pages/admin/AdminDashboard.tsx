@@ -2,6 +2,7 @@ import {
   Users,
   GraduationCap,
   School,
+  Activity,
   ArrowUpRight,
   ArrowDownRight,
   Clock,
@@ -16,6 +17,7 @@ import {
 import { useQuery } from '@tanstack/react-query';
 import React from 'react';
 import { Link } from 'react-router-dom';
+import api from '../../services/api';
 import { authService } from '../../services/auth.service';
 import { academicYearService } from '../../services/academicYear.service';
 import { majorService, type Major } from '../../services/major.service';
@@ -83,6 +85,16 @@ interface DashboardData {
     shortlistedApplications: number;
     acceptedApplications: number;
   };
+}
+
+interface OnlineUsersSummary {
+  totalUsers: number;
+  totalConnections: number;
+  sampledAt: string;
+  byRole: Array<{
+    role: string;
+    count: number;
+  }>;
 }
 
 function getArrayByKey<T>(res: unknown, key: string): T[] {
@@ -232,6 +244,78 @@ const getSemesterLabelFromName = (name: string): string => {
   return 'Periode berjalan saat ini';
 };
 
+const formatRoleLabel = (role: string) => {
+  const normalized = String(role || '').trim().toUpperCase();
+  if (normalized === 'ADMIN') return 'Admin';
+  if (normalized === 'TEACHER') return 'Guru';
+  if (normalized === 'STUDENT') return 'Siswa';
+  if (normalized === 'PRINCIPAL') return 'Kepala Sekolah';
+  if (normalized === 'STAFF') return 'Staff';
+  if (normalized === 'PARENT') return 'Orang Tua';
+  if (normalized === 'CALON_SISWA') return 'Calon Siswa';
+  if (normalized === 'UMUM') return 'Umum';
+  if (normalized === 'EXAMINER') return 'Penguji';
+  if (normalized === 'EXTRACURRICULAR_TUTOR') return 'Tutor Ekstrakurikuler';
+  return normalized || 'User';
+};
+
+const OnlineUsersCard = ({ summary }: { summary: OnlineUsersSummary }) => {
+  const highlightedRoles = summary.byRole.slice(0, 3);
+
+  return (
+    <Link
+      to="/admin/settings/server-area?tab=monitoring"
+      className="block rounded-2xl focus:outline-none focus-visible:ring-2 focus-visible:ring-teal-500"
+    >
+      <div className="relative overflow-hidden p-6 rounded-2xl border shadow-sm transition-all hover:shadow-md group bg-gradient-to-br from-teal-50 to-cyan-100/85 border-teal-100">
+        <div className="flex items-start justify-between mb-4 relative z-10">
+          <div className="p-3 rounded-xl bg-teal-100 flex items-center justify-center group-hover:scale-105 transition-all">
+            <Activity className="w-6 h-6 text-teal-700" />
+          </div>
+          <span className="inline-flex items-center rounded-full bg-teal-100 px-2.5 py-1 text-[11px] font-semibold text-teal-800">
+            Realtime
+          </span>
+        </div>
+
+        <div className="relative z-10">
+          <h3 className="text-3xl font-bold mb-1 text-teal-900">
+            {summary.totalUsers.toLocaleString('id-ID')}
+          </h3>
+          <p className="text-sm font-medium text-teal-700/80">User Online</p>
+          <p className="mt-1 text-xs text-teal-700/80">
+            {summary.totalConnections.toLocaleString('id-ID')} koneksi aplikasi sedang aktif
+          </p>
+        </div>
+
+        <div className="mt-4 flex flex-wrap gap-2 relative z-10">
+          {highlightedRoles.length > 0 ? (
+            highlightedRoles.map((item) => (
+              <span
+                key={item.role}
+                className="inline-flex items-center rounded-full bg-white/80 px-2.5 py-1 text-[11px] font-semibold text-teal-800"
+              >
+                {formatRoleLabel(item.role)} {item.count}
+              </span>
+            ))
+          ) : (
+            <span className="text-xs text-teal-700/80">Belum ada user yang sedang terhubung.</span>
+          )}
+        </div>
+
+        <div className="mt-4 flex items-center text-xs font-medium pt-4 border-t border-teal-200/70 relative z-10">
+          <span className="text-teal-700/80">Diambil {new Date(summary.sampledAt).toLocaleTimeString('id-ID')}</span>
+          <span className="ml-auto inline-flex items-center gap-1 text-teal-700">
+            Buka Monitoring
+            <ArrowUpRight size={14} />
+          </span>
+        </div>
+
+        <Activity className="absolute -bottom-10 -right-6 w-32 h-32 opacity-60 text-teal-200/90 group-hover:opacity-70 group-hover:scale-110 transition-transform" />
+      </div>
+    </Link>
+  );
+};
+
 export const AdminDashboard = () => {
   // Use useQuery directly to avoid context propagation issues from RoleRoute
   const { data: userResponse, isLoading: isUserLoading } = useQuery({
@@ -347,6 +431,28 @@ export const AdminDashboard = () => {
       };
     },
     enabled: !!user, // Only fetch stats if user is authenticated
+  });
+
+  const onlineUsersQuery = useQuery<OnlineUsersSummary>({
+    queryKey: ['admin-dashboard', 'online-users'],
+    enabled: !!user,
+    refetchInterval: 15000,
+    refetchIntervalInBackground: false,
+    queryFn: async () => {
+      const response = await api.get<{
+        data: {
+          onlineUsers?: OnlineUsersSummary;
+        };
+      }>('/server/monitoring');
+      return (
+        response.data.data?.onlineUsers || {
+          totalUsers: 0,
+          totalConnections: 0,
+          sampledAt: new Date().toISOString(),
+          byRole: [],
+        }
+      );
+    },
   });
 
   if (isUserLoading || isLoading) {
@@ -515,6 +621,7 @@ export const AdminDashboard = () => {
               trendLabel={`${bkkOverview?.acceptedApplications || 0} diterima • ${bkkOverview?.shortlistedApplications || 0} shortlist`}
               to="/admin/bkk-applications"
             />
+            <OnlineUsersCard summary={onlineUsersQuery.data || { totalUsers: 0, totalConnections: 0, sampledAt: new Date().toISOString(), byRole: [] }} />
           </div>
 
           <div className="mt-8 grid grid-cols-1 lg:grid-cols-3 gap-8">

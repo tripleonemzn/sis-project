@@ -126,6 +126,15 @@ export type ServerMonitoringResponse = {
     txMbps: number;
     status: 'OK' | 'WARNING' | 'DANGER';
   } | null;
+  onlineUsers: {
+    totalUsers: number;
+    totalConnections: number;
+    sampledAt: string;
+    byRole: {
+      role: string;
+      count: number;
+    }[];
+  };
 };
 
 export type WebmailResetResponse = {

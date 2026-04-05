@@ -9,6 +9,7 @@ import { ApiError, ApiResponse, asyncHandler } from '../utils/api';
 import { AuthRequest } from '../middleware/auth';
 import prisma from '../utils/prisma';
 import { writeAuditLog } from '../utils/auditLog';
+import { getRealtimePresenceSnapshot } from '../realtime/realtimeGateway';
 
 const execAsync = promisify(exec);
 
@@ -750,6 +751,7 @@ export const getMonitoringMetrics = asyncHandler(async (req: AuthRequest, res: R
           status: bandwidthStatus,
         }
       : null,
+    onlineUsers: getRealtimePresenceSnapshot(),
   };
   if (data.bandwidth) {
     monitoringMetricsCache = { atMs: Date.now(), data };
