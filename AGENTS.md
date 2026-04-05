@@ -153,9 +153,22 @@ Dokumen ini adalah policy kerja default untuk setiap sesi baru yang mengerjakan 
    - Update ke user boleh ringkas, tetapi tetap harus informatif.
    - Hindari penjelasan panjang yang tidak menambah nilai praktis bagi user.
 
+15. **Tahun ajaran aktif adalah source of truth operasional**
+   - Untuk semua halaman `operasional`, `pembelajaran`, `approval`, `input`, `monitoring aktif`, dan workflow harian, konteks tahun ajaran wajib mengikuti `tahun ajaran aktif` yang tampil di header aplikasi.
+   - Fitur baru operasional tidak boleh menambahkan selector, dropdown, chip, query param, local storage restore, atau fallback lain yang memungkinkan user diam-diam bekerja di tahun ajaran yang berbeda dari header.
+   - Jika halaman hanya perlu menampilkan konteks tahun ajaran, gunakan tampilan `read-only` seperti notice, badge, helper text, atau field disabled yang menegaskan bahwa data mengikuti tahun ajaran aktif.
+   - Selector/filter `tahun ajaran` hanya boleh ada pada halaman yang memang `arsip`, `laporan historis`, `rekap lintas tahun`, atau `konfigurasi lintas tahun`.
+   - Jika sebuah halaman memang lintas tahun, status tersebut wajib dibuat eksplisit di UI, misalnya dengan label seperti `Mode Arsip`, `Data Historis`, atau `Data Tahun Ajaran ...`, agar tidak disalahartikan sebagai workflow operasional aktif.
+   - Jangan menggunakan `class.academicYearId`, `assignment.academicYearId`, `selectedAcademicYear` lama, cache lama, atau state turunan lain sebagai override implisit terhadap tahun ajaran aktif pada layar operasional.
+   - Endpoint/backend baru harus mengikuti kontrak ini:
+     - endpoint operasional mengikuti tahun ajaran aktif atau tervalidasi terhadap tahun ajaran aktif
+     - endpoint historis/lintas tahun harus memakai `academicYearId` eksplisit dan tidak disamarkan sebagai endpoint operasional
+   - Setiap pengembangan fitur baru wajib melakukan sanity check bahwa konteks `tahun ajaran` di web, mobile, dan header tetap konsisten sebelum dianggap final.
+   - Jika ada keraguan apakah sebuah layar termasuk operasional atau historis, default yang aman adalah menganggap layar tersebut `operasional` dan menguncinya ke tahun ajaran aktif.
+
 ## Default Close-Out
 
-15. **Penutupan pekerjaan minimal harus memuat**
+16. **Penutupan pekerjaan minimal harus memuat**
    - apa yang dikerjakan
    - verifikasi yang dijalankan
    - status publish/live bila ada
