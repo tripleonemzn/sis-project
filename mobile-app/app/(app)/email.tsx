@@ -1152,17 +1152,13 @@ export default function MobileEmailScreen() {
                       onPress={handleResetPassword}
                       disabled={resetPasswordMutation.isPending}
                       style={{
-                        borderRadius: 12,
-                        borderWidth: 1,
-                        borderColor: '#cbd5e1',
-                        backgroundColor: '#ffffff',
-                        paddingVertical: 11,
                         alignItems: 'center',
+                        paddingVertical: 4,
                         opacity: resetPasswordMutation.isPending ? 0.7 : 1,
                       }}
                     >
-                      <Text style={{ color: '#1e293b', fontWeight: '700' }}>
-                        {resetPasswordMutation.isPending ? 'Mereset Password...' : 'Lupa / Reset Password Webmail'}
+                      <Text style={{ color: '#64748b', fontSize: 13, fontWeight: '700' }}>
+                        {resetPasswordMutation.isPending ? 'Mereset Password...' : 'Lupa Password?'}
                       </Text>
                     </Pressable>
                   ) : null}

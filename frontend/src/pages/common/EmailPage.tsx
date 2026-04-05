@@ -704,9 +704,9 @@ export const EmailPage = () => {
                             type="button"
                             onClick={handleResetPassword}
                             disabled={resetPasswordMutation.isPending || !isPortalReady}
-                            className="mt-2.5 w-full rounded-full border border-slate-300 bg-white px-5 py-2.5 text-base font-semibold text-slate-800 transition hover:bg-slate-50 disabled:cursor-not-allowed disabled:opacity-70"
+                            className="mt-3 block w-full text-center text-sm font-semibold text-slate-500 underline-offset-4 transition hover:text-slate-700 hover:underline disabled:cursor-not-allowed disabled:no-underline disabled:opacity-70"
                           >
-                            {resetPasswordMutation.isPending ? 'Mereset Password...' : 'Lupa / Reset Password Webmail'}
+                            {resetPasswordMutation.isPending ? 'Mereset Password...' : 'Lupa Password?'}
                           </button>
                         ) : null}
                       </div>
