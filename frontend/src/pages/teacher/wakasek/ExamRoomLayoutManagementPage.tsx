@@ -205,6 +205,20 @@ function formatStudentMeta(student?: LayoutStudent | null) {
   return [student.className, student.nis || student.nisn].filter(Boolean).join(' • ') || '-';
 }
 
+function formatScheduleSummary(startTime?: string | null, endTime?: string | null) {
+  const startLabel = formatDateTime(startTime);
+  const endLabel = formatDateTime(endTime);
+  if (startLabel === '-' && endLabel === '-') return 'Jadwal belum diatur';
+  if (startLabel === '-' || endLabel === '-') return 'Jadwal belum lengkap';
+  return `${startLabel} - ${endLabel}`;
+}
+
+function formatSessionSummary(sessionLabel?: string | null) {
+  const value = String(sessionLabel || '').trim();
+  if (!value) return 'Sesi belum diatur';
+  return `Sesi ${value}`;
+}
+
 export default function ExamRoomLayoutManagementPage() {
   const [academicYears, setAcademicYears] = useState<AcademicYear[]>([]);
   const [selectedAcademicYear, setSelectedAcademicYear] = useState<string>('');
@@ -221,6 +235,7 @@ export default function ExamRoomLayoutManagementPage() {
   const [loadingDetail, setLoadingDetail] = useState(false);
   const [saving, setSaving] = useState(false);
   const [generating, setGenerating] = useState(false);
+  const [isEditorModalOpen, setIsEditorModalOpen] = useState(false);
   const [isGenerateModalOpen, setIsGenerateModalOpen] = useState(false);
   const [generateRows, setGenerateRows] = useState(4);
   const [generateColumns, setGenerateColumns] = useState(4);
@@ -370,7 +385,7 @@ export default function ExamRoomLayoutManagementPage() {
       setSittings(rows);
       setSelectedSittingId((previous) => {
         if (rows.some((item) => item.id === previous)) return previous;
-        return rows[0]?.id || null;
+        return null;
       });
     } catch (error) {
       console.error(error);
@@ -424,6 +439,11 @@ export default function ExamRoomLayoutManagementPage() {
     }
     void fetchLayoutDetail(selectedSittingId);
   }, [selectedSittingId, fetchLayoutDetail]);
+
+  useEffect(() => {
+    if (selectedSittingId) return;
+    setIsEditorModalOpen(false);
+  }, [selectedSittingId]);
 
   useEffect(() => {
     if (!draft?.cells?.length) {
@@ -521,6 +541,20 @@ export default function ExamRoomLayoutManagementPage() {
       void fetchLayoutDetail(selectedSittingId);
     }
   }, [fetchLayoutDetail, fetchSittings, selectedSittingId]);
+
+  const handleOpenEditor = useCallback((sittingId: number) => {
+    setSelectedSittingId(sittingId);
+    setIsEditorModalOpen(true);
+  }, []);
+
+  const handleCloseEditor = useCallback(() => {
+    setIsGenerateModalOpen(false);
+    setIsEditorModalOpen(false);
+    setSelectedSittingId(null);
+    setDetail(null);
+    setDraft(null);
+    setSelectedCellKey('');
+  }, []);
 
   if (loadingInitial) {
     return (
@@ -633,8 +667,10 @@ export default function ExamRoomLayoutManagementPage() {
               </div>
             ) : (
               filteredSittings.map((sitting) => {
-                const isActive = sitting.id === selectedSittingId;
+                const isActive = isEditorModalOpen && sitting.id === selectedSittingId;
                 const hasLayout = Boolean(sitting.layout?.id);
+                const scheduleSummary = formatScheduleSummary(sitting.startTime, sitting.endTime);
+                const sessionSummary = formatSessionSummary(sitting.sessionLabel);
                 return (
                   <div
                     key={sitting.id}
@@ -654,16 +690,15 @@ export default function ExamRoomLayoutManagementPage() {
                         </span>
                       </div>
                       <div className="mt-1 text-sm text-gray-500">
-                        {formatDateTime(sitting.startTime)} - {formatDateTime(sitting.endTime)}
+                        {scheduleSummary}
                       </div>
                       <div className="mt-2 flex flex-wrap gap-2 text-xs text-gray-600">
                         <span className="rounded-full bg-gray-100 px-2.5 py-1">
                           {sitting._count?.students || 0} siswa
                         </span>
                         <span className="rounded-full bg-gray-100 px-2.5 py-1">
-                          {sitting.sessionLabel || '-'}
+                          {sessionSummary}
                         </span>
-                        <span className="rounded-full bg-gray-100 px-2.5 py-1">{sitting.examType}</span>
                         {sitting.layout ? (
                           <span className="rounded-full bg-blue-100 px-2.5 py-1 text-blue-700">
                             {sitting.layout.rows} x {sitting.layout.columns}
@@ -675,14 +710,14 @@ export default function ExamRoomLayoutManagementPage() {
                     <div className="flex flex-wrap gap-2">
                       <button
                         type="button"
-                        onClick={() => setSelectedSittingId(sitting.id)}
+                        onClick={() => handleOpenEditor(sitting.id)}
                         className={`inline-flex items-center justify-center rounded-lg px-4 py-2 text-sm font-semibold ${
                           isActive
                             ? 'bg-blue-600 text-white hover:bg-blue-700'
                             : 'border border-gray-300 bg-white text-gray-700 hover:bg-gray-50'
                         }`}
                       >
-                        {isActive ? 'Sedang Dibuka' : 'Buka Editor'}
+                        {isActive ? 'Sedang Dibuka' : hasLayout ? 'Lihat Denah' : 'Setup Denah'}
                       </button>
                     </div>
                   </div>
@@ -691,19 +726,18 @@ export default function ExamRoomLayoutManagementPage() {
             )}
           </div>
         </div>
+      </div>
 
-        {loadingDetail ? (
-          <div className="rounded-xl border border-gray-100 bg-white p-10 text-center text-sm text-gray-500 shadow-sm">
-            <Loader2 className="mx-auto mb-3 h-5 w-5 animate-spin text-blue-600" />
-            Memuat detail denah ruang...
-          </div>
-        ) : !selectedSitting ? (
-          <div className="rounded-xl border border-dashed border-gray-300 bg-white p-10 text-center text-sm text-gray-500 shadow-sm">
-            Pilih salah satu ruang ujian untuk membuka editor denah penuh.
-          </div>
-        ) : (
-          <div className="space-y-4">
-            <div className="rounded-xl border border-gray-100 bg-white p-5 shadow-sm">
+      {isEditorModalOpen && selectedSitting ? (
+        <div
+          className="fixed inset-0 z-[70] bg-slate-950/45 p-3 backdrop-blur-sm sm:p-5"
+          onClick={handleCloseEditor}
+        >
+          <div
+            className="mx-auto flex h-full w-full max-w-[1500px] flex-col overflow-hidden rounded-[28px] border border-slate-200 bg-slate-50 shadow-2xl"
+            onClick={(event) => event.stopPropagation()}
+          >
+            <div className="border-b border-slate-200 bg-white px-5 py-4 sm:px-6">
               <div className="flex flex-col gap-4 xl:flex-row xl:items-start xl:justify-between">
                 <div>
                   <div className="inline-flex items-center rounded-full bg-blue-50 px-3 py-1 text-xs font-semibold text-blue-700">
@@ -714,15 +748,17 @@ export default function ExamRoomLayoutManagementPage() {
                     {detail?.sitting.examType || selectedSitting.examType}
                   </h3>
                   <p className="mt-1 text-sm text-gray-500">
-                    {formatDateTime(detail?.sitting.startTime || selectedSitting.startTime)} -{' '}
-                    {formatDateTime(detail?.sitting.endTime || selectedSitting.endTime)}
+                    {formatScheduleSummary(
+                      detail?.sitting.startTime || selectedSitting.startTime,
+                      detail?.sitting.endTime || selectedSitting.endTime,
+                    )}
                   </p>
                   <p className="mt-1 text-sm text-gray-500">
-                    Sesi:{' '}
-                    {detail?.sitting.programSession?.label ||
-                      detail?.sitting.sessionLabel ||
-                      selectedSitting.sessionLabel ||
-                      '-'}
+                    {formatSessionSummary(
+                      detail?.sitting.programSession?.label ||
+                        detail?.sitting.sessionLabel ||
+                        selectedSitting.sessionLabel,
+                    )}
                   </p>
                 </div>
 
@@ -746,6 +782,14 @@ export default function ExamRoomLayoutManagementPage() {
                       Simpan Denah
                     </button>
                   ) : null}
+                  <button
+                    type="button"
+                    onClick={handleCloseEditor}
+                    className="inline-flex items-center justify-center rounded-lg border border-gray-300 bg-white px-4 py-2 text-sm font-semibold text-gray-700 hover:bg-gray-50"
+                  >
+                    <X className="mr-2 h-4 w-4" />
+                    Tutup Denah
+                  </button>
                 </div>
               </div>
 
@@ -774,302 +818,301 @@ export default function ExamRoomLayoutManagementPage() {
               </div>
             </div>
 
-            {!draft ? (
-              <div className="rounded-xl border border-dashed border-blue-200 bg-white p-10 text-center shadow-sm">
-                <Sparkles className="mx-auto h-10 w-10 text-blue-600" />
-                <h3 className="mt-4 text-lg font-semibold text-gray-900">Denah Belum Dibuat</h3>
-                <p className="mt-2 text-sm text-gray-500">
-                  Setup denah melalui popup agar jumlah baris, kolom, dan catatan awal tetap rapi sebelum editor dibuka penuh.
-                </p>
-                <button
-                  type="button"
-                  onClick={() => setIsGenerateModalOpen(true)}
-                  className="mt-5 inline-flex items-center justify-center rounded-lg bg-blue-600 px-4 py-2 text-sm font-semibold text-white hover:bg-blue-700"
-                >
-                  <Sparkles className="mr-2 h-4 w-4" />
-                  Setup Denah
-                </button>
-              </div>
-            ) : (
-              <>
-                <div
-                  className={`rounded-xl border px-4 py-3 text-sm shadow-sm ${
-                    unassignedStudents.length > 0
-                      ? 'border-amber-200 bg-amber-50 text-amber-800'
-                      : 'border-emerald-200 bg-emerald-50 text-emerald-800'
-                  }`}
-                >
-                  <div className="flex items-start gap-3">
-                    {unassignedStudents.length > 0 ? (
-                      <AlertTriangle className="mt-0.5 h-4 w-4 shrink-0" />
-                    ) : (
-                      <CheckCircle2 className="mt-0.5 h-4 w-4 shrink-0" />
-                    )}
-                    <div>
-                      <div className="font-semibold">
-                        {unassignedStudents.length > 0
-                          ? `${unassignedStudents.length} siswa belum ditempatkan`
-                          : 'Semua siswa sudah mendapat kursi'}
-                      </div>
-                      <div className="mt-1 text-xs">
-                        {unassignedStudents.length > 0
-                          ? `Kursi yang belum terisi diberi penanda warna amber. ${missingStudentsPreview}`
-                          : 'Denah siap dipakai untuk kartu ujian dan penempatan ruang.'}
-                      </div>
-                    </div>
-                  </div>
+            <div className="flex-1 overflow-y-auto px-5 py-5 sm:px-6">
+              {loadingDetail ? (
+                <div className="rounded-xl border border-gray-100 bg-white p-10 text-center text-sm text-gray-500 shadow-sm">
+                  <Loader2 className="mx-auto mb-3 h-5 w-5 animate-spin text-blue-600" />
+                  Memuat detail denah ruang...
                 </div>
-
-                <div className="rounded-xl border border-gray-100 bg-white shadow-sm">
-                  <div className="border-b border-gray-100 px-5 py-4">
-                    <h3 className="text-lg font-semibold text-gray-900">Editor Denah</h3>
-                    <p className="mt-1 text-sm text-gray-500">
-                      Klik satu kursi untuk mengubah jenis sel, label kursi, dan penempatan siswa. Area editor dibuat penuh agar denah lebih mudah dibaca.
-                    </p>
-                  </div>
-
-                  <div className="overflow-x-auto px-5 py-5">
-                    <div className="inline-flex min-w-full flex-col gap-3">
-                      {gridRows.map((row, rowIndex) => (
-                        <div key={`row-${rowIndex}`} className="flex gap-3">
-                          {row.map((cell) => {
-                            const currentStudent =
-                              detail?.students.find((student) => student.id === cell.studentId) || null;
-                            const isSelected =
-                              buildPositionKey(cell.rowIndex, cell.columnIndex) === selectedCellKey;
-                            const isSeat = cell.cellType === 'SEAT';
-                            const isEmptySeat = isSeat && !currentStudent;
-
-                            return (
-                              <button
-                                key={`${cell.rowIndex}-${cell.columnIndex}`}
-                                type="button"
-                                onClick={() => setSelectedCellKey(buildPositionKey(cell.rowIndex, cell.columnIndex))}
-                                className={`min-h-[132px] w-[168px] rounded-2xl border p-4 text-left transition-all ${
-                                  isSelected
-                                    ? 'border-blue-500 bg-blue-50 shadow-sm'
-                                    : isSeat
-                                      ? isEmptySeat
-                                        ? 'border-amber-200 bg-amber-50/80 hover:border-amber-300'
-                                        : 'border-blue-100 bg-white hover:border-blue-200'
-                                      : 'border-slate-200 bg-slate-50 hover:border-slate-300'
-                                }`}
-                              >
-                                <div className="flex items-center justify-between gap-2">
-                                  <span
-                                    className={`rounded-full px-2.5 py-1 text-[11px] font-semibold ${
-                                      isSeat
-                                        ? 'bg-blue-100 text-blue-700'
-                                        : 'bg-slate-200 text-slate-700'
-                                    }`}
-                                  >
-                                    {isSeat ? cell.seatLabel || getSeatLabel(cell.rowIndex, cell.columnIndex) : 'LORONG'}
-                                  </span>
-                                  <span className="text-[11px] font-medium text-gray-400">
-                                    {cell.rowIndex + 1}-{cell.columnIndex + 1}
-                                  </span>
-                                </div>
-
-                                <div className="mt-4">
-                                  <div className="text-sm font-semibold text-gray-900">
-                                    {isSeat ? currentStudent?.name || 'Belum ditempatkan' : 'Ruang kosong / lorong'}
-                                  </div>
-                                  <div className="mt-2 text-xs text-gray-500">
-                                    {isSeat
-                                      ? currentStudent
-                                        ? formatStudentMeta(currentStudent)
-                                        : 'Pilih siswa dari panel editor di bawah.'
-                                      : 'Gunakan untuk jalur pengawas atau jarak antar kursi.'}
-                                  </div>
-                                </div>
-                              </button>
-                            );
-                          })}
-                        </div>
-                      ))}
-                    </div>
-                  </div>
+              ) : !draft ? (
+                <div className="rounded-xl border border-dashed border-blue-200 bg-white p-10 text-center shadow-sm">
+                  <Sparkles className="mx-auto h-10 w-10 text-blue-600" />
+                  <h3 className="mt-4 text-lg font-semibold text-gray-900">Denah Belum Dibuat</h3>
+                  <p className="mt-2 text-sm text-gray-500">
+                    Setup denah melalui popup agar jumlah baris, kolom, dan catatan awal tetap rapi sebelum editor dibuka penuh.
+                  </p>
+                  <button
+                    type="button"
+                    onClick={() => setIsGenerateModalOpen(true)}
+                    className="mt-5 inline-flex items-center justify-center rounded-lg bg-blue-600 px-4 py-2 text-sm font-semibold text-white hover:bg-blue-700"
+                  >
+                    <Sparkles className="mr-2 h-4 w-4" />
+                    Setup Denah
+                  </button>
                 </div>
-
-                {selectedCell ? (
-                  <div className="rounded-xl border border-gray-100 bg-white p-5 shadow-sm">
-                    <div className="flex flex-col gap-2 lg:flex-row lg:items-start lg:justify-between">
+              ) : (
+                <div className="space-y-4">
+                  <div
+                    className={`rounded-xl border px-4 py-3 text-sm shadow-sm ${
+                      unassignedStudents.length > 0
+                        ? 'border-amber-200 bg-amber-50 text-amber-800'
+                        : 'border-emerald-200 bg-emerald-50 text-emerald-800'
+                    }`}
+                  >
+                    <div className="flex items-start gap-3">
+                      {unassignedStudents.length > 0 ? (
+                        <AlertTriangle className="mt-0.5 h-4 w-4 shrink-0" />
+                      ) : (
+                        <CheckCircle2 className="mt-0.5 h-4 w-4 shrink-0" />
+                      )}
                       <div>
-                        <h3 className="text-lg font-semibold text-gray-900">
-                          Editor Sel {getSeatLabel(selectedCell.rowIndex, selectedCell.columnIndex)}
-                        </h3>
-                        <p className="mt-1 text-sm text-gray-500">
-                          Perubahan dilakukan di panel ini agar grid tetap bersih dan mudah dibaca.
-                        </p>
-                      </div>
-                      <div className="rounded-full bg-gray-100 px-3 py-1 text-xs font-semibold text-gray-600">
-                        Posisi {selectedCell.rowIndex + 1}-{selectedCell.columnIndex + 1}
+                        <div className="font-semibold">
+                          {unassignedStudents.length > 0
+                            ? `${unassignedStudents.length} siswa belum ditempatkan`
+                            : 'Semua siswa sudah mendapat kursi'}
+                        </div>
+                        <div className="mt-1 text-xs">
+                          {unassignedStudents.length > 0
+                            ? `Kursi yang belum terisi diberi penanda warna amber. ${missingStudentsPreview}`
+                            : 'Denah siap dipakai untuk kartu ujian dan penempatan ruang.'}
+                        </div>
                       </div>
                     </div>
+                  </div>
 
-                    <div className="mt-4 grid gap-4 xl:grid-cols-[220px_minmax(0,1fr)]">
-                      <div className="space-y-3">
-                        <div>
-                          <label className="mb-1 block text-xs font-semibold uppercase tracking-wide text-gray-500">
-                            Jenis Sel
-                          </label>
-                          <div className="grid grid-cols-2 gap-2">
-                            {(['SEAT', 'AISLE'] as LayoutCellType[]).map((type) => {
-                              const active = selectedCell.cellType === type;
+                  <div className="rounded-xl border border-gray-100 bg-white shadow-sm">
+                    <div className="border-b border-gray-100 px-5 py-4">
+                      <h3 className="text-lg font-semibold text-gray-900">Editor Denah</h3>
+                      <p className="mt-1 text-sm text-gray-500">
+                        Klik satu kursi untuk mengubah jenis sel, label kursi, dan penempatan siswa. Editor ini hanya muncul saat Anda membuka denah.
+                      </p>
+                    </div>
+
+                    <div className="overflow-x-auto px-5 py-5">
+                      <div className="inline-flex min-w-full flex-col gap-3">
+                        {gridRows.map((row, rowIndex) => (
+                          <div key={`row-${rowIndex}`} className="flex gap-3">
+                            {row.map((cell) => {
+                              const currentStudent =
+                                detail?.students.find((student) => student.id === cell.studentId) || null;
+                              const isSelected =
+                                buildPositionKey(cell.rowIndex, cell.columnIndex) === selectedCellKey;
+                              const isSeat = cell.cellType === 'SEAT';
+                              const isEmptySeat = isSeat && !currentStudent;
+
                               return (
                                 <button
-                                  key={type}
+                                  key={`${cell.rowIndex}-${cell.columnIndex}`}
                                   type="button"
-                                  onClick={() =>
-                                    updateDraftCell(selectedCell.rowIndex, selectedCell.columnIndex, (cell) =>
-                                      type === 'AISLE'
-                                        ? { ...cell, cellType: 'AISLE', seatLabel: '', studentId: null }
-                                        : {
-                                            ...cell,
-                                            cellType: 'SEAT',
-                                            seatLabel:
-                                              cell.seatLabel ||
-                                              getSeatLabel(selectedCell.rowIndex, selectedCell.columnIndex),
-                                          },
-                                    )
-                                  }
-                                  className={`rounded-lg border px-3 py-2 text-sm font-semibold ${
-                                    active
-                                      ? 'border-blue-500 bg-blue-50 text-blue-700'
-                                      : 'border-gray-300 bg-white text-gray-600 hover:bg-gray-50'
+                                  onClick={() => setSelectedCellKey(buildPositionKey(cell.rowIndex, cell.columnIndex))}
+                                  className={`min-h-[132px] w-[168px] rounded-2xl border p-4 text-left transition-all ${
+                                    isSelected
+                                      ? 'border-blue-500 bg-blue-50 shadow-sm'
+                                      : isSeat
+                                        ? isEmptySeat
+                                          ? 'border-amber-200 bg-amber-50/80 hover:border-amber-300'
+                                          : 'border-blue-100 bg-white hover:border-blue-200'
+                                        : 'border-slate-200 bg-slate-50 hover:border-slate-300'
                                   }`}
                                 >
-                                  {type === 'SEAT' ? 'Kursi' : 'Lorong'}
+                                  <div className="flex items-center justify-between gap-2">
+                                    <span
+                                      className={`rounded-full px-2.5 py-1 text-[11px] font-semibold ${
+                                        isSeat ? 'bg-blue-100 text-blue-700' : 'bg-slate-200 text-slate-700'
+                                      }`}
+                                    >
+                                      {isSeat ? cell.seatLabel || getSeatLabel(cell.rowIndex, cell.columnIndex) : 'LORONG'}
+                                    </span>
+                                    <span className="text-[11px] font-medium text-gray-400">
+                                      {cell.rowIndex + 1}-{cell.columnIndex + 1}
+                                    </span>
+                                  </div>
+
+                                  <div className="mt-4">
+                                    <div className="text-sm font-semibold text-gray-900">
+                                      {isSeat ? currentStudent?.name || 'Belum ditempatkan' : 'Ruang kosong / lorong'}
+                                    </div>
+                                    <div className="mt-2 text-xs text-gray-500">
+                                      {isSeat
+                                        ? currentStudent
+                                          ? formatStudentMeta(currentStudent)
+                                          : 'Pilih siswa dari panel editor di bawah.'
+                                        : 'Gunakan untuk jalur pengawas atau jarak antar kursi.'}
+                                    </div>
+                                  </div>
                                 </button>
                               );
                             })}
                           </div>
-                        </div>
-
-                        {selectedCell.cellType === 'SEAT' ? (
-                          <div>
-                            <label className="mb-1 block text-xs font-semibold uppercase tracking-wide text-gray-500">
-                              Label Kursi
-                            </label>
-                            <input
-                              type="text"
-                              value={selectedCell.seatLabel}
-                              onChange={(event) =>
-                                updateDraftCell(selectedCell.rowIndex, selectedCell.columnIndex, (cell) => ({
-                                  ...cell,
-                                  seatLabel: event.target.value,
-                                }))
-                              }
-                              className="w-full rounded-lg border border-gray-300 px-3 py-2 text-sm focus:border-blue-500 focus:outline-none"
-                              placeholder={getSeatLabel(selectedCell.rowIndex, selectedCell.columnIndex)}
-                            />
-                          </div>
-                        ) : null}
-                      </div>
-
-                      <div className="space-y-4">
-                        {selectedCell.cellType === 'SEAT' ? (
-                          <div className="grid gap-4 lg:grid-cols-[minmax(0,1fr)_260px]">
-                            <div>
-                              <label className="mb-1 block text-xs font-semibold uppercase tracking-wide text-gray-500">
-                                Siswa
-                              </label>
-                              <select
-                                value={selectedCell.studentId || ''}
-                                onChange={(event) =>
-                                  updateDraftCell(selectedCell.rowIndex, selectedCell.columnIndex, (cell) => ({
-                                    ...cell,
-                                    studentId: event.target.value ? Number(event.target.value) : null,
-                                  }))
-                                }
-                                className="w-full rounded-lg border border-gray-300 px-3 py-2 text-sm focus:border-blue-500 focus:outline-none"
-                              >
-                                <option value="">Belum dipasang</option>
-                                {(detail?.students || []).map((student) => {
-                                  const isUsedByOtherSeat =
-                                    assignedStudentIds.has(student.id) && student.id !== selectedCell.studentId;
-                                  return (
-                                    <option
-                                      key={student.id}
-                                      value={student.id}
-                                      disabled={isUsedByOtherSeat}
-                                    >
-                                      {[student.className, student.name].filter(Boolean).join(' • ')}
-                                    </option>
-                                  );
-                                })}
-                              </select>
-                              <p className="mt-2 text-xs text-gray-500">
-                                {unassignedStudents.length > 0
-                                  ? `${unassignedStudents.length} siswa belum ditempatkan.`
-                                  : 'Semua siswa sudah ditempatkan.'}
-                              </p>
-                            </div>
-
-                            <div className="rounded-xl border border-gray-200 bg-gray-50 px-4 py-3 text-sm text-gray-600">
-                              {selectedCell.studentId ? (
-                                (() => {
-                                  const currentStudent =
-                                    detail?.students.find((student) => student.id === selectedCell.studentId) || null;
-                                  return currentStudent ? (
-                                    <>
-                                      <div className="font-semibold text-gray-900">{currentStudent.name}</div>
-                                      <div className="mt-1 text-xs">{formatStudentMeta(currentStudent)}</div>
-                                    </>
-                                  ) : (
-                                    <div>Siswa tidak ditemukan.</div>
-                                  );
-                                })()
-                              ) : (
-                                <div>Kursi ini belum ditempati siswa.</div>
-                              )}
-                            </div>
-                          </div>
-                        ) : null}
-
-                        <div>
-                          <label className="mb-1 block text-xs font-semibold uppercase tracking-wide text-gray-500">
-                            Catatan Sel
-                          </label>
-                          <textarea
-                            value={selectedCell.notes}
-                            onChange={(event) =>
-                              updateDraftCell(selectedCell.rowIndex, selectedCell.columnIndex, (cell) => ({
-                                ...cell,
-                                notes: event.target.value,
-                              }))
-                            }
-                            rows={3}
-                            className="w-full rounded-lg border border-gray-300 px-3 py-2 text-sm focus:border-blue-500 focus:outline-none"
-                            placeholder="Contoh: kursi cadangan, lorong pengawas, atau catatan khusus."
-                          />
-                        </div>
-
-                        <div>
-                          <label className="mb-1 block text-xs font-semibold uppercase tracking-wide text-gray-500">
-                            Catatan Denah
-                          </label>
-                          <textarea
-                            value={draft.notes}
-                            onChange={(event) =>
-                              setDraft((current) =>
-                                current ? { ...current, notes: event.target.value } : current,
-                              )
-                            }
-                            rows={3}
-                            className="w-full rounded-lg border border-gray-300 px-3 py-2 text-sm focus:border-blue-500 focus:outline-none"
-                            placeholder="Tambahkan catatan umum untuk pengawas atau pelaksanaan di ruang ini."
-                          />
-                        </div>
+                        ))}
                       </div>
                     </div>
                   </div>
-                ) : null}
-              </>
-            )}
+
+                  {selectedCell ? (
+                    <div className="rounded-xl border border-gray-100 bg-white p-5 shadow-sm">
+                      <div className="flex flex-col gap-2 lg:flex-row lg:items-start lg:justify-between">
+                        <div>
+                          <h3 className="text-lg font-semibold text-gray-900">
+                            Editor Sel {getSeatLabel(selectedCell.rowIndex, selectedCell.columnIndex)}
+                          </h3>
+                          <p className="mt-1 text-sm text-gray-500">
+                            Perubahan dilakukan di panel ini agar grid tetap bersih dan mudah dibaca.
+                          </p>
+                        </div>
+                        <div className="rounded-full bg-gray-100 px-3 py-1 text-xs font-semibold text-gray-600">
+                          Posisi {selectedCell.rowIndex + 1}-{selectedCell.columnIndex + 1}
+                        </div>
+                      </div>
+
+                      <div className="mt-4 grid gap-4 xl:grid-cols-[220px_minmax(0,1fr)]">
+                        <div className="space-y-3">
+                          <div>
+                            <label className="mb-1 block text-xs font-semibold uppercase tracking-wide text-gray-500">
+                              Jenis Sel
+                            </label>
+                            <div className="grid grid-cols-2 gap-2">
+                              {(['SEAT', 'AISLE'] as LayoutCellType[]).map((type) => {
+                                const active = selectedCell.cellType === type;
+                                return (
+                                  <button
+                                    key={type}
+                                    type="button"
+                                    onClick={() =>
+                                      updateDraftCell(selectedCell.rowIndex, selectedCell.columnIndex, (cell) =>
+                                        type === 'AISLE'
+                                          ? { ...cell, cellType: 'AISLE', seatLabel: '', studentId: null }
+                                          : {
+                                              ...cell,
+                                              cellType: 'SEAT',
+                                              seatLabel:
+                                                cell.seatLabel ||
+                                                getSeatLabel(selectedCell.rowIndex, selectedCell.columnIndex),
+                                            },
+                                      )
+                                    }
+                                    className={`rounded-lg border px-3 py-2 text-sm font-semibold ${
+                                      active
+                                        ? 'border-blue-500 bg-blue-50 text-blue-700'
+                                        : 'border-gray-300 bg-white text-gray-600 hover:bg-gray-50'
+                                    }`}
+                                  >
+                                    {type === 'SEAT' ? 'Kursi' : 'Lorong'}
+                                  </button>
+                                );
+                              })}
+                            </div>
+                          </div>
+
+                          {selectedCell.cellType === 'SEAT' ? (
+                            <div>
+                              <label className="mb-1 block text-xs font-semibold uppercase tracking-wide text-gray-500">
+                                Label Kursi
+                              </label>
+                              <input
+                                type="text"
+                                value={selectedCell.seatLabel}
+                                onChange={(event) =>
+                                  updateDraftCell(selectedCell.rowIndex, selectedCell.columnIndex, (cell) => ({
+                                    ...cell,
+                                    seatLabel: event.target.value,
+                                  }))
+                                }
+                                className="w-full rounded-lg border border-gray-300 px-3 py-2 text-sm focus:border-blue-500 focus:outline-none"
+                                placeholder={getSeatLabel(selectedCell.rowIndex, selectedCell.columnIndex)}
+                              />
+                            </div>
+                          ) : null}
+                        </div>
+
+                        <div className="space-y-4">
+                          {selectedCell.cellType === 'SEAT' ? (
+                            <div className="grid gap-4 lg:grid-cols-[minmax(0,1fr)_260px]">
+                              <div>
+                                <label className="mb-1 block text-xs font-semibold uppercase tracking-wide text-gray-500">
+                                  Siswa
+                                </label>
+                                <select
+                                  value={selectedCell.studentId || ''}
+                                  onChange={(event) =>
+                                    updateDraftCell(selectedCell.rowIndex, selectedCell.columnIndex, (cell) => ({
+                                      ...cell,
+                                      studentId: event.target.value ? Number(event.target.value) : null,
+                                    }))
+                                  }
+                                  className="w-full rounded-lg border border-gray-300 px-3 py-2 text-sm focus:border-blue-500 focus:outline-none"
+                                >
+                                  <option value="">Belum dipasang</option>
+                                  {(detail?.students || []).map((student) => {
+                                    const isUsedByOtherSeat =
+                                      assignedStudentIds.has(student.id) && student.id !== selectedCell.studentId;
+                                    return (
+                                      <option key={student.id} value={student.id} disabled={isUsedByOtherSeat}>
+                                        {[student.className, student.name].filter(Boolean).join(' • ')}
+                                      </option>
+                                    );
+                                  })}
+                                </select>
+                                <p className="mt-2 text-xs text-gray-500">
+                                  {unassignedStudents.length > 0
+                                    ? `${unassignedStudents.length} siswa belum ditempatkan.`
+                                    : 'Semua siswa sudah ditempatkan.'}
+                                </p>
+                              </div>
+
+                              <div className="rounded-xl border border-gray-200 bg-gray-50 px-4 py-3 text-sm text-gray-600">
+                                {selectedCell.studentId ? (
+                                  (() => {
+                                    const currentStudent =
+                                      detail?.students.find((student) => student.id === selectedCell.studentId) || null;
+                                    return currentStudent ? (
+                                      <>
+                                        <div className="font-semibold text-gray-900">{currentStudent.name}</div>
+                                        <div className="mt-1 text-xs">{formatStudentMeta(currentStudent)}</div>
+                                      </>
+                                    ) : (
+                                      <div>Siswa tidak ditemukan.</div>
+                                    );
+                                  })()
+                                ) : (
+                                  <div>Kursi ini belum ditempati siswa.</div>
+                                )}
+                              </div>
+                            </div>
+                          ) : null}
+
+                          <div>
+                            <label className="mb-1 block text-xs font-semibold uppercase tracking-wide text-gray-500">
+                              Catatan Sel
+                            </label>
+                            <textarea
+                              value={selectedCell.notes}
+                              onChange={(event) =>
+                                updateDraftCell(selectedCell.rowIndex, selectedCell.columnIndex, (cell) => ({
+                                  ...cell,
+                                  notes: event.target.value,
+                                }))
+                              }
+                              rows={3}
+                              className="w-full rounded-lg border border-gray-300 px-3 py-2 text-sm focus:border-blue-500 focus:outline-none"
+                              placeholder="Contoh: kursi cadangan, lorong pengawas, atau catatan khusus."
+                            />
+                          </div>
+
+                          <div>
+                            <label className="mb-1 block text-xs font-semibold uppercase tracking-wide text-gray-500">
+                              Catatan Denah
+                            </label>
+                            <textarea
+                              value={draft.notes}
+                              onChange={(event) =>
+                                setDraft((current) => (current ? { ...current, notes: event.target.value } : current))
+                              }
+                              rows={3}
+                              className="w-full rounded-lg border border-gray-300 px-3 py-2 text-sm focus:border-blue-500 focus:outline-none"
+                              placeholder="Tambahkan catatan umum untuk pengawas atau pelaksanaan di ruang ini."
+                            />
+                          </div>
+                        </div>
+                      </div>
+                    </div>
+                  ) : null}
+                </div>
+              )}
+            </div>
           </div>
-        )}
-      </div>
+        </div>
+      ) : null}
 
       {isGenerateModalOpen && selectedSitting ? (
         <div
@@ -1100,10 +1143,10 @@ export default function ExamRoomLayoutManagementPage() {
               <div className="rounded-xl border border-blue-100 bg-blue-50 p-4 text-sm text-blue-800">
                 <div className="font-semibold">{selectedSitting.roomName}</div>
                 <div className="mt-1">
-                  {formatDateTime(selectedSitting.startTime)} - {formatDateTime(selectedSitting.endTime)}
+                  {formatScheduleSummary(selectedSitting.startTime, selectedSitting.endTime)}
                 </div>
                 <div className="mt-1">
-                  {selectedSitting.examType} • Sesi {selectedSitting.sessionLabel || '-'}
+                  {selectedSitting.examType} • {formatSessionSummary(selectedSitting.sessionLabel)}
                 </div>
               </div>
 
@@ -1124,6 +1167,7 @@ export default function ExamRoomLayoutManagementPage() {
                     }
                     className="w-full rounded-lg border border-gray-300 px-3 py-2 text-sm focus:border-blue-500 focus:outline-none"
                   />
+                  <p className="mt-1 text-xs text-gray-500">Memanjang ke samping</p>
                 </div>
                 <div>
                   <label className="mb-1 block text-xs font-semibold uppercase tracking-wide text-gray-500">
@@ -1141,6 +1185,7 @@ export default function ExamRoomLayoutManagementPage() {
                     }
                     className="w-full rounded-lg border border-gray-300 px-3 py-2 text-sm focus:border-blue-500 focus:outline-none"
                   />
+                  <p className="mt-1 text-xs text-gray-500">Memanjang ke bawah</p>
                 </div>
                 <div>
                   <label className="mb-1 block text-xs font-semibold uppercase tracking-wide text-gray-500">

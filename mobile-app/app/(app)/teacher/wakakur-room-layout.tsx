@@ -75,6 +75,20 @@ function formatStudentMeta(student?: ExamLayoutStudent | null) {
   return [student.className, student.nis || student.nisn].filter(Boolean).join(' • ') || '-';
 }
 
+function formatScheduleSummary(startTime?: string | null, endTime?: string | null) {
+  const startLabel = formatDateTime(startTime);
+  const endLabel = formatDateTime(endTime);
+  if (startLabel === '-' && endLabel === '-') return 'Jadwal belum diatur';
+  if (startLabel === '-' || endLabel === '-') return 'Jadwal belum lengkap';
+  return `${startLabel} - ${endLabel}`;
+}
+
+function formatSessionSummary(sessionLabel?: string | null) {
+  const value = String(sessionLabel || '').trim();
+  if (!value) return 'Sesi belum diatur';
+  return `Sesi ${value}`;
+}
+
 function buildPositionKey(rowIndex: number, columnIndex: number) {
   return `${rowIndex}:${columnIndex}`;
 }
@@ -426,10 +440,12 @@ export default function TeacherWakakurRoomLayoutScreen() {
                     {detailQuery.data.sitting.examType}
                   </Text>
                   <Text style={{ color: BRAND_COLORS.textMuted, marginTop: 4 }}>
-                    {formatDateTime(detailQuery.data.sitting.startTime)} - {formatDateTime(detailQuery.data.sitting.endTime)}
+                    {formatScheduleSummary(detailQuery.data.sitting.startTime, detailQuery.data.sitting.endTime)}
                   </Text>
                   <Text style={{ color: BRAND_COLORS.textMuted, marginTop: 4, fontSize: 12 }}>
-                    Sesi {detailQuery.data.sitting.programSession?.label || detailQuery.data.sitting.sessionLabel || '-'}
+                    {formatSessionSummary(
+                      detailQuery.data.sitting.programSession?.label || detailQuery.data.sitting.sessionLabel,
+                    )}
                   </Text>
                 </View>
 
@@ -936,11 +952,13 @@ export default function TeacherWakakurRoomLayoutScreen() {
                 {detailQuery.data.sitting.roomName}
               </Text>
               <Text style={{ color: '#1e40af', marginTop: 4, fontSize: 12 }}>
-                {formatDateTime(detailQuery.data.sitting.startTime)} - {formatDateTime(detailQuery.data.sitting.endTime)}
+                {formatScheduleSummary(detailQuery.data.sitting.startTime, detailQuery.data.sitting.endTime)}
               </Text>
               <Text style={{ color: '#1e40af', marginTop: 4, fontSize: 12 }}>
-                {detailQuery.data.sitting.examType} • Sesi{' '}
-                {detailQuery.data.sitting.programSession?.label || detailQuery.data.sitting.sessionLabel || '-'}
+                {detailQuery.data.sitting.examType} •{' '}
+                {formatSessionSummary(
+                  detailQuery.data.sitting.programSession?.label || detailQuery.data.sitting.sessionLabel,
+                )}
               </Text>
             </View>
 
@@ -961,6 +979,9 @@ export default function TeacherWakakurRoomLayoutScreen() {
                     color: BRAND_COLORS.textDark,
                   }}
                 />
+                <Text style={{ color: BRAND_COLORS.textMuted, marginTop: 6, fontSize: 11 }}>
+                  Memanjang ke samping
+                </Text>
               </View>
               <View style={{ flex: 1 }}>
                 <Text style={{ fontSize: 12, color: '#64748b', marginBottom: 6 }}>Kolom</Text>
@@ -978,6 +999,9 @@ export default function TeacherWakakurRoomLayoutScreen() {
                     color: BRAND_COLORS.textDark,
                   }}
                 />
+                <Text style={{ color: BRAND_COLORS.textMuted, marginTop: 6, fontSize: 11 }}>
+                  Memanjang ke bawah
+                </Text>
               </View>
             </View>
 

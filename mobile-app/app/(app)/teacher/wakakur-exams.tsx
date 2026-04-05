@@ -312,6 +312,20 @@ function formatDateTime(value?: string | null) {
   });
 }
 
+function formatScheduleSummary(startTime?: string | null, endTime?: string | null) {
+  const startLabel = formatDateTime(startTime);
+  const endLabel = formatDateTime(endTime);
+  if (startLabel === '-' && endLabel === '-') return 'Jadwal belum diatur';
+  if (startLabel === '-' || endLabel === '-') return 'Jadwal belum lengkap';
+  return `${startLabel} - ${endLabel}`;
+}
+
+function formatSessionSummary(sessionLabel?: string | null) {
+  const value = String(sessionLabel || '').trim();
+  if (!value) return 'Sesi belum diatur';
+  return `Sesi ${value}`;
+}
+
 function toInputDateValue(value?: string | null) {
   if (!value) return '';
   const parsed = new Date(value);
@@ -3208,10 +3222,10 @@ export default function TeacherWakakurExamsScreen() {
                               {sitting.roomName || '-'}
                             </Text>
                             <Text style={{ color: BRAND_COLORS.textMuted, marginTop: 3, fontSize: 12 }}>
-                              {formatDateTime(String(sitting.startTime || ''))} - {formatDateTime(String(sitting.endTime || ''))}
+                              {formatScheduleSummary(sitting.startTime, sitting.endTime)}
                             </Text>
                             <Text style={{ color: BRAND_COLORS.textMuted, marginTop: 3, fontSize: 12 }}>
-                              {examTypeLabel(normalizeProgramCode(sitting.examType))} • Sesi {sitting.sessionLabel || '-'}
+                              {examTypeLabel(normalizeProgramCode(sitting.examType))} • {formatSessionSummary(sitting.sessionLabel)}
                             </Text>
                           </View>
                           <View
@@ -3302,7 +3316,7 @@ export default function TeacherWakakurExamsScreen() {
                           }}
                         >
                           <Text style={{ color: '#1d4ed8', fontWeight: '700', fontSize: 12 }}>
-                            {hasLayout ? 'Buka Editor Denah' : 'Setup Denah Ruang'}
+                            {hasLayout ? 'Lihat Denah' : 'Setup Denah'}
                           </Text>
                         </Pressable>
                       </View>
