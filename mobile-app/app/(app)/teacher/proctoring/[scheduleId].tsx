@@ -56,6 +56,10 @@ function formatDateTime(value: string | null | undefined) {
   });
 }
 
+function mergeProctorReportNotes(notes?: string | null, incident?: string | null) {
+  return [String(notes || '').trim(), String(incident || '').trim()].filter(Boolean).join('\n\n');
+}
+
 export default function TeacherProctoringDetailScreen() {
   const router = useRouter();
   const insets = useSafeAreaInsets();
@@ -65,7 +69,6 @@ export default function TeacherProctoringDetailScreen() {
   const pagePadding = getStandardPagePadding(insets, { bottom: 120 });
 
   const [notes, setNotes] = useState('');
-  const [incident, setIncident] = useState('');
 
   const detailQuery = useQuery({
     queryKey: ['mobile-proctoring-detail', parsedScheduleId],
@@ -81,7 +84,7 @@ export default function TeacherProctoringDetailScreen() {
       const absentCount = Math.max(0, students.length - presentCount);
       await proctoringApi.submitReport(parsedScheduleId, {
         notes: notes.trim(),
-        incident: incident.trim(),
+        incident: '',
         studentCountPresent: presentCount,
         studentCountAbsent: absentCount,
       });
@@ -113,9 +116,30 @@ export default function TeacherProctoringDetailScreen() {
 
   useEffect(() => {
     if (!latestReport?.id) return;
-    setNotes(String(latestReport.notes || ''));
-    setIncident(String(latestReport.incident || ''));
+    setNotes(mergeProctorReportNotes(latestReport.notes, latestReport.incident));
   }, [latestReport?.id, latestReport?.notes, latestReport?.incident]);
+
+  const previewTitle =
+    detailQuery.data?.schedule?.displayTitle ||
+    detailQuery.data?.schedule?.packet?.title ||
+    `Ujian ${detailQuery.data?.schedule?.subjectName || detailQuery.data?.schedule?.packet?.subject?.name || '-'}`;
+  const previewDate = new Date(String(detailQuery.data?.schedule?.startTime || ''));
+  const previewDateLabel = Number.isNaN(previewDate.getTime())
+    ? '-'
+    : previewDate.toLocaleDateString('id-ID', {
+        weekday: 'long',
+        day: 'numeric',
+        month: 'long',
+        year: 'numeric',
+      });
+  const previewTimeLabel =
+    `${formatTime(detailQuery.data?.schedule?.startTime)} - ${formatTime(detailQuery.data?.schedule?.endTime)} WIB`;
+  const previewNarrative =
+    `Pada hari ini, ${previewDateLabel} telah dilaksanakan ${previewTitle} mulai pukul ${formatTime(
+      detailQuery.data?.schedule?.startTime,
+    )} sampai dengan pukul ${formatTime(detailQuery.data?.schedule?.endTime)} di ruang ${
+      detailQuery.data?.schedule?.room || 'Belum ditentukan'
+    }.`;
 
   if (isLoading) return <AppLoadingScreen message="Memuat monitoring ujian..." />;
   if (!isAuthenticated) return <Redirect href="/welcome" />;
@@ -169,7 +193,7 @@ export default function TeacherProctoringDetailScreen() {
         </Pressable>
         <View style={{ flex: 1 }}>
           <Text style={{ fontSize: 24, fontWeight: '700', color: BRAND_COLORS.textDark }}>Monitoring Ujian</Text>
-          <Text style={{ color: BRAND_COLORS.textMuted }}>Pantau status peserta dan simpan berita acara.</Text>
+          <Text style={{ color: BRAND_COLORS.textMuted }}>Pantau status peserta dan siapkan berita acara untuk Kurikulum.</Text>
         </View>
       </View>
 
@@ -321,36 +345,18 @@ export default function TeacherProctoringDetailScreen() {
             <TextInput
               value={notes}
               onChangeText={setNotes}
-              placeholder="Catatan pelaksanaan ujian"
+              placeholder="Catatan Pengawas selama Ujian berlangsung"
               style={{
                 borderWidth: 1,
                 borderColor: '#cbd5e1',
-                borderRadius: 10,
-                paddingHorizontal: 10,
-                paddingVertical: 10,
-                minHeight: 86,
+                borderRadius: 14,
+                paddingHorizontal: 14,
+                paddingVertical: 14,
+                minHeight: 128,
                 textAlignVertical: 'top',
                 marginBottom: 8,
                 color: '#0f172a',
-              }}
-              placeholderTextColor="#94a3b8"
-              multiline
-              editable={!reportSubmitted}
-            />
-            <TextInput
-              value={incident}
-              onChangeText={setIncident}
-              placeholder="Kejadian khusus (opsional)"
-              style={{
-                borderWidth: 1,
-                borderColor: '#cbd5e1',
-                borderRadius: 10,
-                paddingHorizontal: 10,
-                paddingVertical: 10,
-                minHeight: 70,
-                textAlignVertical: 'top',
-                marginBottom: 8,
-                color: '#0f172a',
+                lineHeight: 22,
               }}
               placeholderTextColor="#94a3b8"
               multiline
@@ -394,6 +400,86 @@ export default function TeacherProctoringDetailScreen() {
                 </Text>
               </View>
             )}
+            <View
+              style={{
+                borderWidth: 1,
+                borderColor: '#cbd5e1',
+                borderRadius: 14,
+                padding: 12,
+                backgroundColor: '#f8fafc',
+                marginBottom: 8,
+              }}
+            >
+              <View style={{ flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center' }}>
+                <View style={{ flex: 1, paddingRight: 8 }}>
+                  <Text style={{ color: BRAND_COLORS.textDark, fontWeight: '700' }}>Pratinjau Berita Acara</Text>
+                  <Text style={{ color: '#64748b', fontSize: 12, marginTop: 2 }}>
+                    Tinjau isi dokumen resmi sebelum dikirim ke Kurikulum.
+                  </Text>
+                </View>
+                <View
+                  style={{
+                    borderWidth: 1,
+                    borderColor: '#cbd5e1',
+                    borderRadius: 999,
+                    paddingHorizontal: 10,
+                    paddingVertical: 4,
+                    backgroundColor: '#fff',
+                  }}
+                >
+                  <Text style={{ color: '#475569', fontSize: 11, fontWeight: '700' }}>DRAFT</Text>
+                </View>
+              </View>
+              <View
+                style={{
+                  borderWidth: 1,
+                  borderColor: '#cbd5e1',
+                  borderRadius: 12,
+                  padding: 12,
+                  backgroundColor: '#fff',
+                  marginTop: 10,
+                }}
+              >
+                <Text style={{ color: BRAND_COLORS.textDark, textAlign: 'center', fontSize: 18, fontWeight: '800' }}>
+                  BERITA ACARA
+                </Text>
+                <Text style={{ color: BRAND_COLORS.textDark, textAlign: 'center', fontSize: 13, fontWeight: '700', marginTop: 4 }}>
+                  {previewTitle}
+                </Text>
+                <Text style={{ color: BRAND_COLORS.textDark, textAlign: 'center', fontSize: 13, fontWeight: '700', marginTop: 2 }}>
+                  SMKS KARYA GUNA BHAKTI 2
+                </Text>
+                <View style={{ borderTopWidth: 1, borderTopColor: '#0f172a', marginTop: 12 }} />
+                <View style={{ borderTopWidth: 2, borderTopColor: '#0f172a', marginTop: 4 }} />
+                <Text style={{ color: '#0f172a', fontSize: 13, lineHeight: 22, marginTop: 12 }}>
+                  {previewNarrative}
+                </Text>
+                <View style={{ marginTop: 12, gap: 6 }}>
+                  <Text style={{ color: '#0f172a', fontSize: 13 }}>Jumlah Peserta Seharusnya: {students.length}</Text>
+                  <Text style={{ color: '#0f172a', fontSize: 13 }}>Jumlah Peserta yang tidak hadir: {absentCount}</Text>
+                  <Text style={{ color: '#0f172a', fontSize: 13 }}>Jumlah Peserta yang hadir: {presentCount}</Text>
+                  <Text style={{ color: '#0f172a', fontSize: 13, marginTop: 8, fontWeight: '700' }}>
+                    Catatan Pengawas selama Ujian berlangsung.
+                  </Text>
+                  <View
+                    style={{
+                      minHeight: 110,
+                      borderWidth: 1,
+                      borderColor: '#cbd5e1',
+                      borderRadius: 12,
+                      paddingHorizontal: 12,
+                      paddingVertical: 12,
+                      backgroundColor: '#f8fafc',
+                    }}
+                  >
+                    <Text style={{ color: '#0f172a', fontSize: 13, lineHeight: 22 }}>
+                      {notes.trim() || 'Catatan pengawas belum diisi.'}
+                    </Text>
+                  </View>
+                  <Text style={{ color: '#64748b', fontSize: 12 }}>Waktu pelaksanaan: {previewTimeLabel}</Text>
+                </View>
+              </View>
+            </View>
             <Pressable
               onPress={() => {
                 Alert.alert('Konfirmasi', 'Kirim berita acara ujian ini ke Kurikulum?', [

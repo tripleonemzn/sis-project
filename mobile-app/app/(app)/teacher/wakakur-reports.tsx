@@ -17,6 +17,7 @@ import { MobileSelectField } from '../../../src/components/MobileSelectField';
 import { MobileSummaryCard } from '../../../src/components/MobileSummaryCard';
 import { QueryStateView } from '../../../src/components/QueryStateView';
 import { BRAND_COLORS } from '../../../src/config/brand';
+import { ENV } from '../../../src/config/env';
 import { academicYearApi } from '../../../src/features/academicYear/academicYearApi';
 import { adminApi } from '../../../src/features/admin/adminApi';
 import { useAuth } from '../../../src/features/auth/AuthProvider';
@@ -58,6 +59,10 @@ async function openExternalUrl(url: string) {
     return;
   }
   await Linking.openURL(url);
+}
+
+function getWebBaseUrl() {
+  return ENV.API_BASE_URL.replace(/\/api\/?$/, '');
 }
 
 function SummaryMetric({
@@ -569,24 +574,64 @@ export default function TeacherWakakurReportsScreen() {
                         <Text style={{ color: '#64748b', fontSize: 12, marginTop: 2 }}>
                           Pengawas: {row.report?.proctor?.name || '-'}
                         </Text>
-                        {row.report?.verificationUrl ? (
-                          <Pressable
-                            onPress={() => {
-                              void openExternalUrl(row.report?.verificationUrl || '');
-                            }}
-                            style={{
-                              marginTop: 10,
-                              borderWidth: 1,
-                              borderColor: '#bfdbfe',
-                              borderRadius: 10,
-                              paddingVertical: 10,
-                              alignItems: 'center',
-                              backgroundColor: '#eff6ff',
-                            }}
-                          >
-                            <Text style={{ color: '#1d4ed8', fontWeight: '700' }}>Verifikasi Dokumen</Text>
-                          </Pressable>
-                        ) : null}
+                        <View style={{ flexDirection: 'row', flexWrap: 'wrap', gap: 8, marginTop: 10 }}>
+                          {row.report?.id ? (
+                            <Pressable
+                              onPress={() => {
+                                void openExternalUrl(`${getWebBaseUrl()}/print/proctor-report/${row.report?.id}`);
+                              }}
+                              style={{
+                                flex: 1,
+                                minWidth: 120,
+                                borderWidth: 1,
+                                borderColor: '#bfdbfe',
+                                borderRadius: 10,
+                                paddingVertical: 10,
+                                alignItems: 'center',
+                                backgroundColor: '#eff6ff',
+                              }}
+                            >
+                              <Text style={{ color: '#1d4ed8', fontWeight: '700' }}>Lihat Dokumen</Text>
+                            </Pressable>
+                          ) : null}
+                          {row.report?.id ? (
+                            <Pressable
+                              onPress={() => {
+                                void openExternalUrl(`${getWebBaseUrl()}/print/proctor-report/${row.report?.id}?autoprint=1`);
+                              }}
+                              style={{
+                                flex: 1,
+                                minWidth: 120,
+                                borderWidth: 1,
+                                borderColor: '#86efac',
+                                borderRadius: 10,
+                                paddingVertical: 10,
+                                alignItems: 'center',
+                                backgroundColor: '#ecfdf5',
+                              }}
+                            >
+                              <Text style={{ color: '#15803d', fontWeight: '700' }}>Print</Text>
+                            </Pressable>
+                          ) : null}
+                          {row.report?.verificationUrl ? (
+                            <Pressable
+                              onPress={() => {
+                                void openExternalUrl(row.report?.verificationUrl || '');
+                              }}
+                              style={{
+                                width: '100%',
+                                borderWidth: 1,
+                                borderColor: '#cbd5e1',
+                                borderRadius: 10,
+                                paddingVertical: 10,
+                                alignItems: 'center',
+                                backgroundColor: '#fff',
+                              }}
+                            >
+                              <Text style={{ color: '#475569', fontWeight: '700' }}>Verifikasi Dokumen</Text>
+                            </Pressable>
+                          ) : null}
+                        </View>
                       </View>
                     ))}
                   </View>

@@ -15,7 +15,7 @@ import {
 } from '../utils/examManagementAccess';
 
 const SCHOOL_NAME = 'SMKS Karya Guna Bhakti 2';
-const SCHOOL_LOGO_PATH = '/logo_sis_kgb2.png';
+const SCHOOL_LOGO_PATH = '/logo-kgb2.png';
 
 function countAnsweredEntries(rawAnswers: unknown): number {
     if (!rawAnswers || typeof rawAnswers !== 'object' || Array.isArray(rawAnswers)) return 0;
@@ -213,6 +213,21 @@ function resolvePublicAppBaseUrl(req: Request): string {
 function normalizeOptionalText(value: unknown): string | null {
     const normalized = String(value || '').replace(/\s+/g, ' ').trim();
     return normalized || null;
+}
+
+function normalizeMultilineText(value: unknown): string | null {
+    const normalized = String(value || '')
+        .split(/\r?\n/)
+        .map((line) => line.trim())
+        .filter(Boolean)
+        .join('\n');
+    return normalized || null;
+}
+
+function composeProctorReportNotes(notes: unknown, incident: unknown): string | null {
+    const noteParts = [normalizeMultilineText(notes), normalizeMultilineText(incident)].filter(Boolean) as string[];
+    if (noteParts.length === 0) return null;
+    return noteParts.join('\n\n');
 }
 
 function formatTimeLabel(value: Date | null | undefined): string {
@@ -749,6 +764,158 @@ function collectSittingParticipants(sittings: ProctorRoomSittingRow[]): {
     };
 }
 
+async function resolveRealtimeProctorReportMetrics(scheduleId: number): Promise<{
+    classNames: string[];
+    expectedParticipants: number;
+    presentParticipants: number;
+    absentParticipants: number;
+}> {
+    const scope = await resolveRoomScopeSchedules(scheduleId);
+    if (!scope.baseSchedule || scope.monitoredScheduleIds.length === 0) {
+        return {
+            classNames: [],
+            expectedParticipants: 0,
+            presentParticipants: 0,
+            absentParticipants: 0,
+        };
+    }
+
+    const sittingExamTypeCandidates = resolveExamTypeCandidates(scope.baseSchedule.examType);
+    const [roomStudents, roomSittings] = await Promise.all([
+        scope.monitoredClassIds.length > 0
+            ? listHistoricalProctorStudentsForClasses(scope.monitoredClassIds, scope.baseSchedule.academicYearId)
+            : Promise.resolve([]),
+        scope.baseSchedule.room
+            ? prisma.examSitting.findMany({
+                  where: {
+                      roomName: {
+                          equals: scope.baseSchedule.room,
+                          mode: 'insensitive',
+                      },
+                      ...(scope.baseSchedule.academicYearId
+                          ? { academicYearId: scope.baseSchedule.academicYearId }
+                          : {}),
+                      ...(sittingExamTypeCandidates.length > 0
+                          ? {
+                                examType: {
+                                    in: sittingExamTypeCandidates,
+                                },
+                            }
+                          : {}),
+                  },
+                  select: {
+                      id: true,
+                      roomName: true,
+                      academicYearId: true,
+                      examType: true,
+                      sessionId: true,
+                      sessionLabel: true,
+                      startTime: true,
+                      endTime: true,
+                      students: {
+                          select: {
+                              studentId: true,
+                          },
+                      },
+                  },
+              })
+            : Promise.resolve([]),
+    ]);
+
+    const matchedSittings = filterMatchedSittingsForSlot({
+        sittings: roomSittings as ProctorRoomSittingRow[],
+        roomName: scope.baseSchedule.room,
+        academicYearId: scope.baseSchedule.academicYearId,
+        examType: scope.baseSchedule.examType,
+        startTime: scope.baseSchedule.startTime,
+        endTime: scope.baseSchedule.endTime,
+        sessionId: scope.baseSchedule.sessionId,
+        sessionLabel: scope.baseSchedule.sessionLabel,
+    });
+    const sittingParticipants = collectSittingParticipants(matchedSittings);
+    const sittingParticipantProfiles = await listHistoricalProctorStudentsByIds(
+        Array.from(sittingParticipants.studentIds.values()),
+        scope.baseSchedule.academicYearId,
+    );
+    const sittingParticipantClassNames = collectHistoricalClassNames(sittingParticipantProfiles);
+
+    const expectedStudentIds =
+        sittingParticipants.studentIds.size > 0
+            ? sittingParticipants.studentIds
+            : new Set(roomStudents.map((row) => Number(row.id)).filter((id) => Number.isFinite(id) && id > 0));
+    const expectedParticipants = expectedStudentIds.size;
+
+    const expectedStudentIdList = Array.from(expectedStudentIds.values());
+    const sessionScheduleScope: any = {
+        isActive: true,
+        startTime: scope.baseSchedule.startTime,
+        endTime: scope.baseSchedule.endTime,
+        ...(scope.baseSchedule.academicYearId ? { academicYearId: scope.baseSchedule.academicYearId } : {}),
+        ...(scope.baseSchedule.subjectId ? { subjectId: scope.baseSchedule.subjectId } : {}),
+        ...(sittingExamTypeCandidates.length > 0 ? { examType: { in: sittingExamTypeCandidates } } : {}),
+    };
+    if (scope.baseSchedule.sessionId && Number.isFinite(scope.baseSchedule.sessionId)) {
+        sessionScheduleScope.OR = [{ sessionId: scope.baseSchedule.sessionId }];
+        if (scope.baseSchedule.sessionLabel) {
+            sessionScheduleScope.OR.push({
+                sessionId: null,
+                sessionLabel: scope.baseSchedule.sessionLabel,
+            });
+        }
+    } else {
+        sessionScheduleScope.sessionId = null;
+        sessionScheduleScope.sessionLabel = scope.baseSchedule.sessionLabel ?? null;
+    }
+
+    const roomSessions =
+        expectedStudentIdList.length > 0
+            ? await prisma.studentExamSession.findMany({
+                  where: {
+                      studentId: { in: expectedStudentIdList },
+                      status: {
+                          in: [ExamSessionStatus.IN_PROGRESS, ExamSessionStatus.COMPLETED, ExamSessionStatus.TIMEOUT],
+                      },
+                      schedule: { is: sessionScheduleScope },
+                  },
+                  select: {
+                      studentId: true,
+                  },
+              })
+            : scope.monitoredScheduleIds.length > 0
+                ? await prisma.studentExamSession.findMany({
+                      where: {
+                          scheduleId: { in: scope.monitoredScheduleIds },
+                          status: {
+                              in: [ExamSessionStatus.IN_PROGRESS, ExamSessionStatus.COMPLETED, ExamSessionStatus.TIMEOUT],
+                          },
+                      },
+                      select: {
+                          studentId: true,
+                      },
+                  })
+                : [];
+
+    const presentSet = new Set<number>();
+    roomSessions.forEach((row) => {
+        const studentId = Number(row.studentId);
+        if (!Number.isFinite(studentId) || studentId <= 0) return;
+        if (expectedStudentIds.size > 0 && !expectedStudentIds.has(studentId)) return;
+        presentSet.add(studentId);
+    });
+
+    const presentParticipants = presentSet.size;
+    const absentParticipants = Math.max(0, expectedParticipants - presentParticipants);
+    const classNames =
+        sittingParticipantClassNames.length > 0 ? sittingParticipantClassNames : scope.monitoredClassNames;
+
+    return {
+        classNames,
+        expectedParticipants,
+        presentParticipants,
+        absentParticipants,
+    };
+}
+
 async function resolveExamProgramLabel(academicYearId: number | null | undefined, examType: string | null | undefined) {
     const normalizedExamType = String(examType || '').trim().toUpperCase();
     if (Number.isFinite(Number(academicYearId)) && Number(academicYearId) > 0 && normalizedExamType) {
@@ -844,8 +1011,8 @@ function buildProctorReportSnapshot(params: {
             absentParticipants: Math.max(0, Number(params.absentParticipants || 0)),
             presentParticipants: Math.max(0, Number(params.presentParticipants || 0)),
         },
-        notes: normalizeOptionalText(params.notes),
-        incident: normalizeOptionalText(params.incident),
+        notes: composeProctorReportNotes(params.notes, params.incident),
+        incident: null,
         submittedAt: params.signedAt.toISOString(),
         proctor: {
             id: Number(params.proctorId),
@@ -975,10 +1142,12 @@ async function hydrateProctorReportArtifacts(
         proctorName: params.report.proctor?.name || 'Pengawas',
     });
 
+    const snapshotChanged = JSON.stringify(existingSnapshot || null) !== JSON.stringify(nextSnapshot);
     const shouldPersist =
         !params.report.documentNumber ||
         !params.report.verificationToken ||
-        !existingSnapshot;
+        !existingSnapshot ||
+        snapshotChanged;
 
     if (shouldPersist) {
         await prisma.examProctoringReport.update({
@@ -1853,7 +2022,14 @@ export const getProctoringReportDocument = asyncHandler(async (req: Request, res
         throw new ApiError(403, 'Anda tidak memiliki akses ke dokumen berita acara ini.');
     }
 
-    const artifactBundle = await hydrateProctorReportArtifacts(req, { report });
+    const realtimeMetrics = await resolveRealtimeProctorReportMetrics(report.scheduleId);
+    const artifactBundle = await hydrateProctorReportArtifacts(req, {
+        report,
+        classNames: realtimeMetrics.classNames,
+        expectedParticipants: realtimeMetrics.expectedParticipants,
+        presentParticipants: realtimeMetrics.presentParticipants,
+        absentParticipants: realtimeMetrics.absentParticipants,
+    });
     const verificationQrDataUrl = await QRCode.toDataURL(artifactBundle.snapshot.verification.verificationUrl, {
         width: 128,
         margin: 1,
@@ -1944,7 +2120,14 @@ export const verifyPublicProctorReport = asyncHandler(async (req: Request, res: 
         throw new ApiError(404, 'Dokumen berita acara tidak ditemukan.');
     }
 
-    const artifactBundle = await hydrateProctorReportArtifacts(req, { report });
+    const realtimeMetrics = await resolveRealtimeProctorReportMetrics(report.scheduleId);
+    const artifactBundle = await hydrateProctorReportArtifacts(req, {
+        report,
+        classNames: realtimeMetrics.classNames,
+        expectedParticipants: realtimeMetrics.expectedParticipants,
+        presentParticipants: realtimeMetrics.presentParticipants,
+        absentParticipants: realtimeMetrics.absentParticipants,
+    });
     res.json(
         new ApiResponse(200, {
             valid: true,

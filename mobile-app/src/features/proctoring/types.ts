@@ -39,6 +39,9 @@ export type ProctorScheduleDetail = {
     endTime: string;
     room: string | null;
     token?: string | null;
+    displayTitle?: string;
+    subjectName?: string;
+    classNames?: string[];
     packet: {
       title: string;
       subject: {
@@ -67,7 +70,7 @@ export type ProctorScheduleDetail = {
 
 export type ProctorReportPayload = {
   notes: string;
-  incident: string;
+  incident?: string;
   studentCountPresent: number;
   studentCountAbsent: number;
 };

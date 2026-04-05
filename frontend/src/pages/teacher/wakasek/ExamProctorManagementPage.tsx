@@ -171,6 +171,9 @@ const compareClassName = (a: string, b: string): number =>
     sensitivity: 'base',
   });
 
+const mergeProctorReportNotes = (notes?: string | null, incident?: string | null) =>
+  [String(notes || '').trim(), String(incident || '').trim()].filter(Boolean).join(' ');
+
 // --- Components ---
 
 const SearchableSelect = ({ 
@@ -1406,12 +1409,9 @@ const ExamProctorManagementPage = () => {
                       )}
                     </td>
                     <td className="px-6 py-4 align-top text-sm text-gray-700 max-w-[320px]">
-                      <div className="line-clamp-3">{row.report?.notes || '-'}</div>
-                      {row.report?.incident ? (
-                        <div className="mt-2 text-xs text-amber-700 bg-amber-50 border border-amber-100 rounded px-2 py-1">
-                          Kejadian khusus: {row.report.incident}
-                        </div>
-                      ) : null}
+                      <div className="line-clamp-4 whitespace-pre-wrap leading-6">
+                        {mergeProctorReportNotes(row.report?.notes, row.report?.incident) || '-'}
+                      </div>
                     </td>
                     <td className="px-6 py-4 align-top text-sm text-gray-700">
                       {row.report ? (
