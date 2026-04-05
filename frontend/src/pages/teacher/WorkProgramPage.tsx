@@ -1,7 +1,6 @@
 import { useEffect, useMemo, useState } from 'react';
 import { useSearchParams } from 'react-router-dom';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
-import { academicYearService, type AcademicYear } from '../../services/academicYear.service';
 import { majorService, type Major } from '../../services/major.service';
 import {
   workProgramService,
@@ -49,6 +48,8 @@ import {
   FileText,
 } from 'lucide-react';
 import toast from 'react-hot-toast';
+import { ActiveAcademicYearNotice } from '../../components/ActiveAcademicYearNotice';
+import { useActiveAcademicYear } from '../../hooks/useActiveAcademicYear';
 
 const getErrorMessage = (error: unknown) => {
   if (typeof error === 'object' && error !== null) {
@@ -470,19 +471,9 @@ export const WorkProgramPage = () => {
     return () => clearTimeout(timer);
   }, [search]);
 
-  const {
-    data: academicYearData,
-    isLoading: isLoadingYears,
-  } = useQuery({
-    queryKey: ['academic-years', 'for-work-programs'],
-    queryFn: () => academicYearService.list({ page: 1, limit: 100 }),
-  });
-
-  const academicYears: AcademicYear[] = useMemo(
-    () =>
-      academicYearData?.data?.academicYears || academicYearData?.academicYears || [],
-    [academicYearData],
-  );
+  const { data: activeAcademicYear, isLoading: isLoadingActiveAcademicYear } = useActiveAcademicYear();
+  const activeYearId = Number(activeAcademicYear?.id || activeAcademicYear?.academicYearId || 0) || null;
+  const activeAcademicYearName = String(activeAcademicYear?.name || '').trim();
 
   const { data: majorsData } = useQuery({
     queryKey: ['majors', 'all'],
@@ -495,10 +486,9 @@ export const WorkProgramPage = () => {
   );
 
   const { data: teacherAssignmentsData } = useQuery({
-    queryKey: ['teacher-assignments-major-fallback', user?.id, academicYears],
+    queryKey: ['teacher-assignments-major-fallback', user?.id, activeYearId],
     queryFn: () => {
-      const active = academicYears.find((ay) => ay.isActive);
-      if (!active || !user?.id) {
+      if (!activeYearId || !user?.id) {
         return Promise.resolve({
           data: {
             assignments: [],
@@ -507,12 +497,12 @@ export const WorkProgramPage = () => {
         });
       }
       return teacherAssignmentService.list({
-        academicYearId: active.id,
+        academicYearId: activeYearId,
         teacherId: Number(user.id),
         limit: 100,
       });
     },
-    enabled: !!user?.id && academicYears.length > 0,
+    enabled: !!user?.id && !!activeYearId,
     staleTime: 1000 * 60 * 5,
   });
 
@@ -612,15 +602,6 @@ export const WorkProgramPage = () => {
     return `Program Kerja ${dutyLabel}`;
   }, [selectedDuty, selectedMajor, majors, user]);
 
-  const activeYearId = useMemo(() => {
-    if (!academicYears.length) {
-      return null;
-    }
-    const active = academicYears.find((ay) => ay.isActive);
-    if (active) return active.id;
-    return academicYears[0]?.id ?? null;
-  }, [academicYears]);
-
   const { data: osisWorkProgramReadinessResponse } = useQuery({
     queryKey: ['osis-work-program-readiness', activeYearId, selectedDuty],
     queryFn: () => osisService.getWorkProgramReadiness(activeYearId ? { academicYearId: activeYearId } : undefined),
@@ -633,10 +614,10 @@ export const WorkProgramPage = () => {
     selectedDuty === 'PEMBINA_OSIS' && !osisWorkProgramReadiness?.canCreatePrograms;
 
   const startYear = useMemo(() => {
-    if (!activeYearId || !academicYears.length) return new Date().getFullYear();
-    const ay = academicYears.find((y) => y.id === activeYearId);
-    return ay ? parseInt(ay.name.split('/')[0]) : new Date().getFullYear();
-  }, [activeYearId, academicYears]);
+    if (!activeYearId || !activeAcademicYearName) return new Date().getFullYear();
+    const parsed = parseInt(activeAcademicYearName.split('/')[0], 10);
+    return Number.isFinite(parsed) ? parsed : new Date().getFullYear();
+  }, [activeAcademicYearName, activeYearId]);
 
   const getProgramSchedule = (program: WorkProgram & { month?: number | null; startMonth?: number | null; endMonth?: number | null; startWeek?: number | null; endWeek?: number | null }) => {
     const schedule = new Set<number>();
@@ -1263,7 +1244,7 @@ export const WorkProgramPage = () => {
     );
   };
 
-  const isLoading = isLoadingYears || isLoadingPrograms;
+  const isLoading = isLoadingActiveAcademicYear || isLoadingPrograms;
 
   return (
     <>
@@ -1298,6 +1279,18 @@ export const WorkProgramPage = () => {
           )}
         </div>
       </div>
+
+      <ActiveAcademicYearNotice
+        name={activeAcademicYear?.name}
+        semester={activeAcademicYear?.semester}
+        helperText="Program kerja operasional di halaman ini otomatis mengikuti tahun ajaran aktif yang tampil di header aplikasi."
+      />
+
+      {!isLoadingActiveAcademicYear && !activeYearId ? (
+        <div className="rounded-xl border border-amber-200 bg-amber-50 px-4 py-3 text-sm text-amber-800">
+          Tahun ajaran aktif belum tersedia. Aktifkan tahun ajaran terlebih dahulu agar program kerja tidak ambigu.
+        </div>
+      ) : null}
 
       <div className="bg-white p-4 rounded-xl shadow-sm border border-gray-200">
         {isTutorRole ? (
@@ -1475,20 +1468,9 @@ export const WorkProgramPage = () => {
                     </div>
                     <div className="flex items-center gap-2">
                       <span className="text-sm font-medium text-gray-700">Tahun Ajaran:</span>
-                      <select
-                        className="px-3 py-2 border border-gray-300 rounded-lg bg-white text-sm"
-                        value={activeYearId ?? ''}
-                        onChange={() => {
-                          setPage(1);
-                        }}
-                      >
-                        <option value="">Semua Tahun Ajaran</option>
-                        {academicYears.map((ay) => (
-                          <option key={ay.id} value={ay.id}>
-                            {ay.name} {ay.isActive ? '(Aktif)' : ''}
-                          </option>
-                        ))}
-                      </select>
+                      <div className="px-3 py-2 border border-gray-300 rounded-lg bg-gray-50 text-sm text-gray-700">
+                        {activeAcademicYearName ? `${activeAcademicYearName} (Aktif)` : 'Tahun ajaran aktif belum tersedia'}
+                      </div>
                     </div>
                     <div className="flex items-center gap-2">
                       <span className="text-sm font-medium text-gray-700">Semester:</span>
@@ -2737,9 +2719,7 @@ export const WorkProgramPage = () => {
                   Tahun Ajaran
                 </label>
                 <div className="w-full px-3 py-2 border border-gray-300 rounded-lg bg-gray-100 text-gray-600 text-sm">
-                   {activeYearId 
-                     ? academicYears.find(y => y.id === activeYearId)?.name + ' (Aktif)' 
-                     : 'Tidak ada tahun ajaran aktif'}
+                   {activeAcademicYearName ? `${activeAcademicYearName} (Aktif)` : 'Tidak ada tahun ajaran aktif'}
                 </div>
               </div>
 

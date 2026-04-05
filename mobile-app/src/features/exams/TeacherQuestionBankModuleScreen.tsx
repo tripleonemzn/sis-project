@@ -5,6 +5,7 @@ import { Alert, Pressable, RefreshControl, ScrollView, Text, TextInput, View } f
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { AppLoadingScreen } from '../../components/AppLoadingScreen';
 import { ExamHtmlContent, plainTextFromExamRichText } from '../../components/ExamHtmlContent';
+import { MobileActiveAcademicYearNotice } from '../../components/MobileActiveAcademicYearNotice';
 import { MobileSelectField } from '../../components/MobileSelectField';
 import { QueryStateView } from '../../components/QueryStateView';
 import { BRAND_COLORS } from '../../config/brand';
@@ -59,7 +60,6 @@ export function TeacherQuestionBankModuleScreen() {
   const teacherAssignmentsQuery = useTeacherAssignmentsQuery({ enabled: isAuthenticated, user });
 
   const [subjectId, setSubjectId] = useState('');
-  const [academicYearId, setAcademicYearId] = useState('');
   const [semester, setSemester] = useState('');
   const [type, setType] = useState<'' | AdminExamQuestionType>('');
   const [searchDraft, setSearchDraft] = useState('');
@@ -80,32 +80,12 @@ export function TeacherQuestionBankModuleScreen() {
     return [{ value: '', label: 'Semua Mapel' }, ...Array.from(uniqueSubjects.values())];
   }, [teacherAssignmentsQuery.data?.assignments]);
 
-  const academicYearsQuery = useQuery({
-    queryKey: ['mobile-teacher-question-bank-years', teacherAssignmentsQuery.data?.activeYear?.id],
-    enabled: isAuthenticated && user?.role === 'TEACHER' && !!teacherAssignmentsQuery.data?.activeYear?.id,
-    staleTime: 10 * 60 * 1000,
-    queryFn: async () => {
-      const activeYear = teacherAssignmentsQuery.data?.activeYear;
-      try {
-        const years = await adminApi.listAcademicYears({ page: 1, limit: 100 });
-        if (years.items.length > 0) return years.items;
-      } catch {
-        // Fallback handled below
-      }
-      return activeYear ? [activeYear] : [];
-    },
-  });
-
-  const effectiveAcademicYearId = academicYearId || String(teacherAssignmentsQuery.data?.activeYear?.id || '');
-  const academicYearOptions = useMemo(() => {
-    const items = academicYearsQuery.data || [];
-    if (items.length === 0) return [{ value: '', label: 'Tahun Ajaran Aktif' }];
-    return items.map((year) => ({ value: String(year.id), label: year.name }));
-  }, [academicYearsQuery.data]);
+  const activeAcademicYear = teacherAssignmentsQuery.data?.activeYear;
+  const effectiveAcademicYearId = activeAcademicYear?.id ? String(activeAcademicYear.id) : '';
 
   const questionsQuery = useQuery({
     queryKey: ['mobile-teacher-question-bank', user?.id, page, subjectId, effectiveAcademicYearId, semester, type, search],
-    enabled: isAuthenticated && user?.role === 'TEACHER',
+    enabled: isAuthenticated && user?.role === 'TEACHER' && !!effectiveAcademicYearId,
     queryFn: async () =>
       adminApi.listExamQuestions({
         page,
@@ -157,8 +137,33 @@ export function TeacherQuestionBankModuleScreen() {
     >
       <Text style={{ fontSize: 24, fontWeight: '700', marginBottom: 6, color: '#0f172a' }}>Bank Soal</Text>
       <Text style={{ color: '#64748b', marginBottom: 12 }}>
-        Daftar butir soal mengikuti konsep web: filter mapel, tahun ajaran, semester, tipe, lalu buka pratinjau soal yang sebenarnya.
+        Daftar butir soal mengikuti konsep web: filter mapel, semester, tipe, lalu buka pratinjau soal yang sebenarnya.
       </Text>
+
+      <MobileActiveAcademicYearNotice
+        name={activeAcademicYear?.name}
+        semester={activeAcademicYear?.semester}
+        helperText="Bank soal operasional di halaman ini otomatis mengikuti tahun ajaran aktif yang tampil di header aplikasi."
+      />
+
+      {!teacherAssignmentsQuery.isLoading && !teacherAssignmentsQuery.isError && !effectiveAcademicYearId ? (
+        <View
+          style={{
+            backgroundColor: '#fffbeb',
+            borderWidth: 1,
+            borderColor: '#fde68a',
+            borderRadius: 12,
+            paddingHorizontal: 14,
+            paddingVertical: 12,
+            marginBottom: 12,
+          }}
+        >
+          <Text style={{ color: '#92400e', fontWeight: '700', marginBottom: 4 }}>Tahun ajaran aktif belum tersedia</Text>
+          <Text style={{ color: '#b45309', fontSize: 12 }}>
+            Aktifkan tahun ajaran terlebih dahulu agar bank soal tidak ambigu.
+          </Text>
+        </View>
+      ) : null}
 
       <View style={{ flexDirection: 'row', gap: 8, marginBottom: 12 }}>
         <Pressable
@@ -215,16 +220,6 @@ export function TeacherQuestionBankModuleScreen() {
             setPage(1);
           }}
           placeholder="Pilih mapel"
-        />
-        <MobileSelectField
-          label="Tahun Ajaran"
-          value={effectiveAcademicYearId}
-          options={academicYearOptions}
-          onChange={(next) => {
-            setAcademicYearId(next);
-            setPage(1);
-          }}
-          placeholder="Pilih tahun ajaran"
         />
         <MobileSelectField
           label="Semester"

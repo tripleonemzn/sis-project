@@ -4,6 +4,7 @@ import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { Pressable, RefreshControl, ScrollView, Text, TextInput, View } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { AppLoadingScreen } from '../../../src/components/AppLoadingScreen';
+import { MobileActiveAcademicYearNotice } from '../../../src/components/MobileActiveAcademicYearNotice';
 import { MobileMenuTabBar } from '../../../src/components/MobileMenuTabBar';
 import { MobileSelectField } from '../../../src/components/MobileSelectField';
 import { QueryStateView } from '../../../src/components/QueryStateView';
@@ -127,7 +128,7 @@ export default function TeacherHomeroomAttendanceScreen() {
   const classItems = classesQuery.data || [];
   const effectiveSelectedClassId = selectedClassId ?? classItems[0]?.id ?? null;
   const selectedClass = classItems.find((item) => item.id === effectiveSelectedClassId) || null;
-  const selectedAcademicYearId = selectedClass?.academicYear?.id || activeYearQuery.data?.id || null;
+  const selectedAcademicYearId = activeYearQuery.data?.id || null;
   const classSelectOptions = useMemo(
     () =>
       classItems.map((classItem) => ({
@@ -382,6 +383,31 @@ export default function TeacherHomeroomAttendanceScreen() {
       <Text style={{ color: BRAND_COLORS.textMuted, marginBottom: 12 }}>
         Kelola presensi harian, rekap semester, dan statistik keterlambatan siswa.
       </Text>
+
+      <MobileActiveAcademicYearNotice
+        name={activeYearQuery.data?.name}
+        semester={activeYearQuery.data?.semester}
+        helperText="Presensi wali kelas di halaman ini otomatis mengikuti tahun ajaran aktif yang tampil di header aplikasi."
+      />
+
+      {!activeYearQuery.isLoading && !activeYearQuery.isError && !selectedAcademicYearId ? (
+        <View
+          style={{
+            backgroundColor: '#fffbeb',
+            borderWidth: 1,
+            borderColor: '#fde68a',
+            borderRadius: 12,
+            paddingHorizontal: 14,
+            paddingVertical: 12,
+            marginBottom: 12,
+          }}
+        >
+          <Text style={{ color: '#92400e', fontWeight: '700', marginBottom: 4 }}>Tahun ajaran aktif belum tersedia</Text>
+          <Text style={{ color: '#b45309', fontSize: 12 }}>
+            Aktifkan tahun ajaran terlebih dahulu agar presensi wali kelas tidak ambigu.
+          </Text>
+        </View>
+      ) : null}
 
       {classesQuery.isLoading ? <QueryStateView type="loading" message="Memuat kelas wali..." /> : null}
       {classesQuery.isError ? (

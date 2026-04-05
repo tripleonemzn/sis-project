@@ -10,37 +10,15 @@ import {
   GraduationCap
 } from 'lucide-react';
 import { teacherAssignmentService, type TeacherAssignment } from '../../services/teacherAssignment.service';
-import { academicYearService, type AcademicYear } from '../../services/academicYear.service';
+import { ActiveAcademicYearNotice } from '../../components/ActiveAcademicYearNotice';
+import { useActiveAcademicYear } from '../../hooks/useActiveAcademicYear';
 
 export const TeacherAttendanceListPage = () => {
   const [searchQuery, setSearchQuery] = useState('');
-  const [selectedAcademicYearId] = useState<number | ''>('');
+  const { data: activeAcademicYear, isLoading: isLoadingActiveAcademicYear } = useActiveAcademicYear();
+  const effectiveAcademicYearId = Number(activeAcademicYear?.id || activeAcademicYear?.academicYearId || 0) || null;
 
-  // 1. Get Academic Years
-  const { data: academicYearData, isLoading: isLoadingYears } = useQuery({
-    queryKey: ['academic-years', 'list'],
-    queryFn: () => academicYearService.list({ page: 1, limit: 100 }),
-  });
-
-  const academicYears: AcademicYear[] = useMemo(
-    () =>
-      academicYearData?.data?.academicYears || academicYearData?.academicYears || [],
-    [academicYearData],
-  );
-
-  // 2. Determine Active/Selected Academic Year
-  const effectiveAcademicYearId = useMemo<number | null>(() => {
-    if (!academicYears.length) return null;
-
-    if (selectedAcademicYearId) {
-      return selectedAcademicYearId as number;
-    }
-
-    const active = academicYears.find((ay) => ay.isActive);
-    return active ? active.id : academicYears[0].id;
-  }, [academicYears, selectedAcademicYearId]);
-
-  // 3. Get Assignments
+  // 1. Get Assignments
   const { data: assignmentsData, isLoading: isLoadingAssignments } = useQuery({
     queryKey: ['teacher-assignments', effectiveAcademicYearId],
     queryFn: () =>
@@ -76,7 +54,7 @@ export const TeacherAttendanceListPage = () => {
     return data;
   }, [assignmentsData, searchQuery]);
 
-  const isLoading = isLoadingYears || (!!effectiveAcademicYearId && isLoadingAssignments);
+  const isLoading = isLoadingActiveAcademicYear || (!!effectiveAcademicYearId && isLoadingAssignments);
 
   // Helper function for card colors based on grade level
   const getGradeColorStyles = (level: string) => {
@@ -113,6 +91,18 @@ export const TeacherAttendanceListPage = () => {
 
         
       </div>
+
+      <ActiveAcademicYearNotice
+        name={activeAcademicYear?.name}
+        semester={activeAcademicYear?.semester}
+        helperText="Daftar kelas presensi di halaman ini otomatis mengikuti tahun ajaran aktif yang tampil di header aplikasi."
+      />
+
+      {!isLoadingActiveAcademicYear && !effectiveAcademicYearId ? (
+        <div className="rounded-xl border border-amber-200 bg-amber-50 px-4 py-3 text-sm text-amber-800">
+          Tahun ajaran aktif belum tersedia. Aktifkan tahun ajaran terlebih dahulu agar presensi siswa tidak ambigu.
+        </div>
+      ) : null}
 
       {/* Filters & Search */}
       <div className="bg-white p-4 rounded-xl shadow-sm border border-gray-100 flex flex-col sm:flex-row gap-4">

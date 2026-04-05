@@ -1,12 +1,13 @@
-import { useState, useEffect } from 'react';
+import { useState } from 'react';
 import { useQuery } from '@tanstack/react-query';
 import { Search, Trash2 } from 'lucide-react';
 import { examService } from '../../../services/exam.service';
 import type { Question } from '../../../services/exam.service';
-import { academicYearService } from '../../../services/academicYear.service';
 import { toast } from 'react-hot-toast';
 import { enhanceQuestionHtml } from '../../../utils/questionMedia';
 import { ConfirmationModal } from '../../common/ConfirmationModal';
+import { ActiveAcademicYearNotice } from '../../ActiveAcademicYearNotice';
+import { useActiveAcademicYear } from '../../../hooks/useActiveAcademicYear';
 
 interface QuestionBankViewProps {
     subjects: { id: number; name: string }[];
@@ -16,13 +17,11 @@ export const QuestionBankView = ({ subjects }: QuestionBankViewProps) => {
     // State removed in favor of useQuery
     // const [questions, setQuestions] = useState<Question[]>([]);
     // const [loading, setLoading] = useState(false);
-    
-    const [academicYears, setAcademicYears] = useState<{id: number, name: string}[]>([]);
-    
+    const { data: activeAcademicYear, isLoading: isLoadingActiveAcademicYear } = useActiveAcademicYear();
+
     // Filters
     const [filters, setFilters] = useState({
         subjectId: '',
-        academicYearId: '',
         semester: '',
         type: '',
         search: ''
@@ -39,13 +38,14 @@ export const QuestionBankView = ({ subjects }: QuestionBankViewProps) => {
 
     // React Query for fetching questions
     const { data: queryData, isLoading, refetch } = useQuery({
-        queryKey: ['bank-questions', { page, ...filters, search: activeSearch }], // Override search with activeSearch
+        queryKey: ['bank-questions', { page, ...filters, academicYearId: activeAcademicYear?.id ?? null, search: activeSearch }],
+        enabled: Boolean(activeAcademicYear?.id),
         queryFn: async () => {
             const res = await examService.getQuestions({
                 page,
                 limit: 20,
                 subjectId: filters.subjectId ? parseInt(filters.subjectId) : undefined,
-                academicYearId: filters.academicYearId ? parseInt(filters.academicYearId) : undefined,
+                academicYearId: activeAcademicYear?.id ? Number(activeAcademicYear.id) : undefined,
                 semester: filters.semester || undefined,
                 type: filters.type || undefined,
                 search: activeSearch // Use activeSearch
@@ -56,16 +56,6 @@ export const QuestionBankView = ({ subjects }: QuestionBankViewProps) => {
 
     const questions: Question[] = queryData?.questions || (Array.isArray(queryData) ? queryData : []) || [];
     const totalPages = queryData?.meta?.totalPages || 1;
-
-    useEffect(() => {
-        academicYearService.list({ limit: 100 }).then(res => {
-            if (res.data && res.data.academicYears) {
-                setAcademicYears(res.data.academicYears);
-            } else if (Array.isArray(res)) {
-                setAcademicYears(res);
-            }
-        });
-    }, []);
 
     // Manual fetch removed in favor of useQuery
     /*
@@ -105,6 +95,18 @@ export const QuestionBankView = ({ subjects }: QuestionBankViewProps) => {
 
     return (
         <div className="space-y-6">
+            <ActiveAcademicYearNotice
+                name={activeAcademicYear?.name}
+                semester={activeAcademicYear?.semester}
+                helperText="Bank soal operasional di halaman ini otomatis mengikuti tahun ajaran aktif yang tampil di header aplikasi."
+            />
+
+            {!isLoadingActiveAcademicYear && !activeAcademicYear?.id ? (
+                <div className="rounded-xl border border-amber-200 bg-amber-50 px-4 py-3 text-sm text-amber-800">
+                    Tahun ajaran aktif belum tersedia. Aktifkan tahun ajaran terlebih dahulu agar bank soal tidak ambigu.
+                </div>
+            ) : null}
+
             {/* Filters Bar */}
             <div className="bg-white rounded-xl shadow-sm border border-gray-100 p-4">
                 <div className="flex flex-col md:flex-row gap-4 flex-wrap">
@@ -133,20 +135,6 @@ export const QuestionBankView = ({ subjects }: QuestionBankViewProps) => {
                             <option value="">Semua Mapel</option>
                             {subjects.map(s => (
                                 <option key={s.id} value={s.id}>{s.name}</option>
-                            ))}
-                        </select>
-
-                        <select 
-                            className="px-4 py-2 border border-gray-300 rounded-lg focus:ring-1 focus:ring-blue-500 focus:border-blue-500 bg-white"
-                            value={filters.academicYearId}
-                            onChange={e => {
-                                setFilters({...filters, academicYearId: e.target.value});
-                                setPage(1);
-                            }}
-                        >
-                            <option value="">Semua Tahun Ajaran</option>
-                            {academicYears.map(ay => (
-                                <option key={ay.id} value={ay.id}>{ay.name}</option>
                             ))}
                         </select>
 

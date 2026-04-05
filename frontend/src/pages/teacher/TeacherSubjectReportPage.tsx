@@ -6,7 +6,6 @@ import {
   FileBarChart,
   AlertCircle
 } from 'lucide-react';
-import { academicYearService, type AcademicYear } from '../../services/academicYear.service';
 import {
   teacherAssignmentService,
   type TeacherAssignment,
@@ -15,6 +14,8 @@ import {
 } from '../../services/teacherAssignment.service';
 import { gradeService } from '../../services/grade.service';
 import { toast } from 'react-hot-toast';
+import { ActiveAcademicYearNotice } from '../../components/ActiveAcademicYearNotice';
+import { useActiveAcademicYear } from '../../hooks/useActiveAcademicYear';
 
 interface ReportGrade {
   id: number;
@@ -43,17 +44,6 @@ interface ReportGradeMeta {
   includeSlots: string[];
   slotLabels: Record<string, { label: string; componentType: string }>;
 }
-
-type AcademicYearOption = AcademicYear & {
-  is_active?: boolean;
-};
-
-type AcademicYearsResponseShape = {
-  data?: {
-    academicYears?: AcademicYearOption[];
-  };
-  academicYears?: AcademicYearOption[];
-};
 
 type TeacherAssignmentsResponseShape = {
   data?: {
@@ -141,7 +131,6 @@ const readRowSlotScore = (
 
 export const TeacherSubjectReportPage = () => {
   // Filter States
-  const [selectedAcademicYear, setSelectedAcademicYear] = useState<string>('');
   const [selectedAssignment, setSelectedAssignment] = useState<string>('');
   const [selectedSemester, setSelectedSemester] = useState<'ODD' | 'EVEN' | ''>('');
   const [searchQuery, setSearchQuery] = useState('');
@@ -150,24 +139,18 @@ export const TeacherSubjectReportPage = () => {
   const [reportGrades, setReportGrades] = useState<ReportGrade[]>([]);
   const [reportMeta, setReportMeta] = useState<ReportGradeMeta | null>(null);
   const [loading, setLoading] = useState(false);
-
-  // Fetch Initial Data (Academic Years & Assignments)
-  const { data: academicYearsData } = useQuery({
-    queryKey: ['academic-years'],
-    queryFn: () => academicYearService.list({ limit: 100 }),
-  });
+  const { data: activeAcademicYear, isLoading: isLoadingActiveAcademicYear } = useActiveAcademicYear();
+  const activeAcademicYearId = Number(activeAcademicYear?.id || activeAcademicYear?.academicYearId || 0) || null;
 
   const { data: assignmentsData } = useQuery({
-    queryKey: ['teacher-assignments'],
-    queryFn: () => teacherAssignmentService.list({ limit: 1000 }),
+    queryKey: ['teacher-assignments', 'subject-report', activeAcademicYearId],
+    enabled: Boolean(activeAcademicYearId),
+    queryFn: () =>
+      teacherAssignmentService.list({
+        academicYearId: activeAcademicYearId || undefined,
+        limit: 1000,
+      }),
   });
-
-  // Robust data extraction
-  const academicYearsPayload = academicYearsData as AcademicYearsResponseShape | undefined;
-  const academicYears = useMemo<AcademicYearOption[]>(
-    () => academicYearsPayload?.data?.academicYears || academicYearsPayload?.academicYears || [],
-    [academicYearsPayload],
-  );
 
   const assignmentsPayload = assignmentsData as TeacherAssignmentsResponseShape | undefined;
   const assignments = useMemo<TeacherAssignment[]>(
@@ -179,18 +162,17 @@ export const TeacherSubjectReportPage = () => {
     [assignmentsPayload],
   );
 
-  // Set default filters
   useEffect(() => {
-    if (Array.isArray(academicYears) && academicYears.length > 0 && !selectedAcademicYear) {
-      // Try both naming conventions or inspect one
-      const active = academicYears.find((ay) => ay.isActive || ay.is_active);
-      if (active) setSelectedAcademicYear(active.id.toString());
+    if (!selectedAssignment) return;
+    if (!assignments.some((assignment) => String(assignment.id) === selectedAssignment)) {
+      setSelectedAssignment('');
     }
-  }, [academicYears, selectedAcademicYear]);
+  }, [assignments, selectedAssignment]);
 
   const fetchReportGrades = useCallback(async () => {
-    if (!selectedAcademicYear || !selectedAssignment || !selectedSemester) {
+    if (!activeAcademicYearId || !selectedAssignment || !selectedSemester) {
       setReportGrades([]);
+      setReportMeta(null);
       return;
     }
 
@@ -203,7 +185,7 @@ export const TeacherSubjectReportPage = () => {
       const response = await gradeService.getReportGrades({
         class_id: assignment.class.id,
         subject_id: assignment.subject.id,
-        academic_year_id: parseInt(selectedAcademicYear, 10),
+        academic_year_id: activeAcademicYearId,
         semester: selectedSemester,
         include_meta: 1,
       });
@@ -217,7 +199,7 @@ export const TeacherSubjectReportPage = () => {
     } finally {
       setLoading(false);
     }
-  }, [assignments, selectedAcademicYear, selectedAssignment, selectedSemester]);
+  }, [activeAcademicYearId, assignments, selectedAssignment, selectedSemester]);
 
   // Fetch Report Grades when filters change
   useEffect(() => {
@@ -256,31 +238,21 @@ export const TeacherSubjectReportPage = () => {
         </div>
       </div>
 
+      <ActiveAcademicYearNotice
+        name={activeAcademicYear?.name}
+        semester={activeAcademicYear?.semester}
+        helperText="Rapor mapel operasional di halaman ini otomatis mengikuti tahun ajaran aktif yang tampil di header aplikasi."
+      />
+
+      {!isLoadingActiveAcademicYear && !activeAcademicYearId ? (
+        <div className="rounded-xl border border-amber-200 bg-amber-50 px-4 py-3 text-sm text-amber-800">
+          Tahun ajaran aktif belum tersedia. Aktifkan tahun ajaran terlebih dahulu agar rapor mapel tidak ambigu.
+        </div>
+      ) : null}
+
       {/* Filters */}
       <div className="bg-white rounded-xl shadow-sm border border-gray-100 p-6">
-        <div className="grid grid-cols-1 md:grid-cols-4 gap-4">
-          <div>
-            <label htmlFor="academicYearSelect" className="block text-sm font-medium text-gray-700 mb-2">
-              Tahun Ajaran
-            </label>
-            <div className="relative">
-              <select
-                id="academicYearSelect"
-                name="academicYear"
-                value={selectedAcademicYear}
-                onChange={(e) => setSelectedAcademicYear(e.target.value)}
-                className="w-full px-4 py-2 border border-gray-300 rounded-lg focus:ring-blue-500 focus:border-blue-500 bg-white"
-              >
-                <option value="">Pilih Tahun Ajaran</option>
-                {academicYears.map((ay) => (
-                  <option key={ay.id} value={String(ay.id)}>
-                    {ay.name} {ay.isActive || ay.is_active ? '(Aktif)' : ''}
-                  </option>
-                ))}
-              </select>
-            </div>
-          </div>
-
+        <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
           <div>
             <label htmlFor="semesterSelect" className="block text-sm font-medium text-gray-700 mb-2">
               Semester
@@ -315,7 +287,7 @@ export const TeacherSubjectReportPage = () => {
                 value={selectedAssignment}
                 onChange={(e) => setSelectedAssignment(e.target.value)}
                 className="w-full px-4 py-2 border border-gray-300 rounded-lg focus:ring-blue-500 focus:border-blue-500 bg-white disabled:bg-gray-100 disabled:cursor-not-allowed"
-                disabled={!selectedSemester}
+                disabled={!selectedSemester || !activeAcademicYearId}
               >
                 <option value="">Pilih Kelas & Mapel</option>
                 {assignments.map((assignment) => (
@@ -453,7 +425,7 @@ export const TeacherSubjectReportPage = () => {
           </div>
           <h3 className="text-lg font-semibold text-gray-900 mb-2">Pilih Filter Terlebih Dahulu</h3>
           <p className="text-gray-500 max-w-md mx-auto">
-            Silakan pilih Tahun Ajaran, Semester, serta Kelas & Mata Pelajaran untuk menampilkan data rapor.
+            Silakan pilih Semester serta Kelas & Mata Pelajaran untuk menampilkan data rapor.
           </p>
         </div>
       )}

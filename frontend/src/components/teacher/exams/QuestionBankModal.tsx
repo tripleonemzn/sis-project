@@ -2,9 +2,10 @@ import { useState, useEffect, useCallback } from 'react';
 import { X, Search, Plus, Check } from 'lucide-react';
 import { examService } from '../../../services/exam.service';
 import type { Question } from '../../../services/exam.service';
-import { academicYearService } from '../../../services/academicYear.service';
 import { toast } from 'react-hot-toast';
 import { enhanceQuestionHtml } from '../../../utils/questionMedia';
+import { ActiveAcademicYearNotice } from '../../ActiveAcademicYearNotice';
+import { useActiveAcademicYear } from '../../../hooks/useActiveAcademicYear';
 
 interface QuestionBankModalProps {
     onClose: () => void;
@@ -14,17 +15,22 @@ interface QuestionBankModalProps {
     initialSemester?: string;
 }
 
-export const QuestionBankModal = ({ onClose, onSelectQuestions, initialSubjectId, initialAcademicYearId }: QuestionBankModalProps) => {
+export const QuestionBankModal = ({
+    onClose,
+    onSelectQuestions,
+    initialSubjectId,
+    initialAcademicYearId,
+    initialSemester,
+}: QuestionBankModalProps) => {
     const [questions, setQuestions] = useState<Question[]>([]);
     const [loading, setLoading] = useState(false);
     const [selectedIds, setSelectedIds] = useState<Set<string>>(new Set());
-    const [academicYears, setAcademicYears] = useState<{id: number, name: string}[]>([]);
+    const { data: activeAcademicYear, isLoading: isLoadingActiveAcademicYear } = useActiveAcademicYear();
     
     // Filters
     const [filters, setFilters] = useState({
         subjectId: initialSubjectId?.toString() || '',
-        academicYearId: initialAcademicYearId?.toString() || '',
-        semester: '',
+        semester: initialSemester || '',
         type: '',
         search: ''
     });
@@ -33,31 +39,21 @@ export const QuestionBankModal = ({ onClose, onSelectQuestions, initialSubjectId
     const [page, setPage] = useState(1);
     const [totalPages, setTotalPages] = useState(1);
 
-    useEffect(() => {
-        academicYearService
-            .list({ limit: 100 })
-            .then((res) => {
-                if (res.data && res.data.academicYears) {
-                    setAcademicYears(res.data.academicYears);
-                } else if (Array.isArray(res)) {
-                    setAcademicYears(res);
-                } else {
-                    setAcademicYears([]);
-                }
-            })
-            .catch(() => {
-                setAcademicYears([]);
-            });
-    }, []);
+    const effectiveAcademicYearId = activeAcademicYear?.id || initialAcademicYearId || null;
 
     const fetchQuestions = useCallback(async () => {
+        if (!effectiveAcademicYearId) {
+            setQuestions([]);
+            setTotalPages(1);
+            return;
+        }
         setLoading(true);
         try {
             const res = await examService.getQuestions({
                 page,
                 limit: 20,
                 subjectId: filters.subjectId ? parseInt(filters.subjectId) : undefined,
-                academicYearId: filters.academicYearId ? parseInt(filters.academicYearId) : undefined,
+                academicYearId: Number(effectiveAcademicYearId),
                 semester: filters.semester || undefined,
                 type: filters.type || undefined,
                 search: filters.search
@@ -73,10 +69,10 @@ export const QuestionBankModal = ({ onClose, onSelectQuestions, initialSubjectId
         } finally {
             setLoading(false);
         }
-    }, [filters.academicYearId, filters.search, filters.semester, filters.subjectId, filters.type, page]);
+    }, [effectiveAcademicYearId, filters.search, filters.semester, filters.subjectId, filters.type, page]);
 
     useEffect(() => {
-        fetchQuestions();
+        void fetchQuestions();
     }, [fetchQuestions]);
 
     const handleSearch = (e: React.FormEvent) => {
@@ -113,59 +109,61 @@ export const QuestionBankModal = ({ onClose, onSelectQuestions, initialSubjectId
                 </div>
 
                 {/* Filters */}
-                <div className="p-4 bg-gray-50 border-b border-gray-100 flex flex-wrap gap-3">
-                    <select 
-                        className="px-3 py-2 border border-gray-200 rounded-lg text-sm focus:border-blue-500 outline-none"
-                        value={filters.academicYearId}
-                        onChange={e => {
-                            setFilters({...filters, academicYearId: e.target.value});
-                            setPage(1);
-                        }}
-                    >
-                        <option value="">Semua Tahun Ajaran</option>
-                        {academicYears.map(ay => (
-                            <option key={ay.id} value={ay.id}>{ay.name}</option>
-                        ))}
-                    </select>
+                <div className="p-4 bg-gray-50 border-b border-gray-100">
+                    <ActiveAcademicYearNotice
+                        name={activeAcademicYear?.name}
+                        semester={activeAcademicYear?.semester}
+                        helperText="Bank soal operasional di popup ini otomatis mengikuti tahun ajaran aktif yang tampil di header aplikasi."
+                        className="mb-4"
+                    />
 
-                    <select 
-                        className="px-3 py-2 border border-gray-200 rounded-lg text-sm focus:border-blue-500 outline-none"
-                        value={filters.semester}
-                        onChange={e => {
-                            setFilters({...filters, semester: e.target.value});
-                            setPage(1);
-                        }}
-                    >
-                        <option value="">Semua Semester</option>
-                        <option value="ODD">Ganjil</option>
-                        <option value="EVEN">Genap</option>
-                    </select>
-                    
-                    <select 
-                        className="px-3 py-2 border border-gray-200 rounded-lg text-sm focus:border-blue-500 outline-none"
-                        value={filters.type}
-                        onChange={e => {
-                            setFilters({...filters, type: e.target.value});
-                            setPage(1);
-                        }}
-                    >
-                        <option value="">Semua Tipe</option>
-                        <option value="MULTIPLE_CHOICE">Pilihan Ganda</option>
-                        <option value="ESSAY">Essay</option>
-                        <option value="TRUE_FALSE">Benar/Salah</option>
-                        <option value="COMPLEX_MULTIPLE_CHOICE">Pilihan Ganda Kompleks</option>
-                    </select>
+                    {!isLoadingActiveAcademicYear && !effectiveAcademicYearId ? (
+                        <div className="mb-4 rounded-xl border border-amber-200 bg-amber-50 px-4 py-3 text-sm text-amber-800">
+                            Tahun ajaran aktif belum tersedia. Aktifkan tahun ajaran terlebih dahulu agar bank soal tidak ambigu.
+                        </div>
+                    ) : null}
 
-                    <form onSubmit={handleSearch} className="flex-1 min-w-[200px] relative">
-                        <input 
-                            type="text"
-                            placeholder="Cari konten soal..."
-                            className="w-full pl-9 pr-4 py-2 border border-gray-200 rounded-lg text-sm focus:border-blue-500 outline-none"
-                            value={filters.search}
-                            onChange={e => setFilters({...filters, search: e.target.value})}
-                        />
-                        <Search className="w-4 h-4 text-gray-400 absolute left-3 top-2.5" />
-                    </form>
+                    <div className="flex flex-wrap gap-3">
+
+                        <select
+                            className="px-3 py-2 border border-gray-200 rounded-lg text-sm focus:border-blue-500 outline-none"
+                            value={filters.semester}
+                            onChange={e => {
+                                setFilters({...filters, semester: e.target.value});
+                                setPage(1);
+                            }}
+                        >
+                            <option value="">Semua Semester</option>
+                            <option value="ODD">Ganjil</option>
+                            <option value="EVEN">Genap</option>
+                        </select>
+
+                        <select
+                            className="px-3 py-2 border border-gray-200 rounded-lg text-sm focus:border-blue-500 outline-none"
+                            value={filters.type}
+                            onChange={e => {
+                                setFilters({...filters, type: e.target.value});
+                                setPage(1);
+                            }}
+                        >
+                            <option value="">Semua Tipe</option>
+                            <option value="MULTIPLE_CHOICE">Pilihan Ganda</option>
+                            <option value="ESSAY">Essay</option>
+                            <option value="TRUE_FALSE">Benar/Salah</option>
+                            <option value="COMPLEX_MULTIPLE_CHOICE">Pilihan Ganda Kompleks</option>
+                        </select>
+
+                        <form onSubmit={handleSearch} className="flex-1 min-w-[200px] relative">
+                            <input
+                                type="text"
+                                placeholder="Cari konten soal..."
+                                className="w-full pl-9 pr-4 py-2 border border-gray-200 rounded-lg text-sm focus:border-blue-500 outline-none"
+                                value={filters.search}
+                                onChange={e => setFilters({...filters, search: e.target.value})}
+                            />
+                            <Search className="w-4 h-4 text-gray-400 absolute left-3 top-2.5" />
+                        </form>
+                    </div>
                 </div>
 
                 {/* Content */}

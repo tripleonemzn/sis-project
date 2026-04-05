@@ -3,10 +3,11 @@ import { Save, Loader2 } from 'lucide-react';
 import { toast } from 'react-hot-toast';
 import { gradeService } from '../../../services/grade.service';
 import type { GradeComponent } from '../../../services/grade.service';
-import { academicYearService } from '../../../services/academicYear.service';
 import { teacherAssignmentService } from '../../../services/teacherAssignment.service';
 import type { TeacherAssignment } from '../../../services/teacherAssignment.service';
 import { userService } from '../../../services/user.service';
+import { ActiveAcademicYearNotice } from '../../../components/ActiveAcademicYearNotice';
+import { useActiveAcademicYear } from '../../../hooks/useActiveAcademicYear';
 
 interface Student {
   id: number;
@@ -31,32 +32,22 @@ type StudentGradeApiRow = {
   score?: number | null;
 };
 
-type AcademicYearListResponse = {
-  data?: {
-    academicYears?: AcademicYearLite[];
-  };
-  academicYears?: AcademicYearLite[];
-};
-
-type AcademicYearLite = {
-  id: number | string;
-  name: string;
-  isActive?: boolean;
-};
-
 export const UjianSekolahPage = () => {
   const [loading, setLoading] = useState(false);
   const [saving, setSaving] = useState(false);
+  const { data: activeAcademicYear, isLoading: isLoadingActiveAcademicYear } = useActiveAcademicYear();
+  const activeAcademicYearId = Number(activeAcademicYear?.id || activeAcademicYear?.academicYearId || 0) || null;
   
   // Data
-  const [academicYears, setAcademicYears] = useState<AcademicYearLite[]>([]);
   const [assignments, setAssignments] = useState<TeacherAssignment[]>([]);
   const [gradeComponents, setGradeComponents] = useState<GradeComponent[]>([]);
   const [students, setStudents] = useState<Student[]>([]);
   
   // Selections
-  const [selectedAcademicYear, setSelectedAcademicYear] = useState<string>('');
-  const [selectedSemester, setSelectedSemester] = useState<SemesterValue>('');
+  const [selectedSemester, setSelectedSemester] = useState<SemesterValue>(() => {
+    const month = new Date().getMonth() + 1;
+    return month >= 7 ? 'ODD' : 'EVEN';
+  });
   const [selectedAssignment, setSelectedAssignment] = useState<string>('');
   const [selectedComponent, setSelectedComponent] = useState<string>('');
   
@@ -64,21 +55,6 @@ export const UjianSekolahPage = () => {
   const [grades, setGrades] = useState<Record<number, string>>({});
 
   const US_COMPONENT_TYPES = useMemo(() => new Set(['US_THEORY', 'US_PRACTICE']), []);
-
-  const extractAcademicYears = useCallback((payload: unknown): AcademicYearLite[] => {
-    if (Array.isArray(payload)) {
-      return payload as AcademicYearLite[];
-    }
-
-    const response = payload as AcademicYearListResponse;
-    if (Array.isArray(response?.data?.academicYears)) {
-      return response.data.academicYears;
-    }
-    if (Array.isArray(response?.academicYears)) {
-      return response.academicYears;
-    }
-    return [];
-  }, []);
 
   const normalizeAssignments = useCallback((payload: unknown): TeacherAssignment[] => {
     const rawAssignments = Array.isArray((payload as { assignments?: unknown })?.assignments)
@@ -96,11 +72,6 @@ export const UjianSekolahPage = () => {
         sensitivity: 'base',
       });
     });
-  }, []);
-
-  const resolveDefaultSemester = useCallback((): SemesterValue => {
-    const month = new Date().getMonth() + 1;
-    return month >= 7 ? 'ODD' : 'EVEN';
   }, []);
 
   const fetchAssignmentsByAcademicYear = useCallback(
@@ -180,45 +151,18 @@ export const UjianSekolahPage = () => {
     [US_COMPONENT_TYPES, normalizeAssignments],
   );
 
-  const fetchInitialData = useCallback(async () => {
-    try {
-      setLoading(true);
-      const ayRes = await academicYearService.list();
-      let academicYearsData = extractAcademicYears(ayRes);
-
-      if (academicYearsData.length === 0) {
-        const activeRes = await academicYearService.getActiveSafe().catch(() => null);
-        const activePayload = (activeRes as { data?: unknown })?.data ?? activeRes;
-        if (activePayload && typeof activePayload === 'object') {
-          const active = activePayload as AcademicYearLite;
-          if (active.id && active.name) {
-            academicYearsData = [{ ...active, isActive: true }];
-          }
-        }
-      }
-      setAcademicYears(academicYearsData);
-
-      const activeAy = academicYearsData.find((ay) => ay.isActive);
-      const fallbackAy = activeAy || academicYearsData[0];
-      if (fallbackAy) setSelectedAcademicYear(String(fallbackAy.id));
-      setSelectedSemester(resolveDefaultSemester());
-
-    } catch (error) {
-      console.error(error);
-      toast.error('Gagal memuat data awal');
-    } finally {
-      setLoading(false);
+  useEffect(() => {
+    if (!activeAcademicYearId) {
+      setAssignments([]);
+      setSelectedAssignment('');
+      setSelectedComponent('');
+      setStudents([]);
+      setGradeComponents([]);
+      setGrades({});
+      return;
     }
-  }, [extractAcademicYears, resolveDefaultSemester]);
-
-  useEffect(() => {
-    fetchInitialData();
-  }, [fetchInitialData]);
-
-  useEffect(() => {
-    if (!selectedAcademicYear) return;
-    fetchAssignmentsByAcademicYear(selectedAcademicYear);
-  }, [selectedAcademicYear, fetchAssignmentsByAcademicYear]);
+    void fetchAssignmentsByAcademicYear(activeAcademicYearId);
+  }, [activeAcademicYearId, fetchAssignmentsByAcademicYear]);
 
   const fetchStudentsAndComponents = useCallback(async () => {
     if (!selectedAssignment || !selectedSemester) return;
@@ -240,7 +184,7 @@ export const UjianSekolahPage = () => {
       // Fetch Grade Components for Subject
       const compRes = await gradeService.getComponents({
         subject_id: assignment.subjectId,
-        academic_year_id: Number(selectedAcademicYear),
+        academic_year_id: Number(activeAcademicYearId),
         assignment_id: assignment.id,
         semester: selectedSemester,
       });
@@ -272,7 +216,7 @@ export const UjianSekolahPage = () => {
     } finally {
       setLoading(false);
     }
-  }, [assignments, selectedAcademicYear, selectedAssignment, selectedSemester]);
+  }, [activeAcademicYearId, assignments, selectedAssignment, selectedSemester]);
 
   const fetchExistingGrades = useCallback(async () => {
     try {
@@ -282,7 +226,7 @@ export const UjianSekolahPage = () => {
       const res = await gradeService.getGradesByClassSubject(
         assignment.class.id,
         assignment.subject.id,
-        Number(selectedAcademicYear),
+        Number(activeAcademicYearId),
         selectedSemester,
       );
       
@@ -323,7 +267,7 @@ export const UjianSekolahPage = () => {
       console.error(error);
       toast.error('Gagal memuat nilai siswa');
     }
-  }, [assignments, selectedAcademicYear, selectedComponent, selectedAssignment, selectedSemester]);
+  }, [activeAcademicYearId, assignments, selectedComponent, selectedAssignment, selectedSemester]);
 
   useEffect(() => {
     if (selectedAssignment && selectedSemester) {
@@ -332,10 +276,10 @@ export const UjianSekolahPage = () => {
   }, [selectedAssignment, selectedSemester, fetchStudentsAndComponents]);
 
   useEffect(() => {
-    if (selectedAssignment && selectedComponent && selectedAcademicYear && selectedSemester) {
+    if (selectedAssignment && selectedComponent && activeAcademicYearId && selectedSemester) {
       fetchExistingGrades();
     }
-  }, [selectedAssignment, selectedComponent, selectedAcademicYear, selectedSemester, fetchExistingGrades]);
+  }, [selectedAssignment, selectedComponent, activeAcademicYearId, selectedSemester, fetchExistingGrades]);
   const handleScoreChange = (studentId: number, value: string) => {
     // Validate: 0-100
     const num = parseFloat(value);
@@ -361,7 +305,7 @@ export const UjianSekolahPage = () => {
           return {
             student_id: Number(studentId),
             subject_id: assignment.subject.id,
-            academic_year_id: Number(selectedAcademicYear),
+            academic_year_id: Number(activeAcademicYearId),
             grade_component_id: selectedComponentId,
             semester: selectedSemester,
             score: parsedScore,
@@ -408,7 +352,7 @@ export const UjianSekolahPage = () => {
 
   return (
       <div className="space-y-6">
-        <div className="flex flex-wrap items-center justify-between gap-3">
+      <div className="flex flex-wrap items-center justify-between gap-3">
           <h1 className="text-2xl font-bold text-gray-800">Input Nilai Ujian Sekolah</h1>
           <button
             onClick={handleSave}
@@ -419,6 +363,18 @@ export const UjianSekolahPage = () => {
             Simpan Nilai
           </button>
         </div>
+
+        <ActiveAcademicYearNotice
+          name={activeAcademicYear?.name}
+          semester={activeAcademicYear?.semester}
+          helperText="Input nilai Ujian Sekolah di halaman ini otomatis mengikuti tahun ajaran aktif yang tampil di header aplikasi."
+        />
+
+        {!isLoadingActiveAcademicYear && !activeAcademicYearId ? (
+          <div className="rounded-lg border border-amber-200 bg-amber-50 px-4 py-3 text-sm text-amber-800">
+            Tahun ajaran aktif belum tersedia. Aktifkan tahun ajaran terlebih dahulu agar input nilai Ujian Sekolah tidak ambigu.
+          </div>
+        ) : null}
         
         {isReadOnly() && (
           <div className="flex items-center rounded-lg border border-yellow-200 bg-yellow-50 px-4 py-3 text-yellow-800">
@@ -429,23 +385,7 @@ export const UjianSekolahPage = () => {
         )}
 
         <div className="rounded-xl border border-gray-200 bg-white p-4 md:p-5">
-          <div className="grid grid-cols-1 gap-4 md:grid-cols-4">
-            <div>
-              <label htmlFor="us-academic-year" className="block text-sm font-medium text-gray-700 mb-1">Tahun Ajaran</label>
-              <select
-                id="us-academic-year"
-                name="academicYear"
-                value={selectedAcademicYear}
-                onChange={(e) => setSelectedAcademicYear(e.target.value)}
-                className={formSelectClassName}
-              >
-                <option value="">Pilih Tahun Ajaran</option>
-                {academicYears.map(ay => (
-                  <option key={ay.id} value={ay.id}>{ay.name} ({ay.isActive ? 'Aktif' : 'Tidak Aktif'})</option>
-                ))}
-              </select>
-            </div>
-
+          <div className="grid grid-cols-1 gap-4 md:grid-cols-3">
             <div>
               <label htmlFor="us-semester" className="block text-sm font-medium text-gray-700 mb-1">Semester</label>
               <select
@@ -468,7 +408,7 @@ export const UjianSekolahPage = () => {
                 name="assignment"
                 value={selectedAssignment}
                 onChange={(e) => setSelectedAssignment(e.target.value)}
-                disabled={!selectedSemester}
+                disabled={!selectedSemester || !activeAcademicYearId}
                 className={formSelectClassName}
               >
                 <option value="">Pilih Kelas & Mata Pelajaran</option>
@@ -502,7 +442,7 @@ export const UjianSekolahPage = () => {
               </select>
             </div>
           </div>
-          {!loading && selectedAcademicYear && selectedSemester && assignments.length === 0 && (
+          {!loading && activeAcademicYearId && selectedSemester && assignments.length === 0 && (
             <p className="mt-4 rounded-lg border border-yellow-200 bg-yellow-50 px-3 py-2 text-sm text-yellow-800">
               Anda belum memiliki assignment mapel dengan komponen Ujian Sekolah pada tahun ajaran ini.
             </p>

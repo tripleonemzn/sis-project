@@ -6,6 +6,7 @@ import { Redirect, useRouter } from 'expo-router';
 import { Pressable, RefreshControl, ScrollView, Text, TextInput, View } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { AppLoadingScreen } from '../../components/AppLoadingScreen';
+import { MobileActiveAcademicYearNotice } from '../../components/MobileActiveAcademicYearNotice';
 import { MobileSelectField } from '../../components/MobileSelectField';
 import { MobileSummaryCard as SummaryCard } from '../../components/MobileSummaryCard';
 import { QueryStateView } from '../../components/QueryStateView';
@@ -14,7 +15,7 @@ import { getStandardPagePadding } from '../../lib/ui/pageLayout';
 import { notifyApiError, notifySuccess } from '../../lib/ui/feedback';
 import { createHtmlPreviewEntry } from '../../lib/viewer/htmlPreviewStore';
 import { useAuth } from '../auth/AuthProvider';
-import { adminApi, type AdminAcademicYear } from '../admin/adminApi';
+import { academicYearApi } from '../academicYear/academicYearApi';
 import { examApi, type ExamProgramItem } from '../exams/examApi';
 import {
   examCardApi,
@@ -272,34 +273,24 @@ export function StaffHeadTuExamCardsScreen() {
   const { isAuthenticated, isLoading, user } = useAuth();
   const pagePadding = getStandardPagePadding(insets, { bottom: 120 });
   const division = resolveStaffDivision(user);
-  const [selectedAcademicYearId, setSelectedAcademicYearId] = useState<number | null>(null);
   const [activeProgramCode, setActiveProgramCode] = useState('');
   const [search, setSearch] = useState('');
   const [classFilter, setClassFilter] = useState('ALL');
   const [statusFilter, setStatusFilter] = useState<StatusFilter>('ALL');
 
-  const academicYearsQuery = useQuery({
-    queryKey: ['mobile-head-tu-exam-cards-academic-years'],
+  const activeYearQuery = useQuery({
+    queryKey: ['mobile-head-tu-exam-cards-active-year'],
     enabled: isAuthenticated && user?.role === 'STAFF' && division === 'HEAD_TU',
     staleTime: 5 * 60 * 1000,
-    queryFn: () => adminApi.listAcademicYears({ page: 1, limit: 100 }),
+    queryFn: async () => {
+      try {
+        return await academicYearApi.getActive();
+      } catch {
+        return null;
+      }
+    },
   });
-
-  const academicYears = useMemo(
-    () =>
-      [...(academicYearsQuery.data?.items || [])].sort((a: AdminAcademicYear, b: AdminAcademicYear) =>
-        String(b.name || '').localeCompare(String(a.name || ''), 'id-ID', { sensitivity: 'base' }),
-      ),
-    [academicYearsQuery.data?.items],
-  );
-
-  useEffect(() => {
-    if (!academicYears.length) return;
-    const activeYear = academicYears.find((item) => item.isActive) || academicYears[0] || null;
-    setSelectedAcademicYearId((current) =>
-      academicYears.some((item) => item.id === current) ? current : activeYear?.id || null,
-    );
-  }, [academicYears]);
+  const selectedAcademicYearId = activeYearQuery.data?.id || null;
 
   const programsQuery = useQuery({
     queryKey: ['mobile-head-tu-exam-cards-programs', selectedAcademicYearId || 'none'],
@@ -420,7 +411,7 @@ export function StaffHeadTuExamCardsScreen() {
 
   const onRefresh = async () => {
     await Promise.all([
-      academicYearsQuery.refetch(),
+      activeYearQuery.refetch(),
       programsQuery.refetch(),
       overviewQuery.refetch(),
     ]);
@@ -438,7 +429,7 @@ export function StaffHeadTuExamCardsScreen() {
       refreshControl={
         <RefreshControl
           refreshing={
-            academicYearsQuery.isFetching ||
+            activeYearQuery.isFetching ||
             programsQuery.isFetching ||
             overviewQuery.isFetching ||
             generateMutation.isPending
@@ -454,6 +445,31 @@ export function StaffHeadTuExamCardsScreen() {
           Generate kartu ujian digital untuk siswa yang layak ikut ujian, lalu buka pratinjau dokumen resminya dari Kepala TU.
         </Text>
       </View>
+
+      <MobileActiveAcademicYearNotice
+        name={activeYearQuery.data?.name}
+        semester={activeYearQuery.data?.semester}
+        helperText="Kartu ujian operasional di halaman ini otomatis mengikuti tahun ajaran aktif yang tampil di header aplikasi."
+      />
+
+      {!activeYearQuery.isLoading && !activeYearQuery.isError && !selectedAcademicYearId ? (
+        <View
+          style={{
+            backgroundColor: '#fffbeb',
+            borderWidth: 1,
+            borderColor: '#fde68a',
+            borderRadius: 12,
+            paddingHorizontal: 14,
+            paddingVertical: 12,
+            marginBottom: 12,
+          }}
+        >
+          <Text style={{ color: '#92400e', fontWeight: '700', marginBottom: 4 }}>Tahun ajaran aktif belum tersedia</Text>
+          <Text style={{ color: '#b45309', fontSize: 12 }}>
+            Aktifkan tahun ajaran terlebih dahulu agar kartu ujian tidak ambigu.
+          </Text>
+        </View>
+      ) : null}
 
       <View style={{ flexDirection: 'row', flexWrap: 'wrap', gap: 10, marginBottom: 14 }}>
         <SummaryCard
@@ -488,19 +504,8 @@ export function StaffHeadTuExamCardsScreen() {
 
       <SectionCard
         title="Filter Kartu Ujian"
-        helper="Pilih tahun ajaran dan program ujian yang ingin digenerate atau dipantau."
+        helper="Pilih program ujian yang ingin digenerate atau dipantau."
       >
-        <MobileSelectField
-          label="Tahun Ajaran"
-          value={selectedAcademicYearId ? String(selectedAcademicYearId) : ''}
-          options={academicYears.map((item) => ({
-            value: String(item.id),
-            label: item.name,
-          }))}
-          onChange={(value) => setSelectedAcademicYearId(value ? Number(value) : null)}
-          placeholder="Pilih tahun ajaran"
-        />
-
         <MobileSelectField
           label="Program Ujian"
           value={activeProgramCode}
@@ -586,13 +591,13 @@ export function StaffHeadTuExamCardsScreen() {
         title="Daftar Kartu Ujian"
         helper={`${filteredRows.length} siswa • ${overviewQuery.data?.summary.totalStudents || 0} total data`}
       >
-        {academicYearsQuery.isLoading || programsQuery.isLoading ? (
+        {activeYearQuery.isLoading || programsQuery.isLoading ? (
           <AppLoadingScreen message="Menyiapkan filter kartu ujian..." />
-        ) : academicYearsQuery.isError ? (
+        ) : activeYearQuery.isError ? (
           <QueryStateView
             type="error"
             message="Gagal memuat tahun ajaran."
-            onRetry={() => academicYearsQuery.refetch()}
+            onRetry={() => activeYearQuery.refetch()}
           />
         ) : programsQuery.isError ? (
           <QueryStateView
