@@ -4,7 +4,6 @@ import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { Pressable, RefreshControl, ScrollView, Text, TextInput, View } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { AppLoadingScreen } from '../../../src/components/AppLoadingScreen';
-import { MobileActiveAcademicYearNotice } from '../../../src/components/MobileActiveAcademicYearNotice';
 import { QueryStateView } from '../../../src/components/QueryStateView';
 import { BRAND_COLORS } from '../../../src/config/brand';
 import { useAuth } from '../../../src/features/auth/AuthProvider';
@@ -169,12 +168,6 @@ export default function TutorInventoryScreen() {
           ? 'Inventaris ini difokuskan ke ekskul yang sedang Anda kelola.'
           : 'Data inventaris ini terhubung dari modul Sarpras (Fasilitas Ekskul).'}
       </Text>
-
-      <MobileActiveAcademicYearNotice
-        name={activeYearQuery.data?.name}
-        semester={activeYearQuery.data?.semester}
-        helperText="Data inventaris pembina di mobile otomatis mengikuti tahun ajaran aktif yang tampil di header aplikasi."
-      />
 
       <View
         style={{

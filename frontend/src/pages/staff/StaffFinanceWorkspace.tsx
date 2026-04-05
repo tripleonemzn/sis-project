@@ -25,7 +25,6 @@ import toast from 'react-hot-toast';
 import { isFinanceStaffProfile } from '../../utils/staffRole';
 import { DashboardWelcomeCard } from '../../components/common/DashboardWelcomeCard';
 import { useActiveAcademicYear } from '../../hooks/useActiveAcademicYear';
-import { ActiveAcademicYearNotice } from '../../components/ActiveAcademicYearNotice';
 
 type FinanceWorkspaceSection =
   | 'overview'
@@ -757,12 +756,6 @@ export const StaffFinanceWorkspace = () => {
           </p>
         </div>
       </div>
-
-      <ActiveAcademicYearNotice
-        name={activeAcademicYear?.name}
-        semester={activeAcademicYear?.semester}
-        helperText="Approval pengajuan anggaran operasional di halaman ini otomatis mengikuti tahun ajaran aktif yang tampil di header aplikasi."
-      />
 
       {!isLoadingActiveAcademicYear && !activeYearId ? (
         <div className="rounded-xl border border-amber-200 bg-amber-50 px-4 py-3 text-sm text-amber-800">

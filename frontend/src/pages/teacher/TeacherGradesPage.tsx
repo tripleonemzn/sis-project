@@ -11,7 +11,6 @@ import {
 } from '../../services/teacherAssignment.service';
 import { userService } from '../../services/user.service';
 import type { User } from '../../types/auth';
-import { ActiveAcademicYearNotice } from '../../components/ActiveAcademicYearNotice';
 import { useActiveAcademicYear } from '../../hooks/useActiveAcademicYear';
 
 interface Student {
@@ -1190,12 +1189,6 @@ export const TeacherGradesPage = () => {
           <p className="text-gray-600">Input nilai per komponen untuk siswa</p>
         </div>
       </div>
-
-      <ActiveAcademicYearNotice
-        name={activeAcademicYear?.name}
-        semester={activeAcademicYear?.semester}
-        helperText="Input nilai operasional di halaman ini selalu mengikuti tahun ajaran aktif yang tampil di header aplikasi."
-      />
 
       {/* Description Box */}
       <div className="rounded-lg border border-blue-200 bg-blue-50 px-3 py-2 text-xs text-blue-800">

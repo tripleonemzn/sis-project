@@ -6,7 +6,6 @@ import type { Question } from '../../../services/exam.service';
 import { toast } from 'react-hot-toast';
 import { enhanceQuestionHtml } from '../../../utils/questionMedia';
 import { ConfirmationModal } from '../../common/ConfirmationModal';
-import { ActiveAcademicYearNotice } from '../../ActiveAcademicYearNotice';
 import { useActiveAcademicYear } from '../../../hooks/useActiveAcademicYear';
 
 interface QuestionBankViewProps {
@@ -95,11 +94,6 @@ export const QuestionBankView = ({ subjects }: QuestionBankViewProps) => {
 
     return (
         <div className="space-y-6">
-            <ActiveAcademicYearNotice
-                name={activeAcademicYear?.name}
-                semester={activeAcademicYear?.semester}
-                helperText="Bank soal operasional di halaman ini otomatis mengikuti tahun ajaran aktif yang tampil di header aplikasi."
-            />
 
             {!isLoadingActiveAcademicYear && !activeAcademicYear?.id ? (
                 <div className="rounded-xl border border-amber-200 bg-amber-50 px-4 py-3 text-sm text-amber-800">

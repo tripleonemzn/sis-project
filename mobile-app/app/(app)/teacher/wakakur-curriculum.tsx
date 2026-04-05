@@ -13,7 +13,6 @@ import { Feather } from '@expo/vector-icons';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { AppLoadingScreen } from '../../../src/components/AppLoadingScreen';
 import { MobileDetailModal } from '../../../src/components/MobileDetailModal';
-import { MobileActiveAcademicYearNotice } from '../../../src/components/MobileActiveAcademicYearNotice';
 import { MobileMenuTabBar } from '../../../src/components/MobileMenuTabBar';
 import { MobileSummaryCard } from '../../../src/components/MobileSummaryCard';
 import { QueryStateView } from '../../../src/components/QueryStateView';
@@ -320,12 +319,6 @@ export default function TeacherWakakurCurriculumScreen() {
       <Text style={{ color: BRAND_COLORS.textMuted, marginBottom: 10 }}>
         Ringkasan kurikulum, assignment guru, dan beban jam mengajar.
       </Text>
-
-      <MobileActiveAcademicYearNotice
-        name={activeYearQuery.data?.name}
-        semester={activeYearQuery.data?.semester}
-        helperText="Kelola Kurikulum di mobile mengikuti tahun ajaran aktif yang sama dengan header aplikasi."
-      />
 
       <View style={{ flexDirection: 'row', flexWrap: 'wrap', justifyContent: 'space-between', marginBottom: 12 }}>
         {summaryCards.map((item) => (

@@ -48,7 +48,6 @@ import {
   FileText,
 } from 'lucide-react';
 import toast from 'react-hot-toast';
-import { ActiveAcademicYearNotice } from '../../components/ActiveAcademicYearNotice';
 import { useActiveAcademicYear } from '../../hooks/useActiveAcademicYear';
 
 const getErrorMessage = (error: unknown) => {
@@ -1280,12 +1279,6 @@ export const WorkProgramPage = () => {
         </div>
       </div>
 
-      <ActiveAcademicYearNotice
-        name={activeAcademicYear?.name}
-        semester={activeAcademicYear?.semester}
-        helperText="Program kerja operasional di halaman ini otomatis mengikuti tahun ajaran aktif yang tampil di header aplikasi."
-      />
-
       {!isLoadingActiveAcademicYear && !activeYearId ? (
         <div className="rounded-xl border border-amber-200 bg-amber-50 px-4 py-3 text-sm text-amber-800">
           Tahun ajaran aktif belum tersedia. Aktifkan tahun ajaran terlebih dahulu agar program kerja tidak ambigu.
@@ -1465,12 +1458,6 @@ export const WorkProgramPage = () => {
                         size={Math.max(20, (search?.length || 0) + 2)}
                         onChange={(e) => setSearch(e.target.value)}
                       />
-                    </div>
-                    <div className="flex items-center gap-2">
-                      <span className="text-sm font-medium text-gray-700">Tahun Ajaran:</span>
-                      <div className="px-3 py-2 border border-gray-300 rounded-lg bg-gray-50 text-sm text-gray-700">
-                        {activeAcademicYearName ? `${activeAcademicYearName} (Aktif)` : 'Tahun ajaran aktif belum tersedia'}
-                      </div>
                     </div>
                     <div className="flex items-center gap-2">
                       <span className="text-sm font-medium text-gray-700">Semester:</span>
@@ -2714,15 +2701,6 @@ export const WorkProgramPage = () => {
               </button>
             </div>
             <form onSubmit={handleSubmitCreate((data) => onSubmitCreate(data))} className="p-6 space-y-4">
-              <div>
-                <label className="block text-sm font-medium text-gray-700 mb-1">
-                  Tahun Ajaran
-                </label>
-                <div className="w-full px-3 py-2 border border-gray-300 rounded-lg bg-gray-100 text-gray-600 text-sm">
-                   {activeAcademicYearName ? `${activeAcademicYearName} (Aktif)` : 'Tidak ada tahun ajaran aktif'}
-                </div>
-              </div>
-
               <div>
                 <label className="block text-sm font-medium text-gray-700 mb-1">
                   {selectedDuty === 'PEMBINA_OSIS' ? 'Program / Agenda OSIS' : 'Program Kerja'}

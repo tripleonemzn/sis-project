@@ -4,7 +4,6 @@ import { examService } from '../../../services/exam.service';
 import type { Question } from '../../../services/exam.service';
 import { toast } from 'react-hot-toast';
 import { enhanceQuestionHtml } from '../../../utils/questionMedia';
-import { ActiveAcademicYearNotice } from '../../ActiveAcademicYearNotice';
 import { useActiveAcademicYear } from '../../../hooks/useActiveAcademicYear';
 
 interface QuestionBankModalProps {
@@ -110,12 +109,6 @@ export const QuestionBankModal = ({
 
                 {/* Filters */}
                 <div className="p-4 bg-gray-50 border-b border-gray-100">
-                    <ActiveAcademicYearNotice
-                        name={activeAcademicYear?.name}
-                        semester={activeAcademicYear?.semester}
-                        helperText="Bank soal operasional di popup ini otomatis mengikuti tahun ajaran aktif yang tampil di header aplikasi."
-                        className="mb-4"
-                    />
 
                     {!isLoadingActiveAcademicYear && !effectiveAcademicYearId ? (
                         <div className="mb-4 rounded-xl border border-amber-200 bg-amber-50 px-4 py-3 text-sm text-amber-800">

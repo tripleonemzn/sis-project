@@ -332,15 +332,6 @@ export default function TeacherWakakurReportsScreen() {
           gap: 12,
         }}
       >
-        <View>
-          <Text style={{ color: BRAND_COLORS.textDark, fontWeight: '700', marginBottom: 6 }}>Tahun Ajaran</Text>
-          <View style={{ borderWidth: 1, borderColor: '#d5e1f5', borderRadius: 10, padding: 10, backgroundColor: '#f8fafc' }}>
-            <Text style={{ color: BRAND_COLORS.textDark }}>
-              {activeYearQuery.data?.name || 'Belum ada tahun ajaran aktif'}
-            </Text>
-          </View>
-        </View>
-
         <MobileSelectField
           label="Semester"
           value={selectedSemester}

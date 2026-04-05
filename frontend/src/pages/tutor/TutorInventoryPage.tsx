@@ -6,7 +6,6 @@ import { useLocation, useSearchParams } from 'react-router-dom';
 import { tutorService } from '../../services/tutor.service';
 import { isOsisExtracurricularCategory, type ExtracurricularCategory } from '../../features/extracurricular/category';
 import { useActiveAcademicYear } from '../../hooks/useActiveAcademicYear';
-import { ActiveAcademicYearNotice } from '../../components/ActiveAcademicYearNotice';
 
 interface InventoryItem {
   id: number;
@@ -175,12 +174,6 @@ export const TutorInventoryPage = () => {
           Tambah Item
         </button>
       </div>
-
-      <ActiveAcademicYearNotice
-        name={activeAcademicYear?.name}
-        semester={activeAcademicYear?.semester}
-        helperText="Data inventaris pembina di halaman ini otomatis mengikuti tahun ajaran aktif yang tampil di header aplikasi."
-      />
 
       {!isLoadingActiveAcademicYear && !effectiveYearId ? (
         <div className="rounded-xl border border-amber-200 bg-amber-50 px-4 py-3 text-sm text-amber-800">

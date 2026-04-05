@@ -6,7 +6,6 @@ import { Redirect, useRouter } from 'expo-router';
 import { Pressable, RefreshControl, ScrollView, Text, TextInput, View } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { AppLoadingScreen } from '../../components/AppLoadingScreen';
-import { MobileActiveAcademicYearNotice } from '../../components/MobileActiveAcademicYearNotice';
 import { MobileSelectField } from '../../components/MobileSelectField';
 import { MobileSummaryCard as SummaryCard } from '../../components/MobileSummaryCard';
 import { QueryStateView } from '../../components/QueryStateView';
@@ -445,12 +444,6 @@ export function StaffHeadTuExamCardsScreen() {
           Generate kartu ujian digital untuk siswa yang layak ikut ujian, lalu buka pratinjau dokumen resminya dari Kepala TU.
         </Text>
       </View>
-
-      <MobileActiveAcademicYearNotice
-        name={activeYearQuery.data?.name}
-        semester={activeYearQuery.data?.semester}
-        helperText="Kartu ujian operasional di halaman ini otomatis mengikuti tahun ajaran aktif yang tampil di header aplikasi."
-      />
 
       {!activeYearQuery.isLoading && !activeYearQuery.isError && !selectedAcademicYearId ? (
         <View

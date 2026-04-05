@@ -20,7 +20,6 @@ import { useSearchParams } from 'react-router-dom';
 import api from '../../../services/api';
 import { toast } from 'react-hot-toast';
 import { format } from 'date-fns';
-import { ActiveAcademicYearNotice } from '../../../components/ActiveAcademicYearNotice';
 import { useActiveAcademicYear } from '../../../hooks/useActiveAcademicYear';
 import { examService, type ExamProgram } from '../../../services/exam.service';
 import { isNonScheduledExamProgram, resolveProgramCodeFromParam } from '../../../lib/examProgramMenu';
@@ -937,13 +936,6 @@ const ExamProctorManagementPage = () => {
           Atur pengawas berdasarkan <span className="font-semibold text-gray-700">Ruang Ujian</span>. 
           Ruang ujian otomatis terdeteksi dari data "Kelola Ruang Ujian", dan daftar pengawas menampilkan semua guru.
         </p>
-
-        <ActiveAcademicYearNotice
-          className="mt-4"
-          name={activeAcademicYear?.name}
-          semester={activeAcademicYear?.semester}
-          helperText="Jadwal mengawas di halaman ini selalu mengikuti tahun ajaran aktif sesuai header aplikasi."
-        />
         
         <div className="flex flex-wrap items-center gap-4 mt-6">
           {/* Filters */}

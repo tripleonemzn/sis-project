@@ -6,7 +6,6 @@ import type { GradeComponent } from '../../../services/grade.service';
 import { teacherAssignmentService } from '../../../services/teacherAssignment.service';
 import type { TeacherAssignment } from '../../../services/teacherAssignment.service';
 import { userService } from '../../../services/user.service';
-import { ActiveAcademicYearNotice } from '../../../components/ActiveAcademicYearNotice';
 import { useActiveAcademicYear } from '../../../hooks/useActiveAcademicYear';
 
 interface Student {
@@ -363,12 +362,6 @@ export const UjianSekolahPage = () => {
             Simpan Nilai
           </button>
         </div>
-
-        <ActiveAcademicYearNotice
-          name={activeAcademicYear?.name}
-          semester={activeAcademicYear?.semester}
-          helperText="Input nilai Ujian Sekolah di halaman ini otomatis mengikuti tahun ajaran aktif yang tampil di header aplikasi."
-        />
 
         {!isLoadingActiveAcademicYear && !activeAcademicYearId ? (
           <div className="rounded-lg border border-amber-200 bg-amber-50 px-4 py-3 text-sm text-amber-800">

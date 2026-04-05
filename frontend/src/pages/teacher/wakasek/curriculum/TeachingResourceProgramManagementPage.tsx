@@ -13,7 +13,6 @@ import {
   type TeachingResourceProgramSectionSchema,
 } from '../../../../services/teachingResourceProgram.service';
 import { useActiveAcademicYear } from '../../../../hooks/useActiveAcademicYear';
-import { ActiveAcademicYearNotice } from '../../../../components/ActiveAcademicYearNotice';
 
 type ProgramFormRow = {
   rowId: string;
@@ -672,12 +671,6 @@ export default function TeachingResourceProgramManagementPage() {
       <div className="rounded-xl border border-gray-200 bg-white p-4 shadow-sm">
         <div className="grid grid-cols-1 gap-4 md:grid-cols-3">
           <div className="md:col-span-2">
-            <ActiveAcademicYearNotice
-              name={activeYear?.name}
-              semester={activeYear?.semester}
-              helperText="Konfigurasi Program Perangkat Ajar di halaman ini dikunci ke tahun ajaran aktif sistem agar struktur menu guru tidak ambigu."
-              className="h-full"
-            />
           </div>
           <div className="md:col-span-1 flex items-end">
             <div className="w-full rounded-lg border border-blue-100 bg-blue-50 px-3 py-2 text-xs text-blue-700">

@@ -4,7 +4,6 @@ import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { Modal, Pressable, RefreshControl, ScrollView, Text, TextInput, View } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { AppLoadingScreen } from '../../../src/components/AppLoadingScreen';
-import { MobileActiveAcademicYearNotice } from '../../../src/components/MobileActiveAcademicYearNotice';
 import { MobileSelectField } from '../../../src/components/MobileSelectField';
 import { QueryStateView } from '../../../src/components/QueryStateView';
 import { useAuth } from '../../../src/features/auth/AuthProvider';
@@ -271,12 +270,6 @@ export default function TeacherSubjectReportScreen() {
       <Text style={{ color: '#64748b', marginBottom: 12 }}>
         Rekap nilai akhir per mata pelajaran dan kelas.
       </Text>
-
-      <MobileActiveAcademicYearNotice
-        name={assignmentsQuery.data?.activeYear?.name}
-        semester={assignmentsQuery.data?.activeYear?.semester}
-        helperText="Rapor mapel operasional di halaman ini otomatis mengikuti tahun ajaran aktif yang tampil di header aplikasi."
-      />
 
       {assignmentsQuery.isLoading ? <QueryStateView type="loading" message="Memuat assignment..." /> : null}
       {assignmentsQuery.isError ? (

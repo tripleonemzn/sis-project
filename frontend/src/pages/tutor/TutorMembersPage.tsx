@@ -15,7 +15,6 @@ import {
   getOsisTutorAssignments,
 } from '../../features/tutor/tutorAccess';
 import { useActiveAcademicYear } from '../../hooks/useActiveAcademicYear';
-import { ActiveAcademicYearNotice } from '../../components/ActiveAcademicYearNotice';
 
 type Semester = 'ODD' | 'EVEN';
 
@@ -762,12 +761,6 @@ export const TutorMembersPage = () => {
           </div>
         </div>
       </div>
-
-      <ActiveAcademicYearNotice
-        name={activeAcademicYear?.name}
-        semester={activeAcademicYear?.semester}
-        helperText="Operasional anggota, nilai, dan absensi pembina di halaman ini otomatis mengikuti tahun ajaran aktif yang tampil di header aplikasi."
-      />
 
       {!isLoadingActiveAcademicYear && !selectedAcademicYearId ? (
         <div className="rounded-xl border border-amber-200 bg-amber-50 px-4 py-3 text-sm text-amber-800">

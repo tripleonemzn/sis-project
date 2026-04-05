@@ -21,8 +21,8 @@ export default function ExamManagementHubPage() {
     { id: 'program', label: 'Program Ujian', icon: FolderCog },
     { id: 'jadwal', label: 'Jadwal Ujian', icon: Calendar },
     { id: 'ruang', label: 'Ruang Ujian', icon: School },
-    { id: 'denah', label: 'Generate Denah Ruang', icon: LayoutPanelTop },
     { id: 'mengawas', label: 'Jadwal Mengawas', icon: UserCheck },
+    { id: 'denah', label: 'Generate Denah Ruang', icon: LayoutPanelTop },
   ]), []);
 
   return (

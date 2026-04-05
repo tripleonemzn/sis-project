@@ -10,7 +10,6 @@ import {
   GraduationCap
 } from 'lucide-react';
 import { teacherAssignmentService, type TeacherAssignment } from '../../services/teacherAssignment.service';
-import { ActiveAcademicYearNotice } from '../../components/ActiveAcademicYearNotice';
 import { useActiveAcademicYear } from '../../hooks/useActiveAcademicYear';
 
 export const TeacherAttendanceListPage = () => {
@@ -91,12 +90,6 @@ export const TeacherAttendanceListPage = () => {
 
         
       </div>
-
-      <ActiveAcademicYearNotice
-        name={activeAcademicYear?.name}
-        semester={activeAcademicYear?.semester}
-        helperText="Daftar kelas presensi di halaman ini otomatis mengikuti tahun ajaran aktif yang tampil di header aplikasi."
-      />
 
       {!isLoadingActiveAcademicYear && !effectiveAcademicYearId ? (
         <div className="rounded-xl border border-amber-200 bg-amber-50 px-4 py-3 text-sm text-amber-800">

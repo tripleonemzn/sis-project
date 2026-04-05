@@ -13,7 +13,6 @@ import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { Feather } from '@expo/vector-icons';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { AppLoadingScreen } from '../../../src/components/AppLoadingScreen';
-import { MobileActiveAcademicYearNotice } from '../../../src/components/MobileActiveAcademicYearNotice';
 import { QueryStateView } from '../../../src/components/QueryStateView';
 import { useAuth } from '../../../src/features/auth/AuthProvider';
 import { openWebModuleRoute } from '../../../src/lib/navigation/webModuleRoute';
@@ -2849,12 +2848,6 @@ export default function StaffPaymentsScreen() {
         <Text style={{ color: '#1d4ed8', fontWeight: '700', marginBottom: 4 }}>{activeSectionHint.title}</Text>
         <Text style={{ color: '#1e3a8a', fontSize: 12, lineHeight: 18 }}>{activeSectionHint.description}</Text>
       </View>
-
-      <MobileActiveAcademicYearNotice
-        name={activeYearQuery.data?.name}
-        semester={activeYearQuery.data?.semester}
-        helperText="Operasional keuangan di mobile otomatis mengikuti tahun ajaran aktif yang tampil di header aplikasi."
-      />
 
       {isOverviewSection ? (
       <View

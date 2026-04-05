@@ -21,7 +21,6 @@ import {
 } from '../../../../utils/advisorDuty';
 import toast from 'react-hot-toast';
 import { useActiveAcademicYear } from '../../../../hooks/useActiveAcademicYear';
-import { ActiveAcademicYearNotice } from '../../../../components/ActiveAcademicYearNotice';
 
 type BudgetApprovalContextUser = {
   role?: string;
@@ -296,12 +295,6 @@ export const BudgetApprovalPage = () => {
           </p>
         </div>
       </div>
-
-      <ActiveAcademicYearNotice
-        name={activeAcademicYear?.name}
-        semester={activeAcademicYear?.semester}
-        helperText="Persetujuan pengajuan anggaran operasional di halaman ini otomatis mengikuti tahun ajaran aktif yang tampil di header aplikasi."
-      />
 
       {!isLoadingActiveAcademicYear && !effectiveYearId ? (
         <div className="rounded-xl border border-amber-200 bg-amber-50 px-4 py-3 text-sm text-amber-800">

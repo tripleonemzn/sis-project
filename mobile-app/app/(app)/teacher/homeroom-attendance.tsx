@@ -4,7 +4,6 @@ import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { Pressable, RefreshControl, ScrollView, Text, TextInput, View } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { AppLoadingScreen } from '../../../src/components/AppLoadingScreen';
-import { MobileActiveAcademicYearNotice } from '../../../src/components/MobileActiveAcademicYearNotice';
 import { MobileMenuTabBar } from '../../../src/components/MobileMenuTabBar';
 import { MobileSelectField } from '../../../src/components/MobileSelectField';
 import { QueryStateView } from '../../../src/components/QueryStateView';
@@ -383,12 +382,6 @@ export default function TeacherHomeroomAttendanceScreen() {
       <Text style={{ color: BRAND_COLORS.textMuted, marginBottom: 12 }}>
         Kelola presensi harian, rekap semester, dan statistik keterlambatan siswa.
       </Text>
-
-      <MobileActiveAcademicYearNotice
-        name={activeYearQuery.data?.name}
-        semester={activeYearQuery.data?.semester}
-        helperText="Presensi wali kelas di halaman ini otomatis mengikuti tahun ajaran aktif yang tampil di header aplikasi."
-      />
 
       {!activeYearQuery.isLoading && !activeYearQuery.isError && !selectedAcademicYearId ? (
         <View

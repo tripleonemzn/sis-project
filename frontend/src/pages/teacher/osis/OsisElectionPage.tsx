@@ -13,7 +13,6 @@ import {
   X,
 } from 'lucide-react';
 import { toast } from 'react-hot-toast';
-import { ActiveAcademicYearNotice } from '../../../components/ActiveAcademicYearNotice';
 import { useActiveAcademicYear } from '../../../hooks/useActiveAcademicYear';
 import {
   osisService,
@@ -268,12 +267,6 @@ export const OsisElectionPage = () => {
             Kelola periode pemilihan, calon ketua OSIS, quick count, dan tautan video orasi.
           </p>
         </div>
-
-        <ActiveAcademicYearNotice
-          name={activeAcademicYear?.name}
-          semester={activeAcademicYear?.semester}
-          helperText="Pemilihan OSIS di halaman ini selalu mengikuti tahun ajaran aktif yang tampil di header aplikasi."
-        />
 
         <div className="grid grid-cols-1 gap-4 lg:grid-cols-4">
           <div className="rounded-2xl border border-blue-100 bg-blue-50 p-5">

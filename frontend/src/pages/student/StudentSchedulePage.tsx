@@ -4,7 +4,6 @@ import { useQuery } from '@tanstack/react-query';
 import api from '../../services/api';
 import { authService } from '../../services/auth.service';
 import { useActiveAcademicYear } from '../../hooks/useActiveAcademicYear';
-import { ActiveAcademicYearNotice } from '../../components/ActiveAcademicYearNotice';
 import { toast } from 'react-hot-toast';
 import { scheduleTimeConfigService } from '../../services/scheduleTimeConfig.service';
 import { 
@@ -161,12 +160,6 @@ export default function StudentSchedulePage() {
         </h1>
         <p className="text-gray-500 mt-1">Jadwal kegiatan belajar mengajar minggu ini</p>
       </div>
-
-      <ActiveAcademicYearNotice
-        name={activeAcademicYear?.name}
-        semester={activeAcademicYear?.semester}
-        helperText="Jadwal siswa di halaman ini selalu mengikuti tahun ajaran aktif yang tampil di header aplikasi."
-      />
 
       <div className="bg-white p-6 rounded-xl shadow-sm border border-gray-200">
         <div className="flex flex-col md:flex-row md:items-center justify-between gap-4 mb-6">

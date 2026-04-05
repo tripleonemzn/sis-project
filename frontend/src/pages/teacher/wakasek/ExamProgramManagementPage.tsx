@@ -3,8 +3,6 @@ import { Loader2, Pencil, Plus, RefreshCw, Save, Trash2, X } from 'lucide-react'
 import { toast } from 'react-hot-toast';
 import { useQueryClient } from '@tanstack/react-query';
 import { useSearchParams } from 'react-router-dom';
-import { ActiveAcademicYearNotice } from '../../../components/ActiveAcademicYearNotice';
-import { useActiveAcademicYear } from '../../../hooks/useActiveAcademicYear';
 import { academicYearService } from '../../../services/academicYear.service';
 import { teacherAssignmentService } from '../../../services/teacherAssignment.service';
 import {
@@ -576,7 +574,6 @@ function createNewRow(currentRows: ProgramFormRow[], componentRows: GradeCompone
 export default function ExamProgramManagementPage() {
   const queryClient = useQueryClient();
   const [searchParams, setSearchParams] = useSearchParams();
-  const { data: activeAcademicYear } = useActiveAcademicYear();
   const [academicYearId, setAcademicYearId] = useState<number | null>(null);
   const [rows, setRows] = useState<ProgramFormRow[]>([]);
   const [componentRows, setComponentRows] = useState<GradeComponentFormRow[]>([]);
@@ -1399,13 +1396,6 @@ export default function ExamProgramManagementPage() {
           </p>
         </div>
       ) : null}
-
-      <ActiveAcademicYearNotice
-        className="order-4"
-        name={activeAcademicYear?.name}
-        semester={activeAcademicYear?.semester}
-        helperText="Konfigurasi program ujian di halaman ini otomatis mengikuti tahun ajaran aktif sesuai header aplikasi."
-      />
 
       <div className="order-5 rounded-xl border border-gray-200 bg-white px-4 py-3">
         <div className="flex overflow-x-auto gap-4">

@@ -14,7 +14,6 @@ import { Feather } from '@expo/vector-icons';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { AppLoadingScreen } from '../../../src/components/AppLoadingScreen';
 import { MobileDetailModal } from '../../../src/components/MobileDetailModal';
-import { MobileActiveAcademicYearNotice } from '../../../src/components/MobileActiveAcademicYearNotice';
 import { MobileMenuTabBar } from '../../../src/components/MobileMenuTabBar';
 import { MobileSelectField } from '../../../src/components/MobileSelectField';
 import { MobileSummaryCard } from '../../../src/components/MobileSummaryCard';
@@ -666,11 +665,11 @@ function createNewComponentDraft(rows: GradeComponentDraft[]): GradeComponentDra
 }
 
 const EXAM_SECTION_ITEMS: Array<{ key: ExamHubSection; label: string; iconName: React.ComponentProps<typeof Feather>['name'] }> = [
+  { key: 'PROGRAM', label: 'Program Ujian', iconName: 'layout' },
   { key: 'JADWAL', label: 'Jadwal Ujian', iconName: 'calendar' },
   { key: 'RUANG', label: 'Ruang Ujian', iconName: 'home' },
-  { key: 'DENAH', label: 'Generate Denah Ruang', iconName: 'grid' },
   { key: 'MENGAWAS', label: 'Jadwal Mengawas', iconName: 'user-check' },
-  { key: 'PROGRAM', label: 'Program Ujian', iconName: 'layout' },
+  { key: 'DENAH', label: 'Generate Denah Ruang', iconName: 'grid' },
 ];
 const CURRICULUM_EXAM_MANAGER_LABEL = 'Wakasek Kurikulum / Sekretaris Kurikulum';
 
@@ -1836,12 +1835,6 @@ export default function TeacherWakakurExamsScreen() {
       <Text style={{ color: BRAND_COLORS.textMuted, marginBottom: 10 }}>
         Pengelolaan jadwal ujian, ruang ujian, generate denah ruang, jadwal mengawas, dan program ujian.
       </Text>
-
-      <MobileActiveAcademicYearNotice
-        name={activeYearQuery.data?.name}
-        semester={activeYearQuery.data?.semester}
-        helperText="Semua data operasional di modul ini otomatis mengikuti tahun ajaran aktif yang tampil di header aplikasi."
-      />
 
       <MobileMenuTabBar
         items={EXAM_SECTION_ITEMS}

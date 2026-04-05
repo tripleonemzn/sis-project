@@ -4,7 +4,6 @@ import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { Alert, Pressable, RefreshControl, ScrollView, Switch, Text, TextInput, View } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { AppLoadingScreen } from '../../components/AppLoadingScreen';
-import { MobileActiveAcademicYearNotice } from '../../components/MobileActiveAcademicYearNotice';
 import { MobileMenuTabBar } from '../../components/MobileMenuTabBar';
 import { MobileSelectField } from '../../components/MobileSelectField';
 import { MobileSummaryCard as SummaryCard } from '../../components/MobileSummaryCard';
@@ -792,12 +791,6 @@ export function TeacherOsisManagementModuleScreen() {
       <Text style={{ color: BRAND_COLORS.textMuted, marginBottom: 12 }}>
         Kelola periode kepengurusan, struktur organisasi, anggota, pengajuan masuk, dan penilaian OSIS.
       </Text>
-
-      <MobileActiveAcademicYearNotice
-        name={activeYearQuery.data?.name}
-        semester={activeYearQuery.data?.semester}
-        helperText="Operasional OSIS di mobile dikunci ke tahun ajaran aktif yang tampil di header aplikasi."
-      />
 
       <View
         style={{

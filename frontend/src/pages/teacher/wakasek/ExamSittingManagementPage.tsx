@@ -12,7 +12,6 @@ import {
 import { useSearchParams } from 'react-router-dom';
 import api from '../../../services/api';
 import { toast } from 'react-hot-toast';
-import { ActiveAcademicYearNotice } from '../../../components/ActiveAcademicYearNotice';
 import { useActiveAcademicYear } from '../../../hooks/useActiveAcademicYear';
 import { examService, type ExamProgram, type ExamProgramSession } from '../../../services/exam.service';
 import { isNonScheduledExamProgram, resolveProgramCodeFromParam } from '../../../lib/examProgramMenu';
@@ -1017,13 +1016,6 @@ const ExamSittingManagementPage = () => {
           </div>
         </div>
 
-        <ActiveAcademicYearNotice
-          className="mt-4"
-          name={activeAcademicYear?.name}
-          semester={activeAcademicYear?.semester}
-          helperText="Ruang ujian dan komposisi siswa di halaman ini selalu mengikuti tahun ajaran aktif sesuai header aplikasi."
-        />
-
         {/* Tabs */}
         <div className="bg-white p-4 rounded-xl shadow-sm border border-gray-200 mt-6">
           {visiblePrograms.length === 0 ? (
@@ -1152,21 +1144,6 @@ const ExamSittingManagementPage = () => {
             </div>
             
             <form onSubmit={handleSave} className="space-y-4">
-              <div>
-                <label className="block text-sm font-medium text-gray-700 mb-1">Tahun Ajaran</label>
-                <div className="rounded-lg border border-blue-100 bg-blue-50 px-3 py-3">
-                  <div className="flex flex-wrap items-center justify-between gap-2">
-                    <span className="text-sm font-semibold text-gray-900">{activeAcademicYear?.name || '-'}</span>
-                    <span className="rounded-full bg-emerald-100 px-2.5 py-1 text-[11px] font-semibold text-emerald-700">
-                      Aktif
-                    </span>
-                  </div>
-                  <p className="mt-1 text-xs text-blue-700">
-                    Ruang ujian ini otomatis tersimpan ke tahun ajaran aktif sesuai header aplikasi.
-                  </p>
-                </div>
-              </div>
-
               {activeProgram?.fixedSemester ? (
                 <div>
                   <label className="block text-sm font-medium text-gray-700 mb-1">Semester</label>

@@ -14,7 +14,6 @@ import {
   Users,
 } from 'lucide-react';
 import toast from 'react-hot-toast';
-import { ActiveAcademicYearNotice } from '../../../components/ActiveAcademicYearNotice';
 import { useActiveAcademicYear } from '../../../hooks/useActiveAcademicYear';
 import { examService, type ExamProgram } from '../../../services/exam.service';
 import {
@@ -979,12 +978,6 @@ export const OsisManagementPage = () => {
             </p>
           </div>
           <div className="grid gap-3 md:grid-cols-2 xl:min-w-[560px]">
-            <ActiveAcademicYearNotice
-              name={activeAcademicYear?.name}
-              semester={activeAcademicYear?.semester}
-              helperText="Operasional OSIS di halaman ini dikunci ke tahun ajaran aktif yang tampil di header aplikasi."
-              className="md:col-span-2"
-            />
             <select
               value={selectedPeriod?.id || ''}
               onChange={(e) => setSelectedPeriodIdState(Number(e.target.value || 0) || null)}

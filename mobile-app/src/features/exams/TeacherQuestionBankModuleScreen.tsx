@@ -5,7 +5,6 @@ import { Alert, Pressable, RefreshControl, ScrollView, Text, TextInput, View } f
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { AppLoadingScreen } from '../../components/AppLoadingScreen';
 import { ExamHtmlContent, plainTextFromExamRichText } from '../../components/ExamHtmlContent';
-import { MobileActiveAcademicYearNotice } from '../../components/MobileActiveAcademicYearNotice';
 import { MobileSelectField } from '../../components/MobileSelectField';
 import { QueryStateView } from '../../components/QueryStateView';
 import { BRAND_COLORS } from '../../config/brand';
@@ -139,12 +138,6 @@ export function TeacherQuestionBankModuleScreen() {
       <Text style={{ color: '#64748b', marginBottom: 12 }}>
         Daftar butir soal mengikuti konsep web: filter mapel, semester, tipe, lalu buka pratinjau soal yang sebenarnya.
       </Text>
-
-      <MobileActiveAcademicYearNotice
-        name={activeAcademicYear?.name}
-        semester={activeAcademicYear?.semester}
-        helperText="Bank soal operasional di halaman ini otomatis mengikuti tahun ajaran aktif yang tampil di header aplikasi."
-      />
 
       {!teacherAssignmentsQuery.isLoading && !teacherAssignmentsQuery.isError && !effectiveAcademicYearId ? (
         <View

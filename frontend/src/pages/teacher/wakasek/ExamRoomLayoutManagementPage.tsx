@@ -10,7 +10,6 @@ import {
   X,
 } from 'lucide-react';
 import { toast } from 'react-hot-toast';
-import { ActiveAcademicYearNotice } from '../../../components/ActiveAcademicYearNotice';
 import { useActiveAcademicYear } from '../../../hooks/useActiveAcademicYear';
 import api from '../../../services/api';
 import { examService, type ExamProgram } from '../../../services/exam.service';
@@ -631,20 +630,15 @@ export default function ExamRoomLayoutManagementPage() {
         <div>
           <h2 className="text-2xl font-bold text-gray-900">Generate Denah Ruang</h2>
           <p className="mt-1 text-sm text-gray-500">
-            Pilih ruang ujian, lakukan setup denah lewat popup, lalu atur penempatan siswa per rombel secara fokus saat denah dibuka.
+            Pilih ruang ujian, lakukan setup denah lewat popup, lalu atur penempatan siswa per rombel secara fokus saat denah dibuka. Denah otomatis mengikuti tahun ajaran aktif di header aplikasi.
           </p>
         </div>
 
         <div className="rounded-xl border border-gray-100 bg-white p-4 shadow-sm">
-          <div className="grid gap-4 md:grid-cols-[280px_minmax(0,1fr)]">
-            <ActiveAcademicYearNotice
-              name={activeAcademicYear?.name}
-              semester={activeAcademicYear?.semester}
-              helperText="Denah ruang di halaman ini otomatis mengikuti tahun ajaran aktif sesuai header aplikasi."
-            />
-            <div>
+          <div>
+            <div className="max-w-xl">
               <label className="mb-1 block text-xs font-semibold uppercase tracking-wide text-gray-500">
-                Program Ujian
+                Program
               </label>
               {visiblePrograms.length === 0 ? (
                 <div className="rounded-lg border border-dashed border-gray-300 px-3 py-2 text-sm text-gray-500">
