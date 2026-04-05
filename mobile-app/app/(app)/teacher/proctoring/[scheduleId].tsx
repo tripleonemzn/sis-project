@@ -1,4 +1,4 @@
-import { useMemo, useState } from 'react';
+import { useEffect, useMemo, useState } from 'react';
 import { Redirect, useLocalSearchParams, useRouter } from 'expo-router';
 import { useMutation, useQuery } from '@tanstack/react-query';
 import { Alert, Pressable, RefreshControl, ScrollView, Text, TextInput, View } from 'react-native';
@@ -87,19 +87,35 @@ export default function TeacherProctoringDetailScreen() {
       });
     },
     onSuccess: async () => {
-      notifySuccess('Berita acara berhasil disimpan.');
+      notifySuccess('Berita acara berhasil dikirim ke Kurikulum.');
       await detailQuery.refetch();
     },
     onError: (error: unknown) => {
-      notifyApiError(error, 'Gagal menyimpan berita acara.');
+      notifyApiError(error, 'Gagal mengirim berita acara.');
     },
   });
 
   const students = detailQuery.data?.students || [];
+  const latestReport = useMemo(() => {
+    const reports = detailQuery.data?.schedule?.proctoringReports || [];
+    if (!Array.isArray(reports) || reports.length === 0) return null;
+    return [...reports].sort((a, b) => {
+      const aTime = new Date(String(a.updatedAt || a.signedAt || 0)).getTime();
+      const bTime = new Date(String(b.updatedAt || b.signedAt || 0)).getTime();
+      return bTime - aTime;
+    })[0] || null;
+  }, [detailQuery.data?.schedule?.proctoringReports]);
+  const reportSubmitted = Boolean(latestReport?.id);
   const presentCount = students.filter((item) => !!item.startTime).length;
   const inProgressCount = students.filter((item) => item.status === 'IN_PROGRESS').length;
   const completedCount = students.filter((item) => item.status === 'COMPLETED').length;
   const absentCount = Math.max(0, students.length - presentCount);
+
+  useEffect(() => {
+    if (!latestReport?.id) return;
+    setNotes(String(latestReport.notes || ''));
+    setIncident(String(latestReport.incident || ''));
+  }, [latestReport?.id, latestReport?.notes, latestReport?.incident]);
 
   if (isLoading) return <AppLoadingScreen message="Memuat monitoring ujian..." />;
   if (!isAuthenticated) return <Redirect href="/welcome" />;
@@ -319,6 +335,7 @@ export default function TeacherProctoringDetailScreen() {
               }}
               placeholderTextColor="#94a3b8"
               multiline
+              editable={!reportSubmitted}
             />
             <TextInput
               value={incident}
@@ -337,16 +354,52 @@ export default function TeacherProctoringDetailScreen() {
               }}
               placeholderTextColor="#94a3b8"
               multiline
+              editable={!reportSubmitted}
             />
             <Text style={{ color: '#64748b', fontSize: 12, marginBottom: 8 }}>
               Hadir: {presentCount} siswa • Tidak hadir: {absentCount} siswa
             </Text>
+            {reportSubmitted ? (
+              <View
+                style={{
+                  borderWidth: 1,
+                  borderColor: '#a7f3d0',
+                  backgroundColor: '#ecfdf5',
+                  borderRadius: 10,
+                  padding: 10,
+                  marginBottom: 8,
+                }}
+              >
+                <Text style={{ color: '#047857', fontWeight: '700' }}>Berita acara sudah terkirim ke Kurikulum.</Text>
+                <Text style={{ color: '#047857', fontSize: 12, marginTop: 4 }}>
+                  Dokumen resmi diverifikasi dan dicetak dari sisi Wakasek Kurikulum / sekretaris.
+                </Text>
+                {latestReport?.documentNumber ? (
+                  <Text style={{ color: '#065f46', fontSize: 12, marginTop: 4 }}>No. Dokumen: {latestReport.documentNumber}</Text>
+                ) : null}
+              </View>
+            ) : (
+              <View
+                style={{
+                  borderWidth: 1,
+                  borderColor: '#bfdbfe',
+                  backgroundColor: '#eff6ff',
+                  borderRadius: 10,
+                  padding: 10,
+                  marginBottom: 8,
+                }}
+              >
+                <Text style={{ color: '#1d4ed8', fontSize: 12 }}>
+                  Setelah dikirim, berita acara akan diteruskan ke Kurikulum sebagai dokumen resmi untuk diverifikasi dan dicetak.
+                </Text>
+              </View>
+            )}
             <Pressable
               onPress={() => {
-                Alert.alert('Konfirmasi', 'Simpan berita acara ujian ini?', [
+                Alert.alert('Konfirmasi', 'Kirim berita acara ujian ini ke Kurikulum?', [
                   { text: 'Batal', style: 'cancel' },
                   {
-                    text: 'Simpan',
+                    text: 'Kirim',
                     onPress: () => {
                       void submitMutation.mutateAsync();
                     },
@@ -358,12 +411,12 @@ export default function TeacherProctoringDetailScreen() {
                 borderRadius: 10,
                 paddingVertical: 10,
                 alignItems: 'center',
-                opacity: submitMutation.isPending ? 0.6 : 1,
+                opacity: submitMutation.isPending || reportSubmitted ? 0.6 : 1,
               }}
-              disabled={submitMutation.isPending}
+              disabled={submitMutation.isPending || reportSubmitted}
             >
               <Text style={{ color: '#fff', fontWeight: '700' }}>
-                {submitMutation.isPending ? 'Menyimpan...' : 'Simpan Berita Acara'}
+                {submitMutation.isPending ? 'Menyimpan...' : reportSubmitted ? 'Terkirim ke Kurikulum' : 'Kirim ke Kurikulum'}
               </Text>
             </Pressable>
           </View>

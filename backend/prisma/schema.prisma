@@ -2362,6 +2362,9 @@ model ExamProctoringReport {
   proctorId           Int
   notes               String?
   incident            String?
+  documentNumber      String?      @unique
+  verificationToken   String?      @unique
+  documentSnapshot    Json?
   createdAt           DateTime     @default(now())
   scheduleId          Int
   signedAt            DateTime     @default(now())
@@ -2371,6 +2374,7 @@ model ExamProctoringReport {
   proctor             User         @relation(fields: [proctorId], references: [id])
   schedule            ExamSchedule @relation(fields: [scheduleId], references: [id])
 
+  @@index([verificationToken])
   @@map("exam_proctoring_reports")
 }
 

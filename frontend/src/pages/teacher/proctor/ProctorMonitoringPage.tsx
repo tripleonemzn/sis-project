@@ -51,6 +51,7 @@ interface ExamSchedule {
     updatedAt?: string;
     notes?: string | null;
     incident?: string | null;
+    documentNumber?: string | null;
   }>;
   class: {
     id: number;
@@ -143,7 +144,7 @@ const ProctorMonitoringPage: React.FC = () => {
   };
 
   const handleSubmitReport = async () => {
-    if (!confirm('Apakah Anda yakin ingin menyimpan Berita Acara ini?')) return;
+    if (!confirm('Apakah Anda yakin ingin mengirim berita acara ini ke Kurikulum?')) return;
 
     setSubmittingReport(true);
     try {
@@ -158,11 +159,11 @@ const ProctorMonitoringPage: React.FC = () => {
       });
       setReportSubmitted(true);
       hasHydratedExistingReportRef.current = true;
-      toast.success('Berita Acara berhasil disimpan');
+      toast.success('Berita acara berhasil dikirim ke Kurikulum');
       await fetchData({ silent: true });
     } catch (error) {
       console.error('Error submitting report:', error);
-      toast.error('Gagal menyimpan Berita Acara');
+      toast.error('Gagal mengirim berita acara');
     } finally {
       setSubmittingReport(false);
     }
@@ -223,6 +224,14 @@ const ProctorMonitoringPage: React.FC = () => {
     nowMs >= scheduleStartMs &&
     nowMs <= scheduleEndMs;
   const notStartedCount = orderedStudents.filter((student) => student.status === 'NOT_STARTED').length;
+  const latestReport = Array.isArray(schedule.proctoringReports)
+    ? [...schedule.proctoringReports]
+        .sort((a, b) => {
+          const aTime = new Date(String(a.updatedAt || a.signedAt || 0)).getTime();
+          const bTime = new Date(String(b.updatedAt || b.signedAt || 0)).getTime();
+          return bTime - aTime;
+        })[0] || null
+    : null;
 
   return (
     <div className="space-y-5">
@@ -399,6 +408,7 @@ const ProctorMonitoringPage: React.FC = () => {
                   placeholder="Contoh: Ujian berjalan lancar..."
                   value={notes}
                   onChange={(e) => setNotes(e.target.value)}
+                  readOnly={reportSubmitted}
                 />
               </div>
               <div>
@@ -409,8 +419,22 @@ const ProctorMonitoringPage: React.FC = () => {
                   placeholder="Contoh: Siswa A sakit..."
                   value={incident}
                   onChange={(e) => setIncident(e.target.value)}
+                  readOnly={reportSubmitted}
                 />
               </div>
+              {reportSubmitted ? (
+                <div className="rounded-lg border border-emerald-200 bg-emerald-50 px-3 py-3 text-sm text-emerald-800">
+                  <div className="font-semibold">Berita acara sudah terkirim ke Kurikulum.</div>
+                  <div className="mt-1">Cetak dan distribusi dokumen resmi menjadi tanggung jawab Wakasek Kurikulum / sekretaris.</div>
+                  {latestReport?.documentNumber ? (
+                    <div className="mt-2 text-xs font-medium text-emerald-900">No. Dokumen: {latestReport.documentNumber}</div>
+                  ) : null}
+                </div>
+              ) : (
+                <div className="rounded-lg border border-blue-200 bg-blue-50 px-3 py-3 text-sm text-blue-800">
+                  Setelah dikirim, berita acara akan diteruskan ke Kurikulum sebagai dokumen resmi untuk diverifikasi dan dicetak.
+                </div>
+              )}
               <button 
                 className={`w-full flex justify-center items-center px-4 py-2 border border-transparent rounded-md shadow-sm text-sm font-medium text-white focus:outline-none focus:ring-2 focus:ring-offset-2 disabled:opacity-50 ${
                   reportSubmitted
@@ -418,14 +442,14 @@ const ProctorMonitoringPage: React.FC = () => {
                     : 'bg-indigo-600 hover:bg-indigo-700 focus:ring-indigo-500'
                 }`}
                 onClick={handleSubmitReport}
-                disabled={submittingReport}
+                disabled={submittingReport || reportSubmitted}
               >
                 <Save className="h-4 w-4 mr-2" />
                 {submittingReport
                   ? 'Menyimpan...'
                   : reportSubmitted
-                    ? 'Berita Acara Terkirim'
-                    : 'Simpan Berita Acara'}
+                    ? 'Terkirim ke Kurikulum'
+                    : 'Kirim ke Kurikulum'}
               </button>
             </div>
           </div>

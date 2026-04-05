@@ -106,6 +106,8 @@ interface ProctorReportRow {
     signedAt: string;
     notes?: string | null;
     incident?: string | null;
+    documentNumber?: string | null;
+    verificationUrl?: string | null;
     proctor?: {
       id: number;
       name: string;
@@ -1242,7 +1244,7 @@ const ExamProctorManagementPage = () => {
           <div>
             <h2 className="text-lg font-semibold text-gray-900">Berita Acara Pengawas</h2>
             <p className="text-sm text-gray-500">
-              Laporan ruang ujian otomatis diterima dari pengawas untuk program {activeProgram?.shortLabel || activeProgram?.label || activeProgramCode || '-'}.
+              Laporan ruang ujian otomatis diterima dari pengawas untuk program {activeProgram?.shortLabel || activeProgram?.label || activeProgramCode || '-'} dan dicetak dari sisi Kurikulum.
             </p>
           </div>
           <div className="flex items-center gap-3">
@@ -1345,6 +1347,7 @@ const ExamProctorManagementPage = () => {
                   <th className="px-6 py-3 text-xs font-semibold text-gray-500 uppercase tracking-wider">Peserta</th>
                   <th className="px-6 py-3 text-xs font-semibold text-gray-500 uppercase tracking-wider">Pengawas</th>
                   <th className="px-6 py-3 text-xs font-semibold text-gray-500 uppercase tracking-wider">Catatan</th>
+                  <th className="px-6 py-3 text-xs font-semibold text-gray-500 uppercase tracking-wider">Dokumen</th>
                 </tr>
               </thead>
               <tbody className="divide-y divide-gray-100 bg-white">
@@ -1395,7 +1398,7 @@ const ExamProctorManagementPage = () => {
                         <>
                           <div className="font-medium text-gray-900">{row.report.proctor.name}</div>
                           <div className="text-xs text-gray-500 mt-1">
-                            Ditandatangani {format(new Date(row.report.signedAt), 'dd/MM/yyyy HH:mm')}
+                            Dikirim {format(new Date(row.report.signedAt), 'dd/MM/yyyy HH:mm')}
                           </div>
                         </>
                       ) : (
@@ -1409,6 +1412,35 @@ const ExamProctorManagementPage = () => {
                           Kejadian khusus: {row.report.incident}
                         </div>
                       ) : null}
+                    </td>
+                    <td className="px-6 py-4 align-top text-sm text-gray-700">
+                      {row.report ? (
+                        <div className="flex min-w-[220px] flex-col gap-2">
+                          <div className="text-xs text-gray-500">
+                            {row.report.documentNumber || 'Nomor dokumen akan dibuat saat preview dibuka.'}
+                          </div>
+                          <div className="flex flex-wrap gap-2">
+                            <button
+                              type="button"
+                              onClick={() => window.open(`/print/proctor-report/${row.report?.id}`, '_blank', 'noopener')}
+                              className="inline-flex items-center rounded-lg border border-blue-200 bg-blue-50 px-3 py-2 text-xs font-semibold text-blue-700 hover:bg-blue-100"
+                            >
+                              <FileText size={13} className="mr-1.5" />
+                              Lihat Dokumen
+                            </button>
+                            <button
+                              type="button"
+                              onClick={() => window.open(`/print/proctor-report/${row.report?.id}?autoprint=1`, '_blank', 'noopener')}
+                              className="inline-flex items-center rounded-lg border border-emerald-200 bg-emerald-50 px-3 py-2 text-xs font-semibold text-emerald-700 hover:bg-emerald-100"
+                            >
+                              <FileText size={13} className="mr-1.5" />
+                              Print
+                            </button>
+                          </div>
+                        </div>
+                      ) : (
+                        <span className="text-xs text-gray-500">Belum ada dokumen</span>
+                      )}
                     </td>
                   </tr>
                 ))}

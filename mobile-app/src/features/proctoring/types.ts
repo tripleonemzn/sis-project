@@ -50,6 +50,14 @@ export type ProctorScheduleDetail = {
       id: number;
       name: string;
     } | null;
+    proctoringReports?: Array<{
+      id: number;
+      signedAt?: string;
+      updatedAt?: string;
+      notes?: string | null;
+      incident?: string | null;
+      documentNumber?: string | null;
+    }>;
   };
   students: ProctorStudentRow[];
   isProctor?: boolean;

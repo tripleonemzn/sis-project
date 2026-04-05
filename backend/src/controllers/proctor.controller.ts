@@ -1,5 +1,7 @@
+import { randomUUID } from 'crypto';
 import { Request, Response } from 'express';
-import { AdditionalDuty, ExamSessionStatus } from '@prisma/client';
+import { AdditionalDuty, ExamSessionStatus, Prisma } from '@prisma/client';
+import QRCode from 'qrcode';
 import prisma from '../utils/prisma';
 import { ApiError, asyncHandler, ApiResponse } from '../utils/api';
 import {
@@ -7,6 +9,13 @@ import {
     listHistoricalStudentsForClass,
 } from '../utils/studentAcademicHistory';
 import { createManyInAppNotifications } from '../services/mobilePushNotification.service';
+import {
+    getExamRequesterProfile,
+    hasCurriculumExamManagementDuty,
+} from '../utils/examManagementAccess';
+
+const SCHOOL_NAME = 'SMKS Karya Guna Bhakti 2';
+const SCHOOL_LOGO_PATH = '/logo_sis_kgb2.png';
 
 function countAnsweredEntries(rawAnswers: unknown): number {
     if (!rawAnswers || typeof rawAnswers !== 'object' || Array.isArray(rawAnswers)) return 0;
@@ -170,6 +179,162 @@ function parseDateOnly(value: unknown): Date | null {
     const parsed = new Date(`${raw}T00:00:00.000Z`);
     return Number.isNaN(parsed.getTime()) ? null : parsed;
 }
+
+function getFirstHeaderValue(value: string | string[] | undefined): string {
+    const rawValue = Array.isArray(value) ? value[0] : value;
+    return String(rawValue || '')
+        .split(',')
+        .map((item) => item.trim())
+        .find((item) => item.length > 0) || '';
+}
+
+function resolvePublicAppBaseUrl(req: Request): string {
+    const configuredBaseUrl = String(
+        process.env.APP_BASE_URL || process.env.PUBLIC_APP_URL || process.env.FRONTEND_BASE_URL || '',
+    ).trim();
+
+    if (configuredBaseUrl) {
+        const normalized =
+            /^https?:\/\//i.test(configuredBaseUrl) ? configuredBaseUrl : `https://${configuredBaseUrl}`;
+        return normalized.replace(/\/+$/, '');
+    }
+
+    const forwardedProto = getFirstHeaderValue(req.headers['x-forwarded-proto']);
+    const forwardedHost = getFirstHeaderValue(req.headers['x-forwarded-host']);
+    const host = forwardedHost || getFirstHeaderValue(req.headers.host);
+    if (host) {
+        const protocol = forwardedProto || req.protocol || 'https';
+        return `${protocol}://${host}`.replace(/\/+$/, '');
+    }
+
+    return 'https://siskgb2.id';
+}
+
+function normalizeOptionalText(value: unknown): string | null {
+    const normalized = String(value || '').replace(/\s+/g, ' ').trim();
+    return normalized || null;
+}
+
+function formatTimeLabel(value: Date | null | undefined): string {
+    if (!value) return '-';
+    return new Intl.DateTimeFormat('id-ID', {
+        hour: '2-digit',
+        minute: '2-digit',
+        hour12: false,
+        timeZone: 'Asia/Jakarta',
+    }).format(value);
+}
+
+function formatDateLabel(value: Date | null | undefined): string {
+    if (!value) return '-';
+    return new Intl.DateTimeFormat('id-ID', {
+        day: 'numeric',
+        month: 'long',
+        year: 'numeric',
+        timeZone: 'Asia/Jakarta',
+    }).format(value);
+}
+
+function getDatePieces(value: Date | null | undefined): {
+    weekday: string;
+    day: string;
+    month: string;
+    year: string;
+    fullDateLabel: string;
+} {
+    if (!value) {
+        return {
+            weekday: '-',
+            day: '-',
+            month: '-',
+            year: '-',
+            fullDateLabel: '-',
+        };
+    }
+
+    const date = new Date(value);
+    return {
+        weekday: new Intl.DateTimeFormat('id-ID', {
+            weekday: 'long',
+            timeZone: 'Asia/Jakarta',
+        }).format(date),
+        day: new Intl.DateTimeFormat('id-ID', {
+            day: 'numeric',
+            timeZone: 'Asia/Jakarta',
+        }).format(date),
+        month: new Intl.DateTimeFormat('id-ID', {
+            month: 'long',
+            timeZone: 'Asia/Jakarta',
+        }).format(date),
+        year: new Intl.DateTimeFormat('id-ID', {
+            year: 'numeric',
+            timeZone: 'Asia/Jakarta',
+        }).format(date),
+        fullDateLabel: formatDateLabel(date),
+    };
+}
+
+function sanitizeDocumentToken(value: unknown, fallback: string): string {
+    const normalized = String(value || '')
+        .trim()
+        .toUpperCase()
+        .replace(/[^A-Z0-9]+/g, '-')
+        .replace(/-+/g, '-')
+        .replace(/^-+|-+$/g, '');
+    return normalized || fallback;
+}
+
+function buildProctorReportDocumentNumber(params: {
+    reportId: number;
+    examType: string | null;
+    executionDate: Date;
+}): string {
+    const examToken = sanitizeDocumentToken(params.examType, 'UJIAN');
+    const dateToken = [
+        params.executionDate.getFullYear(),
+        String(params.executionDate.getMonth() + 1).padStart(2, '0'),
+        String(params.executionDate.getDate()).padStart(2, '0'),
+    ].join('');
+    return `BAU/${examToken}/${dateToken}/${String(params.reportId).padStart(5, '0')}`;
+}
+
+type ProctorReportDocumentSnapshot = {
+    schoolName: string;
+    schoolLogoPath: string;
+    title: string;
+    examLabel: string;
+    academicYearName: string;
+    documentNumber: string;
+    schedule: {
+        subjectName: string;
+        roomName: string;
+        sessionLabel: string | null;
+        classNames: string[];
+        startTimeLabel: string;
+        endTimeLabel: string;
+        executionDateLabel: string;
+        executionYear: string;
+    };
+    narrative: string;
+    counts: {
+        expectedParticipants: number;
+        absentParticipants: number;
+        presentParticipants: number;
+    };
+    notes: string | null;
+    incident: string | null;
+    submittedAt: string;
+    proctor: {
+        id: number;
+        name: string;
+        signatureLabel: string;
+    };
+    verification: {
+        token: string;
+        verificationUrl: string;
+        note: string;
+    };
+};
 
 function toDateRangeByDay(date: Date): { start: Date; end: Date } {
     const start = new Date(date);
@@ -581,6 +746,255 @@ function collectSittingParticipants(sittings: ProctorRoomSittingRow[]): {
 
     return {
         studentIds,
+    };
+}
+
+async function resolveExamProgramLabel(academicYearId: number | null | undefined, examType: string | null | undefined) {
+    const normalizedExamType = String(examType || '').trim().toUpperCase();
+    if (Number.isFinite(Number(academicYearId)) && Number(academicYearId) > 0 && normalizedExamType) {
+        const programConfig = await prisma.examProgramConfig.findFirst({
+            where: {
+                academicYearId: Number(academicYearId),
+                code: normalizedExamType,
+            },
+            select: {
+                displayLabel: true,
+                shortLabel: true,
+                code: true,
+            },
+        });
+        const resolved = normalizeOptionalText(programConfig?.displayLabel || programConfig?.shortLabel || programConfig?.code);
+        if (resolved) return resolved;
+    }
+    return normalizeOptionalText(normalizedExamType) || 'Ujian';
+}
+
+function buildProctorReportNarrative(params: {
+    executionDate: Date;
+    examLabel: string;
+    subjectName: string;
+    startTime: Date;
+    endTime: Date;
+    roomName: string;
+}) {
+    const pieces = getDatePieces(params.executionDate);
+    const normalizedExamLabel = normalizeOptionalText(params.examLabel) || 'Ujian';
+    const examPhrase = /^ujian\b/i.test(normalizedExamLabel)
+        ? normalizedExamLabel
+        : `Ujian ${normalizedExamLabel}`;
+    return `Pada hari ini, ${pieces.weekday} tanggal ${pieces.day} bulan ${pieces.month} tahun ${pieces.year} telah dilaksanakan ${examPhrase} Mata Pelajaran ${params.subjectName} mulai pukul ${formatTimeLabel(params.startTime)} sampai dengan pukul ${formatTimeLabel(params.endTime)} di ruang ${params.roomName}.`;
+}
+
+function buildProctorReportSnapshot(params: {
+    req: Request;
+    documentNumber: string;
+    verificationToken: string;
+    academicYearName: string;
+    examLabel: string;
+    subjectName: string;
+    roomName: string;
+    sessionLabel: string | null;
+    classNames: string[];
+    startTime: Date;
+    endTime: Date;
+    expectedParticipants: number;
+    absentParticipants: number;
+    presentParticipants: number;
+    notes: string | null;
+    incident: string | null;
+    signedAt: Date;
+    proctorId: number;
+    proctorName: string;
+}): ProctorReportDocumentSnapshot {
+    const verificationUrl = `${resolvePublicAppBaseUrl(params.req)}/verify/proctor-report/${params.verificationToken}`;
+    const executionPieces = getDatePieces(params.startTime);
+    const roomName = normalizeOptionalText(params.roomName) || 'Belum ditentukan';
+    const subjectName = normalizeOptionalText(params.subjectName) || '-';
+    const examLabel = normalizeOptionalText(params.examLabel) || 'Ujian';
+
+    return {
+        schoolName: SCHOOL_NAME,
+        schoolLogoPath: SCHOOL_LOGO_PATH,
+        title: 'BERITA ACARA',
+        examLabel,
+        academicYearName: normalizeOptionalText(params.academicYearName) || '-',
+        documentNumber: params.documentNumber,
+        schedule: {
+            subjectName,
+            roomName,
+            sessionLabel: normalizeOptionalText(params.sessionLabel),
+            classNames: Array.from(
+                new Set((params.classNames || []).map((item) => String(item || '').trim()).filter(Boolean)),
+            ),
+            startTimeLabel: formatTimeLabel(params.startTime),
+            endTimeLabel: formatTimeLabel(params.endTime),
+            executionDateLabel: executionPieces.fullDateLabel,
+            executionYear: executionPieces.year,
+        },
+        narrative: buildProctorReportNarrative({
+            executionDate: params.startTime,
+            examLabel,
+            subjectName,
+            startTime: params.startTime,
+            endTime: params.endTime,
+            roomName,
+        }),
+        counts: {
+            expectedParticipants: Math.max(0, Number(params.expectedParticipants || 0)),
+            absentParticipants: Math.max(0, Number(params.absentParticipants || 0)),
+            presentParticipants: Math.max(0, Number(params.presentParticipants || 0)),
+        },
+        notes: normalizeOptionalText(params.notes),
+        incident: normalizeOptionalText(params.incident),
+        submittedAt: params.signedAt.toISOString(),
+        proctor: {
+            id: Number(params.proctorId),
+            name: normalizeOptionalText(params.proctorName) || 'Pengawas',
+            signatureLabel: 'Ditandatangani dan dikirim ke Kurikulum secara digital oleh pengawas ruang.',
+        },
+        verification: {
+            token: params.verificationToken,
+            verificationUrl,
+            note: 'Keaslian dokumen ini dapat diverifikasi melalui QR code atau tautan verifikasi.',
+        },
+    };
+}
+
+async function hydrateProctorReportArtifacts(
+    req: Request,
+    params: {
+        report: {
+            id: number;
+            scheduleId: number;
+            proctorId: number;
+            notes: string | null;
+            incident: string | null;
+            signedAt: Date;
+            studentCountPresent: number;
+            studentCountAbsent: number;
+            documentNumber: string | null;
+            verificationToken: string | null;
+            documentSnapshot: Prisma.JsonValue | null;
+            proctor: { id: number; name: string } | null;
+            schedule: {
+                id: number;
+                room: string | null;
+                startTime: Date;
+                endTime: Date;
+                sessionId: number | null;
+                sessionLabel: string | null;
+                examType: string | null;
+                academicYearId: number | null;
+                academicYear: { id: number; name: string } | null;
+                subject: { id: number; name: string } | null;
+                packet: {
+                    title: string | null;
+                    subject: { name: string } | null;
+                } | null;
+                class: { id: number; name: string } | null;
+            };
+        };
+        classNames?: string[];
+        expectedParticipants?: number;
+        presentParticipants?: number;
+        absentParticipants?: number;
+    },
+) {
+    const existingSnapshot =
+        params.report.documentSnapshot && typeof params.report.documentSnapshot === 'object' && !Array.isArray(params.report.documentSnapshot)
+            ? (params.report.documentSnapshot as unknown as ProctorReportDocumentSnapshot)
+            : null;
+
+    let resolvedClassNames =
+        Array.isArray(params.classNames) && params.classNames.length > 0
+            ? params.classNames
+            : existingSnapshot?.schedule?.classNames || [];
+    if (resolvedClassNames.length === 0) {
+        const scope = await resolveRoomScopeSchedules(params.report.scheduleId);
+        resolvedClassNames =
+            scope.monitoredClassNames.length > 0
+                ? scope.monitoredClassNames
+                : (params.report.schedule.class?.name ? [params.report.schedule.class.name] : []);
+    }
+
+    const expectedParticipants =
+        Number.isFinite(Number(params.expectedParticipants))
+            ? Number(params.expectedParticipants)
+            : Number(existingSnapshot?.counts?.expectedParticipants || 0) ||
+              Number(params.report.studentCountPresent || 0) + Number(params.report.studentCountAbsent || 0);
+    const presentParticipants =
+        Number.isFinite(Number(params.presentParticipants))
+            ? Number(params.presentParticipants)
+            : Number(existingSnapshot?.counts?.presentParticipants || 0) || Number(params.report.studentCountPresent || 0);
+    const absentParticipants =
+        Number.isFinite(Number(params.absentParticipants))
+            ? Number(params.absentParticipants)
+            : Number(existingSnapshot?.counts?.absentParticipants || 0) || Number(params.report.studentCountAbsent || 0);
+
+    const documentNumber =
+        normalizeOptionalText(params.report.documentNumber) ||
+        buildProctorReportDocumentNumber({
+            reportId: params.report.id,
+            examType: params.report.schedule.examType,
+            executionDate: params.report.schedule.startTime,
+        });
+    const verificationToken = normalizeOptionalText(params.report.verificationToken) || randomUUID();
+    const academicYearName =
+        normalizeOptionalText(params.report.schedule.academicYear?.name) ||
+        (
+            await prisma.academicYear.findUnique({
+                where: { id: Number(params.report.schedule.academicYearId || 0) || -1 },
+                select: { name: true },
+            })
+        )?.name ||
+        '-';
+    const examLabel = await resolveExamProgramLabel(params.report.schedule.academicYearId, params.report.schedule.examType);
+    const subjectName =
+        normalizeOptionalText(params.report.schedule.packet?.subject?.name) ||
+        normalizeOptionalText(params.report.schedule.subject?.name) ||
+        '-';
+    const nextSnapshot = buildProctorReportSnapshot({
+        req,
+        documentNumber,
+        verificationToken,
+        academicYearName,
+        examLabel,
+        subjectName,
+        roomName: params.report.schedule.room || 'Belum ditentukan',
+        sessionLabel: params.report.schedule.sessionLabel,
+        classNames: resolvedClassNames,
+        startTime: params.report.schedule.startTime,
+        endTime: params.report.schedule.endTime,
+        expectedParticipants,
+        absentParticipants,
+        presentParticipants,
+        notes: params.report.notes,
+        incident: params.report.incident,
+        signedAt: params.report.signedAt,
+        proctorId: params.report.proctor?.id || params.report.proctorId,
+        proctorName: params.report.proctor?.name || 'Pengawas',
+    });
+
+    const shouldPersist =
+        !params.report.documentNumber ||
+        !params.report.verificationToken ||
+        !existingSnapshot;
+
+    if (shouldPersist) {
+        await prisma.examProctoringReport.update({
+            where: { id: params.report.id },
+            data: {
+                documentNumber,
+                verificationToken,
+                documentSnapshot: nextSnapshot as unknown as Prisma.InputJsonValue,
+            },
+        });
+    }
+
+    return {
+        documentNumber,
+        verificationToken,
+        snapshot: nextSnapshot,
     };
 }
 
@@ -1040,7 +1454,38 @@ export const submitBeritaAcara = asyncHandler(async (req: Request, res: Response
             room: true,
             startTime: true,
             endTime: true,
-            class: { select: { name: true } },
+            sessionId: true,
+            sessionLabel: true,
+            examType: true,
+            academicYearId: true,
+            academicYear: {
+                select: {
+                    id: true,
+                    name: true,
+                },
+            },
+            subject: {
+                select: {
+                    id: true,
+                    name: true,
+                },
+            },
+            packet: {
+                select: {
+                    title: true,
+                    subject: {
+                        select: {
+                            name: true,
+                        },
+                    },
+                },
+            },
+            class: {
+                select: {
+                    id: true,
+                    name: true,
+                },
+            },
         },
     });
     if (!schedule) {
@@ -1192,10 +1637,15 @@ export const submitBeritaAcara = asyncHandler(async (req: Request, res: Response
             proctorId: Number(user.id),
         },
         orderBy: [{ updatedAt: 'desc' }, { id: 'desc' }],
-        select: { id: true },
+        select: {
+            id: true,
+            documentNumber: true,
+            verificationToken: true,
+            documentSnapshot: true,
+        },
     });
 
-    const report = existingReport
+    const savedReport = existingReport
         ? await prisma.examProctoringReport.update({
               where: { id: existingReport.id },
               data: {
@@ -1224,6 +1674,41 @@ export const submitBeritaAcara = asyncHandler(async (req: Request, res: Response
               },
           });
 
+    const artifactBundle = await hydrateProctorReportArtifacts(req, {
+        report: {
+            id: savedReport.id,
+            scheduleId: parsedScheduleId,
+            proctorId: Number(user.id),
+            notes: savedReport.notes,
+            incident: savedReport.incident,
+            signedAt: savedReport.signedAt,
+            studentCountPresent: presentCount,
+            studentCountAbsent: absentCount,
+            documentNumber: existingReport?.documentNumber || null,
+            verificationToken: existingReport?.verificationToken || null,
+            documentSnapshot: existingReport?.documentSnapshot || null,
+            proctor: savedReport.proctor,
+            schedule: {
+                id: schedule.id,
+                room: schedule.room,
+                startTime: schedule.startTime,
+                endTime: schedule.endTime,
+                sessionId: schedule.sessionId,
+                sessionLabel: schedule.sessionLabel,
+                examType: schedule.examType || null,
+                academicYearId: schedule.academicYearId || null,
+                academicYear: schedule.academicYear || null,
+                subject: schedule.subject || null,
+                packet: schedule.packet || null,
+                class: schedule.class || null,
+            },
+        },
+        classNames: monitoredClassNames,
+        expectedParticipants: expectedCount,
+        presentParticipants: presentCount,
+        absentParticipants: absentCount,
+    });
+
     const curriculumReceivers = await prisma.user.findMany({
         where: {
             OR: [
@@ -1243,16 +1728,17 @@ export const submitBeritaAcara = asyncHandler(async (req: Request, res: Response
             data: curriculumReceivers.map((receiver) => ({
                 userId: receiver.id,
                 title: 'Berita Acara Pengawas Baru',
-                message: `Berita acara ruang ${schedule.room || '-'} telah dikirim pengawas untuk slot ${new Date(schedule.startTime).toLocaleTimeString('id-ID', { hour: '2-digit', minute: '2-digit' })} - ${new Date(schedule.endTime).toLocaleTimeString('id-ID', { hour: '2-digit', minute: '2-digit' })}.`,
+                message: `Berita acara ruang ${schedule.room || '-'} telah dikirim ke kurikulum untuk slot ${new Date(schedule.startTime).toLocaleTimeString('id-ID', { hour: '2-digit', minute: '2-digit' })} - ${new Date(schedule.endTime).toLocaleTimeString('id-ID', { hour: '2-digit', minute: '2-digit' })}.`,
                 type: 'EXAM_PROCTOR_REPORT',
                 data: {
                     scheduleId: parsedScheduleId,
-                    reportId: report.id,
+                    reportId: savedReport.id,
                     room: schedule.room,
                     classNames: monitoredClassNames,
                     expectedCount,
                     presentCount,
                     absentCount,
+                    documentNumber: artifactBundle.documentNumber,
                 } as any,
             })),
             skipDuplicates: false,
@@ -1263,7 +1749,9 @@ export const submitBeritaAcara = asyncHandler(async (req: Request, res: Response
         new ApiResponse(
             existingReport ? 200 : 201,
             {
-                ...report,
+                ...savedReport,
+                documentNumber: artifactBundle.documentNumber,
+                verificationUrl: artifactBundle.snapshot.verification.verificationUrl,
                 summary: {
                     room: schedule.room,
                     classNames: monitoredClassNames,
@@ -1273,8 +1761,198 @@ export const submitBeritaAcara = asyncHandler(async (req: Request, res: Response
                     totalParticipants: expectedCount,
                 },
             },
-            existingReport ? 'Berita acara berhasil diperbarui' : 'Berita acara berhasil disimpan',
+            existingReport ? 'Berita acara berhasil diperbarui dan dikirim ke kurikulum' : 'Berita acara berhasil dikirim ke kurikulum',
         ),
+    );
+});
+
+export const getProctoringReportDocument = asyncHandler(async (req: Request, res: Response) => {
+    const parsedReportId = Number.parseInt(String(req.params.reportId || ''), 10);
+    if (!Number.isInteger(parsedReportId) || parsedReportId <= 0) {
+        throw new ApiError(400, 'ID berita acara tidak valid');
+    }
+
+    const user = (req as any).user as { id?: number; role?: string } | undefined;
+    if (!user?.id) {
+        throw new ApiError(401, 'Tidak memiliki otorisasi.');
+    }
+
+    const requester = await getExamRequesterProfile(Number(user.id));
+    const report = await prisma.examProctoringReport.findUnique({
+        where: { id: parsedReportId },
+        select: {
+            id: true,
+            scheduleId: true,
+            proctorId: true,
+            notes: true,
+            incident: true,
+            signedAt: true,
+            studentCountPresent: true,
+            studentCountAbsent: true,
+            documentNumber: true,
+            verificationToken: true,
+            documentSnapshot: true,
+            proctor: {
+                select: {
+                    id: true,
+                    name: true,
+                },
+            },
+            schedule: {
+                select: {
+                    id: true,
+                    room: true,
+                    startTime: true,
+                    endTime: true,
+                    sessionId: true,
+                    sessionLabel: true,
+                    examType: true,
+                    academicYearId: true,
+                    academicYear: {
+                        select: {
+                            id: true,
+                            name: true,
+                        },
+                    },
+                    subject: {
+                        select: {
+                            id: true,
+                            name: true,
+                        },
+                    },
+                    packet: {
+                        select: {
+                            title: true,
+                            subject: {
+                                select: {
+                                    name: true,
+                                },
+                            },
+                        },
+                    },
+                    class: {
+                        select: {
+                            id: true,
+                            name: true,
+                        },
+                    },
+                },
+            },
+        },
+    });
+
+    if (!report) {
+        throw new ApiError(404, 'Berita acara tidak ditemukan');
+    }
+
+    const canAccessTeacher =
+        requester.role === 'TEACHER' &&
+        (Number(requester.id) === Number(report.proctorId) || hasCurriculumExamManagementDuty(requester.additionalDuties));
+    const canAccess = requester.role === 'ADMIN' || requester.role === 'PRINCIPAL' || canAccessTeacher;
+    if (!canAccess) {
+        throw new ApiError(403, 'Anda tidak memiliki akses ke dokumen berita acara ini.');
+    }
+
+    const artifactBundle = await hydrateProctorReportArtifacts(req, { report });
+    const verificationQrDataUrl = await QRCode.toDataURL(artifactBundle.snapshot.verification.verificationUrl, {
+        width: 128,
+        margin: 1,
+    });
+
+    res.json(
+        new ApiResponse(200, {
+            reportId: report.id,
+            documentNumber: artifactBundle.documentNumber,
+            snapshot: artifactBundle.snapshot,
+            verificationQrDataUrl,
+        }),
+    );
+});
+
+export const verifyPublicProctorReport = asyncHandler(async (req: Request, res: Response) => {
+    const token = normalizeOptionalText(req.params.token);
+    if (!token) {
+        throw new ApiError(400, 'Token verifikasi tidak valid.');
+    }
+
+    const report = await prisma.examProctoringReport.findFirst({
+        where: {
+            verificationToken: token,
+        },
+        select: {
+            id: true,
+            scheduleId: true,
+            proctorId: true,
+            notes: true,
+            incident: true,
+            signedAt: true,
+            studentCountPresent: true,
+            studentCountAbsent: true,
+            documentNumber: true,
+            verificationToken: true,
+            documentSnapshot: true,
+            proctor: {
+                select: {
+                    id: true,
+                    name: true,
+                },
+            },
+            schedule: {
+                select: {
+                    id: true,
+                    room: true,
+                    startTime: true,
+                    endTime: true,
+                    sessionId: true,
+                    sessionLabel: true,
+                    examType: true,
+                    academicYearId: true,
+                    academicYear: {
+                        select: {
+                            id: true,
+                            name: true,
+                        },
+                    },
+                    subject: {
+                        select: {
+                            id: true,
+                            name: true,
+                        },
+                    },
+                    packet: {
+                        select: {
+                            title: true,
+                            subject: {
+                                select: {
+                                    name: true,
+                                },
+                            },
+                        },
+                    },
+                    class: {
+                        select: {
+                            id: true,
+                            name: true,
+                        },
+                    },
+                },
+            },
+        },
+    });
+
+    if (!report) {
+        throw new ApiError(404, 'Dokumen berita acara tidak ditemukan.');
+    }
+
+    const artifactBundle = await hydrateProctorReportArtifacts(req, { report });
+    res.json(
+        new ApiResponse(200, {
+            valid: true,
+            reportId: report.id,
+            documentNumber: artifactBundle.documentNumber,
+            snapshot: artifactBundle.snapshot,
+            verifiedAt: new Date().toISOString(),
+        }),
     );
 });
 
@@ -1373,6 +2051,8 @@ export const getProctoringReports = asyncHandler(async (req: Request, res: Respo
                 incident: string | null;
                 studentCountPresent: number;
                 studentCountAbsent: number;
+                documentNumber: string | null;
+                verificationToken: string | null;
                 proctor: { id: number; name: string } | null;
             }>;
             latestReportAt: Date | null;
@@ -1417,6 +2097,8 @@ export const getProctoringReports = asyncHandler(async (req: Request, res: Respo
                     incident: report.incident,
                     studentCountPresent: report.studentCountPresent,
                     studentCountAbsent: report.studentCountAbsent,
+                    documentNumber: report.documentNumber,
+                    verificationToken: report.verificationToken,
                     proctor: report.proctor
                         ? {
                               id: report.proctor.id,
@@ -1835,6 +2517,10 @@ export const getProctoringReports = asyncHandler(async (req: Request, res: Respo
                               signedAt: latestReport.signedAt,
                               notes: latestReport.notes,
                               incident: latestReport.incident,
+                              documentNumber: latestReport.documentNumber,
+                              verificationUrl: latestReport.verificationToken
+                                  ? `${resolvePublicAppBaseUrl(req)}/verify/proctor-report/${latestReport.verificationToken}`
+                                  : null,
                               proctor: latestReport.proctor,
                           }
                         : null,

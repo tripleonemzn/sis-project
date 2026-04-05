@@ -132,6 +132,8 @@ const PklLetterPrint = lazy(() => import("./pages/print/PklLetterPrint"));
 const PklGroupLetterPrint = lazy(() => import("./pages/print/PklGroupLetterPrint"));
 const CandidateDecisionLetterPrint = lazy(() => import("./pages/print/CandidateDecisionLetterPrint"));
 const BkkShortlistBatchPrint = lazy(() => import("./pages/print/BkkShortlistBatchPrint"));
+const ProctorReportPrint = lazy(() => import("./pages/print/ProctorReportPrint"));
+const ProctorReportVerificationPage = lazy(() => import("./pages/public/ProctorReportVerificationPage"));
 const EmailPage = lazy(() => import("./pages/common/EmailPage").then(m => ({ default: m.EmailPage })));
 
 // Helper hook for auth
@@ -235,6 +237,8 @@ function App() {
           <Route path="/print/pkl-group" element={<PklGroupLetterPrint />} />
           <Route path="/print/candidate-admission/:id/decision-letter" element={<CandidateDecisionLetterPrint />} />
           <Route path="/print/bkk-shortlist-batch" element={<BkkShortlistBatchPrint />} />
+          <Route path="/print/proctor-report/:reportId" element={<ProctorReportPrint />} />
+          <Route path="/verify/proctor-report/:token" element={<ProctorReportVerificationPage />} />
         
           <Route path="/" element={<DashboardLayout />}>
             <Route index element={<DashboardRedirect />} />

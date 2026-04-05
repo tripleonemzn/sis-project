@@ -3,6 +3,8 @@ import { Redirect, useRouter } from 'expo-router';
 import { useMemo, useState } from 'react';
 import { useQuery } from '@tanstack/react-query';
 import {
+  Alert,
+  Linking,
   Pressable,
   RefreshControl,
   ScrollView,
@@ -47,6 +49,15 @@ function formatNumber(value: number) {
 function formatScore(value: number | null | undefined) {
   if (!Number.isFinite(Number(value))) return '-';
   return Number(value).toFixed(2).replace('.', ',');
+}
+
+async function openExternalUrl(url: string) {
+  const supported = await Linking.canOpenURL(url);
+  if (!supported) {
+    Alert.alert('Gagal', 'Tautan verifikasi tidak dapat dibuka pada perangkat ini.');
+    return;
+  }
+  await Linking.openURL(url);
 }
 
 function SummaryMetric({
@@ -200,7 +211,15 @@ export default function TeacherWakakurReportsScreen() {
         .filter((row) => Number(row.absentParticipants || 0) > 0)
         .sort((a, b) => Number(b.absentParticipants || 0) - Number(a.absentParticipants || 0))
         .slice(0, 6);
-      return { summary, topAbsentRows };
+      const latestReportedRows = [...rows]
+        .filter((row) => Boolean(row.report))
+        .sort((a, b) => {
+          const aTime = new Date(String(a.report?.signedAt || a.startTime || 0)).getTime();
+          const bTime = new Date(String(b.report?.signedAt || b.startTime || 0)).getTime();
+          return bTime - aTime;
+        })
+        .slice(0, 6);
+      return { summary, topAbsentRows, latestReportedRows };
     },
   });
 
@@ -523,6 +542,55 @@ export default function TeacherWakakurReportsScreen() {
                     </View>
                   ))
                 )}
+
+                {proctorSummaryQuery.data.latestReportedRows.length > 0 ? (
+                  <View style={{ marginTop: 12 }}>
+                    <Text style={{ color: BRAND_COLORS.textDark, fontWeight: '700', marginBottom: 8 }}>
+                      Dokumen Berita Acara Masuk
+                    </Text>
+                    {proctorSummaryQuery.data.latestReportedRows.map((row, index) => (
+                      <View
+                        key={`reported-doc-${index}-${row.report?.id || row.room || 'ruang'}`}
+                        style={{
+                          borderWidth: 1,
+                          borderColor: '#dbe7fb',
+                          borderRadius: 12,
+                          padding: 12,
+                          marginBottom: 8,
+                          backgroundColor: '#fff',
+                        }}
+                      >
+                        <Text style={{ color: BRAND_COLORS.textDark, fontWeight: '700' }}>
+                          {row.room || 'Belum ditentukan'}
+                        </Text>
+                        <Text style={{ color: '#64748b', fontSize: 12, marginTop: 2 }}>
+                          {row.report?.documentNumber || 'Nomor dokumen akan dibuat saat preview dibuka.'}
+                        </Text>
+                        <Text style={{ color: '#64748b', fontSize: 12, marginTop: 2 }}>
+                          Pengawas: {row.report?.proctor?.name || '-'}
+                        </Text>
+                        {row.report?.verificationUrl ? (
+                          <Pressable
+                            onPress={() => {
+                              void openExternalUrl(row.report?.verificationUrl || '');
+                            }}
+                            style={{
+                              marginTop: 10,
+                              borderWidth: 1,
+                              borderColor: '#bfdbfe',
+                              borderRadius: 10,
+                              paddingVertical: 10,
+                              alignItems: 'center',
+                              backgroundColor: '#eff6ff',
+                            }}
+                          >
+                            <Text style={{ color: '#1d4ed8', fontWeight: '700' }}>Verifikasi Dokumen</Text>
+                          </Pressable>
+                        ) : null}
+                      </View>
+                    ))}
+                  </View>
+                ) : null}
               </>
             )}
           </View>

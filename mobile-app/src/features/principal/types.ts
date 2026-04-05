@@ -109,6 +109,8 @@ export type PrincipalProctorReportRow = {
     signedAt: string;
     notes: string | null;
     incident: string | null;
+    documentNumber?: string | null;
+    verificationUrl?: string | null;
     proctor: {
       id: number;
       name: string;
