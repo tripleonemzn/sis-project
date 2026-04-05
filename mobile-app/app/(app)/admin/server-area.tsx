@@ -28,12 +28,13 @@ import {
 } from '../../../src/features/server/serverApi';
 import { getStandardPagePadding } from '../../../src/lib/ui/pageLayout';
 
-type TabKey = 'info' | 'storage' | 'monitoring' | 'webmail';
+type TabKey = 'info' | 'storage' | 'monitoring' | 'online' | 'webmail';
 
 const REFRESH_INTERVAL = {
   info: 20000,
   storage: 20000,
   monitoring: 5000,
+  online: 5000,
   webmail: 15000,
 } as const;
 
@@ -41,6 +42,7 @@ function resolveTabKey(value: string | string[] | undefined): TabKey {
   const normalized = (Array.isArray(value) ? value[0] : value || '').trim().toLowerCase();
   if (normalized === 'storage') return 'storage';
   if (normalized === 'monitoring') return 'monitoring';
+  if (normalized === 'online') return 'online';
   if (normalized === 'webmail') return 'webmail';
   return 'info';
 }
@@ -92,6 +94,21 @@ function formatDateTime(iso: string | null | undefined) {
     minute: '2-digit',
     second: '2-digit',
   });
+}
+
+function formatRoleLabel(role: string) {
+  const normalized = String(role || '').trim().toUpperCase();
+  if (normalized === 'ADMIN') return 'Admin';
+  if (normalized === 'TEACHER') return 'Guru';
+  if (normalized === 'STUDENT') return 'Siswa';
+  if (normalized === 'PRINCIPAL') return 'Kepala Sekolah';
+  if (normalized === 'STAFF') return 'Staff';
+  if (normalized === 'PARENT') return 'Orang Tua';
+  if (normalized === 'CALON_SISWA') return 'Calon Siswa';
+  if (normalized === 'UMUM') return 'Umum';
+  if (normalized === 'EXAMINER') return 'Penguji';
+  if (normalized === 'EXTRACURRICULAR_TUTOR') return 'Tutor Ekstrakurikuler';
+  return normalized || 'User';
 }
 
 function pickOverallStatus(storage: StorageOverviewResponse, monitoring: ServerMonitoringResponse | undefined) {
@@ -176,7 +193,8 @@ export default function AdminServerAreaScreen() {
     queryKey: ['mobile-admin-server-monitoring'],
     queryFn: () => serverApi.getMonitoring(),
     enabled: isAuthenticated && user?.role === 'ADMIN',
-    refetchInterval: activeTab === 'monitoring' ? REFRESH_INTERVAL.monitoring : false,
+    refetchInterval:
+      activeTab === 'monitoring' ? REFRESH_INTERVAL.monitoring : activeTab === 'online' ? REFRESH_INTERVAL.online : false,
     refetchIntervalInBackground: false,
   });
 
@@ -315,16 +333,15 @@ export default function AdminServerAreaScreen() {
       { key: 'info', label: 'Info Server' },
       { key: 'storage', label: 'Storage' },
       { key: 'monitoring', label: 'Monitoring' },
+      { key: 'online', label: 'User Online' },
       { key: 'webmail', label: 'Webmail' },
     ];
     return (
-      <View
-        style={{
-          flexDirection: 'row',
-          borderBottomWidth: 1,
-          borderBottomColor: '#e5e7eb',
-          marginBottom: 12,
-        }}
+      <ScrollView
+        horizontal
+        showsHorizontalScrollIndicator={false}
+        style={{ marginBottom: 12 }}
+        contentContainerStyle={{ gap: 8, paddingRight: 8, paddingBottom: 4 }}
       >
         {tabs.map((tab) => {
           const isActive = activeTab === tab.key;
@@ -333,18 +350,18 @@ export default function AdminServerAreaScreen() {
               key={tab.key}
               onPress={() => setActiveTab(tab.key)}
               style={{
-                flexDirection: 'row',
-                alignItems: 'center',
                 paddingVertical: 10,
-                paddingHorizontal: 12,
-                borderBottomWidth: 2,
-                borderBottomColor: isActive ? '#2563eb' : 'transparent',
+                paddingHorizontal: 14,
+                borderRadius: 999,
+                borderWidth: 1,
+                borderColor: isActive ? '#2563eb' : '#d6e0f2',
+                backgroundColor: isActive ? '#eff6ff' : '#ffffff',
               }}
             >
               <Text
                 style={{
-                  fontSize: 14,
-                  fontWeight: isActive ? '600' : '500',
+                  fontSize: 13,
+                  fontWeight: isActive ? '700' : '500',
                   color: isActive ? '#2563eb' : '#6b7280',
                 }}
               >
@@ -353,7 +370,7 @@ export default function AdminServerAreaScreen() {
             </Pressable>
           );
         })}
-      </View>
+      </ScrollView>
     );
   };
 
@@ -982,6 +999,183 @@ export default function AdminServerAreaScreen() {
     );
   };
 
+  const renderOnlineUsersTab = (monitoring: ServerMonitoringResponse | undefined) => {
+    if (monitoringQuery.isLoading && !monitoring) {
+      return (
+        <View style={{ paddingVertical: 24, alignItems: 'center' }}>
+          <ActivityIndicator size="small" color="#2563eb" />
+        </View>
+      );
+    }
+
+    if (monitoringQuery.isError) {
+      return (
+        <QueryStateView
+          type="error"
+          message="Gagal memuat data user online."
+          onRetry={() => monitoringQuery.refetch()}
+        />
+      );
+    }
+
+    if (!monitoring) {
+      return (
+        <View
+          style={{
+            borderRadius: 12,
+            backgroundColor: '#ffffff',
+            borderWidth: 1,
+            borderColor: '#e5e7eb',
+            padding: 14,
+          }}
+        >
+          <Text style={{ fontSize: 13, color: '#6b7280' }}>Data user online belum tersedia.</Text>
+        </View>
+      );
+    }
+
+    const onlineUsers = monitoring.onlineUsers;
+    const roleItems = onlineUsers?.byRole || [];
+
+    return (
+      <View style={{ gap: 12 }}>
+        <View style={{ flexDirection: 'row', flexWrap: 'wrap', gap: 12 }}>
+          <View
+            style={{
+              flex: 1,
+              minWidth: 150,
+              borderRadius: 12,
+              backgroundColor: '#ffffff',
+              borderWidth: 1,
+              borderColor: '#e5e7eb',
+              padding: 14,
+            }}
+          >
+            <Text style={{ fontSize: 12, color: '#6b7280', marginBottom: 4 }}>User Online</Text>
+            <Text style={{ fontSize: 28, fontWeight: '700', color: '#111827' }}>
+              {String(onlineUsers.totalUsers || 0)}
+            </Text>
+            <Text style={{ fontSize: 12, color: '#6b7280', marginTop: 4 }}>
+              User unik yang sedang mengakses aplikasi.
+            </Text>
+          </View>
+
+          <View
+            style={{
+              flex: 1,
+              minWidth: 150,
+              borderRadius: 12,
+              backgroundColor: '#ffffff',
+              borderWidth: 1,
+              borderColor: '#e5e7eb',
+              padding: 14,
+            }}
+          >
+            <Text style={{ fontSize: 12, color: '#6b7280', marginBottom: 4 }}>Koneksi Aktif</Text>
+            <Text style={{ fontSize: 28, fontWeight: '700', color: '#111827' }}>
+              {String(onlineUsers.totalConnections || 0)}
+            </Text>
+            <Text style={{ fontSize: 12, color: '#6b7280', marginTop: 4 }}>
+              Koneksi realtime yang masih tersambung sekarang.
+            </Text>
+          </View>
+        </View>
+
+        <View
+          style={{
+            borderRadius: 12,
+            backgroundColor: '#ffffff',
+            borderWidth: 1,
+            borderColor: '#e5e7eb',
+            padding: 14,
+          }}
+        >
+          <Text style={{ fontSize: 13, fontWeight: '600', color: '#111827', marginBottom: 4 }}>
+            Snapshot Realtime
+          </Text>
+          <Text style={{ fontSize: 12, color: '#6b7280' }}>
+            Diambil {formatDateTime(onlineUsers.sampledAt)}
+          </Text>
+        </View>
+
+        <View
+          style={{
+            borderRadius: 12,
+            backgroundColor: '#ffffff',
+            borderWidth: 1,
+            borderColor: '#e5e7eb',
+            padding: 14,
+          }}
+        >
+          <Text style={{ fontSize: 13, fontWeight: '600', color: '#111827', marginBottom: 8 }}>
+            Sebaran Role
+          </Text>
+          {roleItems.length > 0 ? (
+            <View style={{ gap: 8 }}>
+              {roleItems.map((item) => (
+                <View
+                  key={item.role}
+                  style={{
+                    borderRadius: 10,
+                    borderWidth: 1,
+                    borderColor: '#e5e7eb',
+                    backgroundColor: '#f9fafb',
+                    paddingHorizontal: 12,
+                    paddingVertical: 10,
+                    flexDirection: 'row',
+                    alignItems: 'center',
+                    justifyContent: 'space-between',
+                  }}
+                >
+                  <View style={{ flex: 1, marginRight: 12 }}>
+                    <Text style={{ fontSize: 13, fontWeight: '600', color: '#111827' }}>
+                      {formatRoleLabel(item.role)}
+                    </Text>
+                    <Text style={{ fontSize: 11, color: '#6b7280' }}>{item.role}</Text>
+                  </View>
+                  <View
+                    style={{
+                      minWidth: 46,
+                      paddingHorizontal: 10,
+                      paddingVertical: 6,
+                      borderRadius: 999,
+                      backgroundColor: '#eff6ff',
+                      borderWidth: 1,
+                      borderColor: '#bfdbfe',
+                      alignItems: 'center',
+                    }}
+                  >
+                    <Text style={{ fontSize: 13, fontWeight: '700', color: '#2563eb' }}>{item.count}</Text>
+                  </View>
+                </View>
+              ))}
+            </View>
+          ) : (
+            <Text style={{ fontSize: 12, color: '#6b7280' }}>
+              Belum ada user yang sedang terhubung ke aplikasi saat ini.
+            </Text>
+          )}
+        </View>
+
+        <View
+          style={{
+            borderRadius: 12,
+            backgroundColor: '#eff6ff',
+            borderWidth: 1,
+            borderColor: '#bfdbfe',
+            padding: 14,
+          }}
+        >
+          <Text style={{ fontSize: 13, fontWeight: '600', color: '#1d4ed8', marginBottom: 6 }}>Catatan</Text>
+          <Text style={{ fontSize: 12, color: '#1e3a8a', lineHeight: 18 }}>
+            Data ini menghitung user yang memang masih tersambung ke kanal realtime aplikasi. Satu user bisa membuka lebih
+            dari satu koneksi, jadi total koneksi bisa lebih besar dari total user.
+          </Text>
+        </View>
+      </View>
+    );
+  };
+
   const renderHistoryItem = (item: WebmailResetHistoryItem) => (
     <View
       key={item.id}
@@ -1241,6 +1435,7 @@ export default function AdminServerAreaScreen() {
       {activeTab === 'info' && renderInfoTab(info)}
       {activeTab === 'storage' && renderStorageTab(storage)}
       {activeTab === 'monitoring' && renderMonitoringTab(monitoring)}
+      {activeTab === 'online' && renderOnlineUsersTab(monitoring)}
       {activeTab === 'webmail' && renderWebmailTab()}
     </ScrollView>
   );

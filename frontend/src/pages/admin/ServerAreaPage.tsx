@@ -1,5 +1,5 @@
 import { useQuery } from '@tanstack/react-query';
-import { Activity, AlertTriangle, Copy, Database, HardDrive, KeyRound, Network, Server as ServerIcon } from 'lucide-react';
+import { Activity, AlertTriangle, Copy, Database, HardDrive, KeyRound, Network, Server as ServerIcon, Users } from 'lucide-react';
 import api from '../../services/api';
 import React, { useState } from 'react';
 import { useSearchParams } from 'react-router-dom';
@@ -134,6 +134,15 @@ type MonitoringResponse = {
     txMbps: number;
     status: 'OK' | 'WARNING' | 'DANGER';
   } | null;
+  onlineUsers: {
+    totalUsers: number;
+    totalConnections: number;
+    sampledAt: string;
+    byRole: {
+      role: string;
+      count: number;
+    }[];
+  };
 };
 
 type WebmailResetResponse = {
@@ -182,16 +191,17 @@ type WebmailResetHistoryResponse = {
   };
 };
 
-type ServerAreaTab = 'info' | 'storage' | 'monitoring' | 'webmail';
+type ServerAreaTab = 'info' | 'storage' | 'monitoring' | 'online' | 'webmail';
 
 const isServerAreaTab = (value: string | null): value is ServerAreaTab => {
-  return value === 'info' || value === 'storage' || value === 'monitoring' || value === 'webmail';
+  return value === 'info' || value === 'storage' || value === 'monitoring' || value === 'online' || value === 'webmail';
 };
 
 const REFRESH_INTERVAL = {
   info: 20000,
   storage: 20000,
   monitoring: 5000,
+  online: 5000,
   webmail: 15000,
 } as const;
 
@@ -237,6 +247,22 @@ const formatStorageMountLabel = (mountpoint: string) => {
   const subtitle = mountpoint === `/${lastSegment}` ? null : mountpoint;
   return { title, subtitle };
 };
+
+const formatRoleLabel = (role: string) => {
+  const normalized = String(role || '').trim().toUpperCase();
+  if (normalized === 'ADMIN') return 'Admin';
+  if (normalized === 'TEACHER') return 'Guru';
+  if (normalized === 'STUDENT') return 'Siswa';
+  if (normalized === 'PRINCIPAL') return 'Kepala Sekolah';
+  if (normalized === 'STAFF') return 'Staff';
+  if (normalized === 'PARENT') return 'Orang Tua';
+  if (normalized === 'CALON_SISWA') return 'Calon Siswa';
+  if (normalized === 'UMUM') return 'Umum';
+  if (normalized === 'EXAMINER') return 'Penguji';
+  if (normalized === 'EXTRACURRICULAR_TUTOR') return 'Tutor Ekstrakurikuler';
+  return normalized || 'User';
+};
+
 type HealthStatus = 'OK' | 'WARNING' | 'DANGER';
 
 const normalizeHealthStatus = (status: unknown): HealthStatus => {
@@ -315,8 +341,9 @@ const ServerAreaPage: React.FC = () => {
       const response = await api.get<ApiEnvelope<MonitoringResponse>>('/server/monitoring');
       return response.data.data;
     },
-    enabled: activeTab === 'monitoring',
-    refetchInterval: activeTab === 'monitoring' ? REFRESH_INTERVAL.monitoring : false,
+    enabled: activeTab === 'monitoring' || activeTab === 'online',
+    refetchInterval:
+      activeTab === 'monitoring' ? REFRESH_INTERVAL.monitoring : activeTab === 'online' ? REFRESH_INTERVAL.online : false,
     refetchIntervalInBackground: false,
     refetchOnWindowFocus: false,
   });
@@ -339,6 +366,7 @@ const ServerAreaPage: React.FC = () => {
     { id: 'info', label: 'Info Server', icon: ServerIcon },
     { id: 'storage', label: 'Manajemen Storage', icon: HardDrive },
     { id: 'monitoring', label: 'Monitoring Server', icon: Activity },
+    { id: 'online', label: 'User Online', icon: Users },
     { id: 'webmail', label: 'Webmail', icon: KeyRound },
   ] as const satisfies ReadonlyArray<{ id: ServerAreaTab; label: string; icon: React.ElementType }>;
 
@@ -948,6 +976,103 @@ const ServerAreaPage: React.FC = () => {
     );
   };
 
+  const renderOnlineUsersTab = () => {
+    if (monitoringQuery.isLoading) {
+      return <p className="text-sm text-gray-500">Memuat data user online...</p>;
+    }
+    if (monitoringQuery.error) {
+      return <p className="text-sm text-red-600">Gagal memuat data user online.</p>;
+    }
+    if (!monitoringQuery.data) return null;
+
+    const onlineUsers = monitoringQuery.data.onlineUsers;
+    const roleItems = onlineUsers.byRole || [];
+
+    return (
+      <div className="space-y-6">
+        <div className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-3 gap-4">
+          <div className="bg-white rounded-xl border border-gray-200 p-4">
+            <div className="flex items-center justify-between mb-2">
+              <p className="text-xs font-semibold text-gray-500 tracking-wide uppercase">User Online</p>
+              <span className="inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium bg-emerald-50 text-emerald-700">
+                Realtime
+              </span>
+            </div>
+            <p className="text-3xl font-bold text-gray-900">{onlineUsers.totalUsers.toLocaleString('id-ID')}</p>
+            <p className="mt-1 text-xs text-gray-500">Jumlah user unik yang sedang mengakses aplikasi.</p>
+          </div>
+
+          <div className="bg-white rounded-xl border border-gray-200 p-4">
+            <div className="flex items-center justify-between mb-2">
+              <p className="text-xs font-semibold text-gray-500 tracking-wide uppercase">Koneksi Aktif</p>
+              <Users size={18} className="text-blue-600" />
+            </div>
+            <p className="text-3xl font-bold text-gray-900">
+              {onlineUsers.totalConnections.toLocaleString('id-ID')}
+            </p>
+            <p className="mt-1 text-xs text-gray-500">Total koneksi realtime yang masih tersambung sekarang.</p>
+          </div>
+
+          <div className="bg-white rounded-xl border border-gray-200 p-4">
+            <div className="flex items-center justify-between mb-2">
+              <p className="text-xs font-semibold text-gray-500 tracking-wide uppercase">Waktu Snapshot</p>
+              <Activity size={18} className="text-teal-600" />
+            </div>
+            <p className="text-base font-semibold text-gray-900">
+              {new Date(onlineUsers.sampledAt).toLocaleTimeString('id-ID')}
+            </p>
+            <p className="mt-1 text-xs text-gray-500">Data diambil langsung dari koneksi aktif websocket.</p>
+          </div>
+        </div>
+
+        <div className="bg-white rounded-xl border border-gray-200 p-4">
+          <div className="flex items-center justify-between mb-3">
+            <div>
+              <p className="text-xs font-semibold text-gray-500 tracking-wide uppercase">Sebaran Role</p>
+              <p className="text-sm font-medium text-gray-900 mt-0.5">User aktif berdasarkan role</p>
+            </div>
+          </div>
+
+          {roleItems.length > 0 ? (
+            <div className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-3 gap-3">
+              {roleItems.map((item) => (
+                <div
+                  key={item.role}
+                  className="rounded-xl border border-gray-100 px-4 py-3 flex items-center justify-between bg-gray-50/70"
+                >
+                  <div>
+                    <p className="text-sm font-semibold text-gray-900">{formatRoleLabel(item.role)}</p>
+                    <p className="text-[11px] text-gray-500">{item.role}</p>
+                  </div>
+                  <div className="text-right">
+                    <p className="text-2xl font-bold text-blue-700">{item.count.toLocaleString('id-ID')}</p>
+                    <p className="text-[11px] text-gray-500">online</p>
+                  </div>
+                </div>
+              ))}
+            </div>
+          ) : (
+            <div className="rounded-xl border border-dashed border-gray-200 px-4 py-6 text-sm text-gray-500">
+              Belum ada user yang sedang terhubung ke aplikasi saat ini.
+            </div>
+          )}
+        </div>
+
+        <div className="bg-blue-50 border border-blue-100 text-xs text-blue-800 rounded-xl p-4 flex gap-3">
+          <Network size={18} className="flex-shrink-0 mt-0.5" />
+          <div className="space-y-1">
+            <p className="font-semibold text-sm">Catatan</p>
+            <ul className="list-disc list-inside space-y-0.5">
+              <li>Angka ini menghitung user yang memang masih tersambung ke kanal realtime aplikasi.</li>
+              <li>Satu user bisa membuka lebih dari satu koneksi, jadi total koneksi bisa lebih besar dari total user.</li>
+              <li>Jika user menutup aplikasi atau koneksinya putus, angka akan turun otomatis pada refresh berikutnya.</li>
+            </ul>
+          </div>
+        </div>
+      </div>
+    );
+  };
+
   const renderWebmailTab = () => {
     const historyItems = webmailResetHistoryQuery.data?.logs || [];
     const normalizedSearch = historySearch.trim().toLowerCase();
@@ -1196,10 +1321,11 @@ const ServerAreaPage: React.FC = () => {
         </div>
 
         <div className="px-6 py-4 bg-gray-50 rounded-b-xl">
-          {activeTab === 'info' && renderInfoTab()}
-          {activeTab === 'storage' && renderStorageTab()}
-          {activeTab === 'monitoring' && renderMonitoringTab()}
-          {activeTab === 'webmail' && renderWebmailTab()}
+      {activeTab === 'info' && renderInfoTab()}
+      {activeTab === 'storage' && renderStorageTab()}
+      {activeTab === 'monitoring' && renderMonitoringTab()}
+      {activeTab === 'online' && renderOnlineUsersTab()}
+      {activeTab === 'webmail' && renderWebmailTab()}
         </div>
       </div>
     </div>

@@ -41,7 +41,6 @@ import {
   TeachingResourceProgramItem,
 } from '../../src/features/learningResources/teachingResourceProgramApi';
 import { studentInternshipApi } from '../../src/features/student/studentInternshipApi';
-import { serverApi } from '../../src/features/server/serverApi';
 import { useParentFinanceOverviewQuery } from '../../src/features/parent/useParentFinanceOverviewQuery';
 import { OfflineCacheNotice } from '../../src/components/OfflineCacheNotice';
 import { applyAppUpdate, checkAppUpdate } from '../../src/features/appUpdate/updateService';
@@ -1043,24 +1042,6 @@ export default function HomeScreen() {
     },
   });
 
-  const adminOnlineUsersQuery = useQuery({
-    queryKey: ['mobile-home-admin-online-users', profile.id],
-    enabled: profile.role === 'ADMIN',
-    refetchInterval: 15000,
-    refetchIntervalInBackground: false,
-    queryFn: async () => {
-      const monitoring = await serverApi.getMonitoring();
-      return (
-        monitoring.onlineUsers || {
-          totalUsers: 0,
-          totalConnections: 0,
-          sampledAt: new Date().toISOString(),
-          byRole: [],
-        }
-      );
-    },
-  });
-
   const principalStatsQuery = useQuery({
     queryKey: ['mobile-home-principal-stats', profile.id],
     enabled: profile.role === 'PRINCIPAL',
@@ -1255,7 +1236,6 @@ export default function HomeScreen() {
   const adminStatCards: DashboardStatItem[] = useMemo(() => {
     const stats = adminStatsQuery.data;
     if (!stats) return [];
-    const onlineUsers = adminOnlineUsersQuery.data;
     return [
       {
         label: 'Tahun Ajaran Aktif',
@@ -1299,15 +1279,8 @@ export default function HomeScreen() {
         icon: 'clipboard',
         menuKey: 'admin-bkk-applications',
       },
-      {
-        label: 'User Online',
-        value: String(onlineUsers?.totalUsers || 0),
-        color: BRAND_COLORS.navy,
-        icon: 'activity',
-        menuKey: 'admin-server-area',
-      },
     ];
-  }, [adminStatsQuery.data, adminOnlineUsersQuery.data]);
+  }, [adminStatsQuery.data]);
 
   const principalStatCards: DashboardStatItem[] = useMemo(() => {
     const stats = principalStatsQuery.data;
