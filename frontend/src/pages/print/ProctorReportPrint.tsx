@@ -1,6 +1,5 @@
-import { useCallback, useEffect } from 'react';
 import { useQuery } from '@tanstack/react-query';
-import { useNavigate, useParams, useSearchParams } from 'react-router-dom';
+import { useNavigate, useParams } from 'react-router-dom';
 import { ArrowLeft, Printer, RefreshCw } from 'lucide-react';
 import api from '../../services/api';
 
@@ -71,11 +70,10 @@ function formatExamHeadingLabel(label?: string | null) {
 export default function ProctorReportPrint() {
   const navigate = useNavigate();
   const { reportId } = useParams<{ reportId: string }>();
-  const [searchParams] = useSearchParams();
-  const autoPrint = searchParams.get('autoprint') === '1';
-  const printMode = searchParams.get('printMode');
-  const isPopupPrint = printMode === 'popup';
   const parsedReportId = Number(reportId || 0);
+  const headerFontSize = '12pt';
+  const contentFontSize = '11pt';
+  const noteFontSize = '8pt';
 
   const documentQuery = useQuery({
     queryKey: ['proctor-report-document', parsedReportId],
@@ -85,86 +83,6 @@ export default function ProctorReportPrint() {
       return response.data?.data as DocumentResponse;
     },
   });
-
-  const preparePrintLayout = useCallback(async () => {
-    if (typeof document === 'undefined') return;
-
-    if ('fonts' in document) {
-      try {
-        await (document as Document & { fonts?: { ready?: Promise<unknown> } }).fonts?.ready;
-      } catch {
-        // ignore
-      }
-    }
-
-    const images = Array.from(
-      document.querySelectorAll<HTMLImageElement>('.proctor-report-print-image'),
-    );
-    await Promise.all(
-      images.map(
-        (image) =>
-          new Promise<void>((resolve) => {
-            if (image.complete) {
-              resolve();
-              return;
-            }
-            image.addEventListener('load', () => resolve(), { once: true });
-            image.addEventListener('error', () => resolve(), { once: true });
-          }),
-      ),
-    );
-
-    for (let attempt = 0; attempt < 40; attempt += 1) {
-      const shell = document.querySelector<HTMLElement>('.proctor-report-shell');
-      const contentReady = document.querySelector('[data-proctor-report-ready="true"]');
-      const hasText = Boolean(shell?.textContent?.replace(/\s+/g, '').trim());
-      const hasLayout = (shell?.getBoundingClientRect().height || 0) > 320;
-      if (contentReady && hasText && hasLayout) break;
-      await new Promise<void>((resolve) => window.setTimeout(resolve, 150));
-    }
-
-    await new Promise<void>((resolve) => {
-      window.requestAnimationFrame(() => {
-        window.requestAnimationFrame(() => {
-          window.requestAnimationFrame(() => {
-            window.setTimeout(resolve, 700);
-          });
-        });
-      });
-    });
-
-    document.body.getBoundingClientRect();
-  }, []);
-
-  const triggerPrint = useCallback(async () => {
-    await preparePrintLayout();
-    window.focus();
-    window.print();
-  }, [preparePrintLayout]);
-
-  useEffect(() => {
-    if (!autoPrint || !documentQuery.data) return;
-    const printWhenReady = async () => {
-      await triggerPrint();
-    };
-    void printWhenReady();
-  }, [autoPrint, documentQuery.data, triggerPrint]);
-
-  useEffect(() => {
-    if (!isPopupPrint || !documentQuery.data || typeof window === 'undefined' || !window.opener || window.opener.closed) return;
-    const notifyOpener = async () => {
-      await preparePrintLayout();
-      window.opener.postMessage(
-        {
-          type: 'sis:proctor-print-ready',
-          documentType: 'report',
-          reportId: parsedReportId,
-        },
-        window.location.origin,
-      );
-    };
-    void notifyOpener();
-  }, [documentQuery.data, isPopupPrint, parsedReportId, preparePrintLayout]);
 
   if (!Number.isFinite(parsedReportId) || parsedReportId <= 0) {
     return <div className="min-h-screen bg-slate-100 p-6 text-sm text-rose-700">ID berita acara tidak valid.</div>;
@@ -230,9 +148,7 @@ export default function ProctorReportPrint() {
         </button>
         <button
           type="button"
-          onClick={() => {
-            void triggerPrint();
-          }}
+          onClick={() => window.print()}
           className="inline-flex items-center rounded-lg bg-blue-600 px-4 py-2 text-sm font-semibold text-white hover:bg-blue-700"
         >
           <Printer className="mr-2 h-4 w-4" />
@@ -242,7 +158,7 @@ export default function ProctorReportPrint() {
 
       <div
         className="proctor-report-shell mx-auto max-w-5xl rounded-2xl border border-slate-200 bg-white shadow-sm"
-        style={{ maxWidth: '210mm', minHeight: '297mm', padding: '2.5cm' }}
+        style={{ maxWidth: '210mm', minHeight: '297mm', padding: '2.5cm', fontSize: contentFontSize }}
         data-proctor-report-ready="true"
       >
         <div className="flex justify-center">
@@ -253,14 +169,14 @@ export default function ProctorReportPrint() {
               className="proctor-report-print-image h-[112px] w-[112px] shrink-0 object-contain"
             />
             <div className="text-center">
-              <div className="text-[22px] font-semibold tracking-wide text-slate-900">{snapshot.title}</div>
-              <div className="mt-1 text-[15px] font-semibold uppercase tracking-wide text-slate-900">
+              <div className="font-semibold tracking-wide text-slate-900" style={{ fontSize: headerFontSize, lineHeight: 1.35 }}>{snapshot.title}</div>
+              <div className="mt-1 font-semibold uppercase tracking-wide text-slate-900" style={{ fontSize: headerFontSize, lineHeight: 1.35 }}>
                 {formatExamHeadingLabel(snapshot.examLabel)}
               </div>
-              <div className="mt-1 text-[15px] font-semibold uppercase tracking-wide text-slate-900">
+              <div className="mt-1 font-semibold uppercase tracking-wide text-slate-900" style={{ fontSize: headerFontSize, lineHeight: 1.35 }}>
                 {snapshot.schoolName}
               </div>
-              <div className="mt-1 text-[14px] font-semibold uppercase tracking-wide text-slate-900">
+              <div className="mt-1 font-semibold uppercase tracking-wide text-slate-900" style={{ fontSize: headerFontSize, lineHeight: 1.35 }}>
                 Tahun Ajaran {snapshot.academicYearName}
               </div>
             </div>
@@ -270,20 +186,20 @@ export default function ProctorReportPrint() {
         <div className="mt-4 border-t border-slate-900" />
         <div className="mt-1 border-t-2 border-slate-900" />
 
-        <div className="mt-4 flex flex-wrap items-start justify-between gap-4 text-[12px] text-slate-700">
-          <div className="rounded-lg border border-slate-200 bg-slate-50 px-3 py-2">
+        <div className="mt-4 flex flex-wrap items-start justify-between gap-4 text-slate-700" style={{ fontSize: contentFontSize }}>
+          <div className="rounded-lg border border-slate-200 bg-slate-50 px-3 py-2" style={{ fontSize: contentFontSize }}>
             <span className="font-semibold text-slate-900">No. Dokumen:</span> {snapshot.documentNumber}
           </div>
-          <div className="rounded-lg border border-emerald-200 bg-emerald-50 px-3 py-2 text-emerald-800">
+          <div className="rounded-lg border border-emerald-200 bg-emerald-50 px-3 py-2 text-emerald-800" style={{ fontSize: noteFontSize }}>
             Diverifikasi melalui QR internal SIS KGB2
           </div>
         </div>
 
-        <div className="mt-7 text-[14px] leading-8 text-slate-900">
+        <div className="mt-7 text-slate-900" style={{ fontSize: contentFontSize, lineHeight: 1.8 }}>
           <p className="text-justify">{snapshot.narrative}</p>
         </div>
 
-        <div className="mt-7 grid gap-2.5 text-[14px] text-slate-900">
+        <div className="mt-7 grid gap-2.5 text-slate-900" style={{ fontSize: contentFontSize }}>
           <div className="grid grid-cols-[230px_16px_1fr]">
             <div>Jumlah Peserta Seharusnya</div>
             <div>:</div>
@@ -302,18 +218,18 @@ export default function ProctorReportPrint() {
         </div>
 
         <div className="mt-8">
-          <div className="text-[14px] font-semibold text-slate-900">Catatan Pengawas selama Ujian berlangsung.</div>
+          <div className="font-semibold text-slate-900" style={{ fontSize: contentFontSize }}>Catatan Pengawas selama Ujian berlangsung.</div>
           <div
-            className="mt-3 min-h-[190px] rounded-xl border border-slate-900 text-[13px] leading-7 text-slate-900 whitespace-pre-wrap"
-            style={{ padding: '0.55cm 0.65cm' }}
+            className="mt-3 min-h-[190px] rounded-xl border border-slate-900 text-slate-900 whitespace-pre-wrap"
+            style={{ padding: '0.55cm 0.65cm', fontSize: contentFontSize, lineHeight: 1.75 }}
           >
             <p>{snapshot.notes || 'Tidak ada catatan tambahan dari pengawas.'}</p>
           </div>
         </div>
 
         <div className="mt-10 flex justify-end">
-          <div className="w-full max-w-[300px] text-center text-[14px] text-slate-900">
-            <div className="font-medium">Pengawas,</div>
+          <div className="w-full max-w-[300px] text-center text-slate-900" style={{ fontSize: contentFontSize }}>
+            <div className="font-medium" style={{ fontSize: contentFontSize }}>Pengawas,</div>
             <div className="mt-4 flex justify-center">
               <img
                 src={verificationQrDataUrl}
@@ -321,17 +237,17 @@ export default function ProctorReportPrint() {
                 className="proctor-report-print-image h-[104px] w-[104px] rounded-xl border border-slate-200 bg-white p-2"
               />
             </div>
-            <div className="mt-7 text-[14px] font-semibold">{snapshot.proctor.name}</div>
+            <div className="mt-7 font-semibold" style={{ fontSize: contentFontSize }}>{snapshot.proctor.name}</div>
             <div className="mt-3 border-t border-slate-400" />
-            <div className="mt-3 text-[11px] leading-5 text-slate-600">
+            <div className="mt-3 text-slate-600" style={{ fontSize: noteFontSize, lineHeight: 1.5 }}>
               {snapshot.proctor.signatureLabel} Dokumen dikirim ke Kurikulum pada {formatDateTime(snapshot.submittedAt)}.
             </div>
           </div>
         </div>
 
-        <div className="mt-7 rounded-xl border border-dashed border-slate-300 bg-slate-50 px-4 py-3 text-[11px] leading-5 text-slate-600">
+        <div className="mt-7 rounded-xl border border-dashed border-slate-300 bg-slate-50 px-4 py-3 text-slate-600" style={{ fontSize: noteFontSize, lineHeight: 1.5 }}>
           {snapshot.verification.note}
-          <div className="mt-1 break-all font-medium text-slate-700">{snapshot.verification.verificationUrl}</div>
+          <div className="mt-1 break-all font-medium text-slate-700" style={{ fontSize: noteFontSize }}>{snapshot.verification.verificationUrl}</div>
         </div>
       </div>
     </div>

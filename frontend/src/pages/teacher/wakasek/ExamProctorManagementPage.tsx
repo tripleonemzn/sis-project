@@ -932,19 +932,13 @@ const ExamProctorManagementPage = () => {
     }
   };
 
-  const openPrintDocument = useCallback((path: string) => {
-    const separator = path.includes('?') ? '&' : '?';
-    const popupPath = `${path}${separator}autoprint=1`;
-    const printWindow = window.open(
-      popupPath,
-      `_blank`,
-      'popup=yes,width=1180,height=920,resizable=yes,scrollbars=yes',
-    );
-    if (!printWindow) {
-      toast.error('Popup print diblokir browser. Izinkan popup lalu coba lagi.');
+  const openDocumentPreview = useCallback((path: string) => {
+    const previewWindow = window.open(path, '_blank');
+    if (!previewWindow) {
+      toast.error('Browser memblokir pembukaan dokumen. Izinkan tab baru lalu coba lagi.');
       return;
     }
-    printWindow.focus();
+    previewWindow.focus();
   }, []);
 
   return (
@@ -1437,35 +1431,19 @@ const ExamProctorManagementPage = () => {
                           <div className="flex flex-wrap gap-2">
                             <button
                               type="button"
-                              onClick={() => window.open(`/print/proctor-report/${row.report?.id}`, '_blank', 'noopener')}
+                              onClick={() => openDocumentPreview(`/print/proctor-report/${row.report?.id}`)}
                               className="inline-flex items-center rounded-lg border border-blue-200 bg-blue-50 px-3 py-2 text-xs font-semibold text-blue-700 hover:bg-blue-100"
                             >
                               <FileText size={13} className="mr-1.5" />
-                              Lihat BA
+                              Lihat & Print BA
                             </button>
                             <button
                               type="button"
-                              onClick={() => openPrintDocument(`/print/proctor-report/${row.report?.id}`)}
-                              className="inline-flex items-center rounded-lg border border-emerald-200 bg-emerald-50 px-3 py-2 text-xs font-semibold text-emerald-700 hover:bg-emerald-100"
-                            >
-                              <FileText size={13} className="mr-1.5" />
-                              Print BA
-                            </button>
-                            <button
-                              type="button"
-                              onClick={() => window.open(`/print/proctor-attendance/${row.report?.id}`, '_blank', 'noopener')}
+                              onClick={() => openDocumentPreview(`/print/proctor-attendance/${row.report?.id}`)}
                               className="inline-flex items-center rounded-lg border border-amber-200 bg-amber-50 px-3 py-2 text-xs font-semibold text-amber-700 hover:bg-amber-100"
                             >
                               <FileText size={13} className="mr-1.5" />
-                              Lihat Daftar Hadir
-                            </button>
-                            <button
-                              type="button"
-                              onClick={() => openPrintDocument(`/print/proctor-attendance/${row.report?.id}`)}
-                              className="inline-flex items-center rounded-lg border border-violet-200 bg-violet-50 px-3 py-2 text-xs font-semibold text-violet-700 hover:bg-violet-100"
-                            >
-                              <FileText size={13} className="mr-1.5" />
-                              Print Daftar Hadir
+                              Lihat & Print Daftar Hadir
                             </button>
                           </div>
                         </div>
