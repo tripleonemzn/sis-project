@@ -14,7 +14,8 @@ import {
   Users,
 } from 'lucide-react';
 import toast from 'react-hot-toast';
-import { academicYearService } from '../../../services/academicYear.service';
+import { ActiveAcademicYearNotice } from '../../../components/ActiveAcademicYearNotice';
+import { useActiveAcademicYear } from '../../../hooks/useActiveAcademicYear';
 import { examService, type ExamProgram } from '../../../services/exam.service';
 import {
   osisService,
@@ -28,12 +29,6 @@ import {
 } from '../../../services/osis.service';
 
 type Semester = 'ODD' | 'EVEN';
-
-interface AcademicYear {
-  id: number;
-  name: string;
-  isActive: boolean;
-}
 
 interface ReportProgramOption {
   code: string;
@@ -268,8 +263,8 @@ function OsisFormModal(props: {
 
 export const OsisManagementPage = () => {
   const queryClient = useQueryClient();
+  const { data: activeAcademicYear, isLoading: isLoadingActiveAcademicYear } = useActiveAcademicYear();
   const [activeSection, setActiveSection] = useState<OsisManagementSection>('PERIOD');
-  const [selectedAcademicYearIdState, setSelectedAcademicYearIdState] = useState<number | null>(null);
   const [selectedPeriodIdState, setSelectedPeriodIdState] = useState<number | null>(null);
   const [eligibleSearch, setEligibleSearch] = useState('');
   const [memberSearch, setMemberSearch] = useState('');
@@ -320,31 +315,10 @@ export const OsisManagementPage = () => {
   const [templateEdits, setTemplateEdits] = useState<Record<string, OsisGradeTemplatesPayload['templates']>>({});
   const [gradeEdits, setGradeEdits] = useState<Record<string, Record<number, { grade: string; description: string }>>>({});
 
-  const { data: academicYearData } = useQuery({
-    queryKey: ['academic-years', 'osis-management'],
-    queryFn: () => academicYearService.list({ page: 1, limit: 100 }),
-  });
-
-  const academicYears = useMemo<AcademicYear[]>(
-    () =>
-      (academicYearData?.data?.academicYears || academicYearData?.academicYears || []) as AcademicYear[],
-    [academicYearData],
-  );
-
-  const activeAcademicYear = useMemo(
-    () => academicYears.find((year) => year.isActive) || academicYears[0] || null,
-    [academicYears],
-  );
-
   const selectedAcademicYearId = useMemo(() => {
-    if (
-      selectedAcademicYearIdState &&
-      academicYears.some((year) => Number(year.id) === Number(selectedAcademicYearIdState))
-    ) {
-      return selectedAcademicYearIdState;
-    }
-    return activeAcademicYear?.id || null;
-  }, [academicYears, activeAcademicYear?.id, selectedAcademicYearIdState]);
+    const academicYearId = Number(activeAcademicYear?.id || activeAcademicYear?.academicYearId || 0);
+    return Number.isFinite(academicYearId) && academicYearId > 0 ? academicYearId : null;
+  }, [activeAcademicYear?.academicYearId, activeAcademicYear?.id]);
 
   const { data: managementPeriodsResponse, isLoading: isLoadingPeriods } = useQuery({
     queryKey: ['osis-management-periods', selectedAcademicYearId],
@@ -981,8 +955,16 @@ export const OsisManagementPage = () => {
   const workflowMeta = getWorkflowMeta(workflowReferencePeriod);
   const activePeriodMeta = selectedPeriod ? getManagementStatusMeta(selectedPeriod.status) : null;
 
-  if (!selectedAcademicYearId && academicYears.length > 0) {
+  if (isLoadingActiveAcademicYear) {
     return <div className="rounded-2xl border border-gray-200 bg-white p-8 text-sm text-gray-500">Memuat konteks OSIS...</div>;
+  }
+
+  if (!selectedAcademicYearId) {
+    return (
+      <div className="rounded-2xl border border-amber-200 bg-amber-50 p-8 text-sm text-amber-700">
+        Tahun ajaran aktif belum tersedia. Aktifkan tahun ajaran terlebih dahulu agar operasional OSIS tidak ambigu.
+      </div>
+    );
   }
 
   return (
@@ -997,20 +979,12 @@ export const OsisManagementPage = () => {
             </p>
           </div>
           <div className="grid gap-3 md:grid-cols-2 xl:min-w-[560px]">
-            <select
-              value={selectedAcademicYearId || ''}
-              onChange={(e) => {
-                setSelectedAcademicYearIdState(Number(e.target.value || 0) || null);
-                setSelectedPeriodIdState(null);
-              }}
-              className="rounded-xl border border-slate-200 bg-white px-3 py-2 text-sm text-slate-700"
-            >
-              {academicYears.map((year) => (
-                <option key={year.id} value={year.id}>
-                  {year.name} {year.isActive ? '(Aktif)' : ''}
-                </option>
-              ))}
-            </select>
+            <ActiveAcademicYearNotice
+              name={activeAcademicYear?.name}
+              semester={activeAcademicYear?.semester}
+              helperText="Operasional OSIS di halaman ini dikunci ke tahun ajaran aktif yang tampil di header aplikasi."
+              className="md:col-span-2"
+            />
             <select
               value={selectedPeriod?.id || ''}
               onChange={(e) => setSelectedPeriodIdState(Number(e.target.value || 0) || null)}
