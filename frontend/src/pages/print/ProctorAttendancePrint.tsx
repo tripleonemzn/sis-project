@@ -83,7 +83,7 @@ export default function ProctorAttendancePrint() {
   const [searchParams] = useSearchParams();
   const autoPrint = searchParams.get('autoprint') === '1';
   const printMode = searchParams.get('printMode');
-  const isIframePrint = printMode === 'iframe';
+  const isPopupPrint = printMode === 'popup';
   const parsedReportId = Number(reportId || 0);
 
   const documentQuery = useQuery({
@@ -160,10 +160,10 @@ export default function ProctorAttendancePrint() {
   }, [autoPrint, documentQuery.data, triggerPrint]);
 
   useEffect(() => {
-    if (!isIframePrint || !documentQuery.data || typeof window === 'undefined' || window.parent === window) return;
-    const notifyParent = async () => {
+    if (!isPopupPrint || !documentQuery.data || typeof window === 'undefined' || !window.opener || window.opener.closed) return;
+    const notifyOpener = async () => {
       await preparePrintLayout();
-      window.parent.postMessage(
+      window.opener.postMessage(
         {
           type: 'sis:proctor-print-ready',
           documentType: 'attendance',
@@ -172,8 +172,8 @@ export default function ProctorAttendancePrint() {
         window.location.origin,
       );
     };
-    void notifyParent();
-  }, [documentQuery.data, isIframePrint, parsedReportId, preparePrintLayout]);
+    void notifyOpener();
+  }, [documentQuery.data, isPopupPrint, parsedReportId, preparePrintLayout]);
 
   if (!Number.isFinite(parsedReportId) || parsedReportId <= 0) {
     return <div className="min-h-screen bg-slate-100 p-6 text-sm text-rose-700">ID daftar hadir tidak valid.</div>;

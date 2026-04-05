@@ -932,66 +932,19 @@ const ExamProctorManagementPage = () => {
     }
   };
 
-  const openPrintDocument = useCallback((path: string, documentType: 'report' | 'attendance') => {
-    const iframe = document.createElement('iframe');
+  const openPrintDocument = useCallback((path: string) => {
     const separator = path.includes('?') ? '&' : '?';
-    const iframePath = `${path}${separator}printMode=iframe`;
-    let cleanedUp = false;
-
-    const cleanup = () => {
-      if (cleanedUp) return;
-      cleanedUp = true;
-      window.removeEventListener('message', handleMessage);
-      window.clearTimeout(timeoutId);
-      if (iframe.parentNode) {
-        iframe.parentNode.removeChild(iframe);
-      }
-    };
-
-    const timeoutId = window.setTimeout(() => {
-      cleanup();
-      toast.error('Dokumen print belum siap. Buka "Lihat Dokumen" lalu print manual jika masih gagal.');
-    }, 25000);
-
-    const handleMessage = (event: MessageEvent) => {
-      if (event.origin !== window.location.origin) return;
-      if (event.source !== iframe.contentWindow) return;
-      const payload = event.data as { type?: string; documentType?: string } | null;
-      if (!payload || payload.type !== 'sis:proctor-print-ready' || payload.documentType !== documentType) return;
-
-      try {
-        const frameWindow = iframe.contentWindow;
-        if (!frameWindow) {
-          throw new Error('Iframe print window not ready.');
-        }
-        const handleAfterPrint = () => {
-          frameWindow.removeEventListener('afterprint', handleAfterPrint);
-          window.setTimeout(cleanup, 800);
-        };
-        frameWindow.addEventListener('afterprint', handleAfterPrint);
-        frameWindow.focus();
-        frameWindow.print();
-        window.setTimeout(cleanup, 4000);
-      } catch (error) {
-        console.error(error);
-        cleanup();
-        toast.error('Gagal memulai print dokumen.');
-      }
-    };
-
-    window.addEventListener('message', handleMessage);
-
-    iframe.setAttribute('title', `print-${documentType}`);
-    iframe.src = iframePath;
-    iframe.style.position = 'fixed';
-    iframe.style.right = '0';
-    iframe.style.bottom = '0';
-    iframe.style.width = '1px';
-    iframe.style.height = '1px';
-    iframe.style.opacity = '0';
-    iframe.style.pointerEvents = 'none';
-    iframe.style.border = '0';
-    document.body.appendChild(iframe);
+    const popupPath = `${path}${separator}autoprint=1`;
+    const printWindow = window.open(
+      popupPath,
+      `_blank`,
+      'popup=yes,width=1180,height=920,resizable=yes,scrollbars=yes',
+    );
+    if (!printWindow) {
+      toast.error('Popup print diblokir browser. Izinkan popup lalu coba lagi.');
+      return;
+    }
+    printWindow.focus();
   }, []);
 
   return (
@@ -1492,7 +1445,7 @@ const ExamProctorManagementPage = () => {
                             </button>
                             <button
                               type="button"
-                              onClick={() => openPrintDocument(`/print/proctor-report/${row.report?.id}`, 'report')}
+                              onClick={() => openPrintDocument(`/print/proctor-report/${row.report?.id}`)}
                               className="inline-flex items-center rounded-lg border border-emerald-200 bg-emerald-50 px-3 py-2 text-xs font-semibold text-emerald-700 hover:bg-emerald-100"
                             >
                               <FileText size={13} className="mr-1.5" />
@@ -1508,7 +1461,7 @@ const ExamProctorManagementPage = () => {
                             </button>
                             <button
                               type="button"
-                              onClick={() => openPrintDocument(`/print/proctor-attendance/${row.report?.id}`, 'attendance')}
+                              onClick={() => openPrintDocument(`/print/proctor-attendance/${row.report?.id}`)}
                               className="inline-flex items-center rounded-lg border border-violet-200 bg-violet-50 px-3 py-2 text-xs font-semibold text-violet-700 hover:bg-violet-100"
                             >
                               <FileText size={13} className="mr-1.5" />

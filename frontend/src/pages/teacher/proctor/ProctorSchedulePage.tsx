@@ -11,6 +11,8 @@ interface ExamSchedule {
   sessionLabel?: string | null;
   room: string | null;
   proctorId: number | null;
+  classNames?: string[];
+  participantCount?: number;
   subject?: {
     name: string;
   } | null;
@@ -118,11 +120,19 @@ const ProctorSchedulePage: React.FC = () => {
       }
 
       const group = map.get(key)!;
-      const className = schedule.class?.name || '-';
-      if (!group.classNames.includes(className)) {
-        group.classNames.push(className);
-      }
-      group.totalActiveParticipants += Number(schedule._count?.sessions || 0);
+      const resolvedClassNames =
+        Array.isArray(schedule.classNames) && schedule.classNames.length > 0
+          ? schedule.classNames
+          : [schedule.class?.name || '-'];
+      resolvedClassNames.forEach((className) => {
+        if (!group.classNames.includes(className)) {
+          group.classNames.push(className);
+        }
+      });
+      const resolvedParticipantCount = Number.isFinite(Number(schedule.participantCount))
+        ? Number(schedule.participantCount)
+        : Number(schedule._count?.sessions || 0);
+      group.totalActiveParticipants = Math.max(group.totalActiveParticipants, resolvedParticipantCount);
       group.scheduleIds.push(schedule.id);
     });
 

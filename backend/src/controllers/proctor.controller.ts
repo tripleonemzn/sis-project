@@ -1454,6 +1454,9 @@ export const getProctorSchedules = asyncHandler(async (req: Request, res: Respon
             class: {
                 select: { name: true }
             },
+            academicYear: {
+                select: { name: true }
+            },
             _count: {
                 select: { sessions: true }
             }
@@ -1461,7 +1464,50 @@ export const getProctorSchedules = asyncHandler(async (req: Request, res: Respon
         orderBy: { startTime: 'asc' }
     });
 
-    res.json(new ApiResponse(200, schedules));
+    const roomScopeRosterCache = new Map<string, Promise<{
+        participantCount: number;
+        classNames: string[];
+    }>>();
+
+    const buildScopeKey = (schedule: (typeof schedules)[number]) =>
+        [
+            String(schedule.room || '').trim().toLowerCase(),
+            schedule.startTime?.toISOString?.() || '',
+            schedule.endTime?.toISOString?.() || '',
+            Number(schedule.sessionId || 0) || 0,
+            String(schedule.sessionLabel || '').trim().toLowerCase(),
+            String(schedule.examType || '').trim().toUpperCase(),
+            Number(schedule.academicYearId || 0) || 0,
+            Number(schedule.subjectId || 0) || 0,
+            Number(schedule.proctorId || 0) || 0,
+        ].join('::');
+
+    const enrichedSchedules = await Promise.all(
+        schedules.map(async (schedule) => {
+            const scopeKey = buildScopeKey(schedule);
+            if (!roomScopeRosterCache.has(scopeKey)) {
+                roomScopeRosterCache.set(
+                    scopeKey,
+                    resolveRealtimeProctorAttendanceRoster(schedule.id).then((roster) => ({
+                        participantCount: Number(roster.expectedParticipants || 0),
+                        classNames: Array.isArray(roster.classNames) ? roster.classNames : [],
+                    })),
+                );
+            }
+
+            const roster = await roomScopeRosterCache.get(scopeKey)!;
+            return {
+                ...schedule,
+                participantCount: roster.participantCount,
+                classNames:
+                    roster.classNames.length > 0
+                        ? roster.classNames
+                        : (schedule.class?.name ? [schedule.class.name] : []),
+            };
+        }),
+    );
+
+    res.json(new ApiResponse(200, enrichedSchedules));
 });
 
 // Get details for a specific exam room (Proctor View)

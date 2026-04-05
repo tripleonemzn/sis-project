@@ -16,6 +16,18 @@ import { getStandardPagePadding } from '../../../../src/lib/ui/pageLayout';
 
 type TimeFilter = 'TODAY' | 'UPCOMING' | 'HISTORY';
 type ModeFilter = 'PROCTOR' | 'AUTHOR';
+type ProctorRoomGroup = {
+  key: string;
+  roomName: string;
+  startTime: string;
+  endTime: string;
+  sessionLabel: string | null;
+  title: string;
+  subjectName: string;
+  classNames: string[];
+  totalActiveParticipants: number;
+  scheduleIds: number[];
+};
 
 function normalizeExamType(raw?: string | null) {
   const value = String(raw || '').toUpperCase();
@@ -119,10 +131,69 @@ export default function TeacherProctoringScheduleScreen() {
       .sort((a, b) => new Date(a.startTime).getTime() - new Date(b.startTime).getTime());
   }, [scheduleQuery.data, search, timeFilter]);
 
+  const groupedRows = useMemo<ProctorRoomGroup[]>(() => {
+    const map = new Map<string, ProctorRoomGroup>();
+
+    filteredRows.forEach((schedule) => {
+      const roomName = schedule.room || 'Ruangan belum ditentukan';
+      const subjectName = schedule.packet?.subject?.name || '-';
+      const title = schedule.packet?.title || `Ujian ${subjectName}`;
+      const sessionLabel = String(schedule.sessionLabel || '').trim() || null;
+      const key = `${roomName}::${schedule.startTime}::${schedule.endTime}::${subjectName}::${sessionLabel || '__NO_SESSION__'}`;
+
+      if (!map.has(key)) {
+        map.set(key, {
+          key,
+          roomName,
+          startTime: schedule.startTime,
+          endTime: schedule.endTime,
+          sessionLabel,
+          title,
+          subjectName,
+          classNames: [],
+          totalActiveParticipants: 0,
+          scheduleIds: [],
+        });
+      }
+
+      const group = map.get(key)!;
+      const resolvedClassNames =
+        Array.isArray(schedule.classNames) && schedule.classNames.length > 0
+          ? schedule.classNames
+          : [schedule.class?.name || '-'];
+      resolvedClassNames.forEach((className) => {
+        if (!group.classNames.includes(className)) {
+          group.classNames.push(className);
+        }
+      });
+
+      const resolvedParticipantCount = Number.isFinite(Number(schedule.participantCount))
+        ? Number(schedule.participantCount)
+        : Number(schedule._count?.sessions || 0);
+      group.totalActiveParticipants = Math.max(group.totalActiveParticipants, resolvedParticipantCount);
+      group.scheduleIds.push(schedule.id);
+    });
+
+    return Array.from(map.values()).sort(
+      (a, b) => new Date(a.startTime).getTime() - new Date(b.startTime).getTime(),
+    );
+  }, [filteredRows]);
+
   const summary = useMemo(() => {
     const all = scheduleQuery.data || [];
     const activeNow = all.filter((item) => scheduleStatusLabel(item) === 'Sedang Berlangsung').length;
-    const totalParticipants = all.reduce((acc, item) => acc + Number(item._count?.sessions || 0), 0);
+    const groupedAll = new Map<string, number>();
+    all.forEach((item) => {
+      const roomName = item.room || 'Ruangan belum ditentukan';
+      const subjectName = item.packet?.subject?.name || '-';
+      const sessionLabel = String(item.sessionLabel || '').trim() || null;
+      const key = `${roomName}::${item.startTime}::${item.endTime}::${subjectName}::${sessionLabel || '__NO_SESSION__'}`;
+      const resolvedParticipantCount = Number.isFinite(Number(item.participantCount))
+        ? Number(item.participantCount)
+        : Number(item._count?.sessions || 0);
+      groupedAll.set(key, Math.max(groupedAll.get(key) || 0, resolvedParticipantCount));
+    });
+    const totalParticipants = Array.from(groupedAll.values()).reduce((acc, count) => acc + count, 0);
     return {
       total: all.length,
       activeNow,
@@ -264,14 +335,29 @@ export default function TeacherProctoringScheduleScreen() {
       ) : null}
 
       {!scheduleQuery.isLoading && !scheduleQuery.isError ? (
-        filteredRows.length > 0 ? (
-          filteredRows.map((schedule) => {
-            const status = scheduleStatusLabel(schedule);
+        groupedRows.length > 0 ? (
+          groupedRows.map((group) => {
+            const primaryScheduleId = group.scheduleIds[0];
+            const status = scheduleStatusLabel({
+              id: primaryScheduleId || 0,
+              startTime: group.startTime,
+              endTime: group.endTime,
+              room: group.roomName,
+              proctorId: null,
+              sessionLabel: group.sessionLabel,
+              classNames: group.classNames,
+              participantCount: group.totalActiveParticipants,
+              packet: {
+                title: group.title,
+                subject: { name: group.subjectName },
+                duration: 0,
+              },
+              class: group.classNames[0] ? { name: group.classNames[0] } : null,
+            });
             const statusStyle = scheduleStatusStyle(status);
-            const type = normalizeExamType(schedule.packet?.type);
             return (
               <View
-                key={schedule.id}
+                key={group.key}
                 style={{
                   backgroundColor: '#fff',
                   borderWidth: 1,
@@ -284,10 +370,10 @@ export default function TeacherProctoringScheduleScreen() {
                 <View style={{ flexDirection: 'row', justifyContent: 'space-between', alignItems: 'flex-start' }}>
                   <View style={{ flex: 1, paddingRight: 8 }}>
                     <Text style={{ color: BRAND_COLORS.textDark, fontWeight: '700' }}>
-                      {schedule.packet?.title || 'Paket Tidak Ditemukan'}
+                      {group.title}
                     </Text>
                     <Text style={{ color: '#64748b', marginTop: 2, fontSize: 12 }}>
-                      {schedule.packet?.subject?.name || '-'} • {schedule.class?.name || '-'}
+                      {group.subjectName}
                     </Text>
                   </View>
                   <View
@@ -306,21 +392,30 @@ export default function TeacherProctoringScheduleScreen() {
 
                 <View style={{ marginTop: 8 }}>
                   <Text style={{ color: '#334155', fontSize: 12 }}>
-                    Tipe: {type} • Peserta aktif: {schedule._count?.sessions || 0}
+                    Peserta aktif: {group.totalActiveParticipants}
                   </Text>
                   <Text style={{ color: '#334155', fontSize: 12, marginTop: 2 }}>
-                    Mulai: {formatDateTime(schedule.startTime)}
+                    Mulai: {formatDateTime(group.startTime)}
                   </Text>
                   <Text style={{ color: '#334155', fontSize: 12, marginTop: 2 }}>
-                    Selesai: {formatDateTime(schedule.endTime)}
+                    Selesai: {formatDateTime(group.endTime)}
                   </Text>
                   <Text style={{ color: '#334155', fontSize: 12, marginTop: 2 }}>
-                    Ruangan: {schedule.room || 'Belum ditentukan'}
+                    Ruangan: {group.roomName}
+                  </Text>
+                  <Text style={{ color: '#334155', fontSize: 12, marginTop: 2 }}>
+                    {group.sessionLabel ? `Sesi: ${group.sessionLabel}` : 'Tanpa sesi'}
+                  </Text>
+                  <Text style={{ color: '#334155', fontSize: 12, marginTop: 2 }}>
+                    Kelas / Rombel: {group.classNames.join(', ') || '-'}
                   </Text>
                 </View>
 
                 <Pressable
-                  onPress={() => router.push(`/teacher/proctoring/${schedule.id}` as never)}
+                  onPress={() => {
+                    if (!primaryScheduleId) return;
+                    router.push(`/teacher/proctoring/${primaryScheduleId}` as never);
+                  }}
                   style={{
                     marginTop: 10,
                     backgroundColor: BRAND_COLORS.blue,
