@@ -4,6 +4,7 @@ import { useQuery } from '@tanstack/react-query';
 import api from '../../services/api';
 import { authService } from '../../services/auth.service';
 import { useActiveAcademicYear } from '../../hooks/useActiveAcademicYear';
+import { ActiveAcademicYearNotice } from '../../components/ActiveAcademicYearNotice';
 import { toast } from 'react-hot-toast';
 import { scheduleTimeConfigService } from '../../services/scheduleTimeConfig.service';
 import { 
@@ -81,7 +82,7 @@ export default function StudentSchedulePage() {
   });
 
   const { user: contextUser } = useOutletContext<StudentScheduleOutletContext>() || {};
-  const { data: activeAcademicYear } = useActiveAcademicYear();
+  const { data: activeAcademicYear, isLoading: isActiveAcademicYearLoading } = useActiveAcademicYear();
   const { data: authData } = useQuery({
     queryKey: ['me'],
     queryFn: authService.getMe,
@@ -92,7 +93,7 @@ export default function StudentSchedulePage() {
 
   const fetchData = useCallback(async () => {
     try {
-      if (!user) return;
+      if (!user || isActiveAcademicYearLoading) return;
 
       setLoading(true);
 
@@ -103,9 +104,7 @@ export default function StudentSchedulePage() {
         return;
       }
 
-      const academicYearId = Number(
-        user.studentClass?.academicYearId || activeAcademicYear?.id || 0,
-      );
+      const academicYearId = Number(activeAcademicYear?.id || activeAcademicYear?.academicYearId || 0);
       if (!Number.isFinite(academicYearId) || academicYearId <= 0) {
         toast.error('Tahun ajaran aktif tidak ditemukan');
         setLoading(false);
@@ -132,7 +131,7 @@ export default function StudentSchedulePage() {
     } finally {
       setLoading(false);
     }
-  }, [activeAcademicYear?.id, user]);
+  }, [activeAcademicYear?.academicYearId, activeAcademicYear?.id, isActiveAcademicYearLoading, user]);
 
   useEffect(() => {
     fetchData();
@@ -162,6 +161,12 @@ export default function StudentSchedulePage() {
         </h1>
         <p className="text-gray-500 mt-1">Jadwal kegiatan belajar mengajar minggu ini</p>
       </div>
+
+      <ActiveAcademicYearNotice
+        name={activeAcademicYear?.name}
+        semester={activeAcademicYear?.semester}
+        helperText="Jadwal siswa di halaman ini selalu mengikuti tahun ajaran aktif yang tampil di header aplikasi."
+      />
 
       <div className="bg-white p-6 rounded-xl shadow-sm border border-gray-200">
         <div className="flex flex-col md:flex-row md:items-center justify-between gap-4 mb-6">

@@ -1,10 +1,8 @@
-import { useState, useEffect, useMemo } from 'react';
+import { useState, useEffect, useMemo, useRef } from 'react';
 import { Save, Loader2, X } from 'lucide-react';
 import { toast } from 'react-hot-toast';
 import { gradeService } from '../../services/grade.service';
 import type { GradeComponent } from '../../services/grade.service';
-import { academicYearService } from '../../services/academicYear.service';
-import type { AcademicYear } from '../../services/academicYear.service';
 import { teacherAssignmentService } from '../../services/teacherAssignment.service';
 import type { TeacherAssignment } from '../../services/teacherAssignment.service';
 import {
@@ -13,6 +11,8 @@ import {
 } from '../../services/teacherAssignment.service';
 import { userService } from '../../services/user.service';
 import type { User } from '../../types/auth';
+import { ActiveAcademicYearNotice } from '../../components/ActiveAcademicYearNotice';
+import { useActiveAcademicYear } from '../../hooks/useActiveAcademicYear';
 
 interface Student {
   id: number;
@@ -35,12 +35,6 @@ interface StudentReportGrade {
   finalScore: number | null;
   slotScores?: Record<string, number | null> | null;
   description?: string | null;
-}
-
-interface LocalAcademicYear {
-  id: number;
-  name: string;
-  is_active: boolean;
 }
 
 type ApiGradeRow = {
@@ -270,11 +264,11 @@ const resolveReportSlotScore = (
 };
 
 export const TeacherGradesPage = () => {
+  const { data: activeAcademicYear } = useActiveAcademicYear();
   const [loading, setLoading] = useState(false);
   const [saving, setSaving] = useState(false);
   
   // Filter states
-  const [academicYears, setAcademicYears] = useState<LocalAcademicYear[]>([]);
   const [assignments, setAssignments] = useState<TeacherAssignment[]>([]);
   const [gradeComponents, setGradeComponents] = useState<GradeComponent[]>([]);
   
@@ -294,6 +288,7 @@ export const TeacherGradesPage = () => {
   const [descriptions, setDescriptions] = useState<Record<number, string>>({});
   const [formativeNewScoreDraft, setFormativeNewScoreDraft] = useState<Record<number, string>>({});
   const [isFilterRestoreDone, setIsFilterRestoreDone] = useState(false);
+  const restoredAssignmentRef = useRef<string | undefined>(undefined);
   
   const selectedAcademicYearNum = Number(selectedAcademicYear);
   const assignmentOptions = useMemo(() => {
@@ -449,13 +444,21 @@ export const TeacherGradesPage = () => {
   }, []); // eslint-disable-line react-hooks/exhaustive-deps
 
   useEffect(() => {
+    const activeAcademicYearId = Number(activeAcademicYear?.id || activeAcademicYear?.academicYearId || 0);
+    if (!Number.isFinite(activeAcademicYearId) || activeAcademicYearId <= 0) {
+      setSelectedAcademicYear('');
+      return;
+    }
+    setSelectedAcademicYear(String(activeAcademicYearId));
+  }, [activeAcademicYear?.academicYearId, activeAcademicYear?.id]);
+
+  useEffect(() => {
     try {
       if (!isFilterRestoreDone) return;
       if (typeof window === 'undefined' || !window.localStorage) return;
       window.localStorage.setItem(
         TEACHER_GRADES_FILTER_STORAGE_KEY,
         JSON.stringify({
-          academicYear: selectedAcademicYear,
           semester: selectedSemester,
           assignment: selectedAssignment,
           component: selectedComponent,
@@ -534,11 +537,8 @@ export const TeacherGradesPage = () => {
     try {
       setLoading(true);
       setIsFilterRestoreDone(false);
-      
-      const ayRes = await academicYearService.list({ limit: 100 });
 
       let restoredFilter: {
-        academicYear?: string;
         semester?: 'ODD' | 'EVEN' | '';
         assignment?: string;
         component?: string;
@@ -551,42 +551,7 @@ export const TeacherGradesPage = () => {
       } catch (error) {
         console.warn('Failed to restore teacher grade filters:', error);
       }
-
-      // Handle Academic Years
-      const aysResponse = ayRes as { data?: { academicYears?: AcademicYear[] }, academicYears?: AcademicYear[] };
-      const ays = aysResponse.data?.academicYears || aysResponse.academicYears || [];
-      if (Array.isArray(ays)) {
-        setAcademicYears(ays.map((ay) => ({
-            id: ay.id,
-            name: ay.name,
-            is_active: ay.isActive
-        })));
-        const restoredAcademicYear = restoredFilter?.academicYear;
-        if (restoredAcademicYear && ays.some((ay) => ay.id.toString() === restoredAcademicYear)) {
-          setSelectedAcademicYear(restoredAcademicYear);
-        } else {
-          const activeAy = ays.find((ay) => ay.isActive);
-          if (activeAy) setSelectedAcademicYear(activeAy.id.toString());
-        }
-      }
-
-      const normalizedAcademicYears = Array.isArray(ays) ? ays : [];
-      const targetAcademicYear = restoredFilter?.academicYear && normalizedAcademicYears.some((item) => item.id.toString() === restoredFilter.academicYear)
-        ? restoredFilter.academicYear
-        : undefined;
-      const restoredAssignment = restoredFilter?.assignment;
-      const initialAcademicYearId = targetAcademicYear || (
-        (() => {
-          const activeAy = normalizedAcademicYears.find((ay) => ay.isActive);
-          return activeAy ? activeAy.id.toString() : '';
-        })()
-      );
-
-      if (initialAcademicYearId) {
-        await fetchAssignmentsByAcademicYear(initialAcademicYearId, restoredAssignment);
-      } else {
-        setAssignments([]);
-      }
+      restoredAssignmentRef.current = restoredFilter?.assignment;
 
       if (restoredFilter?.component) {
         setSelectedComponent(restoredFilter.component);
@@ -606,11 +571,13 @@ export const TeacherGradesPage = () => {
 
   useEffect(() => {
     if (!selectedAcademicYear || !isFilterRestoreDone) return;
-    fetchAssignmentsByAcademicYear(selectedAcademicYear).catch((error) => {
+    fetchAssignmentsByAcademicYear(selectedAcademicYear, restoredAssignmentRef.current).catch((error) => {
       console.error('Fetch assignments by academic year error:', error);
       toast.error('Gagal memuat assignment guru');
       setAssignments([]);
       setSelectedAssignment('');
+    }).finally(() => {
+      restoredAssignmentRef.current = undefined;
     });
   }, [selectedAcademicYear, isFilterRestoreDone]);
 
@@ -1103,7 +1070,7 @@ export const TeacherGradesPage = () => {
 
   const handleSaveGrades = async () => {
     if (!selectedAcademicYear || !selectedAssignment || !selectedComponent) {
-      toast.error('Pilih tahun ajaran, kelas & mata pelajaran, dan komponen nilai terlebih dahulu');
+      toast.error('Pilih kelas & mata pelajaran, semester, dan komponen nilai terlebih dahulu');
       return;
     }
 
@@ -1224,6 +1191,12 @@ export const TeacherGradesPage = () => {
         </div>
       </div>
 
+      <ActiveAcademicYearNotice
+        name={activeAcademicYear?.name}
+        semester={activeAcademicYear?.semester}
+        helperText="Input nilai operasional di halaman ini selalu mengikuti tahun ajaran aktif yang tampil di header aplikasi."
+      />
+
       {/* Description Box */}
       <div className="rounded-lg border border-blue-200 bg-blue-50 px-3 py-2 text-xs text-blue-800">
         <span className="font-semibold">Informasi Penilaian:</span> {getDescription()}
@@ -1258,23 +1231,7 @@ export const TeacherGradesPage = () => {
       {/* Filters */}
       <div className="bg-white rounded-xl shadow-sm border border-gray-100 p-6">
         <h2 className="text-lg font-semibold text-gray-900 mb-4">Filter Data</h2>
-        <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-6 gap-4">
-            <div>
-                <label htmlFor="academic-year" className="block text-sm font-medium text-gray-700 mb-2">Tahun Ajaran</label>
-                <select 
-                    id="academic-year"
-                    name="academic-year"
-                    value={selectedAcademicYear}
-                    onChange={(e) => setSelectedAcademicYear(e.target.value)}
-                    className="w-full px-4 py-2 border border-gray-300 rounded-lg focus:ring-blue-500 focus:border-blue-500"
-                >
-                    <option value="">Pilih Tahun Ajaran</option>
-                    {academicYears.map(ay => (
-                        <option key={ay.id} value={ay.id}>{ay.name} {ay.is_active ? '(Aktif)' : ''}</option>
-                    ))}
-                </select>
-            </div>
-            
+        <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-5 gap-4">
             <div>
                 <label htmlFor="semester" className="block text-sm font-medium text-gray-700 mb-2">Semester</label>
                 <select 

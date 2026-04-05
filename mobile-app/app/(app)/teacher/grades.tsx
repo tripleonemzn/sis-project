@@ -4,6 +4,7 @@ import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { Alert, Modal, Pressable, RefreshControl, ScrollView, Text, TextInput, View } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { AppLoadingScreen } from '../../../src/components/AppLoadingScreen';
+import { MobileActiveAcademicYearNotice } from '../../../src/components/MobileActiveAcademicYearNotice';
 import { MobileSelectField } from '../../../src/components/MobileSelectField';
 import { QueryStateView } from '../../../src/components/QueryStateView';
 import { useAuth } from '../../../src/features/auth/AuthProvider';
@@ -742,6 +743,12 @@ export default function TeacherGradesScreen() {
       >
       <Text style={{ fontSize: 24, fontWeight: '700', marginBottom: 6 }}>Input Nilai</Text>
       <Text style={{ color: '#64748b', marginBottom: 12 }}>Masukkan nilai per komponen untuk kelas ajar Anda.</Text>
+
+      <MobileActiveAcademicYearNotice
+        name={assignmentsQuery.data?.activeYear?.name}
+        semester={assignmentsQuery.data?.activeYear?.semester}
+        helperText="Input nilai di mobile otomatis memakai assignment pada tahun ajaran aktif yang tampil di header."
+      />
 
       {assignmentsQuery.isLoading ? <QueryStateView type="loading" message="Memuat assignment..." /> : null}
       {assignmentsQuery.isError ? (

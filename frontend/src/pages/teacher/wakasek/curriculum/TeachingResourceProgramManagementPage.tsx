@@ -1,8 +1,7 @@
-import { useEffect, useMemo, useState } from 'react';
+import { useEffect, useState } from 'react';
 import { ArrowDown, ArrowUp, BookOpen, Pencil, Plus, Save, Trash2, X } from 'lucide-react';
 import { toast } from 'react-hot-toast';
 import { useQuery, useQueryClient } from '@tanstack/react-query';
-import { academicYearService, type AcademicYear } from '../../../../services/academicYear.service';
 import {
   normalizeTeachingResourceProgramCode,
   teachingResourceProgramService,
@@ -14,6 +13,7 @@ import {
   type TeachingResourceProgramSectionSchema,
 } from '../../../../services/teachingResourceProgram.service';
 import { useActiveAcademicYear } from '../../../../hooks/useActiveAcademicYear';
+import { ActiveAcademicYearNotice } from '../../../../components/ActiveAcademicYearNotice';
 
 type ProgramFormRow = {
   rowId: string;
@@ -74,7 +74,7 @@ const COLUMN_VALUE_SOURCE_OPTIONS: Array<{ value: TeachingResourceColumnValueSou
 ];
 
 const QUICK_GUIDE_STEPS = [
-  'Pilih tahun ajaran aktif yang ingin dikonfigurasi.',
+  'Konfigurasi ini selalu mengikuti tahun ajaran aktif yang tampil di header aplikasi.',
   'Tambahkan/Edit program, lalu atur status aktif dan visibilitas menu guru.',
   'Di dalam template dokumen, susun section dan kolom sesuai kebutuhan kurikulum.',
   'Gunakan semantic key dan binding key jika kolom perlu terintegrasi antar program.',
@@ -191,17 +191,6 @@ function toErrorMessage(error: unknown, fallback: string): string {
   return fallback;
 }
 
-function toAcademicYearList(payload: unknown): AcademicYear[] {
-  if (!payload || typeof payload !== 'object') return [];
-  const normalized = payload as {
-    data?: { academicYears?: AcademicYear[] };
-    academicYears?: AcademicYear[];
-  };
-  if (Array.isArray(normalized.data?.academicYears)) return normalized.data!.academicYears!;
-  if (Array.isArray(normalized.academicYears)) return normalized.academicYears;
-  return [];
-}
-
 function toProgramRows(payload: unknown): ProgramFormRow[] {
   if (!payload || typeof payload !== 'object') return [];
   const normalized = payload as {
@@ -265,7 +254,7 @@ function createDefaultDraft(seed: number): CreateProgramDraft {
 
 export default function TeachingResourceProgramManagementPage() {
   const queryClient = useQueryClient();
-  const { data: activeYear } = useActiveAcademicYear();
+  const { data: activeYear, isLoading: isActiveYearLoading } = useActiveAcademicYear();
   const [selectedAcademicYearId, setSelectedAcademicYearId] = useState<number | null>(null);
   const [rows, setRows] = useState<ProgramFormRow[]>([]);
   const [isDirty, setIsDirty] = useState(false);
@@ -277,29 +266,14 @@ export default function TeachingResourceProgramManagementPage() {
   const [editingRowId, setEditingRowId] = useState<string | null>(null);
   const [pendingDeleteRow, setPendingDeleteRow] = useState<ProgramFormRow | null>(null);
 
-  const academicYearsQuery = useQuery({
-    queryKey: ['teaching-resource-program-academic-years'],
-    queryFn: () => academicYearService.list({ page: 1, limit: 50 }),
-    staleTime: 1000 * 60 * 10,
-  });
-
-  const academicYears = useMemo(
-    () => toAcademicYearList(academicYearsQuery.data).sort((a, b) => Number(b.id || 0) - Number(a.id || 0)),
-    [academicYearsQuery.data],
-  );
-
   useEffect(() => {
-    if (selectedAcademicYearId) return;
     const activeId = Number(activeYear?.id || activeYear?.academicYearId || 0);
     if (Number.isFinite(activeId) && activeId > 0) {
       setSelectedAcademicYearId(activeId);
       return;
     }
-    if (academicYears.length > 0) {
-      const active = academicYears.find((year) => year.isActive);
-      setSelectedAcademicYearId(Number(active?.id || academicYears[0].id));
-    }
-  }, [activeYear, academicYears, selectedAcademicYearId]);
+    setSelectedAcademicYearId(null);
+  }, [activeYear?.academicYearId, activeYear?.id]);
 
   const programsQuery = useQuery({
     queryKey: ['teaching-resource-program-config', 'management', selectedAcademicYearId],
@@ -674,7 +648,7 @@ export default function TeachingResourceProgramManagementPage() {
     await persistRows(rows, 'Program Perangkat Ajar berhasil disimpan.');
   };
 
-  const isLoading = academicYearsQuery.isLoading || (Boolean(selectedAcademicYearId) && programsQuery.isLoading);
+  const isLoading = isActiveYearLoading || (Boolean(selectedAcademicYearId) && programsQuery.isLoading);
 
   return (
     <div className="space-y-6 w-full pb-28">
@@ -697,23 +671,15 @@ export default function TeachingResourceProgramManagementPage() {
 
       <div className="rounded-xl border border-gray-200 bg-white p-4 shadow-sm">
         <div className="grid grid-cols-1 gap-4 md:grid-cols-3">
-          <div>
-            <label className="mb-1 block text-sm font-medium text-gray-700">Tahun Ajaran</label>
-            <select
-              value={selectedAcademicYearId || ''}
-              onChange={(event) => setSelectedAcademicYearId(Number(event.target.value))}
-              className="w-full rounded-lg border border-gray-300 px-3 py-2 text-sm focus:border-blue-500 focus:outline-none"
-            >
-              <option value="">Pilih Tahun Ajaran</option>
-              {academicYears.map((year) => (
-                <option key={year.id} value={year.id}>
-                  {year.name}
-                  {year.isActive ? ' (Aktif)' : ''}
-                </option>
-              ))}
-            </select>
+          <div className="md:col-span-2">
+            <ActiveAcademicYearNotice
+              name={activeYear?.name}
+              semester={activeYear?.semester}
+              helperText="Konfigurasi Program Perangkat Ajar di halaman ini dikunci ke tahun ajaran aktif sistem agar struktur menu guru tidak ambigu."
+              className="h-full"
+            />
           </div>
-          <div className="md:col-span-2 flex items-end">
+          <div className="md:col-span-1 flex items-end">
             <div className="w-full rounded-lg border border-blue-100 bg-blue-50 px-3 py-2 text-xs text-blue-700">
               Konfigurasi ini setara konsep Program Ujian: dinamis, per tahun ajaran, dan menjadi sumber menu Perangkat Ajar guru.
             </div>

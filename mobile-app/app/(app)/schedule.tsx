@@ -4,6 +4,7 @@ import { Feather } from '@expo/vector-icons';
 import { Pressable, RefreshControl, ScrollView, Text, View } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { AppLoadingScreen } from '../../src/components/AppLoadingScreen';
+import { MobileActiveAcademicYearNotice } from '../../src/components/MobileActiveAcademicYearNotice';
 import { QueryStateView } from '../../src/components/QueryStateView';
 import { useAuth } from '../../src/features/auth/AuthProvider';
 import { DayOfWeek, ScheduleEntry } from '../../src/features/schedule/types';
@@ -110,6 +111,12 @@ export default function ScheduleScreen() {
       <Text style={{ color: '#64748b', marginBottom: 16 }}>
         Jadwal pembelajaran aktif
       </Text>
+
+      <MobileActiveAcademicYearNotice
+        name={scheduleQuery.data?.activeYear?.name}
+        semester={scheduleQuery.data?.activeYear?.semester}
+        helperText="Jadwal siswa di aplikasi mobile otomatis mengikuti tahun ajaran aktif yang tampil di header."
+      />
 
       {scheduleQuery.isLoading ? (
         <QueryStateView type="loading" message="Mengambil jadwal..." />

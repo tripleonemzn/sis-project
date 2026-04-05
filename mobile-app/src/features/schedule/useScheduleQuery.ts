@@ -16,6 +16,7 @@ type ScheduleQueryPayload = {
     id: number;
     name: string;
     isActive: boolean;
+    semester?: 'ODD' | 'EVEN';
   };
   entries: ScheduleEntry[];
 };
