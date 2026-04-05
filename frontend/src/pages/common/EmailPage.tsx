@@ -1,6 +1,6 @@
 import { useCallback, useEffect, useRef, useState, type FormEvent } from 'react';
 import { useMutation, useQuery } from '@tanstack/react-query';
-import { ShieldCheck } from 'lucide-react';
+import { Copy, ShieldCheck } from 'lucide-react';
 import { authService } from '../../services/auth.service';
 import { webmailService } from '../../services/webmail.service';
 
@@ -8,7 +8,6 @@ const WEBMAIL_URL = 'https://mail.siskgb2.id/';
 const DEFAULT_WEBMAIL_INBOX_URL = 'https://mail.siskgb2.id/?_task=mail&_mbox=INBOX&_layout=list&_skin=elastic';
 const WEBMAIL_FRAME_NAME = 'sis-webmail-frame';
 const DEFAULT_WEBMAIL_DOMAIN = 'siskgb2.id';
-const MAILBOX_USERNAME_PATTERN = /^[a-z0-9][a-z0-9._-]{2,62}$/;
 const BRIDGE_REAUTH_IDLE_MS = 1000 * 60 * 15;
 const getWebmailModeStorageKey = (scopeKey: string) => `sis-webmail-mode:${scopeKey}`;
 const getWebmailBridgeStorageKey = (scopeKey: string) => `sis-webmail-bridge:${scopeKey}`;
@@ -87,14 +86,21 @@ export const EmailPage = () => {
   const isSelfRegistrationEnabled = !useSsoMode && Boolean(webmailConfig?.selfRegistrationEnabled);
   const mailboxQuotaGb = (webmailConfig?.mailboxQuotaMb || 5120) / 1024;
   const mailboxQuotaLabel = Number.isInteger(mailboxQuotaGb) ? `${mailboxQuotaGb.toFixed(0)} GB` : `${mailboxQuotaGb.toFixed(1)} GB`;
+  const mailboxIdentity = String(webmailConfig?.mailboxIdentity || '').trim().toLowerCase();
+  const expectedVerificationUsername = String(webmailConfig?.user?.username || '').trim();
+  const mailboxPreview =
+    mailboxIdentity || `${expectedVerificationUsername || 'username'}@${mailboxDomain}`.trim().toLowerCase();
 
   const [loginUser, setLoginUser] = useState('');
+  const [hasEditedLoginUser, setHasEditedLoginUser] = useState(false);
   const [loginPass, setLoginPass] = useState('');
   const [isRegisterMode, setIsRegisterMode] = useState(false);
   const [registerUser, setRegisterUser] = useState('');
   const [registerPass, setRegisterPass] = useState('');
   const [registerPassConfirm, setRegisterPassConfirm] = useState('');
   const [registerError, setRegisterError] = useState<string | null>(null);
+  const [resetError, setResetError] = useState<string | null>(null);
+  const [resetResult, setResetResult] = useState<{ mailboxIdentity: string; password: string; resetAt: string } | null>(null);
   const [isWebmailMode, setIsWebmailMode] = useState(false);
   const [shouldSubmitBridgeLogin, setShouldSubmitBridgeLogin] = useState(false);
   const [pendingAutoBridgeCredentials, setPendingAutoBridgeCredentials] = useState<WebmailBridgeCredentials | null>(null);
@@ -197,6 +203,26 @@ export const EmailPage = () => {
     },
   });
 
+  const resetPasswordMutation = useMutation({
+    mutationFn: webmailService.resetPassword,
+    onSuccess: (response) => {
+      const nextMailboxIdentity = String(response?.data?.mailboxIdentity || mailboxPreview).trim().toLowerCase();
+      setResetError(null);
+      setResetResult({
+        mailboxIdentity: nextMailboxIdentity,
+        password: String(response?.data?.password || ''),
+        resetAt: String(response?.data?.resetAt || new Date().toISOString()),
+      });
+      setHasEditedLoginUser(false);
+      setLoginUser(nextMailboxIdentity);
+      setLoginPass('');
+    },
+    onError: (error) => {
+      setResetResult(null);
+      setResetError(getErrorMessage(error, 'Gagal mereset password webmail.'));
+    },
+  });
+
   useEffect(() => {
     if (!userScopeKey || lastHydratedScopeRef.current === userScopeKey) return;
 
@@ -236,6 +262,7 @@ export const EmailPage = () => {
       setIsWebmailMode(shouldRestoreWebmailMode);
       setPendingAutoBridgeCredentials(shouldRestoreWebmailMode ? restoredCredentials : null);
       setLoginUser('');
+      setHasEditedLoginUser(false);
       setLoginPass('');
       setIsRegisterMode(false);
       setRegisterUser('');
@@ -342,6 +369,8 @@ export const EmailPage = () => {
     startSsoMutation.mutate();
   };
 
+  const loginIdentityValue = hasEditedLoginUser ? loginUser : mailboxPreview;
+
   const handleLoginSubmit = (event: FormEvent<HTMLFormElement>) => {
     event.preventDefault();
 
@@ -351,7 +380,7 @@ export const EmailPage = () => {
     }
     if (!isPortalReady) return;
 
-    const email = loginUser.trim();
+    const email = loginIdentityValue.trim();
     if (!email || !loginPass.trim()) return;
     openWebmailWithBridgeLogin(email, loginPass);
   };
@@ -360,16 +389,16 @@ export const EmailPage = () => {
     event.preventDefault();
     if (!isSelfRegistrationEnabled) return;
 
-    const username = registerUser.trim().toLowerCase();
+    const verificationUsername = registerUser.trim();
     const password = registerPass;
     const confirmPassword = registerPassConfirm;
 
-    if (!username) {
-      setRegisterError('Username mailbox wajib diisi.');
+    if (!verificationUsername) {
+      setRegisterError('Username akun SIS wajib diisi untuk verifikasi.');
       return;
     }
-    if (!MAILBOX_USERNAME_PATTERN.test(username)) {
-      setRegisterError('Username hanya boleh huruf kecil, angka, titik, underscore, atau dash (3-63 karakter).');
+    if (verificationUsername.toLowerCase() !== expectedVerificationUsername.toLowerCase()) {
+      setRegisterError('Username verifikasi harus sama dengan username akun SIS Anda.');
       return;
     }
     if (!password || !confirmPassword) {
@@ -386,7 +415,21 @@ export const EmailPage = () => {
     }
 
     setRegisterError(null);
-    registerMutation.mutate({ username, password, confirmPassword });
+    setResetError(null);
+    setResetResult(null);
+    registerMutation.mutate({ verificationUsername, password, confirmPassword });
+  };
+
+  const handleResetPassword = () => {
+    setRegisterError(null);
+    setResetError(null);
+    setResetResult(null);
+    resetPasswordMutation.mutate();
+  };
+
+  const handleCopyResetPassword = async () => {
+    if (!resetResult?.password || typeof navigator === 'undefined' || !navigator.clipboard) return;
+    await navigator.clipboard.writeText(resetResult.password);
   };
 
   const handleDisconnectClick = () => {
@@ -396,6 +439,7 @@ export const EmailPage = () => {
     bridgeLoginInFlightRef.current = false;
     lastBridgeAuthAtRef.current = 0;
     setLoginUser('');
+    setHasEditedLoginUser(false);
     setLoginPass('');
     setShouldSubmitBridgeLogin(false);
     setPendingAutoBridgeCredentials(null);
@@ -501,18 +545,27 @@ export const EmailPage = () => {
                   ) : isRegisterMode ? (
                     <form className="mt-5 space-y-4" onSubmit={handleRegisterSubmit}>
                       <div>
-                        <label className="mb-2 block text-lg font-medium text-slate-800 md:text-[18px]">Username Email</label>
-                        <div className="flex items-end border-b border-slate-500 pb-2">
+                        <label className="mb-2 block text-lg font-medium text-slate-800 md:text-[18px]">Username Akun SIS</label>
+                        <div className="border-b border-slate-500 pb-2">
                           <input
                             type="text"
                             value={registerUser}
-                            onChange={(event) => setRegisterUser(event.target.value.toLowerCase())}
-                            placeholder="username"
+                            onChange={(event) => setRegisterUser(event.target.value)}
+                            placeholder={expectedVerificationUsername || 'masukkan username akun SIS'}
                             required
                             autoComplete="off"
                             className="w-full border-0 bg-transparent text-base text-slate-700 placeholder:italic placeholder:text-slate-400 focus:outline-none"
                           />
-                          <span className="whitespace-nowrap pl-2 text-sm text-slate-500">@{mailboxDomain}</span>
+                        </div>
+                        <p className="mt-2 text-xs text-slate-500">
+                          Dipakai hanya untuk verifikasi agar satu akun SIS tidak bisa membuat lebih dari satu mailbox.
+                        </p>
+                      </div>
+
+                      <div>
+                        <label className="mb-2 block text-lg font-medium text-slate-800 md:text-[18px]">Mailbox Sekolah</label>
+                        <div className="rounded-2xl border border-slate-200 bg-slate-50 px-4 py-3 text-sm font-semibold text-slate-700">
+                          {mailboxPreview}
                         </div>
                       </div>
 
@@ -542,7 +595,9 @@ export const EmailPage = () => {
                         />
                       </div>
 
-                      <p className="text-xs text-slate-500">Kapasitas mailbox: {mailboxQuotaLabel} per user.</p>
+                      <p className="text-xs text-slate-500">
+                        Kapasitas mailbox: {mailboxQuotaLabel} per user. Mailbox mengikuti identitas email sekolah yang sudah ditetapkan server.
+                      </p>
 
                       {registerError ? <p className="text-xs text-red-600">{registerError}</p> : null}
 
@@ -559,6 +614,7 @@ export const EmailPage = () => {
                           onClick={() => {
                             setIsRegisterMode(false);
                             setRegisterError(null);
+                            setResetError(null);
                           }}
                           className="mt-2.5 w-full rounded-full bg-[#f89b1f] px-5 py-2.5 text-base font-semibold text-slate-900 transition hover:bg-[#eb8f14]"
                         >
@@ -572,9 +628,12 @@ export const EmailPage = () => {
                         <label className="mb-2 block text-lg font-medium text-slate-800 md:text-[18px]">Email</label>
                         <input
                           type="email"
-                          value={loginUser}
-                          onChange={(event) => setLoginUser(event.target.value)}
-                          placeholder="nama@siskgb2.id"
+                          value={loginIdentityValue}
+                          onChange={(event) => {
+                            setHasEditedLoginUser(true);
+                            setLoginUser(event.target.value);
+                          }}
+                          placeholder={mailboxPreview || 'nama@siskgb2.id'}
                           required
                           autoComplete="username"
                           className="w-full border-0 border-b border-slate-500 bg-transparent pb-2 text-base text-slate-700 placeholder:italic placeholder:text-slate-400 focus:border-slate-700 focus:outline-none"
@@ -594,6 +653,30 @@ export const EmailPage = () => {
                         />
                       </div>
 
+                      {resetError ? <p className="text-xs text-red-600">{resetError}</p> : null}
+                      {resetResult ? (
+                        <div className="rounded-2xl border border-amber-200 bg-amber-50 px-4 py-3 text-left">
+                          <p className="text-sm font-semibold text-amber-900">Password baru berhasil dibuat.</p>
+                          <p className="mt-1 text-xs text-amber-800">Mailbox: {resetResult.mailboxIdentity}</p>
+                          <div className="mt-2 flex items-center gap-2 rounded-xl border border-amber-200 bg-white px-3 py-2">
+                            <span className="flex-1 break-all text-sm font-semibold text-slate-800">{resetResult.password}</span>
+                            <button
+                              type="button"
+                              onClick={() => {
+                                void handleCopyResetPassword();
+                              }}
+                              className="inline-flex items-center gap-1 rounded-full border border-slate-200 px-3 py-1 text-xs font-semibold text-slate-700 transition hover:bg-slate-50"
+                            >
+                              <Copy className="h-3.5 w-3.5" />
+                              Copy
+                            </button>
+                          </div>
+                          <p className="mt-2 text-[11px] text-amber-800">
+                            Simpan password ini sekarang. Reset dilakukan pada {new Date(resetResult.resetAt).toLocaleString('id-ID')}.
+                          </p>
+                        </div>
+                      ) : null}
+
                       <div className="pt-2">
                         <button
                           type="submit"
@@ -608,10 +691,22 @@ export const EmailPage = () => {
                             onClick={() => {
                               setIsRegisterMode(true);
                               setRegisterError(null);
+                              setResetError(null);
+                              setResetResult(null);
                             }}
                             className="mt-2.5 w-full rounded-full bg-[#2c4cb7] px-5 py-2.5 text-base font-semibold text-white transition hover:bg-[#243f9b]"
                           >
                             Daftar
+                          </button>
+                        ) : null}
+                        {!useSsoMode ? (
+                          <button
+                            type="button"
+                            onClick={handleResetPassword}
+                            disabled={resetPasswordMutation.isPending || !isPortalReady}
+                            className="mt-2.5 w-full rounded-full border border-slate-300 bg-white px-5 py-2.5 text-base font-semibold text-slate-800 transition hover:bg-slate-50 disabled:cursor-not-allowed disabled:opacity-70"
+                          >
+                            {resetPasswordMutation.isPending ? 'Mereset Password...' : 'Lupa / Reset Password Webmail'}
                           </button>
                         ) : null}
                       </div>

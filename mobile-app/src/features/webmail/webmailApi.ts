@@ -33,7 +33,7 @@ export type MobileWebmailSsoLaunch = {
 };
 
 export type MobileWebmailRegisterPayload = {
-  username: string;
+  verificationUsername: string;
   password: string;
   confirmPassword: string;
 };
@@ -42,6 +42,13 @@ export type MobileWebmailRegisterResult = {
   mailboxIdentity: string;
   quotaMb: number;
   createdAt: string;
+};
+
+export type MobileWebmailPasswordResetResult = {
+  mailboxIdentity: string;
+  password: string;
+  generatedBySystem: boolean;
+  resetAt: string;
 };
 
 export type MobileWebmailMessageSummary = {
@@ -106,6 +113,11 @@ export const webmailApi = {
 
   async register(payload: MobileWebmailRegisterPayload) {
     const response = await apiClient.post<ApiEnvelope<MobileWebmailRegisterResult>>('/webmail/register', payload);
+    return response.data.data;
+  },
+
+  async resetPassword() {
+    const response = await apiClient.post<ApiEnvelope<MobileWebmailPasswordResetResult>>('/webmail/reset-password');
     return response.data.data;
   },
 

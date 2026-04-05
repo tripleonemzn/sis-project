@@ -6,6 +6,7 @@ import {
   listWebmailInboxMessages,
   markWebmailInboxMessageRead,
   registerWebmailMailbox,
+  resetOwnWebmailPassword,
   sendWebmailInboxMessage,
   startWebmailSso,
 } from '../controllers/webmail.controller';
@@ -19,6 +20,7 @@ router.get('/messages/:guid', getWebmailInboxMessageDetail);
 router.patch('/messages/:guid/read', markWebmailInboxMessageRead);
 router.post('/messages/send', sendWebmailInboxMessage);
 router.post('/register', registerWebmailMailbox);
+router.post('/reset-password', resetOwnWebmailPassword);
 router.post('/sso/start', startWebmailSso);
 
 export default router;

@@ -27,7 +27,7 @@ export interface WebmailSsoLaunch {
 }
 
 export interface WebmailRegisterPayload {
-  username: string;
+  verificationUsername: string;
   password: string;
   confirmPassword: string;
 }
@@ -38,6 +38,13 @@ export interface WebmailRegisterResult {
   createdAt: string;
 }
 
+export interface WebmailPasswordResetResult {
+  mailboxIdentity: string;
+  password: string;
+  generatedBySystem: boolean;
+  resetAt: string;
+}
+
 export const webmailService = {
   getConfig: async (): Promise<ApiResponse<WebmailConfig>> => {
     const response = await api.get<ApiResponse<WebmailConfig>>('/webmail/config');
@@ -46,6 +53,11 @@ export const webmailService = {
 
   register: async (payload: WebmailRegisterPayload): Promise<ApiResponse<WebmailRegisterResult>> => {
     const response = await api.post<ApiResponse<WebmailRegisterResult>>('/webmail/register', payload);
+    return response.data;
+  },
+
+  resetPassword: async (): Promise<ApiResponse<WebmailPasswordResetResult>> => {
+    const response = await api.post<ApiResponse<WebmailPasswordResetResult>>('/webmail/reset-password');
     return response.data;
   },
 

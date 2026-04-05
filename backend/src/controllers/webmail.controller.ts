@@ -1,4 +1,4 @@
-import { randomUUID } from 'crypto';
+import { randomInt, randomUUID } from 'crypto';
 import axios from 'axios';
 import jwt from 'jsonwebtoken';
 import { Role } from '@prisma/client';
@@ -6,6 +6,7 @@ import { Response } from 'express';
 import { AuthRequest } from '../middleware/auth';
 import prisma from '../utils/prisma';
 import { ApiError, ApiResponse, asyncHandler } from '../utils/api';
+import { writeAuditLog } from '../utils/auditLog';
 import {
   getWebmailMessageDetail,
   listWebmailMessages,
@@ -29,7 +30,14 @@ const MAILCOW_API_TIMEOUT_MS = 15000;
 const MAILBOX_DEFAULT_QUOTA_MB = 5120;
 const MIN_WEBMAIL_PASSWORD_LENGTH = 8;
 const MAX_WEBMAIL_PASSWORD_LENGTH = 128;
+const GENERATED_WEBMAIL_PASSWORD_LENGTH = 18;
 const MAILBOX_USERNAME_PATTERN = /^[a-z0-9][a-z0-9._-]{2,62}$/;
+const WEBMAIL_PASSWORD_UPPERCASE = 'ABCDEFGHJKLMNPQRSTUVWXYZ';
+const WEBMAIL_PASSWORD_LOWERCASE = 'abcdefghijkmnpqrstuvwxyz';
+const WEBMAIL_PASSWORD_NUMBERS = '23456789';
+const WEBMAIL_PASSWORD_SYMBOLS = '!@#$%^&*()-_=+';
+const WEBMAIL_RESET_AUDIT_ENTITY = 'WEBMAIL_MAILBOX';
+const WEBMAIL_SELF_RESET_AUDIT_ACTION = 'SELF_RESET_PASSWORD';
 const RESERVED_MAILBOX_LOCAL_PARTS = new Set([
   'admin',
   'administrator',
@@ -52,6 +60,7 @@ type MailcowApiEntry = {
 
 type RegisterMailboxBody = {
   username?: unknown;
+  verificationUsername?: unknown;
   password?: unknown;
   confirmPassword?: unknown;
 };
@@ -166,6 +175,15 @@ const resolveMailcowAddMailboxEndpoint = (): string => {
   return new URL('/api/v1/add/mailbox', normalizedBase).toString();
 };
 
+const resolveMailcowEditMailboxEndpoint = (): string => {
+  const configuredBase = toMaybeString(process.env.MAILCOW_API_BASE_URL || process.env.WEBMAIL_URL);
+  if (!configuredBase) {
+    throw new ApiError(500, 'Konfigurasi MAILCOW_API_BASE_URL belum diatur di server');
+  }
+  const normalizedBase = /^https?:\/\//i.test(configuredBase) ? configuredBase : `https://${configuredBase}`;
+  return new URL('/api/v1/edit/mailbox', normalizedBase).toString();
+};
+
 const isMailboxUsernameValid = (value: string): boolean => MAILBOX_USERNAME_PATTERN.test(value);
 
 const isMailboxUsernameReserved = (value: string): boolean => RESERVED_MAILBOX_LOCAL_PARTS.has(value);
@@ -186,6 +204,39 @@ const resolveMailboxIdentity = (user: { username: string; email: string | null }
   const inferred = `${username}@${defaultDomain}`;
   if (!isValidEmail(inferred)) return null;
   return inferred;
+};
+
+const createRandomString = (length: number, charset: string): string => {
+  let output = '';
+  for (let index = 0; index < length; index += 1) {
+    output += charset[randomInt(0, charset.length)];
+  }
+  return output;
+};
+
+const shuffleString = (value: string): string => {
+  const chars = value.split('');
+  for (let index = chars.length - 1; index > 0; index -= 1) {
+    const swapIndex = randomInt(0, index + 1);
+    [chars[index], chars[swapIndex]] = [chars[swapIndex], chars[index]];
+  }
+  return chars.join('');
+};
+
+const generateWebmailPassword = (length = GENERATED_WEBMAIL_PASSWORD_LENGTH): string => {
+  const minimumLength = Math.max(length, 14);
+  const allChars =
+    WEBMAIL_PASSWORD_UPPERCASE +
+    WEBMAIL_PASSWORD_LOWERCASE +
+    WEBMAIL_PASSWORD_NUMBERS +
+    WEBMAIL_PASSWORD_SYMBOLS;
+  const seeded =
+    createRandomString(1, WEBMAIL_PASSWORD_UPPERCASE) +
+    createRandomString(1, WEBMAIL_PASSWORD_LOWERCASE) +
+    createRandomString(1, WEBMAIL_PASSWORD_NUMBERS) +
+    createRandomString(1, WEBMAIL_PASSWORD_SYMBOLS);
+  const remaining = createRandomString(minimumLength - seeded.length, allChars);
+  return shuffleString(seeded + remaining);
 };
 
 const ensureWebmailAccess = async (req: AuthRequest) => {
@@ -266,19 +317,38 @@ export const registerWebmailMailbox = asyncHandler(async (req: AuthRequest, res:
   }
 
   const body = (req.body || {}) as RegisterMailboxBody;
-  const mailboxLocalPart = toMaybeString(body.username).toLowerCase();
+  const verificationUsername = toMaybeString(body.verificationUsername ?? body.username);
+  const expectedVerificationUsername = toMaybeString(user.username);
   const password = String(body.password ?? '');
   const confirmPassword = String(body.confirmPassword ?? '');
 
-  if (!mailboxLocalPart) {
-    throw new ApiError(400, 'Username mailbox wajib diisi');
+  if (!verificationUsername) {
+    throw new ApiError(400, 'Username akun SIS wajib diisi untuk verifikasi');
+  }
+
+  if (verificationUsername.trim().toLowerCase() !== expectedVerificationUsername.trim().toLowerCase()) {
+    throw new ApiError(
+      400,
+      'Username verifikasi harus sama dengan username akun SIS Anda',
+    );
+  }
+
+  const mailboxIdentity = resolveMailboxIdentity(user);
+  if (!mailboxIdentity) {
+    throw new ApiError(400, 'Akun Anda belum memiliki identitas mailbox sekolah yang valid');
+  }
+
+  const [mailboxLocalPartRaw, mailboxDomainRaw] = mailboxIdentity.split('@');
+  const mailboxLocalPart = toMaybeString(mailboxLocalPartRaw).toLowerCase();
+  const mailboxDomain = toMaybeString(mailboxDomainRaw).toLowerCase();
+  const defaultDomain = getWebmailDefaultDomain();
+
+  if (!mailboxLocalPart || !mailboxDomain || mailboxDomain !== defaultDomain) {
+    throw new ApiError(400, `Mailbox akun ini harus memakai domain ${defaultDomain}`);
   }
 
   if (!isMailboxUsernameValid(mailboxLocalPart)) {
-    throw new ApiError(
-      400,
-      'Username mailbox hanya boleh huruf kecil, angka, titik, underscore, atau dash (3-63 karakter)',
-    );
+    throw new ApiError(400, 'Mailbox untuk akun ini belum valid. Hubungi admin untuk penyesuaian identitas email.');
   }
 
   if (isMailboxUsernameReserved(mailboxLocalPart)) {
@@ -306,13 +376,11 @@ export const registerWebmailMailbox = asyncHandler(async (req: AuthRequest, res:
     throw new ApiError(500, 'Konfigurasi MAILCOW_API_KEY belum diatur di server');
   }
 
-  const domain = getWebmailDefaultDomain();
-  const mailboxIdentity = `${mailboxLocalPart}@${domain}`;
   const endpoint = resolveMailcowAddMailboxEndpoint();
 
   const mailboxPayload = {
     local_part: mailboxLocalPart,
-    domain,
+    domain: mailboxDomain,
     name: toMaybeString(user.name) || mailboxLocalPart,
     password,
     password2: confirmPassword,
@@ -369,7 +437,7 @@ export const registerWebmailMailbox = asyncHandler(async (req: AuthRequest, res:
   if (!success) {
     const normalizedDetail = detailMessage.toLowerCase();
     if (normalizedDetail.includes('exists') || normalizedDetail.includes('already')) {
-      throw new ApiError(409, `Mailbox ${mailboxIdentity} sudah terdaftar`);
+      throw new ApiError(409, `Mailbox ${mailboxIdentity} sudah terdaftar untuk akun ini`);
     }
 
     throw new ApiError(
@@ -387,6 +455,101 @@ export const registerWebmailMailbox = asyncHandler(async (req: AuthRequest, res:
         createdAt: new Date().toISOString(),
       },
       'Mailbox webmail berhasil dibuat',
+    ),
+  );
+});
+
+export const resetOwnWebmailPassword = asyncHandler(async (req: AuthRequest, res: Response) => {
+  const user = await ensureWebmailAccess(req);
+  const mailboxIdentity = resolveMailboxIdentity(user);
+
+  if (!mailboxIdentity) {
+    throw new ApiError(400, 'Akun Anda belum memiliki identitas mailbox sekolah yang valid');
+  }
+
+  const mailcowApiKey = toMaybeString(process.env.MAILCOW_API_KEY);
+  if (!mailcowApiKey) {
+    throw new ApiError(500, 'Konfigurasi MAILCOW_API_KEY belum diatur di server');
+  }
+
+  const nextPassword = generateWebmailPassword();
+  const endpoint = resolveMailcowEditMailboxEndpoint();
+
+  const response = await axios.post<MailcowApiEntry[] | MailcowApiEntry>(
+    endpoint,
+    {
+      items: [mailboxIdentity],
+      attr: {
+        password: nextPassword,
+        password2: nextPassword,
+      },
+    },
+    {
+      timeout: MAILCOW_API_TIMEOUT_MS,
+      headers: {
+        'Content-Type': 'application/json',
+        'X-API-Key': mailcowApiKey,
+      },
+      validateStatus: () => true,
+    },
+  );
+
+  if (response.status === 401 || response.status === 403) {
+    throw new ApiError(502, 'Autentikasi Mailcow API gagal. Periksa API key dan allowlist IP API Mailcow.');
+  }
+
+  if (response.status >= 400) {
+    throw new ApiError(502, `Mailcow API mengembalikan HTTP ${response.status}`);
+  }
+
+  const payloadEntries = Array.isArray(response.data) ? response.data : [response.data];
+  const successEntry = payloadEntries.find((entry) => toMaybeString(entry?.type).toLowerCase() === 'success');
+
+  if (!successEntry) {
+    const firstEntry = payloadEntries[0];
+    const detailMessage = parseMailcowMessage(firstEntry?.msg) || parseMailcowMessage(firstEntry);
+    const normalizedDetail = detailMessage.toLowerCase();
+
+    if (
+      normalizedDetail.includes('does not exist') ||
+      normalizedDetail.includes('not found') ||
+      normalizedDetail.includes('unknown mailbox')
+    ) {
+      throw new ApiError(404, 'Mailbox sekolah Anda belum tersedia di server');
+    }
+
+    throw new ApiError(
+      400,
+      detailMessage ? `Gagal reset password mailbox: ${detailMessage}` : 'Gagal reset password mailbox di Mailcow',
+    );
+  }
+
+  await writeAuditLog(
+    user.id,
+    String(user.role),
+    null,
+    WEBMAIL_SELF_RESET_AUDIT_ACTION,
+    WEBMAIL_RESET_AUDIT_ENTITY,
+    user.id,
+    null,
+    {
+      mailboxIdentity,
+      generatedBySystem: true,
+      passwordLength: nextPassword.length,
+    },
+    'Reset password mailbox webmail oleh pemilik akun',
+  );
+
+  res.status(200).json(
+    new ApiResponse(
+      200,
+      {
+        mailboxIdentity,
+        password: nextPassword,
+        generatedBySystem: true,
+        resetAt: new Date().toISOString(),
+      },
+      'Password mailbox berhasil direset',
     ),
   );
 });

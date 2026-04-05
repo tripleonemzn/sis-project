@@ -17,7 +17,6 @@ import { notifyApiError, notifySuccess } from '../../src/lib/ui/feedback';
 import { useIsScreenActive } from '../../src/hooks/useIsScreenActive';
 
 const ALLOWED_WEBMAIL_ROLES = new Set(['ADMIN', 'TEACHER', 'PRINCIPAL', 'STAFF', 'EXTRACURRICULAR_TUTOR']);
-const MAILBOX_USERNAME_PATTERN = /^[a-z0-9][a-z0-9._-]{2,62}$/;
 
 type BridgeCredentials = {
   email: string;
@@ -227,6 +226,12 @@ export default function MobileEmailScreen() {
   const [registerPass, setRegisterPass] = useState('');
   const [registerPassConfirm, setRegisterPassConfirm] = useState('');
   const [registerError, setRegisterError] = useState<string | null>(null);
+  const [resetError, setResetError] = useState<string | null>(null);
+  const [resetResult, setResetResult] = useState<{
+    mailboxIdentity: string;
+    password: string;
+    resetAt: string;
+  } | null>(null);
   const [bridgeCredentials, setBridgeCredentials] = useState<BridgeCredentials | null>(null);
   const [selectedEmailGuid, setSelectedEmailGuid] = useState<string | null>(null);
   const [isComposeMode, setIsComposeMode] = useState(false);
@@ -267,7 +272,10 @@ export default function MobileEmailScreen() {
   const selfRegistrationEnabled = !isSsoMode && Boolean(config?.selfRegistrationEnabled);
   const quotaLabel = asQuotaLabel(config?.mailboxQuotaMb);
   const mailboxIdentity = String(config?.mailboxIdentity || '').trim().toLowerCase();
-  const loginIdentityValue = hasEditedLoginUser ? loginUser : mailboxIdentity;
+  const expectedVerificationUsername = String(config?.user?.username || '').trim();
+  const mailboxPreview =
+    mailboxIdentity || `${expectedVerificationUsername || 'username'}@${mailboxDomain}`.trim().toLowerCase();
+  const loginIdentityValue = hasEditedLoginUser ? loginUser : mailboxPreview;
 
   const mailboxMessages = useMemo(() => emailFeedQuery.data?.messages ?? [], [emailFeedQuery.data?.messages]);
 
@@ -359,6 +367,29 @@ export default function MobileEmailScreen() {
     },
     onError: (error) => {
       setRegisterError(resolveErrorMessage(error, 'Gagal membuat akun webmail.'));
+    },
+  });
+
+  const resetPasswordMutation = useMutation({
+    mutationFn: () => webmailApi.resetPassword(),
+    onSuccess: (result) => {
+      const nextMailboxIdentity = String(result.mailboxIdentity || mailboxPreview).trim().toLowerCase();
+      setResetError(null);
+      setResetResult({
+        mailboxIdentity: nextMailboxIdentity,
+        password: String(result.password || ''),
+        resetAt: String(result.resetAt || new Date().toISOString()),
+      });
+      setHasEditedLoginUser(false);
+      setLoginUser(nextMailboxIdentity);
+      setLoginPass('');
+      notifySuccess('Password webmail berhasil direset.', {
+        title: 'Email',
+      });
+    },
+    onError: (error) => {
+      setResetResult(null);
+      setResetError(resolveErrorMessage(error, 'Gagal mereset password webmail.'));
     },
   });
 
@@ -455,16 +486,16 @@ export default function MobileEmailScreen() {
   const handleRegister = () => {
     if (!selfRegistrationEnabled) return;
 
-    const username = registerUser.trim().toLowerCase();
+    const verificationUsername = registerUser.trim();
     const password = registerPass;
     const confirmPassword = registerPassConfirm;
 
-    if (!username) {
-      setRegisterError('Username mailbox wajib diisi.');
+    if (!verificationUsername) {
+      setRegisterError('Username akun SIS wajib diisi untuk verifikasi.');
       return;
     }
-    if (!MAILBOX_USERNAME_PATTERN.test(username)) {
-      setRegisterError('Username hanya boleh huruf kecil, angka, titik, underscore, atau dash (3-63 karakter).');
+    if (verificationUsername.toLowerCase() !== expectedVerificationUsername.toLowerCase()) {
+      setRegisterError('Username verifikasi harus sama dengan username akun SIS Anda.');
       return;
     }
     if (!password || !confirmPassword) {
@@ -481,7 +512,16 @@ export default function MobileEmailScreen() {
     }
 
     setRegisterError(null);
-    registerMutation.mutate({ username, password, confirmPassword });
+    setResetError(null);
+    setResetResult(null);
+    registerMutation.mutate({ verificationUsername, password, confirmPassword });
+  };
+
+  const handleResetPassword = () => {
+    setRegisterError(null);
+    setResetError(null);
+    setResetResult(null);
+    resetPasswordMutation.mutate();
   };
 
   const handleReload = () => {
@@ -986,7 +1026,7 @@ export default function MobileEmailScreen() {
               title={isRegisterMode ? 'Daftar Mailbox' : 'Panel Lengkap Webmail'}
               subtitle={
                 isRegisterMode
-                  ? `Buat mailbox sekolah baru dengan domain @${mailboxDomain}.`
+                  ? 'Buat mailbox sekolah baru untuk akun SIS Anda. Username akun SIS dipakai hanya untuk verifikasi.'
                   : 'Bagian ini dipakai hanya saat Anda perlu akses penuh seperti balas email, pencarian lanjut, atau pengelolaan folder.'
               }
             >
@@ -1017,7 +1057,7 @@ export default function MobileEmailScreen() {
                         }}
                         autoCapitalize="none"
                         keyboardType="email-address"
-                        placeholder={`username@${mailboxDomain}`}
+                        placeholder={mailboxPreview || `username@${mailboxDomain}`}
                         placeholderTextColor="#94a3b8"
                         style={{
                           borderWidth: 1,
@@ -1047,6 +1087,29 @@ export default function MobileEmailScreen() {
                   )}
 
                   {panelError ? <Text style={{ color: '#b91c1c', fontSize: 12 }}>{panelError}</Text> : null}
+                  {resetError ? <Text style={{ color: '#b91c1c', fontSize: 12 }}>{resetError}</Text> : null}
+                  {resetResult ? (
+                    <View
+                      style={{
+                        borderRadius: 12,
+                        borderWidth: 1,
+                        borderColor: '#fde68a',
+                        backgroundColor: '#fffbeb',
+                        paddingHorizontal: 12,
+                        paddingVertical: 12,
+                        gap: 6,
+                      }}
+                    >
+                      <Text style={{ color: '#92400e', fontSize: 13, fontWeight: '800' }}>Password baru berhasil dibuat.</Text>
+                      <Text style={{ color: '#78350f', fontSize: 12 }}>Mailbox: {resetResult.mailboxIdentity}</Text>
+                      <Text selectable style={{ color: '#0f172a', fontSize: 13, fontWeight: '800' }}>
+                        {resetResult.password}
+                      </Text>
+                      <Text style={{ color: '#78350f', fontSize: 11, lineHeight: 16 }}>
+                        Simpan password ini sekarang. Reset dilakukan pada {formatDateTime(resetResult.resetAt)}.
+                      </Text>
+                    </View>
+                  ) : null}
 
                   <Pressable
                     onPress={() => {
@@ -1070,6 +1133,8 @@ export default function MobileEmailScreen() {
                     <Pressable
                       onPress={() => {
                         setRegisterError(null);
+                        setResetError(null);
+                        setResetResult(null);
                         setIsRegisterMode(true);
                       }}
                       style={{
@@ -1082,6 +1147,25 @@ export default function MobileEmailScreen() {
                       <Text style={{ color: '#fff', fontWeight: '700' }}>Daftar Akun Webmail</Text>
                     </Pressable>
                   ) : null}
+                  {!isSsoMode ? (
+                    <Pressable
+                      onPress={handleResetPassword}
+                      disabled={resetPasswordMutation.isPending}
+                      style={{
+                        borderRadius: 12,
+                        borderWidth: 1,
+                        borderColor: '#cbd5e1',
+                        backgroundColor: '#ffffff',
+                        paddingVertical: 11,
+                        alignItems: 'center',
+                        opacity: resetPasswordMutation.isPending ? 0.7 : 1,
+                      }}
+                    >
+                      <Text style={{ color: '#1e293b', fontWeight: '700' }}>
+                        {resetPasswordMutation.isPending ? 'Mereset Password...' : 'Lupa / Reset Password Webmail'}
+                      </Text>
+                    </Pressable>
+                  ) : null}
                 </>
               ) : (
                 <>
@@ -1092,20 +1176,34 @@ export default function MobileEmailScreen() {
                       borderRadius: 12,
                       paddingHorizontal: 12,
                       paddingVertical: 11,
-                      flexDirection: 'row',
-                      alignItems: 'center',
-                      gap: 4,
                     }}
                   >
                     <TextInput
                       value={registerUser}
                       onChangeText={setRegisterUser}
-                      autoCapitalize="none"
-                      placeholder="username"
+                      autoCapitalize="characters"
+                      placeholder={expectedVerificationUsername || 'Masukkan username akun SIS'}
                       placeholderTextColor="#94a3b8"
-                      style={{ flex: 1, color: BRAND_COLORS.textDark, padding: 0 }}
+                      style={{ color: BRAND_COLORS.textDark, padding: 0 }}
                     />
-                    <Text style={{ color: '#64748b' }}>@{mailboxDomain}</Text>
+                  </View>
+
+                  <Text style={{ color: '#64748b', fontSize: 12, lineHeight: 18 }}>
+                    Dipakai hanya untuk verifikasi agar satu akun SIS tidak bisa membuat lebih dari satu mailbox.
+                  </Text>
+
+                  <View
+                    style={{
+                      borderWidth: 1,
+                      borderColor: '#cbd5e1',
+                      borderRadius: 12,
+                      paddingHorizontal: 12,
+                      paddingVertical: 11,
+                      backgroundColor: '#f8fafc',
+                    }}
+                  >
+                    <Text style={{ color: '#64748b', fontSize: 11, marginBottom: 4 }}>Mailbox Sekolah</Text>
+                    <Text style={{ color: BRAND_COLORS.textDark, fontWeight: '700' }}>{mailboxPreview}</Text>
                   </View>
 
                   <TextInput
@@ -1140,7 +1238,9 @@ export default function MobileEmailScreen() {
                     }}
                   />
 
-                  <Text style={{ color: '#64748b', fontSize: 12 }}>Kapasitas mailbox: {quotaLabel} per user.</Text>
+                  <Text style={{ color: '#64748b', fontSize: 12, lineHeight: 18 }}>
+                    Kapasitas mailbox: {quotaLabel} per user. Mailbox mengikuti identitas email sekolah yang sudah ditetapkan server.
+                  </Text>
                   {registerError ? <Text style={{ color: '#b91c1c', fontSize: 12 }}>{registerError}</Text> : null}
 
                   <Pressable
@@ -1160,7 +1260,11 @@ export default function MobileEmailScreen() {
                   </Pressable>
 
                   <Pressable
-                    onPress={() => setIsRegisterMode(false)}
+                    onPress={() => {
+                      setIsRegisterMode(false);
+                      setRegisterError(null);
+                      setResetError(null);
+                    }}
                     style={{
                       borderRadius: 12,
                       backgroundColor: '#f59e0b',

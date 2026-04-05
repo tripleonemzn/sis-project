@@ -339,6 +339,7 @@ const ServerAreaPage: React.FC = () => {
     { id: 'info', label: 'Info Server', icon: ServerIcon },
     { id: 'storage', label: 'Manajemen Storage', icon: HardDrive },
     { id: 'monitoring', label: 'Monitoring Server', icon: Activity },
+    { id: 'webmail', label: 'Webmail', icon: KeyRound },
   ] as const satisfies ReadonlyArray<{ id: ServerAreaTab; label: string; icon: React.ElementType }>;
 
   React.useEffect(() => {
