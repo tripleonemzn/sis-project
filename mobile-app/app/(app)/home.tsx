@@ -970,7 +970,7 @@ export default function HomeScreen() {
   useEffect(() => {
     if (!isScreenActive || profile.role !== 'STUDENT') return;
     void studentExamsQuery.refetch();
-  }, [isScreenActive, profile.role, studentExamsQuery]);
+  }, [isScreenActive, profile.role, studentExamsQuery.refetch]);
 
   const extracurricularTutorAssignments = useMemo(
     () => getExtracurricularTutorAssignments(mergedTutorAssignments),

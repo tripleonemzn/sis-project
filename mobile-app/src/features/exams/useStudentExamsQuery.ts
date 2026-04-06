@@ -1,7 +1,5 @@
 import { useQuery } from '@tanstack/react-query';
 import { AuthUser } from '../auth/types';
-import { CACHE_MAX_SNAPSHOTS_PER_FEATURE, CACHE_TTL_MS } from '../../config/cache';
-import { offlineCache } from '../../lib/storage/offlineCache';
 import { examApi } from './examApi';
 import { StudentExamItem } from './types';
 
@@ -27,22 +25,8 @@ export function useStudentExamsQuery({ enabled, user }: Params) {
     refetchOnReconnect: true,
     refetchOnWindowFocus: true,
     queryFn: async (): Promise<StudentExamsQueryData> => {
-      const cacheKey = `mobile_cache_student_exams_${user!.id}`;
-      try {
-        const exams = await examApi.getStudentAvailableExams();
-        const cache = await offlineCache.set(cacheKey, exams);
-        await offlineCache.prunePrefix(
-          `mobile_cache_student_exams_${user!.id}`,
-          Math.max(1, CACHE_MAX_SNAPSHOTS_PER_FEATURE),
-        );
-        return { exams, fromCache: false, cachedAt: cache.updatedAt };
-      } catch (error) {
-        const cache = await offlineCache.get<StudentExamItem[]>(cacheKey, { maxAgeMs: CACHE_TTL_MS });
-        if (cache) {
-          return { exams: cache.data, fromCache: true, cachedAt: cache.updatedAt };
-        }
-        throw error;
-      }
+      const exams = await examApi.getStudentAvailableExams();
+      return { exams, fromCache: false, cachedAt: null };
     },
   });
 }

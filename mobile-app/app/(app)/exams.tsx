@@ -219,7 +219,7 @@ export default function StudentExamsScreen() {
   useEffect(() => {
     if (!isScreenActive || !canAccessExams || applicantVerificationLocked) return;
     void examsQuery.refetch();
-  }, [applicantVerificationLocked, canAccessExams, examsQuery, isScreenActive]);
+  }, [applicantVerificationLocked, canAccessExams, examsQuery.refetch, isScreenActive]);
   const statusFilterOptions = useMemo(
     () => [
       { value: 'ALL', label: 'Semua Status' },
