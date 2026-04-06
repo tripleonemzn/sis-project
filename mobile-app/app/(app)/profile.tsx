@@ -51,7 +51,6 @@ import { notifyApiError, notifyError, notifySuccess } from '../../src/lib/ui/fee
 import { ENV } from '../../src/config/env';
 import { openWebModuleRoute } from '../../src/lib/navigation/webModuleRoute';
 import { useAppTheme } from '../../src/theme/AppThemeProvider';
-import { MobileAppearancePreferenceCard } from '../../src/features/theme/MobileAppearancePreferenceCard';
 
 type EditableProfileForm = {
   name: string;
@@ -1545,8 +1544,6 @@ export default function ProfileScreen() {
 
       {profile ? (
         <>
-          <MobileAppearancePreferenceCard userId={profile.id} currentPreferences={profile.preferences} />
-
           <View style={{ flexDirection: 'row', flexWrap: 'wrap', marginHorizontal: -5, marginBottom: 10 }}>
             {profileInsights.map((card) => (
               <View key={card.id} style={{ width: '33.3333%', paddingHorizontal: 5, marginBottom: 10 }}>

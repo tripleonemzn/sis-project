@@ -84,6 +84,10 @@ body {
   background-color: var(--app-surface-muted) !important;
 }
 
+:root[data-theme='dark'] .app-theme-scope [class*="bg-gradient-to-"] {
+  background-image: linear-gradient(135deg, rgba(15, 23, 42, 0.96), rgba(20, 32, 58, 0.92)) !important;
+}
+
 :root[data-theme='dark'] .app-theme-scope .border-gray-50,
 :root[data-theme='dark'] .app-theme-scope .border-gray-100,
 :root[data-theme='dark'] .app-theme-scope .border-gray-200,
@@ -92,6 +96,56 @@ body {
 :root[data-theme='dark'] .app-theme-scope .border-slate-200,
 :root[data-theme='dark'] .app-theme-scope .border-slate-300 {
   border-color: var(--app-border) !important;
+}
+
+:root[data-theme='dark'] .app-theme-scope .border-blue-50,
+:root[data-theme='dark'] .app-theme-scope .border-blue-100,
+:root[data-theme='dark'] .app-theme-scope .border-blue-200,
+:root[data-theme='dark'] .app-theme-scope .border-sky-50,
+:root[data-theme='dark'] .app-theme-scope .border-sky-100,
+:root[data-theme='dark'] .app-theme-scope .border-sky-200,
+:root[data-theme='dark'] .app-theme-scope .border-cyan-50,
+:root[data-theme='dark'] .app-theme-scope .border-cyan-100,
+:root[data-theme='dark'] .app-theme-scope .border-cyan-200,
+:root[data-theme='dark'] .app-theme-scope .border-teal-50,
+:root[data-theme='dark'] .app-theme-scope .border-teal-100,
+:root[data-theme='dark'] .app-theme-scope .border-teal-200,
+:root[data-theme='dark'] .app-theme-scope .border-emerald-50,
+:root[data-theme='dark'] .app-theme-scope .border-emerald-100,
+:root[data-theme='dark'] .app-theme-scope .border-emerald-200 {
+  border-color: rgba(96, 165, 250, 0.24) !important;
+}
+
+:root[data-theme='dark'] .app-theme-scope .border-orange-50,
+:root[data-theme='dark'] .app-theme-scope .border-orange-100,
+:root[data-theme='dark'] .app-theme-scope .border-orange-200,
+:root[data-theme='dark'] .app-theme-scope .border-amber-50,
+:root[data-theme='dark'] .app-theme-scope .border-amber-100,
+:root[data-theme='dark'] .app-theme-scope .border-amber-200 {
+  border-color: rgba(251, 191, 36, 0.22) !important;
+}
+
+:root[data-theme='dark'] .app-theme-scope .bg-blue-50,
+:root[data-theme='dark'] .app-theme-scope .bg-blue-100,
+:root[data-theme='dark'] .app-theme-scope .bg-sky-50,
+:root[data-theme='dark'] .app-theme-scope .bg-sky-100,
+:root[data-theme='dark'] .app-theme-scope .bg-cyan-50,
+:root[data-theme='dark'] .app-theme-scope .bg-cyan-100 {
+  background-color: rgba(30, 64, 175, 0.28) !important;
+}
+
+:root[data-theme='dark'] .app-theme-scope .bg-teal-50,
+:root[data-theme='dark'] .app-theme-scope .bg-teal-100,
+:root[data-theme='dark'] .app-theme-scope .bg-emerald-50,
+:root[data-theme='dark'] .app-theme-scope .bg-emerald-100 {
+  background-color: rgba(13, 148, 136, 0.24) !important;
+}
+
+:root[data-theme='dark'] .app-theme-scope .bg-orange-50,
+:root[data-theme='dark'] .app-theme-scope .bg-orange-100,
+:root[data-theme='dark'] .app-theme-scope .bg-amber-50,
+:root[data-theme='dark'] .app-theme-scope .bg-amber-100 {
+  background-color: rgba(180, 83, 9, 0.26) !important;
 }
 
 :root[data-theme='dark'] .app-theme-scope .text-gray-900,
@@ -113,6 +167,61 @@ body {
 :root[data-theme='dark'] .app-theme-scope .text-slate-400,
 :root[data-theme='dark'] .app-theme-scope .text-gray-400 {
   color: var(--app-text-muted) !important;
+}
+
+:root[data-theme='dark'] .app-theme-scope .text-blue-500,
+:root[data-theme='dark'] .app-theme-scope .text-blue-600,
+:root[data-theme='dark'] .app-theme-scope .text-blue-700,
+:root[data-theme='dark'] .app-theme-scope .text-blue-800,
+:root[data-theme='dark'] .app-theme-scope .text-blue-900,
+:root[data-theme='dark'] .app-theme-scope [class*="text-blue-500/"],
+:root[data-theme='dark'] .app-theme-scope [class*="text-blue-600/"],
+:root[data-theme='dark'] .app-theme-scope [class*="text-blue-700/"],
+:root[data-theme='dark'] .app-theme-scope [class*="text-blue-800/"],
+:root[data-theme='dark'] .app-theme-scope [class*="text-blue-900/"],
+:root[data-theme='dark'] .app-theme-scope .text-sky-600,
+:root[data-theme='dark'] .app-theme-scope .text-sky-700,
+:root[data-theme='dark'] .app-theme-scope .text-sky-800,
+:root[data-theme='dark'] .app-theme-scope [class*="text-sky-700/"],
+:root[data-theme='dark'] .app-theme-scope .text-cyan-600,
+:root[data-theme='dark'] .app-theme-scope .text-cyan-700,
+:root[data-theme='dark'] .app-theme-scope .text-cyan-800 {
+  color: #93c5fd !important;
+}
+
+:root[data-theme='dark'] .app-theme-scope .text-teal-600,
+:root[data-theme='dark'] .app-theme-scope .text-teal-700,
+:root[data-theme='dark'] .app-theme-scope .text-teal-800,
+:root[data-theme='dark'] .app-theme-scope .text-teal-900,
+:root[data-theme='dark'] .app-theme-scope [class*="text-teal-700/"],
+:root[data-theme='dark'] .app-theme-scope .text-emerald-600,
+:root[data-theme='dark'] .app-theme-scope .text-emerald-700,
+:root[data-theme='dark'] .app-theme-scope .text-emerald-800 {
+  color: #5eead4 !important;
+}
+
+:root[data-theme='dark'] .app-theme-scope .text-orange-600,
+:root[data-theme='dark'] .app-theme-scope .text-orange-700,
+:root[data-theme='dark'] .app-theme-scope .text-orange-800,
+:root[data-theme='dark'] .app-theme-scope .text-orange-900,
+:root[data-theme='dark'] .app-theme-scope [class*="text-orange-700/"],
+:root[data-theme='dark'] .app-theme-scope .text-amber-600,
+:root[data-theme='dark'] .app-theme-scope .text-amber-700,
+:root[data-theme='dark'] .app-theme-scope .text-amber-800 {
+  color: #fdba74 !important;
+}
+
+:root[data-theme='dark'] .app-theme-scope .ring-blue-100,
+:root[data-theme='dark'] .app-theme-scope .ring-blue-200,
+:root[data-theme='dark'] .app-theme-scope .ring-sky-100,
+:root[data-theme='dark'] .app-theme-scope .ring-sky-200,
+:root[data-theme='dark'] .app-theme-scope .ring-cyan-100,
+:root[data-theme='dark'] .app-theme-scope .ring-cyan-200,
+:root[data-theme='dark'] .app-theme-scope .ring-teal-100,
+:root[data-theme='dark'] .app-theme-scope .ring-teal-200,
+:root[data-theme='dark'] .app-theme-scope .ring-orange-100,
+:root[data-theme='dark'] .app-theme-scope .ring-orange-200 {
+  --tw-ring-color: rgba(148, 163, 184, 0.34) !important;
 }
 
 :root[data-theme='dark'] .app-theme-scope input:not([type="checkbox"]):not([type="radio"]):not([type="range"]):not([type="file"]),

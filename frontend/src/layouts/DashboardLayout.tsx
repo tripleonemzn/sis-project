@@ -5,6 +5,7 @@ import { useState, useEffect } from 'react';
 import { useQuery } from '@tanstack/react-query';
 import { authService } from '../services/auth.service';
 import { NotificationDropdown } from '../components/layout/NotificationDropdown';
+import { HeaderThemeModeToggle } from '../components/theme/HeaderThemeModeToggle';
 import clsx from 'clsx';
 import { useActiveAcademicYear } from '../hooks/useActiveAcademicYear';
 import { useRealtimeSync } from '../hooks/useRealtimeSync';
@@ -1376,7 +1377,13 @@ export const DashboardLayout = () => {
             </nav>
           </div>
           
-          <div className="flex items-center ml-auto space-x-4">
+          <div className="flex items-center ml-auto space-x-3">
+              {displayUser?.id ? (
+                <HeaderThemeModeToggle
+                  userId={displayUser.id}
+                  currentPreferences={displayUser.preferences}
+                />
+              ) : null}
               <div className="hidden md:block text-sm text-blue-700 font-normal">
                 {todayLabel}{yearLabel}
               </div>

@@ -1,6 +1,6 @@
 import { useMemo } from 'react';
 import { useMutation, useQueryClient } from '@tanstack/react-query';
-import { Laptop, Moon, Sun } from 'lucide-react';
+import { Laptop, Moon } from 'lucide-react';
 import toast from 'react-hot-toast';
 import { userService } from '../../services/user.service';
 import { authService } from '../../services/auth.service';
@@ -28,12 +28,6 @@ const OPTIONS: Array<{
     icon: Laptop,
   },
   {
-    value: 'light',
-    label: 'Mode Terang',
-    description: 'Gunakan tampilan terang untuk seluruh aplikasi operasional.',
-    icon: Sun,
-  },
-  {
     value: 'dark',
     label: 'Mode Gelap',
     description: 'Gunakan tampilan gelap agar lebih nyaman di lingkungan redup.',
@@ -52,7 +46,7 @@ export function AppearancePreferenceCard({
     if (mode === 'system') {
       return `Saat ini mengikuti sistem dan aktif sebagai ${resolvedTheme === 'dark' ? 'Mode Gelap' : 'Mode Terang'}.`;
     }
-    return `Saat ini aplikasi memakai ${mode === 'dark' ? 'Mode Gelap' : 'Mode Terang'}.`;
+    return 'Saat ini aplikasi memakai Mode Gelap.';
   }, [mode, resolvedTheme]);
 
   const mutation = useMutation({
@@ -101,7 +95,7 @@ export function AppearancePreferenceCard({
         </span>
       </div>
 
-      <div className="mt-5 grid gap-3 md:grid-cols-3">
+      <div className="mt-5 grid gap-3 md:grid-cols-2">
         {OPTIONS.map((option) => {
           const Icon = option.icon;
           const active = option.value === mode;

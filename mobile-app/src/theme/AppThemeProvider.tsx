@@ -14,7 +14,7 @@ import {
 } from 'react';
 import { useAuth } from '../features/auth/AuthProvider';
 
-export type ThemeMode = 'system' | 'light' | 'dark';
+export type ThemeMode = 'system' | 'dark';
 export type ResolvedTheme = 'light' | 'dark';
 
 export const MOBILE_THEME_MODE_STORAGE_KEY = 'sis.mobile.theme-mode';
@@ -105,8 +105,11 @@ function normalizeThemeMode(value: unknown): ThemeMode | null {
   const normalized = String(value || '')
     .trim()
     .toLowerCase();
-  if (normalized === 'system' || normalized === 'light' || normalized === 'dark') {
-    return normalized;
+  if (normalized === 'dark') {
+    return 'dark';
+  }
+  if (normalized === 'system' || normalized === 'light') {
+    return 'system';
   }
   return null;
 }

@@ -64,6 +64,7 @@ import {
   getExtracurricularTutorAssignments,
 } from '../../src/features/tutor/tutorAccess';
 import { osisApi } from '../../src/features/osis/osisApi';
+import { MobileHeaderThemeModeToggle } from '../../src/features/theme/MobileHeaderThemeModeToggle';
 
 type FeatherIconName = ComponentProps<typeof Feather>['name'];
 type DashboardStatItem = {
@@ -2139,6 +2140,12 @@ export default function HomeScreen() {
               {todayLabel}
             </Text>
           </View>
+          {user?.id ? (
+            <MobileHeaderThemeModeToggle
+              userId={user.id}
+              currentPreferences={profile?.preferences || user.preferences}
+            />
+          ) : null}
         </View>
 
         <Text

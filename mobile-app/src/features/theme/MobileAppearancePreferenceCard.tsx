@@ -19,7 +19,6 @@ type MobileAppearancePreferenceCardProps = {
 
 const OPTIONS: Array<{ label: string; value: ThemeMode }> = [
   { label: 'Ikuti Sistem', value: 'system' },
-  { label: 'Mode Terang', value: 'light' },
   { label: 'Mode Gelap', value: 'dark' },
 ];
 
@@ -54,7 +53,7 @@ export function MobileAppearancePreferenceCard({
   const helperText =
     mode === 'system'
       ? `Saat ini mengikuti sistem dan aktif sebagai ${resolvedTheme === 'dark' ? 'Mode Gelap' : 'Mode Terang'}.`
-      : `Saat ini aplikasi memakai ${mode === 'dark' ? 'Mode Gelap' : 'Mode Terang'}.`;
+      : 'Saat ini aplikasi memakai Mode Gelap.';
 
   const handleChange = async (nextMode: string) => {
     const parsedMode = OPTIONS.find((option) => option.value === nextMode)?.value;
@@ -102,7 +101,7 @@ export function MobileAppearancePreferenceCard({
           }}
         >
           <Text style={{ color: colors.primary, fontSize: 10.5, fontWeight: '700' }}>
-            {mode === 'dark' ? 'GELAP' : mode === 'light' ? 'TERANG' : 'SISTEM'}
+            {mode === 'dark' ? 'GELAP' : 'SISTEM'}
           </Text>
         </View>
       </View>
