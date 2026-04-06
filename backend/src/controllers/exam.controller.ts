@@ -148,6 +148,182 @@ function resolveAvailableExamSubject(params: {
     return scheduleSubject;
 }
 
+function isUsTheoryProgramCode(raw: unknown): boolean {
+    const normalized = normalizeAliasCode(raw);
+    return normalized === 'US_THEORY' || normalized === 'US_TEORI';
+}
+
+type PacketDisplaySubject = {
+    id: number;
+    name: string;
+    code: string;
+};
+
+function toPacketDisplaySubject(
+    subject?: { id?: number | null; name?: string | null; code?: string | null } | null,
+): PacketDisplaySubject | null {
+    const parsedId = Number(subject?.id || 0);
+    const name = String(subject?.name || '').trim();
+    const code = String(subject?.code || '').trim();
+    if (!Number.isFinite(parsedId) || parsedId <= 0 || !name) return null;
+    return {
+        id: parsedId,
+        name,
+        code,
+    };
+}
+
+function dedupePacketDisplaySubjects(
+    subjects: Array<{ id?: number | null; name?: string | null; code?: string | null } | null | undefined>,
+): PacketDisplaySubject[] {
+    const unique = new Map<string, PacketDisplaySubject>();
+    subjects.forEach((item) => {
+        const normalized = toPacketDisplaySubject(item);
+        if (!normalized) return;
+        const key = normalized.id > 0 ? `id:${normalized.id}` : `${normalized.code}:${normalized.name}`;
+        if (!unique.has(key)) {
+            unique.set(key, normalized);
+        }
+    });
+    return Array.from(unique.values());
+}
+
+function resolvePacketDisplaySubject(params: {
+    packetSubject?: { id?: number | null; name?: string | null; code?: string | null } | null;
+    scheduleSubjects?: Array<{ id?: number | null; name?: string | null; code?: string | null } | null | undefined>;
+}): PacketDisplaySubject | null {
+    const packetSubject = toPacketDisplaySubject(params.packetSubject);
+    const scheduleSubjects = dedupePacketDisplaySubjects(params.scheduleSubjects || []);
+
+    if (scheduleSubjects.length === 0) {
+        return packetSubject;
+    }
+
+    const nonGenericScheduleSubjects = scheduleSubjects.filter(
+        (item) => !isGenericSubjectIdentity(item.name, item.code),
+    );
+    if (nonGenericScheduleSubjects.length === 1) {
+        return (
+            toPacketDisplaySubject(
+                resolveAvailableExamSubject({
+                    scheduleSubject: nonGenericScheduleSubjects[0],
+                    packetSubject,
+                }),
+            ) || nonGenericScheduleSubjects[0]
+        );
+    }
+
+    if (nonGenericScheduleSubjects.length > 1) {
+        if (packetSubject && !isGenericSubjectIdentity(packetSubject.name, packetSubject.code)) {
+            const matchingPacketSubject = nonGenericScheduleSubjects.find((item) => item.id === packetSubject.id);
+            if (matchingPacketSubject) {
+                return matchingPacketSubject;
+            }
+        }
+        return nonGenericScheduleSubjects[0];
+    }
+
+    return (
+        toPacketDisplaySubject(
+            resolveAvailableExamSubject({
+                scheduleSubject: scheduleSubjects[0],
+                packetSubject,
+            }),
+        ) || scheduleSubjects[0]
+    );
+}
+
+async function resolveEffectivePacketSubjectsForPackets(
+    packets: Array<{
+        id: number;
+        subject?: { id?: number | null; name?: string | null; code?: string | null } | null;
+    }>,
+): Promise<Map<number, PacketDisplaySubject>> {
+    const targetPacketIds = Array.from(
+        new Set(
+            packets
+                .filter(
+                    (packet) =>
+                        Number.isFinite(Number(packet.id)) &&
+                        Number(packet.id) > 0 &&
+                        isGenericSubjectIdentity(packet.subject?.name, packet.subject?.code),
+                )
+                .map((packet) => Number(packet.id)),
+        ),
+    );
+
+    if (targetPacketIds.length === 0) {
+        return new Map();
+    }
+
+    const scheduleSubjects = await prisma.examSchedule.findMany({
+        where: {
+            packetId: { in: targetPacketIds },
+            subjectId: { not: null },
+        },
+        select: {
+            packetId: true,
+            subject: {
+                select: {
+                    id: true,
+                    name: true,
+                    code: true,
+                },
+            },
+        },
+        orderBy: [{ packetId: 'asc' }, { id: 'asc' }],
+    });
+
+    const groupedScheduleSubjects = new Map<number, PacketDisplaySubject[]>();
+    scheduleSubjects.forEach((item) => {
+        const packetId = Number(item.packetId || 0);
+        if (!Number.isFinite(packetId) || packetId <= 0 || !item.subject) return;
+        const existing = groupedScheduleSubjects.get(packetId) || [];
+        existing.push(item.subject);
+        groupedScheduleSubjects.set(packetId, existing);
+    });
+
+    const resolved = new Map<number, PacketDisplaySubject>();
+    packets.forEach((packet) => {
+        const packetId = Number(packet.id || 0);
+        if (!Number.isFinite(packetId) || packetId <= 0) return;
+        const effectiveSubject = resolvePacketDisplaySubject({
+            packetSubject: packet.subject,
+            scheduleSubjects: groupedScheduleSubjects.get(packetId) || [],
+        });
+        if (effectiveSubject) {
+            resolved.set(packetId, effectiveSubject);
+        }
+    });
+
+    return resolved;
+}
+
+async function assertPacketSubjectProgramConsistency(params: {
+    subjectId: number;
+    programCode?: string | null;
+}) {
+    const subject = await prisma.subject.findUnique({
+        where: { id: params.subjectId },
+        select: {
+            id: true,
+            name: true,
+            code: true,
+        },
+    });
+
+    if (!subject) {
+        throw new ApiError(404, 'Mapel tidak ditemukan.');
+    }
+
+    if (isGenericSubjectIdentity(subject.name, subject.code) && !isUsTheoryProgramCode(params.programCode)) {
+        throw new ApiError(
+            400,
+            'Mapel Konsentrasi Keahlian / Teori Kejuruan hanya boleh dipakai pada program US Teori.',
+        );
+    }
+}
+
 function isNonScheduledExamProgramCode(raw: unknown): boolean {
     const normalized = normalizeAliasCode(raw);
     if (!normalized) return false;
@@ -4141,6 +4317,8 @@ async function buildPacketItemAnalysis(
     }
 
     await assertPacketItemAnalysisAccess(options.user, packet);
+    const effectiveSubjectMap = await resolveEffectivePacketSubjectsForPackets([packet]);
+    const effectivePacketSubject = effectiveSubjectMap.get(packet.id) || toPacketDisplaySubject(packet.subject) || packet.subject;
 
     const questionsRaw = normalizePacketQuestionsForAnalysis(packet.questions);
     const questionAccumulators: AnalysisQuestionAccumulator[] = questionsRaw.map((question, index) => {
@@ -4347,7 +4525,7 @@ async function buildPacketItemAnalysis(
             title: packet.title,
             type: packet.type,
             semester: packet.semester,
-            subject: packet.subject,
+            subject: effectivePacketSubject,
             academicYear: packet.academicYear,
             author: packet.author,
         },
@@ -4392,6 +4570,8 @@ async function buildPacketSubmissions(
     }
 
     await assertPacketItemAnalysisAccess(options.user, packet);
+    const effectiveSubjectMap = await resolveEffectivePacketSubjectsForPackets([packet]);
+    const effectivePacketSubject = effectiveSubjectMap.get(packet.id) || toPacketDisplaySubject(packet.subject) || packet.subject;
 
     const scheduleWhere: Prisma.ExamScheduleWhereInput = {
         packetId: packet.id,
@@ -4558,7 +4738,7 @@ async function buildPacketSubmissions(
             title: packet.title,
             type: packet.type,
             semester: packet.semester,
-            subject: packet.subject,
+            subject: effectivePacketSubject,
             academicYear: packet.academicYear,
             author: packet.author,
         },
@@ -4601,6 +4781,7 @@ async function buildSessionDetail(
             schedule: {
                 include: {
                     class: { select: { id: true, name: true } },
+                    subject: { select: { id: true, name: true, code: true } },
                     packet: {
                         include: {
                             subject: { select: { id: true, name: true, code: true } },
@@ -4622,6 +4803,15 @@ async function buildSessionDetail(
     });
 
     const packet = session.schedule.packet;
+    const effectivePacketSubject =
+        toPacketDisplaySubject(
+            resolveAvailableExamSubject({
+                scheduleSubject: session.schedule.subject,
+                packetSubject: packet.subject,
+            }),
+        ) ||
+        toPacketDisplaySubject(packet.subject) ||
+        packet.subject;
     const historicalStudent =
         packet.academicYear?.id
             ? await getHistoricalStudentSnapshotForAcademicYear(session.student.id, packet.academicYear.id)
@@ -4700,7 +4890,7 @@ async function buildSessionDetail(
             title: packet.title,
             type: packet.type,
             semester: packet.semester,
-            subject: packet.subject,
+            subject: effectivePacketSubject,
             academicYear: packet.academicYear,
         },
         session: {
@@ -4857,7 +5047,16 @@ export const getPackets = asyncHandler(async (req: Request, res: Response) => {
         },
         orderBy: { createdAt: 'desc' }
     });
-    res.json(new ApiResponse(200, packets));
+    const effectiveSubjectMap = await resolveEffectivePacketSubjectsForPackets(packets);
+    const normalizedPackets = packets.map((packet) => {
+        const effectiveSubject = effectiveSubjectMap.get(packet.id) || toPacketDisplaySubject(packet.subject) || packet.subject;
+        return {
+            ...packet,
+            subjectId: effectiveSubject?.id ?? packet.subjectId,
+            subject: effectiveSubject,
+        };
+    });
+    res.json(new ApiResponse(200, normalizedPackets));
 });
 
 export const getPacketById = asyncHandler(async (req: Request, res: Response) => {
@@ -4872,7 +5071,15 @@ export const getPacketById = asyncHandler(async (req: Request, res: Response) =>
         }
     });
     if (!packet) throw new ApiError(404, 'Exam packet not found');
-    res.json(new ApiResponse(200, packet));
+    const effectiveSubjectMap = await resolveEffectivePacketSubjectsForPackets([packet]);
+    const effectiveSubject = effectiveSubjectMap.get(packet.id) || toPacketDisplaySubject(packet.subject) || packet.subject;
+    res.json(
+        new ApiResponse(200, {
+            ...packet,
+            subjectId: effectiveSubject?.id ?? packet.subjectId,
+            subject: effectiveSubject,
+        }),
+    );
 });
 
 export const createPacket = asyncHandler(async (req: Request, res: Response) => {
@@ -4928,6 +5135,10 @@ export const createPacket = asyncHandler(async (req: Request, res: Response) => 
         programCode: resolvedProgram.programCode,
         subjectId: normalizedSubjectId,
         authorId: Number(user.id),
+    });
+    await assertPacketSubjectProgramConsistency({
+        subjectId: normalizedSubjectId,
+        programCode: resolvedProgram.programCode,
     });
 
     const packet = await prisma.examPacket.create({
@@ -5048,6 +5259,10 @@ export const updatePacket = asyncHandler(async (req: Request, res: Response) => 
         programCode: resolvedProgram.programCode,
         subjectId: effectiveSubjectId,
         authorId: Number((req as any).user.id),
+    });
+    await assertPacketSubjectProgramConsistency({
+        subjectId: effectiveSubjectId,
+        programCode: resolvedProgram.programCode,
     });
 
     const packet = await prisma.examPacket.update({
@@ -5953,6 +6168,10 @@ export const createSchedule = asyncHandler(async (req: Request, res: Response) =
         normalizeProgramCode(programCode || examType) ||
         packet?.type ||
         null;
+    await assertPacketSubjectProgramConsistency({
+        subjectId: fallbackSubjectId,
+        programCode: normalizedExamType,
+    });
 
     // Formatif/UH tetap tidak memakai sesi terjadwal seperti program besar kurikulum,
     // tetapi guru masih boleh membuat jadwal kelas langsung dari packet ujian.
