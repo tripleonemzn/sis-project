@@ -39,7 +39,7 @@ export function HeaderThemeModeToggle({
   currentPreferences,
 }: HeaderThemeModeToggleProps) {
   const queryClient = useQueryClient();
-  const { mode, resolvedTheme, setMode } = useAppTheme();
+  const { mode, setMode } = useAppTheme();
 
   const mutation = useMutation({
     mutationFn: async (nextMode: ThemeMode) => {
@@ -59,8 +59,10 @@ export function HeaderThemeModeToggle({
     },
   });
 
+  const activeOption = mode === 'dark' ? OPTIONS[1] : OPTIONS[0];
   const nextOption = mode === 'dark' ? OPTIONS[0] : OPTIONS[1];
-  const NextIcon = nextOption.icon;
+  const ActiveIcon = activeOption.icon;
+  const isDarkSelected = mode === 'dark';
 
   const handleToggle = (nextMode: ThemeMode) => {
     if (mutation.isPending || nextMode === mode) return;
@@ -74,33 +76,52 @@ export function HeaderThemeModeToggle({
   return (
     <button
       type="button"
-      title={`Klik untuk beralih ke ${nextOption.title}.`}
-      aria-label={`Klik untuk beralih ke ${nextOption.title}.`}
+      title={`Mode aktif ${activeOption.title}. Klik untuk beralih ke ${nextOption.title}.`}
+      aria-label={`Mode aktif ${activeOption.title}. Klik untuk beralih ke ${nextOption.title}.`}
       disabled={mutation.isPending}
       onClick={() => handleToggle(nextOption.value)}
-      className="hidden md:inline-flex flex-col items-center justify-center gap-1 transition"
-      style={{ opacity: mutation.isPending ? 0.72 : 1 }}
+      className="hidden md:inline-flex items-center rounded-full transition"
+      style={{
+        width: 132,
+        height: 46,
+        paddingLeft: isDarkSelected ? 6 : 14,
+        paddingRight: isDarkSelected ? 14 : 6,
+        justifyContent: isDarkSelected ? 'flex-start' : 'flex-end',
+        backgroundColor: isDarkSelected ? '#1f2937' : '#f8fafc',
+        border: isDarkSelected ? '1px solid rgba(15, 23, 42, 0.2)' : '1px solid rgba(148, 163, 184, 0.28)',
+        boxShadow: isDarkSelected
+          ? 'inset 0 1px 0 rgba(255,255,255,0.08), 0 10px 24px rgba(2, 6, 23, 0.24)'
+          : 'inset 0 1px 0 rgba(255,255,255,0.9), 0 10px 22px rgba(148, 163, 184, 0.24)',
+        opacity: mutation.isPending ? 0.72 : 1,
+      }}
     >
       <span
-        className="flex h-11 w-11 items-center justify-center rounded-full transition"
+        className="flex h-10 w-10 shrink-0 items-center justify-center rounded-full transition"
         style={{
-          backgroundColor: resolvedTheme === 'dark' ? 'rgba(226, 232, 240, 0.12)' : 'rgba(255, 255, 255, 0.92)',
-          color: resolvedTheme === 'dark' ? '#e2e8f0' : '#475569',
-          border: resolvedTheme === 'dark' ? '1px solid rgba(148, 163, 184, 0.24)' : '1px solid rgba(148, 163, 184, 0.26)',
-          boxShadow:
-            resolvedTheme === 'dark'
-              ? '0 6px 16px rgba(2, 6, 23, 0.28)'
-              : '0 8px 18px rgba(148, 163, 184, 0.24)',
+          order: isDarkSelected ? 0 : 1,
+          backgroundColor: '#ffffff',
+          color: isDarkSelected ? '#111827' : '#475569',
+          border: isDarkSelected ? '3px solid #d1d5db' : '3px solid #cbd5e1',
+          boxShadow: isDarkSelected
+            ? '0 6px 16px rgba(15, 23, 42, 0.32)'
+            : '0 8px 18px rgba(148, 163, 184, 0.26)',
         }}
       >
-        <NextIcon className="h-[19px] w-[19px]" />
+        <ActiveIcon className="h-[18px] w-[18px]" />
       </span>
-      <span className="flex flex-col items-center justify-center">
+      <span
+        className="flex min-w-0 flex-1 items-center justify-center"
+        style={{
+          order: isDarkSelected ? 1 : 0,
+          paddingLeft: isDarkSelected ? 14 : 10,
+          paddingRight: isDarkSelected ? 10 : 14,
+        }}
+      >
         <span
-          className="text-[9px] font-bold uppercase leading-none tracking-[0.14em]"
-          style={{ color: resolvedTheme === 'dark' ? '#cbd5e1' : '#475569' }}
+          className="text-[10px] font-extrabold uppercase leading-none tracking-[0.12em]"
+          style={{ color: isDarkSelected ? '#e5e7eb' : '#475569' }}
         >
-          {nextOption.label}
+          {activeOption.label}
         </span>
       </span>
     </button>
