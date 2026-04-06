@@ -7743,9 +7743,11 @@ export const getAvailableExams = asyncHandler(async (req: Request, res: Response
         return activeProgramKeys.has(`${Number(schedule.academicYearId)}:${taggedProgramCode}`);
     });
 
+    const runnableSchedulesForExamUser = schedulesForExamUser.filter((schedule) => Boolean(schedule.packet));
+
     const packetIds = Array.from(
         new Set(
-            schedulesForExamUser
+            runnableSchedulesForExamUser
                 .map((schedule) => Number(schedule.packet?.id))
                 .filter((packetId) => Number.isFinite(packetId) && packetId > 0),
         ),
@@ -7770,8 +7772,7 @@ export const getAvailableExams = asyncHandler(async (req: Request, res: Response
 
     const scheduleTargets =
         accessRole === 'STUDENT'
-            ? schedulesForExamUser
-                  .filter((schedule) => !!schedule.packet)
+            ? runnableSchedulesForExamUser
                   .map((schedule) => {
                       const packet = schedule.packet!;
                       const normalizedProgramCode = normalizeProgramCode(packet.programCode || schedule.examType || packet.type);
@@ -7897,7 +7898,7 @@ export const getAvailableExams = asyncHandler(async (req: Request, res: Response
     );
 
     // Check restrictions
-    const examsWithStatus = schedulesForExamUser.map((schedule) => {
+    const examsWithStatus = runnableSchedulesForExamUser.map((schedule) => {
         const slotSittings =
             accessRole === 'STUDENT' && studentSittings.length > 0 ? getSlotSittingsForSchedule(schedule) : [];
         const matchingSittings = slotSittings.length > 0 ? getSessionMatchedSittings(schedule, slotSittings) : [];

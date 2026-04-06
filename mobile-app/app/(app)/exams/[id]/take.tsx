@@ -890,13 +890,14 @@ export default function StudentExamTakeScreen() {
         </Text>
         <View style={{ marginBottom: 12 }}>
           <ExamHtmlContent
-            html={currentQuestion.question_text || currentQuestion.content || '-'}
+            html={currentQuestion.question_text || currentQuestion.content || null}
             imageUrl={currentQuestion.question_image_url || currentQuestion.image_url}
             videoUrl={currentQuestion.question_video_url || currentQuestion.video_url}
             videoType={currentQuestion.question_video_type || null}
             interactive={Boolean(currentQuestion.question_video_url || currentQuestion.video_url)}
             onImagePress={(src) => setPreviewImageSrc(src)}
             showInlineVideo={false}
+            renderMode="native"
           />
         </View>
 
@@ -994,10 +995,11 @@ export default function StudentExamTakeScreen() {
                   }}
                 >
                   <ExamHtmlContent
-                    html={option.option_text || option.content || '-'}
+                    html={option.option_text || option.content || null}
                     imageUrl={option.option_image_url || option.image_url}
                     minHeight={56}
                     onImagePress={(src) => setPreviewImageSrc(src)}
+                    renderMode="native"
                   />
                 </Pressable>
               );

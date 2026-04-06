@@ -1,5 +1,5 @@
 import { useMemo, useState } from 'react';
-import { View } from 'react-native';
+import { Image, Pressable, Text, View } from 'react-native';
 import { WebView } from 'react-native-webview';
 import { ENV } from '../config/env';
 
@@ -12,6 +12,7 @@ type ExamHtmlContentProps = {
   minHeight?: number;
   onImagePress?: (src: string) => void;
   showInlineVideo?: boolean;
+  renderMode?: 'webview' | 'native';
 };
 
 function toMediaUrl(url?: string | null) {
@@ -142,6 +143,23 @@ export function plainTextFromExamRichText(value?: string | null) {
     .trim();
 }
 
+export function plainTextBlocksFromExamRichText(value?: string | null) {
+  return decodeSimpleEntities(
+    normalizeExamRichTextToHtml(value)
+      .replace(/<br\s*\/?>/gi, '\n')
+      .replace(/<\/(p|div|li|tr|h[1-6]|ol|ul|table)>/gi, '\n')
+      .replace(/<(li)\b[^>]*>/gi, '• ')
+      .replace(/<(img|iframe|video)\b[^>]*>/gi, ' ')
+      .replace(/<[^>]*>/g, ' '),
+  )
+    .replace(/\u00a0/g, ' ')
+    .replace(/[ \t]+\n/g, '\n')
+    .replace(/\n[ \t]+/g, '\n')
+    .replace(/\n{3,}/g, '\n\n')
+    .replace(/[ \t]{2,}/g, ' ')
+    .trim();
+}
+
 function getYoutubeEmbedUrl(url?: string | null) {
   const raw = String(url || '').trim();
   if (!raw) return '';
@@ -177,10 +195,13 @@ export function ExamHtmlContent({
   minHeight = 120,
   onImagePress,
   showInlineVideo = true,
+  renderMode = 'webview',
 }: ExamHtmlContentProps) {
   const safeMinHeight = Number.isFinite(minHeight) ? Math.max(24, Math.floor(minHeight)) : 120;
   const [height, setHeight] = useState(safeMinHeight);
   const webBaseUrl = ENV.API_BASE_URL.replace(/\/api\/?$/, '');
+  const resolvedNativeImageUrl = useMemo(() => toMediaUrl(imageUrl), [imageUrl]);
+  const nativeTextContent = useMemo(() => plainTextBlocksFromExamRichText(html), [html]);
 
   const documentHtml = useMemo(() => {
     const normalizedHtml = normalizeExamRichTextToHtml(html);
@@ -345,6 +366,52 @@ export function ExamHtmlContent({
         </body>
       </html>`;
   }, [html, imageUrl, safeMinHeight, showInlineVideo, videoType, videoUrl]);
+
+  if (renderMode === 'native') {
+    const hasText = nativeTextContent.length > 0 && nativeTextContent !== '-';
+    const hasImage = Boolean(resolvedNativeImageUrl);
+
+    return (
+      <View style={{ minHeight: safeMinHeight, backgroundColor: '#ffffff' }}>
+        {hasText ? (
+          <Text
+            selectable={false}
+            style={{
+              color: '#0f172a',
+              fontSize: 15,
+              lineHeight: 22,
+              marginBottom: hasImage ? 10 : 0,
+            }}
+          >
+            {nativeTextContent}
+          </Text>
+        ) : null}
+        {hasImage ? (
+          <Pressable
+            disabled={typeof onImagePress !== 'function'}
+            onPress={() => {
+              if (resolvedNativeImageUrl && typeof onImagePress === 'function') {
+                onImagePress(resolvedNativeImageUrl);
+              }
+            }}
+            style={{ alignSelf: 'stretch' }}
+          >
+            <Image
+              source={{ uri: resolvedNativeImageUrl }}
+              resizeMode="contain"
+              style={{
+                width: '100%',
+                minHeight: 120,
+                height: 220,
+                borderRadius: 12,
+                backgroundColor: '#f8fafc',
+              }}
+            />
+          </Pressable>
+        ) : null}
+      </View>
+    );
+  }
 
   return (
     <View
