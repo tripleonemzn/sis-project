@@ -1,4 +1,4 @@
-import { useMemo, useState } from 'react';
+import { useEffect, useMemo, useState } from 'react';
 import { Redirect, useLocalSearchParams, useRouter } from 'expo-router';
 import { useQuery } from '@tanstack/react-query';
 import { Alert, Image, Modal, Pressable, RefreshControl, ScrollView, Text, TextInput, View } from 'react-native';
@@ -13,6 +13,7 @@ import { useStudentExamsQuery } from '../../src/features/exams/useStudentExamsQu
 import { getStandardPagePadding } from '../../src/lib/ui/pageLayout';
 import { examApi, ExamProgramItem } from '../../src/features/exams/examApi';
 import { examCardApi } from '../../src/features/examCards/examCardApi';
+import { useIsScreenActive } from '../../src/hooks/useIsScreenActive';
 
 type StatusFilter = 'ALL' | 'OPEN' | 'MAKEUP' | 'UPCOMING' | 'MISSED' | 'COMPLETED';
 type ExamLabelMap = Record<string, string>;
@@ -135,6 +136,7 @@ export default function StudentExamsScreen() {
   const insets = useSafeAreaInsets();
   const { isAuthenticated, isLoading, user } = useAuth();
   const canAccessExams = user?.role === 'STUDENT' || user?.role === 'CALON_SISWA' || user?.role === 'UMUM';
+  const isScreenActive = useIsScreenActive();
   const isCandidateMode = user?.role === 'CALON_SISWA';
   const isApplicantMode = user?.role === 'UMUM';
   const applicantVerificationLocked =
@@ -213,6 +215,11 @@ export default function StudentExamsScreen() {
     ],
     [activePrograms, examTypeLabels, isApplicantMode, isCandidateMode],
   );
+
+  useEffect(() => {
+    if (!isScreenActive || !canAccessExams || applicantVerificationLocked) return;
+    void examsQuery.refetch();
+  }, [applicantVerificationLocked, canAccessExams, examsQuery, isScreenActive]);
   const statusFilterOptions = useMemo(
     () => [
       { value: 'ALL', label: 'Semua Status' },

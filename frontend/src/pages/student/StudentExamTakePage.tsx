@@ -265,6 +265,8 @@ export default function StudentExamTakePage() {
   const lastViolationFingerprintRef = useRef<{ key: string; at: number } | null>(null)
   const lastWindowBlurAtRef = useRef(0)
   const blurViolationTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null)
+  const focusMonitorIntervalRef = useRef<ReturnType<typeof setInterval> | null>(null)
+  const lastFocusLossObservedRef = useRef(false)
   const translationWarningShownRef = useRef(false)
   
   // Get current user
@@ -836,6 +838,7 @@ export default function StudentExamTakePage() {
     // Detect window blur (switching to other apps)
     window.addEventListener('blur', handleWindowBlur)
     window.addEventListener('focus', handleWindowFocus)
+    window.addEventListener('focusout', handleWindowBlur)
     
     // Prevent copy/paste
     document.addEventListener('copy', preventCopyPaste)
@@ -845,6 +848,25 @@ export default function StudentExamTakePage() {
     // Disable text selection
     document.body.style.userSelect = 'none'
     document.body.style.webkitUserSelect = 'none'
+
+    focusMonitorIntervalRef.current = setInterval(() => {
+      if (!examStartTime || submitting || hasAutoSubmitted.current) return
+      const hidden = document.hidden || document.visibilityState === 'hidden'
+      const hasFocus = typeof document.hasFocus === 'function' ? document.hasFocus() : true
+      const lostFocus = hidden || !hasFocus
+
+      if (lostFocus && !lastFocusLossObservedRef.current) {
+        const now = Date.now()
+        const recentlyBlurred = now - lastWindowBlurAtRef.current < 1500
+        recordViolation(
+          hidden
+            ? (recentlyBlurred ? 'Alt+Tab / berpindah aplikasi' : 'Berpindah tab')
+            : 'Berpindah aplikasi',
+        )
+      }
+
+      lastFocusLossObservedRef.current = lostFocus
+    }, 700)
   }
 
   const cleanupLockdown = (options?: { preserveFullscreen?: boolean }) => {
@@ -859,6 +881,7 @@ export default function StudentExamTakePage() {
     window.removeEventListener('beforeunload', handleBeforeUnload)
     window.removeEventListener('blur', handleWindowBlur)
     window.removeEventListener('focus', handleWindowFocus)
+    window.removeEventListener('focusout', handleWindowBlur)
     document.removeEventListener('copy', preventCopyPaste)
     document.removeEventListener('paste', preventCopyPaste)
     document.removeEventListener('cut', preventCopyPaste)
@@ -867,6 +890,13 @@ export default function StudentExamTakePage() {
       clearTimeout(blurViolationTimeoutRef.current)
       blurViolationTimeoutRef.current = null
     }
+
+    if (focusMonitorIntervalRef.current) {
+      clearInterval(focusMonitorIntervalRef.current)
+      focusMonitorIntervalRef.current = null
+    }
+
+    lastFocusLossObservedRef.current = false
     
     document.body.style.userSelect = ''
     document.body.style.webkitUserSelect = ''
@@ -1069,6 +1099,7 @@ export default function StudentExamTakePage() {
       clearTimeout(blurViolationTimeoutRef.current)
       blurViolationTimeoutRef.current = null
     }
+    lastFocusLossObservedRef.current = false
   }
 
   const handleWindowBlur = () => {

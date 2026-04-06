@@ -22,6 +22,10 @@ export function useStudentExamsQuery({ enabled, user }: Params) {
   return useQuery({
     queryKey: ['mobile-student-exams', user?.id],
     enabled: enabled && !!user && canAccessExams,
+    staleTime: 0,
+    refetchOnMount: 'always',
+    refetchOnReconnect: true,
+    refetchOnWindowFocus: true,
     queryFn: async (): Promise<StudentExamsQueryData> => {
       const cacheKey = `mobile_cache_student_exams_${user!.id}`;
       try {

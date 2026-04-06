@@ -234,7 +234,7 @@ export function ExamHtmlContent({
             html, body {
               margin: 0;
               padding: 0;
-              background: transparent;
+              background: #ffffff;
               color: #0f172a;
               font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
               font-size: 15px;
@@ -345,11 +345,14 @@ export function ExamHtmlContent({
   }, [html, imageUrl, safeMinHeight, videoType, videoUrl]);
 
   return (
-    <View pointerEvents={interactive || typeof onImagePress === 'function' ? 'auto' : 'none'} style={{ minHeight: height }}>
+    <View
+      pointerEvents={interactive || typeof onImagePress === 'function' ? 'auto' : 'none'}
+      style={{ minHeight: height, backgroundColor: '#ffffff' }}
+    >
       <WebView
         originWhitelist={['*']}
         source={{ html: documentHtml, baseUrl: webBaseUrl }}
-        style={{ height, backgroundColor: 'transparent' }}
+        style={{ height, backgroundColor: '#ffffff' }}
         scrollEnabled={false}
         nestedScrollEnabled={false}
         javaScriptEnabled

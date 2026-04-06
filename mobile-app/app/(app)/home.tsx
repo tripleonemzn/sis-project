@@ -966,6 +966,12 @@ export default function HomeScreen() {
   });
 
   const hasPendingDefense = profile.role === 'TEACHER' && (teacherDefenseQuery.data?.length || 0) > 0;
+
+  useEffect(() => {
+    if (!isScreenActive || profile.role !== 'STUDENT') return;
+    void studentExamsQuery.refetch();
+  }, [isScreenActive, profile.role, studentExamsQuery]);
+
   const extracurricularTutorAssignments = useMemo(
     () => getExtracurricularTutorAssignments(mergedTutorAssignments),
     [mergedTutorAssignments],

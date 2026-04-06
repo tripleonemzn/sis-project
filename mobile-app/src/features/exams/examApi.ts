@@ -353,7 +353,14 @@ export const examApi = {
     return response.data.data;
   },
   async getStudentAvailableExams() {
-    const response = await apiClient.get<StudentExamsResponse>('/exams/available');
+    const response = await apiClient.get<StudentExamsResponse>('/exams/available', {
+      params: { _t: Date.now() },
+      headers: {
+        'Cache-Control': 'no-cache, no-store, must-revalidate',
+        Pragma: 'no-cache',
+        Expires: '0',
+      },
+    });
     const parsedFromData = parseStudentExamsPayload(response.data.data);
     if (parsedFromData) return parsedFromData;
 

@@ -560,6 +560,7 @@ export default function StudentExamTakeScreen() {
   if (!canAccessExams) {
     return (
       <ScrollView style={{ flex: 1, backgroundColor: '#f8fafc' }} contentContainerStyle={pageContentPadding}>
+        <Stack.Screen options={{ headerShown: false, gestureEnabled: false }} />
         <Text style={{ fontSize: 22, fontWeight: '700', marginBottom: 8 }}>
           {`Mengerjakan ${examTakeLabel}`}
         </Text>
@@ -571,6 +572,7 @@ export default function StudentExamTakeScreen() {
   if (applicantVerificationLocked) {
     return (
       <ScrollView style={{ flex: 1, backgroundColor: '#f8fafc' }} contentContainerStyle={pageContentPadding}>
+        <Stack.Screen options={{ headerShown: false, gestureEnabled: false }} />
         <Text style={{ fontSize: 22, fontWeight: '700', marginBottom: 8 }}>{`Mengerjakan ${examTakeLabel}`}</Text>
         <View
           style={{
@@ -593,6 +595,7 @@ export default function StudentExamTakeScreen() {
   if (!scheduleId) {
     return (
       <ScrollView style={{ flex: 1, backgroundColor: '#f8fafc' }} contentContainerStyle={pageContentPadding}>
+        <Stack.Screen options={{ headerShown: false, gestureEnabled: false }} />
         <Text style={{ fontSize: 22, fontWeight: '700', marginBottom: 8 }}>{`Mengerjakan ${examTakeLabel}`}</Text>
         <QueryStateView type="error" message={`ID jadwal ${examTakeLabel.toLowerCase()} tidak valid.`} />
       </ScrollView>
@@ -604,6 +607,7 @@ export default function StudentExamTakeScreen() {
   if (startQuery.isError || !startQuery.data) {
     return (
       <ScrollView style={{ flex: 1, backgroundColor: '#f8fafc' }} contentContainerStyle={pageContentPadding}>
+        <Stack.Screen options={{ headerShown: false, gestureEnabled: false }} />
         <Text style={{ fontSize: 22, fontWeight: '700', marginBottom: 8 }}>{`Mengerjakan ${examTakeLabel}`}</Text>
         <QueryStateView
           type="error"
@@ -713,7 +717,6 @@ export default function StudentExamTakeScreen() {
         <Pressable
           onPress={() => {
             setHasAcknowledgedStart(true);
-            void saveProgress(false);
           }}
           style={{
             backgroundColor: '#16a34a',
@@ -729,8 +732,9 @@ export default function StudentExamTakeScreen() {
   }
 
   return (
-    <ScrollView style={{ flex: 1, backgroundColor: '#f8fafc' }} contentContainerStyle={pageContentPaddingCompact}>
+    <>
       <Stack.Screen options={{ headerShown: false, gestureEnabled: false }} />
+      <ScrollView style={{ flex: 1, backgroundColor: '#f8fafc' }} contentContainerStyle={pageContentPaddingCompact}>
       <View
         style={{
           backgroundColor: '#ffffff',
@@ -1025,6 +1029,7 @@ export default function StudentExamTakeScreen() {
           </View>
         ) : null}
       </MobileDetailModal>
-    </ScrollView>
+      </ScrollView>
+    </>
   );
 }
