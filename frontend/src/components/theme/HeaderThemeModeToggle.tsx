@@ -96,7 +96,7 @@ export function HeaderThemeModeToggle({
       }}
     >
       <span
-        className="flex h-10 w-10 shrink-0 items-center justify-center rounded-full transition"
+        className="flex h-9 w-9 shrink-0 items-center justify-center rounded-full transition"
         style={{
           order: isDarkSelected ? 0 : 1,
           backgroundColor: '#ffffff',
@@ -107,7 +107,7 @@ export function HeaderThemeModeToggle({
             : '0 8px 18px rgba(148, 163, 184, 0.26)',
         }}
       >
-        <ActiveIcon className="h-[18px] w-[18px]" />
+        <ActiveIcon className="h-[15px] w-[15px]" />
       </span>
       <span
         className="flex min-w-0 flex-1 items-center justify-center"
@@ -118,7 +118,7 @@ export function HeaderThemeModeToggle({
         }}
       >
         <span
-          className="text-[10px] font-extrabold uppercase leading-none tracking-[0.12em]"
+          className="text-[10px] font-medium uppercase leading-none tracking-[0.12em]"
           style={{ color: isDarkSelected ? '#e5e7eb' : '#475569' }}
         >
           {activeOption.label}

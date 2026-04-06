@@ -85,8 +85,8 @@ export function MobileHeaderThemeModeToggle({
         void handleToggle(nextOption.value);
       }}
       style={{
-        width: 118,
-        height: 44,
+        width: 112,
+        height: 40,
         borderRadius: 999,
         flexDirection: isDarkSelected ? 'row' : 'row-reverse',
         alignItems: 'center',
@@ -105,8 +105,8 @@ export function MobileHeaderThemeModeToggle({
     >
       <View
         style={{
-          width: 36,
-          height: 36,
+          width: 32,
+          height: 32,
           borderRadius: 999,
           alignItems: 'center',
           justifyContent: 'center',
@@ -120,7 +120,7 @@ export function MobileHeaderThemeModeToggle({
           elevation: 2,
         }}
       >
-        <Feather name={activeOption.iconName} size={16} color={isDarkSelected ? '#111827' : '#475569'} />
+        <Feather name={activeOption.iconName} size={14} color={isDarkSelected ? '#111827' : '#475569'} />
       </View>
 
       <View
@@ -135,10 +135,10 @@ export function MobileHeaderThemeModeToggle({
         <Text
           style={{
             color: isDarkSelected ? '#e5e7eb' : '#475569',
-            fontSize: 9.5,
-            fontWeight: '800',
+            fontSize: 9,
+            fontWeight: '500',
             textTransform: 'uppercase',
-            letterSpacing: 0.7,
+            letterSpacing: 0.5,
           }}
         >
           {activeOption.label}

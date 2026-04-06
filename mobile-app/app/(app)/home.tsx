@@ -786,7 +786,8 @@ export default function HomeScreen() {
   const router = useRouter();
   const insets = useSafeAreaInsets();
   const { user, isAuthenticated, isLoading, logout } = useAuth();
-  const { colors, resolvedTheme } = useAppTheme();
+  const { colors, mode } = useAppTheme();
+  const isDarkModeActive = mode === 'dark';
   const isScreenActive = useIsScreenActive();
   const unreadNotificationsQuery = useUnreadNotificationsQuery(isAuthenticated, isScreenActive);
   const unreadNotificationCount = unreadNotificationsQuery.data ?? 0;
@@ -1938,9 +1939,9 @@ export default function HomeScreen() {
           const linkedMenu = item.menuKey ? menuItemByKey.get(item.menuKey) : undefined;
           const isOpeningThisMenu = linkedMenu ? openingMenuKey === linkedMenu.key : false;
           const iconName = getStatIcon(item, linkedMenu);
-          const tone = resolveMenuTone(getMenuIconTone(item.label), resolvedTheme);
+          const tone = resolveMenuTone(getMenuIconTone(item.label), isDarkModeActive ? 'dark' : 'light');
           const labelPosition = item.labelPosition || 'bottom';
-          const valueColor = resolveDashboardAccentColor(item.color, resolvedTheme);
+          const valueColor = resolveDashboardAccentColor(item.color, isDarkModeActive ? 'dark' : 'light');
 
           return (
             <View key={item.label} style={{ width: itemWidth, paddingHorizontal: 4, marginBottom: 10 }}>
@@ -2007,7 +2008,7 @@ export default function HomeScreen() {
       {items.map((item) => {
         const linkedMenu = item.menuKey ? menuItemByKey.get(item.menuKey) : undefined;
         const isOpeningThisMenu = linkedMenu ? openingMenuKey === linkedMenu.key : false;
-        const iconColor = resolveDashboardAccentColor(item.color, resolvedTheme);
+        const iconColor = resolveDashboardAccentColor(item.color, isDarkModeActive ? 'dark' : 'light');
         return (
           <View
             key={item.label}
@@ -2031,9 +2032,9 @@ export default function HomeScreen() {
                   width: 44,
                   height: 44,
                   borderRadius: 999,
-                  backgroundColor: resolvedTheme === 'dark' ? 'rgba(30, 41, 59, 0.92)' : item.color,
-                  borderWidth: resolvedTheme === 'dark' ? 1 : 0,
-                  borderColor: resolvedTheme === 'dark' ? 'rgba(148, 163, 184, 0.22)' : 'transparent',
+                  backgroundColor: isDarkModeActive ? 'rgba(30, 41, 59, 0.92)' : item.color,
+                  borderWidth: isDarkModeActive ? 1 : 0,
+                  borderColor: isDarkModeActive ? 'rgba(148, 163, 184, 0.22)' : 'transparent',
                   alignItems: 'center',
                   justifyContent: 'center',
                 }}
@@ -2118,8 +2119,8 @@ export default function HomeScreen() {
           width: 185,
           height: 185,
           borderRadius: 999,
-          backgroundColor: resolvedTheme === 'dark' ? 'rgba(96, 165, 250, 0.16)' : BRAND_COLORS.sky,
-          opacity: resolvedTheme === 'dark' ? 0.2 : 0.24,
+          backgroundColor: isDarkModeActive ? 'rgba(96, 165, 250, 0.16)' : BRAND_COLORS.sky,
+          opacity: isDarkModeActive ? 0.2 : 0.24,
         }}
       />
       <View
@@ -2130,8 +2131,8 @@ export default function HomeScreen() {
           width: 170,
           height: 170,
           borderRadius: 999,
-          backgroundColor: resolvedTheme === 'dark' ? 'rgba(244, 114, 182, 0.12)' : BRAND_COLORS.pink,
-          opacity: resolvedTheme === 'dark' ? 0.18 : 0.12,
+          backgroundColor: isDarkModeActive ? 'rgba(244, 114, 182, 0.12)' : BRAND_COLORS.pink,
+          opacity: isDarkModeActive ? 0.18 : 0.12,
         }}
       />
       <View
@@ -2142,8 +2143,8 @@ export default function HomeScreen() {
           width: 160,
           height: 160,
           borderRadius: 999,
-          backgroundColor: resolvedTheme === 'dark' ? 'rgba(45, 212, 191, 0.14)' : BRAND_COLORS.teal,
-          opacity: resolvedTheme === 'dark' ? 0.16 : 0.18,
+          backgroundColor: isDarkModeActive ? 'rgba(45, 212, 191, 0.14)' : BRAND_COLORS.teal,
+          opacity: isDarkModeActive ? 0.16 : 0.18,
         }}
       />
 
@@ -2161,8 +2162,8 @@ export default function HomeScreen() {
               name={displayName}
               photoUrl={profilePhotoUrl}
               size={52}
-              backgroundColor={resolvedTheme === 'dark' ? colors.surfaceMuted : BRAND_COLORS.navy}
-              textColor={resolvedTheme === 'dark' ? colors.text : BRAND_COLORS.white}
+              backgroundColor={isDarkModeActive ? colors.surfaceMuted : BRAND_COLORS.navy}
+              textColor={isDarkModeActive ? colors.text : BRAND_COLORS.white}
               borderColor={colors.border}
             />
           </Pressable>
@@ -2214,7 +2215,7 @@ export default function HomeScreen() {
             ) : null}
             {(teacherAssignmentsQuery.isError || teacherScheduleQuery.isError) &&
             !(teacherAssignmentsQuery.isLoading || teacherScheduleQuery.isLoading) ? (
-              <Text style={{ color: resolvedTheme === 'dark' ? '#fca5a5' : '#b91c1c', fontSize: 12 }}>
+              <Text style={{ color: isDarkModeActive ? '#fca5a5' : '#b91c1c', fontSize: 12 }}>
                 Gagal memuat statistik mengajar. Tarik layar ke bawah untuk muat ulang.
               </Text>
             ) : null}
@@ -2248,7 +2249,7 @@ export default function HomeScreen() {
               <Text style={{ color: colors.textMuted, fontSize: 12 }}>Memuat statistik admin...</Text>
             ) : null}
             {adminStatsQuery.isError && !adminStatsQuery.isLoading ? (
-              <Text style={{ color: resolvedTheme === 'dark' ? '#fca5a5' : '#b91c1c', fontSize: 12 }}>
+              <Text style={{ color: isDarkModeActive ? '#fca5a5' : '#b91c1c', fontSize: 12 }}>
                 Gagal memuat statistik admin. Tarik layar ke bawah untuk muat ulang.
               </Text>
             ) : null}
@@ -2272,7 +2273,7 @@ export default function HomeScreen() {
               <Text style={{ color: colors.textMuted, fontSize: 12 }}>Memuat ringkasan kepala sekolah...</Text>
             ) : null}
             {principalStatsQuery.isError && !principalStatsQuery.isLoading ? (
-              <Text style={{ color: resolvedTheme === 'dark' ? '#fca5a5' : '#b91c1c', fontSize: 12 }}>
+              <Text style={{ color: isDarkModeActive ? '#fca5a5' : '#b91c1c', fontSize: 12 }}>
                 Gagal memuat ringkasan kepala sekolah. Tarik layar ke bawah untuk muat ulang.
               </Text>
             ) : null}
@@ -2310,7 +2311,7 @@ export default function HomeScreen() {
               <Text style={{ color: colors.textMuted, fontSize: 12 }}>Memuat statistik staff...</Text>
             ) : null}
             {staffStatsQuery.isError && !staffStatsQuery.isLoading ? (
-              <Text style={{ color: resolvedTheme === 'dark' ? '#fca5a5' : '#b91c1c', fontSize: 12 }}>
+              <Text style={{ color: isDarkModeActive ? '#fca5a5' : '#b91c1c', fontSize: 12 }}>
                 Gagal memuat statistik staff. Tarik layar ke bawah untuk muat ulang.
               </Text>
             ) : null}
@@ -2334,7 +2335,7 @@ export default function HomeScreen() {
               <Text style={{ color: colors.textMuted, fontSize: 12 }}>Memuat ringkasan keuangan...</Text>
             ) : null}
             {parentOverviewQuery.isError && !parentOverviewQuery.isLoading ? (
-              <Text style={{ color: resolvedTheme === 'dark' ? '#fca5a5' : '#b91c1c', fontSize: 12 }}>
+              <Text style={{ color: isDarkModeActive ? '#fca5a5' : '#b91c1c', fontSize: 12 }}>
                 Gagal memuat ringkasan keuangan. Tarik layar ke bawah untuk muat ulang.
               </Text>
             ) : null}
@@ -2373,7 +2374,7 @@ export default function HomeScreen() {
                 <Text style={{ color: colors.textMuted, fontSize: 12 }}>Memuat jadwal pelajaran hari ini...</Text>
               ) : null}
               {studentScheduleQuery.isError && !studentScheduleQuery.isLoading ? (
-                <Text style={{ color: resolvedTheme === 'dark' ? '#fca5a5' : '#b91c1c', fontSize: 12 }}>
+                <Text style={{ color: isDarkModeActive ? '#fca5a5' : '#b91c1c', fontSize: 12 }}>
                   Gagal memuat jadwal pelajaran. Tarik layar ke bawah untuk muat ulang.
                 </Text>
               ) : null}
@@ -2387,7 +2388,7 @@ export default function HomeScreen() {
                           borderRadius: 10,
                           borderWidth: 1,
                           borderColor: colors.border,
-                          backgroundColor: resolvedTheme === 'dark' ? colors.surfaceMuted : '#f8fbff',
+                          backgroundColor: isDarkModeActive ? colors.surfaceMuted : '#f8fbff',
                           paddingHorizontal: 10,
                           paddingVertical: 9,
                           marginBottom: 8,
@@ -2401,13 +2402,13 @@ export default function HomeScreen() {
                             paddingHorizontal: 8,
                             height: 30,
                             borderRadius: 8,
-                            backgroundColor: resolvedTheme === 'dark' ? 'rgba(96, 165, 250, 0.18)' : '#dbeafe',
+                            backgroundColor: isDarkModeActive ? 'rgba(96, 165, 250, 0.18)' : '#dbeafe',
                             alignItems: 'center',
                             justifyContent: 'center',
                             marginRight: 10,
                           }}
                         >
-                          <Text style={{ color: resolvedTheme === 'dark' ? '#bfdbfe' : '#1d4ed8', fontWeight: '700', fontSize: 11 }}>
+                          <Text style={{ color: isDarkModeActive ? '#bfdbfe' : '#1d4ed8', fontWeight: '700', fontSize: 11 }}>
                             {group.periodStart === group.periodEnd
                               ? `Jam ke ${group.periodStart}`
                               : `Jam ke ${group.periodStart}-${group.periodEnd}`}
@@ -2458,7 +2459,7 @@ export default function HomeScreen() {
                 <Text style={{ color: colors.textMuted, fontSize: 12 }}>Memuat jadwal ujian terdekat...</Text>
               ) : null}
               {studentExamsQuery.isError && !studentExamsQuery.isLoading ? (
-                <Text style={{ color: resolvedTheme === 'dark' ? '#fca5a5' : '#b91c1c', fontSize: 12 }}>
+                <Text style={{ color: isDarkModeActive ? '#fca5a5' : '#b91c1c', fontSize: 12 }}>
                   Gagal memuat jadwal ujian. Tarik layar ke bawah untuk muat ulang.
                 </Text>
               ) : null}
@@ -2481,7 +2482,7 @@ export default function HomeScreen() {
                             borderRadius: 10,
                             borderWidth: 1,
                             borderColor: colors.border,
-                            backgroundColor: resolvedTheme === 'dark' ? colors.surfaceMuted : '#f8fbff',
+                            backgroundColor: isDarkModeActive ? colors.surfaceMuted : '#f8fbff',
                             paddingHorizontal: 10,
                             paddingVertical: 9,
                             marginBottom: 8,
@@ -2517,7 +2518,7 @@ export default function HomeScreen() {
                             Mulai: {formatExamDateTime(item.startTime)}
                           </Text>
                           {item.isBlocked ? (
-                            <Text style={{ color: resolvedTheme === 'dark' ? '#fecaca' : '#991b1b', fontSize: 11, marginTop: 2 }}>
+                            <Text style={{ color: isDarkModeActive ? '#fecaca' : '#991b1b', fontSize: 11, marginTop: 2 }}>
                               Diblokir: {item.blockReason || 'Akses ujian dibatasi wali kelas.'}
                             </Text>
                           ) : null}
@@ -2565,7 +2566,7 @@ export default function HomeScreen() {
               <Text style={{ color: colors.textMuted, fontSize: 12 }}>Memuat jadwal mengajar hari ini...</Text>
             ) : null}
             {teacherScheduleQuery.isError && !teacherScheduleQuery.isLoading ? (
-              <Text style={{ color: resolvedTheme === 'dark' ? '#fca5a5' : '#b91c1c', fontSize: 12 }}>
+              <Text style={{ color: isDarkModeActive ? '#fca5a5' : '#b91c1c', fontSize: 12 }}>
                 Gagal memuat jadwal hari ini. Tarik layar ke bawah untuk muat ulang.
               </Text>
             ) : null}
@@ -2581,7 +2582,7 @@ export default function HomeScreen() {
                           borderRadius: 10,
                           borderWidth: 1,
                           borderColor: colors.border,
-                          backgroundColor: resolvedTheme === 'dark' ? colors.surfaceMuted : '#fbfdff',
+                          backgroundColor: isDarkModeActive ? colors.surfaceMuted : '#fbfdff',
                           paddingHorizontal: 12,
                           paddingVertical: 10,
                           marginBottom: 8,
@@ -2594,20 +2595,20 @@ export default function HomeScreen() {
                             width: 64,
                             height: 64,
                             borderRadius: 12,
-                            backgroundColor: resolvedTheme === 'dark' ? 'rgba(96, 165, 250, 0.18)' : '#eff6ff',
+                            backgroundColor: isDarkModeActive ? 'rgba(96, 165, 250, 0.18)' : '#eff6ff',
                             alignItems: 'center',
                             justifyContent: 'center',
                             marginRight: 10,
                           }}
                         >
-                          <Text style={{ color: resolvedTheme === 'dark' ? '#bfdbfe' : '#2563eb', fontWeight: '600', fontSize: 10 }}>Jam ke</Text>
-                          <Text style={{ color: resolvedTheme === 'dark' ? '#dbeafe' : '#1d4ed8', fontWeight: '800', fontSize: 18, marginTop: 2 }}>
+                          <Text style={{ color: isDarkModeActive ? '#bfdbfe' : '#2563eb', fontWeight: '600', fontSize: 10 }}>Jam ke</Text>
+                          <Text style={{ color: isDarkModeActive ? '#dbeafe' : '#1d4ed8', fontWeight: '800', fontSize: 18, marginTop: 2 }}>
                             {group.periodStart === group.periodEnd
                               ? `${group.periodStart}`
                               : `${group.periodStart}-${group.periodEnd}`}
                           </Text>
                           {group.entries.length > 1 ? (
-                            <Text style={{ color: resolvedTheme === 'dark' ? '#93c5fd' : '#3b82f6', fontWeight: '700', fontSize: 10, marginTop: 1 }}>
+                            <Text style={{ color: isDarkModeActive ? '#93c5fd' : '#3b82f6', fontWeight: '700', fontSize: 10, marginTop: 1 }}>
                               {group.entries.length} JP
                             </Text>
                           ) : null}
@@ -2628,14 +2629,14 @@ export default function HomeScreen() {
                               alignItems: 'center',
                               gap: 4,
                               borderRadius: 999,
-                              backgroundColor: resolvedTheme === 'dark' ? 'rgba(96, 165, 250, 0.18)' : '#dbeafe',
+                              backgroundColor: isDarkModeActive ? 'rgba(96, 165, 250, 0.18)' : '#dbeafe',
                               paddingHorizontal: 10,
                               paddingVertical: 6,
                               marginLeft: 8,
                             }}
                           >
-                            <Feather name="clock" size={12} color={resolvedTheme === 'dark' ? '#bfdbfe' : '#1d4ed8'} />
-                            <Text style={{ color: resolvedTheme === 'dark' ? '#bfdbfe' : '#1d4ed8', fontWeight: '700', fontSize: 11 }}>{group.timeRange}</Text>
+                            <Feather name="clock" size={12} color={isDarkModeActive ? '#bfdbfe' : '#1d4ed8'} />
+                            <Text style={{ color: isDarkModeActive ? '#bfdbfe' : '#1d4ed8', fontWeight: '700', fontSize: 11 }}>{group.timeRange}</Text>
                           </View>
                         ) : null}
                       </View>
@@ -2668,13 +2669,13 @@ export default function HomeScreen() {
                       borderRadius: 10,
                       borderWidth: 1,
                       borderColor: colors.border,
-                      backgroundColor: resolvedTheme === 'dark' ? colors.surfaceMuted : '#f8fbff',
+                      backgroundColor: isDarkModeActive ? colors.surfaceMuted : '#f8fbff',
                       paddingVertical: 10,
                       alignItems: 'center',
                       opacity: pressed || openingMenuKey === teachingScheduleMenu.key ? 0.82 : 1,
                     })}
                   >
-                    <Text style={{ color: resolvedTheme === 'dark' ? '#bfdbfe' : BRAND_COLORS.navy, fontWeight: '700' }}>
+                    <Text style={{ color: isDarkModeActive ? '#bfdbfe' : BRAND_COLORS.navy, fontWeight: '700' }}>
                       {openingMenuKey === teachingScheduleMenu.key ? 'Membuka modul...' : 'Lihat Jadwal Lengkap'}
                     </Text>
                   </Pressable>
@@ -2697,7 +2698,7 @@ export default function HomeScreen() {
             <View style={{ flexDirection: 'row', flexWrap: 'wrap', marginHorizontal: -4 }}>
               {roleQuickMenus.map((menu) => {
                 const icon = getMenuIcon(menu);
-                const tone = resolveMenuTone(getMenuIconTone(menu.key), resolvedTheme);
+                const tone = resolveMenuTone(getMenuIconTone(menu.key), isDarkModeActive ? 'dark' : 'light');
                 const isOpeningThisMenu = openingMenuKey === menu.key;
                 return (
                   <View key={menu.key} style={{ width: '33.3333%', paddingHorizontal: 4, marginBottom: 10 }}>
@@ -2792,7 +2793,7 @@ export default function HomeScreen() {
               borderRadius: 10,
               borderWidth: 1,
               borderColor: colors.border,
-              backgroundColor: resolvedTheme === 'dark' ? colors.surfaceMuted : '#f8fbff',
+              backgroundColor: isDarkModeActive ? colors.surfaceMuted : '#f8fbff',
               paddingVertical: 8,
               paddingHorizontal: 10,
               flexDirection: 'row',
@@ -2894,7 +2895,7 @@ export default function HomeScreen() {
                 <View style={{ paddingHorizontal: 8, paddingVertical: 10 }}>
                   <View style={{ flexDirection: 'row', flexWrap: 'wrap', marginHorizontal: -4 }}>
                     {group.items.map((menu) => {
-                      const tone = resolveMenuTone(getMenuIconTone(menu.key), resolvedTheme);
+                      const tone = resolveMenuTone(getMenuIconTone(menu.key), isDarkModeActive ? 'dark' : 'light');
                       const isOpeningThisMenu = openingMenuKey === menu.key;
                       const menuIcon = getMenuIcon(menu);
                       return (
@@ -3003,7 +3004,7 @@ export default function HomeScreen() {
 
         <View
           style={{
-            backgroundColor: resolvedTheme === 'dark' ? colors.surface : BRAND_COLORS.navy,
+            backgroundColor: isDarkModeActive ? colors.surface : BRAND_COLORS.navy,
             borderRadius: 24,
             paddingHorizontal: 16,
             paddingVertical: 12,
@@ -3012,28 +3013,28 @@ export default function HomeScreen() {
             justifyContent: 'space-between',
             shadowColor: '#0b1b42',
             shadowOffset: { width: 0, height: 7 },
-            shadowOpacity: resolvedTheme === 'dark' ? 0.32 : 0.2,
+            shadowOpacity: isDarkModeActive ? 0.32 : 0.2,
             shadowRadius: 10,
             elevation: 10,
-            borderWidth: resolvedTheme === 'dark' ? 1 : 0,
-            borderColor: resolvedTheme === 'dark' ? colors.border : 'transparent',
+            borderWidth: isDarkModeActive ? 1 : 0,
+            borderColor: isDarkModeActive ? colors.border : 'transparent',
           }}
         >
           <Pressable onPress={() => router.replace('/home')} style={{ alignItems: 'center', width: 56 }}>
             <Feather name="home" size={17} color={BRAND_COLORS.gold} />
-            <Text style={{ color: resolvedTheme === 'dark' ? colors.text : BRAND_COLORS.white, fontSize: 11, marginTop: 2 }}>Home</Text>
+            <Text style={{ color: isDarkModeActive ? colors.text : BRAND_COLORS.white, fontSize: 11, marginTop: 2 }}>Home</Text>
           </Pressable>
 
           <Pressable onPress={() => router.push('/profile')} style={{ alignItems: 'center', width: 56 }}>
-            <Feather name="user" size={17} color={resolvedTheme === 'dark' ? colors.text : BRAND_COLORS.white} />
-            <Text style={{ color: resolvedTheme === 'dark' ? colors.text : BRAND_COLORS.white, fontSize: 11, marginTop: 2 }}>Profil</Text>
+            <Feather name="user" size={17} color={isDarkModeActive ? colors.text : BRAND_COLORS.white} />
+            <Text style={{ color: isDarkModeActive ? colors.text : BRAND_COLORS.white, fontSize: 11, marginTop: 2 }}>Profil</Text>
           </Pressable>
 
           <View style={{ width: 58 }} />
 
           <Pressable onPress={handleNotificationPress} style={{ alignItems: 'center', width: 56 }}>
             <View style={{ position: 'relative' }}>
-              <Feather name="bell" size={17} color={resolvedTheme === 'dark' ? colors.text : BRAND_COLORS.white} />
+              <Feather name="bell" size={17} color={isDarkModeActive ? colors.text : BRAND_COLORS.white} />
               {unreadNotificationCount > 0 ? (
                 <View
                   style={{
@@ -3045,7 +3046,7 @@ export default function HomeScreen() {
                     borderRadius: 999,
                     backgroundColor: '#ef4444',
                     borderWidth: 1,
-                    borderColor: resolvedTheme === 'dark' ? colors.surface : BRAND_COLORS.navy,
+                    borderColor: isDarkModeActive ? colors.surface : BRAND_COLORS.navy,
                     paddingHorizontal: 4,
                     alignItems: 'center',
                     justifyContent: 'center',
@@ -3057,12 +3058,12 @@ export default function HomeScreen() {
                 </View>
               ) : null}
             </View>
-            <Text style={{ color: resolvedTheme === 'dark' ? colors.text : BRAND_COLORS.white, fontSize: 11, marginTop: 2 }}>Notifikasi</Text>
+            <Text style={{ color: isDarkModeActive ? colors.text : BRAND_COLORS.white, fontSize: 11, marginTop: 2 }}>Notifikasi</Text>
           </Pressable>
 
           <Pressable onPress={handleLogout} disabled={isLoggingOut} style={{ alignItems: 'center', width: 56 }}>
-            <Feather name="log-out" size={17} color={resolvedTheme === 'dark' ? colors.text : BRAND_COLORS.white} />
-            <Text style={{ color: resolvedTheme === 'dark' ? colors.text : BRAND_COLORS.white, fontSize: 11, marginTop: 2 }}>
+            <Feather name="log-out" size={17} color={isDarkModeActive ? colors.text : BRAND_COLORS.white} />
+            <Text style={{ color: isDarkModeActive ? colors.text : BRAND_COLORS.white, fontSize: 11, marginTop: 2 }}>
               {isLoggingOut ? 'Proses' : 'Logout'}
             </Text>
           </Pressable>
@@ -3079,7 +3080,7 @@ export default function HomeScreen() {
             borderRadius: 999,
             backgroundColor: colors.surface,
             borderWidth: 5,
-            borderColor: resolvedTheme === 'dark' ? colors.background : '#e9eefb',
+            borderColor: isDarkModeActive ? colors.background : '#e9eefb',
             alignItems: 'center',
             justifyContent: 'center',
           }}
@@ -3089,12 +3090,12 @@ export default function HomeScreen() {
               width: 42,
               height: 42,
               borderRadius: 999,
-              backgroundColor: resolvedTheme === 'dark' ? colors.surfaceMuted : BRAND_COLORS.navy,
+              backgroundColor: isDarkModeActive ? colors.surfaceMuted : BRAND_COLORS.navy,
               alignItems: 'center',
               justifyContent: 'center',
             }}
           >
-            <Feather name="search" size={18} color={resolvedTheme === 'dark' ? colors.text : BRAND_COLORS.white} />
+            <Feather name="search" size={18} color={isDarkModeActive ? colors.text : BRAND_COLORS.white} />
           </View>
         </Pressable>
       </View>
@@ -3136,9 +3137,9 @@ export default function HomeScreen() {
                 width: 44,
                 height: 44,
                 borderRadius: 999,
-                backgroundColor: resolvedTheme === 'dark' ? colors.primarySoft : '#eff6ff',
+                backgroundColor: isDarkModeActive ? colors.primarySoft : '#eff6ff',
                 borderWidth: 1,
-                borderColor: resolvedTheme === 'dark' ? colors.border : '#bfdbfe',
+                borderColor: isDarkModeActive ? colors.border : '#bfdbfe',
                 alignItems: 'center',
                 justifyContent: 'center',
                 marginBottom: 10,
