@@ -1993,8 +1993,30 @@ function extractMonitoringSummaryFromAnswers(rawAnswers: unknown): SessionMonito
     };
 }
 
-function getSessionPriority(status: unknown): number {
+function resolveEffectiveSessionStatus(
+    status: unknown,
+    answers?: unknown,
+    submitTime?: unknown,
+): 'COMPLETED' | 'TIMEOUT' | 'IN_PROGRESS' | 'NOT_STARTED' | string {
     const normalized = String(status || '').toUpperCase();
+    if (normalized === 'COMPLETED' || normalized === 'TIMEOUT') return normalized;
+
+    const monitoring = extractMonitoringSummaryFromAnswers(answers);
+    if (monitoring.totalViolations >= 4) return 'TIMEOUT';
+    if (normalized === 'IN_PROGRESS' && submitTime) return 'COMPLETED';
+    if (normalized === 'IN_PROGRESS' || normalized === 'NOT_STARTED') return normalized;
+    return normalized || 'NOT_STARTED';
+}
+
+function getSessionPriority(sessionLike: { status?: unknown; answers?: unknown; submitTime?: unknown } | unknown): number {
+    const normalized =
+        sessionLike && typeof sessionLike === 'object'
+            ? resolveEffectiveSessionStatus(
+                  (sessionLike as { status?: unknown }).status,
+                  (sessionLike as { answers?: unknown }).answers,
+                  (sessionLike as { submitTime?: unknown }).submitTime,
+              )
+            : String(sessionLike || '').toUpperCase();
     if (normalized === 'COMPLETED') return 5;
     if (normalized === 'TIMEOUT') return 4;
     if (normalized === 'IN_PROGRESS') return 3;
@@ -2002,12 +2024,14 @@ function getSessionPriority(status: unknown): number {
     return 1;
 }
 
-function pickBestSession<T extends { status?: unknown; updatedAt?: unknown; submitTime?: unknown; startTime?: unknown }>(
+function pickBestSession<
+    T extends { status?: unknown; answers?: unknown; updatedAt?: unknown; submitTime?: unknown; startTime?: unknown },
+>(
     sessions: T[] | null | undefined,
 ): T | null {
     if (!Array.isArray(sessions) || sessions.length === 0) return null;
     const sorted = [...sessions].sort((a, b) => {
-        const rankDiff = getSessionPriority(b.status) - getSessionPriority(a.status);
+        const rankDiff = getSessionPriority(b) - getSessionPriority(a);
         if (rankDiff !== 0) return rankDiff;
         const updatedDiff = new Date(String(b.updatedAt || 0)).getTime() - new Date(String(a.updatedAt || 0)).getTime();
         if (updatedDiff !== 0) return updatedDiff;
@@ -7416,6 +7440,7 @@ export const getAvailableExams = asyncHandler(async (req: Request, res: Response
                 endTime: true,
                 submitTime: true,
                 status: true,
+                answers: true,
                 score: true,
                 updatedAt: true,
             },
@@ -7942,10 +7967,14 @@ export const getAvailableExams = asyncHandler(async (req: Request, res: Response
         }
 
         const session = pickBestSession(schedule.sessions);
-        const normalizedSessionStatus = String(session?.status || '').toUpperCase();
+        const normalizedSessionStatus = resolveEffectiveSessionStatus(
+            session?.status,
+            session?.answers,
+            session?.submitTime,
+        );
         const hasSessionAttempt = Array.isArray(schedule.sessions)
             ? schedule.sessions.some((row) => {
-                  const rowStatus = String(row?.status || '').toUpperCase();
+                  const rowStatus = resolveEffectiveSessionStatus(row?.status, row?.answers, row?.submitTime);
                   return (
                       Boolean(row?.startTime) ||
                       rowStatus === 'IN_PROGRESS' ||
@@ -8150,8 +8179,22 @@ async function buildStartExamPayload(params: {
     // Create or get session (race-safe for concurrent start requests).
     let session = await findStudentExamSessionSummary(schedule.id, studentId);
 
-    if (session && (session.status === 'COMPLETED' || session.status === 'TIMEOUT')) {
-        throw new ApiError(400, 'Anda sudah mengerjakan ujian ini.');
+    if (session) {
+        const effectiveSessionStatus = resolveEffectiveSessionStatus(session.status, session.answers, session.submitTime);
+        if (effectiveSessionStatus === 'TIMEOUT' && String(session.status || '').toUpperCase() !== 'TIMEOUT') {
+            session = await prisma.studentExamSession.update({
+                where: { id: session.id },
+                data: {
+                    status: 'TIMEOUT',
+                    submitTime: session.submitTime || new Date(),
+                    endTime: session.endTime || new Date(),
+                },
+                select: studentExamSessionSelect,
+            });
+        }
+        if (effectiveSessionStatus === 'COMPLETED' || effectiveSessionStatus === 'TIMEOUT') {
+            throw new ApiError(400, 'Anda sudah mengerjakan ujian ini.');
+        }
     }
 
     const resumeInProgressSession =
@@ -8536,7 +8579,7 @@ export const submitAnswers = asyncHandler(async (req: Request, res: Response) =>
 
     if (!session) throw new ApiError(404, 'Session not found');
 
-    if (!isFinished && (session.status === 'COMPLETED' || session.status === 'TIMEOUT' || Boolean(session.submitTime))) {
+    if (session.status === 'COMPLETED' || session.status === 'TIMEOUT' || Boolean(session.submitTime)) {
         return res.json(new ApiResponse(200, session, 'Session already finished'));
     }
 
@@ -8548,6 +8591,9 @@ export const submitAnswers = asyncHandler(async (req: Request, res: Response) =>
         ...(answers && typeof answers === 'object' ? (answers as Record<string, unknown>) : {}),
         ...(previousQuestionSet ? { __questionSet: previousQuestionSet } : {}),
     });
+    const incomingMonitoring = extractMonitoringSummaryFromAnswers(normalizedIncomingAnswers);
+    const shouldForceTimeout = incomingMonitoring.totalViolations >= 4;
+    const shouldCloseSession = isFinished || shouldForceTimeout;
 
     if (!isFinished) {
         const unchangedPayload =
@@ -8574,7 +8620,7 @@ export const submitAnswers = asyncHandler(async (req: Request, res: Response) =>
           }
         | null = null;
     
-    if (isFinished) {
+    if (shouldCloseSession) {
         // Get Exam Packet Questions
         finishedSchedule = await prisma.examSchedule.findUnique({
             where: { id: scheduleId },
@@ -8618,7 +8664,7 @@ export const submitAnswers = asyncHandler(async (req: Request, res: Response) =>
                  }
              }
 
-             if (!forceSubmit) {
+             if (!forceSubmit && !shouldForceTimeout) {
                  const requiredQuestionIds = scoringQuestions
                      .map((question: any) => String(question?.id || '').trim())
                      .filter(Boolean);
@@ -8641,21 +8687,21 @@ export const submitAnswers = asyncHandler(async (req: Request, res: Response) =>
         where: { id: session.id },
         data: {
             answers: normalizedIncomingAnswers as Prisma.InputJsonValue,
-            status: isFinished ? 'COMPLETED' : 'IN_PROGRESS',
-            submitTime: isFinished ? new Date() : undefined,
-            endTime: isFinished ? new Date() : undefined,
+            status: shouldForceTimeout ? 'TIMEOUT' : shouldCloseSession ? 'COMPLETED' : 'IN_PROGRESS',
+            submitTime: shouldCloseSession ? new Date() : undefined,
+            endTime: shouldCloseSession ? new Date() : undefined,
             score: finalScore
         }
     });
 
-    if (isFinished && finishedSchedule?.packet?.id) {
+    if (shouldCloseSession && finishedSchedule?.packet?.id) {
         invalidatePacketItemAnalysisCacheByPacket(finishedSchedule.packet.id);
         invalidatePacketSubmissionsCacheByPacket(finishedSchedule.packet.id);
     }
     invalidateSessionDetailCacheBySession(session.id);
 
     // Auto-fill StudentGrade if finished and score calculated
-    if (isFinished && finalScore !== undefined && accessRole === 'STUDENT') {
+    if (shouldCloseSession && finalScore !== undefined && accessRole === 'STUDENT') {
         try {
             if (finishedSchedule?.packet) {
                 const { subjectId, academicYearId, semester, type, programCode } = finishedSchedule.packet;
@@ -8809,7 +8855,7 @@ export const submitAnswers = asyncHandler(async (req: Request, res: Response) =>
     }
 
     if (
-        isFinished &&
+        shouldCloseSession &&
         finalScore !== undefined &&
         accessRole === 'UMUM' &&
         Number.isFinite(Number(finishedSchedule?.jobVacancyId || 0))

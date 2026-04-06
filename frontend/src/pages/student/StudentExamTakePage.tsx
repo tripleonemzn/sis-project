@@ -1668,7 +1668,7 @@ export default function StudentExamTakePage() {
 	                    <label 
 	                      key={optionId}
                       className={`
-                        flex items-start gap-4 p-4 rounded-xl border-2 cursor-pointer transition-all hover:bg-gray-50 min-w-0
+                        flex items-start gap-3 p-3.5 rounded-xl border-2 cursor-pointer transition-all hover:bg-gray-50 min-w-0
                         ${isSelected 
                           ? 'border-blue-500 bg-blue-50/50' 
                           : 'border-gray-200'}
@@ -1687,24 +1687,33 @@ export default function StudentExamTakePage() {
                       <div className="flex-1 min-w-0">
                         {/* Support both option_text (legacy) and content (new) */}
 	                        <div
-	                          className="font-medium text-gray-700 break-words notranslate [&_ol]:list-decimal [&_ol]:pl-6 [&_ol]:ml-2 [&_ul]:list-disc [&_ul]:pl-6 [&_ul]:ml-2 [&_li]:my-1"
+	                          className="text-gray-700 break-words notranslate [&_ol]:list-decimal [&_ol]:pl-6 [&_ol]:ml-2 [&_ul]:list-disc [&_ul]:pl-6 [&_ul]:ml-2 [&_li]:my-1"
 	                          style={{ overflowWrap: 'anywhere', wordBreak: 'break-word' }}
                             translate="no"
 	                          dangerouslySetInnerHTML={{ __html: optionHtmlById.get(optionId) || '' }}
 	                        ></div>
 	                        {optionImageSrc && (
-                            <button
-                              type="button"
-                              onClick={() => setPreviewImageSrc(optionImageSrc)}
-                              className="mt-2 inline-flex focus:outline-none"
-                            >
-	                            <QuestionMediaImage
-	                              src={optionImageSrc}
-	                              alt="Option" 
-	                              preferThumbnail
-	                              className="max-h-40 rounded border border-gray-200 cursor-zoom-in"
-                            />
-                            </button>
+                            <div className="mt-2 flex flex-wrap items-center gap-3">
+                              <button
+                                type="button"
+                                onClick={() => setPreviewImageSrc(optionImageSrc)}
+                                className="inline-flex focus:outline-none"
+                              >
+	                              <QuestionMediaImage
+	                                src={optionImageSrc}
+	                                alt="Option" 
+	                                preferThumbnail
+	                                className="max-h-28 rounded border border-gray-200 cursor-zoom-in"
+                              />
+                              </button>
+                              <button
+                                type="button"
+                                onClick={() => setPreviewImageSrc(optionImageSrc)}
+                                className="inline-flex items-center rounded-full border border-blue-200 bg-blue-50 px-3 py-1 text-xs font-medium text-blue-700 hover:bg-blue-100"
+                              >
+                                Perbesar gambar
+                              </button>
+                            </div>
                         )}
                       </div>
                     </label>

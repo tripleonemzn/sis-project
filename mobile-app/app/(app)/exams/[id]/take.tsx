@@ -12,6 +12,7 @@ import { useAuth } from '../../../../src/features/auth/AuthProvider';
 import { examApi } from '../../../../src/features/exams/examApi';
 import { ExamQuestion, ExamQuestionOption, ExamQuestionType } from '../../../../src/features/exams/types';
 import { useStudentExamStartQuery } from '../../../../src/features/exams/useStudentExamStartQuery';
+import { ENV } from '../../../../src/config/env';
 import { getStandardPagePadding } from '../../../../src/lib/ui/pageLayout';
 
 function parseScheduleId(raw: string | string[] | undefined): number | null {
@@ -20,6 +21,14 @@ function parseScheduleId(raw: string | string[] | undefined): number | null {
   const parsed = Number(value);
   if (Number.isNaN(parsed) || parsed <= 0) return null;
   return parsed;
+}
+
+function toMediaUrl(url?: string | null) {
+  const normalized = String(url || '').trim();
+  if (!normalized) return '';
+  if (/^https?:\/\//i.test(normalized)) return normalized;
+  const base = ENV.API_BASE_URL.replace(/\/api\/?$/, '');
+  return normalized.startsWith('/') ? `${base}${normalized}` : `${base}/${normalized}`;
 }
 
 type MonitoringStats = {
@@ -34,6 +43,30 @@ type MonitoringStats = {
   currentQuestionId: string | null;
   lastSyncAt: string | null;
 };
+
+function extractPersistedMonitoring(rawAnswers: Record<string, unknown>): MonitoringStats | null {
+  const source = rawAnswers.__monitoring;
+  if (!source || typeof source !== 'object' || Array.isArray(source)) return null;
+  const stats = source as Record<string, unknown>;
+  const totalViolations = Number(stats.totalViolations || 0);
+  const tabSwitchCount = Number(stats.tabSwitchCount || 0);
+  const fullscreenExitCount = Number(stats.fullscreenExitCount || 0);
+  const appSwitchCount = Number(stats.appSwitchCount || 0);
+  const currentQuestionIndex = Number(stats.currentQuestionIndex || 0);
+  const currentQuestionNumber = Number(stats.currentQuestionNumber || 1);
+  return {
+    totalViolations: Number.isFinite(totalViolations) ? Math.max(0, totalViolations) : 0,
+    tabSwitchCount: Number.isFinite(tabSwitchCount) ? Math.max(0, tabSwitchCount) : 0,
+    fullscreenExitCount: Number.isFinite(fullscreenExitCount) ? Math.max(0, fullscreenExitCount) : 0,
+    appSwitchCount: Number.isFinite(appSwitchCount) ? Math.max(0, appSwitchCount) : 0,
+    lastViolationType: stats.lastViolationType ? String(stats.lastViolationType) : null,
+    lastViolationAt: stats.lastViolationAt ? String(stats.lastViolationAt) : null,
+    currentQuestionIndex: Number.isFinite(currentQuestionIndex) ? Math.max(0, currentQuestionIndex) : 0,
+    currentQuestionNumber: Number.isFinite(currentQuestionNumber) ? Math.max(1, currentQuestionNumber) : 1,
+    currentQuestionId: stats.currentQuestionId ? String(stats.currentQuestionId) : null,
+    lastSyncAt: stats.lastSyncAt ? String(stats.lastSyncAt) : null,
+  };
+}
 
 function normalizeQuestionType(question: ExamQuestion): ExamQuestionType {
   const raw = String(question.question_type || question.type || '').toUpperCase();
@@ -167,6 +200,32 @@ function getYoutubeEmbedUrl(url?: string | null) {
   return '';
 }
 
+function getYoutubePlaybackUrl(url?: string | null) {
+  const raw = String(url || '').trim();
+  if (!raw) return '';
+
+  try {
+    const parsed = new URL(raw);
+    if (parsed.hostname.includes('youtu.be')) {
+      const id = parsed.pathname.replace(/\//g, '').trim();
+      return id ? `https://www.youtube.com/watch?v=${id}` : '';
+    }
+    if (parsed.hostname.includes('youtube.com')) {
+      const id = parsed.searchParams.get('v');
+      if (id) return `https://www.youtube.com/watch?v=${id}`;
+      const parts = parsed.pathname.split('/').filter(Boolean);
+      const embedIndex = parts.findIndex((part) => part === 'embed' || part === 'shorts');
+      if (embedIndex >= 0 && parts[embedIndex + 1]) {
+        return `https://www.youtube.com/watch?v=${parts[embedIndex + 1]}`;
+      }
+    }
+  } catch {
+    return '';
+  }
+
+  return raw;
+}
+
 function normalizeSubjectToken(value: string | null | undefined): string {
   return String(value || '')
     .trim()
@@ -289,6 +348,10 @@ export default function StudentExamTakeScreen() {
     }),
     [persistedAnswers, answers],
   );
+  const persistedMonitoring = useMemo(
+    () => extractPersistedMonitoring(persistedAnswers),
+    [persistedAnswers],
+  );
   const remainingSeconds = useMemo(() => {
     if (!startQuery.data) return 0;
     const durationMinutes =
@@ -300,6 +363,12 @@ export default function StudentExamTakeScreen() {
     const endAt = startedAt + durationMinutes * 60 * 1000;
     return Math.max(0, Math.floor((endAt - nowMs) / 1000));
   }, [startQuery.data, nowMs]);
+  const displayViolations = Math.max(
+    violations,
+    violationsRef.current,
+    monitoringStatsRef.current.totalViolations,
+    persistedMonitoring?.totalViolations || 0,
+  );
 
   const buildSubmissionAnswers = useCallback((answerSource: Record<string, unknown>) => {
     const monitoringPayload: MonitoringStats = {
@@ -336,6 +405,19 @@ export default function StudentExamTakeScreen() {
   }, [violations]);
 
   useEffect(() => {
+    if (!persistedMonitoring) return;
+    monitoringStatsRef.current = {
+      ...monitoringStatsRef.current,
+      ...persistedMonitoring,
+    };
+    violationsRef.current = Math.max(violationsRef.current, persistedMonitoring.totalViolations);
+    setViolations((prev) => Math.max(prev, persistedMonitoring.totalViolations));
+    if (persistedMonitoring.lastViolationType) {
+      setLastViolationMessage((prev) => prev || `Pelanggaran ${Math.min(persistedMonitoring.totalViolations, 4)}/3: ${persistedMonitoring.lastViolationType}`);
+    }
+  }, [persistedMonitoring]);
+
+  useEffect(() => {
     monitoringStatsRef.current = {
       ...monitoringStatsRef.current,
       currentQuestionIndex: currentIndex,
@@ -360,10 +442,22 @@ export default function StudentExamTakeScreen() {
 
     try {
       if (!isFinalSubmit) setAutosaveState('saving');
-      await submitMutation.mutateAsync({
+      const savedSession = await submitMutation.mutateAsync({
         answers: buildSubmissionAnswers(answersRef.current),
         isFinalSubmit,
       });
+      const savedStatus = String(savedSession?.status || '').toUpperCase();
+      if (!isFinalSubmit && savedStatus === 'TIMEOUT') {
+        setAutosaveState('saved');
+        setIsFinished(true);
+        Alert.alert('Ujian Ditutup', 'Sesi ujian ditutup otomatis karena pelanggaran berulang.', [
+          {
+            text: 'OK',
+            onPress: () => router.replace('/exams'),
+          },
+        ]);
+        return true;
+      }
       if (!isFinalSubmit) {
         setAutosaveState('saved');
         setLastSavedAt(new Date().toISOString());
@@ -394,6 +488,32 @@ export default function StudentExamTakeScreen() {
       return false;
     }
   }, [buildSubmissionAnswers, isFinished, router, submitMutation]);
+
+  const toggleOptionValue = useCallback(
+    (questionId: string, optionId: string, type: ExamQuestionType) => {
+      if (type === 'COMPLEX_MULTIPLE_CHOICE') {
+        setAnswers((prev) => {
+          const existing = Array.isArray(prev[questionId]) ? [...(prev[questionId] as string[])] : [];
+          if (existing.includes(optionId)) {
+            return {
+              ...prev,
+              [questionId]: existing.filter((value) => value !== optionId),
+            };
+          }
+          return {
+            ...prev,
+            [questionId]: [...existing, optionId],
+          };
+        });
+        return;
+      }
+      setAnswers((prev) => ({
+        ...prev,
+        [questionId]: optionId,
+      }));
+    },
+    [],
+  );
 
   const triggerViolationAutoSubmit = useCallback((reason: string) => {
     if (violationSubmitGuardRef.current || isFinished || autoSubmitGuardRef.current) return;
@@ -447,12 +567,13 @@ export default function StudentExamTakeScreen() {
     violationsRef.current = nextCount;
     setViolations(nextCount);
     setLastViolationMessage(`Pelanggaran ${Math.min(nextCount, 4)}/3: ${type}`);
-    void saveProgress(false);
 
     if (nextCount >= 4) {
       triggerViolationAutoSubmit(type);
       return;
     }
+
+    void saveProgress(false);
 
     Alert.alert(
       'Pelanggaran Terdeteksi',
@@ -568,7 +689,7 @@ export default function StudentExamTakeScreen() {
   const currentVideoUrl = currentQuestion?.question_video_url || currentQuestion?.video_url || '';
   const currentVideoType = currentQuestion?.question_video_type || null;
   const currentVideoEmbedUrl =
-    currentVideoType === 'youtube' ? getYoutubeEmbedUrl(currentVideoUrl) : String(currentVideoUrl || '').trim();
+    currentVideoType === 'youtube' ? getYoutubePlaybackUrl(currentVideoUrl) : String(currentVideoUrl || '').trim();
   const resolvedTakeSubject = useMemo(
     () => resolveTakeExamSubject(startQuery.data?.packet || {}),
     [startQuery.data?.packet],
@@ -796,8 +917,8 @@ export default function StudentExamTakeScreen() {
           <View style={{ backgroundColor: '#eff6ff', borderColor: '#bfdbfe', borderWidth: 1, borderRadius: 999, paddingHorizontal: 10, paddingVertical: 6 }}>
             <Text style={{ color: '#1d4ed8', fontSize: 12, fontWeight: '700' }}>Mulai {formatDateTime(startQuery.data.session.startTime)}</Text>
           </View>
-          <View style={{ backgroundColor: violations > 0 ? '#fff1f2' : '#f8fafc', borderColor: violations > 0 ? '#fecdd3' : '#e2e8f0', borderWidth: 1, borderRadius: 999, paddingHorizontal: 10, paddingVertical: 6 }}>
-            <Text style={{ color: violations > 0 ? '#be123c' : '#475569', fontSize: 12, fontWeight: '700' }}>Pelanggaran {violations}/3</Text>
+          <View style={{ backgroundColor: displayViolations > 0 ? '#fff1f2' : '#f8fafc', borderColor: displayViolations > 0 ? '#fecdd3' : '#e2e8f0', borderWidth: 1, borderRadius: 999, paddingHorizontal: 10, paddingVertical: 6 }}>
+            <Text style={{ color: displayViolations > 0 ? '#be123c' : '#475569', fontSize: 12, fontWeight: '700' }}>Pelanggaran {displayViolations}/3</Text>
           </View>
         </View>
         <Text style={{ color: '#475569', fontSize: 12, marginTop: 10 }}>
@@ -960,30 +1081,7 @@ export default function StudentExamTakeScreen() {
               return (
                 <Pressable
                   key={option.id}
-                  onPress={() => {
-                    if (currentType === 'COMPLEX_MULTIPLE_CHOICE') {
-                      setAnswers((prev) => {
-                        const existing = Array.isArray(prev[currentQuestion.id])
-                          ? [...(prev[currentQuestion.id] as string[])]
-                          : [];
-                        if (existing.includes(option.id)) {
-                          return {
-                            ...prev,
-                            [currentQuestion.id]: existing.filter((value) => value !== option.id),
-                          };
-                        }
-                        return {
-                          ...prev,
-                          [currentQuestion.id]: [...existing, option.id],
-                        };
-                      });
-                      return;
-                    }
-                    setAnswers((prev) => ({
-                      ...prev,
-                      [currentQuestion.id]: option.id,
-                    }));
-                  }}
+                  onPress={() => toggleOptionValue(currentQuestion.id, option.id, currentType)}
                   style={{
                     borderWidth: 1,
                     borderColor: selected ? '#1d4ed8' : '#cbd5e1',
@@ -996,11 +1094,60 @@ export default function StudentExamTakeScreen() {
                 >
                   <ExamHtmlContent
                     html={option.option_text || option.content || null}
-                    imageUrl={option.option_image_url || option.image_url}
-                    minHeight={56}
-                    onImagePress={(src) => setPreviewImageSrc(src)}
+                    minHeight={24}
                     renderMode="native"
                   />
+                  {option.option_image_url || option.image_url ? (
+                    <View style={{ marginTop: 8 }}>
+                      <Pressable
+                        onPress={() => setPreviewImageSrc(toMediaUrl(option.option_image_url || option.image_url || undefined))}
+                        style={{ alignSelf: 'flex-start' }}
+                      >
+                        <Image
+                          source={{ uri: toMediaUrl(option.option_image_url || option.image_url || undefined) }}
+                          resizeMode="contain"
+                          style={{
+                            width: 124,
+                            height: 92,
+                            borderRadius: 10,
+                            backgroundColor: '#f8fafc',
+                            borderWidth: 1,
+                            borderColor: '#dbeafe',
+                          }}
+                        />
+                      </Pressable>
+                      <View style={{ flexDirection: 'row', flexWrap: 'wrap', gap: 8, marginTop: 8 }}>
+                        <Pressable
+                          onPress={() => toggleOptionValue(currentQuestion.id, option.id, currentType)}
+                          style={{
+                            borderWidth: 1,
+                            borderColor: selected ? '#1d4ed8' : '#cbd5e1',
+                            backgroundColor: selected ? '#dbeafe' : '#ffffff',
+                            borderRadius: 999,
+                            paddingHorizontal: 10,
+                            paddingVertical: 6,
+                          }}
+                        >
+                          <Text style={{ color: selected ? '#1d4ed8' : '#334155', fontSize: 12, fontWeight: '700' }}>
+                            {selected ? 'Jawaban dipilih' : 'Pilih jawaban'}
+                          </Text>
+                        </Pressable>
+                        <Pressable
+                          onPress={() => setPreviewImageSrc(toMediaUrl(option.option_image_url || option.image_url || undefined))}
+                          style={{
+                            borderWidth: 1,
+                            borderColor: '#bfdbfe',
+                            backgroundColor: '#eff6ff',
+                            borderRadius: 999,
+                            paddingHorizontal: 10,
+                            paddingVertical: 6,
+                          }}
+                        >
+                          <Text style={{ color: '#1d4ed8', fontSize: 12, fontWeight: '700' }}>Perbesar gambar</Text>
+                        </Pressable>
+                      </View>
+                    </View>
+                  ) : null}
                 </Pressable>
               );
             })}
@@ -1117,6 +1264,8 @@ export default function StudentExamTakeScreen() {
                 mediaPlaybackRequiresUserAction={false}
                 setSupportMultipleWindows={false}
                 allowsFullscreenVideo={false}
+                userAgent="Mozilla/5.0 (Linux; Android 13; Mobile) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/123.0.0.0 Mobile Safari/537.36"
+                startInLoadingState
               />
             ) : (
               <WebView
