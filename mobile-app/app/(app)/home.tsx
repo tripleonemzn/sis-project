@@ -267,9 +267,6 @@ function resolveDashboardBadgeIconColor(color: string, resolvedTheme: 'light' | 
   if (resolvedTheme === 'dark') {
     return resolveDashboardAccentColor(color, resolvedTheme);
   }
-  if (color === BRAND_COLORS.gold || color === BRAND_COLORS.teal) {
-    return BRAND_COLORS.textDark;
-  }
   return BRAND_COLORS.white;
 }
 
