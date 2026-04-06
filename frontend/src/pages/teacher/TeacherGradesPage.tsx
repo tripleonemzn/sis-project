@@ -115,6 +115,36 @@ const normalizeLegacySeriesValues = (rawValues: unknown[]): number[] =>
 const isLegacyZeroPaddedSeries = (values: number[]) =>
   Array.isArray(values) && values.length === 6 && values.every((value) => value === 0);
 
+const sanitizeLegacySeriesForDisplay = (rawValues: unknown[], storedScore?: unknown): number[] => {
+  const values = normalizeLegacySeriesValues(rawValues);
+  if (values.length === 0 || isLegacyZeroPaddedSeries(values)) return [];
+
+  const trimmedTrailingPadding = (() => {
+    let lastNonZeroIndex = -1;
+    values.forEach((value, index) => {
+      if (value !== 0) lastNonZeroIndex = index;
+    });
+    if (lastNonZeroIndex < 0) return [];
+    return values.slice(0, lastNonZeroIndex + 1);
+  })();
+
+  const stored = Number(storedScore);
+  const averageAll = averageValues(values);
+  const averageTrimmed = averageValues(trimmedTrailingPadding);
+  if (
+    trimmedTrailingPadding.length > 0 &&
+    trimmedTrailingPadding.length < values.length &&
+    (!Number.isFinite(stored) ||
+      averageAll === null ||
+      Math.abs(averageAll - stored) > 0.01 ||
+      (averageTrimmed !== null && Math.abs(averageTrimmed - stored) <= 0.01))
+  ) {
+    return trimmedTrailingPadding;
+  }
+
+  return values;
+};
+
 const averageValues = (values: number[]): number | null => {
   if (!Array.isArray(values) || values.length === 0) return null;
   return values.reduce((acc, item) => acc + item, 0) / values.length;
@@ -260,6 +290,12 @@ const resolveReportSlotScore = (
     return Number(fallback);
   }
   return null;
+};
+
+const buildFormativeReferenceSlotCode = (slotCode: string, stage: 'MIDTERM' | 'FINAL') => {
+  const normalized = normalizeSlotCode(slotCode);
+  const suffix = stage === 'MIDTERM' ? 'SBTS_REF' : 'FINAL_REF';
+  return normalized ? `${normalized}_${suffix}` : suffix;
 };
 
 export const TeacherGradesPage = () => {
@@ -795,7 +831,7 @@ export const TeacherGradesPage = () => {
         if (dynamicSeries.length > 0) {
           formativeSeriesInput = isLegacyZeroPaddedSeries(dynamicSeries) ? '' : dynamicSeries.join(', ');
         } else {
-          const legacyValues = [
+          const legacyValues = sanitizeLegacySeriesForDisplay([
             formatifData?.nf1,
             formatifData?.nf2,
             formatifData?.nf3,
@@ -808,19 +844,24 @@ export const TeacherGradesPage = () => {
             existing?.nf4,
             existing?.nf5,
             existing?.nf6,
-          ];
-          const legacySeries = normalizeLegacySeriesValues(legacyValues);
+          ], existing?.score ?? formatifData?.score ?? null);
+          const legacySeries = legacyValues;
           if (!isLegacyZeroPaddedSeries(legacySeries) && legacySeries.length > 0) {
             formativeSeriesInput = legacySeries.join(', ');
           }
         }
 
+        const formativeSeriesValues = parseFormativeSeriesInput(formativeSeriesInput).values;
+        const formativeAverage = averageValues(formativeSeriesValues);
+
         return {
           student_id: student.id,
           score:
-            existing?.score === null || existing?.score === undefined || existing?.score === ''
-              ? ''
-              : String(existing.score),
+            formativeAverage !== null
+              ? formativeAverage.toFixed(2)
+              : existing?.score === null || existing?.score === undefined || existing?.score === ''
+                ? ''
+                : String(existing.score),
           formativeSeriesInput,
         };
       });
@@ -1122,16 +1163,10 @@ export const TeacherGradesPage = () => {
                 throw new Error('Daftar nilai formatif harus berupa angka 0-100, dipisahkan koma.');
             }
             const seriesValues = parsedSeries.values;
-            let scoreValue: number | null = null;
-            if (seriesValues.length > 0) {
-                scoreValue = seriesValues.reduce((acc, value) => acc + value, 0) / seriesValues.length;
-            } else if (g.score !== '') {
-                const parsed = Number(g.score);
-                if (!Number.isFinite(parsed) || parsed < 0 || parsed > 100) {
-                    throw new Error('Nilai formatif harus berupa angka 0-100.');
-                }
-                scoreValue = parsed;
-            }
+            const scoreValue =
+              seriesValues.length > 0
+                ? seriesValues.reduce((acc, value) => acc + value, 0) / seriesValues.length
+                : null;
 
             return {
                 student_id: g.student_id,
@@ -1372,6 +1407,16 @@ export const TeacherGradesPage = () => {
                                   
                                   const report = reportGradeMap[student.id];
 	                                  const backendFormative = resolveReportSlotScore(report, formativePrimarySlot, report?.formatifScore ?? null);
+	                                  const backendMidtermFormativeReference = resolveReportSlotScore(
+	                                    report,
+	                                    buildFormativeReferenceSlotCode(formativePrimarySlot, 'MIDTERM'),
+	                                    backendFormative,
+	                                  );
+	                                  const backendFinalFormativeReference = resolveReportSlotScore(
+	                                    report,
+	                                    buildFormativeReferenceSlotCode(formativePrimarySlot, 'FINAL'),
+	                                    backendFormative,
+	                                  );
 	                                  const backendSbts = resolveReportSlotScore(report, midtermPrimarySlot, report?.sbtsScore ?? null);
 	                                  const backendFinal = report?.finalScore ?? null;
 	                                  const currentScore = (() => {
@@ -1398,11 +1443,13 @@ export const TeacherGradesPage = () => {
                                     !hasDraftFormativeValues && Number(backendFormative) === 0
                                       ? null
                                       : backendFormative;
-                                  const previewFormative = draftFormativeAverage ?? normalizedBackendFormative;
-                                  const displayFormative =
-                                    previewFormative !== null && previewFormative !== undefined
-                                      ? previewFormative.toFixed(2)
-                                      : '-';
+	                                  const previewFormative = draftFormativeAverage ?? normalizedBackendFormative;
+	                                  const previewMidtermReference = draftFormativeAverage ?? backendMidtermFormativeReference;
+	                                  const previewFinalReference = draftFormativeAverage ?? backendFinalFormativeReference;
+	                                  const displayFormative =
+	                                    previewFormative !== null && previewFormative !== undefined
+	                                      ? previewFormative.toFixed(2)
+	                                      : '-';
 	                                  const previewSbtsFinal = (() => {
 	                                    if (!isMidtermComponent) return backendFinal;
 	                                    const values = [previewFormative, currentScore]
@@ -1422,6 +1469,8 @@ export const TeacherGradesPage = () => {
 	                                  const rowStatusScorePreview =
 	                                    isUsCombinedMode
 	                                      ? usFinalPreview ?? 0
+	                                      : isFormatifComponent
+	                                      ? previewFormative ?? 0
 	                                      : isMidtermComponent
 	                                      ? previewSbtsFinal ?? 0
 	                                      : isFinalComponent
@@ -1517,14 +1566,18 @@ export const TeacherGradesPage = () => {
 		                                                      <p className={`mt-1 text-[11px] ${formativeParsed.invalid ? 'text-red-600' : 'text-gray-500'}`}>
 		                                                        {formativeParsed.invalid
 		                                                          ? 'Format tidak valid. Gunakan angka 0-100 dipisahkan koma.'
-		                                                          : `${formativeParsed.values.length || 1} kotak entri`}
+		                                                          : `${Math.max(formativeParsed.values.length, 1)} kotak entri dinamis`}
 	                                                      </p>
 		                                                  </td>
                                                   <td className={`px-6 py-4 whitespace-nowrap text-center text-sm font-medium ${(backendFormative ?? 0) < kkm && backendFormative !== null ? 'text-red-600 font-bold' : 'text-gray-900'} bg-blue-50`}>
-                                                      {displayFormative}
+                                                      {previewMidtermReference !== null && previewMidtermReference !== undefined
+                                                        ? previewMidtermReference.toFixed(2)
+                                                        : '-'}
                                                   </td>
                                                   <td className={`px-6 py-4 whitespace-nowrap text-center text-sm font-medium ${(backendFormative ?? 0) < kkm && backendFormative !== null ? 'text-red-600 font-bold' : 'text-gray-900'} bg-green-50`}>
-                                                      {displayFormative}
+                                                      {previewFinalReference !== null && previewFinalReference !== undefined
+                                                        ? previewFinalReference.toFixed(2)
+                                                        : '-'}
                                                   </td>
                                               </>
                                           ) : isMidtermComponent ? (

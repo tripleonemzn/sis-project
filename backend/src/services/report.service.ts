@@ -21,6 +21,11 @@ const parseScoreNumber = (raw: unknown): number | null => {
   return value;
 };
 
+const calculateAverage = (values: number[]): number | null => {
+  if (!Array.isArray(values) || values.length === 0) return null;
+  return values.reduce((sum, value) => sum + value, 0) / values.length;
+};
+
 const parseSlotScoreMap = (raw: unknown): Record<string, number | null> => {
   if (!raw || typeof raw !== 'object' || Array.isArray(raw)) return {};
   const result: Record<string, number | null> = {};
@@ -85,6 +90,48 @@ const readSlotOrLegacyScore = (
     return slotScores[normalizedSlotCode] ?? null;
   }
   return legacyValue ?? null;
+};
+
+const buildFormativeReferenceSlotCode = (formativeSlotCode: string | null | undefined, stage: 'MIDTERM' | 'FINAL') => {
+  const normalized = normalizeLedgerCode(formativeSlotCode);
+  const suffix = stage === 'MIDTERM' ? 'SBTS_REF' : 'FINAL_REF';
+  return normalized ? `${normalized}_${suffix}` : suffix;
+};
+
+const sanitizeLegacyFormativeSeries = (rawValues: unknown[], storedScore?: unknown): number[] => {
+  const values = rawValues
+    .filter((item) => item !== null && item !== undefined && item !== '')
+    .map((item) => Number(item))
+    .filter((item) => Number.isFinite(item));
+
+  if (values.length === 0) return [];
+  if (values.every((value) => value === 0)) return [];
+
+  const trimmedTrailingPadding = (() => {
+    let lastNonZeroIndex = -1;
+    values.forEach((value, index) => {
+      if (value !== 0) lastNonZeroIndex = index;
+    });
+    if (lastNonZeroIndex < 0) return [];
+    return values.slice(0, lastNonZeroIndex + 1);
+  })();
+
+  const stored = parseScoreNumber(storedScore);
+  const averageAll = calculateAverage(values);
+  const averageTrimmed = calculateAverage(trimmedTrailingPadding);
+
+  if (
+    trimmedTrailingPadding.length > 0 &&
+    trimmedTrailingPadding.length < values.length &&
+    (stored === null ||
+      averageAll === null ||
+      Math.abs(averageAll - stored) > 0.01 ||
+      (averageTrimmed !== null && Math.abs(averageTrimmed - stored) <= 0.01))
+  ) {
+    return trimmedTrailingPadding;
+  }
+
+  return values;
 };
 
 const resolveLegacyFinalScore = (
@@ -961,11 +1008,18 @@ export class ReportService {
       if (isMidtermReport) {
         // MIDTERM-like report: component-1 (formatif aggregate) + exam component.
         
-        const nfs = [grade?.nf1, grade?.nf2, grade?.nf3, grade?.nf4, grade?.nf5, grade?.nf6].filter(
-          (n): n is number => n !== null && n !== undefined,
+        const nfs = sanitizeLegacyFormativeSeries(
+          [grade?.nf1, grade?.nf2, grade?.nf3, grade?.nf4, grade?.nf5, grade?.nf6],
+          grade?.score ?? reportScore?.formatifScore ?? null,
         );
         const fallbackFormative = nfs.length > 0 ? nfs.reduce((a, b) => a + b, 0) / nfs.length : 0;
+        const formativeMidtermReference = readSlotOrLegacyScore(
+          slotScores,
+          buildFormativeReferenceSlotCode(formativeSlotCode, 'MIDTERM'),
+          null,
+        );
         let formatifAvg =
+          formativeMidtermReference ??
           readSlotOrLegacyScore(slotScores, formativeSlotCode, reportScore?.formatifScore) ??
           fallbackFormative;
         const sbtsScore =
@@ -1438,12 +1492,19 @@ export class ReportService {
         const rGrade = reportGrades.find(rg => rg.studentId === student.id && rg.subjectId === subject.id);
         const reportScore = rGrade as unknown as ReportScoreCarrier;
         
-        const nfs = [sGrade?.nf1, sGrade?.nf2, sGrade?.nf3, sGrade?.nf4, sGrade?.nf5, sGrade?.nf6].filter(
-          (n): n is number => n !== null && n !== undefined,
+        const nfs = sanitizeLegacyFormativeSeries(
+          [sGrade?.nf1, sGrade?.nf2, sGrade?.nf3, sGrade?.nf4, sGrade?.nf5, sGrade?.nf6],
+          sGrade?.score ?? rGrade?.formatifScore ?? null,
         );
         const formativeFallback = nfs.length > 0 ? nfs.reduce((a, b) => a + b, 0) / nfs.length : null;
         const slotScores = parseSlotScoreMap((rGrade as any)?.slotScores);
+        const formativeFinalReference = readSlotOrLegacyScore(
+          slotScores,
+          buildFormativeReferenceSlotCode(formativeSlotCode, 'FINAL'),
+          null,
+        );
         const formatifAvg =
+          formativeFinalReference ??
           readSlotOrLegacyScore(slotScores, formativeSlotCode, reportScore?.formatifScore) ??
           formativeFallback;
         const midtermScore = readSlotOrLegacyScore(slotScores, midtermSlotCode, reportScore?.sbtsScore);

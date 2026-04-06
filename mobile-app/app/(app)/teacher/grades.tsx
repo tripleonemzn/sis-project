@@ -71,6 +71,37 @@ function normalizeLegacySeriesValues(rawValues: unknown[]) {
     .filter((item) => Number.isFinite(item));
 }
 
+function sanitizeLegacySeriesForDisplay(rawValues: unknown[], storedScore?: unknown) {
+  const values = normalizeLegacySeriesValues(rawValues);
+  if (values.length === 0) return [];
+  if (values.length === 6 && values.every((value) => value === 0)) return [];
+
+  const trimmedTrailingPadding = (() => {
+    let lastNonZeroIndex = -1;
+    values.forEach((value, index) => {
+      if (value !== 0) lastNonZeroIndex = index;
+    });
+    if (lastNonZeroIndex < 0) return [];
+    return values.slice(0, lastNonZeroIndex + 1);
+  })();
+
+  const stored = Number(storedScore);
+  const averageAll = averageValues(values);
+  const averageTrimmed = averageValues(trimmedTrailingPadding);
+  if (
+    trimmedTrailingPadding.length > 0 &&
+    trimmedTrailingPadding.length < values.length &&
+    (!Number.isFinite(stored) ||
+      averageAll === null ||
+      Math.abs(averageAll - stored) > 0.01 ||
+      (averageTrimmed !== null && Math.abs(averageTrimmed - stored) <= 0.01))
+  ) {
+    return trimmedTrailingPadding;
+  }
+
+  return values;
+}
+
 function averageValues(values: number[]) {
   if (!Array.isArray(values) || values.length === 0) return null;
   return values.reduce((acc, value) => acc + value, 0) / values.length;
@@ -186,6 +217,12 @@ function resolveSlotScore(
     return Number(fallback);
   }
   return null;
+}
+
+function buildFormativeReferenceSlotCode(slotCode: string, stage: 'MIDTERM' | 'FINAL') {
+  const normalized = normalizeSlotCode(slotCode);
+  const suffix = stage === 'MIDTERM' ? 'SBTS_REF' : 'FINAL_REF';
+  return normalized ? `${normalized}_${suffix}` : suffix;
 }
 
 function formatComponentLabel(component: GradeComponent) {
@@ -339,10 +376,16 @@ export default function TeacherGradesScreen() {
       const nextScoreDraft: Record<string, string> = {};
       const nextSeriesDraft: Record<string, string> = {};
       for (const item of gradesQuery.data || []) {
-        nextScoreDraft[`${item.studentId}:${item.componentId}`] = String(item.score ?? '');
         const series = Array.isArray(item.formativeSeries)
           ? item.formativeSeries
-          : normalizeLegacySeriesValues([item.nf1, item.nf2, item.nf3, item.nf4, item.nf5, item.nf6]);
+          : sanitizeLegacySeriesForDisplay(
+              [item.nf1, item.nf2, item.nf3, item.nf4, item.nf5, item.nf6],
+              item.score ?? null,
+            );
+        const seriesAverage = averageValues(series);
+        nextScoreDraft[`${item.studentId}:${item.componentId}`] = String(
+          seriesAverage !== null ? seriesAverage : (item.score ?? ''),
+        );
         if (series.length > 0) {
           nextSeriesDraft[`${item.studentId}:${item.componentId}`] = series.join(', ');
         }
@@ -934,6 +977,16 @@ export default function TeacherGradesScreen() {
                         formativePrimarySlot,
                         reportMap[student.id]?.formatif ?? null,
                       );
+                      const backendMidtermFormativeReference = resolveSlotScore(
+                        reportMap[student.id],
+                        buildFormativeReferenceSlotCode(formativePrimarySlot, 'MIDTERM'),
+                        backendFormative,
+                      );
+                      const backendFinalFormativeReference = resolveSlotScore(
+                        reportMap[student.id],
+                        buildFormativeReferenceSlotCode(formativePrimarySlot, 'FINAL'),
+                        backendFormative,
+                      );
                       const backendMidterm = resolveSlotScore(
                         reportMap[student.id],
                         midtermPrimarySlot,
@@ -945,6 +998,8 @@ export default function TeacherGradesScreen() {
                         reportMap[student.id]?.sas ?? reportMap[student.id]?.final ?? null,
                       );
                       const previewFormative = draftAverage ?? backendFormative;
+                      const previewMidtermReference = draftAverage ?? backendMidtermFormativeReference;
+                      const previewFinalReference = draftAverage ?? backendFinalFormativeReference;
 
                       return (
                       <View
@@ -1066,31 +1121,13 @@ export default function TeacherGradesScreen() {
                                     >
                                       {parsedSeries.invalid
                                         ? 'Format salah. Gunakan angka 0-100 dipisahkan koma.'
-                                        : `${parsedSeries.values.length || 1} kotak entri`}
+                                        : `${Math.max(parsedSeries.values.length, 1)} kotak entri dinamis`}
                                     </Text>
                                   </View>
                                 );
                               })()}
                               <View style={{ flexDirection: 'row', marginHorizontal: -3, alignItems: 'center' }}>
                                 <View style={{ flex: 1, paddingHorizontal: 3 }}>
-                                  <TextInput
-                                    value={scoreDraft[`${student.id}:${selectedComponent.id}`] ?? ''}
-                                    onChangeText={(value) => onScoreChange(student.id, selectedComponent.id, value)}
-                                    keyboardType="numeric"
-                                    placeholder={`Nilai ${formativeComponentLabel}`}
-                                    placeholderTextColor="#94a3b8"
-                                    style={{
-                                      borderWidth: 1,
-                                      borderColor: '#cbd5e1',
-                                      borderRadius: 8,
-                                      paddingHorizontal: 10,
-                                      paddingVertical: 8,
-                                      backgroundColor: '#fff',
-                                      color: '#0f172a',
-                                    }}
-                                  />
-                                </View>
-                                <View style={{ width: 126, paddingHorizontal: 3 }}>
                                   <View
                                     style={{
                                       borderWidth: 1,
@@ -1101,9 +1138,11 @@ export default function TeacherGradesScreen() {
                                       alignItems: 'center',
                                     }}
                                   >
-                                    <Text style={{ color: '#64748b', fontSize: 10 }}>{`Referensi ${midtermComponentLabel} (Backend)`}</Text>
+                                    <Text style={{ color: '#64748b', fontSize: 10 }}>{`Referensi ${midtermComponentLabel}`}</Text>
                                     <Text style={{ color: '#1d4ed8', fontWeight: '700' }}>
-                                      {previewFormative === null || previewFormative === undefined ? '-' : toFixedOrInt(previewFormative)}
+                                      {previewMidtermReference === null || previewMidtermReference === undefined
+                                        ? '-'
+                                        : toFixedOrInt(previewMidtermReference)}
                                     </Text>
                                   </View>
                                 </View>
@@ -1119,9 +1158,11 @@ export default function TeacherGradesScreen() {
                                     alignItems: 'center',
                                   }}
                                 >
-                                  <Text style={{ color: '#166534', fontSize: 10 }}>{`Referensi ${finalComponentLabel} (Backend)`}</Text>
+                                  <Text style={{ color: '#166534', fontSize: 10 }}>{`Referensi ${finalComponentLabel}`}</Text>
                                   <Text style={{ color: '#166534', fontWeight: '700' }}>
-                                    {previewFormative === null || previewFormative === undefined ? '-' : toFixedOrInt(previewFormative)}
+                                    {previewFinalReference === null || previewFinalReference === undefined
+                                      ? '-'
+                                      : toFixedOrInt(previewFinalReference)}
                                   </Text>
                                 </View>
                               </View>

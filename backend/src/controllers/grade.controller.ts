@@ -611,6 +611,79 @@ function normalizeLegacySeriesValues(rawValues: unknown[]): number[] {
     .filter((item) => Number.isFinite(item))
 }
 
+function areScoresApproximatelyEqual(left: number | null, right: number | null, tolerance = 0.01): boolean {
+  if (left === null || right === null) return false
+  return Math.abs(left - right) <= tolerance
+}
+
+function sanitizeLegacyFormativeSeries(rawValues: unknown[], storedScore?: unknown): number[] {
+  const values = normalizeLegacySeriesValues(rawValues)
+  if (values.length === 0) return []
+  if (values.every((value) => value === 0)) return []
+
+  const stored = parseOptionalScoreValue(storedScore, 'Nilai') ?? null
+  const trimmedTrailingPadding = (() => {
+    let lastNonZeroIndex = -1
+    values.forEach((value, index) => {
+      if (value !== 0) lastNonZeroIndex = index
+    })
+    if (lastNonZeroIndex < 0) return []
+    return values.slice(0, lastNonZeroIndex + 1)
+  })()
+
+  if (trimmedTrailingPadding.length > 0 && trimmedTrailingPadding.length < values.length) {
+    const averageTrimmed = calculateAverage(trimmedTrailingPadding)
+    const averageAll = calculateAverage(values)
+    if (
+      stored === null ||
+      !areScoresApproximatelyEqual(averageAll, stored) ||
+      areScoresApproximatelyEqual(averageTrimmed, stored)
+    ) {
+      return trimmedTrailingPadding
+    }
+  }
+
+  return values
+}
+
+function buildFormativeReferenceSlotCode(formativeSlotCode: string, stage: 'MIDTERM' | 'FINAL'): string {
+  const normalized = normalizeReportSlotCode(formativeSlotCode)
+  const suffix = stage === 'MIDTERM' ? 'SBTS_REF' : 'FINAL_REF'
+  return normalized ? `${normalized}_${suffix}` : suffix
+}
+
+function normalizeFormativeSeriesForPersistence(params: {
+  isFormativeComponent: boolean
+  normalizedSeries: { provided: boolean; values: number[] }
+  parsedScore: number | null | undefined
+}): { seriesValues: number[]; provided: boolean } {
+  if (!params.isFormativeComponent) {
+    return {
+      seriesValues: params.normalizedSeries.values,
+      provided: params.normalizedSeries.provided,
+    }
+  }
+
+  if (params.normalizedSeries.provided) {
+    return {
+      seriesValues: params.normalizedSeries.values,
+      provided: true,
+    }
+  }
+
+  if (params.parsedScore !== null && params.parsedScore !== undefined) {
+    return {
+      seriesValues: [params.parsedScore],
+      provided: true,
+    }
+  }
+
+  return {
+    seriesValues: [],
+    provided: false,
+  }
+}
+
 function buildStudentGradeCompositeKey(row: {
   studentId: unknown
   subjectId: unknown
@@ -1199,17 +1272,24 @@ async function collectDynamicFormativeScores(params: {
   return [...examScores, ...assignmentScores]
 }
 
-async function collectDynamicSlotScoresFromScoreEntries(params: {
+type DynamicScoreEntryRow = {
+  reportSlotCode?: string | null
+  reportSlot?: ReportComponentSlot | null
+  score: number | null
+  recordedAt?: Date | null
+}
+
+async function collectDynamicScoreEntryRows(params: {
   studentId: number
   subjectId: number
   academicYearId: number
   semester: Semester
-}): Promise<Record<string, number>> {
+}): Promise<DynamicScoreEntryRow[]> {
   const { studentId, subjectId, academicYearId, semester } = params
 
   try {
     const studentScoreEntryDelegate = getStudentScoreEntryDelegate()
-    if (!studentScoreEntryDelegate) return {}
+    if (!studentScoreEntryDelegate) return []
 
     const primaryRows = (await studentScoreEntryDelegate.findMany({
       where: {
@@ -1222,41 +1302,18 @@ async function collectDynamicSlotScoresFromScoreEntries(params: {
         reportSlotCode: true,
         reportSlot: true,
         score: true,
+        recordedAt: true,
       },
-    })) as Array<{
-      reportSlotCode?: string | null
-      reportSlot?: ReportComponentSlot | null
-      score: number | null
-    }>
+    })) as DynamicScoreEntryRow[]
 
-    if (primaryRows.length === 0) return {}
-
-    const buckets = new Map<string, number[]>()
-    primaryRows.forEach((row) => {
-      const slot = normalizeReportSlotCode(row.reportSlotCode || row.reportSlot)
-      if (slot === DEFAULT_REPORT_SLOT_CODE) return
-      const score = Number(row.score)
-      if (!Number.isFinite(score)) return
-      const values = buckets.get(slot) || []
-      values.push(score)
-      buckets.set(slot, values)
-    })
-
-    const result: Record<string, number> = {}
-    buckets.forEach((values, slot) => {
-      const average = calculateAverage(values)
-      if (average !== null) {
-        result[slot] = average
-      }
-    })
-    return result
+    return primaryRows
   } catch (error) {
     if (error instanceof Prisma.PrismaClientKnownRequestError) {
       // Compatibility guard if migration has not been applied yet.
       if (error.code === 'P2021' || error.code === 'P2022') {
         try {
           const studentScoreEntryDelegate = getStudentScoreEntryDelegate()
-          if (!studentScoreEntryDelegate) return {}
+          if (!studentScoreEntryDelegate) return []
 
           const fallbackRows = (await studentScoreEntryDelegate.findMany({
             where: {
@@ -1268,35 +1325,92 @@ async function collectDynamicSlotScoresFromScoreEntries(params: {
             select: {
               reportSlot: true,
               score: true,
+              recordedAt: true,
             },
-          })) as Array<{ reportSlot: ReportComponentSlot | null; score: number | null }>
+          })) as DynamicScoreEntryRow[]
 
-          const buckets = new Map<string, number[]>()
-          fallbackRows.forEach((row) => {
-            const slot = normalizeReportSlotCode(row.reportSlot)
-            if (slot === DEFAULT_REPORT_SLOT_CODE) return
-            const score = Number(row.score)
-            if (!Number.isFinite(score)) return
-            const values = buckets.get(slot) || []
-            values.push(score)
-            buckets.set(slot, values)
-          })
-
-          const result: Record<string, number> = {}
-          buckets.forEach((values, slot) => {
-            const average = calculateAverage(values)
-            if (average !== null) {
-              result[slot] = average
-            }
-          })
-          return result
+          return fallbackRows
         } catch {
-          return {}
+          return []
         }
       }
     }
     console.error('Failed to read student score entries:', error)
-    return {}
+    return []
+  }
+}
+
+function computeDynamicSlotScoresFromScoreEntries(rows: DynamicScoreEntryRow[]): Record<string, number> {
+  if (!Array.isArray(rows) || rows.length === 0) return {}
+
+  const buckets = new Map<string, number[]>()
+  rows.forEach((row) => {
+    const slot = normalizeReportSlotCode(row.reportSlotCode || row.reportSlot)
+    if (slot === DEFAULT_REPORT_SLOT_CODE) return
+    const score = Number(row.score)
+    if (!Number.isFinite(score)) return
+    const values = buckets.get(slot) || []
+    values.push(score)
+    buckets.set(slot, values)
+  })
+
+  const result: Record<string, number> = {}
+  buckets.forEach((values, slot) => {
+    const average = calculateAverage(values)
+    if (average !== null) {
+      result[slot] = average
+    }
+  })
+  return result
+}
+
+function computeFormativeReferenceScoresFromScoreEntries(params: {
+  rows: DynamicScoreEntryRow[]
+  formativeSlotCode: string
+  midtermSlotCode: string
+  finalSlotCode: string
+}): { midterm: number | null; final: number | null } {
+  const formativeSlotCode = normalizeReportSlotCode(params.formativeSlotCode)
+  const midtermSlotCode = normalizeReportSlotCode(params.midtermSlotCode)
+  const finalSlotCode = normalizeReportSlotCode(params.finalSlotCode)
+
+  const formativeRows = params.rows
+    .filter((row) => normalizeReportSlotCode(row.reportSlotCode || row.reportSlot) === formativeSlotCode)
+    .filter((row) => Number.isFinite(Number(row.score)))
+    .map((row) => ({
+      score: Number(row.score),
+      recordedAt: row.recordedAt ? new Date(row.recordedAt) : null,
+    }))
+
+  if (formativeRows.length === 0) {
+    return { midterm: null, final: null }
+  }
+
+  const firstBoundaryForSlot = (slotCode: string) => {
+    const timestamps = params.rows
+      .filter((row) => normalizeReportSlotCode(row.reportSlotCode || row.reportSlot) === slotCode)
+      .map((row) => (row.recordedAt ? new Date(row.recordedAt).getTime() : null))
+      .filter((value): value is number => value !== null && Number.isFinite(value))
+      .sort((left, right) => left - right)
+    return timestamps[0] ?? null
+  }
+
+  const buildReferenceAverage = (boundary: number | null) => {
+    const candidateValues = (boundary === null
+      ? formativeRows
+      : formativeRows.filter((row) => {
+          if (!row.recordedAt) return true
+          return row.recordedAt.getTime() <= boundary
+        })
+    ).map((row) => row.score)
+
+    const values = candidateValues.length > 0 ? candidateValues : formativeRows.map((row) => row.score)
+    return calculateAverage(values)
+  }
+
+  return {
+    midterm: buildReferenceAverage(firstBoundaryForSlot(midtermSlotCode)),
+    final: buildReferenceAverage(firstBoundaryForSlot(finalSlotCode)),
   }
 }
 
@@ -1619,11 +1733,18 @@ export const syncReportGrade = async (
 
     const activeGrades = grades.filter((grade) => grade.component?.isActive !== false)
     const dynamicResult = computeDynamicReportFromGrades(activeGrades, componentRuleMap)
-    const entrySlotScores = await collectDynamicSlotScoresFromScoreEntries({
+    const scoreEntryRows = await collectDynamicScoreEntryRows({
       studentId,
       subjectId,
       academicYearId,
       semester,
+    })
+    const entrySlotScores = computeDynamicSlotScoresFromScoreEntries(scoreEntryRows)
+    const formativeReferenceScores = computeFormativeReferenceScoresFromScoreEntries({
+      rows: scoreEntryRows,
+      formativeSlotCode: primarySlots.formative,
+      midtermSlotCode: primarySlots.midterm,
+      finalSlotCode: primarySlots.final,
     })
 
     Object.entries(entrySlotScores).forEach(([slot, value]) => {
@@ -1644,6 +1765,26 @@ export const syncReportGrade = async (
 
     if (entrySlotScores[primarySlots.formative] === undefined && dynamicFormativeScores.length > 0) {
       dynamicResult.slotScoresByCode[primarySlots.formative] = calculateAverage(dynamicFormativeScores)
+    }
+
+    const midtermFormativeReference =
+      formativeReferenceScores.midterm ??
+      dynamicResult.slotScoresByCode[primarySlots.formative] ??
+      calculateAverage(dynamicFormativeScores)
+    const finalFormativeReference =
+      formativeReferenceScores.final ??
+      dynamicResult.slotScoresByCode[primarySlots.formative] ??
+      calculateAverage(dynamicFormativeScores)
+
+    if (midtermFormativeReference !== null) {
+      dynamicResult.slotScoresByCode[
+        buildFormativeReferenceSlotCode(primarySlots.formative, 'MIDTERM')
+      ] = midtermFormativeReference
+    }
+    if (finalFormativeReference !== null) {
+      dynamicResult.slotScoresByCode[
+        buildFormativeReferenceSlotCode(primarySlots.formative, 'FINAL')
+      ] = finalFormativeReference
     }
 
     dynamicResult.legacySlotScores = buildLegacySlotScoreMap(dynamicResult.slotScoresByCode)
@@ -2083,7 +2224,10 @@ export const getStudentGrades = async (req: Request, res: Response) => {
             row.formativeSeries = [fallbackScore]
             continue
           }
-          const legacySeries = normalizeLegacySeriesValues([row.nf1, row.nf2, row.nf3, row.nf4, row.nf5, row.nf6])
+          const legacySeries = sanitizeLegacyFormativeSeries(
+            [row.nf1, row.nf2, row.nf3, row.nf4, row.nf5, row.nf6],
+            row.score,
+          )
           if (legacySeries.length > 0) {
             row.formativeSeries = legacySeries
           }
@@ -2165,8 +2309,14 @@ export const createOrUpdateStudentGrade = async (req: Request, res: Response) =>
     ]
     let additionalSeriesScores: number[] = []
 
-    if (isFormativeComponent && normalizedSeries.provided) {
-      const seriesValues = normalizedSeries.values
+    const effectiveFormativeSeries = normalizeFormativeSeriesForPersistence({
+      isFormativeComponent,
+      normalizedSeries,
+      parsedScore,
+    })
+
+    if (isFormativeComponent && effectiveFormativeSeries.provided) {
+      const seriesValues = effectiveFormativeSeries.seriesValues
       if (seriesValues.length > 0) {
         parsedScore = calculateAverage(seriesValues)
       } else {
@@ -2198,7 +2348,7 @@ export const createOrUpdateStudentGrade = async (req: Request, res: Response) =>
 
     const shouldDeleteGrade =
       parsedScore === null &&
-      (!isFormativeComponent || normalizedSeries.values.length === 0)
+      (!isFormativeComponent || effectiveFormativeSeries.seriesValues.length === 0)
 
     if (shouldDeleteGrade) {
       if (existingGrades.length > 0) {
@@ -2531,8 +2681,14 @@ export const bulkCreateOrUpdateStudentGrades = async (req: Request, res: Respons
         ]
         let additionalSeriesScores: number[] = []
 
-        if (isFormativeComponent && normalizedSeries.provided) {
-          const seriesValues = normalizedSeries.values
+        const effectiveFormativeSeries = normalizeFormativeSeriesForPersistence({
+          isFormativeComponent,
+          normalizedSeries,
+          parsedScore,
+        })
+
+        if (isFormativeComponent && effectiveFormativeSeries.provided) {
+          const seriesValues = effectiveFormativeSeries.seriesValues
           if (seriesValues.length > 0) {
             parsedScore = calculateAverage(seriesValues)
           } else {
@@ -2597,7 +2753,7 @@ export const bulkCreateOrUpdateStudentGrades = async (req: Request, res: Respons
 
         const shouldDeleteGrade =
           parsedScore === null &&
-          (!isFormativeComponent || normalizedSeries.values.length === 0)
+          (!isFormativeComponent || effectiveFormativeSeries.seriesValues.length === 0)
 
         if (shouldDeleteGrade) {
           if (existingGrades.length > 0) {
@@ -2798,11 +2954,18 @@ export const generateReportGrades = async (req: Request, res: Response) => {
       const { subject, entries } = data
       const activeEntries = entries.filter((entry: any) => entry.component?.isActive !== false)
       const dynamicResult = computeDynamicReportFromGrades(activeEntries, componentRuleMap)
-      const entrySlotScores = await collectDynamicSlotScoresFromScoreEntries({
+      const scoreEntryRows = await collectDynamicScoreEntryRows({
         studentId: Number(student_id),
         subjectId: Number(subjectId),
         academicYearId: Number(academic_year_id),
         semester: semester as Semester,
+      })
+      const entrySlotScores = computeDynamicSlotScoresFromScoreEntries(scoreEntryRows)
+      const formativeReferenceScores = computeFormativeReferenceScoresFromScoreEntries({
+        rows: scoreEntryRows,
+        formativeSlotCode: primarySlots.formative,
+        midtermSlotCode: primarySlots.midterm,
+        finalSlotCode: primarySlots.final,
       })
       Object.entries(entrySlotScores).forEach(([slot, value]) => {
         if (value !== undefined) {
@@ -2820,6 +2983,24 @@ export const generateReportGrades = async (req: Request, res: Response) => {
       })
       if (entrySlotScores[primarySlots.formative] === undefined && dynamicFormativeScores.length > 0) {
         dynamicResult.slotScoresByCode[primarySlots.formative] = calculateAverage(dynamicFormativeScores)
+      }
+      const midtermFormativeReference =
+        formativeReferenceScores.midterm ??
+        dynamicResult.slotScoresByCode[primarySlots.formative] ??
+        calculateAverage(dynamicFormativeScores)
+      const finalFormativeReference =
+        formativeReferenceScores.final ??
+        dynamicResult.slotScoresByCode[primarySlots.formative] ??
+        calculateAverage(dynamicFormativeScores)
+      if (midtermFormativeReference !== null) {
+        dynamicResult.slotScoresByCode[
+          buildFormativeReferenceSlotCode(primarySlots.formative, 'MIDTERM')
+        ] = midtermFormativeReference
+      }
+      if (finalFormativeReference !== null) {
+        dynamicResult.slotScoresByCode[
+          buildFormativeReferenceSlotCode(primarySlots.formative, 'FINAL')
+        ] = finalFormativeReference
       }
       dynamicResult.legacySlotScores = buildLegacySlotScoreMap(dynamicResult.slotScoresByCode)
       const reportScores = {
