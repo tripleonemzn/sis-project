@@ -24,12 +24,12 @@ const OPTIONS: Array<{
 }> = [
   {
     value: 'system',
-    label: 'Sistem',
-    iconName: 'monitor',
+    label: 'MODE SISTEM',
+    iconName: 'sun',
   },
   {
     value: 'dark',
-    label: 'Gelap',
+    label: 'MODE GELAP',
     iconName: 'moon',
   },
 ];
@@ -40,7 +40,7 @@ export function MobileHeaderThemeModeToggle({
 }: MobileHeaderThemeModeToggleProps) {
   const queryClient = useQueryClient();
   const { rehydrate } = useAuth();
-  const { colors, mode, setMode } = useAppTheme();
+  const { colors, mode, resolvedTheme, setMode } = useAppTheme();
 
   const mutation = useMutation({
     mutationFn: async (nextMode: ThemeMode) => {
@@ -61,7 +61,9 @@ export function MobileHeaderThemeModeToggle({
     },
   });
 
-  const handleSelect = async (nextMode: ThemeMode) => {
+  const nextOption = mode === 'dark' ? OPTIONS[0] : OPTIONS[1];
+
+  const handleToggle = async (nextMode: ThemeMode) => {
     if (mutation.isPending || nextMode === mode) return;
     const previousMode = mode;
     await setMode(nextMode);
@@ -73,59 +75,53 @@ export function MobileHeaderThemeModeToggle({
   };
 
   return (
-    <View
+    <Pressable
+      accessibilityRole="button"
+      accessibilityLabel={`Klik untuk beralih ke ${nextOption.label}.`}
+      disabled={mutation.isPending}
+      onPress={() => {
+        void handleToggle(nextOption.value);
+      }}
       style={{
-        flexDirection: 'row',
         alignItems: 'center',
-        gap: 6,
-        borderWidth: 1,
-        borderColor: colors.border,
-        borderRadius: 16,
-        backgroundColor: colors.surface,
-        paddingHorizontal: 6,
-        paddingVertical: 5,
+        opacity: mutation.isPending ? 0.75 : 1,
       }}
     >
-      {OPTIONS.map((option) => {
-        const active = option.value === mode;
-        return (
-          <Pressable
-            key={option.value}
-            accessibilityRole="button"
-            accessibilityLabel={option.label}
-            disabled={mutation.isPending}
-            onPress={() => {
-              void handleSelect(option.value);
-            }}
-            style={{
-              minWidth: 52,
-              alignItems: 'center',
-              justifyContent: 'center',
-              borderRadius: 12,
-              borderWidth: 1,
-              borderColor: active ? colors.primary : 'transparent',
-              backgroundColor: active ? colors.primarySoft : 'transparent',
-              paddingHorizontal: 8,
-              paddingVertical: 6,
-              opacity: mutation.isPending ? 0.75 : 1,
-            }}
-          >
-            <Feather name={option.iconName} size={15} color={active ? colors.primary : colors.textMuted} />
-            <Text
-              style={{
-                marginTop: 3,
-                fontSize: 10,
-                fontWeight: '700',
-                color: active ? colors.primary : colors.textMuted,
-              }}
-            >
-              {option.label}
-            </Text>
-          </Pressable>
-        );
-      })}
+      <View
+        style={{
+          width: 42,
+          height: 42,
+          borderRadius: 999,
+          alignItems: 'center',
+          justifyContent: 'center',
+          backgroundColor: resolvedTheme === 'dark' ? 'rgba(226, 232, 240, 0.12)' : 'rgba(255, 255, 255, 0.94)',
+          borderWidth: 1,
+          borderColor: resolvedTheme === 'dark' ? 'rgba(148, 163, 184, 0.22)' : 'rgba(148, 163, 184, 0.24)',
+          shadowColor: '#0f172a',
+          shadowOpacity: resolvedTheme === 'dark' ? 0.24 : 0.12,
+          shadowOffset: { width: 0, height: 5 },
+          shadowRadius: 10,
+          elevation: 2,
+        }}
+      >
+        <Feather name={nextOption.iconName} size={17} color={resolvedTheme === 'dark' ? '#e2e8f0' : '#475569'} />
+      </View>
 
-      {mutation.isPending ? <ActivityIndicator size="small" color={colors.primary} style={{ marginLeft: 4 }} /> : null}
-    </View>
+      <View style={{ marginTop: 4 }}>
+        <Text
+          style={{
+            color: resolvedTheme === 'dark' ? '#cbd5e1' : '#475569',
+            fontSize: 9,
+            fontWeight: '800',
+            textTransform: 'uppercase',
+            letterSpacing: 0.7,
+          }}
+        >
+          {nextOption.label}
+        </Text>
+      </View>
+
+      {mutation.isPending ? <ActivityIndicator size="small" color={colors.primary} style={{ marginTop: 5 }} /> : null}
+    </Pressable>
   );
 }

@@ -65,6 +65,7 @@ import {
 } from '../../src/features/tutor/tutorAccess';
 import { osisApi } from '../../src/features/osis/osisApi';
 import { MobileHeaderThemeModeToggle } from '../../src/features/theme/MobileHeaderThemeModeToggle';
+import { useAppTheme } from '../../src/theme/AppThemeProvider';
 
 type FeatherIconName = ComponentProps<typeof Feather>['name'];
 type DashboardStatItem = {
@@ -242,6 +243,35 @@ const MENU_ICON_TONES: MenuIconTone[] = [
   { bg: '#faf5ff', border: '#e9d5ff', fg: '#7e22ce' },
   { bg: '#fef2f2', border: '#fecaca', fg: '#b91c1c' },
 ];
+
+const DARK_ACCENT_COLOR_MAP: Record<string, string> = {
+  [BRAND_COLORS.blue]: '#93c5fd',
+  [BRAND_COLORS.teal]: '#5eead4',
+  [BRAND_COLORS.gold]: '#fdba74',
+  [BRAND_COLORS.pink]: '#f9a8d4',
+  [BRAND_COLORS.sky]: '#7dd3fc',
+  [BRAND_COLORS.navy]: '#cbd5e1',
+  '#1d4ed8': '#93c5fd',
+  '#0e7490': '#67e8f9',
+  '#15803d': '#86efac',
+  '#c2410c': '#fdba74',
+  '#7e22ce': '#d8b4fe',
+  '#b91c1c': '#fca5a5',
+};
+
+function resolveDashboardAccentColor(color: string, resolvedTheme: 'light' | 'dark') {
+  if (resolvedTheme !== 'dark') return color;
+  return DARK_ACCENT_COLOR_MAP[color] || '#cbd5e1';
+}
+
+function resolveMenuTone(tone: MenuIconTone, resolvedTheme: 'light' | 'dark'): MenuIconTone {
+  if (resolvedTheme !== 'dark') return tone;
+  return {
+    bg: 'rgba(30, 41, 59, 0.92)',
+    border: 'rgba(148, 163, 184, 0.22)',
+    fg: resolveDashboardAccentColor(tone.fg, resolvedTheme),
+  };
+}
 
 const JS_DAY_TO_SCHEDULE_DAY: DayOfWeek[] = ['MONDAY', 'TUESDAY', 'WEDNESDAY', 'THURSDAY', 'FRIDAY', 'SATURDAY'];
 
@@ -756,6 +786,7 @@ export default function HomeScreen() {
   const router = useRouter();
   const insets = useSafeAreaInsets();
   const { user, isAuthenticated, isLoading, logout } = useAuth();
+  const { colors, resolvedTheme } = useAppTheme();
   const isScreenActive = useIsScreenActive();
   const unreadNotificationsQuery = useUnreadNotificationsQuery(isAuthenticated, isScreenActive);
   const unreadNotificationCount = unreadNotificationsQuery.data ?? 0;
@@ -1907,8 +1938,9 @@ export default function HomeScreen() {
           const linkedMenu = item.menuKey ? menuItemByKey.get(item.menuKey) : undefined;
           const isOpeningThisMenu = linkedMenu ? openingMenuKey === linkedMenu.key : false;
           const iconName = getStatIcon(item, linkedMenu);
-          const tone = getMenuIconTone(item.label);
+          const tone = resolveMenuTone(getMenuIconTone(item.label), resolvedTheme);
           const labelPosition = item.labelPosition || 'bottom';
+          const valueColor = resolveDashboardAccentColor(item.color, resolvedTheme);
 
           return (
             <View key={item.label} style={{ width: itemWidth, paddingHorizontal: 4, marginBottom: 10 }}>
@@ -1945,19 +1977,19 @@ export default function HomeScreen() {
                 </View>
                 {labelPosition === 'top' ? (
                   <>
-                    <Text style={{ color: BRAND_COLORS.textMuted, fontSize: 10, textAlign: 'center', marginTop: 6 }} numberOfLines={2}>
+                    <Text style={{ color: colors.textMuted, fontSize: 10, textAlign: 'center', marginTop: 6 }} numberOfLines={2}>
                       {item.label}
                     </Text>
-                    <Text style={{ color: item.color, fontWeight: '700', fontSize: item.value.length > 12 ? 12 : 15, marginTop: 2 }}>
+                    <Text style={{ color: valueColor, fontWeight: '700', fontSize: item.value.length > 12 ? 12 : 15, marginTop: 2 }}>
                       {item.value}
                     </Text>
                   </>
                 ) : (
                   <>
-                    <Text style={{ color: item.color, fontWeight: '700', fontSize: item.value.length > 12 ? 12 : 15, marginTop: 6 }}>
+                    <Text style={{ color: valueColor, fontWeight: '700', fontSize: item.value.length > 12 ? 12 : 15, marginTop: 6 }}>
                       {item.value}
                     </Text>
-                    <Text style={{ color: BRAND_COLORS.textMuted, fontSize: 10, textAlign: 'center' }} numberOfLines={2}>
+                    <Text style={{ color: colors.textMuted, fontSize: 10, textAlign: 'center' }} numberOfLines={2}>
                       {isOpeningThisMenu ? 'Membuka...' : item.label}
                     </Text>
                   </>
@@ -1975,6 +2007,7 @@ export default function HomeScreen() {
       {items.map((item) => {
         const linkedMenu = item.menuKey ? menuItemByKey.get(item.menuKey) : undefined;
         const isOpeningThisMenu = linkedMenu ? openingMenuKey === linkedMenu.key : false;
+        const iconColor = resolveDashboardAccentColor(item.color, resolvedTheme);
         return (
           <View
             key={item.label}
@@ -1998,19 +2031,21 @@ export default function HomeScreen() {
                   width: 44,
                   height: 44,
                   borderRadius: 999,
-                  backgroundColor: item.color,
+                  backgroundColor: resolvedTheme === 'dark' ? 'rgba(30, 41, 59, 0.92)' : item.color,
+                  borderWidth: resolvedTheme === 'dark' ? 1 : 0,
+                  borderColor: resolvedTheme === 'dark' ? 'rgba(148, 163, 184, 0.22)' : 'transparent',
                   alignItems: 'center',
                   justifyContent: 'center',
                 }}
               >
                 {isOpeningThisMenu ? (
-                  <ActivityIndicator size="small" color={BRAND_COLORS.white} />
+                  <ActivityIndicator size="small" color={iconColor} />
                 ) : (
-                  <Feather name={item.icon} size={18} color={BRAND_COLORS.white} />
+                  <Feather name={item.icon} size={18} color={iconColor} />
                 )}
               </View>
-              <Text style={{ color: item.color, fontWeight: '700', fontSize: 17, marginTop: 6 }}>{item.value}</Text>
-              <Text style={{ color: BRAND_COLORS.textMuted, fontSize: 10, textAlign: 'center' }} numberOfLines={2}>
+              <Text style={{ color: iconColor, fontWeight: '700', fontSize: 17, marginTop: 6 }}>{item.value}</Text>
+              <Text style={{ color: colors.textMuted, fontSize: 10, textAlign: 'center' }} numberOfLines={2}>
                 {isOpeningThisMenu ? 'Membuka...' : item.label}
               </Text>
             </Pressable>
@@ -2074,7 +2109,7 @@ export default function HomeScreen() {
   const teachingScheduleMenu = menuItemByKey.get('teaching-schedule');
 
   return (
-    <View style={{ flex: 1, backgroundColor: '#e9eefb' }}>
+    <View style={{ flex: 1, backgroundColor: colors.background }}>
       <View
         style={{
           position: 'absolute',
@@ -2083,8 +2118,8 @@ export default function HomeScreen() {
           width: 185,
           height: 185,
           borderRadius: 999,
-          backgroundColor: BRAND_COLORS.sky,
-          opacity: 0.24,
+          backgroundColor: resolvedTheme === 'dark' ? 'rgba(96, 165, 250, 0.16)' : BRAND_COLORS.sky,
+          opacity: resolvedTheme === 'dark' ? 0.2 : 0.24,
         }}
       />
       <View
@@ -2095,8 +2130,8 @@ export default function HomeScreen() {
           width: 170,
           height: 170,
           borderRadius: 999,
-          backgroundColor: BRAND_COLORS.pink,
-          opacity: 0.12,
+          backgroundColor: resolvedTheme === 'dark' ? 'rgba(244, 114, 182, 0.12)' : BRAND_COLORS.pink,
+          opacity: resolvedTheme === 'dark' ? 0.18 : 0.12,
         }}
       />
       <View
@@ -2107,8 +2142,8 @@ export default function HomeScreen() {
           width: 160,
           height: 160,
           borderRadius: 999,
-          backgroundColor: BRAND_COLORS.teal,
-          opacity: 0.18,
+          backgroundColor: resolvedTheme === 'dark' ? 'rgba(45, 212, 191, 0.14)' : BRAND_COLORS.teal,
+          opacity: resolvedTheme === 'dark' ? 0.16 : 0.18,
         }}
       />
 
@@ -2126,17 +2161,17 @@ export default function HomeScreen() {
               name={displayName}
               photoUrl={profilePhotoUrl}
               size={52}
-              backgroundColor={BRAND_COLORS.navy}
-              textColor={BRAND_COLORS.white}
-              borderColor="#d2dcf8"
+              backgroundColor={resolvedTheme === 'dark' ? colors.surfaceMuted : BRAND_COLORS.navy}
+              textColor={resolvedTheme === 'dark' ? colors.text : BRAND_COLORS.white}
+              borderColor={colors.border}
             />
           </Pressable>
           <View style={{ flex: 1 }}>
-            <Text style={{ color: BRAND_COLORS.textMuted, fontSize: 12 }}>Tahun Ajaran Aktif</Text>
-            <Text style={{ color: BRAND_COLORS.textDark, fontWeight: '700', fontSize: 14 }}>
+            <Text style={{ color: colors.textMuted, fontSize: 12 }}>Tahun Ajaran Aktif</Text>
+            <Text style={{ color: colors.text, fontWeight: '700', fontSize: 14 }}>
               {activeAcademicYearLabel} ({activeAcademicSemesterLabel})
             </Text>
-            <Text style={{ color: BRAND_COLORS.textMuted, fontSize: 12, marginTop: 2 }}>
+            <Text style={{ color: colors.textMuted, fontSize: 12, marginTop: 2 }}>
               {todayLabel}
             </Text>
           </View>
@@ -2151,35 +2186,35 @@ export default function HomeScreen() {
         <Text
           style={{
             marginTop: 12,
-            color: BRAND_COLORS.textDark,
+            color: colors.text,
             fontSize: 20,
             fontWeight: '700',
           }}
         >
           Halo, {displayName}
         </Text>
-        <Text style={{ color: BRAND_COLORS.textMuted, marginTop: 2, marginBottom: 12 }}>
+        <Text style={{ color: colors.textMuted, marginTop: 2, marginBottom: 12 }}>
           {homeSubtitle}
         </Text>
 
         {profile.role === 'TEACHER' ? (
           <View
             style={{
-              backgroundColor: BRAND_COLORS.white,
+              backgroundColor: colors.surface,
               borderRadius: 16,
               borderWidth: 1,
-              borderColor: '#d6e0f2',
+              borderColor: colors.border,
               padding: 12,
               marginBottom: 12,
             }}
           >
-            <Text style={{ color: BRAND_COLORS.textDark, fontWeight: '700', marginBottom: 8 }}>Statistik Mengajar</Text>
+            <Text style={{ color: colors.text, fontWeight: '700', marginBottom: 8 }}>Statistik Mengajar</Text>
             {teacherAssignmentsQuery.isLoading || teacherScheduleQuery.isLoading ? (
-              <Text style={{ color: BRAND_COLORS.textMuted, fontSize: 12 }}>Memuat statistik mengajar...</Text>
+              <Text style={{ color: colors.textMuted, fontSize: 12 }}>Memuat statistik mengajar...</Text>
             ) : null}
             {(teacherAssignmentsQuery.isError || teacherScheduleQuery.isError) &&
             !(teacherAssignmentsQuery.isLoading || teacherScheduleQuery.isLoading) ? (
-              <Text style={{ color: '#b91c1c', fontSize: 12 }}>
+              <Text style={{ color: resolvedTheme === 'dark' ? '#fca5a5' : '#b91c1c', fontSize: 12 }}>
                 Gagal memuat statistik mengajar. Tarik layar ke bawah untuk muat ulang.
               </Text>
             ) : null}
@@ -2195,25 +2230,25 @@ export default function HomeScreen() {
         {profile.role === 'ADMIN' ? (
           <View
             style={{
-              backgroundColor: BRAND_COLORS.white,
+              backgroundColor: colors.surface,
               borderRadius: 16,
               borderWidth: 1,
-              borderColor: '#d6e0f2',
+              borderColor: colors.border,
               padding: 12,
               marginBottom: 12,
             }}
           >
-            <Text style={{ color: BRAND_COLORS.textDark, fontWeight: '700', marginBottom: 8 }}>Statistik Admin</Text>
+            <Text style={{ color: colors.text, fontWeight: '700', marginBottom: 8 }}>Statistik Admin</Text>
             {adminStatsQuery.data?.activeYearName ? (
-              <Text style={{ color: BRAND_COLORS.textMuted, fontSize: 12, marginBottom: 8 }}>
+              <Text style={{ color: colors.textMuted, fontSize: 12, marginBottom: 8 }}>
                 Tahun ajaran aktif: {adminStatsQuery.data.activeYearName}
               </Text>
             ) : null}
             {adminStatsQuery.isLoading ? (
-              <Text style={{ color: BRAND_COLORS.textMuted, fontSize: 12 }}>Memuat statistik admin...</Text>
+              <Text style={{ color: colors.textMuted, fontSize: 12 }}>Memuat statistik admin...</Text>
             ) : null}
             {adminStatsQuery.isError && !adminStatsQuery.isLoading ? (
-              <Text style={{ color: '#b91c1c', fontSize: 12 }}>
+              <Text style={{ color: resolvedTheme === 'dark' ? '#fca5a5' : '#b91c1c', fontSize: 12 }}>
                 Gagal memuat statistik admin. Tarik layar ke bawah untuk muat ulang.
               </Text>
             ) : null}
@@ -2224,26 +2259,26 @@ export default function HomeScreen() {
         {profile.role === 'PRINCIPAL' ? (
           <View
             style={{
-              backgroundColor: BRAND_COLORS.white,
+              backgroundColor: colors.surface,
               borderRadius: 16,
               borderWidth: 1,
-              borderColor: '#d6e0f2',
+              borderColor: colors.border,
               padding: 12,
               marginBottom: 12,
             }}
           >
-            <Text style={{ color: BRAND_COLORS.textDark, fontWeight: '700', marginBottom: 8 }}>Dashboard Kepala Sekolah</Text>
+            <Text style={{ color: colors.text, fontWeight: '700', marginBottom: 8 }}>Dashboard Kepala Sekolah</Text>
             {principalStatsQuery.isLoading ? (
-              <Text style={{ color: BRAND_COLORS.textMuted, fontSize: 12 }}>Memuat ringkasan kepala sekolah...</Text>
+              <Text style={{ color: colors.textMuted, fontSize: 12 }}>Memuat ringkasan kepala sekolah...</Text>
             ) : null}
             {principalStatsQuery.isError && !principalStatsQuery.isLoading ? (
-              <Text style={{ color: '#b91c1c', fontSize: 12 }}>
+              <Text style={{ color: resolvedTheme === 'dark' ? '#fca5a5' : '#b91c1c', fontSize: 12 }}>
                 Gagal memuat ringkasan kepala sekolah. Tarik layar ke bawah untuk muat ulang.
               </Text>
             ) : null}
             {!principalStatsQuery.isLoading && !principalStatsQuery.isError ? (
               <>
-                <Text style={{ color: BRAND_COLORS.textMuted, fontSize: 12, marginBottom: 8 }}>
+                <Text style={{ color: colors.textMuted, fontSize: 12, marginBottom: 8 }}>
                   Tahun Ajaran Aktif: {principalStatsQuery.data?.activeAcademicYearName || '-'}
                 </Text>
                 {renderStatGrid(principalStatCards)}
@@ -2255,27 +2290,27 @@ export default function HomeScreen() {
         {profile.role === 'STAFF' ? (
           <View
             style={{
-              backgroundColor: BRAND_COLORS.white,
+              backgroundColor: colors.surface,
               borderRadius: 16,
               borderWidth: 1,
-              borderColor: '#d6e0f2',
+              borderColor: colors.border,
               padding: 12,
               marginBottom: 12,
             }}
           >
-            <Text style={{ color: BRAND_COLORS.textDark, fontWeight: '700', marginBottom: 8 }}>
+            <Text style={{ color: colors.text, fontWeight: '700', marginBottom: 8 }}>
               {getStaffSectionTitle(profile)}
             </Text>
             {staffStatsQuery.data?.activeAcademicYearName ? (
-              <Text style={{ color: BRAND_COLORS.textMuted, fontSize: 12, marginBottom: 8 }}>
+              <Text style={{ color: colors.textMuted, fontSize: 12, marginBottom: 8 }}>
                 Tahun ajaran aktif: {staffStatsQuery.data.activeAcademicYearName}
               </Text>
             ) : null}
             {staffStatsQuery.isLoading ? (
-              <Text style={{ color: BRAND_COLORS.textMuted, fontSize: 12 }}>Memuat statistik staff...</Text>
+              <Text style={{ color: colors.textMuted, fontSize: 12 }}>Memuat statistik staff...</Text>
             ) : null}
             {staffStatsQuery.isError && !staffStatsQuery.isLoading ? (
-              <Text style={{ color: '#b91c1c', fontSize: 12 }}>
+              <Text style={{ color: resolvedTheme === 'dark' ? '#fca5a5' : '#b91c1c', fontSize: 12 }}>
                 Gagal memuat statistik staff. Tarik layar ke bawah untuk muat ulang.
               </Text>
             ) : null}
@@ -2286,20 +2321,20 @@ export default function HomeScreen() {
         {profile.role === 'PARENT' ? (
           <View
             style={{
-              backgroundColor: BRAND_COLORS.white,
+              backgroundColor: colors.surface,
               borderRadius: 16,
               borderWidth: 1,
-              borderColor: '#d6e0f2',
+              borderColor: colors.border,
               padding: 12,
               marginBottom: 12,
             }}
           >
-            <Text style={{ color: BRAND_COLORS.textDark, fontWeight: '700', marginBottom: 8 }}>Ringkasan Keuangan Anak</Text>
+            <Text style={{ color: colors.text, fontWeight: '700', marginBottom: 8 }}>Ringkasan Keuangan Anak</Text>
             {parentOverviewQuery.isLoading ? (
-              <Text style={{ color: BRAND_COLORS.textMuted, fontSize: 12 }}>Memuat ringkasan keuangan...</Text>
+              <Text style={{ color: colors.textMuted, fontSize: 12 }}>Memuat ringkasan keuangan...</Text>
             ) : null}
             {parentOverviewQuery.isError && !parentOverviewQuery.isLoading ? (
-              <Text style={{ color: '#b91c1c', fontSize: 12 }}>
+              <Text style={{ color: resolvedTheme === 'dark' ? '#fca5a5' : '#b91c1c', fontSize: 12 }}>
                 Gagal memuat ringkasan keuangan. Tarik layar ke bawah untuk muat ulang.
               </Text>
             ) : null}
@@ -2311,34 +2346,34 @@ export default function HomeScreen() {
           <>
             <View
               style={{
-                backgroundColor: BRAND_COLORS.white,
+                backgroundColor: colors.surface,
                 borderRadius: 16,
                 borderWidth: 1,
-                borderColor: '#d6e0f2',
+                borderColor: colors.border,
                 padding: 12,
                 marginBottom: 12,
               }}
             >
-              <Text style={{ color: BRAND_COLORS.textDark, fontWeight: '700', marginBottom: 8 }}>Info Siswa</Text>
+              <Text style={{ color: colors.text, fontWeight: '700', marginBottom: 8 }}>Info Siswa</Text>
               {renderStatGrid(studentStatCards)}
             </View>
 
             <View
               style={{
-                backgroundColor: BRAND_COLORS.white,
+                backgroundColor: colors.surface,
                 borderRadius: 16,
                 borderWidth: 1,
-                borderColor: '#d6e0f2',
+                borderColor: colors.border,
                 padding: 12,
                 marginBottom: 12,
               }}
             >
-              <Text style={{ color: BRAND_COLORS.textDark, fontWeight: '700', marginBottom: 8 }}>Jadwal Pelajaran Hari Ini</Text>
+              <Text style={{ color: colors.text, fontWeight: '700', marginBottom: 8 }}>Jadwal Pelajaran Hari Ini</Text>
               {studentScheduleQuery.isLoading ? (
-                <Text style={{ color: BRAND_COLORS.textMuted, fontSize: 12 }}>Memuat jadwal pelajaran hari ini...</Text>
+                <Text style={{ color: colors.textMuted, fontSize: 12 }}>Memuat jadwal pelajaran hari ini...</Text>
               ) : null}
               {studentScheduleQuery.isError && !studentScheduleQuery.isLoading ? (
-                <Text style={{ color: '#b91c1c', fontSize: 12 }}>
+                <Text style={{ color: resolvedTheme === 'dark' ? '#fca5a5' : '#b91c1c', fontSize: 12 }}>
                   Gagal memuat jadwal pelajaran. Tarik layar ke bawah untuk muat ulang.
                 </Text>
               ) : null}
@@ -2351,8 +2386,8 @@ export default function HomeScreen() {
                         style={{
                           borderRadius: 10,
                           borderWidth: 1,
-                          borderColor: '#d6e2f7',
-                          backgroundColor: '#f8fbff',
+                          borderColor: colors.border,
+                          backgroundColor: resolvedTheme === 'dark' ? colors.surfaceMuted : '#f8fbff',
                           paddingHorizontal: 10,
                           paddingVertical: 9,
                           marginBottom: 8,
@@ -2366,23 +2401,23 @@ export default function HomeScreen() {
                             paddingHorizontal: 8,
                             height: 30,
                             borderRadius: 8,
-                            backgroundColor: '#dbeafe',
+                            backgroundColor: resolvedTheme === 'dark' ? 'rgba(96, 165, 250, 0.18)' : '#dbeafe',
                             alignItems: 'center',
                             justifyContent: 'center',
                             marginRight: 10,
                           }}
                         >
-                          <Text style={{ color: '#1d4ed8', fontWeight: '700', fontSize: 11 }}>
+                          <Text style={{ color: resolvedTheme === 'dark' ? '#bfdbfe' : '#1d4ed8', fontWeight: '700', fontSize: 11 }}>
                             {group.periodStart === group.periodEnd
                               ? `Jam ke ${group.periodStart}`
                               : `Jam ke ${group.periodStart}-${group.periodEnd}`}
                           </Text>
                         </View>
                         <View style={{ flex: 1 }}>
-                          <Text style={{ color: BRAND_COLORS.textDark, fontWeight: '700', fontSize: 13 }} numberOfLines={1}>
+                          <Text style={{ color: colors.text, fontWeight: '700', fontSize: 13 }} numberOfLines={1}>
                             {group.subjectName}
                           </Text>
-                          <Text style={{ color: BRAND_COLORS.textMuted, fontSize: 11, marginTop: 2 }} numberOfLines={1}>
+                          <Text style={{ color: colors.textMuted, fontSize: 11, marginTop: 2 }} numberOfLines={1}>
                             {group.teacherName}
                             {group.roomLabel !== '-' ? ` • ${group.roomLabel}` : ''}
                           </Text>
@@ -2396,11 +2431,11 @@ export default function HomeScreen() {
                       borderRadius: 10,
                       borderWidth: 1,
                       borderStyle: 'dashed',
-                      borderColor: '#cbd5e1',
+                      borderColor: colors.borderSoft,
                       padding: 12,
                     }}
                   >
-                    <Text style={{ color: BRAND_COLORS.textMuted, textAlign: 'center' }}>
+                    <Text style={{ color: colors.textMuted, textAlign: 'center' }}>
                       Tidak ada jadwal pelajaran untuk hari ini.
                     </Text>
                   </View>
@@ -2410,20 +2445,20 @@ export default function HomeScreen() {
 
             <View
               style={{
-                backgroundColor: BRAND_COLORS.white,
+                backgroundColor: colors.surface,
                 borderRadius: 16,
                 borderWidth: 1,
-                borderColor: '#d6e0f2',
+                borderColor: colors.border,
                 padding: 12,
                 marginBottom: 12,
               }}
             >
-              <Text style={{ color: BRAND_COLORS.textDark, fontWeight: '700', marginBottom: 8 }}>Jadwal Ujian Terdekat</Text>
+              <Text style={{ color: colors.text, fontWeight: '700', marginBottom: 8 }}>Jadwal Ujian Terdekat</Text>
               {studentExamsQuery.isLoading ? (
-                <Text style={{ color: BRAND_COLORS.textMuted, fontSize: 12 }}>Memuat jadwal ujian terdekat...</Text>
+                <Text style={{ color: colors.textMuted, fontSize: 12 }}>Memuat jadwal ujian terdekat...</Text>
               ) : null}
               {studentExamsQuery.isError && !studentExamsQuery.isLoading ? (
-                <Text style={{ color: '#b91c1c', fontSize: 12 }}>
+                <Text style={{ color: resolvedTheme === 'dark' ? '#fca5a5' : '#b91c1c', fontSize: 12 }}>
                   Gagal memuat jadwal ujian. Tarik layar ke bawah untuk muat ulang.
                 </Text>
               ) : null}
@@ -2445,8 +2480,8 @@ export default function HomeScreen() {
                           style={{
                             borderRadius: 10,
                             borderWidth: 1,
-                            borderColor: '#d6e2f7',
-                            backgroundColor: '#f8fbff',
+                            borderColor: colors.border,
+                            backgroundColor: resolvedTheme === 'dark' ? colors.surfaceMuted : '#f8fbff',
                             paddingHorizontal: 10,
                             paddingVertical: 9,
                             marginBottom: 8,
@@ -2454,7 +2489,7 @@ export default function HomeScreen() {
                         >
                           <View style={{ flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center' }}>
                             <Text
-                              style={{ color: BRAND_COLORS.textDark, fontWeight: '700', fontSize: 13, flex: 1, paddingRight: 8 }}
+                              style={{ color: colors.text, fontWeight: '700', fontSize: 13, flex: 1, paddingRight: 8 }}
                               numberOfLines={1}
                             >
                               {item.packet?.title || '-'}
@@ -2475,14 +2510,14 @@ export default function HomeScreen() {
                               {tone.label}
                             </Text>
                           </View>
-                          <Text style={{ color: BRAND_COLORS.textMuted, fontSize: 11, marginTop: 2 }} numberOfLines={1}>
+                          <Text style={{ color: colors.textMuted, fontSize: 11, marginTop: 2 }} numberOfLines={1}>
                             {`${resolveExamSubjectName(item)} • ${examType}`}
                           </Text>
-                          <Text style={{ color: BRAND_COLORS.textMuted, fontSize: 11, marginTop: 1 }}>
+                          <Text style={{ color: colors.textMuted, fontSize: 11, marginTop: 1 }}>
                             Mulai: {formatExamDateTime(item.startTime)}
                           </Text>
                           {item.isBlocked ? (
-                            <Text style={{ color: '#991b1b', fontSize: 11, marginTop: 2 }}>
+                            <Text style={{ color: resolvedTheme === 'dark' ? '#fecaca' : '#991b1b', fontSize: 11, marginTop: 2 }}>
                               Diblokir: {item.blockReason || 'Akses ujian dibatasi wali kelas.'}
                             </Text>
                           ) : null}
@@ -2496,11 +2531,11 @@ export default function HomeScreen() {
                       borderRadius: 10,
                       borderWidth: 1,
                       borderStyle: 'dashed',
-                      borderColor: '#cbd5e1',
+                      borderColor: colors.borderSoft,
                       padding: 12,
                     }}
                   >
-                    <Text style={{ color: BRAND_COLORS.textMuted, textAlign: 'center' }}>
+                    <Text style={{ color: colors.textMuted, textAlign: 'center' }}>
                       Tidak ada jadwal ujian aktif saat ini.
                     </Text>
                   </View>
@@ -2514,23 +2549,23 @@ export default function HomeScreen() {
         {profile.role === 'TEACHER' ? (
           <View
             style={{
-              backgroundColor: BRAND_COLORS.white,
+              backgroundColor: colors.surface,
               borderRadius: 16,
               borderWidth: 1,
-              borderColor: '#d6e0f2',
+              borderColor: colors.border,
               padding: 12,
               marginBottom: 12,
             }}
           >
             <View style={{ flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', marginBottom: 8 }}>
-              <Text style={{ color: BRAND_COLORS.textDark, fontWeight: '700' }}>Jadwal Hari Ini</Text>
-              <Text style={{ color: BRAND_COLORS.textMuted, fontSize: 11 }}>{todayLabel}</Text>
+              <Text style={{ color: colors.text, fontWeight: '700' }}>Jadwal Hari Ini</Text>
+              <Text style={{ color: colors.textMuted, fontSize: 11 }}>{todayLabel}</Text>
             </View>
             {teacherScheduleQuery.isLoading ? (
-              <Text style={{ color: BRAND_COLORS.textMuted, fontSize: 12 }}>Memuat jadwal mengajar hari ini...</Text>
+              <Text style={{ color: colors.textMuted, fontSize: 12 }}>Memuat jadwal mengajar hari ini...</Text>
             ) : null}
             {teacherScheduleQuery.isError && !teacherScheduleQuery.isLoading ? (
-              <Text style={{ color: '#b91c1c', fontSize: 12 }}>
+              <Text style={{ color: resolvedTheme === 'dark' ? '#fca5a5' : '#b91c1c', fontSize: 12 }}>
                 Gagal memuat jadwal hari ini. Tarik layar ke bawah untuk muat ulang.
               </Text>
             ) : null}
@@ -2545,8 +2580,8 @@ export default function HomeScreen() {
                         style={{
                           borderRadius: 10,
                           borderWidth: 1,
-                          borderColor: '#dbe5f3',
-                          backgroundColor: '#fbfdff',
+                          borderColor: colors.border,
+                          backgroundColor: resolvedTheme === 'dark' ? colors.surfaceMuted : '#fbfdff',
                           paddingHorizontal: 12,
                           paddingVertical: 10,
                           marginBottom: 8,
@@ -2559,29 +2594,29 @@ export default function HomeScreen() {
                             width: 64,
                             height: 64,
                             borderRadius: 12,
-                            backgroundColor: '#eff6ff',
+                            backgroundColor: resolvedTheme === 'dark' ? 'rgba(96, 165, 250, 0.18)' : '#eff6ff',
                             alignItems: 'center',
                             justifyContent: 'center',
                             marginRight: 10,
                           }}
                         >
-                          <Text style={{ color: '#2563eb', fontWeight: '600', fontSize: 10 }}>Jam ke</Text>
-                          <Text style={{ color: '#1d4ed8', fontWeight: '800', fontSize: 18, marginTop: 2 }}>
+                          <Text style={{ color: resolvedTheme === 'dark' ? '#bfdbfe' : '#2563eb', fontWeight: '600', fontSize: 10 }}>Jam ke</Text>
+                          <Text style={{ color: resolvedTheme === 'dark' ? '#dbeafe' : '#1d4ed8', fontWeight: '800', fontSize: 18, marginTop: 2 }}>
                             {group.periodStart === group.periodEnd
                               ? `${group.periodStart}`
                               : `${group.periodStart}-${group.periodEnd}`}
                           </Text>
                           {group.entries.length > 1 ? (
-                            <Text style={{ color: '#3b82f6', fontWeight: '700', fontSize: 10, marginTop: 1 }}>
+                            <Text style={{ color: resolvedTheme === 'dark' ? '#93c5fd' : '#3b82f6', fontWeight: '700', fontSize: 10, marginTop: 1 }}>
                               {group.entries.length} JP
                             </Text>
                           ) : null}
                         </View>
                         <View style={{ flex: 1 }}>
-                          <Text style={{ color: BRAND_COLORS.textDark, fontWeight: '700', fontSize: 13 }} numberOfLines={1}>
+                          <Text style={{ color: colors.text, fontWeight: '700', fontSize: 13 }} numberOfLines={1}>
                             {group.subjectCode ? `${group.subjectCode} • ${group.subjectName}` : group.subjectName}
                           </Text>
-                          <Text style={{ color: BRAND_COLORS.textMuted, fontSize: 11, marginTop: 1 }} numberOfLines={1}>
+                          <Text style={{ color: colors.textMuted, fontSize: 11, marginTop: 1 }} numberOfLines={1}>
                             Kelas {group.className}
                             {group.roomLabel !== '-' ? ` • Ruang ${group.roomLabel}` : ''}
                           </Text>
@@ -2593,14 +2628,14 @@ export default function HomeScreen() {
                               alignItems: 'center',
                               gap: 4,
                               borderRadius: 999,
-                              backgroundColor: '#dbeafe',
+                              backgroundColor: resolvedTheme === 'dark' ? 'rgba(96, 165, 250, 0.18)' : '#dbeafe',
                               paddingHorizontal: 10,
                               paddingVertical: 6,
                               marginLeft: 8,
                             }}
                           >
-                            <Feather name="clock" size={12} color="#1d4ed8" />
-                            <Text style={{ color: '#1d4ed8', fontWeight: '700', fontSize: 11 }}>{group.timeRange}</Text>
+                            <Feather name="clock" size={12} color={resolvedTheme === 'dark' ? '#bfdbfe' : '#1d4ed8'} />
+                            <Text style={{ color: resolvedTheme === 'dark' ? '#bfdbfe' : '#1d4ed8', fontWeight: '700', fontSize: 11 }}>{group.timeRange}</Text>
                           </View>
                         ) : null}
                       </View>
@@ -2612,11 +2647,11 @@ export default function HomeScreen() {
                       borderRadius: 10,
                       borderWidth: 1,
                       borderStyle: 'dashed',
-                      borderColor: '#cbd5e1',
+                      borderColor: colors.borderSoft,
                       padding: 12,
                     }}
                   >
-                    <Text style={{ color: BRAND_COLORS.textMuted, textAlign: 'center' }}>
+                    <Text style={{ color: colors.textMuted, textAlign: 'center' }}>
                       Tidak ada jadwal mengajar untuk hari ini.
                     </Text>
                   </View>
@@ -2632,14 +2667,14 @@ export default function HomeScreen() {
                       marginTop: 8,
                       borderRadius: 10,
                       borderWidth: 1,
-                      borderColor: '#d6e2f7',
-                      backgroundColor: '#f8fbff',
+                      borderColor: colors.border,
+                      backgroundColor: resolvedTheme === 'dark' ? colors.surfaceMuted : '#f8fbff',
                       paddingVertical: 10,
                       alignItems: 'center',
                       opacity: pressed || openingMenuKey === teachingScheduleMenu.key ? 0.82 : 1,
                     })}
                   >
-                    <Text style={{ color: BRAND_COLORS.navy, fontWeight: '700' }}>
+                    <Text style={{ color: resolvedTheme === 'dark' ? '#bfdbfe' : BRAND_COLORS.navy, fontWeight: '700' }}>
                       {openingMenuKey === teachingScheduleMenu.key ? 'Membuka modul...' : 'Lihat Jadwal Lengkap'}
                     </Text>
                   </Pressable>
@@ -2650,19 +2685,19 @@ export default function HomeScreen() {
         ) : roleQuickMenus.length > 0 ? (
           <View
             style={{
-              backgroundColor: BRAND_COLORS.white,
+              backgroundColor: colors.surface,
               borderRadius: 16,
               borderWidth: 1,
-              borderColor: '#d6e0f2',
+              borderColor: colors.border,
               padding: 12,
               marginBottom: 12,
             }}
           >
-            <Text style={{ color: BRAND_COLORS.textDark, fontWeight: '700', marginBottom: 8 }}>Aksi Cepat</Text>
+            <Text style={{ color: colors.text, fontWeight: '700', marginBottom: 8 }}>Aksi Cepat</Text>
             <View style={{ flexDirection: 'row', flexWrap: 'wrap', marginHorizontal: -4 }}>
               {roleQuickMenus.map((menu) => {
                 const icon = getMenuIcon(menu);
-                const tone = getMenuIconTone(menu.key);
+                const tone = resolveMenuTone(getMenuIconTone(menu.key), resolvedTheme);
                 const isOpeningThisMenu = openingMenuKey === menu.key;
                 return (
                   <View key={menu.key} style={{ width: '33.3333%', paddingHorizontal: 4, marginBottom: 10 }}>
@@ -2698,7 +2733,7 @@ export default function HomeScreen() {
                         )}
                       </View>
                       <Text
-                        style={{ color: BRAND_COLORS.textDark, fontWeight: '700', fontSize: 11, marginTop: 5, textAlign: 'center' }}
+                        style={{ color: colors.text, fontWeight: '700', fontSize: 11, marginTop: 5, textAlign: 'center' }}
                         numberOfLines={2}
                       >
                         {isOpeningThisMenu ? 'Membuka...' : menu.label}
@@ -2731,24 +2766,24 @@ export default function HomeScreen() {
               marginBottom: 10,
               borderRadius: 12,
               borderWidth: 1,
-              borderColor: '#d6e0f2',
-              backgroundColor: BRAND_COLORS.white,
+              borderColor: colors.border,
+              backgroundColor: colors.surface,
               paddingVertical: 8,
               paddingHorizontal: 10,
               flexDirection: 'row',
               alignItems: 'center',
             }}
           >
-            <ActivityIndicator size="small" color={BRAND_COLORS.navy} />
-            <Text style={{ color: BRAND_COLORS.textMuted, fontSize: 12, marginLeft: 8 }}>
+            <ActivityIndicator size="small" color={colors.primary} />
+            <Text style={{ color: colors.textMuted, fontSize: 12, marginLeft: 8 }}>
               Membuka modul...
             </Text>
           </View>
         ) : null}
 
         <View style={{ flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', marginBottom: 10 }}>
-          <Text style={{ color: BRAND_COLORS.textDark, fontWeight: '700', fontSize: 15 }}>Menu Berdasarkan Kategori</Text>
-          <Text style={{ color: BRAND_COLORS.textMuted, fontSize: 12 }}>{profile.role}</Text>
+          <Text style={{ color: colors.text, fontWeight: '700', fontSize: 15 }}>Menu Berdasarkan Kategori</Text>
+          <Text style={{ color: colors.textMuted, fontSize: 12 }}>{profile.role}</Text>
         </View>
         {menuSearch.trim() ? (
           <View
@@ -2756,8 +2791,8 @@ export default function HomeScreen() {
               marginBottom: 10,
               borderRadius: 10,
               borderWidth: 1,
-              borderColor: '#d6e0f2',
-              backgroundColor: '#f8fbff',
+              borderColor: colors.border,
+              backgroundColor: resolvedTheme === 'dark' ? colors.surfaceMuted : '#f8fbff',
               paddingVertical: 8,
               paddingHorizontal: 10,
               flexDirection: 'row',
@@ -2766,13 +2801,13 @@ export default function HomeScreen() {
             }}
           >
             <Text
-              style={{ color: BRAND_COLORS.textMuted, fontSize: 12, flex: 1 }}
+              style={{ color: colors.textMuted, fontSize: 12, flex: 1 }}
               numberOfLines={1}
             >
               Filter pencarian: "{menuSearch}"
             </Text>
             <Pressable onPress={() => setMenuSearch('')}>
-              <Text style={{ color: BRAND_COLORS.blue, fontSize: 12, fontWeight: '700', marginLeft: 10 }}>
+              <Text style={{ color: colors.primary, fontSize: 12, fontWeight: '700', marginLeft: 10 }}>
                 Hapus
               </Text>
             </Pressable>
@@ -2781,15 +2816,15 @@ export default function HomeScreen() {
         {filteredGroups.length === 0 ? (
           <View
             style={{
-              backgroundColor: BRAND_COLORS.white,
+              backgroundColor: colors.surface,
               borderRadius: 18,
               borderWidth: 1,
-              borderColor: '#d6e0f2',
+              borderColor: colors.border,
               padding: 16,
               marginBottom: 12,
             }}
           >
-            <Text style={{ color: BRAND_COLORS.textDark, textAlign: 'center', fontWeight: '600' }}>
+            <Text style={{ color: colors.text, textAlign: 'center', fontWeight: '600' }}>
               Menu tidak ditemukan.
             </Text>
           </View>
@@ -2806,10 +2841,10 @@ export default function HomeScreen() {
             <View
               key={group.key}
               style={{
-                backgroundColor: BRAND_COLORS.white,
+                backgroundColor: colors.surface,
                 borderRadius: 16,
                 borderWidth: 1,
-                borderColor: '#d6e0f2',
+                borderColor: colors.border,
                 marginBottom: 11,
                 overflow: 'hidden',
               }}
@@ -2824,7 +2859,7 @@ export default function HomeScreen() {
                   paddingVertical: 10,
                   paddingHorizontal: 12,
                   borderBottomWidth: isOpen ? 1 : 0,
-                  borderBottomColor: '#e8eefb',
+                  borderBottomColor: colors.borderSoft,
                 }}
               >
                 <View
@@ -2844,14 +2879,14 @@ export default function HomeScreen() {
                 </View>
 
                 <View style={{ flex: 1 }}>
-                  <Text style={{ color: BRAND_COLORS.textDark, fontWeight: '700', fontSize: 15 }}>{group.label}</Text>
-                  <Text style={{ color: BRAND_COLORS.textMuted, fontSize: 12, marginTop: 2 }}>
+                  <Text style={{ color: colors.text, fontWeight: '700', fontSize: 15 }}>{group.label}</Text>
+                  <Text style={{ color: colors.textMuted, fontSize: 12, marginTop: 2 }}>
                     {group.items.length} submenu
                   </Text>
                 </View>
 
                 <View style={{ paddingHorizontal: 12 }}>
-                  <Feather name={isOpen ? 'chevron-down' : 'chevron-right'} size={18} color={BRAND_COLORS.textMuted} />
+                  <Feather name={isOpen ? 'chevron-down' : 'chevron-right'} size={18} color={colors.textMuted} />
                 </View>
               </Pressable>
 
@@ -2859,7 +2894,7 @@ export default function HomeScreen() {
                 <View style={{ paddingHorizontal: 8, paddingVertical: 10 }}>
                   <View style={{ flexDirection: 'row', flexWrap: 'wrap', marginHorizontal: -4 }}>
                     {group.items.map((menu) => {
-                      const tone = getMenuIconTone(menu.key);
+                      const tone = resolveMenuTone(getMenuIconTone(menu.key), resolvedTheme);
                       const isOpeningThisMenu = openingMenuKey === menu.key;
                       const menuIcon = getMenuIcon(menu);
                       return (
@@ -2897,7 +2932,7 @@ export default function HomeScreen() {
                             </View>
                             <Text
                               style={{
-                                color: BRAND_COLORS.textDark,
+                                color: colors.text,
                                 fontWeight: '700',
                                 fontSize: 11,
                                 marginTop: 6,
@@ -2934,41 +2969,41 @@ export default function HomeScreen() {
               marginBottom: 10,
               borderRadius: 12,
               borderWidth: 1,
-              borderColor: '#d6e0f2',
-              backgroundColor: BRAND_COLORS.white,
+              borderColor: colors.border,
+              backgroundColor: colors.surface,
               paddingHorizontal: 10,
               flexDirection: 'row',
               alignItems: 'center',
             }}
           >
-            <Feather name="search" size={16} color={BRAND_COLORS.textMuted} />
+            <Feather name="search" size={16} color={colors.textMuted} />
             <TextInput
               ref={menuSearchInputRef}
               value={menuSearch}
               onChangeText={setMenuSearch}
               placeholder="Cari menu atau submenu"
-              placeholderTextColor="#9aa6be"
+              placeholderTextColor={colors.textSoft}
               style={{
                 flex: 1,
                 paddingVertical: 10,
                 paddingHorizontal: 8,
-                color: BRAND_COLORS.textDark,
+                color: colors.text,
               }}
             />
             {menuSearch.trim() ? (
               <Pressable onPress={() => setMenuSearch('')} style={{ marginRight: 6 }}>
-                <Feather name="x-circle" size={16} color={BRAND_COLORS.textMuted} />
+                <Feather name="x-circle" size={16} color={colors.textMuted} />
               </Pressable>
             ) : null}
             <Pressable onPress={closeInlineSearch}>
-              <Feather name="x" size={16} color={BRAND_COLORS.textMuted} />
+              <Feather name="x" size={16} color={colors.textMuted} />
             </Pressable>
           </View>
         ) : null}
 
         <View
           style={{
-            backgroundColor: BRAND_COLORS.navy,
+            backgroundColor: resolvedTheme === 'dark' ? colors.surface : BRAND_COLORS.navy,
             borderRadius: 24,
             paddingHorizontal: 16,
             paddingVertical: 12,
@@ -2977,26 +3012,28 @@ export default function HomeScreen() {
             justifyContent: 'space-between',
             shadowColor: '#0b1b42',
             shadowOffset: { width: 0, height: 7 },
-            shadowOpacity: 0.2,
+            shadowOpacity: resolvedTheme === 'dark' ? 0.32 : 0.2,
             shadowRadius: 10,
             elevation: 10,
+            borderWidth: resolvedTheme === 'dark' ? 1 : 0,
+            borderColor: resolvedTheme === 'dark' ? colors.border : 'transparent',
           }}
         >
           <Pressable onPress={() => router.replace('/home')} style={{ alignItems: 'center', width: 56 }}>
             <Feather name="home" size={17} color={BRAND_COLORS.gold} />
-            <Text style={{ color: BRAND_COLORS.white, fontSize: 11, marginTop: 2 }}>Home</Text>
+            <Text style={{ color: resolvedTheme === 'dark' ? colors.text : BRAND_COLORS.white, fontSize: 11, marginTop: 2 }}>Home</Text>
           </Pressable>
 
           <Pressable onPress={() => router.push('/profile')} style={{ alignItems: 'center', width: 56 }}>
-            <Feather name="user" size={17} color={BRAND_COLORS.white} />
-            <Text style={{ color: BRAND_COLORS.white, fontSize: 11, marginTop: 2 }}>Profil</Text>
+            <Feather name="user" size={17} color={resolvedTheme === 'dark' ? colors.text : BRAND_COLORS.white} />
+            <Text style={{ color: resolvedTheme === 'dark' ? colors.text : BRAND_COLORS.white, fontSize: 11, marginTop: 2 }}>Profil</Text>
           </Pressable>
 
           <View style={{ width: 58 }} />
 
           <Pressable onPress={handleNotificationPress} style={{ alignItems: 'center', width: 56 }}>
             <View style={{ position: 'relative' }}>
-              <Feather name="bell" size={17} color={BRAND_COLORS.white} />
+              <Feather name="bell" size={17} color={resolvedTheme === 'dark' ? colors.text : BRAND_COLORS.white} />
               {unreadNotificationCount > 0 ? (
                 <View
                   style={{
@@ -3008,7 +3045,7 @@ export default function HomeScreen() {
                     borderRadius: 999,
                     backgroundColor: '#ef4444',
                     borderWidth: 1,
-                    borderColor: BRAND_COLORS.navy,
+                    borderColor: resolvedTheme === 'dark' ? colors.surface : BRAND_COLORS.navy,
                     paddingHorizontal: 4,
                     alignItems: 'center',
                     justifyContent: 'center',
@@ -3020,12 +3057,12 @@ export default function HomeScreen() {
                 </View>
               ) : null}
             </View>
-            <Text style={{ color: BRAND_COLORS.white, fontSize: 11, marginTop: 2 }}>Notifikasi</Text>
+            <Text style={{ color: resolvedTheme === 'dark' ? colors.text : BRAND_COLORS.white, fontSize: 11, marginTop: 2 }}>Notifikasi</Text>
           </Pressable>
 
           <Pressable onPress={handleLogout} disabled={isLoggingOut} style={{ alignItems: 'center', width: 56 }}>
-            <Feather name="log-out" size={17} color={BRAND_COLORS.white} />
-            <Text style={{ color: BRAND_COLORS.white, fontSize: 11, marginTop: 2 }}>
+            <Feather name="log-out" size={17} color={resolvedTheme === 'dark' ? colors.text : BRAND_COLORS.white} />
+            <Text style={{ color: resolvedTheme === 'dark' ? colors.text : BRAND_COLORS.white, fontSize: 11, marginTop: 2 }}>
               {isLoggingOut ? 'Proses' : 'Logout'}
             </Text>
           </Pressable>
@@ -3040,9 +3077,9 @@ export default function HomeScreen() {
             width: 52,
             height: 52,
             borderRadius: 999,
-            backgroundColor: '#ffffff',
+            backgroundColor: colors.surface,
             borderWidth: 5,
-            borderColor: '#e9eefb',
+            borderColor: resolvedTheme === 'dark' ? colors.background : '#e9eefb',
             alignItems: 'center',
             justifyContent: 'center',
           }}
@@ -3052,12 +3089,12 @@ export default function HomeScreen() {
               width: 42,
               height: 42,
               borderRadius: 999,
-              backgroundColor: BRAND_COLORS.navy,
+              backgroundColor: resolvedTheme === 'dark' ? colors.surfaceMuted : BRAND_COLORS.navy,
               alignItems: 'center',
               justifyContent: 'center',
             }}
           >
-            <Feather name="search" size={18} color={BRAND_COLORS.white} />
+            <Feather name="search" size={18} color={resolvedTheme === 'dark' ? colors.text : BRAND_COLORS.white} />
           </View>
         </Pressable>
       </View>
@@ -3081,10 +3118,10 @@ export default function HomeScreen() {
         >
           <View
             style={{
-              backgroundColor: BRAND_COLORS.white,
+              backgroundColor: colors.surface,
               borderRadius: 20,
               borderWidth: 1,
-              borderColor: '#c7d7f7',
+              borderColor: colors.border,
               paddingHorizontal: 16,
               paddingVertical: 16,
               shadowColor: '#0f172a',
@@ -3099,20 +3136,20 @@ export default function HomeScreen() {
                 width: 44,
                 height: 44,
                 borderRadius: 999,
-                backgroundColor: '#eff6ff',
+                backgroundColor: resolvedTheme === 'dark' ? colors.primarySoft : '#eff6ff',
                 borderWidth: 1,
-                borderColor: '#bfdbfe',
+                borderColor: resolvedTheme === 'dark' ? colors.border : '#bfdbfe',
                 alignItems: 'center',
                 justifyContent: 'center',
                 marginBottom: 10,
               }}
             >
-              <Feather name="log-out" size={18} color={BRAND_COLORS.blue} />
+              <Feather name="log-out" size={18} color={colors.primary} />
             </View>
-            <Text style={{ color: BRAND_COLORS.textDark, fontSize: 22, fontWeight: '700', marginBottom: 6 }}>
+            <Text style={{ color: colors.text, fontSize: 22, fontWeight: '700', marginBottom: 6 }}>
               Konfirmasi Logout
             </Text>
-            <Text style={{ color: BRAND_COLORS.textMuted, fontSize: 14, marginBottom: 14 }}>
+            <Text style={{ color: colors.textMuted, fontSize: 14, marginBottom: 14 }}>
               Anda akan keluar dari sesi saat ini. Lanjutkan logout?
             </Text>
 
@@ -3123,15 +3160,15 @@ export default function HomeScreen() {
                 style={{
                   flex: 1,
                   borderWidth: 1,
-                  borderColor: '#cbd5e1',
+                  borderColor: colors.borderSoft,
                   borderRadius: 12,
                   paddingVertical: 11,
                   alignItems: 'center',
-                  backgroundColor: BRAND_COLORS.white,
+                  backgroundColor: colors.surface,
                   opacity: isLoggingOut ? 0.6 : 1,
                 }}
               >
-                <Text style={{ color: BRAND_COLORS.textMuted, fontWeight: '700' }}>Batal</Text>
+                <Text style={{ color: colors.textMuted, fontWeight: '700' }}>Batal</Text>
               </Pressable>
               <Pressable
                 disabled={isLoggingOut}

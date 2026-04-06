@@ -1,5 +1,5 @@
 import { useMutation, useQueryClient } from '@tanstack/react-query';
-import { Laptop, Moon } from 'lucide-react';
+import { MoonStar, SunMedium } from 'lucide-react';
 import toast from 'react-hot-toast';
 import { authService } from '../../services/auth.service';
 import { userService } from '../../services/user.service';
@@ -18,19 +18,19 @@ const OPTIONS: Array<{
   value: ThemeMode;
   label: string;
   title: string;
-  icon: typeof Laptop;
+  icon: typeof SunMedium;
 }> = [
   {
     value: 'system',
-    label: 'Sistem',
+    label: 'MODE SISTEM',
     title: 'Ikuti Sistem',
-    icon: Laptop,
+    icon: SunMedium,
   },
   {
     value: 'dark',
-    label: 'Gelap',
+    label: 'MODE GELAP',
     title: 'Mode Gelap',
-    icon: Moon,
+    icon: MoonStar,
   },
 ];
 
@@ -59,7 +59,10 @@ export function HeaderThemeModeToggle({
     },
   });
 
-  const handleSelect = (nextMode: ThemeMode) => {
+  const nextOption = mode === 'dark' ? OPTIONS[0] : OPTIONS[1];
+  const NextIcon = nextOption.icon;
+
+  const handleToggle = (nextMode: ThemeMode) => {
     if (mutation.isPending || nextMode === mode) return;
     const previousMode = mode;
     setMode(nextMode);
@@ -69,51 +72,37 @@ export function HeaderThemeModeToggle({
   };
 
   return (
-    <div
-      className="hidden md:flex items-center gap-1 rounded-2xl border px-1.5 py-1"
-      style={{
-        borderColor: resolvedTheme === 'dark' ? 'rgba(148, 163, 184, 0.24)' : '#dbeafe',
-        backgroundColor: resolvedTheme === 'dark' ? 'rgba(15, 23, 42, 0.44)' : 'rgba(255, 255, 255, 0.72)',
-      }}
+    <button
+      type="button"
+      title={`Klik untuk beralih ke ${nextOption.title}.`}
+      aria-label={`Klik untuk beralih ke ${nextOption.title}.`}
+      disabled={mutation.isPending}
+      onClick={() => handleToggle(nextOption.value)}
+      className="hidden md:inline-flex flex-col items-center justify-center gap-1 transition"
+      style={{ opacity: mutation.isPending ? 0.72 : 1 }}
     >
-      {OPTIONS.map((option) => {
-        const Icon = option.icon;
-        const active = option.value === mode;
-        return (
-          <button
-            key={option.value}
-            type="button"
-            title={option.title}
-            aria-label={option.title}
-            disabled={mutation.isPending}
-            onClick={() => handleSelect(option.value)}
-            className="flex min-w-[52px] flex-col items-center justify-center rounded-xl border px-2 py-1.5 transition"
-            style={{
-              borderColor: active
-                ? resolvedTheme === 'dark'
-                  ? 'rgba(96, 165, 250, 0.45)'
-                  : '#bfdbfe'
-                : 'transparent',
-              backgroundColor: active
-                ? resolvedTheme === 'dark'
-                  ? 'rgba(30, 41, 59, 0.92)'
-                  : '#eff6ff'
-                : 'transparent',
-              color: active
-                ? resolvedTheme === 'dark'
-                  ? '#bfdbfe'
-                  : '#1d4ed8'
-                : resolvedTheme === 'dark'
-                  ? '#94a3b8'
-                  : '#64748b',
-              opacity: mutation.isPending ? 0.72 : 1,
-            }}
-          >
-            <Icon className="h-4 w-4" />
-            <span className="mt-1 text-[10px] font-semibold leading-none">{option.label}</span>
-          </button>
-        );
-      })}
-    </div>
+      <span
+        className="flex h-11 w-11 items-center justify-center rounded-full transition"
+        style={{
+          backgroundColor: resolvedTheme === 'dark' ? 'rgba(226, 232, 240, 0.12)' : 'rgba(255, 255, 255, 0.92)',
+          color: resolvedTheme === 'dark' ? '#e2e8f0' : '#475569',
+          border: resolvedTheme === 'dark' ? '1px solid rgba(148, 163, 184, 0.24)' : '1px solid rgba(148, 163, 184, 0.26)',
+          boxShadow:
+            resolvedTheme === 'dark'
+              ? '0 6px 16px rgba(2, 6, 23, 0.28)'
+              : '0 8px 18px rgba(148, 163, 184, 0.24)',
+        }}
+      >
+        <NextIcon className="h-[19px] w-[19px]" />
+      </span>
+      <span className="flex flex-col items-center justify-center">
+        <span
+          className="text-[9px] font-bold uppercase leading-none tracking-[0.14em]"
+          style={{ color: resolvedTheme === 'dark' ? '#cbd5e1' : '#475569' }}
+        >
+          {nextOption.label}
+        </span>
+      </span>
+    </button>
   );
 }
