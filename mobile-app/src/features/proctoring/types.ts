@@ -33,6 +33,21 @@ export type ProctorStudentRow = {
   startTime: string | null;
   submitTime: string | null;
   score?: number | null;
+  answeredCount?: number;
+  totalQuestions?: number;
+  className?: string | null;
+  monitoring?: {
+    totalViolations?: number;
+    tabSwitchCount?: number;
+    fullscreenExitCount?: number;
+    appSwitchCount?: number;
+    lastViolationType?: string | null;
+    lastViolationAt?: string | null;
+    currentQuestionIndex?: number;
+    currentQuestionNumber?: number;
+    currentQuestionId?: string | null;
+    lastSyncAt?: string | null;
+  };
 };
 
 export type ProctorScheduleDetail = {
@@ -47,6 +62,13 @@ export type ProctorScheduleDetail = {
     academicYearName?: string | null;
     subjectName?: string;
     classNames?: string[];
+    teacherNames?: string[];
+    monitoredScheduleIds?: number[];
+    attendanceSummary?: {
+      expectedParticipants?: number;
+      presentParticipants?: number;
+      absentParticipants?: number;
+    };
     packet: {
       title: string;
       subject: {

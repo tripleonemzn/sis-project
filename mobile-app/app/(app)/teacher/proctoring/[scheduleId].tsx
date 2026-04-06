@@ -86,8 +86,13 @@ export default function TeacherProctoringDetailScreen() {
     mutationFn: async () => {
       if (!parsedScheduleId) throw new Error('Jadwal ujian tidak valid.');
       const students = detailQuery.data?.students || [];
-      const presentCount = students.filter((item) => !!item.startTime).length;
-      const absentCount = Math.max(0, students.length - presentCount);
+      const presentCount =
+        Number(detailQuery.data?.schedule?.attendanceSummary?.presentParticipants) ||
+        students.filter((item) => !!item.startTime || item.status !== 'NOT_STARTED').length;
+      const absentCount = Math.max(
+        0,
+        (Number(detailQuery.data?.schedule?.attendanceSummary?.expectedParticipants) || students.length) - presentCount,
+      );
       await proctoringApi.submitReport(parsedScheduleId, {
         notes: notes.trim(),
         incident: '',
@@ -115,10 +120,8 @@ export default function TeacherProctoringDetailScreen() {
     })[0] || null;
   }, [detailQuery.data?.schedule?.proctoringReports]);
   const reportSubmitted = Boolean(latestReport?.id);
-  const presentCount = students.filter((item) => !!item.startTime).length;
   const inProgressCount = students.filter((item) => item.status === 'IN_PROGRESS').length;
   const completedCount = students.filter((item) => item.status === 'COMPLETED').length;
-  const absentCount = Math.max(0, students.length - presentCount);
 
   useEffect(() => {
     if (!latestReport?.id) return;
@@ -156,6 +159,16 @@ export default function TeacherProctoringDetailScreen() {
     )} sampai dengan pukul ${formatTime(detailQuery.data?.schedule?.endTime)} di ruang ${
       detailQuery.data?.schedule?.room || 'Belum ditentukan'
     }.`;
+  const expectedParticipants =
+    Number(detailQuery.data?.schedule?.attendanceSummary?.expectedParticipants) || students.length;
+  const presentParticipants =
+    Number(detailQuery.data?.schedule?.attendanceSummary?.presentParticipants) ||
+    students.filter((item) => !!item.startTime || item.status !== 'NOT_STARTED').length;
+  const absentParticipants = Math.max(
+    0,
+    Number(detailQuery.data?.schedule?.attendanceSummary?.absentParticipants) ||
+      expectedParticipants - presentParticipants,
+  );
 
   if (isLoading) return <AppLoadingScreen message="Memuat monitoring ujian..." />;
   if (!isAuthenticated) return <Redirect href="/welcome" />;
@@ -253,8 +266,8 @@ export default function TeacherProctoringDetailScreen() {
           <View style={{ flexDirection: 'row', marginHorizontal: -4, marginBottom: 10 }}>
             <View style={{ flex: 1, paddingHorizontal: 4 }}>
               <MobileSummaryCard
-                title="Total Siswa"
-                value={String(students.length)}
+                title="Seharusnya"
+                value={String(expectedParticipants)}
                 subtitle="Peserta kelas"
                 iconName="users"
                 accentColor="#2563eb"
@@ -273,11 +286,29 @@ export default function TeacherProctoringDetailScreen() {
               <MobileSummaryCard
                 title="Selesai"
                 value={String(completedCount)}
-                subtitle={`Absen ${absentCount}`}
+                subtitle={`Tidak hadir ${absentParticipants}`}
                 iconName="check-circle"
                 accentColor="#16a34a"
               />
             </View>
+          </View>
+          <View
+            style={{
+              backgroundColor: '#f8fafc',
+              borderWidth: 1,
+              borderColor: '#dbe7fb',
+              borderRadius: 12,
+              paddingHorizontal: 12,
+              paddingVertical: 10,
+              marginBottom: 10,
+              flexDirection: 'row',
+              flexWrap: 'wrap',
+              gap: 8,
+            }}
+          >
+            <Text style={{ color: '#0f766e', fontWeight: '700' }}>Hadir {presentParticipants}</Text>
+            <Text style={{ color: '#b91c1c', fontWeight: '700' }}>Tidak hadir {absentParticipants}</Text>
+            <Text style={{ color: '#475569' }}>Belum mulai {Math.max(0, students.filter((item) => item.status === 'NOT_STARTED').length)}</Text>
           </View>
 
           <View
@@ -526,9 +557,9 @@ export default function TeacherProctoringDetailScreen() {
                   {previewNarrative}
                 </Text>
                 <View style={{ marginTop: 12, gap: 6 }}>
-                  <Text style={{ color: '#0f172a', fontSize: 12 }}>Jumlah Peserta Seharusnya: {students.length}</Text>
-                  <Text style={{ color: '#0f172a', fontSize: 12 }}>Jumlah Peserta yang tidak hadir: {absentCount}</Text>
-                  <Text style={{ color: '#0f172a', fontSize: 12 }}>Jumlah Peserta yang hadir: {presentCount}</Text>
+                  <Text style={{ color: '#0f172a', fontSize: 12 }}>Jumlah Peserta Seharusnya: {expectedParticipants}</Text>
+                  <Text style={{ color: '#0f172a', fontSize: 12 }}>Jumlah Peserta yang tidak hadir: {absentParticipants}</Text>
+                  <Text style={{ color: '#0f172a', fontSize: 12 }}>Jumlah Peserta yang hadir: {presentParticipants}</Text>
                 </View>
                 <Text style={{ color: '#0f172a', fontSize: 12, marginTop: 12, fontWeight: '700' }}>
                   Catatan Pengawas selama Ujian berlangsung.

@@ -233,6 +233,7 @@ export default function StudentExamTakePage() {
   const [violations, setViolations] = useState(0)
   const [showViolationWarning, setShowViolationWarning] = useState(false)
   const [lastViolationType, setLastViolationType] = useState('')
+  const [previewImageSrc, setPreviewImageSrc] = useState<string | null>(null)
   
   // Submission
   const [submitting, setSubmitting] = useState(false)
@@ -829,6 +830,8 @@ export default function StudentExamTakePage() {
     
     // Detect visibility changes (tab switching)
     document.addEventListener('visibilitychange', handleVisibilityChange)
+    window.addEventListener('pagehide', handlePageHide)
+    window.addEventListener('beforeunload', handleBeforeUnload)
     
     // Detect window blur (switching to other apps)
     window.addEventListener('blur', handleWindowBlur)
@@ -852,6 +855,8 @@ export default function StudentExamTakePage() {
     document.removeEventListener('mozfullscreenchange', handleFullscreenChange)
     document.removeEventListener('MSFullscreenChange', handleFullscreenChange)
     document.removeEventListener('visibilitychange', handleVisibilityChange)
+    window.removeEventListener('pagehide', handlePageHide)
+    window.removeEventListener('beforeunload', handleBeforeUnload)
     window.removeEventListener('blur', handleWindowBlur)
     window.removeEventListener('focus', handleWindowFocus)
     document.removeEventListener('copy', preventCopyPaste)
@@ -961,9 +966,12 @@ export default function StudentExamTakePage() {
     const forbiddenCombos = [
       e.ctrlKey && normalizedKey === 'w', // Close tab
       e.ctrlKey && normalizedKey === 't', // New tab
+      e.ctrlKey && normalizedKey === 'tab', // Switch tab
+      e.ctrlKey && e.shiftKey && normalizedKey === 'tab', // Previous tab
       e.ctrlKey && normalizedKey === 'n', // New window
       e.ctrlKey && e.shiftKey && normalizedKey === 'n', // New incognito
       e.ctrlKey && normalizedKey === 'r', // Refresh
+      e.ctrlKey && normalizedKey === 'l', // Focus address bar
       e.ctrlKey && e.shiftKey && normalizedKey === 'i', // Dev tools
       e.ctrlKey && e.shiftKey && normalizedKey === 'j', // Dev tools
       e.ctrlKey && e.shiftKey && normalizedKey === 'c', // Inspect
@@ -971,9 +979,15 @@ export default function StudentExamTakePage() {
       e.ctrlKey && normalizedKey === 's', // Save
       e.ctrlKey && normalizedKey === 'p', // Print
       e.altKey && normalizedKey === 'tab', // Switch app
+      e.altKey && normalizedKey === 'd', // Focus address bar
+      e.altKey && normalizedKey === 'space', // Window menu
       e.altKey && normalizedKey === 'f4', // Close window
       e.metaKey && normalizedKey === 'w', // Mac close
       e.metaKey && normalizedKey === 't', // Mac new tab
+      e.metaKey && normalizedKey === 'n', // Mac new window
+      e.metaKey && normalizedKey === 'r', // Mac refresh
+      e.metaKey && normalizedKey === 'p', // Mac print
+      e.metaKey && normalizedKey === 'l', // Mac address bar
     ]
 
     if (forbiddenKeys.includes(e.key) || forbiddenCombos.some(combo => combo)) {
@@ -1037,6 +1051,17 @@ export default function StudentExamTakePage() {
     const now = Date.now()
     const recentlyBlurred = now - lastWindowBlurAtRef.current < 1200
     recordViolation(recentlyBlurred ? 'Alt+Tab / berpindah aplikasi' : 'Berpindah tab')
+  }
+
+  const handlePageHide = () => {
+    if (!examStartTime || submitting || hasAutoSubmitted.current) return
+    recordViolation('Meninggalkan halaman ujian')
+  }
+
+  const handleBeforeUnload = (event: BeforeUnloadEvent) => {
+    if (!examStartTime || submitting || hasAutoSubmitted.current) return
+    event.preventDefault()
+    event.returnValue = ''
   }
 
   const handleWindowFocus = () => {
@@ -1440,12 +1465,18 @@ export default function StudentExamTakePage() {
     <>
       {(currentQuestion.question_image_url || currentQuestion.image_url) && (
         <div className="mb-8 flex justify-center">
-          <QuestionMediaImage
-            src={currentQuestion.question_image_url || currentQuestion.image_url || ''} 
-            alt="Question" 
-            preferThumbnail
-            className="max-w-full max-h-[500px] rounded-lg shadow-sm border border-gray-200"
-          />
+          <button
+            type="button"
+            onClick={() => setPreviewImageSrc(currentQuestion.question_image_url || currentQuestion.image_url || '')}
+            className="group focus:outline-none"
+          >
+            <QuestionMediaImage
+              src={currentQuestion.question_image_url || currentQuestion.image_url || ''} 
+              alt="Question" 
+              preferThumbnail
+              className="max-w-full max-h-[500px] rounded-lg shadow-sm border border-gray-200 cursor-zoom-in transition-transform group-hover:scale-[1.01]"
+            />
+          </button>
         </div>
       )}
 
@@ -1631,12 +1662,18 @@ export default function StudentExamTakePage() {
 	                          dangerouslySetInnerHTML={{ __html: optionHtmlById.get(optionId) || '' }}
 	                        ></div>
 	                        {optionImageSrc && (
-	                          <QuestionMediaImage
-	                            src={optionImageSrc}
-	                            alt="Option" 
-	                            preferThumbnail
-	                            className="mt-2 max-h-40 rounded border border-gray-200"
-                          />
+                            <button
+                              type="button"
+                              onClick={() => setPreviewImageSrc(optionImageSrc)}
+                              className="mt-2 inline-flex focus:outline-none"
+                            >
+	                            <QuestionMediaImage
+	                              src={optionImageSrc}
+	                              alt="Option" 
+	                              preferThumbnail
+	                              className="max-h-40 rounded border border-gray-200 cursor-zoom-in"
+                            />
+                            </button>
                         )}
                       </div>
                     </label>
@@ -1791,6 +1828,28 @@ export default function StudentExamTakePage() {
                 {answeredCount < totalQuestions ? 'Jawab Semua Soal Dulu' : 'Ya, Kumpulkan'}
               </button>
             </div>
+          </div>
+        </div>
+      )}
+
+      {previewImageSrc && (
+        <div
+          className="fixed inset-0 z-[110] bg-slate-950/85 flex items-center justify-center p-4"
+          onClick={() => setPreviewImageSrc(null)}
+        >
+          <div className="relative max-w-6xl w-full flex justify-center" onClick={(event) => event.stopPropagation()}>
+            <button
+              type="button"
+              onClick={() => setPreviewImageSrc(null)}
+              className="absolute right-0 top-0 -mt-12 inline-flex items-center justify-center h-10 w-10 rounded-full bg-white/95 text-slate-700 shadow"
+            >
+              ✕
+            </button>
+            <img
+              src={previewImageSrc}
+              alt="Preview soal"
+              className="max-h-[88vh] max-w-full object-contain rounded-xl border border-white/15 bg-white"
+            />
           </div>
         </div>
       )}

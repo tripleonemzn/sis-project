@@ -43,6 +43,11 @@ interface ExamSchedule {
   classNames?: string[];
   teacherNames?: string[];
   monitoredScheduleIds?: number[];
+  attendanceSummary?: {
+    expectedParticipants?: number;
+    presentParticipants?: number;
+    absentParticipants?: number;
+  };
   packet: {
     title: string;
     subject: { name: string };
@@ -168,8 +173,13 @@ const ProctorMonitoringPage: React.FC = () => {
 
     setSubmittingReport(true);
     try {
-      const presentCount = students.filter(s => s.startTime).length;
-      const absentCount = students.length - presentCount;
+      const presentCount =
+        Number(schedule?.attendanceSummary?.presentParticipants) ||
+        students.filter((s) => Boolean(s.startTime) || s.status !== 'NOT_STARTED').length;
+      const absentCount = Math.max(
+        0,
+        (Number(schedule?.attendanceSummary?.expectedParticipants) || students.length) - presentCount,
+      );
 
       await api.post(`/proctoring/schedules/${scheduleId}/report`, {
         notes,
@@ -244,6 +254,14 @@ const ProctorMonitoringPage: React.FC = () => {
     Number.isFinite(scheduleEndMs) &&
     nowMs >= scheduleStartMs &&
     nowMs <= scheduleEndMs;
+  const presentCount =
+    Number(schedule.attendanceSummary?.presentParticipants) ||
+    orderedStudents.filter((student) => Boolean(student.startTime) || student.status !== 'NOT_STARTED').length;
+  const expectedCount = Number(schedule.attendanceSummary?.expectedParticipants) || orderedStudents.length;
+  const absentCount = Math.max(
+    0,
+    (Number(schedule.attendanceSummary?.absentParticipants) || expectedCount - presentCount),
+  );
   const notStartedCount = orderedStudents.filter((student) => student.status === 'NOT_STARTED').length;
   const latestReport = Array.isArray(schedule.proctoringReports)
     ? [...schedule.proctoringReports]
@@ -323,7 +341,20 @@ const ProctorMonitoringPage: React.FC = () => {
         <div className="space-y-5">
           <div className="bg-white shadow rounded-lg overflow-hidden">
             <div className="px-6 py-4 border-b border-gray-200">
-              <h3 className="text-lg font-medium text-gray-900">Status Peserta Ujian</h3>
+              <div className="flex flex-col gap-2 md:flex-row md:items-center md:justify-between">
+                <h3 className="text-lg font-medium text-gray-900">Status Peserta Ujian</h3>
+                <div className="flex flex-wrap items-center gap-2">
+                  <span className="px-3 py-1 rounded-full bg-slate-100 text-slate-700 text-xs font-semibold">
+                    Seharusnya: {expectedCount}
+                  </span>
+                  <span className="px-3 py-1 rounded-full bg-emerald-100 text-emerald-700 text-xs font-semibold">
+                    Hadir: {presentCount}
+                  </span>
+                  <span className="px-3 py-1 rounded-full bg-rose-100 text-rose-700 text-xs font-semibold">
+                    Tidak hadir: {absentCount}
+                  </span>
+                </div>
+              </div>
             </div>
             <div className="p-0">
               <div className="overflow-x-auto">
@@ -537,17 +568,17 @@ const ProctorMonitoringPage: React.FC = () => {
                   <div className="grid grid-cols-[210px_16px_1fr]">
                     <div>Jumlah Peserta Seharusnya</div>
                     <div>:</div>
-                    <div>{orderedStudents.length}</div>
+                    <div>{expectedCount}</div>
                   </div>
                   <div className="grid grid-cols-[210px_16px_1fr]">
                     <div>Jumlah Peserta yang tidak hadir</div>
                     <div>:</div>
-                    <div>{Math.max(0, orderedStudents.length - orderedStudents.filter((student) => !!student.startTime).length)}</div>
+                    <div>{absentCount}</div>
                   </div>
                   <div className="grid grid-cols-[210px_16px_1fr]">
                     <div>Jumlah Peserta yang hadir</div>
                     <div>:</div>
-                    <div>{orderedStudents.filter((student) => !!student.startTime).length}</div>
+                    <div>{presentCount}</div>
                   </div>
                 </div>
                 <div className="mt-6">

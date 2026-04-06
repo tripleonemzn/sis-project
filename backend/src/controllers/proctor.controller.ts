@@ -827,6 +827,57 @@ function collectSittingParticipants(sittings: ProctorRoomSittingRow[]): {
     };
 }
 
+function buildProctorSessionScopeWhere(params: {
+    expectedStudentIds: number[];
+    monitoredScheduleIds: number[];
+    sessionScheduleScope: Prisma.ExamScheduleWhereInput;
+    statuses?: ExamSessionStatus[];
+}): Prisma.StudentExamSessionWhereInput {
+    const normalizedExpectedStudentIds = Array.from(
+        new Set(
+            (params.expectedStudentIds || [])
+                .map((item) => Number(item))
+                .filter((item) => Number.isFinite(item) && item > 0),
+        ),
+    );
+    const normalizedScheduleIds = Array.from(
+        new Set(
+            (params.monitoredScheduleIds || [])
+                .map((item) => Number(item))
+                .filter((item) => Number.isFinite(item) && item > 0),
+        ),
+    );
+    const orSchedules: Prisma.StudentExamSessionWhereInput[] = [{ schedule: { is: params.sessionScheduleScope } }];
+    if (normalizedScheduleIds.length > 0) {
+        orSchedules.push({ scheduleId: { in: normalizedScheduleIds } });
+    }
+
+    return {
+        ...(normalizedExpectedStudentIds.length > 0 ? { studentId: { in: normalizedExpectedStudentIds } } : {}),
+        ...(Array.isArray(params.statuses) && params.statuses.length > 0
+            ? {
+                  status: {
+                      in: params.statuses,
+                  },
+              }
+            : {}),
+        ...(orSchedules.length === 1 ? orSchedules[0] : { OR: orSchedules }),
+    };
+}
+
+function normalizeProctorSessionStatus(
+    status: string | null | undefined,
+    startTime: Date | null | undefined,
+    submitTime: Date | null | undefined,
+): 'NOT_STARTED' | 'IN_PROGRESS' | 'COMPLETED' | 'TIMEOUT' {
+    const normalizedStatus = String(status || '').trim().toUpperCase();
+    if (submitTime) return 'COMPLETED';
+    if (normalizedStatus === 'COMPLETED') return 'COMPLETED';
+    if (normalizedStatus === 'TIMEOUT') return 'TIMEOUT';
+    if (startTime || normalizedStatus === 'IN_PROGRESS') return 'IN_PROGRESS';
+    return 'NOT_STARTED';
+}
+
 async function resolveRealtimeProctorAttendanceRoster(scheduleId: number): Promise<{
     classNames: string[];
     expectedParticipants: number;
@@ -959,36 +1010,21 @@ async function resolveRealtimeProctorAttendanceRoster(scheduleId: number): Promi
     }
 
     const roomSessions =
-        expectedStudentIdList.length > 0
+        expectedStudentIdList.length > 0 || scope.monitoredScheduleIds.length > 0
             ? await prisma.studentExamSession.findMany({
-                  where: {
-                      studentId: { in: expectedStudentIdList },
-                      status: {
-                          in: [ExamSessionStatus.IN_PROGRESS, ExamSessionStatus.COMPLETED, ExamSessionStatus.TIMEOUT],
-                      },
-                      schedule: { is: sessionScheduleScope },
-                  },
+                  where: buildProctorSessionScopeWhere({
+                      expectedStudentIds: expectedStudentIdList,
+                      monitoredScheduleIds: scope.monitoredScheduleIds,
+                      sessionScheduleScope,
+                      statuses: [ExamSessionStatus.IN_PROGRESS, ExamSessionStatus.COMPLETED, ExamSessionStatus.TIMEOUT],
+                  }),
                   select: {
                       studentId: true,
                       startTime: true,
                       submitTime: true,
                   },
               })
-            : scope.monitoredScheduleIds.length > 0
-                ? await prisma.studentExamSession.findMany({
-                      where: {
-                          scheduleId: { in: scope.monitoredScheduleIds },
-                          status: {
-                              in: [ExamSessionStatus.IN_PROGRESS, ExamSessionStatus.COMPLETED, ExamSessionStatus.TIMEOUT],
-                          },
-                      },
-                      select: {
-                          studentId: true,
-                          startTime: true,
-                          submitTime: true,
-                      },
-                  })
-                : [];
+            : [];
 
     const sessionInfoByStudentId = new Map<number, { startTime: Date | null; submitTime: Date | null }>();
     roomSessions.forEach((row) => {
@@ -1736,13 +1772,11 @@ export const getProctoringDetail = asyncHandler(async (req: Request, res: Respon
     }
 
     const sessions = await prisma.studentExamSession.findMany({
-        where:
-            monitoredStudentIds.length > 0
-                ? {
-                      studentId: { in: monitoredStudentIds },
-                      schedule: { is: sessionScheduleScope },
-                  }
-                : { scheduleId: { in: monitoredScheduleIds } },
+        where: buildProctorSessionScopeWhere({
+            expectedStudentIds: monitoredStudentIds,
+            monitoredScheduleIds,
+            sessionScheduleScope,
+        }),
         select: {
             studentId: true,
             scheduleId: true,
@@ -1754,15 +1788,12 @@ export const getProctoringDetail = asyncHandler(async (req: Request, res: Respon
         }
     });
     const progressSessions = await prisma.studentExamSession.findMany({
-        where: {
-            ...(monitoredStudentIds.length > 0
-                ? {
-                      studentId: { in: monitoredStudentIds },
-                      schedule: { is: sessionScheduleScope },
-                  }
-                : { scheduleId: { in: monitoredScheduleIds } }),
-            status: { in: [ExamSessionStatus.IN_PROGRESS, ExamSessionStatus.TIMEOUT, ExamSessionStatus.COMPLETED] },
-        },
+        where: buildProctorSessionScopeWhere({
+            expectedStudentIds: monitoredStudentIds,
+            monitoredScheduleIds,
+            sessionScheduleScope,
+            statuses: [ExamSessionStatus.IN_PROGRESS, ExamSessionStatus.TIMEOUT, ExamSessionStatus.COMPLETED],
+        }),
         select: {
             studentId: true,
             scheduleId: true,
@@ -1847,6 +1878,11 @@ export const getProctoringDetail = asyncHandler(async (req: Request, res: Respon
 
     const studentList = students.map((s: any) => {
         const session = bestSessionByStudent.get(s.id);
+        const normalizedStatus = normalizeProctorSessionStatus(
+            session?.status,
+            session?.startTime,
+            session?.submitTime,
+        );
         const totalQuestions = session ? (questionCountByScheduleId.get(session.scheduleId) || 0) : 0;
         const progressSession = session
             ? progressSessionMap.get(`${session.studentId}:${session.scheduleId}`)
@@ -1861,7 +1897,7 @@ export const getProctoringDetail = asyncHandler(async (req: Request, res: Respon
             name: s.name,
             nis: s.nis,
             className: s.className || '-',
-            status: session ? session.status : 'NOT_STARTED',
+            status: normalizedStatus,
             startTime: session?.startTime,
             submitTime: session?.submitTime,
             score: session?.score,
@@ -1870,6 +1906,11 @@ export const getProctoringDetail = asyncHandler(async (req: Request, res: Respon
             monitoring: progressSession ? parseMonitoringSummary(progressSession.answers) : parseMonitoringSummary(null),
         };
     });
+    const attendancePresentCount = studentList.filter(
+        (student) => Boolean(student.startTime) || student.status !== 'NOT_STARTED',
+    ).length;
+    const attendanceExpectedCount = studentList.length;
+    const attendanceAbsentCount = Math.max(0, attendanceExpectedCount - attendancePresentCount);
 
     const teacherNames = resolvedSubjectId
         ? Array.from(
@@ -1908,6 +1949,11 @@ export const getProctoringDetail = asyncHandler(async (req: Request, res: Respon
             teacherNames,
             monitoredScheduleIds,
             serverNow: new Date().toISOString(),
+            attendanceSummary: {
+                expectedParticipants: attendanceExpectedCount,
+                presentParticipants: attendancePresentCount,
+                absentParticipants: attendanceAbsentCount,
+            },
         },
         students: studentList,
         isProctor,
@@ -2071,30 +2117,19 @@ export const submitBeritaAcara = asyncHandler(async (req: Request, res: Response
     }
 
     const roomSessions =
-        expectedStudentIdList.length > 0
+        expectedStudentIdList.length > 0 || scope.monitoredScheduleIds.length > 0
             ? await prisma.studentExamSession.findMany({
-                  where: {
-                      studentId: { in: expectedStudentIdList },
-                      status: { in: [ExamSessionStatus.IN_PROGRESS, ExamSessionStatus.COMPLETED, ExamSessionStatus.TIMEOUT] },
-                      schedule: { is: sessionScheduleScope },
-                  },
+                  where: buildProctorSessionScopeWhere({
+                      expectedStudentIds: expectedStudentIdList,
+                      monitoredScheduleIds: scope.monitoredScheduleIds,
+                      sessionScheduleScope,
+                      statuses: [ExamSessionStatus.IN_PROGRESS, ExamSessionStatus.COMPLETED, ExamSessionStatus.TIMEOUT],
+                  }),
                   select: {
                       studentId: true,
                   },
               })
-            : scope.monitoredScheduleIds.length > 0
-                ? await prisma.studentExamSession.findMany({
-                      where: {
-                          scheduleId: { in: scope.monitoredScheduleIds },
-                          status: {
-                              in: [ExamSessionStatus.IN_PROGRESS, ExamSessionStatus.COMPLETED, ExamSessionStatus.TIMEOUT],
-                          },
-                      },
-                      select: {
-                          studentId: true,
-                      },
-                  })
-                : [];
+            : [];
 
     const presentSet = new Set<number>();
     roomSessions.forEach((row) => {

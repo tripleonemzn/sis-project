@@ -1,10 +1,11 @@
 import { useMutation } from '@tanstack/react-query';
-import { Redirect, useLocalSearchParams, useRouter } from 'expo-router';
+import { Redirect, Stack, useLocalSearchParams, useRouter } from 'expo-router';
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
-import { Alert, Pressable, ScrollView, Text, TextInput, View } from 'react-native';
+import { Alert, AppState, AppStateStatus, BackHandler, Image, Pressable, ScrollView, Text, TextInput, View } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { AppLoadingScreen } from '../../../../src/components/AppLoadingScreen';
 import ExamHtmlContent from '../../../../src/components/ExamHtmlContent';
+import MobileDetailModal from '../../../../src/components/MobileDetailModal';
 import { QueryStateView } from '../../../../src/components/QueryStateView';
 import { useAuth } from '../../../../src/features/auth/AuthProvider';
 import { examApi } from '../../../../src/features/exams/examApi';
@@ -19,6 +20,19 @@ function parseScheduleId(raw: string | string[] | undefined): number | null {
   if (Number.isNaN(parsed) || parsed <= 0) return null;
   return parsed;
 }
+
+type MonitoringStats = {
+  totalViolations: number;
+  tabSwitchCount: number;
+  fullscreenExitCount: number;
+  appSwitchCount: number;
+  lastViolationType: string | null;
+  lastViolationAt: string | null;
+  currentQuestionIndex: number;
+  currentQuestionNumber: number;
+  currentQuestionId: string | null;
+  lastSyncAt: string | null;
+};
 
 function normalizeQuestionType(question: ExamQuestion): ExamQuestionType {
   const raw = String(question.question_type || question.type || '').toUpperCase();
@@ -211,10 +225,30 @@ export default function StudentExamTakeScreen() {
   const [lastSavedAt, setLastSavedAt] = useState<string | null>(null);
   const [isFinalSubmitting, setIsFinalSubmitting] = useState(false);
   const [isFinished, setIsFinished] = useState(false);
+  const [hasAcknowledgedStart, setHasAcknowledgedStart] = useState(false);
+  const [violations, setViolations] = useState(0);
+  const [lastViolationMessage, setLastViolationMessage] = useState<string | null>(null);
+  const [previewImageSrc, setPreviewImageSrc] = useState<string | null>(null);
   const answersRef = useRef<Record<string, unknown>>({});
   const autoSubmitGuardRef = useRef(false);
   const autoSubmitFailedRef = useRef(false);
-  const finalSubmitOriginRef = useRef<'manual' | 'auto' | null>(null);
+  const finalSubmitOriginRef = useRef<'manual' | 'auto' | 'violation' | null>(null);
+  const appStateRef = useRef<AppStateStatus>(AppState.currentState);
+  const violationsRef = useRef(0);
+  const lastViolationFingerprintRef = useRef<{ key: string; at: number } | null>(null);
+  const violationSubmitGuardRef = useRef(false);
+  const monitoringStatsRef = useRef<MonitoringStats>({
+    totalViolations: 0,
+    tabSwitchCount: 0,
+    fullscreenExitCount: 0,
+    appSwitchCount: 0,
+    lastViolationType: null,
+    lastViolationAt: null,
+    currentQuestionIndex: 0,
+    currentQuestionNumber: 1,
+    currentQuestionId: null,
+    lastSyncAt: null,
+  });
   const isExamReady = Boolean(startQuery.data);
   const persistedAnswers = useMemo(
     () => parseAnswers(startQuery.data?.session?.answers),
@@ -239,6 +273,21 @@ export default function StudentExamTakeScreen() {
     return Math.max(0, Math.floor((endAt - nowMs) / 1000));
   }, [startQuery.data, nowMs]);
 
+  const buildSubmissionAnswers = useCallback((answerSource: Record<string, unknown>) => {
+    const monitoringPayload: MonitoringStats = {
+      ...monitoringStatsRef.current,
+      currentQuestionIndex: currentIndex,
+      currentQuestionNumber: currentIndex + 1,
+      currentQuestionId: questions[currentIndex]?.id || null,
+      lastSyncAt: new Date().toISOString(),
+    };
+    monitoringStatsRef.current = monitoringPayload;
+    return {
+      ...answerSource,
+      __monitoring: monitoringPayload,
+    };
+  }, [currentIndex, questions]);
+
   const submitMutation = useMutation({
     mutationFn: async (payload: { answers: Record<string, unknown>; isFinalSubmit: boolean }) => {
       if (!scheduleId) throw new Error('Schedule ID tidak valid.');
@@ -253,6 +302,19 @@ export default function StudentExamTakeScreen() {
   useEffect(() => {
     answersRef.current = effectiveAnswers;
   }, [effectiveAnswers]);
+
+  useEffect(() => {
+    violationsRef.current = violations;
+  }, [violations]);
+
+  useEffect(() => {
+    monitoringStatsRef.current = {
+      ...monitoringStatsRef.current,
+      currentQuestionIndex: currentIndex,
+      currentQuestionNumber: currentIndex + 1,
+      currentQuestionId: questions[currentIndex]?.id || null,
+    };
+  }, [currentIndex, questions]);
 
   useEffect(() => {
     if (!isExamReady || isFinished) return;
@@ -271,7 +333,7 @@ export default function StudentExamTakeScreen() {
     try {
       if (!isFinalSubmit) setAutosaveState('saving');
       await submitMutation.mutateAsync({
-        answers: answersRef.current,
+        answers: buildSubmissionAnswers(answersRef.current),
         isFinalSubmit,
       });
       if (!isFinalSubmit) {
@@ -287,7 +349,7 @@ export default function StudentExamTakeScreen() {
       if (!isFinalSubmit) {
         setAutosaveState('error');
       } else {
-        if (finalSubmitOriginRef.current === 'auto') {
+        if (finalSubmitOriginRef.current === 'auto' || finalSubmitOriginRef.current === 'violation') {
           autoSubmitFailedRef.current = true;
           Alert.alert('Waktu Ujian Berakhir', msg, [
             {
@@ -303,7 +365,72 @@ export default function StudentExamTakeScreen() {
       }
       return false;
     }
-  }, [isFinished, router, submitMutation]);
+  }, [buildSubmissionAnswers, isFinished, router, submitMutation]);
+
+  const triggerViolationAutoSubmit = useCallback((reason: string) => {
+    if (violationSubmitGuardRef.current || isFinished || autoSubmitGuardRef.current) return;
+    violationSubmitGuardRef.current = true;
+    autoSubmitGuardRef.current = true;
+    finalSubmitOriginRef.current = 'violation';
+    setIsFinalSubmitting(true);
+    Alert.alert('Batas Pelanggaran Tercapai', `Ujian akan dikumpulkan otomatis karena ${reason}.`);
+    void (async () => {
+      const ok = await saveProgress(true);
+      setIsFinalSubmitting(false);
+      if (!ok) return;
+      setIsFinished(true);
+      Alert.alert('Ujian Dikumpulkan', 'Sesi ujian dikumpulkan otomatis karena pelanggaran berulang.', [
+        {
+          text: 'OK',
+          onPress: () => router.replace('/exams'),
+        },
+      ]);
+    })();
+  }, [isFinished, router, saveProgress]);
+
+  const recordViolation = useCallback((type: string) => {
+    if (!hasAcknowledgedStart || !isExamReady || isFinished) return;
+    const normalizedType = String(type || '').trim().toLowerCase();
+    if (!normalizedType) return;
+    const now = Date.now();
+    if (
+      lastViolationFingerprintRef.current &&
+      lastViolationFingerprintRef.current.key === normalizedType &&
+      now - lastViolationFingerprintRef.current.at < 900
+    ) {
+      return;
+    }
+    lastViolationFingerprintRef.current = { key: normalizedType, at: now };
+
+    const nextCount = violationsRef.current + 1;
+    monitoringStatsRef.current = {
+      ...monitoringStatsRef.current,
+      totalViolations: nextCount,
+      lastViolationType: type,
+      lastViolationAt: new Date().toISOString(),
+      appSwitchCount:
+        monitoringStatsRef.current.appSwitchCount +
+        (normalizedType.includes('aplikasi') || normalizedType.includes('home') || normalizedType.includes('recent')
+          ? 1
+          : 0),
+      tabSwitchCount:
+        monitoringStatsRef.current.tabSwitchCount + (normalizedType.includes('tab') ? 1 : 0),
+    };
+    violationsRef.current = nextCount;
+    setViolations(nextCount);
+    setLastViolationMessage(`Pelanggaran ${Math.min(nextCount, 4)}/3: ${type}`);
+    void saveProgress(false);
+
+    if (nextCount >= 4) {
+      triggerViolationAutoSubmit(type);
+      return;
+    }
+
+    Alert.alert(
+      'Pelanggaran Terdeteksi',
+      `${type}\n\nPelanggaran ${nextCount}/3. Pelanggaran ke-4 akan mengumpulkan ujian otomatis.`,
+    );
+  }, [hasAcknowledgedStart, isExamReady, isFinished, saveProgress, triggerViolationAutoSubmit]);
 
   useEffect(() => {
     if (!isExamReady || isFinished || isFinalSubmitting) return;
@@ -333,6 +460,39 @@ export default function StudentExamTakeScreen() {
       ]);
     })();
   }, [isExamReady, remainingSeconds, isFinished, isFinalSubmitting, router, saveProgress]);
+
+  useEffect(() => {
+    if (!isExamReady || isFinished || !hasAcknowledgedStart) return;
+
+    const subscription = AppState.addEventListener('change', (nextAppState) => {
+      const previousState = appStateRef.current;
+      appStateRef.current = nextAppState;
+      if (previousState === 'active' && nextAppState !== 'active') {
+        recordViolation(
+          nextAppState === 'background'
+            ? 'Berpindah aplikasi / tekan Home'
+            : 'Membuka recent apps / keluar fokus ujian',
+        );
+      }
+    });
+
+    return () => {
+      subscription.remove();
+    };
+  }, [hasAcknowledgedStart, isExamReady, isFinished, recordViolation]);
+
+  useEffect(() => {
+    if (!isExamReady || isFinished || !hasAcknowledgedStart) return;
+
+    const subscription = BackHandler.addEventListener('hardwareBackPress', () => {
+      recordViolation('Menekan tombol kembali');
+      return true;
+    });
+
+    return () => {
+      subscription.remove();
+    };
+  }, [hasAcknowledgedStart, isExamReady, isFinished, recordViolation]);
 
   const submitFinal = () => {
     if (isFinalSubmitting || isFinished || autoSubmitGuardRef.current) return;
@@ -469,6 +629,7 @@ export default function StudentExamTakeScreen() {
   if (questions.length === 0 || !currentQuestion) {
     return (
       <ScrollView style={{ flex: 1, backgroundColor: '#f8fafc' }} contentContainerStyle={pageContentPadding}>
+        <Stack.Screen options={{ headerShown: false, gestureEnabled: false }} />
         <Text style={{ fontSize: 22, fontWeight: '700', marginBottom: 8 }}>{`Mengerjakan ${examTakeLabel}`}</Text>
         <QueryStateView type="error" message={`Soal ${examTakeLabel.toLowerCase()} tidak tersedia.`} />
         <Pressable
@@ -487,8 +648,89 @@ export default function StudentExamTakeScreen() {
     );
   }
 
+  if (!hasAcknowledgedStart) {
+    return (
+      <ScrollView style={{ flex: 1, backgroundColor: '#f8fafc' }} contentContainerStyle={pageContentPadding}>
+        <Stack.Screen options={{ headerShown: false, gestureEnabled: false }} />
+        <View
+          style={{
+            backgroundColor: '#ffffff',
+            borderWidth: 1,
+            borderColor: '#dbeafe',
+            borderRadius: 18,
+            padding: 16,
+            marginBottom: 12,
+          }}
+        >
+          <Text style={{ color: '#0f172a', fontWeight: '800', fontSize: 20, marginBottom: 6 }}>
+            {startQuery.data.packet.title}
+          </Text>
+          <Text style={{ color: '#64748b', fontSize: 13, marginBottom: 10 }}>
+            {resolvedTakeSubject.name}
+            {resolvedTakeSubject.code ? ` (${resolvedTakeSubject.code})` : ''}
+          </Text>
+          <View style={{ flexDirection: 'row', flexWrap: 'wrap', gap: 8 }}>
+            <View style={{ backgroundColor: '#eff6ff', borderColor: '#bfdbfe', borderWidth: 1, borderRadius: 999, paddingHorizontal: 10, paddingVertical: 6 }}>
+              <Text style={{ color: '#1d4ed8', fontSize: 12, fontWeight: '700' }}>
+                Mulai {formatDateTime(startQuery.data.session.startTime)}
+              </Text>
+            </View>
+            <View style={{ backgroundColor: '#ecfeff', borderColor: '#a5f3fc', borderWidth: 1, borderRadius: 999, paddingHorizontal: 10, paddingVertical: 6 }}>
+              <Text style={{ color: '#0f766e', fontSize: 12, fontWeight: '700' }}>Durasi {formatTime(remainingSeconds)}</Text>
+            </View>
+          </View>
+        </View>
+
+        <View
+          style={{
+            backgroundColor: '#fffbeb',
+            borderWidth: 1,
+            borderColor: '#fde68a',
+            borderRadius: 16,
+            padding: 16,
+            marginBottom: 14,
+          }}
+        >
+          <Text style={{ color: '#92400e', fontWeight: '800', fontSize: 18, marginBottom: 8 }}>
+            Perhatian Sebelum Mengerjakan {examTakeLabel}
+          </Text>
+          <Text style={{ color: '#92400e', fontSize: 13, lineHeight: 20, marginBottom: 6 }}>
+            Sesi Anda sudah disiapkan. Baca aturan berikut sebelum soal dibuka.
+          </Text>
+          {[
+            'Pastikan koneksi internet stabil sebelum mulai.',
+            'Jangan menekan tombol kembali, Home, atau membuka recent apps.',
+            'Perpindahan aplikasi akan dihitung sebagai pelanggaran.',
+            'Pelanggaran ke-4 akan mengumpulkan ujian secara otomatis.',
+            'Gambar pada soal dapat diketuk untuk diperbesar tanpa keluar dari ujian.',
+          ].map((rule) => (
+            <Text key={rule} style={{ color: '#92400e', fontSize: 13, lineHeight: 21, marginBottom: 4 }}>
+              • {rule}
+            </Text>
+          ))}
+        </View>
+
+        <Pressable
+          onPress={() => {
+            setHasAcknowledgedStart(true);
+            void saveProgress(false);
+          }}
+          style={{
+            backgroundColor: '#16a34a',
+            borderRadius: 12,
+            paddingVertical: 14,
+            alignItems: 'center',
+          }}
+        >
+          <Text style={{ color: '#fff', fontWeight: '700', fontSize: 15 }}>{`Mulai ${examTakeLabel}`}</Text>
+        </Pressable>
+      </ScrollView>
+    );
+  }
+
   return (
     <ScrollView style={{ flex: 1, backgroundColor: '#f8fafc' }} contentContainerStyle={pageContentPaddingCompact}>
+      <Stack.Screen options={{ headerShown: false, gestureEnabled: false }} />
       <View
         style={{
           backgroundColor: '#ffffff',
@@ -518,6 +760,9 @@ export default function StudentExamTakeScreen() {
           <View style={{ backgroundColor: '#eff6ff', borderColor: '#bfdbfe', borderWidth: 1, borderRadius: 999, paddingHorizontal: 10, paddingVertical: 6 }}>
             <Text style={{ color: '#1d4ed8', fontSize: 12, fontWeight: '700' }}>Mulai {formatDateTime(startQuery.data.session.startTime)}</Text>
           </View>
+          <View style={{ backgroundColor: violations > 0 ? '#fff1f2' : '#f8fafc', borderColor: violations > 0 ? '#fecdd3' : '#e2e8f0', borderWidth: 1, borderRadius: 999, paddingHorizontal: 10, paddingVertical: 6 }}>
+            <Text style={{ color: violations > 0 ? '#be123c' : '#475569', fontSize: 12, fontWeight: '700' }}>Pelanggaran {violations}/3</Text>
+          </View>
         </View>
         <Text style={{ color: '#475569', fontSize: 12, marginTop: 10 }}>
           Autosave:{' '}
@@ -529,6 +774,21 @@ export default function StudentExamTakeScreen() {
                 ? 'gagal, akan dicoba lagi'
                 : '-'}
         </Text>
+        {lastViolationMessage ? (
+          <View
+            style={{
+              marginTop: 10,
+              borderWidth: 1,
+              borderColor: '#fecdd3',
+              backgroundColor: '#fff1f2',
+              borderRadius: 10,
+              paddingHorizontal: 10,
+              paddingVertical: 8,
+            }}
+          >
+            <Text style={{ color: '#9f1239', fontSize: 12, fontWeight: '700' }}>{lastViolationMessage}</Text>
+          </View>
+        ) : null}
       </View>
 
       <View
@@ -599,6 +859,7 @@ export default function StudentExamTakeScreen() {
             videoUrl={currentQuestion.question_video_url || currentQuestion.video_url}
             videoType={currentQuestion.question_video_type || null}
             interactive={Boolean(currentQuestion.question_video_url || currentQuestion.video_url)}
+            onImagePress={(src) => setPreviewImageSrc(src)}
           />
         </View>
 
@@ -674,6 +935,7 @@ export default function StudentExamTakeScreen() {
                     html={option.option_text || option.content || '-'}
                     imageUrl={option.option_image_url || option.image_url}
                     minHeight={56}
+                    onImagePress={(src) => setPreviewImageSrc(src)}
                   />
                 </Pressable>
               );
@@ -736,6 +998,33 @@ export default function StudentExamTakeScreen() {
           {isFinalSubmitting ? 'Mengumpulkan...' : isFinished ? 'Sudah Dikumpulkan' : 'Kumpulkan Ujian'}
         </Text>
       </Pressable>
+
+      <MobileDetailModal
+        visible={Boolean(previewImageSrc)}
+        title="Preview Gambar Soal"
+        subtitle="Gambar dibuka di dalam ujian tanpa keluar dari sesi."
+        iconName="image"
+        accentColor="#2563eb"
+        onClose={() => setPreviewImageSrc(null)}
+      >
+        {previewImageSrc ? (
+          <View
+            style={{
+              borderWidth: 1,
+              borderColor: '#dbe7fb',
+              borderRadius: 16,
+              backgroundColor: '#f8fbff',
+              padding: 12,
+            }}
+          >
+            <Image
+              source={{ uri: previewImageSrc }}
+              resizeMode="contain"
+              style={{ width: '100%', height: 320, borderRadius: 12, backgroundColor: '#fff' }}
+            />
+          </View>
+        ) : null}
+      </MobileDetailModal>
     </ScrollView>
   );
 }

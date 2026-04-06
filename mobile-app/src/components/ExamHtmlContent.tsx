@@ -10,6 +10,7 @@ type ExamHtmlContentProps = {
   videoType?: 'upload' | 'youtube' | null;
   interactive?: boolean;
   minHeight?: number;
+  onImagePress?: (src: string) => void;
 };
 
 function toMediaUrl(url?: string | null) {
@@ -173,6 +174,7 @@ export function ExamHtmlContent({
   videoType,
   interactive = false,
   minHeight = 120,
+  onImagePress,
 }: ExamHtmlContentProps) {
   const safeMinHeight = Number.isFinite(minHeight) ? Math.max(24, Math.floor(minHeight)) : 120;
   const [height, setHeight] = useState(safeMinHeight);
@@ -254,6 +256,7 @@ export function ExamHtmlContent({
               display: block;
               border-radius: 12px;
               margin: 0 0 12px;
+              cursor: zoom-in;
             }
             .exam-office-table {
               display: flex;
@@ -304,18 +307,30 @@ export function ExamHtmlContent({
           <div class="exam-content">${normalizedHtml}</div>
           <script>
             (function () {
+              var postMessage = function (payload) {
+                window.ReactNativeWebView.postMessage(JSON.stringify(payload));
+              };
               var sendHeight = function () {
                 var nextHeight = Math.max(
                   document.body.scrollHeight || 0,
                   document.documentElement.scrollHeight || 0,
                   ${safeMinHeight}
                 );
-                window.ReactNativeWebView.postMessage(String(nextHeight));
+                postMessage({ type: 'height', value: nextHeight });
+              };
+              var handleImageClick = function (event) {
+                var target = event.target;
+                if (!target || target.tagName !== 'IMG') return;
+                var src = String(target.getAttribute('src') || '').trim();
+                if (!src) return;
+                event.preventDefault();
+                postMessage({ type: 'image-preview', src: src });
               };
               window.addEventListener('load', function () {
                 Array.prototype.forEach.call(document.images || [], function (img) {
                   img.addEventListener('load', sendHeight);
                 });
+                document.addEventListener('click', handleImageClick, true);
                 setTimeout(sendHeight, 0);
                 setTimeout(sendHeight, 250);
                 setTimeout(sendHeight, 800);
@@ -330,7 +345,7 @@ export function ExamHtmlContent({
   }, [html, imageUrl, safeMinHeight, videoType, videoUrl]);
 
   return (
-    <View pointerEvents={interactive ? 'auto' : 'none'} style={{ minHeight: height }}>
+    <View pointerEvents={interactive || typeof onImagePress === 'function' ? 'auto' : 'none'} style={{ minHeight: height }}>
       <WebView
         originWhitelist={['*']}
         source={{ html: documentHtml, baseUrl: webBaseUrl }}
@@ -343,7 +358,25 @@ export function ExamHtmlContent({
         showsVerticalScrollIndicator={false}
         bounces={false}
         onMessage={(event) => {
-          const nextHeight = Number.parseInt(String(event.nativeEvent.data || ''), 10);
+          let payload: { type?: string; value?: unknown; src?: unknown } | null = null;
+          try {
+            payload = JSON.parse(String(event.nativeEvent.data || ''));
+          } catch {
+            payload = {
+              type: 'height',
+              value: Number.parseInt(String(event.nativeEvent.data || ''), 10),
+            };
+          }
+
+          if (payload?.type === 'image-preview') {
+            const src = String(payload.src || '').trim();
+            if (src && typeof onImagePress === 'function') {
+              onImagePress(src);
+            }
+            return;
+          }
+
+          const nextHeight = Number.parseInt(String(payload?.value ?? ''), 10);
           if (Number.isFinite(nextHeight) && nextHeight >= safeMinHeight) {
             setHeight(nextHeight);
           }
