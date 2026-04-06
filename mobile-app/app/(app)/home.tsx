@@ -263,6 +263,16 @@ function resolveDashboardAccentColor(color: string, resolvedTheme: 'light' | 'da
   return DARK_ACCENT_COLOR_MAP[color] || '#cbd5e1';
 }
 
+function resolveDashboardBadgeIconColor(color: string, resolvedTheme: 'light' | 'dark') {
+  if (resolvedTheme === 'dark') {
+    return resolveDashboardAccentColor(color, resolvedTheme);
+  }
+  if (color === BRAND_COLORS.gold || color === BRAND_COLORS.teal) {
+    return BRAND_COLORS.textDark;
+  }
+  return BRAND_COLORS.white;
+}
+
 function resolveMenuTone(tone: MenuIconTone, resolvedTheme: 'light' | 'dark'): MenuIconTone {
   if (resolvedTheme !== 'dark') return tone;
   return {
@@ -2007,7 +2017,7 @@ export default function HomeScreen() {
       {items.map((item) => {
         const linkedMenu = item.menuKey ? menuItemByKey.get(item.menuKey) : undefined;
         const isOpeningThisMenu = linkedMenu ? openingMenuKey === linkedMenu.key : false;
-        const iconColor = resolveDashboardAccentColor(item.color, isDarkModeActive ? 'dark' : 'light');
+        const iconColor = resolveDashboardBadgeIconColor(item.color, isDarkModeActive ? 'dark' : 'light');
         return (
           <View
             key={item.label}
