@@ -187,10 +187,13 @@ export type TeacherExamPacket = {
   id: number;
   title: string;
   description?: string | null;
+  isCurriculumManaged?: boolean;
   type: string;
   programCode?: string | null;
   semester?: string | null;
   duration: number;
+  publishedQuestionCount?: number | null;
+  kkm?: number | null;
   instructions?: string | null;
   questions?: unknown[] | string | null;
   createdAt?: string;
@@ -213,10 +216,16 @@ export type TeacherExamPacketDetail = TeacherExamPacket & {
   academicYearId?: number;
   schedules?: Array<{
     id: number;
-    classId: number;
+    classId: number | null;
     startTime: string;
     endTime: string;
     isActive: boolean;
+    room?: string | null;
+    sessionLabel?: string | null;
+    class?: {
+      id: number;
+      name: string;
+    } | null;
   }>;
 };
 

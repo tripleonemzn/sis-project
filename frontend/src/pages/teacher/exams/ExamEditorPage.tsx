@@ -413,6 +413,7 @@ export const ExamEditorPage = () => {
     const [subjects, setSubjects] = useState<{id: number, name: string, kkm?: number}[]>([]);
     const [assignmentOptions, setAssignmentOptions] = useState<TeacherAssignment[]>([]);
     const [activeAcademicYear, setActiveAcademicYear] = useState<{id: number, name: string} | null>(null);
+    const [loadedPacket, setLoadedPacket] = useState<ExamPacket | null>(null);
     
     // 1. Get Current User via Query (Database Persistence)
     const { user: contextUser } = useOutletContext<{ user: User }>() || {};
@@ -578,6 +579,20 @@ export const ExamEditorPage = () => {
         selectedProgramMeta?.shortLabel ||
         selectedProgramCode ||
         resolvedPacketType;
+    const isCurriculumManagedPacket = Boolean(loadedPacket?.isCurriculumManaged);
+    const curriculumScheduledClassNames = useMemo(() => {
+        const classNames = (loadedPacket?.schedules || [])
+            .map((schedule) => String(schedule.class?.name || '').trim())
+            .filter((name) => Boolean(name));
+        return Array.from(new Set(classNames));
+    }, [loadedPacket?.schedules]);
+    const curriculumPublishedQuestionLabel = useMemo(() => {
+        const publishedCount = Number(loadedPacket?.publishedQuestionCount);
+        if (Number.isFinite(publishedCount) && publishedCount > 0) {
+            return `${publishedCount} soal`;
+        }
+        return 'Semua soal ditampilkan';
+    }, [loadedPacket?.publishedQuestionCount]);
 
     useEffect(() => {
         if (filteredAssignmentsByProgram.length === 0) {
@@ -1046,6 +1061,7 @@ export const ExamEditorPage = () => {
             setLoading(true);
             const res = await examService.getPacketById(packetId);
             const packet = res.data as ExamPacket;
+            setLoadedPacket(packet);
             
             setValue('title', packet.title);
             setValue('description', packet.description || '');
@@ -1490,6 +1506,10 @@ export const ExamEditorPage = () => {
             toast.error('Tahun ajaran aktif tidak ditemukan');
             return;
         }
+        if (isCurriculumManagedPacket && !loadedPacket) {
+            toast.error('Detail packet kurikulum belum siap.');
+            return;
+        }
         const normalizedProgramCode = normalizeExamProgramCode(data.programCode || selectedProgramCode || data.type);
         const effectiveProgram =
             selectedProgramMeta ||
@@ -1497,20 +1517,24 @@ export const ExamEditorPage = () => {
                 (program) => normalizeExamProgramCode(program.code) === normalizedProgramCode,
             ) ||
             null;
-        if (!effectiveProgram) {
+        if (!isCurriculumManagedPacket && !effectiveProgram) {
             toast.error('Program ujian tidak ditemukan. Pilih program ujian aktif terlebih dahulu.');
             return;
         }
         const normalizedTeacherAssignmentId = Number(data.teacherAssignmentId);
-        if (!Number.isFinite(normalizedTeacherAssignmentId) || normalizedTeacherAssignmentId <= 0) {
+        if (!isCurriculumManagedPacket && (!Number.isFinite(normalizedTeacherAssignmentId) || normalizedTeacherAssignmentId <= 0)) {
             toast.error('Pilih assignment mapel-kelas terlebih dahulu.');
             return;
         }
-        const effectiveType = resolveProgramPacketType(
-            effectiveProgram,
-            (data.type || resolvedPacketType || 'FORMATIF') as ExamType,
-        );
-        const effectiveFixedSemester = effectiveProgram?.fixedSemester || null;
+        const effectiveType = isCurriculumManagedPacket
+            ? ((loadedPacket?.type || resolvedPacketType || 'FORMATIF') as ExamType)
+            : resolveProgramPacketType(
+                  effectiveProgram,
+                  (data.type || resolvedPacketType || 'FORMATIF') as ExamType,
+              );
+        const effectiveFixedSemester = isCurriculumManagedPacket
+            ? ((loadedPacket?.semester || null) as 'ODD' | 'EVEN' | null)
+            : effectiveProgram?.fixedSemester || null;
         try {
             assertFixedSemesterMatch(effectiveFixedSemester, data.semester);
         } catch (error: unknown) {
@@ -1519,7 +1543,7 @@ export const ExamEditorPage = () => {
             return;
         }
 
-        if (!data.duration || Number(data.duration) <= 0) {
+        if (!isCurriculumManagedPacket && (!data.duration || Number(data.duration) <= 0)) {
             toast.error('Isi durasi waktu ujian');
             return;
         }
@@ -1574,18 +1598,38 @@ export const ExamEditorPage = () => {
         const payload = {
             ...data,
             type: effectiveType,
-            programCode: normalizedProgramCode,
-            teacherAssignmentId: normalizedTeacherAssignmentId,
-            duration: Number(data.duration),
+            programCode: isCurriculumManagedPacket
+                ? normalizeExamProgramCode(loadedPacket?.programCode || loadedPacket?.type || normalizedProgramCode)
+                : normalizedProgramCode,
+            teacherAssignmentId: isCurriculumManagedPacket ? undefined : normalizedTeacherAssignmentId,
+            duration: isCurriculumManagedPacket ? Number(loadedPacket?.duration || data.duration || 0) : Number(data.duration),
             publishedQuestionCount:
-                Number.isFinite(Number(data.publishedQuestionCount)) &&
-                Number(data.publishedQuestionCount) > 0
-                    ? Math.trunc(Number(data.publishedQuestionCount))
-                    : null,
-            kkm: Number.isFinite(Number(data.kkm)) && Number(data.kkm) > 0 ? Number(data.kkm) : undefined,
-            academicYearId: Number(data.academicYearId),
+                isCurriculumManagedPacket
+                    ? Number.isFinite(Number(loadedPacket?.publishedQuestionCount)) &&
+                      Number(loadedPacket?.publishedQuestionCount) > 0
+                        ? Math.trunc(Number(loadedPacket?.publishedQuestionCount))
+                        : null
+                    : Number.isFinite(Number(data.publishedQuestionCount)) &&
+                        Number(data.publishedQuestionCount) > 0
+                      ? Math.trunc(Number(data.publishedQuestionCount))
+                      : null,
+            kkm: isCurriculumManagedPacket
+                ? Number.isFinite(Number(loadedPacket?.kkm)) && Number(loadedPacket?.kkm) > 0
+                    ? Number(loadedPacket?.kkm)
+                    : undefined
+                : Number.isFinite(Number(data.kkm)) && Number(data.kkm) > 0
+                  ? Number(data.kkm)
+                  : undefined,
+            academicYearId: isCurriculumManagedPacket
+                ? Number(loadedPacket?.academicYearId || data.academicYearId)
+                : Number(data.academicYearId),
+            subjectId: isCurriculumManagedPacket
+                ? Number(loadedPacket?.subjectId || data.subjectId || 0)
+                : Number(data.subjectId || 0),
             semester:
-                effectiveFixedSemester === 'ODD' || effectiveFixedSemester === 'EVEN'
+                isCurriculumManagedPacket
+                    ? String(loadedPacket?.semester || data.semester || '').toUpperCase()
+                    : effectiveFixedSemester === 'ODD' || effectiveFixedSemester === 'EVEN'
                     ? effectiveFixedSemester
                     : data.semester,
             questions: finalQuestions.map((question) => ({
@@ -1748,34 +1792,38 @@ export const ExamEditorPage = () => {
     // Total Score Indicator
     const totalScore = questions.reduce((acc, q) => acc + normalizePositiveScore(q.score, 0), 0);
     const completedQuestionCount = questions.filter((q) => Boolean(normalizeEditorText(q.content))).length;
-    const selectedSubjectName = subjects.find((subject) => subject.id == selectedSubjectId)?.name || '-';
+    const selectedSubjectName = isCurriculumManagedPacket
+        ? String(loadedPacket?.subject?.name || '-').trim() || '-'
+        : subjects.find((subject) => subject.id == selectedSubjectId)?.name || '-';
     const examTitle = (watch('title') || '').trim();
     const currentDuration = Number(watch('duration') || 0);
     const currentAcademicYearId = Number(watch('academicYearId') || activeAcademicYear?.id || 0);
-    const isPacketInfoComplete = Boolean(
-        examTitle &&
-            selectedSubjectId &&
-            currentDuration > 0 &&
-            selectedPacketSemester &&
-            currentAcademicYearId > 0 &&
-            selectedProgramCode,
-    );
+    const isPacketInfoComplete = isCurriculumManagedPacket
+        ? Boolean(examTitle && currentAcademicYearId > 0)
+        : Boolean(
+              examTitle &&
+                  selectedSubjectId &&
+                  currentDuration > 0 &&
+                  selectedPacketSemester &&
+                  currentAcademicYearId > 0 &&
+                  selectedProgramCode,
+          );
 
     const handleSaveInfoModal = () => {
         if (!examTitle) {
             toast.error('Judul ujian wajib diisi');
             return;
         }
-        if (!selectedSubjectId) {
+        if (!isCurriculumManagedPacket && !selectedSubjectId) {
             toast.error('Mata pelajaran wajib dipilih');
             return;
         }
-        if (!currentDuration || currentDuration <= 0) {
+        if (!isCurriculumManagedPacket && (!currentDuration || currentDuration <= 0)) {
             toast.error('Durasi ujian wajib diisi');
             return;
         }
         setIsInfoModalOpen(false);
-        toast.success('Informasi ujian disimpan');
+        toast.success(isCurriculumManagedPacket ? 'Judul dan instruksi ujian disimpan' : 'Informasi ujian disimpan');
     };
 
     return (
@@ -2303,7 +2351,11 @@ export const ExamEditorPage = () => {
                         <div className="flex items-center justify-between border-b border-slate-200 px-6 py-4">
                             <div>
                                 <h3 className="text-lg font-semibold text-slate-900">Informasi Ujian</h3>
-                                <p className="text-sm text-slate-500">Isi judul dan parameter ujian sebelum lanjut edit butir.</p>
+                                <p className="text-sm text-slate-500">
+                                    {isCurriculumManagedPacket
+                                        ? 'Judul dan instruksi masih bisa disesuaikan. Parameter lain mengikuti jadwal kurikulum.'
+                                        : 'Isi judul dan parameter ujian sebelum lanjut edit butir.'}
+                                </p>
                             </div>
                             <button
                                 type="button"
@@ -2315,6 +2367,11 @@ export const ExamEditorPage = () => {
                         </div>
 
                         <div className="space-y-4 px-6 py-5">
+                            {isCurriculumManagedPacket ? (
+                                <div className="rounded-xl border border-blue-100 bg-blue-50 px-4 py-3 text-sm text-blue-800">
+                                    Paket ini dibuat dari penjadwalan kurikulum. Guru hanya dapat mengubah judul ujian dan instruksi ujian.
+                                </div>
+                            ) : null}
                             <div className="grid grid-cols-1 lg:grid-cols-2 gap-4">
                                 <div>
                                     <label htmlFor="exam-title-modal" className="mb-1 block text-sm font-medium text-slate-700">
@@ -2329,125 +2386,207 @@ export const ExamEditorPage = () => {
                                     {errors.title && <span className="mt-1 block text-xs text-red-500">{errors.title.message}</span>}
                                 </div>
 
-                                <div>
-                                    <label htmlFor="exam-subject" className="mb-1 block text-sm font-medium text-slate-700">
-                                        Mapel & Kelas (Assignment)
-                                    </label>
-                                    <select
-                                        id="exam-subject"
-                                        value={selectedTeacherAssignmentId > 0 ? String(selectedTeacherAssignmentId) : ''}
-                                        onChange={(event) => {
-                                            const assignment = filteredAssignmentsByProgram.find(
-                                                (item) => item.id === Number(event.target.value),
-                                            );
-                                            setValue(
-                                                'teacherAssignmentId',
-                                                assignment ? Number(assignment.id) : null,
-                                                { shouldDirty: true },
-                                            );
-                                            setValue(
-                                                'subjectId',
-                                                assignment ? Number(assignment.subject.id) : null,
-                                                { shouldDirty: true },
-                                            );
-                                            if (assignment?.kkm) {
-                                                setValue('kkm', Number(assignment.kkm), { shouldDirty: true });
-                                            }
-                                        }}
-                                        className="w-full rounded-lg border border-slate-300 px-3 py-2 text-sm focus:border-blue-500 focus:outline-none"
-                                    >
-                                        <option value="">Pilih assignment mapel-kelas</option>
-                                        {filteredAssignmentsByProgram.map((assignment) => (
-                                            <option key={assignment.id} value={assignment.id}>
-                                                {buildAssignmentDisplayLabel(assignment)}
-                                            </option>
-                                        ))}
-                                    </select>
-                                    <input type="hidden" {...register('subjectId', { required: 'Mapel wajib dipilih' })} />
-                                    <input type="hidden" {...register('teacherAssignmentId')} />
-                                    {selectedProgramMeta && filteredAssignmentsByProgram.length === 0 ? (
-                                      <span className="mt-1 block text-xs text-amber-600">
-                                        Program ini belum memiliki assignment mapel-kelas yang diizinkan.
-                                      </span>
-                                    ) : null}
-                                </div>
+                                {isCurriculumManagedPacket ? (
+                                    <div className="grid grid-cols-1 gap-4 lg:grid-cols-2 lg:col-span-2">
+                                        <div>
+                                            <label className="mb-1 block text-sm font-medium text-slate-700">
+                                                Mapel Terjadwal
+                                            </label>
+                                            <div className="w-full rounded-lg border border-slate-200 bg-slate-100 px-3 py-2 text-sm text-slate-700">
+                                                {loadedPacket?.subject?.name || '-'}
+                                            </div>
+                                        </div>
+                                        <div>
+                                            <label className="mb-1 block text-sm font-medium text-slate-700">
+                                                Kelas / Rombel Terjadwal
+                                            </label>
+                                            <div className="w-full rounded-lg border border-slate-200 bg-slate-100 px-3 py-2 text-sm text-slate-700">
+                                                {curriculumScheduledClassNames.length > 0
+                                                    ? curriculumScheduledClassNames.join(', ')
+                                                    : 'Mengikuti jadwal kurikulum'}
+                                            </div>
+                                        </div>
+                                    </div>
+                                ) : (
+                                    <div>
+                                        <label htmlFor="exam-subject" className="mb-1 block text-sm font-medium text-slate-700">
+                                            Mapel & Kelas (Assignment)
+                                        </label>
+                                        <select
+                                            id="exam-subject"
+                                            value={selectedTeacherAssignmentId > 0 ? String(selectedTeacherAssignmentId) : ''}
+                                            onChange={(event) => {
+                                                const assignment = filteredAssignmentsByProgram.find(
+                                                    (item) => item.id === Number(event.target.value),
+                                                );
+                                                setValue(
+                                                    'teacherAssignmentId',
+                                                    assignment ? Number(assignment.id) : null,
+                                                    { shouldDirty: true },
+                                                );
+                                                setValue(
+                                                    'subjectId',
+                                                    assignment ? Number(assignment.subject.id) : null,
+                                                    { shouldDirty: true },
+                                                );
+                                                if (assignment?.kkm) {
+                                                    setValue('kkm', Number(assignment.kkm), { shouldDirty: true });
+                                                }
+                                            }}
+                                            className="w-full rounded-lg border border-slate-300 px-3 py-2 text-sm focus:border-blue-500 focus:outline-none"
+                                        >
+                                            <option value="">Pilih assignment mapel-kelas</option>
+                                            {filteredAssignmentsByProgram.map((assignment) => (
+                                                <option key={assignment.id} value={assignment.id}>
+                                                    {buildAssignmentDisplayLabel(assignment)}
+                                                </option>
+                                            ))}
+                                        </select>
+                                        <input type="hidden" {...register('subjectId', { required: 'Mapel wajib dipilih' })} />
+                                        <input type="hidden" {...register('teacherAssignmentId')} />
+                                        {selectedProgramMeta && filteredAssignmentsByProgram.length === 0 ? (
+                                          <span className="mt-1 block text-xs text-amber-600">
+                                            Program ini belum memiliki assignment mapel-kelas yang diizinkan.
+                                          </span>
+                                        ) : null}
+                                    </div>
+                                )}
 
                                 <input type="hidden" {...register('academicYearId', { required: 'Tahun ajaran wajib terisi' })} />
 
-                                <div>
-                                    <label htmlFor="exam-semester" className="mb-1 block text-sm font-medium text-slate-700">
-                                        Semester
-                                    </label>
-                                    <select
-                                        id="exam-semester"
-                                        {...register('semester')}
-                                        disabled={isSemesterLockedFromProgram}
-                                        className={`w-full rounded-lg border border-slate-300 px-3 py-2 text-sm focus:border-blue-500 focus:outline-none ${
-                                            isSemesterLockedFromProgram ? 'bg-slate-100 text-slate-500 cursor-not-allowed' : ''
-                                        }`}
-                                    >
-                                        <option value="ODD">Ganjil</option>
-                                        <option value="EVEN">Genap</option>
-                                    </select>
-                                </div>
+                                {isCurriculumManagedPacket ? (
+                                    <>
+                                        <div>
+                                            <label className="mb-1 block text-sm font-medium text-slate-700">
+                                                Semester
+                                            </label>
+                                            <div className="w-full rounded-lg border border-slate-200 bg-slate-100 px-3 py-2 text-sm text-slate-700">
+                                                {loadedPacket?.semester === 'ODD' ? 'Ganjil' : 'Genap'}
+                                            </div>
+                                        </div>
 
-                                <div>
-                                    <label htmlFor="exam-type-modal" className="mb-1 block text-sm font-medium text-slate-700">
-                                        Tipe Ujian
-                                    </label>
-                                    <input
-                                        id="exam-type-modal"
-                                        value={examTypeDisplayLabel}
-                                        readOnly
-                                        className="w-full rounded-lg border border-slate-200 bg-slate-100 px-3 py-2 text-sm text-slate-600"
-                                    />
-                                    <input type="hidden" {...register('type')} />
-                                    <input type="hidden" {...register('programCode')} />
-                                </div>
+                                        <div>
+                                            <label htmlFor="exam-type-modal" className="mb-1 block text-sm font-medium text-slate-700">
+                                                Tipe Ujian
+                                            </label>
+                                            <input
+                                                id="exam-type-modal"
+                                                value={examTypeDisplayLabel}
+                                                readOnly
+                                                className="w-full rounded-lg border border-slate-200 bg-slate-100 px-3 py-2 text-sm text-slate-600"
+                                            />
+                                            <input type="hidden" {...register('type')} />
+                                            <input type="hidden" {...register('programCode')} />
+                                        </div>
 
-                                <div>
-                                    <label htmlFor="exam-duration" className="mb-1 block text-sm font-medium text-slate-700">
-                                        Durasi (menit)
-                                    </label>
-                                    <input
-                                        id="exam-duration"
-                                        type="number"
-                                        {...register('duration')}
-                                        placeholder="Contoh: 90"
-                                        className="w-full rounded-lg border border-slate-300 px-3 py-2 text-sm focus:border-blue-500 focus:outline-none [appearance:textfield] [&::-webkit-outer-spin-button]:appearance-none [&::-webkit-inner-spin-button]:appearance-none"
-                                    />
-                                </div>
+                                        <div>
+                                            <label className="mb-1 block text-sm font-medium text-slate-700">
+                                                Durasi (menit)
+                                            </label>
+                                            <div className="w-full rounded-lg border border-slate-200 bg-slate-100 px-3 py-2 text-sm text-slate-700">
+                                                {loadedPacket?.duration || '-'}
+                                            </div>
+                                        </div>
 
-                                <div>
-                                    <label htmlFor="exam-published-count" className="mb-1 block text-sm font-medium text-slate-700">
-                                        Soal Ditampilkan ke Siswa
-                                    </label>
-                                    <input
-                                        id="exam-published-count"
-                                        type="number"
-                                        min={1}
-                                        {...register('publishedQuestionCount', { valueAsNumber: true })}
-                                        placeholder="Kosongkan = tampilkan semua soal"
-                                        className="w-full rounded-lg border border-slate-300 px-3 py-2 text-sm focus:border-blue-500 focus:outline-none [appearance:textfield] [&::-webkit-outer-spin-button]:appearance-none [&::-webkit-inner-spin-button]:appearance-none"
-                                    />
-                                    <p className="mt-1 text-[11px] text-slate-500">
-                                        Soal akan diacak per siswa dari total bank soal yang Anda buat.
-                                    </p>
-                                </div>
+                                        <div>
+                                            <label className="mb-1 block text-sm font-medium text-slate-700">
+                                                Soal Ditampilkan ke Siswa
+                                            </label>
+                                            <div className="w-full rounded-lg border border-slate-200 bg-slate-100 px-3 py-2 text-sm text-slate-700">
+                                                {curriculumPublishedQuestionLabel}
+                                            </div>
+                                            <p className="mt-1 text-[11px] text-slate-500">
+                                                Konfigurasi jumlah soal mengikuti packet yang dijadwalkan oleh kurikulum.
+                                            </p>
+                                        </div>
 
-                                {selectedSubjectId && (
-                                    <div>
-                                        <label htmlFor="exam-kkm" className="mb-1 block text-sm font-medium text-slate-700">
-                                            KKM
-                                        </label>
-                                        <input
-                                            id="exam-kkm"
-                                            type="number"
-                                            {...register('kkm', { valueAsNumber: true })}
-                                            readOnly
-                                            className="w-full rounded-lg border border-slate-200 bg-slate-100 px-3 py-2 text-sm text-slate-600"
-                                        />
-                                    </div>
+                                        <div>
+                                            <label className="mb-1 block text-sm font-medium text-slate-700">
+                                                KKM
+                                            </label>
+                                            <div className="w-full rounded-lg border border-slate-200 bg-slate-100 px-3 py-2 text-sm text-slate-700">
+                                                {loadedPacket?.kkm || '-'}
+                                            </div>
+                                        </div>
+                                    </>
+                                ) : (
+                                    <>
+                                        <div>
+                                            <label htmlFor="exam-semester" className="mb-1 block text-sm font-medium text-slate-700">
+                                                Semester
+                                            </label>
+                                            <select
+                                                id="exam-semester"
+                                                {...register('semester')}
+                                                disabled={isSemesterLockedFromProgram}
+                                                className={`w-full rounded-lg border border-slate-300 px-3 py-2 text-sm focus:border-blue-500 focus:outline-none ${
+                                                    isSemesterLockedFromProgram ? 'bg-slate-100 text-slate-500 cursor-not-allowed' : ''
+                                                }`}
+                                            >
+                                                <option value="ODD">Ganjil</option>
+                                                <option value="EVEN">Genap</option>
+                                            </select>
+                                        </div>
+
+                                        <div>
+                                            <label htmlFor="exam-type-modal" className="mb-1 block text-sm font-medium text-slate-700">
+                                                Tipe Ujian
+                                            </label>
+                                            <input
+                                                id="exam-type-modal"
+                                                value={examTypeDisplayLabel}
+                                                readOnly
+                                                className="w-full rounded-lg border border-slate-200 bg-slate-100 px-3 py-2 text-sm text-slate-600"
+                                            />
+                                            <input type="hidden" {...register('type')} />
+                                            <input type="hidden" {...register('programCode')} />
+                                        </div>
+
+                                        <div>
+                                            <label htmlFor="exam-duration" className="mb-1 block text-sm font-medium text-slate-700">
+                                                Durasi (menit)
+                                            </label>
+                                            <input
+                                                id="exam-duration"
+                                                type="number"
+                                                {...register('duration')}
+                                                placeholder="Contoh: 90"
+                                                className="w-full rounded-lg border border-slate-300 px-3 py-2 text-sm focus:border-blue-500 focus:outline-none [appearance:textfield] [&::-webkit-outer-spin-button]:appearance-none [&::-webkit-inner-spin-button]:appearance-none"
+                                            />
+                                        </div>
+
+                                        <div>
+                                            <label htmlFor="exam-published-count" className="mb-1 block text-sm font-medium text-slate-700">
+                                                Soal Ditampilkan ke Siswa
+                                            </label>
+                                            <input
+                                                id="exam-published-count"
+                                                type="number"
+                                                min={1}
+                                                {...register('publishedQuestionCount', { valueAsNumber: true })}
+                                                placeholder="Kosongkan = tampilkan semua soal"
+                                                className="w-full rounded-lg border border-slate-300 px-3 py-2 text-sm focus:border-blue-500 focus:outline-none [appearance:textfield] [&::-webkit-outer-spin-button]:appearance-none [&::-webkit-inner-spin-button]:appearance-none"
+                                            />
+                                            <p className="mt-1 text-[11px] text-slate-500">
+                                                Soal akan diacak per siswa dari total bank soal yang Anda buat.
+                                            </p>
+                                        </div>
+
+                                        {selectedSubjectId && (
+                                            <div>
+                                                <label htmlFor="exam-kkm" className="mb-1 block text-sm font-medium text-slate-700">
+                                                    KKM
+                                                </label>
+                                                <input
+                                                    id="exam-kkm"
+                                                    type="number"
+                                                    {...register('kkm', { valueAsNumber: true })}
+                                                    readOnly
+                                                    className="w-full rounded-lg border border-slate-200 bg-slate-100 px-3 py-2 text-sm text-slate-600"
+                                                />
+                                            </div>
+                                        )}
+                                    </>
                                 )}
                             </div>
 
@@ -2482,7 +2621,7 @@ export const ExamEditorPage = () => {
                                 onClick={handleSaveInfoModal}
                                 className="rounded-lg bg-blue-600 px-4 py-2 text-sm font-medium text-white hover:bg-blue-700"
                             >
-                                Simpan Informasi
+                                {isCurriculumManagedPacket ? 'Simpan Judul & Instruksi' : 'Simpan Informasi'}
                             </button>
                         </div>
                     </div>

@@ -449,6 +449,21 @@ export default function TeacherExamEditorScreen() {
     queryFn: async () => examApi.getTeacherPacketById(packetId!),
     retry: 1,
   });
+  const currentPacketDetail = packetDetailQuery.data || null;
+  const isCurriculumManagedPacket = Boolean(currentPacketDetail?.isCurriculumManaged);
+  const curriculumScheduledClassNames = useMemo(() => {
+    const classNames = (currentPacketDetail?.schedules || [])
+      .map((schedule) => String(schedule.class?.name || '').trim())
+      .filter((name) => Boolean(name));
+    return Array.from(new Set(classNames));
+  }, [currentPacketDetail?.schedules]);
+  const curriculumPublishedQuestionLabel = useMemo(() => {
+    const publishedCount = Number(currentPacketDetail?.publishedQuestionCount);
+    if (Number.isFinite(publishedCount) && publishedCount > 0) {
+      return `${publishedCount} soal`;
+    }
+    return 'Semua soal ditampilkan';
+  }, [currentPacketDetail?.publishedQuestionCount]);
 
   useEffect(() => {
     if (!isEditMode || !packetDetailQuery.data || hydratedPacket) return;
@@ -462,7 +477,7 @@ export default function TeacherExamEditorScreen() {
       setExamType((String(packet.type).toUpperCase() as ExamDisplayType) || 'FORMATIF');
       setSemester((String(packet.semester).toUpperCase() as 'ODD' | 'EVEN') || 'ODD');
       setDuration(String(packet.duration || 60));
-      setKkm('75');
+      setKkm(String(packet.kkm || 75));
       setQuestions(parseQuestions(packet.questions));
 
       if (assignments.length > 0) {
@@ -486,7 +501,10 @@ export default function TeacherExamEditorScreen() {
 
   const saveMutation = useMutation({
     mutationFn: async () => {
-      if (!selectedAssignment) throw new Error('Pilih kelas/mapel terlebih dahulu.');
+      if (isCurriculumManagedPacket && !currentPacketDetail) {
+        throw new Error('Detail packet kurikulum belum siap.');
+      }
+      if (!isCurriculumManagedPacket && !selectedAssignment) throw new Error('Pilih kelas/mapel terlebih dahulu.');
       if (!title.trim()) throw new Error('Judul ujian wajib diisi.');
 
       const durationValue = Number(duration);
@@ -504,7 +522,7 @@ export default function TeacherExamEditorScreen() {
         throw new Error('Minimal harus ada 1 soal.');
       }
       const normalizedProgramCode = normalizeProgramCode(selectedProgramCode);
-      if (!normalizedProgramCode) {
+      if (!isCurriculumManagedPacket && !normalizedProgramCode) {
         throw new Error('Program ujian belum dipilih.');
       }
 
@@ -539,15 +557,25 @@ export default function TeacherExamEditorScreen() {
 
       const payload = {
         title: title.trim(),
-        subjectId: selectedAssignment.subject.id,
-        academicYearId: selectedAssignment.academicYear.id,
-        type: resolveProgramExamType(selectedProgram, examType || 'FORMATIF'),
-        programCode: normalizedProgramCode,
-        semester,
-        duration: durationValue,
-        description: description.trim() || undefined,
+        subjectId: isCurriculumManagedPacket
+          ? Number(currentPacketDetail?.subjectId || 0)
+          : selectedAssignment!.subject.id,
+        academicYearId: isCurriculumManagedPacket
+          ? Number(currentPacketDetail?.academicYearId || 0)
+          : selectedAssignment!.academicYear.id,
+        type: isCurriculumManagedPacket
+          ? ((currentPacketDetail?.type || examType || 'FORMATIF') as ExamDisplayType)
+          : resolveProgramExamType(selectedProgram, examType || 'FORMATIF'),
+        programCode: isCurriculumManagedPacket
+          ? normalizeProgramCode(currentPacketDetail?.programCode || currentPacketDetail?.type) || undefined
+          : normalizedProgramCode || undefined,
+        semester: isCurriculumManagedPacket
+          ? ((String(currentPacketDetail?.semester || semester).toUpperCase() as 'ODD' | 'EVEN') || semester)
+          : semester,
+        duration: isCurriculumManagedPacket ? Number(currentPacketDetail?.duration || durationValue) : durationValue,
+        description: isCurriculumManagedPacket ? undefined : description.trim() || undefined,
         instructions: instructions.trim() || undefined,
-        kkm: kkmValue,
+        kkm: isCurriculumManagedPacket ? Number(currentPacketDetail?.kkm || kkmValue) : kkmValue,
         saveToBank,
         questions: cleanedQuestions,
       };
@@ -659,7 +687,9 @@ export default function TeacherExamEditorScreen() {
         >
           <Text style={{ color: '#1e3a8a', fontWeight: '700', marginBottom: 4 }}>Tahap 1: Informasi Ujian</Text>
           <Text style={{ color: '#334155', fontSize: 12 }}>
-            Lengkapi kelas/mapel, judul, tipe, semester, durasi, dan konfigurasi ujian sebelum menyusun butir soal.
+            {isCurriculumManagedPacket
+              ? 'Judul dan instruksi masih bisa disesuaikan. Parameter lain mengikuti jadwal kurikulum.'
+              : 'Lengkapi kelas/mapel, judul, tipe, semester, durasi, dan konfigurasi ujian sebelum menyusun butir soal.'}
           </Text>
         </View>
       ) : (
@@ -682,6 +712,23 @@ export default function TeacherExamEditorScreen() {
 
       {activeSection === 'INFO' ? (
         <>
+      {isCurriculumManagedPacket ? (
+        <View
+          style={{
+            borderWidth: 1,
+            borderColor: '#bfdbfe',
+            backgroundColor: '#eff6ff',
+            borderRadius: 10,
+            padding: 12,
+            marginBottom: 10,
+          }}
+        >
+          <Text style={{ color: '#1d4ed8', fontWeight: '700', marginBottom: 4 }}>Dikunci oleh Kurikulum</Text>
+          <Text style={{ color: '#334155', fontSize: 12 }}>
+            Guru hanya dapat mengubah judul ujian dan instruksi. Mapel, kelas, semester, tipe ujian, durasi, jumlah soal tampil, dan KKM mengikuti jadwal kurikulum.
+          </Text>
+        </View>
+      ) : null}
       <View
         style={{
           backgroundColor: '#fff',
@@ -692,18 +739,56 @@ export default function TeacherExamEditorScreen() {
           marginBottom: 10,
         }}
       >
-        <Text style={{ color: '#0f172a', fontWeight: '700', marginBottom: 8 }}>Kelas & Mapel</Text>
-        <MobileSelectField
-          value={selectedAssignmentId ? String(selectedAssignmentId) : ''}
-          options={assignmentOptions}
-          onChange={(next) => setSelectedAssignmentId(next ? Number(next) : null)}
-          placeholder="Pilih kelas dan mapel"
-          helperText={
-            filteredAssignments.length === 0
-              ? 'Tidak ada mapel penugasan yang diizinkan untuk program ini.'
-              : 'Pilihan mengikuti assignment guru yang aktif.'
-          }
-        />
+        <Text style={{ color: '#0f172a', fontWeight: '700', marginBottom: 8 }}>
+          {isCurriculumManagedPacket ? 'Informasi dari Kurikulum' : 'Kelas & Mapel'}
+        </Text>
+        {isCurriculumManagedPacket ? (
+          <>
+            <View
+              style={{
+                borderWidth: 1,
+                borderColor: '#cbd5e1',
+                borderRadius: 10,
+                paddingHorizontal: 12,
+                paddingVertical: 10,
+                backgroundColor: '#f8fafc',
+                marginBottom: 8,
+              }}
+            >
+              <Text style={{ color: '#475569', fontSize: 11, marginBottom: 3 }}>Mapel Terjadwal</Text>
+              <Text style={{ color: '#0f172a', fontWeight: '600' }}>{currentPacketDetail?.subject?.name || '-'}</Text>
+            </View>
+            <View
+              style={{
+                borderWidth: 1,
+                borderColor: '#cbd5e1',
+                borderRadius: 10,
+                paddingHorizontal: 12,
+                paddingVertical: 10,
+                backgroundColor: '#f8fafc',
+              }}
+            >
+              <Text style={{ color: '#475569', fontSize: 11, marginBottom: 3 }}>Kelas / Rombel Terjadwal</Text>
+              <Text style={{ color: '#0f172a', fontWeight: '600' }}>
+                {curriculumScheduledClassNames.length > 0
+                  ? curriculumScheduledClassNames.join(', ')
+                  : 'Mengikuti jadwal kurikulum'}
+              </Text>
+            </View>
+          </>
+        ) : (
+          <MobileSelectField
+            value={selectedAssignmentId ? String(selectedAssignmentId) : ''}
+            options={assignmentOptions}
+            onChange={(next) => setSelectedAssignmentId(next ? Number(next) : null)}
+            placeholder="Pilih kelas dan mapel"
+            helperText={
+              filteredAssignments.length === 0
+                ? 'Tidak ada mapel penugasan yang diizinkan untuk program ini.'
+                : 'Pilihan mengikuti assignment guru yang aktif.'
+            }
+          />
+        )}
       </View>
 
       <TextInput
@@ -721,22 +806,24 @@ export default function TeacherExamEditorScreen() {
         }}
       />
 
-      <TextInput
-        value={description}
-        onChangeText={setDescription}
-        placeholder="Deskripsi ujian (opsional)"
-        multiline
-        style={{
-          borderWidth: 1,
-          borderColor: '#cbd5e1',
-          borderRadius: 10,
-          paddingHorizontal: 12,
-          paddingVertical: 10,
-          minHeight: 80,
-          backgroundColor: '#fff',
-          marginBottom: 8,
-        }}
-      />
+      {!isCurriculumManagedPacket ? (
+        <TextInput
+          value={description}
+          onChangeText={setDescription}
+          placeholder="Deskripsi ujian (opsional)"
+          multiline
+          style={{
+            borderWidth: 1,
+            borderColor: '#cbd5e1',
+            borderRadius: 10,
+            paddingHorizontal: 12,
+            paddingVertical: 10,
+            minHeight: 80,
+            backgroundColor: '#fff',
+            marginBottom: 8,
+          }}
+        />
+      ) : null}
 
       <TextInput
         value={instructions}
@@ -755,90 +842,180 @@ export default function TeacherExamEditorScreen() {
         }}
       />
 
-      <View style={{ flexDirection: 'row', marginHorizontal: -4, marginBottom: 8 }}>
-        <View style={{ flex: 1, paddingHorizontal: 4 }}>
-          <TextInput
-            value={duration}
-            onChangeText={setDuration}
-            placeholder="Durasi (menit)"
-            keyboardType="numeric"
+      {isCurriculumManagedPacket ? (
+        <>
+          <View style={{ flexDirection: 'row', marginHorizontal: -4, marginBottom: 8 }}>
+            <View style={{ flex: 1, paddingHorizontal: 4 }}>
+              <View
+                style={{
+                  borderWidth: 1,
+                  borderColor: '#cbd5e1',
+                  borderRadius: 10,
+                  paddingHorizontal: 12,
+                  paddingVertical: 10,
+                  backgroundColor: '#f8fafc',
+                }}
+              >
+                <Text style={{ color: '#475569', fontSize: 11, marginBottom: 3 }}>Semester</Text>
+                <Text style={{ color: '#0f172a', fontWeight: '600' }}>
+                  {currentPacketDetail?.semester === 'ODD' ? 'Semester Ganjil' : 'Semester Genap'}
+                </Text>
+              </View>
+            </View>
+            <View style={{ flex: 1, paddingHorizontal: 4 }}>
+              <View
+                style={{
+                  borderWidth: 1,
+                  borderColor: '#cbd5e1',
+                  borderRadius: 10,
+                  paddingHorizontal: 12,
+                  paddingVertical: 10,
+                  backgroundColor: '#f8fafc',
+                }}
+              >
+                <Text style={{ color: '#475569', fontSize: 11, marginBottom: 3 }}>Tipe Ujian</Text>
+                <Text style={{ color: '#0f172a', fontWeight: '600' }}>{selectedProgram?.label || currentPacketDetail?.programCode || currentPacketDetail?.type || '-'}</Text>
+              </View>
+            </View>
+          </View>
+          <View style={{ flexDirection: 'row', marginHorizontal: -4, marginBottom: 8 }}>
+            <View style={{ flex: 1, paddingHorizontal: 4 }}>
+              <View
+                style={{
+                  borderWidth: 1,
+                  borderColor: '#cbd5e1',
+                  borderRadius: 10,
+                  paddingHorizontal: 12,
+                  paddingVertical: 10,
+                  backgroundColor: '#f8fafc',
+                }}
+              >
+                <Text style={{ color: '#475569', fontSize: 11, marginBottom: 3 }}>Durasi</Text>
+                <Text style={{ color: '#0f172a', fontWeight: '600' }}>{currentPacketDetail?.duration || '-'} menit</Text>
+              </View>
+            </View>
+            <View style={{ flex: 1, paddingHorizontal: 4 }}>
+              <View
+                style={{
+                  borderWidth: 1,
+                  borderColor: '#cbd5e1',
+                  borderRadius: 10,
+                  paddingHorizontal: 12,
+                  paddingVertical: 10,
+                  backgroundColor: '#f8fafc',
+                }}
+              >
+                <Text style={{ color: '#475569', fontSize: 11, marginBottom: 3 }}>KKM</Text>
+                <Text style={{ color: '#0f172a', fontWeight: '600' }}>{currentPacketDetail?.kkm || '-'}</Text>
+              </View>
+            </View>
+          </View>
+          <View
             style={{
               borderWidth: 1,
               borderColor: '#cbd5e1',
               borderRadius: 10,
               paddingHorizontal: 12,
               paddingVertical: 10,
-              backgroundColor: '#fff',
+              backgroundColor: '#f8fafc',
+              marginBottom: 8,
             }}
-          />
-        </View>
-        <View style={{ flex: 1, paddingHorizontal: 4 }}>
-          <TextInput
-            value={kkm}
-            onChangeText={setKkm}
-            placeholder="KKM"
-            keyboardType="numeric"
-            style={{
-              borderWidth: 1,
-              borderColor: '#cbd5e1',
-              borderRadius: 10,
-              paddingHorizontal: 12,
-              paddingVertical: 10,
-              backgroundColor: '#fff',
-            }}
-          />
-        </View>
-      </View>
-
-      <Text style={{ color: '#0f172a', fontWeight: '700', marginBottom: 6 }}>Program Ujian</Text>
-      {examProgramsQuery.isLoading ? (
-        <QueryStateView type="loading" message="Memuat program ujian..." />
-      ) : availablePrograms.length > 0 ? (
-        <MobileSelectField
-          value={selectedProgramCode}
-          options={programOptions}
-          onChange={(next) => {
-            if (isTypeLockedFromMenu && forcedProgramCode && next !== forcedProgramCode) return;
-            setSelectedProgramCode(next);
-          }}
-          placeholder="Pilih program ujian"
-          helperText={isTypeLockedFromMenu ? `Program ujian dikunci sesuai menu yang dipilih: ${selectedProgram?.label || forcedProgramCode}.` : undefined}
-          disabled={Boolean(isTypeLockedFromMenu)}
-        />
+          >
+            <Text style={{ color: '#475569', fontSize: 11, marginBottom: 3 }}>Soal Ditampilkan ke Siswa</Text>
+            <Text style={{ color: '#0f172a', fontWeight: '600' }}>{curriculumPublishedQuestionLabel}</Text>
+            <Text style={{ color: '#64748b', fontSize: 11, marginTop: 4 }}>
+              Konfigurasi jumlah soal mengikuti packet yang dijadwalkan oleh kurikulum.
+            </Text>
+          </View>
+        </>
       ) : (
-        <View
-          style={{
-            borderWidth: 1,
-            borderColor: '#fecaca',
-            backgroundColor: '#fef2f2',
-            borderRadius: 8,
-            padding: 10,
-            marginBottom: 8,
-          }}
-        >
-          <Text style={{ color: '#991b1b', fontSize: 12 }}>
-            Program ujian belum tersedia. Minta {CURRICULUM_EXAM_MANAGER_LABEL} menambahkan Program Ujian terlebih dahulu.
-          </Text>
-        </View>
+        <>
+          <View style={{ flexDirection: 'row', marginHorizontal: -4, marginBottom: 8 }}>
+            <View style={{ flex: 1, paddingHorizontal: 4 }}>
+              <TextInput
+                value={duration}
+                onChangeText={setDuration}
+                placeholder="Durasi (menit)"
+                keyboardType="numeric"
+                style={{
+                  borderWidth: 1,
+                  borderColor: '#cbd5e1',
+                  borderRadius: 10,
+                  paddingHorizontal: 12,
+                  paddingVertical: 10,
+                  backgroundColor: '#fff',
+                }}
+              />
+            </View>
+            <View style={{ flex: 1, paddingHorizontal: 4 }}>
+              <TextInput
+                value={kkm}
+                onChangeText={setKkm}
+                placeholder="KKM"
+                keyboardType="numeric"
+                style={{
+                  borderWidth: 1,
+                  borderColor: '#cbd5e1',
+                  borderRadius: 10,
+                  paddingHorizontal: 12,
+                  paddingVertical: 10,
+                  backgroundColor: '#fff',
+                }}
+              />
+            </View>
+          </View>
+
+          <Text style={{ color: '#0f172a', fontWeight: '700', marginBottom: 6 }}>Program Ujian</Text>
+          {examProgramsQuery.isLoading ? (
+            <QueryStateView type="loading" message="Memuat program ujian..." />
+          ) : availablePrograms.length > 0 ? (
+            <MobileSelectField
+              value={selectedProgramCode}
+              options={programOptions}
+              onChange={(next) => {
+                if (isTypeLockedFromMenu && forcedProgramCode && next !== forcedProgramCode) return;
+                setSelectedProgramCode(next);
+              }}
+              placeholder="Pilih program ujian"
+              helperText={isTypeLockedFromMenu ? `Program ujian dikunci sesuai menu yang dipilih: ${selectedProgram?.label || forcedProgramCode}.` : undefined}
+              disabled={Boolean(isTypeLockedFromMenu)}
+            />
+          ) : (
+            <View
+              style={{
+                borderWidth: 1,
+                borderColor: '#fecaca',
+                backgroundColor: '#fef2f2',
+                borderRadius: 8,
+                padding: 10,
+                marginBottom: 8,
+              }}
+            >
+              <Text style={{ color: '#991b1b', fontSize: 12 }}>
+                Program ujian belum tersedia. Minta {CURRICULUM_EXAM_MANAGER_LABEL} menambahkan Program Ujian terlebih dahulu.
+              </Text>
+            </View>
+          )}
+          <Text style={{ color: '#0f172a', fontWeight: '700', marginBottom: 6 }}>Semester</Text>
+          <MobileSelectField
+            value={semester}
+            options={semesterOptions}
+            onChange={(next) => {
+              if (next === 'ODD' || next === 'EVEN') {
+                if (lockedSemester) return;
+                setSemester(next);
+              }
+            }}
+            placeholder="Pilih semester"
+            disabled={Boolean(lockedSemester)}
+          />
+          {lockedSemester ? (
+            <Text style={{ color: '#475569', fontSize: 11, marginBottom: 8 }}>
+              Semester otomatis untuk {selectedProgram?.label || examType}: {lockedSemester === 'ODD' ? 'Ganjil' : 'Genap'}.
+            </Text>
+          ) : null}
+        </>
       )}
-      <Text style={{ color: '#0f172a', fontWeight: '700', marginBottom: 6 }}>Semester</Text>
-      <MobileSelectField
-        value={semester}
-        options={semesterOptions}
-        onChange={(next) => {
-          if (next === 'ODD' || next === 'EVEN') {
-            if (lockedSemester) return;
-            setSemester(next);
-          }
-        }}
-        placeholder="Pilih semester"
-        disabled={Boolean(lockedSemester)}
-      />
-      {lockedSemester ? (
-        <Text style={{ color: '#475569', fontSize: 11, marginBottom: 8 }}>
-          Semester otomatis untuk {selectedProgram?.label || examType}: {lockedSemester === 'ODD' ? 'Ganjil' : 'Genap'}.
-        </Text>
-      ) : null}
 
       <View
         style={{

@@ -146,6 +146,7 @@ export interface ExamPacket {
     id: number;
     title: string;
     description?: string;
+    isCurriculumManaged?: boolean;
     type: ExamType;
     programCode?: string | null;
     duration: number; // minutes
@@ -159,6 +160,19 @@ export interface ExamPacket {
     academicYearId: number;
     semester?: string;
     academicYear?: { id: number; name: string };
+    schedules?: Array<{
+        id: number;
+        classId: number | null;
+        startTime: string;
+        endTime: string;
+        isActive: boolean;
+        room?: string | null;
+        sessionLabel?: string | null;
+        class?: {
+            id: number;
+            name: string;
+        } | null;
+    }>;
     questions?: Question[];
     _count?: {
         schedules: number;

@@ -2011,6 +2011,10 @@ function normalizeSessionLabelKey(rawLabel: unknown): string | null {
 
 const AUTO_CURRICULUM_PACKET_DESCRIPTION = 'Packet dibuat otomatis karena jadwal dibuat dari menu kurikulum.';
 
+function isCurriculumManagedPacketDescription(rawDescription: unknown): boolean {
+    return String(rawDescription || '').trim() === AUTO_CURRICULUM_PACKET_DESCRIPTION;
+}
+
 function toUtcDateKey(value: Date): string {
     return value.toISOString().slice(0, 10);
 }
@@ -5052,6 +5056,7 @@ export const getPackets = asyncHandler(async (req: Request, res: Response) => {
         const effectiveSubject = effectiveSubjectMap.get(packet.id) || toPacketDisplaySubject(packet.subject) || packet.subject;
         return {
             ...packet,
+            isCurriculumManaged: isCurriculumManagedPacketDescription(packet.description),
             subjectId: effectiveSubject?.id ?? packet.subjectId,
             subject: effectiveSubject,
         };
@@ -5067,7 +5072,23 @@ export const getPacketById = asyncHandler(async (req: Request, res: Response) =>
             subject: true,
             author: { select: { name: true } },
             academicYear: true,
-            schedules: true
+            schedules: {
+                select: {
+                    id: true,
+                    classId: true,
+                    startTime: true,
+                    endTime: true,
+                    isActive: true,
+                    room: true,
+                    sessionLabel: true,
+                    class: {
+                        select: {
+                            id: true,
+                            name: true,
+                        },
+                    },
+                },
+            },
         }
     });
     if (!packet) throw new ApiError(404, 'Exam packet not found');
@@ -5076,6 +5097,7 @@ export const getPacketById = asyncHandler(async (req: Request, res: Response) =>
     res.json(
         new ApiResponse(200, {
             ...packet,
+            isCurriculumManaged: isCurriculumManagedPacketDescription(packet.description),
             subjectId: effectiveSubject?.id ?? packet.subjectId,
             subject: effectiveSubject,
         }),
@@ -5213,6 +5235,10 @@ export const updatePacket = asyncHandler(async (req: Request, res: Response) => 
             semester: true,
             type: true,
             programCode: true,
+            description: true,
+            duration: true,
+            kkm: true,
+            publishedQuestionCount: true,
         },
     });
 
@@ -5220,31 +5246,47 @@ export const updatePacket = asyncHandler(async (req: Request, res: Response) => 
         throw new ApiError(404, 'Exam packet not found');
     }
 
-    const normalizedAcademicYearId = Number.isFinite(Number(academicYearId))
-        ? parseInt(academicYearId)
-        : existingPacket.academicYearId;
-    const normalizedSubjectId = Number.isFinite(Number(subjectId))
-        ? parseInt(subjectId)
-        : existingPacket.subjectId;
+    const isCurriculumManagedPacket = isCurriculumManagedPacketDescription(existingPacket.description);
+    const normalizedAcademicYearId = isCurriculumManagedPacket
+        ? existingPacket.academicYearId
+        : Number.isFinite(Number(academicYearId))
+          ? parseInt(academicYearId)
+          : existingPacket.academicYearId;
+    const normalizedSubjectId = isCurriculumManagedPacket
+        ? existingPacket.subjectId
+        : Number.isFinite(Number(subjectId))
+          ? parseInt(subjectId)
+          : existingPacket.subjectId;
     if (!Number.isFinite(normalizedSubjectId) || normalizedSubjectId <= 0) {
         throw new ApiError(400, 'subjectId wajib diisi.');
     }
-    const normalizedSemester = normalizePacketSemester(semester || existingPacket.semester);
-    const resolvedProgram = await resolvePacketProgram({
-        academicYearId: normalizedAcademicYearId,
-        semester: normalizedSemester,
-        programCode: programCode ?? existingPacket.programCode,
-        legacyType: type ?? existingPacket.type,
-        currentProgramCode: existingPacket.programCode,
-    });
-    const scopedAssignment = await resolvePacketAssignmentScope({
-        teacherAssignmentId,
-        academicYearId: normalizedAcademicYearId,
-        authorId: Number((req as any).user.id),
-        subjectId: normalizedSubjectId,
-        programCode: resolvedProgram.programCode,
-    });
-    const effectiveSubjectId = scopedAssignment?.subjectId ?? normalizedSubjectId;
+    const normalizedSemester = isCurriculumManagedPacket
+        ? existingPacket.semester
+        : normalizePacketSemester(semester || existingPacket.semester);
+    const resolvedProgram = isCurriculumManagedPacket
+        ? {
+              programCode:
+                  normalizeProgramCode(existingPacket.programCode || existingPacket.type) ||
+                  String(existingPacket.programCode || existingPacket.type),
+              baseType: existingPacket.type,
+          }
+        : await resolvePacketProgram({
+              academicYearId: normalizedAcademicYearId,
+              semester: normalizedSemester,
+              programCode: programCode ?? existingPacket.programCode,
+              legacyType: type ?? existingPacket.type,
+              currentProgramCode: existingPacket.programCode,
+          });
+    const scopedAssignment = isCurriculumManagedPacket
+        ? null
+        : await resolvePacketAssignmentScope({
+              teacherAssignmentId,
+              academicYearId: normalizedAcademicYearId,
+              authorId: Number((req as any).user.id),
+              subjectId: normalizedSubjectId,
+              programCode: resolvedProgram.programCode,
+          });
+    const effectiveSubjectId = isCurriculumManagedPacket ? existingPacket.subjectId : scopedAssignment?.subjectId ?? normalizedSubjectId;
     if (!Number.isFinite(effectiveSubjectId) || effectiveSubjectId <= 0) {
         throw new ApiError(400, 'subjectId wajib diisi.');
     }
@@ -5254,16 +5296,18 @@ export const updatePacket = asyncHandler(async (req: Request, res: Response) => 
             ? undefined
             : normalizePublishedQuestionCount(publishedQuestionCount);
 
-    await assertPacketCreationScope({
-        academicYearId: normalizedAcademicYearId,
-        programCode: resolvedProgram.programCode,
-        subjectId: effectiveSubjectId,
-        authorId: Number((req as any).user.id),
-    });
-    await assertPacketSubjectProgramConsistency({
-        subjectId: effectiveSubjectId,
-        programCode: resolvedProgram.programCode,
-    });
+    if (!isCurriculumManagedPacket) {
+        await assertPacketCreationScope({
+            academicYearId: normalizedAcademicYearId,
+            programCode: resolvedProgram.programCode,
+            subjectId: effectiveSubjectId,
+            authorId: Number((req as any).user.id),
+        });
+        await assertPacketSubjectProgramConsistency({
+            subjectId: effectiveSubjectId,
+            programCode: resolvedProgram.programCode,
+        });
+    }
 
     const packet = await prisma.examPacket.update({
         where: { id: packetId },
@@ -5274,11 +5318,13 @@ export const updatePacket = asyncHandler(async (req: Request, res: Response) => 
             type: resolvedProgram.baseType,
             programCode: resolvedProgram.programCode,
             semester: normalizedSemester,
-            duration: parseInt(duration),
-            description,
+            duration: isCurriculumManagedPacket ? existingPacket.duration : parseInt(duration),
+            description: isCurriculumManagedPacket ? existingPacket.description : description,
             instructions,
-            kkm: kkm ? parseFloat(kkm) : undefined,
-            publishedQuestionCount: normalizedPublishedQuestionCount,
+            kkm: isCurriculumManagedPacket ? existingPacket.kkm : kkm ? parseFloat(kkm) : undefined,
+            publishedQuestionCount: isCurriculumManagedPacket
+                ? existingPacket.publishedQuestionCount
+                : normalizedPublishedQuestionCount,
             questions: normalizedQuestions || questions
         }
     });
