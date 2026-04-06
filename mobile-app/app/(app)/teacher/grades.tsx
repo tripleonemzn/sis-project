@@ -71,7 +71,7 @@ function normalizeLegacySeriesValues(rawValues: unknown[]) {
     .filter((item) => Number.isFinite(item));
 }
 
-function sanitizeLegacySeriesForDisplay(rawValues: unknown[], storedScore?: unknown) {
+function sanitizeLegacySeriesForDisplay(rawValues: unknown[], _storedScore?: unknown) {
   const values = normalizeLegacySeriesValues(rawValues);
   if (values.length === 0) return [];
   if (values.length === 6 && values.every((value) => value === 0)) return [];
@@ -85,16 +85,9 @@ function sanitizeLegacySeriesForDisplay(rawValues: unknown[], storedScore?: unkn
     return values.slice(0, lastNonZeroIndex + 1);
   })();
 
-  const stored = Number(storedScore);
-  const averageAll = averageValues(values);
-  const averageTrimmed = averageValues(trimmedTrailingPadding);
   if (
     trimmedTrailingPadding.length > 0 &&
-    trimmedTrailingPadding.length < values.length &&
-    (!Number.isFinite(stored) ||
-      averageAll === null ||
-      Math.abs(averageAll - stored) > 0.01 ||
-      (averageTrimmed !== null && Math.abs(averageTrimmed - stored) <= 0.01))
+    trimmedTrailingPadding.length < values.length
   ) {
     return trimmedTrailingPadding;
   }

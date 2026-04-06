@@ -616,12 +616,11 @@ function areScoresApproximatelyEqual(left: number | null, right: number | null, 
   return Math.abs(left - right) <= tolerance
 }
 
-function sanitizeLegacyFormativeSeries(rawValues: unknown[], storedScore?: unknown): number[] {
+function sanitizeLegacyFormativeSeries(rawValues: unknown[], _storedScore?: unknown): number[] {
   const values = normalizeLegacySeriesValues(rawValues)
   if (values.length === 0) return []
   if (values.every((value) => value === 0)) return []
 
-  const stored = parseOptionalScoreValue(storedScore, 'Nilai') ?? null
   const trimmedTrailingPadding = (() => {
     let lastNonZeroIndex = -1
     values.forEach((value, index) => {
@@ -632,15 +631,7 @@ function sanitizeLegacyFormativeSeries(rawValues: unknown[], storedScore?: unkno
   })()
 
   if (trimmedTrailingPadding.length > 0 && trimmedTrailingPadding.length < values.length) {
-    const averageTrimmed = calculateAverage(trimmedTrailingPadding)
-    const averageAll = calculateAverage(values)
-    if (
-      stored === null ||
-      !areScoresApproximatelyEqual(averageAll, stored) ||
-      areScoresApproximatelyEqual(averageTrimmed, stored)
-    ) {
-      return trimmedTrailingPadding
-    }
+    return trimmedTrailingPadding
   }
 
   return values
@@ -2216,7 +2207,7 @@ export const getStudentGrades = async (req: Request, res: Response) => {
           if (!isNfSeries) continue
           const nfRows = (seriesMap.get(Number(row.id)) || []).sort((a, b) => a.order - b.order)
           if (nfRows.length > 0) {
-            row.formativeSeries = nfRows.map((item) => item.value)
+            row.formativeSeries = sanitizeLegacyFormativeSeries(nfRows.map((item) => item.value))
             continue
           }
           const fallbackScore = scoreFallbackMap.get(Number(row.id))

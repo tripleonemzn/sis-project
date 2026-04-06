@@ -190,6 +190,20 @@ function toFiniteNumber(value: unknown): number | null {
   return parsed
 }
 
+function sanitizeLegacyFormativeSeriesValues(rawValues: Array<number | null>): number[] {
+  const values = rawValues.filter((value): value is number => value !== null && Number.isFinite(value))
+  if (values.length === 0) return []
+  if (values.every((value) => value === 0)) return []
+
+  let lastNonZeroIndex = -1
+  values.forEach((value, index) => {
+    if (value !== 0) lastNonZeroIndex = index
+  })
+
+  if (lastNonZeroIndex < 0) return []
+  return values.slice(0, lastNonZeroIndex + 1)
+}
+
 function normalizeMetadata(metadata?: Record<string, unknown> | null): Prisma.InputJsonValue | undefined {
   if (!metadata) return undefined
   return metadata as Prisma.InputJsonValue
@@ -435,14 +449,23 @@ export async function syncScoreEntriesFromStudentGrade(gradeId: number) {
   const nfKeys = ['nf1', 'nf2', 'nf3', 'nf4', 'nf5', 'nf6'].map((field) => `studentGrade:${grade.id}:${field}`)
 
   if (componentConfig.entryMode === GradeEntryMode.NF_SERIES) {
-    const nfRows: Array<{ key: string; field: string; value: number | null; order: number }> = [
-      { key: nfKeys[0], field: 'nf1', value: toFiniteNumber(grade.nf1), order: 1 },
-      { key: nfKeys[1], field: 'nf2', value: toFiniteNumber(grade.nf2), order: 2 },
-      { key: nfKeys[2], field: 'nf3', value: toFiniteNumber(grade.nf3), order: 3 },
-      { key: nfKeys[3], field: 'nf4', value: toFiniteNumber(grade.nf4), order: 4 },
-      { key: nfKeys[4], field: 'nf5', value: toFiniteNumber(grade.nf5), order: 5 },
-      { key: nfKeys[5], field: 'nf6', value: toFiniteNumber(grade.nf6), order: 6 },
-    ]
+    const sanitizedSeries = sanitizeLegacyFormativeSeriesValues([
+      toFiniteNumber(grade.nf1),
+      toFiniteNumber(grade.nf2),
+      toFiniteNumber(grade.nf3),
+      toFiniteNumber(grade.nf4),
+      toFiniteNumber(grade.nf5),
+      toFiniteNumber(grade.nf6),
+    ])
+    const nfRows: Array<{ key: string; field: string; value: number | null; order: number }> = Array.from(
+      { length: 6 },
+      (_, index) => ({
+        key: nfKeys[index],
+        field: `nf${index + 1}`,
+        value: sanitizedSeries[index] ?? null,
+        order: index + 1,
+      }),
+    )
 
     for (const row of nfRows) {
       if (row.value === null) {

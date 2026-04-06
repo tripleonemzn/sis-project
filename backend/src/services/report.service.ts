@@ -98,7 +98,7 @@ const buildFormativeReferenceSlotCode = (formativeSlotCode: string | null | unde
   return normalized ? `${normalized}_${suffix}` : suffix;
 };
 
-const sanitizeLegacyFormativeSeries = (rawValues: unknown[], storedScore?: unknown): number[] => {
+const sanitizeLegacyFormativeSeries = (rawValues: unknown[], _storedScore?: unknown): number[] => {
   const values = rawValues
     .filter((item) => item !== null && item !== undefined && item !== '')
     .map((item) => Number(item))
@@ -116,17 +116,9 @@ const sanitizeLegacyFormativeSeries = (rawValues: unknown[], storedScore?: unkno
     return values.slice(0, lastNonZeroIndex + 1);
   })();
 
-  const stored = parseScoreNumber(storedScore);
-  const averageAll = calculateAverage(values);
-  const averageTrimmed = calculateAverage(trimmedTrailingPadding);
-
   if (
     trimmedTrailingPadding.length > 0 &&
-    trimmedTrailingPadding.length < values.length &&
-    (stored === null ||
-      averageAll === null ||
-      Math.abs(averageAll - stored) > 0.01 ||
-      (averageTrimmed !== null && Math.abs(averageTrimmed - stored) <= 0.01))
+    trimmedTrailingPadding.length < values.length
   ) {
     return trimmedTrailingPadding;
   }

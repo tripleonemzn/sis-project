@@ -115,7 +115,7 @@ const normalizeLegacySeriesValues = (rawValues: unknown[]): number[] =>
 const isLegacyZeroPaddedSeries = (values: number[]) =>
   Array.isArray(values) && values.length === 6 && values.every((value) => value === 0);
 
-const sanitizeLegacySeriesForDisplay = (rawValues: unknown[], storedScore?: unknown): number[] => {
+const sanitizeLegacySeriesForDisplay = (rawValues: unknown[], _storedScore?: unknown): number[] => {
   const values = normalizeLegacySeriesValues(rawValues);
   if (values.length === 0 || isLegacyZeroPaddedSeries(values)) return [];
 
@@ -128,16 +128,9 @@ const sanitizeLegacySeriesForDisplay = (rawValues: unknown[], storedScore?: unkn
     return values.slice(0, lastNonZeroIndex + 1);
   })();
 
-  const stored = Number(storedScore);
-  const averageAll = averageValues(values);
-  const averageTrimmed = averageValues(trimmedTrailingPadding);
   if (
     trimmedTrailingPadding.length > 0 &&
-    trimmedTrailingPadding.length < values.length &&
-    (!Number.isFinite(stored) ||
-      averageAll === null ||
-      Math.abs(averageAll - stored) > 0.01 ||
-      (averageTrimmed !== null && Math.abs(averageTrimmed - stored) <= 0.01))
+    trimmedTrailingPadding.length < values.length
   ) {
     return trimmedTrailingPadding;
   }
