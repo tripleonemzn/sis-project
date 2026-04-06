@@ -1,6 +1,7 @@
 import { Feather } from '@expo/vector-icons';
 import { Pressable, Text, View } from 'react-native';
 import { BRAND_COLORS } from '../config/brand';
+import { useAppTheme } from '../theme/AppThemeProvider';
 
 type FeatherIconName = React.ComponentProps<typeof Feather>['name'];
 
@@ -21,12 +22,13 @@ export function MobileSummaryCard({
   accentColor = BRAND_COLORS.blue,
   onPress,
 }: MobileSummaryCardProps) {
+  const { colors, resolvedTheme } = useAppTheme();
   const content = (
     <View
       style={{
-        backgroundColor: '#fff',
+        backgroundColor: colors.surface,
         borderWidth: 1,
-        borderColor: '#dbe7fb',
+        borderColor: resolvedTheme === 'dark' ? colors.border : '#dbe7fb',
         borderRadius: 14,
         paddingHorizontal: 12,
         paddingVertical: 10,
@@ -46,17 +48,17 @@ export function MobileSummaryCard({
         >
           <Feather name={iconName} size={15} color={accentColor} />
         </View>
-        {onPress ? <Feather name="chevron-right" size={16} color="#94a3b8" /> : null}
+        {onPress ? <Feather name="chevron-right" size={16} color={colors.textSoft} /> : null}
       </View>
 
-      <Text style={{ color: '#64748b', fontSize: 11 }} numberOfLines={2}>
+      <Text style={{ color: colors.textMuted, fontSize: 11 }} numberOfLines={2}>
         {title}
       </Text>
-      <Text style={{ color: BRAND_COLORS.textDark, fontWeight: '700', fontSize: 19, marginTop: 4 }} numberOfLines={1}>
+      <Text style={{ color: colors.text, fontWeight: '700', fontSize: 19, marginTop: 4 }} numberOfLines={1}>
         {value}
       </Text>
       {subtitle ? (
-        <Text style={{ color: BRAND_COLORS.textMuted, fontSize: 10.5, marginTop: 3 }} numberOfLines={2}>
+        <Text style={{ color: colors.textMuted, fontSize: 10.5, marginTop: 3 }} numberOfLines={2}>
           {subtitle}
         </Text>
       ) : null}

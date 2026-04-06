@@ -50,6 +50,8 @@ import { getStandardPagePadding } from '../../src/lib/ui/pageLayout';
 import { notifyApiError, notifyError, notifySuccess } from '../../src/lib/ui/feedback';
 import { ENV } from '../../src/config/env';
 import { openWebModuleRoute } from '../../src/lib/navigation/webModuleRoute';
+import { useAppTheme } from '../../src/theme/AppThemeProvider';
+import { MobileAppearancePreferenceCard } from '../../src/features/theme/MobileAppearancePreferenceCard';
 
 type EditableProfileForm = {
   name: string;
@@ -776,6 +778,7 @@ export default function ProfileScreen() {
   const queryClient = useQueryClient();
   const insets = useSafeAreaInsets();
   const { isAuthenticated, isLoading } = useAuth();
+  const { colors } = useAppTheme();
   const profileQuery = useProfileQuery(isAuthenticated);
   const pageContentPadding = getStandardPagePadding(insets, { bottom: 120 });
   const [activeTab, setActiveTab] = useState<ProfileTabId>('account');
@@ -1477,7 +1480,7 @@ export default function ProfileScreen() {
 
   return (
     <ScrollView
-      style={{ flex: 1, backgroundColor: '#f8fafc' }}
+      style={{ flex: 1, backgroundColor: colors.background }}
       contentContainerStyle={pageContentPadding}
       refreshControl={
         <RefreshControl
@@ -1488,8 +1491,8 @@ export default function ProfileScreen() {
         />
       }
     >
-      <Text style={{ fontSize: 24, fontWeight: '700', marginBottom: 6 }}>{profileCopy.title}</Text>
-      <Text style={{ color: '#64748b', marginBottom: 14 }}>{profileCopy.subtitle}</Text>
+      <Text style={{ fontSize: 24, fontWeight: '700', marginBottom: 6, color: colors.text }}>{profileCopy.title}</Text>
+      <Text style={{ color: colors.textMuted, marginBottom: 14 }}>{profileCopy.subtitle}</Text>
 
       {profile ? (
         <View style={{ flexDirection: 'row', flexWrap: 'wrap', marginHorizontal: -4, marginBottom: 18 }}>
@@ -1497,14 +1500,14 @@ export default function ProfileScreen() {
             <View
               style={{
                 borderWidth: 1,
-                borderColor: '#cbd5e1',
-                backgroundColor: '#fff',
+                borderColor: colors.borderSoft,
+                backgroundColor: colors.surface,
                 borderRadius: 999,
                 paddingHorizontal: 12,
                 paddingVertical: 6,
               }}
             >
-              <Text style={{ color: '#475569', fontSize: 12, fontWeight: '700' }}>
+              <Text style={{ color: colors.textMuted, fontSize: 12, fontWeight: '700' }}>
                 {ROLE_LABELS[profile.role] || profile.role}
               </Text>
             </View>
@@ -1542,6 +1545,8 @@ export default function ProfileScreen() {
 
       {profile ? (
         <>
+          <MobileAppearancePreferenceCard userId={profile.id} currentPreferences={profile.preferences} />
+
           <View style={{ flexDirection: 'row', flexWrap: 'wrap', marginHorizontal: -5, marginBottom: 10 }}>
             {profileInsights.map((card) => (
               <View key={card.id} style={{ width: '33.3333%', paddingHorizontal: 5, marginBottom: 10 }}>

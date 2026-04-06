@@ -100,4 +100,5 @@ export const authService = {
     await tokenStorage.clearAll();
     await offlineCache.clearAllMobileCaches();
   },
+  clearMeCache,
 };

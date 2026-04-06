@@ -1,5 +1,5 @@
 import { ActivityIndicator, Pressable, Text, View } from 'react-native';
-import { BRAND_COLORS } from '../config/brand';
+import { useAppTheme } from '../theme/AppThemeProvider';
 
 type QueryStateViewProps = {
   type: 'loading' | 'error';
@@ -8,21 +8,22 @@ type QueryStateViewProps = {
 };
 
 export function QueryStateView({ type, message, onRetry }: QueryStateViewProps) {
+  const { colors } = useAppTheme();
   if (type === 'loading') {
     return (
       <View
         style={{
-          backgroundColor: BRAND_COLORS.white,
+          backgroundColor: colors.surface,
           borderWidth: 1,
-          borderColor: '#d6e0f2',
+          borderColor: colors.border,
           borderRadius: 12,
           paddingHorizontal: 12,
           paddingVertical: 14,
         }}
       >
         <View style={{ flexDirection: 'row', alignItems: 'center' }}>
-          <ActivityIndicator size="small" color={BRAND_COLORS.blue} />
-          <Text style={{ color: BRAND_COLORS.textDark, fontWeight: '600', marginLeft: 8 }}>
+          <ActivityIndicator size="small" color={colors.primary} />
+          <Text style={{ color: colors.text, fontWeight: '600', marginLeft: 8 }}>
             {message || 'Memuat data...'}
           </Text>
         </View>
@@ -33,7 +34,7 @@ export function QueryStateView({ type, message, onRetry }: QueryStateViewProps) 
               style={{
                 height: 9,
                 borderRadius: 999,
-                backgroundColor: '#e8effc',
+                backgroundColor: colors.primarySoft,
                 width: line === 1 ? '100%' : line === 2 ? '85%' : '72%',
               }}
             />
@@ -46,21 +47,21 @@ export function QueryStateView({ type, message, onRetry }: QueryStateViewProps) 
   return (
     <View
       style={{
-        backgroundColor: '#fff1f2',
-        borderColor: '#fecdd3',
+        backgroundColor: colors.dangerBg,
+        borderColor: colors.dangerBorder,
         borderWidth: 1,
         borderRadius: 12,
         padding: 12,
       }}
     >
-      <Text style={{ color: '#9f1239', marginBottom: onRetry ? 10 : 0 }}>
+      <Text style={{ color: colors.dangerText, marginBottom: onRetry ? 10 : 0 }}>
         {message || 'Gagal memuat data.'}
       </Text>
       {onRetry ? (
         <Pressable
           onPress={onRetry}
           style={{
-            backgroundColor: BRAND_COLORS.navy,
+            backgroundColor: colors.primary,
             borderRadius: 8,
             paddingVertical: 8,
             alignItems: 'center',

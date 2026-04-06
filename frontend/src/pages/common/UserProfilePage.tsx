@@ -5,6 +5,7 @@ import { authService } from '../../services/auth.service';
 import { uploadService } from '../../services/upload.service';
 import { ProfileEducationEditor } from '../../components/profile/ProfileEducationEditor';
 import { SupportingDocumentsEditor } from '../../components/profile/SupportingDocumentsEditor';
+import { AppearancePreferenceCard } from '../../components/theme/AppearancePreferenceCard';
 import {
   CANDIDATE_DOCUMENT_OPTIONS,
   getCandidateDocumentCategoryLabel,
@@ -1631,6 +1632,10 @@ export const UserProfilePage = () => {
           </div>
         </div>
       </div>
+
+      {user?.id ? (
+        <AppearancePreferenceCard userId={user.id} currentPreferences={user.preferences} />
+      ) : null}
 
       <div className="bg-white rounded-xl shadow-md border-0 overflow-hidden">
         {isCropping && cropImageSrc && (

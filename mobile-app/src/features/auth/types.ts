@@ -163,6 +163,7 @@ export type AuthUser = {
     name: string;
     managerUserId?: number | null;
   }>;
+  preferences?: Record<string, unknown> | null;
   children?: Array<{ id: number; name: string; username?: string; nisn?: string | null }>;
   studentClass?: {
     id: number;

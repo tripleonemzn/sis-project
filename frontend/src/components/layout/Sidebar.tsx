@@ -1481,7 +1481,7 @@ export const Sidebar = ({ user }: SidebarProps) => {
 
   return (
     <aside
-      className="relative z-[80] hidden h-full shrink-0 bg-white shadow-xl pointer-events-auto md:flex md:flex-col"
+      className="dashboard-sidebar-surface relative z-[80] hidden h-full shrink-0 bg-white shadow-xl pointer-events-auto md:flex md:flex-col"
       style={{ width: `${sidebarWidth}px` }}
     >
       <div className="border-b border-gray-100 px-6 py-6">

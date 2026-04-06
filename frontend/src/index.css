@@ -3,9 +3,34 @@
 
 :root {
   --dashboard-sidebar-offset: 256px;
+  --app-bg: #f3f4f6;
+  --app-surface: #ffffff;
+  --app-surface-muted: #f8fafc;
+  --app-surface-subtle: #eef2ff;
+  --app-border: #e2e8f0;
+  --app-border-soft: #f1f5f9;
+  --app-text-primary: #0f172a;
+  --app-text-secondary: #334155;
+  --app-text-muted: #64748b;
+  --app-text-soft: #94a3b8;
+  color-scheme: light;
 }
 
-body { background-color: #f9fafb; color: #111827; }
+:root[data-theme='dark'] {
+  --app-bg: #08111f;
+  --app-surface: #0f172a;
+  --app-surface-muted: #111c31;
+  --app-surface-subtle: #172554;
+  --app-border: #22314d;
+  --app-border-soft: #334155;
+  --app-text-primary: #e5eefc;
+  --app-text-secondary: #c9d6ea;
+  --app-text-muted: #9fb0c7;
+  --app-text-soft: #74839b;
+  color-scheme: dark;
+}
+
+body { background-color: var(--app-bg); color: var(--app-text-primary); }
 
 /* Keep exam text stable and prevent browser/extension auto-translate side effects */
 html.notranslate,
@@ -26,6 +51,96 @@ iframe.goog-te-banner-frame,
 
 body {
   top: 0 !important;
+}
+
+:root[data-theme='dark'] .app-theme-scope {
+  background-color: var(--app-bg);
+  color: var(--app-text-primary);
+}
+
+:root[data-theme='dark'] .app-theme-scope .dashboard-header-surface {
+  background: rgba(8, 17, 31, 0.84) !important;
+  border-bottom: 1px solid var(--app-border);
+}
+
+:root[data-theme='dark'] .app-theme-scope .dashboard-sidebar-surface,
+:root[data-theme='dark'] .app-theme-scope .dashboard-drawer-surface {
+  background-color: var(--app-surface) !important;
+}
+
+:root[data-theme='dark'] .app-theme-scope .bg-white,
+:root[data-theme='dark'] .app-theme-scope [class*="bg-white/"] {
+  background-color: var(--app-surface) !important;
+}
+
+:root[data-theme='dark'] .app-theme-scope .bg-gray-50,
+:root[data-theme='dark'] .app-theme-scope .bg-gray-100,
+:root[data-theme='dark'] .app-theme-scope .bg-slate-50,
+:root[data-theme='dark'] .app-theme-scope .bg-slate-100,
+:root[data-theme='dark'] .app-theme-scope [class*="bg-gray-50/"],
+:root[data-theme='dark'] .app-theme-scope [class*="bg-slate-50/"],
+:root[data-theme='dark'] .app-theme-scope [class*="from-slate-50"],
+:root[data-theme='dark'] .app-theme-scope [class*="to-blue-50"] {
+  background-color: var(--app-surface-muted) !important;
+}
+
+:root[data-theme='dark'] .app-theme-scope .border-gray-50,
+:root[data-theme='dark'] .app-theme-scope .border-gray-100,
+:root[data-theme='dark'] .app-theme-scope .border-gray-200,
+:root[data-theme='dark'] .app-theme-scope .border-gray-300,
+:root[data-theme='dark'] .app-theme-scope .border-slate-100,
+:root[data-theme='dark'] .app-theme-scope .border-slate-200,
+:root[data-theme='dark'] .app-theme-scope .border-slate-300 {
+  border-color: var(--app-border) !important;
+}
+
+:root[data-theme='dark'] .app-theme-scope .text-gray-900,
+:root[data-theme='dark'] .app-theme-scope .text-slate-900 {
+  color: var(--app-text-primary) !important;
+}
+
+:root[data-theme='dark'] .app-theme-scope .text-gray-800,
+:root[data-theme='dark'] .app-theme-scope .text-slate-800,
+:root[data-theme='dark'] .app-theme-scope .text-gray-700,
+:root[data-theme='dark'] .app-theme-scope .text-slate-700,
+:root[data-theme='dark'] .app-theme-scope .text-gray-600,
+:root[data-theme='dark'] .app-theme-scope .text-slate-600 {
+  color: var(--app-text-secondary) !important;
+}
+
+:root[data-theme='dark'] .app-theme-scope .text-gray-500,
+:root[data-theme='dark'] .app-theme-scope .text-slate-500,
+:root[data-theme='dark'] .app-theme-scope .text-slate-400,
+:root[data-theme='dark'] .app-theme-scope .text-gray-400 {
+  color: var(--app-text-muted) !important;
+}
+
+:root[data-theme='dark'] .app-theme-scope input:not([type="checkbox"]):not([type="radio"]):not([type="range"]):not([type="file"]),
+:root[data-theme='dark'] .app-theme-scope textarea,
+:root[data-theme='dark'] .app-theme-scope select {
+  background-color: var(--app-surface) !important;
+  color: var(--app-text-primary) !important;
+  border-color: var(--app-border) !important;
+}
+
+:root[data-theme='dark'] .app-theme-scope input::placeholder,
+:root[data-theme='dark'] .app-theme-scope textarea::placeholder {
+  color: var(--app-text-soft) !important;
+}
+
+:root[data-theme='dark'] .app-theme-scope .hover\:bg-gray-50:hover,
+:root[data-theme='dark'] .app-theme-scope .hover\:bg-slate-50:hover,
+:root[data-theme='dark'] .app-theme-scope .hover\:bg-white:hover {
+  background-color: var(--app-surface-muted) !important;
+}
+
+:root[data-theme='dark'] .app-theme-scope .shadow,
+:root[data-theme='dark'] .app-theme-scope .shadow-sm,
+:root[data-theme='dark'] .app-theme-scope .shadow-md,
+:root[data-theme='dark'] .app-theme-scope .shadow-lg,
+:root[data-theme='dark'] .app-theme-scope .shadow-xl,
+:root[data-theme='dark'] .app-theme-scope .shadow-2xl {
+  box-shadow: 0 18px 44px rgba(2, 6, 23, 0.44) !important;
 }
 
 @media print {

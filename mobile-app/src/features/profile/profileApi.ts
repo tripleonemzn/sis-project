@@ -101,6 +101,7 @@ export type UpdateSelfProfilePayload = {
   assignmentDate?: string | null;
   institution?: string | null;
   photo?: string | null;
+  preferences?: Record<string, unknown> | null;
   documents?: Array<{
     title: string;
     fileUrl: string;

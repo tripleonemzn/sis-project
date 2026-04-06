@@ -10,8 +10,24 @@ import { PushPermissionManager } from '../src/features/pushNotifications/PushPer
 import { installMobileWebRedirectGuard } from '../src/lib/navigation/mobileWebGuard';
 import { NotificationRealtimeBridge } from '../src/features/notifications/NotificationRealtimeBridge';
 import { installAppAlertOverride } from '../src/lib/ui/appAlert';
+import { AppThemeProvider, useAppTheme } from '../src/theme/AppThemeProvider';
 
 installAppAlertOverride();
+
+function RootStack() {
+  const { resolvedTheme } = useAppTheme();
+  return (
+    <>
+      <StatusBar style={resolvedTheme === 'dark' ? 'light' : 'dark'} />
+      <Stack screenOptions={{ headerShown: false }} />
+      <PushPermissionManager />
+      <AppUpdateManager />
+      <NotificationRealtimeBridge />
+      <AppAlertHost />
+      <AppNoticeHost />
+    </>
+  );
+}
 
 export default function RootLayout() {
   useEffect(() => {
@@ -21,13 +37,9 @@ export default function RootLayout() {
   return (
     <QueryProvider>
       <AuthProvider>
-        <StatusBar style="dark" />
-        <Stack screenOptions={{ headerShown: false }} />
-        <PushPermissionManager />
-        <AppUpdateManager />
-        <NotificationRealtimeBridge />
-        <AppAlertHost />
-        <AppNoticeHost />
+        <AppThemeProvider>
+          <RootStack />
+        </AppThemeProvider>
       </AuthProvider>
     </QueryProvider>
   );

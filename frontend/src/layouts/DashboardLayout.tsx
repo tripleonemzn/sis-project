@@ -1315,7 +1315,7 @@ export const DashboardLayout = () => {
   }
 
   return (
-    <div className="relative isolate flex h-screen bg-[#F3F4F6]">
+    <div className="app-theme-scope relative isolate flex h-screen" style={{ backgroundColor: 'var(--app-bg)', color: 'var(--app-text-primary)' }}>
       {/* Sidebar for Desktop - Hidden in Fullscreen */}
       {!isFullscreen && <Sidebar user={user} activeSemester={activeSemester} />}
 
@@ -1323,7 +1323,7 @@ export const DashboardLayout = () => {
       <div className="relative z-0 flex-1 min-w-0 flex flex-col overflow-hidden">
         {/* Header with Breadcrumbs - Hidden in Fullscreen */}
         {!isFullscreen && (
-        <header className="bg-white/80 backdrop-blur-md h-16 flex items-center justify-between px-6 z-20">
+        <header className="dashboard-header-surface bg-white/80 h-16 flex items-center justify-between px-6 z-20 backdrop-blur-md">
           <div className="flex items-center gap-4">
             <button 
               type="button"
@@ -1402,7 +1402,7 @@ export const DashboardLayout = () => {
       {/* Mobile Sidebar */}
       {!isFullscreen && (
       <div className={clsx(
-        "fixed inset-y-0 left-0 w-64 bg-white shadow-xl transform transition-transform duration-300 ease-in-out z-[70] md:hidden",
+        "dashboard-drawer-surface fixed inset-y-0 left-0 w-64 bg-white shadow-xl transform transition-transform duration-300 ease-in-out z-[70] md:hidden",
         isMobileMenuOpen ? "translate-x-0" : "-translate-x-full"
       )}>
         <Sidebar user={displayUser || { id: 0, name: 'Guest', role: 'GUEST' }} />

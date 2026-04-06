@@ -1,18 +1,19 @@
 import { ActivityIndicator, Text, View } from 'react-native';
-import { BRAND_COLORS } from '../config/brand';
+import { useAppTheme } from '../theme/AppThemeProvider';
 
 type AppLoadingScreenProps = {
   message?: string;
 };
 
 export function AppLoadingScreen({ message = 'Memuat aplikasi...' }: AppLoadingScreenProps) {
+  const { colors } = useAppTheme();
   return (
     <View
       style={{
         flex: 1,
         justifyContent: 'center',
         alignItems: 'center',
-        backgroundColor: '#e9eefb',
+        backgroundColor: colors.background,
         paddingHorizontal: 18,
       }}
     >
@@ -22,18 +23,18 @@ export function AppLoadingScreen({ message = 'Memuat aplikasi...' }: AppLoadingS
           maxWidth: 380,
           borderRadius: 16,
           borderWidth: 1,
-          borderColor: '#d6e0f2',
-          backgroundColor: BRAND_COLORS.white,
+          borderColor: colors.border,
+          backgroundColor: colors.surface,
           paddingVertical: 22,
           paddingHorizontal: 16,
           alignItems: 'center',
         }}
       >
-        <ActivityIndicator size="large" color={BRAND_COLORS.blue} />
+        <ActivityIndicator size="large" color={colors.primary} />
         <Text
           style={{
             marginTop: 12,
-            color: BRAND_COLORS.textDark,
+            color: colors.text,
             fontWeight: '600',
             textAlign: 'center',
           }}

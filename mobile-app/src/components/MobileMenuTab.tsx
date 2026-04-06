@@ -1,5 +1,6 @@
 import { Feather } from '@expo/vector-icons';
 import { Pressable, Text, View, type StyleProp, type ViewStyle } from 'react-native';
+import { useAppTheme } from '../theme/AppThemeProvider';
 
 type FeatherIconName = React.ComponentProps<typeof Feather>['name'];
 
@@ -76,6 +77,7 @@ export function MobileMenuTab({
   style,
 }: MobileMenuTabProps) {
   const iconMeta = resolveIconMeta(label, iconName);
+  const { colors, resolvedTheme } = useAppTheme();
   return (
     <Pressable
       accessibilityRole="tab"
@@ -86,8 +88,8 @@ export function MobileMenuTab({
           minWidth,
           maxWidth,
           borderWidth: 1,
-          borderColor: active ? '#bfdbfe' : '#e2e8f0',
-          backgroundColor: active ? '#f8fbff' : '#fff',
+          borderColor: active ? colors.primary : colors.borderSoft,
+          backgroundColor: active ? (resolvedTheme === 'dark' ? colors.primarySoft : '#f8fbff') : colors.surface,
           borderRadius: compact ? 16 : 18,
           paddingHorizontal: compact ? 10 : 12,
           paddingTop: compact ? 9 : 11,
@@ -99,7 +101,7 @@ export function MobileMenuTab({
           ...(active
             ? {
                 shadowColor: '#2563eb',
-                shadowOpacity: 0.1,
+                shadowOpacity: resolvedTheme === 'dark' ? 0.28 : 0.1,
                 shadowRadius: 8,
                 shadowOffset: { width: 0, height: 3 },
                 elevation: 2,
@@ -120,7 +122,7 @@ export function MobileMenuTab({
           marginBottom: compact ? 5 : 6,
         }}
       >
-        <Feather name={iconMeta.iconName} size={compact ? 15 : 16} color={active ? iconMeta.color : '#475569'} />
+        <Feather name={iconMeta.iconName} size={compact ? 15 : 16} color={active ? iconMeta.color : colors.textMuted} />
       </View>
       <Text
         numberOfLines={2}
@@ -129,7 +131,7 @@ export function MobileMenuTab({
           fontSize: compact ? 10.5 : 11.5,
           lineHeight: compact ? 13 : 14,
           fontWeight: active ? '700' : '600',
-          color: active ? '#1d4ed8' : '#334155',
+          color: active ? colors.primary : colors.text,
           minHeight: compact ? 24 : 28,
         }}
       >
@@ -140,7 +142,7 @@ export function MobileMenuTab({
           width: compact ? 22 : 28,
           height: 2,
           borderRadius: 999,
-          backgroundColor: active ? '#2563eb' : 'transparent',
+          backgroundColor: active ? colors.primary : 'transparent',
           marginTop: compact ? 5 : 6,
         }}
       />
