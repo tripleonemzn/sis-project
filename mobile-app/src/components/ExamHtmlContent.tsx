@@ -11,6 +11,7 @@ type ExamHtmlContentProps = {
   interactive?: boolean;
   minHeight?: number;
   onImagePress?: (src: string) => void;
+  showInlineVideo?: boolean;
 };
 
 function toMediaUrl(url?: string | null) {
@@ -175,6 +176,7 @@ export function ExamHtmlContent({
   interactive = false,
   minHeight = 120,
   onImagePress,
+  showInlineVideo = true,
 }: ExamHtmlContentProps) {
   const safeMinHeight = Number.isFinite(minHeight) ? Math.max(24, Math.floor(minHeight)) : 120;
   const [height, setHeight] = useState(safeMinHeight);
@@ -192,7 +194,7 @@ export function ExamHtmlContent({
       mediaBlocks.push(`<img class="question-media" src="${escapeHtml(resolvedImageUrl)}" alt="Media soal" />`);
     }
 
-    if (youtubeEmbedUrl) {
+    if (showInlineVideo && youtubeEmbedUrl) {
       mediaBlocks.push(`
         <div class="video-shell">
           <iframe
@@ -204,7 +206,7 @@ export function ExamHtmlContent({
           ></iframe>
         </div>
       `);
-    } else if (resolvedVideoUrl) {
+    } else if (showInlineVideo && resolvedVideoUrl) {
       mediaBlocks.push(`
         <div class="video-shell">
           <video
@@ -342,7 +344,7 @@ export function ExamHtmlContent({
           </script>
         </body>
       </html>`;
-  }, [html, imageUrl, safeMinHeight, videoType, videoUrl]);
+  }, [html, imageUrl, safeMinHeight, showInlineVideo, videoType, videoUrl]);
 
   return (
     <View

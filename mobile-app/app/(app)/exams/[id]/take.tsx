@@ -3,6 +3,7 @@ import { Redirect, Stack, useLocalSearchParams, useRouter } from 'expo-router';
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { Alert, AppState, AppStateStatus, BackHandler, Image, Pressable, ScrollView, Text, TextInput, View } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
+import { WebView } from 'react-native-webview';
 import { AppLoadingScreen } from '../../../../src/components/AppLoadingScreen';
 import ExamHtmlContent from '../../../../src/components/ExamHtmlContent';
 import MobileDetailModal from '../../../../src/components/MobileDetailModal';
@@ -140,6 +141,32 @@ function formatDateTime(value?: string | null): string {
   return `${day} ${month} ${year} ${hour}:${minute}`;
 }
 
+function getYoutubeEmbedUrl(url?: string | null) {
+  const raw = String(url || '').trim();
+  if (!raw) return '';
+
+  try {
+    const parsed = new URL(raw);
+    if (parsed.hostname.includes('youtu.be')) {
+      const id = parsed.pathname.replace(/\//g, '').trim();
+      return id ? `https://www.youtube.com/embed/${id}` : '';
+    }
+    if (parsed.hostname.includes('youtube.com')) {
+      const id = parsed.searchParams.get('v');
+      if (id) return `https://www.youtube.com/embed/${id}`;
+      const parts = parsed.pathname.split('/').filter(Boolean);
+      const embedIndex = parts.findIndex((part) => part === 'embed' || part === 'shorts');
+      if (embedIndex >= 0 && parts[embedIndex + 1]) {
+        return `https://www.youtube.com/embed/${parts[embedIndex + 1]}`;
+      }
+    }
+  } catch {
+    return '';
+  }
+
+  return '';
+}
+
 function normalizeSubjectToken(value: string | null | undefined): string {
   return String(value || '')
     .trim()
@@ -229,6 +256,7 @@ export default function StudentExamTakeScreen() {
   const [violations, setViolations] = useState(0);
   const [lastViolationMessage, setLastViolationMessage] = useState<string | null>(null);
   const [previewImageSrc, setPreviewImageSrc] = useState<string | null>(null);
+  const [previewVideo, setPreviewVideo] = useState<{ url: string; type: 'youtube' | 'upload' | null } | null>(null);
   const answersRef = useRef<Record<string, unknown>>({});
   const autoSubmitGuardRef = useRef(false);
   const autoSubmitFailedRef = useRef(false);
@@ -537,6 +565,10 @@ export default function StudentExamTakeScreen() {
   const currentQuestion = questions[currentIndex];
   const currentType = currentQuestion ? normalizeQuestionType(currentQuestion) : 'MULTIPLE_CHOICE';
   const currentOptions = currentQuestion?.options || [];
+  const currentVideoUrl = currentQuestion?.question_video_url || currentQuestion?.video_url || '';
+  const currentVideoType = currentQuestion?.question_video_type || null;
+  const currentVideoEmbedUrl =
+    currentVideoType === 'youtube' ? getYoutubeEmbedUrl(currentVideoUrl) : String(currentVideoUrl || '').trim();
   const resolvedTakeSubject = useMemo(
     () => resolveTakeExamSubject(startQuery.data?.packet || {}),
     [startQuery.data?.packet],
@@ -864,8 +896,34 @@ export default function StudentExamTakeScreen() {
             videoType={currentQuestion.question_video_type || null}
             interactive={Boolean(currentQuestion.question_video_url || currentQuestion.video_url)}
             onImagePress={(src) => setPreviewImageSrc(src)}
+            showInlineVideo={false}
           />
         </View>
+
+        {currentVideoEmbedUrl ? (
+          <Pressable
+            onPress={() =>
+              setPreviewVideo({
+                url: currentVideoEmbedUrl,
+                type: currentVideoType,
+              })
+            }
+            style={{
+              marginBottom: 12,
+              borderWidth: 1,
+              borderColor: '#bfdbfe',
+              backgroundColor: '#eff6ff',
+              borderRadius: 12,
+              paddingHorizontal: 12,
+              paddingVertical: 10,
+            }}
+          >
+            <Text style={{ color: '#1d4ed8', fontWeight: '700', marginBottom: 2 }}>Video Soal Tersedia</Text>
+            <Text style={{ color: '#1e40af', fontSize: 12 }}>
+              Ketuk untuk membuka video di dalam ujian tanpa keluar dari sesi.
+            </Text>
+          </Pressable>
+        ) : null}
 
         {currentType === 'ESSAY' ? (
           <TextInput
@@ -1026,6 +1084,53 @@ export default function StudentExamTakeScreen() {
               resizeMode="contain"
               style={{ width: '100%', height: 320, borderRadius: 12, backgroundColor: '#fff' }}
             />
+          </View>
+        ) : null}
+      </MobileDetailModal>
+      <MobileDetailModal
+        visible={Boolean(previewVideo)}
+        title="Preview Video Soal"
+        subtitle="Video dibuka di dalam ujian tanpa keluar dari sesi."
+        iconName="play-circle"
+        accentColor="#2563eb"
+        onClose={() => setPreviewVideo(null)}
+      >
+        {previewVideo ? (
+          <View
+            style={{
+              borderWidth: 1,
+              borderColor: '#dbe7fb',
+              borderRadius: 16,
+              backgroundColor: '#ffffff',
+              overflow: 'hidden',
+              minHeight: 260,
+            }}
+          >
+            {previewVideo.type === 'youtube' ? (
+              <WebView
+                source={{ uri: previewVideo.url }}
+                style={{ height: 280, backgroundColor: '#ffffff' }}
+                javaScriptEnabled
+                domStorageEnabled
+                mediaPlaybackRequiresUserAction={false}
+                setSupportMultipleWindows={false}
+                allowsFullscreenVideo={false}
+              />
+            ) : (
+              <WebView
+                source={{
+                  html: `<!DOCTYPE html><html><body style="margin:0;background:#fff;"><video src="${String(
+                    previewVideo.url,
+                  ).replace(/"/g, '&quot;')}" controls playsinline style="width:100%;height:280px;background:#000;"></video></body></html>`,
+                }}
+                style={{ height: 280, backgroundColor: '#ffffff' }}
+                javaScriptEnabled
+                domStorageEnabled
+                mediaPlaybackRequiresUserAction={false}
+                setSupportMultipleWindows={false}
+                allowsFullscreenVideo={false}
+              />
+            )}
           </View>
         ) : null}
       </MobileDetailModal>
