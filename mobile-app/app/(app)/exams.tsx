@@ -1,13 +1,14 @@
 import { useEffect, useMemo, useState } from 'react';
 import { Redirect, useLocalSearchParams, useRouter } from 'expo-router';
 import { useQuery } from '@tanstack/react-query';
-import { Alert, Image, Modal, Pressable, RefreshControl, ScrollView, Text, TextInput, View } from 'react-native';
+import { Alert, Image, Pressable, RefreshControl, ScrollView, Text, TextInput, View } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { AppLoadingScreen } from '../../src/components/AppLoadingScreen';
 import { MobileSelectField } from '../../src/components/MobileSelectField';
 import { QueryStateView } from '../../src/components/QueryStateView';
 import { OfflineCacheNotice } from '../../src/components/OfflineCacheNotice';
 import { useAuth } from '../../src/features/auth/AuthProvider';
+import { resolveStudentExamRuntimeStatus, StudentExamRuntimeStatus } from '../../src/features/exams/status';
 import { StudentExamItem } from '../../src/features/exams/types';
 import { useStudentExamsQuery } from '../../src/features/exams/useStudentExamsQuery';
 import { getStandardPagePadding } from '../../src/lib/ui/pageLayout';
@@ -26,21 +27,6 @@ function normalizeProgramCode(raw?: string | null): string {
     .replace(/[^A-Z0-9]+/g, '_')
     .replace(/_+/g, '_')
     .replace(/^_+|_+$/g, '');
-}
-
-function normalizeStatus(
-  raw: string,
-  hasSubmitted: boolean,
-  makeupAvailable?: boolean,
-): 'OPEN' | 'MAKEUP' | 'UPCOMING' | 'MISSED' | 'COMPLETED' {
-  if (hasSubmitted) return 'COMPLETED';
-  const value = String(raw || '').toUpperCase();
-  if (value.includes('MAKEUP') || makeupAvailable) return 'MAKEUP';
-  if (value.includes('OPEN') || value.includes('IN_PROGRESS')) return 'OPEN';
-  if (value.includes('UPCOMING')) return 'UPCOMING';
-  if (value.includes('MISSED') || value.includes('TIMEOUT')) return 'MISSED';
-  if (value.includes('COMPLETED')) return 'COMPLETED';
-  return 'UPCOMING';
 }
 
 function formatDateTime(value: string) {
@@ -63,7 +49,7 @@ function formatExamCurrency(value?: number | null) {
   }).format(Number(value || 0));
 }
 
-function statusStyle(status: 'OPEN' | 'MAKEUP' | 'UPCOMING' | 'MISSED' | 'COMPLETED') {
+function statusStyle(status: StudentExamRuntimeStatus) {
   if (status === 'OPEN') return { bg: '#dcfce7', border: '#86efac', text: '#166534', label: 'Berlangsung' };
   if (status === 'MAKEUP') return { bg: '#fff7ed', border: '#fdba74', text: '#c2410c', label: 'Susulan' };
   if (status === 'COMPLETED') return { bg: '#dbeafe', border: '#93c5fd', text: '#1d4ed8', label: 'Selesai' };
@@ -145,11 +131,7 @@ export default function StudentExamsScreen() {
   const pageContentPadding = getStandardPagePadding(insets);
   const lockedProgramCode = normalizeProgramCode(Array.isArray(params.programCode) ? params.programCode[0] : params.programCode);
   const [searchQuery, setSearchQuery] = useState('');
-  const [typeFilter, setTypeFilter] = useState<'ALL' | string>(lockedProgramCode || 'ALL');
   const [statusFilter, setStatusFilter] = useState<StatusFilter>('ALL');
-  const [filterMenuOpen, setFilterMenuOpen] = useState(false);
-  const [draftTypeFilter, setDraftTypeFilter] = useState<'ALL' | string>(lockedProgramCode || 'ALL');
-  const [draftStatusFilter, setDraftStatusFilter] = useState<StatusFilter>('ALL');
   const studentExamCardsQuery = useQuery({
     queryKey: ['mobile-student-exam-cards', user?.id || 'anon'],
     enabled:
@@ -180,12 +162,7 @@ export default function StudentExamsScreen() {
     [examProgramsQuery.data?.programs, isApplicantMode, isCandidateMode],
   );
 
-  const effectiveTypeFilter = useMemo(() => {
-    if (lockedProgramCode) return lockedProgramCode;
-    if (typeFilter === 'ALL') return 'ALL';
-    const allowed = new Set(activePrograms.map((program) => normalizeProgramCode(program.code)));
-    return allowed.has(typeFilter) ? typeFilter : 'ALL';
-  }, [lockedProgramCode, typeFilter, activePrograms]);
+  const effectiveTypeFilter = lockedProgramCode || 'ALL';
 
   const examTypeLabels = useMemo<ExamLabelMap>(() => {
     const map: ExamLabelMap = {};
@@ -202,20 +179,6 @@ export default function StudentExamsScreen() {
   }, [activePrograms]);
 
   const examTypeLabel = (type: string) => resolveExamTypeLabel(type, examTypeLabels);
-  const typeFilterOptions = useMemo(
-    () => [
-      {
-        value: 'ALL',
-        label: isApplicantMode ? 'Semua Tes BKK' : isCandidateMode ? 'Semua Tes Seleksi' : 'Semua Ujian',
-      },
-      ...activePrograms.map((program) => ({
-        value: normalizeProgramCode(program.code),
-        label: resolveExamTypeLabel(program.code, examTypeLabels),
-      })),
-    ],
-    [activePrograms, examTypeLabels, isApplicantMode, isCandidateMode],
-  );
-
   useEffect(() => {
     if (!isScreenActive || !canAccessExams || applicantVerificationLocked) return;
     void examsQuery.refetch();
@@ -231,21 +194,12 @@ export default function StudentExamsScreen() {
     ],
     [],
   );
-  const currentTypeFilterLabel = useMemo(() => {
-    if (lockedProgramCode) return `Jenis: ${examTypeLabel(lockedProgramCode)}`;
-    return `Jenis: ${typeFilterOptions.find((item) => item.value === effectiveTypeFilter)?.label || 'Semua Tes'}`;
-  }, [effectiveTypeFilter, examTypeLabel, lockedProgramCode, typeFilterOptions]);
-  const currentStatusFilterLabel = useMemo(
-    () => `Status: ${statusFilterOptions.find((item) => item.value === statusFilter)?.label || 'Semua Status'}`,
-    [statusFilter, statusFilterOptions],
-  );
-
   const filtered = useMemo(() => {
     const rows = examsQuery.data?.exams || [];
     const q = searchQuery.trim().toLowerCase();
     return rows.filter((item) => {
       const type = normalizeProgramCode(item.packet.programCode || item.packet.type);
-      const status = normalizeStatus(item.status, item.has_submitted, item.makeupAvailable);
+      const status = resolveStudentExamRuntimeStatus(item);
       if (effectiveTypeFilter !== 'ALL' && type !== effectiveTypeFilter) return false;
       if (statusFilter !== 'ALL' && status !== statusFilter) return false;
       if (!q) return true;
@@ -579,27 +533,14 @@ export default function StudentExamsScreen() {
       >
         Filter Jadwal
       </Text>
-      <Pressable
-        onPress={() => {
-          setDraftTypeFilter(effectiveTypeFilter);
-          setDraftStatusFilter(statusFilter);
-          setFilterMenuOpen(true);
-        }}
-        style={{
-          borderWidth: 1,
-          borderColor: '#cbd5e1',
-          borderRadius: 12,
-          backgroundColor: '#fff',
-          paddingHorizontal: 12,
-          paddingVertical: 11,
-          marginBottom: 12,
-        }}
-      >
-        <Text style={{ color: '#0f172a', fontSize: 13, fontWeight: '700' }}>Atur Filter Jadwal</Text>
-        <Text style={{ color: '#64748b', fontSize: 12, marginTop: 4 }}>
-          {lockedProgramCode ? currentStatusFilterLabel : `${currentTypeFilterLabel} • ${currentStatusFilterLabel}`}
-        </Text>
-      </Pressable>
+      <MobileSelectField
+        label="Status"
+        value={statusFilter}
+        options={statusFilterOptions}
+        onChange={(next) => setStatusFilter((next as StatusFilter) || 'ALL')}
+        placeholder="Pilih status"
+        helperText={lockedProgramCode ? `Program tetap: ${examTypeLabel(lockedProgramCode)}` : undefined}
+      />
 
       {examsQuery.isLoading ? <QueryStateView type="loading" message="Mengambil daftar ujian..." /> : null}
       {examsQuery.isError ? (
@@ -628,7 +569,7 @@ export default function StudentExamsScreen() {
           <View>
             {filtered.map((item: StudentExamItem) => {
               const type = normalizeProgramCode(item.packet.programCode || item.packet.type);
-              const status = normalizeStatus(item.status, item.has_submitted, item.makeupAvailable);
+              const status = resolveStudentExamRuntimeStatus(item);
               const style = statusStyle(status);
               const resolvedSubject = resolveSubjectLabel(item);
               const subjectName = resolvedSubject.name;
@@ -854,120 +795,6 @@ export default function StudentExamsScreen() {
       >
         <Text style={{ color: '#fff', fontWeight: '600' }}>Kembali ke Home</Text>
       </Pressable>
-
-      <Modal
-        visible={filterMenuOpen}
-        transparent
-        animationType="fade"
-        onRequestClose={() => setFilterMenuOpen(false)}
-      >
-        <View
-          style={{
-            flex: 1,
-            backgroundColor: 'rgba(15, 23, 42, 0.45)',
-            justifyContent: 'center',
-            paddingHorizontal: 18,
-          }}
-        >
-          <View
-            style={{
-              backgroundColor: '#fff',
-              borderRadius: 18,
-              borderWidth: 1,
-              borderColor: '#dbeafe',
-              padding: 16,
-            }}
-          >
-            <Text style={{ color: '#0f172a', fontSize: 18, fontWeight: '700' }}>Filter Jadwal</Text>
-            <Text style={{ color: '#64748b', fontSize: 12, marginTop: 4, marginBottom: 12 }}>
-              Saring jadwal tes yang ingin ditampilkan.
-            </Text>
-
-            {!lockedProgramCode ? (
-              <MobileSelectField
-                label={isApplicantMode ? 'Jenis Tes' : 'Jenis Ujian'}
-                value={draftTypeFilter}
-                options={typeFilterOptions}
-                onChange={(next) => setDraftTypeFilter(next || 'ALL')}
-                placeholder={isApplicantMode ? 'Pilih jenis tes' : 'Pilih jenis ujian'}
-              />
-            ) : (
-              <View
-                style={{
-                  borderWidth: 1,
-                  borderColor: '#bfdbfe',
-                  backgroundColor: '#eff6ff',
-                  borderRadius: 12,
-                  paddingHorizontal: 12,
-                  paddingVertical: 10,
-                  marginBottom: 10,
-                }}
-              >
-                <Text style={{ color: '#1d4ed8', fontSize: 12, fontWeight: '700' }}>
-                  Jenis tes sudah tetap: {examTypeLabel(lockedProgramCode)}
-                </Text>
-              </View>
-            )}
-
-            <MobileSelectField
-              label="Status Jadwal"
-              value={draftStatusFilter}
-              options={statusFilterOptions}
-              onChange={(next) => setDraftStatusFilter((next as StatusFilter) || 'ALL')}
-              placeholder="Pilih status"
-            />
-
-            <View style={{ flexDirection: 'row', gap: 8, marginTop: 4 }}>
-              <Pressable
-                onPress={() => {
-                  setDraftTypeFilter(lockedProgramCode || 'ALL');
-                  setDraftStatusFilter('ALL');
-                }}
-                style={{
-                  flex: 1,
-                  borderWidth: 1,
-                  borderColor: '#cbd5e1',
-                  borderRadius: 10,
-                  paddingVertical: 11,
-                  alignItems: 'center',
-                  backgroundColor: '#fff',
-                }}
-              >
-                <Text style={{ color: '#334155', fontWeight: '700' }}>Reset</Text>
-              </Pressable>
-              <Pressable
-                onPress={() => {
-                  if (!lockedProgramCode) {
-                    setTypeFilter(draftTypeFilter || 'ALL');
-                  }
-                  setStatusFilter(draftStatusFilter || 'ALL');
-                  setFilterMenuOpen(false);
-                }}
-                style={{
-                  flex: 1,
-                  borderRadius: 10,
-                  paddingVertical: 11,
-                  alignItems: 'center',
-                  backgroundColor: '#1d4ed8',
-                }}
-              >
-                <Text style={{ color: '#fff', fontWeight: '700' }}>Terapkan</Text>
-              </Pressable>
-            </View>
-
-            <Pressable
-              onPress={() => setFilterMenuOpen(false)}
-              style={{
-                marginTop: 10,
-                paddingVertical: 10,
-                alignItems: 'center',
-              }}
-            >
-              <Text style={{ color: '#64748b', fontWeight: '600' }}>Tutup</Text>
-            </Pressable>
-          </View>
-        </View>
-      </Modal>
     </ScrollView>
   );
 }

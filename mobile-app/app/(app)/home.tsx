@@ -36,6 +36,7 @@ import { staffFinanceApi } from '../../src/features/staff/staffFinanceApi';
 import { permissionApi } from '../../src/features/permissions/permissionApi';
 import { examApi, ExamProgramItem } from '../../src/features/exams/examApi';
 import { useStudentExamsQuery } from '../../src/features/exams/useStudentExamsQuery';
+import { resolveStudentExamRuntimeStatus, StudentExamRuntimeStatus } from '../../src/features/exams/status';
 import {
   teachingResourceProgramApi,
   TeachingResourceProgramItem,
@@ -87,7 +88,6 @@ type MenuIconTone = {
   border: string;
   fg: string;
 };
-type StudentExamStatus = 'OPEN' | 'UPCOMING' | 'MISSED' | 'COMPLETED';
 type StaffHomeStats =
   | {
       kind: 'FINANCE';
@@ -294,18 +294,9 @@ function toSemesterLabel(value?: unknown) {
   return null;
 }
 
-function normalizeStudentExamStatus(rawStatus: unknown, hasSubmitted: boolean): StudentExamStatus {
-  if (hasSubmitted) return 'COMPLETED';
-  const value = String(rawStatus || '').toUpperCase();
-  if (value.includes('OPEN') || value.includes('IN_PROGRESS')) return 'OPEN';
-  if (value.includes('UPCOMING')) return 'UPCOMING';
-  if (value.includes('MISSED') || value.includes('TIMEOUT')) return 'MISSED';
-  if (value.includes('COMPLETED')) return 'COMPLETED';
-  return 'UPCOMING';
-}
-
-function getStudentExamStatusTone(status: StudentExamStatus) {
+function getStudentExamStatusTone(status: StudentExamRuntimeStatus) {
   if (status === 'OPEN') return { label: 'Berlangsung', bg: '#dcfce7', border: '#86efac', text: '#166534' };
+  if (status === 'MAKEUP') return { label: 'Susulan', bg: '#fff7ed', border: '#fdba74', text: '#c2410c' };
   if (status === 'COMPLETED') return { label: 'Selesai', bg: '#dbeafe', border: '#93c5fd', text: '#1d4ed8' };
   if (status === 'MISSED') return { label: 'Terlewat', bg: '#fee2e2', border: '#fca5a5', text: '#991b1b' };
   return { label: 'Akan Datang', bg: '#fef3c7', border: '#fcd34d', text: '#92400e' };
@@ -1639,8 +1630,8 @@ export default function HomeScreen() {
 
     return [...exams]
       .filter((item) => {
-        const status = normalizeStudentExamStatus(item.status, Boolean(item.has_submitted));
-        return status === 'UPCOMING' || status === 'OPEN';
+        const status = resolveStudentExamRuntimeStatus(item);
+        return status === 'UPCOMING' || status === 'OPEN' || status === 'MAKEUP';
       })
       .sort((a, b) => {
         const aTime = new Date(a.startTime).getTime();
@@ -2473,7 +2464,7 @@ export default function HomeScreen() {
                 upcomingStudentExams.length > 0 ? (
                   <View>
                     {upcomingStudentExams.map((item) => {
-                      const status = normalizeStudentExamStatus(item.status, Boolean(item.has_submitted));
+                      const status = resolveStudentExamRuntimeStatus(item);
                       const tone = getStudentExamStatusTone(status);
                       const examType = String(item.packet?.programCode || item.packet?.type || '-')
                         .trim()
