@@ -144,7 +144,7 @@ function buildProctorReportPrintHtml(params: {
           box-sizing: border-box;
         }
         .document-body {
-          padding: 0 1.5cm 0;
+          padding: 0 1.5cm 24mm;
           box-sizing: border-box;
         }
         .header-line {
@@ -253,7 +253,10 @@ function buildProctorReportPrintHtml(params: {
           font-style: italic;
         }
         .verify-block {
-          margin-top: 16px;
+          position: fixed;
+          left: calc(1cm + 1.5cm);
+          right: calc(1cm + 1.5cm);
+          bottom: 1cm;
           font-size: ${noteFontSize};
           line-height: 1.2;
           color: #475569;
@@ -416,9 +419,19 @@ export default function ProctorReportPrint() {
             box-sizing: border-box !important;
             overflow: visible !important;
           }
+          .proctor-report-document-body {
+            padding-bottom: 24mm !important;
+          }
           .proctor-report-closing-section {
             break-inside: avoid !important;
             page-break-inside: avoid !important;
+          }
+          .proctor-report-verify-block {
+            position: fixed !important;
+            left: 2.5cm !important;
+            right: 2.5cm !important;
+            bottom: 1cm !important;
+            margin-top: 0 !important;
           }
         }
       `}</style>
@@ -453,7 +466,7 @@ export default function ProctorReportPrint() {
       >
         <StandardSchoolDocumentHeader header={snapshot.documentHeader} />
 
-        <div style={{ padding: '0 1.5cm 0', boxSizing: 'border-box' }}>
+        <div className="proctor-report-document-body" style={{ padding: '0 1.5cm 0', boxSizing: 'border-box' }}>
           <div className="mt-0.5 flex flex-wrap items-start justify-between gap-4 text-slate-600 italic" style={{ fontSize: noteFontSize }}>
             <div style={{ fontSize: noteFontSize }}>
               No. Dokumen: {snapshot.documentNumber}
@@ -535,7 +548,7 @@ export default function ProctorReportPrint() {
             </div>
 
             <div
-              className="mt-4 italic text-slate-600"
+              className="proctor-report-verify-block mt-4 italic text-slate-600"
               style={{ fontSize: noteFontSize, lineHeight: 1.2 }}
             >
               {snapshot.verification.note}
