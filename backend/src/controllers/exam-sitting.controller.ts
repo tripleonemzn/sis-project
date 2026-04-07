@@ -557,6 +557,8 @@ export const getMyExamSitting = asyncHandler(async (req: Request, res: Response)
             programSession: { select: { id: true, label: true, displayOrder: true } },
             layout: {
                 select: {
+                    rows: true,
+                    columns: true,
                     generatedAt: true,
                     updatedAt: true,
                     cells: {
@@ -602,6 +604,8 @@ export const getMyExamSitting = asyncHandler(async (req: Request, res: Response)
                 : null,
             layout: sitting.layout
                 ? {
+                      rows: sitting.layout.rows,
+                      columns: sitting.layout.columns,
                       generatedAt: sitting.layout.generatedAt,
                       updatedAt: sitting.layout.updatedAt,
                   }

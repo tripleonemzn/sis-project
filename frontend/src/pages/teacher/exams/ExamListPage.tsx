@@ -764,7 +764,10 @@ export const ExamListPage = () => {
                     <h1 className="text-2xl font-bold text-gray-800">{getPageTitle()}</h1>
                     <p className="text-gray-600">Kelola paket soal dan jadwal ujian</p>
                 </div>
-                {!isBankSoal && selectedProgram && (
+                {!isBankSoal && selectedProgram && canTeacherDirectSchedulePacket({
+                    programCode: selectedProgram.code,
+                    type: selectedProgramBaseType || '',
+                }) && (
                     <button 
                         onClick={openCreateInfoModal}
                         className="flex items-center gap-2 bg-blue-600 text-white px-4 py-2 rounded-lg hover:bg-blue-700 transition-colors font-normal"

@@ -5268,12 +5268,14 @@ export const getPackets = asyncHandler(async (req: Request, res: Response) => {
     const authRole = String(authUser?.role || '')
         .trim()
         .toUpperCase();
+    let normalizedTypeCode: string | null = null;
+    let normalizedPacketType: ExamType | null = null;
 
     const andFilters: Prisma.ExamPacketWhereInput[] = [];
 
     if (type) {
-        const normalizedTypeCode = normalizeProgramCode(type);
-        const normalizedPacketType = tryNormalizePacketType(type);
+        normalizedTypeCode = normalizeProgramCode(type);
+        normalizedPacketType = tryNormalizePacketType(type);
 
         if (normalizedPacketType && normalizedTypeCode) {
             andFilters.push({
@@ -5290,13 +5292,33 @@ export const getPackets = asyncHandler(async (req: Request, res: Response) => {
 
     if (subjectId) andFilters.push({ subjectId: parseInt(subjectId as string) });
     if (academicYearId) andFilters.push({ academicYearId: parseInt(academicYearId as string) });
-    if (semester) andFilters.push({ semester: normalizePacketSemester(semester) });
+    if (semester) {
+        const normalizedSemester = normalizePacketSemester(semester);
+        andFilters.push({
+            OR: [
+                { semester: normalizedSemester },
+                { semester: { equals: null as unknown as Semester }, description: AUTO_CURRICULUM_PACKET_DESCRIPTION },
+            ],
+        });
+    }
     if (programCode) {
         const normalizedProgramCode = normalizeProgramCode(programCode);
         if (!normalizedProgramCode) {
             throw new ApiError(400, 'Filter program ujian tidak valid.');
         }
-        andFilters.push({ programCode: normalizedProgramCode });
+        const fallbackAutoPacketFilter =
+            normalizedPacketType && normalizedTypeCode
+                ? [
+                      {
+                          programCode: null,
+                          description: AUTO_CURRICULUM_PACKET_DESCRIPTION,
+                          type: normalizedPacketType,
+                      },
+                  ]
+                : [];
+        andFilters.push({
+            OR: [{ programCode: normalizedProgramCode }, ...fallbackAutoPacketFilter],
+        });
     }
 
     if (authRole === 'TEACHER' && authUserId > 0) {

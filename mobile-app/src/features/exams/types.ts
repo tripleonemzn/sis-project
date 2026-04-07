@@ -400,6 +400,8 @@ export type StudentExamPlacement = {
     columnIndex: number;
   } | null;
   layout?: {
+    rows?: number | null;
+    columns?: number | null;
     generatedAt?: string | null;
     updatedAt?: string | null;
   } | null;

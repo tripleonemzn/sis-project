@@ -324,6 +324,10 @@ export function TeacherExamPacketsModuleScreen({
   const selectedProgramCode =
     effectiveTypeFilter !== 'ALL' ? normalizeProgramCode(effectiveTypeFilter) : '';
   const selectedProgramMeta = selectedProgramCode ? programMap.get(selectedProgramCode) : undefined;
+  const canCreatePacket = useMemo(() => {
+    if (!selectedProgramCode) return false;
+    return ['FORMATIF', 'UH', 'ULANGAN_HARIAN'].includes(selectedProgramCode);
+  }, [selectedProgramCode]);
   const allowedSubjectIdsByProgram = useMemo(() => {
     const ids = Array.isArray(selectedProgramMeta?.allowedSubjectIds) ? selectedProgramMeta.allowedSubjectIds : [];
     return new Set(ids.map((id) => Number(id)).filter((id) => Number.isFinite(id) && id > 0));
@@ -498,18 +502,20 @@ export function TeacherExamPacketsModuleScreen({
         </View>
       </View>
 
-      <Pressable
-        onPress={() => router.push(createEditorPath as never)}
-        style={{
-          backgroundColor: '#16a34a',
-          borderRadius: 10,
-          paddingVertical: 10,
-          alignItems: 'center',
-          marginBottom: 10,
-        }}
-      >
-        <Text style={{ color: '#fff', fontWeight: '700' }}>Buat Paket Ujian</Text>
-      </Pressable>
+      {canCreatePacket ? (
+        <Pressable
+          onPress={() => router.push(createEditorPath as never)}
+          style={{
+            backgroundColor: '#16a34a',
+            borderRadius: 10,
+            paddingVertical: 10,
+            alignItems: 'center',
+            marginBottom: 10,
+          }}
+        >
+          <Text style={{ color: '#fff', fontWeight: '700' }}>Buat Paket Ujian</Text>
+        </Pressable>
+      ) : null}
 
       <View
         style={{

@@ -1,7 +1,7 @@
 import { useEffect, useMemo, useState } from 'react';
 import { Redirect, useLocalSearchParams, useRouter } from 'expo-router';
 import { useQuery } from '@tanstack/react-query';
-import { Alert, Image, Pressable, RefreshControl, ScrollView, Text, TextInput, View } from 'react-native';
+import { Alert, Animated, Image, Pressable, RefreshControl, ScrollView, Text, TextInput, View } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { AppLoadingScreen } from '../../src/components/AppLoadingScreen';
 import MobileDetailModal from '../../src/components/MobileDetailModal';
@@ -148,6 +148,8 @@ export default function StudentExamsScreen() {
   const [searchQuery, setSearchQuery] = useState('');
   const [statusFilter, setStatusFilter] = useState<StatusFilter>('ALL');
   const [selectedExam, setSelectedExam] = useState<StudentExamItem | null>(null);
+  const [selectedPlacement, setSelectedPlacement] = useState<NonNullable<typeof studentPlacements>[number] | null>(null);
+  const seatBlink = useMemo(() => new Animated.Value(1), []);
   const studentExamCardsQuery = useQuery({
     queryKey: ['mobile-student-exam-cards', user?.id || 'anon'],
     enabled:
@@ -213,6 +215,18 @@ export default function StudentExamsScreen() {
       void studentExamPlacementsQuery.refetch();
     }
   }, [applicantVerificationLocked, canAccessExams, examsQuery.refetch, isScreenActive]);
+  useEffect(() => {
+    const animation = Animated.loop(
+      Animated.sequence([
+        Animated.timing(seatBlink, { toValue: 0.4, duration: 700, useNativeDriver: true }),
+        Animated.timing(seatBlink, { toValue: 1, duration: 700, useNativeDriver: true }),
+      ]),
+    );
+    animation.start();
+    return () => {
+      animation.stop();
+    };
+  }, [seatBlink]);
   const studentPlacements = useMemo(() => {
     const rows = studentExamPlacementsQuery.data || [];
     return rows
@@ -615,11 +629,11 @@ export default function StudentExamsScreen() {
             </View>
           ) : studentPlacements.length > 0 ? (
             <View style={{ marginTop: 12, gap: 10 }}>
-              {studentPlacements.map((placement) => {
-                const chip = placementStatusStyle(placement.startTime, placement.endTime);
-                return (
-                  <View
-                    key={placement.id}
+                  {studentPlacements.map((placement) => {
+                    const chip = placementStatusStyle(placement.startTime, placement.endTime);
+                    return (
+                      <View
+                        key={placement.id}
                     style={{
                       borderWidth: 1,
                       borderColor: '#dbe7fb',
@@ -660,6 +674,21 @@ export default function StudentExamsScreen() {
                         Pengawas: {placement.proctor.name}
                       </Text>
                     ) : null}
+                    <Pressable
+                      onPress={() => setSelectedPlacement(placement)}
+                      style={{
+                        marginTop: 10,
+                        alignSelf: 'flex-start',
+                        borderWidth: 1,
+                        borderColor: '#bfdbfe',
+                        backgroundColor: '#eff6ff',
+                        borderRadius: 999,
+                        paddingHorizontal: 10,
+                        paddingVertical: 6,
+                      }}
+                    >
+                      <Text style={{ color: '#1d4ed8', fontWeight: '700', fontSize: 11 }}>Lihat Denah</Text>
+                    </Pressable>
                   </View>
                 );
               })}
@@ -1056,6 +1085,80 @@ export default function StudentExamsScreen() {
               </Text>
             </Pressable>
           </View>
+        ) : null}
+      </MobileDetailModal>
+      <MobileDetailModal
+        visible={Boolean(selectedPlacement)}
+        title="Denah Ruang Ujian"
+        subtitle="Kotak hijau menandakan posisi duduk Anda."
+        iconName="grid"
+        accentColor="#16a34a"
+        onClose={() => setSelectedPlacement(null)}
+      >
+        {selectedPlacement ? (
+          selectedPlacement.layout?.rows && selectedPlacement.layout?.columns ? (
+            <View style={{ alignItems: 'center' }}>
+              <View
+                style={{
+                  alignSelf: 'stretch',
+                  flexDirection: 'row',
+                  flexWrap: 'wrap',
+                  gap: 8,
+                }}
+              >
+                {Array.from({
+                  length: (selectedPlacement.layout.rows || 0) * (selectedPlacement.layout.columns || 0),
+                }).map((_, idx) => {
+                  const columns = selectedPlacement.layout?.columns || 1;
+                  const rowIndex = Math.floor(idx / columns);
+                  const columnIndex = idx % columns;
+                  const isSeat =
+                    selectedPlacement.seatPosition &&
+                    selectedPlacement.seatPosition.rowIndex === rowIndex &&
+                    selectedPlacement.seatPosition.columnIndex === columnIndex;
+                  return isSeat ? (
+                    <Animated.View
+                      key={`${rowIndex}-${columnIndex}`}
+                      style={{
+                        width: 24,
+                        height: 24,
+                        borderRadius: 6,
+                        borderWidth: 1,
+                        borderColor: '#34d399',
+                        backgroundColor: '#bbf7d0',
+                        opacity: seatBlink,
+                      }}
+                    />
+                  ) : (
+                    <View
+                      key={`${rowIndex}-${columnIndex}`}
+                      style={{
+                        width: 24,
+                        height: 24,
+                        borderRadius: 6,
+                        borderWidth: 1,
+                        borderColor: '#e2e8f0',
+                        backgroundColor: '#f8fafc',
+                      }}
+                    />
+                  );
+                })}
+              </View>
+            </View>
+          ) : (
+            <View
+              style={{
+                borderWidth: 1,
+                borderColor: '#cbd5e1',
+                borderStyle: 'dashed',
+                borderRadius: 12,
+                padding: 12,
+                backgroundColor: '#fff',
+              }}
+            >
+              <Text style={{ color: '#64748b' }}>Denah belum dipublikasikan oleh Kurikulum.</Text>
+            </View>
+          )
         ) : null}
       </MobileDetailModal>
     </ScrollView>
