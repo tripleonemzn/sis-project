@@ -162,6 +162,9 @@ function buildProctorReportPrintHtml(params: {
           font-style: italic;
           color: #475569;
         }
+        .meta-verify {
+          color: #15803d;
+        }
         .narrative {
           margin-top: 20px;
           text-align: justify;
@@ -239,21 +242,19 @@ function buildProctorReportPrintHtml(params: {
           font-size: ${noteFontSize};
           line-height: 1.25;
           color: #475569;
+          font-style: italic;
         }
-        .verify-box {
+        .verify-block {
           margin-top: 24px;
-          border: 1px dashed #cbd5e1;
-          border-radius: 14px;
-          background: #f8fafc;
-          padding: 12px 16px;
           font-size: ${noteFontSize};
           line-height: 1.5;
           color: #475569;
+          font-style: italic;
         }
         .verify-url {
           margin-top: 4px;
           word-break: break-all;
-          font-weight: 600;
+          font-style: italic;
           color: #334155;
         }
       </style>
@@ -264,7 +265,7 @@ function buildProctorReportPrintHtml(params: {
         <div class="document-body">
           <div class="meta-row">
             <div class="meta-text">No. Dokumen: ${escapeHtml(snapshot.documentNumber)}</div>
-            <div class="meta-text">Diverifikasi melalui QR internal SIS KGB2</div>
+            <div class="meta-text meta-verify">Diverifikasi melalui QR internal SIS KGB2</div>
           </div>
 
           <div style="margin-top:10px;text-align:center;">
@@ -301,7 +302,7 @@ function buildProctorReportPrintHtml(params: {
             </div>
           </div>
 
-          <div class="verify-box">
+          <div class="verify-block">
             ${escapeHtml(snapshot.verification.note)}
             <div class="verify-url">${escapeHtml(snapshot.verification.verificationUrl)}</div>
           </div>
@@ -421,7 +422,7 @@ export default function ProctorReportPrint() {
 
       <div
         className="proctor-report-shell mx-auto max-w-5xl rounded-2xl border border-slate-200 bg-white shadow-sm"
-        style={{ maxWidth: '210mm', minHeight: '297mm', padding: '1cm 1cm 2.5cm', fontSize: contentFontSize }}
+        style={{ width: '210mm', maxWidth: '210mm', minHeight: '297mm', padding: '1cm 1cm 2.5cm', fontSize: contentFontSize }}
         data-proctor-report-ready="true"
       >
         <StandardSchoolDocumentHeader header={snapshot.documentHeader} />
@@ -431,7 +432,7 @@ export default function ProctorReportPrint() {
             <div style={{ fontSize: noteFontSize }}>
               No. Dokumen: {snapshot.documentNumber}
             </div>
-            <div style={{ fontSize: noteFontSize }}>
+            <div className="text-green-700" style={{ fontSize: noteFontSize }}>
               Diverifikasi melalui QR internal SIS KGB2
             </div>
           </div>
@@ -500,15 +501,15 @@ export default function ProctorReportPrint() {
                 <div className="font-semibold" style={{ fontSize: contentFontSize }}>{snapshot.proctor.name}</div>
                 <div className="mt-0.5 border-t border-slate-400" />
               </div>
-              <div className="mt-2 text-slate-600" style={{ fontSize: noteFontSize, lineHeight: 1.25 }}>
+              <div className="mt-2 italic text-slate-600" style={{ fontSize: noteFontSize, lineHeight: 1.25 }}>
                 {signatureNote}
               </div>
             </div>
           </div>
 
-          <div className="mt-7 rounded-xl border border-dashed border-slate-300 bg-slate-50 px-4 py-3 text-slate-600" style={{ fontSize: noteFontSize, lineHeight: 1.5 }}>
+          <div className="mt-7 italic text-slate-600" style={{ fontSize: noteFontSize, lineHeight: 1.5 }}>
             {snapshot.verification.note}
-            <div className="mt-1 break-all font-medium text-slate-700" style={{ fontSize: noteFontSize }}>{snapshot.verification.verificationUrl}</div>
+            <div className="mt-1 break-all italic text-slate-700" style={{ fontSize: noteFontSize }}>{snapshot.verification.verificationUrl}</div>
           </div>
         </div>
       </div>
