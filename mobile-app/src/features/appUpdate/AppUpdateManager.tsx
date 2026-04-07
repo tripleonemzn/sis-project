@@ -16,10 +16,8 @@ const UPDATE_NOTIFICATION_BADGE = 'Update Aplikasi';
 const UPDATE_NOTIFICATION_TITLE = 'SIS KGB2 : Update Tersedia';
 const UPDATE_NOTIFICATION_BODY =
   'Versi terbaru SIS KGB2 tersedia. Silakan perbarui untuk menikmati fitur terbaru.';
-const UPDATE_NOTIFICATION_PENDING_BODY =
+const UPDATE_NOTIFICATION_PENDING_HELPER =
   'Notifikasi update sudah diterima. Sistem sedang memeriksa paket terbaru untuk aplikasi Anda.';
-const UPDATE_NOTIFICATION_TOAST_BODY =
-  'Versi terbaru SIS KGB2 terdeteksi. Sedang memeriksa paket update terbaru...';
 const OTA_MARKER = 'ota-2026-03-10-hotfix-01';
 const CURRENT_UPDATE_CHANNEL = Updates.channel || 'default';
 const CURRENT_RUNTIME_VERSION =
@@ -221,8 +219,8 @@ export function AppUpdateManager() {
       const meta = extractAppUpdatePushMeta(notification.request.content.data);
       if (!meta) return;
       setDismissed(false);
-      notifyInfo(UPDATE_NOTIFICATION_TOAST_BODY, {
-        title: UPDATE_NOTIFICATION_BADGE,
+      notifyInfo(UPDATE_NOTIFICATION_BODY, {
+        title: UPDATE_NOTIFICATION_TITLE,
         durationMs: 1800,
       });
       void checkForUpdates({ requestedChannel: meta.channel });
@@ -296,9 +294,7 @@ export function AppUpdateManager() {
             {UPDATE_NOTIFICATION_TITLE}
           </Text>
           <Text style={{ color: '#334155', fontSize: 13, marginBottom: 10 }}>
-            {updateAvailable
-              ? UPDATE_NOTIFICATION_BODY
-              : UPDATE_NOTIFICATION_PENDING_BODY}
+            {UPDATE_NOTIFICATION_BODY}
           </Text>
           <View
             style={{
@@ -320,6 +316,11 @@ export function AppUpdateManager() {
               Cek terakhir: {formatDateTime(lastCheckedAt)}
             </Text>
           </View>
+          {!updateAvailable && !errorMessage ? (
+            <Text style={{ color: '#64748b', fontSize: 12, marginBottom: 12 }}>
+              {UPDATE_NOTIFICATION_PENDING_HELPER}
+            </Text>
+          ) : null}
           {errorMessage ? (
             <Text style={{ color: '#b45309', fontSize: 12, marginBottom: 12 }}>{errorMessage}</Text>
           ) : null}

@@ -31,11 +31,21 @@ fi
 
 NOTIFY_URL="${OTA_PUSH_NOTIFY_URL:-http://127.0.0.1:3000/api/mobile-updates/broadcast}"
 NOTIFY_SECRET="${OTA_PUSH_NOTIFY_SECRET:-${MOBILE_UPDATE_PUSH_SECRET:-}}"
-NOTIFY_TITLE="${OTA_PUSH_NOTIFY_TITLE:-SIS KGB2 : Update Tersedia}"
-NOTIFY_BODY="${OTA_PUSH_NOTIFY_BODY:-Versi terbaru SIS KGB2 tersedia. Silakan perbarui untuk menikmati fitur terbaru.}"
+CANONICAL_NOTIFY_TITLE="SIS KGB2 : Update Tersedia"
+CANONICAL_NOTIFY_BODY="Versi terbaru SIS KGB2 tersedia. Silakan perbarui untuk menikmati fitur terbaru."
+NOTIFY_TITLE="${CANONICAL_NOTIFY_TITLE}"
+NOTIFY_BODY="${CANONICAL_NOTIFY_BODY}"
 OTA_REQUIRE_NOTIFY_SUCCESS="${OTA_REQUIRE_NOTIFY_SUCCESS:-0}"
 OTA_REQUIRE_NOTIFY_RECIPIENTS_MIN="${OTA_REQUIRE_NOTIFY_RECIPIENTS_MIN:-0}"
 OTA_REQUIRE_NOTIFY_SENT_MIN="${OTA_REQUIRE_NOTIFY_SENT_MIN:-0}"
+
+if [ -n "${OTA_PUSH_NOTIFY_TITLE:-}" ] && [ "${OTA_PUSH_NOTIFY_TITLE}" != "${CANONICAL_NOTIFY_TITLE}" ]; then
+  echo "Peringatan: OTA_PUSH_NOTIFY_TITLE diabaikan agar copy notifikasi update mobile tetap konsisten."
+fi
+
+if [ -n "${OTA_PUSH_NOTIFY_BODY:-}" ] && [ "${OTA_PUSH_NOTIFY_BODY}" != "${CANONICAL_NOTIFY_BODY}" ]; then
+  echo "Peringatan: OTA_PUSH_NOTIFY_BODY diabaikan agar copy notifikasi update mobile tetap konsisten."
+fi
 
 echo "Publishing OTA update..."
 echo "Channel : ${CHANNEL}"

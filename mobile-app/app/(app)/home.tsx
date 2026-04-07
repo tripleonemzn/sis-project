@@ -1908,8 +1908,8 @@ export default function HomeScreen() {
 
       if (updateResult.available) {
         Alert.alert(
-          'Update Tersedia',
-          `Ada pembaruan terbaru di channel ${updateResult.channel}. Ingin update sekarang?`,
+          'SIS KGB2 : Update Tersedia',
+          `Versi terbaru SIS KGB2 tersedia di channel ${updateResult.channel}. Silakan perbarui untuk menikmati fitur terbaru.`,
           [
             { text: 'Nanti', style: 'cancel' },
             {

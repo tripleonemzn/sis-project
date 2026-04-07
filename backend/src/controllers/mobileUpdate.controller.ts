@@ -7,6 +7,9 @@ import { createManyInAppNotifications } from '../services/mobilePushNotification
 
 const EXPO_PUSH_API_URL = 'https://exp.host/--/api/v2/push/send';
 const LOCALHOST_IPS = new Set(['127.0.0.1', '::1']);
+const APP_UPDATE_NOTIFICATION_TITLE = 'SIS KGB2 : Update Tersedia';
+const APP_UPDATE_NOTIFICATION_BODY =
+  'Versi terbaru SIS KGB2 tersedia. Silakan perbarui untuk menikmati fitur terbaru.';
 const mobilePlatformSchema = z.preprocess((value) => {
   if (typeof value !== 'string') return value;
   return value.trim().toUpperCase();
@@ -386,12 +389,11 @@ export const broadcastMobileUpdateNotification = asyncHandler(async (req: Reques
   assertBroadcastAuthorized(req);
   const payload = broadcastUpdateSchema.parse(req.body || {});
 
-  const title = payload.title || 'SIS KGB2 : Update Tersedia';
+  // Copy notifikasi update OTA sengaja dibakukan agar pengalaman user mobile selalu konsisten.
+  const title = APP_UPDATE_NOTIFICATION_TITLE;
   const channel = payload.channel || 'pilot';
   const runtimeVersion = normalizeOptionalText(payload.runtimeVersion);
-  const message =
-    payload.message ||
-    'Versi terbaru SIS KGB2 tersedia. Silakan perbarui untuk menikmati fitur terbaru.';
+  const message = APP_UPDATE_NOTIFICATION_BODY;
 
   const where: any = { isEnabled: true };
   if (payload.platform) {

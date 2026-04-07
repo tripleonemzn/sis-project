@@ -96,6 +96,8 @@ Dokumen ini adalah policy kerja default untuk setiap sesi baru yang mengerjakan 
    - Untuk mobile tester:
      - jalankan verifikasi dasar
      - publish OTA ke channel yang dipakai tester jika task memang harus langsung diuji
+     - untuk notifikasi update OTA yang user-facing, gunakan copy baku yang konsisten dan wajib memuat kalimat `Silakan perbarui untuk menikmati fitur terbaru.`
+     - jangan mengubah judul/pesan notifikasi update OTA per publish, per channel, atau per script kecuali user meminta eksplisit
    - Untuk web:
      - pastikan perubahan frontend benar-benar ikut ter-deploy/ter-update sesuai alur existing project jika user meminta langsung live untuk ujicoba
    - Jangan menutup task UI dengan kondisi source code berubah tetapi tester belum bisa mencoba hasilnya, kecuali user memang meminta belum dipublish.
