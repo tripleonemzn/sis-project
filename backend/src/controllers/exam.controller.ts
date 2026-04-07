@@ -5294,12 +5294,7 @@ export const getPackets = asyncHandler(async (req: Request, res: Response) => {
     if (academicYearId) andFilters.push({ academicYearId: parseInt(academicYearId as string) });
     if (semester) {
         const normalizedSemester = normalizePacketSemester(semester);
-        andFilters.push({
-            OR: [
-                { semester: normalizedSemester },
-                { semester: null as unknown as Semester, description: AUTO_CURRICULUM_PACKET_DESCRIPTION },
-            ],
-        });
+        andFilters.push({ semester: normalizedSemester });
     }
     if (programCode) {
         const normalizedProgramCode = normalizeProgramCode(programCode);
