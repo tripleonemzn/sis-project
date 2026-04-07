@@ -213,7 +213,7 @@ function buildProctorAttendancePrintHtml(params: {
           box-sizing: border-box;
         }
         .document-body {
-          padding: 0;
+          padding: 0 0 24mm;
           box-sizing: border-box;
         }
         .header-line {
@@ -378,7 +378,10 @@ function buildProctorAttendancePrintHtml(params: {
           font-style: italic;
         }
         .verify-block {
-          margin-top: 14px;
+          position: fixed;
+          left: 1cm;
+          right: 1cm;
+          bottom: 0;
           font-size: ${noteFontSize};
           line-height: 1.2;
           color: #475569;
@@ -473,10 +476,11 @@ function buildProctorAttendancePrintHtml(params: {
               </div>
             </div>
 
-            <div class="verify-block">
-              ${escapeHtml(snapshot.verification.note)}
-              <div class="verify-url">${escapeHtml(snapshot.verification.verificationUrl)}</div>
-            </div>
+          </div>
+
+          <div class="verify-block">
+            ${escapeHtml(snapshot.verification.note)}
+            <div class="verify-url">${escapeHtml(snapshot.verification.verificationUrl)}</div>
           </div>
         </div>
       </div>
@@ -586,6 +590,16 @@ export default function ProctorAttendancePrint() {
             break-inside: avoid !important;
             page-break-inside: avoid !important;
           }
+          .proctor-attendance-document-body {
+            padding-bottom: 24mm !important;
+          }
+          .proctor-attendance-verify-block {
+            position: fixed !important;
+            left: 1cm !important;
+            right: 1cm !important;
+            bottom: 0 !important;
+            margin-top: 0 !important;
+          }
         }
       `}</style>
 
@@ -619,7 +633,7 @@ export default function ProctorAttendancePrint() {
       >
         <StandardSchoolDocumentHeader header={snapshot.documentHeader} />
 
-        <div style={{ padding: '0', boxSizing: 'border-box' }}>
+        <div className="proctor-attendance-document-body" style={{ padding: '0', boxSizing: 'border-box' }}>
           <div className="mt-0.5 flex flex-wrap items-start justify-between gap-4 text-slate-600 italic" style={{ fontSize: noteFontSize }}>
             <div style={{ fontSize: noteFontSize }}>
               No. Dokumen: {snapshot.documentNumber}
@@ -770,14 +784,15 @@ export default function ProctorAttendancePrint() {
               </div>
             </div>
 
-            <div
-              className="mt-3 italic text-slate-600"
-              style={{ fontSize: noteFontSize, lineHeight: 1.2 }}
-            >
-              {snapshot.verification.note}
-              <div className="mt-0.5 break-all italic text-slate-700" style={{ fontSize: noteFontSize }}>
-                {snapshot.verification.verificationUrl}
-              </div>
+          </div>
+
+          <div
+            className="proctor-attendance-verify-block mt-3 italic text-slate-600"
+            style={{ fontSize: noteFontSize, lineHeight: 1.2 }}
+          >
+            {snapshot.verification.note}
+            <div className="mt-0.5 break-all italic text-slate-700" style={{ fontSize: noteFontSize }}>
+              {snapshot.verification.verificationUrl}
             </div>
           </div>
         </div>

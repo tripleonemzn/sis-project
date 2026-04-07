@@ -256,7 +256,7 @@ function buildProctorReportPrintHtml(params: {
           position: fixed;
           left: calc(1cm + 1.5cm);
           right: calc(1cm + 1.5cm);
-          bottom: 1cm;
+          bottom: 0;
           font-size: ${noteFontSize};
           line-height: 1.2;
           color: #475569;
@@ -314,10 +314,11 @@ function buildProctorReportPrintHtml(params: {
               </div>
             </div>
 
-            <div class="verify-block">
-              ${escapeHtml(snapshot.verification.note)}
-              <div class="verify-url">${escapeHtml(snapshot.verification.verificationUrl)}</div>
-            </div>
+          </div>
+
+          <div class="verify-block">
+            ${escapeHtml(snapshot.verification.note)}
+            <div class="verify-url">${escapeHtml(snapshot.verification.verificationUrl)}</div>
           </div>
         </div>
       </div>
@@ -430,7 +431,7 @@ export default function ProctorReportPrint() {
             position: fixed !important;
             left: 2.5cm !important;
             right: 2.5cm !important;
-            bottom: 1cm !important;
+            bottom: 0 !important;
             margin-top: 0 !important;
           }
         }
@@ -547,13 +548,14 @@ export default function ProctorReportPrint() {
               </div>
             </div>
 
-            <div
-              className="proctor-report-verify-block mt-4 italic text-slate-600"
-              style={{ fontSize: noteFontSize, lineHeight: 1.2 }}
-            >
-              {snapshot.verification.note}
-              <div className="mt-0.5 break-all italic text-slate-700" style={{ fontSize: noteFontSize }}>{snapshot.verification.verificationUrl}</div>
-            </div>
+          </div>
+
+          <div
+            className="proctor-report-verify-block mt-4 italic text-slate-600"
+            style={{ fontSize: noteFontSize, lineHeight: 1.2 }}
+          >
+            {snapshot.verification.note}
+            <div className="mt-0.5 break-all italic text-slate-700" style={{ fontSize: noteFontSize }}>{snapshot.verification.verificationUrl}</div>
           </div>
         </div>
       </div>
