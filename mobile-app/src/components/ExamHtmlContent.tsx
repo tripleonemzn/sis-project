@@ -10,6 +10,7 @@ type ExamHtmlContentProps = {
   videoType?: 'upload' | 'youtube' | null;
   interactive?: boolean;
   minHeight?: number;
+  backgroundColor?: string;
   onImagePress?: (src: string) => void;
   showInlineVideo?: boolean;
   renderMode?: 'webview' | 'native';
@@ -193,6 +194,7 @@ export function ExamHtmlContent({
   videoType,
   interactive = false,
   minHeight = 120,
+  backgroundColor = '#ffffff',
   onImagePress,
   showInlineVideo = true,
   renderMode = 'webview',
@@ -257,7 +259,7 @@ export function ExamHtmlContent({
             html, body {
               margin: 0;
               padding: 0;
-              background: #ffffff;
+              background: ${backgroundColor};
               color: #0f172a;
               font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
               font-size: 15px;
@@ -372,7 +374,7 @@ export function ExamHtmlContent({
     const hasImage = Boolean(resolvedNativeImageUrl);
 
     return (
-      <View style={{ minHeight: safeMinHeight, backgroundColor: '#ffffff' }}>
+      <View style={{ minHeight: safeMinHeight, backgroundColor }}>
         {hasText ? (
           <Text
             selectable={false}
@@ -414,14 +416,14 @@ export function ExamHtmlContent({
   }
 
   return (
-    <View
-      pointerEvents={interactive || typeof onImagePress === 'function' ? 'auto' : 'none'}
-      style={{ minHeight: height, backgroundColor: '#ffffff' }}
+      <View
+        pointerEvents={interactive || typeof onImagePress === 'function' ? 'auto' : 'none'}
+      style={{ minHeight: height, backgroundColor }}
     >
       <WebView
         originWhitelist={['*']}
         source={{ html: documentHtml, baseUrl: webBaseUrl }}
-        style={{ height, backgroundColor: '#ffffff' }}
+        style={{ height, backgroundColor }}
         scrollEnabled={false}
         nestedScrollEnabled={false}
         javaScriptEnabled

@@ -1,5 +1,6 @@
 import { useMutation } from '@tanstack/react-query';
 import { Redirect, Stack, useLocalSearchParams, useRouter } from 'expo-router';
+import { StatusBar } from 'expo-status-bar';
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { Alert, AppState, AppStateStatus, BackHandler, Image, Pressable, ScrollView, Text, TextInput, View } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
@@ -330,6 +331,7 @@ export default function StudentExamTakeScreen() {
   const finalSubmitOriginRef = useRef<'manual' | 'auto' | 'violation' | null>(null);
   const appStateRef = useRef<AppStateStatus>(AppState.currentState);
   const violationsRef = useRef(0);
+  const backAttemptRef = useRef(0);
   const lastViolationFingerprintRef = useRef<{ key: string; at: number } | null>(null);
   const violationSubmitGuardRef = useRef(false);
   const monitoringStatsRef = useRef<MonitoringStats>({
@@ -595,6 +597,26 @@ export default function StudentExamTakeScreen() {
     );
   }, [hasAcknowledgedStart, isExamReady, isFinished, saveProgress, triggerViolationAutoSubmit]);
 
+  const handleBackAttempt = useCallback(() => {
+    if (!hasAcknowledgedStart || !isExamReady || isFinished) return true;
+
+    const nextAttempt = backAttemptRef.current + 1;
+    if (nextAttempt < 3) {
+      backAttemptRef.current = nextAttempt;
+      Alert.alert(
+        'Tetap di Layar Ujian',
+        nextAttempt === 1
+          ? 'Anda mencoba kembali/keluar dari layar ujian. Percobaan ini belum dihitung sebagai pelanggaran.\n\nJika tombol kembali atau slide back ditekan 2 kali lagi, sistem akan mencatat 1 pelanggaran.'
+          : 'Ini adalah peringatan kedua untuk tombol kembali. Satu percobaan lagi akan dihitung sebagai 1 pelanggaran.',
+      );
+      return true;
+    }
+
+    backAttemptRef.current = 0;
+    recordViolation('Menekan tombol kembali berulang');
+    return true;
+  }, [hasAcknowledgedStart, isExamReady, isFinished, recordViolation]);
+
   useEffect(() => {
     if (!isExamReady || isFinished || isFinalSubmitting) return;
     const interval = setInterval(() => {
@@ -634,7 +656,7 @@ export default function StudentExamTakeScreen() {
         recordViolation(
           nextAppState === 'background'
             ? 'Berpindah aplikasi / tekan Home'
-            : 'Membuka recent apps / keluar fokus ujian',
+            : 'Membuka panel notifikasi / recent apps / keluar fokus ujian',
         );
       }
     });
@@ -648,14 +670,21 @@ export default function StudentExamTakeScreen() {
     if (!isExamReady || isFinished || !hasAcknowledgedStart) return;
 
     const subscription = BackHandler.addEventListener('hardwareBackPress', () => {
-      recordViolation('Menekan tombol kembali');
-      return true;
+      if (previewImageSrc) {
+        setPreviewImageSrc(null);
+        return true;
+      }
+      if (previewVideo) {
+        setPreviewVideo(null);
+        return true;
+      }
+      return handleBackAttempt();
     });
 
     return () => {
       subscription.remove();
     };
-  }, [hasAcknowledgedStart, isExamReady, isFinished, recordViolation]);
+  }, [handleBackAttempt, hasAcknowledgedStart, isExamReady, isFinished, previewImageSrc, previewVideo]);
 
   const submitFinal = () => {
     if (isFinalSubmitting || isFinished || autoSubmitGuardRef.current) return;
@@ -720,6 +749,21 @@ export default function StudentExamTakeScreen() {
     }
     return typeof value === 'string' && value.length > 0 ? total + 1 : total;
   }, 0);
+  const answerGuide = currentType === 'COMPLEX_MULTIPLE_CHOICE'
+    ? {
+        toneBg: '#eff6ff',
+        toneBorder: '#bfdbfe',
+        toneText: '#1d4ed8',
+        label: 'Multiple answer',
+        description: 'Gunakan checkbox dan pilih satu atau lebih jawaban yang benar.',
+      }
+    : {
+        toneBg: '#f8fafc',
+        toneBorder: '#cbd5e1',
+        toneText: '#475569',
+        label: 'Single choice',
+        description: 'Gunakan radio dan pilih satu jawaban yang paling tepat.',
+      };
 
   if (isLoading) return <AppLoadingScreen message="Memuat ujian..." />;
   if (!isAuthenticated) return <Redirect href="/welcome" />;
@@ -870,9 +914,11 @@ export default function StudentExamTakeScreen() {
           </Text>
           {[
             'Pastikan koneksi internet stabil sebelum mulai.',
-            'Jangan menekan tombol kembali, Home, atau membuka recent apps.',
+            'Jangan menekan tombol kembali, Home, membuka recent apps, atau panel notifikasi.',
             'Perpindahan aplikasi akan dihitung sebagai pelanggaran.',
+            'Tombol kembali / slide back akan diberi 2x peringatan, percobaan ke-3 baru dihitung 1 pelanggaran.',
             'Pelanggaran ke-4 akan mengumpulkan ujian secara otomatis.',
+            'Bar status disembunyikan selama ujian untuk meminimalkan akses notifikasi.',
             'Gambar pada soal dapat diketuk untuk diperbesar tanpa keluar dari ujian.',
           ].map((rule) => (
             <Text key={rule} style={{ color: '#92400e', fontSize: 13, lineHeight: 21, marginBottom: 4 }}>
@@ -900,6 +946,7 @@ export default function StudentExamTakeScreen() {
 
   return (
     <>
+      <StatusBar hidden={hasAcknowledgedStart && !isFinished} animated />
       <Stack.Screen options={{ headerShown: false, gestureEnabled: false }} />
       <ScrollView style={{ flex: 1, backgroundColor: '#f8fafc' }} contentContainerStyle={pageContentPaddingCompact}>
       <View
@@ -1030,6 +1077,8 @@ export default function StudentExamTakeScreen() {
             videoUrl={currentQuestion.question_video_url || currentQuestion.video_url}
             videoType={currentQuestion.question_video_type || null}
             interactive={Boolean(currentQuestion.question_video_url || currentQuestion.video_url)}
+            minHeight={24}
+            backgroundColor="transparent"
             onImagePress={(src) => setPreviewImageSrc(src)}
             showInlineVideo={false}
             renderMode="native"
@@ -1085,6 +1134,22 @@ export default function StudentExamTakeScreen() {
           />
         ) : currentOptions.length > 0 ? (
           <View>
+            <View
+              style={{
+                alignSelf: 'flex-start',
+                marginBottom: 10,
+                borderWidth: 1,
+                borderColor: answerGuide.toneBorder,
+                backgroundColor: answerGuide.toneBg,
+                borderRadius: 999,
+                paddingHorizontal: 10,
+                paddingVertical: 6,
+              }}
+            >
+              <Text style={{ color: answerGuide.toneText, fontSize: 12, fontWeight: '700' }}>
+                {answerGuide.label} • {answerGuide.description}
+              </Text>
+            </View>
             {currentOptions.map((option) => {
               const selectedValue = effectiveAnswers[currentQuestion.id];
               const selected =
@@ -1102,66 +1167,113 @@ export default function StudentExamTakeScreen() {
                     backgroundColor: selected ? '#eff6ff' : '#fff',
                     borderRadius: 14,
                     paddingHorizontal: 12,
-                    paddingVertical: 10,
+                    paddingVertical: 12,
                     marginBottom: 10,
                   }}
                 >
-                  <ExamHtmlContent
-                    html={option.option_text || option.content || null}
-                    minHeight={24}
-                    renderMode="native"
-                  />
-                  {option.option_image_url || option.image_url ? (
-                    <View style={{ marginTop: 8 }}>
-                      <Pressable
-                        onPress={() => setPreviewImageSrc(toMediaUrl(option.option_image_url || option.image_url || undefined))}
-                        style={{ alignSelf: 'flex-start' }}
-                      >
-                        <Image
-                          source={{ uri: toMediaUrl(option.option_image_url || option.image_url || undefined) }}
-                          resizeMode="contain"
+                  <View style={{ flexDirection: 'row', alignItems: 'flex-start', gap: 12 }}>
+                    <View style={{ paddingTop: 2 }}>
+                      {currentType === 'COMPLEX_MULTIPLE_CHOICE' ? (
+                        <View
                           style={{
-                            width: 124,
-                            height: 92,
-                            borderRadius: 10,
-                            backgroundColor: '#f8fafc',
-                            borderWidth: 1,
-                            borderColor: '#dbeafe',
-                          }}
-                        />
-                      </Pressable>
-                      <View style={{ flexDirection: 'row', flexWrap: 'wrap', gap: 8, marginTop: 8 }}>
-                        <Pressable
-                          onPress={() => toggleOptionValue(currentQuestion.id, option.id, currentType)}
-                          style={{
-                            borderWidth: 1,
-                            borderColor: selected ? '#1d4ed8' : '#cbd5e1',
-                            backgroundColor: selected ? '#dbeafe' : '#ffffff',
-                            borderRadius: 999,
-                            paddingHorizontal: 10,
-                            paddingVertical: 6,
+                            width: 22,
+                            height: 22,
+                            borderRadius: 6,
+                            borderWidth: 1.5,
+                            borderColor: selected ? '#1d4ed8' : '#94a3b8',
+                            backgroundColor: selected ? '#1d4ed8' : 'transparent',
+                            alignItems: 'center',
+                            justifyContent: 'center',
                           }}
                         >
-                          <Text style={{ color: selected ? '#1d4ed8' : '#334155', fontSize: 12, fontWeight: '700' }}>
-                            {selected ? 'Jawaban dipilih' : 'Pilih jawaban'}
-                          </Text>
-                        </Pressable>
-                        <Pressable
-                          onPress={() => setPreviewImageSrc(toMediaUrl(option.option_image_url || option.image_url || undefined))}
+                          {selected ? <Text style={{ color: '#fff', fontSize: 13, fontWeight: '800' }}>✓</Text> : null}
+                        </View>
+                      ) : (
+                        <View
                           style={{
-                            borderWidth: 1,
-                            borderColor: '#bfdbfe',
-                            backgroundColor: '#eff6ff',
+                            width: 22,
+                            height: 22,
                             borderRadius: 999,
-                            paddingHorizontal: 10,
-                            paddingVertical: 6,
+                            borderWidth: 1.5,
+                            borderColor: selected ? '#1d4ed8' : '#94a3b8',
+                            backgroundColor: selected ? '#dbeafe' : 'transparent',
+                            alignItems: 'center',
+                            justifyContent: 'center',
                           }}
                         >
-                          <Text style={{ color: '#1d4ed8', fontSize: 12, fontWeight: '700' }}>Perbesar gambar</Text>
-                        </Pressable>
-                      </View>
+                          {selected ? (
+                            <View
+                              style={{
+                                width: 10,
+                                height: 10,
+                                borderRadius: 999,
+                                backgroundColor: '#1d4ed8',
+                              }}
+                            />
+                          ) : null}
+                        </View>
+                      )}
                     </View>
-                  ) : null}
+                    <View style={{ flex: 1 }}>
+                      <ExamHtmlContent
+                        html={option.option_text || option.content || null}
+                        minHeight={20}
+                        backgroundColor="transparent"
+                        renderMode="native"
+                      />
+                      {option.option_image_url || option.image_url ? (
+                        <View style={{ marginTop: 8 }}>
+                          <Pressable
+                            onPress={() => setPreviewImageSrc(toMediaUrl(option.option_image_url || option.image_url || undefined))}
+                            style={{ alignSelf: 'flex-start' }}
+                          >
+                            <Image
+                              source={{ uri: toMediaUrl(option.option_image_url || option.image_url || undefined) }}
+                              resizeMode="contain"
+                              style={{
+                                width: 124,
+                                height: 92,
+                                borderRadius: 10,
+                                backgroundColor: '#f8fafc',
+                                borderWidth: 1,
+                                borderColor: '#dbeafe',
+                              }}
+                            />
+                          </Pressable>
+                          <View style={{ flexDirection: 'row', flexWrap: 'wrap', gap: 8, marginTop: 8 }}>
+                            <Pressable
+                              onPress={() => toggleOptionValue(currentQuestion.id, option.id, currentType)}
+                              style={{
+                                borderWidth: 1,
+                                borderColor: selected ? '#1d4ed8' : '#cbd5e1',
+                                backgroundColor: selected ? '#dbeafe' : '#ffffff',
+                                borderRadius: 999,
+                                paddingHorizontal: 10,
+                                paddingVertical: 6,
+                              }}
+                            >
+                              <Text style={{ color: selected ? '#1d4ed8' : '#334155', fontSize: 12, fontWeight: '700' }}>
+                                {selected ? 'Jawaban dipilih' : 'Pilih jawaban'}
+                              </Text>
+                            </Pressable>
+                            <Pressable
+                              onPress={() => setPreviewImageSrc(toMediaUrl(option.option_image_url || option.image_url || undefined))}
+                              style={{
+                                borderWidth: 1,
+                                borderColor: '#bfdbfe',
+                                backgroundColor: '#eff6ff',
+                                borderRadius: 999,
+                                paddingHorizontal: 10,
+                                paddingVertical: 6,
+                              }}
+                            >
+                              <Text style={{ color: '#1d4ed8', fontSize: 12, fontWeight: '700' }}>Perbesar gambar</Text>
+                            </Pressable>
+                          </View>
+                        </View>
+                      ) : null}
+                    </View>
+                  </View>
                 </Pressable>
               );
             })}

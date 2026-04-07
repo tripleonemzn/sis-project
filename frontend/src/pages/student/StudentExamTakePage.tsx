@@ -1648,11 +1648,22 @@ export default function StudentExamTakePage() {
               {/* Media (Bottom) */}
               {currentQuestion.question_media_position === 'bottom' && mediaSection}
 
-              {/* Options */}
-              {currentQuestion.question_type !== 'ESSAY' && (
-                <div className="space-y-3">
-	                  {currentQuestion.options?.map((option) => {
-	                    const isComplex = currentQuestion.question_type === 'COMPLEX_MULTIPLE_CHOICE';
+	              {/* Options */}
+	              {currentQuestion.question_type !== 'ESSAY' && (
+	                <div className="space-y-3">
+                    <div
+                      className={`inline-flex rounded-full border px-3 py-1 text-xs font-semibold ${
+                        currentQuestion.question_type === 'COMPLEX_MULTIPLE_CHOICE'
+                          ? 'border-blue-200 bg-blue-50 text-blue-700'
+                          : 'border-slate-200 bg-slate-50 text-slate-600'
+                      }`}
+                    >
+                      {currentQuestion.question_type === 'COMPLEX_MULTIPLE_CHOICE'
+                        ? 'Multiple answer • gunakan checkbox dan pilih satu atau lebih jawaban'
+                        : 'Single choice • gunakan radio dan pilih satu jawaban'}
+                    </div>
+		                  {currentQuestion.options?.map((option) => {
+		                    const isComplex = currentQuestion.question_type === 'COMPLEX_MULTIPLE_CHOICE';
                       const optionId = String(option.id ?? '');
                       const optionImageSrc =
                         typeof option.option_image_url === 'string'
