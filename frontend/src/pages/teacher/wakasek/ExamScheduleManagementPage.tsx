@@ -7,7 +7,8 @@ import {
   ChevronDown,
   ChevronRight,
   AlertCircle,
-  CheckCircle
+  CheckCircle,
+  X,
 } from 'lucide-react';
 import api from '../../../services/api';
 import { toast } from 'react-hot-toast';
@@ -24,6 +25,8 @@ import {
   type ExamScheduleMakeupStudentRow,
 } from '../../../services/exam.service';
 import { isNonScheduledExamProgram, resolveProgramCodeFromParam } from '../../../lib/examProgramMenu';
+import { enhanceQuestionHtml } from '../../../utils/questionMedia';
+import { ExamStudentPreviewSurface, type ExamStudentPreviewQuestion } from '../../../components/teacher/exams/ExamStudentPreviewSurface';
 
 interface Subject {
   id: number;
@@ -84,6 +87,13 @@ interface ExamSchedule {
     title: string;
     type: string;
     duration: number;
+    questionPoolCount?: number;
+    blueprintCount?: number;
+    questionCardCount?: number;
+    author?: {
+      id?: number;
+      name?: string;
+    } | null;
     subject: {
       name: string;
     };
@@ -108,6 +118,22 @@ interface GroupedExamSchedule {
   candidateCount: number;
   readyCount: number;
 }
+
+type ReviewableQuestion = ExamStudentPreviewQuestion & {
+  blueprint?: {
+    competency?: string;
+    learningObjective?: string;
+    indicator?: string;
+    materialScope?: string;
+    cognitiveLevel?: string;
+  };
+  questionCard?: {
+    stimulus?: string;
+    answerRationale?: string;
+    scoringGuideline?: string;
+    distractorNotes?: string;
+  };
+};
 
 const PROGRAM_TARGET_CANDIDATE = 'CALON_SISWA';
 
@@ -196,6 +222,96 @@ const getMakeupStateMeta = (state?: string | null) => {
 
 const CURRICULUM_EXAM_MANAGER_LABEL = 'Wakasek Kurikulum / Sekretaris Kurikulum';
 
+const hasFilledText = (value: unknown): boolean => String(value || '').trim().length > 0;
+
+const normalizeReviewQuestions = (rawQuestions: unknown): ReviewableQuestion[] => {
+  if (!Array.isArray(rawQuestions)) return [];
+  return rawQuestions.map((question, index) => {
+    const source = (question && typeof question === 'object' ? question : {}) as Record<string, any>;
+    const metadata =
+      source.metadata && typeof source.metadata === 'object' ? (source.metadata as Record<string, any>) : {};
+    const blueprintSource =
+      source.blueprint && typeof source.blueprint === 'object'
+        ? (source.blueprint as Record<string, any>)
+        : metadata.blueprint && typeof metadata.blueprint === 'object'
+          ? (metadata.blueprint as Record<string, any>)
+          : {};
+    const questionCardSource =
+      source.questionCard && typeof source.questionCard === 'object'
+        ? (source.questionCard as Record<string, any>)
+        : metadata.questionCard && typeof metadata.questionCard === 'object'
+          ? (metadata.questionCard as Record<string, any>)
+          : {};
+    const options = Array.isArray(source.options)
+      ? source.options.map((option: any, optionIndex: number) => ({
+          id: String(option?.id || `option-${index + 1}-${optionIndex + 1}`),
+          content: String(option?.content || option?.option_text || ''),
+          image_url:
+            typeof option?.image_url === 'string'
+              ? option.image_url
+              : typeof option?.option_image_url === 'string'
+                ? option.option_image_url
+                : null,
+          option_image_url:
+            typeof option?.option_image_url === 'string'
+              ? option.option_image_url
+              : typeof option?.image_url === 'string'
+                ? option.image_url
+                : null,
+        }))
+      : [];
+
+    return {
+      id: String(source.id || `question-${index + 1}`),
+      type: String(source.type || source.question_type || 'MULTIPLE_CHOICE') as ReviewableQuestion['type'],
+      content: String(source.content || source.question_text || ''),
+      question_image_url:
+        typeof source.question_image_url === 'string'
+          ? source.question_image_url
+          : typeof source.image_url === 'string'
+            ? source.image_url
+            : null,
+      image_url:
+        typeof source.image_url === 'string'
+          ? source.image_url
+          : typeof source.question_image_url === 'string'
+            ? source.question_image_url
+            : null,
+      question_video_url:
+        typeof source.question_video_url === 'string'
+          ? source.question_video_url
+          : typeof source.video_url === 'string'
+            ? source.video_url
+            : null,
+      video_url:
+        typeof source.video_url === 'string'
+          ? source.video_url
+          : typeof source.question_video_url === 'string'
+            ? source.question_video_url
+            : null,
+      question_video_type:
+        source.question_video_type === 'youtube' || source.question_video_type === 'upload'
+          ? source.question_video_type
+          : null,
+      question_media_position: source.question_media_position || 'top',
+      options,
+      blueprint: {
+        competency: String(blueprintSource.competency || ''),
+        learningObjective: String(blueprintSource.learningObjective || ''),
+        indicator: String(blueprintSource.indicator || ''),
+        materialScope: String(blueprintSource.materialScope || ''),
+        cognitiveLevel: String(blueprintSource.cognitiveLevel || ''),
+      },
+      questionCard: {
+        stimulus: String(questionCardSource.stimulus || ''),
+        answerRationale: String(questionCardSource.answerRationale || ''),
+        scoringGuideline: String(questionCardSource.scoringGuideline || ''),
+        distractorNotes: String(questionCardSource.distractorNotes || ''),
+      },
+    };
+  });
+};
+
 const ExamScheduleManagementPage = () => {
   const [searchParams, setSearchParams] = useSearchParams();
   const programParamKey = 'jadwalProgram';
@@ -215,6 +331,10 @@ const ExamScheduleManagementPage = () => {
   const [loadingMakeup, setLoadingMakeup] = useState(false);
   const [savingMakeup, setSavingMakeup] = useState(false);
   const [makeupSearch, setMakeupSearch] = useState('');
+  const [reviewSchedule, setReviewSchedule] = useState<ExamSchedule | null>(null);
+  const [reviewPacket, setReviewPacket] = useState<(ExamPacket & { author?: { id?: number; name?: string } | null }) | null>(null);
+  const [reviewLoading, setReviewLoading] = useState(false);
+  const [reviewQuestionIndex, setReviewQuestionIndex] = useState(0);
   const [makeupForm, setMakeupForm] = useState({
     studentId: '',
     date: '',
@@ -524,6 +644,7 @@ const ExamScheduleManagementPage = () => {
         subjectId,
         semester: (activeProgram?.fixedSemester || formData.semester || undefined) as 'ODD' | 'EVEN' | undefined,
         programCode: activeProgramCode,
+        scope: 'curriculum',
       });
       const packets = Array.isArray(response?.data) ? (response.data as ExamPacket[]) : [];
       setCandidatePackets(packets);
@@ -933,7 +1054,7 @@ const ExamScheduleManagementPage = () => {
       if (!schedule.class?.name) {
         groups[key].candidateCount++;
       }
-      if (schedule.packet) {
+      if (schedule.packet && Number(schedule.packet.questionPoolCount || 0) > 0) {
         groups[key].readyCount++;
       }
     });
@@ -960,6 +1081,62 @@ const ExamScheduleManagementPage = () => {
       return haystacks.some((value) => value.toLowerCase().includes(keyword));
     });
   }, [makeupOverview?.students, makeupSearch]);
+
+  const reviewQuestions = useMemo(
+    () => normalizeReviewQuestions(reviewPacket?.questions),
+    [reviewPacket?.questions],
+  );
+  const activeReviewQuestion =
+    reviewQuestions.length > 0 && reviewQuestionIndex >= 0 && reviewQuestionIndex < reviewQuestions.length
+      ? reviewQuestions[reviewQuestionIndex]
+      : null;
+  const reviewBlueprintCount = reviewQuestions.filter((question) =>
+    Boolean(
+      hasFilledText(question.blueprint?.competency) ||
+        hasFilledText(question.blueprint?.learningObjective) ||
+        hasFilledText(question.blueprint?.indicator) ||
+        hasFilledText(question.blueprint?.materialScope) ||
+        hasFilledText(question.blueprint?.cognitiveLevel),
+    ),
+  ).length;
+  const reviewQuestionCardCount = reviewQuestions.filter((question) =>
+    Boolean(
+      hasFilledText(question.questionCard?.stimulus) ||
+        hasFilledText(question.questionCard?.answerRationale) ||
+        hasFilledText(question.questionCard?.scoringGuideline) ||
+        hasFilledText(question.questionCard?.distractorNotes),
+    ),
+  ).length;
+
+  const openReviewModal = async (schedule: ExamSchedule) => {
+    const packetId = Number(schedule.packet?.id || 0);
+    if (!packetId) {
+      toast.error('Paket soal belum tersedia untuk direview.');
+      return;
+    }
+
+    setReviewSchedule(schedule);
+    setReviewLoading(true);
+    setReviewQuestionIndex(0);
+    setReviewPacket(null);
+    try {
+      const response = await examService.getPacketById(packetId);
+      setReviewPacket(response.data as ExamPacket & { author?: { id?: number; name?: string } | null });
+    } catch (error) {
+      console.error('Error loading packet review:', error);
+      toast.error(getErrorMessage(error, 'Gagal memuat butir soal guru.'));
+      setReviewSchedule(null);
+    } finally {
+      setReviewLoading(false);
+    }
+  };
+
+  const closeReviewModal = () => {
+    setReviewSchedule(null);
+    setReviewPacket(null);
+    setReviewLoading(false);
+    setReviewQuestionIndex(0);
+  };
 
   return (
     <div className="w-full space-y-6">
@@ -1167,7 +1344,12 @@ const ExamScheduleManagementPage = () => {
                                           String(b.class?.name || 'Calon Siswa'),
                                         ),
                                       )
-                                      .map(schedule => (
+                                      .map(schedule => {
+                                      const questionPoolCount = Number(schedule.packet?.questionPoolCount || 0);
+                                      const blueprintCount = Number(schedule.packet?.blueprintCount || 0);
+                                      const questionCardCount = Number(schedule.packet?.questionCardCount || 0);
+                                      const isScheduleReady = Boolean(schedule.packet && questionPoolCount > 0);
+                                      return (
                                       <tr key={schedule.id} className="hover:bg-gray-50">
                                         <td className="px-4 py-2 font-medium text-gray-900">
                                           {schedule.class?.name || 'Calon Siswa'}
@@ -1182,18 +1364,50 @@ const ExamScheduleManagementPage = () => {
                                           )}
                                         </td>
                                         <td className="px-4 py-2">
-                                          {schedule.packet ? (
-                                            <span className="px-2 py-1 bg-green-50 text-green-700 rounded text-xs font-medium">
-                                              Tersedia: {schedule.packet.title}
-                                            </span>
-                                          ) : (
-                                            <span className="px-2 py-1 bg-orange-50 text-orange-700 rounded text-xs font-medium">
-                                              Menunggu Guru
-                                            </span>
-                                          )}
+                                          <div className="space-y-1.5">
+                                            {isScheduleReady ? (
+                                              <span className="inline-flex px-2 py-1 bg-green-50 text-green-700 rounded text-xs font-medium">
+                                                Tersedia: {schedule.packet?.title}
+                                              </span>
+                                            ) : schedule.packet ? (
+                                              <span className="inline-flex px-2 py-1 bg-orange-50 text-orange-700 rounded text-xs font-medium">
+                                                Paket dibuat, menunggu guru isi soal
+                                              </span>
+                                            ) : (
+                                              <span className="inline-flex px-2 py-1 bg-orange-50 text-orange-700 rounded text-xs font-medium">
+                                                Menunggu Guru
+                                              </span>
+                                            )}
+                                            {schedule.packet ? (
+                                              <div className="flex flex-wrap gap-1">
+                                                <span className="rounded-full bg-slate-100 px-2 py-0.5 text-[11px] font-medium text-slate-700">
+                                                  {questionPoolCount} soal
+                                                </span>
+                                                <span className={`rounded-full px-2 py-0.5 text-[11px] font-medium ${
+                                                  blueprintCount > 0 ? 'bg-blue-50 text-blue-700' : 'bg-slate-100 text-slate-500'
+                                                }`}>
+                                                  Kisi-kisi {blueprintCount}
+                                                </span>
+                                                <span className={`rounded-full px-2 py-0.5 text-[11px] font-medium ${
+                                                  questionCardCount > 0 ? 'bg-emerald-50 text-emerald-700' : 'bg-slate-100 text-slate-500'
+                                                }`}>
+                                                  Kartu Soal {questionCardCount}
+                                                </span>
+                                              </div>
+                                            ) : null}
+                                          </div>
                                         </td>
                                         <td className="px-4 py-2 text-right">
                                           <div className="flex items-center justify-end gap-2">
+                                            {schedule.packet?.id ? (
+                                              <button
+                                                type="button"
+                                                onClick={() => void openReviewModal(schedule)}
+                                                className="px-2.5 py-1.5 rounded-lg border border-slate-200 bg-white text-slate-700 hover:bg-slate-50 text-xs font-semibold"
+                                              >
+                                                Review Soal
+                                              </button>
+                                            ) : null}
                                             {schedule.class?.name ? (
                                               <button
                                                 type="button"
@@ -1213,7 +1427,7 @@ const ExamScheduleManagementPage = () => {
                                           </div>
                                         </td>
                                       </tr>
-                                    ))}
+                                    )})}
                                   </tbody>
                                 </table>
                               </div>
@@ -1229,6 +1443,174 @@ const ExamScheduleManagementPage = () => {
           </div>
         )}
       </div>
+
+      {reviewSchedule ? (
+        <div className="fixed inset-0 z-50 flex items-center justify-center p-4">
+          <div className="flex max-h-[92vh] w-full max-w-7xl flex-col overflow-hidden rounded-3xl border border-slate-200 bg-white shadow-2xl">
+            <div className="flex items-start justify-between gap-4 border-b border-slate-200 px-6 py-4">
+              <div>
+                <h2 className="text-xl font-bold text-slate-900">Review Butir Soal Guru</h2>
+                <p className="mt-1 text-sm text-slate-500">
+                  Wakasek Kurikulum / sekretaris dapat meninjau kesiapan soal, kisi-kisi, dan kartu soal tanpa mengubah isi paket.
+                </p>
+              </div>
+              <button
+                type="button"
+                onClick={closeReviewModal}
+                className="inline-flex h-10 w-10 items-center justify-center rounded-xl border border-slate-200 text-slate-500 hover:bg-slate-50"
+                title="Tutup"
+              >
+                <X className="h-4 w-4" />
+              </button>
+            </div>
+
+            <div className="flex-1 overflow-y-auto px-6 py-5">
+              <div className="mb-5 grid gap-3 md:grid-cols-2 xl:grid-cols-4">
+                <div className="rounded-2xl border border-slate-200 bg-slate-50 px-4 py-3">
+                  <div className="text-xs font-semibold uppercase tracking-wide text-slate-500">Mapel</div>
+                  <div className="mt-1 text-sm font-semibold text-slate-900">
+                    {reviewPacket?.subject?.name || reviewSchedule.subject?.name || '-'}
+                  </div>
+                </div>
+                <div className="rounded-2xl border border-slate-200 bg-slate-50 px-4 py-3">
+                  <div className="text-xs font-semibold uppercase tracking-wide text-slate-500">Penyusun</div>
+                  <div className="mt-1 text-sm font-semibold text-slate-900">
+                    {reviewPacket?.author?.name || 'Guru sesuai assignment'}
+                  </div>
+                </div>
+                <div className="rounded-2xl border border-slate-200 bg-slate-50 px-4 py-3">
+                  <div className="text-xs font-semibold uppercase tracking-wide text-slate-500">Status Kisi-kisi</div>
+                  <div className="mt-1 text-sm font-semibold text-slate-900">
+                    {reviewBlueprintCount}/{reviewQuestions.length} soal terisi
+                  </div>
+                </div>
+                <div className="rounded-2xl border border-slate-200 bg-slate-50 px-4 py-3">
+                  <div className="text-xs font-semibold uppercase tracking-wide text-slate-500">Status Kartu Soal</div>
+                  <div className="mt-1 text-sm font-semibold text-slate-900">
+                    {reviewQuestionCardCount}/{reviewQuestions.length} soal terisi
+                  </div>
+                </div>
+              </div>
+
+              {reviewLoading ? (
+                <div className="rounded-3xl border border-dashed border-slate-300 bg-slate-50 px-6 py-16 text-center text-sm text-slate-500">
+                  Memuat butir soal guru...
+                </div>
+              ) : reviewQuestions.length === 0 ? (
+                <div className="rounded-3xl border border-dashed border-slate-300 bg-slate-50 px-6 py-16 text-center text-sm text-slate-500">
+                  Paket ini sudah terhubung ke jadwal, tetapi guru belum mengisi butir soal.
+                </div>
+              ) : (
+                <div className="space-y-5">
+                  <ExamStudentPreviewSurface
+                    title={reviewPacket?.title || reviewSchedule.packet?.title || 'Paket Soal'}
+                    subjectName={reviewPacket?.subject?.name || reviewSchedule.subject?.name || '-'}
+                    instructions={reviewPacket?.instructions || ''}
+                    questions={reviewQuestions}
+                    activeQuestionIndex={reviewQuestionIndex}
+                    onActiveQuestionIndexChange={setReviewQuestionIndex}
+                  />
+
+                  <div className="grid gap-4 xl:grid-cols-2">
+                    <div className="rounded-3xl border border-blue-100 bg-blue-50/70 p-5">
+                      <div className="mb-3 flex items-center justify-between gap-3">
+                        <div>
+                          <p className="text-xs font-semibold uppercase tracking-[0.24em] text-blue-600">Kisi-kisi</p>
+                          <h3 className="text-sm font-semibold text-slate-900">
+                            Soal {reviewQuestionIndex + 1}
+                          </h3>
+                        </div>
+                        <span className={`rounded-full px-3 py-1 text-xs font-semibold ${
+                          activeReviewQuestion && (
+                            hasFilledText(activeReviewQuestion.blueprint?.competency) ||
+                            hasFilledText(activeReviewQuestion.blueprint?.learningObjective) ||
+                            hasFilledText(activeReviewQuestion.blueprint?.indicator) ||
+                            hasFilledText(activeReviewQuestion.blueprint?.materialScope) ||
+                            hasFilledText(activeReviewQuestion.blueprint?.cognitiveLevel)
+                          )
+                            ? 'bg-blue-600 text-white'
+                            : 'bg-white text-slate-500'
+                        }`}>
+                          {activeReviewQuestion && (
+                            hasFilledText(activeReviewQuestion.blueprint?.competency) ||
+                            hasFilledText(activeReviewQuestion.blueprint?.learningObjective) ||
+                            hasFilledText(activeReviewQuestion.blueprint?.indicator) ||
+                            hasFilledText(activeReviewQuestion.blueprint?.materialScope) ||
+                            hasFilledText(activeReviewQuestion.blueprint?.cognitiveLevel)
+                          ) ? 'Terisi' : 'Belum diisi'}
+                        </span>
+                      </div>
+                      <div className="space-y-2 text-sm text-slate-700">
+                        {[
+                          ['Kompetensi/Capaian', activeReviewQuestion?.blueprint?.competency],
+                          ['Tujuan Pembelajaran', activeReviewQuestion?.blueprint?.learningObjective],
+                          ['Indikator Soal', activeReviewQuestion?.blueprint?.indicator],
+                          ['Ruang Lingkup Materi', activeReviewQuestion?.blueprint?.materialScope],
+                          ['Level Kognitif', activeReviewQuestion?.blueprint?.cognitiveLevel],
+                        ].map(([label, value]) => (
+                          <div key={String(label)} className="grid grid-cols-[180px_12px_minmax(0,1fr)] gap-x-2">
+                            <span className="text-slate-600">{label}</span>
+                            <span className="text-slate-400">:</span>
+                            <span className="text-slate-900">{hasFilledText(value) ? String(value) : '-'}</span>
+                          </div>
+                        ))}
+                      </div>
+                    </div>
+
+                    <div className="rounded-3xl border border-emerald-100 bg-emerald-50/70 p-5">
+                      <div className="mb-3 flex items-center justify-between gap-3">
+                        <div>
+                          <p className="text-xs font-semibold uppercase tracking-[0.24em] text-emerald-600">Kartu Soal</p>
+                          <h3 className="text-sm font-semibold text-slate-900">
+                            Soal {reviewQuestionIndex + 1}
+                          </h3>
+                        </div>
+                        <span className={`rounded-full px-3 py-1 text-xs font-semibold ${
+                          activeReviewQuestion && (
+                            hasFilledText(activeReviewQuestion.questionCard?.stimulus) ||
+                            hasFilledText(activeReviewQuestion.questionCard?.answerRationale) ||
+                            hasFilledText(activeReviewQuestion.questionCard?.scoringGuideline) ||
+                            hasFilledText(activeReviewQuestion.questionCard?.distractorNotes)
+                          )
+                            ? 'bg-emerald-600 text-white'
+                            : 'bg-white text-slate-500'
+                        }`}>
+                          {activeReviewQuestion && (
+                            hasFilledText(activeReviewQuestion.questionCard?.stimulus) ||
+                            hasFilledText(activeReviewQuestion.questionCard?.answerRationale) ||
+                            hasFilledText(activeReviewQuestion.questionCard?.scoringGuideline) ||
+                            hasFilledText(activeReviewQuestion.questionCard?.distractorNotes)
+                          ) ? 'Terisi' : 'Belum diisi'}
+                        </span>
+                      </div>
+                      <div className="space-y-3">
+                        {[
+                          ['Stimulus Soal', activeReviewQuestion?.questionCard?.stimulus],
+                          ['Pembahasan / Alasan Jawaban', activeReviewQuestion?.questionCard?.answerRationale],
+                          ['Pedoman Penskoran', activeReviewQuestion?.questionCard?.scoringGuideline],
+                          ['Catatan Distraktor', activeReviewQuestion?.questionCard?.distractorNotes],
+                        ].map(([label, value]) => (
+                          <div key={String(label)} className="rounded-2xl border border-emerald-100 bg-white/80 p-3">
+                            <p className="text-xs font-semibold uppercase tracking-wide text-emerald-700">{label}</p>
+                            <div
+                              className="mt-2 text-sm text-slate-800 [&_ol]:ml-2 [&_ol]:list-decimal [&_ol]:pl-6 [&_ul]:ml-2 [&_ul]:list-disc [&_ul]:pl-6"
+                              dangerouslySetInnerHTML={{
+                                __html: hasFilledText(value)
+                                  ? enhanceQuestionHtml(String(value), { useQuestionImageThumbnail: false })
+                                  : '-',
+                              }}
+                            />
+                          </div>
+                        ))}
+                      </div>
+                    </div>
+                  </div>
+                </div>
+              )}
+            </div>
+          </div>
+        </div>
+      ) : null}
 
       {showMakeupModal && (
         <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50 p-4">

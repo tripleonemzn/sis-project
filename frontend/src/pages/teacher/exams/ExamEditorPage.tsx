@@ -11,6 +11,7 @@ import {
     ArrowLeft, 
     Plus, 
     LayoutGrid,
+    Eye,
     Image as ImageIcon,
     X,
     FileVideo,
@@ -28,6 +29,7 @@ import { teacherAssignmentService } from '../../../services/teacherAssignment.se
 import type { TeacherAssignment } from '../../../services/teacherAssignment.service';
 import api from '../../../services/api';
 import { QuestionBankModal } from '../../../components/teacher/exams/QuestionBankModal';
+import { ExamStudentPreviewSurface, type ExamStudentPreviewQuestion } from '../../../components/teacher/exams/ExamStudentPreviewSurface';
 import { ConfirmationModal } from '../../../components/common/ConfirmationModal';
 import type { UserWrite } from '../../../types/auth';
 
@@ -451,7 +453,8 @@ export const ExamEditorPage = () => {
     const [questions, setQuestions] = useState<ExtendedQuestion[]>([]);
     const [activeQuestionId, setActiveQuestionId] = useState<string | null>(null);
     const [isQuestionBankOpen, setIsQuestionBankOpen] = useState(false);
-    const [showQuestionSupportPanel, setShowQuestionSupportPanel] = useState(true);
+    const [isQuestionSupportModalOpen, setIsQuestionSupportModalOpen] = useState(false);
+    const [isStudentPreviewOpen, setIsStudentPreviewOpen] = useState(false);
     const [questionPendingDeleteId, setQuestionPendingDeleteId] = useState<string | null>(null);
     const [draftRestorePrompt, setDraftRestorePrompt] = useState<{
         draftRaw: unknown;
@@ -827,7 +830,7 @@ export const ExamEditorPage = () => {
                     setSection('OBJECTIVE');
                 }
             }
-            setShowQuestionSupportPanel(false);
+            setIsQuestionSupportModalOpen(false);
         }
         // eslint-disable-next-line react-hooks/exhaustive-deps
     }, [activeQuestionId]);
@@ -1676,6 +1679,43 @@ export const ExamEditorPage = () => {
     const activeQuestionCard = activeQuestion
         ? normalizeQuestionCard(activeQuestion.questionCard)
         : createDefaultQuestionCard();
+    const activeQuestionIndex = activeQuestionId ? questions.findIndex((question) => question.id === activeQuestionId) : 0;
+    const hasActiveQuestionBlueprint = Boolean(
+        activeQuestionBlueprint.competency ||
+        activeQuestionBlueprint.learningObjective ||
+        activeQuestionBlueprint.indicator ||
+        activeQuestionBlueprint.materialScope ||
+        activeQuestionBlueprint.cognitiveLevel,
+    );
+    const hasActiveQuestionCard = Boolean(
+        activeQuestionCard.stimulus ||
+        activeQuestionCard.answerRationale ||
+        activeQuestionCard.scoringGuideline ||
+        activeQuestionCard.distractorNotes,
+    );
+    const previewQuestions = useMemo<ExamStudentPreviewQuestion[]>(
+        () =>
+            questions.map((question, index) => ({
+                id: String(question.id || `question-${index + 1}`),
+                type: question.type,
+                content: sanitizeQuestionHtml(question.content),
+                question_image_url: question.question_image_url || null,
+                image_url: question.question_image_url || null,
+                question_video_url: question.question_video_url || null,
+                video_url: question.question_video_url || null,
+                question_video_type: question.question_video_type || null,
+                question_media_position: question.question_media_position || 'top',
+                options: Array.isArray(question.options)
+                    ? question.options.map((option, optionIndex) => ({
+                          id: String(option.id || `option-${index + 1}-${optionIndex + 1}`),
+                          content: String(option.content || ''),
+                          image_url: option.image_url || null,
+                          option_image_url: option.image_url || null,
+                      }))
+                    : [],
+            })),
+        [questions],
+    );
 
     const normalizeEditorText = (value: string | undefined | null) =>
         String(value || '')
@@ -2036,7 +2076,7 @@ export const ExamEditorPage = () => {
                         </div>
 
                         <div className="p-6">
-                            <div className={`grid grid-cols-1 gap-6 ${showQuestionSupportPanel ? 'xl:grid-cols-[minmax(0,1fr)_340px]' : ''}`}>
+                            <div className="grid grid-cols-1 gap-6">
                                 <div className="space-y-6">
                                     <div className="space-y-3">
                                         <label className="text-xs font-bold text-gray-400 uppercase tracking-wide flex items-center gap-2">
@@ -2108,14 +2148,22 @@ export const ExamEditorPage = () => {
 
                                             <button
                                                 type="button"
-                                                onClick={() => setShowQuestionSupportPanel((prev) => !prev)}
+                                                onClick={() => setIsQuestionSupportModalOpen(true)}
                                                 className={`px-3 py-2 rounded-lg border text-sm font-normal transition-colors ${
-                                                    showQuestionSupportPanel
+                                                    hasActiveQuestionBlueprint || hasActiveQuestionCard
                                                         ? 'border-emerald-300 bg-emerald-50 text-emerald-700'
                                                         : 'border-gray-200 bg-white text-gray-700 hover:bg-gray-50'
                                                 }`}
                                             >
                                                 Kisi-kisi & Kartu Soal
+                                            </button>
+                                            <button
+                                                type="button"
+                                                onClick={() => setIsStudentPreviewOpen(true)}
+                                                className="inline-flex items-center gap-2 rounded-lg border border-blue-200 bg-blue-50 px-3 py-2 text-sm font-normal text-blue-700 transition-colors hover:bg-blue-100"
+                                            >
+                                                <Eye className="h-4 w-4" />
+                                                Preview Sebagai Siswa
                                             </button>
                                         </div>
                                     </div>
@@ -2234,90 +2282,6 @@ export const ExamEditorPage = () => {
                                         </div>
                                     )}
                                 </div>
-
-                                {showQuestionSupportPanel && (
-                                    <aside className="space-y-4 xl:w-[340px] xl:min-w-[340px]">
-                                        <div className="rounded-xl border border-slate-200 bg-slate-50 p-4 space-y-3">
-                                            <div className="flex items-center justify-between gap-2">
-                                                <div>
-                                                    <p className="text-xs font-bold uppercase tracking-wide text-slate-600">Kisi-kisi Soal</p>
-                                                    <p className="text-xs text-slate-500">Opsional. Isi jika diperlukan untuk pemetaan soal.</p>
-                                                </div>
-                                            </div>
-
-                                            <div className="grid grid-cols-1 gap-2">
-                                                <input
-                                                    value={activeQuestionBlueprint.competency || ''}
-                                                    onChange={(e) => updateQuestionBlueprintField(activeQuestion.id, 'competency', e.target.value)}
-                                                    placeholder="Kompetensi/Capaian"
-                                                    className="w-full rounded-md border border-slate-300 px-3 py-2 text-sm focus:border-blue-500 focus:outline-none"
-                                                />
-                                                <input
-                                                    value={activeQuestionBlueprint.learningObjective || ''}
-                                                    onChange={(e) => updateQuestionBlueprintField(activeQuestion.id, 'learningObjective', e.target.value)}
-                                                    placeholder="Tujuan pembelajaran"
-                                                    className="w-full rounded-md border border-slate-300 px-3 py-2 text-sm focus:border-blue-500 focus:outline-none"
-                                                />
-                                                <input
-                                                    value={activeQuestionBlueprint.indicator || ''}
-                                                    onChange={(e) => updateQuestionBlueprintField(activeQuestion.id, 'indicator', e.target.value)}
-                                                    placeholder="Indikator soal"
-                                                    className="w-full rounded-md border border-slate-300 px-3 py-2 text-sm focus:border-blue-500 focus:outline-none"
-                                                />
-                                                <input
-                                                    value={activeQuestionBlueprint.materialScope || ''}
-                                                    onChange={(e) => updateQuestionBlueprintField(activeQuestion.id, 'materialScope', e.target.value)}
-                                                    placeholder="Ruang lingkup materi"
-                                                    className="w-full rounded-md border border-slate-300 px-3 py-2 text-sm focus:border-blue-500 focus:outline-none"
-                                                />
-                                                <input
-                                                    value={activeQuestionBlueprint.cognitiveLevel || ''}
-                                                    onChange={(e) => updateQuestionBlueprintField(activeQuestion.id, 'cognitiveLevel', e.target.value)}
-                                                    placeholder="Level kognitif (C1-C6)"
-                                                    className="w-full rounded-md border border-slate-300 px-3 py-2 text-sm focus:border-blue-500 focus:outline-none"
-                                                />
-                                            </div>
-                                        </div>
-
-                                        <div className="rounded-xl border border-emerald-200 bg-emerald-50 p-4 space-y-3">
-                                            <div>
-                                                <p className="text-xs font-bold uppercase tracking-wide text-emerald-700">Kartu Soal</p>
-                                                <p className="text-xs text-emerald-700/80">
-                                                    Opsional. Isi jika ingin menambah catatan analisis butir.
-                                                </p>
-                                            </div>
-
-                                            <textarea
-                                                value={activeQuestionCard.stimulus || ''}
-                                                onChange={(e) => updateQuestionCardField(activeQuestion.id, 'stimulus', e.target.value)}
-                                                placeholder="Stimulus soal"
-                                                rows={2}
-                                                className="w-full rounded-md border border-emerald-200 px-3 py-2 text-sm focus:border-emerald-500 focus:outline-none"
-                                            />
-                                            <textarea
-                                                value={activeQuestionCard.answerRationale || ''}
-                                                onChange={(e) => updateQuestionCardField(activeQuestion.id, 'answerRationale', e.target.value)}
-                                                placeholder="Pembahasan / alasan jawaban benar"
-                                                rows={2}
-                                                className="w-full rounded-md border border-emerald-200 px-3 py-2 text-sm focus:border-emerald-500 focus:outline-none"
-                                            />
-                                            <textarea
-                                                value={activeQuestionCard.scoringGuideline || ''}
-                                                onChange={(e) => updateQuestionCardField(activeQuestion.id, 'scoringGuideline', e.target.value)}
-                                                placeholder="Pedoman penskoran (terutama untuk esai)"
-                                                rows={2}
-                                                className="w-full rounded-md border border-emerald-200 px-3 py-2 text-sm focus:border-emerald-500 focus:outline-none"
-                                            />
-                                            <textarea
-                                                value={activeQuestionCard.distractorNotes || ''}
-                                                onChange={(e) => updateQuestionCardField(activeQuestion.id, 'distractorNotes', e.target.value)}
-                                                placeholder="Catatan distraktor / opsi pengecoh"
-                                                rows={2}
-                                                className="w-full rounded-md border border-emerald-200 px-3 py-2 text-sm focus:border-emerald-500 focus:outline-none"
-                                            />
-                                        </div>
-                                    </aside>
-                                )}
                             </div>
                         </div>
                     </div>
@@ -2592,6 +2556,172 @@ export const ExamEditorPage = () => {
                     </div>
                 </div>
             )}
+
+            {isQuestionSupportModalOpen && activeQuestion ? (
+                <div className="fixed inset-0 z-50 flex items-center justify-center px-4 py-6">
+                    <div className="flex max-h-[92vh] w-full max-w-4xl flex-col overflow-hidden rounded-3xl border border-slate-200 bg-white shadow-2xl">
+                        <div className="flex items-start justify-between gap-4 border-b border-slate-200 px-6 py-4">
+                            <div>
+                                <h3 className="text-lg font-semibold text-slate-900">Kisi-kisi & Kartu Soal</h3>
+                                <p className="mt-1 text-sm text-slate-500">
+                                    Lengkapi pemetaan soal dan catatan analisis untuk soal nomor {activeQuestionIndex + 1}.
+                                </p>
+                            </div>
+                            <button
+                                type="button"
+                                onClick={() => setIsQuestionSupportModalOpen(false)}
+                                className="inline-flex h-10 w-10 items-center justify-center rounded-xl border border-slate-200 text-slate-500 hover:bg-slate-50"
+                                title="Tutup"
+                            >
+                                <X className="h-4 w-4" />
+                            </button>
+                        </div>
+
+                        <div className="flex-1 overflow-y-auto px-6 py-5">
+                            <div className="grid gap-5 xl:grid-cols-2">
+                                <div className="rounded-3xl border border-slate-200 bg-slate-50 p-5">
+                                    <div className="mb-4 flex items-center justify-between gap-3">
+                                        <div>
+                                            <p className="text-xs font-bold uppercase tracking-[0.24em] text-slate-600">Kisi-kisi Soal</p>
+                                            <p className="mt-1 text-xs text-slate-500">Opsional. Isi bila diperlukan untuk pemetaan soal.</p>
+                                        </div>
+                                        <span className={`rounded-full px-3 py-1 text-xs font-semibold ${
+                                            hasActiveQuestionBlueprint ? 'bg-blue-600 text-white' : 'bg-white text-slate-500'
+                                        }`}>
+                                            {hasActiveQuestionBlueprint ? 'Terisi' : 'Belum diisi'}
+                                        </span>
+                                    </div>
+
+                                    <div className="grid grid-cols-1 gap-3">
+                                        <input
+                                            value={activeQuestionBlueprint.competency || ''}
+                                            onChange={(e) => updateQuestionBlueprintField(activeQuestion.id, 'competency', e.target.value)}
+                                            placeholder="Kompetensi/Capaian"
+                                            className="w-full rounded-2xl border border-slate-300 px-4 py-3 text-sm focus:border-blue-500 focus:outline-none"
+                                        />
+                                        <input
+                                            value={activeQuestionBlueprint.learningObjective || ''}
+                                            onChange={(e) => updateQuestionBlueprintField(activeQuestion.id, 'learningObjective', e.target.value)}
+                                            placeholder="Tujuan pembelajaran"
+                                            className="w-full rounded-2xl border border-slate-300 px-4 py-3 text-sm focus:border-blue-500 focus:outline-none"
+                                        />
+                                        <input
+                                            value={activeQuestionBlueprint.indicator || ''}
+                                            onChange={(e) => updateQuestionBlueprintField(activeQuestion.id, 'indicator', e.target.value)}
+                                            placeholder="Indikator soal"
+                                            className="w-full rounded-2xl border border-slate-300 px-4 py-3 text-sm focus:border-blue-500 focus:outline-none"
+                                        />
+                                        <input
+                                            value={activeQuestionBlueprint.materialScope || ''}
+                                            onChange={(e) => updateQuestionBlueprintField(activeQuestion.id, 'materialScope', e.target.value)}
+                                            placeholder="Ruang lingkup materi"
+                                            className="w-full rounded-2xl border border-slate-300 px-4 py-3 text-sm focus:border-blue-500 focus:outline-none"
+                                        />
+                                        <input
+                                            value={activeQuestionBlueprint.cognitiveLevel || ''}
+                                            onChange={(e) => updateQuestionBlueprintField(activeQuestion.id, 'cognitiveLevel', e.target.value)}
+                                            placeholder="Level kognitif (C1-C6)"
+                                            className="w-full rounded-2xl border border-slate-300 px-4 py-3 text-sm focus:border-blue-500 focus:outline-none"
+                                        />
+                                    </div>
+                                </div>
+
+                                <div className="rounded-3xl border border-emerald-200 bg-emerald-50 p-5">
+                                    <div className="mb-4 flex items-center justify-between gap-3">
+                                        <div>
+                                            <p className="text-xs font-bold uppercase tracking-[0.24em] text-emerald-700">Kartu Soal</p>
+                                            <p className="mt-1 text-xs text-emerald-700/80">
+                                                Opsional. Isi jika ingin menambah catatan analisis butir.
+                                            </p>
+                                        </div>
+                                        <span className={`rounded-full px-3 py-1 text-xs font-semibold ${
+                                            hasActiveQuestionCard ? 'bg-emerald-600 text-white' : 'bg-white text-slate-500'
+                                        }`}>
+                                            {hasActiveQuestionCard ? 'Terisi' : 'Belum diisi'}
+                                        </span>
+                                    </div>
+
+                                    <div className="grid grid-cols-1 gap-3">
+                                        <textarea
+                                            value={activeQuestionCard.stimulus || ''}
+                                            onChange={(e) => updateQuestionCardField(activeQuestion.id, 'stimulus', e.target.value)}
+                                            placeholder="Stimulus soal"
+                                            rows={3}
+                                            className="w-full rounded-2xl border border-emerald-200 px-4 py-3 text-sm focus:border-emerald-500 focus:outline-none"
+                                        />
+                                        <textarea
+                                            value={activeQuestionCard.answerRationale || ''}
+                                            onChange={(e) => updateQuestionCardField(activeQuestion.id, 'answerRationale', e.target.value)}
+                                            placeholder="Pembahasan / alasan jawaban benar"
+                                            rows={3}
+                                            className="w-full rounded-2xl border border-emerald-200 px-4 py-3 text-sm focus:border-emerald-500 focus:outline-none"
+                                        />
+                                        <textarea
+                                            value={activeQuestionCard.scoringGuideline || ''}
+                                            onChange={(e) => updateQuestionCardField(activeQuestion.id, 'scoringGuideline', e.target.value)}
+                                            placeholder="Pedoman penskoran (terutama untuk esai)"
+                                            rows={3}
+                                            className="w-full rounded-2xl border border-emerald-200 px-4 py-3 text-sm focus:border-emerald-500 focus:outline-none"
+                                        />
+                                        <textarea
+                                            value={activeQuestionCard.distractorNotes || ''}
+                                            onChange={(e) => updateQuestionCardField(activeQuestion.id, 'distractorNotes', e.target.value)}
+                                            placeholder="Catatan distraktor / opsi pengecoh"
+                                            rows={3}
+                                            className="w-full rounded-2xl border border-emerald-200 px-4 py-3 text-sm focus:border-emerald-500 focus:outline-none"
+                                        />
+                                    </div>
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+            ) : null}
+
+            {isStudentPreviewOpen ? (
+                <div className="fixed inset-0 z-50 flex items-center justify-center px-4 py-6">
+                    <div className="flex max-h-[92vh] w-full max-w-7xl flex-col overflow-hidden rounded-3xl border border-slate-200 bg-white shadow-2xl">
+                        <div className="flex items-start justify-between gap-4 border-b border-slate-200 px-6 py-4">
+                            <div>
+                                <h3 className="text-lg font-semibold text-slate-900">Preview Sebagai Siswa</h3>
+                                <p className="mt-1 text-sm text-slate-500">
+                                    Tinjau tampilan paket soal persis seperti layar ujian siswa sebelum disimpan atau dipublikasikan.
+                                </p>
+                            </div>
+                            <button
+                                type="button"
+                                onClick={() => setIsStudentPreviewOpen(false)}
+                                className="inline-flex h-10 w-10 items-center justify-center rounded-xl border border-slate-200 text-slate-500 hover:bg-slate-50"
+                                title="Tutup"
+                            >
+                                <X className="h-4 w-4" />
+                            </button>
+                        </div>
+
+                        <div className="flex-1 overflow-y-auto p-6">
+                            {previewQuestions.length > 0 ? (
+                                <ExamStudentPreviewSurface
+                                    title={(watch('title') || '').trim() || 'Judul ujian belum diisi'}
+                                    subjectName={selectedSubjectName}
+                                    instructions={(watch('instructions') || '').trim()}
+                                    questions={previewQuestions}
+                                    activeQuestionIndex={Math.max(0, activeQuestionIndex)}
+                                    onActiveQuestionIndexChange={(index) => {
+                                        const targetQuestion = questions[index];
+                                        if (targetQuestion?.id) {
+                                            setActiveQuestionId(targetQuestion.id);
+                                        }
+                                    }}
+                                />
+                            ) : (
+                                <div className="rounded-3xl border border-dashed border-slate-300 bg-slate-50 px-6 py-16 text-center text-sm text-slate-500">
+                                    Tambahkan minimal satu soal untuk melihat preview seperti siswa.
+                                </div>
+                            )}
+                        </div>
+                    </div>
+                </div>
+            ) : null}
 
             {/* Media Upload Modal - Only used for manual triggers if needed, but we used direct inputs now */}
             {/* Keeping it minimal or removing if unused. Based on new design, we use direct inputs/buttons. */}

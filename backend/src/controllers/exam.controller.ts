@@ -3669,6 +3669,33 @@ function normalizeQuestionCard(raw: unknown): ExamQuestionCard | undefined {
     return Object.values(normalized).some(Boolean) ? normalized : undefined;
 }
 
+function summarizePacketSupport(questionPayload: unknown): {
+    questionPoolCount: number;
+    blueprintCount: number;
+    questionCardCount: number;
+} {
+    const questions = Array.isArray(questionPayload) ? questionPayload : [];
+    let blueprintCount = 0;
+    let questionCardCount = 0;
+
+    questions.forEach((question) => {
+        const source = asRecord(question);
+        const metadata = asRecord(source?.metadata);
+        if (normalizeBlueprint(source?.blueprint ?? metadata?.blueprint)) {
+            blueprintCount += 1;
+        }
+        if (normalizeQuestionCard(source?.questionCard ?? metadata?.questionCard)) {
+            questionCardCount += 1;
+        }
+    });
+
+    return {
+        questionPoolCount: questions.length,
+        blueprintCount,
+        questionCardCount,
+    };
+}
+
 function normalizeItemAnalysis(raw: unknown): ExamQuestionItemAnalysis | undefined {
     const source = asRecord(raw);
     if (!source) return undefined;
@@ -5262,7 +5289,7 @@ async function buildSessionDetail(
 // ==========================================
 
 export const getPackets = asyncHandler(async (req: Request, res: Response) => {
-    const { type, subjectId, academicYearId, semester, programCode } = req.query;
+    const { type, subjectId, academicYearId, semester, programCode, scope } = req.query;
     const authUser = (req as any).user as { id?: number; role?: string } | undefined;
     const authUserId = Number(authUser?.id || 0);
     const authRole = String(authUser?.role || '')
@@ -5322,10 +5349,11 @@ export const getPackets = asyncHandler(async (req: Request, res: Response) => {
             select: { additionalDuties: true },
         });
         const duties = (teacherProfile?.additionalDuties || []).map((item) => String(item || '').trim().toUpperCase());
-        const canSeeAllPackets =
+        const canSeeAllPacketsForCurriculumScope =
             duties.includes('WAKASEK_KURIKULUM') || duties.includes('SEKRETARIS_KURIKULUM');
+        const requestedScope = String(scope || '').trim().toLowerCase();
 
-        if (!canSeeAllPackets) {
+        if (!(requestedScope === 'curriculum' && canSeeAllPacketsForCurriculumScope)) {
             const assignmentWhere: Prisma.TeacherAssignmentWhereInput = {
                 teacherId: authUserId,
             };
@@ -6415,6 +6443,12 @@ export const getSchedules = asyncHandler(async (req: Request, res: Response) => 
                             code: true,
                         },
                     },
+                    author: {
+                        select: {
+                            id: true,
+                            name: true,
+                        },
+                    },
                 },
             },
             academicYear: {
@@ -6451,7 +6485,44 @@ export const getSchedules = asyncHandler(async (req: Request, res: Response) => 
         },
         orderBy: { startTime: 'desc' }
     });
-    res.json(new ApiResponse(200, schedules));
+
+    const packetIds = Array.from(
+        new Set(
+            schedules
+                .map((schedule) => Number(schedule.packet?.id))
+                .filter((packetId) => Number.isFinite(packetId) && packetId > 0),
+        ),
+    );
+    const packetSupportRows =
+        packetIds.length > 0
+            ? await prisma.examPacket.findMany({
+                  where: { id: { in: packetIds } },
+                  select: {
+                      id: true,
+                      questions: true,
+                  },
+              })
+            : [];
+    const packetSupportById = new Map(
+        packetSupportRows.map((row) => [Number(row.id), summarizePacketSupport(row.questions)]),
+    );
+
+    const normalizedSchedules = schedules.map((schedule) => {
+        if (!schedule.packet) return schedule;
+        return {
+            ...schedule,
+            packet: {
+                ...schedule.packet,
+                ...(packetSupportById.get(Number(schedule.packet.id)) || {
+                    questionPoolCount: 0,
+                    blueprintCount: 0,
+                    questionCardCount: 0,
+                }),
+            },
+        };
+    });
+
+    res.json(new ApiResponse(200, normalizedSchedules));
 });
 
 export const createSchedule = asyncHandler(async (req: Request, res: Response) => {

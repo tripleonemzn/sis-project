@@ -157,8 +157,12 @@ export interface ExamPacket {
     subjectId: number;
     subject?: { id: number; name: string; code: string };
     authorId: number;
+    author?: { id?: number; name?: string } | null;
     academicYearId: number;
     semester?: string;
+    questionPoolCount?: number;
+    blueprintCount?: number;
+    questionCardCount?: number;
     academicYear?: { id: number; name: string };
     schedules?: Array<{
         id: number;
@@ -669,6 +673,7 @@ export const examService = {
         subjectId?: number;
         academicYearId?: number;
         semester?: string;
+        scope?: 'teacher' | 'curriculum' | 'all';
         page?: number;
         limit?: number;
     }) => {

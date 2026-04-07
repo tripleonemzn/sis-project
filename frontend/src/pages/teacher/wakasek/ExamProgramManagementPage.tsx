@@ -1656,7 +1656,7 @@ export default function ExamProgramManagementPage() {
 
       {isAddProgramModalOpen ? (
         <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/30 p-4">
-          <div className="w-full max-w-6xl rounded-xl border border-gray-200 bg-white shadow-xl">
+          <div className="flex max-h-[92vh] w-full max-w-6xl flex-col overflow-hidden rounded-xl border border-gray-200 bg-white shadow-xl">
             <div className="flex items-center justify-between border-b border-gray-100 px-4 py-3">
               <div>
                 <h4 className="text-sm font-semibold text-gray-900">
@@ -1677,7 +1677,7 @@ export default function ExamProgramManagementPage() {
                 <X className="h-4 w-4" />
               </button>
             </div>
-            <div className="grid grid-cols-1 gap-3 p-4 md:grid-cols-2 xl:grid-cols-4">
+            <div className="grid max-h-[calc(92vh-132px)] grid-cols-1 gap-3 overflow-y-auto p-4 md:grid-cols-2 xl:grid-cols-4">
               <label className="space-y-1">
                 <span className="text-xs font-medium text-gray-600">Kode Program</span>
                 <input
