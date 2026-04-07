@@ -125,7 +125,7 @@ function buildProctorReportPrintHtml(params: {
       <meta charset="utf-8" />
       <title>${escapeHtml(snapshot.title)} - ${escapeHtml(snapshot.documentNumber)}</title>
       <style>
-        @page { size: A4 portrait; margin: 1cm 1cm 2.5cm; }
+        @page { size: A4 portrait; margin: 1cm; }
         html, body {
           margin: 0;
           padding: 0;
@@ -141,7 +141,7 @@ function buildProctorReportPrintHtml(params: {
         }
         .sheet {
           width: 100%;
-          min-height: calc(297mm - 3.5cm);
+          min-height: calc(297mm - 2cm);
           display: flex;
           flex-direction: column;
           box-sizing: border-box;
@@ -255,7 +255,7 @@ function buildProctorReportPrintHtml(params: {
         }
         .verify-block {
           margin-top: auto;
-          padding-top: 1cm;
+          padding-top: 0;
           font-size: ${noteFontSize};
           line-height: 1.5;
           color: #475569;
@@ -391,7 +391,7 @@ export default function ProctorReportPrint() {
       <style>{`
         @page {
           size: A4 portrait;
-          margin: 1cm 1cm 2.5cm;
+          margin: 1cm;
         }
         @media print {
           body {
@@ -436,7 +436,7 @@ export default function ProctorReportPrint() {
           width: '210mm',
           maxWidth: '210mm',
           minHeight: '297mm',
-          padding: '1cm 1cm 2.5cm',
+          padding: '1cm',
           fontSize: contentFontSize,
           boxSizing: 'border-box',
           display: 'flex',
@@ -526,7 +526,7 @@ export default function ProctorReportPrint() {
             </div>
           </div>
 
-          <div className="mt-auto pt-[1cm] italic text-slate-600" style={{ fontSize: noteFontSize, lineHeight: 1.5 }}>
+          <div className="mt-auto italic text-slate-600" style={{ fontSize: noteFontSize, lineHeight: 1.5 }}>
             {snapshot.verification.note}
             <div className="mt-1 break-all italic text-slate-700" style={{ fontSize: noteFontSize }}>{snapshot.verification.verificationUrl}</div>
           </div>
