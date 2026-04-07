@@ -421,6 +421,7 @@ type StandardSchoolDocumentHeaderSnapshot = {
 };
 
 type ProctorAttendanceDocumentSnapshot = {
+    documentHeader: StandardSchoolDocumentHeaderSnapshot;
     schoolName: string;
     schoolLogoPath: string;
     title: string;
@@ -430,6 +431,7 @@ type ProctorAttendanceDocumentSnapshot = {
     schedule: {
         subjectName: string;
         roomName: string;
+        executionOrder: number | null;
         sessionLabel: string | null;
         classNames: string[];
         startTimeLabel: string;
@@ -1389,12 +1391,14 @@ function buildProctorReportSnapshot(params: {
 
 function buildProctorAttendanceDocumentSnapshot(params: {
     req: Request;
+    documentHeader: StandardSchoolDocumentHeaderSnapshot;
     documentNumber: string;
     verificationToken: string;
     academicYearName: string;
     examLabel: string;
     subjectName: string;
     roomName: string;
+    executionOrder: number | null;
     sessionLabel: string | null;
     classNames: string[];
     startTime: Date;
@@ -1414,15 +1418,20 @@ function buildProctorAttendanceDocumentSnapshot(params: {
     const examLabel = normalizeOptionalText(params.examLabel) || 'Ujian';
 
     return {
+        documentHeader: params.documentHeader,
         schoolName: SCHOOL_NAME,
         schoolLogoPath: SCHOOL_LOGO_PATH,
-        title: 'DAFTAR HADIR UJIAN',
+        title: 'DAFTAR HADIR',
         examLabel,
         academicYearName: normalizeOptionalText(params.academicYearName) || '-',
         documentNumber: params.documentNumber,
         schedule: {
             subjectName,
             roomName,
+            executionOrder:
+                Number.isFinite(Number(params.executionOrder)) && Number(params.executionOrder) > 0
+                    ? Number(params.executionOrder)
+                    : null,
             sessionLabel: normalizeOptionalText(params.sessionLabel),
             classNames: Array.from(
                 new Set((params.classNames || []).map((item) => String(item || '').trim()).filter(Boolean)),
@@ -2631,12 +2640,14 @@ export const getProctoringAttendanceDocument = asyncHandler(async (req: Request,
     });
     const attendanceSnapshot = buildProctorAttendanceDocumentSnapshot({
         req,
+        documentHeader: artifactBundle.snapshot.documentHeader,
         documentNumber: attendanceDocumentNumber,
         verificationToken: artifactBundle.verificationToken,
         academicYearName: artifactBundle.snapshot.academicYearName,
         examLabel: artifactBundle.snapshot.examLabel,
         subjectName: artifactBundle.snapshot.schedule.subjectName,
         roomName: report.schedule.room || 'Belum ditentukan',
+        executionOrder: artifactBundle.snapshot.schedule.executionOrder,
         sessionLabel: report.schedule.sessionLabel,
         classNames: realtimeRoster.classNames,
         startTime: report.schedule.startTime,

@@ -3,8 +3,14 @@ import { useQuery } from '@tanstack/react-query';
 import { useNavigate, useParams } from 'react-router-dom';
 import { ArrowLeft, Printer, RefreshCw } from 'lucide-react';
 import api from '../../services/api';
+import {
+  buildStandardSchoolDocumentHeaderHtml,
+  StandardSchoolDocumentHeader,
+  type StandardSchoolDocumentHeaderSnapshot,
+} from './shared/StandardSchoolDocumentHeader';
 
 type ProctorAttendanceDocumentSnapshot = {
+  documentHeader: StandardSchoolDocumentHeaderSnapshot;
   schoolName: string;
   schoolLogoPath: string;
   title: string;
@@ -14,6 +20,7 @@ type ProctorAttendanceDocumentSnapshot = {
   schedule: {
     subjectName: string;
     roomName: string;
+    executionOrder: number | null;
     sessionLabel: string | null;
     classNames: string[];
     startTimeLabel: string;
@@ -58,14 +65,22 @@ type AttendanceDocumentResponse = {
   verificationQrDataUrl: string;
 };
 
-function formatDateTime(value?: string | null) {
+function formatDateOnly(value?: string | null) {
   if (!value) return '-';
   const date = new Date(value);
   if (Number.isNaN(date.getTime())) return '-';
-  return date.toLocaleString('id-ID', {
+  return date.toLocaleDateString('id-ID', {
     day: '2-digit',
     month: 'long',
     year: 'numeric',
+  });
+}
+
+function formatTimeOnly(value?: string | null) {
+  if (!value) return '-';
+  const date = new Date(value);
+  if (Number.isNaN(date.getTime())) return '-';
+  return date.toLocaleTimeString('id-ID', {
     hour: '2-digit',
     minute: '2-digit',
   });
@@ -86,12 +101,36 @@ function escapeHtml(value?: string | null) {
     .replace(/'/g, '&#39;');
 }
 
-function resolveAbsoluteAssetUrl(value?: string | null) {
-  const raw = String(value || '').trim();
-  if (!raw) return '';
-  if (/^(data:|https?:)/i.test(raw)) return raw;
-  if (typeof window === 'undefined') return raw;
-  return new URL(raw, window.location.origin).toString();
+function buildExecutionSlotValue(schedule: ProctorAttendanceDocumentSnapshot['schedule']) {
+  const orderLabel =
+    Number.isFinite(Number(schedule.executionOrder)) && Number(schedule.executionOrder) > 0
+      ? String(schedule.executionOrder)
+      : '-';
+  const sessionLabel = String(schedule.sessionLabel || '').trim();
+  return sessionLabel ? `${orderLabel} / ${sessionLabel}` : orderLabel;
+}
+
+function buildParticipantRows(snapshot: ProctorAttendanceDocumentSnapshot) {
+  return snapshot.participants
+    .map((participant, index) => {
+      const statusLine =
+        participant.status === 'PRESENT'
+          ? `${participant.statusLabel} | Mulai ${participant.startTimeLabel} • Selesai ${participant.submitTimeLabel}`
+          : participant.statusLabel;
+      const statusColor = participant.status === 'PRESENT' ? '#047857' : '#be123c';
+
+      return `
+        <tr>
+          <td>${index + 1}</td>
+          <td><strong>${escapeHtml(participant.name)}</strong></td>
+          <td>${escapeHtml(participant.nis || '-')}</td>
+          <td>${escapeHtml(participant.className || '-')}</td>
+          <td style="color:${statusColor};font-weight:600;">${escapeHtml(statusLine)}</td>
+          <td>${escapeHtml(participant.absentReason || '-')}</td>
+        </tr>
+      `;
+    })
+    .join('');
 }
 
 function buildProctorAttendancePrintHtml(params: {
@@ -99,29 +138,15 @@ function buildProctorAttendancePrintHtml(params: {
   verificationQrDataUrl: string;
 }) {
   const { snapshot, verificationQrDataUrl } = params;
-  const headerFontSize = '12pt';
-  const contentFontSize = '11pt';
-  const noteFontSize = '8pt';
-  const logoUrl = resolveAbsoluteAssetUrl(snapshot.schoolLogoPath);
-  const participantRows = snapshot.participants
-    .map((participant, index) => {
-      const statusLine =
-        participant.status === 'PRESENT'
-          ? `${participant.statusLabel} | Mulai ${participant.startTimeLabel} • Selesai ${participant.submitTimeLabel}`
-          : participant.statusLabel;
-      const statusColor = participant.status === 'PRESENT' ? '#047857' : '#be123c';
-      return `
-        <tr>
-          <td>${index + 1}</td>
-          <td><strong>${escapeHtml(participant.name)}</strong></td>
-          <td>${escapeHtml(participant.nis || '-')}</td>
-          <td>${escapeHtml(participant.className || '-')}</td>
-          <td style="color:${statusColor}; font-weight:600;">${escapeHtml(statusLine)}</td>
-          <td>${escapeHtml(participant.absentReason || '-')}</td>
-        </tr>
-      `;
-    })
-    .join('');
+  const headerFontSize = '10.5pt';
+  const contentFontSize = '9.5pt';
+  const tableFontSize = '8.75pt';
+  const noteFontSize = '6.75pt';
+  const signatureNote = `Ditandatangani dan dikirim ke Kurikulum secara digital oleh pengawas ruang pada ${formatDateOnly(
+    snapshot.submittedAt,
+  )} pukul ${formatTimeOnly(snapshot.submittedAt)}.`;
+  const executionSlotValue = buildExecutionSlotValue(snapshot.schedule);
+  const participantRows = buildParticipantRows(snapshot);
 
   return `<!DOCTYPE html>
   <html>
@@ -129,7 +154,7 @@ function buildProctorAttendancePrintHtml(params: {
       <meta charset="utf-8" />
       <title>${escapeHtml(snapshot.title)} - ${escapeHtml(snapshot.documentNumber)}</title>
       <style>
-        @page { size: A4 portrait; margin: 2.5cm; }
+        @page { size: A4 portrait; margin: 1cm; }
         html, body {
           margin: 0;
           padding: 0;
@@ -141,246 +166,218 @@ function buildProctorAttendancePrintHtml(params: {
         body {
           font-family: ui-sans-serif, system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
           font-size: ${contentFontSize};
-          line-height: 1.6;
+          line-height: 1.45;
         }
-        .sheet { width: 100%; }
-        .header-wrap { text-align: center; }
-        .header-group {
-          display: inline-flex;
-          align-items: center;
-          justify-content: center;
-          gap: 2cm;
+        .sheet {
+          width: 100%;
+          box-sizing: border-box;
         }
-        .logo {
-          width: 112px;
-          height: 112px;
-          object-fit: contain;
-          flex-shrink: 0;
+        .document-body {
+          padding: 0 0 28mm;
+          box-sizing: border-box;
         }
         .header-line {
           font-size: ${headerFontSize};
-          line-height: 1.35;
+          line-height: 1.24;
           font-weight: 700;
           text-transform: uppercase;
           letter-spacing: 0.02em;
         }
-        .rule-top {
-          margin-top: 16px;
-          border-top: 1px solid #0f172a;
-        }
-        .rule-bottom {
-          margin-top: 4px;
-          border-top: 2px solid #0f172a;
-        }
         .meta-row {
-          margin-top: 16px;
+          margin-top: 2px;
           display: flex;
           justify-content: space-between;
           align-items: flex-start;
           gap: 12px;
         }
-        .meta-chip {
-          border: 1px solid #cbd5e1;
-          background: #f8fafc;
-          border-radius: 10px;
-          padding: 8px 12px;
-          font-size: ${contentFontSize};
-        }
-        .meta-note {
-          border: 1px solid #a7f3d0;
-          background: #ecfdf5;
-          color: #065f46;
-          border-radius: 10px;
-          padding: 8px 12px;
+        .meta-text {
           font-size: ${noteFontSize};
+          font-style: italic;
+          color: #475569;
+        }
+        .meta-verify {
+          color: #15803d;
         }
         .detail-grid {
-          margin-top: 24px;
+          margin-top: 14px;
           display: grid;
           grid-template-columns: 1fr 1fr;
-          gap: 14px 40px;
+          gap: 7px 24px;
           font-size: ${contentFontSize};
         }
         .detail-col {
           display: grid;
-          row-gap: 8px;
+          row-gap: 6px;
         }
         .detail-row {
           display: grid;
-          grid-template-columns: 170px 16px 1fr;
+          grid-template-columns: 140px 14px 1fr;
         }
-        .summary-grid {
-          margin-top: 24px;
+        .counts {
+          margin-top: 12px;
           display: grid;
-          grid-template-columns: 1fr 1fr 1fr;
-          gap: 12px;
-        }
-        .summary-box {
-          border-radius: 14px;
-          border: 1px solid #cbd5e1;
-          background: #f8fafc;
-          padding: 12px 16px;
+          row-gap: 6px;
           font-size: ${contentFontSize};
         }
-        .summary-box.success {
-          border-color: #a7f3d0;
-          background: #ecfdf5;
-          color: #065f46;
-        }
-        .summary-box.danger {
-          border-color: #fecdd3;
-          background: #fff1f2;
-          color: #9f1239;
-        }
-        .summary-label {
-          font-size: ${contentFontSize};
-          font-weight: 700;
-          text-transform: uppercase;
-          letter-spacing: 0.02em;
-        }
-        .summary-value {
-          margin-top: 4px;
-          font-size: ${contentFontSize};
-          font-weight: 700;
+        .count-row {
+          display: grid;
+          grid-template-columns: 180px 14px 1fr;
         }
         table {
           width: 100%;
-          margin-top: 24px;
+          margin-top: 12px;
           border-collapse: collapse;
-          font-size: ${contentFontSize};
+          font-size: ${tableFontSize};
+          table-layout: fixed;
         }
         th, td {
           border: 1px solid #cbd5e1;
-          padding: 8px 10px;
+          padding: 6px 8px;
           text-align: left;
           vertical-align: top;
+          word-break: break-word;
+        }
+        thead {
+          display: table-header-group;
         }
         thead th {
-          background: #f1f5f9;
+          background: #f8fafc;
           font-weight: 700;
         }
         .footer-row {
-          margin-top: 36px;
+          margin-top: 16px;
           display: flex;
-          justify-content: space-between;
-          align-items: flex-start;
-          gap: 24px;
-        }
-        .footer-note {
-          max-width: 470px;
-          font-size: ${noteFontSize};
-          line-height: 1.5;
-          color: #475569;
+          justify-content: flex-end;
         }
         .signature-box {
-          width: 260px;
+          width: 300px;
           text-align: center;
+          font-size: ${contentFontSize};
         }
         .signature-label {
           font-size: ${contentFontSize};
         }
+        .qr-wrap {
+          margin-top: 8px;
+          display: flex;
+          justify-content: center;
+        }
         .qr {
-          margin-top: 16px;
-          width: 104px;
-          height: 104px;
+          width: 96px;
+          height: 96px;
           object-fit: contain;
+          border: 1px solid #cbd5e1;
+          border-radius: 12px;
+          background: #ffffff;
+          padding: 8px;
+        }
+        .signature-name-wrap {
+          margin-top: 8px;
+          display: inline-block;
+          max-width: 100%;
         }
         .signature-name {
-          margin-top: 28px;
           font-size: ${contentFontSize};
           font-weight: 700;
         }
         .signature-rule {
-          margin-top: 10px;
+          margin-top: 2px;
           border-top: 1px solid #94a3b8;
         }
         .signature-note {
-          margin-top: 10px;
+          margin-top: 4px;
           font-size: ${noteFontSize};
-          line-height: 1.5;
+          line-height: 1.25;
           color: #475569;
+          font-style: italic;
+        }
+        .verify-block {
+          position: fixed;
+          left: 1cm;
+          right: 1cm;
+          bottom: 0;
+          padding-top: 0;
+          font-size: ${noteFontSize};
+          line-height: 1.2;
+          color: #475569;
+          font-style: italic;
+        }
+        .verify-url {
+          margin-top: 2px;
+          word-break: break-all;
+          color: #334155;
+          font-style: italic;
         }
       </style>
     </head>
     <body>
       <div class="sheet">
-        <div class="header-wrap">
-          <div class="header-group">
-            <img src="${escapeHtml(logoUrl)}" alt="Logo KGB2" class="logo" />
-            <div>
-              <div class="header-line">${escapeHtml(snapshot.title)}</div>
-              <div class="header-line">${escapeHtml(formatExamHeadingLabel(snapshot.examLabel))}</div>
-              <div class="header-line">${escapeHtml(snapshot.schoolName)}</div>
-              <div class="header-line">Tahun Ajaran ${escapeHtml(snapshot.academicYearName)}</div>
+        ${buildStandardSchoolDocumentHeaderHtml(snapshot.documentHeader)}
+        <div class="document-body">
+          <div class="meta-row">
+            <div class="meta-text">No. Dokumen: ${escapeHtml(snapshot.documentNumber)}</div>
+            <div class="meta-text meta-verify">Diverifikasi melalui QR internal SIS KGB2</div>
+          </div>
+
+          <div style="margin-top:10px;text-align:center;">
+            <div class="header-line">${escapeHtml(snapshot.title)}</div>
+            <div class="header-line">${escapeHtml(formatExamHeadingLabel(snapshot.examLabel))}</div>
+            <div class="header-line">${escapeHtml(snapshot.schoolName)}</div>
+            <div class="header-line">Tahun Ajaran ${escapeHtml(snapshot.academicYearName)}</div>
+          </div>
+
+          <div class="detail-grid">
+            <div class="detail-col">
+              <div class="detail-row"><div>Mata Pelajaran</div><div>:</div><div>${escapeHtml(snapshot.schedule.subjectName)}</div></div>
+              <div class="detail-row"><div>Tanggal Pelaksanaan</div><div>:</div><div>${escapeHtml(snapshot.schedule.executionDateLabel)}</div></div>
+              <div class="detail-row"><div>Waktu Pelaksanaan</div><div>:</div><div>${escapeHtml(snapshot.schedule.startTimeLabel)} - ${escapeHtml(snapshot.schedule.endTimeLabel)} WIB</div></div>
+            </div>
+            <div class="detail-col">
+              <div class="detail-row"><div>Ruangan</div><div>:</div><div>${escapeHtml(snapshot.schedule.roomName)}</div></div>
+              <div class="detail-row"><div>Jam ke / Sesi</div><div>:</div><div>${escapeHtml(executionSlotValue)}</div></div>
+              <div class="detail-row"><div>Kelas / Rombel</div><div>:</div><div>${escapeHtml(snapshot.schedule.classNames.join(', ') || '-')}</div></div>
             </div>
           </div>
-        </div>
-        <div class="rule-top"></div>
-        <div class="rule-bottom"></div>
 
-        <div class="meta-row">
-          <div class="meta-chip"><strong>No. Dokumen:</strong> ${escapeHtml(snapshot.documentNumber)}</div>
-          <div class="meta-note">Diverifikasi melalui QR internal SIS KGB2</div>
-        </div>
+          <div class="counts">
+            <div class="count-row"><div>Jumlah Peserta Seharusnya</div><div>:</div><div>${snapshot.counts.expectedParticipants}</div></div>
+            <div class="count-row"><div>Jumlah Peserta yang hadir</div><div>:</div><div>${snapshot.counts.presentParticipants}</div></div>
+            <div class="count-row"><div>Jumlah Peserta yang tidak hadir</div><div>:</div><div>${snapshot.counts.absentParticipants}</div></div>
+          </div>
 
-        <div class="detail-grid">
-          <div class="detail-col">
-            <div class="detail-row"><div>Mata Pelajaran</div><div>:</div><div>${escapeHtml(snapshot.schedule.subjectName)}</div></div>
-            <div class="detail-row"><div>Tanggal Pelaksanaan</div><div>:</div><div>${escapeHtml(snapshot.schedule.executionDateLabel)}</div></div>
-            <div class="detail-row"><div>Waktu Pelaksanaan</div><div>:</div><div>${escapeHtml(snapshot.schedule.startTimeLabel)} - ${escapeHtml(snapshot.schedule.endTimeLabel)} WIB</div></div>
-          </div>
-          <div class="detail-col">
-            <div class="detail-row"><div>Ruangan</div><div>:</div><div>${escapeHtml(snapshot.schedule.roomName)}</div></div>
-            <div class="detail-row"><div>Sesi</div><div>:</div><div>${escapeHtml(snapshot.schedule.sessionLabel || '-')}</div></div>
-            <div class="detail-row"><div>Kelas / Rombel</div><div>:</div><div>${escapeHtml(snapshot.schedule.classNames.join(', ') || '-')}</div></div>
-          </div>
-        </div>
+          <table>
+            <thead>
+              <tr>
+                <th style="width:28px;">No</th>
+                <th>Nama Siswa</th>
+                <th style="width:82px;">NIS</th>
+                <th style="width:88px;">Kelas / Rombel</th>
+                <th style="width:180px;">Status</th>
+                <th style="width:120px;">Keterangan</th>
+              </tr>
+            </thead>
+            <tbody>
+              ${participantRows}
+            </tbody>
+          </table>
 
-        <div class="summary-grid">
-          <div class="summary-box">
-            <div class="summary-label">Peserta Seharusnya</div>
-            <div class="summary-value">${snapshot.counts.expectedParticipants}</div>
-          </div>
-          <div class="summary-box success">
-            <div class="summary-label">Hadir</div>
-            <div class="summary-value">${snapshot.counts.presentParticipants}</div>
-          </div>
-          <div class="summary-box danger">
-            <div class="summary-label">Tidak Hadir</div>
-            <div class="summary-value">${snapshot.counts.absentParticipants}</div>
-          </div>
-        </div>
-
-        <table>
-          <thead>
-            <tr>
-              <th>No</th>
-              <th>Nama Siswa</th>
-              <th>NIS</th>
-              <th>Kelas / Rombel</th>
-              <th>Status</th>
-              <th>Keterangan</th>
-            </tr>
-          </thead>
-          <tbody>
-            ${participantRows}
-          </tbody>
-        </table>
-
-        <div class="footer-row">
-          <div class="footer-note">
-            <div>${escapeHtml(snapshot.verification.note)}</div>
-            <div style="margin-top: 8px;">Dokumen dibuat dari laporan pengawas yang telah dikirim ke Kurikulum.</div>
-            <div style="margin-top: 8px;">Dikirim pada ${escapeHtml(formatDateTime(snapshot.submittedAt))}.</div>
-          </div>
-          <div class="signature-box">
-            <div class="signature-label">Pengawas,</div>
-            <div style="display:flex; justify-content:center;">
-              <img src="${escapeHtml(verificationQrDataUrl)}" alt="QR Verifikasi Daftar Hadir" class="qr" />
+          <div class="footer-row">
+            <div class="signature-box">
+              <div class="signature-label">Pengawas,</div>
+              <div class="qr-wrap">
+                <img src="${escapeHtml(verificationQrDataUrl)}" alt="QR Verifikasi Daftar Hadir" class="qr" />
+              </div>
+              <div class="signature-name-wrap">
+                <div class="signature-name">${escapeHtml(snapshot.proctor.name)}</div>
+                <div class="signature-rule"></div>
+              </div>
+              <div class="signature-note">${escapeHtml(signatureNote)}</div>
             </div>
-            <div class="signature-name">${escapeHtml(snapshot.proctor.name)}</div>
-            <div class="signature-rule"></div>
-            <div class="signature-note">${escapeHtml(snapshot.proctor.signatureLabel)} Dokumen dikirim ke Kurikulum pada ${escapeHtml(formatDateTime(snapshot.submittedAt))}.</div>
+          </div>
+
+          <div class="verify-block">
+            ${escapeHtml(snapshot.verification.note)}
+            <div class="verify-url">${escapeHtml(snapshot.verification.verificationUrl)}</div>
           </div>
         </div>
       </div>
@@ -392,9 +389,10 @@ export default function ProctorAttendancePrint() {
   const navigate = useNavigate();
   const { reportId } = useParams<{ reportId: string }>();
   const parsedReportId = Number(reportId || 0);
-  const headerFontSize = '12pt';
-  const contentFontSize = '11pt';
-  const noteFontSize = '8pt';
+  const headerFontSize = '10.5pt';
+  const contentFontSize = '9.5pt';
+  const tableFontSize = '8.75pt';
+  const noteFontSize = '6.75pt';
   const printIframeRef = useRef<HTMLIFrameElement>(null);
 
   const documentQuery = useQuery({
@@ -433,6 +431,11 @@ export default function ProctorAttendancePrint() {
   }
 
   const { snapshot, verificationQrDataUrl } = documentQuery.data;
+  const executionSlotValue = buildExecutionSlotValue(snapshot.schedule);
+  const signatureNote = `Ditandatangani dan dikirim ke Kurikulum secara digital oleh pengawas ruang pada ${formatDateOnly(
+    snapshot.submittedAt,
+  )} pukul ${formatTimeOnly(snapshot.submittedAt)}.`;
+
   const handlePrint = () => {
     const iframe = printIframeRef.current;
     if (!iframe || !iframe.contentWindow) return;
@@ -452,9 +455,14 @@ export default function ProctorAttendancePrint() {
       <style>{`
         @page {
           size: A4 portrait;
-          margin: 2.5cm;
+          margin: 1cm;
         }
         @media print {
+          .proctor-attendance-root {
+            min-height: auto !important;
+            padding: 0 !important;
+            background: #fff !important;
+          }
           body {
             background: #fff !important;
           }
@@ -465,9 +473,12 @@ export default function ProctorAttendancePrint() {
             box-shadow: none !important;
             border: none !important;
             margin: 0 !important;
-            max-width: none !important;
+            width: auto !important;
+            max-width: 190mm !important;
+            min-height: 0 !important;
             border-radius: 0 !important;
             padding: 0 !important;
+            box-sizing: border-box !important;
           }
           .proctor-attendance-table thead {
             display: table-header-group;
@@ -495,166 +506,175 @@ export default function ProctorAttendancePrint() {
       </div>
 
       <div
-        className="proctor-attendance-shell mx-auto max-w-6xl rounded-2xl border border-slate-200 bg-white shadow-sm"
-        style={{ maxWidth: '210mm', minHeight: '297mm', padding: '2.5cm', fontSize: contentFontSize }}
+        className="proctor-attendance-shell mx-auto rounded-2xl border border-slate-200 bg-white shadow-sm"
+        style={{
+          width: '210mm',
+          maxWidth: '210mm',
+          minHeight: '297mm',
+          padding: '1cm',
+          fontSize: contentFontSize,
+          boxSizing: 'border-box',
+          position: 'relative',
+        }}
         data-proctor-attendance-ready="true"
       >
-        <div className="flex justify-center">
-          <div className="inline-flex items-center justify-center" style={{ columnGap: '2cm' }}>
-            <img
-              src={snapshot.schoolLogoPath}
-              alt="Logo KGB2"
-              className="proctor-attendance-print-image h-[112px] w-[112px] shrink-0 object-contain"
-            />
-            <div className="text-center">
-              <div className="font-semibold tracking-wide text-slate-900" style={{ fontSize: headerFontSize, lineHeight: 1.35 }}>{snapshot.title}</div>
-              <div className="mt-1 font-semibold uppercase tracking-wide text-slate-900" style={{ fontSize: headerFontSize, lineHeight: 1.35 }}>
-                {formatExamHeadingLabel(snapshot.examLabel)}
-              </div>
-              <div className="mt-1 font-semibold uppercase tracking-wide text-slate-900" style={{ fontSize: headerFontSize, lineHeight: 1.35 }}>
-                {snapshot.schoolName}
-              </div>
-              <div className="mt-1 font-semibold uppercase tracking-wide text-slate-900" style={{ fontSize: headerFontSize, lineHeight: 1.35 }}>
-                Tahun Ajaran {snapshot.academicYearName}
-              </div>
+        <StandardSchoolDocumentHeader header={snapshot.documentHeader} />
+
+        <div style={{ padding: '0 0 36mm', boxSizing: 'border-box' }}>
+          <div className="mt-0.5 flex flex-wrap items-start justify-between gap-4 text-slate-600 italic" style={{ fontSize: noteFontSize }}>
+            <div style={{ fontSize: noteFontSize }}>
+              No. Dokumen: {snapshot.documentNumber}
+            </div>
+            <div className="text-green-700" style={{ fontSize: noteFontSize }}>
+              Diverifikasi melalui QR internal SIS KGB2
             </div>
           </div>
-        </div>
 
-        <div className="mt-4 border-t border-slate-900" />
-        <div className="mt-1 border-t-2 border-slate-900" />
-
-        <div className="mt-4 flex flex-wrap items-start justify-between gap-4 text-slate-700" style={{ fontSize: contentFontSize }}>
-          <div className="rounded-lg border border-slate-200 bg-slate-50 px-3 py-2" style={{ fontSize: contentFontSize }}>
-            <span className="font-semibold text-slate-900">No. Dokumen:</span> {snapshot.documentNumber}
-          </div>
-          <div className="rounded-lg border border-emerald-200 bg-emerald-50 px-3 py-2 text-emerald-800" style={{ fontSize: noteFontSize }}>
-            Diverifikasi melalui QR internal SIS KGB2
-          </div>
-        </div>
-
-        <div className="mt-6 grid grid-cols-2 gap-x-10 gap-y-3 text-slate-900" style={{ fontSize: contentFontSize }}>
-          <div className="grid gap-2">
-            <div className="grid grid-cols-[170px_16px_1fr]">
-              <div>Mata Pelajaran</div>
-              <div>:</div>
-              <div>{snapshot.schedule.subjectName}</div>
+          <div className="mt-2.5 text-center">
+            <div className="font-semibold tracking-wide text-slate-900" style={{ fontSize: headerFontSize, lineHeight: 1.24 }}>{snapshot.title}</div>
+            <div className="mt-1 font-semibold uppercase tracking-wide text-slate-900" style={{ fontSize: headerFontSize, lineHeight: 1.24 }}>
+              {formatExamHeadingLabel(snapshot.examLabel)}
             </div>
-            <div className="grid grid-cols-[170px_16px_1fr]">
-              <div>Tanggal Pelaksanaan</div>
-              <div>:</div>
-              <div>{snapshot.schedule.executionDateLabel}</div>
+            <div className="mt-1 font-semibold uppercase tracking-wide text-slate-900" style={{ fontSize: headerFontSize, lineHeight: 1.24 }}>
+              {snapshot.schoolName}
             </div>
-            <div className="grid grid-cols-[170px_16px_1fr]">
-              <div>Waktu Pelaksanaan</div>
-              <div>:</div>
-              <div>
-                {snapshot.schedule.startTimeLabel} - {snapshot.schedule.endTimeLabel} WIB
+            <div className="mt-1 font-semibold uppercase tracking-wide text-slate-900" style={{ fontSize: headerFontSize, lineHeight: 1.24 }}>
+              Tahun Ajaran {snapshot.academicYearName}
+            </div>
+          </div>
+
+          <div className="mt-3.5 grid grid-cols-2 gap-x-6 gap-y-2 text-slate-900" style={{ fontSize: contentFontSize }}>
+            <div className="grid gap-1.5">
+              <div className="grid grid-cols-[140px_14px_1fr]">
+                <div>Mata Pelajaran</div>
+                <div>:</div>
+                <div>{snapshot.schedule.subjectName}</div>
+              </div>
+              <div className="grid grid-cols-[140px_14px_1fr]">
+                <div>Tanggal Pelaksanaan</div>
+                <div>:</div>
+                <div>{snapshot.schedule.executionDateLabel}</div>
+              </div>
+              <div className="grid grid-cols-[140px_14px_1fr]">
+                <div>Waktu Pelaksanaan</div>
+                <div>:</div>
+                <div>
+                  {snapshot.schedule.startTimeLabel} - {snapshot.schedule.endTimeLabel} WIB
+                </div>
               </div>
             </div>
+            <div className="grid gap-1.5">
+              <div className="grid grid-cols-[140px_14px_1fr]">
+                <div>Ruangan</div>
+                <div>:</div>
+                <div>{snapshot.schedule.roomName}</div>
+              </div>
+              <div className="grid grid-cols-[140px_14px_1fr]">
+                <div>Jam ke / Sesi</div>
+                <div>:</div>
+                <div>{executionSlotValue}</div>
+              </div>
+              <div className="grid grid-cols-[140px_14px_1fr]">
+                <div>Kelas / Rombel</div>
+                <div>:</div>
+                <div>{snapshot.schedule.classNames.join(', ') || '-'}</div>
+              </div>
+            </div>
           </div>
-          <div className="grid gap-2">
-            <div className="grid grid-cols-[150px_16px_1fr]">
-              <div>Ruangan</div>
-              <div>:</div>
-              <div>{snapshot.schedule.roomName}</div>
-            </div>
-            <div className="grid grid-cols-[150px_16px_1fr]">
-              <div>Sesi</div>
-              <div>:</div>
-              <div>{snapshot.schedule.sessionLabel || '-'}</div>
-            </div>
-            <div className="grid grid-cols-[150px_16px_1fr]">
-              <div>Kelas / Rombel</div>
-              <div>:</div>
-              <div>{snapshot.schedule.classNames.join(', ') || '-'}</div>
-            </div>
-          </div>
-        </div>
 
-        <div className="mt-6 grid grid-cols-1 gap-3 md:grid-cols-3">
-          <div className="rounded-xl border border-slate-200 bg-slate-50 px-4 py-3">
-            <div className="font-semibold uppercase tracking-wide text-slate-500" style={{ fontSize: contentFontSize }}>Peserta Seharusnya</div>
-            <div className="mt-1 font-semibold text-slate-900" style={{ fontSize: contentFontSize }}>{snapshot.counts.expectedParticipants}</div>
+          <div className="mt-3 grid gap-1.5 text-slate-900" style={{ fontSize: contentFontSize }}>
+            <div className="grid grid-cols-[180px_14px_1fr]">
+              <div>Jumlah Peserta Seharusnya</div>
+              <div>:</div>
+              <div>{snapshot.counts.expectedParticipants}</div>
+            </div>
+            <div className="grid grid-cols-[180px_14px_1fr]">
+              <div>Jumlah Peserta yang hadir</div>
+              <div>:</div>
+              <div>{snapshot.counts.presentParticipants}</div>
+            </div>
+            <div className="grid grid-cols-[180px_14px_1fr]">
+              <div>Jumlah Peserta yang tidak hadir</div>
+              <div>:</div>
+              <div>{snapshot.counts.absentParticipants}</div>
+            </div>
           </div>
-          <div className="rounded-xl border border-emerald-200 bg-emerald-50 px-4 py-3">
-            <div className="font-semibold uppercase tracking-wide text-emerald-700" style={{ fontSize: contentFontSize }}>Hadir</div>
-            <div className="mt-1 font-semibold text-emerald-800" style={{ fontSize: contentFontSize }}>{snapshot.counts.presentParticipants}</div>
-          </div>
-          <div className="rounded-xl border border-rose-200 bg-rose-50 px-4 py-3">
-            <div className="font-semibold uppercase tracking-wide text-rose-700" style={{ fontSize: contentFontSize }}>Tidak Hadir</div>
-            <div className="mt-1 font-semibold text-rose-800" style={{ fontSize: contentFontSize }}>{snapshot.counts.absentParticipants}</div>
-          </div>
-        </div>
 
-        <div className="mt-8 overflow-hidden rounded-xl border border-slate-300">
-          <table className="proctor-attendance-table min-w-full border-collapse text-slate-900" style={{ fontSize: contentFontSize }}>
-            <thead className="bg-slate-100">
-              <tr>
-                <th className="border border-slate-300 px-3 py-2 text-left font-semibold">No</th>
-                <th className="border border-slate-300 px-3 py-2 text-left font-semibold">Nama Siswa</th>
-                <th className="border border-slate-300 px-3 py-2 text-left font-semibold">NIS</th>
-                <th className="border border-slate-300 px-3 py-2 text-left font-semibold">Kelas / Rombel</th>
-                <th className="border border-slate-300 px-3 py-2 text-left font-semibold">Status</th>
-                <th className="border border-slate-300 px-3 py-2 text-left font-semibold">Keterangan</th>
-              </tr>
-            </thead>
-            <tbody>
-              {snapshot.participants.map((participant, index) => (
-                <tr key={participant.id}>
-                  <td className="border border-slate-300 px-3 py-2 align-top">{index + 1}</td>
-                  <td className="border border-slate-300 px-3 py-2 align-top">
-                    <div className="font-semibold text-slate-900">{participant.name}</div>
-                  </td>
-                  <td className="border border-slate-300 px-3 py-2 align-top">{participant.nis || '-'}</td>
-                  <td className="border border-slate-300 px-3 py-2 align-top">{participant.className || '-'}</td>
-                  <td className="border border-slate-300 px-3 py-2 align-top">
-                    <div
-                      className={`${
-                        participant.status === 'PRESENT'
-                          ? 'font-semibold text-emerald-700'
-                          : 'font-semibold text-rose-700'
-                      }`}
-                      style={{ fontSize: contentFontSize }}
-                    >
-                      {participant.statusLabel}
-                      {participant.status === 'PRESENT' ? (
-                        <span className="font-normal text-slate-600" style={{ fontSize: contentFontSize }}>
-                          {' '}
-                          | Mulai {participant.startTimeLabel} • Selesai {participant.submitTimeLabel}
-                        </span>
-                      ) : null}
-                    </div>
-                  </td>
-                  <td className="border border-slate-300 px-3 py-2 align-top whitespace-pre-wrap">
-                    {participant.absentReason || '-'}
-                  </td>
+          <div className="mt-3 overflow-hidden rounded-xl border border-slate-300">
+            <table className="proctor-attendance-table min-w-full border-collapse text-slate-900" style={{ fontSize: tableFontSize, tableLayout: 'fixed' }}>
+              <thead className="bg-slate-100">
+                <tr>
+                  <th className="border border-slate-300 px-2 py-1.5 text-left font-semibold" style={{ width: '28px' }}>No</th>
+                  <th className="border border-slate-300 px-2 py-1.5 text-left font-semibold">Nama Siswa</th>
+                  <th className="border border-slate-300 px-2 py-1.5 text-left font-semibold" style={{ width: '82px' }}>NIS</th>
+                  <th className="border border-slate-300 px-2 py-1.5 text-left font-semibold" style={{ width: '88px' }}>Kelas / Rombel</th>
+                  <th className="border border-slate-300 px-2 py-1.5 text-left font-semibold" style={{ width: '180px' }}>Status</th>
+                  <th className="border border-slate-300 px-2 py-1.5 text-left font-semibold" style={{ width: '120px' }}>Keterangan</th>
                 </tr>
-              ))}
-            </tbody>
-          </table>
-        </div>
-
-        <div className="mt-10 flex items-start justify-between gap-6">
-          <div className="max-w-xl text-slate-600" style={{ fontSize: noteFontSize, lineHeight: 1.5 }}>
-            <div>{snapshot.verification.note}</div>
-            <div className="mt-2">Dokumen dibuat dari laporan pengawas yang telah dikirim ke Kurikulum.</div>
-            <div className="mt-2">Dikirim pada {formatDateTime(snapshot.submittedAt)}.</div>
+              </thead>
+              <tbody>
+                {snapshot.participants.map((participant, index) => (
+                  <tr key={participant.id}>
+                    <td className="border border-slate-300 px-2 py-1.5 align-top">{index + 1}</td>
+                    <td className="border border-slate-300 px-2 py-1.5 align-top break-words">
+                      <div className="font-semibold text-slate-900">{participant.name}</div>
+                    </td>
+                    <td className="border border-slate-300 px-2 py-1.5 align-top break-words">{participant.nis || '-'}</td>
+                    <td className="border border-slate-300 px-2 py-1.5 align-top break-words">{participant.className || '-'}</td>
+                    <td className="border border-slate-300 px-2 py-1.5 align-top break-words">
+                      <div
+                        className={`${
+                          participant.status === 'PRESENT'
+                            ? 'font-semibold text-emerald-700'
+                            : 'font-semibold text-rose-700'
+                        }`}
+                        style={{ fontSize: tableFontSize }}
+                      >
+                        {participant.statusLabel}
+                        {participant.status === 'PRESENT' ? (
+                          <span className="font-normal text-slate-600" style={{ fontSize: tableFontSize }}>
+                            {' '}
+                            | Mulai {participant.startTimeLabel} • Selesai {participant.submitTimeLabel}
+                          </span>
+                        ) : null}
+                      </div>
+                    </td>
+                    <td className="border border-slate-300 px-2 py-1.5 align-top whitespace-pre-wrap break-words">
+                      {participant.absentReason || '-'}
+                    </td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
           </div>
 
-          <div className="w-64 shrink-0 text-center">
-            <div className="text-slate-900" style={{ fontSize: contentFontSize }}>Pengawas,</div>
-            <div className="mt-4 flex justify-center">
-              <img
-                src={verificationQrDataUrl}
-                alt="QR Verifikasi Daftar Hadir"
-                className="proctor-attendance-print-image h-[104px] w-[104px] object-contain"
-              />
+          <div className="mt-4 flex justify-end">
+            <div className="w-full max-w-[300px] text-center text-slate-900" style={{ fontSize: contentFontSize }}>
+              <div className="font-medium" style={{ fontSize: contentFontSize }}>Pengawas,</div>
+              <div className="mt-2 flex justify-center">
+                <img
+                  src={verificationQrDataUrl}
+                  alt="QR Verifikasi Daftar Hadir"
+                  className="proctor-attendance-print-image h-24 w-24 rounded-xl border border-slate-200 bg-white p-2 object-contain"
+                />
+              </div>
+              <div className="mt-2 inline-block max-w-full">
+                <div className="font-semibold" style={{ fontSize: contentFontSize }}>{snapshot.proctor.name}</div>
+                <div className="mt-0.5 border-t border-slate-400" />
+              </div>
+              <div className="mt-1 italic text-slate-600" style={{ fontSize: noteFontSize, lineHeight: 1.25 }}>
+                {signatureNote}
+              </div>
             </div>
-            <div className="mt-7 font-semibold text-slate-900" style={{ fontSize: contentFontSize }}>{snapshot.proctor.name}</div>
-            <div className="mt-3 border-t border-slate-400" />
-            <div className="mt-3 text-slate-600" style={{ fontSize: noteFontSize, lineHeight: 1.5 }}>
-              {snapshot.proctor.signatureLabel} Dokumen dikirim ke Kurikulum pada {formatDateTime(snapshot.submittedAt)}.
+          </div>
+
+          <div
+            className="absolute italic text-slate-600"
+            style={{ left: '1cm', right: '1cm', bottom: '1cm', fontSize: noteFontSize, lineHeight: 1.2 }}
+          >
+            {snapshot.verification.note}
+            <div className="mt-0.5 break-all italic text-slate-700" style={{ fontSize: noteFontSize }}>
+              {snapshot.verification.verificationUrl}
             </div>
           </div>
         </div>

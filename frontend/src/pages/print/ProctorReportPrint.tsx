@@ -144,7 +144,7 @@ function buildProctorReportPrintHtml(params: {
           box-sizing: border-box;
         }
         .document-body {
-          padding: 0 1.5cm 22mm;
+          padding: 0 1.5cm 28mm;
           box-sizing: border-box;
         }
         .header-line {
@@ -252,15 +252,15 @@ function buildProctorReportPrintHtml(params: {
           position: fixed;
           left: calc(1cm + 1.5cm);
           right: calc(1cm + 1.5cm);
-          bottom: 1cm;
+          bottom: 0;
           padding-top: 0;
           font-size: ${noteFontSize};
-          line-height: 1.35;
+          line-height: 1.2;
           color: #475569;
           font-style: italic;
         }
         .verify-url {
-          margin-top: 4px;
+          margin-top: 2px;
           word-break: break-all;
           font-style: italic;
           color: #334155;
@@ -454,7 +454,7 @@ export default function ProctorReportPrint() {
       >
         <StandardSchoolDocumentHeader header={snapshot.documentHeader} />
 
-        <div style={{ padding: '0 1.5cm 22mm', boxSizing: 'border-box' }}>
+        <div style={{ padding: '0 1.5cm 36mm', boxSizing: 'border-box' }}>
           <div className="mt-0.5 flex flex-wrap items-start justify-between gap-4 text-slate-600 italic" style={{ fontSize: noteFontSize }}>
             <div style={{ fontSize: noteFontSize }}>
               No. Dokumen: {snapshot.documentNumber}
@@ -536,10 +536,10 @@ export default function ProctorReportPrint() {
 
           <div
             className="absolute italic text-slate-600"
-            style={{ left: '1.5cm', right: '1.5cm', bottom: 0, fontSize: noteFontSize, lineHeight: 1.35 }}
+            style={{ left: '1.5cm', right: '1.5cm', bottom: '1cm', fontSize: noteFontSize, lineHeight: 1.2 }}
           >
             {snapshot.verification.note}
-            <div className="mt-1 break-all italic text-slate-700" style={{ fontSize: noteFontSize }}>{snapshot.verification.verificationUrl}</div>
+            <div className="mt-0.5 break-all italic text-slate-700" style={{ fontSize: noteFontSize }}>{snapshot.verification.verificationUrl}</div>
           </div>
         </div>
       </div>
