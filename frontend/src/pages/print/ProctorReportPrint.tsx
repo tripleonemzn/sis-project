@@ -141,14 +141,10 @@ function buildProctorReportPrintHtml(params: {
         }
         .sheet {
           width: 100%;
-          height: calc(297mm - 2cm);
           box-sizing: border-box;
-          position: relative;
-          overflow: hidden;
         }
         .document-body {
-          height: 100%;
-          padding: 0 1.5cm 16mm;
+          padding: 0 1.5cm 22mm;
           box-sizing: border-box;
         }
         .header-line {
@@ -253,10 +249,10 @@ function buildProctorReportPrintHtml(params: {
           font-style: italic;
         }
         .verify-block {
-          position: absolute;
-          left: 1.5cm;
-          right: 1.5cm;
-          bottom: 0;
+          position: fixed;
+          left: calc(1cm + 1.5cm);
+          right: calc(1cm + 1.5cm);
+          bottom: 1cm;
           padding-top: 0;
           font-size: ${noteFontSize};
           line-height: 1.35;
@@ -413,12 +409,12 @@ export default function ProctorReportPrint() {
             margin: 0 !important;
             width: auto !important;
             max-width: 190mm !important;
-            height: calc(297mm - 2cm) !important;
+            height: auto !important;
             min-height: 0 !important;
             border-radius: 0 !important;
             padding: 0 !important;
             box-sizing: border-box !important;
-            overflow: hidden !important;
+            overflow: visible !important;
             page-break-after: avoid !important;
           }
         }
@@ -448,18 +444,17 @@ export default function ProctorReportPrint() {
         style={{
           width: '210mm',
           maxWidth: '210mm',
-          height: '297mm',
+          minHeight: '297mm',
           padding: '1cm',
           fontSize: contentFontSize,
           boxSizing: 'border-box',
           position: 'relative',
-          overflow: 'hidden',
         }}
         data-proctor-report-ready="true"
       >
         <StandardSchoolDocumentHeader header={snapshot.documentHeader} />
 
-        <div style={{ padding: '0 1.5cm 16mm', height: '100%', boxSizing: 'border-box' }}>
+        <div style={{ padding: '0 1.5cm 22mm', boxSizing: 'border-box' }}>
           <div className="mt-0.5 flex flex-wrap items-start justify-between gap-4 text-slate-600 italic" style={{ fontSize: noteFontSize }}>
             <div style={{ fontSize: noteFontSize }}>
               No. Dokumen: {snapshot.documentNumber}
