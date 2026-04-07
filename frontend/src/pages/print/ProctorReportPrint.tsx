@@ -141,16 +141,15 @@ function buildProctorReportPrintHtml(params: {
         }
         .sheet {
           width: 100%;
-          min-height: calc(297mm - 2cm);
-          display: flex;
-          flex-direction: column;
+          height: calc(297mm - 2cm);
           box-sizing: border-box;
+          position: relative;
+          overflow: hidden;
         }
         .document-body {
-          padding: 0 1.5cm;
-          flex: 1;
-          display: flex;
-          flex-direction: column;
+          height: 100%;
+          padding: 0 1.5cm 16mm;
+          box-sizing: border-box;
         }
         .header-line {
           font-size: ${headerFontSize};
@@ -175,16 +174,16 @@ function buildProctorReportPrintHtml(params: {
           color: #15803d;
         }
         .narrative {
-          margin-top: 20px;
+          margin-top: 16px;
           text-align: justify;
           font-size: ${contentFontSize};
-          line-height: 1.8;
+          line-height: 1.65;
         }
         .counts {
-          margin-top: 22px;
+          margin-top: 16px;
           margin-left: 1cm;
           display: grid;
-          row-gap: 8px;
+          row-gap: 6px;
           font-size: ${contentFontSize};
         }
         .count-row {
@@ -192,22 +191,22 @@ function buildProctorReportPrintHtml(params: {
           grid-template-columns: 230px 16px 1fr;
         }
         .note-title {
-          margin-top: 28px;
+          margin-top: 18px;
           font-weight: 700;
           font-size: ${contentFontSize};
         }
         .note-text {
-          margin-top: 10px;
+          margin-top: 8px;
           font-size: ${contentFontSize};
-          line-height: 1.75;
+          line-height: 1.55;
           white-space: pre-wrap;
         }
         .note-declaration {
-          margin-top: 10px;
+          margin-top: 8px;
           font-size: ${contentFontSize};
         }
         .signature-row {
-          margin-top: 28px;
+          margin-top: 18px;
           display: flex;
           justify-content: flex-end;
         }
@@ -220,7 +219,7 @@ function buildProctorReportPrintHtml(params: {
           font-size: ${contentFontSize};
         }
         .qr-wrap {
-          margin-top: 12px;
+          margin-top: 8px;
           display: flex;
           justify-content: center;
         }
@@ -238,7 +237,7 @@ function buildProctorReportPrintHtml(params: {
           font-weight: 700;
         }
         .signature-name-wrap {
-          margin-top: 12px;
+          margin-top: 8px;
           display: inline-block;
           max-width: 100%;
         }
@@ -247,17 +246,20 @@ function buildProctorReportPrintHtml(params: {
           border-top: 1px solid #94a3b8;
         }
         .signature-note {
-          margin-top: 8px;
+          margin-top: 4px;
           font-size: ${noteFontSize};
           line-height: 1.25;
           color: #475569;
           font-style: italic;
         }
         .verify-block {
-          margin-top: auto;
+          position: absolute;
+          left: 1.5cm;
+          right: 1.5cm;
+          bottom: 0;
           padding-top: 0;
           font-size: ${noteFontSize};
-          line-height: 1.5;
+          line-height: 1.35;
           color: #475569;
           font-style: italic;
         }
@@ -411,10 +413,12 @@ export default function ProctorReportPrint() {
             margin: 0 !important;
             width: auto !important;
             max-width: 190mm !important;
-            min-height: calc(297mm - 2cm) !important;
+            height: calc(297mm - 2cm) !important;
+            min-height: 0 !important;
             border-radius: 0 !important;
             padding: 0 !important;
             box-sizing: border-box !important;
+            overflow: hidden !important;
             page-break-after: avoid !important;
           }
         }
@@ -444,18 +448,18 @@ export default function ProctorReportPrint() {
         style={{
           width: '210mm',
           maxWidth: '210mm',
-          minHeight: '297mm',
+          height: '297mm',
           padding: '1cm',
           fontSize: contentFontSize,
           boxSizing: 'border-box',
-          display: 'flex',
-          flexDirection: 'column',
+          position: 'relative',
+          overflow: 'hidden',
         }}
         data-proctor-report-ready="true"
       >
         <StandardSchoolDocumentHeader header={snapshot.documentHeader} />
 
-        <div style={{ padding: '0 1.5cm', flex: 1, display: 'flex', flexDirection: 'column' }}>
+        <div style={{ padding: '0 1.5cm 16mm', height: '100%', boxSizing: 'border-box' }}>
           <div className="mt-0.5 flex flex-wrap items-start justify-between gap-4 text-slate-600 italic" style={{ fontSize: noteFontSize }}>
             <div style={{ fontSize: noteFontSize }}>
               No. Dokumen: {snapshot.documentNumber}
@@ -478,11 +482,11 @@ export default function ProctorReportPrint() {
             </div>
           </div>
 
-          <div className="mt-5 text-slate-900" style={{ fontSize: contentFontSize, lineHeight: 1.8 }}>
+          <div className="mt-4 text-slate-900" style={{ fontSize: contentFontSize, lineHeight: 1.65 }}>
             <p className="text-justify">{snapshot.narrative}</p>
           </div>
 
-          <div className="mt-7 grid gap-2 text-slate-900" style={{ fontSize: contentFontSize, marginLeft: '1cm' }}>
+          <div className="mt-4 grid gap-1.5 text-slate-900" style={{ fontSize: contentFontSize, marginLeft: '1cm' }}>
             <div className="grid grid-cols-[230px_16px_1fr]">
               <div>Jam ke / Sesi</div>
               <div>:</div>
@@ -505,9 +509,9 @@ export default function ProctorReportPrint() {
             </div>
           </div>
 
-          <div className="mt-8">
+          <div className="mt-[18px]">
             <div className="font-semibold text-slate-900" style={{ fontSize: contentFontSize }}>Catatan Pengawas selama Ujian berlangsung.</div>
-            <div className="mt-2 whitespace-pre-wrap text-slate-900" style={{ fontSize: contentFontSize, lineHeight: 1.75 }}>
+            <div className="mt-2 whitespace-pre-wrap text-slate-900" style={{ fontSize: contentFontSize, lineHeight: 1.55 }}>
               {noteText}
             </div>
             <div className="mt-2 text-slate-900" style={{ fontSize: contentFontSize }}>
@@ -515,27 +519,30 @@ export default function ProctorReportPrint() {
             </div>
           </div>
 
-          <div className="mt-8 flex justify-end">
+          <div className="mt-[18px] flex justify-end">
             <div className="w-full max-w-[300px] text-center text-slate-900" style={{ fontSize: contentFontSize }}>
               <div className="font-medium" style={{ fontSize: contentFontSize }}>Pengawas,</div>
-              <div className="mt-3 flex justify-center">
+              <div className="mt-2 flex justify-center">
                 <img
                   src={verificationQrDataUrl}
                   alt="QR Verifikasi Berita Acara"
                   className="proctor-report-print-image h-[104px] w-[104px] rounded-xl border border-slate-200 bg-white p-2"
                 />
               </div>
-              <div className="mt-3 inline-block max-w-full">
+              <div className="mt-2 inline-block max-w-full">
                 <div className="font-semibold" style={{ fontSize: contentFontSize }}>{snapshot.proctor.name}</div>
                 <div className="mt-0.5 border-t border-slate-400" />
               </div>
-              <div className="mt-2 italic text-slate-600" style={{ fontSize: noteFontSize, lineHeight: 1.25 }}>
+              <div className="mt-1 italic text-slate-600" style={{ fontSize: noteFontSize, lineHeight: 1.25 }}>
                 {signatureNote}
               </div>
             </div>
           </div>
 
-          <div className="mt-auto italic text-slate-600" style={{ fontSize: noteFontSize, lineHeight: 1.5 }}>
+          <div
+            className="absolute italic text-slate-600"
+            style={{ left: '1.5cm', right: '1.5cm', bottom: 0, fontSize: noteFontSize, lineHeight: 1.35 }}
+          >
             {snapshot.verification.note}
             <div className="mt-1 break-all italic text-slate-700" style={{ fontSize: noteFontSize }}>{snapshot.verification.verificationUrl}</div>
           </div>
