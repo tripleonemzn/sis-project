@@ -4,6 +4,7 @@ import { roleMiddleware } from '../middleware/role';
 import {
     getPackets,
     getPacketById,
+    updatePacketReviewFeedback,
     createPacket,
     updatePacket,
     deletePacket,
@@ -66,6 +67,7 @@ router.get('/packets/:id/submissions', roleMiddleware(['TEACHER', 'ADMIN', 'EXAM
 router.get('/packets/:id/item-analysis', roleMiddleware(['TEACHER', 'ADMIN', 'EXAMINER']), getPacketItemAnalysis);
 router.post('/packets/:id/item-analysis/sync', roleMiddleware(['TEACHER', 'ADMIN', 'EXAMINER']), syncPacketItemAnalysis);
 router.get('/packets/:id', getPacketById);
+router.patch('/packets/:id/review-feedback', roleMiddleware(['TEACHER', 'ADMIN']), updatePacketReviewFeedback);
 router.get('/sessions/:id/detail', roleMiddleware(['TEACHER', 'ADMIN', 'EXAMINER']), getSessionDetail);
 router.patch('/sessions/:id/score', roleMiddleware(['TEACHER', 'ADMIN', 'EXAMINER']), updateSessionScore);
 router.post('/packets', roleMiddleware(['TEACHER', 'ADMIN', 'EXAMINER']), createPacket);

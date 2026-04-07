@@ -23,7 +23,7 @@ import 'react-quill-new/dist/quill.snow.css';
 import katex from 'katex';
 import 'katex/dist/katex.min.css';
 import { examProgramCodeToSlug, examService, normalizeExamProgramCode } from '../../../services/exam.service';
-import type { ExamProgram, ExamType, Question, QuestionBlueprint, QuestionCard, ExamPacket } from '../../../services/exam.service';
+import type { ExamProgram, ExamType, Question, QuestionBlueprint, QuestionCard, QuestionReviewFeedback, ExamPacket } from '../../../services/exam.service';
 import { academicYearService } from '../../../services/academicYear.service';
 import { teacherAssignmentService } from '../../../services/teacherAssignment.service';
 import type { TeacherAssignment } from '../../../services/teacherAssignment.service';
@@ -107,6 +107,27 @@ function normalizeQuestionCard(raw: unknown): QuestionCard {
         scoringGuideline: source.scoringGuideline || '',
         distractorNotes: source.distractorNotes || '',
     };
+}
+
+function normalizeReviewFeedback(raw: unknown): QuestionReviewFeedback | undefined {
+    const source = raw && typeof raw === 'object' ? (raw as QuestionReviewFeedback) : undefined;
+    if (!source) return undefined;
+    const normalized: QuestionReviewFeedback = {
+        questionComment: String(source.questionComment || '').trim(),
+        blueprintComment: String(source.blueprintComment || '').trim(),
+        questionCardComment: String(source.questionCardComment || '').trim(),
+        reviewedAt: String(source.reviewedAt || '').trim(),
+        reviewer: source.reviewer?.name
+            ? {
+                id: source.reviewer.id,
+                name: source.reviewer.name,
+            }
+            : undefined,
+    };
+    if (!normalized.questionComment && !normalized.blueprintComment && !normalized.questionCardComment) {
+        return undefined;
+    }
+    return normalized;
 }
 
 function sanitizeQuestionHtml(value: string | undefined | null): string {
@@ -1084,6 +1105,7 @@ export const ExamEditorPage = () => {
                         question_video_type: source.question_video_type,
                         blueprint: normalizeBlueprint(blueprintSource),
                         questionCard: normalizeQuestionCard(questionCardSource),
+                        reviewFeedback: normalizeReviewFeedback(source.reviewFeedback ?? source.metadata?.reviewFeedback),
                     };
                 });
                 setQuestions(mappedQuestions);
@@ -1196,6 +1218,7 @@ export const ExamEditorPage = () => {
                 content: sanitizeQuestionHtml(question.content),
                 blueprint: normalizeBlueprint(question.blueprint),
                 questionCard: normalizeQuestionCard(question.questionCard),
+                reviewFeedback: normalizeReviewFeedback(question.reviewFeedback ?? question.metadata?.reviewFeedback),
             }));
             setQuestions(restoredQuestions);
             setActiveQuestionId(restoredQuestions[0]?.id || null);
@@ -1679,6 +1702,9 @@ export const ExamEditorPage = () => {
     const activeQuestionCard = activeQuestion
         ? normalizeQuestionCard(activeQuestion.questionCard)
         : createDefaultQuestionCard();
+    const activeQuestionReviewFeedback = activeQuestion
+        ? normalizeReviewFeedback(activeQuestion.reviewFeedback ?? activeQuestion.metadata?.reviewFeedback)
+        : undefined;
     const activeQuestionIndex = activeQuestionId ? questions.findIndex((question) => question.id === activeQuestionId) : 0;
     const hasActiveQuestionBlueprint = Boolean(
         activeQuestionBlueprint.competency ||
@@ -1692,6 +1718,11 @@ export const ExamEditorPage = () => {
         activeQuestionCard.answerRationale ||
         activeQuestionCard.scoringGuideline ||
         activeQuestionCard.distractorNotes,
+    );
+    const hasActiveReviewFeedback = Boolean(
+        activeQuestionReviewFeedback?.questionComment ||
+        activeQuestionReviewFeedback?.blueprintComment ||
+        activeQuestionReviewFeedback?.questionCardComment,
     );
     const previewQuestions = useMemo<ExamStudentPreviewQuestion[]>(
         () =>
@@ -2085,6 +2116,41 @@ export const ExamEditorPage = () => {
                                         <p className="text-[11px] text-slate-500">
                                             Mendukung teks Arab, Jepang, Mandarin, aksara Jawa, dan aksara Sunda (gunakan keyboard bahasa di perangkat).
                                         </p>
+
+                                        {hasActiveReviewFeedback ? (
+                                            <div className="rounded-2xl border border-amber-200 bg-amber-50 px-4 py-3 text-sm text-amber-900">
+                                                <div className="flex flex-wrap items-center justify-between gap-2">
+                                                    <div className="font-semibold">Catatan Review Kurikulum</div>
+                                                    {activeQuestionReviewFeedback?.reviewer?.name || activeQuestionReviewFeedback?.reviewedAt ? (
+                                                        <div className="text-[11px] text-amber-700">
+                                                            {activeQuestionReviewFeedback?.reviewer?.name
+                                                                ? `Oleh ${activeQuestionReviewFeedback.reviewer.name}`
+                                                                : 'Catatan tersimpan'}
+                                                            {activeQuestionReviewFeedback?.reviewedAt
+                                                                ? ` • ${activeQuestionReviewFeedback.reviewedAt}`
+                                                                : ''}
+                                                        </div>
+                                                    ) : null}
+                                                </div>
+                                                <div className="mt-3 space-y-2 text-xs leading-5 text-amber-900">
+                                                    {activeQuestionReviewFeedback?.questionComment ? (
+                                                        <div>
+                                                            <span className="font-semibold">Soal:</span> {activeQuestionReviewFeedback.questionComment}
+                                                        </div>
+                                                    ) : null}
+                                                    {activeQuestionReviewFeedback?.blueprintComment ? (
+                                                        <div>
+                                                            <span className="font-semibold">Kisi-kisi:</span> {activeQuestionReviewFeedback.blueprintComment}
+                                                        </div>
+                                                    ) : null}
+                                                    {activeQuestionReviewFeedback?.questionCardComment ? (
+                                                        <div>
+                                                            <span className="font-semibold">Kartu soal:</span> {activeQuestionReviewFeedback.questionCardComment}
+                                                        </div>
+                                                    ) : null}
+                                                </div>
+                                            </div>
+                                        ) : null}
 
                                         {(!activeQuestion.question_media_position || activeQuestion.question_media_position === 'top') && renderMediaPreview(activeQuestion)}
 
@@ -2624,6 +2690,13 @@ export const ExamEditorPage = () => {
                                             className="w-full rounded-2xl border border-slate-300 px-4 py-3 text-sm focus:border-blue-500 focus:outline-none"
                                         />
                                     </div>
+
+                                    {activeQuestionReviewFeedback?.blueprintComment ? (
+                                        <div className="mt-4 rounded-2xl border border-amber-200 bg-amber-50 px-4 py-3 text-sm text-amber-900">
+                                            <p className="text-xs font-semibold uppercase tracking-wide text-amber-700">Catatan Kurikulum</p>
+                                            <p className="mt-1">{activeQuestionReviewFeedback.blueprintComment}</p>
+                                        </div>
+                                    ) : null}
                                 </div>
 
                                 <div className="rounded-3xl border border-emerald-200 bg-emerald-50 p-5">
@@ -2671,6 +2744,13 @@ export const ExamEditorPage = () => {
                                             className="w-full rounded-2xl border border-emerald-200 px-4 py-3 text-sm focus:border-emerald-500 focus:outline-none"
                                         />
                                     </div>
+
+                                    {activeQuestionReviewFeedback?.questionCardComment ? (
+                                        <div className="mt-4 rounded-2xl border border-amber-200 bg-amber-50 px-4 py-3 text-sm text-amber-900">
+                                            <p className="text-xs font-semibold uppercase tracking-wide text-amber-700">Catatan Kurikulum</p>
+                                            <p className="mt-1">{activeQuestionReviewFeedback.questionCardComment}</p>
+                                        </div>
+                                    ) : null}
                                 </div>
                             </div>
                         </div>

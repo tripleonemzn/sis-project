@@ -402,6 +402,7 @@ const ExamProctorManagementPage = () => {
   
   // UI State
   const [expandedSlots, setExpandedSlots] = useState<string[]>([]);
+  const [isReportExpanded, setIsReportExpanded] = useState(false);
   const [absentModalRow, setAbsentModalRow] = useState<ProctorReportRow | null>(null);
 
   const visiblePrograms = useMemo(
@@ -1252,7 +1253,10 @@ const ExamProctorManagementPage = () => {
       </div>
 
       <div className="bg-white rounded-xl shadow-sm border border-gray-200 overflow-hidden">
-        <div className="px-6 py-4 border-b border-gray-200 flex items-center justify-between">
+        <div
+          onClick={() => setIsReportExpanded((current) => !current)}
+          className="px-6 py-4 border-b border-gray-200 flex items-center justify-between cursor-pointer hover:bg-gray-50 transition-colors"
+        >
           <div>
             <h2 className="text-lg font-semibold text-gray-900">Berita Acara Pengawas</h2>
             <p className="text-sm text-gray-500">
@@ -1263,7 +1267,10 @@ const ExamProctorManagementPage = () => {
             <div className="flex items-center space-x-1 bg-gray-100 p-1 rounded-lg border border-gray-200">
               <button
                 type="button"
-                onClick={() => setReportMode('daily')}
+                onClick={(event) => {
+                  event.stopPropagation();
+                  setReportMode('daily');
+                }}
                 className={`px-3 py-1.5 text-xs font-medium rounded-md transition-colors ${
                   reportMode === 'daily' ? 'bg-white text-blue-700 shadow-sm' : 'text-gray-600 hover:text-gray-900'
                 }`}
@@ -1272,7 +1279,8 @@ const ExamProctorManagementPage = () => {
               </button>
               <button
                 type="button"
-                onClick={() => {
+                onClick={(event) => {
+                  event.stopPropagation();
                   if (!reportDateFrom && selectedDate) setReportDateFrom(selectedDate);
                   if (!reportDateTo && selectedDate) setReportDateTo(selectedDate);
                   setReportMode('archive');
@@ -1289,10 +1297,34 @@ const ExamProctorManagementPage = () => {
               <FileText size={14} />
               <span>{proctorReportSummary.reportedRooms}/{proctorReportSummary.totalRooms} ruang sudah melapor</span>
             </div>
+            <button
+              type="button"
+              className={`ml-1 inline-flex items-center gap-2 rounded-lg px-4 py-2 text-sm font-medium transition-colors ${
+                isReportExpanded
+                  ? 'bg-blue-50 text-blue-700'
+                  : 'text-gray-500 hover:bg-gray-100 hover:text-gray-900'
+              }`}
+              onClick={(event) => {
+                event.stopPropagation();
+                setIsReportExpanded((current) => !current);
+              }}
+            >
+              {isReportExpanded ? (
+                <>
+                  <span>Tutup Detail</span>
+                  <ChevronDown size={18} />
+                </>
+              ) : (
+                <>
+                  <span>Lihat Detail</span>
+                  <ChevronRight size={18} />
+                </>
+              )}
+            </button>
           </div>
         </div>
 
-        {reportMode === 'archive' && (
+        {reportMode === 'archive' && isReportExpanded && (
           <div className="px-6 py-3 border-b border-gray-200 bg-amber-50/40">
             <div className="flex flex-wrap items-center gap-3">
               <div className="relative">
@@ -1301,6 +1333,7 @@ const ExamProctorManagementPage = () => {
                   type="date"
                   value={reportDateFrom}
                   onChange={(event) => setReportDateFrom(event.target.value)}
+                  onClick={(event) => event.stopPropagation()}
                   className="pl-9 pr-3 py-2 border border-gray-300 rounded-lg text-xs focus:ring-2 focus:ring-blue-500 focus:border-blue-500"
                 />
               </div>
@@ -1311,6 +1344,7 @@ const ExamProctorManagementPage = () => {
                   type="date"
                   value={reportDateTo}
                   onChange={(event) => setReportDateTo(event.target.value)}
+                  onClick={(event) => event.stopPropagation()}
                   className="pl-9 pr-3 py-2 border border-gray-300 rounded-lg text-xs focus:ring-2 focus:ring-blue-500 focus:border-blue-500"
                 />
               </div>
@@ -1321,6 +1355,8 @@ const ExamProctorManagementPage = () => {
           </div>
         )}
 
+        {isReportExpanded ? (
+          <>
         <div className="grid grid-cols-1 md:grid-cols-4 gap-3 px-6 py-4 bg-gray-50 border-b border-gray-200">
           <div className="rounded-lg border border-gray-200 bg-white px-3 py-2">
             <p className="text-[11px] uppercase tracking-wide text-gray-500">Total Ruang</p>
@@ -1455,6 +1491,12 @@ const ExamProctorManagementPage = () => {
                 ))}
               </tbody>
             </table>
+          </div>
+        )}
+          </>
+        ) : (
+          <div className="px-6 py-6 text-sm text-gray-500">
+            Klik <span className="font-medium text-gray-700">Lihat Detail</span> untuk membuka rekap berita acara pengawas dan dokumen ruang ujian.
           </div>
         )}
       </div>

@@ -21,6 +21,7 @@ import {
   type ExamPacket,
   type ExamProgram,
   type ExamProgramSession,
+  type QuestionReviewFeedback,
   type ExamScheduleMakeupOverview,
   type ExamScheduleMakeupStudentRow,
 } from '../../../services/exam.service';
@@ -133,6 +134,7 @@ type ReviewableQuestion = ExamStudentPreviewQuestion & {
     scoringGuideline?: string;
     distractorNotes?: string;
   };
+  reviewFeedback?: QuestionReviewFeedback;
 };
 
 const PROGRAM_TARGET_CANDIDATE = 'CALON_SISWA';
@@ -308,6 +310,36 @@ const normalizeReviewQuestions = (rawQuestions: unknown): ReviewableQuestion[] =
         scoringGuideline: String(questionCardSource.scoringGuideline || ''),
         distractorNotes: String(questionCardSource.distractorNotes || ''),
       },
+      reviewFeedback:
+        source.reviewFeedback && typeof source.reviewFeedback === 'object'
+          ? {
+              questionComment: String(source.reviewFeedback.questionComment || ''),
+              blueprintComment: String(source.reviewFeedback.blueprintComment || ''),
+              questionCardComment: String(source.reviewFeedback.questionCardComment || ''),
+              reviewedAt: String(source.reviewFeedback.reviewedAt || ''),
+              reviewer:
+                source.reviewFeedback.reviewer && typeof source.reviewFeedback.reviewer === 'object'
+                  ? {
+                      id: Number(source.reviewFeedback.reviewer.id || 0) || undefined,
+                      name: String(source.reviewFeedback.reviewer.name || ''),
+                    }
+                  : undefined,
+            }
+          : metadata.reviewFeedback && typeof metadata.reviewFeedback === 'object'
+            ? {
+                questionComment: String(metadata.reviewFeedback.questionComment || ''),
+                blueprintComment: String(metadata.reviewFeedback.blueprintComment || ''),
+                questionCardComment: String(metadata.reviewFeedback.questionCardComment || ''),
+                reviewedAt: String(metadata.reviewFeedback.reviewedAt || ''),
+                reviewer:
+                  metadata.reviewFeedback.reviewer && typeof metadata.reviewFeedback.reviewer === 'object'
+                    ? {
+                        id: Number(metadata.reviewFeedback.reviewer.id || 0) || undefined,
+                        name: String(metadata.reviewFeedback.reviewer.name || ''),
+                      }
+                    : undefined,
+              }
+            : undefined,
     };
   });
 };
@@ -335,6 +367,12 @@ const ExamScheduleManagementPage = () => {
   const [reviewPacket, setReviewPacket] = useState<(ExamPacket & { author?: { id?: number; name?: string } | null }) | null>(null);
   const [reviewLoading, setReviewLoading] = useState(false);
   const [reviewQuestionIndex, setReviewQuestionIndex] = useState(0);
+  const [reviewSubmitting, setReviewSubmitting] = useState(false);
+  const [reviewCommentDraft, setReviewCommentDraft] = useState({
+    questionComment: '',
+    blueprintComment: '',
+    questionCardComment: '',
+  });
   const [makeupForm, setMakeupForm] = useState({
     studentId: '',
     date: '',
@@ -1108,6 +1146,14 @@ const ExamScheduleManagementPage = () => {
     ),
   ).length;
 
+  useEffect(() => {
+    setReviewCommentDraft({
+      questionComment: String(activeReviewQuestion?.reviewFeedback?.questionComment || ''),
+      blueprintComment: String(activeReviewQuestion?.reviewFeedback?.blueprintComment || ''),
+      questionCardComment: String(activeReviewQuestion?.reviewFeedback?.questionCardComment || ''),
+    });
+  }, [activeReviewQuestion?.id, activeReviewQuestion?.reviewFeedback]);
+
   const openReviewModal = async (schedule: ExamSchedule) => {
     const packetId = Number(schedule.packet?.id || 0);
     if (!packetId) {
@@ -1135,7 +1181,57 @@ const ExamScheduleManagementPage = () => {
     setReviewSchedule(null);
     setReviewPacket(null);
     setReviewLoading(false);
+    setReviewSubmitting(false);
     setReviewQuestionIndex(0);
+    setReviewCommentDraft({
+      questionComment: '',
+      blueprintComment: '',
+      questionCardComment: '',
+    });
+  };
+
+  const saveReviewComment = async () => {
+    const packetId = Number(reviewPacket?.id || reviewSchedule?.packet?.id || 0);
+    const questionId = String(activeReviewQuestion?.id || '').trim();
+    if (!packetId || !questionId) {
+      toast.error('Butir soal belum tersedia untuk dikomentari.');
+      return;
+    }
+
+    setReviewSubmitting(true);
+    try {
+      const response = await examService.updatePacketReviewFeedback(packetId, {
+        questionId,
+        questionComment: reviewCommentDraft.questionComment,
+        blueprintComment: reviewCommentDraft.blueprintComment,
+        questionCardComment: reviewCommentDraft.questionCardComment,
+      });
+      const nextFeedback = response.data?.reviewFeedback || null;
+      setReviewPacket((current) => {
+        if (!current?.questions) return current;
+        return {
+          ...current,
+          questions: current.questions.map((question) =>
+            String(question.id || '') === questionId
+              ? {
+                  ...question,
+                  reviewFeedback: nextFeedback || undefined,
+                  metadata: {
+                    ...(question.metadata || {}),
+                    reviewFeedback: nextFeedback || undefined,
+                  },
+                }
+              : question,
+          ),
+        };
+      });
+      toast.success('Catatan review berhasil dikirim ke guru.');
+    } catch (error) {
+      console.error('Error saving review feedback:', error);
+      toast.error(getErrorMessage(error, 'Gagal mengirim catatan review.'));
+    } finally {
+      setReviewSubmitting(false);
+    }
   };
 
   return (
@@ -1603,6 +1699,94 @@ const ExamScheduleManagementPage = () => {
                           </div>
                         ))}
                       </div>
+                    </div>
+                  </div>
+
+                  <div className="rounded-3xl border border-amber-200 bg-amber-50/80 p-5">
+                    <div className="flex flex-col gap-2 sm:flex-row sm:items-start sm:justify-between">
+                      <div>
+                        <p className="text-xs font-semibold uppercase tracking-[0.24em] text-amber-700">Catatan Review Kurikulum</p>
+                        <h3 className="mt-1 text-sm font-semibold text-slate-900">
+                          Soal {reviewQuestionIndex + 1}
+                        </h3>
+                        <p className="mt-1 text-xs text-slate-600">
+                          Catatan akan dikirim ke guru penyusun sesuai paket terjadwal, lalu muncul juga saat guru membuka editor soal.
+                        </p>
+                      </div>
+                      {activeReviewQuestion?.reviewFeedback?.reviewedAt ? (
+                        <div className="text-xs text-slate-500">
+                          {activeReviewQuestion.reviewFeedback.reviewer?.name
+                            ? `Terakhir oleh ${activeReviewQuestion.reviewFeedback.reviewer.name}`
+                            : 'Catatan sudah tersimpan'}
+                          {' • '}
+                          {activeReviewQuestion.reviewFeedback.reviewedAt}
+                        </div>
+                      ) : null}
+                    </div>
+
+                    <div className="mt-4 grid gap-4 xl:grid-cols-3">
+                      <div>
+                        <label className="mb-2 block text-xs font-semibold uppercase tracking-wide text-amber-700">
+                          Catatan Soal
+                        </label>
+                        <textarea
+                          value={reviewCommentDraft.questionComment}
+                          onChange={(event) =>
+                            setReviewCommentDraft((current) => ({
+                              ...current,
+                              questionComment: event.target.value,
+                            }))
+                          }
+                          rows={5}
+                          className="w-full rounded-2xl border border-amber-200 bg-white px-4 py-3 text-sm text-slate-800 focus:border-amber-500 focus:outline-none"
+                          placeholder="Tulis komentar bila redaksi soal, stimulus, atau kunci jawaban perlu diperbaiki."
+                        />
+                      </div>
+                      <div>
+                        <label className="mb-2 block text-xs font-semibold uppercase tracking-wide text-amber-700">
+                          Catatan Kisi-kisi
+                        </label>
+                        <textarea
+                          value={reviewCommentDraft.blueprintComment}
+                          onChange={(event) =>
+                            setReviewCommentDraft((current) => ({
+                              ...current,
+                              blueprintComment: event.target.value,
+                            }))
+                          }
+                          rows={5}
+                          className="w-full rounded-2xl border border-amber-200 bg-white px-4 py-3 text-sm text-slate-800 focus:border-amber-500 focus:outline-none"
+                          placeholder="Tulis komentar bila pemetaan kisi-kisi belum sesuai."
+                        />
+                      </div>
+                      <div>
+                        <label className="mb-2 block text-xs font-semibold uppercase tracking-wide text-amber-700">
+                          Catatan Kartu Soal
+                        </label>
+                        <textarea
+                          value={reviewCommentDraft.questionCardComment}
+                          onChange={(event) =>
+                            setReviewCommentDraft((current) => ({
+                              ...current,
+                              questionCardComment: event.target.value,
+                            }))
+                          }
+                          rows={5}
+                          className="w-full rounded-2xl border border-amber-200 bg-white px-4 py-3 text-sm text-slate-800 focus:border-amber-500 focus:outline-none"
+                          placeholder="Tulis komentar bila kartu soal atau pembahasan belum sesuai."
+                        />
+                      </div>
+                    </div>
+
+                    <div className="mt-4 flex justify-end">
+                      <button
+                        type="button"
+                        onClick={() => void saveReviewComment()}
+                        disabled={reviewSubmitting}
+                        className="inline-flex items-center rounded-2xl bg-amber-600 px-4 py-2.5 text-sm font-semibold text-white hover:bg-amber-700 disabled:cursor-not-allowed disabled:bg-amber-300"
+                      >
+                        {reviewSubmitting ? 'Mengirim Catatan...' : 'Kirim Catatan ke Guru'}
+                      </button>
                     </div>
                   </div>
                 </div>

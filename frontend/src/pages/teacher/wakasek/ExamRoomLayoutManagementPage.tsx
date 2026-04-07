@@ -115,6 +115,12 @@ type LayoutDraft = {
   cells: DraftCell[];
 };
 
+type PlacementPlan = {
+  className: string;
+  startColumn: number;
+  columnSpan: number;
+};
+
 const MAX_ROWS = 20;
 const MAX_COLUMNS = 20;
 
@@ -230,6 +236,150 @@ function getStudentClassName(student?: LayoutStudent | null) {
   return value || 'Tanpa Rombel';
 }
 
+function buildPlacementGroupsFromStudents(
+  students: LayoutStudent[],
+  placementClassOrder: string[],
+) {
+  const classMap = new Map<string, LayoutStudent[]>();
+  students.forEach((student) => {
+    const className = getStudentClassName(student);
+    const bucket = classMap.get(className) || [];
+    bucket.push(student);
+    classMap.set(className, bucket);
+  });
+
+  const orderedLabels = placementClassOrder.filter((className) => classMap.has(className));
+  const remainingLabels = Array.from(classMap.keys())
+    .filter((className) => !orderedLabels.includes(className))
+    .sort(compareClassName);
+
+  return [...orderedLabels, ...remainingLabels].map((className) => ({
+    className,
+    students: classMap.get(className) || [],
+    count: (classMap.get(className) || []).length,
+  }));
+}
+
+function clampPlacementPlan(plan: PlacementPlan, totalColumns: number): PlacementPlan {
+  const startColumn = clampGridSize(plan.startColumn, 1, Math.max(1, totalColumns));
+  const maxSpan = Math.max(1, totalColumns - startColumn + 1);
+  return {
+    ...plan,
+    startColumn,
+    columnSpan: clampGridSize(plan.columnSpan, 1, maxSpan),
+  };
+}
+
+function getPlacementPlanColumnIndexes(plan: PlacementPlan, totalColumns: number) {
+  const normalizedPlan = clampPlacementPlan(plan, totalColumns);
+  return Array.from({ length: normalizedPlan.columnSpan }, (_, index) => normalizedPlan.startColumn - 1 + index).filter(
+    (columnIndex) => columnIndex >= 0 && columnIndex < totalColumns,
+  );
+}
+
+function formatPlacementSeatRange(plan: PlacementPlan, totalRows: number, totalColumns: number) {
+  const columnIndexes = getPlacementPlanColumnIndexes(plan, totalColumns);
+  if (columnIndexes.length === 0 || totalRows <= 0) return '-';
+  return columnIndexes
+    .map((columnIndex) => `${getSeatLabel(0, columnIndex)}-${getSeatLabel(totalRows - 1, columnIndex)}`)
+    .join(', ');
+}
+
+function validatePlacementPlans(plans: PlacementPlan[], totalColumns: number) {
+  const usage = new Map<number, string>();
+  for (const plan of plans) {
+    const columnIndexes = getPlacementPlanColumnIndexes(plan, totalColumns);
+    for (const columnIndex of columnIndexes) {
+      const existingClassName = usage.get(columnIndex);
+      if (existingClassName && existingClassName !== plan.className) {
+        return `Kolom ${columnIndex + 1} dipakai ganda oleh ${existingClassName} dan ${plan.className}.`;
+      }
+      usage.set(columnIndex, plan.className);
+    }
+  }
+  return null;
+}
+
+function applyPlacementPlansToDraft(params: {
+  draft: LayoutDraft;
+  placementGroups: Array<{ className: string; students: LayoutStudent[] }>;
+  placementPlans: PlacementPlan[];
+}) {
+  const { draft, placementGroups, placementPlans } = params;
+  const seatColumns = Array.from({ length: draft.columns }, (_, columnIndex) =>
+    draft.cells
+      .filter((cell) => cell.columnIndex === columnIndex && cell.cellType === 'SEAT')
+      .sort((a, b) => a.rowIndex - b.rowIndex),
+  );
+
+  const nextAssignments = new Map<string, number | null>();
+  const claimedColumns = new Set<number>();
+  const overflowGroups: Array<{ className: string; students: LayoutStudent[] }> = [];
+  const planMap = new Map(placementPlans.map((plan) => [plan.className, clampPlacementPlan(plan, draft.columns)]));
+
+  draft.cells.forEach((cell) => {
+    if (cell.cellType === 'SEAT') {
+      nextAssignments.set(buildPositionKey(cell.rowIndex, cell.columnIndex), null);
+    }
+  });
+
+  placementGroups.forEach((group) => {
+    const plan = planMap.get(group.className);
+    const queue = [...group.students];
+    const targetColumns = plan
+      ? getPlacementPlanColumnIndexes(plan, draft.columns).filter(
+          (columnIndex) => !claimedColumns.has(columnIndex) && seatColumns[columnIndex]?.length > 0,
+        )
+      : [];
+
+    targetColumns.forEach((columnIndex) => {
+      claimedColumns.add(columnIndex);
+      seatColumns[columnIndex].forEach((cell) => {
+        const student = queue.shift() || null;
+        nextAssignments.set(buildPositionKey(cell.rowIndex, cell.columnIndex), student?.id || null);
+      });
+    });
+
+    if (queue.length > 0) {
+      overflowGroups.push({
+        className: group.className,
+        students: queue,
+      });
+    }
+  });
+
+  const remainingColumns = seatColumns
+    .map((column, columnIndex) => ({ column, columnIndex }))
+    .filter(({ column, columnIndex }) => column.length > 0 && !claimedColumns.has(columnIndex));
+
+  let remainingColumnCursor = 0;
+  overflowGroups.forEach((group) => {
+    while (group.students.length > 0 && remainingColumnCursor < remainingColumns.length) {
+      const nextColumn = remainingColumns[remainingColumnCursor];
+      remainingColumnCursor += 1;
+      nextColumn.column.forEach((cell) => {
+        const student = group.students.shift() || null;
+        nextAssignments.set(buildPositionKey(cell.rowIndex, cell.columnIndex), student?.id || null);
+      });
+    }
+  });
+
+  return {
+    ...draft,
+    cells: draft.cells.map((cell) =>
+      cell.cellType === 'SEAT'
+        ? {
+            ...cell,
+            studentId: nextAssignments.get(buildPositionKey(cell.rowIndex, cell.columnIndex)) ?? null,
+          }
+        : {
+            ...cell,
+            studentId: null,
+          },
+    ),
+  };
+}
+
 export default function ExamRoomLayoutManagementPage() {
   const { data: activeAcademicYear, isLoading: loadingActiveAcademicYear } = useActiveAcademicYear();
   const selectedAcademicYear = activeAcademicYear?.id ? String(activeAcademicYear.id) : '';
@@ -247,6 +397,7 @@ export default function ExamRoomLayoutManagementPage() {
   const [isEditorModalOpen, setIsEditorModalOpen] = useState(false);
   const [isGenerateModalOpen, setIsGenerateModalOpen] = useState(false);
   const [placementClassOrder, setPlacementClassOrder] = useState<string[]>([]);
+  const [placementPlans, setPlacementPlans] = useState<PlacementPlan[]>([]);
   const [generateRows, setGenerateRows] = useState(4);
   const [generateColumns, setGenerateColumns] = useState(4);
   const [generateNotes, setGenerateNotes] = useState('');
@@ -297,24 +448,7 @@ export default function ExamRoomLayoutManagementPage() {
   }, [unassignedStudents]);
 
   const placementGroups = useMemo(() => {
-    const classMap = new Map<string, LayoutStudent[]>();
-    (detail?.students || []).forEach((student) => {
-      const className = getStudentClassName(student);
-      const bucket = classMap.get(className) || [];
-      bucket.push(student);
-      classMap.set(className, bucket);
-    });
-
-    const orderedLabels = placementClassOrder.filter((className) => classMap.has(className));
-    const remainingLabels = Array.from(classMap.keys())
-      .filter((className) => !orderedLabels.includes(className))
-      .sort(compareClassName);
-
-    return [...orderedLabels, ...remainingLabels].map((className) => ({
-      className,
-      students: classMap.get(className) || [],
-      count: (classMap.get(className) || []).length,
-    }));
+    return buildPlacementGroupsFromStudents(detail?.students || [], placementClassOrder);
   }, [detail?.students, placementClassOrder]);
 
   const filteredSittings = useMemo(() => {
@@ -417,11 +551,13 @@ export default function ExamRoomLayoutManagementPage() {
       setGenerateRows(nextDetail.layout?.rows || nextDetail.meta.suggestedDimensions.rows);
       setGenerateColumns(nextDetail.layout?.columns || nextDetail.meta.suggestedDimensions.columns);
       setGenerateNotes(String(nextDetail.layout?.notes || '').trim());
+      return nextDetail;
     } catch (error) {
       console.error(error);
       toast.error(getErrorMessage(error, 'Gagal memuat detail denah ruang.'));
       setDetail(null);
       setDraft(null);
+      return null;
     } finally {
       setLoadingDetail(false);
     }
@@ -461,15 +597,70 @@ export default function ExamRoomLayoutManagementPage() {
     });
   }, [detail?.students]);
 
+  useEffect(() => {
+    const totalColumns = Math.max(
+      1,
+      Number(draft?.columns || generateColumns || detail?.meta.suggestedDimensions.columns || 1),
+    );
+    const nextLabels = placementGroups.map((group) => group.className);
+    setPlacementPlans((current) => {
+      const nextPlans = nextLabels.map((className, index) => {
+        const existingPlan = current.find((item) => item.className === className);
+        return clampPlacementPlan(
+          existingPlan || {
+            className,
+            startColumn: Math.min(index + 1, totalColumns),
+            columnSpan: 1,
+          },
+          totalColumns,
+        );
+      });
+      return nextPlans;
+    });
+  }, [detail?.meta.suggestedDimensions.columns, draft?.columns, generateColumns, placementGroups]);
+
   const handleGenerate = useCallback(async () => {
     if (!selectedSittingId) return;
+    const plannedRows = clampGridSize(generateRows, detail?.meta.suggestedDimensions.rows || 1, MAX_ROWS);
+    const plannedColumns = clampGridSize(generateColumns, detail?.meta.suggestedDimensions.columns || 1, MAX_COLUMNS);
+    const placementError = validatePlacementPlans(placementPlans, plannedColumns);
+    if (placementError) {
+      toast.error(placementError);
+      return;
+    }
     setGenerating(true);
     try {
       await api.post(`/exam-sittings/${selectedSittingId}/layout/generate`, {
-        rows: clampGridSize(generateRows, detail?.meta.suggestedDimensions.rows || 1, MAX_ROWS),
-        columns: clampGridSize(generateColumns, detail?.meta.suggestedDimensions.columns || 1, MAX_COLUMNS),
+        rows: plannedRows,
+        columns: plannedColumns,
         notes: generateNotes.trim() || null,
       });
+      const nextDetail = await fetchLayoutDetail(selectedSittingId);
+      if (nextDetail?.layout) {
+        const generatedDraft = createDraftFromLayout(nextDetail);
+        const generatedPlacementGroups = buildPlacementGroupsFromStudents(nextDetail.students || [], placementClassOrder);
+        const plannedDraft = applyPlacementPlansToDraft({
+          draft: generatedDraft,
+          placementGroups: generatedPlacementGroups,
+          placementPlans,
+        });
+        await api.put(`/exam-sittings/${selectedSittingId}/layout`, {
+          rows: plannedDraft.rows,
+          columns: plannedDraft.columns,
+          notes: plannedDraft.notes.trim() || null,
+          cells: plannedDraft.cells.map((cell) => ({
+            rowIndex: cell.rowIndex,
+            columnIndex: cell.columnIndex,
+            cellType: cell.cellType,
+            seatLabel:
+              cell.cellType === 'SEAT'
+                ? cell.seatLabel.trim() || getSeatLabel(cell.rowIndex, cell.columnIndex)
+                : null,
+            studentId: cell.cellType === 'SEAT' ? cell.studentId : null,
+            notes: cell.notes.trim() || null,
+          })),
+        });
+      }
       toast.success('Denah ruang berhasil digenerate.');
       setIsGenerateModalOpen(false);
       await fetchLayoutDetail(selectedSittingId);
@@ -488,6 +679,8 @@ export default function ExamRoomLayoutManagementPage() {
     generateColumns,
     generateNotes,
     generateRows,
+    placementClassOrder,
+    placementPlans,
     selectedSittingId,
   ]);
 
@@ -535,85 +728,26 @@ export default function ExamRoomLayoutManagementPage() {
     setDraft(null);
   }, []);
 
-  const movePlacementClass = useCallback((index: number, direction: -1 | 1) => {
-    setPlacementClassOrder((current) => {
-      const nextIndex = index + direction;
-      if (index < 0 || nextIndex < 0 || index >= current.length || nextIndex >= current.length) {
-        return current;
-      }
-      const next = [...current];
-      [next[index], next[nextIndex]] = [next[nextIndex], next[index]];
-      return next;
-    });
-  }, []);
-
   const applyPlacementByClassOrder = useCallback(() => {
     if (!draft || placementGroups.length === 0) return;
-
-    const seatColumns = Array.from({ length: draft.columns }, (_, columnIndex) =>
-      draft.cells
-        .filter((cell) => cell.columnIndex === columnIndex && cell.cellType === 'SEAT')
-        .sort((a, b) => a.rowIndex - b.rowIndex),
-    ).filter((column) => column.length > 0);
-
-    const groupOrder = placementGroups.map((group) => group.className);
-    const remainingByGroup = new Map<string, LayoutStudent[]>(
-      placementGroups.map((group) => [group.className, [...group.students]]),
-    );
-    const nextAssignments = new Map<string, number | null>();
-
-    draft.cells.forEach((cell) => {
-      if (cell.cellType === 'SEAT') {
-        nextAssignments.set(buildPositionKey(cell.rowIndex, cell.columnIndex), null);
-      }
-    });
-
-    let groupCursor = 0;
-
-    seatColumns.forEach((columnCells) => {
-      if (groupOrder.length === 0) return;
-      let activeGroupName: string | null = null;
-
-      for (let attempt = 0; attempt < groupOrder.length; attempt += 1) {
-        const candidateIndex = (groupCursor + attempt) % groupOrder.length;
-        const candidateName = groupOrder[candidateIndex];
-        if ((remainingByGroup.get(candidateName) || []).length > 0) {
-          activeGroupName = candidateName;
-          groupCursor = (candidateIndex + 1) % groupOrder.length;
-          break;
-        }
-      }
-
-      if (!activeGroupName) return;
-      const queue = remainingByGroup.get(activeGroupName) || [];
-
-      columnCells.forEach((cell) => {
-        const student = queue.shift() || null;
-        nextAssignments.set(buildPositionKey(cell.rowIndex, cell.columnIndex), student?.id || null);
-      });
-    });
+    const placementError = validatePlacementPlans(placementPlans, draft.columns);
+    if (placementError) {
+      toast.error(placementError);
+      return;
+    }
 
     setDraft((current) =>
       current
-        ? {
-            ...current,
-            cells: current.cells.map((cell) =>
-              cell.cellType === 'SEAT'
-                ? {
-                    ...cell,
-                    studentId: nextAssignments.get(buildPositionKey(cell.rowIndex, cell.columnIndex)) ?? null,
-                  }
-                : {
-                    ...cell,
-                    studentId: null,
-                  },
-            ),
-          }
+        ? applyPlacementPlansToDraft({
+            draft: current,
+            placementGroups,
+            placementPlans,
+          })
         : current,
     );
 
     toast.success('Penempatan siswa per rombel berhasil diterapkan.');
-  }, [draft, placementGroups]);
+  }, [draft, placementGroups, placementPlans]);
 
   if (loadingActiveAcademicYear) {
     return (
@@ -636,26 +770,31 @@ export default function ExamRoomLayoutManagementPage() {
 
         <div className="rounded-xl border border-gray-100 bg-white p-4 shadow-sm">
           <div>
-            <div className="max-w-xl">
-              <label className="mb-1 block text-xs font-semibold uppercase tracking-wide text-gray-500">
-                Program
+            <div className="max-w-5xl">
+              <label className="mb-2 block text-xs font-semibold uppercase tracking-wide text-gray-500">
+                Program Ujian
               </label>
               {visiblePrograms.length === 0 ? (
                 <div className="rounded-lg border border-dashed border-gray-300 px-3 py-2 text-sm text-gray-500">
                   Belum ada program ujian terjadwal.
                 </div>
               ) : (
-                <select
-                  value={activeProgramCode}
-                  onChange={(event) => setActiveProgramCode(event.target.value)}
-                  className="w-full rounded-lg border border-gray-300 bg-white px-3 py-2 text-sm focus:border-blue-500 focus:outline-none"
-                >
+                <div className="flex overflow-x-auto gap-4 border-b border-gray-200 pb-1">
                   {visiblePrograms.map((program) => (
-                    <option key={program.code} value={program.code}>
+                    <button
+                      key={program.code}
+                      type="button"
+                      onClick={() => setActiveProgramCode(program.code)}
+                      className={`whitespace-nowrap border-b-2 px-4 py-2 text-sm font-medium transition-colors ${
+                        activeProgramCode === program.code
+                          ? 'border-blue-600 text-blue-700'
+                          : 'border-transparent text-gray-500 hover:border-gray-300 hover:text-gray-900'
+                      }`}
+                    >
                       {program.label}
-                    </option>
+                    </button>
                   ))}
-                </select>
+                </div>
               )}
             </div>
           </div>
@@ -964,7 +1103,7 @@ export default function ExamRoomLayoutManagementPage() {
                       <div>
                         <h3 className="text-lg font-semibold text-gray-900">Pengaturan Penempatan Rombel</h3>
                         <p className="mt-1 text-sm text-gray-500">
-                          Pola penempatan mengikuti kolom vertikal: kolom pertama untuk rombel pertama, kolom kedua untuk rombel kedua, lalu berulang selang sampai semua siswa terpasang.
+                          Tentukan blok kolom untuk tiap rombel secara fleksibel. Contoh: A1-F1 untuk rombel pertama, A2-F2 untuk rombel kedua, lalu lanjut ke kolom berikutnya sesuai kebutuhan ruang.
                         </p>
                       </div>
                       <button
@@ -983,37 +1122,85 @@ export default function ExamRoomLayoutManagementPage() {
                             Belum ada rombel siswa yang bisa dipetakan ke denah ini.
                           </div>
                         ) : (
-                          placementGroups.map((group, index) => (
+                          placementGroups.map((group, index) => {
+                            const plan =
+                              placementPlans.find((item) => item.className === group.className) || {
+                                className: group.className,
+                                startColumn: Math.min(index + 1, Math.max(1, draft.columns)),
+                                columnSpan: 1,
+                              };
+                            return (
                             <div
                               key={group.className}
-                              className="flex items-center justify-between rounded-xl border border-gray-200 bg-gray-50 px-4 py-3"
+                              className="rounded-xl border border-gray-200 bg-gray-50 px-4 py-4"
                             >
-                              <div>
-                                <div className="text-sm font-semibold text-gray-900">{group.className}</div>
-                                <div className="mt-1 text-xs text-gray-500">
-                                  {group.count} siswa • giliran kolom ke-{index + 1}
+                              <div className="flex flex-col gap-3 lg:flex-row lg:items-center lg:justify-between">
+                                <div>
+                                  <div className="text-sm font-semibold text-gray-900">{group.className}</div>
+                                  <div className="mt-1 text-xs text-gray-500">
+                                    {group.count} siswa • rentang kursi {formatPlacementSeatRange(plan, draft.rows, draft.columns)}
+                                  </div>
+                                </div>
+                                <div className="grid gap-3 sm:grid-cols-2">
+                                  <div>
+                                    <label className="mb-1 block text-[11px] font-semibold uppercase tracking-wide text-gray-500">
+                                      Mulai Kolom
+                                    </label>
+                                    <input
+                                      type="number"
+                                      min={1}
+                                      max={draft.columns}
+                                      value={plan.startColumn}
+                                      onChange={(event) =>
+                                        setPlacementPlans((current) =>
+                                          current.map((item) =>
+                                            item.className === group.className
+                                              ? clampPlacementPlan(
+                                                  {
+                                                    ...item,
+                                                    startColumn: Number(event.target.value),
+                                                  },
+                                                  draft.columns,
+                                                )
+                                              : item,
+                                          ),
+                                        )
+                                      }
+                                      className="w-full rounded-lg border border-gray-300 bg-white px-3 py-2 text-sm focus:border-blue-500 focus:outline-none"
+                                    />
+                                  </div>
+                                  <div>
+                                    <label className="mb-1 block text-[11px] font-semibold uppercase tracking-wide text-gray-500">
+                                      Jumlah Kolom
+                                    </label>
+                                    <input
+                                      type="number"
+                                      min={1}
+                                      max={draft.columns}
+                                      value={plan.columnSpan}
+                                      onChange={(event) =>
+                                        setPlacementPlans((current) =>
+                                          current.map((item) =>
+                                            item.className === group.className
+                                              ? clampPlacementPlan(
+                                                  {
+                                                    ...item,
+                                                    columnSpan: Number(event.target.value),
+                                                  },
+                                                  draft.columns,
+                                                )
+                                              : item,
+                                          ),
+                                        )
+                                      }
+                                      className="w-full rounded-lg border border-gray-300 bg-white px-3 py-2 text-sm focus:border-blue-500 focus:outline-none"
+                                    />
+                                  </div>
                                 </div>
                               </div>
-                              <div className="flex gap-2">
-                                <button
-                                  type="button"
-                                  onClick={() => movePlacementClass(index, -1)}
-                                  disabled={index === 0}
-                                  className="rounded-lg border border-gray-300 bg-white px-3 py-2 text-xs font-semibold text-gray-600 hover:bg-gray-50 disabled:cursor-not-allowed disabled:opacity-50"
-                                >
-                                  Naik
-                                </button>
-                                <button
-                                  type="button"
-                                  onClick={() => movePlacementClass(index, 1)}
-                                  disabled={index === placementGroups.length - 1}
-                                  className="rounded-lg border border-gray-300 bg-white px-3 py-2 text-xs font-semibold text-gray-600 hover:bg-gray-50 disabled:cursor-not-allowed disabled:opacity-50"
-                                >
-                                  Turun
-                                </button>
-                              </div>
                             </div>
-                          ))
+                          );
+                          })
                         )}
                       </div>
 
@@ -1021,7 +1208,7 @@ export default function ExamRoomLayoutManagementPage() {
                         <div className="rounded-xl border border-blue-100 bg-blue-50 px-4 py-3 text-sm text-blue-800">
                           <div className="font-semibold">Pola yang diterapkan</div>
                           <div className="mt-1 text-xs">
-                            Contoh: A1-E1 untuk rombel pertama, A2-E2 untuk rombel kedua, lalu kolom berikutnya kembali mengikuti urutan rombel yang tersisa.
+                            Sistem akan menempatkan siswa per rombel ke blok kolom yang kamu tentukan. Jika masih ada sisa siswa, sistem baru akan melanjutkan ke kolom kosong berikutnya.
                           </div>
                         </div>
 
@@ -1133,6 +1320,103 @@ export default function ExamRoomLayoutManagementPage() {
                     Rekomendasi saat ini: {detail?.meta.suggestedDimensions.rows || 0} x{' '}
                     {detail?.meta.suggestedDimensions.columns || 0}
                   </p>
+                </div>
+              </div>
+
+              <div className="rounded-xl border border-amber-100 bg-amber-50 px-4 py-4">
+                <div className="flex flex-col gap-1">
+                  <div className="text-sm font-semibold text-amber-800">Blok Penempatan Rombel</div>
+                  <div className="text-xs text-amber-700">
+                    Atur dari awal rombel mana yang menempati kolom tertentu. Contoh 6 baris berarti kolom 1 akan terbaca A1-F1.
+                  </div>
+                </div>
+
+                <div className="mt-4 space-y-3">
+                  {placementGroups.length === 0 ? (
+                    <div className="rounded-lg border border-dashed border-amber-200 bg-white px-4 py-4 text-sm text-amber-800">
+                      Belum ada rombel siswa yang bisa dipetakan pada ruang ini.
+                    </div>
+                  ) : (
+                    placementGroups.map((group, index) => {
+                      const plan =
+                        placementPlans.find((item) => item.className === group.className) || {
+                          className: group.className,
+                          startColumn: Math.min(index + 1, Math.max(1, generateColumns)),
+                          columnSpan: 1,
+                        };
+                      return (
+                        <div
+                          key={`generate-${group.className}`}
+                          className="rounded-xl border border-amber-200 bg-white px-4 py-3"
+                        >
+                          <div className="flex flex-col gap-3 lg:flex-row lg:items-center lg:justify-between">
+                            <div>
+                              <div className="text-sm font-semibold text-slate-900">{group.className}</div>
+                              <div className="mt-1 text-xs text-slate-500">
+                                {group.count} siswa • rentang kursi {formatPlacementSeatRange(plan, generateRows, generateColumns)}
+                              </div>
+                            </div>
+                            <div className="grid gap-3 sm:grid-cols-2">
+                              <div>
+                                <label className="mb-1 block text-[11px] font-semibold uppercase tracking-wide text-gray-500">
+                                  Mulai Kolom
+                                </label>
+                                <input
+                                  type="number"
+                                  min={1}
+                                  max={generateColumns}
+                                  value={plan.startColumn}
+                                  onChange={(event) =>
+                                    setPlacementPlans((current) =>
+                                      current.map((item) =>
+                                        item.className === group.className
+                                          ? clampPlacementPlan(
+                                              {
+                                                ...item,
+                                                startColumn: Number(event.target.value),
+                                              },
+                                              generateColumns,
+                                            )
+                                          : item,
+                                      ),
+                                    )
+                                  }
+                                  className="w-full rounded-lg border border-gray-300 px-3 py-2 text-sm focus:border-blue-500 focus:outline-none"
+                                />
+                              </div>
+                              <div>
+                                <label className="mb-1 block text-[11px] font-semibold uppercase tracking-wide text-gray-500">
+                                  Jumlah Kolom
+                                </label>
+                                <input
+                                  type="number"
+                                  min={1}
+                                  max={generateColumns}
+                                  value={plan.columnSpan}
+                                  onChange={(event) =>
+                                    setPlacementPlans((current) =>
+                                      current.map((item) =>
+                                        item.className === group.className
+                                          ? clampPlacementPlan(
+                                              {
+                                                ...item,
+                                                columnSpan: Number(event.target.value),
+                                              },
+                                              generateColumns,
+                                            )
+                                          : item,
+                                      ),
+                                    )
+                                  }
+                                  className="w-full rounded-lg border border-gray-300 px-3 py-2 text-sm focus:border-blue-500 focus:outline-none"
+                                />
+                              </div>
+                            </div>
+                          </div>
+                        </div>
+                      );
+                    })
+                  )}
                 </div>
               </div>
 

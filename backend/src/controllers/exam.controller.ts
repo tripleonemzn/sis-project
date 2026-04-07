@@ -23,6 +23,7 @@ import {
     listHistoricalStudentsForAcademicYear,
 } from '../utils/studentAcademicHistory';
 import { createInAppNotification } from '../services/mobilePushNotification.service';
+import { assertCurriculumExamManagerAccess } from '../utils/examManagementAccess';
 
 function normalizeAliasCode(raw: unknown): string {
     return String(raw || '')
@@ -2224,6 +2225,7 @@ function sanitizeQuestionForStudent(rawQuestion: unknown): Record<string, unknow
     // Remove heavy authoring-only fields
     delete cleaned.blueprint;
     delete cleaned.questionCard;
+    delete cleaned.reviewFeedback;
     delete cleaned.question_card;
     delete cleaned.kisiKisi;
     delete cleaned.kartuSoal;
@@ -2255,6 +2257,11 @@ function sanitizeQuestionForStudent(rawQuestion: unknown): Record<string, unknow
             delete safeOption.rationale;
             return safeOption;
         });
+    }
+
+    const cleanedMetadata = asRecord(cleaned.metadata);
+    if (cleanedMetadata?.reviewFeedback) {
+        delete cleanedMetadata.reviewFeedback;
     }
 
     return cleaned;
@@ -3606,6 +3613,17 @@ type ExamQuestionItemAnalysis = {
     optionDistribution?: Record<string, number>;
 };
 
+type ExamQuestionReviewFeedback = {
+    questionComment?: string;
+    blueprintComment?: string;
+    questionCardComment?: string;
+    reviewedAt?: string;
+    reviewer?: {
+        id?: number;
+        name?: string;
+    };
+};
+
 type NormalizedExamQuestion = {
     id: string;
     type: string;
@@ -3620,6 +3638,7 @@ type NormalizedExamQuestion = {
     blueprint?: ExamQuestionBlueprint;
     questionCard?: ExamQuestionCard;
     itemAnalysis?: ExamQuestionItemAnalysis;
+    reviewFeedback?: ExamQuestionReviewFeedback;
 };
 
 function asRecord(value: unknown): Record<string, unknown> | null {
@@ -3667,6 +3686,32 @@ function normalizeQuestionCard(raw: unknown): ExamQuestionCard | undefined {
     };
 
     return Object.values(normalized).some(Boolean) ? normalized : undefined;
+}
+
+function normalizeReviewFeedback(raw: unknown): ExamQuestionReviewFeedback | undefined {
+    const source = asRecord(raw);
+    if (!source) return undefined;
+
+    const reviewerSource = asRecord(source.reviewer);
+    const normalized: ExamQuestionReviewFeedback = {
+        questionComment: normalizeOptionalString(source.questionComment, 2000),
+        blueprintComment: normalizeOptionalString(source.blueprintComment, 2000),
+        questionCardComment: normalizeOptionalString(source.questionCardComment, 2000),
+        reviewedAt: normalizeOptionalString(source.reviewedAt, 100),
+        reviewer:
+            reviewerSource || source.reviewerId || source.reviewerName
+                ? {
+                      id: normalizeOptionalNumber(reviewerSource?.id ?? source.reviewerId),
+                      name: normalizeOptionalString(reviewerSource?.name ?? source.reviewerName, 200),
+                  }
+                : undefined,
+    };
+
+    if (!normalized.questionComment && !normalized.blueprintComment && !normalized.questionCardComment) {
+        return undefined;
+    }
+
+    return normalized;
 }
 
 function summarizePacketSupport(questionPayload: unknown): {
@@ -3749,6 +3794,7 @@ function normalizeExamQuestionPayload(question: unknown, index: number): Normali
         blueprint: normalizeBlueprint(source.blueprint ?? metadata?.blueprint),
         questionCard: normalizeQuestionCard(source.questionCard ?? metadata?.questionCard),
         itemAnalysis: normalizeItemAnalysis(source.itemAnalysis ?? metadata?.itemAnalysis),
+        reviewFeedback: normalizeReviewFeedback(source.reviewFeedback ?? metadata?.reviewFeedback),
     };
 
     return normalized;
@@ -5458,6 +5504,112 @@ export const getPacketById = asyncHandler(async (req: Request, res: Response) =>
             subjectId: effectiveSubject?.id ?? packet.subjectId,
             subject: effectiveSubject,
         }),
+    );
+});
+
+export const updatePacketReviewFeedback = asyncHandler(async (req: Request, res: Response) => {
+    const user = (req as any).user as { id?: number } | undefined;
+    if (!user?.id) {
+        throw new ApiError(401, 'Tidak memiliki otorisasi.');
+    }
+
+    const reviewer = await assertCurriculumExamManagerAccess(Number(user.id), { allowAdmin: true });
+    const packetId = Number(req.params.id);
+    if (!Number.isFinite(packetId) || packetId <= 0) {
+        throw new ApiError(400, 'ID paket ujian tidak valid.');
+    }
+
+    const questionId = String(req.body?.questionId || '').trim();
+    if (!questionId) {
+        throw new ApiError(400, 'questionId wajib diisi.');
+    }
+
+    const nextFeedback = normalizeReviewFeedback({
+        questionComment: req.body?.questionComment,
+        blueprintComment: req.body?.blueprintComment,
+        questionCardComment: req.body?.questionCardComment,
+        reviewedAt: new Date().toISOString(),
+        reviewer: {
+            id: Number(reviewer.id),
+            name: reviewer.name,
+        },
+    });
+
+    const packet = await prisma.examPacket.findUnique({
+        where: { id: packetId },
+        select: {
+            id: true,
+            title: true,
+            authorId: true,
+            programCode: true,
+            subject: {
+                select: {
+                    name: true,
+                },
+            },
+            questions: true,
+        },
+    });
+
+    if (!packet) {
+        throw new ApiError(404, 'Paket ujian tidak ditemukan.');
+    }
+
+    const normalizedQuestions = normalizeQuestionsPayload(packet.questions) || [];
+    const questionIndex = normalizedQuestions.findIndex((question) => String(question.id || '').trim() === questionId);
+    if (questionIndex < 0) {
+        throw new ApiError(404, 'Butir soal tidak ditemukan pada paket ini.');
+    }
+
+    const updatedQuestions = normalizedQuestions.map((question, index) => {
+        if (index !== questionIndex) return question;
+        const nextQuestion = { ...question } as NormalizedExamQuestion & { reviewFeedback?: ExamQuestionReviewFeedback };
+        if (nextFeedback) {
+            nextQuestion.reviewFeedback = nextFeedback;
+        } else {
+            delete nextQuestion.reviewFeedback;
+        }
+        return nextQuestion;
+    });
+
+    await prisma.examPacket.update({
+        where: { id: packetId },
+        data: {
+            questions: updatedQuestions as Prisma.InputJsonValue,
+        },
+    });
+
+    if (nextFeedback && Number(packet.authorId) > 0 && Number(packet.authorId) !== Number(reviewer.id)) {
+        const questionNumber = questionIndex + 1;
+        await createInAppNotification({
+            data: {
+                userId: Number(packet.authorId),
+                title: 'Review Soal dari Kurikulum',
+                message: `Kurikulum memberi catatan untuk soal ${questionNumber} pada paket ${packet.title}. Silakan perbarui untuk menyesuaikan penjadwalan.`,
+                type: 'EXAM_REVIEW',
+                data: {
+                    packetId,
+                    questionId,
+                    questionNumber,
+                    programCode: packet.programCode || null,
+                    subjectName: packet.subject?.name || null,
+                    route: `/teacher/exams/${packetId}/edit`,
+                },
+            },
+        });
+    }
+
+    res.status(200).json(
+        new ApiResponse(
+            200,
+            {
+                packetId,
+                questionId,
+                questionNumber: questionIndex + 1,
+                reviewFeedback: nextFeedback || null,
+            },
+            'Catatan review soal berhasil disimpan.',
+        ),
     );
 });
 

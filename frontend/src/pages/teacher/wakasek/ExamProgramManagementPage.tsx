@@ -1444,7 +1444,6 @@ export default function ExamProgramManagementPage() {
               <Plus className="w-4 h-4" />
               Tambah Komponen
             </button>
-            <span className="text-xs text-emerald-700">Autosave aktif</span>
           </div>
         </div>
         <div className="rounded-lg border border-blue-100 bg-blue-50 px-3 py-2 text-[11px] text-blue-800 leading-relaxed">

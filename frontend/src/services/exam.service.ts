@@ -93,6 +93,17 @@ export interface QuestionCard {
     distractorNotes?: string;
 }
 
+export interface QuestionReviewFeedback {
+    questionComment?: string;
+    blueprintComment?: string;
+    questionCardComment?: string;
+    reviewedAt?: string;
+    reviewer?: {
+        id?: number;
+        name?: string;
+    };
+}
+
 export interface QuestionItemAnalysis {
     difficultyIndex?: number;
     discriminationIndex?: number;
@@ -114,10 +125,12 @@ export interface Question {
     score: number;
     blueprint?: QuestionBlueprint;
     questionCard?: QuestionCard;
+    reviewFeedback?: QuestionReviewFeedback;
     itemAnalysis?: QuestionItemAnalysis;
     metadata?: {
         blueprint?: QuestionBlueprint;
         questionCard?: QuestionCard;
+        reviewFeedback?: QuestionReviewFeedback;
         itemAnalysis?: QuestionItemAnalysis;
     };
     bank?: {
@@ -746,6 +759,28 @@ export const examService = {
     updatePacket: async (id: number, data: Record<string, unknown>) => {
         const response = await api.put(`/exams/packets/${id}`, data);
         return response.data;
+    },
+    updatePacketReviewFeedback: async (
+        id: number,
+        data: {
+            questionId: string;
+            questionComment?: string;
+            blueprintComment?: string;
+            questionCardComment?: string;
+        },
+    ) => {
+        const response = await api.patch(`/exams/packets/${id}/review-feedback`, data);
+        return response.data as {
+            statusCode: number;
+            success: boolean;
+            message: string;
+            data: {
+                packetId: number;
+                questionId: string;
+                questionNumber: number;
+                reviewFeedback: QuestionReviewFeedback | null;
+            };
+        };
     },
     deletePacket: async (id: number) => {
         const response = await api.delete(`/exams/packets/${id}`);
