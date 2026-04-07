@@ -394,6 +394,11 @@ export default function ProctorReportPrint() {
           margin: 1cm;
         }
         @media print {
+          .proctor-report-root {
+            min-height: auto !important;
+            padding: 0 !important;
+            background: #fff !important;
+          }
           body {
             background: #fff !important;
           }
@@ -404,9 +409,13 @@ export default function ProctorReportPrint() {
             box-shadow: none !important;
             border: none !important;
             margin: 0 !important;
-            max-width: none !important;
+            width: auto !important;
+            max-width: 190mm !important;
+            min-height: calc(297mm - 2cm) !important;
             border-radius: 0 !important;
             padding: 0 !important;
+            box-sizing: border-box !important;
+            page-break-after: avoid !important;
           }
         }
       `}</style>
