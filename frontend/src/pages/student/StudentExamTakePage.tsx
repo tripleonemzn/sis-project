@@ -1566,13 +1566,11 @@ export default function StudentExamTakePage() {
             </div>
 
             {/* Right: Timer + Submit */}
-            <div className="flex items-center gap-2 lg:gap-3 ml-auto pr-2 sm:pr-10 lg:pr-14 flex-shrink-0">
+            <div className="ml-auto flex items-center gap-2 lg:gap-3 pr-2 sm:pr-10 lg:pr-14 flex-shrink-0">
               <div className={`flex items-center gap-2 px-3 md:px-4 py-2 bg-gray-100 rounded-lg ${getTimeColor()}`}>
                 <Clock className="w-4 h-4 md:w-5 md:h-5" />
                 <span className="text-base md:text-xl font-bold font-mono">{formatTime(timeRemaining)}</span>
               </div>
-            </div>
-            <div className="flex items-center gap-2 lg:gap-3 flex-shrink-0">
               <button
                 onClick={handleSubmitClick}
                 className="px-4 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700 font-bold flex items-center gap-2"
@@ -1633,8 +1631,8 @@ export default function StudentExamTakePage() {
 
               {/* Question Text */}
               <div 
-                className="prose max-w-none text-lg text-gray-800 mb-8 notranslate [&_*]:max-w-full [&_*]:whitespace-normal [&_*]:break-words [&_ol]:list-decimal [&_ol]:pl-6 [&_ol]:ml-2 [&_ul]:list-disc [&_ul]:pl-6 [&_ul]:ml-2 [&_li]:my-1"
-                style={{ overflowWrap: 'anywhere', wordBreak: 'break-word' }}
+                className="prose max-w-none text-lg text-gray-800 mb-8 notranslate [&_*]:max-w-full [&_*]:whitespace-normal [&_*]:break-normal [&_ol]:list-decimal [&_ol]:pl-6 [&_ol]:ml-2 [&_ul]:list-disc [&_ul]:pl-6 [&_ul]:ml-2 [&_li]:my-1"
+                style={{ overflowWrap: 'break-word', wordBreak: 'normal' }}
                 translate="no"
                 dangerouslySetInnerHTML={{ __html: currentQuestionHtml }}
               />
@@ -1681,8 +1679,8 @@ export default function StudentExamTakePage() {
                       <div className="flex-1 min-w-0">
                         {/* Support both option_text (legacy) and content (new) */}
 	                        <div
-	                          className="text-gray-700 break-words notranslate [&_ol]:list-decimal [&_ol]:pl-6 [&_ol]:ml-2 [&_ul]:list-disc [&_ul]:pl-6 [&_ul]:ml-2 [&_li]:my-1"
-	                          style={{ overflowWrap: 'anywhere', wordBreak: 'break-word' }}
+		                          className="text-gray-700 break-normal notranslate [&_ol]:list-decimal [&_ol]:pl-6 [&_ol]:ml-2 [&_ul]:list-disc [&_ul]:pl-6 [&_ul]:ml-2 [&_li]:my-1"
+		                          style={{ overflowWrap: 'break-word', wordBreak: 'normal' }}
                             translate="no"
 	                          dangerouslySetInnerHTML={{ __html: optionHtmlById.get(optionId) || '' }}
 	                        ></div>

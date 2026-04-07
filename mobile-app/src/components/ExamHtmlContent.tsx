@@ -312,8 +312,8 @@ export function ExamHtmlContent({
             }
             p, div, li, span {
               max-width: 100%;
-              word-break: break-word;
-              overflow-wrap: anywhere;
+              word-break: normal;
+              overflow-wrap: break-word;
             }
             img.question-media,
             .exam-content img {
