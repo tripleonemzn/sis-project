@@ -1565,36 +1565,14 @@ export default function StudentExamTakePage() {
               )}
             </div>
 
-            {/* Right: Timer + Refresh + Network */}
-            <div className="hidden md:flex items-center gap-2 lg:gap-3 ml-auto pr-10 lg:pr-14 flex-shrink-0">
-              <button
-                type="button"
-                onClick={() => window.location.reload()}
-                className="inline-flex items-center justify-center w-10 h-10 rounded-lg border border-gray-200 bg-white text-gray-600 hover:bg-gray-50"
-                title="Refresh halaman ujian"
-              >
-                <RefreshCw className="w-4 h-4" />
-              </button>
-              <div className={`hidden md:flex items-center gap-2 px-3 py-2 rounded-lg border ${networkBadgeStyle}`}>
-                {networkStatus.quality === 'offline' ? (
-                  <WifiOff className="w-4 h-4" />
-                ) : (
-                  <Wifi className="w-4 h-4" />
-                )}
-                <span className="text-xs font-semibold tracking-wide uppercase">{networkStatus.label}</span>
-              </div>
-              <div className={`hidden md:flex items-center gap-2 px-4 py-2 bg-gray-100 rounded-lg ${getTimeColor()}`}>
-                <Clock className="w-5 h-5" />
-                <span className="text-xl font-bold font-mono">{formatTime(timeRemaining)}</span>
+            {/* Right: Timer + Submit */}
+            <div className="flex items-center gap-2 lg:gap-3 ml-auto pr-2 sm:pr-10 lg:pr-14 flex-shrink-0">
+              <div className={`flex items-center gap-2 px-3 md:px-4 py-2 bg-gray-100 rounded-lg ${getTimeColor()}`}>
+                <Clock className="w-4 h-4 md:w-5 md:h-5" />
+                <span className="text-base md:text-xl font-bold font-mono">{formatTime(timeRemaining)}</span>
               </div>
             </div>
-            {/* Right: Violations + Submit */}
             <div className="flex items-center gap-2 lg:gap-3 flex-shrink-0">
-              <div className="flex items-center gap-2 px-4 py-2 bg-red-50 text-red-700 rounded-lg border border-red-100">
-                <AlertTriangle className="w-4 h-4" />
-                <span className="font-bold">{effectiveViolations}/3</span>
-                <span className="text-xs">Pelanggaran</span>
-              </div>
               <button
                 onClick={handleSubmitClick}
                 className="px-4 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700 font-bold flex items-center gap-2"
@@ -1602,12 +1580,6 @@ export default function StudentExamTakePage() {
                 <Send className="w-4 h-4" />
                 Kumpulkan
               </button>
-            </div>
-          </div>
-          <div className="md:hidden mt-3">
-            <div className={`inline-flex items-center gap-2 px-3 py-1.5 bg-gray-100 rounded-lg ${getTimeColor()}`}>
-              <Clock className="w-4 h-4" />
-              <span className="text-base font-bold font-mono">{formatTime(timeRemaining)}</span>
             </div>
           </div>
         </div>
@@ -1622,13 +1594,35 @@ export default function StudentExamTakePage() {
       </div>
 
       {/* Main Content */}
-      <div className="pt-24 pb-24 max-w-7xl mx-auto px-4 overflow-x-hidden">
+      <div className="pt-36 lg:pt-40 pb-24 max-w-7xl mx-auto px-4 overflow-x-hidden">
         <div className="flex gap-6 items-start">
           {/* Left: Question Area */}
           <div className="flex-1 min-w-0">
             <div className="bg-white rounded-xl shadow-sm border border-gray-200 p-8 min-h-[60vh]">
-              {/* Question Header */}
-              <div className="flex justify-between items-start mb-6">
+              <div className="flex flex-wrap items-center justify-between gap-3 mb-6">
+                <div className="flex flex-wrap items-center gap-2">
+                  <button
+                    type="button"
+                    onClick={() => window.location.reload()}
+                    className="inline-flex items-center justify-center w-10 h-10 rounded-lg border border-gray-200 bg-white text-gray-600 hover:bg-gray-50"
+                    title="Refresh halaman ujian"
+                  >
+                    <RefreshCw className="w-4 h-4" />
+                  </button>
+                  <div className={`inline-flex items-center gap-2 px-3 py-2 rounded-lg border ${networkBadgeStyle}`}>
+                    {networkStatus.quality === 'offline' ? (
+                      <WifiOff className="w-4 h-4" />
+                    ) : (
+                      <Wifi className="w-4 h-4" />
+                    )}
+                    <span className="text-xs font-semibold tracking-wide uppercase">{networkStatus.label}</span>
+                  </div>
+                  <div className="inline-flex items-center gap-2 px-4 py-2 bg-red-50 text-red-700 rounded-lg border border-red-100">
+                    <AlertTriangle className="w-4 h-4" />
+                    <span className="font-bold">{effectiveViolations}/3</span>
+                    <span className="text-xs">Pelanggaran</span>
+                  </div>
+                </div>
                 <span className="px-3 py-1 bg-gray-100 text-gray-600 rounded-lg font-bold">
                   Soal No. {currentQuestionIndex + 1}
                 </span>
@@ -1648,21 +1642,10 @@ export default function StudentExamTakePage() {
               {/* Media (Bottom) */}
               {currentQuestion.question_media_position === 'bottom' && mediaSection}
 
-	              {/* Options */}
-	              {currentQuestion.question_type !== 'ESSAY' && (
-	                <div className="space-y-3">
-                    <div
-                      className={`inline-flex rounded-full border px-3 py-1 text-xs font-semibold ${
-                        currentQuestion.question_type === 'COMPLEX_MULTIPLE_CHOICE'
-                          ? 'border-blue-200 bg-blue-50 text-blue-700'
-                          : 'border-slate-200 bg-slate-50 text-slate-600'
-                      }`}
-                    >
-                      {currentQuestion.question_type === 'COMPLEX_MULTIPLE_CHOICE'
-                        ? 'Multiple answer • gunakan checkbox dan pilih satu atau lebih jawaban'
-                        : 'Single choice • gunakan radio dan pilih satu jawaban'}
-                    </div>
-		                  {currentQuestion.options?.map((option) => {
+		              {/* Options */}
+		              {currentQuestion.question_type !== 'ESSAY' && (
+		                <div className="space-y-3">
+			                  {currentQuestion.options?.map((option) => {
 		                    const isComplex = currentQuestion.question_type === 'COMPLEX_MULTIPLE_CHOICE';
                       const optionId = String(option.id ?? '');
                       const optionImageSrc =

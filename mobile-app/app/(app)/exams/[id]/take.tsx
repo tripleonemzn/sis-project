@@ -208,32 +208,6 @@ function getYoutubeEmbedUrl(url?: string | null) {
   return '';
 }
 
-function getYoutubePlaybackUrl(url?: string | null) {
-  const raw = String(url || '').trim();
-  if (!raw) return '';
-
-  try {
-    const parsed = new URL(raw);
-    if (parsed.hostname.includes('youtu.be')) {
-      const id = parsed.pathname.replace(/\//g, '').trim();
-      return id ? `https://www.youtube.com/watch?v=${id}` : '';
-    }
-    if (parsed.hostname.includes('youtube.com')) {
-      const id = parsed.searchParams.get('v');
-      if (id) return `https://www.youtube.com/watch?v=${id}`;
-      const parts = parsed.pathname.split('/').filter(Boolean);
-      const embedIndex = parts.findIndex((part) => part === 'embed' || part === 'shorts');
-      if (embedIndex >= 0 && parts[embedIndex + 1]) {
-        return `https://www.youtube.com/watch?v=${parts[embedIndex + 1]}`;
-      }
-    }
-  } catch {
-    return '';
-  }
-
-  return raw;
-}
-
 function normalizeSubjectToken(value: string | null | undefined): string {
   return String(value || '')
     .trim()
@@ -324,7 +298,6 @@ export default function StudentExamTakeScreen() {
   const [violations, setViolations] = useState(0);
   const [lastViolationMessage, setLastViolationMessage] = useState<string | null>(null);
   const [previewImageSrc, setPreviewImageSrc] = useState<string | null>(null);
-  const [previewVideo, setPreviewVideo] = useState<{ url: string; type: 'youtube' | 'upload' | null } | null>(null);
   const answersRef = useRef<Record<string, unknown>>({});
   const autoSubmitGuardRef = useRef(false);
   const autoSubmitFailedRef = useRef(false);
@@ -674,17 +647,13 @@ export default function StudentExamTakeScreen() {
         setPreviewImageSrc(null);
         return true;
       }
-      if (previewVideo) {
-        setPreviewVideo(null);
-        return true;
-      }
       return handleBackAttempt();
     });
 
     return () => {
       subscription.remove();
     };
-  }, [handleBackAttempt, hasAcknowledgedStart, isExamReady, isFinished, previewImageSrc, previewVideo]);
+  }, [handleBackAttempt, hasAcknowledgedStart, isExamReady, isFinished, previewImageSrc]);
 
   const submitFinal = () => {
     if (isFinalSubmitting || isFinished || autoSubmitGuardRef.current) return;
@@ -731,8 +700,10 @@ export default function StudentExamTakeScreen() {
   const currentOptions = currentQuestion?.options || [];
   const currentVideoUrl = currentQuestion?.question_video_url || currentQuestion?.video_url || '';
   const currentVideoType = currentQuestion?.question_video_type || null;
-  const currentVideoEmbedUrl =
-    currentVideoType === 'youtube' ? getYoutubePlaybackUrl(currentVideoUrl) : String(currentVideoUrl || '').trim();
+  const isCurrentYoutubeVideo =
+    currentVideoType === 'youtube' || /youtu\.?be|youtube\.com/i.test(String(currentVideoUrl || ''));
+  const currentInlineVideoUrl =
+    isCurrentYoutubeVideo ? getYoutubeEmbedUrl(currentVideoUrl) : String(currentVideoUrl || '').trim();
   const resolvedTakeSubject = useMemo(
     () => resolveTakeExamSubject(startQuery.data?.packet || {}),
     [startQuery.data?.packet],
@@ -749,22 +720,6 @@ export default function StudentExamTakeScreen() {
     }
     return typeof value === 'string' && value.length > 0 ? total + 1 : total;
   }, 0);
-  const answerGuide = currentType === 'COMPLEX_MULTIPLE_CHOICE'
-    ? {
-        toneBg: '#eff6ff',
-        toneBorder: '#bfdbfe',
-        toneText: '#1d4ed8',
-        label: 'Multiple answer',
-        description: 'Gunakan checkbox dan pilih satu atau lebih jawaban yang benar.',
-      }
-    : {
-        toneBg: '#f8fafc',
-        toneBorder: '#cbd5e1',
-        toneText: '#475569',
-        label: 'Single choice',
-        description: 'Gunakan radio dan pilih satu jawaban yang paling tepat.',
-      };
-
   if (isLoading) return <AppLoadingScreen message="Memuat ujian..." />;
   if (!isAuthenticated) return <Redirect href="/welcome" />;
 
@@ -1085,29 +1040,47 @@ export default function StudentExamTakeScreen() {
           />
         </View>
 
-        {currentVideoEmbedUrl ? (
-          <Pressable
-            onPress={() =>
-              setPreviewVideo({
-                url: currentVideoEmbedUrl,
-                type: currentVideoType,
-              })
-            }
+        {currentInlineVideoUrl ? (
+          <View
             style={{
               marginBottom: 12,
               borderWidth: 1,
-              borderColor: '#bfdbfe',
-              backgroundColor: '#eff6ff',
-              borderRadius: 12,
-              paddingHorizontal: 12,
-              paddingVertical: 10,
+              borderColor: '#dbe7fb',
+              borderRadius: 14,
+              backgroundColor: '#ffffff',
+              overflow: 'hidden',
             }}
           >
-            <Text style={{ color: '#1d4ed8', fontWeight: '700', marginBottom: 2 }}>Video Soal Tersedia</Text>
-            <Text style={{ color: '#1e40af', fontSize: 12 }}>
-              Ketuk untuk membuka video di dalam ujian tanpa keluar dari sesi.
-            </Text>
-          </Pressable>
+            {isCurrentYoutubeVideo ? (
+              <WebView
+                originWhitelist={['*']}
+                source={{ uri: currentInlineVideoUrl }}
+                style={{ height: 220, backgroundColor: '#ffffff' }}
+                javaScriptEnabled
+                domStorageEnabled
+                mediaPlaybackRequiresUserAction={false}
+                setSupportMultipleWindows={false}
+                allowsFullscreenVideo={false}
+                userAgent="Mozilla/5.0 (Linux; Android 13; Mobile) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/123.0.0.0 Mobile Safari/537.36"
+                startInLoadingState
+              />
+            ) : (
+              <WebView
+                originWhitelist={['*']}
+                source={{
+                  html: `<!DOCTYPE html><html><body style="margin:0;background:#fff;"><video src="${String(
+                    currentInlineVideoUrl,
+                  ).replace(/"/g, '&quot;')}" controls playsinline style="width:100%;height:220px;background:#000;"></video></body></html>`,
+                }}
+                style={{ height: 220, backgroundColor: '#ffffff' }}
+                javaScriptEnabled
+                domStorageEnabled
+                mediaPlaybackRequiresUserAction={false}
+                setSupportMultipleWindows={false}
+                allowsFullscreenVideo={false}
+              />
+            )}
+          </View>
         ) : null}
 
         {currentType === 'ESSAY' ? (
@@ -1134,22 +1107,6 @@ export default function StudentExamTakeScreen() {
           />
         ) : currentOptions.length > 0 ? (
           <View>
-            <View
-              style={{
-                alignSelf: 'flex-start',
-                marginBottom: 10,
-                borderWidth: 1,
-                borderColor: answerGuide.toneBorder,
-                backgroundColor: answerGuide.toneBg,
-                borderRadius: 999,
-                paddingHorizontal: 10,
-                paddingVertical: 6,
-              }}
-            >
-              <Text style={{ color: answerGuide.toneText, fontSize: 12, fontWeight: '700' }}>
-                {answerGuide.label} • {answerGuide.description}
-              </Text>
-            </View>
             {currentOptions.map((option) => {
               const selectedValue = effectiveAnswers[currentQuestion.id];
               const selected =
@@ -1359,55 +1316,6 @@ export default function StudentExamTakeScreen() {
               resizeMode="contain"
               style={{ width: '100%', height: 320, borderRadius: 12, backgroundColor: '#fff' }}
             />
-          </View>
-        ) : null}
-      </MobileDetailModal>
-      <MobileDetailModal
-        visible={Boolean(previewVideo)}
-        title="Preview Video Soal"
-        subtitle="Video dibuka di dalam ujian tanpa keluar dari sesi."
-        iconName="play-circle"
-        accentColor="#2563eb"
-        onClose={() => setPreviewVideo(null)}
-      >
-        {previewVideo ? (
-          <View
-            style={{
-              borderWidth: 1,
-              borderColor: '#dbe7fb',
-              borderRadius: 16,
-              backgroundColor: '#ffffff',
-              overflow: 'hidden',
-              minHeight: 260,
-            }}
-          >
-            {previewVideo.type === 'youtube' ? (
-              <WebView
-                source={{ uri: previewVideo.url }}
-                style={{ height: 280, backgroundColor: '#ffffff' }}
-                javaScriptEnabled
-                domStorageEnabled
-                mediaPlaybackRequiresUserAction={false}
-                setSupportMultipleWindows={false}
-                allowsFullscreenVideo={false}
-                userAgent="Mozilla/5.0 (Linux; Android 13; Mobile) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/123.0.0.0 Mobile Safari/537.36"
-                startInLoadingState
-              />
-            ) : (
-              <WebView
-                source={{
-                  html: `<!DOCTYPE html><html><body style="margin:0;background:#fff;"><video src="${String(
-                    previewVideo.url,
-                  ).replace(/"/g, '&quot;')}" controls playsinline style="width:100%;height:280px;background:#000;"></video></body></html>`,
-                }}
-                style={{ height: 280, backgroundColor: '#ffffff' }}
-                javaScriptEnabled
-                domStorageEnabled
-                mediaPlaybackRequiresUserAction={false}
-                setSupportMultipleWindows={false}
-                allowsFullscreenVideo={false}
-              />
-            )}
           </View>
         ) : null}
       </MobileDetailModal>

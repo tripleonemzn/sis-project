@@ -1,5 +1,5 @@
-import { useMemo, useState } from 'react';
-import { Image, Pressable, Text, View } from 'react-native';
+import { useEffect, useMemo, useState } from 'react';
+import { Image, Pressable, Text, View, useWindowDimensions } from 'react-native';
 import { WebView } from 'react-native-webview';
 import { ENV } from '../config/env';
 
@@ -201,9 +201,50 @@ export function ExamHtmlContent({
 }: ExamHtmlContentProps) {
   const safeMinHeight = Number.isFinite(minHeight) ? Math.max(24, Math.floor(minHeight)) : 120;
   const [height, setHeight] = useState(safeMinHeight);
+  const [nativeImageSize, setNativeImageSize] = useState<{ width: number; height: number } | null>(null);
+  const { width: viewportWidth } = useWindowDimensions();
   const webBaseUrl = ENV.API_BASE_URL.replace(/\/api\/?$/, '');
   const resolvedNativeImageUrl = useMemo(() => toMediaUrl(imageUrl), [imageUrl]);
   const nativeTextContent = useMemo(() => plainTextBlocksFromExamRichText(html), [html]);
+
+  useEffect(() => {
+    let isActive = true;
+    if (!resolvedNativeImageUrl) {
+      setNativeImageSize(null);
+      return () => {
+        isActive = false;
+      };
+    }
+
+    Image.getSize(
+      resolvedNativeImageUrl,
+      (width, height) => {
+        if (!isActive) return;
+        if (Number.isFinite(width) && width > 0 && Number.isFinite(height) && height > 0) {
+          setNativeImageSize({ width, height });
+        } else {
+          setNativeImageSize(null);
+        }
+      },
+      () => {
+        if (isActive) setNativeImageSize(null);
+      },
+    );
+
+    return () => {
+      isActive = false;
+    };
+  }, [resolvedNativeImageUrl]);
+
+  const nativeImageFrame = useMemo(() => {
+    if (!nativeImageSize) return null;
+    const maxWidth = Math.max(180, Math.min(viewportWidth - 72, 520));
+    const maxHeight = 360;
+    const scale = Math.min(maxWidth / nativeImageSize.width, maxHeight / nativeImageSize.height, 1);
+    const width = Math.max(96, Math.round(nativeImageSize.width * scale));
+    const height = Math.max(72, Math.round(nativeImageSize.height * scale));
+    return { width, height };
+  }, [nativeImageSize, viewportWidth]);
 
   const documentHtml = useMemo(() => {
     const normalizedHtml = normalizeExamRichTextToHtml(html);
@@ -396,17 +437,16 @@ export function ExamHtmlContent({
                 onImagePress(resolvedNativeImageUrl);
               }
             }}
-            style={{ alignSelf: 'stretch' }}
+            style={{ alignSelf: 'center' }}
           >
             <Image
               source={{ uri: resolvedNativeImageUrl }}
               resizeMode="contain"
               style={{
-                width: '100%',
-                minHeight: 120,
-                height: 220,
+                width: nativeImageFrame?.width ?? Math.max(140, Math.min(viewportWidth - 96, 220)),
+                height: nativeImageFrame?.height ?? 120,
                 borderRadius: 12,
-                backgroundColor: '#f8fafc',
+                backgroundColor: 'transparent',
               }}
             />
           </Pressable>
