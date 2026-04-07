@@ -536,7 +536,7 @@ export default function ProctorReportPrint() {
 
           <div
             className="absolute italic text-slate-600"
-            style={{ left: '1.5cm', right: '1.5cm', bottom: '1cm', fontSize: noteFontSize, lineHeight: 1.2 }}
+            style={{ left: '2.5cm', right: '2.5cm', bottom: '1cm', fontSize: noteFontSize, lineHeight: 1.2 }}
           >
             {snapshot.verification.note}
             <div className="mt-0.5 break-all italic text-slate-700" style={{ fontSize: noteFontSize }}>{snapshot.verification.verificationUrl}</div>

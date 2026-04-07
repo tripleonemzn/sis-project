@@ -110,6 +110,51 @@ function buildExecutionSlotValue(schedule: ProctorAttendanceDocumentSnapshot['sc
   return sessionLabel ? `${orderLabel} / ${sessionLabel}` : orderLabel;
 }
 
+function clampNumber(value: number, min: number, max: number) {
+  return Math.min(max, Math.max(min, value));
+}
+
+function buildAttendancePrintLayout(snapshot: ProctorAttendanceDocumentSnapshot) {
+  const detailLabels = [
+    'Mata Pelajaran',
+    'Tanggal Pelaksanaan',
+    'Waktu Pelaksanaan',
+    'Ruangan',
+    'Jam ke / Sesi',
+    'Kelas / Rombel',
+  ];
+  const longestLabel = detailLabels.reduce((max, label) => Math.max(max, label.length), 0);
+  const longestName = snapshot.participants.reduce((max, participant) => Math.max(max, String(participant.name || '').length), 'Nama Siswa'.length);
+  const longestClass = snapshot.participants.reduce(
+    (max, participant) => Math.max(max, String(participant.className || '-').length),
+    'Kelas / Rombel'.length,
+  );
+  const longestStatus = snapshot.participants.reduce((max, participant) => {
+    const statusLine =
+      participant.status === 'PRESENT'
+        ? `${participant.statusLabel} | Mulai ${participant.startTimeLabel} • Selesai ${participant.submitTimeLabel}`
+        : participant.statusLabel;
+    return Math.max(max, statusLine.length);
+  }, 'Status'.length);
+  const longestNote = snapshot.participants.reduce(
+    (max, participant) => Math.max(max, String(participant.absentReason || '-').length),
+    'Keterangan'.length,
+  );
+  const longestNis = snapshot.participants.reduce(
+    (max, participant) => Math.max(max, String(participant.nis || '-').length),
+    'NIS'.length,
+  );
+
+  return {
+    detailLabelWidth: `${clampNumber(longestLabel + 1, 16, 20)}ch`,
+    nameWidth: `${clampNumber(Math.ceil(longestName * 0.72), 18, 24)}ch`,
+    nisWidth: `${clampNumber(Math.ceil(longestNis * 0.95), 8, 12)}ch`,
+    classWidth: `${clampNumber(Math.ceil(longestClass * 0.88), 11, 15)}ch`,
+    statusWidth: `${clampNumber(Math.ceil(longestStatus * 0.62), 20, 28)}ch`,
+    noteWidth: `${clampNumber(Math.ceil(longestNote * 0.5), 10, 18)}ch`,
+  };
+}
+
 function buildParticipantRows(snapshot: ProctorAttendanceDocumentSnapshot) {
   return snapshot.participants
     .map((participant, index) => {
@@ -121,12 +166,12 @@ function buildParticipantRows(snapshot: ProctorAttendanceDocumentSnapshot) {
 
       return `
         <tr>
-          <td>${index + 1}</td>
-          <td><strong>${escapeHtml(participant.name)}</strong></td>
-          <td>${escapeHtml(participant.nis || '-')}</td>
-          <td>${escapeHtml(participant.className || '-')}</td>
-          <td style="color:${statusColor};font-weight:600;">${escapeHtml(statusLine)}</td>
-          <td>${escapeHtml(participant.absentReason || '-')}</td>
+          <td class="cell-center">${index + 1}</td>
+          <td class="cell-name"><strong>${escapeHtml(participant.name)}</strong></td>
+          <td class="cell-center">${escapeHtml(participant.nis || '-')}</td>
+          <td class="cell-center">${escapeHtml(participant.className || '-')}</td>
+          <td class="cell-status" style="color:${statusColor};font-weight:600;">${escapeHtml(statusLine)}</td>
+          <td class="cell-note">${escapeHtml(participant.absentReason || '-')}</td>
         </tr>
       `;
     })
@@ -142,6 +187,7 @@ function buildProctorAttendancePrintHtml(params: {
   const contentFontSize = '9.5pt';
   const tableFontSize = '8.75pt';
   const noteFontSize = '6.75pt';
+  const layout = buildAttendancePrintLayout(snapshot);
   const signatureNote = `Ditandatangani dan dikirim ke Kurikulum secara digital oleh pengawas ruang pada ${formatDateOnly(
     snapshot.submittedAt,
   )} pukul ${formatTimeOnly(snapshot.submittedAt)}.`;
@@ -199,43 +245,69 @@ function buildProctorAttendancePrintHtml(params: {
           color: #15803d;
         }
         .detail-grid {
+          --detail-label-width: ${layout.detailLabelWidth};
           margin-top: 14px;
           display: grid;
           grid-template-columns: 1fr 1fr;
           gap: 7px 24px;
           font-size: ${contentFontSize};
+          line-height: 1.2;
         }
         .detail-col {
           display: grid;
-          row-gap: 6px;
+          row-gap: 4px;
         }
         .detail-row {
           display: grid;
-          grid-template-columns: 140px 14px 1fr;
+          grid-template-columns: var(--detail-label-width) 12px 1fr;
         }
-        .counts {
+        .count-cards {
           margin-top: 12px;
           display: grid;
-          row-gap: 6px;
-          font-size: ${contentFontSize};
+          grid-template-columns: repeat(3, minmax(0, 1fr));
+          gap: 8px;
         }
-        .count-row {
-          display: grid;
-          grid-template-columns: 180px 14px 1fr;
+        .count-card {
+          border: 1px solid #cbd5e1;
+          border-radius: 10px;
+          background: #f8fafc;
+          padding: 8px 10px;
+          font-size: ${contentFontSize};
+          line-height: 1.2;
+        }
+        .count-card.success {
+          border-color: #a7f3d0;
+          background: #ecfdf5;
+        }
+        .count-card.danger {
+          border-color: #fecdd3;
+          background: #fff1f2;
+        }
+        .count-card-label {
+          font-size: ${noteFontSize};
+          font-weight: 700;
+          text-transform: uppercase;
+          letter-spacing: 0.02em;
+          color: #475569;
+        }
+        .count-card-value {
+          margin-top: 4px;
+          font-size: ${contentFontSize};
+          font-weight: 700;
         }
         table {
           width: 100%;
           margin-top: 12px;
           border-collapse: collapse;
           font-size: ${tableFontSize};
-          table-layout: fixed;
+          table-layout: auto;
         }
         th, td {
           border: 1px solid #cbd5e1;
           padding: 6px 8px;
           text-align: left;
           vertical-align: top;
-          word-break: break-word;
+          line-height: 1.2;
         }
         thead {
           display: table-header-group;
@@ -243,6 +315,22 @@ function buildProctorAttendancePrintHtml(params: {
         thead th {
           background: #f8fafc;
           font-weight: 700;
+          text-align: center;
+        }
+        .cell-center {
+          text-align: center;
+          vertical-align: middle;
+        }
+        .cell-name {
+          word-break: break-word;
+        }
+        .cell-status {
+          white-space: nowrap;
+          text-align: center;
+          vertical-align: middle;
+        }
+        .cell-note {
+          word-break: break-word;
         }
         .footer-row {
           margin-top: 16px;
@@ -339,21 +427,38 @@ function buildProctorAttendancePrintHtml(params: {
             </div>
           </div>
 
-          <div class="counts">
-            <div class="count-row"><div>Jumlah Peserta Seharusnya</div><div>:</div><div>${snapshot.counts.expectedParticipants}</div></div>
-            <div class="count-row"><div>Jumlah Peserta yang hadir</div><div>:</div><div>${snapshot.counts.presentParticipants}</div></div>
-            <div class="count-row"><div>Jumlah Peserta yang tidak hadir</div><div>:</div><div>${snapshot.counts.absentParticipants}</div></div>
+          <div class="count-cards">
+            <div class="count-card">
+              <div class="count-card-label">Peserta Seharusnya</div>
+              <div class="count-card-value">${snapshot.counts.expectedParticipants}</div>
+            </div>
+            <div class="count-card success">
+              <div class="count-card-label">Hadir</div>
+              <div class="count-card-value">${snapshot.counts.presentParticipants}</div>
+            </div>
+            <div class="count-card danger">
+              <div class="count-card-label">Tidak Hadir</div>
+              <div class="count-card-value">${snapshot.counts.absentParticipants}</div>
+            </div>
           </div>
 
           <table>
+            <colgroup>
+              <col style="width:5ch;" />
+              <col style="width:${layout.nameWidth};" />
+              <col style="width:${layout.nisWidth};" />
+              <col style="width:${layout.classWidth};" />
+              <col style="width:${layout.statusWidth};" />
+              <col style="width:${layout.noteWidth};" />
+            </colgroup>
             <thead>
               <tr>
-                <th style="width:28px;">No</th>
+                <th>No</th>
                 <th>Nama Siswa</th>
-                <th style="width:82px;">NIS</th>
-                <th style="width:88px;">Kelas / Rombel</th>
-                <th style="width:180px;">Status</th>
-                <th style="width:120px;">Keterangan</th>
+                <th>NIS</th>
+                <th>Kelas / Rombel</th>
+                <th>Status</th>
+                <th>Keterangan</th>
               </tr>
             </thead>
             <tbody>
@@ -431,6 +536,7 @@ export default function ProctorAttendancePrint() {
   }
 
   const { snapshot, verificationQrDataUrl } = documentQuery.data;
+  const layout = buildAttendancePrintLayout(snapshot);
   const executionSlotValue = buildExecutionSlotValue(snapshot.schedule);
   const signatureNote = `Ditandatangani dan dikirim ke Kurikulum secara digital oleh pengawas ruang pada ${formatDateOnly(
     snapshot.submittedAt,
@@ -543,19 +649,19 @@ export default function ProctorAttendancePrint() {
             </div>
           </div>
 
-          <div className="mt-3.5 grid grid-cols-2 gap-x-6 gap-y-2 text-slate-900" style={{ fontSize: contentFontSize }}>
-            <div className="grid gap-1.5">
-              <div className="grid grid-cols-[140px_14px_1fr]">
+          <div className="mt-3.5 grid grid-cols-2 gap-x-6 gap-y-2 text-slate-900" style={{ fontSize: contentFontSize, lineHeight: 1.2 }}>
+            <div className="grid gap-1">
+              <div className="grid grid-cols-[var(--detail-label-width)_12px_1fr]" style={{ ['--detail-label-width' as string]: layout.detailLabelWidth }}>
                 <div>Mata Pelajaran</div>
                 <div>:</div>
                 <div>{snapshot.schedule.subjectName}</div>
               </div>
-              <div className="grid grid-cols-[140px_14px_1fr]">
+              <div className="grid grid-cols-[var(--detail-label-width)_12px_1fr]" style={{ ['--detail-label-width' as string]: layout.detailLabelWidth }}>
                 <div>Tanggal Pelaksanaan</div>
                 <div>:</div>
                 <div>{snapshot.schedule.executionDateLabel}</div>
               </div>
-              <div className="grid grid-cols-[140px_14px_1fr]">
+              <div className="grid grid-cols-[var(--detail-label-width)_12px_1fr]" style={{ ['--detail-label-width' as string]: layout.detailLabelWidth }}>
                 <div>Waktu Pelaksanaan</div>
                 <div>:</div>
                 <div>
@@ -563,18 +669,18 @@ export default function ProctorAttendancePrint() {
                 </div>
               </div>
             </div>
-            <div className="grid gap-1.5">
-              <div className="grid grid-cols-[140px_14px_1fr]">
+            <div className="grid gap-1">
+              <div className="grid grid-cols-[var(--detail-label-width)_12px_1fr]" style={{ ['--detail-label-width' as string]: layout.detailLabelWidth }}>
                 <div>Ruangan</div>
                 <div>:</div>
                 <div>{snapshot.schedule.roomName}</div>
               </div>
-              <div className="grid grid-cols-[140px_14px_1fr]">
+              <div className="grid grid-cols-[var(--detail-label-width)_12px_1fr]" style={{ ['--detail-label-width' as string]: layout.detailLabelWidth }}>
                 <div>Jam ke / Sesi</div>
                 <div>:</div>
                 <div>{executionSlotValue}</div>
               </div>
-              <div className="grid grid-cols-[140px_14px_1fr]">
+              <div className="grid grid-cols-[var(--detail-label-width)_12px_1fr]" style={{ ['--detail-label-width' as string]: layout.detailLabelWidth }}>
                 <div>Kelas / Rombel</div>
                 <div>:</div>
                 <div>{snapshot.schedule.classNames.join(', ') || '-'}</div>
@@ -582,46 +688,51 @@ export default function ProctorAttendancePrint() {
             </div>
           </div>
 
-          <div className="mt-3 grid gap-1.5 text-slate-900" style={{ fontSize: contentFontSize }}>
-            <div className="grid grid-cols-[180px_14px_1fr]">
-              <div>Jumlah Peserta Seharusnya</div>
-              <div>:</div>
-              <div>{snapshot.counts.expectedParticipants}</div>
+          <div className="mt-3 grid grid-cols-3 gap-2">
+            <div className="rounded-[10px] border border-slate-300 bg-slate-50 px-3 py-2 text-slate-900">
+              <div className="uppercase tracking-wide text-slate-500" style={{ fontSize: noteFontSize, lineHeight: 1.1, fontWeight: 700 }}>Peserta Seharusnya</div>
+              <div className="mt-1 font-semibold" style={{ fontSize: contentFontSize, lineHeight: 1.1 }}>{snapshot.counts.expectedParticipants}</div>
             </div>
-            <div className="grid grid-cols-[180px_14px_1fr]">
-              <div>Jumlah Peserta yang hadir</div>
-              <div>:</div>
-              <div>{snapshot.counts.presentParticipants}</div>
+            <div className="rounded-[10px] border border-emerald-200 bg-emerald-50 px-3 py-2 text-emerald-900">
+              <div className="uppercase tracking-wide text-emerald-700" style={{ fontSize: noteFontSize, lineHeight: 1.1, fontWeight: 700 }}>Hadir</div>
+              <div className="mt-1 font-semibold" style={{ fontSize: contentFontSize, lineHeight: 1.1 }}>{snapshot.counts.presentParticipants}</div>
             </div>
-            <div className="grid grid-cols-[180px_14px_1fr]">
-              <div>Jumlah Peserta yang tidak hadir</div>
-              <div>:</div>
-              <div>{snapshot.counts.absentParticipants}</div>
+            <div className="rounded-[10px] border border-rose-200 bg-rose-50 px-3 py-2 text-rose-900">
+              <div className="uppercase tracking-wide text-rose-700" style={{ fontSize: noteFontSize, lineHeight: 1.1, fontWeight: 700 }}>Tidak Hadir</div>
+              <div className="mt-1 font-semibold" style={{ fontSize: contentFontSize, lineHeight: 1.1 }}>{snapshot.counts.absentParticipants}</div>
             </div>
           </div>
 
           <div className="mt-3 overflow-hidden rounded-xl border border-slate-300">
-            <table className="proctor-attendance-table min-w-full border-collapse text-slate-900" style={{ fontSize: tableFontSize, tableLayout: 'fixed' }}>
+            <table className="proctor-attendance-table min-w-full border-collapse text-slate-900" style={{ fontSize: tableFontSize, tableLayout: 'auto' }}>
+              <colgroup>
+                <col style={{ width: '5ch' }} />
+                <col style={{ width: layout.nameWidth }} />
+                <col style={{ width: layout.nisWidth }} />
+                <col style={{ width: layout.classWidth }} />
+                <col style={{ width: layout.statusWidth }} />
+                <col style={{ width: layout.noteWidth }} />
+              </colgroup>
               <thead className="bg-slate-100">
                 <tr>
-                  <th className="border border-slate-300 px-2 py-1.5 text-left font-semibold" style={{ width: '28px' }}>No</th>
-                  <th className="border border-slate-300 px-2 py-1.5 text-left font-semibold">Nama Siswa</th>
-                  <th className="border border-slate-300 px-2 py-1.5 text-left font-semibold" style={{ width: '82px' }}>NIS</th>
-                  <th className="border border-slate-300 px-2 py-1.5 text-left font-semibold" style={{ width: '88px' }}>Kelas / Rombel</th>
-                  <th className="border border-slate-300 px-2 py-1.5 text-left font-semibold" style={{ width: '180px' }}>Status</th>
-                  <th className="border border-slate-300 px-2 py-1.5 text-left font-semibold" style={{ width: '120px' }}>Keterangan</th>
+                  <th className="border border-slate-300 px-2 py-1.5 text-center font-semibold">No</th>
+                  <th className="border border-slate-300 px-2 py-1.5 text-center font-semibold">Nama Siswa</th>
+                  <th className="border border-slate-300 px-2 py-1.5 text-center font-semibold">NIS</th>
+                  <th className="border border-slate-300 px-2 py-1.5 text-center font-semibold">Kelas / Rombel</th>
+                  <th className="border border-slate-300 px-2 py-1.5 text-center font-semibold">Status</th>
+                  <th className="border border-slate-300 px-2 py-1.5 text-center font-semibold">Keterangan</th>
                 </tr>
               </thead>
               <tbody>
                 {snapshot.participants.map((participant, index) => (
                   <tr key={participant.id}>
-                    <td className="border border-slate-300 px-2 py-1.5 align-top">{index + 1}</td>
+                    <td className="border border-slate-300 px-2 py-1.5 text-center align-middle">{index + 1}</td>
                     <td className="border border-slate-300 px-2 py-1.5 align-top break-words">
                       <div className="font-semibold text-slate-900">{participant.name}</div>
                     </td>
-                    <td className="border border-slate-300 px-2 py-1.5 align-top break-words">{participant.nis || '-'}</td>
-                    <td className="border border-slate-300 px-2 py-1.5 align-top break-words">{participant.className || '-'}</td>
-                    <td className="border border-slate-300 px-2 py-1.5 align-top break-words">
+                    <td className="border border-slate-300 px-2 py-1.5 text-center align-middle">{participant.nis || '-'}</td>
+                    <td className="border border-slate-300 px-2 py-1.5 text-center align-middle">{participant.className || '-'}</td>
+                    <td className="border border-slate-300 px-2 py-1.5 text-center align-middle whitespace-nowrap">
                       <div
                         className={`${
                           participant.status === 'PRESENT'
@@ -632,7 +743,7 @@ export default function ProctorAttendancePrint() {
                       >
                         {participant.statusLabel}
                         {participant.status === 'PRESENT' ? (
-                          <span className="font-normal text-slate-600" style={{ fontSize: tableFontSize }}>
+                          <span className="font-normal text-slate-600 whitespace-nowrap" style={{ fontSize: tableFontSize }}>
                             {' '}
                             | Mulai {participant.startTimeLabel} • Selesai {participant.submitTimeLabel}
                           </span>
