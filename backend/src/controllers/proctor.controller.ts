@@ -22,8 +22,8 @@ const SCHOOL_FORMAL_NAME = 'SEKOLAH MENENGAH KEJURUAN (SMK) KARYA GUNA BHAKTI 2'
 const SCHOOL_NSS = '342026504072';
 const SCHOOL_NPSN = '20223112';
 const SCHOOL_ACCREDITATION_LABEL = 'STATUS TERAKREDITASI A';
-const SCHOOL_EMAIL = 'informasi@smkkgb2.sch.id';
-const SCHOOL_WEBSITE = 'www.smkkgb2.sch.id';
+const SCHOOL_EMAIL = 'info@siskgb2.id';
+const SCHOOL_WEBSITE = 'www.smkkgb2.sch.id | www.siskgb2.id';
 const SCHOOL_CAMPUSES = [
     {
         label: 'Kampus A',
@@ -361,6 +361,7 @@ type ProctorReportDocumentSnapshot = {
     schedule: {
         subjectName: string;
         roomName: string;
+        executionOrder: number | null;
         sessionLabel: string | null;
         classNames: string[];
         startTimeLabel: string;
@@ -461,6 +462,50 @@ function toDateRangeByDay(date: Date): { start: Date; end: Date } {
     const end = new Date(start);
     end.setUTCDate(end.getUTCDate() + 1);
     return { start, end };
+}
+
+async function resolveScheduleExecutionOrder(params: {
+    academicYearId: number | null | undefined;
+    examType: string | null | undefined;
+    executionDate: Date;
+    startTime: Date;
+    endTime: Date;
+}): Promise<number | null> {
+    const { start, end } = toDateRangeByDay(params.executionDate);
+    const where: Prisma.ExamScheduleWhereInput = {
+        isActive: true,
+        startTime: { gte: start, lt: end },
+    };
+
+    if (Number.isFinite(Number(params.academicYearId)) && Number(params.academicYearId) > 0) {
+        where.academicYearId = Number(params.academicYearId);
+    }
+
+    const normalizedExamType = String(params.examType || '').trim().toUpperCase();
+    if (normalizedExamType) {
+        where.examType = normalizedExamType;
+    }
+
+    const schedules = await prisma.examSchedule.findMany({
+        where,
+        select: {
+            startTime: true,
+            endTime: true,
+        },
+        orderBy: [{ startTime: 'asc' }, { endTime: 'asc' }],
+    });
+
+    const slotKeys: string[] = [];
+    for (const schedule of schedules) {
+        const key = `${schedule.startTime.toISOString()}::${schedule.endTime.toISOString()}`;
+        if (!slotKeys.includes(key)) {
+            slotKeys.push(key);
+        }
+    }
+
+    const currentKey = `${params.startTime.toISOString()}::${params.endTime.toISOString()}`;
+    const slotIndex = slotKeys.indexOf(currentKey);
+    return slotIndex >= 0 ? slotIndex + 1 : null;
 }
 
 type PermissionSnapshot = {
@@ -1272,6 +1317,7 @@ function buildProctorReportSnapshot(params: {
     examLabel: string;
     subjectName: string;
     roomName: string;
+    executionOrder: number | null;
     sessionLabel: string | null;
     classNames: string[];
     startTime: Date;
@@ -1302,6 +1348,7 @@ function buildProctorReportSnapshot(params: {
         schedule: {
             subjectName,
             roomName,
+            executionOrder: Number.isFinite(Number(params.executionOrder)) ? Number(params.executionOrder) : null,
             sessionLabel: normalizeOptionalText(params.sessionLabel),
             classNames: Array.from(
                 new Set((params.classNames || []).map((item) => String(item || '').trim()).filter(Boolean)),
@@ -1495,6 +1542,13 @@ async function hydrateProctorReportArtifacts(
         '-';
     const examLabel = await resolveExamProgramLabel(params.report.schedule.academicYearId, params.report.schedule.examType);
     const documentHeader = await resolveStandardSchoolDocumentHeaderSnapshot();
+    const executionOrder = await resolveScheduleExecutionOrder({
+        academicYearId: params.report.schedule.academicYearId,
+        examType: params.report.schedule.examType,
+        executionDate: params.report.schedule.startTime,
+        startTime: params.report.schedule.startTime,
+        endTime: params.report.schedule.endTime,
+    });
     const subjectName =
         normalizeOptionalText(params.report.schedule.packet?.subject?.name) ||
         normalizeOptionalText(params.report.schedule.subject?.name) ||
@@ -1508,6 +1562,7 @@ async function hydrateProctorReportArtifacts(
         examLabel,
         subjectName,
         roomName: params.report.schedule.room || 'Belum ditentukan',
+        executionOrder,
         sessionLabel: params.report.schedule.sessionLabel,
         classNames: resolvedClassNames,
         startTime: params.report.schedule.startTime,

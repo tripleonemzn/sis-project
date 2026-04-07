@@ -63,7 +63,7 @@ export function buildStandardSchoolDocumentHeaderHtml(header: StandardSchoolDocu
     .join('');
 
   return `
-    <div style="margin:0 0 18px 0;color:#000;font-family:'Times New Roman', Times, serif;">
+    <div style="margin:0 0 8px 0;color:#000;font-family:'Times New Roman', Times, serif;">
       <div style="display:flex;align-items:center;justify-content:space-between;padding-bottom:4px;">
         <div style="width:95px;display:flex;justify-content:center;align-items:center;">
           <img src="${escapeHtml(foundationLogoUrl)}" alt="Logo Yayasan" style="width:88px;height:auto;object-fit:contain;" />
@@ -92,7 +92,7 @@ export function StandardSchoolDocumentHeader({ header }: { header: StandardSchoo
   const competencyLine = normalizedHeader.competencyNames.join('  |  ');
 
   return (
-    <div className="mb-5 text-black" style={{ fontFamily: "'Times New Roman', Times, serif" }}>
+    <div className="mb-2 text-black" style={{ fontFamily: "'Times New Roman', Times, serif" }}>
       <div className="flex items-center justify-between pb-1">
         <div className="flex w-[95px] items-center justify-center">
           <img src={normalizedHeader.foundationLogoPath} alt="Logo Yayasan" className="h-auto w-[88px] object-contain" />

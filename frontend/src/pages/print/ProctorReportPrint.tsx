@@ -20,6 +20,7 @@ type ProctorReportDocumentSnapshot = {
   schedule: {
     subjectName: string;
     roomName: string;
+    executionOrder: number | null;
     sessionLabel: string | null;
     classNames: string[];
     startTimeLabel: string;
@@ -55,14 +56,22 @@ type DocumentResponse = {
   verificationQrDataUrl: string;
 };
 
-function formatDateTime(value?: string | null) {
+function formatDateOnly(value?: string | null) {
   if (!value) return '-';
   const date = new Date(value);
   if (Number.isNaN(date.getTime())) return '-';
-  return date.toLocaleString('id-ID', {
+  return date.toLocaleDateString('id-ID', {
     day: '2-digit',
     month: 'long',
     year: 'numeric',
+  });
+}
+
+function formatTimeOnly(value?: string | null) {
+  if (!value) return '-';
+  const date = new Date(value);
+  if (Number.isNaN(date.getTime())) return '-';
+  return date.toLocaleTimeString('id-ID', {
     hour: '2-digit',
     minute: '2-digit',
   });
@@ -87,6 +96,14 @@ function escapeMultilineHtml(value?: string | null) {
   return escapeHtml(value).replace(/\n/g, '<br />');
 }
 
+function buildExecutionSlotValue(schedule: ProctorReportDocumentSnapshot['schedule']) {
+  const orderLabel = Number.isFinite(Number(schedule.executionOrder)) && Number(schedule.executionOrder) > 0
+    ? String(schedule.executionOrder)
+    : '-';
+  const sessionLabel = String(schedule.sessionLabel || '').trim();
+  return sessionLabel ? `${orderLabel} / ${sessionLabel}` : orderLabel;
+}
+
 function buildProctorReportPrintHtml(params: {
   snapshot: ProctorReportDocumentSnapshot;
   verificationQrDataUrl: string;
@@ -94,9 +111,13 @@ function buildProctorReportPrintHtml(params: {
   const { snapshot, verificationQrDataUrl } = params;
   const headerFontSize = '12pt';
   const contentFontSize = '11pt';
-  const noteFontSize = '7.5pt';
+  const noteFontSize = '7pt';
   const noteText = (snapshot.notes || '-').trim() || '-';
   const noteHtml = escapeMultilineHtml(noteText);
+  const signatureNote = `Ditandatangani dan dikirim ke Kurikulum secara digital oleh pengawas ruang pada ${formatDateOnly(
+    snapshot.submittedAt,
+  )} pukul ${formatTimeOnly(snapshot.submittedAt)}.`;
+  const executionSlotValue = buildExecutionSlotValue(snapshot.schedule);
 
   return `<!DOCTYPE html>
   <html>
@@ -130,26 +151,16 @@ function buildProctorReportPrintHtml(params: {
           letter-spacing: 0.02em;
         }
         .meta-row {
-          margin-top: 8px;
+          margin-top: 2px;
           display: flex;
           justify-content: space-between;
           align-items: flex-start;
           gap: 12px;
         }
-        .meta-chip {
-          border: 1px solid #cbd5e1;
-          background: #f8fafc;
-          border-radius: 10px;
-          padding: 8px 12px;
+        .meta-text {
           font-size: ${noteFontSize};
-        }
-        .meta-note {
-          border: 1px solid #a7f3d0;
-          background: #ecfdf5;
-          color: #065f46;
-          border-radius: 10px;
-          padding: 8px 12px;
-          font-size: ${noteFontSize};
+          font-style: italic;
+          color: #475569;
         }
         .narrative {
           margin-top: 20px;
@@ -158,9 +169,10 @@ function buildProctorReportPrintHtml(params: {
           line-height: 1.8;
         }
         .counts {
-          margin-top: 24px;
+          margin-top: 22px;
+          margin-left: 1cm;
           display: grid;
-          row-gap: 10px;
+          row-gap: 8px;
           font-size: ${contentFontSize};
         }
         .count-row {
@@ -196,7 +208,7 @@ function buildProctorReportPrintHtml(params: {
           font-size: ${contentFontSize};
         }
         .qr-wrap {
-          margin-top: 16px;
+          margin-top: 12px;
           display: flex;
           justify-content: center;
         }
@@ -210,23 +222,22 @@ function buildProctorReportPrintHtml(params: {
           padding: 8px;
         }
         .signature-name {
-          margin-top: 28px;
           font-size: ${contentFontSize};
           font-weight: 700;
         }
         .signature-name-wrap {
-          margin-top: 28px;
+          margin-top: 12px;
           display: inline-block;
           max-width: 100%;
         }
         .signature-rule {
-          margin-top: 10px;
+          margin-top: 2px;
           border-top: 1px solid #94a3b8;
         }
         .signature-note {
-          margin-top: 10px;
+          margin-top: 8px;
           font-size: ${noteFontSize};
-          line-height: 1.5;
+          line-height: 1.25;
           color: #475569;
         }
         .verify-box {
@@ -252,11 +263,11 @@ function buildProctorReportPrintHtml(params: {
         ${buildStandardSchoolDocumentHeaderHtml(snapshot.documentHeader)}
         <div class="document-body">
           <div class="meta-row">
-            <div class="meta-chip"><strong>No. Dokumen:</strong> ${escapeHtml(snapshot.documentNumber)}</div>
-            <div class="meta-note">Diverifikasi melalui QR internal SIS KGB2</div>
+            <div class="meta-text">No. Dokumen: ${escapeHtml(snapshot.documentNumber)}</div>
+            <div class="meta-text">Diverifikasi melalui QR internal SIS KGB2</div>
           </div>
 
-          <div style="margin-top:16px;text-align:center;">
+          <div style="margin-top:10px;text-align:center;">
             <div class="header-line">${escapeHtml(snapshot.title)}</div>
             <div class="header-line">${escapeHtml(formatExamHeadingLabel(snapshot.examLabel))}</div>
             <div class="header-line">${escapeHtml(snapshot.schoolName)}</div>
@@ -266,6 +277,7 @@ function buildProctorReportPrintHtml(params: {
           <div class="narrative">${escapeHtml(snapshot.narrative)}</div>
 
           <div class="counts">
+            <div class="count-row"><div>Jam ke / Sesi</div><div>:</div><div>${escapeHtml(executionSlotValue)}</div></div>
             <div class="count-row"><div>Jumlah Peserta Seharusnya</div><div>:</div><div>${snapshot.counts.expectedParticipants}</div></div>
             <div class="count-row"><div>Jumlah Peserta yang tidak hadir</div><div>:</div><div>${snapshot.counts.absentParticipants}</div></div>
             <div class="count-row"><div>Jumlah Peserta yang hadir</div><div>:</div><div>${snapshot.counts.presentParticipants}</div></div>
@@ -285,7 +297,7 @@ function buildProctorReportPrintHtml(params: {
                 <div class="signature-name">${escapeHtml(snapshot.proctor.name)}</div>
                 <div class="signature-rule"></div>
               </div>
-              <div class="signature-note">${escapeHtml(snapshot.proctor.signatureLabel)} Dokumen dikirim ke Kurikulum pada ${escapeHtml(formatDateTime(snapshot.submittedAt))}.</div>
+              <div class="signature-note">${escapeHtml(signatureNote)}</div>
             </div>
           </div>
 
@@ -305,7 +317,7 @@ export default function ProctorReportPrint() {
   const parsedReportId = Number(reportId || 0);
   const headerFontSize = '12pt';
   const contentFontSize = '11pt';
-  const noteFontSize = '7.5pt';
+  const noteFontSize = '7pt';
   const printIframeRef = useRef<HTMLIFrameElement>(null);
 
   const documentQuery = useQuery({
@@ -345,6 +357,10 @@ export default function ProctorReportPrint() {
 
   const { snapshot, verificationQrDataUrl } = documentQuery.data;
   const noteText = (snapshot.notes || '-').trim() || '-';
+  const signatureNote = `Ditandatangani dan dikirim ke Kurikulum secara digital oleh pengawas ruang pada ${formatDateOnly(
+    snapshot.submittedAt,
+  )} pukul ${formatTimeOnly(snapshot.submittedAt)}.`;
+  const executionSlotValue = buildExecutionSlotValue(snapshot.schedule);
   const handlePrint = () => {
     const iframe = printIframeRef.current;
     if (!iframe || !iframe.contentWindow) return;
@@ -411,16 +427,16 @@ export default function ProctorReportPrint() {
         <StandardSchoolDocumentHeader header={snapshot.documentHeader} />
 
         <div style={{ padding: '0 1.5cm' }}>
-          <div className="mt-2 flex flex-wrap items-start justify-between gap-4 text-slate-700" style={{ fontSize: noteFontSize }}>
-            <div className="rounded-lg border border-slate-200 bg-slate-50 px-3 py-2" style={{ fontSize: noteFontSize }}>
-              <span className="font-semibold text-slate-900">No. Dokumen:</span> {snapshot.documentNumber}
+          <div className="mt-0.5 flex flex-wrap items-start justify-between gap-4 text-slate-600 italic" style={{ fontSize: noteFontSize }}>
+            <div style={{ fontSize: noteFontSize }}>
+              No. Dokumen: {snapshot.documentNumber}
             </div>
-            <div className="rounded-lg border border-emerald-200 bg-emerald-50 px-3 py-2 text-emerald-800" style={{ fontSize: noteFontSize }}>
+            <div style={{ fontSize: noteFontSize }}>
               Diverifikasi melalui QR internal SIS KGB2
             </div>
           </div>
 
-          <div className="mt-4 text-center">
+          <div className="mt-2.5 text-center">
             <div className="font-semibold tracking-wide text-slate-900" style={{ fontSize: headerFontSize, lineHeight: 1.35 }}>{snapshot.title}</div>
             <div className="mt-1 font-semibold uppercase tracking-wide text-slate-900" style={{ fontSize: headerFontSize, lineHeight: 1.35 }}>
               {formatExamHeadingLabel(snapshot.examLabel)}
@@ -437,7 +453,12 @@ export default function ProctorReportPrint() {
             <p className="text-justify">{snapshot.narrative}</p>
           </div>
 
-          <div className="mt-7 grid gap-2.5 text-slate-900" style={{ fontSize: contentFontSize }}>
+          <div className="mt-7 grid gap-2 text-slate-900" style={{ fontSize: contentFontSize, marginLeft: '1cm' }}>
+            <div className="grid grid-cols-[230px_16px_1fr]">
+              <div>Jam ke / Sesi</div>
+              <div>:</div>
+              <div>{executionSlotValue}</div>
+            </div>
             <div className="grid grid-cols-[230px_16px_1fr]">
               <div>Jumlah Peserta Seharusnya</div>
               <div>:</div>
@@ -468,19 +489,19 @@ export default function ProctorReportPrint() {
           <div className="mt-8 flex justify-end">
             <div className="w-full max-w-[300px] text-center text-slate-900" style={{ fontSize: contentFontSize }}>
               <div className="font-medium" style={{ fontSize: contentFontSize }}>Pengawas,</div>
-              <div className="mt-4 flex justify-center">
+              <div className="mt-3 flex justify-center">
                 <img
                   src={verificationQrDataUrl}
                   alt="QR Verifikasi Berita Acara"
                   className="proctor-report-print-image h-[104px] w-[104px] rounded-xl border border-slate-200 bg-white p-2"
                 />
               </div>
-              <div className="mt-7 inline-block max-w-full">
+              <div className="mt-3 inline-block max-w-full">
                 <div className="font-semibold" style={{ fontSize: contentFontSize }}>{snapshot.proctor.name}</div>
-                <div className="mt-3 border-t border-slate-400" />
+                <div className="mt-0.5 border-t border-slate-400" />
               </div>
-              <div className="mt-3 text-slate-600" style={{ fontSize: noteFontSize, lineHeight: 1.5 }}>
-                {snapshot.proctor.signatureLabel} Dokumen dikirim ke Kurikulum pada {formatDateTime(snapshot.submittedAt)}.
+              <div className="mt-2 text-slate-600" style={{ fontSize: noteFontSize, lineHeight: 1.25 }}>
+                {signatureNote}
               </div>
             </div>
           </div>

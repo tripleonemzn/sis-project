@@ -81,7 +81,7 @@ export default function ProctorReportVerificationPage() {
   return (
     <div className="min-h-screen bg-slate-100 px-4 py-10">
       <div className="mx-auto max-w-3xl">
-        <div className="rounded-3xl border border-slate-200 bg-white p-8 shadow-sm">
+        <div className="relative overflow-hidden rounded-3xl border border-slate-200 bg-white p-8 shadow-sm">
           {verificationQuery.isLoading ? (
             <div className="text-sm text-slate-600">Memverifikasi dokumen berita acara...</div>
           ) : verificationQuery.isError || !verificationQuery.data ? (
@@ -96,15 +96,26 @@ export default function ProctorReportVerificationPage() {
             </div>
           ) : (
             <>
-              <div className="mx-auto flex h-16 w-16 items-center justify-center rounded-full bg-emerald-50 text-emerald-600">
+              <div className="pointer-events-none absolute inset-0 flex items-center justify-center">
+                <div className="-rotate-12 opacity-[0.07]">
+                  <div className="flex flex-col items-center">
+                    <img src="/logo_sis_kgb2.png" alt="" className="h-56 w-56 object-contain" />
+                    <div className="mt-4 text-center text-xl font-semibold uppercase tracking-[0.22em] text-emerald-900">
+                      Dokumen ini sah dan legal secara internal
+                    </div>
+                  </div>
+                </div>
+              </div>
+
+              <div className="relative z-10 mx-auto flex h-16 w-16 items-center justify-center rounded-full bg-emerald-50 text-emerald-600">
                 <CheckCircle2 className="h-8 w-8" />
               </div>
-              <h1 className="mt-4 text-center text-2xl font-bold text-slate-900">Dokumen Terverifikasi</h1>
-              <p className="mt-2 text-center text-sm text-slate-600">
+              <h1 className="relative z-10 mt-4 text-center text-2xl font-bold text-slate-900">Dokumen Terverifikasi</h1>
+              <p className="relative z-10 mt-2 text-center text-sm text-slate-600">
                 Dokumen ujian ini terdaftar di sistem SIS KGB2 dan dinyatakan valid.
               </p>
 
-              <div className="mt-8 grid gap-4 rounded-2xl border border-emerald-100 bg-emerald-50/60 p-5 text-sm text-slate-700">
+              <div className="relative z-10 mt-8 grid gap-4 rounded-2xl border border-emerald-100 bg-emerald-50/60 p-5 text-sm text-slate-700">
                 <div className="grid gap-1">
                   <div className="text-xs font-semibold uppercase tracking-wide text-emerald-700">Nomor Dokumen</div>
                   <div className="font-semibold text-slate-900">{verificationQuery.data.documentNumber}</div>
@@ -147,7 +158,7 @@ export default function ProctorReportVerificationPage() {
               </div>
 
               {verificationQuery.data.attendanceDocument ? (
-                <div className="mt-6 rounded-2xl border border-sky-200 bg-sky-50/70 p-5 text-sm text-slate-700">
+                <div className="relative z-10 mt-6 rounded-2xl border border-sky-200 bg-sky-50/70 p-5 text-sm text-slate-700">
                   <div className="text-xs font-semibold uppercase tracking-wide text-sky-700">Daftar Hadir Digital</div>
                   <div className="mt-2 font-semibold text-slate-900">
                     {verificationQuery.data.attendanceDocument.documentNumber}
@@ -161,13 +172,13 @@ export default function ProctorReportVerificationPage() {
               ) : null}
 
               {verificationQuery.data.snapshot.schedule.classNames.length > 0 ? (
-                <div className="mt-6 rounded-2xl border border-slate-200 bg-slate-50 p-5 text-sm text-slate-700">
+                <div className="relative z-10 mt-6 rounded-2xl border border-slate-200 bg-slate-50 p-5 text-sm text-slate-700">
                   <div className="text-xs font-semibold uppercase tracking-wide text-slate-500">Kelas / Rombel</div>
                   <div className="mt-2">{verificationQuery.data.snapshot.schedule.classNames.join(', ')}</div>
                 </div>
               ) : null}
 
-              <div className="mt-6 text-center text-xs text-slate-500">
+              <div className="relative z-10 mt-6 text-center text-xs text-slate-500">
                 Verifikasi dilakukan pada {formatDateTime(verificationQuery.data.verifiedAt)}.
               </div>
             </>
