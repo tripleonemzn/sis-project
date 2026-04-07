@@ -115,6 +115,10 @@ export function normalizeExamRichTextToHtml(value?: string | null) {
         .trim();
       return nextStyle ? ` style=${quote}${nextStyle}${quote}` : '';
     })
+    .replace(
+      /<(p|div)\b([^>]*)>\s*(?:<br\s*\/?>|\s|&nbsp;|\u00a0)*<\/\1>/gi,
+      (_full, tagName: string, attrs: string) => `<${tagName}${attrs}>&nbsp;</${tagName}>`,
+    )
     .replace(/<table\b[^>]*>/gi, '<div class="exam-office-table">')
     .replace(/<\/table>/gi, '</div>')
     .replace(/<tr\b[^>]*>/gi, '<div class="exam-office-row">')

@@ -238,6 +238,7 @@ export default function StudentExamTakePage() {
   // Submission
   const [submitting, setSubmitting] = useState(false)
   const [showSubmitConfirm, setShowSubmitConfirm] = useState(false)
+  const [isRefreshingExam, setIsRefreshingExam] = useState(false)
   const timerIntervalRef = useRef<ReturnType<typeof setInterval> | null>(null)
   const violationTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null)
   const progressSyncTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null)
@@ -647,9 +648,12 @@ export default function StudentExamTakePage() {
     }
   }, [violations, examStartTime, handleAutoSubmit])
 
-  const fetchExam = async () => {
+  const fetchExam = async (options?: { background?: boolean }) => {
+    const isBackgroundRefresh = options?.background === true
     try {
-      setLoading(true)
+      if (!isBackgroundRefresh) {
+        setLoading(true)
+      }
       if (!user) return
 
       // Use the startExam endpoint which includes validation
@@ -792,13 +796,19 @@ export default function StudentExamTakePage() {
       }
     } catch (error: unknown) {
       const apiError = error as { response?: { data?: { message?: string } } }
-      fetchedExamKeyRef.current = null
       console.error('❌ Error fetching exam:', apiError.response?.data || error)
       const errorMessage = apiError.response?.data?.message || 'Gagal memuat ujian'
+      if (isBackgroundRefresh) {
+        toast.error(errorMessage)
+        return
+      }
+      fetchedExamKeyRef.current = null
       toast.error(errorMessage)
       navigate(baseExamRoute)
     } finally {
-      setLoading(false)
+      if (!isBackgroundRefresh) {
+        setLoading(false)
+      }
     }
   }
 
@@ -1236,10 +1246,22 @@ export default function StudentExamTakePage() {
   }
 
   const getTimeColor = () => {
-    const percentage = (timeRemaining / (exam!.duration * 60)) * 100
-    if (percentage <= 10) return 'text-red-600'
-    if (percentage <= 25) return 'text-orange-600'
-    return 'text-green-600'
+    if (timeRemaining <= 180) return 'border-red-200 bg-red-50 text-red-600 animate-pulse'
+    if (timeRemaining <= 600) return 'border-amber-200 bg-amber-50 text-amber-600'
+    return 'border-emerald-200 bg-emerald-50 text-emerald-600'
+  }
+
+  const handleRefreshExam = async () => {
+    if (submitting || loading || isRefreshingExam) return
+
+    setIsRefreshingExam(true)
+    try {
+      await syncProgressInBackground(answersRef.current, { force: true })
+      await fetchExam({ background: true })
+      toast.success('Data ujian diperbarui')
+    } finally {
+      setIsRefreshingExam(false)
+    }
   }
 
   const handleAnswerChange = (questionId: string, answer: StudentExamAnswerValue, isComplex: boolean = false) => {
@@ -1567,7 +1589,7 @@ export default function StudentExamTakePage() {
 
             {/* Right: Timer + Submit */}
             <div className="ml-auto flex items-center gap-2 lg:gap-3 pr-2 sm:pr-10 lg:pr-14 flex-shrink-0">
-              <div className={`flex items-center gap-2 px-3 md:px-4 py-2 bg-gray-100 rounded-lg ${getTimeColor()}`}>
+              <div className={`inline-flex h-11 items-center gap-2 rounded-xl border px-3 md:px-4 ${getTimeColor()}`}>
                 <Clock className="w-4 h-4 md:w-5 md:h-5" />
                 <span className="text-base md:text-xl font-bold font-mono">{formatTime(timeRemaining)}</span>
               </div>
@@ -1601,13 +1623,14 @@ export default function StudentExamTakePage() {
                 <div className="flex flex-wrap items-center gap-2">
                   <button
                     type="button"
-                    onClick={() => window.location.reload()}
-                    className="inline-flex items-center justify-center w-10 h-10 rounded-lg border border-gray-200 bg-white text-gray-600 hover:bg-gray-50"
+                    onClick={handleRefreshExam}
+                    disabled={isRefreshingExam}
+                    className="inline-flex h-11 w-11 items-center justify-center rounded-xl border border-gray-200 bg-white text-gray-600 hover:bg-gray-50 disabled:cursor-not-allowed disabled:opacity-60"
                     title="Refresh halaman ujian"
                   >
-                    <RefreshCw className="w-4 h-4" />
+                    <RefreshCw className={`w-4 h-4 ${isRefreshingExam ? 'animate-spin' : ''}`} />
                   </button>
-                  <div className={`inline-flex items-center gap-2 px-3 py-2 rounded-lg border ${networkBadgeStyle}`}>
+                  <div className={`inline-flex h-11 items-center gap-2 rounded-xl border px-4 ${networkBadgeStyle}`}>
                     {networkStatus.quality === 'offline' ? (
                       <WifiOff className="w-4 h-4" />
                     ) : (
@@ -1615,13 +1638,13 @@ export default function StudentExamTakePage() {
                     )}
                     <span className="text-xs font-semibold tracking-wide uppercase">{networkStatus.label}</span>
                   </div>
-                  <div className="inline-flex items-center gap-2 px-4 py-2 bg-red-50 text-red-700 rounded-lg border border-red-100">
+                  <div className="inline-flex h-11 items-center gap-2 rounded-xl border border-red-100 bg-red-50 px-4 text-red-700">
                     <AlertTriangle className="w-4 h-4" />
                     <span className="font-bold">{effectiveViolations}/3</span>
                     <span className="text-xs">Pelanggaran</span>
                   </div>
                 </div>
-                <span className="px-3 py-1 bg-gray-100 text-gray-600 rounded-lg font-bold">
+                <span className="inline-flex h-11 items-center rounded-xl border border-gray-200 bg-gray-50 px-4 font-bold text-gray-600">
                   Soal No. {currentQuestionIndex + 1}
                 </span>
               </div>
@@ -1631,7 +1654,7 @@ export default function StudentExamTakePage() {
 
               {/* Question Text */}
               <div 
-                className="prose max-w-none text-lg text-gray-800 mb-8 notranslate [&_*]:max-w-full [&_*]:!whitespace-normal [&_*]:break-normal [&_p]:text-justify [&_div]:text-justify [&_li]:text-justify [&_ol]:list-decimal [&_ol]:pl-6 [&_ol]:ml-2 [&_ul]:list-disc [&_ul]:pl-6 [&_ul]:ml-2 [&_li]:my-1"
+                className="prose max-w-none text-lg text-gray-800 mb-8 notranslate [&_*]:max-w-full [&_*]:!whitespace-normal [&_*]:break-normal [&_p]:my-3 [&_p]:text-justify [&_div]:my-3 [&_div]:text-justify [&_li]:my-1 [&_li]:text-justify [&_ol]:list-decimal [&_ol]:pl-6 [&_ol]:ml-2 [&_ul]:list-disc [&_ul]:pl-6 [&_ul]:ml-2"
                 style={{ overflowWrap: 'break-word', wordBreak: 'normal' }}
                 translate="no"
                 dangerouslySetInnerHTML={{ __html: currentQuestionHtml }}

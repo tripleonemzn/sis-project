@@ -2,7 +2,7 @@ import { useMutation } from '@tanstack/react-query';
 import { Redirect, Stack, useLocalSearchParams, useRouter } from 'expo-router';
 import { StatusBar } from 'expo-status-bar';
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
-import { Alert, AppState, AppStateStatus, BackHandler, Image, Pressable, ScrollView, Text, TextInput, View } from 'react-native';
+import { Alert, Animated, AppState, AppStateStatus, BackHandler, Image, Pressable, ScrollView, Text, TextInput, View } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { WebView } from 'react-native-webview';
 import { AppLoadingScreen } from '../../../../src/components/AppLoadingScreen';
@@ -352,6 +352,44 @@ export default function StudentExamTakeScreen() {
     monitoringStatsRef.current.totalViolations,
     persistedMonitoring?.totalViolations || 0,
   );
+  const timerChipPalette = useMemo(() => {
+    if (remainingSeconds <= 180) {
+      return { backgroundColor: '#fef2f2', borderColor: '#fecaca', textColor: '#dc2626' };
+    }
+    if (remainingSeconds <= 600) {
+      return { backgroundColor: '#fffbeb', borderColor: '#fcd34d', textColor: '#d97706' };
+    }
+    return { backgroundColor: '#ecfeff', borderColor: '#a5f3fc', textColor: '#0f766e' };
+  }, [remainingSeconds]);
+  const timerPulseOpacity = useRef(new Animated.Value(1)).current;
+
+  useEffect(() => {
+    timerPulseOpacity.stopAnimation();
+    if (remainingSeconds > 0 && remainingSeconds <= 180) {
+      const loop = Animated.loop(
+        Animated.sequence([
+          Animated.timing(timerPulseOpacity, {
+            toValue: 0.45,
+            duration: 650,
+            useNativeDriver: true,
+          }),
+          Animated.timing(timerPulseOpacity, {
+            toValue: 1,
+            duration: 650,
+            useNativeDriver: true,
+          }),
+        ]),
+      );
+      loop.start();
+      return () => {
+        loop.stop();
+        timerPulseOpacity.setValue(1);
+      };
+    }
+
+    timerPulseOpacity.setValue(1);
+    return undefined;
+  }, [remainingSeconds, timerPulseOpacity]);
 
   const buildSubmissionAnswers = useCallback((answerSource: Record<string, unknown>) => {
     const monitoringPayload: MonitoringStats = {
@@ -927,9 +965,21 @@ export default function StudentExamTakeScreen() {
           {resolvedTakeSubject.code ? ` (${resolvedTakeSubject.code})` : ''}
         </Text>
         <View style={{ flexDirection: 'row', flexWrap: 'wrap', gap: 8 }}>
-          <View style={{ backgroundColor: '#ecfeff', borderColor: '#a5f3fc', borderWidth: 1, borderRadius: 999, paddingHorizontal: 10, paddingVertical: 6 }}>
-            <Text style={{ color: '#0f766e', fontSize: 12, fontWeight: '700' }}>Sisa waktu {formatTime(remainingSeconds)}</Text>
-          </View>
+          <Animated.View
+            style={{
+              backgroundColor: timerChipPalette.backgroundColor,
+              borderColor: timerChipPalette.borderColor,
+              borderWidth: 1,
+              borderRadius: 999,
+              paddingHorizontal: 10,
+              paddingVertical: 6,
+              opacity: timerPulseOpacity,
+            }}
+          >
+            <Text style={{ color: timerChipPalette.textColor, fontSize: 12, fontWeight: '700' }}>
+              Sisa waktu {formatTime(remainingSeconds)}
+            </Text>
+          </Animated.View>
           <View style={{ backgroundColor: '#eff6ff', borderColor: '#bfdbfe', borderWidth: 1, borderRadius: 999, paddingHorizontal: 10, paddingVertical: 6 }}>
             <Text style={{ color: '#1d4ed8', fontSize: 12, fontWeight: '700' }}>Mulai {formatDateTime(startQuery.data.session.startTime)}</Text>
           </View>
