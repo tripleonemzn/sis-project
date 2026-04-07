@@ -94,7 +94,7 @@ function buildProctorReportPrintHtml(params: {
   const { snapshot, verificationQrDataUrl } = params;
   const headerFontSize = '12pt';
   const contentFontSize = '11pt';
-  const noteFontSize = '8pt';
+  const noteFontSize = '7.5pt';
   const noteText = (snapshot.notes || '-').trim() || '-';
   const noteHtml = escapeMultilineHtml(noteText);
 
@@ -104,7 +104,7 @@ function buildProctorReportPrintHtml(params: {
       <meta charset="utf-8" />
       <title>${escapeHtml(snapshot.title)} - ${escapeHtml(snapshot.documentNumber)}</title>
       <style>
-        @page { size: A4 portrait; margin: 2.5cm; }
+        @page { size: A4 portrait; margin: 1cm 1cm 2.5cm; }
         html, body {
           margin: 0;
           padding: 0;
@@ -119,6 +119,9 @@ function buildProctorReportPrintHtml(params: {
           line-height: 1.6;
         }
         .sheet { width: 100%; }
+        .document-body {
+          padding: 0 1.5cm;
+        }
         .header-line {
           font-size: ${headerFontSize};
           line-height: 1.35;
@@ -127,7 +130,7 @@ function buildProctorReportPrintHtml(params: {
           letter-spacing: 0.02em;
         }
         .meta-row {
-          margin-top: 12px;
+          margin-top: 8px;
           display: flex;
           justify-content: space-between;
           align-items: flex-start;
@@ -149,7 +152,7 @@ function buildProctorReportPrintHtml(params: {
           font-size: ${noteFontSize};
         }
         .narrative {
-          margin-top: 24px;
+          margin-top: 20px;
           text-align: justify;
           font-size: ${contentFontSize};
           line-height: 1.8;
@@ -211,6 +214,11 @@ function buildProctorReportPrintHtml(params: {
           font-size: ${contentFontSize};
           font-weight: 700;
         }
+        .signature-name-wrap {
+          margin-top: 28px;
+          display: inline-block;
+          max-width: 100%;
+        }
         .signature-rule {
           margin-top: 10px;
           border-top: 1px solid #94a3b8;
@@ -242,46 +250,49 @@ function buildProctorReportPrintHtml(params: {
     <body>
       <div class="sheet">
         ${buildStandardSchoolDocumentHeaderHtml(snapshot.documentHeader)}
-
-        <div style="text-align:center;">
-          <div class="header-line">${escapeHtml(snapshot.title)}</div>
-          <div class="header-line">${escapeHtml(formatExamHeadingLabel(snapshot.examLabel))}</div>
-          <div class="header-line">${escapeHtml(snapshot.schoolName)}</div>
-          <div class="header-line">Tahun Ajaran ${escapeHtml(snapshot.academicYearName)}</div>
-        </div>
-
-        <div class="meta-row">
-          <div class="meta-chip"><strong>No. Dokumen:</strong> ${escapeHtml(snapshot.documentNumber)}</div>
-          <div class="meta-note">Diverifikasi melalui QR internal SIS KGB2</div>
-        </div>
-
-        <div class="narrative">${escapeHtml(snapshot.narrative)}</div>
-
-        <div class="counts">
-          <div class="count-row"><div>Jumlah Peserta Seharusnya</div><div>:</div><div>${snapshot.counts.expectedParticipants}</div></div>
-          <div class="count-row"><div>Jumlah Peserta yang tidak hadir</div><div>:</div><div>${snapshot.counts.absentParticipants}</div></div>
-          <div class="count-row"><div>Jumlah Peserta yang hadir</div><div>:</div><div>${snapshot.counts.presentParticipants}</div></div>
-        </div>
-
-        <div class="note-title">Catatan Pengawas selama Ujian berlangsung.</div>
-        <div class="note-text">${noteHtml}</div>
-        <div class="note-declaration">Berita Acara ini dibuat dengan sesungguhnya</div>
-
-        <div class="signature-row">
-          <div class="signature-box">
-            <div class="signature-label">Pengawas,</div>
-            <div class="qr-wrap">
-              <img src="${escapeHtml(verificationQrDataUrl)}" alt="QR Verifikasi Berita Acara" class="qr" />
-            </div>
-            <div class="signature-name">${escapeHtml(snapshot.proctor.name)}</div>
-            <div class="signature-rule"></div>
-            <div class="signature-note">${escapeHtml(snapshot.proctor.signatureLabel)} Dokumen dikirim ke Kurikulum pada ${escapeHtml(formatDateTime(snapshot.submittedAt))}.</div>
+        <div class="document-body">
+          <div class="meta-row">
+            <div class="meta-chip"><strong>No. Dokumen:</strong> ${escapeHtml(snapshot.documentNumber)}</div>
+            <div class="meta-note">Diverifikasi melalui QR internal SIS KGB2</div>
           </div>
-        </div>
 
-        <div class="verify-box">
-          ${escapeHtml(snapshot.verification.note)}
-          <div class="verify-url">${escapeHtml(snapshot.verification.verificationUrl)}</div>
+          <div style="margin-top:16px;text-align:center;">
+            <div class="header-line">${escapeHtml(snapshot.title)}</div>
+            <div class="header-line">${escapeHtml(formatExamHeadingLabel(snapshot.examLabel))}</div>
+            <div class="header-line">${escapeHtml(snapshot.schoolName)}</div>
+            <div class="header-line">Tahun Ajaran ${escapeHtml(snapshot.academicYearName)}</div>
+          </div>
+
+          <div class="narrative">${escapeHtml(snapshot.narrative)}</div>
+
+          <div class="counts">
+            <div class="count-row"><div>Jumlah Peserta Seharusnya</div><div>:</div><div>${snapshot.counts.expectedParticipants}</div></div>
+            <div class="count-row"><div>Jumlah Peserta yang tidak hadir</div><div>:</div><div>${snapshot.counts.absentParticipants}</div></div>
+            <div class="count-row"><div>Jumlah Peserta yang hadir</div><div>:</div><div>${snapshot.counts.presentParticipants}</div></div>
+          </div>
+
+          <div class="note-title">Catatan Pengawas selama Ujian berlangsung.</div>
+          <div class="note-text">${noteHtml}</div>
+          <div class="note-declaration">Berita Acara ini dibuat dengan sesungguhnya</div>
+
+          <div class="signature-row">
+            <div class="signature-box">
+              <div class="signature-label">Pengawas,</div>
+              <div class="qr-wrap">
+                <img src="${escapeHtml(verificationQrDataUrl)}" alt="QR Verifikasi Berita Acara" class="qr" />
+              </div>
+              <div class="signature-name-wrap">
+                <div class="signature-name">${escapeHtml(snapshot.proctor.name)}</div>
+                <div class="signature-rule"></div>
+              </div>
+              <div class="signature-note">${escapeHtml(snapshot.proctor.signatureLabel)} Dokumen dikirim ke Kurikulum pada ${escapeHtml(formatDateTime(snapshot.submittedAt))}.</div>
+            </div>
+          </div>
+
+          <div class="verify-box">
+            ${escapeHtml(snapshot.verification.note)}
+            <div class="verify-url">${escapeHtml(snapshot.verification.verificationUrl)}</div>
+          </div>
         </div>
       </div>
     </body>
@@ -294,7 +305,7 @@ export default function ProctorReportPrint() {
   const parsedReportId = Number(reportId || 0);
   const headerFontSize = '12pt';
   const contentFontSize = '11pt';
-  const noteFontSize = '8pt';
+  const noteFontSize = '7.5pt';
   const printIframeRef = useRef<HTMLIFrameElement>(null);
 
   const documentQuery = useQuery({
@@ -353,7 +364,7 @@ export default function ProctorReportPrint() {
       <style>{`
         @page {
           size: A4 portrait;
-          margin: 2.5cm;
+          margin: 1cm 1cm 2.5cm;
         }
         @media print {
           body {
@@ -394,86 +405,90 @@ export default function ProctorReportPrint() {
 
       <div
         className="proctor-report-shell mx-auto max-w-5xl rounded-2xl border border-slate-200 bg-white shadow-sm"
-        style={{ maxWidth: '210mm', minHeight: '297mm', padding: '2.5cm', fontSize: contentFontSize }}
+        style={{ maxWidth: '210mm', minHeight: '297mm', padding: '1cm 1cm 2.5cm', fontSize: contentFontSize }}
         data-proctor-report-ready="true"
       >
         <StandardSchoolDocumentHeader header={snapshot.documentHeader} />
 
-        <div className="text-center">
-          <div className="font-semibold tracking-wide text-slate-900" style={{ fontSize: headerFontSize, lineHeight: 1.35 }}>{snapshot.title}</div>
-          <div className="mt-1 font-semibold uppercase tracking-wide text-slate-900" style={{ fontSize: headerFontSize, lineHeight: 1.35 }}>
-            {formatExamHeadingLabel(snapshot.examLabel)}
-          </div>
-          <div className="mt-1 font-semibold uppercase tracking-wide text-slate-900" style={{ fontSize: headerFontSize, lineHeight: 1.35 }}>
-            {snapshot.schoolName}
-          </div>
-          <div className="mt-1 font-semibold uppercase tracking-wide text-slate-900" style={{ fontSize: headerFontSize, lineHeight: 1.35 }}>
-            Tahun Ajaran {snapshot.academicYearName}
-          </div>
-        </div>
-
-        <div className="mt-3 flex flex-wrap items-start justify-between gap-4 text-slate-700" style={{ fontSize: noteFontSize }}>
-          <div className="rounded-lg border border-slate-200 bg-slate-50 px-3 py-2" style={{ fontSize: noteFontSize }}>
-            <span className="font-semibold text-slate-900">No. Dokumen:</span> {snapshot.documentNumber}
-          </div>
-          <div className="rounded-lg border border-emerald-200 bg-emerald-50 px-3 py-2 text-emerald-800" style={{ fontSize: noteFontSize }}>
-            Diverifikasi melalui QR internal SIS KGB2
-          </div>
-        </div>
-
-        <div className="mt-7 text-slate-900" style={{ fontSize: contentFontSize, lineHeight: 1.8 }}>
-          <p className="text-justify">{snapshot.narrative}</p>
-        </div>
-
-        <div className="mt-7 grid gap-2.5 text-slate-900" style={{ fontSize: contentFontSize }}>
-          <div className="grid grid-cols-[230px_16px_1fr]">
-            <div>Jumlah Peserta Seharusnya</div>
-            <div>:</div>
-            <div>{snapshot.counts.expectedParticipants}</div>
-          </div>
-          <div className="grid grid-cols-[230px_16px_1fr]">
-            <div>Jumlah Peserta yang tidak hadir</div>
-            <div>:</div>
-            <div>{snapshot.counts.absentParticipants}</div>
-          </div>
-          <div className="grid grid-cols-[230px_16px_1fr]">
-            <div>Jumlah Peserta yang hadir</div>
-            <div>:</div>
-            <div>{snapshot.counts.presentParticipants}</div>
-          </div>
-        </div>
-
-        <div className="mt-8">
-          <div className="font-semibold text-slate-900" style={{ fontSize: contentFontSize }}>Catatan Pengawas selama Ujian berlangsung.</div>
-          <div className="mt-2 whitespace-pre-wrap text-slate-900" style={{ fontSize: contentFontSize, lineHeight: 1.75 }}>
-            {noteText}
-          </div>
-          <div className="mt-2 text-slate-900" style={{ fontSize: contentFontSize }}>
-            Berita Acara ini dibuat dengan sesungguhnya
-          </div>
-        </div>
-
-        <div className="mt-8 flex justify-end">
-          <div className="w-full max-w-[300px] text-center text-slate-900" style={{ fontSize: contentFontSize }}>
-            <div className="font-medium" style={{ fontSize: contentFontSize }}>Pengawas,</div>
-            <div className="mt-4 flex justify-center">
-              <img
-                src={verificationQrDataUrl}
-                alt="QR Verifikasi Berita Acara"
-                className="proctor-report-print-image h-[104px] w-[104px] rounded-xl border border-slate-200 bg-white p-2"
-              />
+        <div style={{ padding: '0 1.5cm' }}>
+          <div className="mt-2 flex flex-wrap items-start justify-between gap-4 text-slate-700" style={{ fontSize: noteFontSize }}>
+            <div className="rounded-lg border border-slate-200 bg-slate-50 px-3 py-2" style={{ fontSize: noteFontSize }}>
+              <span className="font-semibold text-slate-900">No. Dokumen:</span> {snapshot.documentNumber}
             </div>
-            <div className="mt-7 font-semibold" style={{ fontSize: contentFontSize }}>{snapshot.proctor.name}</div>
-            <div className="mt-3 border-t border-slate-400" />
-            <div className="mt-3 text-slate-600" style={{ fontSize: noteFontSize, lineHeight: 1.5 }}>
-              {snapshot.proctor.signatureLabel} Dokumen dikirim ke Kurikulum pada {formatDateTime(snapshot.submittedAt)}.
+            <div className="rounded-lg border border-emerald-200 bg-emerald-50 px-3 py-2 text-emerald-800" style={{ fontSize: noteFontSize }}>
+              Diverifikasi melalui QR internal SIS KGB2
             </div>
           </div>
-        </div>
 
-        <div className="mt-7 rounded-xl border border-dashed border-slate-300 bg-slate-50 px-4 py-3 text-slate-600" style={{ fontSize: noteFontSize, lineHeight: 1.5 }}>
-          {snapshot.verification.note}
-          <div className="mt-1 break-all font-medium text-slate-700" style={{ fontSize: noteFontSize }}>{snapshot.verification.verificationUrl}</div>
+          <div className="mt-4 text-center">
+            <div className="font-semibold tracking-wide text-slate-900" style={{ fontSize: headerFontSize, lineHeight: 1.35 }}>{snapshot.title}</div>
+            <div className="mt-1 font-semibold uppercase tracking-wide text-slate-900" style={{ fontSize: headerFontSize, lineHeight: 1.35 }}>
+              {formatExamHeadingLabel(snapshot.examLabel)}
+            </div>
+            <div className="mt-1 font-semibold uppercase tracking-wide text-slate-900" style={{ fontSize: headerFontSize, lineHeight: 1.35 }}>
+              {snapshot.schoolName}
+            </div>
+            <div className="mt-1 font-semibold uppercase tracking-wide text-slate-900" style={{ fontSize: headerFontSize, lineHeight: 1.35 }}>
+              Tahun Ajaran {snapshot.academicYearName}
+            </div>
+          </div>
+
+          <div className="mt-5 text-slate-900" style={{ fontSize: contentFontSize, lineHeight: 1.8 }}>
+            <p className="text-justify">{snapshot.narrative}</p>
+          </div>
+
+          <div className="mt-7 grid gap-2.5 text-slate-900" style={{ fontSize: contentFontSize }}>
+            <div className="grid grid-cols-[230px_16px_1fr]">
+              <div>Jumlah Peserta Seharusnya</div>
+              <div>:</div>
+              <div>{snapshot.counts.expectedParticipants}</div>
+            </div>
+            <div className="grid grid-cols-[230px_16px_1fr]">
+              <div>Jumlah Peserta yang tidak hadir</div>
+              <div>:</div>
+              <div>{snapshot.counts.absentParticipants}</div>
+            </div>
+            <div className="grid grid-cols-[230px_16px_1fr]">
+              <div>Jumlah Peserta yang hadir</div>
+              <div>:</div>
+              <div>{snapshot.counts.presentParticipants}</div>
+            </div>
+          </div>
+
+          <div className="mt-8">
+            <div className="font-semibold text-slate-900" style={{ fontSize: contentFontSize }}>Catatan Pengawas selama Ujian berlangsung.</div>
+            <div className="mt-2 whitespace-pre-wrap text-slate-900" style={{ fontSize: contentFontSize, lineHeight: 1.75 }}>
+              {noteText}
+            </div>
+            <div className="mt-2 text-slate-900" style={{ fontSize: contentFontSize }}>
+              Berita Acara ini dibuat dengan sesungguhnya
+            </div>
+          </div>
+
+          <div className="mt-8 flex justify-end">
+            <div className="w-full max-w-[300px] text-center text-slate-900" style={{ fontSize: contentFontSize }}>
+              <div className="font-medium" style={{ fontSize: contentFontSize }}>Pengawas,</div>
+              <div className="mt-4 flex justify-center">
+                <img
+                  src={verificationQrDataUrl}
+                  alt="QR Verifikasi Berita Acara"
+                  className="proctor-report-print-image h-[104px] w-[104px] rounded-xl border border-slate-200 bg-white p-2"
+                />
+              </div>
+              <div className="mt-7 inline-block max-w-full">
+                <div className="font-semibold" style={{ fontSize: contentFontSize }}>{snapshot.proctor.name}</div>
+                <div className="mt-3 border-t border-slate-400" />
+              </div>
+              <div className="mt-3 text-slate-600" style={{ fontSize: noteFontSize, lineHeight: 1.5 }}>
+                {snapshot.proctor.signatureLabel} Dokumen dikirim ke Kurikulum pada {formatDateTime(snapshot.submittedAt)}.
+              </div>
+            </div>
+          </div>
+
+          <div className="mt-7 rounded-xl border border-dashed border-slate-300 bg-slate-50 px-4 py-3 text-slate-600" style={{ fontSize: noteFontSize, lineHeight: 1.5 }}>
+            {snapshot.verification.note}
+            <div className="mt-1 break-all font-medium text-slate-700" style={{ fontSize: noteFontSize }}>{snapshot.verification.verificationUrl}</div>
+          </div>
         </div>
       </div>
 
