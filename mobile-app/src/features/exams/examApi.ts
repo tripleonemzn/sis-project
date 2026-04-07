@@ -9,6 +9,7 @@ import {
   PacketItemAnalysisResponse,
   PacketSubmissionsResponse,
   SessionDetailResponse,
+  StudentExamPlacement,
   StudentExamItem,
   StudentExamSession,
   StudentExamStartPayload,
@@ -117,6 +118,13 @@ type ExamSittingAssignedStudentsResponse = {
   data: {
     studentIds: number[];
   };
+};
+
+type StudentExamPlacementsResponse = {
+  statusCode: number;
+  success: boolean;
+  message: string;
+  data: StudentExamPlacement[];
 };
 
 type ExamRoomListResponse = {
@@ -551,6 +559,10 @@ export const examApi = {
   async getExamSittingDetail(sittingId: number) {
     const response = await apiClient.get<ExamSittingDetailResponse>(`/exam-sittings/${sittingId}`);
     return response.data.data;
+  },
+  async getMyExamSittings() {
+    const response = await apiClient.get<StudentExamPlacementsResponse>('/exam-sittings/my-sitting');
+    return Array.isArray(response.data?.data) ? response.data.data : [];
   },
   async createExamSitting(payload: ExamSittingUpsertPayload & { studentIds?: number[] }) {
     const response = await apiClient.post<ExamSittingMutationResponse>('/exam-sittings', payload);

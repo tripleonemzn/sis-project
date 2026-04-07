@@ -23,6 +23,13 @@ function parseScheduleId(raw: string | string[] | undefined): number | null {
   return parsed;
 }
 
+function parseReadyFlag(raw: string | string[] | undefined): boolean {
+  const value = Array.isArray(raw) ? raw[0] : raw;
+  if (!value) return false;
+  const normalized = String(value).trim().toLowerCase();
+  return normalized === '1' || normalized === 'true' || normalized === 'yes';
+}
+
 function toMediaUrl(url?: string | null) {
   const normalized = String(url || '').trim();
   if (!normalized) return '';
@@ -281,7 +288,7 @@ function resolveTakeExamSubject(packet: {
 export default function StudentExamTakeScreen() {
   const router = useRouter();
   const insets = useSafeAreaInsets();
-  const params = useLocalSearchParams<{ id?: string | string[] }>();
+  const params = useLocalSearchParams<{ id?: string | string[]; ready?: string | string[] }>();
   const { isAuthenticated, isLoading, user } = useAuth();
   const canAccessExams = user?.role === 'STUDENT' || user?.role === 'CALON_SISWA' || user?.role === 'UMUM';
   const isCandidateMode = user?.role === 'CALON_SISWA';
@@ -292,6 +299,7 @@ export default function StudentExamTakeScreen() {
   const pageContentPadding = getStandardPagePadding(insets);
   const pageContentPaddingCompact = getStandardPagePadding(insets, { horizontal: 20 });
   const scheduleId = useMemo(() => parseScheduleId(params.id), [params.id]);
+  const hasReadyFlag = useMemo(() => parseReadyFlag(params.ready), [params.ready]);
 
   const startQuery = useStudentExamStartQuery({
     enabled: isAuthenticated && !!scheduleId && !applicantVerificationLocked,
@@ -311,7 +319,7 @@ export default function StudentExamTakeScreen() {
   const [lastSavedAt, setLastSavedAt] = useState<string | null>(null);
   const [isFinalSubmitting, setIsFinalSubmitting] = useState(false);
   const [isFinished, setIsFinished] = useState(false);
-  const [hasAcknowledgedStart, setHasAcknowledgedStart] = useState(false);
+  const [hasAcknowledgedStart, setHasAcknowledgedStart] = useState(hasReadyFlag);
   const [violations, setViolations] = useState(0);
   const [lastViolationMessage, setLastViolationMessage] = useState<string | null>(null);
   const [previewImageSrc, setPreviewImageSrc] = useState<string | null>(null);
@@ -395,6 +403,12 @@ export default function StudentExamTakeScreen() {
       });
     },
   });
+
+  useEffect(() => {
+    if (hasReadyFlag) {
+      setHasAcknowledgedStart(true);
+    }
+  }, [hasReadyFlag]);
 
   useEffect(() => {
     answersRef.current = effectiveAnswers;

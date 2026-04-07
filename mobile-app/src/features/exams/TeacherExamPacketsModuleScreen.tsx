@@ -16,7 +16,7 @@ import { examApi, ExamProgramItem } from './examApi';
 import { ExamQuestion, ExamQuestionOption, ExamQuestionType } from './types';
 
 type ExamTypeFilter = 'ALL' | string;
-type SemesterFilter = 'ODD' | 'EVEN';
+type SemesterFilter = 'ODD' | 'EVEN' | '';
 type ExamLabelMap = Record<string, string>;
 
 type TeacherExamPacketsModuleScreenProps = {
@@ -234,7 +234,7 @@ export function TeacherExamPacketsModuleScreen({
   const [selectedAssignmentId, setSelectedAssignmentId] = useState<number | null>(null);
   const [typeFilter, setTypeFilter] = useState<ExamTypeFilter>(fixedProgramCodeNormalized || defaultType);
   const [searchQuery, setSearchQuery] = useState('');
-  const [semesterFilter, setSemesterFilter] = useState<SemesterFilter>('ODD');
+  const [semesterFilter, setSemesterFilter] = useState<SemesterFilter>('');
   const [expandedPacketId, setExpandedPacketId] = useState<number | null>(null);
 
   const examProgramsQuery = useQuery({
@@ -370,7 +370,7 @@ export function TeacherExamPacketsModuleScreen({
     return 'ODD';
   }, [activeYearSemester, lockedSemester, selectedAssignmentSemester, semesterFilter]);
   const selectedSemesterForQuery: 'ODD' | 'EVEN' | undefined =
-    effectiveSemesterFilter;
+    effectiveSemesterFilter || undefined;
 
   const packetsQuery = useTeacherExamPacketsQuery({
     enabled: isAuthenticated,
@@ -626,7 +626,7 @@ export function TeacherExamPacketsModuleScreen({
           options={semesterFilterOptions}
           onChange={(next) => setSemesterFilter(next === 'EVEN' ? 'EVEN' : 'ODD')}
           placeholder="Pilih semester"
-          helperText={`Semester aktif: ${semesterLabel(effectiveSemesterFilter)}`}
+          helperText={`Semester aktif: ${semesterLabel(effectiveSemesterFilter || undefined)}`}
         />
       )}
 

@@ -379,6 +379,32 @@ export type ExamSittingListItem = {
   };
 };
 
+export type StudentExamPlacement = {
+  id: number;
+  roomName: string;
+  academicYearId: number;
+  examType: string;
+  semester?: 'ODD' | 'EVEN' | null;
+  sessionId?: number | null;
+  sessionLabel?: string | null;
+  startTime?: string | null;
+  endTime?: string | null;
+  proctorId?: number | null;
+  proctor?: {
+    id: number;
+    name: string;
+  } | null;
+  seatLabel?: string | null;
+  seatPosition?: {
+    rowIndex: number;
+    columnIndex: number;
+  } | null;
+  layout?: {
+    generatedAt?: string | null;
+    updatedAt?: string | null;
+  } | null;
+};
+
 export type ExamSittingStudent = {
   id: number;
   name: string;

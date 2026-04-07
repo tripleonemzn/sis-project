@@ -397,7 +397,7 @@ export const ExamListPage = () => {
 
         const fixedSemester = toSemesterFilter(selectedProgram?.fixedSemester);
         const semesterFromAcademicYear = toSemesterFilter(activeAcademicYear?.semester);
-        const nextSemester = fixedSemester || storedSemester || semesterFromAcademicYear || '';
+        const nextSemester = fixedSemester || semesterFromAcademicYear || storedSemester || '';
 
         setSelectedSemester(nextSemester);
         setSelectedSubject(storedSubject);

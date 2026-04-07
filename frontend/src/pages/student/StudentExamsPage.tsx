@@ -8,6 +8,7 @@ import {
   findExamProgramBySlug,
   normalizeExamProgramCode,
   type ExamProgram,
+  type StudentExamPlacement,
 } from '../../services/exam.service'
 import { examCardService } from '../../services/examCard.service'
 import { 
@@ -315,6 +316,16 @@ export default function StudentExamsPage() {
     queryFn: async () => {
       const response = await examCardService.getMyCards()
       return response.data.cards || []
+    },
+  })
+  const studentExamPlacementsQuery = useQuery({
+    queryKey: ['student-exam-placements-web'],
+    enabled: !isCandidateMode && !isApplicantMode && !applicantVerificationLocked,
+    staleTime: 60_000,
+    refetchOnWindowFocus: false,
+    queryFn: async () => {
+      const response = await examService.getMyExamSittings()
+      return response.data || []
     },
   })
 
@@ -753,6 +764,29 @@ export default function StudentExamsPage() {
     })
   }
 
+  const getPlacementStatus = (placement: StudentExamPlacement) => {
+    const now = Date.now()
+    const startMs = placement.startTime ? new Date(placement.startTime).getTime() : Number.NaN
+    const endMs = placement.endTime ? new Date(placement.endTime).getTime() : Number.NaN
+
+    if (Number.isFinite(startMs) && Number.isFinite(endMs) && startMs <= now && now <= endMs) {
+      return {
+        label: 'Berlangsung',
+        className: 'bg-green-100 text-green-800 border border-green-200',
+      }
+    }
+    if (Number.isFinite(endMs) && now > endMs) {
+      return {
+        label: 'Selesai',
+        className: 'bg-slate-100 text-slate-700 border border-slate-200',
+      }
+    }
+    return {
+      label: 'Terjadwal',
+      className: 'bg-blue-100 text-blue-800 border border-blue-200',
+    }
+  }
+
   const getStatusBadge = (exam: Exam) => {
     const status = getExamStatus(exam)
 
@@ -831,6 +865,19 @@ export default function StudentExamsPage() {
 
     return normalizedProgram || normalizedType || '-'
   }
+
+  const filteredPlacements = useMemo(() => {
+    const rows = Array.isArray(studentExamPlacementsQuery.data) ? studentExamPlacementsQuery.data : []
+    return rows
+      .filter((placement) => {
+        if (programFilter === 'all') return true
+        return normalizeExamProgramCode(placement.examType) === programFilter
+      })
+      .sort(
+        (a, b) =>
+          new Date(String(a.startTime || 0)).getTime() - new Date(String(b.startTime || 0)).getTime(),
+      )
+  }, [programFilter, studentExamPlacementsQuery.data])
 
   const relevantTotal = exams.filter(e => programFilter === 'all' || normalizeExamProgramCode(e.programCode || e.type) === programFilter).length
   const pageTitle = isCandidateMode ? 'Tes Seleksi' : isApplicantMode ? 'Tes BKK' : 'Ujian'
@@ -960,6 +1007,72 @@ export default function StudentExamsPage() {
           ) : (
             <div className="mt-4 rounded-lg border border-dashed border-gray-300 px-4 py-6 text-sm text-gray-500">
               Belum ada kartu ujian digital yang dipublikasikan untuk akun Anda.
+            </div>
+          )}
+        </div>
+      ) : null}
+
+      {!isCandidateMode && !isApplicantMode ? (
+        <div className="rounded-xl border border-gray-200 bg-white p-5 shadow-sm">
+          <div className="flex flex-col gap-2 md:flex-row md:items-start md:justify-between">
+            <div>
+              <h2 className="text-lg font-semibold text-gray-900">Penempatan Ujian</h2>
+              <p className="mt-1 text-sm text-gray-500">
+                Ruang, sesi, dan kursi yang ditetapkan Kurikulum akan muncul di sini meski kartu ujian digital belum dipublikasikan.
+              </p>
+            </div>
+            <div className="rounded-full bg-blue-50 px-3 py-1 text-xs font-semibold text-blue-700">
+              {filteredPlacements.length} penempatan
+            </div>
+          </div>
+
+          {studentExamPlacementsQuery.isLoading ? (
+            <div className="mt-4 rounded-lg border border-dashed border-gray-300 px-4 py-6 text-sm text-gray-500">
+              Memuat penempatan ujian...
+            </div>
+          ) : studentExamPlacementsQuery.isError ? (
+            <div className="mt-4 rounded-xl border border-rose-200 bg-rose-50 px-4 py-4 text-sm text-rose-700">
+              <div className="font-semibold">Gagal memuat penempatan ujian.</div>
+              <button
+                type="button"
+                onClick={() => studentExamPlacementsQuery.refetch()}
+                className="mt-3 inline-flex items-center rounded-lg border border-rose-200 bg-white px-3 py-2 text-xs font-semibold text-rose-700 hover:bg-rose-50"
+              >
+                Coba Lagi
+              </button>
+            </div>
+          ) : filteredPlacements.length > 0 ? (
+            <div className="mt-4 grid gap-3 md:grid-cols-2">
+              {filteredPlacements.map((placement) => {
+                const chip = getPlacementStatus(placement)
+                return (
+                  <div key={placement.id} className="rounded-2xl border border-blue-100 bg-white px-4 py-4 text-sm text-gray-700">
+                    <div className="flex items-start justify-between gap-3">
+                      <div>
+                        <div className="font-semibold text-gray-900">{placement.roomName}</div>
+                        <div className="mt-1 text-xs text-gray-500">
+                          {examProgramLabels[normalizeExamProgramCode(placement.examType)] || normalizeExamProgramCode(placement.examType) || '-'} •{' '}
+                          {placement.sessionLabel || 'Sesi belum diatur'}
+                        </div>
+                      </div>
+                      <span className={`inline-flex rounded-full px-2.5 py-1 text-[11px] font-semibold ${chip.className}`}>
+                        {chip.label}
+                      </span>
+                    </div>
+                    <div className="mt-3 space-y-1 text-xs text-gray-600">
+                      <div>Kursi: {placement.seatLabel || 'Menunggu denah dipublikasikan'}</div>
+                      <div>
+                        Waktu: {formatDateTimeLong(placement.startTime || '')} - {formatDateTimeLong(placement.endTime || '')}
+                      </div>
+                      {placement.proctor?.name ? <div>Pengawas: {placement.proctor.name}</div> : null}
+                    </div>
+                  </div>
+                )
+              })}
+            </div>
+          ) : (
+            <div className="mt-4 rounded-lg border border-dashed border-gray-300 px-4 py-6 text-sm text-gray-500">
+              Belum ada penempatan ruang ujian yang dipublikasikan untuk akun Anda.
             </div>
           )}
         </div>

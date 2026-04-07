@@ -234,6 +234,32 @@ export interface ExamScheduleMakeupAccessSummary {
     } | null;
 }
 
+export interface StudentExamPlacement {
+    id: number;
+    roomName: string;
+    academicYearId: number;
+    examType: string;
+    semester?: 'ODD' | 'EVEN' | null;
+    sessionId?: number | null;
+    sessionLabel?: string | null;
+    startTime?: string | null;
+    endTime?: string | null;
+    proctorId?: number | null;
+    proctor?: {
+        id: number;
+        name: string;
+    } | null;
+    seatLabel?: string | null;
+    seatPosition?: {
+        rowIndex: number;
+        columnIndex: number;
+    } | null;
+    layout?: {
+        generatedAt?: string | null;
+        updatedAt?: string | null;
+    } | null;
+}
+
 export interface ExamScheduleMakeupStudentRow {
     student: {
         id: number;
@@ -794,6 +820,15 @@ export const examService = {
     getAvailableExams: async () => {
         const response = await api.get('/exams/available');
         return response.data;
+    },
+    getMyExamSittings: async () => {
+        const response = await api.get('/exam-sittings/my-sitting');
+        return response.data as {
+            statusCode: number;
+            success: boolean;
+            message: string;
+            data: StudentExamPlacement[];
+        };
     },
     createExamBrowserLaunchToken: async (scheduleId: number) => {
         const response = await api.post(`/exams/${scheduleId}/launch-token`);

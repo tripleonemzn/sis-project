@@ -4,6 +4,7 @@ import { useQuery } from '@tanstack/react-query';
 import { Alert, Image, Pressable, RefreshControl, ScrollView, Text, TextInput, View } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { AppLoadingScreen } from '../../src/components/AppLoadingScreen';
+import MobileDetailModal from '../../src/components/MobileDetailModal';
 import { MobileSelectField } from '../../src/components/MobileSelectField';
 import { QueryStateView } from '../../src/components/QueryStateView';
 import { OfflineCacheNotice } from '../../src/components/OfflineCacheNotice';
@@ -55,6 +56,20 @@ function statusStyle(status: StudentExamRuntimeStatus) {
   if (status === 'COMPLETED') return { bg: '#dbeafe', border: '#93c5fd', text: '#1d4ed8', label: 'Selesai' };
   if (status === 'MISSED') return { bg: '#fee2e2', border: '#fca5a5', text: '#991b1b', label: 'Terlewat' };
   return { bg: '#fef3c7', border: '#fcd34d', text: '#92400e', label: 'Akan Datang' };
+}
+
+function placementStatusStyle(startTime?: string | null, endTime?: string | null) {
+  const now = Date.now();
+  const startMs = startTime ? new Date(startTime).getTime() : Number.NaN;
+  const endMs = endTime ? new Date(endTime).getTime() : Number.NaN;
+
+  if (Number.isFinite(startMs) && Number.isFinite(endMs) && startMs <= now && now <= endMs) {
+    return { bg: '#dcfce7', border: '#86efac', text: '#166534', label: 'Berlangsung' };
+  }
+  if (Number.isFinite(endMs) && now > endMs) {
+    return { bg: '#e2e8f0', border: '#cbd5e1', text: '#475569', label: 'Selesai' };
+  }
+  return { bg: '#eff6ff', border: '#bfdbfe', text: '#1d4ed8', label: 'Terjadwal' };
 }
 
 function resolveExamTypeLabel(type: string, labels: ExamLabelMap): string {
@@ -132,6 +147,7 @@ export default function StudentExamsScreen() {
   const lockedProgramCode = normalizeProgramCode(Array.isArray(params.programCode) ? params.programCode[0] : params.programCode);
   const [searchQuery, setSearchQuery] = useState('');
   const [statusFilter, setStatusFilter] = useState<StatusFilter>('ALL');
+  const [selectedExam, setSelectedExam] = useState<StudentExamItem | null>(null);
   const studentExamCardsQuery = useQuery({
     queryKey: ['mobile-student-exam-cards', user?.id || 'anon'],
     enabled:
@@ -142,6 +158,17 @@ export default function StudentExamsScreen() {
       user?.role === 'STUDENT',
     staleTime: 60_000,
     queryFn: () => examCardApi.getMyCards(),
+  });
+  const studentExamPlacementsQuery = useQuery({
+    queryKey: ['mobile-student-exam-placements', user?.id || 'anon'],
+    enabled:
+      isAuthenticated &&
+      !isCandidateMode &&
+      !isApplicantMode &&
+      !applicantVerificationLocked &&
+      user?.role === 'STUDENT',
+    staleTime: 60_000,
+    queryFn: () => examApi.getMyExamSittings(),
   });
 
   const examProgramsQuery = useQuery({
@@ -182,7 +209,20 @@ export default function StudentExamsScreen() {
   useEffect(() => {
     if (!isScreenActive || !canAccessExams || applicantVerificationLocked) return;
     void examsQuery.refetch();
+    if (!isCandidateMode && !isApplicantMode && user?.role === 'STUDENT') {
+      void studentExamPlacementsQuery.refetch();
+    }
   }, [applicantVerificationLocked, canAccessExams, examsQuery.refetch, isScreenActive]);
+  const studentPlacements = useMemo(() => {
+    const rows = studentExamPlacementsQuery.data || [];
+    return rows
+      .filter((item) => {
+        const type = normalizeProgramCode(item.examType);
+        if (effectiveTypeFilter !== 'ALL' && type !== effectiveTypeFilter) return false;
+        return true;
+      })
+      .sort((a, b) => new Date(String(a.startTime || 0)).getTime() - new Date(String(b.startTime || 0)).getTime());
+  }, [effectiveTypeFilter, studentExamPlacementsQuery.data]);
   const statusFilterOptions = useMemo(
     () => [
       { value: 'ALL', label: 'Semua Status' },
@@ -249,6 +289,7 @@ export default function StudentExamsScreen() {
             void examsQuery.refetch();
             if (!isCandidateMode && !isApplicantMode) {
               void studentExamCardsQuery.refetch();
+              void studentExamPlacementsQuery.refetch();
             }
           }}
         />
@@ -497,6 +538,152 @@ export default function StudentExamsScreen() {
         </View>
       ) : null}
 
+      {!isCandidateMode && !isApplicantMode ? (
+        <View
+          style={{
+            borderWidth: 1,
+            borderColor: '#dbe7fb',
+            backgroundColor: '#fff',
+            borderRadius: 16,
+            padding: 14,
+            marginBottom: 12,
+          }}
+        >
+          <View style={{ flexDirection: 'row', justifyContent: 'space-between', alignItems: 'flex-start', gap: 12 }}>
+            <View style={{ flex: 1 }}>
+              <Text style={{ color: '#0f172a', fontSize: 18, fontWeight: '700' }}>Penempatan Ujian</Text>
+              <Text style={{ color: '#64748b', marginTop: 4 }}>
+                Ruang, sesi, dan kursi yang ditetapkan Kurikulum akan muncul di sini meski kartu ujian digital belum dipublikasikan.
+              </Text>
+            </View>
+            <View
+              style={{
+                borderRadius: 999,
+                borderWidth: 1,
+                borderColor: '#bfdbfe',
+                backgroundColor: '#eff6ff',
+                paddingHorizontal: 10,
+                paddingVertical: 6,
+              }}
+            >
+              <Text style={{ color: '#1d4ed8', fontWeight: '700', fontSize: 12 }}>
+                {studentPlacements.length} penempatan
+              </Text>
+            </View>
+          </View>
+
+          {studentExamPlacementsQuery.isLoading ? (
+            <View
+              style={{
+                marginTop: 12,
+                borderWidth: 1,
+                borderColor: '#cbd5e1',
+                borderStyle: 'dashed',
+                borderRadius: 12,
+                padding: 12,
+                backgroundColor: '#fff',
+              }}
+            >
+              <Text style={{ color: '#64748b' }}>Memuat penempatan ujian...</Text>
+            </View>
+          ) : studentExamPlacementsQuery.isError ? (
+            <View
+              style={{
+                marginTop: 12,
+                borderWidth: 1,
+                borderColor: '#fecaca',
+                borderRadius: 12,
+                padding: 12,
+                backgroundColor: '#fff1f2',
+              }}
+            >
+              <Text style={{ color: '#be123c', fontWeight: '700' }}>Gagal memuat penempatan ujian.</Text>
+              <Pressable
+                onPress={() => studentExamPlacementsQuery.refetch()}
+                style={{
+                  marginTop: 10,
+                  borderRadius: 10,
+                  borderWidth: 1,
+                  borderColor: '#fecdd3',
+                  backgroundColor: '#fff',
+                  paddingVertical: 9,
+                  alignItems: 'center',
+                }}
+              >
+                <Text style={{ color: '#be123c', fontWeight: '700' }}>Coba Lagi</Text>
+              </Pressable>
+            </View>
+          ) : studentPlacements.length > 0 ? (
+            <View style={{ marginTop: 12, gap: 10 }}>
+              {studentPlacements.map((placement) => {
+                const chip = placementStatusStyle(placement.startTime, placement.endTime);
+                return (
+                  <View
+                    key={placement.id}
+                    style={{
+                      borderWidth: 1,
+                      borderColor: '#dbe7fb',
+                      borderRadius: 12,
+                      backgroundColor: '#fff',
+                      padding: 10,
+                    }}
+                  >
+                    <View style={{ flexDirection: 'row', justifyContent: 'space-between', gap: 8 }}>
+                      <View style={{ flex: 1 }}>
+                        <Text style={{ color: '#0f172a', fontWeight: '700' }}>{placement.roomName}</Text>
+                        <Text style={{ color: '#64748b', marginTop: 4, fontSize: 12 }}>
+                          {examTypeLabel(placement.examType)} • {placement.sessionLabel || 'Sesi belum diatur'}
+                        </Text>
+                      </View>
+                      <View
+                        style={{
+                          alignSelf: 'flex-start',
+                          borderWidth: 1,
+                          borderColor: chip.border,
+                          backgroundColor: chip.bg,
+                          borderRadius: 999,
+                          paddingHorizontal: 8,
+                          paddingVertical: 4,
+                        }}
+                      >
+                        <Text style={{ color: chip.text, fontSize: 11, fontWeight: '700' }}>{chip.label}</Text>
+                      </View>
+                    </View>
+                    <Text style={{ color: '#334155', fontSize: 12, marginTop: 6 }}>
+                      Kursi: {placement.seatLabel || 'Menunggu denah dipublikasikan'}
+                    </Text>
+                    <Text style={{ color: '#334155', fontSize: 12, marginTop: 4 }}>
+                      Waktu: {formatDateTime(placement.startTime || '')} - {formatDateTime(placement.endTime || '')}
+                    </Text>
+                    {placement.proctor?.name ? (
+                      <Text style={{ color: '#64748b', fontSize: 12, marginTop: 4 }}>
+                        Pengawas: {placement.proctor.name}
+                      </Text>
+                    ) : null}
+                  </View>
+                );
+              })}
+            </View>
+          ) : (
+            <View
+              style={{
+                marginTop: 12,
+                borderWidth: 1,
+                borderColor: '#cbd5e1',
+                borderStyle: 'dashed',
+                borderRadius: 12,
+                padding: 12,
+                backgroundColor: '#fff',
+              }}
+            >
+              <Text style={{ color: '#64748b' }}>
+                Belum ada penempatan ruang ujian yang dipublikasikan untuk akun Anda.
+              </Text>
+            </View>
+          )}
+        </View>
+      ) : null}
+
       <Text
         style={{
           color: '#334155',
@@ -705,7 +892,7 @@ export default function StudentExamsScreen() {
                   <Pressable
                     onPress={async () => {
                       if ((status === 'OPEN' || status === 'MAKEUP') && !item.isBlocked) {
-                        router.push(`/exams/${item.id}/take` as never);
+                        setSelectedExam(item);
                         return;
                       }
                       const upcomingMessage =
@@ -795,6 +982,82 @@ export default function StudentExamsScreen() {
       >
         <Text style={{ color: '#fff', fontWeight: '600' }}>Kembali ke Home</Text>
       </Pressable>
+      <MobileDetailModal
+        visible={Boolean(selectedExam)}
+        title={isApplicantMode ? 'Mulai Tes BKK?' : 'Mulai Ujian?'}
+        subtitle="Pastikan Anda siap sebelum soal dibuka. Setelah mulai, sistem akan memantau pelanggaran selama ujian berlangsung."
+        iconName="play-circle"
+        accentColor="#2563eb"
+        onClose={() => setSelectedExam(null)}
+      >
+        {selectedExam ? (
+          <View>
+            <View
+              style={{
+                borderWidth: 1,
+                borderColor: '#dbe7fb',
+                borderRadius: 14,
+                backgroundColor: '#f8fbff',
+                padding: 12,
+                marginBottom: 12,
+              }}
+            >
+              <Text style={{ color: '#0f172a', fontSize: 17, fontWeight: '800' }}>{selectedExam.packet.title}</Text>
+              <Text style={{ color: '#64748b', marginTop: 4, fontSize: 13 }}>
+                {resolveSubjectLabel(selectedExam).name}
+                {resolveSubjectLabel(selectedExam).code ? ` (${resolveSubjectLabel(selectedExam).code})` : ''}
+              </Text>
+              <Text style={{ color: '#334155', marginTop: 8, fontSize: 12 }}>
+                Mulai: {formatDateTime(selectedExam.startTime)}
+              </Text>
+              <Text style={{ color: '#334155', marginTop: 4, fontSize: 12 }}>
+                Selesai: {formatDateTime(selectedExam.endTime)} • Durasi: {selectedExam.packet.duration} menit
+              </Text>
+            </View>
+
+            <View
+              style={{
+                borderWidth: 1,
+                borderColor: '#fde68a',
+                backgroundColor: '#fffbeb',
+                borderRadius: 14,
+                padding: 12,
+              }}
+            >
+              {[
+                'Pastikan koneksi internet stabil sebelum mulai.',
+                'Jangan menekan tombol kembali, Home, atau membuka recent apps.',
+                'Perpindahan aplikasi akan dihitung sebagai pelanggaran.',
+                'Pelanggaran ke-4 akan mengumpulkan ujian otomatis.',
+                'Gambar soal dapat diperbesar tanpa keluar dari ujian.',
+              ].map((rule) => (
+                <Text key={rule} style={{ color: '#92400e', fontSize: 12, lineHeight: 20, marginBottom: 4 }}>
+                  • {rule}
+                </Text>
+              ))}
+            </View>
+
+            <Pressable
+              onPress={() => {
+                const target = `/exams/${selectedExam.id}/take?ready=1`;
+                setSelectedExam(null);
+                router.push(target as never);
+              }}
+              style={{
+                marginTop: 14,
+                backgroundColor: '#16a34a',
+                borderRadius: 12,
+                paddingVertical: 12,
+                alignItems: 'center',
+              }}
+            >
+              <Text style={{ color: '#fff', fontWeight: '700' }}>
+                {isApplicantMode ? 'Mulai Tes BKK' : 'Mulai Ujian'}
+              </Text>
+            </Pressable>
+          </View>
+        ) : null}
+      </MobileDetailModal>
     </ScrollView>
   );
 }

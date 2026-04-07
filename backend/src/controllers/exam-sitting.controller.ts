@@ -534,13 +534,14 @@ export const createExamSitting = asyncHandler(async (req: Request, res: Response
 
 export const getMyExamSitting = asyncHandler(async (req: Request, res: Response) => {
     const studentId = (req as any).user.id;
+    const parsedStudentId = Number(studentId);
     
     const activeAY = await prisma.academicYear.findFirst({ where: { isActive: true } });
     
     const whereClause: any = {
         students: {
             some: {
-                studentId: parseInt(studentId)
+                studentId: parsedStudentId
             }
         }
     };
@@ -552,11 +553,63 @@ export const getMyExamSitting = asyncHandler(async (req: Request, res: Response)
     const sittings = await prisma.examSitting.findMany({
         where: whereClause,
         include: {
-            proctor: { select: { name: true } }
-        }
+            proctor: { select: { id: true, name: true } },
+            programSession: { select: { id: true, label: true, displayOrder: true } },
+            layout: {
+                select: {
+                    generatedAt: true,
+                    updatedAt: true,
+                    cells: {
+                        where: {
+                            studentId: parsedStudentId,
+                        },
+                        select: {
+                            seatLabel: true,
+                            rowIndex: true,
+                            columnIndex: true,
+                        },
+                        take: 1,
+                    },
+                },
+            },
+        },
+        orderBy: [
+            { startTime: 'asc' },
+            { roomName: 'asc' },
+        ],
     });
 
-    res.json(new ApiResponse(200, sittings));
+    const normalized = sittings.map((sitting) => {
+        const seatCell = sitting.layout?.cells?.[0] || null;
+        return {
+            id: sitting.id,
+            roomName: sitting.roomName,
+            academicYearId: sitting.academicYearId,
+            examType: sitting.examType,
+            semester: sitting.semester,
+            sessionId: sitting.sessionId,
+            sessionLabel: sitting.programSession?.label || sitting.sessionLabel || null,
+            startTime: sitting.startTime,
+            endTime: sitting.endTime,
+            proctorId: sitting.proctorId,
+            proctor: sitting.proctor,
+            seatLabel: seatCell?.seatLabel || null,
+            seatPosition: seatCell
+                ? {
+                      rowIndex: seatCell.rowIndex,
+                      columnIndex: seatCell.columnIndex,
+                  }
+                : null,
+            layout: sitting.layout
+                ? {
+                      generatedAt: sitting.layout.generatedAt,
+                      updatedAt: sitting.layout.updatedAt,
+                  }
+                : null,
+        };
+    });
+
+    res.json(new ApiResponse(200, normalized));
 });
 
 export const getExamSittings = asyncHandler(async (req: Request, res: Response) => {
