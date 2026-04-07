@@ -5297,7 +5297,7 @@ export const getPackets = asyncHandler(async (req: Request, res: Response) => {
         andFilters.push({
             OR: [
                 { semester: normalizedSemester },
-                { semester: { equals: null as unknown as Semester }, description: AUTO_CURRICULUM_PACKET_DESCRIPTION },
+                { semester: null as unknown as Semester, description: AUTO_CURRICULUM_PACKET_DESCRIPTION },
             ],
         });
     }
