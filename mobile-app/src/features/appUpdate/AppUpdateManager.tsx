@@ -12,9 +12,14 @@ import {
 
 const CHECK_INTERVAL_MS = 30 * 60 * 1000;
 const FOREGROUND_CHECK_THROTTLE_MS = 15 * 60 * 1000;
+const UPDATE_NOTIFICATION_BADGE = 'Update Aplikasi';
 const UPDATE_NOTIFICATION_TITLE = 'SIS KGB2 : Update Tersedia';
 const UPDATE_NOTIFICATION_BODY =
   'Versi terbaru SIS KGB2 tersedia. Silakan perbarui untuk menikmati fitur terbaru.';
+const UPDATE_NOTIFICATION_PENDING_BODY =
+  'Notifikasi update sudah diterima. Sistem sedang memeriksa paket terbaru untuk aplikasi Anda.';
+const UPDATE_NOTIFICATION_TOAST_BODY =
+  'Versi terbaru SIS KGB2 terdeteksi. Sedang memeriksa paket update terbaru...';
 const OTA_MARKER = 'ota-2026-03-10-hotfix-01';
 const CURRENT_UPDATE_CHANNEL = Updates.channel || 'default';
 const CURRENT_RUNTIME_VERSION =
@@ -216,8 +221,8 @@ export function AppUpdateManager() {
       const meta = extractAppUpdatePushMeta(notification.request.content.data);
       if (!meta) return;
       setDismissed(false);
-      notifyInfo('Update terbaru SIS KGB2 terdeteksi. Sedang memeriksa versi aplikasi...', {
-        title: 'SIS KGB2',
+      notifyInfo(UPDATE_NOTIFICATION_TOAST_BODY, {
+        title: UPDATE_NOTIFICATION_BADGE,
         durationMs: 1800,
       });
       void checkForUpdates({ requestedChannel: meta.channel });
@@ -284,16 +289,16 @@ export function AppUpdateManager() {
             }}
           >
             <Text style={{ color: '#1d4ed8', fontWeight: '700', fontSize: 12 }}>
-              {updateAvailable ? 'SIS KGB2' : 'Status Update'}
+              {UPDATE_NOTIFICATION_BADGE}
             </Text>
           </View>
           <Text style={{ color: '#0f172a', fontWeight: '700', fontSize: 19, marginBottom: 6 }}>
-            {updateAvailable ? 'SIS KGB2 : Update Tersedia' : 'SIS KGB2 : Info Update'}
+            {UPDATE_NOTIFICATION_TITLE}
           </Text>
           <Text style={{ color: '#334155', fontSize: 13, marginBottom: 10 }}>
             {updateAvailable
-              ? 'Versi terbaru SIS KGB2 tersedia. Silakan perbarui untuk menikmati fitur terbaru.'
-              : 'Aplikasi menerima sinyal update. Cek detail channel dan status terbaru di bawah ini.'}
+              ? UPDATE_NOTIFICATION_BODY
+              : UPDATE_NOTIFICATION_PENDING_BODY}
           </Text>
           <View
             style={{
