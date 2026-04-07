@@ -3,10 +3,16 @@ import { useQuery } from '@tanstack/react-query';
 import { useNavigate, useParams } from 'react-router-dom';
 import { ArrowLeft, Printer, RefreshCw } from 'lucide-react';
 import api from '../../services/api';
+import {
+  buildStandardSchoolDocumentHeaderHtml,
+  StandardSchoolDocumentHeader,
+  type StandardSchoolDocumentHeaderSnapshot,
+} from './shared/StandardSchoolDocumentHeader';
 
 type ProctorReportDocumentSnapshot = {
   schoolName: string;
   schoolLogoPath: string;
+  documentHeader: StandardSchoolDocumentHeaderSnapshot;
   title: string;
   examLabel: string;
   academicYearName: string;
@@ -81,14 +87,6 @@ function escapeMultilineHtml(value?: string | null) {
   return escapeHtml(value).replace(/\n/g, '<br />');
 }
 
-function resolveAbsoluteAssetUrl(value?: string | null) {
-  const raw = String(value || '').trim();
-  if (!raw) return '';
-  if (/^(data:|https?:)/i.test(raw)) return raw;
-  if (typeof window === 'undefined') return raw;
-  return new URL(raw, window.location.origin).toString();
-}
-
 function buildProctorReportPrintHtml(params: {
   snapshot: ProctorReportDocumentSnapshot;
   verificationQrDataUrl: string;
@@ -97,7 +95,8 @@ function buildProctorReportPrintHtml(params: {
   const headerFontSize = '12pt';
   const contentFontSize = '11pt';
   const noteFontSize = '8pt';
-  const logoUrl = resolveAbsoluteAssetUrl(snapshot.schoolLogoPath);
+  const noteText = (snapshot.notes || '-').trim() || '-';
+  const noteHtml = escapeMultilineHtml(noteText);
 
   return `<!DOCTYPE html>
   <html>
@@ -120,20 +119,6 @@ function buildProctorReportPrintHtml(params: {
           line-height: 1.6;
         }
         .sheet { width: 100%; }
-        .header-wrap { text-align: center; }
-        .header-group {
-          display: inline-flex;
-          align-items: center;
-          justify-content: center;
-          gap: 2cm;
-        }
-        .logo {
-          width: 112px;
-          height: 112px;
-          object-fit: contain;
-          flex-shrink: 0;
-        }
-        .header-text { text-align: center; }
         .header-line {
           font-size: ${headerFontSize};
           line-height: 1.35;
@@ -141,16 +126,8 @@ function buildProctorReportPrintHtml(params: {
           text-transform: uppercase;
           letter-spacing: 0.02em;
         }
-        .rule-top {
-          margin-top: 16px;
-          border-top: 1px solid #0f172a;
-        }
-        .rule-bottom {
-          margin-top: 4px;
-          border-top: 2px solid #0f172a;
-        }
         .meta-row {
-          margin-top: 16px;
+          margin-top: 12px;
           display: flex;
           justify-content: space-between;
           align-items: flex-start;
@@ -161,7 +138,7 @@ function buildProctorReportPrintHtml(params: {
           background: #f8fafc;
           border-radius: 10px;
           padding: 8px 12px;
-          font-size: ${contentFontSize};
+          font-size: ${noteFontSize};
         }
         .meta-note {
           border: 1px solid #a7f3d0;
@@ -192,18 +169,18 @@ function buildProctorReportPrintHtml(params: {
           font-weight: 700;
           font-size: ${contentFontSize};
         }
-        .note-box {
-          margin-top: 12px;
-          min-height: 190px;
-          border: 1px solid #0f172a;
-          border-radius: 14px;
-          padding: 0.55cm 0.65cm;
+        .note-text {
+          margin-top: 10px;
           font-size: ${contentFontSize};
           line-height: 1.75;
           white-space: pre-wrap;
         }
+        .note-declaration {
+          margin-top: 10px;
+          font-size: ${contentFontSize};
+        }
         .signature-row {
-          margin-top: 36px;
+          margin-top: 28px;
           display: flex;
           justify-content: flex-end;
         }
@@ -264,19 +241,14 @@ function buildProctorReportPrintHtml(params: {
     </head>
     <body>
       <div class="sheet">
-        <div class="header-wrap">
-          <div class="header-group">
-            <img src="${escapeHtml(logoUrl)}" alt="Logo KGB2" class="logo" />
-            <div class="header-text">
-              <div class="header-line">${escapeHtml(snapshot.title)}</div>
-              <div class="header-line">${escapeHtml(formatExamHeadingLabel(snapshot.examLabel))}</div>
-              <div class="header-line">${escapeHtml(snapshot.schoolName)}</div>
-              <div class="header-line">Tahun Ajaran ${escapeHtml(snapshot.academicYearName)}</div>
-            </div>
-          </div>
+        ${buildStandardSchoolDocumentHeaderHtml(snapshot.documentHeader)}
+
+        <div style="text-align:center;">
+          <div class="header-line">${escapeHtml(snapshot.title)}</div>
+          <div class="header-line">${escapeHtml(formatExamHeadingLabel(snapshot.examLabel))}</div>
+          <div class="header-line">${escapeHtml(snapshot.schoolName)}</div>
+          <div class="header-line">Tahun Ajaran ${escapeHtml(snapshot.academicYearName)}</div>
         </div>
-        <div class="rule-top"></div>
-        <div class="rule-bottom"></div>
 
         <div class="meta-row">
           <div class="meta-chip"><strong>No. Dokumen:</strong> ${escapeHtml(snapshot.documentNumber)}</div>
@@ -292,7 +264,8 @@ function buildProctorReportPrintHtml(params: {
         </div>
 
         <div class="note-title">Catatan Pengawas selama Ujian berlangsung.</div>
-        <div class="note-box">${escapeMultilineHtml(snapshot.notes || 'Tidak ada catatan tambahan dari pengawas.')}</div>
+        <div class="note-text">${noteHtml}</div>
+        <div class="note-declaration">Berita Acara ini dibuat dengan sesungguhnya</div>
 
         <div class="signature-row">
           <div class="signature-box">
@@ -360,6 +333,7 @@ export default function ProctorReportPrint() {
   }
 
   const { snapshot, verificationQrDataUrl } = documentQuery.data;
+  const noteText = (snapshot.notes || '-').trim() || '-';
   const handlePrint = () => {
     const iframe = printIframeRef.current;
     if (!iframe || !iframe.contentWindow) return;
@@ -423,33 +397,23 @@ export default function ProctorReportPrint() {
         style={{ maxWidth: '210mm', minHeight: '297mm', padding: '2.5cm', fontSize: contentFontSize }}
         data-proctor-report-ready="true"
       >
-        <div className="flex justify-center">
-          <div className="inline-flex items-center justify-center" style={{ columnGap: '2cm' }}>
-            <img
-              src={snapshot.schoolLogoPath}
-              alt="Logo KGB2"
-              className="proctor-report-print-image h-[112px] w-[112px] shrink-0 object-contain"
-            />
-            <div className="text-center">
-              <div className="font-semibold tracking-wide text-slate-900" style={{ fontSize: headerFontSize, lineHeight: 1.35 }}>{snapshot.title}</div>
-              <div className="mt-1 font-semibold uppercase tracking-wide text-slate-900" style={{ fontSize: headerFontSize, lineHeight: 1.35 }}>
-                {formatExamHeadingLabel(snapshot.examLabel)}
-              </div>
-              <div className="mt-1 font-semibold uppercase tracking-wide text-slate-900" style={{ fontSize: headerFontSize, lineHeight: 1.35 }}>
-                {snapshot.schoolName}
-              </div>
-              <div className="mt-1 font-semibold uppercase tracking-wide text-slate-900" style={{ fontSize: headerFontSize, lineHeight: 1.35 }}>
-                Tahun Ajaran {snapshot.academicYearName}
-              </div>
-            </div>
+        <StandardSchoolDocumentHeader header={snapshot.documentHeader} />
+
+        <div className="text-center">
+          <div className="font-semibold tracking-wide text-slate-900" style={{ fontSize: headerFontSize, lineHeight: 1.35 }}>{snapshot.title}</div>
+          <div className="mt-1 font-semibold uppercase tracking-wide text-slate-900" style={{ fontSize: headerFontSize, lineHeight: 1.35 }}>
+            {formatExamHeadingLabel(snapshot.examLabel)}
+          </div>
+          <div className="mt-1 font-semibold uppercase tracking-wide text-slate-900" style={{ fontSize: headerFontSize, lineHeight: 1.35 }}>
+            {snapshot.schoolName}
+          </div>
+          <div className="mt-1 font-semibold uppercase tracking-wide text-slate-900" style={{ fontSize: headerFontSize, lineHeight: 1.35 }}>
+            Tahun Ajaran {snapshot.academicYearName}
           </div>
         </div>
 
-        <div className="mt-4 border-t border-slate-900" />
-        <div className="mt-1 border-t-2 border-slate-900" />
-
-        <div className="mt-4 flex flex-wrap items-start justify-between gap-4 text-slate-700" style={{ fontSize: contentFontSize }}>
-          <div className="rounded-lg border border-slate-200 bg-slate-50 px-3 py-2" style={{ fontSize: contentFontSize }}>
+        <div className="mt-3 flex flex-wrap items-start justify-between gap-4 text-slate-700" style={{ fontSize: noteFontSize }}>
+          <div className="rounded-lg border border-slate-200 bg-slate-50 px-3 py-2" style={{ fontSize: noteFontSize }}>
             <span className="font-semibold text-slate-900">No. Dokumen:</span> {snapshot.documentNumber}
           </div>
           <div className="rounded-lg border border-emerald-200 bg-emerald-50 px-3 py-2 text-emerald-800" style={{ fontSize: noteFontSize }}>
@@ -481,15 +445,15 @@ export default function ProctorReportPrint() {
 
         <div className="mt-8">
           <div className="font-semibold text-slate-900" style={{ fontSize: contentFontSize }}>Catatan Pengawas selama Ujian berlangsung.</div>
-          <div
-            className="mt-3 min-h-[190px] rounded-xl border border-slate-900 text-slate-900 whitespace-pre-wrap"
-            style={{ padding: '0.55cm 0.65cm', fontSize: contentFontSize, lineHeight: 1.75 }}
-          >
-            <p>{snapshot.notes || 'Tidak ada catatan tambahan dari pengawas.'}</p>
+          <div className="mt-2 whitespace-pre-wrap text-slate-900" style={{ fontSize: contentFontSize, lineHeight: 1.75 }}>
+            {noteText}
+          </div>
+          <div className="mt-2 text-slate-900" style={{ fontSize: contentFontSize }}>
+            Berita Acara ini dibuat dengan sesungguhnya
           </div>
         </div>
 
-        <div className="mt-10 flex justify-end">
+        <div className="mt-8 flex justify-end">
           <div className="w-full max-w-[300px] text-center text-slate-900" style={{ fontSize: contentFontSize }}>
             <div className="font-medium" style={{ fontSize: contentFontSize }}>Pengawas,</div>
             <div className="mt-4 flex justify-center">

@@ -149,6 +149,8 @@ Dokumen ini adalah policy kerja default untuk setiap sesi baru yang mengerjakan 
    - Hindari UI yang ambigu, terlalu teknis, atau berbeda makna antar platform.
    - Istilah yang sudah pernah dirapikan agar nyaman dibaca user harus dipertahankan konsisten.
    - Jika web menggunakan pola yang lebih jelas, mobile harus mengikuti arah yang sama, bukan membuat interpretasi baru sendiri.
+   - Untuk dokumen cetak/surat yang membutuhkan kop/header institusi, gunakan header surat baku sekolah secara konsisten.
+   - Header dokumen harus bersifat dinamis berdasarkan data existing yang relevan, terutama daftar kompetensi keahlian/jurusan; jangan hardcode per dokumen jika datanya sudah bisa dibaca dari source of truth.
 
 14. **Jaga efisiensi token dan konteks**
    - Untuk pekerjaan panjang, lebih baik kerja per batch yang jelas daripada terlalu sering bolak-balik revisi kecil.
