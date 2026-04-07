@@ -125,7 +125,7 @@ function buildProctorReportPrintHtml(params: {
       <meta charset="utf-8" />
       <title>${escapeHtml(snapshot.title)} - ${escapeHtml(snapshot.documentNumber)}</title>
       <style>
-        @page { size: A4 portrait; margin: 1cm; }
+        @page { margin: 1cm; }
         html, body {
           margin: 0;
           padding: 0;
@@ -144,7 +144,7 @@ function buildProctorReportPrintHtml(params: {
           box-sizing: border-box;
         }
         .document-body {
-          padding: 0 1.5cm 28mm;
+          padding: 0 1.5cm 0;
           box-sizing: border-box;
         }
         .header-line {
@@ -201,8 +201,12 @@ function buildProctorReportPrintHtml(params: {
           margin-top: 8px;
           font-size: ${contentFontSize};
         }
-        .signature-row {
+        .closing-section {
           margin-top: 18px;
+          break-inside: avoid;
+          page-break-inside: avoid;
+        }
+        .signature-row {
           display: flex;
           justify-content: flex-end;
         }
@@ -249,11 +253,7 @@ function buildProctorReportPrintHtml(params: {
           font-style: italic;
         }
         .verify-block {
-          position: fixed;
-          left: calc(1cm + 1.5cm);
-          right: calc(1cm + 1.5cm);
-          bottom: 0;
-          padding-top: 0;
+          margin-top: 16px;
           font-size: ${noteFontSize};
           line-height: 1.2;
           color: #475569;
@@ -296,23 +296,25 @@ function buildProctorReportPrintHtml(params: {
           <div class="note-text">${noteHtml}</div>
           <div class="note-declaration">Berita Acara ini dibuat dengan sesungguhnya</div>
 
-          <div class="signature-row">
-            <div class="signature-box">
-              <div class="signature-label">Pengawas,</div>
-              <div class="qr-wrap">
-                <img src="${escapeHtml(verificationQrDataUrl)}" alt="QR Verifikasi Berita Acara" class="qr" />
+          <div class="closing-section">
+            <div class="signature-row">
+              <div class="signature-box">
+                <div class="signature-label">Pengawas,</div>
+                <div class="qr-wrap">
+                  <img src="${escapeHtml(verificationQrDataUrl)}" alt="QR Verifikasi Berita Acara" class="qr" />
+                </div>
+                <div class="signature-name-wrap">
+                  <div class="signature-name">${escapeHtml(snapshot.proctor.name)}</div>
+                  <div class="signature-rule"></div>
+                </div>
+                <div class="signature-note">${escapeHtml(signatureNote)}</div>
               </div>
-              <div class="signature-name-wrap">
-                <div class="signature-name">${escapeHtml(snapshot.proctor.name)}</div>
-                <div class="signature-rule"></div>
-              </div>
-              <div class="signature-note">${escapeHtml(signatureNote)}</div>
             </div>
-          </div>
 
-          <div class="verify-block">
-            ${escapeHtml(snapshot.verification.note)}
-            <div class="verify-url">${escapeHtml(snapshot.verification.verificationUrl)}</div>
+            <div class="verify-block">
+              ${escapeHtml(snapshot.verification.note)}
+              <div class="verify-url">${escapeHtml(snapshot.verification.verificationUrl)}</div>
+            </div>
           </div>
         </div>
       </div>
@@ -388,7 +390,6 @@ export default function ProctorReportPrint() {
     <div className="proctor-report-root min-h-screen bg-slate-100 py-6 print:bg-white print:py-0">
       <style>{`
         @page {
-          size: A4 portrait;
           margin: 1cm;
         }
         @media print {
@@ -407,15 +408,17 @@ export default function ProctorReportPrint() {
             box-shadow: none !important;
             border: none !important;
             margin: 0 !important;
-            width: auto !important;
-            max-width: 190mm !important;
-            height: auto !important;
+            width: 100% !important;
+            max-width: none !important;
             min-height: 0 !important;
             border-radius: 0 !important;
             padding: 0 !important;
             box-sizing: border-box !important;
             overflow: visible !important;
-            page-break-after: avoid !important;
+          }
+          .proctor-report-closing-section {
+            break-inside: avoid !important;
+            page-break-inside: avoid !important;
           }
         }
       `}</style>
@@ -440,21 +443,17 @@ export default function ProctorReportPrint() {
       </div>
 
       <div
-        className="proctor-report-shell mx-auto max-w-5xl rounded-2xl border border-slate-200 bg-white shadow-sm"
+        className="proctor-report-shell mx-auto w-full max-w-[960px] rounded-2xl border border-slate-200 bg-white shadow-sm"
         style={{
-          width: '210mm',
-          maxWidth: '210mm',
-          minHeight: '297mm',
           padding: '1cm',
           fontSize: contentFontSize,
           boxSizing: 'border-box',
-          position: 'relative',
         }}
         data-proctor-report-ready="true"
       >
         <StandardSchoolDocumentHeader header={snapshot.documentHeader} />
 
-        <div style={{ padding: '0 1.5cm 36mm', boxSizing: 'border-box' }}>
+        <div style={{ padding: '0 1.5cm 0', boxSizing: 'border-box' }}>
           <div className="mt-0.5 flex flex-wrap items-start justify-between gap-4 text-slate-600 italic" style={{ fontSize: noteFontSize }}>
             <div style={{ fontSize: noteFontSize }}>
               No. Dokumen: {snapshot.documentNumber}
@@ -514,32 +513,34 @@ export default function ProctorReportPrint() {
             </div>
           </div>
 
-          <div className="mt-[18px] flex justify-end">
-            <div className="w-full max-w-[300px] text-center text-slate-900" style={{ fontSize: contentFontSize }}>
-              <div className="font-medium" style={{ fontSize: contentFontSize }}>Pengawas,</div>
-              <div className="mt-2 flex justify-center">
-                <img
-                  src={verificationQrDataUrl}
-                  alt="QR Verifikasi Berita Acara"
-                  className="proctor-report-print-image h-[104px] w-[104px] rounded-xl border border-slate-200 bg-white p-2"
-                />
-              </div>
-              <div className="mt-2 inline-block max-w-full">
-                <div className="font-semibold" style={{ fontSize: contentFontSize }}>{snapshot.proctor.name}</div>
-                <div className="mt-0.5 border-t border-slate-400" />
-              </div>
-              <div className="mt-1 italic text-slate-600" style={{ fontSize: noteFontSize, lineHeight: 1.25 }}>
-                {signatureNote}
+          <div className="proctor-report-closing-section mt-[18px]">
+            <div className="flex justify-end">
+              <div className="w-full max-w-[300px] text-center text-slate-900" style={{ fontSize: contentFontSize }}>
+                <div className="font-medium" style={{ fontSize: contentFontSize }}>Pengawas,</div>
+                <div className="mt-2 flex justify-center">
+                  <img
+                    src={verificationQrDataUrl}
+                    alt="QR Verifikasi Berita Acara"
+                    className="proctor-report-print-image h-[104px] w-[104px] rounded-xl border border-slate-200 bg-white p-2"
+                  />
+                </div>
+                <div className="mt-2 inline-block max-w-full">
+                  <div className="font-semibold" style={{ fontSize: contentFontSize }}>{snapshot.proctor.name}</div>
+                  <div className="mt-0.5 border-t border-slate-400" />
+                </div>
+                <div className="mt-1 italic text-slate-600" style={{ fontSize: noteFontSize, lineHeight: 1.25 }}>
+                  {signatureNote}
+                </div>
               </div>
             </div>
-          </div>
 
-          <div
-            className="absolute italic text-slate-600"
-            style={{ left: '2.5cm', right: '2.5cm', bottom: '1cm', fontSize: noteFontSize, lineHeight: 1.2 }}
-          >
-            {snapshot.verification.note}
-            <div className="mt-0.5 break-all italic text-slate-700" style={{ fontSize: noteFontSize }}>{snapshot.verification.verificationUrl}</div>
+            <div
+              className="mt-4 italic text-slate-600"
+              style={{ fontSize: noteFontSize, lineHeight: 1.2 }}
+            >
+              {snapshot.verification.note}
+              <div className="mt-0.5 break-all italic text-slate-700" style={{ fontSize: noteFontSize }}>{snapshot.verification.verificationUrl}</div>
+            </div>
           </div>
         </div>
       </div>
