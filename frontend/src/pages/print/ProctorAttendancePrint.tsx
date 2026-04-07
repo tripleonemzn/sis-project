@@ -140,18 +140,13 @@ function buildAttendancePrintLayout(snapshot: ProctorAttendanceDocumentSnapshot)
     (max, participant) => Math.max(max, String(participant.absentReason || '-').length),
     'Keterangan'.length,
   );
-  const longestNis = snapshot.participants.reduce(
-    (max, participant) => Math.max(max, String(participant.nis || '-').length),
-    'NIS'.length,
-  );
 
   return {
     detailLabelWidth: `${clampNumber(longestLabel + 1, 16, 20)}ch`,
-    nameWidth: `${clampNumber(Math.ceil(longestName * 0.72), 18, 24)}ch`,
-    nisWidth: `${clampNumber(Math.ceil(longestNis * 0.95), 8, 12)}ch`,
-    classWidth: `${clampNumber(Math.ceil(longestClass * 0.88), 11, 15)}ch`,
-    statusWidth: `${clampNumber(Math.ceil(longestStatus * 0.62), 20, 28)}ch`,
-    noteWidth: `${clampNumber(Math.ceil(longestNote * 0.5), 10, 18)}ch`,
+    nameWidth: `${clampNumber(Math.ceil(longestName * 0.82), 22, 30)}ch`,
+    classWidth: `${clampNumber(Math.ceil(longestClass * 0.95), 12, 17)}ch`,
+    statusWidth: `${clampNumber(Math.ceil(longestStatus * 0.68), 23, 31)}ch`,
+    noteWidth: `${clampNumber(Math.ceil(longestNote * 0.58), 12, 20)}ch`,
   };
 }
 
@@ -168,7 +163,6 @@ function buildParticipantRows(snapshot: ProctorAttendanceDocumentSnapshot) {
         <tr>
           <td class="cell-center">${index + 1}</td>
           <td class="cell-name"><strong>${escapeHtml(participant.name)}</strong></td>
-          <td class="cell-center">${escapeHtml(participant.nis || '-')}</td>
           <td class="cell-center">${escapeHtml(participant.className || '-')}</td>
           <td class="cell-status" style="color:${statusColor};font-weight:600;">${escapeHtml(statusLine)}</td>
           <td class="cell-note">${escapeHtml(participant.absentReason || '-')}</td>
@@ -246,7 +240,7 @@ function buildProctorAttendancePrintHtml(params: {
         }
         .detail-grid {
           --detail-label-width: ${layout.detailLabelWidth};
-          margin-top: 14px;
+          margin-top: 18px;
           display: grid;
           grid-template-columns: 1fr 1fr;
           gap: 7px 24px;
@@ -262,7 +256,7 @@ function buildProctorAttendancePrintHtml(params: {
           grid-template-columns: var(--detail-label-width) 12px 1fr;
         }
         .count-cards {
-          margin-top: 12px;
+          margin-top: 16px;
           display: grid;
           grid-template-columns: repeat(3, minmax(0, 1fr));
           gap: 8px;
@@ -297,7 +291,7 @@ function buildProctorAttendancePrintHtml(params: {
         }
         table {
           width: 100%;
-          margin-top: 12px;
+          margin-top: 16px;
           border-collapse: collapse;
           font-size: ${tableFontSize};
           table-layout: auto;
@@ -446,7 +440,6 @@ function buildProctorAttendancePrintHtml(params: {
             <colgroup>
               <col style="width:5ch;" />
               <col style="width:${layout.nameWidth};" />
-              <col style="width:${layout.nisWidth};" />
               <col style="width:${layout.classWidth};" />
               <col style="width:${layout.statusWidth};" />
               <col style="width:${layout.noteWidth};" />
@@ -455,7 +448,6 @@ function buildProctorAttendancePrintHtml(params: {
               <tr>
                 <th>No</th>
                 <th>Nama Siswa</th>
-                <th>NIS</th>
                 <th>Kelas / Rombel</th>
                 <th>Status</th>
                 <th>Keterangan</th>
@@ -649,7 +641,7 @@ export default function ProctorAttendancePrint() {
             </div>
           </div>
 
-          <div className="mt-3.5 grid grid-cols-2 gap-x-6 gap-y-2 text-slate-900" style={{ fontSize: contentFontSize, lineHeight: 1.2 }}>
+          <div className="mt-5 grid grid-cols-2 gap-x-6 gap-y-2 text-slate-900" style={{ fontSize: contentFontSize, lineHeight: 1.2 }}>
             <div className="grid gap-1">
               <div className="grid grid-cols-[var(--detail-label-width)_12px_1fr]" style={{ ['--detail-label-width' as string]: layout.detailLabelWidth }}>
                 <div>Mata Pelajaran</div>
@@ -688,7 +680,7 @@ export default function ProctorAttendancePrint() {
             </div>
           </div>
 
-          <div className="mt-3 grid grid-cols-3 gap-2">
+          <div className="mt-4.5 grid grid-cols-3 gap-2">
             <div className="rounded-[10px] border border-slate-300 bg-slate-50 px-3 py-2 text-slate-900">
               <div className="uppercase tracking-wide text-slate-500" style={{ fontSize: noteFontSize, lineHeight: 1.1, fontWeight: 700 }}>Peserta Seharusnya</div>
               <div className="mt-1 font-semibold" style={{ fontSize: contentFontSize, lineHeight: 1.1 }}>{snapshot.counts.expectedParticipants}</div>
@@ -703,12 +695,11 @@ export default function ProctorAttendancePrint() {
             </div>
           </div>
 
-          <div className="mt-3 overflow-hidden rounded-xl border border-slate-300">
+          <div className="mt-4.5 overflow-hidden rounded-xl border border-slate-300">
             <table className="proctor-attendance-table min-w-full border-collapse text-slate-900" style={{ fontSize: tableFontSize, tableLayout: 'auto' }}>
               <colgroup>
                 <col style={{ width: '5ch' }} />
                 <col style={{ width: layout.nameWidth }} />
-                <col style={{ width: layout.nisWidth }} />
                 <col style={{ width: layout.classWidth }} />
                 <col style={{ width: layout.statusWidth }} />
                 <col style={{ width: layout.noteWidth }} />
@@ -717,7 +708,6 @@ export default function ProctorAttendancePrint() {
                 <tr>
                   <th className="border border-slate-300 px-2 py-1.5 text-center font-semibold">No</th>
                   <th className="border border-slate-300 px-2 py-1.5 text-center font-semibold">Nama Siswa</th>
-                  <th className="border border-slate-300 px-2 py-1.5 text-center font-semibold">NIS</th>
                   <th className="border border-slate-300 px-2 py-1.5 text-center font-semibold">Kelas / Rombel</th>
                   <th className="border border-slate-300 px-2 py-1.5 text-center font-semibold">Status</th>
                   <th className="border border-slate-300 px-2 py-1.5 text-center font-semibold">Keterangan</th>
@@ -730,7 +720,6 @@ export default function ProctorAttendancePrint() {
                     <td className="border border-slate-300 px-2 py-1.5 align-top break-words">
                       <div className="font-semibold text-slate-900">{participant.name}</div>
                     </td>
-                    <td className="border border-slate-300 px-2 py-1.5 text-center align-middle">{participant.nis || '-'}</td>
                     <td className="border border-slate-300 px-2 py-1.5 text-center align-middle">{participant.className || '-'}</td>
                     <td className="border border-slate-300 px-2 py-1.5 text-center align-middle whitespace-nowrap">
                       <div
