@@ -139,9 +139,18 @@ function buildProctorReportPrintHtml(params: {
           font-size: ${contentFontSize};
           line-height: 1.6;
         }
-        .sheet { width: 100%; }
+        .sheet {
+          width: 100%;
+          min-height: calc(297mm - 3.5cm);
+          display: flex;
+          flex-direction: column;
+          box-sizing: border-box;
+        }
         .document-body {
           padding: 0 1.5cm;
+          flex: 1;
+          display: flex;
+          flex-direction: column;
         }
         .header-line {
           font-size: ${headerFontSize};
@@ -245,7 +254,8 @@ function buildProctorReportPrintHtml(params: {
           font-style: italic;
         }
         .verify-block {
-          margin-top: 24px;
+          margin-top: auto;
+          padding-top: 1cm;
           font-size: ${noteFontSize};
           line-height: 1.5;
           color: #475569;
@@ -422,12 +432,21 @@ export default function ProctorReportPrint() {
 
       <div
         className="proctor-report-shell mx-auto max-w-5xl rounded-2xl border border-slate-200 bg-white shadow-sm"
-        style={{ width: '210mm', maxWidth: '210mm', minHeight: '297mm', padding: '1cm 1cm 2.5cm', fontSize: contentFontSize }}
+        style={{
+          width: '210mm',
+          maxWidth: '210mm',
+          minHeight: '297mm',
+          padding: '1cm 1cm 2.5cm',
+          fontSize: contentFontSize,
+          boxSizing: 'border-box',
+          display: 'flex',
+          flexDirection: 'column',
+        }}
         data-proctor-report-ready="true"
       >
         <StandardSchoolDocumentHeader header={snapshot.documentHeader} />
 
-        <div style={{ padding: '0 1.5cm' }}>
+        <div style={{ padding: '0 1.5cm', flex: 1, display: 'flex', flexDirection: 'column' }}>
           <div className="mt-0.5 flex flex-wrap items-start justify-between gap-4 text-slate-600 italic" style={{ fontSize: noteFontSize }}>
             <div style={{ fontSize: noteFontSize }}>
               No. Dokumen: {snapshot.documentNumber}
@@ -507,7 +526,7 @@ export default function ProctorReportPrint() {
             </div>
           </div>
 
-          <div className="mt-7 italic text-slate-600" style={{ fontSize: noteFontSize, lineHeight: 1.5 }}>
+          <div className="mt-auto pt-[1cm] italic text-slate-600" style={{ fontSize: noteFontSize, lineHeight: 1.5 }}>
             {snapshot.verification.note}
             <div className="mt-1 break-all italic text-slate-700" style={{ fontSize: noteFontSize }}>{snapshot.verification.verificationUrl}</div>
           </div>
