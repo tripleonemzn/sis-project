@@ -1631,7 +1631,7 @@ export default function StudentExamTakePage() {
 
               {/* Question Text */}
               <div 
-                className="prose max-w-none text-lg text-gray-800 mb-8 notranslate [&_*]:max-w-full [&_*]:whitespace-normal [&_*]:break-normal [&_ol]:list-decimal [&_ol]:pl-6 [&_ol]:ml-2 [&_ul]:list-disc [&_ul]:pl-6 [&_ul]:ml-2 [&_li]:my-1"
+                className="prose max-w-none text-lg text-gray-800 mb-8 notranslate [&_*]:max-w-full [&_*]:!whitespace-normal [&_*]:break-normal [&_p]:text-justify [&_div]:text-justify [&_li]:text-justify [&_ol]:list-decimal [&_ol]:pl-6 [&_ol]:ml-2 [&_ul]:list-disc [&_ul]:pl-6 [&_ul]:ml-2 [&_li]:my-1"
                 style={{ overflowWrap: 'break-word', wordBreak: 'normal' }}
                 translate="no"
                 dangerouslySetInnerHTML={{ __html: currentQuestionHtml }}

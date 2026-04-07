@@ -72,6 +72,8 @@ function maybeSwapImageSource(attrs: string): string {
 function normalizeOfficeHtml(html: string): string {
   return String(html || '')
     .replace(/<!--StartFragment-->|<!--EndFragment-->/gi, '')
+    .replace(/\u00a0/g, ' ')
+    .replace(/&nbsp;/gi, ' ')
     .replace(/<\/?o:p\b[^>]*>/gi, '')
     .replace(/\sclass=(['"])[^'"]*\bMso[a-zA-Z0-9_-]*[^'"]*\1/gi, '')
     .replace(/\sstyle=(['"])(.*?)\1/gi, (_full, quote: string, styleValue: string) => {
@@ -79,6 +81,10 @@ function normalizeOfficeHtml(html: string): string {
         .replace(/(^|;)\s*mso-[^:;]+:[^;]+/gi, '')
         .replace(/(^|;)\s*tab-stops:[^;]+/gi, '')
         .replace(/(^|;)\s*layout-grid-mode:[^;]+/gi, '')
+        .replace(/(^|;)\s*white-space:[^;]+/gi, '')
+        .replace(/(^|;)\s*word-break:[^;]+/gi, '')
+        .replace(/(^|;)\s*word-wrap:[^;]+/gi, '')
+        .replace(/(^|;)\s*overflow-wrap:[^;]+/gi, '')
         .replace(/;;+/g, ';')
         .replace(/^;|;$/g, '')
         .trim();

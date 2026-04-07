@@ -1037,6 +1037,7 @@ export default function StudentExamTakeScreen() {
             onImagePress={(src) => setPreviewImageSrc(src)}
             showInlineVideo={false}
             renderMode="native"
+            textAlign="justify"
           />
         </View>
 

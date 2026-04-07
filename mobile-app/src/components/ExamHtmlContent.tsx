@@ -14,6 +14,7 @@ type ExamHtmlContentProps = {
   onImagePress?: (src: string) => void;
   showInlineVideo?: boolean;
   renderMode?: 'webview' | 'native';
+  textAlign?: 'left' | 'justify';
 };
 
 function toMediaUrl(url?: string | null) {
@@ -35,6 +36,7 @@ function escapeHtml(value: string) {
 
 function decodeSimpleEntities(value: string) {
   return String(value || '')
+    .replace(/\u00a0/g, ' ')
     .replace(/&#x([0-9a-f]+);/gi, (_full, hex: string) => {
       const code = Number.parseInt(hex, 16);
       return Number.isFinite(code) ? String.fromCodePoint(code) : _full;
@@ -88,7 +90,10 @@ function extractQuillDeltaHtml(raw: string) {
 export function normalizeExamRichTextToHtml(value?: string | null) {
   const raw = String(value || '').trim();
   if (!raw) return '<p>-</p>';
-  const normalizedRaw = raw.replace(/&amp;(?=(?:[a-z]+|#\d+|#x[0-9a-f]+);)/gi, '&');
+  const normalizedRaw = raw
+    .replace(/\u00a0/g, ' ')
+    .replace(/&nbsp;/gi, ' ')
+    .replace(/&amp;(?=(?:[a-z]+|#\d+|#x[0-9a-f]+);)/gi, '&');
   const deltaHtml = extractQuillDeltaHtml(normalizedRaw);
   if (deltaHtml) return deltaHtml;
 
@@ -101,6 +106,10 @@ export function normalizeExamRichTextToHtml(value?: string | null) {
         .replace(/(^|;)\s*mso-[^:;]+:[^;]+/gi, '')
         .replace(/(^|;)\s*tab-stops:[^;]+/gi, '')
         .replace(/(^|;)\s*layout-grid-mode:[^;]+/gi, '')
+        .replace(/(^|;)\s*white-space:[^;]+/gi, '')
+        .replace(/(^|;)\s*word-break:[^;]+/gi, '')
+        .replace(/(^|;)\s*word-wrap:[^;]+/gi, '')
+        .replace(/(^|;)\s*overflow-wrap:[^;]+/gi, '')
         .replace(/;;+/g, ';')
         .replace(/^;|;$/g, '')
         .trim();
@@ -198,6 +207,7 @@ export function ExamHtmlContent({
   onImagePress,
   showInlineVideo = true,
   renderMode = 'webview',
+  textAlign = 'left',
 }: ExamHtmlContentProps) {
   const safeMinHeight = Number.isFinite(minHeight) ? Math.max(24, Math.floor(minHeight)) : 120;
   const [height, setHeight] = useState(safeMinHeight);
@@ -315,6 +325,11 @@ export function ExamHtmlContent({
               word-break: normal;
               overflow-wrap: break-word;
             }
+            .exam-content p,
+            .exam-content div,
+            .exam-content li {
+              text-align: ${textAlign};
+            }
             img.question-media,
             .exam-content img {
               max-width: 100%;
@@ -408,7 +423,7 @@ export function ExamHtmlContent({
           </script>
         </body>
       </html>`;
-  }, [html, imageUrl, safeMinHeight, showInlineVideo, videoType, videoUrl]);
+  }, [backgroundColor, html, imageUrl, safeMinHeight, showInlineVideo, textAlign, videoType, videoUrl]);
 
   if (renderMode === 'native') {
     const hasText = nativeTextContent.length > 0 && nativeTextContent !== '-';
@@ -423,6 +438,7 @@ export function ExamHtmlContent({
               color: '#0f172a',
               fontSize: 15,
               lineHeight: 22,
+              textAlign,
               marginBottom: hasImage ? 10 : 0,
             }}
           >
