@@ -97,8 +97,14 @@ export interface QuestionReviewFeedback {
     questionComment?: string;
     blueprintComment?: string;
     questionCardComment?: string;
+    teacherResponse?: string;
     reviewedAt?: string;
+    teacherRespondedAt?: string;
     reviewer?: {
+        id?: number;
+        name?: string;
+    };
+    teacherResponder?: {
         id?: number;
         name?: string;
     };
@@ -770,6 +776,26 @@ export const examService = {
         },
     ) => {
         const response = await api.patch(`/exams/packets/${id}/review-feedback`, data);
+        return response.data as {
+            statusCode: number;
+            success: boolean;
+            message: string;
+            data: {
+                packetId: number;
+                questionId: string;
+                questionNumber: number;
+                reviewFeedback: QuestionReviewFeedback | null;
+            };
+        };
+    },
+    replyPacketReviewFeedback: async (
+        id: number,
+        data: {
+            questionId: string;
+            teacherResponse: string;
+        },
+    ) => {
+        const response = await api.patch(`/exams/packets/${id}/review-feedback/reply`, data);
         return response.data as {
             statusCode: number;
             success: boolean;

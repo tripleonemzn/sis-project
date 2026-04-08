@@ -1003,13 +1003,41 @@ const buildSidebarCrumbLookup = (roleSegment: string, user: User | null): Record
     const sidebarConfig = sidebarMatchKey ? sidebarLookup[sidebarMatchKey] : null;
     const queryParams = new URLSearchParams(location.search);
     const dutyQuery = String(queryParams.get('duty') || '').toUpperCase();
+    const advisorScopedParams = new URLSearchParams();
+    ['assignmentId', 'ekskulId', 'academicYearId'].forEach((key) => {
+      const value = String(queryParams.get(key) || '').trim();
+      if (value) advisorScopedParams.set(key, value);
+    });
+    const buildTutorScopedPath = (pathname: string, extraParams?: Record<string, string | null | undefined>) => {
+      const params = new URLSearchParams(advisorScopedParams);
+      Object.entries(extraParams || {}).forEach(([key, value]) => {
+        if (value) {
+          params.set(key, value);
+        }
+      });
+      const query = params.toString();
+      return query ? `${pathname}?${query}` : pathname;
+    };
+
+    if (first === 'members') {
+      if (advisorBreadcrumbGroup) {
+        breadcrumbs.push({ label: advisorBreadcrumbGroup, path: null });
+      } else if (sidebarConfig?.group) {
+        breadcrumbs.push({ label: sidebarConfig.group, path: null });
+      }
+      breadcrumbs.push({
+        label: sidebarConfig?.label || 'Anggota & Nilai',
+        path: buildTutorScopedPath(`/${role}/members`),
+      });
+      return breadcrumbs;
+    }
 
     if (first === 'work-programs') {
       const baseLabel = sidebarConfig?.label || 'Program Kerja';
       const resolvedDuty = dutyQuery || (sidebarConfig?.group === 'PEMBINA EKSKUL' ? 'PEMBINA_EKSKUL' : null);
-      const workProgramPath = resolvedDuty
-        ? `/${role}/work-programs?duty=${encodeURIComponent(resolvedDuty)}`
-        : `/${role}/work-programs`;
+      const workProgramPath = buildTutorScopedPath(`/${role}/work-programs`, {
+        duty: resolvedDuty,
+      });
       const budgetSectionLabel =
         resolvedDuty === 'PEMBINA_EKSKUL'
           ? 'Pengajuan Alat Ekskul'
@@ -1035,6 +1063,22 @@ const buildSidebarCrumbLookup = (roleSegment: string, user: User | null): Record
           path: null,
         });
       }
+      return breadcrumbs;
+    }
+
+    if (first === 'inventory' || first === 'assigned-inventory') {
+      if (advisorBreadcrumbGroup) {
+        breadcrumbs.push({ label: advisorBreadcrumbGroup, path: null });
+      } else if (sidebarConfig?.group) {
+        breadcrumbs.push({ label: sidebarConfig.group, path: null });
+      }
+      breadcrumbs.push({
+        label: sidebarConfig?.label || 'Kelola Inventaris',
+        path:
+          first === 'assigned-inventory' && segments[1]
+            ? `/${role}/assigned-inventory/${segments[1]}`
+            : buildTutorScopedPath(`/${role}/inventory`),
+      });
       return breadcrumbs;
     }
 

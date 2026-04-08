@@ -423,8 +423,8 @@ export const getMenuItems = (
         path: buildTutorMembersHref(assignment),
         icon: Trophy,
         children: [
-          { label: 'Anggota & Nilai', path: buildTutorMembersHref(assignment), icon: Users },
           { label: 'Program Kerja', path: `/tutor/work-programs?${workProgramParams.toString()}`, icon: ClipboardList },
+          { label: 'Anggota & Nilai', path: buildTutorMembersHref(assignment), icon: Users },
           {
             label: 'Kelola Inventaris',
             path: linkedRoom ? `/teacher/assigned-inventory/${linkedRoom.id}` : '/tutor/inventory',
@@ -811,8 +811,8 @@ export const getMenuItems = (
         path: buildTutorMembersHref(assignment),
         icon: Trophy,
         children: [
-          { label: 'Anggota & Nilai', path: buildTutorMembersHref(assignment), icon: Users },
           { label: 'Program Kerja', path: `/tutor/work-programs?${workProgramParams.toString()}`, icon: ClipboardList },
+          { label: 'Anggota & Nilai', path: buildTutorMembersHref(assignment), icon: Users },
           {
             label: 'Kelola Inventaris',
             path: linkedRoom ? `/tutor/assigned-inventory/${linkedRoom.id}` : '/tutor/inventory',

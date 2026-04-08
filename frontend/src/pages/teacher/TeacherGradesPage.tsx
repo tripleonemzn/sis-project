@@ -193,11 +193,6 @@ const isUsTheorySlot = (raw: unknown): boolean => {
   return normalized === 'US_THEORY' || normalized === 'US_TEORY';
 };
 
-const isUsPracticeSlot = (raw: unknown): boolean => {
-  const normalized = normalizeSlotCode(raw);
-  return normalized === 'US_PRACTICE' || normalized === 'US_PRAKTEK';
-};
-
 const normalizeSubjectIdentityToken = (raw: unknown): string =>
   String(raw || '')
     .trim()
@@ -339,7 +334,6 @@ export const TeacherGradesPage = () => {
     const theoryKejuruanOnly = isTheoryKejuruanSubject(selectedAssignmentObj.subject);
     return gradeComponents.filter((component) => {
       if (component.subjectId !== selectedAssignmentObj.subject.id) return false;
-      if (isUsPracticeSlot(resolveComponentReportSlotCode(component))) return false;
       if (theoryKejuruanOnly) {
         return isUsTheorySlot(resolveComponentReportSlotCode(component));
       }
@@ -1313,10 +1307,17 @@ export const TeacherGradesPage = () => {
 	                                    const parsed = Number(grade.score);
 	                                    return Number.isFinite(parsed) ? parsed : null;
 	                                  })();
+                                  const backendSelectedComponentScore = resolveReportSlotScore(
+                                    report,
+                                    selectedComponentSlotCode,
+                                    currentScore,
+                                  );
                                   const rowStatusScore =
-                                    backendFinal !== null && backendFinal !== undefined
-                                      ? backendFinal
-                                      : parseFloat(grade.score || '0');
+                                    !isFormatifComponent && !isMidtermComponent && !isFinalComponent
+                                      ? backendSelectedComponentScore ?? currentScore ?? 0
+                                      : backendFinal !== null && backendFinal !== undefined
+                                        ? backendFinal
+                                        : parseFloat(grade.score || '0');
                                   const formativeParsed = parseFormativeSeriesInput(grade.formativeSeriesInput || '');
                                   const hasDraftFormativeValues =
                                     !formativeParsed.invalid && formativeParsed.values.length > 0;

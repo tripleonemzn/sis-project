@@ -3617,8 +3617,14 @@ type ExamQuestionReviewFeedback = {
     questionComment?: string;
     blueprintComment?: string;
     questionCardComment?: string;
+    teacherResponse?: string;
     reviewedAt?: string;
+    teacherRespondedAt?: string;
     reviewer?: {
+        id?: number;
+        name?: string;
+    };
+    teacherResponder?: {
         id?: number;
         name?: string;
     };
@@ -3697,7 +3703,9 @@ function normalizeReviewFeedback(raw: unknown): ExamQuestionReviewFeedback | und
         questionComment: normalizeOptionalString(source.questionComment, 2000),
         blueprintComment: normalizeOptionalString(source.blueprintComment, 2000),
         questionCardComment: normalizeOptionalString(source.questionCardComment, 2000),
+        teacherResponse: normalizeOptionalString(source.teacherResponse, 2000),
         reviewedAt: normalizeOptionalString(source.reviewedAt, 100),
+        teacherRespondedAt: normalizeOptionalString(source.teacherRespondedAt, 100),
         reviewer:
             reviewerSource || source.reviewerId || source.reviewerName
                 ? {
@@ -3705,9 +3713,24 @@ function normalizeReviewFeedback(raw: unknown): ExamQuestionReviewFeedback | und
                       name: normalizeOptionalString(reviewerSource?.name ?? source.reviewerName, 200),
                   }
                 : undefined,
+        teacherResponder:
+            asRecord(source.teacherResponder) || source.teacherResponderId || source.teacherResponderName
+                ? {
+                      id: normalizeOptionalNumber(asRecord(source.teacherResponder)?.id ?? source.teacherResponderId),
+                      name: normalizeOptionalString(
+                          asRecord(source.teacherResponder)?.name ?? source.teacherResponderName,
+                          200,
+                      ),
+                  }
+                : undefined,
     };
 
-    if (!normalized.questionComment && !normalized.blueprintComment && !normalized.questionCardComment) {
+    if (
+        !normalized.questionComment &&
+        !normalized.blueprintComment &&
+        !normalized.questionCardComment &&
+        !normalized.teacherResponse
+    ) {
         return undefined;
     }
 
@@ -5611,6 +5634,138 @@ export const updatePacketReviewFeedback = asyncHandler(async (req: Request, res:
                 reviewFeedback: nextFeedback || null,
             },
             'Catatan review soal berhasil disimpan.',
+        ),
+    );
+});
+
+export const replyPacketReviewFeedback = asyncHandler(async (req: Request, res: Response) => {
+    const user = (req as any).user as { id?: number; name?: string; role?: string } | undefined;
+    if (!user?.id) {
+        throw new ApiError(401, 'Tidak memiliki otorisasi.');
+    }
+
+    const packetId = Number(req.params.id);
+    if (!Number.isFinite(packetId) || packetId <= 0) {
+        throw new ApiError(400, 'ID paket ujian tidak valid.');
+    }
+
+    const questionId = String(req.body?.questionId || '').trim();
+    if (!questionId) {
+        throw new ApiError(400, 'questionId wajib diisi.');
+    }
+
+    const teacherResponse = normalizeOptionalString(req.body?.teacherResponse, 2000);
+    if (!teacherResponse) {
+        throw new ApiError(400, 'Balasan guru wajib diisi.');
+    }
+
+    const packet = await prisma.examPacket.findUnique({
+        where: { id: packetId },
+        select: {
+            id: true,
+            title: true,
+            authorId: true,
+            programCode: true,
+            subject: {
+                select: {
+                    name: true,
+                },
+            },
+            questions: true,
+        },
+    });
+
+    if (!packet) {
+        throw new ApiError(404, 'Paket ujian tidak ditemukan.');
+    }
+
+    const isAuthor = Number(packet.authorId) > 0 && Number(packet.authorId) === Number(user.id);
+    const isAdmin = String(user.role || '').trim().toUpperCase() === 'ADMIN';
+    if (!isAuthor && !isAdmin) {
+        throw new ApiError(403, 'Anda tidak berhak membalas review pada paket ini.');
+    }
+
+    const normalizedQuestions = normalizeQuestionsPayload(packet.questions) || [];
+    const questionIndex = normalizedQuestions.findIndex((question) => String(question.id || '').trim() === questionId);
+    if (questionIndex < 0) {
+        throw new ApiError(404, 'Butir soal tidak ditemukan pada paket ini.');
+    }
+
+    const currentQuestion = normalizedQuestions[questionIndex] as NormalizedExamQuestion & {
+        reviewFeedback?: ExamQuestionReviewFeedback;
+    };
+    const currentFeedback = normalizeReviewFeedback(currentQuestion.reviewFeedback);
+    if (!currentFeedback) {
+        throw new ApiError(400, 'Butir soal ini belum memiliki catatan review dari kurikulum.');
+    }
+
+    const nextFeedback = normalizeReviewFeedback({
+        ...currentFeedback,
+        teacherResponse,
+        teacherRespondedAt: new Date().toISOString(),
+        teacherResponder: {
+            id: Number(user.id),
+            name: String(user.name || '').trim() || 'Guru Penyusun',
+        },
+    });
+
+    const updatedQuestions = normalizedQuestions.map((question, index) => {
+        if (index !== questionIndex) return question;
+        return {
+            ...question,
+            reviewFeedback: nextFeedback,
+        };
+    });
+
+    await prisma.examPacket.update({
+        where: { id: packetId },
+        data: {
+            questions: updatedQuestions as Prisma.InputJsonValue,
+        },
+    });
+
+    const reviewerId = Number(currentFeedback.reviewer?.id || 0);
+    if (reviewerId > 0 && reviewerId !== Number(user.id)) {
+        const reviewProgramCode = String(packet.programCode || '').trim().toUpperCase();
+        const reviewRouteParams = new URLSearchParams({
+            section: 'jadwal',
+            reviewPacketId: String(packetId),
+            questionId,
+        });
+        if (reviewProgramCode) {
+            reviewRouteParams.set('jadwalProgram', reviewProgramCode);
+        }
+
+        await createInAppNotification({
+            data: {
+                userId: reviewerId,
+                title: 'Balasan Review Soal dari Guru',
+                message: `${String(user.name || 'Guru').trim() || 'Guru penyusun'} membalas catatan review untuk soal ${
+                    questionIndex + 1
+                } pada paket ${packet.title}.`,
+                type: 'EXAM_REVIEW_REPLY',
+                data: {
+                    packetId,
+                    questionId,
+                    questionNumber: questionIndex + 1,
+                    programCode: packet.programCode || null,
+                    subjectName: packet.subject?.name || null,
+                    route: `/teacher/wakasek/exams?${reviewRouteParams.toString()}`,
+                },
+            },
+        });
+    }
+
+    res.status(200).json(
+        new ApiResponse(
+            200,
+            {
+                packetId,
+                questionId,
+                questionNumber: questionIndex + 1,
+                reviewFeedback: nextFeedback || null,
+            },
+            'Balasan review guru berhasil dikirim.',
         ),
     );
 });

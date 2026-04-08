@@ -1,6 +1,7 @@
 import axios from 'axios';
 import type { Prisma } from '@prisma/client';
 import prisma from '../utils/prisma';
+import { broadcastMutationEvent } from '../realtime/realtimeGateway';
 
 const EXPO_PUSH_API_URL = 'https://exp.host/--/api/v2/push/send';
 const DEFAULT_ACTIVITY_CHANNEL_ID = 'default';
@@ -225,6 +226,12 @@ export async function createInAppNotification(
   options: CreateNotificationOptions = {},
 ) {
   const notification = await prisma.notification.create(args);
+  broadcastMutationEvent({
+    method: 'POST',
+    path: '/api/notifications/internal',
+    statusCode: 201,
+    durationMs: 0,
+  });
   if (!options.skipPush) {
     await safePushNotificationRows([
       {

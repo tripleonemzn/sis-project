@@ -407,6 +407,9 @@ export const WorkProgramPage = () => {
     const dutyParam = searchParams.get('duty');
     const tabParam = searchParams.get('tab');
     const sectionParam = searchParams.get('section');
+    const assignmentIdParam = searchParams.get('assignmentId');
+    const ekskulIdParam = searchParams.get('ekskulId');
+    const academicYearIdParam = searchParams.get('academicYearId');
     const availableDuties = Array.isArray(user?.additionalDuties)
       ? user.additionalDuties
           .map((item) => String(item || '').trim().toUpperCase())
@@ -422,6 +425,9 @@ export const WorkProgramPage = () => {
         setSearchParams((prev) => {
           const params = new URLSearchParams(prev);
           params.set('duty', requestedTutorDuty);
+          if (assignmentIdParam) params.set('assignmentId', assignmentIdParam);
+          if (ekskulIdParam) params.set('ekskulId', ekskulIdParam);
+          if (academicYearIdParam) params.set('academicYearId', academicYearIdParam);
           params.set('tab', normalizedTab);
           if (normalizedTab === 'BUDGET') {
             params.set('section', normalizedSection);

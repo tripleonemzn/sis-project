@@ -774,17 +774,17 @@ export default function ExamRoomLayoutManagementPage() {
               Belum ada program ujian terjadwal.
             </div>
           ) : (
-            <div className="border-b border-gray-200">
-              <div className="flex overflow-x-auto gap-4 pb-1 scrollbar-hide">
+            <div className="flex overflow-x-auto">
+              <div className="flex w-fit space-x-1 rounded-lg border border-gray-200 bg-white p-1 scrollbar-hide">
                 {visiblePrograms.map((program) => (
                   <button
                     key={program.code}
                     type="button"
                     onClick={() => setActiveProgramCode(program.code)}
-                    className={`flex items-center gap-2 border-b-2 px-4 py-3 whitespace-nowrap text-[13px] transition-colors ${
+                    className={`rounded-md px-4 py-2 text-sm font-medium whitespace-nowrap transition-colors ${
                       activeProgramCode === program.code
-                        ? 'border-blue-600 text-blue-600 font-medium'
-                        : 'border-transparent text-gray-500 hover:border-gray-300 hover:text-gray-700'
+                        ? 'bg-blue-50 text-blue-700'
+                        : 'text-gray-600 hover:bg-gray-50'
                     }`}
                   >
                     {program.label}

@@ -116,15 +116,28 @@ function normalizeReviewFeedback(raw: unknown): QuestionReviewFeedback | undefin
         questionComment: String(source.questionComment || '').trim(),
         blueprintComment: String(source.blueprintComment || '').trim(),
         questionCardComment: String(source.questionCardComment || '').trim(),
+        teacherResponse: String(source.teacherResponse || '').trim(),
         reviewedAt: String(source.reviewedAt || '').trim(),
+        teacherRespondedAt: String(source.teacherRespondedAt || '').trim(),
         reviewer: source.reviewer?.name
             ? {
                 id: source.reviewer.id,
                 name: source.reviewer.name,
             }
             : undefined,
+        teacherResponder: source.teacherResponder?.name
+            ? {
+                id: source.teacherResponder.id,
+                name: source.teacherResponder.name,
+            }
+            : undefined,
     };
-    if (!normalized.questionComment && !normalized.blueprintComment && !normalized.questionCardComment) {
+    if (
+        !normalized.questionComment &&
+        !normalized.blueprintComment &&
+        !normalized.questionCardComment &&
+        !normalized.teacherResponse
+    ) {
         return undefined;
     }
     return normalized;
@@ -509,6 +522,8 @@ export const ExamEditorPage = () => {
     // UI State for Editor
     const [section, setSection] = useState<'OBJECTIVE' | 'ESSAY'>('OBJECTIVE');
     const [isInfoModalOpen, setIsInfoModalOpen] = useState(false);
+    const [reviewReplyDraft, setReviewReplyDraft] = useState('');
+    const [reviewReplySubmitting, setReviewReplySubmitting] = useState(false);
     
     // Media Upload State
     // Removed mediaTarget state as we use direct targetId passing
@@ -1720,6 +1735,10 @@ export const ExamEditorPage = () => {
         }
     }, [requestedQuestionId, questions, activeQuestionId]);
 
+    useEffect(() => {
+        setReviewReplyDraft(String(activeQuestionReviewFeedback?.teacherResponse || ''));
+    }, [activeQuestionReviewFeedback?.teacherResponse, activeQuestion?.id]);
+
     const hasActiveQuestionBlueprint = Boolean(
         activeQuestionBlueprint.competency ||
         activeQuestionBlueprint.learningObjective ||
@@ -1738,6 +1757,50 @@ export const ExamEditorPage = () => {
         activeQuestionReviewFeedback?.blueprintComment ||
         activeQuestionReviewFeedback?.questionCardComment,
     );
+
+    const submitReviewReply = async () => {
+        const packetId = Number(id || loadedPacket?.id || 0);
+        const questionId = String(activeQuestion?.id || '').trim();
+        const teacherResponse = reviewReplyDraft.trim();
+        if (!packetId || !questionId) {
+            toast.error('Butir soal belum tersedia untuk dibalas.');
+            return;
+        }
+        if (!teacherResponse) {
+            toast.error('Balasan guru wajib diisi.');
+            return;
+        }
+
+        setReviewReplySubmitting(true);
+        try {
+            const response = await examService.replyPacketReviewFeedback(packetId, {
+                questionId,
+                teacherResponse,
+            });
+            const nextFeedback = response.data?.reviewFeedback || null;
+            setQuestions((current) =>
+                current.map((question) =>
+                    String(question.id || '') === questionId
+                        ? {
+                              ...question,
+                              reviewFeedback: nextFeedback || undefined,
+                              metadata: {
+                                  ...(question.metadata || {}),
+                                  reviewFeedback: nextFeedback || undefined,
+                              },
+                          }
+                        : question,
+                ),
+            );
+            toast.success('Balasan review berhasil dikirim ke kurikulum.');
+        } catch (error: unknown) {
+            console.error('Error replying review feedback:', error);
+            const err = error as { response?: { data?: { message?: string } } };
+            toast.error(err.response?.data?.message || 'Gagal mengirim balasan review.');
+        } finally {
+            setReviewReplySubmitting(false);
+        }
+    };
     const previewQuestions = useMemo<ExamStudentPreviewQuestion[]>(
         () =>
             questions.map((question, index) => ({
@@ -2162,6 +2225,46 @@ export const ExamEditorPage = () => {
                                                             <span className="font-semibold">Kartu soal:</span> {activeQuestionReviewFeedback.questionCardComment}
                                                         </div>
                                                     ) : null}
+                                                </div>
+                                                {activeQuestionReviewFeedback?.teacherResponse ? (
+                                                    <div className="mt-3 rounded-2xl border border-blue-200 bg-white/80 px-4 py-3 text-xs text-slate-700">
+                                                        <div className="flex flex-wrap items-center justify-between gap-2">
+                                                            <div className="font-semibold text-blue-700">Balasan Guru</div>
+                                                            {activeQuestionReviewFeedback?.teacherResponder?.name || activeQuestionReviewFeedback?.teacherRespondedAt ? (
+                                                                <div className="text-[11px] text-slate-500">
+                                                                    {activeQuestionReviewFeedback?.teacherResponder?.name
+                                                                        ? `Oleh ${activeQuestionReviewFeedback.teacherResponder.name}`
+                                                                        : 'Balasan tersimpan'}
+                                                                    {activeQuestionReviewFeedback?.teacherRespondedAt
+                                                                        ? ` • ${activeQuestionReviewFeedback.teacherRespondedAt}`
+                                                                        : ''}
+                                                                </div>
+                                                            ) : null}
+                                                        </div>
+                                                        <p className="mt-2 leading-5">{activeQuestionReviewFeedback.teacherResponse}</p>
+                                                    </div>
+                                                ) : null}
+                                                <div className="mt-3 rounded-2xl border border-amber-200 bg-white/80 px-4 py-3">
+                                                    <label className="mb-2 block text-[11px] font-semibold uppercase tracking-wide text-amber-700">
+                                                        Balas Catatan ke Kurikulum
+                                                    </label>
+                                                    <textarea
+                                                        value={reviewReplyDraft}
+                                                        onChange={(event) => setReviewReplyDraft(event.target.value)}
+                                                        rows={3}
+                                                        className="w-full rounded-2xl border border-amber-200 bg-white px-4 py-3 text-sm text-slate-800 focus:border-amber-500 focus:outline-none"
+                                                        placeholder="Jelaskan perbaikan yang sudah dilakukan agar kurikulum bisa meninjau ulang."
+                                                    />
+                                                    <div className="mt-3 flex justify-end">
+                                                        <button
+                                                            type="button"
+                                                            onClick={() => void submitReviewReply()}
+                                                            disabled={reviewReplySubmitting}
+                                                            className="inline-flex items-center rounded-2xl bg-amber-600 px-4 py-2 text-xs font-semibold text-white hover:bg-amber-700 disabled:cursor-not-allowed disabled:bg-amber-300"
+                                                        >
+                                                            {reviewReplySubmitting ? 'Mengirim Balasan...' : 'Kirim Balasan ke Kurikulum'}
+                                                        </button>
+                                                    </div>
                                                 </div>
                                             </div>
                                         ) : null}

@@ -5,6 +5,7 @@ import {
     getPackets,
     getPacketById,
     updatePacketReviewFeedback,
+    replyPacketReviewFeedback,
     createPacket,
     updatePacket,
     deletePacket,
@@ -68,6 +69,7 @@ router.get('/packets/:id/item-analysis', roleMiddleware(['TEACHER', 'ADMIN', 'EX
 router.post('/packets/:id/item-analysis/sync', roleMiddleware(['TEACHER', 'ADMIN', 'EXAMINER']), syncPacketItemAnalysis);
 router.get('/packets/:id', getPacketById);
 router.patch('/packets/:id/review-feedback', roleMiddleware(['TEACHER', 'ADMIN']), updatePacketReviewFeedback);
+router.patch('/packets/:id/review-feedback/reply', roleMiddleware(['TEACHER', 'ADMIN']), replyPacketReviewFeedback);
 router.get('/sessions/:id/detail', roleMiddleware(['TEACHER', 'ADMIN', 'EXAMINER']), getSessionDetail);
 router.patch('/sessions/:id/score', roleMiddleware(['TEACHER', 'ADMIN', 'EXAMINER']), updateSessionScore);
 router.post('/packets', roleMiddleware(['TEACHER', 'ADMIN', 'EXAMINER']), createPacket);

@@ -335,7 +335,6 @@ export default function TeacherGradesScreen() {
     const theoryKejuruanOnly = isGenericExamSubject(selectedAssignment.subject);
     return components.filter((component) => {
       if (component.subjectId !== selectedAssignment.subject.id) return false;
-      if (isUsPracticeSlot(resolveComponentSlotCode(component))) return false;
       if (theoryKejuruanOnly) {
         return (
           isUsTheorySlot(resolveComponentSlotCode(component)) ||

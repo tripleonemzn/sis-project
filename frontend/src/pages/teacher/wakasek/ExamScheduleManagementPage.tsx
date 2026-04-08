@@ -316,12 +316,21 @@ const normalizeReviewQuestions = (rawQuestions: unknown): ReviewableQuestion[] =
               questionComment: String(source.reviewFeedback.questionComment || ''),
               blueprintComment: String(source.reviewFeedback.blueprintComment || ''),
               questionCardComment: String(source.reviewFeedback.questionCardComment || ''),
+              teacherResponse: String(source.reviewFeedback.teacherResponse || ''),
               reviewedAt: String(source.reviewFeedback.reviewedAt || ''),
+              teacherRespondedAt: String(source.reviewFeedback.teacherRespondedAt || ''),
               reviewer:
                 source.reviewFeedback.reviewer && typeof source.reviewFeedback.reviewer === 'object'
                   ? {
                       id: Number(source.reviewFeedback.reviewer.id || 0) || undefined,
                       name: String(source.reviewFeedback.reviewer.name || ''),
+                    }
+                  : undefined,
+              teacherResponder:
+                source.reviewFeedback.teacherResponder && typeof source.reviewFeedback.teacherResponder === 'object'
+                  ? {
+                      id: Number(source.reviewFeedback.teacherResponder.id || 0) || undefined,
+                      name: String(source.reviewFeedback.teacherResponder.name || ''),
                     }
                   : undefined,
             }
@@ -330,12 +339,21 @@ const normalizeReviewQuestions = (rawQuestions: unknown): ReviewableQuestion[] =
                 questionComment: String(metadata.reviewFeedback.questionComment || ''),
                 blueprintComment: String(metadata.reviewFeedback.blueprintComment || ''),
                 questionCardComment: String(metadata.reviewFeedback.questionCardComment || ''),
+                teacherResponse: String(metadata.reviewFeedback.teacherResponse || ''),
                 reviewedAt: String(metadata.reviewFeedback.reviewedAt || ''),
+                teacherRespondedAt: String(metadata.reviewFeedback.teacherRespondedAt || ''),
                 reviewer:
                   metadata.reviewFeedback.reviewer && typeof metadata.reviewFeedback.reviewer === 'object'
                     ? {
                         id: Number(metadata.reviewFeedback.reviewer.id || 0) || undefined,
                         name: String(metadata.reviewFeedback.reviewer.name || ''),
+                      }
+                    : undefined,
+                teacherResponder:
+                  metadata.reviewFeedback.teacherResponder && typeof metadata.reviewFeedback.teacherResponder === 'object'
+                    ? {
+                        id: Number(metadata.reviewFeedback.teacherResponder.id || 0) || undefined,
+                        name: String(metadata.reviewFeedback.teacherResponder.name || ''),
                       }
                     : undefined,
               }
@@ -347,6 +365,14 @@ const normalizeReviewQuestions = (rawQuestions: unknown): ReviewableQuestion[] =
 const ExamScheduleManagementPage = () => {
   const [searchParams, setSearchParams] = useSearchParams();
   const programParamKey = 'jadwalProgram';
+  const requestedReviewPacketId = useMemo(
+    () => Number(searchParams.get('reviewPacketId') || 0),
+    [searchParams],
+  );
+  const requestedReviewQuestionId = useMemo(
+    () => String(searchParams.get('questionId') || '').trim(),
+    [searchParams],
+  );
   const { data: activeAcademicYear } = useActiveAcademicYear();
   const [examPrograms, setExamPrograms] = useState<ExamProgram[]>([]);
   const [activeProgramCode, setActiveProgramCode] = useState<string>('');
@@ -1188,6 +1214,12 @@ const ExamScheduleManagementPage = () => {
       blueprintComment: '',
       questionCardComment: '',
     });
+    if (requestedReviewPacketId || requestedReviewQuestionId) {
+      const nextParams = new URLSearchParams(searchParams);
+      nextParams.delete('reviewPacketId');
+      nextParams.delete('questionId');
+      setSearchParams(nextParams, { replace: true });
+    }
   };
 
   const saveReviewComment = async () => {
@@ -1233,6 +1265,25 @@ const ExamScheduleManagementPage = () => {
       setReviewSubmitting(false);
     }
   };
+
+  useEffect(() => {
+    if (!requestedReviewPacketId || reviewSchedule || reviewLoading || schedules.length === 0) return;
+    const matchedSchedule = schedules.find(
+      (schedule) => Number(schedule.packet?.id || 0) === requestedReviewPacketId,
+    );
+    if (!matchedSchedule) return;
+    void openReviewModal(matchedSchedule);
+  }, [requestedReviewPacketId, reviewSchedule, reviewLoading, schedules]);
+
+  useEffect(() => {
+    if (!requestedReviewQuestionId || reviewQuestions.length === 0) return;
+    const matchedIndex = reviewQuestions.findIndex(
+      (question) => String(question.id || '').trim() === requestedReviewQuestionId,
+    );
+    if (matchedIndex >= 0 && matchedIndex !== reviewQuestionIndex) {
+      setReviewQuestionIndex(matchedIndex);
+    }
+  }, [requestedReviewQuestionId, reviewQuestions, reviewQuestionIndex]);
 
   return (
     <div className="w-full space-y-6">
@@ -1777,6 +1828,25 @@ const ExamScheduleManagementPage = () => {
                         />
                       </div>
                     </div>
+
+                    {activeReviewQuestion?.reviewFeedback?.teacherResponse ? (
+                      <div className="mt-4 rounded-2xl border border-blue-200 bg-white/90 px-4 py-3 text-sm text-slate-700">
+                        <div className="flex flex-wrap items-center justify-between gap-2">
+                          <p className="text-xs font-semibold uppercase tracking-[0.24em] text-blue-700">Balasan Guru</p>
+                          {activeReviewQuestion.reviewFeedback.teacherResponder?.name || activeReviewQuestion.reviewFeedback.teacherRespondedAt ? (
+                            <div className="text-[11px] text-slate-500">
+                              {activeReviewQuestion.reviewFeedback.teacherResponder?.name
+                                ? `Terakhir oleh ${activeReviewQuestion.reviewFeedback.teacherResponder.name}`
+                                : 'Balasan tersimpan'}
+                              {activeReviewQuestion.reviewFeedback.teacherRespondedAt
+                                ? ` • ${activeReviewQuestion.reviewFeedback.teacherRespondedAt}`
+                                : ''}
+                            </div>
+                          ) : null}
+                        </div>
+                        <p className="mt-2 leading-6">{activeReviewQuestion.reviewFeedback.teacherResponse}</p>
+                      </div>
+                    ) : null}
 
                     <div className="mt-4 flex justify-end">
                       <button

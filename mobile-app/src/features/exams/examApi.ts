@@ -62,6 +62,18 @@ type TeacherPacketMutationResponse = {
   data: TeacherExamPacketDetail;
 };
 
+type TeacherPacketReviewReplyResponse = {
+  statusCode: number;
+  success: boolean;
+  message: string;
+  data: {
+    packetId: number;
+    questionId: string;
+    questionNumber: number;
+    reviewFeedback: Record<string, unknown> | null;
+  };
+};
+
 type TeacherSchedulesResponse = {
   statusCode: number;
   success: boolean;
@@ -434,6 +446,14 @@ export const examApi = {
   },
   async updateTeacherPacket(packetId: number, payload: TeacherExamPacketMutationPayload) {
     const response = await apiClient.put<TeacherPacketMutationResponse>(`/exams/packets/${packetId}`, payload);
+    return response.data.data;
+  },
+
+  async replyPacketReviewFeedback(packetId: number, payload: { questionId: string; teacherResponse: string }) {
+    const response = await apiClient.patch<TeacherPacketReviewReplyResponse>(
+      `/exams/packets/${packetId}/review-feedback/reply`,
+      payload,
+    );
     return response.data.data;
   },
   async getPacketItemAnalysis(

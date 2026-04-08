@@ -34,6 +34,22 @@ type QuestionDraft = {
   options: OptionDraft[];
   blueprint: ExamQuestionBlueprint;
   questionCard: ExamQuestionCard;
+  reviewFeedback?: {
+    questionComment?: string;
+    blueprintComment?: string;
+    questionCardComment?: string;
+    teacherResponse?: string;
+    reviewedAt?: string;
+    teacherRespondedAt?: string;
+    reviewer?: {
+      id?: number;
+      name?: string;
+    };
+    teacherResponder?: {
+      id?: number;
+      name?: string;
+    };
+  };
 };
 
 type EditorSection = 'INFO' | 'QUESTIONS';
@@ -119,6 +135,44 @@ function normalizeQuestionCard(raw: unknown): ExamQuestionCard {
     scoringGuideline: source.scoringGuideline || '',
     distractorNotes: source.distractorNotes || '',
   };
+}
+
+function normalizeReviewFeedback(raw: unknown): QuestionDraft['reviewFeedback'] | undefined {
+  if (!raw || typeof raw !== 'object') {
+    return undefined;
+  }
+  const source = raw as Record<string, unknown>;
+  const reviewer = source.reviewer && typeof source.reviewer === 'object'
+    ? {
+        id: Number((source.reviewer as Record<string, unknown>).id || 0) || undefined,
+        name: String((source.reviewer as Record<string, unknown>).name || '').trim(),
+      }
+    : undefined;
+  const teacherResponder = source.teacherResponder && typeof source.teacherResponder === 'object'
+    ? {
+        id: Number((source.teacherResponder as Record<string, unknown>).id || 0) || undefined,
+        name: String((source.teacherResponder as Record<string, unknown>).name || '').trim(),
+      }
+    : undefined;
+  const normalized = {
+    questionComment: String(source.questionComment || '').trim(),
+    blueprintComment: String(source.blueprintComment || '').trim(),
+    questionCardComment: String(source.questionCardComment || '').trim(),
+    teacherResponse: String(source.teacherResponse || '').trim(),
+    reviewedAt: String(source.reviewedAt || '').trim(),
+    teacherRespondedAt: String(source.teacherRespondedAt || '').trim(),
+    reviewer: reviewer?.name ? reviewer : undefined,
+    teacherResponder: teacherResponder?.name ? teacherResponder : undefined,
+  };
+  if (
+    !normalized.questionComment &&
+    !normalized.blueprintComment &&
+    !normalized.questionCardComment &&
+    !normalized.teacherResponse
+  ) {
+    return undefined;
+  }
+  return normalized;
 }
 
 function parsePacketId(raw: string | string[] | undefined): number | null {
@@ -235,6 +289,9 @@ function parseQuestions(raw: unknown): QuestionDraft[] {
         questionCard: normalizeQuestionCard(
           q.questionCard || (q.metadata as Record<string, unknown> | undefined)?.questionCard,
         ),
+        reviewFeedback: normalizeReviewFeedback(
+          q.reviewFeedback || (q.metadata as Record<string, unknown> | undefined)?.reviewFeedback,
+        ),
         options:
           type === 'ESSAY'
             ? []
@@ -334,6 +391,8 @@ export default function TeacherExamEditorScreen() {
   const [kkm, setKkm] = useState('75');
   const [saveToBank, setSaveToBank] = useState(true);
   const [questions, setQuestions] = useState<QuestionDraft[]>([createQuestion()]);
+  const [reviewReplyDrafts, setReviewReplyDrafts] = useState<Record<string, string>>({});
+  const [reviewReplySubmittingQuestionId, setReviewReplySubmittingQuestionId] = useState<string | null>(null);
   const [hydratedPacket, setHydratedPacket] = useState(false);
   const [activeSection, setActiveSection] = useState<EditorSection>('INFO');
   const requestedQuestionId = useMemo(() => {
@@ -516,8 +575,58 @@ export default function TeacherExamEditorScreen() {
     return () => clearTimeout(timerId);
   }, [isEditMode, packetDetailQuery.data, hydratedPacket, assignments]);
 
+  useEffect(() => {
+    setReviewReplyDrafts((current) => {
+      let changed = false;
+      const next = { ...current };
+      questions.forEach((question) => {
+        if (!question.reviewFeedback) return;
+        if (next[question.id] === undefined) {
+          next[question.id] = String(question.reviewFeedback.teacherResponse || '');
+          changed = true;
+        }
+      });
+      return changed ? next : current;
+    });
+  }, [questions]);
+
   const selectedAssignment =
     filteredAssignments.find((assignment) => assignment.id === selectedAssignmentId) || null;
+
+  const submitReviewReply = async (question: QuestionDraft) => {
+    if (!packetId) {
+      Alert.alert('Info', 'Paket ujian belum tersedia.');
+      return;
+    }
+    const teacherResponse = String(reviewReplyDrafts[question.id] || '').trim();
+    if (!teacherResponse) {
+      Alert.alert('Info', 'Balasan guru wajib diisi.');
+      return;
+    }
+    setReviewReplySubmittingQuestionId(question.id);
+    try {
+      const result = await examApi.replyPacketReviewFeedback(packetId, {
+        questionId: String(question.id || ''),
+        teacherResponse,
+      });
+      const nextFeedback = normalizeReviewFeedback(result.reviewFeedback);
+      setQuestions((current) =>
+        current.map((item) =>
+          item.id === question.id
+            ? {
+                ...item,
+                reviewFeedback: nextFeedback,
+              }
+            : item,
+        ),
+      );
+      Alert.alert('Berhasil', 'Balasan review berhasil dikirim ke kurikulum.');
+    } catch (error) {
+      Alert.alert('Gagal', error instanceof Error ? error.message : 'Gagal mengirim balasan review.');
+    } finally {
+      setReviewReplySubmittingQuestionId(null);
+    }
+  };
 
   const saveMutation = useMutation({
     mutationFn: async () => {
@@ -1112,6 +1221,102 @@ export default function TeacherExamEditorScreen() {
               <Text style={{ color: '#b91c1c', fontWeight: '700', fontSize: 12 }}>Hapus</Text>
             </Pressable>
           </View>
+
+          {question.reviewFeedback ? (
+            <View
+              style={{
+                borderWidth: 1,
+                borderColor: '#fcd34d',
+                backgroundColor: '#fffbeb',
+                borderRadius: 12,
+                padding: 10,
+                marginBottom: 10,
+              }}
+            >
+              <Text style={{ color: '#92400e', fontWeight: '700', fontSize: 12, marginBottom: 4 }}>
+                Catatan Review Kurikulum
+              </Text>
+              {(question.reviewFeedback.reviewer?.name || question.reviewFeedback.reviewedAt) ? (
+                <Text style={{ color: '#a16207', fontSize: 11, marginBottom: 6 }}>
+                  {question.reviewFeedback.reviewer?.name
+                    ? `Oleh ${question.reviewFeedback.reviewer.name}`
+                    : 'Catatan tersimpan'}
+                  {question.reviewFeedback.reviewedAt ? ` • ${question.reviewFeedback.reviewedAt}` : ''}
+                </Text>
+              ) : null}
+              {question.reviewFeedback.questionComment ? (
+                <Text style={{ color: '#78350f', fontSize: 12, marginBottom: 4 }}>
+                  Soal: {question.reviewFeedback.questionComment}
+                </Text>
+              ) : null}
+              {question.reviewFeedback.blueprintComment ? (
+                <Text style={{ color: '#78350f', fontSize: 12, marginBottom: 4 }}>
+                  Kisi-kisi: {question.reviewFeedback.blueprintComment}
+                </Text>
+              ) : null}
+              {question.reviewFeedback.questionCardComment ? (
+                <Text style={{ color: '#78350f', fontSize: 12, marginBottom: 4 }}>
+                  Kartu soal: {question.reviewFeedback.questionCardComment}
+                </Text>
+              ) : null}
+              {question.reviewFeedback.teacherResponse ? (
+                <View
+                  style={{
+                    borderWidth: 1,
+                    borderColor: '#bfdbfe',
+                    backgroundColor: '#eff6ff',
+                    borderRadius: 10,
+                    padding: 10,
+                    marginTop: 8,
+                  }}
+                >
+                  <Text style={{ color: '#1d4ed8', fontWeight: '700', fontSize: 12, marginBottom: 4 }}>
+                    Balasan Guru
+                  </Text>
+                  <Text style={{ color: '#334155', fontSize: 12 }}>{question.reviewFeedback.teacherResponse}</Text>
+                </View>
+              ) : null}
+              <TextInput
+                value={String(reviewReplyDrafts[question.id] || '')}
+                onChangeText={(value) =>
+                  setReviewReplyDrafts((current) => ({
+                    ...current,
+                    [question.id]: value,
+                  }))
+                }
+                placeholder="Balas catatan ke kurikulum setelah perbaikan selesai."
+                multiline
+                textAlignVertical="top"
+                style={{
+                  borderWidth: 1,
+                  borderColor: '#fcd34d',
+                  backgroundColor: '#fff',
+                  borderRadius: 10,
+                  paddingHorizontal: 12,
+                  paddingVertical: 10,
+                  minHeight: 88,
+                  marginTop: 10,
+                }}
+              />
+              <Pressable
+                onPress={() => void submitReviewReply(question)}
+                disabled={reviewReplySubmittingQuestionId === question.id}
+                style={{
+                  backgroundColor: reviewReplySubmittingQuestionId === question.id ? '#fcd34d' : '#d97706',
+                  borderRadius: 10,
+                  paddingVertical: 10,
+                  alignItems: 'center',
+                  marginTop: 10,
+                }}
+              >
+                <Text style={{ color: '#fff', fontWeight: '700', fontSize: 12 }}>
+                  {reviewReplySubmittingQuestionId === question.id
+                    ? 'Mengirim Balasan...'
+                    : 'Kirim Balasan ke Kurikulum'}
+                </Text>
+              </Pressable>
+            </View>
+          ) : null}
 
           <View style={{ flexDirection: 'row', flexWrap: 'wrap', marginHorizontal: -3, marginBottom: 8 }}>
             {(['MULTIPLE_CHOICE', 'COMPLEX_MULTIPLE_CHOICE', 'TRUE_FALSE', 'ESSAY'] as ExamQuestionType[]).map(

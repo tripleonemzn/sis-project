@@ -796,8 +796,8 @@ const ROLE_MENUS: Record<string, RoleMenuItem[]> = {
   EXTRACURRICULAR_TUTOR: [
     { key: 'tutor-dashboard', label: 'Dashboard', route: '/tutor/dashboard' },
     { key: 'tutor-email', label: 'Email', route: '/email' },
-    { key: 'tutor-members', label: 'Anggota & Nilai', route: '/tutor/members' },
     { key: 'tutor-work-program', label: 'Program Kerja', route: '/tutor/work-program?duty=PEMBINA_EKSKUL' },
+    { key: 'tutor-members', label: 'Anggota & Nilai', route: '/tutor/members' },
     { key: 'tutor-inventory', label: 'Kelola Inventaris', route: '/tutor/inventory' },
     { key: 'tutor-profile', label: 'Profil', route: '/profile' },
   ],
@@ -1245,8 +1245,8 @@ const ROLE_MENU_GROUPS: Record<string, GroupDefinition[]> = {
   ],
   EXTRACURRICULAR_TUTOR: [
     { key: 'dashboard', label: 'Dashboard', menuKeys: ['tutor-dashboard', 'tutor-email'] },
-    { key: 'members', label: 'Anggota & Nilai', menuKeys: ['tutor-members'] },
     { key: 'work-program', label: 'Program Kerja', menuKeys: ['tutor-work-program'] },
+    { key: 'members', label: 'Anggota & Nilai', menuKeys: ['tutor-members'] },
     { key: 'inventory', label: 'Kelola Inventaris', menuKeys: ['tutor-inventory'] },
     { key: 'settings', label: 'PENGATURAN', menuKeys: ['tutor-profile'] },
   ],
@@ -1809,14 +1809,14 @@ function buildTeacherGroups(
       buildAdvisorGroupLabel(assignment?.ekskul?.name),
       [
         {
-          key: `teacher-extracurricular-members-${assignment.id}`,
-          label: 'Anggota & Nilai',
-          route: `/tutor/members?assignmentId=${assignment.id}&ekskulId=${assignment.ekskulId}&academicYearId=${assignment.academicYearId}`,
-        },
-        {
           key: `teacher-extracurricular-work-program-${assignment.id}`,
           label: 'Program Kerja',
           route: `/tutor/work-program?duty=PEMBINA_EKSKUL&assignmentId=${assignment.id}&ekskulId=${assignment.ekskulId}&academicYearId=${assignment.academicYearId}`,
+        },
+        {
+          key: `teacher-extracurricular-members-${assignment.id}`,
+          label: 'Anggota & Nilai',
+          route: `/tutor/members?assignmentId=${assignment.id}&ekskulId=${assignment.ekskulId}&academicYearId=${assignment.academicYearId}`,
         },
         inventoryItem,
       ],
@@ -1866,14 +1866,14 @@ function buildTutorGroups(menus: RoleMenuItem[], options?: RoleMenuBuildOptions)
       buildAdvisorGroupLabel(assignment?.ekskul?.name),
       [
         {
-          key: `tutor-members-${assignment.id}`,
-          label: 'Anggota & Nilai',
-          route: `/tutor/members?assignmentId=${assignment.id}&ekskulId=${assignment.ekskulId}&academicYearId=${assignment.academicYearId}`,
-        },
-        {
           key: `tutor-work-program-${assignment.id}`,
           label: 'Program Kerja',
           route: `/tutor/work-program?duty=PEMBINA_EKSKUL&assignmentId=${assignment.id}&ekskulId=${assignment.ekskulId}&academicYearId=${assignment.academicYearId}`,
+        },
+        {
+          key: `tutor-members-${assignment.id}`,
+          label: 'Anggota & Nilai',
+          route: `/tutor/members?assignmentId=${assignment.id}&ekskulId=${assignment.ekskulId}&academicYearId=${assignment.academicYearId}`,
         },
         inventoryItem,
       ],

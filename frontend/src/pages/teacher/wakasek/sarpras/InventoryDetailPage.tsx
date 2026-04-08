@@ -172,9 +172,13 @@ export const InventoryDetailPage = () => {
 
   const deleteMutation = useMutation({
     mutationFn: inventoryService.deleteInventory,
-    onSuccess: () => {
+    onSuccess: (_response, deletedId) => {
+      queryClient.setQueryData(['inventory', normalizedRoomId], (current: { data?: InventoryItem[] } | undefined) => {
+        const currentItems = Array.isArray(current?.data) ? current.data : [];
+        const nextItems = currentItems.filter((row) => Number(row.id) !== Number(deletedId));
+        return current && typeof current === 'object' ? { ...current, data: nextItems } : { data: nextItems };
+      });
       toast.success('Item berhasil dihapus');
-      queryClient.invalidateQueries({ queryKey: ['inventory', normalizedRoomId] });
     },
     onError: (error: unknown) => {
       toast.error(getErrorMessage(error, 'Gagal menghapus item'));
@@ -468,7 +472,7 @@ const InventoryModal = ({
   const [newCategoryName, setNewCategoryName] = useState('');
 
   const { data: allLibraryItemsData } = useQuery({
-    queryKey: ['inventory', String(roomId)],
+    queryKey: ['inventory', roomId],
     queryFn: () => inventoryService.getInventoryByRoom(roomId),
     enabled: isLibraryTemplate,
   });
@@ -523,15 +527,30 @@ const InventoryModal = ({
   // Calculate total quantity automatically
   const totalQuantity = (formData.goodQty || 0) + (formData.minorDamageQty || 0) + (formData.majorDamageQty || 0);
 
+  const upsertInventoryCache = (nextItem: InventoryItem) => {
+    queryClient.setQueryData(['inventory', roomId], (current: { data?: InventoryItem[] } | undefined) => {
+      const currentItems = Array.isArray(current?.data) ? current.data : [];
+      const existingIndex = currentItems.findIndex((row) => Number(row.id) === Number(nextItem.id));
+      const nextItems =
+        existingIndex >= 0
+          ? currentItems.map((row) => (Number(row.id) === Number(nextItem.id) ? nextItem : row))
+          : [...currentItems, nextItem];
+      return current && typeof current === 'object' ? { ...current, data: nextItems } : { data: nextItems };
+    });
+  };
+
   const mutation = useMutation({
     mutationFn: (data: CreateInventoryPayload) => {
       return isEditing 
         ? inventoryService.updateInventory(item!.id, data)
         : inventoryService.createInventory(data);
     },
-    onSuccess: () => {
+    onSuccess: (response) => {
+      const nextItem = (response as { data?: InventoryItem } | undefined)?.data;
+      if (nextItem) {
+        upsertInventoryCache(nextItem);
+      }
       toast.success(isEditing ? 'Item berhasil diperbarui' : 'Item berhasil ditambahkan');
-      queryClient.invalidateQueries({ queryKey: ['inventory', String(roomId)] });
       onClose();
     },
     onError: (error: unknown) => {
@@ -580,7 +599,7 @@ const InventoryModal = ({
       return { updatedCount: affectedItems.length };
     },
     onSuccess: (result, deletedCategory) => {
-      queryClient.invalidateQueries({ queryKey: ['inventory', String(roomId)] });
+      queryClient.invalidateQueries({ queryKey: ['inventory', roomId] });
       if (String(attributeValues.category || '').trim().toLowerCase() === deletedCategory.trim().toLowerCase()) {
         setAttributeValues((prev) => ({ ...prev, category: '' }));
       }
