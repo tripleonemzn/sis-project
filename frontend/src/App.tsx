@@ -135,6 +135,7 @@ const BkkShortlistBatchPrint = lazy(() => import("./pages/print/BkkShortlistBatc
 const ProctorReportPrint = lazy(() => import("./pages/print/ProctorReportPrint"));
 const ProctorAttendancePrint = lazy(() => import("./pages/print/ProctorAttendancePrint"));
 const ProctorReportVerificationPage = lazy(() => import("./pages/public/ProctorReportVerificationPage"));
+const ExamCardVerificationPage = lazy(() => import("./pages/public/ExamCardVerificationPage"));
 const EmailPage = lazy(() => import("./pages/common/EmailPage").then(m => ({ default: m.EmailPage })));
 
 // Helper hook for auth
@@ -241,6 +242,7 @@ function App() {
           <Route path="/print/proctor-report/:reportId" element={<ProctorReportPrint />} />
           <Route path="/print/proctor-attendance/:reportId" element={<ProctorAttendancePrint />} />
           <Route path="/verify/proctor-report/:token" element={<ProctorReportVerificationPage />} />
+          <Route path="/verify/exam-card/:token" element={<ExamCardVerificationPage />} />
         
           <Route path="/" element={<DashboardLayout />}>
             <Route index element={<DashboardRedirect />} />

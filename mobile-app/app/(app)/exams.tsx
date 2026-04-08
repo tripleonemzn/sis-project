@@ -170,18 +170,9 @@ export default function StudentExamsScreen() {
   const [statusFilter, setStatusFilter] = useState<StatusFilter>('ALL');
   const [selectedExam, setSelectedExam] = useState<StudentExamItem | null>(null);
   const [selectedPlacement, setSelectedPlacement] = useState<NonNullable<typeof studentPlacements>[number] | null>(null);
+  const [isCardsExpanded, setIsCardsExpanded] = useState(false);
+  const [isPlacementsExpanded, setIsPlacementsExpanded] = useState(false);
   const seatBlink = useMemo(() => new Animated.Value(1), []);
-  const studentExamCardsQuery = useQuery({
-    queryKey: ['mobile-student-exam-cards', user?.id || 'anon'],
-    enabled:
-      isAuthenticated &&
-      !isCandidateMode &&
-      !isApplicantMode &&
-      !applicantVerificationLocked &&
-      user?.role === 'STUDENT',
-    staleTime: 60_000,
-    queryFn: () => examCardApi.getMyCards(),
-  });
   const studentExamPlacementsQuery = useQuery({
     queryKey: ['mobile-student-exam-placements', user?.id || 'anon'],
     enabled:
@@ -211,6 +202,27 @@ export default function StudentExamsScreen() {
         .sort((a, b) => a.order - b.order || a.code.localeCompare(b.code)),
     [examProgramsQuery.data?.programs, isApplicantMode, isCandidateMode],
   );
+  const selectedProgram = useMemo(
+    () => activePrograms.find((program) => normalizeProgramCode(program.code) === lockedProgramCode) || null,
+    [activePrograms, lockedProgramCode],
+  );
+  const shouldShowExamCardSections =
+    !isCandidateMode &&
+    !isApplicantMode &&
+    !!selectedProgram &&
+    !/FORMATIF|ULANGANHARIAN|UH/.test(normalizeProgramCode(selectedProgram.code));
+  const studentExamCardsQuery = useQuery({
+    queryKey: ['mobile-student-exam-cards', user?.id || 'anon', lockedProgramCode || 'all'],
+    enabled:
+      isAuthenticated &&
+      !isCandidateMode &&
+      !isApplicantMode &&
+      !applicantVerificationLocked &&
+      user?.role === 'STUDENT' &&
+      shouldShowExamCardSections,
+    staleTime: 60_000,
+    queryFn: () => examCardApi.getMyCards({ programCode: lockedProgramCode || undefined }),
+  });
 
   const effectiveTypeFilter = lockedProgramCode || 'ALL';
 
@@ -227,15 +239,30 @@ export default function StudentExamsScreen() {
 
     return map;
   }, [activePrograms]);
+  const lockedProgramLabel =
+    (lockedProgramCode && examTypeLabels[lockedProgramCode]) ||
+    String(selectedProgram?.label || '').trim();
 
   const examTypeLabel = (type: string) => resolveExamTypeLabel(type, examTypeLabels);
   useEffect(() => {
     if (!isScreenActive || !canAccessExams || applicantVerificationLocked) return;
     void examsQuery.refetch();
-    if (!isCandidateMode && !isApplicantMode && user?.role === 'STUDENT') {
+    if (!isCandidateMode && !isApplicantMode && user?.role === 'STUDENT' && shouldShowExamCardSections) {
+      void studentExamCardsQuery.refetch();
       void studentExamPlacementsQuery.refetch();
     }
-  }, [applicantVerificationLocked, canAccessExams, examsQuery.refetch, isScreenActive]);
+  }, [
+    applicantVerificationLocked,
+    canAccessExams,
+    examsQuery.refetch,
+    isScreenActive,
+    isApplicantMode,
+    isCandidateMode,
+    shouldShowExamCardSections,
+    studentExamCardsQuery.refetch,
+    studentExamPlacementsQuery.refetch,
+    user?.role,
+  ]);
   useEffect(() => {
     const animation = Animated.loop(
       Animated.sequence([
@@ -333,14 +360,24 @@ export default function StudentExamsScreen() {
       }
     >
       <Text style={{ fontSize: 24, fontWeight: '700', marginBottom: 6 }}>
-        {isCandidateMode ? 'Tes Seleksi' : isApplicantMode ? 'Tes BKK' : 'Ujian'}
+        {isCandidateMode
+          ? lockedProgramLabel || 'Tes Seleksi'
+          : isApplicantMode
+            ? lockedProgramLabel || 'Tes BKK'
+            : lockedProgramLabel || 'Ujian'}
       </Text>
       <Text style={{ color: '#64748b', marginBottom: 12 }}>
         {isCandidateMode
-          ? 'Lihat jadwal tes yang tersedia untuk calon siswa.'
+          ? lockedProgramLabel
+            ? `Lihat jadwal ${lockedProgramLabel.toLowerCase()} yang tersedia untuk calon siswa.`
+            : 'Lihat jadwal tes yang tersedia untuk calon siswa.'
           : isApplicantMode
-            ? 'Lihat jadwal tes rekrutmen yang terhubung dengan lamaran BKK Anda.'
-            : 'Lihat jadwal ujian yang tersedia untuk kelas Anda.'}
+            ? lockedProgramLabel
+              ? `Lihat jadwal ${lockedProgramLabel.toLowerCase()} yang terhubung dengan lamaran BKK Anda.`
+              : 'Lihat jadwal tes rekrutmen yang terhubung dengan lamaran BKK Anda.'
+            : lockedProgramLabel
+              ? `Lihat jadwal ${lockedProgramLabel.toLowerCase()} yang tersedia untuk kelas Anda.`
+              : 'Lihat jadwal ujian yang tersedia untuk kelas Anda.'}
       </Text>
 
       {applicantVerificationLocked ? (
@@ -361,7 +398,7 @@ export default function StudentExamsScreen() {
         </View>
       ) : null}
 
-      {!isCandidateMode && !isApplicantMode ? (
+      {shouldShowExamCardSections ? (
         <View
           style={{
             borderWidth: 1,
@@ -372,7 +409,10 @@ export default function StudentExamsScreen() {
             marginBottom: 12,
           }}
         >
-          <View style={{ flexDirection: 'row', justifyContent: 'space-between', alignItems: 'flex-start', gap: 12 }}>
+          <Pressable
+            onPress={() => setIsCardsExpanded((current) => !current)}
+            style={{ flexDirection: 'row', justifyContent: 'space-between', alignItems: 'flex-start', gap: 12 }}
+          >
             <View style={{ flex: 1 }}>
               <Text style={{ color: '#0f172a', fontSize: 18, fontWeight: '700' }}>Kartu Ujian Digital</Text>
               <Text style={{ color: '#64748b', marginTop: 4 }}>
@@ -393,9 +433,23 @@ export default function StudentExamsScreen() {
                 {studentExamCardsQuery.data?.length || 0} kartu
               </Text>
             </View>
-          </View>
+            <View
+              style={{
+                width: 34,
+                height: 34,
+                borderRadius: 999,
+                borderWidth: 1,
+                borderColor: '#dbe7fb',
+                backgroundColor: '#fff',
+                alignItems: 'center',
+                justifyContent: 'center',
+              }}
+            >
+              <Text style={{ color: '#64748b', fontWeight: '700' }}>{isCardsExpanded ? '▲' : '▼'}</Text>
+            </View>
+          </Pressable>
 
-          {studentExamCardsQuery.isLoading ? (
+          {isCardsExpanded && studentExamCardsQuery.isLoading ? (
             <View
               style={{
                 marginTop: 12,
@@ -409,7 +463,7 @@ export default function StudentExamsScreen() {
             >
               <Text style={{ color: '#64748b' }}>Memuat kartu ujian digital...</Text>
             </View>
-          ) : studentExamCardsQuery.isError ? (
+          ) : isCardsExpanded && studentExamCardsQuery.isError ? (
             <View
               style={{
                 marginTop: 12,
@@ -436,7 +490,7 @@ export default function StudentExamsScreen() {
                 <Text style={{ color: '#be123c', fontWeight: '700' }}>Coba Lagi</Text>
               </Pressable>
             </View>
-          ) : studentExamCardsQuery.data && studentExamCardsQuery.data.length > 0 ? (
+          ) : isCardsExpanded && studentExamCardsQuery.data && studentExamCardsQuery.data.length > 0 ? (
             <View style={{ marginTop: 12, gap: 10 }}>
               {studentExamCardsQuery.data.map((card) => {
                 const primaryEntry = card.payload.placement || card.payload.entries[0] || null;
@@ -448,7 +502,7 @@ export default function StudentExamsScreen() {
                       borderWidth: 1,
                       borderColor: '#bfdbfe',
                       borderRadius: 16,
-                      backgroundColor: '#fff',
+                      backgroundColor: '#f8fbff',
                       overflow: 'hidden',
                     }}
                   >
@@ -475,7 +529,7 @@ export default function StudentExamsScreen() {
                         paddingVertical: 12,
                       }}
                     >
-                      <View style={{ alignItems: 'center' }}>
+                      <View style={{ alignItems: 'center', justifyContent: 'center' }}>
                         {schoolLogoUrl ? (
                           <Image
                             source={{ uri: schoolLogoUrl }}
@@ -584,8 +638,8 @@ export default function StudentExamsScreen() {
                           <Image
                             source={{ uri: card.payload.legality.principalBarcodeDataUrl }}
                             style={{
-                              width: 88,
-                              height: 88,
+                              width: 96,
+                              height: 96,
                               marginTop: 10,
                               borderRadius: 10,
                               borderWidth: 1,
@@ -617,7 +671,7 @@ export default function StudentExamsScreen() {
                 );
               })}
             </View>
-          ) : (
+          ) : isCardsExpanded ? (
             <View
               style={{
                 marginTop: 12,
@@ -633,11 +687,11 @@ export default function StudentExamsScreen() {
                 Belum ada kartu ujian digital yang dipublikasikan untuk akun Anda.
               </Text>
             </View>
-          )}
+          ) : null}
         </View>
       ) : null}
 
-      {!isCandidateMode && !isApplicantMode ? (
+      {shouldShowExamCardSections ? (
         <View
           style={{
             borderWidth: 1,
@@ -648,7 +702,10 @@ export default function StudentExamsScreen() {
             marginBottom: 12,
           }}
         >
-          <View style={{ flexDirection: 'row', justifyContent: 'space-between', alignItems: 'flex-start', gap: 12 }}>
+          <Pressable
+            onPress={() => setIsPlacementsExpanded((current) => !current)}
+            style={{ flexDirection: 'row', justifyContent: 'space-between', alignItems: 'flex-start', gap: 12 }}
+          >
             <View style={{ flex: 1 }}>
               <Text style={{ color: '#0f172a', fontSize: 18, fontWeight: '700' }}>Penempatan Ujian</Text>
               <Text style={{ color: '#64748b', marginTop: 4 }}>
@@ -669,9 +726,23 @@ export default function StudentExamsScreen() {
                 {studentPlacements.length} penempatan
               </Text>
             </View>
-          </View>
+            <View
+              style={{
+                width: 34,
+                height: 34,
+                borderRadius: 999,
+                borderWidth: 1,
+                borderColor: '#dbe7fb',
+                backgroundColor: '#fff',
+                alignItems: 'center',
+                justifyContent: 'center',
+              }}
+            >
+              <Text style={{ color: '#64748b', fontWeight: '700' }}>{isPlacementsExpanded ? '▲' : '▼'}</Text>
+            </View>
+          </Pressable>
 
-          {studentExamPlacementsQuery.isLoading ? (
+          {isPlacementsExpanded && studentExamPlacementsQuery.isLoading ? (
             <View
               style={{
                 marginTop: 12,
@@ -685,7 +756,7 @@ export default function StudentExamsScreen() {
             >
               <Text style={{ color: '#64748b' }}>Memuat penempatan ujian...</Text>
             </View>
-          ) : studentExamPlacementsQuery.isError ? (
+          ) : isPlacementsExpanded && studentExamPlacementsQuery.isError ? (
             <View
               style={{
                 marginTop: 12,
@@ -712,7 +783,7 @@ export default function StudentExamsScreen() {
                 <Text style={{ color: '#be123c', fontWeight: '700' }}>Coba Lagi</Text>
               </Pressable>
             </View>
-          ) : studentPlacements.length > 0 ? (
+          ) : isPlacementsExpanded && studentPlacements.length > 0 ? (
             <View style={{ marginTop: 12, gap: 10 }}>
                   {studentPlacements.map((placement) => {
                     const chip = placementStatusStyle(placement.startTime, placement.endTime);
@@ -778,7 +849,7 @@ export default function StudentExamsScreen() {
                 );
               })}
             </View>
-          ) : (
+          ) : isPlacementsExpanded ? (
             <View
               style={{
                 marginTop: 12,
@@ -794,7 +865,7 @@ export default function StudentExamsScreen() {
                 Belum ada penempatan ruang ujian yang dipublikasikan untuk akun Anda.
               </Text>
             </View>
-          )}
+          ) : null}
         </View>
       ) : null}
 

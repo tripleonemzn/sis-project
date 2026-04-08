@@ -5614,6 +5614,8 @@ export const updatePacketReviewFeedback = asyncHandler(async (req: Request, res:
                     packetId,
                     questionId,
                     questionNumber,
+                    reviewerId: Number(reviewer.id),
+                    reviewerName: reviewer.name,
                     programCode: packet.programCode || null,
                     subjectName: packet.subject?.name || null,
                     route: `/teacher/exams/${packetId}/edit?questionId=${encodeURIComponent(
@@ -5724,7 +5726,60 @@ export const replyPacketReviewFeedback = asyncHandler(async (req: Request, res: 
         },
     });
 
-    const reviewerId = Number(currentFeedback.reviewer?.id || 0);
+    let reviewerId = Number(currentFeedback.reviewer?.id || 0);
+    const reviewerName = String(currentFeedback.reviewer?.name || '').trim();
+    if (reviewerId <= 0) {
+        const recentReviewNotifications = await prisma.notification.findMany({
+            where: {
+                type: 'EXAM_REVIEW',
+            },
+            orderBy: { createdAt: 'desc' },
+            take: 50,
+            select: {
+                userId: true,
+                data: true,
+            },
+        });
+        const matchedReviewNotification = recentReviewNotifications.find((notification) => {
+            const notificationData =
+                notification?.data && typeof notification.data === 'object'
+                    ? (notification.data as Record<string, unknown>)
+                    : null;
+            const notificationPacketId = Number(notificationData?.packetId || 0);
+            const notificationQuestionId = String(notificationData?.questionId || '').trim();
+            return notificationPacketId === packetId && notificationQuestionId === questionId;
+        });
+        const matchedNotificationData =
+            matchedReviewNotification?.data && typeof matchedReviewNotification.data === 'object'
+                ? (matchedReviewNotification.data as Record<string, unknown>)
+                : null;
+        if (matchedNotificationData?.reviewerId) {
+            reviewerId = Number(matchedNotificationData.reviewerId || 0);
+        }
+    }
+
+    if (reviewerId <= 0 && reviewerName) {
+        const matchedReviewer = await prisma.user.findFirst({
+            where: {
+                name: reviewerName,
+                OR: [
+                    { role: 'ADMIN' },
+                    {
+                        role: 'TEACHER',
+                        additionalDuties: {
+                            has: 'WAKASEK_KURIKULUM',
+                        },
+                    },
+                ],
+            },
+            orderBy: [{ updatedAt: 'desc' }, { id: 'desc' }],
+            select: { id: true },
+        });
+        if (matchedReviewer?.id) {
+            reviewerId = Number(matchedReviewer.id);
+        }
+    }
+
     if (reviewerId > 0) {
         const reviewProgramCode = String(packet.programCode || '').trim().toUpperCase();
         const reviewRouteParams = new URLSearchParams({

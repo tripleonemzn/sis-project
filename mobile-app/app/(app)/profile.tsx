@@ -380,7 +380,7 @@ function getVisibleTabs(role?: string | null): ProfileTabId[] {
     return ['account', 'personal', 'contact', 'employment', 'education', 'documents'];
   }
   if (variant === 'student') {
-    return ['account', 'personal', 'contact', 'parents', 'education'];
+    return ['account', 'personal', 'contact', 'parents', 'education', 'documents'];
   }
   if (variant === 'candidate') {
     return ['account', 'personal', 'contact', 'education', 'documents'];
@@ -799,7 +799,7 @@ export default function ProfileScreen() {
   );
   const profilePhotoUrl = resolveMediaUrl(profile?.photo);
   const canUploadPhoto = ['ADMIN', 'TEACHER', 'PRINCIPAL', 'STAFF', 'EXAMINER', 'EXTRACURRICULAR_TUTOR', 'STUDENT', 'PARENT', 'CALON_SISWA'].includes(profile?.role || '');
-  const canUploadDocuments = ['ADMIN', 'TEACHER', 'PRINCIPAL', 'STAFF', 'EXAMINER', 'EXTRACURRICULAR_TUTOR', 'CALON_SISWA'].includes(profile?.role || '');
+  const canUploadDocuments = ['ADMIN', 'TEACHER', 'PRINCIPAL', 'STAFF', 'EXAMINER', 'EXTRACURRICULAR_TUTOR', 'STUDENT', 'CALON_SISWA'].includes(profile?.role || '');
   const usesStructuredSupportingDocuments = isEmployee || profile?.role === 'ADMIN';
   const [photoUploading, setPhotoUploading] = useState(false);
   const [documentUploading, setDocumentUploading] = useState(false);

@@ -1247,7 +1247,17 @@ export const Sidebar = ({ user }: SidebarProps) => {
   );
   const shouldLoadTutorAssignments = canAccessTutorWorkspace(user.role);
   const { data: assignedInventoryRoomsData } = useQuery({
-    queryKey: ['sidebar-assigned-inventory-rooms', user.id],
+    queryKey: [
+      'sidebar-assigned-inventory-rooms',
+      user.id,
+      user.updatedAt ? String(user.updatedAt) : 'no-updated-at',
+      Array.isArray(user.additionalDuties) ? user.additionalDuties.join('|') : 'no-duties',
+      Array.isArray(user.ekskulTutorAssignments)
+        ? user.ekskulTutorAssignments
+            .map((assignment) => `${assignment.id}:${assignment.isActive ? '1' : '0'}`)
+            .join('|')
+        : 'no-tutor-assignments',
+    ],
     enabled: shouldLoadAssignedInventoryRooms,
     staleTime: 5 * 60 * 1000,
     refetchOnMount: false,
@@ -1278,25 +1288,8 @@ export const Sidebar = ({ user }: SidebarProps) => {
   });
 
   const assignedInventoryRooms = useMemo<Room[]>(() => {
-    const fromQuery = Array.isArray(assignedInventoryRoomsData?.data)
-      ? (assignedInventoryRoomsData?.data as Room[])
-      : [];
-
-    if (fromQuery.length > 0) return fromQuery;
-
-    const fromProfile = Array.isArray(user.managedInventoryRooms)
-      ? user.managedInventoryRooms.map((room) => ({
-          id: room.id,
-          name: room.name,
-          categoryId: 0,
-          createdAt: '',
-          updatedAt: '',
-          managerUserId: room.managerUserId ?? user.id,
-        }))
-      : [];
-
-    return fromProfile;
-  }, [assignedInventoryRoomsData?.data, user.id, user.managedInventoryRooms]);
+    return Array.isArray(assignedInventoryRoomsData?.data) ? (assignedInventoryRoomsData?.data as Room[]) : [];
+  }, [assignedInventoryRoomsData?.data]);
 
   const tutorAssignments = useMemo<TutorAssignmentSummary[]>(
     () => {

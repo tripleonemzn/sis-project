@@ -428,7 +428,7 @@ const getVisibleTabs = (role: UserFormRole) => {
     return ['account', 'personal', 'contact', 'employment', 'education', 'documents'] as TabId[];
   }
   if (variant === 'student') {
-    return ['account', 'personal', 'contact', 'parents', 'education'] as TabId[];
+    return ['account', 'personal', 'contact', 'parents', 'education', 'documents'] as TabId[];
   }
   if (variant === 'candidate') {
     return ['account', 'personal', 'contact', 'education', 'documents'] as TabId[];
@@ -665,6 +665,7 @@ export const UserProfilePage = () => {
     'STAFF',
     'EXAMINER',
     'EXTRACURRICULAR_TUTOR',
+    'STUDENT',
     'CALON_SISWA',
   ].includes(fixedRole);
   const verificationMeta = getVerificationStatusMeta(user?.verificationStatus);

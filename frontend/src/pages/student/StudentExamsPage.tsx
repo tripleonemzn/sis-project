@@ -11,6 +11,7 @@ import {
   type StudentExamPlacement,
 } from '../../services/exam.service'
 import { examCardService } from '../../services/examCard.service'
+import { isNonScheduledExamProgram } from '../../lib/examProgramMenu'
 import { 
   FileText, 
   Calendar, 
@@ -20,6 +21,8 @@ import {
   XCircle,
   AlertCircle,
   Search,
+  ChevronDown,
+  ChevronUp,
 } from 'lucide-react'
 
 type ExamProgramLabelMap = Record<string, string>
@@ -318,14 +321,28 @@ export default function StudentExamsPage() {
   const [showPlacementModal, setShowPlacementModal] = useState(false)
   const [examProgramLabels, setExamProgramLabels] = useState<ExamProgramLabelMap>({})
   const [examPrograms, setExamPrograms] = useState<ExamProgram[]>([])
+  const [isCardsExpanded, setIsCardsExpanded] = useState(false)
+  const [isPlacementsExpanded, setIsPlacementsExpanded] = useState(false)
   const [serverTimeDrift, setServerTimeDrift] = useState<ServerTimeDriftState | null>(null)
+  const lockedProgramCode = programFilter !== 'all' ? programFilter : ''
+  const selectedProgram = useMemo(
+    () => examPrograms.find((program) => normalizeExamProgramCode(program.code) === lockedProgramCode) || null,
+    [examPrograms, lockedProgramCode],
+  )
+  const shouldShowExamCardSections =
+    !isCandidateMode &&
+    !isApplicantMode &&
+    Boolean(selectedProgram) &&
+    !isNonScheduledExamProgram(selectedProgram as ExamProgram)
   const studentExamCardsQuery = useQuery({
-    queryKey: ['student-exam-cards-web'],
-    enabled: !isCandidateMode && !isApplicantMode && !applicantVerificationLocked,
+    queryKey: ['student-exam-cards-web', lockedProgramCode || 'all'],
+    enabled: !isCandidateMode && !isApplicantMode && !applicantVerificationLocked && shouldShowExamCardSections,
     staleTime: 60_000,
     refetchOnWindowFocus: false,
     queryFn: async () => {
-      const response = await examCardService.getMyCards()
+      const response = await examCardService.getMyCards({
+        programCode: lockedProgramCode || undefined,
+      })
       return response.data.cards || []
     },
   })
@@ -901,12 +918,26 @@ export default function StudentExamsPage() {
   }, [programFilter, studentExamPlacementsQuery.data])
 
   const relevantTotal = exams.filter(e => programFilter === 'all' || normalizeExamProgramCode(e.programCode || e.type) === programFilter).length
-  const pageTitle = isCandidateMode ? 'Tes Seleksi' : isApplicantMode ? 'Tes BKK' : 'Ujian'
-  const pageDescription = isCandidateMode
-    ? 'Lihat dan kerjakan tes yang tersedia untuk calon siswa'
+  const lockedProgramLabel =
+    (lockedProgramCode && examProgramLabels[lockedProgramCode]) ||
+    selectedProgram?.label ||
+    ''
+  const pageTitle = isCandidateMode
+    ? lockedProgramLabel || 'Tes Seleksi'
     : isApplicantMode
-      ? 'Lihat dan kerjakan tes rekrutmen yang terhubung dengan lowongan BKK Anda'
-      : 'Lihat dan kerjakan ujian yang tersedia'
+      ? lockedProgramLabel || 'Tes BKK'
+      : lockedProgramLabel || 'Ujian'
+  const pageDescription = isCandidateMode
+    ? lockedProgramLabel
+      ? `Lihat dan kerjakan ${lockedProgramLabel.toLowerCase()} yang tersedia untuk calon siswa`
+      : 'Lihat dan kerjakan tes yang tersedia untuk calon siswa'
+    : isApplicantMode
+      ? lockedProgramLabel
+        ? `Lihat dan kerjakan ${lockedProgramLabel.toLowerCase()} yang terhubung dengan lowongan BKK Anda`
+        : 'Lihat dan kerjakan tes rekrutmen yang terhubung dengan lowongan BKK Anda'
+      : lockedProgramLabel
+        ? `Lihat dan kerjakan ${lockedProgramLabel.toLowerCase()} yang tersedia`
+        : 'Lihat dan kerjakan ujian yang tersedia'
   const contextColumnTitle = isApplicantMode ? 'Lowongan / Konteks' : 'Mata Pelajaran'
   const emptyDescription =
     searchQuery || programFilter !== 'all' || statusFilter !== 'all'
@@ -949,31 +980,43 @@ export default function StudentExamsPage() {
         </div>
       ) : null}
 
-      {!isCandidateMode && !isApplicantMode ? (
+      {shouldShowExamCardSections ? (
         <div className="rounded-xl border border-gray-200 bg-white p-5 shadow-sm">
-          <div className="flex flex-col gap-2 md:flex-row md:items-start md:justify-between">
+          <button
+            type="button"
+            onClick={() => setIsCardsExpanded((current) => !current)}
+            className="flex w-full flex-col gap-2 text-left md:flex-row md:items-start md:justify-between"
+          >
             <div>
               <h2 className="text-lg font-semibold text-gray-900">Kartu Ujian Digital</h2>
               <p className="mt-1 text-sm text-gray-500">
                 Kartu ujian akan muncul di sini setelah dipublikasikan oleh Kepala TU.
               </p>
             </div>
-            <div className="rounded-full bg-blue-50 px-3 py-1 text-xs font-semibold text-blue-700">
-              {studentExamCardsQuery.data?.length || 0} kartu
+            <div className="flex items-center gap-3 self-start md:self-auto">
+              <div className="rounded-full bg-blue-50 px-3 py-1 text-xs font-semibold text-blue-700">
+                {studentExamCardsQuery.data?.length || 0} kartu
+              </div>
+              <span className="inline-flex h-9 w-9 items-center justify-center rounded-full border border-gray-200 bg-white text-gray-500">
+                {isCardsExpanded ? <ChevronUp className="h-4 w-4" /> : <ChevronDown className="h-4 w-4" />}
+              </span>
             </div>
-          </div>
+          </button>
 
-          {studentExamCardsQuery.isLoading ? (
+          {isCardsExpanded && studentExamCardsQuery.isLoading ? (
             <div className="mt-4 rounded-lg border border-dashed border-gray-300 px-4 py-6 text-sm text-gray-500">
               Memuat kartu ujian digital...
             </div>
-          ) : studentExamCardsQuery.data && studentExamCardsQuery.data.length > 0 ? (
+          ) : isCardsExpanded && studentExamCardsQuery.data && studentExamCardsQuery.data.length > 0 ? (
             <div className="mt-4 grid gap-4 lg:grid-cols-2">
               {studentExamCardsQuery.data.map((card) => {
                 const primaryEntry = card.payload.placement || card.payload.entries[0] || null
                 const photoUrl = resolveCardMediaUrl(card.payload.student.photoUrl)
                 return (
-                  <div key={card.id} className="relative overflow-hidden rounded-2xl border border-blue-100 bg-white shadow-sm">
+                  <div
+                    key={card.id}
+                    className="relative overflow-hidden rounded-2xl border border-blue-100 bg-gradient-to-br from-white via-sky-50/60 to-emerald-50/40 shadow-sm"
+                  >
                     <div className="pointer-events-none absolute inset-0 flex items-center justify-center opacity-[0.06]">
                       {watermarkLogoUrl ? (
                         <img src={watermarkLogoUrl} alt="" className="h-64 w-64 object-contain" />
@@ -981,13 +1024,13 @@ export default function StudentExamsPage() {
                     </div>
 
                     <div className="relative border-b border-gray-200 px-4 py-4">
-                      <div className="grid gap-3 md:grid-cols-[88px_minmax(0,1fr)] md:items-center">
-                        <div className="flex justify-center md:justify-start">
+                      <div className="flex flex-col items-center justify-center gap-3 text-center">
+                        <div className="flex justify-center">
                           {schoolLogoUrl ? (
                             <img src={schoolLogoUrl} alt="Logo KGB2" className="h-20 w-20 object-contain" />
                           ) : null}
                         </div>
-                        <div className="text-center md:text-left">
+                        <div className="text-center">
                           <div className="text-2xl font-semibold uppercase tracking-wide text-gray-900">
                             {card.payload.cardTitle || 'Kartu Peserta'}
                           </div>
@@ -1031,7 +1074,7 @@ export default function StudentExamsPage() {
                           <img
                             src={card.payload.legality.principalBarcodeDataUrl}
                             alt="Barcode Kepala Sekolah"
-                            className="mt-4 h-24 w-24 rounded-lg border border-gray-200 bg-white p-1"
+                            className="mt-4 h-28 w-28 rounded-lg border border-gray-200 bg-white p-1"
                           />
                         ) : null}
                         <div className="mt-3 text-base font-semibold text-gray-900">{card.payload.legality.principalName}</div>
@@ -1045,33 +1088,42 @@ export default function StudentExamsPage() {
                 )
               })}
             </div>
-          ) : (
+          ) : isCardsExpanded ? (
             <div className="mt-4 rounded-lg border border-dashed border-gray-300 px-4 py-6 text-sm text-gray-500">
               Belum ada kartu ujian digital yang dipublikasikan untuk akun Anda.
             </div>
-          )}
+          ) : null}
         </div>
       ) : null}
 
-      {!isCandidateMode && !isApplicantMode ? (
+      {shouldShowExamCardSections ? (
         <div className="rounded-xl border border-gray-200 bg-white p-5 shadow-sm">
-          <div className="flex flex-col gap-2 md:flex-row md:items-start md:justify-between">
+          <button
+            type="button"
+            onClick={() => setIsPlacementsExpanded((current) => !current)}
+            className="flex w-full flex-col gap-2 text-left md:flex-row md:items-start md:justify-between"
+          >
             <div>
               <h2 className="text-lg font-semibold text-gray-900">Penempatan Ujian</h2>
               <p className="mt-1 text-sm text-gray-500">
                 Ruang, sesi, dan kursi yang ditetapkan Kurikulum akan muncul di sini meski kartu ujian digital belum dipublikasikan.
               </p>
             </div>
-            <div className="rounded-full bg-blue-50 px-3 py-1 text-xs font-semibold text-blue-700">
-              {filteredPlacements.length} penempatan
+            <div className="flex items-center gap-3 self-start md:self-auto">
+              <div className="rounded-full bg-blue-50 px-3 py-1 text-xs font-semibold text-blue-700">
+                {filteredPlacements.length} penempatan
+              </div>
+              <span className="inline-flex h-9 w-9 items-center justify-center rounded-full border border-gray-200 bg-white text-gray-500">
+                {isPlacementsExpanded ? <ChevronUp className="h-4 w-4" /> : <ChevronDown className="h-4 w-4" />}
+              </span>
             </div>
-          </div>
+          </button>
 
-          {studentExamPlacementsQuery.isLoading ? (
+          {isPlacementsExpanded && studentExamPlacementsQuery.isLoading ? (
             <div className="mt-4 rounded-lg border border-dashed border-gray-300 px-4 py-6 text-sm text-gray-500">
               Memuat penempatan ujian...
             </div>
-          ) : studentExamPlacementsQuery.isError ? (
+          ) : isPlacementsExpanded && studentExamPlacementsQuery.isError ? (
             <div className="mt-4 rounded-xl border border-rose-200 bg-rose-50 px-4 py-4 text-sm text-rose-700">
               <div className="font-semibold">Gagal memuat penempatan ujian.</div>
               <button
@@ -1082,7 +1134,7 @@ export default function StudentExamsPage() {
                 Coba Lagi
               </button>
             </div>
-          ) : filteredPlacements.length > 0 ? (
+          ) : isPlacementsExpanded && filteredPlacements.length > 0 ? (
             <div className="mt-4 grid gap-3 md:grid-cols-2">
               {filteredPlacements.map((placement) => {
                 const chip = getPlacementStatus(placement)
@@ -1121,11 +1173,11 @@ export default function StudentExamsPage() {
                 )
               })}
             </div>
-          ) : (
+          ) : isPlacementsExpanded ? (
             <div className="mt-4 rounded-lg border border-dashed border-gray-300 px-4 py-6 text-sm text-gray-500">
               Belum ada penempatan ruang ujian yang dipublikasikan untuk akun Anda.
             </div>
-          )}
+          ) : null}
         </div>
       ) : null}
 

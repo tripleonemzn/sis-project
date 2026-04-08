@@ -124,10 +124,7 @@ export const InventoryDetailPage = () => {
   const assignedRoomFallbackFromQuery = Array.isArray(assignedRoomsData?.data)
     ? assignedRoomsData.data.find((entry: { id?: number }) => Number(entry?.id) === normalizedRoomId)
     : null;
-  const assignedRoomFallbackFromProfile = Array.isArray(user?.managedInventoryRooms)
-    ? user.managedInventoryRooms.find((entry) => Number(entry?.id) === normalizedRoomId)
-    : null;
-  const assignedRoomFallback = assignedRoomFallbackFromQuery || assignedRoomFallbackFromProfile || null;
+  const assignedRoomFallback = assignedRoomFallbackFromQuery || null;
   const room = roomData?.data || assignedRoomFallback;
   const canEdit = Boolean(baseCanEdit || (user?.id && room?.managerUserId && Number(user.id) === Number(room.managerUserId)));
   const items = itemsData?.data || [];

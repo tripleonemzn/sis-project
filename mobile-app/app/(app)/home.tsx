@@ -47,6 +47,7 @@ import { OfflineCacheNotice } from '../../src/components/OfflineCacheNotice';
 import { applyAppUpdate, checkAppUpdate } from '../../src/features/appUpdate/updateService';
 import { BRAND_COLORS } from '../../src/config/brand';
 import { ENV } from '../../src/config/env';
+import { apiClient } from '../../src/lib/api/client';
 import { getStandardPagePadding } from '../../src/lib/ui/pageLayout';
 import { notifyApiError, notifySuccess } from '../../src/lib/ui/feedback';
 import type { AuthUser } from '../../src/features/auth/types';
@@ -68,6 +69,12 @@ import { osisApi } from '../../src/features/osis/osisApi';
 import { useAppTheme } from '../../src/theme/AppThemeProvider';
 
 type FeatherIconName = ComponentProps<typeof Feather>['name'];
+type ManagedInventoryRoom = {
+  id: number;
+  name: string;
+  managerUserId?: number | null;
+};
+
 type DashboardStatItem = {
   label: string;
   value: string;
@@ -847,6 +854,25 @@ export default function HomeScreen() {
       }
     },
   });
+  const assignedInventoryRoomsQuery = useQuery({
+    queryKey: [
+      'mobile-home-assigned-inventory-rooms',
+      profile.id,
+      profile.role,
+      Array.isArray(profile.additionalDuties) ? profile.additionalDuties.join('|') : 'no-duties',
+      Array.isArray(profile.ekskulTutorAssignments)
+        ? profile.ekskulTutorAssignments
+            .map((assignment) => `${assignment.id}:${assignment.isActive ? '1' : '0'}`)
+            .join('|')
+        : 'no-tutor-assignments',
+    ],
+    enabled: isAuthenticated && ['TEACHER', 'STAFF', 'PRINCIPAL'].includes(profile.role),
+    staleTime: 5 * 60 * 1000,
+    queryFn: async () => {
+      const response = await apiClient.get<{ data?: ManagedInventoryRoom[] }>('/inventory/assigned-rooms');
+      return Array.isArray(response.data?.data) ? response.data.data : [];
+    },
+  });
 
   const teacherScheduleQuery = useQuery({
     queryKey: ['mobile-home-teacher-schedule', profile.id, teacherAssignmentsQuery.data?.activeYear?.id],
@@ -992,7 +1018,7 @@ export default function HomeScreen() {
         hasExtracurricularTutorAssignments: extracurricularTutorAssignments.length > 0,
         hasActiveOsisElection,
         tutorAssignments: mergedTutorAssignments,
-        managedInventoryRooms: profile.managedInventoryRooms || [],
+        managedInventoryRooms: assignedInventoryRoomsQuery.data || [],
       })
         .map((group) => ({
           // Keep non-dashboard entries (e.g. Email) even when they are grouped under Dashboard.
@@ -1036,6 +1062,7 @@ export default function HomeScreen() {
       extracurricularTutorAssignments.length,
       hasActiveOsisElection,
       mergedTutorAssignments,
+      assignedInventoryRoomsQuery.data,
       studentInternshipOverviewQuery.data?.isEligible,
       examProgramsQuery.data?.programs,
       examProgramsQuery.isSuccess,
@@ -1874,6 +1901,9 @@ export default function HomeScreen() {
     const startedAt = Date.now();
     try {
       const refetches: Array<Promise<unknown>> = [profileQuery.refetch()];
+      if (['TEACHER', 'STAFF', 'PRINCIPAL'].includes(profile.role)) {
+        refetches.push(assignedInventoryRoomsQuery.refetch());
+      }
       if (profile.role === 'TEACHER') {
         refetches.push(teacherAssignmentsQuery.refetch());
         refetches.push(teacherScheduleQuery.refetch());

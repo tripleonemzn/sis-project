@@ -60,6 +60,9 @@ export interface ExamGeneratedCardPayload {
     principalBarcodeDataUrl?: string | null;
     principalTitle?: string | null;
     footerNote?: string | null;
+    verificationToken?: string | null;
+    verificationUrl?: string | null;
+    verificationNote?: string | null;
   };
 }
 
@@ -183,7 +186,7 @@ export const examCardService = {
       };
     };
   },
-  getMyCards: async (params?: { academicYearId?: number }) => {
+  getMyCards: async (params?: { academicYearId?: number; programCode?: string }) => {
     const response = await api.get('/exam-cards/my', { params });
     return response.data as {
       statusCode: number;

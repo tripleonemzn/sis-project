@@ -7,6 +7,8 @@ const proxyTarget = process.env.VITE_PROXY_TARGET || 'http://127.0.0.1:3000'
 export default defineConfig({
   plugins: [react()],
   build: {
+    target: 'es2019',
+    cssTarget: 'safari13',
     chunkSizeWarningLimit: 800,
     rollupOptions: {
       output: {

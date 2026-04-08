@@ -1,5 +1,6 @@
 import { ExamGeneratedCardStatus, Prisma, Semester } from '@prisma/client';
 import { Request, Response } from 'express';
+import jwt from 'jsonwebtoken';
 import QRCode from 'qrcode';
 import { z } from 'zod';
 import prisma from '../utils/prisma';
@@ -19,6 +20,7 @@ const SCHOOL_NAME = 'SMKS Karya Guna Bhakti 2';
 const EXAM_CARD_TITLE = 'KARTU PESERTA';
 const EXAM_CARD_INTERNAL_NOTE = 'Berkas digital yang sah secara internal';
 const DEFAULT_ISSUE_LOCATION = 'Bekasi';
+const JWT_SIGNING_SECRET = String(process.env.JWT_SECRET || 'secret').trim();
 
 const overviewQuerySchema = z.object({
   academicYearId: z.coerce.number().int().positive(),
@@ -32,6 +34,11 @@ const generateCardsSchema = overviewQuerySchema.extend({
     if (value === undefined || value === null || value === '') return undefined;
     return value;
   }, z.coerce.date().optional()),
+});
+
+const myCardsQuerySchema = z.object({
+  academicYearId: z.coerce.number().int().positive().optional(),
+  programCode: z.string().trim().min(1).max(50).optional(),
 });
 
 type ExamCardEntrySnapshot = {
@@ -69,6 +76,16 @@ type ExamCardDocumentAsset = {
   title: string;
   fileUrl: string;
   category: string;
+};
+
+type ExamCardVerificationTokenPayload = {
+  kind: 'EXAM_CARD';
+  studentId: number;
+  academicYearId: number;
+  programCode: string;
+  semester: Semester;
+  generatedAtMs: number;
+  participantNumber?: string | null;
 };
 
 function formatSemesterLabel(semester: Semester) {
@@ -110,6 +127,78 @@ function normalizeDocumentTitle(value: unknown) {
     .replace(/[^A-Z0-9]+/g, ' ')
     .replace(/\s+/g, ' ')
     .trim();
+}
+
+function getFirstHeaderValue(value: string | string[] | undefined): string {
+  const rawValue = Array.isArray(value) ? value[0] : value;
+  return String(rawValue || '')
+    .split(',')
+    .map((item) => item.trim())
+    .find((item) => item.length > 0) || '';
+}
+
+function resolvePublicAppBaseUrl(req: Request): string {
+  const configuredBaseUrl = String(
+    process.env.APP_BASE_URL || process.env.PUBLIC_APP_URL || process.env.FRONTEND_BASE_URL || '',
+  ).trim();
+
+  if (configuredBaseUrl) {
+    const normalized = /^https?:\/\//i.test(configuredBaseUrl) ? configuredBaseUrl : `https://${configuredBaseUrl}`;
+    return normalized.replace(/\/+$/, '');
+  }
+
+  const forwardedProto = getFirstHeaderValue(req.headers['x-forwarded-proto']);
+  const forwardedHost = getFirstHeaderValue(req.headers['x-forwarded-host']);
+  const host = forwardedHost || getFirstHeaderValue(req.headers.host);
+  if (host) {
+    const protocol = forwardedProto || req.protocol || 'https';
+    return `${protocol}://${host}`.replace(/\/+$/, '');
+  }
+
+  return 'https://siskgb2.id';
+}
+
+function buildExamCardVerificationToken(payload: ExamCardVerificationTokenPayload) {
+  return jwt.sign(payload, JWT_SIGNING_SECRET, {
+    subject: `exam-card:${payload.studentId}:${payload.programCode}:${payload.generatedAtMs}`,
+    noTimestamp: true,
+  });
+}
+
+function verifyExamCardVerificationToken(token: string): ExamCardVerificationTokenPayload {
+  const decoded = jwt.verify(token, JWT_SIGNING_SECRET);
+  if (!decoded || typeof decoded !== 'object') {
+    throw new ApiError(404, 'Tautan verifikasi kartu ujian tidak valid.');
+  }
+  const record = decoded as Partial<ExamCardVerificationTokenPayload>;
+  if (record.kind !== 'EXAM_CARD') {
+    throw new ApiError(404, 'Tautan verifikasi kartu ujian tidak valid.');
+  }
+  if (!Number.isFinite(Number(record.studentId)) || Number(record.studentId) <= 0) {
+    throw new ApiError(404, 'Tautan verifikasi kartu ujian tidak valid.');
+  }
+  if (!Number.isFinite(Number(record.academicYearId)) || Number(record.academicYearId) <= 0) {
+    throw new ApiError(404, 'Tautan verifikasi kartu ujian tidak valid.');
+  }
+  if (!Number.isFinite(Number(record.generatedAtMs)) || Number(record.generatedAtMs) <= 0) {
+    throw new ApiError(404, 'Tautan verifikasi kartu ujian tidak valid.');
+  }
+  const programCode = normalizeExamProgramCode(record.programCode);
+  if (!programCode) {
+    throw new ApiError(404, 'Tautan verifikasi kartu ujian tidak valid.');
+  }
+  if (!record.semester || !Object.values(Semester).includes(record.semester)) {
+    throw new ApiError(404, 'Tautan verifikasi kartu ujian tidak valid.');
+  }
+  return {
+    kind: 'EXAM_CARD',
+    studentId: Number(record.studentId),
+    academicYearId: Number(record.academicYearId),
+    programCode,
+    semester: record.semester,
+    generatedAtMs: Number(record.generatedAtMs),
+    participantNumber: normalizeText(record.participantNumber),
+  };
 }
 
 function resolveFormalPhotoUrl(params: {
@@ -183,6 +272,13 @@ function resolveClassLevelNumber(level: unknown) {
 function formatParticipantSequence(value: number | null | undefined) {
   if (!Number.isFinite(Number(value)) || Number(value) <= 0) return null;
   return String(Number(value)).padStart(3, '0').slice(-3);
+}
+
+function compareClassName(left: string | null | undefined, right: string | null | undefined) {
+  return String(left || '').localeCompare(String(right || ''), 'id-ID', {
+    numeric: true,
+    sensitivity: 'base',
+  });
 }
 
 function buildParticipantNumber(params: {
@@ -263,6 +359,7 @@ async function resolveCardSemester(params: {
 }
 
 function buildExamCardPayload(params: {
+  req: Request;
   academicYearId: number;
   academicYearName: string;
   programCode: string;
@@ -283,6 +380,16 @@ function buildExamCardPayload(params: {
   const headerSubtitle = `${params.programLabel} • Tahun Ajaran ${params.academicYearName}`;
   const primaryEntry = resolvePrimaryEntry(params.row.entries);
   const issueDateLabel = formatIssueDateLabel(params.issueDate);
+  const verificationToken = buildExamCardVerificationToken({
+    kind: 'EXAM_CARD',
+    studentId: params.row.studentId,
+    academicYearId: params.academicYearId,
+    programCode: params.programCode,
+    semester: params.semester,
+    generatedAtMs: params.generatedAt.getTime(),
+    participantNumber: params.row.participantNumber,
+  });
+  const verificationUrl = `${resolvePublicAppBaseUrl(params.req)}/verify/exam-card/${verificationToken}`;
 
   return {
     schoolName: SCHOOL_NAME,
@@ -342,6 +449,9 @@ function buildExamCardPayload(params: {
       principalBarcodeDataUrl: params.principalBarcodeDataUrl,
       principalTitle: 'Kepala Sekolah',
       footerNote: EXAM_CARD_INTERNAL_NOTE,
+      verificationToken,
+      verificationUrl,
+      verificationNote: 'Keaslian kartu ujian ini dapat diverifikasi melalui QR code atau tautan verifikasi.',
     },
   };
 }
@@ -495,20 +605,59 @@ async function buildExamCardOverview(params: {
         .filter((classId) => Number.isFinite(classId) && classId > 0),
     ),
   );
-  const rosterOrderMap = new Map<number, Map<number, number>>();
   const rosterRows = await Promise.all(
     uniqueClassIds.map(async (classId) => ({
       classId,
+      className: historicalStudents.find((student) => Number(student.studentClass?.id || 0) === classId)?.studentClass?.name || null,
+      classLevelNumber:
+        resolveClassLevelNumber(
+          historicalStudents.find((student) => Number(student.studentClass?.id || 0) === classId)?.studentClass?.level || null,
+        ) || null,
       students: await listHistoricalStudentsForClass(classId, params.academicYearId),
     })),
   );
-  rosterRows.forEach(({ classId, students }) => {
-    const orderMap = new Map<number, number>();
-    students.forEach((student, index) => {
-      orderMap.set(student.id, index + 1);
+  const participantSequenceMap = new Map<number, number>();
+  const rosterRowsByLevel = new Map<
+    string,
+    Array<{
+      classId: number;
+      className: string | null;
+      students: Awaited<ReturnType<typeof listHistoricalStudentsForClass>>;
+    }>
+  >();
+
+  rosterRows.forEach(({ classId, className, classLevelNumber, students }) => {
+    const levelKey = normalizeText(classLevelNumber) || '__UNSPECIFIED_LEVEL__';
+    const current = rosterRowsByLevel.get(levelKey) || [];
+    current.push({
+      classId,
+      className,
+      students,
     });
-    rosterOrderMap.set(classId, orderMap);
+    rosterRowsByLevel.set(levelKey, current);
   });
+
+  Array.from(rosterRowsByLevel.entries())
+    .sort(([leftLevel], [rightLevel]) => {
+      const leftNumeric = Number(leftLevel.replace(/\D/g, ''));
+      const rightNumeric = Number(rightLevel.replace(/\D/g, ''));
+      if (Number.isFinite(leftNumeric) && Number.isFinite(rightNumeric) && leftNumeric !== rightNumeric) {
+        return leftNumeric - rightNumeric;
+      }
+      return leftLevel.localeCompare(rightLevel, 'id-ID', { numeric: true, sensitivity: 'base' });
+    })
+    .forEach(([, levelRows]) => {
+      let currentSequence = 1;
+      levelRows
+        .sort((left, right) => compareClassName(left.className, right.className))
+        .forEach(({ students }) => {
+          students.forEach((student) => {
+            if (participantSequenceMap.has(student.id)) return;
+            participantSequenceMap.set(student.id, currentSequence);
+            currentSequence += 1;
+          });
+        });
+    });
 
   sittings.forEach((sitting) => {
     const seatLabelByStudent = new Map<number, string | null>();
@@ -546,7 +695,7 @@ async function buildExamCardOverview(params: {
     const classId = Number(student.studentClass?.id || 0) || null;
     const classLevelLabel = normalizeText(student.studentClass?.level || '') || null;
     const classLevelNumber = resolveClassLevelNumber(student.studentClass?.level || null);
-    const participantSequence = classId ? rosterOrderMap.get(classId)?.get(student.id) || null : null;
+    const participantSequence = participantSequenceMap.get(student.id) || null;
     const participantNumber = buildParticipantNumber({
       academicYearName: academicYear.name,
       programCode: normalizedProgramCode,
@@ -586,7 +735,7 @@ async function buildExamCardOverview(params: {
   }, []);
 
   rows.sort((left, right) => {
-    const classCompare = String(left.className || '').localeCompare(String(right.className || ''), 'id-ID');
+    const classCompare = compareClassName(left.className, right.className);
     if (classCompare !== 0) return classCompare;
     const orderLeft = Number(left.participantSequence || Number.MAX_SAFE_INTEGER);
     const orderRight = Number(right.participantSequence || Number.MAX_SAFE_INTEGER);
@@ -652,25 +801,24 @@ export const generateExamCards = asyncHandler(async (req: Request, res: Response
   const eligibleRows = overview.rows.filter((row) => row.eligibility.isEligible && row.entries.length > 0);
   const generatedRows = await Promise.all(
     eligibleRows.map(async (row) => {
-      const qrPayload = JSON.stringify({
-        type: 'EXAM_CARD',
-        school: SCHOOL_NAME,
+      const verificationToken = buildExamCardVerificationToken({
+        kind: 'EXAM_CARD',
+        studentId: row.studentId,
         academicYearId: overview.academicYear.id,
-        academicYearName: overview.academicYear.name,
         programCode: overview.program.code,
         semester: overview.semester,
-        studentId: row.studentId,
-        principalId: principal.id,
-        principalName: principal.name,
-        generatedAt: now.toISOString(),
+        generatedAtMs: now.getTime(),
+        participantNumber: row.participantNumber,
       });
+      const verificationUrl = `${resolvePublicAppBaseUrl(req)}/verify/exam-card/${verificationToken}`;
 
-      const principalBarcodeDataUrl = await QRCode.toDataURL(qrPayload, {
+      const principalBarcodeDataUrl = await QRCode.toDataURL(verificationUrl, {
         width: 116,
         margin: 1,
       });
 
       const payload = buildExamCardPayload({
+        req,
         academicYearId: overview.academicYear.id,
         academicYearName: overview.academicYear.name,
         programCode: overview.program.code,
@@ -793,16 +941,28 @@ export const listMyGeneratedExamCards = asyncHandler(async (req: Request, res: R
     throw new ApiError(403, 'Kartu ujian digital hanya tersedia untuk akun siswa.');
   }
 
-  const academicYearId = req.query.academicYearId ? Number(req.query.academicYearId) : null;
-  if (academicYearId !== null && (!Number.isFinite(academicYearId) || academicYearId <= 0)) {
-    throw new ApiError(400, 'academicYearId tidak valid.');
+  const query = myCardsQuerySchema.parse(req.query);
+  const programCode = query.programCode ? normalizeExamProgramCode(query.programCode) : '';
+  if (query.programCode && !programCode) {
+    throw new ApiError(400, 'programCode tidak valid.');
   }
+  const effectiveAcademicYearId =
+    query.academicYearId ||
+    (
+      await prisma.academicYear.findFirst({
+        where: { isActive: true },
+        select: { id: true },
+        orderBy: [{ updatedAt: 'desc' }, { id: 'desc' }],
+      })
+    )?.id ||
+    undefined;
 
   const cards = await prisma.examGeneratedCard.findMany({
     where: {
       studentId: Number(user.id),
       status: ExamGeneratedCardStatus.ACTIVE,
-      ...(academicYearId ? { academicYearId } : {}),
+      ...(effectiveAcademicYearId ? { academicYearId: effectiveAcademicYearId } : {}),
+      ...(programCode ? { programCode } : {}),
     },
     orderBy: [{ generatedAt: 'desc' }, { id: 'desc' }],
     select: {
@@ -816,4 +976,74 @@ export const listMyGeneratedExamCards = asyncHandler(async (req: Request, res: R
   });
 
   res.status(200).json(new ApiResponse(200, { cards }, 'Kartu ujian digital berhasil diambil'));
+});
+
+export const verifyPublicExamCard = asyncHandler(async (req: Request, res: Response) => {
+  const token = String(req.params.token || '').trim();
+  if (!token) {
+    throw new ApiError(404, 'Tautan verifikasi kartu ujian tidak ditemukan.');
+  }
+
+  const decoded = verifyExamCardVerificationToken(token);
+  const card = await prisma.examGeneratedCard.findFirst({
+    where: {
+      studentId: decoded.studentId,
+      academicYearId: decoded.academicYearId,
+      programCode: decoded.programCode,
+      semester: decoded.semester,
+      status: ExamGeneratedCardStatus.ACTIVE,
+    },
+    orderBy: { generatedAt: 'desc' },
+    select: {
+      id: true,
+      generatedAt: true,
+      payload: true,
+    },
+  });
+
+  if (!card || new Date(card.generatedAt).getTime() !== decoded.generatedAtMs) {
+    throw new ApiError(404, 'Kartu ujian ini tidak lagi aktif atau tidak valid.');
+  }
+
+  const payload = (card.payload || {}) as any;
+  const primaryPlacement = payload?.placement || payload?.entries?.[0] || null;
+
+  res.status(200).json(
+    new ApiResponse(
+      200,
+      {
+        valid: true,
+        verifiedAt: new Date().toISOString(),
+        participantNumber: payload?.participantNumber || decoded.participantNumber || '-',
+        cardId: card.id,
+        snapshot: {
+          title: payload?.cardTitle || EXAM_CARD_TITLE,
+          examLabel: payload?.examTitle || payload?.programLabel || decoded.programCode,
+          schoolName: payload?.institutionName || payload?.schoolName || SCHOOL_NAME,
+          academicYearName: payload?.academicYearName || '-',
+          student: {
+            name: payload?.student?.name || '-',
+            username: payload?.student?.username || '-',
+            className: payload?.student?.className || '-',
+          },
+          placement: {
+            roomName: primaryPlacement?.roomName || '-',
+            sessionLabel: primaryPlacement?.sessionLabel || null,
+            seatLabel: primaryPlacement?.seatLabel || null,
+            startTime: primaryPlacement?.startTime || null,
+            endTime: primaryPlacement?.endTime || null,
+          },
+          issue: {
+            signLabel: payload?.issue?.signLabel || null,
+            date: payload?.issue?.date || null,
+          },
+          principal: {
+            name: payload?.legality?.principalName || '-',
+            title: payload?.legality?.principalTitle || 'Kepala Sekolah',
+          },
+        },
+      },
+      'Kartu ujian berhasil diverifikasi',
+    ),
+  );
 });

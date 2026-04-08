@@ -163,6 +163,7 @@ Dokumen ini adalah policy kerja default untuk setiap sesi baru yang mengerjakan 
    - Jika halaman hanya perlu menampilkan konteks tahun ajaran, gunakan tampilan `read-only` seperti notice, badge, helper text, atau field disabled yang menegaskan bahwa data mengikuti tahun ajaran aktif.
    - Selector/filter `tahun ajaran` hanya boleh ada pada halaman yang memang `arsip`, `laporan historis`, `rekap lintas tahun`, atau `konfigurasi lintas tahun`.
    - Jika sebuah halaman memang lintas tahun, status tersebut wajib dibuat eksplisit di UI, misalnya dengan label seperti `Mode Arsip`, `Data Historis`, atau `Data Tahun Ajaran ...`, agar tidak disalahartikan sebagai workflow operasional aktif.
+   - Jika sebuah layar operasional hanya **mengikuti tahun ajaran aktif** tanpa memberi pilihan apa pun, jangan tampilkan card, label, field disabled, helper box, atau keterangan tambahan tentang tahun ajaran tersebut hanya sebagai dekorasi. Cukup ikuti header aplikasi sebagai source of truth agar UI tidak redundan dan tidak ambigu.
    - Jangan menggunakan `class.academicYearId`, `assignment.academicYearId`, `selectedAcademicYear` lama, cache lama, atau state turunan lain sebagai override implisit terhadap tahun ajaran aktif pada layar operasional.
    - Endpoint/backend baru harus mengikuti kontrak ini:
      - endpoint operasional mengikuti tahun ajaran aktif atau tervalidasi terhadap tahun ajaran aktif

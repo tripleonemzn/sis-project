@@ -1,4 +1,4 @@
-import type { ReactNode } from 'react';
+import type { ComponentProps, ReactNode } from 'react';
 import { useEffect, useMemo, useState } from 'react';
 import { Feather } from '@expo/vector-icons';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
@@ -6,6 +6,7 @@ import { Redirect, useRouter } from 'expo-router';
 import { Pressable, RefreshControl, ScrollView, Text, TextInput, View } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { AppLoadingScreen } from '../../components/AppLoadingScreen';
+import { MobileMenuTabBar } from '../../components/MobileMenuTabBar';
 import { MobileSelectField } from '../../components/MobileSelectField';
 import { MobileSummaryCard as SummaryCard } from '../../components/MobileSummaryCard';
 import { QueryStateView } from '../../components/QueryStateView';
@@ -68,6 +69,16 @@ function normalizeProgramToken(value: unknown) {
     .trim()
     .toUpperCase()
     .replace(/[^A-Z0-9]+/g, '');
+}
+
+function getProgramTabIconName(programCode: string): ComponentProps<typeof Feather>['name'] {
+  const normalized = normalizeProgramToken(programCode);
+  if (normalized === 'SBTS') return 'calendar';
+  if (normalized === 'SAS') return 'file-text';
+  if (normalized === 'SAT') return 'award';
+  if (normalized === 'ASAJ') return 'clipboard';
+  if (normalized === 'ASAJP') return 'briefcase';
+  return 'list';
 }
 
 function isNonScheduledExamProgram(program: ExamProgramItem) {
@@ -652,44 +663,26 @@ export function StaffHeadTuExamCardsScreen() {
         />
       </View>
 
-      <SectionCard
-        title="Filter Kartu Ujian"
-        helper="Pilih program ujian yang ingin digenerate atau dipantau."
-      >
-        <View
-          style={{
-            borderWidth: 1,
-            borderColor: '#bfdbfe',
-            backgroundColor: '#eff6ff',
-            borderRadius: 12,
-            paddingHorizontal: 12,
-            paddingVertical: 10,
-            marginBottom: 12,
-          }}
-        >
-          <Text style={{ color: '#1e3a8a', fontWeight: '700' }}>
-            Tahun Ajaran Aktif: {activeYearQuery.data?.name || '-'}
-          </Text>
-          <Text style={{ color: '#1d4ed8', fontSize: 12, marginTop: 4 }}>
-            Kartu ujian mengikuti tahun ajaran aktif pada header aplikasi.
-          </Text>
-        </View>
-
-        <MobileSelectField
-          label="Program Ujian"
-          value={activeProgramCode}
-          options={visiblePrograms.map((item) => ({
-            value: item.code,
-            label: item.label,
+      <SectionCard title="Filter Kartu Ujian" helper="Pilih program ujian yang ingin digenerate atau dipantau.">
+        <Text style={{ color: '#64748b', fontSize: 12, marginBottom: 8 }}>Program Ujian</Text>
+        <MobileMenuTabBar
+          items={visiblePrograms.map((item) => ({
+            key: item.code,
+            label: item.shortLabel || item.label,
+            iconName: getProgramTabIconName(item.code),
           }))}
+          activeKey={activeProgramCode}
           onChange={setActiveProgramCode}
-          placeholder="Pilih program ujian"
-          helperText={
-            overviewQuery.data?.semester
-              ? `Semester ${overviewQuery.data.semester === 'EVEN' ? 'Genap' : 'Ganjil'}`
-              : undefined
-          }
+          minTabWidth={84}
+          maxTabWidth={140}
+          compact
+          style={{ marginBottom: 10 }}
         />
+        {overviewQuery.data?.semester ? (
+          <Text style={{ color: '#64748b', fontSize: 12, marginBottom: 12 }}>
+            Semester {overviewQuery.data.semester === 'EVEN' ? 'Genap' : 'Ganjil'}
+          </Text>
+        ) : null}
 
         <Text style={{ color: '#64748b', fontSize: 12, marginBottom: 4 }}>Lokasi TTD Kepala Sekolah</Text>
         <TextInput

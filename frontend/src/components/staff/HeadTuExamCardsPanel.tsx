@@ -1,11 +1,25 @@
 import { useEffect, useMemo, useState } from 'react';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
-import { ClipboardList, Loader2, Printer, RefreshCw, Search, ShieldCheck, Sparkles } from 'lucide-react';
+import {
+  Briefcase,
+  CalendarRange,
+  ChevronDown,
+  ChevronUp,
+  ClipboardCheck,
+  ClipboardList,
+  FileSpreadsheet,
+  GraduationCap,
+  Loader2,
+  Printer,
+  Search,
+  ShieldCheck,
+  Sparkles,
+} from 'lucide-react';
 import { toast } from 'react-hot-toast';
-import { academicYearService } from '../../services/academicYear.service';
 import { examCardService, type ExamCardOverviewRow, type ExamGeneratedCardPayload } from '../../services/examCard.service';
 import { examService, type ExamProgram } from '../../services/exam.service';
 import { isNonScheduledExamProgram } from '../../lib/examProgramMenu';
+import { useActiveAcademicYear } from '../../hooks/useActiveAcademicYear';
 
 type StatusFilter = 'ALL' | 'PUBLISHED' | 'ELIGIBLE' | 'BLOCKED';
 
@@ -58,20 +72,75 @@ function formatDateInputValue(value: Date) {
   return `${year}-${month}-${day}`;
 }
 
-function openPrintWindow(title: string, htmlDocument: string) {
-  const printWindow = window.open('', '_blank', 'noopener,noreferrer,width=1200,height=900');
-  if (!printWindow) {
-    toast.error('Popup print diblokir browser.');
-    return;
-  }
-  printWindow.document.open();
-  printWindow.document.write(htmlDocument);
-  printWindow.document.close();
-  printWindow.onload = () => {
-    printWindow.focus();
-    printWindow.print();
+function printHtmlDocument(title: string, htmlDocument: string) {
+  const iframe = document.createElement('iframe');
+  iframe.setAttribute('aria-hidden', 'true');
+  iframe.style.position = 'fixed';
+  iframe.style.width = '0';
+  iframe.style.height = '0';
+  iframe.style.opacity = '0';
+  iframe.style.pointerEvents = 'none';
+  iframe.style.border = '0';
+
+  let printed = false;
+  let objectUrl = '';
+  const cleanup = () => {
+    window.setTimeout(() => {
+      if (objectUrl) {
+        URL.revokeObjectURL(objectUrl);
+      }
+      iframe.remove();
+    }, 400);
   };
-  printWindow.document.title = title;
+
+  const triggerPrint = () => {
+    if (printed) return;
+    printed = true;
+    try {
+      const frameWindow = iframe.contentWindow;
+      if (!frameWindow) {
+        toast.error('Gagal membuka pratinjau cetak kartu ujian.');
+        cleanup();
+        return;
+      }
+      frameWindow.document.title = title;
+      frameWindow.focus();
+      frameWindow.print();
+    } catch {
+      toast.error('Gagal menjalankan print kartu ujian.');
+    } finally {
+      cleanup();
+    }
+  };
+
+  iframe.onload = () => {
+    const frameWindow = iframe.contentWindow;
+    const frameDocument = frameWindow?.document;
+    if (!frameWindow || !frameDocument) {
+      toast.error('Gagal menyiapkan pratinjau cetak kartu ujian.');
+      cleanup();
+      return;
+    }
+
+    frameDocument.title = title;
+    const imageLoads = Array.from(frameDocument.images || []).map((image) => {
+      if (image.complete) return Promise.resolve();
+      return new Promise<void>((resolve) => {
+        image.addEventListener('load', () => resolve(), { once: true });
+        image.addEventListener('error', () => resolve(), { once: true });
+      });
+    });
+
+    Promise.all(imageLoads)
+      .catch(() => undefined)
+      .finally(() => {
+        window.setTimeout(triggerPrint, 180);
+      });
+  };
+
+  document.body.appendChild(iframe);
+  objectUrl = URL.createObjectURL(new Blob([htmlDocument], { type: 'text/html' }));
+  iframe.src = objectUrl;
 }
 
 function buildExamCardMarkup(card: ExamGeneratedCardPayload) {
@@ -280,10 +349,10 @@ function buildExamCardsPrintHtml(cards: ExamGeneratedCardPayload[], title: strin
             font-size: 2.7mm;
           }
           .card-barcode {
-            width: 14mm;
-            height: 14mm;
+            width: 16mm;
+            height: 16mm;
             object-fit: contain;
-            margin: 1.2mm 0 0.8mm;
+            margin: 1mm 0 0.6mm;
             background: #fff;
           }
           .card-principal-name {
@@ -318,6 +387,29 @@ function matchesSearch(keyword: string, values: Array<string | null | undefined>
   return values.some((value) => String(value || '').toLowerCase().includes(keyword));
 }
 
+function getProgramTabIcon(programCode: string) {
+  const normalized = String(programCode || '').trim().toUpperCase();
+  if (normalized === 'SBTS') return CalendarRange;
+  if (normalized === 'SAS') return FileSpreadsheet;
+  if (normalized === 'SAT') return GraduationCap;
+  if (normalized === 'ASAJ') return ClipboardCheck;
+  if (normalized === 'ASAJP') return Briefcase;
+  return ClipboardList;
+}
+
+function formatEntryMeta(entry: ExamCardOverviewRow['entries'][number]) {
+  const parts = [String(entry.sessionLabel || '').trim(), entry.seatLabel ? `Kursi ${entry.seatLabel}` : ''].filter(Boolean);
+  return parts.join(' • ');
+}
+
+function formatEntryTimeRange(entry: ExamCardOverviewRow['entries'][number]) {
+  if (entry.startTime && entry.endTime) {
+    return `${formatDateTime(entry.startTime)} - ${formatDateTime(entry.endTime)}`;
+  }
+  if (entry.startTime || entry.endTime) return 'Waktu ujian belum lengkap';
+  return '';
+}
+
 export function HeadTuExamCardsPanel() {
   const queryClient = useQueryClient();
   const [activeProgramCode, setActiveProgramCode] = useState('');
@@ -326,17 +418,11 @@ export function HeadTuExamCardsPanel() {
   const [statusFilter, setStatusFilter] = useState<StatusFilter>('ALL');
   const [issueLocation, setIssueLocation] = useState('Bekasi');
   const [issueDate, setIssueDate] = useState(() => formatDateInputValue(new Date()));
+  const [expandedStudentId, setExpandedStudentId] = useState<number | null>(null);
 
-  const academicYearsQuery = useQuery({
-    queryKey: ['head-tu-exam-cards-academic-years'],
-    queryFn: () => academicYearService.list({ page: 1, limit: 100 }),
-    staleTime: 5 * 60 * 1000,
-  });
-
-  const academicYears =
-    academicYearsQuery.data?.data?.academicYears || academicYearsQuery.data?.academicYears || [];
-  const activeYear = academicYears.find((item: { isActive?: boolean }) => item.isActive) || null;
-  const selectedAcademicYearId = activeYear?.id ? Number(activeYear.id) : null;
+  const activeYearQuery = useActiveAcademicYear();
+  const activeYear = activeYearQuery.data || null;
+  const selectedAcademicYearId = Number(activeYear?.id || activeYear?.academicYearId || 0) || null;
 
   const programsQuery = useQuery({
     queryKey: ['head-tu-exam-cards-programs', selectedAcademicYearId || 'none'],
@@ -445,35 +531,94 @@ export function HeadTuExamCardsPanel() {
 
   const handlePrintAll = () => {
     if (printableCards.length === 0) return;
-    openPrintWindow('Kartu Ujian', buildExamCardsPrintHtml(printableCards, 'Kartu Ujian'));
+    printHtmlDocument('Kartu Ujian', buildExamCardsPrintHtml(printableCards, 'Kartu Ujian'));
   };
 
   const handlePrintOne = (row: ExamCardOverviewRow) => {
     if (!row.card?.payload) return;
-    openPrintWindow(
+    printHtmlDocument(
       `Kartu Ujian - ${row.studentName}`,
       buildExamCardsPrintHtml([row.card.payload], `Kartu Ujian - ${row.studentName}`),
     );
   };
 
+  if (activeYearQuery.isLoading) {
+    return (
+      <div className="rounded-xl border border-gray-100 bg-white p-8 text-center shadow-sm">
+        <Loader2 className="mx-auto mb-3 h-5 w-5 animate-spin text-blue-600" />
+        <div className="text-sm text-gray-500">Memuat konteks kartu ujian...</div>
+      </div>
+    );
+  }
+
+  if (!selectedAcademicYearId) {
+    return (
+      <div className="rounded-xl border border-amber-100 bg-amber-50 p-5 text-sm text-amber-800 shadow-sm">
+        Tahun ajaran aktif belum tersedia. Kartu ujian tidak bisa diproses sebelum header aplikasi memiliki tahun ajaran aktif.
+      </div>
+    );
+  }
+
   return (
     <div className="space-y-6">
-      <div className="flex flex-col gap-3 xl:flex-row xl:items-start xl:justify-between">
-        <div>
-          <h2 className="text-2xl font-bold text-gray-900">Kartu Ujian</h2>
-          <p className="mt-1 text-sm text-gray-500">
-            Generate kartu ujian digital untuk siswa yang layak mengikuti ujian, lalu cetak dokumen resminya dari Kepala TU.
-          </p>
+      <div>
+        <h2 className="text-2xl font-bold text-gray-900">Kartu Ujian</h2>
+        <p className="mt-1 text-sm text-gray-500">
+          Generate kartu ujian digital untuk siswa yang layak mengikuti ujian, lalu cetak dokumen resminya dari Kepala TU.
+        </p>
+      </div>
+
+      <div className="rounded-xl border border-gray-100 bg-white p-4 shadow-sm">
+        <div className="border-b border-gray-200 pb-1">
+          <div className="flex gap-4 overflow-x-auto scrollbar-hide">
+            {visiblePrograms.map((program) => {
+              const Icon = getProgramTabIcon(program.code);
+              const isActive = program.code === activeProgramCode;
+              return (
+                <button
+                  key={program.code}
+                  type="button"
+                  onClick={() => setActiveProgramCode(program.code)}
+                  className={`flex items-center gap-2 whitespace-nowrap border-b-2 px-3 py-3 text-sm font-medium transition-colors ${
+                    isActive
+                      ? 'border-blue-600 text-blue-700'
+                      : 'border-transparent text-gray-500 hover:border-gray-300 hover:text-gray-800'
+                  }`}
+                >
+                  <Icon className="h-4 w-4" />
+                  {program.shortLabel || program.label || program.code}
+                </button>
+              );
+            })}
+          </div>
         </div>
-        <div className="flex flex-col gap-2 sm:flex-row">
-          <button
-            type="button"
-            onClick={() => void overviewQuery.refetch()}
-            className="inline-flex items-center justify-center rounded-lg border border-gray-300 bg-white px-4 py-2 text-sm font-semibold text-gray-700 hover:bg-gray-50"
-          >
-            <RefreshCw className="mr-2 h-4 w-4" />
-            Muat Ulang
-          </button>
+      </div>
+
+      <div className="rounded-xl border border-gray-100 bg-white p-4 shadow-sm">
+        <div className="grid gap-4 xl:grid-cols-[minmax(0,1fr)_220px_auto_auto] xl:items-end">
+          <div>
+            <label className="mb-1 block text-xs font-semibold uppercase tracking-wide text-gray-500">Lokasi TTD Kepala Sekolah</label>
+            <input
+              type="text"
+              value={issueLocation}
+              onChange={(event) => setIssueLocation(event.target.value)}
+              placeholder="Contoh: Bekasi"
+              className="w-full rounded-lg border border-gray-300 px-3 py-2 text-sm focus:border-blue-500 focus:outline-none"
+            />
+            <p className="mt-1 text-xs text-gray-500">
+              Lokasi ini dipakai pada area legalitas kartu ujian digital dan hasil print fisik.
+            </p>
+          </div>
+          <div>
+            <label className="mb-1 block text-xs font-semibold uppercase tracking-wide text-gray-500">Tanggal Terbit</label>
+            <input
+              type="date"
+              value={issueDate}
+              onChange={(event) => setIssueDate(event.target.value)}
+              className="w-full rounded-lg border border-gray-300 px-3 py-2 text-sm focus:border-blue-500 focus:outline-none"
+            />
+            <p className="mt-1 text-xs text-gray-500">Tanggal ini dipakai untuk generate seluruh kartu program yang dipilih.</p>
+          </div>
           <button
             type="button"
             onClick={() => generateMutation.mutate()}
@@ -484,7 +629,7 @@ export function HeadTuExamCardsPanel() {
               overviewQuery.data.summary.eligibleStudents === 0 ||
               generateMutation.isPending
             }
-            className="inline-flex items-center justify-center rounded-lg bg-blue-600 px-4 py-2 text-sm font-semibold text-white hover:bg-blue-700 disabled:cursor-not-allowed disabled:bg-blue-300"
+            className="inline-flex items-center justify-center rounded-lg bg-blue-600 px-4 py-2.5 text-sm font-semibold text-white hover:bg-blue-700 disabled:cursor-not-allowed disabled:bg-blue-300"
           >
             {generateMutation.isPending ? <Loader2 className="mr-2 h-4 w-4 animate-spin" /> : <Sparkles className="mr-2 h-4 w-4" />}
             Generate Kartu Ujian
@@ -493,69 +638,11 @@ export function HeadTuExamCardsPanel() {
             type="button"
             onClick={handlePrintAll}
             disabled={printableCards.length === 0}
-            className="inline-flex items-center justify-center rounded-lg border border-rose-200 bg-rose-50 px-4 py-2 text-sm font-semibold text-rose-700 hover:bg-rose-100 disabled:cursor-not-allowed disabled:opacity-60"
+            className="inline-flex items-center justify-center rounded-lg border border-rose-200 bg-rose-50 px-4 py-2.5 text-sm font-semibold text-rose-700 hover:bg-rose-100 disabled:cursor-not-allowed disabled:opacity-60"
           >
             <Printer className="mr-2 h-4 w-4" />
             Print Semua
           </button>
-        </div>
-      </div>
-
-      <div className="grid gap-3 md:grid-cols-[220px_minmax(0,1fr)] rounded-xl border border-gray-100 bg-white p-4 shadow-sm">
-        <div>
-          <label className="mb-1 block text-xs font-semibold uppercase tracking-wide text-gray-500">Tahun Ajaran Aktif</label>
-          <div className="rounded-lg border border-blue-100 bg-blue-50 px-3 py-2 text-sm text-blue-900">
-            <div className="font-semibold">{activeYear?.name || 'Belum ada tahun ajaran aktif'}</div>
-            <div className="mt-1 text-xs text-blue-700">Kartu ujian mengikuti tahun ajaran aktif pada header aplikasi.</div>
-          </div>
-        </div>
-        <div>
-          <label className="mb-1 block text-xs font-semibold uppercase tracking-wide text-gray-500">Program Ujian</label>
-          <div className="flex flex-wrap gap-2">
-            {visiblePrograms.map((program) => {
-              const isActive = program.code === activeProgramCode;
-              return (
-                <button
-                  key={program.code}
-                  type="button"
-                  onClick={() => setActiveProgramCode(program.code)}
-                  className={`rounded-full border px-3 py-2 text-sm font-medium ${
-                    isActive
-                      ? 'border-blue-600 bg-blue-50 text-blue-700'
-                      : 'border-gray-200 bg-white text-gray-600 hover:border-gray-300 hover:text-gray-800'
-                  }`}
-                >
-                  {program.label}
-                </button>
-              );
-            })}
-          </div>
-        </div>
-      </div>
-
-      <div className="grid gap-3 rounded-xl border border-gray-100 bg-white p-4 shadow-sm md:grid-cols-[minmax(0,1fr)_220px]">
-        <div>
-          <label className="mb-1 block text-xs font-semibold uppercase tracking-wide text-gray-500">Lokasi TTD Kepala Sekolah</label>
-          <input
-            type="text"
-            value={issueLocation}
-            onChange={(event) => setIssueLocation(event.target.value)}
-            placeholder="Contoh: Bekasi"
-            className="w-full rounded-lg border border-gray-300 px-3 py-2 text-sm focus:border-blue-500 focus:outline-none"
-          />
-          <p className="mt-1 text-xs text-gray-500">
-            Lokasi ini dipakai pada area legalitas kartu ujian digital dan hasil print fisik.
-          </p>
-        </div>
-        <div>
-          <label className="mb-1 block text-xs font-semibold uppercase tracking-wide text-gray-500">Tanggal Terbit</label>
-          <input
-            type="date"
-            value={issueDate}
-            onChange={(event) => setIssueDate(event.target.value)}
-            className="w-full rounded-lg border border-gray-300 px-3 py-2 text-sm focus:border-blue-500 focus:outline-none"
-          />
-          <p className="mt-1 text-xs text-gray-500">Tanggal ini dipakai untuk generate seluruh kartu program yang dipilih.</p>
         </div>
       </div>
 
@@ -579,6 +666,7 @@ export function HeadTuExamCardsPanel() {
           <div className="text-xs font-semibold uppercase tracking-wide text-rose-700">Sudah Dipublikasikan</div>
           <div className="mt-2 text-2xl font-bold text-rose-900">{overviewQuery.data?.summary.publishedCards || 0}</div>
           <div className="mt-1 text-xs text-rose-800/80">Siswa yang sudah menerima kartu ujian digital di akun mereka.</div>
+          <div className="mt-2 text-[11px] font-medium text-rose-700/90">Kartu aktif siap dicetak ulang dan sudah sinkron ke akun siswa.</div>
         </div>
       </div>
 
@@ -624,7 +712,7 @@ export function HeadTuExamCardsPanel() {
         </div>
       </div>
 
-      <div className="rounded-xl border border-gray-100 bg-white shadow-sm overflow-hidden">
+      <div className="overflow-hidden rounded-xl border border-gray-100 bg-white shadow-sm">
         {overviewQuery.isLoading ? (
           <div className="py-12 text-center text-sm text-gray-500">
             <Loader2 className="mx-auto mb-3 h-5 w-5 animate-spin text-blue-600" />
@@ -637,83 +725,90 @@ export function HeadTuExamCardsPanel() {
         ) : filteredRows.length === 0 ? (
           <div className="py-12 text-center text-sm text-gray-500">Belum ada data siswa yang sesuai dengan filter.</div>
         ) : (
-          <div className="overflow-x-auto">
-            <table className="min-w-full divide-y divide-gray-200">
-              <thead className="bg-gray-50">
-                <tr>
-                  <th className="px-6 py-3 text-left text-xs font-semibold uppercase tracking-wider text-gray-500">Siswa</th>
-                  <th className="px-6 py-3 text-left text-xs font-semibold uppercase tracking-wider text-gray-500">Ruang & Kursi</th>
-                  <th className="px-6 py-3 text-left text-xs font-semibold uppercase tracking-wider text-gray-500">Status</th>
-                  <th className="px-6 py-3 text-left text-xs font-semibold uppercase tracking-wider text-gray-500">Catatan</th>
-                  <th className="px-6 py-3 text-left text-xs font-semibold uppercase tracking-wider text-gray-500">Aksi</th>
-                </tr>
-              </thead>
-              <tbody className="divide-y divide-gray-200 bg-white">
-                {filteredRows.map((row) => (
-                  <tr key={row.studentId}>
-                    <td className="px-6 py-4 align-top text-sm text-gray-700">
+          <div className="divide-y divide-gray-200">
+            {filteredRows.map((row) => {
+              const primaryEntry = row.card?.payload?.placement || row.entries[0] || null;
+              const isExpanded = expandedStudentId === row.studentId;
+              return (
+                <div key={row.studentId}>
+                  <div
+                    role="button"
+                    tabIndex={0}
+                    onClick={() => setExpandedStudentId((current) => (current === row.studentId ? null : row.studentId))}
+                    onKeyDown={(event) => {
+                      if (event.key === 'Enter' || event.key === ' ') {
+                        event.preventDefault();
+                        setExpandedStudentId((current) => (current === row.studentId ? null : row.studentId));
+                      }
+                    }}
+                    className="grid cursor-pointer gap-4 px-5 py-4 transition-colors hover:bg-slate-50 xl:grid-cols-[minmax(0,1.2fr)_minmax(0,0.9fr)_240px_260px_auto]"
+                  >
+                    <div className="min-w-0">
                       <div className="font-semibold text-gray-900">{row.studentName}</div>
                       <div className="mt-1 text-xs text-gray-500">@{row.username}</div>
                       <div className="mt-2 inline-flex rounded-full border border-blue-100 bg-blue-50 px-2.5 py-1 text-[11px] font-semibold text-blue-700">
                         No. Peserta {row.participantNumber || '-'}
                       </div>
-                      <div className="mt-2 space-y-1 text-xs text-gray-600">
-                        <div>NIS: {row.nis || '-'}</div>
-                        <div>NISN: {row.nisn || '-'}</div>
-                        <div>Kelas: {row.className || '-'}</div>
-                      </div>
-                    </td>
-                    <td className="px-6 py-4 align-top text-sm text-gray-700">
-                      <div className="space-y-2">
-                        {row.entries.length === 0 ? (
-                          <div className="rounded-lg border border-amber-100 bg-amber-50 px-3 py-2 text-xs text-amber-700">
-                            Belum punya data ruang ujian aktif.
-                          </div>
-                        ) : (
-                          row.entries.map((entry) => (
-                            <div key={`${row.studentId}-${entry.sittingId}`} className="rounded-lg border border-gray-100 px-3 py-2">
-                              <div className="font-medium text-gray-900">{entry.roomName}</div>
-                              <div className="mt-1 text-xs text-gray-500">
-                                {entry.sessionLabel || '-'} • Kursi {entry.seatLabel || '-'}
-                              </div>
-                              <div className="mt-1 text-xs text-gray-500">
-                                {formatDateTime(entry.startTime)} - {formatDateTime(entry.endTime)}
-                              </div>
+                      <div className="mt-2 text-xs text-gray-600">Kelas: {row.className || '-'}</div>
+                    </div>
+
+                    <div className="min-w-0 text-sm text-gray-700">
+                      <div className="font-semibold text-gray-900">{primaryEntry?.roomName || 'Belum ada ruang aktif'}</div>
+                      {primaryEntry ? (
+                        <>
+                          {formatEntryMeta(primaryEntry as ExamCardOverviewRow['entries'][number]) ? (
+                            <div className="mt-1 text-xs text-gray-500">{formatEntryMeta(primaryEntry as ExamCardOverviewRow['entries'][number])}</div>
+                          ) : null}
+                          {formatEntryTimeRange(primaryEntry as ExamCardOverviewRow['entries'][number]) ? (
+                            <div className="mt-1 text-xs text-gray-500">
+                              {formatEntryTimeRange(primaryEntry as ExamCardOverviewRow['entries'][number])}
                             </div>
-                          ))
-                        )}
-                      </div>
-                    </td>
-                    <td className="px-6 py-4 align-top text-sm text-gray-700">
-                      {row.card ? (
-                        <div className="inline-flex items-center rounded-full bg-rose-100 px-3 py-1 text-xs font-semibold text-rose-700">
-                          <ClipboardList className="mr-1.5 h-3.5 w-3.5" />
-                          Sudah Dipublikasikan
-                        </div>
-                      ) : row.eligibility.isEligible ? (
-                        <div className="inline-flex items-center rounded-full bg-emerald-100 px-3 py-1 text-xs font-semibold text-emerald-700">
-                          <Sparkles className="mr-1.5 h-3.5 w-3.5" />
-                          Siap Digenerate
-                        </div>
+                          ) : null}
+                        </>
                       ) : (
-                        <div className="inline-flex items-center rounded-full bg-amber-100 px-3 py-1 text-xs font-semibold text-amber-700">
-                          <ShieldCheck className="mr-1.5 h-3.5 w-3.5" />
-                          Belum Layak
-                        </div>
+                        <div className="mt-1 text-xs text-amber-700">Denah/ruang belum sinkron.</div>
                       )}
+                    </div>
+
+                    <div className="text-sm text-gray-700">
+                      {row.card ? (
+                        <>
+                          <div className="inline-flex items-center rounded-full bg-rose-100 px-3 py-1 text-xs font-semibold text-rose-700">
+                            <ClipboardList className="mr-1.5 h-3.5 w-3.5" />
+                            Sudah Dipublikasikan
+                          </div>
+                          <div className="mt-2 text-xs text-rose-700">
+                            Kartu aktif • diterbitkan {formatDateTime(row.card.generatedAt)}.
+                          </div>
+                        </>
+                      ) : row.eligibility.isEligible ? (
+                        <>
+                          <div className="inline-flex items-center rounded-full bg-emerald-100 px-3 py-1 text-xs font-semibold text-emerald-700">
+                            <Sparkles className="mr-1.5 h-3.5 w-3.5" />
+                            Siap Digenerate
+                          </div>
+                          <div className="mt-2 text-xs text-emerald-700">Siswa memenuhi syarat kartu ujian digital.</div>
+                        </>
+                      ) : (
+                        <>
+                          <div className="inline-flex items-center rounded-full bg-amber-100 px-3 py-1 text-xs font-semibold text-amber-700">
+                            <ShieldCheck className="mr-1.5 h-3.5 w-3.5" />
+                            Belum Layak
+                          </div>
+                          <div className="mt-2 text-xs text-amber-700">{row.eligibility.reason || 'Masih ada syarat ujian yang belum terpenuhi.'}</div>
+                        </>
+                      )}
+                    </div>
+
+                    <div className="text-sm text-gray-700">
                       {row.eligibility.financeExceptionApplied ? (
-                        <div className="mt-2 rounded-lg border border-sky-100 bg-sky-50 px-3 py-2 text-xs text-sky-700">
+                        <div className="rounded-lg border border-sky-100 bg-sky-50 px-3 py-2 text-xs text-sky-700">
                           Ada pengecualian finance dari wali kelas.
                         </div>
-                      ) : null}
-                    </td>
-                    <td className="px-6 py-4 align-top text-sm text-gray-700">
-                      {row.eligibility.isEligible ? (
-                        <div className="text-xs text-emerald-700">
-                          {row.card
-                            ? `Sudah digenerate pada ${formatDateTime(row.card.generatedAt)}.`
-                            : 'Siswa memenuhi syarat kartu ujian digital.'}
-                        </div>
+                      ) : row.card ? (
+                        <div className="text-xs text-emerald-700">Sudah digenerate pada {formatDateTime(row.card.generatedAt)}.</div>
+                      ) : row.eligibility.isEligible ? (
+                        <div className="text-xs text-emerald-700">Siap dipublikasikan setelah generate kartu.</div>
                       ) : (
                         <div className="space-y-2 text-xs text-amber-700">
                           <div>{row.eligibility.reason || 'Masih ada syarat ujian yang belum terpenuhi.'}</div>
@@ -727,22 +822,70 @@ export function HeadTuExamCardsPanel() {
                           ) : null}
                         </div>
                       )}
-                    </td>
-                    <td className="px-6 py-4 align-top text-sm text-gray-700">
+                    </div>
+
+                    <div className="flex items-start justify-end gap-2">
                       <button
                         type="button"
-                        onClick={() => handlePrintOne(row)}
+                        onClick={(event) => {
+                          event.stopPropagation();
+                          handlePrintOne(row);
+                        }}
                         disabled={!row.card?.payload}
                         className="inline-flex items-center rounded-lg border border-rose-200 bg-white px-3 py-2 text-sm font-semibold text-rose-700 hover:bg-rose-50 disabled:cursor-not-allowed disabled:opacity-50"
                       >
                         <Printer className="mr-2 h-4 w-4" />
                         Print
                       </button>
-                    </td>
-                  </tr>
-                ))}
-              </tbody>
-            </table>
+                      <span className="inline-flex h-10 w-10 items-center justify-center rounded-lg border border-gray-200 bg-white text-gray-500">
+                        {isExpanded ? <ChevronUp className="h-4 w-4" /> : <ChevronDown className="h-4 w-4" />}
+                      </span>
+                    </div>
+                  </div>
+
+                  {isExpanded ? (
+                    <div className="border-t border-gray-100 bg-slate-50/80 px-5 py-4">
+                      <div className="grid gap-4 xl:grid-cols-[minmax(0,1fr)_minmax(0,1.1fr)]">
+                        <div className="rounded-xl border border-slate-200 bg-white p-4">
+                          <div className="text-xs font-semibold uppercase tracking-wide text-slate-500">Detail Siswa</div>
+                          <div className="mt-3 grid grid-cols-[110px_12px_minmax(0,1fr)] gap-y-1 text-sm text-slate-700">
+                            <div className="font-medium">Nama</div><div>:</div><div>{row.studentName}</div>
+                            <div className="font-medium">Username</div><div>:</div><div>@{row.username}</div>
+                            <div className="font-medium">No. Peserta</div><div>:</div><div className="font-semibold text-blue-700">{row.participantNumber || '-'}</div>
+                            <div className="font-medium">NIS</div><div>:</div><div>{row.nis || '-'}</div>
+                            <div className="font-medium">NISN</div><div>:</div><div>{row.nisn || '-'}</div>
+                            <div className="font-medium">Kelas</div><div>:</div><div>{row.className || '-'}</div>
+                          </div>
+                        </div>
+
+                        <div className="rounded-xl border border-slate-200 bg-white p-4">
+                          <div className="text-xs font-semibold uppercase tracking-wide text-slate-500">Ruang & Kursi</div>
+                          <div className="mt-3 space-y-3">
+                            {row.entries.length === 0 ? (
+                              <div className="rounded-lg border border-amber-100 bg-amber-50 px-3 py-2 text-xs text-amber-700">
+                                Belum punya data ruang ujian aktif atau denah belum dipublikasikan.
+                              </div>
+                            ) : (
+                              row.entries.map((entry) => (
+                                <div key={`${row.studentId}-${entry.sittingId}`} className="rounded-lg border border-slate-200 px-3 py-3">
+                                  <div className="font-medium text-slate-900">{entry.roomName}</div>
+                                  {formatEntryMeta(entry) ? (
+                                    <div className="mt-1 text-xs text-slate-500">{formatEntryMeta(entry)}</div>
+                                  ) : null}
+                                  {formatEntryTimeRange(entry) ? (
+                                    <div className="mt-1 text-xs text-slate-500">{formatEntryTimeRange(entry)}</div>
+                                  ) : null}
+                                </div>
+                              ))
+                            )}
+                          </div>
+                        </div>
+                      </div>
+                    </div>
+                  ) : null}
+                </div>
+              );
+            })}
           </div>
         )}
       </div>

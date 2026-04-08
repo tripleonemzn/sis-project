@@ -158,6 +158,27 @@ const syncAdvisorInventoryRoomManagers = async (userId: number) => {
   });
 
   const duties = (user.additionalDuties || []).map((item) => String(item || '').trim().toUpperCase());
+  const [allExtracurriculars, allRooms] = await Promise.all([
+    prisma.ekstrakurikuler.findMany({
+      select: {
+        name: true,
+        category: true,
+      },
+    }),
+    prisma.room.findMany({
+      select: {
+        id: true,
+        name: true,
+        managerUserId: true,
+        managerUser: {
+          select: {
+            role: true,
+          },
+        },
+      },
+      orderBy: { id: 'asc' },
+    }),
+  ]);
   const teacherAssignments = activeAcademicYear?.id
     ? await prisma.ekstrakurikulerTutorAssignment.findMany({
         where: {
@@ -179,31 +200,20 @@ const syncAdvisorInventoryRoomManagers = async (userId: number) => {
     : [];
 
   const roomIdsToAssign = new Set<number>();
+  const desiredRoomIds = new Set<number>();
 
   for (const assignment of teacherAssignments) {
     const ekskulName = normalizeComparableText(assignment.ekskul?.name);
     if (!ekskulName || String(assignment.ekskul?.category || '').toUpperCase() === 'OSIS') continue;
 
-    const room = await prisma.room.findFirst({
-      where: {
-        name: {
-          equals: assignment.ekskul?.name || '',
-          mode: 'insensitive',
-        },
-      },
-      orderBy: { id: 'asc' },
-      select: {
-        id: true,
-        managerUserId: true,
-        managerUser: {
-          select: {
-            role: true,
-          },
-        },
-      },
-    });
+    const room =
+      allRooms.find((candidate) => String(candidate.name || '').trim().toLowerCase() === String(assignment.ekskul?.name || '').trim().toLowerCase()) ||
+      null;
 
     const managerRole = String(room?.managerUser?.role || '').trim().toUpperCase();
+    if (room?.id) {
+      desiredRoomIds.add(room.id);
+    }
     if (
       room?.id &&
       room.managerUserId !== user.id &&
@@ -214,26 +224,12 @@ const syncAdvisorInventoryRoomManagers = async (userId: number) => {
   }
 
   if (duties.includes('PEMBINA_OSIS')) {
-    const osisRoom = await prisma.room.findFirst({
-      where: {
-        name: {
-          contains: 'OSIS',
-          mode: 'insensitive',
-        },
-      },
-      orderBy: { id: 'asc' },
-      select: {
-        id: true,
-        managerUserId: true,
-        managerUser: {
-          select: {
-            role: true,
-          },
-        },
-      },
-    });
+    const osisRoom = allRooms.find((candidate) => normalizeComparableText(candidate.name).includes('osis')) || null;
 
     const managerRole = String(osisRoom?.managerUser?.role || '').trim().toUpperCase();
+    if (osisRoom?.id) {
+      desiredRoomIds.add(osisRoom.id);
+    }
     if (
       osisRoom?.id &&
       osisRoom.managerUserId !== user.id &&
@@ -243,17 +239,53 @@ const syncAdvisorInventoryRoomManagers = async (userId: number) => {
     }
   }
 
-  if (!roomIdsToAssign.size) return;
+  const extracurricularRoomNames = new Set(
+    allExtracurriculars
+      .filter((item) => String(item.category || '').toUpperCase() !== 'OSIS')
+      .map((item) => normalizeComparableText(item.name)),
+  );
+  const staleManagedRoomIds = allRooms
+    .filter((room) => {
+      if (room.managerUserId !== user.id) return false;
+      const normalizedRoomName = normalizeComparableText(room.name);
+      if (!normalizedRoomName) return false;
+      if (normalizeComparableText(room.name).includes('osis')) {
+        return !duties.includes('PEMBINA_OSIS') || !desiredRoomIds.has(room.id);
+      }
+      if (!extracurricularRoomNames.has(normalizedRoomName)) return false;
+      return !desiredRoomIds.has(room.id);
+    })
+    .map((room) => room.id);
 
-  await prisma.room.updateMany({
-    where: {
-      id: {
-        in: Array.from(roomIdsToAssign),
-      },
-    },
-    data: {
-      managerUserId: user.id,
-    },
+  if (!roomIdsToAssign.size && staleManagedRoomIds.length === 0) return;
+
+  await prisma.$transaction(async (tx) => {
+    if (roomIdsToAssign.size) {
+      await tx.room.updateMany({
+        where: {
+          id: {
+            in: Array.from(roomIdsToAssign),
+          },
+        },
+        data: {
+          managerUserId: user.id,
+        },
+      });
+    }
+
+    if (staleManagedRoomIds.length > 0) {
+      await tx.room.updateMany({
+        where: {
+          id: {
+            in: staleManagedRoomIds,
+          },
+          managerUserId: user.id,
+        },
+        data: {
+          managerUserId: null,
+        },
+      });
+    }
   });
 };
 

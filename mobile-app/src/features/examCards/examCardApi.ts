@@ -60,6 +60,9 @@ export type ExamGeneratedCardPayload = {
     principalBarcodeDataUrl?: string | null;
     principalTitle?: string | null;
     footerNote?: string | null;
+    verificationToken?: string | null;
+    verificationUrl?: string | null;
+    verificationNote?: string | null;
   };
 };
 
@@ -186,7 +189,7 @@ export const examCardApi = {
     >('/exam-cards/generate', payload);
     return response.data;
   },
-  async getMyCards(params?: { academicYearId?: number }) {
+  async getMyCards(params?: { academicYearId?: number; programCode?: string }) {
     const response = await apiClient.get<
       ApiEnvelope<{
         cards: Array<{

@@ -782,19 +782,19 @@ export default function ExamRoomLayoutManagementPage() {
             </div>
           ) : (
             <div className="flex overflow-x-auto">
-              <div className="flex w-fit space-x-1 rounded-lg border border-gray-200 bg-white p-1 scrollbar-hide">
+              <div className="flex space-x-1 rounded-lg border border-gray-200 bg-white p-1 w-fit scrollbar-hide">
                 {visiblePrograms.map((program) => (
                   <button
                     key={program.code}
                     type="button"
                     onClick={() => setActiveProgramCode(program.code)}
-                    className={`rounded-md px-4 py-2 text-sm font-medium whitespace-nowrap transition-colors ${
+                    className={`px-4 py-2 text-[13px] font-medium rounded-md whitespace-nowrap transition-colors ${
                       activeProgramCode === program.code
                         ? 'bg-blue-50 text-blue-700'
-                        : 'text-gray-600 hover:bg-gray-50'
+                        : 'text-gray-600 hover:text-gray-900 hover:bg-gray-50'
                     }`}
                   >
-                    {program.label}
+                    {program.shortLabel || program.label || program.code}
                   </button>
                 ))}
               </div>

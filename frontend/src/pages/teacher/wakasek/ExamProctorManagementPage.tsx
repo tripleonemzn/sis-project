@@ -45,11 +45,21 @@ type SittingStudentWrapper = {
   class_name?: string | null;
 };
 type SittingDetail = {
+  id?: number | string;
   students?: SittingStudentWrapper[];
   sessionLabel?: string | null;
   roomName?: string | null;
   startTime?: string | null;
   endTime?: string | null;
+};
+
+type SittingRoomSlot = {
+  roomName: string;
+  start: string;
+  end: string;
+  sessionLabel: string | null;
+  timeKey: string;
+  classNames: string[];
 };
 
 interface ExamSchedule {
@@ -394,6 +404,7 @@ const ExamProctorManagementPage = () => {
   const [classRoomMap, setClassRoomMap] = useState<Record<string, string>>({});
   const [roomClassMap, setRoomClassMap] = useState<Record<string, string[]>>({});
   const [roomSessionClassMap, setRoomSessionClassMap] = useState<Record<string, string[]>>({});
+  const [sittingRoomSlots, setSittingRoomSlots] = useState<SittingRoomSlot[]>([]);
   
   // Changes tracking
   const [pendingChanges, setPendingChanges] = useState<Map<string, number>>(new Map()); // Key: "time|room", Value: proctorId
@@ -499,6 +510,7 @@ const ExamProctorManagementPage = () => {
         setClassRoomMap({});
         setRoomClassMap({});
         setRoomSessionClassMap({});
+        setSittingRoomSlots([]);
         return;
       }
       try {
@@ -515,6 +527,10 @@ const ExamProctorManagementPage = () => {
         const mapping: Record<string, string> = {};
         const roomClassAccumulator: Record<string, Set<string>> = {};
         const roomSessionAccumulator: Record<string, Set<string>> = {};
+        const roomSlotAccumulator = new Map<
+          string,
+          { roomName: string; start: string; end: string; sessionLabel: string | null; classNames: Set<string> }
+        >();
         
         // We need to fetch details for each sitting to get the students list
         // because the list endpoint might not return full student details
@@ -567,8 +583,18 @@ const ExamProctorManagementPage = () => {
                       if (!roomSessionAccumulator[roomSessionKey]) {
                         roomSessionAccumulator[roomSessionKey] = new Set<string>();
                       }
+                      if (!roomSlotAccumulator.has(roomSlotKey)) {
+                        roomSlotAccumulator.set(roomSlotKey, {
+                          roomName,
+                          start: String(sitting.startTime || ''),
+                          end: String(sitting.endTime || ''),
+                          sessionLabel: sitting.sessionLabel || null,
+                          classNames: new Set<string>(),
+                        });
+                      }
                       sittingClasses.forEach((className) => roomClassAccumulator[roomSlotKey].add(className));
                       sittingClasses.forEach((className) => roomSessionAccumulator[roomSessionKey].add(className));
+                      sittingClasses.forEach((className) => roomSlotAccumulator.get(roomSlotKey)?.classNames.add(className));
                     }
                 }
             } catch (e) {
@@ -593,11 +619,22 @@ const ExamProctorManagementPage = () => {
             ]),
           ),
         );
+        setSittingRoomSlots(
+          Array.from(roomSlotAccumulator.values()).map((slot) => ({
+            roomName: slot.roomName,
+            start: slot.start,
+            end: slot.end,
+            sessionLabel: slot.sessionLabel,
+            timeKey: `${slot.start}|${slot.end}|${normalizeSessionLabel(slot.sessionLabel) || '__no_session__'}`,
+            classNames: Array.from(slot.classNames).sort(compareClassName),
+          })),
+        );
       } catch (err) {
         console.error('Error fetching sittings:', err);
         setClassRoomMap({});
         setRoomClassMap({});
         setRoomSessionClassMap({});
+        setSittingRoomSlots([]);
       }
     };
 
@@ -748,6 +785,12 @@ const ExamProctorManagementPage = () => {
       byTime[timeKey].push(s);
     });
 
+    sittingRoomSlots.forEach((slot) => {
+      if (!byTime[slot.timeKey]) {
+        byTime[slot.timeKey] = [];
+      }
+    });
+
     // 2. Sort Time Slots
     const sortedTimes = Object.keys(byTime).sort((a, b) => {
       return a.localeCompare(b);
@@ -781,6 +824,27 @@ const ExamProctorManagementPage = () => {
         }
       });
 
+      sittingRoomSlots
+        .filter((slot) => slot.timeKey === timeKey)
+        .forEach((slot) => {
+          if (!slot.roomName || byRoom[slot.roomName]) return;
+          byRoom[slot.roomName] = [
+            {
+              id: 0,
+              startTime: slot.start,
+              endTime: slot.end,
+              sessionLabel: slot.sessionLabel,
+              room: slot.roomName,
+              examType: activeProgramCode,
+              class: {
+                name: slot.classNames[0] || '',
+              },
+              proctorId: null,
+              proctor: undefined,
+            },
+          ];
+        });
+
       return {
         timeKey,
         start,
@@ -790,7 +854,7 @@ const ExamProctorManagementPage = () => {
         unassigned
       };
     });
-  }, [schedules, classRoomMap]);
+  }, [activeProgramCode, schedules, classRoomMap, sittingRoomSlots]);
 
   const groupedDataWithSessionOrder = useMemo(() => {
     const sessionCounters = new Map<string, number>();
@@ -1070,6 +1134,10 @@ const ExamProctorManagementPage = () => {
                         <tbody className="divide-y divide-gray-100 bg-white">
                           {group.rooms.map(([roomName, schedules]) => {
                             const changeKey = `${group.timeKey}::${roomName}`;
+                            const roomScheduleIds = schedules
+                              .map((schedule) => Number(schedule.id))
+                              .filter((id) => Number.isFinite(id) && id > 0);
+                            const hasEditableSchedules = roomScheduleIds.length > 0;
                             const currentProctorId = pendingChanges.get(changeKey) ?? schedules[0].proctorId;
                             const isSaving = saving.has(changeKey);
                             const hasChanges = pendingChanges.has(changeKey);
@@ -1160,16 +1228,21 @@ const ExamProctorManagementPage = () => {
                                     options={selectOptions}
                                     onChange={(val) => handleProctorChange(group.timeKey, roomName, val)}
                                     placeholder="Pilih Pengawas..."
-                                    disabled={isSaving || !isEditing}
+                                    disabled={isSaving || !isEditing || !hasEditableSchedules}
                                   />
+                                  {!hasEditableSchedules ? (
+                                    <div className="mt-2 text-[11px] text-amber-700">
+                                      Ruang ini belum sinkron ke jadwal ujian, jadi pengawas belum bisa disimpan dari tabel ini.
+                                    </div>
+                                  ) : null}
                                 </td>
                                 <td className="px-6 py-4 align-top text-right">
                                   <div className="inline-flex items-center gap-2">
                                     {isEditing ? (
                                       <>
                                         <button
-                                          onClick={() => handleSaveProctor(group.timeKey, roomName, schedules.map((s) => s.id))}
-                                          disabled={isSaving || !hasChanges}
+                                          onClick={() => handleSaveProctor(group.timeKey, roomName, roomScheduleIds)}
+                                          disabled={isSaving || !hasChanges || !hasEditableSchedules}
                                           className="inline-flex items-center gap-1.5 px-2.5 py-2 bg-blue-600 text-white text-xs font-medium rounded-lg hover:bg-blue-700 disabled:opacity-50 transition-all shadow-sm"
                                           title="Simpan Perubahan"
                                         >
@@ -1195,15 +1268,15 @@ const ExamProctorManagementPage = () => {
                                       <>
                                         <button
                                           onClick={() => startEditProctor(group.timeKey, roomName)}
-                                          disabled={isSaving}
+                                          disabled={isSaving || !hasEditableSchedules}
                                           className="inline-flex items-center justify-center p-2 border border-blue-300 rounded-lg text-blue-600 hover:bg-blue-50 disabled:opacity-50"
                                           title="Edit Pengawas"
                                         >
                                           <Pencil size={14} />
                                         </button>
                                         <button
-                                          onClick={() => handleDeleteProctor(group.timeKey, roomName, schedules.map((s) => s.id))}
-                                          disabled={isSaving || !hasAssignedProctor}
+                                          onClick={() => handleDeleteProctor(group.timeKey, roomName, roomScheduleIds)}
+                                          disabled={isSaving || !hasAssignedProctor || !hasEditableSchedules}
                                           className="inline-flex items-center justify-center p-2 border border-red-300 rounded-lg text-red-600 hover:bg-red-50 disabled:opacity-50"
                                           title="Hapus Pengawas"
                                         >
