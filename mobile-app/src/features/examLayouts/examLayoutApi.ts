@@ -9,6 +9,7 @@ export type ExamLayoutStudent = {
   nisn?: string | null;
   className?: string | null;
   seatLabel?: string | null;
+  participantNumber?: string | null;
 };
 
 export type ExamLayoutCell = {
@@ -25,6 +26,7 @@ export type ExamLayoutCell = {
     nis?: string | null;
     nisn?: string | null;
     className?: string | null;
+    participantNumber?: string | null;
   } | null;
 };
 

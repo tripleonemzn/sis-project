@@ -1,4 +1,4 @@
-import { ExamSittingLayoutCellType } from '@prisma/client';
+import { ExamGeneratedCardStatus, ExamSittingLayoutCellType } from '@prisma/client';
 import { Request, Response } from 'express';
 import { z } from 'zod';
 import prisma from '../utils/prisma';
@@ -43,6 +43,20 @@ function getSeatLabel(rowIndex: number, columnIndex: number) {
     index = Math.floor(index / 26) - 1;
   } while (index >= 0);
   return `${label}${columnIndex + 1}`;
+}
+
+function normalizeText(value: unknown) {
+  return String(value || '').trim();
+}
+
+function normalizeAliasCode(raw: unknown) {
+  return String(raw || '')
+    .trim()
+    .toUpperCase()
+    .replace(/QUIZ/g, 'FORMATIF')
+    .replace(/[^A-Z0-9]+/g, '_')
+    .replace(/_+/g, '_')
+    .replace(/^_+|_+$/g, '');
 }
 
 function deriveDefaultLayoutDimensions(studentCount: number) {
@@ -103,12 +117,43 @@ async function loadSittingWithStudents(sittingId: number) {
   const studentIds = Array.from(new Set((sitting.students || []).map((item) => Number(item.studentId)).filter((id) => Number.isFinite(id) && id > 0)));
   const historicalStudents = await listHistoricalStudentsByIdsForAcademicYear(studentIds, sitting.academicYearId);
   const studentMap = new Map(historicalStudents.map((student) => [student.id, student]));
+  const normalizedProgramCode = normalizeAliasCode(sitting.examType);
+  const generatedCards =
+    studentIds.length > 0 && normalizedProgramCode
+      ? await prisma.examGeneratedCard.findMany({
+          where: {
+            academicYearId: sitting.academicYearId,
+            programCode: normalizedProgramCode,
+            status: ExamGeneratedCardStatus.ACTIVE,
+            studentId: {
+              in: studentIds,
+            },
+            ...(sitting.semester ? { semester: sitting.semester } : {}),
+          },
+          select: {
+            studentId: true,
+            payload: true,
+            generatedAt: true,
+          },
+          orderBy: [{ generatedAt: 'desc' }, { studentId: 'asc' }],
+        })
+      : [];
+  const participantNumberMap = new Map<number, string>();
+  generatedCards.forEach((card) => {
+    if (participantNumberMap.has(card.studentId)) return;
+    const payload = (card.payload || {}) as { participantNumber?: unknown };
+    const participantNumber = normalizeText(payload?.participantNumber);
+    if (participantNumber) {
+      participantNumberMap.set(card.studentId, participantNumber);
+    }
+  });
 
   return {
     sitting,
     studentIds,
     historicalStudents,
     studentMap,
+    participantNumberMap,
   };
 }
 
@@ -116,8 +161,9 @@ function buildLayoutResponse(params: {
   sitting: Awaited<ReturnType<typeof loadSittingWithStudents>>['sitting'];
   historicalStudents: Awaited<ReturnType<typeof loadSittingWithStudents>>['historicalStudents'];
   studentMap: Awaited<ReturnType<typeof loadSittingWithStudents>>['studentMap'];
+  participantNumberMap: Awaited<ReturnType<typeof loadSittingWithStudents>>['participantNumberMap'];
 }) {
-  const { sitting, historicalStudents, studentMap } = params;
+  const { sitting, historicalStudents, studentMap, participantNumberMap } = params;
   const studentSeatMap = new Map<number, { seatLabel: string | null; rowIndex: number; columnIndex: number }>();
 
   (sitting.layout?.cells || []).forEach((cell) => {
@@ -168,6 +214,7 @@ function buildLayoutResponse(params: {
                     nis: student.nis || null,
                     nisn: student.nisn || null,
                     className: student.studentClass?.name || null,
+                    participantNumber: participantNumberMap.get(student.id) || null,
                   }
                 : null,
             };
@@ -181,6 +228,7 @@ function buildLayoutResponse(params: {
       nisn: student.nisn || null,
       className: student.studentClass?.name || null,
       seatLabel: studentSeatMap.get(student.id)?.seatLabel || null,
+      participantNumber: participantNumberMap.get(student.id) || null,
     })),
     meta: {
       studentCount: historicalStudents.length,

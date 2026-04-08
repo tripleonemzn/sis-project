@@ -1,4 +1,5 @@
 import { useEffect, useMemo, useState } from 'react';
+import { Feather } from '@expo/vector-icons';
 import { Redirect, useLocalSearchParams, useRouter } from 'expo-router';
 import { useQuery } from '@tanstack/react-query';
 import { Alert, Animated, Image, Pressable, RefreshControl, ScrollView, Text, TextInput, View } from 'react-native';
@@ -173,6 +174,9 @@ export default function StudentExamsScreen() {
   const [isCardsExpanded, setIsCardsExpanded] = useState(false);
   const [isPlacementsExpanded, setIsPlacementsExpanded] = useState(false);
   const seatBlink = useMemo(() => new Animated.Value(1), []);
+  const warningBlink = useMemo(() => new Animated.Value(1), []);
+  const [showRulesModal, setShowRulesModal] = useState(false);
+  const [showPlacementSeatDetail, setShowPlacementSeatDetail] = useState(false);
   const studentExamPlacementsQuery = useQuery({
     queryKey: ['mobile-student-exam-placements', user?.id || 'anon'],
     enabled:
@@ -275,6 +279,18 @@ export default function StudentExamsScreen() {
       animation.stop();
     };
   }, [seatBlink]);
+  useEffect(() => {
+    const animation = Animated.loop(
+      Animated.sequence([
+        Animated.timing(warningBlink, { toValue: 0.45, duration: 700, useNativeDriver: true }),
+        Animated.timing(warningBlink, { toValue: 1, duration: 700, useNativeDriver: true }),
+      ]),
+    );
+    animation.start();
+    return () => {
+      animation.stop();
+    };
+  }, [warningBlink]);
   const studentPlacements = useMemo(() => {
     const rows = studentExamPlacementsQuery.data || [];
     return rows
@@ -285,6 +301,13 @@ export default function StudentExamsScreen() {
       })
       .sort((a, b) => new Date(String(a.startTime || 0)).getTime() - new Date(String(b.startTime || 0)).getTime());
   }, [effectiveTypeFilter, studentExamPlacementsQuery.data]);
+  const selectedPlacementCard = useMemo(() => {
+    if (!selectedPlacement) return null;
+    const cards = studentExamCardsQuery.data || [];
+    const placementProgramCode = normalizeProgramCode(selectedPlacement.examType);
+    return cards.find((card) => normalizeProgramCode(card.payload.programCode || card.programCode) === placementProgramCode) || null;
+  }, [selectedPlacement, studentExamCardsQuery.data]);
+  const fallbackIdentityCard = useMemo(() => (studentExamCardsQuery.data || [])[0] || null, [studentExamCardsQuery.data]);
   const statusFilterOptions = useMemo(
     () => [
       { value: 'ALL', label: 'Semua Status' },
@@ -359,26 +382,47 @@ export default function StudentExamsScreen() {
         />
       }
     >
-      <Text style={{ fontSize: 24, fontWeight: '700', marginBottom: 6 }}>
-        {isCandidateMode
-          ? lockedProgramLabel || 'Tes Seleksi'
-          : isApplicantMode
-            ? lockedProgramLabel || 'Tes BKK'
-            : lockedProgramLabel || 'Ujian'}
-      </Text>
-      <Text style={{ color: '#64748b', marginBottom: 12 }}>
-        {isCandidateMode
-          ? lockedProgramLabel
-            ? `Lihat jadwal ${lockedProgramLabel.toLowerCase()} yang tersedia untuk calon siswa.`
-            : 'Lihat jadwal tes yang tersedia untuk calon siswa.'
-          : isApplicantMode
-            ? lockedProgramLabel
-              ? `Lihat jadwal ${lockedProgramLabel.toLowerCase()} yang terhubung dengan lamaran BKK Anda.`
-              : 'Lihat jadwal tes rekrutmen yang terhubung dengan lamaran BKK Anda.'
-            : lockedProgramLabel
-              ? `Lihat jadwal ${lockedProgramLabel.toLowerCase()} yang tersedia untuk kelas Anda.`
-              : 'Lihat jadwal ujian yang tersedia untuk kelas Anda.'}
-      </Text>
+      <View style={{ flexDirection: 'row', justifyContent: 'space-between', alignItems: 'flex-start', marginBottom: 12, gap: 12 }}>
+        <View style={{ flex: 1 }}>
+          <Text style={{ fontSize: 24, fontWeight: '700', marginBottom: 6 }}>
+            {isCandidateMode
+              ? lockedProgramLabel || 'Tes Seleksi'
+              : isApplicantMode
+                ? lockedProgramLabel || 'Tes BKK'
+                : lockedProgramLabel || 'Ujian'}
+          </Text>
+          <Text style={{ color: '#64748b' }}>
+            {isCandidateMode
+              ? lockedProgramLabel
+                ? `Lihat jadwal ${lockedProgramLabel.toLowerCase()} yang tersedia untuk calon siswa.`
+                : 'Lihat jadwal tes yang tersedia untuk calon siswa.'
+              : isApplicantMode
+                ? lockedProgramLabel
+                  ? `Lihat jadwal ${lockedProgramLabel.toLowerCase()} yang terhubung dengan lamaran BKK Anda.`
+                  : 'Lihat jadwal tes rekrutmen yang terhubung dengan lamaran BKK Anda.'
+                : lockedProgramLabel
+                  ? `Lihat jadwal ${lockedProgramLabel.toLowerCase()} yang tersedia untuk kelas Anda.`
+                  : 'Lihat jadwal ujian yang tersedia untuk kelas Anda.'}
+          </Text>
+        </View>
+        <Animated.View style={{ opacity: warningBlink }}>
+          <Pressable
+            onPress={() => setShowRulesModal(true)}
+            style={{
+              width: 42,
+              height: 42,
+              borderRadius: 21,
+              borderWidth: 1,
+              borderColor: '#fde68a',
+              backgroundColor: '#fef3c7',
+              alignItems: 'center',
+              justifyContent: 'center',
+            }}
+          >
+            <Feather name="alert-circle" size={20} color="#ca8a04" />
+          </Pressable>
+        </Animated.View>
+      </View>
 
       {applicantVerificationLocked ? (
         <View
@@ -529,51 +573,28 @@ export default function StudentExamsScreen() {
                         paddingVertical: 12,
                       }}
                     >
-                      <View style={{ alignItems: 'center', justifyContent: 'center' }}>
+                      <View style={{ flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: 12 }}>
                         {schoolLogoUrl ? (
                           <Image
                             source={{ uri: schoolLogoUrl }}
-                            style={{ width: 72, height: 72, marginBottom: 8 }}
+                            style={{ width: 72, height: 72 }}
                             resizeMode="contain"
                           />
                         ) : null}
-                        <Text style={{ color: '#0f172a', fontSize: 22, fontWeight: '500', textTransform: 'uppercase' }}>
-                          {card.payload.cardTitle || 'Kartu Peserta'}
-                        </Text>
-                        <Text
-                          style={{
-                            color: '#0f172a',
-                            fontSize: 15,
-                            fontWeight: '700',
-                            textTransform: 'uppercase',
-                            textAlign: 'center',
-                            marginTop: 2,
-                          }}
-                        >
-                          {card.payload.examTitle || card.payload.programLabel}
-                        </Text>
-                        <Text
-                          style={{
-                            color: '#0f172a',
-                            fontSize: 15,
-                            fontWeight: '700',
-                            textTransform: 'uppercase',
-                            textAlign: 'center',
-                          }}
-                        >
-                          {card.payload.institutionName || card.payload.schoolName}
-                        </Text>
-                        <Text
-                          style={{
-                            color: '#0f172a',
-                            fontSize: 15,
-                            fontWeight: '700',
-                            textTransform: 'uppercase',
-                            textAlign: 'center',
-                          }}
-                        >
-                          {card.payload.academicYearName}
-                        </Text>
+                        <View style={{ flexShrink: 1 }}>
+                          <Text style={{ color: '#0f172a', fontSize: 16, fontWeight: '700', textTransform: 'uppercase', textAlign: 'center' }}>
+                            {card.payload.cardTitle || 'Kartu Peserta'}
+                          </Text>
+                          <Text style={{ color: '#0f172a', fontSize: 16, fontWeight: '700', textTransform: 'uppercase', textAlign: 'center', marginTop: 2 }}>
+                            {card.payload.examTitle || card.payload.programLabel}
+                          </Text>
+                          <Text style={{ color: '#0f172a', fontSize: 16, fontWeight: '700', textTransform: 'uppercase', textAlign: 'center', marginTop: 2 }}>
+                            {card.payload.institutionName || card.payload.schoolName}
+                          </Text>
+                          <Text style={{ color: '#0f172a', fontSize: 16, fontWeight: '700', textTransform: 'uppercase', textAlign: 'center', marginTop: 2 }}>
+                            {`Tahun Ajaran ${card.payload.academicYearName}`}
+                          </Text>
+                        </View>
                       </View>
                     </View>
 
@@ -707,7 +728,7 @@ export default function StudentExamsScreen() {
             style={{ flexDirection: 'row', justifyContent: 'space-between', alignItems: 'flex-start', gap: 12 }}
           >
             <View style={{ flex: 1 }}>
-              <Text style={{ color: '#0f172a', fontSize: 18, fontWeight: '700' }}>Penempatan Ujian</Text>
+              <Text style={{ color: '#0f172a', fontSize: 18, fontWeight: '700' }}>Denah Ruang Ujian</Text>
               <Text style={{ color: '#64748b', marginTop: 4 }}>
                 Ruang, sesi, dan kursi yang ditetapkan Kurikulum akan muncul di sini meski kartu ujian digital belum dipublikasikan.
               </Text>
@@ -831,7 +852,10 @@ export default function StudentExamsScreen() {
                       </Text>
                     ) : null}
                     <Pressable
-                      onPress={() => setSelectedPlacement(placement)}
+                      onPress={() => {
+                        setSelectedPlacement(placement);
+                        setShowPlacementSeatDetail(false);
+                      }}
                       style={{
                         marginTop: 10,
                         alignSelf: 'flex-start',
@@ -1168,6 +1192,36 @@ export default function StudentExamsScreen() {
         <Text style={{ color: '#fff', fontWeight: '600' }}>Kembali ke Home</Text>
       </Pressable>
       <MobileDetailModal
+        visible={showRulesModal}
+        title={isApplicantMode ? 'Aturan Tes BKK' : 'Aturan Ujian'}
+        subtitle="Pastikan Anda memahami ketentuan berikut sebelum mulai."
+        iconName="alert-circle"
+        accentColor="#ca8a04"
+        onClose={() => setShowRulesModal(false)}
+      >
+        <View
+          style={{
+            borderWidth: 1,
+            borderColor: '#fde68a',
+            backgroundColor: '#fffbeb',
+            borderRadius: 14,
+            padding: 12,
+          }}
+        >
+          {[
+            `${isApplicantMode ? 'Tes BKK' : 'Ujian'} akan berjalan dalam mode fullscreen.`,
+            'Jangan keluar dari fullscreen atau membuka tab/aplikasi lain.',
+            'Anda memiliki 3x kesempatan pelanggaran.',
+            `Pelanggaran ke-4 akan otomatis submit ${isApplicantMode ? 'tes' : 'ujian'} Anda.`,
+            'Pastikan koneksi internet stabil sepanjang sesi berjalan.',
+          ].map((rule) => (
+            <Text key={rule} style={{ color: '#92400e', fontSize: 12, lineHeight: 20, marginBottom: 4 }}>
+              • {rule}
+            </Text>
+          ))}
+        </View>
+      </MobileDetailModal>
+      <MobileDetailModal
         visible={Boolean(selectedExam)}
         title={isApplicantMode ? 'Mulai Tes BKK?' : 'Mulai Ujian?'}
         subtitle="Pastikan Anda siap sebelum soal dibuka. Setelah mulai, sistem akan memantau pelanggaran selama ujian berlangsung."
@@ -1246,10 +1300,13 @@ export default function StudentExamsScreen() {
       <MobileDetailModal
         visible={Boolean(selectedPlacement)}
         title="Denah Ruang Ujian"
-        subtitle="Kotak hijau menandakan posisi duduk Anda."
+        subtitle="Kotak hijau menandakan posisi duduk Anda. Ketuk kotak tersebut untuk melihat detail kursi."
         iconName="grid"
         accentColor="#16a34a"
-        onClose={() => setSelectedPlacement(null)}
+        onClose={() => {
+          setSelectedPlacement(null);
+          setShowPlacementSeatDetail(false);
+        }}
       >
         {selectedPlacement ? (
           selectedPlacement.layout?.rows && selectedPlacement.layout?.columns ? (
@@ -1273,18 +1330,22 @@ export default function StudentExamsScreen() {
                     selectedPlacement.seatPosition.rowIndex === rowIndex &&
                     selectedPlacement.seatPosition.columnIndex === columnIndex;
                   return isSeat ? (
-                    <Animated.View
+                    <Pressable
                       key={`${rowIndex}-${columnIndex}`}
-                      style={{
-                        width: 24,
-                        height: 24,
-                        borderRadius: 6,
-                        borderWidth: 1,
-                        borderColor: '#34d399',
-                        backgroundColor: '#bbf7d0',
-                        opacity: seatBlink,
-                      }}
-                    />
+                      onPress={() => setShowPlacementSeatDetail(true)}
+                    >
+                      <Animated.View
+                        style={{
+                          width: 24,
+                          height: 24,
+                          borderRadius: 6,
+                          borderWidth: 1,
+                          borderColor: '#34d399',
+                          backgroundColor: '#bbf7d0',
+                          opacity: seatBlink,
+                        }}
+                      />
+                    </Pressable>
                   ) : (
                     <View
                       key={`${rowIndex}-${columnIndex}`}
@@ -1300,6 +1361,37 @@ export default function StudentExamsScreen() {
                   );
                 })}
               </View>
+              {showPlacementSeatDetail ? (
+                <View
+                  style={{
+                    alignSelf: 'stretch',
+                    marginTop: 14,
+                    borderWidth: 1,
+                    borderColor: '#bbf7d0',
+                    borderRadius: 14,
+                    backgroundColor: '#f0fdf4',
+                    padding: 12,
+                    gap: 6,
+                  }}
+                >
+                  <Text style={{ color: '#166534', fontWeight: '700' }}>Detail Kursi Peserta</Text>
+                  <Text style={{ color: '#166534', fontSize: 13 }}>
+                    Nama: {selectedPlacementCard?.payload.student.name || fallbackIdentityCard?.payload.student.name || '-'}
+                  </Text>
+                  <Text style={{ color: '#166534', fontSize: 13 }}>
+                    Kelas: {selectedPlacementCard?.payload.student.className || fallbackIdentityCard?.payload.student.className || '-'}
+                  </Text>
+                  <Text style={{ color: '#166534', fontSize: 13 }}>
+                    Username: {selectedPlacementCard?.payload.student.username || fallbackIdentityCard?.payload.student.username || '-'}
+                  </Text>
+                  <Text style={{ color: '#1d4ed8', fontSize: 13, fontWeight: '700' }}>
+                    No. Peserta: {selectedPlacementCard?.payload.participantNumber || '-'}
+                  </Text>
+                  <Text style={{ color: '#166534', fontSize: 13 }}>Ruang: {selectedPlacement.roomName}</Text>
+                  <Text style={{ color: '#166534', fontSize: 13 }}>Kursi: {selectedPlacement.seatLabel || '-'}</Text>
+                  <Text style={{ color: '#166534', fontSize: 13 }}>Sesi: {selectedPlacement.sessionLabel || '-'}</Text>
+                </View>
+              ) : null}
             </View>
           ) : (
             <View

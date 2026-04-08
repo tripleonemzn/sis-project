@@ -132,7 +132,7 @@ function buildExamCardSheet(card: ExamGeneratedCardPayload) {
           <div class="card-title">${escapeHtml(card.cardTitle || 'KARTU PESERTA')}</div>
           <div class="card-program">${escapeHtml(card.examTitle || card.programLabel)}</div>
           <div class="card-school">${escapeHtml(card.institutionName || card.schoolName)}</div>
-          <div class="card-year">${escapeHtml(card.academicYearName)}</div>
+          <div class="card-year">${escapeHtml(`Tahun Ajaran ${card.academicYearName}`)}</div>
         </div>
       </div>
 
@@ -339,6 +339,14 @@ function buildExamCardsHtml(cards: ExamGeneratedCardPayload[]) {
 function matchesSearch(keyword: string, values: Array<string | null | undefined>) {
   if (!keyword) return true;
   return values.some((value) => String(value || '').toLowerCase().includes(keyword));
+}
+
+function formatEntryMeta(entry: ExamCardOverviewRow['entries'][number]) {
+  const parts = [
+    String(entry.sessionLabel || '').trim() ? String(entry.sessionLabel || '').trim() : '',
+    entry.seatLabel ? `Kursi ${entry.seatLabel}` : '',
+  ].filter(Boolean);
+  return parts.join(' • ');
 }
 
 function statusPill(row: ExamCardOverviewRow) {
@@ -684,42 +692,46 @@ export function StaffHeadTuExamCardsScreen() {
           </Text>
         ) : null}
 
-        <Text style={{ color: '#64748b', fontSize: 12, marginBottom: 4 }}>Lokasi TTD Kepala Sekolah</Text>
-        <TextInput
-          value={issueLocation}
-          onChangeText={setIssueLocation}
-          placeholder="Contoh: Bekasi"
-          placeholderTextColor="#94a3b8"
-          style={{
-            borderWidth: 1,
-            borderColor: '#cbd5e1',
-            borderRadius: 10,
-            paddingHorizontal: 12,
-            paddingVertical: 10,
-            color: '#0f172a',
-            backgroundColor: '#fff',
-            marginBottom: 12,
-          }}
-        />
-
-        <Text style={{ color: '#64748b', fontSize: 12, marginBottom: 4 }}>Tanggal Terbit</Text>
-        <TextInput
-          value={issueDate}
-          onChangeText={setIssueDate}
-          placeholder="YYYY-MM-DD"
-          placeholderTextColor="#94a3b8"
-          autoCapitalize="none"
-          style={{
-            borderWidth: 1,
-            borderColor: '#cbd5e1',
-            borderRadius: 10,
-            paddingHorizontal: 12,
-            paddingVertical: 10,
-            color: '#0f172a',
-            backgroundColor: '#fff',
-            marginBottom: 12,
-          }}
-        />
+        <View style={{ flexDirection: 'row', gap: 10, marginBottom: 12 }}>
+          <View style={{ flex: 1 }}>
+            <Text style={{ color: '#64748b', fontSize: 12, marginBottom: 4 }}>Lokasi TTD Kepala Sekolah</Text>
+            <TextInput
+              value={issueLocation}
+              onChangeText={setIssueLocation}
+              placeholder="Contoh: Bekasi"
+              placeholderTextColor="#94a3b8"
+              style={{
+                borderWidth: 1,
+                borderColor: '#cbd5e1',
+                borderRadius: 10,
+                paddingHorizontal: 12,
+                paddingVertical: 10,
+                color: '#0f172a',
+                backgroundColor: '#fff',
+              }}
+            />
+          </View>
+          <View style={{ flex: 1 }}>
+            <Text style={{ color: '#64748b', fontSize: 12, marginBottom: 4 }}>Tanggal Terbit</Text>
+            <TextInput
+              value={issueDate}
+              onChangeText={setIssueDate}
+              placeholder="YYYY-MM-DD"
+              placeholderTextColor="#94a3b8"
+              autoCapitalize="none"
+              style={{
+                borderWidth: 1,
+                borderColor: '#cbd5e1',
+                borderRadius: 10,
+                paddingHorizontal: 12,
+                paddingVertical: 10,
+                color: '#0f172a',
+                backgroundColor: '#fff',
+              }}
+            />
+            <Text style={{ color: '#94a3b8', fontSize: 11, marginTop: 4 }}>Tanggal cetak kartu.</Text>
+          </View>
+        </View>
 
         <Text style={{ color: '#64748b', fontSize: 12, marginBottom: 4 }}>Cari siswa / ruang / kursi</Text>
         <TextInput
@@ -902,9 +914,11 @@ export function StaffHeadTuExamCardsScreen() {
                           }}
                         >
                           <Text style={{ color: BRAND_COLORS.textDark, fontWeight: '700' }}>{entry.roomName}</Text>
-                          <Text style={{ marginTop: 4, color: BRAND_COLORS.textMuted, fontSize: 12 }}>
-                            {entry.sessionLabel || '-'} • Kursi {entry.seatLabel || '-'}
-                          </Text>
+                          {formatEntryMeta(entry) ? (
+                            <Text style={{ marginTop: 4, color: BRAND_COLORS.textMuted, fontSize: 12 }}>
+                              {formatEntryMeta(entry)}
+                            </Text>
+                          ) : null}
                           <Text style={{ marginTop: 4, color: BRAND_COLORS.textMuted, fontSize: 12 }}>
                             {formatDateTime(entry.startTime)} - {formatDateTime(entry.endTime)}
                           </Text>

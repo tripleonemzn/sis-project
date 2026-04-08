@@ -45,6 +45,7 @@ type LayoutStudent = {
   nisn?: string | null;
   className?: string | null;
   seatLabel?: string | null;
+  participantNumber?: string | null;
 };
 
 type LayoutCell = {
@@ -60,6 +61,7 @@ type LayoutCell = {
     nis?: string | null;
     nisn?: string | null;
     className?: string | null;
+    participantNumber?: string | null;
   } | null;
 };
 
@@ -1090,6 +1092,11 @@ export default function ExamRoomLayoutManagementPage() {
                                           : 'Penempatan mengikuti pengaturan rombel.'
                                         : 'Gunakan untuk jalur pengawas atau jarak antar kursi.'}
                                     </div>
+                                    {isSeat ? (
+                                      <div className="mt-1 text-xs font-medium text-blue-700">
+                                        No. Peserta {currentStudent?.participantNumber || '-'}
+                                      </div>
+                                    ) : null}
                                   </div>
                                 </div>
                               );

@@ -677,7 +677,8 @@ export const UserProfilePage = () => {
   const isStudentProfile = profileVariant === 'student';
   const isCandidateProfile = profileVariant === 'candidate';
   const isParentProfile = profileVariant === 'parent';
-  const usesStructuredSupportingDocuments = isEmployeeProfile || fixedRole === 'ADMIN';
+  const usesStructuredSupportingDocuments =
+    isEmployeeProfile || fixedRole === 'ADMIN' || fixedRole === 'STUDENT';
 
   const { data: studentsForParent } = useQuery<{ data: User[] }>({
     queryKey: ['students-for-parent'],

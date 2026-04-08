@@ -167,7 +167,7 @@ function buildExamCardMarkup(card: ExamGeneratedCardPayload) {
           <div class="card-title">${escapeHtml(card.cardTitle || 'KARTU PESERTA')}</div>
           <div class="card-program">${escapeHtml(card.examTitle || card.programLabel)}</div>
           <div class="card-school">${escapeHtml(card.institutionName || card.schoolName)}</div>
-          <div class="card-year">${escapeHtml(card.academicYearName)}</div>
+          <div class="card-year">${escapeHtml(`Tahun Ajaran ${card.academicYearName}`)}</div>
         </div>
       </div>
 
@@ -398,7 +398,11 @@ function getProgramTabIcon(programCode: string) {
 }
 
 function formatEntryMeta(entry: ExamCardOverviewRow['entries'][number]) {
-  const parts = [String(entry.sessionLabel || '').trim(), entry.seatLabel ? `Kursi ${entry.seatLabel}` : ''].filter(Boolean);
+  const normalizedSessionLabel = String(entry.sessionLabel || '').trim();
+  const parts = [
+    normalizedSessionLabel && normalizedSessionLabel !== '-' ? normalizedSessionLabel : '',
+    entry.seatLabel ? `Kursi ${entry.seatLabel}` : '',
+  ].filter(Boolean);
   return parts.join(' • ');
 }
 
@@ -595,8 +599,8 @@ export function HeadTuExamCardsPanel() {
       </div>
 
       <div className="rounded-xl border border-gray-100 bg-white p-4 shadow-sm">
-        <div className="grid gap-4 xl:grid-cols-[minmax(0,1fr)_220px_auto_auto] xl:items-end">
-          <div>
+        <div className="grid gap-4 xl:grid-cols-[220px_220px_auto_auto] xl:items-start xl:justify-between">
+          <div className="xl:max-w-[220px]">
             <label className="mb-1 block text-xs font-semibold uppercase tracking-wide text-gray-500">Lokasi TTD Kepala Sekolah</label>
             <input
               type="text"
@@ -609,7 +613,7 @@ export function HeadTuExamCardsPanel() {
               Lokasi ini dipakai pada area legalitas kartu ujian digital dan hasil print fisik.
             </p>
           </div>
-          <div>
+          <div className="xl:max-w-[220px]">
             <label className="mb-1 block text-xs font-semibold uppercase tracking-wide text-gray-500">Tanggal Terbit</label>
             <input
               type="date"
@@ -617,7 +621,7 @@ export function HeadTuExamCardsPanel() {
               onChange={(event) => setIssueDate(event.target.value)}
               className="w-full rounded-lg border border-gray-300 px-3 py-2 text-sm focus:border-blue-500 focus:outline-none"
             />
-            <p className="mt-1 text-xs text-gray-500">Tanggal ini dipakai untuk generate seluruh kartu program yang dipilih.</p>
+            <p className="mt-1 text-xs text-gray-500">Tanggal cetak kartu.</p>
           </div>
           <button
             type="button"
@@ -629,7 +633,7 @@ export function HeadTuExamCardsPanel() {
               overviewQuery.data.summary.eligibleStudents === 0 ||
               generateMutation.isPending
             }
-            className="inline-flex items-center justify-center rounded-lg bg-blue-600 px-4 py-2.5 text-sm font-semibold text-white hover:bg-blue-700 disabled:cursor-not-allowed disabled:bg-blue-300"
+            className="inline-flex items-center justify-center rounded-lg bg-blue-600 px-4 py-2.5 text-sm font-semibold text-white hover:bg-blue-700 disabled:cursor-not-allowed disabled:bg-blue-300 xl:mt-[22px]"
           >
             {generateMutation.isPending ? <Loader2 className="mr-2 h-4 w-4 animate-spin" /> : <Sparkles className="mr-2 h-4 w-4" />}
             Generate Kartu Ujian
@@ -638,7 +642,7 @@ export function HeadTuExamCardsPanel() {
             type="button"
             onClick={handlePrintAll}
             disabled={printableCards.length === 0}
-            className="inline-flex items-center justify-center rounded-lg border border-rose-200 bg-rose-50 px-4 py-2.5 text-sm font-semibold text-rose-700 hover:bg-rose-100 disabled:cursor-not-allowed disabled:opacity-60"
+            className="inline-flex items-center justify-center rounded-lg border border-rose-200 bg-rose-50 px-4 py-2.5 text-sm font-semibold text-rose-700 hover:bg-rose-100 disabled:cursor-not-allowed disabled:opacity-60 xl:mt-[22px]"
           >
             <Printer className="mr-2 h-4 w-4" />
             Print Semua
@@ -725,7 +729,15 @@ export function HeadTuExamCardsPanel() {
         ) : filteredRows.length === 0 ? (
           <div className="py-12 text-center text-sm text-gray-500">Belum ada data siswa yang sesuai dengan filter.</div>
         ) : (
-          <div className="divide-y divide-gray-200">
+          <div>
+            <div className="hidden border-b border-gray-100 bg-slate-50/80 px-5 py-3 xl:grid xl:grid-cols-[minmax(0,1.2fr)_minmax(0,0.9fr)_240px_260px_auto] xl:gap-4">
+              <div className="text-xs font-semibold uppercase tracking-wide text-slate-500">Nama Siswa</div>
+              <div className="text-xs font-semibold uppercase tracking-wide text-slate-500">Ruang & Kursi</div>
+              <div className="text-xs font-semibold uppercase tracking-wide text-slate-500">Status</div>
+              <div className="text-xs font-semibold uppercase tracking-wide text-slate-500">Catatan</div>
+              <div className="text-right text-xs font-semibold uppercase tracking-wide text-slate-500">Print</div>
+            </div>
+            <div className="divide-y divide-gray-200">
             {filteredRows.map((row) => {
               const primaryEntry = row.card?.payload?.placement || row.entries[0] || null;
               const isExpanded = expandedStudentId === row.studentId;
@@ -749,7 +761,8 @@ export function HeadTuExamCardsPanel() {
                       <div className="mt-2 inline-flex rounded-full border border-blue-100 bg-blue-50 px-2.5 py-1 text-[11px] font-semibold text-blue-700">
                         No. Peserta {row.participantNumber || '-'}
                       </div>
-                      <div className="mt-2 text-xs text-gray-600">Kelas: {row.className || '-'}</div>
+                      <div className="mt-2 text-xs text-gray-600">NIS: {row.nis || '-'}</div>
+                      <div className="mt-1 text-xs text-gray-600">Kelas: {row.className || '-'}</div>
                     </div>
 
                     <div className="min-w-0 text-sm text-gray-700">
@@ -777,9 +790,7 @@ export function HeadTuExamCardsPanel() {
                             <ClipboardList className="mr-1.5 h-3.5 w-3.5" />
                             Sudah Dipublikasikan
                           </div>
-                          <div className="mt-2 text-xs text-rose-700">
-                            Kartu aktif • diterbitkan {formatDateTime(row.card.generatedAt)}.
-                          </div>
+                          <div className="mt-2 text-xs text-rose-700">Kartu aktif • diterbitkan {formatDateTime(row.card.generatedAt)}.</div>
                         </>
                       ) : row.eligibility.isEligible ? (
                         <>
@@ -886,6 +897,7 @@ export function HeadTuExamCardsPanel() {
                 </div>
               );
             })}
+            </div>
           </div>
         )}
       </div>

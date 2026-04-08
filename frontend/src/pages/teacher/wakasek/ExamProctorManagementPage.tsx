@@ -184,6 +184,30 @@ const compareClassName = (a: string, b: string): number =>
 const mergeProctorReportNotes = (notes?: string | null, incident?: string | null) =>
   [String(notes || '').trim(), String(incident || '').trim()].filter(Boolean).join(' ');
 
+const parseSafeDate = (value?: string | null) => {
+  if (!value) return null;
+  const date = new Date(value);
+  return Number.isNaN(date.getTime()) ? null : date;
+};
+
+const formatSafeTime = (value?: string | null) => {
+  const date = parseSafeDate(value);
+  return date ? format(date, 'HH:mm') : '-';
+};
+
+const formatSafeDateTime = (value?: string | null) => {
+  const date = parseSafeDate(value);
+  return date ? format(date, 'dd/MM/yyyy HH:mm') : '-';
+};
+
+const sanitizeDateInputValue = (value?: string | null) => {
+  const raw = String(value || '').trim();
+  if (!raw) return '';
+  if (!/^\d{4}-\d{2}-\d{2}$/.test(raw)) return '';
+  const date = new Date(`${raw}T00:00:00`);
+  return Number.isNaN(date.getTime()) ? '' : raw;
+};
+
 // --- Components ---
 
 const SearchableSelect = ({ 
@@ -383,10 +407,10 @@ const ExamProctorManagementPage = () => {
   const [reportsLoading, setReportsLoading] = useState(false);
   
   // Filters
-  const [selectedDate, setSelectedDate] = useState<string>(() => String(searchParams.get(dateParamKey) || ''));
+  const [selectedDate, setSelectedDate] = useState<string>(() => sanitizeDateInputValue(searchParams.get(dateParamKey)));
   const [reportMode, setReportMode] = useState<'daily' | 'archive'>('daily');
-  const [reportDateFrom, setReportDateFrom] = useState<string>(() => String(searchParams.get('mengawasReportFrom') || ''));
-  const [reportDateTo, setReportDateTo] = useState<string>(() => String(searchParams.get('mengawasReportTo') || ''));
+  const [reportDateFrom, setReportDateFrom] = useState<string>(() => sanitizeDateInputValue(searchParams.get('mengawasReportFrom')));
+  const [reportDateTo, setReportDateTo] = useState<string>(() => sanitizeDateInputValue(searchParams.get('mengawasReportTo')));
   const selectedAcademicYear = activeAcademicYear?.id ? String(activeAcademicYear.id) : '';
   const [proctorReports, setProctorReports] = useState<ProctorReportRow[]>([]);
   const [proctorReportSummary, setProctorReportSummary] = useState<ProctorReportSummary>({
@@ -1042,7 +1066,7 @@ const ExamProctorManagementPage = () => {
             <input 
               type="date" 
               value={selectedDate}
-              onChange={(e) => setSelectedDate(e.target.value)}
+              onChange={(e) => setSelectedDate(sanitizeDateInputValue(e.target.value))}
               className="pl-10 pr-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500 text-sm"
             />
           </div>
@@ -1085,7 +1109,7 @@ const ExamProctorManagementPage = () => {
                       <div className="flex items-center gap-2">
                         <Clock className="text-blue-600" size={16} />
                         <span className="text-lg font-bold text-gray-900">
-                          {format(new Date(group.start), 'HH:mm')} - {format(new Date(group.end), 'HH:mm')} WIB
+                          {formatSafeTime(group.start)} - {formatSafeTime(group.end)} WIB
                         </span>
                       </div>
                       <span className="text-sm text-gray-500 mt-0.5">
@@ -1405,7 +1429,7 @@ const ExamProctorManagementPage = () => {
                 <input
                   type="date"
                   value={reportDateFrom}
-                  onChange={(event) => setReportDateFrom(event.target.value)}
+                  onChange={(event) => setReportDateFrom(sanitizeDateInputValue(event.target.value))}
                   onClick={(event) => event.stopPropagation()}
                   className="pl-9 pr-3 py-2 border border-gray-300 rounded-lg text-xs focus:ring-2 focus:ring-blue-500 focus:border-blue-500"
                 />
@@ -1416,7 +1440,7 @@ const ExamProctorManagementPage = () => {
                 <input
                   type="date"
                   value={reportDateTo}
-                  onChange={(event) => setReportDateTo(event.target.value)}
+                  onChange={(event) => setReportDateTo(sanitizeDateInputValue(event.target.value))}
                   onClick={(event) => event.stopPropagation()}
                   className="pl-9 pr-3 py-2 border border-gray-300 rounded-lg text-xs focus:ring-2 focus:ring-blue-500 focus:border-blue-500"
                 />
@@ -1480,7 +1504,7 @@ const ExamProctorManagementPage = () => {
                     </td>
                     <td className="px-6 py-4 align-top">
                       <div className="font-medium text-gray-900">
-                        {format(new Date(row.startTime), 'HH:mm')} - {format(new Date(row.endTime), 'HH:mm')} WIB
+                        {formatSafeTime(row.startTime)} - {formatSafeTime(row.endTime)} WIB
                       </div>
                       <div className="text-xs text-gray-500 mt-1">{row.sessionLabel || 'Tanpa sesi'}</div>
                     </td>
@@ -1519,7 +1543,7 @@ const ExamProctorManagementPage = () => {
                         <>
                           <div className="font-medium text-gray-900">{row.report.proctor.name}</div>
                           <div className="text-xs text-gray-500 mt-1">
-                            Dikirim {format(new Date(row.report.signedAt), 'dd/MM/yyyy HH:mm')}
+                            Dikirim {formatSafeDateTime(row.report.signedAt)}
                           </div>
                         </>
                       ) : (
@@ -1588,8 +1612,8 @@ const ExamProctorManagementPage = () => {
                 <div>
                   <h3 className="text-lg font-semibold text-gray-900">Daftar Siswa Tidak Hadir</h3>
                   <p className="text-xs text-gray-500 mt-1">
-                    {absentModalRow.room || 'Belum ditentukan'} • {format(new Date(absentModalRow.startTime), 'HH:mm')} -{' '}
-                    {format(new Date(absentModalRow.endTime), 'HH:mm')} WIB
+                    {absentModalRow.room || 'Belum ditentukan'} • {formatSafeTime(absentModalRow.startTime)} -{' '}
+                    {formatSafeTime(absentModalRow.endTime)} WIB
                     {absentModalRow.sessionLabel ? ` • ${absentModalRow.sessionLabel}` : ''}
                   </p>
                 </div>

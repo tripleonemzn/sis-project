@@ -786,20 +786,27 @@ export default function TeacherWakakurRoomLayoutScreen() {
                                   </Text>
                                 </View>
 
-                                <Text
-                                  numberOfLines={2}
-                                  style={{
-                                    color: isSeat ? '#64748b' : '#94a3b8',
-                                    fontSize: 11,
-                                    lineHeight: 16,
-                                  }}
-                                >
-                                  {isSeat
-                                    ? assignedStudent
-                                      ? formatStudentMeta(assignedStudent)
-                                      : 'Penempatan mengikuti urutan rombel.'
-                                    : 'Dipakai untuk jalur pengawas atau jarak antar kursi.'}
-                                </Text>
+                                <View>
+                                  <Text
+                                    numberOfLines={2}
+                                    style={{
+                                      color: isSeat ? '#64748b' : '#94a3b8',
+                                      fontSize: 11,
+                                      lineHeight: 16,
+                                    }}
+                                  >
+                                    {isSeat
+                                      ? assignedStudent
+                                        ? formatStudentMeta(assignedStudent)
+                                        : 'Penempatan mengikuti urutan rombel.'
+                                      : 'Dipakai untuk jalur pengawas atau jarak antar kursi.'}
+                                  </Text>
+                                  {isSeat ? (
+                                    <Text style={{ color: '#1d4ed8', fontSize: 11, fontWeight: '700', marginTop: 4 }}>
+                                      No. Peserta {assignedStudent?.participantNumber || '-'}
+                                    </Text>
+                                  ) : null}
+                                </View>
                               </View>
                             );
                           })}

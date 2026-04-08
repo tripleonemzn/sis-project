@@ -12,7 +12,6 @@ import {
   type ExamEligibilityStatus,
 } from '../services/examEligibility.service';
 import {
-  listHistoricalStudentsByIdsForAcademicYear,
   listHistoricalStudentsForClass,
 } from '../utils/studentAcademicHistory';
 
@@ -127,6 +126,20 @@ function normalizeDocumentTitle(value: unknown) {
     .replace(/[^A-Z0-9]+/g, ' ')
     .replace(/\s+/g, ' ')
     .trim();
+}
+
+function normalizeOptionalSessionLabel(raw: unknown) {
+  const normalized = normalizeText(raw).replace(/\s+/g, ' ').trim();
+  return normalized || null;
+}
+
+function resolveProgramCodeCandidates(params: {
+  programCode: string;
+  baseTypeCode?: string | null;
+}) {
+  return Array.from(
+    new Set([normalizeAliasCode(params.programCode), normalizeAliasCode(params.baseTypeCode)].filter(Boolean)),
+  );
 }
 
 function getFirstHeaderValue(value: string | string[] | undefined): string {
@@ -529,22 +542,98 @@ async function buildExamCardOverview(params: {
     sittingSemesters: sittings.map((item) => item.semester || null),
   });
 
-  const allStudentIds = Array.from(
-    new Set(
-      sittings.flatMap((sitting) =>
-        (sitting.students || [])
-          .map((item) => Number(item.studentId))
-          .filter((studentId) => Number.isFinite(studentId) && studentId > 0),
-      ),
-    ),
+  const scheduleProgramCandidates = resolveProgramCodeCandidates({
+    programCode: normalizedProgramCode,
+    baseTypeCode: programConfig?.baseTypeCode || null,
+  });
+
+  const activeSchedules = await prisma.examSchedule.findMany({
+    where: {
+      academicYearId: params.academicYearId,
+      semester,
+      isActive: true,
+      OR: [
+        {
+          examType: {
+            in: scheduleProgramCandidates,
+          },
+        },
+        {
+          packet: {
+            is: {
+              programCode: {
+                in: scheduleProgramCandidates,
+              },
+            },
+          },
+        },
+      ],
+    },
+    select: {
+      classId: true,
+      room: true,
+      startTime: true,
+      endTime: true,
+      sessionLabel: true,
+      class: {
+        select: {
+          name: true,
+          level: true,
+        },
+      },
+      programSession: {
+        select: {
+          label: true,
+        },
+      },
+    },
+  });
+
+  const scheduledClassIds = new Set(
+    activeSchedules
+      .map((schedule) => Number(schedule.classId || 0))
+      .filter((classId) => Number.isFinite(classId) && classId > 0),
+  );
+  const uniqueClassIds = Array.from(scheduledClassIds).sort((left, right) => left - right);
+  const classMetaMap = new Map(
+    activeSchedules
+      .map((schedule) => {
+        const classId = Number(schedule.classId || 0);
+        if (!Number.isFinite(classId) || classId <= 0) return null;
+        return [
+          classId,
+          {
+            name: schedule.class?.name || null,
+            level: schedule.class?.level || null,
+          },
+        ] as const;
+      })
+      .filter(Boolean) as Array<readonly [number, { name: string | null; level: string | null }]>,
   );
 
-  const [historicalStudents, studentProfiles, generatedCards] = await Promise.all([
-    listHistoricalStudentsByIdsForAcademicYear(allStudentIds, params.academicYearId),
-    allStudentIds.length > 0
+  const rosterRows = await Promise.all(
+    uniqueClassIds.map(async (classId) => ({
+      classId,
+      className: classMetaMap.get(classId)?.name || null,
+      classLevelNumber: resolveClassLevelNumber(classMetaMap.get(classId)?.level || null) || null,
+      students: await listHistoricalStudentsForClass(classId, params.academicYearId),
+    })),
+  );
+
+  const scheduledHistoricalStudents = Array.from(
+    new Map(
+      rosterRows.flatMap(({ students }) =>
+        students.map((student) => [student.id, student] as const),
+      ),
+    ).values(),
+  );
+  const scheduledStudentIds = scheduledHistoricalStudents.map((student) => student.id);
+
+  const [studentProfiles, generatedCards] = await Promise.all([
+    scheduledStudentIds.length > 0
       ? prisma.user.findMany({
           where: {
-            id: { in: allStudentIds },
+            id: { in: scheduledStudentIds },
           },
           select: {
             id: true,
@@ -566,7 +655,7 @@ async function buildExamCardOverview(params: {
         programCode: normalizedProgramCode,
         semester,
         status: ExamGeneratedCardStatus.ACTIVE,
-        ...(allStudentIds.length > 0 ? { studentId: { in: allStudentIds } } : {}),
+        ...(scheduledStudentIds.length > 0 ? { studentId: { in: scheduledStudentIds } } : {}),
       },
       select: {
         id: true,
@@ -581,10 +670,12 @@ async function buildExamCardOverview(params: {
     academicYearId: params.academicYearId,
     semester,
     programCode: normalizedProgramCode,
-    students: historicalStudents,
+    students: scheduledHistoricalStudents,
   });
 
-  const studentMap = new Map(historicalStudents.map((student) => [student.id, student]));
+  const eligibleHistoricalStudents = scheduledHistoricalStudents;
+  const allowedStudentIds = new Set(eligibleHistoricalStudents.map((student) => student.id));
+  const studentMap = new Map(eligibleHistoricalStudents.map((student) => [student.id, student]));
   const usernameMap = new Map(studentProfiles.map((student) => [student.id, student.username || '-']));
   const studentAssetMap = new Map(
     studentProfiles.map((student) => [
@@ -597,25 +688,46 @@ async function buildExamCardOverview(params: {
   );
   const generatedCardMap = new Map(generatedCards.map((card) => [card.studentId, card]));
   const entriesByStudent = new Map<number, ExamCardEntrySnapshot[]>();
+  const scheduleEntriesByClassId = new Map<
+    number,
+    Array<{
+      roomName: string;
+      roomToken: string;
+      sessionLabel: string | null;
+      sessionToken: string;
+      startTime: Date | null;
+      endTime: Date | null;
+    }>
+  >();
 
-  const uniqueClassIds = Array.from(
-    new Set(
-      historicalStudents
-        .map((student) => Number(student.studentClass?.id || 0))
-        .filter((classId) => Number.isFinite(classId) && classId > 0),
-    ),
-  );
-  const rosterRows = await Promise.all(
-    uniqueClassIds.map(async (classId) => ({
-      classId,
-      className: historicalStudents.find((student) => Number(student.studentClass?.id || 0) === classId)?.studentClass?.name || null,
-      classLevelNumber:
-        resolveClassLevelNumber(
-          historicalStudents.find((student) => Number(student.studentClass?.id || 0) === classId)?.studentClass?.level || null,
-        ) || null,
-      students: await listHistoricalStudentsForClass(classId, params.academicYearId),
-    })),
-  );
+  activeSchedules.forEach((schedule) => {
+    const classId = Number(schedule.classId || 0);
+    if (!Number.isFinite(classId) || classId <= 0) return;
+    const current = scheduleEntriesByClassId.get(classId) || [];
+    const normalizedRoomName = normalizeText(schedule.room) || null;
+    if (!normalizedRoomName) return;
+    const normalizedSessionLabel = normalizeOptionalSessionLabel(schedule.programSession?.label || schedule.sessionLabel);
+    current.push({
+      roomName: normalizedRoomName,
+      roomToken: normalizedRoomName.toLowerCase(),
+      sessionLabel: normalizedSessionLabel,
+      sessionToken: normalizedSessionLabel?.toLowerCase() || '__no_session__',
+      startTime: schedule.startTime || null,
+      endTime: schedule.endTime || null,
+    });
+    scheduleEntriesByClassId.set(classId, current);
+  });
+
+  scheduleEntriesByClassId.forEach((entries, classId) => {
+    entries.sort((left, right) => {
+      const leftTime = left.startTime ? left.startTime.getTime() : Number.MAX_SAFE_INTEGER;
+      const rightTime = right.startTime ? right.startTime.getTime() : Number.MAX_SAFE_INTEGER;
+      if (leftTime !== rightTime) return leftTime - rightTime;
+      return left.roomName.localeCompare(right.roomName, 'id-ID', { numeric: true, sensitivity: 'base' });
+    });
+    scheduleEntriesByClassId.set(classId, entries);
+  });
+
   const participantSequenceMap = new Map<number, number>();
   const rosterRowsByLevel = new Map<
     string,
@@ -668,21 +780,35 @@ async function buildExamCardOverview(params: {
 
     (sitting.students || []).forEach((item) => {
       const studentId = Number(item.studentId);
-      if (!studentMap.has(studentId)) return;
+      const student = studentMap.get(studentId);
+      if (!allowedStudentIds.has(studentId) || !student) return;
+      const classId = Number(student.studentClass?.id || 0);
+      if (!Number.isFinite(classId) || classId <= 0) return;
+      const normalizedRoomName = normalizeText(sitting.roomName);
+      if (!normalizedRoomName) return;
+      const normalizedSittingSession = normalizeOptionalSessionLabel(sitting.programSession?.label || sitting.sessionLabel);
+      const normalizedSittingSessionToken = normalizedSittingSession?.toLowerCase() || '__no_session__';
+      const matchedSchedule =
+        (scheduleEntriesByClassId.get(classId) || []).find(
+          (entry) => entry.roomToken === normalizedRoomName.toLowerCase() && entry.sessionToken === normalizedSittingSessionToken,
+        ) ||
+        (scheduleEntriesByClassId.get(classId) || []).find((entry) => entry.roomToken === normalizedRoomName.toLowerCase()) ||
+        null;
+      if (!matchedSchedule) return;
       const current = entriesByStudent.get(studentId) || [];
       current.push({
         sittingId: sitting.id,
-        roomName: sitting.roomName,
-        sessionLabel: normalizeText(sitting.programSession?.label || sitting.sessionLabel) || null,
-        startTime: sitting.startTime,
-        endTime: sitting.endTime,
+        roomName: normalizedRoomName,
+        sessionLabel: normalizedSittingSession || matchedSchedule.sessionLabel || null,
+        startTime: matchedSchedule.startTime,
+        endTime: matchedSchedule.endTime,
         seatLabel: seatLabelByStudent.get(studentId) || null,
       });
       entriesByStudent.set(studentId, current);
     });
   });
 
-  const rows = historicalStudents.reduce<ExamCardOverviewRow[]>((accumulator, student) => {
+  const rows = eligibleHistoricalStudents.reduce<ExamCardOverviewRow[]>((accumulator, student) => {
     const eligibility = eligibilityMap.get(student.id);
     if (!eligibility) {
       return accumulator;

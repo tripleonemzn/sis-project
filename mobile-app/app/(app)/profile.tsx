@@ -800,7 +800,8 @@ export default function ProfileScreen() {
   const profilePhotoUrl = resolveMediaUrl(profile?.photo);
   const canUploadPhoto = ['ADMIN', 'TEACHER', 'PRINCIPAL', 'STAFF', 'EXAMINER', 'EXTRACURRICULAR_TUTOR', 'STUDENT', 'PARENT', 'CALON_SISWA'].includes(profile?.role || '');
   const canUploadDocuments = ['ADMIN', 'TEACHER', 'PRINCIPAL', 'STAFF', 'EXAMINER', 'EXTRACURRICULAR_TUTOR', 'STUDENT', 'CALON_SISWA'].includes(profile?.role || '');
-  const usesStructuredSupportingDocuments = isEmployee || profile?.role === 'ADMIN';
+  const usesStructuredSupportingDocuments =
+    isEmployee || profile?.role === 'ADMIN' || profile?.role === 'STUDENT';
   const [photoUploading, setPhotoUploading] = useState(false);
   const [documentUploading, setDocumentUploading] = useState(false);
   const [candidateDocumentCategory, setCandidateDocumentCategory] = useState<string>(

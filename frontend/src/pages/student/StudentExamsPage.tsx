@@ -323,6 +323,8 @@ export default function StudentExamsPage() {
   const [examPrograms, setExamPrograms] = useState<ExamProgram[]>([])
   const [isCardsExpanded, setIsCardsExpanded] = useState(false)
   const [isPlacementsExpanded, setIsPlacementsExpanded] = useState(false)
+  const [showExamRulesModal, setShowExamRulesModal] = useState(false)
+  const [showPlacementSeatDetail, setShowPlacementSeatDetail] = useState(false)
   const [serverTimeDrift, setServerTimeDrift] = useState<ServerTimeDriftState | null>(null)
   const lockedProgramCode = programFilter !== 'all' ? programFilter : ''
   const selectedProgram = useMemo(
@@ -947,6 +949,13 @@ export default function StudentExamsPage() {
         : 'Belum ada ujian yang tersedia'
   const schoolLogoUrl = useMemo(() => resolveCardMediaUrl('/logo-kgb2.png'), [])
   const watermarkLogoUrl = useMemo(() => resolveCardMediaUrl('/logo_sis_kgb2.png'), [])
+  const selectedPlacementCard = useMemo(() => {
+    if (!selectedPlacement) return null
+    const cards = studentExamCardsQuery.data || []
+    const placementProgramCode = normalizeExamProgramCode(selectedPlacement.examType)
+    return cards.find((card) => normalizeExamProgramCode(card.payload.programCode || card.programCode) === placementProgramCode) || null
+  }, [selectedPlacement, studentExamCardsQuery.data])
+  const fallbackIdentityCard = useMemo(() => (studentExamCardsQuery.data || [])[0] || null, [studentExamCardsQuery.data])
 
   if (loading) {
     return (
@@ -961,9 +970,19 @@ export default function StudentExamsPage() {
   return (
     <div className="space-y-6">
       {/* Header */}
-      <div>
-        <h1 className="text-2xl font-bold text-gray-900">{pageTitle}</h1>
-        <p className="text-gray-500 mt-1">{pageDescription}</p>
+      <div className="flex flex-col gap-3 md:flex-row md:items-start md:justify-between">
+        <div>
+          <h1 className="text-2xl font-bold text-gray-900">{pageTitle}</h1>
+          <p className="text-gray-500 mt-1">{pageDescription}</p>
+        </div>
+        <button
+          type="button"
+          onClick={() => setShowExamRulesModal(true)}
+          className="inline-flex h-11 w-11 items-center justify-center self-start rounded-full border border-yellow-200 bg-yellow-50 text-yellow-600 shadow-sm transition hover:bg-yellow-100 animate-pulse"
+          aria-label={`Lihat aturan ${isApplicantMode ? 'tes BKK' : 'ujian'}`}
+        >
+          <AlertCircle className="h-5 w-5" />
+        </button>
       </div>
 
       {applicantVerificationLocked ? (
@@ -1015,7 +1034,7 @@ export default function StudentExamsPage() {
                 return (
                   <div
                     key={card.id}
-                    className="relative overflow-hidden rounded-2xl border border-blue-100 bg-gradient-to-br from-white via-sky-50/60 to-emerald-50/40 shadow-sm"
+                    className="relative overflow-hidden rounded-2xl border border-blue-100 bg-[radial-gradient(circle_at_top_right,_rgba(191,219,254,0.55),_transparent_35%),linear-gradient(135deg,_#ffffff_0%,_#f8fbff_55%,_#eefbf4_100%)] shadow-sm"
                   >
                     <div className="pointer-events-none absolute inset-0 flex items-center justify-center opacity-[0.06]">
                       {watermarkLogoUrl ? (
@@ -1024,24 +1043,24 @@ export default function StudentExamsPage() {
                     </div>
 
                     <div className="relative border-b border-gray-200 px-4 py-4">
-                      <div className="flex flex-col items-center justify-center gap-3 text-center">
-                        <div className="flex justify-center">
+                      <div className="mx-auto flex max-w-[760px] items-center justify-center gap-4 text-center">
+                        <div className="flex shrink-0 justify-center">
                           {schoolLogoUrl ? (
                             <img src={schoolLogoUrl} alt="Logo KGB2" className="h-20 w-20 object-contain" />
                           ) : null}
                         </div>
                         <div className="text-center">
-                          <div className="text-2xl font-semibold uppercase tracking-wide text-gray-900">
+                          <div className="text-lg font-semibold uppercase leading-tight text-gray-900">
                             {card.payload.cardTitle || 'Kartu Peserta'}
                           </div>
-                          <div className="mt-1 text-lg font-semibold uppercase text-gray-900">
+                          <div className="mt-1 text-lg font-semibold uppercase leading-tight text-gray-900">
                             {card.payload.examTitle || card.payload.programLabel}
                           </div>
-                          <div className="text-base font-semibold uppercase text-gray-900">
+                          <div className="mt-1 text-lg font-semibold uppercase leading-tight text-gray-900">
                             {card.payload.institutionName || card.payload.schoolName}
                           </div>
-                          <div className="text-base font-semibold uppercase text-gray-900">
-                            {card.payload.academicYearName}
+                          <div className="mt-1 text-lg font-semibold uppercase leading-tight text-gray-900">
+                            {`Tahun Ajaran ${card.payload.academicYearName}`}
                           </div>
                         </div>
                       </div>
@@ -1104,7 +1123,7 @@ export default function StudentExamsPage() {
             className="flex w-full flex-col gap-2 text-left md:flex-row md:items-start md:justify-between"
           >
             <div>
-              <h2 className="text-lg font-semibold text-gray-900">Penempatan Ujian</h2>
+              <h2 className="text-lg font-semibold text-gray-900">Denah Ruang Ujian</h2>
               <p className="mt-1 text-sm text-gray-500">
                 Ruang, sesi, dan kursi yang ditetapkan Kurikulum akan muncul di sini meski kartu ujian digital belum dipublikasikan.
               </p>
@@ -1163,6 +1182,7 @@ export default function StudentExamsPage() {
                       type="button"
                       onClick={() => {
                         setSelectedPlacement(placement)
+                        setShowPlacementSeatDetail(false)
                         setShowPlacementModal(true)
                       }}
                       className="mt-3 inline-flex items-center rounded-lg border border-blue-200 bg-blue-50 px-3 py-2 text-xs font-semibold text-blue-700 hover:bg-blue-100"
@@ -1180,25 +1200,6 @@ export default function StudentExamsPage() {
           ) : null}
         </div>
       ) : null}
-
-      {/* Warning Info */}
-      <div className="bg-yellow-50 border-l-4 border-yellow-400 p-4 rounded-r-lg">
-          <div className="flex">
-            <AlertCircle className="w-5 h-5 text-yellow-400 mr-3 flex-shrink-0 mt-0.5" />
-            <div>
-              <h3 className="text-sm font-medium text-yellow-800 mb-1">
-                Perhatian Sebelum Mengerjakan {isApplicantMode ? 'Tes BKK' : 'Ujian'}
-              </h3>
-              <ul className="text-sm text-yellow-700 list-disc list-inside space-y-1">
-                <li>{isApplicantMode ? 'Tes BKK' : 'Ujian'} akan berjalan dalam mode fullscreen</li>
-                <li>Jangan keluar dari fullscreen atau membuka tab/aplikasi lain</li>
-                <li>Anda memiliki 3x kesempatan pelanggaran</li>
-                <li>Pelanggaran ke-4 akan otomatis submit ujian Anda</li>
-                <li>Pastikan koneksi internet stabil</li>
-              </ul>
-            </div>
-          </div>
-        </div>
 
         {serverTimeDrift ? (
           <div className="bg-rose-50 border-l-4 border-rose-400 p-4 rounded-r-lg">
@@ -1478,6 +1479,33 @@ export default function StudentExamsPage() {
             </div>
           )}
         </div>
+      {showExamRulesModal ? (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/40 px-4">
+          <div className="w-full max-w-lg rounded-2xl border border-yellow-200 bg-white p-6 shadow-xl">
+            <div className="flex items-start justify-between gap-4">
+              <div>
+                <h3 className="text-xl font-bold text-gray-900">Aturan Sebelum Mengerjakan {isApplicantMode ? 'Tes BKK' : 'Ujian'}</h3>
+                <p className="mt-1 text-sm text-gray-500">Pastikan Anda memahami ketentuan berikut sebelum mulai.</p>
+              </div>
+              <button
+                type="button"
+                onClick={() => setShowExamRulesModal(false)}
+                className="rounded-lg border border-gray-200 bg-white px-3 py-2 text-sm font-semibold text-gray-600 hover:bg-gray-50"
+              >
+                Tutup
+              </button>
+            </div>
+            <ul className="mt-4 space-y-2 text-sm text-gray-700">
+              <li>{isApplicantMode ? 'Tes BKK' : 'Ujian'} akan berjalan dalam mode fullscreen.</li>
+              <li>Jangan keluar dari fullscreen atau membuka tab/aplikasi lain.</li>
+              <li>Anda memiliki 3x kesempatan pelanggaran.</li>
+              <li>Pelanggaran ke-4 akan otomatis submit {isApplicantMode ? 'tes' : 'ujian'} Anda.</li>
+              <li>Pastikan koneksi internet stabil sepanjang sesi berjalan.</li>
+            </ul>
+          </div>
+        </div>
+      ) : null}
+
       {showPlacementModal && selectedPlacement ? (
         <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50 px-4">
           <div className="w-full max-w-2xl rounded-2xl border border-blue-100 bg-white p-6 shadow-xl">
@@ -1493,6 +1521,7 @@ export default function StudentExamsPage() {
                 onClick={() => {
                   setShowPlacementModal(false)
                   setSelectedPlacement(null)
+                  setShowPlacementSeatDetail(false)
                 }}
                 className="rounded-lg border border-gray-200 bg-white px-3 py-2 text-sm font-semibold text-gray-600 hover:bg-gray-50"
               >
@@ -1516,16 +1545,41 @@ export default function StudentExamsPage() {
                       selectedPlacement.seatPosition.rowIndex === rowIndex &&
                       selectedPlacement.seatPosition.columnIndex === columnIndex
                     return (
-                      <div
+                      <button
                         key={`${rowIndex}-${columnIndex}`}
-                        className={`h-8 w-8 rounded border ${isSeat ? 'seat-blink border-emerald-400 bg-emerald-200' : 'border-slate-200 bg-slate-50'}`}
+                        type="button"
+                        onClick={() => {
+                          if (!isSeat) return
+                          setShowPlacementSeatDetail(true)
+                        }}
+                        className={`h-8 w-8 rounded border transition ${
+                          isSeat
+                            ? 'seat-blink border-emerald-400 bg-emerald-200 hover:bg-emerald-300'
+                            : 'cursor-default border-slate-200 bg-slate-50'
+                        }`}
+                        disabled={!isSeat}
+                        aria-label={isSeat ? 'Lihat detail kursi saya' : 'Kursi kosong'}
                       />
                     )
                   })}
                 </div>
                 <p className="mt-4 text-xs text-gray-500">
-                  Kotak hijau menandakan posisi duduk Anda.
+                  Kotak hijau menandakan posisi duduk Anda. Klik kotak tersebut untuk melihat detail kursi.
                 </p>
+                {showPlacementSeatDetail ? (
+                  <div className="mt-4 w-full rounded-xl border border-emerald-100 bg-emerald-50/80 p-4 text-left">
+                    <div className="text-sm font-semibold text-emerald-900">Detail Kursi Peserta</div>
+                    <div className="mt-3 grid gap-y-1 text-sm text-emerald-900 md:grid-cols-[140px_12px_minmax(0,1fr)]">
+                      <div className="font-medium">Nama</div><div>:</div><div>{selectedPlacementCard?.payload.student.name || fallbackIdentityCard?.payload.student.name || '-'}</div>
+                      <div className="font-medium">Kelas</div><div>:</div><div>{selectedPlacementCard?.payload.student.className || fallbackIdentityCard?.payload.student.className || '-'}</div>
+                      <div className="font-medium">Username</div><div>:</div><div>{selectedPlacementCard?.payload.student.username || fallbackIdentityCard?.payload.student.username || '-'}</div>
+                      <div className="font-medium">No. Peserta</div><div>:</div><div className="font-semibold text-blue-700">{selectedPlacementCard?.payload.participantNumber || '-'}</div>
+                      <div className="font-medium">Ruang</div><div>:</div><div>{selectedPlacement.roomName}</div>
+                      <div className="font-medium">Kursi</div><div>:</div><div>{selectedPlacement.seatLabel || '-'}</div>
+                      <div className="font-medium">Sesi</div><div>:</div><div>{selectedPlacement.sessionLabel || '-'}</div>
+                    </div>
+                  </div>
+                ) : null}
               </div>
             ) : (
               <div className="mt-4 rounded-xl border border-dashed border-gray-300 px-4 py-6 text-sm text-gray-500">
