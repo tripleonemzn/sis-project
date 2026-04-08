@@ -282,6 +282,15 @@ function formatExamCurrency(value?: number | null): string {
   }).format(Number(value || 0))
 }
 
+function resolveCardMediaUrl(value?: string | null): string {
+  const raw = String(value || '').trim()
+  if (!raw) return ''
+  if (/^(data:|https?:)/i.test(raw)) return raw
+  if (typeof window === 'undefined') return raw
+  if (raw.startsWith('/')) return new URL(raw, window.location.origin).toString()
+  return new URL(`/api/uploads/${raw.replace(/^\/+/, '')}`, window.location.origin).toString()
+}
+
 export default function StudentExamsPage() {
   const navigate = useNavigate()
   const location = useLocation()
@@ -766,6 +775,16 @@ export default function StudentExamsPage() {
     })
   }
 
+  const formatDateOnlyLong = (dateString: string) => {
+    const date = new Date(dateString)
+    if (Number.isNaN(date.getTime())) return '-'
+    return date.toLocaleDateString('id-ID', {
+      day: '2-digit',
+      month: 'long',
+      year: 'numeric',
+    })
+  }
+
   const getPlacementStatus = (placement: StudentExamPlacement) => {
     const now = Date.now()
     const startMs = placement.startTime ? new Date(placement.startTime).getTime() : Number.NaN
@@ -895,6 +914,8 @@ export default function StudentExamsPage() {
       : isApplicantMode
         ? 'Belum ada tes BKK yang tersedia untuk lamaran aktif Anda'
         : 'Belum ada ujian yang tersedia'
+  const schoolLogoUrl = useMemo(() => resolveCardMediaUrl('/logo-kgb2.png'), [])
+  const watermarkLogoUrl = useMemo(() => resolveCardMediaUrl('/logo_sis_kgb2.png'), [])
 
   if (loading) {
     return (
@@ -948,63 +969,81 @@ export default function StudentExamsPage() {
             </div>
           ) : studentExamCardsQuery.data && studentExamCardsQuery.data.length > 0 ? (
             <div className="mt-4 grid gap-4 lg:grid-cols-2">
-              {studentExamCardsQuery.data.map((card) => (
-                <div key={card.id} className="rounded-2xl border border-blue-100 bg-gradient-to-br from-blue-50 via-white to-sky-50 p-4">
-                  <div className="flex items-start justify-between gap-3 border-b border-blue-100 pb-3">
-                    <div>
-                      <div className="text-xs font-semibold uppercase tracking-[0.18em] text-blue-600">
-                        {card.payload.schoolName}
-                      </div>
-                      <h3 className="mt-2 text-lg font-bold text-gray-900">{card.payload.headerTitle}</h3>
-                      <p className="mt-1 text-sm text-gray-500">{card.payload.headerSubtitle}</p>
+              {studentExamCardsQuery.data.map((card) => {
+                const primaryEntry = card.payload.placement || card.payload.entries[0] || null
+                const photoUrl = resolveCardMediaUrl(card.payload.student.photoUrl)
+                return (
+                  <div key={card.id} className="relative overflow-hidden rounded-2xl border border-blue-100 bg-white shadow-sm">
+                    <div className="pointer-events-none absolute inset-0 flex items-center justify-center opacity-[0.06]">
+                      {watermarkLogoUrl ? (
+                        <img src={watermarkLogoUrl} alt="" className="h-64 w-64 object-contain" />
+                      ) : null}
                     </div>
-                    <div className="rounded-xl border border-blue-200 bg-white px-3 py-2 text-right text-xs text-gray-500">
-                      <div>Generate</div>
-                      <div className="mt-1 font-semibold text-gray-900">{formatDateTimeLong(card.generatedAt)}</div>
-                    </div>
-                  </div>
 
-                  <div className="mt-4 grid gap-3 md:grid-cols-2">
-                    <div className="rounded-xl border border-white/80 bg-white/90 p-3">
-                      <div className="text-[11px] font-semibold uppercase tracking-wide text-gray-500">Identitas</div>
-                      <div className="mt-2 text-sm text-gray-700 space-y-1">
-                        <div className="font-semibold text-gray-900">{card.payload.student.name}</div>
-                        <div>NIS: {card.payload.student.nis || '-'}</div>
-                        <div>NISN: {card.payload.student.nisn || '-'}</div>
-                        <div>Kelas: {card.payload.student.className || '-'}</div>
+                    <div className="relative border-b border-gray-200 px-4 py-4">
+                      <div className="grid gap-3 md:grid-cols-[88px_minmax(0,1fr)] md:items-center">
+                        <div className="flex justify-center md:justify-start">
+                          {schoolLogoUrl ? (
+                            <img src={schoolLogoUrl} alt="Logo KGB2" className="h-20 w-20 object-contain" />
+                          ) : null}
+                        </div>
+                        <div className="text-center md:text-left">
+                          <div className="text-2xl font-semibold uppercase tracking-wide text-gray-900">
+                            {card.payload.cardTitle || 'Kartu Peserta'}
+                          </div>
+                          <div className="mt-1 text-lg font-semibold uppercase text-gray-900">
+                            {card.payload.examTitle || card.payload.programLabel}
+                          </div>
+                          <div className="text-base font-semibold uppercase text-gray-900">
+                            {card.payload.institutionName || card.payload.schoolName}
+                          </div>
+                          <div className="text-base font-semibold uppercase text-gray-900">
+                            {card.payload.academicYearName}
+                          </div>
+                        </div>
                       </div>
                     </div>
-                    <div className="rounded-xl border border-white/80 bg-white/90 p-3">
-                      <div className="text-[11px] font-semibold uppercase tracking-wide text-gray-500">Legalitas</div>
-                      <div className="mt-2 text-sm text-gray-700 space-y-2">
-                        <div className="font-semibold text-gray-900">{card.payload.legality.principalName}</div>
-                        <div>{card.payload.legality.signatureLabel}</div>
+
+                    <div className="relative grid gap-4 px-4 py-4 md:grid-cols-[112px_minmax(0,1fr)_220px]">
+                      <div className="flex justify-center md:justify-start">
+                        <div className="flex h-32 w-28 items-center justify-center overflow-hidden border border-gray-300 bg-white">
+                          {photoUrl ? (
+                            <img src={photoUrl} alt={`Foto ${card.payload.student.name}`} className="h-full w-full object-cover" />
+                          ) : (
+                            <div className="px-2 text-center text-xs leading-5 text-gray-500">Foto formal dari profil dokumen pendukung</div>
+                          )}
+                        </div>
+                      </div>
+
+                      <div className="grid grid-cols-[120px_12px_minmax(0,1fr)] gap-x-2 gap-y-1 text-sm text-gray-800">
+                        <div className="font-medium">Nama Siswa</div><div>:</div><div className="break-words">{card.payload.student.name}</div>
+                        <div className="font-medium">Kelas</div><div>:</div><div className="break-words">{card.payload.student.className || '-'}</div>
+                        <div className="font-medium">Username</div><div>:</div><div className="break-words">{card.payload.student.username || '-'}</div>
+                        <div className="font-medium">No. Peserta</div><div>:</div><div className="break-all font-semibold tracking-wide text-blue-700">{card.payload.participantNumber || '-'}</div>
+                        <div className="font-medium">Ruang</div><div>:</div><div className="break-words">{primaryEntry?.roomName || '-'}</div>
+                        <div className="font-medium">Sesi</div><div>:</div><div className="break-words">{primaryEntry?.sessionLabel || '-'}</div>
+                      </div>
+
+                      <div className="flex flex-col items-center justify-start text-center text-sm text-gray-800">
+                        <div>{card.payload.issue?.signLabel || `Bekasi, ${formatDateOnlyLong(card.payload.issue?.date || card.generatedAt)}`}</div>
+                        <div className="mt-1">{card.payload.legality.principalTitle || 'Kepala Sekolah'}</div>
                         {card.payload.legality.principalBarcodeDataUrl ? (
                           <img
                             src={card.payload.legality.principalBarcodeDataUrl}
                             alt="Barcode Kepala Sekolah"
-                            className="h-20 w-20 rounded-lg border border-gray-200 bg-white p-1"
+                            className="mt-4 h-24 w-24 rounded-lg border border-gray-200 bg-white p-1"
                           />
                         ) : null}
+                        <div className="mt-3 text-base font-semibold text-gray-900">{card.payload.legality.principalName}</div>
                       </div>
                     </div>
-                  </div>
 
-                  <div className="mt-4 space-y-2">
-                    {card.payload.entries.map((entry) => (
-                      <div key={`${card.id}-${entry.sittingId}`} className="rounded-xl border border-blue-100 bg-white px-3 py-3 text-sm text-gray-700">
-                        <div className="font-semibold text-gray-900">{entry.roomName}</div>
-                        <div className="mt-1 text-xs text-gray-500">
-                          {entry.sessionLabel || '-'} • Kursi {entry.seatLabel || '-'}
-                        </div>
-                        <div className="mt-1 text-xs text-gray-500">
-                          {formatDateTimeLong(entry.startTime || '')} - {formatDateTimeLong(entry.endTime || '')}
-                        </div>
-                      </div>
-                    ))}
+                    <div className="relative border-t border-gray-200 px-4 py-2 text-xs italic text-emerald-700">
+                      {card.payload.legality.footerNote || 'Berkas digital yang sah secara internal'}
+                    </div>
                   </div>
-                </div>
-              ))}
+                )
+              })}
             </div>
           ) : (
             <div className="mt-4 rounded-lg border border-dashed border-gray-300 px-4 py-6 text-sm text-gray-500">

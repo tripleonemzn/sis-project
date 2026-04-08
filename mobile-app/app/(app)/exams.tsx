@@ -12,6 +12,7 @@ import { useAuth } from '../../src/features/auth/AuthProvider';
 import { resolveStudentExamRuntimeStatus, StudentExamRuntimeStatus } from '../../src/features/exams/status';
 import { StudentExamItem } from '../../src/features/exams/types';
 import { useStudentExamsQuery } from '../../src/features/exams/useStudentExamsQuery';
+import { ENV } from '../../src/config/env';
 import { getStandardPagePadding } from '../../src/lib/ui/pageLayout';
 import { examApi, ExamProgramItem } from '../../src/features/exams/examApi';
 import { examCardApi } from '../../src/features/examCards/examCardApi';
@@ -40,6 +41,17 @@ function formatDateTime(value: string) {
   const hour = String(date.getHours()).padStart(2, '0');
   const minute = String(date.getMinutes()).padStart(2, '0');
   return `${day} ${month} ${year} ${hour}:${minute}`;
+}
+
+function formatDateOnly(value?: string | null) {
+  if (!value) return '-';
+  const date = new Date(value);
+  if (Number.isNaN(date.getTime())) return '-';
+  return date.toLocaleDateString('id-ID', {
+    day: '2-digit',
+    month: 'long',
+    year: 'numeric',
+  });
 }
 
 function formatExamCurrency(value?: number | null) {
@@ -129,6 +141,15 @@ function resolveSubjectLabel(item: StudentExamItem): { name: string; code: strin
     name: String((useFallbackName ? fallbackName : picked?.name) || fallbackName || 'Mata pelajaran'),
     code: useFallbackName ? '' : String(picked?.code || '').trim(),
   };
+}
+
+function resolveCardMediaUrl(value?: string | null) {
+  const raw = String(value || '').trim();
+  if (!raw) return '';
+  if (/^(data:|https?:)/i.test(raw)) return raw;
+  const base = ENV.API_BASE_URL.replace(/\/api\/?$/, '');
+  if (raw.startsWith('/')) return `${base}${raw}`;
+  return `${base}/api/uploads/${raw.replace(/^\/+/, '')}`;
 }
 
 export default function StudentExamsScreen() {
@@ -273,6 +294,8 @@ export default function StudentExamsScreen() {
       );
     });
   }, [effectiveTypeFilter, examsQuery.data?.exams, searchQuery, statusFilter]);
+  const schoolLogoUrl = useMemo(() => resolveCardMediaUrl('/logo-kgb2.png'), []);
+  const watermarkLogoUrl = useMemo(() => resolveCardMediaUrl('/logo_sis_kgb2.png'), []);
 
   if (isLoading) return <AppLoadingScreen message="Memuat ujian..." />;
   if (!isAuthenticated) return <Redirect href="/welcome" />;
@@ -415,122 +438,184 @@ export default function StudentExamsScreen() {
             </View>
           ) : studentExamCardsQuery.data && studentExamCardsQuery.data.length > 0 ? (
             <View style={{ marginTop: 12, gap: 10 }}>
-              {studentExamCardsQuery.data.map((card) => (
-                <View
-                  key={card.id}
-                  style={{
-                    borderWidth: 1,
-                    borderColor: '#bfdbfe',
-                    borderRadius: 16,
-                    backgroundColor: '#f8fbff',
-                    padding: 12,
-                  }}
-                >
+              {studentExamCardsQuery.data.map((card) => {
+                const primaryEntry = card.payload.placement || card.payload.entries[0] || null;
+                const photoUrl = resolveCardMediaUrl(card.payload.student.photoUrl);
+                return (
                   <View
+                    key={card.id}
                     style={{
-                      borderBottomWidth: 1,
-                      borderBottomColor: '#dbe7fb',
-                      paddingBottom: 10,
-                      marginBottom: 10,
+                      borderWidth: 1,
+                      borderColor: '#bfdbfe',
+                      borderRadius: 16,
+                      backgroundColor: '#fff',
+                      overflow: 'hidden',
                     }}
                   >
-                    <Text style={{ color: '#2563eb', fontSize: 11, fontWeight: '800', letterSpacing: 1.2 }}>
-                      {card.payload.schoolName.toUpperCase()}
-                    </Text>
-                    <Text style={{ color: '#0f172a', fontSize: 16, fontWeight: '800', marginTop: 6 }}>
-                      {card.payload.headerTitle}
-                    </Text>
-                    <Text style={{ color: '#64748b', marginTop: 4 }}>{card.payload.headerSubtitle}</Text>
-                    <Text style={{ color: '#64748b', fontSize: 12, marginTop: 6 }}>
-                      Generate: {formatDateTime(card.generatedAt)}
-                    </Text>
-                  </View>
-
-                  <View style={{ gap: 10 }}>
-                    <View
-                      style={{
-                        borderWidth: 1,
-                        borderColor: '#dbe7fb',
-                        borderRadius: 12,
-                        backgroundColor: '#fff',
-                        padding: 10,
-                      }}
-                    >
-                      <Text style={{ color: '#64748b', fontSize: 11, fontWeight: '700', letterSpacing: 0.6 }}>
-                        IDENTITAS SISWA
-                      </Text>
-                      <Text style={{ color: '#0f172a', fontWeight: '700', marginTop: 8 }}>
-                        {card.payload.student.name}
-                      </Text>
-                      <Text style={{ color: '#475569', marginTop: 4, fontSize: 12 }}>
-                        NIS: {card.payload.student.nis || '-'}
-                      </Text>
-                      <Text style={{ color: '#475569', marginTop: 2, fontSize: 12 }}>
-                        NISN: {card.payload.student.nisn || '-'}
-                      </Text>
-                      <Text style={{ color: '#475569', marginTop: 2, fontSize: 12 }}>
-                        Kelas: {card.payload.student.className || '-'}
-                      </Text>
-                    </View>
-
-                    <View
-                      style={{
-                        borderWidth: 1,
-                        borderColor: '#dbe7fb',
-                        borderRadius: 12,
-                        backgroundColor: '#fff',
-                        padding: 10,
-                      }}
-                    >
-                      <Text style={{ color: '#64748b', fontSize: 11, fontWeight: '700', letterSpacing: 0.6 }}>
-                        LEGALITAS
-                      </Text>
-                      <Text style={{ color: '#0f172a', fontWeight: '700', marginTop: 8 }}>
-                        {card.payload.legality.principalName}
-                      </Text>
-                      <Text style={{ color: '#475569', marginTop: 4, fontSize: 12 }}>
-                        {card.payload.legality.signatureLabel}
-                      </Text>
-                      {card.payload.legality.principalBarcodeDataUrl ? (
-                        <Image
-                          source={{ uri: card.payload.legality.principalBarcodeDataUrl }}
-                          style={{
-                            width: 88,
-                            height: 88,
-                            marginTop: 10,
-                            borderRadius: 10,
-                            borderWidth: 1,
-                            borderColor: '#dbe7fb',
-                            backgroundColor: '#fff',
-                          }}
-                          resizeMode="contain"
-                        />
-                      ) : null}
-                    </View>
-
-                    {card.payload.entries.map((entry) => (
-                      <View
-                        key={`${card.id}-${entry.sittingId}`}
+                    {watermarkLogoUrl ? (
+                      <Image
+                        source={{ uri: watermarkLogoUrl }}
                         style={{
-                          borderWidth: 1,
-                          borderColor: '#dbe7fb',
-                          borderRadius: 12,
-                          backgroundColor: '#fff',
-                          padding: 10,
+                          position: 'absolute',
+                          width: 220,
+                          height: 220,
+                          alignSelf: 'center',
+                          top: 26,
+                          opacity: 0.07,
                         }}
-                      >
-                        <Text style={{ color: '#0f172a', fontWeight: '700' }}>{entry.roomName}</Text>
-                        <Text style={{ color: '#64748b', marginTop: 4, fontSize: 12 }}>
-                          {entry.sessionLabel || '-'} • Kursi {entry.seatLabel || '-'}
+                        resizeMode="contain"
+                      />
+                    ) : null}
+
+                    <View
+                      style={{
+                        borderBottomWidth: 1,
+                        borderBottomColor: '#dbe7fb',
+                        paddingHorizontal: 12,
+                        paddingVertical: 12,
+                      }}
+                    >
+                      <View style={{ alignItems: 'center' }}>
+                        {schoolLogoUrl ? (
+                          <Image
+                            source={{ uri: schoolLogoUrl }}
+                            style={{ width: 72, height: 72, marginBottom: 8 }}
+                            resizeMode="contain"
+                          />
+                        ) : null}
+                        <Text style={{ color: '#0f172a', fontSize: 22, fontWeight: '500', textTransform: 'uppercase' }}>
+                          {card.payload.cardTitle || 'Kartu Peserta'}
                         </Text>
-                        <Text style={{ color: '#64748b', marginTop: 4, fontSize: 12 }}>
-                          {formatDateTime(entry.startTime || '')} - {formatDateTime(entry.endTime || '')}
+                        <Text
+                          style={{
+                            color: '#0f172a',
+                            fontSize: 15,
+                            fontWeight: '700',
+                            textTransform: 'uppercase',
+                            textAlign: 'center',
+                            marginTop: 2,
+                          }}
+                        >
+                          {card.payload.examTitle || card.payload.programLabel}
+                        </Text>
+                        <Text
+                          style={{
+                            color: '#0f172a',
+                            fontSize: 15,
+                            fontWeight: '700',
+                            textTransform: 'uppercase',
+                            textAlign: 'center',
+                          }}
+                        >
+                          {card.payload.institutionName || card.payload.schoolName}
+                        </Text>
+                        <Text
+                          style={{
+                            color: '#0f172a',
+                            fontSize: 15,
+                            fontWeight: '700',
+                            textTransform: 'uppercase',
+                            textAlign: 'center',
+                          }}
+                        >
+                          {card.payload.academicYearName}
                         </Text>
                       </View>
-                    ))}
+                    </View>
+
+                    <View style={{ paddingHorizontal: 12, paddingVertical: 12, gap: 12 }}>
+                      <View style={{ flexDirection: 'row', gap: 12 }}>
+                        <View
+                          style={{
+                            width: 88,
+                            height: 116,
+                            borderWidth: 1,
+                            borderColor: '#cbd5e1',
+                            backgroundColor: '#fff',
+                            overflow: 'hidden',
+                            alignItems: 'center',
+                            justifyContent: 'center',
+                          }}
+                        >
+                          {photoUrl ? (
+                            <Image source={{ uri: photoUrl }} style={{ width: '100%', height: '100%' }} resizeMode="cover" />
+                          ) : (
+                            <Text style={{ color: '#64748b', fontSize: 11, textAlign: 'center', paddingHorizontal: 8, lineHeight: 16 }}>
+                              Foto formal dari profil dokumen pendukung
+                            </Text>
+                          )}
+                        </View>
+
+                        <View style={{ flex: 1, gap: 4 }}>
+                          {[
+                            ['Nama Siswa', card.payload.student.name],
+                            ['Kelas', card.payload.student.className || '-'],
+                            ['Username', card.payload.student.username || '-'],
+                            ['No. Peserta', card.payload.participantNumber || '-'],
+                            ['Ruang', primaryEntry?.roomName || '-'],
+                            ['Sesi', primaryEntry?.sessionLabel || '-'],
+                          ].map(([label, value]) => (
+                            <View key={label} style={{ flexDirection: 'row', alignItems: 'flex-start' }}>
+                              <Text style={{ width: 92, color: '#334155', fontSize: 13 }}>{label}</Text>
+                              <Text style={{ width: 10, color: '#334155', fontSize: 13 }}>:</Text>
+                              <Text
+                                style={{
+                                  flex: 1,
+                                  color: label === 'No. Peserta' ? '#1d4ed8' : '#0f172a',
+                                  fontSize: 13,
+                                  fontWeight: label === 'No. Peserta' ? '700' : '400',
+                                }}
+                              >
+                                {value}
+                              </Text>
+                            </View>
+                          ))}
+                        </View>
+                      </View>
+
+                      <View style={{ alignItems: 'center' }}>
+                        <Text style={{ color: '#334155', fontSize: 13, textAlign: 'center' }}>
+                          {card.payload.issue?.signLabel || `Bekasi, ${formatDateOnly(card.payload.issue?.date || card.generatedAt)}`}
+                        </Text>
+                        <Text style={{ color: '#334155', fontSize: 13, textAlign: 'center', marginTop: 2 }}>
+                          {card.payload.legality.principalTitle || 'Kepala Sekolah'}
+                        </Text>
+                        {card.payload.legality.principalBarcodeDataUrl ? (
+                          <Image
+                            source={{ uri: card.payload.legality.principalBarcodeDataUrl }}
+                            style={{
+                              width: 88,
+                              height: 88,
+                              marginTop: 10,
+                              borderRadius: 10,
+                              borderWidth: 1,
+                              borderColor: '#dbe7fb',
+                              backgroundColor: '#fff',
+                            }}
+                            resizeMode="contain"
+                          />
+                        ) : null}
+                        <Text style={{ color: '#0f172a', fontWeight: '700', marginTop: 8 }}>
+                          {card.payload.legality.principalName}
+                        </Text>
+                      </View>
+                    </View>
+
+                    <View
+                      style={{
+                        borderTopWidth: 1,
+                        borderTopColor: '#dbe7fb',
+                        paddingHorizontal: 12,
+                        paddingVertical: 8,
+                      }}
+                    >
+                      <Text style={{ color: '#047857', fontSize: 12, fontStyle: 'italic' }}>
+                        {card.payload.legality.footerNote || 'Berkas digital yang sah secara internal'}
+                      </Text>
+                    </View>
                   </View>
-                </View>
-              ))}
+                );
+              })}
             </View>
           ) : (
             <View

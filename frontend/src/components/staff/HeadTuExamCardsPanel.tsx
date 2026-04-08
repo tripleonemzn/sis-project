@@ -31,142 +31,285 @@ function escapeHtml(value: string) {
     .replace(/'/g, '&#39;');
 }
 
-function openPrintWindow(title: string, bodyHtml: string) {
+function formatDateOnly(value?: string | null) {
+  if (!value) return '-';
+  const date = new Date(value);
+  if (Number.isNaN(date.getTime())) return '-';
+  return date.toLocaleDateString('id-ID', {
+    day: '2-digit',
+    month: 'long',
+    year: 'numeric',
+  });
+}
+
+function resolveAbsoluteUrl(value?: string | null) {
+  const raw = String(value || '').trim();
+  if (!raw) return '';
+  if (/^(data:|https?:)/i.test(raw)) return raw;
+  if (typeof window === 'undefined') return raw;
+  if (raw.startsWith('/')) return new URL(raw, window.location.origin).toString();
+  return new URL(`/api/uploads/${raw.replace(/^\/+/, '')}`, window.location.origin).toString();
+}
+
+function formatDateInputValue(value: Date) {
+  const year = value.getFullYear();
+  const month = String(value.getMonth() + 1).padStart(2, '0');
+  const day = String(value.getDate()).padStart(2, '0');
+  return `${year}-${month}-${day}`;
+}
+
+function openPrintWindow(title: string, htmlDocument: string) {
   const printWindow = window.open('', '_blank', 'noopener,noreferrer,width=1200,height=900');
   if (!printWindow) {
     toast.error('Popup print diblokir browser.');
     return;
   }
+  printWindow.document.open();
+  printWindow.document.write(htmlDocument);
+  printWindow.document.close();
+  printWindow.onload = () => {
+    printWindow.focus();
+    printWindow.print();
+  };
+  printWindow.document.title = title;
+}
 
-  printWindow.document.write(`
+function buildExamCardMarkup(card: ExamGeneratedCardPayload) {
+  const schoolLogoUrl = resolveAbsoluteUrl('/logo-kgb2.png');
+  const watermarkLogoUrl = resolveAbsoluteUrl('/logo_sis_kgb2.png');
+  const photoUrl = resolveAbsoluteUrl(card.student.photoUrl || '');
+  const roomLabel = card.placement?.roomName || card.entries[0]?.roomName || '-';
+  const sessionLabel = card.placement?.sessionLabel || card.entries[0]?.sessionLabel || '-';
+  const issueSignLabel =
+    card.issue?.signLabel ||
+    `${card.issue?.location || 'Bekasi'}, ${formatDateOnly(card.issue?.date || card.generatedAt)}`;
+
+  return `
+    <article class="exam-card">
+      <div class="card-watermark">
+        <img src="${escapeHtml(watermarkLogoUrl)}" alt="" />
+      </div>
+
+      <div class="card-header">
+        <div class="card-header-logo">
+          <img src="${escapeHtml(schoolLogoUrl)}" alt="Logo KGB2" />
+        </div>
+        <div class="card-header-copy">
+          <div class="card-title">${escapeHtml(card.cardTitle || 'KARTU PESERTA')}</div>
+          <div class="card-program">${escapeHtml(card.examTitle || card.programLabel)}</div>
+          <div class="card-school">${escapeHtml(card.institutionName || card.schoolName)}</div>
+          <div class="card-year">${escapeHtml(card.academicYearName)}</div>
+        </div>
+      </div>
+
+      <div class="card-body">
+        <div class="card-photo-box">
+          ${
+            photoUrl
+              ? `<img src="${escapeHtml(photoUrl)}" alt="Foto siswa" class="card-photo" />`
+              : `<div class="card-photo-placeholder">Foto formal dari profil dokumen pendukung</div>`
+          }
+        </div>
+
+        <div class="card-detail-grid">
+          <div class="detail-label">Nama Siswa</div><div class="detail-separator">:</div><div class="detail-value">${escapeHtml(card.student.name)}</div>
+          <div class="detail-label">Kelas</div><div class="detail-separator">:</div><div class="detail-value">${escapeHtml(card.student.className || '-')}</div>
+          <div class="detail-label">Username</div><div class="detail-separator">:</div><div class="detail-value">${escapeHtml(card.student.username || '-')}</div>
+          <div class="detail-label">No. Peserta</div><div class="detail-separator">:</div><div class="detail-value detail-number">${escapeHtml(card.participantNumber || '-')}</div>
+          <div class="detail-label">Ruang</div><div class="detail-separator">:</div><div class="detail-value">${escapeHtml(roomLabel)}</div>
+          <div class="detail-label">Sesi</div><div class="detail-separator">:</div><div class="detail-value">${escapeHtml(sessionLabel || '-')}</div>
+        </div>
+
+        <div class="card-signature-block">
+          <div class="card-sign-date">${escapeHtml(issueSignLabel)}</div>
+          <div class="card-sign-role">${escapeHtml(card.legality.principalTitle || 'Kepala Sekolah')}</div>
+          ${
+            card.legality.principalBarcodeDataUrl
+              ? `<img class="card-barcode" src="${escapeHtml(card.legality.principalBarcodeDataUrl)}" alt="Barcode Kepala Sekolah" />`
+              : ''
+          }
+          <div class="card-principal-name">${escapeHtml(card.legality.principalName || '-')}</div>
+        </div>
+      </div>
+
+      <div class="card-footer-note">${escapeHtml(card.legality.footerNote || 'Berkas digital yang sah secara internal')}</div>
+    </article>
+  `;
+}
+
+function buildExamCardsPrintHtml(cards: ExamGeneratedCardPayload[], title: string) {
+  return `
     <!DOCTYPE html>
     <html lang="id">
       <head>
         <meta charset="UTF-8" />
+        <meta name="viewport" content="width=device-width, initial-scale=1" />
         <title>${escapeHtml(title)}</title>
         <style>
-          body { font-family: "Segoe UI", Arial, sans-serif; margin: 0; padding: 24px; color: #0f172a; background: #f8fafc; }
-          .sheet { page-break-after: always; background: #fff; border: 1px solid #d9e2f3; border-radius: 20px; padding: 22px; margin-bottom: 18px; }
-          .sheet:last-child { page-break-after: auto; }
-          .header { display: grid; grid-template-columns: 92px 1fr; gap: 18px; align-items: center; border-bottom: 2px solid #dbe7fb; padding-bottom: 16px; }
-          .logo-box { width: 92px; height: 92px; display: flex; align-items: center; justify-content: center; border-radius: 18px; background: linear-gradient(135deg, #eff6ff, #dbeafe); border: 1px solid #bfdbfe; }
-          .logo-box img { width: 72px; height: 72px; object-fit: contain; }
-          .school-name { font-size: 22px; font-weight: 800; letter-spacing: 0.02em; }
-          .header-title { margin-top: 6px; font-size: 18px; font-weight: 800; }
-          .header-subtitle { margin-top: 4px; color: #475569; font-size: 13px; }
-          .identity { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 18px; margin-top: 18px; }
-          .identity-card { border: 1px solid #dbe7fb; border-radius: 16px; padding: 14px; background: #f8fbff; }
-          .identity-title { font-size: 11px; letter-spacing: 0.08em; text-transform: uppercase; color: #64748b; font-weight: 700; }
-          .identity-grid { display: grid; grid-template-columns: 72px 10px 1fr; gap: 8px; row-gap: 8px; margin-top: 10px; font-size: 13px; }
-          .schedule-table { width: 100%; border-collapse: collapse; margin-top: 18px; }
-          .schedule-table th, .schedule-table td { border: 1px solid #dbe7fb; padding: 10px; font-size: 12px; vertical-align: top; }
-          .schedule-table th { background: #eff6ff; text-align: left; font-weight: 700; }
-          .legality { display: grid; grid-template-columns: 1fr 1fr; gap: 18px; margin-top: 22px; }
-          .legal-card { border: 1px solid #dbe7fb; border-radius: 16px; padding: 14px; min-height: 178px; display: flex; flex-direction: column; justify-content: space-between; }
-          .barcode { width: 104px; height: 104px; object-fit: contain; margin: 10px 0; border: 1px solid #e2e8f0; border-radius: 10px; background: #fff; padding: 6px; }
-          .muted { color: #64748b; }
+          @page { size: auto; margin: 6mm; }
+          * { box-sizing: border-box; -webkit-print-color-adjust: exact; print-color-adjust: exact; }
+          html, body { margin: 0; padding: 0; background: #f8fafc; color: #111827; font-family: "Segoe UI", Arial, sans-serif; }
+          body { padding: 0; }
+          .cards-grid {
+            display: grid;
+            grid-template-columns: repeat(2, minmax(94mm, 1fr));
+            gap: 4mm;
+            align-content: start;
+          }
+          .exam-card {
+            position: relative;
+            min-height: 65mm;
+            height: 65mm;
+            border: 0.35mm solid #cbd5e1;
+            border-radius: 4mm;
+            background: #ffffff;
+            overflow: hidden;
+            page-break-inside: avoid;
+            break-inside: avoid;
+          }
+          .card-watermark {
+            position: absolute;
+            inset: 0;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            pointer-events: none;
+            opacity: 0.08;
+          }
+          .card-watermark img {
+            width: 42mm;
+            height: 42mm;
+            object-fit: contain;
+          }
+          .card-header {
+            position: relative;
+            z-index: 1;
+            display: grid;
+            grid-template-columns: 22mm 1fr;
+            gap: 3mm;
+            align-items: center;
+            padding: 3.2mm 3.4mm 2.8mm;
+            border-bottom: 0.3mm solid #dbe2ea;
+          }
+          .card-header-logo {
+            height: 16mm;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+          }
+          .card-header-logo img {
+            width: 15mm;
+            height: 15mm;
+            object-fit: contain;
+          }
+          .card-header-copy {
+            text-align: center;
+            line-height: 1.05;
+          }
+          .card-title {
+            font-size: 4.1mm;
+            font-weight: 700;
+            letter-spacing: 0.02em;
+          }
+          .card-program, .card-school, .card-year {
+            margin-top: 0.7mm;
+            font-size: 3.1mm;
+            font-weight: 600;
+          }
+          .card-body {
+            position: relative;
+            z-index: 1;
+            display: grid;
+            grid-template-columns: 21mm minmax(0, 1fr) 34mm;
+            gap: 2.8mm;
+            padding: 3.2mm 3.4mm 3.4mm;
+          }
+          .card-photo-box {
+            width: 100%;
+            height: 27mm;
+            border: 0.3mm solid #cbd5e1;
+            background: #fff;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            overflow: hidden;
+          }
+          .card-photo {
+            width: 100%;
+            height: 100%;
+            object-fit: cover;
+          }
+          .card-photo-placeholder {
+            padding: 1.2mm;
+            text-align: center;
+            font-size: 2.5mm;
+            color: #475569;
+            line-height: 1.2;
+          }
+          .card-detail-grid {
+            align-content: start;
+            display: grid;
+            grid-template-columns: 19mm 2mm minmax(0, 1fr);
+            column-gap: 0.8mm;
+            row-gap: 0.35mm;
+            font-size: 2.75mm;
+            line-height: 1.2;
+          }
+          .detail-label {
+            font-weight: 500;
+          }
+          .detail-value {
+            overflow-wrap: anywhere;
+          }
+          .detail-number {
+            font-weight: 700;
+            letter-spacing: 0.04em;
+          }
+          .card-signature-block {
+            display: flex;
+            min-height: 27mm;
+            flex-direction: column;
+            align-items: center;
+            justify-content: flex-start;
+            text-align: center;
+            line-height: 1.15;
+          }
+          .card-sign-date,
+          .card-sign-role,
+          .card-principal-name {
+            font-size: 2.7mm;
+          }
+          .card-barcode {
+            width: 14mm;
+            height: 14mm;
+            object-fit: contain;
+            margin: 1.2mm 0 0.8mm;
+            background: #fff;
+          }
+          .card-principal-name {
+            margin-top: auto;
+            font-weight: 700;
+          }
+          .card-footer-note {
+            position: absolute;
+            left: 3.4mm;
+            right: 3.4mm;
+            bottom: 2.4mm;
+            font-size: 2.2mm;
+            font-style: italic;
+            color: #047857;
+          }
           @media print {
-            body { background: #fff; padding: 0; }
-            .sheet { border: none; border-radius: 0; margin: 0; padding: 16mm; box-shadow: none; }
+            html, body { background: #fff; }
           }
         </style>
       </head>
-      <body>${bodyHtml}</body>
+      <body>
+        <div class="cards-grid">
+          ${cards.map((card) => buildExamCardMarkup(card)).join('')}
+        </div>
+      </body>
     </html>
-  `);
-  printWindow.document.close();
-  printWindow.focus();
-  setTimeout(() => {
-    printWindow.print();
-  }, 250);
-}
-
-function buildExamCardSheet(card: ExamGeneratedCardPayload) {
-  return `
-    <section class="sheet">
-      <div class="header">
-        <div class="logo-box">
-          <img src="/logo_sis_kgb2.png" alt="Logo KGB2" />
-        </div>
-        <div>
-          <div class="school-name">${escapeHtml(card.schoolName)}</div>
-          <div class="header-title">${escapeHtml(card.headerTitle)}</div>
-          <div class="header-subtitle">${escapeHtml(card.headerSubtitle)}</div>
-        </div>
-      </div>
-
-      <div class="identity">
-        <div class="identity-card">
-          <div class="identity-title">Identitas Siswa</div>
-          <div class="identity-grid">
-            <strong>Nama</strong><span>:</span><span>${escapeHtml(card.student.name)}</span>
-            <strong>NIS</strong><span>:</span><span>${escapeHtml(card.student.nis || '-')}</span>
-            <strong>NISN</strong><span>:</span><span>${escapeHtml(card.student.nisn || '-')}</span>
-            <strong>Kelas</strong><span>:</span><span>${escapeHtml(card.student.className || '-')}</span>
-          </div>
-        </div>
-        <div class="identity-card">
-          <div class="identity-title">Informasi Kartu</div>
-          <div class="identity-grid">
-            <strong>Program</strong><span>:</span><span>${escapeHtml(card.programLabel)}</span>
-            <strong>Semester</strong><span>:</span><span>${escapeHtml(card.semester === 'EVEN' ? 'Genap' : 'Ganjil')}</span>
-            <strong>Tahun</strong><span>:</span><span>${escapeHtml(card.academicYearName)}</span>
-            <strong>Generate</strong><span>:</span><span>${escapeHtml(formatDateTime(card.generatedAt))}</span>
-          </div>
-        </div>
-      </div>
-
-      <table class="schedule-table">
-        <thead>
-          <tr>
-            <th>Ruang</th>
-            <th>Sesi</th>
-            <th>Kursi</th>
-            <th>Mulai</th>
-            <th>Selesai</th>
-          </tr>
-        </thead>
-        <tbody>
-          ${card.entries
-            .map(
-              (entry) => `
-                <tr>
-                  <td>${escapeHtml(entry.roomName || '-')}</td>
-                  <td>${escapeHtml(entry.sessionLabel || '-')}</td>
-                  <td>${escapeHtml(entry.seatLabel || '-')}</td>
-                  <td>${escapeHtml(formatDateTime(entry.startTime))}</td>
-                  <td>${escapeHtml(formatDateTime(entry.endTime))}</td>
-                </tr>
-              `,
-            )
-            .join('')}
-        </tbody>
-      </table>
-
-      <div class="legality">
-        <div class="legal-card">
-          <div>
-            <div class="identity-title">Legalitas Kepala Sekolah</div>
-            <p class="muted" style="margin-top: 10px;">${escapeHtml(card.legality.signatureLabel)}</p>
-            ${card.legality.principalBarcodeDataUrl ? `<img class="barcode" src="${card.legality.principalBarcodeDataUrl}" alt="Barcode Kepala Sekolah" />` : ''}
-          </div>
-          <div>
-            <div style="font-weight: 700;">${escapeHtml(card.legality.principalName)}</div>
-            <div class="muted" style="font-size: 12px;">Kepala Sekolah</div>
-          </div>
-        </div>
-        <div class="legal-card">
-          <div>
-            <div class="identity-title">Validasi Tata Usaha</div>
-            <p class="muted" style="margin-top: 10px;">Kartu ini diterbitkan secara digital oleh Kepala TU dan berlaku selama data ruang ujian belum berubah.</p>
-          </div>
-          <div>
-            <div style="font-weight: 700;">${escapeHtml(card.generatedBy.name)}</div>
-            <div class="muted" style="font-size: 12px;">Kepala Tata Usaha</div>
-          </div>
-        </div>
-      </div>
-    </section>
   `;
 }
 
@@ -177,11 +320,12 @@ function matchesSearch(keyword: string, values: Array<string | null | undefined>
 
 export function HeadTuExamCardsPanel() {
   const queryClient = useQueryClient();
-  const [selectedAcademicYearId, setSelectedAcademicYearId] = useState<number | null>(null);
   const [activeProgramCode, setActiveProgramCode] = useState('');
   const [search, setSearch] = useState('');
   const [classFilter, setClassFilter] = useState('ALL');
   const [statusFilter, setStatusFilter] = useState<StatusFilter>('ALL');
+  const [issueLocation, setIssueLocation] = useState('Bekasi');
+  const [issueDate, setIssueDate] = useState(() => formatDateInputValue(new Date()));
 
   const academicYearsQuery = useQuery({
     queryKey: ['head-tu-exam-cards-academic-years'],
@@ -191,12 +335,8 @@ export function HeadTuExamCardsPanel() {
 
   const academicYears =
     academicYearsQuery.data?.data?.academicYears || academicYearsQuery.data?.academicYears || [];
-  const activeYear = academicYears.find((item: { isActive?: boolean }) => item.isActive) || academicYears[0] || null;
-
-  useEffect(() => {
-    if (!activeYear?.id) return;
-    setSelectedAcademicYearId((current) => current ?? Number(activeYear.id));
-  }, [activeYear?.id]);
+  const activeYear = academicYears.find((item: { isActive?: boolean }) => item.isActive) || null;
+  const selectedAcademicYearId = activeYear?.id ? Number(activeYear.id) : null;
 
   const programsQuery = useQuery({
     queryKey: ['head-tu-exam-cards-programs', selectedAcademicYearId || 'none'],
@@ -248,6 +388,8 @@ export function HeadTuExamCardsPanel() {
         academicYearId: Number(selectedAcademicYearId),
         programCode: activeProgramCode,
         semester: overviewQuery.data?.semester,
+        issueLocation: issueLocation.trim() || 'Bekasi',
+        issueDate,
       }),
     onSuccess: async (response) => {
       toast.success(response.message || 'Kartu ujian berhasil digenerate.');
@@ -286,6 +428,7 @@ export function HeadTuExamCardsPanel() {
         row.nis,
         row.nisn,
         row.className,
+        row.participantNumber,
         ...row.entries.flatMap((entry) => [entry.roomName, entry.sessionLabel, entry.seatLabel]),
       ]);
       return statusMatches && classMatches && keywordMatches;
@@ -302,12 +445,15 @@ export function HeadTuExamCardsPanel() {
 
   const handlePrintAll = () => {
     if (printableCards.length === 0) return;
-    openPrintWindow('Kartu Ujian', printableCards.map((card) => buildExamCardSheet(card)).join(''));
+    openPrintWindow('Kartu Ujian', buildExamCardsPrintHtml(printableCards, 'Kartu Ujian'));
   };
 
   const handlePrintOne = (row: ExamCardOverviewRow) => {
     if (!row.card?.payload) return;
-    openPrintWindow(`Kartu Ujian - ${row.studentName}`, buildExamCardSheet(row.card.payload));
+    openPrintWindow(
+      `Kartu Ujian - ${row.studentName}`,
+      buildExamCardsPrintHtml([row.card.payload], `Kartu Ujian - ${row.studentName}`),
+    );
   };
 
   return (
@@ -331,7 +477,13 @@ export function HeadTuExamCardsPanel() {
           <button
             type="button"
             onClick={() => generateMutation.mutate()}
-            disabled={!overviewQuery.data || overviewQuery.data.summary.eligibleStudents === 0 || generateMutation.isPending}
+            disabled={
+              !overviewQuery.data ||
+              !issueDate ||
+              issueLocation.trim().length === 0 ||
+              overviewQuery.data.summary.eligibleStudents === 0 ||
+              generateMutation.isPending
+            }
             className="inline-flex items-center justify-center rounded-lg bg-blue-600 px-4 py-2 text-sm font-semibold text-white hover:bg-blue-700 disabled:cursor-not-allowed disabled:bg-blue-300"
           >
             {generateMutation.isPending ? <Loader2 className="mr-2 h-4 w-4 animate-spin" /> : <Sparkles className="mr-2 h-4 w-4" />}
@@ -351,18 +503,11 @@ export function HeadTuExamCardsPanel() {
 
       <div className="grid gap-3 md:grid-cols-[220px_minmax(0,1fr)] rounded-xl border border-gray-100 bg-white p-4 shadow-sm">
         <div>
-          <label className="mb-1 block text-xs font-semibold uppercase tracking-wide text-gray-500">Tahun Ajaran</label>
-          <select
-            value={selectedAcademicYearId || ''}
-            onChange={(event) => setSelectedAcademicYearId(Number(event.target.value) || null)}
-            className="w-full rounded-lg border border-gray-300 px-3 py-2 text-sm focus:border-blue-500 focus:outline-none"
-          >
-            {academicYears.map((academicYear: { id: number; name: string }) => (
-              <option key={academicYear.id} value={academicYear.id}>
-                {academicYear.name}
-              </option>
-            ))}
-          </select>
+          <label className="mb-1 block text-xs font-semibold uppercase tracking-wide text-gray-500">Tahun Ajaran Aktif</label>
+          <div className="rounded-lg border border-blue-100 bg-blue-50 px-3 py-2 text-sm text-blue-900">
+            <div className="font-semibold">{activeYear?.name || 'Belum ada tahun ajaran aktif'}</div>
+            <div className="mt-1 text-xs text-blue-700">Kartu ujian mengikuti tahun ajaran aktif pada header aplikasi.</div>
+          </div>
         </div>
         <div>
           <label className="mb-1 block text-xs font-semibold uppercase tracking-wide text-gray-500">Program Ujian</label>
@@ -385,6 +530,32 @@ export function HeadTuExamCardsPanel() {
               );
             })}
           </div>
+        </div>
+      </div>
+
+      <div className="grid gap-3 rounded-xl border border-gray-100 bg-white p-4 shadow-sm md:grid-cols-[minmax(0,1fr)_220px]">
+        <div>
+          <label className="mb-1 block text-xs font-semibold uppercase tracking-wide text-gray-500">Lokasi TTD Kepala Sekolah</label>
+          <input
+            type="text"
+            value={issueLocation}
+            onChange={(event) => setIssueLocation(event.target.value)}
+            placeholder="Contoh: Bekasi"
+            className="w-full rounded-lg border border-gray-300 px-3 py-2 text-sm focus:border-blue-500 focus:outline-none"
+          />
+          <p className="mt-1 text-xs text-gray-500">
+            Lokasi ini dipakai pada area legalitas kartu ujian digital dan hasil print fisik.
+          </p>
+        </div>
+        <div>
+          <label className="mb-1 block text-xs font-semibold uppercase tracking-wide text-gray-500">Tanggal Terbit</label>
+          <input
+            type="date"
+            value={issueDate}
+            onChange={(event) => setIssueDate(event.target.value)}
+            className="w-full rounded-lg border border-gray-300 px-3 py-2 text-sm focus:border-blue-500 focus:outline-none"
+          />
+          <p className="mt-1 text-xs text-gray-500">Tanggal ini dipakai untuk generate seluruh kartu program yang dipilih.</p>
         </div>
       </div>
 
@@ -420,7 +591,7 @@ export function HeadTuExamCardsPanel() {
                 type="text"
                 value={search}
                 onChange={(event) => setSearch(event.target.value)}
-                placeholder="Cari nama siswa, NIS, kelas, ruang, sesi, atau kursi..."
+                placeholder="Cari nama siswa, no. peserta, NIS, kelas, ruang, sesi, atau kursi..."
                 className="w-full rounded-lg border border-gray-300 py-2 pl-9 pr-3 text-sm focus:border-blue-500 focus:outline-none"
               />
             </div>
@@ -483,6 +654,9 @@ export function HeadTuExamCardsPanel() {
                     <td className="px-6 py-4 align-top text-sm text-gray-700">
                       <div className="font-semibold text-gray-900">{row.studentName}</div>
                       <div className="mt-1 text-xs text-gray-500">@{row.username}</div>
+                      <div className="mt-2 inline-flex rounded-full border border-blue-100 bg-blue-50 px-2.5 py-1 text-[11px] font-semibold text-blue-700">
+                        No. Peserta {row.participantNumber || '-'}
+                      </div>
                       <div className="mt-2 space-y-1 text-xs text-gray-600">
                         <div>NIS: {row.nis || '-'}</div>
                         <div>NISN: {row.nisn || '-'}</div>

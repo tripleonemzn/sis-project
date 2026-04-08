@@ -10,9 +10,15 @@ import {
   normalizeExamProgramCode,
   type ExamEligibilityStatus,
 } from '../services/examEligibility.service';
-import { listHistoricalStudentsByIdsForAcademicYear } from '../utils/studentAcademicHistory';
+import {
+  listHistoricalStudentsByIdsForAcademicYear,
+  listHistoricalStudentsForClass,
+} from '../utils/studentAcademicHistory';
 
 const SCHOOL_NAME = 'SMKS Karya Guna Bhakti 2';
+const EXAM_CARD_TITLE = 'KARTU PESERTA';
+const EXAM_CARD_INTERNAL_NOTE = 'Berkas digital yang sah secara internal';
+const DEFAULT_ISSUE_LOCATION = 'Bekasi';
 
 const overviewQuerySchema = z.object({
   academicYearId: z.coerce.number().int().positive(),
@@ -20,7 +26,13 @@ const overviewQuerySchema = z.object({
   semester: z.nativeEnum(Semester).optional(),
 });
 
-const generateCardsSchema = overviewQuerySchema;
+const generateCardsSchema = overviewQuerySchema.extend({
+  issueLocation: z.string().trim().max(80).optional(),
+  issueDate: z.preprocess((value) => {
+    if (value === undefined || value === null || value === '') return undefined;
+    return value;
+  }, z.coerce.date().optional()),
+});
 
 type ExamCardEntrySnapshot = {
   sittingId: number;
@@ -38,6 +50,12 @@ type ExamCardOverviewRow = {
   nis: string | null;
   nisn: string | null;
   className: string | null;
+  classId: number | null;
+  classLevelLabel: string | null;
+  classLevelNumber: string | null;
+  participantSequence: number | null;
+  participantNumber: string | null;
+  formalPhotoUrl: string | null;
   entries: ExamCardEntrySnapshot[];
   eligibility: ExamEligibilityStatus;
   card: {
@@ -45,6 +63,12 @@ type ExamCardOverviewRow = {
     generatedAt: Date;
     payload: Prisma.JsonValue;
   } | null;
+};
+
+type ExamCardDocumentAsset = {
+  title: string;
+  fileUrl: string;
+  category: string;
 };
 
 function formatSemesterLabel(semester: Semester) {
@@ -55,8 +79,135 @@ function normalizeText(value: unknown) {
   return String(value || '').trim();
 }
 
+function normalizeAliasCode(raw: unknown) {
+  return String(raw || '')
+    .trim()
+    .toUpperCase()
+    .replace(/QUIZ/g, 'FORMATIF')
+    .replace(/[^A-Z0-9]+/g, '_')
+    .replace(/_+/g, '_')
+    .replace(/^_+|_+$/g, '');
+}
+
 function buildEntrySortValue(entry: ExamCardEntrySnapshot) {
   return entry.startTime ? new Date(entry.startTime).getTime() : Number.MAX_SAFE_INTEGER;
+}
+
+function normalizeMediaUrl(value: unknown) {
+  const raw = normalizeText(value);
+  if (!raw) return null;
+  if (/^(data:|https?:)/i.test(raw)) return raw;
+  if (raw.startsWith('/api/uploads/')) return raw;
+  if (raw.startsWith('/uploads/')) return `/api${raw}`;
+  if (raw.startsWith('/api/')) return raw;
+  if (raw.startsWith('/')) return raw;
+  return `/api/uploads/${raw.replace(/^\/+/, '')}`;
+}
+
+function normalizeDocumentTitle(value: unknown) {
+  return normalizeText(value)
+    .toUpperCase()
+    .replace(/[^A-Z0-9]+/g, ' ')
+    .replace(/\s+/g, ' ')
+    .trim();
+}
+
+function resolveFormalPhotoUrl(params: {
+  photo?: string | null;
+  documents?: ExamCardDocumentAsset[];
+}) {
+  const preferredDocument =
+    (params.documents || []).find((document) => normalizeDocumentTitle(document.title) === 'FOTO FORMAL') || null;
+  if (preferredDocument?.fileUrl) {
+    return normalizeMediaUrl(preferredDocument.fileUrl);
+  }
+  return normalizeMediaUrl(params.photo);
+}
+
+function formatIssueDateLabel(value: Date) {
+  return value
+    .toLocaleDateString('id-ID', {
+      day: '2-digit',
+      month: 'long',
+      year: 'numeric',
+    })
+    .replace(/\./g, '');
+}
+
+function resolveAcademicYearToken(value: string) {
+  const years = String(value || '').match(/\d{4}/g);
+  if (years && years.length >= 2) {
+    return `${years[0].slice(-2)}${years[1].slice(-2)}`;
+  }
+  const digits = String(value || '').replace(/\D/g, '');
+  if (digits.length >= 4) return digits.slice(-4);
+  return '0000';
+}
+
+function resolveProgramParticipantCode(params: {
+  programCode: string;
+  programBaseTypeCode?: string | null;
+  programDisplayOrder?: number | null;
+}) {
+  const candidates = [
+    normalizeAliasCode(params.programCode),
+    normalizeAliasCode(params.programBaseTypeCode),
+  ].filter(Boolean);
+
+  for (const token of candidates) {
+    if (['SBTS', 'MIDTERM', 'SUMATIF_BERSAMA_TENGAH_SEMESTER'].includes(token)) return '01';
+    if (['SAS', 'SUMATIF_AKHIR_SEMESTER'].includes(token)) return '02';
+    if (['SAT', 'FINAL', 'SUMATIF_AKHIR_TAHUN'].includes(token)) return '03';
+    if (['ASAJ', 'ASSESMEN_SUMATIF_AKHIR_JENJANG'].includes(token)) return '04';
+    if (['ASAJP', 'ASAJ_PRAKTIK', 'ASSESMEN_SUMATIF_AKHIR_JENJANG_PRAKTIK'].includes(token)) return '05';
+  }
+
+  const fallbackOrder = Number(params.programDisplayOrder || 0);
+  if (Number.isFinite(fallbackOrder) && fallbackOrder > 0) {
+    return String(fallbackOrder).padStart(2, '0').slice(-2);
+  }
+  return '00';
+}
+
+function resolveClassLevelNumber(level: unknown) {
+  const normalized = normalizeText(level).toUpperCase();
+  if (!normalized) return null;
+  if (normalized === 'X') return '10';
+  if (normalized === 'XI') return '11';
+  if (normalized === 'XII') return '12';
+  const digits = normalized.replace(/\D/g, '');
+  if (!digits) return null;
+  return digits.padStart(2, '0').slice(-2);
+}
+
+function formatParticipantSequence(value: number | null | undefined) {
+  if (!Number.isFinite(Number(value)) || Number(value) <= 0) return null;
+  return String(Number(value)).padStart(3, '0').slice(-3);
+}
+
+function buildParticipantNumber(params: {
+  academicYearName: string;
+  programCode: string;
+  programBaseTypeCode?: string | null;
+  programDisplayOrder?: number | null;
+  classLevelNumber?: string | null;
+  participantSequence?: number | null;
+}) {
+  const academicYearToken = resolveAcademicYearToken(params.academicYearName);
+  const programToken = resolveProgramParticipantCode({
+    programCode: params.programCode,
+    programBaseTypeCode: params.programBaseTypeCode,
+    programDisplayOrder: params.programDisplayOrder,
+  });
+  const classLevelToken = normalizeText(params.classLevelNumber);
+  const sequenceToken = formatParticipantSequence(params.participantSequence);
+  if (!classLevelToken || !sequenceToken) return null;
+  return `${academicYearToken}${programToken}${classLevelToken}${sequenceToken}`;
+}
+
+function resolvePrimaryEntry(entries: ExamCardEntrySnapshot[]) {
+  if (entries.length === 0) return null;
+  return [...entries].sort((left, right) => buildEntrySortValue(left) - buildEntrySortValue(right))[0] || null;
 }
 
 async function resolveCardSemester(params: {
@@ -115,31 +266,49 @@ function buildExamCardPayload(params: {
   academicYearId: number;
   academicYearName: string;
   programCode: string;
+  programBaseTypeCode?: string | null;
+  programDisplayOrder?: number | null;
   programLabel: string;
   semester: Semester;
   generatedAt: Date;
   generatedById: number;
   generatedByName: string;
+  issueLocation: string;
+  issueDate: Date;
   principalName: string;
   principalBarcodeDataUrl: string;
   row: ExamCardOverviewRow;
 }) {
-  const headerTitle = `Kartu Ujian ${params.programLabel}`;
-  const headerSubtitle = `Tahun Ajaran ${params.academicYearName} • Semester ${formatSemesterLabel(params.semester)}`;
+  const headerTitle = EXAM_CARD_TITLE;
+  const headerSubtitle = `${params.programLabel} • Tahun Ajaran ${params.academicYearName}`;
+  const primaryEntry = resolvePrimaryEntry(params.row.entries);
+  const issueDateLabel = formatIssueDateLabel(params.issueDate);
 
   return {
     schoolName: SCHOOL_NAME,
     headerTitle,
     headerSubtitle,
+    cardTitle: EXAM_CARD_TITLE,
+    examTitle: params.programLabel,
+    institutionName: SCHOOL_NAME,
     academicYearId: params.academicYearId,
     academicYearName: params.academicYearName,
     programCode: params.programCode,
+    programBaseTypeCode: params.programBaseTypeCode || null,
     programLabel: params.programLabel,
     semester: params.semester,
     generatedAt: params.generatedAt.toISOString(),
+    participantNumber: params.row.participantNumber,
+    participantSequence: params.row.participantSequence,
     generatedBy: {
       id: params.generatedById,
       name: params.generatedByName,
+    },
+    issue: {
+      location: params.issueLocation,
+      date: params.issueDate.toISOString(),
+      dateLabel: issueDateLabel,
+      signLabel: `${params.issueLocation}, ${issueDateLabel}`,
     },
     student: {
       id: params.row.studentId,
@@ -148,6 +317,16 @@ function buildExamCardPayload(params: {
       nis: params.row.nis,
       nisn: params.row.nisn,
       className: params.row.className,
+      classLevelLabel: params.row.classLevelLabel,
+      classLevelNumber: params.row.classLevelNumber,
+      photoUrl: params.row.formalPhotoUrl,
+    },
+    placement: {
+      roomName: primaryEntry?.roomName || null,
+      sessionLabel: primaryEntry?.sessionLabel || null,
+      seatLabel: primaryEntry?.seatLabel || null,
+      startTime: primaryEntry?.startTime ? primaryEntry.startTime.toISOString() : null,
+      endTime: primaryEntry?.endTime ? primaryEntry.endTime.toISOString() : null,
     },
     entries: params.row.entries.map((entry) => ({
       sittingId: entry.sittingId,
@@ -161,6 +340,8 @@ function buildExamCardPayload(params: {
       principalName: params.principalName,
       signatureLabel: 'Ditandatangani secara digital oleh Kepala Sekolah',
       principalBarcodeDataUrl: params.principalBarcodeDataUrl,
+      principalTitle: 'Kepala Sekolah',
+      footerNote: EXAM_CARD_INTERNAL_NOTE,
     },
   };
 }
@@ -187,8 +368,10 @@ async function buildExamCardOverview(params: {
       },
       select: {
         code: true,
+        baseTypeCode: true,
         displayLabel: true,
         shortLabel: true,
+        displayOrder: true,
         fixedSemester: true,
       },
     }),
@@ -256,6 +439,14 @@ async function buildExamCardOverview(params: {
           select: {
             id: true,
             username: true,
+            photo: true,
+            documents: {
+              select: {
+                title: true,
+                fileUrl: true,
+                category: true,
+              },
+            },
           },
         })
       : Promise.resolve([]),
@@ -285,8 +476,39 @@ async function buildExamCardOverview(params: {
 
   const studentMap = new Map(historicalStudents.map((student) => [student.id, student]));
   const usernameMap = new Map(studentProfiles.map((student) => [student.id, student.username || '-']));
+  const studentAssetMap = new Map(
+    studentProfiles.map((student) => [
+      student.id,
+      {
+        photo: student.photo || null,
+        documents: student.documents || [],
+      },
+    ]),
+  );
   const generatedCardMap = new Map(generatedCards.map((card) => [card.studentId, card]));
   const entriesByStudent = new Map<number, ExamCardEntrySnapshot[]>();
+
+  const uniqueClassIds = Array.from(
+    new Set(
+      historicalStudents
+        .map((student) => Number(student.studentClass?.id || 0))
+        .filter((classId) => Number.isFinite(classId) && classId > 0),
+    ),
+  );
+  const rosterOrderMap = new Map<number, Map<number, number>>();
+  const rosterRows = await Promise.all(
+    uniqueClassIds.map(async (classId) => ({
+      classId,
+      students: await listHistoricalStudentsForClass(classId, params.academicYearId),
+    })),
+  );
+  rosterRows.forEach(({ classId, students }) => {
+    const orderMap = new Map<number, number>();
+    students.forEach((student, index) => {
+      orderMap.set(student.id, index + 1);
+    });
+    rosterOrderMap.set(classId, orderMap);
+  });
 
   sittings.forEach((sitting) => {
     const seatLabelByStudent = new Map<number, string | null>();
@@ -321,6 +543,20 @@ async function buildExamCardOverview(params: {
       (a, b) => buildEntrySortValue(a) - buildEntrySortValue(b),
     );
     const card = generatedCardMap.get(student.id) || null;
+    const classId = Number(student.studentClass?.id || 0) || null;
+    const classLevelLabel = normalizeText(student.studentClass?.level || '') || null;
+    const classLevelNumber = resolveClassLevelNumber(student.studentClass?.level || null);
+    const participantSequence = classId ? rosterOrderMap.get(classId)?.get(student.id) || null : null;
+    const participantNumber = buildParticipantNumber({
+      academicYearName: academicYear.name,
+      programCode: normalizedProgramCode,
+      programBaseTypeCode: programConfig?.baseTypeCode || null,
+      programDisplayOrder: programConfig?.displayOrder || null,
+      classLevelNumber,
+      participantSequence,
+    });
+    const studentAssets = studentAssetMap.get(student.id) || { photo: null, documents: [] };
+    const formalPhotoUrl = resolveFormalPhotoUrl(studentAssets);
 
     accumulator.push({
       studentId: student.id,
@@ -329,6 +565,12 @@ async function buildExamCardOverview(params: {
       nis: student.nis || null,
       nisn: student.nisn || null,
       className: student.studentClass?.name || null,
+      classId,
+      classLevelLabel,
+      classLevelNumber,
+      participantSequence,
+      participantNumber,
+      formalPhotoUrl,
       entries,
       eligibility,
       card: card
@@ -343,11 +585,22 @@ async function buildExamCardOverview(params: {
     return accumulator;
   }, []);
 
+  rows.sort((left, right) => {
+    const classCompare = String(left.className || '').localeCompare(String(right.className || ''), 'id-ID');
+    if (classCompare !== 0) return classCompare;
+    const orderLeft = Number(left.participantSequence || Number.MAX_SAFE_INTEGER);
+    const orderRight = Number(right.participantSequence || Number.MAX_SAFE_INTEGER);
+    if (orderLeft !== orderRight) return orderLeft - orderRight;
+    return left.studentName.localeCompare(right.studentName, 'id-ID');
+  });
+
   return {
     academicYear,
     program: {
       code: normalizedProgramCode,
       label: normalizeText(programConfig?.displayLabel || programConfig?.shortLabel || normalizedProgramCode),
+      baseTypeCode: normalizeText(programConfig?.baseTypeCode || '') || null,
+      displayOrder: Number(programConfig?.displayOrder || 0) || 0,
     },
     semester,
     rows,
@@ -394,6 +647,8 @@ export const generateExamCards = asyncHandler(async (req: Request, res: Response
   }
 
   const now = new Date();
+  const issueLocation = normalizeText(body.issueLocation) || DEFAULT_ISSUE_LOCATION;
+  const issueDate = body.issueDate ? new Date(body.issueDate) : now;
   const eligibleRows = overview.rows.filter((row) => row.eligibility.isEligible && row.entries.length > 0);
   const generatedRows = await Promise.all(
     eligibleRows.map(async (row) => {
@@ -419,11 +674,15 @@ export const generateExamCards = asyncHandler(async (req: Request, res: Response
         academicYearId: overview.academicYear.id,
         academicYearName: overview.academicYear.name,
         programCode: overview.program.code,
+        programBaseTypeCode: overview.program.baseTypeCode,
+        programDisplayOrder: overview.program.displayOrder,
         programLabel: overview.program.label,
         semester: overview.semester,
         generatedAt: now,
         generatedById: requester.id,
         generatedByName: requester.name,
+        issueLocation,
+        issueDate,
         principalName: principal.name,
         principalBarcodeDataUrl,
         row,
@@ -473,8 +732,8 @@ export const generateExamCards = asyncHandler(async (req: Request, res: Response
             principalBarcodeDataUrl,
             headTuName: requester.name,
             schoolName: SCHOOL_NAME,
-            headerTitle: `Kartu Ujian ${overview.program.label}`,
-            headerSubtitle: `Tahun Ajaran ${overview.academicYear.name} • Semester ${formatSemesterLabel(overview.semester)}`,
+            headerTitle: EXAM_CARD_TITLE,
+            headerSubtitle: `${overview.program.label} • Tahun Ajaran ${overview.academicYear.name}`,
             studentName: row.studentName,
             studentUsername: row.username,
             nis: row.nis,
@@ -494,8 +753,8 @@ export const generateExamCards = asyncHandler(async (req: Request, res: Response
             principalBarcodeDataUrl,
             headTuName: requester.name,
             schoolName: SCHOOL_NAME,
-            headerTitle: `Kartu Ujian ${overview.program.label}`,
-            headerSubtitle: `Tahun Ajaran ${overview.academicYear.name} • Semester ${formatSemesterLabel(overview.semester)}`,
+            headerTitle: EXAM_CARD_TITLE,
+            headerSubtitle: `${overview.program.label} • Tahun Ajaran ${overview.academicYear.name}`,
             studentName: row.studentName,
             studentUsername: row.username,
             nis: row.nis,

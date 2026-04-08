@@ -6,15 +6,27 @@ export type ExamGeneratedCardPayload = {
   schoolName: string;
   headerTitle: string;
   headerSubtitle: string;
+  cardTitle?: string;
+  examTitle?: string;
+  institutionName?: string;
   academicYearId: number;
   academicYearName: string;
   programCode: string;
+  programBaseTypeCode?: string | null;
   programLabel: string;
   semester: ExamCardSemester;
   generatedAt: string;
+  participantNumber?: string | null;
+  participantSequence?: number | null;
   generatedBy: {
     id: number;
     name: string;
+  };
+  issue?: {
+    location?: string | null;
+    date?: string | null;
+    dateLabel?: string | null;
+    signLabel?: string | null;
   };
   student: {
     id: number;
@@ -23,6 +35,16 @@ export type ExamGeneratedCardPayload = {
     nis?: string | null;
     nisn?: string | null;
     className?: string | null;
+    classLevelLabel?: string | null;
+    classLevelNumber?: string | null;
+    photoUrl?: string | null;
+  };
+  placement?: {
+    roomName?: string | null;
+    sessionLabel?: string | null;
+    seatLabel?: string | null;
+    startTime?: string | null;
+    endTime?: string | null;
   };
   entries: Array<{
     sittingId: number;
@@ -36,6 +58,8 @@ export type ExamGeneratedCardPayload = {
     principalName: string;
     signatureLabel: string;
     principalBarcodeDataUrl?: string | null;
+    principalTitle?: string | null;
+    footerNote?: string | null;
   };
 };
 
@@ -79,6 +103,12 @@ export type ExamCardOverviewRow = {
   nis?: string | null;
   nisn?: string | null;
   className?: string | null;
+  classId?: number | null;
+  classLevelLabel?: string | null;
+  classLevelNumber?: string | null;
+  participantSequence?: number | null;
+  participantNumber?: string | null;
+  formalPhotoUrl?: string | null;
   entries: Array<{
     sittingId: number;
     roomName: string;
@@ -104,6 +134,8 @@ export type ExamCardOverviewResponse = {
   program: {
     code: string;
     label: string;
+    baseTypeCode?: string | null;
+    displayOrder?: number;
   };
   semester: ExamCardSemester;
   summary: {
@@ -138,6 +170,8 @@ export const examCardApi = {
     academicYearId: number;
     programCode: string;
     semester?: ExamCardSemester;
+    issueLocation?: string;
+    issueDate?: string;
   }) {
     const response = await apiClient.post<
       ApiEnvelope<{
