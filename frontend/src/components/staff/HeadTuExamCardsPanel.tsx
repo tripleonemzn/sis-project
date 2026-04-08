@@ -21,7 +21,7 @@ import { examService, type ExamProgram } from '../../services/exam.service';
 import { isNonScheduledExamProgram } from '../../lib/examProgramMenu';
 import { useActiveAcademicYear } from '../../hooks/useActiveAcademicYear';
 
-type StatusFilter = 'ALL' | 'PUBLISHED' | 'ELIGIBLE' | 'BLOCKED';
+type StatusFilter = 'ALL' | 'PUBLISHED' | 'READY' | 'SYNC_REQUIRED';
 
 function formatDateTime(value?: string | null) {
   if (!value) return '-';
@@ -147,8 +147,8 @@ function buildExamCardMarkup(card: ExamGeneratedCardPayload) {
   const schoolLogoUrl = resolveAbsoluteUrl('/logo-kgb2.png');
   const watermarkLogoUrl = resolveAbsoluteUrl('/logo_sis_kgb2.png');
   const photoUrl = resolveAbsoluteUrl(card.student.photoUrl || '');
-  const roomLabel = card.placement?.roomName || card.entries[0]?.roomName || '-';
-  const sessionLabel = card.placement?.sessionLabel || card.entries[0]?.sessionLabel || '-';
+  const roomLabel = card.entries[0]?.roomName || card.placement?.roomName || '-';
+  const sessionLabel = card.entries[0]?.sessionLabel || card.placement?.sessionLabel || '-';
   const issueSignLabel =
     card.issue?.signLabel ||
     `${card.issue?.location || 'Bekasi'}, ${formatDateOnly(card.issue?.date || card.generatedAt)}`;
@@ -414,6 +414,42 @@ function formatEntryTimeRange(entry: ExamCardOverviewRow['entries'][number]) {
   return '';
 }
 
+function buildPlacementMetaLabel(placement?: {
+  sessionLabel?: string | null;
+  seatLabel?: string | null;
+} | null) {
+  const parts = [
+    String(placement?.sessionLabel || '').trim(),
+    placement?.seatLabel ? `Kursi ${placement.seatLabel}` : '',
+  ].filter(Boolean);
+  return parts.join(' • ');
+}
+
+function buildPlacementTimeRangeLabel(placement?: {
+  startTime?: string | null;
+  endTime?: string | null;
+} | null) {
+  if (placement?.startTime && placement?.endTime) {
+    return `${formatDateTime(placement.startTime)} - ${formatDateTime(placement.endTime)}`;
+  }
+  if (placement?.startTime || placement?.endTime) return 'Waktu ujian belum lengkap';
+  return '';
+}
+
+function deriveExamCardRowState(row: ExamCardOverviewRow) {
+  const hasOperationalEntry = row.entries.length > 0;
+  const hasActiveCard = Boolean(row.card?.payload);
+  const isOperationallyEligible = row.eligibility.isEligible && hasOperationalEntry;
+  return {
+    hasOperationalEntry,
+    hasActiveCard,
+    isOperationallyEligible,
+    isPublishedActive: hasActiveCard && isOperationallyEligible,
+    isReadyToGenerate: !hasActiveCard && isOperationallyEligible,
+    requiresSync: !isOperationallyEligible,
+  };
+}
+
 export function HeadTuExamCardsPanel() {
   const queryClient = useQueryClient();
   const [activeProgramCode, setActiveProgramCode] = useState('');
@@ -503,14 +539,34 @@ export function HeadTuExamCardsPanel() {
     [overviewQuery.data?.rows],
   );
 
+  const rowViewModels = useMemo(
+    () =>
+      (overviewQuery.data?.rows || []).map((row) => ({
+        row,
+        ...deriveExamCardRowState(row),
+      })),
+    [overviewQuery.data?.rows],
+  );
+
+  const summaryCards = useMemo(
+    () => ({
+      totalStudents: rowViewModels.length,
+      readyToGenerate: rowViewModels.filter((item) => item.isReadyToGenerate).length,
+      syncRequired: rowViewModels.filter((item) => item.requiresSync).length,
+      publishedActive: rowViewModels.filter((item) => item.isPublishedActive).length,
+    }),
+    [rowViewModels],
+  );
+
   const filteredRows = useMemo(() => {
     const keyword = search.trim().toLowerCase();
-    return (overviewQuery.data?.rows || []).filter((row) => {
+    return rowViewModels.filter((item) => {
+      const { row } = item;
       const statusMatches =
         statusFilter === 'ALL' ||
-        (statusFilter === 'PUBLISHED' && Boolean(row.card)) ||
-        (statusFilter === 'ELIGIBLE' && row.eligibility.isEligible && !row.card) ||
-        (statusFilter === 'BLOCKED' && !row.eligibility.isEligible);
+        (statusFilter === 'PUBLISHED' && item.isPublishedActive) ||
+        (statusFilter === 'READY' && item.isReadyToGenerate) ||
+        (statusFilter === 'SYNC_REQUIRED' && item.requiresSync);
       const classMatches = classFilter === 'ALL' || String(row.className || '') === classFilter;
       const keywordMatches = matchesSearch(keyword, [
         row.studentName,
@@ -520,15 +576,19 @@ export function HeadTuExamCardsPanel() {
         row.className,
         row.participantNumber,
         ...row.entries.flatMap((entry) => [entry.roomName, entry.sessionLabel, entry.seatLabel]),
+        row.card?.payload?.placement?.roomName,
+        row.card?.payload?.placement?.sessionLabel,
+        row.card?.payload?.placement?.seatLabel,
       ]);
       return statusMatches && classMatches && keywordMatches;
     });
-  }, [classFilter, overviewQuery.data?.rows, search, statusFilter]);
+  }, [classFilter, rowViewModels, search, statusFilter]);
 
   const printableCards = useMemo(
     () =>
       filteredRows
-        .map((row) => row.card?.payload)
+        .filter((item) => item.isPublishedActive)
+        .map((item) => item.row.card?.payload)
         .filter((payload): payload is ExamGeneratedCardPayload => Boolean(payload)),
     [filteredRows],
   );
@@ -538,11 +598,11 @@ export function HeadTuExamCardsPanel() {
     printHtmlDocument('Kartu Ujian', buildExamCardsPrintHtml(printableCards, 'Kartu Ujian'));
   };
 
-  const handlePrintOne = (row: ExamCardOverviewRow) => {
-    if (!row.card?.payload) return;
+  const handlePrintOne = (payload?: ExamGeneratedCardPayload | null) => {
+    if (!payload) return;
     printHtmlDocument(
-      `Kartu Ujian - ${row.studentName}`,
-      buildExamCardsPrintHtml([row.card.payload], `Kartu Ujian - ${row.studentName}`),
+      `Kartu Ujian - ${payload.student.name}`,
+      buildExamCardsPrintHtml([payload], `Kartu Ujian - ${payload.student.name}`),
     );
   };
 
@@ -627,7 +687,7 @@ export function HeadTuExamCardsPanel() {
                 !overviewQuery.data ||
                 !issueDate ||
                 issueLocation.trim().length === 0 ||
-                overviewQuery.data.summary.eligibleStudents === 0 ||
+                summaryCards.totalStudents === 0 ||
                 generateMutation.isPending
               }
               className="inline-flex min-h-[42px] items-center justify-center rounded-lg bg-blue-600 px-4 py-2.5 text-sm font-semibold text-white hover:bg-blue-700 disabled:cursor-not-allowed disabled:bg-blue-300"
@@ -651,23 +711,23 @@ export function HeadTuExamCardsPanel() {
       <div className="grid gap-4 md:grid-cols-2 xl:grid-cols-4">
         <div className="rounded-xl border border-blue-100 bg-blue-50 p-4">
           <div className="text-xs font-semibold uppercase tracking-wide text-blue-700">Peserta Program Ujian</div>
-          <div className="mt-2 text-2xl font-bold text-blue-900">{overviewQuery.data?.summary.totalStudents || 0}</div>
+          <div className="mt-2 text-2xl font-bold text-blue-900">{summaryCards.totalStudents}</div>
           <div className="mt-1 text-xs text-blue-800/80">Total siswa yang benar-benar masuk jadwal aktif program ujian ini.</div>
         </div>
         <div className="rounded-xl border border-emerald-100 bg-emerald-50 p-4">
-          <div className="text-xs font-semibold uppercase tracking-wide text-emerald-700">Siap Digenerate</div>
-          <div className="mt-2 text-2xl font-bold text-emerald-900">{overviewQuery.data?.summary.eligibleStudents || 0}</div>
-          <div className="mt-1 text-xs text-emerald-800/80">Sudah layak ikut ujian dan punya penempatan ruang aktif untuk dibuatkan kartu.</div>
+          <div className="text-xs font-semibold uppercase tracking-wide text-emerald-700">Siap Digenerate Baru</div>
+          <div className="mt-2 text-2xl font-bold text-emerald-900">{summaryCards.readyToGenerate}</div>
+          <div className="mt-1 text-xs text-emerald-800/80">Sudah layak ikut ujian dan punya penempatan ruang aktif, tetapi belum punya kartu aktif terbaru.</div>
         </div>
         <div className="rounded-xl border border-amber-100 bg-amber-50 p-4">
-          <div className="text-xs font-semibold uppercase tracking-wide text-amber-700">Belum Bisa Digenerate</div>
-          <div className="mt-2 text-2xl font-bold text-amber-900">{overviewQuery.data?.summary.blockedStudents || 0}</div>
-          <div className="mt-1 text-xs text-amber-800/80">Masih ada syarat kelayakan atau data penempatan yang belum terpenuhi.</div>
+          <div className="text-xs font-semibold uppercase tracking-wide text-amber-700">Perlu Sinkronisasi</div>
+          <div className="mt-2 text-2xl font-bold text-amber-900">{summaryCards.syncRequired}</div>
+          <div className="mt-1 text-xs text-amber-800/80">Termasuk siswa yang belum layak, belum punya ruang aktif, atau kartu lamanya sudah tidak sinkron.</div>
         </div>
         <div className="rounded-xl border border-rose-100 bg-rose-50 p-4">
-          <div className="text-xs font-semibold uppercase tracking-wide text-rose-700">Sudah Dipublikasikan</div>
-          <div className="mt-2 text-2xl font-bold text-rose-900">{overviewQuery.data?.summary.publishedCards || 0}</div>
-          <div className="mt-1 text-xs text-rose-800/80">Kartu digital aktif sudah terbit, tampil di akun siswa, dan siap dicetak ulang.</div>
+          <div className="text-xs font-semibold uppercase tracking-wide text-rose-700">Sudah Dipublikasikan Aktif</div>
+          <div className="mt-2 text-2xl font-bold text-rose-900">{summaryCards.publishedActive}</div>
+          <div className="mt-1 text-xs text-rose-800/80">Kartu digital aktif masih sesuai jadwal terbaru, tampil di akun siswa, dan siap dicetak ulang.</div>
         </div>
       </div>
 
@@ -703,8 +763,8 @@ export function HeadTuExamCardsPanel() {
             >
               <option value="ALL">Semua Status</option>
               <option value="PUBLISHED">Sudah Dipublikasikan</option>
-              <option value="ELIGIBLE">Siap Digenerate</option>
-              <option value="BLOCKED">Belum Layak</option>
+              <option value="READY">Siap Digenerate</option>
+              <option value="SYNC_REQUIRED">Perlu Sinkronisasi</option>
             </select>
           </div>
           <div className="text-sm text-gray-500">
@@ -739,8 +799,12 @@ export function HeadTuExamCardsPanel() {
               <div className="text-right text-xs font-semibold uppercase tracking-wide text-slate-500">Print</div>
             </div>
             <div className="divide-y divide-gray-200">
-            {filteredRows.map((row) => {
-              const primaryEntry = row.card?.payload?.placement || row.entries[0] || null;
+            {filteredRows.map((item) => {
+              const { row, hasOperationalEntry, hasActiveCard, isPublishedActive, isReadyToGenerate } = item;
+              const primaryEntry = row.entries[0] || null;
+              const fallbackPlacement = row.card?.payload?.placement || null;
+              const placementMeta = buildPlacementMetaLabel(fallbackPlacement);
+              const placementTimeRange = buildPlacementTimeRangeLabel(fallbackPlacement);
               const isExpanded = expandedStudentId === row.studentId;
               return (
                 <div key={row.studentId}>
@@ -767,7 +831,9 @@ export function HeadTuExamCardsPanel() {
                     </div>
 
                     <div className="min-w-0 text-sm text-gray-700">
-                      <div className="font-semibold text-gray-900">{primaryEntry?.roomName || 'Belum ada ruang aktif'}</div>
+                      <div className="font-semibold text-gray-900">
+                        {primaryEntry?.roomName || fallbackPlacement?.roomName || 'Belum ada ruang aktif'}
+                      </div>
                       {primaryEntry ? (
                         <>
                           {formatEntryMeta(primaryEntry as ExamCardOverviewRow['entries'][number]) ? (
@@ -779,27 +845,44 @@ export function HeadTuExamCardsPanel() {
                             </div>
                           ) : null}
                         </>
+                      ) : fallbackPlacement ? (
+                        <>
+                          {placementMeta ? <div className="mt-1 text-xs text-amber-700">{placementMeta}</div> : null}
+                          {placementTimeRange ? <div className="mt-1 text-xs text-amber-700">{placementTimeRange}</div> : null}
+                        </>
                       ) : (
                         <div className="mt-1 text-xs text-amber-700">Denah/ruang belum sinkron.</div>
                       )}
                     </div>
 
                     <div className="text-sm text-gray-700">
-                      {row.card ? (
+                      {isPublishedActive ? (
                         <>
                           <div className="inline-flex items-center rounded-full bg-rose-100 px-3 py-1 text-xs font-semibold text-rose-700">
                             <ClipboardList className="mr-1.5 h-3.5 w-3.5" />
                             Sudah Dipublikasikan
                           </div>
-                          <div className="mt-2 text-xs text-rose-700">Kartu aktif • diterbitkan {formatDateTime(row.card.generatedAt)}.</div>
+                          <div className="mt-2 text-xs text-rose-700">Kartu aktif • diterbitkan {formatDateTime(row.card?.generatedAt)}.</div>
                         </>
-                      ) : row.eligibility.isEligible ? (
+                      ) : isReadyToGenerate ? (
                         <>
                           <div className="inline-flex items-center rounded-full bg-emerald-100 px-3 py-1 text-xs font-semibold text-emerald-700">
                             <Sparkles className="mr-1.5 h-3.5 w-3.5" />
                             Siap Digenerate
                           </div>
                           <div className="mt-2 text-xs text-emerald-700">Siswa memenuhi syarat kartu ujian digital.</div>
+                        </>
+                      ) : hasActiveCard || !hasOperationalEntry ? (
+                        <>
+                          <div className="inline-flex items-center rounded-full bg-amber-100 px-3 py-1 text-xs font-semibold text-amber-700">
+                            <ShieldCheck className="mr-1.5 h-3.5 w-3.5" />
+                            Perlu Sinkronisasi
+                          </div>
+                          <div className="mt-2 text-xs text-amber-700">
+                            {hasActiveCard
+                              ? 'Kartu lama masih tersimpan, tetapi jadwal aktifnya sudah berubah.'
+                              : 'Penempatan ruang aktif belum tersedia untuk siswa ini.'}
+                          </div>
                         </>
                       ) : (
                         <>
@@ -817,9 +900,13 @@ export function HeadTuExamCardsPanel() {
                         <div className="rounded-lg border border-sky-100 bg-sky-50 px-3 py-2 text-xs text-sky-700">
                           Ada pengecualian finance dari wali kelas.
                         </div>
-                      ) : row.card ? (
-                        <div className="text-xs text-emerald-700">Sudah digenerate pada {formatDateTime(row.card.generatedAt)}.</div>
-                      ) : row.eligibility.isEligible ? (
+                      ) : isPublishedActive ? (
+                        <div className="text-xs text-emerald-700">Sudah digenerate pada {formatDateTime(row.card?.generatedAt)}.</div>
+                      ) : hasActiveCard ? (
+                        <div className="text-xs text-amber-700">Generate ulang agar kartu aktif mengikuti jadwal dan ruang terbaru.</div>
+                      ) : !hasOperationalEntry ? (
+                        <div className="text-xs text-amber-700">Belum ada penempatan ruang aktif atau denah kursi belum tersinkron.</div>
+                      ) : isReadyToGenerate ? (
                         <div className="text-xs text-emerald-700">Siap dipublikasikan setelah generate kartu.</div>
                       ) : (
                         <div className="space-y-2 text-xs text-amber-700">
@@ -841,9 +928,9 @@ export function HeadTuExamCardsPanel() {
                         type="button"
                         onClick={(event) => {
                           event.stopPropagation();
-                          handlePrintOne(row);
+                          handlePrintOne(isPublishedActive ? row.card?.payload : null);
                         }}
-                        disabled={!row.card?.payload}
+                        disabled={!isPublishedActive || !row.card?.payload}
                         className="inline-flex items-center rounded-lg border border-rose-200 bg-white px-3 py-2 text-sm font-semibold text-rose-700 hover:bg-rose-50 disabled:cursor-not-allowed disabled:opacity-50"
                       >
                         <Printer className="mr-2 h-4 w-4" />

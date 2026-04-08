@@ -1,7 +1,7 @@
 import { Request, Response } from 'express';
 import prisma from '../utils/prisma';
 import { ApiError, asyncHandler, ApiResponse } from '../utils/api';
-import { ExamType, Semester, Prisma } from '@prisma/client';
+import { ExamGeneratedCardStatus, ExamType, Semester, Prisma } from '@prisma/client';
 import {
     type HistoricalStudentSnapshot,
     listHistoricalStudentsByIdsForAcademicYear,
@@ -236,6 +236,174 @@ function buildScheduleSessionScope(
         sessionId: null,
         sessionLabel: normalizedLabel || null,
     };
+}
+
+function buildExamScheduleScopeForSittingSync(params: {
+    academicYearId: number;
+    examType?: string | null;
+    semester?: Semester | null;
+    sessionId?: number | null;
+    sessionLabel?: string | null;
+    classIds: number[];
+}): Prisma.ExamScheduleWhereInput {
+    const normalizedClassIds = Array.from(
+        new Set(
+            (Array.isArray(params.classIds) ? params.classIds : [])
+                .map((value) => Number(value))
+                .filter((value): value is number => Number.isFinite(value) && value > 0),
+        ),
+    );
+    if (normalizedClassIds.length === 0) {
+        return { id: { in: [] } };
+    }
+
+    const examTypeCandidates = resolveExamTypeCandidates(params.examType);
+    return {
+        academicYearId: params.academicYearId,
+        classId: { in: normalizedClassIds },
+        ...(params.semester ? { semester: params.semester } : {}),
+        ...(examTypeCandidates.length > 0
+            ? {
+                  examType: {
+                      in: examTypeCandidates,
+                  },
+              }
+            : params.examType
+              ? { examType: String(params.examType) }
+              : {}),
+        ...buildScheduleSessionScope(params.sessionId ?? null, params.sessionLabel ?? null),
+    };
+}
+
+async function syncExamScheduleRoomsForSitting(
+    tx: Prisma.TransactionClient,
+    params: {
+        previousScope?: {
+            academicYearId: number;
+            examType?: string | null;
+            semester?: Semester | null;
+            sessionId?: number | null;
+            sessionLabel?: string | null;
+            roomName?: string | null;
+            classIds: number[];
+        } | null;
+        nextScope?: {
+            academicYearId: number;
+            examType?: string | null;
+            semester?: Semester | null;
+            sessionId?: number | null;
+            sessionLabel?: string | null;
+            roomName?: string | null;
+            classIds: number[];
+        } | null;
+    },
+): Promise<void> {
+    const previousRoomName = String(params.previousScope?.roomName || '').trim();
+    if (params.previousScope && previousRoomName) {
+        const previousWhere = buildExamScheduleScopeForSittingSync({
+            academicYearId: params.previousScope.academicYearId,
+            examType: params.previousScope.examType,
+            semester: params.previousScope.semester,
+            sessionId: params.previousScope.sessionId,
+            sessionLabel: params.previousScope.sessionLabel,
+            classIds: params.previousScope.classIds,
+        });
+        await tx.examSchedule.updateMany({
+            where: {
+                ...previousWhere,
+                room: previousRoomName,
+            },
+            data: {
+                room: null,
+            },
+        });
+    }
+
+    const nextRoomName = String(params.nextScope?.roomName || '').trim();
+    if (params.nextScope && nextRoomName) {
+        const nextWhere = buildExamScheduleScopeForSittingSync({
+            academicYearId: params.nextScope.academicYearId,
+            examType: params.nextScope.examType,
+            semester: params.nextScope.semester,
+            sessionId: params.nextScope.sessionId,
+            sessionLabel: params.nextScope.sessionLabel,
+            classIds: params.nextScope.classIds,
+        });
+        await tx.examSchedule.updateMany({
+            where: nextWhere,
+            data: {
+                room: nextRoomName,
+            },
+        });
+    }
+}
+
+async function revokeGeneratedCardsForStudentsWithoutSitting(
+    tx: Prisma.TransactionClient,
+    params: {
+        academicYearId: number;
+        examType?: string | null;
+        semester?: Semester | null;
+        studentIds: number[];
+        reason: string;
+    },
+): Promise<void> {
+    const normalizedStudentIds = Array.from(
+        new Set(
+            (Array.isArray(params.studentIds) ? params.studentIds : [])
+                .map((value) => Number(value))
+                .filter((value): value is number => Number.isFinite(value) && value > 0),
+        ),
+    );
+    const normalizedProgramCode = normalizeAliasCode(params.examType);
+    if (!normalizedStudentIds.length || !normalizedProgramCode) {
+        return;
+    }
+
+    const examTypeCandidates = resolveExamTypeCandidates(normalizedProgramCode);
+    const remainingAssignments = await tx.examSittingStudent.findMany({
+        where: {
+            studentId: { in: normalizedStudentIds },
+            sitting: {
+                academicYearId: params.academicYearId,
+                ...(params.semester ? { semester: params.semester } : {}),
+                ...(examTypeCandidates.length > 0
+                    ? {
+                          examType: {
+                              in: examTypeCandidates,
+                          },
+                      }
+                    : {}),
+            },
+        },
+        select: {
+            studentId: true,
+        },
+    });
+    const remainingStudentIdSet = new Set(
+        remainingAssignments
+            .map((row) => Number(row.studentId))
+            .filter((studentId): studentId is number => Number.isFinite(studentId) && studentId > 0),
+    );
+    const staleStudentIds = normalizedStudentIds.filter((studentId) => !remainingStudentIdSet.has(studentId));
+    if (staleStudentIds.length === 0) {
+        return;
+    }
+
+    await tx.examGeneratedCard.updateMany({
+        where: {
+            academicYearId: params.academicYearId,
+            programCode: normalizedProgramCode,
+            ...(params.semester ? { semester: params.semester } : {}),
+            studentId: { in: staleStudentIds },
+            status: ExamGeneratedCardStatus.ACTIVE,
+        },
+        data: {
+            status: ExamGeneratedCardStatus.REVOKED,
+            revokedAt: new Date(),
+            revokedReason: params.reason,
+        },
+    });
 }
 
 function normalizeClassLevelForProgramScope(raw: unknown): string {
@@ -499,23 +667,20 @@ export const createExamSitting = asyncHandler(async (req: Request, res: Response
             },
         });
 
-        if (classIds.length > 0) {
-            const scheduleExamTypeCandidates = resolveExamTypeCandidates(created.examType);
-            await tx.examSchedule.updateMany({
-                where: {
-                    academicYearId: created.academicYearId,
-                    examType:
-                        scheduleExamTypeCandidates.length > 0
-                            ? { in: scheduleExamTypeCandidates }
-                            : created.examType,
-                    classId: { in: classIds },
-                    ...buildScheduleSessionScope(created.sessionId ?? null, created.sessionLabel ?? null),
-                },
-                data: {
-                    room: created.roomName,
-                },
-            });
-        }
+        await syncExamScheduleRoomsForSitting(tx, {
+            nextScope:
+                classIds.length > 0
+                    ? {
+                          academicYearId: created.academicYearId,
+                          examType: created.examType,
+                          semester: created.semester,
+                          sessionId: created.sessionId,
+                          sessionLabel: created.sessionLabel,
+                          roomName: created.roomName,
+                          classIds,
+                      }
+                    : null,
+        });
 
         return created;
     });
@@ -844,8 +1009,12 @@ export const updateExamSitting = asyncHandler(async (req: Request, res: Response
     }
 
     const studentIds = existingSitting.students.map((item) => item.studentId);
-    const historicalStudents = await listHistoricalSittingStudentsByIds(studentIds, resolvedAcademicYearId);
-    const classIds = collectHistoricalClassIds(historicalStudents);
+    const [previousHistoricalStudents, nextHistoricalStudents] = await Promise.all([
+        listHistoricalSittingStudentsByIds(studentIds, existingSitting.academicYearId),
+        listHistoricalSittingStudentsByIds(studentIds, resolvedAcademicYearId),
+    ]);
+    const previousClassIds = collectHistoricalClassIds(previousHistoricalStudents);
+    const nextClassIds = collectHistoricalClassIds(nextHistoricalStudents);
     const hasSessionPayload = sessionId !== undefined || sessionLabel !== undefined;
     const resolvedProgramSession =
         hasSessionPayload
@@ -865,7 +1034,7 @@ export const updateExamSitting = asyncHandler(async (req: Request, res: Response
     await assertSittingClassLevelScope({
         academicYearId: resolvedAcademicYearId,
         programCode: resolvedExamType,
-        classIds,
+        classIds: nextClassIds,
     });
 
     const sitting = await prisma.$transaction(async (tx) => {
@@ -884,23 +1053,32 @@ export const updateExamSitting = asyncHandler(async (req: Request, res: Response
             },
         });
 
-        if (classIds.length > 0) {
-            const scheduleExamTypeCandidates = resolveExamTypeCandidates(updated.examType);
-            await tx.examSchedule.updateMany({
-                where: {
-                    academicYearId: updated.academicYearId,
-                    examType:
-                        scheduleExamTypeCandidates.length > 0
-                            ? { in: scheduleExamTypeCandidates }
-                            : updated.examType,
-                    classId: { in: classIds },
-                    ...buildScheduleSessionScope(updated.sessionId ?? null, updated.sessionLabel ?? null),
-                },
-                data: {
-                    room: updated.roomName,
-                },
-            });
-        }
+        await syncExamScheduleRoomsForSitting(tx, {
+            previousScope:
+                previousClassIds.length > 0
+                    ? {
+                          academicYearId: existingSitting.academicYearId,
+                          examType: existingSitting.examType,
+                          semester: existingSitting.semester,
+                          sessionId: existingSitting.sessionId,
+                          sessionLabel: existingSitting.sessionLabel,
+                          roomName: existingSitting.roomName,
+                          classIds: previousClassIds,
+                      }
+                    : null,
+            nextScope:
+                nextClassIds.length > 0
+                    ? {
+                          academicYearId: updated.academicYearId,
+                          examType: updated.examType,
+                          semester: updated.semester,
+                          sessionId: updated.sessionId,
+                          sessionLabel: updated.sessionLabel,
+                          roomName: updated.roomName,
+                          classIds: nextClassIds,
+                      }
+                    : null,
+        });
 
         return updated;
     });
@@ -955,16 +1133,7 @@ export const updateSittingStudents = asyncHandler(async (req: Request, res: Resp
         programCode: targetSitting.examType,
         classIds: nextClassIds,
     });
-    const removedClassIds = previousClassIds.filter((classId) => !nextClassIds.includes(classId));
-    const scheduleExamTypeCandidates = resolveExamTypeCandidates(targetSitting.examType);
-    const scheduleExamTypeWhere =
-        scheduleExamTypeCandidates.length > 0
-            ? { in: scheduleExamTypeCandidates }
-            : targetSitting.examType;
-    const scheduleSessionScope = buildScheduleSessionScope(
-        targetSitting.sessionId ?? null,
-        targetSitting.sessionLabel ?? null,
-    );
+    const removedStudentIds = previousStudentIds.filter((studentId) => !normalizedStudentIds.includes(studentId));
 
     // Transaction to replace students
     await prisma.$transaction(async (tx) => {
@@ -983,41 +1152,97 @@ export const updateSittingStudents = asyncHandler(async (req: Request, res: Resp
             });
         }
 
-        if (removedClassIds.length > 0) {
-            await tx.examSchedule.updateMany({
-                where: {
-                    academicYearId: targetSitting.academicYearId,
-                    examType: scheduleExamTypeWhere,
-                    classId: { in: removedClassIds },
-                    room: targetSitting.roomName,
-                    ...scheduleSessionScope,
-                },
-                data: {
-                    room: null,
-                },
-            });
-        }
+        await syncExamScheduleRoomsForSitting(tx, {
+            previousScope:
+                previousClassIds.length > 0
+                    ? {
+                          academicYearId: targetSitting.academicYearId,
+                          examType: targetSitting.examType,
+                          semester: targetSitting.semester,
+                          sessionId: targetSitting.sessionId,
+                          sessionLabel: targetSitting.sessionLabel,
+                          roomName: targetSitting.roomName,
+                          classIds: previousClassIds,
+                      }
+                    : null,
+            nextScope:
+                nextClassIds.length > 0
+                    ? {
+                          academicYearId: targetSitting.academicYearId,
+                          examType: targetSitting.examType,
+                          semester: targetSitting.semester,
+                          sessionId: targetSitting.sessionId,
+                          sessionLabel: targetSitting.sessionLabel,
+                          roomName: targetSitting.roomName,
+                          classIds: nextClassIds,
+                      }
+                    : null,
+        });
 
-        if (nextClassIds.length > 0) {
-            await tx.examSchedule.updateMany({
-                where: {
-                    academicYearId: targetSitting.academicYearId,
-                    examType: scheduleExamTypeWhere,
-                    classId: { in: nextClassIds },
-                    ...scheduleSessionScope,
-                },
-                data: {
-                    room: targetSitting.roomName,
-                },
-            });
-        }
+        await revokeGeneratedCardsForStudentsWithoutSitting(tx, {
+            academicYearId: targetSitting.academicYearId,
+            examType: targetSitting.examType,
+            semester: targetSitting.semester,
+            studentIds: removedStudentIds,
+            reason: 'Kartu dicabut karena penempatan ruang ujian siswa sudah tidak aktif.',
+        });
     });
 
     res.json(new ApiResponse(200, null, 'Students updated successfully'));
 });
 
 export const deleteSitting = asyncHandler(async (req: Request, res: Response) => {
-    const { id } = req.params;
-    await prisma.examSitting.delete({ where: { id: parseInt(id) } });
+    const sittingId = Number(req.params.id);
+    if (!Number.isFinite(sittingId) || sittingId <= 0) {
+        throw new ApiError(400, 'Sitting ID tidak valid');
+    }
+
+    const targetSitting = await prisma.examSitting.findUnique({
+        where: { id: sittingId },
+        include: {
+            students: {
+                select: {
+                    studentId: true,
+                },
+            },
+        },
+    });
+    if (!targetSitting) {
+        throw new ApiError(404, 'Exam Sitting not found');
+    }
+
+    const studentIds = targetSitting.students.map((item) => item.studentId);
+    const previousStudents = await listHistoricalSittingStudentsByIds(studentIds, targetSitting.academicYearId);
+    const previousClassIds = collectHistoricalClassIds(previousStudents);
+
+    await prisma.$transaction(async (tx) => {
+        await syncExamScheduleRoomsForSitting(tx, {
+            previousScope:
+                previousClassIds.length > 0
+                    ? {
+                          academicYearId: targetSitting.academicYearId,
+                          examType: targetSitting.examType,
+                          semester: targetSitting.semester,
+                          sessionId: targetSitting.sessionId,
+                          sessionLabel: targetSitting.sessionLabel,
+                          roomName: targetSitting.roomName,
+                          classIds: previousClassIds,
+                      }
+                    : null,
+        });
+
+        await tx.examSitting.delete({
+            where: { id: sittingId },
+        });
+
+        await revokeGeneratedCardsForStudentsWithoutSitting(tx, {
+            academicYearId: targetSitting.academicYearId,
+            examType: targetSitting.examType,
+            semester: targetSitting.semester,
+            studentIds,
+            reason: 'Kartu dicabut karena ruang ujian sudah dihapus dari Kelola Ruang Ujian.',
+        });
+    });
+
     res.json(new ApiResponse(200, null, 'Sitting deleted successfully'));
 });

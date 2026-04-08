@@ -1042,7 +1042,7 @@ const ExamSittingManagementPage = () => {
               Belum ada Program Ujian aktif pada tahun ajaran ini.
             </p>
           ) : (
-            <div className="space-y-4">
+            <div className="flex flex-wrap items-center gap-3">
               <div className="flex flex-wrap gap-1 bg-white p-1 rounded-lg border border-gray-200 w-fit">
                 {visiblePrograms.map((program) => (
                   <button
@@ -1060,8 +1060,8 @@ const ExamSittingManagementPage = () => {
                 ))}
               </div>
               {activeProgramCode && !activeProgram?.fixedSemester ? (
-                <div className="flex flex-wrap items-center gap-3">
-                  <div className="text-sm font-medium text-gray-600">Semester</div>
+                <div className="flex items-center gap-2 rounded-lg border border-gray-200 bg-white px-3 py-2">
+                  <span className="text-sm font-medium text-gray-600">Semester</span>
                   <select
                     value={selectedSemester}
                     onChange={(event) => setSelectedSemester((event.target.value as 'ODD' | 'EVEN') || 'ODD')}

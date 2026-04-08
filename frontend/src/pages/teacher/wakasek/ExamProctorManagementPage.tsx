@@ -200,9 +200,9 @@ const formatSafeDateTime = (value?: string | null) => {
   return date ? format(date, 'dd/MM/yyyy HH:mm') : '-';
 };
 
-const buildDateKey = (value?: string | null) => {
+const formatSafeDateLabel = (value?: string | null) => {
   const date = parseSafeDate(value);
-  return date ? format(date, 'yyyy-MM-dd') : '';
+  return date ? format(date, 'dd MMMM yyyy') : '-';
 };
 
 const formatTimeRangeLabel = (start?: string | null, end?: string | null) => {
@@ -412,7 +412,6 @@ const SearchableSelect = ({
 const ExamProctorManagementPage = () => {
   const [searchParams, setSearchParams] = useSearchParams();
   const programParamKey = 'mengawasProgram';
-  const dateParamKey = 'mengawasDate';
   const { data: activeAcademicYear } = useActiveAcademicYear();
   const [examPrograms, setExamPrograms] = useState<ExamProgram[]>([]);
   const [activeProgramCode, setActiveProgramCode] = useState<string>('');
@@ -421,7 +420,6 @@ const ExamProctorManagementPage = () => {
   const [reportsLoading, setReportsLoading] = useState(false);
   
   // Filters
-  const [selectedDate, setSelectedDate] = useState<string>(() => sanitizeDateInputValue(searchParams.get(dateParamKey)));
   const [selectedSemester, setSelectedSemester] = useState<'ODD' | 'EVEN'>(
     activeAcademicYear?.semester === 'EVEN' ? 'EVEN' : 'ODD',
   );
@@ -593,15 +591,6 @@ const ExamProctorManagementPage = () => {
                 const sitting = detailRes.data?.data as SittingDetail;
                 
                 if (sitting && sitting.students) {
-                    const sittingDateKey =
-                      buildDateKey(sitting.startTime) ||
-                      buildDateKey(sitting.endTime);
-                    if (selectedDate && sittingDateKey && sittingDateKey !== selectedDate) {
-                      return;
-                    }
-                    if (selectedDate && !sittingDateKey) {
-                      return;
-                    }
                     const roomName = String(sitting.roomName || '').trim();
                     const hasExplicitTime = Boolean(sitting.startTime || sitting.endTime);
                     const roomSlotKey = buildRoomSlotLookupKey(
@@ -704,7 +693,7 @@ const ExamProctorManagementPage = () => {
     };
 
     fetchSittings();
-  }, [selectedAcademicYear, activeProgramCode, effectiveSemester, selectedDate]);
+  }, [selectedAcademicYear, activeProgramCode, effectiveSemester]);
 
   // --- Fetch Schedules ---
   const fetchSchedules = useCallback(async () => {
@@ -722,8 +711,6 @@ const ExamProctorManagementPage = () => {
         academicYearId: selectedAcademicYear,
         semester: effectiveSemester,
       };
-      if (selectedDate) params.date = selectedDate;
-
       const res = await api.get('/exams/schedules', { params });
       setSchedules(Array.isArray(res.data?.data) ? res.data.data : []);
     } catch (err) {
@@ -732,7 +719,7 @@ const ExamProctorManagementPage = () => {
     } finally {
       setLoading(false);
     }
-  }, [selectedAcademicYear, activeProgramCode, selectedDate, effectiveSemester]);
+  }, [selectedAcademicYear, activeProgramCode, effectiveSemester]);
 
   useEffect(() => {
     fetchSchedules();
@@ -758,9 +745,7 @@ const ExamProctorManagementPage = () => {
         programCode: activeProgramCode,
         semester: effectiveSemester,
       };
-      if (reportMode === 'daily') {
-        reportParams.date = selectedDate || undefined;
-      } else {
+      if (reportMode === 'archive') {
         reportParams.includeInactive = 'true';
         reportParams.dateFrom = reportDateFrom || undefined;
         reportParams.dateTo = reportDateTo || undefined;
@@ -796,7 +781,7 @@ const ExamProctorManagementPage = () => {
     } finally {
       setReportsLoading(false);
     }
-  }, [activeProgramCode, selectedAcademicYear, selectedDate, reportMode, reportDateFrom, reportDateTo, effectiveSemester]);
+  }, [activeProgramCode, selectedAcademicYear, reportMode, reportDateFrom, reportDateTo, effectiveSemester]);
 
   useEffect(() => {
     void fetchProctorReports();
@@ -810,24 +795,6 @@ const ExamProctorManagementPage = () => {
     nextParams.set(programParamKey, activeProgramCode);
     setSearchParams(nextParams, { replace: true });
   }, [activeProgramCode, searchParams, setSearchParams]);
-
-  useEffect(() => {
-    const currentParam = String(searchParams.get(dateParamKey) || '');
-    if (selectedDate) {
-      if (currentParam !== selectedDate) {
-        const nextParams = new URLSearchParams(searchParams);
-        nextParams.set(dateParamKey, selectedDate);
-        setSearchParams(nextParams, { replace: true });
-      }
-      return;
-    }
-
-    if (currentParam) {
-      const nextParams = new URLSearchParams(searchParams);
-      nextParams.delete(dateParamKey);
-      setSearchParams(nextParams, { replace: true });
-    }
-  }, [selectedDate, searchParams, setSearchParams]);
 
   useEffect(() => {
     const nextParams = new URLSearchParams(searchParams);
@@ -924,6 +891,7 @@ const ExamProctorManagementPage = () => {
         timeKey,
         start,
         end,
+        dateLabel: formatSafeDateLabel(start || end),
         sessionLabel,
         rooms: Object.entries(byRoom).sort((a, b) => a[0].localeCompare(b[0])), // Sort rooms alphabetically
         unassigned
@@ -1092,48 +1060,37 @@ const ExamProctorManagementPage = () => {
         </p>
         
         <div className="flex flex-wrap items-center gap-4 mt-6">
-          {/* Filters */}
-          <div className="flex space-x-1 bg-white p-1 rounded-lg border border-gray-200 w-fit">
-            {visiblePrograms.map((program) => (
-              <button
-                key={program.code}
-                onClick={() => setActiveProgramCode(program.code)}
-                className={`
-                  px-4 py-2 text-[13px] font-medium rounded-md transition-colors
-                  ${activeProgramCode === program.code
-                    ? 'bg-blue-50 text-blue-700'
-                    : 'text-gray-600 hover:text-gray-900 hover:bg-gray-50'}
-                `}
-              >
-                {program.shortLabel || program.label || program.code}
-              </button>
-            ))}
-          </div>
-
-          {!activeProgram?.fixedSemester ? (
-            <div className="w-full max-w-[180px]">
-              <label className="mb-1 block text-xs font-semibold uppercase tracking-wide text-gray-500">Semester</label>
-              <select
-                value={selectedSemester}
-                onChange={(event) => setSelectedSemester(event.target.value as 'ODD' | 'EVEN')}
-                className="w-full rounded-lg border border-gray-300 px-3 py-2 text-sm focus:border-blue-500 focus:outline-none"
-              >
-                <option value="ODD">Ganjil</option>
-                <option value="EVEN">Genap</option>
-              </select>
+          <div className="flex flex-wrap items-center gap-3">
+            <div className="flex space-x-1 bg-white p-1 rounded-lg border border-gray-200 w-fit">
+              {visiblePrograms.map((program) => (
+                <button
+                  key={program.code}
+                  onClick={() => setActiveProgramCode(program.code)}
+                  className={`
+                    px-4 py-2 text-[13px] font-medium rounded-md transition-colors
+                    ${activeProgramCode === program.code
+                      ? 'bg-blue-50 text-blue-700'
+                      : 'text-gray-600 hover:text-gray-900 hover:bg-gray-50'}
+                  `}
+                >
+                  {program.shortLabel || program.label || program.code}
+                </button>
+              ))}
             </div>
-          ) : null}
 
-          <div className="h-8 w-px bg-gray-300 mx-2"></div>
-
-          <div className="relative">
-            <Calendar className="absolute left-3 top-2.5 text-gray-400" size={16} />
-            <input 
-              type="date" 
-              value={selectedDate}
-              onChange={(e) => setSelectedDate(sanitizeDateInputValue(e.target.value))}
-              className="pl-10 pr-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500 text-sm"
-            />
+            {!activeProgram?.fixedSemester ? (
+              <div className="flex items-center gap-2 rounded-lg border border-gray-200 bg-white px-3 py-2">
+                <span className="text-sm font-medium text-gray-600">Semester</span>
+                <select
+                  value={selectedSemester}
+                  onChange={(event) => setSelectedSemester(event.target.value as 'ODD' | 'EVEN')}
+                  className="rounded-lg border border-gray-300 px-3 py-2 text-sm focus:border-blue-500 focus:outline-none"
+                >
+                  <option value="ODD">Ganjil</option>
+                  <option value="EVEN">Genap</option>
+                </select>
+              </div>
+            ) : null}
           </div>
         </div>
       </div>
@@ -1153,7 +1110,7 @@ const ExamProctorManagementPage = () => {
             <h3 className="text-lg font-medium text-gray-900">
               {activeProgram ? `Tidak ada jadwal ${activeProgram.label}` : 'Program ujian belum tersedia'}
             </h3>
-            <p className="text-gray-500 mt-1">Silakan pilih tanggal lain atau buat jadwal ujian terlebih dahulu.</p>
+            <p className="text-gray-500 mt-1">Pastikan jadwal ujian dan ruang ujian sudah tersusun untuk program ini.</p>
           </div>
         ) : (
           groupedDataWithSessionOrder.map((group) => {
@@ -1181,6 +1138,7 @@ const ExamProctorManagementPage = () => {
                         {group.rooms.length} Ruang Ujian Aktif
                       </span>
                       <span className="text-xs text-gray-500 mt-1">
+                        {group.dateLabel !== '-' ? `${group.dateLabel} • ` : ''}
                         {group.sessionLabel ? `Sesi: ${group.sessionLabel}` : 'Tanpa sesi'}
                       </span>
                     </div>
@@ -1443,8 +1401,6 @@ const ExamProctorManagementPage = () => {
                 type="button"
                 onClick={(event) => {
                   event.stopPropagation();
-                  if (!reportDateFrom && selectedDate) setReportDateFrom(selectedDate);
-                  if (!reportDateTo && selectedDate) setReportDateTo(selectedDate);
                   setReportMode('archive');
                 }}
                 className={`inline-flex items-center gap-1.5 px-3 py-1.5 text-xs font-medium rounded-md transition-colors ${

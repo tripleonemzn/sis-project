@@ -840,12 +840,12 @@ export default function ExamRoomLayoutManagementPage() {
                 })}
               </div>
               {!activeProgram?.fixedSemester ? (
-                <div className="w-full max-w-[180px]">
-                  <label className="mb-1 block text-xs font-semibold uppercase tracking-wide text-gray-500">Semester</label>
+                <div className="flex items-center gap-2 rounded-lg border border-gray-200 bg-white px-3 py-2">
+                  <span className="text-sm font-medium text-gray-600">Semester</span>
                   <select
                     value={selectedSemester}
                     onChange={(event) => setSelectedSemester(event.target.value as 'ODD' | 'EVEN')}
-                    className="w-full rounded-lg border border-gray-300 px-3 py-2 text-sm focus:border-blue-500 focus:outline-none"
+                    className="rounded-lg border border-gray-300 px-3 py-2 text-sm focus:border-blue-500 focus:outline-none"
                   >
                     <option value="ODD">Ganjil</option>
                     <option value="EVEN">Genap</option>
