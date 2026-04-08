@@ -114,6 +114,9 @@ const ExamSittingManagementPage = () => {
   const selectedAcademicYear = activeAcademicYear?.id ? String(activeAcademicYear.id) : '';
   const [examPrograms, setExamPrograms] = useState<ExamProgram[]>([]);
   const [activeProgramCode, setActiveProgramCode] = useState<string>('');
+  const [selectedSemester, setSelectedSemester] = useState<'ODD' | 'EVEN'>(
+    activeAcademicYear?.semester === 'EVEN' ? 'EVEN' : 'ODD',
+  );
   const [programSessions, setProgramSessions] = useState<ExamProgramSession[]>([]);
   const [newSessionLabel, setNewSessionLabel] = useState('');
   const [creatingSession, setCreatingSession] = useState(false);
@@ -164,6 +167,10 @@ const ExamSittingManagementPage = () => {
     () => visiblePrograms.find((program) => program.code === activeProgramCode) || null,
     [visiblePrograms, activeProgramCode],
   );
+  const effectiveSemester =
+    activeProgram?.fixedSemester ||
+    selectedSemester ||
+    (activeAcademicYear?.semester === 'EVEN' ? 'EVEN' : 'ODD');
 
   const allowedClassLevelsByProgram = useMemo(() => {
     const levels = Array.isArray(activeProgram?.targetClassLevels) ? activeProgram.targetClassLevels : [];
@@ -225,6 +232,16 @@ const ExamSittingManagementPage = () => {
       return haystack.includes(keyword);
     });
   }, [examEligibleRooms, roomSearch]);
+
+  useEffect(() => {
+    if (activeProgram?.fixedSemester) {
+      setSelectedSemester(activeProgram.fixedSemester);
+      return;
+    }
+    if (activeAcademicYear?.semester === 'ODD' || activeAcademicYear?.semester === 'EVEN') {
+      setSelectedSemester(activeAcademicYear.semester);
+    }
+  }, [activeAcademicYear?.semester, activeProgram?.fixedSemester]);
 
   useEffect(() => {
     const fetchInitialData = async () => {
@@ -291,6 +308,7 @@ const ExamSittingManagementPage = () => {
           academicYearId: selectedAcademicYear,
           examType: activeProgramCode,
           programCode: activeProgramCode,
+          semester: effectiveSemester,
           limit: 100,
         }
       });
@@ -303,7 +321,7 @@ const ExamSittingManagementPage = () => {
     } finally {
       setLoading(false);
     }
-  }, [selectedAcademicYear, activeProgramCode]);
+  }, [selectedAcademicYear, activeProgramCode, effectiveSemester]);
 
   const fetchProgramSessions = useCallback(async (targetAcademicYearId: string, targetProgramCode: string) => {
     const ayId = Number(targetAcademicYearId || 0);
@@ -430,6 +448,7 @@ const ExamSittingManagementPage = () => {
             academicYearId: Number(selectedAcademicYear),
             examType: activeProgramCode,
             programCode: activeProgramCode,
+            semester: effectiveSemester,
             excludeSittingId: excludeId || undefined,
           },
         });
@@ -443,7 +462,7 @@ const ExamSittingManagementPage = () => {
         toast.error('Gagal memuat komposisi siswa ruangan lain');
       }
     },
-    [selectedAcademicYear, activeProgramCode],
+    [selectedAcademicYear, activeProgramCode, effectiveSemester],
   );
 
   // Filter students when assignedStudents or allClassStudents change
@@ -488,7 +507,7 @@ const ExamSittingManagementPage = () => {
       roomName: '',
       sessionId: '',
       academicYearId: selectedAcademicYear || '',
-      semester: activeProgram?.fixedSemester || 'ODD'
+      semester: activeProgram?.fixedSemester || selectedSemester || 'ODD'
     });
     setNewSessionLabel('');
     setRoomSearch('');
@@ -509,7 +528,7 @@ const ExamSittingManagementPage = () => {
       roomName: sitting.roomName,
       sessionId: sitting.sessionId ? String(sitting.sessionId) : matchedSession ? String(matchedSession.id) : '',
       academicYearId: selectedAcademicYear || sitting.academicYearId?.toString() || '',
-      semester: sitting.semester || 'ODD'
+      semester: sitting.semester || activeProgram?.fixedSemester || selectedSemester || 'ODD'
     });
     setNewSessionLabel('');
     setRoomSearch('');
@@ -1023,21 +1042,36 @@ const ExamSittingManagementPage = () => {
               Belum ada Program Ujian aktif pada tahun ajaran ini.
             </p>
           ) : (
-            <div className="flex flex-wrap gap-1 bg-white p-1 rounded-lg border border-gray-200 w-fit">
-              {visiblePrograms.map((program) => (
-                <button
-                  key={program.code}
-                  onClick={() => setActiveProgramCode(program.code)}
-                  className={`
-                    px-4 py-2 text-[13px] font-medium rounded-md transition-colors
-                    ${activeProgramCode === program.code
-                      ? 'bg-blue-50 text-blue-700'
-                      : 'text-gray-600 hover:text-gray-900 hover:bg-gray-50'}
-                  `}
-                >
-                  {program.shortLabel || program.label || program.code}
-                </button>
-              ))}
+            <div className="space-y-4">
+              <div className="flex flex-wrap gap-1 bg-white p-1 rounded-lg border border-gray-200 w-fit">
+                {visiblePrograms.map((program) => (
+                  <button
+                    key={program.code}
+                    onClick={() => setActiveProgramCode(program.code)}
+                    className={`
+                      px-4 py-2 text-[13px] font-medium rounded-md transition-colors
+                      ${activeProgramCode === program.code
+                        ? 'bg-blue-50 text-blue-700'
+                        : 'text-gray-600 hover:text-gray-900 hover:bg-gray-50'}
+                    `}
+                  >
+                    {program.shortLabel || program.label || program.code}
+                  </button>
+                ))}
+              </div>
+              {activeProgramCode && !activeProgram?.fixedSemester ? (
+                <div className="flex flex-wrap items-center gap-3">
+                  <div className="text-sm font-medium text-gray-600">Semester</div>
+                  <select
+                    value={selectedSemester}
+                    onChange={(event) => setSelectedSemester((event.target.value as 'ODD' | 'EVEN') || 'ODD')}
+                    className="rounded-lg border border-gray-300 px-3 py-2 text-sm focus:border-blue-500 focus:outline-none"
+                  >
+                    <option value="ODD">Ganjil</option>
+                    <option value="EVEN">Genap</option>
+                  </select>
+                </div>
+              ) : null}
             </div>
           )}
         </div>
@@ -1130,7 +1164,7 @@ const ExamSittingManagementPage = () => {
 
       {/* Create/Edit Modal */}
       {showModal && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50 p-4">
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/35 p-4 backdrop-blur-sm">
           <div className="bg-white rounded-lg shadow-xl w-full max-w-md p-6">
             <div className="flex justify-between items-center mb-4">
               <h3 className="text-lg font-bold text-gray-900">

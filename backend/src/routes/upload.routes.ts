@@ -28,7 +28,7 @@ const router = Router();
 router.use(authMiddleware);
 
 // Upload dokumen profil user
-router.post('/teacher/document', roleMiddleware(['ADMIN', 'TEACHER', 'STAFF', 'EXAMINER', 'CALON_SISWA']), teacherDocumentUpload.single('file'), uploadTeacherDocument);
+router.post('/teacher/document', roleMiddleware(['ADMIN', 'TEACHER', 'STAFF', 'EXAMINER', 'STUDENT', 'CALON_SISWA']), teacherDocumentUpload.single('file'), uploadTeacherDocument);
 
 // Upload foto profil guru (dan user lain)
 router.post('/teacher/photo', roleMiddleware(['ADMIN', 'TEACHER', 'STAFF', 'EXAMINER', 'STUDENT', 'PARENT', 'CALON_SISWA']), teacherPhotoUpload.single('file'), uploadTeacherPhoto);

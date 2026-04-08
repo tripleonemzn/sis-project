@@ -13,6 +13,7 @@ import {
 } from '../services/examEligibility.service';
 import {
   listHistoricalStudentsForClass,
+  listHistoricalStudentsByIdsForAcademicYear,
 } from '../utils/studentAcademicHistory';
 
 const SCHOOL_NAME = 'SMKS Karya Guna Bhakti 2';
@@ -109,6 +110,16 @@ function buildEntrySortValue(entry: ExamCardEntrySnapshot) {
   return entry.startTime ? new Date(entry.startTime).getTime() : Number.MAX_SAFE_INTEGER;
 }
 
+function buildLocalDateToken(value?: Date | string | null) {
+  if (!value) return '';
+  const date = value instanceof Date ? value : new Date(value);
+  if (Number.isNaN(date.getTime())) return '';
+  const year = date.getFullYear();
+  const month = String(date.getMonth() + 1).padStart(2, '0');
+  const day = String(date.getDate()).padStart(2, '0');
+  return `${year}-${month}-${day}`;
+}
+
 function normalizeMediaUrl(value: unknown) {
   const raw = normalizeText(value);
   if (!raw) return null;
@@ -137,9 +148,43 @@ function resolveProgramCodeCandidates(params: {
   programCode: string;
   baseTypeCode?: string | null;
 }) {
-  return Array.from(
-    new Set([normalizeAliasCode(params.programCode), normalizeAliasCode(params.baseTypeCode)].filter(Boolean)),
-  );
+  const normalizedProgramCode = normalizeAliasCode(params.programCode);
+  const candidates = new Set<string>();
+
+  if (!normalizedProgramCode) {
+    return [];
+  }
+
+  candidates.add(normalizedProgramCode);
+
+  if (['SBTS', 'MIDTERM', 'SUMATIF_BERSAMA_TENGAH_SEMESTER'].includes(normalizedProgramCode)) {
+    candidates.add('SBTS');
+    candidates.add('MIDTERM');
+    candidates.add('SUMATIF_BERSAMA_TENGAH_SEMESTER');
+  }
+
+  if (['SAS', 'SUMATIF_AKHIR_SEMESTER'].includes(normalizedProgramCode)) {
+    candidates.add('SAS');
+    candidates.add('SUMATIF_AKHIR_SEMESTER');
+  }
+
+  if (['SAT', 'SUMATIF_AKHIR_TAHUN'].includes(normalizedProgramCode)) {
+    candidates.add('SAT');
+    candidates.add('SUMATIF_AKHIR_TAHUN');
+  }
+
+  if (['ASAJ', 'ASESMEN_SUMATIF_AKHIR_JENJANG'].includes(normalizedProgramCode)) {
+    candidates.add('ASAJ');
+    candidates.add('ASESMEN_SUMATIF_AKHIR_JENJANG');
+  }
+
+  if (['ASAJP', 'ASAJ_PRAKTIK', 'ASSESMEN_SUMATIF_AKHIR_JENJANG_PRAKTIK'].includes(normalizedProgramCode)) {
+    candidates.add('ASAJP');
+    candidates.add('ASAJ_PRAKTIK');
+    candidates.add('ASSESMEN_SUMATIF_AKHIR_JENJANG_PRAKTIK');
+  }
+
+  return Array.from(candidates);
 }
 
 function getFirstHeaderValue(value: string | string[] | undefined): string {
@@ -541,6 +586,7 @@ async function buildExamCardOverview(params: {
     requestedSemester: params.semester,
     sittingSemesters: sittings.map((item) => item.semester || null),
   });
+  const relevantSittings = sittings.filter((sitting) => !sitting.semester || sitting.semester === semester);
 
   const scheduleProgramCandidates = resolveProgramCodeCandidates({
     programCode: normalizedProgramCode,
@@ -594,39 +640,51 @@ async function buildExamCardOverview(params: {
       .map((schedule) => Number(schedule.classId || 0))
       .filter((classId) => Number.isFinite(classId) && classId > 0),
   );
-  const uniqueClassIds = Array.from(scheduledClassIds).sort((left, right) => left - right);
-  const classMetaMap = new Map(
-    activeSchedules
-      .map((schedule) => {
-        const classId = Number(schedule.classId || 0);
-        if (!Number.isFinite(classId) || classId <= 0) return null;
-        return [
-          classId,
-          {
-            name: schedule.class?.name || null,
-            level: schedule.class?.level || null,
-          },
-        ] as const;
-      })
-      .filter(Boolean) as Array<readonly [number, { name: string | null; level: string | null }]>,
+  const candidateStudentIds = Array.from(
+    new Set(
+      relevantSittings.flatMap((sitting) =>
+        (sitting.students || [])
+          .map((item) => Number(item.studentId || 0))
+          .filter((studentId) => Number.isFinite(studentId) && studentId > 0),
+      ),
+    ),
   );
+  const historicalStudentsById =
+    candidateStudentIds.length > 0
+      ? await listHistoricalStudentsByIdsForAcademicYear(candidateStudentIds, params.academicYearId)
+      : [];
+  const scheduledHistoricalStudents = historicalStudentsById.filter((student) => {
+    const classId = Number(student.studentClass?.id || 0);
+    return Number.isFinite(classId) && classId > 0 && scheduledClassIds.has(classId);
+  });
+  const classMetaMap = new Map<number, { name: string | null; level: string | null }>();
+  const studentsByClassId = new Map<number, typeof scheduledHistoricalStudents>();
 
-  const rosterRows = await Promise.all(
-    uniqueClassIds.map(async (classId) => ({
+  scheduledHistoricalStudents.forEach((student) => {
+    const classId = Number(student.studentClass?.id || 0);
+    if (!Number.isFinite(classId) || classId <= 0) return;
+    if (!classMetaMap.has(classId)) {
+      classMetaMap.set(classId, {
+        name: student.studentClass?.name || null,
+        level: student.studentClass?.level || null,
+      });
+    }
+    const current = studentsByClassId.get(classId) || [];
+    current.push(student);
+    studentsByClassId.set(classId, current);
+  });
+
+  const rosterRows = Array.from(studentsByClassId.entries())
+    .map(([classId, students]) => ({
       classId,
       className: classMetaMap.get(classId)?.name || null,
       classLevelNumber: resolveClassLevelNumber(classMetaMap.get(classId)?.level || null) || null,
-      students: await listHistoricalStudentsForClass(classId, params.academicYearId),
-    })),
-  );
-
-  const scheduledHistoricalStudents = Array.from(
-    new Map(
-      rosterRows.flatMap(({ students }) =>
-        students.map((student) => [student.id, student] as const),
+      students: [...students].sort((left, right) =>
+        left.name.localeCompare(right.name, 'id-ID', { sensitivity: 'base' }),
       ),
-    ).values(),
-  );
+    }))
+    .sort((left, right) => compareClassName(left.className, right.className));
+
   const scheduledStudentIds = scheduledHistoricalStudents.map((student) => student.id);
 
   const [studentProfiles, generatedCards] = await Promise.all([
@@ -697,6 +755,9 @@ async function buildExamCardOverview(params: {
       sessionToken: string;
       startTime: Date | null;
       endTime: Date | null;
+      startTimeToken: number | null;
+      endTimeToken: number | null;
+      dateToken: string;
     }>
   >();
 
@@ -714,6 +775,9 @@ async function buildExamCardOverview(params: {
       sessionToken: normalizedSessionLabel?.toLowerCase() || '__no_session__',
       startTime: schedule.startTime || null,
       endTime: schedule.endTime || null,
+      startTimeToken: schedule.startTime ? schedule.startTime.getTime() : null,
+      endTimeToken: schedule.endTime ? schedule.endTime.getTime() : null,
+      dateToken: buildLocalDateToken(schedule.startTime || schedule.endTime || null),
     });
     scheduleEntriesByClassId.set(classId, current);
   });
@@ -771,7 +835,7 @@ async function buildExamCardOverview(params: {
         });
     });
 
-  sittings.forEach((sitting) => {
+  relevantSittings.forEach((sitting) => {
     const seatLabelByStudent = new Map<number, string | null>();
     (sitting.layout?.cells || []).forEach((cell) => {
       if (!cell.studentId) return;
@@ -788,11 +852,42 @@ async function buildExamCardOverview(params: {
       if (!normalizedRoomName) return;
       const normalizedSittingSession = normalizeOptionalSessionLabel(sitting.programSession?.label || sitting.sessionLabel);
       const normalizedSittingSessionToken = normalizedSittingSession?.toLowerCase() || '__no_session__';
+      const sittingStartTime = sitting.startTime ? new Date(sitting.startTime) : null;
+      const sittingEndTime = sitting.endTime ? new Date(sitting.endTime) : null;
+      const sittingStartToken = sittingStartTime && !Number.isNaN(sittingStartTime.getTime()) ? sittingStartTime.getTime() : null;
+      const sittingEndToken = sittingEndTime && !Number.isNaN(sittingEndTime.getTime()) ? sittingEndTime.getTime() : null;
+      const sittingDateToken = buildLocalDateToken(sitting.startTime || sitting.endTime || null);
+      const scheduleEntries = scheduleEntriesByClassId.get(classId) || [];
       const matchedSchedule =
-        (scheduleEntriesByClassId.get(classId) || []).find(
-          (entry) => entry.roomToken === normalizedRoomName.toLowerCase() && entry.sessionToken === normalizedSittingSessionToken,
+        scheduleEntries.find(
+          (entry) =>
+            entry.roomToken === normalizedRoomName.toLowerCase() &&
+            entry.sessionToken === normalizedSittingSessionToken &&
+            entry.startTimeToken !== null &&
+            entry.endTimeToken !== null &&
+            sittingStartToken !== null &&
+            sittingEndToken !== null &&
+            entry.startTimeToken === sittingStartToken &&
+            entry.endTimeToken === sittingEndToken,
         ) ||
-        (scheduleEntriesByClassId.get(classId) || []).find((entry) => entry.roomToken === normalizedRoomName.toLowerCase()) ||
+        scheduleEntries.find(
+          (entry) =>
+            entry.roomToken === normalizedRoomName.toLowerCase() &&
+            entry.sessionToken === normalizedSittingSessionToken &&
+            Boolean(sittingDateToken) &&
+            entry.dateToken === sittingDateToken,
+        ) ||
+        scheduleEntries.find(
+          (entry) =>
+            entry.roomToken === normalizedRoomName.toLowerCase() &&
+            Boolean(sittingDateToken) &&
+            entry.dateToken === sittingDateToken,
+        ) ||
+        scheduleEntries.find(
+          (entry) =>
+            entry.roomToken === normalizedRoomName.toLowerCase() && entry.sessionToken === normalizedSittingSessionToken,
+        ) ||
+        scheduleEntries.find((entry) => entry.roomToken === normalizedRoomName.toLowerCase()) ||
         null;
       if (!matchedSchedule) return;
       const current = entriesByStudent.get(studentId) || [];
@@ -800,8 +895,8 @@ async function buildExamCardOverview(params: {
         sittingId: sitting.id,
         roomName: normalizedRoomName,
         sessionLabel: normalizedSittingSession || matchedSchedule.sessionLabel || null,
-        startTime: matchedSchedule.startTime,
-        endTime: matchedSchedule.endTime,
+        startTime: sitting.startTime || matchedSchedule.startTime,
+        endTime: sitting.endTime || matchedSchedule.endTime,
         seatLabel: seatLabelByStudent.get(studentId) || null,
       });
       entriesByStudent.set(studentId, current);
@@ -939,8 +1034,9 @@ export const generateExamCards = asyncHandler(async (req: Request, res: Response
       const verificationUrl = `${resolvePublicAppBaseUrl(req)}/verify/exam-card/${verificationToken}`;
 
       const principalBarcodeDataUrl = await QRCode.toDataURL(verificationUrl, {
-        width: 116,
+        width: 192,
         margin: 1,
+        errorCorrectionLevel: 'L',
       });
 
       const payload = buildExamCardPayload({

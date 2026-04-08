@@ -564,6 +564,7 @@ export const examApi = {
     academicYearId?: number;
     examType?: string;
     programCode?: string;
+    semester?: 'ODD' | 'EVEN';
     date?: string;
   }) {
     const response = await apiClient.get<ExamSittingsResponse>('/exam-sittings', {
@@ -571,6 +572,7 @@ export const examApi = {
         academicYearId: params?.academicYearId,
         examType: params?.examType,
         programCode: params?.programCode,
+        semester: params?.semester,
         date: params?.date,
       },
     });

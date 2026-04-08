@@ -104,6 +104,15 @@ function normalizeSessionLabelKey(rawLabel: unknown): string | null {
     return normalized.toLowerCase();
 }
 
+function parseOptionalSemester(rawSemester: unknown): Semester | undefined {
+    const normalized = String(rawSemester || '').trim().toUpperCase();
+    if (!normalized) return undefined;
+    if (normalized === Semester.ODD || normalized === Semester.EVEN) {
+        return normalized as Semester;
+    }
+    throw new ApiError(400, 'semester tidak valid.');
+}
+
 async function resolveCanonicalProgramCode(params: {
     academicYearId: number;
     rawProgramCode?: unknown;
@@ -617,11 +626,15 @@ export const getMyExamSitting = asyncHandler(async (req: Request, res: Response)
 });
 
 export const getExamSittings = asyncHandler(async (req: Request, res: Response) => {
-    const { academicYearId, proctorId, date, examType, programCode } = req.query;
+    const { academicYearId, proctorId, date, examType, programCode, semester } = req.query;
 
     const where: any = {};
     if (academicYearId) where.academicYearId = parseInt(academicYearId as string);
     if (proctorId) where.proctorId = parseInt(proctorId as string);
+    const resolvedSemester = parseOptionalSemester(semester);
+    if (resolvedSemester) {
+        where.semester = resolvedSemester;
+    }
     const resolvedExamType = String(programCode || examType || '').trim().toUpperCase();
     const examTypeCandidates = resolveExamTypeCandidates(resolvedExamType);
     if (examTypeCandidates.length > 0) {
@@ -653,7 +666,7 @@ export const getExamSittings = asyncHandler(async (req: Request, res: Response) 
 });
 
 export const getAssignedSittingStudents = asyncHandler(async (req: Request, res: Response) => {
-    const { academicYearId, examType, programCode, excludeSittingId } = req.query;
+    const { academicYearId, examType, programCode, excludeSittingId, semester } = req.query;
 
     const where: Prisma.ExamSittingWhereInput = {};
 
@@ -669,6 +682,10 @@ export const getAssignedSittingStudents = asyncHandler(async (req: Request, res:
     const examTypeCandidates = resolveExamTypeCandidates(resolvedExamType);
     if (examTypeCandidates.length > 0) {
         where.examType = { in: examTypeCandidates };
+    }
+    const resolvedSemester = parseOptionalSemester(semester);
+    if (resolvedSemester) {
+        where.semester = resolvedSemester;
     }
 
     if (excludeSittingId !== undefined) {

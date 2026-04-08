@@ -642,30 +642,30 @@ export function StaffHeadTuExamCardsScreen() {
 
       <View style={{ flexDirection: 'row', flexWrap: 'wrap', gap: 10, marginBottom: 14 }}>
         <SummaryCard
-          title="Peserta Program"
+          title="Peserta Program Ujian"
           value={String(overviewQuery.data?.summary.totalStudents || 0)}
-          subtitle="Seluruh siswa pada ruang ujian aktif"
+          subtitle="Total siswa yang benar-benar masuk jadwal aktif program ini"
           iconName="users"
           accentColor="#1d4ed8"
         />
         <SummaryCard
           title="Siap Digenerate"
           value={String(overviewQuery.data?.summary.eligibleStudents || 0)}
-          subtitle="Layak ikut ujian"
+          subtitle="Sudah layak ikut ujian dan punya penempatan ruang aktif"
           iconName="check-circle"
           accentColor="#047857"
         />
         <SummaryCard
-          title="Belum Layak"
+          title="Belum Bisa Digenerate"
           value={String(overviewQuery.data?.summary.blockedStudents || 0)}
-          subtitle="Masih terblokir"
+          subtitle="Masih ada syarat kelayakan atau data penempatan yang belum terpenuhi"
           iconName="alert-triangle"
           accentColor="#c2410c"
         />
         <SummaryCard
           title="Sudah Dipublikasikan"
           value={String(overviewQuery.data?.summary.publishedCards || 0)}
-          subtitle="Kartu digital aktif"
+          subtitle="Kartu digital aktif sudah terbit dan tampil di akun siswa"
           iconName="file-text"
           accentColor="#be123c"
         />
@@ -686,12 +686,6 @@ export function StaffHeadTuExamCardsScreen() {
           compact
           style={{ marginBottom: 10 }}
         />
-        {overviewQuery.data?.semester ? (
-          <Text style={{ color: '#64748b', fontSize: 12, marginBottom: 12 }}>
-            Semester {overviewQuery.data.semester === 'EVEN' ? 'Genap' : 'Ganjil'}
-          </Text>
-        ) : null}
-
         <View style={{ flexDirection: 'row', gap: 10, marginBottom: 12 }}>
           <View style={{ flex: 1 }}>
             <Text style={{ color: '#64748b', fontSize: 12, marginBottom: 4 }}>Lokasi TTD Kepala Sekolah</Text>
@@ -729,7 +723,6 @@ export function StaffHeadTuExamCardsScreen() {
                 backgroundColor: '#fff',
               }}
             />
-            <Text style={{ color: '#94a3b8', fontSize: 11, marginTop: 4 }}>Tanggal cetak kartu.</Text>
           </View>
         </View>
 

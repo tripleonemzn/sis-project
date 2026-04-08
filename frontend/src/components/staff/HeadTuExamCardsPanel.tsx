@@ -599,8 +599,8 @@ export function HeadTuExamCardsPanel() {
       </div>
 
       <div className="rounded-xl border border-gray-100 bg-white p-4 shadow-sm">
-        <div className="grid gap-4 xl:grid-cols-[220px_220px_auto_auto] xl:items-start xl:justify-between">
-          <div className="xl:max-w-[220px]">
+        <div className="flex flex-wrap items-end justify-between gap-3">
+          <div className="w-full sm:w-[220px]">
             <label className="mb-1 block text-xs font-semibold uppercase tracking-wide text-gray-500">Lokasi TTD Kepala Sekolah</label>
             <input
               type="text"
@@ -609,11 +609,8 @@ export function HeadTuExamCardsPanel() {
               placeholder="Contoh: Bekasi"
               className="w-full rounded-lg border border-gray-300 px-3 py-2 text-sm focus:border-blue-500 focus:outline-none"
             />
-            <p className="mt-1 text-xs text-gray-500">
-              Lokasi ini dipakai pada area legalitas kartu ujian digital dan hasil print fisik.
-            </p>
           </div>
-          <div className="xl:max-w-[220px]">
+          <div className="w-full sm:w-[220px]">
             <label className="mb-1 block text-xs font-semibold uppercase tracking-wide text-gray-500">Tanggal Terbit</label>
             <input
               type="date"
@@ -621,56 +618,56 @@ export function HeadTuExamCardsPanel() {
               onChange={(event) => setIssueDate(event.target.value)}
               className="w-full rounded-lg border border-gray-300 px-3 py-2 text-sm focus:border-blue-500 focus:outline-none"
             />
-            <p className="mt-1 text-xs text-gray-500">Tanggal cetak kartu.</p>
           </div>
-          <button
-            type="button"
-            onClick={() => generateMutation.mutate()}
-            disabled={
-              !overviewQuery.data ||
-              !issueDate ||
-              issueLocation.trim().length === 0 ||
-              overviewQuery.data.summary.eligibleStudents === 0 ||
-              generateMutation.isPending
-            }
-            className="inline-flex items-center justify-center rounded-lg bg-blue-600 px-4 py-2.5 text-sm font-semibold text-white hover:bg-blue-700 disabled:cursor-not-allowed disabled:bg-blue-300 xl:mt-[22px]"
-          >
-            {generateMutation.isPending ? <Loader2 className="mr-2 h-4 w-4 animate-spin" /> : <Sparkles className="mr-2 h-4 w-4" />}
-            Generate Kartu Ujian
-          </button>
-          <button
-            type="button"
-            onClick={handlePrintAll}
-            disabled={printableCards.length === 0}
-            className="inline-flex items-center justify-center rounded-lg border border-rose-200 bg-rose-50 px-4 py-2.5 text-sm font-semibold text-rose-700 hover:bg-rose-100 disabled:cursor-not-allowed disabled:opacity-60 xl:mt-[22px]"
-          >
-            <Printer className="mr-2 h-4 w-4" />
-            Print Semua
-          </button>
+          <div className="ml-auto flex flex-wrap items-end gap-3">
+            <button
+              type="button"
+              onClick={() => generateMutation.mutate()}
+              disabled={
+                !overviewQuery.data ||
+                !issueDate ||
+                issueLocation.trim().length === 0 ||
+                overviewQuery.data.summary.eligibleStudents === 0 ||
+                generateMutation.isPending
+              }
+              className="inline-flex min-h-[42px] items-center justify-center rounded-lg bg-blue-600 px-4 py-2.5 text-sm font-semibold text-white hover:bg-blue-700 disabled:cursor-not-allowed disabled:bg-blue-300"
+            >
+              {generateMutation.isPending ? <Loader2 className="mr-2 h-4 w-4 animate-spin" /> : <Sparkles className="mr-2 h-4 w-4" />}
+              Generate Kartu Ujian
+            </button>
+            <button
+              type="button"
+              onClick={handlePrintAll}
+              disabled={printableCards.length === 0}
+              className="inline-flex min-h-[42px] items-center justify-center rounded-lg border border-rose-200 bg-rose-50 px-4 py-2.5 text-sm font-semibold text-rose-700 hover:bg-rose-100 disabled:cursor-not-allowed disabled:opacity-60"
+            >
+              <Printer className="mr-2 h-4 w-4" />
+              Print Semua
+            </button>
+          </div>
         </div>
       </div>
 
       <div className="grid gap-4 md:grid-cols-2 xl:grid-cols-4">
         <div className="rounded-xl border border-blue-100 bg-blue-50 p-4">
-          <div className="text-xs font-semibold uppercase tracking-wide text-blue-700">Peserta Program</div>
+          <div className="text-xs font-semibold uppercase tracking-wide text-blue-700">Peserta Program Ujian</div>
           <div className="mt-2 text-2xl font-bold text-blue-900">{overviewQuery.data?.summary.totalStudents || 0}</div>
-          <div className="mt-1 text-xs text-blue-800/80">Seluruh siswa yang terdaftar di ruang ujian program ini.</div>
+          <div className="mt-1 text-xs text-blue-800/80">Total siswa yang benar-benar masuk jadwal aktif program ujian ini.</div>
         </div>
         <div className="rounded-xl border border-emerald-100 bg-emerald-50 p-4">
           <div className="text-xs font-semibold uppercase tracking-wide text-emerald-700">Siap Digenerate</div>
           <div className="mt-2 text-2xl font-bold text-emerald-900">{overviewQuery.data?.summary.eligibleStudents || 0}</div>
-          <div className="mt-1 text-xs text-emerald-800/80">Layak ikut ujian dan punya data ruang ujian aktif.</div>
+          <div className="mt-1 text-xs text-emerald-800/80">Sudah layak ikut ujian dan punya penempatan ruang aktif untuk dibuatkan kartu.</div>
         </div>
         <div className="rounded-xl border border-amber-100 bg-amber-50 p-4">
-          <div className="text-xs font-semibold uppercase tracking-wide text-amber-700">Belum Layak</div>
+          <div className="text-xs font-semibold uppercase tracking-wide text-amber-700">Belum Bisa Digenerate</div>
           <div className="mt-2 text-2xl font-bold text-amber-900">{overviewQuery.data?.summary.blockedStudents || 0}</div>
-          <div className="mt-1 text-xs text-amber-800/80">Masih terblokir nilai atau restriction manual.</div>
+          <div className="mt-1 text-xs text-amber-800/80">Masih ada syarat kelayakan atau data penempatan yang belum terpenuhi.</div>
         </div>
         <div className="rounded-xl border border-rose-100 bg-rose-50 p-4">
           <div className="text-xs font-semibold uppercase tracking-wide text-rose-700">Sudah Dipublikasikan</div>
           <div className="mt-2 text-2xl font-bold text-rose-900">{overviewQuery.data?.summary.publishedCards || 0}</div>
-          <div className="mt-1 text-xs text-rose-800/80">Siswa yang sudah menerima kartu ujian digital di akun mereka.</div>
-          <div className="mt-2 text-[11px] font-medium text-rose-700/90">Kartu aktif siap dicetak ulang dan sudah sinkron ke akun siswa.</div>
+          <div className="mt-1 text-xs text-rose-800/80">Kartu digital aktif sudah terbit, tampil di akun siswa, dan siap dicetak ulang.</div>
         </div>
       </div>
 
@@ -730,7 +727,11 @@ export function HeadTuExamCardsPanel() {
           <div className="py-12 text-center text-sm text-gray-500">Belum ada data siswa yang sesuai dengan filter.</div>
         ) : (
           <div>
-            <div className="hidden border-b border-gray-100 bg-slate-50/80 px-5 py-3 xl:grid xl:grid-cols-[minmax(0,1.2fr)_minmax(0,0.9fr)_240px_260px_auto] xl:gap-4">
+            <div className="border-b border-gray-100 bg-slate-50/80 px-5 py-3">
+              <div className="text-sm font-semibold text-slate-900">Daftar Kartu Siswa</div>
+              <div className="mt-1 text-xs text-slate-500">Nama siswa, ruang ujian, status kartu, dan akses print per siswa.</div>
+            </div>
+            <div className="hidden border-b border-gray-100 bg-slate-50/80 px-5 py-3 md:grid md:grid-cols-[minmax(0,1.2fr)_minmax(0,0.9fr)_240px_260px_auto] md:gap-4">
               <div className="text-xs font-semibold uppercase tracking-wide text-slate-500">Nama Siswa</div>
               <div className="text-xs font-semibold uppercase tracking-wide text-slate-500">Ruang & Kursi</div>
               <div className="text-xs font-semibold uppercase tracking-wide text-slate-500">Status</div>

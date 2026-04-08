@@ -200,6 +200,20 @@ const formatSafeDateTime = (value?: string | null) => {
   return date ? format(date, 'dd/MM/yyyy HH:mm') : '-';
 };
 
+const buildDateKey = (value?: string | null) => {
+  const date = parseSafeDate(value);
+  return date ? format(date, 'yyyy-MM-dd') : '';
+};
+
+const formatTimeRangeLabel = (start?: string | null, end?: string | null) => {
+  const startLabel = formatSafeTime(start);
+  const endLabel = formatSafeTime(end);
+  if (startLabel === '-' && endLabel === '-') return 'Waktu belum diatur';
+  if (startLabel === '-') return `${endLabel} WIB`;
+  if (endLabel === '-') return `${startLabel} WIB`;
+  return `${startLabel} - ${endLabel} WIB`;
+};
+
 const sanitizeDateInputValue = (value?: string | null) => {
   const raw = String(value || '').trim();
   if (!raw) return '';
@@ -408,6 +422,9 @@ const ExamProctorManagementPage = () => {
   
   // Filters
   const [selectedDate, setSelectedDate] = useState<string>(() => sanitizeDateInputValue(searchParams.get(dateParamKey)));
+  const [selectedSemester, setSelectedSemester] = useState<'ODD' | 'EVEN'>(
+    activeAcademicYear?.semester === 'EVEN' ? 'EVEN' : 'ODD',
+  );
   const [reportMode, setReportMode] = useState<'daily' | 'archive'>('daily');
   const [reportDateFrom, setReportDateFrom] = useState<string>(() => sanitizeDateInputValue(searchParams.get('mengawasReportFrom')));
   const [reportDateTo, setReportDateTo] = useState<string>(() => sanitizeDateInputValue(searchParams.get('mengawasReportTo')));
@@ -456,6 +473,7 @@ const ExamProctorManagementPage = () => {
     () => visiblePrograms.find((program) => program.code === activeProgramCode) || null,
     [visiblePrograms, activeProgramCode],
   );
+  const effectiveSemester = activeProgram?.fixedSemester || selectedSemester || (activeAcademicYear?.semester === 'EVEN' ? 'EVEN' : 'ODD');
 
   const requestedProgramCode = useMemo(
     () => String(searchParams.get(programParamKey) || '').trim().toUpperCase(),
@@ -527,6 +545,16 @@ const ExamProctorManagementPage = () => {
     setActiveProgramCode('');
   }, [selectedAcademicYear, fetchPrograms, fetchTeachers]);
 
+  useEffect(() => {
+    if (activeProgram?.fixedSemester) {
+      setSelectedSemester(activeProgram.fixedSemester);
+      return;
+    }
+    if (activeAcademicYear?.semester === 'ODD' || activeAcademicYear?.semester === 'EVEN') {
+      setSelectedSemester(activeAcademicYear.semester);
+    }
+  }, [activeAcademicYear?.semester, activeProgram?.fixedSemester]);
+
   // --- Fetch Room Mappings (From ExamSitting) ---
   useEffect(() => {
     const fetchSittings = async () => {
@@ -543,6 +571,7 @@ const ExamProctorManagementPage = () => {
             academicYearId: selectedAcademicYear,
             examType: activeProgramCode,
             programCode: activeProgramCode,
+            semester: effectiveSemester,
             limit: 1000 // Get all
           }
         });
@@ -564,7 +593,17 @@ const ExamProctorManagementPage = () => {
                 const sitting = detailRes.data?.data as SittingDetail;
                 
                 if (sitting && sitting.students) {
+                    const sittingDateKey =
+                      buildDateKey(sitting.startTime) ||
+                      buildDateKey(sitting.endTime);
+                    if (selectedDate && sittingDateKey && sittingDateKey !== selectedDate) {
+                      return;
+                    }
+                    if (selectedDate && !sittingDateKey) {
+                      return;
+                    }
                     const roomName = String(sitting.roomName || '').trim();
+                    const hasExplicitTime = Boolean(sitting.startTime || sitting.endTime);
                     const roomSlotKey = buildRoomSlotLookupKey(
                       roomName,
                       sitting.startTime,
@@ -607,7 +646,7 @@ const ExamProctorManagementPage = () => {
                       if (!roomSessionAccumulator[roomSessionKey]) {
                         roomSessionAccumulator[roomSessionKey] = new Set<string>();
                       }
-                      if (!roomSlotAccumulator.has(roomSlotKey)) {
+                      if (hasExplicitTime && !roomSlotAccumulator.has(roomSlotKey)) {
                         roomSlotAccumulator.set(roomSlotKey, {
                           roomName,
                           start: String(sitting.startTime || ''),
@@ -618,7 +657,9 @@ const ExamProctorManagementPage = () => {
                       }
                       sittingClasses.forEach((className) => roomClassAccumulator[roomSlotKey].add(className));
                       sittingClasses.forEach((className) => roomSessionAccumulator[roomSessionKey].add(className));
-                      sittingClasses.forEach((className) => roomSlotAccumulator.get(roomSlotKey)?.classNames.add(className));
+                      if (hasExplicitTime) {
+                        sittingClasses.forEach((className) => roomSlotAccumulator.get(roomSlotKey)?.classNames.add(className));
+                      }
                     }
                 }
             } catch (e) {
@@ -663,7 +704,7 @@ const ExamProctorManagementPage = () => {
     };
 
     fetchSittings();
-  }, [selectedAcademicYear, activeProgramCode]);
+  }, [selectedAcademicYear, activeProgramCode, effectiveSemester, selectedDate]);
 
   // --- Fetch Schedules ---
   const fetchSchedules = useCallback(async () => {
@@ -678,7 +719,8 @@ const ExamProctorManagementPage = () => {
       const params: Record<string, string> = {
         examType: activeProgramCode,
         programCode: activeProgramCode,
-        academicYearId: selectedAcademicYear
+        academicYearId: selectedAcademicYear,
+        semester: effectiveSemester,
       };
       if (selectedDate) params.date = selectedDate;
 
@@ -690,7 +732,7 @@ const ExamProctorManagementPage = () => {
     } finally {
       setLoading(false);
     }
-  }, [selectedAcademicYear, activeProgramCode, selectedDate]);
+  }, [selectedAcademicYear, activeProgramCode, selectedDate, effectiveSemester]);
 
   useEffect(() => {
     fetchSchedules();
@@ -714,6 +756,7 @@ const ExamProctorManagementPage = () => {
       const reportParams: Record<string, string | undefined> = {
         academicYearId: selectedAcademicYear,
         programCode: activeProgramCode,
+        semester: effectiveSemester,
       };
       if (reportMode === 'daily') {
         reportParams.date = selectedDate || undefined;
@@ -753,7 +796,7 @@ const ExamProctorManagementPage = () => {
     } finally {
       setReportsLoading(false);
     }
-  }, [activeProgramCode, selectedAcademicYear, selectedDate, reportMode, reportDateFrom, reportDateTo]);
+  }, [activeProgramCode, selectedAcademicYear, selectedDate, reportMode, reportDateFrom, reportDateTo, effectiveSemester]);
 
   useEffect(() => {
     void fetchProctorReports();
@@ -817,6 +860,14 @@ const ExamProctorManagementPage = () => {
 
     // 2. Sort Time Slots
     const sortedTimes = Object.keys(byTime).sort((a, b) => {
+      const [startA = '', endA = ''] = a.split('|');
+      const [startB = '', endB = ''] = b.split('|');
+      const startMsA = parseSafeDate(startA)?.getTime() ?? Number.MAX_SAFE_INTEGER;
+      const startMsB = parseSafeDate(startB)?.getTime() ?? Number.MAX_SAFE_INTEGER;
+      if (startMsA !== startMsB) return startMsA - startMsB;
+      const endMsA = parseSafeDate(endA)?.getTime() ?? Number.MAX_SAFE_INTEGER;
+      const endMsB = parseSafeDate(endB)?.getTime() ?? Number.MAX_SAFE_INTEGER;
+      if (endMsA !== endMsB) return endMsA - endMsB;
       return a.localeCompare(b);
     });
 
@@ -1059,6 +1110,20 @@ const ExamProctorManagementPage = () => {
             ))}
           </div>
 
+          {!activeProgram?.fixedSemester ? (
+            <div className="w-full max-w-[180px]">
+              <label className="mb-1 block text-xs font-semibold uppercase tracking-wide text-gray-500">Semester</label>
+              <select
+                value={selectedSemester}
+                onChange={(event) => setSelectedSemester(event.target.value as 'ODD' | 'EVEN')}
+                className="w-full rounded-lg border border-gray-300 px-3 py-2 text-sm focus:border-blue-500 focus:outline-none"
+              >
+                <option value="ODD">Ganjil</option>
+                <option value="EVEN">Genap</option>
+              </select>
+            </div>
+          ) : null}
+
           <div className="h-8 w-px bg-gray-300 mx-2"></div>
 
           <div className="relative">
@@ -1109,7 +1174,7 @@ const ExamProctorManagementPage = () => {
                       <div className="flex items-center gap-2">
                         <Clock className="text-blue-600" size={16} />
                         <span className="text-lg font-bold text-gray-900">
-                          {formatSafeTime(group.start)} - {formatSafeTime(group.end)} WIB
+                          {formatTimeRangeLabel(group.start, group.end)}
                         </span>
                       </div>
                       <span className="text-sm text-gray-500 mt-0.5">

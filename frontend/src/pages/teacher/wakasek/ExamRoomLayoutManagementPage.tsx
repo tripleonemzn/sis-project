@@ -1,7 +1,13 @@
 import { useCallback, useEffect, useMemo, useState } from 'react';
 import {
   AlertTriangle,
+  Briefcase,
+  CalendarRange,
   CheckCircle2,
+  ClipboardCheck,
+  ClipboardList,
+  FileSpreadsheet,
+  GraduationCap,
   Loader2,
   Layers3,
   PencilRuler,
@@ -160,6 +166,16 @@ function sortLayoutCells(cells: DraftCell[]) {
 function clampGridSize(value: number, fallback: number, limit: number) {
   if (!Number.isFinite(value)) return fallback;
   return Math.max(1, Math.min(limit, Math.trunc(value)));
+}
+
+function getProgramTabIcon(programCode: string) {
+  const normalized = String(programCode || '').trim().toUpperCase();
+  if (normalized === 'SBTS') return CalendarRange;
+  if (normalized === 'SAS') return FileSpreadsheet;
+  if (normalized === 'SAT') return GraduationCap;
+  if (normalized === 'ASAJ') return ClipboardCheck;
+  if (normalized === 'ASAJP') return Briefcase;
+  return ClipboardList;
 }
 
 function createDraftFromLayout(detail: LayoutDetail): LayoutDraft {
@@ -410,6 +426,9 @@ export default function ExamRoomLayoutManagementPage() {
   const [generateRows, setGenerateRows] = useState(4);
   const [generateColumns, setGenerateColumns] = useState(4);
   const [generateNotes, setGenerateNotes] = useState('');
+  const [selectedSemester, setSelectedSemester] = useState<'ODD' | 'EVEN'>(
+    activeAcademicYear?.semester === 'EVEN' ? 'EVEN' : 'ODD',
+  );
 
   const visiblePrograms = useMemo(
     () =>
@@ -423,6 +442,11 @@ export default function ExamRoomLayoutManagementPage() {
     () => sittings.find((item) => item.id === selectedSittingId) || null,
     [sittings, selectedSittingId],
   );
+  const activeProgram = useMemo(
+    () => visiblePrograms.find((program) => program.code === activeProgramCode) || null,
+    [visiblePrograms, activeProgramCode],
+  );
+  const effectiveSemester = activeProgram?.fixedSemester || selectedSemester || (activeAcademicYear?.semester === 'EVEN' ? 'EVEN' : 'ODD');
 
   const assignedStudentIds = useMemo(() => {
     const ids = new Set<number>();
@@ -532,6 +556,7 @@ export default function ExamRoomLayoutManagementPage() {
         params: {
           academicYearId: selectedAcademicYear,
           programCode: activeProgramCode,
+          semester: effectiveSemester,
         },
       });
       const rows = (response.data?.data || []) as SittingRow[];
@@ -548,7 +573,7 @@ export default function ExamRoomLayoutManagementPage() {
     } finally {
       setLoadingSittings(false);
     }
-  }, [selectedAcademicYear, activeProgramCode]);
+  }, [selectedAcademicYear, activeProgramCode, effectiveSemester]);
 
   const fetchLayoutDetail = useCallback(async (sittingId: number) => {
     setLoadingDetail(true);
@@ -576,6 +601,16 @@ export default function ExamRoomLayoutManagementPage() {
     if (!selectedAcademicYear) return;
     void fetchPrograms();
   }, [selectedAcademicYear, fetchPrograms]);
+
+  useEffect(() => {
+    if (activeProgram?.fixedSemester) {
+      setSelectedSemester(activeProgram.fixedSemester);
+      return;
+    }
+    if (activeAcademicYear?.semester === 'ODD' || activeAcademicYear?.semester === 'EVEN') {
+      setSelectedSemester(activeAcademicYear.semester);
+    }
+  }, [activeAcademicYear?.semester, activeProgram?.fixedSemester]);
 
   useEffect(() => {
     void fetchSittings();
@@ -773,7 +808,7 @@ export default function ExamRoomLayoutManagementPage() {
         <div>
           <h2 className="text-2xl font-bold text-gray-900">Generate Denah Ruang</h2>
           <p className="mt-1 text-sm text-gray-500">
-            Pilih ruang ujian, lakukan setup denah lewat popup, lalu atur penempatan siswa per rombel secara fokus saat denah dibuka. Denah otomatis mengikuti tahun ajaran aktif di header aplikasi.
+            Pilih ruang ujian, lakukan setup denah lewat popup, lalu atur penempatan siswa per rombel secara fokus saat denah dibuka.
           </p>
         </div>
 
@@ -783,23 +818,40 @@ export default function ExamRoomLayoutManagementPage() {
               Belum ada program ujian terjadwal.
             </div>
           ) : (
-            <div className="flex overflow-x-auto">
-              <div className="flex space-x-1 rounded-lg border border-gray-200 bg-white p-1 w-fit scrollbar-hide">
-                {visiblePrograms.map((program) => (
-                  <button
-                    key={program.code}
-                    type="button"
-                    onClick={() => setActiveProgramCode(program.code)}
-                    className={`px-4 py-2 text-[13px] font-medium rounded-md whitespace-nowrap transition-colors ${
-                      activeProgramCode === program.code
-                        ? 'bg-blue-50 text-blue-700'
-                        : 'text-gray-600 hover:text-gray-900 hover:bg-gray-50'
-                    }`}
-                  >
-                    {program.shortLabel || program.label || program.code}
-                  </button>
-                ))}
+            <div className="flex flex-wrap items-center gap-4">
+              <div className="flex gap-4 overflow-x-auto scrollbar-hide">
+                {visiblePrograms.map((program) => {
+                  const Icon = getProgramTabIcon(program.code);
+                  return (
+                    <button
+                      key={program.code}
+                      type="button"
+                      onClick={() => setActiveProgramCode(program.code)}
+                      className={`flex items-center gap-2 whitespace-nowrap border-b-2 px-3 py-3 text-sm font-medium transition-colors ${
+                        activeProgramCode === program.code
+                          ? 'border-blue-600 text-blue-700'
+                          : 'border-transparent text-gray-500 hover:border-gray-300 hover:text-gray-800'
+                      }`}
+                    >
+                      <Icon className="h-4 w-4" />
+                      {program.shortLabel || program.label || program.code}
+                    </button>
+                  );
+                })}
               </div>
+              {!activeProgram?.fixedSemester ? (
+                <div className="w-full max-w-[180px]">
+                  <label className="mb-1 block text-xs font-semibold uppercase tracking-wide text-gray-500">Semester</label>
+                  <select
+                    value={selectedSemester}
+                    onChange={(event) => setSelectedSemester(event.target.value as 'ODD' | 'EVEN')}
+                    className="w-full rounded-lg border border-gray-300 px-3 py-2 text-sm focus:border-blue-500 focus:outline-none"
+                  >
+                    <option value="ODD">Ganjil</option>
+                    <option value="EVEN">Genap</option>
+                  </select>
+                </div>
+              ) : null}
             </div>
           )}
         </div>
@@ -898,7 +950,7 @@ export default function ExamRoomLayoutManagementPage() {
 
       {isEditorModalOpen && selectedSitting ? (
         <div
-          className="fixed inset-0 z-[70] bg-slate-950/45 p-3 backdrop-blur-sm sm:p-5"
+          className="fixed inset-0 z-[70] bg-black/35 p-3 sm:p-5"
           onClick={handleCloseEditor}
         >
           <div
@@ -1048,10 +1100,11 @@ export default function ExamRoomLayoutManagementPage() {
                     </div>
 
                     <div className="overflow-x-auto px-5 py-5">
-                      <div className="inline-flex min-w-full flex-col gap-3">
-                        {gridRows.map((row, rowIndex) => (
-                          <div key={`row-${rowIndex}`} className="flex gap-3">
-                            {row.map((cell) => {
+                      <div className="inline-block min-w-fit rounded-2xl border border-slate-100 bg-slate-50/70 p-4">
+                        <div className="inline-flex w-max flex-col gap-3">
+                          {gridRows.map((row, rowIndex) => (
+                            <div key={`row-${rowIndex}`} className="flex gap-3">
+                              {row.map((cell) => {
                               const currentStudent =
                                 detail?.students.find((student) => student.id === cell.studentId) || null;
                               const isSeat = cell.cellType === 'SEAT';
@@ -1100,9 +1153,10 @@ export default function ExamRoomLayoutManagementPage() {
                                   </div>
                                 </div>
                               );
-                            })}
-                          </div>
-                        ))}
+                              })}
+                            </div>
+                          ))}
+                        </div>
                       </div>
                     </div>
                   </div>
@@ -1247,7 +1301,7 @@ export default function ExamRoomLayoutManagementPage() {
 
       {isGenerateModalOpen && selectedSitting ? (
         <div
-          className="fixed inset-0 z-[80] flex items-center justify-center bg-slate-950/45 p-4 backdrop-blur-sm"
+          className="fixed inset-0 z-[80] flex items-center justify-center bg-black/35 p-4"
           onClick={() => setIsGenerateModalOpen(false)}
         >
           <div

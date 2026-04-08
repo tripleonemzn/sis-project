@@ -682,6 +682,7 @@ export default function TeacherWakakurExamsScreen() {
   const [section, setSection] = useState<ExamHubSection>('JADWAL');
   const [activeSummaryId, setActiveSummaryId] = useState<ExamSummaryId | null>(null);
   const [examTypeFilter, setExamTypeFilter] = useState<ExamTypeFilter>('ALL');
+  const [selectedSemester, setSelectedSemester] = useState<'ODD' | 'EVEN'>('ODD');
   const [search, setSearch] = useState('');
   const [editingScheduleId, setEditingScheduleId] = useState<number | null>(null);
   const [selectedMakeupSchedule, setSelectedMakeupSchedule] = useState<TeacherExamSchedule | null>(null);
@@ -788,8 +789,15 @@ export default function TeacherWakakurExamsScreen() {
     },
   });
 
+  const queryEffectiveSemester =
+    (examProgramsQuery.data?.programs || []).find(
+      (program) => normalizeProgramCode(program.code) === normalizeProgramCode(examTypeFilter),
+    )?.fixedSemester ||
+    selectedSemester ||
+    (activeYearQuery.data?.semester === 'EVEN' ? 'EVEN' : 'ODD');
+
   const examSittingsQuery = useQuery({
-    queryKey: ['mobile-wakakur-exam-sittings', activeYearQuery.data?.id, examTypeFilter],
+    queryKey: ['mobile-wakakur-exam-sittings', activeYearQuery.data?.id, examTypeFilter, queryEffectiveSemester],
     enabled: isAuthenticated && !!isAllowed && Boolean(activeYearQuery.data?.id) && !isProgramSection,
     staleTime: 60 * 1000,
     queryFn: async () => {
@@ -799,6 +807,7 @@ export default function TeacherWakakurExamsScreen() {
           ? {
               examType: examTypeFilter,
               programCode: examTypeFilter,
+              semester: queryEffectiveSemester,
             }
           : {}),
       });
@@ -1080,6 +1089,16 @@ export default function TeacherWakakurExamsScreen() {
     [examTypeFilterOptions, examTypeLabel],
   );
 
+  const selectedProgramConfig = useMemo(() => {
+    const programs = examProgramsQuery.data?.programs || [];
+    return programs.find((program) => normalizeProgramCode(program.code) === normalizeProgramCode(examTypeFilter)) || null;
+  }, [examProgramsQuery.data?.programs, examTypeFilter]);
+
+  const effectiveSemester =
+    selectedProgramConfig?.fixedSemester ||
+    selectedSemester ||
+    (activeYearQuery.data?.semester === 'EVEN' ? 'EVEN' : 'ODD');
+
   useEffect(() => {
     if (examTypeFilter === 'ALL') return;
     if (!examTypeFilterOptions.includes(examTypeFilter)) {
@@ -1087,6 +1106,16 @@ export default function TeacherWakakurExamsScreen() {
       return () => clearTimeout(timerId);
     }
   }, [examTypeFilter, examTypeFilterOptions]);
+
+  useEffect(() => {
+    if (selectedProgramConfig?.fixedSemester) {
+      setSelectedSemester(selectedProgramConfig.fixedSemester);
+      return;
+    }
+    if (activeYearQuery.data?.semester === 'ODD' || activeYearQuery.data?.semester === 'EVEN') {
+      setSelectedSemester(activeYearQuery.data.semester);
+    }
+  }, [activeYearQuery.data?.semester, selectedProgramConfig?.fixedSemester]);
 
   const teachers = useMemo(
     () =>
@@ -1125,6 +1154,7 @@ export default function TeacherWakakurExamsScreen() {
         }
         const type = resolveScheduleExamType(item);
         if (examTypeFilter !== 'ALL' && type !== examTypeFilter) return false;
+        if (examTypeFilter !== 'ALL' && item.semester && item.semester !== effectiveSemester) return false;
         if (!query) return true;
         const subject = resolveScheduleSubject(item);
         const haystacks = [
@@ -1140,7 +1170,7 @@ export default function TeacherWakakurExamsScreen() {
         return haystacks.some((value) => value.toLowerCase().includes(query));
       })
       .sort((a, b) => new Date(b.startTime).getTime() - new Date(a.startTime).getTime());
-  }, [schedules, activeYearQuery.data, examTypeFilter, search, examTypeLabel]);
+  }, [schedules, activeYearQuery.data, examTypeFilter, search, examTypeLabel, effectiveSemester]);
 
   const sittingRoomDerived = useMemo(() => {
     const list = examSittingsQuery.data?.list || [];
@@ -1308,6 +1338,7 @@ export default function TeacherWakakurExamsScreen() {
           const normalizedFilter = normalizeProgramCode(examTypeFilter);
           if (normalizedType !== normalizedFilter) return false;
         }
+        if (examTypeFilter !== 'ALL' && sitting.semester && sitting.semester !== effectiveSemester) return false;
         if (!query) return true;
         const detail = detailsMap.get(Number(sitting.id));
         const classes = (detail?.students || [])
@@ -1352,7 +1383,7 @@ export default function TeacherWakakurExamsScreen() {
         if (roomCompare !== 0) return roomCompare;
         return Number(a.id) - Number(b.id);
       });
-  }, [examSittingsQuery.data, examTypeFilter, search]);
+  }, [examSittingsQuery.data, examTypeFilter, search, effectiveSemester]);
 
   const teacherOptions = useMemo(() => {
     const query = teacherSearch.trim().toLowerCase();
@@ -1892,6 +1923,19 @@ export default function TeacherWakakurExamsScreen() {
             onChange={(value) => setExamTypeFilter(value as ExamTypeFilter)}
             placeholder="Pilih tipe ujian"
           />
+
+          {examTypeFilter !== 'ALL' && !selectedProgramConfig?.fixedSemester ? (
+            <MobileSelectField
+              label="Semester"
+              value={selectedSemester}
+              options={[
+                { value: 'ODD', label: 'Ganjil' },
+                { value: 'EVEN', label: 'Genap' },
+              ]}
+              onChange={(value) => setSelectedSemester((value as 'ODD' | 'EVEN') || 'ODD')}
+              placeholder="Pilih semester"
+            />
+          ) : null}
 
           <Pressable
             onPress={openExamSessionCrud}

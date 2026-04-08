@@ -176,7 +176,6 @@ export default function StudentExamsScreen() {
   const seatBlink = useMemo(() => new Animated.Value(1), []);
   const warningBlink = useMemo(() => new Animated.Value(1), []);
   const [showRulesModal, setShowRulesModal] = useState(false);
-  const [showPlacementSeatDetail, setShowPlacementSeatDetail] = useState(false);
   const studentExamPlacementsQuery = useQuery({
     queryKey: ['mobile-student-exam-placements', user?.id || 'anon'],
     enabled:
@@ -573,11 +572,11 @@ export default function StudentExamsScreen() {
                         paddingVertical: 12,
                       }}
                     >
-                      <View style={{ flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: 12 }}>
+                      <View style={{ flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: 20 }}>
                         {schoolLogoUrl ? (
                           <Image
                             source={{ uri: schoolLogoUrl }}
-                            style={{ width: 72, height: 72 }}
+                            style={{ width: 92, height: 92 }}
                             resizeMode="contain"
                           />
                         ) : null}
@@ -659,8 +658,8 @@ export default function StudentExamsScreen() {
                           <Image
                             source={{ uri: card.payload.legality.principalBarcodeDataUrl }}
                             style={{
-                              width: 96,
-                              height: 96,
+                              width: 124,
+                              height: 124,
                               marginTop: 10,
                               borderRadius: 10,
                               borderWidth: 1,
@@ -854,7 +853,6 @@ export default function StudentExamsScreen() {
                     <Pressable
                       onPress={() => {
                         setSelectedPlacement(placement);
-                        setShowPlacementSeatDetail(false);
                       }}
                       style={{
                         marginTop: 10,
@@ -1300,12 +1298,11 @@ export default function StudentExamsScreen() {
       <MobileDetailModal
         visible={Boolean(selectedPlacement)}
         title="Denah Ruang Ujian"
-        subtitle="Kotak hijau menandakan posisi duduk Anda. Ketuk kotak tersebut untuk melihat detail kursi."
+        subtitle="Kotak hijau menandakan posisi duduk Anda pada denah ruang ujian."
         iconName="grid"
         accentColor="#16a34a"
         onClose={() => {
           setSelectedPlacement(null);
-          setShowPlacementSeatDetail(false);
         }}
       >
         {selectedPlacement ? (
@@ -1330,22 +1327,18 @@ export default function StudentExamsScreen() {
                     selectedPlacement.seatPosition.rowIndex === rowIndex &&
                     selectedPlacement.seatPosition.columnIndex === columnIndex;
                   return isSeat ? (
-                    <Pressable
+                    <Animated.View
                       key={`${rowIndex}-${columnIndex}`}
-                      onPress={() => setShowPlacementSeatDetail(true)}
-                    >
-                      <Animated.View
-                        style={{
-                          width: 24,
-                          height: 24,
-                          borderRadius: 6,
-                          borderWidth: 1,
-                          borderColor: '#34d399',
-                          backgroundColor: '#bbf7d0',
-                          opacity: seatBlink,
-                        }}
-                      />
-                    </Pressable>
+                      style={{
+                        width: 24,
+                        height: 24,
+                        borderRadius: 6,
+                        borderWidth: 1,
+                        borderColor: '#34d399',
+                        backgroundColor: '#bbf7d0',
+                        opacity: seatBlink,
+                      }}
+                    />
                   ) : (
                     <View
                       key={`${rowIndex}-${columnIndex}`}
@@ -1361,37 +1354,35 @@ export default function StudentExamsScreen() {
                   );
                 })}
               </View>
-              {showPlacementSeatDetail ? (
-                <View
-                  style={{
-                    alignSelf: 'stretch',
-                    marginTop: 14,
-                    borderWidth: 1,
-                    borderColor: '#bbf7d0',
-                    borderRadius: 14,
-                    backgroundColor: '#f0fdf4',
-                    padding: 12,
-                    gap: 6,
-                  }}
-                >
-                  <Text style={{ color: '#166534', fontWeight: '700' }}>Detail Kursi Peserta</Text>
-                  <Text style={{ color: '#166534', fontSize: 13 }}>
-                    Nama: {selectedPlacementCard?.payload.student.name || fallbackIdentityCard?.payload.student.name || '-'}
-                  </Text>
-                  <Text style={{ color: '#166534', fontSize: 13 }}>
-                    Kelas: {selectedPlacementCard?.payload.student.className || fallbackIdentityCard?.payload.student.className || '-'}
-                  </Text>
-                  <Text style={{ color: '#166534', fontSize: 13 }}>
-                    Username: {selectedPlacementCard?.payload.student.username || fallbackIdentityCard?.payload.student.username || '-'}
-                  </Text>
-                  <Text style={{ color: '#1d4ed8', fontSize: 13, fontWeight: '700' }}>
-                    No. Peserta: {selectedPlacementCard?.payload.participantNumber || '-'}
-                  </Text>
-                  <Text style={{ color: '#166534', fontSize: 13 }}>Ruang: {selectedPlacement.roomName}</Text>
-                  <Text style={{ color: '#166534', fontSize: 13 }}>Kursi: {selectedPlacement.seatLabel || '-'}</Text>
-                  <Text style={{ color: '#166534', fontSize: 13 }}>Sesi: {selectedPlacement.sessionLabel || '-'}</Text>
-                </View>
-              ) : null}
+              <View
+                style={{
+                  alignSelf: 'stretch',
+                  marginTop: 14,
+                  borderWidth: 1,
+                  borderColor: '#bbf7d0',
+                  borderRadius: 14,
+                  backgroundColor: '#f0fdf4',
+                  padding: 12,
+                  gap: 6,
+                }}
+              >
+                <Text style={{ color: '#166534', fontWeight: '700' }}>Detail Kursi Peserta</Text>
+                <Text style={{ color: '#166534', fontSize: 13 }}>
+                  Nama: {selectedPlacementCard?.payload.student.name || fallbackIdentityCard?.payload.student.name || '-'}
+                </Text>
+                <Text style={{ color: '#166534', fontSize: 13 }}>
+                  Kelas: {selectedPlacementCard?.payload.student.className || fallbackIdentityCard?.payload.student.className || '-'}
+                </Text>
+                <Text style={{ color: '#166534', fontSize: 13 }}>
+                  Username: {selectedPlacementCard?.payload.student.username || fallbackIdentityCard?.payload.student.username || '-'}
+                </Text>
+                <Text style={{ color: '#1d4ed8', fontSize: 13, fontWeight: '700' }}>
+                  No. Peserta: {selectedPlacementCard?.payload.participantNumber || '-'}
+                </Text>
+                <Text style={{ color: '#166534', fontSize: 13 }}>Ruang: {selectedPlacement.roomName}</Text>
+                <Text style={{ color: '#166534', fontSize: 13 }}>Kursi: {selectedPlacement.seatLabel || '-'}</Text>
+                <Text style={{ color: '#166534', fontSize: 13 }}>Sesi: {selectedPlacement.sessionLabel || '-'}</Text>
+              </View>
             </View>
           ) : (
             <View

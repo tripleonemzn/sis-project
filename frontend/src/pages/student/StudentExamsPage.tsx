@@ -324,7 +324,6 @@ export default function StudentExamsPage() {
   const [isCardsExpanded, setIsCardsExpanded] = useState(false)
   const [isPlacementsExpanded, setIsPlacementsExpanded] = useState(false)
   const [showExamRulesModal, setShowExamRulesModal] = useState(false)
-  const [showPlacementSeatDetail, setShowPlacementSeatDetail] = useState(false)
   const [serverTimeDrift, setServerTimeDrift] = useState<ServerTimeDriftState | null>(null)
   const lockedProgramCode = programFilter !== 'all' ? programFilter : ''
   const selectedProgram = useMemo(
@@ -1043,10 +1042,10 @@ export default function StudentExamsPage() {
                     </div>
 
                     <div className="relative border-b border-gray-200 px-4 py-4">
-                      <div className="mx-auto flex max-w-[760px] items-center justify-center gap-4 text-center">
+                      <div className="mx-auto flex max-w-[780px] items-center justify-center gap-8 text-center">
                         <div className="flex shrink-0 justify-center">
                           {schoolLogoUrl ? (
-                            <img src={schoolLogoUrl} alt="Logo KGB2" className="h-20 w-20 object-contain" />
+                            <img src={schoolLogoUrl} alt="Logo KGB2" className="h-28 w-28 object-contain" />
                           ) : null}
                         </div>
                         <div className="text-center">
@@ -1093,7 +1092,7 @@ export default function StudentExamsPage() {
                           <img
                             src={card.payload.legality.principalBarcodeDataUrl}
                             alt="Barcode Kepala Sekolah"
-                            className="mt-4 h-28 w-28 rounded-lg border border-gray-200 bg-white p-1"
+                            className="mt-4 h-36 w-36 rounded-lg border border-gray-200 bg-white p-1.5"
                           />
                         ) : null}
                         <div className="mt-3 text-base font-semibold text-gray-900">{card.payload.legality.principalName}</div>
@@ -1182,7 +1181,6 @@ export default function StudentExamsPage() {
                       type="button"
                       onClick={() => {
                         setSelectedPlacement(placement)
-                        setShowPlacementSeatDetail(false)
                         setShowPlacementModal(true)
                       }}
                       className="mt-3 inline-flex items-center rounded-lg border border-blue-200 bg-blue-50 px-3 py-2 text-xs font-semibold text-blue-700 hover:bg-blue-100"
@@ -1480,7 +1478,7 @@ export default function StudentExamsPage() {
           )}
         </div>
       {showExamRulesModal ? (
-        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/40 px-4">
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/35 px-4">
           <div className="w-full max-w-lg rounded-2xl border border-yellow-200 bg-white p-6 shadow-xl">
             <div className="flex items-start justify-between gap-4">
               <div>
@@ -1507,7 +1505,7 @@ export default function StudentExamsPage() {
       ) : null}
 
       {showPlacementModal && selectedPlacement ? (
-        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50 px-4">
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/35 px-4">
           <div className="w-full max-w-2xl rounded-2xl border border-blue-100 bg-white p-6 shadow-xl">
             <div className="flex items-start justify-between gap-4">
               <div>
@@ -1521,7 +1519,6 @@ export default function StudentExamsPage() {
                 onClick={() => {
                   setShowPlacementModal(false)
                   setSelectedPlacement(null)
-                  setShowPlacementSeatDetail(false)
                 }}
                 className="rounded-lg border border-gray-200 bg-white px-3 py-2 text-sm font-semibold text-gray-600 hover:bg-gray-50"
               >
@@ -1545,41 +1542,33 @@ export default function StudentExamsPage() {
                       selectedPlacement.seatPosition.rowIndex === rowIndex &&
                       selectedPlacement.seatPosition.columnIndex === columnIndex
                     return (
-                      <button
+                      <div
                         key={`${rowIndex}-${columnIndex}`}
-                        type="button"
-                        onClick={() => {
-                          if (!isSeat) return
-                          setShowPlacementSeatDetail(true)
-                        }}
                         className={`h-8 w-8 rounded border transition ${
                           isSeat
-                            ? 'seat-blink border-emerald-400 bg-emerald-200 hover:bg-emerald-300'
+                            ? 'seat-blink border-emerald-400 bg-emerald-200'
                             : 'cursor-default border-slate-200 bg-slate-50'
                         }`}
-                        disabled={!isSeat}
-                        aria-label={isSeat ? 'Lihat detail kursi saya' : 'Kursi kosong'}
+                        aria-label={isSeat ? 'Posisi kursi saya' : 'Kursi kosong'}
                       />
                     )
                   })}
                 </div>
                 <p className="mt-4 text-xs text-gray-500">
-                  Kotak hijau menandakan posisi duduk Anda. Klik kotak tersebut untuk melihat detail kursi.
+                  Kotak hijau menandakan posisi duduk Anda pada denah ruang ujian.
                 </p>
-                {showPlacementSeatDetail ? (
-                  <div className="mt-4 w-full rounded-xl border border-emerald-100 bg-emerald-50/80 p-4 text-left">
-                    <div className="text-sm font-semibold text-emerald-900">Detail Kursi Peserta</div>
-                    <div className="mt-3 grid gap-y-1 text-sm text-emerald-900 md:grid-cols-[140px_12px_minmax(0,1fr)]">
-                      <div className="font-medium">Nama</div><div>:</div><div>{selectedPlacementCard?.payload.student.name || fallbackIdentityCard?.payload.student.name || '-'}</div>
-                      <div className="font-medium">Kelas</div><div>:</div><div>{selectedPlacementCard?.payload.student.className || fallbackIdentityCard?.payload.student.className || '-'}</div>
-                      <div className="font-medium">Username</div><div>:</div><div>{selectedPlacementCard?.payload.student.username || fallbackIdentityCard?.payload.student.username || '-'}</div>
-                      <div className="font-medium">No. Peserta</div><div>:</div><div className="font-semibold text-blue-700">{selectedPlacementCard?.payload.participantNumber || '-'}</div>
-                      <div className="font-medium">Ruang</div><div>:</div><div>{selectedPlacement.roomName}</div>
-                      <div className="font-medium">Kursi</div><div>:</div><div>{selectedPlacement.seatLabel || '-'}</div>
-                      <div className="font-medium">Sesi</div><div>:</div><div>{selectedPlacement.sessionLabel || '-'}</div>
-                    </div>
+                <div className="mt-4 w-full rounded-xl border border-emerald-100 bg-emerald-50/80 p-4 text-left">
+                  <div className="text-sm font-semibold text-emerald-900">Detail Kursi Peserta</div>
+                  <div className="mt-3 grid gap-y-1 text-sm text-emerald-900 md:grid-cols-[140px_12px_minmax(0,1fr)]">
+                    <div className="font-medium">Nama</div><div>:</div><div>{selectedPlacementCard?.payload.student.name || fallbackIdentityCard?.payload.student.name || '-'}</div>
+                    <div className="font-medium">Kelas</div><div>:</div><div>{selectedPlacementCard?.payload.student.className || fallbackIdentityCard?.payload.student.className || '-'}</div>
+                    <div className="font-medium">Username</div><div>:</div><div>{selectedPlacementCard?.payload.student.username || fallbackIdentityCard?.payload.student.username || '-'}</div>
+                    <div className="font-medium">No. Peserta</div><div>:</div><div className="font-semibold text-blue-700">{selectedPlacementCard?.payload.participantNumber || '-'}</div>
+                    <div className="font-medium">Ruang</div><div>:</div><div>{selectedPlacement.roomName}</div>
+                    <div className="font-medium">Kursi</div><div>:</div><div>{selectedPlacement.seatLabel || '-'}</div>
+                    <div className="font-medium">Sesi</div><div>:</div><div>{selectedPlacement.sessionLabel || '-'}</div>
                   </div>
-                ) : null}
+                </div>
               </div>
             ) : (
               <div className="mt-4 rounded-xl border border-dashed border-gray-300 px-4 py-6 text-sm text-gray-500">
@@ -1592,7 +1581,7 @@ export default function StudentExamsPage() {
 
       {/* Start Exam Confirmation Modal */}
       {showStartModal && selectedExam && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/30" onClick={() => setShowStartModal(false)}>
+        <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/35" onClick={() => setShowStartModal(false)}>
           <div className="bg-white rounded-2xl shadow-2xl max-w-lg w-full p-6 animate-in fade-in zoom-in duration-200" onClick={(e) => e.stopPropagation()}>
             <div className="text-center mb-6">
               <div className="w-16 h-16 bg-blue-100 rounded-full flex items-center justify-center mx-auto mb-4">

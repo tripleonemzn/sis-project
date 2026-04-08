@@ -32,7 +32,7 @@ export function MobileDetailModal({
       <View
         style={{
           flex: 1,
-          backgroundColor: 'rgba(15, 23, 42, 0.45)',
+          backgroundColor: 'rgba(15, 23, 42, 0.32)',
           justifyContent: 'center',
           paddingHorizontal: 18,
           paddingTop: insets.top + 12,
