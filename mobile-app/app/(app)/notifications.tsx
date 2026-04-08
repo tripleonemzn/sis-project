@@ -25,6 +25,7 @@ import { notifyApiError, notifySuccess } from '../../src/lib/ui/feedback';
 import { BRAND_COLORS } from '../../src/config/brand';
 import { getStaffFinanceNotificationTarget } from '../../src/features/staff/staffRole';
 import { useIsScreenActive } from '../../src/hooks/useIsScreenActive';
+import { resolveMobileNotificationTarget } from '../../src/features/notifications/notificationTargetResolver';
 
 function formatDateTime(value: string) {
   const date = new Date(value);
@@ -178,7 +179,7 @@ export default function NotificationsScreen() {
     const routeValue = payload?.route;
     const payloadRoute =
       typeof routeValue === 'string' && routeValue.trim().startsWith('/')
-        ? routeValue.trim()
+        ? resolveMobileNotificationTarget(routeValue)
         : null;
     if (payloadRoute) return payloadRoute;
 

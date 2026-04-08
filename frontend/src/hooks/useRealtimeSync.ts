@@ -9,8 +9,13 @@ const SHORT_LIVED_CONNECTION_MS = 5000;
 const MAX_SHORT_LIVED_CONNECTIONS = 3;
 const COLD_START_COOLDOWN_MS = 10 * 60 * 1000;
 const WS_DISABLE_UNTIL_KEY = '__realtime_ws_disabled_until';
+const NOTIFICATION_REFRESH_EVENT = 'sis:notifications:refresh';
 const HIGH_FREQUENCY_MUTATION_PATTERNS: RegExp[] = [
   /^\/api\/exams\/\d+\/answers$/,
+];
+const NOTIFICATION_MUTATION_PATTERNS: RegExp[] = [
+  /^\/api\/exams\/packets\/\d+\/review-feedback(?:\/|$)/,
+  /^\/api\/notifications(?:\/|$)/,
 ];
 const MUTATION_QUERY_TARGETS: Array<{ pattern: RegExp; queryKeyPrefixes: string[] }> = [
   {
@@ -128,6 +133,9 @@ export function useRealtimeSync(enabled: boolean) {
     const shouldSkipGlobalInvalidate = (path: string) =>
       HIGH_FREQUENCY_MUTATION_PATTERNS.some((pattern) => pattern.test(path));
 
+    const shouldRefreshNotifications = (path: string) =>
+      NOTIFICATION_MUTATION_PATTERNS.some((pattern) => pattern.test(path));
+
     const resolveQueryKeyPrefixes = (path: string): string[] => {
       for (const target of MUTATION_QUERY_TARGETS) {
         if (target.pattern.test(path)) {
@@ -216,6 +224,9 @@ export function useRealtimeSync(enabled: boolean) {
         }
         if (payload?.type === 'MUTATION' && typeof payload.path === 'string') {
           if (shouldSkipGlobalInvalidate(payload.path)) return;
+          if (shouldRefreshNotifications(payload.path)) {
+            window.dispatchEvent(new CustomEvent(NOTIFICATION_REFRESH_EVENT));
+          }
           const targets = resolveQueryKeyPrefixes(payload.path);
           scheduleInvalidate(targets.length > 0 ? targets : undefined);
           return;

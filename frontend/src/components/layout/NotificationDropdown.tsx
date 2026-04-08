@@ -1,4 +1,4 @@
-import { useState, useEffect, useRef } from 'react';
+import { useState, useEffect, useRef, useCallback } from 'react';
 import { useLocation, useNavigate } from 'react-router-dom';
 import { useQuery } from '@tanstack/react-query';
 import { Bell, Clock } from 'lucide-react';
@@ -28,6 +28,7 @@ interface Notification {
 }
 
 const UNREAD_POLL_INTERVAL_MS = 120000;
+const NOTIFICATION_REFRESH_EVENT = 'sis:notifications:refresh';
 
 export const NotificationDropdown = () => {
   const [isOpen, setIsOpen] = useState(false);
@@ -45,7 +46,7 @@ export const NotificationDropdown = () => {
   });
   const currentUser = meResponse?.data;
 
-  const fetchNotifications = async (limit = 10) => {
+  const fetchNotifications = useCallback(async (limit = 10) => {
     try {
       setLoading(true);
       const response = await api.get('/notifications', { params: { limit } });
@@ -62,9 +63,9 @@ export const NotificationDropdown = () => {
     } finally {
       setLoading(false);
     }
-  };
+  }, []);
 
-  const fetchUnreadCount = async () => {
+  const fetchUnreadCount = useCallback(async () => {
     try {
       const response = await api.get('/notifications/unread-count');
       const nextUnreadCount = Number(response.data?.data?.unreadCount || 0);
@@ -72,7 +73,7 @@ export const NotificationDropdown = () => {
     } catch (error) {
       console.error('Failed to fetch unread notification count:', error);
     }
-  };
+  }, []);
 
   useEffect(() => {
     if (isExamTakePage) return;
@@ -107,12 +108,38 @@ export const NotificationDropdown = () => {
       stopPolling();
       document.removeEventListener('visibilitychange', handleVisibilityChange);
     };
-  }, [isExamTakePage]);
+  }, [fetchUnreadCount, isExamTakePage]);
 
   useEffect(() => {
     if (!isOpen) return;
     void fetchNotifications(10);
-  }, [isOpen]);
+  }, [fetchNotifications, isOpen]);
+
+  useEffect(() => {
+    if (isExamTakePage) return;
+
+    let refreshTimer: number | null = null;
+    const handleNotificationRefresh = () => {
+      if (refreshTimer !== null) {
+        window.clearTimeout(refreshTimer);
+      }
+      refreshTimer = window.setTimeout(() => {
+        refreshTimer = null;
+        void fetchUnreadCount();
+        if (isOpen) {
+          void fetchNotifications(10);
+        }
+      }, 150);
+    };
+
+    window.addEventListener(NOTIFICATION_REFRESH_EVENT, handleNotificationRefresh);
+    return () => {
+      if (refreshTimer !== null) {
+        window.clearTimeout(refreshTimer);
+      }
+      window.removeEventListener(NOTIFICATION_REFRESH_EVENT, handleNotificationRefresh);
+    };
+  }, [fetchNotifications, fetchUnreadCount, isExamTakePage, isOpen]);
 
   // Click outside to close
   useEffect(() => {

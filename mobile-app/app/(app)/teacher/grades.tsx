@@ -11,7 +11,8 @@ import { useTeacherAssignmentsQuery } from '../../../src/features/teacherAssignm
 import { teacherAssignmentApi } from '../../../src/features/teacherAssignments/teacherAssignmentApi';
 import {
   buildTeacherAssignmentOptionLabel,
-  filterRegularTeacherAssignments,
+  isGenericExamSubject,
+  sortTeacherAssignments,
 } from '../../../src/features/teacherAssignments/utils';
 import { teacherGradeApi, type GradeComponent } from '../../../src/features/teacherGrades/teacherGradeApi';
 import { notifyApiError, notifySuccess } from '../../../src/lib/ui/feedback';
@@ -218,6 +219,16 @@ function buildFormativeReferenceSlotCode(slotCode: string, stage: 'MIDTERM' | 'F
   return normalized ? `${normalized}_${suffix}` : suffix;
 }
 
+function isUsTheorySlot(raw: unknown): boolean {
+  const normalized = normalizeSlotCode(raw);
+  return normalized === 'US_THEORY' || normalized === 'US_TEORY';
+}
+
+function isUsPracticeSlot(raw: unknown): boolean {
+  const normalized = normalizeSlotCode(raw);
+  return normalized === 'US_PRACTICE' || normalized === 'US_PRAKTEK';
+}
+
 function formatComponentLabel(component: GradeComponent) {
   const baseLabel = String(component.name || component.code || 'Komponen').trim();
   const entryMode = resolveComponentEntryMode(component);
@@ -235,7 +246,7 @@ export default function TeacherGradesScreen() {
   const pageContentPadding = getStandardPagePadding(insets);
   const assignmentsQuery = useTeacherAssignmentsQuery({ enabled: isAuthenticated, user });
   const assignments = useMemo(
-    () => filterRegularTeacherAssignments(assignmentsQuery.data?.assignments || []),
+    () => sortTeacherAssignments(assignmentsQuery.data?.assignments || []),
     [assignmentsQuery.data?.assignments],
   );
   const [selectedAssignmentId, setSelectedAssignmentId] = useState<number | null>(null);
@@ -272,9 +283,27 @@ export default function TeacherGradesScreen() {
   });
 
   const componentsQuery = useQuery({
-    queryKey: ['mobile-grade-components', user?.id, selectedAssignment?.subject.id],
-    enabled: isAuthenticated && user?.role === 'TEACHER' && !!selectedAssignment?.subject.id,
-    queryFn: () => teacherGradeApi.getComponents(selectedAssignment!.subject.id),
+    queryKey: [
+      'mobile-grade-components',
+      user?.id,
+      selectedAssignment?.subject.id,
+      selectedAssignment?.id,
+      selectedAssignment?.academicYear.id,
+      semester,
+    ],
+    enabled:
+      isAuthenticated &&
+      user?.role === 'TEACHER' &&
+      !!selectedAssignment?.subject.id &&
+      !!selectedAssignment?.id &&
+      !!semester,
+    queryFn: () =>
+      teacherGradeApi.getComponents({
+        subjectId: selectedAssignment!.subject.id,
+        academicYearId: selectedAssignment!.academicYear.id,
+        assignmentId: selectedAssignment!.id,
+        semester,
+      }),
   });
 
   const gradesQuery = useQuery({
@@ -301,32 +330,48 @@ export default function TeacherGradesScreen() {
   });
   const selectedKkm = selectedAssignment?.kkm ?? assignmentDetailQuery.data?.kkm ?? 75;
   const components = useMemo(() => componentsQuery.data || [], [componentsQuery.data]);
+  const filteredComponents = useMemo(() => {
+    if (!selectedAssignment) return [];
+    const theoryKejuruanOnly = isGenericExamSubject(selectedAssignment.subject);
+    return components.filter((component) => {
+      if (component.subjectId !== selectedAssignment.subject.id) return false;
+      if (isUsPracticeSlot(resolveComponentSlotCode(component))) return false;
+      if (theoryKejuruanOnly) {
+        return (
+          isUsTheorySlot(resolveComponentSlotCode(component)) ||
+          String(component.type || '').trim().toUpperCase() === 'US_THEORY'
+        );
+      }
+      return true;
+    });
+  }, [components, selectedAssignment]);
   const componentOptions = useMemo(
     () =>
-      components.map((component) => ({
+      filteredComponents.map((component) => ({
         value: String(component.id),
         label: formatComponentLabel(component),
       })),
-    [components],
+    [filteredComponents],
   );
-  const selectedComponent = components.find((component) => component.id === selectedComponentId) || null;
+  const selectedComponent = filteredComponents.find((component) => component.id === selectedComponentId) || null;
   const selectedComponentEntryMode = resolveComponentEntryMode(selectedComponent);
   const selectedComponentSlotCode = resolveComponentSlotCode(selectedComponent);
   const isFormatifComponent = selectedComponentEntryMode === 'NF_SERIES';
-  const formativeComponent = components.find((item) => resolveComponentEntryMode(item) === 'NF_SERIES') || null;
-  const primarySlots = resolvePrimarySlots(components);
+  const formativeComponent =
+    filteredComponents.find((item) => resolveComponentEntryMode(item) === 'NF_SERIES') || null;
+  const primarySlots = resolvePrimarySlots(filteredComponents);
   const midtermPrimarySlot = primarySlots.midterm;
   const finalPrimarySlot = primarySlots.final;
   const isMidtermComponent = !isFormatifComponent && selectedComponentSlotCode === midtermPrimarySlot;
   const isFinalComponent = !isFormatifComponent && selectedComponentSlotCode === finalPrimarySlot;
   const midtermComponent =
-    components.find(
+    filteredComponents.find(
       (item) =>
         resolveComponentSlotCode(item) === midtermPrimarySlot &&
         resolveComponentEntryMode(item) !== 'NF_SERIES',
     ) || null;
   const finalComponent =
-    components.find(
+    filteredComponents.find(
       (item) =>
         resolveComponentSlotCode(item) === finalPrimarySlot &&
         resolveComponentEntryMode(item) !== 'NF_SERIES',
@@ -337,11 +382,11 @@ export default function TeacherGradesScreen() {
   const formativePrimarySlot = primarySlots.formative;
 
   useEffect(() => {
-    if (selectedComponentId && !components.some((component) => component.id === selectedComponentId)) {
+    if (selectedComponentId && !filteredComponents.some((component) => component.id === selectedComponentId)) {
       const timerId = setTimeout(() => setSelectedComponentId(null), 0);
       return () => clearTimeout(timerId);
     }
-  }, [components, selectedComponentId]);
+  }, [filteredComponents, selectedComponentId]);
 
   useEffect(() => {
     const timerId = setTimeout(() => {
@@ -396,7 +441,7 @@ export default function TeacherGradesScreen() {
       if (!semester) throw new Error('Pilih semester terlebih dahulu.');
       const activeSemester = semester as Semester;
       const students = assignmentDetailQuery.data?.class.students || [];
-      const components = componentsQuery.data || [];
+      const components = filteredComponents;
       const payload: Array<{
         student_id: number;
         subject_id: number;
@@ -840,7 +885,7 @@ export default function TeacherGradesScreen() {
               <Text style={{ color: '#0f172a', fontWeight: '700', marginBottom: 8 }}>Pilih Komponen Nilai</Text>
               {componentsQuery.isLoading ? (
                 <Text style={{ color: '#64748b', fontSize: 12 }}>Memuat komponen mapel...</Text>
-              ) : components.length > 0 ? (
+              ) : filteredComponents.length > 0 ? (
                 <MobileSelectField
                   value={selectedComponentId ? String(selectedComponentId) : ''}
                   options={componentOptions}

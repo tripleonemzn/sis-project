@@ -3,18 +3,15 @@ import { useRouter } from 'expo-router';
 import * as Notifications from 'expo-notifications';
 import { useQueryClient } from '@tanstack/react-query';
 import { useAuth } from '../auth/AuthProvider';
-import { MOBILE_NOTIFICATIONS_QUERY_KEY } from './notificationApi';
+import {
+  MOBILE_NOTIFICATIONS_INBOX_QUERY_KEY,
+  MOBILE_NOTIFICATIONS_QUERY_KEY,
+  MOBILE_NOTIFICATIONS_UNREAD_QUERY_KEY,
+} from './notificationApi';
 import { isAppUpdatePushNotificationData } from '../pushNotifications/pushNotificationService';
+import { resolveMobileNotificationTarget } from './notificationTargetResolver';
 
 const INVALIDATE_DEBOUNCE_MS = 120;
-
-function resolveNotificationTarget(rawData: unknown) {
-  if (!rawData || typeof rawData !== 'object') return '/notifications';
-  const data = rawData as Record<string, unknown>;
-  const route = typeof data.route === 'string' ? data.route.trim() : '';
-  if (route.startsWith('/web-module/')) return '/notifications';
-  return route.startsWith('/') ? route : '/notifications';
-}
 
 export function NotificationRealtimeBridge() {
   const { isAuthenticated } = useAuth();
@@ -33,6 +30,14 @@ export function NotificationRealtimeBridge() {
           queryKey: MOBILE_NOTIFICATIONS_QUERY_KEY,
           refetchType: 'active',
         });
+        void queryClient.invalidateQueries({
+          queryKey: MOBILE_NOTIFICATIONS_INBOX_QUERY_KEY,
+          refetchType: 'active',
+        });
+        void queryClient.invalidateQueries({
+          queryKey: MOBILE_NOTIFICATIONS_UNREAD_QUERY_KEY,
+          refetchType: 'active',
+        });
       }, INVALIDATE_DEBOUNCE_MS);
     };
 
@@ -44,7 +49,8 @@ export function NotificationRealtimeBridge() {
       invalidateNotifications();
       const rawData = response.notification.request.content.data;
       if (isAppUpdatePushNotificationData(rawData)) return;
-      router.push(resolveNotificationTarget(rawData) as never);
+      const route = rawData && typeof rawData === 'object' ? (rawData as Record<string, unknown>).route : null;
+      router.push(resolveMobileNotificationTarget(route) as never);
     });
 
     return () => {

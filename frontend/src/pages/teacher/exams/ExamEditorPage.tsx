@@ -419,6 +419,10 @@ function buildAssignmentDisplayLabel(assignment: TeacherAssignment): string {
 export const ExamEditorPage = () => {
     const { id } = useParams();
     const location = useLocation();
+    const requestedQuestionId = useMemo(
+        () => String(new URLSearchParams(location.search).get('questionId') || '').trim(),
+        [location.search],
+    );
     const navigate = useNavigate();
     const queryClient = useQueryClient();
     const isEditMode = !!id;
@@ -1706,6 +1710,16 @@ export const ExamEditorPage = () => {
         ? normalizeReviewFeedback(activeQuestion.reviewFeedback ?? activeQuestion.metadata?.reviewFeedback)
         : undefined;
     const activeQuestionIndex = activeQuestionId ? questions.findIndex((question) => question.id === activeQuestionId) : 0;
+
+    useEffect(() => {
+        if (!requestedQuestionId || questions.length === 0) return;
+        const matchedQuestion = questions.find((question) => String(question.id) === requestedQuestionId);
+        if (!matchedQuestion) return;
+        if (activeQuestionId !== matchedQuestion.id) {
+            setActiveQuestionId(matchedQuestion.id);
+        }
+    }, [requestedQuestionId, questions, activeQuestionId]);
+
     const hasActiveQuestionBlueprint = Boolean(
         activeQuestionBlueprint.competency ||
         activeQuestionBlueprint.learningObjective ||

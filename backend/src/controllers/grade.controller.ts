@@ -1412,6 +1412,28 @@ function computeFormativeReferenceScoresFromScoreEntries(params: {
 export const getGradeComponents = async (req: Request, res: Response) => {
   const t0 = Date.now()
   try {
+    const normalizeSubjectIdentityToken = (value: unknown) =>
+      String(value || '')
+        .trim()
+        .toUpperCase()
+        .replace(/[^A-Z0-9]+/g, '_')
+        .replace(/_+/g, '_')
+        .replace(/^_+|_+$/g, '')
+
+    const isTheoryKejuruanSubject = (subject?: { name?: string | null; code?: string | null } | null) => {
+      const normalizedName = normalizeSubjectIdentityToken(subject?.name)
+      const normalizedCode = normalizeSubjectIdentityToken(subject?.code)
+      if (!normalizedName && !normalizedCode) return false
+      if (['TKAU', 'KONSENTRASI_KEAHLIAN', 'KONSENTRASI', 'KEJURUAN'].includes(normalizedCode)) {
+        return true
+      }
+      return (
+        normalizedName.includes('KONSENTRASI_KEAHLIAN') ||
+        normalizedName === 'KONSENTRASI' ||
+        normalizedName === 'KEJURUAN'
+      )
+    }
+
     const { subject_id, academic_year_id, academicYearId } = req.query
     const authUser = (req as unknown as { user?: AuthUserLike }).user
     const querySubjectId = Number(subject_id)
@@ -1476,6 +1498,17 @@ export const getGradeComponents = async (req: Request, res: Response) => {
         await syncSubjectGradeComponentsFromExamMaster(subjectId, resolvedAcademicYearId)
       }
     }
+
+    const subjectMeta =
+      subjectId !== null && subjectId > 0
+        ? await prisma.subject.findUnique({
+            where: { id: subjectId },
+            select: {
+              name: true,
+              code: true,
+            },
+          })
+        : null
 
     const [components, masterComponents] = await Promise.all([
       (prisma.gradeComponent as any).findMany({
@@ -1664,12 +1697,22 @@ export const getGradeComponents = async (req: Request, res: Response) => {
         })
       : formattedComponents
 
+    const finalComponents = isTheoryKejuruanSubject(subjectMeta)
+      ? scopedComponents.filter((component) => {
+          const normalizedCode = normalizeComponentCode(
+            component.code || component.typeCode || defaultComponentCodeByType(component.type),
+          )
+          const normalizedSlot = normalizeReportSlotCode(component.reportSlotCode || component.reportSlot)
+          return normalizedCode === 'US_THEORY' || normalizedSlot === 'US_THEORY'
+        })
+      : scopedComponents
+
     const elapsed = Date.now() - t0
     console.log(`getGradeComponents executed in ${elapsed}ms`)
 
     return ApiResponseHelper.success(
       res,
-      scopedComponents,
+      finalComponents,
       'Grade components retrieved successfully',
     )
   } catch (error) {

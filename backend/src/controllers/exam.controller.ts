@@ -5593,7 +5593,9 @@ export const updatePacketReviewFeedback = asyncHandler(async (req: Request, res:
                     questionNumber,
                     programCode: packet.programCode || null,
                     subjectName: packet.subject?.name || null,
-                    route: `/teacher/exams/${packetId}/edit`,
+                    route: `/teacher/exams/${packetId}/edit?questionId=${encodeURIComponent(
+                        questionId,
+                    )}&section=questions`,
                 },
             },
         });

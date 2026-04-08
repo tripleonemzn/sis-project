@@ -769,35 +769,30 @@ export default function ExamRoomLayoutManagementPage() {
         </div>
 
         <div className="rounded-xl border border-gray-100 bg-white p-4 shadow-sm">
-          <div>
-            <div className="max-w-5xl">
-              <label className="mb-2 block text-xs font-semibold uppercase tracking-wide text-gray-500">
-                Program Ujian
-              </label>
-              {visiblePrograms.length === 0 ? (
-                <div className="rounded-lg border border-dashed border-gray-300 px-3 py-2 text-sm text-gray-500">
-                  Belum ada program ujian terjadwal.
-                </div>
-              ) : (
-                <div className="flex overflow-x-auto gap-4 border-b border-gray-200 pb-1">
-                  {visiblePrograms.map((program) => (
-                    <button
-                      key={program.code}
-                      type="button"
-                      onClick={() => setActiveProgramCode(program.code)}
-                      className={`whitespace-nowrap border-b-2 px-4 py-2 text-sm font-medium transition-colors ${
-                        activeProgramCode === program.code
-                          ? 'border-blue-600 text-blue-700'
-                          : 'border-transparent text-gray-500 hover:border-gray-300 hover:text-gray-900'
-                      }`}
-                    >
-                      {program.label}
-                    </button>
-                  ))}
-                </div>
-              )}
+          {visiblePrograms.length === 0 ? (
+            <div className="rounded-lg border border-dashed border-gray-300 px-3 py-2 text-sm text-gray-500">
+              Belum ada program ujian terjadwal.
             </div>
-          </div>
+          ) : (
+            <div className="border-b border-gray-200">
+              <div className="flex overflow-x-auto gap-4 pb-1 scrollbar-hide">
+                {visiblePrograms.map((program) => (
+                  <button
+                    key={program.code}
+                    type="button"
+                    onClick={() => setActiveProgramCode(program.code)}
+                    className={`flex items-center gap-2 border-b-2 px-4 py-3 whitespace-nowrap text-[13px] transition-colors ${
+                      activeProgramCode === program.code
+                        ? 'border-blue-600 text-blue-600 font-medium'
+                        : 'border-transparent text-gray-500 hover:border-gray-300 hover:text-gray-700'
+                    }`}
+                  >
+                    {program.label}
+                  </button>
+                ))}
+              </div>
+            </div>
+          )}
         </div>
 
         <div className="rounded-xl border border-gray-100 bg-white shadow-sm">

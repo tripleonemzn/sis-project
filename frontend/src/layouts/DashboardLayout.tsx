@@ -167,6 +167,31 @@ const buildSidebarCrumbLookup = (roleSegment: string, user: User | null): Record
       return name;
     };
 
+    const buildAdvisorBreadcrumbLabel = (name: unknown) => {
+      const normalized = String(name || '').trim().toUpperCase();
+      return normalized ? `PEMBINA ${normalized}` : 'PEMBINA EKSKUL';
+    };
+
+    const resolveAdvisorBreadcrumbGroup = () => {
+      const assignmentId = Number(queryParams.get('assignmentId') || 0);
+      const ekskulId = Number(queryParams.get('ekskulId') || 0);
+      const assignments = Array.isArray(user?.ekskulTutorAssignments) ? user.ekskulTutorAssignments : [];
+      const matchedAssignment = assignments.find((assignment) => {
+        if (!assignment || assignment.isActive === false) return false;
+        if (assignmentId > 0 && Number(assignment.id) === assignmentId) return true;
+        if (ekskulId > 0 && Number(assignment.ekskulId) === ekskulId) return true;
+        return false;
+      });
+
+      if (!matchedAssignment?.ekskul) return null;
+      if (String(matchedAssignment.ekskul.category || '').toUpperCase() === 'OSIS') {
+        return 'PEMBINA OSIS';
+      }
+      return buildAdvisorBreadcrumbLabel(matchedAssignment.ekskul.name);
+    };
+
+    const advisorBreadcrumbGroup = resolveAdvisorBreadcrumbGroup();
+
   if (role === 'admin') {
     const mapping: Record<
       string,
@@ -513,6 +538,10 @@ const buildSidebarCrumbLookup = (roleSegment: string, user: User | null): Record
         if (resolvedName !== 'UNKNOWN') {
            config = { ...config, group: resolvedName };
         }
+    }
+
+    if (config?.group === 'PEMBINA EKSKUL' && advisorBreadcrumbGroup) {
+      config = { ...config, group: advisorBreadcrumbGroup };
     }
     
     // Final safety check for KAPROG TKJ specific request (Global override)
@@ -987,7 +1016,13 @@ const buildSidebarCrumbLookup = (roleSegment: string, user: User | null): Record
           : 'Pengajuan Anggaran';
 
       if (sidebarConfig?.group) {
-        breadcrumbs.push({ label: sidebarConfig.group, path: null });
+        breadcrumbs.push({
+          label:
+            sidebarConfig.group === 'PEMBINA EKSKUL' && advisorBreadcrumbGroup
+              ? advisorBreadcrumbGroup
+              : sidebarConfig.group,
+          path: null,
+        });
       }
 
       breadcrumbs.push({ label: baseLabel, path: workProgramPath });
@@ -1005,7 +1040,13 @@ const buildSidebarCrumbLookup = (roleSegment: string, user: User | null): Record
 
     if (sidebarConfig) {
       if (sidebarConfig.group) {
-        breadcrumbs.push({ label: sidebarConfig.group, path: null });
+        breadcrumbs.push({
+          label:
+            sidebarConfig.group === 'PEMBINA EKSKUL' && advisorBreadcrumbGroup
+              ? advisorBreadcrumbGroup
+              : sidebarConfig.group,
+          path: null,
+        });
       }
       breadcrumbs.push({ label: sidebarConfig.label, path: `/${role}/${sidebarMatchKey}` });
     } else {

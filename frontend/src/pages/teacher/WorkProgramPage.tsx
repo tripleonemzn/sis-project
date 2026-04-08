@@ -407,6 +407,11 @@ export const WorkProgramPage = () => {
     const dutyParam = searchParams.get('duty');
     const tabParam = searchParams.get('tab');
     const sectionParam = searchParams.get('section');
+    const availableDuties = Array.isArray(user?.additionalDuties)
+      ? user.additionalDuties
+          .map((item) => String(item || '').trim().toUpperCase())
+          .filter(Boolean) as AdditionalDuty[]
+      : [];
     if (isTutorRole) {
       const requestedTutorDuty = resolveTutorCompatibleDuty(dutyParam);
       const normalizedTab = tabParam === 'BUDGET' ? 'BUDGET' : 'PROGRAM';
@@ -429,32 +434,42 @@ export const WorkProgramPage = () => {
       return;
     }
 
-    const isKakomUser =
-      Array.isArray(user?.additionalDuties) && user.additionalDuties.includes('KAPROG');
+    const normalizedRequestedDuty = String(dutyParam || '').trim().toUpperCase() as AdditionalDuty;
+    const hasRequestedDuty =
+      Boolean(normalizedRequestedDuty) && availableDuties.includes(normalizedRequestedDuty);
 
-    if (isKakomUser) {
-      if (dutyParam !== 'KAPROG' || selectedDuty !== 'KAPROG') {
-        setSelectedDuty('KAPROG');
-        setSearchParams((prev) => {
-          prev.set('duty', 'KAPROG');
-          return prev;
-        }, { replace: true });
+    if (hasRequestedDuty) {
+      if (selectedDuty !== normalizedRequestedDuty) {
+        setSelectedDuty(normalizedRequestedDuty);
       }
       return;
     }
 
-    if (dutyParam) {
-      setSelectedDuty(dutyParam as AdditionalDuty);
+    if (dutyParam && !hasRequestedDuty) {
+      const fallbackDuty =
+        (selectedDuty && availableDuties.includes(selectedDuty) ? selectedDuty : '') ||
+        (availableDuties[0] as AdditionalDuty | undefined) ||
+        '';
+      if (!fallbackDuty) return;
+      if (selectedDuty !== fallbackDuty) {
+        setSelectedDuty(fallbackDuty);
+      }
+      setSearchParams((prev) => {
+        const params = new URLSearchParams(prev);
+        params.set('duty', fallbackDuty);
+        return params;
+      }, { replace: true });
       return;
     }
 
-    if (!selectedDuty && user?.additionalDuties && Array.isArray(user.additionalDuties)) {
-      const firstDuty = user.additionalDuties[0] as AdditionalDuty;
+    if (!selectedDuty && availableDuties.length > 0) {
+      const firstDuty = availableDuties[0] as AdditionalDuty;
       if (firstDuty) {
         setSelectedDuty(firstDuty);
         setSearchParams((prev) => {
-          prev.set('duty', firstDuty);
-          return prev;
+          const params = new URLSearchParams(prev);
+          params.set('duty', firstDuty);
+          return params;
         }, { replace: true });
       }
     }

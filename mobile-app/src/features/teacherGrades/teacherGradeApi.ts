@@ -95,9 +95,19 @@ type BulkSaveResponse = {
 };
 
 export const teacherGradeApi = {
-  async getComponents(subjectId: number) {
+  async getComponents(params: {
+    subjectId: number;
+    academicYearId?: number | null;
+    assignmentId?: number | null;
+    semester?: 'ODD' | 'EVEN' | string | null;
+  }) {
     const response = await apiClient.get<ComponentsResponse>('/grades/components', {
-      params: { subject_id: subjectId },
+      params: {
+        subject_id: params.subjectId,
+        academic_year_id: params.academicYearId ?? undefined,
+        assignment_id: params.assignmentId ?? undefined,
+        semester: params.semester ?? undefined,
+      },
     });
     return response.data.data || [];
   },

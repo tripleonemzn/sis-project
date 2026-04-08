@@ -198,24 +198,26 @@ const isUsPracticeSlot = (raw: unknown): boolean => {
   return normalized === 'US_PRACTICE' || normalized === 'US_PRAKTEK';
 };
 
-const isUsSlot = (raw: unknown): boolean => isUsTheorySlot(raw) || isUsPracticeSlot(raw);
+const normalizeSubjectIdentityToken = (raw: unknown): string =>
+  String(raw || '')
+    .trim()
+    .toUpperCase()
+    .replace(/[^A-Z0-9]+/g, '_')
+    .replace(/_+/g, '_')
+    .replace(/^_+|_+$/g, '');
 
-const parseNullableScore = (raw: string): number | null => {
-  const parsed = Number(raw);
-  if (!Number.isFinite(parsed)) return null;
-  if (parsed < 0 || parsed > 100) return null;
-  return parsed;
-};
-
-const computeUsFinalFromInputs = (theoryRaw: string, practiceRaw: string): number | null => {
-  const theory = parseNullableScore(theoryRaw);
-  const practice = parseNullableScore(practiceRaw);
-  if (theory !== null && practice !== null) {
-    return Number((((theory * 0.5) + (practice * 0.5)).toFixed(2)));
+const isTheoryKejuruanSubject = (subject?: Pick<TeacherAssignment['subject'], 'name' | 'code'> | null): boolean => {
+  const normalizedName = normalizeSubjectIdentityToken(subject?.name);
+  const normalizedCode = normalizeSubjectIdentityToken(subject?.code);
+  if (!normalizedName && !normalizedCode) return false;
+  if (['TKAU', 'KONSENTRASI_KEAHLIAN', 'KONSENTRASI', 'KEJURUAN'].includes(normalizedCode)) {
+    return true;
   }
-  if (theory !== null) return theory;
-  if (practice !== null) return practice;
-  return null;
+  return (
+    normalizedName.includes('KONSENTRASI_KEAHLIAN') ||
+    normalizedName === 'KONSENTRASI' ||
+    normalizedName === 'KEJURUAN'
+  );
 };
 
 const resolvePrimarySlots = (components: GradeComponent[]) => {
@@ -311,7 +313,6 @@ export const TeacherGradesPage = () => {
   // Data states
   const [students, setStudents] = useState<Student[]>([]);
   const [grades, setGrades] = useState<StudentGrade[]>([]);
-  const [usGrades, setUsGrades] = useState<Record<number, { theory: string; practice: string }>>({});
   const [reportGradeMap, setReportGradeMap] = useState<Record<number, StudentReportGrade>>({});
   const [descriptions, setDescriptions] = useState<Record<number, string>>({});
   const [formativeNewScoreDraft, setFormativeNewScoreDraft] = useState<Record<number, string>>({});
@@ -333,22 +334,18 @@ export const TeacherGradesPage = () => {
   const isFormatifComponent = selectedComponentEntryMode === 'NF_SERIES';
   // Derived state for filtered components
   const selectedAssignmentObj = assignmentOptions.find(a => a.id.toString() === selectedAssignment);
-  const filteredComponents = selectedAssignmentObj
-    ? gradeComponents.filter(c => c.subjectId === selectedAssignmentObj.subject.id)
-    : gradeComponents;
-  const usTheoryComponent =
-    filteredComponents.find((item) => isUsTheorySlot(resolveComponentReportSlotCode(item))) ||
-    filteredComponents.find((item) => String(item.type || '').toUpperCase() === 'US_THEORY') ||
-    null;
-  const usPracticeComponent =
-    filteredComponents.find((item) => isUsPracticeSlot(resolveComponentReportSlotCode(item))) ||
-    filteredComponents.find((item) => String(item.type || '').toUpperCase() === 'US_PRACTICE') ||
-    null;
-  const isUsCombinedMode = Boolean(
-    selectedComponentObj &&
-      isUsSlot(resolveComponentReportSlotCode(selectedComponentObj)) &&
-      (usTheoryComponent || usPracticeComponent),
-  );
+  const filteredComponents = useMemo(() => {
+    if (!selectedAssignmentObj) return [];
+    const theoryKejuruanOnly = isTheoryKejuruanSubject(selectedAssignmentObj.subject);
+    return gradeComponents.filter((component) => {
+      if (component.subjectId !== selectedAssignmentObj.subject.id) return false;
+      if (isUsPracticeSlot(resolveComponentReportSlotCode(component))) return false;
+      if (theoryKejuruanOnly) {
+        return isUsTheorySlot(resolveComponentReportSlotCode(component));
+      }
+      return true;
+    });
+  }, [gradeComponents, selectedAssignmentObj]);
   const primarySlots = resolvePrimarySlots(filteredComponents);
   const formativePrimarySlot = primarySlots.formative;
   const midtermPrimarySlot = primarySlots.midterm;
@@ -393,18 +390,14 @@ export const TeacherGradesPage = () => {
     filteredComponents.find((item) => resolveComponentReportSlotCode(item) === finalPrimarySlot),
     'Komponen 3',
   );
-  const selectedComponentFlowLabel = isUsCombinedMode
-    ? 'Ujian Sekolah (Gabungan)'
-    : isFormatifComponent
+  const selectedComponentFlowLabel = isFormatifComponent
     ? 'Formatif Bertahap'
     : isMidtermComponent
       ? 'Komponen Tengah Semester'
       : isFinalComponent
         ? 'Komponen Akhir Semester/Tahun'
         : 'Komponen Input Sederhana';
-  const selectedComponentFormulaHint = isUsCombinedMode
-    ? `Input teori${usPracticeComponent ? ' dan praktik' : ''}, lalu sistem hitung Nilai US otomatis.`
-    : isFormatifComponent
+  const selectedComponentFormulaHint = isFormatifComponent
     ? `Input bertahap, sistem hitung rata-rata ${resolveReadableComponentLabel(selectedComponentObj, 'komponen')} otomatis.`
     : isMidtermComponent
       ? `Nilai rapor dihitung dari rata-rata (${formativeComponentLabel} + ${resolveReadableComponentLabel(selectedComponentObj, 'komponen ini')}).`
@@ -416,9 +409,6 @@ export const TeacherGradesPage = () => {
 
   const getDescription = () => {
     const componentName = String(selectedComponentObj?.name || selectedComponentObj?.code || 'komponen ini').trim();
-    if (isUsCombinedMode) {
-      return `Komponen ${componentName} menggunakan input Nilai US gabungan (teori${usPracticeComponent ? ' + praktik' : ''}) dan final dihitung otomatis.`;
-    }
     if (isFormatifComponent) {
       return `Komponen ${componentName} diinput per butir, rata-rata dihitung otomatis oleh sistem.`;
     }
@@ -618,6 +608,18 @@ export const TeacherGradesPage = () => {
     }
   }, [assignmentOptions, selectedAssignment]);
 
+  useEffect(() => {
+    if (!selectedAssignmentObj) {
+      if (selectedComponent) setSelectedComponent('');
+      return;
+    }
+    if (!selectedComponent) return;
+    const exists = filteredComponents.some((component) => component.id.toString() === selectedComponent);
+    if (!exists) {
+      setSelectedComponent('');
+    }
+  }, [filteredComponents, selectedAssignmentObj, selectedComponent]);
+
   const fetchGradeComponents = async () => {
     try {
       const assignment = selectedAssignmentObj;
@@ -701,11 +703,6 @@ export const TeacherGradesPage = () => {
                 score: ''
             }));
             setGrades(initialGrades);
-            const initialUsGrades: Record<number, { theory: string; practice: string }> = {};
-            studentsData.forEach((student: User) => {
-              initialUsGrades[student.id] = { theory: '', practice: '' };
-            });
-            setUsGrades(initialUsGrades);
         }
       }
     } catch (error) {
@@ -860,41 +857,6 @@ export const TeacherGradesPage = () => {
       });
       setGrades(nextGrades);
 
-      const usTheoryComponentId = Number(usTheoryComponent?.id || 0);
-      const usPracticeComponentId = Number(usPracticeComponent?.id || 0);
-      const studentIds = students.map((student) => student.id);
-
-      const nextUsGrades: Record<number, { theory: string; practice: string }> = {};
-      studentIds.forEach((studentId) => {
-        const theoryRow =
-          usTheoryComponentId > 0
-            ? allGrades.find(
-                (row) =>
-                  Number(row.studentId || row.student_id || 0) === studentId &&
-                  Number(row.componentId || row.component_id || 0) === usTheoryComponentId,
-              )
-            : null;
-        const practiceRow =
-          usPracticeComponentId > 0
-            ? allGrades.find(
-                (row) =>
-                  Number(row.studentId || row.student_id || 0) === studentId &&
-                  Number(row.componentId || row.component_id || 0) === usPracticeComponentId,
-              )
-            : null;
-        nextUsGrades[studentId] = {
-          theory:
-            theoryRow?.score === null || theoryRow?.score === undefined || theoryRow?.score === ''
-              ? ''
-              : String(theoryRow.score),
-          practice:
-            practiceRow?.score === null || practiceRow?.score === undefined || practiceRow?.score === ''
-              ? ''
-              : String(practiceRow.score),
-        };
-      });
-      setUsGrades(nextUsGrades);
-
     } catch (error) {
       console.error('Fetch existing grades error:', error);
     }
@@ -917,20 +879,6 @@ export const TeacherGradesPage = () => {
         return { ...grade, score: value };
       }
       return grade;
-    }));
-  };
-
-  const handleUsScoreChange = (studentId: number, field: 'theory' | 'practice', value: string) => {
-    if (value !== '' && (isNaN(Number(value)) || Number(value) < 0 || Number(value) > 100)) {
-      return;
-    }
-    setUsGrades((prev) => ({
-      ...prev,
-      [studentId]: {
-        theory: prev[studentId]?.theory || '',
-        practice: prev[studentId]?.practice || '',
-        [field]: value,
-      },
     }));
   };
 
@@ -1112,44 +1060,7 @@ export const TeacherGradesPage = () => {
 
     let gradesPayload: GradeBulkPayload[] = [];
 
-    if (isUsCombinedMode) {
-        gradesPayload = students.flatMap((student) => {
-            const row = usGrades[student.id] || { theory: '', practice: '' };
-            const payloadRows: GradeBulkPayload[] = [];
-
-            if (usTheoryComponent?.id) {
-                const score = row.theory === '' ? null : Number(row.theory);
-                if (score !== null && (!Number.isFinite(score) || score < 0 || score > 100)) {
-                    throw new Error(`Nilai US Teori ${student.full_name} harus angka 0-100.`);
-                }
-                payloadRows.push({
-                    student_id: student.id,
-                    subject_id: assignment.subject.id,
-                    academic_year_id: parseInt(selectedAcademicYear),
-                    grade_component_id: Number(usTheoryComponent.id),
-                    semester: selectedSemester as 'ODD' | 'EVEN',
-                    score,
-                });
-            }
-
-            if (usPracticeComponent?.id) {
-                const score = row.practice === '' ? null : Number(row.practice);
-                if (score !== null && (!Number.isFinite(score) || score < 0 || score > 100)) {
-                    throw new Error(`Nilai US Praktik ${student.full_name} harus angka 0-100.`);
-                }
-                payloadRows.push({
-                    student_id: student.id,
-                    subject_id: assignment.subject.id,
-                    academic_year_id: parseInt(selectedAcademicYear),
-                    grade_component_id: Number(usPracticeComponent.id),
-                    semester: selectedSemester as 'ODD' | 'EVEN',
-                    score,
-                });
-            }
-
-            return payloadRows;
-        });
-    } else if (isFormatifComponent) {
+    if (isFormatifComponent) {
         gradesPayload = grades.map(g => {
             const parsedSeries = parseFormativeSeriesInput(g.formativeSeriesInput || '');
             if (parsedSeries.invalid) {
@@ -1349,21 +1260,7 @@ export const TeacherGradesPage = () => {
                               <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">NISN</th>
                               <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Nama Siswa</th>
                               
-                              {isUsCombinedMode ? (
-                                  <>
-                                      <th className="px-6 py-3 text-center text-xs font-medium text-gray-500 uppercase tracking-wider">
-                                        Nilai US Teori
-                                      </th>
-                                      {usPracticeComponent ? (
-                                        <th className="px-6 py-3 text-center text-xs font-medium text-gray-500 uppercase tracking-wider">
-                                          Nilai US Praktik
-                                        </th>
-                                      ) : null}
-                                      <th className="px-6 py-3 text-center text-xs font-medium text-gray-500 uppercase tracking-wider bg-yellow-50">
-                                        Nilai US Final
-                                      </th>
-                                  </>
-                              ) : isFormatifComponent ? (
+                              {isFormatifComponent ? (
                                   <>
                                       <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Entri Formatif (Dinamis)</th>
                                       <th className="px-6 py-3 text-center text-xs font-medium text-gray-500 uppercase tracking-wider bg-blue-50">x̄ Referensi {midtermComponentLabel}</th>
@@ -1420,11 +1317,6 @@ export const TeacherGradesPage = () => {
                                     backendFinal !== null && backendFinal !== undefined
                                       ? backendFinal
                                       : parseFloat(grade.score || '0');
-                                  const usRow = usGrades[student.id] || { theory: '', practice: '' };
-                                  const usFinalPreview = computeUsFinalFromInputs(
-                                    usRow.theory,
-                                    usRow.practice,
-                                  );
                                   const formativeParsed = parseFormativeSeriesInput(grade.formativeSeriesInput || '');
                                   const hasDraftFormativeValues =
                                     !formativeParsed.invalid && formativeParsed.values.length > 0;
@@ -1459,13 +1351,11 @@ export const TeacherGradesPage = () => {
 	                                    const avg = averageValues(values);
 	                                    return avg === null ? backendFinal : avg;
 	                                  })();
-	                                  const rowStatusScorePreview =
-	                                    isUsCombinedMode
-	                                      ? usFinalPreview ?? 0
-	                                      : isFormatifComponent
-	                                      ? previewFormative ?? 0
-	                                      : isMidtermComponent
-	                                      ? previewSbtsFinal ?? 0
+                                  const rowStatusScorePreview =
+                                    isFormatifComponent
+                                      ? previewFormative ?? 0
+                                      : isMidtermComponent
+                                      ? previewSbtsFinal ?? 0
 	                                      : isFinalComponent
 	                                        ? previewSasFinal ?? 0
 	                                        : rowStatusScore;
@@ -1476,35 +1366,7 @@ export const TeacherGradesPage = () => {
                                           <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-900">{student.nisn}</td>
                                           <td className="px-6 py-4 whitespace-nowrap text-sm font-medium text-gray-900">{student.full_name}</td>
                                           
-	                                          {isUsCombinedMode ? (
-	                                              <>
-                                                  <td className="px-6 py-4 whitespace-nowrap text-center">
-                                                      <input
-                                                          type="number"
-                                                          min="0"
-                                                          max="100"
-                                                          className="w-20 px-2 py-1 border border-gray-300 rounded text-center focus:ring-blue-500 focus:border-blue-500"
-                                                          value={usRow.theory}
-                                                          onChange={(e) => handleUsScoreChange(student.id, 'theory', e.target.value)}
-                                                      />
-                                                  </td>
-                                                  {usPracticeComponent ? (
-                                                    <td className="px-6 py-4 whitespace-nowrap text-center">
-                                                        <input
-                                                            type="number"
-                                                            min="0"
-                                                            max="100"
-                                                            className="w-20 px-2 py-1 border border-gray-300 rounded text-center focus:ring-blue-500 focus:border-blue-500"
-                                                            value={usRow.practice}
-                                                            onChange={(e) => handleUsScoreChange(student.id, 'practice', e.target.value)}
-                                                        />
-                                                    </td>
-                                                  ) : null}
-                                                  <td className="px-6 py-4 whitespace-nowrap text-center text-sm font-bold bg-yellow-50">
-                                                    {usFinalPreview !== null ? usFinalPreview.toFixed(2) : '-'}
-                                                  </td>
-                                              </>
-                                          ) : isFormatifComponent ? (
+                                          {isFormatifComponent ? (
 	                                              <>
 		                                                  <td className="px-6 py-4">
 		                                                      <div className="space-y-2 min-w-[280px]">

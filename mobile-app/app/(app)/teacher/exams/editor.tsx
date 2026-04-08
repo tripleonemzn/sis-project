@@ -287,6 +287,8 @@ export default function TeacherExamEditorScreen() {
     packetId?: string | string[];
     examType?: string | string[];
     programCode?: string | string[];
+    section?: string | string[];
+    questionId?: string | string[];
   }>();
   const packetId = useMemo(() => parsePacketId(params.packetId), [params.packetId]);
   const isEditMode = !!packetId;
@@ -334,6 +336,18 @@ export default function TeacherExamEditorScreen() {
   const [questions, setQuestions] = useState<QuestionDraft[]>([createQuestion()]);
   const [hydratedPacket, setHydratedPacket] = useState(false);
   const [activeSection, setActiveSection] = useState<EditorSection>('INFO');
+  const requestedQuestionId = useMemo(() => {
+    const rawQuestionId = Array.isArray(params.questionId) ? params.questionId[0] : params.questionId;
+    const normalized = String(rawQuestionId || '').trim();
+    return normalized || null;
+  }, [params.questionId]);
+  const requestedSection = useMemo(() => {
+    const rawSection = Array.isArray(params.section) ? params.section[0] : params.section;
+    const normalizedSection = String(rawSection || '').trim().toUpperCase();
+    if (normalizedSection === 'QUESTIONS') return 'QUESTIONS' as const;
+    if (requestedQuestionId) return 'QUESTIONS' as const;
+    return 'INFO' as const;
+  }, [params.section, requestedQuestionId]);
   const selectedProgram = useMemo(
     () =>
       availablePrograms.find((program) => normalizeProgramCode(program.code) === normalizeProgramCode(selectedProgramCode)) ||
@@ -435,6 +449,12 @@ export default function TeacherExamEditorScreen() {
       return () => clearTimeout(timerId);
     }
   }, [selectedProgram, availablePrograms, selectedProgramCode, examType]);
+
+  useEffect(() => {
+    if (activeSection === requestedSection) return;
+    const timerId = setTimeout(() => setActiveSection(requestedSection), 0);
+    return () => clearTimeout(timerId);
+  }, [activeSection, requestedSection]);
 
   useEffect(() => {
     if (lockedSemester && semester !== lockedSemester) {
@@ -1053,20 +1073,33 @@ export default function TeacherExamEditorScreen() {
       {activeSection === 'QUESTIONS' ? (
         <>
       <Text style={{ color: '#0f172a', fontWeight: '700', marginBottom: 8 }}>Daftar Soal</Text>
-      {questions.map((question, index) => (
+      {questions.map((question, index) => {
+        const isRequestedQuestion = requestedQuestionId === String(question.id || '');
+        return (
         <View
           key={question.id}
           style={{
             backgroundColor: '#fff',
             borderWidth: 1,
-            borderColor: '#e2e8f0',
+            borderColor: isRequestedQuestion ? '#2563eb' : '#e2e8f0',
             borderRadius: 10,
             padding: 12,
             marginBottom: 10,
+            shadowColor: isRequestedQuestion ? '#2563eb' : undefined,
+            shadowOpacity: isRequestedQuestion ? 0.08 : 0,
+            shadowRadius: isRequestedQuestion ? 6 : 0,
+            elevation: isRequestedQuestion ? 1 : 0,
           }}
         >
           <View style={{ flexDirection: 'row', justifyContent: 'space-between', marginBottom: 6 }}>
-            <Text style={{ color: '#0f172a', fontWeight: '700' }}>Soal {index + 1}</Text>
+            <View style={{ flex: 1, paddingRight: 8 }}>
+              <Text style={{ color: '#0f172a', fontWeight: '700' }}>Soal {index + 1}</Text>
+              {isRequestedQuestion ? (
+                <Text style={{ color: '#2563eb', fontSize: 11, marginTop: 2 }}>
+                  Butir ini memiliki catatan review dari kurikulum.
+                </Text>
+              ) : null}
+            </View>
             <Pressable
               onPress={() => {
                 if (questions.length <= 1) {
@@ -1589,7 +1622,8 @@ export default function TeacherExamEditorScreen() {
             </View>
           ) : null}
         </View>
-      ))}
+        );
+      })}
 
       <Pressable
         onPress={() => setQuestions((prev) => [...prev, createQuestion()])}
