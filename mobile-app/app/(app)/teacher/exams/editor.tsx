@@ -9,6 +9,11 @@ import { MobileSelectField } from '../../../../src/components/MobileSelectField'
 import { QueryStateView } from '../../../../src/components/QueryStateView';
 import { useAuth } from '../../../../src/features/auth/AuthProvider';
 import { examApi, ExamProgramItem } from '../../../../src/features/exams/examApi';
+import {
+  MOBILE_NOTIFICATIONS_INBOX_QUERY_KEY,
+  MOBILE_NOTIFICATIONS_QUERY_KEY,
+  MOBILE_NOTIFICATIONS_UNREAD_QUERY_KEY,
+} from '../../../../src/features/notifications/notificationApi';
 import { plainTextFromExamRichText } from '../../../../src/components/ExamHtmlContent';
 import {
   ExamDisplayType,
@@ -620,6 +625,18 @@ export default function TeacherExamEditorScreen() {
             : item,
         ),
       );
+      await queryClient.invalidateQueries({
+        queryKey: MOBILE_NOTIFICATIONS_QUERY_KEY,
+        refetchType: 'active',
+      });
+      await queryClient.invalidateQueries({
+        queryKey: MOBILE_NOTIFICATIONS_INBOX_QUERY_KEY,
+        refetchType: 'active',
+      });
+      await queryClient.invalidateQueries({
+        queryKey: MOBILE_NOTIFICATIONS_UNREAD_QUERY_KEY,
+        refetchType: 'active',
+      });
       Alert.alert('Berhasil', 'Balasan review berhasil dikirim ke kurikulum.');
     } catch (error) {
       Alert.alert('Gagal', error instanceof Error ? error.message : 'Gagal mengirim balasan review.');

@@ -832,7 +832,7 @@ export default function TeacherWakakurRoomLayoutScreen() {
                         Pengaturan Penempatan Rombel
                       </Text>
                       <Text style={{ color: BRAND_COLORS.textMuted, marginTop: 4 }}>
-                        Pola penempatan mengikuti kolom vertikal: kolom pertama untuk rombel pertama, kolom kedua untuk rombel kedua, lalu berulang selang sampai semua siswa terpasang.
+                        Pola penempatan mengikuti kolom vertikal: jika setiap rombel memakai 1 kolom, siswa akan turun ke bawah per kolom, lalu kolom berikutnya tetap mengikuti urutan rombel yang sama secara selang.
                       </Text>
                     </View>
                     <Pressable
@@ -938,7 +938,7 @@ export default function TeacherWakakurRoomLayoutScreen() {
                   >
                     <Text style={{ color: '#1d4ed8', fontWeight: '700' }}>Pola yang diterapkan</Text>
                     <Text style={{ color: '#1e40af', marginTop: 4, fontSize: 12, lineHeight: 18 }}>
-                      Contoh: A1-E1 untuk rombel pertama, A2-E2 untuk rombel kedua, lalu kolom berikutnya kembali mengikuti urutan rombel yang tersisa.
+                      Contoh: A1-E1 untuk rombel pertama, A2-E2 untuk rombel kedua, lalu kolom berikutnya kembali mengikuti urutan rombel yang sama sampai semua siswa terpasang.
                     </Text>
                   </View>
 

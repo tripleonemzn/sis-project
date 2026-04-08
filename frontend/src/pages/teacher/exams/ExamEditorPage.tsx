@@ -1792,6 +1792,7 @@ export const ExamEditorPage = () => {
                         : question,
                 ),
             );
+            window.dispatchEvent(new CustomEvent('sis:notifications:refresh'));
             toast.success('Balasan review berhasil dikirim ke kurikulum.');
         } catch (error: unknown) {
             console.error('Error replying review feedback:', error);

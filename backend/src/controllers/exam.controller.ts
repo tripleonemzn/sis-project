@@ -5602,7 +5602,7 @@ export const updatePacketReviewFeedback = asyncHandler(async (req: Request, res:
         },
     });
 
-    if (nextFeedback && Number(packet.authorId) > 0 && Number(packet.authorId) !== Number(reviewer.id)) {
+    if (nextFeedback && Number(packet.authorId) > 0) {
         const questionNumber = questionIndex + 1;
         await createInAppNotification({
             data: {
@@ -5725,7 +5725,7 @@ export const replyPacketReviewFeedback = asyncHandler(async (req: Request, res: 
     });
 
     const reviewerId = Number(currentFeedback.reviewer?.id || 0);
-    if (reviewerId > 0 && reviewerId !== Number(user.id)) {
+    if (reviewerId > 0) {
         const reviewProgramCode = String(packet.programCode || '').trim().toUpperCase();
         const reviewRouteParams = new URLSearchParams({
             section: 'jadwal',

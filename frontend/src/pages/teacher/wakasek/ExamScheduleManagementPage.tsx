@@ -1257,6 +1257,7 @@ const ExamScheduleManagementPage = () => {
           ),
         };
       });
+      window.dispatchEvent(new CustomEvent('sis:notifications:refresh'));
       toast.success('Catatan review berhasil dikirim ke guru.');
     } catch (error) {
       console.error('Error saving review feedback:', error);

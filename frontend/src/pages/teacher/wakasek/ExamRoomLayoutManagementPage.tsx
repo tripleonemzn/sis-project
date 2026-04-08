@@ -314,8 +314,11 @@ function applyPlacementPlansToDraft(params: {
 
   const nextAssignments = new Map<string, number | null>();
   const claimedColumns = new Set<number>();
-  const overflowGroups: Array<{ className: string; students: LayoutStudent[] }> = [];
   const planMap = new Map(placementPlans.map((plan) => [plan.className, clampPlacementPlan(plan, draft.columns)]));
+  const remainingByGroup = new Map<string, LayoutStudent[]>(
+    placementGroups.map((group) => [group.className, [...group.students]]),
+  );
+  const groupOrder = placementGroups.map((group) => group.className);
 
   draft.cells.forEach((cell) => {
     if (cell.cellType === 'SEAT') {
@@ -325,7 +328,7 @@ function applyPlacementPlansToDraft(params: {
 
   placementGroups.forEach((group) => {
     const plan = planMap.get(group.className);
-    const queue = [...group.students];
+    const queue = remainingByGroup.get(group.className) || [];
     const targetColumns = plan
       ? getPlacementPlanColumnIndexes(plan, draft.columns).filter(
           (columnIndex) => !claimedColumns.has(columnIndex) && seatColumns[columnIndex]?.length > 0,
@@ -339,29 +342,33 @@ function applyPlacementPlansToDraft(params: {
         nextAssignments.set(buildPositionKey(cell.rowIndex, cell.columnIndex), student?.id || null);
       });
     });
-
-    if (queue.length > 0) {
-      overflowGroups.push({
-        className: group.className,
-        students: queue,
-      });
-    }
   });
 
   const remainingColumns = seatColumns
     .map((column, columnIndex) => ({ column, columnIndex }))
     .filter(({ column, columnIndex }) => column.length > 0 && !claimedColumns.has(columnIndex));
 
-  let remainingColumnCursor = 0;
-  overflowGroups.forEach((group) => {
-    while (group.students.length > 0 && remainingColumnCursor < remainingColumns.length) {
-      const nextColumn = remainingColumns[remainingColumnCursor];
-      remainingColumnCursor += 1;
-      nextColumn.column.forEach((cell) => {
-        const student = group.students.shift() || null;
-        nextAssignments.set(buildPositionKey(cell.rowIndex, cell.columnIndex), student?.id || null);
-      });
+  let groupCursor = 0;
+  remainingColumns.forEach((nextColumn) => {
+    if (groupOrder.length === 0) return;
+
+    let activeGroupName: string | null = null;
+    for (let attempt = 0; attempt < groupOrder.length; attempt += 1) {
+      const candidateIndex = (groupCursor + attempt) % groupOrder.length;
+      const candidateName = groupOrder[candidateIndex];
+      if ((remainingByGroup.get(candidateName) || []).length > 0) {
+        activeGroupName = candidateName;
+        groupCursor = (candidateIndex + 1) % groupOrder.length;
+        break;
+      }
     }
+
+    if (!activeGroupName) return;
+    const queue = remainingByGroup.get(activeGroupName) || [];
+    nextColumn.column.forEach((cell) => {
+      const student = queue.shift() || null;
+      nextAssignments.set(buildPositionKey(cell.rowIndex, cell.columnIndex), student?.id || null);
+    });
   });
 
   return {
@@ -1098,7 +1105,7 @@ export default function ExamRoomLayoutManagementPage() {
                       <div>
                         <h3 className="text-lg font-semibold text-gray-900">Pengaturan Penempatan Rombel</h3>
                         <p className="mt-1 text-sm text-gray-500">
-                          Tentukan blok kolom untuk tiap rombel secara fleksibel. Contoh: A1-F1 untuk rombel pertama, A2-F2 untuk rombel kedua, lalu lanjut ke kolom berikutnya sesuai kebutuhan ruang.
+                          Tentukan kolom awal tiap rombel secara fleksibel. Jika setiap rombel memakai 1 kolom, hasil penempatan akan turun ke bawah per kolom, lalu kolom berikutnya tetap mengikuti urutan rombel yang sama secara selang.
                         </p>
                       </div>
                       <button
@@ -1203,7 +1210,7 @@ export default function ExamRoomLayoutManagementPage() {
                         <div className="rounded-xl border border-blue-100 bg-blue-50 px-4 py-3 text-sm text-blue-800">
                           <div className="font-semibold">Pola yang diterapkan</div>
                           <div className="mt-1 text-xs">
-                            Sistem akan menempatkan siswa per rombel ke blok kolom yang kamu tentukan. Jika masih ada sisa siswa, sistem baru akan melanjutkan ke kolom kosong berikutnya.
+                            Sistem akan menempatkan siswa per rombel ke kolom yang kamu tentukan. Jika masih ada sisa siswa, kolom kosong berikutnya akan tetap dibagikan mengikuti urutan rombel secara bergantian.
                           </div>
                         </div>
 
@@ -1322,7 +1329,7 @@ export default function ExamRoomLayoutManagementPage() {
                 <div className="flex flex-col gap-1">
                   <div className="text-sm font-semibold text-amber-800">Blok Penempatan Rombel</div>
                   <div className="text-xs text-amber-700">
-                    Atur dari awal rombel mana yang menempati kolom tertentu. Contoh 6 baris berarti kolom 1 akan terbaca A1-F1.
+                    Atur dari awal rombel mana yang menempati kolom tertentu. Jika setiap rombel memakai 1 kolom, hasilnya akan turun ke bawah per kolom dan kolom berikutnya tetap mengikuti urutan rombel yang sama.
                   </div>
                 </div>
 

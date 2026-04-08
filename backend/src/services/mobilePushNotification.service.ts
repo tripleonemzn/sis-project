@@ -252,6 +252,12 @@ export async function createManyInAppNotifications(
   options: CreateNotificationOptions = {},
 ) {
   const result = await prisma.notification.createMany(args);
+  broadcastMutationEvent({
+    method: 'POST',
+    path: '/api/notifications/internal',
+    statusCode: 201,
+    durationMs: 0,
+  });
   if (!options.skipPush) {
     await safePushNotificationRows(
       args.data.map((row) => ({
