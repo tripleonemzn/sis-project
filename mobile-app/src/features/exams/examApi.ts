@@ -5,6 +5,7 @@ import {
   ExamSittingDetail,
   ExamSittingListItem,
   ExamSittingRoom,
+  ExamSittingRoomSlot,
   ExamSittingUpsertPayload,
   PacketItemAnalysisResponse,
   PacketSubmissionsResponse,
@@ -17,6 +18,7 @@ import {
   TeacherExamPacketDetail,
   TeacherExamPacketMutationPayload,
   TeacherExamSchedule,
+  UnassignedExamSittingSchedule,
 } from './types';
 
 type StudentExamsResponse = {
@@ -129,6 +131,16 @@ type ExamSittingAssignedStudentsResponse = {
   message: string;
   data: {
     studentIds: number[];
+  };
+};
+
+type ExamSittingRoomSlotsResponse = {
+  statusCode: number;
+  success: boolean;
+  message: string;
+  data: {
+    slots: ExamSittingRoomSlot[];
+    unassignedSchedules: UnassignedExamSittingSchedule[];
   };
 };
 
@@ -578,6 +590,29 @@ export const examApi = {
     });
     return response.data.data || [];
   },
+  async getExamSittingRoomSlots(params: {
+    academicYearId: number;
+    examType?: string;
+    programCode?: string;
+    semester?: 'ODD' | 'EVEN';
+    date?: string;
+  }) {
+    const response = await apiClient.get<ExamSittingRoomSlotsResponse>('/exam-sittings/room-slots', {
+      params: {
+        academicYearId: params.academicYearId,
+        examType: params.examType,
+        programCode: params.programCode,
+        semester: params.semester,
+        date: params.date,
+      },
+    });
+    return {
+      slots: Array.isArray(response.data?.data?.slots) ? response.data.data.slots : [],
+      unassignedSchedules: Array.isArray(response.data?.data?.unassignedSchedules)
+        ? response.data.data.unassignedSchedules
+        : [],
+    };
+  },
   async getExamSittingDetail(sittingId: number) {
     const response = await apiClient.get<ExamSittingDetailResponse>(`/exam-sittings/${sittingId}`);
     return response.data.data;
@@ -592,6 +627,12 @@ export const examApi = {
   },
   async updateExamSitting(sittingId: number, payload: ExamSittingUpsertPayload) {
     const response = await apiClient.put<ExamSittingMutationResponse>(`/exam-sittings/${sittingId}`, payload);
+    return response.data.data;
+  },
+  async updateExamSittingProctor(sittingId: number, proctorId: number | null) {
+    const response = await apiClient.patch<ExamSittingMutationResponse>(`/exam-sittings/${sittingId}/proctor`, {
+      proctorId,
+    });
     return response.data.data;
   },
   async updateExamSittingStudents(sittingId: number, studentIds: number[]) {

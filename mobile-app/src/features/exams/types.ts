@@ -424,6 +424,58 @@ export type ExamSittingDetail = ExamSittingListItem & {
   students?: ExamSittingStudent[];
 };
 
+export type ExamSittingRoomSlot = {
+  key: string;
+  timeKey: string;
+  roomKey: string;
+  sittingId: number;
+  roomName: string;
+  academicYearId: number;
+  examType: string;
+  semester?: 'ODD' | 'EVEN' | null;
+  startTime: string;
+  endTime: string;
+  sessionId?: number | null;
+  sessionLabel?: string | null;
+  subjectId?: number | null;
+  subjectName: string;
+  subjectCode?: string | null;
+  packetTitle?: string | null;
+  scheduleIds: number[];
+  classIds: number[];
+  classNames: string[];
+  participantCount: number;
+  proctorId?: number | null;
+  proctor?: {
+    id: number;
+    name: string;
+  } | null;
+  layout?: {
+    id: number;
+    rows: number;
+    columns: number;
+    generatedAt?: string | null;
+    updatedAt?: string | null;
+  } | null;
+};
+
+export type UnassignedExamSittingSchedule = {
+  id: number;
+  academicYearId: number;
+  examType: string;
+  semester?: 'ODD' | 'EVEN' | null;
+  startTime: string;
+  endTime: string;
+  sessionId?: number | null;
+  sessionLabel?: string | null;
+  subjectId?: number | null;
+  subjectName: string;
+  subjectCode?: string | null;
+  packetTitle?: string | null;
+  classId?: number | null;
+  className?: string | null;
+};
+
 export type ExamSittingAssignedStudentRow = {
   studentId: number;
 };

@@ -684,7 +684,7 @@ export default function TeacherWakakurExamsScreen() {
   const [examTypeFilter, setExamTypeFilter] = useState<ExamTypeFilter>('ALL');
   const [selectedSemester, setSelectedSemester] = useState<'ODD' | 'EVEN'>('ODD');
   const [search, setSearch] = useState('');
-  const [editingScheduleId, setEditingScheduleId] = useState<number | null>(null);
+  const [editingAssignmentKey, setEditingAssignmentKey] = useState<string | null>(null);
   const [selectedMakeupSchedule, setSelectedMakeupSchedule] = useState<TeacherExamSchedule | null>(null);
   const [makeupOverview, setMakeupOverview] = useState<ExamScheduleMakeupOverview | null>(null);
   const [makeupModalVisible, setMakeupModalVisible] = useState(false);
@@ -837,6 +837,23 @@ export default function TeacherWakakurExamsScreen() {
     },
   });
 
+  const roomSlotsQuery = useQuery({
+    queryKey: ['mobile-wakakur-room-slots', activeYearQuery.data?.id, examTypeFilter, examTypeFilter !== 'ALL' ? queryEffectiveSemester : 'ALL'],
+    enabled: isAuthenticated && !!isAllowed && Boolean(activeYearQuery.data?.id) && !isProgramSection,
+    staleTime: 60 * 1000,
+    queryFn: async () =>
+      examApi.getExamSittingRoomSlots({
+        academicYearId: Number(activeYearQuery.data?.id),
+        ...(examTypeFilter !== 'ALL'
+          ? {
+              examType: examTypeFilter,
+              programCode: examTypeFilter,
+              semester: queryEffectiveSemester,
+            }
+          : {}),
+      }),
+  });
+
   const teachersQuery = useQuery({
     queryKey: ['mobile-wakakur-exam-teachers'],
     enabled: isAuthenticated && !!isAllowed,
@@ -853,11 +870,14 @@ export default function TeacherWakakurExamsScreen() {
   });
 
   const updateProctorMutation = useMutation({
-    mutationFn: async (payload: { scheduleId: number; proctorId: number }) =>
-      examApi.updateTeacherSchedule(payload.scheduleId, { proctorId: payload.proctorId }),
+    mutationFn: async (payload: { sittingId: number; proctorId: number | null }) =>
+      examApi.updateExamSittingProctor(payload.sittingId, payload.proctorId),
     onSuccess: async () => {
-      await queryClient.invalidateQueries({ queryKey: ['mobile-wakakur-exam-schedules'] });
-      setEditingScheduleId(null);
+      await Promise.all([
+        queryClient.invalidateQueries({ queryKey: ['mobile-wakakur-room-slots'] }),
+        queryClient.invalidateQueries({ queryKey: ['mobile-wakakur-exam-sittings'] }),
+      ]);
+      setEditingAssignmentKey(null);
       setTeacherSearch('');
       Alert.alert('Sukses', 'Pengawas ujian berhasil diperbarui.');
     },
@@ -1385,6 +1405,37 @@ export default function TeacherWakakurExamsScreen() {
       });
   }, [examSittingsQuery.data, examTypeFilter, search, effectiveSemester]);
 
+  const filteredProctorRoomSlots = useMemo(() => {
+    const rows = roomSlotsQuery.data?.slots || [];
+    const keyword = search.trim().toLowerCase();
+    return rows
+      .filter((item) => {
+        if (!keyword) return true;
+        const haystacks = [
+          item.roomName || '',
+          item.subjectName || '',
+          item.subjectCode || '',
+          item.proctor?.name || '',
+          item.packetTitle || '',
+          ...(item.classNames || []),
+        ];
+        return haystacks.some((value) => String(value || '').toLowerCase().includes(keyword));
+      })
+      .sort((a, b) => {
+        const timeDiff = new Date(a.startTime).getTime() - new Date(b.startTime).getTime();
+        if (timeDiff !== 0) return timeDiff;
+        const roomCompare = String(a.roomName || '').localeCompare(String(b.roomName || ''), 'id', {
+          numeric: true,
+          sensitivity: 'base',
+        });
+        if (roomCompare !== 0) return roomCompare;
+        return String(a.subjectName || '').localeCompare(String(b.subjectName || ''), 'id', {
+          numeric: true,
+          sensitivity: 'base',
+        });
+      });
+  }, [roomSlotsQuery.data?.slots, search]);
+
   const teacherOptions = useMemo(() => {
     const query = teacherSearch.trim().toLowerCase();
     if (!query) return teachers.slice(0, 14);
@@ -1397,16 +1448,16 @@ export default function TeacherWakakurExamsScreen() {
   }, [teachers, teacherSearch]);
 
   const stats = useMemo(() => {
-    const noProctorCount = filteredSchedules.filter((item) => !item.proctorId).length;
+    const noProctorCount = filteredProctorRoomSlots.filter((item) => !item.proctorId).length;
     const readyPacketCount = filteredSchedules.filter((item) => !!item.packetId).length;
-    const rooms = new Set(filteredSchedules.map((item) => (item.room || '').trim()).filter(Boolean));
+    const rooms = new Set((examSittingsQuery.data?.list || []).map((item) => String(item.roomName || '').trim()).filter(Boolean));
     return {
       totalSchedules: filteredSchedules.length,
       noProctorCount,
       readyPacketCount,
       totalRooms: rooms.size,
     };
-  }, [filteredSchedules]);
+  }, [examSittingsQuery.data?.list, filteredProctorRoomSlots, filteredSchedules]);
 
   const programStats = useMemo(() => {
     const activeCount = programDrafts.filter((item) => item.isActive).length;
@@ -1662,8 +1713,8 @@ export default function TeacherWakakurExamsScreen() {
     ]);
   };
 
-  const handleAssignProctor = (scheduleId: number, proctorId: number) => {
-    updateProctorMutation.mutate({ scheduleId, proctorId });
+  const handleAssignProctor = (sittingId: number, proctorId: number | null) => {
+    updateProctorMutation.mutate({ sittingId, proctorId });
   };
 
   const updateProgramDraft = (rowId: string, patch: Partial<ExamProgramDraft>) => {
@@ -1824,6 +1875,7 @@ export default function TeacherWakakurExamsScreen() {
             activeYearQuery.isFetching ||
             schedulesQuery.isFetching ||
             examSittingsQuery.isFetching ||
+            roomSlotsQuery.isFetching ||
             teachersQuery.isFetching ||
             examProgramConfigQuery.isFetching ||
             examGradeComponentsQuery.isFetching ||
@@ -1834,6 +1886,7 @@ export default function TeacherWakakurExamsScreen() {
             void activeYearQuery.refetch();
             void schedulesQuery.refetch();
             void examSittingsQuery.refetch();
+            void roomSlotsQuery.refetch();
             void teachersQuery.refetch();
             void examProgramConfigQuery.refetch();
             void examGradeComponentsQuery.refetch();
@@ -3386,14 +3439,13 @@ export default function TeacherWakakurExamsScreen() {
               ) : null}
 
               {section === 'MENGAWAS' ? (
-                filteredSchedules.length > 0 ? (
-                  filteredSchedules.map((item) => {
-                    const subject = resolveScheduleSubject(item);
-                    const type = resolveScheduleExamType(item);
-                    const isEditing = editingScheduleId === item.id;
+                filteredProctorRoomSlots.length > 0 ? (
+                  filteredProctorRoomSlots.map((item) => {
+                    const type = normalizeProgramCode(item.examType);
+                    const isEditing = editingAssignmentKey === item.key;
                     return (
                       <View
-                        key={item.id}
+                        key={item.key}
                         style={{
                           backgroundColor: '#fff',
                           borderWidth: 1,
@@ -3407,7 +3459,8 @@ export default function TeacherWakakurExamsScreen() {
                           style={{ flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', marginBottom: 4 }}
                         >
                           <Text style={{ color: BRAND_COLORS.textDark, fontWeight: '700', flex: 1, paddingRight: 6 }}>
-                            {subject.subjectName} ({subject.subjectCode})
+                            {item.subjectName}
+                            {item.subjectCode ? ` (${item.subjectCode})` : ''}
                           </Text>
                           <Text
                             style={{
@@ -3422,20 +3475,23 @@ export default function TeacherWakakurExamsScreen() {
                               fontWeight: '700',
                             }}
                           >
-                            {examTypeLabel(type)}
+                            {examTypeLabel(type || item.examType)}
                           </Text>
                         </View>
                         <Text style={{ color: BRAND_COLORS.textMuted, fontSize: 12 }}>
-                          {item.class?.name || '-'} • {formatDateTime(item.startTime)}
+                          {(item.classNames || []).join(', ') || '-'} • {formatDateTime(item.startTime)}
                         </Text>
                         <Text style={{ color: BRAND_COLORS.textMuted, fontSize: 12, marginBottom: 6 }}>
-                          Ruang: {item.room || '-'} • Pengawas: {item.proctor?.name || 'Belum ditentukan'}
+                          Ruang: {item.roomName || '-'} • Pengawas: {item.proctor?.name || 'Belum ditentukan'}
+                        </Text>
+                        <Text style={{ color: BRAND_COLORS.textMuted, fontSize: 12, marginBottom: 6 }}>
+                          {item.participantCount} peserta • {item.sessionLabel ? `Sesi ${item.sessionLabel}` : 'Tanpa sesi'}
                         </Text>
 
                         {!isEditing ? (
                           <View style={{ flexDirection: 'row', gap: 8 }}>
                             <Pressable
-                              onPress={() => setEditingScheduleId(item.id)}
+                              onPress={() => setEditingAssignmentKey(item.key)}
                               style={{
                                 borderWidth: 1,
                                 borderColor: '#bfdbfe',
@@ -3448,7 +3504,7 @@ export default function TeacherWakakurExamsScreen() {
                               <Text style={{ color: '#1d4ed8', fontWeight: '700', fontSize: 12 }}>Ubah Pengawas</Text>
                             </Pressable>
                             <Pressable
-                              onPress={() => handleAssignProctor(item.id, user.id)}
+                              onPress={() => handleAssignProctor(item.sittingId, user.id)}
                               disabled={updateProctorMutation.isPending}
                               style={{
                                 borderWidth: 1,
@@ -3498,7 +3554,7 @@ export default function TeacherWakakurExamsScreen() {
                               {teacherOptions.map((teacher) => (
                                 <View key={teacher.id} style={{ width: '50%', paddingHorizontal: 3, marginBottom: 6 }}>
                                   <Pressable
-                                    onPress={() => handleAssignProctor(item.id, teacher.id)}
+                                    onPress={() => handleAssignProctor(item.sittingId, teacher.id)}
                                     disabled={updateProctorMutation.isPending}
                                     style={{
                                       borderWidth: 1,
@@ -3524,7 +3580,7 @@ export default function TeacherWakakurExamsScreen() {
                             </View>
                             <Pressable
                               onPress={() => {
-                                setEditingScheduleId(null);
+                                setEditingAssignmentKey(null);
                                 setTeacherSearch('');
                               }}
                               style={{
@@ -3913,24 +3969,24 @@ export default function TeacherWakakurExamsScreen() {
         {activeSummaryId === 'proctors' ? (
           <>
             <Text style={{ color: BRAND_COLORS.textDark, fontWeight: '700', marginBottom: 6 }}>
-              Jadwal tanpa pengawas: {stats.noProctorCount}
+              Ruang tanpa pengawas: {stats.noProctorCount}
             </Text>
             <Text style={{ color: BRAND_COLORS.textMuted, lineHeight: 20, marginBottom: 12 }}>
               Gunakan section <Text style={{ fontWeight: '700', color: BRAND_COLORS.textDark }}>Jadwal Mengawas</Text> untuk melengkapi assignment pengawas yang belum terisi.
             </Text>
-            {filteredSchedules
+            {filteredProctorRoomSlots
               .filter((item) => !item.proctorId)
               .slice(0, 6)
               .map((item) => (
                 <View
-                  key={item.id}
+                  key={item.key}
                   style={{ borderWidth: 1, borderColor: '#e2e8f0', borderRadius: 12, padding: 10, marginBottom: 8 }}
                 >
                   <Text style={{ color: BRAND_COLORS.textDark, fontWeight: '700' }}>
-                    {item.class?.name || '-'} • {resolveScheduleSubject(item).subjectName}
+                    {item.roomName || '-'} • {item.subjectName}
                   </Text>
                   <Text style={{ color: BRAND_COLORS.textMuted, fontSize: 12, marginTop: 3 }}>
-                    {formatDateTime(item.startTime)}
+                    {(item.classNames || []).join(', ') || '-'} • {formatDateTime(item.startTime)}
                   </Text>
                 </View>
               ))}

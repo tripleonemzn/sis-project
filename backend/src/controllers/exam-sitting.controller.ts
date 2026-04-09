@@ -6,6 +6,7 @@ import {
     type HistoricalStudentSnapshot,
     listHistoricalStudentsByIdsForAcademicYear,
 } from '../utils/studentAcademicHistory';
+import { listExamSittingRoomSlots } from '../services/examSittingRoomSlot.service';
 
 function normalizeAliasCode(raw: unknown): string {
     return String(raw || '')
@@ -830,6 +831,30 @@ export const getExamSittings = asyncHandler(async (req: Request, res: Response) 
     res.json(new ApiResponse(200, sittings));
 });
 
+export const getExamSittingRoomSlots = asyncHandler(async (req: Request, res: Response) => {
+    const { academicYearId, examType, programCode, semester, date } = req.query;
+    const parsedAcademicYearId = Number(academicYearId);
+    if (!Number.isFinite(parsedAcademicYearId) || parsedAcademicYearId <= 0) {
+        throw new ApiError(400, 'academicYearId tidak valid.');
+    }
+
+    const resolvedSemester = parseOptionalSemester(semester);
+    const parsedDate = date ? new Date(String(date)) : null;
+    if (parsedDate && Number.isNaN(parsedDate.getTime())) {
+        throw new ApiError(400, 'date tidak valid.');
+    }
+
+    const payload = await listExamSittingRoomSlots({
+        academicYearId: parsedAcademicYearId,
+        examType: String(examType || '').trim().toUpperCase() || null,
+        programCode: String(programCode || '').trim().toUpperCase() || null,
+        semester: resolvedSemester || null,
+        date: parsedDate,
+    });
+
+    res.json(new ApiResponse(200, payload));
+});
+
 export const getAssignedSittingStudents = asyncHandler(async (req: Request, res: Response) => {
     const { academicYearId, examType, programCode, excludeSittingId, semester } = req.query;
 
@@ -1084,6 +1109,51 @@ export const updateExamSitting = asyncHandler(async (req: Request, res: Response
     });
 
     res.json(new ApiResponse(200, sitting, 'Exam Sitting updated successfully'));
+});
+
+export const updateExamSittingProctor = asyncHandler(async (req: Request, res: Response) => {
+    const sittingId = Number(req.params.id);
+    if (!Number.isFinite(sittingId) || sittingId <= 0) {
+        throw new ApiError(400, 'Sitting ID tidak valid');
+    }
+
+    const incomingProctorId =
+        req.body?.proctorId === null || req.body?.proctorId === ''
+            ? null
+            : req.body?.proctorId === undefined
+              ? undefined
+              : Number(req.body.proctorId);
+
+    if (incomingProctorId !== undefined && incomingProctorId !== null) {
+        if (!Number.isFinite(incomingProctorId) || incomingProctorId <= 0) {
+            throw new ApiError(400, 'proctorId tidak valid.');
+        }
+        const proctor = await prisma.user.findFirst({
+            where: {
+                id: incomingProctorId,
+                role: 'TEACHER',
+            },
+            select: { id: true },
+        });
+        if (!proctor) {
+            throw new ApiError(404, 'Guru pengawas tidak ditemukan.');
+        }
+    }
+
+    const updated = await prisma.examSitting.update({
+        where: { id: sittingId },
+        data: {
+            proctorId: incomingProctorId === undefined ? undefined : incomingProctorId,
+        },
+        include: {
+            proctor: { select: { id: true, name: true } },
+            programSession: { select: { id: true, label: true, displayOrder: true } },
+            layout: { select: { id: true, rows: true, columns: true, generatedAt: true, updatedAt: true } },
+            _count: { select: { students: true } },
+        },
+    });
+
+    res.json(new ApiResponse(200, updated, 'Pengawas ruang ujian berhasil diperbarui.'));
 });
 
 export const updateSittingStudents = asyncHandler(async (req: Request, res: Response) => {

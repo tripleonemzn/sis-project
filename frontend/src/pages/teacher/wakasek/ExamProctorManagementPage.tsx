@@ -37,58 +37,56 @@ type TeacherApiUser = {
   name?: string;
   username?: string;
 };
-type SittingListItem = { id: number | string };
-type SittingStudentWrapper = {
-  studentClass?: { name?: string | null } | null;
-  student?: { studentClass?: { name?: string | null } | null; class?: { name?: string | null } | null } | null;
-  class?: { name?: string | null } | null;
-  class_name?: string | null;
-};
-type SittingDetail = {
-  id?: number | string;
-  students?: SittingStudentWrapper[];
-  sessionLabel?: string | null;
-  roomName?: string | null;
-  startTime?: string | null;
-  endTime?: string | null;
-};
-
-type SittingRoomSlot = {
-  roomName: string;
-  start: string;
-  end: string;
-  sessionLabel: string | null;
+interface ExamSittingRoomSlot {
+  key: string;
   timeKey: string;
-  classNames: string[];
-};
-
-interface ExamSchedule {
-  id: number;
+  roomKey: string;
+  sittingId: number;
+  roomName: string;
+  academicYearId: number;
+  examType: string;
+  semester?: 'ODD' | 'EVEN' | null;
   startTime: string;
   endTime: string;
+  sessionId?: number | null;
   sessionLabel?: string | null;
-  room: string | null;
-  examType: string;
-  subject?: {
-    id: number;
-    name: string;
-    code: string;
-  };
-  packet?: {
-    title: string;
-    type?: string;
-    subject: {
-      name: string;
-    };
-  };
-  class: {
-    name: string;
-  };
+  subjectId?: number | null;
+  subjectName: string;
+  subjectCode?: string | null;
+  packetTitle?: string | null;
+  scheduleIds: number[];
+  classIds: number[];
+  classNames: string[];
+  participantCount: number;
   proctorId: number | null;
   proctor?: {
     id: number;
     name: string;
-  };
+  } | null;
+  layout?: {
+    id: number;
+    rows: number;
+    columns: number;
+    generatedAt?: string | null;
+    updatedAt?: string | null;
+  } | null;
+}
+
+interface UnassignedExamSchedule {
+  id: number;
+  academicYearId: number;
+  examType: string;
+  semester?: 'ODD' | 'EVEN' | null;
+  startTime: string;
+  endTime: string;
+  sessionId?: number | null;
+  sessionLabel?: string | null;
+  subjectId?: number | null;
+  subjectName: string;
+  subjectCode?: string | null;
+  packetTitle?: string | null;
+  classId?: number | null;
+  className?: string | null;
 }
 
 interface ProctorReportRow {
@@ -133,47 +131,11 @@ interface ProctorReportSummary {
   reportedRooms: number;
 }
 
-const normalizeClassLookupKey = (raw: unknown): string =>
-  String(raw || '')
-    .normalize('NFKC')
-    .toLowerCase()
-    .replace(/[\u200B-\u200D\uFEFF]/g, '')
-    .replace(/\s+/g, ' ')
-    .replace(/[^a-z0-9 ]+/g, '')
-    .trim();
-
 const normalizeSessionLabel = (raw: unknown): string =>
   String(raw || '')
     .replace(/\s+/g, ' ')
     .trim()
     .toLowerCase();
-
-const buildClassSessionLookupKey = (className: unknown, sessionLabel: unknown): string =>
-  `${normalizeClassLookupKey(className)}::${normalizeSessionLabel(sessionLabel) || '__no_session__'}`;
-
-const normalizeRoomLookupKey = (raw: unknown): string =>
-  String(raw || '')
-    .normalize('NFKC')
-    .toLowerCase()
-    .replace(/[\u200B-\u200D\uFEFF]/g, '')
-    .replace(/\s+/g, ' ')
-    .trim();
-
-const normalizeTimeLookupKey = (raw: unknown): string => {
-  const parsed = Date.parse(String(raw || ''));
-  return Number.isFinite(parsed) ? String(parsed) : String(raw || '').trim();
-};
-
-const buildRoomSlotLookupKey = (
-  roomName: unknown,
-  startTime: unknown,
-  endTime: unknown,
-  sessionLabel: unknown,
-): string =>
-  `${normalizeRoomLookupKey(roomName)}::${normalizeTimeLookupKey(startTime)}::${normalizeTimeLookupKey(endTime)}::${normalizeSessionLabel(sessionLabel) || '__no_session__'}`;
-
-const buildRoomSessionLookupKey = (roomName: unknown, sessionLabel: unknown): string =>
-  `${normalizeRoomLookupKey(roomName)}::${normalizeSessionLabel(sessionLabel) || '__no_session__'}`;
 
 const compareClassName = (a: string, b: string): number =>
   String(a || '').localeCompare(String(b || ''), 'id', {
@@ -415,7 +377,8 @@ const ExamProctorManagementPage = () => {
   const { data: activeAcademicYear } = useActiveAcademicYear();
   const [examPrograms, setExamPrograms] = useState<ExamProgram[]>([]);
   const [activeProgramCode, setActiveProgramCode] = useState<string>('');
-  const [schedules, setSchedules] = useState<ExamSchedule[]>([]);
+  const [roomSlots, setRoomSlots] = useState<ExamSittingRoomSlot[]>([]);
+  const [unassignedSchedules, setUnassignedSchedules] = useState<UnassignedExamSchedule[]>([]);
   const [loading, setLoading] = useState(true);
   const [reportsLoading, setReportsLoading] = useState(false);
   
@@ -438,12 +401,6 @@ const ExamProctorManagementPage = () => {
   
   // Data for Selects
   const [teachers, setTeachers] = useState<Teacher[]>([]);
-
-  // Room Mapping
-  const [classRoomMap, setClassRoomMap] = useState<Record<string, string>>({});
-  const [roomClassMap, setRoomClassMap] = useState<Record<string, string[]>>({});
-  const [roomSessionClassMap, setRoomSessionClassMap] = useState<Record<string, string[]>>({});
-  const [sittingRoomSlots, setSittingRoomSlots] = useState<SittingRoomSlot[]>([]);
   
   // Changes tracking
   const [pendingChanges, setPendingChanges] = useState<Map<string, number>>(new Map()); // Key: "time|room", Value: proctorId
@@ -553,152 +510,10 @@ const ExamProctorManagementPage = () => {
     }
   }, [activeAcademicYear?.semester, activeProgram?.fixedSemester]);
 
-  // --- Fetch Room Mappings (From ExamSitting) ---
-  useEffect(() => {
-    const fetchSittings = async () => {
-      if (!selectedAcademicYear || !activeProgramCode) {
-        setClassRoomMap({});
-        setRoomClassMap({});
-        setRoomSessionClassMap({});
-        setSittingRoomSlots([]);
-        return;
-      }
-      try {
-        const res = await api.get('/exam-sittings', {
-          params: {
-            academicYearId: selectedAcademicYear,
-            examType: activeProgramCode,
-            programCode: activeProgramCode,
-            semester: effectiveSemester,
-            limit: 1000 // Get all
-          }
-        });
-        
-        const sittingsList = (res.data?.data || []) as SittingListItem[];
-        const mapping: Record<string, string> = {};
-        const roomClassAccumulator: Record<string, Set<string>> = {};
-        const roomSessionAccumulator: Record<string, Set<string>> = {};
-        const roomSlotAccumulator = new Map<
-          string,
-          { roomName: string; start: string; end: string; sessionLabel: string | null; classNames: Set<string> }
-        >();
-        
-        // We need to fetch details for each sitting to get the students list
-        // because the list endpoint might not return full student details
-        await Promise.all(sittingsList.map(async (s) => {
-            try {
-                const detailRes = await api.get(`/exam-sittings/${s.id}`);
-                const sitting = detailRes.data?.data as SittingDetail;
-                
-                if (sitting && sitting.students) {
-                    const roomName = String(sitting.roomName || '').trim();
-                    const hasExplicitTime = Boolean(sitting.startTime || sitting.endTime);
-                    const roomSlotKey = buildRoomSlotLookupKey(
-                      roomName,
-                      sitting.startTime,
-                      sitting.endTime,
-                      sitting.sessionLabel,
-                    );
-                    const roomSessionKey = buildRoomSessionLookupKey(roomName, sitting.sessionLabel);
-                    const sittingClasses = new Set<string>();
-                    sitting.students.forEach((wrapper) => {
-                        // Extract class name robustly
-                        let className = '';
-                        
-                        // Case 0: wrapper IS the student and has studentClass (Standard Backend Response)
-                        if (wrapper.studentClass?.name) {
-                             className = wrapper.studentClass.name;
-                        }
-                        // Case 1: wrapper.student is the student object
-                        else if (wrapper.student) {
-                             className = wrapper.student.studentClass?.name || wrapper.student.class?.name || '';
-                        }
-                        // Case 2: wrapper itself is the student (if structure differs)
-                        else if (wrapper.class?.name) {
-                             className = wrapper.class.name;
-                        }
-                        // Case 3: Flat structure (student_id, class_name)
-                        else if (wrapper.class_name) {
-                             className = wrapper.class_name;
-                        }
-
-                        if (className) {
-                            const key = buildClassSessionLookupKey(className, sitting.sessionLabel);
-                            mapping[key] = String(sitting.roomName || '').trim();
-                            sittingClasses.add(className);
-                        }
-                    });
-                    if (roomName && sittingClasses.size > 0) {
-                      if (!roomClassAccumulator[roomSlotKey]) {
-                        roomClassAccumulator[roomSlotKey] = new Set<string>();
-                      }
-                      if (!roomSessionAccumulator[roomSessionKey]) {
-                        roomSessionAccumulator[roomSessionKey] = new Set<string>();
-                      }
-                      if (hasExplicitTime && !roomSlotAccumulator.has(roomSlotKey)) {
-                        roomSlotAccumulator.set(roomSlotKey, {
-                          roomName,
-                          start: String(sitting.startTime || ''),
-                          end: String(sitting.endTime || ''),
-                          sessionLabel: sitting.sessionLabel || null,
-                          classNames: new Set<string>(),
-                        });
-                      }
-                      sittingClasses.forEach((className) => roomClassAccumulator[roomSlotKey].add(className));
-                      sittingClasses.forEach((className) => roomSessionAccumulator[roomSessionKey].add(className));
-                      if (hasExplicitTime) {
-                        sittingClasses.forEach((className) => roomSlotAccumulator.get(roomSlotKey)?.classNames.add(className));
-                      }
-                    }
-                }
-            } catch (e) {
-                console.error(`Failed to fetch details for sitting ${s.id}`, e);
-            }
-        }));
-        
-        setClassRoomMap(mapping);
-        setRoomClassMap(
-          Object.fromEntries(
-            Object.entries(roomClassAccumulator).map(([key, classes]) => [
-              key,
-              Array.from(classes).sort(compareClassName),
-            ]),
-          ),
-        );
-        setRoomSessionClassMap(
-          Object.fromEntries(
-            Object.entries(roomSessionAccumulator).map(([key, classes]) => [
-              key,
-              Array.from(classes).sort(compareClassName),
-            ]),
-          ),
-        );
-        setSittingRoomSlots(
-          Array.from(roomSlotAccumulator.values()).map((slot) => ({
-            roomName: slot.roomName,
-            start: slot.start,
-            end: slot.end,
-            sessionLabel: slot.sessionLabel,
-            timeKey: `${slot.start}|${slot.end}|${normalizeSessionLabel(slot.sessionLabel) || '__no_session__'}`,
-            classNames: Array.from(slot.classNames).sort(compareClassName),
-          })),
-        );
-      } catch (err) {
-        console.error('Error fetching sittings:', err);
-        setClassRoomMap({});
-        setRoomClassMap({});
-        setRoomSessionClassMap({});
-        setSittingRoomSlots([]);
-      }
-    };
-
-    fetchSittings();
-  }, [selectedAcademicYear, activeProgramCode, effectiveSemester]);
-
-  // --- Fetch Schedules ---
-  const fetchSchedules = useCallback(async () => {
+  const fetchRoomSlots = useCallback(async () => {
     if (!selectedAcademicYear || !activeProgramCode) {
-      setSchedules([]);
+      setRoomSlots([]);
+      setUnassignedSchedules([]);
       setLoading(false);
       return;
     }
@@ -706,24 +521,28 @@ const ExamProctorManagementPage = () => {
     setLoading(true);
     try {
       const params: Record<string, string> = {
+        academicYearId: selectedAcademicYear,
         examType: activeProgramCode,
         programCode: activeProgramCode,
-        academicYearId: selectedAcademicYear,
         semester: effectiveSemester,
       };
-      const res = await api.get('/exams/schedules', { params });
-      setSchedules(Array.isArray(res.data?.data) ? res.data.data : []);
+      const res = await api.get('/exam-sittings/room-slots', { params });
+      const payload = res.data?.data || {};
+      setRoomSlots(Array.isArray(payload?.slots) ? payload.slots : []);
+      setUnassignedSchedules(Array.isArray(payload?.unassignedSchedules) ? payload.unassignedSchedules : []);
     } catch (err) {
       console.error(err);
-      toast.error('Gagal memuat jadwal');
+      setRoomSlots([]);
+      setUnassignedSchedules([]);
+      toast.error('Gagal memuat integrasi ruang ujian');
     } finally {
       setLoading(false);
     }
   }, [selectedAcademicYear, activeProgramCode, effectiveSemester]);
 
   useEffect(() => {
-    fetchSchedules();
-  }, [fetchSchedules]);
+    void fetchRoomSlots();
+  }, [fetchRoomSlots]);
 
   const fetchProctorReports = useCallback(async () => {
     if (!selectedAcademicYear || !activeProgramCode) {
@@ -809,24 +628,26 @@ const ExamProctorManagementPage = () => {
 
   // --- Grouping Logic ---
   const groupedData = useMemo(() => {
-    // 1. Group by Time Slot
-    const byTime: Record<string, ExamSchedule[]> = {};
-    
-    schedules.forEach(s => {
-      const normalizedSession = normalizeSessionLabel(s.sessionLabel);
-      const timeKey = `${s.startTime}|${s.endTime}|${normalizedSession || '__no_session__'}`;
-      if (!byTime[timeKey]) byTime[timeKey] = [];
-      byTime[timeKey].push(s);
+    const byTime = new Map<string, ExamSittingRoomSlot[]>();
+    roomSlots.forEach((slot) => {
+      const timeKey = slot.timeKey || `${slot.startTime}|${slot.endTime}|${normalizeSessionLabel(slot.sessionLabel) || '__no_session__'}`;
+      const bucket = byTime.get(timeKey) || [];
+      bucket.push(slot);
+      byTime.set(timeKey, bucket);
     });
 
-    sittingRoomSlots.forEach((slot) => {
-      if (!byTime[slot.timeKey]) {
-        byTime[slot.timeKey] = [];
+    const unassignedByTime = new Map<string, UnassignedExamSchedule[]>();
+    unassignedSchedules.forEach((schedule) => {
+      const timeKey = `${schedule.startTime}|${schedule.endTime}|${normalizeSessionLabel(schedule.sessionLabel) || '__no_session__'}`;
+      const bucket = unassignedByTime.get(timeKey) || [];
+      bucket.push(schedule);
+      unassignedByTime.set(timeKey, bucket);
+      if (!byTime.has(timeKey)) {
+        byTime.set(timeKey, []);
       }
     });
 
-    // 2. Sort Time Slots
-    const sortedTimes = Object.keys(byTime).sort((a, b) => {
+    const sortedTimes = Array.from(byTime.keys()).sort((a, b) => {
       const [startA = '', endA = ''] = a.split('|');
       const [startB = '', endB = ''] = b.split('|');
       const startMsA = parseSafeDate(startA)?.getTime() ?? Number.MAX_SAFE_INTEGER;
@@ -838,54 +659,22 @@ const ExamProctorManagementPage = () => {
       return a.localeCompare(b);
     });
 
-    // 3. Group by Room within Time Slot
     return sortedTimes.map(timeKey => {
       const [start, end, rawSessionKey] = timeKey.split('|');
-      const timeSchedules = byTime[timeKey];
+      const timeSlots = byTime.get(timeKey) || [];
       const sessionLabel =
         rawSessionKey && rawSessionKey !== '__no_session__'
-          ? (timeSchedules[0]?.sessionLabel || null)
-          : null;
+          ? (timeSlots[0]?.sessionLabel || rawSessionKey)
+          : (timeSlots[0]?.sessionLabel || null);
       
-      const byRoom: Record<string, ExamSchedule[]> = {};
-      const unassigned: ExamSchedule[] = [];
-
-      timeSchedules.forEach(s => {
-        const mappedRoomName =
-          classRoomMap[buildClassSessionLookupKey(s.class?.name, s.sessionLabel)] ||
-          classRoomMap[buildClassSessionLookupKey(s.class?.name, null)];
-        const scheduleRoomName = String(s.room || '').trim();
-        // Gunakan room dari jadwal sebagai sumber utama agar tidak collapse antar-ruang.
-        // Mapping dari sitting hanya dipakai sebagai fallback jika room jadwal kosong.
-        const roomName = scheduleRoomName || mappedRoomName;
-        if (roomName) {
-          if (!byRoom[roomName]) byRoom[roomName] = [];
-          byRoom[roomName].push(s);
-        } else {
-          unassigned.push(s);
-        }
+      const byRoom = new Map<string, ExamSittingRoomSlot[]>();
+      timeSlots.forEach((slot) => {
+        const roomName = String(slot.roomName || '').trim();
+        if (!roomName) return;
+        const bucket = byRoom.get(roomName) || [];
+        bucket.push(slot);
+        byRoom.set(roomName, bucket);
       });
-
-      sittingRoomSlots
-        .filter((slot) => slot.timeKey === timeKey)
-        .forEach((slot) => {
-          if (!slot.roomName || byRoom[slot.roomName]) return;
-          byRoom[slot.roomName] = [
-            {
-              id: 0,
-              startTime: slot.start,
-              endTime: slot.end,
-              sessionLabel: slot.sessionLabel,
-              room: slot.roomName,
-              examType: activeProgramCode,
-              class: {
-                name: slot.classNames[0] || '',
-              },
-              proctorId: null,
-              proctor: undefined,
-            },
-          ];
-        });
 
       return {
         timeKey,
@@ -893,11 +682,16 @@ const ExamProctorManagementPage = () => {
         end,
         dateLabel: formatSafeDateLabel(start || end),
         sessionLabel,
-        rooms: Object.entries(byRoom).sort((a, b) => a[0].localeCompare(b[0])), // Sort rooms alphabetically
-        unassigned
+        rooms: Array.from(byRoom.entries()).sort((a, b) =>
+          String(a[0] || '').localeCompare(String(b[0] || ''), 'id', {
+            numeric: true,
+            sensitivity: 'base',
+          }),
+        ),
+        unassigned: unassignedByTime.get(timeKey) || [],
       };
     });
-  }, [activeProgramCode, schedules, classRoomMap, sittingRoomSlots]);
+  }, [roomSlots, unassignedSchedules]);
 
   const groupedDataWithSessionOrder = useMemo(() => {
     const sessionCounters = new Map<string, number>();
@@ -913,7 +707,7 @@ const ExamProctorManagementPage = () => {
   }, [groupedData]);
 
   const getTeacherOptionsForRoom = useCallback(
-    (roomSchedules?: ExamSchedule[]): Teacher[] => {
+    (roomSchedules?: ExamSittingRoomSlot[]): Teacher[] => {
       void roomSchedules;
       return teachers;
     },
@@ -959,7 +753,7 @@ const ExamProctorManagementPage = () => {
     );
   };
 
-  const handleSaveProctor = async (timeKey: string, roomName: string, scheduleIds: number[]) => {
+  const handleSaveProctor = async (timeKey: string, roomName: string, sittingIds: number[]) => {
     const key = `${timeKey}::${roomName}`;
     const proctorId = pendingChanges.get(key);
     
@@ -967,13 +761,13 @@ const ExamProctorManagementPage = () => {
 
     setSaving(prev => new Set(prev).add(key));
     try {
-      // Parallel update all schedules in this room for this time
-      await Promise.all(scheduleIds.map(id => 
-        api.patch(`/exams/schedules/${id}`, { 
+      await Promise.all(
+        Array.from(new Set(sittingIds)).map((id) =>
+          api.patch(`/exam-sittings/${id}/proctor`, {
             proctorId,
-            room: roomName // Also sync room name just in case
-        })
-      ));
+          }),
+        ),
+      );
       
       toast.success(`Pengawas untuk ${roomName} berhasil disimpan`);
       setPendingChanges(prev => {
@@ -986,7 +780,7 @@ const ExamProctorManagementPage = () => {
         next.delete(key);
         return next;
       });
-      fetchSchedules(); // Refresh data
+      await fetchRoomSlots();
     } catch (err) {
       console.error(err);
       toast.error('Gagal menyimpan pengawas');
@@ -999,7 +793,7 @@ const ExamProctorManagementPage = () => {
     }
   };
 
-  const handleDeleteProctor = async (timeKey: string, roomName: string, scheduleIds: number[]) => {
+  const handleDeleteProctor = async (timeKey: string, roomName: string, sittingIds: number[]) => {
     const key = `${timeKey}::${roomName}`;
     const confirmed = window.confirm(
       `Hapus pengawas dari ruang ${roomName} pada slot ini?`,
@@ -1009,10 +803,9 @@ const ExamProctorManagementPage = () => {
     setSaving((prev) => new Set(prev).add(key));
     try {
       await Promise.all(
-        scheduleIds.map((id) =>
-          api.patch(`/exams/schedules/${id}`, {
+        Array.from(new Set(sittingIds)).map((id) =>
+          api.patch(`/exam-sittings/${id}/proctor`, {
             proctorId: null,
-            room: roomName,
           }),
         ),
       );
@@ -1027,7 +820,7 @@ const ExamProctorManagementPage = () => {
         return next;
       });
       toast.success(`Pengawas ruang ${roomName} berhasil dihapus`);
-      fetchSchedules();
+      await fetchRoomSlots();
     } catch (err) {
       console.error(err);
       toast.error('Gagal menghapus pengawas');
@@ -1179,18 +972,21 @@ const ExamProctorManagementPage = () => {
                           </tr>
                         </thead>
                         <tbody className="divide-y divide-gray-100 bg-white">
-                          {group.rooms.map(([roomName, schedules]) => {
+                          {group.rooms.map(([roomName, slots]) => {
                             const changeKey = `${group.timeKey}::${roomName}`;
-                            const roomScheduleIds = schedules
-                              .map((schedule) => Number(schedule.id))
+                            const roomSittingIds = slots
+                              .map((slot) => Number(slot.sittingId))
                               .filter((id) => Number.isFinite(id) && id > 0);
-                            const hasEditableSchedules = roomScheduleIds.length > 0;
-                            const currentProctorId = pendingChanges.get(changeKey) ?? schedules[0].proctorId;
+                            const hasEditableSchedules = roomSittingIds.length > 0;
+                            const currentProctorId =
+                              pendingChanges.get(changeKey) ??
+                              slots.find((slot) => Number.isFinite(Number(slot.proctorId)) && Number(slot.proctorId) > 0)?.proctorId ??
+                              slots[0]?.proctorId;
                             const isSaving = saving.has(changeKey);
                             const hasChanges = pendingChanges.has(changeKey);
-                            const hasAssignedProctor = Boolean(schedules[0]?.proctorId);
+                            const hasAssignedProctor = Boolean(slots.some((slot) => Number(slot.proctorId)));
                             const isEditing = editingRows.has(changeKey) || !hasAssignedProctor;
-                            const roomTeacherOptions = getTeacherOptionsForRoom(schedules);
+                            const roomTeacherOptions = getTeacherOptionsForRoom(slots);
                             const hasCurrentProctorInOptions = !currentProctorId
                               ? true
                               : roomTeacherOptions.some((teacher) => teacher.id === currentProctorId);
@@ -1213,35 +1009,14 @@ const ExamProctorManagementPage = () => {
                                 <td className="px-6 py-4 align-top">
                                   <div className="flex flex-wrap gap-2">
                                     {(() => {
-                                      const slotKey = buildRoomSlotLookupKey(
-                                        roomName,
-                                        group.start,
-                                        group.end,
-                                        group.sessionLabel,
-                                      );
-                                      const roomSessionKey = buildRoomSessionLookupKey(roomName, group.sessionLabel);
-                                      const classesFromSittings =
-                                        roomClassMap[slotKey] ||
-                                        roomSessionClassMap[roomSessionKey] ||
-                                        [];
-                                      const defaultSubjectName =
-                                        schedules[0]?.subject?.name ||
-                                        schedules[0]?.packet?.subject?.name ||
-                                        '-';
                                       const classSubjectMap = new Map<string, string>();
-                                      schedules.forEach((scheduleItem) => {
-                                        const className = String(scheduleItem.class?.name || '').trim();
-                                        if (!className) return;
-                                        const subjectName =
-                                          scheduleItem.subject?.name ||
-                                          scheduleItem.packet?.subject?.name ||
-                                          defaultSubjectName;
-                                        classSubjectMap.set(className, subjectName);
-                                      });
-                                      classesFromSittings.forEach((className) => {
-                                        if (!classSubjectMap.has(className)) {
-                                          classSubjectMap.set(className, defaultSubjectName);
-                                        }
+                                      slots.forEach((slotItem) => {
+                                        const subjectName = String(slotItem.subjectName || '').trim() || '-';
+                                        (slotItem.classNames || []).forEach((className) => {
+                                          if (!classSubjectMap.has(className)) {
+                                            classSubjectMap.set(className, subjectName);
+                                          }
+                                        });
                                       });
                                       const orderedPairs = Array.from(classSubjectMap.entries()).sort(
                                         ([classNameA, subjectNameA], [classNameB, subjectNameB]) => {
@@ -1288,7 +1063,7 @@ const ExamProctorManagementPage = () => {
                                     {isEditing ? (
                                       <>
                                         <button
-                                          onClick={() => handleSaveProctor(group.timeKey, roomName, roomScheduleIds)}
+                                          onClick={() => handleSaveProctor(group.timeKey, roomName, roomSittingIds)}
                                           disabled={isSaving || !hasChanges || !hasEditableSchedules}
                                           className="inline-flex items-center gap-1.5 px-2.5 py-2 bg-blue-600 text-white text-xs font-medium rounded-lg hover:bg-blue-700 disabled:opacity-50 transition-all shadow-sm"
                                           title="Simpan Perubahan"
@@ -1322,7 +1097,7 @@ const ExamProctorManagementPage = () => {
                                           <Pencil size={14} />
                                         </button>
                                         <button
-                                          onClick={() => handleDeleteProctor(group.timeKey, roomName, roomScheduleIds)}
+                                          onClick={() => handleDeleteProctor(group.timeKey, roomName, roomSittingIds)}
                                           disabled={isSaving || !hasAssignedProctor || !hasEditableSchedules}
                                           className="inline-flex items-center justify-center p-2 border border-red-300 rounded-lg text-red-600 hover:bg-red-50 disabled:opacity-50"
                                           title="Hapus Pengawas"
@@ -1352,9 +1127,9 @@ const ExamProctorManagementPage = () => {
                                 <div className="flex flex-wrap gap-2">
                                   {group.unassigned.map(s => (
                                     <div key={s.id} className="inline-flex items-center gap-1.5 px-2.5 py-1 rounded bg-white text-red-700 border border-red-200 text-xs shadow-sm">
-                                      <span className="font-bold">{s.class.name}</span>
+                                      <span className="font-bold">{s.className || '-'}</span>
                                       <span className="text-red-300">|</span>
-                                      <span>{s.subject?.name || s.packet?.subject?.name}</span>
+                                      <span>{s.subjectName || '-'}</span>
                                     </div>
                                   ))}
                                 </div>
