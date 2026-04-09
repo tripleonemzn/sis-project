@@ -865,6 +865,7 @@ export default function TeacherWakakurExamsScreen() {
   const [selectedSemester, setSelectedSemester] = useState<'ODD' | 'EVEN'>('ODD');
   const [search, setSearch] = useState('');
   const [expandedScheduleDays, setExpandedScheduleDays] = useState<string[]>([]);
+  const [expandedScheduleSlots, setExpandedScheduleSlots] = useState<string[]>([]);
   const [expandedProctorDays, setExpandedProctorDays] = useState<string[]>([]);
   const [expandedProctorSlots, setExpandedProctorSlots] = useState<string[]>([]);
   const [editingAssignmentKey, setEditingAssignmentKey] = useState<string | null>(null);
@@ -2001,6 +2002,8 @@ export default function TeacherWakakurExamsScreen() {
   useEffect(() => {
     const validScheduleDayKeys = new Set(groupedScheduleDays.map((day) => day.dateKey));
     setExpandedScheduleDays((prev) => prev.filter((key) => validScheduleDayKeys.has(key)));
+    const validScheduleSlotKeys = new Set(groupedScheduleDays.flatMap((day) => day.slots.map((slot) => slot.key)));
+    setExpandedScheduleSlots((prev) => prev.filter((key) => validScheduleSlotKeys.has(key)));
 
     const validProctorDayKeys = new Set(groupedProctorDays.map((day) => day.dateKey));
     setExpandedProctorDays((prev) => prev.filter((key) => validProctorDayKeys.has(key)));
@@ -2370,6 +2373,12 @@ export default function TeacherWakakurExamsScreen() {
   const toggleScheduleDay = (dateKey: string) => {
     setExpandedScheduleDays((prev) =>
       prev.includes(dateKey) ? prev.filter((item) => item !== dateKey) : [...prev, dateKey],
+    );
+  };
+
+  const toggleScheduleSlot = (slotKey: string) => {
+    setExpandedScheduleSlots((prev) =>
+      prev.includes(slotKey) ? prev.filter((item) => item !== slotKey) : [...prev, slotKey],
     );
   };
 
@@ -3821,122 +3830,141 @@ export default function TeacherWakakurExamsScreen() {
 
                       {isExpanded ? (
                         <View style={{ borderTopWidth: 1, borderTopColor: '#eef3ff', padding: 12, paddingTop: 10 }}>
-                          {day.slots.map((group) => (
-                            <View
-                              key={group.key}
-                              style={{
-                                backgroundColor: '#fff',
-                                borderWidth: 1,
-                                borderColor: '#dbe7fb',
-                                borderRadius: 12,
-                                padding: 12,
-                                marginBottom: 10,
-                              }}
-                            >
+                          {day.slots.map((group) => {
+                            const isSlotExpanded = expandedScheduleSlots.includes(group.key);
+                            return (
                               <View
-                                style={{ flexDirection: 'row', justifyContent: 'space-between', alignItems: 'flex-start', gap: 8 }}
+                                key={group.key}
+                                style={{
+                                  backgroundColor: '#fff',
+                                  borderWidth: 1,
+                                  borderColor: '#dbe7fb',
+                                  borderRadius: 12,
+                                  marginBottom: 10,
+                                  overflow: 'hidden',
+                                }}
                               >
-                                <View style={{ flex: 1 }}>
-                                  <Text style={{ color: BRAND_COLORS.textDark, fontWeight: '700', fontSize: 15 }}>
-                                    {group.subjectName} ({group.subjectCode})
-                                  </Text>
-                                  <Text style={{ color: BRAND_COLORS.textMuted, marginTop: 3, fontSize: 12 }}>
-                                    {resolvePeriodLabel(group.periodNumber)} • {formatTimeRangeSummary(group.startTime, group.endTime)}
-                                  </Text>
-                                  <Text style={{ color: BRAND_COLORS.textMuted, marginTop: 2, fontSize: 12 }}>
-                                    {group.sessionLabel ? `Sesi ${group.sessionLabel}` : 'Tanpa sesi'}
-                                  </Text>
-                                </View>
-                                <Text
+                                <Pressable
+                                  onPress={() => toggleScheduleSlot(group.key)}
                                   style={{
-                                    color: '#1d4ed8',
-                                    backgroundColor: '#eff6ff',
-                                    borderWidth: 1,
-                                    borderColor: '#bfdbfe',
-                                    borderRadius: 999,
-                                    paddingHorizontal: 8,
-                                    paddingVertical: 2,
-                                    fontSize: 11,
-                                    fontWeight: '700',
+                                    padding: 12,
+                                    flexDirection: 'row',
+                                    justifyContent: 'space-between',
+                                    alignItems: 'flex-start',
+                                    gap: 8,
                                   }}
                                 >
-                                  {group.examType}
-                                </Text>
-                              </View>
-
-                              {group.schedules.map((item) => (
-                                <View
-                                  key={item.id}
-                                  style={{
-                                    borderTopWidth: 1,
-                                    borderTopColor: '#eef3ff',
-                                    paddingTop: 8,
-                                    marginTop: 8,
-                                  }}
-                                >
-                                  <Text style={{ color: BRAND_COLORS.textDark, fontWeight: '700' }}>
-                                    {item.class?.name || '-'}
-                                  </Text>
-                                  <Text style={{ color: BRAND_COLORS.textMuted, fontSize: 12 }}>
-                                    Ruang: {item.room || '-'} • Pengawas: {item.proctor?.name || '-'}
-                                  </Text>
-                                  <Text style={{ color: '#64748b', fontSize: 12, marginTop: 2 }}>
-                                    Packet: {item.packet?.title || '-'}
-                                  </Text>
-                                  <View style={{ flexDirection: 'row', flexWrap: 'wrap', gap: 8, marginTop: 8 }}>
-                                    <Pressable
-                                      onPress={() => openScheduleEditor(item)}
+                                  <View style={{ flex: 1 }}>
+                                    <Text style={{ color: BRAND_COLORS.textDark, fontWeight: '700', fontSize: 15 }}>
+                                      {group.subjectName} ({group.subjectCode})
+                                    </Text>
+                                    <Text style={{ color: BRAND_COLORS.textMuted, marginTop: 3, fontSize: 12 }}>
+                                      {resolvePeriodLabel(group.periodNumber)} • {formatTimeRangeSummary(group.startTime, group.endTime)}
+                                    </Text>
+                                    <Text style={{ color: BRAND_COLORS.textMuted, marginTop: 2, fontSize: 12 }}>
+                                      {group.sessionLabel ? `Sesi ${group.sessionLabel}` : 'Tanpa sesi'} • {group.schedules.length} target
+                                    </Text>
+                                  </View>
+                                  <View style={{ alignItems: 'flex-end', gap: 6 }}>
+                                    <Text
                                       style={{
+                                        color: '#1d4ed8',
+                                        backgroundColor: '#eff6ff',
                                         borderWidth: 1,
-                                        borderColor: '#cbd5e1',
-                                        backgroundColor: '#fff',
-                                        borderRadius: 8,
-                                        paddingVertical: 6,
-                                        paddingHorizontal: 10,
+                                        borderColor: '#bfdbfe',
+                                        borderRadius: 999,
+                                        paddingHorizontal: 8,
+                                        paddingVertical: 2,
+                                        fontSize: 11,
+                                        fontWeight: '700',
                                       }}
                                     >
-                                      <Text style={{ color: BRAND_COLORS.textDark, fontWeight: '700', fontSize: 12 }}>
-                                        Edit Jadwal
-                                      </Text>
-                                    </Pressable>
-                                    {item.class?.name ? (
-                                      <Pressable
-                                        onPress={() => void openMakeupModal(item)}
+                                      {group.examType}
+                                    </Text>
+                                    <Text style={{ color: '#1d4ed8', fontWeight: '700', fontSize: 12 }}>
+                                      {isSlotExpanded ? 'Tutup Detail' : 'Lihat Detail'}
+                                    </Text>
+                                  </View>
+                                </Pressable>
+
+                                {isSlotExpanded ? (
+                                  <View style={{ borderTopWidth: 1, borderTopColor: '#eef3ff', padding: 12, paddingTop: 10 }}>
+                                    {group.schedules.map((item) => (
+                                      <View
+                                        key={item.id}
                                         style={{
-                                          borderWidth: 1,
-                                          borderColor: '#bfdbfe',
-                                          backgroundColor: '#eff6ff',
-                                          borderRadius: 8,
-                                          paddingVertical: 6,
-                                          paddingHorizontal: 10,
+                                          borderTopWidth: 1,
+                                          borderTopColor: '#eef3ff',
+                                          paddingTop: 8,
+                                          marginTop: 8,
                                         }}
                                       >
-                                        <Text style={{ color: '#1d4ed8', fontWeight: '700', fontSize: 12 }}>
-                                          Kelola Susulan
+                                        <Text style={{ color: BRAND_COLORS.textDark, fontWeight: '700' }}>
+                                          {item.class?.name || '-'}
                                         </Text>
-                                      </Pressable>
-                                    ) : null}
-                                    <Pressable
-                                      onPress={() => handleDeleteSchedule(item.id)}
-                                      disabled={deleteScheduleMutation.isPending}
-                                      style={{
-                                        borderWidth: 1,
-                                        borderColor: '#fecaca',
-                                        backgroundColor: '#fff1f2',
-                                        borderRadius: 8,
-                                        paddingVertical: 6,
-                                        paddingHorizontal: 10,
-                                      }}
-                                    >
-                                      <Text style={{ color: '#be123c', fontWeight: '700', fontSize: 12 }}>
-                                        {deleteScheduleMutation.isPending ? 'Memproses...' : 'Hapus Jadwal'}
-                                      </Text>
-                                    </Pressable>
+                                        <Text style={{ color: BRAND_COLORS.textMuted, fontSize: 12 }}>
+                                          Ruang: {item.room || '-'} • Pengawas: {item.proctor?.name || '-'}
+                                        </Text>
+                                        <Text style={{ color: '#64748b', fontSize: 12, marginTop: 2 }}>
+                                          Packet: {item.packet?.title || '-'}
+                                        </Text>
+                                        <View style={{ flexDirection: 'row', flexWrap: 'wrap', gap: 8, marginTop: 8 }}>
+                                          <Pressable
+                                            onPress={() => openScheduleEditor(item)}
+                                            style={{
+                                              borderWidth: 1,
+                                              borderColor: '#cbd5e1',
+                                              backgroundColor: '#fff',
+                                              borderRadius: 8,
+                                              paddingVertical: 6,
+                                              paddingHorizontal: 10,
+                                            }}
+                                          >
+                                            <Text style={{ color: BRAND_COLORS.textDark, fontWeight: '700', fontSize: 12 }}>
+                                              Edit Jadwal
+                                            </Text>
+                                          </Pressable>
+                                          {item.class?.name ? (
+                                            <Pressable
+                                              onPress={() => void openMakeupModal(item)}
+                                              style={{
+                                                borderWidth: 1,
+                                                borderColor: '#bfdbfe',
+                                                backgroundColor: '#eff6ff',
+                                                borderRadius: 8,
+                                                paddingVertical: 6,
+                                                paddingHorizontal: 10,
+                                              }}
+                                            >
+                                              <Text style={{ color: '#1d4ed8', fontWeight: '700', fontSize: 12 }}>
+                                                Kelola Susulan
+                                              </Text>
+                                            </Pressable>
+                                          ) : null}
+                                          <Pressable
+                                            onPress={() => handleDeleteSchedule(item.id)}
+                                            disabled={deleteScheduleMutation.isPending}
+                                            style={{
+                                              borderWidth: 1,
+                                              borderColor: '#fecaca',
+                                              backgroundColor: '#fff1f2',
+                                              borderRadius: 8,
+                                              paddingVertical: 6,
+                                              paddingHorizontal: 10,
+                                            }}
+                                          >
+                                            <Text style={{ color: '#be123c', fontWeight: '700', fontSize: 12 }}>
+                                              {deleteScheduleMutation.isPending ? 'Memproses...' : 'Hapus Jadwal'}
+                                            </Text>
+                                          </Pressable>
+                                        </View>
+                                      </View>
+                                    ))}
                                   </View>
-                                </View>
-                              ))}
-                            </View>
-                          ))}
+                                ) : null}
+                              </View>
+                            );
+                          })}
                         </View>
                       ) : null}
                     </View>

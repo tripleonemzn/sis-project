@@ -6,6 +6,7 @@ import {
   Pencil,
   Trash2,
   ChevronDown,
+  ChevronRight,
   X,
 } from 'lucide-react';
 import api from '../../../services/api';
@@ -456,6 +457,7 @@ const ExamScheduleManagementPage = () => {
     activeAcademicYear?.semester === 'EVEN' ? 'EVEN' : 'ODD',
   );
   const [expandedScheduleDays, setExpandedScheduleDays] = useState<string[]>([]);
+  const [expandedScheduleSlots, setExpandedScheduleSlots] = useState<string[]>([]);
   const [programSessions, setProgramSessions] = useState<ExamProgramSession[]>([]);
   const [newSessionLabel, setNewSessionLabel] = useState('');
   const [newPeriodNumberDraft, setNewPeriodNumberDraft] = useState('');
@@ -1360,6 +1362,12 @@ const ExamScheduleManagementPage = () => {
     );
   };
 
+  const toggleScheduleSlot = (slotKey: string) => {
+    setExpandedScheduleSlots((prev) =>
+      prev.includes(slotKey) ? prev.filter((item) => item !== slotKey) : [...prev, slotKey],
+    );
+  };
+
   const resolveScheduleSessionLabel = (schedule: ExamSchedule): string | null => {
     return String(schedule.programSession?.label || schedule.sessionLabel || '').trim() || null;
   };
@@ -1435,6 +1443,11 @@ const ExamScheduleManagementPage = () => {
 
     return Array.from(grouped.values()).sort((left, right) => left.dateKey.localeCompare(right.dateKey));
   }, [groupedSchedules]);
+
+  useEffect(() => {
+    const validSlotKeys = new Set(groupedScheduleDays.flatMap((day) => day.slots.map((slot) => slot.key)));
+    setExpandedScheduleSlots((prev) => prev.filter((slotKey) => validSlotKeys.has(slotKey)));
+  }, [groupedScheduleDays]);
   const filteredMakeupStudents = useMemo(() => {
     const rows = makeupOverview?.students || [];
     const keyword = makeupSearch.trim().toLowerCase();
@@ -1674,6 +1687,7 @@ const ExamScheduleManagementPage = () => {
                   {isDayExpanded ? (
                     <div className="border-t border-gray-100 bg-gray-50 px-5 py-4 space-y-4">
                       {day.slots.map((group) => {
+                        const isSlotExpanded = expandedScheduleSlots.includes(group.key);
                         const isAllReady = group.readyCount === group.totalClasses;
                         const isNoneReady = group.readyCount === 0;
                         const totalTargetLabel =
@@ -1685,7 +1699,12 @@ const ExamScheduleManagementPage = () => {
 
                         return (
                           <div key={group.key} className="rounded-xl border border-blue-100 bg-white">
-                            <div className="flex flex-col gap-4 border-b border-blue-50 px-4 py-4 lg:flex-row lg:items-start lg:justify-between">
+                            <div
+                              onClick={() => toggleScheduleSlot(group.key)}
+                              className={`flex cursor-pointer flex-col gap-4 px-4 py-4 transition-colors hover:bg-gray-50 lg:flex-row lg:items-start lg:justify-between ${
+                                isSlotExpanded ? 'border-b border-blue-50' : ''
+                              }`}
+                            >
                               <div className="min-w-0 flex-1">
                                 <div className="flex flex-wrap items-center gap-2">
                                   <h4 className="text-lg font-semibold text-gray-900">
@@ -1716,7 +1735,10 @@ const ExamScheduleManagementPage = () => {
                               <div className="flex items-center justify-end gap-2">
                                 <button
                                   type="button"
-                                  onClick={() => openEditScheduleModal(group.schedules, 'group')}
+                                  onClick={(event) => {
+                                    event.stopPropagation();
+                                    openEditScheduleModal(group.schedules, 'group');
+                                  }}
                                   className="rounded-lg p-2 text-blue-600 transition-colors hover:bg-blue-50 hover:text-blue-800"
                                   title="Edit Grup Jadwal"
                                 >
@@ -1724,7 +1746,8 @@ const ExamScheduleManagementPage = () => {
                                 </button>
                                 <button
                                   type="button"
-                                  onClick={() => {
+                                  onClick={(event) => {
+                                    event.stopPropagation();
                                     if (confirm(`Hapus semua jadwal ${group.subjectName}?`)) {
                                       Promise.all(group.schedules.map((schedule) => api.delete(`/exams/schedules/${schedule.id}`)))
                                         .then(() => {
@@ -1741,126 +1764,139 @@ const ExamScheduleManagementPage = () => {
                                 >
                                   <Trash2 size={16} />
                                 </button>
+                                <button
+                                  type="button"
+                                  className={`flex items-center gap-2 rounded-lg px-3 py-2 text-sm font-medium transition-colors ${
+                                    isSlotExpanded
+                                      ? 'bg-blue-50 text-blue-700'
+                                      : 'text-gray-500 hover:bg-gray-100 hover:text-gray-900'
+                                  }`}
+                                >
+                                  <span>{isSlotExpanded ? 'Tutup Detail' : 'Lihat Detail'}</span>
+                                  {isSlotExpanded ? <ChevronDown size={18} /> : <ChevronRight size={18} />}
+                                </button>
                               </div>
                             </div>
 
-                            <div className="overflow-x-auto">
-                              <table className="w-full text-sm">
-                                <thead className="bg-gray-50 border-b border-gray-200">
-                                  <tr>
-                                    <th className="px-4 py-2 text-left font-medium text-gray-700">Kelas / Target</th>
-                                    <th className="px-4 py-2 text-left font-medium text-gray-700">Sesi</th>
-                                    <th className="px-4 py-2 text-left font-medium text-gray-700">Status Soal</th>
-                                    <th className="px-4 py-2 text-right font-medium text-gray-700">Aksi</th>
-                                  </tr>
-                                </thead>
-                                <tbody className="divide-y divide-gray-100">
-                                  {group.schedules
-                                    .sort((a, b) =>
-                                      String(a.class?.name || 'Calon Siswa').localeCompare(
-                                        String(b.class?.name || 'Calon Siswa'),
-                                      ),
-                                    )
-                                    .map((schedule) => {
-                                      const questionPoolCount = Number(schedule.packet?.questionPoolCount || 0);
-                                      const blueprintCount = Number(schedule.packet?.blueprintCount || 0);
-                                      const questionCardCount = Number(schedule.packet?.questionCardCount || 0);
-                                      const isScheduleReady = Boolean(schedule.packet && questionPoolCount > 0);
-                                      return (
-                                        <tr key={schedule.id} className="hover:bg-gray-50">
-                                          <td className="px-4 py-2 font-medium text-gray-900">
-                                            {schedule.class?.name || 'Calon Siswa'}
-                                          </td>
-                                          <td className="px-4 py-2">
-                                            {resolveScheduleSessionLabel(schedule) ? (
-                                              <span className="inline-flex items-center rounded-full border border-indigo-100 bg-indigo-50 px-2 py-0.5 text-xs font-medium text-indigo-700">
-                                                {resolveScheduleSessionLabel(schedule)}
-                                              </span>
-                                            ) : (
-                                              <span className="text-xs text-gray-400">Tanpa sesi</span>
-                                            )}
-                                          </td>
-                                          <td className="px-4 py-2">
-                                            <div className="space-y-1.5">
-                                              {isScheduleReady ? (
-                                                <span className="inline-flex rounded bg-green-50 px-2 py-1 text-xs font-medium text-green-700">
-                                                  Tersedia: {schedule.packet?.title}
-                                                </span>
-                                              ) : schedule.packet ? (
-                                                <span className="inline-flex rounded bg-orange-50 px-2 py-1 text-xs font-medium text-orange-700">
-                                                  Paket dibuat, menunggu guru isi soal
+                            {isSlotExpanded ? (
+                              <div className="overflow-x-auto">
+                                <table className="w-full text-sm">
+                                  <thead className="bg-gray-50 border-b border-gray-200">
+                                    <tr>
+                                      <th className="px-4 py-2 text-left font-medium text-gray-700">Kelas / Target</th>
+                                      <th className="px-4 py-2 text-left font-medium text-gray-700">Sesi</th>
+                                      <th className="px-4 py-2 text-left font-medium text-gray-700">Status Soal</th>
+                                      <th className="px-4 py-2 text-right font-medium text-gray-700">Aksi</th>
+                                    </tr>
+                                  </thead>
+                                  <tbody className="divide-y divide-gray-100">
+                                    {group.schedules
+                                      .sort((a, b) =>
+                                        String(a.class?.name || 'Calon Siswa').localeCompare(
+                                          String(b.class?.name || 'Calon Siswa'),
+                                        ),
+                                      )
+                                      .map((schedule) => {
+                                        const questionPoolCount = Number(schedule.packet?.questionPoolCount || 0);
+                                        const blueprintCount = Number(schedule.packet?.blueprintCount || 0);
+                                        const questionCardCount = Number(schedule.packet?.questionCardCount || 0);
+                                        const isScheduleReady = Boolean(schedule.packet && questionPoolCount > 0);
+                                        return (
+                                          <tr key={schedule.id} className="hover:bg-gray-50">
+                                            <td className="px-4 py-2 font-medium text-gray-900">
+                                              {schedule.class?.name || 'Calon Siswa'}
+                                            </td>
+                                            <td className="px-4 py-2">
+                                              {resolveScheduleSessionLabel(schedule) ? (
+                                                <span className="inline-flex items-center rounded-full border border-indigo-100 bg-indigo-50 px-2 py-0.5 text-xs font-medium text-indigo-700">
+                                                  {resolveScheduleSessionLabel(schedule)}
                                                 </span>
                                               ) : (
-                                                <span className="inline-flex rounded bg-orange-50 px-2 py-1 text-xs font-medium text-orange-700">
-                                                  Menunggu Guru
-                                                </span>
+                                                <span className="text-xs text-gray-400">Tanpa sesi</span>
                                               )}
-                                              {schedule.packet ? (
-                                                <div className="flex flex-wrap gap-1">
-                                                  <span className="rounded-full bg-slate-100 px-2 py-0.5 text-[11px] font-medium text-slate-700">
-                                                    {questionPoolCount} soal
+                                            </td>
+                                            <td className="px-4 py-2">
+                                              <div className="space-y-1.5">
+                                                {isScheduleReady ? (
+                                                  <span className="inline-flex rounded bg-green-50 px-2 py-1 text-xs font-medium text-green-700">
+                                                    Tersedia: {schedule.packet?.title}
                                                   </span>
-                                                  <span
-                                                    className={`rounded-full px-2 py-0.5 text-[11px] font-medium ${
-                                                      blueprintCount > 0 ? 'bg-blue-50 text-blue-700' : 'bg-slate-100 text-slate-500'
-                                                    }`}
+                                                ) : schedule.packet ? (
+                                                  <span className="inline-flex rounded bg-orange-50 px-2 py-1 text-xs font-medium text-orange-700">
+                                                    Paket dibuat, menunggu guru isi soal
+                                                  </span>
+                                                ) : (
+                                                  <span className="inline-flex rounded bg-orange-50 px-2 py-1 text-xs font-medium text-orange-700">
+                                                    Menunggu Guru
+                                                  </span>
+                                                )}
+                                                {schedule.packet ? (
+                                                  <div className="flex flex-wrap gap-1">
+                                                    <span className="rounded-full bg-slate-100 px-2 py-0.5 text-[11px] font-medium text-slate-700">
+                                                      {questionPoolCount} soal
+                                                    </span>
+                                                    <span
+                                                      className={`rounded-full px-2 py-0.5 text-[11px] font-medium ${
+                                                        blueprintCount > 0 ? 'bg-blue-50 text-blue-700' : 'bg-slate-100 text-slate-500'
+                                                      }`}
+                                                    >
+                                                      Kisi-kisi {blueprintCount}
+                                                    </span>
+                                                    <span
+                                                      className={`rounded-full px-2 py-0.5 text-[11px] font-medium ${
+                                                        questionCardCount > 0 ? 'bg-emerald-50 text-emerald-700' : 'bg-slate-100 text-slate-500'
+                                                      }`}
+                                                    >
+                                                      Kartu Soal {questionCardCount}
+                                                    </span>
+                                                  </div>
+                                                ) : null}
+                                              </div>
+                                            </td>
+                                            <td className="px-4 py-2 text-right">
+                                              <div className="flex items-center justify-end gap-2">
+                                                {schedule.packet?.id ? (
+                                                  <button
+                                                    type="button"
+                                                    onClick={() => void openReviewModal(schedule)}
+                                                    className="rounded-lg border border-slate-200 bg-white px-2.5 py-1.5 text-xs font-semibold text-slate-700 hover:bg-slate-50"
                                                   >
-                                                    Kisi-kisi {blueprintCount}
-                                                  </span>
-                                                  <span
-                                                    className={`rounded-full px-2 py-0.5 text-[11px] font-medium ${
-                                                      questionCardCount > 0 ? 'bg-emerald-50 text-emerald-700' : 'bg-slate-100 text-slate-500'
-                                                    }`}
+                                                    Review Soal
+                                                  </button>
+                                                ) : null}
+                                                {schedule.class?.name ? (
+                                                  <button
+                                                    type="button"
+                                                    onClick={() => void openMakeupModal(schedule)}
+                                                    className="rounded-lg border border-blue-200 bg-blue-50 px-2.5 py-1.5 text-xs font-semibold text-blue-700 hover:bg-blue-100"
                                                   >
-                                                    Kartu Soal {questionCardCount}
-                                                  </span>
-                                                </div>
-                                              ) : null}
-                                            </div>
-                                          </td>
-                                          <td className="px-4 py-2 text-right">
-                                            <div className="flex items-center justify-end gap-2">
-                                              {schedule.packet?.id ? (
+                                                    Kelola Susulan
+                                                  </button>
+                                                ) : null}
                                                 <button
                                                   type="button"
-                                                  onClick={() => void openReviewModal(schedule)}
+                                                  onClick={() => openEditScheduleModal([schedule], 'single')}
                                                   className="rounded-lg border border-slate-200 bg-white px-2.5 py-1.5 text-xs font-semibold text-slate-700 hover:bg-slate-50"
                                                 >
-                                                  Review Soal
+                                                  Edit Jadwal
                                                 </button>
-                                              ) : null}
-                                              {schedule.class?.name ? (
                                                 <button
                                                   type="button"
-                                                  onClick={() => void openMakeupModal(schedule)}
-                                                  className="rounded-lg border border-blue-200 bg-blue-50 px-2.5 py-1.5 text-xs font-semibold text-blue-700 hover:bg-blue-100"
+                                                  onClick={() => handleDelete(schedule.id)}
+                                                  className="rounded p-1 text-red-600 hover:bg-red-50 hover:text-red-800"
+                                                  title="Hapus Jadwal"
                                                 >
-                                                  Kelola Susulan
+                                                  <Trash2 size={14} />
                                                 </button>
-                                              ) : null}
-                                              <button
-                                                type="button"
-                                                onClick={() => openEditScheduleModal([schedule], 'single')}
-                                                className="rounded-lg border border-slate-200 bg-white px-2.5 py-1.5 text-xs font-semibold text-slate-700 hover:bg-slate-50"
-                                              >
-                                                Edit Jadwal
-                                              </button>
-                                              <button
-                                                type="button"
-                                                onClick={() => handleDelete(schedule.id)}
-                                                className="rounded p-1 text-red-600 hover:bg-red-50 hover:text-red-800"
-                                                title="Hapus Jadwal"
-                                              >
-                                                <Trash2 size={14} />
-                                              </button>
-                                            </div>
-                                          </td>
-                                        </tr>
-                                      );
-                                    })}
-                                </tbody>
-                              </table>
-                            </div>
+                                              </div>
+                                            </td>
+                                          </tr>
+                                        );
+                                      })}
+                                  </tbody>
+                                </table>
+                              </div>
+                            ) : null}
                           </div>
                         );
                       })}
