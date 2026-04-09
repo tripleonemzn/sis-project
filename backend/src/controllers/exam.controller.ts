@@ -5397,6 +5397,7 @@ export const getPackets = asyncHandler(async (req: Request, res: Response) => {
         .toUpperCase();
     let normalizedTypeCode: string | null = null;
     let normalizedPacketType: ExamType | null = null;
+    let normalizedRequestedProgramCode: string | null = null;
 
     const andFilters: Prisma.ExamPacketWhereInput[] = [];
 
@@ -5404,16 +5405,23 @@ export const getPackets = asyncHandler(async (req: Request, res: Response) => {
         normalizedTypeCode = normalizeProgramCode(type);
         normalizedPacketType = tryNormalizePacketType(type);
 
-        if (normalizedPacketType && normalizedTypeCode) {
-            andFilters.push({
-                OR: [{ type: normalizedPacketType }, { programCode: normalizedTypeCode }],
-            });
-        } else if (normalizedPacketType) {
-            andFilters.push({ type: normalizedPacketType });
-        } else if (normalizedTypeCode) {
-            andFilters.push({ programCode: normalizedTypeCode });
-        } else {
+        if (!normalizedPacketType && !normalizedTypeCode) {
             throw new ApiError(400, 'Filter tipe/program ujian tidak valid.');
+        }
+
+        // Jika tab program konkret sudah dipilih (mis. SBTS/SAS/SAT), jadikan programCode
+        // sebagai source of truth agar packet valid tidak hilang hanya karena field `type`
+        // lama masih memakai nilai historis/base type yang berbeda.
+        if (!programCode) {
+            if (normalizedPacketType && normalizedTypeCode) {
+                andFilters.push({
+                    OR: [{ type: normalizedPacketType }, { programCode: normalizedTypeCode }],
+                });
+            } else if (normalizedPacketType) {
+                andFilters.push({ type: normalizedPacketType });
+            } else if (normalizedTypeCode) {
+                andFilters.push({ programCode: normalizedTypeCode });
+            }
         }
     }
 
@@ -5424,8 +5432,8 @@ export const getPackets = asyncHandler(async (req: Request, res: Response) => {
         andFilters.push({ semester: normalizedSemester });
     }
     if (programCode) {
-        const normalizedProgramCode = normalizeProgramCode(programCode);
-        if (!normalizedProgramCode) {
+        normalizedRequestedProgramCode = normalizeProgramCode(programCode);
+        if (!normalizedRequestedProgramCode) {
             throw new ApiError(400, 'Filter program ujian tidak valid.');
         }
         const fallbackAutoPacketFilter =
@@ -5439,7 +5447,7 @@ export const getPackets = asyncHandler(async (req: Request, res: Response) => {
                   ]
                 : [];
         andFilters.push({
-            OR: [{ programCode: normalizedProgramCode }, ...fallbackAutoPacketFilter],
+            OR: [{ programCode: normalizedRequestedProgramCode }, ...fallbackAutoPacketFilter],
         });
     }
 
