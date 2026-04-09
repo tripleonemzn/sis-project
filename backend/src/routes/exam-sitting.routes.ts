@@ -8,6 +8,7 @@ import {
     getExamSittingDetail, 
     updateExamSitting,
     updateExamSittingProctor,
+    updateExamSittingRoomSlotProctor,
     updateSittingStudents,
     deleteSitting
 } from '../controllers/exam-sitting.controller';
@@ -25,6 +26,7 @@ router.use(authenticate);
 // List and Create
 router.get('/', getExamSittings);
 router.get('/room-slots', authorize(['ADMIN', 'TEACHER']), getExamSittingRoomSlots);
+router.patch('/room-slots/proctor', authorize(['ADMIN', 'TEACHER']), updateExamSittingRoomSlotProctor);
 router.get('/assigned-students', getAssignedSittingStudents);
 router.get('/my-sitting', getMyExamSitting);
 router.post('/', authorize(['ADMIN', 'TEACHER']), createExamSitting);

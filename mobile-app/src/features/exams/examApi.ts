@@ -660,6 +660,36 @@ export const examApi = {
     });
     return response.data.data;
   },
+  async updateExamSittingRoomSlotProctor(slot: ExamSittingRoomSlot, proctorId: number | null) {
+    const response = await apiClient.patch<{
+      statusCode: number;
+      success: boolean;
+      message: string;
+      data: {
+        key: string;
+        proctorId: number | null;
+        proctor: {
+          id: number;
+          name: string;
+        } | null;
+      };
+    }>('/exam-sittings/room-slots/proctor', {
+      sittingId: slot.sittingId,
+      academicYearId: slot.academicYearId,
+      examType: slot.examType,
+      semester: slot.semester,
+      roomName: slot.roomName,
+      startTime: slot.startTime,
+      endTime: slot.endTime,
+      periodNumber: slot.periodNumber,
+      sessionId: slot.sessionId,
+      sessionLabel: slot.sessionLabel,
+      subjectId: slot.subjectId,
+      subjectName: slot.subjectName,
+      proctorId,
+    });
+    return response.data.data;
+  },
   async updateExamSittingStudents(sittingId: number, studentIds: number[]) {
     const response = await apiClient.put<{ statusCode: number; success: boolean; message: string; data: null }>(
       `/exam-sittings/${sittingId}/students`,

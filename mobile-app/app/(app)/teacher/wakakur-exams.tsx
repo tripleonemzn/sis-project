@@ -40,6 +40,7 @@ import {
   ExamScheduleMakeupStudentRow,
   ExamSittingDetail,
   ExamSittingListItem,
+  ExamSittingRoomSlot,
   TeacherExamSchedule,
 } from '../../../src/features/exams/types';
 import { getStandardPagePadding } from '../../../src/lib/ui/pageLayout';
@@ -1101,8 +1102,8 @@ export default function TeacherWakakurExamsScreen() {
   });
 
   const updateProctorMutation = useMutation({
-    mutationFn: async (payload: { sittingId: number; proctorId: number | null }) =>
-      examApi.updateExamSittingProctor(payload.sittingId, payload.proctorId),
+    mutationFn: async (payload: { slot: ExamSittingRoomSlot; proctorId: number | null }) =>
+      examApi.updateExamSittingRoomSlotProctor(payload.slot, payload.proctorId),
     onSuccess: async () => {
       await Promise.all([
         queryClient.invalidateQueries({ queryKey: ['mobile-wakakur-room-slots'] }),
@@ -2366,8 +2367,8 @@ export default function TeacherWakakurExamsScreen() {
     });
   };
 
-  const handleAssignProctor = (sittingId: number, proctorId: number | null) => {
-    updateProctorMutation.mutate({ sittingId, proctorId });
+  const handleAssignProctor = (slot: ExamSittingRoomSlot, proctorId: number | null) => {
+    updateProctorMutation.mutate({ slot, proctorId });
   };
 
   const toggleScheduleDay = (dateKey: string) => {
@@ -4338,7 +4339,7 @@ export default function TeacherWakakurExamsScreen() {
                                                   <Text style={{ color: '#1d4ed8', fontWeight: '700', fontSize: 12 }}>Ubah Pengawas</Text>
                                                 </Pressable>
                                                 <Pressable
-                                                  onPress={() => handleAssignProctor(item.sittingId, user.id)}
+                                                  onPress={() => handleAssignProctor(item, user.id)}
                                                   disabled={updateProctorMutation.isPending}
                                                   style={{
                                                     borderWidth: 1,
@@ -4388,7 +4389,7 @@ export default function TeacherWakakurExamsScreen() {
                                                   {teacherOptions.map((teacher) => (
                                                     <View key={teacher.id} style={{ width: '50%', paddingHorizontal: 3, marginBottom: 6 }}>
                                                       <Pressable
-                                                        onPress={() => handleAssignProctor(item.sittingId, teacher.id)}
+                                                        onPress={() => handleAssignProctor(item, teacher.id)}
                                                         disabled={updateProctorMutation.isPending}
                                                         style={{
                                                           borderWidth: 1,

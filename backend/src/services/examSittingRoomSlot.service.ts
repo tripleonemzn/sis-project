@@ -1,6 +1,10 @@
 import { Prisma, Semester } from '@prisma/client';
 import prisma from '../utils/prisma';
 import { listHistoricalStudentsByIdsForAcademicYear } from '../utils/studentAcademicHistory';
+import {
+  buildExamSittingSlotProctorKey,
+  listExamSittingSlotProctorsByKeys,
+} from './examSittingSlotProctor.service';
 
 function normalizeAliasCode(raw: unknown): string {
   return String(raw || '')
@@ -292,36 +296,6 @@ function buildTimeKey(
       ? `sid:${Number(sessionId)}`
       : normalizeSessionLabel(sessionLabel) || '__no_session__',
   ].join('|');
-}
-
-function buildRoomSlotKey(params: {
-  sittingId: number;
-  roomName: string;
-  startTime: Date;
-  endTime: Date;
-  periodNumber: number | null;
-  sessionId: number | null;
-  sessionLabel: string | null;
-  subjectId: number | null;
-  subjectName: string;
-}) {
-  const subjectScope =
-    Number.isFinite(Number(params.subjectId)) && Number(params.subjectId) > 0
-      ? `sub:${Number(params.subjectId)}`
-      : `subn:${String(params.subjectName || '').trim().toLowerCase() || '-'}`;
-  const sessionScope =
-    Number.isFinite(Number(params.sessionId)) && Number(params.sessionId) > 0
-      ? `sid:${Number(params.sessionId)}`
-      : `sl:${normalizeSessionLabel(params.sessionLabel) || '__no_session__'}`;
-  return [
-    `sit:${params.sittingId}`,
-    `room:${normalizeRoomLookupKey(params.roomName) || '-'}`,
-    `start:${params.startTime.toISOString()}`,
-    `end:${params.endTime.toISOString()}`,
-    `period:${Number.isFinite(Number(params.periodNumber)) && Number(params.periodNumber) > 0 ? Number(params.periodNumber) : 0}`,
-    subjectScope,
-    sessionScope,
-  ].join('::');
 }
 
 function buildGroupKey(schedule: ScheduleRow, subjectId: number | null, subjectName: string) {
@@ -630,8 +604,7 @@ export async function listExamSittingRoomSlots(params: {
         ),
       );
 
-      slots.push({
-        key: buildRoomSlotKey({
+      const slotKey = buildExamSittingSlotProctorKey({
           sittingId: sitting.id,
           roomName: sitting.roomName,
           startTime: group.startTime,
@@ -641,7 +614,22 @@ export async function listExamSittingRoomSlots(params: {
           sessionLabel: group.sessionLabel,
           subjectId: group.subjectId,
           subjectName: group.subjectName,
-        }),
+        });
+
+      const canUseSittingLevelFallback =
+        Number.isFinite(Number(sitting.proctorId)) &&
+        Number(sitting.proctorId) > 0 &&
+        Boolean(sitting.startTime && sitting.endTime) &&
+        isSameSlotTime(sitting.startTime, sitting.endTime, group.startTime, group.endTime) &&
+        isSameSessionScope({
+          leftSessionId: sitting.sessionId,
+          leftSessionLabel: sitting.sessionLabel,
+          rightSessionId: group.sessionId,
+          rightSessionLabel: group.sessionLabel,
+        });
+
+      slots.push({
+        key: slotKey,
         timeKey: buildTimeKey(
           group.startTime,
           group.endTime,
@@ -674,8 +662,8 @@ export async function listExamSittingRoomSlots(params: {
         classIds: matchedClassIds,
         classNames: matchedClassNames,
         participantCount: matchedStudents.length,
-        proctorId: Number(sitting.proctorId || 0) || null,
-        proctor: sitting.proctor
+        proctorId: canUseSittingLevelFallback ? Number(sitting.proctorId || 0) || null : null,
+        proctor: canUseSittingLevelFallback && sitting.proctor
           ? {
               id: sitting.proctor.id,
               name: sitting.proctor.name,
@@ -692,6 +680,17 @@ export async function listExamSittingRoomSlots(params: {
           : null,
       });
     });
+  });
+
+  const slotProctorAssignments = await listExamSittingSlotProctorsByKeys(slots.map((slot) => slot.key));
+  const resolvedSlots = slots.map((slot) => {
+    const assignment = slotProctorAssignments.get(slot.key);
+    if (!assignment) return slot;
+    return {
+      ...slot,
+      proctorId: assignment.proctorId,
+      proctor: assignment.proctor,
+    };
   });
 
   const unassignedSchedules = scheduleData.schedules
@@ -719,7 +718,7 @@ export async function listExamSittingRoomSlots(params: {
       className: String(schedule.class?.name || '').trim() || null,
     }));
 
-  const sortedSlots = [...slots].sort((a, b) => {
+  const sortedSlots = [...resolvedSlots].sort((a, b) => {
     const timeCompare = a.startTime.getTime() - b.startTime.getTime();
     if (timeCompare !== 0) return timeCompare;
     const periodCompare = Number(a.periodNumber || Number.MAX_SAFE_INTEGER) - Number(b.periodNumber || Number.MAX_SAFE_INTEGER);

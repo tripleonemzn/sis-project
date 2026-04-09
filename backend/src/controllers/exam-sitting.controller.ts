@@ -7,6 +7,10 @@ import {
     listHistoricalStudentsByIdsForAcademicYear,
 } from '../utils/studentAcademicHistory';
 import { listExamSittingRoomSlots } from '../services/examSittingRoomSlot.service';
+import {
+    buildExamSittingSlotProctorKey,
+    saveExamSittingSlotProctorAssignment,
+} from '../services/examSittingSlotProctor.service';
 
 function normalizeAliasCode(raw: unknown): string {
     return String(raw || '')
@@ -1154,6 +1158,131 @@ export const updateExamSittingProctor = asyncHandler(async (req: Request, res: R
     });
 
     res.json(new ApiResponse(200, updated, 'Pengawas ruang ujian berhasil diperbarui.'));
+});
+
+export const updateExamSittingRoomSlotProctor = asyncHandler(async (req: Request, res: Response) => {
+    const sittingId = Number(req.body?.sittingId);
+    const academicYearId = Number(req.body?.academicYearId);
+    const roomName = String(req.body?.roomName || '').trim();
+    const examType = String(req.body?.examType || '').trim().toUpperCase();
+    const subjectName = String(req.body?.subjectName || '').trim() || 'Mata Pelajaran';
+    const rawStartTime = new Date(String(req.body?.startTime || ''));
+    const rawEndTime = new Date(String(req.body?.endTime || ''));
+    const periodNumber =
+        Number.isFinite(Number(req.body?.periodNumber)) && Number(req.body?.periodNumber) > 0
+            ? Number(req.body?.periodNumber)
+            : null;
+    const sessionId =
+        Number.isFinite(Number(req.body?.sessionId)) && Number(req.body?.sessionId) > 0
+            ? Number(req.body?.sessionId)
+            : null;
+    const subjectId =
+        Number.isFinite(Number(req.body?.subjectId)) && Number(req.body?.subjectId) > 0
+            ? Number(req.body?.subjectId)
+            : null;
+    const sessionLabel = normalizeOptionalSessionLabel(req.body?.sessionLabel);
+    const semester = parseOptionalSemester(req.body?.semester) || null;
+    const incomingProctorId =
+        req.body?.proctorId === null || req.body?.proctorId === ''
+            ? null
+            : req.body?.proctorId === undefined
+              ? undefined
+              : Number(req.body.proctorId);
+
+    if (!Number.isFinite(sittingId) || sittingId <= 0) {
+        throw new ApiError(400, 'Sitting ID tidak valid.');
+    }
+    if (!Number.isFinite(academicYearId) || academicYearId <= 0) {
+        throw new ApiError(400, 'academicYearId tidak valid.');
+    }
+    if (!roomName) {
+        throw new ApiError(400, 'roomName wajib diisi.');
+    }
+    if (!examType) {
+        throw new ApiError(400, 'examType wajib diisi.');
+    }
+    if (Number.isNaN(rawStartTime.getTime()) || Number.isNaN(rawEndTime.getTime())) {
+        throw new ApiError(400, 'Waktu slot pengawas tidak valid.');
+    }
+    if (rawEndTime <= rawStartTime) {
+        throw new ApiError(400, 'Waktu selesai harus setelah waktu mulai.');
+    }
+
+    if (incomingProctorId !== undefined && incomingProctorId !== null) {
+        if (!Number.isFinite(incomingProctorId) || incomingProctorId <= 0) {
+            throw new ApiError(400, 'proctorId tidak valid.');
+        }
+        const proctor = await prisma.user.findFirst({
+            where: {
+                id: incomingProctorId,
+                role: 'TEACHER',
+            },
+            select: { id: true },
+        });
+        if (!proctor) {
+            throw new ApiError(404, 'Guru pengawas tidak ditemukan.');
+        }
+    }
+
+    const sitting = await prisma.examSitting.findUnique({
+        where: { id: sittingId },
+        select: {
+            id: true,
+            academicYearId: true,
+            examType: true,
+            semester: true,
+            roomName: true,
+        },
+    });
+    if (!sitting) {
+        throw new ApiError(404, 'Ruang ujian tidak ditemukan.');
+    }
+    if (Number(sitting.academicYearId) !== academicYearId) {
+        throw new ApiError(400, 'academicYearId slot tidak sesuai dengan ruang ujian.');
+    }
+    if (normalizeRoomLookupKey(sitting.roomName) !== normalizeRoomLookupKey(roomName)) {
+        throw new ApiError(400, 'roomName slot tidak sesuai dengan ruang ujian.');
+    }
+
+    const assignment = await saveExamSittingSlotProctorAssignment({
+        sittingId,
+        academicYearId,
+        examType,
+        semester,
+        roomName,
+        startTime: rawStartTime,
+        endTime: rawEndTime,
+        periodNumber,
+        sessionId,
+        sessionLabel,
+        subjectId,
+        subjectName,
+        proctorId: incomingProctorId === undefined ? null : incomingProctorId,
+    });
+
+    const slotKey = buildExamSittingSlotProctorKey({
+        sittingId,
+        roomName,
+        startTime: rawStartTime,
+        endTime: rawEndTime,
+        periodNumber,
+        sessionId,
+        sessionLabel,
+        subjectId,
+        subjectName,
+    });
+
+    res.json(
+        new ApiResponse(
+            200,
+            {
+                key: slotKey,
+                proctorId: assignment.proctorId,
+                proctor: assignment.proctor,
+            },
+            incomingProctorId ? 'Pengawas slot ruang ujian berhasil diperbarui.' : 'Pengawas slot ruang ujian berhasil dihapus.',
+        ),
+    );
 });
 
 export const updateSittingStudents = asyncHandler(async (req: Request, res: Response) => {

@@ -905,7 +905,7 @@ const ExamProctorManagementPage = () => {
     );
   };
 
-  const handleSaveProctor = async (slotKey: string, roomName: string, sittingIds: number[]) => {
+  const handleSaveProctor = async (slotKey: string, roomName: string, slotItems: ExamSittingRoomSlot[]) => {
     const key = `${slotKey}::${roomName}`;
     const proctorId = pendingChanges.get(key);
     
@@ -914,8 +914,20 @@ const ExamProctorManagementPage = () => {
     setSaving(prev => new Set(prev).add(key));
     try {
       await Promise.all(
-        Array.from(new Set(sittingIds)).map((id) =>
-          api.patch(`/exam-sittings/${id}/proctor`, {
+        slotItems.map((item) =>
+          api.patch('/exam-sittings/room-slots/proctor', {
+            sittingId: item.sittingId,
+            academicYearId: item.academicYearId,
+            examType: item.examType,
+            semester: item.semester,
+            roomName: item.roomName,
+            startTime: item.startTime,
+            endTime: item.endTime,
+            periodNumber: item.periodNumber,
+            sessionId: item.sessionId,
+            sessionLabel: item.sessionLabel,
+            subjectId: item.subjectId,
+            subjectName: item.subjectName,
             proctorId,
           }),
         ),
@@ -945,7 +957,7 @@ const ExamProctorManagementPage = () => {
     }
   };
 
-  const handleDeleteProctor = async (slotKey: string, roomName: string, sittingIds: number[]) => {
+  const handleDeleteProctor = async (slotKey: string, roomName: string, slotItems: ExamSittingRoomSlot[]) => {
     const key = `${slotKey}::${roomName}`;
     const confirmed = window.confirm(
       `Hapus pengawas dari ruang ${roomName} pada slot ini?`,
@@ -955,8 +967,20 @@ const ExamProctorManagementPage = () => {
     setSaving((prev) => new Set(prev).add(key));
     try {
       await Promise.all(
-        Array.from(new Set(sittingIds)).map((id) =>
-          api.patch(`/exam-sittings/${id}/proctor`, {
+        slotItems.map((item) =>
+          api.patch('/exam-sittings/room-slots/proctor', {
+            sittingId: item.sittingId,
+            academicYearId: item.academicYearId,
+            examType: item.examType,
+            semester: item.semester,
+            roomName: item.roomName,
+            startTime: item.startTime,
+            endTime: item.endTime,
+            periodNumber: item.periodNumber,
+            sessionId: item.sessionId,
+            sessionLabel: item.sessionLabel,
+            subjectId: item.subjectId,
+            subjectName: item.subjectName,
             proctorId: null,
           }),
         ),
@@ -1142,10 +1166,7 @@ const ExamProctorManagementPage = () => {
                                   <tbody className="divide-y divide-gray-100 bg-white">
                                     {group.rooms.map(([roomName, slots]) => {
                                       const changeKey = `${group.slotKey}::${roomName}`;
-                                      const roomSittingIds = slots
-                                        .map((slot) => Number(slot.sittingId))
-                                        .filter((item) => Number.isFinite(item) && item > 0);
-                                      const hasEditableSchedules = roomSittingIds.length > 0;
+                                      const hasEditableSchedules = slots.length > 0;
                                       const currentProctorId =
                                         pendingChanges.get(changeKey) ??
                                         slots.find((slot) => Number.isFinite(Number(slot.proctorId)) && Number(slot.proctorId) > 0)?.proctorId ??
@@ -1231,7 +1252,7 @@ const ExamProctorManagementPage = () => {
                                               {isEditing ? (
                                                 <>
                                                   <button
-                                                    onClick={() => handleSaveProctor(group.slotKey, roomName, roomSittingIds)}
+                                                    onClick={() => handleSaveProctor(group.slotKey, roomName, slots)}
                                                     disabled={isSaving || !hasChanges || !hasEditableSchedules}
                                                     className="inline-flex items-center gap-1.5 px-2.5 py-2 bg-blue-600 text-white text-xs font-medium rounded-lg hover:bg-blue-700 disabled:opacity-50 transition-all shadow-sm"
                                                     title="Simpan Perubahan"
@@ -1265,7 +1286,7 @@ const ExamProctorManagementPage = () => {
                                                     <Pencil size={14} />
                                                   </button>
                                                   <button
-                                                    onClick={() => handleDeleteProctor(group.slotKey, roomName, roomSittingIds)}
+                                                    onClick={() => handleDeleteProctor(group.slotKey, roomName, slots)}
                                                     disabled={isSaving || !hasAssignedProctor || !hasEditableSchedules}
                                                     className="inline-flex items-center justify-center p-2 border border-red-300 rounded-lg text-red-600 hover:bg-red-50 disabled:opacity-50"
                                                     title="Hapus Pengawas"

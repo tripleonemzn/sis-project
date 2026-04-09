@@ -2370,6 +2370,8 @@ async function findReusablePacketForSessionGroup(params: {
     semester: Semester;
     programCode: string;
     startTime: Date;
+    sessionId?: number | null;
+    sessionLabel?: string | null;
 }): Promise<{
     id: number;
     authorId: number;
@@ -2384,6 +2386,22 @@ async function findReusablePacketForSessionGroup(params: {
 
     const inferredPacketType = tryNormalizePacketType(normalizedProgramCode);
     const dayRange = buildUtcDayRange(params.startTime);
+    const normalizedSessionId =
+        Number.isFinite(Number(params.sessionId)) && Number(params.sessionId) > 0 ? Number(params.sessionId) : null;
+    const normalizedSessionLabel = normalizeSessionLabelKey(params.sessionLabel);
+    const scheduleSessionWhere: Prisma.ExamScheduleWhereInput = normalizedSessionId
+        ? { sessionId: normalizedSessionId }
+        : normalizedSessionLabel
+          ? {
+                OR: [
+                    { sessionId: null, sessionLabel: { equals: normalizedSessionLabel, mode: 'insensitive' } },
+                    { sessionLabel: { equals: normalizedSessionLabel, mode: 'insensitive' } },
+                ],
+            }
+          : {
+                sessionId: null,
+                sessionLabel: null,
+            };
     const packetWhere: Prisma.ExamPacketWhereInput = {
         authorId: params.authorId,
         subjectId: params.subjectId,
@@ -2401,7 +2419,7 @@ async function findReusablePacketForSessionGroup(params: {
                     gte: dayRange.start,
                     lt: dayRange.end,
                 },
-                OR: [{ sessionId: { not: null } }, { sessionLabel: { not: null } }],
+                ...scheduleSessionWhere,
             },
         },
     };
@@ -7090,6 +7108,19 @@ export const createSchedule = asyncHandler(async (req: Request, res: Response) =
               })
             : [];
 
+    const assignmentTeacherIdsByClass = assignmentRows.reduce<Map<number, Set<number>>>((acc, row) => {
+        const classId = Number(row.classId || 0);
+        const teacherId = Number(row.teacherId || 0);
+        if (!Number.isFinite(classId) || classId <= 0 || !Number.isFinite(teacherId) || teacherId <= 0) {
+            return acc;
+        }
+        if (!acc.has(classId)) {
+            acc.set(classId, new Set<number>());
+        }
+        acc.get(classId)!.add(teacherId);
+        return acc;
+    }, new Map<number, Set<number>>());
+
     if (normalizedClassIds.length > 0) {
         // Ensure subject-class combination is valid based on active teacher assignment.
         // This avoids ambiguous schedules when the same subject is taught by different teachers.
@@ -7104,6 +7135,23 @@ export const createSchedule = asyncHandler(async (req: Request, res: Response) =
             throw new ApiError(
                 400,
                 `Mapel ini belum punya assignment guru pada kelas: ${missingClassNames}. Atur assignment guru terlebih dahulu.`,
+            );
+        }
+
+        const ambiguousClassIds = normalizedClassIds.filter((classIdItem) => {
+            const teacherIds = assignmentTeacherIdsByClass.get(classIdItem);
+            return Boolean(teacherIds && teacherIds.size > 1);
+        });
+        if (ambiguousClassIds.length > 0) {
+            const ambiguousClasses = await prisma.class.findMany({
+                where: { id: { in: ambiguousClassIds } },
+                select: { name: true },
+            });
+            const ambiguousClassNames =
+                ambiguousClasses.map((item) => item.name).join(', ') || ambiguousClassIds.join(', ');
+            throw new ApiError(
+                400,
+                `Mapel ini masih memiliki lebih dari satu guru pada kelas: ${ambiguousClassNames}. Rapikan assignment guru terlebih dahulu agar packet ujian tidak ambigu.`,
             );
         }
 
@@ -7129,9 +7177,9 @@ export const createSchedule = asyncHandler(async (req: Request, res: Response) =
                     .map((row) => Number(row.teacherId))
                     .filter((teacherIdItem) => Number.isFinite(teacherIdItem) && teacherIdItem > 0),
             ),
-        );
+        ).sort((left, right) => left - right);
 
-        if (assignmentTeacherIds.length === 1) {
+        if (assignmentTeacherIds.length > 0) {
             const assignmentKkmValues = assignmentRows
                 .map((row) => Number(row.kkm))
                 .filter((value): value is number => Number.isFinite(value) && value > 0);
@@ -7168,6 +7216,8 @@ export const createSchedule = asyncHandler(async (req: Request, res: Response) =
                 semester: normalizedSemester,
                 programCode: resolvedProgram.programCode,
                 startTime: normalizedStartTime,
+                sessionId: resolvedProgramSession?.id ?? null,
+                sessionLabel: resolvedProgramSession?.label ?? null,
             });
 
             if (reusablePacket) {
