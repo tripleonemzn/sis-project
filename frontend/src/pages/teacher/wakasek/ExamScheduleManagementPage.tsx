@@ -3,6 +3,7 @@ import {
   Calendar,
   Clock,
   Plus,
+  Pencil,
   Trash2,
   ChevronDown,
   ChevronRight,
@@ -124,6 +125,13 @@ interface GroupedExamSchedule {
   totalClasses: number;
   candidateCount: number;
   readyCount: number;
+}
+
+interface ScheduleEditTarget {
+  mode: 'single' | 'group';
+  scheduleIds: number[];
+  targetLabel: string;
+  subjectLabel: string;
 }
 
 type ReviewableQuestion = ExamStudentPreviewQuestion & {
@@ -435,6 +443,7 @@ const ExamScheduleManagementPage = () => {
   const [programSessions, setProgramSessions] = useState<ExamProgramSession[]>([]);
   const [newSessionLabel, setNewSessionLabel] = useState('');
   const [creatingSession, setCreatingSession] = useState(false);
+  const [editingScheduleTarget, setEditingScheduleTarget] = useState<ScheduleEditTarget | null>(null);
   const [selectedMakeupSchedule, setSelectedMakeupSchedule] = useState<ExamSchedule | null>(null);
   const [makeupOverview, setMakeupOverview] = useState<ExamScheduleMakeupOverview | null>(null);
   const [loadingMakeup, setLoadingMakeup] = useState(false);
@@ -480,6 +489,21 @@ const ExamScheduleManagementPage = () => {
   });
 
   const [submitting, setSubmitting] = useState(false);
+  const isEditMode = Boolean(editingScheduleTarget);
+
+  const buildScheduleFormData = (overrides: Partial<typeof formData> = {}) => ({
+    subjectId: '',
+    packetId: '',
+    classIds: [] as string[],
+    date: '',
+    startTime: '',
+    endTime: '',
+    periodNumber: '',
+    sessionId: '',
+    academicYearId: selectedAcademicYear || '',
+    semester: activeProgram?.fixedSemester || formData.semester || 'ODD',
+    ...overrides,
+  });
 
   const visiblePrograms = useMemo(
     () =>
@@ -864,6 +888,13 @@ const ExamScheduleManagementPage = () => {
     );
   }, [selectedAcademicYear]);
 
+  const closeScheduleModal = useCallback(() => {
+    setShowModal(false);
+    setEditingScheduleTarget(null);
+    setNewSessionLabel('');
+    setFormData(buildScheduleFormData());
+  }, [activeProgram?.fixedSemester, formData.semester, selectedAcademicYear]);
+
   useEffect(() => {
     if (showModal) {
       fetchFormData();
@@ -965,34 +996,53 @@ const ExamScheduleManagementPage = () => {
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
-    
-    // Validate required fields
-    if (
-      !formData.subjectId ||
-      !formData.date ||
-      !formData.startTime ||
-      !formData.endTime ||
-      !formData.periodNumber ||
-      !formData.academicYearId
-    ) {
+
+    if (!formData.date || !formData.startTime || !formData.endTime || !formData.periodNumber) {
       toast.error('Mohon lengkapi semua field yang wajib diisi');
       return;
     }
-    if (!isCandidateAudienceProgram && formData.classIds.length === 0) {
-      toast.error('Pilih minimal satu kelas untuk jadwal ujian ini.');
-      return;
-    }
-    if (isCandidateAudienceProgram && !formData.packetId) {
-      toast.error('Pilih packet soal yang akan dipakai untuk tes calon siswa.');
-      return;
-    }
-    if (!activeProgramCode) {
-      toast.error('Program ujian belum dipilih.');
-      return;
-    }
-    
+
     setSubmitting(true);
     try {
+      if (isEditMode && editingScheduleTarget) {
+        const updatePayload = {
+          startTime: `${formData.date}T${formData.startTime}:00`,
+          endTime: `${formData.date}T${formData.endTime}:00`,
+          periodNumber: parseInt(formData.periodNumber, 10),
+          sessionId: formData.sessionId ? parseInt(formData.sessionId, 10) : null,
+        };
+
+        for (const scheduleId of editingScheduleTarget.scheduleIds) {
+          await examService.updateSchedule(scheduleId, updatePayload);
+        }
+
+        toast.success(
+          editingScheduleTarget.scheduleIds.length > 1
+            ? 'Jadwal grup berhasil diperbarui'
+            : 'Jadwal ujian berhasil diperbarui',
+        );
+        closeScheduleModal();
+        void fetchSchedules();
+        return;
+      }
+
+      if (!formData.subjectId || !formData.academicYearId) {
+        toast.error('Mohon lengkapi semua field yang wajib diisi');
+        return;
+      }
+      if (!isCandidateAudienceProgram && formData.classIds.length === 0) {
+        toast.error('Pilih minimal satu kelas untuk jadwal ujian ini.');
+        return;
+      }
+      if (isCandidateAudienceProgram && !formData.packetId) {
+        toast.error('Pilih packet soal yang akan dipakai untuk tes calon siswa.');
+        return;
+      }
+      if (!activeProgramCode) {
+        toast.error('Program ujian belum dipilih.');
+        return;
+      }
+
       const payload = {
         subjectId: parseInt(formData.subjectId, 10),
         packetId: formData.packetId ? parseInt(formData.packetId, 10) : undefined,
@@ -1009,28 +1059,14 @@ const ExamScheduleManagementPage = () => {
       };
 
       await api.post('/exams/schedules', payload);
-      
+
       toast.success('Jadwal ujian berhasil dibuat');
-      setShowModal(false);
+      closeScheduleModal();
       void fetchSchedules();
-      
-      // Reset form
-      setFormData(prev => ({
-        ...prev,
-        subjectId: '',
-        packetId: '',
-        classIds: [],
-        date: '',
-        startTime: '',
-        endTime: '',
-        periodNumber: '',
-        sessionId: prev.sessionId,
-        // Keep AY/Semester as they might add more for same period
-      }));
     } catch (err: unknown) {
       console.error(err);
       const e = err as { response?: { data?: { message?: string } } };
-      toast.error(e.response?.data?.message || 'Gagal menyimpan jadwal');
+      toast.error(e.response?.data?.message || (isEditMode ? 'Gagal memperbarui jadwal' : 'Gagal menyimpan jadwal'));
     } finally {
       setSubmitting(false);
     }
@@ -1096,6 +1132,47 @@ const ExamScheduleManagementPage = () => {
       console.error('Error deleting schedule:', error);
       toast.error(getErrorMessage(error, 'Gagal menghapus jadwal'));
     }
+  };
+
+  const openCreateScheduleModal = () => {
+    setEditingScheduleTarget(null);
+    setNewSessionLabel('');
+    setFormData(buildScheduleFormData());
+    setShowModal(true);
+  };
+
+  const openEditScheduleModal = (targetSchedules: ExamSchedule[], mode: 'single' | 'group') => {
+    if (!Array.isArray(targetSchedules) || targetSchedules.length === 0) return;
+    const primary = targetSchedules[0];
+    const targetLabel =
+      mode === 'group'
+        ? `${targetSchedules.length} target dalam slot ini`
+        : primary.class?.name || 'Calon Siswa';
+    const subjectLabel = primary.subject?.name || primary.packet?.subject?.name || '-';
+
+    setEditingScheduleTarget({
+      mode,
+      scheduleIds: targetSchedules.map((schedule) => Number(schedule.id)).filter((id) => Number.isFinite(id) && id > 0),
+      targetLabel,
+      subjectLabel,
+    });
+    setNewSessionLabel('');
+    setFormData(
+      buildScheduleFormData({
+        subjectId: primary.subject?.id ? String(primary.subject.id) : '',
+        packetId: primary.packet?.id ? String(primary.packet.id) : '',
+        classIds: targetSchedules
+          .map((schedule) => String(schedule.classId || '').trim())
+          .filter((value): value is string => Boolean(value)),
+        date: toInputDateValue(primary.startTime),
+        startTime: toInputTimeValue(primary.startTime),
+        endTime: toInputTimeValue(primary.endTime),
+        periodNumber: primary.periodNumber ? String(primary.periodNumber) : '',
+        sessionId: primary.sessionId ? String(primary.sessionId) : '',
+        academicYearId: String(primary.academicYearId || selectedAcademicYear || ''),
+      }),
+    );
+    setShowModal(true);
   };
 
   const resetMakeupForm = () => {
@@ -1440,10 +1517,7 @@ const ExamScheduleManagementPage = () => {
              {/* Dropdown removed */}
 
             <button 
-              onClick={() => {
-                setNewSessionLabel('');
-                setShowModal(true);
-              }}
+              onClick={openCreateScheduleModal}
               disabled={!activeProgramCode}
               className={`px-4 py-2 rounded-lg flex items-center gap-2 ${
                 !activeProgramCode
@@ -1595,23 +1669,36 @@ const ExamScheduleManagementPage = () => {
                           </div>
                         </td>
                         <td className="px-6 py-4 text-right">
-                          <button 
-                            onClick={(e) => {
-                              e.stopPropagation();
-                              if(confirm(`Hapus semua jadwal ${group.subjectName}?`)) {
-                                Promise.all(group.schedules.map(s => api.delete(`/exams/schedules/${s.id}`)))
-                                  .then(() => {
-                                    toast.success('Semua jadwal berhasil dihapus');
-                                    setSchedules(prev => prev.filter(s => !group.schedules.find(gs => gs.id === s.id)));
-                                  })
-                                  .catch(() => toast.error('Gagal menghapus beberapa jadwal'));
-                              }
-                            }}
-                            className="text-red-600 hover:text-red-800 p-2 hover:bg-red-50 rounded-lg transition-colors"
-                            title="Hapus Semua Jadwal Grup Ini"
-                          >
-                            <Trash2 size={16} />
-                          </button>
+                          <div className="flex items-center justify-end gap-2">
+                            <button
+                              type="button"
+                              onClick={(e) => {
+                                e.stopPropagation();
+                                openEditScheduleModal(group.schedules, 'group');
+                              }}
+                              className="text-blue-600 hover:text-blue-800 p-2 hover:bg-blue-50 rounded-lg transition-colors"
+                              title="Edit Grup Jadwal"
+                            >
+                              <Pencil size={16} />
+                            </button>
+                            <button 
+                              onClick={(e) => {
+                                e.stopPropagation();
+                                if(confirm(`Hapus semua jadwal ${group.subjectName}?`)) {
+                                  Promise.all(group.schedules.map(s => api.delete(`/exams/schedules/${s.id}`)))
+                                    .then(() => {
+                                      toast.success('Semua jadwal berhasil dihapus');
+                                      setSchedules(prev => prev.filter(s => !group.schedules.find(gs => gs.id === s.id)));
+                                    })
+                                    .catch(() => toast.error('Gagal menghapus beberapa jadwal'));
+                                }
+                              }}
+                              className="text-red-600 hover:text-red-800 p-2 hover:bg-red-50 rounded-lg transition-colors"
+                              title="Hapus Semua Jadwal Grup Ini"
+                            >
+                              <Trash2 size={16} />
+                            </button>
+                          </div>
                         </td>
                       </tr>
                       
@@ -1710,6 +1797,13 @@ const ExamScheduleManagementPage = () => {
                                                 Kelola Susulan
                                               </button>
                                             ) : null}
+                                            <button
+                                              type="button"
+                                              onClick={() => openEditScheduleModal([schedule], 'single')}
+                                              className="px-2.5 py-1.5 rounded-lg border border-slate-200 bg-white text-slate-700 hover:bg-slate-50 text-xs font-semibold"
+                                            >
+                                              Edit Jadwal
+                                            </button>
                                             <button 
                                               onClick={() => handleDelete(schedule.id)}
                                               className="text-red-600 hover:text-red-800 p-1 hover:bg-red-50 rounded"
@@ -2263,10 +2357,12 @@ const ExamScheduleManagementPage = () => {
           <div className="bg-white rounded-xl shadow-xl w-full max-w-4xl max-h-[90vh] overflow-y-auto">
             <div className="p-6 border-b border-gray-100 flex justify-between items-center">
               <h2 className="text-xl font-bold text-gray-900">
-                Buat Jadwal Ujian {activeProgram?.shortLabel || activeProgram?.label || activeProgramCode}
+                {isEditMode
+                  ? `Edit Jadwal Ujian ${activeProgram?.shortLabel || activeProgram?.label || activeProgramCode}`
+                  : `Buat Jadwal Ujian ${activeProgram?.shortLabel || activeProgram?.label || activeProgramCode}`}
               </h2>
               <button 
-                onClick={() => setShowModal(false)}
+                onClick={closeScheduleModal}
                 className="text-gray-400 hover:text-gray-600"
               >
                 &times;
@@ -2274,6 +2370,20 @@ const ExamScheduleManagementPage = () => {
             </div>
             
             <form onSubmit={handleSubmit} className="p-6 space-y-6">
+              {isEditMode && editingScheduleTarget ? (
+                <div className="rounded-lg border border-blue-100 bg-blue-50/80 px-4 py-3 text-sm text-blue-800">
+                  <div className="font-semibold">Mode Edit Jadwal Existing</div>
+                  <div className="mt-1">
+                    Mapel: <span className="font-medium">{editingScheduleTarget.subjectLabel}</span>
+                  </div>
+                  <div className="mt-1">
+                    Target: <span className="font-medium">{editingScheduleTarget.targetLabel}</span>
+                  </div>
+                  <p className="mt-2 text-xs text-blue-700">
+                    Pada mode edit, mapel dan target tidak diubah dari sini. Fokus perubahan diarahkan ke tanggal, jam ke, waktu ujian, dan sesi.
+                  </p>
+                </div>
+              ) : null}
               {activeProgram?.fixedSemester ? (
                 <div>
                   <label className="block text-sm font-medium text-gray-700 mb-1">Semester</label>
@@ -2288,6 +2398,7 @@ const ExamScheduleManagementPage = () => {
                     id="semester"
                     value={formData.semester}
                     onChange={(e) => setFormData({ ...formData, semester: e.target.value })}
+                    disabled={isEditMode}
                     className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500"
                   >
                     <option value="ODD">Ganjil</option>
@@ -2303,6 +2414,7 @@ const ExamScheduleManagementPage = () => {
                     id="subjectId"
                     value={formData.subjectId}
                     onChange={e => setFormData({...formData, subjectId: e.target.value})}
+                    disabled={isEditMode}
                     className="block w-full border border-gray-300 rounded-lg shadow-sm py-2.5 px-3 focus:ring-blue-500 focus:border-blue-500 text-sm appearance-none"
                   >
                     <option value="">Pilih Mata Pelajaran...</option>
@@ -2337,6 +2449,7 @@ const ExamScheduleManagementPage = () => {
                       id="packetId"
                       value={formData.packetId}
                       onChange={(e) => setFormData({ ...formData, packetId: e.target.value })}
+                      disabled={isEditMode}
                       className="block w-full border border-gray-300 rounded-lg shadow-sm py-2.5 px-3 focus:ring-blue-500 focus:border-blue-500 text-sm"
                     >
                       <option value="">Pilih packet soal...</option>
@@ -2366,7 +2479,11 @@ const ExamScheduleManagementPage = () => {
                       <input
                         type="checkbox"
                         checked={filteredClasses.length > 0 && formData.classIds.length === filteredClasses.length}
-                        onChange={(e) => toggleAllClasses(e.target.checked)}
+                        onChange={(e) => {
+                          if (isEditMode) return;
+                          toggleAllClasses(e.target.checked);
+                        }}
+                        disabled={isEditMode}
                         className="rounded border-gray-300 text-blue-600 focus:ring-blue-500"
                       />
                       Pilih Semua
@@ -2380,7 +2497,11 @@ const ExamScheduleManagementPage = () => {
                           name="classIds"
                           type="checkbox"
                           checked={formData.classIds.includes(cls.id.toString())}
-                          onChange={() => toggleClassSelection(cls.id.toString())}
+                          onChange={() => {
+                            if (isEditMode) return;
+                            toggleClassSelection(cls.id.toString());
+                          }}
+                          disabled={isEditMode}
                           className="rounded border-gray-300 text-blue-600 focus:ring-blue-500"
                         />
                         {cls.name}
@@ -2525,7 +2646,7 @@ const ExamScheduleManagementPage = () => {
               <div className="flex justify-end gap-3 pt-4 border-t border-gray-100">
                 <button
                   type="button"
-                  onClick={() => setShowModal(false)}
+                  onClick={closeScheduleModal}
                   className="px-4 py-2 text-gray-700 hover:bg-gray-100 rounded-lg transition-colors"
                 >
                   Batal
@@ -2535,7 +2656,7 @@ const ExamScheduleManagementPage = () => {
                   disabled={submitting}
                   className="px-4 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700 transition-colors disabled:opacity-50 disabled:cursor-not-allowed flex items-center gap-2"
                 >
-                  {submitting ? 'Menyimpan...' : 'Simpan Jadwal'}
+                  {submitting ? 'Menyimpan...' : isEditMode ? 'Simpan Perubahan' : 'Simpan Jadwal'}
                 </button>
               </div>
             </form>

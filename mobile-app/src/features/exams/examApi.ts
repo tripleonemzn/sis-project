@@ -2,6 +2,7 @@ import { apiClient } from '../../lib/api/client';
 import {
   ExamScheduleMakeupAccessSummary,
   ExamScheduleMakeupOverview,
+  ExamProgramSession,
   ExamSittingDetail,
   ExamSittingListItem,
   ExamSittingRoom,
@@ -88,6 +89,15 @@ type TeacherScheduleMutationResponse = {
   success: boolean;
   message: string;
   data: TeacherExamSchedule | null;
+};
+
+type ProgramSessionsResponse = {
+  statusCode: number;
+  success: boolean;
+  message: string;
+  data: {
+    sessions: ExamProgramSession[];
+  };
 };
 
 type TeacherScheduleMakeupOverviewResponse = {
@@ -520,6 +530,15 @@ export const examApi = {
       },
     });
     return response.data.data || [];
+  },
+  async getProgramSessions(params: { academicYearId: number; programCode: string }) {
+    const response = await apiClient.get<ProgramSessionsResponse>('/exams/program-sessions', {
+      params: {
+        academicYearId: params.academicYearId,
+        programCode: params.programCode,
+      },
+    });
+    return Array.isArray(response.data?.data?.sessions) ? response.data.data.sessions : [];
   },
   async updateTeacherSchedule(
     scheduleId: number,

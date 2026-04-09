@@ -380,6 +380,15 @@ export type ExamSittingListItem = {
   };
 };
 
+export type ExamProgramSession = {
+  id: number;
+  academicYearId: number;
+  programCode: string;
+  label: string;
+  displayOrder?: number | null;
+  isActive?: boolean;
+};
+
 export type StudentExamPlacement = {
   id: number;
   roomName: string;
