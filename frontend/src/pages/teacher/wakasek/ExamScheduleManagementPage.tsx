@@ -6,9 +6,6 @@ import {
   Pencil,
   Trash2,
   ChevronDown,
-  ChevronRight,
-  AlertCircle,
-  CheckCircle,
   X,
 } from 'lucide-react';
 import api from '../../../services/api';
@@ -17,10 +14,6 @@ import { format } from 'date-fns';
 import { id } from 'date-fns/locale';
 import { useSearchParams } from 'react-router-dom';
 import { useActiveAcademicYear } from '../../../hooks/useActiveAcademicYear';
-import {
-  scheduleTimeConfigService,
-  type ScheduleTimeConfigPayload,
-} from '../../../services/scheduleTimeConfig.service';
 import {
   examService,
   type ExamPacket,
@@ -33,6 +26,7 @@ import {
 import { isNonScheduledExamProgram, resolveProgramCodeFromParam } from '../../../lib/examProgramMenu';
 import { enhanceQuestionHtml } from '../../../utils/questionMedia';
 import { ExamStudentPreviewSurface, type ExamStudentPreviewQuestion } from '../../../components/teacher/exams/ExamStudentPreviewSurface';
+import ExamProgramFilterBar from '../../../components/teacher/exams/ExamProgramFilterBar';
 
 interface Subject {
   id: number;
@@ -73,6 +67,7 @@ interface ExamSchedule {
   startTime: string;
   endTime: string;
   periodNumber?: number | null;
+  semester?: 'ODD' | 'EVEN' | null;
   classId?: number | null;
   sessionId?: number | null;
   sessionLabel?: string | null;
@@ -125,6 +120,13 @@ interface GroupedExamSchedule {
   totalClasses: number;
   candidateCount: number;
   readyCount: number;
+}
+
+interface GroupedScheduleDay {
+  dateKey: string;
+  dateLabel: string;
+  slotCount: number;
+  slots: GroupedExamSchedule[];
 }
 
 interface ScheduleEditTarget {
@@ -247,6 +249,17 @@ const getExamDayKey = (
 const getExamDayLabel = (value: string | null | undefined) => {
   const dayKey = getExamDayKey(value);
   return dayKey ? DAY_LABELS[dayKey] : 'Pilih tanggal dulu';
+};
+
+const parseSafeDate = (value?: string | null) => {
+  if (!value) return null;
+  const date = new Date(value);
+  return Number.isNaN(date.getTime()) ? null : date;
+};
+
+const formatSafeDayDateLabel = (value?: string | null) => {
+  const date = parseSafeDate(value);
+  return date ? format(date, 'EEEE, d MMMM yyyy', { locale: id }) : 'Tanggal belum diatur';
 };
 
 const getMakeupStateMeta = (state?: string | null) => {
@@ -439,9 +452,14 @@ const ExamScheduleManagementPage = () => {
   const [loading, setLoading] = useState(true);
   const [showModal, setShowModal] = useState(false);
   const [showMakeupModal, setShowMakeupModal] = useState(false);
-  const [expandedGroups, setExpandedGroups] = useState<string[]>([]);
+  const [selectedSemester, setSelectedSemester] = useState<'ODD' | 'EVEN'>(
+    activeAcademicYear?.semester === 'EVEN' ? 'EVEN' : 'ODD',
+  );
+  const [expandedScheduleDays, setExpandedScheduleDays] = useState<string[]>([]);
   const [programSessions, setProgramSessions] = useState<ExamProgramSession[]>([]);
   const [newSessionLabel, setNewSessionLabel] = useState('');
+  const [newPeriodNumberDraft, setNewPeriodNumberDraft] = useState('');
+  const [customPeriodOptions, setCustomPeriodOptions] = useState<number[]>([]);
   const [creatingSession, setCreatingSession] = useState(false);
   const [editingScheduleTarget, setEditingScheduleTarget] = useState<ScheduleEditTarget | null>(null);
   const [selectedMakeupSchedule, setSelectedMakeupSchedule] = useState<ExamSchedule | null>(null);
@@ -472,7 +490,6 @@ const ExamScheduleManagementPage = () => {
   const [classes, setClasses] = useState<ClassData[]>([]);
   const [candidatePackets, setCandidatePackets] = useState<ExamPacket[]>([]);
   const [assignmentOptions, setAssignmentOptions] = useState<TeacherAssignmentOption[]>([]);
-  const [scheduleTimeConfig, setScheduleTimeConfig] = useState<ScheduleTimeConfigPayload | null>(null);
   const selectedAcademicYear = activeAcademicYear?.id ? String(activeAcademicYear.id) : '';
   
   const [formData, setFormData] = useState({
@@ -490,20 +507,8 @@ const ExamScheduleManagementPage = () => {
 
   const [submitting, setSubmitting] = useState(false);
   const isEditMode = Boolean(editingScheduleTarget);
-
-  const buildScheduleFormData = (overrides: Partial<typeof formData> = {}) => ({
-    subjectId: '',
-    packetId: '',
-    classIds: [] as string[],
-    date: '',
-    startTime: '',
-    endTime: '',
-    periodNumber: '',
-    sessionId: '',
-    academicYearId: selectedAcademicYear || '',
-    semester: activeProgram?.fixedSemester || formData.semester || 'ODD',
-    ...overrides,
-  });
+  const isSingleEditMode = editingScheduleTarget?.mode === 'single';
+  const isGroupEditMode = editingScheduleTarget?.mode === 'group';
 
   const visiblePrograms = useMemo(
     () =>
@@ -521,6 +526,35 @@ const ExamScheduleManagementPage = () => {
     () => visiblePrograms.find((program) => program.code === activeProgramCode) || null,
     [visiblePrograms, activeProgramCode],
   );
+
+  const effectiveSemester =
+    activeProgram?.fixedSemester ||
+    selectedSemester ||
+    (activeAcademicYear?.semester === 'EVEN' ? 'EVEN' : 'ODD');
+
+  const buildScheduleFormData = (overrides: Partial<typeof formData> = {}) => ({
+    subjectId: '',
+    packetId: '',
+    classIds: [] as string[],
+    date: '',
+    startTime: '',
+    endTime: '',
+    periodNumber: '',
+    sessionId: '',
+    academicYearId: selectedAcademicYear || '',
+    semester: effectiveSemester,
+    ...overrides,
+  });
+
+  useEffect(() => {
+    if (activeProgram?.fixedSemester) {
+      setSelectedSemester(activeProgram.fixedSemester);
+      return;
+    }
+    if (activeAcademicYear?.semester === 'ODD' || activeAcademicYear?.semester === 'EVEN') {
+      setSelectedSemester(activeAcademicYear.semester);
+    }
+  }, [activeAcademicYear?.semester, activeProgram?.fixedSemester]);
 
   const allowedSubjectIdsByProgram = useMemo(() => {
     const ids = Array.isArray(activeProgram?.allowedSubjectIds) ? activeProgram.allowedSubjectIds : [];
@@ -618,45 +652,42 @@ const ExamScheduleManagementPage = () => {
       .sort((a, b) => String(a.name).localeCompare(String(b.name)));
   }, [allowedSubjectIdsByProgram, filteredAssignmentsByProgram, subjects]);
 
-  const selectedExamDayKey = useMemo(() => getExamDayKey(formData.date), [formData.date]);
   const selectedExamDayLabel = useMemo(() => getExamDayLabel(formData.date), [formData.date]);
 
   const periodOptions = useMemo(() => {
-    const periodTimes = scheduleTimeConfig?.periodTimes || {};
-    const selectedDayPeriodTimes =
-      selectedExamDayKey && selectedExamDayKey !== 'SUNDAY' ? periodTimes[selectedExamDayKey] || {} : {};
+    const collected = new Set<number>();
 
-    const sourcePeriodMap =
-      Object.keys(selectedDayPeriodTimes).length > 0
-        ? selectedDayPeriodTimes
-        : Object.values(periodTimes).reduce<Record<number, string>>((accumulator, dayMap) => {
-            Object.entries(dayMap || {}).forEach(([period, timeLabel]) => {
-              const numericPeriod = Number(period);
-              if (Number.isInteger(numericPeriod) && numericPeriod > 0 && !accumulator[numericPeriod]) {
-                accumulator[numericPeriod] = String(timeLabel || '').trim();
-              }
-            });
-            return accumulator;
-          }, {});
+    schedules.forEach((schedule) => {
+      const value = Number(schedule.periodNumber || 0);
+      if (Number.isInteger(value) && value > 0) {
+        collected.add(value);
+      }
+    });
 
-    const candidateEntries = Object.entries(sourcePeriodMap)
-      .map(([period, timeLabel]) => ({
-        periodNumber: Number(period),
-        timeLabel: String(timeLabel || '').trim(),
-      }))
-      .filter((item) => Number.isInteger(item.periodNumber) && item.periodNumber > 0)
-      .sort((left, right) => left.periodNumber - right.periodNumber);
+    customPeriodOptions.forEach((value) => {
+      if (Number.isInteger(value) && value > 0) {
+        collected.add(value);
+      }
+    });
 
-    if (candidateEntries.length === 0) {
-      return FALLBACK_EXAM_PERIOD_OPTIONS;
+    const currentValue = Number(formData.periodNumber || 0);
+    if (Number.isInteger(currentValue) && currentValue > 0) {
+      collected.add(currentValue);
     }
 
-    return candidateEntries.map((item) => ({
-      value: String(item.periodNumber),
-      label: `Jam Ke-${item.periodNumber}`,
-      timeLabel: item.timeLabel,
+    const values = Array.from(collected).sort((left, right) => left - right);
+    if (values.length === 0) {
+      return FALLBACK_EXAM_PERIOD_OPTIONS.map((option) => ({
+        value: option.value,
+        label: option.label,
+      }));
+    }
+
+    return values.map((value) => ({
+      value: String(value),
+      label: `Jam Ke-${value}`,
     }));
-  }, [scheduleTimeConfig?.periodTimes, selectedExamDayKey]);
+  }, [customPeriodOptions, formData.periodNumber, schedules]);
 
   const selectedSubjectIdNumber = useMemo(() => Number(formData.subjectId || 0), [formData.subjectId]);
 
@@ -724,6 +755,7 @@ const ExamScheduleManagementPage = () => {
           examType: activeProgramCode,
           programCode: activeProgramCode,
           academicYearId: selectedAcademicYear,
+          semester: effectiveSemester,
         },
       });
       setSchedules(Array.isArray(res.data?.data) ? res.data.data : []);
@@ -734,7 +766,7 @@ const ExamScheduleManagementPage = () => {
     } finally {
       setLoading(false);
     }
-  }, [activeProgramCode, selectedAcademicYear]);
+  }, [activeProgramCode, effectiveSemester, selectedAcademicYear]);
 
   const fetchProgramSessions = useCallback(
     async (targetAcademicYearId: string, targetProgramCode: string) => {
@@ -873,13 +905,12 @@ const ExamScheduleManagementPage = () => {
   // Auto-set Semester & Academic Year when Modal opens
   useEffect(() => {
     if (!showModal) return;
-    const defaultSemester = activeProgram?.fixedSemester || formData.semester || 'ODD';
     setFormData((prev) => ({
       ...prev,
       academicYearId: selectedAcademicYear || prev.academicYearId,
-      semester: defaultSemester,
+      semester: prev.semester || effectiveSemester,
     }));
-  }, [showModal, activeProgram, formData.semester, selectedAcademicYear]);
+  }, [effectiveSemester, selectedAcademicYear, showModal]);
 
   useEffect(() => {
     if (!selectedAcademicYear) return;
@@ -892,8 +923,10 @@ const ExamScheduleManagementPage = () => {
     setShowModal(false);
     setEditingScheduleTarget(null);
     setNewSessionLabel('');
+    setNewPeriodNumberDraft('');
+    setCustomPeriodOptions([]);
     setFormData(buildScheduleFormData());
-  }, [activeProgram?.fixedSemester, formData.semester, selectedAcademicYear]);
+  }, [effectiveSemester, selectedAcademicYear]);
 
   useEffect(() => {
     if (showModal) {
@@ -911,32 +944,6 @@ const ExamScheduleManagementPage = () => {
     activeProgramCode,
     fetchProgramSessions,
   ]);
-
-  useEffect(() => {
-    if (!showModal) return;
-    const academicYearId = Number(formData.academicYearId || selectedAcademicYear || 0);
-    if (!academicYearId) {
-      setScheduleTimeConfig(null);
-      return;
-    }
-
-    let isCancelled = false;
-    scheduleTimeConfigService
-      .getConfig(academicYearId)
-      .then((response) => {
-        if (isCancelled) return;
-        setScheduleTimeConfig(response?.config || null);
-      })
-      .catch((error) => {
-        console.error('Error fetching schedule time config:', error);
-        if (isCancelled) return;
-        setScheduleTimeConfig(null);
-      });
-
-    return () => {
-      isCancelled = true;
-    };
-  }, [formData.academicYearId, selectedAcademicYear, showModal]);
 
   useEffect(() => {
     if (!showModal) return;
@@ -973,6 +980,12 @@ const ExamScheduleManagementPage = () => {
   }, [formData.periodNumber, periodOptions, showModal]);
 
   useEffect(() => {
+    setExpandedScheduleDays((prev) =>
+      prev.filter((dateKey) => schedules.some((schedule) => toInputDateValue(schedule.startTime) === dateKey)),
+    );
+  }, [schedules]);
+
+  useEffect(() => {
     void fetchCandidatePackets();
   }, [fetchCandidatePackets]);
 
@@ -1005,12 +1018,47 @@ const ExamScheduleManagementPage = () => {
     setSubmitting(true);
     try {
       if (isEditMode && editingScheduleTarget) {
-        const updatePayload = {
+        const updatePayload: {
+          startTime: string;
+          endTime: string;
+          periodNumber: number;
+          sessionId: number | null;
+          subjectId?: number;
+          classId?: number | null;
+          semester?: 'ODD' | 'EVEN';
+          packetId?: number | null;
+        } = {
           startTime: `${formData.date}T${formData.startTime}:00`,
           endTime: `${formData.date}T${formData.endTime}:00`,
           periodNumber: parseInt(formData.periodNumber, 10),
           sessionId: formData.sessionId ? parseInt(formData.sessionId, 10) : null,
         };
+
+        if (isSingleEditMode) {
+          if (!formData.subjectId) {
+            toast.error('Mapel wajib dipilih.');
+            setSubmitting(false);
+            return;
+          }
+          if (!isCandidateAudienceProgram && formData.classIds.length !== 1) {
+            toast.error('Pilih tepat satu kelas untuk jadwal yang sedang diedit.');
+            setSubmitting(false);
+            return;
+          }
+          if (isCandidateAudienceProgram && !formData.packetId) {
+            toast.error('Pilih packet soal untuk jadwal calon siswa.');
+            setSubmitting(false);
+            return;
+          }
+
+          updatePayload.subjectId = parseInt(formData.subjectId, 10);
+          updatePayload.classId =
+            !isCandidateAudienceProgram && formData.classIds[0]
+              ? parseInt(formData.classIds[0], 10)
+              : null;
+          updatePayload.semester = (activeProgram?.fixedSemester || formData.semester || effectiveSemester) as 'ODD' | 'EVEN';
+          updatePayload.packetId = formData.packetId ? parseInt(formData.packetId, 10) : null;
+        }
 
         for (const scheduleId of editingScheduleTarget.scheduleIds) {
           await examService.updateSchedule(scheduleId, updatePayload);
@@ -1055,7 +1103,7 @@ const ExamScheduleManagementPage = () => {
         examType: activeProgramCode,
         programCode: activeProgramCode,
         academicYearId: parseInt(formData.academicYearId, 10),
-        semester: activeProgram?.fixedSemester || formData.semester || 'ODD'
+        semester: activeProgram?.fixedSemester || formData.semester || effectiveSemester
       };
 
       await api.post('/exams/schedules', payload);
@@ -1161,15 +1209,19 @@ const ExamScheduleManagementPage = () => {
       buildScheduleFormData({
         subjectId: primary.subject?.id ? String(primary.subject.id) : '',
         packetId: primary.packet?.id ? String(primary.packet.id) : '',
-        classIds: targetSchedules
-          .map((schedule) => String(schedule.classId || '').trim())
-          .filter((value): value is string => Boolean(value)),
+        classIds:
+          mode === 'single'
+            ? [String(primary.classId || '').trim()].filter((value): value is string => Boolean(value))
+            : targetSchedules
+                .map((schedule) => String(schedule.classId || '').trim())
+                .filter((value): value is string => Boolean(value)),
         date: toInputDateValue(primary.startTime),
         startTime: toInputTimeValue(primary.startTime),
         endTime: toInputTimeValue(primary.endTime),
         periodNumber: primary.periodNumber ? String(primary.periodNumber) : '',
         sessionId: primary.sessionId ? String(primary.sessionId) : '',
         academicYearId: String(primary.academicYearId || selectedAcademicYear || ''),
+        semester: (primary.semester as 'ODD' | 'EVEN' | undefined) || effectiveSemester,
       }),
     );
     setShowModal(true);
@@ -1291,9 +1343,20 @@ const ExamScheduleManagementPage = () => {
     }
   };
 
-  const toggleGroup = (key: string) => {
-    setExpandedGroups(prev => 
-      prev.includes(key) ? prev.filter(k => k !== key) : [...prev, key]
+  const handleAddPeriodOption = () => {
+    const parsed = Number(newPeriodNumberDraft);
+    if (!Number.isInteger(parsed) || parsed <= 0) {
+      toast.error('Jam ke baru harus berupa angka bulat positif.');
+      return;
+    }
+    setCustomPeriodOptions((prev) => (prev.includes(parsed) ? prev : [...prev, parsed].sort((a, b) => a - b)));
+    setFormData((prev) => ({ ...prev, periodNumber: String(parsed) }));
+    setNewPeriodNumberDraft('');
+  };
+
+  const toggleScheduleDay = (dateKey: string) => {
+    setExpandedScheduleDays((prev) =>
+      prev.includes(dateKey) ? prev.filter((item) => item !== dateKey) : [...prev, dateKey],
     );
   };
 
@@ -1349,6 +1412,29 @@ const ExamScheduleManagementPage = () => {
   };
 
   const groupedSchedules = getGroupedSchedules();
+  const groupedScheduleDays = useMemo<GroupedScheduleDay[]>(() => {
+    const grouped = new Map<string, GroupedScheduleDay>();
+
+    groupedSchedules.forEach((slot) => {
+      const dateKey = toInputDateValue(slot.startTime) || '__no_date__';
+      const existing = grouped.get(dateKey);
+      const dateLabel = formatSafeDayDateLabel(slot.startTime);
+      if (existing) {
+        existing.slots.push(slot);
+        existing.slotCount = existing.slots.length;
+        return;
+      }
+
+      grouped.set(dateKey, {
+        dateKey,
+        dateLabel,
+        slotCount: 1,
+        slots: [slot],
+      });
+    });
+
+    return Array.from(grouped.values()).sort((left, right) => left.dateKey.localeCompare(right.dateKey));
+  }, [groupedSchedules]);
   const filteredMakeupStudents = useMemo(() => {
     const rows = makeupOverview?.students || [];
     const keyword = makeupSearch.trim().toLowerCase();
@@ -1531,30 +1617,16 @@ const ExamScheduleManagementPage = () => {
           </div>
         </div>
 
-        {/* Tabs */}
-        <div className="bg-white p-4 rounded-xl shadow-sm border border-gray-200 mt-6">
-          {visiblePrograms.length === 0 ? (
-            <p className="text-sm text-amber-700 bg-amber-50 border border-amber-200 rounded-lg px-3 py-2">
-              Belum ada Program Ujian aktif pada tahun ajaran ini.
-            </p>
-          ) : (
-            <div className="flex flex-wrap gap-1 bg-white p-1 rounded-lg border border-gray-200 w-fit">
-              {visiblePrograms.map((program) => (
-                <button
-                  key={program.code}
-                  onClick={() => setActiveProgramCode(program.code)}
-                  className={`
-                    px-4 py-2 text-[13px] font-medium rounded-md transition-colors
-                    ${activeProgramCode === program.code
-                      ? 'bg-blue-50 text-blue-700'
-                      : 'text-gray-600 hover:text-gray-900 hover:bg-gray-50'}
-                  `}
-                >
-                  {program.shortLabel || program.label || program.code}
-                </button>
-              ))}
-            </div>
-          )}
+        <div className="mt-6">
+          <ExamProgramFilterBar
+            programs={visiblePrograms}
+            activeProgramCode={activeProgramCode}
+            onProgramChange={setActiveProgramCode}
+            showSemester={Boolean(activeProgramCode)}
+            semesterValue={effectiveSemester}
+            onSemesterChange={(value) => setSelectedSemester(value)}
+            semesterDisabled={Boolean(activeProgram?.fixedSemester)}
+          />
         </div>
       </div>
 
@@ -1577,256 +1649,226 @@ const ExamScheduleManagementPage = () => {
             <p className="text-gray-500">Buat jadwal baru untuk memulai</p>
           </div>
         ) : (
-          <div className="overflow-x-auto">
-            <table className="w-full text-left text-sm">
-              <thead className="bg-gray-50 border-b border-gray-200">
-                <tr>
-                  <th className="w-10 px-6 py-3"></th>
-                  <th className="px-6 py-3 font-semibold text-gray-900">WAKTU PELAKSANAAN</th>
-                  <th className="px-6 py-3 font-semibold text-gray-900">MATA PELAJARAN</th>
-                  <th className="px-6 py-3 font-semibold text-gray-900">SESI</th>
-                  <th className="px-6 py-3 font-semibold text-gray-900">TARGET</th>
-                  <th className="px-6 py-3 font-semibold text-gray-900">STATUS SOAL</th>
-                  <th className="px-6 py-3 font-semibold text-gray-900 text-right">AKSI</th>
-                </tr>
-              </thead>
-              <tbody className="divide-y divide-gray-200">
-                {groupedSchedules.map((group) => {
-                  const isExpanded = expandedGroups.includes(group.key);
-                  const isAllReady = group.readyCount === group.totalClasses;
-                  const isNoneReady = group.readyCount === 0;
-                  const totalTargetLabel =
-                    group.candidateCount > 0
-                      ? group.candidateCount === group.totalClasses
-                        ? 'Calon Siswa'
-                        : `${group.totalClasses - group.candidateCount} Kelas + ${group.candidateCount} Calon`
-                      : `${group.totalClasses} Kelas`;
+          <div className="space-y-4 p-4">
+            {groupedScheduleDays.map((day) => {
+              const isDayExpanded = expandedScheduleDays.includes(day.dateKey);
+              return (
+                <div key={day.dateKey} className="overflow-hidden rounded-xl border border-gray-200 bg-white shadow-sm">
+                  <button
+                    type="button"
+                    onClick={() => toggleScheduleDay(day.dateKey)}
+                    className="flex w-full items-center justify-between gap-4 px-5 py-4 text-left transition-colors hover:bg-gray-50"
+                  >
+                    <div>
+                      <h3 className="text-xl font-bold text-gray-900">{day.dateLabel}</h3>
+                      <p className="mt-1 text-sm text-gray-500">{day.slotCount} slot jadwal pada hari ini</p>
+                      <p className="mt-1 text-xs text-gray-500">
+                        {Array.from(new Set(day.slots.map((slot) => slot.subjectName))).join(' • ')}
+                      </p>
+                    </div>
+                    <span className="text-sm font-semibold text-blue-700">
+                      {isDayExpanded ? 'Tutup Hari' : 'Buka Hari'}
+                    </span>
+                  </button>
 
-                  return (
-                    <React.Fragment key={group.key}>
-                      <tr 
-                        className={`hover:bg-gray-50 cursor-pointer transition-colors ${isExpanded ? 'bg-blue-50' : ''}`}
-                        onClick={() => toggleGroup(group.key)}
-                      >
-                        <td className="px-6 py-4">
-                          {isExpanded ? (
-                            <ChevronDown className="w-5 h-5 text-gray-500" />
-                          ) : (
-                            <ChevronRight className="w-5 h-5 text-gray-500" />
-                          )}
-                        </td>
-                        <td className="px-6 py-4">
-                          <div className="font-medium text-gray-900">
-                            {format(new Date(group.startTime), 'EEEE, d MMMM yyyy', { locale: id })}
-                          </div>
-                          <div className="mt-1 flex flex-wrap items-center gap-2 text-xs text-gray-500">
-                            <span className="inline-flex items-center rounded-full border border-blue-100 bg-blue-50 px-2.5 py-0.5 font-semibold text-blue-700">
-                              {group.periodNumber ? `Jam Ke-${group.periodNumber}` : 'Jam ke belum diatur'}
-                            </span>
-                            <span className="inline-flex items-center">
-                              <Clock className="mr-1 h-3 w-3" />
-                              {format(new Date(group.startTime), 'HH:mm')} - {format(new Date(group.endTime), 'HH:mm')}
-                            </span>
-                          </div>
-                        </td>
-                        <td className="px-6 py-4">
-                          <div className="font-medium text-gray-900">
-                            {group.subjectName}
-                          </div>
-                          <div className="text-gray-500 text-xs">
-                            {group.subjectCode}
-                          </div>
-                        </td>
-                        <td className="px-6 py-4">
-                          {group.sessionLabel ? (
-                            <span className="inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium bg-indigo-50 text-indigo-700 border border-indigo-100">
-                              {group.sessionLabel}
-                            </span>
-                          ) : (
-                            <span className="text-xs text-gray-400">Tanpa sesi</span>
-                          )}
-                        </td>
-                        <td className="px-6 py-4">
-                          <span className="inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium bg-gray-100 text-gray-800">
-                            {totalTargetLabel}
-                          </span>
-                        </td>
-                        <td className="px-6 py-4">
-                          <div className="flex items-center gap-2">
-                            {isAllReady ? (
-                              <CheckCircle className="w-4 h-4 text-green-500" />
-                            ) : isNoneReady ? (
-                              <AlertCircle className="w-4 h-4 text-red-500" />
-                            ) : (
-                              <AlertCircle className="w-4 h-4 text-orange-500" />
-                            )}
-                            <span className={`text-sm font-medium ${
-                              isAllReady ? 'text-green-700' : 
-                              isNoneReady ? 'text-red-700' : 'text-orange-700'
-                            }`}>
-                              {group.readyCount}/{group.totalClasses} Siap
-                            </span>
-                          </div>
-                        </td>
-                        <td className="px-6 py-4 text-right">
-                          <div className="flex items-center justify-end gap-2">
-                            <button
-                              type="button"
-                              onClick={(e) => {
-                                e.stopPropagation();
-                                openEditScheduleModal(group.schedules, 'group');
-                              }}
-                              className="text-blue-600 hover:text-blue-800 p-2 hover:bg-blue-50 rounded-lg transition-colors"
-                              title="Edit Grup Jadwal"
-                            >
-                              <Pencil size={16} />
-                            </button>
-                            <button 
-                              onClick={(e) => {
-                                e.stopPropagation();
-                                if(confirm(`Hapus semua jadwal ${group.subjectName}?`)) {
-                                  Promise.all(group.schedules.map(s => api.delete(`/exams/schedules/${s.id}`)))
-                                    .then(() => {
-                                      toast.success('Semua jadwal berhasil dihapus');
-                                      setSchedules(prev => prev.filter(s => !group.schedules.find(gs => gs.id === s.id)));
-                                    })
-                                    .catch(() => toast.error('Gagal menghapus beberapa jadwal'));
-                                }
-                              }}
-                              className="text-red-600 hover:text-red-800 p-2 hover:bg-red-50 rounded-lg transition-colors"
-                              title="Hapus Semua Jadwal Grup Ini"
-                            >
-                              <Trash2 size={16} />
-                            </button>
-                          </div>
-                        </td>
-                      </tr>
-                      
-                      {isExpanded && (
-                        <tr>
-                          <td colSpan={7} className="px-0 py-0 border-t-0 bg-gray-50/50">
-                            <div className="px-6 py-4 border-l-4 border-blue-500 ml-6 my-2">
-                              <h4 className="text-sm font-semibold text-gray-900 mb-3">Detail Jadwal per Target</h4>
-                              <div className="bg-white rounded-lg border border-gray-200 overflow-hidden">
-                                <table className="w-full text-sm">
-                                  <thead className="bg-gray-50 border-b border-gray-200">
-                                    <tr>
-                                      <th className="px-4 py-2 text-left font-medium text-gray-700">Kelas / Target</th>
-                                      <th className="px-4 py-2 text-left font-medium text-gray-700">Sesi</th>
-                                      <th className="px-4 py-2 text-left font-medium text-gray-700">Status Soal</th>
-                                      <th className="px-4 py-2 text-right font-medium text-gray-700">Aksi</th>
-                                    </tr>
-                                  </thead>
-                                  <tbody className="divide-y divide-gray-100">
-                                    {group.schedules
-                                      .sort((a, b) =>
-                                        String(a.class?.name || 'Calon Siswa').localeCompare(
-                                          String(b.class?.name || 'Calon Siswa'),
-                                        ),
-                                      )
-                                      .map(schedule => {
+                  {isDayExpanded ? (
+                    <div className="border-t border-gray-100 bg-gray-50 px-5 py-4 space-y-4">
+                      {day.slots.map((group) => {
+                        const isAllReady = group.readyCount === group.totalClasses;
+                        const isNoneReady = group.readyCount === 0;
+                        const totalTargetLabel =
+                          group.candidateCount > 0
+                            ? group.candidateCount === group.totalClasses
+                              ? 'Calon Siswa'
+                              : `${group.totalClasses - group.candidateCount} Kelas + ${group.candidateCount} Calon`
+                            : `${group.totalClasses} Kelas`;
+
+                        return (
+                          <div key={group.key} className="rounded-xl border border-blue-100 bg-white">
+                            <div className="flex flex-col gap-4 border-b border-blue-50 px-4 py-4 lg:flex-row lg:items-start lg:justify-between">
+                              <div className="min-w-0 flex-1">
+                                <div className="flex flex-wrap items-center gap-2">
+                                  <h4 className="text-lg font-semibold text-gray-900">
+                                    {group.subjectName}
+                                    {group.subjectCode && group.subjectCode !== '-' ? ` (${group.subjectCode})` : ''}
+                                  </h4>
+                                  <span className="inline-flex items-center rounded-full border border-blue-100 bg-blue-50 px-2.5 py-0.5 text-xs font-semibold text-blue-700">
+                                    {group.periodNumber ? `Jam Ke-${group.periodNumber}` : 'Jam ke belum diatur'}
+                                  </span>
+                                  {group.sessionLabel ? (
+                                    <span className="inline-flex items-center rounded-full border border-indigo-100 bg-indigo-50 px-2.5 py-0.5 text-xs font-semibold text-indigo-700">
+                                      {group.sessionLabel}
+                                    </span>
+                                  ) : null}
+                                </div>
+                                <div className="mt-2 flex flex-wrap items-center gap-3 text-sm text-gray-500">
+                                  <span className="inline-flex items-center">
+                                    <Clock className="mr-1 h-4 w-4" />
+                                    {format(new Date(group.startTime), 'HH:mm')} - {format(new Date(group.endTime), 'HH:mm')}
+                                  </span>
+                                  <span>{totalTargetLabel}</span>
+                                  <span className={isAllReady ? 'text-green-700' : isNoneReady ? 'text-red-700' : 'text-orange-700'}>
+                                    {group.readyCount}/{group.totalClasses} siap
+                                  </span>
+                                </div>
+                              </div>
+
+                              <div className="flex items-center justify-end gap-2">
+                                <button
+                                  type="button"
+                                  onClick={() => openEditScheduleModal(group.schedules, 'group')}
+                                  className="rounded-lg p-2 text-blue-600 transition-colors hover:bg-blue-50 hover:text-blue-800"
+                                  title="Edit Grup Jadwal"
+                                >
+                                  <Pencil size={16} />
+                                </button>
+                                <button
+                                  type="button"
+                                  onClick={() => {
+                                    if (confirm(`Hapus semua jadwal ${group.subjectName}?`)) {
+                                      Promise.all(group.schedules.map((schedule) => api.delete(`/exams/schedules/${schedule.id}`)))
+                                        .then(() => {
+                                          toast.success('Semua jadwal berhasil dihapus');
+                                          setSchedules((prev) =>
+                                            prev.filter((schedule) => !group.schedules.find((groupSchedule) => groupSchedule.id === schedule.id)),
+                                          );
+                                        })
+                                        .catch(() => toast.error('Gagal menghapus beberapa jadwal'));
+                                    }
+                                  }}
+                                  className="rounded-lg p-2 text-red-600 transition-colors hover:bg-red-50 hover:text-red-800"
+                                  title="Hapus Semua Jadwal Grup Ini"
+                                >
+                                  <Trash2 size={16} />
+                                </button>
+                              </div>
+                            </div>
+
+                            <div className="overflow-x-auto">
+                              <table className="w-full text-sm">
+                                <thead className="bg-gray-50 border-b border-gray-200">
+                                  <tr>
+                                    <th className="px-4 py-2 text-left font-medium text-gray-700">Kelas / Target</th>
+                                    <th className="px-4 py-2 text-left font-medium text-gray-700">Sesi</th>
+                                    <th className="px-4 py-2 text-left font-medium text-gray-700">Status Soal</th>
+                                    <th className="px-4 py-2 text-right font-medium text-gray-700">Aksi</th>
+                                  </tr>
+                                </thead>
+                                <tbody className="divide-y divide-gray-100">
+                                  {group.schedules
+                                    .sort((a, b) =>
+                                      String(a.class?.name || 'Calon Siswa').localeCompare(
+                                        String(b.class?.name || 'Calon Siswa'),
+                                      ),
+                                    )
+                                    .map((schedule) => {
                                       const questionPoolCount = Number(schedule.packet?.questionPoolCount || 0);
                                       const blueprintCount = Number(schedule.packet?.blueprintCount || 0);
                                       const questionCardCount = Number(schedule.packet?.questionCardCount || 0);
                                       const isScheduleReady = Boolean(schedule.packet && questionPoolCount > 0);
                                       return (
-                                      <tr key={schedule.id} className="hover:bg-gray-50">
-                                        <td className="px-4 py-2 font-medium text-gray-900">
-                                          {schedule.class?.name || 'Calon Siswa'}
-                                        </td>
-                                        <td className="px-4 py-2">
-                                          {resolveScheduleSessionLabel(schedule) ? (
-                                            <span className="inline-flex items-center px-2 py-0.5 rounded-full text-xs font-medium bg-indigo-50 text-indigo-700 border border-indigo-100">
-                                              {resolveScheduleSessionLabel(schedule)}
-                                            </span>
-                                          ) : (
-                                            <span className="text-xs text-gray-400">Tanpa sesi</span>
-                                          )}
-                                        </td>
-                                        <td className="px-4 py-2">
-                                          <div className="space-y-1.5">
-                                            {isScheduleReady ? (
-                                              <span className="inline-flex px-2 py-1 bg-green-50 text-green-700 rounded text-xs font-medium">
-                                                Tersedia: {schedule.packet?.title}
-                                              </span>
-                                            ) : schedule.packet ? (
-                                              <span className="inline-flex px-2 py-1 bg-orange-50 text-orange-700 rounded text-xs font-medium">
-                                                Paket dibuat, menunggu guru isi soal
+                                        <tr key={schedule.id} className="hover:bg-gray-50">
+                                          <td className="px-4 py-2 font-medium text-gray-900">
+                                            {schedule.class?.name || 'Calon Siswa'}
+                                          </td>
+                                          <td className="px-4 py-2">
+                                            {resolveScheduleSessionLabel(schedule) ? (
+                                              <span className="inline-flex items-center rounded-full border border-indigo-100 bg-indigo-50 px-2 py-0.5 text-xs font-medium text-indigo-700">
+                                                {resolveScheduleSessionLabel(schedule)}
                                               </span>
                                             ) : (
-                                              <span className="inline-flex px-2 py-1 bg-orange-50 text-orange-700 rounded text-xs font-medium">
-                                                Menunggu Guru
-                                              </span>
+                                              <span className="text-xs text-gray-400">Tanpa sesi</span>
                                             )}
-                                            {schedule.packet ? (
-                                              <div className="flex flex-wrap gap-1">
-                                                <span className="rounded-full bg-slate-100 px-2 py-0.5 text-[11px] font-medium text-slate-700">
-                                                  {questionPoolCount} soal
+                                          </td>
+                                          <td className="px-4 py-2">
+                                            <div className="space-y-1.5">
+                                              {isScheduleReady ? (
+                                                <span className="inline-flex rounded bg-green-50 px-2 py-1 text-xs font-medium text-green-700">
+                                                  Tersedia: {schedule.packet?.title}
                                                 </span>
-                                                <span className={`rounded-full px-2 py-0.5 text-[11px] font-medium ${
-                                                  blueprintCount > 0 ? 'bg-blue-50 text-blue-700' : 'bg-slate-100 text-slate-500'
-                                                }`}>
-                                                  Kisi-kisi {blueprintCount}
+                                              ) : schedule.packet ? (
+                                                <span className="inline-flex rounded bg-orange-50 px-2 py-1 text-xs font-medium text-orange-700">
+                                                  Paket dibuat, menunggu guru isi soal
                                                 </span>
-                                                <span className={`rounded-full px-2 py-0.5 text-[11px] font-medium ${
-                                                  questionCardCount > 0 ? 'bg-emerald-50 text-emerald-700' : 'bg-slate-100 text-slate-500'
-                                                }`}>
-                                                  Kartu Soal {questionCardCount}
+                                              ) : (
+                                                <span className="inline-flex rounded bg-orange-50 px-2 py-1 text-xs font-medium text-orange-700">
+                                                  Menunggu Guru
                                                 </span>
-                                              </div>
-                                            ) : null}
-                                          </div>
-                                        </td>
-                                        <td className="px-4 py-2 text-right">
-                                          <div className="flex items-center justify-end gap-2">
-                                            {schedule.packet?.id ? (
+                                              )}
+                                              {schedule.packet ? (
+                                                <div className="flex flex-wrap gap-1">
+                                                  <span className="rounded-full bg-slate-100 px-2 py-0.5 text-[11px] font-medium text-slate-700">
+                                                    {questionPoolCount} soal
+                                                  </span>
+                                                  <span
+                                                    className={`rounded-full px-2 py-0.5 text-[11px] font-medium ${
+                                                      blueprintCount > 0 ? 'bg-blue-50 text-blue-700' : 'bg-slate-100 text-slate-500'
+                                                    }`}
+                                                  >
+                                                    Kisi-kisi {blueprintCount}
+                                                  </span>
+                                                  <span
+                                                    className={`rounded-full px-2 py-0.5 text-[11px] font-medium ${
+                                                      questionCardCount > 0 ? 'bg-emerald-50 text-emerald-700' : 'bg-slate-100 text-slate-500'
+                                                    }`}
+                                                  >
+                                                    Kartu Soal {questionCardCount}
+                                                  </span>
+                                                </div>
+                                              ) : null}
+                                            </div>
+                                          </td>
+                                          <td className="px-4 py-2 text-right">
+                                            <div className="flex items-center justify-end gap-2">
+                                              {schedule.packet?.id ? (
+                                                <button
+                                                  type="button"
+                                                  onClick={() => void openReviewModal(schedule)}
+                                                  className="rounded-lg border border-slate-200 bg-white px-2.5 py-1.5 text-xs font-semibold text-slate-700 hover:bg-slate-50"
+                                                >
+                                                  Review Soal
+                                                </button>
+                                              ) : null}
+                                              {schedule.class?.name ? (
+                                                <button
+                                                  type="button"
+                                                  onClick={() => void openMakeupModal(schedule)}
+                                                  className="rounded-lg border border-blue-200 bg-blue-50 px-2.5 py-1.5 text-xs font-semibold text-blue-700 hover:bg-blue-100"
+                                                >
+                                                  Kelola Susulan
+                                                </button>
+                                              ) : null}
                                               <button
                                                 type="button"
-                                                onClick={() => void openReviewModal(schedule)}
-                                                className="px-2.5 py-1.5 rounded-lg border border-slate-200 bg-white text-slate-700 hover:bg-slate-50 text-xs font-semibold"
+                                                onClick={() => openEditScheduleModal([schedule], 'single')}
+                                                className="rounded-lg border border-slate-200 bg-white px-2.5 py-1.5 text-xs font-semibold text-slate-700 hover:bg-slate-50"
                                               >
-                                                Review Soal
+                                                Edit Jadwal
                                               </button>
-                                            ) : null}
-                                            {schedule.class?.name ? (
                                               <button
                                                 type="button"
-                                                onClick={() => void openMakeupModal(schedule)}
-                                                className="px-2.5 py-1.5 rounded-lg border border-blue-200 bg-blue-50 text-blue-700 hover:bg-blue-100 text-xs font-semibold"
+                                                onClick={() => handleDelete(schedule.id)}
+                                                className="rounded p-1 text-red-600 hover:bg-red-50 hover:text-red-800"
+                                                title="Hapus Jadwal"
                                               >
-                                                Kelola Susulan
+                                                <Trash2 size={14} />
                                               </button>
-                                            ) : null}
-                                            <button
-                                              type="button"
-                                              onClick={() => openEditScheduleModal([schedule], 'single')}
-                                              className="px-2.5 py-1.5 rounded-lg border border-slate-200 bg-white text-slate-700 hover:bg-slate-50 text-xs font-semibold"
-                                            >
-                                              Edit Jadwal
-                                            </button>
-                                            <button 
-                                              onClick={() => handleDelete(schedule.id)}
-                                              className="text-red-600 hover:text-red-800 p-1 hover:bg-red-50 rounded"
-                                              title="Hapus Jadwal"
-                                            >
-                                              <Trash2 size={14} />
-                                            </button>
-                                          </div>
-                                        </td>
-                                      </tr>
-                                    )})}
-                                  </tbody>
-                                </table>
-                              </div>
+                                            </div>
+                                          </td>
+                                        </tr>
+                                      );
+                                    })}
+                                </tbody>
+                              </table>
                             </div>
-                          </td>
-                        </tr>
-                      )}
-                    </React.Fragment>
-                  );
-                })}
-              </tbody>
-            </table>
+                          </div>
+                        );
+                      })}
+                    </div>
+                  ) : null}
+                </div>
+              );
+            })}
           </div>
         )}
       </div>
@@ -2380,7 +2422,9 @@ const ExamScheduleManagementPage = () => {
                     Target: <span className="font-medium">{editingScheduleTarget.targetLabel}</span>
                   </div>
                   <p className="mt-2 text-xs text-blue-700">
-                    Pada mode edit, mapel dan target tidak diubah dari sini. Fokus perubahan diarahkan ke tanggal, jam ke, waktu ujian, dan sesi.
+                    {isSingleEditMode
+                      ? 'Mode ini boleh mengubah semester, mapel, kelas, tanggal, jam ke, waktu ujian, dan sesi selama jadwal belum dipakai sesi ujian siswa.'
+                      : 'Mode edit grup dipakai untuk merapikan slot bersama seperti tanggal, jam ke, waktu ujian, dan sesi. Untuk ganti mapel atau kelas, gunakan Edit Jadwal pada target yang spesifik.'}
                   </p>
                 </div>
               ) : null}
@@ -2398,12 +2442,17 @@ const ExamScheduleManagementPage = () => {
                     id="semester"
                     value={formData.semester}
                     onChange={(e) => setFormData({ ...formData, semester: e.target.value })}
-                    disabled={isEditMode}
+                    disabled={isGroupEditMode}
                     className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500"
                   >
                     <option value="ODD">Ganjil</option>
                     <option value="EVEN">Genap</option>
                   </select>
+                  {isGroupEditMode ? (
+                    <p className="mt-1 text-xs text-gray-500">
+                      Semester grup mengikuti slot yang sedang diedit. Gunakan edit per target jika perlu memindahkan semester jadwal tertentu.
+                    </p>
+                  ) : null}
                 </div>
               )}
 
@@ -2414,7 +2463,7 @@ const ExamScheduleManagementPage = () => {
                     id="subjectId"
                     value={formData.subjectId}
                     onChange={e => setFormData({...formData, subjectId: e.target.value})}
-                    disabled={isEditMode}
+                    disabled={isGroupEditMode}
                     className="block w-full border border-gray-300 rounded-lg shadow-sm py-2.5 px-3 focus:ring-blue-500 focus:border-blue-500 text-sm appearance-none"
                   >
                     <option value="">Pilih Mata Pelajaran...</option>
@@ -2449,7 +2498,7 @@ const ExamScheduleManagementPage = () => {
                       id="packetId"
                       value={formData.packetId}
                       onChange={(e) => setFormData({ ...formData, packetId: e.target.value })}
-                      disabled={isEditMode}
+                      disabled={isGroupEditMode}
                       className="block w-full border border-gray-300 rounded-lg shadow-sm py-2.5 px-3 focus:ring-blue-500 focus:border-blue-500 text-sm"
                     >
                       <option value="">Pilih packet soal...</option>
@@ -2469,6 +2518,40 @@ const ExamScheduleManagementPage = () => {
                     ) : null}
                   </div>
                 </div>
+              ) : isGroupEditMode ? (
+                <div className="rounded-lg border border-gray-200 bg-gray-50 px-4 py-3">
+                  <div className="text-sm font-medium text-gray-800">Target Kelas</div>
+                  <p className="mt-1 text-sm text-gray-600">
+                    Edit grup mempertahankan target kelas yang sudah ada di slot ini: {editingScheduleTarget?.targetLabel || '-'}.
+                  </p>
+                </div>
+              ) : isSingleEditMode ? (
+                <div>
+                  <label htmlFor="singleClassId" className="block text-sm font-medium text-gray-700 mb-2">
+                    Kelas <span className="text-red-500">*</span>
+                  </label>
+                  <select
+                    id="singleClassId"
+                    value={formData.classIds[0] || ''}
+                    onChange={(event) =>
+                      setFormData((prev) => ({
+                        ...prev,
+                        classIds: event.target.value ? [event.target.value] : [],
+                      }))
+                    }
+                    className="block w-full border border-gray-300 rounded-lg shadow-sm py-2.5 px-3 focus:ring-blue-500 focus:border-blue-500 text-sm"
+                  >
+                    <option value="">Pilih kelas...</option>
+                    {filteredClasses.map((cls) => (
+                      <option key={cls.id} value={cls.id.toString()}>
+                        {cls.name}
+                      </option>
+                    ))}
+                  </select>
+                  <p className="mt-1 text-xs text-gray-500">
+                    Gunakan edit per target untuk memindahkan jadwal ini ke kelas lain yang masih sesuai scope program.
+                  </p>
+                </div>
               ) : (
                 <div>
                   <div className="flex justify-between items-center mb-2">
@@ -2480,10 +2563,8 @@ const ExamScheduleManagementPage = () => {
                         type="checkbox"
                         checked={filteredClasses.length > 0 && formData.classIds.length === filteredClasses.length}
                         onChange={(e) => {
-                          if (isEditMode) return;
                           toggleAllClasses(e.target.checked);
                         }}
-                        disabled={isEditMode}
                         className="rounded border-gray-300 text-blue-600 focus:ring-blue-500"
                       />
                       Pilih Semua
@@ -2498,10 +2579,8 @@ const ExamScheduleManagementPage = () => {
                           type="checkbox"
                           checked={formData.classIds.includes(cls.id.toString())}
                           onChange={() => {
-                            if (isEditMode) return;
                             toggleClassSelection(cls.id.toString());
                           }}
-                          disabled={isEditMode}
                           className="rounded border-gray-300 text-blue-600 focus:ring-blue-500"
                         />
                         {cls.name}
@@ -2600,14 +2679,30 @@ const ExamScheduleManagementPage = () => {
                       <option value="">Pilih jam ke...</option>
                       {periodOptions.map((option) => (
                         <option key={option.value} value={option.value}>
-                          {option.timeLabel ? `${option.label} • ${option.timeLabel}` : option.label}
+                          {option.label}
                         </option>
                       ))}
                     </select>
+                    <div className="mt-2 flex gap-2">
+                      <input
+                        type="number"
+                        min={1}
+                        step={1}
+                        value={newPeriodNumberDraft}
+                        onChange={(event) => setNewPeriodNumberDraft(event.target.value)}
+                        placeholder="Tambah jam ke baru"
+                        className="flex-1 rounded-lg border border-gray-300 px-3 py-2 text-sm focus:border-blue-500 focus:outline-none"
+                      />
+                      <button
+                        type="button"
+                        onClick={handleAddPeriodOption}
+                        className="rounded-lg border border-gray-300 bg-gray-50 px-3 py-2 text-sm font-medium text-gray-700 hover:bg-gray-100"
+                      >
+                        Tambah
+                      </button>
+                    </div>
                     <p className="mt-1 text-xs text-gray-500">
-                      {selectedExamDayKey && selectedExamDayKey !== 'SUNDAY'
-                        ? 'Slot jam ke mengikuti master jadwal harian bila tersedia. Waktu ujian tetap bisa diatur manual.'
-                        : 'Jika master jam pelajaran belum tersedia, gunakan pilihan jam ke standar.'}
+                      Jam ke dipakai sebagai urutan slot ujian. Tambahkan nomor baru sesuai kebutuhan, lalu atur waktu ujian aktual di bawahnya.
                     </p>
                   </div>
                 </div>

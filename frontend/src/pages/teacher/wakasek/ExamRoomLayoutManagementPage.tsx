@@ -1,13 +1,7 @@
 import { useCallback, useEffect, useMemo, useState } from 'react';
 import {
   AlertTriangle,
-  Briefcase,
-  CalendarRange,
   CheckCircle2,
-  ClipboardCheck,
-  ClipboardList,
-  FileSpreadsheet,
-  GraduationCap,
   Loader2,
   Layers3,
   PencilRuler,
@@ -21,6 +15,7 @@ import api from '../../../services/api';
 import { examService, type ExamProgram } from '../../../services/exam.service';
 import { isNonScheduledExamProgram } from '../../../lib/examProgramMenu';
 import { compareExamRoomName } from '../../../lib/examRoomSort';
+import ExamProgramFilterBar from '../../../components/teacher/exams/ExamProgramFilterBar';
 
 type LayoutCellType = 'SEAT' | 'AISLE';
 
@@ -167,16 +162,6 @@ function sortLayoutCells(cells: DraftCell[]) {
 function clampGridSize(value: number, fallback: number, limit: number) {
   if (!Number.isFinite(value)) return fallback;
   return Math.max(1, Math.min(limit, Math.trunc(value)));
-}
-
-function getProgramTabIcon(programCode: string) {
-  const normalized = String(programCode || '').trim().toUpperCase();
-  if (normalized === 'SBTS') return CalendarRange;
-  if (normalized === 'SAS') return FileSpreadsheet;
-  if (normalized === 'SAT') return GraduationCap;
-  if (normalized === 'ASAJ') return ClipboardCheck;
-  if (normalized === 'ASAJP') return Briefcase;
-  return ClipboardList;
 }
 
 function createDraftFromLayout(detail: LayoutDetail): LayoutDraft {
@@ -831,62 +816,16 @@ export default function ExamRoomLayoutManagementPage() {
         </div>
 
         <div className="rounded-xl border border-gray-100 bg-white p-4 shadow-sm">
-          {visiblePrograms.length === 0 ? (
-            <div className="rounded-lg border border-dashed border-gray-300 px-3 py-2 text-sm text-gray-500">
-              Belum ada program ujian terjadwal.
-            </div>
-          ) : (
-            <div className="flex flex-col gap-3 lg:flex-row lg:items-center lg:justify-between">
-              <div className="min-w-0">
-                <div className="flex gap-4 overflow-x-auto scrollbar-hide">
-                  {visiblePrograms.map((program) => {
-                    const Icon = getProgramTabIcon(program.code);
-                    return (
-                      <button
-                        key={program.code}
-                        type="button"
-                        onClick={() => setActiveProgramCode(program.code)}
-                        className={`flex items-center gap-2 whitespace-nowrap border-b-2 px-3 py-3 text-sm font-medium transition-colors ${
-                          activeProgramCode === program.code
-                            ? 'border-blue-600 text-blue-700'
-                            : 'border-transparent text-gray-500 hover:border-gray-300 hover:text-gray-800'
-                        }`}
-                      >
-                        <Icon className="h-4 w-4" />
-                        {program.shortLabel || program.label || program.code}
-                      </button>
-                    );
-                  })}
-                </div>
-              </div>
-              {activeProgramCode ? (
-                <div className="flex shrink-0 items-center gap-2 rounded-lg border border-gray-200 bg-white px-3 py-2">
-                  <span className="text-sm font-medium text-gray-600">Semester</span>
-                  <select
-                    value={effectiveSemester}
-                    onChange={(event) => setSelectedSemester(event.target.value as 'ODD' | 'EVEN')}
-                    disabled={Boolean(activeProgram?.fixedSemester)}
-                    className={`min-w-[140px] rounded-lg border px-3 py-2 text-sm focus:border-blue-500 focus:outline-none ${
-                      activeProgram?.fixedSemester
-                        ? 'cursor-not-allowed border-slate-200 bg-slate-100 text-slate-600'
-                        : 'border-gray-300 bg-white'
-                    }`}
-                  >
-                    {activeProgram?.fixedSemester ? (
-                      <option value={activeProgram.fixedSemester}>
-                        {activeProgram.fixedSemester === 'EVEN' ? 'Genap' : 'Ganjil'}
-                      </option>
-                    ) : (
-                      <>
-                        <option value="ODD">Ganjil</option>
-                        <option value="EVEN">Genap</option>
-                      </>
-                    )}
-                  </select>
-                </div>
-              ) : null}
-            </div>
-          )}
+          <ExamProgramFilterBar
+            programs={visiblePrograms}
+            activeProgramCode={activeProgramCode}
+            onProgramChange={setActiveProgramCode}
+            showSemester={Boolean(activeProgramCode)}
+            semesterValue={effectiveSemester}
+            onSemesterChange={(value) => setSelectedSemester(value)}
+            semesterDisabled={Boolean(activeProgram?.fixedSemester)}
+            emptyMessage="Belum ada program ujian terjadwal."
+          />
         </div>
 
         <div className="rounded-xl border border-gray-100 bg-white shadow-sm">

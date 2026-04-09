@@ -23,6 +23,7 @@ import { id } from 'date-fns/locale';
 import { useActiveAcademicYear } from '../../../hooks/useActiveAcademicYear';
 import { examService, type ExamProgram } from '../../../services/exam.service';
 import { isNonScheduledExamProgram, resolveProgramCodeFromParam } from '../../../lib/examProgramMenu';
+import ExamProgramFilterBar from '../../../components/teacher/exams/ExamProgramFilterBar';
 // import { id } from 'date-fns/locale'; // Unused
 
 // --- Interfaces ---
@@ -1003,39 +1004,16 @@ const ExamProctorManagementPage = () => {
           Ruang ujian otomatis terdeteksi dari data "Kelola Ruang Ujian", dan daftar pengawas menampilkan semua guru.
         </p>
         
-        <div className="flex flex-wrap items-center gap-4 mt-6">
-          <div className="flex flex-wrap items-center gap-3">
-            <div className="flex space-x-1 bg-white p-1 rounded-lg border border-gray-200 w-fit">
-              {visiblePrograms.map((program) => (
-                <button
-                  key={program.code}
-                  onClick={() => setActiveProgramCode(program.code)}
-                  className={`
-                    px-4 py-2 text-[13px] font-medium rounded-md transition-colors
-                    ${activeProgramCode === program.code
-                      ? 'bg-blue-50 text-blue-700'
-                      : 'text-gray-600 hover:text-gray-900 hover:bg-gray-50'}
-                  `}
-                >
-                  {program.shortLabel || program.label || program.code}
-                </button>
-              ))}
-            </div>
-
-            {!activeProgram?.fixedSemester ? (
-              <div className="flex items-center gap-2 rounded-lg border border-gray-200 bg-white px-3 py-2">
-                <span className="text-sm font-medium text-gray-600">Semester</span>
-                <select
-                  value={selectedSemester}
-                  onChange={(event) => setSelectedSemester(event.target.value as 'ODD' | 'EVEN')}
-                  className="rounded-lg border border-gray-300 px-3 py-2 text-sm focus:border-blue-500 focus:outline-none"
-                >
-                  <option value="ODD">Ganjil</option>
-                  <option value="EVEN">Genap</option>
-                </select>
-              </div>
-            ) : null}
-          </div>
+        <div className="mt-6">
+          <ExamProgramFilterBar
+            programs={visiblePrograms}
+            activeProgramCode={activeProgramCode}
+            onProgramChange={setActiveProgramCode}
+            showSemester={Boolean(activeProgramCode)}
+            semesterValue={effectiveSemester}
+            onSemesterChange={(value) => setSelectedSemester(value)}
+            semesterDisabled={Boolean(activeProgram?.fixedSemester)}
+          />
         </div>
       </div>
 

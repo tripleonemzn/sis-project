@@ -6743,7 +6743,7 @@ export const createProgramSession = asyncHandler(async (req: Request, res: Respo
 });
 
 export const getSchedules = asyncHandler(async (req: Request, res: Response) => {
-    const { classId, academicYearId, examType, programCode, packetId, sessionLabel, sessionId, vacancyId } = req.query;
+    const { classId, academicYearId, examType, programCode, packetId, sessionLabel, sessionId, vacancyId, semester } = req.query;
     const where: Prisma.ExamScheduleWhereInput = {};
 
     if (classId) {
@@ -6751,6 +6751,9 @@ export const getSchedules = asyncHandler(async (req: Request, res: Response) => 
     }
     if (academicYearId) {
         where.academicYearId = Number(academicYearId);
+    }
+    if (semester !== undefined && semester !== null && String(semester).trim() !== '') {
+        where.semester = normalizeOptionalPacketSemester(semester);
     }
     if (vacancyId !== undefined && vacancyId !== null && String(vacancyId).trim() !== '') {
         const parsedVacancyId = Number(vacancyId);
@@ -7258,7 +7261,20 @@ export const createSchedule = asyncHandler(async (req: Request, res: Response) =
 
 export const updateSchedule = asyncHandler(async (req: Request, res: Response) => {
     const { id } = req.params;
-    const { startTime, endTime, proctorId, room, isActive, periodNumber, sessionId, sessionLabel } = req.body;
+    const {
+        startTime,
+        endTime,
+        proctorId,
+        room,
+        isActive,
+        periodNumber,
+        sessionId,
+        sessionLabel,
+        subjectId,
+        classId,
+        semester,
+        packetId,
+    } = req.body;
     const scheduleId = parseInt(id, 10);
     if (!Number.isFinite(scheduleId) || scheduleId <= 0) {
         throw new ApiError(400, 'id jadwal tidak valid.');
@@ -7270,15 +7286,22 @@ export const updateSchedule = asyncHandler(async (req: Request, res: Response) =
         where: { id: scheduleId },
         select: {
             id: true,
+            classId: true,
+            subjectId: true,
+            semester: true,
+            packetId: true,
             jobVacancyId: true,
             academicYearId: true,
             examType: true,
             packet: {
                 select: {
+                    id: true,
                     authorId: true,
                     academicYearId: true,
                     programCode: true,
                     type: true,
+                    subjectId: true,
+                    semester: true,
                 },
             },
         },
@@ -7311,10 +7334,138 @@ export const updateSchedule = asyncHandler(async (req: Request, res: Response) =
     }
 
     const hasSessionPayload = sessionId !== undefined || sessionLabel !== undefined;
+    const hasFundamentalPatch =
+        subjectId !== undefined || classId !== undefined || semester !== undefined || packetId !== undefined;
     const resolvedAcademicYearId =
         existingSchedule.packet?.academicYearId || existingSchedule.academicYearId || null;
     const resolvedProgramCode =
         existingSchedule.packet?.programCode || existingSchedule.examType || existingSchedule.packet?.type || null;
+
+    if (hasFundamentalPatch) {
+        const sessionCount = await prisma.studentExamSession.count({
+            where: { scheduleId },
+        });
+        if (sessionCount > 0) {
+            throw new ApiError(
+                400,
+                'Jadwal yang sudah memiliki sesi ujian siswa tidak boleh mengubah mapel, kelas, semester, atau packet.',
+            );
+        }
+    }
+
+    const resolvedSubjectId =
+        subjectId === undefined
+            ? Number(existingSchedule.subjectId || existingSchedule.packet?.subjectId || 0)
+            : Number(subjectId);
+    if (!Number.isFinite(resolvedSubjectId) || resolvedSubjectId <= 0) {
+        throw new ApiError(400, 'subjectId tidak valid.');
+    }
+
+    const resolvedClassId =
+        classId === undefined
+            ? existingSchedule.classId ?? null
+            : classId === null || String(classId).trim() === ''
+              ? null
+              : Number(classId);
+    if (resolvedClassId !== null && (!Number.isFinite(resolvedClassId) || resolvedClassId <= 0)) {
+        throw new ApiError(400, 'classId tidak valid.');
+    }
+    if (existingSchedule.jobVacancyId && resolvedClassId !== null) {
+        throw new ApiError(400, 'Jadwal tes BKK tidak boleh dikaitkan ke kelas reguler.');
+    }
+
+    const resolvedSemester =
+        semester === undefined
+            ? existingSchedule.semester || existingSchedule.packet?.semester || Semester.ODD
+            : normalizeOptionalPacketSemester(semester);
+    const normalizedProgramCode = normalizeProgramCode(resolvedProgramCode) || null;
+
+    if (resolvedClassId !== null && resolvedAcademicYearId) {
+        const assignmentRows = await prisma.teacherAssignment.findMany({
+            where: {
+                academicYearId: resolvedAcademicYearId,
+                subjectId: resolvedSubjectId,
+                classId: resolvedClassId,
+            },
+            select: {
+                classId: true,
+            },
+        });
+
+        if (assignmentRows.length === 0) {
+            const targetClass = await prisma.class.findUnique({
+                where: { id: resolvedClassId },
+                select: { name: true },
+            });
+            throw new ApiError(
+                400,
+                `Mapel ini belum punya assignment guru pada kelas: ${targetClass?.name || resolvedClassId}.`,
+            );
+        }
+
+        await assertScheduleClassLevelScope({
+            academicYearId: resolvedAcademicYearId,
+            programCode: normalizedProgramCode,
+            classIds: [resolvedClassId],
+        });
+    }
+
+    let resolvedPacketId: number | null | undefined = existingSchedule.packetId ?? null;
+    let normalizedExamType = normalizedProgramCode;
+
+    if (packetId !== undefined) {
+        if (packetId === null || String(packetId).trim() === '') {
+            resolvedPacketId = null;
+        } else {
+            const parsedPacketId = Number(packetId);
+            if (!Number.isFinite(parsedPacketId) || parsedPacketId <= 0) {
+                throw new ApiError(400, 'packetId tidak valid.');
+            }
+
+            const targetPacket = await prisma.examPacket.findUnique({
+                where: { id: parsedPacketId },
+                select: {
+                    id: true,
+                    academicYearId: true,
+                    subjectId: true,
+                    semester: true,
+                    programCode: true,
+                    type: true,
+                },
+            });
+            if (!targetPacket) {
+                throw new ApiError(404, 'Exam packet tidak ditemukan.');
+            }
+            if (resolvedAcademicYearId && targetPacket.academicYearId !== resolvedAcademicYearId) {
+                throw new ApiError(400, 'Packet ujian tidak berada pada tahun ajaran yang sama.');
+            }
+            if (targetPacket.subjectId !== resolvedSubjectId) {
+                throw new ApiError(400, 'Packet ujian harus sesuai dengan mapel yang dipilih.');
+            }
+            if (targetPacket.semester !== resolvedSemester) {
+                throw new ApiError(400, 'Packet ujian harus sesuai dengan semester jadwal.');
+            }
+            const packetProgramCode = normalizeProgramCode(targetPacket.programCode || targetPacket.type);
+            if (normalizedProgramCode && packetProgramCode && packetProgramCode !== normalizedProgramCode) {
+                throw new ApiError(400, 'Packet ujian harus sesuai dengan program ujian yang sedang aktif.');
+            }
+
+            resolvedPacketId = targetPacket.id;
+            normalizedExamType = packetProgramCode || normalizedProgramCode;
+        }
+    } else {
+        const existingPacketMatches =
+            existingSchedule.packet &&
+            Number(existingSchedule.packet.subjectId || 0) === resolvedSubjectId &&
+            existingSchedule.packet.semester === resolvedSemester &&
+            normalizeProgramCode(existingSchedule.packet.programCode || existingSchedule.packet.type) ===
+                normalizedProgramCode;
+        resolvedPacketId = existingPacketMatches && existingSchedule.packet ? existingSchedule.packet.id : null;
+    }
+
+    if (resolvedClassId === null && !existingSchedule.jobVacancyId && !resolvedPacketId) {
+        throw new ApiError(400, 'Jadwal tanpa kelas wajib memakai packet ujian.');
+    }
 
     const resolvedProgramSession =
         hasSessionPayload && resolvedAcademicYearId
@@ -7337,6 +7488,11 @@ export const updateSchedule = asyncHandler(async (req: Request, res: Response) =
             startTime: startTime ? new Date(startTime) : undefined,
             endTime: endTime ? new Date(endTime) : undefined,
             periodNumber: parsedPeriodNumber,
+            classId: resolvedClassId,
+            subjectId: resolvedSubjectId,
+            semester: resolvedSemester,
+            packetId: resolvedPacketId,
+            examType: normalizedExamType,
             proctorId: parsedProctorId,
             room,
             isActive,
@@ -7345,6 +7501,14 @@ export const updateSchedule = asyncHandler(async (req: Request, res: Response) =
         }
     });
     invalidateStartExamScheduleCache(scheduleId);
+    if (existingSchedule.packetId && existingSchedule.packetId !== resolvedPacketId) {
+        invalidatePacketItemAnalysisCacheByPacket(existingSchedule.packetId);
+        invalidatePacketSubmissionsCacheByPacket(existingSchedule.packetId);
+    }
+    if (resolvedPacketId) {
+        invalidatePacketItemAnalysisCacheByPacket(resolvedPacketId);
+        invalidatePacketSubmissionsCacheByPacket(resolvedPacketId);
+    }
     res.json(new ApiResponse(200, schedule, 'Exam schedule updated successfully'));
 });
 

@@ -16,6 +16,7 @@ import { useActiveAcademicYear } from '../../../hooks/useActiveAcademicYear';
 import { examService, type ExamProgram, type ExamProgramSession } from '../../../services/exam.service';
 import { isNonScheduledExamProgram, resolveProgramCodeFromParam } from '../../../lib/examProgramMenu';
 import { compareExamRoomName } from '../../../lib/examRoomSort';
+import ExamProgramFilterBar from '../../../components/teacher/exams/ExamProgramFilterBar';
 
 // --- Interfaces ---
 
@@ -1052,59 +1053,16 @@ const ExamSittingManagementPage = () => {
         </div>
 
         {/* Tabs */}
-        <div className="bg-white p-4 rounded-xl shadow-sm border border-gray-200 mt-6">
-          {visiblePrograms.length === 0 ? (
-            <p className="text-sm text-amber-700 bg-amber-50 border border-amber-200 rounded-lg px-3 py-2">
-              Belum ada Program Ujian aktif pada tahun ajaran ini.
-            </p>
-          ) : (
-            <div className="flex flex-col gap-3 lg:flex-row lg:items-center lg:justify-between">
-              <div className="min-w-0">
-                <div className="flex w-full gap-1 overflow-x-auto rounded-lg border border-gray-200 bg-white p-1 lg:w-fit">
-                  {visiblePrograms.map((program) => (
-                    <button
-                      key={program.code}
-                      onClick={() => setActiveProgramCode(program.code)}
-                      className={`
-                        px-4 py-2 text-[13px] font-medium rounded-md transition-colors
-                        ${activeProgramCode === program.code
-                          ? 'bg-blue-50 text-blue-700'
-                          : 'text-gray-600 hover:text-gray-900 hover:bg-gray-50'}
-                      `}
-                    >
-                      {program.shortLabel || program.label || program.code}
-                    </button>
-                  ))}
-                </div>
-              </div>
-              {activeProgramCode ? (
-                <div className="flex shrink-0 items-center gap-2 rounded-lg border border-gray-200 bg-white px-3 py-2">
-                  <span className="text-sm font-medium text-gray-600">Semester</span>
-                  <select
-                    value={effectiveSemester}
-                    onChange={(event) => setSelectedSemester((event.target.value as 'ODD' | 'EVEN') || 'ODD')}
-                    disabled={Boolean(activeProgram?.fixedSemester)}
-                    className={`min-w-[140px] rounded-lg border px-3 py-2 text-sm focus:border-blue-500 focus:outline-none ${
-                      activeProgram?.fixedSemester
-                        ? 'cursor-not-allowed border-slate-200 bg-slate-100 text-slate-600'
-                        : 'border-gray-300 bg-white'
-                    }`}
-                  >
-                    {activeProgram?.fixedSemester ? (
-                      <option value={activeProgram.fixedSemester}>
-                        {activeProgram.fixedSemester === 'EVEN' ? 'Genap' : 'Ganjil'}
-                      </option>
-                    ) : (
-                      <>
-                        <option value="ODD">Ganjil</option>
-                        <option value="EVEN">Genap</option>
-                      </>
-                    )}
-                  </select>
-                </div>
-              ) : null}
-            </div>
-          )}
+        <div className="mt-6">
+          <ExamProgramFilterBar
+            programs={visiblePrograms}
+            activeProgramCode={activeProgramCode}
+            onProgramChange={setActiveProgramCode}
+            showSemester={Boolean(activeProgramCode)}
+            semesterValue={effectiveSemester}
+            onSemesterChange={(value) => setSelectedSemester(value)}
+            semesterDisabled={Boolean(activeProgram?.fixedSemester)}
+          />
         </div>
       </div>
 

@@ -549,6 +549,11 @@ export const examApi = {
       proctorId?: number;
       room?: string | null;
       isActive?: boolean;
+      sessionId?: number | null;
+      subjectId?: number;
+      classId?: number | null;
+      semester?: 'ODD' | 'EVEN';
+      packetId?: number | null;
     },
   ) {
     const response = await apiClient.patch<TeacherScheduleMutationResponse>(

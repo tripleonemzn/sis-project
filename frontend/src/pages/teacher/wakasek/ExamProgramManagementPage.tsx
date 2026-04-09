@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useMemo, useState } from 'react';
-import { Loader2, Pencil, Plus, RefreshCw, Save, Trash2, X } from 'lucide-react';
+import { ClipboardList, Layout, Loader2, Pencil, Plus, RefreshCw, Save, Trash2, X } from 'lucide-react';
 import { toast } from 'react-hot-toast';
 import { useQueryClient } from '@tanstack/react-query';
 import { useSearchParams } from 'react-router-dom';
@@ -1397,28 +1397,30 @@ export default function ExamProgramManagementPage() {
         </div>
       ) : null}
 
-      <div className="order-5 rounded-xl border border-gray-200 bg-white px-4 py-3">
-        <div className="flex overflow-x-auto gap-4">
+      <div className="order-5 bg-white">
+        <div className="flex overflow-x-auto gap-4 border-b border-gray-200">
           <button
             type="button"
             onClick={() => setActiveTab('PROGRAM')}
-            className={`flex items-center gap-2 px-4 py-2 border-b-2 whitespace-nowrap transition-colors text-[13px] ${
+            className={`flex items-center gap-2 px-4 py-3 border-b-2 whitespace-nowrap transition-colors text-[13px] ${
               activeTab === 'PROGRAM'
                 ? 'border-blue-600 text-blue-600 font-medium'
                 : 'border-transparent text-gray-500 hover:text-gray-700 hover:border-gray-300'
             }`}
           >
+            <Layout className="h-4 w-4" />
             Program Ujian
           </button>
           <button
             type="button"
             onClick={() => setActiveTab('COMPONENT')}
-            className={`flex items-center gap-2 px-4 py-2 border-b-2 whitespace-nowrap transition-colors text-[13px] ${
+            className={`flex items-center gap-2 px-4 py-3 border-b-2 whitespace-nowrap transition-colors text-[13px] ${
               activeTab === 'COMPONENT'
                 ? 'border-blue-600 text-blue-600 font-medium'
                 : 'border-transparent text-gray-500 hover:text-gray-700 hover:border-gray-300'
             }`}
           >
+            <ClipboardList className="h-4 w-4" />
             Master Komponen Nilai
           </button>
         </div>

@@ -842,6 +842,10 @@ export const examService = {
             isActive?: boolean;
             sessionId?: number | null;
             sessionLabel?: string | null;
+            subjectId?: number;
+            classId?: number | null;
+            semester?: 'ODD' | 'EVEN';
+            packetId?: number | null;
         },
     ) => {
         const response = await api.patch(`/exams/schedules/${id}`, data);

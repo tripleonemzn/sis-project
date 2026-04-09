@@ -21,7 +21,7 @@ import { QueryStateView } from '../../../src/components/QueryStateView';
 import { BRAND_COLORS } from '../../../src/config/brand';
 import { useAuth } from '../../../src/features/auth/AuthProvider';
 import { academicYearApi } from '../../../src/features/academicYear/academicYearApi';
-import { AdminSubject, type AdminScheduleTimeConfigPayload, AdminUser, adminApi } from '../../../src/features/admin/adminApi';
+import { AdminClass, AdminSubject, AdminUser, adminApi } from '../../../src/features/admin/adminApi';
 import {
   examApi,
   ExamFinanceClearanceMode,
@@ -237,6 +237,21 @@ function normalizeClassLevelScope(values: unknown): string[] {
     }
   });
   return Array.from(unique);
+}
+
+function normalizeClassLevelToken(raw: unknown): string {
+  const value = String(raw || '')
+    .trim()
+    .toUpperCase()
+    .replace(/\s+/g, '');
+  if (!value) return '';
+  if (value === '10' || value === 'X') return 'X';
+  if (value === '11' || value === 'XI') return 'XI';
+  if (value === '12' || value === 'XII') return 'XII';
+  if (value.startsWith('XII')) return 'XII';
+  if (value.startsWith('XI')) return 'XI';
+  if (value.startsWith('X')) return 'X';
+  return '';
 }
 
 function normalizeNumericIds(values: unknown): number[] {
@@ -856,12 +871,17 @@ export default function TeacherWakakurExamsScreen() {
   const [scheduleEditorVisible, setScheduleEditorVisible] = useState(false);
   const [editingSchedule, setEditingSchedule] = useState<TeacherExamSchedule | null>(null);
   const [scheduleEditForm, setScheduleEditForm] = useState({
+    subjectId: '',
+    classId: '',
+    semester: 'ODD' as 'ODD' | 'EVEN',
     date: '',
     startTime: '',
     endTime: '',
     periodNumber: '',
     sessionId: '',
   });
+  const [newSchedulePeriodDraft, setNewSchedulePeriodDraft] = useState('');
+  const [customSchedulePeriods, setCustomSchedulePeriods] = useState<number[]>([]);
   const [selectedMakeupSchedule, setSelectedMakeupSchedule] = useState<TeacherExamSchedule | null>(null);
   const [makeupOverview, setMakeupOverview] = useState<ExamScheduleMakeupOverview | null>(null);
   const [makeupModalVisible, setMakeupModalVisible] = useState(false);
@@ -1046,11 +1066,17 @@ export default function TeacherWakakurExamsScreen() {
     },
   });
 
-  const scheduleTimeConfigQuery = useQuery({
-    queryKey: ['mobile-wakakur-schedule-time-config', activeYearQuery.data?.id],
+  const classesQuery = useQuery({
+    queryKey: ['mobile-wakakur-exam-classes', activeYearQuery.data?.id],
     enabled: isAuthenticated && !!isAllowed && Boolean(activeYearQuery.data?.id),
-    staleTime: 5 * 60 * 1000,
-    queryFn: async () => adminApi.getScheduleTimeConfig(activeYearQuery.data?.id),
+    queryFn: async () => {
+      const result = await adminApi.listClasses({
+        page: 1,
+        limit: 1000,
+        academicYearId: activeYearQuery.data?.id,
+      });
+      return result.items || [];
+    },
   });
 
   const programSessionsQuery = useQuery({
@@ -1113,6 +1139,9 @@ export default function TeacherWakakurExamsScreen() {
         endTime: string;
         periodNumber: number;
         sessionId: number | null;
+        subjectId: number;
+        classId: number | null;
+        semester: 'ODD' | 'EVEN';
       };
     }) => examApi.updateTeacherSchedule(payload.scheduleId, payload.data),
     onSuccess: async () => {
@@ -1124,12 +1153,17 @@ export default function TeacherWakakurExamsScreen() {
       setScheduleEditorVisible(false);
       setEditingSchedule(null);
       setScheduleEditForm({
+        subjectId: '',
+        classId: '',
+        semester: 'ODD',
         date: '',
         startTime: '',
         endTime: '',
         periodNumber: '',
         sessionId: '',
       });
+      setNewSchedulePeriodDraft('');
+      setCustomSchedulePeriods([]);
       Alert.alert('Sukses', 'Jadwal ujian berhasil diperbarui.');
     },
     onError: (error: unknown) => {
@@ -1357,52 +1391,44 @@ export default function TeacherWakakurExamsScreen() {
     selectedSemester ||
     (activeYearQuery.data?.semester === 'EVEN' ? 'EVEN' : 'ODD');
 
-  const selectedScheduleEditDayKey = useMemo(
-    () => getExamDayKey(scheduleEditForm.date),
-    [scheduleEditForm.date],
-  );
   const selectedScheduleEditDayLabel = useMemo(
     () => getExamDayLabel(scheduleEditForm.date),
     [scheduleEditForm.date],
   );
   const scheduleEditPeriodOptions = useMemo(() => {
-    const scheduleConfig = scheduleTimeConfigQuery.data?.config as AdminScheduleTimeConfigPayload | undefined;
-    const periodTimes = scheduleConfig?.periodTimes || {};
-    const selectedDayPeriodTimes =
-      selectedScheduleEditDayKey && selectedScheduleEditDayKey !== 'SUNDAY'
-        ? periodTimes[selectedScheduleEditDayKey] || {}
-        : {};
+    const collected = new Set<number>();
 
-    const sourcePeriodMap =
-      Object.keys(selectedDayPeriodTimes).length > 0
-        ? selectedDayPeriodTimes
-        : Object.values(periodTimes).reduce<Record<number, string>>((accumulator, dayMap) => {
-            Object.entries(dayMap || {}).forEach(([period, timeLabel]) => {
-              const numericPeriod = Number(period);
-              if (Number.isInteger(numericPeriod) && numericPeriod > 0 && !accumulator[numericPeriod]) {
-                accumulator[numericPeriod] = String(timeLabel || '').trim();
-              }
-            });
-            return accumulator;
-          }, {});
+    schedules.forEach((schedule) => {
+      const value = Number(schedule.periodNumber || 0);
+      if (Number.isInteger(value) && value > 0) {
+        collected.add(value);
+      }
+    });
 
-    const candidateEntries = Object.entries(sourcePeriodMap)
-      .map(([period, timeLabel]) => ({
-        periodNumber: Number(period),
-        timeLabel: String(timeLabel || '').trim(),
-      }))
-      .filter((item) => Number.isInteger(item.periodNumber) && item.periodNumber > 0)
-      .sort((left, right) => left.periodNumber - right.periodNumber);
+    customSchedulePeriods.forEach((value) => {
+      if (Number.isInteger(value) && value > 0) {
+        collected.add(value);
+      }
+    });
 
-    if (candidateEntries.length === 0) {
-      return FALLBACK_EXAM_PERIOD_OPTIONS;
+    const currentValue = Number(scheduleEditForm.periodNumber || 0);
+    if (Number.isInteger(currentValue) && currentValue > 0) {
+      collected.add(currentValue);
     }
 
-    return candidateEntries.map((item) => ({
-      value: String(item.periodNumber),
-      label: item.timeLabel ? `Jam Ke-${item.periodNumber} • ${item.timeLabel}` : `Jam Ke-${item.periodNumber}`,
+    const values = Array.from(collected).sort((left, right) => left - right);
+    if (values.length === 0) {
+      return FALLBACK_EXAM_PERIOD_OPTIONS.map((item) => ({
+        value: item.value,
+        label: item.label,
+      }));
+    }
+
+    return values.map((value) => ({
+      value: String(value),
+      label: `Jam Ke-${value}`,
     }));
-  }, [scheduleTimeConfigQuery.data?.config, selectedScheduleEditDayKey]);
+  }, [customSchedulePeriods, scheduleEditForm.periodNumber, schedules]);
   const scheduleSessionOptions = useMemo(
     () => [
       { value: '', label: 'Tanpa sesi' },
@@ -1413,6 +1439,83 @@ export default function TeacherWakakurExamsScreen() {
     ],
     [programSessionsQuery.data],
   );
+
+  const teachers = useMemo(
+    () =>
+      (teachersQuery.data || [])
+        .map((item: AdminUser) => ({
+          id: item.id,
+          name: item.name,
+          username: item.username,
+        }))
+        .sort((a, b) => a.name.localeCompare(b.name, 'id')),
+    [teachersQuery.data],
+  );
+
+  const subjects = useMemo(
+    () =>
+      (subjectsQuery.data || [])
+        .map((item: AdminSubject) => ({
+          id: item.id,
+          code: item.code,
+          name: item.name,
+        }))
+        .sort((a, b) => {
+          const nameCompare = a.name.localeCompare(b.name, 'id');
+          if (nameCompare !== 0) return nameCompare;
+          return a.code.localeCompare(b.code, 'id');
+        }),
+    [subjectsQuery.data],
+  );
+
+  const classes = useMemo(
+    () =>
+      (classesQuery.data || [])
+        .map((item: AdminClass) => ({
+          id: item.id,
+          name: item.name,
+          level: item.level,
+        }))
+        .sort((a, b) => a.name.localeCompare(b.name, 'id')),
+    [classesQuery.data],
+  );
+
+  const editingProgramConfig = useMemo(() => {
+    const programs = examProgramsQuery.data?.programs || [];
+    const targetCode = normalizeProgramCode(editingSchedule?.examType || editingSchedule?.packet?.type || '');
+    return programs.find((program) => normalizeProgramCode(program.code) === targetCode) || null;
+  }, [editingSchedule?.examType, editingSchedule?.packet?.type, examProgramsQuery.data?.programs]);
+
+  const scheduleEditSubjectOptions = useMemo(() => {
+    const allowedSubjectIds = new Set(normalizeNumericIds(editingProgramConfig?.allowedSubjectIds));
+    const currentSubjectId = Number(
+      scheduleEditForm.subjectId || editingSchedule?.subjectId || editingSchedule?.packet?.subject?.id || 0,
+    );
+    return subjects
+      .filter((subject) => {
+        if (allowedSubjectIds.size === 0) return true;
+        return allowedSubjectIds.has(subject.id) || subject.id === currentSubjectId;
+      })
+      .map((subject) => ({
+        label: `${subject.name} (${subject.code})`,
+        value: String(subject.id),
+      }));
+  }, [editingProgramConfig?.allowedSubjectIds, editingSchedule?.subjectId, scheduleEditForm.subjectId, subjects]);
+
+  const scheduleEditClassOptions = useMemo(() => {
+    const allowedLevels = new Set(normalizeClassLevelScope(editingProgramConfig?.targetClassLevels));
+    const currentClassId = Number(scheduleEditForm.classId || editingSchedule?.classId || 0);
+    return classes
+      .filter((item) => {
+        if (allowedLevels.size === 0) return true;
+        const normalizedLevel = normalizeClassLevelToken(item.level || item.name);
+        return allowedLevels.has(normalizedLevel) || item.id === currentClassId;
+      })
+      .map((item) => ({
+        label: item.name,
+        value: String(item.id),
+      }));
+  }, [classes, editingProgramConfig?.targetClassLevels, editingSchedule?.classId, scheduleEditForm.classId]);
 
   useEffect(() => {
     if (examTypeFilter === 'ALL') return;
@@ -1448,33 +1551,31 @@ export default function TeacherWakakurExamsScreen() {
     });
   }, [scheduleEditorVisible, scheduleSessionOptions]);
 
-  const teachers = useMemo(
-    () =>
-      (teachersQuery.data || [])
-        .map((item: AdminUser) => ({
-          id: item.id,
-          name: item.name,
-          username: item.username,
-        }))
-        .sort((a, b) => a.name.localeCompare(b.name, 'id')),
-    [teachersQuery.data],
-  );
+  useEffect(() => {
+    if (!scheduleEditorVisible) return;
+    const fixedSemester = editingProgramConfig?.fixedSemester;
+    if (fixedSemester !== 'ODD' && fixedSemester !== 'EVEN') return;
+    setScheduleEditForm((prev) =>
+      prev.semester === fixedSemester
+        ? prev
+        : { ...prev, semester: fixedSemester },
+    );
+  }, [editingProgramConfig?.fixedSemester, scheduleEditorVisible]);
 
-  const subjects = useMemo(
-    () =>
-      (subjectsQuery.data || [])
-        .map((item: AdminSubject) => ({
-          id: item.id,
-          code: item.code,
-          name: item.name,
-        }))
-        .sort((a, b) => {
-          const nameCompare = a.name.localeCompare(b.name, 'id');
-          if (nameCompare !== 0) return nameCompare;
-          return a.code.localeCompare(b.code, 'id');
-        }),
-    [subjectsQuery.data],
-  );
+  useEffect(() => {
+    if (!scheduleEditorVisible) return;
+    setScheduleEditForm((prev) => {
+      const subjectValid =
+        !prev.subjectId || scheduleEditSubjectOptions.some((option) => option.value === prev.subjectId);
+      const classValid = !prev.classId || scheduleEditClassOptions.some((option) => option.value === prev.classId);
+      if (subjectValid && classValid) return prev;
+      return {
+        ...prev,
+        subjectId: subjectValid ? prev.subjectId : '',
+        classId: classValid ? prev.classId : '',
+      };
+    });
+  }, [scheduleEditClassOptions, scheduleEditSubjectOptions, scheduleEditorVisible]);
 
   const filteredSchedules = useMemo(() => {
     const query = search.trim().toLowerCase();
@@ -2178,29 +2279,64 @@ export default function TeacherWakakurExamsScreen() {
     setScheduleEditorVisible(false);
     setEditingSchedule(null);
     setScheduleEditForm({
+      subjectId: '',
+      classId: '',
+      semester: 'ODD',
       date: '',
       startTime: '',
       endTime: '',
       periodNumber: '',
       sessionId: '',
     });
+    setNewSchedulePeriodDraft('');
+    setCustomSchedulePeriods([]);
   };
 
   const openScheduleEditor = (schedule: TeacherExamSchedule) => {
+    const targetProgram = (examProgramsQuery.data?.programs || []).find(
+      (program) => normalizeProgramCode(program.code) === normalizeProgramCode(schedule.examType || schedule.packet?.type || ''),
+    );
     setEditingSchedule(schedule);
     setScheduleEditForm({
+      subjectId: schedule.subject?.id ? String(schedule.subject.id) : schedule.packet?.subject?.id ? String(schedule.packet.subject.id) : '',
+      classId: schedule.classId ? String(schedule.classId) : '',
+      semester:
+        targetProgram?.fixedSemester ||
+        (schedule.semester === 'EVEN' ? 'EVEN' : schedule.semester === 'ODD' ? 'ODD' : effectiveSemester),
       date: toInputDateValue(schedule.startTime),
       startTime: toInputTimeValue(schedule.startTime),
       endTime: toInputTimeValue(schedule.endTime),
       periodNumber: schedule.periodNumber ? String(schedule.periodNumber) : '',
       sessionId: schedule.sessionId ? String(schedule.sessionId) : '',
     });
+    setNewSchedulePeriodDraft('');
+    setCustomSchedulePeriods([]);
     setScheduleEditorVisible(true);
+  };
+
+  const handleAddSchedulePeriodOption = () => {
+    const parsed = Number(newSchedulePeriodDraft);
+    if (!Number.isInteger(parsed) || parsed <= 0) {
+      Alert.alert('Validasi', 'Jam ke baru harus berupa angka bulat positif.');
+      return;
+    }
+
+    setCustomSchedulePeriods((prev) => (prev.includes(parsed) ? prev : [...prev, parsed].sort((a, b) => a - b)));
+    setScheduleEditForm((prev) => ({ ...prev, periodNumber: String(parsed) }));
+    setNewSchedulePeriodDraft('');
   };
 
   const handleSaveScheduleEdit = () => {
     if (!editingSchedule) {
       Alert.alert('Validasi', 'Pilih jadwal yang ingin diedit terlebih dahulu.');
+      return;
+    }
+    if (!scheduleEditForm.subjectId) {
+      Alert.alert('Validasi', 'Pilih mata pelajaran terlebih dahulu.');
+      return;
+    }
+    if (editingSchedule.classId && !scheduleEditForm.classId) {
+      Alert.alert('Validasi', 'Pilih kelas terlebih dahulu.');
       return;
     }
     if (
@@ -2220,6 +2356,9 @@ export default function TeacherWakakurExamsScreen() {
         endTime: composeScheduleDateTime(scheduleEditForm.date, scheduleEditForm.endTime),
         periodNumber: Number(scheduleEditForm.periodNumber),
         sessionId: scheduleEditForm.sessionId ? Number(scheduleEditForm.sessionId) : null,
+        subjectId: Number(scheduleEditForm.subjectId),
+        classId: scheduleEditForm.classId ? Number(scheduleEditForm.classId) : null,
+        semester: (editingProgramConfig?.fixedSemester || scheduleEditForm.semester || effectiveSemester) as 'ODD' | 'EVEN',
       },
     });
   };
@@ -4315,7 +4454,7 @@ export default function TeacherWakakurExamsScreen() {
       <MobileDetailModal
         visible={scheduleEditorVisible}
         title="Edit Jadwal Ujian"
-        subtitle="Gunakan popup ini untuk melengkapi jam ke, tanggal, waktu ujian, dan sesi pada jadwal yang sudah dibuat."
+        subtitle="Gunakan popup ini untuk merapikan semester, mapel, kelas, jam ke, tanggal, waktu ujian, dan sesi pada jadwal yang sudah dibuat."
         iconName="edit-3"
         accentColor="#1d4ed8"
         onClose={closeScheduleEditor}
@@ -4341,6 +4480,57 @@ export default function TeacherWakakurExamsScreen() {
               Program: {examTypeLabel(normalizeProgramCode(editingSchedule.examType || '') || editingSchedule.examType || 'FORMATIF')}
             </Text>
           </View>
+        ) : null}
+
+        {editingProgramConfig?.fixedSemester ? (
+          <MobileSelectField
+            label="Semester"
+            value={editingProgramConfig.fixedSemester}
+            options={[
+              { label: 'Ganjil', value: 'ODD' },
+              { label: 'Genap', value: 'EVEN' },
+            ]}
+            onChange={() => undefined}
+            disabled
+            helperText={`Program ini terkunci di semester ${editingProgramConfig.fixedSemester === 'ODD' ? 'Ganjil' : 'Genap'}.`}
+          />
+        ) : (
+          <MobileSelectField
+            label="Semester"
+            value={scheduleEditForm.semester}
+            options={[
+              { label: 'Ganjil', value: 'ODD' },
+              { label: 'Genap', value: 'EVEN' },
+            ]}
+            onChange={(value) =>
+              setScheduleEditForm((prev) => ({
+                ...prev,
+                semester: (value as 'ODD' | 'EVEN') || 'ODD',
+              }))
+            }
+            placeholder="Pilih semester"
+            helperText="Semester jadwal ujian harus sejalan dengan program ujian aktif."
+          />
+        )}
+
+        <MobileSelectField
+          label="Mata Pelajaran"
+          value={scheduleEditForm.subjectId}
+          options={scheduleEditSubjectOptions}
+          onChange={(value) => setScheduleEditForm((prev) => ({ ...prev, subjectId: String(value || '') }))}
+          placeholder={subjectsQuery.isLoading ? 'Memuat mapel...' : 'Pilih mata pelajaran'}
+          helperText="Mapel bisa disesuaikan selama jadwal belum dipakai sesi ujian siswa."
+        />
+
+        {editingSchedule?.classId ? (
+          <MobileSelectField
+            label="Kelas"
+            value={scheduleEditForm.classId}
+            options={scheduleEditClassOptions}
+            onChange={(value) => setScheduleEditForm((prev) => ({ ...prev, classId: String(value || '') }))}
+            placeholder={classesQuery.isLoading ? 'Memuat kelas...' : 'Pilih kelas'}
+            helperText="Gunakan edit ini untuk memindahkan satu jadwal ke kelas lain yang masih sesuai scope program."
+          />
         ) : null}
 
         <MobileSelectField
@@ -4393,8 +4583,45 @@ export default function TeacherWakakurExamsScreen() {
           options={scheduleEditPeriodOptions}
           onChange={(value) => setScheduleEditForm((prev) => ({ ...prev, periodNumber: String(value || '') }))}
           placeholder="Pilih jam ke"
-          helperText="Slot jam ke mengikuti master jadwal harian bila tersedia, lalu tetap bisa dipadukan dengan waktu ujian aktual."
+          helperText="Jam ke dipakai sebagai urutan slot ujian. Tambahkan nomor baru bila dibutuhkan."
         />
+
+        <View style={{ flexDirection: 'row', gap: 10, marginBottom: 10 }}>
+          <View style={{ flex: 1 }}>
+            <Text style={{ fontSize: 12, color: BRAND_COLORS.textMuted, marginBottom: 6 }}>Tambah Jam Ke Baru</Text>
+            <TextInput
+              value={newSchedulePeriodDraft}
+              onChangeText={setNewSchedulePeriodDraft}
+              placeholder="Contoh: 7"
+              keyboardType="number-pad"
+              placeholderTextColor="#94a3b8"
+              style={{
+                borderWidth: 1,
+                borderColor: '#d5e1f5',
+                borderRadius: 12,
+                backgroundColor: '#fff',
+                paddingHorizontal: 12,
+                paddingVertical: 11,
+                color: BRAND_COLORS.textDark,
+              }}
+            />
+          </View>
+          <View style={{ justifyContent: 'flex-end' }}>
+            <Pressable
+              onPress={handleAddSchedulePeriodOption}
+              style={{
+                borderWidth: 1,
+                borderColor: '#d5e1f5',
+                backgroundColor: '#fff',
+                borderRadius: 10,
+                paddingVertical: 11,
+                paddingHorizontal: 14,
+              }}
+            >
+              <Text style={{ color: BRAND_COLORS.textDark, fontWeight: '700' }}>Tambah</Text>
+            </Pressable>
+          </View>
+        </View>
 
         <View style={{ flexDirection: 'row', gap: 10, marginBottom: 10 }}>
           <View style={{ flex: 1 }}>
