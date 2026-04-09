@@ -3760,6 +3760,134 @@ function normalizeQuestionCard(raw: unknown): ExamQuestionCard | undefined {
     return Object.values(normalized).some(Boolean) ? normalized : undefined;
 }
 
+function decodeQuestionHtmlToText(value: unknown): string {
+    return String(value || '')
+        .replace(/<br\s*\/?>/gi, '\n')
+        .replace(/<\/p>\s*<p>/gi, '\n')
+        .replace(/<\/div>\s*<div>/gi, '\n')
+        .replace(/<li\b[^>]*>/gi, '- ')
+        .replace(/<\/li>/gi, '\n')
+        .replace(/<\/(p|div|ul|ol|table|tr|section|article|blockquote)>/gi, '\n')
+        .replace(/<[^>]*>/g, ' ')
+        .replace(/&nbsp;/gi, ' ')
+        .replace(/&amp;/gi, '&')
+        .replace(/&lt;/gi, '<')
+        .replace(/&gt;/gi, '>')
+        .replace(/&quot;/gi, '"')
+        .replace(/&#39;/gi, "'")
+        .replace(/\u00a0/g, ' ')
+        .replace(/[ \t]+\n/g, '\n')
+        .replace(/\n[ \t]+/g, '\n')
+        .replace(/\n{3,}/g, '\n\n')
+        .replace(/[ \t]{2,}/g, ' ')
+        .trim();
+}
+
+function getQuestionOptionLabel(index: number): string {
+    const normalizedIndex = Math.max(0, Number(index) || 0);
+    return String.fromCharCode(65 + (normalizedIndex % 26));
+}
+
+function normalizeQuestionCardOption(option: unknown, index: number): {
+    id?: string;
+    text: string;
+    isCorrect: boolean;
+    imageUrl?: string;
+    label: string;
+} {
+    const source = asRecord(option);
+    const text = decodeQuestionHtmlToText(
+        source?.content ?? source?.text ?? source?.label ?? source?.optionText ?? source?.value ?? '',
+    );
+    return {
+        id: source?.id ? String(source.id) : undefined,
+        text,
+        isCorrect: Boolean(source?.isCorrect),
+        imageUrl: normalizeOptionalString(source?.image_url ?? source?.option_image_url, 2048),
+        label: getQuestionOptionLabel(index),
+    };
+}
+
+function buildDerivedQuestionStimulus(question: NormalizedExamQuestion): string | undefined {
+    const lines: string[] = [];
+    const questionText = decodeQuestionHtmlToText(question.content);
+    if (questionText) lines.push(questionText);
+
+    if (question.question_image_url) {
+        lines.push(`Media soal: ${question.question_image_url}`);
+    }
+    if (question.question_video_url) {
+        lines.push(`Video soal: ${question.question_video_url}`);
+    }
+
+    const optionLines = (Array.isArray(question.options) ? question.options : [])
+        .map((option, index) => normalizeQuestionCardOption(option, index))
+        .map((option) => {
+            const parts = [`${option.label}. ${option.text || 'Opsi tanpa teks'}`];
+            if (option.imageUrl) {
+                parts.push(`Media opsi ${option.label}: ${option.imageUrl}`);
+            }
+            return parts.join('\n');
+        })
+        .filter(Boolean);
+
+    if (optionLines.length > 0) {
+        lines.push(optionLines.join('\n'));
+    }
+
+    const normalized = lines.filter(Boolean).join('\n\n').trim();
+    return normalized || undefined;
+}
+
+function buildDerivedQuestionAnswerKey(question: NormalizedExamQuestion): string | undefined {
+    if (String(question.type || '').toUpperCase() === 'ESSAY') {
+        return 'Jawaban esai diperiksa manual oleh guru.';
+    }
+
+    const options = (Array.isArray(question.options) ? question.options : []).map((option, index) =>
+        normalizeQuestionCardOption(option, index),
+    );
+    if (options.length === 0) {
+        return normalizeOptionalString(question.answerKey, 1000);
+    }
+
+    const explicitAnswerKeyIds = String(question.answerKey || '')
+        .split(',')
+        .map((item) => item.trim())
+        .filter(Boolean);
+    const correctOptions = options.filter((option) =>
+        explicitAnswerKeyIds.length > 0
+            ? Boolean(option.id && explicitAnswerKeyIds.includes(option.id))
+            : option.isCorrect,
+    );
+
+    if (correctOptions.length === 0) {
+        return normalizeOptionalString(question.answerKey, 1000);
+    }
+
+    const lines = correctOptions.map((option) => {
+        const parts = [`${option.label}. ${option.text || 'Opsi benar tanpa teks'}`];
+        if (option.imageUrl) {
+            parts.push(`Media opsi ${option.label}: ${option.imageUrl}`);
+        }
+        return parts.join('\n');
+    });
+
+    return lines.join('\n\n').trim() || undefined;
+}
+
+function buildDerivedQuestionCard(question: NormalizedExamQuestion): ExamQuestionCard | undefined {
+    const blueprint = question.blueprint || {};
+    const normalized: ExamQuestionCard = {
+        stimulus: buildDerivedQuestionStimulus(question),
+        answerRationale: normalizeOptionalString(blueprint.indicator, 2000),
+        scoringGuideline: buildDerivedQuestionAnswerKey(question),
+        distractorNotes: normalizeOptionalString(blueprint.cognitiveLevel, 2000),
+    };
+
+    return Object.values(normalized).some(Boolean) ? normalized : undefined;
+}
+
 function normalizeReviewFeedback(raw: unknown): ExamQuestionReviewFeedback | undefined {
     const source = asRecord(raw);
     if (!source) return undefined;
@@ -3869,6 +3997,7 @@ function normalizeExamQuestionPayload(question: unknown, index: number): Normali
 
     const metadata = asRecord(source.metadata);
     const scoreRaw = normalizeOptionalNumber(source.score);
+    const blueprint = normalizeBlueprint(source.blueprint ?? metadata?.blueprint);
     const normalized: NormalizedExamQuestion = {
         id: String(source.id || `q-${index + 1}`),
         type: String(source.type || source.question_type || 'MULTIPLE_CHOICE'),
@@ -3880,11 +4009,13 @@ function normalizeExamQuestionPayload(question: unknown, index: number): Normali
         question_video_url: normalizeOptionalString(source.question_video_url, 2048),
         question_video_type: normalizeOptionalString(source.question_video_type, 20),
         question_media_position: normalizeOptionalString(source.question_media_position, 20),
-        blueprint: normalizeBlueprint(source.blueprint ?? metadata?.blueprint),
-        questionCard: normalizeQuestionCard(source.questionCard ?? metadata?.questionCard),
+        blueprint,
+        questionCard: undefined,
         itemAnalysis: normalizeItemAnalysis(source.itemAnalysis ?? metadata?.itemAnalysis),
         reviewFeedback: normalizeReviewFeedback(source.reviewFeedback ?? metadata?.reviewFeedback),
     };
+
+    normalized.questionCard = buildDerivedQuestionCard(normalized);
 
     return normalized;
 }
@@ -6578,14 +6709,28 @@ export const getQuestions = asyncHandler(async (req: Request, res: Response) => 
 
     // Role-Based Filtering
     if (user.role === 'TEACHER') {
-        // Get teacher assignments to filter subjects
-        // We fetch assignments from ALL academic years to ensure teachers can see their questions from previous years
+        const assignmentWhere: Prisma.TeacherAssignmentWhereInput = {
+            teacherId: Number(user.id),
+        };
+        if (academicYearId) {
+            const normalizedAcademicYearId = parseInt(academicYearId as string);
+            if (Number.isFinite(normalizedAcademicYearId) && normalizedAcademicYearId > 0) {
+                assignmentWhere.academicYearId = normalizedAcademicYearId;
+            }
+        }
+
         const assignments = await prisma.teacherAssignment.findMany({
-            where: { teacherId: user.id },
-            select: { subjectId: true }
+            where: assignmentWhere,
+            select: { subjectId: true },
         });
 
-        const assignedSubjectIds = assignments.map(a => a.subjectId);
+        const assignedSubjectIds = Array.from(
+            new Set(
+                assignments
+                    .map((assignment) => Number(assignment.subjectId))
+                    .filter((subject) => Number.isFinite(subject) && subject > 0),
+            ),
+        );
 
         // If teacher has NO assignments, they see NOTHING
         if (assignedSubjectIds.length === 0) {
@@ -6599,6 +6744,8 @@ export const getQuestions = asyncHandler(async (req: Request, res: Response) => 
                 }
             }));
         }
+
+        bankWhere.authorId = Number(user.id);
 
         if (subjectId) {
             const requestedSubjectId = parseInt(subjectId as string);

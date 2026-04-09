@@ -32,6 +32,7 @@ import { QuestionBankModal } from '../../../components/teacher/exams/QuestionBan
 import { ExamStudentPreviewSurface, type ExamStudentPreviewQuestion } from '../../../components/teacher/exams/ExamStudentPreviewSurface';
 import { ConfirmationModal } from '../../../components/common/ConfirmationModal';
 import type { UserWrite } from '../../../types/auth';
+import { enhanceQuestionHtml } from '../../../utils/questionMedia';
 
 // Extended Question interface for UI state and Backend Payload compatibility
 interface ExtendedQuestion extends Question {
@@ -369,6 +370,193 @@ interface PacketForm {
   questions: ExtendedQuestion[];
 }
 
+type ExamEditorDraftShape = {
+    form?: Partial<PacketForm>;
+    questions?: unknown;
+};
+
+type ExamEditorDraftEnvelope = {
+    updatedAt: string;
+    draft: ExamEditorDraftShape;
+};
+
+const EXAM_EDITOR_DRAFT_STORAGE_PREFIX = 'sis:teacher:exam-editor:draft:';
+
+function isRecord(value: unknown): value is Record<string, unknown> {
+    return typeof value === 'object' && value !== null && !Array.isArray(value);
+}
+
+function getLocalExamDraftStorageKey(userId: number): string {
+    return `${EXAM_EDITOR_DRAFT_STORAGE_PREFIX}${userId}`;
+}
+
+function readLocalExamDraft(userId: number): unknown {
+    if (typeof window === 'undefined') return null;
+    try {
+        const raw = window.localStorage.getItem(getLocalExamDraftStorageKey(userId));
+        if (!raw) return null;
+        return JSON.parse(raw) as unknown;
+    } catch {
+        return null;
+    }
+}
+
+function writeLocalExamDraft(userId: number, draft: ExamEditorDraftShape) {
+    if (typeof window === 'undefined') return;
+    try {
+        const envelope: ExamEditorDraftEnvelope = {
+            updatedAt: new Date().toISOString(),
+            draft,
+        };
+        window.localStorage.setItem(getLocalExamDraftStorageKey(userId), JSON.stringify(envelope));
+    } catch {
+        // Ignore local storage write failures.
+    }
+}
+
+function clearLocalExamDraft(userId: number) {
+    if (typeof window === 'undefined') return;
+    try {
+        window.localStorage.removeItem(getLocalExamDraftStorageKey(userId));
+    } catch {
+        // Ignore local storage clear failures.
+    }
+}
+
+function extractExamDraftPayload(raw: unknown): {
+    draft: ExamEditorDraftShape | null;
+    updatedAtMs: number;
+} {
+    const parseDate = (value: unknown) => {
+        const ts = new Date(String(value || '')).getTime();
+        return Number.isFinite(ts) ? ts : 0;
+    };
+
+    if (!raw) {
+        return { draft: null, updatedAtMs: 0 };
+    }
+
+    if (typeof raw === 'string') {
+        try {
+            return extractExamDraftPayload(JSON.parse(raw) as unknown);
+        } catch {
+            return { draft: null, updatedAtMs: 0 };
+        }
+    }
+
+    if (!isRecord(raw)) {
+        return { draft: null, updatedAtMs: 0 };
+    }
+
+    if (isRecord(raw.draft)) {
+        return {
+            draft: raw.draft as ExamEditorDraftShape,
+            updatedAtMs: parseDate(raw.updatedAt),
+        };
+    }
+
+    if ('form' in raw || 'questions' in raw) {
+        return {
+            draft: raw as ExamEditorDraftShape,
+            updatedAtMs: parseDate(raw.updatedAt),
+        };
+    }
+
+    return { draft: null, updatedAtMs: 0 };
+}
+
+function stripExamQuestionHtml(value: string | undefined | null): string {
+    return String(value || '')
+        .replace(/<br\s*\/?>/gi, '\n')
+        .replace(/<\/p>\s*<p>/gi, '\n')
+        .replace(/<\/div>\s*<div>/gi, '\n')
+        .replace(/<li\b[^>]*>/gi, '- ')
+        .replace(/<\/li>/gi, '\n')
+        .replace(/<\/(p|div|ul|ol|table|tr|section|article|blockquote)>/gi, '\n')
+        .replace(/<[^>]*>/g, ' ')
+        .replace(/&nbsp;/gi, ' ')
+        .replace(/&amp;/gi, '&')
+        .replace(/&lt;/gi, '<')
+        .replace(/&gt;/gi, '>')
+        .replace(/&quot;/gi, '"')
+        .replace(/&#39;/gi, "'")
+        .replace(/\u00a0/g, ' ')
+        .replace(/[ \t]+\n/g, '\n')
+        .replace(/\n[ \t]+/g, '\n')
+        .replace(/\n{3,}/g, '\n\n')
+        .replace(/[ \t]{2,}/g, ' ')
+        .trim();
+}
+
+function getQuestionOptionLabel(index: number): string {
+    return String.fromCharCode(65 + Math.max(0, index));
+}
+
+function buildDerivedQuestionAnswerKey(question: ExtendedQuestion): string {
+    if (question.type === 'ESSAY') {
+        return 'Jawaban esai diperiksa manual oleh guru.';
+    }
+
+    const correctOptions = (question.options || []).filter((option) => option.isCorrect);
+    if (correctOptions.length === 0) {
+        return '';
+    }
+
+    return correctOptions
+        .map((option, index) => {
+            const optionIndex = (question.options || []).findIndex((candidate) => candidate.id === option.id);
+            const label = getQuestionOptionLabel(optionIndex >= 0 ? optionIndex : index);
+            const parts = [`${label}. ${stripExamQuestionHtml(option.content) || 'Opsi benar tanpa teks'}`];
+            if (option.image_url) {
+                parts.push(`Media opsi ${label}: ${option.image_url}`);
+            }
+            return parts.join('\n');
+        })
+        .join('\n\n')
+        .trim();
+}
+
+function buildDerivedQuestionStimulus(question: ExtendedQuestion): string {
+    const sections: string[] = [];
+    const questionText = stripExamQuestionHtml(question.content);
+    if (questionText) {
+        sections.push(questionText);
+    }
+    if (question.question_image_url) {
+        sections.push(`Media soal: ${question.question_image_url}`);
+    }
+    if (question.question_video_url) {
+        sections.push(`Video soal: ${question.question_video_url}`);
+    }
+
+    const optionLines = (question.options || [])
+        .map((option, index) => {
+            const label = getQuestionOptionLabel(index);
+            const parts = [`${label}. ${stripExamQuestionHtml(option.content) || 'Opsi tanpa teks'}`];
+            if (option.image_url) {
+                parts.push(`Media opsi ${label}: ${option.image_url}`);
+            }
+            return parts.join('\n');
+        })
+        .filter(Boolean);
+
+    if (optionLines.length > 0) {
+        sections.push(optionLines.join('\n'));
+    }
+
+    return sections.join('\n\n').trim();
+}
+
+function buildDerivedQuestionCard(question: ExtendedQuestion): QuestionCard {
+    const blueprint = normalizeBlueprint(question.blueprint);
+    return {
+        stimulus: buildDerivedQuestionStimulus(question),
+        answerRationale: String(blueprint.indicator || '').trim(),
+        scoringGuideline: buildDerivedQuestionAnswerKey(question),
+        distractorNotes: String(blueprint.cognitiveLevel || '').trim(),
+    };
+}
+
 function assertFixedSemesterMatch(fixedSemester: 'ODD' | 'EVEN' | null | undefined, semester: string) {
   if (fixedSemester && semester !== fixedSemester) {
     throw new Error(
@@ -447,6 +635,7 @@ export const ExamEditorPage = () => {
     const draftPromptShownRef = React.useRef(false);
     // Ref for autosave debounce
     const saveTimeoutRef = React.useRef<ReturnType<typeof setTimeout> | null>(null);
+    const localSaveTimeoutRef = React.useRef<ReturnType<typeof setTimeout> | null>(null);
     const quillEditorRef = useRef<ReactQuill | null>(null);
 
     const [loading, setLoading] = useState(false);
@@ -497,6 +686,7 @@ export const ExamEditorPage = () => {
     const [draftRestorePrompt, setDraftRestorePrompt] = useState<{
         draftRaw: unknown;
         preferences: Record<string, unknown>;
+        source: 'profile' | 'local';
     } | null>(null);
 
     const routeState = (location.state as {
@@ -680,17 +870,29 @@ export const ExamEditorPage = () => {
     
     // Restore draft on mount (only for create mode)
     useEffect(() => {
-        if (isEditMode || presetPacketDraft || draftLoadedRef.current || draftPromptShownRef.current) return;
+        if (isEditMode || presetPacketDraft || draftLoadedRef.current || draftPromptShownRef.current || !userId) return;
 
         const prefs = (userData?.data?.preferences ?? {}) as Record<string, unknown>;
-        const draftRaw = prefs['exam_draft'];
-        if (!draftRaw) return;
+        const profileDraft = extractExamDraftPayload(prefs['exam_draft']);
+        const localDraftRaw = readLocalExamDraft(userId);
+        const localDraft = extractExamDraftPayload(localDraftRaw);
+
+        const nextDraft =
+            localDraft.draft && localDraft.updatedAtMs >= profileDraft.updatedAtMs
+                ? { source: 'local' as const, raw: localDraftRaw }
+                : profileDraft.draft
+                  ? { source: 'profile' as const, raw: prefs['exam_draft'] }
+                  : null;
+
+        if (!nextDraft?.raw) return;
+
         draftPromptShownRef.current = true;
         setDraftRestorePrompt({
-            draftRaw,
+            draftRaw: nextDraft.raw,
             preferences: prefs,
+            source: nextDraft.source,
         });
-    }, [isEditMode, userData, presetFixedSemester, presetPacketDraft, presetProgramCode, setValue, updateProfileMutation, userId]);
+    }, [isEditMode, userData, presetPacketDraft, userId]);
 
     useEffect(() => {
         if (!isEditMode) {
@@ -754,7 +956,39 @@ export const ExamEditorPage = () => {
         setValue,
     ]);
 
-    // Save draft on change (Debounced to Database)
+    // Save draft locally first so data survives logout/session expiry.
+    useEffect(() => {
+        if (isEditMode || isSubmittingRef.current || !userId) return;
+
+        const hasContent =
+            questions.length > 1 ||
+            (questions.length === 1 && Boolean(normalizeEditorText(questions[0].content)));
+        const hasTitle = formValues.title && formValues.title.trim() !== '';
+
+        if (!hasContent && !hasTitle) {
+            clearLocalExamDraft(userId);
+            return;
+        }
+
+        if (localSaveTimeoutRef.current) {
+            clearTimeout(localSaveTimeoutRef.current);
+        }
+
+        localSaveTimeoutRef.current = setTimeout(() => {
+            writeLocalExamDraft(userId, {
+                form: formValues,
+                questions,
+            });
+        }, 800);
+
+        return () => {
+            if (localSaveTimeoutRef.current) {
+                clearTimeout(localSaveTimeoutRef.current);
+            }
+        };
+    }, [questions, formValues, isEditMode, userId]);
+
+    // Save draft on change (Debounced to profile preferences)
     useEffect(() => {
         if (!isEditMode && !isSubmittingRef.current && userId) {
             const hasContent =
@@ -770,9 +1004,12 @@ export const ExamEditorPage = () => {
 
                 // Set new timeout for 2 seconds debounce
                 saveTimeoutRef.current = setTimeout(() => {
-                    const draft = {
-                        form: formValues,
-                        questions: questions
+                    const draft: ExamEditorDraftEnvelope = {
+                        updatedAt: new Date().toISOString(),
+                        draft: {
+                            form: formValues,
+                            questions,
+                        },
                     };
                     
                     const currentPrefs = userData?.data?.preferences || {};
@@ -1180,23 +1417,7 @@ export const ExamEditorPage = () => {
     const restoreDraftFromPrompt = () => {
         if (!draftRestorePrompt) return;
 
-        const isRecord = (value: unknown): value is Record<string, unknown> =>
-            typeof value === 'object' && value !== null;
-
-        const draftRaw = draftRestorePrompt.draftRaw;
-        let draft: { form?: Partial<PacketForm>; questions?: unknown } | null = null;
-        if (typeof draftRaw === 'string') {
-            try {
-                const parsed = JSON.parse(draftRaw) as unknown;
-                if (isRecord(parsed)) {
-                    draft = parsed as { form?: Partial<PacketForm>; questions?: unknown };
-                }
-            } catch (e) {
-                console.error('Failed to parse draft', e);
-            }
-        } else if (isRecord(draftRaw)) {
-            draft = draftRaw as { form?: Partial<PacketForm>; questions?: unknown };
-        }
+        const { draft } = extractExamDraftPayload(draftRestorePrompt.draftRaw);
 
         if (!draft) {
             setDraftRestorePrompt(null);
@@ -1249,6 +1470,9 @@ export const ExamEditorPage = () => {
     };
 
     const discardDraftFromPrompt = () => {
+        if (userId) {
+            clearLocalExamDraft(userId);
+        }
         if (draftRestorePrompt && userId) {
             updateProfileMutation.mutate({
                 preferences: { ...draftRestorePrompt.preferences, exam_draft: null },
@@ -1280,17 +1504,6 @@ export const ExamEditorPage = () => {
         updateQuestion(qId, {
             blueprint: {
                 ...currentBlueprint,
-                [field]: value,
-            },
-        });
-    };
-
-    const updateQuestionCardField = (qId: string, field: keyof QuestionCard, value: string) => {
-        const question = questions.find((item) => item.id === qId);
-        const currentQuestionCard = normalizeQuestionCard(question?.questionCard);
-        updateQuestion(qId, {
-            questionCard: {
-                ...currentQuestionCard,
                 [field]: value,
             },
         });
@@ -1672,6 +1885,7 @@ export const ExamEditorPage = () => {
             questions: finalQuestions.map((question) => ({
                 ...question,
                 content: sanitizeQuestionHtml(question.content),
+                questionCard: buildDerivedQuestionCard(question),
             }))
         };
 
@@ -1693,6 +1907,7 @@ export const ExamEditorPage = () => {
                 toast.success('Paket ujian berhasil dibuat');
                 // Clear draft only on successful create
                 if (userId) {
+                    clearLocalExamDraft(userId);
                     const currentPrefs = userData?.data?.preferences || {};
                     updateProfileMutation.mutate({
                         preferences: { ...currentPrefs, exam_draft: null }
@@ -1719,7 +1934,7 @@ export const ExamEditorPage = () => {
         ? normalizeBlueprint(activeQuestion.blueprint)
         : createDefaultBlueprint();
     const activeQuestionCard = activeQuestion
-        ? normalizeQuestionCard(activeQuestion.questionCard)
+        ? buildDerivedQuestionCard(activeQuestion)
         : createDefaultQuestionCard();
     const activeQuestionReviewFeedback = activeQuestion
         ? normalizeReviewFeedback(activeQuestion.reviewFeedback ?? activeQuestion.metadata?.reviewFeedback)
@@ -1917,6 +2132,99 @@ export const ExamEditorPage = () => {
                         </button>
                     </div>
                 </div>
+            </div>
+        );
+    };
+
+    const renderQuestionCardStimulusPreview = (question?: ExtendedQuestion | null) => {
+        if (!question) {
+            return (
+                <div className="rounded-2xl border border-emerald-200 bg-white px-4 py-3 text-sm text-slate-500">
+                    Belum ada teks soal.
+                </div>
+            );
+        }
+
+        const questionHtml = enhanceQuestionHtml(sanitizeQuestionHtml(question.content), {
+            useQuestionImageThumbnail: false,
+        });
+        const hasQuestionMedia = Boolean(question.question_image_url || question.question_video_url);
+        const hasOptions = Array.isArray(question.options) && question.options.length > 0;
+
+        return (
+            <div className="space-y-3 rounded-2xl border border-emerald-200 bg-white px-4 py-3 text-sm text-slate-700">
+                {questionHtml ? (
+                    <div
+                        className="prose prose-sm max-w-none text-slate-800"
+                        dangerouslySetInnerHTML={{ __html: questionHtml }}
+                    />
+                ) : (
+                    <p className="text-slate-500">Belum ada teks soal.</p>
+                )}
+
+                {hasQuestionMedia ? (
+                    <div className="space-y-3">
+                        {question.question_image_url ? (
+                            <img
+                                src={question.question_image_url}
+                                alt="Media soal"
+                                className="max-h-56 rounded-xl border border-emerald-100"
+                            />
+                        ) : null}
+                        {question.question_video_url ? (
+                            question.question_video_type === 'youtube' ? (
+                                <div className="aspect-video w-full overflow-hidden rounded-xl border border-emerald-100">
+                                    <iframe
+                                        src={question.question_video_url}
+                                        className="h-full w-full"
+                                        allowFullScreen
+                                        title="Media video soal"
+                                    />
+                                </div>
+                            ) : (
+                                <video
+                                    src={question.question_video_url}
+                                    controls
+                                    className="max-h-64 w-full rounded-xl border border-emerald-100"
+                                />
+                            )
+                        ) : null}
+                    </div>
+                ) : null}
+
+                {hasOptions ? (
+                    <div className="space-y-2">
+                        {(question.options || []).map((option, index) => (
+                            <div
+                                key={option.id || `${question.id}-preview-${index}`}
+                                className="rounded-xl border border-emerald-100 bg-emerald-50/50 px-3 py-2"
+                            >
+                                <div className="mb-1 text-xs font-semibold text-emerald-700">
+                                    Opsi {getQuestionOptionLabel(index)}
+                                </div>
+                                {String(option.content || '').trim() ? (
+                                    <div
+                                        className="prose prose-sm max-w-none text-slate-700"
+                                        dangerouslySetInnerHTML={{
+                                            __html: enhanceQuestionHtml(String(option.content || ''), {
+                                                useQuestionImageThumbnail: false,
+                                            }),
+                                        }}
+                                    />
+                                ) : (
+                                    <p className="text-xs text-slate-500">Opsi tanpa teks.</p>
+                                )}
+                                {option.image_url ? (
+                                    <img
+                                        src={option.image_url}
+                                        alt={`Media opsi ${getQuestionOptionLabel(index)}`}
+                                        className="mt-2 max-h-40 rounded-lg border border-emerald-100"
+                                    />
+                                ) : null}
+                            </div>
+                        ))}
+                    </div>
+                ) : null}
             </div>
         );
     };
@@ -2822,7 +3130,7 @@ export const ExamEditorPage = () => {
                                         <div>
                                             <p className="text-xs font-bold uppercase tracking-[0.24em] text-emerald-700">Kartu Soal</p>
                                             <p className="mt-1 text-xs text-emerald-700/80">
-                                                Opsional. Isi jika ingin menambah catatan analisis butir.
+                                                Terbentuk otomatis dari butir soal, opsi jawaban, indikator soal, dan level kognitif.
                                             </p>
                                         </div>
                                         <span className={`rounded-full px-3 py-1 text-xs font-semibold ${
@@ -2833,34 +3141,45 @@ export const ExamEditorPage = () => {
                                     </div>
 
                                     <div className="grid grid-cols-1 gap-3">
-                                        <textarea
-                                            value={activeQuestionCard.stimulus || ''}
-                                            onChange={(e) => updateQuestionCardField(activeQuestion.id, 'stimulus', e.target.value)}
-                                            placeholder="Stimulus soal"
-                                            rows={3}
-                                            className="w-full rounded-2xl border border-emerald-200 px-4 py-3 text-sm focus:border-emerald-500 focus:outline-none"
-                                        />
-                                        <textarea
-                                            value={activeQuestionCard.answerRationale || ''}
-                                            onChange={(e) => updateQuestionCardField(activeQuestion.id, 'answerRationale', e.target.value)}
-                                            placeholder="Pembahasan / alasan jawaban benar"
-                                            rows={3}
-                                            className="w-full rounded-2xl border border-emerald-200 px-4 py-3 text-sm focus:border-emerald-500 focus:outline-none"
-                                        />
-                                        <textarea
-                                            value={activeQuestionCard.scoringGuideline || ''}
-                                            onChange={(e) => updateQuestionCardField(activeQuestion.id, 'scoringGuideline', e.target.value)}
-                                            placeholder="Pedoman penskoran (terutama untuk esai)"
-                                            rows={3}
-                                            className="w-full rounded-2xl border border-emerald-200 px-4 py-3 text-sm focus:border-emerald-500 focus:outline-none"
-                                        />
-                                        <textarea
-                                            value={activeQuestionCard.distractorNotes || ''}
-                                            onChange={(e) => updateQuestionCardField(activeQuestion.id, 'distractorNotes', e.target.value)}
-                                            placeholder="Catatan distraktor / opsi pengecoh"
-                                            rows={3}
-                                            className="w-full rounded-2xl border border-emerald-200 px-4 py-3 text-sm focus:border-emerald-500 focus:outline-none"
-                                        />
+                                        <div>
+                                            <p className="mb-2 text-xs font-semibold uppercase tracking-wide text-emerald-700">
+                                                Teks Soal dan Optional
+                                            </p>
+                                            {renderQuestionCardStimulusPreview(activeQuestion)}
+                                        </div>
+                                        <div>
+                                            <p className="mb-2 text-xs font-semibold uppercase tracking-wide text-emerald-700">
+                                                Indikator Soal
+                                            </p>
+                                            <textarea
+                                                value={activeQuestionCard.answerRationale || ''}
+                                                readOnly
+                                                rows={3}
+                                                className="w-full rounded-2xl border border-emerald-200 bg-white px-4 py-3 text-sm text-slate-700 focus:outline-none"
+                                            />
+                                        </div>
+                                        <div>
+                                            <p className="mb-2 text-xs font-semibold uppercase tracking-wide text-emerald-700">
+                                                Kunci Jawaban
+                                            </p>
+                                            <textarea
+                                                value={activeQuestionCard.scoringGuideline || ''}
+                                                readOnly
+                                                rows={3}
+                                                className="w-full rounded-2xl border border-emerald-200 bg-white px-4 py-3 text-sm text-slate-700 focus:outline-none"
+                                            />
+                                        </div>
+                                        <div>
+                                            <p className="mb-2 text-xs font-semibold uppercase tracking-wide text-emerald-700">
+                                                Level Kognitif
+                                            </p>
+                                            <textarea
+                                                value={activeQuestionCard.distractorNotes || ''}
+                                                readOnly
+                                                rows={3}
+                                                className="w-full rounded-2xl border border-emerald-200 bg-white px-4 py-3 text-sm text-slate-700 focus:outline-none"
+                                            />
+                                        </div>
                                     </div>
 
                                     {activeQuestionReviewFeedback?.questionCardComment ? (

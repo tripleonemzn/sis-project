@@ -1,6 +1,7 @@
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { Redirect, useLocalSearchParams, useRouter } from 'expo-router';
-import { useEffect, useMemo, useState } from 'react';
+import AsyncStorage from '@react-native-async-storage/async-storage';
+import { useEffect, useMemo, useRef, useState } from 'react';
 import { Alert, Pressable, RefreshControl, ScrollView, Text, TextInput, View } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { AppLoadingScreen } from '../../../../src/components/AppLoadingScreen';
@@ -60,6 +61,7 @@ type QuestionDraft = {
 type EditorSection = 'INFO' | 'QUESTIONS';
 
 const CURRICULUM_EXAM_MANAGER_LABEL = 'Wakasek Kurikulum / Sekretaris Kurikulum';
+const MOBILE_EXAM_EDITOR_DRAFT_STORAGE_PREFIX = 'mobile_exam_editor_draft:';
 
 function createId(prefix: string) {
   return `${prefix}-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`;
@@ -110,6 +112,80 @@ function createDefaultQuestionCard(): ExamQuestionCard {
     answerRationale: '',
     scoringGuideline: '',
     distractorNotes: '',
+  };
+}
+
+type MobileExamEditorDraftShape = {
+  title?: string;
+  description?: string;
+  instructions?: string;
+  selectedProgramCode?: string;
+  selectedAssignmentId?: number | null;
+  semester?: 'ODD' | 'EVEN';
+  duration?: string;
+  kkm?: string;
+  saveToBank?: boolean;
+  questions?: QuestionDraft[];
+};
+
+function getMobileExamEditorDraftStorageKey(userId: number) {
+  return `${MOBILE_EXAM_EDITOR_DRAFT_STORAGE_PREFIX}${userId}`;
+}
+
+function getQuestionOptionLabel(index: number): string {
+  return String.fromCharCode(65 + Math.max(0, index));
+}
+
+function buildDerivedQuestionStimulus(question: QuestionDraft): string {
+  const sections: string[] = [];
+  const questionText = plainTextFromExamRichText(String(question.content || '')).trim();
+  if (questionText) {
+    sections.push(questionText);
+  }
+
+  const optionLines = (question.options || [])
+    .map((option, index) => {
+      const label = getQuestionOptionLabel(index);
+      const content = plainTextFromExamRichText(String(option.content || '')).trim() || 'Opsi tanpa teks';
+      return `${label}. ${content}`;
+    })
+    .filter(Boolean);
+
+  if (optionLines.length > 0) {
+    sections.push(optionLines.join('\n'));
+  }
+
+  return sections.join('\n\n').trim();
+}
+
+function buildDerivedQuestionAnswerKey(question: QuestionDraft): string {
+  if (question.type === 'ESSAY') {
+    return 'Jawaban esai diperiksa manual oleh guru.';
+  }
+
+  const correctOptions = (question.options || []).filter((option) => option.isCorrect);
+  if (correctOptions.length === 0) {
+    return '';
+  }
+
+  return correctOptions
+    .map((option, index) => {
+      const optionIndex = (question.options || []).findIndex((candidate) => candidate.id === option.id);
+      const label = getQuestionOptionLabel(optionIndex >= 0 ? optionIndex : index);
+      const content = plainTextFromExamRichText(String(option.content || '')).trim() || 'Opsi benar tanpa teks';
+      return `${label}. ${content}`;
+    })
+    .join('\n\n')
+    .trim();
+}
+
+function buildDerivedQuestionCard(question: QuestionDraft): ExamQuestionCard {
+  const blueprint = normalizeBlueprint(question.blueprint);
+  return {
+    stimulus: buildDerivedQuestionStimulus(question),
+    answerRationale: String(blueprint.indicator || '').trim(),
+    scoringGuideline: buildDerivedQuestionAnswerKey(question),
+    distractorNotes: String(blueprint.cognitiveLevel || '').trim(),
   };
 }
 
@@ -324,7 +400,7 @@ function sanitizeQuestions(questions: QuestionDraft[]): TeacherExamQuestionPaylo
       content: question.content.trim(),
       score: normalizedScore,
       blueprint: normalizeBlueprint(question.blueprint),
-      questionCard: normalizeQuestionCard(question.questionCard),
+      questionCard: buildDerivedQuestionCard(question),
     };
 
     if (question.type !== 'ESSAY') {
@@ -359,6 +435,8 @@ export default function TeacherExamEditorScreen() {
     return normalizeProgramCode(params.programCode) || normalizeProgramCode(params.examType);
   }, [isEditMode, params.programCode, params.examType]);
   const { isAuthenticated, isLoading, user } = useAuth();
+  const draftPromptShownRef = useRef(false);
+  const draftSaveTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const pageContentPadding = getStandardPagePadding(insets);
   const teacherAssignmentsQuery = useTeacherAssignmentsQuery({ enabled: isAuthenticated, user });
   const assignments = useMemo(
@@ -581,6 +659,164 @@ export default function TeacherExamEditorScreen() {
   }, [isEditMode, packetDetailQuery.data, hydratedPacket, assignments]);
 
   useEffect(() => {
+    if (isEditMode || !user?.id || draftPromptShownRef.current) return;
+
+    let cancelled = false;
+    const draftKey = getMobileExamEditorDraftStorageKey(user.id);
+
+    void (async () => {
+      try {
+        const raw = await AsyncStorage.getItem(draftKey);
+        if (cancelled || !raw) return;
+
+        const parsed = JSON.parse(raw) as { draft?: MobileExamEditorDraftShape } | MobileExamEditorDraftShape;
+        const draft =
+          parsed && typeof parsed === 'object' && 'draft' in parsed
+            ? (parsed.draft as MobileExamEditorDraftShape | undefined)
+            : (parsed as MobileExamEditorDraftShape | undefined);
+
+        if (!draft) return;
+
+        const hasQuestions = Array.isArray(draft.questions) && draft.questions.length > 0;
+        const hasTitle = Boolean(String(draft.title || '').trim());
+        if (!hasQuestions && !hasTitle) return;
+
+        draftPromptShownRef.current = true;
+        Alert.alert(
+          'Lanjutkan Draft?',
+          'Ditemukan draft ujian yang belum tersimpan. Apakah Anda ingin melanjutkan draft tersebut?',
+          [
+            {
+              text: 'Buang',
+              style: 'destructive',
+              onPress: () => {
+                void AsyncStorage.removeItem(draftKey);
+              },
+            },
+            {
+              text: 'Lanjutkan',
+              onPress: () => {
+                setTitle(String(draft.title || ''));
+                setDescription(String(draft.description || ''));
+                setInstructions(String(draft.instructions || ''));
+                setSelectedProgramCode(forcedProgramCode || String(draft.selectedProgramCode || ''));
+                setSelectedAssignmentId(
+                  Number.isFinite(Number(draft.selectedAssignmentId))
+                    ? Number(draft.selectedAssignmentId)
+                    : null,
+                );
+                setSemester(
+                  lockedSemester ||
+                    (draft.semester === 'ODD' || draft.semester === 'EVEN' ? draft.semester : 'ODD'),
+                );
+                setDuration(String(draft.duration || '60'));
+                setKkm(String(draft.kkm || '75'));
+                setSaveToBank(Boolean(draft.saveToBank));
+
+                if (Array.isArray(draft.questions) && draft.questions.length > 0) {
+                  const restoredQuestions = draft.questions.map((question, index) => {
+                    const normalizedType = String(question.type || 'MULTIPLE_CHOICE').toUpperCase() as ExamQuestionType;
+                    const normalizedOptions =
+                      normalizedType === 'ESSAY'
+                        ? []
+                        : normalizedType === 'TRUE_FALSE'
+                          ? (question.options || []).length > 0
+                            ? (question.options || []).slice(0, 2)
+                            : createTrueFalseOptions()
+                          : (question.options || []).length > 0
+                            ? (question.options || [])
+                            : createChoiceOptions();
+
+                    return {
+                      id: String(question.id || `q-${index + 1}`),
+                      type: normalizedType,
+                      content: String(question.content || ''),
+                      score: String(question.score || '1'),
+                      blueprint: normalizeBlueprint(question.blueprint),
+                      questionCard: normalizeQuestionCard(question.questionCard),
+                      reviewFeedback: normalizeReviewFeedback(question.reviewFeedback),
+                      options: normalizedOptions.map((option, optionIndex) => ({
+                        id: String(option.id || `${question.id || `q-${index + 1}`}-opt-${optionIndex + 1}`),
+                        content: String(option.content || ''),
+                        isCorrect: Boolean(option.isCorrect),
+                      })),
+                    } satisfies QuestionDraft;
+                  });
+                  setQuestions(restoredQuestions);
+                }
+              },
+            },
+          ],
+        );
+      } catch {
+        // Ignore invalid draft payload.
+      }
+    })();
+
+    return () => {
+      cancelled = true;
+    };
+  }, [forcedProgramCode, isEditMode, lockedSemester, user?.id]);
+
+  useEffect(() => {
+    if (isEditMode || !user?.id) return;
+
+    const draftKey = getMobileExamEditorDraftStorageKey(user.id);
+    const hasQuestionContent = questions.some((question) => {
+      if (String(question.content || '').trim()) return true;
+      return (question.options || []).some((option) => String(option.content || '').trim());
+    });
+    const hasTitle = Boolean(title.trim());
+
+    if (!hasQuestionContent && !hasTitle) {
+      void AsyncStorage.removeItem(draftKey);
+      return;
+    }
+
+    if (draftSaveTimeoutRef.current) {
+      clearTimeout(draftSaveTimeoutRef.current);
+    }
+
+    draftSaveTimeoutRef.current = setTimeout(() => {
+      const payload = {
+        updatedAt: new Date().toISOString(),
+        draft: {
+          title,
+          description,
+          instructions,
+          selectedProgramCode,
+          selectedAssignmentId,
+          semester,
+          duration,
+          kkm,
+          saveToBank,
+          questions,
+        } satisfies MobileExamEditorDraftShape,
+      };
+      void AsyncStorage.setItem(draftKey, JSON.stringify(payload));
+    }, 800);
+
+    return () => {
+      if (draftSaveTimeoutRef.current) {
+        clearTimeout(draftSaveTimeoutRef.current);
+      }
+    };
+  }, [
+    description,
+    duration,
+    instructions,
+    isEditMode,
+    kkm,
+    questions,
+    saveToBank,
+    selectedAssignmentId,
+    selectedProgramCode,
+    semester,
+    title,
+    user?.id,
+  ]);
+
+  useEffect(() => {
     setReviewReplyDrafts((current) => {
       let changed = false;
       const next = { ...current };
@@ -684,11 +920,6 @@ export default function TeacherExamEditorScreen() {
           );
         }
 
-        const questionCard = normalizeQuestionCard(question.questionCard);
-        if (!String(questionCard.answerRationale || '').trim()) {
-          throw new Error(`Soal nomor ${idx + 1} wajib mengisi kartu soal: pembahasan/jawaban.`);
-        }
-
         if (question.type !== 'ESSAY') {
           const options = question.options || [];
           if (options.length < 2) {
@@ -736,6 +967,9 @@ export default function TeacherExamEditorScreen() {
       await queryClient.invalidateQueries({ queryKey: ['mobile-teacher-exam-packets'] });
       if (packetId) {
         await queryClient.invalidateQueries({ queryKey: ['mobile-teacher-exam-packet-detail', packetId] });
+      }
+      if (!isEditMode && user?.id) {
+        await AsyncStorage.removeItem(getMobileExamEditorDraftStorageKey(user.id));
       }
       Alert.alert('Sukses', isEditMode ? 'Packet ujian berhasil diperbarui.' : 'Packet ujian berhasil dibuat.', [
         {
@@ -1201,6 +1435,7 @@ export default function TeacherExamEditorScreen() {
       <Text style={{ color: '#0f172a', fontWeight: '700', marginBottom: 8 }}>Daftar Soal</Text>
       {questions.map((question, index) => {
         const isRequestedQuestion = requestedQuestionId === String(question.id || '');
+        const derivedQuestionCard = buildDerivedQuestionCard(question);
         return (
         <View
           key={question.id}
@@ -1598,25 +1833,10 @@ export default function TeacherExamEditorScreen() {
             }}
           >
             <Text style={{ color: '#065f46', fontWeight: '700', marginBottom: 6 }}>Kartu Soal</Text>
-            <TextInput
-              value={String(question.questionCard.stimulus || '')}
-              onChangeText={(value) =>
-                setQuestions((prev) =>
-                  prev.map((item) =>
-                    item.id === question.id
-                      ? {
-                          ...item,
-                          questionCard: {
-                            ...normalizeQuestionCard(item.questionCard),
-                            stimulus: value,
-                          },
-                        }
-                      : item,
-                  ),
-                )
-              }
-              placeholder="Stimulus soal"
-              multiline
+            <Text style={{ color: '#065f46', fontSize: 11, fontWeight: '700', marginBottom: 4 }}>
+              Teks Soal dan Optional
+            </Text>
+            <View
               style={{
                 borderWidth: 1,
                 borderColor: '#86efac',
@@ -1627,25 +1847,27 @@ export default function TeacherExamEditorScreen() {
                 minHeight: 60,
                 marginBottom: 6,
               }}
-            />
+            >
+              <Text style={{ color: '#0f172a', fontSize: 12 }}>
+                {String(question.content || '').trim() || 'Belum ada teks soal.'}
+              </Text>
+              {(question.options || []).length > 0 ? (
+                <View style={{ marginTop: 8 }}>
+                  {(question.options || []).map((option, optionIndex) => (
+                    <Text key={option.id || `${question.id}-preview-${optionIndex}`} style={{ color: '#334155', fontSize: 12, marginTop: 2 }}>
+                      {getQuestionOptionLabel(optionIndex)}. {String(option.content || '').trim() || 'Opsi tanpa teks'}
+                    </Text>
+                  ))}
+                </View>
+              ) : null}
+            </View>
+
+            <Text style={{ color: '#065f46', fontSize: 11, fontWeight: '700', marginBottom: 4 }}>
+              Indikator Soal
+            </Text>
             <TextInput
-              value={String(question.questionCard.answerRationale || '')}
-              onChangeText={(value) =>
-                setQuestions((prev) =>
-                  prev.map((item) =>
-                    item.id === question.id
-                      ? {
-                          ...item,
-                          questionCard: {
-                            ...normalizeQuestionCard(item.questionCard),
-                            answerRationale: value,
-                          },
-                        }
-                      : item,
-                  ),
-                )
-              }
-              placeholder="Pembahasan / alasan jawaban benar*"
+              value={String(derivedQuestionCard.answerRationale || '')}
+              editable={false}
               multiline
               style={{
                 borderWidth: 1,
@@ -1656,26 +1878,16 @@ export default function TeacherExamEditorScreen() {
                 backgroundColor: '#fff',
                 minHeight: 60,
                 marginBottom: 6,
+                color: '#0f172a',
               }}
             />
+
+            <Text style={{ color: '#065f46', fontSize: 11, fontWeight: '700', marginBottom: 4 }}>
+              Kunci Jawaban
+            </Text>
             <TextInput
-              value={String(question.questionCard.scoringGuideline || '')}
-              onChangeText={(value) =>
-                setQuestions((prev) =>
-                  prev.map((item) =>
-                    item.id === question.id
-                      ? {
-                          ...item,
-                          questionCard: {
-                            ...normalizeQuestionCard(item.questionCard),
-                            scoringGuideline: value,
-                          },
-                        }
-                      : item,
-                  ),
-                )
-              }
-              placeholder="Pedoman penskoran"
+              value={String(derivedQuestionCard.scoringGuideline || '')}
+              editable={false}
               multiline
               style={{
                 borderWidth: 1,
@@ -1686,26 +1898,16 @@ export default function TeacherExamEditorScreen() {
                 backgroundColor: '#fff',
                 minHeight: 54,
                 marginBottom: 6,
+                color: '#0f172a',
               }}
             />
+
+            <Text style={{ color: '#065f46', fontSize: 11, fontWeight: '700', marginBottom: 4 }}>
+              Level Kognitif
+            </Text>
             <TextInput
-              value={String(question.questionCard.distractorNotes || '')}
-              onChangeText={(value) =>
-                setQuestions((prev) =>
-                  prev.map((item) =>
-                    item.id === question.id
-                      ? {
-                          ...item,
-                          questionCard: {
-                            ...normalizeQuestionCard(item.questionCard),
-                            distractorNotes: value,
-                          },
-                        }
-                      : item,
-                  ),
-                )
-              }
-              placeholder="Catatan distraktor"
+              value={String(derivedQuestionCard.distractorNotes || '')}
+              editable={false}
               multiline
               style={{
                 borderWidth: 1,
@@ -1715,6 +1917,7 @@ export default function TeacherExamEditorScreen() {
                 paddingVertical: 9,
                 backgroundColor: '#fff',
                 minHeight: 54,
+                color: '#0f172a',
               }}
             />
           </View>
