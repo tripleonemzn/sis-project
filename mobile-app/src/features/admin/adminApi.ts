@@ -1055,6 +1055,7 @@ export type AdminExamSchedule = {
   id: number;
   startTime: string;
   endTime: string;
+  periodNumber?: number | null;
   isActive?: boolean;
   room?: string | null;
   semester?: 'ODD' | 'EVEN' | null;
@@ -1988,6 +1989,7 @@ export const adminApi = {
     classIds: number[];
     startTime: string;
     endTime: string;
+    periodNumber?: number | null;
     proctorId?: number;
     room?: string | null;
   }) {
@@ -2000,6 +2002,7 @@ export const adminApi = {
     payload: {
       startTime?: string;
       endTime?: string;
+      periodNumber?: number | null;
       proctorId?: number | null;
       room?: string | null;
       isActive?: boolean;

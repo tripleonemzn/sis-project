@@ -526,6 +526,7 @@ export const examApi = {
     payload: {
       startTime?: string;
       endTime?: string;
+      periodNumber?: number | null;
       proctorId?: number;
       room?: string | null;
       isActive?: boolean;

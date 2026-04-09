@@ -256,6 +256,7 @@ export type TeacherExamSchedule = {
   sessionLabel?: string | null;
   startTime: string;
   endTime: string;
+  periodNumber?: number | null;
   room?: string | null;
   isActive: boolean;
   proctorId?: number | null;
@@ -435,6 +436,7 @@ export type ExamSittingRoomSlot = {
   semester?: 'ODD' | 'EVEN' | null;
   startTime: string;
   endTime: string;
+  periodNumber?: number | null;
   sessionId?: number | null;
   sessionLabel?: string | null;
   subjectId?: number | null;
@@ -466,6 +468,7 @@ export type UnassignedExamSittingSchedule = {
   semester?: 'ODD' | 'EVEN' | null;
   startTime: string;
   endTime: string;
+  periodNumber?: number | null;
   sessionId?: number | null;
   sessionLabel?: string | null;
   subjectId?: number | null;

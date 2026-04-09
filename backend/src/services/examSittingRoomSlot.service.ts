@@ -128,6 +128,7 @@ type ScheduleRow = Prisma.ExamScheduleGetPayload<{
     semester: true;
     startTime: true;
     endTime: true;
+    periodNumber: true;
     sessionId: true;
     sessionLabel: true;
     subjectId: true;
@@ -201,6 +202,7 @@ type ScheduleGroup = {
   semester: Semester | null;
   startTime: Date;
   endTime: Date;
+  periodNumber: number | null;
   sessionId: number | null;
   sessionLabel: string | null;
   subjectId: number | null;
@@ -229,6 +231,7 @@ export type ExamSittingRoomSlotRow = {
   semester: Semester | null;
   startTime: Date;
   endTime: Date;
+  periodNumber: number | null;
   sessionId: number | null;
   sessionLabel: string | null;
   subjectId: number | null;
@@ -262,6 +265,7 @@ export type ExamSittingRoomSlotResponse = {
     semester: Semester | null;
     startTime: Date;
     endTime: Date;
+    periodNumber: number | null;
     sessionId: number | null;
     sessionLabel: string | null;
     subjectId: number | null;
@@ -273,10 +277,17 @@ export type ExamSittingRoomSlotResponse = {
   }>;
 };
 
-function buildTimeKey(startTime: Date, endTime: Date, sessionId: number | null, sessionLabel: string | null) {
+function buildTimeKey(
+  startTime: Date,
+  endTime: Date,
+  periodNumber: number | null,
+  sessionId: number | null,
+  sessionLabel: string | null,
+) {
   return [
     startTime.toISOString(),
     endTime.toISOString(),
+    `period:${Number.isFinite(Number(periodNumber)) && Number(periodNumber) > 0 ? Number(periodNumber) : 0}`,
     Number.isFinite(Number(sessionId)) && Number(sessionId) > 0
       ? `sid:${Number(sessionId)}`
       : normalizeSessionLabel(sessionLabel) || '__no_session__',
@@ -288,6 +299,7 @@ function buildRoomSlotKey(params: {
   roomName: string;
   startTime: Date;
   endTime: Date;
+  periodNumber: number | null;
   sessionId: number | null;
   sessionLabel: string | null;
   subjectId: number | null;
@@ -306,6 +318,7 @@ function buildRoomSlotKey(params: {
     `room:${normalizeRoomLookupKey(params.roomName) || '-'}`,
     `start:${params.startTime.toISOString()}`,
     `end:${params.endTime.toISOString()}`,
+    `period:${Number.isFinite(Number(params.periodNumber)) && Number(params.periodNumber) > 0 ? Number(params.periodNumber) : 0}`,
     subjectScope,
     sessionScope,
   ].join('::');
@@ -323,6 +336,7 @@ function buildGroupKey(schedule: ScheduleRow, subjectId: number | null, subjectN
   return [
     `start:${schedule.startTime.toISOString()}`,
     `end:${schedule.endTime.toISOString()}`,
+    `period:${Number.isFinite(Number(schedule.periodNumber)) && Number(schedule.periodNumber) > 0 ? Number(schedule.periodNumber) : 0}`,
     sessionScope,
     subjectScope,
     `type:${normalizeAliasCode(schedule.examType) || '-'}`,
@@ -360,6 +374,7 @@ async function loadScheduleGroups(params: {
       semester: true,
       startTime: true,
       endTime: true,
+      periodNumber: true,
       sessionId: true,
       sessionLabel: true,
       subjectId: true,
@@ -389,7 +404,7 @@ async function loadScheduleGroups(params: {
         },
       },
     },
-    orderBy: [{ startTime: 'asc' }, { endTime: 'asc' }, { id: 'asc' }],
+    orderBy: [{ startTime: 'asc' }, { periodNumber: 'asc' }, { endTime: 'asc' }, { id: 'asc' }],
   });
 
   const groupMap = new Map<string, ScheduleGroup>();
@@ -411,6 +426,7 @@ async function loadScheduleGroups(params: {
         semester: schedule.semester || null,
         startTime: schedule.startTime,
         endTime: schedule.endTime,
+        periodNumber: Number(schedule.periodNumber || 0) || null,
         sessionId: Number(schedule.sessionId || 0) || null,
         sessionLabel: schedule.sessionLabel || null,
         subjectId: resolvedSubjectId,
@@ -620,13 +636,26 @@ export async function listExamSittingRoomSlots(params: {
           roomName: sitting.roomName,
           startTime: group.startTime,
           endTime: group.endTime,
+          periodNumber: group.periodNumber,
           sessionId: group.sessionId,
           sessionLabel: group.sessionLabel,
           subjectId: group.subjectId,
           subjectName: group.subjectName,
         }),
-        timeKey: buildTimeKey(group.startTime, group.endTime, group.sessionId, group.sessionLabel),
-        roomKey: `${normalizeRoomLookupKey(sitting.roomName) || '-'}::${buildTimeKey(group.startTime, group.endTime, group.sessionId, group.sessionLabel)}`,
+        timeKey: buildTimeKey(
+          group.startTime,
+          group.endTime,
+          group.periodNumber,
+          group.sessionId,
+          group.sessionLabel,
+        ),
+        roomKey: `${normalizeRoomLookupKey(sitting.roomName) || '-'}::${buildTimeKey(
+          group.startTime,
+          group.endTime,
+          group.periodNumber,
+          group.sessionId,
+          group.sessionLabel,
+        )}`,
         sittingId: sitting.id,
         roomName: sitting.roomName,
         academicYearId: sitting.academicYearId,
@@ -634,6 +663,7 @@ export async function listExamSittingRoomSlots(params: {
         semester: sitting.semester || group.semester || null,
         startTime: group.startTime,
         endTime: group.endTime,
+        periodNumber: group.periodNumber,
         sessionId: group.sessionId,
         sessionLabel: group.sessionLabel,
         subjectId: group.subjectId,
@@ -676,6 +706,7 @@ export async function listExamSittingRoomSlots(params: {
       semester: schedule.semester || null,
       startTime: schedule.startTime,
       endTime: schedule.endTime,
+      periodNumber: Number(schedule.periodNumber || 0) || null,
       sessionId: Number(schedule.sessionId || 0) || null,
       sessionLabel: schedule.sessionLabel || null,
       subjectId: Number(schedule.subjectId || schedule.packet?.subject?.id || 0) || null,
@@ -691,6 +722,8 @@ export async function listExamSittingRoomSlots(params: {
   const sortedSlots = [...slots].sort((a, b) => {
     const timeCompare = a.startTime.getTime() - b.startTime.getTime();
     if (timeCompare !== 0) return timeCompare;
+    const periodCompare = Number(a.periodNumber || Number.MAX_SAFE_INTEGER) - Number(b.periodNumber || Number.MAX_SAFE_INTEGER);
+    if (periodCompare !== 0) return periodCompare;
     const subjectCompare = String(a.subjectName || '').localeCompare(String(b.subjectName || ''), 'id', {
       sensitivity: 'base',
       numeric: true,

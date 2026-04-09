@@ -2324,6 +2324,7 @@ model ExamSchedule {
   sessionId         Int?
   startTime         DateTime
   endTime           DateTime
+  periodNumber      Int?
   sessionLabel      String?
   proctorId         Int?
   academicYearId    Int?

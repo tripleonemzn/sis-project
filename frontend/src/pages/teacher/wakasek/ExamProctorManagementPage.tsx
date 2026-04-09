@@ -1,6 +1,5 @@
 import React, { useState, useEffect, useRef, useCallback, useMemo } from 'react';
 import { 
-  Clock,
   Search,
   ChevronDown,
   ChevronRight,
@@ -20,6 +19,7 @@ import { useSearchParams } from 'react-router-dom';
 import api from '../../../services/api';
 import { toast } from 'react-hot-toast';
 import { format } from 'date-fns';
+import { id } from 'date-fns/locale';
 import { useActiveAcademicYear } from '../../../hooks/useActiveAcademicYear';
 import { examService, type ExamProgram } from '../../../services/exam.service';
 import { isNonScheduledExamProgram, resolveProgramCodeFromParam } from '../../../lib/examProgramMenu';
@@ -48,6 +48,7 @@ interface ExamSittingRoomSlot {
   semester?: 'ODD' | 'EVEN' | null;
   startTime: string;
   endTime: string;
+  periodNumber?: number | null;
   sessionId?: number | null;
   sessionLabel?: string | null;
   subjectId?: number | null;
@@ -79,6 +80,7 @@ interface UnassignedExamSchedule {
   semester?: 'ODD' | 'EVEN' | null;
   startTime: string;
   endTime: string;
+  periodNumber?: number | null;
   sessionId?: number | null;
   sessionLabel?: string | null;
   subjectId?: number | null;
@@ -131,6 +133,29 @@ interface ProctorReportSummary {
   reportedRooms: number;
 }
 
+type GroupedProctorSlot = {
+  slotKey: string;
+  timeKey: string;
+  dateKey: string;
+  dateLabel: string;
+  start: string;
+  end: string;
+  periodNumber: number | null;
+  sessionLabel: string | null;
+  subjectName: string;
+  subjectCode: string | null;
+  rooms: Array<[string, ExamSittingRoomSlot[]]>;
+  unassigned: UnassignedExamSchedule[];
+};
+
+type GroupedProctorDay = {
+  dateKey: string;
+  dateLabel: string;
+  slotCount: number;
+  roomCount: number;
+  slots: GroupedProctorSlot[];
+};
+
 const normalizeSessionLabel = (raw: unknown): string =>
   String(raw || '')
     .replace(/\s+/g, ' ')
@@ -162,9 +187,14 @@ const formatSafeDateTime = (value?: string | null) => {
   return date ? format(date, 'dd/MM/yyyy HH:mm') : '-';
 };
 
-const formatSafeDateLabel = (value?: string | null) => {
+const formatSafeDayDateLabel = (value?: string | null) => {
   const date = parseSafeDate(value);
-  return date ? format(date, 'dd MMMM yyyy') : '-';
+  return date ? format(date, 'EEEE, d MMMM yyyy', { locale: id }) : 'Tanggal belum diatur';
+};
+
+const getSafeDateKey = (value?: string | null) => {
+  const date = parseSafeDate(value);
+  return date ? format(date, 'yyyy-MM-dd') : '__no_date__';
 };
 
 const formatTimeRangeLabel = (start?: string | null, end?: string | null) => {
@@ -408,6 +438,7 @@ const ExamProctorManagementPage = () => {
   const [editingRows, setEditingRows] = useState<Set<string>>(new Set()); // Key: "time|room"
   
   // UI State
+  const [expandedDays, setExpandedDays] = useState<string[]>([]);
   const [expandedSlots, setExpandedSlots] = useState<string[]>([]);
   const [isReportExpanded, setIsReportExpanded] = useState(false);
   const [absentModalRow, setAbsentModalRow] = useState<ProctorReportRow | null>(null);
@@ -627,84 +658,188 @@ const ExamProctorManagementPage = () => {
   }, [reportDateFrom, reportDateTo, searchParams, setSearchParams]);
 
   // --- Grouping Logic ---
-  const groupedData = useMemo(() => {
-    const byTime = new Map<string, ExamSittingRoomSlot[]>();
-    roomSlots.forEach((slot) => {
-      const timeKey = slot.timeKey || `${slot.startTime}|${slot.endTime}|${normalizeSessionLabel(slot.sessionLabel) || '__no_session__'}`;
-      const bucket = byTime.get(timeKey) || [];
-      bucket.push(slot);
-      byTime.set(timeKey, bucket);
-    });
-
-    const unassignedByTime = new Map<string, UnassignedExamSchedule[]>();
-    unassignedSchedules.forEach((schedule) => {
-      const timeKey = `${schedule.startTime}|${schedule.endTime}|${normalizeSessionLabel(schedule.sessionLabel) || '__no_session__'}`;
-      const bucket = unassignedByTime.get(timeKey) || [];
-      bucket.push(schedule);
-      unassignedByTime.set(timeKey, bucket);
-      if (!byTime.has(timeKey)) {
-        byTime.set(timeKey, []);
+  const groupedDayData = useMemo<GroupedProctorDay[]>(() => {
+    const slotMap = new Map<
+      string,
+      {
+        slotKey: string;
+        timeKey: string;
+        dateKey: string;
+        dateLabel: string;
+        start: string;
+        end: string;
+        periodNumber: number | null;
+        sessionLabel: string | null;
+        subjectName: string;
+        subjectCode: string | null;
+        roomsMap: Map<string, ExamSittingRoomSlot[]>;
+        unassigned: UnassignedExamSchedule[];
       }
-    });
+    >();
 
-    const sortedTimes = Array.from(byTime.keys()).sort((a, b) => {
-      const [startA = '', endA = ''] = a.split('|');
-      const [startB = '', endB = ''] = b.split('|');
-      const startMsA = parseSafeDate(startA)?.getTime() ?? Number.MAX_SAFE_INTEGER;
-      const startMsB = parseSafeDate(startB)?.getTime() ?? Number.MAX_SAFE_INTEGER;
-      if (startMsA !== startMsB) return startMsA - startMsB;
-      const endMsA = parseSafeDate(endA)?.getTime() ?? Number.MAX_SAFE_INTEGER;
-      const endMsB = parseSafeDate(endB)?.getTime() ?? Number.MAX_SAFE_INTEGER;
-      if (endMsA !== endMsB) return endMsA - endMsB;
-      return a.localeCompare(b);
-    });
+    const ensureSlotGroup = (params: {
+      slotKey: string;
+      timeKey: string;
+      dateKey: string;
+      dateLabel: string;
+      start: string;
+      end: string;
+      periodNumber: number | null;
+      sessionLabel: string | null;
+      subjectName: string;
+      subjectCode: string | null;
+    }) => {
+      if (!slotMap.has(params.slotKey)) {
+        slotMap.set(params.slotKey, {
+          ...params,
+          roomsMap: new Map<string, ExamSittingRoomSlot[]>(),
+          unassigned: [],
+        });
+      }
+      return slotMap.get(params.slotKey)!;
+    };
 
-    return sortedTimes.map(timeKey => {
-      const [start, end, rawSessionKey] = timeKey.split('|');
-      const timeSlots = byTime.get(timeKey) || [];
-      const sessionLabel =
-        rawSessionKey && rawSessionKey !== '__no_session__'
-          ? (timeSlots[0]?.sessionLabel || rawSessionKey)
-          : (timeSlots[0]?.sessionLabel || null);
-      
-      const byRoom = new Map<string, ExamSittingRoomSlot[]>();
-      timeSlots.forEach((slot) => {
-        const roomName = String(slot.roomName || '').trim();
-        if (!roomName) return;
-        const bucket = byRoom.get(roomName) || [];
-        bucket.push(slot);
-        byRoom.set(roomName, bucket);
+    roomSlots.forEach((slot) => {
+      const periodNumber = Number(slot.periodNumber || 0) || null;
+      const dateKey = getSafeDateKey(slot.startTime || slot.endTime);
+      const dateLabel = formatSafeDayDateLabel(slot.startTime || slot.endTime);
+      const sessionScope =
+        Number(slot.sessionId || 0) > 0
+          ? `sid:${Number(slot.sessionId)}`
+          : normalizeSessionLabel(slot.sessionLabel) || '__no_session__';
+      const subjectScope =
+        Number(slot.subjectId || 0) > 0
+          ? `sub:${Number(slot.subjectId)}`
+          : `subn:${String(slot.subjectName || '').trim().toLowerCase() || '-'}`;
+      const slotKey = [
+        dateKey,
+        `period:${periodNumber || 0}`,
+        `start:${slot.startTime || ''}`,
+        `end:${slot.endTime || ''}`,
+        sessionScope,
+        subjectScope,
+      ].join('|');
+      const timeKey =
+        slot.timeKey ||
+        `${slot.startTime}|${slot.endTime}|${periodNumber || 0}|${normalizeSessionLabel(slot.sessionLabel) || '__no_session__'}`;
+      const target = ensureSlotGroup({
+        slotKey,
+        timeKey,
+        dateKey,
+        dateLabel,
+        start: slot.startTime,
+        end: slot.endTime,
+        periodNumber,
+        sessionLabel: slot.sessionLabel || null,
+        subjectName: String(slot.subjectName || '').trim() || 'Mata Pelajaran',
+        subjectCode: String(slot.subjectCode || '').trim() || null,
       });
 
-      return {
-        timeKey,
-        start,
-        end,
-        dateLabel: formatSafeDateLabel(start || end),
-        sessionLabel,
-        rooms: Array.from(byRoom.entries()).sort((a, b) =>
+      const roomName = String(slot.roomName || '').trim();
+      if (!roomName) return;
+      const bucket = target.roomsMap.get(roomName) || [];
+      bucket.push(slot);
+      target.roomsMap.set(roomName, bucket);
+    });
+
+    unassignedSchedules.forEach((schedule) => {
+      const periodNumber = Number(schedule.periodNumber || 0) || null;
+      const dateKey = getSafeDateKey(schedule.startTime || schedule.endTime);
+      const dateLabel = formatSafeDayDateLabel(schedule.startTime || schedule.endTime);
+      const sessionScope =
+        Number(schedule.sessionId || 0) > 0
+          ? `sid:${Number(schedule.sessionId)}`
+          : normalizeSessionLabel(schedule.sessionLabel) || '__no_session__';
+      const subjectScope =
+        Number(schedule.subjectId || 0) > 0
+          ? `sub:${Number(schedule.subjectId)}`
+          : `subn:${String(schedule.subjectName || '').trim().toLowerCase() || '-'}`;
+      const slotKey = [
+        dateKey,
+        `period:${periodNumber || 0}`,
+        `start:${schedule.startTime || ''}`,
+        `end:${schedule.endTime || ''}`,
+        sessionScope,
+        subjectScope,
+      ].join('|');
+      const target = ensureSlotGroup({
+        slotKey,
+        timeKey: `${schedule.startTime}|${schedule.endTime}|${periodNumber || 0}|${normalizeSessionLabel(schedule.sessionLabel) || '__no_session__'}`,
+        dateKey,
+        dateLabel,
+        start: schedule.startTime,
+        end: schedule.endTime,
+        periodNumber,
+        sessionLabel: schedule.sessionLabel || null,
+        subjectName: String(schedule.subjectName || '').trim() || 'Mata Pelajaran',
+        subjectCode: String(schedule.subjectCode || '').trim() || null,
+      });
+      target.unassigned.push(schedule);
+    });
+
+    const groupedSlots = Array.from(slotMap.values())
+      .map((group): GroupedProctorSlot => ({
+        slotKey: group.slotKey,
+        timeKey: group.timeKey,
+        dateKey: group.dateKey,
+        dateLabel: group.dateLabel,
+        start: group.start,
+        end: group.end,
+        periodNumber: group.periodNumber,
+        sessionLabel: group.sessionLabel,
+        subjectName: group.subjectName,
+        subjectCode: group.subjectCode,
+        rooms: Array.from(group.roomsMap.entries()).sort((a, b) =>
           String(a[0] || '').localeCompare(String(b[0] || ''), 'id', {
             numeric: true,
             sensitivity: 'base',
           }),
         ),
-        unassigned: unassignedByTime.get(timeKey) || [],
-      };
-    });
-  }, [roomSlots, unassignedSchedules]);
+        unassigned: group.unassigned.sort((left, right) =>
+          compareClassName(String(left.className || ''), String(right.className || '')),
+        ),
+      }))
+      .sort((a, b) => {
+        const startCompare =
+          (parseSafeDate(a.start)?.getTime() ?? Number.MAX_SAFE_INTEGER) -
+          (parseSafeDate(b.start)?.getTime() ?? Number.MAX_SAFE_INTEGER);
+        if (startCompare !== 0) return startCompare;
+        const periodCompare = Number(a.periodNumber || Number.MAX_SAFE_INTEGER) - Number(b.periodNumber || Number.MAX_SAFE_INTEGER);
+        if (periodCompare !== 0) return periodCompare;
+        const subjectCompare = String(a.subjectName || '').localeCompare(String(b.subjectName || ''), 'id', {
+          numeric: true,
+          sensitivity: 'base',
+        });
+        if (subjectCompare !== 0) return subjectCompare;
+        return String(a.subjectCode || '').localeCompare(String(b.subjectCode || ''), 'id', {
+          numeric: true,
+          sensitivity: 'base',
+        });
+      });
 
-  const groupedDataWithSessionOrder = useMemo(() => {
-    const sessionCounters = new Map<string, number>();
-    return groupedData.map((group) => {
-      const sessionKey = normalizeSessionLabel(group.sessionLabel) || '__no_session__';
-      const next = (sessionCounters.get(sessionKey) || 0) + 1;
-      sessionCounters.set(sessionKey, next);
-      return {
-        ...group,
-        jamKeInSession: next,
-      };
+    const dayMap = new Map<string, { dateKey: string; dateLabel: string; slots: GroupedProctorSlot[] }>();
+    groupedSlots.forEach((slot) => {
+      const dayKey = slot.dateKey || '__no_date__';
+      if (!dayMap.has(dayKey)) {
+        dayMap.set(dayKey, {
+          dateKey: dayKey,
+          dateLabel: slot.dateLabel,
+          slots: [],
+        });
+      }
+      dayMap.get(dayKey)!.slots.push(slot);
     });
-  }, [groupedData]);
+
+    return Array.from(dayMap.values())
+      .sort((a, b) => a.dateKey.localeCompare(b.dateKey))
+      .map((day) => ({
+        dateKey: day.dateKey,
+        dateLabel: day.dateLabel,
+        slotCount: day.slots.length,
+        roomCount: new Set(day.slots.flatMap((slot) => slot.rooms.map(([roomName]) => roomName))).size,
+        slots: day.slots,
+      }));
+  }, [roomSlots, unassignedSchedules]);
 
   const getTeacherOptionsForRoom = useCallback(
     (roomSchedules?: ExamSittingRoomSlot[]): Teacher[] => {
@@ -714,16 +849,24 @@ const ExamProctorManagementPage = () => {
     [teachers],
   );
 
+  useEffect(() => {
+    const validDayKeys = new Set(groupedDayData.map((day) => day.dateKey));
+    setExpandedDays((prev) => prev.filter((key) => validDayKeys.has(key)));
+
+    const validSlotKeys = new Set(groupedDayData.flatMap((day) => day.slots.map((slot) => slot.slotKey)));
+    setExpandedSlots((prev) => prev.filter((key) => validSlotKeys.has(key)));
+  }, [groupedDayData]);
+
   // --- Handlers ---
 
-  const handleProctorChange = (timeKey: string, roomName: string, proctorId: number | null) => {
+  const handleProctorChange = (slotKey: string, roomName: string, proctorId: number | null) => {
     if (proctorId === null) return;
-    const key = `${timeKey}::${roomName}`;
+    const key = `${slotKey}::${roomName}`;
     setPendingChanges(prev => new Map(prev).set(key, proctorId));
   };
 
-  const startEditProctor = (timeKey: string, roomName: string) => {
-    const key = `${timeKey}::${roomName}`;
+  const startEditProctor = (slotKey: string, roomName: string) => {
+    const key = `${slotKey}::${roomName}`;
     setEditingRows((prev) => {
       const next = new Set(prev);
       next.add(key);
@@ -731,8 +874,8 @@ const ExamProctorManagementPage = () => {
     });
   };
 
-  const cancelEditProctor = (timeKey: string, roomName: string) => {
-    const key = `${timeKey}::${roomName}`;
+  const cancelEditProctor = (slotKey: string, roomName: string) => {
+    const key = `${slotKey}::${roomName}`;
     setPendingChanges((prev) => {
       const next = new Map(prev);
       next.delete(key);
@@ -745,16 +888,24 @@ const ExamProctorManagementPage = () => {
     });
   };
 
-  const toggleSlot = (timeKey: string) => {
-    setExpandedSlots(prev => 
-      prev.includes(timeKey) 
-        ? prev.filter(key => key !== timeKey)
-        : [...prev, timeKey]
+  const toggleDay = (dateKey: string) => {
+    setExpandedDays(prev =>
+      prev.includes(dateKey)
+        ? prev.filter((key) => key !== dateKey)
+        : [...prev, dateKey]
     );
   };
 
-  const handleSaveProctor = async (timeKey: string, roomName: string, sittingIds: number[]) => {
-    const key = `${timeKey}::${roomName}`;
+  const toggleSlot = (slotKey: string) => {
+    setExpandedSlots(prev => 
+      prev.includes(slotKey) 
+        ? prev.filter(key => key !== slotKey)
+        : [...prev, slotKey]
+    );
+  };
+
+  const handleSaveProctor = async (slotKey: string, roomName: string, sittingIds: number[]) => {
+    const key = `${slotKey}::${roomName}`;
     const proctorId = pendingChanges.get(key);
     
     if (!proctorId) return;
@@ -793,8 +944,8 @@ const ExamProctorManagementPage = () => {
     }
   };
 
-  const handleDeleteProctor = async (timeKey: string, roomName: string, sittingIds: number[]) => {
-    const key = `${timeKey}::${roomName}`;
+  const handleDeleteProctor = async (slotKey: string, roomName: string, sittingIds: number[]) => {
+    const key = `${slotKey}::${roomName}`;
     const confirmed = window.confirm(
       `Hapus pengawas dari ruang ${roomName} pada slot ini?`,
     );
@@ -895,7 +1046,7 @@ const ExamProctorManagementPage = () => {
             <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-blue-600 mx-auto mb-4"></div>
             <p className="text-gray-500">Memuat jadwal...</p>
           </div>
-        ) : groupedDataWithSessionOrder.length === 0 ? (
+        ) : groupedDayData.length === 0 ? (
           <div className="bg-white rounded-xl shadow-sm border border-gray-200 p-12 text-center">
             <div className="w-16 h-16 bg-gray-100 rounded-full flex items-center justify-center mx-auto mb-4">
               <Calendar className="text-gray-400" size={32} />
@@ -906,239 +1057,283 @@ const ExamProctorManagementPage = () => {
             <p className="text-gray-500 mt-1">Pastikan jadwal ujian dan ruang ujian sudah tersusun untuk program ini.</p>
           </div>
         ) : (
-          groupedDataWithSessionOrder.map((group) => {
-            const isExpanded = expandedSlots.includes(group.timeKey);
-            
+          groupedDayData.map((dayGroup) => {
+            const isDayExpanded = expandedDays.includes(dayGroup.dateKey);
+
             return (
-              <div key={group.timeKey} className="bg-white rounded-xl shadow-sm border border-gray-200 overflow-hidden">
-                {/* Time Slot Header - Clickable */}
-                <div 
-                  onClick={() => toggleSlot(group.timeKey)}
+              <div key={dayGroup.dateKey} className="bg-white rounded-xl shadow-sm border border-gray-200 overflow-hidden">
+                <div
+                  onClick={() => toggleDay(dayGroup.dateKey)}
                   className="bg-white px-6 py-4 flex items-center justify-between cursor-pointer hover:bg-gray-50 transition-colors"
                 >
-                  <div className="flex items-center gap-4">
-                    <div className="bg-blue-100 text-blue-700 px-3 py-1.5 rounded-lg font-bold text-sm whitespace-nowrap">
-                      Jam Ke-{group.jamKeInSession}
+                  <div className="flex items-center gap-3">
+                    <div className="w-11 h-11 rounded-xl bg-blue-50 text-blue-700 flex items-center justify-center">
+                      <Calendar size={20} />
                     </div>
-                    <div className="flex flex-col">
-                      <div className="flex items-center gap-2">
-                        <Clock className="text-blue-600" size={16} />
-                        <span className="text-lg font-bold text-gray-900">
-                          {formatTimeRangeLabel(group.start, group.end)}
-                        </span>
+                    <div>
+                      <div className="text-lg font-bold text-gray-900">{dayGroup.dateLabel}</div>
+                      <div className="text-sm text-gray-500">
+                        {dayGroup.slotCount} slot jadwal • {dayGroup.roomCount} ruang aktif
                       </div>
-                      <span className="text-sm text-gray-500 mt-0.5">
-                        {group.rooms.length} Ruang Ujian Aktif
-                      </span>
-                      <span className="text-xs text-gray-500 mt-1">
-                        {group.dateLabel !== '-' ? `${group.dateLabel} • ` : ''}
-                        {group.sessionLabel ? `Sesi: ${group.sessionLabel}` : 'Tanpa sesi'}
-                      </span>
                     </div>
                   </div>
-
-                  <button 
+                  <button
                     className={`flex items-center gap-2 px-4 py-2 rounded-lg text-sm font-medium transition-colors ${
-                      isExpanded 
-                        ? 'bg-blue-50 text-blue-700' 
+                      isDayExpanded
+                        ? 'bg-blue-50 text-blue-700'
                         : 'text-gray-500 hover:text-gray-900 hover:bg-gray-100'
                     }`}
                   >
-                    {isExpanded ? (
+                    {isDayExpanded ? (
                       <>
-                        <span>Tutup Detail</span>
+                        <span>Tutup Hari</span>
                         <ChevronDown size={18} />
                       </>
                     ) : (
                       <>
-                        <span>Lihat Detail</span>
+                        <span>Buka Hari</span>
                         <ChevronRight size={18} />
                       </>
                     )}
                   </button>
                 </div>
 
-                {/* Rooms Table - Collapsible */}
-                {isExpanded && (
-                  <div className="border-t border-gray-200 animate-in slide-in-from-top-2 duration-200">
-                    <div className="overflow-x-auto">
-                      <table className="w-full text-left">
-                        <thead className="bg-gray-50/50 border-b border-gray-100">
-                          <tr>
-                            <th className="px-6 py-3 text-xs font-semibold text-gray-500 uppercase tracking-wider w-1/4">Ruang Ujian</th>
-                            <th className="px-6 py-3 text-xs font-semibold text-gray-500 uppercase tracking-wider w-1/3">Kelas & Mapel</th>
-                            <th className="px-6 py-3 text-xs font-semibold text-gray-500 uppercase tracking-wider w-1/3">Pengawas</th>
-                            <th className="px-6 py-3 text-xs font-semibold text-gray-500 uppercase tracking-wider text-right w-24">Aksi</th>
-                          </tr>
-                        </thead>
-                        <tbody className="divide-y divide-gray-100 bg-white">
-                          {group.rooms.map(([roomName, slots]) => {
-                            const changeKey = `${group.timeKey}::${roomName}`;
-                            const roomSittingIds = slots
-                              .map((slot) => Number(slot.sittingId))
-                              .filter((id) => Number.isFinite(id) && id > 0);
-                            const hasEditableSchedules = roomSittingIds.length > 0;
-                            const currentProctorId =
-                              pendingChanges.get(changeKey) ??
-                              slots.find((slot) => Number.isFinite(Number(slot.proctorId)) && Number(slot.proctorId) > 0)?.proctorId ??
-                              slots[0]?.proctorId;
-                            const isSaving = saving.has(changeKey);
-                            const hasChanges = pendingChanges.has(changeKey);
-                            const hasAssignedProctor = Boolean(slots.some((slot) => Number(slot.proctorId)));
-                            const isEditing = editingRows.has(changeKey) || !hasAssignedProctor;
-                            const roomTeacherOptions = getTeacherOptionsForRoom(slots);
-                            const hasCurrentProctorInOptions = !currentProctorId
-                              ? true
-                              : roomTeacherOptions.some((teacher) => teacher.id === currentProctorId);
-                            const selectOptions =
-                              hasCurrentProctorInOptions || !currentProctorId
-                                ? roomTeacherOptions
-                                : [
-                                    ...roomTeacherOptions,
-                                    ...teachers.filter((teacher) => teacher.id === currentProctorId),
-                                  ];
+                {isDayExpanded && (
+                  <div className="border-t border-gray-200 bg-gray-50/50 p-4 space-y-3">
+                    {dayGroup.slots.map((group) => {
+                      const isExpanded = expandedSlots.includes(group.slotKey);
 
-                            return (
-                              <tr key={roomName} className="hover:bg-gray-50/50 transition-colors">
-                                <td className="px-6 py-4 align-top">
-                                  <div className="flex items-center gap-2">
-                                    <MapPin size={16} className="text-gray-400" />
-                                    <span className="font-medium text-gray-900">{roomName}</span>
-                                  </div>
-                                </td>
-                                <td className="px-6 py-4 align-top">
-                                  <div className="flex flex-wrap gap-2">
-                                    {(() => {
-                                      const classSubjectMap = new Map<string, string>();
-                                      slots.forEach((slotItem) => {
-                                        const subjectName = String(slotItem.subjectName || '').trim() || '-';
-                                        (slotItem.classNames || []).forEach((className) => {
-                                          if (!classSubjectMap.has(className)) {
-                                            classSubjectMap.set(className, subjectName);
-                                          }
-                                        });
-                                      });
-                                      const orderedPairs = Array.from(classSubjectMap.entries()).sort(
-                                        ([classNameA, subjectNameA], [classNameB, subjectNameB]) => {
-                                          const subjectCompare = String(subjectNameA || '').localeCompare(
-                                            String(subjectNameB || ''),
-                                            'id',
-                                            { numeric: true, sensitivity: 'base' },
-                                          );
-                                          if (subjectCompare !== 0) return subjectCompare;
-                                          return compareClassName(classNameA, classNameB);
-                                        },
+                      return (
+                        <div key={group.slotKey} className="bg-white rounded-xl border border-gray-200 overflow-hidden">
+                          <div
+                            onClick={() => toggleSlot(group.slotKey)}
+                            className="bg-white px-6 py-4 flex items-center justify-between cursor-pointer hover:bg-gray-50 transition-colors"
+                          >
+                            <div className="flex items-center gap-4">
+                              <div className="bg-blue-100 text-blue-700 px-3 py-1.5 rounded-lg font-bold text-sm whitespace-nowrap">
+                                {group.periodNumber ? `Jam Ke-${group.periodNumber}` : 'Slot Jadwal'}
+                              </div>
+                              <div className="flex flex-col">
+                                <div className="text-lg font-bold text-gray-900">
+                                  {group.subjectName}
+                                  {group.subjectCode ? ` (${group.subjectCode})` : ''}
+                                </div>
+                                <span className="text-sm text-gray-500 mt-0.5">
+                                  {formatTimeRangeLabel(group.start, group.end)} • {group.rooms.length} ruang aktif
+                                </span>
+                                <span className="text-xs text-gray-500 mt-1">
+                                  {group.sessionLabel ? `Sesi: ${group.sessionLabel}` : 'Tanpa sesi'}
+                                  {group.unassigned.length > 0 ? ` • ${group.unassigned.length} kelas belum ada ruang` : ''}
+                                </span>
+                              </div>
+                            </div>
+
+                            <button
+                              className={`flex items-center gap-2 px-4 py-2 rounded-lg text-sm font-medium transition-colors ${
+                                isExpanded
+                                  ? 'bg-blue-50 text-blue-700'
+                                  : 'text-gray-500 hover:text-gray-900 hover:bg-gray-100'
+                              }`}
+                            >
+                              {isExpanded ? (
+                                <>
+                                  <span>Tutup Detail</span>
+                                  <ChevronDown size={18} />
+                                </>
+                              ) : (
+                                <>
+                                  <span>Lihat Detail</span>
+                                  <ChevronRight size={18} />
+                                </>
+                              )}
+                            </button>
+                          </div>
+
+                          {isExpanded && (
+                            <div className="border-t border-gray-200 animate-in slide-in-from-top-2 duration-200">
+                              <div className="overflow-x-auto">
+                                <table className="w-full text-left">
+                                  <thead className="bg-gray-50/50 border-b border-gray-100">
+                                    <tr>
+                                      <th className="px-6 py-3 text-xs font-semibold text-gray-500 uppercase tracking-wider w-1/4">Ruang Ujian</th>
+                                      <th className="px-6 py-3 text-xs font-semibold text-gray-500 uppercase tracking-wider w-1/3">Kelas & Mapel</th>
+                                      <th className="px-6 py-3 text-xs font-semibold text-gray-500 uppercase tracking-wider w-1/3">Pengawas</th>
+                                      <th className="px-6 py-3 text-xs font-semibold text-gray-500 uppercase tracking-wider text-right w-24">Aksi</th>
+                                    </tr>
+                                  </thead>
+                                  <tbody className="divide-y divide-gray-100 bg-white">
+                                    {group.rooms.map(([roomName, slots]) => {
+                                      const changeKey = `${group.slotKey}::${roomName}`;
+                                      const roomSittingIds = slots
+                                        .map((slot) => Number(slot.sittingId))
+                                        .filter((item) => Number.isFinite(item) && item > 0);
+                                      const hasEditableSchedules = roomSittingIds.length > 0;
+                                      const currentProctorId =
+                                        pendingChanges.get(changeKey) ??
+                                        slots.find((slot) => Number.isFinite(Number(slot.proctorId)) && Number(slot.proctorId) > 0)?.proctorId ??
+                                        slots[0]?.proctorId;
+                                      const isSaving = saving.has(changeKey);
+                                      const hasChanges = pendingChanges.has(changeKey);
+                                      const hasAssignedProctor = Boolean(slots.some((slot) => Number(slot.proctorId)));
+                                      const isEditing = editingRows.has(changeKey) || !hasAssignedProctor;
+                                      const roomTeacherOptions = getTeacherOptionsForRoom(slots);
+                                      const hasCurrentProctorInOptions = !currentProctorId
+                                        ? true
+                                        : roomTeacherOptions.some((teacher) => teacher.id === currentProctorId);
+                                      const selectOptions =
+                                        hasCurrentProctorInOptions || !currentProctorId
+                                          ? roomTeacherOptions
+                                          : [
+                                              ...roomTeacherOptions,
+                                              ...teachers.filter((teacher) => teacher.id === currentProctorId),
+                                            ];
+
+                                      return (
+                                        <tr key={`${group.slotKey}-${roomName}`} className="hover:bg-gray-50/50 transition-colors">
+                                          <td className="px-6 py-4 align-top">
+                                            <div className="flex items-center gap-2">
+                                              <MapPin size={16} className="text-gray-400" />
+                                              <span className="font-medium text-gray-900">{roomName}</span>
+                                            </div>
+                                          </td>
+                                          <td className="px-6 py-4 align-top">
+                                            <div className="flex flex-wrap gap-2">
+                                              {(() => {
+                                                const classSubjectMap = new Map<string, string>();
+                                                slots.forEach((slotItem) => {
+                                                  const subjectName = String(slotItem.subjectName || '').trim() || '-';
+                                                  (slotItem.classNames || []).forEach((className) => {
+                                                    if (!classSubjectMap.has(className)) {
+                                                      classSubjectMap.set(className, subjectName);
+                                                    }
+                                                  });
+                                                });
+                                                const orderedPairs = Array.from(classSubjectMap.entries()).sort(
+                                                  ([classNameA, subjectNameA], [classNameB, subjectNameB]) => {
+                                                    const subjectCompare = String(subjectNameA || '').localeCompare(
+                                                      String(subjectNameB || ''),
+                                                      'id',
+                                                      { numeric: true, sensitivity: 'base' },
+                                                    );
+                                                    if (subjectCompare !== 0) return subjectCompare;
+                                                    return compareClassName(classNameA, classNameB);
+                                                  },
+                                                );
+                                                return orderedPairs.map(([className, subjectName]) => (
+                                                  <div
+                                                    key={`${roomName}-${className}`}
+                                                    className="inline-flex items-center gap-1.5 px-2.5 py-1 rounded bg-blue-50 text-blue-700 border border-blue-100 text-xs"
+                                                  >
+                                                    <span className="truncate max-w-[150px]" title={subjectName}>
+                                                      {subjectName}
+                                                    </span>
+                                                    <span className="text-blue-300">|</span>
+                                                    <span className="font-bold">{className}</span>
+                                                  </div>
+                                                ));
+                                              })()}
+                                            </div>
+                                          </td>
+                                          <td className="px-6 py-4 align-top">
+                                            <SearchableSelect
+                                              value={currentProctorId}
+                                              options={selectOptions}
+                                              onChange={(val) => handleProctorChange(group.slotKey, roomName, val)}
+                                              placeholder="Pilih Pengawas..."
+                                              disabled={isSaving || !isEditing || !hasEditableSchedules}
+                                            />
+                                            {!hasEditableSchedules ? (
+                                              <div className="mt-2 text-[11px] text-amber-700">
+                                                Ruang ini belum sinkron ke jadwal ujian, jadi pengawas belum bisa disimpan dari tabel ini.
+                                              </div>
+                                            ) : null}
+                                          </td>
+                                          <td className="px-6 py-4 align-top text-right">
+                                            <div className="inline-flex items-center gap-2">
+                                              {isEditing ? (
+                                                <>
+                                                  <button
+                                                    onClick={() => handleSaveProctor(group.slotKey, roomName, roomSittingIds)}
+                                                    disabled={isSaving || !hasChanges || !hasEditableSchedules}
+                                                    className="inline-flex items-center gap-1.5 px-2.5 py-2 bg-blue-600 text-white text-xs font-medium rounded-lg hover:bg-blue-700 disabled:opacity-50 transition-all shadow-sm"
+                                                    title="Simpan Perubahan"
+                                                  >
+                                                    {isSaving ? (
+                                                      <div className="w-3.5 h-3.5 border-2 border-white/30 border-t-white rounded-full animate-spin"></div>
+                                                    ) : (
+                                                      <Save size={14} />
+                                                    )}
+                                                    Simpan
+                                                  </button>
+                                                  {hasAssignedProctor && (
+                                                    <button
+                                                      onClick={() => cancelEditProctor(group.slotKey, roomName)}
+                                                      disabled={isSaving}
+                                                      className="inline-flex items-center justify-center p-2 border border-gray-300 rounded-lg text-gray-600 hover:bg-gray-50 disabled:opacity-50"
+                                                      title="Batal Edit"
+                                                    >
+                                                      <X size={14} />
+                                                    </button>
+                                                  )}
+                                                </>
+                                              ) : (
+                                                <>
+                                                  <button
+                                                    onClick={() => startEditProctor(group.slotKey, roomName)}
+                                                    disabled={isSaving || !hasEditableSchedules}
+                                                    className="inline-flex items-center justify-center p-2 border border-blue-300 rounded-lg text-blue-600 hover:bg-blue-50 disabled:opacity-50"
+                                                    title="Edit Pengawas"
+                                                  >
+                                                    <Pencil size={14} />
+                                                  </button>
+                                                  <button
+                                                    onClick={() => handleDeleteProctor(group.slotKey, roomName, roomSittingIds)}
+                                                    disabled={isSaving || !hasAssignedProctor || !hasEditableSchedules}
+                                                    className="inline-flex items-center justify-center p-2 border border-red-300 rounded-lg text-red-600 hover:bg-red-50 disabled:opacity-50"
+                                                    title="Hapus Pengawas"
+                                                  >
+                                                    <Trash2 size={14} />
+                                                  </button>
+                                                </>
+                                              )}
+                                            </div>
+                                          </td>
+                                        </tr>
                                       );
-                                      return orderedPairs.map(([className, subjectName]) => (
-                                        <div
-                                          key={`${roomName}-${className}`}
-                                          className="inline-flex items-center gap-1.5 px-2.5 py-1 rounded bg-blue-50 text-blue-700 border border-blue-100 text-xs"
-                                        >
-                                          <span className="truncate max-w-[150px]" title={subjectName}>
-                                            {subjectName}
-                                          </span>
-                                          <span className="text-blue-300">|</span>
-                                          <span className="font-bold">{className}</span>
-                                        </div>
-                                      ));
-                                    })()}
-                                  </div>
-                                </td>
-                                <td className="px-6 py-4 align-top">
-                                  <SearchableSelect
-                                    value={currentProctorId}
-                                    options={selectOptions}
-                                    onChange={(val) => handleProctorChange(group.timeKey, roomName, val)}
-                                    placeholder="Pilih Pengawas..."
-                                    disabled={isSaving || !isEditing || !hasEditableSchedules}
-                                  />
-                                  {!hasEditableSchedules ? (
-                                    <div className="mt-2 text-[11px] text-amber-700">
-                                      Ruang ini belum sinkron ke jadwal ujian, jadi pengawas belum bisa disimpan dari tabel ini.
-                                    </div>
-                                  ) : null}
-                                </td>
-                                <td className="px-6 py-4 align-top text-right">
-                                  <div className="inline-flex items-center gap-2">
-                                    {isEditing ? (
-                                      <>
-                                        <button
-                                          onClick={() => handleSaveProctor(group.timeKey, roomName, roomSittingIds)}
-                                          disabled={isSaving || !hasChanges || !hasEditableSchedules}
-                                          className="inline-flex items-center gap-1.5 px-2.5 py-2 bg-blue-600 text-white text-xs font-medium rounded-lg hover:bg-blue-700 disabled:opacity-50 transition-all shadow-sm"
-                                          title="Simpan Perubahan"
-                                        >
-                                          {isSaving ? (
-                                            <div className="w-3.5 h-3.5 border-2 border-white/30 border-t-white rounded-full animate-spin"></div>
-                                          ) : (
-                                            <Save size={14} />
-                                          )}
-                                          Simpan
-                                        </button>
-                                        {hasAssignedProctor && (
-                                          <button
-                                            onClick={() => cancelEditProctor(group.timeKey, roomName)}
-                                            disabled={isSaving}
-                                            className="inline-flex items-center justify-center p-2 border border-gray-300 rounded-lg text-gray-600 hover:bg-gray-50 disabled:opacity-50"
-                                            title="Batal Edit"
-                                          >
-                                            <X size={14} />
-                                          </button>
-                                        )}
-                                      </>
-                                    ) : (
-                                      <>
-                                        <button
-                                          onClick={() => startEditProctor(group.timeKey, roomName)}
-                                          disabled={isSaving || !hasEditableSchedules}
-                                          className="inline-flex items-center justify-center p-2 border border-blue-300 rounded-lg text-blue-600 hover:bg-blue-50 disabled:opacity-50"
-                                          title="Edit Pengawas"
-                                        >
-                                          <Pencil size={14} />
-                                        </button>
-                                        <button
-                                          onClick={() => handleDeleteProctor(group.timeKey, roomName, roomSittingIds)}
-                                          disabled={isSaving || !hasAssignedProctor || !hasEditableSchedules}
-                                          className="inline-flex items-center justify-center p-2 border border-red-300 rounded-lg text-red-600 hover:bg-red-50 disabled:opacity-50"
-                                          title="Hapus Pengawas"
-                                        >
-                                          <Trash2 size={14} />
-                                        </button>
-                                      </>
+                                    })}
+
+                                    {group.unassigned.length > 0 && (
+                                      <tr className="bg-red-50">
+                                        <td className="px-6 py-4 align-top">
+                                          <div className="flex items-center gap-2 text-red-600">
+                                            <AlertCircle size={16} />
+                                            <span className="font-medium italic">Belum Ada Ruang</span>
+                                          </div>
+                                          <p className="text-xs text-red-500 mt-1">
+                                            Kelas-kelas ini belum diatur dalam menu "Kelola Ruang Ujian".
+                                          </p>
+                                        </td>
+                                        <td className="px-6 py-4 align-top" colSpan={3}>
+                                          <div className="flex flex-wrap gap-2">
+                                            {group.unassigned.map((schedule) => (
+                                              <div key={schedule.id} className="inline-flex items-center gap-1.5 px-2.5 py-1 rounded bg-white text-red-700 border border-red-200 text-xs shadow-sm">
+                                                <span className="font-bold">{schedule.className || '-'}</span>
+                                                <span className="text-red-300">|</span>
+                                                <span>{schedule.subjectName || '-'}</span>
+                                              </div>
+                                            ))}
+                                          </div>
+                                        </td>
+                                      </tr>
                                     )}
-                                  </div>
-                                </td>
-                              </tr>
-                            );
-                          })}
-                          
-                          {group.unassigned.length > 0 && (
-                            <tr className="bg-red-50">
-                              <td className="px-6 py-4 align-top">
-                                <div className="flex items-center gap-2 text-red-600">
-                                  <AlertCircle size={16} />
-                                  <span className="font-medium italic">Belum Ada Ruang</span>
-                                </div>
-                                <p className="text-xs text-red-500 mt-1">
-                                  Kelas-kelas ini belum diatur dalam menu "Kelola Ruang Ujian".
-                                </p>
-                              </td>
-                              <td className="px-6 py-4 align-top" colSpan={3}>
-                                <div className="flex flex-wrap gap-2">
-                                  {group.unassigned.map(s => (
-                                    <div key={s.id} className="inline-flex items-center gap-1.5 px-2.5 py-1 rounded bg-white text-red-700 border border-red-200 text-xs shadow-sm">
-                                      <span className="font-bold">{s.className || '-'}</span>
-                                      <span className="text-red-300">|</span>
-                                      <span>{s.subjectName || '-'}</span>
-                                    </div>
-                                  ))}
-                                </div>
-                              </td>
-                            </tr>
+                                  </tbody>
+                                </table>
+                              </div>
+                            </div>
                           )}
-                        </tbody>
-                      </table>
-                    </div>
+                        </div>
+                      );
+                    })}
                   </div>
                 )}
               </div>

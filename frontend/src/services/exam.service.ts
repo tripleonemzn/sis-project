@@ -822,6 +822,7 @@ export const examService = {
         jobVacancyId?: number;
         startTime: string;
         endTime: string;
+        periodNumber?: number | null;
         proctorId?: number;
         room?: string;
         sessionId?: number | null;
@@ -835,6 +836,7 @@ export const examService = {
         data: {
             startTime?: string;
             endTime?: string;
+            periodNumber?: number | null;
             proctorId?: number | null;
             room?: string | null;
             isActive?: boolean;

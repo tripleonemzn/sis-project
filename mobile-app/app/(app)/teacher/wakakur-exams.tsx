@@ -397,6 +397,48 @@ function formatSessionSummary(sessionLabel?: string | null) {
   return `Sesi ${value}`;
 }
 
+function formatDayDateLabel(value?: string | null) {
+  if (!value) return 'Tanggal belum diatur';
+  const date = new Date(value);
+  if (Number.isNaN(date.getTime())) return 'Tanggal belum diatur';
+  return date.toLocaleDateString('id-ID', {
+    weekday: 'long',
+    day: 'numeric',
+    month: 'long',
+    year: 'numeric',
+  });
+}
+
+function formatTimeOnly(value?: string | null) {
+  if (!value) return '-';
+  const date = new Date(value);
+  if (Number.isNaN(date.getTime())) return '-';
+  return date.toLocaleTimeString('id-ID', {
+    hour: '2-digit',
+    minute: '2-digit',
+  });
+}
+
+function formatTimeRangeSummary(startTime?: string | null, endTime?: string | null) {
+  const startLabel = formatTimeOnly(startTime);
+  const endLabel = formatTimeOnly(endTime);
+  if (startLabel === '-' && endLabel === '-') return 'Waktu belum diatur';
+  if (startLabel === '-' || endLabel === '-') return 'Waktu belum lengkap';
+  return `${startLabel} - ${endLabel} WIB`;
+}
+
+function getDateKey(value?: string | null) {
+  if (!value) return '__no_date__';
+  const date = new Date(value);
+  if (Number.isNaN(date.getTime())) return '__no_date__';
+  return date.toISOString().slice(0, 10);
+}
+
+function resolvePeriodLabel(periodNumber?: number | null) {
+  const parsed = Number(periodNumber || 0);
+  return Number.isInteger(parsed) && parsed > 0 ? `Jam Ke-${parsed}` : 'Slot Jadwal';
+}
+
 function toInputDateValue(value?: string | null) {
   if (!value) return '';
   const parsed = new Date(value);
@@ -755,6 +797,9 @@ export default function TeacherWakakurExamsScreen() {
   const [examTypeFilter, setExamTypeFilter] = useState<ExamTypeFilter>('ALL');
   const [selectedSemester, setSelectedSemester] = useState<'ODD' | 'EVEN'>('ODD');
   const [search, setSearch] = useState('');
+  const [expandedScheduleDays, setExpandedScheduleDays] = useState<string[]>([]);
+  const [expandedProctorDays, setExpandedProctorDays] = useState<string[]>([]);
+  const [expandedProctorSlots, setExpandedProctorSlots] = useState<string[]>([]);
   const [editingAssignmentKey, setEditingAssignmentKey] = useState<string | null>(null);
   const [selectedMakeupSchedule, setSelectedMakeupSchedule] = useState<TeacherExamSchedule | null>(null);
   const [makeupOverview, setMakeupOverview] = useState<ExamScheduleMakeupOverview | null>(null);
@@ -1321,40 +1366,103 @@ export default function TeacherWakakurExamsScreen() {
     };
   }, [examSittingsQuery.data]);
 
-  const groupedSchedules = useMemo(() => {
-    const map = new Map<
+  const groupedScheduleDays = useMemo(() => {
+    const dayMap = new Map<
       string,
       {
-        key: string;
-        subjectName: string;
-        subjectCode: string;
-        examType: ExamDisplayType;
-        startTime: string;
-        endTime: string;
-        schedules: TeacherExamSchedule[];
+        dateKey: string;
+        dateLabel: string;
+        slotMap: Map<
+          string,
+          {
+            key: string;
+            subjectName: string;
+            subjectCode: string;
+            examType: ExamDisplayType;
+            startTime: string;
+            endTime: string;
+            periodNumber: number | null;
+            sessionLabel: string | null;
+            schedules: TeacherExamSchedule[];
+          }
+        >;
       }
     >();
 
     for (const schedule of filteredSchedules) {
       const subject = resolveScheduleSubject(schedule);
       const examType = resolveScheduleExamType(schedule);
-      const key = `${subject.subjectCode}|${schedule.startTime}|${schedule.endTime}|${examType}`;
-      if (!map.has(key)) {
-        map.set(key, {
-          key,
+      const periodNumber = Number(schedule.periodNumber || 0) || null;
+      const dateKey = getDateKey(schedule.startTime);
+      const dateLabel = formatDayDateLabel(schedule.startTime);
+      const slotKey = [
+        dateKey,
+        periodNumber || 0,
+        schedule.startTime,
+        schedule.endTime,
+        examType,
+        subject.subjectCode,
+        normalizeSessionLabel(schedule.sessionLabel),
+      ].join('|');
+
+      if (!dayMap.has(dateKey)) {
+        dayMap.set(dateKey, {
+          dateKey,
+          dateLabel,
+          slotMap: new Map(),
+        });
+      }
+
+      const dayEntry = dayMap.get(dateKey)!;
+      if (!dayEntry.slotMap.has(slotKey)) {
+        dayEntry.slotMap.set(slotKey, {
+          key: slotKey,
           subjectName: subject.subjectName,
           subjectCode: subject.subjectCode,
           examType,
           startTime: schedule.startTime,
           endTime: schedule.endTime,
+          periodNumber,
+          sessionLabel: schedule.sessionLabel || null,
           schedules: [],
         });
       }
-      map.get(key)!.schedules.push(schedule);
+
+      dayEntry.slotMap.get(slotKey)!.schedules.push(schedule);
     }
 
-    return Array.from(map.values());
+    return Array.from(dayMap.values())
+      .sort((left, right) => left.dateKey.localeCompare(right.dateKey))
+      .map((day) => ({
+        dateKey: day.dateKey,
+        dateLabel: day.dateLabel,
+        slots: Array.from(day.slotMap.values())
+          .map((slot) => ({
+            ...slot,
+            schedules: [...slot.schedules].sort((left, right) =>
+              String(left.class?.name || 'Calon Siswa').localeCompare(
+                String(right.class?.name || 'Calon Siswa'),
+                'id',
+                { numeric: true, sensitivity: 'base' },
+              ),
+            ),
+          }))
+          .sort((left, right) => {
+            const timeDiff = new Date(left.startTime).getTime() - new Date(right.startTime).getTime();
+            if (timeDiff !== 0) return timeDiff;
+            const periodDiff =
+              Number(left.periodNumber || Number.MAX_SAFE_INTEGER) -
+              Number(right.periodNumber || Number.MAX_SAFE_INTEGER);
+            if (periodDiff !== 0) return periodDiff;
+            return String(left.subjectName || '').localeCompare(String(right.subjectName || ''), 'id');
+          }),
+      }));
   }, [filteredSchedules]);
+
+  const groupedScheduleSlots = useMemo(
+    () => groupedScheduleDays.flatMap((day) => day.slots),
+    [groupedScheduleDays],
+  );
 
   const roomSummary = useMemo(() => {
     const map = new Map<
@@ -1499,6 +1607,90 @@ export default function TeacherWakakurExamsScreen() {
       });
   }, [roomSlotsQuery.data?.slots, search]);
 
+  const groupedProctorDays = useMemo(() => {
+    const dayMap = new Map<
+      string,
+      {
+        dateKey: string;
+        dateLabel: string;
+        slotMap: Map<
+          string,
+          {
+            key: string;
+            subjectName: string;
+            subjectCode: string | null;
+            examType: string;
+            startTime: string;
+            endTime: string;
+            periodNumber: number | null;
+            sessionLabel: string | null;
+            items: typeof filteredProctorRoomSlots;
+          }
+        >;
+      }
+    >();
+
+    filteredProctorRoomSlots.forEach((item) => {
+      const dateKey = getDateKey(item.startTime);
+      const dateLabel = formatDayDateLabel(item.startTime);
+      const periodNumber = Number(item.periodNumber || 0) || null;
+      const slotKey = [
+        dateKey,
+        periodNumber || 0,
+        item.startTime,
+        item.endTime,
+        item.subjectId || item.subjectName,
+        normalizeSessionLabel(item.sessionLabel),
+      ].join('|');
+
+      if (!dayMap.has(dateKey)) {
+        dayMap.set(dateKey, {
+          dateKey,
+          dateLabel,
+          slotMap: new Map(),
+        });
+      }
+
+      const dayEntry = dayMap.get(dateKey)!;
+      if (!dayEntry.slotMap.has(slotKey)) {
+        dayEntry.slotMap.set(slotKey, {
+          key: slotKey,
+          subjectName: item.subjectName,
+          subjectCode: item.subjectCode || null,
+          examType: item.examType,
+          startTime: item.startTime,
+          endTime: item.endTime,
+          periodNumber,
+          sessionLabel: item.sessionLabel || null,
+          items: [],
+        });
+      }
+
+      dayEntry.slotMap.get(slotKey)!.items.push(item);
+    });
+
+    return Array.from(dayMap.values())
+      .sort((left, right) => left.dateKey.localeCompare(right.dateKey))
+      .map((day) => ({
+        dateKey: day.dateKey,
+        dateLabel: day.dateLabel,
+        slots: Array.from(day.slotMap.values())
+          .map((slot) => ({
+            ...slot,
+            items: [...slot.items].sort((left, right) => compareExamRoomName(left.roomName, right.roomName)),
+          }))
+          .sort((left, right) => {
+            const timeDiff = new Date(left.startTime).getTime() - new Date(right.startTime).getTime();
+            if (timeDiff !== 0) return timeDiff;
+            const periodDiff =
+              Number(left.periodNumber || Number.MAX_SAFE_INTEGER) -
+              Number(right.periodNumber || Number.MAX_SAFE_INTEGER);
+            if (periodDiff !== 0) return periodDiff;
+            return String(left.subjectName || '').localeCompare(String(right.subjectName || ''), 'id');
+          }),
+      }));
+  }, [filteredProctorRoomSlots]);
+
   const teacherOptions = useMemo(() => {
     const query = teacherSearch.trim().toLowerCase();
     if (!query) return teachers.slice(0, 14);
@@ -1509,6 +1701,17 @@ export default function TeacherWakakurExamsScreen() {
       })
       .slice(0, 14);
   }, [teachers, teacherSearch]);
+
+  useEffect(() => {
+    const validScheduleDayKeys = new Set(groupedScheduleDays.map((day) => day.dateKey));
+    setExpandedScheduleDays((prev) => prev.filter((key) => validScheduleDayKeys.has(key)));
+
+    const validProctorDayKeys = new Set(groupedProctorDays.map((day) => day.dateKey));
+    setExpandedProctorDays((prev) => prev.filter((key) => validProctorDayKeys.has(key)));
+
+    const validProctorSlotKeys = new Set(groupedProctorDays.flatMap((day) => day.slots.map((slot) => slot.key)));
+    setExpandedProctorSlots((prev) => prev.filter((key) => validProctorSlotKeys.has(key)));
+  }, [groupedProctorDays, groupedScheduleDays]);
 
   const stats = useMemo(() => {
     const noProctorCount = filteredProctorRoomSlots.filter((item) => !item.proctorId).length;
@@ -1778,6 +1981,24 @@ export default function TeacherWakakurExamsScreen() {
 
   const handleAssignProctor = (sittingId: number, proctorId: number | null) => {
     updateProctorMutation.mutate({ sittingId, proctorId });
+  };
+
+  const toggleScheduleDay = (dateKey: string) => {
+    setExpandedScheduleDays((prev) =>
+      prev.includes(dateKey) ? prev.filter((item) => item !== dateKey) : [...prev, dateKey],
+    );
+  };
+
+  const toggleProctorDay = (dateKey: string) => {
+    setExpandedProctorDays((prev) =>
+      prev.includes(dateKey) ? prev.filter((item) => item !== dateKey) : [...prev, dateKey],
+    );
+  };
+
+  const toggleProctorSlot = (slotKey: string) => {
+    setExpandedProctorSlots((prev) =>
+      prev.includes(slotKey) ? prev.filter((item) => item !== slotKey) : [...prev, slotKey],
+    );
   };
 
   const updateProgramDraft = (rowId: string, patch: Partial<ExamProgramDraft>) => {
@@ -3176,100 +3397,152 @@ export default function TeacherWakakurExamsScreen() {
           {!schedulesQuery.isLoading && !schedulesQuery.isError ? (
             <>
               {section === 'JADWAL' ? (
-                groupedSchedules.length > 0 ? (
-                  groupedSchedules.map((group) => (
+                groupedScheduleDays.length > 0 ? (
+                  groupedScheduleDays.map((day) => {
+                    const isExpanded = expandedScheduleDays.includes(day.dateKey);
+                    return (
                     <View
-                      key={group.key}
+                      key={day.dateKey}
                       style={{
                         backgroundColor: '#fff',
                         borderWidth: 1,
                         borderColor: '#dbe7fb',
                         borderRadius: 12,
-                        padding: 12,
                         marginBottom: 10,
+                        overflow: 'hidden',
                       }}
                     >
-                      <View
-                        style={{ flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', marginBottom: 4 }}
+                      <Pressable
+                        onPress={() => toggleScheduleDay(day.dateKey)}
+                        style={{
+                          padding: 12,
+                          flexDirection: 'row',
+                          justifyContent: 'space-between',
+                          alignItems: 'center',
+                          gap: 10,
+                        }}
                       >
-                        <Text style={{ color: BRAND_COLORS.textDark, fontWeight: '700', fontSize: 16, flex: 1 }}>
-                          {group.subjectName} ({group.subjectCode})
-                        </Text>
-                        <Text
-                          style={{
-                            color: '#1d4ed8',
-                            backgroundColor: '#eff6ff',
-                            borderWidth: 1,
-                            borderColor: '#bfdbfe',
-                            borderRadius: 999,
-                            paddingHorizontal: 8,
-                            paddingVertical: 2,
-                            fontSize: 11,
-                            fontWeight: '700',
-                          }}
-                        >
-                          {group.examType}
-                        </Text>
-                      </View>
-                      <Text style={{ color: BRAND_COLORS.textMuted, marginBottom: 8 }}>
-                        {formatDateTime(group.startTime)} - {formatDateTime(group.endTime)}
-                      </Text>
-                      {group.schedules.map((item) => (
-                        <View
-                          key={item.id}
-                          style={{
-                            borderTopWidth: 1,
-                            borderTopColor: '#eef3ff',
-                            paddingTop: 8,
-                            marginTop: 6,
-                          }}
-                        >
-                          <Text style={{ color: BRAND_COLORS.textDark, fontWeight: '700' }}>{item.class?.name || '-'}</Text>
-                          <Text style={{ color: BRAND_COLORS.textMuted, fontSize: 12 }}>
-                            Ruang: {item.room || '-'} • Pengawas: {item.proctor?.name || '-'}
+                        <View style={{ flex: 1 }}>
+                          <Text style={{ color: BRAND_COLORS.textDark, fontWeight: '800', fontSize: 16 }}>
+                            {day.dateLabel}
                           </Text>
-                          <Text style={{ color: '#64748b', fontSize: 12, marginTop: 2 }}>
-                            Packet: {item.packet?.title || '-'}
+                          <Text style={{ color: BRAND_COLORS.textMuted, marginTop: 2, fontSize: 12 }}>
+                            {day.slots.length} slot jadwal pada hari ini
                           </Text>
-                          <View style={{ flexDirection: 'row', flexWrap: 'wrap', gap: 8, marginTop: 8 }}>
-                            {item.class?.name ? (
-                              <Pressable
-                                onPress={() => void openMakeupModal(item)}
-                                style={{
-                                  borderWidth: 1,
-                                  borderColor: '#bfdbfe',
-                                  backgroundColor: '#eff6ff',
-                                  borderRadius: 8,
-                                  paddingVertical: 6,
-                                  paddingHorizontal: 10,
-                                }}
-                              >
-                                <Text style={{ color: '#1d4ed8', fontWeight: '700', fontSize: 12 }}>
-                                  Kelola Susulan
-                                </Text>
-                              </Pressable>
-                            ) : null}
-                            <Pressable
-                              onPress={() => handleDeleteSchedule(item.id)}
-                              disabled={deleteScheduleMutation.isPending}
+                        </View>
+                        <Text style={{ color: '#1d4ed8', fontWeight: '700', fontSize: 12 }}>
+                          {isExpanded ? 'Tutup Hari' : 'Buka Hari'}
+                        </Text>
+                      </Pressable>
+
+                      {isExpanded ? (
+                        <View style={{ borderTopWidth: 1, borderTopColor: '#eef3ff', padding: 12, paddingTop: 10 }}>
+                          {day.slots.map((group) => (
+                            <View
+                              key={group.key}
                               style={{
+                                backgroundColor: '#fff',
                                 borderWidth: 1,
-                                borderColor: '#fecaca',
-                                backgroundColor: '#fff1f2',
-                                borderRadius: 8,
-                                paddingVertical: 6,
-                                paddingHorizontal: 10,
+                                borderColor: '#dbe7fb',
+                                borderRadius: 12,
+                                padding: 12,
+                                marginBottom: 10,
                               }}
                             >
-                              <Text style={{ color: '#be123c', fontWeight: '700', fontSize: 12 }}>
-                                {deleteScheduleMutation.isPending ? 'Memproses...' : 'Hapus Jadwal'}
-                              </Text>
-                            </Pressable>
-                          </View>
+                              <View
+                                style={{ flexDirection: 'row', justifyContent: 'space-between', alignItems: 'flex-start', gap: 8 }}
+                              >
+                                <View style={{ flex: 1 }}>
+                                  <Text style={{ color: BRAND_COLORS.textDark, fontWeight: '700', fontSize: 15 }}>
+                                    {group.subjectName} ({group.subjectCode})
+                                  </Text>
+                                  <Text style={{ color: BRAND_COLORS.textMuted, marginTop: 3, fontSize: 12 }}>
+                                    {resolvePeriodLabel(group.periodNumber)} • {formatTimeRangeSummary(group.startTime, group.endTime)}
+                                  </Text>
+                                  <Text style={{ color: BRAND_COLORS.textMuted, marginTop: 2, fontSize: 12 }}>
+                                    {group.sessionLabel ? `Sesi ${group.sessionLabel}` : 'Tanpa sesi'}
+                                  </Text>
+                                </View>
+                                <Text
+                                  style={{
+                                    color: '#1d4ed8',
+                                    backgroundColor: '#eff6ff',
+                                    borderWidth: 1,
+                                    borderColor: '#bfdbfe',
+                                    borderRadius: 999,
+                                    paddingHorizontal: 8,
+                                    paddingVertical: 2,
+                                    fontSize: 11,
+                                    fontWeight: '700',
+                                  }}
+                                >
+                                  {group.examType}
+                                </Text>
+                              </View>
+
+                              {group.schedules.map((item) => (
+                                <View
+                                  key={item.id}
+                                  style={{
+                                    borderTopWidth: 1,
+                                    borderTopColor: '#eef3ff',
+                                    paddingTop: 8,
+                                    marginTop: 8,
+                                  }}
+                                >
+                                  <Text style={{ color: BRAND_COLORS.textDark, fontWeight: '700' }}>
+                                    {item.class?.name || '-'}
+                                  </Text>
+                                  <Text style={{ color: BRAND_COLORS.textMuted, fontSize: 12 }}>
+                                    Ruang: {item.room || '-'} • Pengawas: {item.proctor?.name || '-'}
+                                  </Text>
+                                  <Text style={{ color: '#64748b', fontSize: 12, marginTop: 2 }}>
+                                    Packet: {item.packet?.title || '-'}
+                                  </Text>
+                                  <View style={{ flexDirection: 'row', flexWrap: 'wrap', gap: 8, marginTop: 8 }}>
+                                    {item.class?.name ? (
+                                      <Pressable
+                                        onPress={() => void openMakeupModal(item)}
+                                        style={{
+                                          borderWidth: 1,
+                                          borderColor: '#bfdbfe',
+                                          backgroundColor: '#eff6ff',
+                                          borderRadius: 8,
+                                          paddingVertical: 6,
+                                          paddingHorizontal: 10,
+                                        }}
+                                      >
+                                        <Text style={{ color: '#1d4ed8', fontWeight: '700', fontSize: 12 }}>
+                                          Kelola Susulan
+                                        </Text>
+                                      </Pressable>
+                                    ) : null}
+                                    <Pressable
+                                      onPress={() => handleDeleteSchedule(item.id)}
+                                      disabled={deleteScheduleMutation.isPending}
+                                      style={{
+                                        borderWidth: 1,
+                                        borderColor: '#fecaca',
+                                        backgroundColor: '#fff1f2',
+                                        borderRadius: 8,
+                                        paddingVertical: 6,
+                                        paddingHorizontal: 10,
+                                      }}
+                                    >
+                                      <Text style={{ color: '#be123c', fontWeight: '700', fontSize: 12 }}>
+                                        {deleteScheduleMutation.isPending ? 'Memproses...' : 'Hapus Jadwal'}
+                                      </Text>
+                                    </Pressable>
+                                  </View>
+                                </View>
+                              ))}
+                            </View>
+                          ))}
                         </View>
-                      ))}
+                      ) : null}
                     </View>
-                  ))
+                    );
+                  })
                 ) : (
                   <View
                     style={{
@@ -3502,165 +3775,246 @@ export default function TeacherWakakurExamsScreen() {
               ) : null}
 
               {section === 'MENGAWAS' ? (
-                filteredProctorRoomSlots.length > 0 ? (
-                  filteredProctorRoomSlots.map((item) => {
-                    const type = normalizeProgramCode(item.examType);
-                    const isEditing = editingAssignmentKey === item.key;
+                groupedProctorDays.length > 0 ? (
+                  groupedProctorDays.map((day) => {
+                    const isDayExpanded = expandedProctorDays.includes(day.dateKey);
                     return (
                       <View
-                        key={item.key}
+                        key={day.dateKey}
                         style={{
                           backgroundColor: '#fff',
                           borderWidth: 1,
                           borderColor: '#dbe7fb',
                           borderRadius: 12,
-                          padding: 12,
                           marginBottom: 10,
+                          overflow: 'hidden',
                         }}
                       >
-                        <View
-                          style={{ flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', marginBottom: 4 }}
+                        <Pressable
+                          onPress={() => toggleProctorDay(day.dateKey)}
+                          style={{
+                            padding: 12,
+                            flexDirection: 'row',
+                            justifyContent: 'space-between',
+                            alignItems: 'center',
+                            gap: 10,
+                          }}
                         >
-                          <Text style={{ color: BRAND_COLORS.textDark, fontWeight: '700', flex: 1, paddingRight: 6 }}>
-                            {item.subjectName}
-                            {item.subjectCode ? ` (${item.subjectCode})` : ''}
-                          </Text>
-                          <Text
-                            style={{
-                              color: '#1d4ed8',
-                              backgroundColor: '#eff6ff',
-                              borderWidth: 1,
-                              borderColor: '#bfdbfe',
-                              borderRadius: 999,
-                              paddingHorizontal: 8,
-                              paddingVertical: 2,
-                              fontSize: 11,
-                              fontWeight: '700',
-                            }}
-                          >
-                            {examTypeLabel(type || item.examType)}
-                          </Text>
-                        </View>
-                        <Text style={{ color: BRAND_COLORS.textMuted, fontSize: 12 }}>
-                          {(item.classNames || []).join(', ') || '-'} • {formatDateTime(item.startTime)}
-                        </Text>
-                        <Text style={{ color: BRAND_COLORS.textMuted, fontSize: 12, marginBottom: 6 }}>
-                          Ruang: {item.roomName || '-'} • Pengawas: {item.proctor?.name || 'Belum ditentukan'}
-                        </Text>
-                        <Text style={{ color: BRAND_COLORS.textMuted, fontSize: 12, marginBottom: 6 }}>
-                          {item.participantCount} peserta • {item.sessionLabel ? `Sesi ${item.sessionLabel}` : 'Tanpa sesi'}
-                        </Text>
-
-                        {!isEditing ? (
-                          <View style={{ flexDirection: 'row', gap: 8 }}>
-                            <Pressable
-                              onPress={() => setEditingAssignmentKey(item.key)}
-                              style={{
-                                borderWidth: 1,
-                                borderColor: '#bfdbfe',
-                                backgroundColor: '#eff6ff',
-                                borderRadius: 8,
-                                paddingVertical: 7,
-                                paddingHorizontal: 10,
-                              }}
-                            >
-                              <Text style={{ color: '#1d4ed8', fontWeight: '700', fontSize: 12 }}>Ubah Pengawas</Text>
-                            </Pressable>
-                            <Pressable
-                              onPress={() => handleAssignProctor(item.sittingId, user.id)}
-                              disabled={updateProctorMutation.isPending}
-                              style={{
-                                borderWidth: 1,
-                                borderColor: '#d5e1f5',
-                                backgroundColor: '#fff',
-                                borderRadius: 8,
-                                paddingVertical: 7,
-                                paddingHorizontal: 10,
-                              }}
-                            >
-                              <Text style={{ color: BRAND_COLORS.navy, fontWeight: '700', fontSize: 12 }}>
-                                {updateProctorMutation.isPending ? 'Memproses...' : 'Set Saya'}
-                              </Text>
-                            </Pressable>
-                          </View>
-                        ) : (
-                          <View
-                            style={{
-                              borderWidth: 1,
-                              borderColor: '#dbe7fb',
-                              backgroundColor: '#f8fbff',
-                              borderRadius: 10,
-                              padding: 10,
-                              marginTop: 4,
-                            }}
-                          >
-                            <Text style={{ color: BRAND_COLORS.textDark, fontWeight: '700', marginBottom: 8 }}>
-                              Pilih Pengawas
+                          <View style={{ flex: 1 }}>
+                            <Text style={{ color: BRAND_COLORS.textDark, fontWeight: '800', fontSize: 16 }}>
+                              {day.dateLabel}
                             </Text>
-                            <TextInput
-                              value={teacherSearch}
-                              onChangeText={setTeacherSearch}
-                              placeholder="Cari nama guru / username"
-                              placeholderTextColor="#94a3b8"
-                              style={{
-                                borderWidth: 1,
-                                borderColor: '#d5e1f5',
-                                borderRadius: 8,
-                                backgroundColor: '#fff',
-                                paddingHorizontal: 10,
-                                paddingVertical: 8,
-                                color: BRAND_COLORS.textDark,
-                                marginBottom: 8,
-                              }}
-                            />
-                            <View style={{ flexDirection: 'row', flexWrap: 'wrap', marginHorizontal: -3 }}>
-                              {teacherOptions.map((teacher) => (
-                                <View key={teacher.id} style={{ width: '50%', paddingHorizontal: 3, marginBottom: 6 }}>
+                            <Text style={{ color: BRAND_COLORS.textMuted, marginTop: 2, fontSize: 12 }}>
+                              {day.slots.length} slot mapel pada hari ini
+                            </Text>
+                          </View>
+                          <Text style={{ color: '#1d4ed8', fontWeight: '700', fontSize: 12 }}>
+                            {isDayExpanded ? 'Tutup Hari' : 'Buka Hari'}
+                          </Text>
+                        </Pressable>
+
+                        {isDayExpanded ? (
+                          <View style={{ borderTopWidth: 1, borderTopColor: '#eef3ff', padding: 12, paddingTop: 10 }}>
+                            {day.slots.map((slot) => {
+                              const type = normalizeProgramCode(slot.examType);
+                              const isSlotExpanded = expandedProctorSlots.includes(slot.key);
+                              return (
+                                <View
+                                  key={slot.key}
+                                  style={{
+                                    backgroundColor: '#fff',
+                                    borderWidth: 1,
+                                    borderColor: '#dbe7fb',
+                                    borderRadius: 12,
+                                    marginBottom: 10,
+                                    overflow: 'hidden',
+                                  }}
+                                >
                                   <Pressable
-                                    onPress={() => handleAssignProctor(item.sittingId, teacher.id)}
-                                    disabled={updateProctorMutation.isPending}
+                                    onPress={() => toggleProctorSlot(slot.key)}
                                     style={{
-                                      borderWidth: 1,
-                                      borderColor: '#d5e1f5',
-                                      borderRadius: 8,
-                                      backgroundColor: '#fff',
-                                      paddingVertical: 7,
-                                      paddingHorizontal: 8,
+                                      padding: 12,
+                                      flexDirection: 'row',
+                                      justifyContent: 'space-between',
+                                      alignItems: 'flex-start',
+                                      gap: 8,
                                     }}
                                   >
+                                    <View style={{ flex: 1 }}>
+                                      <Text style={{ color: BRAND_COLORS.textDark, fontWeight: '700', fontSize: 15 }}>
+                                        {slot.subjectName}
+                                        {slot.subjectCode ? ` (${slot.subjectCode})` : ''}
+                                      </Text>
+                                      <Text style={{ color: BRAND_COLORS.textMuted, marginTop: 3, fontSize: 12 }}>
+                                        {resolvePeriodLabel(slot.periodNumber)} • {formatTimeRangeSummary(slot.startTime, slot.endTime)}
+                                      </Text>
+                                      <Text style={{ color: BRAND_COLORS.textMuted, marginTop: 2, fontSize: 12 }}>
+                                        {slot.items.length} ruang • {slot.sessionLabel ? `Sesi ${slot.sessionLabel}` : 'Tanpa sesi'}
+                                      </Text>
+                                    </View>
                                     <Text
-                                      style={{ color: BRAND_COLORS.textDark, fontWeight: '700', fontSize: 12 }}
-                                      numberOfLines={1}
+                                      style={{
+                                        color: '#1d4ed8',
+                                        backgroundColor: '#eff6ff',
+                                        borderWidth: 1,
+                                        borderColor: '#bfdbfe',
+                                        borderRadius: 999,
+                                        paddingHorizontal: 8,
+                                        paddingVertical: 2,
+                                        fontSize: 11,
+                                        fontWeight: '700',
+                                      }}
                                     >
-                                      {teacher.name}
-                                    </Text>
-                                    <Text style={{ color: BRAND_COLORS.textMuted, fontSize: 11 }} numberOfLines={1}>
-                                      @{teacher.username}
+                                      {examTypeLabel(type || slot.examType)}
                                     </Text>
                                   </Pressable>
+
+                                  {isSlotExpanded ? (
+                                    <View style={{ borderTopWidth: 1, borderTopColor: '#eef3ff', padding: 12, paddingTop: 10 }}>
+                                      {slot.items.map((item) => {
+                                        const isEditing = editingAssignmentKey === item.key;
+                                        return (
+                                          <View
+                                            key={item.key}
+                                            style={{
+                                              borderWidth: 1,
+                                              borderColor: '#dbe7fb',
+                                              borderRadius: 10,
+                                              backgroundColor: '#fff',
+                                              padding: 12,
+                                              marginBottom: 8,
+                                            }}
+                                          >
+                                            <Text style={{ color: BRAND_COLORS.textDark, fontWeight: '700' }}>
+                                              Ruang: {item.roomName || '-'}
+                                            </Text>
+                                            <Text style={{ color: BRAND_COLORS.textMuted, fontSize: 12, marginTop: 3 }}>
+                                              {(item.classNames || []).join(', ') || '-'}
+                                            </Text>
+                                            <Text style={{ color: BRAND_COLORS.textMuted, fontSize: 12, marginTop: 2 }}>
+                                              Pengawas: {item.proctor?.name || 'Belum ditentukan'} • {item.participantCount} peserta
+                                            </Text>
+
+                                            {!isEditing ? (
+                                              <View style={{ flexDirection: 'row', gap: 8, marginTop: 8 }}>
+                                                <Pressable
+                                                  onPress={() => setEditingAssignmentKey(item.key)}
+                                                  style={{
+                                                    borderWidth: 1,
+                                                    borderColor: '#bfdbfe',
+                                                    backgroundColor: '#eff6ff',
+                                                    borderRadius: 8,
+                                                    paddingVertical: 7,
+                                                    paddingHorizontal: 10,
+                                                  }}
+                                                >
+                                                  <Text style={{ color: '#1d4ed8', fontWeight: '700', fontSize: 12 }}>Ubah Pengawas</Text>
+                                                </Pressable>
+                                                <Pressable
+                                                  onPress={() => handleAssignProctor(item.sittingId, user.id)}
+                                                  disabled={updateProctorMutation.isPending}
+                                                  style={{
+                                                    borderWidth: 1,
+                                                    borderColor: '#d5e1f5',
+                                                    backgroundColor: '#fff',
+                                                    borderRadius: 8,
+                                                    paddingVertical: 7,
+                                                    paddingHorizontal: 10,
+                                                  }}
+                                                >
+                                                  <Text style={{ color: BRAND_COLORS.navy, fontWeight: '700', fontSize: 12 }}>
+                                                    {updateProctorMutation.isPending ? 'Memproses...' : 'Set Saya'}
+                                                  </Text>
+                                                </Pressable>
+                                              </View>
+                                            ) : (
+                                              <View
+                                                style={{
+                                                  borderWidth: 1,
+                                                  borderColor: '#dbe7fb',
+                                                  backgroundColor: '#f8fbff',
+                                                  borderRadius: 10,
+                                                  padding: 10,
+                                                  marginTop: 8,
+                                                }}
+                                              >
+                                                <Text style={{ color: BRAND_COLORS.textDark, fontWeight: '700', marginBottom: 8 }}>
+                                                  Pilih Pengawas
+                                                </Text>
+                                                <TextInput
+                                                  value={teacherSearch}
+                                                  onChangeText={setTeacherSearch}
+                                                  placeholder="Cari nama guru / username"
+                                                  placeholderTextColor="#94a3b8"
+                                                  style={{
+                                                    borderWidth: 1,
+                                                    borderColor: '#d5e1f5',
+                                                    borderRadius: 8,
+                                                    backgroundColor: '#fff',
+                                                    paddingHorizontal: 10,
+                                                    paddingVertical: 8,
+                                                    color: BRAND_COLORS.textDark,
+                                                    marginBottom: 8,
+                                                  }}
+                                                />
+                                                <View style={{ flexDirection: 'row', flexWrap: 'wrap', marginHorizontal: -3 }}>
+                                                  {teacherOptions.map((teacher) => (
+                                                    <View key={teacher.id} style={{ width: '50%', paddingHorizontal: 3, marginBottom: 6 }}>
+                                                      <Pressable
+                                                        onPress={() => handleAssignProctor(item.sittingId, teacher.id)}
+                                                        disabled={updateProctorMutation.isPending}
+                                                        style={{
+                                                          borderWidth: 1,
+                                                          borderColor: '#d5e1f5',
+                                                          borderRadius: 8,
+                                                          backgroundColor: '#fff',
+                                                          paddingVertical: 7,
+                                                          paddingHorizontal: 8,
+                                                        }}
+                                                      >
+                                                        <Text
+                                                          style={{ color: BRAND_COLORS.textDark, fontWeight: '700', fontSize: 12 }}
+                                                          numberOfLines={1}
+                                                        >
+                                                          {teacher.name}
+                                                        </Text>
+                                                        <Text style={{ color: BRAND_COLORS.textMuted, fontSize: 11 }} numberOfLines={1}>
+                                                          @{teacher.username}
+                                                        </Text>
+                                                      </Pressable>
+                                                    </View>
+                                                  ))}
+                                                </View>
+                                                <Pressable
+                                                  onPress={() => {
+                                                    setEditingAssignmentKey(null);
+                                                    setTeacherSearch('');
+                                                  }}
+                                                  style={{
+                                                    marginTop: 4,
+                                                    alignSelf: 'flex-start',
+                                                    borderWidth: 1,
+                                                    borderColor: '#d5e1f5',
+                                                    borderRadius: 8,
+                                                    paddingVertical: 7,
+                                                    paddingHorizontal: 10,
+                                                    backgroundColor: '#fff',
+                                                  }}
+                                                >
+                                                  <Text style={{ color: BRAND_COLORS.textMuted, fontWeight: '700', fontSize: 12 }}>Batal</Text>
+                                                </Pressable>
+                                              </View>
+                                            )}
+                                          </View>
+                                        );
+                                      })}
+                                    </View>
+                                  ) : null}
                                 </View>
-                              ))}
-                            </View>
-                            <Pressable
-                              onPress={() => {
-                                setEditingAssignmentKey(null);
-                                setTeacherSearch('');
-                              }}
-                              style={{
-                                marginTop: 4,
-                                alignSelf: 'flex-start',
-                                borderWidth: 1,
-                                borderColor: '#d5e1f5',
-                                borderRadius: 8,
-                                paddingVertical: 7,
-                                paddingHorizontal: 10,
-                                backgroundColor: '#fff',
-                              }}
-                            >
-                              <Text style={{ color: BRAND_COLORS.textMuted, fontWeight: '700', fontSize: 12 }}>Batal</Text>
-                            </Pressable>
+                              );
+                            })}
                           </View>
-                        )}
+                        ) : null}
                       </View>
                     );
                   })
@@ -3999,7 +4353,7 @@ export default function TeacherWakakurExamsScreen() {
             <Text style={{ color: BRAND_COLORS.textMuted, lineHeight: 20, marginBottom: 12 }}>
               Daftar ini mengikuti pencarian dan tipe ujian yang sedang aktif di halaman.
             </Text>
-            {groupedSchedules.slice(0, 6).map((group) => (
+            {groupedScheduleSlots.slice(0, 6).map((group) => (
               <View
                 key={group.key}
                 style={{ borderWidth: 1, borderColor: '#e2e8f0', borderRadius: 12, padding: 10, marginBottom: 8 }}
@@ -4008,7 +4362,7 @@ export default function TeacherWakakurExamsScreen() {
                   {group.subjectName} ({group.subjectCode})
                 </Text>
                 <Text style={{ color: BRAND_COLORS.textMuted, fontSize: 12, marginTop: 3 }}>
-                  {group.schedules.length} jadwal • {group.examType}
+                  {resolvePeriodLabel(group.periodNumber)} • {group.schedules.length} jadwal • {group.examType}
                 </Text>
               </View>
             ))}

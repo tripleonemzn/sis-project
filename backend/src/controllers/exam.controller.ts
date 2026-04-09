@@ -3378,6 +3378,19 @@ function resolveScheduleDateTime(input: {
     throw new ApiError(400, `${input.fieldLabel} tidak valid.`);
 }
 
+function resolveOptionalSchedulePeriodNumber(raw: unknown): number | null {
+    if (raw === undefined || raw === null || String(raw).trim() === '') {
+        return null;
+    }
+
+    const parsed = Number(raw);
+    if (!Number.isInteger(parsed) || parsed <= 0) {
+        throw new ApiError(400, 'Jam ke tidak valid.');
+    }
+
+    return parsed;
+}
+
 function assertProgramFixedSemesterCompatibility(code: string, fixedSemester: Semester | null, semester: Semester) {
     if (!fixedSemester) return;
     if (fixedSemester === semester) return;
@@ -6847,7 +6860,7 @@ export const getSchedules = asyncHandler(async (req: Request, res: Response) => 
                 },
             },
         },
-        orderBy: { startTime: 'desc' }
+        orderBy: [{ startTime: 'desc' }, { periodNumber: 'asc' }, { endTime: 'desc' }, { id: 'desc' }]
     });
 
     const packetIds = Array.from(
@@ -6904,12 +6917,14 @@ export const createSchedule = asyncHandler(async (req: Request, res: Response) =
         semester,
         examType,
         programCode,
+        periodNumber,
         sessionId,
         sessionLabel,
         jobVacancyId,
     } = req.body;
     const targetClassIds = classIds || (classId ? [classId] : []);
     const parsedJobVacancyId = resolveOptionalJobVacancyId(jobVacancyId);
+    const parsedPeriodNumber = resolveOptionalSchedulePeriodNumber(periodNumber);
 
     const normalizedStartTime = resolveScheduleDateTime({
         date,
@@ -7206,6 +7221,7 @@ export const createSchedule = asyncHandler(async (req: Request, res: Response) =
                 subjectId: fallbackSubjectId,
                 startTime: normalizedStartTime,
                 endTime: normalizedEndTime,
+                periodNumber: parsedPeriodNumber,
                 proctorId: parsedProctorId,
                 academicYearId: fallbackAcademicYearId,
                 semester: normalizedSemester,
@@ -7242,11 +7258,13 @@ export const createSchedule = asyncHandler(async (req: Request, res: Response) =
 
 export const updateSchedule = asyncHandler(async (req: Request, res: Response) => {
     const { id } = req.params;
-    const { startTime, endTime, proctorId, room, isActive, sessionId, sessionLabel } = req.body;
+    const { startTime, endTime, proctorId, room, isActive, periodNumber, sessionId, sessionLabel } = req.body;
     const scheduleId = parseInt(id, 10);
     if (!Number.isFinite(scheduleId) || scheduleId <= 0) {
         throw new ApiError(400, 'id jadwal tidak valid.');
     }
+    const parsedPeriodNumber =
+        periodNumber === undefined ? undefined : resolveOptionalSchedulePeriodNumber(periodNumber);
 
     const existingSchedule = await prisma.examSchedule.findUnique({
         where: { id: scheduleId },
@@ -7318,6 +7336,7 @@ export const updateSchedule = asyncHandler(async (req: Request, res: Response) =
         data: {
             startTime: startTime ? new Date(startTime) : undefined,
             endTime: endTime ? new Date(endTime) : undefined,
+            periodNumber: parsedPeriodNumber,
             proctorId: parsedProctorId,
             room,
             isActive,

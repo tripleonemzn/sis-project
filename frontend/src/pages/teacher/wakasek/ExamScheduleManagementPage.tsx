@@ -17,6 +17,10 @@ import { id } from 'date-fns/locale';
 import { useSearchParams } from 'react-router-dom';
 import { useActiveAcademicYear } from '../../../hooks/useActiveAcademicYear';
 import {
+  scheduleTimeConfigService,
+  type ScheduleTimeConfigPayload,
+} from '../../../services/scheduleTimeConfig.service';
+import {
   examService,
   type ExamPacket,
   type ExamProgram,
@@ -67,6 +71,7 @@ interface ExamSchedule {
   id: number;
   startTime: string;
   endTime: string;
+  periodNumber?: number | null;
   classId?: number | null;
   sessionId?: number | null;
   sessionLabel?: string | null;
@@ -111,6 +116,7 @@ interface GroupedExamSchedule {
   key: string;
   subjectName: string;
   subjectCode: string;
+  periodNumber: number | null;
   sessionLabel: string | null;
   startTime: string;
   endTime: string;
@@ -138,6 +144,20 @@ type ReviewableQuestion = ExamStudentPreviewQuestion & {
 };
 
 const PROGRAM_TARGET_CANDIDATE = 'CALON_SISWA';
+const DAY_LABELS: Record<'MONDAY' | 'TUESDAY' | 'WEDNESDAY' | 'THURSDAY' | 'FRIDAY' | 'SATURDAY' | 'SUNDAY', string> = {
+  MONDAY: 'Senin',
+  TUESDAY: 'Selasa',
+  WEDNESDAY: 'Rabu',
+  THURSDAY: 'Kamis',
+  FRIDAY: 'Jumat',
+  SATURDAY: 'Sabtu',
+  SUNDAY: 'Minggu',
+};
+const FALLBACK_EXAM_PERIOD_OPTIONS = Array.from({ length: 16 }, (_, index) => ({
+  value: String(index + 1),
+  label: `Jam Ke-${index + 1}`,
+  timeLabel: '',
+}));
 
 const normalizeClassLevelToken = (raw: unknown): string => {
   const value = String(raw || '')
@@ -188,6 +208,37 @@ const toInputTimeValue = (value: string | null | undefined) => {
   const parsed = new Date(value);
   if (Number.isNaN(parsed.getTime())) return '';
   return format(parsed, 'HH:mm');
+};
+
+const getExamDayKey = (
+  value: string | null | undefined,
+):
+  | 'MONDAY'
+  | 'TUESDAY'
+  | 'WEDNESDAY'
+  | 'THURSDAY'
+  | 'FRIDAY'
+  | 'SATURDAY'
+  | 'SUNDAY'
+  | null => {
+  const raw = String(value || '').trim();
+  if (!raw) return null;
+  const parsed = new Date(`${raw}T00:00:00`);
+  if (Number.isNaN(parsed.getTime())) return null;
+
+  const dayIndex = parsed.getDay();
+  if (dayIndex === 1) return 'MONDAY';
+  if (dayIndex === 2) return 'TUESDAY';
+  if (dayIndex === 3) return 'WEDNESDAY';
+  if (dayIndex === 4) return 'THURSDAY';
+  if (dayIndex === 5) return 'FRIDAY';
+  if (dayIndex === 6) return 'SATURDAY';
+  return 'SUNDAY';
+};
+
+const getExamDayLabel = (value: string | null | undefined) => {
+  const dayKey = getExamDayKey(value);
+  return dayKey ? DAY_LABELS[dayKey] : 'Pilih tanggal dulu';
 };
 
 const getMakeupStateMeta = (state?: string | null) => {
@@ -412,6 +463,7 @@ const ExamScheduleManagementPage = () => {
   const [classes, setClasses] = useState<ClassData[]>([]);
   const [candidatePackets, setCandidatePackets] = useState<ExamPacket[]>([]);
   const [assignmentOptions, setAssignmentOptions] = useState<TeacherAssignmentOption[]>([]);
+  const [scheduleTimeConfig, setScheduleTimeConfig] = useState<ScheduleTimeConfigPayload | null>(null);
   const selectedAcademicYear = activeAcademicYear?.id ? String(activeAcademicYear.id) : '';
   
   const [formData, setFormData] = useState({
@@ -421,6 +473,7 @@ const ExamScheduleManagementPage = () => {
     date: '',
     startTime: '',
     endTime: '',
+    periodNumber: '',
     sessionId: '',
     academicYearId: '',
     semester: ''
@@ -540,6 +593,46 @@ const ExamScheduleManagementPage = () => {
       }))
       .sort((a, b) => String(a.name).localeCompare(String(b.name)));
   }, [allowedSubjectIdsByProgram, filteredAssignmentsByProgram, subjects]);
+
+  const selectedExamDayKey = useMemo(() => getExamDayKey(formData.date), [formData.date]);
+  const selectedExamDayLabel = useMemo(() => getExamDayLabel(formData.date), [formData.date]);
+
+  const periodOptions = useMemo(() => {
+    const periodTimes = scheduleTimeConfig?.periodTimes || {};
+    const selectedDayPeriodTimes =
+      selectedExamDayKey && selectedExamDayKey !== 'SUNDAY' ? periodTimes[selectedExamDayKey] || {} : {};
+
+    const sourcePeriodMap =
+      Object.keys(selectedDayPeriodTimes).length > 0
+        ? selectedDayPeriodTimes
+        : Object.values(periodTimes).reduce<Record<number, string>>((accumulator, dayMap) => {
+            Object.entries(dayMap || {}).forEach(([period, timeLabel]) => {
+              const numericPeriod = Number(period);
+              if (Number.isInteger(numericPeriod) && numericPeriod > 0 && !accumulator[numericPeriod]) {
+                accumulator[numericPeriod] = String(timeLabel || '').trim();
+              }
+            });
+            return accumulator;
+          }, {});
+
+    const candidateEntries = Object.entries(sourcePeriodMap)
+      .map(([period, timeLabel]) => ({
+        periodNumber: Number(period),
+        timeLabel: String(timeLabel || '').trim(),
+      }))
+      .filter((item) => Number.isInteger(item.periodNumber) && item.periodNumber > 0)
+      .sort((left, right) => left.periodNumber - right.periodNumber);
+
+    if (candidateEntries.length === 0) {
+      return FALLBACK_EXAM_PERIOD_OPTIONS;
+    }
+
+    return candidateEntries.map((item) => ({
+      value: String(item.periodNumber),
+      label: `Jam Ke-${item.periodNumber}`,
+      timeLabel: item.timeLabel,
+    }));
+  }, [scheduleTimeConfig?.periodTimes, selectedExamDayKey]);
 
   const selectedSubjectIdNumber = useMemo(() => Number(formData.subjectId || 0), [formData.subjectId]);
 
@@ -790,6 +883,32 @@ const ExamScheduleManagementPage = () => {
 
   useEffect(() => {
     if (!showModal) return;
+    const academicYearId = Number(formData.academicYearId || selectedAcademicYear || 0);
+    if (!academicYearId) {
+      setScheduleTimeConfig(null);
+      return;
+    }
+
+    let isCancelled = false;
+    scheduleTimeConfigService
+      .getConfig(academicYearId)
+      .then((response) => {
+        if (isCancelled) return;
+        setScheduleTimeConfig(response?.config || null);
+      })
+      .catch((error) => {
+        console.error('Error fetching schedule time config:', error);
+        if (isCancelled) return;
+        setScheduleTimeConfig(null);
+      });
+
+    return () => {
+      isCancelled = true;
+    };
+  }, [formData.academicYearId, selectedAcademicYear, showModal]);
+
+  useEffect(() => {
+    if (!showModal) return;
     setFormData((prev) => {
       if (!prev.sessionId) return prev;
       const sessionExists = programSessions.some((session) => String(session.id) === String(prev.sessionId));
@@ -814,6 +933,13 @@ const ExamScheduleManagementPage = () => {
       };
     });
   }, [showModal, filteredClasses, subjectOptions]);
+
+  useEffect(() => {
+    if (!showModal) return;
+    if (!formData.periodNumber) return;
+    if (periodOptions.some((option) => option.value === formData.periodNumber)) return;
+    setFormData((prev) => ({ ...prev, periodNumber: '' }));
+  }, [formData.periodNumber, periodOptions, showModal]);
 
   useEffect(() => {
     void fetchCandidatePackets();
@@ -841,7 +967,14 @@ const ExamScheduleManagementPage = () => {
     e.preventDefault();
     
     // Validate required fields
-    if (!formData.subjectId || !formData.date || !formData.startTime || !formData.endTime || !formData.academicYearId) {
+    if (
+      !formData.subjectId ||
+      !formData.date ||
+      !formData.startTime ||
+      !formData.endTime ||
+      !formData.periodNumber ||
+      !formData.academicYearId
+    ) {
       toast.error('Mohon lengkapi semua field yang wajib diisi');
       return;
     }
@@ -867,6 +1000,7 @@ const ExamScheduleManagementPage = () => {
         date: formData.date,
         startTime: formData.startTime,
         endTime: formData.endTime,
+        periodNumber: parseInt(formData.periodNumber, 10),
         sessionId: formData.sessionId ? parseInt(formData.sessionId, 10) : null,
         examType: activeProgramCode,
         programCode: activeProgramCode,
@@ -889,6 +1023,7 @@ const ExamScheduleManagementPage = () => {
         date: '',
         startTime: '',
         endTime: '',
+        periodNumber: '',
         sessionId: prev.sessionId,
         // Keep AY/Semester as they might add more for same period
       }));
@@ -1094,15 +1229,18 @@ const ExamScheduleManagementPage = () => {
 
     schedules.forEach(schedule => {
       const subjectId = schedule.subject?.id || schedule.subject?.name || 'unknown';
+      const periodNumber = Number(schedule.periodNumber || 0) || null;
       const timeKey = `${schedule.startTime}-${schedule.endTime}`;
+      const dateKey = toInputDateValue(schedule.startTime);
       const normalizedSessionLabel = resolveScheduleSessionLabel(schedule);
-      const key = `${subjectId}-${timeKey}-${normalizedSessionLabel || '__NO_SESSION__'}`;
+      const key = `${subjectId}-${dateKey}-${periodNumber || 'NO_PERIOD'}-${timeKey}-${normalizedSessionLabel || '__NO_SESSION__'}`;
 
       if (!groups[key]) {
         groups[key] = {
           key,
           subjectName: schedule.subject?.name || schedule.packet?.subject?.name || (schedule.packet ? 'Unknown Subject' : 'Jadwal Tanpa Soal'),
           subjectCode: schedule.subject?.code || '-',
+          periodNumber,
           sessionLabel: normalizedSessionLabel,
           startTime: schedule.startTime,
           endTime: schedule.endTime,
@@ -1127,6 +1265,8 @@ const ExamScheduleManagementPage = () => {
     return Object.values(groups).sort((a, b) => {
       const byTime = new Date(a.startTime).getTime() - new Date(b.startTime).getTime();
       if (byTime !== 0) return byTime;
+      const byPeriod = Number(a.periodNumber || Number.MAX_SAFE_INTEGER) - Number(b.periodNumber || Number.MAX_SAFE_INTEGER);
+      if (byPeriod !== 0) return byPeriod;
       return String(a.sessionLabel || '').localeCompare(String(b.sessionLabel || ''), 'id');
     });
   };
@@ -1405,9 +1545,14 @@ const ExamScheduleManagementPage = () => {
                           <div className="font-medium text-gray-900">
                             {format(new Date(group.startTime), 'EEEE, d MMMM yyyy', { locale: id })}
                           </div>
-                          <div className="text-gray-500 text-xs flex items-center mt-1">
-                            <Clock className="w-3 h-3 mr-1" />
-                            {format(new Date(group.startTime), 'HH:mm')} - {format(new Date(group.endTime), 'HH:mm')}
+                          <div className="mt-1 flex flex-wrap items-center gap-2 text-xs text-gray-500">
+                            <span className="inline-flex items-center rounded-full border border-blue-100 bg-blue-50 px-2.5 py-0.5 font-semibold text-blue-700">
+                              {group.periodNumber ? `Jam Ke-${group.periodNumber}` : 'Jam ke belum diatur'}
+                            </span>
+                            <span className="inline-flex items-center">
+                              <Clock className="mr-1 h-3 w-3" />
+                              {format(new Date(group.startTime), 'HH:mm')} - {format(new Date(group.endTime), 'HH:mm')}
+                            </span>
                           </div>
                         </td>
                         <td className="px-6 py-4">
@@ -2254,7 +2399,7 @@ const ExamScheduleManagementPage = () => {
               )}
 
               {/* Date & Time */}
-              <div className="grid grid-cols-1 gap-4 md:grid-cols-3">
+              <div className="space-y-4">
                 <div className="md:col-span-3">
                   <label htmlFor="sessionId" className="block text-sm font-medium text-gray-700 mb-2">
                     Sesi Ujian (Opsional)
@@ -2295,47 +2440,85 @@ const ExamScheduleManagementPage = () => {
                     Pilih dari master sesi agar konsisten. Jika belum ada, tambahkan lewat kolom di atas.
                   </p>
                 </div>
-                <div>
-                  <label htmlFor="date" className="block text-sm font-medium text-gray-700 mb-2">
-                    Tanggal <span className="text-red-500">*</span>
-                  </label>
-                  <input
-                    id="date"
-                    name="date"
-                    type="date"
-                    required
-                    value={formData.date}
-                    onChange={(e) => setFormData({ ...formData, date: e.target.value })}
-                    className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500"
-                  />
+                <div className="grid grid-cols-1 gap-4 md:grid-cols-3">
+                  <div>
+                    <label htmlFor="date" className="block text-sm font-medium text-gray-700 mb-2">
+                      Tanggal <span className="text-red-500">*</span>
+                    </label>
+                    <input
+                      id="date"
+                      name="date"
+                      type="date"
+                      required
+                      value={formData.date}
+                      onChange={(e) => setFormData({ ...formData, date: e.target.value })}
+                      className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500"
+                    />
+                  </div>
+                  <div>
+                    <label className="block text-sm font-medium text-gray-700 mb-2">Hari</label>
+                    <div className="w-full rounded-lg border border-gray-200 bg-gray-50 px-3 py-2 text-sm text-gray-700">
+                      {selectedExamDayLabel}
+                    </div>
+                    <p className="mt-1 text-xs text-gray-500">
+                      Hari otomatis mengikuti tanggal ujian yang dipilih.
+                    </p>
+                  </div>
+                  <div>
+                    <label htmlFor="periodNumber" className="block text-sm font-medium text-gray-700 mb-2">
+                      Jam Ke <span className="text-red-500">*</span>
+                    </label>
+                    <select
+                      id="periodNumber"
+                      name="periodNumber"
+                      required
+                      value={formData.periodNumber}
+                      onChange={(e) => setFormData({ ...formData, periodNumber: e.target.value })}
+                      className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500"
+                    >
+                      <option value="">Pilih jam ke...</option>
+                      {periodOptions.map((option) => (
+                        <option key={option.value} value={option.value}>
+                          {option.timeLabel ? `${option.label} • ${option.timeLabel}` : option.label}
+                        </option>
+                      ))}
+                    </select>
+                    <p className="mt-1 text-xs text-gray-500">
+                      {selectedExamDayKey && selectedExamDayKey !== 'SUNDAY'
+                        ? 'Slot jam ke mengikuti master jadwal harian bila tersedia. Waktu ujian tetap bisa diatur manual.'
+                        : 'Jika master jam pelajaran belum tersedia, gunakan pilihan jam ke standar.'}
+                    </p>
+                  </div>
                 </div>
-                <div>
-                  <label htmlFor="startTime" className="block text-sm font-medium text-gray-700 mb-2">
-                    Jam Mulai <span className="text-red-500">*</span>
-                  </label>
-                  <input
-                    id="startTime"
-                    name="startTime"
-                    type="time"
-                    required
-                    value={formData.startTime}
-                    onChange={(e) => setFormData({ ...formData, startTime: e.target.value })}
-                    className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500"
-                  />
-                </div>
-                <div>
-                  <label htmlFor="endTime" className="block text-sm font-medium text-gray-700 mb-2">
-                    Jam Selesai <span className="text-red-500">*</span>
-                  </label>
-                  <input
-                    id="endTime"
-                    name="endTime"
-                    type="time"
-                    required
-                    value={formData.endTime}
-                    onChange={(e) => setFormData({ ...formData, endTime: e.target.value })}
-                    className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500"
-                  />
+                <div className="grid grid-cols-1 gap-4 md:grid-cols-2">
+                  <div>
+                    <label htmlFor="startTime" className="block text-sm font-medium text-gray-700 mb-2">
+                      Jam Mulai <span className="text-red-500">*</span>
+                    </label>
+                    <input
+                      id="startTime"
+                      name="startTime"
+                      type="time"
+                      required
+                      value={formData.startTime}
+                      onChange={(e) => setFormData({ ...formData, startTime: e.target.value })}
+                      className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500"
+                    />
+                  </div>
+                  <div>
+                    <label htmlFor="endTime" className="block text-sm font-medium text-gray-700 mb-2">
+                      Jam Selesai <span className="text-red-500">*</span>
+                    </label>
+                    <input
+                      id="endTime"
+                      name="endTime"
+                      type="time"
+                      required
+                      value={formData.endTime}
+                      onChange={(e) => setFormData({ ...formData, endTime: e.target.value })}
+                      className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500"
+                    />
+                  </div>
                 </div>
               </div>
 
