@@ -25,6 +25,7 @@ import {
 } from '../../../../src/features/exams/types';
 import { useTeacherAssignmentsQuery } from '../../../../src/features/teacherAssignments/useTeacherAssignmentsQuery';
 import { getStandardPagePadding } from '../../../../src/lib/ui/pageLayout';
+import { profileApi } from '../../../../src/features/profile/profileApi';
 
 type OptionDraft = {
   id: string;
@@ -437,6 +438,11 @@ export default function TeacherExamEditorScreen() {
   const { isAuthenticated, isLoading, user } = useAuth();
   const draftPromptShownRef = useRef(false);
   const draftSaveTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const remoteDraftSaveTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const latestDraftRef = useRef<MobileExamEditorDraftShape>({});
+  const currentPreferencesRef = useRef<Record<string, unknown>>(
+    user?.preferences && typeof user.preferences === 'object' ? user.preferences : {},
+  );
   const pageContentPadding = getStandardPagePadding(insets);
   const teacherAssignmentsQuery = useTeacherAssignmentsQuery({ enabled: isAuthenticated, user });
   const assignments = useMemo(
@@ -545,6 +551,39 @@ export default function TeacherExamEditorScreen() {
     () => String(selectedProgram?.description || '').trim() || getScoreSyncHint(selectedProgram),
     [selectedProgram],
   );
+
+  useEffect(() => {
+    if (user?.preferences && typeof user.preferences === 'object') {
+      currentPreferencesRef.current = user.preferences;
+    }
+  }, [user?.preferences]);
+
+  useEffect(() => {
+    latestDraftRef.current = {
+      title,
+      description,
+      instructions,
+      selectedProgramCode,
+      selectedAssignmentId,
+      semester,
+      duration,
+      kkm,
+      saveToBank,
+      questions,
+    };
+  }, [
+    description,
+    duration,
+    instructions,
+    kkm,
+    questions,
+    saveToBank,
+    selectedAssignmentId,
+    selectedProgramCode,
+    semester,
+    title,
+  ]);
+
   useEffect(() => {
     if (filteredAssignments.length === 0) {
       if (selectedAssignmentId !== null) {
@@ -817,6 +856,80 @@ export default function TeacherExamEditorScreen() {
   ]);
 
   useEffect(() => {
+    if (isEditMode || !user?.id) return;
+
+    const hasQuestionContent = questions.some((question) => {
+      if (String(question.content || '').trim()) return true;
+      return (question.options || []).some((option) => String(option.content || '').trim());
+    });
+    const hasTitle = Boolean(title.trim());
+    if (!hasQuestionContent && !hasTitle) return;
+
+    if (remoteDraftSaveTimeoutRef.current) {
+      clearTimeout(remoteDraftSaveTimeoutRef.current);
+    }
+
+    remoteDraftSaveTimeoutRef.current = setTimeout(() => {
+      const payload = {
+        updatedAt: new Date().toISOString(),
+        draft: latestDraftRef.current,
+      };
+      const nextPreferences = {
+        ...currentPreferencesRef.current,
+        exam_draft: payload,
+      };
+      currentPreferencesRef.current = nextPreferences;
+      void profileApi.updateSelf(user.id, {
+        preferences: nextPreferences,
+      }).catch(() => {
+        // Keep local draft as fallback when remote save fails.
+      });
+    }, 2000);
+
+    return () => {
+      if (remoteDraftSaveTimeoutRef.current) {
+        clearTimeout(remoteDraftSaveTimeoutRef.current);
+      }
+    };
+  }, [isEditMode, questions, title, user?.id]);
+
+  useEffect(() => {
+    if (isEditMode || !user?.id) return;
+
+    return () => {
+      if (draftSaveTimeoutRef.current) {
+        clearTimeout(draftSaveTimeoutRef.current);
+      }
+      if (remoteDraftSaveTimeoutRef.current) {
+        clearTimeout(remoteDraftSaveTimeoutRef.current);
+      }
+
+      const latestDraft = latestDraftRef.current;
+      const hasQuestionContent = (latestDraft.questions || []).some((question) => {
+        if (String(question.content || '').trim()) return true;
+        return (question.options || []).some((option) => String(option.content || '').trim());
+      });
+      const hasTitle = Boolean(String(latestDraft.title || '').trim());
+      if (!hasQuestionContent && !hasTitle) return;
+
+      const payload = {
+        updatedAt: new Date().toISOString(),
+        draft: latestDraft,
+      };
+      const nextPreferences = {
+        ...currentPreferencesRef.current,
+        exam_draft: payload,
+      };
+      currentPreferencesRef.current = nextPreferences;
+      void profileApi.updateSelf(user.id, {
+        preferences: nextPreferences,
+      }).catch(() => {
+        // Local draft remains available from AsyncStorage.
+      });
+    };
+  }, [isEditMode, user?.id]);
+
+  useEffect(() => {
     setReviewReplyDrafts((current) => {
       let changed = false;
       const next = { ...current };
@@ -970,6 +1083,16 @@ export default function TeacherExamEditorScreen() {
       }
       if (!isEditMode && user?.id) {
         await AsyncStorage.removeItem(getMobileExamEditorDraftStorageKey(user.id));
+        const nextPreferences = {
+          ...currentPreferencesRef.current,
+          exam_draft: null,
+        };
+        currentPreferencesRef.current = nextPreferences;
+        await profileApi.updateSelf(user.id, {
+          preferences: nextPreferences,
+        }).catch(() => {
+          // Ignore remote draft clear failures after successful save.
+        });
       }
       Alert.alert('Sukses', isEditMode ? 'Packet ujian berhasil diperbarui.' : 'Packet ujian berhasil dibuat.', [
         {

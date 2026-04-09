@@ -636,6 +636,11 @@ export const ExamEditorPage = () => {
     // Ref for autosave debounce
     const saveTimeoutRef = React.useRef<ReturnType<typeof setTimeout> | null>(null);
     const localSaveTimeoutRef = React.useRef<ReturnType<typeof setTimeout> | null>(null);
+    const latestDraftRef = React.useRef<{ form: Partial<PacketForm>; questions: ExtendedQuestion[] }>({
+        form: {},
+        questions: [],
+    });
+    const currentPreferencesRef = React.useRef<Record<string, unknown>>({});
     const quillEditorRef = useRef<ReactQuill | null>(null);
 
     const [loading, setLoading] = useState(false);
@@ -665,10 +670,36 @@ export const ExamEditorPage = () => {
       enabled: !!userId,
     });
 
+    useEffect(() => {
+        currentPreferencesRef.current = ((userData?.data?.preferences ?? {}) as Record<string, unknown>);
+    }, [userData?.data?.preferences]);
+
+    const syncCachedPreferences = React.useCallback((preferences: Record<string, unknown>) => {
+        currentPreferencesRef.current = preferences;
+        if (!userId) return;
+        queryClient.setQueryData(['user-profile', userId], (previous: unknown) => {
+            const prevRecord = isRecord(previous) ? previous : null;
+            const prevUser = prevRecord && isRecord(prevRecord.data) ? prevRecord.data : null;
+            if (!prevRecord || !prevUser) return previous;
+            return {
+                ...prevRecord,
+                data: {
+                    ...prevUser,
+                    preferences,
+                },
+            };
+        });
+    }, [queryClient, userId]);
+
     const updateProfileMutation = useMutation({
       mutationFn: (data: Partial<UserWrite>) => {
         if (!userId) throw new Error('User ID not found');
         return userService.update(userId, data);
+      },
+      onMutate: async (data) => {
+         if (data.preferences && isRecord(data.preferences)) {
+            syncCachedPreferences(data.preferences as Record<string, unknown>);
+         }
       },
       onSuccess: () => {
          // Silently update, maybe invalidate if needed but avoid loop
@@ -737,6 +768,12 @@ export const ExamEditorPage = () => {
 
     // Auto-Draft Logic using User Preferences (Database)
     const formValues = watch();
+    useEffect(() => {
+        latestDraftRef.current = {
+            form: formValues,
+            questions,
+        };
+    }, [formValues, questions]);
     const watchedPacketType = (watch('type') || presetType || '') as ExamType;
     const selectedPacketSemester = watch('semester') || 'ODD';
     const selectedProgramCodeRaw = watch('programCode') || presetProgramCode;
@@ -870,7 +907,7 @@ export const ExamEditorPage = () => {
     
     // Restore draft on mount (only for create mode)
     useEffect(() => {
-        if (isEditMode || presetPacketDraft || draftLoadedRef.current || draftPromptShownRef.current || !userId) return;
+        if (isEditMode || draftLoadedRef.current || draftPromptShownRef.current || !userId) return;
 
         const prefs = (userData?.data?.preferences ?? {}) as Record<string, unknown>;
         const profileDraft = extractExamDraftPayload(prefs['exam_draft']);
@@ -892,7 +929,7 @@ export const ExamEditorPage = () => {
             preferences: prefs,
             source: nextDraft.source,
         });
-    }, [isEditMode, userData, presetPacketDraft, userId]);
+    }, [isEditMode, userData, userId]);
 
     useEffect(() => {
         if (!isEditMode) {
@@ -1012,7 +1049,7 @@ export const ExamEditorPage = () => {
                         },
                     };
                     
-                    const currentPrefs = userData?.data?.preferences || {};
+                    const currentPrefs = currentPreferencesRef.current || {};
                     // Check if draft actually changed to avoid loop (deep check might be expensive, relying on effect deps)
                     updateProfileMutation.mutate({
                         preferences: { ...currentPrefs, exam_draft: draft }
@@ -1026,7 +1063,53 @@ export const ExamEditorPage = () => {
                 clearTimeout(saveTimeoutRef.current);
             }
         };
-    }, [questions, formValues, isEditMode, updateProfileMutation, userId, userData]); // Added userData to deps for currentPrefs, but careful about loops. 
+    }, [questions, formValues, isEditMode, updateProfileMutation, userId]);
+
+    useEffect(() => {
+        if (isEditMode || !userId) return;
+
+        return () => {
+            if (isSubmittingRef.current) return;
+
+            if (saveTimeoutRef.current) {
+                clearTimeout(saveTimeoutRef.current);
+            }
+            if (localSaveTimeoutRef.current) {
+                clearTimeout(localSaveTimeoutRef.current);
+            }
+
+            const latestDraft = latestDraftRef.current;
+            const latestQuestions = Array.isArray(latestDraft.questions) ? latestDraft.questions : [];
+            const latestForm = latestDraft.form || {};
+            const hasContent =
+                latestQuestions.length > 1 ||
+                (latestQuestions.length === 1 && Boolean(normalizeEditorText(latestQuestions[0]?.content)));
+            const hasTitle = Boolean(String(latestForm.title || '').trim());
+
+            if (!hasContent && !hasTitle) return;
+
+            const envelope: ExamEditorDraftEnvelope = {
+                updatedAt: new Date().toISOString(),
+                draft: {
+                    form: latestForm,
+                    questions: latestQuestions,
+                },
+            };
+
+            writeLocalExamDraft(userId, envelope.draft);
+
+            const nextPreferences = {
+                ...currentPreferencesRef.current,
+                exam_draft: envelope,
+            };
+            syncCachedPreferences(nextPreferences);
+            void userService.update(userId, {
+                preferences: nextPreferences,
+            }).catch((error) => {
+                console.error('Failed to flush exam draft on leave:', error);
+            });
+        };
+    }, [isEditMode, syncCachedPreferences, userId]);
     // Actually, depending on userData might cause loops if updateProfileMutation updates userData immediately.
     // Better to use a ref for currentPrefs or functional update if possible, but updateProfileMutation doesn't support functional update of remote state directly without context.
     // However, userData comes from useQuery. When mutation succeeds, we might invalidate.
@@ -1474,8 +1557,10 @@ export const ExamEditorPage = () => {
             clearLocalExamDraft(userId);
         }
         if (draftRestorePrompt && userId) {
+            const nextPreferences = { ...currentPreferencesRef.current, exam_draft: null };
+            syncCachedPreferences(nextPreferences);
             updateProfileMutation.mutate({
-                preferences: { ...draftRestorePrompt.preferences, exam_draft: null },
+                preferences: nextPreferences,
             });
         }
         setDraftRestorePrompt(null);
@@ -1908,9 +1993,11 @@ export const ExamEditorPage = () => {
                 // Clear draft only on successful create
                 if (userId) {
                     clearLocalExamDraft(userId);
-                    const currentPrefs = userData?.data?.preferences || {};
+                    const currentPrefs = currentPreferencesRef.current || {};
+                    const nextPreferences = { ...currentPrefs, exam_draft: null };
+                    syncCachedPreferences(nextPreferences);
                     updateProfileMutation.mutate({
-                        preferences: { ...currentPrefs, exam_draft: null }
+                        preferences: nextPreferences
                     });
                 }
                 
