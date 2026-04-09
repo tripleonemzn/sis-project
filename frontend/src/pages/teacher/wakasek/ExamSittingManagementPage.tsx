@@ -15,6 +15,7 @@ import { toast } from 'react-hot-toast';
 import { useActiveAcademicYear } from '../../../hooks/useActiveAcademicYear';
 import { examService, type ExamProgram, type ExamProgramSession } from '../../../services/exam.service';
 import { isNonScheduledExamProgram, resolveProgramCodeFromParam } from '../../../lib/examProgramMenu';
+import { compareExamRoomName } from '../../../lib/examRoomSort';
 
 // --- Interfaces ---
 
@@ -99,6 +100,12 @@ const compareClassName = (a: string, b: string): number =>
 
 const getStudentClassName = (student: Student): string =>
   String(student.studentClass?.name || student.class?.name || '').trim();
+
+const compareSessionLabel = (a: string | null | undefined, b: string | null | undefined): number =>
+  String(a || '').localeCompare(String(b || ''), 'id', {
+    numeric: true,
+    sensitivity: 'base',
+  });
 
 // --- Main Page Component ---
 
@@ -220,7 +227,7 @@ const ExamSittingManagementPage = () => {
     () =>
       sarprasRooms
         .filter((room) => isExamEligibleRoom(room))
-        .sort((a, b) => String(a.name || '').localeCompare(String(b.name || ''))),
+        .sort((a, b) => compareExamRoomName(a.name, b.name, 'id')),
     [sarprasRooms, isExamEligibleRoom],
   );
 
@@ -312,8 +319,17 @@ const ExamSittingManagementPage = () => {
           limit: 100,
         }
       });
-      // Ensure data is array, default to empty array if null
-      setSittings(res.data.data || []);
+      const rows = Array.isArray(res.data?.data) ? res.data.data : [];
+      rows.sort(
+        (a: ExamSitting, b: ExamSitting) =>
+          compareExamRoomName(a.roomName, b.roomName, 'id') ||
+          compareSessionLabel(
+            String(a.programSession?.label || a.sessionLabel || '').trim() || null,
+            String(b.programSession?.label || b.sessionLabel || '').trim() || null,
+          ) ||
+          Number(a.id || 0) - Number(b.id || 0),
+      );
+      setSittings(rows);
     } catch (err) {
       console.error(err);
       toast.error('Gagal memuat data ruang ujian');
@@ -1042,33 +1058,48 @@ const ExamSittingManagementPage = () => {
               Belum ada Program Ujian aktif pada tahun ajaran ini.
             </p>
           ) : (
-            <div className="flex flex-wrap items-center gap-3">
-              <div className="flex flex-wrap gap-1 bg-white p-1 rounded-lg border border-gray-200 w-fit">
-                {visiblePrograms.map((program) => (
-                  <button
-                    key={program.code}
-                    onClick={() => setActiveProgramCode(program.code)}
-                    className={`
-                      px-4 py-2 text-[13px] font-medium rounded-md transition-colors
-                      ${activeProgramCode === program.code
-                        ? 'bg-blue-50 text-blue-700'
-                        : 'text-gray-600 hover:text-gray-900 hover:bg-gray-50'}
-                    `}
-                  >
-                    {program.shortLabel || program.label || program.code}
-                  </button>
-                ))}
+            <div className="flex flex-col gap-3 lg:flex-row lg:items-center lg:justify-between">
+              <div className="min-w-0">
+                <div className="flex w-full gap-1 overflow-x-auto rounded-lg border border-gray-200 bg-white p-1 lg:w-fit">
+                  {visiblePrograms.map((program) => (
+                    <button
+                      key={program.code}
+                      onClick={() => setActiveProgramCode(program.code)}
+                      className={`
+                        px-4 py-2 text-[13px] font-medium rounded-md transition-colors
+                        ${activeProgramCode === program.code
+                          ? 'bg-blue-50 text-blue-700'
+                          : 'text-gray-600 hover:text-gray-900 hover:bg-gray-50'}
+                      `}
+                    >
+                      {program.shortLabel || program.label || program.code}
+                    </button>
+                  ))}
+                </div>
               </div>
-              {activeProgramCode && !activeProgram?.fixedSemester ? (
-                <div className="flex items-center gap-2 rounded-lg border border-gray-200 bg-white px-3 py-2">
+              {activeProgramCode ? (
+                <div className="flex shrink-0 items-center gap-2 rounded-lg border border-gray-200 bg-white px-3 py-2">
                   <span className="text-sm font-medium text-gray-600">Semester</span>
                   <select
-                    value={selectedSemester}
+                    value={effectiveSemester}
                     onChange={(event) => setSelectedSemester((event.target.value as 'ODD' | 'EVEN') || 'ODD')}
-                    className="rounded-lg border border-gray-300 px-3 py-2 text-sm focus:border-blue-500 focus:outline-none"
+                    disabled={Boolean(activeProgram?.fixedSemester)}
+                    className={`min-w-[140px] rounded-lg border px-3 py-2 text-sm focus:border-blue-500 focus:outline-none ${
+                      activeProgram?.fixedSemester
+                        ? 'cursor-not-allowed border-slate-200 bg-slate-100 text-slate-600'
+                        : 'border-gray-300 bg-white'
+                    }`}
                   >
-                    <option value="ODD">Ganjil</option>
-                    <option value="EVEN">Genap</option>
+                    {activeProgram?.fixedSemester ? (
+                      <option value={activeProgram.fixedSemester}>
+                        {activeProgram.fixedSemester === 'EVEN' ? 'Genap' : 'Ganjil'}
+                      </option>
+                    ) : (
+                      <>
+                        <option value="ODD">Ganjil</option>
+                        <option value="EVEN">Genap</option>
+                      </>
+                    )}
                   </select>
                 </div>
               ) : null}

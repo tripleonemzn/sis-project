@@ -20,6 +20,7 @@ import { useActiveAcademicYear } from '../../../hooks/useActiveAcademicYear';
 import api from '../../../services/api';
 import { examService, type ExamProgram } from '../../../services/exam.service';
 import { isNonScheduledExamProgram } from '../../../lib/examProgramMenu';
+import { compareExamRoomName } from '../../../lib/examRoomSort';
 
 type LayoutCellType = 'SEAT' | 'AISLE';
 
@@ -243,6 +244,13 @@ function formatSessionSummary(sessionLabel?: string | null) {
 }
 
 function compareClassName(a: string, b: string) {
+  return String(a || '').localeCompare(String(b || ''), 'id-ID', {
+    numeric: true,
+    sensitivity: 'base',
+  });
+}
+
+function compareSessionLabel(a?: string | null, b?: string | null) {
   return String(a || '').localeCompare(String(b || ''), 'id-ID', {
     numeric: true,
     sensitivity: 'base',
@@ -559,7 +567,17 @@ export default function ExamRoomLayoutManagementPage() {
           semester: effectiveSemester,
         },
       });
-      const rows = (response.data?.data || []) as SittingRow[];
+      const rows = ((response.data?.data || []) as SittingRow[]).sort(
+        (a, b) =>
+          compareExamRoomName(a.roomName, b.roomName) ||
+          compareSessionLabel(a.sessionLabel, b.sessionLabel) ||
+          (() => {
+            const timeA = a.startTime ? new Date(a.startTime).getTime() : Number.MAX_SAFE_INTEGER;
+            const timeB = b.startTime ? new Date(b.startTime).getTime() : Number.MAX_SAFE_INTEGER;
+            return timeA - timeB;
+          })() ||
+          Number(a.id || 0) - Number(b.id || 0),
+      );
       setSittings(rows);
       setSelectedSittingId((previous) => {
         if (rows.some((item) => item.id === previous)) return previous;
@@ -818,37 +836,52 @@ export default function ExamRoomLayoutManagementPage() {
               Belum ada program ujian terjadwal.
             </div>
           ) : (
-            <div className="flex flex-wrap items-center gap-4">
-              <div className="flex gap-4 overflow-x-auto scrollbar-hide">
-                {visiblePrograms.map((program) => {
-                  const Icon = getProgramTabIcon(program.code);
-                  return (
-                    <button
-                      key={program.code}
-                      type="button"
-                      onClick={() => setActiveProgramCode(program.code)}
-                      className={`flex items-center gap-2 whitespace-nowrap border-b-2 px-3 py-3 text-sm font-medium transition-colors ${
-                        activeProgramCode === program.code
-                          ? 'border-blue-600 text-blue-700'
-                          : 'border-transparent text-gray-500 hover:border-gray-300 hover:text-gray-800'
-                      }`}
-                    >
-                      <Icon className="h-4 w-4" />
-                      {program.shortLabel || program.label || program.code}
-                    </button>
-                  );
-                })}
+            <div className="flex flex-col gap-3 lg:flex-row lg:items-center lg:justify-between">
+              <div className="min-w-0">
+                <div className="flex gap-4 overflow-x-auto scrollbar-hide">
+                  {visiblePrograms.map((program) => {
+                    const Icon = getProgramTabIcon(program.code);
+                    return (
+                      <button
+                        key={program.code}
+                        type="button"
+                        onClick={() => setActiveProgramCode(program.code)}
+                        className={`flex items-center gap-2 whitespace-nowrap border-b-2 px-3 py-3 text-sm font-medium transition-colors ${
+                          activeProgramCode === program.code
+                            ? 'border-blue-600 text-blue-700'
+                            : 'border-transparent text-gray-500 hover:border-gray-300 hover:text-gray-800'
+                        }`}
+                      >
+                        <Icon className="h-4 w-4" />
+                        {program.shortLabel || program.label || program.code}
+                      </button>
+                    );
+                  })}
+                </div>
               </div>
-              {!activeProgram?.fixedSemester ? (
-                <div className="flex items-center gap-2 rounded-lg border border-gray-200 bg-white px-3 py-2">
+              {activeProgramCode ? (
+                <div className="flex shrink-0 items-center gap-2 rounded-lg border border-gray-200 bg-white px-3 py-2">
                   <span className="text-sm font-medium text-gray-600">Semester</span>
                   <select
-                    value={selectedSemester}
+                    value={effectiveSemester}
                     onChange={(event) => setSelectedSemester(event.target.value as 'ODD' | 'EVEN')}
-                    className="rounded-lg border border-gray-300 px-3 py-2 text-sm focus:border-blue-500 focus:outline-none"
+                    disabled={Boolean(activeProgram?.fixedSemester)}
+                    className={`min-w-[140px] rounded-lg border px-3 py-2 text-sm focus:border-blue-500 focus:outline-none ${
+                      activeProgram?.fixedSemester
+                        ? 'cursor-not-allowed border-slate-200 bg-slate-100 text-slate-600'
+                        : 'border-gray-300 bg-white'
+                    }`}
                   >
-                    <option value="ODD">Ganjil</option>
-                    <option value="EVEN">Genap</option>
+                    {activeProgram?.fixedSemester ? (
+                      <option value={activeProgram.fixedSemester}>
+                        {activeProgram.fixedSemester === 'EVEN' ? 'Genap' : 'Ganjil'}
+                      </option>
+                    ) : (
+                      <>
+                        <option value="ODD">Ganjil</option>
+                        <option value="EVEN">Genap</option>
+                      </>
+                    )}
                   </select>
                 </div>
               ) : null}

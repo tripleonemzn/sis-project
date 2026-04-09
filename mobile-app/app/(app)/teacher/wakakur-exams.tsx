@@ -290,6 +290,77 @@ function compareClassName(a: string, b: string): number {
   });
 }
 
+function compareExamRoomName(a: unknown, b: unknown): number {
+  const normalizeLabel = (value: unknown) =>
+    String(value || '')
+      .normalize('NFKC')
+      .replace(/[\u200B-\u200D\uFEFF]/g, '')
+      .replace(/\s+/g, ' ')
+      .trim();
+
+  const buildMeta = (value: unknown) => {
+    const normalizedLabel = normalizeLabel(value);
+    const upperLabel = normalizedLabel.toUpperCase().replace(/\./g, '');
+    const numericRoomMatch = upperLabel.match(/^(?:RUANG|ROOM|KELAS)\s*(\d+)\s*([A-Z]*)$/);
+
+    if (numericRoomMatch) {
+      return {
+        category: 0,
+        roomNumber: Number(numericRoomMatch[1]),
+        suffix: String(numericRoomMatch[2] || '').trim(),
+        normalizedLabel,
+      };
+    }
+
+    if (/^(?:LAB|LABORATORIUM)\b/.test(upperLabel)) {
+      return {
+        category: 1,
+        roomNumber: null,
+        suffix: '',
+        normalizedLabel,
+      };
+    }
+
+    if (/^PERPUSTAKAAN\b/.test(upperLabel)) {
+      return {
+        category: 2,
+        roomNumber: null,
+        suffix: '',
+        normalizedLabel,
+      };
+    }
+
+    return {
+      category: 3,
+      roomNumber: null,
+      suffix: '',
+      normalizedLabel,
+    };
+  };
+
+  const left = buildMeta(a);
+  const right = buildMeta(b);
+
+  if (left.category !== right.category) return left.category - right.category;
+  if (left.roomNumber !== null && right.roomNumber !== null && left.roomNumber !== right.roomNumber) {
+    return left.roomNumber - right.roomNumber;
+  }
+  if ((left.roomNumber !== null) !== (right.roomNumber !== null)) {
+    return left.roomNumber !== null ? -1 : 1;
+  }
+
+  const suffixCompare = left.suffix.localeCompare(right.suffix, 'id', {
+    numeric: true,
+    sensitivity: 'base',
+  });
+  if (suffixCompare !== 0) return suffixCompare;
+
+  return left.normalizedLabel.localeCompare(right.normalizedLabel, 'id', {
+    numeric: true,
+    sensitivity: 'base',
+  });
+}
+
 function extractClassNameFromSittingStudent(student: ExamSittingStudentRow): string {
   if (!student) return '';
   const fromStudentClass = String(student.studentClass?.name || '').trim();
@@ -1204,9 +1275,7 @@ export default function TeacherWakakurExamsScreen() {
       const timeA = Date.parse(String(a.startTime || ''));
       const timeB = Date.parse(String(b.startTime || ''));
       if (Number.isFinite(timeA) && Number.isFinite(timeB) && timeA !== timeB) return timeA - timeB;
-      const roomA = String(a.roomName || '').trim();
-      const roomB = String(b.roomName || '').trim();
-      return roomA.localeCompare(roomB, 'id', { sensitivity: 'base' });
+      return compareExamRoomName(a.roomName, b.roomName);
     });
 
     sortedList.forEach((sitting, index) => {
@@ -1341,7 +1410,7 @@ export default function TeacherWakakurExamsScreen() {
         return orderA - orderB;
       }
       if (a.totalSchedules !== b.totalSchedules) return b.totalSchedules - a.totalSchedules;
-      return a.roomName.localeCompare(b.roomName, 'id', { sensitivity: 'base' });
+      return compareExamRoomName(a.roomName, b.roomName);
     });
   }, [filteredSchedules, sittingRoomDerived]);
 
@@ -1396,10 +1465,7 @@ export default function TeacherWakakurExamsScreen() {
         const timeA = Date.parse(String(a.startTime || ''));
         const timeB = Date.parse(String(b.startTime || ''));
         if (Number.isFinite(timeA) && Number.isFinite(timeB) && timeA !== timeB) return timeA - timeB;
-        const roomCompare = String(a.roomName || '').localeCompare(String(b.roomName || ''), 'id', {
-          sensitivity: 'base',
-          numeric: true,
-        });
+        const roomCompare = compareExamRoomName(a.roomName, b.roomName);
         if (roomCompare !== 0) return roomCompare;
         return Number(a.id) - Number(b.id);
       });
@@ -1424,10 +1490,7 @@ export default function TeacherWakakurExamsScreen() {
       .sort((a, b) => {
         const timeDiff = new Date(a.startTime).getTime() - new Date(b.startTime).getTime();
         if (timeDiff !== 0) return timeDiff;
-        const roomCompare = String(a.roomName || '').localeCompare(String(b.roomName || ''), 'id', {
-          numeric: true,
-          sensitivity: 'base',
-        });
+        const roomCompare = compareExamRoomName(a.roomName, b.roomName);
         if (roomCompare !== 0) return roomCompare;
         return String(a.subjectName || '').localeCompare(String(b.subjectName || ''), 'id', {
           numeric: true,

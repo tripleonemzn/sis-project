@@ -16,7 +16,12 @@ import {
   Sparkles,
 } from 'lucide-react';
 import { toast } from 'react-hot-toast';
-import { examCardService, type ExamCardOverviewRow, type ExamGeneratedCardPayload } from '../../services/examCard.service';
+import {
+  examCardService,
+  type ExamCardOverviewRow,
+  type ExamCardSemester,
+  type ExamGeneratedCardPayload,
+} from '../../services/examCard.service';
 import { examService, type ExamProgram } from '../../services/exam.service';
 import { isNonScheduledExamProgram } from '../../lib/examProgramMenu';
 import { useActiveAcademicYear } from '../../hooks/useActiveAcademicYear';
@@ -453,6 +458,7 @@ function deriveExamCardRowState(row: ExamCardOverviewRow) {
 export function HeadTuExamCardsPanel() {
   const queryClient = useQueryClient();
   const [activeProgramCode, setActiveProgramCode] = useState('');
+  const [selectedSemester, setSelectedSemester] = useState<ExamCardSemester>('ODD');
   const [search, setSearch] = useState('');
   const [classFilter, setClassFilter] = useState('ALL');
   const [statusFilter, setStatusFilter] = useState<StatusFilter>('ALL');
@@ -484,6 +490,16 @@ export function HeadTuExamCardsPanel() {
     [programsQuery.data?.data?.programs],
   );
 
+  const activeProgram = useMemo(
+    () => visiblePrograms.find((program) => program.code === activeProgramCode) || null,
+    [activeProgramCode, visiblePrograms],
+  );
+
+  const effectiveSemester =
+    activeProgram?.fixedSemester ||
+    selectedSemester ||
+    (activeYear?.semester === 'EVEN' ? 'EVEN' : 'ODD');
+
   useEffect(() => {
     if (visiblePrograms.length === 0) {
       setActiveProgramCode('');
@@ -494,8 +510,23 @@ export function HeadTuExamCardsPanel() {
     );
   }, [visiblePrograms]);
 
+  useEffect(() => {
+    if (activeProgram?.fixedSemester) {
+      setSelectedSemester(activeProgram.fixedSemester);
+      return;
+    }
+    if (activeYear?.semester === 'ODD' || activeYear?.semester === 'EVEN') {
+      setSelectedSemester(activeYear.semester);
+    }
+  }, [activeProgram?.fixedSemester, activeYear?.semester]);
+
   const overviewQuery = useQuery({
-    queryKey: ['head-tu-exam-cards-overview', selectedAcademicYearId || 'none', activeProgramCode || 'none'],
+    queryKey: [
+      'head-tu-exam-cards-overview',
+      selectedAcademicYearId || 'none',
+      activeProgramCode || 'none',
+      effectiveSemester,
+    ],
     enabled: Boolean(selectedAcademicYearId) && Boolean(activeProgramCode),
     staleTime: 60_000,
     refetchOnWindowFocus: false,
@@ -503,6 +534,7 @@ export function HeadTuExamCardsPanel() {
       const response = await examCardService.getOverview({
         academicYearId: Number(selectedAcademicYearId),
         programCode: activeProgramCode,
+        semester: effectiveSemester,
       });
       return response.data;
     },
@@ -513,7 +545,7 @@ export function HeadTuExamCardsPanel() {
       examCardService.generate({
         academicYearId: Number(selectedAcademicYearId),
         programCode: activeProgramCode,
-        semester: overviewQuery.data?.semester,
+        semester: effectiveSemester,
         issueLocation: issueLocation.trim() || 'Bekasi',
         issueDate,
       }),
@@ -633,28 +665,56 @@ export function HeadTuExamCardsPanel() {
       </div>
 
       <div className="rounded-xl border border-gray-100 bg-white p-4 shadow-sm">
-        <div className="border-b border-gray-200 pb-1">
-          <div className="flex gap-4 overflow-x-auto scrollbar-hide">
-            {visiblePrograms.map((program) => {
-              const Icon = getProgramTabIcon(program.code);
-              const isActive = program.code === activeProgramCode;
-              return (
-                <button
-                  key={program.code}
-                  type="button"
-                  onClick={() => setActiveProgramCode(program.code)}
-                  className={`flex items-center gap-2 whitespace-nowrap border-b-2 px-3 py-3 text-sm font-medium transition-colors ${
-                    isActive
-                      ? 'border-blue-600 text-blue-700'
-                      : 'border-transparent text-gray-500 hover:border-gray-300 hover:text-gray-800'
-                  }`}
-                >
-                  <Icon className="h-4 w-4" />
-                  {program.shortLabel || program.label || program.code}
-                </button>
-              );
-            })}
+        <div className="flex flex-col gap-3 lg:flex-row lg:items-center lg:justify-between">
+          <div className="min-w-0 border-b border-gray-200 pb-1 lg:flex-1">
+            <div className="flex gap-4 overflow-x-auto scrollbar-hide">
+              {visiblePrograms.map((program) => {
+                const Icon = getProgramTabIcon(program.code);
+                const isActive = program.code === activeProgramCode;
+                return (
+                  <button
+                    key={program.code}
+                    type="button"
+                    onClick={() => setActiveProgramCode(program.code)}
+                    className={`flex items-center gap-2 whitespace-nowrap border-b-2 px-3 py-3 text-sm font-medium transition-colors ${
+                      isActive
+                        ? 'border-blue-600 text-blue-700'
+                        : 'border-transparent text-gray-500 hover:border-gray-300 hover:text-gray-800'
+                    }`}
+                  >
+                    <Icon className="h-4 w-4" />
+                    {program.shortLabel || program.label || program.code}
+                  </button>
+                );
+              })}
+            </div>
           </div>
+          {activeProgramCode ? (
+            <div className="flex shrink-0 items-center gap-2 rounded-lg border border-gray-200 bg-white px-3 py-2">
+              <span className="text-sm font-medium text-gray-600">Semester</span>
+              <select
+                value={effectiveSemester}
+                onChange={(event) => setSelectedSemester((event.target.value as ExamCardSemester) || 'ODD')}
+                disabled={Boolean(activeProgram?.fixedSemester)}
+                className={`min-w-[140px] rounded-lg border px-3 py-2 text-sm focus:border-blue-500 focus:outline-none ${
+                  activeProgram?.fixedSemester
+                    ? 'cursor-not-allowed border-slate-200 bg-slate-100 text-slate-600'
+                    : 'border-gray-300 bg-white'
+                }`}
+              >
+                {activeProgram?.fixedSemester ? (
+                  <option value={activeProgram.fixedSemester}>
+                    {activeProgram.fixedSemester === 'EVEN' ? 'Genap' : 'Ganjil'}
+                  </option>
+                ) : (
+                  <>
+                    <option value="ODD">Ganjil</option>
+                    <option value="EVEN">Genap</option>
+                  </>
+                )}
+              </select>
+            </div>
+          ) : null}
         </div>
       </div>
 
