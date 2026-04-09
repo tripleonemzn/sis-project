@@ -2348,11 +2348,12 @@ function buildUtcDayRange(value: Date): { start: Date; end: Date } {
 
 function buildSessionPacketSignature(params: {
     academicYearId: number;
+    authorId: number;
     subjectId: number;
     programCode: string;
     dateKey: string;
 }): string {
-    return `${params.academicYearId}:${params.subjectId}:${params.programCode}:${params.dateKey}`;
+    return `${params.academicYearId}:${params.authorId}:${params.subjectId}:${params.programCode}:${params.dateKey}`;
 }
 
 function resolveScheduleProgramCode(params: {
@@ -2439,6 +2440,36 @@ async function findReusablePacketForSessionGroup(params: {
     });
 }
 
+function inferCurriculumManagedPacketKkm(
+    assignmentRows: Array<{
+        teacherId?: number | null;
+        classId?: number | null;
+        kkm?: number | null;
+    }>,
+    teacherId?: number | null,
+): number {
+    const normalizedTeacherId =
+        Number.isFinite(Number(teacherId)) && Number(teacherId) > 0 ? Number(teacherId) : null;
+    const candidateRows =
+        normalizedTeacherId === null
+            ? assignmentRows
+            : assignmentRows.filter((row) => Number(row.teacherId || 0) === normalizedTeacherId);
+    const values = candidateRows
+        .map((row) => Number(row.kkm))
+        .filter((value): value is number => Number.isFinite(value) && value > 0);
+    if (values.length === 0) return 75;
+
+    const frequencies = new Map<number, number>();
+    values.forEach((value) => {
+        frequencies.set(value, (frequencies.get(value) || 0) + 1);
+    });
+    const ranked = Array.from(frequencies.entries()).sort((left, right) => {
+        if (right[1] !== left[1]) return right[1] - left[1];
+        return right[0] - left[0];
+    });
+    return ranked[0]?.[0] ?? 75;
+}
+
 async function consolidateSessionSiblingSchedulesForPacket(packetId: number): Promise<{
     movedScheduleIds: number[];
     mergedPacketIds: number[];
@@ -2452,6 +2483,7 @@ async function consolidateSessionSiblingSchedulesForPacket(packetId: number): Pr
         where: { id: packetId },
         select: {
             id: true,
+            authorId: true,
             subjectId: true,
             academicYearId: true,
             programCode: true,
@@ -2500,6 +2532,7 @@ async function consolidateSessionSiblingSchedulesForPacket(packetId: number): Pr
         signatures.add(
             buildSessionPacketSignature({
                 academicYearId,
+                authorId: Number(packet.authorId || 0),
                 subjectId,
                 programCode,
                 dateKey,
@@ -2536,6 +2569,7 @@ async function consolidateSessionSiblingSchedulesForPacket(packetId: number): Pr
             packet: {
                 select: {
                     id: true,
+                    authorId: true,
                     programCode: true,
                     type: true,
                 },
@@ -2560,6 +2594,7 @@ async function consolidateSessionSiblingSchedulesForPacket(packetId: number): Pr
 
         const signature = buildSessionPacketSignature({
             academicYearId: Number(schedule.academicYearId || packet.academicYearId || 0),
+            authorId: Number(schedule.packet?.authorId || 0),
             subjectId: Number(schedule.subjectId || packet.subjectId || 0),
             programCode,
             dateKey: toUtcDateKey(schedule.startTime),
@@ -5471,20 +5506,37 @@ export const getPackets = asyncHandler(async (req: Request, res: Response) => {
 
             const assignments = await prisma.teacherAssignment.findMany({
                 where: assignmentWhere,
-                select: { subjectId: true },
+                select: { subjectId: true, classId: true },
             });
-            const assignedSubjectIds = Array.from(
-                new Set(
-                    assignments
-                        .map((item) => Number(item.subjectId))
-                        .filter((item) => Number.isFinite(item) && item > 0),
-                ),
+            const assignmentClassIdsBySubject = assignments.reduce<Map<number, Set<number>>>((acc, item) => {
+                const subjectId = Number(item.subjectId || 0);
+                const classId = Number(item.classId || 0);
+                if (!Number.isFinite(subjectId) || subjectId <= 0 || !Number.isFinite(classId) || classId <= 0) {
+                    return acc;
+                }
+                if (!acc.has(subjectId)) {
+                    acc.set(subjectId, new Set<number>());
+                }
+                acc.get(subjectId)!.add(classId);
+                return acc;
+            }, new Map<number, Set<number>>());
+            const assignmentScopeFilters = Array.from(assignmentClassIdsBySubject.entries()).map(
+                ([assignedSubjectId, classIds]) => ({
+                    subjectId: assignedSubjectId,
+                    schedules: {
+                        some: {
+                            classId: {
+                                in: Array.from(classIds.values()),
+                            },
+                        },
+                    },
+                }),
             );
 
             andFilters.push({
                 OR: [
                     { authorId: authUserId },
-                    ...(assignedSubjectIds.length > 0 ? [{ subjectId: { in: assignedSubjectIds } }] : []),
+                    ...assignmentScopeFilters,
                 ],
             });
         }
@@ -5531,6 +5583,11 @@ export const getPackets = asyncHandler(async (req: Request, res: Response) => {
 
 export const getPacketById = asyncHandler(async (req: Request, res: Response) => {
     const { id } = req.params;
+    const authUser = (req as any).user as { id?: number; role?: string } | undefined;
+    const authUserId = Number(authUser?.id || 0);
+    const authRole = String(authUser?.role || '')
+        .trim()
+        .toUpperCase();
     const packet = await prisma.examPacket.findUnique({
         where: { id: parseInt(id) },
         include: {
@@ -5557,11 +5614,53 @@ export const getPacketById = asyncHandler(async (req: Request, res: Response) =>
         }
     });
     if (!packet) throw new ApiError(404, 'Exam packet not found');
+    let normalizedSchedules = packet.schedules;
+    if (authRole === 'TEACHER' && authUserId > 0) {
+        const teacherProfile = await prisma.user.findUnique({
+            where: { id: authUserId },
+            select: { additionalDuties: true },
+        });
+        const duties = (teacherProfile?.additionalDuties || []).map((item) => String(item || '').trim().toUpperCase());
+        const canSeeAllPacketSchedules =
+            duties.includes('WAKASEK_KURIKULUM') || duties.includes('SEKRETARIS_KURIKULUM');
+
+        if (!canSeeAllPacketSchedules) {
+            const assignmentRows = await prisma.teacherAssignment.findMany({
+                where: {
+                    teacherId: authUserId,
+                    academicYearId: packet.academicYearId,
+                    subjectId: packet.subjectId,
+                },
+                select: {
+                    classId: true,
+                },
+            });
+            const allowedClassIds = new Set(
+                assignmentRows
+                    .map((item) => Number(item.classId || 0))
+                    .filter((classId) => Number.isFinite(classId) && classId > 0),
+            );
+            const isAuthor = Number(packet.authorId || 0) === authUserId;
+            const hasVisibleSchedule = normalizedSchedules.some((schedule) =>
+                allowedClassIds.has(Number(schedule.classId || 0)),
+            );
+            if (!isAuthor && !hasVisibleSchedule) {
+                throw new ApiError(403, 'Anda tidak berhak melihat paket ujian ini.');
+            }
+            if (allowedClassIds.size > 0) {
+                normalizedSchedules = normalizedSchedules.filter((schedule) => {
+                    const classId = Number(schedule.classId || 0);
+                    return !classId || allowedClassIds.has(classId);
+                });
+            }
+        }
+    }
     const effectiveSubjectMap = await resolveEffectivePacketSubjectsForPackets([packet]);
     const effectiveSubject = effectiveSubjectMap.get(packet.id) || toPacketDisplaySubject(packet.subject) || packet.subject;
     res.json(
         new ApiResponse(200, {
             ...packet,
+            schedules: normalizedSchedules,
             isCurriculumManaged: isCurriculumManagedPacketDescription(packet.description),
             subjectId: effectiveSubject?.id ?? packet.subjectId,
             subject: effectiveSubject,
@@ -7170,6 +7269,19 @@ export const createSchedule = asyncHandler(async (req: Request, res: Response) =
         });
     }
 
+    const classIdsByTeacher = normalizedClassIds.reduce<Map<number, number[]>>((acc, classIdItem) => {
+        const teacherIds = Array.from(assignmentTeacherIdsByClass.get(classIdItem)?.values() || []);
+        const teacherId = Number(teacherIds[0] || 0);
+        if (!Number.isFinite(teacherId) || teacherId <= 0) {
+            return acc;
+        }
+        if (!acc.has(teacherId)) {
+            acc.set(teacherId, []);
+        }
+        acc.get(teacherId)!.push(classIdItem);
+        return acc;
+    }, new Map<number, number[]>());
+
     const resolvedProgramSession = await resolveProgramSessionReference({
         academicYearId: fallbackAcademicYearId,
         rawProgramCode: normalizedExamType,
@@ -7178,47 +7290,36 @@ export const createSchedule = asyncHandler(async (req: Request, res: Response) =
         sessionLabel,
     });
 
-    if (!packet) {
-        const assignmentTeacherIds = Array.from(
-            new Set(
-                assignmentRows
-                    .map((row) => Number(row.teacherId))
-                    .filter((teacherIdItem) => Number.isFinite(teacherIdItem) && teacherIdItem > 0),
-            ),
-        ).sort((left, right) => left - right);
+    const createdSchedules = [];
+    const packetIdsToConsolidate = new Set<number>();
 
-        if (assignmentTeacherIds.length > 0) {
-            const assignmentKkmValues = assignmentRows
-                .map((row) => Number(row.kkm))
-                .filter((value): value is number => Number.isFinite(value) && value > 0);
-            let inferredPacketKkm = 75;
-            if (assignmentKkmValues.length > 0) {
-                const frequencies = new Map<number, number>();
-                assignmentKkmValues.forEach((value) => {
-                    frequencies.set(value, (frequencies.get(value) || 0) + 1);
-                });
-                const ranked = Array.from(frequencies.entries()).sort((left, right) => {
-                    if (right[1] !== left[1]) return right[1] - left[1];
-                    return right[0] - left[0];
-                });
-                inferredPacketKkm = ranked[0]?.[0] ?? 75;
-            }
+    if (!packet && normalizedClassIds.length > 0) {
+        const [subjectRow, resolvedProgram] = await Promise.all([
+            prisma.subject.findUnique({
+                where: { id: fallbackSubjectId },
+                select: { name: true },
+            }),
+            resolvePacketProgram({
+                academicYearId: fallbackAcademicYearId,
+                semester: normalizedSemester,
+                programCode: normalizedExamType,
+                legacyType: normalizedExamType,
+            }),
+        ]);
 
-            const [subjectRow, resolvedProgram] = await Promise.all([
-                prisma.subject.findUnique({
-                    where: { id: fallbackSubjectId },
-                    select: { name: true },
-                }),
-                resolvePacketProgram({
-                    academicYearId: fallbackAcademicYearId,
-                    semester: normalizedSemester,
-                    programCode: normalizedExamType,
-                    legacyType: normalizedExamType,
-                }),
-            ]);
+        const durationMinutes = Math.max(
+            1,
+            Math.round((normalizedEndTime.getTime() - normalizedStartTime.getTime()) / 60000),
+        );
+        const programLabel = resolvedProgram.programCode || resolvedProgram.baseType;
+        const subjectLabel = String(subjectRow?.name || 'Mata Pelajaran');
+        const dateLabel = normalizedStartTime.toISOString().slice(0, 10);
+        const autoTitle = `${programLabel} • ${subjectLabel} • ${dateLabel}`;
 
+        const teacherGroups = Array.from(classIdsByTeacher.entries()).sort((left, right) => left[0] - right[0]);
+        for (const [teacherId, teacherClassIds] of teacherGroups) {
             const reusablePacket = await findReusablePacketForSessionGroup({
-                authorId: assignmentTeacherIds[0],
+                authorId: teacherId,
                 subjectId: fallbackSubjectId,
                 academicYearId: fallbackAcademicYearId,
                 semester: normalizedSemester,
@@ -7228,19 +7329,9 @@ export const createSchedule = asyncHandler(async (req: Request, res: Response) =
                 sessionLabel: resolvedProgramSession?.label ?? null,
             });
 
-            if (reusablePacket) {
-                packet = reusablePacket;
-            } else {
-                const durationMinutes = Math.max(
-                    1,
-                    Math.round((normalizedEndTime.getTime() - normalizedStartTime.getTime()) / 60000),
-                );
-                const programLabel = resolvedProgram.programCode || resolvedProgram.baseType;
-                const subjectLabel = String(subjectRow?.name || 'Mata Pelajaran');
-                const dateLabel = normalizedStartTime.toISOString().slice(0, 10);
-                const autoTitle = `${programLabel} • ${subjectLabel} • ${dateLabel}`;
-
-                const createdPacket = await prisma.examPacket.create({
+            const scopedPacket =
+                reusablePacket ||
+                (await prisma.examPacket.create({
                     data: {
                         title: autoTitle,
                         subjectId: fallbackSubjectId,
@@ -7252,8 +7343,8 @@ export const createSchedule = asyncHandler(async (req: Request, res: Response) =
                         instructions: 'Draft otomatis dari jadwal kurikulum. Lengkapi butir soal sebelum ujian dimulai.',
                         description: AUTO_CURRICULUM_PACKET_DESCRIPTION,
                         questions: [],
-                        kkm: inferredPacketKkm,
-                        authorId: assignmentTeacherIds[0],
+                        kkm: inferCurriculumManagedPacketKkm(assignmentRows, teacherId),
+                        authorId: teacherId,
                     },
                     select: {
                         id: true,
@@ -7264,41 +7355,66 @@ export const createSchedule = asyncHandler(async (req: Request, res: Response) =
                         type: true,
                         programCode: true,
                     },
-                });
+                }));
 
-                packet = createdPacket;
+            packetIdsToConsolidate.add(scopedPacket.id);
+            for (const classIdItem of teacherClassIds) {
+                const schedule = await prisma.examSchedule.create({
+                    data: {
+                        classId: classIdItem,
+                        packetId: scopedPacket.id,
+                        subjectId: fallbackSubjectId,
+                        startTime: normalizedStartTime,
+                        endTime: normalizedEndTime,
+                        periodNumber: parsedPeriodNumber,
+                        proctorId: parsedProctorId,
+                        academicYearId: fallbackAcademicYearId,
+                        semester: normalizedSemester,
+                        examType: normalizedExamType,
+                        room,
+                        jobVacancyId: parsedJobVacancyId,
+                        sessionId: resolvedProgramSession?.id ?? null,
+                        sessionLabel: resolvedProgramSession?.label ?? null,
+                    },
+                });
+                createdSchedules.push(schedule);
+                invalidateStartExamScheduleCache(schedule.id);
             }
+        }
+    } else {
+        const scheduleTargets = normalizedClassIds.length > 0 ? normalizedClassIds : [null];
+        for (const cId of scheduleTargets) {
+            const schedule = await prisma.examSchedule.create({
+                data: {
+                    classId: cId ?? undefined,
+                    packetId: packet?.id ?? null,
+                    subjectId: fallbackSubjectId,
+                    startTime: normalizedStartTime,
+                    endTime: normalizedEndTime,
+                    periodNumber: parsedPeriodNumber,
+                    proctorId: parsedProctorId,
+                    academicYearId: fallbackAcademicYearId,
+                    semester: normalizedSemester,
+                    examType: normalizedExamType,
+                    room,
+                    jobVacancyId: parsedJobVacancyId,
+                    sessionId: resolvedProgramSession?.id ?? null,
+                    sessionLabel: resolvedProgramSession?.label ?? null,
+                }
+            });
+            createdSchedules.push(schedule);
+            invalidateStartExamScheduleCache(schedule.id);
+        }
+        if (packet?.id) {
+            packetIdsToConsolidate.add(packet.id);
         }
     }
 
-    const createdSchedules = [];
-    const scheduleTargets = normalizedClassIds.length > 0 ? normalizedClassIds : [null];
-
-    for (const cId of scheduleTargets) {
-        const schedule = await prisma.examSchedule.create({
-            data: {
-                classId: cId ?? undefined,
-                packetId: packet?.id ?? null,
-                subjectId: fallbackSubjectId,
-                startTime: normalizedStartTime,
-                endTime: normalizedEndTime,
-                periodNumber: parsedPeriodNumber,
-                proctorId: parsedProctorId,
-                academicYearId: fallbackAcademicYearId,
-                semester: normalizedSemester,
-                examType: normalizedExamType,
-                room,
-                jobVacancyId: parsedJobVacancyId,
-                sessionId: resolvedProgramSession?.id ?? null,
-                sessionLabel: resolvedProgramSession?.label ?? null,
-            }
-        });
-        createdSchedules.push(schedule);
-        invalidateStartExamScheduleCache(schedule.id);
-    }
-
-    if (packet?.id) {
-        const consolidation = await consolidateSessionSiblingSchedulesForPacket(packet.id);
+    for (const packetIdItem of packetIdsToConsolidate) {
+        if (!Number.isFinite(packetIdItem) || packetIdItem <= 0) {
+            continue;
+        }
+        const consolidation = await consolidateSessionSiblingSchedulesForPacket(packetIdItem);
         if (consolidation.mergedPacketIds.length > 0) {
             consolidation.mergedPacketIds.forEach((mergedPacketId) => {
                 invalidateStartExamScheduleCacheByPacket(mergedPacketId);
@@ -7310,8 +7426,8 @@ export const createSchedule = asyncHandler(async (req: Request, res: Response) =
             });
         }
 
-        invalidatePacketItemAnalysisCacheByPacket(packet.id);
-        invalidatePacketSubmissionsCacheByPacket(packet.id);
+        invalidatePacketItemAnalysisCacheByPacket(packetIdItem);
+        invalidatePacketSubmissionsCacheByPacket(packetIdItem);
     }
 
     res.json(new ApiResponse(201, createdSchedules, 'Exam schedules created successfully'));
