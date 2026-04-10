@@ -738,15 +738,25 @@ export default function StudentExamsScreen() {
                         paddingVertical: 8,
                       }}
                     >
-                      <View style={{ flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: 8 }}>
-                        {schoolLogoUrl ? (
-                          <Image
-                            source={{ uri: schoolLogoUrl }}
-                            style={{ width: 48, height: 48 }}
-                            resizeMode="contain"
-                          />
-                        ) : null}
-                        <View style={{ flex: 1 }}>
+                      <View
+                        style={{
+                          alignSelf: 'center',
+                          width: '100%',
+                          maxWidth: 292,
+                          flexDirection: 'row',
+                          alignItems: 'center',
+                        }}
+                      >
+                        <View style={{ width: 48, alignItems: 'center', justifyContent: 'center' }}>
+                          {schoolLogoUrl ? (
+                            <Image
+                              source={{ uri: schoolLogoUrl }}
+                              style={{ width: 48, height: 48 }}
+                              resizeMode="contain"
+                            />
+                          ) : null}
+                        </View>
+                        <View style={{ flex: 1, paddingHorizontal: 8 }}>
                           <Text
                             style={{
                               color: '#0f172a',
@@ -799,11 +809,21 @@ export default function StudentExamsScreen() {
                             {`Tahun Ajaran ${card.payload.academicYearName}`}
                           </Text>
                         </View>
+                        <View style={{ width: 48 }} />
                       </View>
                     </View>
 
                     <View style={{ paddingHorizontal: 8, paddingVertical: 8, gap: 8 }}>
-                      <View style={{ flexDirection: 'row', alignItems: 'flex-start', gap: 8 }}>
+                      <View
+                        style={{
+                          alignSelf: 'center',
+                          width: '100%',
+                          maxWidth: 292,
+                          flexDirection: 'row',
+                          alignItems: 'flex-start',
+                          gap: 8,
+                        }}
+                      >
                         <View style={{ flex: 1, gap: 3 }}>
                           {[
                             ['Nama Siswa', card.payload.student.name],
