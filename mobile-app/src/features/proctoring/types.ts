@@ -4,9 +4,11 @@ export type ProctorScheduleSummary = {
   id: number;
   startTime: string;
   endTime: string;
+  periodNumber?: number | null;
   sessionLabel?: string | null;
   room: string | null;
   proctorId: number | null;
+  subjectName?: string | null;
   classNames?: string[];
   participantCount?: number;
   packet: {

@@ -2678,25 +2678,42 @@ export default function TeacherExamEditorScreen() {
                             <TextInput
                               value={String(currentCell?.content || '')}
                               onChangeText={(value) => {
-                                const nextRows = rows.map((item) =>
-                                  item.id === row.id
-                                    ? {
-                                        ...item,
-                                        cells: promptColumns.map((promptColumn) => {
-                                          const existingCell = Array.isArray(item.cells)
-                                            ? item.cells.find((cell) => cell.columnId === promptColumn.id)
-                                            : null;
-                                          return {
-                                            columnId: promptColumn.id,
-                                            content: promptColumn.id === column.id ? value : existingCell?.content || '',
-                                          };
-                                        }),
-                                      }
-                                    : item,
-                                );
                                 setQuestions((prev) =>
                                   prev.map((item) =>
-                                    item.id === question.id ? { ...item, matrixRows: nextRows } : item,
+                                    item.id === question.id
+                                      ? (() => {
+                                          const nextPromptColumns = ensureMatrixPromptColumnsForEditor(item.matrixPromptColumns);
+                                          const nextAnswerColumns = ensureMatrixColumnsForEditor(item.matrixColumns);
+                                          const nextRows = ensureMatrixRowsForEditor(
+                                            item.matrixRows,
+                                            nextPromptColumns,
+                                            nextAnswerColumns,
+                                          ).map((candidate) => {
+                                            if (candidate.id !== row.id) {
+                                              return candidate;
+                                            }
+                                            const nextCells = nextPromptColumns.map((promptColumn) => {
+                                              const existingCell = Array.isArray(candidate.cells)
+                                                ? candidate.cells.find((cell) => cell.columnId === promptColumn.id)
+                                                : null;
+                                              return {
+                                                columnId: promptColumn.id,
+                                                content: promptColumn.id === column.id ? value : existingCell?.content || '',
+                                              };
+                                            });
+                                            const primaryColumnId = nextPromptColumns[0]?.id;
+                                            const primaryContent = primaryColumnId
+                                              ? nextCells.find((cell) => cell.columnId === primaryColumnId)?.content || ''
+                                              : '';
+                                            return {
+                                              ...candidate,
+                                              content: primaryContent || String(candidate.content || ''),
+                                              cells: nextCells,
+                                            };
+                                          });
+                                          return { ...item, matrixRows: nextRows };
+                                        })()
+                                      : item,
                                   ),
                                 );
                               }}

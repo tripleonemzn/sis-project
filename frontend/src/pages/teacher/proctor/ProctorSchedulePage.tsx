@@ -1,16 +1,20 @@
-import React, { useState, useEffect, useMemo } from 'react';
+import React, { useEffect, useMemo, useState } from 'react';
 import { useNavigate, useSearchParams } from 'react-router-dom';
-import { Monitor, Calendar, Clock, MapPin, CalendarDays, AlarmClock, History } from 'lucide-react';
-import api from '../../../services/api';
+import { AlarmClock, Calendar, CalendarDays, Clock, History, MapPin, Monitor, Users } from 'lucide-react';
 import { toast } from 'react-hot-toast';
+import api from '../../../services/api';
+
+type TimeFilter = 'today' | 'upcoming' | 'history';
 
 interface ExamSchedule {
   id: number;
   startTime: string;
   endTime: string;
+  periodNumber?: number | null;
   sessionLabel?: string | null;
   room: string | null;
   proctorId: number | null;
+  subjectName?: string | null;
   classNames?: string[];
   participantCount?: number;
   subject?: {
@@ -31,9 +35,12 @@ interface ExamSchedule {
 
 interface ProctorRoomGroup {
   key: string;
+  dateKey: string;
+  dateLabel: string;
   roomName: string;
   startTime: string;
   endTime: string;
+  periodNumber: number | null;
   sessionLabel: string | null;
   title: string;
   subjectName: string;
@@ -42,74 +49,168 @@ interface ProctorRoomGroup {
   scheduleIds: number[];
 }
 
+function compareRoomName(a: string, b: string) {
+  return String(a || '').localeCompare(String(b || ''), 'id', {
+    numeric: true,
+    sensitivity: 'base',
+  });
+}
+
+function compareClassName(a: string, b: string) {
+  return String(a || '').localeCompare(String(b || ''), 'id', {
+    numeric: true,
+    sensitivity: 'base',
+  });
+}
+
+function formatDayKey(value: string) {
+  const date = new Date(value);
+  if (Number.isNaN(date.getTime())) return 'invalid-date';
+  return date.toISOString().slice(0, 10);
+}
+
+function formatDayLabel(value: string) {
+  const date = new Date(value);
+  if (Number.isNaN(date.getTime())) return 'Tanggal tidak valid';
+  return date.toLocaleDateString('id-ID', {
+    weekday: 'long',
+    day: 'numeric',
+    month: 'long',
+    year: 'numeric',
+  });
+}
+
+function formatTimeRange(startTime: string, endTime: string) {
+  const start = new Date(startTime);
+  const end = new Date(endTime);
+  if (Number.isNaN(start.getTime()) || Number.isNaN(end.getTime())) {
+    return '-';
+  }
+  return `${start.toLocaleTimeString('id-ID', { hour: '2-digit', minute: '2-digit' })} - ${end.toLocaleTimeString(
+    'id-ID',
+    { hour: '2-digit', minute: '2-digit' },
+  )} WIB`;
+}
+
+function resolveScheduleBucket(schedule: Pick<ExamSchedule, 'startTime'>): TimeFilter {
+  const now = new Date();
+  const todayStart = new Date(now);
+  todayStart.setHours(0, 0, 0, 0);
+  const todayEnd = new Date(now);
+  todayEnd.setHours(23, 59, 59, 999);
+  const examDate = new Date(schedule.startTime);
+  if (Number.isNaN(examDate.getTime())) return 'history';
+  if (examDate >= todayStart && examDate <= todayEnd) return 'today';
+  if (examDate > todayEnd) return 'upcoming';
+  return 'history';
+}
+
+function getStatusBadge(startTime: string, endTime: string) {
+  const now = new Date();
+  const start = new Date(startTime);
+  const end = new Date(endTime);
+
+  if (now < start) {
+    return (
+      <span className="inline-flex items-center shrink-0 whitespace-nowrap rounded-full border border-blue-200 bg-blue-50 px-2.5 py-1 text-xs font-semibold text-blue-700">
+        Akan Datang
+      </span>
+    );
+  }
+  if (now >= start && now <= end) {
+    return (
+      <span className="inline-flex items-center shrink-0 whitespace-nowrap rounded-full border border-emerald-200 bg-emerald-50 px-2.5 py-1 text-xs font-semibold text-emerald-700">
+        Sedang Berlangsung
+      </span>
+    );
+  }
+  return (
+    <span className="inline-flex items-center shrink-0 whitespace-nowrap rounded-full border border-slate-200 bg-slate-100 px-2.5 py-1 text-xs font-semibold text-slate-700">
+      Selesai
+    </span>
+  );
+}
+
 const ProctorSchedulePage: React.FC = () => {
   const navigate = useNavigate();
   const [searchParams, setSearchParams] = useSearchParams();
   const [schedules, setSchedules] = useState<ExamSchedule[]>([]);
   const [loading, setLoading] = useState(true);
   const filterParam = searchParams.get('tab');
-  const filter: 'today' | 'upcoming' | 'history' =
-    filterParam === 'upcoming' || filterParam === 'history' ? filterParam : 'today';
+  const filter: TimeFilter = filterParam === 'upcoming' || filterParam === 'history' ? filterParam : 'today';
 
-  const setFilter = (nextFilter: 'today' | 'upcoming' | 'history') => {
+  const setFilter = (nextFilter: TimeFilter) => {
     const nextParams = new URLSearchParams(searchParams);
     nextParams.set('tab', nextFilter);
     setSearchParams(nextParams, { replace: true });
   };
 
   useEffect(() => {
-    fetchSchedules();
+    void (async () => {
+      try {
+        const res = await api.get('/proctoring/schedules');
+        setSchedules(res.data.data);
+      } catch (error) {
+        console.error('Error fetching schedules:', error);
+        toast.error('Gagal memuat jadwal ujian');
+      } finally {
+        setLoading(false);
+      }
+    })();
   }, []);
 
-  const fetchSchedules = async () => {
-    try {
-      // Endpoint khusus pengawas: backend memfilter berdasarkan proctorId = user login.
-      const res = await api.get('/proctoring/schedules');
-      setSchedules(res.data.data);
-    } catch (error) {
-      console.error('Error fetching schedules:', error);
-      toast.error('Gagal memuat jadwal ujian');
-    } finally {
-      setLoading(false);
+  const scheduleCountsByFilter = useMemo(
+    () =>
+      schedules.reduce<Record<TimeFilter, number>>(
+        (acc, schedule) => {
+          acc[resolveScheduleBucket(schedule)] += 1;
+          return acc;
+        },
+        { today: 0, upcoming: 0, history: 0 },
+      ),
+    [schedules],
+  );
+
+  useEffect(() => {
+    if (loading || filterParam) return;
+    if (scheduleCountsByFilter.today === 0 && scheduleCountsByFilter.upcoming > 0) {
+      setFilter('upcoming');
     }
-  };
+  }, [filterParam, loading, scheduleCountsByFilter.today, scheduleCountsByFilter.upcoming]);
 
-  const getFilteredSchedules = () => {
-    const now = new Date();
-    const todayStart = new Date(now.setHours(0, 0, 0, 0));
-    const todayEnd = new Date(now.setHours(23, 59, 59, 999));
-    
-    return schedules.filter(s => {
-      const examDate = new Date(s.startTime);
-      
-      if (filter === 'today') {
-        return examDate >= todayStart && examDate <= todayEnd;
-      } else if (filter === 'upcoming') {
-        return examDate > todayEnd;
-      } else {
-        return examDate < todayStart;
-      }
-    });
-  };
-
-  const filteredSchedules = getFilteredSchedules();
+  const filteredSchedules = useMemo(
+    () => schedules.filter((schedule) => resolveScheduleBucket(schedule) === filter),
+    [filter, schedules],
+  );
 
   const groupedSchedules = useMemo<ProctorRoomGroup[]>(() => {
     const map = new Map<string, ProctorRoomGroup>();
 
     filteredSchedules.forEach((schedule) => {
       const roomName = schedule.room || 'Ruangan belum ditentukan';
-      const subjectName = schedule.packet?.subject?.name || schedule.subject?.name || '-';
+      const subjectName = schedule.subjectName || schedule.packet?.subject?.name || schedule.subject?.name || '-';
       const title = schedule.packet?.title || `Ujian ${subjectName}`;
       const sessionLabel = String(schedule.sessionLabel || '').trim() || null;
-      const key = `${roomName}::${schedule.startTime}::${schedule.endTime}::${subjectName}::${sessionLabel || '__NO_SESSION__'}`;
+      const dateKey = formatDayKey(schedule.startTime);
+      const key = [
+        dateKey,
+        roomName,
+        schedule.startTime,
+        schedule.endTime,
+        schedule.periodNumber || 0,
+        subjectName,
+        sessionLabel || '__NO_SESSION__',
+      ].join('::');
 
       if (!map.has(key)) {
         map.set(key, {
           key,
+          dateKey,
+          dateLabel: formatDayLabel(schedule.startTime),
           roomName,
           startTime: schedule.startTime,
           endTime: schedule.endTime,
+          periodNumber: Number.isFinite(Number(schedule.periodNumber)) ? Number(schedule.periodNumber) : null,
           sessionLabel,
           title,
           subjectName,
@@ -129,6 +230,7 @@ const ProctorSchedulePage: React.FC = () => {
           group.classNames.push(className);
         }
       });
+      group.classNames.sort(compareClassName);
       const resolvedParticipantCount = Number.isFinite(Number(schedule.participantCount))
         ? Number(schedule.participantCount)
         : Number(schedule._count?.sessions || 0);
@@ -136,36 +238,43 @@ const ProctorSchedulePage: React.FC = () => {
       group.scheduleIds.push(schedule.id);
     });
 
-    return Array.from(map.values()).sort(
-      (a, b) => new Date(a.startTime).getTime() - new Date(b.startTime).getTime(),
-    );
+    return Array.from(map.values()).sort((a, b) => {
+      const timeDiff = new Date(a.startTime).getTime() - new Date(b.startTime).getTime();
+      if (timeDiff !== 0) return timeDiff;
+      const periodDiff = Number(a.periodNumber || 0) - Number(b.periodNumber || 0);
+      if (periodDiff !== 0) return periodDiff;
+      return compareRoomName(a.roomName, b.roomName);
+    });
   }, [filteredSchedules]);
 
-  const getStatusBadge = (startTime: string, endTime: string) => {
-    const now = new Date();
-    const start = new Date(startTime);
-    const end = new Date(endTime);
+  const groupedDays = useMemo(() => {
+    const map = new Map<
+      string,
+      {
+        dateKey: string;
+        dateLabel: string;
+        rows: ProctorRoomGroup[];
+      }
+    >();
 
-    if (now < start) {
-      return (
-        <span className="inline-flex items-center shrink-0 whitespace-nowrap px-2 py-1 rounded-full text-xs font-medium bg-blue-100 text-blue-800">
-          Akan Datang
-        </span>
-      );
-    } else if (now >= start && now <= end) {
-      return (
-        <span className="inline-flex items-center shrink-0 whitespace-nowrap px-2 py-1 rounded-full text-xs font-medium bg-green-100 text-green-800">
-          Sedang Berlangsung
-        </span>
-      );
-    } else {
-      return (
-        <span className="inline-flex items-center shrink-0 whitespace-nowrap px-2 py-1 rounded-full text-xs font-medium bg-gray-100 text-gray-800">
-          Selesai
-        </span>
-      );
-    }
-  };
+    groupedSchedules.forEach((group) => {
+      if (!map.has(group.dateKey)) {
+        map.set(group.dateKey, {
+          dateKey: group.dateKey,
+          dateLabel: group.dateLabel,
+          rows: [],
+        });
+      }
+      map.get(group.dateKey)!.rows.push(group);
+    });
+
+    return Array.from(map.values()).sort((a, b) => a.dateKey.localeCompare(b.dateKey));
+  }, [groupedSchedules]);
+
+  const totalParticipants = useMemo(
+    () => groupedSchedules.reduce((acc, group) => acc + group.totalActiveParticipants, 0),
+    [groupedSchedules],
+  );
 
   if (loading) {
     return <div className="p-6">Loading...</div>;
@@ -173,16 +282,28 @@ const ProctorSchedulePage: React.FC = () => {
 
   return (
     <div className="space-y-6">
-      <div className="flex justify-between items-center">
-        <div>
+      <div className="rounded-2xl border border-gray-200 bg-white shadow-sm">
+        <div className="px-6 py-5">
           <h1 className="text-2xl font-bold text-gray-900">Jadwal Mengawas & Monitoring</h1>
-          <p className="text-gray-600">Pantau pelaksanaan ujian yang ditugaskan kepada Anda</p>
+          <p className="mt-1 text-gray-600">Pantau pelaksanaan ujian yang ditugaskan kepada Anda dengan breakdown per hari.</p>
+          <div className="mt-4 flex flex-wrap items-center gap-3 text-sm text-gray-500">
+            <span className="inline-flex items-center gap-2 rounded-full border border-blue-100 bg-blue-50 px-3 py-1.5 text-blue-700">
+              <Calendar className="h-4 w-4" />
+              {groupedDays.length} hari ujian
+            </span>
+            <span className="inline-flex items-center gap-2 rounded-full border border-emerald-100 bg-emerald-50 px-3 py-1.5 text-emerald-700">
+              <Monitor className="h-4 w-4" />
+              {groupedSchedules.length} slot aktif
+            </span>
+            <span className="inline-flex items-center gap-2 rounded-full border border-slate-200 bg-slate-50 px-3 py-1.5 text-slate-700">
+              <Users className="h-4 w-4" />
+              {totalParticipants} peserta aktif
+            </span>
+          </div>
         </div>
-      </div>
 
-      <div className="bg-white rounded-xl border border-gray-200 shadow-sm px-4 pt-3">
-        <div className="border-b border-gray-200">
-          <div className="flex overflow-x-auto gap-4 pb-1 scrollbar-hide">
+        <div className="border-t border-gray-200 px-4 pt-2">
+          <div className="flex overflow-x-auto gap-2 scrollbar-hide">
             {[
               { id: 'today', label: 'Hari Ini', icon: CalendarDays },
               { id: 'upcoming', label: 'Akan Datang', icon: AlarmClock },
@@ -193,16 +314,24 @@ const ProctorSchedulePage: React.FC = () => {
               return (
                 <button
                   key={tab.id}
-                  onClick={() => setFilter(tab.id as 'today' | 'upcoming' | 'history')}
-                  className={`px-4 py-3 border-b-2 whitespace-nowrap text-sm transition-colors ${
+                  type="button"
+                  onClick={() => setFilter(tab.id as TimeFilter)}
+                  className={`inline-flex items-center gap-2 border-b-2 px-4 py-3 text-sm transition-colors ${
                     active
-                      ? 'border-blue-600 text-blue-600 font-medium'
-                      : 'border-transparent text-gray-500 hover:text-gray-700 hover:border-gray-300'
+                      ? 'border-blue-600 text-blue-600 font-semibold'
+                      : 'border-transparent text-gray-500 hover:border-gray-300 hover:text-gray-700'
                   }`}
                   aria-label={tab.label}
                 >
-                  <TabIcon className="w-4 h-4 inline mr-1.5 -mt-0.5" />
-                  {tab.label}
+                  <TabIcon className="h-4 w-4" />
+                  <span>{tab.label}</span>
+                  <span
+                    className={`rounded-full px-2 py-0.5 text-[11px] ${
+                      active ? 'bg-blue-50 text-blue-700' : 'bg-gray-100 text-gray-500'
+                    }`}
+                  >
+                    {scheduleCountsByFilter[tab.id as TimeFilter]}
+                  </span>
                 </button>
               );
             })}
@@ -210,91 +339,102 @@ const ProctorSchedulePage: React.FC = () => {
         </div>
       </div>
 
-      <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
-        {groupedSchedules.length === 0 ? (
-          <div className="col-span-full text-center py-12 bg-white rounded-lg border border-dashed border-gray-300">
-            <Calendar className="mx-auto h-12 w-12 text-gray-400" />
-            <h3 className="mt-2 text-sm font-medium text-gray-900">Tidak ada jadwal ujian</h3>
-            <p className="mt-1 text-sm text-gray-500">
-              {filter === 'today' 
-                ? 'Tidak ada ujian yang dijadwalkan hari ini.' 
-                : filter === 'upcoming' 
-                  ? 'Tidak ada ujian mendatang.' 
-                  : 'Tidak ada riwayat ujian.'}
-            </p>
-          </div>
-        ) : (
-          groupedSchedules.map((group) => (
-            <div key={group.key} className="bg-white overflow-hidden shadow rounded-lg hover:shadow-md transition-shadow duration-200">
-              <div className="px-4 py-5 sm:p-6">
-                <div className="flex items-start justify-between gap-3">
-                  <div className="min-w-0 flex-1">
-                    <h3 className="text-lg font-medium text-gray-900 break-words leading-snug">
-                      {group.title}
-                    </h3>
-                    <p className="mt-1 text-sm text-gray-500 break-words">
-                      {group.subjectName}
-                    </p>
-                  </div>
-                  <div className="shrink-0">
-                    {getStatusBadge(group.startTime, group.endTime)}
-                  </div>
-                </div>
-                
-                <div className="mt-4 space-y-3">
-                  <div className="flex items-center text-sm text-gray-500">
-                    <Clock className="flex-shrink-0 mr-1.5 h-4 w-4 text-gray-400" />
-                    <span>
-                      {new Date(group.startTime).toLocaleTimeString('id-ID', { hour: '2-digit', minute: '2-digit' })} - 
-                      {new Date(group.endTime).toLocaleTimeString('id-ID', { hour: '2-digit', minute: '2-digit' })}
-                    </span>
-                  </div>
-                  <div className="flex items-center text-sm text-gray-500">
-                    <MapPin className="flex-shrink-0 mr-1.5 h-4 w-4 text-gray-400" />
-                    <span>{group.roomName}</span>
-                  </div>
-                  <div className="flex items-center text-sm text-gray-500">
-                    <span className="inline-flex items-center px-2 py-0.5 rounded border border-gray-200 bg-gray-50 text-xs text-gray-700">
-                      {group.sessionLabel ? `Sesi: ${group.sessionLabel}` : 'Tanpa sesi'}
-                    </span>
-                  </div>
-                  <div className="flex flex-wrap gap-1.5">
-                    {group.classNames.map((className) => (
-                      <span
-                        key={`${group.key}-${className}`}
-                        className="inline-flex items-center px-2 py-0.5 rounded border border-blue-200 bg-blue-50 text-xs text-blue-700"
-                      >
-                        {className}
-                      </span>
-                    ))}
-                  </div>
-                  <div className="flex items-center text-sm text-gray-500">
-                    <Monitor className="flex-shrink-0 mr-1.5 h-4 w-4 text-gray-400" />
-                    <span>{group.totalActiveParticipants} Peserta Aktif</span>
-                  </div>
-                </div>
-
-                <div className="mt-5">
-                  <button
-                    onClick={() => {
-                      const primaryScheduleId = group.scheduleIds[0];
-                      if (!primaryScheduleId) {
-                        toast.error('ID jadwal ujian tidak valid');
-                        return;
-                      }
-                      navigate(`/teacher/proctoring/${primaryScheduleId}`);
-                    }}
-                    className="w-full flex justify-center items-center px-4 py-2 border border-transparent text-sm font-medium rounded-md text-white bg-blue-600 hover:bg-blue-700 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-blue-500"
-                  >
-                    <Monitor className="mr-2 h-4 w-4" />
-                    Pantau Ujian
-                  </button>
+      {groupedDays.length === 0 ? (
+        <div className="rounded-2xl border border-dashed border-gray-300 bg-white py-12 text-center">
+          <Calendar className="mx-auto h-12 w-12 text-gray-400" />
+          <h3 className="mt-2 text-sm font-medium text-gray-900">Tidak ada jadwal ujian</h3>
+          <p className="mt-1 text-sm text-gray-500">
+            {filter === 'today'
+              ? 'Tidak ada ujian yang dijadwalkan hari ini.'
+              : filter === 'upcoming'
+                ? 'Belum ada ujian mendatang pada penugasan Anda.'
+                : 'Belum ada riwayat ujian yang bisa ditampilkan.'}
+          </p>
+        </div>
+      ) : (
+        <div className="space-y-4">
+          {groupedDays.map((day) => (
+            <div key={day.dateKey} className="overflow-hidden rounded-2xl border border-gray-200 bg-white shadow-sm">
+              <div className="border-b border-gray-200 bg-gray-50 px-5 py-4">
+                <div className="text-base font-semibold text-gray-900">{day.dateLabel}</div>
+                <div className="mt-1 text-xs text-gray-500">
+                  {day.rows.length} slot ujian • {new Set(day.rows.map((row) => row.roomName)).size} ruang aktif
                 </div>
               </div>
+
+              <div className="divide-y divide-gray-100">
+                {day.rows.map((group) => {
+                  const primaryScheduleId = group.scheduleIds[0];
+                  return (
+                    <div key={group.key} className="px-5 py-4">
+                      <div className="flex flex-col gap-4 lg:flex-row lg:items-start lg:justify-between">
+                        <div className="min-w-0 flex-1">
+                          <div className="flex flex-wrap items-center gap-3">
+                            <h3 className="text-lg font-semibold leading-snug text-gray-900">{group.title}</h3>
+                            {getStatusBadge(group.startTime, group.endTime)}
+                          </div>
+                          <p className="mt-1 text-sm text-gray-500">{group.subjectName}</p>
+
+                          <div className="mt-4 flex flex-wrap items-center gap-3 text-sm text-gray-600">
+                            <span className="inline-flex items-center gap-1.5">
+                              <Clock className="h-4 w-4 text-gray-400" />
+                              {formatTimeRange(group.startTime, group.endTime)}
+                              {group.periodNumber ? (
+                                <span className="rounded-full border border-blue-100 bg-blue-50 px-2 py-0.5 text-xs font-medium text-blue-700">
+                                  Jam Ke-{group.periodNumber}
+                                </span>
+                              ) : null}
+                            </span>
+                            <span className="inline-flex items-center gap-1.5">
+                              <MapPin className="h-4 w-4 text-gray-400" />
+                              {group.roomName}
+                            </span>
+                            <span className="rounded-full border border-gray-200 bg-gray-50 px-2.5 py-1 text-xs font-medium text-gray-700">
+                              {group.sessionLabel ? `Sesi: ${group.sessionLabel}` : 'Tanpa sesi'}
+                            </span>
+                          </div>
+
+                          <div className="mt-3 flex flex-wrap gap-2">
+                            {group.classNames.map((className) => (
+                              <span
+                                key={`${group.key}-${className}`}
+                                className="inline-flex items-center rounded-full border border-blue-100 bg-blue-50 px-2.5 py-1 text-xs text-blue-700"
+                              >
+                                {className}
+                              </span>
+                            ))}
+                          </div>
+                        </div>
+
+                        <div className="flex w-full flex-col gap-3 lg:w-auto lg:min-w-[220px]">
+                          <div className="rounded-xl border border-slate-200 bg-slate-50 px-4 py-3 text-sm text-slate-700">
+                            <div className="font-medium text-slate-900">{group.totalActiveParticipants} peserta aktif</div>
+                            <div className="mt-1 text-xs text-slate-500">Ruang ujian ini siap dipantau dari detail monitoring.</div>
+                          </div>
+                          <button
+                            type="button"
+                            onClick={() => {
+                              if (!primaryScheduleId) {
+                                toast.error('ID jadwal ujian tidak valid');
+                                return;
+                              }
+                              navigate(`/teacher/proctoring/${primaryScheduleId}`);
+                            }}
+                            className="inline-flex items-center justify-center gap-2 rounded-xl bg-blue-600 px-4 py-2.5 text-sm font-semibold text-white transition-colors hover:bg-blue-700 focus:outline-none focus:ring-2 focus:ring-blue-500 focus:ring-offset-2"
+                          >
+                            <Monitor className="h-4 w-4" />
+                            Buka Monitoring
+                          </button>
+                        </div>
+                      </div>
+                    </div>
+                  );
+                })}
+              </div>
             </div>
-          ))
-        )}
-      </div>
+          ))}
+        </div>
+      )}
     </div>
   );
 };

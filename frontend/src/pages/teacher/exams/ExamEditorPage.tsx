@@ -1845,6 +1845,13 @@ export const ExamEditorPage = () => {
         setQuestions(prev => prev.map(q => q.id === qId ? { ...q, ...normalizedUpdates } : q));
     };
 
+    const mutateQuestion = (qId: string | null, updater: (question: ExtendedQuestion) => ExtendedQuestion) => {
+        if (!qId) return;
+        setQuestions((prev) =>
+            prev.map((question) => (question.id === qId ? updater(question) : question)),
+        );
+    };
+
     const updateQuestionBlueprintField = (qId: string, field: keyof QuestionBlueprint, value: string) => {
         const question = questions.find((item) => item.id === qId);
         const currentBlueprint = normalizeBlueprint(question?.blueprint);
@@ -3347,27 +3354,47 @@ export const ExamEditorPage = () => {
                                                                                                 rows={2}
                                                                                                 value={currentCell?.content || ''}
                                                                                                 onChange={(event) => {
-                                                                                                    const nextRows = rows.map((item) =>
-                                                                                                        item.id === row.id
-                                                                                                            ? {
-                                                                                                                  ...item,
-                                                                                                                  cells: promptColumns.map((promptColumn) => {
-                                                                                                                      const existingCell = Array.isArray(item.cells)
-                                                                                                                          ? item.cells.find((cell) => cell.columnId === promptColumn.id)
-                                                                                                                          : null;
-                                                                                                                      return {
-                                                                                                                          columnId: promptColumn.id,
-                                                                                                                          content:
-                                                                                                                              promptColumn.id === column.id
-                                                                                                                                  ? event.target.value
-                                                                                                                                  : existingCell?.content || '',
-                                                                                                                      };
-                                                                                                                  }),
-                                                                                                              }
-                                                                                                            : item,
-                                                                                                    );
-                                                                                                    updateQuestion(activeQuestion.id, {
-                                                                                                        matrixRows: nextRows,
+                                                                                                    const nextValue = event.target.value;
+                                                                                                    mutateQuestion(activeQuestion.id, (question) => {
+                                                                                                        const nextPromptColumns = ensureMatrixPromptColumnsForEditor(question.matrixPromptColumns);
+                                                                                                        const nextAnswerColumns = ensureMatrixColumnsForEditor(question.matrixColumns);
+                                                                                                        const nextRows = ensureMatrixRowsForEditor(
+                                                                                                            question.matrixRows,
+                                                                                                            nextPromptColumns,
+                                                                                                            nextAnswerColumns,
+                                                                                                        ).map((candidate) => {
+                                                                                                            if (candidate.id !== row.id) {
+                                                                                                                return candidate;
+                                                                                                            }
+
+                                                                                                            const nextCells = nextPromptColumns.map((promptColumn) => {
+                                                                                                                const existingCell = Array.isArray(candidate.cells)
+                                                                                                                    ? candidate.cells.find((cell) => cell.columnId === promptColumn.id)
+                                                                                                                    : null;
+                                                                                                                return {
+                                                                                                                    columnId: promptColumn.id,
+                                                                                                                    content:
+                                                                                                                        promptColumn.id === column.id
+                                                                                                                            ? nextValue
+                                                                                                                            : existingCell?.content || '',
+                                                                                                                };
+                                                                                                            });
+                                                                                                            const primaryColumnId = nextPromptColumns[0]?.id;
+                                                                                                            const primaryContent = primaryColumnId
+                                                                                                                ? nextCells.find((cell) => cell.columnId === primaryColumnId)?.content || ''
+                                                                                                                : '';
+
+                                                                                                            return {
+                                                                                                                ...candidate,
+                                                                                                                content: primaryContent || String(candidate.content || ''),
+                                                                                                                cells: nextCells,
+                                                                                                            };
+                                                                                                        });
+
+                                                                                                        return {
+                                                                                                            ...question,
+                                                                                                            matrixRows: nextRows,
+                                                                                                        };
                                                                                                     });
                                                                                                 }}
                                                                                                 className="w-full rounded-lg border border-gray-300 px-3 py-2 text-sm text-slate-700 focus:border-blue-500 focus:outline-none"
