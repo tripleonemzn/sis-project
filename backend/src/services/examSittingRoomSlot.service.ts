@@ -281,6 +281,37 @@ export type ExamSittingRoomSlotResponse = {
   }>;
 };
 
+export type StudentExamPlacementSlotRow = {
+  id: number;
+  roomName: string;
+  academicYearId: number;
+  examType: string;
+  semester: Semester | null;
+  sessionId: number | null;
+  sessionLabel: string | null;
+  startTime: Date;
+  endTime: Date;
+  proctorId: number | null;
+  proctor: {
+    id: number;
+    name: string;
+  } | null;
+  seatLabel: string | null;
+  seatPosition: {
+    rowIndex: number;
+    columnIndex: number;
+  } | null;
+  layout: {
+    id: number;
+    rows: number;
+    columns: number;
+    generatedAt: Date | null;
+    updatedAt: Date | null;
+  } | null;
+  sittingId: number;
+  scheduleId: number | null;
+};
+
 function buildTimeKey(
   startTime: Date,
   endTime: Date,
@@ -322,11 +353,17 @@ async function loadScheduleGroups(params: {
   examType?: string | null;
   semester?: Semester | null;
   date?: Date | null;
+  classId?: number | null;
 }) {
   const examTypeCandidates = resolveExamTypeCandidates(params.examType);
   const where: Prisma.ExamScheduleWhereInput = {
     isActive: true,
     academicYearId: params.academicYearId,
+    ...(Number.isFinite(Number(params.classId)) && Number(params.classId) > 0
+      ? {
+          classId: Number(params.classId),
+        }
+      : {}),
     ...(params.semester ? { semester: params.semester } : {}),
     ...(examTypeCandidates.length > 0 ? { examType: { in: examTypeCandidates } } : {}),
     ...(params.date
@@ -433,11 +470,26 @@ async function loadSittings(params: {
   academicYearId: number;
   examType?: string | null;
   semester?: Semester | null;
+  sittingIds?: number[] | null;
 }) {
   const examTypeCandidates = resolveExamTypeCandidates(params.examType);
+  const normalizedSittingIds = Array.from(
+    new Set(
+      (Array.isArray(params.sittingIds) ? params.sittingIds : [])
+        .map((value) => Number(value))
+        .filter((value): value is number => Number.isFinite(value) && value > 0),
+    ),
+  );
   return prisma.examSitting.findMany({
     where: {
       academicYearId: params.academicYearId,
+      ...(normalizedSittingIds.length > 0
+        ? {
+            id: {
+              in: normalizedSittingIds,
+            },
+          }
+        : {}),
       ...(params.semester ? { semester: params.semester } : {}),
       ...(examTypeCandidates.length > 0 ? { examType: { in: examTypeCandidates } } : {}),
     },
@@ -740,4 +792,210 @@ export async function listExamSittingRoomSlots(params: {
     slots: sortedSlots,
     unassignedSchedules,
   };
+}
+
+export async function listStudentExamPlacementSlots(params: {
+  academicYearId: number;
+  studentId: number;
+  classId: number;
+  semester?: Semester | null;
+}): Promise<StudentExamPlacementSlotRow[]> {
+  const normalizedAcademicYearId = Number(params.academicYearId || 0);
+  const normalizedStudentId = Number(params.studentId || 0);
+  const normalizedClassId = Number(params.classId || 0);
+  if (!Number.isFinite(normalizedAcademicYearId) || normalizedAcademicYearId <= 0) return [];
+  if (!Number.isFinite(normalizedStudentId) || normalizedStudentId <= 0) return [];
+  if (!Number.isFinite(normalizedClassId) || normalizedClassId <= 0) return [];
+
+  const [scheduleData, assignedSittingRows] = await Promise.all([
+    loadScheduleGroups({
+      academicYearId: normalizedAcademicYearId,
+      classId: normalizedClassId,
+      semester: params.semester || null,
+    }),
+    prisma.examSittingStudent.findMany({
+      where: {
+        studentId: normalizedStudentId,
+        sitting: {
+          academicYearId: normalizedAcademicYearId,
+          ...(params.semester ? { semester: params.semester } : {}),
+        },
+      },
+      select: {
+        sittingId: true,
+      },
+    }),
+  ]);
+
+  const assignedSittingIds = Array.from(
+    new Set(
+      assignedSittingRows
+        .map((row) => Number(row.sittingId))
+        .filter((value): value is number => Number.isFinite(value) && value > 0),
+    ),
+  );
+  if (!scheduleData.groups.length || !assignedSittingIds.length) {
+    return [];
+  }
+
+  const [sittings, seatRows] = await Promise.all([
+    loadSittings({
+      academicYearId: normalizedAcademicYearId,
+      semester: params.semester || null,
+      sittingIds: assignedSittingIds,
+    }),
+    prisma.examSittingLayoutCell.findMany({
+      where: {
+        studentId: normalizedStudentId,
+        layout: {
+          sittingId: {
+            in: assignedSittingIds,
+          },
+        },
+      },
+      select: {
+        seatLabel: true,
+        rowIndex: true,
+        columnIndex: true,
+        layout: {
+          select: {
+            sittingId: true,
+          },
+        },
+      },
+    }),
+  ]);
+
+  const sittingStudentMap = await buildSittingStudentMap(sittings, normalizedAcademicYearId);
+  const seatMap = new Map(
+    seatRows.map((row) => [
+      Number(row.layout?.sittingId || 0),
+      {
+        seatLabel: row.seatLabel || null,
+        rowIndex: row.rowIndex,
+        columnIndex: row.columnIndex,
+      },
+    ]),
+  );
+
+  const placementsWithSlotKey: Array<StudentExamPlacementSlotRow & { slotKey: string }> = [];
+
+  sittings.forEach((sitting) => {
+    const studentRows = sittingStudentMap.get(sitting.id) || [];
+    const currentStudent = studentRows.find((row) => Number(row.studentId) === normalizedStudentId) || null;
+    if (!currentStudent) return;
+
+    scheduleData.groups.forEach((group) => {
+      const matchesClass =
+        (Number.isFinite(Number(currentStudent.classId)) &&
+          Number(currentStudent.classId) > 0 &&
+          group.classIds.has(Number(currentStudent.classId))) ||
+        Boolean(currentStudent.className && group.classNames.has(String(currentStudent.className)));
+      if (!matchesClass) return;
+      if (!hasExamTypeIntersection(sitting.examType, group.examType)) return;
+      if (
+        !isSameSessionScope({
+          leftSessionId: sitting.sessionId,
+          leftSessionLabel: sitting.sessionLabel,
+          rightSessionId: group.sessionId,
+          rightSessionLabel: group.sessionLabel,
+        })
+      ) {
+        return;
+      }
+      if (!isSameSlotTime(sitting.startTime, sitting.endTime, group.startTime, group.endTime)) return;
+
+      const matchedSchedule = scheduleData.schedules.find((schedule) => {
+        if (!group.scheduleIds.includes(schedule.id)) return false;
+        if (Number(schedule.class?.id || 0) === normalizedClassId) return true;
+        return Boolean(schedule.class?.name && currentStudent.className && schedule.class.name === currentStudent.className);
+      });
+
+      const seat = seatMap.get(Number(sitting.id)) || null;
+      const slotKey = buildExamSittingSlotProctorKey({
+        sittingId: sitting.id,
+        roomName: sitting.roomName,
+        startTime: group.startTime,
+        endTime: group.endTime,
+        periodNumber: group.periodNumber,
+        sessionId: group.sessionId,
+        sessionLabel: group.sessionLabel,
+        subjectId: group.subjectId,
+        subjectName: group.subjectName,
+      });
+
+      placementsWithSlotKey.push({
+        id:
+          Number.isFinite(Number(matchedSchedule?.id)) && Number(matchedSchedule?.id) > 0
+            ? Number(matchedSchedule!.id) * 10000 + Number(sitting.id)
+            : Number(sitting.id) * 10000 + Math.max(0, Number(group.periodNumber || 0)),
+        roomName: sitting.roomName,
+        academicYearId: sitting.academicYearId,
+        examType: group.examType,
+        semester: sitting.semester || group.semester || null,
+        sessionId: group.sessionId,
+        sessionLabel: group.sessionLabel,
+        startTime: group.startTime,
+        endTime: group.endTime,
+        proctorId: Number.isFinite(Number(sitting.proctorId)) && Number(sitting.proctorId) > 0 ? Number(sitting.proctorId) : null,
+        proctor:
+          sitting.proctor && Number.isFinite(Number(sitting.proctor.id))
+            ? {
+                id: sitting.proctor.id,
+                name: sitting.proctor.name,
+              }
+            : null,
+        seatLabel: seat?.seatLabel || null,
+        seatPosition: seat
+          ? {
+              rowIndex: seat.rowIndex,
+              columnIndex: seat.columnIndex,
+            }
+          : null,
+        layout: sitting.layout
+          ? {
+              id: sitting.layout.id,
+              rows: sitting.layout.rows,
+              columns: sitting.layout.columns,
+              generatedAt: sitting.layout.generatedAt,
+              updatedAt: sitting.layout.updatedAt,
+            }
+          : null,
+        sittingId: sitting.id,
+        scheduleId: Number(matchedSchedule?.id || 0) || null,
+        slotKey,
+      });
+    });
+  });
+
+  const slotProctorAssignments = await listExamSittingSlotProctorsByKeys(
+    placementsWithSlotKey.map((placement) => placement.slotKey),
+  );
+  const placementMap = new Map<string, StudentExamPlacementSlotRow>();
+
+  placementsWithSlotKey.forEach((placement) => {
+    const assignment = slotProctorAssignments.get(placement.slotKey);
+    const resolvedPlacement: StudentExamPlacementSlotRow = assignment
+      ? {
+          ...placement,
+          proctorId: assignment.proctorId,
+          proctor: assignment.proctor,
+        }
+      : placement;
+    const dedupeKey = `${resolvedPlacement.sittingId}:${resolvedPlacement.scheduleId || resolvedPlacement.id}`;
+    if (!placementMap.has(dedupeKey)) {
+      placementMap.set(dedupeKey, resolvedPlacement);
+    }
+  });
+
+  return Array.from(placementMap.values()).sort((a, b) => {
+    const startCompare = a.startTime.getTime() - b.startTime.getTime();
+    if (startCompare !== 0) return startCompare;
+    const roomCompare = String(a.roomName || '').localeCompare(String(b.roomName || ''), 'id', {
+      sensitivity: 'base',
+      numeric: true,
+    });
+    if (roomCompare !== 0) return roomCompare;
+    return a.id - b.id;
+  });
 }

@@ -7,6 +7,7 @@ import {
     listHistoricalStudentsByIdsForAcademicYear,
 } from '../utils/studentAcademicHistory';
 import { listExamSittingRoomSlots } from '../services/examSittingRoomSlot.service';
+import { listStudentExamPlacementSlots } from '../services/examSittingRoomSlot.service';
 import {
     buildExamSittingSlotProctorKey,
     saveExamSittingSlotProctorAssignment,
@@ -729,90 +730,62 @@ export const getMyExamSitting = asyncHandler(async (req: Request, res: Response)
     
     const activeAY = await prisma.academicYear.findFirst({ where: { isActive: true } });
     
-    const whereClause: any = {
-        students: {
-            some: {
-                studentId: parsedStudentId
-            }
-        }
-    };
-    
-    if (activeAY) {
-        whereClause.academicYearId = activeAY.id;
-    }
-    
-    const loadSittings = () =>
-        prisma.examSitting.findMany({
-        where: whereClause,
-        include: {
-            proctor: { select: { id: true, name: true } },
-            programSession: { select: { id: true, label: true, displayOrder: true } },
-            layout: {
-                select: {
-                    rows: true,
-                    columns: true,
-                    generatedAt: true,
-                    updatedAt: true,
-                    cells: {
-                        where: {
-                            studentId: parsedStudentId,
-                        },
-                        select: {
-                            seatLabel: true,
-                            rowIndex: true,
-                            columnIndex: true,
-                        },
-                        take: 1,
-                    },
-                },
-            },
-        },
-        orderBy: [
-            { startTime: 'asc' },
-            { roomName: 'asc' },
-        ],
-    });
+    const activeSemester = activeAY
+        ? (() => {
+              const now = new Date();
+              if (
+                  activeAY.semester2Start &&
+                  activeAY.semester2End &&
+                  now >= activeAY.semester2Start &&
+                  now <= activeAY.semester2End
+              ) {
+                  return Semester.EVEN;
+              }
+              return Semester.ODD;
+          })()
+        : undefined;
 
-    let sittings = await loadSittings();
-    if (sittings.length === 0 && activeAY?.id) {
+    let placements =
+        activeAY?.id && student?.classId
+            ? await listStudentExamPlacementSlots({
+                  academicYearId: activeAY.id,
+                  studentId: parsedStudentId,
+                  classId: Number(student.classId),
+                  semester: activeSemester,
+              })
+            : [];
+    if (placements.length === 0 && activeAY?.id) {
         await reconcileMissingStudentPlacementsForStudent({
             academicYearId: activeAY.id,
             studentId: parsedStudentId,
         });
-        sittings = await loadSittings();
+        placements =
+            student?.classId
+                ? await listStudentExamPlacementSlots({
+                      academicYearId: activeAY.id,
+                      studentId: parsedStudentId,
+                      classId: Number(student.classId),
+                      semester: activeSemester,
+                  })
+                : [];
     }
 
-    const normalized = sittings.map((sitting) => {
-        const seatCell = sitting.layout?.cells?.[0] || null;
-        return {
-            id: sitting.id,
-            roomName: sitting.roomName,
-            academicYearId: sitting.academicYearId,
-            examType: sitting.examType,
-            semester: sitting.semester,
-            sessionId: sitting.sessionId,
-            sessionLabel: sitting.programSession?.label || sitting.sessionLabel || null,
-            startTime: sitting.startTime,
-            endTime: sitting.endTime,
-            proctorId: sitting.proctorId,
-            proctor: sitting.proctor,
-            seatLabel: seatCell?.seatLabel || null,
-            seatPosition: seatCell
-                ? {
-                      rowIndex: seatCell.rowIndex,
-                      columnIndex: seatCell.columnIndex,
-                  }
-                : null,
-            layout: sitting.layout
-                ? {
-                      rows: sitting.layout.rows,
-                      columns: sitting.layout.columns,
-                      generatedAt: sitting.layout.generatedAt,
-                      updatedAt: sitting.layout.updatedAt,
-                  }
-                : null,
-        };
-    });
+    const normalized = placements.map((placement) => ({
+        id: placement.id,
+        roomName: placement.roomName,
+        academicYearId: placement.academicYearId,
+        examType: placement.examType,
+        semester: placement.semester,
+        sessionId: placement.sessionId,
+        sessionLabel: placement.sessionLabel,
+        startTime: placement.startTime,
+        endTime: placement.endTime,
+        proctorId: placement.proctorId,
+        proctor: placement.proctor,
+        seatLabel: placement.seatLabel,
+        seatPosition: placement.seatPosition,
+        layout: placement.layout,
+    }));
 
     res.json(new ApiResponse(200, normalized));
 });
