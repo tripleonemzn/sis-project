@@ -96,14 +96,42 @@ function normalizeMatrixColumns(question?: ExamQuestion | null) {
     .filter((column) => column.content.length > 0);
 }
 
+function normalizeMatrixPromptColumns(question?: ExamQuestion | null) {
+  if (!Array.isArray(question?.matrixPromptColumns) || question.matrixPromptColumns.length === 0) {
+    return [{ id: 'prompt-default', label: 'Pernyataan' }];
+  }
+  return question.matrixPromptColumns.map((column, index) => ({
+    id: String(column?.id || `matrix-prompt-col-${index + 1}`),
+    label: String(column?.label || '').trim() || `Kolom ${index + 1}`,
+  }));
+}
+
 function normalizeMatrixRows(question?: ExamQuestion | null) {
   if (!Array.isArray(question?.matrixRows)) return [];
   return question.matrixRows
     .map((row, index) => ({
       id: String(row?.id || `matrix-row-${index + 1}`),
       content: String(row?.content || '').trim(),
+      cells: Array.isArray(row?.cells)
+        ? row.cells.map((cell) => ({
+            columnId: String(cell?.columnId || '').trim(),
+            content: String(cell?.content || '').trim(),
+          }))
+        : [],
     }))
-    .filter((row) => row.content.length > 0);
+    .filter((row) => row.content.length > 0 || (row.cells || []).some((cell) => cell.content.length > 0));
+}
+
+function getMatrixRowCellContent(
+  row: ReturnType<typeof normalizeMatrixRows>[number],
+  promptColumnId: string,
+  promptColumnIndex: number,
+) {
+  if (Array.isArray(row.cells) && row.cells.length > 0) {
+    const cell = row.cells.find((item) => item.columnId === promptColumnId);
+    return String(cell?.content || '').trim();
+  }
+  return promptColumnIndex === 0 ? String(row.content || '').trim() : '';
 }
 
 function isMatrixQuestionAnswered(question: ExamQuestion | null | undefined, value: unknown) {
@@ -163,6 +191,11 @@ function parseQuestions(raw: unknown): ExamQuestion[] {
         question_type:
           typeof q.question_type === 'string' ? (q.question_type as ExamQuestionType) : undefined,
         score: typeof q.score === 'number' ? q.score : 1,
+        matrixPromptColumns: Array.isArray(q.matrixPromptColumns)
+          ? (q.matrixPromptColumns as ExamQuestion['matrixPromptColumns'])
+          : Array.isArray((q.metadata as Record<string, unknown> | undefined)?.matrixPromptColumns)
+            ? (((q.metadata as Record<string, unknown> | undefined)?.matrixPromptColumns) as ExamQuestion['matrixPromptColumns'])
+            : [],
         matrixColumns: Array.isArray(q.matrixColumns) ? (q.matrixColumns as ExamQuestion['matrixColumns']) : [],
         matrixRows: Array.isArray(q.matrixRows) ? (q.matrixRows as ExamQuestion['matrixRows']) : [],
         options,
@@ -781,6 +814,7 @@ export default function StudentExamTakeScreen() {
   const currentQuestion = questions[currentIndex];
   const currentType = currentQuestion ? normalizeQuestionType(currentQuestion) : 'MULTIPLE_CHOICE';
   const currentOptions = currentQuestion?.options || [];
+  const currentMatrixPromptColumns = normalizeMatrixPromptColumns(currentQuestion);
   const currentMatrixColumns = normalizeMatrixColumns(currentQuestion);
   const currentMatrixRows = normalizeMatrixRows(currentQuestion);
   const currentVideoUrl = currentQuestion?.question_video_url || currentQuestion?.video_url || '';
@@ -1212,19 +1246,22 @@ export default function StudentExamTakeScreen() {
           <ScrollView horizontal showsHorizontalScrollIndicator={false}>
             <View style={{ borderWidth: 1, borderColor: '#cbd5e1', borderRadius: 12, overflow: 'hidden', backgroundColor: '#fff' }}>
               <View style={{ flexDirection: 'row', backgroundColor: '#f8fafc' }}>
-                <View
-                  style={{
-                    width: 180,
-                    borderRightWidth: 1,
-                    borderBottomWidth: 1,
-                    borderColor: '#cbd5e1',
-                    paddingHorizontal: 10,
-                    paddingVertical: 10,
-                    justifyContent: 'center',
-                  }}
-                >
-                  <Text style={{ color: '#334155', fontWeight: '700', fontSize: 12 }}>Pernyataan</Text>
-                </View>
+                {currentMatrixPromptColumns.map((column) => (
+                  <View
+                    key={column.id}
+                    style={{
+                      width: 180,
+                      borderRightWidth: 1,
+                      borderBottomWidth: 1,
+                      borderColor: '#cbd5e1',
+                      paddingHorizontal: 10,
+                      paddingVertical: 10,
+                      justifyContent: 'center',
+                    }}
+                  >
+                    <Text style={{ color: '#334155', fontWeight: '700', fontSize: 12 }}>{column.label}</Text>
+                  </View>
+                ))}
                 {currentMatrixColumns.map((column) => (
                   <View
                     key={column.id}
@@ -1260,18 +1297,23 @@ export default function StudentExamTakeScreen() {
                       backgroundColor: rowIndex % 2 === 0 ? '#ffffff' : '#f8fafc',
                     }}
                   >
-                    <View
-                      style={{
-                        width: 180,
-                        borderRightWidth: 1,
-                        borderBottomWidth: 1,
-                        borderColor: '#cbd5e1',
-                        paddingHorizontal: 10,
-                        paddingVertical: 12,
-                      }}
-                    >
-                      <Text style={{ color: '#0f172a', fontSize: 12 }}>{row.content}</Text>
-                    </View>
+                    {currentMatrixPromptColumns.map((column, promptColumnIndex) => (
+                      <View
+                        key={`${row.id}-${column.id}`}
+                        style={{
+                          width: 180,
+                          borderRightWidth: 1,
+                          borderBottomWidth: 1,
+                          borderColor: '#cbd5e1',
+                          paddingHorizontal: 10,
+                          paddingVertical: 12,
+                        }}
+                      >
+                        <Text style={{ color: '#0f172a', fontSize: 12 }}>
+                          {getMatrixRowCellContent(row, column.id, promptColumnIndex) || '-'}
+                        </Text>
+                      </View>
+                    ))}
                     {currentMatrixColumns.map((column) => {
                       const selected = selectedColumnId === column.id;
                       return (

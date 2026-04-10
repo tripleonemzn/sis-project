@@ -98,9 +98,20 @@ export interface QuestionMatrixColumn {
     content: string;
 }
 
+export interface QuestionMatrixPromptColumn {
+    id: string;
+    label: string;
+}
+
+export interface QuestionMatrixRowCell {
+    columnId: string;
+    content: string;
+}
+
 export interface QuestionMatrixRow {
     id: string;
     content: string;
+    cells?: QuestionMatrixRowCell[];
     correctOptionId?: string;
 }
 
@@ -145,6 +156,7 @@ export interface Question {
         content: string; // HTML/RichText (supports images)
         isCorrect: boolean;
     }[];
+    matrixPromptColumns?: QuestionMatrixPromptColumn[];
     matrixColumns?: QuestionMatrixColumn[];
     matrixRows?: QuestionMatrixRow[];
     score: number;
@@ -157,6 +169,7 @@ export interface Question {
         questionCard?: QuestionCard;
         reviewFeedback?: QuestionReviewFeedback;
         itemAnalysis?: QuestionItemAnalysis;
+        matrixPromptColumns?: QuestionMatrixPromptColumn[];
         matrixColumns?: QuestionMatrixColumn[];
         matrixRows?: QuestionMatrixRow[];
     };

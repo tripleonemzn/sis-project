@@ -20,9 +20,20 @@ export type ExamStudentPreviewMatrixColumn = {
   content: string;
 };
 
+export type ExamStudentPreviewMatrixPromptColumn = {
+  id: string;
+  label: string;
+};
+
+export type ExamStudentPreviewMatrixRowCell = {
+  columnId: string;
+  content: string;
+};
+
 export type ExamStudentPreviewMatrixRow = {
   id: string;
   content: string;
+  cells?: ExamStudentPreviewMatrixRowCell[];
 };
 
 export type ExamStudentPreviewQuestion = {
@@ -42,6 +53,7 @@ export type ExamStudentPreviewQuestion = {
   question_video_type?: 'upload' | 'youtube' | null;
   question_media_position?: 'top' | 'bottom' | 'left' | 'right' | string | null;
   options?: ExamStudentPreviewOption[];
+  matrixPromptColumns?: ExamStudentPreviewMatrixPromptColumn[];
   matrixColumns?: ExamStudentPreviewMatrixColumn[];
   matrixRows?: ExamStudentPreviewMatrixRow[];
 };
@@ -71,6 +83,30 @@ function isMatrixQuestionAnswered(question: ExamStudentPreviewQuestion | null | 
   const rows = Array.isArray(question?.matrixRows) ? question.matrixRows : [];
   if (rows.length === 0 || !value || typeof value !== 'object' || Array.isArray(value)) return false;
   return rows.every((row) => String((value as Record<string, unknown>)[row.id] || '').trim().length > 0);
+}
+
+function getPreviewMatrixPromptColumns(question: ExamStudentPreviewQuestion | null | undefined) {
+  if (!Array.isArray(question?.matrixPromptColumns) || question.matrixPromptColumns.length === 0) {
+    return [{ id: 'prompt-default', label: 'Pernyataan' }];
+  }
+
+  return question.matrixPromptColumns.map((column, index) => ({
+    id: String(column?.id || `matrix-prompt-col-${index + 1}`),
+    label: String(column?.label || '').trim() || `Kolom ${index + 1}`,
+  }));
+}
+
+function getPreviewMatrixCellContent(
+  row: ExamStudentPreviewMatrixRow,
+  promptColumnId: string,
+  promptColumnIndex: number,
+) {
+  if (Array.isArray(row.cells) && row.cells.length > 0) {
+    const cell = row.cells.find((item) => String(item?.columnId || '').trim() === promptColumnId);
+    return String(cell?.content || '').trim();
+  }
+
+  return promptColumnIndex === 0 ? String(row.content || '').trim() : '';
 }
 
 export function ExamStudentPreviewSurface({
@@ -255,12 +291,20 @@ export function ExamStudentPreviewSurface({
 
             {currentQuestion?.type === 'MATRIX_SINGLE_CHOICE' ? (
               <div className="overflow-x-auto rounded-2xl border border-slate-200 bg-white">
+                {(() => {
+                  const promptColumns = getPreviewMatrixPromptColumns(currentQuestion);
+                  return (
                 <table className="min-w-full border-collapse text-sm">
                   <thead className="bg-slate-50">
                     <tr>
-                      <th className="border-b border-r border-slate-200 px-4 py-3 text-left font-semibold text-slate-700">
-                        Pernyataan
-                      </th>
+                      {promptColumns.map((column) => (
+                        <th
+                          key={column.id}
+                          className="border-b border-r border-slate-200 px-4 py-3 text-left font-semibold text-slate-700"
+                        >
+                          {column.label}
+                        </th>
+                      ))}
                       {(currentQuestion?.matrixColumns || []).map((column) => (
                         <th
                           key={column.id}
@@ -279,9 +323,14 @@ export function ExamStudentPreviewSurface({
                           : '';
                       return (
                         <tr key={row.id || `preview-row-${rowIndex + 1}`} className="bg-white">
-                          <td className="border-b border-r border-slate-200 px-4 py-3 align-top text-slate-800">
-                            {row.content}
-                          </td>
+                          {promptColumns.map((column, promptColumnIndex) => (
+                            <td
+                              key={`${row.id}-${column.id}`}
+                              className="border-b border-r border-slate-200 px-4 py-3 align-top text-slate-800"
+                            >
+                              {getPreviewMatrixCellContent(row, column.id, promptColumnIndex) || '-'}
+                            </td>
+                          ))}
                           {(currentQuestion?.matrixColumns || []).map((column) => {
                             const selected = selectedValue === column.id;
                             return (
@@ -308,6 +357,8 @@ export function ExamStudentPreviewSurface({
                     })}
                   </tbody>
                 </table>
+                  );
+                })()}
               </div>
             ) : currentQuestion?.type !== 'ESSAY' ? (
               <div className="space-y-3">

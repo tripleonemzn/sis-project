@@ -2268,6 +2268,12 @@ function sanitizeQuestionForStudent(rawQuestion: unknown): Record<string, unknow
         );
     }
 
+    if (Array.isArray(source.matrixPromptColumns)) {
+        cleaned.matrixPromptColumns = source.matrixPromptColumns.map((column) =>
+            column && typeof column === 'object' ? { ...(column as Record<string, unknown>) } : column,
+        );
+    }
+
     if (Array.isArray(source.matrixRows)) {
         cleaned.matrixRows = source.matrixRows.map((row) => {
             if (!row || typeof row !== 'object') return row;
@@ -2275,6 +2281,11 @@ function sanitizeQuestionForStudent(rawQuestion: unknown): Record<string, unknow
             delete safeRow.correctOptionId;
             delete safeRow.correctColumnId;
             delete safeRow.answerKey;
+            if (Array.isArray(safeRow.cells)) {
+                safeRow.cells = safeRow.cells.map((cell) =>
+                    cell && typeof cell === 'object' ? { ...(cell as Record<string, unknown>) } : cell,
+                );
+            }
             return safeRow;
         });
     }
@@ -2290,6 +2301,11 @@ function sanitizeQuestionForStudent(rawQuestion: unknown): Record<string, unknow
             delete safeRow.correctOptionId;
             delete safeRow.correctColumnId;
             delete safeRow.answerKey;
+            if (Array.isArray(safeRow.cells)) {
+                safeRow.cells = safeRow.cells.map((cell) =>
+                    cell && typeof cell === 'object' ? { ...(cell as Record<string, unknown>) } : cell,
+                );
+            }
             return safeRow;
         });
     }
@@ -3731,9 +3747,20 @@ type ExamQuestionMatrixColumn = {
     content: string;
 };
 
+type ExamQuestionMatrixPromptColumn = {
+    id: string;
+    label: string;
+};
+
+type ExamQuestionMatrixRowCell = {
+    columnId: string;
+    content: string;
+};
+
 type ExamQuestionMatrixRow = {
     id: string;
     content: string;
+    cells?: ExamQuestionMatrixRowCell[];
     correctOptionId?: string;
 };
 
@@ -3743,6 +3770,7 @@ type NormalizedExamQuestion = {
     content: string;
     score: number;
     options?: unknown[];
+    matrixPromptColumns?: ExamQuestionMatrixPromptColumn[];
     matrixColumns?: ExamQuestionMatrixColumn[];
     matrixRows?: ExamQuestionMatrixRow[];
     answerKey?: string;
@@ -3828,8 +3856,47 @@ function normalizeQuestionMatrixColumns(raw: unknown): ExamQuestionMatrixColumn[
     return columns.length > 0 ? columns : undefined;
 }
 
+function normalizeQuestionMatrixPromptColumns(raw: unknown): ExamQuestionMatrixPromptColumn[] | undefined {
+    if (!Array.isArray(raw)) return undefined;
+
+    const columns: ExamQuestionMatrixPromptColumn[] = [];
+    raw.forEach((item, index) => {
+        const source = asRecord(item);
+        if (!source) return;
+        const label = normalizeOptionalString(source.label ?? source.content ?? source.text ?? source.title, 500);
+        if (!label) return;
+        columns.push({
+            id: normalizeOptionalString(source.id, 100) || `matrix-prompt-col-${index + 1}`,
+            label,
+        });
+    });
+
+    return columns.length > 0 ? columns : undefined;
+}
+
+function normalizeQuestionMatrixRowCells(
+    raw: unknown,
+    validPromptColumnIds?: Set<string>,
+): ExamQuestionMatrixRowCell[] | undefined {
+    if (!Array.isArray(raw)) return undefined;
+
+    const cells: ExamQuestionMatrixRowCell[] = [];
+    raw.forEach((item) => {
+        const source = asRecord(item);
+        if (!source) return;
+        const columnId = normalizeOptionalString(source.columnId ?? source.promptColumnId, 100);
+        const content = normalizeOptionalString(source.content ?? source.text ?? source.value, 1000);
+        if (!columnId || !content) return;
+        if (validPromptColumnIds && !validPromptColumnIds.has(columnId)) return;
+        cells.push({ columnId, content });
+    });
+
+    return cells.length > 0 ? cells : undefined;
+}
+
 function normalizeQuestionMatrixRows(
     raw: unknown,
+    validPromptColumnIds?: Set<string>,
     validColumnIds?: Set<string>,
 ): ExamQuestionMatrixRow[] | undefined {
     if (!Array.isArray(raw)) return undefined;
@@ -3842,14 +3909,16 @@ function normalizeQuestionMatrixRows(
             source.content ?? source.text ?? source.label ?? source.statement,
             1000,
         );
-        if (!content) return;
+        const cells = normalizeQuestionMatrixRowCells(source.cells, validPromptColumnIds) || [];
+        if (!content && cells.length === 0) return;
         const correctOptionId = normalizeOptionalString(
             source.correctOptionId ?? source.correctColumnId ?? source.answerKey,
             100,
         );
         rows.push({
             id: normalizeOptionalString(source.id, 100) || `matrix-row-${index + 1}`,
-            content,
+            content: content || '',
+            cells,
             correctOptionId:
                 correctOptionId && (!validColumnIds || validColumnIds.has(correctOptionId))
                     ? correctOptionId
@@ -3872,9 +3941,23 @@ function resolveQuestionMatrixColumns(question: Record<string, unknown>): ExamQu
     );
 }
 
+function resolveQuestionMatrixPromptColumns(question: Record<string, unknown>): ExamQuestionMatrixPromptColumn[] {
+    const metadata = asRecord(question.metadata);
+    return (
+        normalizeQuestionMatrixPromptColumns(
+            question.matrixPromptColumns ??
+                question.matrix_prompt_columns ??
+                metadata?.matrixPromptColumns ??
+                metadata?.matrix_prompt_columns,
+        ) || []
+    );
+}
+
 function resolveQuestionMatrixRows(question: Record<string, unknown>): ExamQuestionMatrixRow[] {
     const metadata = asRecord(question.metadata);
+    const promptColumns = resolveQuestionMatrixPromptColumns(question);
     const columns = resolveQuestionMatrixColumns(question);
+    const validPromptColumnIds = new Set(promptColumns.map((column) => column.id));
     const validColumnIds = new Set(columns.map((column) => column.id));
     return (
         normalizeQuestionMatrixRows(
@@ -3882,9 +3965,30 @@ function resolveQuestionMatrixRows(question: Record<string, unknown>): ExamQuest
                 question.matrix_rows ??
                 metadata?.matrixRows ??
                 metadata?.matrix_rows,
+            validPromptColumnIds,
             validColumnIds,
         ) || []
     );
+}
+
+function buildMatrixRowDisplayText(
+    row: ExamQuestionMatrixRow,
+    promptColumns: ExamQuestionMatrixPromptColumn[],
+): string {
+    const normalizedCells = Array.isArray(row.cells) ? row.cells : [];
+    const rowContent = String(row.content || '').trim();
+    if (normalizedCells.length > 0) {
+        const parts = promptColumns
+            .map((column, index) => {
+                const cell = normalizedCells.find((item) => String(item.columnId || '').trim() === column.id);
+                const content = String(cell?.content || '').trim();
+                if (!content) return index === 0 && rowContent ? `${column.label}: ${rowContent}` : null;
+                return `${column.label}: ${content}`;
+            })
+            .filter((item): item is string => Boolean(item));
+        if (parts.length > 0) return parts.join(' | ');
+    }
+    return rowContent || 'Baris tanpa isi';
 }
 
 function decodeQuestionHtmlToText(value: unknown): string {
@@ -3949,6 +4053,7 @@ function buildDerivedQuestionStimulus(question: NormalizedExamQuestion): string 
 
     if (isMatrixSingleChoiceType(question.type)) {
         const questionRecord = question as unknown as Record<string, unknown>;
+        const matrixPromptColumns = resolveQuestionMatrixPromptColumns(questionRecord);
         const matrixColumns = resolveQuestionMatrixColumns(questionRecord);
         const matrixRows = resolveQuestionMatrixRows(questionRecord);
 
@@ -3961,11 +4066,20 @@ function buildDerivedQuestionStimulus(question: NormalizedExamQuestion): string 
             );
         }
 
+        if (matrixPromptColumns.length > 0) {
+            lines.push(
+                [
+                    'Kolom data:',
+                    ...matrixPromptColumns.map((column, index) => `${index + 1}. ${column.label}`),
+                ].join('\n'),
+            );
+        }
+
         if (matrixRows.length > 0) {
             lines.push(
                 [
-                    'Pernyataan:',
-                    ...matrixRows.map((row, index) => `${index + 1}. ${row.content}`),
+                    'Baris grid:',
+                    ...matrixRows.map((row, index) => `${index + 1}. ${buildMatrixRowDisplayText(row, matrixPromptColumns)}`),
                 ].join('\n'),
             );
         }
@@ -3997,6 +4111,7 @@ function buildDerivedQuestionAnswerKey(question: NormalizedExamQuestion): string
 
     if (isMatrixSingleChoiceType(question.type)) {
         const questionRecord = question as unknown as Record<string, unknown>;
+        const matrixPromptColumns = resolveQuestionMatrixPromptColumns(questionRecord);
         const matrixColumns = resolveQuestionMatrixColumns(questionRecord);
         const matrixRows = resolveQuestionMatrixRows(questionRecord);
         const columnContentById = new Map(matrixColumns.map((column) => [column.id, column.content]));
@@ -4004,7 +4119,7 @@ function buildDerivedQuestionAnswerKey(question: NormalizedExamQuestion): string
             .filter((row) => row.correctOptionId)
             .map((row, index) => {
                 const columnContent = columnContentById.get(String(row.correctOptionId || '').trim()) || '-';
-                return `${index + 1}. ${row.content || 'Pernyataan tanpa teks'} -> ${columnContent}`;
+                return `${index + 1}. ${buildMatrixRowDisplayText(row, matrixPromptColumns)} -> ${columnContent}`;
             });
         return lines.length > 0 ? lines.join('\n\n').trim() : undefined;
     }
@@ -4166,11 +4281,18 @@ function normalizeExamQuestionPayload(question: unknown, index: number): Normali
     const normalizedType = String(source.type || source.question_type || 'MULTIPLE_CHOICE')
         .trim()
         .toUpperCase();
+    const matrixPromptColumns = normalizeQuestionMatrixPromptColumns(
+        source.matrixPromptColumns ??
+            source.matrix_prompt_columns ??
+            metadata?.matrixPromptColumns ??
+            metadata?.matrix_prompt_columns,
+    );
     const matrixColumns = normalizeQuestionMatrixColumns(
         source.matrixColumns ?? source.matrix_columns ?? metadata?.matrixColumns ?? metadata?.matrix_columns,
     );
     const matrixRows = normalizeQuestionMatrixRows(
         source.matrixRows ?? source.matrix_rows ?? metadata?.matrixRows ?? metadata?.matrix_rows,
+        new Set((matrixPromptColumns || []).map((column) => column.id)),
         new Set((matrixColumns || []).map((column) => column.id)),
     );
     const normalized: NormalizedExamQuestion = {
@@ -4184,6 +4306,7 @@ function normalizeExamQuestionPayload(question: unknown, index: number): Normali
                 : Array.isArray(source.options)
                   ? source.options
                   : undefined,
+        matrixPromptColumns,
         matrixColumns,
         matrixRows,
         answerKey: normalizeOptionalString(source.answerKey, 255),
@@ -4229,6 +4352,7 @@ function buildQuestionBankMetadata(question: NormalizedExamQuestion): Record<str
     if (question.blueprint) metadata.blueprint = question.blueprint;
     if (question.questionCard) metadata.questionCard = question.questionCard;
     if (question.itemAnalysis) metadata.itemAnalysis = question.itemAnalysis;
+    if (question.matrixPromptColumns?.length) metadata.matrixPromptColumns = question.matrixPromptColumns;
     if (question.matrixColumns?.length) metadata.matrixColumns = question.matrixColumns;
     if (question.matrixRows?.length) metadata.matrixRows = question.matrixRows;
     return Object.keys(metadata).length > 0 ? metadata : undefined;
@@ -4293,11 +4417,16 @@ function normalizeQuestionBankOptionSignature(options: unknown): Array<{ text: s
 }
 
 function buildQuestionBankMatrixSignature(params: {
+    matrixPromptColumns?: unknown;
     matrixColumns?: unknown;
     matrixRows?: unknown;
     metadata?: unknown;
 }) {
     const metadata = asRecord(params.metadata);
+    const promptColumns =
+        normalizeQuestionMatrixPromptColumns(
+            params.matrixPromptColumns ?? metadata?.matrixPromptColumns ?? metadata?.matrix_prompt_columns,
+        ) || [];
     const columns =
         normalizeQuestionMatrixColumns(
             params.matrixColumns ?? metadata?.matrixColumns ?? metadata?.matrix_columns,
@@ -4305,6 +4434,7 @@ function buildQuestionBankMatrixSignature(params: {
     const rows =
         normalizeQuestionMatrixRows(
             params.matrixRows ?? metadata?.matrixRows ?? metadata?.matrix_rows,
+            new Set(promptColumns.map((column) => column.id)),
             new Set(columns.map((column) => column.id)),
         ) || [];
     const columnContentById = new Map(
@@ -4312,9 +4442,10 @@ function buildQuestionBankMatrixSignature(params: {
     );
 
     return {
+        promptColumns: promptColumns.map((column) => normalizeQuestionBankComparableText(column.label)),
         columns: columns.map((column) => normalizeQuestionBankComparableText(column.content)),
         rows: rows.map((row, index) => ({
-            text: normalizeQuestionBankComparableText(row.content),
+            text: normalizeQuestionBankComparableText(buildMatrixRowDisplayText(row, promptColumns)),
             correctColumn: row.correctOptionId
                 ? columnContentById.get(String(row.correctOptionId || '').trim()) || ''
                 : '',
@@ -4327,6 +4458,7 @@ function buildQuestionBankSignature(params: {
     type: string;
     content: string;
     options?: unknown;
+    matrixPromptColumns?: unknown;
     matrixColumns?: unknown;
     matrixRows?: unknown;
     metadata?: unknown;
@@ -4349,6 +4481,7 @@ function deduplicateQuestionsForBank(questions: NormalizedExamQuestion[]) {
             type: question.type,
             content: question.content,
             options: question.options,
+            matrixPromptColumns: question.matrixPromptColumns,
             matrixColumns: question.matrixColumns,
             matrixRows: question.matrixRows,
         });
@@ -5716,6 +5849,7 @@ async function buildSessionDetail(
         const type = normalizeQuestionTypeForAnalysis(question);
         const rawAnswer = answersMap[questionId];
         const answerText = type === 'ESSAY' ? normalizeEssayAnswer(rawAnswer) : null;
+        const matrixPromptColumns = resolveQuestionMatrixPromptColumns(question);
         const matrixColumns = resolveQuestionMatrixColumns(question);
         const matrixRows = resolveQuestionMatrixRows(question);
         const matrixAnswerMap = type === 'MATRIX_SINGLE_CHOICE' ? normalizeMatrixAnswerMap(rawAnswer) : {};
@@ -5788,7 +5922,7 @@ async function buildSessionDetail(
                               const rowId = String(row.id || '').trim();
                               const selectedColumnId = matrixAnswerMap[rowId];
                               if (!selectedColumnId) return null;
-                              return `${row.content}: ${matrixColumnLabelById.get(selectedColumnId) || selectedColumnId}`;
+                              return `${buildMatrixRowDisplayText(row, matrixPromptColumns)}: ${matrixColumnLabelById.get(selectedColumnId) || selectedColumnId}`;
                           })
                           .filter((value): value is string => Boolean(value))
                     : selectedOptionIds.map((optionId) => optionLabelById.get(optionId) || optionId),
@@ -5799,7 +5933,7 @@ async function buildSessionDetail(
                           .map((row) => {
                               const correctColumnId = String(row.correctOptionId || '').trim();
                               if (!correctColumnId) return null;
-                              return `${row.content}: ${matrixColumnLabelById.get(correctColumnId) || correctColumnId}`;
+                              return `${buildMatrixRowDisplayText(row, matrixPromptColumns)}: ${matrixColumnLabelById.get(correctColumnId) || correctColumnId}`;
                           })
                           .filter((value): value is string => Boolean(value))
                     : correctOptionIds.map((optionId) => optionLabelById.get(optionId) || optionId),

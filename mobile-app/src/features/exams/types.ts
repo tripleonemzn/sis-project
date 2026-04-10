@@ -30,9 +30,20 @@ export type ExamQuestionMatrixColumn = {
   content?: string | null;
 };
 
+export type ExamQuestionMatrixPromptColumn = {
+  id: string;
+  label?: string | null;
+};
+
+export type ExamQuestionMatrixRowCell = {
+  columnId: string;
+  content?: string | null;
+};
+
 export type ExamQuestionMatrixRow = {
   id: string;
   content?: string | null;
+  cells?: ExamQuestionMatrixRowCell[] | null;
   correctOptionId?: string | null;
 };
 
@@ -60,6 +71,7 @@ export type ExamQuestion = {
   question_text?: string | null;
   score?: number;
   options?: ExamQuestionOption[];
+  matrixPromptColumns?: ExamQuestionMatrixPromptColumn[];
   matrixColumns?: ExamQuestionMatrixColumn[];
   matrixRows?: ExamQuestionMatrixRow[];
   question_image_url?: string | null;
@@ -75,6 +87,7 @@ export type ExamQuestion = {
     blueprint?: ExamQuestionBlueprint | null;
     questionCard?: ExamQuestionCard | null;
     itemAnalysis?: ExamQuestionItemAnalysis | null;
+    matrixPromptColumns?: ExamQuestionMatrixPromptColumn[] | null;
     matrixColumns?: ExamQuestionMatrixColumn[] | null;
     matrixRows?: ExamQuestionMatrixRow[] | null;
   } | null;
@@ -90,6 +103,7 @@ export type TeacherExamQuestionPayload = {
     content: string;
     isCorrect: boolean;
   }>;
+  matrixPromptColumns?: ExamQuestionMatrixPromptColumn[];
   matrixColumns?: ExamQuestionMatrixColumn[];
   matrixRows?: ExamQuestionMatrixRow[];
   blueprint?: ExamQuestionBlueprint;

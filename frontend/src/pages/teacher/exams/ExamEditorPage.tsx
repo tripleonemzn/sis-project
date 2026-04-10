@@ -29,6 +29,7 @@ import type {
     Question,
     QuestionBlueprint,
     QuestionCard,
+    QuestionMatrixPromptColumn,
     QuestionReviewFeedback,
     ExamPacket,
     QuestionMatrixColumn,
@@ -506,22 +507,75 @@ function getQuestionOptionLabel(index: number): string {
     return String.fromCharCode(65 + Math.max(0, index));
 }
 
+function createMatrixPromptColumns(): QuestionMatrixPromptColumn[] {
+    return [{ id: Math.random().toString(36).substr(2, 9), label: 'Pernyataan' }];
+}
+
 function createMatrixColumns(): QuestionMatrixColumn[] {
     return [
-        { id: Math.random().toString(36).substr(2, 9), content: 'Sangat Setuju' },
-        { id: Math.random().toString(36).substr(2, 9), content: 'Setuju' },
-        { id: Math.random().toString(36).substr(2, 9), content: 'Netral' },
-        { id: Math.random().toString(36).substr(2, 9), content: 'Tidak Setuju' },
+        { id: Math.random().toString(36).substr(2, 9), content: 'Benar' },
+        { id: Math.random().toString(36).substr(2, 9), content: 'Salah' },
     ];
 }
 
-function createMatrixRows(columns: QuestionMatrixColumn[]): QuestionMatrixRow[] {
+function createMatrixRowCells(promptColumns: QuestionMatrixPromptColumn[]) {
+    return promptColumns.map((column) => ({
+        columnId: column.id,
+        content: '',
+    }));
+}
+
+function createMatrixRows(
+    promptColumns: QuestionMatrixPromptColumn[],
+    columns: QuestionMatrixColumn[],
+): QuestionMatrixRow[] {
     const defaultCorrectColumnId = columns[0]?.id;
     return [
-        { id: Math.random().toString(36).substr(2, 9), content: '', correctOptionId: defaultCorrectColumnId },
-        { id: Math.random().toString(36).substr(2, 9), content: '', correctOptionId: defaultCorrectColumnId },
-        { id: Math.random().toString(36).substr(2, 9), content: '', correctOptionId: defaultCorrectColumnId },
+        {
+            id: Math.random().toString(36).substr(2, 9),
+            content: '',
+            cells: createMatrixRowCells(promptColumns),
+            correctOptionId: defaultCorrectColumnId,
+        },
+        {
+            id: Math.random().toString(36).substr(2, 9),
+            content: '',
+            cells: createMatrixRowCells(promptColumns),
+            correctOptionId: defaultCorrectColumnId,
+        },
+        {
+            id: Math.random().toString(36).substr(2, 9),
+            content: '',
+            cells: createMatrixRowCells(promptColumns),
+            correctOptionId: defaultCorrectColumnId,
+        },
     ];
+}
+
+function normalizeMatrixPromptColumns(raw: unknown): QuestionMatrixPromptColumn[] {
+    if (!Array.isArray(raw)) return [];
+    const columns: QuestionMatrixPromptColumn[] = [];
+    raw.forEach((item, index) => {
+        const source = item && typeof item === 'object' ? (item as QuestionMatrixPromptColumn) : undefined;
+        const label = String(source?.label || '').trim();
+        if (!label) return;
+        columns.push({
+            id: String(source?.id || `matrix-prompt-col-${index + 1}`),
+            label,
+        });
+    });
+    return columns;
+}
+
+function ensureMatrixPromptColumnsForEditor(raw: unknown): QuestionMatrixPromptColumn[] {
+    if (!Array.isArray(raw) || raw.length === 0) return createMatrixPromptColumns();
+    return raw.map((item, index) => {
+        const source = item && typeof item === 'object' ? (item as QuestionMatrixPromptColumn) : undefined;
+        return {
+            id: String(source?.id || `matrix-prompt-col-${index + 1}`),
+            label: String(source?.label || ''),
+        };
+    });
 }
 
 function normalizeMatrixColumns(raw: unknown): QuestionMatrixColumn[] {
@@ -539,19 +593,44 @@ function normalizeMatrixColumns(raw: unknown): QuestionMatrixColumn[] {
     return columns;
 }
 
-function normalizeMatrixRows(raw: unknown, columns: QuestionMatrixColumn[]): QuestionMatrixRow[] {
+function ensureMatrixColumnsForEditor(raw: unknown): QuestionMatrixColumn[] {
+    if (!Array.isArray(raw) || raw.length === 0) return createMatrixColumns();
+    return raw.map((item, index) => {
+        const source = item && typeof item === 'object' ? (item as QuestionMatrixColumn) : undefined;
+        return {
+            id: String(source?.id || `matrix-col-${index + 1}`),
+            content: String(source?.content || ''),
+        };
+    });
+}
+
+function normalizeMatrixRows(
+    raw: unknown,
+    promptColumns: QuestionMatrixPromptColumn[],
+    columns: QuestionMatrixColumn[],
+): QuestionMatrixRow[] {
     if (!Array.isArray(raw)) return [];
+    const validPromptColumnIds = new Set(promptColumns.map((column) => column.id));
     const validColumnIds = new Set(columns.map((column) => column.id));
     const defaultCorrectColumnId = columns[0]?.id;
     const rows: QuestionMatrixRow[] = [];
     raw.forEach((item, index) => {
         const source = item && typeof item === 'object' ? (item as QuestionMatrixRow) : undefined;
         const content = String(source?.content || '').trim();
-        if (!content) return;
+        const cells = Array.isArray(source?.cells)
+            ? source.cells
+                  .map((cell) => ({
+                      columnId: String(cell?.columnId || '').trim(),
+                      content: String(cell?.content || '').trim(),
+                  }))
+                  .filter((cell) => cell.columnId && validPromptColumnIds.has(cell.columnId) && cell.content)
+            : [];
+        if (!content && cells.length === 0) return;
         const correctOptionId = String(source?.correctOptionId || '').trim();
         rows.push({
             id: String(source?.id || `matrix-row-${index + 1}`),
             content,
+            cells,
             correctOptionId:
                 correctOptionId && validColumnIds.has(correctOptionId)
                     ? correctOptionId
@@ -561,20 +640,75 @@ function normalizeMatrixRows(raw: unknown, columns: QuestionMatrixColumn[]): Que
     return rows;
 }
 
+function ensureMatrixRowsForEditor(
+    raw: unknown,
+    promptColumns: QuestionMatrixPromptColumn[],
+    columns: QuestionMatrixColumn[],
+): QuestionMatrixRow[] {
+    if (!Array.isArray(raw) || raw.length === 0) return createMatrixRows(promptColumns, columns);
+    const validColumnIds = new Set(columns.map((column) => column.id));
+    const defaultCorrectColumnId = columns[0]?.id;
+
+    return raw.map((item, index) => {
+        const source = item && typeof item === 'object' ? (item as QuestionMatrixRow) : undefined;
+        const rowCellsByColumnId = new Map<string, string>();
+        if (Array.isArray(source?.cells)) {
+            source.cells.forEach((cell) => {
+                const columnId = String(cell?.columnId || '').trim();
+                if (!columnId) return;
+                rowCellsByColumnId.set(columnId, String(cell?.content || ''));
+            });
+        }
+        return {
+            id: String(source?.id || `matrix-row-${index + 1}`),
+            content: String(source?.content || ''),
+            cells: promptColumns.map((column) => ({
+                columnId: column.id,
+                content: rowCellsByColumnId.get(column.id) || '',
+            })),
+            correctOptionId:
+                String(source?.correctOptionId || '').trim() && validColumnIds.has(String(source?.correctOptionId || '').trim())
+                    ? String(source?.correctOptionId || '').trim()
+                    : defaultCorrectColumnId,
+        };
+    });
+}
+
+function buildMatrixRowDisplayText(
+    row: QuestionMatrixRow,
+    promptColumns: QuestionMatrixPromptColumn[],
+): string {
+    const normalizedCells = Array.isArray(row.cells) ? row.cells : [];
+    const rowContent = String(row.content || '').trim();
+    if (normalizedCells.length > 0) {
+        const parts = promptColumns
+            .map((column, index) => {
+                const cell = normalizedCells.find((item) => String(item.columnId || '').trim() === column.id);
+                const content = String(cell?.content || '').trim();
+                if (!content) return index === 0 && rowContent ? `${column.label}: ${rowContent}` : null;
+                return `${column.label}: ${content}`;
+            })
+            .filter((item): item is string => Boolean(item));
+        if (parts.length > 0) return parts.join(' | ');
+    }
+    return rowContent || 'Baris tanpa isi';
+}
+
 function buildDerivedQuestionAnswerKey(question: ExtendedQuestion): string {
     if (question.type === 'ESSAY') {
         return 'Jawaban esai diperiksa manual oleh guru.';
     }
 
     if (question.type === 'MATRIX_SINGLE_CHOICE') {
+        const promptColumns = normalizeMatrixPromptColumns(question.matrixPromptColumns);
         const columns = normalizeMatrixColumns(question.matrixColumns);
-        const rows = normalizeMatrixRows(question.matrixRows, columns);
+        const rows = normalizeMatrixRows(question.matrixRows, promptColumns, columns);
         const columnContentById = new Map(columns.map((column) => [column.id, column.content]));
         return rows
             .filter((row) => row.correctOptionId)
             .map((row, index) => {
                 const columnLabel = columnContentById.get(String(row.correctOptionId || '').trim()) || '-';
-                return `${index + 1}. ${row.content || 'Pernyataan tanpa teks'} -> ${columnLabel}`;
+                return `${index + 1}. ${buildMatrixRowDisplayText(row, promptColumns)} -> ${columnLabel}`;
             })
             .join('\n\n')
             .trim();
@@ -613,16 +747,22 @@ function buildDerivedQuestionStimulus(question: ExtendedQuestion): string {
     }
 
     if (question.type === 'MATRIX_SINGLE_CHOICE') {
+        const promptColumns = normalizeMatrixPromptColumns(question.matrixPromptColumns);
         const columns = normalizeMatrixColumns(question.matrixColumns);
-        const rows = normalizeMatrixRows(question.matrixRows, columns);
+        const rows = normalizeMatrixRows(question.matrixRows, promptColumns, columns);
         if (columns.length > 0) {
             sections.push(
                 ['Pilihan jawaban:', ...columns.map((column, index) => `${index + 1}. ${column.content}`)].join('\n'),
             );
         }
+        if (promptColumns.length > 0) {
+            sections.push(
+                ['Kolom data:', ...promptColumns.map((column, index) => `${index + 1}. ${column.label}`)].join('\n'),
+            );
+        }
         if (rows.length > 0) {
             sections.push(
-                ['Pernyataan:', ...rows.map((row, index) => `${index + 1}. ${row.content}`)].join('\n'),
+                ['Baris grid:', ...rows.map((row, index) => `${index + 1}. ${buildMatrixRowDisplayText(row, promptColumns)}`)].join('\n'),
             );
         }
     } else {
@@ -1533,6 +1673,9 @@ export const ExamEditorPage = () => {
                     const source = q as unknown as ExtendedQuestion;
                     const blueprintSource = source.blueprint ?? source.metadata?.blueprint;
                     const questionCardSource = source.questionCard ?? source.metadata?.questionCard;
+                    const matrixPromptColumns = normalizeMatrixPromptColumns(
+                        source.matrixPromptColumns ?? source.metadata?.matrixPromptColumns,
+                    );
                     const matrixColumns = normalizeMatrixColumns(source.matrixColumns ?? source.metadata?.matrixColumns);
                     return {
                         ...source,
@@ -1543,8 +1686,13 @@ export const ExamEditorPage = () => {
                         question_video_type: source.question_video_type,
                         blueprint: normalizeBlueprint(blueprintSource),
                         questionCard: normalizeQuestionCard(questionCardSource),
+                        matrixPromptColumns,
                         matrixColumns,
-                        matrixRows: normalizeMatrixRows(source.matrixRows ?? source.metadata?.matrixRows, matrixColumns),
+                        matrixRows: normalizeMatrixRows(
+                            source.matrixRows ?? source.metadata?.matrixRows,
+                            matrixPromptColumns,
+                            matrixColumns,
+                        ),
                         reviewFeedback: normalizeReviewFeedback(source.reviewFeedback ?? source.metadata?.reviewFeedback),
                     };
                 });
@@ -1638,14 +1786,22 @@ export const ExamEditorPage = () => {
 
         if (Array.isArray(draft.questions) && draft.questions.length > 0) {
             const restoredQuestions = (draft.questions as ExtendedQuestion[]).map((question) => {
+                const matrixPromptColumns = normalizeMatrixPromptColumns(
+                    question.matrixPromptColumns ?? question.metadata?.matrixPromptColumns,
+                );
                 const matrixColumns = normalizeMatrixColumns(question.matrixColumns ?? question.metadata?.matrixColumns);
                 return {
                     ...question,
                     content: sanitizeQuestionHtml(question.content),
                     blueprint: normalizeBlueprint(question.blueprint),
                     questionCard: normalizeQuestionCard(question.questionCard),
+                    matrixPromptColumns,
                     matrixColumns,
-                    matrixRows: normalizeMatrixRows(question.matrixRows ?? question.metadata?.matrixRows, matrixColumns),
+                    matrixRows: normalizeMatrixRows(
+                        question.matrixRows ?? question.metadata?.matrixRows,
+                        matrixPromptColumns,
+                        matrixColumns,
+                    ),
                     reviewFeedback: normalizeReviewFeedback(question.reviewFeedback ?? question.metadata?.reviewFeedback),
                 };
             });
@@ -1705,6 +1861,9 @@ export const ExamEditorPage = () => {
         const newQuestions: ExtendedQuestion[] = importedQuestions.map((q) => {
             const source = q as unknown as ImportedQuestion;
             const sourceOptions = source.options;
+            const matrixPromptColumns = normalizeMatrixPromptColumns(
+                (source as ImportedQuestion & { matrixPromptColumns?: unknown }).matrixPromptColumns ?? source.metadata?.matrixPromptColumns,
+            );
 
             let questionImageUrl = source.question_image_url || undefined;
             let questionVideoUrl = source.question_video_url || undefined;
@@ -1749,8 +1908,13 @@ export const ExamEditorPage = () => {
                 question_media_position: source.question_media_position || 'top',
                 blueprint: normalizeBlueprint(q.blueprint ?? q.metadata?.blueprint),
                 questionCard: normalizeQuestionCard(q.questionCard ?? q.metadata?.questionCard),
+                matrixPromptColumns,
                 matrixColumns,
-                matrixRows: normalizeMatrixRows(source.matrixRows ?? source.metadata?.matrixRows, matrixColumns),
+                matrixRows: normalizeMatrixRows(
+                    source.matrixRows ?? source.metadata?.matrixRows,
+                    matrixPromptColumns,
+                    matrixColumns,
+                ),
                 options: sourceOptions?.map((o) => ({
                     id: Math.random().toString(36).substr(2, 9),
                     content: sanitizeQuestionHtml(o.content),
@@ -1799,6 +1963,7 @@ export const ExamEditorPage = () => {
             updateQuestion(activeQuestionId, { 
                 type: newType,
                 options: newOptions,
+                matrixPromptColumns: [],
                 matrixColumns: [],
                 matrixRows: [],
             });
@@ -1810,6 +1975,7 @@ export const ExamEditorPage = () => {
         
         const currentQ = questions.find(q => q.id === activeQuestionId);
         let newOptions = currentQ?.options || [];
+        let newMatrixPromptColumns = currentQ?.matrixPromptColumns || [];
         let newMatrixColumns = currentQ?.matrixColumns || [];
         let newMatrixRows = currentQ?.matrixRows || [];
 
@@ -1818,16 +1984,21 @@ export const ExamEditorPage = () => {
                 { id: Math.random().toString(36).substr(2, 9), content: 'Benar', isCorrect: true },
                 { id: Math.random().toString(36).substr(2, 9), content: 'Salah', isCorrect: false },
             ];
+            newMatrixPromptColumns = [];
             newMatrixColumns = [];
             newMatrixRows = [];
         } else if (newType === 'MATRIX_SINGLE_CHOICE') {
+            newMatrixPromptColumns = normalizeMatrixPromptColumns(currentQ?.matrixPromptColumns);
+            if (newMatrixPromptColumns.length === 0) {
+                newMatrixPromptColumns = createMatrixPromptColumns();
+            }
             newMatrixColumns = normalizeMatrixColumns(currentQ?.matrixColumns);
             if (newMatrixColumns.length === 0) {
                 newMatrixColumns = createMatrixColumns();
             }
-            newMatrixRows = normalizeMatrixRows(currentQ?.matrixRows, newMatrixColumns);
+            newMatrixRows = normalizeMatrixRows(currentQ?.matrixRows, newMatrixPromptColumns, newMatrixColumns);
             if (newMatrixRows.length === 0) {
-                newMatrixRows = createMatrixRows(newMatrixColumns);
+                newMatrixRows = createMatrixRows(newMatrixPromptColumns, newMatrixColumns);
             }
             newOptions = [];
         } else if ((newType === 'MULTIPLE_CHOICE' || newType === 'COMPLEX_MULTIPLE_CHOICE') && newOptions.length < 2) {
@@ -1838,9 +2009,11 @@ export const ExamEditorPage = () => {
                 { id: Math.random().toString(36).substr(2, 9), content: '', isCorrect: false },
                 { id: Math.random().toString(36).substr(2, 9), content: '', isCorrect: false },
             ];
+            newMatrixPromptColumns = [];
             newMatrixColumns = [];
             newMatrixRows = [];
         } else if (newType !== 'ESSAY') {
+            newMatrixPromptColumns = [];
             newMatrixColumns = [];
             newMatrixRows = [];
         }
@@ -1848,6 +2021,7 @@ export const ExamEditorPage = () => {
         updateQuestion(activeQuestionId, { 
             type: newType,
             options: newOptions,
+            matrixPromptColumns: newMatrixPromptColumns,
             matrixColumns: newMatrixColumns,
             matrixRows: newMatrixRows,
         });
@@ -2035,14 +2209,29 @@ export const ExamEditorPage = () => {
 
             if (q.type !== 'ESSAY') {
                 if (q.type === 'MATRIX_SINGLE_CHOICE') {
+                    const matrixPromptColumns = normalizeMatrixPromptColumns(q.matrixPromptColumns);
                     const matrixColumns = normalizeMatrixColumns(q.matrixColumns);
-                    const matrixRows = normalizeMatrixRows(q.matrixRows, matrixColumns);
+                    const matrixRows = normalizeMatrixRows(q.matrixRows, matrixPromptColumns, matrixColumns);
+                    if (matrixPromptColumns.length < 1) {
+                        toast.error(`Soal nomor ${i + 1} harus memiliki minimal 1 kolom data pada Pilihan Ganda Grid`);
+                        return;
+                    }
                     if (matrixColumns.length < 2) {
                         toast.error(`Soal nomor ${i + 1} harus memiliki minimal 2 kolom jawaban pada Pilihan Ganda Grid`);
                         return;
                     }
                     if (matrixRows.length < 1) {
                         toast.error(`Soal nomor ${i + 1} harus memiliki minimal 1 pernyataan pada Pilihan Ganda Grid`);
+                        return;
+                    }
+                    if (
+                        matrixRows.some(
+                            (row) =>
+                                !String(row.content || '').trim() &&
+                                !(Array.isArray(row.cells) && row.cells.some((cell) => String(cell.content || '').trim())),
+                        )
+                    ) {
+                        toast.error(`Setiap baris pada soal nomor ${i + 1} wajib memiliki isi minimal pada salah satu kolom data`);
                         return;
                     }
                     if (matrixRows.some((row) => !row.correctOptionId)) {
@@ -2264,8 +2453,13 @@ export const ExamEditorPage = () => {
                 video_url: question.question_video_url || null,
                 question_video_type: question.question_video_type || null,
                 question_media_position: question.question_media_position || 'top',
+                matrixPromptColumns: normalizeMatrixPromptColumns(question.matrixPromptColumns),
                 matrixColumns: normalizeMatrixColumns(question.matrixColumns),
-                matrixRows: normalizeMatrixRows(question.matrixRows, normalizeMatrixColumns(question.matrixColumns)),
+                matrixRows: normalizeMatrixRows(
+                    question.matrixRows,
+                    normalizeMatrixPromptColumns(question.matrixPromptColumns),
+                    normalizeMatrixColumns(question.matrixColumns),
+                ),
                 options: Array.isArray(question.options)
                     ? question.options.map((option, optionIndex) => ({
                           id: String(option.id || `option-${index + 1}-${optionIndex + 1}`),
@@ -2904,186 +3098,109 @@ export const ExamEditorPage = () => {
                                     </div>
 
                                     {activeQuestion.type === 'MATRIX_SINGLE_CHOICE' && (
-                                        <div className="mt-4 space-y-5 rounded-2xl border border-blue-100 bg-blue-50/40 p-4">
-                                            <div>
-                                                <div className="mb-2 flex items-center justify-between gap-3">
-                                                    <div>
+                                        (() => {
+                                            const promptColumns = ensureMatrixPromptColumnsForEditor(activeQuestion.matrixPromptColumns);
+                                            const answerColumns = ensureMatrixColumnsForEditor(activeQuestion.matrixColumns);
+                                            const rows = ensureMatrixRowsForEditor(activeQuestion.matrixRows, promptColumns, answerColumns);
+                                            return (
+                                                <div className="mt-4 space-y-5 rounded-2xl border border-blue-100 bg-blue-50/40 p-4">
+                                                    <div className="rounded-2xl border border-blue-100 bg-white/80 p-4">
                                                         <p className="text-xs font-semibold uppercase tracking-[0.24em] text-blue-600">
-                                                            Kolom Jawaban
+                                                            Struktur Grid
                                                         </p>
-                                                        <p className="text-sm text-slate-600">
-                                                            Satu kolom akan dipakai bersama oleh semua pernyataan.
+                                                        <p className="mt-2 text-sm leading-6 text-slate-600">
+                                                            Grid ini sekarang dinamis. Untuk contoh seperti tabel benar/salah, isi kolom data
+                                                            misalnya <span className="font-semibold text-slate-700">Besaran</span>,{' '}
+                                                            <span className="font-semibold text-slate-700">Satuan</span>,{' '}
+                                                            <span className="font-semibold text-slate-700">Alat Ukur</span>, lalu biarkan
+                                                            kolom jawaban <span className="font-semibold text-slate-700">Benar</span> dan{' '}
+                                                            <span className="font-semibold text-slate-700">Salah</span>.
                                                         </p>
                                                     </div>
-                                                    <button
-                                                        type="button"
-                                                        onClick={() => {
-                                                            const nextColumns = [
-                                                                ...normalizeMatrixColumns(activeQuestion.matrixColumns),
-                                                                {
-                                                                    id: Math.random().toString(36).substr(2, 9),
-                                                                    content: '',
-                                                                },
-                                                            ];
-                                                            const nextRows = normalizeMatrixRows(activeQuestion.matrixRows, nextColumns);
-                                                            updateQuestion(activeQuestion.id, {
-                                                                matrixColumns: nextColumns,
-                                                                matrixRows: nextRows,
-                                                            });
-                                                        }}
-                                                        className="rounded-lg border border-blue-200 bg-white px-3 py-2 text-sm font-medium text-blue-700 hover:bg-blue-50"
-                                                    >
-                                                        Tambah Kolom
-                                                    </button>
-                                                </div>
-                                                <div className="space-y-2">
-                                                    {normalizeMatrixColumns(activeQuestion.matrixColumns).map((column, columnIndex) => (
-                                                        <div key={column.id} className="flex items-center gap-2">
-                                                            <span className="w-8 flex-shrink-0 rounded-md border border-blue-200 bg-white px-2 py-2 text-center text-xs font-semibold text-blue-700">
-                                                                {columnIndex + 1}
-                                                            </span>
-                                                            <input
-                                                                value={column.content}
-                                                                onChange={(event) => {
-                                                                    const nextColumns = normalizeMatrixColumns(activeQuestion.matrixColumns).map((item) =>
-                                                                        item.id === column.id
-                                                                            ? { ...item, content: event.target.value }
-                                                                            : item,
-                                                                    );
-                                                                    updateQuestion(activeQuestion.id, {
-                                                                        matrixColumns: nextColumns,
-                                                                        matrixRows: normalizeMatrixRows(activeQuestion.matrixRows, nextColumns),
-                                                                    });
-                                                                }}
-                                                                className="flex-1 rounded-lg border border-gray-300 px-3 py-2 text-sm text-slate-700 focus:border-blue-500 focus:outline-none"
-                                                                placeholder={`Kolom ${columnIndex + 1}`}
-                                                            />
+
+                                                    <div>
+                                                        <div className="mb-2 flex items-center justify-between gap-3">
+                                                            <div>
+                                                                <p className="text-xs font-semibold uppercase tracking-[0.24em] text-blue-600">
+                                                                    Kolom Data
+                                                                </p>
+                                                                <p className="text-sm text-slate-600">
+                                                                    Kolom ini menjelaskan isi baris, misalnya Pernyataan, Besaran, atau Satuan.
+                                                                </p>
+                                                            </div>
                                                             <button
                                                                 type="button"
                                                                 onClick={() => {
-                                                                    const currentColumns = normalizeMatrixColumns(activeQuestion.matrixColumns);
-                                                                    if (currentColumns.length <= 2) {
-                                                                        toast.error('Pilihan Ganda Grid minimal harus punya 2 kolom jawaban.');
-                                                                        return;
-                                                                    }
-                                                                    const nextColumns = currentColumns.filter((item) => item.id !== column.id);
-                                                                    const fallbackColumnId = nextColumns[0]?.id;
-                                                                    const nextRows = normalizeMatrixRows(activeQuestion.matrixRows, nextColumns).map((row) =>
-                                                                        row.correctOptionId === column.id
-                                                                            ? { ...row, correctOptionId: fallbackColumnId }
-                                                                            : row,
-                                                                    );
+                                                                    const newColumnId = Math.random().toString(36).substr(2, 9);
                                                                     updateQuestion(activeQuestion.id, {
-                                                                        matrixColumns: nextColumns,
-                                                                        matrixRows: nextRows,
+                                                                        matrixPromptColumns: [
+                                                                            ...promptColumns,
+                                                                            {
+                                                                                id: newColumnId,
+                                                                                label: '',
+                                                                            },
+                                                                        ],
+                                                                        matrixRows: rows.map((row) => ({
+                                                                            ...row,
+                                                                            cells: [
+                                                                                ...(Array.isArray(row.cells) ? row.cells : []),
+                                                                                { columnId: newColumnId, content: '' },
+                                                                            ],
+                                                                        })),
                                                                     });
                                                                 }}
-                                                                className="rounded-lg border border-red-200 bg-white px-3 py-2 text-sm font-medium text-red-600 hover:bg-red-50"
+                                                                className="rounded-lg border border-blue-200 bg-white px-3 py-2 text-sm font-medium text-blue-700 hover:bg-blue-50"
                                                             >
-                                                                Hapus
+                                                                Tambah Kolom Data
                                                             </button>
                                                         </div>
-                                                    ))}
-                                                </div>
-                                            </div>
-
-                                            <div>
-                                                <div className="mb-2 flex items-center justify-between gap-3">
-                                                    <div>
-                                                        <p className="text-xs font-semibold uppercase tracking-[0.24em] text-blue-600">
-                                                            Pernyataan
-                                                        </p>
-                                                        <p className="text-sm text-slate-600">
-                                                            Setiap pernyataan wajib punya satu kunci jawaban kolom.
-                                                        </p>
-                                                    </div>
-                                                    <button
-                                                        type="button"
-                                                        onClick={() => {
-                                                            const currentColumns = normalizeMatrixColumns(activeQuestion.matrixColumns);
-                                                            const fallbackColumnId = currentColumns[0]?.id;
-                                                            const nextRows = [
-                                                                ...normalizeMatrixRows(activeQuestion.matrixRows, currentColumns),
-                                                                {
-                                                                    id: Math.random().toString(36).substr(2, 9),
-                                                                    content: '',
-                                                                    correctOptionId: fallbackColumnId,
-                                                                },
-                                                            ];
-                                                            updateQuestion(activeQuestion.id, {
-                                                                matrixRows: nextRows,
-                                                            });
-                                                        }}
-                                                        className="rounded-lg border border-blue-200 bg-white px-3 py-2 text-sm font-medium text-blue-700 hover:bg-blue-50"
-                                                    >
-                                                        Tambah Pernyataan
-                                                    </button>
-                                                </div>
-                                                <div className="space-y-3">
-                                                    {normalizeMatrixRows(
-                                                        activeQuestion.matrixRows,
-                                                        normalizeMatrixColumns(activeQuestion.matrixColumns),
-                                                    ).map((row, rowIndex) => {
-                                                        const currentColumns = normalizeMatrixColumns(activeQuestion.matrixColumns);
-                                                        return (
-                                                            <div key={row.id} className="rounded-2xl border border-slate-200 bg-white p-3">
-                                                                <div className="flex items-start gap-3">
-                                                                    <span className="mt-1 inline-flex h-8 w-8 flex-shrink-0 items-center justify-center rounded-full bg-blue-100 text-xs font-semibold text-blue-700">
-                                                                        {rowIndex + 1}
+                                                        <div className="space-y-2">
+                                                            {promptColumns.map((column, columnIndex) => (
+                                                                <div key={column.id} className="flex items-center gap-2">
+                                                                    <span className="w-8 flex-shrink-0 rounded-md border border-blue-200 bg-white px-2 py-2 text-center text-xs font-semibold text-blue-700">
+                                                                        {columnIndex + 1}
                                                                     </span>
-                                                                    <div className="flex-1 space-y-3">
-                                                                        <textarea
-                                                                            rows={2}
-                                                                            value={row.content}
-                                                                            onChange={(event) => {
-                                                                                const nextRows = normalizeMatrixRows(activeQuestion.matrixRows, currentColumns).map((item) =>
-                                                                                    item.id === row.id
-                                                                                        ? { ...item, content: event.target.value }
-                                                                                        : item,
-                                                                                );
-                                                                                updateQuestion(activeQuestion.id, {
-                                                                                    matrixRows: nextRows,
-                                                                                });
-                                                                            }}
-                                                                            className="w-full rounded-lg border border-gray-300 px-3 py-2 text-sm text-slate-700 focus:border-blue-500 focus:outline-none"
-                                                                            placeholder={`Pernyataan ${rowIndex + 1}`}
-                                                                        />
-                                                                        <div className="flex flex-wrap items-center gap-2">
-                                                                            <span className="text-xs font-semibold uppercase tracking-wide text-slate-500">
-                                                                                Kunci Jawaban
-                                                                            </span>
-                                                                            <select
-                                                                                value={row.correctOptionId || currentColumns[0]?.id || ''}
-                                                                                onChange={(event) => {
-                                                                                    const nextRows = normalizeMatrixRows(activeQuestion.matrixRows, currentColumns).map((item) =>
-                                                                                        item.id === row.id
-                                                                                            ? { ...item, correctOptionId: event.target.value }
-                                                                                            : item,
-                                                                                    );
-                                                                                    updateQuestion(activeQuestion.id, {
-                                                                                        matrixRows: nextRows,
-                                                                                    });
-                                                                                }}
-                                                                                className="rounded-lg border border-gray-300 px-3 py-2 text-sm text-slate-700 focus:border-blue-500 focus:outline-none"
-                                                                            >
-                                                                                {currentColumns.map((column) => (
-                                                                                    <option key={column.id} value={column.id}>
-                                                                                        {column.content}
-                                                                                    </option>
-                                                                                ))}
-                                                                            </select>
-                                                                        </div>
-                                                                    </div>
+                                                                    <input
+                                                                        value={column.label}
+                                                                        onChange={(event) => {
+                                                                            const nextPromptColumns = promptColumns.map((item) =>
+                                                                                item.id === column.id ? { ...item, label: event.target.value } : item,
+                                                                            );
+                                                                            updateQuestion(activeQuestion.id, {
+                                                                                matrixPromptColumns: nextPromptColumns,
+                                                                                matrixRows: rows.map((row) => ({
+                                                                                    ...row,
+                                                                                    cells: nextPromptColumns.map((nextColumn) => {
+                                                                                        const existingCell = Array.isArray(row.cells)
+                                                                                            ? row.cells.find((cell) => cell.columnId === nextColumn.id)
+                                                                                            : null;
+                                                                                        return {
+                                                                                            columnId: nextColumn.id,
+                                                                                            content: existingCell?.content || '',
+                                                                                        };
+                                                                                    }),
+                                                                                })),
+                                                                            });
+                                                                        }}
+                                                                        className="flex-1 rounded-lg border border-gray-300 px-3 py-2 text-sm text-slate-700 focus:border-blue-500 focus:outline-none"
+                                                                        placeholder={`Kolom data ${columnIndex + 1}`}
+                                                                    />
                                                                     <button
                                                                         type="button"
                                                                         onClick={() => {
-                                                                            const currentRows = normalizeMatrixRows(activeQuestion.matrixRows, currentColumns);
-                                                                            if (currentRows.length <= 1) {
-                                                                                toast.error('Pilihan Ganda Grid minimal harus punya 1 pernyataan.');
+                                                                            if (promptColumns.length <= 1) {
+                                                                                toast.error('Pilihan Ganda Grid minimal harus punya 1 kolom data.');
                                                                                 return;
                                                                             }
+                                                                            const nextPromptColumns = promptColumns.filter((item) => item.id !== column.id);
                                                                             updateQuestion(activeQuestion.id, {
-                                                                                matrixRows: currentRows.filter((item) => item.id !== row.id),
+                                                                                matrixPromptColumns: nextPromptColumns,
+                                                                                matrixRows: rows.map((row) => ({
+                                                                                    ...row,
+                                                                                    cells: (Array.isArray(row.cells) ? row.cells : []).filter(
+                                                                                        (cell) => cell.columnId !== column.id,
+                                                                                    ),
+                                                                                })),
                                                                             });
                                                                         }}
                                                                         className="rounded-lg border border-red-200 bg-white px-3 py-2 text-sm font-medium text-red-600 hover:bg-red-50"
@@ -3091,12 +3208,236 @@ export const ExamEditorPage = () => {
                                                                         Hapus
                                                                     </button>
                                                                 </div>
+                                                            ))}
+                                                        </div>
+                                                    </div>
+
+                                                    <div>
+                                                        <div className="mb-2 flex items-center justify-between gap-3">
+                                                            <div>
+                                                                <p className="text-xs font-semibold uppercase tracking-[0.24em] text-blue-600">
+                                                                    Kolom Jawaban
+                                                                </p>
+                                                                <p className="text-sm text-slate-600">
+                                                                    Pilihan ini akan muncul sebagai radio button di setiap baris grid.
+                                                                </p>
                                                             </div>
-                                                        );
-                                                    })}
+                                                            <button
+                                                                type="button"
+                                                                onClick={() => {
+                                                                    const nextColumns = [
+                                                                        ...answerColumns,
+                                                                        {
+                                                                            id: Math.random().toString(36).substr(2, 9),
+                                                                            content: '',
+                                                                        },
+                                                                    ];
+                                                                    const fallbackColumnId = nextColumns[0]?.id;
+                                                                    updateQuestion(activeQuestion.id, {
+                                                                        matrixColumns: nextColumns,
+                                                                        matrixRows: rows.map((row) => ({
+                                                                            ...row,
+                                                                            correctOptionId: row.correctOptionId || fallbackColumnId,
+                                                                        })),
+                                                                    });
+                                                                }}
+                                                                className="rounded-lg border border-blue-200 bg-white px-3 py-2 text-sm font-medium text-blue-700 hover:bg-blue-50"
+                                                            >
+                                                                Tambah Kolom Jawaban
+                                                            </button>
+                                                        </div>
+                                                        <div className="space-y-2">
+                                                            {answerColumns.map((column, columnIndex) => (
+                                                                <div key={column.id} className="flex items-center gap-2">
+                                                                    <span className="w-8 flex-shrink-0 rounded-md border border-blue-200 bg-white px-2 py-2 text-center text-xs font-semibold text-blue-700">
+                                                                        {columnIndex + 1}
+                                                                    </span>
+                                                                    <input
+                                                                        value={column.content}
+                                                                        onChange={(event) => {
+                                                                            const nextColumns = answerColumns.map((item) =>
+                                                                                item.id === column.id ? { ...item, content: event.target.value } : item,
+                                                                            );
+                                                                            updateQuestion(activeQuestion.id, {
+                                                                                matrixColumns: nextColumns,
+                                                                            });
+                                                                        }}
+                                                                        className="flex-1 rounded-lg border border-gray-300 px-3 py-2 text-sm text-slate-700 focus:border-blue-500 focus:outline-none"
+                                                                        placeholder={`Jawaban ${columnIndex + 1}`}
+                                                                    />
+                                                                    <button
+                                                                        type="button"
+                                                                        onClick={() => {
+                                                                            if (answerColumns.length <= 2) {
+                                                                                toast.error('Pilihan Ganda Grid minimal harus punya 2 kolom jawaban.');
+                                                                                return;
+                                                                            }
+                                                                            const nextColumns = answerColumns.filter((item) => item.id !== column.id);
+                                                                            const fallbackColumnId = nextColumns[0]?.id;
+                                                                            updateQuestion(activeQuestion.id, {
+                                                                                matrixColumns: nextColumns,
+                                                                                matrixRows: rows.map((row) => ({
+                                                                                    ...row,
+                                                                                    correctOptionId:
+                                                                                        row.correctOptionId === column.id
+                                                                                            ? fallbackColumnId
+                                                                                            : row.correctOptionId,
+                                                                                })),
+                                                                            });
+                                                                        }}
+                                                                        className="rounded-lg border border-red-200 bg-white px-3 py-2 text-sm font-medium text-red-600 hover:bg-red-50"
+                                                                    >
+                                                                        Hapus
+                                                                    </button>
+                                                                </div>
+                                                            ))}
+                                                        </div>
+                                                    </div>
+
+                                                    <div>
+                                                        <div className="mb-2 flex items-center justify-between gap-3">
+                                                            <div>
+                                                                <p className="text-xs font-semibold uppercase tracking-[0.24em] text-blue-600">
+                                                                    Baris Grid
+                                                                </p>
+                                                                <p className="text-sm text-slate-600">
+                                                                    Isi setiap sel sesuai kebutuhan tabel, lalu tentukan satu kunci jawaban untuk tiap baris.
+                                                                </p>
+                                                            </div>
+                                                            <button
+                                                                type="button"
+                                                                onClick={() => {
+                                                                    const fallbackColumnId = answerColumns[0]?.id;
+                                                                    updateQuestion(activeQuestion.id, {
+                                                                        matrixRows: [
+                                                                            ...rows,
+                                                                            {
+                                                                                id: Math.random().toString(36).substr(2, 9),
+                                                                                content: '',
+                                                                                cells: createMatrixRowCells(promptColumns),
+                                                                                correctOptionId: fallbackColumnId,
+                                                                            },
+                                                                        ],
+                                                                    });
+                                                                }}
+                                                                className="rounded-lg border border-blue-200 bg-white px-3 py-2 text-sm font-medium text-blue-700 hover:bg-blue-50"
+                                                            >
+                                                                Tambah Pernyataan
+                                                            </button>
+                                                        </div>
+                                                        <div className="space-y-3">
+                                                            {rows.map((row, rowIndex) => (
+                                                                <div key={row.id} className="rounded-2xl border border-slate-200 bg-white p-3">
+                                                                    <div className="flex items-start gap-3">
+                                                                        <span className="mt-1 inline-flex h-8 w-8 flex-shrink-0 items-center justify-center rounded-full bg-blue-100 text-xs font-semibold text-blue-700">
+                                                                            {rowIndex + 1}
+                                                                        </span>
+                                                                        <div className="flex-1 space-y-3">
+                                                                            <div className="grid gap-3 md:grid-cols-2">
+                                                                                {promptColumns.map((column, columnIndex) => {
+                                                                                    const currentCell = (Array.isArray(row.cells) ? row.cells : []).find(
+                                                                                        (cell) => cell.columnId === column.id,
+                                                                                    );
+                                                                                    return (
+                                                                                        <div key={`${row.id}-${column.id}`} className="space-y-1">
+                                                                                            <label className="text-xs font-semibold uppercase tracking-wide text-slate-500">
+                                                                                                {column.label || `Kolom ${columnIndex + 1}`}
+                                                                                            </label>
+                                                                                            <textarea
+                                                                                                rows={2}
+                                                                                                value={currentCell?.content || ''}
+                                                                                                onChange={(event) => {
+                                                                                                    const nextRows = rows.map((item) =>
+                                                                                                        item.id === row.id
+                                                                                                            ? {
+                                                                                                                  ...item,
+                                                                                                                  cells: promptColumns.map((promptColumn) => {
+                                                                                                                      const existingCell = Array.isArray(item.cells)
+                                                                                                                          ? item.cells.find((cell) => cell.columnId === promptColumn.id)
+                                                                                                                          : null;
+                                                                                                                      return {
+                                                                                                                          columnId: promptColumn.id,
+                                                                                                                          content:
+                                                                                                                              promptColumn.id === column.id
+                                                                                                                                  ? event.target.value
+                                                                                                                                  : existingCell?.content || '',
+                                                                                                                      };
+                                                                                                                  }),
+                                                                                                              }
+                                                                                                            : item,
+                                                                                                    );
+                                                                                                    updateQuestion(activeQuestion.id, {
+                                                                                                        matrixRows: nextRows,
+                                                                                                    });
+                                                                                                }}
+                                                                                                className="w-full rounded-lg border border-gray-300 px-3 py-2 text-sm text-slate-700 focus:border-blue-500 focus:outline-none"
+                                                                                                placeholder={`Isi ${column.label || `kolom ${columnIndex + 1}`}`}
+                                                                                            />
+                                                                                        </div>
+                                                                                    );
+                                                                                })}
+                                                                            </div>
+                                                                            <div className="rounded-xl border border-slate-200 bg-slate-50 px-3 py-3">
+                                                                                <div className="flex flex-wrap items-center justify-between gap-3">
+                                                                                    <div>
+                                                                                        <div className="text-xs font-semibold uppercase tracking-wide text-slate-500">
+                                                                                            Ringkasan Baris
+                                                                                        </div>
+                                                                                        <div className="mt-1 text-sm font-medium text-slate-700">
+                                                                                            {buildMatrixRowDisplayText(row, promptColumns)}
+                                                                                        </div>
+                                                                                    </div>
+                                                                                    <div className="min-w-[220px]">
+                                                                                        <label className="mb-1 block text-xs font-semibold uppercase tracking-wide text-slate-500">
+                                                                                            Kunci Jawaban
+                                                                                        </label>
+                                                                                        <select
+                                                                                            value={row.correctOptionId || answerColumns[0]?.id || ''}
+                                                                                            onChange={(event) => {
+                                                                                                const nextRows = rows.map((item) =>
+                                                                                                    item.id === row.id
+                                                                                                        ? { ...item, correctOptionId: event.target.value }
+                                                                                                        : item,
+                                                                                                );
+                                                                                                updateQuestion(activeQuestion.id, {
+                                                                                                    matrixRows: nextRows,
+                                                                                                });
+                                                                                            }}
+                                                                                            className="w-full rounded-lg border border-gray-300 px-3 py-2 text-sm font-semibold text-slate-700 focus:border-blue-500 focus:outline-none"
+                                                                                        >
+                                                                                            {answerColumns.map((column) => (
+                                                                                                <option key={column.id} value={column.id}>
+                                                                                                    {column.content || 'Jawaban tanpa label'}
+                                                                                                </option>
+                                                                                            ))}
+                                                                                        </select>
+                                                                                    </div>
+                                                                                </div>
+                                                                            </div>
+                                                                        </div>
+                                                                        <button
+                                                                            type="button"
+                                                                            onClick={() => {
+                                                                                if (rows.length <= 1) {
+                                                                                    toast.error('Pilihan Ganda Grid minimal harus punya 1 baris.');
+                                                                                    return;
+                                                                                }
+                                                                                updateQuestion(activeQuestion.id, {
+                                                                                    matrixRows: rows.filter((item) => item.id !== row.id),
+                                                                                });
+                                                                            }}
+                                                                            className="rounded-lg border border-red-200 bg-white px-3 py-2 text-sm font-medium text-red-600 hover:bg-red-50"
+                                                                        >
+                                                                            Hapus
+                                                                        </button>
+                                                                    </div>
+                                                                </div>
+                                                            ))}
+                                                        </div>
+                                                    </div>
                                                 </div>
-                                            </div>
-                                        </div>
+                                            );
+                                        })()
                                     )}
 
                                     {activeQuestion.type !== 'ESSAY' && activeQuestion.type !== 'MATRIX_SINGLE_CHOICE' && (

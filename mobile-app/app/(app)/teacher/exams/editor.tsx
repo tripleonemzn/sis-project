@@ -21,7 +21,9 @@ import {
   ExamQuestionBlueprint,
   ExamQuestionCard,
   ExamQuestionMatrixColumn,
+  ExamQuestionMatrixPromptColumn,
   ExamQuestionMatrixRow,
+  ExamQuestionMatrixRowCell,
   ExamQuestionType,
   TeacherExamQuestionPayload,
 } from '../../../../src/features/exams/types';
@@ -41,6 +43,7 @@ type QuestionDraft = {
   content: string;
   score: string;
   options: OptionDraft[];
+  matrixPromptColumns: ExamQuestionMatrixPromptColumn[];
   matrixColumns: ExamQuestionMatrixColumn[];
   matrixRows: ExamQuestionMatrixRow[];
   blueprint: ExamQuestionBlueprint;
@@ -88,22 +91,60 @@ function createTrueFalseOptions() {
   ];
 }
 
+function createMatrixPromptColumns(): ExamQuestionMatrixPromptColumn[] {
+  return [{ id: createId('matrix-prompt-col'), label: 'Pernyataan' }];
+}
+
 function createMatrixColumns(): ExamQuestionMatrixColumn[] {
   return [
-    { id: createId('matrix-col'), content: 'Sangat Setuju' },
-    { id: createId('matrix-col'), content: 'Setuju' },
-    { id: createId('matrix-col'), content: 'Netral' },
-    { id: createId('matrix-col'), content: 'Tidak Setuju' },
+    { id: createId('matrix-col'), content: 'Benar' },
+    { id: createId('matrix-col'), content: 'Salah' },
   ];
 }
 
-function createMatrixRows(columns: ExamQuestionMatrixColumn[]): ExamQuestionMatrixRow[] {
+function createMatrixRowCells(promptColumns: ExamQuestionMatrixPromptColumn[]): ExamQuestionMatrixRowCell[] {
+  return promptColumns.map((column) => ({
+    columnId: column.id,
+    content: '',
+  }));
+}
+
+function createMatrixRows(
+  promptColumns: ExamQuestionMatrixPromptColumn[],
+  columns: ExamQuestionMatrixColumn[],
+): ExamQuestionMatrixRow[] {
   const defaultCorrectColumnId = columns[0]?.id;
   return [
-    { id: createId('matrix-row'), content: '', correctOptionId: defaultCorrectColumnId },
-    { id: createId('matrix-row'), content: '', correctOptionId: defaultCorrectColumnId },
-    { id: createId('matrix-row'), content: '', correctOptionId: defaultCorrectColumnId },
+    { id: createId('matrix-row'), content: '', cells: createMatrixRowCells(promptColumns), correctOptionId: defaultCorrectColumnId },
+    { id: createId('matrix-row'), content: '', cells: createMatrixRowCells(promptColumns), correctOptionId: defaultCorrectColumnId },
+    { id: createId('matrix-row'), content: '', cells: createMatrixRowCells(promptColumns), correctOptionId: defaultCorrectColumnId },
   ];
+}
+
+function normalizeMatrixPromptColumns(raw: unknown): ExamQuestionMatrixPromptColumn[] {
+  if (!Array.isArray(raw)) return [];
+  const columns: ExamQuestionMatrixPromptColumn[] = [];
+  raw.forEach((item, index) => {
+    const source = item && typeof item === 'object' ? (item as ExamQuestionMatrixPromptColumn) : undefined;
+    const label = String(source?.label || '').trim();
+    if (!label) return;
+    columns.push({
+      id: String(source?.id || `matrix-prompt-col-${index + 1}`),
+      label,
+    });
+  });
+  return columns;
+}
+
+function ensureMatrixPromptColumnsForEditor(raw: unknown): ExamQuestionMatrixPromptColumn[] {
+  if (!Array.isArray(raw) || raw.length === 0) return createMatrixPromptColumns();
+  return raw.map((item, index) => {
+    const source = item && typeof item === 'object' ? (item as ExamQuestionMatrixPromptColumn) : undefined;
+    return {
+      id: String(source?.id || `matrix-prompt-col-${index + 1}`),
+      label: String(source?.label || ''),
+    };
+  });
 }
 
 function normalizeMatrixColumns(raw: unknown): ExamQuestionMatrixColumn[] {
@@ -121,19 +162,44 @@ function normalizeMatrixColumns(raw: unknown): ExamQuestionMatrixColumn[] {
   return columns;
 }
 
-function normalizeMatrixRows(raw: unknown, columns: ExamQuestionMatrixColumn[]): ExamQuestionMatrixRow[] {
+function ensureMatrixColumnsForEditor(raw: unknown): ExamQuestionMatrixColumn[] {
+  if (!Array.isArray(raw) || raw.length === 0) return createMatrixColumns();
+  return raw.map((item, index) => {
+    const source = item && typeof item === 'object' ? (item as ExamQuestionMatrixColumn) : undefined;
+    return {
+      id: String(source?.id || `matrix-col-${index + 1}`),
+      content: String(source?.content || ''),
+    };
+  });
+}
+
+function normalizeMatrixRows(
+  raw: unknown,
+  promptColumns: ExamQuestionMatrixPromptColumn[],
+  columns: ExamQuestionMatrixColumn[],
+): ExamQuestionMatrixRow[] {
   if (!Array.isArray(raw)) return [];
+  const validPromptColumnIds = new Set(promptColumns.map((column) => column.id));
   const validColumnIds = new Set(columns.map((column) => column.id));
   const defaultCorrectColumnId = columns[0]?.id;
   const rows: ExamQuestionMatrixRow[] = [];
   raw.forEach((item, index) => {
     const source = item && typeof item === 'object' ? (item as ExamQuestionMatrixRow) : undefined;
     const content = String(source?.content || '').trim();
-    if (!content) return;
+    const cells = Array.isArray(source?.cells)
+      ? source.cells
+          .map((cell) => ({
+            columnId: String(cell?.columnId || '').trim(),
+            content: String(cell?.content || '').trim(),
+          }))
+          .filter((cell) => cell.columnId && validPromptColumnIds.has(cell.columnId) && cell.content)
+      : [];
+    if (!content && cells.length === 0) return;
     const correctOptionId = String(source?.correctOptionId || '').trim();
     rows.push({
       id: String(source?.id || `matrix-row-${index + 1}`),
       content,
+      cells,
       correctOptionId:
         correctOptionId && validColumnIds.has(correctOptionId) ? correctOptionId : defaultCorrectColumnId,
     });
@@ -141,15 +207,71 @@ function normalizeMatrixRows(raw: unknown, columns: ExamQuestionMatrixColumn[]):
   return rows;
 }
 
+function ensureMatrixRowsForEditor(
+  raw: unknown,
+  promptColumns: ExamQuestionMatrixPromptColumn[],
+  columns: ExamQuestionMatrixColumn[],
+): ExamQuestionMatrixRow[] {
+  if (!Array.isArray(raw) || raw.length === 0) return createMatrixRows(promptColumns, columns);
+  const validColumnIds = new Set(columns.map((column) => column.id));
+  const defaultCorrectColumnId = columns[0]?.id;
+
+  return raw.map((item, index) => {
+    const source = item && typeof item === 'object' ? (item as ExamQuestionMatrixRow) : undefined;
+    const rowCellsByColumnId = new Map<string, string>();
+    if (Array.isArray(source?.cells)) {
+      source.cells.forEach((cell) => {
+        const columnId = String(cell?.columnId || '').trim();
+        if (!columnId) return;
+        rowCellsByColumnId.set(columnId, String(cell?.content || ''));
+      });
+    }
+    return {
+      id: String(source?.id || `matrix-row-${index + 1}`),
+      content: String(source?.content || ''),
+      cells: promptColumns.map((column) => ({
+        columnId: column.id,
+        content: rowCellsByColumnId.get(column.id) || '',
+      })),
+      correctOptionId:
+        String(source?.correctOptionId || '').trim() && validColumnIds.has(String(source?.correctOptionId || '').trim())
+          ? String(source?.correctOptionId || '').trim()
+          : defaultCorrectColumnId,
+    };
+  });
+}
+
+function buildMatrixRowDisplayText(
+  row: ExamQuestionMatrixRow,
+  promptColumns: ExamQuestionMatrixPromptColumn[],
+): string {
+  const normalizedCells = Array.isArray(row.cells) ? row.cells : [];
+  const rowContent = String(row.content || '').trim();
+  if (normalizedCells.length > 0) {
+    const parts = promptColumns
+      .map((column, index) => {
+        const cell = normalizedCells.find((item) => String(item.columnId || '').trim() === column.id);
+        const content = String(cell?.content || '').trim();
+        if (!content) return index === 0 && rowContent ? `${column.label}: ${rowContent}` : null;
+        return `${column.label}: ${content}`;
+      })
+      .filter((item): item is string => Boolean(item));
+    if (parts.length > 0) return parts.join(' | ');
+  }
+  return rowContent || 'Baris tanpa isi';
+}
+
 function createQuestion(type: ExamQuestionType = 'MULTIPLE_CHOICE'): QuestionDraft {
+  const matrixPromptColumns = type === 'MATRIX_SINGLE_CHOICE' ? createMatrixPromptColumns() : [];
   const matrixColumns = type === 'MATRIX_SINGLE_CHOICE' ? createMatrixColumns() : [];
   return {
     id: createId('q'),
     type,
     content: '',
     score: '1',
+    matrixPromptColumns,
     matrixColumns,
-    matrixRows: type === 'MATRIX_SINGLE_CHOICE' ? createMatrixRows(matrixColumns) : [],
+    matrixRows: type === 'MATRIX_SINGLE_CHOICE' ? createMatrixRows(matrixPromptColumns, matrixColumns) : [],
     blueprint: createDefaultBlueprint(),
     questionCard: createDefaultQuestionCard(),
     options:
@@ -211,16 +333,22 @@ function buildDerivedQuestionStimulus(question: QuestionDraft): string {
   }
 
   if (question.type === 'MATRIX_SINGLE_CHOICE') {
+    const promptColumns = normalizeMatrixPromptColumns(question.matrixPromptColumns);
     const columns = normalizeMatrixColumns(question.matrixColumns);
-    const rows = normalizeMatrixRows(question.matrixRows, columns);
+    const rows = normalizeMatrixRows(question.matrixRows, promptColumns, columns);
     if (columns.length > 0) {
       sections.push(
         ['Pilihan jawaban:', ...columns.map((column, index) => `${index + 1}. ${String(column.content || '').trim()}`)].join('\n'),
       );
     }
+    if (promptColumns.length > 0) {
+      sections.push(
+        ['Kolom data:', ...promptColumns.map((column, index) => `${index + 1}. ${String(column.label || '').trim()}`)].join('\n'),
+      );
+    }
     if (rows.length > 0) {
       sections.push(
-        ['Pernyataan:', ...rows.map((row, index) => `${index + 1}. ${plainTextFromExamRichText(String(row.content || '')).trim()}`)].join('\n'),
+        ['Baris grid:', ...rows.map((row, index) => `${index + 1}. ${buildMatrixRowDisplayText(row, promptColumns)}`)].join('\n'),
       );
     }
   } else {
@@ -246,14 +374,15 @@ function buildDerivedQuestionAnswerKey(question: QuestionDraft): string {
   }
 
   if (question.type === 'MATRIX_SINGLE_CHOICE') {
+    const promptColumns = normalizeMatrixPromptColumns(question.matrixPromptColumns);
     const columns = normalizeMatrixColumns(question.matrixColumns);
-    const rows = normalizeMatrixRows(question.matrixRows, columns);
+    const rows = normalizeMatrixRows(question.matrixRows, promptColumns, columns);
     const columnContentById = new Map(columns.map((column) => [column.id, String(column.content || '').trim()]));
     return rows
       .filter((row) => row.correctOptionId)
       .map((row, index) => {
         const columnContent = columnContentById.get(String(row.correctOptionId || '').trim()) || '-';
-        return `${index + 1}. ${plainTextFromExamRichText(String(row.content || '')).trim() || 'Pernyataan tanpa teks'} -> ${columnContent}`;
+        return `${index + 1}. ${buildMatrixRowDisplayText(row, promptColumns)} -> ${columnContent}`;
       })
       .join('\n\n')
       .trim();
@@ -445,6 +574,9 @@ function parseQuestions(raw: unknown): QuestionDraft[] {
     .map((item, idx) => {
       const q = item as Record<string, unknown>;
       const type = String(q.type || q.question_type || 'MULTIPLE_CHOICE').toUpperCase() as ExamQuestionType;
+      const matrixPromptColumns = normalizeMatrixPromptColumns(
+        q.matrixPromptColumns || (q.metadata as Record<string, unknown> | undefined)?.matrixPromptColumns,
+      );
       const matrixColumns = normalizeMatrixColumns(
         q.matrixColumns || (q.metadata as Record<string, unknown> | undefined)?.matrixColumns,
       );
@@ -465,9 +597,11 @@ function parseQuestions(raw: unknown): QuestionDraft[] {
         type,
         content: plainTextFromExamRichText(String(q.content || q.question_text || '')),
         score: String(typeof q.score === 'number' ? q.score : 1),
+        matrixPromptColumns,
         matrixColumns,
         matrixRows: normalizeMatrixRows(
           q.matrixRows || (q.metadata as Record<string, unknown> | undefined)?.matrixRows,
+          matrixPromptColumns,
           matrixColumns,
         ),
         blueprint: normalizeBlueprint(q.blueprint || (q.metadata as Record<string, unknown> | undefined)?.blueprint),
@@ -505,11 +639,19 @@ function sanitizeQuestions(questions: QuestionDraft[]): TeacherExamQuestionPaylo
       type: question.type,
       content: question.content.trim(),
       score: normalizedScore,
+      matrixPromptColumns:
+        question.type === 'MATRIX_SINGLE_CHOICE'
+          ? normalizeMatrixPromptColumns(question.matrixPromptColumns)
+          : undefined,
       matrixColumns:
         question.type === 'MATRIX_SINGLE_CHOICE' ? normalizeMatrixColumns(question.matrixColumns) : undefined,
       matrixRows:
         question.type === 'MATRIX_SINGLE_CHOICE'
-          ? normalizeMatrixRows(question.matrixRows, normalizeMatrixColumns(question.matrixColumns))
+          ? normalizeMatrixRows(
+              question.matrixRows,
+              normalizeMatrixPromptColumns(question.matrixPromptColumns),
+              normalizeMatrixColumns(question.matrixColumns),
+            )
           : undefined,
       blueprint: normalizeBlueprint(question.blueprint),
       questionCard: buildDerivedQuestionCard(question),
@@ -866,6 +1008,7 @@ export default function TeacherExamEditorScreen() {
                 if (Array.isArray(draft.questions) && draft.questions.length > 0) {
                   const restoredQuestions = draft.questions.map((question, index) => {
                     const normalizedType = String(question.type || 'MULTIPLE_CHOICE').toUpperCase() as ExamQuestionType;
+                    const normalizedMatrixPromptColumns = normalizeMatrixPromptColumns(question.matrixPromptColumns);
                     const normalizedMatrixColumns = normalizeMatrixColumns(question.matrixColumns);
                     const normalizedOptions =
                       normalizedType === 'ESSAY'
@@ -885,8 +1028,13 @@ export default function TeacherExamEditorScreen() {
                       type: normalizedType,
                       content: String(question.content || ''),
                       score: String(question.score || '1'),
+                      matrixPromptColumns: normalizedMatrixPromptColumns,
                       matrixColumns: normalizedMatrixColumns,
-                      matrixRows: normalizeMatrixRows(question.matrixRows, normalizedMatrixColumns),
+                      matrixRows: normalizeMatrixRows(
+                        question.matrixRows,
+                        normalizedMatrixPromptColumns,
+                        normalizedMatrixColumns,
+                      ),
                       blueprint: normalizeBlueprint(question.blueprint),
                       questionCard: normalizeQuestionCard(question.questionCard),
                       reviewFeedback: normalizeReviewFeedback(question.reviewFeedback),
@@ -1155,13 +1303,26 @@ export default function TeacherExamEditorScreen() {
 
         if (question.type !== 'ESSAY') {
           if (question.type === 'MATRIX_SINGLE_CHOICE') {
+            const matrixPromptColumns = normalizeMatrixPromptColumns(question.matrixPromptColumns);
             const matrixColumns = normalizeMatrixColumns(question.matrixColumns);
-            const matrixRows = normalizeMatrixRows(question.matrixRows, matrixColumns);
+            const matrixRows = normalizeMatrixRows(question.matrixRows, matrixPromptColumns, matrixColumns);
+            if (matrixPromptColumns.length < 1) {
+              throw new Error(`Soal nomor ${idx + 1} harus punya minimal 1 kolom data.`);
+            }
             if (matrixColumns.length < 2) {
               throw new Error(`Soal nomor ${idx + 1} harus punya minimal 2 kolom jawaban.`);
             }
             if (matrixRows.length < 1) {
-              throw new Error(`Soal nomor ${idx + 1} harus punya minimal 1 pernyataan.`);
+              throw new Error(`Soal nomor ${idx + 1} harus punya minimal 1 baris grid.`);
+            }
+            if (
+              matrixRows.some(
+                (row) =>
+                  !String(row.content || '').trim() &&
+                  !(Array.isArray(row.cells) && row.cells.some((cell) => String(cell.content || '').trim())),
+              )
+            ) {
+              throw new Error(`Setiap baris pada soal nomor ${idx + 1} wajib memiliki isi minimal pada salah satu kolom data.`);
             }
             if (matrixRows.some((row) => !row.correctOptionId)) {
               throw new Error(`Setiap pernyataan pada soal nomor ${idx + 1} wajib punya 1 kunci jawaban.`);
@@ -1839,18 +2000,30 @@ export default function TeacherExamEditorScreen() {
                           prev.map((item) => {
                             if (item.id !== question.id) return item;
                             if (typeItem === 'ESSAY') {
-                              return { ...item, type: typeItem, options: [], matrixColumns: [], matrixRows: [] };
+                              return {
+                                ...item,
+                                type: typeItem,
+                                options: [],
+                                matrixPromptColumns: [],
+                                matrixColumns: [],
+                                matrixRows: [],
+                              };
                             }
                             if (typeItem === 'TRUE_FALSE') {
                               return {
                                 ...item,
                                 type: typeItem,
                                 options: createTrueFalseOptions(),
+                                matrixPromptColumns: [],
                                 matrixColumns: [],
                                 matrixRows: [],
                               };
                             }
                             if (typeItem === 'MATRIX_SINGLE_CHOICE') {
+                              const nextPromptColumns =
+                                normalizeMatrixPromptColumns(item.matrixPromptColumns).length > 0
+                                  ? normalizeMatrixPromptColumns(item.matrixPromptColumns)
+                                  : createMatrixPromptColumns();
                               const nextColumns =
                                 normalizeMatrixColumns(item.matrixColumns).length > 0
                                   ? normalizeMatrixColumns(item.matrixColumns)
@@ -1859,17 +2032,19 @@ export default function TeacherExamEditorScreen() {
                                 ...item,
                                 type: typeItem,
                                 options: [],
+                                matrixPromptColumns: nextPromptColumns,
                                 matrixColumns: nextColumns,
                                 matrixRows:
-                                  normalizeMatrixRows(item.matrixRows, nextColumns).length > 0
-                                    ? normalizeMatrixRows(item.matrixRows, nextColumns)
-                                    : createMatrixRows(nextColumns),
+                                  normalizeMatrixRows(item.matrixRows, nextPromptColumns, nextColumns).length > 0
+                                    ? normalizeMatrixRows(item.matrixRows, nextPromptColumns, nextColumns)
+                                    : createMatrixRows(nextPromptColumns, nextColumns),
                               };
                             }
                             return {
                               ...item,
                               type: typeItem,
                               options: item.options.length > 0 ? item.options : createChoiceOptions(),
+                              matrixPromptColumns: [],
                               matrixColumns: [],
                               matrixRows: [],
                             };
@@ -2132,14 +2307,23 @@ export default function TeacherExamEditorScreen() {
               </Text>
               {question.type === 'MATRIX_SINGLE_CHOICE' ? (
                 <View style={{ marginTop: 8 }}>
-                  {(normalizeMatrixColumns(question.matrixColumns) || []).length > 0 ? (
+                  {normalizeMatrixColumns(question.matrixColumns).length > 0 ? (
                     <Text style={{ color: '#334155', fontSize: 12, fontWeight: '700', marginBottom: 4 }}>
-                      Pilihan jawaban: {(normalizeMatrixColumns(question.matrixColumns) || []).map((column) => column.content).join(' • ')}
+                      Pilihan jawaban: {normalizeMatrixColumns(question.matrixColumns).map((column) => column.content).join(' • ')}
                     </Text>
                   ) : null}
-                  {(normalizeMatrixRows(question.matrixRows, normalizeMatrixColumns(question.matrixColumns)) || []).map((row, rowIndex) => (
+                  {normalizeMatrixPromptColumns(question.matrixPromptColumns).length > 0 ? (
+                    <Text style={{ color: '#334155', fontSize: 12, fontWeight: '700', marginBottom: 4 }}>
+                      Kolom data: {normalizeMatrixPromptColumns(question.matrixPromptColumns).map((column) => column.label).join(' • ')}
+                    </Text>
+                  ) : null}
+                  {normalizeMatrixRows(
+                    question.matrixRows,
+                    normalizeMatrixPromptColumns(question.matrixPromptColumns),
+                    normalizeMatrixColumns(question.matrixColumns),
+                  ).map((row, rowIndex) => (
                     <Text key={row.id || `${question.id}-matrix-preview-${rowIndex}`} style={{ color: '#334155', fontSize: 12, marginTop: 2 }}>
-                      {rowIndex + 1}. {String(row.content || '').trim() || 'Pernyataan tanpa teks'}
+                      {rowIndex + 1}. {buildMatrixRowDisplayText(row, normalizeMatrixPromptColumns(question.matrixPromptColumns))}
                     </Text>
                   ))}
                 </View>
@@ -2216,243 +2400,422 @@ export default function TeacherExamEditorScreen() {
           </View>
 
           {question.type === 'MATRIX_SINGLE_CHOICE' ? (
-            <View
-              style={{
-                borderWidth: 1,
-                borderColor: '#dbeafe',
-                backgroundColor: '#eff6ff',
-                borderRadius: 10,
-                padding: 10,
-              }}
-            >
-              <Text style={{ color: '#1e3a8a', fontWeight: '700', marginBottom: 6 }}>Pilihan Ganda Grid</Text>
-              <Text style={{ color: '#475569', fontSize: 12, marginBottom: 10 }}>
-                Atur kolom jawaban bersama, lalu isi daftar pernyataan dan pilih satu kunci jawaban untuk tiap pernyataan.
-              </Text>
+            (() => {
+              const promptColumns = ensureMatrixPromptColumnsForEditor(question.matrixPromptColumns);
+              const answerColumns = ensureMatrixColumnsForEditor(question.matrixColumns);
+              const rows = ensureMatrixRowsForEditor(question.matrixRows, promptColumns, answerColumns);
+              return (
+                <View
+                  style={{
+                    borderWidth: 1,
+                    borderColor: '#dbeafe',
+                    backgroundColor: '#eff6ff',
+                    borderRadius: 10,
+                    padding: 10,
+                  }}
+                >
+                  <Text style={{ color: '#1e3a8a', fontWeight: '700', marginBottom: 6 }}>Pilihan Ganda Grid</Text>
+                  <Text style={{ color: '#475569', fontSize: 12, marginBottom: 10 }}>
+                    Struktur grid ini dinamis. Untuk bentuk tabel seperti contoh Benar/Salah, isi Kolom Data misalnya
+                    Besaran, Satuan, dan Alat Ukur; lalu biarkan Kolom Jawaban berisi Benar dan Salah.
+                  </Text>
 
-              <Text style={{ color: '#1e3a8a', fontSize: 11, fontWeight: '700', marginBottom: 6 }}>Kolom Jawaban</Text>
-              {normalizeMatrixColumns(question.matrixColumns).map((column, columnIndex) => (
-                <View key={column.id} style={{ flexDirection: 'row', alignItems: 'center', marginBottom: 6 }}>
-                  <View
+                  <Text style={{ color: '#1e3a8a', fontSize: 11, fontWeight: '700', marginBottom: 6 }}>Kolom Data</Text>
+                  {promptColumns.map((column, columnIndex) => (
+                    <View key={column.id} style={{ flexDirection: 'row', alignItems: 'center', marginBottom: 6 }}>
+                      <View
+                        style={{
+                          width: 28,
+                          height: 28,
+                          borderRadius: 8,
+                          borderWidth: 1,
+                          borderColor: '#93c5fd',
+                          backgroundColor: '#fff',
+                          alignItems: 'center',
+                          justifyContent: 'center',
+                          marginRight: 6,
+                        }}
+                      >
+                        <Text style={{ color: '#1d4ed8', fontWeight: '700', fontSize: 11 }}>{columnIndex + 1}</Text>
+                      </View>
+                      <TextInput
+                        value={String(column.label || '')}
+                        onChangeText={(value) => {
+                          const nextPromptColumns = promptColumns.map((item) =>
+                            item.id === column.id ? { ...item, label: value } : item,
+                          );
+                          setQuestions((prev) =>
+                            prev.map((item) =>
+                              item.id === question.id
+                                ? {
+                                    ...item,
+                                    matrixPromptColumns: nextPromptColumns,
+                                    matrixRows: rows.map((row) => ({
+                                      ...row,
+                                      cells: nextPromptColumns.map((promptColumn) => {
+                                        const existingCell = Array.isArray(row.cells)
+                                          ? row.cells.find((cell) => cell.columnId === promptColumn.id)
+                                          : null;
+                                        return {
+                                          columnId: promptColumn.id,
+                                          content: existingCell?.content || '',
+                                        };
+                                      }),
+                                    })),
+                                  }
+                                : item,
+                            ),
+                          );
+                        }}
+                        placeholder={`Kolom data ${columnIndex + 1}`}
+                        style={{
+                          flex: 1,
+                          borderWidth: 1,
+                          borderColor: '#cbd5e1',
+                          borderRadius: 10,
+                          paddingHorizontal: 10,
+                          paddingVertical: 9,
+                          backgroundColor: '#fff',
+                        }}
+                      />
+                      <Pressable
+                        onPress={() => {
+                          if (promptColumns.length <= 1) {
+                            Alert.alert('Minimal 1 kolom data', 'Pilihan Ganda Grid harus memiliki minimal 1 kolom data.');
+                            return;
+                          }
+                          const nextPromptColumns = promptColumns.filter((item) => item.id !== column.id);
+                          setQuestions((prev) =>
+                            prev.map((item) =>
+                              item.id === question.id
+                                ? {
+                                    ...item,
+                                    matrixPromptColumns: nextPromptColumns,
+                                    matrixRows: rows.map((row) => ({
+                                      ...row,
+                                      cells: (Array.isArray(row.cells) ? row.cells : []).filter((cell) => cell.columnId !== column.id),
+                                    })),
+                                  }
+                                : item,
+                            ),
+                          );
+                        }}
+                        style={{
+                          marginLeft: 6,
+                          borderWidth: 1,
+                          borderColor: '#fecaca',
+                          borderRadius: 8,
+                          paddingHorizontal: 10,
+                          paddingVertical: 8,
+                          backgroundColor: '#fff1f2',
+                        }}
+                      >
+                        <Text style={{ color: '#b91c1c', fontWeight: '700', fontSize: 12 }}>Hapus</Text>
+                      </Pressable>
+                    </View>
+                  ))}
+                  <Pressable
+                    onPress={() => {
+                      const newColumnId = createId('matrix-prompt-col');
+                      setQuestions((prev) =>
+                        prev.map((item) =>
+                          item.id === question.id
+                            ? {
+                                ...item,
+                                matrixPromptColumns: [...promptColumns, { id: newColumnId, label: '' }],
+                                matrixRows: rows.map((row) => ({
+                                  ...row,
+                                  cells: [...(Array.isArray(row.cells) ? row.cells : []), { columnId: newColumnId, content: '' }],
+                                })),
+                              }
+                            : item,
+                        ),
+                      );
+                    }}
                     style={{
-                      width: 28,
-                      height: 28,
-                      borderRadius: 8,
                       borderWidth: 1,
-                      borderColor: '#93c5fd',
+                      borderColor: '#1d4ed8',
+                      borderRadius: 8,
+                      paddingHorizontal: 10,
+                      paddingVertical: 8,
                       backgroundColor: '#fff',
-                      alignItems: 'center',
-                      justifyContent: 'center',
-                      marginRight: 6,
+                      marginBottom: 12,
+                      alignSelf: 'flex-start',
                     }}
                   >
-                    <Text style={{ color: '#1d4ed8', fontWeight: '700', fontSize: 11 }}>{columnIndex + 1}</Text>
-                  </View>
-                  <TextInput
-                    value={String(column.content || '')}
-                    onChangeText={(value) => {
-                      const nextColumns = normalizeMatrixColumns(question.matrixColumns).map((item) =>
-                        item.id === column.id ? { ...item, content: value } : item,
-                      );
+                    <Text style={{ color: '#1d4ed8', fontWeight: '700', fontSize: 12 }}>Tambah Kolom Data</Text>
+                  </Pressable>
+
+                  <Text style={{ color: '#1e3a8a', fontSize: 11, fontWeight: '700', marginBottom: 6 }}>Kolom Jawaban</Text>
+                  {answerColumns.map((column, columnIndex) => (
+                    <View key={column.id} style={{ flexDirection: 'row', alignItems: 'center', marginBottom: 6 }}>
+                      <View
+                        style={{
+                          width: 28,
+                          height: 28,
+                          borderRadius: 8,
+                          borderWidth: 1,
+                          borderColor: '#93c5fd',
+                          backgroundColor: '#fff',
+                          alignItems: 'center',
+                          justifyContent: 'center',
+                          marginRight: 6,
+                        }}
+                      >
+                        <Text style={{ color: '#1d4ed8', fontWeight: '700', fontSize: 11 }}>{columnIndex + 1}</Text>
+                      </View>
+                      <TextInput
+                        value={String(column.content || '')}
+                        onChangeText={(value) => {
+                          const nextColumns = answerColumns.map((item) =>
+                            item.id === column.id ? { ...item, content: value } : item,
+                          );
+                          setQuestions((prev) =>
+                            prev.map((item) =>
+                              item.id === question.id
+                                ? {
+                                    ...item,
+                                    matrixColumns: nextColumns,
+                                  }
+                                : item,
+                            ),
+                          );
+                        }}
+                        placeholder={`Kolom jawaban ${columnIndex + 1}`}
+                        style={{
+                          flex: 1,
+                          borderWidth: 1,
+                          borderColor: '#cbd5e1',
+                          borderRadius: 10,
+                          paddingHorizontal: 10,
+                          paddingVertical: 9,
+                          backgroundColor: '#fff',
+                        }}
+                      />
+                      <Pressable
+                        onPress={() => {
+                          if (answerColumns.length <= 2) {
+                            Alert.alert('Minimal 2 kolom', 'Pilihan Ganda Grid harus memiliki minimal 2 kolom jawaban.');
+                            return;
+                          }
+                          const nextColumns = answerColumns.filter((item) => item.id !== column.id);
+                          const fallbackColumnId = nextColumns[0]?.id;
+                          setQuestions((prev) =>
+                            prev.map((item) =>
+                              item.id === question.id
+                                ? {
+                                    ...item,
+                                    matrixColumns: nextColumns,
+                                    matrixRows: rows.map((row) => ({
+                                      ...row,
+                                      correctOptionId: row.correctOptionId === column.id ? fallbackColumnId : row.correctOptionId,
+                                    })),
+                                  }
+                                : item,
+                            ),
+                          );
+                        }}
+                        style={{
+                          marginLeft: 6,
+                          borderWidth: 1,
+                          borderColor: '#fecaca',
+                          borderRadius: 8,
+                          paddingHorizontal: 10,
+                          paddingVertical: 8,
+                          backgroundColor: '#fff1f2',
+                        }}
+                      >
+                        <Text style={{ color: '#b91c1c', fontWeight: '700', fontSize: 12 }}>Hapus</Text>
+                      </Pressable>
+                    </View>
+                  ))}
+                  <Pressable
+                    onPress={() => {
+                      const nextColumns = [...answerColumns, { id: createId('matrix-col'), content: '' }];
+                      const fallbackColumnId = nextColumns[0]?.id;
                       setQuestions((prev) =>
                         prev.map((item) =>
                           item.id === question.id
                             ? {
                                 ...item,
                                 matrixColumns: nextColumns,
-                                matrixRows: normalizeMatrixRows(item.matrixRows, nextColumns),
+                                matrixRows: rows.map((row) => ({
+                                  ...row,
+                                  correctOptionId: row.correctOptionId || fallbackColumnId,
+                                })),
                               }
                             : item,
                         ),
                       );
                     }}
-                    placeholder={`Kolom ${columnIndex + 1}`}
                     style={{
-                      flex: 1,
                       borderWidth: 1,
-                      borderColor: '#cbd5e1',
-                      borderRadius: 10,
+                      borderColor: '#1d4ed8',
+                      borderRadius: 8,
                       paddingHorizontal: 10,
-                      paddingVertical: 9,
+                      paddingVertical: 8,
                       backgroundColor: '#fff',
+                      marginBottom: 12,
+                      alignSelf: 'flex-start',
                     }}
-                  />
+                  >
+                    <Text style={{ color: '#1d4ed8', fontWeight: '700', fontSize: 12 }}>Tambah Kolom Jawaban</Text>
+                  </Pressable>
+
+                  <Text style={{ color: '#1e3a8a', fontSize: 11, fontWeight: '700', marginBottom: 6 }}>Baris Grid</Text>
+                  {rows.map((row, rowIndex) => (
+                    <View key={row.id} style={{ borderWidth: 1, borderColor: '#bfdbfe', borderRadius: 10, padding: 10, backgroundColor: '#fff', marginBottom: 8 }}>
+                      <Text style={{ color: '#1e3a8a', fontWeight: '700', fontSize: 12, marginBottom: 6 }}>
+                        Baris {rowIndex + 1}
+                      </Text>
+                      {promptColumns.map((column, promptColumnIndex) => {
+                        const currentCell = (Array.isArray(row.cells) ? row.cells : []).find((cell) => cell.columnId === column.id);
+                        return (
+                          <View key={`${row.id}-${column.id}`} style={{ marginBottom: 8 }}>
+                            <Text style={{ color: '#64748b', fontSize: 11, fontWeight: '700', marginBottom: 4 }}>
+                              {String(column.label || '').trim() || `Kolom ${promptColumnIndex + 1}`}
+                            </Text>
+                            <TextInput
+                              value={String(currentCell?.content || '')}
+                              onChangeText={(value) => {
+                                const nextRows = rows.map((item) =>
+                                  item.id === row.id
+                                    ? {
+                                        ...item,
+                                        cells: promptColumns.map((promptColumn) => {
+                                          const existingCell = Array.isArray(item.cells)
+                                            ? item.cells.find((cell) => cell.columnId === promptColumn.id)
+                                            : null;
+                                          return {
+                                            columnId: promptColumn.id,
+                                            content: promptColumn.id === column.id ? value : existingCell?.content || '',
+                                          };
+                                        }),
+                                      }
+                                    : item,
+                                );
+                                setQuestions((prev) =>
+                                  prev.map((item) =>
+                                    item.id === question.id ? { ...item, matrixRows: nextRows } : item,
+                                  ),
+                                );
+                              }}
+                              placeholder={`Isi ${String(column.label || '').trim() || `kolom ${promptColumnIndex + 1}`}`}
+                              multiline
+                              style={{
+                                borderWidth: 1,
+                                borderColor: '#cbd5e1',
+                                borderRadius: 10,
+                                paddingHorizontal: 10,
+                                paddingVertical: 9,
+                                backgroundColor: '#fff',
+                                minHeight: 56,
+                              }}
+                            />
+                          </View>
+                        );
+                      })}
+                      <Text style={{ color: '#64748b', fontSize: 11, fontWeight: '700', marginBottom: 4 }}>
+                        Ringkasan Baris
+                      </Text>
+                      <View
+                        style={{
+                          borderWidth: 1,
+                          borderColor: '#e2e8f0',
+                          borderRadius: 10,
+                          paddingHorizontal: 10,
+                          paddingVertical: 10,
+                          backgroundColor: '#f8fafc',
+                          marginBottom: 8,
+                        }}
+                      >
+                        <Text style={{ color: '#0f172a', fontSize: 12 }}>{buildMatrixRowDisplayText(row, promptColumns)}</Text>
+                      </View>
+                      <MobileSelectField
+                        label="Kunci Jawaban Baris Ini"
+                        value={String(row.correctOptionId || answerColumns[0]?.id || '')}
+                        options={answerColumns.map((column) => ({
+                          label: String(column.content || '').trim() || 'Kolom tanpa label',
+                          value: column.id,
+                        }))}
+                        onChange={(value) => {
+                          const nextRows = rows.map((item) =>
+                            item.id === row.id ? { ...item, correctOptionId: value } : item,
+                          );
+                          setQuestions((prev) =>
+                            prev.map((item) =>
+                              item.id === question.id ? { ...item, matrixRows: nextRows } : item,
+                            ),
+                          );
+                        }}
+                        placeholder="Pilih kunci jawaban"
+                      />
+                      <Pressable
+                        onPress={() => {
+                          if (rows.length <= 1) {
+                            Alert.alert('Minimal 1 baris', 'Pilihan Ganda Grid harus memiliki minimal 1 baris grid.');
+                            return;
+                          }
+                          setQuestions((prev) =>
+                            prev.map((item) =>
+                              item.id === question.id
+                                ? { ...item, matrixRows: rows.filter((candidate) => candidate.id !== row.id) }
+                                : item,
+                            ),
+                          );
+                        }}
+                        style={{
+                          marginTop: 8,
+                          borderWidth: 1,
+                          borderColor: '#fecaca',
+                          borderRadius: 8,
+                          paddingHorizontal: 10,
+                          paddingVertical: 8,
+                          backgroundColor: '#fff1f2',
+                          alignSelf: 'flex-start',
+                        }}
+                      >
+                        <Text style={{ color: '#b91c1c', fontWeight: '700', fontSize: 12 }}>Hapus Baris</Text>
+                      </Pressable>
+                    </View>
+                  ))}
                   <Pressable
                     onPress={() => {
-                      const currentColumns = normalizeMatrixColumns(question.matrixColumns);
-                      if (currentColumns.length <= 2) {
-                        Alert.alert('Minimal 2 kolom', 'Pilihan Ganda Grid harus memiliki minimal 2 kolom jawaban.');
-                        return;
-                      }
-                      const nextColumns = currentColumns.filter((item) => item.id !== column.id);
-                      const fallbackColumnId = nextColumns[0]?.id;
-                      const nextRows = normalizeMatrixRows(question.matrixRows, nextColumns).map((row) =>
-                        row.correctOptionId === column.id ? { ...row, correctOptionId: fallbackColumnId } : row,
-                      );
+                      const fallbackColumnId = answerColumns[0]?.id;
                       setQuestions((prev) =>
                         prev.map((item) =>
                           item.id === question.id
-                            ? { ...item, matrixColumns: nextColumns, matrixRows: nextRows }
+                            ? {
+                                ...item,
+                                matrixRows: [
+                                  ...rows,
+                                  {
+                                    id: createId('matrix-row'),
+                                    content: '',
+                                    cells: createMatrixRowCells(promptColumns),
+                                    correctOptionId: fallbackColumnId,
+                                  },
+                                ],
+                              }
                             : item,
                         ),
                       );
                     }}
                     style={{
-                      marginLeft: 6,
                       borderWidth: 1,
-                      borderColor: '#fecaca',
+                      borderColor: '#1d4ed8',
                       borderRadius: 8,
                       paddingHorizontal: 10,
                       paddingVertical: 8,
-                      backgroundColor: '#fff1f2',
+                      backgroundColor: '#fff',
+                      alignSelf: 'flex-start',
                     }}
                   >
-                    <Text style={{ color: '#b91c1c', fontWeight: '700', fontSize: 12 }}>Hapus</Text>
+                    <Text style={{ color: '#1d4ed8', fontWeight: '700', fontSize: 12 }}>Tambah Baris Grid</Text>
                   </Pressable>
                 </View>
-              ))}
-              <Pressable
-                onPress={() => {
-                  const nextColumns = [
-                    ...normalizeMatrixColumns(question.matrixColumns),
-                    { id: createId('matrix-col'), content: '' },
-                  ];
-                  setQuestions((prev) =>
-                    prev.map((item) =>
-                      item.id === question.id
-                        ? {
-                            ...item,
-                            matrixColumns: nextColumns,
-                            matrixRows: normalizeMatrixRows(item.matrixRows, nextColumns),
-                          }
-                        : item,
-                    ),
-                  );
-                }}
-                style={{
-                  borderWidth: 1,
-                  borderColor: '#1d4ed8',
-                  borderRadius: 8,
-                  paddingHorizontal: 10,
-                  paddingVertical: 8,
-                  backgroundColor: '#fff',
-                  marginBottom: 12,
-                  alignSelf: 'flex-start',
-                }}
-              >
-                <Text style={{ color: '#1d4ed8', fontWeight: '700', fontSize: 12 }}>Tambah Kolom</Text>
-              </Pressable>
-
-              <Text style={{ color: '#1e3a8a', fontSize: 11, fontWeight: '700', marginBottom: 6 }}>Pernyataan</Text>
-              {normalizeMatrixRows(question.matrixRows, normalizeMatrixColumns(question.matrixColumns)).map((row, rowIndex) => {
-                const currentColumns = normalizeMatrixColumns(question.matrixColumns);
-                return (
-                  <View key={row.id} style={{ borderWidth: 1, borderColor: '#bfdbfe', borderRadius: 10, padding: 10, backgroundColor: '#fff', marginBottom: 8 }}>
-                    <Text style={{ color: '#1e3a8a', fontWeight: '700', fontSize: 12, marginBottom: 6 }}>
-                      Pernyataan {rowIndex + 1}
-                    </Text>
-                    <TextInput
-                      value={String(row.content || '')}
-                      onChangeText={(value) => {
-                        const nextRows = normalizeMatrixRows(question.matrixRows, currentColumns).map((item) =>
-                          item.id === row.id ? { ...item, content: value } : item,
-                        );
-                        setQuestions((prev) =>
-                          prev.map((item) =>
-                            item.id === question.id ? { ...item, matrixRows: nextRows } : item,
-                          ),
-                        );
-                      }}
-                      placeholder={`Isi pernyataan ${rowIndex + 1}`}
-                      multiline
-                      style={{
-                        borderWidth: 1,
-                        borderColor: '#cbd5e1',
-                        borderRadius: 10,
-                        paddingHorizontal: 10,
-                        paddingVertical: 9,
-                        backgroundColor: '#fff',
-                        marginBottom: 8,
-                        minHeight: 56,
-                      }}
-                    />
-                    <MobileSelectField
-                      label="Kunci Jawaban"
-                      value={String(row.correctOptionId || currentColumns[0]?.id || '')}
-                      options={currentColumns.map((column) => ({
-                        label: String(column.content || '').trim() || 'Kolom tanpa label',
-                        value: column.id,
-                      }))}
-                      onChange={(value) => {
-                        const nextRows = normalizeMatrixRows(question.matrixRows, currentColumns).map((item) =>
-                          item.id === row.id ? { ...item, correctOptionId: value } : item,
-                        );
-                        setQuestions((prev) =>
-                          prev.map((item) =>
-                            item.id === question.id ? { ...item, matrixRows: nextRows } : item,
-                          ),
-                        );
-                      }}
-                      placeholder="Pilih kunci jawaban"
-                    />
-                    <Pressable
-                      onPress={() => {
-                        const currentRows = normalizeMatrixRows(question.matrixRows, currentColumns);
-                        if (currentRows.length <= 1) {
-                          Alert.alert('Minimal 1 pernyataan', 'Pilihan Ganda Grid harus memiliki minimal 1 pernyataan.');
-                          return;
-                        }
-                        setQuestions((prev) =>
-                          prev.map((item) =>
-                            item.id === question.id
-                              ? { ...item, matrixRows: currentRows.filter((candidate) => candidate.id !== row.id) }
-                              : item,
-                          ),
-                        );
-                      }}
-                      style={{
-                        marginTop: 8,
-                        borderWidth: 1,
-                        borderColor: '#fecaca',
-                        borderRadius: 8,
-                        paddingHorizontal: 10,
-                        paddingVertical: 8,
-                        backgroundColor: '#fff1f2',
-                        alignSelf: 'flex-start',
-                      }}
-                    >
-                      <Text style={{ color: '#b91c1c', fontWeight: '700', fontSize: 12 }}>Hapus Pernyataan</Text>
-                    </Pressable>
-                  </View>
-                );
-              })}
-              <Pressable
-                onPress={() => {
-                  const currentColumns = normalizeMatrixColumns(question.matrixColumns);
-                  const fallbackColumnId = currentColumns[0]?.id;
-                  const nextRows = [
-                    ...normalizeMatrixRows(question.matrixRows, currentColumns),
-                    { id: createId('matrix-row'), content: '', correctOptionId: fallbackColumnId },
-                  ];
-                  setQuestions((prev) =>
-                    prev.map((item) =>
-                      item.id === question.id ? { ...item, matrixRows: nextRows } : item,
-                    ),
-                  );
-                }}
-                style={{
-                  borderWidth: 1,
-                  borderColor: '#1d4ed8',
-                  borderRadius: 8,
-                  paddingHorizontal: 10,
-                  paddingVertical: 8,
-                  backgroundColor: '#fff',
-                  alignSelf: 'flex-start',
-                }}
-              >
-                <Text style={{ color: '#1d4ed8', fontWeight: '700', fontSize: 12 }}>Tambah Pernyataan</Text>
-              </Pressable>
-            </View>
+              );
+            })()
           ) : question.type !== 'ESSAY' ? (
             <View>
               {question.options.map((option) => (

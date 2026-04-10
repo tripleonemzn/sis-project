@@ -85,9 +85,20 @@ type ExamQuestionMatrixColumn = {
   content: string
 }
 
+type ExamQuestionMatrixPromptColumn = {
+  id: string
+  label: string
+}
+
+type ExamQuestionMatrixRowCell = {
+  columnId: string
+  content: string
+}
+
 type ExamQuestionMatrixRow = {
   id: string
   content: string
+  cells?: ExamQuestionMatrixRowCell[]
   correctOptionId?: string | null
 }
 
@@ -118,6 +129,7 @@ interface Question {
   section: 'OBJECTIVE' | 'ESSAY'
   correct_answer: unknown
   options?: ExamQuestionOption[]
+  matrixPromptColumns?: ExamQuestionMatrixPromptColumn[]
   matrixColumns?: ExamQuestionMatrixColumn[]
   matrixRows?: ExamQuestionMatrixRow[]
 }
@@ -158,6 +170,17 @@ function normalizeMatrixColumns(question: Question | null | undefined): ExamQues
     .filter((column) => column.content.length > 0)
 }
 
+function normalizeMatrixPromptColumns(question: Question | null | undefined): ExamQuestionMatrixPromptColumn[] {
+  const raw = question?.matrixPromptColumns
+  if (!Array.isArray(raw) || raw.length === 0) {
+    return [{ id: 'prompt-default', label: 'Pernyataan' }]
+  }
+  return raw.map((column, index) => ({
+    id: String(column?.id || `matrix-prompt-col-${index + 1}`),
+    label: String(column?.label || '').trim() || `Kolom ${index + 1}`,
+  }))
+}
+
 function normalizeMatrixRows(question: Question | null | undefined): ExamQuestionMatrixRow[] {
   const raw = question?.matrixRows
   if (!Array.isArray(raw)) return []
@@ -165,9 +188,23 @@ function normalizeMatrixRows(question: Question | null | undefined): ExamQuestio
     .map((row, index) => ({
       id: String(row?.id || `matrix-row-${index + 1}`),
       content: String(row?.content || '').trim(),
+      cells: Array.isArray(row?.cells)
+        ? row.cells.map((cell) => ({
+            columnId: String(cell?.columnId || '').trim(),
+            content: String(cell?.content || '').trim(),
+          }))
+        : [],
       correctOptionId: row?.correctOptionId ? String(row.correctOptionId) : null,
     }))
-    .filter((row) => row.content.length > 0)
+    .filter((row) => row.content.length > 0 || (row.cells || []).some((cell) => cell.content.length > 0))
+}
+
+function getMatrixRowCellContent(row: ExamQuestionMatrixRow, promptColumnId: string, promptColumnIndex: number): string {
+  if (Array.isArray(row.cells) && row.cells.length > 0) {
+    const cell = row.cells.find((item) => item.columnId === promptColumnId)
+    return String(cell?.content || '').trim()
+  }
+  return promptColumnIndex === 0 ? String(row.content || '').trim() : ''
 }
 
 function isMatrixQuestionAnswered(question: Question | null | undefined, value: StudentExamAnswerValue | undefined): boolean {
@@ -806,6 +843,11 @@ export default function StudentExamTakePage() {
               ...q,
               question_text: q.question_text || q.content,
               question_type: q.question_type || q.type,
+              matrixPromptColumns: Array.isArray(q.matrixPromptColumns)
+                ? q.matrixPromptColumns
+                : Array.isArray(q.matrix_prompt_columns)
+                  ? q.matrix_prompt_columns
+                  : [],
               matrixColumns: Array.isArray(q.matrixColumns)
                 ? q.matrixColumns
                 : Array.isArray(q.matrix_columns)
@@ -1459,6 +1501,7 @@ export default function StudentExamTakePage() {
   }
 
   const currentQuestion = exam?.questions?.[currentQuestionIndex] ?? null
+  const currentMatrixPromptColumns = normalizeMatrixPromptColumns(currentQuestion)
   const currentMatrixColumns = normalizeMatrixColumns(currentQuestion)
   const currentMatrixRows = normalizeMatrixRows(currentQuestion)
   const currentQuestionHtml = useMemo(
@@ -1749,9 +1792,14 @@ export default function StudentExamTakePage() {
                       <table className="min-w-full border-collapse text-sm">
                         <thead className="bg-slate-50">
                           <tr>
-                            <th className="border-b border-r border-gray-200 px-4 py-3 text-left font-semibold text-slate-700">
-                              Pernyataan
-                            </th>
+                            {currentMatrixPromptColumns.map((column) => (
+                              <th
+                                key={column.id}
+                                className="border-b border-r border-gray-200 px-4 py-3 text-left font-semibold text-slate-700"
+                              >
+                                {column.label}
+                              </th>
+                            ))}
                             {currentMatrixColumns.map((column) => (
                               <th
                                 key={column.id}
@@ -1773,9 +1821,14 @@ export default function StudentExamTakePage() {
                             const selectedColumnId = String(answerMap[row.id] || '')
                             return (
                               <tr key={row.id || `matrix-row-${rowIndex + 1}`} className="bg-white">
-                                <td className="border-b border-r border-gray-200 px-4 py-3 align-top text-gray-800">
-                                  {row.content}
-                                </td>
+                                {currentMatrixPromptColumns.map((column, promptColumnIndex) => (
+                                  <td
+                                    key={`${row.id}-${column.id}`}
+                                    className="border-b border-r border-gray-200 px-4 py-3 align-top text-gray-800"
+                                  >
+                                    {getMatrixRowCellContent(row, column.id, promptColumnIndex) || '-'}
+                                  </td>
+                                ))}
                                 {currentMatrixColumns.map((column) => {
                                   const selected = selectedColumnId === column.id
                                   return (
