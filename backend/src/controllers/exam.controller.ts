@@ -1509,10 +1509,12 @@ const EXAM_BROWSER_CONSUMED_TOKEN_CACHE_TTL_MS = EXAM_BROWSER_LAUNCH_TTL_SECONDS
 const consumedExamBrowserLaunchTokens = new Map<string, number>();
 type StartExamSchedulePayload = {
     id: number;
+    classId: number | null;
     jobVacancyId: number | null;
     startTime: Date;
     endTime: Date;
     examType: string | null;
+    isActive: boolean;
     jobVacancy: {
         id: number;
         title: string;
@@ -1798,10 +1800,12 @@ async function loadStartExamSchedule(scheduleId: number): Promise<StartExamSched
         where: { id: scheduleId },
         select: {
             id: true,
+            classId: true,
             jobVacancyId: true,
             startTime: true,
             endTime: true,
             examType: true,
+            isActive: true,
             jobVacancy: {
                 select: {
                     id: true,
@@ -3030,13 +3034,44 @@ async function resolveProgramScopeConfig(params: {
 async function assertScheduleAudienceAccess(params: {
     userId: number;
     scheduleId: number;
+    scheduleClassId?: number | null;
     jobVacancyId?: number | null;
     academicYearId: number;
     accessRole: ExamAccessRole;
     programCode?: string | null;
     fallbackExamType?: string | null;
-}) {
-    if (params.accessRole === 'STUDENT') return;
+}): Promise<{ classId: number; studentStatus: string | null } | null> {
+    if (params.accessRole === 'STUDENT') {
+        const student = await prisma.user.findUnique({
+            where: { id: params.userId },
+            select: {
+                classId: true,
+                studentStatus: true,
+            },
+        });
+
+        if (!student) {
+            throw new ApiError(404, 'Siswa tidak ditemukan.');
+        }
+
+        if (student.studentStatus && student.studentStatus !== 'ACTIVE') {
+            throw new ApiError(403, 'Akun siswa tidak aktif untuk mengikuti ujian.');
+        }
+
+        const studentClassId = Number(student.classId || 0);
+        const scheduleClassId = Number(params.scheduleClassId || 0);
+        if (!Number.isFinite(studentClassId) || studentClassId <= 0) {
+            throw new ApiError(400, 'Siswa belum terhubung ke kelas aktif.');
+        }
+        if (!Number.isFinite(scheduleClassId) || scheduleClassId <= 0 || scheduleClassId !== studentClassId) {
+            throw new ApiError(403, 'Ujian ini tidak tersedia untuk kelas Anda.');
+        }
+
+        return {
+            classId: studentClassId,
+            studentStatus: student.studentStatus || null,
+        };
+    }
 
     if (params.accessRole === 'CALON_SISWA') {
         const scopeConfig = await resolveProgramScopeConfig({
@@ -3047,7 +3082,7 @@ async function assertScheduleAudienceAccess(params: {
         if (!scopeConfig || !hasProgramTargetAudience(scopeConfig.targetClassLevels, PROGRAM_TARGET_CANDIDATE)) {
             throw new ApiError(403, 'Ujian ini tidak tersedia untuk calon siswa.');
         }
-        return;
+        return null;
     }
 
     if (params.accessRole === 'UMUM') {
@@ -3100,7 +3135,7 @@ async function assertScheduleAudienceAccess(params: {
             throw new ApiError(403, 'Anda belum memiliki lamaran aktif pada lowongan tes ini.');
         }
 
-        return;
+        return null;
     }
 
     throw new ApiError(403, 'Role tidak diizinkan mengakses ujian ini.');
@@ -9574,9 +9609,13 @@ async function buildStartExamPayload(params: {
     const schedule = await getOrCreateStartExamSchedule(scheduleId);
 
     if (!schedule || !schedule.packet) throw new ApiError(404, 'Exam not found');
-    await assertScheduleAudienceAccess({
+    if (!schedule.isActive) {
+        throw new ApiError(404, 'Exam not found');
+    }
+    const studentAccessContext = await assertScheduleAudienceAccess({
         userId: studentId,
         scheduleId,
+        scheduleClassId: schedule.classId,
         jobVacancyId: schedule.jobVacancyId,
         academicYearId: schedule.packet.academicYearId,
         accessRole,
@@ -9586,17 +9625,11 @@ async function buildStartExamPayload(params: {
 
     const student =
         accessRole === 'STUDENT'
-            ? await prisma.user.findUnique({
-                  where: { id: studentId },
-                  select: { classId: true, studentStatus: true },
-              })
+            ? {
+                  classId: studentAccessContext?.classId || null,
+                  studentStatus: studentAccessContext?.studentStatus || null,
+              }
             : null;
-    if (accessRole === 'STUDENT' && student?.studentStatus && student.studentStatus !== 'ACTIVE') {
-        throw new ApiError(403, 'Akun siswa tidak aktif untuk mengikuti ujian.');
-    }
-    if (accessRole === 'STUDENT' && !student?.classId) {
-        throw new ApiError(400, 'Siswa belum terhubung ke kelas aktif.');
-    }
 
     const packetQuestions = Array.isArray(schedule.packet.questions)
         ? (schedule.packet.questions as Record<string, unknown>[])
@@ -9850,9 +9883,13 @@ export const createExamBrowserLaunchToken = asyncHandler(async (req: Request, re
     if (!schedule || !schedule.packet) {
         throw new ApiError(404, 'Ujian tidak ditemukan.');
     }
+    if (!schedule.isActive) {
+        throw new ApiError(404, 'Ujian tidak ditemukan.');
+    }
     await assertScheduleAudienceAccess({
         userId: studentId,
         scheduleId,
+        scheduleClassId: schedule.classId,
         jobVacancyId: schedule.jobVacancyId,
         academicYearId: schedule.packet.academicYearId,
         accessRole,
