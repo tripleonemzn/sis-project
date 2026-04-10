@@ -1363,54 +1363,43 @@ export default function StudentExamsPage() {
               <div className="mt-4 grid gap-4">
                 {studentExamCardsQuery.data.map((card) => {
                   const primaryEntry = card.payload.placement || card.payload.entries[0] || null
-                  const photoUrl = resolveCardMediaUrl(card.payload.student.photoUrl)
                   return (
                     <div
                       key={card.id}
-                      className="relative mx-auto w-full max-w-[580px] overflow-hidden rounded-2xl border border-blue-100 bg-[radial-gradient(circle_at_top_right,_rgba(191,219,254,0.55),_transparent_35%),linear-gradient(135deg,_#ffffff_0%,_#f8fbff_55%,_#eefbf4_100%)] shadow-sm"
+                      className="relative mx-auto w-full max-w-[520px] overflow-hidden rounded-2xl border border-blue-100 bg-[radial-gradient(circle_at_top_right,_rgba(191,219,254,0.55),_transparent_35%),linear-gradient(135deg,_#ffffff_0%,_#f8fbff_55%,_#eefbf4_100%)] shadow-sm"
                     >
                       <div className="pointer-events-none absolute inset-0 flex items-center justify-center opacity-[0.06]">
                         {watermarkLogoUrl ? (
-                          <img src={watermarkLogoUrl} alt="" className="h-48 w-48 object-contain" />
+                          <img src={watermarkLogoUrl} alt="" className="h-40 w-40 object-contain" />
                         ) : null}
                       </div>
 
-                      <div className="relative border-b border-gray-200 px-3 py-3">
-                        <div className="mx-auto flex max-w-[540px] items-center justify-center gap-4 text-center">
+                      <div className="relative border-b border-gray-200 px-3 py-2.5">
+                        <div className="mx-auto flex max-w-[500px] items-center justify-center gap-3 text-center">
                           <div className="flex shrink-0 justify-center">
                             {schoolLogoUrl ? (
-                              <img src={schoolLogoUrl} alt="Logo KGB2" className="h-16 w-16 object-contain md:h-20 md:w-20" />
+                              <img src={schoolLogoUrl} alt="Logo KGB2" className="h-14 w-14 object-contain md:h-16 md:w-16" />
                             ) : null}
                           </div>
                           <div className="text-center leading-tight">
-                            <div className="text-[13px] font-semibold uppercase leading-tight text-gray-900 md:text-[15px]">
+                            <div className="text-[11px] font-semibold uppercase leading-tight text-gray-900 md:text-[13px]">
                               {card.payload.cardTitle || 'Kartu Peserta'}
                             </div>
-                            <div className="mt-0.5 text-[13px] font-semibold uppercase leading-tight text-gray-900 md:text-[15px]">
+                            <div className="mt-0.5 text-[11px] font-semibold uppercase leading-tight text-gray-900 md:text-[13px]">
                               {card.payload.examTitle || card.payload.programLabel}
                             </div>
-                            <div className="mt-0.5 text-[13px] font-semibold uppercase leading-tight text-gray-900 md:text-[15px]">
+                            <div className="mt-0.5 text-[11px] font-semibold uppercase leading-tight text-gray-900 md:text-[13px]">
                               {card.payload.institutionName || card.payload.schoolName}
                             </div>
-                            <div className="mt-0.5 text-[13px] font-semibold uppercase leading-tight text-gray-900 md:text-[15px]">
+                            <div className="mt-0.5 text-[11px] font-semibold uppercase leading-tight text-gray-900 md:text-[13px]">
                               {`Tahun Ajaran ${card.payload.academicYearName}`}
                             </div>
                           </div>
                         </div>
                       </div>
 
-                      <div className="relative grid gap-3 px-3 py-3 md:grid-cols-[76px_minmax(0,1fr)_148px]">
-                        <div className="flex justify-center md:justify-start">
-                          <div className="flex h-24 w-[76px] items-center justify-center overflow-hidden border border-gray-300 bg-white md:h-28">
-                            {photoUrl ? (
-                              <img src={photoUrl} alt={`Foto ${card.payload.student.name}`} className="h-full w-full object-cover" />
-                            ) : (
-                              <div className="px-1.5 text-center text-[10px] leading-4 text-gray-500">Foto formal dari profil dokumen pendukung</div>
-                            )}
-                          </div>
-                        </div>
-
-                        <div className="grid grid-cols-[78px_10px_minmax(0,1fr)] gap-x-2 gap-y-1 text-[11px] leading-tight text-gray-800 md:grid-cols-[90px_10px_minmax(0,1fr)] md:text-xs">
+                      <div className="relative grid gap-3 px-3 py-2.5 md:grid-cols-[minmax(0,1fr)_132px]">
+                        <div className="grid grid-cols-[74px_8px_minmax(0,1fr)] gap-x-2 gap-y-1 text-[10px] leading-tight text-gray-800 md:grid-cols-[82px_8px_minmax(0,1fr)] md:text-[11px]">
                           <div className="font-medium">Nama Siswa</div><div>:</div><div className="break-words">{card.payload.student.name}</div>
                           <div className="font-medium">Kelas</div><div>:</div><div className="break-words">{card.payload.student.className || '-'}</div>
                           <div className="font-medium">Username</div><div>:</div><div className="break-words">{card.payload.student.username || '-'}</div>
@@ -1419,17 +1408,17 @@ export default function StudentExamsPage() {
                           <div className="font-medium">Sesi</div><div>:</div><div className="break-words">{primaryEntry?.sessionLabel || '-'}</div>
                         </div>
 
-                        <div className="flex flex-col items-center justify-start text-center text-[11px] leading-tight text-gray-800 md:text-xs">
+                        <div className="flex flex-col items-center justify-start text-center text-[10px] leading-tight text-gray-800 md:text-[11px]">
                           <div>{card.payload.issue?.signLabel || `Bekasi, ${formatDateOnlyLong(card.payload.issue?.date || card.generatedAt)}`}</div>
                           <div className="mt-1">{card.payload.legality.principalTitle || 'Kepala Sekolah'}</div>
                           {card.payload.legality.principalBarcodeDataUrl ? (
                             <img
                               src={card.payload.legality.principalBarcodeDataUrl}
                               alt="Barcode Kepala Sekolah"
-                              className="mt-2 h-24 w-24 rounded-lg border border-gray-200 bg-white p-1 md:h-28 md:w-28"
+                              className="mt-2 h-24 w-24 rounded-lg border border-gray-200 bg-white p-1 md:h-24 md:w-24"
                             />
                           ) : null}
-                          <div className="mt-2 text-[12px] font-semibold text-gray-900 md:text-[13px]">{card.payload.legality.principalName}</div>
+                          <div className="mt-2 text-[11px] font-semibold text-gray-900 md:text-[12px]">{card.payload.legality.principalName}</div>
                         </div>
                       </div>
 

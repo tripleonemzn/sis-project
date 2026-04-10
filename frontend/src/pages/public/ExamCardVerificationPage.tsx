@@ -16,6 +16,7 @@ type VerificationResponse = {
       name: string;
       username: string;
       className: string;
+      photoUrl?: string | null;
     };
     placement: {
       roomName: string;
@@ -31,6 +32,14 @@ type VerificationResponse = {
     };
   };
 };
+
+function resolveMediaUrl(value?: string | null) {
+  const raw = String(value || '').trim();
+  if (!raw) return '';
+  if (/^(data:|https?:)/i.test(raw)) return raw;
+  if (raw.startsWith('/')) return raw;
+  return `/api/uploads/${raw.replace(/^\/+/, '')}`;
+}
 
 function formatDateTime(value?: string | null) {
   if (!value) return '-';
@@ -100,6 +109,26 @@ export default function ExamCardVerificationPage() {
               </p>
 
               <div className="relative z-10 mt-8 grid gap-4 rounded-2xl border border-emerald-100 bg-emerald-50/60 p-5 text-sm text-slate-700">
+                {verificationQuery.data.snapshot.student.photoUrl ? (
+                  <div className="grid gap-3 rounded-2xl border border-emerald-100 bg-white/80 p-4 md:grid-cols-[92px_minmax(0,1fr)] md:items-center">
+                    <div className="flex justify-center md:justify-start">
+                      <div className="h-24 w-[92px] overflow-hidden rounded-xl border border-emerald-100 bg-white">
+                        <img
+                          src={resolveMediaUrl(verificationQuery.data.snapshot.student.photoUrl)}
+                          alt={`Foto ${verificationQuery.data.snapshot.student.name}`}
+                          className="h-full w-full object-cover"
+                        />
+                      </div>
+                    </div>
+                    <div className="grid gap-1">
+                      <div className="text-xs font-semibold uppercase tracking-wide text-emerald-700">Foto Formal Peserta</div>
+                      <div className="font-semibold text-slate-900">{verificationQuery.data.snapshot.student.name}</div>
+                      <div>
+                        {verificationQuery.data.snapshot.student.className} • @{verificationQuery.data.snapshot.student.username}
+                      </div>
+                    </div>
+                  </div>
+                ) : null}
                 <div className="grid gap-1">
                   <div className="text-xs font-semibold uppercase tracking-wide text-emerald-700">Nomor Peserta</div>
                   <div className="font-semibold text-slate-900">{verificationQuery.data.participantNumber}</div>

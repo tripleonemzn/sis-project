@@ -1277,6 +1277,7 @@ export const verifyPublicExamCard = asyncHandler(async (req: Request, res: Respo
             name: payload?.student?.name || '-',
             username: payload?.student?.username || '-',
             className: payload?.student?.className || '-',
+            photoUrl: payload?.student?.photoUrl || null,
           },
           placement: {
             roomName: primaryPlacement?.roomName || '-',

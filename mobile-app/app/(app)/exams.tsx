@@ -701,7 +701,6 @@ export default function StudentExamsScreen() {
             <View style={{ marginTop: 12, gap: 10 }}>
               {studentExamCardsQuery.data.map((card) => {
                 const primaryEntry = card.payload.placement || card.payload.entries[0] || null;
-                const photoUrl = resolveCardMediaUrl(card.payload.student.photoUrl);
                 return (
                   <View
                     key={card.id}
@@ -711,7 +710,7 @@ export default function StudentExamsScreen() {
                       borderRadius: 16,
                       backgroundColor: '#f8fbff',
                       overflow: 'hidden',
-                      maxWidth: 520,
+                      maxWidth: 480,
                       alignSelf: 'center',
                       width: '100%',
                     }}
@@ -721,10 +720,10 @@ export default function StudentExamsScreen() {
                         source={{ uri: watermarkLogoUrl }}
                         style={{
                           position: 'absolute',
-                          width: 176,
-                          height: 176,
+                          width: 148,
+                          height: 148,
                           alignSelf: 'center',
-                          top: 20,
+                          top: 18,
                           opacity: 0.07,
                         }}
                         resizeMode="contain"
@@ -735,15 +734,15 @@ export default function StudentExamsScreen() {
                       style={{
                         borderBottomWidth: 1,
                         borderBottomColor: '#dbe7fb',
-                        paddingHorizontal: 10,
-                        paddingVertical: 10,
+                        paddingHorizontal: 8,
+                        paddingVertical: 8,
                       }}
                     >
-                      <View style={{ flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: 12 }}>
+                      <View style={{ flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: 8 }}>
                         {schoolLogoUrl ? (
                           <Image
                             source={{ uri: schoolLogoUrl }}
-                            style={{ width: 60, height: 60 }}
+                            style={{ width: 48, height: 48 }}
                             resizeMode="contain"
                           />
                         ) : null}
@@ -751,11 +750,11 @@ export default function StudentExamsScreen() {
                           <Text
                             style={{
                               color: '#0f172a',
-                              fontSize: 12,
+                              fontSize: 10,
                               fontWeight: '700',
                               textTransform: 'uppercase',
                               textAlign: 'center',
-                              lineHeight: 16,
+                              lineHeight: 13,
                             }}
                           >
                             {card.payload.cardTitle || 'Kartu Peserta'}
@@ -763,12 +762,12 @@ export default function StudentExamsScreen() {
                           <Text
                             style={{
                               color: '#0f172a',
-                              fontSize: 12,
+                              fontSize: 10,
                               fontWeight: '700',
                               textTransform: 'uppercase',
                               textAlign: 'center',
                               marginTop: 1,
-                              lineHeight: 16,
+                              lineHeight: 13,
                             }}
                           >
                             {card.payload.examTitle || card.payload.programLabel}
@@ -776,12 +775,12 @@ export default function StudentExamsScreen() {
                           <Text
                             style={{
                               color: '#0f172a',
-                              fontSize: 12,
+                              fontSize: 10,
                               fontWeight: '700',
                               textTransform: 'uppercase',
                               textAlign: 'center',
                               marginTop: 1,
-                              lineHeight: 16,
+                              lineHeight: 13,
                             }}
                           >
                             {card.payload.institutionName || card.payload.schoolName}
@@ -789,12 +788,12 @@ export default function StudentExamsScreen() {
                           <Text
                             style={{
                               color: '#0f172a',
-                              fontSize: 12,
+                              fontSize: 10,
                               fontWeight: '700',
                               textTransform: 'uppercase',
                               textAlign: 'center',
                               marginTop: 1,
-                              lineHeight: 16,
+                              lineHeight: 13,
                             }}
                           >
                             {`Tahun Ajaran ${card.payload.academicYearName}`}
@@ -803,29 +802,8 @@ export default function StudentExamsScreen() {
                       </View>
                     </View>
 
-                    <View style={{ paddingHorizontal: 10, paddingVertical: 10, gap: 10 }}>
+                    <View style={{ paddingHorizontal: 8, paddingVertical: 8, gap: 8 }}>
                       <View style={{ flexDirection: 'row', alignItems: 'flex-start', gap: 8 }}>
-                        <View
-                          style={{
-                            width: 70,
-                            height: 94,
-                            borderWidth: 1,
-                            borderColor: '#cbd5e1',
-                            backgroundColor: '#fff',
-                            overflow: 'hidden',
-                            alignItems: 'center',
-                            justifyContent: 'center',
-                          }}
-                        >
-                          {photoUrl ? (
-                            <Image source={{ uri: photoUrl }} style={{ width: '100%', height: '100%' }} resizeMode="cover" />
-                          ) : (
-                            <Text style={{ color: '#64748b', fontSize: 9, textAlign: 'center', paddingHorizontal: 6, lineHeight: 12 }}>
-                              Foto formal dari profil dokumen pendukung
-                            </Text>
-                          )}
-                        </View>
-
                         <View style={{ flex: 1, gap: 3 }}>
                           {[
                             ['Nama Siswa', card.payload.student.name],
@@ -836,14 +814,14 @@ export default function StudentExamsScreen() {
                             ['Sesi', primaryEntry?.sessionLabel || '-'],
                           ].map(([label, value]) => (
                             <View key={label} style={{ flexDirection: 'row', alignItems: 'flex-start' }}>
-                              <Text style={{ width: 58, color: '#334155', fontSize: 10, lineHeight: 13 }}>{label}</Text>
-                              <Text style={{ width: 8, color: '#334155', fontSize: 10, lineHeight: 13 }}>:</Text>
+                              <Text style={{ width: 54, color: '#334155', fontSize: 9, lineHeight: 12 }}>{label}</Text>
+                              <Text style={{ width: 8, color: '#334155', fontSize: 9, lineHeight: 12 }}>:</Text>
                               <Text
                                 style={{
                                   flex: 1,
                                   color: label === 'No. Peserta' ? '#1d4ed8' : '#0f172a',
-                                  fontSize: 10,
-                                  lineHeight: 13,
+                                  fontSize: 9,
+                                  lineHeight: 12,
                                   fontWeight: label === 'No. Peserta' ? '700' : '400',
                                 }}
                               >
@@ -853,20 +831,20 @@ export default function StudentExamsScreen() {
                           ))}
                         </View>
 
-                        <View style={{ width: 88, alignItems: 'center' }}>
-                          <Text style={{ color: '#334155', fontSize: 10, textAlign: 'center', lineHeight: 13 }}>
+                        <View style={{ width: 84, alignItems: 'center' }}>
+                          <Text style={{ color: '#334155', fontSize: 9, textAlign: 'center', lineHeight: 12 }}>
                             {card.payload.issue?.signLabel || `Bekasi, ${formatDateOnly(card.payload.issue?.date || card.generatedAt)}`}
                           </Text>
-                          <Text style={{ color: '#334155', fontSize: 10, textAlign: 'center', marginTop: 2, lineHeight: 13 }}>
+                          <Text style={{ color: '#334155', fontSize: 9, textAlign: 'center', marginTop: 2, lineHeight: 12 }}>
                             {card.payload.legality.principalTitle || 'Kepala Sekolah'}
                           </Text>
                           {card.payload.legality.principalBarcodeDataUrl ? (
                             <Image
                               source={{ uri: card.payload.legality.principalBarcodeDataUrl }}
                               style={{
-                                width: 88,
-                                height: 88,
-                                marginTop: 8,
+                                width: 84,
+                                height: 84,
+                                marginTop: 6,
                                 borderRadius: 8,
                                 borderWidth: 1,
                                 borderColor: '#dbe7fb',
@@ -879,9 +857,9 @@ export default function StudentExamsScreen() {
                             style={{
                               color: '#0f172a',
                               fontWeight: '700',
-                              marginTop: 6,
-                              fontSize: 10,
-                              lineHeight: 13,
+                              marginTop: 5,
+                              fontSize: 9,
+                              lineHeight: 12,
                               textAlign: 'center',
                             }}
                           >
@@ -895,11 +873,11 @@ export default function StudentExamsScreen() {
                       style={{
                         borderTopWidth: 1,
                         borderTopColor: '#dbe7fb',
-                        paddingHorizontal: 10,
-                        paddingVertical: 6,
+                        paddingHorizontal: 8,
+                        paddingVertical: 5,
                       }}
                     >
-                      <Text style={{ color: '#047857', fontSize: 10, fontStyle: 'italic', lineHeight: 12 }}>
+                      <Text style={{ color: '#047857', fontSize: 9, fontStyle: 'italic', lineHeight: 11 }}>
                         {card.payload.legality.footerNote || 'Berkas digital yang sah secara internal'}
                       </Text>
                     </View>
