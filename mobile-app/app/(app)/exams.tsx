@@ -31,6 +31,12 @@ type PlacementRoomGroup = {
   entries: StudentExamPlacement[];
   primaryPlacement: StudentExamPlacement;
 };
+type ExamDayGroup = {
+  key: string;
+  label: string;
+  exams: StudentExamItem[];
+  startTime: string;
+};
 
 function normalizeProgramCode(raw?: string | null): string {
   const normalized = String(raw || '')
@@ -63,6 +69,26 @@ function formatDateOnly(value?: string | null) {
   const date = new Date(value);
   if (Number.isNaN(date.getTime())) return '-';
   return date.toLocaleDateString('id-ID', {
+    day: '2-digit',
+    month: 'long',
+    year: 'numeric',
+  });
+}
+
+function buildExamDayKey(value?: string | null) {
+  const date = new Date(String(value || ''));
+  if (Number.isNaN(date.getTime())) return String(value || 'unknown');
+  const year = date.getFullYear();
+  const month = String(date.getMonth() + 1).padStart(2, '0');
+  const day = String(date.getDate()).padStart(2, '0');
+  return `${year}-${month}-${day}`;
+}
+
+function formatExamDayLabel(value?: string | null) {
+  const date = new Date(String(value || ''));
+  if (Number.isNaN(date.getTime())) return 'Tanggal belum diatur';
+  return date.toLocaleDateString('id-ID', {
+    weekday: 'long',
     day: '2-digit',
     month: 'long',
     year: 'numeric',
@@ -201,6 +227,7 @@ export default function StudentExamsScreen() {
   const lockedProgramCode = normalizeProgramCode(Array.isArray(params.programCode) ? params.programCode[0] : params.programCode);
   const [searchQuery, setSearchQuery] = useState('');
   const [statusFilter, setStatusFilter] = useState<StatusFilter>('ALL');
+  const [expandedExamDayKey, setExpandedExamDayKey] = useState<string | null>(null);
   const [selectedExam, setSelectedExam] = useState<StudentExamItem | null>(null);
   const [selectedPlacement, setSelectedPlacement] = useState<NonNullable<typeof studentPlacements>[number] | null>(null);
   const [selectedPlacementGroup, setSelectedPlacementGroup] = useState<PlacementRoomGroup | null>(null);
@@ -417,8 +444,35 @@ export default function StudentExamsScreen() {
       );
     });
   }, [effectiveTypeFilter, examsQuery.data?.exams, searchQuery, statusFilter]);
+  const groupedFilteredExams = useMemo<ExamDayGroup[]>(() => {
+    const groupMap = new Map<string, ExamDayGroup>();
+    filtered.forEach((item) => {
+      const key = buildExamDayKey(item.startTime);
+      const existing = groupMap.get(key);
+      if (existing) {
+        existing.exams.push(item);
+        existing.exams.sort(
+          (left, right) => new Date(String(left.startTime || 0)).getTime() - new Date(String(right.startTime || 0)).getTime(),
+        );
+        return;
+      }
+      groupMap.set(key, {
+        key,
+        label: formatExamDayLabel(item.startTime),
+        startTime: item.startTime,
+        exams: [item],
+      });
+    });
+    return Array.from(groupMap.values()).sort(
+      (left, right) => new Date(String(left.startTime || 0)).getTime() - new Date(String(right.startTime || 0)).getTime(),
+    );
+  }, [filtered]);
   const schoolLogoUrl = useMemo(() => resolveCardMediaUrl('/logo-kgb2.png'), []);
   const watermarkLogoUrl = useMemo(() => resolveCardMediaUrl('/logo_sis_kgb2.png'), []);
+
+  useEffect(() => {
+    setExpandedExamDayKey(null);
+  }, [effectiveTypeFilter, searchQuery, statusFilter]);
 
   if (isLoading) return <AppLoadingScreen message="Memuat ujian..." />;
   if (!isAuthenticated) return <Redirect href="/welcome" />;
@@ -1050,221 +1104,281 @@ export default function StudentExamsScreen() {
             </Text>
           </View>
         ) : filtered.length > 0 ? (
-          <View>
-            {filtered.map((item: StudentExamItem) => {
-              const type = normalizeProgramCode(item.packet.programCode || item.packet.type);
-              const status = resolveStudentExamRuntimeStatus(item);
-              const style = statusStyle(status);
-              const isReady = item.isReady !== false;
-              const statusChip = isReady
-                ? style
-                : { bg: '#fffbeb', border: '#fcd34d', text: '#d97706', label: 'Soal Belum Siap' };
-              const resolvedSubject = resolveSubjectLabel(item);
-              const subjectName = resolvedSubject.name;
-              const subjectCode = resolvedSubject.code;
-              const vacancyTitle = String(item.jobVacancy?.title || '').trim();
-              const vacancyCompany = String(
-                item.jobVacancy?.industryPartner?.name || item.jobVacancy?.companyName || '',
-              ).trim();
+          <View style={{ gap: 10 }}>
+            {groupedFilteredExams.map((group) => {
+              const isOpen = expandedExamDayKey === group.key;
               return (
                 <View
-                  key={item.id}
+                  key={group.key}
                   style={{
                     backgroundColor: '#fff',
                     borderWidth: 1,
                     borderColor: '#e2e8f0',
-                    borderRadius: 10,
-                    padding: 12,
-                    marginBottom: 8,
+                    borderRadius: 14,
+                    overflow: 'hidden',
                   }}
                 >
-                  <View style={{ flexDirection: 'row', justifyContent: 'space-between', marginBottom: 6 }}>
-                    <Text style={{ color: '#0f172a', fontWeight: '700', flex: 1, paddingRight: 8 }}>
-                      {item.packet.title}
-                    </Text>
-                    <Text
-                      style={{
-                        color: statusChip.text,
-                        backgroundColor: statusChip.bg,
-                        borderColor: statusChip.border,
-                        borderWidth: 1,
-                        borderRadius: 999,
-                        paddingHorizontal: 8,
-                        paddingVertical: 2,
-                        fontSize: 11,
-                        fontWeight: '700',
-                      }}
-                    >
-                      {isReady && status === 'UPCOMING' && item.makeupMode === 'FORMAL' && item.makeupScheduled
-                        ? 'Jadwal Susulan'
-                        : statusChip.label}
-                    </Text>
-                  </View>
-                  <Text style={{ color: '#64748b', fontSize: 12, marginBottom: 4 }}>
-                    {isApplicantMode
-                      ? `${vacancyTitle || subjectName}${vacancyCompany ? ` • ${vacancyCompany}` : ''} • ${examTypeLabel(type)}`
-                      : `${subjectName}${subjectCode ? ` (${subjectCode})` : ''} • ${examTypeLabel(type)}`}
-                  </Text>
-                  <Text style={{ color: '#334155', fontSize: 12, marginBottom: 4 }}>
-                    Mulai: {formatDateTime(item.startTime)}
-                  </Text>
-                  <Text style={{ color: '#334155', fontSize: 12, marginBottom: 6 }}>
-                    Selesai: {formatDateTime(item.endTime)} • Durasi: {item.packet.duration} menit
-                  </Text>
-                  {!isReady ? (
-                    <View
-                      style={{
-                        marginBottom: 8,
-                        borderWidth: 1,
-                        borderColor: '#fde68a',
-                        backgroundColor: '#fffbeb',
-                        borderRadius: 8,
-                        padding: 8,
-                      }}
-                    >
-                      <Text style={{ color: '#92400e', fontSize: 12, fontWeight: '700' }}>Soal Belum Siap</Text>
-                      <Text style={{ color: '#92400e', fontSize: 11, marginTop: 4 }}>
-                        {item.notReadyReason || 'Soal untuk jadwal ini belum disiapkan guru.'}
-                      </Text>
-                    </View>
-                  ) : null}
-                  {item.makeupMode === 'FORMAL' && item.makeupStartTime ? (
-                    <Text style={{ color: '#c2410c', fontSize: 12, marginBottom: 4 }}>
-                      Jadwal susulan: {formatDateTime(item.makeupStartTime)}
-                    </Text>
-                  ) : null}
-                  {item.makeupDeadline ? (
-                    <Text style={{ color: '#c2410c', fontSize: 12, marginBottom: 4 }}>
-                      {status === 'MAKEUP' ? 'Susulan sampai' : 'Batas susulan'}: {formatDateTime(item.makeupDeadline)}
-                    </Text>
-                  ) : null}
-                  {item.makeupReason ? (
-                    <Text style={{ color: '#64748b', fontSize: 12, marginBottom: 6 }}>
-                      Alasan susulan: {item.makeupReason}
-                    </Text>
-                  ) : null}
-                  {item.isBlocked ? (
-                    <View
-                      style={{
-                        backgroundColor: '#fee2e2',
-                        borderWidth: 1,
-                        borderColor: '#fca5a5',
-                        borderRadius: 8,
-                        padding: 8,
-                        marginBottom: 8,
-                      }}
-                    >
-                      <Text style={{ color: '#991b1b', fontSize: 12, fontWeight: '600' }}>
-                        Diblokir: {item.blockReason || 'Akses dibatasi wali kelas'}
-                      </Text>
-                      {item.financeClearance?.hasOutstanding ? (
-                        <View
-                          style={{
-                            marginTop: 8,
-                            borderWidth: 1,
-                            borderColor: '#fde68a',
-                            backgroundColor: '#fffbeb',
-                            borderRadius: 8,
-                            padding: 8,
-                          }}
-                        >
-                          <Text style={{ color: '#92400e', fontSize: 11, fontWeight: '700' }}>Clearance finance</Text>
-                          <Text style={{ color: '#92400e', fontSize: 11, marginTop: 2 }}>
-                            Outstanding: {formatExamCurrency(item.financeClearance.outstandingAmount)}
-                          </Text>
-                          <Text style={{ color: '#92400e', fontSize: 11, marginTop: 2 }}>
-                            Tagihan aktif: {item.financeClearance.outstandingInvoices} • overdue: {item.financeClearance.overdueInvoices}
-                          </Text>
-                          {!item.financeClearance.blocksExam ? (
-                            <Text style={{ color: '#92400e', fontSize: 11, marginTop: 4 }}>
-                              Status finance ini tidak menjadi penyebab blokir pada program ujian ini.
-                            </Text>
-                          ) : null}
-                        </View>
-                      ) : null}
-                    </View>
-                  ) : null}
-                  {!item.isBlocked && item.financeClearance?.warningOnly && item.financeClearance.hasOutstanding ? (
-                    <View
-                      style={{
-                        marginBottom: 8,
-                        borderWidth: 1,
-                        borderColor: '#fde68a',
-                        backgroundColor: '#fffbeb',
-                        borderRadius: 8,
-                        padding: 8,
-                      }}
-                    >
-                      <Text style={{ color: '#92400e', fontSize: 11, fontWeight: '700' }}>Info finance</Text>
-                      <Text style={{ color: '#92400e', fontSize: 11, marginTop: 2 }}>
-                        Outstanding: {formatExamCurrency(item.financeClearance.outstandingAmount)}
-                      </Text>
-                      <Text style={{ color: '#92400e', fontSize: 11, marginTop: 2 }}>
-                        Tagihan aktif: {item.financeClearance.outstandingInvoices} • overdue: {item.financeClearance.overdueInvoices}
-                      </Text>
-                      <Text style={{ color: '#92400e', fontSize: 11, marginTop: 4 }}>
-                        Program ini hanya memberi peringatan dan tidak memblokir ujian.
-                      </Text>
-                    </View>
-                  ) : null}
                   <Pressable
-                    onPress={async () => {
-                      if ((status === 'OPEN' || status === 'MAKEUP') && !item.isBlocked && isReady) {
-                        setSelectedExam(item);
-                        return;
-                      }
-                      const upcomingMessage =
-                        item.makeupMode === 'FORMAL' && item.makeupScheduled
-                          ? 'Jadwal susulan belum dimulai. Silakan tunggu waktu susulan yang ditetapkan.'
-                          : isApplicantMode
-                            ? 'Tes BKK belum dimulai. Silakan tunggu jadwal mulai.'
-                            : 'Ujian belum dimulai. Silakan tunggu jadwal mulai.';
-                      Alert.alert(
-                        isApplicantMode ? 'Tes BKK' : 'Ujian Mobile',
-                        status === 'COMPLETED'
-                          ? isApplicantMode
-                            ? 'Tes BKK ini sudah selesai dikerjakan.'
-                            : 'Ujian ini sudah selesai dikerjakan.'
-                          : status === 'MISSED'
-                            ? isApplicantMode
-                              ? 'Waktu tes BKK sudah berakhir.'
-                              : 'Waktu ujian sudah berakhir.'
-                            : status === 'UPCOMING'
-                              ? upcomingMessage
-                            : status === 'MAKEUP'
-                              ? isApplicantMode
-                                ? 'Tes BKK susulan tidak tersedia saat ini.'
-                                : 'Ujian susulan tidak tersedia saat ini.'
-                              : isApplicantMode
-                                ? 'Tes BKK tidak dapat dikerjakan dari mobile untuk status ini.'
-                            : !isReady
-                              ? item.notReadyReason || 'Soal untuk jadwal ini belum disiapkan guru.'
-                              : 'Ujian tidak dapat dikerjakan dari mobile untuk status ini.',
-                      );
-                    }}
+                    onPress={() => setExpandedExamDayKey((current) => (current === group.key ? null : group.key))}
                     style={{
-                      backgroundColor: (status === 'OPEN' || status === 'MAKEUP') && !item.isBlocked && isReady ? '#1d4ed8' : '#cbd5e1',
-                      borderRadius: 8,
-                      paddingVertical: 9,
+                      paddingHorizontal: 14,
+                      paddingVertical: 14,
+                      flexDirection: 'row',
                       alignItems: 'center',
+                      justifyContent: 'space-between',
+                      gap: 12,
                     }}
                   >
-                    <Text style={{ color: '#fff', fontWeight: '700' }}>
-                      {(status === 'OPEN' || status === 'MAKEUP') && !item.isBlocked && isReady
-                        ? isApplicantMode
-                          ? status === 'MAKEUP'
-                            ? 'Mulai Tes Susulan'
-                            : 'Mulai Tes BKK'
-                          : status === 'MAKEUP'
-                            ? 'Mulai Susulan'
-                            : 'Mulai Ujian'
-                        : !isReady
-                          ? 'Menunggu Soal'
-                        : isApplicantMode
-                          ? 'Detail Tes BKK'
-                          : 'Detail Ujian'}
-                    </Text>
+                    <View style={{ flex: 1 }}>
+                      <Text style={{ color: '#0f172a', fontSize: 17, fontWeight: '700' }}>{group.label}</Text>
+                      <Text style={{ color: '#64748b', fontSize: 12, marginTop: 4 }}>
+                        {group.exams.length} {isApplicantMode ? 'tes' : 'mata pelajaran'} terjadwal
+                      </Text>
+                    </View>
+                    <View style={{ flexDirection: 'row', alignItems: 'center', gap: 10 }}>
+                      <View
+                        style={{
+                          borderRadius: 999,
+                          borderWidth: 1,
+                          borderColor: '#bfdbfe',
+                          backgroundColor: '#eff6ff',
+                          paddingHorizontal: 10,
+                          paddingVertical: 6,
+                        }}
+                      >
+                        <Text style={{ color: '#1d4ed8', fontWeight: '700', fontSize: 12 }}>
+                          {group.exams.length} slot
+                        </Text>
+                      </View>
+                      <View style={{ flexDirection: 'row', alignItems: 'center', gap: 4 }}>
+                        <Text style={{ color: '#2563eb', fontSize: 12, fontWeight: '700' }}>
+                          {isOpen ? 'Tutup Hari' : 'Buka Hari'}
+                        </Text>
+                        <Feather name={isOpen ? 'chevron-up' : 'chevron-down'} size={16} color="#2563eb" />
+                      </View>
+                    </View>
                   </Pressable>
+
+                  {isOpen ? (
+                    <View style={{ borderTopWidth: 1, borderTopColor: '#e2e8f0', padding: 10, gap: 8 }}>
+                      {group.exams.map((item: StudentExamItem) => {
+                        const type = normalizeProgramCode(item.packet.programCode || item.packet.type);
+                        const status = resolveStudentExamRuntimeStatus(item);
+                        const style = statusStyle(status);
+                        const isReady = item.isReady !== false;
+                        const statusChip = isReady
+                          ? style
+                          : { bg: '#fffbeb', border: '#fcd34d', text: '#d97706', label: 'Soal Belum Siap' };
+                        const resolvedSubject = resolveSubjectLabel(item);
+                        const subjectName = resolvedSubject.name;
+                        const subjectCode = resolvedSubject.code;
+                        const vacancyTitle = String(item.jobVacancy?.title || '').trim();
+                        const vacancyCompany = String(
+                          item.jobVacancy?.industryPartner?.name || item.jobVacancy?.companyName || '',
+                        ).trim();
+                        return (
+                          <View
+                            key={item.id}
+                            style={{
+                              backgroundColor: '#fff',
+                              borderWidth: 1,
+                              borderColor: '#e2e8f0',
+                              borderRadius: 10,
+                              padding: 12,
+                            }}
+                          >
+                            <View style={{ flexDirection: 'row', justifyContent: 'space-between', marginBottom: 6 }}>
+                              <Text style={{ color: '#0f172a', fontWeight: '700', flex: 1, paddingRight: 8 }}>
+                                {item.packet.title}
+                              </Text>
+                              <Text
+                                style={{
+                                  color: statusChip.text,
+                                  backgroundColor: statusChip.bg,
+                                  borderColor: statusChip.border,
+                                  borderWidth: 1,
+                                  borderRadius: 999,
+                                  paddingHorizontal: 8,
+                                  paddingVertical: 2,
+                                  fontSize: 11,
+                                  fontWeight: '700',
+                                }}
+                              >
+                                {isReady && status === 'UPCOMING' && item.makeupMode === 'FORMAL' && item.makeupScheduled
+                                  ? 'Jadwal Susulan'
+                                  : statusChip.label}
+                              </Text>
+                            </View>
+                            <Text style={{ color: '#64748b', fontSize: 12, marginBottom: 4 }}>
+                              {isApplicantMode
+                                ? `${vacancyTitle || subjectName}${vacancyCompany ? ` • ${vacancyCompany}` : ''} • ${examTypeLabel(type)}`
+                                : `${subjectName}${subjectCode ? ` (${subjectCode})` : ''} • ${examTypeLabel(type)}`}
+                            </Text>
+                            <Text style={{ color: '#334155', fontSize: 12, marginBottom: 4 }}>
+                              Mulai: {formatDateTime(item.startTime)}
+                            </Text>
+                            <Text style={{ color: '#334155', fontSize: 12, marginBottom: 6 }}>
+                              Selesai: {formatDateTime(item.endTime)} • Durasi: {item.packet.duration} menit
+                            </Text>
+                            {!isReady ? (
+                              <View
+                                style={{
+                                  marginBottom: 8,
+                                  borderWidth: 1,
+                                  borderColor: '#fde68a',
+                                  backgroundColor: '#fffbeb',
+                                  borderRadius: 8,
+                                  padding: 8,
+                                }}
+                              >
+                                <Text style={{ color: '#92400e', fontSize: 12, fontWeight: '700' }}>Soal Belum Siap</Text>
+                                <Text style={{ color: '#92400e', fontSize: 11, marginTop: 4 }}>
+                                  {item.notReadyReason || 'Soal untuk jadwal ini belum disiapkan guru.'}
+                                </Text>
+                              </View>
+                            ) : null}
+                            {item.makeupMode === 'FORMAL' && item.makeupStartTime ? (
+                              <Text style={{ color: '#c2410c', fontSize: 12, marginBottom: 4 }}>
+                                Jadwal susulan: {formatDateTime(item.makeupStartTime)}
+                              </Text>
+                            ) : null}
+                            {item.makeupDeadline ? (
+                              <Text style={{ color: '#c2410c', fontSize: 12, marginBottom: 4 }}>
+                                {status === 'MAKEUP' ? 'Susulan sampai' : 'Batas susulan'}: {formatDateTime(item.makeupDeadline)}
+                              </Text>
+                            ) : null}
+                            {item.makeupReason ? (
+                              <Text style={{ color: '#64748b', fontSize: 12, marginBottom: 6 }}>
+                                Alasan susulan: {item.makeupReason}
+                              </Text>
+                            ) : null}
+                            {item.isBlocked ? (
+                              <View
+                                style={{
+                                  backgroundColor: '#fee2e2',
+                                  borderWidth: 1,
+                                  borderColor: '#fca5a5',
+                                  borderRadius: 8,
+                                  padding: 8,
+                                  marginBottom: 8,
+                                }}
+                              >
+                                <Text style={{ color: '#991b1b', fontSize: 12, fontWeight: '600' }}>
+                                  Diblokir: {item.blockReason || 'Akses dibatasi wali kelas'}
+                                </Text>
+                                {item.financeClearance?.hasOutstanding ? (
+                                  <View
+                                    style={{
+                                      marginTop: 8,
+                                      borderWidth: 1,
+                                      borderColor: '#fde68a',
+                                      backgroundColor: '#fffbeb',
+                                      borderRadius: 8,
+                                      padding: 8,
+                                    }}
+                                  >
+                                    <Text style={{ color: '#92400e', fontSize: 11, fontWeight: '700' }}>Clearance finance</Text>
+                                    <Text style={{ color: '#92400e', fontSize: 11, marginTop: 2 }}>
+                                      Outstanding: {formatExamCurrency(item.financeClearance.outstandingAmount)}
+                                    </Text>
+                                    <Text style={{ color: '#92400e', fontSize: 11, marginTop: 2 }}>
+                                      Tagihan aktif: {item.financeClearance.outstandingInvoices} • overdue: {item.financeClearance.overdueInvoices}
+                                    </Text>
+                                    {!item.financeClearance.blocksExam ? (
+                                      <Text style={{ color: '#92400e', fontSize: 11, marginTop: 4 }}>
+                                        Status finance ini tidak menjadi penyebab blokir pada program ujian ini.
+                                      </Text>
+                                    ) : null}
+                                  </View>
+                                ) : null}
+                              </View>
+                            ) : null}
+                            {!item.isBlocked && item.financeClearance?.warningOnly && item.financeClearance.hasOutstanding ? (
+                              <View
+                                style={{
+                                  marginBottom: 8,
+                                  borderWidth: 1,
+                                  borderColor: '#fde68a',
+                                  backgroundColor: '#fffbeb',
+                                  borderRadius: 8,
+                                  padding: 8,
+                                }}
+                              >
+                                <Text style={{ color: '#92400e', fontSize: 11, fontWeight: '700' }}>Info finance</Text>
+                                <Text style={{ color: '#92400e', fontSize: 11, marginTop: 2 }}>
+                                  Outstanding: {formatExamCurrency(item.financeClearance.outstandingAmount)}
+                                </Text>
+                                <Text style={{ color: '#92400e', fontSize: 11, marginTop: 2 }}>
+                                  Tagihan aktif: {item.financeClearance.outstandingInvoices} • overdue: {item.financeClearance.overdueInvoices}
+                                </Text>
+                                <Text style={{ color: '#92400e', fontSize: 11, marginTop: 4 }}>
+                                  Program ini hanya memberi peringatan dan tidak memblokir ujian.
+                                </Text>
+                              </View>
+                            ) : null}
+                            <Pressable
+                              onPress={async () => {
+                                if ((status === 'OPEN' || status === 'MAKEUP') && !item.isBlocked && isReady) {
+                                  setSelectedExam(item);
+                                  return;
+                                }
+                                const upcomingMessage =
+                                  item.makeupMode === 'FORMAL' && item.makeupScheduled
+                                    ? 'Jadwal susulan belum dimulai. Silakan tunggu waktu susulan yang ditetapkan.'
+                                    : isApplicantMode
+                                      ? 'Tes BKK belum dimulai. Silakan tunggu jadwal mulai.'
+                                      : 'Ujian belum dimulai. Silakan tunggu jadwal mulai.';
+                                Alert.alert(
+                                  isApplicantMode ? 'Tes BKK' : 'Ujian Mobile',
+                                  status === 'COMPLETED'
+                                    ? isApplicantMode
+                                      ? 'Tes BKK ini sudah selesai dikerjakan.'
+                                      : 'Ujian ini sudah selesai dikerjakan.'
+                                    : status === 'MISSED'
+                                      ? isApplicantMode
+                                        ? 'Waktu tes BKK sudah berakhir.'
+                                        : 'Waktu ujian sudah berakhir.'
+                                      : status === 'UPCOMING'
+                                        ? upcomingMessage
+                                      : status === 'MAKEUP'
+                                        ? isApplicantMode
+                                          ? 'Tes BKK susulan tidak tersedia saat ini.'
+                                          : 'Ujian susulan tidak tersedia saat ini.'
+                                        : isApplicantMode
+                                          ? 'Tes BKK tidak dapat dikerjakan dari mobile untuk status ini.'
+                                          : !isReady
+                                            ? item.notReadyReason || 'Soal untuk jadwal ini belum disiapkan guru.'
+                                            : 'Ujian tidak dapat dikerjakan dari mobile untuk status ini.',
+                                );
+                              }}
+                              style={{
+                                backgroundColor: (status === 'OPEN' || status === 'MAKEUP') && !item.isBlocked && isReady ? '#1d4ed8' : '#cbd5e1',
+                                borderRadius: 8,
+                                paddingVertical: 9,
+                                alignItems: 'center',
+                              }}
+                            >
+                              <Text style={{ color: '#fff', fontWeight: '700' }}>
+                                {(status === 'OPEN' || status === 'MAKEUP') && !item.isBlocked && isReady
+                                  ? isApplicantMode
+                                    ? status === 'MAKEUP'
+                                      ? 'Mulai Tes Susulan'
+                                      : 'Mulai Tes BKK'
+                                    : status === 'MAKEUP'
+                                      ? 'Mulai Susulan'
+                                      : 'Mulai Ujian'
+                                  : !isReady
+                                    ? 'Menunggu Soal'
+                                    : isApplicantMode
+                                      ? 'Detail Tes BKK'
+                                      : 'Detail Ujian'}
+                              </Text>
+                            </Pressable>
+                          </View>
+                        );
+                      })}
+                    </View>
+                  ) : null}
                 </View>
               );
             })}

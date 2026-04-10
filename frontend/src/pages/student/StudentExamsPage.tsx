@@ -292,6 +292,13 @@ type PlacementRoomGroup = {
   primaryPlacement: StudentExamPlacement
 }
 
+type ExamDayGroup = {
+  key: string
+  label: string
+  startTime: string
+  exams: Exam[]
+}
+
 function formatExamCurrency(value?: number | null): string {
   return new Intl.NumberFormat('id-ID', {
     style: 'currency',
@@ -307,6 +314,26 @@ function resolveCardMediaUrl(value?: string | null): string {
   if (typeof window === 'undefined') return raw
   if (raw.startsWith('/')) return new URL(raw, window.location.origin).toString()
   return new URL(`/api/uploads/${raw.replace(/^\/+/, '')}`, window.location.origin).toString()
+}
+
+function buildExamDayKey(value?: string | null): string {
+  const date = new Date(String(value || ''))
+  if (Number.isNaN(date.getTime())) return String(value || 'unknown')
+  const year = date.getFullYear()
+  const month = String(date.getMonth() + 1).padStart(2, '0')
+  const day = String(date.getDate()).padStart(2, '0')
+  return `${year}-${month}-${day}`
+}
+
+function formatExamDayLabel(value?: string | null): string {
+  const date = new Date(String(value || ''))
+  if (Number.isNaN(date.getTime())) return 'Tanggal belum diatur'
+  return date.toLocaleDateString('id-ID', {
+    weekday: 'long',
+    day: '2-digit',
+    month: 'long',
+    year: 'numeric',
+  })
 }
 
 export default function StudentExamsPage() {
@@ -340,6 +367,7 @@ export default function StudentExamsPage() {
   const [examPrograms, setExamPrograms] = useState<ExamProgram[]>([])
   const [isCardsExpanded, setIsCardsExpanded] = useState(false)
   const [isPlacementsExpanded, setIsPlacementsExpanded] = useState(false)
+  const [expandedExamDayKey, setExpandedExamDayKey] = useState<string | null>(null)
   const [showExamRulesModal, setShowExamRulesModal] = useState(false)
   const [serverTimeDrift, setServerTimeDrift] = useState<ServerTimeDriftState | null>(null)
   const lockedProgramCode = programFilter !== 'all' ? programFilter : ''
@@ -695,6 +723,35 @@ export default function StudentExamsPage() {
 
     return filtered
   }, [exams, programFilter, searchQuery, statusFilter])
+  const groupedFilteredExams = useMemo<ExamDayGroup[]>(() => {
+    const groupMap = new Map<string, ExamDayGroup>()
+    filteredExams.forEach((exam) => {
+      const key = buildExamDayKey(exam.start_time)
+      const existing = groupMap.get(key)
+      if (existing) {
+        existing.exams.push(exam)
+        existing.exams.sort(
+          (left, right) =>
+            new Date(String(left.start_time || 0)).getTime() - new Date(String(right.start_time || 0)).getTime(),
+        )
+        return
+      }
+      groupMap.set(key, {
+        key,
+        label: formatExamDayLabel(exam.start_time),
+        startTime: exam.start_time,
+        exams: [exam],
+      })
+    })
+    return Array.from(groupMap.values()).sort(
+      (left, right) =>
+        new Date(String(left.startTime || 0)).getTime() - new Date(String(right.startTime || 0)).getTime(),
+    )
+  }, [filteredExams])
+
+  useEffect(() => {
+    setExpandedExamDayKey(null)
+  }, [programFilter, searchQuery, statusFilter])
 
   const canTakeExam = (exam: Exam) => {
     const status = getExamStatus(exam)
@@ -1031,6 +1088,169 @@ export default function StudentExamsPage() {
     return cards.find((card) => normalizeExamProgramCode(card.payload.programCode || card.programCode) === placementProgramCode) || null
   }, [selectedPlacement, studentExamCardsQuery.data])
   const fallbackIdentityCard = useMemo(() => (studentExamCardsQuery.data || [])[0] || null, [studentExamCardsQuery.data])
+  const renderExamRow = (exam: Exam) => {
+    const status = getExamStatus(exam)
+    const canTake = canTakeExam(exam)
+
+    return (
+      <tr
+        key={exam.id}
+        className={`hover:bg-gray-50 ${canTake ? 'bg-green-50' : ''}`}
+      >
+        <td className="px-6 py-4">
+          <div className="flex items-start">
+            <FileText className="w-5 h-5 text-blue-600 mr-2 flex-shrink-0 mt-0.5" />
+            <div>
+              <div className="text-sm font-medium text-gray-900">
+                {exam.title}
+              </div>
+              {exam.sessionLabel ? (
+                <span className="mt-1 inline-flex items-center px-2 py-0.5 rounded-full text-[11px] font-medium bg-indigo-50 text-indigo-700 border border-indigo-100">
+                  {exam.sessionLabel}
+                </span>
+              ) : null}
+            </div>
+          </div>
+        </td>
+
+        <td className="px-6 py-4 whitespace-nowrap">
+          {isApplicantMode ? (
+            <div>
+              <div className="text-sm font-medium text-gray-900">
+                {exam.jobVacancy?.title || exam.subject?.name || '-'}
+              </div>
+              <div className="text-xs text-gray-500">
+                {exam.jobVacancy?.companyName || exam.subject?.code || 'Lowongan BKK'}
+              </div>
+            </div>
+          ) : (
+            <div className="text-sm text-gray-900">{exam.subject?.name || '-'}</div>
+          )}
+        </td>
+
+        <td className="px-6 py-4 whitespace-nowrap text-center">
+          <span className={`px-2 py-1 text-xs font-medium rounded ${getTypeColor(exam.programCode || exam.type)}`}>
+            {getExamTypeLabel(exam)}
+          </span>
+        </td>
+
+        <td className="px-6 py-4 whitespace-nowrap text-center">
+          <div className="text-sm font-medium text-gray-900">
+            {exam.question_count || 0}
+          </div>
+          <div className="text-xs text-gray-500">soal</div>
+        </td>
+
+        <td className="px-6 py-4 whitespace-nowrap text-center">
+          <div className="text-sm font-medium text-gray-900">
+            {exam.duration}
+          </div>
+          <div className="text-xs text-gray-500">menit</div>
+        </td>
+
+        <td className="px-6 py-4">
+          <div className="text-xs text-gray-600">
+            <div className="flex items-center gap-1 mb-1">
+              <Calendar className="w-3 h-3" />
+              <span>Mulai: {formatDateShort(exam.start_time)}</span>
+            </div>
+            <div className="flex items-center gap-1">
+              <Calendar className="w-3 h-3" />
+              <span>Selesai: {formatDateShort(exam.end_time)}</span>
+            </div>
+            {exam.makeupMode === 'FORMAL' && exam.makeupStartTime ? (
+              <div className="flex items-center gap-1 text-orange-600 mt-1">
+                <Clock className="w-3 h-3" />
+                <span>Jadwal susulan: {formatDateShort(exam.makeupStartTime)}</span>
+              </div>
+            ) : null}
+            {getExamStatus(exam) === 'makeup' && exam.makeupDeadline ? (
+              <div className="flex items-center gap-1 text-orange-600 mt-1">
+                <Clock className="w-3 h-3" />
+                <span>Susulan sampai: {formatDateShort(exam.makeupDeadline)}</span>
+              </div>
+            ) : null}
+            {exam.makeupMode === 'FORMAL' && exam.makeupReason ? (
+              <div className="text-[11px] text-orange-700 mt-1">
+                Alasan susulan: {exam.makeupReason}
+              </div>
+            ) : null}
+          </div>
+        </td>
+
+        <td className="px-6 py-4 whitespace-nowrap text-center">
+          {getStatusBadge(exam)}
+        </td>
+
+        <td className="px-6 py-4 whitespace-nowrap text-center">
+          {exam.isBlocked ? (
+            <div className="flex flex-col items-center">
+              <span className="inline-flex items-center gap-1 px-3 py-2 bg-red-100 text-red-700 text-sm font-medium rounded mb-1">
+                <XCircle className="w-4 h-4" />
+                <span>Akses Ditolak</span>
+              </span>
+              <span className="text-xs text-red-600 max-w-[200px] whitespace-normal text-center">
+                {exam.blockReason}
+              </span>
+              {exam.financeClearance?.hasOutstanding ? (
+                <div className="mt-2 rounded-lg border border-amber-200 bg-amber-50 px-3 py-2 text-left text-[11px] text-amber-800">
+                  <div className="font-semibold">Clearance finance</div>
+                  <div>Outstanding: {formatExamCurrency(exam.financeClearance.outstandingAmount)}</div>
+                  <div>
+                    Tagihan aktif: {exam.financeClearance.outstandingInvoices} • overdue:{' '}
+                    {exam.financeClearance.overdueInvoices}
+                  </div>
+                  {!exam.financeClearance.blocksExam ? (
+                    <div className="mt-1 text-[11px] text-amber-700">
+                      Status finance ini tidak menjadi penyebab blokir pada program ujian ini.
+                    </div>
+                  ) : null}
+                </div>
+              ) : null}
+            </div>
+          ) : exam.isReady === false ? (
+            <div className="flex flex-col items-center">
+              <span className="inline-flex items-center gap-1 px-3 py-2 bg-amber-100 text-amber-700 text-sm font-medium rounded mb-1">
+                <AlertCircle className="w-4 h-4" />
+                <span>Menunggu Soal</span>
+              </span>
+              <span className="text-xs text-amber-700 max-w-[200px] whitespace-normal text-center">
+                {exam.notReadyReason || 'Soal untuk jadwal ini belum disiapkan guru.'}
+              </span>
+            </div>
+          ) : canTake ? (
+            <button
+              onClick={() => handleStartExam(exam)}
+              className="inline-flex items-center gap-1 px-3 py-2 bg-green-600 text-white text-sm font-medium rounded hover:bg-green-700 transition-colors"
+            >
+              <Play className="w-4 h-4" />
+              <span>{getExamStatus(exam) === 'makeup' ? 'Mulai Susulan' : 'Mulai'}</span>
+            </button>
+          ) : status === 'graded' || status === 'completed' ? (
+            <span className="inline-flex items-center gap-1 px-3 py-2 bg-gray-100 text-gray-700 text-sm font-medium rounded">
+              <CheckCircle className="w-4 h-4" />
+              <span>Sudah Dikerjakan</span>
+            </span>
+          ) : (
+            <span className="text-sm text-gray-400">-</span>
+          )}
+          {!exam.isBlocked && exam.financeClearance?.warningOnly && exam.financeClearance.hasOutstanding ? (
+            <div className="mt-2 rounded-lg border border-amber-200 bg-amber-50 px-3 py-2 text-left text-[11px] text-amber-800">
+              <div className="font-semibold">Info finance</div>
+              <div>Outstanding: {formatExamCurrency(exam.financeClearance.outstandingAmount)}</div>
+              <div>
+                Tagihan aktif: {exam.financeClearance.outstandingInvoices} • overdue:{' '}
+                {exam.financeClearance.overdueInvoices}
+              </div>
+              <div className="mt-1 text-[11px] text-amber-700">
+                Program ini hanya memberi peringatan dan tidak memblokir ujian.
+              </div>
+            </div>
+          ) : null}
+        </td>
+      </tr>
+    )
+  }
 
   if (loading) {
     return (
@@ -1368,210 +1588,73 @@ export default function StudentExamsPage() {
               </p>
             </div>
           ) : (
-            <div className="overflow-x-auto">
-              <table className="min-w-full divide-y divide-gray-200">
-                <thead className="bg-gray-50">
-                  <tr>
-                    <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
-                      {isApplicantMode ? 'Tes' : 'Ujian'}
-                    </th>
-                    <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
-                      {contextColumnTitle}
-                    </th>
-                    <th className="px-6 py-3 text-center text-xs font-medium text-gray-500 uppercase tracking-wider">
-                      Jenis
-                    </th>
-                    <th className="px-6 py-3 text-center text-xs font-medium text-gray-500 uppercase tracking-wider">
-                      Soal
-                    </th>
-                    <th className="px-6 py-3 text-center text-xs font-medium text-gray-500 uppercase tracking-wider">
-                      Durasi
-                    </th>
-                    <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
-                      Waktu
-                    </th>
-                    <th className="px-6 py-3 text-center text-xs font-medium text-gray-500 uppercase tracking-wider">
-                      Status
-                    </th>
-                    <th className="px-6 py-3 text-center text-xs font-medium text-gray-500 uppercase tracking-wider">
-                      Aksi
-                    </th>
-                  </tr>
-                </thead>
-                <tbody className="bg-white divide-y divide-gray-200">
-                  {filteredExams.map((exam) => {
-                    const status = getExamStatus(exam)
-                    const canTake = canTakeExam(exam)
+            <div className="space-y-4 p-4">
+              {groupedFilteredExams.map((group) => {
+                const isOpen = expandedExamDayKey === group.key
+                return (
+                  <div key={group.key} className="overflow-hidden rounded-2xl border border-gray-200 bg-white">
+                    <button
+                      type="button"
+                      onClick={() => setExpandedExamDayKey((current) => (current === group.key ? null : group.key))}
+                      className="flex w-full items-center justify-between gap-4 px-5 py-4 text-left hover:bg-gray-50"
+                    >
+                      <div className="min-w-0">
+                        <div className="text-lg font-semibold text-gray-900">{group.label}</div>
+                        <div className="mt-1 text-sm text-gray-500">
+                          {group.exams.length} {isApplicantMode ? 'tes' : 'mata pelajaran'} terjadwal
+                        </div>
+                      </div>
+                      <div className="flex items-center gap-3">
+                        <span className="rounded-full bg-blue-50 px-3 py-1 text-xs font-semibold text-blue-700">
+                          {group.exams.length} slot
+                        </span>
+                        <span className="inline-flex items-center gap-1 text-sm font-medium text-blue-700">
+                          {isOpen ? 'Tutup Hari' : 'Buka Hari'}
+                          {isOpen ? <ChevronUp className="h-4 w-4" /> : <ChevronDown className="h-4 w-4" />}
+                        </span>
+                      </div>
+                    </button>
 
-                    return (
-                      <tr 
-                        key={exam.id} 
-                        className={`hover:bg-gray-50 ${canTake ? 'bg-green-50' : ''}`}
-                      >
-                        {/* Ujian */}
-                        <td className="px-6 py-4">
-                          <div className="flex items-start">
-                            <FileText className="w-5 h-5 text-blue-600 mr-2 flex-shrink-0 mt-0.5" />
-                            <div>
-                              <div className="text-sm font-medium text-gray-900">
-                                {exam.title}
-                              </div>
-                              {exam.sessionLabel ? (
-                                <span className="mt-1 inline-flex items-center px-2 py-0.5 rounded-full text-[11px] font-medium bg-indigo-50 text-indigo-700 border border-indigo-100">
-                                  {exam.sessionLabel}
-                                </span>
-                              ) : null}
-                            </div>
-                          </div>
-                        </td>
-
-                        {/* Mata Pelajaran / Konteks */}
-                        <td className="px-6 py-4 whitespace-nowrap">
-                          {isApplicantMode ? (
-                            <div>
-                              <div className="text-sm font-medium text-gray-900">
-                                {exam.jobVacancy?.title || exam.subject?.name || '-'}
-                              </div>
-                              <div className="text-xs text-gray-500">
-                                {exam.jobVacancy?.companyName || exam.subject?.code || 'Lowongan BKK'}
-                              </div>
-                            </div>
-                          ) : (
-                            <div className="text-sm text-gray-900">{exam.subject?.name || '-'}</div>
-                          )}
-                        </td>
-
-                        {/* Jenis */}
-                        <td className="px-6 py-4 whitespace-nowrap text-center">
-                          <span className={`px-2 py-1 text-xs font-medium rounded ${getTypeColor(exam.programCode || exam.type)}`}>
-                            {getExamTypeLabel(exam)}
-                          </span>
-                        </td>
-
-                        {/* Soal */}
-                        <td className="px-6 py-4 whitespace-nowrap text-center">
-                          <div className="text-sm font-medium text-gray-900">
-                            {exam.question_count || 0}
-                          </div>
-                          <div className="text-xs text-gray-500">soal</div>
-                        </td>
-
-                        {/* Durasi */}
-                        <td className="px-6 py-4 whitespace-nowrap text-center">
-                          <div className="text-sm font-medium text-gray-900">
-                            {exam.duration}
-                          </div>
-                          <div className="text-xs text-gray-500">menit</div>
-                        </td>
-
-                        {/* Waktu */}
-                        <td className="px-6 py-4">
-                          <div className="text-xs text-gray-600">
-                            <div className="flex items-center gap-1 mb-1">
-                              <Calendar className="w-3 h-3" />
-                              <span>Mulai: {formatDateShort(exam.start_time)}</span>
-                            </div>
-                            <div className="flex items-center gap-1">
-                              <Calendar className="w-3 h-3" />
-                              <span>Selesai: {formatDateShort(exam.end_time)}</span>
-                            </div>
-                            {exam.makeupMode === 'FORMAL' && exam.makeupStartTime ? (
-                              <div className="flex items-center gap-1 text-orange-600 mt-1">
-                                <Clock className="w-3 h-3" />
-                                <span>Jadwal susulan: {formatDateShort(exam.makeupStartTime)}</span>
-                              </div>
-                            ) : null}
-                            {getExamStatus(exam) === 'makeup' && exam.makeupDeadline ? (
-                              <div className="flex items-center gap-1 text-orange-600 mt-1">
-                                <Clock className="w-3 h-3" />
-                                <span>Susulan sampai: {formatDateShort(exam.makeupDeadline)}</span>
-                              </div>
-                            ) : null}
-                            {exam.makeupMode === 'FORMAL' && exam.makeupReason ? (
-                              <div className="text-[11px] text-orange-700 mt-1">
-                                Alasan susulan: {exam.makeupReason}
-                              </div>
-                            ) : null}
-                          </div>
-                        </td>
-
-                        {/* Status */}
-                        <td className="px-6 py-4 whitespace-nowrap text-center">
-                          {getStatusBadge(exam)}
-                        </td>
-
-                        {/* Aksi */}
-                        <td className="px-6 py-4 whitespace-nowrap text-center">
-                          {exam.isBlocked ? (
-                            <div className="flex flex-col items-center">
-                              <span className="inline-flex items-center gap-1 px-3 py-2 bg-red-100 text-red-700 text-sm font-medium rounded mb-1">
-                                <XCircle className="w-4 h-4" />
-                                <span>Akses Ditolak</span>
-                              </span>
-                              <span className="text-xs text-red-600 max-w-[200px] whitespace-normal text-center">
-                                {exam.blockReason}
-                              </span>
-                              {exam.financeClearance?.hasOutstanding ? (
-                                <div className="mt-2 rounded-lg border border-amber-200 bg-amber-50 px-3 py-2 text-left text-[11px] text-amber-800">
-                                  <div className="font-semibold">Clearance finance</div>
-                                  <div>Outstanding: {formatExamCurrency(exam.financeClearance.outstandingAmount)}</div>
-                                  <div>
-                                    Tagihan aktif: {exam.financeClearance.outstandingInvoices} • overdue:{' '}
-                                    {exam.financeClearance.overdueInvoices}
-                                  </div>
-                                  {!exam.financeClearance.blocksExam ? (
-                                    <div className="mt-1 text-[11px] text-amber-700">
-                                      Status finance ini tidak menjadi penyebab blokir pada program ujian ini.
-                                    </div>
-                                  ) : null}
-                                </div>
-                              ) : null}
-                            </div>
-                          ) : exam.isReady === false ? (
-                            <div className="flex flex-col items-center">
-                              <span className="inline-flex items-center gap-1 px-3 py-2 bg-amber-100 text-amber-700 text-sm font-medium rounded mb-1">
-                                <AlertCircle className="w-4 h-4" />
-                                <span>Menunggu Soal</span>
-                              </span>
-                              <span className="text-xs text-amber-700 max-w-[200px] whitespace-normal text-center">
-                                {exam.notReadyReason || 'Soal untuk jadwal ini belum disiapkan guru.'}
-                              </span>
-                            </div>
-                          ) : canTake ? (
-                            <button
-                              onClick={() => handleStartExam(exam)}
-                              className="inline-flex items-center gap-1 px-3 py-2 bg-green-600 text-white text-sm font-medium rounded hover:bg-green-700 transition-colors"
-                            >
-                              <Play className="w-4 h-4" />
-                              <span>{getExamStatus(exam) === 'makeup' ? 'Mulai Susulan' : 'Mulai'}</span>
-                            </button>
-                          ) : status === 'graded' || status === 'completed' ? (
-                            <span className="inline-flex items-center gap-1 px-3 py-2 bg-gray-100 text-gray-700 text-sm font-medium rounded">
-                              <CheckCircle className="w-4 h-4" />
-                              <span>Sudah Dikerjakan</span>
-                            </span>
-                          ) : (
-                            <span className="text-sm text-gray-400">-</span>
-                          )}
-                          {!exam.isBlocked && exam.financeClearance?.warningOnly && exam.financeClearance.hasOutstanding ? (
-                            <div className="mt-2 rounded-lg border border-amber-200 bg-amber-50 px-3 py-2 text-left text-[11px] text-amber-800">
-                              <div className="font-semibold">Info finance</div>
-                              <div>Outstanding: {formatExamCurrency(exam.financeClearance.outstandingAmount)}</div>
-                              <div>
-                                Tagihan aktif: {exam.financeClearance.outstandingInvoices} • overdue:{' '}
-                                {exam.financeClearance.overdueInvoices}
-                              </div>
-                              <div className="mt-1 text-[11px] text-amber-700">
-                                Program ini hanya memberi peringatan dan tidak memblokir ujian.
-                              </div>
-                            </div>
-                          ) : null}
-                        </td>
-                      </tr>
-                    )
-                  })}
-                </tbody>
-              </table>
+                    {isOpen ? (
+                      <div className="border-t border-gray-200 overflow-x-auto">
+                        <table className="min-w-full divide-y divide-gray-200">
+                          <thead className="bg-gray-50">
+                            <tr>
+                              <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
+                                {isApplicantMode ? 'Tes' : 'Ujian'}
+                              </th>
+                              <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
+                                {contextColumnTitle}
+                              </th>
+                              <th className="px-6 py-3 text-center text-xs font-medium text-gray-500 uppercase tracking-wider">
+                                Jenis
+                              </th>
+                              <th className="px-6 py-3 text-center text-xs font-medium text-gray-500 uppercase tracking-wider">
+                                Soal
+                              </th>
+                              <th className="px-6 py-3 text-center text-xs font-medium text-gray-500 uppercase tracking-wider">
+                                Durasi
+                              </th>
+                              <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
+                                Waktu
+                              </th>
+                              <th className="px-6 py-3 text-center text-xs font-medium text-gray-500 uppercase tracking-wider">
+                                Status
+                              </th>
+                              <th className="px-6 py-3 text-center text-xs font-medium text-gray-500 uppercase tracking-wider">
+                                Aksi
+                              </th>
+                            </tr>
+                          </thead>
+                          <tbody className="bg-white divide-y divide-gray-200">
+                            {group.exams.map((exam) => renderExamRow(exam))}
+                          </tbody>
+                        </table>
+                      </div>
+                    ) : null}
+                  </div>
+                )
+              })}
             </div>
           )}
         </div>

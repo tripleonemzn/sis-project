@@ -151,6 +151,9 @@ Dokumen ini adalah policy kerja default untuk setiap sesi baru yang mengerjakan 
    - Jika web menggunakan pola yang lebih jelas, mobile harus mengikuti arah yang sama, bukan membuat interpretasi baru sendiri.
    - Untuk popup/modal, gunakan standar overlay yang tetap memperlihatkan konteks halaman di belakang secara halus; hindari backdrop hitam pekat yang membuat layar belakang “hilang”.
    - Gunakan pola visual popup yang konsisten dengan modal operasional utama project ini, terutama gaya popup seperti pada fitur `Buat Jadwal Ujian`: konten fokus, backdrop ringan, dan context halaman tetap terbaca.
+   - Jika membuat popup/modal baru, tinggi popup wajib dibatasi agar tidak melewati area header global aplikasi (terutama area ikon notifikasi) dan posisi popup harus center terhadap area konten halaman aktif, bukan terhadap lebar penuh layar yang ikut menghitung sidebar.
+   - Popup/modal harus tetap proporsional dan dinamis saat sidebar ditarik, diciutkan, atau berubah lebar; jangan hardcode posisi yang hanya pas pada satu lebar sidebar.
+   - Jika isi popup panjang, scroll harus terjadi di body popup, bukan dengan membiarkan popup memanjang melewati header. Jika data sangat banyak, utamakan grouping/collapse yang rapi seperti pola `Jadwal Mengawas` Wakakur agar tetap mudah dibaca.
    - Untuk dokumen cetak/surat yang membutuhkan kop/header institusi, gunakan header surat baku sekolah secara konsisten.
    - Header dokumen harus bersifat dinamis berdasarkan data existing yang relevan, terutama daftar kompetensi keahlian/jurusan; jangan hardcode per dokumen jika datanya sudah bisa dibaca dari source of truth.
 
