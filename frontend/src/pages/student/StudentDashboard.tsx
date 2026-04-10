@@ -5,7 +5,7 @@ import { useActiveAcademicYear } from '../../hooks/useActiveAcademicYear';
 import { attendanceService } from '../../services/attendance.service';
 import { scheduleService, type ScheduleEntry, type DayOfWeek } from '../../services/schedule.service';
 import { scheduleTimeConfigService } from '../../services/scheduleTimeConfig.service';
-import { examService } from '../../services/exam.service';
+import { examProgramCodeToSlug, examService } from '../../services/exam.service';
 import { authService } from '../../services/auth.service';
 import type { User } from '../../types/auth';
 import type { StudentAttendanceHistory } from '../../services/attendance.service';
@@ -77,6 +77,11 @@ function pickString(...values: unknown[]): string {
     }
   }
   return '';
+}
+
+function buildStudentExamProgramPath(programCode?: string | null): string {
+  const slug = examProgramCodeToSlug(programCode);
+  return slug ? `/student/exams/program/${slug}` : '/student/exams';
 }
 
 function extractExamRows(payload: unknown): unknown[] {
@@ -207,6 +212,10 @@ export const StudentDashboard = () => {
   }, [examSchedules]);
 
   const upcomingExams = useMemo(() => activeExams.slice(0, 5), [activeExams]);
+  const nearestExamMenuPath = useMemo(
+    () => buildStudentExamProgramPath(upcomingExams[0]?.examType),
+    [upcomingExams],
+  );
 
   const examRooms = useMemo(() => {
     const uniqueBySlot = new Map<string, AvailableExam>();
@@ -218,6 +227,10 @@ export const StudentDashboard = () => {
     });
     return Array.from(uniqueBySlot.values());
   }, [activeExams]);
+  const nearestRoomMenuPath = useMemo(
+    () => buildStudentExamProgramPath(examRooms[0]?.examType),
+    [examRooms],
+  );
 
   const {
     data: attendanceHistoryData,
@@ -543,7 +556,7 @@ export const StudentDashboard = () => {
               <p className="text-xs text-gray-500 mt-0.5">Ujian yang akan datang atau sedang berlangsung.</p>
             </div>
             <Link
-              to="/student/exams"
+              to={nearestExamMenuPath}
               className="inline-flex items-center gap-2 rounded-lg bg-blue-50 px-2.5 py-2 text-xs font-medium text-blue-700 hover:bg-blue-100"
             >
               <ClipboardList size={16} />
@@ -555,7 +568,11 @@ export const StudentDashboard = () => {
               <p className="text-sm text-gray-500 text-center py-4">Tidak ada jadwal ujian aktif saat ini.</p>
             ) : (
               upcomingExams.map((exam) => (
-                <div key={exam.id} className="flex items-center justify-between p-3 border border-gray-200 rounded-lg hover:bg-gray-50">
+                <Link
+                  key={exam.id}
+                  to={buildStudentExamProgramPath(exam.examType)}
+                  className="flex items-center justify-between rounded-lg border border-gray-200 p-3 hover:bg-gray-50"
+                >
                   <div>
                     <div className="text-sm font-medium text-gray-900">{exam.title}</div>
                     <div className="text-xs text-gray-500">{exam.subject?.name || '-'}</div>
@@ -581,7 +598,7 @@ export const StudentDashboard = () => {
                       })()}
                     </div>
                   </div>
-                </div>
+                </Link>
               ))
             )}
           </div>
@@ -727,7 +744,7 @@ export const StudentDashboard = () => {
               <p className="text-xs text-gray-500 mt-0.5">Lokasi tempat duduk ujian Anda.</p>
             </div>
             <Link
-              to="/student/exams"
+              to={nearestRoomMenuPath}
               className="inline-flex items-center gap-2 rounded-lg bg-purple-50 px-2.5 py-2 text-xs font-medium text-purple-700 hover:bg-purple-100"
             >
               <DoorClosed size={16} />

@@ -229,8 +229,10 @@ type StudentScheduleGroup = {
   periodStart: number;
   periodEnd: number;
   subjectName: string;
+  subjectCode: string;
   teacherName: string;
   roomLabel: string;
+  timeRange: string | null;
   entries: ScheduleEntry[];
 };
 
@@ -611,6 +613,11 @@ function programCodeToSlug(raw?: string | null): string {
   return normalizeProgramCode(raw).toLowerCase().replace(/_/g, '-');
 }
 
+function buildStudentExamRoute(raw?: string | null): string {
+  const code = normalizeProgramCode(raw);
+  return code ? `/exams?programCode=${encodeURIComponent(code)}` : '/exams';
+}
+
 function normalizeTeachingResourceProgramCode(raw?: string | null): string {
   return String(raw || '')
     .trim()
@@ -904,6 +911,12 @@ export default function HomeScreen() {
         academicYearId: activeAcademicYearQuery.data!.id,
         classId: studentClassId!,
       }),
+  });
+  const studentScheduleTimeConfigQuery = useQuery({
+    queryKey: ['mobile-home-student-schedule-time-config', activeAcademicYearQuery.data?.id],
+    enabled: profile.role === 'STUDENT' && Boolean(activeAcademicYearQuery.data?.id),
+    staleTime: 1000 * 60 * 5,
+    queryFn: () => adminApi.getScheduleTimeConfig(activeAcademicYearQuery.data!.id),
   });
   const studentExamsQuery = useStudentExamsQuery({
     enabled: isAuthenticated && profile.role === 'STUDENT',
@@ -1602,6 +1615,7 @@ export default function HomeScreen() {
     if (!todayStudentSchedules.length) return [] as StudentScheduleGroup[];
 
     const groups: StudentScheduleGroup[] = [];
+    const studentScheduleConfig = studentScheduleTimeConfigQuery.data?.config ?? null;
     let currentGroupEntries: ScheduleEntry[] = [todayStudentSchedules[0]];
     let currentStart = getTeachingHourValue(todayStudentSchedules[0]);
     let currentEnd = getTeachingHourValue(todayStudentSchedules[0]);
@@ -1628,8 +1642,10 @@ export default function HomeScreen() {
         periodStart: currentStart,
         periodEnd: currentEnd,
         subjectName: first.teacherAssignment.subject.name,
+        subjectCode: first.teacherAssignment.subject.code,
         teacherName: first.teacherAssignment.teacher.name,
         roomLabel: first.room || '-',
+        timeRange: buildScheduleTimeRange(studentScheduleConfig, currentGroupEntries),
         entries: currentGroupEntries,
       });
 
@@ -1644,13 +1660,15 @@ export default function HomeScreen() {
       periodStart: currentStart,
       periodEnd: currentEnd,
       subjectName: first.teacherAssignment.subject.name,
+      subjectCode: first.teacherAssignment.subject.code,
       teacherName: first.teacherAssignment.teacher.name,
       roomLabel: first.room || '-',
+      timeRange: buildScheduleTimeRange(studentScheduleConfig, currentGroupEntries),
       entries: currentGroupEntries,
     });
 
     return groups;
-  }, [todayStudentSchedules]);
+  }, [studentScheduleTimeConfigQuery.data?.config, todayStudentSchedules]);
   const upcomingStudentExams = useMemo(() => {
     if (profile.role !== 'STUDENT') return [];
     const exams = studentExamsQuery.data?.exams || [];
@@ -1926,6 +1944,7 @@ export default function HomeScreen() {
       if (profile.role === 'STUDENT') {
         refetches.push(activeAcademicYearQuery.refetch());
         refetches.push(studentScheduleQuery.refetch());
+        refetches.push(studentScheduleTimeConfigQuery.refetch());
         refetches.push(studentExamsQuery.refetch());
       }
       if (profile.role === 'TEACHER') {
@@ -2042,6 +2061,7 @@ export default function HomeScreen() {
         const linkedMenu = item.menuKey ? menuItemByKey.get(item.menuKey) : undefined;
         const isOpeningThisMenu = linkedMenu ? openingMenuKey === linkedMenu.key : false;
         const iconColor = resolveDashboardBadgeIconColor(item.color, isDarkModeActive ? 'dark' : 'light');
+        const metricColor = resolveDashboardAccentColor(item.color, isDarkModeActive ? 'dark' : 'light');
         return (
           <View
             key={item.label}
@@ -2078,7 +2098,7 @@ export default function HomeScreen() {
                   <Feather name={item.icon} size={18} color={iconColor} />
                 )}
               </View>
-              <Text style={{ color: iconColor, fontWeight: '700', fontSize: 17, marginTop: 6 }}>{item.value}</Text>
+              <Text style={{ color: metricColor, fontWeight: '700', fontSize: 17, marginTop: 6 }}>{item.value}</Text>
               <Text style={{ color: colors.textMuted, fontSize: 10, textAlign: 'center' }} numberOfLines={2}>
                 {isOpeningThisMenu ? 'Membuka...' : item.label}
               </Text>
@@ -2141,6 +2161,7 @@ export default function HomeScreen() {
   if (!isAuthenticated || !user) return <Redirect href="/welcome" />;
 
   const teachingScheduleMenu = menuItemByKey.get('teaching-schedule');
+  const studentScheduleMenu = menuItemByKey.get('student-schedule');
 
   return (
     <View style={{ flex: 1, backgroundColor: colors.background }}>
@@ -2415,9 +2436,9 @@ export default function HomeScreen() {
                           borderRadius: 10,
                           borderWidth: 1,
                           borderColor: colors.border,
-                          backgroundColor: isDarkModeActive ? colors.surfaceMuted : '#f8fbff',
-                          paddingHorizontal: 10,
-                          paddingVertical: 9,
+                          backgroundColor: isDarkModeActive ? colors.surfaceMuted : '#fbfdff',
+                          paddingHorizontal: 12,
+                          paddingVertical: 10,
                           marginBottom: 8,
                           flexDirection: 'row',
                           alignItems: 'center',
@@ -2425,33 +2446,79 @@ export default function HomeScreen() {
                       >
                         <View
                           style={{
-                            minWidth: 84,
-                            paddingHorizontal: 8,
-                            height: 30,
-                            borderRadius: 8,
-                            backgroundColor: isDarkModeActive ? 'rgba(96, 165, 250, 0.18)' : '#dbeafe',
+                            width: 64,
+                            height: 64,
+                            borderRadius: 12,
+                            backgroundColor: isDarkModeActive ? 'rgba(96, 165, 250, 0.18)' : '#eff6ff',
                             alignItems: 'center',
                             justifyContent: 'center',
                             marginRight: 10,
                           }}
                         >
-                          <Text style={{ color: isDarkModeActive ? '#bfdbfe' : '#1d4ed8', fontWeight: '700', fontSize: 11 }}>
-                            {group.periodStart === group.periodEnd
-                              ? `Jam ke ${group.periodStart}`
-                              : `Jam ke ${group.periodStart}-${group.periodEnd}`}
+                          <Text style={{ color: isDarkModeActive ? '#bfdbfe' : '#2563eb', fontWeight: '600', fontSize: 10 }}>
+                            Jam ke
                           </Text>
+                          <Text style={{ color: isDarkModeActive ? '#dbeafe' : '#1d4ed8', fontWeight: '800', fontSize: 18, marginTop: 2 }}>
+                            {group.periodStart === group.periodEnd ? `${group.periodStart}` : `${group.periodStart}-${group.periodEnd}`}
+                          </Text>
+                          {group.entries.length > 1 ? (
+                            <Text style={{ color: isDarkModeActive ? '#93c5fd' : '#3b82f6', fontWeight: '700', fontSize: 10, marginTop: 1 }}>
+                              {group.entries.length} JP
+                            </Text>
+                          ) : null}
                         </View>
                         <View style={{ flex: 1 }}>
                           <Text style={{ color: colors.text, fontWeight: '700', fontSize: 13 }} numberOfLines={1}>
-                            {group.subjectName}
+                            {group.subjectCode ? `${group.subjectCode} • ${group.subjectName}` : group.subjectName}
                           </Text>
-                          <Text style={{ color: colors.textMuted, fontSize: 11, marginTop: 2 }} numberOfLines={1}>
-                            {group.teacherName}
-                            {group.roomLabel !== '-' ? ` • ${group.roomLabel}` : ''}
+                          <Text style={{ color: colors.textMuted, fontSize: 11, marginTop: 1 }} numberOfLines={1}>
+                            Guru {group.teacherName}
+                            {group.roomLabel !== '-' ? ` • Ruang ${group.roomLabel}` : ''}
                           </Text>
                         </View>
+                        {group.timeRange ? (
+                          <View
+                            style={{
+                              flexDirection: 'row',
+                              alignItems: 'center',
+                              gap: 4,
+                              borderRadius: 999,
+                              backgroundColor: isDarkModeActive ? 'rgba(96, 165, 250, 0.18)' : '#dbeafe',
+                              paddingHorizontal: 10,
+                              paddingVertical: 6,
+                              marginLeft: 8,
+                            }}
+                          >
+                            <Feather name="clock" size={12} color={isDarkModeActive ? '#bfdbfe' : '#1d4ed8'} />
+                            <Text style={{ color: isDarkModeActive ? '#bfdbfe' : '#1d4ed8', fontWeight: '700', fontSize: 11 }}>
+                              {group.timeRange}
+                            </Text>
+                          </View>
+                        ) : null}
                       </View>
                     ))}
+                    {studentScheduleMenu ? (
+                      <Pressable
+                        disabled={isMenuTransitioning}
+                        onPress={() => {
+                          void handleMenuPress(studentScheduleMenu);
+                        }}
+                        style={({ pressed }) => ({
+                          marginTop: 8,
+                          borderRadius: 10,
+                          borderWidth: 1,
+                          borderColor: colors.border,
+                          backgroundColor: colors.surface,
+                          paddingVertical: 10,
+                          alignItems: 'center',
+                          opacity: pressed || openingMenuKey === studentScheduleMenu.key ? 0.82 : 1,
+                        })}
+                      >
+                        <Text style={{ color: colors.text, fontWeight: '700' }}>
+                          {openingMenuKey === studentScheduleMenu.key ? 'Membuka modul...' : 'Lihat Jadwal Lengkap'}
+                        </Text>
+                      </Pressable>
+                    ) : null}
                   </View>
                 ) : (
                   <View
@@ -2503,7 +2570,7 @@ export default function HomeScreen() {
                         <Pressable
                           key={item.id}
                           onPress={() => {
-                            router.push('/exams');
+                            router.push(buildStudentExamRoute(item.packet?.programCode || item.packet?.type));
                           }}
                           style={{
                             borderRadius: 10,

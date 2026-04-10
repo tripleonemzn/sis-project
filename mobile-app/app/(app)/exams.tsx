@@ -1589,53 +1589,53 @@ export default function StudentExamsScreen() {
       >
         {selectedPlacement ? (
           selectedPlacement.layout?.rows && selectedPlacement.layout?.columns ? (
-            <View style={{ alignItems: 'center' }}>
-              <View
-                style={{
-                  alignSelf: 'stretch',
-                  flexDirection: 'row',
-                  flexWrap: 'wrap',
-                  gap: 8,
-                }}
+            <View style={{ alignItems: 'stretch' }}>
+              <ScrollView
+                horizontal
+                showsHorizontalScrollIndicator={false}
+                contentContainerStyle={{ paddingHorizontal: 2 }}
+                style={{ alignSelf: 'stretch' }}
               >
-                {Array.from({
-                  length: (selectedPlacement.layout.rows || 0) * (selectedPlacement.layout.columns || 0),
-                }).map((_, idx) => {
-                  const columns = selectedPlacement.layout?.columns || 1;
-                  const rowIndex = Math.floor(idx / columns);
-                  const columnIndex = idx % columns;
-                  const isSeat =
-                    selectedPlacement.seatPosition &&
-                    selectedPlacement.seatPosition.rowIndex === rowIndex &&
-                    selectedPlacement.seatPosition.columnIndex === columnIndex;
-                  return isSeat ? (
-                    <Animated.View
-                      key={`${rowIndex}-${columnIndex}`}
-                      style={{
-                        width: 24,
-                        height: 24,
-                        borderRadius: 6,
-                        borderWidth: 1,
-                        borderColor: '#34d399',
-                        backgroundColor: '#bbf7d0',
-                        opacity: seatBlink,
-                      }}
-                    />
-                  ) : (
-                    <View
-                      key={`${rowIndex}-${columnIndex}`}
-                      style={{
-                        width: 24,
-                        height: 24,
-                        borderRadius: 6,
-                        borderWidth: 1,
-                        borderColor: '#e2e8f0',
-                        backgroundColor: '#f8fafc',
-                      }}
-                    />
-                  );
-                })}
-              </View>
+                <View style={{ gap: 8 }}>
+                  {Array.from({ length: selectedPlacement.layout?.rows || 0 }).map((_, rowIndex) => (
+                    <View key={`row-${rowIndex}`} style={{ flexDirection: 'row', gap: 8 }}>
+                      {Array.from({ length: selectedPlacement.layout?.columns || 0 }).map((__, columnIndex) => {
+                        const isSeat =
+                          selectedPlacement.seatPosition &&
+                          selectedPlacement.seatPosition.rowIndex === rowIndex &&
+                          selectedPlacement.seatPosition.columnIndex === columnIndex;
+                        const seatSize = (selectedPlacement.layout?.columns || 0) >= 10 ? 24 : 28;
+                        return isSeat ? (
+                          <Animated.View
+                            key={`${rowIndex}-${columnIndex}`}
+                            style={{
+                              width: seatSize,
+                              height: seatSize,
+                              borderRadius: 6,
+                              borderWidth: 1,
+                              borderColor: '#34d399',
+                              backgroundColor: '#bbf7d0',
+                              opacity: seatBlink,
+                            }}
+                          />
+                        ) : (
+                          <View
+                            key={`${rowIndex}-${columnIndex}`}
+                            style={{
+                              width: seatSize,
+                              height: seatSize,
+                              borderRadius: 6,
+                              borderWidth: 1,
+                              borderColor: '#e2e8f0',
+                              backgroundColor: '#f8fafc',
+                            }}
+                          />
+                        );
+                      })}
+                    </View>
+                  ))}
+                </View>
+              </ScrollView>
               <View
                 style={{
                   alignSelf: 'stretch',
