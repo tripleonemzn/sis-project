@@ -1593,10 +1593,14 @@ export default function StudentExamsScreen() {
               <ScrollView
                 horizontal
                 showsHorizontalScrollIndicator={false}
-                contentContainerStyle={{ paddingHorizontal: 2 }}
+                contentContainerStyle={{
+                  paddingHorizontal: 2,
+                  flexGrow: 1,
+                  justifyContent: 'center',
+                }}
                 style={{ alignSelf: 'stretch' }}
               >
-                <View style={{ gap: 8 }}>
+                <View style={{ gap: 8, alignItems: 'center' }}>
                   {Array.from({ length: selectedPlacement.layout?.rows || 0 }).map((_, rowIndex) => (
                     <View key={`row-${rowIndex}`} style={{ flexDirection: 'row', gap: 8 }}>
                       {Array.from({ length: selectedPlacement.layout?.columns || 0 }).map((__, columnIndex) => {
