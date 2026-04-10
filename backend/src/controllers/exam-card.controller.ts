@@ -15,6 +15,7 @@ import {
   listHistoricalStudentsForClass,
   listHistoricalStudentsByIdsForAcademicYear,
 } from '../utils/studentAcademicHistory';
+import { reconcileMissingStudentPlacements } from '../services/examStudentPlacementSync.service';
 
 const SCHOOL_NAME = 'SMKS Karya Guna Bhakti 2';
 const EXAM_CARD_TITLE = 'KARTU PESERTA';
@@ -524,25 +525,7 @@ async function buildExamCardOverview(params: {
     throw new ApiError(400, 'Program ujian tidak valid.');
   }
 
-  const [academicYear, programConfig, sittings] = await Promise.all([
-    prisma.academicYear.findUnique({
-      where: { id: params.academicYearId },
-      select: { id: true, name: true, isActive: true },
-    }),
-    prisma.examProgramConfig.findFirst({
-      where: {
-        academicYearId: params.academicYearId,
-        code: normalizedProgramCode,
-      },
-      select: {
-        code: true,
-        baseTypeCode: true,
-        displayLabel: true,
-        shortLabel: true,
-        displayOrder: true,
-        fixedSemester: true,
-      },
-    }),
+  const loadSittings = () =>
     prisma.examSitting.findMany({
       where: {
         academicYearId: params.academicYearId,
@@ -573,7 +556,28 @@ async function buildExamCardOverview(params: {
         },
       },
       orderBy: [{ startTime: 'asc' }, { roomName: 'asc' }, { id: 'asc' }],
+    });
+
+  const [academicYear, programConfig, initialSittings] = await Promise.all([
+    prisma.academicYear.findUnique({
+      where: { id: params.academicYearId },
+      select: { id: true, name: true, isActive: true },
     }),
+    prisma.examProgramConfig.findFirst({
+      where: {
+        academicYearId: params.academicYearId,
+        code: normalizedProgramCode,
+      },
+      select: {
+        code: true,
+        baseTypeCode: true,
+        displayLabel: true,
+        shortLabel: true,
+        displayOrder: true,
+        fixedSemester: true,
+      },
+    }),
+    loadSittings(),
   ]);
 
   if (!academicYear) {
@@ -584,8 +588,17 @@ async function buildExamCardOverview(params: {
     academicYearId: params.academicYearId,
     programCode: normalizedProgramCode,
     requestedSemester: params.semester,
-    sittingSemesters: sittings.map((item) => item.semester || null),
+    sittingSemesters: initialSittings.map((item) => item.semester || null),
   });
+  const syncSummary = await reconcileMissingStudentPlacements({
+    academicYearId: params.academicYearId,
+    programCode: normalizedProgramCode,
+    semester,
+  });
+  const sittings =
+    syncSummary.createdAssignments > 0 || syncSummary.assignedSeats > 0
+      ? await loadSittings()
+      : initialSittings;
   const relevantSittings = sittings.filter((sitting) => !sitting.semester || sitting.semester === semester);
 
   const scheduleProgramCandidates = resolveProgramCodeCandidates({
@@ -888,6 +901,23 @@ async function buildExamCardOverview(params: {
             entry.roomToken === normalizedRoomName.toLowerCase() && entry.sessionToken === normalizedSittingSessionToken,
         ) ||
         scheduleEntries.find((entry) => entry.roomToken === normalizedRoomName.toLowerCase()) ||
+        scheduleEntries.find(
+          (entry) =>
+            entry.sessionToken === normalizedSittingSessionToken &&
+            entry.startTimeToken !== null &&
+            entry.endTimeToken !== null &&
+            sittingStartToken !== null &&
+            sittingEndToken !== null &&
+            entry.startTimeToken === sittingStartToken &&
+            entry.endTimeToken === sittingEndToken,
+        ) ||
+        scheduleEntries.find(
+          (entry) =>
+            entry.sessionToken === normalizedSittingSessionToken &&
+            Boolean(sittingDateToken) &&
+            entry.dateToken === sittingDateToken,
+        ) ||
+        scheduleEntries.find((entry) => Boolean(sittingDateToken) && entry.dateToken === sittingDateToken) ||
         null;
       if (!matchedSchedule) return;
       const current = entriesByStudent.get(studentId) || [];

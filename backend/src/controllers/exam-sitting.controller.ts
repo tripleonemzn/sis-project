@@ -11,6 +11,7 @@ import {
     buildExamSittingSlotProctorKey,
     saveExamSittingSlotProctorAssignment,
 } from '../services/examSittingSlotProctor.service';
+import { reconcileMissingStudentPlacementsForStudent } from '../services/examStudentPlacementSync.service';
 
 function normalizeAliasCode(raw: unknown): string {
     return String(raw || '')
@@ -714,6 +715,17 @@ export const createExamSitting = asyncHandler(async (req: Request, res: Response
 export const getMyExamSitting = asyncHandler(async (req: Request, res: Response) => {
     const studentId = (req as any).user.id;
     const parsedStudentId = Number(studentId);
+    const student = await prisma.user.findUnique({
+        where: { id: parsedStudentId },
+        select: {
+            classId: true,
+            studentStatus: true,
+        },
+    });
+    if (student?.studentStatus && student.studentStatus !== 'ACTIVE') {
+        res.json(new ApiResponse(200, []));
+        return;
+    }
     
     const activeAY = await prisma.academicYear.findFirst({ where: { isActive: true } });
     
@@ -729,7 +741,8 @@ export const getMyExamSitting = asyncHandler(async (req: Request, res: Response)
         whereClause.academicYearId = activeAY.id;
     }
     
-    const sittings = await prisma.examSitting.findMany({
+    const loadSittings = () =>
+        prisma.examSitting.findMany({
         where: whereClause,
         include: {
             proctor: { select: { id: true, name: true } },
@@ -759,6 +772,15 @@ export const getMyExamSitting = asyncHandler(async (req: Request, res: Response)
             { roomName: 'asc' },
         ],
     });
+
+    let sittings = await loadSittings();
+    if (sittings.length === 0 && activeAY?.id) {
+        await reconcileMissingStudentPlacementsForStudent({
+            academicYearId: activeAY.id,
+            studentId: parsedStudentId,
+        });
+        sittings = await loadSittings();
+    }
 
     const normalized = sittings.map((sitting) => {
         const seatCell = sitting.layout?.cells?.[0] || null;

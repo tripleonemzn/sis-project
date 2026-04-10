@@ -8920,8 +8920,19 @@ export const getAvailableExams = asyncHandler(async (req: Request, res: Response
     if (accessRole === 'STUDENT') {
         const student = await prisma.user.findUnique({
             where: { id: studentId },
-            select: { classId: true },
+            select: { classId: true, studentStatus: true },
         });
+
+        if (student?.studentStatus && student.studentStatus !== 'ACTIVE') {
+            const payload = {
+                exams: [],
+                serverNow: now.toISOString(),
+            };
+            setCachedAvailableExams(studentId, payload);
+            res.setHeader('Cache-Control', 'private, max-age=3');
+            res.json(new ApiResponse(200, payload));
+            return;
+        }
 
         if (!student?.classId) {
             throw new ApiError(400, 'Student is not assigned to a class');
@@ -9577,9 +9588,12 @@ async function buildStartExamPayload(params: {
         accessRole === 'STUDENT'
             ? await prisma.user.findUnique({
                   where: { id: studentId },
-                  select: { classId: true },
+                  select: { classId: true, studentStatus: true },
               })
             : null;
+    if (accessRole === 'STUDENT' && student?.studentStatus && student.studentStatus !== 'ACTIVE') {
+        throw new ApiError(403, 'Akun siswa tidak aktif untuk mengikuti ujian.');
+    }
     if (accessRole === 'STUDENT' && !student?.classId) {
         throw new ApiError(400, 'Siswa belum terhubung ke kelas aktif.');
     }
