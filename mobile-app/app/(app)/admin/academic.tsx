@@ -254,6 +254,7 @@ const EXAM_QUESTION_TYPE_OPTIONS: Array<{ value: '' | AdminExamQuestionType; lab
   { value: '', label: 'Semua Tipe' },
   { value: 'MULTIPLE_CHOICE', label: 'Pilihan Ganda' },
   { value: 'COMPLEX_MULTIPLE_CHOICE', label: 'PG Kompleks' },
+  { value: 'MATRIX_SINGLE_CHOICE', label: 'Pilihan Ganda Grid' },
   { value: 'TRUE_FALSE', label: 'Benar/Salah' },
   { value: 'ESSAY', label: 'Essay' },
   { value: 'MATCHING', label: 'Menjodohkan' },

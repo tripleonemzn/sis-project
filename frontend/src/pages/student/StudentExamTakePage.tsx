@@ -80,12 +80,23 @@ type ExamQuestionOption = Record<string, unknown> & {
   image_url?: string | null
 }
 
+type ExamQuestionMatrixColumn = {
+  id: string
+  content: string
+}
+
+type ExamQuestionMatrixRow = {
+  id: string
+  content: string
+  correctOptionId?: string | null
+}
+
 interface Question {
   id: string
   question_text: string
   content?: string // Added fallback
-  question_type: 'MULTIPLE_CHOICE' | 'ESSAY' | 'TRUE_FALSE' | 'COMPLEX_MULTIPLE_CHOICE'
-  type?: 'MULTIPLE_CHOICE' | 'ESSAY' | 'TRUE_FALSE' | 'COMPLEX_MULTIPLE_CHOICE' // Added fallback
+  question_type: 'MULTIPLE_CHOICE' | 'ESSAY' | 'TRUE_FALSE' | 'COMPLEX_MULTIPLE_CHOICE' | 'MATRIX_SINGLE_CHOICE'
+  type?: 'MULTIPLE_CHOICE' | 'ESSAY' | 'TRUE_FALSE' | 'COMPLEX_MULTIPLE_CHOICE' | 'MATRIX_SINGLE_CHOICE' // Added fallback
   question_image_url?: string | null
   image_url?: string | null
   question_video_url?: string | null
@@ -107,6 +118,8 @@ interface Question {
   section: 'OBJECTIVE' | 'ESSAY'
   correct_answer: unknown
   options?: ExamQuestionOption[]
+  matrixColumns?: ExamQuestionMatrixColumn[]
+  matrixRows?: ExamQuestionMatrixRow[]
 }
 
 interface Exam {
@@ -127,8 +140,41 @@ interface Exam {
 function hasAnsweredValue(value: StudentExamAnswerValue | undefined): boolean {
   if (value === null || value === undefined) return false
   if (Array.isArray(value)) return value.length > 0
+  if (typeof value === 'object') {
+    return Object.values(value).some((item) => String(item || '').trim().length > 0)
+  }
   if (typeof value === 'string') return value.trim().length > 0
   return true
+}
+
+function normalizeMatrixColumns(question: Question | null | undefined): ExamQuestionMatrixColumn[] {
+  const raw = question?.matrixColumns
+  if (!Array.isArray(raw)) return []
+  return raw
+    .map((column, index) => ({
+      id: String(column?.id || `matrix-col-${index + 1}`),
+      content: String(column?.content || '').trim(),
+    }))
+    .filter((column) => column.content.length > 0)
+}
+
+function normalizeMatrixRows(question: Question | null | undefined): ExamQuestionMatrixRow[] {
+  const raw = question?.matrixRows
+  if (!Array.isArray(raw)) return []
+  return raw
+    .map((row, index) => ({
+      id: String(row?.id || `matrix-row-${index + 1}`),
+      content: String(row?.content || '').trim(),
+      correctOptionId: row?.correctOptionId ? String(row.correctOptionId) : null,
+    }))
+    .filter((row) => row.content.length > 0)
+}
+
+function isMatrixQuestionAnswered(question: Question | null | undefined, value: StudentExamAnswerValue | undefined): boolean {
+  const rows = normalizeMatrixRows(question)
+  if (rows.length === 0 || !value || typeof value !== 'object' || Array.isArray(value)) return false
+  const answerMap = value as Record<string, unknown>
+  return rows.every((row) => String(answerMap[row.id] || '').trim().length > 0)
 }
 
 function isLikelyMobileDevice(): boolean {
@@ -760,6 +806,16 @@ export default function StudentExamTakePage() {
               ...q,
               question_text: q.question_text || q.content,
               question_type: q.question_type || q.type,
+              matrixColumns: Array.isArray(q.matrixColumns)
+                ? q.matrixColumns
+                : Array.isArray(q.matrix_columns)
+                  ? q.matrix_columns
+                  : [],
+              matrixRows: Array.isArray(q.matrixRows)
+                ? q.matrixRows
+                : Array.isArray(q.matrix_rows)
+                  ? q.matrix_rows
+                  : [],
               options: Array.isArray(q.options)
                 ? q.options.map((opt: Record<string, unknown>) => ({
                     ...opt,
@@ -1301,6 +1357,24 @@ export default function StudentExamTakePage() {
     });
   }
 
+  const handleMatrixAnswerChange = (questionId: string, rowId: string, columnId: string) => {
+    setAnswers(prev => {
+      const currentValue =
+        prev[questionId] && typeof prev[questionId] === 'object' && !Array.isArray(prev[questionId])
+          ? { ...(prev[questionId] as Record<string, unknown>) }
+          : {}
+      const nextAnswers = {
+        ...prev,
+        [questionId]: {
+          ...currentValue,
+          [rowId]: columnId,
+        },
+      }
+      queueProgressSync(nextAnswers)
+      return nextAnswers
+    })
+  }
+
   const handlePreviousQuestion = () => {
     if (currentQuestionIndex > 0) {
       setCurrentQuestionIndex(prev => prev - 1)
@@ -1385,6 +1459,8 @@ export default function StudentExamTakePage() {
   }
 
   const currentQuestion = exam?.questions?.[currentQuestionIndex] ?? null
+  const currentMatrixColumns = normalizeMatrixColumns(currentQuestion)
+  const currentMatrixRows = normalizeMatrixRows(currentQuestion)
   const currentQuestionHtml = useMemo(
     () =>
       enhanceQuestionHtml(currentQuestion?.question_text || currentQuestion?.content || '', {
@@ -1497,6 +1573,10 @@ export default function StudentExamTakePage() {
   }
 
   const answeredCount = exam.questions.reduce((count, question) => {
+    const questionType = String(question.question_type || question.type || 'MULTIPLE_CHOICE').toUpperCase()
+    if (questionType === 'MATRIX_SINGLE_CHOICE') {
+      return count + (isMatrixQuestionAnswered(question, answers[question.id]) ? 1 : 0)
+    }
     return count + (hasAnsweredValue(answers[question.id]) ? 1 : 0)
   }, 0)
   const totalQuestions = exam.questions.length
@@ -1664,7 +1744,67 @@ export default function StudentExamTakePage() {
               {currentQuestion.question_media_position === 'bottom' && mediaSection}
 
 		              {/* Options */}
-		              {currentQuestion.question_type !== 'ESSAY' && (
+		              {currentQuestion.question_type === 'MATRIX_SINGLE_CHOICE' && (
+                    <div className="overflow-x-auto rounded-2xl border border-gray-200 bg-white">
+                      <table className="min-w-full border-collapse text-sm">
+                        <thead className="bg-slate-50">
+                          <tr>
+                            <th className="border-b border-r border-gray-200 px-4 py-3 text-left font-semibold text-slate-700">
+                              Pernyataan
+                            </th>
+                            {currentMatrixColumns.map((column) => (
+                              <th
+                                key={column.id}
+                                className="border-b border-gray-200 px-4 py-3 text-center font-semibold text-slate-700"
+                              >
+                                {column.content}
+                              </th>
+                            ))}
+                          </tr>
+                        </thead>
+                        <tbody>
+                          {currentMatrixRows.map((row, rowIndex) => {
+                            const answerMap =
+                              answers[currentQuestion.id] &&
+                              typeof answers[currentQuestion.id] === 'object' &&
+                              !Array.isArray(answers[currentQuestion.id])
+                                ? (answers[currentQuestion.id] as Record<string, unknown>)
+                                : {}
+                            const selectedColumnId = String(answerMap[row.id] || '')
+                            return (
+                              <tr key={row.id || `matrix-row-${rowIndex + 1}`} className="bg-white">
+                                <td className="border-b border-r border-gray-200 px-4 py-3 align-top text-gray-800">
+                                  {row.content}
+                                </td>
+                                {currentMatrixColumns.map((column) => {
+                                  const selected = selectedColumnId === column.id
+                                  return (
+                                    <td
+                                      key={`${row.id}-${column.id}`}
+                                      className={`border-b border-gray-200 px-4 py-3 text-center ${
+                                        selected ? 'bg-blue-50/60' : ''
+                                      }`}
+                                    >
+                                      <input
+                                        type="radio"
+                                        name={`question-${currentQuestion.id}-${row.id}`}
+                                        value={column.id}
+                                        checked={selected}
+                                        onChange={() => handleMatrixAnswerChange(currentQuestion.id, row.id, column.id)}
+                                        className="h-4 w-4 border-gray-300 text-blue-600 focus:ring-blue-500"
+                                      />
+                                    </td>
+                                  )
+                                })}
+                              </tr>
+                            )
+                          })}
+                        </tbody>
+                      </table>
+                    </div>
+                  )}
+
+		              {currentQuestion.question_type !== 'ESSAY' && currentQuestion.question_type !== 'MATRIX_SINGLE_CHOICE' && (
 		                <div className="space-y-3">
 			                  {currentQuestion.options?.map((option) => {
 		                    const isComplex = currentQuestion.question_type === 'COMPLEX_MULTIPLE_CHOICE';
@@ -1787,7 +1927,11 @@ export default function StudentExamTakePage() {
               
               <div className="grid grid-cols-5 gap-2 mb-6">
                 {exam.questions.map((q, idx) => {
-                  const isAnswered = hasAnsweredValue(answers[q.id])
+                  const questionType = String(q.question_type || q.type || 'MULTIPLE_CHOICE').toUpperCase()
+                  const isAnswered =
+                    questionType === 'MATRIX_SINGLE_CHOICE'
+                      ? isMatrixQuestionAnswered(q, answers[q.id])
+                      : hasAnsweredValue(answers[q.id])
                   const isCurrent = idx === currentQuestionIndex
                   
                   return (

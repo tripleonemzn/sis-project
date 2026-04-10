@@ -144,6 +144,7 @@ export const QuestionBankModal = ({
                             <option value="ESSAY">Essay</option>
                             <option value="TRUE_FALSE">Benar/Salah</option>
                             <option value="COMPLEX_MULTIPLE_CHOICE">Pilihan Ganda Kompleks</option>
+                            <option value="MATRIX_SINGLE_CHOICE">Pilihan Ganda Grid</option>
                         </select>
 
                         <form onSubmit={handleSearch} className="flex-1 min-w-[200px] relative">
@@ -185,7 +186,7 @@ export const QuestionBankModal = ({
                                     <div className="flex-1">
                                         <div className="flex items-center gap-2 mb-2">
                                             <span className="px-2 py-0.5 rounded text-xs font-medium bg-gray-100 text-gray-600">
-                                                {q.type.replace(/_/g, ' ')}
+                                                {q.type === 'MATRIX_SINGLE_CHOICE' ? 'PILIHAN GANDA GRID' : q.type.replace(/_/g, ' ')}
                                             </span>
                                             <span className="text-xs text-gray-400">ID: {q.id}</span>
                                         </div>

@@ -15,9 +15,25 @@ export type ExamStudentPreviewOption = {
   option_image_url?: string | null;
 };
 
+export type ExamStudentPreviewMatrixColumn = {
+  id: string;
+  content: string;
+};
+
+export type ExamStudentPreviewMatrixRow = {
+  id: string;
+  content: string;
+};
+
 export type ExamStudentPreviewQuestion = {
   id: string;
-  type: 'MULTIPLE_CHOICE' | 'COMPLEX_MULTIPLE_CHOICE' | 'TRUE_FALSE' | 'ESSAY' | 'MATCHING';
+  type:
+    | 'MULTIPLE_CHOICE'
+    | 'COMPLEX_MULTIPLE_CHOICE'
+    | 'TRUE_FALSE'
+    | 'ESSAY'
+    | 'MATCHING'
+    | 'MATRIX_SINGLE_CHOICE';
   content: string;
   question_image_url?: string | null;
   image_url?: string | null;
@@ -26,9 +42,11 @@ export type ExamStudentPreviewQuestion = {
   question_video_type?: 'upload' | 'youtube' | null;
   question_media_position?: 'top' | 'bottom' | 'left' | 'right' | string | null;
   options?: ExamStudentPreviewOption[];
+  matrixColumns?: ExamStudentPreviewMatrixColumn[];
+  matrixRows?: ExamStudentPreviewMatrixRow[];
 };
 
-type PreviewAnswerValue = string | string[] | null;
+type PreviewAnswerValue = string | string[] | Record<string, string> | null;
 
 type ExamStudentPreviewSurfaceProps = {
   title: string;
@@ -43,7 +61,16 @@ type ExamStudentPreviewSurfaceProps = {
 function hasAnsweredValue(value: PreviewAnswerValue | undefined): boolean {
   if (value === null || value === undefined) return false;
   if (Array.isArray(value)) return value.length > 0;
+  if (typeof value === 'object') {
+    return Object.values(value).some((item) => String(item || '').trim().length > 0);
+  }
   return String(value).trim().length > 0;
+}
+
+function isMatrixQuestionAnswered(question: ExamStudentPreviewQuestion | null | undefined, value: PreviewAnswerValue | undefined) {
+  const rows = Array.isArray(question?.matrixRows) ? question.matrixRows : [];
+  if (rows.length === 0 || !value || typeof value !== 'object' || Array.isArray(value)) return false;
+  return rows.every((row) => String((value as Record<string, unknown>)[row.id] || '').trim().length > 0);
 }
 
 export function ExamStudentPreviewSurface({
@@ -65,6 +92,9 @@ export function ExamStudentPreviewSurface({
   const answeredCount = useMemo(
     () =>
       questions.reduce((count, question) => {
+        if (question.type === 'MATRIX_SINGLE_CHOICE') {
+          return count + (isMatrixQuestionAnswered(question, answers[question.id]) ? 1 : 0);
+        }
         return count + (hasAnsweredValue(answers[question.id]) ? 1 : 0);
       }, 0),
     [answers, questions],
@@ -100,6 +130,22 @@ export function ExamStudentPreviewSurface({
       return {
         ...prev,
         [questionId]: exists ? current.filter((item) => item !== optionId) : [...current, optionId],
+      };
+    });
+  };
+
+  const handleMatrixAnswerChange = (questionId: string, rowId: string, columnId: string) => {
+    setAnswers((prev) => {
+      const current =
+        prev[questionId] && typeof prev[questionId] === 'object' && !Array.isArray(prev[questionId])
+          ? { ...(prev[questionId] as Record<string, string>) }
+          : {};
+      return {
+        ...prev,
+        [questionId]: {
+          ...current,
+          [rowId]: columnId,
+        },
       };
     });
   };
@@ -207,7 +253,63 @@ export function ExamStudentPreviewSurface({
 
             {currentQuestion?.question_media_position === 'bottom' && mediaSection}
 
-            {currentQuestion?.type !== 'ESSAY' ? (
+            {currentQuestion?.type === 'MATRIX_SINGLE_CHOICE' ? (
+              <div className="overflow-x-auto rounded-2xl border border-slate-200 bg-white">
+                <table className="min-w-full border-collapse text-sm">
+                  <thead className="bg-slate-50">
+                    <tr>
+                      <th className="border-b border-r border-slate-200 px-4 py-3 text-left font-semibold text-slate-700">
+                        Pernyataan
+                      </th>
+                      {(currentQuestion?.matrixColumns || []).map((column) => (
+                        <th
+                          key={column.id}
+                          className="border-b border-slate-200 px-4 py-3 text-center font-semibold text-slate-700"
+                        >
+                          {column.content}
+                        </th>
+                      ))}
+                    </tr>
+                  </thead>
+                  <tbody>
+                    {(currentQuestion?.matrixRows || []).map((row, rowIndex) => {
+                      const selectedValue =
+                        answers[currentQuestion.id] && typeof answers[currentQuestion.id] === 'object' && !Array.isArray(answers[currentQuestion.id])
+                          ? (answers[currentQuestion.id] as Record<string, string>)[row.id]
+                          : '';
+                      return (
+                        <tr key={row.id || `preview-row-${rowIndex + 1}`} className="bg-white">
+                          <td className="border-b border-r border-slate-200 px-4 py-3 align-top text-slate-800">
+                            {row.content}
+                          </td>
+                          {(currentQuestion?.matrixColumns || []).map((column) => {
+                            const selected = selectedValue === column.id;
+                            return (
+                              <td
+                                key={`${row.id}-${column.id}`}
+                                className={`border-b border-slate-200 px-4 py-3 text-center ${
+                                  selected ? 'bg-blue-50/60' : ''
+                                }`}
+                              >
+                                <input
+                                  type="radio"
+                                  name={`preview-matrix-${currentQuestion.id}-${row.id}`}
+                                  checked={selected}
+                                  onChange={() =>
+                                    handleMatrixAnswerChange(String(currentQuestion.id || ''), row.id, column.id)
+                                  }
+                                  className="h-4 w-4 border-slate-300 text-blue-600"
+                                />
+                              </td>
+                            );
+                          })}
+                        </tr>
+                      );
+                    })}
+                  </tbody>
+                </table>
+              </div>
+            ) : currentQuestion?.type !== 'ESSAY' ? (
               <div className="space-y-3">
                 {(currentQuestion?.options || []).map((option) => {
                   const optionId = String(option.id || '');
@@ -305,7 +407,10 @@ export function ExamStudentPreviewSurface({
             <div className="mt-4 grid grid-cols-5 gap-2">
               {questions.map((question, index) => {
                 const isActive = index === safeActiveQuestionIndex;
-                const isAnswered = hasAnsweredValue(answers[question.id]);
+                const isAnswered =
+                  question.type === 'MATRIX_SINGLE_CHOICE'
+                    ? isMatrixQuestionAnswered(question, answers[question.id])
+                    : hasAnsweredValue(answers[question.id]);
                 return (
                   <button
                     key={question.id || `preview-question-${index + 1}`}

@@ -158,6 +158,7 @@ export const QuestionBankView = ({ subjects }: QuestionBankViewProps) => {
                             <option value="ESSAY">Essay</option>
                             <option value="TRUE_FALSE">Benar/Salah</option>
                             <option value="COMPLEX_MULTIPLE_CHOICE">PG Kompleks</option>
+                            <option value="MATRIX_SINGLE_CHOICE">Pilihan Ganda Grid</option>
                         </select>
                     </div>
                 </div>
@@ -186,10 +187,11 @@ export const QuestionBankView = ({ subjects }: QuestionBankViewProps) => {
                                         <div className="flex items-center gap-2 mb-2">
                                             <span className={`px-2 py-0.5 rounded text-[10px] font-bold uppercase tracking-wider ${
                                                 q.type === 'ESSAY' ? 'bg-purple-100 text-purple-700' :
+                                                q.type === 'MATRIX_SINGLE_CHOICE' ? 'bg-cyan-100 text-cyan-700' :
                                                 q.type === 'MULTIPLE_CHOICE' ? 'bg-blue-100 text-blue-700' :
                                                 'bg-gray-100 text-gray-700'
                                             }`}>
-                                                {q.type.replace(/_/g, ' ')}
+                                                {q.type === 'MATRIX_SINGLE_CHOICE' ? 'PILIHAN GANDA GRID' : q.type.replace(/_/g, ' ')}
                                             </span>
                                             {/* Score badge if needed */}
                                             <span className="text-xs text-gray-400">ID: {q.id}</span>

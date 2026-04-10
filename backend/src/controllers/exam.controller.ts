@@ -2090,6 +2090,9 @@ function hasAnswerValue(value: unknown): boolean {
     if (value === null || value === undefined) return false;
     if (Array.isArray(value)) return value.length > 0;
     if (typeof value === 'string') return value.trim() !== '';
+    if (typeof value === 'object') {
+        return Object.values(value as Record<string, unknown>).some((item) => hasAnswerValue(item));
+    }
     return true;
 }
 
@@ -2259,9 +2262,36 @@ function sanitizeQuestionForStudent(rawQuestion: unknown): Record<string, unknow
         });
     }
 
+    if (Array.isArray(source.matrixColumns)) {
+        cleaned.matrixColumns = source.matrixColumns.map((column) =>
+            column && typeof column === 'object' ? { ...(column as Record<string, unknown>) } : column,
+        );
+    }
+
+    if (Array.isArray(source.matrixRows)) {
+        cleaned.matrixRows = source.matrixRows.map((row) => {
+            if (!row || typeof row !== 'object') return row;
+            const safeRow: Record<string, unknown> = { ...(row as Record<string, unknown>) };
+            delete safeRow.correctOptionId;
+            delete safeRow.correctColumnId;
+            delete safeRow.answerKey;
+            return safeRow;
+        });
+    }
+
     const cleanedMetadata = asRecord(cleaned.metadata);
     if (cleanedMetadata?.reviewFeedback) {
         delete cleanedMetadata.reviewFeedback;
+    }
+    if (cleanedMetadata && Array.isArray(cleanedMetadata.matrixRows)) {
+        cleanedMetadata.matrixRows = cleanedMetadata.matrixRows.map((row) => {
+            if (!row || typeof row !== 'object') return row;
+            const safeRow: Record<string, unknown> = { ...(row as Record<string, unknown>) };
+            delete safeRow.correctOptionId;
+            delete safeRow.correctColumnId;
+            delete safeRow.answerKey;
+            return safeRow;
+        });
     }
 
     return cleaned;
@@ -3696,12 +3726,25 @@ type ExamQuestionReviewFeedback = {
     };
 };
 
+type ExamQuestionMatrixColumn = {
+    id: string;
+    content: string;
+};
+
+type ExamQuestionMatrixRow = {
+    id: string;
+    content: string;
+    correctOptionId?: string;
+};
+
 type NormalizedExamQuestion = {
     id: string;
     type: string;
     content: string;
     score: number;
     options?: unknown[];
+    matrixColumns?: ExamQuestionMatrixColumn[];
+    matrixRows?: ExamQuestionMatrixRow[];
     answerKey?: string;
     question_image_url?: string;
     question_video_url?: string;
@@ -3758,6 +3801,90 @@ function normalizeQuestionCard(raw: unknown): ExamQuestionCard | undefined {
     };
 
     return Object.values(normalized).some(Boolean) ? normalized : undefined;
+}
+
+function isMatrixSingleChoiceType(rawType: unknown): boolean {
+    return String(rawType || '').trim().toUpperCase() === 'MATRIX_SINGLE_CHOICE';
+}
+
+function normalizeQuestionMatrixColumns(raw: unknown): ExamQuestionMatrixColumn[] | undefined {
+    if (!Array.isArray(raw)) return undefined;
+
+    const columns: ExamQuestionMatrixColumn[] = [];
+    raw.forEach((item, index) => {
+        const source = asRecord(item);
+        if (!source) return;
+        const content = normalizeOptionalString(
+            source.content ?? source.text ?? source.label ?? source.optionText,
+            500,
+        );
+        if (!content) return;
+        columns.push({
+            id: normalizeOptionalString(source.id, 100) || `matrix-col-${index + 1}`,
+            content,
+        });
+    });
+
+    return columns.length > 0 ? columns : undefined;
+}
+
+function normalizeQuestionMatrixRows(
+    raw: unknown,
+    validColumnIds?: Set<string>,
+): ExamQuestionMatrixRow[] | undefined {
+    if (!Array.isArray(raw)) return undefined;
+
+    const rows: ExamQuestionMatrixRow[] = [];
+    raw.forEach((item, index) => {
+        const source = asRecord(item);
+        if (!source) return;
+        const content = normalizeOptionalString(
+            source.content ?? source.text ?? source.label ?? source.statement,
+            1000,
+        );
+        if (!content) return;
+        const correctOptionId = normalizeOptionalString(
+            source.correctOptionId ?? source.correctColumnId ?? source.answerKey,
+            100,
+        );
+        rows.push({
+            id: normalizeOptionalString(source.id, 100) || `matrix-row-${index + 1}`,
+            content,
+            correctOptionId:
+                correctOptionId && (!validColumnIds || validColumnIds.has(correctOptionId))
+                    ? correctOptionId
+                    : undefined,
+        });
+    });
+
+    return rows.length > 0 ? rows : undefined;
+}
+
+function resolveQuestionMatrixColumns(question: Record<string, unknown>): ExamQuestionMatrixColumn[] {
+    const metadata = asRecord(question.metadata);
+    return (
+        normalizeQuestionMatrixColumns(
+            question.matrixColumns ??
+                question.matrix_columns ??
+                metadata?.matrixColumns ??
+                metadata?.matrix_columns,
+        ) || []
+    );
+}
+
+function resolveQuestionMatrixRows(question: Record<string, unknown>): ExamQuestionMatrixRow[] {
+    const metadata = asRecord(question.metadata);
+    const columns = resolveQuestionMatrixColumns(question);
+    const validColumnIds = new Set(columns.map((column) => column.id));
+    return (
+        normalizeQuestionMatrixRows(
+            question.matrixRows ??
+                question.matrix_rows ??
+                metadata?.matrixRows ??
+                metadata?.matrix_rows,
+            validColumnIds,
+        ) || []
+    );
 }
 
 function decodeQuestionHtmlToText(value: unknown): string {
@@ -3820,19 +3947,43 @@ function buildDerivedQuestionStimulus(question: NormalizedExamQuestion): string 
         lines.push(`Video soal: ${question.question_video_url}`);
     }
 
-    const optionLines = (Array.isArray(question.options) ? question.options : [])
-        .map((option, index) => normalizeQuestionCardOption(option, index))
-        .map((option) => {
-            const parts = [`${option.label}. ${option.text || 'Opsi tanpa teks'}`];
-            if (option.imageUrl) {
-                parts.push(`Media opsi ${option.label}: ${option.imageUrl}`);
-            }
-            return parts.join('\n');
-        })
-        .filter(Boolean);
+    if (isMatrixSingleChoiceType(question.type)) {
+        const questionRecord = question as unknown as Record<string, unknown>;
+        const matrixColumns = resolveQuestionMatrixColumns(questionRecord);
+        const matrixRows = resolveQuestionMatrixRows(questionRecord);
 
-    if (optionLines.length > 0) {
-        lines.push(optionLines.join('\n'));
+        if (matrixColumns.length > 0) {
+            lines.push(
+                [
+                    'Pilihan jawaban:',
+                    ...matrixColumns.map((column, index) => `${index + 1}. ${column.content}`),
+                ].join('\n'),
+            );
+        }
+
+        if (matrixRows.length > 0) {
+            lines.push(
+                [
+                    'Pernyataan:',
+                    ...matrixRows.map((row, index) => `${index + 1}. ${row.content}`),
+                ].join('\n'),
+            );
+        }
+    } else {
+        const optionLines = (Array.isArray(question.options) ? question.options : [])
+            .map((option, index) => normalizeQuestionCardOption(option, index))
+            .map((option) => {
+                const parts = [`${option.label}. ${option.text || 'Opsi tanpa teks'}`];
+                if (option.imageUrl) {
+                    parts.push(`Media opsi ${option.label}: ${option.imageUrl}`);
+                }
+                return parts.join('\n');
+            })
+            .filter(Boolean);
+
+        if (optionLines.length > 0) {
+            lines.push(optionLines.join('\n'));
+        }
     }
 
     const normalized = lines.filter(Boolean).join('\n\n').trim();
@@ -3842,6 +3993,20 @@ function buildDerivedQuestionStimulus(question: NormalizedExamQuestion): string 
 function buildDerivedQuestionAnswerKey(question: NormalizedExamQuestion): string | undefined {
     if (String(question.type || '').toUpperCase() === 'ESSAY') {
         return 'Jawaban esai diperiksa manual oleh guru.';
+    }
+
+    if (isMatrixSingleChoiceType(question.type)) {
+        const questionRecord = question as unknown as Record<string, unknown>;
+        const matrixColumns = resolveQuestionMatrixColumns(questionRecord);
+        const matrixRows = resolveQuestionMatrixRows(questionRecord);
+        const columnContentById = new Map(matrixColumns.map((column) => [column.id, column.content]));
+        const lines = matrixRows
+            .filter((row) => row.correctOptionId)
+            .map((row, index) => {
+                const columnContent = columnContentById.get(String(row.correctOptionId || '').trim()) || '-';
+                return `${index + 1}. ${row.content || 'Pernyataan tanpa teks'} -> ${columnContent}`;
+            });
+        return lines.length > 0 ? lines.join('\n\n').trim() : undefined;
     }
 
     const options = (Array.isArray(question.options) ? question.options : []).map((option, index) =>
@@ -3998,12 +4163,29 @@ function normalizeExamQuestionPayload(question: unknown, index: number): Normali
     const metadata = asRecord(source.metadata);
     const scoreRaw = normalizeOptionalNumber(source.score);
     const blueprint = normalizeBlueprint(source.blueprint ?? metadata?.blueprint);
+    const normalizedType = String(source.type || source.question_type || 'MULTIPLE_CHOICE')
+        .trim()
+        .toUpperCase();
+    const matrixColumns = normalizeQuestionMatrixColumns(
+        source.matrixColumns ?? source.matrix_columns ?? metadata?.matrixColumns ?? metadata?.matrix_columns,
+    );
+    const matrixRows = normalizeQuestionMatrixRows(
+        source.matrixRows ?? source.matrix_rows ?? metadata?.matrixRows ?? metadata?.matrix_rows,
+        new Set((matrixColumns || []).map((column) => column.id)),
+    );
     const normalized: NormalizedExamQuestion = {
         id: String(source.id || `q-${index + 1}`),
-        type: String(source.type || source.question_type || 'MULTIPLE_CHOICE'),
+        type: normalizedType,
         content: String(source.content || source.question_text || ''),
         score: scoreRaw && scoreRaw > 0 ? scoreRaw : 1,
-        options: Array.isArray(source.options) ? source.options : undefined,
+        options:
+            normalizedType === 'MATRIX_SINGLE_CHOICE'
+                ? undefined
+                : Array.isArray(source.options)
+                  ? source.options
+                  : undefined,
+        matrixColumns,
+        matrixRows,
         answerKey: normalizeOptionalString(source.answerKey, 255),
         question_image_url: normalizeOptionalString(source.question_image_url, 2048),
         question_video_url: normalizeOptionalString(source.question_video_url, 2048),
@@ -4047,6 +4229,8 @@ function buildQuestionBankMetadata(question: NormalizedExamQuestion): Record<str
     if (question.blueprint) metadata.blueprint = question.blueprint;
     if (question.questionCard) metadata.questionCard = question.questionCard;
     if (question.itemAnalysis) metadata.itemAnalysis = question.itemAnalysis;
+    if (question.matrixColumns?.length) metadata.matrixColumns = question.matrixColumns;
+    if (question.matrixRows?.length) metadata.matrixRows = question.matrixRows;
     return Object.keys(metadata).length > 0 ? metadata : undefined;
 }
 
@@ -4108,11 +4292,50 @@ function normalizeQuestionBankOptionSignature(options: unknown): Array<{ text: s
         .map(({ text, isCorrect }) => ({ text, isCorrect }));
 }
 
-function buildQuestionBankSignature(params: { type: string; content: string; options?: unknown }): string {
+function buildQuestionBankMatrixSignature(params: {
+    matrixColumns?: unknown;
+    matrixRows?: unknown;
+    metadata?: unknown;
+}) {
+    const metadata = asRecord(params.metadata);
+    const columns =
+        normalizeQuestionMatrixColumns(
+            params.matrixColumns ?? metadata?.matrixColumns ?? metadata?.matrix_columns,
+        ) || [];
+    const rows =
+        normalizeQuestionMatrixRows(
+            params.matrixRows ?? metadata?.matrixRows ?? metadata?.matrix_rows,
+            new Set(columns.map((column) => column.id)),
+        ) || [];
+    const columnContentById = new Map(
+        columns.map((column) => [column.id, normalizeQuestionBankComparableText(column.content)]),
+    );
+
+    return {
+        columns: columns.map((column) => normalizeQuestionBankComparableText(column.content)),
+        rows: rows.map((row, index) => ({
+            text: normalizeQuestionBankComparableText(row.content),
+            correctColumn: row.correctOptionId
+                ? columnContentById.get(String(row.correctOptionId || '').trim()) || ''
+                : '',
+            index,
+        })),
+    };
+}
+
+function buildQuestionBankSignature(params: {
+    type: string;
+    content: string;
+    options?: unknown;
+    matrixColumns?: unknown;
+    matrixRows?: unknown;
+    metadata?: unknown;
+}): string {
     const payload = JSON.stringify({
         type: String(params.type || '').trim().toUpperCase(),
         content: normalizeQuestionBankComparableText(params.content),
         options: normalizeQuestionBankOptionSignature(params.options),
+        matrix: buildQuestionBankMatrixSignature(params),
     });
     return createHash('sha256').update(payload).digest('hex');
 }
@@ -4126,6 +4349,8 @@ function deduplicateQuestionsForBank(questions: NormalizedExamQuestion[]) {
             type: question.type,
             content: question.content,
             options: question.options,
+            matrixColumns: question.matrixColumns,
+            matrixRows: question.matrixRows,
         });
         if (seen.has(signature)) return;
         seen.add(signature);
@@ -4173,6 +4398,7 @@ async function saveQuestionsToBankWithDedup(params: {
                       type: true,
                       content: true,
                       options: true,
+                      metadata: true,
                   },
               })
             : [];
@@ -4183,6 +4409,7 @@ async function saveQuestionsToBankWithDedup(params: {
                 type: row.type,
                 content: row.content,
                 options: row.options ?? undefined,
+                metadata: row.metadata ?? undefined,
             }),
         ),
     );
@@ -4657,6 +4884,7 @@ function getOrCreateSessionDetailInFlight(
 }
 
 type AnalysisQuestionAccumulator = {
+    question: Record<string, unknown>;
     questionId: string;
     orderNumber: number;
     type: string;
@@ -4772,6 +5000,28 @@ function normalizeSelectedOptionIds(raw: unknown): string[] {
     return normalized ? [normalized] : [];
 }
 
+function normalizeMatrixAnswerMap(raw: unknown): Record<string, string> {
+    if (!raw || typeof raw !== 'object' || Array.isArray(raw)) return {};
+    return Object.entries(raw as Record<string, unknown>).reduce<Record<string, string>>((acc, [key, value]) => {
+        const normalizedKey = String(key || '').trim();
+        const normalizedValue = String(value || '').trim();
+        if (!normalizedKey || !normalizedValue) return acc;
+        acc[normalizedKey] = normalizedValue;
+        return acc;
+    }, {});
+}
+
+function getCorrectMatrixAnswerMap(question: Record<string, unknown>): Record<string, string> {
+    const rows = resolveQuestionMatrixRows(question);
+    return rows.reduce<Record<string, string>>((acc, row) => {
+        const normalizedRowId = String(row.id || '').trim();
+        const normalizedColumnId = String(row.correctOptionId || '').trim();
+        if (!normalizedRowId || !normalizedColumnId) return acc;
+        acc[normalizedRowId] = normalizedColumnId;
+        return acc;
+    }, {});
+}
+
 function normalizeQuestionTypeForAnalysis(question: Record<string, unknown>): string {
     const raw = String(question.type || question.question_type || 'MULTIPLE_CHOICE')
         .trim()
@@ -4844,12 +5094,28 @@ function isAnsweredForQuestion(question: Record<string, unknown>, rawAnswer: unk
     if (type === 'ESSAY') {
         return normalizeEssayAnswer(rawAnswer) !== null;
     }
+    if (type === 'MATRIX_SINGLE_CHOICE') {
+        const rows = resolveQuestionMatrixRows(question);
+        if (rows.length === 0) return false;
+        const answerMap = normalizeMatrixAnswerMap(rawAnswer);
+        return rows.every((row) => Boolean(answerMap[String(row.id || '').trim()]));
+    }
     return normalizeSelectedOptionIds(rawAnswer).length > 0;
 }
 
 function evaluateQuestionCorrectness(question: Record<string, unknown>, rawAnswer: unknown): boolean | null {
     const type = normalizeQuestionTypeForAnalysis(question);
     if (type === 'ESSAY') return null;
+    if (type === 'MATRIX_SINGLE_CHOICE') {
+        const correctAnswerMap = getCorrectMatrixAnswerMap(question);
+        const requiredRowIds = Object.keys(correctAnswerMap);
+        if (requiredRowIds.length === 0) return null;
+        const answerMap = normalizeMatrixAnswerMap(rawAnswer);
+        if (!requiredRowIds.every((rowId) => Boolean(answerMap[rowId]))) {
+            return null;
+        }
+        return requiredRowIds.every((rowId) => answerMap[rowId] === correctAnswerMap[rowId]);
+    }
     const correctOptionIds = getCorrectOptionIds(question);
     if (correctOptionIds.length === 0) return null;
     const selectedOptionIds = normalizeSelectedOptionIds(rawAnswer);
@@ -4934,7 +5200,7 @@ async function buildPacketItemAnalysis(
         const questionId = String(question.id || `q-${index + 1}`);
         const type = normalizeQuestionTypeForAnalysis(question);
         const scoreWeight = normalizeOptionalNumber(question.score) || 1;
-        const rawOptions = Array.isArray(question.options) ? question.options : [];
+        const rawOptions = type === 'MATRIX_SINGLE_CHOICE' ? [] : Array.isArray(question.options) ? question.options : [];
         const optionRows = rawOptions
             .map((option, optionIndex) => {
                 const item = asRecord(option);
@@ -4950,13 +5216,19 @@ async function buildPacketItemAnalysis(
             })
             .filter((row): row is { optionId: string; label: string; isCorrect: boolean } => Boolean(row));
         const correctOptionIds = getCorrectOptionIds(question);
-        const evaluable = type !== 'ESSAY' && correctOptionIds.length > 0;
+        const matrixCorrectAnswerMap = getCorrectMatrixAnswerMap(question);
+        const evaluable =
+            type !== 'ESSAY' &&
+            (type === 'MATRIX_SINGLE_CHOICE'
+                ? Object.keys(matrixCorrectAnswerMap).length > 0
+                : correctOptionIds.length > 0);
         const contentHtml = normalizeQuestionContentHtml(question.content || question.question_text);
         const questionImageUrl = normalizeOptionalString(question.question_image_url, 2048) || null;
         const questionVideoUrl = normalizeOptionalString(question.question_video_url, 2048) || null;
         const questionVideoType = normalizeOptionalString(question.question_video_type, 20) || null;
 
         return {
+            question,
             questionId,
             orderNumber: Number(question.order_number || index + 1),
             type,
@@ -5012,8 +5284,9 @@ async function buildPacketItemAnalysis(
 
         questionAccumulators.forEach((item) => {
             const rawAnswer = answersMap[item.questionId];
-            const selectedIds = normalizeSelectedOptionIds(rawAnswer);
-            const answered = selectedIds.length > 0;
+            const selectedIds =
+                item.type === 'MATRIX_SINGLE_CHOICE' ? [] : normalizeSelectedOptionIds(rawAnswer);
+            const answered = isAnsweredForQuestion(item.question, rawAnswer);
 
             if (answered) {
                 item.answeredCount += 1;
@@ -5033,7 +5306,7 @@ async function buildPacketItemAnalysis(
 
             totalObjectivePoints += item.scoreWeight;
 
-            const isCorrect = answered && setEquals(selectedIds, item.correctOptionIds);
+            const isCorrect = evaluateQuestionCorrectness(item.question, rawAnswer) === true;
             item.correctnessBySessionId.set(session.id, isCorrect);
             if (isCorrect) {
                 item.correctCount += 1;
@@ -5258,7 +5531,11 @@ async function buildPacketSubmissions(
     const totalQuestions = packetQuestions.length;
     const objectiveQuestionCount = packetQuestions.filter((question) => {
         const type = normalizeQuestionTypeForAnalysis(question);
-        return type !== 'ESSAY' && getCorrectOptionIds(question).length > 0;
+        if (type === 'ESSAY') return false;
+        if (type === 'MATRIX_SINGLE_CHOICE') {
+            return Object.keys(getCorrectMatrixAnswerMap(question)).length > 0;
+        }
+        return getCorrectOptionIds(question).length > 0;
     }).length;
 
     const sessionRows: PacketSubmissionSessionRow[] = sessions.map((session) => {
@@ -5439,11 +5716,21 @@ async function buildSessionDetail(
         const type = normalizeQuestionTypeForAnalysis(question);
         const rawAnswer = answersMap[questionId];
         const answerText = type === 'ESSAY' ? normalizeEssayAnswer(rawAnswer) : null;
-        const selectedOptionIds = type === 'ESSAY' ? [] : normalizeSelectedOptionIds(rawAnswer);
-        const answered = type === 'ESSAY' ? answerText !== null : selectedOptionIds.length > 0;
+        const matrixColumns = resolveQuestionMatrixColumns(question);
+        const matrixRows = resolveQuestionMatrixRows(question);
+        const matrixAnswerMap = type === 'MATRIX_SINGLE_CHOICE' ? normalizeMatrixAnswerMap(rawAnswer) : {};
+        const selectedOptionIds =
+            type === 'ESSAY'
+                ? []
+                : type === 'MATRIX_SINGLE_CHOICE'
+                  ? matrixRows
+                        .map((row) => matrixAnswerMap[String(row.id || '').trim()])
+                        .filter((value): value is string => Boolean(value))
+                  : normalizeSelectedOptionIds(rawAnswer);
+        const answered = isAnsweredForQuestion(question, rawAnswer);
         if (answered) answeredCount += 1;
 
-        const optionRows = (Array.isArray(question.options) ? question.options : [])
+        const optionRows = (type === 'MATRIX_SINGLE_CHOICE' ? [] : Array.isArray(question.options) ? question.options : [])
             .map((option, optionIndex) => {
                 const optionRecord = asRecord(option);
                 if (!optionRecord) return null;
@@ -5458,7 +5745,17 @@ async function buildSessionDetail(
             .filter((item): item is { optionId: string; label: string } => Boolean(item));
 
         const optionLabelById = new Map(optionRows.map((item) => [item.optionId, item.label]));
-        const correctOptionIds = type === 'ESSAY' ? [] : getCorrectOptionIds(question);
+        const matrixColumnLabelById = new Map(
+            matrixColumns.map((column) => [String(column.id || '').trim(), column.content]),
+        );
+        const correctOptionIds =
+            type === 'ESSAY'
+                ? []
+                : type === 'MATRIX_SINGLE_CHOICE'
+                  ? matrixRows
+                        .map((row) => String(row.correctOptionId || '').trim())
+                        .filter(Boolean)
+                  : getCorrectOptionIds(question);
         const isCorrect = evaluateQuestionCorrectness(question, rawAnswer);
         const explanationSource = asRecord(question.questionCard)
             || asRecord(asRecord(question.metadata)?.questionCard);
@@ -5466,7 +5763,10 @@ async function buildSessionDetail(
 
         if (type === 'ESSAY') {
             essayCount += 1;
-        } else if (correctOptionIds.length > 0) {
+        } else if (
+            (type === 'MATRIX_SINGLE_CHOICE' && Object.keys(getCorrectMatrixAnswerMap(question)).length > 0) ||
+            correctOptionIds.length > 0
+        ) {
             objectiveEvaluableCount += 1;
             if (isCorrect === true) objectiveCorrectCount += 1;
             if (isCorrect === false) objectiveIncorrectCount += 1;
@@ -5481,9 +5781,28 @@ async function buildSessionDetail(
             answered,
             answerText,
             selectedOptionIds,
-            selectedOptionLabels: selectedOptionIds.map((optionId) => optionLabelById.get(optionId) || optionId),
+            selectedOptionLabels:
+                type === 'MATRIX_SINGLE_CHOICE'
+                    ? matrixRows
+                          .map((row) => {
+                              const rowId = String(row.id || '').trim();
+                              const selectedColumnId = matrixAnswerMap[rowId];
+                              if (!selectedColumnId) return null;
+                              return `${row.content}: ${matrixColumnLabelById.get(selectedColumnId) || selectedColumnId}`;
+                          })
+                          .filter((value): value is string => Boolean(value))
+                    : selectedOptionIds.map((optionId) => optionLabelById.get(optionId) || optionId),
             correctOptionIds,
-            correctOptionLabels: correctOptionIds.map((optionId) => optionLabelById.get(optionId) || optionId),
+            correctOptionLabels:
+                type === 'MATRIX_SINGLE_CHOICE'
+                    ? matrixRows
+                          .map((row) => {
+                              const correctColumnId = String(row.correctOptionId || '').trim();
+                              if (!correctColumnId) return null;
+                              return `${row.content}: ${matrixColumnLabelById.get(correctColumnId) || correctColumnId}`;
+                          })
+                          .filter((value): value is string => Boolean(value))
+                    : correctOptionIds.map((optionId) => optionLabelById.get(optionId) || optionId),
             isCorrect,
             explanation,
         };
@@ -9431,14 +9750,10 @@ const calculateScore = (questions: any[], answers: any): number => {
         const points = q.score || 1; // Default to 1 point
         maxScore += points;
 
-        const studentAnswerId = answers[q.id];
-        
-        // Find correct option
-        if (q.options && Array.isArray(q.options)) {
-            const correctOption = q.options.find((opt: any) => opt.isCorrect);
-            if (correctOption && correctOption.id === studentAnswerId) {
-                totalScore += points;
-            }
+        const questionId = String(q?.id || '').trim();
+        const rawAnswer = questionId ? answers?.[questionId] : undefined;
+        if (evaluateQuestionCorrectness(q as Record<string, unknown>, rawAnswer) === true) {
+            totalScore += points;
         }
     });
 
@@ -9621,11 +9936,12 @@ export const submitAnswers = asyncHandler(async (req: Request, res: Response) =>
              }
 
              if (!forceSubmit && !shouldForceTimeout) {
-                 const requiredQuestionIds = scoringQuestions
-                     .map((question: any) => String(question?.id || '').trim())
-                     .filter(Boolean);
-                 const unansweredCount = requiredQuestionIds.filter(
-                     (questionId: string) => !hasAnswerValue(normalizedIncomingAnswers[questionId]),
+                 const unansweredCount = scoringQuestions.filter(
+                     (question: any) =>
+                         !isAnsweredForQuestion(
+                             question as Record<string, unknown>,
+                             normalizedIncomingAnswers[String(question?.id || '').trim()],
+                         ),
                  ).length;
                  if (unansweredCount > 0) {
                      throw new ApiError(

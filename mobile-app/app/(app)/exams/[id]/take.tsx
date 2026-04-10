@@ -81,8 +81,35 @@ function normalizeQuestionType(question: ExamQuestion): ExamQuestionType {
   if (raw === 'ESSAY') return 'ESSAY';
   if (raw === 'TRUE_FALSE') return 'TRUE_FALSE';
   if (raw === 'COMPLEX_MULTIPLE_CHOICE') return 'COMPLEX_MULTIPLE_CHOICE';
+  if (raw === 'MATRIX_SINGLE_CHOICE') return 'MATRIX_SINGLE_CHOICE';
   if (raw === 'MATCHING') return 'MATCHING';
   return 'MULTIPLE_CHOICE';
+}
+
+function normalizeMatrixColumns(question?: ExamQuestion | null) {
+  if (!Array.isArray(question?.matrixColumns)) return [];
+  return question.matrixColumns
+    .map((column, index) => ({
+      id: String(column?.id || `matrix-col-${index + 1}`),
+      content: String(column?.content || '').trim(),
+    }))
+    .filter((column) => column.content.length > 0);
+}
+
+function normalizeMatrixRows(question?: ExamQuestion | null) {
+  if (!Array.isArray(question?.matrixRows)) return [];
+  return question.matrixRows
+    .map((row, index) => ({
+      id: String(row?.id || `matrix-row-${index + 1}`),
+      content: String(row?.content || '').trim(),
+    }))
+    .filter((row) => row.content.length > 0);
+}
+
+function isMatrixQuestionAnswered(question: ExamQuestion | null | undefined, value: unknown) {
+  const rows = normalizeMatrixRows(question);
+  if (rows.length === 0 || !value || typeof value !== 'object' || Array.isArray(value)) return false;
+  return rows.every((row) => String((value as Record<string, unknown>)[row.id] || '').trim().length > 0);
 }
 
 function parseQuestions(raw: unknown): ExamQuestion[] {
@@ -136,6 +163,8 @@ function parseQuestions(raw: unknown): ExamQuestion[] {
         question_type:
           typeof q.question_type === 'string' ? (q.question_type as ExamQuestionType) : undefined,
         score: typeof q.score === 'number' ? q.score : 1,
+        matrixColumns: Array.isArray(q.matrixColumns) ? (q.matrixColumns as ExamQuestion['matrixColumns']) : [],
+        matrixRows: Array.isArray(q.matrixRows) ? (q.matrixRows as ExamQuestion['matrixRows']) : [],
         options,
       };
     });
@@ -542,6 +571,22 @@ export default function StudentExamTakeScreen() {
     [],
   );
 
+  const setMatrixAnswerValue = useCallback((questionId: string, rowId: string, columnId: string) => {
+    setAnswers((prev) => {
+      const currentValue =
+        prev[questionId] && typeof prev[questionId] === 'object' && !Array.isArray(prev[questionId])
+          ? { ...(prev[questionId] as Record<string, unknown>) }
+          : {};
+      return {
+        ...prev,
+        [questionId]: {
+          ...currentValue,
+          [rowId]: columnId,
+        },
+      };
+    });
+  }, []);
+
   const triggerViolationAutoSubmit = useCallback((reason: string) => {
     if (violationSubmitGuardRef.current || isFinished || autoSubmitGuardRef.current) return;
     violationSubmitGuardRef.current = true;
@@ -736,6 +781,8 @@ export default function StudentExamTakeScreen() {
   const currentQuestion = questions[currentIndex];
   const currentType = currentQuestion ? normalizeQuestionType(currentQuestion) : 'MULTIPLE_CHOICE';
   const currentOptions = currentQuestion?.options || [];
+  const currentMatrixColumns = normalizeMatrixColumns(currentQuestion);
+  const currentMatrixRows = normalizeMatrixRows(currentQuestion);
   const currentVideoUrl = currentQuestion?.question_video_url || currentQuestion?.video_url || '';
   const currentVideoType = currentQuestion?.question_video_type || null;
   const isCurrentYoutubeVideo =
@@ -752,6 +799,9 @@ export default function StudentExamTakeScreen() {
     const type = normalizeQuestionType(question);
     if (type === 'ESSAY') {
       return typeof value === 'string' && value.trim().length > 0 ? total + 1 : total;
+    }
+    if (type === 'MATRIX_SINGLE_CHOICE') {
+      return isMatrixQuestionAnswered(question, value) ? total + 1 : total;
     }
     if (type === 'COMPLEX_MULTIPLE_CHOICE') {
       return Array.isArray(value) && value.length > 0 ? total + 1 : total;
@@ -1034,6 +1084,8 @@ export default function StudentExamTakeScreen() {
             const isAnswered =
               type === 'ESSAY'
                 ? typeof value === 'string' && value.trim().length > 0
+                : type === 'MATRIX_SINGLE_CHOICE'
+                  ? isMatrixQuestionAnswered(question, value)
                 : type === 'COMPLEX_MULTIPLE_CHOICE'
                   ? Array.isArray(value) && value.length > 0
                   : typeof value === 'string' && value.length > 0;
@@ -1156,6 +1208,117 @@ export default function StudentExamTakeScreen() {
               backgroundColor: '#fff',
             }}
           />
+        ) : currentType === 'MATRIX_SINGLE_CHOICE' ? (
+          <ScrollView horizontal showsHorizontalScrollIndicator={false}>
+            <View style={{ borderWidth: 1, borderColor: '#cbd5e1', borderRadius: 12, overflow: 'hidden', backgroundColor: '#fff' }}>
+              <View style={{ flexDirection: 'row', backgroundColor: '#f8fafc' }}>
+                <View
+                  style={{
+                    width: 180,
+                    borderRightWidth: 1,
+                    borderBottomWidth: 1,
+                    borderColor: '#cbd5e1',
+                    paddingHorizontal: 10,
+                    paddingVertical: 10,
+                    justifyContent: 'center',
+                  }}
+                >
+                  <Text style={{ color: '#334155', fontWeight: '700', fontSize: 12 }}>Pernyataan</Text>
+                </View>
+                {currentMatrixColumns.map((column) => (
+                  <View
+                    key={column.id}
+                    style={{
+                      width: 108,
+                      borderBottomWidth: 1,
+                      borderColor: '#cbd5e1',
+                      paddingHorizontal: 8,
+                      paddingVertical: 10,
+                      alignItems: 'center',
+                      justifyContent: 'center',
+                    }}
+                  >
+                    <Text style={{ color: '#334155', fontWeight: '700', fontSize: 12, textAlign: 'center' }}>
+                      {column.content}
+                    </Text>
+                  </View>
+                ))}
+              </View>
+              {currentMatrixRows.map((row, rowIndex) => {
+                const answerMap =
+                  effectiveAnswers[currentQuestion.id] &&
+                  typeof effectiveAnswers[currentQuestion.id] === 'object' &&
+                  !Array.isArray(effectiveAnswers[currentQuestion.id])
+                    ? (effectiveAnswers[currentQuestion.id] as Record<string, unknown>)
+                    : {};
+                const selectedColumnId = String(answerMap[row.id] || '');
+                return (
+                  <View
+                    key={row.id || `matrix-row-${rowIndex + 1}`}
+                    style={{
+                      flexDirection: 'row',
+                      backgroundColor: rowIndex % 2 === 0 ? '#ffffff' : '#f8fafc',
+                    }}
+                  >
+                    <View
+                      style={{
+                        width: 180,
+                        borderRightWidth: 1,
+                        borderBottomWidth: 1,
+                        borderColor: '#cbd5e1',
+                        paddingHorizontal: 10,
+                        paddingVertical: 12,
+                      }}
+                    >
+                      <Text style={{ color: '#0f172a', fontSize: 12 }}>{row.content}</Text>
+                    </View>
+                    {currentMatrixColumns.map((column) => {
+                      const selected = selectedColumnId === column.id;
+                      return (
+                        <Pressable
+                          key={`${row.id}-${column.id}`}
+                          onPress={() => setMatrixAnswerValue(currentQuestion.id, row.id, column.id)}
+                          style={{
+                            width: 108,
+                            borderBottomWidth: 1,
+                            borderColor: '#cbd5e1',
+                            alignItems: 'center',
+                            justifyContent: 'center',
+                            paddingVertical: 14,
+                            backgroundColor: selected ? '#eff6ff' : 'transparent',
+                          }}
+                        >
+                          <View
+                            style={{
+                              width: 22,
+                              height: 22,
+                              borderRadius: 999,
+                              borderWidth: 1.5,
+                              borderColor: selected ? '#1d4ed8' : '#94a3b8',
+                              backgroundColor: selected ? '#dbeafe' : 'transparent',
+                              alignItems: 'center',
+                              justifyContent: 'center',
+                            }}
+                          >
+                            {selected ? (
+                              <View
+                                style={{
+                                  width: 10,
+                                  height: 10,
+                                  borderRadius: 999,
+                                  backgroundColor: '#1d4ed8',
+                                }}
+                              />
+                            ) : null}
+                          </View>
+                        </Pressable>
+                      );
+                    })}
+                  </View>
+                );
+              })}
+            </View>
+          </ScrollView>
         ) : currentOptions.length > 0 ? (
           <View>
             {currentOptions.map((option) => {

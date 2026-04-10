@@ -352,6 +352,18 @@ const normalizeReviewQuestions = (rawQuestions: unknown): ReviewableQuestion[] =
                 : null,
         }))
       : [];
+    const matrixColumns = Array.isArray(source.matrixColumns)
+      ? source.matrixColumns.map((column: any, columnIndex: number) => ({
+          id: String(column?.id || `matrix-col-${index + 1}-${columnIndex + 1}`),
+          content: String(column?.content || ''),
+        }))
+      : [];
+    const matrixRows = Array.isArray(source.matrixRows)
+      ? source.matrixRows.map((row: any, rowIndex: number) => ({
+          id: String(row?.id || `matrix-row-${index + 1}-${rowIndex + 1}`),
+          content: String(row?.content || ''),
+        }))
+      : [];
 
     return {
       id: String(source.id || `question-${index + 1}`),
@@ -387,6 +399,8 @@ const normalizeReviewQuestions = (rawQuestions: unknown): ReviewableQuestion[] =
           : null,
       question_media_position: source.question_media_position || 'top',
       options,
+      matrixColumns,
+      matrixRows,
       blueprint: {
         competency: String(blueprintSource.competency || ''),
         learningObjective: String(blueprintSource.learningObjective || ''),

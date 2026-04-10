@@ -20,6 +20,8 @@ import {
   ExamDisplayType,
   ExamQuestionBlueprint,
   ExamQuestionCard,
+  ExamQuestionMatrixColumn,
+  ExamQuestionMatrixRow,
   ExamQuestionType,
   TeacherExamQuestionPayload,
 } from '../../../../src/features/exams/types';
@@ -39,6 +41,8 @@ type QuestionDraft = {
   content: string;
   score: string;
   options: OptionDraft[];
+  matrixColumns: ExamQuestionMatrixColumn[];
+  matrixRows: ExamQuestionMatrixRow[];
   blueprint: ExamQuestionBlueprint;
   questionCard: ExamQuestionCard;
   reviewFeedback?: {
@@ -84,16 +88,78 @@ function createTrueFalseOptions() {
   ];
 }
 
+function createMatrixColumns(): ExamQuestionMatrixColumn[] {
+  return [
+    { id: createId('matrix-col'), content: 'Sangat Setuju' },
+    { id: createId('matrix-col'), content: 'Setuju' },
+    { id: createId('matrix-col'), content: 'Netral' },
+    { id: createId('matrix-col'), content: 'Tidak Setuju' },
+  ];
+}
+
+function createMatrixRows(columns: ExamQuestionMatrixColumn[]): ExamQuestionMatrixRow[] {
+  const defaultCorrectColumnId = columns[0]?.id;
+  return [
+    { id: createId('matrix-row'), content: '', correctOptionId: defaultCorrectColumnId },
+    { id: createId('matrix-row'), content: '', correctOptionId: defaultCorrectColumnId },
+    { id: createId('matrix-row'), content: '', correctOptionId: defaultCorrectColumnId },
+  ];
+}
+
+function normalizeMatrixColumns(raw: unknown): ExamQuestionMatrixColumn[] {
+  if (!Array.isArray(raw)) return [];
+  const columns: ExamQuestionMatrixColumn[] = [];
+  raw.forEach((item, index) => {
+    const source = item && typeof item === 'object' ? (item as ExamQuestionMatrixColumn) : undefined;
+    const content = String(source?.content || '').trim();
+    if (!content) return;
+    columns.push({
+      id: String(source?.id || `matrix-col-${index + 1}`),
+      content,
+    });
+  });
+  return columns;
+}
+
+function normalizeMatrixRows(raw: unknown, columns: ExamQuestionMatrixColumn[]): ExamQuestionMatrixRow[] {
+  if (!Array.isArray(raw)) return [];
+  const validColumnIds = new Set(columns.map((column) => column.id));
+  const defaultCorrectColumnId = columns[0]?.id;
+  const rows: ExamQuestionMatrixRow[] = [];
+  raw.forEach((item, index) => {
+    const source = item && typeof item === 'object' ? (item as ExamQuestionMatrixRow) : undefined;
+    const content = String(source?.content || '').trim();
+    if (!content) return;
+    const correctOptionId = String(source?.correctOptionId || '').trim();
+    rows.push({
+      id: String(source?.id || `matrix-row-${index + 1}`),
+      content,
+      correctOptionId:
+        correctOptionId && validColumnIds.has(correctOptionId) ? correctOptionId : defaultCorrectColumnId,
+    });
+  });
+  return rows;
+}
+
 function createQuestion(type: ExamQuestionType = 'MULTIPLE_CHOICE'): QuestionDraft {
+  const matrixColumns = type === 'MATRIX_SINGLE_CHOICE' ? createMatrixColumns() : [];
   return {
     id: createId('q'),
     type,
     content: '',
     score: '1',
+    matrixColumns,
+    matrixRows: type === 'MATRIX_SINGLE_CHOICE' ? createMatrixRows(matrixColumns) : [],
     blueprint: createDefaultBlueprint(),
     questionCard: createDefaultQuestionCard(),
     options:
-      type === 'ESSAY' ? [] : type === 'TRUE_FALSE' ? createTrueFalseOptions() : createChoiceOptions(),
+      type === 'ESSAY'
+        ? []
+        : type === 'TRUE_FALSE'
+          ? createTrueFalseOptions()
+          : type === 'MATRIX_SINGLE_CHOICE'
+            ? []
+            : createChoiceOptions(),
   };
 }
 
@@ -144,16 +210,31 @@ function buildDerivedQuestionStimulus(question: QuestionDraft): string {
     sections.push(questionText);
   }
 
-  const optionLines = (question.options || [])
-    .map((option, index) => {
-      const label = getQuestionOptionLabel(index);
-      const content = plainTextFromExamRichText(String(option.content || '')).trim() || 'Opsi tanpa teks';
-      return `${label}. ${content}`;
-    })
-    .filter(Boolean);
+  if (question.type === 'MATRIX_SINGLE_CHOICE') {
+    const columns = normalizeMatrixColumns(question.matrixColumns);
+    const rows = normalizeMatrixRows(question.matrixRows, columns);
+    if (columns.length > 0) {
+      sections.push(
+        ['Pilihan jawaban:', ...columns.map((column, index) => `${index + 1}. ${String(column.content || '').trim()}`)].join('\n'),
+      );
+    }
+    if (rows.length > 0) {
+      sections.push(
+        ['Pernyataan:', ...rows.map((row, index) => `${index + 1}. ${plainTextFromExamRichText(String(row.content || '')).trim()}`)].join('\n'),
+      );
+    }
+  } else {
+    const optionLines = (question.options || [])
+      .map((option, index) => {
+        const label = getQuestionOptionLabel(index);
+        const content = plainTextFromExamRichText(String(option.content || '')).trim() || 'Opsi tanpa teks';
+        return `${label}. ${content}`;
+      })
+      .filter(Boolean);
 
-  if (optionLines.length > 0) {
-    sections.push(optionLines.join('\n'));
+    if (optionLines.length > 0) {
+      sections.push(optionLines.join('\n'));
+    }
   }
 
   return sections.join('\n\n').trim();
@@ -162,6 +243,20 @@ function buildDerivedQuestionStimulus(question: QuestionDraft): string {
 function buildDerivedQuestionAnswerKey(question: QuestionDraft): string {
   if (question.type === 'ESSAY') {
     return 'Jawaban esai diperiksa manual oleh guru.';
+  }
+
+  if (question.type === 'MATRIX_SINGLE_CHOICE') {
+    const columns = normalizeMatrixColumns(question.matrixColumns);
+    const rows = normalizeMatrixRows(question.matrixRows, columns);
+    const columnContentById = new Map(columns.map((column) => [column.id, String(column.content || '').trim()]));
+    return rows
+      .filter((row) => row.correctOptionId)
+      .map((row, index) => {
+        const columnContent = columnContentById.get(String(row.correctOptionId || '').trim()) || '-';
+        return `${index + 1}. ${plainTextFromExamRichText(String(row.content || '')).trim() || 'Pernyataan tanpa teks'} -> ${columnContent}`;
+      })
+      .join('\n\n')
+      .trim();
   }
 
   const correctOptions = (question.options || []).filter((option) => option.isCorrect);
@@ -350,6 +445,9 @@ function parseQuestions(raw: unknown): QuestionDraft[] {
     .map((item, idx) => {
       const q = item as Record<string, unknown>;
       const type = String(q.type || q.question_type || 'MULTIPLE_CHOICE').toUpperCase() as ExamQuestionType;
+      const matrixColumns = normalizeMatrixColumns(
+        q.matrixColumns || (q.metadata as Record<string, unknown> | undefined)?.matrixColumns,
+      );
       const rawOptions = Array.isArray(q.options) ? q.options : [];
       const options = rawOptions
         .filter((option) => option && typeof option === 'object')
@@ -367,6 +465,11 @@ function parseQuestions(raw: unknown): QuestionDraft[] {
         type,
         content: plainTextFromExamRichText(String(q.content || q.question_text || '')),
         score: String(typeof q.score === 'number' ? q.score : 1),
+        matrixColumns,
+        matrixRows: normalizeMatrixRows(
+          q.matrixRows || (q.metadata as Record<string, unknown> | undefined)?.matrixRows,
+          matrixColumns,
+        ),
         blueprint: normalizeBlueprint(q.blueprint || (q.metadata as Record<string, unknown> | undefined)?.blueprint),
         questionCard: normalizeQuestionCard(
           q.questionCard || (q.metadata as Record<string, unknown> | undefined)?.questionCard,
@@ -377,6 +480,8 @@ function parseQuestions(raw: unknown): QuestionDraft[] {
         options:
           type === 'ESSAY'
             ? []
+            : type === 'MATRIX_SINGLE_CHOICE'
+              ? []
             : type === 'TRUE_FALSE'
               ? options.length > 0
                 ? options.slice(0, 2)
@@ -400,11 +505,17 @@ function sanitizeQuestions(questions: QuestionDraft[]): TeacherExamQuestionPaylo
       type: question.type,
       content: question.content.trim(),
       score: normalizedScore,
+      matrixColumns:
+        question.type === 'MATRIX_SINGLE_CHOICE' ? normalizeMatrixColumns(question.matrixColumns) : undefined,
+      matrixRows:
+        question.type === 'MATRIX_SINGLE_CHOICE'
+          ? normalizeMatrixRows(question.matrixRows, normalizeMatrixColumns(question.matrixColumns))
+          : undefined,
       blueprint: normalizeBlueprint(question.blueprint),
       questionCard: buildDerivedQuestionCard(question),
     };
 
-    if (question.type !== 'ESSAY') {
+    if (question.type !== 'ESSAY' && question.type !== 'MATRIX_SINGLE_CHOICE') {
       payload.options = question.options
         .map((option, optIdx) => ({
           id: option.id || `${payload.id}-opt-${optIdx + 1}`,
@@ -755,9 +866,12 @@ export default function TeacherExamEditorScreen() {
                 if (Array.isArray(draft.questions) && draft.questions.length > 0) {
                   const restoredQuestions = draft.questions.map((question, index) => {
                     const normalizedType = String(question.type || 'MULTIPLE_CHOICE').toUpperCase() as ExamQuestionType;
+                    const normalizedMatrixColumns = normalizeMatrixColumns(question.matrixColumns);
                     const normalizedOptions =
                       normalizedType === 'ESSAY'
                         ? []
+                        : normalizedType === 'MATRIX_SINGLE_CHOICE'
+                          ? []
                         : normalizedType === 'TRUE_FALSE'
                           ? (question.options || []).length > 0
                             ? (question.options || []).slice(0, 2)
@@ -771,6 +885,8 @@ export default function TeacherExamEditorScreen() {
                       type: normalizedType,
                       content: String(question.content || ''),
                       score: String(question.score || '1'),
+                      matrixColumns: normalizedMatrixColumns,
+                      matrixRows: normalizeMatrixRows(question.matrixRows, normalizedMatrixColumns),
                       blueprint: normalizeBlueprint(question.blueprint),
                       questionCard: normalizeQuestionCard(question.questionCard),
                       reviewFeedback: normalizeReviewFeedback(question.reviewFeedback),
@@ -803,6 +919,8 @@ export default function TeacherExamEditorScreen() {
     const draftKey = getMobileExamEditorDraftStorageKey(user.id);
     const hasQuestionContent = questions.some((question) => {
       if (String(question.content || '').trim()) return true;
+      if ((question.matrixColumns || []).some((column) => String(column.content || '').trim())) return true;
+      if ((question.matrixRows || []).some((row) => String(row.content || '').trim())) return true;
       return (question.options || []).some((option) => String(option.content || '').trim());
     });
     const hasTitle = Boolean(title.trim());
@@ -907,6 +1025,8 @@ export default function TeacherExamEditorScreen() {
       const latestDraft = latestDraftRef.current;
       const hasQuestionContent = (latestDraft.questions || []).some((question) => {
         if (String(question.content || '').trim()) return true;
+        if ((question.matrixColumns || []).some((column) => String(column.content || '').trim())) return true;
+        if ((question.matrixRows || []).some((row) => String(row.content || '').trim())) return true;
         return (question.options || []).some((option) => String(option.content || '').trim());
       });
       const hasTitle = Boolean(String(latestDraft.title || '').trim());
@@ -1034,13 +1154,27 @@ export default function TeacherExamEditorScreen() {
         }
 
         if (question.type !== 'ESSAY') {
-          const options = question.options || [];
-          if (options.length < 2) {
-            throw new Error(`Soal nomor ${idx + 1} harus punya minimal 2 opsi jawaban.`);
-          }
-          const correctCount = options.filter((option) => option.isCorrect).length;
-          if (correctCount === 0) {
-            throw new Error(`Soal nomor ${idx + 1} belum punya jawaban benar.`);
+          if (question.type === 'MATRIX_SINGLE_CHOICE') {
+            const matrixColumns = normalizeMatrixColumns(question.matrixColumns);
+            const matrixRows = normalizeMatrixRows(question.matrixRows, matrixColumns);
+            if (matrixColumns.length < 2) {
+              throw new Error(`Soal nomor ${idx + 1} harus punya minimal 2 kolom jawaban.`);
+            }
+            if (matrixRows.length < 1) {
+              throw new Error(`Soal nomor ${idx + 1} harus punya minimal 1 pernyataan.`);
+            }
+            if (matrixRows.some((row) => !row.correctOptionId)) {
+              throw new Error(`Setiap pernyataan pada soal nomor ${idx + 1} wajib punya 1 kunci jawaban.`);
+            }
+          } else {
+            const options = question.options || [];
+            if (options.length < 2) {
+              throw new Error(`Soal nomor ${idx + 1} harus punya minimal 2 opsi jawaban.`);
+            }
+            const correctCount = options.filter((option) => option.isCorrect).length;
+            if (correctCount === 0) {
+              throw new Error(`Soal nomor ${idx + 1} belum punya jawaban benar.`);
+            }
           }
         }
       });
@@ -1694,7 +1828,7 @@ export default function TeacherExamEditorScreen() {
           ) : null}
 
           <View style={{ flexDirection: 'row', flexWrap: 'wrap', marginHorizontal: -3, marginBottom: 8 }}>
-            {(['MULTIPLE_CHOICE', 'COMPLEX_MULTIPLE_CHOICE', 'TRUE_FALSE', 'ESSAY'] as ExamQuestionType[]).map(
+            {(['MULTIPLE_CHOICE', 'COMPLEX_MULTIPLE_CHOICE', 'TRUE_FALSE', 'MATRIX_SINGLE_CHOICE', 'ESSAY'] as ExamQuestionType[]).map(
               (typeItem) => {
                 const selected = question.type === typeItem;
                 return (
@@ -1705,19 +1839,39 @@ export default function TeacherExamEditorScreen() {
                           prev.map((item) => {
                             if (item.id !== question.id) return item;
                             if (typeItem === 'ESSAY') {
-                              return { ...item, type: typeItem, options: [] };
+                              return { ...item, type: typeItem, options: [], matrixColumns: [], matrixRows: [] };
                             }
                             if (typeItem === 'TRUE_FALSE') {
                               return {
                                 ...item,
                                 type: typeItem,
                                 options: createTrueFalseOptions(),
+                                matrixColumns: [],
+                                matrixRows: [],
+                              };
+                            }
+                            if (typeItem === 'MATRIX_SINGLE_CHOICE') {
+                              const nextColumns =
+                                normalizeMatrixColumns(item.matrixColumns).length > 0
+                                  ? normalizeMatrixColumns(item.matrixColumns)
+                                  : createMatrixColumns();
+                              return {
+                                ...item,
+                                type: typeItem,
+                                options: [],
+                                matrixColumns: nextColumns,
+                                matrixRows:
+                                  normalizeMatrixRows(item.matrixRows, nextColumns).length > 0
+                                    ? normalizeMatrixRows(item.matrixRows, nextColumns)
+                                    : createMatrixRows(nextColumns),
                               };
                             }
                             return {
                               ...item,
                               type: typeItem,
                               options: item.options.length > 0 ? item.options : createChoiceOptions(),
+                              matrixColumns: [],
+                              matrixRows: [],
                             };
                           }),
                         );
@@ -1738,6 +1892,8 @@ export default function TeacherExamEditorScreen() {
                             ? 'PG Kompleks'
                             : typeItem === 'TRUE_FALSE'
                               ? 'Benar/Salah'
+                              : typeItem === 'MATRIX_SINGLE_CHOICE'
+                                ? 'PG Grid'
                               : 'Esai'}
                       </Text>
                     </Pressable>
@@ -1974,6 +2130,20 @@ export default function TeacherExamEditorScreen() {
               <Text style={{ color: '#0f172a', fontSize: 12 }}>
                 {String(question.content || '').trim() || 'Belum ada teks soal.'}
               </Text>
+              {question.type === 'MATRIX_SINGLE_CHOICE' ? (
+                <View style={{ marginTop: 8 }}>
+                  {(normalizeMatrixColumns(question.matrixColumns) || []).length > 0 ? (
+                    <Text style={{ color: '#334155', fontSize: 12, fontWeight: '700', marginBottom: 4 }}>
+                      Pilihan jawaban: {(normalizeMatrixColumns(question.matrixColumns) || []).map((column) => column.content).join(' • ')}
+                    </Text>
+                  ) : null}
+                  {(normalizeMatrixRows(question.matrixRows, normalizeMatrixColumns(question.matrixColumns)) || []).map((row, rowIndex) => (
+                    <Text key={row.id || `${question.id}-matrix-preview-${rowIndex}`} style={{ color: '#334155', fontSize: 12, marginTop: 2 }}>
+                      {rowIndex + 1}. {String(row.content || '').trim() || 'Pernyataan tanpa teks'}
+                    </Text>
+                  ))}
+                </View>
+              ) : null}
               {(question.options || []).length > 0 ? (
                 <View style={{ marginTop: 8 }}>
                   {(question.options || []).map((option, optionIndex) => (
@@ -2045,7 +2215,245 @@ export default function TeacherExamEditorScreen() {
             />
           </View>
 
-          {question.type !== 'ESSAY' ? (
+          {question.type === 'MATRIX_SINGLE_CHOICE' ? (
+            <View
+              style={{
+                borderWidth: 1,
+                borderColor: '#dbeafe',
+                backgroundColor: '#eff6ff',
+                borderRadius: 10,
+                padding: 10,
+              }}
+            >
+              <Text style={{ color: '#1e3a8a', fontWeight: '700', marginBottom: 6 }}>Pilihan Ganda Grid</Text>
+              <Text style={{ color: '#475569', fontSize: 12, marginBottom: 10 }}>
+                Atur kolom jawaban bersama, lalu isi daftar pernyataan dan pilih satu kunci jawaban untuk tiap pernyataan.
+              </Text>
+
+              <Text style={{ color: '#1e3a8a', fontSize: 11, fontWeight: '700', marginBottom: 6 }}>Kolom Jawaban</Text>
+              {normalizeMatrixColumns(question.matrixColumns).map((column, columnIndex) => (
+                <View key={column.id} style={{ flexDirection: 'row', alignItems: 'center', marginBottom: 6 }}>
+                  <View
+                    style={{
+                      width: 28,
+                      height: 28,
+                      borderRadius: 8,
+                      borderWidth: 1,
+                      borderColor: '#93c5fd',
+                      backgroundColor: '#fff',
+                      alignItems: 'center',
+                      justifyContent: 'center',
+                      marginRight: 6,
+                    }}
+                  >
+                    <Text style={{ color: '#1d4ed8', fontWeight: '700', fontSize: 11 }}>{columnIndex + 1}</Text>
+                  </View>
+                  <TextInput
+                    value={String(column.content || '')}
+                    onChangeText={(value) => {
+                      const nextColumns = normalizeMatrixColumns(question.matrixColumns).map((item) =>
+                        item.id === column.id ? { ...item, content: value } : item,
+                      );
+                      setQuestions((prev) =>
+                        prev.map((item) =>
+                          item.id === question.id
+                            ? {
+                                ...item,
+                                matrixColumns: nextColumns,
+                                matrixRows: normalizeMatrixRows(item.matrixRows, nextColumns),
+                              }
+                            : item,
+                        ),
+                      );
+                    }}
+                    placeholder={`Kolom ${columnIndex + 1}`}
+                    style={{
+                      flex: 1,
+                      borderWidth: 1,
+                      borderColor: '#cbd5e1',
+                      borderRadius: 10,
+                      paddingHorizontal: 10,
+                      paddingVertical: 9,
+                      backgroundColor: '#fff',
+                    }}
+                  />
+                  <Pressable
+                    onPress={() => {
+                      const currentColumns = normalizeMatrixColumns(question.matrixColumns);
+                      if (currentColumns.length <= 2) {
+                        Alert.alert('Minimal 2 kolom', 'Pilihan Ganda Grid harus memiliki minimal 2 kolom jawaban.');
+                        return;
+                      }
+                      const nextColumns = currentColumns.filter((item) => item.id !== column.id);
+                      const fallbackColumnId = nextColumns[0]?.id;
+                      const nextRows = normalizeMatrixRows(question.matrixRows, nextColumns).map((row) =>
+                        row.correctOptionId === column.id ? { ...row, correctOptionId: fallbackColumnId } : row,
+                      );
+                      setQuestions((prev) =>
+                        prev.map((item) =>
+                          item.id === question.id
+                            ? { ...item, matrixColumns: nextColumns, matrixRows: nextRows }
+                            : item,
+                        ),
+                      );
+                    }}
+                    style={{
+                      marginLeft: 6,
+                      borderWidth: 1,
+                      borderColor: '#fecaca',
+                      borderRadius: 8,
+                      paddingHorizontal: 10,
+                      paddingVertical: 8,
+                      backgroundColor: '#fff1f2',
+                    }}
+                  >
+                    <Text style={{ color: '#b91c1c', fontWeight: '700', fontSize: 12 }}>Hapus</Text>
+                  </Pressable>
+                </View>
+              ))}
+              <Pressable
+                onPress={() => {
+                  const nextColumns = [
+                    ...normalizeMatrixColumns(question.matrixColumns),
+                    { id: createId('matrix-col'), content: '' },
+                  ];
+                  setQuestions((prev) =>
+                    prev.map((item) =>
+                      item.id === question.id
+                        ? {
+                            ...item,
+                            matrixColumns: nextColumns,
+                            matrixRows: normalizeMatrixRows(item.matrixRows, nextColumns),
+                          }
+                        : item,
+                    ),
+                  );
+                }}
+                style={{
+                  borderWidth: 1,
+                  borderColor: '#1d4ed8',
+                  borderRadius: 8,
+                  paddingHorizontal: 10,
+                  paddingVertical: 8,
+                  backgroundColor: '#fff',
+                  marginBottom: 12,
+                  alignSelf: 'flex-start',
+                }}
+              >
+                <Text style={{ color: '#1d4ed8', fontWeight: '700', fontSize: 12 }}>Tambah Kolom</Text>
+              </Pressable>
+
+              <Text style={{ color: '#1e3a8a', fontSize: 11, fontWeight: '700', marginBottom: 6 }}>Pernyataan</Text>
+              {normalizeMatrixRows(question.matrixRows, normalizeMatrixColumns(question.matrixColumns)).map((row, rowIndex) => {
+                const currentColumns = normalizeMatrixColumns(question.matrixColumns);
+                return (
+                  <View key={row.id} style={{ borderWidth: 1, borderColor: '#bfdbfe', borderRadius: 10, padding: 10, backgroundColor: '#fff', marginBottom: 8 }}>
+                    <Text style={{ color: '#1e3a8a', fontWeight: '700', fontSize: 12, marginBottom: 6 }}>
+                      Pernyataan {rowIndex + 1}
+                    </Text>
+                    <TextInput
+                      value={String(row.content || '')}
+                      onChangeText={(value) => {
+                        const nextRows = normalizeMatrixRows(question.matrixRows, currentColumns).map((item) =>
+                          item.id === row.id ? { ...item, content: value } : item,
+                        );
+                        setQuestions((prev) =>
+                          prev.map((item) =>
+                            item.id === question.id ? { ...item, matrixRows: nextRows } : item,
+                          ),
+                        );
+                      }}
+                      placeholder={`Isi pernyataan ${rowIndex + 1}`}
+                      multiline
+                      style={{
+                        borderWidth: 1,
+                        borderColor: '#cbd5e1',
+                        borderRadius: 10,
+                        paddingHorizontal: 10,
+                        paddingVertical: 9,
+                        backgroundColor: '#fff',
+                        marginBottom: 8,
+                        minHeight: 56,
+                      }}
+                    />
+                    <MobileSelectField
+                      label="Kunci Jawaban"
+                      value={String(row.correctOptionId || currentColumns[0]?.id || '')}
+                      options={currentColumns.map((column) => ({
+                        label: String(column.content || '').trim() || 'Kolom tanpa label',
+                        value: column.id,
+                      }))}
+                      onChange={(value) => {
+                        const nextRows = normalizeMatrixRows(question.matrixRows, currentColumns).map((item) =>
+                          item.id === row.id ? { ...item, correctOptionId: value } : item,
+                        );
+                        setQuestions((prev) =>
+                          prev.map((item) =>
+                            item.id === question.id ? { ...item, matrixRows: nextRows } : item,
+                          ),
+                        );
+                      }}
+                      placeholder="Pilih kunci jawaban"
+                    />
+                    <Pressable
+                      onPress={() => {
+                        const currentRows = normalizeMatrixRows(question.matrixRows, currentColumns);
+                        if (currentRows.length <= 1) {
+                          Alert.alert('Minimal 1 pernyataan', 'Pilihan Ganda Grid harus memiliki minimal 1 pernyataan.');
+                          return;
+                        }
+                        setQuestions((prev) =>
+                          prev.map((item) =>
+                            item.id === question.id
+                              ? { ...item, matrixRows: currentRows.filter((candidate) => candidate.id !== row.id) }
+                              : item,
+                          ),
+                        );
+                      }}
+                      style={{
+                        marginTop: 8,
+                        borderWidth: 1,
+                        borderColor: '#fecaca',
+                        borderRadius: 8,
+                        paddingHorizontal: 10,
+                        paddingVertical: 8,
+                        backgroundColor: '#fff1f2',
+                        alignSelf: 'flex-start',
+                      }}
+                    >
+                      <Text style={{ color: '#b91c1c', fontWeight: '700', fontSize: 12 }}>Hapus Pernyataan</Text>
+                    </Pressable>
+                  </View>
+                );
+              })}
+              <Pressable
+                onPress={() => {
+                  const currentColumns = normalizeMatrixColumns(question.matrixColumns);
+                  const fallbackColumnId = currentColumns[0]?.id;
+                  const nextRows = [
+                    ...normalizeMatrixRows(question.matrixRows, currentColumns),
+                    { id: createId('matrix-row'), content: '', correctOptionId: fallbackColumnId },
+                  ];
+                  setQuestions((prev) =>
+                    prev.map((item) =>
+                      item.id === question.id ? { ...item, matrixRows: nextRows } : item,
+                    ),
+                  );
+                }}
+                style={{
+                  borderWidth: 1,
+                  borderColor: '#1d4ed8',
+                  borderRadius: 8,
+                  paddingHorizontal: 10,
+                  paddingVertical: 8,
+                  backgroundColor: '#fff',
+                  alignSelf: 'flex-start',
+                }}
+              >
+                <Text style={{ color: '#1d4ed8', fontWeight: '700', fontSize: 12 }}>Tambah Pernyataan</Text>
+              </Pressable>
+            </View>
+          ) : question.type !== 'ESSAY' ? (
             <View>
               {question.options.map((option) => (
                 <View key={option.id} style={{ flexDirection: 'row', marginBottom: 6 }}>

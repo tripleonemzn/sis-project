@@ -17,6 +17,7 @@ const QUESTION_TYPE_OPTIONS: Array<{ label: string; value: '' | AdminExamQuestio
   { label: 'Semua Tipe Soal', value: '' },
   { label: 'Pilihan Ganda', value: 'MULTIPLE_CHOICE' },
   { label: 'PG Kompleks', value: 'COMPLEX_MULTIPLE_CHOICE' },
+  { label: 'Pilihan Ganda Grid', value: 'MATRIX_SINGLE_CHOICE' },
   { label: 'Benar / Salah', value: 'TRUE_FALSE' },
   { label: 'Esai', value: 'ESSAY' },
 ];

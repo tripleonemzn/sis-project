@@ -4,6 +4,7 @@ export type ExamQuestionType =
   | 'MULTIPLE_CHOICE'
   | 'COMPLEX_MULTIPLE_CHOICE'
   | 'TRUE_FALSE'
+  | 'MATRIX_SINGLE_CHOICE'
   | 'ESSAY'
   | 'MATCHING';
 
@@ -22,6 +23,17 @@ export type ExamQuestionBlueprint = {
   indicator?: string | null;
   materialScope?: string | null;
   cognitiveLevel?: string | null;
+};
+
+export type ExamQuestionMatrixColumn = {
+  id: string;
+  content?: string | null;
+};
+
+export type ExamQuestionMatrixRow = {
+  id: string;
+  content?: string | null;
+  correctOptionId?: string | null;
 };
 
 export type ExamQuestionCard = {
@@ -48,6 +60,8 @@ export type ExamQuestion = {
   question_text?: string | null;
   score?: number;
   options?: ExamQuestionOption[];
+  matrixColumns?: ExamQuestionMatrixColumn[];
+  matrixRows?: ExamQuestionMatrixRow[];
   question_image_url?: string | null;
   image_url?: string | null;
   question_video_url?: string | null;
@@ -61,6 +75,8 @@ export type ExamQuestion = {
     blueprint?: ExamQuestionBlueprint | null;
     questionCard?: ExamQuestionCard | null;
     itemAnalysis?: ExamQuestionItemAnalysis | null;
+    matrixColumns?: ExamQuestionMatrixColumn[] | null;
+    matrixRows?: ExamQuestionMatrixRow[] | null;
   } | null;
 };
 
@@ -74,6 +90,8 @@ export type TeacherExamQuestionPayload = {
     content: string;
     isCorrect: boolean;
   }>;
+  matrixColumns?: ExamQuestionMatrixColumn[];
+  matrixRows?: ExamQuestionMatrixRow[];
   blueprint?: ExamQuestionBlueprint;
   questionCard?: ExamQuestionCard;
   itemAnalysis?: ExamQuestionItemAnalysis;

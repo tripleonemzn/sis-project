@@ -981,6 +981,7 @@ export type AdminExamQuestionType =
   | 'MULTIPLE_CHOICE'
   | 'COMPLEX_MULTIPLE_CHOICE'
   | 'TRUE_FALSE'
+  | 'MATRIX_SINGLE_CHOICE'
   | 'ESSAY'
   | 'MATCHING';
 

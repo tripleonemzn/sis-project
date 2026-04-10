@@ -93,6 +93,17 @@ export interface QuestionCard {
     distractorNotes?: string;
 }
 
+export interface QuestionMatrixColumn {
+    id: string;
+    content: string;
+}
+
+export interface QuestionMatrixRow {
+    id: string;
+    content: string;
+    correctOptionId?: string;
+}
+
 export interface QuestionReviewFeedback {
     questionComment?: string;
     blueprintComment?: string;
@@ -121,13 +132,21 @@ export interface QuestionItemAnalysis {
 
 export interface Question {
     id: string;
-    type: 'MULTIPLE_CHOICE' | 'COMPLEX_MULTIPLE_CHOICE' | 'TRUE_FALSE' | 'ESSAY' | 'MATCHING';
+    type:
+        | 'MULTIPLE_CHOICE'
+        | 'COMPLEX_MULTIPLE_CHOICE'
+        | 'TRUE_FALSE'
+        | 'ESSAY'
+        | 'MATCHING'
+        | 'MATRIX_SINGLE_CHOICE';
     content: string; // HTML/RichText
     options?: {
         id: string;
         content: string; // HTML/RichText (supports images)
         isCorrect: boolean;
     }[];
+    matrixColumns?: QuestionMatrixColumn[];
+    matrixRows?: QuestionMatrixRow[];
     score: number;
     blueprint?: QuestionBlueprint;
     questionCard?: QuestionCard;
@@ -138,6 +157,8 @@ export interface Question {
         questionCard?: QuestionCard;
         reviewFeedback?: QuestionReviewFeedback;
         itemAnalysis?: QuestionItemAnalysis;
+        matrixColumns?: QuestionMatrixColumn[];
+        matrixRows?: QuestionMatrixRow[];
     };
     bank?: {
         id: number;

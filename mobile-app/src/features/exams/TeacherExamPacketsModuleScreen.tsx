@@ -137,6 +137,7 @@ function resolveQuestionTypeLabel(question?: ExamQuestion | null) {
   if (type === 'ESSAY') return 'Esai';
   if (type === 'TRUE_FALSE') return 'Benar / Salah';
   if (type === 'COMPLEX_MULTIPLE_CHOICE') return 'PG Kompleks';
+  if (type === 'MATRIX_SINGLE_CHOICE') return 'Pilihan Ganda Grid';
   if (type === 'MATCHING') return 'Menjodohkan';
   return 'Pilihan Ganda';
 }
