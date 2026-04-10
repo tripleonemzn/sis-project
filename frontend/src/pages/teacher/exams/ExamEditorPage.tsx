@@ -33,6 +33,10 @@ import { ExamStudentPreviewSurface, type ExamStudentPreviewQuestion } from '../.
 import { ConfirmationModal } from '../../../components/common/ConfirmationModal';
 import type { UserWrite } from '../../../types/auth';
 import { enhanceQuestionHtml } from '../../../utils/questionMedia';
+import {
+    getExamQuestionSupportSnapshot,
+    getExamQuestionSupportStatusMeta,
+} from '../../../lib/examQuestionSupportStatus';
 
 // Extended Question interface for UI state and Backend Payload compatibility
 interface ExtendedQuestion extends Question {
@@ -2041,19 +2045,18 @@ export const ExamEditorPage = () => {
         setReviewReplyDraft(String(activeQuestionReviewFeedback?.teacherResponse || ''));
     }, [activeQuestionReviewFeedback?.teacherResponse, activeQuestion?.id]);
 
-    const hasActiveQuestionBlueprint = Boolean(
-        activeQuestionBlueprint.competency ||
-        activeQuestionBlueprint.learningObjective ||
-        activeQuestionBlueprint.indicator ||
-        activeQuestionBlueprint.materialScope ||
-        activeQuestionBlueprint.cognitiveLevel,
+    const activeQuestionSupportSnapshot = getExamQuestionSupportSnapshot(
+        activeQuestion
+            ? {
+                ...activeQuestion,
+                blueprint: activeQuestionBlueprint,
+                questionCard: activeQuestionCard,
+            }
+            : null,
     );
-    const hasActiveQuestionCard = Boolean(
-        activeQuestionCard.stimulus ||
-        activeQuestionCard.answerRationale ||
-        activeQuestionCard.scoringGuideline ||
-        activeQuestionCard.distractorNotes,
-    );
+    const activeQuestionSupportMeta = getExamQuestionSupportStatusMeta(activeQuestionSupportSnapshot.overallStatus);
+    const activeBlueprintSupportMeta = getExamQuestionSupportStatusMeta(activeQuestionSupportSnapshot.blueprintStatus);
+    const activeQuestionCardSupportMeta = getExamQuestionSupportStatusMeta(activeQuestionSupportSnapshot.questionCardStatus);
     const hasActiveReviewFeedback = Boolean(
         activeQuestionReviewFeedback?.questionComment ||
         activeQuestionReviewFeedback?.blueprintComment ||
@@ -2728,13 +2731,18 @@ export const ExamEditorPage = () => {
                                             <button
                                                 type="button"
                                                 onClick={() => setIsQuestionSupportModalOpen(true)}
-                                                className={`px-3 py-2 rounded-lg border text-sm font-normal transition-colors ${
-                                                    hasActiveQuestionBlueprint || hasActiveQuestionCard
-                                                        ? 'border-emerald-300 bg-emerald-50 text-emerald-700'
+                                                className={`inline-flex items-center gap-2 rounded-lg border px-3 py-2 text-sm font-normal transition-colors ${
+                                                    activeQuestion
+                                                        ? activeQuestionSupportMeta.buttonClassName
                                                         : 'border-gray-200 bg-white text-gray-700 hover:bg-gray-50'
                                                 }`}
                                             >
-                                                Kisi-kisi & Kartu Soal
+                                                <span>Kisi-kisi & Kartu Soal</span>
+                                                {activeQuestion ? (
+                                                    <span className={`rounded-full px-2.5 py-0.5 text-[11px] font-semibold ${activeQuestionSupportMeta.badgeClassName}`}>
+                                                        {activeQuestionSupportMeta.label}
+                                                    </span>
+                                                ) : null}
                                             </button>
                                             <button
                                                 type="button"
@@ -3145,6 +3153,11 @@ export const ExamEditorPage = () => {
                                 <p className="mt-1 text-sm text-slate-500">
                                     Lengkapi pemetaan soal dan catatan analisis untuk soal nomor {activeQuestionIndex + 1}.
                                 </p>
+                                <div className="mt-3">
+                                    <span className={`inline-flex rounded-full px-3 py-1 text-xs font-semibold ${activeQuestionSupportMeta.badgeClassName}`}>
+                                        Status kesiapan: {activeQuestionSupportMeta.label}
+                                    </span>
+                                </div>
                             </div>
                             <button
                                 type="button"
@@ -3157,17 +3170,17 @@ export const ExamEditorPage = () => {
                         </div>
 
                         <div className="flex-1 overflow-y-auto px-6 py-5">
-                            <div className="grid gap-5 xl:grid-cols-2">
+                            <div className="space-y-5">
                                 <div className="rounded-3xl border border-slate-200 bg-slate-50 p-5">
                                     <div className="mb-4 flex items-center justify-between gap-3">
                                         <div>
-                                            <p className="text-xs font-bold uppercase tracking-[0.24em] text-slate-600">Kisi-kisi Soal</p>
-                                            <p className="mt-1 text-xs text-slate-500">Opsional. Isi bila diperlukan untuk pemetaan soal.</p>
+                                            <p className="text-xs font-bold uppercase tracking-[0.24em] text-slate-600">Kisi-kisi</p>
+                                            <p className="mt-1 text-xs text-slate-500">
+                                                Lengkapi pemetaan soal agar review kurikulum dan validasi kualitas butir tetap jelas.
+                                            </p>
                                         </div>
-                                        <span className={`rounded-full px-3 py-1 text-xs font-semibold ${
-                                            hasActiveQuestionBlueprint ? 'bg-blue-600 text-white' : 'bg-white text-slate-500'
-                                        }`}>
-                                            {hasActiveQuestionBlueprint ? 'Terisi' : 'Belum diisi'}
+                                        <span className={`rounded-full px-3 py-1 text-xs font-semibold ${activeBlueprintSupportMeta.badgeClassName}`}>
+                                            {activeBlueprintSupportMeta.label}
                                         </span>
                                     </div>
 
@@ -3220,10 +3233,8 @@ export const ExamEditorPage = () => {
                                                 Terbentuk otomatis dari butir soal, opsi jawaban, indikator soal, dan level kognitif.
                                             </p>
                                         </div>
-                                        <span className={`rounded-full px-3 py-1 text-xs font-semibold ${
-                                            hasActiveQuestionCard ? 'bg-emerald-600 text-white' : 'bg-white text-slate-500'
-                                        }`}>
-                                            {hasActiveQuestionCard ? 'Terisi' : 'Belum diisi'}
+                                        <span className={`rounded-full px-3 py-1 text-xs font-semibold ${activeQuestionCardSupportMeta.badgeClassName}`}>
+                                            {activeQuestionCardSupportMeta.label}
                                         </span>
                                     </div>
 

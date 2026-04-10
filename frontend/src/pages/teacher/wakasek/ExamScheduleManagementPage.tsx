@@ -25,6 +25,10 @@ import {
   type ExamScheduleMakeupStudentRow,
 } from '../../../services/exam.service';
 import { isNonScheduledExamProgram, resolveProgramCodeFromParam } from '../../../lib/examProgramMenu';
+import {
+  getExamQuestionSupportSnapshot,
+  getExamQuestionSupportStatusMeta,
+} from '../../../lib/examQuestionSupportStatus';
 import { enhanceQuestionHtml } from '../../../utils/questionMedia';
 import { ExamStudentPreviewSurface, type ExamStudentPreviewQuestion } from '../../../components/teacher/exams/ExamStudentPreviewSurface';
 import ExamProgramFilterBar from '../../../components/teacher/exams/ExamProgramFilterBar';
@@ -1466,27 +1470,21 @@ const ExamScheduleManagementPage = () => {
     () => normalizeReviewQuestions(reviewPacket?.questions),
     [reviewPacket?.questions],
   );
+  const reviewQuestionSupportSnapshots = useMemo(
+    () => reviewQuestions.map((question) => getExamQuestionSupportSnapshot(question)),
+    [reviewQuestions],
+  );
   const activeReviewQuestion =
     reviewQuestions.length > 0 && reviewQuestionIndex >= 0 && reviewQuestionIndex < reviewQuestions.length
       ? reviewQuestions[reviewQuestionIndex]
       : null;
-  const reviewBlueprintCount = reviewQuestions.filter((question) =>
-    Boolean(
-      hasFilledText(question.blueprint?.competency) ||
-        hasFilledText(question.blueprint?.learningObjective) ||
-        hasFilledText(question.blueprint?.indicator) ||
-        hasFilledText(question.blueprint?.materialScope) ||
-        hasFilledText(question.blueprint?.cognitiveLevel),
-    ),
-  ).length;
-  const reviewQuestionCardCount = reviewQuestions.filter((question) =>
-    Boolean(
-      hasFilledText(question.questionCard?.stimulus) ||
-        hasFilledText(question.questionCard?.answerRationale) ||
-        hasFilledText(question.questionCard?.scoringGuideline) ||
-        hasFilledText(question.questionCard?.distractorNotes),
-    ),
-  ).length;
+  const activeReviewSupportSnapshot = getExamQuestionSupportSnapshot(activeReviewQuestion);
+  const activeReviewSupportMeta = getExamQuestionSupportStatusMeta(activeReviewSupportSnapshot.overallStatus);
+  const activeReviewBlueprintMeta = getExamQuestionSupportStatusMeta(activeReviewSupportSnapshot.blueprintStatus);
+  const activeReviewQuestionCardMeta = getExamQuestionSupportStatusMeta(activeReviewSupportSnapshot.questionCardStatus);
+  const reviewEmptyCount = reviewQuestionSupportSnapshots.filter((snapshot) => snapshot.overallStatus === 'EMPTY').length;
+  const reviewPartialCount = reviewQuestionSupportSnapshots.filter((snapshot) => snapshot.overallStatus === 'PARTIAL').length;
+  const reviewCompleteCount = reviewQuestionSupportSnapshots.filter((snapshot) => snapshot.overallStatus === 'COMPLETE').length;
 
   useEffect(() => {
     setReviewCommentDraft({
@@ -1801,6 +1799,15 @@ const ExamScheduleManagementPage = () => {
                                         const blueprintCount = Number(schedule.packet?.blueprintCount || 0);
                                         const questionCardCount = Number(schedule.packet?.questionCardCount || 0);
                                         const isScheduleReady = Boolean(schedule.packet && questionPoolCount > 0);
+                                        const scheduleSupportStatus =
+                                          questionPoolCount === 0 && blueprintCount === 0 && questionCardCount === 0
+                                            ? 'EMPTY'
+                                            : questionPoolCount > 0 &&
+                                                blueprintCount >= questionPoolCount &&
+                                                questionCardCount >= questionPoolCount
+                                              ? 'COMPLETE'
+                                              : 'PARTIAL';
+                                        const scheduleSupportMeta = getExamQuestionSupportStatusMeta(scheduleSupportStatus);
                                         return (
                                           <tr key={schedule.id} className="hover:bg-gray-50">
                                             <td className="px-4 py-2 font-medium text-gray-900">
@@ -1817,6 +1824,11 @@ const ExamScheduleManagementPage = () => {
                                             </td>
                                             <td className="px-4 py-2">
                                               <div className="space-y-1.5">
+                                                {schedule.packet ? (
+                                                  <span className={`inline-flex rounded-full px-2 py-1 text-xs font-semibold ${scheduleSupportMeta.badgeClassName}`}>
+                                                    Kesiapan: {scheduleSupportMeta.label}
+                                                  </span>
+                                                ) : null}
                                                 {isScheduleReady ? (
                                                   <span className="inline-flex rounded bg-green-50 px-2 py-1 text-xs font-medium text-green-700">
                                                     Tersedia: {schedule.packet?.title}
@@ -1930,7 +1942,7 @@ const ExamScheduleManagementPage = () => {
             </div>
 
             <div className="flex-1 overflow-y-auto px-6 py-5">
-              <div className="mb-5 grid gap-3 md:grid-cols-2 xl:grid-cols-4">
+              <div className="mb-5 grid gap-3 md:grid-cols-2 xl:grid-cols-5">
                 <div className="rounded-2xl border border-slate-200 bg-slate-50 px-4 py-3">
                   <div className="text-xs font-semibold uppercase tracking-wide text-slate-500">Mapel</div>
                   <div className="mt-1 text-sm font-semibold text-slate-900">
@@ -1943,16 +1955,27 @@ const ExamScheduleManagementPage = () => {
                     {reviewPacket?.author?.name || 'Guru sesuai assignment'}
                   </div>
                 </div>
-                <div className="rounded-2xl border border-slate-200 bg-slate-50 px-4 py-3">
-                  <div className="text-xs font-semibold uppercase tracking-wide text-slate-500">Status Kisi-kisi</div>
-                  <div className="mt-1 text-sm font-semibold text-slate-900">
-                    {reviewBlueprintCount}/{reviewQuestions.length} soal terisi
+                <div className={`rounded-2xl border px-4 py-3 ${reviewEmptyCount > 0 ? getExamQuestionSupportStatusMeta('EMPTY').summaryCardClassName : 'border-slate-200 bg-slate-50'}`}>
+                  <div className="text-xs font-semibold uppercase tracking-wide text-slate-500">Belum Dibuat</div>
+                  <div className={`mt-1 text-sm font-semibold ${reviewEmptyCount > 0 ? getExamQuestionSupportStatusMeta('EMPTY').summaryValueClassName : 'text-slate-900'}`}>
+                    {reviewEmptyCount} soal
                   </div>
+                  <div className="mt-1 text-xs text-slate-500">Soal, kisi-kisi, dan kartu soal masih kosong.</div>
                 </div>
-                <div className="rounded-2xl border border-slate-200 bg-slate-50 px-4 py-3">
-                  <div className="text-xs font-semibold uppercase tracking-wide text-slate-500">Status Kartu Soal</div>
-                  <div className="mt-1 text-sm font-semibold text-slate-900">
-                    {reviewQuestionCardCount}/{reviewQuestions.length} soal terisi
+                <div className={`rounded-2xl border px-4 py-3 ${reviewPartialCount > 0 ? getExamQuestionSupportStatusMeta('PARTIAL').summaryCardClassName : 'border-slate-200 bg-slate-50'}`}>
+                  <div className="text-xs font-semibold uppercase tracking-wide text-slate-500">Belum Selesai</div>
+                  <div className={`mt-1 text-sm font-semibold ${reviewPartialCount > 0 ? getExamQuestionSupportStatusMeta('PARTIAL').summaryValueClassName : 'text-slate-900'}`}>
+                    {reviewPartialCount} soal
+                  </div>
+                  <div className="mt-1 text-xs text-slate-500">Sudah mulai diisi, tetapi belum lengkap semua.</div>
+                </div>
+                <div className={`rounded-2xl border px-4 py-3 ${reviewCompleteCount > 0 ? getExamQuestionSupportStatusMeta('COMPLETE').summaryCardClassName : 'border-slate-200 bg-slate-50'}`}>
+                  <div className="text-xs font-semibold uppercase tracking-wide text-slate-500">Selesai</div>
+                  <div className={`mt-1 text-sm font-semibold ${reviewCompleteCount > 0 ? getExamQuestionSupportStatusMeta('COMPLETE').summaryValueClassName : 'text-slate-900'}`}>
+                    {reviewCompleteCount} soal
+                  </div>
+                  <div className="mt-1 text-xs text-slate-500">
+                    Kisi-kisi lengkap, kartu soal lengkap, dan butir soal siap direview.
                   </div>
                 </div>
               </div>
@@ -1976,7 +1999,22 @@ const ExamScheduleManagementPage = () => {
                     onActiveQuestionIndexChange={setReviewQuestionIndex}
                   />
 
-                  <div className="grid gap-4 xl:grid-cols-2">
+                  <div className={`rounded-3xl border px-5 py-4 ${activeReviewSupportMeta.summaryCardClassName}`}>
+                    <div className="flex flex-col gap-2 sm:flex-row sm:items-center sm:justify-between">
+                      <div>
+                        <p className="text-xs font-semibold uppercase tracking-[0.24em] text-slate-600">Status Kesiapan Butir</p>
+                        <h3 className="mt-1 text-sm font-semibold text-slate-900">Soal {reviewQuestionIndex + 1}</h3>
+                      </div>
+                      <span className={`inline-flex rounded-full px-3 py-1 text-xs font-semibold ${activeReviewSupportMeta.badgeClassName}`}>
+                        {activeReviewSupportMeta.label}
+                      </span>
+                    </div>
+                    <p className="mt-3 text-sm text-slate-600">
+                      Status ini membaca tiga area sekaligus: isi soal, kisi-kisi, dan kartu soal.
+                    </p>
+                  </div>
+
+                  <div className="space-y-4">
                     <div className="rounded-3xl border border-blue-100 bg-blue-50/70 p-5">
                       <div className="mb-3 flex items-center justify-between gap-3">
                         <div>
@@ -1985,24 +2023,8 @@ const ExamScheduleManagementPage = () => {
                             Soal {reviewQuestionIndex + 1}
                           </h3>
                         </div>
-                        <span className={`rounded-full px-3 py-1 text-xs font-semibold ${
-                          activeReviewQuestion && (
-                            hasFilledText(activeReviewQuestion.blueprint?.competency) ||
-                            hasFilledText(activeReviewQuestion.blueprint?.learningObjective) ||
-                            hasFilledText(activeReviewQuestion.blueprint?.indicator) ||
-                            hasFilledText(activeReviewQuestion.blueprint?.materialScope) ||
-                            hasFilledText(activeReviewQuestion.blueprint?.cognitiveLevel)
-                          )
-                            ? 'bg-blue-600 text-white'
-                            : 'bg-white text-slate-500'
-                        }`}>
-                          {activeReviewQuestion && (
-                            hasFilledText(activeReviewQuestion.blueprint?.competency) ||
-                            hasFilledText(activeReviewQuestion.blueprint?.learningObjective) ||
-                            hasFilledText(activeReviewQuestion.blueprint?.indicator) ||
-                            hasFilledText(activeReviewQuestion.blueprint?.materialScope) ||
-                            hasFilledText(activeReviewQuestion.blueprint?.cognitiveLevel)
-                          ) ? 'Terisi' : 'Belum diisi'}
+                        <span className={`rounded-full px-3 py-1 text-xs font-semibold ${activeReviewBlueprintMeta.badgeClassName}`}>
+                          {activeReviewBlueprintMeta.label}
                         </span>
                       </div>
                       <div className="space-y-2 text-sm text-slate-700">
@@ -2030,30 +2052,16 @@ const ExamScheduleManagementPage = () => {
                             Soal {reviewQuestionIndex + 1}
                           </h3>
                         </div>
-                        <span className={`rounded-full px-3 py-1 text-xs font-semibold ${
-                          activeReviewQuestion && (
-                            hasFilledText(activeReviewQuestion.questionCard?.stimulus) ||
-                            hasFilledText(activeReviewQuestion.questionCard?.answerRationale) ||
-                            hasFilledText(activeReviewQuestion.questionCard?.scoringGuideline) ||
-                            hasFilledText(activeReviewQuestion.questionCard?.distractorNotes)
-                          )
-                            ? 'bg-emerald-600 text-white'
-                            : 'bg-white text-slate-500'
-                        }`}>
-                          {activeReviewQuestion && (
-                            hasFilledText(activeReviewQuestion.questionCard?.stimulus) ||
-                            hasFilledText(activeReviewQuestion.questionCard?.answerRationale) ||
-                            hasFilledText(activeReviewQuestion.questionCard?.scoringGuideline) ||
-                            hasFilledText(activeReviewQuestion.questionCard?.distractorNotes)
-                          ) ? 'Terisi' : 'Belum diisi'}
+                        <span className={`rounded-full px-3 py-1 text-xs font-semibold ${activeReviewQuestionCardMeta.badgeClassName}`}>
+                          {activeReviewQuestionCardMeta.label}
                         </span>
                       </div>
                       <div className="space-y-3">
                         {[
-                          ['Stimulus Soal', activeReviewQuestion?.questionCard?.stimulus],
-                          ['Pembahasan / Alasan Jawaban', activeReviewQuestion?.questionCard?.answerRationale],
-                          ['Pedoman Penskoran', activeReviewQuestion?.questionCard?.scoringGuideline],
-                          ['Catatan Distraktor', activeReviewQuestion?.questionCard?.distractorNotes],
+                          ['Teks Soal dan Optional', activeReviewQuestion?.questionCard?.stimulus],
+                          ['Indikator Soal', activeReviewQuestion?.questionCard?.answerRationale],
+                          ['Kunci Jawaban', activeReviewQuestion?.questionCard?.scoringGuideline],
+                          ['Level Kognitif', activeReviewQuestion?.questionCard?.distractorNotes],
                         ].map(([label, value]) => (
                           <div key={String(label)} className="rounded-2xl border border-emerald-100 bg-white/80 p-3">
                             <p className="text-xs font-semibold uppercase tracking-wide text-emerald-700">{label}</p>
