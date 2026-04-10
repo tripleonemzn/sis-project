@@ -312,10 +312,7 @@ export default function TeacherProctoringScheduleScreen() {
       return;
     }
     setExpandedDayKey((previous) => {
-      if (previous && groupedDays.some((day) => day.dateKey === previous)) {
-        return previous;
-      }
-      return groupedDays[0].dateKey;
+      return previous && groupedDays.some((day) => day.dateKey === previous) ? previous : null;
     });
   }, [groupedDays]);
 

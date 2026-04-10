@@ -911,12 +911,7 @@ const ExamProctorManagementPage = () => {
       return;
     }
     const validDayKeys = new Set(groupedReportDays.map((day) => day.dateKey));
-    setExpandedReportDayKey((previous) => {
-      if (previous && validDayKeys.has(previous)) {
-        return previous;
-      }
-      return groupedReportDays[0].dateKey;
-    });
+    setExpandedReportDayKey((previous) => (previous && validDayKeys.has(previous) ? previous : null));
   }, [groupedReportDays, isReportExpanded]);
 
   // --- Handlers ---

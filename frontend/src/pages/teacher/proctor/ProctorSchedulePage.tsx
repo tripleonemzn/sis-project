@@ -281,10 +281,7 @@ const ProctorSchedulePage: React.FC = () => {
       return;
     }
     setExpandedDayKey((previous) => {
-      if (previous && groupedDays.some((day) => day.dateKey === previous)) {
-        return previous;
-      }
-      return groupedDays[0].dateKey;
+      return previous && groupedDays.some((day) => day.dateKey === previous) ? previous : null;
     });
   }, [groupedDays]);
 
@@ -347,9 +344,6 @@ const ProctorSchedulePage: React.FC = () => {
                 </button>
               );
             })}
-          </div>
-          <div className="px-4 pb-3 text-xs text-gray-500">
-            Angka pada tab menunjukkan jumlah slot ujian yang tampil pada kategori waktu tersebut.
           </div>
         </div>
       </div>
