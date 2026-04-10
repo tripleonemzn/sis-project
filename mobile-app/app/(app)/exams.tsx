@@ -228,6 +228,7 @@ export default function StudentExamsScreen() {
   const [searchQuery, setSearchQuery] = useState('');
   const [statusFilter, setStatusFilter] = useState<StatusFilter>('ALL');
   const [expandedExamDayKey, setExpandedExamDayKey] = useState<string | null>(null);
+  const [expandedProctorDayKey, setExpandedProctorDayKey] = useState<string | null>(null);
   const [selectedExam, setSelectedExam] = useState<StudentExamItem | null>(null);
   const [selectedPlacement, setSelectedPlacement] = useState<NonNullable<typeof studentPlacements>[number] | null>(null);
   const [selectedPlacementGroup, setSelectedPlacementGroup] = useState<PlacementRoomGroup | null>(null);
@@ -306,6 +307,13 @@ export default function StudentExamsScreen() {
   const lockedProgramLabel =
     (lockedProgramCode && examTypeLabels[lockedProgramCode]) ||
     String(selectedProgram?.label || '').trim();
+  const examScheduleTitle = isApplicantMode
+    ? `Jadwal Tes ${lockedProgramLabel || 'BKK'}`
+    : isCandidateMode
+      ? `Jadwal Tes ${lockedProgramLabel || 'Seleksi'}`
+      : lockedProgramLabel
+        ? `Jadwal Ujian ${lockedProgramLabel}`
+        : 'Jadwal Ujian';
 
   const examTypeLabel = (type: string) => resolveExamTypeLabel(type, examTypeLabels);
   useEffect(() => {
@@ -467,12 +475,40 @@ export default function StudentExamsScreen() {
       (left, right) => new Date(String(left.startTime || 0)).getTime() - new Date(String(right.startTime || 0)).getTime(),
     );
   }, [filtered]);
+  const groupedProctorEntries = useMemo(() => {
+    if (!selectedPlacementGroup) return [] as { key: string; label: string; entries: StudentExamPlacement[] }[];
+    const groupMap = new Map<string, { key: string; label: string; entries: StudentExamPlacement[] }>();
+    selectedPlacementGroup.entries.forEach((entry) => {
+      const key = buildExamDayKey(entry.startTime || '');
+      const existing = groupMap.get(key);
+      if (existing) {
+        existing.entries.push(entry);
+        existing.entries.sort(
+          (left, right) => new Date(String(left.startTime || 0)).getTime() - new Date(String(right.startTime || 0)).getTime(),
+        );
+        return;
+      }
+      groupMap.set(key, {
+        key,
+        label: formatExamDayLabel(entry.startTime || ''),
+        entries: [entry],
+      });
+    });
+    return Array.from(groupMap.values()).sort(
+      (left, right) =>
+        new Date(String(left.entries[0]?.startTime || 0)).getTime() - new Date(String(right.entries[0]?.startTime || 0)).getTime(),
+    );
+  }, [selectedPlacementGroup]);
   const schoolLogoUrl = useMemo(() => resolveCardMediaUrl('/logo-kgb2.png'), []);
   const watermarkLogoUrl = useMemo(() => resolveCardMediaUrl('/logo_sis_kgb2.png'), []);
 
   useEffect(() => {
     setExpandedExamDayKey(null);
   }, [effectiveTypeFilter, searchQuery, statusFilter]);
+
+  useEffect(() => {
+    setExpandedProctorDayKey(null);
+  }, [selectedPlacementGroup, showProctorListModal]);
 
   if (isLoading) return <AppLoadingScreen message="Memuat ujian..." />;
   if (!isAuthenticated) return <Redirect href="/welcome" />;
@@ -1105,6 +1141,23 @@ export default function StudentExamsScreen() {
           </View>
         ) : filtered.length > 0 ? (
           <View style={{ gap: 10 }}>
+            <View
+              style={{
+                backgroundColor: '#fff',
+                borderWidth: 1,
+                borderColor: '#e2e8f0',
+                borderRadius: 14,
+                padding: 14,
+              }}
+            >
+              <Text style={{ color: '#0f172a', fontSize: 18, fontWeight: '700' }}>{examScheduleTitle}</Text>
+              <Text style={{ color: '#64748b', fontSize: 12, marginTop: 4 }}>
+                Menampilkan {filtered.length} dari {(examsQuery.data?.exams || []).filter((item) => {
+                  const type = normalizeProgramCode(item.packet.programCode || item.packet.type);
+                  return effectiveTypeFilter === 'ALL' || type === effectiveTypeFilter;
+                }).length} {isApplicantMode ? 'tes' : 'ujian'}
+              </Text>
+            </View>
             {groupedFilteredExams.map((group) => {
               const isOpen = expandedExamDayKey === group.key;
               return (
@@ -1646,56 +1699,70 @@ export default function StudentExamsScreen() {
       >
         {selectedPlacementGroup ? (
           <View style={{ gap: 12 }}>
-            {Array.from(
-              selectedPlacementGroup.entries.reduce<Map<string, StudentExamPlacement[]>>((map, entry) => {
-                const dateKey = formatDateOnly(entry.startTime || '');
-                if (!map.has(dateKey)) map.set(dateKey, []);
-                map.get(dateKey)?.push(entry);
-                return map;
-              }, new Map<string, StudentExamPlacement[]>()),
-            ).map(([dateLabel, entries]: [string, StudentExamPlacement[]]) => (
-              <View
-                key={dateLabel}
-                style={{
-                  borderWidth: 1,
-                  borderColor: '#bbf7d0',
-                  backgroundColor: '#f0fdf4',
-                  borderRadius: 14,
-                  padding: 12,
-                }}
-              >
-                <Text style={{ color: '#166534', fontWeight: '700', marginBottom: 8 }}>{dateLabel}</Text>
-                <View style={{ gap: 8 }}>
-                  {entries
-                    .sort(
-                      (left: StudentExamPlacement, right: StudentExamPlacement) =>
-                        new Date(String(left.startTime || 0)).getTime() - new Date(String(right.startTime || 0)).getTime(),
-                    )
-                    .map((entry: StudentExamPlacement) => (
-                      <View
-                        key={entry.id}
-                        style={{
-                          borderWidth: 1,
-                          borderColor: '#dcfce7',
-                          backgroundColor: '#fff',
-                          borderRadius: 12,
-                          padding: 10,
-                        }}
-                      >
-                        <Text style={{ color: '#0f172a', fontWeight: '700', fontSize: 13 }}>
-                          {formatDateTime(entry.startTime || '')} - {formatDateTime(entry.endTime || '')}
-                        </Text>
-                        <Text style={{ color: '#64748b', fontSize: 12, marginTop: 4 }}>
-                          {entry.sessionLabel || 'Sesi belum diatur'}
-                        </Text>
-                        <Text style={{ color: '#166534', fontSize: 12, marginTop: 6 }}>
-                          Pengawas: <Text style={{ fontWeight: '700' }}>{entry.proctor?.name || 'Belum ditentukan'}</Text>
-                        </Text>
-                      </View>
-                    ))}
+            {groupedProctorEntries.map((group) => {
+              const isOpen = expandedProctorDayKey === group.key;
+              return (
+                <View
+                  key={group.key}
+                  style={{
+                    borderWidth: 1,
+                    borderColor: '#bbf7d0',
+                    backgroundColor: '#f0fdf4',
+                    borderRadius: 14,
+                    overflow: 'hidden',
+                  }}
+                >
+                  <Pressable
+                    onPress={() => setExpandedProctorDayKey((current) => (current === group.key ? null : group.key))}
+                    style={{
+                      padding: 12,
+                      flexDirection: 'row',
+                      alignItems: 'center',
+                      justifyContent: 'space-between',
+                      gap: 12,
+                    }}
+                  >
+                    <View style={{ flex: 1 }}>
+                      <Text style={{ color: '#166534', fontWeight: '700' }}>{group.label}</Text>
+                      <Text style={{ color: '#15803d', fontSize: 12, marginTop: 4 }}>{group.entries.length} slot pengawas</Text>
+                    </View>
+                    <View style={{ flexDirection: 'row', alignItems: 'center', gap: 4 }}>
+                      <Text style={{ color: '#047857', fontSize: 12, fontWeight: '700' }}>
+                        {isOpen ? 'Tutup Hari' : 'Buka Hari'}
+                      </Text>
+                      <Feather name={isOpen ? 'chevron-up' : 'chevron-down'} size={16} color="#047857" />
+                    </View>
+                  </Pressable>
+
+                  {isOpen ? (
+                    <View style={{ borderTopWidth: 1, borderTopColor: '#bbf7d0', padding: 12, gap: 8 }}>
+                      {group.entries.map((entry: StudentExamPlacement) => (
+                        <View
+                          key={entry.id}
+                          style={{
+                            borderWidth: 1,
+                            borderColor: '#dcfce7',
+                            backgroundColor: '#fff',
+                            borderRadius: 12,
+                            padding: 10,
+                          }}
+                        >
+                          <Text style={{ color: '#0f172a', fontWeight: '700', fontSize: 13 }}>
+                            {formatDateTime(entry.startTime || '')} - {formatDateTime(entry.endTime || '')}
+                          </Text>
+                          <Text style={{ color: '#64748b', fontSize: 12, marginTop: 4 }}>
+                            {entry.sessionLabel || 'Sesi belum diatur'}
+                          </Text>
+                          <Text style={{ color: '#166534', fontSize: 12, marginTop: 6 }}>
+                            Pengawas: <Text style={{ fontWeight: '700' }}>{entry.proctor?.name || 'Belum ditentukan'}</Text>
+                          </Text>
+                        </View>
+                      ))}
+                    </View>
+                  ) : null}
                 </View>
-              </View>
-            ))}
+              );
+            })}
           </View>
         ) : null}
       </MobileDetailModal>

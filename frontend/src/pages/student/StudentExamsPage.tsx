@@ -363,6 +363,7 @@ export default function StudentExamsPage() {
   const [selectedPlacementGroup, setSelectedPlacementGroup] = useState<PlacementRoomGroup | null>(null)
   const [showPlacementModal, setShowPlacementModal] = useState(false)
   const [showProctorListModal, setShowProctorListModal] = useState(false)
+  const [expandedProctorDayKey, setExpandedProctorDayKey] = useState<string | null>(null)
   const [examProgramLabels, setExamProgramLabels] = useState<ExamProgramLabelMap>({})
   const [examPrograms, setExamPrograms] = useState<ExamProgram[]>([])
   const [isCardsExpanded, setIsCardsExpanded] = useState(false)
@@ -753,6 +754,10 @@ export default function StudentExamsPage() {
     setExpandedExamDayKey(null)
   }, [programFilter, searchQuery, statusFilter])
 
+  useEffect(() => {
+    setExpandedProctorDayKey(null)
+  }, [showProctorListModal, selectedPlacementGroup])
+
   const canTakeExam = (exam: Exam) => {
     const status = getExamStatus(exam)
     const now = new Date()
@@ -1072,6 +1077,13 @@ export default function StudentExamsPage() {
       : lockedProgramLabel
         ? `Lihat dan kerjakan ${lockedProgramLabel.toLowerCase()} yang tersedia`
         : 'Lihat dan kerjakan ujian yang tersedia'
+  const examScheduleTitle = isApplicantMode
+    ? `Jadwal Tes ${lockedProgramLabel || 'BKK'}`
+    : isCandidateMode
+      ? `Jadwal Tes ${lockedProgramLabel || 'Seleksi'}`
+      : lockedProgramLabel
+        ? `Jadwal Ujian ${lockedProgramLabel}`
+        : 'Jadwal Ujian'
   const contextColumnTitle = isApplicantMode ? 'Lowongan / Konteks' : 'Mata Pelajaran'
   const emptyDescription =
     searchQuery || programFilter !== 'all' || statusFilter !== 'all'
@@ -1088,6 +1100,31 @@ export default function StudentExamsPage() {
     return cards.find((card) => normalizeExamProgramCode(card.payload.programCode || card.programCode) === placementProgramCode) || null
   }, [selectedPlacement, studentExamCardsQuery.data])
   const fallbackIdentityCard = useMemo(() => (studentExamCardsQuery.data || [])[0] || null, [studentExamCardsQuery.data])
+  const groupedProctorEntries = useMemo(() => {
+    if (!selectedPlacementGroup) return []
+    const groupMap = new Map<string, { key: string; label: string; entries: StudentExamPlacement[] }>()
+    selectedPlacementGroup.entries.forEach((entry) => {
+      const key = buildExamDayKey(entry.startTime || '')
+      const existing = groupMap.get(key)
+      if (existing) {
+        existing.entries.push(entry)
+        existing.entries.sort(
+          (left, right) =>
+            new Date(String(left.startTime || 0)).getTime() - new Date(String(right.startTime || 0)).getTime(),
+        )
+        return
+      }
+      groupMap.set(key, {
+        key,
+        label: formatExamDayLabel(entry.startTime || ''),
+        entries: [entry],
+      })
+    })
+    return Array.from(groupMap.values()).sort(
+      (left, right) =>
+        new Date(String(left.entries[0]?.startTime || 0)).getTime() - new Date(String(right.entries[0]?.startTime || 0)).getTime(),
+    )
+  }, [selectedPlacementGroup])
   const renderExamRow = (exam: Exam) => {
     const status = getExamStatus(exam)
     const canTake = canTakeExam(exam)
@@ -1295,215 +1332,216 @@ export default function StudentExamsPage() {
       ) : null}
 
       {shouldShowExamCardSections ? (
-        <div className="rounded-xl border border-gray-200 bg-white p-5 shadow-sm">
-          <button
-            type="button"
-            onClick={() => setIsCardsExpanded((current) => !current)}
-            className="flex w-full flex-col gap-2 text-left md:flex-row md:items-start md:justify-between"
-          >
-            <div>
-              <h2 className="text-lg font-semibold text-gray-900">Kartu Ujian Digital</h2>
-              <p className="mt-1 text-sm text-gray-500">
-                Kartu ujian akan muncul di sini setelah dipublikasikan oleh Kepala TU.
-              </p>
-            </div>
-            <div className="flex items-center gap-3 self-start md:self-auto">
-              <div className="rounded-full bg-blue-50 px-3 py-1 text-xs font-semibold text-blue-700">
-                {studentExamCardsQuery.data?.length || 0} kartu
+        <div className="grid gap-4 xl:grid-cols-2 xl:items-start">
+          <div className="rounded-xl border border-gray-200 bg-white p-5 shadow-sm">
+            <button
+              type="button"
+              onClick={() => setIsCardsExpanded((current) => !current)}
+              className="flex w-full flex-col gap-2 text-left md:flex-row md:items-start md:justify-between"
+            >
+              <div>
+                <h2 className="text-lg font-semibold text-gray-900">Kartu Ujian Digital</h2>
+                <p className="mt-1 text-sm text-gray-500">
+                  Kartu ujian akan muncul di sini setelah dipublikasikan oleh Kepala TU.
+                </p>
               </div>
-              <span className="inline-flex h-9 w-9 items-center justify-center rounded-full border border-gray-200 bg-white text-gray-500">
-                {isCardsExpanded ? <ChevronUp className="h-4 w-4" /> : <ChevronDown className="h-4 w-4" />}
-              </span>
-            </div>
-          </button>
+              <div className="flex items-center gap-3 self-start md:self-auto">
+                <div className="rounded-full bg-blue-50 px-3 py-1 text-xs font-semibold text-blue-700">
+                  {studentExamCardsQuery.data?.length || 0} kartu
+                </div>
+                <span className="inline-flex h-9 w-9 items-center justify-center rounded-full border border-gray-200 bg-white text-gray-500">
+                  {isCardsExpanded ? <ChevronUp className="h-4 w-4" /> : <ChevronDown className="h-4 w-4" />}
+                </span>
+              </div>
+            </button>
 
-          {isCardsExpanded && studentExamCardsQuery.isLoading ? (
-            <div className="mt-4 rounded-lg border border-dashed border-gray-300 px-4 py-6 text-sm text-gray-500">
-              Memuat kartu ujian digital...
-            </div>
-          ) : isCardsExpanded && studentExamCardsQuery.data && studentExamCardsQuery.data.length > 0 ? (
-            <div className="mt-4 grid gap-4 lg:grid-cols-2">
-              {studentExamCardsQuery.data.map((card) => {
-                const primaryEntry = card.payload.placement || card.payload.entries[0] || null
-                const photoUrl = resolveCardMediaUrl(card.payload.student.photoUrl)
-                return (
-                  <div
-                    key={card.id}
-                    className="relative overflow-hidden rounded-2xl border border-blue-100 bg-[radial-gradient(circle_at_top_right,_rgba(191,219,254,0.55),_transparent_35%),linear-gradient(135deg,_#ffffff_0%,_#f8fbff_55%,_#eefbf4_100%)] shadow-sm"
-                  >
-                    <div className="pointer-events-none absolute inset-0 flex items-center justify-center opacity-[0.06]">
-                      {watermarkLogoUrl ? (
-                        <img src={watermarkLogoUrl} alt="" className="h-64 w-64 object-contain" />
-                      ) : null}
-                    </div>
-
-                    <div className="relative border-b border-gray-200 px-4 py-4">
-                      <div className="mx-auto flex max-w-[780px] items-center justify-center gap-8 text-center">
-                        <div className="flex shrink-0 justify-center">
-                          {schoolLogoUrl ? (
-                            <img src={schoolLogoUrl} alt="Logo KGB2" className="h-28 w-28 object-contain" />
-                          ) : null}
-                        </div>
-                        <div className="text-center">
-                          <div className="text-lg font-semibold uppercase leading-tight text-gray-900">
-                            {card.payload.cardTitle || 'Kartu Peserta'}
-                          </div>
-                          <div className="mt-1 text-lg font-semibold uppercase leading-tight text-gray-900">
-                            {card.payload.examTitle || card.payload.programLabel}
-                          </div>
-                          <div className="mt-1 text-lg font-semibold uppercase leading-tight text-gray-900">
-                            {card.payload.institutionName || card.payload.schoolName}
-                          </div>
-                          <div className="mt-1 text-lg font-semibold uppercase leading-tight text-gray-900">
-                            {`Tahun Ajaran ${card.payload.academicYearName}`}
-                          </div>
-                        </div>
-                      </div>
-                    </div>
-
-                    <div className="relative grid gap-4 px-4 py-4 md:grid-cols-[112px_minmax(0,1fr)_220px]">
-                      <div className="flex justify-center md:justify-start">
-                        <div className="flex h-32 w-28 items-center justify-center overflow-hidden border border-gray-300 bg-white">
-                          {photoUrl ? (
-                            <img src={photoUrl} alt={`Foto ${card.payload.student.name}`} className="h-full w-full object-cover" />
-                          ) : (
-                            <div className="px-2 text-center text-xs leading-5 text-gray-500">Foto formal dari profil dokumen pendukung</div>
-                          )}
-                        </div>
-                      </div>
-
-                      <div className="grid grid-cols-[120px_12px_minmax(0,1fr)] gap-x-2 gap-y-1 text-sm text-gray-800">
-                        <div className="font-medium">Nama Siswa</div><div>:</div><div className="break-words">{card.payload.student.name}</div>
-                        <div className="font-medium">Kelas</div><div>:</div><div className="break-words">{card.payload.student.className || '-'}</div>
-                        <div className="font-medium">Username</div><div>:</div><div className="break-words">{card.payload.student.username || '-'}</div>
-                        <div className="font-medium">No. Peserta</div><div>:</div><div className="break-all font-semibold tracking-wide text-blue-700">{card.payload.participantNumber || '-'}</div>
-                        <div className="font-medium">Ruang</div><div>:</div><div className="break-words">{primaryEntry?.roomName || '-'}</div>
-                        <div className="font-medium">Sesi</div><div>:</div><div className="break-words">{primaryEntry?.sessionLabel || '-'}</div>
-                      </div>
-
-                      <div className="flex flex-col items-center justify-start text-center text-sm text-gray-800">
-                        <div>{card.payload.issue?.signLabel || `Bekasi, ${formatDateOnlyLong(card.payload.issue?.date || card.generatedAt)}`}</div>
-                        <div className="mt-1">{card.payload.legality.principalTitle || 'Kepala Sekolah'}</div>
-                        {card.payload.legality.principalBarcodeDataUrl ? (
-                          <img
-                            src={card.payload.legality.principalBarcodeDataUrl}
-                            alt="Barcode Kepala Sekolah"
-                            className="mt-4 h-36 w-36 rounded-lg border border-gray-200 bg-white p-1.5"
-                          />
+            {isCardsExpanded && studentExamCardsQuery.isLoading ? (
+              <div className="mt-4 rounded-lg border border-dashed border-gray-300 px-4 py-6 text-sm text-gray-500">
+                Memuat kartu ujian digital...
+              </div>
+            ) : isCardsExpanded && studentExamCardsQuery.data && studentExamCardsQuery.data.length > 0 ? (
+              <div className="mt-4 grid gap-4">
+                {studentExamCardsQuery.data.map((card) => {
+                  const primaryEntry = card.payload.placement || card.payload.entries[0] || null
+                  const photoUrl = resolveCardMediaUrl(card.payload.student.photoUrl)
+                  return (
+                    <div
+                      key={card.id}
+                      className="relative overflow-hidden rounded-2xl border border-blue-100 bg-[radial-gradient(circle_at_top_right,_rgba(191,219,254,0.55),_transparent_35%),linear-gradient(135deg,_#ffffff_0%,_#f8fbff_55%,_#eefbf4_100%)] shadow-sm"
+                    >
+                      <div className="pointer-events-none absolute inset-0 flex items-center justify-center opacity-[0.06]">
+                        {watermarkLogoUrl ? (
+                          <img src={watermarkLogoUrl} alt="" className="h-64 w-64 object-contain" />
                         ) : null}
-                        <div className="mt-3 text-base font-semibold text-gray-900">{card.payload.legality.principalName}</div>
                       </div>
-                    </div>
 
-                    <div className="relative border-t border-gray-200 px-4 py-2 text-xs italic text-emerald-700">
-                      {card.payload.legality.footerNote || 'Berkas digital yang sah secara internal'}
-                    </div>
-                  </div>
-                )
-              })}
-            </div>
-          ) : isCardsExpanded ? (
-            <div className="mt-4 rounded-lg border border-dashed border-gray-300 px-4 py-6 text-sm text-gray-500">
-              Belum ada kartu ujian digital yang dipublikasikan untuk akun Anda.
-            </div>
-          ) : null}
-        </div>
-      ) : null}
-
-      {shouldShowExamCardSections ? (
-        <div className="rounded-xl border border-gray-200 bg-white p-5 shadow-sm">
-          <button
-            type="button"
-            onClick={() => setIsPlacementsExpanded((current) => !current)}
-            className="flex w-full flex-col gap-2 text-left md:flex-row md:items-start md:justify-between"
-          >
-            <div>
-              <h2 className="text-lg font-semibold text-gray-900">Denah Ruang Ujian</h2>
-              <p className="mt-1 text-sm text-gray-500">
-                Ruang, sesi, dan kursi yang ditetapkan Kurikulum akan muncul di sini meski kartu ujian digital belum dipublikasikan.
-              </p>
-            </div>
-            <div className="flex items-center gap-3 self-start md:self-auto">
-              <div className="rounded-full bg-blue-50 px-3 py-1 text-xs font-semibold text-blue-700">
-                {groupedPlacements.length} ruang
-              </div>
-              <span className="inline-flex h-9 w-9 items-center justify-center rounded-full border border-gray-200 bg-white text-gray-500">
-                {isPlacementsExpanded ? <ChevronUp className="h-4 w-4" /> : <ChevronDown className="h-4 w-4" />}
-              </span>
-            </div>
-          </button>
-
-          {isPlacementsExpanded && studentExamPlacementsQuery.isLoading ? (
-            <div className="mt-4 rounded-lg border border-dashed border-gray-300 px-4 py-6 text-sm text-gray-500">
-              Memuat penempatan ujian...
-            </div>
-          ) : isPlacementsExpanded && studentExamPlacementsQuery.isError ? (
-            <div className="mt-4 rounded-xl border border-rose-200 bg-rose-50 px-4 py-4 text-sm text-rose-700">
-              <div className="font-semibold">Gagal memuat penempatan ujian.</div>
-              <button
-                type="button"
-                onClick={() => studentExamPlacementsQuery.refetch()}
-                className="mt-3 inline-flex items-center rounded-lg border border-rose-200 bg-white px-3 py-2 text-xs font-semibold text-rose-700 hover:bg-rose-50"
-              >
-                Coba Lagi
-              </button>
-            </div>
-          ) : isPlacementsExpanded && groupedPlacements.length > 0 ? (
-            <div className="mt-4 grid gap-3 md:grid-cols-2">
-              {groupedPlacements.map((group) => {
-                const chip = getPlacementGroupStatus(group.entries)
-                return (
-                  <div key={group.key} className="rounded-2xl border border-blue-100 bg-white px-4 py-4 text-sm text-gray-700">
-                    <div className="flex items-start justify-between gap-3">
-                      <div>
-                        <div className="font-semibold text-gray-900">{group.roomName}</div>
-                        <div className="mt-1 text-xs text-gray-500">
-                          {examProgramLabels[normalizeExamProgramCode(group.examType)] || normalizeExamProgramCode(group.examType) || '-'} •{' '}
-                          {group.entries.length} jadwal
+                      <div className="relative border-b border-gray-200 px-4 py-4">
+                        <div className="mx-auto flex max-w-[780px] items-center justify-center gap-8 text-center">
+                          <div className="flex shrink-0 justify-center">
+                            {schoolLogoUrl ? (
+                              <img src={schoolLogoUrl} alt="Logo KGB2" className="h-28 w-28 object-contain" />
+                            ) : null}
+                          </div>
+                          <div className="text-center">
+                            <div className="text-lg font-semibold uppercase leading-tight text-gray-900">
+                              {card.payload.cardTitle || 'Kartu Peserta'}
+                            </div>
+                            <div className="mt-1 text-lg font-semibold uppercase leading-tight text-gray-900">
+                              {card.payload.examTitle || card.payload.programLabel}
+                            </div>
+                            <div className="mt-1 text-lg font-semibold uppercase leading-tight text-gray-900">
+                              {card.payload.institutionName || card.payload.schoolName}
+                            </div>
+                            <div className="mt-1 text-lg font-semibold uppercase leading-tight text-gray-900">
+                              {`Tahun Ajaran ${card.payload.academicYearName}`}
+                            </div>
+                          </div>
                         </div>
                       </div>
-                      <span className={`inline-flex rounded-full px-2.5 py-1 text-[11px] font-semibold ${chip.className}`}>
-                        {chip.label}
-                      </span>
-                    </div>
-                    <div className="mt-3 space-y-1 text-xs text-gray-600">
-                      <div>Kursi: {group.seatLabel || 'Menunggu denah dipublikasikan'}</div>
-                      <div>
-                        Slot pertama: {formatDateTimeLong(group.primaryPlacement.startTime || '')} - {formatDateTimeLong(group.primaryPlacement.endTime || '')}
+
+                      <div className="relative grid gap-4 px-4 py-4 md:grid-cols-[112px_minmax(0,1fr)_220px]">
+                        <div className="flex justify-center md:justify-start">
+                          <div className="flex h-32 w-28 items-center justify-center overflow-hidden border border-gray-300 bg-white">
+                            {photoUrl ? (
+                              <img src={photoUrl} alt={`Foto ${card.payload.student.name}`} className="h-full w-full object-cover" />
+                            ) : (
+                              <div className="px-2 text-center text-xs leading-5 text-gray-500">Foto formal dari profil dokumen pendukung</div>
+                            )}
+                          </div>
+                        </div>
+
+                        <div className="grid grid-cols-[120px_12px_minmax(0,1fr)] gap-x-2 gap-y-1 text-sm text-gray-800">
+                          <div className="font-medium">Nama Siswa</div><div>:</div><div className="break-words">{card.payload.student.name}</div>
+                          <div className="font-medium">Kelas</div><div>:</div><div className="break-words">{card.payload.student.className || '-'}</div>
+                          <div className="font-medium">Username</div><div>:</div><div className="break-words">{card.payload.student.username || '-'}</div>
+                          <div className="font-medium">No. Peserta</div><div>:</div><div className="break-all font-semibold tracking-wide text-blue-700">{card.payload.participantNumber || '-'}</div>
+                          <div className="font-medium">Ruang</div><div>:</div><div className="break-words">{primaryEntry?.roomName || '-'}</div>
+                          <div className="font-medium">Sesi</div><div>:</div><div className="break-words">{primaryEntry?.sessionLabel || '-'}</div>
+                        </div>
+
+                        <div className="flex flex-col items-center justify-start text-center text-sm text-gray-800">
+                          <div>{card.payload.issue?.signLabel || `Bekasi, ${formatDateOnlyLong(card.payload.issue?.date || card.generatedAt)}`}</div>
+                          <div className="mt-1">{card.payload.legality.principalTitle || 'Kepala Sekolah'}</div>
+                          {card.payload.legality.principalBarcodeDataUrl ? (
+                            <img
+                              src={card.payload.legality.principalBarcodeDataUrl}
+                              alt="Barcode Kepala Sekolah"
+                              className="mt-4 h-36 w-36 rounded-lg border border-gray-200 bg-white p-1.5"
+                            />
+                          ) : null}
+                          <div className="mt-3 text-base font-semibold text-gray-900">{card.payload.legality.principalName}</div>
+                        </div>
                       </div>
-                      <div>{group.entries.length} slot ujian memakai ruang ini.</div>
+
+                      <div className="relative border-t border-gray-200 px-4 py-2 text-xs italic text-emerald-700">
+                        {card.payload.legality.footerNote || 'Berkas digital yang sah secara internal'}
+                      </div>
                     </div>
-                    <div className="mt-3 flex flex-wrap gap-2">
-                      <button
-                        type="button"
-                        onClick={() => {
-                          setSelectedPlacement(group.primaryPlacement)
-                          setShowPlacementModal(true)
-                        }}
-                        className="inline-flex items-center rounded-lg border border-blue-200 bg-blue-50 px-3 py-2 text-xs font-semibold text-blue-700 hover:bg-blue-100"
-                      >
-                        Lihat Denah
-                      </button>
-                      <button
-                        type="button"
-                        onClick={() => {
-                          setSelectedPlacementGroup(group)
-                          setShowProctorListModal(true)
-                        }}
-                        className="inline-flex items-center rounded-lg border border-emerald-200 bg-emerald-50 px-3 py-2 text-xs font-semibold text-emerald-700 hover:bg-emerald-100"
-                      >
-                        Daftar Pengawas
-                      </button>
+                  )
+                })}
+              </div>
+            ) : isCardsExpanded ? (
+              <div className="mt-4 rounded-lg border border-dashed border-gray-300 px-4 py-6 text-sm text-gray-500">
+                Belum ada kartu ujian digital yang dipublikasikan untuk akun Anda.
+              </div>
+            ) : null}
+          </div>
+
+          <div className="rounded-xl border border-gray-200 bg-white p-5 shadow-sm">
+            <button
+              type="button"
+              onClick={() => setIsPlacementsExpanded((current) => !current)}
+              className="flex w-full flex-col gap-2 text-left md:flex-row md:items-start md:justify-between"
+            >
+              <div>
+                <h2 className="text-lg font-semibold text-gray-900">Denah Ruang Ujian</h2>
+                <p className="mt-1 text-sm text-gray-500">
+                  Ruang, sesi, dan kursi yang ditetapkan Kurikulum akan muncul di sini meski kartu ujian digital belum dipublikasikan.
+                </p>
+              </div>
+              <div className="flex items-center gap-3 self-start md:self-auto">
+                <div className="rounded-full bg-blue-50 px-3 py-1 text-xs font-semibold text-blue-700">
+                  {groupedPlacements.length} ruang
+                </div>
+                <span className="inline-flex h-9 w-9 items-center justify-center rounded-full border border-gray-200 bg-white text-gray-500">
+                  {isPlacementsExpanded ? <ChevronUp className="h-4 w-4" /> : <ChevronDown className="h-4 w-4" />}
+                </span>
+              </div>
+            </button>
+
+            {isPlacementsExpanded && studentExamPlacementsQuery.isLoading ? (
+              <div className="mt-4 rounded-lg border border-dashed border-gray-300 px-4 py-6 text-sm text-gray-500">
+                Memuat penempatan ujian...
+              </div>
+            ) : isPlacementsExpanded && studentExamPlacementsQuery.isError ? (
+              <div className="mt-4 rounded-xl border border-rose-200 bg-rose-50 px-4 py-4 text-sm text-rose-700">
+                <div className="font-semibold">Gagal memuat penempatan ujian.</div>
+                <button
+                  type="button"
+                  onClick={() => studentExamPlacementsQuery.refetch()}
+                  className="mt-3 inline-flex items-center rounded-lg border border-rose-200 bg-white px-3 py-2 text-xs font-semibold text-rose-700 hover:bg-rose-50"
+                >
+                  Coba Lagi
+                </button>
+              </div>
+            ) : isPlacementsExpanded && groupedPlacements.length > 0 ? (
+              <div className="mt-4 grid gap-3">
+                {groupedPlacements.map((group) => {
+                  const chip = getPlacementGroupStatus(group.entries)
+                  return (
+                    <div key={group.key} className="rounded-2xl border border-blue-100 bg-white px-4 py-4 text-sm text-gray-700">
+                      <div className="flex items-start justify-between gap-3">
+                        <div>
+                          <div className="font-semibold text-gray-900">{group.roomName}</div>
+                          <div className="mt-1 text-xs text-gray-500">
+                            {examProgramLabels[normalizeExamProgramCode(group.examType)] || normalizeExamProgramCode(group.examType) || '-'} •{' '}
+                            {group.entries.length} jadwal
+                          </div>
+                        </div>
+                        <span className={`inline-flex rounded-full px-2.5 py-1 text-[11px] font-semibold ${chip.className}`}>
+                          {chip.label}
+                        </span>
+                      </div>
+                      <div className="mt-3 space-y-1 text-xs text-gray-600">
+                        <div>Kursi: {group.seatLabel || 'Menunggu denah dipublikasikan'}</div>
+                        <div>
+                          Slot pertama: {formatDateTimeLong(group.primaryPlacement.startTime || '')} - {formatDateTimeLong(group.primaryPlacement.endTime || '')}
+                        </div>
+                        <div>{group.entries.length} slot ujian memakai ruang ini.</div>
+                      </div>
+                      <div className="mt-3 flex flex-wrap gap-2">
+                        <button
+                          type="button"
+                          onClick={() => {
+                            setSelectedPlacement(group.primaryPlacement)
+                            setShowPlacementModal(true)
+                          }}
+                          className="inline-flex items-center rounded-lg border border-blue-200 bg-blue-50 px-3 py-2 text-xs font-semibold text-blue-700 hover:bg-blue-100"
+                        >
+                          Lihat Denah
+                        </button>
+                        <button
+                          type="button"
+                          onClick={() => {
+                            setSelectedPlacementGroup(group)
+                            setExpandedProctorDayKey(null)
+                            setShowProctorListModal(true)
+                          }}
+                          className="inline-flex items-center rounded-lg border border-emerald-200 bg-emerald-50 px-3 py-2 text-xs font-semibold text-emerald-700 hover:bg-emerald-100"
+                        >
+                          Daftar Pengawas
+                        </button>
+                      </div>
                     </div>
-                  </div>
-                )
-              })}
-            </div>
-          ) : isPlacementsExpanded ? (
-            <div className="mt-4 rounded-lg border border-dashed border-gray-300 px-4 py-6 text-sm text-gray-500">
-              Belum ada penempatan ruang ujian yang dipublikasikan untuk akun Anda.
-            </div>
-          ) : null}
+                  )
+                })}
+              </div>
+            ) : isPlacementsExpanded ? (
+              <div className="mt-4 rounded-lg border border-dashed border-gray-300 px-4 py-6 text-sm text-gray-500">
+                Belum ada penempatan ruang ujian yang dipublikasikan untuk akun Anda.
+              </div>
+            ) : null}
+          </div>
         </div>
       ) : null}
 
@@ -1570,13 +1608,16 @@ export default function StudentExamsPage() {
             </div>
           </div>
 
-          <div className="mt-4 text-sm text-gray-600">
-            Menampilkan {filteredExams.length} dari {relevantTotal} {isApplicantMode ? 'tes' : 'ujian'}
-          </div>
         </div>
 
         {/* Exams Table */}
         <div className="bg-white rounded-xl shadow-sm border border-gray-200 overflow-hidden">
+          <div className="border-b border-gray-200 px-5 py-4">
+            <h2 className="text-lg font-semibold text-gray-900">{examScheduleTitle}</h2>
+            <p className="mt-1 text-sm text-gray-500">
+              Menampilkan {filteredExams.length} dari {relevantTotal} {isApplicantMode ? 'tes' : 'ujian'}
+            </p>
+          </div>
           {filteredExams.length === 0 ? (
             <div className="p-12 text-center">
               <FileText className="w-16 h-16 text-gray-400 mx-auto mb-4" />
@@ -1761,8 +1802,8 @@ export default function StudentExamsPage() {
       ) : null}
 
       {showProctorListModal && selectedPlacementGroup ? (
-        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/35 px-4">
-          <div className="w-full max-w-2xl rounded-2xl border border-emerald-100 bg-white p-6 shadow-xl">
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/35 px-4 py-6">
+          <div className="flex max-h-[calc(100vh-96px)] w-full max-w-3xl flex-col rounded-2xl border border-emerald-100 bg-white p-6 shadow-xl">
             <div className="flex items-start justify-between gap-4">
               <div>
                 <h3 className="text-xl font-bold text-gray-900">Daftar Pengawas Ruang</h3>
@@ -1782,37 +1823,48 @@ export default function StudentExamsPage() {
               </button>
             </div>
 
-            <div className="mt-5 space-y-4">
-              {Array.from(
-                selectedPlacementGroup.entries.reduce((map, entry) => {
-                  const dateKey = formatDateOnlyLong(entry.startTime || '')
-                  if (!map.has(dateKey)) map.set(dateKey, [])
-                  map.get(dateKey)?.push(entry)
-                  return map
-                }, new Map<string, StudentExamPlacement[]>()),
-              ).map(([dateLabel, entries]) => (
-                <div key={dateLabel} className="rounded-xl border border-emerald-100 bg-emerald-50/40 p-4">
-                  <div className="text-sm font-semibold text-emerald-900">{dateLabel}</div>
-                  <div className="mt-3 space-y-2">
-                    {entries
-                      .sort(
-                        (left, right) =>
-                          new Date(String(left.startTime || 0)).getTime() - new Date(String(right.startTime || 0)).getTime(),
-                      )
-                      .map((entry) => (
-                        <div key={entry.id} className="rounded-lg border border-white bg-white px-3 py-3 text-sm text-gray-700 shadow-sm">
-                          <div className="font-medium text-gray-900">
-                            {formatDateTimeLong(entry.startTime || '')} - {formatDateTimeLong(entry.endTime || '')}
-                          </div>
-                          <div className="mt-1 text-xs text-gray-500">{entry.sessionLabel || 'Sesi belum diatur'}</div>
-                          <div className="mt-2 text-sm text-emerald-800">
-                            Pengawas: <span className="font-semibold">{entry.proctor?.name || 'Belum ditentukan'}</span>
+            <div className="mt-5 overflow-y-auto pr-1">
+              <div className="space-y-4">
+                {groupedProctorEntries.map((group) => {
+                  const isOpen = expandedProctorDayKey === group.key
+                  return (
+                    <div key={group.key} className="overflow-hidden rounded-xl border border-emerald-100 bg-emerald-50/40">
+                      <button
+                        type="button"
+                        onClick={() => setExpandedProctorDayKey((current) => (current === group.key ? null : group.key))}
+                        className="flex w-full items-center justify-between gap-4 px-4 py-4 text-left hover:bg-emerald-50/80"
+                      >
+                        <div>
+                          <div className="text-sm font-semibold text-emerald-900">{group.label}</div>
+                          <div className="mt-1 text-xs text-emerald-700">{group.entries.length} slot pengawas</div>
+                        </div>
+                        <span className="inline-flex items-center gap-1 text-sm font-medium text-emerald-800">
+                          {isOpen ? 'Tutup Hari' : 'Buka Hari'}
+                          {isOpen ? <ChevronUp className="h-4 w-4" /> : <ChevronDown className="h-4 w-4" />}
+                        </span>
+                      </button>
+
+                      {isOpen ? (
+                        <div className="border-t border-emerald-100 px-4 py-4">
+                          <div className="space-y-2">
+                            {group.entries.map((entry) => (
+                              <div key={entry.id} className="rounded-lg border border-white bg-white px-3 py-3 text-sm text-gray-700 shadow-sm">
+                                <div className="font-medium text-gray-900">
+                                  {formatDateTimeLong(entry.startTime || '')} - {formatDateTimeLong(entry.endTime || '')}
+                                </div>
+                                <div className="mt-1 text-xs text-gray-500">{entry.sessionLabel || 'Sesi belum diatur'}</div>
+                                <div className="mt-2 text-sm text-emerald-800">
+                                  Pengawas: <span className="font-semibold">{entry.proctor?.name || 'Belum ditentukan'}</span>
+                                </div>
+                              </div>
+                            ))}
                           </div>
                         </div>
-                      ))}
-                  </div>
-                </div>
-              ))}
+                      ) : null}
+                    </div>
+                  )
+                })}
+              </div>
             </div>
           </div>
         </div>
