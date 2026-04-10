@@ -2386,6 +2386,11 @@ export const submitBeritaAcara = asyncHandler(async (req: Request, res: Response
         throw new ApiError(404, 'Jadwal ujian tidak ditemukan');
     }
 
+    const scheduleStartTime = new Date(schedule.startTime);
+    if (Number.isFinite(scheduleStartTime.getTime()) && new Date().getTime() < scheduleStartTime.getTime()) {
+        throw new ApiError(409, 'Berita acara baru bisa dikirim setelah ujian dimulai sesuai jadwal pelaksanaan.');
+    }
+
     const scope = await resolveRoomScopeSchedules(parsedScheduleId, Number(user?.id) || null);
     const isAdmin = String(user?.role || '').toUpperCase() === 'ADMIN';
     const effectiveProctorId = Number(scope.baseSchedule?.proctorId || schedule.proctorId || 0) || null;

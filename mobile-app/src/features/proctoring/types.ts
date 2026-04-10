@@ -57,6 +57,7 @@ export type ProctorScheduleDetail = {
     id: number;
     startTime: string;
     endTime: string;
+    serverNow?: string;
     room: string | null;
     token?: string | null;
     displayTitle?: string;

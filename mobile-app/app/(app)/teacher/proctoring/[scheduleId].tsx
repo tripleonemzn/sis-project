@@ -169,6 +169,11 @@ export default function TeacherProctoringDetailScreen() {
     Number(detailQuery.data?.schedule?.attendanceSummary?.absentParticipants) ||
       expectedParticipants - presentParticipants,
   );
+  const referenceNowMs = detailQuery.data?.schedule?.serverNow
+    ? new Date(detailQuery.data.schedule.serverNow).getTime()
+    : Date.now();
+  const scheduleStartMs = new Date(String(detailQuery.data?.schedule?.startTime || '')).getTime();
+  const isScheduleStarted = Number.isFinite(scheduleStartMs) && referenceNowMs >= scheduleStartMs;
 
   if (isLoading) return <AppLoadingScreen message="Memuat monitoring ujian..." />;
   if (!isAuthenticated) return <Redirect href="/welcome" />;
@@ -584,8 +589,13 @@ export default function TeacherProctoringDetailScreen() {
                   }}
                   placeholderTextColor="#94a3b8"
                   multiline
-                  editable={!reportSubmitted}
+                  editable={!reportSubmitted && isScheduleStarted}
                 />
+                {!reportSubmitted && !isScheduleStarted ? (
+                  <Text style={{ color: '#b45309', fontSize: 12, marginTop: 8 }}>
+                    Berita acara baru bisa diisi setelah waktu ujian mulai sesuai jadwal pelaksanaan.
+                  </Text>
+                ) : null}
                 {reportSubmitted ? (
                   <Text style={{ color: '#64748b', fontSize: 12, marginTop: 8 }}>
                     Catatan tidak bisa diubah lagi karena berita acara sudah masuk arsip setelah dikirim ke Kurikulum.
@@ -596,6 +606,10 @@ export default function TeacherProctoringDetailScreen() {
 
               <Pressable
                 onPress={() => {
+                  if (!isScheduleStarted) {
+                    Alert.alert('Belum Pelaksanaan Ujian', 'Berita acara baru bisa dikirim setelah ujian dimulai sesuai jadwal pelaksanaan.');
+                    return;
+                  }
                   Alert.alert('Konfirmasi', 'Kirim berita acara ujian ini ke Kurikulum?', [
                     { text: 'Batal', style: 'cancel' },
                     {
@@ -607,7 +621,7 @@ export default function TeacherProctoringDetailScreen() {
                   ]);
                 }}
                 style={{
-                  backgroundColor: reportSubmitted ? '#059669' : BRAND_COLORS.blue,
+                  backgroundColor: reportSubmitted ? '#059669' : !isScheduleStarted ? '#f59e0b' : BRAND_COLORS.blue,
                   borderRadius: 10,
                   paddingVertical: 12,
                   alignItems: 'center',
@@ -616,7 +630,13 @@ export default function TeacherProctoringDetailScreen() {
                 disabled={submitMutation.isPending || reportSubmitted}
               >
                 <Text style={{ color: '#fff', fontWeight: '700' }}>
-                  {submitMutation.isPending ? 'Menyimpan...' : reportSubmitted ? 'Terkirim ke Kurikulum' : 'Kirim ke Kurikulum'}
+                  {submitMutation.isPending
+                    ? 'Menyimpan...'
+                    : reportSubmitted
+                      ? 'Terkirim ke Kurikulum'
+                      : !isScheduleStarted
+                        ? 'Menunggu Waktu Ujian'
+                        : 'Kirim ke Kurikulum'}
                 </Text>
               </Pressable>
             </ScrollView>

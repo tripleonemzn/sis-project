@@ -169,6 +169,12 @@ const ProctorMonitoringPage: React.FC = () => {
   };
 
   const handleSubmitReport = async () => {
+    const referenceNowMs = schedule?.serverNow ? new Date(schedule.serverNow).getTime() : Date.now();
+    const scheduleStartMs = schedule?.startTime ? new Date(schedule.startTime).getTime() : NaN;
+    if (Number.isFinite(scheduleStartMs) && referenceNowMs < scheduleStartMs) {
+      toast.error('Berita acara baru bisa dikirim setelah ujian dimulai sesuai jadwal pelaksanaan.');
+      return;
+    }
     if (!confirm('Apakah Anda yakin ingin mengirim berita acara ini ke Kurikulum?')) return;
 
     setSubmittingReport(true);
@@ -247,13 +253,15 @@ const ProctorMonitoringPage: React.FC = () => {
     return String(a.name || '').localeCompare(String(b.name || ''), 'id');
   });
   const nowMs = Date.now();
+  const referenceNowMs = schedule.serverNow ? new Date(schedule.serverNow).getTime() : nowMs;
   const scheduleStartMs = new Date(schedule.startTime).getTime();
   const scheduleEndMs = new Date(schedule.endTime).getTime();
+  const isScheduleStarted = Number.isFinite(scheduleStartMs) && referenceNowMs >= scheduleStartMs;
   const isScheduleRunning =
     Number.isFinite(scheduleStartMs) &&
     Number.isFinite(scheduleEndMs) &&
-    nowMs >= scheduleStartMs &&
-    nowMs <= scheduleEndMs;
+    referenceNowMs >= scheduleStartMs &&
+    referenceNowMs <= scheduleEndMs;
   const presentCount =
     Number(schedule.attendanceSummary?.presentParticipants) ||
     orderedStudents.filter((student) => Boolean(student.startTime) || student.status !== 'NOT_STARTED').length;
@@ -585,7 +593,7 @@ const ProctorMonitoringPage: React.FC = () => {
                   <label className="block text-[13px] font-medium text-slate-900">Catatan Pengawas selama Ujian berlangsung</label>
                   <textarea
                     className={`mt-2 block w-full rounded-xl border px-4 py-4 text-[13px] leading-7 shadow-sm ${
-                      reportSubmitted
+                      reportSubmitted || !isScheduleStarted
                         ? 'border-slate-200 bg-slate-100 text-slate-600'
                         : 'border-gray-300 bg-white text-slate-900 focus:border-indigo-500 focus:ring-indigo-500'
                     }`}
@@ -593,8 +601,13 @@ const ProctorMonitoringPage: React.FC = () => {
                     placeholder="Contoh: Ujian berjalan lancar, seluruh siswa hadir, tidak ada kendala perangkat..."
                     value={notes}
                     onChange={(e) => setNotes(e.target.value)}
-                    readOnly={reportSubmitted}
+                    readOnly={reportSubmitted || !isScheduleStarted}
                   />
+                  {!reportSubmitted && !isScheduleStarted ? (
+                    <p className="mt-2 text-xs text-amber-700">
+                      Berita acara baru bisa diisi setelah waktu ujian mulai sesuai jadwal pelaksanaan.
+                    </p>
+                  ) : null}
                   {reportSubmitted ? (
                     <p className="mt-2 text-xs text-slate-500">
                       Catatan tidak bisa diubah lagi karena berita acara sudah masuk arsip setelah dikirim ke Kurikulum.
@@ -609,7 +622,9 @@ const ProctorMonitoringPage: React.FC = () => {
                 className={`w-full flex justify-center items-center px-4 py-2 border border-transparent rounded-md shadow-sm text-sm font-medium text-white focus:outline-none focus:ring-2 focus:ring-offset-2 disabled:opacity-50 ${
                   reportSubmitted
                     ? 'bg-emerald-600 hover:bg-emerald-700 focus:ring-emerald-500'
-                    : 'bg-indigo-600 hover:bg-indigo-700 focus:ring-indigo-500'
+                    : !isScheduleStarted
+                      ? 'bg-amber-500 hover:bg-amber-600 focus:ring-amber-500'
+                      : 'bg-indigo-600 hover:bg-indigo-700 focus:ring-indigo-500'
                 }`}
                 onClick={handleSubmitReport}
                 disabled={submittingReport || reportSubmitted}
@@ -619,7 +634,9 @@ const ProctorMonitoringPage: React.FC = () => {
                   ? 'Menyimpan...'
                   : reportSubmitted
                     ? 'Terkirim ke Kurikulum'
-                    : 'Kirim ke Kurikulum'}
+                    : !isScheduleStarted
+                      ? 'Menunggu Waktu Ujian'
+                      : 'Kirim ke Kurikulum'}
               </button>
             </div>
           </div>

@@ -130,6 +130,7 @@ export default function TeacherProctoringScheduleScreen() {
   const [timeFilter, setTimeFilter] = useState<TimeFilter>('TODAY');
   const [modeFilter, setModeFilter] = useState<ModeFilter>('PROCTOR');
   const [search, setSearch] = useState('');
+  const [expandedDayKey, setExpandedDayKey] = useState<string | null>(null);
 
   const modeFilterOptions = useMemo(
     () => [
@@ -305,6 +306,19 @@ export default function TeacherProctoringScheduleScreen() {
     };
   }, [scheduleQuery.data]);
 
+  useEffect(() => {
+    if (groupedDays.length === 0) {
+      setExpandedDayKey(null);
+      return;
+    }
+    setExpandedDayKey((previous) => {
+      if (previous && groupedDays.some((day) => day.dateKey === previous)) {
+        return previous;
+      }
+      return groupedDays[0].dateKey;
+    });
+  }, [groupedDays]);
+
   if (isLoading) return <AppLoadingScreen message="Memuat jadwal mengawas..." />;
   if (!isAuthenticated) return <Redirect href="/welcome" />;
 
@@ -454,22 +468,39 @@ export default function TeacherProctoringScheduleScreen() {
                 marginBottom: 12,
               }}
             >
-              <View
+              <Pressable
+                onPress={() => setExpandedDayKey((previous) => (previous === day.dateKey ? null : day.dateKey))}
                 style={{
                   paddingHorizontal: 14,
                   paddingVertical: 12,
                   borderBottomWidth: 1,
                   borderBottomColor: '#e2e8f0',
                   backgroundColor: '#f8fafc',
+                  flexDirection: 'row',
+                  alignItems: 'center',
+                  justifyContent: 'space-between',
                 }}
               >
-                <Text style={{ color: BRAND_COLORS.textDark, fontWeight: '700', fontSize: 16 }}>{day.dateLabel}</Text>
-                <Text style={{ color: '#64748b', marginTop: 4, fontSize: 12 }}>
-                  {day.rows.length} slot ujian • {new Set(day.rows.map((row) => row.roomName)).size} ruang aktif
-                </Text>
-              </View>
+                <View style={{ flex: 1, paddingRight: 10 }}>
+                  <Text style={{ color: BRAND_COLORS.textDark, fontWeight: '700', fontSize: 16 }}>{day.dateLabel}</Text>
+                  <Text style={{ color: '#64748b', marginTop: 4, fontSize: 12 }}>
+                    {day.rows.length} slot ujian • {new Set(day.rows.map((row) => row.roomName)).size} ruang aktif
+                  </Text>
+                </View>
+                <View style={{ flexDirection: 'row', alignItems: 'center' }}>
+                  <Text style={{ color: BRAND_COLORS.blue, fontWeight: '700', fontSize: 12, marginRight: 6 }}>
+                    {expandedDayKey === day.dateKey ? 'Tutup Hari' : 'Buka Hari'}
+                  </Text>
+                  <Feather
+                    name={expandedDayKey === day.dateKey ? 'chevron-down' : 'chevron-right'}
+                    size={16}
+                    color={BRAND_COLORS.blue}
+                  />
+                </View>
+              </Pressable>
 
-              {day.rows.map((group, index) => {
+              {expandedDayKey === day.dateKey
+                ? day.rows.map((group, index) => {
                 const primaryScheduleId = group.scheduleIds[0];
                 const status = scheduleStatusLabel({ startTime: group.startTime, endTime: group.endTime });
                 const statusStyle = scheduleStatusStyle(status);
@@ -553,7 +584,8 @@ export default function TeacherProctoringScheduleScreen() {
                     </Pressable>
                   </View>
                 );
-              })}
+              })
+                : null}
             </View>
           ))
         ) : (

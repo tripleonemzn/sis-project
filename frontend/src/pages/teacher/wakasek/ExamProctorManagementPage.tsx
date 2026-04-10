@@ -450,6 +450,7 @@ const ExamProctorManagementPage = () => {
   const [expandedDays, setExpandedDays] = useState<string[]>([]);
   const [expandedSlots, setExpandedSlots] = useState<string[]>([]);
   const [isReportExpanded, setIsReportExpanded] = useState(false);
+  const [expandedReportDayKey, setExpandedReportDayKey] = useState<string | null>(null);
   const [absentModalRow, setAbsentModalRow] = useState<ProctorReportRow | null>(null);
 
   const visiblePrograms = useMemo(
@@ -903,6 +904,20 @@ const ExamProctorManagementPage = () => {
         }),
       }));
   }, [proctorReports]);
+
+  useEffect(() => {
+    if (!isReportExpanded || groupedReportDays.length === 0) {
+      setExpandedReportDayKey(null);
+      return;
+    }
+    const validDayKeys = new Set(groupedReportDays.map((day) => day.dateKey));
+    setExpandedReportDayKey((previous) => {
+      if (previous && validDayKeys.has(previous)) {
+        return previous;
+      }
+      return groupedReportDays[0].dateKey;
+    });
+  }, [groupedReportDays, isReportExpanded]);
 
   // --- Handlers ---
 
@@ -1521,14 +1536,23 @@ const ExamProctorManagementPage = () => {
           <div className="space-y-4 px-4 py-4">
             {groupedReportDays.map((day) => (
               <div key={day.dateKey} className="overflow-hidden rounded-2xl border border-gray-200 bg-white">
-                <div className="flex flex-wrap items-center justify-between gap-3 border-b border-gray-200 bg-gray-50 px-5 py-4">
+                <button
+                  type="button"
+                  onClick={() => setExpandedReportDayKey((previous) => (previous === day.dateKey ? null : day.dateKey))}
+                  className="flex w-full flex-wrap items-center justify-between gap-3 border-b border-gray-200 bg-gray-50 px-5 py-4 text-left"
+                >
                   <div>
                     <div className="text-base font-semibold text-gray-900">{day.dateLabel}</div>
                     <div className="mt-1 text-xs text-gray-500">
                       {day.rows.length} slot laporan • {new Set(day.rows.map((row) => String(row.room || '').trim())).size} ruang aktif
                     </div>
                   </div>
-                </div>
+                  <span className="inline-flex items-center gap-2 text-sm font-medium text-blue-700">
+                    {expandedReportDayKey === day.dateKey ? 'Tutup Hari' : 'Buka Hari'}
+                    {expandedReportDayKey === day.dateKey ? <ChevronDown size={16} /> : <ChevronRight size={16} />}
+                  </span>
+                </button>
+                {expandedReportDayKey === day.dateKey ? (
                 <div className="overflow-x-auto">
                   <table className="w-full text-left">
                     <thead className="bg-white border-b border-gray-200">
@@ -1639,6 +1663,7 @@ const ExamProctorManagementPage = () => {
                     </tbody>
                   </table>
                 </div>
+                ) : null}
               </div>
             ))}
           </div>
