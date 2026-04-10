@@ -160,6 +160,8 @@ export type StudentExamItem = {
   room?: string | null;
   status: string;
   has_submitted: boolean;
+  isReady?: boolean;
+  notReadyReason?: string | null;
   isBlocked?: boolean;
   blockReason?: string;
   financeClearance?: {

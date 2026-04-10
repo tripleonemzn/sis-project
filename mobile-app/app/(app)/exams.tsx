@@ -11,7 +11,7 @@ import { QueryStateView } from '../../src/components/QueryStateView';
 import { OfflineCacheNotice } from '../../src/components/OfflineCacheNotice';
 import { useAuth } from '../../src/features/auth/AuthProvider';
 import { resolveStudentExamRuntimeStatus, StudentExamRuntimeStatus } from '../../src/features/exams/status';
-import { StudentExamItem } from '../../src/features/exams/types';
+import { StudentExamItem, StudentExamPlacement } from '../../src/features/exams/types';
 import { useStudentExamsQuery } from '../../src/features/exams/useStudentExamsQuery';
 import { ENV } from '../../src/config/env';
 import { getStandardPagePadding } from '../../src/lib/ui/pageLayout';
@@ -21,6 +21,16 @@ import { useIsScreenActive } from '../../src/hooks/useIsScreenActive';
 
 type StatusFilter = 'ALL' | 'OPEN' | 'MAKEUP' | 'UPCOMING' | 'MISSED' | 'COMPLETED';
 type ExamLabelMap = Record<string, string>;
+type PlacementRoomGroup = {
+  key: string;
+  roomName: string;
+  examType: string;
+  seatLabel?: string | null;
+  seatPosition?: NonNullable<StudentExamPlacement['seatPosition']> | null;
+  layout?: StudentExamPlacement['layout'] | null;
+  entries: StudentExamPlacement[];
+  primaryPlacement: StudentExamPlacement;
+};
 
 function normalizeProgramCode(raw?: string | null): string {
   const normalized = String(raw || '')
@@ -87,6 +97,24 @@ function placementStatusStyle(startTime?: string | null, endTime?: string | null
     return { bg: '#e2e8f0', border: '#cbd5e1', text: '#475569', label: 'Selesai' };
   }
   return { bg: '#eff6ff', border: '#bfdbfe', text: '#1d4ed8', label: 'Terjadwal' };
+}
+
+function placementGroupStatusStyle(entries: StudentExamPlacement[]) {
+  const now = Date.now();
+  const validRanges = entries
+    .map((entry) => ({
+      startMs: entry.startTime ? new Date(entry.startTime).getTime() : Number.NaN,
+      endMs: entry.endTime ? new Date(entry.endTime).getTime() : Number.NaN,
+    }))
+    .filter((range) => Number.isFinite(range.startMs) && Number.isFinite(range.endMs));
+
+  if (validRanges.some((range) => range.startMs <= now && now <= range.endMs)) {
+    return { bg: '#dcfce7', border: '#86efac', text: '#166534', label: 'Berlangsung' };
+  }
+  if (validRanges.some((range) => now < range.startMs) || validRanges.length === 0) {
+    return { bg: '#eff6ff', border: '#bfdbfe', text: '#1d4ed8', label: 'Terjadwal' };
+  }
+  return { bg: '#e2e8f0', border: '#cbd5e1', text: '#475569', label: 'Selesai' };
 }
 
 function resolveExamTypeLabel(type: string, labels: ExamLabelMap): string {
@@ -175,11 +203,13 @@ export default function StudentExamsScreen() {
   const [statusFilter, setStatusFilter] = useState<StatusFilter>('ALL');
   const [selectedExam, setSelectedExam] = useState<StudentExamItem | null>(null);
   const [selectedPlacement, setSelectedPlacement] = useState<NonNullable<typeof studentPlacements>[number] | null>(null);
+  const [selectedPlacementGroup, setSelectedPlacementGroup] = useState<PlacementRoomGroup | null>(null);
   const [isCardsExpanded, setIsCardsExpanded] = useState(false);
   const [isPlacementsExpanded, setIsPlacementsExpanded] = useState(false);
   const seatBlink = useMemo(() => new Animated.Value(1), []);
   const warningBlink = useMemo(() => new Animated.Value(1), []);
   const [showRulesModal, setShowRulesModal] = useState(false);
+  const [showProctorListModal, setShowProctorListModal] = useState(false);
   const studentExamPlacementsQuery = useQuery({
     queryKey: ['mobile-student-exam-placements', user?.id || 'anon'],
     enabled:
@@ -304,6 +334,46 @@ export default function StudentExamsScreen() {
       })
       .sort((a, b) => new Date(String(a.startTime || 0)).getTime() - new Date(String(b.startTime || 0)).getTime());
   }, [effectiveTypeFilter, studentExamPlacementsQuery.data]);
+  const groupedPlacements = useMemo<PlacementRoomGroup[]>(() => {
+    const groupMap = new Map<string, PlacementRoomGroup>();
+    studentPlacements.forEach((placement) => {
+      const key = [
+        normalizeProgramCode(placement.examType),
+        String(placement.roomName || '').trim(),
+        String(placement.seatLabel || '').trim(),
+      ].join('::');
+      const existing = groupMap.get(key);
+      if (existing) {
+        existing.entries.push(placement);
+        existing.entries.sort(
+          (left, right) =>
+            new Date(String(left.startTime || 0)).getTime() - new Date(String(right.startTime || 0)).getTime(),
+        );
+        return;
+      }
+      groupMap.set(key, {
+        key,
+        roomName: placement.roomName,
+        examType: placement.examType,
+        seatLabel: placement.seatLabel || null,
+        seatPosition: placement.seatPosition || null,
+        layout: placement.layout || null,
+        entries: [placement],
+        primaryPlacement: placement,
+      });
+    });
+    return Array.from(groupMap.values()).sort((left, right) => {
+      const roomCompare = String(left.roomName || '').localeCompare(String(right.roomName || ''), 'id', {
+        sensitivity: 'base',
+        numeric: true,
+      });
+      if (roomCompare !== 0) return roomCompare;
+      return String(left.seatLabel || '').localeCompare(String(right.seatLabel || ''), 'id', {
+        sensitivity: 'base',
+        numeric: true,
+      });
+    });
+  }, [studentPlacements]);
   const selectedPlacementCard = useMemo(() => {
     if (!selectedPlacement) return null;
     const cards = studentExamCardsQuery.data || [];
@@ -747,7 +817,7 @@ export default function StudentExamsScreen() {
               }}
             >
               <Text style={{ color: '#1d4ed8', fontWeight: '700', fontSize: 12 }}>
-                {studentPlacements.length} penempatan
+                {groupedPlacements.length} ruang
               </Text>
             </View>
             <View
@@ -807,13 +877,13 @@ export default function StudentExamsScreen() {
                 <Text style={{ color: '#be123c', fontWeight: '700' }}>Coba Lagi</Text>
               </Pressable>
             </View>
-          ) : isPlacementsExpanded && studentPlacements.length > 0 ? (
+          ) : isPlacementsExpanded && groupedPlacements.length > 0 ? (
             <View style={{ marginTop: 12, gap: 10 }}>
-                  {studentPlacements.map((placement) => {
-                    const chip = placementStatusStyle(placement.startTime, placement.endTime);
+                  {groupedPlacements.map((group) => {
+                    const chip = placementGroupStatusStyle(group.entries);
                     return (
                       <View
-                        key={placement.id}
+                        key={group.key}
                     style={{
                       borderWidth: 1,
                       borderColor: '#dbe7fb',
@@ -824,9 +894,9 @@ export default function StudentExamsScreen() {
                   >
                     <View style={{ flexDirection: 'row', justifyContent: 'space-between', gap: 8 }}>
                       <View style={{ flex: 1 }}>
-                        <Text style={{ color: '#0f172a', fontWeight: '700' }}>{placement.roomName}</Text>
+                        <Text style={{ color: '#0f172a', fontWeight: '700' }}>{group.roomName}</Text>
                         <Text style={{ color: '#64748b', marginTop: 4, fontSize: 12 }}>
-                          {examTypeLabel(placement.examType)} • {placement.sessionLabel || 'Sesi belum diatur'}
+                          {examTypeLabel(group.examType)} • {group.entries.length} jadwal
                         </Text>
                       </View>
                       <View
@@ -844,33 +914,49 @@ export default function StudentExamsScreen() {
                       </View>
                     </View>
                     <Text style={{ color: '#334155', fontSize: 12, marginTop: 6 }}>
-                      Kursi: {placement.seatLabel || 'Menunggu denah dipublikasikan'}
+                      Kursi: {group.seatLabel || 'Menunggu denah dipublikasikan'}
                     </Text>
                     <Text style={{ color: '#334155', fontSize: 12, marginTop: 4 }}>
-                      Waktu: {formatDateTime(placement.startTime || '')} - {formatDateTime(placement.endTime || '')}
+                      Slot pertama: {formatDateTime(group.primaryPlacement.startTime || '')} - {formatDateTime(group.primaryPlacement.endTime || '')}
                     </Text>
-                    {placement.proctor?.name ? (
-                      <Text style={{ color: '#64748b', fontSize: 12, marginTop: 4 }}>
-                        Pengawas: {placement.proctor.name}
-                      </Text>
-                    ) : null}
-                    <Pressable
-                      onPress={() => {
-                        setSelectedPlacement(placement);
-                      }}
-                      style={{
-                        marginTop: 10,
-                        alignSelf: 'flex-start',
-                        borderWidth: 1,
-                        borderColor: '#bfdbfe',
-                        backgroundColor: '#eff6ff',
-                        borderRadius: 999,
-                        paddingHorizontal: 10,
-                        paddingVertical: 6,
-                      }}
-                    >
-                      <Text style={{ color: '#1d4ed8', fontWeight: '700', fontSize: 11 }}>Lihat Denah</Text>
-                    </Pressable>
+                    <Text style={{ color: '#64748b', fontSize: 12, marginTop: 4 }}>
+                      {group.entries.length} slot ujian memakai ruang ini.
+                    </Text>
+                    <View style={{ flexDirection: 'row', flexWrap: 'wrap', gap: 8, marginTop: 10 }}>
+                      <Pressable
+                        onPress={() => {
+                          setSelectedPlacement(group.primaryPlacement);
+                        }}
+                        style={{
+                          alignSelf: 'flex-start',
+                          borderWidth: 1,
+                          borderColor: '#bfdbfe',
+                          backgroundColor: '#eff6ff',
+                          borderRadius: 999,
+                          paddingHorizontal: 10,
+                          paddingVertical: 6,
+                        }}
+                      >
+                        <Text style={{ color: '#1d4ed8', fontWeight: '700', fontSize: 11 }}>Lihat Denah</Text>
+                      </Pressable>
+                      <Pressable
+                        onPress={() => {
+                          setSelectedPlacementGroup(group);
+                          setShowProctorListModal(true);
+                        }}
+                        style={{
+                          alignSelf: 'flex-start',
+                          borderWidth: 1,
+                          borderColor: '#a7f3d0',
+                          backgroundColor: '#ecfdf5',
+                          borderRadius: 999,
+                          paddingHorizontal: 10,
+                          paddingVertical: 6,
+                        }}
+                      >
+                        <Text style={{ color: '#047857', fontWeight: '700', fontSize: 11 }}>Daftar Pengawas</Text>
+                      </Pressable>
+                    </View>
                   </View>
                 );
               })}
@@ -969,6 +1055,10 @@ export default function StudentExamsScreen() {
               const type = normalizeProgramCode(item.packet.programCode || item.packet.type);
               const status = resolveStudentExamRuntimeStatus(item);
               const style = statusStyle(status);
+              const isReady = item.isReady !== false;
+              const statusChip = isReady
+                ? style
+                : { bg: '#fffbeb', border: '#fcd34d', text: '#d97706', label: 'Soal Belum Siap' };
               const resolvedSubject = resolveSubjectLabel(item);
               const subjectName = resolvedSubject.name;
               const subjectCode = resolvedSubject.code;
@@ -994,9 +1084,9 @@ export default function StudentExamsScreen() {
                     </Text>
                     <Text
                       style={{
-                        color: style.text,
-                        backgroundColor: style.bg,
-                        borderColor: style.border,
+                        color: statusChip.text,
+                        backgroundColor: statusChip.bg,
+                        borderColor: statusChip.border,
                         borderWidth: 1,
                         borderRadius: 999,
                         paddingHorizontal: 8,
@@ -1005,9 +1095,9 @@ export default function StudentExamsScreen() {
                         fontWeight: '700',
                       }}
                     >
-                      {status === 'UPCOMING' && item.makeupMode === 'FORMAL' && item.makeupScheduled
+                      {isReady && status === 'UPCOMING' && item.makeupMode === 'FORMAL' && item.makeupScheduled
                         ? 'Jadwal Susulan'
-                        : style.label}
+                        : statusChip.label}
                     </Text>
                   </View>
                   <Text style={{ color: '#64748b', fontSize: 12, marginBottom: 4 }}>
@@ -1021,6 +1111,23 @@ export default function StudentExamsScreen() {
                   <Text style={{ color: '#334155', fontSize: 12, marginBottom: 6 }}>
                     Selesai: {formatDateTime(item.endTime)} • Durasi: {item.packet.duration} menit
                   </Text>
+                  {!isReady ? (
+                    <View
+                      style={{
+                        marginBottom: 8,
+                        borderWidth: 1,
+                        borderColor: '#fde68a',
+                        backgroundColor: '#fffbeb',
+                        borderRadius: 8,
+                        padding: 8,
+                      }}
+                    >
+                      <Text style={{ color: '#92400e', fontSize: 12, fontWeight: '700' }}>Soal Belum Siap</Text>
+                      <Text style={{ color: '#92400e', fontSize: 11, marginTop: 4 }}>
+                        {item.notReadyReason || 'Soal untuk jadwal ini belum disiapkan guru.'}
+                      </Text>
+                    </View>
+                  ) : null}
                   {item.makeupMode === 'FORMAL' && item.makeupStartTime ? (
                     <Text style={{ color: '#c2410c', fontSize: 12, marginBottom: 4 }}>
                       Jadwal susulan: {formatDateTime(item.makeupStartTime)}
@@ -1102,7 +1209,7 @@ export default function StudentExamsScreen() {
                   ) : null}
                   <Pressable
                     onPress={async () => {
-                      if ((status === 'OPEN' || status === 'MAKEUP') && !item.isBlocked) {
+                      if ((status === 'OPEN' || status === 'MAKEUP') && !item.isBlocked && isReady) {
                         setSelectedExam(item);
                         return;
                       }
@@ -1130,18 +1237,20 @@ export default function StudentExamsScreen() {
                                 : 'Ujian susulan tidak tersedia saat ini.'
                               : isApplicantMode
                                 ? 'Tes BKK tidak dapat dikerjakan dari mobile untuk status ini.'
-                                : 'Ujian tidak dapat dikerjakan dari mobile untuk status ini.',
+                            : !isReady
+                              ? item.notReadyReason || 'Soal untuk jadwal ini belum disiapkan guru.'
+                              : 'Ujian tidak dapat dikerjakan dari mobile untuk status ini.',
                       );
                     }}
                     style={{
-                      backgroundColor: (status === 'OPEN' || status === 'MAKEUP') && !item.isBlocked ? '#1d4ed8' : '#cbd5e1',
+                      backgroundColor: (status === 'OPEN' || status === 'MAKEUP') && !item.isBlocked && isReady ? '#1d4ed8' : '#cbd5e1',
                       borderRadius: 8,
                       paddingVertical: 9,
                       alignItems: 'center',
                     }}
                   >
                     <Text style={{ color: '#fff', fontWeight: '700' }}>
-                      {(status === 'OPEN' || status === 'MAKEUP') && !item.isBlocked
+                      {(status === 'OPEN' || status === 'MAKEUP') && !item.isBlocked && isReady
                         ? isApplicantMode
                           ? status === 'MAKEUP'
                             ? 'Mulai Tes Susulan'
@@ -1149,6 +1258,8 @@ export default function StudentExamsScreen() {
                           : status === 'MAKEUP'
                             ? 'Mulai Susulan'
                             : 'Mulai Ujian'
+                        : !isReady
+                          ? 'Menunggu Soal'
                         : isApplicantMode
                           ? 'Detail Tes BKK'
                           : 'Detail Ujian'}
@@ -1402,6 +1513,76 @@ export default function StudentExamsScreen() {
               <Text style={{ color: '#64748b' }}>Denah belum dipublikasikan oleh Kurikulum.</Text>
             </View>
           )
+        ) : null}
+      </MobileDetailModal>
+      <MobileDetailModal
+        visible={showProctorListModal && Boolean(selectedPlacementGroup)}
+        title="Daftar Pengawas"
+        subtitle={
+          selectedPlacementGroup
+            ? `${selectedPlacementGroup.roomName} • ${examTypeLabel(selectedPlacementGroup.examType)}`
+            : 'Rincian pengawas per slot ujian'
+        }
+        iconName="users"
+        accentColor="#047857"
+        onClose={() => {
+          setShowProctorListModal(false);
+          setSelectedPlacementGroup(null);
+        }}
+      >
+        {selectedPlacementGroup ? (
+          <View style={{ gap: 12 }}>
+            {Array.from(
+              selectedPlacementGroup.entries.reduce<Map<string, StudentExamPlacement[]>>((map, entry) => {
+                const dateKey = formatDateOnly(entry.startTime || '');
+                if (!map.has(dateKey)) map.set(dateKey, []);
+                map.get(dateKey)?.push(entry);
+                return map;
+              }, new Map<string, StudentExamPlacement[]>()),
+            ).map(([dateLabel, entries]: [string, StudentExamPlacement[]]) => (
+              <View
+                key={dateLabel}
+                style={{
+                  borderWidth: 1,
+                  borderColor: '#bbf7d0',
+                  backgroundColor: '#f0fdf4',
+                  borderRadius: 14,
+                  padding: 12,
+                }}
+              >
+                <Text style={{ color: '#166534', fontWeight: '700', marginBottom: 8 }}>{dateLabel}</Text>
+                <View style={{ gap: 8 }}>
+                  {entries
+                    .sort(
+                      (left: StudentExamPlacement, right: StudentExamPlacement) =>
+                        new Date(String(left.startTime || 0)).getTime() - new Date(String(right.startTime || 0)).getTime(),
+                    )
+                    .map((entry: StudentExamPlacement) => (
+                      <View
+                        key={entry.id}
+                        style={{
+                          borderWidth: 1,
+                          borderColor: '#dcfce7',
+                          backgroundColor: '#fff',
+                          borderRadius: 12,
+                          padding: 10,
+                        }}
+                      >
+                        <Text style={{ color: '#0f172a', fontWeight: '700', fontSize: 13 }}>
+                          {formatDateTime(entry.startTime || '')} - {formatDateTime(entry.endTime || '')}
+                        </Text>
+                        <Text style={{ color: '#64748b', fontSize: 12, marginTop: 4 }}>
+                          {entry.sessionLabel || 'Sesi belum diatur'}
+                        </Text>
+                        <Text style={{ color: '#166534', fontSize: 12, marginTop: 6 }}>
+                          Pengawas: <Text style={{ fontWeight: '700' }}>{entry.proctor?.name || 'Belum ditentukan'}</Text>
+                        </Text>
+                      </View>
+                    ))}
+                </View>
+              </View>
+            ))}
+          </View>
         ) : null}
       </MobileDetailModal>
     </ScrollView>

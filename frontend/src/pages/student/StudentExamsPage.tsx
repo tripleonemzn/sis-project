@@ -90,6 +90,8 @@ type ExamAvailabilityPayload = {
   makeupStartTime?: string | null
   makeupDeadline?: string | null
   makeupReason?: string | null
+  isReady?: boolean
+  notReadyReason?: string | null
   jobVacancy?: {
     id?: string | number
     title?: string
@@ -264,6 +266,8 @@ interface Exam {
   makeupStartTime?: string | null
   makeupDeadline?: string | null
   makeupReason?: string | null
+  isReady?: boolean
+  notReadyReason?: string | null
   jobVacancy?: {
     id: string
     title: string
@@ -275,6 +279,17 @@ type ServerTimeDriftState = {
   serverNowIso: string
   deviceNowIso: string
   driftMs: number
+}
+
+type PlacementRoomGroup = {
+  key: string
+  roomName: string
+  examType: string
+  seatLabel?: string | null
+  seatPosition?: StudentExamPlacement['seatPosition']
+  layout?: StudentExamPlacement['layout']
+  entries: StudentExamPlacement[]
+  primaryPlacement: StudentExamPlacement
 }
 
 function formatExamCurrency(value?: number | null): string {
@@ -318,7 +333,9 @@ export default function StudentExamsPage() {
   const [showStartModal, setShowStartModal] = useState(false)
   const [selectedExam, setSelectedExam] = useState<Exam | null>(null)
   const [selectedPlacement, setSelectedPlacement] = useState<StudentExamPlacement | null>(null)
+  const [selectedPlacementGroup, setSelectedPlacementGroup] = useState<PlacementRoomGroup | null>(null)
   const [showPlacementModal, setShowPlacementModal] = useState(false)
+  const [showProctorListModal, setShowProctorListModal] = useState(false)
   const [examProgramLabels, setExamProgramLabels] = useState<ExamProgramLabelMap>({})
   const [examPrograms, setExamPrograms] = useState<ExamProgram[]>([])
   const [isCardsExpanded, setIsCardsExpanded] = useState(false)
@@ -576,6 +593,8 @@ export default function StudentExamsPage() {
           makeupStartTime: item.makeupStartTime || null,
           makeupDeadline: item.makeupDeadline || null,
           makeupReason: item.makeupReason || null,
+          isReady: item.isReady !== false,
+          notReadyReason: item.notReadyReason || null,
           jobVacancy: item.jobVacancy
             ? {
                 id: String(item.jobVacancy.id || ''),
@@ -690,6 +709,7 @@ export default function StudentExamsPage() {
 
     return (
       (status === 'available' || isMakeupWindowOpen) &&
+      exam.isReady !== false &&
       exam.is_published &&
       !exam.has_submitted &&
       !exam.isBlocked &&
@@ -803,31 +823,47 @@ export default function StudentExamsPage() {
     })
   }
 
-  const getPlacementStatus = (placement: StudentExamPlacement) => {
+  const getPlacementGroupStatus = (entries: StudentExamPlacement[]) => {
     const now = Date.now()
-    const startMs = placement.startTime ? new Date(placement.startTime).getTime() : Number.NaN
-    const endMs = placement.endTime ? new Date(placement.endTime).getTime() : Number.NaN
+    const validRanges = entries
+      .map((entry) => ({
+        startMs: entry.startTime ? new Date(entry.startTime).getTime() : Number.NaN,
+        endMs: entry.endTime ? new Date(entry.endTime).getTime() : Number.NaN,
+      }))
+      .filter((range) => Number.isFinite(range.startMs) && Number.isFinite(range.endMs))
 
-    if (Number.isFinite(startMs) && Number.isFinite(endMs) && startMs <= now && now <= endMs) {
+    if (validRanges.some((range) => range.startMs <= now && now <= range.endMs)) {
       return {
         label: 'Berlangsung',
         className: 'bg-green-100 text-green-800 border border-green-200',
       }
     }
-    if (Number.isFinite(endMs) && now > endMs) {
+
+    const hasFuture = validRanges.some((range) => now < range.startMs)
+    if (hasFuture || validRanges.length === 0) {
       return {
-        label: 'Selesai',
-        className: 'bg-slate-100 text-slate-700 border border-slate-200',
+        label: 'Terjadwal',
+        className: 'bg-blue-100 text-blue-800 border border-blue-200',
       }
     }
+
     return {
-      label: 'Terjadwal',
-      className: 'bg-blue-100 text-blue-800 border border-blue-200',
+      label: 'Selesai',
+      className: 'bg-slate-100 text-slate-700 border border-slate-200',
     }
   }
 
   const getStatusBadge = (exam: Exam) => {
     const status = getExamStatus(exam)
+
+    if (exam.isReady === false && !exam.has_submitted) {
+      return (
+        <span className="px-2 py-1 bg-amber-100 text-amber-800 text-xs font-medium rounded inline-flex items-center gap-1">
+          <AlertCircle className="w-3 h-3" />
+          Soal Belum Siap
+        </span>
+      )
+    }
 
     switch (status) {
       case 'graded':
@@ -917,6 +953,46 @@ export default function StudentExamsPage() {
           new Date(String(a.startTime || 0)).getTime() - new Date(String(b.startTime || 0)).getTime(),
       )
   }, [programFilter, studentExamPlacementsQuery.data])
+  const groupedPlacements = useMemo<PlacementRoomGroup[]>(() => {
+    const groupMap = new Map<string, PlacementRoomGroup>()
+    filteredPlacements.forEach((placement) => {
+      const key = [
+        normalizeExamProgramCode(placement.examType),
+        String(placement.roomName || '').trim(),
+        String(placement.seatLabel || '').trim(),
+      ].join('::')
+      const existing = groupMap.get(key)
+      if (existing) {
+        existing.entries.push(placement)
+        existing.entries.sort(
+          (left, right) =>
+            new Date(String(left.startTime || 0)).getTime() - new Date(String(right.startTime || 0)).getTime(),
+        )
+        return
+      }
+      groupMap.set(key, {
+        key,
+        roomName: placement.roomName,
+        examType: placement.examType,
+        seatLabel: placement.seatLabel || null,
+        seatPosition: placement.seatPosition || null,
+        layout: placement.layout || null,
+        entries: [placement],
+        primaryPlacement: placement,
+      })
+    })
+    return Array.from(groupMap.values()).sort((left, right) => {
+      const roomCompare = String(left.roomName || '').localeCompare(String(right.roomName || ''), 'id', {
+        sensitivity: 'base',
+        numeric: true,
+      })
+      if (roomCompare !== 0) return roomCompare
+      return String(left.seatLabel || '').localeCompare(String(right.seatLabel || ''), 'id', {
+        sensitivity: 'base',
+        numeric: true,
+      })
+    })
+  }, [filteredPlacements])
 
   const relevantTotal = exams.filter(e => programFilter === 'all' || normalizeExamProgramCode(e.programCode || e.type) === programFilter).length
   const lockedProgramLabel =
@@ -1129,7 +1205,7 @@ export default function StudentExamsPage() {
             </div>
             <div className="flex items-center gap-3 self-start md:self-auto">
               <div className="rounded-full bg-blue-50 px-3 py-1 text-xs font-semibold text-blue-700">
-                {filteredPlacements.length} penempatan
+                {groupedPlacements.length} ruang
               </div>
               <span className="inline-flex h-9 w-9 items-center justify-center rounded-full border border-gray-200 bg-white text-gray-500">
                 {isPlacementsExpanded ? <ChevronUp className="h-4 w-4" /> : <ChevronDown className="h-4 w-4" />}
@@ -1152,18 +1228,18 @@ export default function StudentExamsPage() {
                 Coba Lagi
               </button>
             </div>
-          ) : isPlacementsExpanded && filteredPlacements.length > 0 ? (
+          ) : isPlacementsExpanded && groupedPlacements.length > 0 ? (
             <div className="mt-4 grid gap-3 md:grid-cols-2">
-              {filteredPlacements.map((placement) => {
-                const chip = getPlacementStatus(placement)
+              {groupedPlacements.map((group) => {
+                const chip = getPlacementGroupStatus(group.entries)
                 return (
-                  <div key={placement.id} className="rounded-2xl border border-blue-100 bg-white px-4 py-4 text-sm text-gray-700">
+                  <div key={group.key} className="rounded-2xl border border-blue-100 bg-white px-4 py-4 text-sm text-gray-700">
                     <div className="flex items-start justify-between gap-3">
                       <div>
-                        <div className="font-semibold text-gray-900">{placement.roomName}</div>
+                        <div className="font-semibold text-gray-900">{group.roomName}</div>
                         <div className="mt-1 text-xs text-gray-500">
-                          {examProgramLabels[normalizeExamProgramCode(placement.examType)] || normalizeExamProgramCode(placement.examType) || '-'} •{' '}
-                          {placement.sessionLabel || 'Sesi belum diatur'}
+                          {examProgramLabels[normalizeExamProgramCode(group.examType)] || normalizeExamProgramCode(group.examType) || '-'} •{' '}
+                          {group.entries.length} jadwal
                         </div>
                       </div>
                       <span className={`inline-flex rounded-full px-2.5 py-1 text-[11px] font-semibold ${chip.className}`}>
@@ -1171,22 +1247,34 @@ export default function StudentExamsPage() {
                       </span>
                     </div>
                     <div className="mt-3 space-y-1 text-xs text-gray-600">
-                      <div>Kursi: {placement.seatLabel || 'Menunggu denah dipublikasikan'}</div>
+                      <div>Kursi: {group.seatLabel || 'Menunggu denah dipublikasikan'}</div>
                       <div>
-                        Waktu: {formatDateTimeLong(placement.startTime || '')} - {formatDateTimeLong(placement.endTime || '')}
+                        Slot pertama: {formatDateTimeLong(group.primaryPlacement.startTime || '')} - {formatDateTimeLong(group.primaryPlacement.endTime || '')}
                       </div>
-                      {placement.proctor?.name ? <div>Pengawas: {placement.proctor.name}</div> : null}
+                      <div>{group.entries.length} slot ujian memakai ruang ini.</div>
                     </div>
-                    <button
-                      type="button"
-                      onClick={() => {
-                        setSelectedPlacement(placement)
-                        setShowPlacementModal(true)
-                      }}
-                      className="mt-3 inline-flex items-center rounded-lg border border-blue-200 bg-blue-50 px-3 py-2 text-xs font-semibold text-blue-700 hover:bg-blue-100"
-                    >
-                      Lihat Denah
-                    </button>
+                    <div className="mt-3 flex flex-wrap gap-2">
+                      <button
+                        type="button"
+                        onClick={() => {
+                          setSelectedPlacement(group.primaryPlacement)
+                          setShowPlacementModal(true)
+                        }}
+                        className="inline-flex items-center rounded-lg border border-blue-200 bg-blue-50 px-3 py-2 text-xs font-semibold text-blue-700 hover:bg-blue-100"
+                      >
+                        Lihat Denah
+                      </button>
+                      <button
+                        type="button"
+                        onClick={() => {
+                          setSelectedPlacementGroup(group)
+                          setShowProctorListModal(true)
+                        }}
+                        className="inline-flex items-center rounded-lg border border-emerald-200 bg-emerald-50 px-3 py-2 text-xs font-semibold text-emerald-700 hover:bg-emerald-100"
+                      >
+                        Daftar Pengawas
+                      </button>
+                    </div>
                   </div>
                 )
               })}
@@ -1439,6 +1527,16 @@ export default function StudentExamsPage() {
                                 </div>
                               ) : null}
                             </div>
+                          ) : exam.isReady === false ? (
+                            <div className="flex flex-col items-center">
+                              <span className="inline-flex items-center gap-1 px-3 py-2 bg-amber-100 text-amber-700 text-sm font-medium rounded mb-1">
+                                <AlertCircle className="w-4 h-4" />
+                                <span>Menunggu Soal</span>
+                              </span>
+                              <span className="text-xs text-amber-700 max-w-[200px] whitespace-normal text-center">
+                                {exam.notReadyReason || 'Soal untuk jadwal ini belum disiapkan guru.'}
+                              </span>
+                            </div>
                           ) : canTake ? (
                             <button
                               onClick={() => handleStartExam(exam)}
@@ -1575,6 +1673,64 @@ export default function StudentExamsPage() {
                 Denah belum dipublikasikan oleh Kurikulum.
               </div>
             )}
+          </div>
+        </div>
+      ) : null}
+
+      {showProctorListModal && selectedPlacementGroup ? (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/35 px-4">
+          <div className="w-full max-w-2xl rounded-2xl border border-emerald-100 bg-white p-6 shadow-xl">
+            <div className="flex items-start justify-between gap-4">
+              <div>
+                <h3 className="text-xl font-bold text-gray-900">Daftar Pengawas Ruang</h3>
+                <p className="mt-1 text-sm text-gray-500">
+                  {selectedPlacementGroup.roomName} • {examProgramLabels[normalizeExamProgramCode(selectedPlacementGroup.examType)] || normalizeExamProgramCode(selectedPlacementGroup.examType) || '-'}
+                </p>
+              </div>
+              <button
+                type="button"
+                onClick={() => {
+                  setShowProctorListModal(false)
+                  setSelectedPlacementGroup(null)
+                }}
+                className="rounded-lg border border-gray-200 bg-white px-3 py-2 text-sm font-semibold text-gray-600 hover:bg-gray-50"
+              >
+                Tutup
+              </button>
+            </div>
+
+            <div className="mt-5 space-y-4">
+              {Array.from(
+                selectedPlacementGroup.entries.reduce((map, entry) => {
+                  const dateKey = formatDateOnlyLong(entry.startTime || '')
+                  if (!map.has(dateKey)) map.set(dateKey, [])
+                  map.get(dateKey)?.push(entry)
+                  return map
+                }, new Map<string, StudentExamPlacement[]>()),
+              ).map(([dateLabel, entries]) => (
+                <div key={dateLabel} className="rounded-xl border border-emerald-100 bg-emerald-50/40 p-4">
+                  <div className="text-sm font-semibold text-emerald-900">{dateLabel}</div>
+                  <div className="mt-3 space-y-2">
+                    {entries
+                      .sort(
+                        (left, right) =>
+                          new Date(String(left.startTime || 0)).getTime() - new Date(String(right.startTime || 0)).getTime(),
+                      )
+                      .map((entry) => (
+                        <div key={entry.id} className="rounded-lg border border-white bg-white px-3 py-3 text-sm text-gray-700 shadow-sm">
+                          <div className="font-medium text-gray-900">
+                            {formatDateTimeLong(entry.startTime || '')} - {formatDateTimeLong(entry.endTime || '')}
+                          </div>
+                          <div className="mt-1 text-xs text-gray-500">{entry.sessionLabel || 'Sesi belum diatur'}</div>
+                          <div className="mt-2 text-sm text-emerald-800">
+                            Pengawas: <span className="font-semibold">{entry.proctor?.name || 'Belum ditentukan'}</span>
+                          </div>
+                        </div>
+                      ))}
+                  </div>
+                </div>
+              ))}
+            </div>
           </div>
         </div>
       ) : null}

@@ -9296,15 +9296,9 @@ export const getAvailableExams = asyncHandler(async (req: Request, res: Response
         packetQuestionCounts.map((row) => [Number(row.id), Number(row.question_count) || 0]),
     );
 
-    const runnableSchedulesForExamUser = schedulesWithPacketForExamUser.filter((schedule) => {
-        const packetId = Number(schedule.packet?.id);
-        if (!Number.isFinite(packetId) || packetId <= 0) return false;
-        return (questionCountByPacketId.get(packetId) || 0) > 0;
-    });
-
     const scheduleTargets =
         accessRole === 'STUDENT'
-            ? runnableSchedulesForExamUser
+            ? schedulesWithPacketForExamUser
                   .map((schedule) => {
                       const packet = schedule.packet!;
                       const normalizedProgramCode = normalizeProgramCode(packet.programCode || schedule.examType || packet.type);
@@ -9430,7 +9424,7 @@ export const getAvailableExams = asyncHandler(async (req: Request, res: Response
     );
 
     // Check restrictions
-    const examsWithStatus = runnableSchedulesForExamUser.map((schedule) => {
+    const examsWithStatus = schedulesWithPacketForExamUser.map((schedule) => {
         const slotSittings =
             accessRole === 'STUDENT' && studentSittings.length > 0 ? getSlotSittingsForSchedule(schedule) : [];
         const matchingSittings = slotSittings.length > 0 ? getSessionMatchedSittings(schedule, slotSittings) : [];
@@ -9438,6 +9432,9 @@ export const getAvailableExams = asyncHandler(async (req: Request, res: Response
         let isBlocked = false;
         let blockReason = '';
         let financeClearance: ExamFinanceClearanceSummary | null = null;
+        const packetQuestionCount = schedule.packet ? questionCountByPacketId.get(schedule.packet.id) || 0 : 0;
+        const isReady = packetQuestionCount > 0;
+        const notReadyReason = isReady ? null : 'Soal untuk jadwal ini belum disiapkan guru.';
 
         if (accessRole === 'STUDENT' && schedule.packet) {
             const packet = schedule.packet;
@@ -9531,14 +9528,14 @@ export const getAvailableExams = asyncHandler(async (req: Request, res: Response
                                 code: String(resolvedSubject.code || '-'),
                             }
                           : schedule.packet.subject,
-                      questionPoolCount: questionCountByPacketId.get(schedule.packet.id) || 0,
+                      questionPoolCount: packetQuestionCount,
                       questionCount:
                           Number(schedule.packet.publishedQuestionCount) > 0
                               ? Math.min(
                                     Number(schedule.packet.publishedQuestionCount),
-                                    questionCountByPacketId.get(schedule.packet.id) || 0,
+                                    packetQuestionCount,
                                 )
-                              : questionCountByPacketId.get(schedule.packet.id) || 0,
+                              : packetQuestionCount,
                   };
               })()
             : null;
@@ -9568,6 +9565,8 @@ export const getAvailableExams = asyncHandler(async (req: Request, res: Response
             has_submitted: normalizedSessionStatus === 'COMPLETED' || normalizedSessionStatus === 'TIMEOUT',
             isBlocked,
             blockReason,
+            isReady,
+            notReadyReason,
             financeClearance,
             makeupAvailable: makeupContext.availableNow,
             makeupMode: makeupContext.mode,
