@@ -23,13 +23,17 @@ type StatusFilter = 'ALL' | 'OPEN' | 'MAKEUP' | 'UPCOMING' | 'MISSED' | 'COMPLET
 type ExamLabelMap = Record<string, string>;
 
 function normalizeProgramCode(raw?: string | null): string {
-  return String(raw || '')
+  const normalized = String(raw || '')
     .trim()
     .toUpperCase()
     .replace(/QUIZ/g, 'FORMATIF')
     .replace(/[^A-Z0-9]+/g, '_')
     .replace(/_+/g, '_')
     .replace(/^_+|_+$/g, '');
+  if (['PSAJ', 'ASAJ_PRAKTIK', 'ASSESMEN_SUMATIF_AKHIR_JENJANG_PRAKTIK'].includes(normalized)) {
+    return 'ASAJP';
+  }
+  return normalized;
 }
 
 function formatDateTime(value: string) {

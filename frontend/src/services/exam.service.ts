@@ -58,13 +58,17 @@ export const DEFAULT_EXAM_PROGRAMS: ExamProgram[] = [];
 export const DEFAULT_GRADE_COMPONENTS: ExamGradeComponent[] = [];
 
 export const normalizeExamProgramCode = (raw: unknown): string => {
-    return String(raw || '')
+    const normalized = String(raw || '')
         .trim()
         .toUpperCase()
         .replace(/QUIZ/g, 'FORMATIF')
         .replace(/[^A-Z0-9]+/g, '_')
         .replace(/_+/g, '_')
         .replace(/^_+|_+$/g, '');
+    if (['PSAJ', 'ASAJ_PRAKTIK', 'ASSESMEN_SUMATIF_AKHIR_JENJANG_PRAKTIK'].includes(normalized)) {
+        return 'ASAJP';
+    }
+    return normalized;
 };
 
 export const examProgramCodeToSlug = (rawCode: unknown): string => {

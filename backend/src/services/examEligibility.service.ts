@@ -432,6 +432,9 @@ export function normalizeExamProgramCode(raw: unknown): string | null {
   if (normalized.length > 50) {
     throw new ApiError(400, 'Kode program ujian maksimal 50 karakter.');
   }
+  if (['PSAJ', 'ASAJ_PRAKTIK', 'ASSESMEN_SUMATIF_AKHIR_JENJANG_PRAKTIK'].includes(normalized)) {
+    return 'ASAJP';
+  }
   return normalized;
 }
 

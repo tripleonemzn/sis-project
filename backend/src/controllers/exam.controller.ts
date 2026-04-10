@@ -95,7 +95,36 @@ function normalizeProgramCode(raw: unknown): string | null {
     if (normalized.length > 50) {
         throw new ApiError(400, 'Kode program ujian maksimal 50 karakter.');
     }
+    if (['PSAJ', 'ASAJ_PRAKTIK', 'ASSESMEN_SUMATIF_AKHIR_JENJANG_PRAKTIK'].includes(normalized)) {
+        return 'ASAJP';
+    }
     return normalized;
+}
+
+function resolveCurrentAcademicYearSemester(academicYear: {
+    semester1End?: Date | null;
+    semester2Start?: Date | null;
+    semester2End?: Date | null;
+}, referenceDate: Date): Semester {
+    if (
+        academicYear.semester2Start &&
+        academicYear.semester2End &&
+        referenceDate >= academicYear.semester2Start &&
+        referenceDate <= academicYear.semester2End
+    ) {
+        return Semester.EVEN;
+    }
+
+    if (
+        academicYear.semester1End &&
+        academicYear.semester2Start &&
+        referenceDate > academicYear.semester1End &&
+        referenceDate < academicYear.semester2Start
+    ) {
+        return Semester.EVEN;
+    }
+
+    return Semester.ODD;
 }
 
 const CURRICULUM_EXAM_MANAGER_LABEL = 'Wakasek Kurikulum atau Sekretaris Kurikulum';
@@ -8780,6 +8809,21 @@ export const getAvailableExams = asyncHandler(async (req: Request, res: Response
     }
 
     const now = new Date();
+    const activeAcademicYearWindow =
+        accessRole === 'STUDENT'
+            ? await prisma.academicYear.findFirst({
+                  where: { isActive: true },
+                  select: {
+                      id: true,
+                      semester1End: true,
+                      semester2Start: true,
+                      semester2End: true,
+                  },
+              })
+            : null;
+    const activeSemesterForStudent = activeAcademicYearWindow
+        ? resolveCurrentAcademicYearSemester(activeAcademicYearWindow, now)
+        : null;
     const scheduleSelect = {
         id: true,
         classId: true,
@@ -8888,6 +8932,8 @@ export const getAvailableExams = asyncHandler(async (req: Request, res: Response
             where: {
                 classId: student.classId,
                 isActive: true,
+                ...(activeAcademicYearWindow?.id ? { academicYearId: activeAcademicYearWindow.id } : {}),
+                ...(activeSemesterForStudent ? { semester: activeSemesterForStudent } : {}),
             },
             select: scheduleSelect,
             orderBy: { startTime: 'asc' },
@@ -9177,11 +9223,11 @@ export const getAvailableExams = asyncHandler(async (req: Request, res: Response
         return activeProgramKeys.has(`${Number(schedule.academicYearId)}:${taggedProgramCode}`);
     });
 
-    const runnableSchedulesForExamUser = schedulesForExamUser.filter((schedule) => Boolean(schedule.packet));
+    const schedulesWithPacketForExamUser = schedulesForExamUser.filter((schedule) => Boolean(schedule.packet));
 
     const packetIds = Array.from(
         new Set(
-            runnableSchedulesForExamUser
+            schedulesWithPacketForExamUser
                 .map((schedule) => Number(schedule.packet?.id))
                 .filter((packetId) => Number.isFinite(packetId) && packetId > 0),
         ),
@@ -9203,6 +9249,12 @@ export const getAvailableExams = asyncHandler(async (req: Request, res: Response
     const questionCountByPacketId = new Map<number, number>(
         packetQuestionCounts.map((row) => [Number(row.id), Number(row.question_count) || 0]),
     );
+
+    const runnableSchedulesForExamUser = schedulesWithPacketForExamUser.filter((schedule) => {
+        const packetId = Number(schedule.packet?.id);
+        if (!Number.isFinite(packetId) || packetId <= 0) return false;
+        return (questionCountByPacketId.get(packetId) || 0) > 0;
+    });
 
     const scheduleTargets =
         accessRole === 'STUDENT'
@@ -9532,6 +9584,35 @@ async function buildStartExamPayload(params: {
         throw new ApiError(400, 'Siswa belum terhubung ke kelas aktif.');
     }
 
+    const packetQuestions = Array.isArray(schedule.packet.questions)
+        ? (schedule.packet.questions as Record<string, unknown>[])
+        : [];
+    if (packetQuestions.length === 0) {
+        throw new ApiError(400, 'Soal untuk ujian ini belum siap dibuka.');
+    }
+    if (accessRole === 'STUDENT') {
+        const activeAcademicYearWindow = await prisma.academicYear.findFirst({
+            where: { isActive: true },
+            select: {
+                id: true,
+                semester1End: true,
+                semester2Start: true,
+                semester2End: true,
+            },
+        });
+        const activeSemesterForStudent = activeAcademicYearWindow
+            ? resolveCurrentAcademicYearSemester(activeAcademicYearWindow, new Date())
+            : null;
+        if (
+            activeAcademicYearWindow?.id &&
+            Number(schedule.packet.academicYearId) === Number(activeAcademicYearWindow.id) &&
+            activeSemesterForStudent &&
+            schedule.packet.semester !== activeSemesterForStudent
+        ) {
+            throw new ApiError(400, 'Ujian ini tidak sesuai dengan semester aktif.');
+        }
+    }
+
     // Check restriction (program-specific first, then legacy base-type)
     const normalizedProgramCode = normalizeProgramCode(schedule.packet.programCode || schedule.examType || schedule.packet.type);
     if (accessRole === 'STUDENT' && student?.classId) {
@@ -9655,9 +9736,6 @@ async function buildStartExamPayload(params: {
         }
     }
 
-    const packetQuestions = Array.isArray(schedule.packet.questions)
-        ? (schedule.packet.questions as Record<string, unknown>[])
-        : [];
     const configuredLimit =
         Number.isFinite(Number(schedule.packet.publishedQuestionCount)) &&
         Number(schedule.packet.publishedQuestionCount) > 0
