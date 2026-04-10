@@ -1398,8 +1398,8 @@ export default function StudentExamsPage() {
                         </div>
                       </div>
 
-                      <div className="relative grid gap-3 px-3 py-2.5 md:grid-cols-[minmax(0,1fr)_132px]">
-                        <div className="grid grid-cols-[74px_8px_minmax(0,1fr)] gap-x-2 gap-y-1 text-[10px] leading-tight text-gray-800 md:grid-cols-[82px_8px_minmax(0,1fr)] md:text-[11px]">
+                      <div className="relative grid gap-3 px-3 py-2.5 md:grid-cols-[minmax(0,1fr)_160px]">
+                        <div className="grid grid-cols-[72px_8px_minmax(0,1fr)] gap-x-2 gap-y-1 text-[10px] leading-tight text-gray-800 md:grid-cols-[80px_8px_minmax(0,1fr)] md:text-[11px]">
                           <div className="font-medium">Nama Siswa</div><div>:</div><div className="break-words">{card.payload.student.name}</div>
                           <div className="font-medium">Kelas</div><div>:</div><div className="break-words">{card.payload.student.className || '-'}</div>
                           <div className="font-medium">Username</div><div>:</div><div className="break-words">{card.payload.student.username || '-'}</div>
@@ -1409,16 +1409,18 @@ export default function StudentExamsPage() {
                         </div>
 
                         <div className="flex flex-col items-center justify-start text-center text-[10px] leading-tight text-gray-800 md:text-[11px]">
-                          <div>{card.payload.issue?.signLabel || `Bekasi, ${formatDateOnlyLong(card.payload.issue?.date || card.generatedAt)}`}</div>
+                          <div className="max-w-[160px]">{card.payload.issue?.signLabel || `Bekasi, ${formatDateOnlyLong(card.payload.issue?.date || card.generatedAt)}`}</div>
                           <div className="mt-1">{card.payload.legality.principalTitle || 'Kepala Sekolah'}</div>
                           {card.payload.legality.principalBarcodeDataUrl ? (
                             <img
                               src={card.payload.legality.principalBarcodeDataUrl}
                               alt="Barcode Kepala Sekolah"
-                              className="mt-2 h-24 w-24 rounded-lg border border-gray-200 bg-white p-1 md:h-24 md:w-24"
+                              className="mt-2 h-24 w-24 rounded-lg border border-gray-200 bg-white p-1"
                             />
                           ) : null}
-                          <div className="mt-2 text-[11px] font-semibold text-gray-900 md:text-[12px]">{card.payload.legality.principalName}</div>
+                          <div className="mt-2 w-full px-1 text-[10px] font-semibold leading-tight text-gray-900 md:text-[10px]">
+                            {card.payload.legality.principalName}
+                          </div>
                         </div>
                       </div>
 

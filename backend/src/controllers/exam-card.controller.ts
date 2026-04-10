@@ -1,4 +1,5 @@
 import { ExamGeneratedCardStatus, Prisma, Semester } from '@prisma/client';
+import { randomUUID } from 'crypto';
 import { Request, Response } from 'express';
 import jwt from 'jsonwebtoken';
 import QRCode from 'qrcode';
@@ -224,6 +225,26 @@ function buildExamCardVerificationToken(payload: ExamCardVerificationTokenPayloa
   });
 }
 
+function buildShortExamCardVerificationToken() {
+  return randomUUID().replace(/-/g, '');
+}
+
+function buildExamCardVerificationUrl(baseUrl: string, verificationToken: string) {
+  return `${baseUrl}/verify/exam-card/${verificationToken}`;
+}
+
+async function buildExamCardVerificationQrDataUrl(verificationUrl: string) {
+  return QRCode.toDataURL(verificationUrl, {
+    width: 192,
+    margin: 2,
+    errorCorrectionLevel: 'M',
+    color: {
+      dark: '#000000',
+      light: '#FFFFFFFF',
+    },
+  });
+}
+
 function verifyExamCardVerificationToken(token: string): ExamCardVerificationTokenPayload {
   const decoded = jwt.verify(token, JWT_SIGNING_SECRET);
   if (!decoded || typeof decoded !== 'object') {
@@ -433,22 +454,14 @@ function buildExamCardPayload(params: {
   issueDate: Date;
   principalName: string;
   principalBarcodeDataUrl: string;
+  verificationToken: string;
   row: ExamCardOverviewRow;
 }) {
   const headerTitle = EXAM_CARD_TITLE;
   const headerSubtitle = `${params.programLabel} • Tahun Ajaran ${params.academicYearName}`;
   const primaryEntry = resolvePrimaryEntry(params.row.entries);
   const issueDateLabel = formatIssueDateLabel(params.issueDate);
-  const verificationToken = buildExamCardVerificationToken({
-    kind: 'EXAM_CARD',
-    studentId: params.row.studentId,
-    academicYearId: params.academicYearId,
-    programCode: params.programCode,
-    semester: params.semester,
-    generatedAtMs: params.generatedAt.getTime(),
-    participantNumber: params.row.participantNumber,
-  });
-  const verificationUrl = `${resolvePublicAppBaseUrl(params.req)}/verify/exam-card/${verificationToken}`;
+  const verificationUrl = buildExamCardVerificationUrl(resolvePublicAppBaseUrl(params.req), params.verificationToken);
 
   return {
     schoolName: SCHOOL_NAME,
@@ -508,7 +521,7 @@ function buildExamCardPayload(params: {
       principalBarcodeDataUrl: params.principalBarcodeDataUrl,
       principalTitle: 'Kepala Sekolah',
       footerNote: EXAM_CARD_INTERNAL_NOTE,
-      verificationToken,
+      verificationToken: params.verificationToken,
       verificationUrl,
       verificationNote: 'Keaslian kartu ujian ini dapat diverifikasi melalui QR code atau tautan verifikasi.',
     },
@@ -1052,22 +1065,9 @@ export const generateExamCards = asyncHandler(async (req: Request, res: Response
   const eligibleRows = overview.rows.filter((row) => row.eligibility.isEligible && row.entries.length > 0);
   const generatedRows = await Promise.all(
     eligibleRows.map(async (row) => {
-      const verificationToken = buildExamCardVerificationToken({
-        kind: 'EXAM_CARD',
-        studentId: row.studentId,
-        academicYearId: overview.academicYear.id,
-        programCode: overview.program.code,
-        semester: overview.semester,
-        generatedAtMs: now.getTime(),
-        participantNumber: row.participantNumber,
-      });
-      const verificationUrl = `${resolvePublicAppBaseUrl(req)}/verify/exam-card/${verificationToken}`;
-
-      const principalBarcodeDataUrl = await QRCode.toDataURL(verificationUrl, {
-        width: 192,
-        margin: 1,
-        errorCorrectionLevel: 'L',
-      });
+      const verificationToken = buildShortExamCardVerificationToken();
+      const verificationUrl = buildExamCardVerificationUrl(resolvePublicAppBaseUrl(req), verificationToken);
+      const principalBarcodeDataUrl = await buildExamCardVerificationQrDataUrl(verificationUrl);
 
       const payload = buildExamCardPayload({
         req,
@@ -1085,6 +1085,7 @@ export const generateExamCards = asyncHandler(async (req: Request, res: Response
         issueDate,
         principalName: principal.name,
         principalBarcodeDataUrl,
+        verificationToken,
         row,
       });
 
@@ -1236,14 +1237,14 @@ export const verifyPublicExamCard = asyncHandler(async (req: Request, res: Respo
     throw new ApiError(404, 'Tautan verifikasi kartu ujian tidak ditemukan.');
   }
 
-  const decoded = verifyExamCardVerificationToken(token);
-  const card = await prisma.examGeneratedCard.findFirst({
+  let decoded: ExamCardVerificationTokenPayload | null = null;
+  let card = await prisma.examGeneratedCard.findFirst({
     where: {
-      studentId: decoded.studentId,
-      academicYearId: decoded.academicYearId,
-      programCode: decoded.programCode,
-      semester: decoded.semester,
       status: ExamGeneratedCardStatus.ACTIVE,
+      payload: {
+        path: ['legality', 'verificationToken'],
+        equals: token,
+      },
     },
     orderBy: { generatedAt: 'desc' },
     select: {
@@ -1253,8 +1254,27 @@ export const verifyPublicExamCard = asyncHandler(async (req: Request, res: Respo
     },
   });
 
-  if (!card || new Date(card.generatedAt).getTime() !== decoded.generatedAtMs) {
-    throw new ApiError(404, 'Kartu ujian ini tidak lagi aktif atau tidak valid.');
+  if (!card) {
+    decoded = verifyExamCardVerificationToken(token);
+    card = await prisma.examGeneratedCard.findFirst({
+      where: {
+        studentId: decoded.studentId,
+        academicYearId: decoded.academicYearId,
+        programCode: decoded.programCode,
+        semester: decoded.semester,
+        status: ExamGeneratedCardStatus.ACTIVE,
+      },
+      orderBy: { generatedAt: 'desc' },
+      select: {
+        id: true,
+        generatedAt: true,
+        payload: true,
+      },
+    });
+
+    if (!card || new Date(card.generatedAt).getTime() !== decoded.generatedAtMs) {
+      throw new ApiError(404, 'Kartu ujian ini tidak lagi aktif atau tidak valid.');
+    }
   }
 
   const payload = (card.payload || {}) as any;
@@ -1266,11 +1286,11 @@ export const verifyPublicExamCard = asyncHandler(async (req: Request, res: Respo
       {
         valid: true,
         verifiedAt: new Date().toISOString(),
-        participantNumber: payload?.participantNumber || decoded.participantNumber || '-',
+        participantNumber: payload?.participantNumber || decoded?.participantNumber || '-',
         cardId: card.id,
         snapshot: {
           title: payload?.cardTitle || EXAM_CARD_TITLE,
-          examLabel: payload?.examTitle || payload?.programLabel || decoded.programCode,
+          examLabel: payload?.examTitle || payload?.programLabel || decoded?.programCode || '-',
           schoolName: payload?.institutionName || payload?.schoolName || SCHOOL_NAME,
           academicYearName: payload?.academicYearName || '-',
           student: {

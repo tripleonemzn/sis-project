@@ -831,19 +831,19 @@ export default function StudentExamsScreen() {
                           ))}
                         </View>
 
-                        <View style={{ width: 84, alignItems: 'center' }}>
-                          <Text style={{ color: '#334155', fontSize: 9, textAlign: 'center', lineHeight: 12 }}>
+                        <View style={{ width: 98, alignItems: 'center' }}>
+                          <Text style={{ color: '#334155', fontSize: 8.5, textAlign: 'center', lineHeight: 11 }}>
                             {card.payload.issue?.signLabel || `Bekasi, ${formatDateOnly(card.payload.issue?.date || card.generatedAt)}`}
                           </Text>
-                          <Text style={{ color: '#334155', fontSize: 9, textAlign: 'center', marginTop: 2, lineHeight: 12 }}>
+                          <Text style={{ color: '#334155', fontSize: 8.5, textAlign: 'center', marginTop: 2, lineHeight: 11 }}>
                             {card.payload.legality.principalTitle || 'Kepala Sekolah'}
                           </Text>
                           {card.payload.legality.principalBarcodeDataUrl ? (
                             <Image
                               source={{ uri: card.payload.legality.principalBarcodeDataUrl }}
                               style={{
-                                width: 84,
-                                height: 84,
+                                width: 80,
+                                height: 80,
                                 marginTop: 6,
                                 borderRadius: 8,
                                 borderWidth: 1,
@@ -858,9 +858,10 @@ export default function StudentExamsScreen() {
                               color: '#0f172a',
                               fontWeight: '700',
                               marginTop: 5,
-                              fontSize: 9,
-                              lineHeight: 12,
+                              fontSize: 8,
+                              lineHeight: 10,
                               textAlign: 'center',
+                              width: '100%',
                             }}
                           >
                             {card.payload.legality.principalName}
