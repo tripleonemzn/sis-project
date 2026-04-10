@@ -3145,8 +3145,8 @@ export const ExamEditorPage = () => {
             )}
 
             {isQuestionSupportModalOpen && activeQuestion ? (
-                <div className="fixed inset-0 z-50 flex items-center justify-center px-4 py-6">
-                    <div className="flex max-h-[92vh] w-full max-w-4xl flex-col overflow-hidden rounded-3xl border border-slate-200 bg-white shadow-2xl">
+                <div className="fixed inset-0 z-50 flex items-start justify-center px-4 pb-6 pt-24">
+                    <div className="flex max-h-[calc(100vh-8rem)] w-full max-w-3xl flex-col overflow-hidden rounded-3xl border border-slate-200 bg-white shadow-2xl">
                         <div className="flex items-start justify-between gap-4 border-b border-slate-200 px-6 py-4">
                             <div>
                                 <h3 className="text-lg font-semibold text-slate-900">Kisi-kisi & Kartu Soal</h3>

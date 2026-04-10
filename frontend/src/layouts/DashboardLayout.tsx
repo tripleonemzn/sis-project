@@ -1479,7 +1479,7 @@ export const DashboardLayout = () => {
 
         {/* Content */}
         <main className={`${isFullscreen ? '' : 'dashboard-main'} flex-1 overflow-x-hidden w-full max-w-[100vw] ${isFullscreen ? 'p-0' : 'p-4 md:p-6'}`}>
-          <Outlet context={{ user: displayUser, activeYear }} />
+          <Outlet key={location.pathname} context={{ user: displayUser, activeYear }} />
         </main>
       </div>
 

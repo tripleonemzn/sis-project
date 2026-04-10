@@ -56,7 +56,7 @@ export default function ExamManagementHubPage() {
           </div>
         </div>
 
-        <div className="pt-1">
+        <div key={active} className="pt-1">
           {active === 'jadwal' ? (
             <ExamScheduleManagementPage />
           ) : active === 'ruang' ? (

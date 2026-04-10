@@ -303,6 +303,19 @@ const CURRICULUM_EXAM_MANAGER_LABEL = 'Wakasek Kurikulum / Sekretaris Kurikulum'
 
 const hasFilledText = (value: unknown): boolean => String(value || '').trim().length > 0;
 
+const getCountChipStatus = (
+  count: number,
+  totalQuestions: number,
+): 'EMPTY' | 'PARTIAL' | 'COMPLETE' => {
+  if (count <= 0) {
+    return totalQuestions > 0 ? 'PARTIAL' : 'EMPTY';
+  }
+  if (totalQuestions > 0 && count >= totalQuestions) {
+    return 'COMPLETE';
+  }
+  return 'PARTIAL';
+};
+
 const normalizeReviewQuestions = (rawQuestions: unknown): ReviewableQuestion[] => {
   if (!Array.isArray(rawQuestions)) return [];
   return rawQuestions.map((question, index) => {
@@ -1808,6 +1821,19 @@ const ExamScheduleManagementPage = () => {
                                               ? 'COMPLETE'
                                               : 'PARTIAL';
                                         const scheduleSupportMeta = getExamQuestionSupportStatusMeta(scheduleSupportStatus);
+                                        const scheduleSupportBadgeClassName = scheduleSupportMeta.badgeClassName.replace(
+                                          ' motion-safe:animate-pulse',
+                                          '',
+                                        );
+                                        const questionCountMeta = getExamQuestionSupportStatusMeta(
+                                          getCountChipStatus(questionPoolCount, questionPoolCount),
+                                        );
+                                        const blueprintCountMeta = getExamQuestionSupportStatusMeta(
+                                          getCountChipStatus(blueprintCount, questionPoolCount),
+                                        );
+                                        const questionCardCountMeta = getExamQuestionSupportStatusMeta(
+                                          getCountChipStatus(questionCardCount, questionPoolCount),
+                                        );
                                         return (
                                           <tr key={schedule.id} className="hover:bg-gray-50">
                                             <td className="px-4 py-2 font-medium text-gray-900">
@@ -1825,7 +1851,7 @@ const ExamScheduleManagementPage = () => {
                                             <td className="px-4 py-2">
                                               <div className="space-y-1.5">
                                                 {schedule.packet ? (
-                                                  <span className={`inline-flex rounded-full px-2 py-1 text-xs font-semibold ${scheduleSupportMeta.badgeClassName}`}>
+                                                  <span className={`inline-flex rounded-full px-2 py-1 text-xs font-semibold ${scheduleSupportBadgeClassName}`}>
                                                     Kesiapan: {scheduleSupportMeta.label}
                                                   </span>
                                                 ) : null}
@@ -1844,21 +1870,13 @@ const ExamScheduleManagementPage = () => {
                                                 )}
                                                 {schedule.packet ? (
                                                   <div className="flex flex-wrap gap-1">
-                                                    <span className="rounded-full bg-slate-100 px-2 py-0.5 text-[11px] font-medium text-slate-700">
+                                                    <span className={`rounded-full px-2 py-0.5 text-[11px] font-medium ${questionCountMeta.badgeClassName}`}>
                                                       {questionPoolCount} soal
                                                     </span>
-                                                    <span
-                                                      className={`rounded-full px-2 py-0.5 text-[11px] font-medium ${
-                                                        blueprintCount > 0 ? 'bg-blue-50 text-blue-700' : 'bg-slate-100 text-slate-500'
-                                                      }`}
-                                                    >
+                                                    <span className={`rounded-full px-2 py-0.5 text-[11px] font-medium ${blueprintCountMeta.badgeClassName}`}>
                                                       Kisi-kisi {blueprintCount}
                                                     </span>
-                                                    <span
-                                                      className={`rounded-full px-2 py-0.5 text-[11px] font-medium ${
-                                                        questionCardCount > 0 ? 'bg-emerald-50 text-emerald-700' : 'bg-slate-100 text-slate-500'
-                                                      }`}
-                                                    >
+                                                    <span className={`rounded-full px-2 py-0.5 text-[11px] font-medium ${questionCardCountMeta.badgeClassName}`}>
                                                       Kartu Soal {questionCardCount}
                                                     </span>
                                                   </div>

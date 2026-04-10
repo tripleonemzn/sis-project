@@ -76,7 +76,7 @@ export default function CurriculumManagementHubPage() {
           </div>
         </div>
 
-        <div className="pt-1">
+        <div key={active} className="pt-1">
           {active === 'kategori' ? (
             <SubjectCategoryPage />
           ) : active === 'mapel' ? (
