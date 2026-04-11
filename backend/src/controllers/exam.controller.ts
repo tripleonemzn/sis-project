@@ -1470,13 +1470,6 @@ function isSameSlotTime(
 
 const AVAILABLE_EXAMS_CACHE_TTL_MS = 3000;
 const AVAILABLE_EXAMS_CACHE_MAX_ENTRIES = 2000;
-const EXAM_MAKEUP_WINDOW_HOURS = Math.max(
-    1,
-    Number.isFinite(Number(process.env.EXAM_MAKEUP_WINDOW_HOURS))
-        ? Number(process.env.EXAM_MAKEUP_WINDOW_HOURS)
-        : 72,
-);
-const EXAM_MAKEUP_WINDOW_MS = EXAM_MAKEUP_WINDOW_HOURS * 60 * 60 * 1000;
 const availableExamsCache = new Map<number, { expiresAt: number; payload: unknown }>();
 const PROGRAM_TARGET_CANDIDATE = 'CALON_SISWA';
 const PROGRAM_TARGET_BKK_APPLICANT = 'PELAMAR_BKK';
@@ -1706,16 +1699,6 @@ function invalidateStartExamScheduleCacheByPacket(packetId: number) {
     }
 }
 
-function resolveMakeupDeadline(endTime: Date): Date {
-    return new Date(endTime.getTime() + EXAM_MAKEUP_WINDOW_MS);
-}
-
-function isMakeupWindowOpen(now: Date, endTime: Date): boolean {
-    if (!(endTime instanceof Date) || Number.isNaN(endTime.getTime())) return false;
-    if (now <= endTime) return false;
-    return now <= resolveMakeupDeadline(endTime);
-}
-
 type ManualExamMakeupAccessSummary = {
     id: number;
     startTime: Date;
@@ -1737,7 +1720,6 @@ type ResolvedExamMakeupContext = {
 
 function resolveExamMakeupContext(params: {
     now: Date;
-    scheduleEndTime: Date;
     hasSessionAttempt: boolean;
     manualAccess?: ManualExamMakeupAccessSummary | null;
 }): ResolvedExamMakeupContext {
@@ -1767,19 +1749,6 @@ function resolveExamMakeupContext(params: {
             startTime: startsAt,
             endTime: endsAt,
             reason: manualAccess.reason || null,
-        };
-    }
-
-    if (isMakeupWindowOpen(params.now, params.scheduleEndTime)) {
-        return {
-            mode: 'AUTO',
-            accessId: null,
-            availableNow: true,
-            scheduled: false,
-            expired: false,
-            startTime: params.scheduleEndTime,
-            endTime: resolveMakeupDeadline(params.scheduleEndTime),
-            reason: null,
         };
     }
 
@@ -8428,12 +8397,8 @@ export const getScheduleMakeupAccess = asyncHandler(async (req: Request, res: Re
 
     const schedule = await loadFormalMakeupManagedSchedule(scheduleId);
     assertFormalMakeupSupportedSchedule(schedule);
-
-    await assertAcademicExamScheduleManagementAccess(req, {
-        programCode: schedule.packet?.programCode || schedule.examType || schedule.packet?.type || null,
-        packetAuthorId: schedule.packet?.authorId,
-        allowPacketAuthorForNonScheduled: true,
-    });
+    const actor = (req as Request & { user?: { id?: number | string } }).user;
+    await assertCurriculumExamManagerAccess(Number(actor?.id || 0), { allowAdmin: true });
 
     const academicYearId = Number(schedule.packet?.academicYearId || schedule.academicYearId || 0);
     const classId = Number(schedule.classId || 0);
@@ -8597,18 +8562,9 @@ export const upsertScheduleMakeupAccess = asyncHandler(async (req: Request, res:
 
     const schedule = await loadFormalMakeupManagedSchedule(scheduleId);
     assertFormalMakeupSupportedSchedule(schedule);
-
-    await assertAcademicExamScheduleManagementAccess(req, {
-        programCode: schedule.packet?.programCode || schedule.examType || schedule.packet?.type || null,
-        packetAuthorId: schedule.packet?.authorId,
-        allowPacketAuthorForNonScheduled: true,
-    });
-
     const actor = (req as Request & { user?: { id?: number | string } }).user;
-    const grantedById = Number(actor?.id || 0);
-    if (!Number.isFinite(grantedById) || grantedById <= 0) {
-        throw new ApiError(401, 'Sesi login tidak valid.');
-    }
+    const curriculumManager = await assertCurriculumExamManagerAccess(Number(actor?.id || 0), { allowAdmin: true });
+    const grantedById = curriculumManager.id;
 
     const academicYearId = Number(schedule.packet?.academicYearId || schedule.academicYearId || 0);
     const classId = Number(schedule.classId || 0);
@@ -8763,18 +8719,9 @@ export const revokeScheduleMakeupAccess = asyncHandler(async (req: Request, res:
 
     const schedule = await loadFormalMakeupManagedSchedule(scheduleId);
     assertFormalMakeupSupportedSchedule(schedule);
-
-    await assertAcademicExamScheduleManagementAccess(req, {
-        programCode: schedule.packet?.programCode || schedule.examType || schedule.packet?.type || null,
-        packetAuthorId: schedule.packet?.authorId,
-        allowPacketAuthorForNonScheduled: true,
-    });
-
     const actor = (req as Request & { user?: { id?: number | string } }).user;
-    const revokedById = Number(actor?.id || 0);
-    if (!Number.isFinite(revokedById) || revokedById <= 0) {
-        throw new ApiError(401, 'Sesi login tidak valid.');
-    }
+    const curriculumManager = await assertCurriculumExamManagerAccess(Number(actor?.id || 0), { allowAdmin: true });
+    const revokedById = curriculumManager.id;
 
     const existingAccess = await prisma.examScheduleMakeupAccess.findUnique({
         where: {
@@ -9490,7 +9437,6 @@ export const getAvailableExams = asyncHandler(async (req: Request, res: Response
         const manualMakeupAccess = (Array.isArray(schedule.makeupAccesses) ? schedule.makeupAccesses : [])[0] || null;
         const makeupContext = resolveExamMakeupContext({
             now,
-            scheduleEndTime: schedule.endTime,
             hasSessionAttempt,
             manualAccess: manualMakeupAccess,
         });
@@ -9757,7 +9703,6 @@ async function buildStartExamPayload(params: {
             : null;
     const makeupContext = resolveExamMakeupContext({
         now,
-        scheduleEndTime: schedule.endTime,
         hasSessionAttempt: Boolean(session),
         manualAccess: manualMakeupAccess,
     });

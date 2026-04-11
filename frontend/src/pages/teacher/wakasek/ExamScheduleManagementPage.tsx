@@ -2231,7 +2231,7 @@ const ExamScheduleManagementPage = () => {
               <div>
                 <h2 className="text-xl font-bold text-gray-900">Kelola Ujian Susulan</h2>
                 <p className="text-sm text-gray-500 mt-1">
-                  {CURRICULUM_EXAM_MANAGER_LABEL} mengatur susulan per siswa untuk jadwal kelas yang belum sempat mengikuti ujian reguler.
+                  {CURRICULUM_EXAM_MANAGER_LABEL} mengatur susulan per siswa. Akses susulan hanya aktif jika dijadwalkan dari menu ini.
                 </p>
               </div>
               <button onClick={closeMakeupModal} className="text-gray-400 hover:text-gray-600">
@@ -2276,7 +2276,7 @@ const ExamScheduleManagementPage = () => {
                     </div>
                   </div>
                   <p className="text-xs text-blue-700 mt-3">
-                    Susulan formal hanya untuk siswa yang belum mulai ujian reguler. Waktu susulan harus sesudah jadwal reguler berakhir dan diatur oleh {CURRICULUM_EXAM_MANAGER_LABEL}.
+                    Susulan hanya tersedia jika diatur oleh {CURRICULUM_EXAM_MANAGER_LABEL} dari menu ini. Waktu susulan harus sesudah jadwal reguler berakhir dan hanya berlaku untuk siswa yang belum mulai ujian reguler.
                   </p>
                 </div>
               ) : null}

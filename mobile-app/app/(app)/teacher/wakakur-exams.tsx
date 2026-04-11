@@ -4727,7 +4727,7 @@ export default function TeacherWakakurExamsScreen() {
       <MobileDetailModal
         visible={makeupModalVisible}
         title="Kelola Ujian Susulan"
-        subtitle={`${CURRICULUM_EXAM_MANAGER_LABEL} mengatur susulan per siswa yang belum sempat mengikuti ujian reguler.`}
+        subtitle={`${CURRICULUM_EXAM_MANAGER_LABEL} mengatur susulan per siswa. Akses susulan hanya aktif jika dijadwalkan dari menu ini.`}
         iconName="clock"
         accentColor="#1d4ed8"
         onClose={closeMakeupModal}
@@ -4759,7 +4759,7 @@ export default function TeacherWakakurExamsScreen() {
               {formatDateTime(makeupOverview?.schedule.endTime || selectedMakeupSchedule.endTime)}
             </Text>
             <Text style={{ color: '#1d4ed8', fontSize: 11, marginTop: 8 }}>
-              Susulan formal hanya untuk siswa yang belum mulai ujian reguler, waktunya harus sesudah jadwal reguler berakhir, dan diatur oleh {CURRICULUM_EXAM_MANAGER_LABEL}.
+              Susulan hanya berlaku jika diatur dari menu ini, waktunya harus sesudah jadwal reguler berakhir, dan hanya untuk siswa yang belum mulai ujian reguler.
             </Text>
           </View>
         ) : null}
