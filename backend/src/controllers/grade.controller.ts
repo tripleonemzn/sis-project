@@ -86,6 +86,13 @@ function toPositiveInt(raw: unknown): number | null {
   return parsed
 }
 
+function parseStudentReportSemester(raw: unknown): Semester | null {
+  const normalized = String(raw || '').trim().toUpperCase()
+  if (normalized === Semester.ODD) return Semester.ODD
+  if (normalized === Semester.EVEN) return Semester.EVEN
+  return null
+}
+
 function isTeacherUser(user: AuthUserLike | null | undefined): boolean {
   return String(user?.role || '').toUpperCase() === 'TEACHER'
 }
@@ -2479,16 +2486,57 @@ export const getStudentGradeOverview = async (req: Request, res: Response) => {
     }
 
     const semester = resolveCurrentSemesterFromAcademicYear(activeYear)
+    const reportSemester =
+      parseStudentReportSemester(req.query.report_semester) ||
+      parseStudentReportSemester(req.query.reportSemester) ||
+      semester
     const student = await getHistoricalStudentSnapshotForAcademicYear(studentId, activeYear.id)
 
     if (!student || !student.studentClass) {
       throw new ApiError(404, 'Data siswa atau kelas aktif tidak ditemukan.')
     }
 
-    const semesterRange = resolveSemesterRange(activeYear, semester)
-    const reportCardType = semester === Semester.ODD ? ExamType.SAS : ExamType.SAT
+    const reportSemesterRange = resolveSemesterRange(activeYear, reportSemester)
+    const reportCardType = reportSemester === Semester.ODD ? ExamType.SAS : ExamType.SAT
+    const reportGradesPromise = prisma.reportGrade.findMany({
+      where: {
+        studentId,
+        academicYearId: activeYear.id,
+        semester: reportSemester,
+      },
+      include: {
+        subject: {
+          select: {
+            id: true,
+            code: true,
+            name: true,
+          },
+        },
+      },
+      orderBy: [{ id: 'desc' }],
+    })
+    const activeSemesterReportGradesPromise =
+      reportSemester === semester
+        ? reportGradesPromise
+        : prisma.reportGrade.findMany({
+            where: {
+              studentId,
+              academicYearId: activeYear.id,
+              semester,
+            },
+            include: {
+              subject: {
+                select: {
+                  id: true,
+                  code: true,
+                  name: true,
+                },
+              },
+            },
+            orderBy: [{ id: 'desc' }],
+          })
 
-    const [teacherAssignments, reportGrades, studentGrades, examGradeComponents, reportDate, attendanceStats, homeroomNote] = await Promise.all([
+    const [teacherAssignments, reportGrades, activeSemesterReportGrades, studentGrades, examGradeComponents, reportDate, attendanceStats, homeroomNote] = await Promise.all([
       prisma.teacherAssignment.findMany({
         where: {
           academicYearId: activeYear.id,
@@ -2520,23 +2568,8 @@ export const getStudentGradeOverview = async (req: Request, res: Response) => {
           },
         },
       }),
-      prisma.reportGrade.findMany({
-        where: {
-          studentId,
-          academicYearId: activeYear.id,
-          semester,
-        },
-        include: {
-          subject: {
-            select: {
-              id: true,
-              code: true,
-              name: true,
-            },
-          },
-        },
-        orderBy: [{ id: 'desc' }],
-      }),
+      reportGradesPromise,
+      activeSemesterReportGradesPromise,
       prisma.studentGrade.findMany({
         where: {
           studentId,
@@ -2601,8 +2634,8 @@ export const getStudentGradeOverview = async (req: Request, res: Response) => {
           studentId,
           academicYearId: activeYear.id,
           date: {
-            gte: semesterRange.start,
-            lte: semesterRange.end,
+            gte: reportSemesterRange.start,
+            lte: reportSemesterRange.end,
           },
         },
         _count: {
@@ -2613,7 +2646,7 @@ export const getStudentGradeOverview = async (req: Request, res: Response) => {
         where: {
           studentId,
           academicYearId: activeYear.id,
-          semester,
+          semester: reportSemester,
           type: 'CATATAN_WALI_KELAS',
         },
         select: {
@@ -2626,6 +2659,13 @@ export const getStudentGradeOverview = async (req: Request, res: Response) => {
     reportGrades.forEach((row) => {
       if (!reportBySubjectId.has(row.subjectId)) {
         reportBySubjectId.set(row.subjectId, row)
+      }
+    })
+
+    const activeReportBySubjectId = new Map<number, (typeof activeSemesterReportGrades)[number]>()
+    activeSemesterReportGrades.forEach((row) => {
+      if (!activeReportBySubjectId.has(row.subjectId)) {
+        activeReportBySubjectId.set(row.subjectId, row)
       }
     })
 
@@ -2652,7 +2692,7 @@ export const getStudentGradeOverview = async (req: Request, res: Response) => {
       }
     })
 
-    const hasUsScores = reportGrades.some(
+    const hasUsScores = activeSemesterReportGrades.some(
       (row) =>
         hasUsSlotInScoreMap(row.slotScores) ||
         (row.usScore !== null && row.usScore !== undefined),
@@ -2715,7 +2755,7 @@ export const getStudentGradeOverview = async (req: Request, res: Response) => {
         const subject = assignment?.subject || fallbackSubject
         if (!subject) return null
 
-        const report = reportBySubjectId.get(subjectId) || null
+        const report = activeReportBySubjectId.get(subjectId) || null
         const slotScores = parseSlotScoreMap(report?.slotScores)
         const hasReportSnapshot = hasMeaningfulReportSnapshot(report)
 
@@ -2921,15 +2961,19 @@ export const getStudentGradeOverview = async (req: Request, res: Response) => {
 
     const reportCardSubjects = visibleSubjectRows
       .map((row) => {
-        const hasReportData = row.visibility.hasReportSnapshot
+        const report = reportBySubjectId.get(row.subject.id) || null
+        const hasReportData = hasMeaningfulReportSnapshot(report)
+        const finalScore = hasReportData ? roundDisplayScore(resolveEffectiveReportFinalScore(report)) : null
+        const predicate = hasReportData ? String(report?.predicate || '').trim() || null : null
+        const description = hasReportData ? String(report?.description || '').trim() || null : null
 
         return {
           subject: row.subject,
           teacher: row.teacher,
           kkm: row.kkm,
-          finalScore: reportRelease.canViewDetails && hasReportData ? row.finalScore : null,
-          predicate: reportRelease.canViewDetails && hasReportData ? row.predicate : null,
-          description: reportRelease.canViewDetails && hasReportData ? row.description : null,
+          finalScore: reportRelease.canViewDetails && hasReportData ? finalScore : null,
+          predicate: reportRelease.canViewDetails && hasReportData ? predicate : null,
+          description: reportRelease.canViewDetails && hasReportData ? description : null,
           status: reportRelease.canViewDetails ? (hasReportData ? 'AVAILABLE' : 'PENDING') : 'LOCKED',
         }
       })
@@ -3016,6 +3060,8 @@ export const getStudentGradeOverview = async (req: Request, res: Response) => {
         components: componentCatalog,
         subjects: subjectRows,
         reportCard: {
+          semester: reportSemester,
+          semesterLabel: formatSemesterDisplayLabel(reportSemester),
           semesterType: reportCardType,
           reportDate: reportDate
             ? {

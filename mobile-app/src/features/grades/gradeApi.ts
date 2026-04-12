@@ -8,8 +8,14 @@ type StudentGradeOverviewResponse = {
 };
 
 export const gradeApi = {
-  async getStudentOverview(): Promise<StudentGradeOverviewData> {
-    const response = await apiClient.get<StudentGradeOverviewResponse>('/grades/student-overview');
+  async getStudentOverview(params?: { reportSemester?: 'ODD' | 'EVEN' }): Promise<StudentGradeOverviewData> {
+    const response = await apiClient.get<StudentGradeOverviewResponse>('/grades/student-overview', {
+      params: params?.reportSemester
+        ? {
+            report_semester: params.reportSemester,
+          }
+        : undefined,
+    });
     if (!response.data?.data) {
       throw new Error('Data nilai siswa tidak tersedia.');
     }

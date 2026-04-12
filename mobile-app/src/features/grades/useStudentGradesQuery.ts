@@ -14,17 +14,20 @@ type StudentGradesQueryData = {
 export function useStudentGradesQuery(params: {
   enabled: boolean;
   user: AuthUser | null;
+  reportSemester?: 'ODD' | 'EVEN' | '';
 }) {
-  const { enabled, user } = params;
+  const { enabled, user, reportSemester } = params;
   const isStudent = user?.role === 'STUDENT';
 
   return useQuery({
-    queryKey: ['mobile-student-grade-overview', user?.id],
+    queryKey: ['mobile-student-grade-overview', user?.id, reportSemester || 'ACTIVE'],
     enabled: enabled && !!user && isStudent,
     queryFn: async (): Promise<StudentGradesQueryData> => {
-      const cacheKey = `mobile_cache_grade_overview_${user!.id}`;
+      const cacheKey = `mobile_cache_grade_overview_${user!.id}_${reportSemester || 'ACTIVE'}`;
       try {
-        const overview = await gradeApi.getStudentOverview();
+        const overview = await gradeApi.getStudentOverview({
+          reportSemester: reportSemester || undefined,
+        });
         const cache = await offlineCache.set(cacheKey, overview);
         await offlineCache.prunePrefix('mobile_cache_grade_overview_', CACHE_MAX_SNAPSHOTS_PER_FEATURE);
         return { overview, fromCache: false, cachedAt: cache.updatedAt };

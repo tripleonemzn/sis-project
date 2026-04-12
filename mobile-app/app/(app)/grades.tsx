@@ -5,6 +5,7 @@ import { RefreshControl, ScrollView, Text, View } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { AppLoadingScreen } from '../../src/components/AppLoadingScreen';
 import MobileMenuTabBar from '../../src/components/MobileMenuTabBar';
+import MobileSelectField from '../../src/components/MobileSelectField';
 import MobileSummaryCard from '../../src/components/MobileSummaryCard';
 import { OfflineCacheNotice } from '../../src/components/OfflineCacheNotice';
 import { QueryStateView } from '../../src/components/QueryStateView';
@@ -19,6 +20,7 @@ import { getStandardPagePadding } from '../../src/lib/ui/pageLayout';
 import { useAppTheme } from '../../src/theme/AppThemeProvider';
 
 type GradeTabKey = 'PROGRAM' | 'REPORT';
+type ReportSemesterValue = '' | 'ODD' | 'EVEN';
 
 function formatScore(value: number | null | undefined) {
   if (value === null || value === undefined) return '-';
@@ -36,6 +38,10 @@ function formatDateLabel(value: string | null | undefined) {
     month: 'long',
     year: 'numeric',
   });
+}
+
+function formatSemesterLabel(value: 'ODD' | 'EVEN') {
+  return value === 'EVEN' ? 'Genap' : 'Ganjil';
 }
 
 function calculateAverage(values: number[]) {
@@ -382,9 +388,21 @@ export default function GradesScreen() {
   const { isAuthenticated, isLoading, user } = useAuth();
   const [activeTab, setActiveTab] = useState<GradeTabKey>('PROGRAM');
   const [activeProgramCode, setActiveProgramCode] = useState<string>('');
-  const gradesQuery = useStudentGradesQuery({ enabled: isAuthenticated, user });
+  const [selectedReportSemester, setSelectedReportSemester] = useState<ReportSemesterValue>('');
+  const gradesQuery = useStudentGradesQuery({
+    enabled: isAuthenticated,
+    user,
+    reportSemester: selectedReportSemester,
+  });
   const pageContentPadding = getStandardPagePadding(insets);
   const overview = gradesQuery.data?.overview;
+  const effectiveReportSemester = (
+    selectedReportSemester ||
+    overview?.reportCard.semester ||
+    overview?.meta.semester ||
+    'ODD'
+  ) as 'ODD' | 'EVEN';
+  const effectiveReportSemesterLabel = formatSemesterLabel(effectiveReportSemester);
   const programTabSubtitle = useMemo(() => {
     if (!overview || overview.components.length === 0) {
       return 'Lihat komponen nilai program ujian aktif per mata pelajaran.'
@@ -400,7 +418,11 @@ export default function GradesScreen() {
     }
     return `Pilih tab ${labels.slice(0, -1).join(', ')}, dan ${labels[labels.length - 1]} untuk melihat nilai per program ujian.`
   }, [overview]);
-  const reportTabSubtitle = 'Lihat ringkasan nilai akhir semester, kehadiran, dan catatan wali kelas.';
+  const reportTabSubtitle = useMemo(
+    () =>
+      `Pilih semester rapor untuk melihat ringkasan nilai akhir, kehadiran, dan catatan wali kelas. Nilai Program Ujian tetap mengikuti semester aktif (${overview?.meta.semesterLabel || '-'}).`,
+    [overview?.meta.semesterLabel],
+  );
 
   const programTabs = useMemo(() => {
     if (!overview) return [];
@@ -748,6 +770,34 @@ export default function GradesScreen() {
               <View
                 style={{
                   borderWidth: 1,
+                  borderColor: colors.border,
+                  backgroundColor: colors.surface,
+                  borderRadius: 18,
+                  paddingHorizontal: 14,
+                  paddingVertical: 14,
+                }}
+              >
+                <Text style={{ color: colors.text, fontSize: 18, fontWeight: '800' }}>Semester Rapor</Text>
+                <Text style={{ color: colors.textMuted, marginTop: 6, fontSize: 13, lineHeight: 20 }}>
+                  Pilihan semester ini hanya mengubah tampilan rapor. Nilai Program Ujian tetap mengikuti semester aktif {overview.meta.semesterLabel}.
+                </Text>
+                <View style={{ marginTop: 12 }}>
+                  <MobileSelectField
+                    label="Semester Rapor"
+                    value={effectiveReportSemester}
+                    options={[
+                      { label: 'Semester Ganjil', value: 'ODD' },
+                      { label: 'Semester Genap', value: 'EVEN' },
+                    ]}
+                    onChange={(value) => setSelectedReportSemester((value as ReportSemesterValue) || '')}
+                    helperText="Pilihan ini hanya berlaku untuk tab Rapor Semester."
+                  />
+                </View>
+              </View>
+
+              <View
+                style={{
+                  borderWidth: 1,
                   borderColor:
                     overview.reportCard.release.tone === 'green'
                       ? '#bbf7d0'
@@ -787,8 +837,8 @@ export default function GradesScreen() {
                   </Text>
                   <Text style={{ color: colors.textMuted, fontSize: 12 }}>
                     {overview.reportCard.reportDate
-                      ? `${overview.reportCard.reportDate.place} • ${formatDateLabel(overview.reportCard.reportDate.date)} • ${overview.reportCard.semesterType}`
-                    : `Tanggal rapor belum diatur • ${overview.reportCard.semesterType}`}
+                      ? `${overview.reportCard.reportDate.place} • ${formatDateLabel(overview.reportCard.reportDate.date)} • Semester ${effectiveReportSemesterLabel} • ${overview.reportCard.semesterType}`
+                      : `Tanggal rapor belum diatur • Semester ${effectiveReportSemesterLabel} • ${overview.reportCard.semesterType}`}
                 </Text>
               </View>
 
@@ -797,7 +847,7 @@ export default function GradesScreen() {
                   <MobileSummaryCard
                     title="Mapel Siap"
                     value={`${overview.reportCard.summary.availableSubjects}/${overview.reportCard.summary.expectedSubjects}`}
-                    subtitle="Kesiapan rapor semester"
+                    subtitle={`Kesiapan rapor semester ${effectiveReportSemesterLabel.toLowerCase()}`}
                     iconName="check-circle"
                     accentColor={
                       overview.reportCard.status.tone === 'green'
@@ -812,7 +862,7 @@ export default function GradesScreen() {
                   <MobileSummaryCard
                     title="Rata-rata"
                     value={formatScore(overview.reportCard.summary.averageFinalScore)}
-                    subtitle="Nilai akhir semester"
+                    subtitle={`Nilai akhir semester ${effectiveReportSemesterLabel.toLowerCase()}`}
                     iconName="trending-up"
                     accentColor="#2563eb"
                   />
@@ -848,9 +898,9 @@ export default function GradesScreen() {
                     paddingVertical: 14,
                   }}
                 >
-                  <Text style={{ color: colors.text, fontSize: 18, fontWeight: '800' }}>Detail Rapor Menunggu Rilis</Text>
+                  <Text style={{ color: colors.text, fontSize: 18, fontWeight: '800' }}>Detail Rapor Semester Menunggu Rilis</Text>
                   <Text style={{ color: colors.text, marginTop: 8, lineHeight: 22 }}>
-                    Nama mapel semester sudah ditampilkan, tetapi nilai akhir, predikat, dan catatan kompetensi baru akan terbuka setelah tanggal rilis rapor.
+                    Nama mapel semester {effectiveReportSemesterLabel.toLowerCase()} sudah ditampilkan, tetapi nilai akhir, predikat, dan catatan kompetensi baru akan terbuka setelah tanggal rilis rapor.
                   </Text>
                 </View>
               ) : null}

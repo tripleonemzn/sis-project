@@ -123,6 +123,8 @@ export interface StudentSemesterReportSubjectRow {
 }
 
 export interface StudentSemesterReportData {
+  semester: 'ODD' | 'EVEN';
+  semesterLabel: string;
   semesterType: 'SAS' | 'SAT';
   reportDate: {
     place: string;
@@ -278,8 +280,14 @@ export const gradeService = {
     return response.data;
   },
 
-  getStudentOverview: async (): Promise<StudentGradeOverviewData> => {
-    const response = await api.get('/grades/student-overview');
+  getStudentOverview: async (params?: { reportSemester?: 'ODD' | 'EVEN' }): Promise<StudentGradeOverviewData> => {
+    const response = await api.get('/grades/student-overview', {
+      params: params?.reportSemester
+        ? {
+            report_semester: params.reportSemester,
+          }
+        : undefined,
+    });
     if (!response.data?.data) {
       throw new Error('Data nilai siswa tidak tersedia.');
     }

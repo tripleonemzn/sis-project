@@ -32,6 +32,7 @@ type StudentGradesOutletContext = {
 };
 
 type GradeTabKey = 'PROGRAM' | 'REPORT';
+type ReportSemesterValue = '' | 'ODD' | 'EVEN';
 
 function formatScore(value: number | null | undefined) {
   if (value === null || value === undefined) return '-';
@@ -49,6 +50,10 @@ function formatDateLabel(value: string | null | undefined) {
     month: 'long',
     year: 'numeric',
   });
+}
+
+function formatSemesterLabel(value: 'ODD' | 'EVEN') {
+  return value === 'EVEN' ? 'Genap' : 'Ganjil';
 }
 
 function calculateAverage(values: number[]) {
@@ -270,6 +275,7 @@ export default function StudentGradesPage() {
   const { user: contextUser } = useOutletContext<StudentGradesOutletContext>() || {};
   const [activeTab, setActiveTab] = useState<GradeTabKey>('PROGRAM');
   const [activeProgramCode, setActiveProgramCode] = useState<string>('');
+  const [selectedReportSemester, setSelectedReportSemester] = useState<ReportSemesterValue>('');
   const { data: authData } = useQuery({
     queryKey: ['me'],
     queryFn: authService.getMe,
@@ -279,13 +285,19 @@ export default function StudentGradesPage() {
   const user = contextUser || authData?.data;
 
   const overviewQuery = useQuery<StudentGradeOverviewData>({
-    queryKey: ['student-grade-overview', user?.id],
-    queryFn: () => gradeService.getStudentOverview(),
+    queryKey: ['student-grade-overview', user?.id, selectedReportSemester || 'ACTIVE'],
+    queryFn: () =>
+      gradeService.getStudentOverview({
+        reportSemester: selectedReportSemester || undefined,
+      }),
     enabled: Boolean(user?.id) && String(user?.role || '').toUpperCase() === 'STUDENT',
     staleTime: 1000 * 60,
   });
 
   const data = overviewQuery.data;
+  const reportCard = data?.reportCard as StudentSemesterReportData | undefined;
+  const effectiveReportSemester = (selectedReportSemester || reportCard?.semester || data?.meta.semester || 'ODD') as 'ODD' | 'EVEN';
+  const effectiveReportSemesterLabel = formatSemesterLabel(effectiveReportSemester);
   const programTabSubtitle = useMemo(() => {
     if (!data || data.components.length === 0) {
       return 'Lihat komponen nilai program ujian aktif per mata pelajaran.'
@@ -301,6 +313,11 @@ export default function StudentGradesPage() {
     }
     return `Pilih tab ${labels.slice(0, -1).join(', ')}, dan ${labels[labels.length - 1]} untuk melihat nilai per program ujian.`
   }, [data]);
+  const reportTabSubtitle = useMemo(
+    () =>
+      `Pilih semester rapor untuk melihat ringkasan nilai akhir, kehadiran, dan catatan wali kelas. Nilai Program Ujian tetap mengikuti semester aktif (${data?.meta.semesterLabel || '-' }).`,
+    [data?.meta.semesterLabel],
+  );
   const programTabs = useMemo(() => {
     if (!data) return [];
     return Array.from(
@@ -368,8 +385,6 @@ export default function StudentGradesPage() {
     );
   }
 
-  const reportCard = data?.reportCard as StudentSemesterReportData | undefined;
-
   return (
     <div className="space-y-6">
       <div className="flex flex-col gap-4 lg:flex-row lg:items-end lg:justify-between">
@@ -412,7 +427,7 @@ export default function StudentGradesPage() {
             <TabButton
               active={activeTab === 'REPORT'}
               label="Rapor Semester"
-              subtitle="Lihat ringkasan nilai akhir semester, kehadiran, dan catatan wali kelas."
+              subtitle={reportTabSubtitle}
               onClick={() => setActiveTab('REPORT')}
             />
           </div>
@@ -536,6 +551,28 @@ export default function StudentGradesPage() {
             <>
               {reportCard ? (
                 <>
+                  <div className="rounded-3xl border border-slate-200 bg-white p-5">
+                    <div className="flex flex-col gap-4 lg:flex-row lg:items-end lg:justify-between">
+                      <div>
+                        <h2 className="text-xl font-bold text-slate-900">Semester Rapor</h2>
+                        <p className="mt-1 text-sm text-slate-500">
+                          Pilihan semester ini hanya mengubah tampilan rapor. Nilai Program Ujian tetap mengikuti semester aktif {data.meta.semesterLabel}.
+                        </p>
+                      </div>
+                      <label className="flex min-w-[220px] flex-col gap-2 text-sm text-slate-600">
+                        <span className="font-medium text-slate-700">Semester Rapor</span>
+                        <select
+                          value={effectiveReportSemester}
+                          onChange={(event) => setSelectedReportSemester((event.target.value as ReportSemesterValue) || '')}
+                          className="rounded-2xl border border-slate-200 bg-white px-4 py-3 text-sm font-medium text-slate-700 outline-none transition focus:border-blue-400"
+                        >
+                          <option value="ODD">Semester Ganjil</option>
+                          <option value="EVEN">Semester Genap</option>
+                        </select>
+                      </label>
+                    </div>
+                  </div>
+
                   <div
                     className={clsx(
                       'rounded-3xl border p-5',
@@ -560,7 +597,7 @@ export default function StudentGradesPage() {
                           {reportCard.reportDate ? formatDateLabel(reportCard.reportDate.date) : 'Tanggal rapor belum diatur'}
                         </p>
                         <p className="mt-1">
-                          {reportCard.reportDate?.place || 'Lokasi rapor belum diatur'} • {reportCard.semesterType}
+                          {reportCard.reportDate?.place || 'Lokasi rapor belum diatur'} • Semester {effectiveReportSemesterLabel} • {reportCard.semesterType}
                         </p>
                       </div>
                     </div>
@@ -571,6 +608,7 @@ export default function StudentGradesPage() {
                       icon={<LayoutList className="h-5 w-5" />}
                       label="Mapel Siap"
                       value={`${reportCard.summary.availableSubjects}/${reportCard.summary.expectedSubjects}`}
+                      subtitle={`Semester ${effectiveReportSemesterLabel}`}
                       tone={reportCard.status.tone === 'green' ? 'green' : reportCard.status.tone === 'amber' ? 'amber' : 'red'}
                     />
                     <SummaryCard
@@ -578,6 +616,7 @@ export default function StudentGradesPage() {
                       label="Rata-rata"
                       value={formatScore(reportCard.summary.averageFinalScore)}
                       tone="blue"
+                      subtitle={`Semester ${effectiveReportSemesterLabel}`}
                     />
                     <SummaryCard
                       icon={<UserCheck className="h-5 w-5" />}
@@ -596,9 +635,9 @@ export default function StudentGradesPage() {
 
                   {!reportCard.release.canViewDetails ? (
                     <div className="rounded-3xl border border-amber-100 bg-amber-50/80 p-5">
-                      <h2 className="text-xl font-bold text-slate-900">Detail Rapor Menunggu Rilis</h2>
+                      <h2 className="text-xl font-bold text-slate-900">Detail Rapor Semester Menunggu Rilis</h2>
                       <p className="mt-2 text-sm leading-6 text-slate-700">
-                        Nama mapel semester sudah ditampilkan agar Anda tahu cakupan rapor yang akan keluar, tetapi nilai akhir, predikat, dan catatan kompetensi baru akan terbuka setelah tanggal rilis rapor.
+                        Nama mapel semester {effectiveReportSemesterLabel.toLowerCase()} sudah ditampilkan agar Anda tahu cakupan rapor yang akan keluar, tetapi nilai akhir, predikat, dan catatan kompetensi baru akan terbuka setelah tanggal rilis rapor.
                       </p>
                     </div>
                   ) : null}

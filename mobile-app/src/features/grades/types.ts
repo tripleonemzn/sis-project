@@ -56,6 +56,8 @@ export type StudentSemesterReportSubjectRow = {
 };
 
 export type StudentSemesterReportData = {
+  semester: 'ODD' | 'EVEN';
+  semesterLabel: string;
   semesterType: 'SAS' | 'SAT';
   reportDate: {
     place: string;
