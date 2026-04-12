@@ -415,6 +415,16 @@ async function ensureMailboxAvailable(mailboxIdentity: string) {
   return mailboxPath;
 }
 
+export async function isWebmailMailboxAvailable(mailboxIdentity: string) {
+  try {
+    await ensureMailboxAvailable(mailboxIdentity);
+    return true;
+  } catch (error: unknown) {
+    if (error instanceof MailboxUnavailableError) return false;
+    throw error;
+  }
+}
+
 function getDovecotContainerName() {
   return String(process.env.MAILBOX_NOTIFICATION_DOVECOT_CONTAINER || DEFAULT_DOVECOT_CONTAINER).trim() || DEFAULT_DOVECOT_CONTAINER;
 }

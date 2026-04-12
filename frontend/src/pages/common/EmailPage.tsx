@@ -8,6 +8,7 @@ const WEBMAIL_URL = 'https://mail.siskgb2.id/';
 const DEFAULT_WEBMAIL_INBOX_URL = 'https://mail.siskgb2.id/?_task=mail&_mbox=INBOX&_layout=list&_skin=elastic';
 const WEBMAIL_FRAME_NAME = 'sis-webmail-frame';
 const DEFAULT_WEBMAIL_DOMAIN = 'siskgb2.id';
+const MAILBOX_USERNAME_PATTERN = /^[a-z0-9][a-z0-9._-]{2,62}$/;
 const BRIDGE_REAUTH_IDLE_MS = 1000 * 60 * 15;
 const getWebmailModeStorageKey = (scopeKey: string) => `sis-webmail-mode:${scopeKey}`;
 const getWebmailBridgeStorageKey = (scopeKey: string) => `sis-webmail-bridge:${scopeKey}`;
@@ -87,9 +88,9 @@ export const EmailPage = () => {
   const mailboxQuotaGb = (webmailConfig?.mailboxQuotaMb || 5120) / 1024;
   const mailboxQuotaLabel = Number.isInteger(mailboxQuotaGb) ? `${mailboxQuotaGb.toFixed(0)} GB` : `${mailboxQuotaGb.toFixed(1)} GB`;
   const mailboxIdentity = String(webmailConfig?.mailboxIdentity || '').trim().toLowerCase();
-  const expectedVerificationUsername = String(webmailConfig?.user?.username || '').trim();
+  const suggestedMailboxUsername = String(webmailConfig?.user?.username || '').trim().toLowerCase();
   const mailboxPreview =
-    mailboxIdentity || `${expectedVerificationUsername || 'username'}@${mailboxDomain}`.trim().toLowerCase();
+    mailboxIdentity || `${suggestedMailboxUsername || 'username'}@${mailboxDomain}`.trim().toLowerCase();
 
   const [loginUser, setLoginUser] = useState('');
   const [hasEditedLoginUser, setHasEditedLoginUser] = useState(false);
@@ -389,16 +390,16 @@ export const EmailPage = () => {
     event.preventDefault();
     if (!isSelfRegistrationEnabled) return;
 
-    const verificationUsername = registerUser.trim();
+    const username = registerUser.trim().toLowerCase();
     const password = registerPass;
     const confirmPassword = registerPassConfirm;
 
-    if (!verificationUsername) {
-      setRegisterError('Username akun SIS wajib diisi untuk verifikasi.');
+    if (!username) {
+      setRegisterError('Username email wajib diisi.');
       return;
     }
-    if (verificationUsername.toLowerCase() !== expectedVerificationUsername.toLowerCase()) {
-      setRegisterError('Username verifikasi harus sama dengan username akun SIS Anda.');
+    if (!MAILBOX_USERNAME_PATTERN.test(username)) {
+      setRegisterError('Username email hanya boleh huruf kecil, angka, titik, underscore, atau dash (3-63 karakter).');
       return;
     }
     if (!password || !confirmPassword) {
@@ -417,7 +418,7 @@ export const EmailPage = () => {
     setRegisterError(null);
     setResetError(null);
     setResetResult(null);
-    registerMutation.mutate({ verificationUsername, password, confirmPassword });
+    registerMutation.mutate({ username, password, confirmPassword });
   };
 
   const handleResetPassword = () => {
@@ -545,31 +546,27 @@ export const EmailPage = () => {
                   ) : isRegisterMode ? (
                     <form className="mt-5 space-y-4" onSubmit={handleRegisterSubmit}>
                       <div>
-                        <label className="mb-2 block text-lg font-medium text-slate-800 md:text-[18px]">Username Akun SIS</label>
-                        <div className="flex items-center gap-3 rounded-2xl border border-slate-200 bg-white px-4 py-3 shadow-[0_1px_2px_rgba(15,23,42,0.04)]">
+                        <label className="mb-2 block text-lg font-medium text-slate-800 md:text-[18px]">Username Email</label>
+                        <div className="flex items-end border-b border-slate-500 pb-2">
                           <input
                             type="text"
                             value={registerUser}
-                            onChange={(event) => setRegisterUser(event.target.value)}
-                            placeholder={expectedVerificationUsername || 'masukkan username akun SIS'}
+                            onChange={(event) => setRegisterUser(event.target.value.toLowerCase())}
+                            placeholder={suggestedMailboxUsername || 'username email'}
                             required
                             autoComplete="off"
                             className="min-w-0 flex-1 border-0 bg-transparent text-base text-slate-700 placeholder:italic placeholder:text-slate-400 focus:outline-none"
                           />
-                          <span className="shrink-0 rounded-full border border-slate-200 bg-slate-50 px-3 py-1 text-[11px] font-semibold uppercase tracking-[0.14em] text-slate-500">
-                            Akun SIS
+                          <span className="whitespace-nowrap pl-2 text-sm text-slate-500">
+                            @{mailboxDomain}
                           </span>
                         </div>
                         <p className="mt-2 text-xs text-slate-500">
-                          Dipakai hanya untuk verifikasi agar satu akun SIS tidak bisa membuat lebih dari satu mailbox.
+                          Isi username email sesuai keinginan Anda. Domain sekolah tetap mengikuti server, dan setiap akun hanya boleh memiliki satu mailbox.
                         </p>
-                      </div>
-
-                      <div>
-                        <label className="mb-2 block text-lg font-medium text-slate-800 md:text-[18px]">Mailbox Sekolah</label>
-                        <div className="rounded-2xl border border-slate-200 bg-slate-50 px-4 py-3 text-sm font-semibold text-slate-700">
-                          {mailboxPreview}
-                        </div>
+                        <p className="mt-1 text-xs text-slate-500">
+                          Gunakan huruf kecil, angka, titik, underscore, atau dash.
+                        </p>
                       </div>
 
                       <div>

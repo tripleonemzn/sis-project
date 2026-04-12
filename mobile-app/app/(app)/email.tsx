@@ -17,6 +17,7 @@ import { notifyApiError, notifySuccess } from '../../src/lib/ui/feedback';
 import { useIsScreenActive } from '../../src/hooks/useIsScreenActive';
 
 const ALLOWED_WEBMAIL_ROLES = new Set(['ADMIN', 'TEACHER', 'PRINCIPAL', 'STAFF', 'EXTRACURRICULAR_TUTOR']);
+const MAILBOX_USERNAME_PATTERN = /^[a-z0-9][a-z0-9._-]{2,62}$/;
 
 type BridgeCredentials = {
   email: string;
@@ -272,9 +273,9 @@ export default function MobileEmailScreen() {
   const selfRegistrationEnabled = !isSsoMode && Boolean(config?.selfRegistrationEnabled);
   const quotaLabel = asQuotaLabel(config?.mailboxQuotaMb);
   const mailboxIdentity = String(config?.mailboxIdentity || '').trim().toLowerCase();
-  const expectedVerificationUsername = String(config?.user?.username || '').trim();
+  const suggestedMailboxUsername = String(config?.user?.username || '').trim().toLowerCase();
   const mailboxPreview =
-    mailboxIdentity || `${expectedVerificationUsername || 'username'}@${mailboxDomain}`.trim().toLowerCase();
+    mailboxIdentity || `${suggestedMailboxUsername || 'username'}@${mailboxDomain}`.trim().toLowerCase();
   const loginIdentityValue = hasEditedLoginUser ? loginUser : mailboxPreview;
 
   const mailboxMessages = useMemo(() => emailFeedQuery.data?.messages ?? [], [emailFeedQuery.data?.messages]);
@@ -486,16 +487,16 @@ export default function MobileEmailScreen() {
   const handleRegister = () => {
     if (!selfRegistrationEnabled) return;
 
-    const verificationUsername = registerUser.trim();
+    const username = registerUser.trim().toLowerCase();
     const password = registerPass;
     const confirmPassword = registerPassConfirm;
 
-    if (!verificationUsername) {
-      setRegisterError('Username akun SIS wajib diisi untuk verifikasi.');
+    if (!username) {
+      setRegisterError('Username email wajib diisi.');
       return;
     }
-    if (verificationUsername.toLowerCase() !== expectedVerificationUsername.toLowerCase()) {
-      setRegisterError('Username verifikasi harus sama dengan username akun SIS Anda.');
+    if (!MAILBOX_USERNAME_PATTERN.test(username)) {
+      setRegisterError('Username email hanya boleh huruf kecil, angka, titik, underscore, atau dash (3-63 karakter).');
       return;
     }
     if (!password || !confirmPassword) {
@@ -514,7 +515,7 @@ export default function MobileEmailScreen() {
     setRegisterError(null);
     setResetError(null);
     setResetResult(null);
-    registerMutation.mutate({ verificationUsername, password, confirmPassword });
+    registerMutation.mutate({ username, password, confirmPassword });
   };
 
   const handleResetPassword = () => {
@@ -1026,7 +1027,7 @@ export default function MobileEmailScreen() {
               title={isRegisterMode ? 'Daftar Mailbox' : 'Panel Lengkap Webmail'}
               subtitle={
                 isRegisterMode
-                  ? 'Buat mailbox sekolah baru untuk akun SIS Anda. Username akun SIS dipakai hanya untuk verifikasi.'
+                  ? 'Buat mailbox sekolah baru dengan username email pilihan Anda. Domain sekolah tetap mengikuti server.'
                   : 'Bagian ini dipakai hanya saat Anda perlu akses penuh seperti balas email, pencarian lanjut, atau pengelolaan folder.'
               }
             >
@@ -1172,52 +1173,30 @@ export default function MobileEmailScreen() {
                       borderRadius: 12,
                       paddingHorizontal: 12,
                       paddingVertical: 11,
-                      backgroundColor: '#ffffff',
                       flexDirection: 'row',
                       alignItems: 'center',
-                      gap: 8,
+                      gap: 4,
                     }}
                   >
                     <TextInput
                       value={registerUser}
-                      onChangeText={setRegisterUser}
-                      autoCapitalize="characters"
+                      onChangeText={(value) => setRegisterUser(value.toLowerCase())}
+                      autoCapitalize="none"
                       autoCorrect={false}
-                      placeholder={expectedVerificationUsername || 'Masukkan username akun SIS'}
+                      placeholder={suggestedMailboxUsername || 'username email'}
                       placeholderTextColor="#94a3b8"
                       style={{ flex: 1, minWidth: 0, color: BRAND_COLORS.textDark, padding: 0 }}
                     />
-                    <View
-                      style={{
-                        borderRadius: 999,
-                        borderWidth: 1,
-                        borderColor: '#dbe4f4',
-                        backgroundColor: '#f8fafc',
-                        paddingHorizontal: 10,
-                        paddingVertical: 5,
-                      }}
-                    >
-                      <Text style={{ color: '#64748b', fontSize: 10, fontWeight: '800' }}>AKUN SIS</Text>
-                    </View>
+                    <Text style={{ color: '#64748b' }}>@{mailboxDomain}</Text>
                   </View>
 
                   <Text style={{ color: '#64748b', fontSize: 12, lineHeight: 18 }}>
-                    Dipakai hanya untuk verifikasi agar satu akun SIS tidak bisa membuat lebih dari satu mailbox.
+                    Isi username email sesuai keinginan Anda. Domain sekolah akan otomatis memakai @{mailboxDomain}, dan setiap akun hanya boleh memiliki satu mailbox.
                   </Text>
 
-                  <View
-                    style={{
-                      borderWidth: 1,
-                      borderColor: '#cbd5e1',
-                      borderRadius: 12,
-                      paddingHorizontal: 12,
-                      paddingVertical: 11,
-                      backgroundColor: '#f8fafc',
-                    }}
-                  >
-                    <Text style={{ color: '#64748b', fontSize: 11, marginBottom: 4 }}>Mailbox Sekolah</Text>
-                    <Text style={{ color: BRAND_COLORS.textDark, fontWeight: '700' }}>{mailboxPreview}</Text>
-                  </View>
+                  <Text style={{ color: '#64748b', fontSize: 12, lineHeight: 18 }}>
+                    Gunakan huruf kecil, angka, titik, underscore, atau dash.
+                  </Text>
 
                   <TextInput
                     value={registerPass}

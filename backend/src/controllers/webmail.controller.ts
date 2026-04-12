@@ -9,6 +9,7 @@ import { ApiError, ApiResponse, asyncHandler } from '../utils/api';
 import { writeAuditLog } from '../utils/auditLog';
 import {
   getWebmailMessageDetail,
+  isWebmailMailboxAvailable,
   listWebmailMessages,
   markWebmailMessageAsRead,
   MailboxMessageNotFoundError,
@@ -84,6 +85,7 @@ const WEBMAIL_ALLOWED_ROLES: Role[] = [
 ];
 
 const WEBMAIL_SELF_REGISTER_ROLES: Role[] = [
+  'ADMIN',
   'TEACHER',
   'PRINCIPAL',
   'STAFF',
@@ -188,7 +190,13 @@ const isMailboxUsernameValid = (value: string): boolean => MAILBOX_USERNAME_PATT
 
 const isMailboxUsernameReserved = (value: string): boolean => RESERVED_MAILBOX_LOCAL_PARTS.has(value);
 
-const resolveMailboxIdentity = (user: { username: string; email: string | null }): string | null => {
+const resolveStoredMailboxIdentity = (user: { webmailMailboxIdentity?: string | null }): string | null => {
+  const storedMailbox = String(user.webmailMailboxIdentity || '').trim().toLowerCase();
+  if (storedMailbox && isValidEmail(storedMailbox)) return storedMailbox;
+  return null;
+};
+
+const resolveLegacyMailboxIdentity = (user: { username: string; email: string | null }): string | null => {
   const forcedMailbox = String(process.env.WEBMAIL_FORCE_MAILBOX || '').trim().toLowerCase();
   if (forcedMailbox && isValidEmail(forcedMailbox)) return forcedMailbox;
 
@@ -204,6 +212,12 @@ const resolveMailboxIdentity = (user: { username: string; email: string | null }
   const inferred = `${username}@${defaultDomain}`;
   if (!isValidEmail(inferred)) return null;
   return inferred;
+};
+
+const resolveMailboxIdentity = (
+  user: { username: string; email: string | null; webmailMailboxIdentity?: string | null },
+): string | null => {
+  return resolveStoredMailboxIdentity(user) || resolveLegacyMailboxIdentity(user);
 };
 
 const createRandomString = (length: number, charset: string): string => {
@@ -258,6 +272,7 @@ const ensureWebmailAccess = async (req: AuthRequest) => {
       username: true,
       name: true,
       email: true,
+      webmailMailboxIdentity: true,
       role: true,
     },
   });
@@ -317,42 +332,41 @@ export const registerWebmailMailbox = asyncHandler(async (req: AuthRequest, res:
   }
 
   const body = (req.body || {}) as RegisterMailboxBody;
-  const verificationUsername = toMaybeString(body.verificationUsername ?? body.username);
-  const expectedVerificationUsername = toMaybeString(user.username);
+  const requestedMailboxUsername = toMaybeString(body.username ?? body.verificationUsername).toLowerCase();
   const password = String(body.password ?? '');
   const confirmPassword = String(body.confirmPassword ?? '');
 
-  if (!verificationUsername) {
-    throw new ApiError(400, 'Username akun SIS wajib diisi untuk verifikasi');
+  if (!requestedMailboxUsername) {
+    throw new ApiError(400, 'Username email wajib diisi');
   }
 
-  if (verificationUsername.trim().toLowerCase() !== expectedVerificationUsername.trim().toLowerCase()) {
-    throw new ApiError(
-      400,
-      'Username verifikasi harus sama dengan username akun SIS Anda',
-    );
+  if (!isMailboxUsernameValid(requestedMailboxUsername)) {
+    throw new ApiError(400, 'Username email hanya boleh huruf kecil, angka, titik, underscore, atau dash (3-63 karakter)');
   }
-
-  const mailboxIdentity = resolveMailboxIdentity(user);
-  if (!mailboxIdentity) {
-    throw new ApiError(400, 'Akun Anda belum memiliki identitas mailbox sekolah yang valid');
-  }
-
-  const [mailboxLocalPartRaw, mailboxDomainRaw] = mailboxIdentity.split('@');
-  const mailboxLocalPart = toMaybeString(mailboxLocalPartRaw).toLowerCase();
-  const mailboxDomain = toMaybeString(mailboxDomainRaw).toLowerCase();
   const defaultDomain = getWebmailDefaultDomain();
+  const mailboxIdentity = `${requestedMailboxUsername}@${defaultDomain}`;
 
-  if (!mailboxLocalPart || !mailboxDomain || mailboxDomain !== defaultDomain) {
-    throw new ApiError(400, `Mailbox akun ini harus memakai domain ${defaultDomain}`);
+  if (isMailboxUsernameReserved(requestedMailboxUsername)) {
+    throw new ApiError(400, `Username email "${requestedMailboxUsername}" tidak diperbolehkan`);
   }
 
-  if (!isMailboxUsernameValid(mailboxLocalPart)) {
-    throw new ApiError(400, 'Mailbox untuk akun ini belum valid. Hubungi admin untuk penyesuaian identitas email.');
+  const registeredMailboxIdentity = resolveStoredMailboxIdentity(user);
+  if (registeredMailboxIdentity) {
+    throw new ApiError(409, `Mailbox ${registeredMailboxIdentity} sudah terdaftar untuk akun ini`);
   }
 
-  if (isMailboxUsernameReserved(mailboxLocalPart)) {
-    throw new ApiError(400, `Username mailbox "${mailboxLocalPart}" tidak diperbolehkan`);
+  const legacyMailboxIdentity = resolveLegacyMailboxIdentity(user);
+  if (legacyMailboxIdentity) {
+    const legacyMailboxExists = await isWebmailMailboxAvailable(legacyMailboxIdentity);
+    if (legacyMailboxExists) {
+      await prisma.user.update({
+        where: { id: user.id },
+        data: {
+          webmailMailboxIdentity: legacyMailboxIdentity,
+        },
+      });
+      throw new ApiError(409, `Mailbox ${legacyMailboxIdentity} sudah terdaftar untuk akun ini`);
+    }
   }
 
   if (!password || !confirmPassword) {
@@ -379,9 +393,9 @@ export const registerWebmailMailbox = asyncHandler(async (req: AuthRequest, res:
   const endpoint = resolveMailcowAddMailboxEndpoint();
 
   const mailboxPayload = {
-    local_part: mailboxLocalPart,
-    domain: mailboxDomain,
-    name: toMaybeString(user.name) || mailboxLocalPart,
+    local_part: requestedMailboxUsername,
+    domain: defaultDomain,
+    name: toMaybeString(user.name) || requestedMailboxUsername,
     password,
     password2: confirmPassword,
     quota: MAILBOX_DEFAULT_QUOTA_MB,
@@ -437,7 +451,7 @@ export const registerWebmailMailbox = asyncHandler(async (req: AuthRequest, res:
   if (!success) {
     const normalizedDetail = detailMessage.toLowerCase();
     if (normalizedDetail.includes('exists') || normalizedDetail.includes('already')) {
-      throw new ApiError(409, `Mailbox ${mailboxIdentity} sudah terdaftar untuk akun ini`);
+      throw new ApiError(409, `Username email "${requestedMailboxUsername}" sudah digunakan. Silakan pilih username lain.`);
     }
 
     throw new ApiError(
@@ -445,6 +459,13 @@ export const registerWebmailMailbox = asyncHandler(async (req: AuthRequest, res:
       detailMessage ? `Gagal membuat mailbox webmail: ${detailMessage}` : 'Gagal membuat mailbox webmail di Mailcow',
     );
   }
+
+  await prisma.user.update({
+    where: { id: user.id },
+    data: {
+      webmailMailboxIdentity: mailboxIdentity,
+    },
+  });
 
   res.status(201).json(
     new ApiResponse(

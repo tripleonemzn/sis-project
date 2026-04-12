@@ -27,7 +27,7 @@ export interface WebmailSsoLaunch {
 }
 
 export interface WebmailRegisterPayload {
-  verificationUsername: string;
+  username: string;
   password: string;
   confirmPassword: string;
 }

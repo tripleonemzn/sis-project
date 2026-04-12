@@ -289,22 +289,29 @@ async function resolveMailboxTargets(maildirRoot: string): Promise<MailboxTarget
   const mailboxIdentities = mailboxDirectories.map((entry) => entry.mailboxIdentity);
   const users = await prisma.user.findMany({
     where: {
-      email: { in: mailboxIdentities },
       role: { in: WEBMAIL_ALLOWED_ROLES },
+      OR: [
+        { email: { in: mailboxIdentities } },
+        { webmailMailboxIdentity: { in: mailboxIdentities } },
+      ],
     },
     select: {
       id: true,
       name: true,
       role: true,
       email: true,
+      webmailMailboxIdentity: true,
     },
   });
 
-  const usersByEmail = new Map(
-    users
-      .map((user) => [normalizeMailboxIdentity(user.email || ''), user] as const)
-      .filter(([email]) => email.length > 0),
-  );
+  const usersByEmail = new Map<string, (typeof users)[number]>();
+  users.forEach((user) => {
+    [user.webmailMailboxIdentity, user.email].forEach((candidateIdentity) => {
+      const normalizedIdentity = normalizeMailboxIdentity(candidateIdentity || '');
+      if (!normalizedIdentity) return;
+      usersByEmail.set(normalizedIdentity, user);
+    });
+  });
 
   return mailboxDirectories
     .map((entry) => {

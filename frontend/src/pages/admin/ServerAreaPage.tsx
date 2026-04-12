@@ -467,7 +467,7 @@ const ServerAreaPage: React.FC = () => {
     const password = manualPassword.trim();
 
     if (!identifier) {
-      setWebmailResetError('Identifier wajib diisi (username, email, atau userId).');
+      setWebmailResetError('Identifier wajib diisi (username, email, mailbox, atau userId).');
       setWebmailResetResult(null);
       return;
     }

@@ -33,7 +33,7 @@ export type MobileWebmailSsoLaunch = {
 };
 
 export type MobileWebmailRegisterPayload = {
-  verificationUsername: string;
+  username: string;
   password: string;
   confirmPassword: string;
 };

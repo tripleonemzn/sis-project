@@ -19,6 +19,7 @@ model User {
   nis                                                String?
   gender                                             Gender?
   email                                              String?
+  webmailMailboxIdentity                             String?                             @unique
   phone                                              String?
   address                                            String?
   photo                                              String?

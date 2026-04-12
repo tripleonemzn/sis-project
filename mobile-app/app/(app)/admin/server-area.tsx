@@ -269,7 +269,7 @@ export default function AdminServerAreaScreen() {
   const handleResetWebmailPassword = async () => {
     const identifier = mailboxIdentifier.trim();
     if (!identifier) {
-      setWebmailResetError('Identifier user wajib diisi (username, email, atau userId).');
+      setWebmailResetError('Identifier user wajib diisi (username, email, mailbox, atau userId).');
       setWebmailResetResult(null);
       return;
     }

@@ -39,7 +39,7 @@ type MailcowApiEntry = {
 
 const MAILCOW_API_TIMEOUT_MS = 15000;
 const MIN_MANUAL_WEBMAIL_PASSWORD_LENGTH = 10;
-const WEBMAIL_ALLOWED_ROLES: Role[] = ['TEACHER', 'PRINCIPAL', 'STAFF', 'EXTRACURRICULAR_TUTOR'];
+const WEBMAIL_ALLOWED_ROLES: Role[] = ['ADMIN', 'TEACHER', 'PRINCIPAL', 'STAFF', 'EXTRACURRICULAR_TUTOR'];
 const WEBMAIL_RESET_AUDIT_ENTITY = 'WEBMAIL_MAILBOX';
 const WEBMAIL_RESET_AUDIT_ACTION = 'RESET_PASSWORD';
 const WEBMAIL_PASSWORD_UPPERCASE = 'ABCDEFGHJKLMNPQRSTUVWXYZ';
@@ -148,7 +148,13 @@ const buildOnlineUsersResponse = async (snapshot: RealtimePresenceSnapshot): Pro
 
 const isValidEmail = (value: string): boolean => /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(value);
 
-const resolveWebmailMailboxIdentity = (user: { username: string; email: string | null }): string | null => {
+const resolveStoredWebmailMailboxIdentity = (user: { webmailMailboxIdentity?: string | null }): string | null => {
+  const storedMailbox = toMaybeString(user.webmailMailboxIdentity).toLowerCase();
+  if (storedMailbox && isValidEmail(storedMailbox)) return storedMailbox;
+  return null;
+};
+
+const resolveLegacyWebmailMailboxIdentity = (user: { username: string; email: string | null }): string | null => {
   const preferredEmail = toMaybeString(user.email).toLowerCase();
   if (preferredEmail && isValidEmail(preferredEmail)) return preferredEmail;
 
@@ -160,6 +166,12 @@ const resolveWebmailMailboxIdentity = (user: { username: string; email: string |
 
   const inferred = `${username}@${defaultDomain}`;
   return isValidEmail(inferred) ? inferred : null;
+};
+
+const resolveWebmailMailboxIdentity = (
+  user: { username: string; email: string | null; webmailMailboxIdentity?: string | null },
+): string | null => {
+  return resolveStoredWebmailMailboxIdentity(user) || resolveLegacyWebmailMailboxIdentity(user);
 };
 
 const createRandomString = (length: number, charset: string): string => {
@@ -998,7 +1010,7 @@ export const resetWebmailMailboxPassword = asyncHandler(async (req: AuthRequest,
 
   const identifier = toMaybeString(req.body?.identifier);
   if (!identifier) {
-    throw new ApiError(400, 'Identifier user wajib diisi (username, email, atau userId)');
+    throw new ApiError(400, 'Identifier user wajib diisi (username, email, mailbox, atau userId)');
   }
 
   const manualPassword = toMaybeString(req.body?.password);
@@ -1013,6 +1025,7 @@ export const resetWebmailMailboxPassword = asyncHandler(async (req: AuthRequest,
         ...(isNumericIdentifier ? [{ id: Number(identifier) }] : []),
         { username: { equals: identifier, mode: 'insensitive' } },
         { email: { equals: identifier.toLowerCase(), mode: 'insensitive' } },
+        { webmailMailboxIdentity: { equals: identifier.toLowerCase(), mode: 'insensitive' } },
       ],
     },
     select: {
@@ -1021,6 +1034,7 @@ export const resetWebmailMailboxPassword = asyncHandler(async (req: AuthRequest,
       name: true,
       role: true,
       email: true,
+      webmailMailboxIdentity: true,
     },
   });
 
