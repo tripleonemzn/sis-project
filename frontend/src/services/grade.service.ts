@@ -105,6 +105,52 @@ export interface StudentGradeOverviewSubjectRow {
   components: StudentGradeOverviewSubjectComponent[];
 }
 
+export interface StudentSemesterReportSubjectRow {
+  subject: {
+    id: number;
+    code: string;
+    name: string;
+  };
+  teacher: {
+    id: number;
+    name: string;
+  } | null;
+  kkm: number;
+  finalScore: number | null;
+  predicate: string | null;
+  description: string | null;
+  status: 'AVAILABLE' | 'PENDING';
+}
+
+export interface StudentSemesterReportData {
+  semesterType: 'SAS' | 'SAT';
+  reportDate: {
+    place: string;
+    date: string;
+    reportType: string;
+  } | null;
+  status: {
+    code: 'NOT_READY' | 'PARTIAL' | 'READY';
+    label: string;
+    tone: 'red' | 'amber' | 'green';
+    description: string;
+  };
+  summary: {
+    expectedSubjects: number;
+    availableSubjects: number;
+    missingSubjects: number;
+    averageFinalScore: number | null;
+  };
+  attendance: {
+    hadir: number;
+    sakit: number;
+    izin: number;
+    alpha: number;
+  };
+  homeroomNote: string | null;
+  subjects: StudentSemesterReportSubjectRow[];
+}
+
 export interface StudentGradeOverviewData {
   meta: {
     academicYearId: number;
@@ -137,6 +183,7 @@ export interface StudentGradeOverviewData {
   };
   components: StudentGradeOverviewComponent[];
   subjects: StudentGradeOverviewSubjectRow[];
+  reportCard: StudentSemesterReportData;
 }
 
 export const gradeService = {

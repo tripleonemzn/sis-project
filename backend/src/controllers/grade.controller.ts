@@ -1,5 +1,5 @@
 import { Request, Response } from 'express'
-import { Semester, GradeComponentType, GradeEntryMode, Prisma, ReportComponentSlot, ExamSessionStatus } from '@prisma/client'
+import { Semester, GradeComponentType, GradeEntryMode, Prisma, ReportComponentSlot, ExamSessionStatus, ExamType } from '@prisma/client'
 import prisma from '../utils/prisma'
 import { ApiResponseHelper } from '../utils/ApiResponse'
 import { ApiError } from '../utils/api'
@@ -43,6 +43,8 @@ type StudentOverviewComponentRow = {
   includeInFinalScore: boolean
   displayOrder: number
 }
+
+type StudentSemesterReportStatusCode = 'NOT_READY' | 'PARTIAL' | 'READY'
 
 type StudentScoreEntryFindManyDelegate = {
   findMany: (args: unknown) => Promise<unknown[]>
@@ -2431,7 +2433,10 @@ export const getStudentGradeOverview = async (req: Request, res: Response) => {
       throw new ApiError(404, 'Data siswa atau kelas aktif tidak ditemukan.')
     }
 
-    const [teacherAssignments, reportGrades, studentGrades, examGradeComponents] = await Promise.all([
+    const semesterRange = resolveSemesterRange(activeYear, semester)
+    const reportCardType = semester === Semester.ODD ? ExamType.SAS : ExamType.SAT
+
+    const [teacherAssignments, reportGrades, studentGrades, examGradeComponents, reportDate, attendanceStats, homeroomNote] = await Promise.all([
       prisma.teacherAssignment.findMany({
         where: {
           academicYearId: activeYear.id,
@@ -2520,6 +2525,43 @@ export const getStudentGradeOverview = async (req: Request, res: Response) => {
           displayOrder: true,
         },
         orderBy: [{ displayOrder: 'asc' }, { code: 'asc' }],
+      }),
+      prisma.reportDate.findFirst({
+        where: {
+          academicYearId: activeYear.id,
+          semester,
+          reportType: reportCardType,
+        },
+        select: {
+          place: true,
+          date: true,
+          reportType: true,
+        },
+      }),
+      prisma.dailyAttendance.groupBy({
+        by: ['status'],
+        where: {
+          studentId,
+          academicYearId: activeYear.id,
+          date: {
+            gte: semesterRange.start,
+            lte: semesterRange.end,
+          },
+        },
+        _count: {
+          status: true,
+        },
+      }),
+      prisma.reportNote.findFirst({
+        where: {
+          studentId,
+          academicYearId: activeYear.id,
+          semester,
+          type: 'CATATAN_WALI_KELAS',
+        },
+        select: {
+          note: true,
+        },
       }),
     ])
 
@@ -2798,6 +2840,64 @@ export const getStudentGradeOverview = async (req: Request, res: Response) => {
       .map((row) => row.finalScore)
       .filter((value): value is number => value !== null && value !== undefined)
 
+    const reportCardSubjects = subjectRows
+      .map((row) => {
+        const report = reportBySubjectId.get(row.subject.id) || null
+        const hasReportData = hasMeaningfulReportSnapshot(report)
+
+        return {
+          subject: row.subject,
+          teacher: row.teacher,
+          kkm: row.kkm,
+          finalScore: hasReportData ? row.finalScore : null,
+          predicate: hasReportData ? row.predicate : null,
+          description: hasReportData ? row.description : null,
+          status: hasReportData ? 'AVAILABLE' : 'PENDING',
+        }
+      })
+      .sort((a, b) => a.subject.name.localeCompare(b.subject.name, 'id-ID'))
+
+    const expectedReportSubjects = assignmentBySubjectId.size > 0 ? assignmentBySubjectId.size : reportCardSubjects.length
+    const availableReportSubjects = reportCardSubjects.filter((row) => row.status === 'AVAILABLE').length
+    const reportFinalScores = reportCardSubjects
+      .map((row) => row.finalScore)
+      .filter((value): value is number => value !== null && value !== undefined)
+
+    let reportStatusCode: StudentSemesterReportStatusCode = 'NOT_READY'
+    if (expectedReportSubjects > 0 && availableReportSubjects > 0 && availableReportSubjects < expectedReportSubjects) {
+      reportStatusCode = 'PARTIAL'
+    } else if (expectedReportSubjects > 0 && availableReportSubjects >= expectedReportSubjects) {
+      reportStatusCode = 'READY'
+    }
+
+    const reportStatusMeta: Record<
+      StudentSemesterReportStatusCode,
+      { label: string; tone: 'red' | 'amber' | 'green'; description: string }
+    > = {
+      NOT_READY: {
+        label: 'Belum siap',
+        tone: 'red',
+        description: 'Rapor semester belum siap ditampilkan karena data nilainya belum lengkap.',
+      },
+      PARTIAL: {
+        label: 'Sebagian tersedia',
+        tone: 'amber',
+        description: 'Sebagian nilai rapor sudah tersedia, tetapi masih menunggu sinkronisasi mapel lain.',
+      },
+      READY: {
+        label: 'Siap ditampilkan',
+        tone: 'green',
+        description: 'Rapor semester sudah siap ditampilkan untuk seluruh mata pelajaran aktif.',
+      },
+    }
+
+    const attendanceSummary = {
+      hadir: attendanceStats.find((row) => row.status === 'PRESENT')?._count.status || 0,
+      sakit: attendanceStats.find((row) => row.status === 'SICK')?._count.status || 0,
+      izin: attendanceStats.find((row) => row.status === 'PERMISSION')?._count.status || 0,
+      alpha: attendanceStats.find((row) => row.status === 'ABSENT')?._count.status || 0,
+    }
+
     return ApiResponseHelper.success(
       res,
       {
@@ -2837,6 +2937,32 @@ export const getStudentGradeOverview = async (req: Request, res: Response) => {
         },
         components: componentCatalog,
         subjects: subjectRows,
+        reportCard: {
+          semesterType: reportCardType,
+          reportDate: reportDate
+            ? {
+                place: reportDate.place,
+                date: reportDate.date,
+                reportType: reportDate.reportType,
+              }
+            : null,
+          status: {
+            code: reportStatusCode,
+            label: reportStatusMeta[reportStatusCode].label,
+            tone: reportStatusMeta[reportStatusCode].tone,
+            description: reportStatusMeta[reportStatusCode].description,
+          },
+          summary: {
+            expectedSubjects: expectedReportSubjects,
+            availableSubjects: availableReportSubjects,
+            missingSubjects: Math.max(expectedReportSubjects - availableReportSubjects, 0),
+            averageFinalScore:
+              reportFinalScores.length > 0 ? roundDisplayScore(calculateAverage(reportFinalScores)) : null,
+          },
+          attendance: attendanceSummary,
+          homeroomNote: String(homeroomNote?.note || '').trim() || null,
+          subjects: reportCardSubjects,
+        },
       },
       'Student grade overview retrieved successfully',
     )
