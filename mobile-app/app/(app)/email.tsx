@@ -618,7 +618,7 @@ export default function MobileEmailScreen() {
         <View style={{ paddingHorizontal: 12, gap: 10 }}>
           <SectionCard
             title="Email"
-            subtitle="Kotak masuk utama sekarang ditampilkan langsung di mobile. Panel webmail lengkap tetap tersedia untuk pencarian lanjutan, arsip, dan compose."
+            subtitle="Kotak masuk utama sekarang ditampilkan langsung di halaman ini. Panel webmail lengkap tetap tersedia untuk pencarian lanjutan, arsip, dan compose."
           >
             <View style={{ flexDirection: 'row', flexWrap: 'wrap', gap: 8 }}>
               <View
@@ -705,7 +705,7 @@ export default function MobileEmailScreen() {
 
           <SectionCard
             title="Kotak Masuk"
-            subtitle="Daftar ini sekarang membaca mailbox sungguhan dari server, jadi isi inbox mobile dan panel email bisa tetap searah."
+            subtitle="Daftar ini membaca mailbox sungguhan dari server, jadi isi inbox dan panel email tetap searah."
           >
             <View style={{ flexDirection: 'row', gap: 8 }}>
               <Pressable
@@ -877,7 +877,7 @@ export default function MobileEmailScreen() {
                       {selectedBodyText || 'Isi email tidak tersedia.'}
                     </Text>
                     <Text style={{ color: '#64748b', fontSize: 12, lineHeight: 18 }}>
-                      Isi email utama sekarang sudah bisa dibaca langsung dari mobile. Panel lengkap tetap dipakai untuk compose, balas email, pencarian lanjutan, atau folder arsip lain.
+                      Isi email utama sekarang sudah bisa dibaca langsung di sini. Panel lengkap tetap dipakai untuk compose, balas email, pencarian lanjutan, atau folder arsip lain.
                     </Text>
                   </View>
                 )}
@@ -899,7 +899,7 @@ export default function MobileEmailScreen() {
                   }}
                 >
                   <Text style={{ color: '#ffffff', fontWeight: '700' }}>
-                    {isSsoMode ? 'Buka Inbox Lengkap' : 'Lanjut ke Panel Lengkap'}
+                    {isSsoMode ? 'Buka Panel Lengkap' : 'Lanjut ke Panel Lengkap'}
                   </Text>
                 </Pressable>
               </View>
@@ -915,12 +915,13 @@ export default function MobileEmailScreen() {
                   : 'Email akan dikirim dari mailbox sekolah Anda dan salinannya otomatis disimpan ke folder Sent.'
               }
             >
+              <Text style={{ color: '#0f172a', fontSize: 13, fontWeight: '700' }}>Kepada</Text>
               <TextInput
                 value={composeTo}
                 onChangeText={setComposeTo}
                 autoCapitalize="none"
                 keyboardType="email-address"
-                placeholder="To: email@tujuan.com"
+                placeholder="email@tujuan.com"
                 placeholderTextColor="#94a3b8"
                 style={{
                   borderWidth: 1,
@@ -932,12 +933,13 @@ export default function MobileEmailScreen() {
                 }}
               />
 
+              <Text style={{ color: '#0f172a', fontSize: 13, fontWeight: '700' }}>CC</Text>
               <TextInput
                 value={composeCc}
                 onChangeText={setComposeCc}
                 autoCapitalize="none"
                 keyboardType="email-address"
-                placeholder="CC (opsional)"
+                placeholder="opsional"
                 placeholderTextColor="#94a3b8"
                 style={{
                   borderWidth: 1,
@@ -949,6 +951,7 @@ export default function MobileEmailScreen() {
                 }}
               />
 
+              <Text style={{ color: '#0f172a', fontSize: 13, fontWeight: '700' }}>Subjek</Text>
               <TextInput
                 value={composeSubject}
                 onChangeText={setComposeSubject}
@@ -964,6 +967,7 @@ export default function MobileEmailScreen() {
                 }}
               />
 
+              <Text style={{ color: '#0f172a', fontSize: 13, fontWeight: '700' }}>Isi Email</Text>
               <TextInput
                 value={composeBody}
                 onChangeText={setComposeBody}
@@ -1050,6 +1054,7 @@ export default function MobileEmailScreen() {
                     </View>
                   ) : (
                     <>
+                      <Text style={{ color: '#0f172a', fontSize: 13, fontWeight: '700' }}>Email</Text>
                       <TextInput
                         value={loginIdentityValue}
                         onChangeText={(value) => {
@@ -1069,6 +1074,7 @@ export default function MobileEmailScreen() {
                           color: BRAND_COLORS.textDark,
                         }}
                       />
+                      <Text style={{ color: '#0f172a', fontSize: 13, fontWeight: '700' }}>Password</Text>
                       <TextInput
                         value={loginPass}
                         onChangeText={setLoginPass}
@@ -1145,7 +1151,7 @@ export default function MobileEmailScreen() {
                         alignItems: 'center',
                       }}
                     >
-                      <Text style={{ color: '#fff', fontWeight: '700' }}>Daftar Akun Webmail</Text>
+                      <Text style={{ color: '#fff', fontWeight: '700' }}>Daftar Mailbox</Text>
                     </Pressable>
                   ) : null}
                   {!isSsoMode ? (
@@ -1166,6 +1172,7 @@ export default function MobileEmailScreen() {
                 </>
               ) : (
                 <>
+                  <Text style={{ color: '#0f172a', fontSize: 13, fontWeight: '700' }}>Username Email</Text>
                   <View
                     style={{
                       borderWidth: 1,
@@ -1198,6 +1205,7 @@ export default function MobileEmailScreen() {
                     Gunakan huruf kecil, angka, titik, underscore, atau dash.
                   </Text>
 
+                  <Text style={{ color: '#0f172a', fontSize: 13, fontWeight: '700' }}>Password</Text>
                   <TextInput
                     value={registerPass}
                     onChangeText={setRegisterPass}
@@ -1214,6 +1222,7 @@ export default function MobileEmailScreen() {
                     }}
                   />
 
+                  <Text style={{ color: '#0f172a', fontSize: 13, fontWeight: '700' }}>Konfirmasi Password</Text>
                   <TextInput
                     value={registerPassConfirm}
                     onChangeText={setRegisterPassConfirm}
@@ -1310,7 +1319,7 @@ export default function MobileEmailScreen() {
                   }}
                 >
                   <Feather name="arrow-left" size={14} color="#c2410c" />
-                  <Text style={{ color: '#c2410c', fontSize: 12, fontWeight: '700' }}>Kembali ke Inbox Native</Text>
+                  <Text style={{ color: '#c2410c', fontSize: 12, fontWeight: '700' }}>Tutup Panel Lengkap</Text>
                 </Pressable>
               </View>
             </SectionCard>

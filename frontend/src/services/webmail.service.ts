@@ -45,6 +45,55 @@ export interface WebmailPasswordResetResult {
   resetAt: string;
 }
 
+export interface WebmailMessageSummary {
+  uid: number;
+  guid: string;
+  messageId: string | null;
+  subject: string;
+  from: string;
+  fromLabel: string;
+  date: string | null;
+  snippet: string;
+  isRead: boolean;
+}
+
+export interface WebmailMessageDetail extends WebmailMessageSummary {
+  to: string | null;
+  cc: string | null;
+  plainText: string | null;
+  html: string | null;
+  previewText: string;
+}
+
+export interface WebmailMessageListResult {
+  mailboxIdentity: string;
+  mailboxAvailable: boolean;
+  messages: WebmailMessageSummary[];
+  pagination: {
+    page: number;
+    limit: number;
+    total: number;
+    totalPages: number;
+  };
+}
+
+export interface WebmailSendPayload {
+  to: string[] | string;
+  cc?: string[] | string;
+  subject?: string;
+  plainText: string;
+  html?: string | null;
+  inReplyToMessageId?: string | null;
+  references?: string[];
+}
+
+export interface WebmailSendResult {
+  mailboxIdentity: string;
+  messageId: string;
+  sentAt: string;
+  to: string[];
+}
+
 export const webmailService = {
   getConfig: async (): Promise<ApiResponse<WebmailConfig>> => {
     const response = await api.get<ApiResponse<WebmailConfig>>('/webmail/config');
@@ -58,6 +107,30 @@ export const webmailService = {
 
   resetPassword: async (): Promise<ApiResponse<WebmailPasswordResetResult>> => {
     const response = await api.post<ApiResponse<WebmailPasswordResetResult>>('/webmail/reset-password');
+    return response.data;
+  },
+
+  getMessages: async (params?: { page?: number; limit?: number }): Promise<ApiResponse<WebmailMessageListResult>> => {
+    const response = await api.get<ApiResponse<WebmailMessageListResult>>('/webmail/messages', {
+      params,
+    });
+    return response.data;
+  },
+
+  getMessageDetail: async (guid: string): Promise<ApiResponse<WebmailMessageDetail>> => {
+    const response = await api.get<ApiResponse<WebmailMessageDetail>>(`/webmail/messages/${encodeURIComponent(guid)}`);
+    return response.data;
+  },
+
+  markMessageRead: async (guid: string): Promise<ApiResponse<{ guid: string; mailboxIdentity: string; markedAt: string }>> => {
+    const response = await api.patch<ApiResponse<{ guid: string; mailboxIdentity: string; markedAt: string }>>(
+      `/webmail/messages/${encodeURIComponent(guid)}/read`,
+    );
+    return response.data;
+  },
+
+  sendMessage: async (payload: WebmailSendPayload): Promise<ApiResponse<WebmailSendResult>> => {
+    const response = await api.post<ApiResponse<WebmailSendResult>>('/webmail/messages/send', payload);
     return response.data;
   },
 
