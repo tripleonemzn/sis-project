@@ -219,6 +219,8 @@ function SubjectCard({ item }: { item: StudentGradeOverviewSubjectRow }) {
 }
 
 function ReportSubjectCard({ item }: { item: StudentSemesterReportSubjectRow }) {
+  const isLocked = item.status === 'LOCKED';
+
   return (
     <div className="rounded-3xl border border-slate-200 bg-white p-5 shadow-sm">
       <div className="flex flex-col gap-4 lg:flex-row lg:items-start lg:justify-between">
@@ -229,25 +231,35 @@ function ReportSubjectCard({ item }: { item: StudentSemesterReportSubjectRow }) 
             {item.teacher?.name ? ` • ${item.teacher.name}` : ''}
           </p>
         </div>
-        <div className="grid gap-3 sm:grid-cols-3">
-          <div className="rounded-2xl border border-slate-200 bg-slate-50/80 px-4 py-3">
-            <p className="text-xs font-semibold uppercase tracking-[0.14em] text-slate-500">KKM</p>
-            <p className="mt-2 text-xl font-bold text-slate-900">{item.kkm}</p>
+        {isLocked ? (
+          <div className="rounded-2xl border border-amber-100 bg-amber-50/80 px-4 py-3 text-sm text-amber-700">
+            Nilai rapor untuk mapel ini akan tampil setelah rapor semester dirilis.
           </div>
-          <div className="rounded-2xl border border-slate-200 bg-slate-50/80 px-4 py-3">
-            <p className="text-xs font-semibold uppercase tracking-[0.14em] text-slate-500">Nilai Akhir</p>
-            <p className="mt-2 text-xl font-bold text-slate-900">{formatScore(item.finalScore)}</p>
+        ) : (
+          <div className="grid gap-3 sm:grid-cols-3">
+            <div className="rounded-2xl border border-slate-200 bg-slate-50/80 px-4 py-3">
+              <p className="text-xs font-semibold uppercase tracking-[0.14em] text-slate-500">KKM</p>
+              <p className="mt-2 text-xl font-bold text-slate-900">{item.kkm}</p>
+            </div>
+            <div className="rounded-2xl border border-slate-200 bg-slate-50/80 px-4 py-3">
+              <p className="text-xs font-semibold uppercase tracking-[0.14em] text-slate-500">Nilai Akhir</p>
+              <p className="mt-2 text-xl font-bold text-slate-900">{formatScore(item.finalScore)}</p>
+            </div>
+            <div className="rounded-2xl border border-slate-200 bg-slate-50/80 px-4 py-3">
+              <p className="text-xs font-semibold uppercase tracking-[0.14em] text-slate-500">Predikat</p>
+              <p className="mt-2 text-xl font-bold text-slate-900">{item.predicate || '-'}</p>
+            </div>
           </div>
-          <div className="rounded-2xl border border-slate-200 bg-slate-50/80 px-4 py-3">
-            <p className="text-xs font-semibold uppercase tracking-[0.14em] text-slate-500">Predikat</p>
-            <p className="mt-2 text-xl font-bold text-slate-900">{item.predicate || '-'}</p>
-          </div>
-        </div>
+        )}
       </div>
 
       <div className="mt-4 rounded-2xl border border-slate-200 bg-slate-50/80 p-4">
-        <p className="text-xs font-semibold uppercase tracking-[0.14em] text-slate-500">Catatan Kompetensi</p>
-        <p className="mt-2 text-sm leading-6 text-slate-700">{item.description || 'Deskripsi rapor belum tersedia.'}</p>
+        <p className="text-xs font-semibold uppercase tracking-[0.14em] text-slate-500">
+          {isLocked ? 'Status Rilis' : 'Catatan Kompetensi'}
+        </p>
+        <p className="mt-2 text-sm leading-6 text-slate-700">
+          {isLocked ? 'Detail rapor semester masih terkunci sampai tanggal rilis tiba.' : item.description || 'Deskripsi rapor belum tersedia.'}
+        </p>
       </div>
     </div>
   );
@@ -441,18 +453,21 @@ export default function StudentGradesPage() {
                   <div
                     className={clsx(
                       'rounded-3xl border p-5',
-                      reportCard.status.tone === 'green' && 'border-emerald-100 bg-emerald-50/80',
-                      reportCard.status.tone === 'amber' && 'border-amber-100 bg-amber-50/80',
-                      reportCard.status.tone === 'red' && 'border-rose-100 bg-rose-50/80',
+                      reportCard.release.tone === 'green' && 'border-emerald-100 bg-emerald-50/80',
+                      reportCard.release.tone === 'amber' && 'border-amber-100 bg-amber-50/80',
+                      reportCard.release.tone === 'red' && 'border-rose-100 bg-rose-50/80',
                     )}
                   >
                     <div className="flex flex-col gap-3 lg:flex-row lg:items-start lg:justify-between">
                       <div>
                         <div className="inline-flex items-center gap-2 rounded-full bg-white/80 px-3 py-1.5 text-sm font-semibold text-slate-700">
                           <CalendarDays className="h-4 w-4" />
-                          Status Semester: {reportCard.status.label}
+                          Rilis Semester: {reportCard.release.label}
                         </div>
-                        <p className="mt-3 text-sm text-slate-700">{reportCard.status.description}</p>
+                        <p className="mt-3 text-sm text-slate-700">{reportCard.release.description}</p>
+                        <p className="mt-2 text-xs font-medium text-slate-600">
+                          Kesiapan data: {reportCard.status.label}
+                        </p>
                       </div>
                       <div className="rounded-2xl border border-white/70 bg-white/70 px-4 py-3 text-sm text-slate-600">
                         <p className="font-semibold text-slate-900">
@@ -493,7 +508,16 @@ export default function StudentGradesPage() {
                     />
                   </div>
 
-                  {reportCard.homeroomNote ? (
+                  {!reportCard.release.canViewDetails ? (
+                    <div className="rounded-3xl border border-amber-100 bg-amber-50/80 p-5">
+                      <h2 className="text-xl font-bold text-slate-900">Detail Rapor Menunggu Rilis</h2>
+                      <p className="mt-2 text-sm leading-6 text-slate-700">
+                        Nama mapel semester sudah ditampilkan agar Anda tahu cakupan rapor yang akan keluar, tetapi nilai akhir, predikat, dan catatan kompetensi baru akan terbuka setelah tanggal rilis rapor.
+                      </p>
+                    </div>
+                  ) : null}
+
+                  {reportCard.release.canViewDetails && reportCard.homeroomNote ? (
                     <div className="rounded-3xl border border-slate-200 bg-white p-5">
                       <h2 className="text-xl font-bold text-slate-900">Catatan Wali Kelas</h2>
                       <p className="mt-3 text-sm leading-6 text-slate-700">{reportCard.homeroomNote}</p>

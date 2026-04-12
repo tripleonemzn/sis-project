@@ -269,6 +269,7 @@ function ProgramSubjectCard(props: {
 
 function ReportSubjectCard({ item }: { item: StudentSemesterReportSubjectRow }) {
   const { colors } = useAppTheme();
+  const isLocked = item.status === 'LOCKED';
 
   return (
     <View
@@ -290,48 +291,65 @@ function ReportSubjectCard({ item }: { item: StudentSemesterReportSubjectRow }) 
         </Text>
       </View>
 
-      <View style={{ flexDirection: 'row', flexWrap: 'wrap', gap: 8 }}>
+      {isLocked ? (
         <View
           style={{
             borderWidth: 1,
-            borderColor: colors.border,
-            backgroundColor: colors.surfaceMuted,
-            borderRadius: 999,
-            paddingHorizontal: 10,
-            paddingVertical: 6,
+            borderColor: '#fde68a',
+            backgroundColor: '#fffbeb',
+            borderRadius: 14,
+            paddingHorizontal: 12,
+            paddingVertical: 12,
           }}
         >
-          <Text style={{ color: colors.textMuted, fontSize: 11, fontWeight: '600' }}>KKM {item.kkm}</Text>
-        </View>
-        <View
-          style={{
-            borderWidth: 1,
-            borderColor: colors.border,
-            backgroundColor: colors.surfaceMuted,
-            borderRadius: 999,
-            paddingHorizontal: 10,
-            paddingVertical: 6,
-          }}
-        >
-          <Text style={{ color: colors.textMuted, fontSize: 11, fontWeight: '600' }}>
-            Nilai Akhir {formatScore(item.finalScore)}
+          <Text style={{ color: '#b45309', fontSize: 12, lineHeight: 18, fontWeight: '600' }}>
+            Nilai rapor untuk mapel ini akan tampil setelah rapor semester dirilis.
           </Text>
         </View>
-        <View
-          style={{
-            borderWidth: 1,
-            borderColor: colors.border,
-            backgroundColor: colors.surfaceMuted,
-            borderRadius: 999,
-            paddingHorizontal: 10,
-            paddingVertical: 6,
-          }}
-        >
-          <Text style={{ color: colors.textMuted, fontSize: 11, fontWeight: '600' }}>
-            Predikat {item.predicate || '-'}
-          </Text>
+      ) : (
+        <View style={{ flexDirection: 'row', flexWrap: 'wrap', gap: 8 }}>
+          <View
+            style={{
+              borderWidth: 1,
+              borderColor: colors.border,
+              backgroundColor: colors.surfaceMuted,
+              borderRadius: 999,
+              paddingHorizontal: 10,
+              paddingVertical: 6,
+            }}
+          >
+            <Text style={{ color: colors.textMuted, fontSize: 11, fontWeight: '600' }}>KKM {item.kkm}</Text>
+          </View>
+          <View
+            style={{
+              borderWidth: 1,
+              borderColor: colors.border,
+              backgroundColor: colors.surfaceMuted,
+              borderRadius: 999,
+              paddingHorizontal: 10,
+              paddingVertical: 6,
+            }}
+          >
+            <Text style={{ color: colors.textMuted, fontSize: 11, fontWeight: '600' }}>
+              Nilai Akhir {formatScore(item.finalScore)}
+            </Text>
+          </View>
+          <View
+            style={{
+              borderWidth: 1,
+              borderColor: colors.border,
+              backgroundColor: colors.surfaceMuted,
+              borderRadius: 999,
+              paddingHorizontal: 10,
+              paddingVertical: 6,
+            }}
+          >
+            <Text style={{ color: colors.textMuted, fontSize: 11, fontWeight: '600' }}>
+              Predikat {item.predicate || '-'}
+            </Text>
+          </View>
         </View>
-      </View>
+      )}
 
       <View
         style={{
@@ -344,10 +362,10 @@ function ReportSubjectCard({ item }: { item: StudentSemesterReportSubjectRow }) 
         }}
       >
         <Text style={{ color: colors.textMuted, fontSize: 11, fontWeight: '700', letterSpacing: 0.6 }}>
-          CATATAN KOMPETENSI
+          {isLocked ? 'STATUS RILIS' : 'CATATAN KOMPETENSI'}
         </Text>
         <Text style={{ color: colors.text, fontSize: 13, lineHeight: 20, marginTop: 6 }}>
-          {item.description || 'Deskripsi rapor belum tersedia.'}
+          {isLocked ? 'Detail rapor semester masih terkunci sampai tanggal rilis tiba.' : item.description || 'Deskripsi rapor belum tersedia.'}
         </Text>
       </View>
     </View>
@@ -607,15 +625,15 @@ export default function GradesScreen() {
                 style={{
                   borderWidth: 1,
                   borderColor:
-                    overview.reportCard.status.tone === 'green'
+                    overview.reportCard.release.tone === 'green'
                       ? '#bbf7d0'
-                      : overview.reportCard.status.tone === 'amber'
+                      : overview.reportCard.release.tone === 'amber'
                         ? '#fde68a'
                         : '#fecdd3',
                   backgroundColor:
-                    overview.reportCard.status.tone === 'green'
+                    overview.reportCard.release.tone === 'green'
                       ? '#f0fdf4'
-                      : overview.reportCard.status.tone === 'amber'
+                      : overview.reportCard.release.tone === 'amber'
                         ? '#fffbeb'
                         : '#fff1f2',
                   borderRadius: 18,
@@ -623,26 +641,29 @@ export default function GradesScreen() {
                   paddingVertical: 14,
                   gap: 10,
                 }}
-              >
-                <View
-                  style={{
-                    alignSelf: 'flex-start',
+                >
+                  <View
+                    style={{
+                      alignSelf: 'flex-start',
                     borderRadius: 999,
                     backgroundColor: colors.surface,
                     paddingHorizontal: 10,
                     paddingVertical: 6,
                   }}
-                >
-                  <Text style={{ color: colors.text, fontSize: 12, fontWeight: '700' }}>
-                    Status Semester: {overview.reportCard.status.label}
+                  >
+                    <Text style={{ color: colors.text, fontSize: 12, fontWeight: '700' }}>
+                      Rilis Semester: {overview.reportCard.release.label}
+                    </Text>
+                  </View>
+                  <Text style={{ color: colors.text, fontSize: 13, lineHeight: 20 }}>
+                    {overview.reportCard.release.description}
                   </Text>
-                </View>
-                <Text style={{ color: colors.text, fontSize: 13, lineHeight: 20 }}>
-                  {overview.reportCard.status.description}
-                </Text>
-                <Text style={{ color: colors.textMuted, fontSize: 12 }}>
-                  {overview.reportCard.reportDate
-                    ? `${overview.reportCard.reportDate.place} • ${formatDateLabel(overview.reportCard.reportDate.date)} • ${overview.reportCard.semesterType}`
+                  <Text style={{ color: colors.textMuted, fontSize: 12 }}>
+                    Kesiapan data: {overview.reportCard.status.label}
+                  </Text>
+                  <Text style={{ color: colors.textMuted, fontSize: 12 }}>
+                    {overview.reportCard.reportDate
+                      ? `${overview.reportCard.reportDate.place} • ${formatDateLabel(overview.reportCard.reportDate.date)} • ${overview.reportCard.semesterType}`
                     : `Tanggal rapor belum diatur • ${overview.reportCard.semesterType}`}
                 </Text>
               </View>
@@ -692,7 +713,25 @@ export default function GradesScreen() {
                 </View>
               </View>
 
-              {overview.reportCard.homeroomNote ? (
+              {!overview.reportCard.release.canViewDetails ? (
+                <View
+                  style={{
+                    borderWidth: 1,
+                    borderColor: '#fde68a',
+                    backgroundColor: '#fffbeb',
+                    borderRadius: 18,
+                    paddingHorizontal: 14,
+                    paddingVertical: 14,
+                  }}
+                >
+                  <Text style={{ color: colors.text, fontSize: 18, fontWeight: '800' }}>Detail Rapor Menunggu Rilis</Text>
+                  <Text style={{ color: colors.text, marginTop: 8, lineHeight: 22 }}>
+                    Nama mapel semester sudah ditampilkan, tetapi nilai akhir, predikat, dan catatan kompetensi baru akan terbuka setelah tanggal rilis rapor.
+                  </Text>
+                </View>
+              ) : null}
+
+              {overview.reportCard.release.canViewDetails && overview.reportCard.homeroomNote ? (
                 <View
                   style={{
                     borderWidth: 1,

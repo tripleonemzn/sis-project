@@ -119,7 +119,7 @@ export interface StudentSemesterReportSubjectRow {
   finalScore: number | null;
   predicate: string | null;
   description: string | null;
-  status: 'AVAILABLE' | 'PENDING';
+  status: 'AVAILABLE' | 'PENDING' | 'LOCKED';
 }
 
 export interface StudentSemesterReportData {
@@ -129,6 +129,13 @@ export interface StudentSemesterReportData {
     date: string;
     reportType: string;
   } | null;
+  release: {
+    code: 'NOT_SCHEDULED' | 'SCHEDULED' | 'OPEN';
+    label: string;
+    tone: 'red' | 'amber' | 'green';
+    description: string;
+    canViewDetails: boolean;
+  };
   status: {
     code: 'NOT_READY' | 'PARTIAL' | 'READY';
     label: string;

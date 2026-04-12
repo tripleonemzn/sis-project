@@ -45,6 +45,7 @@ type StudentOverviewComponentRow = {
 }
 
 type StudentSemesterReportStatusCode = 'NOT_READY' | 'PARTIAL' | 'READY'
+type StudentSemesterReportReleaseCode = 'NOT_SCHEDULED' | 'SCHEDULED' | 'OPEN'
 
 type StudentScoreEntryFindManyDelegate = {
   findMany: (args: unknown) => Promise<unknown[]>
@@ -981,6 +982,57 @@ function resolveCurrentSemesterFromAcademicYear(academicYear: {
 
 function formatSemesterDisplayLabel(semester: Semester): string {
   return semester === Semester.EVEN ? 'Genap' : 'Ganjil'
+}
+
+function buildLocalDateKey(value: Date) {
+  const year = value.getFullYear()
+  const month = String(value.getMonth() + 1).padStart(2, '0')
+  const day = String(value.getDate()).padStart(2, '0')
+  return `${year}-${month}-${day}`
+}
+
+function resolveStudentSemesterReportRelease(params: {
+  reportDate?: { date?: Date | null } | null
+  now?: Date
+}): {
+  code: StudentSemesterReportReleaseCode
+  label: string
+  tone: 'red' | 'amber' | 'green'
+  description: string
+  canViewDetails: boolean
+} {
+  const reportDateValue = params.reportDate?.date ? new Date(params.reportDate.date) : null
+  if (!reportDateValue || Number.isNaN(reportDateValue.getTime())) {
+    return {
+      code: 'NOT_SCHEDULED',
+      label: 'Belum dirilis',
+      tone: 'red',
+      description: 'Tanggal rapor semester belum diatur, jadi detail rapor belum bisa dibuka.',
+      canViewDetails: false,
+    }
+  }
+
+  const now = params.now ? new Date(params.now) : new Date()
+  const todayKey = buildLocalDateKey(now)
+  const reportDateKey = buildLocalDateKey(reportDateValue)
+
+  if (todayKey < reportDateKey) {
+    return {
+      code: 'SCHEDULED',
+      label: 'Menunggu rilis',
+      tone: 'amber',
+      description: 'Rapor semester sudah dijadwalkan, tetapi belum memasuki tanggal rilis.',
+      canViewDetails: false,
+    }
+  }
+
+  return {
+    code: 'OPEN',
+    label: 'Sudah dirilis',
+    tone: 'green',
+    description: 'Rapor semester sudah dirilis dan detail nilainya bisa dilihat.',
+    canViewDetails: true,
+  }
 }
 
 function normalizeNullableScore(raw: unknown): number | null {
@@ -2856,19 +2908,20 @@ export const getStudentGradeOverview = async (req: Request, res: Response) => {
       .map((row) => row.finalScore)
       .filter((value): value is number => value !== null && value !== undefined)
 
+    const reportRelease = resolveStudentSemesterReportRelease({ reportDate })
+
     const reportCardSubjects = visibleSubjectRows
       .map((row) => {
-        const report = reportBySubjectId.get(row.subject.id) || null
         const hasReportData = row.visibility.hasReportSnapshot
 
         return {
           subject: row.subject,
           teacher: row.teacher,
           kkm: row.kkm,
-          finalScore: hasReportData ? row.finalScore : null,
-          predicate: hasReportData ? row.predicate : null,
-          description: hasReportData ? row.description : null,
-          status: hasReportData ? 'AVAILABLE' : 'PENDING',
+          finalScore: reportRelease.canViewDetails && hasReportData ? row.finalScore : null,
+          predicate: reportRelease.canViewDetails && hasReportData ? row.predicate : null,
+          description: reportRelease.canViewDetails && hasReportData ? row.description : null,
+          status: reportRelease.canViewDetails ? (hasReportData ? 'AVAILABLE' : 'PENDING') : 'LOCKED',
         }
       })
       .sort((a, b) => a.subject.name.localeCompare(b.subject.name, 'id-ID'))
@@ -2962,6 +3015,7 @@ export const getStudentGradeOverview = async (req: Request, res: Response) => {
                 reportType: reportDate.reportType,
               }
             : null,
+          release: reportRelease,
           status: {
             code: reportStatusCode,
             label: reportStatusMeta[reportStatusCode].label,
@@ -2973,10 +3027,12 @@ export const getStudentGradeOverview = async (req: Request, res: Response) => {
             availableSubjects: availableReportSubjects,
             missingSubjects: Math.max(expectedReportSubjects - availableReportSubjects, 0),
             averageFinalScore:
-              reportFinalScores.length > 0 ? roundDisplayScore(calculateAverage(reportFinalScores)) : null,
+              reportRelease.canViewDetails && reportFinalScores.length > 0
+                ? roundDisplayScore(calculateAverage(reportFinalScores))
+                : null,
           },
           attendance: attendanceSummary,
-          homeroomNote: String(homeroomNote?.note || '').trim() || null,
+          homeroomNote: reportRelease.canViewDetails ? String(homeroomNote?.note || '').trim() || null : null,
           subjects: reportCardSubjects,
         },
       },
@@ -4336,9 +4392,14 @@ export const getStudentReportCard = async (req: Request, res: Response) => {
     const { student_id, academic_year_id, semester } = req.query
     const user = (req as any).user;
     const targetStudentId = Number(student_id);
+    const normalizedSemester = semester as Semester
 
     if (!student_id || !academic_year_id || !semester) {
       throw new ApiError(400, 'student_id, academic_year_id, and semester are required')
+    }
+
+    if (normalizedSemester !== Semester.ODD && normalizedSemester !== Semester.EVEN) {
+      throw new ApiError(400, 'semester tidak valid')
     }
 
     // Security: Students can only view their own report card
@@ -4362,6 +4423,24 @@ export const getStudentReportCard = async (req: Request, res: Response) => {
       const childIds = new Set((parent?.children || []).map((child) => child.id));
       if (!childIds.has(targetStudentId)) {
         throw new ApiError(403, 'Forbidden: You can only view report card of your linked child')
+      }
+    }
+
+    if (user.role === 'STUDENT') {
+      const reportType = normalizedSemester === Semester.ODD ? ExamType.SAS : ExamType.SAT
+      const reportDate = await prisma.reportDate.findFirst({
+        where: {
+          academicYearId: Number(academic_year_id),
+          semester: normalizedSemester,
+          reportType,
+        },
+        select: {
+          date: true,
+        },
+      })
+      const release = resolveStudentSemesterReportRelease({ reportDate })
+      if (!release.canViewDetails) {
+        throw new ApiError(403, release.description)
       }
     }
 
@@ -4420,7 +4499,7 @@ export const getStudentReportCard = async (req: Request, res: Response) => {
       where: {
         studentId: targetStudentId,
         academicYearId: Number(academic_year_id),
-        semester: semester as Semester
+        semester: normalizedSemester
       },
       include: {
         subject: true
@@ -4436,7 +4515,7 @@ export const getStudentReportCard = async (req: Request, res: Response) => {
       where: {
         studentId: targetStudentId,
         academicYearId: Number(academic_year_id),
-        semester: semester as Semester
+        semester: normalizedSemester
       }
     })
 
