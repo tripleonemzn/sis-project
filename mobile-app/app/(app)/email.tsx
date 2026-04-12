@@ -1,5 +1,5 @@
 import { useMemo, useRef, useState } from 'react';
-import type { ReactNode } from 'react';
+import type { ComponentProps, ReactNode } from 'react';
 import { Redirect } from 'expo-router';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { ActivityIndicator, Pressable, ScrollView, Text, TextInput, UIManager, View } from 'react-native';
@@ -8,6 +8,7 @@ import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { WebView } from 'react-native-webview';
 import { AppLoadingScreen } from '../../src/components/AppLoadingScreen';
 import MobileDetailModal from '../../src/components/MobileDetailModal';
+import MobileMenuTabBar from '../../src/components/MobileMenuTabBar';
 import { QueryStateView } from '../../src/components/QueryStateView';
 import { BRAND_COLORS } from '../../src/config/brand';
 import { useAuth } from '../../src/features/auth/AuthProvider';
@@ -19,6 +20,21 @@ import { useIsScreenActive } from '../../src/hooks/useIsScreenActive';
 
 const ALLOWED_WEBMAIL_ROLES = new Set(['ADMIN', 'TEACHER', 'PRINCIPAL', 'STAFF', 'EXTRACURRICULAR_TUTOR']);
 const MAILBOX_USERNAME_PATTERN = /^[a-z0-9][a-z0-9._-]{2,62}$/;
+type FeatherIconName = ComponentProps<typeof Feather>['name'];
+type WebmailFolderKey = 'INBOX' | 'Drafts' | 'Sent' | 'Junk' | 'Archive';
+
+const WEBMAIL_FOLDER_SHORTCUTS: Array<{
+  key: WebmailFolderKey;
+  label: string;
+  iconName: FeatherIconName;
+  usesPanel: boolean;
+}> = [
+  { key: 'INBOX', label: 'Inbox', iconName: 'inbox', usesPanel: false },
+  { key: 'Drafts', label: 'Draft', iconName: 'edit-2', usesPanel: true },
+  { key: 'Sent', label: 'Terkirim', iconName: 'send', usesPanel: true },
+  { key: 'Junk', label: 'Spam', iconName: 'alert-circle', usesPanel: true },
+  { key: 'Archive', label: 'Arsip', iconName: 'archive', usesPanel: true },
+];
 
 type BridgeCredentials = {
   email: string;
@@ -62,6 +78,21 @@ function getInboxUrl(rawLoginUrl: string) {
     return parsed.toString();
   } catch {
     return rawLoginUrl;
+  }
+}
+
+function getMailboxFolderUrl(rawLoginUrl: string, folderKey: WebmailFolderKey) {
+  try {
+    const parsed = new URL(rawLoginUrl);
+    parsed.search = '';
+    parsed.hash = '';
+    parsed.searchParams.set('_task', 'mail');
+    parsed.searchParams.set('_mbox', folderKey);
+    parsed.searchParams.set('_layout', 'list');
+    parsed.searchParams.set('_skin', 'elastic');
+    return parsed.toString();
+  } catch {
+    return getInboxUrl(rawLoginUrl);
   }
 }
 
@@ -208,6 +239,68 @@ function EmailInboxItem({
   );
 }
 
+function ActionListRow({
+  iconName,
+  label,
+  subtitle,
+  onPress,
+  disabled = false,
+  tone = 'default',
+}: {
+  iconName: FeatherIconName;
+  label: string;
+  subtitle: string;
+  onPress: () => void;
+  disabled?: boolean;
+  tone?: 'default' | 'warning' | 'primary';
+}) {
+  const palette =
+    tone === 'warning'
+      ? { border: '#fed7aa', background: '#fff7ed', iconBg: '#ffedd5', icon: '#c2410c', text: '#9a3412' }
+      : tone === 'primary'
+        ? { border: '#c7d2fe', background: '#eef2ff', iconBg: '#e0e7ff', icon: '#1d4ed8', text: '#1e3a8a' }
+        : { border: '#dbe4f4', background: '#ffffff', iconBg: '#f8fafc', icon: '#334155', text: '#0f172a' };
+
+  return (
+    <Pressable
+      onPress={onPress}
+      disabled={disabled}
+      style={({ pressed }) => ({
+        borderRadius: 14,
+        borderWidth: 1,
+        borderColor: palette.border,
+        backgroundColor: palette.background,
+        paddingHorizontal: 12,
+        paddingVertical: 11,
+        flexDirection: 'row',
+        alignItems: 'center',
+        gap: 10,
+        opacity: disabled ? 0.6 : pressed ? 0.92 : 1,
+      })}
+    >
+      <View
+        style={{
+          width: 34,
+          height: 34,
+          borderRadius: 12,
+          backgroundColor: palette.iconBg,
+          alignItems: 'center',
+          justifyContent: 'center',
+        }}
+      >
+        <Feather name={iconName} size={15} color={palette.icon} />
+      </View>
+
+      <View style={{ flex: 1, gap: 2 }}>
+        <Text style={{ color: palette.text, fontSize: 13, fontWeight: '700' }}>{label}</Text>
+        <Text style={{ color: '#64748b', fontSize: 11.5, lineHeight: 17 }}>{subtitle}</Text>
+      </View>
+
+      <Feather name="chevron-right" size={16} color="#94a3b8" />
+    </Pressable>
+  );
+}
+
 export default function MobileEmailScreen() {
   const insets = useSafeAreaInsets();
   const queryClient = useQueryClient();
@@ -222,6 +315,7 @@ export default function MobileEmailScreen() {
   const [panelError, setPanelError] = useState<string | null>(null);
   const [isWebmailMode, setIsWebmailMode] = useState(false);
   const [isRegisterMode, setIsRegisterMode] = useState(false);
+  const [isPanelAccessMode, setIsPanelAccessMode] = useState(false);
   const [loginUser, setLoginUser] = useState('');
   const [hasEditedLoginUser, setHasEditedLoginUser] = useState(false);
   const [loginPass, setLoginPass] = useState('');
@@ -236,6 +330,8 @@ export default function MobileEmailScreen() {
     resetAt: string;
   } | null>(null);
   const [isEmailDetailVisible, setIsEmailDetailVisible] = useState(false);
+  const [activeFolderKey, setActiveFolderKey] = useState<WebmailFolderKey>('INBOX');
+  const [inboxSectionY, setInboxSectionY] = useState(0);
   const [panelSectionY, setPanelSectionY] = useState(0);
   const [bridgeCredentials, setBridgeCredentials] = useState<BridgeCredentials | null>(null);
   const [selectedEmailGuid, setSelectedEmailGuid] = useState<string | null>(null);
@@ -332,15 +428,21 @@ export default function MobileEmailScreen() {
       isScreenActive &&
       !isWebmailMode &&
       emailFeedQuery.data?.mailboxAvailable !== false &&
-      (isEmailDetailVisible || composeModeKind === 'reply'),
+      (isEmailDetailVisible || (isComposeMode && composeModeKind === 'reply')),
     staleTime: 30_000,
   });
 
+  const activeFolderLabel =
+    WEBMAIL_FOLDER_SHORTCUTS.find((item) => item.key === activeFolderKey)?.label || 'Inbox';
+
   const startSsoMutation = useMutation({
-    mutationFn: () => webmailApi.startSso(),
-    onSuccess: (data) => {
+    mutationFn: (folderKey?: WebmailFolderKey) => webmailApi.startSso().then((data) => ({ data, folderKey })),
+    onSuccess: ({ data, folderKey }) => {
+      const nextFolderKey = folderKey || activeFolderKey;
+      setActiveFolderKey(nextFolderKey);
       setPanelError(null);
-      setWebmailUrl(data.launchUrl);
+      setIsPanelAccessMode(false);
+      setWebmailUrl(getMailboxFolderUrl(data.launchUrl, nextFolderKey));
       setIsWebmailMode(true);
       setWebviewKey((value) => value + 1);
     },
@@ -439,15 +541,18 @@ export default function MobileEmailScreen() {
   });
 
   const openBridgePanel = async (email: string, password: string) => {
+    const targetFolderKey = activeFolderKey;
     setPanelError(null);
+    setIsPanelAccessMode(false);
     setBridgeCredentials({ email, password });
-    setWebmailUrl(bridgeLoginUrl);
+    setWebmailUrl(getMailboxFolderUrl(bridgeLoginUrl, targetFolderKey));
     setIsWebmailMode(true);
     setWebviewKey((value) => value + 1);
   };
 
   const leavePanelMode = () => {
     setIsWebmailMode(false);
+    setActiveFolderKey('INBOX');
     setBridgeCredentials(null);
     setPanelError(null);
     setWebmailUrl(null);
@@ -456,6 +561,8 @@ export default function MobileEmailScreen() {
 
   const openNewCompose = () => {
     setIsEmailDetailVisible(false);
+    setIsPanelAccessMode(false);
+    setIsRegisterMode(false);
     setIsComposeMode(true);
     setComposeModeKind('new');
     setComposeTo('');
@@ -467,6 +574,8 @@ export default function MobileEmailScreen() {
   const openReplyCompose = () => {
     const replyTarget = String(selectedEmailDetailQuery.data?.from || selectedEmail?.from || '').trim();
     setIsEmailDetailVisible(false);
+    setIsPanelAccessMode(false);
+    setIsRegisterMode(false);
     setIsComposeMode(true);
     setComposeModeKind('reply');
     setComposeTo(replyTarget);
@@ -475,12 +584,16 @@ export default function MobileEmailScreen() {
     setComposeBody('');
   };
 
-  const openPanelAccess = () => {
+  const openPanelAccess = (targetFolderKey?: WebmailFolderKey) => {
+    const nextFolderKey = targetFolderKey || activeFolderKey;
     setPanelError(null);
     setIsRegisterMode(false);
     setIsEmailDetailVisible(false);
+    setIsComposeMode(false);
+    setIsPanelAccessMode(true);
+    setActiveFolderKey(nextFolderKey);
     if (isSsoMode) {
-      startSsoMutation.mutate();
+      startSsoMutation.mutate(nextFolderKey);
       return;
     }
     scrollViewRef.current?.scrollTo({
@@ -489,10 +602,37 @@ export default function MobileEmailScreen() {
     });
   };
 
+  const handleFolderShortcutPress = (folderKey: WebmailFolderKey, usesPanel: boolean) => {
+    setIsEmailDetailVisible(false);
+    setIsComposeMode(false);
+    setPanelError(null);
+    setResetError(null);
+    setResetResult(null);
+    setIsRegisterMode(false);
+    setActiveFolderKey(folderKey);
+
+    if (!usesPanel) {
+      setIsPanelAccessMode(false);
+      scrollViewRef.current?.scrollTo({
+        y: Math.max(inboxSectionY - 12, 0),
+        animated: true,
+      });
+      return;
+    }
+
+    if (isWebmailMode) {
+      setWebmailUrl(getMailboxFolderUrl(webmailUrl || bridgeLoginUrl, folderKey));
+      setWebviewKey((value) => value + 1);
+      return;
+    }
+
+    openPanelAccess(folderKey);
+  };
+
   const handleLogin = async () => {
     if (!config) return;
     if (isSsoMode) {
-      startSsoMutation.mutate();
+      startSsoMutation.mutate(activeFolderKey);
       return;
     }
 
@@ -540,6 +680,10 @@ export default function MobileEmailScreen() {
   };
 
   const handleResetPassword = () => {
+    setIsPanelAccessMode(true);
+    setIsRegisterMode(false);
+    setIsComposeMode(false);
+    setIsEmailDetailVisible(false);
     setRegisterError(null);
     setResetError(null);
     setResetResult(null);
@@ -548,7 +692,7 @@ export default function MobileEmailScreen() {
 
   const handleReload = () => {
     if (isSsoMode) {
-      startSsoMutation.mutate();
+      startSsoMutation.mutate(activeFolderKey);
       return;
     }
     setPanelError(null);
@@ -633,6 +777,21 @@ export default function MobileEmailScreen() {
     : {
         uri: webmailUrl || inboxUrl,
       };
+  const panelSectionTitle = isRegisterMode
+    ? 'Daftar Mailbox'
+    : isPanelAccessMode
+      ? activeFolderKey === 'INBOX'
+        ? 'Panel Lengkap Webmail'
+        : `Buka ${activeFolderLabel}`
+      : 'Kelola Akun Email';
+  const panelSectionSubtitle = isRegisterMode
+    ? 'Buat mailbox sekolah baru dengan username email pilihan Anda. Domain sekolah tetap mengikuti server.'
+    : isPanelAccessMode
+      ? activeFolderKey === 'INBOX'
+        ? 'Bagian ini dipakai hanya saat Anda perlu akses penuh seperti balas email, pencarian lanjut, atau pengelolaan folder.'
+        : `Folder ${activeFolderLabel} akan dibuka di panel webmail lengkap agar isi mailbox tetap utuh dan searah dengan server.`
+      : 'Inbox utama tetap tampil langsung di halaman ini. Gunakan bagian ini hanya saat Anda perlu folder lain, pencarian lanjutan, atau pengelolaan akun.';
+  const panelPrimaryActionLabel = activeFolderKey === 'INBOX' ? 'Panel Lengkap' : activeFolderLabel;
 
   return (
     <View style={{ flex: 1, backgroundColor: '#e9eefb' }}>
@@ -644,7 +803,7 @@ export default function MobileEmailScreen() {
         <View style={{ paddingHorizontal: 12, gap: 10 }}>
           <SectionCard
             title="Email"
-            subtitle="Kotak masuk utama sekarang ditampilkan langsung di halaman ini. Panel webmail lengkap tetap tersedia untuk pencarian lanjutan, arsip, dan compose."
+            subtitle="Inbox utama tampil langsung di halaman ini. Folder lain seperti Draft, Terkirim, Spam, dan Arsip bisa dibuka dari shortcut folder di bawah."
           >
             <View style={{ flexDirection: 'row', flexWrap: 'wrap', gap: 8 }}>
               <View
@@ -684,60 +843,92 @@ export default function MobileEmailScreen() {
               </Text>
             </View>
 
-            <View style={{ flexDirection: 'row', gap: 8 }}>
+            <View style={{ gap: 8 }}>
+              <Text style={{ color: '#0f172a', fontSize: 13, fontWeight: '700' }}>Folder Mailbox</Text>
+              <MobileMenuTabBar
+                items={WEBMAIL_FOLDER_SHORTCUTS.map((item) => ({
+                  key: item.key,
+                  label: item.label,
+                  iconName: item.iconName,
+                }))}
+                activeKey={activeFolderKey}
+                onChange={(key) => {
+                  const targetFolder = WEBMAIL_FOLDER_SHORTCUTS.find((item) => item.key === key);
+                  if (!targetFolder) return;
+                  handleFolderShortcutPress(targetFolder.key, targetFolder.usesPanel);
+                }}
+                minTabWidth={58}
+                maxTabWidth={58}
+                compact
+              />
+              <Text style={{ color: '#64748b', fontSize: 12, lineHeight: 18 }}>
+                Inbox tetap dibuka langsung di mobile. Folder lain akan diarahkan ke panel webmail lengkap agar Anda tetap bisa mengakses semua mailbox utama.
+              </Text>
+            </View>
+
+            <View style={{ flexDirection: 'row', flexWrap: 'wrap', gap: 8 }}>
               <Pressable
                 onPress={openNewCompose}
                 style={{
-                  flex: 1,
-                  borderRadius: 12,
+                  borderRadius: 999,
                   backgroundColor: '#0f172a',
-                  paddingVertical: 10,
+                  paddingHorizontal: 12,
+                  paddingVertical: 9,
                   alignItems: 'center',
                   justifyContent: 'center',
                   flexDirection: 'row',
                   gap: 6,
                 }}
               >
-                <Feather name="edit-3" size={14} color="#ffffff" />
-                <Text style={{ color: '#ffffff', fontSize: 12, fontWeight: '700' }}>Tulis Email Baru</Text>
+                <Feather name="edit-3" size={13} color="#ffffff" />
+                <Text style={{ color: '#ffffff', fontSize: 12, fontWeight: '700' }}>Tulis Email</Text>
               </Pressable>
 
               <Pressable
                 onPress={() => {
-                  if (selectedEmail) {
-                    openReplyCompose();
-                  }
+                  setIsRegisterMode(false);
+                  setIsPanelAccessMode(false);
+                  setIsComposeMode(false);
+                  scrollViewRef.current?.scrollTo({
+                    y: Math.max(panelSectionY - 12, 0),
+                    animated: true,
+                  });
                 }}
-                disabled={!selectedEmail}
                 style={{
-                  flex: 1,
-                  borderRadius: 12,
+                  borderRadius: 999,
                   borderWidth: 1,
-                  borderColor: '#cbd5e1',
-                  backgroundColor: selectedEmail ? '#ffffff' : '#f8fafc',
-                  paddingVertical: 10,
+                  borderColor: '#c7d2fe',
+                  backgroundColor: '#eef2ff',
+                  paddingHorizontal: 12,
+                  paddingVertical: 9,
                   alignItems: 'center',
                   justifyContent: 'center',
                   flexDirection: 'row',
                   gap: 6,
-                  opacity: selectedEmail ? 1 : 0.6,
                 }}
               >
-                <Feather name="corner-up-left" size={14} color="#1e293b" />
-                <Text style={{ color: '#1e293b', fontSize: 12, fontWeight: '700' }}>Balas Email</Text>
+                <Feather name="settings" size={13} color="#1d4ed8" />
+                <Text style={{ color: '#1d4ed8', fontSize: 12, fontWeight: '700' }}>Kelola Akun</Text>
               </Pressable>
             </View>
+
+            <Text style={{ color: '#64748b', fontSize: 11.5, lineHeight: 17 }}>
+              Balas email tetap tersedia saat Anda membuka detail salah satu inbox.
+            </Text>
           </SectionCard>
 
-          <SectionCard
-            title="Kotak Masuk"
-            subtitle="Daftar ini membaca mailbox sungguhan dari server, jadi isi inbox dan panel email tetap searah."
+          <View
+            onLayout={(event) => {
+              setInboxSectionY(event.nativeEvent.layout.y);
+            }}
           >
-            <View style={{ flexDirection: 'row', gap: 8 }}>
+            <SectionCard
+              title="Kotak Masuk"
+              subtitle="Daftar ini membaca mailbox sungguhan dari server, jadi isi inbox dan panel email tetap searah."
+            >
               <Pressable
                 onPress={() => emailFeedQuery.refetch()}
                 style={{
-                  flex: 1,
                   borderRadius: 12,
                   borderWidth: 1,
                   borderColor: '#cbd5e1',
@@ -756,90 +947,74 @@ export default function MobileEmailScreen() {
                 )}
                 <Text style={{ color: '#1e293b', fontSize: 12, fontWeight: '700' }}>Sinkronkan Inbox</Text>
               </Pressable>
+              <Text style={{ color: '#64748b', fontSize: 12, lineHeight: 18 }}>
+                Folder selain Inbox bisa dibuka dari shortcut ikon di atas tanpa membuat layar utama terasa penuh.
+              </Text>
 
-              <Pressable
-                onPress={openPanelAccess}
-                style={{
-                  flex: 1,
-                  borderRadius: 12,
-                  backgroundColor: '#3250b9',
-                  paddingVertical: 10,
-                  alignItems: 'center',
-                  justifyContent: 'center',
-                  flexDirection: 'row',
-                  gap: 6,
-                }}
-              >
-                <Feather name="inbox" size={14} color="#ffffff" />
-                <Text style={{ color: '#ffffff', fontSize: 12, fontWeight: '700' }}>
-                  {isSsoMode ? 'Buka Panel Lengkap' : 'Akses Panel Lengkap'}
-                </Text>
-              </Pressable>
-            </View>
-
-            {emailFeedQuery.isLoading ? (
-              <View style={{ paddingVertical: 12, alignItems: 'center', justifyContent: 'center', gap: 8 }}>
-                <ActivityIndicator size="small" color="#2563eb" />
-                <Text style={{ color: '#64748b', fontSize: 12 }}>Memuat kotak masuk...</Text>
-              </View>
-            ) : emailFeedQuery.isError ? (
-              <QueryStateView
-                type="error"
-                message={resolveErrorMessage(emailFeedQuery.error, 'Gagal memuat kotak masuk email.')}
-                onRetry={() => emailFeedQuery.refetch()}
-              />
-            ) : emailFeedQuery.data?.mailboxAvailable === false ? (
-              <View
-                style={{
-                  borderRadius: 14,
-                  borderWidth: 1,
-                  borderColor: '#fde68a',
-                  backgroundColor: '#fffbeb',
-                  paddingHorizontal: 12,
-                  paddingVertical: 14,
-                  gap: 6,
-                }}
-              >
-                <Text style={{ color: '#92400e', fontWeight: '700' }}>Mailbox belum tersedia</Text>
-                <Text style={{ color: '#78350f', fontSize: 12, lineHeight: 18 }}>
-                  Akun ini sudah dikenali, tetapi mailbox di server mail belum aktif. Jika role Anda mendukung pendaftaran mandiri, buat mailbox dulu di bagian panel bawah.
-                </Text>
-              </View>
-            ) : mailboxMessages.length === 0 ? (
-              <View
-                style={{
-                  borderRadius: 14,
-                  borderWidth: 1,
-                  borderColor: '#e2e8f0',
-                  backgroundColor: '#f8fafc',
-                  paddingHorizontal: 12,
-                  paddingVertical: 14,
-                  gap: 6,
-                }}
-              >
-                <Text style={{ color: '#0f172a', fontWeight: '700' }}>Inbox masih kosong</Text>
-                <Text style={{ color: '#64748b', fontSize: 12, lineHeight: 18 }}>
-                  Begitu email baru masuk ke mailbox sekolah, daftar inbox di sini akan langsung ikut terisi dan notifikasinya juga tetap masuk ke HP.
-                </Text>
-              </View>
-            ) : (
-              <View style={{ gap: 8 }}>
-                <Text style={{ color: '#64748b', fontSize: 12, lineHeight: 18 }}>
-                  Ketuk salah satu email untuk membuka detail dalam tampilan terpisah tanpa perlu scroll sampai ke bawah daftar inbox.
-                </Text>
-                {mailboxMessages.map((item) => (
-                  <EmailInboxItem
-                    key={item.guid}
-                    item={item}
-                    selected={item.guid === effectiveSelectedEmailGuid}
-                    onPress={() => {
-                      void handleSelectEmail(item);
-                    }}
-                  />
-                ))}
-              </View>
-            )}
-          </SectionCard>
+              {emailFeedQuery.isLoading ? (
+                <View style={{ paddingVertical: 12, alignItems: 'center', justifyContent: 'center', gap: 8 }}>
+                  <ActivityIndicator size="small" color="#2563eb" />
+                  <Text style={{ color: '#64748b', fontSize: 12 }}>Memuat kotak masuk...</Text>
+                </View>
+              ) : emailFeedQuery.isError ? (
+                <QueryStateView
+                  type="error"
+                  message={resolveErrorMessage(emailFeedQuery.error, 'Gagal memuat kotak masuk email.')}
+                  onRetry={() => emailFeedQuery.refetch()}
+                />
+              ) : emailFeedQuery.data?.mailboxAvailable === false ? (
+                <View
+                  style={{
+                    borderRadius: 14,
+                    borderWidth: 1,
+                    borderColor: '#fde68a',
+                    backgroundColor: '#fffbeb',
+                    paddingHorizontal: 12,
+                    paddingVertical: 14,
+                    gap: 6,
+                  }}
+                >
+                  <Text style={{ color: '#92400e', fontWeight: '700' }}>Mailbox belum tersedia</Text>
+                  <Text style={{ color: '#78350f', fontSize: 12, lineHeight: 18 }}>
+                    Akun ini sudah dikenali, tetapi mailbox di server mail belum aktif. Jika role Anda mendukung pendaftaran mandiri, buat mailbox dulu di bagian kelola akun di bawah.
+                  </Text>
+                </View>
+              ) : mailboxMessages.length === 0 ? (
+                <View
+                  style={{
+                    borderRadius: 14,
+                    borderWidth: 1,
+                    borderColor: '#e2e8f0',
+                    backgroundColor: '#f8fafc',
+                    paddingHorizontal: 12,
+                    paddingVertical: 14,
+                    gap: 6,
+                  }}
+                >
+                  <Text style={{ color: '#0f172a', fontWeight: '700' }}>Inbox masih kosong</Text>
+                  <Text style={{ color: '#64748b', fontSize: 12, lineHeight: 18 }}>
+                    Begitu email baru masuk ke mailbox sekolah, daftar inbox di sini akan langsung ikut terisi dan notifikasinya juga tetap masuk ke HP.
+                  </Text>
+                </View>
+              ) : (
+                <View style={{ gap: 8 }}>
+                  <Text style={{ color: '#64748b', fontSize: 12, lineHeight: 18 }}>
+                    Ketuk salah satu email untuk membuka detail dalam tampilan terpisah tanpa perlu scroll sampai ke bawah daftar inbox.
+                  </Text>
+                  {mailboxMessages.map((item) => (
+                    <EmailInboxItem
+                      key={item.guid}
+                      item={item}
+                      selected={item.guid === effectiveSelectedEmailGuid}
+                      onPress={() => {
+                        void handleSelectEmail(item);
+                      }}
+                    />
+                  ))}
+                </View>
+              )}
+            </SectionCard>
+          </View>
 
           {isComposeMode ? (
             <SectionCard
@@ -967,262 +1142,368 @@ export default function MobileEmailScreen() {
                 setPanelSectionY(event.nativeEvent.layout.y);
               }}
             >
-              <SectionCard
-              title={isRegisterMode ? 'Daftar Mailbox' : 'Panel Lengkap Webmail'}
-              subtitle={
-                isRegisterMode
-                  ? 'Buat mailbox sekolah baru dengan username email pilihan Anda. Domain sekolah tetap mengikuti server.'
-                  : 'Bagian ini dipakai hanya saat Anda perlu akses penuh seperti balas email, pencarian lanjut, atau pengelolaan folder.'
-              }
-            >
-              {!isRegisterMode ? (
-                <>
-                  {isSsoMode ? (
+              <SectionCard title={panelSectionTitle} subtitle={panelSectionSubtitle}>
+                {isRegisterMode ? (
+                  <>
+                    <Text style={{ color: '#0f172a', fontSize: 13, fontWeight: '700' }}>Username Email</Text>
                     <View
                       style={{
-                        borderRadius: 10,
                         borderWidth: 1,
-                        borderColor: '#c7d2fe',
-                        backgroundColor: '#eef2ff',
-                        paddingHorizontal: 10,
-                        paddingVertical: 10,
-                      }}
-                    >
-                      <Text style={{ color: '#1e3a8a', fontSize: 12, lineHeight: 18 }}>
-                        Mode keamanan SSO aktif. Tekan tombol di bawah untuk masuk ke panel email lengkap.
-                      </Text>
-                    </View>
-                  ) : (
-                    <>
-                      <Text style={{ color: '#0f172a', fontSize: 13, fontWeight: '700' }}>Email</Text>
-                      <TextInput
-                        value={loginIdentityValue}
-                        onChangeText={(value) => {
-                          setHasEditedLoginUser(true);
-                          setLoginUser(value);
-                        }}
-                        autoCapitalize="none"
-                        keyboardType="email-address"
-                        placeholder={mailboxPreview || `username@${mailboxDomain}`}
-                        placeholderTextColor="#94a3b8"
-                        style={{
-                          borderWidth: 1,
-                          borderColor: '#cbd5e1',
-                          borderRadius: 12,
-                          paddingHorizontal: 12,
-                          paddingVertical: 11,
-                          color: BRAND_COLORS.textDark,
-                        }}
-                      />
-                      <Text style={{ color: '#0f172a', fontSize: 13, fontWeight: '700' }}>Password</Text>
-                      <TextInput
-                        value={loginPass}
-                        onChangeText={setLoginPass}
-                        secureTextEntry
-                        placeholder="Masukkan password webmail"
-                        placeholderTextColor="#94a3b8"
-                        style={{
-                          borderWidth: 1,
-                          borderColor: '#cbd5e1',
-                          borderRadius: 12,
-                          paddingHorizontal: 12,
-                          paddingVertical: 11,
-                          color: BRAND_COLORS.textDark,
-                        }}
-                      />
-                    </>
-                  )}
-
-                  {panelError ? <Text style={{ color: '#b91c1c', fontSize: 12 }}>{panelError}</Text> : null}
-                  {resetError ? <Text style={{ color: '#b91c1c', fontSize: 12 }}>{resetError}</Text> : null}
-                  {resetResult ? (
-                    <View
-                      style={{
+                        borderColor: '#cbd5e1',
                         borderRadius: 12,
-                        borderWidth: 1,
-                        borderColor: '#fde68a',
-                        backgroundColor: '#fffbeb',
                         paddingHorizontal: 12,
-                        paddingVertical: 12,
-                        gap: 6,
+                        paddingVertical: 11,
+                        flexDirection: 'row',
+                        alignItems: 'center',
+                        gap: 4,
                       }}
                     >
-                      <Text style={{ color: '#92400e', fontSize: 13, fontWeight: '800' }}>Password baru berhasil dibuat.</Text>
-                      <Text style={{ color: '#78350f', fontSize: 12 }}>Mailbox: {resetResult.mailboxIdentity}</Text>
-                      <Text selectable style={{ color: '#0f172a', fontSize: 13, fontWeight: '800' }}>
-                        {resetResult.password}
-                      </Text>
-                      <Text style={{ color: '#78350f', fontSize: 11, lineHeight: 16 }}>
-                        Simpan password ini sekarang. Reset dilakukan pada {formatDateTime(resetResult.resetAt)}.
-                      </Text>
+                      <TextInput
+                        value={registerUser}
+                        onChangeText={(value) => setRegisterUser(value.toLowerCase())}
+                        autoCapitalize="none"
+                        autoCorrect={false}
+                        placeholder={suggestedMailboxUsername || 'username email'}
+                        placeholderTextColor="#94a3b8"
+                        style={{ flex: 1, minWidth: 0, color: BRAND_COLORS.textDark, padding: 0 }}
+                      />
+                      <Text style={{ color: '#64748b' }}>@{mailboxDomain}</Text>
                     </View>
-                  ) : null}
 
-                  <Pressable
-                    onPress={() => {
-                      void handleLogin();
-                    }}
-                    disabled={startSsoMutation.isPending}
-                    style={{
-                      borderRadius: 12,
-                      backgroundColor: '#f59e0b',
-                      paddingVertical: 11,
-                      alignItems: 'center',
-                      opacity: startSsoMutation.isPending ? 0.7 : 1,
-                    }}
-                  >
-                    <Text style={{ color: '#111827', fontWeight: '700' }}>
-                      {startSsoMutation.isPending ? 'Menyiapkan...' : isSsoMode ? 'Masuk Panel Lengkap' : 'Login ke Panel Lengkap'}
+                    <Text style={{ color: '#64748b', fontSize: 12, lineHeight: 18 }}>
+                      Isi username email sesuai keinginan Anda. Domain sekolah akan otomatis memakai @{mailboxDomain}, dan setiap akun hanya boleh memiliki satu mailbox.
                     </Text>
-                  </Pressable>
 
-                  {selfRegistrationEnabled ? (
-                    <Pressable
-                      onPress={() => {
-                        setRegisterError(null);
-                        setResetError(null);
-                        setResetResult(null);
-                        setIsRegisterMode(true);
+                    <Text style={{ color: '#64748b', fontSize: 12, lineHeight: 18 }}>
+                      Gunakan huruf kecil, angka, titik, underscore, atau dash.
+                    </Text>
+
+                    <Text style={{ color: '#0f172a', fontSize: 13, fontWeight: '700' }}>Password</Text>
+                    <TextInput
+                      value={registerPass}
+                      onChangeText={setRegisterPass}
+                      secureTextEntry
+                      placeholder="Buat password webmail"
+                      placeholderTextColor="#94a3b8"
+                      style={{
+                        borderWidth: 1,
+                        borderColor: '#cbd5e1',
+                        borderRadius: 12,
+                        paddingHorizontal: 12,
+                        paddingVertical: 11,
+                        color: BRAND_COLORS.textDark,
                       }}
+                    />
+
+                    <Text style={{ color: '#0f172a', fontSize: 13, fontWeight: '700' }}>Konfirmasi Password</Text>
+                    <TextInput
+                      value={registerPassConfirm}
+                      onChangeText={setRegisterPassConfirm}
+                      secureTextEntry
+                      placeholder="Konfirmasi password"
+                      placeholderTextColor="#94a3b8"
+                      style={{
+                        borderWidth: 1,
+                        borderColor: '#cbd5e1',
+                        borderRadius: 12,
+                        paddingHorizontal: 12,
+                        paddingVertical: 11,
+                        color: BRAND_COLORS.textDark,
+                      }}
+                    />
+
+                    <Text style={{ color: '#64748b', fontSize: 12, lineHeight: 18 }}>
+                      Kapasitas mailbox: {quotaLabel} per user. Mailbox mengikuti identitas email sekolah yang sudah ditetapkan server.
+                    </Text>
+                    {registerError ? <Text style={{ color: '#b91c1c', fontSize: 12 }}>{registerError}</Text> : null}
+
+                    <Pressable
+                      onPress={() => handleRegister()}
+                      disabled={registerMutation.isPending}
                       style={{
                         borderRadius: 12,
                         backgroundColor: '#3250b9',
                         paddingVertical: 11,
                         alignItems: 'center',
+                        opacity: registerMutation.isPending ? 0.7 : 1,
                       }}
                     >
-                      <Text style={{ color: '#fff', fontWeight: '700' }}>Daftar Mailbox</Text>
-                    </Pressable>
-                  ) : null}
-                  {!isSsoMode ? (
-                    <Pressable
-                      onPress={handleResetPassword}
-                      disabled={resetPasswordMutation.isPending}
-                      style={{
-                        alignItems: 'center',
-                        paddingVertical: 4,
-                        opacity: resetPasswordMutation.isPending ? 0.7 : 1,
-                      }}
-                    >
-                      <Text style={{ color: '#64748b', fontSize: 13, fontWeight: '700' }}>
-                        {resetPasswordMutation.isPending ? 'Mereset Password...' : 'Lupa Password?'}
+                      <Text style={{ color: '#fff', fontWeight: '700' }}>
+                        {registerMutation.isPending ? 'Memproses...' : 'Daftar Mailbox'}
                       </Text>
                     </Pressable>
-                  ) : null}
-                </>
-              ) : (
-                <>
-                  <Text style={{ color: '#0f172a', fontSize: 13, fontWeight: '700' }}>Username Email</Text>
-                  <View
-                    style={{
-                      borderWidth: 1,
-                      borderColor: '#cbd5e1',
-                      borderRadius: 12,
-                      paddingHorizontal: 12,
-                      paddingVertical: 11,
-                      flexDirection: 'row',
-                      alignItems: 'center',
-                      gap: 4,
-                    }}
-                  >
-                    <TextInput
-                      value={registerUser}
-                      onChangeText={(value) => setRegisterUser(value.toLowerCase())}
-                      autoCapitalize="none"
-                      autoCorrect={false}
-                      placeholder={suggestedMailboxUsername || 'username email'}
-                      placeholderTextColor="#94a3b8"
-                      style={{ flex: 1, minWidth: 0, color: BRAND_COLORS.textDark, padding: 0 }}
+
+                    <Pressable
+                      onPress={() => {
+                        setIsRegisterMode(false);
+                        setRegisterError(null);
+                        setResetError(null);
+                      }}
+                      style={{
+                        borderRadius: 12,
+                        backgroundColor: '#f59e0b',
+                        paddingVertical: 11,
+                        alignItems: 'center',
+                      }}
+                    >
+                      <Text style={{ color: '#111827', fontWeight: '700' }}>Kembali ke Kelola Akun</Text>
+                    </Pressable>
+                  </>
+                ) : isPanelAccessMode ? (
+                  <>
+                    <View
+                      style={{
+                        borderRadius: 12,
+                        borderWidth: 1,
+                        borderColor: '#dbe4f4',
+                        backgroundColor: '#f8fafc',
+                        paddingHorizontal: 12,
+                        paddingVertical: 12,
+                        gap: 4,
+                      }}
+                    >
+                      <Text style={{ color: '#0f172a', fontSize: 13, fontWeight: '700' }}>Folder tujuan: {activeFolderLabel}</Text>
+                      <Text style={{ color: '#64748b', fontSize: 12, lineHeight: 18 }}>
+                        {activeFolderKey === 'INBOX'
+                          ? 'Gunakan panel lengkap untuk aksi lanjutan seperti balas email, pencarian mailbox, compose, atau pengelolaan folder.'
+                          : `Setelah berhasil masuk, panel lengkap akan langsung membuka folder ${activeFolderLabel}.`}
+                      </Text>
+                    </View>
+
+                    {isSsoMode ? (
+                      <View
+                        style={{
+                          borderRadius: 10,
+                          borderWidth: 1,
+                          borderColor: '#c7d2fe',
+                          backgroundColor: '#eef2ff',
+                          paddingHorizontal: 10,
+                          paddingVertical: 10,
+                        }}
+                      >
+                        <Text style={{ color: '#1e3a8a', fontSize: 12, lineHeight: 18 }}>
+                          Mode keamanan SSO aktif. Tekan tombol di bawah untuk langsung membuka panel email lengkap.
+                        </Text>
+                      </View>
+                    ) : (
+                      <>
+                        <Text style={{ color: '#0f172a', fontSize: 13, fontWeight: '700' }}>Email</Text>
+                        <TextInput
+                          value={loginIdentityValue}
+                          onChangeText={(value) => {
+                            setHasEditedLoginUser(true);
+                            setLoginUser(value);
+                          }}
+                          autoCapitalize="none"
+                          keyboardType="email-address"
+                          placeholder={mailboxPreview || `username@${mailboxDomain}`}
+                          placeholderTextColor="#94a3b8"
+                          style={{
+                            borderWidth: 1,
+                            borderColor: '#cbd5e1',
+                            borderRadius: 12,
+                            paddingHorizontal: 12,
+                            paddingVertical: 11,
+                            color: BRAND_COLORS.textDark,
+                          }}
+                        />
+                        <Text style={{ color: '#0f172a', fontSize: 13, fontWeight: '700' }}>Password</Text>
+                        <TextInput
+                          value={loginPass}
+                          onChangeText={setLoginPass}
+                          secureTextEntry
+                          placeholder="Masukkan password webmail"
+                          placeholderTextColor="#94a3b8"
+                          style={{
+                            borderWidth: 1,
+                            borderColor: '#cbd5e1',
+                            borderRadius: 12,
+                            paddingHorizontal: 12,
+                            paddingVertical: 11,
+                            color: BRAND_COLORS.textDark,
+                          }}
+                        />
+                      </>
+                    )}
+
+                    {panelError ? <Text style={{ color: '#b91c1c', fontSize: 12 }}>{panelError}</Text> : null}
+                    {resetError ? <Text style={{ color: '#b91c1c', fontSize: 12 }}>{resetError}</Text> : null}
+                    {resetResult ? (
+                      <View
+                        style={{
+                          borderRadius: 12,
+                          borderWidth: 1,
+                          borderColor: '#fde68a',
+                          backgroundColor: '#fffbeb',
+                          paddingHorizontal: 12,
+                          paddingVertical: 12,
+                          gap: 6,
+                        }}
+                      >
+                        <Text style={{ color: '#92400e', fontSize: 13, fontWeight: '800' }}>Password baru berhasil dibuat.</Text>
+                        <Text style={{ color: '#78350f', fontSize: 12 }}>Mailbox: {resetResult.mailboxIdentity}</Text>
+                        <Text selectable style={{ color: '#0f172a', fontSize: 13, fontWeight: '800' }}>
+                          {resetResult.password}
+                        </Text>
+                        <Text style={{ color: '#78350f', fontSize: 11, lineHeight: 16 }}>
+                          Simpan password ini sekarang. Reset dilakukan pada {formatDateTime(resetResult.resetAt)}.
+                        </Text>
+                      </View>
+                    ) : null}
+
+                    <Pressable
+                      onPress={() => {
+                        void handleLogin();
+                      }}
+                      disabled={startSsoMutation.isPending}
+                      style={{
+                        borderRadius: 12,
+                        backgroundColor: '#f59e0b',
+                        paddingVertical: 11,
+                        alignItems: 'center',
+                        opacity: startSsoMutation.isPending ? 0.7 : 1,
+                      }}
+                    >
+                      <Text style={{ color: '#111827', fontWeight: '700' }}>
+                        {startSsoMutation.isPending
+                          ? 'Menyiapkan...'
+                          : isSsoMode
+                            ? activeFolderKey === 'INBOX'
+                              ? 'Masuk Panel Lengkap'
+                              : `Buka ${panelPrimaryActionLabel}`
+                            : activeFolderKey === 'INBOX'
+                              ? 'Login ke Panel Lengkap'
+                              : `Login ke ${panelPrimaryActionLabel}`}
+                      </Text>
+                    </Pressable>
+
+                    {selfRegistrationEnabled ? (
+                      <Pressable
+                        onPress={() => {
+                          setRegisterError(null);
+                          setResetError(null);
+                          setResetResult(null);
+                          setIsPanelAccessMode(false);
+                          setIsRegisterMode(true);
+                        }}
+                        style={{
+                          borderRadius: 12,
+                          borderWidth: 1,
+                          borderColor: '#c7d2fe',
+                          backgroundColor: '#eef2ff',
+                          paddingVertical: 11,
+                          alignItems: 'center',
+                        }}
+                      >
+                        <Text style={{ color: '#1d4ed8', fontWeight: '700' }}>Daftar Mailbox</Text>
+                      </Pressable>
+                    ) : null}
+
+                    {!isSsoMode ? (
+                      <Pressable
+                        onPress={handleResetPassword}
+                        disabled={resetPasswordMutation.isPending}
+                        style={{
+                          alignItems: 'center',
+                          paddingVertical: 4,
+                          opacity: resetPasswordMutation.isPending ? 0.7 : 1,
+                        }}
+                      >
+                        <Text style={{ color: '#64748b', fontSize: 13, fontWeight: '700' }}>
+                          {resetPasswordMutation.isPending ? 'Mereset Password...' : 'Lupa Password?'}
+                        </Text>
+                      </Pressable>
+                    ) : null}
+
+                    <Pressable
+                      onPress={() => {
+                        setIsPanelAccessMode(false);
+                        setPanelError(null);
+                      }}
+                      style={{
+                        borderRadius: 12,
+                        borderWidth: 1,
+                        borderColor: '#cbd5e1',
+                        backgroundColor: '#ffffff',
+                        paddingVertical: 11,
+                        alignItems: 'center',
+                      }}
+                    >
+                      <Text style={{ color: '#1e293b', fontWeight: '700' }}>Tutup</Text>
+                    </Pressable>
+                  </>
+                ) : (
+                  <>
+                    <View
+                      style={{
+                        borderRadius: 12,
+                        borderWidth: 1,
+                        borderColor: '#dbe4f4',
+                        backgroundColor: '#f8fafc',
+                        paddingHorizontal: 12,
+                        paddingVertical: 12,
+                        gap: 4,
+                      }}
+                    >
+                      <Text style={{ color: '#0f172a', fontSize: 13, fontWeight: '700' }}>Folder aktif: {activeFolderLabel}</Text>
+                      <Text style={{ color: '#64748b', fontSize: 12, lineHeight: 18 }}>
+                        {activeFolderKey === 'INBOX'
+                          ? 'Inbox tetap dibaca langsung di layar utama. Buka panel lengkap hanya jika Anda perlu fitur penuh atau folder mailbox lainnya.'
+                          : `${activeFolderLabel} tersedia lewat panel lengkap agar struktur mailbox tetap sama seperti webmail utama.`}
+                      </Text>
+                    </View>
+
+                    <ActionListRow
+                      iconName="external-link"
+                      label={
+                        activeFolderKey === 'INBOX'
+                          ? isSsoMode
+                            ? 'Buka Panel Lengkap'
+                            : 'Akses Panel Lengkap'
+                          : `${isSsoMode ? 'Buka' : 'Akses'} ${panelPrimaryActionLabel}`
+                      }
+                      subtitle={
+                        activeFolderKey === 'INBOX'
+                          ? 'Masuk ke panel lengkap untuk pencarian lanjutan, compose, balas email, dan pengelolaan folder.'
+                          : `Buka folder ${activeFolderLabel} langsung dari panel webmail lengkap.`
+                      }
+                      onPress={() => openPanelAccess(activeFolderKey)}
+                      tone="primary"
                     />
-                    <Text style={{ color: '#64748b' }}>@{mailboxDomain}</Text>
-                  </View>
 
-                  <Text style={{ color: '#64748b', fontSize: 12, lineHeight: 18 }}>
-                    Isi username email sesuai keinginan Anda. Domain sekolah akan otomatis memakai @{mailboxDomain}, dan setiap akun hanya boleh memiliki satu mailbox.
-                  </Text>
+                    {selfRegistrationEnabled ? (
+                      <ActionListRow
+                        iconName="user-plus"
+                        label="Daftar Mailbox"
+                        subtitle="Buat mailbox sekolah jika akun Anda belum memilikinya."
+                        onPress={() => {
+                          setRegisterError(null);
+                          setResetError(null);
+                          setResetResult(null);
+                          setIsPanelAccessMode(false);
+                          setIsRegisterMode(true);
+                        }}
+                      />
+                    ) : null}
 
-                  <Text style={{ color: '#64748b', fontSize: 12, lineHeight: 18 }}>
-                    Gunakan huruf kecil, angka, titik, underscore, atau dash.
-                  </Text>
-
-                  <Text style={{ color: '#0f172a', fontSize: 13, fontWeight: '700' }}>Password</Text>
-                  <TextInput
-                    value={registerPass}
-                    onChangeText={setRegisterPass}
-                    secureTextEntry
-                    placeholder="Buat password webmail"
-                    placeholderTextColor="#94a3b8"
-                    style={{
-                      borderWidth: 1,
-                      borderColor: '#cbd5e1',
-                      borderRadius: 12,
-                      paddingHorizontal: 12,
-                      paddingVertical: 11,
-                      color: BRAND_COLORS.textDark,
-                    }}
-                  />
-
-                  <Text style={{ color: '#0f172a', fontSize: 13, fontWeight: '700' }}>Konfirmasi Password</Text>
-                  <TextInput
-                    value={registerPassConfirm}
-                    onChangeText={setRegisterPassConfirm}
-                    secureTextEntry
-                    placeholder="Konfirmasi password"
-                    placeholderTextColor="#94a3b8"
-                    style={{
-                      borderWidth: 1,
-                      borderColor: '#cbd5e1',
-                      borderRadius: 12,
-                      paddingHorizontal: 12,
-                      paddingVertical: 11,
-                      color: BRAND_COLORS.textDark,
-                    }}
-                  />
-
-                  <Text style={{ color: '#64748b', fontSize: 12, lineHeight: 18 }}>
-                    Kapasitas mailbox: {quotaLabel} per user. Mailbox mengikuti identitas email sekolah yang sudah ditetapkan server.
-                  </Text>
-                  {registerError ? <Text style={{ color: '#b91c1c', fontSize: 12 }}>{registerError}</Text> : null}
-
-                  <Pressable
-                    onPress={() => handleRegister()}
-                    disabled={registerMutation.isPending}
-                    style={{
-                      borderRadius: 12,
-                      backgroundColor: '#3250b9',
-                      paddingVertical: 11,
-                      alignItems: 'center',
-                      opacity: registerMutation.isPending ? 0.7 : 1,
-                    }}
-                  >
-                    <Text style={{ color: '#fff', fontWeight: '700' }}>
-                      {registerMutation.isPending ? 'Memproses...' : 'Daftar Mailbox'}
-                    </Text>
-                  </Pressable>
-
-                  <Pressable
-                    onPress={() => {
-                      setIsRegisterMode(false);
-                      setRegisterError(null);
-                      setResetError(null);
-                    }}
-                    style={{
-                      borderRadius: 12,
-                      backgroundColor: '#f59e0b',
-                      paddingVertical: 11,
-                      alignItems: 'center',
-                    }}
-                  >
-                    <Text style={{ color: '#111827', fontWeight: '700' }}>Kembali ke Panel</Text>
-                  </Pressable>
-                </>
-              )}
+                    {!isSsoMode ? (
+                      <ActionListRow
+                        iconName="key"
+                        label={resetPasswordMutation.isPending ? 'Mereset Password...' : 'Lupa Password?'}
+                        subtitle="Buat password webmail baru jika Anda tidak bisa masuk ke mailbox."
+                        onPress={handleResetPassword}
+                        disabled={resetPasswordMutation.isPending}
+                        tone="warning"
+                      />
+                    ) : null}
+                  </>
+                )}
               </SectionCard>
             </View>
           ) : (
             <SectionCard
               title="Panel Lengkap Aktif"
-              subtitle="Panel ini dipertahankan untuk aksi lanjutan seperti baca isi lengkap, pencarian mailbox, compose, dan pengelolaan folder."
+              subtitle={`Folder aktif: ${activeFolderLabel}. Panel ini dipertahankan untuk aksi lanjutan seperti baca isi lengkap, pencarian mailbox, compose, dan pengelolaan folder.`}
             >
               <View style={{ flexDirection: 'row', gap: 8 }}>
                 <Pressable
@@ -1302,7 +1583,7 @@ export default function MobileEmailScreen() {
                     onLoadEnd={() => {
                       if (!bridgeCredentials) return;
                       setBridgeCredentials(null);
-                      setWebmailUrl(inboxUrl);
+                      setWebmailUrl(getMailboxFolderUrl(bridgeLoginUrl, activeFolderKey));
                       setLoginPass('');
                     }}
                     onHttpError={() => {
@@ -1382,7 +1663,9 @@ export default function MobileEmailScreen() {
                 </Pressable>
 
                 <Pressable
-                  onPress={openPanelAccess}
+                  onPress={() => {
+                    openPanelAccess();
+                  }}
                   style={{
                     flex: 1,
                     borderRadius: 12,
