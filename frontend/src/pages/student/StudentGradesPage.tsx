@@ -1,4 +1,4 @@
-import { type ReactNode, useMemo, useState } from 'react';
+import { type ReactNode, useEffect, useMemo, useState } from 'react';
 import { useOutletContext } from 'react-router-dom';
 import { useQuery } from '@tanstack/react-query';
 import clsx from 'clsx';
@@ -13,6 +13,7 @@ import {
   TrendingUp,
   UserCheck,
 } from 'lucide-react';
+import ExamProgramFilterBar from '../../components/teacher/exams/ExamProgramFilterBar';
 import { authService } from '../../services/auth.service';
 import {
   gradeService,
@@ -48,6 +49,12 @@ function formatDateLabel(value: string | null | undefined) {
     month: 'long',
     year: 'numeric',
   });
+}
+
+function calculateAverage(values: number[]) {
+  if (values.length === 0) return null;
+  const total = values.reduce((sum, value) => sum + value, 0);
+  return total / values.length;
 }
 
 function SummaryCard(props: {
@@ -110,56 +117,13 @@ function TabButton(props: {
   );
 }
 
-function ComponentCard({ item }: { item: StudentGradeOverviewSubjectComponent }) {
-  const available = item.status === 'AVAILABLE';
+function SubjectCard(props: {
+  item: StudentGradeOverviewSubjectRow;
+  component: StudentGradeOverviewSubjectComponent;
+}) {
+  const { item, component } = props;
+  const available = component.status === 'AVAILABLE';
 
-  return (
-    <div
-      className={clsx(
-        'rounded-2xl border p-3',
-        available ? 'border-emerald-100 bg-emerald-50/70' : 'border-slate-200 bg-slate-50/80',
-      )}
-    >
-      <div className="flex items-start justify-between gap-3">
-        <div>
-          <p className="text-sm font-semibold text-slate-900">{item.label}</p>
-          <p className="mt-1 text-xs text-slate-500">{item.reportSlotCode.replace(/_/g, ' ')}</p>
-        </div>
-        <span
-          className={clsx(
-            'inline-flex rounded-full px-2.5 py-1 text-[11px] font-semibold',
-            available ? 'bg-emerald-100 text-emerald-700' : 'bg-slate-200 text-slate-600',
-          )}
-        >
-          {available ? 'Tersedia' : 'Belum tersedia'}
-        </span>
-      </div>
-
-      <div className="mt-4 flex items-end justify-between gap-3">
-        <div>
-          <p className="text-xs text-slate-500">Nilai</p>
-          <p className="text-2xl font-bold text-slate-900">{formatScore(item.score)}</p>
-        </div>
-        <p className="text-xs text-slate-500">{item.entryMode === 'NF_SERIES' ? 'Seri NF' : 'Skor tunggal'}</p>
-      </div>
-
-      {item.series.length > 0 ? (
-        <div className="mt-3 flex flex-wrap gap-2">
-          {item.series.map((score, index) => (
-            <span
-              key={`${item.code}-series-${index}`}
-              className="rounded-full border border-blue-100 bg-blue-50 px-2.5 py-1 text-[11px] font-medium text-blue-700"
-            >
-              NF{index + 1}: {formatScore(score)}
-            </span>
-          ))}
-        </div>
-      ) : null}
-    </div>
-  );
-}
-
-function SubjectCard({ item }: { item: StudentGradeOverviewSubjectRow }) {
   return (
     <div className="overflow-hidden rounded-3xl border border-slate-200 bg-white shadow-sm">
       <div className="border-b border-slate-200 bg-slate-50/80 px-5 py-4">
@@ -183,34 +147,71 @@ function SubjectCard({ item }: { item: StudentGradeOverviewSubjectRow }) {
               <p className="mt-2 text-xl font-bold text-slate-900">{item.kkm}</p>
             </div>
             <div className="rounded-2xl border border-slate-200 bg-white px-4 py-3">
-              <p className="text-xs font-semibold uppercase tracking-[0.14em] text-slate-500">Nilai Akhir</p>
-              <p className="mt-2 text-xl font-bold text-slate-900">{formatScore(item.finalScore)}</p>
+              <p className="text-xs font-semibold uppercase tracking-[0.14em] text-slate-500">Program</p>
+              <p className="mt-2 text-xl font-bold text-slate-900">{component.reportSlotCode}</p>
             </div>
             <div className="rounded-2xl border border-slate-200 bg-white px-4 py-3">
-              <p className="text-xs font-semibold uppercase tracking-[0.14em] text-slate-500">Komponen</p>
-              <p className="mt-2 text-xl font-bold text-slate-900">
-                {item.componentSummary.availableCount}/{item.componentSummary.totalCount}
-              </p>
+              <p className="text-xs font-semibold uppercase tracking-[0.14em] text-slate-500">Status</p>
+              <p className="mt-2 text-xl font-bold text-slate-900">{available ? 'Tersedia' : 'Menunggu'}</p>
             </div>
           </div>
         </div>
       </div>
 
       <div className="px-5 py-5">
-        <div className="grid gap-3 md:grid-cols-2 xl:grid-cols-3">
-          {item.components.map((component) => (
-            <ComponentCard key={`${item.subject.id}-${component.code}`} item={component} />
-          ))}
-        </div>
-
-        <div className="mt-5 grid gap-3 lg:grid-cols-[180px_minmax(0,1fr)]">
-          <div className="rounded-2xl border border-slate-200 bg-slate-50/80 p-4">
-            <p className="text-xs font-semibold uppercase tracking-[0.14em] text-slate-500">Predikat</p>
-            <p className="mt-2 text-xl font-bold text-slate-900">{item.predicate || '-'}</p>
+        <div className="grid gap-4 lg:grid-cols-[220px_minmax(0,1fr)]">
+          <div
+            className={clsx(
+              'rounded-2xl border p-4',
+              available ? 'border-emerald-100 bg-emerald-50/70' : 'border-slate-200 bg-slate-50/80',
+            )}
+          >
+            <p className="text-xs font-semibold uppercase tracking-[0.14em] text-slate-500">Nilai Program</p>
+            <p className="mt-2 text-3xl font-bold text-slate-900">{formatScore(component.score)}</p>
+            <p className="mt-2 text-xs text-slate-500">
+              {component.entryMode === 'NF_SERIES' ? 'Seri NF' : 'Skor tunggal'}
+            </p>
           </div>
-          <div className="rounded-2xl border border-slate-200 bg-slate-50/80 p-4">
-            <p className="text-xs font-semibold uppercase tracking-[0.14em] text-slate-500">Catatan Kompetensi</p>
-            <p className="mt-2 text-sm leading-6 text-slate-700">{item.description || 'Deskripsi nilai belum tersedia.'}</p>
+
+          <div
+            className={clsx(
+              'rounded-2xl border p-4',
+              available ? 'border-emerald-100 bg-emerald-50/70' : 'border-slate-200 bg-slate-50/80',
+            )}
+          >
+            <div className="flex items-start justify-between gap-3">
+              <div>
+                <p className="text-sm font-semibold text-slate-900">{component.label}</p>
+                <p className="mt-1 text-xs text-slate-500">{component.reportSlotCode.replace(/_/g, ' ')}</p>
+              </div>
+              <span
+                className={clsx(
+                  'inline-flex rounded-full px-2.5 py-1 text-[11px] font-semibold',
+                  available ? 'bg-emerald-100 text-emerald-700' : 'bg-slate-200 text-slate-600',
+                )}
+              >
+                {available ? 'Tersedia' : 'Belum tersedia'}
+              </span>
+            </div>
+
+            {component.series.length > 0 ? (
+              <div className="mt-4 flex flex-wrap gap-2">
+                {component.series.map((score, index) => (
+                  <span
+                    key={`${component.code}-series-${index}`}
+                    className="rounded-full border border-blue-100 bg-blue-50 px-2.5 py-1 text-[11px] font-medium text-blue-700"
+                  >
+                    NF{index + 1}: {formatScore(score)}
+                  </span>
+                ))}
+              </div>
+            ) : null}
+
+            <p className="mt-4 text-sm leading-6 text-slate-700">
+              {available
+                ? `Nilai ${component.reportSlotCode} untuk mapel ini sudah tersedia dan mengikuti semester berjalan.`
+                : `Nilai ${component.reportSlotCode} untuk mapel ini belum tersedia. Data akan tampil setelah guru menyelesaikan input nilai program terkait.`}
+            </p>
           </div>
         </div>
       </div>
@@ -268,6 +269,7 @@ function ReportSubjectCard({ item }: { item: StudentSemesterReportSubjectRow }) 
 export default function StudentGradesPage() {
   const { user: contextUser } = useOutletContext<StudentGradesOutletContext>() || {};
   const [activeTab, setActiveTab] = useState<GradeTabKey>('PROGRAM');
+  const [activeProgramCode, setActiveProgramCode] = useState<string>('');
   const { data: authData } = useQuery({
     queryKey: ['me'],
     queryFn: authService.getMe,
@@ -292,29 +294,70 @@ export default function StudentGradesPage() {
       new Set(data.components.map((component) => component.reportSlotCode).filter(Boolean)),
     )
     if (labels.length === 1) {
-      return `Lihat komponen ${labels[0]} per mata pelajaran.`
+      return `Pilih tab ${labels[0]} untuk melihat nilai per program ujian.`
     }
     if (labels.length === 2) {
-      return `Lihat komponen ${labels[0]} dan ${labels[1]} per mata pelajaran.`
+      return `Pilih tab ${labels[0]} atau ${labels[1]} untuk melihat nilai per program ujian.`
     }
-    return `Lihat komponen ${labels.slice(0, -1).join(', ')}, dan ${labels[labels.length - 1]} per mata pelajaran.`
+    return `Pilih tab ${labels.slice(0, -1).join(', ')}, dan ${labels[labels.length - 1]} untuk melihat nilai per program ujian.`
   }, [data]);
-  const programSummary = useMemo(() => {
+  const programTabs = useMemo(() => {
     if (!data) return [];
-    return data.components.map((component) => {
-      const availableSubjects = data.subjects.filter((subject) =>
-        subject.components.some((row) => row.code === component.code && row.status === 'AVAILABLE'),
-      ).length;
-
-      return {
-        code: component.code,
-        label: component.label,
-        reportSlotCode: component.reportSlotCode,
-        availableSubjects,
-        pendingSubjects: Math.max(data.subjects.length - availableSubjects, 0),
-      };
-    });
+    return Array.from(
+      new Map(
+        data.components.map((component) => [
+          component.reportSlotCode,
+          {
+            code: component.reportSlotCode,
+            label: component.label,
+            shortLabel: component.reportSlotCode,
+          },
+        ]),
+      ).values(),
+    );
   }, [data]);
+  const activeProgram = useMemo(
+    () => programTabs.find((program) => program.code === activeProgramCode) || programTabs[0] || null,
+    [programTabs, activeProgramCode],
+  );
+  const activeProgramSubjects = useMemo(() => {
+    if (!data || !activeProgram) return [];
+    return data.subjects
+      .map((subject) => {
+        const component = subject.components.find((row) => row.reportSlotCode === activeProgram.code) || null;
+        if (!component) return null;
+        return { subject, component };
+      })
+      .filter(
+        (row): row is { subject: StudentGradeOverviewSubjectRow; component: StudentGradeOverviewSubjectComponent } =>
+          row !== null,
+      );
+  }, [data, activeProgram]);
+  const activeProgramSummary = useMemo(() => {
+    const totalSubjects = activeProgramSubjects.length;
+    const availableSubjects = activeProgramSubjects.filter((row) => row.component.status === 'AVAILABLE').length;
+    const pendingSubjects = Math.max(totalSubjects - availableSubjects, 0);
+    const scores = activeProgramSubjects
+      .map((row) => row.component.score)
+      .filter((value): value is number => value !== null && value !== undefined);
+
+    return {
+      totalSubjects,
+      availableSubjects,
+      pendingSubjects,
+      averageScore: calculateAverage(scores),
+    };
+  }, [activeProgramSubjects]);
+
+  useEffect(() => {
+    if (!programTabs.length) {
+      if (activeProgramCode) setActiveProgramCode('');
+      return;
+    }
+    if (!programTabs.some((program) => program.code === activeProgramCode)) {
+      setActiveProgramCode(programTabs[0].code);
+    }
+  }, [programTabs, activeProgramCode]);
 
   if (String(user?.role || '').toUpperCase() !== 'STUDENT') {
     return (
@@ -376,40 +419,11 @@ export default function StudentGradesPage() {
 
           {activeTab === 'PROGRAM' ? (
             <>
-              <div className="grid gap-4 md:grid-cols-2 xl:grid-cols-4">
-                <SummaryCard
-                  icon={<BookOpen className="h-5 w-5" />}
-                  label="Total Mapel"
-                  value={String(data.summary.totalSubjects)}
-                  tone="blue"
-                />
-                <SummaryCard
-                  icon={<CheckCircle2 className="h-5 w-5" />}
-                  label="Mapel Tersedia"
-                  value={String(data.summary.subjectsWithAnyScore)}
-                  tone="green"
-                />
-                <SummaryCard
-                  icon={<LayoutList className="h-5 w-5" />}
-                  label="Komponen Tersedia"
-                  value={String(data.summary.availableComponents)}
-                  tone="green"
-                />
-                <SummaryCard
-                  icon={<TrendingUp className="h-5 w-5" />}
-                  label="Rata-rata Akhir"
-                  value={formatScore(data.summary.averageFinalScore)}
-                  tone="amber"
-                />
-              </div>
-
               <div className="rounded-3xl border border-slate-200 bg-white p-5">
                 <div className="flex flex-col gap-4 lg:flex-row lg:items-center lg:justify-between">
                   <div>
-                    <h2 className="text-xl font-bold text-slate-900">Ringkasan Program Ujian</h2>
-                    <p className="mt-1 text-sm text-slate-500">
-                      Status komponen nilai aktif untuk semester berjalan pada setiap mata pelajaran.
-                    </p>
+                    <h2 className="text-xl font-bold text-slate-900">Program Ujian Aktif</h2>
+                    <p className="mt-1 text-sm text-slate-500">{programTabSubtitle}</p>
                   </div>
                   <div className="inline-flex items-center gap-2 rounded-full border border-slate-200 bg-slate-50 px-4 py-2 text-sm text-slate-600">
                     <Clock3 className="h-4 w-4" />
@@ -417,47 +431,104 @@ export default function StudentGradesPage() {
                   </div>
                 </div>
 
+                <div className="mt-5">
+                  <ExamProgramFilterBar
+                    programs={programTabs}
+                    activeProgramCode={activeProgram?.code || ''}
+                    onProgramChange={setActiveProgramCode}
+                    emptyMessage="Belum ada Program Ujian aktif yang relevan untuk semester berjalan."
+                  />
+                </div>
+              </div>
+
+              <div className="grid gap-4 md:grid-cols-2 xl:grid-cols-4">
+                <SummaryCard
+                  icon={<BookOpen className="h-5 w-5" />}
+                  label="Total Mapel"
+                  value={String(activeProgramSummary.totalSubjects)}
+                  tone="blue"
+                  subtitle={activeProgram ? `${activeProgram.label} • ${activeProgram.code}` : 'Mapel program aktif'}
+                />
+                <SummaryCard
+                  icon={<CheckCircle2 className="h-5 w-5" />}
+                  label="Mapel Tersedia"
+                  value={String(activeProgramSummary.availableSubjects)}
+                  tone="green"
+                  subtitle="Nilai program sudah tersedia"
+                />
+                <SummaryCard
+                  icon={<Clock3 className="h-5 w-5" />}
+                  label="Mapel Menunggu"
+                  value={String(activeProgramSummary.pendingSubjects)}
+                  tone={activeProgramSummary.pendingSubjects > 0 ? 'amber' : 'green'}
+                  subtitle="Masih menunggu input nilai"
+                />
+                <SummaryCard
+                  icon={<TrendingUp className="h-5 w-5" />}
+                  label={activeProgram ? `Rata-rata ${activeProgram.code}` : 'Rata-rata Program'}
+                  value={formatScore(activeProgramSummary.averageScore)}
+                  tone="amber"
+                  subtitle="Dihitung dari nilai program yang tersedia"
+                />
+              </div>
+
+              <div className="rounded-3xl border border-slate-200 bg-white p-5">
+                <div className="flex flex-col gap-4 lg:flex-row lg:items-center lg:justify-between">
+                  <div>
+                    <h2 className="text-xl font-bold text-slate-900">
+                      Ringkasan {activeProgram?.label || 'Program Ujian'}
+                    </h2>
+                    <p className="mt-1 text-sm text-slate-500">
+                      Menampilkan kesiapan nilai {activeProgram?.code || 'program aktif'} untuk setiap mata pelajaran pada semester berjalan.
+                    </p>
+                  </div>
+                  <div className="inline-flex items-center gap-2 rounded-full border border-blue-100 bg-blue-50 px-4 py-2 text-sm font-medium text-blue-700">
+                    <GraduationCap className="h-4 w-4" />
+                    {activeProgram?.code || 'Program aktif'}
+                  </div>
+                </div>
+
                 <div className="mt-5 grid gap-3 md:grid-cols-2 xl:grid-cols-3">
-                  {programSummary.map((component) => (
-                    <div
-                      key={component.code}
-                      className="rounded-2xl border border-slate-200 bg-slate-50/70 p-4"
-                    >
-                      <div className="flex items-start justify-between gap-3">
-                        <div>
-                          <p className="text-sm font-semibold text-slate-900">{component.label}</p>
-                          <p className="mt-1 text-xs text-slate-500">{component.reportSlotCode.replace(/_/g, ' ')}</p>
-                        </div>
-                        <span className="rounded-full bg-blue-100 px-2.5 py-1 text-[11px] font-semibold text-blue-700">
-                          {component.availableSubjects}/{data.summary.totalSubjects}
-                        </span>
-                      </div>
-                      <p className="mt-4 text-sm text-slate-600">
-                        {component.availableSubjects} mapel sudah tersedia • {component.pendingSubjects} mapel masih menunggu
-                      </p>
-                    </div>
-                  ))}
+                  <div className="rounded-2xl border border-slate-200 bg-slate-50/70 p-4">
+                    <p className="text-sm font-semibold text-slate-900">Mapel Sudah Tersedia</p>
+                    <p className="mt-3 text-3xl font-bold text-slate-900">{activeProgramSummary.availableSubjects}</p>
+                    <p className="mt-2 text-sm text-slate-600">Mapel yang sudah memiliki nilai {activeProgram?.code || 'program ini'}.</p>
+                  </div>
+                  <div className="rounded-2xl border border-slate-200 bg-slate-50/70 p-4">
+                    <p className="text-sm font-semibold text-slate-900">Mapel Masih Menunggu</p>
+                    <p className="mt-3 text-3xl font-bold text-slate-900">{activeProgramSummary.pendingSubjects}</p>
+                    <p className="mt-2 text-sm text-slate-600">Mapel yang belum memiliki nilai {activeProgram?.code || 'program ini'}.</p>
+                  </div>
+                  <div className="rounded-2xl border border-slate-200 bg-slate-50/70 p-4">
+                    <p className="text-sm font-semibold text-slate-900">Cakupan Program</p>
+                    <p className="mt-3 text-3xl font-bold text-slate-900">{activeProgramSummary.totalSubjects}</p>
+                    <p className="mt-2 text-sm text-slate-600">Total mata pelajaran aktif yang mengikuti program ini pada semester berjalan.</p>
+                  </div>
                 </div>
               </div>
 
               <div className="rounded-3xl border border-slate-200 bg-white p-5">
-                <h2 className="text-xl font-bold text-slate-900">Daftar Nilai Program Ujian</h2>
+                <h2 className="text-xl font-bold text-slate-900">
+                  Daftar Nilai {activeProgram?.label || 'Program Ujian'}
+                </h2>
                 <p className="mt-1 text-sm text-slate-500">
-                  {data.summary.totalSubjects} mata pelajaran aktif • {data.summary.pendingComponents} komponen belum tersedia
+                  {activeProgramSummary.totalSubjects} mata pelajaran aktif • {activeProgramSummary.pendingSubjects} mapel belum tersedia
                 </p>
               </div>
 
-              {data.subjects.length > 0 ? (
+              {activeProgramSubjects.length > 0 ? (
                 <div className="grid gap-5">
-                  {data.subjects.map((subject) => (
-                    <SubjectCard key={subject.subject.id} item={subject} />
+                  {activeProgramSubjects.map(({ subject, component }) => (
+                    <SubjectCard key={`${subject.subject.id}-${component.reportSlotCode}`} item={subject} component={component} />
                   ))}
                 </div>
               ) : (
                 <div className="rounded-3xl border border-dashed border-slate-300 bg-white p-10 text-center">
                   <FileText className="mx-auto h-12 w-12 text-slate-300" />
                   <h2 className="mt-4 text-lg font-semibold text-slate-900">Belum ada data nilai program</h2>
-                  <p className="mt-2 text-sm text-slate-500">Komponen nilai untuk semester berjalan belum tersedia.</p>
+                  <p className="mt-2 text-sm text-slate-500">
+                    Nilai {activeProgram?.code || 'program ini'} untuk semester berjalan belum tersedia.
+                  </p>
                 </div>
               )}
             </>

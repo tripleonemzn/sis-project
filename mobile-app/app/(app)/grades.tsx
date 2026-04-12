@@ -1,7 +1,7 @@
 import { Feather } from '@expo/vector-icons';
-import { useMemo, useState } from 'react';
+import { useEffect, useMemo, useState } from 'react';
 import { Redirect } from 'expo-router';
-import { Pressable, RefreshControl, ScrollView, Text, View } from 'react-native';
+import { RefreshControl, ScrollView, Text, View } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { AppLoadingScreen } from '../../src/components/AppLoadingScreen';
 import MobileMenuTabBar from '../../src/components/MobileMenuTabBar';
@@ -36,6 +36,22 @@ function formatDateLabel(value: string | null | undefined) {
     month: 'long',
     year: 'numeric',
   });
+}
+
+function calculateAverage(values: number[]) {
+  if (values.length === 0) return null;
+  const total = values.reduce((sum, value) => sum + value, 0);
+  return total / values.length;
+}
+
+function getProgramTabIconName(programCode: string): React.ComponentProps<typeof Feather>['name'] {
+  const normalized = String(programCode || '').trim().toUpperCase();
+  if (normalized === 'SBTS') return 'calendar';
+  if (normalized === 'SAS') return 'file-text';
+  if (normalized === 'SAT') return 'award';
+  if (normalized === 'ASAJ') return 'clipboard';
+  if (normalized === 'ASAJP') return 'briefcase';
+  return 'layers';
 }
 
 function GradeComponentCard({ item }: { item: StudentGradeOverviewSubjectComponent }) {
@@ -114,11 +130,11 @@ function GradeComponentCard({ item }: { item: StudentGradeOverviewSubjectCompone
 
 function ProgramSubjectCard(props: {
   item: StudentGradeOverviewSubjectRow;
-  expanded: boolean;
-  onToggle: () => void;
+  component: StudentGradeOverviewSubjectComponent;
 }) {
   const { colors } = useAppTheme();
-  const { item, expanded, onToggle } = props;
+  const { item, component } = props;
+  const available = component.status === 'AVAILABLE';
 
   return (
     <View
@@ -127,142 +143,130 @@ function ProgramSubjectCard(props: {
         borderColor: colors.border,
         backgroundColor: colors.surface,
         borderRadius: 18,
-        overflow: 'hidden',
+        paddingHorizontal: 14,
+        paddingVertical: 14,
+        gap: 12,
       }}
     >
-      <Pressable
-        onPress={onToggle}
-        style={({ pressed }) => ({
-          opacity: pressed ? 0.92 : 1,
-          paddingHorizontal: 14,
-          paddingVertical: 14,
-          backgroundColor: expanded ? colors.surfaceMuted : colors.surface,
-        })}
-      >
-        <View style={{ flexDirection: 'row', alignItems: 'flex-start', gap: 12 }}>
-          <View
-            style={{
-              width: 42,
-              height: 42,
-              borderRadius: 14,
-              borderWidth: 1,
-              borderColor: colors.border,
-              backgroundColor: colors.surface,
-              alignItems: 'center',
-              justifyContent: 'center',
-            }}
-          >
-            <Feather name="book-open" size={18} color="#2563eb" />
-          </View>
-
-          <View style={{ flex: 1, gap: 10 }}>
-            <View style={{ flexDirection: 'row', alignItems: 'flex-start', gap: 12 }}>
-              <View style={{ flex: 1 }}>
-                <Text style={{ color: colors.text, fontWeight: '800', fontSize: 15 }}>{item.subject.name}</Text>
-                <Text style={{ color: colors.textMuted, fontSize: 12, marginTop: 3 }}>
-                  {item.subject.code}
-                  {item.teacher?.name ? ` • ${item.teacher.name}` : ''}
-                </Text>
-              </View>
-              <Feather name={expanded ? 'chevron-down' : 'chevron-right'} size={18} color={colors.textMuted} />
-            </View>
-
-            <View style={{ flexDirection: 'row', flexWrap: 'wrap', gap: 8 }}>
-              <View
-                style={{
-                  borderWidth: 1,
-                  borderColor: colors.border,
-                  backgroundColor: colors.surface,
-                  borderRadius: 999,
-                  paddingHorizontal: 10,
-                  paddingVertical: 6,
-                }}
-              >
-                <Text style={{ color: colors.textMuted, fontSize: 11, fontWeight: '600' }}>KKM {item.kkm}</Text>
-              </View>
-              <View
-                style={{
-                  borderWidth: 1,
-                  borderColor: colors.border,
-                  backgroundColor: colors.surface,
-                  borderRadius: 999,
-                  paddingHorizontal: 10,
-                  paddingVertical: 6,
-                }}
-              >
-                <Text style={{ color: colors.textMuted, fontSize: 11, fontWeight: '600' }}>
-                  Nilai Akhir {formatScore(item.finalScore)}
-                </Text>
-              </View>
-              <View
-                style={{
-                  borderWidth: 1,
-                  borderColor: item.componentSummary.pendingCount > 0 ? '#fde68a' : '#bbf7d0',
-                  backgroundColor: item.componentSummary.pendingCount > 0 ? '#fffbeb' : '#f0fdf4',
-                  borderRadius: 999,
-                  paddingHorizontal: 10,
-                  paddingVertical: 6,
-                }}
-              >
-                <Text
-                  style={{
-                    color: item.componentSummary.pendingCount > 0 ? '#b45309' : '#15803d',
-                    fontSize: 11,
-                    fontWeight: '700',
-                  }}
-                >
-                  {item.componentSummary.availableCount}/{item.componentSummary.totalCount} komponen
-                </Text>
-              </View>
-            </View>
-          </View>
+      <View style={{ flexDirection: 'row', alignItems: 'flex-start', gap: 12 }}>
+        <View
+          style={{
+            width: 42,
+            height: 42,
+            borderRadius: 14,
+            borderWidth: 1,
+            borderColor: colors.border,
+            backgroundColor: colors.surface,
+            alignItems: 'center',
+            justifyContent: 'center',
+          }}
+        >
+          <Feather name="book-open" size={18} color="#2563eb" />
         </View>
-      </Pressable>
 
-      {expanded ? (
-        <View style={{ borderTopWidth: 1, borderTopColor: colors.border, paddingHorizontal: 14, paddingVertical: 14, gap: 12 }}>
-          {item.components.map((component) => (
-            <GradeComponentCard key={`${item.subject.id}-${component.code}`} item={component} />
-          ))}
+        <View style={{ flex: 1, gap: 10 }}>
+          <View style={{ flexDirection: 'row', alignItems: 'flex-start', gap: 12 }}>
+            <View style={{ flex: 1 }}>
+              <Text style={{ color: colors.text, fontWeight: '800', fontSize: 15 }}>{item.subject.name}</Text>
+              <Text style={{ color: colors.textMuted, fontSize: 12, marginTop: 3 }}>
+                {item.subject.code}
+                {item.teacher?.name ? ` • ${item.teacher.name}` : ''}
+              </Text>
+            </View>
+          </View>
 
-          <View style={{ gap: 10 }}>
+          <View style={{ flexDirection: 'row', flexWrap: 'wrap', gap: 8 }}>
             <View
               style={{
                 borderWidth: 1,
                 borderColor: colors.border,
-                backgroundColor: colors.surfaceMuted,
-                borderRadius: 14,
-                paddingHorizontal: 12,
-                paddingVertical: 12,
+                backgroundColor: colors.surface,
+                borderRadius: 999,
+                paddingHorizontal: 10,
+                paddingVertical: 6,
               }}
             >
-              <Text style={{ color: colors.textMuted, fontSize: 11, fontWeight: '700', letterSpacing: 0.6 }}>
-                PREDIKAT
-              </Text>
-              <Text style={{ color: colors.text, fontWeight: '800', fontSize: 22, marginTop: 6 }}>
-                {item.predicate || '-'}
-              </Text>
+              <Text style={{ color: colors.textMuted, fontSize: 11, fontWeight: '600' }}>KKM {item.kkm}</Text>
             </View>
             <View
               style={{
                 borderWidth: 1,
                 borderColor: colors.border,
-                backgroundColor: colors.surfaceMuted,
-                borderRadius: 14,
-                paddingHorizontal: 12,
-                paddingVertical: 12,
+                backgroundColor: colors.surface,
+                borderRadius: 999,
+                paddingHorizontal: 10,
+                paddingVertical: 6,
               }}
             >
-              <Text style={{ color: colors.textMuted, fontSize: 11, fontWeight: '700', letterSpacing: 0.6 }}>
-                CATATAN KOMPETENSI
+              <Text style={{ color: colors.textMuted, fontSize: 11, fontWeight: '600' }}>
+                Program {component.reportSlotCode}
               </Text>
-              <Text style={{ color: colors.text, fontSize: 13, lineHeight: 20, marginTop: 6 }}>
-                {item.description || 'Deskripsi nilai belum tersedia.'}
+            </View>
+            <View
+              style={{
+                borderWidth: 1,
+                borderColor: available ? '#bbf7d0' : '#fde68a',
+                backgroundColor: available ? '#f0fdf4' : '#fffbeb',
+                borderRadius: 999,
+                paddingHorizontal: 10,
+                paddingVertical: 6,
+              }}
+            >
+              <Text
+                style={{
+                  color: available ? '#15803d' : '#b45309',
+                  fontSize: 11,
+                  fontWeight: '700',
+                }}
+              >
+                {available ? 'Tersedia' : 'Menunggu'}
               </Text>
             </View>
           </View>
         </View>
-      ) : null}
+      </View>
+
+      <View style={{ gap: 12 }}>
+        <View
+          style={{
+            borderWidth: 1,
+            borderColor: available ? '#bbf7d0' : colors.border,
+            backgroundColor: available ? '#f0fdf4' : colors.surfaceMuted,
+            borderRadius: 14,
+            paddingHorizontal: 12,
+            paddingVertical: 12,
+          }}
+        >
+          <Text style={{ color: colors.textMuted, fontSize: 11, fontWeight: '700', letterSpacing: 0.6 }}>
+            NILAI PROGRAM
+          </Text>
+          <Text style={{ color: colors.text, fontWeight: '800', fontSize: 24, marginTop: 6 }}>
+            {formatScore(component.score)}
+          </Text>
+          <Text style={{ color: colors.textMuted, fontSize: 12, marginTop: 4 }}>
+            {component.entryMode === 'NF_SERIES' ? 'Seri NF' : 'Skor tunggal'}
+          </Text>
+        </View>
+
+        <GradeComponentCard item={component} />
+
+        <View
+          style={{
+            borderWidth: 1,
+            borderColor: available ? '#bbf7d0' : colors.border,
+            backgroundColor: available ? '#f0fdf4' : colors.surfaceMuted,
+            borderRadius: 14,
+            paddingHorizontal: 12,
+            paddingVertical: 12,
+          }}
+        >
+          <Text style={{ color: colors.text, fontSize: 13, lineHeight: 20 }}>
+            {available
+              ? `Nilai ${component.reportSlotCode} untuk mapel ini sudah tersedia dan mengikuti semester berjalan.`
+              : `Nilai ${component.reportSlotCode} untuk mapel ini belum tersedia. Data akan tampil setelah guru menyelesaikan input nilai program terkait.`}
+          </Text>
+        </View>
+      </View>
     </View>
   );
 }
@@ -377,7 +381,7 @@ export default function GradesScreen() {
   const { colors } = useAppTheme();
   const { isAuthenticated, isLoading, user } = useAuth();
   const [activeTab, setActiveTab] = useState<GradeTabKey>('PROGRAM');
-  const [expandedSubjectId, setExpandedSubjectId] = useState<number | null>(null);
+  const [activeProgramCode, setActiveProgramCode] = useState<string>('');
   const gradesQuery = useStudentGradesQuery({ enabled: isAuthenticated, user });
   const pageContentPadding = getStandardPagePadding(insets);
   const overview = gradesQuery.data?.overview;
@@ -389,30 +393,72 @@ export default function GradesScreen() {
       new Set(overview.components.map((component) => component.reportSlotCode).filter(Boolean)),
     )
     if (labels.length === 1) {
-      return `Lihat komponen ${labels[0]} per mata pelajaran.`
+      return `Pilih tab ${labels[0]} untuk melihat nilai per program ujian.`
     }
     if (labels.length === 2) {
-      return `Lihat komponen ${labels[0]} dan ${labels[1]} per mata pelajaran.`
+      return `Pilih tab ${labels[0]} atau ${labels[1]} untuk melihat nilai per program ujian.`
     }
-    return `Lihat komponen ${labels.slice(0, -1).join(', ')}, dan ${labels[labels.length - 1]} per mata pelajaran.`
+    return `Pilih tab ${labels.slice(0, -1).join(', ')}, dan ${labels[labels.length - 1]} untuk melihat nilai per program ujian.`
   }, [overview]);
   const reportTabSubtitle = 'Lihat ringkasan nilai akhir semester, kehadiran, dan catatan wali kelas.';
 
-  const programSummary = useMemo(() => {
+  const programTabs = useMemo(() => {
     if (!overview) return [];
-    return overview.components.map((component) => {
-      const availableSubjects = overview.subjects.filter((subject) =>
-        subject.components.some((row) => row.code === component.code && row.status === 'AVAILABLE'),
-      ).length;
-      return {
-        code: component.code,
-        label: component.label,
-        reportSlotCode: component.reportSlotCode,
-        availableSubjects,
-        pendingSubjects: Math.max(overview.subjects.length - availableSubjects, 0),
-      };
-    });
+    return Array.from(
+      new Map(
+        overview.components.map((component) => [
+          component.reportSlotCode,
+          {
+            key: component.reportSlotCode,
+            label: component.reportSlotCode,
+            fullLabel: component.label,
+            iconName: getProgramTabIconName(component.reportSlotCode),
+          },
+        ]),
+      ).values(),
+    );
   }, [overview]);
+  const activeProgram = useMemo(
+    () => programTabs.find((program) => program.key === activeProgramCode) || programTabs[0] || null,
+    [programTabs, activeProgramCode],
+  );
+  const activeProgramSubjects = useMemo(() => {
+    if (!overview || !activeProgram) return [];
+    return overview.subjects
+      .map((subject) => {
+        const component = subject.components.find((row) => row.reportSlotCode === activeProgram.key) || null;
+        if (!component) return null;
+        return { subject, component };
+      })
+      .filter(
+        (row): row is { subject: StudentGradeOverviewSubjectRow; component: StudentGradeOverviewSubjectComponent } =>
+          row !== null,
+      );
+  }, [overview, activeProgram]);
+  const activeProgramSummary = useMemo(() => {
+    const totalSubjects = activeProgramSubjects.length;
+    const availableSubjects = activeProgramSubjects.filter((row) => row.component.status === 'AVAILABLE').length;
+    const pendingSubjects = Math.max(totalSubjects - availableSubjects, 0);
+    const scores = activeProgramSubjects
+      .map((row) => row.component.score)
+      .filter((value): value is number => value !== null && value !== undefined);
+    return {
+      totalSubjects,
+      availableSubjects,
+      pendingSubjects,
+      averageScore: calculateAverage(scores),
+    };
+  }, [activeProgramSubjects]);
+
+  useEffect(() => {
+    if (!programTabs.length) {
+      if (activeProgramCode) setActiveProgramCode('');
+      return;
+    }
+    if (!programTabs.some((program) => program.key === activeProgramCode)) {
+      setActiveProgramCode(programTabs[0].key);
+    }
+  }, [programTabs, activeProgramCode]);
 
   if (isLoading) return <AppLoadingScreen message="Memuat nilai..." />;
   if (!isAuthenticated) return <Redirect href="/welcome" />;
@@ -491,38 +537,77 @@ export default function GradesScreen() {
 
           {activeTab === 'PROGRAM' ? (
             <>
+              <View
+                style={{
+                  borderWidth: 1,
+                  borderColor: colors.border,
+                  backgroundColor: colors.surface,
+                  borderRadius: 18,
+                  paddingHorizontal: 14,
+                  paddingVertical: 14,
+                  gap: 12,
+                }}
+              >
+                <Text style={{ color: colors.text, fontSize: 18, fontWeight: '800' }}>Program Ujian Aktif</Text>
+                <Text style={{ color: colors.textMuted, fontSize: 13, lineHeight: 20 }}>{programTabSubtitle}</Text>
+                <MobileMenuTabBar
+                  items={programTabs.map((program) => ({
+                    key: program.key,
+                    label: program.label,
+                    iconName: program.iconName,
+                  }))}
+                  activeKey={activeProgram?.key || ''}
+                  onChange={setActiveProgramCode}
+                />
+                <View
+                  style={{
+                    alignSelf: 'flex-start',
+                    borderWidth: 1,
+                    borderColor: colors.border,
+                    backgroundColor: colors.surfaceMuted,
+                    borderRadius: 999,
+                    paddingHorizontal: 10,
+                    paddingVertical: 6,
+                  }}
+                >
+                  <Text style={{ color: colors.textMuted, fontSize: 12, fontWeight: '600' }}>
+                    Mengikuti semester berjalan
+                  </Text>
+                </View>
+              </View>
+
               <View style={{ flexDirection: 'row', flexWrap: 'wrap', marginHorizontal: -6 }}>
                 <View style={{ width: '50%', paddingHorizontal: 6, marginBottom: 12 }}>
                   <MobileSummaryCard
                     title="Total Mapel"
-                    value={String(overview.summary.totalSubjects)}
-                    subtitle="Mata pelajaran aktif"
+                    value={String(activeProgramSummary.totalSubjects)}
+                    subtitle={activeProgram ? `${activeProgram.fullLabel} • ${activeProgram.key}` : 'Mapel program aktif'}
                     iconName="book-open"
                   />
                 </View>
                 <View style={{ width: '50%', paddingHorizontal: 6, marginBottom: 12 }}>
                   <MobileSummaryCard
                     title="Mapel Tersedia"
-                    value={String(overview.summary.subjectsWithAnyScore)}
-                    subtitle="Sudah ada nilai"
+                    value={String(activeProgramSummary.availableSubjects)}
+                    subtitle="Nilai program sudah tersedia"
                     iconName="check-circle"
                     accentColor="#16a34a"
                   />
                 </View>
                 <View style={{ width: '50%', paddingHorizontal: 6, marginBottom: 12 }}>
                   <MobileSummaryCard
-                    title="Komponen Tersedia"
-                    value={String(overview.summary.availableComponents)}
-                    subtitle={`${overview.summary.pendingComponents} komponen menunggu`}
-                    iconName="layers"
-                    accentColor="#0f766e"
+                    title="Mapel Menunggu"
+                    value={String(activeProgramSummary.pendingSubjects)}
+                    subtitle="Masih menunggu input nilai"
+                    iconName="clock"
+                    accentColor={activeProgramSummary.pendingSubjects > 0 ? '#b45309' : '#16a34a'}
                   />
                 </View>
                 <View style={{ width: '50%', paddingHorizontal: 6, marginBottom: 12 }}>
                   <MobileSummaryCard
-                    title="Rata-rata Akhir"
-                    value={formatScore(overview.summary.averageFinalScore)}
-                    subtitle="Nilai akhir semester berjalan"
+                    title={activeProgram ? `Rata-rata ${activeProgram.key}` : 'Rata-rata Program'}
+                    value={formatScore(activeProgramSummary.averageScore)}
+                    subtitle="Dihitung dari nilai program yang tersedia"
                     iconName="trending-up"
                     accentColor="#b45309"
                   />
@@ -540,49 +625,70 @@ export default function GradesScreen() {
                   gap: 12,
                 }}
               >
-                <Text style={{ color: colors.text, fontSize: 18, fontWeight: '800' }}>Ringkasan Program Ujian</Text>
+                <Text style={{ color: colors.text, fontSize: 18, fontWeight: '800' }}>
+                  Ringkasan {activeProgram?.fullLabel || 'Program Ujian'}
+                </Text>
                 <Text style={{ color: colors.textMuted, fontSize: 13, lineHeight: 20 }}>
-                  Status komponen nilai aktif untuk semester berjalan pada setiap mata pelajaran.
+                  Menampilkan kesiapan nilai {activeProgram?.key || 'program aktif'} untuk setiap mata pelajaran pada semester berjalan.
                 </Text>
                 <View style={{ gap: 10 }}>
-                  {programSummary.map((component) => (
-                    <View
-                      key={component.code}
-                      style={{
-                        borderWidth: 1,
-                        borderColor: colors.border,
-                        backgroundColor: colors.surfaceMuted,
-                        borderRadius: 14,
-                        paddingHorizontal: 12,
-                        paddingVertical: 12,
-                        gap: 6,
-                      }}
-                    >
-                      <View style={{ flexDirection: 'row', alignItems: 'flex-start', justifyContent: 'space-between', gap: 12 }}>
-                        <View style={{ flex: 1 }}>
-                          <Text style={{ color: colors.text, fontWeight: '700', fontSize: 13 }}>{component.label}</Text>
-                          <Text style={{ color: colors.textMuted, fontSize: 11, marginTop: 2 }}>
-                            {component.reportSlotCode.replace(/_/g, ' ')}
-                          </Text>
-                        </View>
-                        <View
-                          style={{
-                            borderRadius: 999,
-                            backgroundColor: '#dbeafe',
-                            paddingHorizontal: 10,
-                            paddingVertical: 5,
-                          }}
-                        >
-                          <Text style={{ color: '#1d4ed8', fontSize: 11, fontWeight: '700' }}>
-                            {component.availableSubjects}/{overview.summary.totalSubjects}
-                          </Text>
-                        </View>
-                      </View>
-                      <Text style={{ color: colors.textMuted, fontSize: 12 }}>
-                        {component.availableSubjects} mapel sudah tersedia • {component.pendingSubjects} mapel masih menunggu
-                      </Text>
-                    </View>
-                  ))}
+                  <View
+                    style={{
+                      borderWidth: 1,
+                      borderColor: colors.border,
+                      backgroundColor: colors.surfaceMuted,
+                      borderRadius: 14,
+                      paddingHorizontal: 12,
+                      paddingVertical: 12,
+                      gap: 6,
+                    }}
+                  >
+                    <Text style={{ color: colors.text, fontWeight: '700', fontSize: 13 }}>Mapel Sudah Tersedia</Text>
+                    <Text style={{ color: colors.text, fontWeight: '800', fontSize: 28 }}>
+                      {activeProgramSummary.availableSubjects}
+                    </Text>
+                    <Text style={{ color: colors.textMuted, fontSize: 12 }}>
+                      Mapel yang sudah memiliki nilai {activeProgram?.key || 'program ini'}.
+                    </Text>
+                  </View>
+                  <View
+                    style={{
+                      borderWidth: 1,
+                      borderColor: colors.border,
+                      backgroundColor: colors.surfaceMuted,
+                      borderRadius: 14,
+                      paddingHorizontal: 12,
+                      paddingVertical: 12,
+                      gap: 6,
+                    }}
+                  >
+                    <Text style={{ color: colors.text, fontWeight: '700', fontSize: 13 }}>Mapel Masih Menunggu</Text>
+                    <Text style={{ color: colors.text, fontWeight: '800', fontSize: 28 }}>
+                      {activeProgramSummary.pendingSubjects}
+                    </Text>
+                    <Text style={{ color: colors.textMuted, fontSize: 12 }}>
+                      Mapel yang belum memiliki nilai {activeProgram?.key || 'program ini'}.
+                    </Text>
+                  </View>
+                  <View
+                    style={{
+                      borderWidth: 1,
+                      borderColor: colors.border,
+                      backgroundColor: colors.surfaceMuted,
+                      borderRadius: 14,
+                      paddingHorizontal: 12,
+                      paddingVertical: 12,
+                      gap: 6,
+                    }}
+                  >
+                    <Text style={{ color: colors.text, fontWeight: '700', fontSize: 13 }}>Cakupan Program</Text>
+                    <Text style={{ color: colors.text, fontWeight: '800', fontSize: 28 }}>
+                      {activeProgramSummary.totalSubjects}
+                    </Text>
+                    <Text style={{ color: colors.textMuted, fontSize: 12 }}>
+                      Total mata pelajaran aktif yang mengikuti program ini pada semester berjalan.
+                    </Text>
+                  </View>
                 </View>
               </View>
 
@@ -596,22 +702,21 @@ export default function GradesScreen() {
                   paddingVertical: 14,
                 }}
               >
-                <Text style={{ color: colors.text, fontSize: 18, fontWeight: '800' }}>Daftar Nilai Program Ujian</Text>
+                <Text style={{ color: colors.text, fontSize: 18, fontWeight: '800' }}>
+                  Daftar Nilai {activeProgram?.fullLabel || 'Program Ujian'}
+                </Text>
                 <Text style={{ color: colors.textMuted, marginTop: 4, fontSize: 13, lineHeight: 20 }}>
-                  {overview.summary.totalSubjects} mata pelajaran aktif • {overview.summary.pendingComponents} komponen belum tersedia
+                  {activeProgramSummary.totalSubjects} mata pelajaran aktif • {activeProgramSummary.pendingSubjects} mapel belum tersedia
                 </Text>
               </View>
 
-              {overview.subjects.length > 0 ? (
+              {activeProgramSubjects.length > 0 ? (
                 <View style={{ gap: 12 }}>
-                  {overview.subjects.map((subject) => (
+                  {activeProgramSubjects.map(({ subject, component }) => (
                     <ProgramSubjectCard
-                      key={subject.subject.id}
+                      key={`${subject.subject.id}-${component.reportSlotCode}`}
                       item={subject}
-                      expanded={expandedSubjectId === subject.subject.id}
-                      onToggle={() =>
-                        setExpandedSubjectId((current) => (current === subject.subject.id ? null : subject.subject.id))
-                      }
+                      component={component}
                     />
                   ))}
                 </View>
@@ -633,7 +738,7 @@ export default function GradesScreen() {
                     Belum ada data nilai program
                   </Text>
                   <Text style={{ color: colors.textMuted, textAlign: 'center', marginTop: 6, lineHeight: 20 }}>
-                    Komponen nilai untuk semester berjalan belum tersedia.
+                    Nilai {activeProgram?.key || 'program ini'} untuk semester berjalan belum tersedia.
                   </Text>
                 </View>
               )}
