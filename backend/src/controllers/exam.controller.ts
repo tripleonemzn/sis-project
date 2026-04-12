@@ -83,6 +83,27 @@ function inferExamTypeFromAlias(raw: unknown): ExamType | null {
     return null;
 }
 
+function resolveCanonicalProgramBaseType(params: {
+    programCode?: unknown;
+    baseType?: ExamType | string | null;
+    baseTypeCode?: string | null;
+}): ExamType {
+    const normalizedProgramCode = normalizeProgramCode(params.programCode);
+    if (normalizedProgramCode === 'ASAJ') return ExamType.US_THEORY;
+    if (normalizedProgramCode === 'ASAJP') return ExamType.US_PRACTICE;
+
+    const inferredFromProgramCode = inferExamTypeFromAlias(normalizedProgramCode);
+    if (inferredFromProgramCode) return inferredFromProgramCode;
+
+    const inferredFromBaseTypeCode = inferExamTypeFromAlias(params.baseTypeCode);
+    if (inferredFromBaseTypeCode) return inferredFromBaseTypeCode;
+
+    const inferredFromBaseType = inferExamTypeFromAlias(params.baseType);
+    if (inferredFromBaseType) return inferredFromBaseType;
+
+    return ExamType.FORMATIF;
+}
+
 function normalizeProgramCode(raw: unknown): string | null {
     const normalized = String(raw || '')
         .trim()
@@ -3659,6 +3680,7 @@ async function resolvePacketProgram(params: {
             select: {
                 code: true,
                 baseType: true,
+                baseTypeCode: true,
                 fixedSemester: true,
                 isActive: true,
             },
@@ -3676,7 +3698,14 @@ async function resolvePacketProgram(params: {
         // Untuk mode dinamis, pembatas semester mengikuti fixedSemester program.
         // Base type tetap dipakai untuk routing komponen nilai, bukan pembatas semester.
         assertProgramFixedSemesterCompatibility(config.code, config.fixedSemester, params.semester);
-        return { programCode: config.code, baseType: config.baseType };
+        return {
+            programCode: config.code,
+            baseType: resolveCanonicalProgramBaseType({
+                programCode: config.code,
+                baseType: config.baseType,
+                baseTypeCode: config.baseTypeCode || null,
+            }),
+        };
     }
 
     const normalizedLegacyCode = normalizeProgramCode(params.legacyType);
@@ -3689,6 +3718,7 @@ async function resolvePacketProgram(params: {
             select: {
                 code: true,
                 baseType: true,
+                baseTypeCode: true,
                 fixedSemester: true,
                 isActive: true,
             },
@@ -3699,7 +3729,14 @@ async function resolvePacketProgram(params: {
                 throw new ApiError(400, `Program ujian ${config.code} sedang nonaktif.`);
             }
             assertProgramFixedSemesterCompatibility(config.code, config.fixedSemester, params.semester);
-            return { programCode: config.code, baseType: config.baseType };
+            return {
+                programCode: config.code,
+                baseType: resolveCanonicalProgramBaseType({
+                    programCode: config.code,
+                    baseType: config.baseType,
+                    baseTypeCode: config.baseTypeCode || null,
+                }),
+            };
         }
     }
 
@@ -3708,12 +3745,17 @@ async function resolvePacketProgram(params: {
     const matchingPrograms = await prisma.examProgramConfig.findMany({
         where: {
             academicYearId: params.academicYearId,
-            baseType: legacyType,
+            OR: [
+                { baseType: legacyType },
+                { baseTypeCode: normalizeAliasCode(legacyType) || legacyType },
+                { code: normalizeProgramCode(params.legacyType) || String(legacyType) },
+            ],
             isActive: true,
         },
         select: {
             code: true,
             baseType: true,
+            baseTypeCode: true,
             fixedSemester: true,
         },
         orderBy: [{ displayOrder: 'asc' }, { id: 'asc' }],
@@ -3725,7 +3767,14 @@ async function resolvePacketProgram(params: {
 
     if (candidate) {
         assertProgramFixedSemesterCompatibility(candidate.code, candidate.fixedSemester, params.semester);
-        return { programCode: candidate.code, baseType: candidate.baseType };
+        return {
+            programCode: candidate.code,
+            baseType: resolveCanonicalProgramBaseType({
+                programCode: candidate.code,
+                baseType: candidate.baseType,
+                baseTypeCode: candidate.baseTypeCode || null,
+            }),
+        };
     }
 
     return {
