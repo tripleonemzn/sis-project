@@ -13,7 +13,7 @@ import { QueryStateView } from '../../src/components/QueryStateView';
 import { BRAND_COLORS } from '../../src/config/brand';
 import { useAuth } from '../../src/features/auth/AuthProvider';
 import { MOBILE_NOTIFICATIONS_QUERY_KEY } from '../../src/features/notifications/notificationApi';
-import { MobileWebmailMessageSummary, webmailApi } from '../../src/features/webmail/webmailApi';
+import { MobileWebmailFolderKey, MobileWebmailMessageSummary, webmailApi } from '../../src/features/webmail/webmailApi';
 import { getStandardPagePadding } from '../../src/lib/ui/pageLayout';
 import { notifyApiError, notifySuccess } from '../../src/lib/ui/feedback';
 import { useIsScreenActive } from '../../src/hooks/useIsScreenActive';
@@ -21,19 +21,18 @@ import { useIsScreenActive } from '../../src/hooks/useIsScreenActive';
 const ALLOWED_WEBMAIL_ROLES = new Set(['ADMIN', 'TEACHER', 'PRINCIPAL', 'STAFF', 'EXTRACURRICULAR_TUTOR']);
 const MAILBOX_USERNAME_PATTERN = /^[a-z0-9][a-z0-9._-]{2,62}$/;
 type FeatherIconName = ComponentProps<typeof Feather>['name'];
-type WebmailFolderKey = 'INBOX' | 'Drafts' | 'Sent' | 'Junk' | 'Archive';
+type WebmailFolderKey = MobileWebmailFolderKey;
 
 const WEBMAIL_FOLDER_SHORTCUTS: Array<{
   key: WebmailFolderKey;
   label: string;
   iconName: FeatherIconName;
-  usesPanel: boolean;
 }> = [
-  { key: 'INBOX', label: 'Inbox', iconName: 'inbox', usesPanel: false },
-  { key: 'Drafts', label: 'Draft', iconName: 'edit-2', usesPanel: true },
-  { key: 'Sent', label: 'Terkirim', iconName: 'send', usesPanel: true },
-  { key: 'Junk', label: 'Spam', iconName: 'alert-circle', usesPanel: true },
-  { key: 'Archive', label: 'Arsip', iconName: 'archive', usesPanel: true },
+  { key: 'INBOX', label: 'Inbox', iconName: 'inbox' },
+  { key: 'Drafts', label: 'Draft', iconName: 'edit-2' },
+  { key: 'Sent', label: 'Terkirim', iconName: 'send' },
+  { key: 'Junk', label: 'Spam', iconName: 'alert-circle' },
+  { key: 'Archive', label: 'Arsip', iconName: 'archive' },
 ];
 
 type BridgeCredentials = {
@@ -134,6 +133,30 @@ function normalizeReplySubject(subject?: string | null) {
   if (!normalized) return 'Re: (Tanpa subjek)';
   if (/^re:/i.test(normalized)) return normalized;
   return `Re: ${normalized}`;
+}
+
+function getFolderDescription(folderKey: WebmailFolderKey) {
+  return folderKey === 'INBOX'
+    ? 'Email masuk terbaru dari mailbox sekolah Anda tampil langsung di aplikasi.'
+    : folderKey === 'Drafts'
+      ? 'Draft email yang tersimpan di mailbox sekolah Anda tampil langsung di aplikasi.'
+      : folderKey === 'Sent'
+        ? 'Riwayat email yang sudah dikirim dari mailbox sekolah Anda tampil langsung di aplikasi.'
+        : folderKey === 'Junk'
+          ? 'Email yang masuk ke folder Spam tampil langsung di aplikasi.'
+          : 'Email yang sudah Anda arsipkan tampil langsung di aplikasi.';
+}
+
+function getFolderEmptyState(folderKey: WebmailFolderKey, folderLabel: string) {
+  return folderKey === 'INBOX'
+    ? 'Begitu email baru masuk ke mailbox sekolah, daftar inbox di sini akan langsung ikut terisi dan notifikasinya juga tetap masuk ke HP.'
+    : folderKey === 'Drafts'
+      ? 'Belum ada draft email yang tersimpan di mailbox sekolah Anda.'
+      : folderKey === 'Sent'
+        ? 'Belum ada email terkirim yang tercatat di mailbox sekolah Anda.'
+        : folderKey === 'Junk'
+          ? 'Belum ada email yang masuk ke folder Spam.'
+          : `Belum ada email di folder ${folderLabel}.`;
 }
 
 function SectionCard({
@@ -282,8 +305,8 @@ export default function MobileEmailScreen() {
   });
 
   const emailFeedQuery = useQuery({
-    queryKey: ['mobile-email-inbox-feed', configQuery.data?.mailboxIdentity || 'all'],
-    queryFn: () => webmailApi.getMessages({ page: 1, limit: 20 }),
+    queryKey: ['mobile-email-folder-feed', configQuery.data?.mailboxIdentity || 'all', activeFolderKey],
+    queryFn: () => webmailApi.getMessages({ page: 1, limit: 20, folderKey: activeFolderKey }),
     enabled: isAuthenticated && isAllowedRole && isScreenActive && !isWebmailMode,
     staleTime: 30_000,
     refetchInterval: isAuthenticated && isAllowedRole && isScreenActive && !isWebmailMode ? 60_000 : false,
@@ -305,10 +328,11 @@ export default function MobileEmailScreen() {
   const mailboxMessages = useMemo(() => emailFeedQuery.data?.messages ?? [], [emailFeedQuery.data?.messages]);
 
   const markAsReadMutation = useMutation({
-    mutationFn: (guid: string) => webmailApi.markMessageRead(guid),
+    mutationFn: ({ guid, folderKey }: { guid: string; folderKey: WebmailFolderKey }) =>
+      webmailApi.markMessageRead(guid, { folderKey }),
     onSuccess: async () => {
       await queryClient.invalidateQueries({
-        queryKey: ['mobile-email-inbox-feed'],
+        queryKey: ['mobile-email-folder-feed'],
         refetchType: 'active',
       });
       await queryClient.invalidateQueries({
@@ -338,8 +362,8 @@ export default function MobileEmailScreen() {
   );
 
   const selectedEmailDetailQuery = useQuery({
-    queryKey: ['mobile-email-message-detail', effectiveSelectedEmailGuid || 'empty'],
-    queryFn: () => webmailApi.getMessageDetail(String(effectiveSelectedEmailGuid)),
+    queryKey: ['mobile-email-message-detail', activeFolderKey, effectiveSelectedEmailGuid || 'empty'],
+    queryFn: () => webmailApi.getMessageDetail(String(effectiveSelectedEmailGuid), { folderKey: activeFolderKey }),
     enabled:
       Boolean(effectiveSelectedEmailGuid) &&
       isAuthenticated &&
@@ -424,7 +448,7 @@ export default function MobileEmailScreen() {
       setComposeBody('');
       setIsComposeMode(false);
       await queryClient.invalidateQueries({
-        queryKey: ['mobile-email-inbox-feed'],
+        queryKey: ['mobile-email-folder-feed'],
         refetchType: 'active',
       });
     },
@@ -436,7 +460,6 @@ export default function MobileEmailScreen() {
   const leavePanelMode = () => {
     setIsWebmailMode(false);
     setIsRegisterMode(false);
-    setActiveFolderKey('INBOX');
     setBridgeCredentials(null);
     setPanelError(null);
     setWebmailUrl(null);
@@ -494,22 +517,17 @@ export default function MobileEmailScreen() {
     setWebviewKey((value) => value + 1);
   };
 
-  const handleFolderShortcutPress = (folderKey: WebmailFolderKey, usesPanel: boolean) => {
+  const handleFolderShortcutPress = (folderKey: WebmailFolderKey) => {
     setIsEmailDetailVisible(false);
     setIsComposeMode(false);
     setPanelError(null);
     setIsRegisterMode(false);
+    setSelectedEmailGuid(null);
     setActiveFolderKey(folderKey);
-
-    if (!usesPanel) {
-      scrollViewRef.current?.scrollTo({
-        y: Math.max(inboxSectionY - 12, 0),
-        animated: true,
-      });
-      return;
-    }
-
-    openPanelAccess(folderKey);
+    scrollViewRef.current?.scrollTo({
+      y: Math.max(inboxSectionY - 12, 0),
+      animated: true,
+    });
   };
 
   const handleRegister = () => {
@@ -558,7 +576,7 @@ export default function MobileEmailScreen() {
     setIsEmailDetailVisible(true);
     if (item.isRead) return;
     try {
-      await markAsReadMutation.mutateAsync(item.guid);
+      await markAsReadMutation.mutateAsync({ guid: item.guid, folderKey: activeFolderKey });
     } catch {
       // Error is surfaced by mutation handler.
     }
@@ -583,7 +601,6 @@ export default function MobileEmailScreen() {
     setRegisterUser('');
     setRegisterPass('');
     setRegisterPassConfirm('');
-    setActiveFolderKey('INBOX');
   };
 
   if (isLoading) return <AppLoadingScreen message="Memuat Email..." />;
@@ -626,6 +643,10 @@ export default function MobileEmailScreen() {
     selectedEmailDetailQuery.data?.previewText ||
     selectedEmail?.snippet ||
     '';
+  const activeFolderDescription = getFolderDescription(activeFolderKey);
+  const activeFolderEmptyState = getFolderEmptyState(activeFolderKey, activeFolderLabel);
+  const activeFolderTitle = activeFolderKey === 'INBOX' ? 'Kotak Masuk' : activeFolderLabel;
+  const canReplyFromSelectedFolder = activeFolderKey !== 'Drafts';
   const webSource = bridgeCredentials
     ? {
         uri: bridgeLoginUrl,
@@ -669,7 +690,7 @@ export default function MobileEmailScreen() {
               onChange={(key) => {
                 const targetFolder = WEBMAIL_FOLDER_SHORTCUTS.find((item) => item.key === key);
                 if (!targetFolder) return;
-                handleFolderShortcutPress(targetFolder.key, targetFolder.usesPanel);
+                handleFolderShortcutPress(targetFolder.key);
               }}
               minTabWidth={52}
               maxTabWidth={52}
@@ -683,43 +704,64 @@ export default function MobileEmailScreen() {
             }}
           >
             <SectionCard
-              title="Kotak Masuk"
-              subtitle="Daftar ini membaca mailbox sungguhan dari server, jadi isi inbox dan panel email tetap searah."
+              title={activeFolderTitle}
+              subtitle={activeFolderDescription}
             >
-              <Pressable
-                onPress={() => emailFeedQuery.refetch()}
-                style={{
-                  borderRadius: 12,
-                  borderWidth: 1,
-                  borderColor: '#cbd5e1',
-                  paddingVertical: 10,
-                  alignItems: 'center',
-                  justifyContent: 'center',
-                  flexDirection: 'row',
-                  gap: 6,
-                  backgroundColor: '#ffffff',
-                }}
-              >
-                {emailFeedQuery.isFetching && !emailFeedQuery.isLoading ? (
-                  <ActivityIndicator size="small" color="#2563eb" />
-                ) : (
-                  <Feather name="refresh-cw" size={14} color="#1e293b" />
-                )}
-                <Text style={{ color: '#1e293b', fontSize: 12, fontWeight: '700' }}>Sinkronkan Inbox</Text>
-              </Pressable>
-              <Text style={{ color: '#64748b', fontSize: 12, lineHeight: 18 }}>
-                Ketuk ikon folder di atas untuk membuka mailbox yang Anda butuhkan.
-              </Text>
+              <View style={{ flexDirection: 'row', gap: 8 }}>
+                <Pressable
+                  onPress={() => emailFeedQuery.refetch()}
+                  style={{
+                    flex: 1,
+                    borderRadius: 12,
+                    borderWidth: 1,
+                    borderColor: '#cbd5e1',
+                    paddingVertical: 10,
+                    alignItems: 'center',
+                    justifyContent: 'center',
+                    flexDirection: 'row',
+                    gap: 6,
+                    backgroundColor: '#ffffff',
+                  }}
+                >
+                  {emailFeedQuery.isFetching && !emailFeedQuery.isLoading ? (
+                    <ActivityIndicator size="small" color="#2563eb" />
+                  ) : (
+                    <Feather name="refresh-cw" size={14} color="#1e293b" />
+                  )}
+                  <Text style={{ color: '#1e293b', fontSize: 12, fontWeight: '700' }}>Sinkronkan</Text>
+                </Pressable>
+
+                {mailboxAvailable ? (
+                  <Pressable
+                    onPress={() => openPanelAccess(activeFolderKey)}
+                    style={{
+                      flex: 1,
+                      borderRadius: 12,
+                      borderWidth: 1,
+                      borderColor: '#c7d2fe',
+                      backgroundColor: '#eef2ff',
+                      paddingVertical: 10,
+                      alignItems: 'center',
+                      justifyContent: 'center',
+                      flexDirection: 'row',
+                      gap: 6,
+                    }}
+                  >
+                    <Feather name="external-link" size={14} color="#3250b9" />
+                    <Text style={{ color: '#3250b9', fontSize: 12, fontWeight: '700' }}>Panel Lengkap</Text>
+                  </Pressable>
+                ) : null}
+              </View>
 
               {emailFeedQuery.isLoading ? (
                 <View style={{ paddingVertical: 12, alignItems: 'center', justifyContent: 'center', gap: 8 }}>
                   <ActivityIndicator size="small" color="#2563eb" />
-                  <Text style={{ color: '#64748b', fontSize: 12 }}>Memuat kotak masuk...</Text>
+                  <Text style={{ color: '#64748b', fontSize: 12 }}>Memuat {activeFolderLabel.toLowerCase()}...</Text>
                 </View>
               ) : emailFeedQuery.isError ? (
                 <QueryStateView
                   type="error"
-                  message={resolveErrorMessage(emailFeedQuery.error, 'Gagal memuat kotak masuk email.')}
+                  message={resolveErrorMessage(emailFeedQuery.error, `Gagal memuat folder ${activeFolderLabel}.`)}
                   onRetry={() => emailFeedQuery.refetch()}
                 />
               ) : !mailboxAvailable ? (
@@ -769,15 +811,13 @@ export default function MobileEmailScreen() {
                     gap: 6,
                   }}
                 >
-                  <Text style={{ color: '#0f172a', fontWeight: '700' }}>Inbox masih kosong</Text>
-                  <Text style={{ color: '#64748b', fontSize: 12, lineHeight: 18 }}>
-                    Begitu email baru masuk ke mailbox sekolah, daftar inbox di sini akan langsung ikut terisi dan notifikasinya juga tetap masuk ke HP.
-                  </Text>
+                  <Text style={{ color: '#0f172a', fontWeight: '700' }}>{activeFolderLabel} masih kosong</Text>
+                  <Text style={{ color: '#64748b', fontSize: 12, lineHeight: 18 }}>{activeFolderEmptyState}</Text>
                 </View>
               ) : (
                 <View style={{ gap: 8 }}>
                   <Text style={{ color: '#64748b', fontSize: 12, lineHeight: 18 }}>
-                    Ketuk salah satu email untuk membuka detail dalam tampilan terpisah tanpa perlu scroll sampai ke bawah daftar inbox.
+                    Ketuk salah satu email untuk membuka detail tanpa keluar dari daftar {activeFolderLabel.toLowerCase()}.
                   </Text>
                   {mailboxMessages.map((item) => (
                     <EmailInboxItem
@@ -1161,8 +1201,8 @@ export default function MobileEmailScreen() {
 
         <MobileDetailModal
           visible={isEmailDetailVisible && Boolean(selectedEmail)}
-          title="Detail Email"
-          subtitle="Baca isi email tanpa keluar dari daftar inbox utama."
+          title={`Detail ${activeFolderLabel}`}
+          subtitle={`Baca isi email tanpa keluar dari daftar ${activeFolderLabel.toLowerCase()}.`}
           iconName="mail"
           accentColor="#2563eb"
           onClose={() => setIsEmailDetailVisible(false)}
@@ -1192,24 +1232,25 @@ export default function MobileEmailScreen() {
               </View>
 
               <View style={{ flexDirection: 'row', gap: 8 }}>
+                {canReplyFromSelectedFolder ? (
+                  <Pressable
+                    onPress={() => {
+                      openReplyCompose();
+                    }}
+                    style={{
+                      flex: 1,
+                      borderRadius: 12,
+                      backgroundColor: '#3250b9',
+                      paddingVertical: 11,
+                      alignItems: 'center',
+                    }}
+                  >
+                    <Text style={{ color: '#ffffff', fontWeight: '700' }}>Balas Email</Text>
+                  </Pressable>
+                ) : null}
                 <Pressable
                   onPress={() => {
-                    openReplyCompose();
-                  }}
-                  style={{
-                    flex: 1,
-                    borderRadius: 12,
-                    backgroundColor: '#3250b9',
-                    paddingVertical: 11,
-                    alignItems: 'center',
-                  }}
-                >
-                  <Text style={{ color: '#ffffff', fontWeight: '700' }}>Balas Email</Text>
-                </Pressable>
-
-                <Pressable
-                  onPress={() => {
-                    openPanelAccess();
+                    openPanelAccess(activeFolderKey);
                   }}
                   style={{
                     flex: 1,
@@ -1222,7 +1263,7 @@ export default function MobileEmailScreen() {
                   }}
                 >
                   <Text style={{ color: '#1e293b', fontWeight: '700' }}>
-                    {isSsoMode ? 'Buka Panel Lengkap' : 'Akses Panel Lengkap'}
+                    {isSsoMode ? 'Buka Panel Lengkap' : 'Panel Lengkap'}
                   </Text>
                 </Pressable>
               </View>
@@ -1264,7 +1305,7 @@ export default function MobileEmailScreen() {
                     {selectedBodyText || 'Isi email tidak tersedia.'}
                   </Text>
                   <Text style={{ color: '#64748b', fontSize: 12, lineHeight: 18 }}>
-                    Detail email dibuka terpisah agar daftar inbox tetap ringkas dan nyaman dipakai walau email masuk banyak.
+                    Detail email dibuka terpisah agar daftar {activeFolderLabel.toLowerCase()} tetap ringkas dan nyaman dipakai walau email banyak.
                   </Text>
                 </View>
               )}

@@ -8,6 +8,7 @@ type ApiEnvelope<T> = {
 };
 
 export type MobileWebmailAuthMode = 'BRIDGE' | 'SSO';
+export type MobileWebmailFolderKey = 'INBOX' | 'Drafts' | 'Sent' | 'Junk' | 'Archive';
 
 export type MobileWebmailConfig = {
   mode: MobileWebmailAuthMode;
@@ -74,6 +75,7 @@ export type MobileWebmailMessageDetail = MobileWebmailMessageSummary & {
 export type MobileWebmailMessageList = {
   mailboxIdentity: string;
   mailboxAvailable: boolean;
+  folderKey: MobileWebmailFolderKey;
   messages: MobileWebmailMessageSummary[];
   pagination: {
     page: number;
@@ -121,21 +123,37 @@ export const webmailApi = {
     return response.data.data;
   },
 
-  async getMessages(params?: { page?: number; limit?: number }) {
+  async getMessages(params?: { page?: number; limit?: number; folderKey?: MobileWebmailFolderKey }) {
     const response = await apiClient.get<ApiEnvelope<MobileWebmailMessageList>>('/webmail/messages', {
-      params,
+      params: {
+        page: params?.page,
+        limit: params?.limit,
+        folder: params?.folderKey,
+      },
     });
     return response.data.data;
   },
 
-  async getMessageDetail(guid: string) {
-    const response = await apiClient.get<ApiEnvelope<MobileWebmailMessageDetail>>(`/webmail/messages/${encodeURIComponent(guid)}`);
+  async getMessageDetail(guid: string, params?: { folderKey?: MobileWebmailFolderKey }) {
+    const response = await apiClient.get<ApiEnvelope<MobileWebmailMessageDetail>>(`/webmail/messages/${encodeURIComponent(guid)}`, {
+      params: {
+        folder: params?.folderKey,
+      },
+    });
     return response.data.data;
   },
 
-  async markMessageRead(guid: string) {
-    const response = await apiClient.patch<ApiEnvelope<{ guid: string; mailboxIdentity: string; markedAt: string }>>(
+  async markMessageRead(guid: string, params?: { folderKey?: MobileWebmailFolderKey }) {
+    const response = await apiClient.patch<
+      ApiEnvelope<{ guid: string; mailboxIdentity: string; folderKey: MobileWebmailFolderKey; markedAt: string }>
+    >(
       `/webmail/messages/${encodeURIComponent(guid)}/read`,
+      undefined,
+      {
+        params: {
+          folder: params?.folderKey,
+        },
+      },
     );
     return response.data.data;
   },

@@ -13,6 +13,9 @@ const DOVEADM_TIMEOUT_MS = 15000;
 const DOVEADM_MAX_BUFFER = 8 * 1024 * 1024;
 const MAX_MESSAGE_LIMIT = 50;
 const EMAIL_NOTIFICATION_TYPE = 'EMAIL_RECEIVED';
+const WEBMAIL_FOLDER_KEY_SET = new Set(['INBOX', 'Drafts', 'Sent', 'Junk', 'Archive']);
+
+export type WebmailFolderKey = 'INBOX' | 'Drafts' | 'Sent' | 'Junk' | 'Archive';
 
 export type WebmailMessageSummary = {
   uid: number;
@@ -37,6 +40,7 @@ export type WebmailMessageDetail = WebmailMessageSummary & {
 export type WebmailMessageListResult = {
   mailboxIdentity: string;
   mailboxAvailable: boolean;
+  folderKey: WebmailFolderKey;
   messages: WebmailMessageSummary[];
   pagination: {
     page: number;
@@ -72,6 +76,32 @@ type ParsedMimeEntity = {
 
 function normalizeMailboxIdentity(value: string) {
   return String(value || '').trim().toLowerCase();
+}
+
+export function normalizeWebmailFolderKey(value: unknown, fallbackValue: WebmailFolderKey = 'INBOX'): WebmailFolderKey {
+  const rawValue = String(value ?? '')
+    .trim()
+    .toLowerCase();
+  if (!rawValue) return fallbackValue;
+
+  const mappedValue =
+    rawValue === 'inbox'
+      ? 'INBOX'
+      : rawValue === 'draft' || rawValue === 'drafts'
+        ? 'Drafts'
+        : rawValue === 'sent' || rawValue === 'terkirim'
+          ? 'Sent'
+          : rawValue === 'junk' || rawValue === 'spam'
+            ? 'Junk'
+            : rawValue === 'archive' || rawValue === 'arsip'
+              ? 'Archive'
+              : null;
+
+  if (mappedValue && WEBMAIL_FOLDER_KEY_SET.has(mappedValue)) {
+    return mappedValue as WebmailFolderKey;
+  }
+
+  return fallbackValue;
 }
 
 function toMaybeString(value: unknown) {
@@ -450,11 +480,11 @@ async function runDoveadmFetch(mailboxIdentity: string, fields: string, searchAr
   }
 }
 
-async function runDoveadmFlagsAddSeen(mailboxIdentity: string, guid: string) {
+async function runDoveadmFlagsAddSeen(mailboxIdentity: string, folderKey: WebmailFolderKey, guid: string) {
   try {
     await execFileAsync(
       'docker',
-      ['exec', getDovecotContainerName(), 'doveadm', 'flags', 'add', '-u', mailboxIdentity, '\\Seen', 'mailbox', 'INBOX', 'guid', guid],
+      ['exec', getDovecotContainerName(), 'doveadm', 'flags', 'add', '-u', mailboxIdentity, '\\Seen', 'mailbox', folderKey, 'guid', guid],
       {
         timeout: DOVEADM_TIMEOUT_MS,
         maxBuffer: 1024 * 1024,
@@ -576,10 +606,12 @@ export async function listWebmailMessages(options: {
   mailboxIdentity: string;
   page?: number;
   limit?: number;
+  folderKey?: WebmailFolderKey;
 }): Promise<WebmailMessageListResult> {
   const mailboxIdentity = normalizeMailboxIdentity(options.mailboxIdentity);
   const page = parsePositiveInt(options.page, 1, 1, 9999);
   const limit = parsePositiveInt(options.limit, 20, 1, MAX_MESSAGE_LIMIT);
+  const folderKey = normalizeWebmailFolderKey(options.folderKey, 'INBOX');
 
   try {
     await ensureMailboxAvailable(mailboxIdentity);
@@ -588,6 +620,7 @@ export async function listWebmailMessages(options: {
       return {
         mailboxIdentity,
         mailboxAvailable: false,
+        folderKey,
         messages: [],
         pagination: {
           page,
@@ -603,7 +636,7 @@ export async function listWebmailMessages(options: {
   const records = await runDoveadmFetch(
     mailboxIdentity,
     'uid guid flags hdr.message-id hdr.subject hdr.from hdr.date body.snippet',
-    ['mailbox', 'INBOX', 'all'],
+    ['mailbox', folderKey, 'all'],
   );
 
   const messages = records
@@ -618,6 +651,7 @@ export async function listWebmailMessages(options: {
   return {
     mailboxIdentity,
     mailboxAvailable: true,
+    folderKey,
     messages: messages.slice(offset, offset + limit),
     pagination: {
       page,
@@ -631,9 +665,11 @@ export async function listWebmailMessages(options: {
 export async function getWebmailMessageDetail(options: {
   mailboxIdentity: string;
   guid: string;
+  folderKey?: WebmailFolderKey;
 }): Promise<WebmailMessageDetail> {
   const mailboxIdentity = normalizeMailboxIdentity(options.mailboxIdentity);
   const guid = String(options.guid || '').trim();
+  const folderKey = normalizeWebmailFolderKey(options.folderKey, 'INBOX');
   if (!guid) {
     throw new MailboxMessageNotFoundError('Guid email tidak valid');
   }
@@ -643,7 +679,7 @@ export async function getWebmailMessageDetail(options: {
   const records = await runDoveadmFetch(
     mailboxIdentity,
     'uid guid flags hdr.message-id hdr.subject hdr.from hdr.to hdr.cc hdr.date body.snippet text',
-    ['mailbox', 'INBOX', 'guid', guid],
+    ['mailbox', folderKey, 'guid', guid],
   );
   const record = records.find((item) => String(item['guid'] || '').trim() === guid);
 
@@ -672,15 +708,17 @@ export async function markWebmailMessageAsRead(options: {
   userId: number;
   mailboxIdentity: string;
   guid: string;
+  folderKey?: WebmailFolderKey;
 }) {
   const mailboxIdentity = normalizeMailboxIdentity(options.mailboxIdentity);
   const guid = String(options.guid || '').trim();
+  const folderKey = normalizeWebmailFolderKey(options.folderKey, 'INBOX');
   if (!guid) {
     throw new MailboxMessageNotFoundError('Guid email tidak valid');
   }
 
   await ensureMailboxAvailable(mailboxIdentity);
-  await runDoveadmFlagsAddSeen(mailboxIdentity, guid);
+  await runDoveadmFlagsAddSeen(mailboxIdentity, folderKey, guid);
 
   await prisma.notification.updateMany({
     where: {

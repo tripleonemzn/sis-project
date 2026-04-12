@@ -14,7 +14,9 @@ import {
   markWebmailMessageAsRead,
   MailboxMessageNotFoundError,
   MailboxUnavailableError,
+  normalizeWebmailFolderKey,
   sendWebmailMessage,
+  type WebmailFolderKey,
 } from '../services/webmailMailbox.service';
 
 type WebmailMode = 'BRIDGE' | 'SSO';
@@ -75,6 +77,20 @@ type SendWebmailBody = {
   inReplyToMessageId?: unknown;
   references?: unknown;
 };
+
+const resolveFolderLabel = (folderKey: WebmailFolderKey): string => {
+  return folderKey === 'INBOX'
+    ? 'Inbox'
+    : folderKey === 'Drafts'
+      ? 'Draft'
+      : folderKey === 'Sent'
+        ? 'Terkirim'
+        : folderKey === 'Junk'
+          ? 'Spam'
+          : 'Arsip';
+};
+
+const resolveRequestedFolderKey = (value: unknown): WebmailFolderKey => normalizeWebmailFolderKey(value, 'INBOX');
 
 const WEBMAIL_ALLOWED_ROLES: Role[] = [
   'ADMIN',
@@ -584,17 +600,19 @@ export const listWebmailInboxMessages = asyncHandler(async (req: AuthRequest, re
 
   const page = clamp(parsePositiveInt(req.query?.page as string | undefined, 1), 1, 9999);
   const limit = clamp(parsePositiveInt(req.query?.limit as string | undefined, 20), 1, 50);
+  const folderKey = resolveRequestedFolderKey(req.query?.folder ?? req.query?.folderKey);
   const inbox = await listWebmailMessages({
     mailboxIdentity,
     page,
     limit,
+    folderKey,
   });
 
   res.status(200).json(
     new ApiResponse(
       200,
       inbox,
-      inbox.mailboxAvailable ? 'Kotak masuk email berhasil diambil' : 'Mailbox belum tersedia di server',
+      inbox.mailboxAvailable ? `Folder ${resolveFolderLabel(folderKey)} berhasil diambil` : 'Mailbox belum tersedia di server',
     ),
   );
 });
@@ -610,14 +628,16 @@ export const getWebmailInboxMessageDetail = asyncHandler(async (req: AuthRequest
   if (!guid) {
     throw new ApiError(400, 'Guid email wajib diisi');
   }
+  const folderKey = resolveRequestedFolderKey(req.query?.folder ?? req.query?.folderKey);
 
   try {
     const detail = await getWebmailMessageDetail({
       mailboxIdentity,
       guid,
+      folderKey,
     });
 
-    res.status(200).json(new ApiResponse(200, detail, 'Detail email berhasil diambil'));
+    res.status(200).json(new ApiResponse(200, detail, `Detail email ${resolveFolderLabel(folderKey)} berhasil diambil`));
   } catch (error: unknown) {
     if (error instanceof MailboxUnavailableError) {
       throw new ApiError(404, 'Mailbox belum tersedia di server');
@@ -640,12 +660,14 @@ export const markWebmailInboxMessageRead = asyncHandler(async (req: AuthRequest,
   if (!guid) {
     throw new ApiError(400, 'Guid email wajib diisi');
   }
+  const folderKey = resolveRequestedFolderKey(req.query?.folder ?? req.query?.folderKey);
 
   try {
     await markWebmailMessageAsRead({
       userId: user.id,
       mailboxIdentity,
       guid,
+      folderKey,
     });
 
     res.status(200).json(
@@ -654,6 +676,7 @@ export const markWebmailInboxMessageRead = asyncHandler(async (req: AuthRequest,
         {
           guid,
           mailboxIdentity,
+          folderKey,
           markedAt: new Date().toISOString(),
         },
         'Email berhasil ditandai sebagai dibaca',

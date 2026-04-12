@@ -3,7 +3,7 @@ import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { ArrowLeft, Inbox, Mail, RefreshCw, Reply, SquarePen } from 'lucide-react';
 import { toast } from 'react-hot-toast';
 import { authService } from '../../services/auth.service';
-import { webmailService, type WebmailMessageSummary } from '../../services/webmail.service';
+import { webmailService, type WebmailFolderKey, type WebmailMessageSummary } from '../../services/webmail.service';
 
 const WEBMAIL_URL = 'https://mail.siskgb2.id/';
 const DEFAULT_WEBMAIL_INBOX_URL = 'https://mail.siskgb2.id/?_task=mail&_mbox=INBOX&_layout=list&_skin=elastic';
@@ -21,6 +21,14 @@ type WebmailBridgeCredentials = {
 };
 
 type ComposeModeKind = 'new' | 'reply';
+
+const WEBMAIL_FOLDER_SHORTCUTS: Array<{ key: WebmailFolderKey; label: string }> = [
+  { key: 'INBOX', label: 'Inbox' },
+  { key: 'Drafts', label: 'Draft' },
+  { key: 'Sent', label: 'Terkirim' },
+  { key: 'Junk', label: 'Spam' },
+  { key: 'Archive', label: 'Arsip' },
+];
 
 const parseBridgeCredentials = (rawValue: string | null): WebmailBridgeCredentials | null => {
   if (!rawValue) return null;
@@ -61,6 +69,21 @@ const getInboxUrl = (bridgeLoginUrl: string): string => {
   }
 };
 
+const getMailboxFolderUrl = (bridgeLoginUrl: string, folderKey: WebmailFolderKey): string => {
+  try {
+    const parsedUrl = new URL(bridgeLoginUrl);
+    parsedUrl.search = '';
+    parsedUrl.hash = '';
+    parsedUrl.searchParams.set('_task', 'mail');
+    parsedUrl.searchParams.set('_mbox', folderKey);
+    parsedUrl.searchParams.set('_layout', 'list');
+    parsedUrl.searchParams.set('_skin', 'elastic');
+    return parsedUrl.toString();
+  } catch {
+    return DEFAULT_WEBMAIL_INBOX_URL;
+  }
+};
+
 const asQuotaLabel = (quotaMb?: number | null): string => {
   const mb = Number(quotaMb || 0);
   if (!Number.isFinite(mb) || mb <= 0) return '5 GB';
@@ -93,6 +116,30 @@ const normalizeReplySubject = (subject?: string | null): string => {
   if (!normalized) return 'Re: (Tanpa subjek)';
   if (/^re:/i.test(normalized)) return normalized;
   return `Re: ${normalized}`;
+};
+
+const getFolderDescription = (folderKey: WebmailFolderKey): string => {
+  return folderKey === 'INBOX'
+    ? 'Email masuk terbaru dari mailbox sekolah Anda tampil langsung di halaman ini.'
+    : folderKey === 'Drafts'
+      ? 'Draft email yang tersimpan di mailbox sekolah Anda tampil langsung di halaman ini.'
+      : folderKey === 'Sent'
+        ? 'Riwayat email yang sudah dikirim dari mailbox sekolah Anda tampil langsung di halaman ini.'
+        : folderKey === 'Junk'
+          ? 'Email yang masuk ke folder Spam tampil langsung di halaman ini.'
+          : 'Email yang sudah Anda arsipkan tampil langsung di halaman ini.';
+};
+
+const getFolderEmptyState = (folderKey: WebmailFolderKey, folderLabel: string): string => {
+  return folderKey === 'INBOX'
+    ? 'Begitu email baru masuk ke mailbox sekolah, daftar inbox di sini akan langsung ikut terisi.'
+    : folderKey === 'Drafts'
+      ? 'Belum ada draft email yang tersimpan di mailbox sekolah Anda.'
+      : folderKey === 'Sent'
+        ? 'Belum ada email terkirim yang tercatat di mailbox sekolah Anda.'
+        : folderKey === 'Junk'
+          ? 'Belum ada email yang masuk ke folder Spam.'
+          : `Belum ada email di folder ${folderLabel}.`;
 };
 
 const splitRecipientInput = (value: string): string[] => {
@@ -266,6 +313,7 @@ export const EmailPage = () => {
   const [pendingAutoBridgeCredentials, setPendingAutoBridgeCredentials] = useState<WebmailBridgeCredentials | null>(null);
   const [iframeNonce, setIframeNonce] = useState(0);
   const [iframeSrc, setIframeSrc] = useState(DEFAULT_WEBMAIL_INBOX_URL);
+  const [activeFolderKey, setActiveFolderKey] = useState<WebmailFolderKey>('INBOX');
   const [selectedEmailGuid, setSelectedEmailGuid] = useState<string | null>(null);
   const [isComposeMode, setIsComposeMode] = useState(false);
   const [composeModeKind, setComposeModeKind] = useState<ComposeModeKind>('new');
@@ -277,8 +325,8 @@ export const EmailPage = () => {
   const loginIdentityValue = hasEditedLoginUser ? loginUser : mailboxPreview;
 
   const emailFeedQuery = useQuery({
-    queryKey: ['webmail-inbox-feed', mailboxIdentity || 'all'],
-    queryFn: () => webmailService.getMessages({ page: 1, limit: 20 }),
+    queryKey: ['webmail-folder-feed', mailboxIdentity || 'all', activeFolderKey],
+    queryFn: () => webmailService.getMessages({ page: 1, limit: 20, folderKey: activeFolderKey }),
     enabled: isPortalReady && !isWebmailMode,
     staleTime: 30_000,
     refetchInterval: isPortalReady && !isWebmailMode ? 60_000 : false,
@@ -291,6 +339,11 @@ export const EmailPage = () => {
   const mailboxMessages = mailboxFeed?.messages ?? [];
   const unreadEmailCount = mailboxMessages.filter((item) => !item.isRead).length;
   const latestEmailAt = mailboxMessages[0] ? formatDateTime(mailboxMessages[0].date) : '-';
+  const activeFolderLabel = WEBMAIL_FOLDER_SHORTCUTS.find((item) => item.key === activeFolderKey)?.label || 'Inbox';
+  const activeFolderDescription = getFolderDescription(activeFolderKey);
+  const activeFolderEmptyState = getFolderEmptyState(activeFolderKey, activeFolderLabel);
+  const activeFolderTitle = activeFolderKey === 'INBOX' ? 'Kotak Masuk' : activeFolderLabel;
+  const canReplyFromSelectedFolder = activeFolderKey !== 'Drafts';
 
   let effectiveSelectedEmailGuid = selectedEmailGuid;
   if (!effectiveSelectedEmailGuid || !mailboxMessages.some((item) => item.guid === effectiveSelectedEmailGuid)) {
@@ -300,8 +353,8 @@ export const EmailPage = () => {
   const selectedEmail = mailboxMessages.find((item) => item.guid === effectiveSelectedEmailGuid) ?? null;
 
   const selectedEmailDetailQuery = useQuery({
-    queryKey: ['webmail-message-detail', effectiveSelectedEmailGuid || 'empty'],
-    queryFn: () => webmailService.getMessageDetail(String(effectiveSelectedEmailGuid)),
+    queryKey: ['webmail-message-detail', activeFolderKey, effectiveSelectedEmailGuid || 'empty'],
+    queryFn: () => webmailService.getMessageDetail(String(effectiveSelectedEmailGuid), { folderKey: activeFolderKey }),
     enabled: Boolean(effectiveSelectedEmailGuid) && isPortalReady && !isWebmailMode && mailboxFeed?.mailboxAvailable !== false,
     staleTime: 30_000,
     retry: false,
@@ -352,7 +405,7 @@ export const EmailPage = () => {
     setIsRegisterMode(false);
 
     if (openImmediatelyWhenSso && useSsoMode) {
-      handleOpenSso();
+      handleOpenSso(activeFolderKey);
     }
 
     panelSectionRef.current?.scrollIntoView({
@@ -382,11 +435,12 @@ export const EmailPage = () => {
   };
 
   const startSsoMutation = useMutation({
-    mutationFn: webmailService.startSso,
-    onSuccess: (response) => {
+    mutationFn: (folderKey?: WebmailFolderKey) => webmailService.startSso().then((response) => ({ response, folderKey })),
+    onSuccess: ({ response, folderKey }) => {
+      const nextFolderKey = folderKey || activeFolderKey;
       const launchUrl = String(response?.data?.launchUrl || resolvedWebmailUrl).trim() || resolvedWebmailUrl;
       setPanelError(null);
-      setIframeSrc(launchUrl);
+      setIframeSrc(getMailboxFolderUrl(launchUrl, nextFolderKey));
       setShouldSubmitBridgeLogin(false);
       setIsRegisterMode(false);
       setIsWebmailMode(true);
@@ -413,6 +467,7 @@ export const EmailPage = () => {
       setRegisterUser('');
       setRegisterPass('');
       setRegisterPassConfirm('');
+      setActiveFolderKey('INBOX');
       setIsRegisterMode(false);
       openWebmailWithBridgeLogin(nextMailboxIdentity, variables.password);
     },
@@ -443,10 +498,11 @@ export const EmailPage = () => {
   });
 
   const markAsReadMutation = useMutation({
-    mutationFn: (guid: string) => webmailService.markMessageRead(guid),
+    mutationFn: ({ guid, folderKey }: { guid: string; folderKey: WebmailFolderKey }) =>
+      webmailService.markMessageRead(guid, { folderKey }),
     onSuccess: async () => {
       await queryClient.invalidateQueries({
-        queryKey: ['webmail-inbox-feed'],
+        queryKey: ['webmail-folder-feed'],
         refetchType: 'active',
       });
       await queryClient.invalidateQueries({
@@ -480,7 +536,7 @@ export const EmailPage = () => {
       setComposeBody('');
       setIsComposeMode(false);
       await queryClient.invalidateQueries({
-        queryKey: ['webmail-inbox-feed'],
+        queryKey: ['webmail-folder-feed'],
         refetchType: 'active',
       });
     },
@@ -641,16 +697,16 @@ export const EmailPage = () => {
     };
   }, [useSsoMode, isWebmailMode, userScopeKey, shouldSubmitBridgeLogin, persistWebmailMode]);
 
-  const handleOpenSso = () => {
+  const handleOpenSso = (folderKey?: WebmailFolderKey) => {
     if (startSsoMutation.isPending) return;
-    startSsoMutation.mutate();
+    startSsoMutation.mutate(folderKey || activeFolderKey);
   };
 
   const handleLoginSubmit = (event: FormEvent<HTMLFormElement>) => {
     event.preventDefault();
 
     if (useSsoMode) {
-      handleOpenSso();
+      handleOpenSso(activeFolderKey);
       return;
     }
 
@@ -722,7 +778,7 @@ export const EmailPage = () => {
 
     window.setTimeout(() => {
       setIsWebmailMode(false);
-      setIframeSrc(useSsoMode ? bridgeLoginUrl : webmailInboxUrl);
+      setIframeSrc(getMailboxFolderUrl(bridgeLoginUrl, activeFolderKey));
       setIframeNonce((previous) => previous + 1);
     }, 120);
   };
@@ -731,7 +787,7 @@ export const EmailPage = () => {
     setPanelError(null);
 
     if (useSsoMode) {
-      handleOpenSso();
+      handleOpenSso(activeFolderKey);
       return;
     }
 
@@ -744,7 +800,7 @@ export const EmailPage = () => {
       }
     }
 
-    setIframeSrc(webmailInboxUrl);
+    setIframeSrc(getMailboxFolderUrl(bridgeLoginUrl, activeFolderKey));
     setIframeNonce((previous) => previous + 1);
   };
 
@@ -772,7 +828,7 @@ export const EmailPage = () => {
     if (item.isRead) return;
 
     try {
-      await markAsReadMutation.mutateAsync(item.guid);
+      await markAsReadMutation.mutateAsync({ guid: item.guid, folderKey: activeFolderKey });
     } catch {
       return;
     }
@@ -877,7 +933,7 @@ export const EmailPage = () => {
               <button
                 type="button"
                 onClick={openReplyCompose}
-                disabled={!selectedEmail}
+                disabled={!selectedEmail || !canReplyFromSelectedFolder}
                 className="inline-flex items-center justify-center gap-2 rounded-2xl border border-slate-200 bg-white px-4 py-3 text-sm font-bold text-slate-800 transition hover:bg-slate-50 disabled:cursor-not-allowed disabled:bg-slate-50 disabled:text-slate-400"
               >
                 <Reply className="h-4 w-4" />
@@ -887,9 +943,32 @@ export const EmailPage = () => {
           </SectionCard>
 
           <SectionCard
-            title="Kotak Masuk"
-            subtitle="Daftar ini membaca mailbox sungguhan dari server, jadi isi inbox dan panel email tetap searah."
+            title={activeFolderTitle}
+            subtitle={activeFolderDescription}
           >
+            <div className="flex flex-wrap gap-2">
+              {WEBMAIL_FOLDER_SHORTCUTS.map((folder) => {
+                const isActive = folder.key === activeFolderKey;
+                return (
+                  <button
+                    key={folder.key}
+                    type="button"
+                    onClick={() => {
+                      setActiveFolderKey(folder.key);
+                      setSelectedEmailGuid(null);
+                    }}
+                    className={`rounded-full px-4 py-2 text-sm font-bold transition ${
+                      isActive
+                        ? 'border border-blue-200 bg-blue-50 text-blue-700'
+                        : 'border border-slate-200 bg-white text-slate-700 hover:bg-slate-50'
+                    }`}
+                  >
+                    {folder.label}
+                  </button>
+                );
+              })}
+            </div>
+
             <div className="grid gap-3 sm:grid-cols-2">
               <button
                 type="button"
@@ -899,7 +978,7 @@ export const EmailPage = () => {
                 className="inline-flex items-center justify-center gap-2 rounded-2xl border border-slate-200 bg-white px-4 py-3 text-sm font-bold text-slate-800 transition hover:bg-slate-50"
               >
                 <RefreshCw className={`h-4 w-4 ${emailFeedQuery.isFetching && !emailFeedQuery.isLoading ? 'animate-spin' : ''}`} />
-                Sinkronkan Inbox
+                Sinkronkan {activeFolderLabel}
               </button>
               <button
                 type="button"
@@ -912,11 +991,13 @@ export const EmailPage = () => {
             </div>
 
             {emailFeedQuery.isLoading ? (
-              <div className="rounded-2xl border border-slate-200 bg-slate-50 px-4 py-5 text-sm text-slate-500">Memuat kotak masuk...</div>
+              <div className="rounded-2xl border border-slate-200 bg-slate-50 px-4 py-5 text-sm text-slate-500">
+                Memuat {activeFolderLabel.toLowerCase()}...
+              </div>
             ) : emailFeedQuery.isError ? (
               <div className="space-y-3 rounded-2xl border border-rose-200 bg-rose-50 px-4 py-5">
                 <p className="text-sm font-semibold text-rose-700">
-                  {getErrorMessage(emailFeedQuery.error, 'Gagal memuat kotak masuk email.')}
+                  {getErrorMessage(emailFeedQuery.error, `Gagal memuat folder ${activeFolderLabel}.`)}
                 </p>
                 <button
                   type="button"
@@ -938,10 +1019,8 @@ export const EmailPage = () => {
               </div>
             ) : mailboxMessages.length === 0 ? (
               <div className="rounded-2xl border border-slate-200 bg-slate-50 px-4 py-5">
-                <p className="text-sm font-bold text-slate-900">Inbox masih kosong</p>
-                <p className="mt-2 text-sm leading-6 text-slate-500">
-                  Begitu email baru masuk ke mailbox sekolah, daftar inbox di sini akan langsung ikut terisi.
-                </p>
+                <p className="text-sm font-bold text-slate-900">{activeFolderLabel} masih kosong</p>
+                <p className="mt-2 text-sm leading-6 text-slate-500">{activeFolderEmptyState}</p>
               </div>
             ) : (
               <div className="space-y-3">
@@ -961,7 +1040,7 @@ export const EmailPage = () => {
             {selectedEmail ? (
               <div className="rounded-2xl border border-blue-200 bg-blue-50/60 p-4">
                 <div className="space-y-2">
-                  <h3 className="text-sm font-extrabold text-slate-900">Detail Email Terpilih</h3>
+                  <h3 className="text-sm font-extrabold text-slate-900">Detail {activeFolderLabel}</h3>
                   <p className="text-sm text-slate-600">
                     Dari: <span className="font-bold text-slate-900">{selectedSenderLabel}</span>
                   </p>
@@ -1006,7 +1085,7 @@ export const EmailPage = () => {
                       <p className="whitespace-pre-wrap text-sm leading-6 text-slate-700">{selectedBodyText || 'Isi email tidak tersedia.'}</p>
                       <p className="text-sm leading-6 text-slate-500">
                         Isi email utama sekarang sudah bisa dibaca langsung di sini. Panel lengkap tetap dipakai untuk compose,
-                        balas email, pencarian lanjutan, atau folder arsip lain.
+                        pencarian lanjutan, atau folder lain di luar tampilan native ini.
                       </p>
                     </div>
                   )}

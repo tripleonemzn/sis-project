@@ -2,6 +2,7 @@ import api from './api';
 import type { ApiResponse } from '../types/api.types';
 
 export type WebmailAuthMode = 'BRIDGE' | 'SSO';
+export type WebmailFolderKey = 'INBOX' | 'Drafts' | 'Sent' | 'Junk' | 'Archive';
 
 export interface WebmailConfig {
   mode: WebmailAuthMode;
@@ -68,6 +69,7 @@ export interface WebmailMessageDetail extends WebmailMessageSummary {
 export interface WebmailMessageListResult {
   mailboxIdentity: string;
   mailboxAvailable: boolean;
+  folderKey: WebmailFolderKey;
   messages: WebmailMessageSummary[];
   pagination: {
     page: number;
@@ -110,21 +112,45 @@ export const webmailService = {
     return response.data;
   },
 
-  getMessages: async (params?: { page?: number; limit?: number }): Promise<ApiResponse<WebmailMessageListResult>> => {
+  getMessages: async (params?: {
+    page?: number;
+    limit?: number;
+    folderKey?: WebmailFolderKey;
+  }): Promise<ApiResponse<WebmailMessageListResult>> => {
     const response = await api.get<ApiResponse<WebmailMessageListResult>>('/webmail/messages', {
-      params,
+      params: {
+        page: params?.page,
+        limit: params?.limit,
+        folder: params?.folderKey,
+      },
     });
     return response.data;
   },
 
-  getMessageDetail: async (guid: string): Promise<ApiResponse<WebmailMessageDetail>> => {
-    const response = await api.get<ApiResponse<WebmailMessageDetail>>(`/webmail/messages/${encodeURIComponent(guid)}`);
+  getMessageDetail: async (
+    guid: string,
+    params?: { folderKey?: WebmailFolderKey },
+  ): Promise<ApiResponse<WebmailMessageDetail>> => {
+    const response = await api.get<ApiResponse<WebmailMessageDetail>>(`/webmail/messages/${encodeURIComponent(guid)}`, {
+      params: {
+        folder: params?.folderKey,
+      },
+    });
     return response.data;
   },
 
-  markMessageRead: async (guid: string): Promise<ApiResponse<{ guid: string; mailboxIdentity: string; markedAt: string }>> => {
-    const response = await api.patch<ApiResponse<{ guid: string; mailboxIdentity: string; markedAt: string }>>(
+  markMessageRead: async (
+    guid: string,
+    params?: { folderKey?: WebmailFolderKey },
+  ): Promise<ApiResponse<{ guid: string; mailboxIdentity: string; folderKey: WebmailFolderKey; markedAt: string }>> => {
+    const response = await api.patch<ApiResponse<{ guid: string; mailboxIdentity: string; folderKey: WebmailFolderKey; markedAt: string }>>(
       `/webmail/messages/${encodeURIComponent(guid)}/read`,
+      undefined,
+      {
+        params: {
+          folder: params?.folderKey,
+        },
+      },
     );
     return response.data;
   },
