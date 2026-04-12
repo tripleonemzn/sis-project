@@ -106,7 +106,23 @@ export interface WebmailMoveResult {
   mailboxIdentity: string;
   guid: string;
   sourceFolderKey: WebmailFolderKey;
-  targetFolderKey: WebmailFolderKey;
+  targetFolderKey: WebmailFolderKey | 'Trash';
+  movedAt: string;
+}
+
+export interface WebmailReadStateResult {
+  guid: string;
+  mailboxIdentity: string;
+  folderKey: WebmailFolderKey;
+  isRead: boolean;
+  updatedAt: string;
+}
+
+export interface WebmailDeleteResult {
+  mailboxIdentity: string;
+  guid: string;
+  sourceFolderKey: WebmailFolderKey;
+  targetFolderKey: 'Trash';
   movedAt: string;
 }
 
@@ -158,9 +174,25 @@ export const webmailService = {
   markMessageRead: async (
     guid: string,
     params?: { folderKey?: WebmailFolderKey },
-  ): Promise<ApiResponse<{ guid: string; mailboxIdentity: string; folderKey: WebmailFolderKey; markedAt: string }>> => {
-    const response = await api.patch<ApiResponse<{ guid: string; mailboxIdentity: string; folderKey: WebmailFolderKey; markedAt: string }>>(
+  ): Promise<ApiResponse<WebmailReadStateResult>> => {
+    const response = await api.patch<ApiResponse<WebmailReadStateResult>>(
       `/webmail/messages/${encodeURIComponent(guid)}/read`,
+      undefined,
+      {
+        params: {
+          folder: params?.folderKey,
+        },
+      },
+    );
+    return response.data;
+  },
+
+  markMessageUnread: async (
+    guid: string,
+    params?: { folderKey?: WebmailFolderKey },
+  ): Promise<ApiResponse<WebmailReadStateResult>> => {
+    const response = await api.patch<ApiResponse<WebmailReadStateResult>>(
+      `/webmail/messages/${encodeURIComponent(guid)}/unread`,
       undefined,
       {
         params: {
@@ -180,6 +212,15 @@ export const webmailService = {
     const response = await api.post<ApiResponse<WebmailMoveResult>>(`/webmail/messages/${encodeURIComponent(guid)}/move`, {
       sourceFolderKey: payload.sourceFolderKey,
       targetFolderKey: payload.targetFolderKey,
+    });
+    return response.data;
+  },
+
+  deleteMessage: async (guid: string, params?: { folderKey?: WebmailFolderKey }): Promise<ApiResponse<WebmailDeleteResult>> => {
+    const response = await api.delete<ApiResponse<WebmailDeleteResult>>(`/webmail/messages/${encodeURIComponent(guid)}`, {
+      params: {
+        folder: params?.folderKey,
+      },
     });
     return response.data;
   },

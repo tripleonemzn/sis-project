@@ -22,7 +22,7 @@ type WebmailBridgeCredentials = {
 };
 
 type ComposeModeKind = 'new' | 'reply';
-type FolderMoveActionTone = 'primary' | 'neutral' | 'warning';
+type FolderMoveActionTone = 'primary' | 'neutral' | 'warning' | 'danger';
 type FolderMoveAction = {
   key: string;
   label: string;
@@ -38,7 +38,8 @@ const WEBMAIL_FOLDER_SHORTCUTS: Array<{ key: WebmailFolderKey; label: string }> 
   { key: 'Archive', label: 'Arsip' },
 ];
 
-const getFolderLabel = (folderKey: WebmailFolderKey): string => {
+const getFolderLabel = (folderKey: WebmailFolderKey | 'Trash'): string => {
+  if (folderKey === 'Trash') return 'Sampah';
   return WEBMAIL_FOLDER_SHORTCUTS.find((item) => item.key === folderKey)?.label || 'Inbox';
 };
 
@@ -180,6 +181,9 @@ const getFolderEmptyState = (folderKey: WebmailFolderKey, folderLabel: string): 
 };
 
 const getFolderMoveButtonClassName = (tone: FolderMoveActionTone): string => {
+  if (tone === 'danger') {
+    return 'border-rose-200 bg-rose-50 text-rose-700 hover:bg-rose-100';
+  }
   if (tone === 'warning') {
     return 'border-amber-200 bg-amber-50 text-amber-800 hover:bg-amber-100';
   }
@@ -571,6 +575,26 @@ export const EmailPage = () => {
     },
   });
 
+  const markAsUnreadMutation = useMutation({
+    mutationFn: ({ guid, folderKey }: { guid: string; folderKey: WebmailFolderKey }) =>
+      webmailService.markMessageUnread(guid, { folderKey }),
+    onSuccess: async () => {
+      toast.success('Email berhasil ditandai sebagai belum dibaca.');
+      setSelectedEmailGuid(null);
+      await queryClient.invalidateQueries({
+        queryKey: ['webmail-folder-feed'],
+        refetchType: 'active',
+      });
+      await queryClient.invalidateQueries({
+        queryKey: ['webmail-message-detail'],
+        refetchType: 'active',
+      });
+    },
+    onError: (error) => {
+      toast.error(getErrorMessage(error, 'Gagal menandai email sebagai belum dibaca.'));
+    },
+  });
+
   const moveMessageMutation = useMutation({
     mutationFn: ({
       guid,
@@ -595,6 +619,26 @@ export const EmailPage = () => {
     },
     onError: (error) => {
       toast.error(getErrorMessage(error, 'Gagal memindahkan email.'));
+    },
+  });
+
+  const deleteMessageMutation = useMutation({
+    mutationFn: ({ guid, folderKey }: { guid: string; folderKey: WebmailFolderKey }) =>
+      webmailService.deleteMessage(guid, { folderKey }),
+    onSuccess: async () => {
+      toast.success('Email berhasil dipindahkan ke folder Sampah.');
+      setSelectedEmailGuid(null);
+      await queryClient.invalidateQueries({
+        queryKey: ['webmail-folder-feed'],
+        refetchType: 'active',
+      });
+      await queryClient.invalidateQueries({
+        queryKey: ['webmail-message-detail'],
+        refetchType: 'active',
+      });
+    },
+    onError: (error) => {
+      toast.error(getErrorMessage(error, 'Gagal menghapus email.'));
     },
   });
 
@@ -627,6 +671,10 @@ export const EmailPage = () => {
       toast.error(getErrorMessage(error, 'Gagal mengirim email.'));
     },
   });
+
+  const canMarkSelectedEmailUnread = Boolean(selectedEmail?.isRead);
+  const isDetailActionPending =
+    moveMessageMutation.isPending || markAsUnreadMutation.isPending || deleteMessageMutation.isPending;
 
   useEffect(() => {
     if (!userScopeKey || lastHydratedScopeRef.current === userScopeKey) return;
@@ -944,6 +992,22 @@ export const EmailPage = () => {
     });
   };
 
+  const handleMarkSelectedEmailUnread = async () => {
+    if (!selectedEmail) return;
+    await markAsUnreadMutation.mutateAsync({
+      guid: selectedEmail.guid,
+      folderKey: activeFolderKey,
+    });
+  };
+
+  const handleDeleteSelectedEmail = async () => {
+    if (!selectedEmail) return;
+    await deleteMessageMutation.mutateAsync({
+      guid: selectedEmail.guid,
+      folderKey: activeFolderKey,
+    });
+  };
+
   const handleSendCompose = async () => {
     if (!composeTo.trim()) {
       toast.error('Penerima email wajib diisi.');
@@ -1258,6 +1322,34 @@ export const EmailPage = () => {
                   )}
                 </div>
 
+                <div className="mt-4 space-y-2">
+                  <p className="text-sm font-bold text-slate-700">Aksi Email</p>
+                  <div className="flex flex-wrap gap-2">
+                    {canMarkSelectedEmailUnread ? (
+                      <button
+                        type="button"
+                        onClick={() => {
+                          void handleMarkSelectedEmailUnread();
+                        }}
+                        disabled={isDetailActionPending}
+                        className={`rounded-2xl border px-4 py-2 text-sm font-bold transition disabled:cursor-not-allowed disabled:opacity-60 ${getFolderMoveButtonClassName('primary')}`}
+                      >
+                        {markAsUnreadMutation.isPending ? 'Memproses...' : 'Tandai Belum Dibaca'}
+                      </button>
+                    ) : null}
+                    <button
+                      type="button"
+                      onClick={() => {
+                        void handleDeleteSelectedEmail();
+                      }}
+                      disabled={isDetailActionPending}
+                      className={`rounded-2xl border px-4 py-2 text-sm font-bold transition disabled:cursor-not-allowed disabled:opacity-60 ${getFolderMoveButtonClassName('danger')}`}
+                    >
+                      {deleteMessageMutation.isPending ? 'Memproses...' : 'Hapus'}
+                    </button>
+                  </div>
+                </div>
+
                 {availableMoveActions.length > 0 ? (
                   <div className="mt-4 space-y-2">
                     <p className="text-sm font-bold text-slate-700">Aksi Folder</p>
@@ -1269,7 +1361,7 @@ export const EmailPage = () => {
                           onClick={() => {
                             void handleMoveSelectedEmail(action.targetFolderKey);
                           }}
-                          disabled={moveMessageMutation.isPending}
+                          disabled={isDetailActionPending}
                           className={`rounded-2xl border px-4 py-2 text-sm font-bold transition disabled:cursor-not-allowed disabled:opacity-60 ${getFolderMoveButtonClassName(action.tone)}`}
                         >
                           {moveMessageMutation.isPending ? 'Memproses...' : action.label}

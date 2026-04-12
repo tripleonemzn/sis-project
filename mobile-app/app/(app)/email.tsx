@@ -23,7 +23,7 @@ const MAILBOX_USERNAME_PATTERN = /^[a-z0-9][a-z0-9._-]{2,62}$/;
 const DEFAULT_EMAIL_PAGE_LIMIT = 20;
 type FeatherIconName = ComponentProps<typeof Feather>['name'];
 type WebmailFolderKey = MobileWebmailFolderKey;
-type FolderMoveActionTone = 'primary' | 'neutral' | 'warning';
+type FolderMoveActionTone = 'primary' | 'neutral' | 'warning' | 'danger';
 
 type FolderMoveAction = {
   key: string;
@@ -44,7 +44,8 @@ const WEBMAIL_FOLDER_SHORTCUTS: Array<{
   { key: 'Archive', label: 'Arsip', iconName: 'archive' },
 ];
 
-function getFolderLabel(folderKey: WebmailFolderKey) {
+function getFolderLabel(folderKey: WebmailFolderKey | 'Trash') {
+  if (folderKey === 'Trash') return 'Sampah';
   return WEBMAIL_FOLDER_SHORTCUTS.find((item) => item.key === folderKey)?.label || 'Inbox';
 }
 
@@ -198,6 +199,14 @@ function getFolderEmptyState(folderKey: WebmailFolderKey, folderLabel: string) {
 }
 
 function getFolderMoveActionPalette(tone: FolderMoveActionTone) {
+  if (tone === 'danger') {
+    return {
+      borderColor: '#fecaca',
+      backgroundColor: '#fef2f2',
+      iconColor: '#dc2626',
+      textColor: '#b91c1c',
+    };
+  }
   if (tone === 'warning') {
     return {
       borderColor: '#fdba74',
@@ -427,6 +436,33 @@ export default function MobileEmailScreen() {
     },
   });
 
+  const markAsUnreadMutation = useMutation({
+    mutationFn: ({ guid, folderKey }: { guid: string; folderKey: WebmailFolderKey }) =>
+      webmailApi.markMessageUnread(guid, { folderKey }),
+    onSuccess: async () => {
+      notifySuccess('Email berhasil ditandai sebagai belum dibaca.', {
+        title: 'Email',
+      });
+      setIsEmailDetailVisible(false);
+      setSelectedEmailGuid(null);
+      await queryClient.invalidateQueries({
+        queryKey: ['mobile-email-folder-feed'],
+        refetchType: 'active',
+      });
+      await queryClient.invalidateQueries({
+        queryKey: ['mobile-email-message-detail'],
+        refetchType: 'active',
+      });
+      await queryClient.invalidateQueries({
+        queryKey: MOBILE_NOTIFICATIONS_QUERY_KEY,
+        refetchType: 'active',
+      });
+    },
+    onError: (error: unknown) => {
+      notifyApiError(error, 'Gagal menandai email sebagai belum dibaca.');
+    },
+  });
+
   const effectiveSelectedEmailGuid = useMemo(() => {
     if (selectedEmailGuid && mailboxMessages.some((item) => item.guid === selectedEmailGuid)) {
       return selectedEmailGuid;
@@ -566,6 +602,33 @@ export default function MobileEmailScreen() {
     },
     onError: (error: unknown) => {
       notifyApiError(error, 'Gagal memindahkan email.');
+    },
+  });
+
+  const deleteMessageMutation = useMutation({
+    mutationFn: ({ guid, folderKey }: { guid: string; folderKey: WebmailFolderKey }) =>
+      webmailApi.deleteMessage(guid, { folderKey }),
+    onSuccess: async () => {
+      notifySuccess('Email berhasil dipindahkan ke folder Sampah.', {
+        title: 'Email',
+      });
+      setIsEmailDetailVisible(false);
+      setSelectedEmailGuid(null);
+      await queryClient.invalidateQueries({
+        queryKey: ['mobile-email-folder-feed'],
+        refetchType: 'active',
+      });
+      await queryClient.invalidateQueries({
+        queryKey: ['mobile-email-message-detail'],
+        refetchType: 'active',
+      });
+      await queryClient.invalidateQueries({
+        queryKey: MOBILE_NOTIFICATIONS_QUERY_KEY,
+        refetchType: 'active',
+      });
+    },
+    onError: (error: unknown) => {
+      notifyApiError(error, 'Gagal menghapus email.');
     },
   });
 
@@ -737,6 +800,22 @@ export default function MobileEmailScreen() {
     });
   };
 
+  const handleMarkSelectedEmailUnread = async () => {
+    if (!selectedEmail) return;
+    await markAsUnreadMutation.mutateAsync({
+      guid: selectedEmail.guid,
+      folderKey: activeFolderKey,
+    });
+  };
+
+  const handleDeleteSelectedEmail = async () => {
+    if (!selectedEmail) return;
+    await deleteMessageMutation.mutateAsync({
+      guid: selectedEmail.guid,
+      folderKey: activeFolderKey,
+    });
+  };
+
   const closeRegisterModal = () => {
     setIsRegisterMode(false);
     setPanelError(null);
@@ -792,7 +871,10 @@ export default function MobileEmailScreen() {
     : getFolderEmptyState(activeFolderKey, activeFolderLabel);
   const activeFolderTitle = activeFolderKey === 'INBOX' ? 'Kotak Masuk' : activeFolderLabel;
   const canReplyFromSelectedFolder = activeFolderKey !== 'Drafts';
+  const canMarkSelectedEmailUnread = Boolean(selectedEmail?.isRead);
   const availableMoveActions = getFolderMoveActions(activeFolderKey);
+  const isDetailActionPending =
+    moveMessageMutation.isPending || markAsUnreadMutation.isPending || deleteMessageMutation.isPending;
   const webSource = bridgeCredentials
     ? {
         uri: bridgeLoginUrl,
@@ -1502,6 +1584,70 @@ export default function MobileEmailScreen() {
                 </Pressable>
               </View>
 
+              <View style={{ gap: 8 }}>
+                <Text style={{ color: '#475569', fontSize: 12, fontWeight: '700' }}>Aksi Email</Text>
+                <View style={{ flexDirection: 'row', flexWrap: 'wrap', gap: 8 }}>
+                  {canMarkSelectedEmailUnread ? (
+                    <Pressable
+                      disabled={isDetailActionPending}
+                      onPress={() => {
+                        void handleMarkSelectedEmailUnread();
+                      }}
+                      style={{
+                        minWidth: 132,
+                        flexGrow: 1,
+                        borderRadius: 12,
+                        borderWidth: 1,
+                        borderColor: '#93c5fd',
+                        backgroundColor: '#eff6ff',
+                        paddingHorizontal: 12,
+                        paddingVertical: 11,
+                        alignItems: 'center',
+                        justifyContent: 'center',
+                        flexDirection: 'row',
+                        gap: 6,
+                        opacity: isDetailActionPending ? 0.7 : 1,
+                      }}
+                    >
+                      {markAsUnreadMutation.isPending ? (
+                        <ActivityIndicator size="small" color="#2563eb" />
+                      ) : (
+                        <Feather name="mail" size={14} color="#2563eb" />
+                      )}
+                      <Text style={{ color: '#1d4ed8', fontWeight: '700', fontSize: 12 }}>Tandai Belum Dibaca</Text>
+                    </Pressable>
+                  ) : null}
+                  <Pressable
+                    disabled={isDetailActionPending}
+                    onPress={() => {
+                      void handleDeleteSelectedEmail();
+                    }}
+                    style={{
+                      minWidth: 132,
+                      flexGrow: 1,
+                      borderRadius: 12,
+                      borderWidth: 1,
+                      borderColor: '#fecaca',
+                      backgroundColor: '#fef2f2',
+                      paddingHorizontal: 12,
+                      paddingVertical: 11,
+                      alignItems: 'center',
+                      justifyContent: 'center',
+                      flexDirection: 'row',
+                      gap: 6,
+                      opacity: isDetailActionPending ? 0.7 : 1,
+                    }}
+                  >
+                    {deleteMessageMutation.isPending ? (
+                      <ActivityIndicator size="small" color="#dc2626" />
+                    ) : (
+                      <Feather name="trash-2" size={14} color="#dc2626" />
+                    )}
+                    <Text style={{ color: '#b91c1c', fontWeight: '700', fontSize: 12 }}>Hapus</Text>
+                  </Pressable>
+                </View>
+              </View>
+
               {availableMoveActions.length > 0 ? (
                 <View style={{ gap: 8 }}>
                   <Text style={{ color: '#475569', fontSize: 12, fontWeight: '700' }}>Aksi Folder</Text>
@@ -1511,7 +1657,7 @@ export default function MobileEmailScreen() {
                       return (
                         <Pressable
                           key={action.key}
-                          disabled={moveMessageMutation.isPending}
+                          disabled={isDetailActionPending}
                           onPress={() => {
                             void handleMoveSelectedEmail(action.targetFolderKey);
                           }}
@@ -1528,7 +1674,7 @@ export default function MobileEmailScreen() {
                             justifyContent: 'center',
                             flexDirection: 'row',
                             gap: 6,
-                            opacity: moveMessageMutation.isPending ? 0.7 : 1,
+                            opacity: isDetailActionPending ? 0.7 : 1,
                           }}
                         >
                           {moveMessageMutation.isPending ? (

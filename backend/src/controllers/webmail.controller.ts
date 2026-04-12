@@ -8,16 +8,19 @@ import prisma from '../utils/prisma';
 import { ApiError, ApiResponse, asyncHandler } from '../utils/api';
 import { writeAuditLog } from '../utils/auditLog';
 import {
+  deleteWebmailMessage,
   getWebmailMessageDetail,
   isWebmailMailboxAvailable,
   listWebmailMessages,
   markWebmailMessageAsRead,
+  markWebmailMessageAsUnread,
   MailboxMessageNotFoundError,
   MailboxUnavailableError,
   moveWebmailMessage,
   normalizeWebmailFolderKey,
   sendWebmailMessage,
   type WebmailFolderKey,
+  type WebmailMailboxFolderKey,
 } from '../services/webmailMailbox.service';
 
 type WebmailMode = 'BRIDGE' | 'SSO';
@@ -86,7 +89,7 @@ type MoveWebmailBody = {
   targetFolderKey?: unknown;
 };
 
-const resolveFolderLabel = (folderKey: WebmailFolderKey): string => {
+const resolveFolderLabel = (folderKey: WebmailMailboxFolderKey): string => {
   return folderKey === 'INBOX'
     ? 'Inbox'
     : folderKey === 'Drafts'
@@ -95,7 +98,9 @@ const resolveFolderLabel = (folderKey: WebmailFolderKey): string => {
         ? 'Terkirim'
         : folderKey === 'Junk'
           ? 'Spam'
-          : 'Arsip';
+          : folderKey === 'Archive'
+            ? 'Arsip'
+            : 'Sampah';
 };
 
 const resolveRequestedFolderKey = (value: unknown): WebmailFolderKey => normalizeWebmailFolderKey(value, 'INBOX');
@@ -673,7 +678,7 @@ export const markWebmailInboxMessageRead = asyncHandler(async (req: AuthRequest,
   const folderKey = resolveRequestedFolderKey(req.query?.folder ?? req.query?.folderKey);
 
   try {
-    await markWebmailMessageAsRead({
+    const result = await markWebmailMessageAsRead({
       userId: user.id,
       mailboxIdentity,
       guid,
@@ -683,13 +688,47 @@ export const markWebmailInboxMessageRead = asyncHandler(async (req: AuthRequest,
     res.status(200).json(
       new ApiResponse(
         200,
-        {
-          guid,
-          mailboxIdentity,
-          folderKey,
-          markedAt: new Date().toISOString(),
-        },
+        result,
         'Email berhasil ditandai sebagai dibaca',
+      ),
+    );
+  } catch (error: unknown) {
+    if (error instanceof MailboxUnavailableError) {
+      throw new ApiError(404, 'Mailbox belum tersedia di server');
+    }
+    if (error instanceof MailboxMessageNotFoundError) {
+      throw new ApiError(404, error.message || 'Email tidak ditemukan');
+    }
+    throw error;
+  }
+});
+
+export const markWebmailInboxMessageUnread = asyncHandler(async (req: AuthRequest, res: Response) => {
+  const user = await ensureWebmailAccess(req);
+  const mailboxIdentity = resolveMailboxIdentity(user);
+  if (!mailboxIdentity) {
+    throw new ApiError(400, 'Akun Anda belum memiliki identitas mailbox (email) yang valid');
+  }
+
+  const guid = toMaybeString(req.params?.guid);
+  if (!guid) {
+    throw new ApiError(400, 'Guid email wajib diisi');
+  }
+  const folderKey = resolveRequestedFolderKey(req.query?.folder ?? req.query?.folderKey);
+
+  try {
+    const result = await markWebmailMessageAsUnread({
+      userId: user.id,
+      mailboxIdentity,
+      guid,
+      folderKey,
+    });
+
+    res.status(200).json(
+      new ApiResponse(
+        200,
+        result,
+        'Email berhasil ditandai sebagai belum dibaca',
       ),
     );
   } catch (error: unknown) {
@@ -790,6 +829,46 @@ export const moveWebmailInboxMessage = asyncHandler(async (req: AuthRequest, res
         200,
         result,
         `Email berhasil dipindahkan dari ${resolveFolderLabel(sourceFolderKey)} ke ${resolveFolderLabel(targetFolderKey)}`,
+      ),
+    );
+  } catch (error: unknown) {
+    if (error instanceof MailboxUnavailableError) {
+      throw new ApiError(404, 'Mailbox belum tersedia di server');
+    }
+    if (error instanceof MailboxMessageNotFoundError) {
+      throw new ApiError(404, error.message || 'Email tidak ditemukan');
+    }
+    throw error;
+  }
+});
+
+export const deleteWebmailInboxMessage = asyncHandler(async (req: AuthRequest, res: Response) => {
+  const user = await ensureWebmailAccess(req);
+  const mailboxIdentity = resolveMailboxIdentity(user);
+  if (!mailboxIdentity) {
+    throw new ApiError(400, 'Akun Anda belum memiliki identitas mailbox (email) yang valid');
+  }
+
+  const guid = toMaybeString(req.params?.guid);
+  if (!guid) {
+    throw new ApiError(400, 'Guid email wajib diisi');
+  }
+
+  const sourceFolderKey = resolveRequestedFolderKey(req.query?.folder ?? req.query?.folderKey);
+
+  try {
+    const result = await deleteWebmailMessage({
+      userId: user.id,
+      mailboxIdentity,
+      guid,
+      sourceFolderKey,
+    });
+
+    res.status(200).json(
+      new ApiResponse(
+        200,
+        result,
+        `Email berhasil dipindahkan dari ${resolveFolderLabel(sourceFolderKey)} ke ${resolveFolderLabel('Trash')}`,
       ),
     );
   } catch (error: unknown) {

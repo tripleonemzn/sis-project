@@ -112,7 +112,23 @@ export type MobileWebmailMoveResult = {
   mailboxIdentity: string;
   guid: string;
   sourceFolderKey: MobileWebmailFolderKey;
-  targetFolderKey: MobileWebmailFolderKey;
+  targetFolderKey: MobileWebmailFolderKey | 'Trash';
+  movedAt: string;
+};
+
+export type MobileWebmailReadStateResult = {
+  guid: string;
+  mailboxIdentity: string;
+  folderKey: MobileWebmailFolderKey;
+  isRead: boolean;
+  updatedAt: string;
+};
+
+export type MobileWebmailDeleteResult = {
+  mailboxIdentity: string;
+  guid: string;
+  sourceFolderKey: MobileWebmailFolderKey;
+  targetFolderKey: 'Trash';
   movedAt: string;
 };
 
@@ -159,10 +175,21 @@ export const webmailApi = {
   },
 
   async markMessageRead(guid: string, params?: { folderKey?: MobileWebmailFolderKey }) {
-    const response = await apiClient.patch<
-      ApiEnvelope<{ guid: string; mailboxIdentity: string; folderKey: MobileWebmailFolderKey; markedAt: string }>
-    >(
+    const response = await apiClient.patch<ApiEnvelope<MobileWebmailReadStateResult>>(
       `/webmail/messages/${encodeURIComponent(guid)}/read`,
+      undefined,
+      {
+        params: {
+          folder: params?.folderKey,
+        },
+      },
+    );
+    return response.data.data;
+  },
+
+  async markMessageUnread(guid: string, params?: { folderKey?: MobileWebmailFolderKey }) {
+    const response = await apiClient.patch<ApiEnvelope<MobileWebmailReadStateResult>>(
+      `/webmail/messages/${encodeURIComponent(guid)}/unread`,
       undefined,
       {
         params: {
@@ -182,6 +209,15 @@ export const webmailApi = {
     const response = await apiClient.post<ApiEnvelope<MobileWebmailMoveResult>>(`/webmail/messages/${encodeURIComponent(guid)}/move`, {
       sourceFolderKey: payload.sourceFolderKey,
       targetFolderKey: payload.targetFolderKey,
+    });
+    return response.data.data;
+  },
+
+  async deleteMessage(guid: string, params?: { folderKey?: MobileWebmailFolderKey }) {
+    const response = await apiClient.delete<ApiEnvelope<MobileWebmailDeleteResult>>(`/webmail/messages/${encodeURIComponent(guid)}`, {
+      params: {
+        folder: params?.folderKey,
+      },
     });
     return response.data.data;
   },

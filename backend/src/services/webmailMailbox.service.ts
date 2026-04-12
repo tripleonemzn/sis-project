@@ -14,8 +14,10 @@ const DOVEADM_MAX_BUFFER = 8 * 1024 * 1024;
 const MAX_MESSAGE_LIMIT = 100;
 const EMAIL_NOTIFICATION_TYPE = 'EMAIL_RECEIVED';
 const WEBMAIL_FOLDER_KEY_SET = new Set(['INBOX', 'Drafts', 'Sent', 'Junk', 'Archive']);
+const WEBMAIL_MAILBOX_FOLDER_KEY_SET = new Set(['INBOX', 'Drafts', 'Sent', 'Junk', 'Archive', 'Trash']);
 
 export type WebmailFolderKey = 'INBOX' | 'Drafts' | 'Sent' | 'Junk' | 'Archive';
+export type WebmailMailboxFolderKey = WebmailFolderKey | 'Trash';
 
 export type WebmailMessageSummary = {
   uid: number;
@@ -54,8 +56,24 @@ export type WebmailMessageListResult = {
 export type MoveWebmailMessageResult = {
   mailboxIdentity: string;
   guid: string;
+  sourceFolderKey: WebmailMailboxFolderKey;
+  targetFolderKey: WebmailMailboxFolderKey;
+  movedAt: string;
+};
+
+export type UpdateWebmailMessageReadStateResult = {
+  mailboxIdentity: string;
+  guid: string;
+  folderKey: WebmailFolderKey;
+  isRead: boolean;
+  updatedAt: string;
+};
+
+export type DeleteWebmailMessageResult = {
+  mailboxIdentity: string;
+  guid: string;
   sourceFolderKey: WebmailFolderKey;
-  targetFolderKey: WebmailFolderKey;
+  targetFolderKey: 'Trash';
   movedAt: string;
 };
 
@@ -108,6 +126,27 @@ export function normalizeWebmailFolderKey(value: unknown, fallbackValue: Webmail
 
   if (mappedValue && WEBMAIL_FOLDER_KEY_SET.has(mappedValue)) {
     return mappedValue as WebmailFolderKey;
+  }
+
+  return fallbackValue;
+}
+
+export function normalizeWebmailMailboxFolderKey(
+  value: unknown,
+  fallbackValue: WebmailMailboxFolderKey = 'INBOX',
+): WebmailMailboxFolderKey {
+  const rawValue = String(value ?? '')
+    .trim()
+    .toLowerCase();
+  if (!rawValue) return fallbackValue;
+
+  const mappedValue =
+    rawValue === 'trash' || rawValue === 'deleted' || rawValue === 'sampah' || rawValue === 'hapus'
+      ? 'Trash'
+      : normalizeWebmailFolderKey(rawValue, fallbackValue === 'Trash' ? 'INBOX' : fallbackValue);
+
+  if (mappedValue && WEBMAIL_MAILBOX_FOLDER_KEY_SET.has(mappedValue)) {
+    return mappedValue as WebmailMailboxFolderKey;
   }
 
   return fallbackValue;
@@ -525,7 +564,39 @@ async function runDoveadmFlagsAddSeen(mailboxIdentity: string, folderKey: Webmai
   }
 }
 
-async function ensureFolderMessageExists(mailboxIdentity: string, folderKey: WebmailFolderKey, guid: string) {
+async function runDoveadmFlagsRemoveSeen(mailboxIdentity: string, folderKey: WebmailFolderKey, guid: string) {
+  try {
+    await execFileAsync(
+      'docker',
+      ['exec', getDovecotContainerName(), 'doveadm', 'flags', 'remove', '-u', mailboxIdentity, '\\Seen', 'mailbox', folderKey, 'guid', guid],
+      {
+        timeout: DOVEADM_TIMEOUT_MS,
+        maxBuffer: 1024 * 1024,
+      },
+    );
+  } catch (error: unknown) {
+    const message = extractExecErrorMessage(error);
+    throw new Error(`Gagal menandai email sebagai belum dibaca: ${message}`);
+  }
+}
+
+async function runDoveadmExpunge(mailboxIdentity: string, folderKey: WebmailMailboxFolderKey, guid: string) {
+  try {
+    await execFileAsync(
+      'docker',
+      ['exec', getDovecotContainerName(), 'doveadm', 'expunge', '-u', mailboxIdentity, 'mailbox', folderKey, 'guid', guid],
+      {
+        timeout: DOVEADM_TIMEOUT_MS,
+        maxBuffer: 1024 * 1024,
+      },
+    );
+  } catch (error: unknown) {
+    const message = extractExecErrorMessage(error);
+    throw new Error(`Gagal menghapus email: ${message}`);
+  }
+}
+
+async function ensureFolderMessageExists(mailboxIdentity: string, folderKey: WebmailMailboxFolderKey, guid: string) {
   const records = await runDoveadmFetch(mailboxIdentity, 'guid', ['mailbox', folderKey, 'guid', guid]);
   const match = records.find((record) => String(record['guid'] || '').trim() === guid);
   if (!match) {
@@ -533,7 +604,7 @@ async function ensureFolderMessageExists(mailboxIdentity: string, folderKey: Web
   }
 }
 
-async function ensureDoveadmMailboxExists(mailboxIdentity: string, folderKey: WebmailFolderKey) {
+async function ensureDoveadmMailboxExists(mailboxIdentity: string, folderKey: WebmailMailboxFolderKey) {
   if (folderKey === 'INBOX') return;
   try {
     await execFileAsync(
@@ -553,7 +624,12 @@ async function ensureDoveadmMailboxExists(mailboxIdentity: string, folderKey: We
   }
 }
 
-async function runDoveadmMove(mailboxIdentity: string, sourceFolderKey: WebmailFolderKey, targetFolderKey: WebmailFolderKey, guid: string) {
+async function runDoveadmMove(
+  mailboxIdentity: string,
+  sourceFolderKey: WebmailMailboxFolderKey,
+  targetFolderKey: WebmailMailboxFolderKey,
+  guid: string,
+) {
   try {
     await execFileAsync(
       'docker',
@@ -799,12 +875,34 @@ export async function getWebmailMessageDetail(options: {
   };
 }
 
+async function updateInboxNotificationReadState(
+  userId: number,
+  mailboxIdentity: string,
+  guid: string,
+  isRead: boolean,
+) {
+  await prisma.notification.updateMany({
+    where: {
+      userId,
+      type: EMAIL_NOTIFICATION_TYPE,
+      isRead: !isRead,
+      AND: [
+        { data: { path: ['mailboxIdentity'], equals: mailboxIdentity } },
+        { data: { path: ['emailGuid'], equals: guid } },
+      ],
+    },
+    data: {
+      isRead,
+    },
+  });
+}
+
 export async function markWebmailMessageAsRead(options: {
   userId: number;
   mailboxIdentity: string;
   guid: string;
   folderKey?: WebmailFolderKey;
-}) {
+}): Promise<UpdateWebmailMessageReadStateResult> {
   const mailboxIdentity = normalizeMailboxIdentity(options.mailboxIdentity);
   const guid = String(options.guid || '').trim();
   const folderKey = normalizeWebmailFolderKey(options.folderKey, 'INBOX');
@@ -815,20 +913,45 @@ export async function markWebmailMessageAsRead(options: {
   await ensureMailboxAvailable(mailboxIdentity);
   await runDoveadmFlagsAddSeen(mailboxIdentity, folderKey, guid);
 
-  await prisma.notification.updateMany({
-    where: {
-      userId: options.userId,
-      type: EMAIL_NOTIFICATION_TYPE,
-      isRead: false,
-      AND: [
-        { data: { path: ['mailboxIdentity'], equals: mailboxIdentity } },
-        { data: { path: ['emailGuid'], equals: guid } },
-      ],
-    },
-    data: {
-      isRead: true,
-    },
-  });
+  await updateInboxNotificationReadState(options.userId, mailboxIdentity, guid, true);
+
+  return {
+    mailboxIdentity,
+    guid,
+    folderKey,
+    isRead: true,
+    updatedAt: new Date().toISOString(),
+  };
+}
+
+export async function markWebmailMessageAsUnread(options: {
+  userId: number;
+  mailboxIdentity: string;
+  guid: string;
+  folderKey?: WebmailFolderKey;
+}): Promise<UpdateWebmailMessageReadStateResult> {
+  const mailboxIdentity = normalizeMailboxIdentity(options.mailboxIdentity);
+  const guid = String(options.guid || '').trim();
+  const folderKey = normalizeWebmailFolderKey(options.folderKey, 'INBOX');
+  if (!guid) {
+    throw new MailboxMessageNotFoundError('Guid email tidak valid');
+  }
+
+  await ensureMailboxAvailable(mailboxIdentity);
+  await ensureFolderMessageExists(mailboxIdentity, folderKey, guid);
+  await runDoveadmFlagsRemoveSeen(mailboxIdentity, folderKey, guid);
+
+  if (folderKey === 'INBOX') {
+    await updateInboxNotificationReadState(options.userId, mailboxIdentity, guid, false);
+  }
+
+  return {
+    mailboxIdentity,
+    guid,
+    folderKey,
+    isRead: false,
+    updatedAt: new Date().toISOString(),
+  };
 }
 
 export async function sendWebmailMessage(input: SendWebmailMessageInput) {
@@ -866,13 +989,13 @@ export async function moveWebmailMessage(input: {
   userId: number;
   mailboxIdentity: string;
   guid: string;
-  sourceFolderKey?: WebmailFolderKey;
-  targetFolderKey: WebmailFolderKey;
+  sourceFolderKey?: WebmailMailboxFolderKey;
+  targetFolderKey: WebmailMailboxFolderKey;
 }): Promise<MoveWebmailMessageResult> {
   const mailboxIdentity = normalizeMailboxIdentity(input.mailboxIdentity);
   const guid = String(input.guid || '').trim();
-  const sourceFolderKey = normalizeWebmailFolderKey(input.sourceFolderKey, 'INBOX');
-  const targetFolderKey = normalizeWebmailFolderKey(input.targetFolderKey, 'INBOX');
+  const sourceFolderKey = normalizeWebmailMailboxFolderKey(input.sourceFolderKey, 'INBOX');
+  const targetFolderKey = normalizeWebmailMailboxFolderKey(input.targetFolderKey, 'INBOX');
 
   if (!guid) {
     throw new MailboxMessageNotFoundError('Guid email tidak valid');
@@ -883,24 +1006,15 @@ export async function moveWebmailMessage(input: {
 
   await ensureMailboxAvailable(mailboxIdentity);
   await ensureFolderMessageExists(mailboxIdentity, sourceFolderKey, guid);
-  await ensureDoveadmMailboxExists(mailboxIdentity, targetFolderKey);
-  await runDoveadmMove(mailboxIdentity, sourceFolderKey, targetFolderKey, guid);
+  if (sourceFolderKey === 'Trash' && targetFolderKey === 'Trash') {
+    await runDoveadmExpunge(mailboxIdentity, 'Trash', guid);
+  } else {
+    await ensureDoveadmMailboxExists(mailboxIdentity, targetFolderKey);
+    await runDoveadmMove(mailboxIdentity, sourceFolderKey, targetFolderKey, guid);
+  }
 
   if (targetFolderKey !== 'INBOX') {
-    await prisma.notification.updateMany({
-      where: {
-        userId: input.userId,
-        type: EMAIL_NOTIFICATION_TYPE,
-        isRead: false,
-        AND: [
-          { data: { path: ['mailboxIdentity'], equals: mailboxIdentity } },
-          { data: { path: ['emailGuid'], equals: guid } },
-        ],
-      },
-      data: {
-        isRead: true,
-      },
-    });
+    await updateInboxNotificationReadState(input.userId, mailboxIdentity, guid, true);
   }
 
   return {
@@ -909,5 +1023,28 @@ export async function moveWebmailMessage(input: {
     sourceFolderKey,
     targetFolderKey,
     movedAt: new Date().toISOString(),
+  };
+}
+
+export async function deleteWebmailMessage(input: {
+  userId: number;
+  mailboxIdentity: string;
+  guid: string;
+  sourceFolderKey?: WebmailFolderKey;
+}): Promise<DeleteWebmailMessageResult> {
+  const result = await moveWebmailMessage({
+    userId: input.userId,
+    mailboxIdentity: input.mailboxIdentity,
+    guid: input.guid,
+    sourceFolderKey: input.sourceFolderKey,
+    targetFolderKey: 'Trash',
+  });
+
+  return {
+    mailboxIdentity: result.mailboxIdentity,
+    guid: result.guid,
+    sourceFolderKey: normalizeWebmailFolderKey(result.sourceFolderKey, 'INBOX'),
+    targetFolderKey: 'Trash',
+    movedAt: result.movedAt,
   };
 }
