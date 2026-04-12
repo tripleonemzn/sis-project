@@ -76,6 +76,7 @@ export type MobileWebmailMessageList = {
   mailboxIdentity: string;
   mailboxAvailable: boolean;
   folderKey: MobileWebmailFolderKey;
+  query: string | null;
   messages: MobileWebmailMessageSummary[];
   pagination: {
     page: number;
@@ -136,12 +137,13 @@ export const webmailApi = {
     return response.data.data;
   },
 
-  async getMessages(params?: { page?: number; limit?: number; folderKey?: MobileWebmailFolderKey }) {
+  async getMessages(params?: { page?: number; limit?: number; folderKey?: MobileWebmailFolderKey; query?: string }) {
     const response = await apiClient.get<ApiEnvelope<MobileWebmailMessageList>>('/webmail/messages', {
       params: {
         page: params?.page,
         limit: params?.limit,
         folder: params?.folderKey,
+        q: params?.query,
       },
     });
     return response.data.data;

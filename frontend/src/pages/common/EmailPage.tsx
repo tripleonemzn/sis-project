@@ -11,6 +11,7 @@ const WEBMAIL_FRAME_NAME = 'sis-webmail-frame';
 const DEFAULT_WEBMAIL_DOMAIN = 'siskgb2.id';
 const MAILBOX_USERNAME_PATTERN = /^[a-z0-9][a-z0-9._-]{2,62}$/;
 const BRIDGE_REAUTH_IDLE_MS = 1000 * 60 * 15;
+const DEFAULT_EMAIL_PAGE_LIMIT = 20;
 
 const getWebmailModeStorageKey = (scopeKey: string) => `sis-webmail-mode:${scopeKey}`;
 const getWebmailBridgeStorageKey = (scopeKey: string) => `sis-webmail-bridge:${scopeKey}`;
@@ -367,15 +368,18 @@ export const EmailPage = () => {
   const [composeCc, setComposeCc] = useState('');
   const [composeSubject, setComposeSubject] = useState('');
   const [composeBody, setComposeBody] = useState('');
+  const [searchDraft, setSearchDraft] = useState('');
+  const [appliedSearch, setAppliedSearch] = useState('');
+  const [visibleLimit, setVisibleLimit] = useState(DEFAULT_EMAIL_PAGE_LIMIT);
 
   const loginIdentityValue = hasEditedLoginUser ? loginUser : mailboxPreview;
 
   const emailFeedQuery = useQuery({
-    queryKey: ['webmail-folder-feed', mailboxIdentity || 'all', activeFolderKey],
-    queryFn: () => webmailService.getMessages({ page: 1, limit: 20, folderKey: activeFolderKey }),
+    queryKey: ['webmail-folder-feed', mailboxIdentity || 'all', activeFolderKey, visibleLimit, appliedSearch],
+    queryFn: () => webmailService.getMessages({ page: 1, limit: visibleLimit, folderKey: activeFolderKey, query: appliedSearch }),
     enabled: isPortalReady && !isWebmailMode,
     staleTime: 30_000,
-    refetchInterval: isPortalReady && !isWebmailMode ? 60_000 : false,
+    refetchInterval: isPortalReady && !isWebmailMode && visibleLimit === DEFAULT_EMAIL_PAGE_LIMIT && !appliedSearch ? 60_000 : false,
     refetchIntervalInBackground: false,
     refetchOnReconnect: true,
     retry: false,
@@ -383,11 +387,16 @@ export const EmailPage = () => {
 
   const mailboxFeed = emailFeedQuery.data?.data;
   const mailboxMessages = mailboxFeed?.messages ?? [];
+  const totalMessageCount = Number(mailboxFeed?.pagination.total || 0);
+  const hasAppliedSearch = appliedSearch.trim().length > 0;
+  const canLoadMore = mailboxMessages.length < totalMessageCount;
   const unreadEmailCount = mailboxMessages.filter((item) => !item.isRead).length;
   const latestEmailAt = mailboxMessages[0] ? formatDateTime(mailboxMessages[0].date) : '-';
   const activeFolderLabel = WEBMAIL_FOLDER_SHORTCUTS.find((item) => item.key === activeFolderKey)?.label || 'Inbox';
   const activeFolderDescription = getFolderDescription(activeFolderKey);
-  const activeFolderEmptyState = getFolderEmptyState(activeFolderKey, activeFolderLabel);
+  const activeFolderEmptyState = hasAppliedSearch
+    ? `Belum ada email yang cocok dengan kata kunci "${appliedSearch}" di folder ${activeFolderLabel}.`
+    : getFolderEmptyState(activeFolderKey, activeFolderLabel);
   const activeFolderTitle = activeFolderKey === 'INBOX' ? 'Kotak Masuk' : activeFolderLabel;
   const canReplyFromSelectedFolder = activeFolderKey !== 'Drafts';
 
@@ -908,6 +917,24 @@ export const EmailPage = () => {
     }
   };
 
+  const handleApplySearch = () => {
+    const nextSearch = searchDraft.trim();
+    setSelectedEmailGuid(null);
+    setVisibleLimit(DEFAULT_EMAIL_PAGE_LIMIT);
+    if (nextSearch === appliedSearch) {
+      void emailFeedQuery.refetch();
+      return;
+    }
+    setAppliedSearch(nextSearch);
+  };
+
+  const handleResetSearch = () => {
+    setSearchDraft('');
+    setAppliedSearch('');
+    setSelectedEmailGuid(null);
+    setVisibleLimit(DEFAULT_EMAIL_PAGE_LIMIT);
+  };
+
   const handleMoveSelectedEmail = async (targetFolderKey: WebmailFolderKey) => {
     if (!selectedEmail) return;
     await moveMessageMutation.mutateAsync({
@@ -1039,6 +1066,9 @@ export const EmailPage = () => {
                     onClick={() => {
                       setActiveFolderKey(folder.key);
                       setSelectedEmailGuid(null);
+                      setSearchDraft('');
+                      setAppliedSearch('');
+                      setVisibleLimit(DEFAULT_EMAIL_PAGE_LIMIT);
                     }}
                     className={`rounded-full px-4 py-2 text-sm font-bold transition ${
                       isActive
@@ -1072,6 +1102,42 @@ export const EmailPage = () => {
                 {isSsoMode ? 'Buka Panel Lengkap' : 'Akses Panel Lengkap'}
               </button>
             </div>
+
+            {mailboxFeed?.mailboxAvailable !== false ? (
+              <div className="space-y-2">
+                <p className="text-sm font-bold text-slate-700">Cari Email</p>
+                <form
+                  className="flex flex-col gap-2 sm:flex-row"
+                  onSubmit={(event) => {
+                    event.preventDefault();
+                    handleApplySearch();
+                  }}
+                >
+                  <input
+                    type="text"
+                    value={searchDraft}
+                    onChange={(event) => setSearchDraft(event.target.value)}
+                    placeholder="Cari pengirim, subjek, atau isi email"
+                    className="flex-1 rounded-2xl border border-slate-200 bg-white px-4 py-3 text-sm text-slate-900 outline-none transition focus:border-blue-300 focus:ring-2 focus:ring-blue-100"
+                  />
+                  <button
+                    type="submit"
+                    className="rounded-2xl bg-[#3250b9] px-5 py-3 text-sm font-bold text-white transition hover:bg-[#2a44a0]"
+                  >
+                    Cari
+                  </button>
+                </form>
+                {hasAppliedSearch || searchDraft.trim().length > 0 ? (
+                  <button
+                    type="button"
+                    onClick={handleResetSearch}
+                    className="text-left text-sm font-bold text-[#3250b9] transition hover:text-[#274194]"
+                  >
+                    Reset Pencarian
+                  </button>
+                ) : null}
+              </div>
+            ) : null}
 
             {emailFeedQuery.isLoading ? (
               <div className="rounded-2xl border border-slate-200 bg-slate-50 px-4 py-5 text-sm text-slate-500">
@@ -1107,6 +1173,11 @@ export const EmailPage = () => {
               </div>
             ) : (
               <div className="space-y-3">
+                <p className="text-sm text-slate-500">
+                  {hasAppliedSearch
+                    ? `Menampilkan ${mailboxMessages.length} dari ${totalMessageCount} email yang cocok dengan "${appliedSearch}".`
+                    : `Menampilkan ${mailboxMessages.length} dari ${totalMessageCount} email di folder ${activeFolderLabel}.`}
+                </p>
                 {mailboxMessages.map((item) => (
                   <EmailInboxItem
                     key={item.guid}
@@ -1117,6 +1188,19 @@ export const EmailPage = () => {
                     }}
                   />
                 ))}
+                {canLoadMore ? (
+                  <button
+                    type="button"
+                    disabled={emailFeedQuery.isFetching}
+                    onClick={() => {
+                      setVisibleLimit((current) => current + DEFAULT_EMAIL_PAGE_LIMIT);
+                    }}
+                    className="inline-flex items-center justify-center gap-2 rounded-2xl border border-slate-200 bg-white px-4 py-3 text-sm font-bold text-slate-800 transition hover:bg-slate-50 disabled:cursor-not-allowed disabled:opacity-60"
+                  >
+                    <RefreshCw className={`h-4 w-4 ${emailFeedQuery.isFetching && !emailFeedQuery.isLoading ? 'animate-spin' : ''}`} />
+                    Muat Lebih Banyak
+                  </button>
+                ) : null}
               </div>
             )}
 

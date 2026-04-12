@@ -607,13 +607,15 @@ export const listWebmailInboxMessages = asyncHandler(async (req: AuthRequest, re
   }
 
   const page = clamp(parsePositiveInt(req.query?.page as string | undefined, 1), 1, 9999);
-  const limit = clamp(parsePositiveInt(req.query?.limit as string | undefined, 20), 1, 50);
+  const limit = clamp(parsePositiveInt(req.query?.limit as string | undefined, 20), 1, 100);
   const folderKey = resolveRequestedFolderKey(req.query?.folder ?? req.query?.folderKey);
+  const query = toMaybeString(req.query?.q ?? req.query?.query ?? req.query?.search);
   const inbox = await listWebmailMessages({
     mailboxIdentity,
     page,
     limit,
     folderKey,
+    query,
   });
 
   res.status(200).json(

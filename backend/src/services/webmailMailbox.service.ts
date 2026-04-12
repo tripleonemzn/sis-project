@@ -11,7 +11,7 @@ const DEFAULT_MAILDIR_ROOT = '/mnt/mail_storage/docker-data/volumes/mailcowdocke
 const DEFAULT_DOVECOT_CONTAINER = 'mailcowdockerized-dovecot-mailcow-1';
 const DOVEADM_TIMEOUT_MS = 15000;
 const DOVEADM_MAX_BUFFER = 8 * 1024 * 1024;
-const MAX_MESSAGE_LIMIT = 50;
+const MAX_MESSAGE_LIMIT = 100;
 const EMAIL_NOTIFICATION_TYPE = 'EMAIL_RECEIVED';
 const WEBMAIL_FOLDER_KEY_SET = new Set(['INBOX', 'Drafts', 'Sent', 'Junk', 'Archive']);
 
@@ -41,6 +41,7 @@ export type WebmailMessageListResult = {
   mailboxIdentity: string;
   mailboxAvailable: boolean;
   folderKey: WebmailFolderKey;
+  query: string | null;
   messages: WebmailMessageSummary[];
   pagination: {
     page: number;
@@ -488,6 +489,26 @@ async function runDoveadmFetch(mailboxIdentity: string, fields: string, searchAr
   }
 }
 
+function parseUidValue(record: DoveadmRecord) {
+  const parsedUid = Number.parseInt(String(record['uid'] || '0').trim(), 10);
+  return Number.isFinite(parsedUid) && parsedUid > 0 ? parsedUid : 0;
+}
+
+function buildMailboxSearchArgs(folderKey: WebmailFolderKey, query?: string) {
+  const normalizedQuery = toMaybeString(query);
+  if (!normalizedQuery) {
+    return ['mailbox', folderKey, 'all'];
+  }
+  return ['mailbox', folderKey, 'text', normalizedQuery];
+}
+
+function buildUidSequenceSet(uids: number[]) {
+  return uids
+    .map((uid) => Math.trunc(Number(uid)))
+    .filter((uid) => Number.isFinite(uid) && uid > 0)
+    .join(',');
+}
+
 async function runDoveadmFlagsAddSeen(mailboxIdentity: string, folderKey: WebmailFolderKey, guid: string) {
   try {
     await execFileAsync(
@@ -659,11 +680,13 @@ export async function listWebmailMessages(options: {
   page?: number;
   limit?: number;
   folderKey?: WebmailFolderKey;
+  query?: string;
 }): Promise<WebmailMessageListResult> {
   const mailboxIdentity = normalizeMailboxIdentity(options.mailboxIdentity);
   const page = parsePositiveInt(options.page, 1, 1, 9999);
   const limit = parsePositiveInt(options.limit, 20, 1, MAX_MESSAGE_LIMIT);
   const folderKey = normalizeWebmailFolderKey(options.folderKey, 'INBOX');
+  const query = toMaybeString(options.query) || null;
 
   try {
     await ensureMailboxAvailable(mailboxIdentity);
@@ -673,6 +696,7 @@ export async function listWebmailMessages(options: {
         mailboxIdentity,
         mailboxAvailable: false,
         folderKey,
+        query,
         messages: [],
         pagination: {
           page,
@@ -685,26 +709,45 @@ export async function listWebmailMessages(options: {
     throw error;
   }
 
-  const records = await runDoveadmFetch(
-    mailboxIdentity,
-    'uid guid flags hdr.message-id hdr.subject hdr.from hdr.date body.snippet',
-    ['mailbox', folderKey, 'all'],
-  );
+  const searchArgs = buildMailboxSearchArgs(folderKey, query || undefined);
+  const matchedUids = (
+    await runDoveadmFetch(
+      mailboxIdentity,
+      'uid',
+      searchArgs,
+    )
+  )
+    .map((record) => parseUidValue(record))
+    .filter((uid) => uid > 0)
+    .sort((left, right) => right - left);
 
-  const messages = records
-    .map((record) => mapSummaryRecord(record))
-    .filter((record) => record.guid.length > 0)
-    .sort((left, right) => right.uid - left.uid);
-
-  const total = messages.length;
+  const total = matchedUids.length;
   const totalPages = total > 0 ? Math.ceil(total / limit) : 0;
   const offset = (page - 1) * limit;
+  const requestedUids = matchedUids.slice(offset, offset + limit);
+
+  let messages: WebmailMessageSummary[] = [];
+
+  if (requestedUids.length > 0) {
+    const uidSequenceSet = buildUidSequenceSet(requestedUids);
+    const records = await runDoveadmFetch(
+      mailboxIdentity,
+      'uid guid flags hdr.message-id hdr.subject hdr.from hdr.date body.snippet',
+      ['mailbox', folderKey, 'uid', uidSequenceSet],
+    );
+
+    messages = records
+      .map((record) => mapSummaryRecord(record))
+      .filter((record) => record.guid.length > 0)
+      .sort((left, right) => right.uid - left.uid);
+  }
 
   return {
     mailboxIdentity,
     mailboxAvailable: true,
     folderKey,
-    messages: messages.slice(offset, offset + limit),
+    query,
+    messages,
     pagination: {
       page,
       limit,

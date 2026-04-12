@@ -70,6 +70,7 @@ export interface WebmailMessageListResult {
   mailboxIdentity: string;
   mailboxAvailable: boolean;
   folderKey: WebmailFolderKey;
+  query: string | null;
   messages: WebmailMessageSummary[];
   pagination: {
     page: number;
@@ -129,12 +130,14 @@ export const webmailService = {
     page?: number;
     limit?: number;
     folderKey?: WebmailFolderKey;
+    query?: string;
   }): Promise<ApiResponse<WebmailMessageListResult>> => {
     const response = await api.get<ApiResponse<WebmailMessageListResult>>('/webmail/messages', {
       params: {
         page: params?.page,
         limit: params?.limit,
         folder: params?.folderKey,
+        q: params?.query,
       },
     });
     return response.data;

@@ -20,6 +20,7 @@ import { useIsScreenActive } from '../../src/hooks/useIsScreenActive';
 
 const ALLOWED_WEBMAIL_ROLES = new Set(['ADMIN', 'TEACHER', 'PRINCIPAL', 'STAFF', 'EXTRACURRICULAR_TUTOR']);
 const MAILBOX_USERNAME_PATTERN = /^[a-z0-9][a-z0-9._-]{2,62}$/;
+const DEFAULT_EMAIL_PAGE_LIMIT = 20;
 type FeatherIconName = ComponentProps<typeof Feather>['name'];
 type WebmailFolderKey = MobileWebmailFolderKey;
 type FolderMoveActionTone = 'primary' | 'neutral' | 'warning';
@@ -353,6 +354,9 @@ export default function MobileEmailScreen() {
   const [composeCc, setComposeCc] = useState('');
   const [composeSubject, setComposeSubject] = useState('');
   const [composeBody, setComposeBody] = useState('');
+  const [searchDraft, setSearchDraft] = useState('');
+  const [appliedSearch, setAppliedSearch] = useState('');
+  const [visibleLimit, setVisibleLimit] = useState(DEFAULT_EMAIL_PAGE_LIMIT);
 
   const isAllowedRole = useMemo(() => {
     const role = String(user?.role || '').toUpperCase();
@@ -367,11 +371,19 @@ export default function MobileEmailScreen() {
   });
 
   const emailFeedQuery = useQuery({
-    queryKey: ['mobile-email-folder-feed', configQuery.data?.mailboxIdentity || 'all', activeFolderKey],
-    queryFn: () => webmailApi.getMessages({ page: 1, limit: 20, folderKey: activeFolderKey }),
+    queryKey: ['mobile-email-folder-feed', configQuery.data?.mailboxIdentity || 'all', activeFolderKey, visibleLimit, appliedSearch],
+    queryFn: () => webmailApi.getMessages({ page: 1, limit: visibleLimit, folderKey: activeFolderKey, query: appliedSearch }),
     enabled: isAuthenticated && isAllowedRole && isScreenActive && !isWebmailMode,
     staleTime: 30_000,
-    refetchInterval: isAuthenticated && isAllowedRole && isScreenActive && !isWebmailMode ? 60_000 : false,
+    refetchInterval:
+      isAuthenticated &&
+      isAllowedRole &&
+      isScreenActive &&
+      !isWebmailMode &&
+      visibleLimit === DEFAULT_EMAIL_PAGE_LIMIT &&
+      !appliedSearch
+        ? 60_000
+        : false,
     refetchIntervalInBackground: false,
     refetchOnReconnect: true,
   });
@@ -385,9 +397,13 @@ export default function MobileEmailScreen() {
   const selfRegistrationEnabled = !isSsoMode && Boolean(config?.selfRegistrationEnabled);
   const quotaLabel = asQuotaLabel(config?.mailboxQuotaMb);
   const suggestedMailboxUsername = String(config?.user?.username || '').trim().toLowerCase();
-  const mailboxAvailable = emailFeedQuery.data?.mailboxAvailable !== false;
+  const mailboxFeed = emailFeedQuery.data;
+  const mailboxAvailable = mailboxFeed?.mailboxAvailable !== false;
 
-  const mailboxMessages = useMemo(() => emailFeedQuery.data?.messages ?? [], [emailFeedQuery.data?.messages]);
+  const mailboxMessages = useMemo(() => mailboxFeed?.messages ?? [], [mailboxFeed?.messages]);
+  const totalMessageCount = Number(mailboxFeed?.pagination.total || 0);
+  const hasAppliedSearch = appliedSearch.trim().length > 0;
+  const canLoadMore = mailboxMessages.length < totalMessageCount;
 
   const markAsReadMutation = useMutation({
     mutationFn: ({ guid, folderKey }: { guid: string; folderKey: WebmailFolderKey }) =>
@@ -432,7 +448,7 @@ export default function MobileEmailScreen() {
       isAllowedRole &&
       isScreenActive &&
       !isWebmailMode &&
-      emailFeedQuery.data?.mailboxAvailable !== false &&
+      mailboxFeed?.mailboxAvailable !== false &&
       (isEmailDetailVisible || (isComposeMode && composeModeKind === 'reply')),
     staleTime: 30_000,
   });
@@ -619,11 +635,33 @@ export default function MobileEmailScreen() {
     setPanelError(null);
     setIsRegisterMode(false);
     setSelectedEmailGuid(null);
+    setSearchDraft('');
+    setAppliedSearch('');
+    setVisibleLimit(DEFAULT_EMAIL_PAGE_LIMIT);
     setActiveFolderKey(folderKey);
     scrollViewRef.current?.scrollTo({
       y: Math.max(inboxSectionY - 12, 0),
       animated: true,
     });
+  };
+
+  const handleApplySearch = () => {
+    const nextSearch = searchDraft.trim();
+    setIsEmailDetailVisible(false);
+    setSelectedEmailGuid(null);
+    setVisibleLimit(DEFAULT_EMAIL_PAGE_LIMIT);
+    if (nextSearch === appliedSearch) {
+      void emailFeedQuery.refetch();
+      return;
+    }
+    setAppliedSearch(nextSearch);
+  };
+
+  const handleResetSearch = () => {
+    setSearchDraft('');
+    setAppliedSearch('');
+    setSelectedEmailGuid(null);
+    setVisibleLimit(DEFAULT_EMAIL_PAGE_LIMIT);
   };
 
   const handleRegister = () => {
@@ -749,7 +787,9 @@ export default function MobileEmailScreen() {
     selectedEmail?.snippet ||
     '';
   const activeFolderDescription = getFolderDescription(activeFolderKey);
-  const activeFolderEmptyState = getFolderEmptyState(activeFolderKey, activeFolderLabel);
+  const activeFolderEmptyState = hasAppliedSearch
+    ? `Belum ada email yang cocok dengan kata kunci "${appliedSearch}" di folder ${activeFolderLabel}.`
+    : getFolderEmptyState(activeFolderKey, activeFolderLabel);
   const activeFolderTitle = activeFolderKey === 'INBOX' ? 'Kotak Masuk' : activeFolderLabel;
   const canReplyFromSelectedFolder = activeFolderKey !== 'Drafts';
   const availableMoveActions = getFolderMoveActions(activeFolderKey);
@@ -859,6 +899,65 @@ export default function MobileEmailScreen() {
                 ) : null}
               </View>
 
+              {mailboxAvailable ? (
+                <View style={{ gap: 8 }}>
+                  <Text style={{ color: '#475569', fontSize: 12, fontWeight: '700' }}>Cari Email</Text>
+                  <View style={{ flexDirection: 'row', gap: 8 }}>
+                    <View
+                      style={{
+                        flex: 1,
+                        flexDirection: 'row',
+                        alignItems: 'center',
+                        gap: 8,
+                        borderRadius: 12,
+                        borderWidth: 1,
+                        borderColor: '#cbd5e1',
+                        backgroundColor: '#ffffff',
+                        paddingHorizontal: 12,
+                      }}
+                    >
+                      <Feather name="search" size={14} color="#64748b" />
+                      <TextInput
+                        value={searchDraft}
+                        onChangeText={setSearchDraft}
+                        onSubmitEditing={handleApplySearch}
+                        placeholder="Cari pengirim, subjek, atau isi email"
+                        placeholderTextColor="#94a3b8"
+                        autoCapitalize="none"
+                        autoCorrect={false}
+                        returnKeyType="search"
+                        style={{
+                          flex: 1,
+                          minHeight: 42,
+                          color: '#0f172a',
+                          fontSize: 13,
+                        }}
+                      />
+                    </View>
+                    <Pressable
+                      onPress={handleApplySearch}
+                      style={{
+                        borderRadius: 12,
+                        backgroundColor: '#3250b9',
+                        paddingHorizontal: 14,
+                        alignItems: 'center',
+                        justifyContent: 'center',
+                      }}
+                    >
+                      <Text style={{ color: '#ffffff', fontSize: 12, fontWeight: '700' }}>Cari</Text>
+                    </Pressable>
+                  </View>
+                  {hasAppliedSearch || searchDraft.trim().length > 0 ? (
+                    <Pressable
+                      onPress={handleResetSearch}
+                      style={{ alignSelf: 'flex-start', paddingVertical: 2 }}
+                    >
+                      <Text style={{ color: '#3250b9', fontSize: 12, fontWeight: '700' }}>Reset Pencarian</Text>
+                    </Pressable>
+                  ) : null}
+                </View>
+              ) : null}
+
               {emailFeedQuery.isLoading ? (
                 <View style={{ paddingVertical: 12, alignItems: 'center', justifyContent: 'center', gap: 8 }}>
                   <ActivityIndicator size="small" color="#2563eb" />
@@ -923,7 +1022,9 @@ export default function MobileEmailScreen() {
               ) : (
                 <View style={{ gap: 8 }}>
                   <Text style={{ color: '#64748b', fontSize: 12, lineHeight: 18 }}>
-                    Ketuk salah satu email untuk membuka detail tanpa keluar dari daftar {activeFolderLabel.toLowerCase()}.
+                    {hasAppliedSearch
+                      ? `Menampilkan ${mailboxMessages.length} dari ${totalMessageCount} email yang cocok dengan "${appliedSearch}".`
+                      : `Menampilkan ${mailboxMessages.length} dari ${totalMessageCount} email di folder ${activeFolderLabel}.`}
                   </Text>
                   {mailboxMessages.map((item) => (
                     <EmailInboxItem
@@ -935,6 +1036,33 @@ export default function MobileEmailScreen() {
                       }}
                     />
                   ))}
+                  {canLoadMore ? (
+                    <Pressable
+                      disabled={emailFeedQuery.isFetching}
+                      onPress={() => {
+                        setVisibleLimit((current) => current + DEFAULT_EMAIL_PAGE_LIMIT);
+                      }}
+                      style={{
+                        borderRadius: 12,
+                        borderWidth: 1,
+                        borderColor: '#cbd5e1',
+                        backgroundColor: '#ffffff',
+                        paddingVertical: 11,
+                        alignItems: 'center',
+                        justifyContent: 'center',
+                        flexDirection: 'row',
+                        gap: 6,
+                        opacity: emailFeedQuery.isFetching ? 0.7 : 1,
+                      }}
+                    >
+                      {emailFeedQuery.isFetching && !emailFeedQuery.isLoading ? (
+                        <ActivityIndicator size="small" color="#2563eb" />
+                      ) : (
+                        <Feather name="chevrons-down" size={14} color="#1e293b" />
+                      )}
+                      <Text style={{ color: '#1e293b', fontSize: 12, fontWeight: '700' }}>Muat Lebih Banyak</Text>
+                    </Pressable>
+                  ) : null}
                 </View>
               )}
             </SectionCard>
