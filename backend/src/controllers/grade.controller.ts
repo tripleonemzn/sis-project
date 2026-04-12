@@ -2651,7 +2651,7 @@ export const getStudentGradeOverview = async (req: Request, res: Response) => {
       : []
     const extraSubjectById = new Map(extraSubjects.map((row) => [row.id, row]))
 
-    const subjectRows = subjectIds
+    const subjectRowCandidates = subjectIds
       .map((subjectId) => {
         const assignment = assignmentBySubjectId.get(subjectId) || null
         const fallbackSubject = extraSubjectById.get(subjectId) || null
@@ -2800,6 +2800,13 @@ export const getStudentGradeOverview = async (req: Request, res: Response) => {
         const predicate = hasReportSnapshot ? String(report?.predicate || '').trim() || null : null
         const description = hasReportSnapshot ? String(report?.description || '').trim() || null : null
 
+        const hasGradeEvidence =
+          availableCount > 0 ||
+          hasReportSnapshot ||
+          finalScore !== null ||
+          predicate !== null ||
+          description !== null
+
         return {
           subject: {
             id: subject.id,
@@ -2816,17 +2823,26 @@ export const getStudentGradeOverview = async (req: Request, res: Response) => {
           finalScore,
           predicate,
           description,
-          status: availableCount > 0 || finalScore !== null ? 'AVAILABLE' : 'PENDING',
+          status: hasGradeEvidence ? 'AVAILABLE' : 'PENDING',
           componentSummary: {
             totalCount: components.length,
             availableCount,
             pendingCount: components.length - availableCount,
           },
           components,
+          visibility: {
+            hasReportSnapshot,
+            hasGradeEvidence,
+          },
         }
       })
       .filter((row): row is NonNullable<typeof row> => row !== null)
+
+    const visibleSubjectRows = subjectRowCandidates
+      .filter((row) => row.visibility.hasGradeEvidence)
       .sort((a, b) => a.subject.name.localeCompare(b.subject.name, 'id-ID'))
+
+    const subjectRows = visibleSubjectRows.map(({ visibility, ...row }) => row)
 
     const totalAvailableComponents = subjectRows.reduce(
       (sum, row) => sum + row.componentSummary.availableCount,
@@ -2840,10 +2856,10 @@ export const getStudentGradeOverview = async (req: Request, res: Response) => {
       .map((row) => row.finalScore)
       .filter((value): value is number => value !== null && value !== undefined)
 
-    const reportCardSubjects = subjectRows
+    const reportCardSubjects = visibleSubjectRows
       .map((row) => {
         const report = reportBySubjectId.get(row.subject.id) || null
-        const hasReportData = hasMeaningfulReportSnapshot(report)
+        const hasReportData = row.visibility.hasReportSnapshot
 
         return {
           subject: row.subject,
@@ -2857,7 +2873,7 @@ export const getStudentGradeOverview = async (req: Request, res: Response) => {
       })
       .sort((a, b) => a.subject.name.localeCompare(b.subject.name, 'id-ID'))
 
-    const expectedReportSubjects = assignmentBySubjectId.size > 0 ? assignmentBySubjectId.size : reportCardSubjects.length
+    const expectedReportSubjects = reportCardSubjects.length
     const availableReportSubjects = reportCardSubjects.filter((row) => row.status === 'AVAILABLE').length
     const reportFinalScores = reportCardSubjects
       .map((row) => row.finalScore)
