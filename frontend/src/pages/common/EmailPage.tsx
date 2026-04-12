@@ -21,6 +21,13 @@ type WebmailBridgeCredentials = {
 };
 
 type ComposeModeKind = 'new' | 'reply';
+type FolderMoveActionTone = 'primary' | 'neutral' | 'warning';
+type FolderMoveAction = {
+  key: string;
+  label: string;
+  targetFolderKey: WebmailFolderKey;
+  tone: FolderMoveActionTone;
+};
 
 const WEBMAIL_FOLDER_SHORTCUTS: Array<{ key: WebmailFolderKey; label: string }> = [
   { key: 'INBOX', label: 'Inbox' },
@@ -29,6 +36,35 @@ const WEBMAIL_FOLDER_SHORTCUTS: Array<{ key: WebmailFolderKey; label: string }> 
   { key: 'Junk', label: 'Spam' },
   { key: 'Archive', label: 'Arsip' },
 ];
+
+const getFolderLabel = (folderKey: WebmailFolderKey): string => {
+  return WEBMAIL_FOLDER_SHORTCUTS.find((item) => item.key === folderKey)?.label || 'Inbox';
+};
+
+const getFolderMoveActions = (folderKey: WebmailFolderKey): FolderMoveAction[] => {
+  if (folderKey === 'INBOX') {
+    return [
+      { key: 'archive', label: 'Arsipkan', targetFolderKey: 'Archive', tone: 'neutral' },
+      { key: 'spam', label: 'Pindah ke Spam', targetFolderKey: 'Junk', tone: 'warning' },
+    ];
+  }
+  if (folderKey === 'Junk') {
+    return [
+      { key: 'restore-inbox', label: 'Bukan Spam', targetFolderKey: 'INBOX', tone: 'primary' },
+      { key: 'archive', label: 'Arsipkan', targetFolderKey: 'Archive', tone: 'neutral' },
+    ];
+  }
+  if (folderKey === 'Archive') {
+    return [
+      { key: 'restore-inbox', label: 'Kembalikan ke Inbox', targetFolderKey: 'INBOX', tone: 'primary' },
+      { key: 'spam', label: 'Pindah ke Spam', targetFolderKey: 'Junk', tone: 'warning' },
+    ];
+  }
+  if (folderKey === 'Sent') {
+    return [{ key: 'archive', label: 'Arsipkan', targetFolderKey: 'Archive', tone: 'neutral' }];
+  }
+  return [];
+};
 
 const parseBridgeCredentials = (rawValue: string | null): WebmailBridgeCredentials | null => {
   if (!rawValue) return null;
@@ -140,6 +176,16 @@ const getFolderEmptyState = (folderKey: WebmailFolderKey, folderLabel: string): 
         : folderKey === 'Junk'
           ? 'Belum ada email yang masuk ke folder Spam.'
           : `Belum ada email di folder ${folderLabel}.`;
+};
+
+const getFolderMoveButtonClassName = (tone: FolderMoveActionTone): string => {
+  if (tone === 'warning') {
+    return 'border-amber-200 bg-amber-50 text-amber-800 hover:bg-amber-100';
+  }
+  if (tone === 'primary') {
+    return 'border-blue-200 bg-blue-50 text-blue-700 hover:bg-blue-100';
+  }
+  return 'border-slate-200 bg-slate-50 text-slate-700 hover:bg-slate-100';
 };
 
 const splitRecipientInput = (value: string): string[] => {
@@ -364,6 +410,7 @@ export const EmailPage = () => {
   const selectedSenderLabel = selectedEmail ? extractSenderLabel(selectedEmail) : '-';
   const selectedSubjectLabel = selectedEmail ? extractSubjectLabel(selectedEmail) : '-';
   const selectedBodyText = selectedEmailDetail?.plainText || selectedEmailDetail?.previewText || selectedEmail?.snippet || '';
+  const availableMoveActions = getFolderMoveActions(activeFolderKey);
 
   const persistWebmailMode = useCallback(
     (enabled: boolean) => {
@@ -512,6 +559,33 @@ export const EmailPage = () => {
     },
     onError: (error) => {
       toast.error(getErrorMessage(error, 'Gagal menandai email sebagai dibaca.'));
+    },
+  });
+
+  const moveMessageMutation = useMutation({
+    mutationFn: ({
+      guid,
+      sourceFolderKey,
+      targetFolderKey,
+    }: {
+      guid: string;
+      sourceFolderKey: WebmailFolderKey;
+      targetFolderKey: WebmailFolderKey;
+    }) => webmailService.moveMessage(guid, { sourceFolderKey, targetFolderKey }),
+    onSuccess: async (response) => {
+      toast.success(`Email berhasil dipindahkan ke folder ${getFolderLabel(response.data.targetFolderKey)}.`);
+      setSelectedEmailGuid(null);
+      await queryClient.invalidateQueries({
+        queryKey: ['webmail-folder-feed'],
+        refetchType: 'active',
+      });
+      await queryClient.invalidateQueries({
+        queryKey: ['webmail-message-detail'],
+        refetchType: 'active',
+      });
+    },
+    onError: (error) => {
+      toast.error(getErrorMessage(error, 'Gagal memindahkan email.'));
     },
   });
 
@@ -834,6 +908,15 @@ export const EmailPage = () => {
     }
   };
 
+  const handleMoveSelectedEmail = async (targetFolderKey: WebmailFolderKey) => {
+    if (!selectedEmail) return;
+    await moveMessageMutation.mutateAsync({
+      guid: selectedEmail.guid,
+      sourceFolderKey: activeFolderKey,
+      targetFolderKey,
+    });
+  };
+
   const handleSendCompose = async () => {
     if (!composeTo.trim()) {
       toast.error('Penerima email wajib diisi.');
@@ -1090,6 +1173,27 @@ export const EmailPage = () => {
                     </div>
                   )}
                 </div>
+
+                {availableMoveActions.length > 0 ? (
+                  <div className="mt-4 space-y-2">
+                    <p className="text-sm font-bold text-slate-700">Aksi Folder</p>
+                    <div className="flex flex-wrap gap-2">
+                      {availableMoveActions.map((action) => (
+                        <button
+                          key={action.key}
+                          type="button"
+                          onClick={() => {
+                            void handleMoveSelectedEmail(action.targetFolderKey);
+                          }}
+                          disabled={moveMessageMutation.isPending}
+                          className={`rounded-2xl border px-4 py-2 text-sm font-bold transition disabled:cursor-not-allowed disabled:opacity-60 ${getFolderMoveButtonClassName(action.tone)}`}
+                        >
+                          {moveMessageMutation.isPending ? 'Memproses...' : action.label}
+                        </button>
+                      ))}
+                    </div>
+                  </div>
+                ) : null}
 
                 <button
                   type="button"

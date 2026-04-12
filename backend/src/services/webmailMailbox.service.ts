@@ -50,6 +50,14 @@ export type WebmailMessageListResult = {
   };
 };
 
+export type MoveWebmailMessageResult = {
+  mailboxIdentity: string;
+  guid: string;
+  sourceFolderKey: WebmailFolderKey;
+  targetFolderKey: WebmailFolderKey;
+  movedAt: string;
+};
+
 export type SendWebmailMessageInput = {
   mailboxIdentity: string;
   fromName?: string | null;
@@ -496,6 +504,50 @@ async function runDoveadmFlagsAddSeen(mailboxIdentity: string, folderKey: Webmai
   }
 }
 
+async function ensureFolderMessageExists(mailboxIdentity: string, folderKey: WebmailFolderKey, guid: string) {
+  const records = await runDoveadmFetch(mailboxIdentity, 'guid', ['mailbox', folderKey, 'guid', guid]);
+  const match = records.find((record) => String(record['guid'] || '').trim() === guid);
+  if (!match) {
+    throw new MailboxMessageNotFoundError(`Email ${guid} tidak ditemukan`);
+  }
+}
+
+async function ensureDoveadmMailboxExists(mailboxIdentity: string, folderKey: WebmailFolderKey) {
+  if (folderKey === 'INBOX') return;
+  try {
+    await execFileAsync(
+      'docker',
+      ['exec', getDovecotContainerName(), 'doveadm', 'mailbox', 'create', '-u', mailboxIdentity, folderKey],
+      {
+        timeout: DOVEADM_TIMEOUT_MS,
+        maxBuffer: 1024 * 1024,
+      },
+    );
+  } catch (error: unknown) {
+    const message = extractExecErrorMessage(error).toLowerCase();
+    if (message.includes('exists') || message.includes('already')) {
+      return;
+    }
+    throw new Error(`Gagal menyiapkan folder ${folderKey}: ${extractExecErrorMessage(error)}`);
+  }
+}
+
+async function runDoveadmMove(mailboxIdentity: string, sourceFolderKey: WebmailFolderKey, targetFolderKey: WebmailFolderKey, guid: string) {
+  try {
+    await execFileAsync(
+      'docker',
+      ['exec', getDovecotContainerName(), 'doveadm', 'move', '-u', mailboxIdentity, targetFolderKey, 'mailbox', sourceFolderKey, 'guid', guid],
+      {
+        timeout: DOVEADM_TIMEOUT_MS,
+        maxBuffer: 1024 * 1024,
+      },
+    );
+  } catch (error: unknown) {
+    const message = extractExecErrorMessage(error);
+    throw new Error(`Gagal memindahkan email: ${message}`);
+  }
+}
+
 async function runDockerExecWithInput(containerName: string, command: string, input: string) {
   await new Promise<void>((resolve, reject) => {
     const child = spawn('docker', ['exec', '-i', containerName, 'sh', '-lc', command], {
@@ -764,5 +816,55 @@ export async function sendWebmailMessage(input: SendWebmailMessageInput) {
     messageId,
     sentAt: new Date().toISOString(),
     to: envelopeRecipients,
+  };
+}
+
+export async function moveWebmailMessage(input: {
+  userId: number;
+  mailboxIdentity: string;
+  guid: string;
+  sourceFolderKey?: WebmailFolderKey;
+  targetFolderKey: WebmailFolderKey;
+}): Promise<MoveWebmailMessageResult> {
+  const mailboxIdentity = normalizeMailboxIdentity(input.mailboxIdentity);
+  const guid = String(input.guid || '').trim();
+  const sourceFolderKey = normalizeWebmailFolderKey(input.sourceFolderKey, 'INBOX');
+  const targetFolderKey = normalizeWebmailFolderKey(input.targetFolderKey, 'INBOX');
+
+  if (!guid) {
+    throw new MailboxMessageNotFoundError('Guid email tidak valid');
+  }
+  if (sourceFolderKey === targetFolderKey) {
+    throw new Error('Folder tujuan harus berbeda dari folder asal');
+  }
+
+  await ensureMailboxAvailable(mailboxIdentity);
+  await ensureFolderMessageExists(mailboxIdentity, sourceFolderKey, guid);
+  await ensureDoveadmMailboxExists(mailboxIdentity, targetFolderKey);
+  await runDoveadmMove(mailboxIdentity, sourceFolderKey, targetFolderKey, guid);
+
+  if (targetFolderKey !== 'INBOX') {
+    await prisma.notification.updateMany({
+      where: {
+        userId: input.userId,
+        type: EMAIL_NOTIFICATION_TYPE,
+        isRead: false,
+        AND: [
+          { data: { path: ['mailboxIdentity'], equals: mailboxIdentity } },
+          { data: { path: ['emailGuid'], equals: guid } },
+        ],
+      },
+      data: {
+        isRead: true,
+      },
+    });
+  }
+
+  return {
+    mailboxIdentity,
+    guid,
+    sourceFolderKey,
+    targetFolderKey,
+    movedAt: new Date().toISOString(),
   };
 }

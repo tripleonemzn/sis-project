@@ -96,6 +96,19 @@ export interface WebmailSendResult {
   to: string[];
 }
 
+export interface WebmailMovePayload {
+  sourceFolderKey?: WebmailFolderKey;
+  targetFolderKey: WebmailFolderKey;
+}
+
+export interface WebmailMoveResult {
+  mailboxIdentity: string;
+  guid: string;
+  sourceFolderKey: WebmailFolderKey;
+  targetFolderKey: WebmailFolderKey;
+  movedAt: string;
+}
+
 export const webmailService = {
   getConfig: async (): Promise<ApiResponse<WebmailConfig>> => {
     const response = await api.get<ApiResponse<WebmailConfig>>('/webmail/config');
@@ -157,6 +170,14 @@ export const webmailService = {
 
   sendMessage: async (payload: WebmailSendPayload): Promise<ApiResponse<WebmailSendResult>> => {
     const response = await api.post<ApiResponse<WebmailSendResult>>('/webmail/messages/send', payload);
+    return response.data;
+  },
+
+  moveMessage: async (guid: string, payload: WebmailMovePayload): Promise<ApiResponse<WebmailMoveResult>> => {
+    const response = await api.post<ApiResponse<WebmailMoveResult>>(`/webmail/messages/${encodeURIComponent(guid)}/move`, {
+      sourceFolderKey: payload.sourceFolderKey,
+      targetFolderKey: payload.targetFolderKey,
+    });
     return response.data;
   },
 

@@ -22,6 +22,14 @@ const ALLOWED_WEBMAIL_ROLES = new Set(['ADMIN', 'TEACHER', 'PRINCIPAL', 'STAFF',
 const MAILBOX_USERNAME_PATTERN = /^[a-z0-9][a-z0-9._-]{2,62}$/;
 type FeatherIconName = ComponentProps<typeof Feather>['name'];
 type WebmailFolderKey = MobileWebmailFolderKey;
+type FolderMoveActionTone = 'primary' | 'neutral' | 'warning';
+
+type FolderMoveAction = {
+  key: string;
+  label: string;
+  targetFolderKey: WebmailFolderKey;
+  tone: FolderMoveActionTone;
+};
 
 const WEBMAIL_FOLDER_SHORTCUTS: Array<{
   key: WebmailFolderKey;
@@ -34,6 +42,35 @@ const WEBMAIL_FOLDER_SHORTCUTS: Array<{
   { key: 'Junk', label: 'Spam', iconName: 'alert-circle' },
   { key: 'Archive', label: 'Arsip', iconName: 'archive' },
 ];
+
+function getFolderLabel(folderKey: WebmailFolderKey) {
+  return WEBMAIL_FOLDER_SHORTCUTS.find((item) => item.key === folderKey)?.label || 'Inbox';
+}
+
+function getFolderMoveActions(folderKey: WebmailFolderKey): FolderMoveAction[] {
+  if (folderKey === 'INBOX') {
+    return [
+      { key: 'archive', label: 'Arsipkan', targetFolderKey: 'Archive', tone: 'neutral' },
+      { key: 'spam', label: 'Pindah ke Spam', targetFolderKey: 'Junk', tone: 'warning' },
+    ];
+  }
+  if (folderKey === 'Junk') {
+    return [
+      { key: 'restore-inbox', label: 'Bukan Spam', targetFolderKey: 'INBOX', tone: 'primary' },
+      { key: 'archive', label: 'Arsipkan', targetFolderKey: 'Archive', tone: 'neutral' },
+    ];
+  }
+  if (folderKey === 'Archive') {
+    return [
+      { key: 'restore-inbox', label: 'Kembalikan ke Inbox', targetFolderKey: 'INBOX', tone: 'primary' },
+      { key: 'spam', label: 'Pindah ke Spam', targetFolderKey: 'Junk', tone: 'warning' },
+    ];
+  }
+  if (folderKey === 'Sent') {
+    return [{ key: 'archive', label: 'Arsipkan', targetFolderKey: 'Archive', tone: 'neutral' }];
+  }
+  return [];
+}
 
 type BridgeCredentials = {
   email: string;
@@ -157,6 +194,31 @@ function getFolderEmptyState(folderKey: WebmailFolderKey, folderLabel: string) {
         : folderKey === 'Junk'
           ? 'Belum ada email yang masuk ke folder Spam.'
           : `Belum ada email di folder ${folderLabel}.`;
+}
+
+function getFolderMoveActionPalette(tone: FolderMoveActionTone) {
+  if (tone === 'warning') {
+    return {
+      borderColor: '#fdba74',
+      backgroundColor: '#fff7ed',
+      iconColor: '#c2410c',
+      textColor: '#9a3412',
+    };
+  }
+  if (tone === 'primary') {
+    return {
+      borderColor: '#93c5fd',
+      backgroundColor: '#eff6ff',
+      iconColor: '#2563eb',
+      textColor: '#1d4ed8',
+    };
+  }
+  return {
+    borderColor: '#cbd5e1',
+    backgroundColor: '#f8fafc',
+    iconColor: '#475569',
+    textColor: '#334155',
+  };
 }
 
 function SectionCard({
@@ -457,6 +519,40 @@ export default function MobileEmailScreen() {
     },
   });
 
+  const moveMessageMutation = useMutation({
+    mutationFn: ({
+      guid,
+      sourceFolderKey,
+      targetFolderKey,
+    }: {
+      guid: string;
+      sourceFolderKey: WebmailFolderKey;
+      targetFolderKey: WebmailFolderKey;
+    }) => webmailApi.moveMessage(guid, { sourceFolderKey, targetFolderKey }),
+    onSuccess: async (result) => {
+      notifySuccess(`Email berhasil dipindahkan ke folder ${getFolderLabel(result.targetFolderKey)}.`, {
+        title: 'Email',
+      });
+      setIsEmailDetailVisible(false);
+      setSelectedEmailGuid(null);
+      await queryClient.invalidateQueries({
+        queryKey: ['mobile-email-folder-feed'],
+        refetchType: 'active',
+      });
+      await queryClient.invalidateQueries({
+        queryKey: ['mobile-email-message-detail'],
+        refetchType: 'active',
+      });
+      await queryClient.invalidateQueries({
+        queryKey: MOBILE_NOTIFICATIONS_QUERY_KEY,
+        refetchType: 'active',
+      });
+    },
+    onError: (error: unknown) => {
+      notifyApiError(error, 'Gagal memindahkan email.');
+    },
+  });
+
   const leavePanelMode = () => {
     setIsWebmailMode(false);
     setIsRegisterMode(false);
@@ -594,6 +690,15 @@ export default function MobileEmailScreen() {
     await sendMessageMutation.mutateAsync();
   };
 
+  const handleMoveSelectedEmail = async (targetFolderKey: WebmailFolderKey) => {
+    if (!selectedEmail) return;
+    await moveMessageMutation.mutateAsync({
+      guid: selectedEmail.guid,
+      sourceFolderKey: activeFolderKey,
+      targetFolderKey,
+    });
+  };
+
   const closeRegisterModal = () => {
     setIsRegisterMode(false);
     setPanelError(null);
@@ -647,6 +752,7 @@ export default function MobileEmailScreen() {
   const activeFolderEmptyState = getFolderEmptyState(activeFolderKey, activeFolderLabel);
   const activeFolderTitle = activeFolderKey === 'INBOX' ? 'Kotak Masuk' : activeFolderLabel;
   const canReplyFromSelectedFolder = activeFolderKey !== 'Drafts';
+  const availableMoveActions = getFolderMoveActions(activeFolderKey);
   const webSource = bridgeCredentials
     ? {
         uri: bridgeLoginUrl,
@@ -1267,6 +1373,52 @@ export default function MobileEmailScreen() {
                   </Text>
                 </Pressable>
               </View>
+
+              {availableMoveActions.length > 0 ? (
+                <View style={{ gap: 8 }}>
+                  <Text style={{ color: '#475569', fontSize: 12, fontWeight: '700' }}>Aksi Folder</Text>
+                  <View style={{ flexDirection: 'row', flexWrap: 'wrap', gap: 8 }}>
+                    {availableMoveActions.map((action) => {
+                      const palette = getFolderMoveActionPalette(action.tone);
+                      return (
+                        <Pressable
+                          key={action.key}
+                          disabled={moveMessageMutation.isPending}
+                          onPress={() => {
+                            void handleMoveSelectedEmail(action.targetFolderKey);
+                          }}
+                          style={{
+                            minWidth: 132,
+                            flexGrow: 1,
+                            borderRadius: 12,
+                            borderWidth: 1,
+                            borderColor: palette.borderColor,
+                            backgroundColor: palette.backgroundColor,
+                            paddingHorizontal: 12,
+                            paddingVertical: 11,
+                            alignItems: 'center',
+                            justifyContent: 'center',
+                            flexDirection: 'row',
+                            gap: 6,
+                            opacity: moveMessageMutation.isPending ? 0.7 : 1,
+                          }}
+                        >
+                          {moveMessageMutation.isPending ? (
+                            <ActivityIndicator size="small" color={palette.iconColor} />
+                          ) : (
+                            <Feather
+                              name={action.targetFolderKey === 'Archive' ? 'archive' : action.targetFolderKey === 'Junk' ? 'alert-circle' : 'corner-up-left'}
+                              size={14}
+                              color={palette.iconColor}
+                            />
+                          )}
+                          <Text style={{ color: palette.textColor, fontWeight: '700', fontSize: 12 }}>{action.label}</Text>
+                        </Pressable>
+                      );
+                    })}
+                  </View>
+                </View>
+              ) : null}
 
               {selectedEmailDetailQuery.isLoading ? (
                 <View style={{ paddingVertical: 8, alignItems: 'center', gap: 8 }}>

@@ -102,6 +102,19 @@ export type MobileWebmailSendResult = {
   to: string[];
 };
 
+export type MobileWebmailMovePayload = {
+  sourceFolderKey?: MobileWebmailFolderKey;
+  targetFolderKey: MobileWebmailFolderKey;
+};
+
+export type MobileWebmailMoveResult = {
+  mailboxIdentity: string;
+  guid: string;
+  sourceFolderKey: MobileWebmailFolderKey;
+  targetFolderKey: MobileWebmailFolderKey;
+  movedAt: string;
+};
+
 export const webmailApi = {
   async getConfig() {
     const response = await apiClient.get<ApiEnvelope<MobileWebmailConfig>>('/webmail/config');
@@ -160,6 +173,14 @@ export const webmailApi = {
 
   async sendMessage(payload: MobileWebmailSendPayload) {
     const response = await apiClient.post<ApiEnvelope<MobileWebmailSendResult>>('/webmail/messages/send', payload);
+    return response.data.data;
+  },
+
+  async moveMessage(guid: string, payload: MobileWebmailMovePayload) {
+    const response = await apiClient.post<ApiEnvelope<MobileWebmailMoveResult>>(`/webmail/messages/${encodeURIComponent(guid)}/move`, {
+      sourceFolderKey: payload.sourceFolderKey,
+      targetFolderKey: payload.targetFolderKey,
+    });
     return response.data.data;
   },
 };

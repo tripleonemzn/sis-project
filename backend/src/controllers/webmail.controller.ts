@@ -14,6 +14,7 @@ import {
   markWebmailMessageAsRead,
   MailboxMessageNotFoundError,
   MailboxUnavailableError,
+  moveWebmailMessage,
   normalizeWebmailFolderKey,
   sendWebmailMessage,
   type WebmailFolderKey,
@@ -76,6 +77,13 @@ type SendWebmailBody = {
   html?: unknown;
   inReplyToMessageId?: unknown;
   references?: unknown;
+};
+
+type MoveWebmailBody = {
+  sourceFolder?: unknown;
+  sourceFolderKey?: unknown;
+  targetFolder?: unknown;
+  targetFolderKey?: unknown;
 };
 
 const resolveFolderLabel = (folderKey: WebmailFolderKey): string => {
@@ -744,6 +752,53 @@ export const sendWebmailInboxMessage = asyncHandler(async (req: AuthRequest, res
       'Email berhasil dikirim',
     ),
   );
+});
+
+export const moveWebmailInboxMessage = asyncHandler(async (req: AuthRequest, res: Response) => {
+  const user = await ensureWebmailAccess(req);
+  const mailboxIdentity = resolveMailboxIdentity(user);
+  if (!mailboxIdentity) {
+    throw new ApiError(400, 'Akun Anda belum memiliki identitas mailbox (email) yang valid');
+  }
+
+  const guid = toMaybeString(req.params?.guid);
+  if (!guid) {
+    throw new ApiError(400, 'Guid email wajib diisi');
+  }
+
+  const body = (req.body || {}) as MoveWebmailBody;
+  const sourceFolderKey = resolveRequestedFolderKey(body.sourceFolder ?? body.sourceFolderKey ?? req.query?.folder ?? req.query?.folderKey);
+  const targetFolderKey = resolveRequestedFolderKey(body.targetFolder ?? body.targetFolderKey ?? 'INBOX');
+
+  if (sourceFolderKey === targetFolderKey) {
+    throw new ApiError(400, 'Folder tujuan harus berbeda dari folder asal');
+  }
+
+  try {
+    const result = await moveWebmailMessage({
+      userId: user.id,
+      mailboxIdentity,
+      guid,
+      sourceFolderKey,
+      targetFolderKey,
+    });
+
+    res.status(200).json(
+      new ApiResponse(
+        200,
+        result,
+        `Email berhasil dipindahkan dari ${resolveFolderLabel(sourceFolderKey)} ke ${resolveFolderLabel(targetFolderKey)}`,
+      ),
+    );
+  } catch (error: unknown) {
+    if (error instanceof MailboxUnavailableError) {
+      throw new ApiError(404, 'Mailbox belum tersedia di server');
+    }
+    if (error instanceof MailboxMessageNotFoundError) {
+      throw new ApiError(404, error.message || 'Email tidak ditemukan');
+    }
+    throw error;
+  }
 });
 
 export const startWebmailSso = asyncHandler(async (req: AuthRequest, res: Response) => {
