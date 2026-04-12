@@ -2495,6 +2495,11 @@ export const getStudentGradeOverview = async (req: Request, res: Response) => {
           classId: student.studentClass.id,
         },
         include: {
+          scheduleEntries: {
+            select: {
+              id: true,
+            },
+          },
           subject: {
             select: {
               id: true,
@@ -2852,12 +2857,14 @@ export const getStudentGradeOverview = async (req: Request, res: Response) => {
         const predicate = hasReportSnapshot ? String(report?.predicate || '').trim() || null : null
         const description = hasReportSnapshot ? String(report?.description || '').trim() || null : null
 
+        const hasOperationalAssignment = Number(assignment?.scheduleEntries?.length || 0) > 0
         const hasGradeEvidence =
           availableCount > 0 ||
           hasReportSnapshot ||
           finalScore !== null ||
           predicate !== null ||
           description !== null
+        const shouldShowToStudent = hasOperationalAssignment || hasGradeEvidence
 
         return {
           subject: {
@@ -2883,15 +2890,17 @@ export const getStudentGradeOverview = async (req: Request, res: Response) => {
           },
           components,
           visibility: {
+            hasOperationalAssignment,
             hasReportSnapshot,
             hasGradeEvidence,
+            shouldShowToStudent,
           },
         }
       })
       .filter((row): row is NonNullable<typeof row> => row !== null)
 
     const visibleSubjectRows = subjectRowCandidates
-      .filter((row) => row.visibility.hasGradeEvidence)
+      .filter((row) => row.visibility.shouldShowToStudent)
       .sort((a, b) => a.subject.name.localeCompare(b.subject.name, 'id-ID'))
 
     const subjectRows = visibleSubjectRows.map(({ visibility, ...row }) => row)

@@ -284,6 +284,21 @@ export default function StudentGradesPage() {
   });
 
   const data = overviewQuery.data;
+  const programTabSubtitle = useMemo(() => {
+    if (!data || data.components.length === 0) {
+      return 'Lihat komponen nilai program ujian aktif per mata pelajaran.'
+    }
+    const labels = Array.from(
+      new Set(data.components.map((component) => component.reportSlotCode).filter(Boolean)),
+    )
+    if (labels.length === 1) {
+      return `Lihat komponen ${labels[0]} per mata pelajaran.`
+    }
+    if (labels.length === 2) {
+      return `Lihat komponen ${labels[0]} dan ${labels[1]} per mata pelajaran.`
+    }
+    return `Lihat komponen ${labels.slice(0, -1).join(', ')}, dan ${labels[labels.length - 1]} per mata pelajaran.`
+  }, [data]);
   const programSummary = useMemo(() => {
     if (!data) return [];
     return data.components.map((component) => {
@@ -348,7 +363,7 @@ export default function StudentGradesPage() {
             <TabButton
               active={activeTab === 'PROGRAM'}
               label="Nilai Program Ujian"
-              subtitle="Lihat komponen FORMATIF, SBTS, SAS, SAT, ASAJ, dan ASAJP per mata pelajaran."
+              subtitle={programTabSubtitle}
               onClick={() => setActiveTab('PROGRAM')}
             />
             <TabButton

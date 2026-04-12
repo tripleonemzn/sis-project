@@ -381,6 +381,22 @@ export default function GradesScreen() {
   const gradesQuery = useStudentGradesQuery({ enabled: isAuthenticated, user });
   const pageContentPadding = getStandardPagePadding(insets);
   const overview = gradesQuery.data?.overview;
+  const programTabSubtitle = useMemo(() => {
+    if (!overview || overview.components.length === 0) {
+      return 'Lihat komponen nilai program ujian aktif per mata pelajaran.'
+    }
+    const labels = Array.from(
+      new Set(overview.components.map((component) => component.reportSlotCode).filter(Boolean)),
+    )
+    if (labels.length === 1) {
+      return `Lihat komponen ${labels[0]} per mata pelajaran.`
+    }
+    if (labels.length === 2) {
+      return `Lihat komponen ${labels[0]} dan ${labels[1]} per mata pelajaran.`
+    }
+    return `Lihat komponen ${labels.slice(0, -1).join(', ')}, dan ${labels[labels.length - 1]} per mata pelajaran.`
+  }, [overview]);
+  const reportTabSubtitle = 'Lihat ringkasan nilai akhir semester, kehadiran, dan catatan wali kelas.';
 
   const programSummary = useMemo(() => {
     if (!overview) return [];
@@ -469,6 +485,9 @@ export default function GradesScreen() {
             activeKey={activeTab}
             onChange={(key) => setActiveTab(key as GradeTabKey)}
           />
+          <Text style={{ color: colors.textMuted, fontSize: 13, lineHeight: 20 }}>
+            {activeTab === 'PROGRAM' ? programTabSubtitle : reportTabSubtitle}
+          </Text>
 
           {activeTab === 'PROGRAM' ? (
             <>
