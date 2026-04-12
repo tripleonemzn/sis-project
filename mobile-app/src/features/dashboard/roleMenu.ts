@@ -284,7 +284,7 @@ const ROLE_MENUS: Record<string, RoleMenuItem[]> = {
       label: 'Ujian Online',
       route: '/exams',
     },
-    { key: 'student-grade-history', label: 'Riwayat Nilai', route: '/grades' },
+    { key: 'student-grade-history', label: 'Nilai Saya', route: '/grades' },
     { key: 'student-finance', label: 'Keuangan', route: '/student/finance' },
     { key: 'student-profile-web', label: 'Profil', route: '/profile' },
   ],

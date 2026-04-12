@@ -34,6 +34,16 @@ type SemesterRange = {
   end: Date
 }
 
+type StudentOverviewComponentRow = {
+  code: string
+  label: string
+  type: string
+  reportSlotCode: string
+  entryMode: string
+  includeInFinalScore: boolean
+  displayOrder: number
+}
+
 type StudentScoreEntryFindManyDelegate = {
   findMany: (args: unknown) => Promise<unknown[]>
 }
@@ -949,6 +959,119 @@ function resolveSemesterRange(
     start: academicYear.semester2Start,
     end: academicYear.semester2End,
   }
+}
+
+function resolveCurrentSemesterFromAcademicYear(academicYear: {
+  semester1Start: Date
+  semester1End: Date
+  semester2Start: Date
+  semester2End: Date
+}): Semester {
+  const now = new Date()
+  if (now >= academicYear.semester2Start && now <= academicYear.semester2End) {
+    return Semester.EVEN
+  }
+  if (now > academicYear.semester1End && now < academicYear.semester2Start) {
+    return Semester.EVEN
+  }
+  return Semester.ODD
+}
+
+function formatSemesterDisplayLabel(semester: Semester): string {
+  return semester === Semester.EVEN ? 'Genap' : 'Ganjil'
+}
+
+function normalizeNullableScore(raw: unknown): number | null {
+  if (raw === null || raw === undefined || raw === '') return null
+  const parsed = Number(raw)
+  if (!Number.isFinite(parsed)) return null
+  return parsed
+}
+
+function roundDisplayScore(raw: unknown): number | null {
+  const parsed = normalizeNullableScore(raw)
+  if (parsed === null) return null
+  return Number(parsed.toFixed(2))
+}
+
+function hasOwnSlotScore(
+  slotScores: Record<string, number | null>,
+  slotCode: string,
+): boolean {
+  return Object.prototype.hasOwnProperty.call(slotScores, normalizeReportSlotCode(slotCode))
+}
+
+function hasMeaningfulReportSnapshot(row: {
+  formatifScore?: number | null
+  sbtsScore?: number | null
+  sasScore?: number | null
+  usScore?: number | null
+  slotScores?: unknown
+  predicate?: string | null
+  description?: string | null
+} | null | undefined): boolean {
+  if (!row) return false
+  const slotScores = parseSlotScoreMap(row.slotScores)
+  if (Object.keys(slotScores).length > 0) return true
+  if (row.formatifScore !== null && row.formatifScore !== undefined) return true
+  if (row.sbtsScore !== null && row.sbtsScore !== undefined) return true
+  if (row.sasScore !== null && row.sasScore !== undefined) return true
+  if (row.usScore !== null && row.usScore !== undefined) return true
+  if (String(row.predicate || '').trim()) return true
+  if (String(row.description || '').trim()) return true
+  return false
+}
+
+function buildStudentOverviewComponents(params: {
+  components: Array<{
+    code: string
+    label: string
+    type: GradeComponentType
+    typeCode: string
+    reportSlot: ReportComponentSlot
+    reportSlotCode: string
+    entryMode: GradeEntryMode
+    entryModeCode: string
+    includeInFinalScore: boolean
+    displayOrder: number
+  }>
+  semester: Semester
+  classLevel: string
+  hasUsScores: boolean
+}): StudentOverviewComponentRow[] {
+  const normalizedLevel = normalizeClassLevelTokenForScope(params.classLevel)
+
+  return params.components
+    .map((component) => {
+      const reportSlotCode = normalizeReportSlotCode(
+        component.reportSlotCode || component.reportSlot || component.code || component.typeCode || component.type,
+      )
+
+      return {
+        code: normalizeComponentCode(component.code || reportSlotCode || component.typeCode || component.type),
+        label: String(component.label || '').trim() || formatSlotDisplayLabel(reportSlotCode, 'Komponen'),
+        type: normalizeComponentCode(component.typeCode || component.type || reportSlotCode),
+        reportSlotCode,
+        entryMode: normalizeComponentCode(component.entryModeCode || component.entryMode || GradeEntryMode.SINGLE_SCORE),
+        includeInFinalScore: component.includeInFinalScore,
+        displayOrder: Number(component.displayOrder || 0),
+      }
+    })
+    .filter((component) => {
+      if (!component.code || component.reportSlotCode === DEFAULT_REPORT_SLOT_CODE) return false
+      if (component.reportSlotCode === 'FORMATIF') return true
+      if (component.reportSlotCode === 'SBTS') return true
+      if (component.reportSlotCode === 'SAS') return params.semester === Semester.ODD
+      if (component.reportSlotCode === 'SAT') return params.semester === Semester.EVEN
+      if (component.reportSlotCode === 'US_THEORY' || component.reportSlotCode === 'US_PRACTICE') {
+        return normalizedLevel === 'XII' || params.hasUsScores
+      }
+      return false
+    })
+    .sort((a, b) => {
+      if (a.displayOrder !== b.displayOrder) return a.displayOrder - b.displayOrder
+      return a.label.localeCompare(b.label, 'id-ID')
+    })
 }
 
 function defaultReportSlotByExamType(type: string | null | undefined): ReportComponentSlot {
@@ -2273,6 +2396,454 @@ export const getStudentGrades = async (req: Request, res: Response) => {
   } catch (error) {
     console.error('Get student grades error:', error)
     throw new ApiError(500, 'Failed to retrieve student grades')
+  }
+}
+
+export const getStudentGradeOverview = async (req: Request, res: Response) => {
+  try {
+    const user = (req as any).user as AuthUserLike
+    const studentId = Number(user?.id || 0)
+
+    if (String(user?.role || '').toUpperCase() !== 'STUDENT' || !Number.isFinite(studentId) || studentId <= 0) {
+      throw new ApiError(403, 'Fitur ini hanya tersedia untuk siswa.')
+    }
+
+    const activeYear = await prisma.academicYear.findFirst({
+      where: { isActive: true },
+      select: {
+        id: true,
+        name: true,
+        semester1Start: true,
+        semester1End: true,
+        semester2Start: true,
+        semester2End: true,
+      },
+    })
+
+    if (!activeYear) {
+      throw new ApiError(404, 'Tahun ajaran aktif tidak ditemukan.')
+    }
+
+    const semester = resolveCurrentSemesterFromAcademicYear(activeYear)
+    const student = await getHistoricalStudentSnapshotForAcademicYear(studentId, activeYear.id)
+
+    if (!student || !student.studentClass) {
+      throw new ApiError(404, 'Data siswa atau kelas aktif tidak ditemukan.')
+    }
+
+    const [teacherAssignments, reportGrades, studentGrades, examGradeComponents] = await Promise.all([
+      prisma.teacherAssignment.findMany({
+        where: {
+          academicYearId: activeYear.id,
+          classId: student.studentClass.id,
+        },
+        include: {
+          subject: {
+            select: {
+              id: true,
+              code: true,
+              name: true,
+            },
+          },
+          teacher: {
+            select: {
+              id: true,
+              name: true,
+            },
+          },
+        },
+        orderBy: {
+          subject: {
+            name: 'asc',
+          },
+        },
+      }),
+      prisma.reportGrade.findMany({
+        where: {
+          studentId,
+          academicYearId: activeYear.id,
+          semester,
+        },
+        include: {
+          subject: {
+            select: {
+              id: true,
+              code: true,
+              name: true,
+            },
+          },
+        },
+        orderBy: [{ id: 'desc' }],
+      }),
+      prisma.studentGrade.findMany({
+        where: {
+          studentId,
+          academicYearId: activeYear.id,
+          semester,
+        },
+        include: {
+          component: {
+            select: {
+              id: true,
+              code: true,
+              name: true,
+              type: true,
+              typeCode: true,
+              weight: true,
+            },
+          },
+          subject: {
+            select: {
+              id: true,
+              code: true,
+              name: true,
+            },
+          },
+        },
+        orderBy: [{ id: 'desc' }],
+      }),
+      prisma.examGradeComponent.findMany({
+        where: {
+          academicYearId: activeYear.id,
+          isActive: true,
+        },
+        select: {
+          code: true,
+          label: true,
+          type: true,
+          typeCode: true,
+          reportSlot: true,
+          reportSlotCode: true,
+          entryMode: true,
+          entryModeCode: true,
+          includeInFinalScore: true,
+          displayOrder: true,
+        },
+        orderBy: [{ displayOrder: 'asc' }, { code: 'asc' }],
+      }),
+    ])
+
+    const reportBySubjectId = new Map<number, (typeof reportGrades)[number]>()
+    reportGrades.forEach((row) => {
+      if (!reportBySubjectId.has(row.subjectId)) {
+        reportBySubjectId.set(row.subjectId, row)
+      }
+    })
+
+    const latestStudentGradeByComposite = new Map<string, (typeof studentGrades)[number]>()
+    const formativeSeriesBySubjectId = new Map<number, number[]>()
+    studentGrades.forEach((row) => {
+      const componentCode = normalizeComponentCode(
+        row.component?.code || row.component?.typeCode || row.component?.type,
+      )
+      const key = `${row.subjectId}:${componentCode}`
+      if (!latestStudentGradeByComposite.has(key)) {
+        latestStudentGradeByComposite.set(key, row)
+      }
+      if (isFormativeAliasCode(componentCode) && !formativeSeriesBySubjectId.has(row.subjectId)) {
+        const series = sanitizeLegacyFormativeSeries(
+          [row.nf1, row.nf2, row.nf3, row.nf4, row.nf5, row.nf6],
+          row.score,
+        )
+        if (series.length > 0) {
+          formativeSeriesBySubjectId.set(row.subjectId, series)
+        } else if (row.score !== null && row.score !== undefined && Number.isFinite(Number(row.score))) {
+          formativeSeriesBySubjectId.set(row.subjectId, [Number(row.score)])
+        }
+      }
+    })
+
+    const hasUsScores = reportGrades.some(
+      (row) =>
+        hasUsSlotInScoreMap(row.slotScores) ||
+        (row.usScore !== null && row.usScore !== undefined),
+    )
+
+    const componentCatalog = buildStudentOverviewComponents({
+      components: examGradeComponents.map((row) => ({
+        code: row.code,
+        label: row.label,
+        type: row.type,
+        typeCode: row.typeCode,
+        reportSlot: row.reportSlot,
+        reportSlotCode: row.reportSlotCode,
+        entryMode: row.entryMode,
+        entryModeCode: row.entryModeCode,
+        includeInFinalScore: row.includeInFinalScore,
+        displayOrder: row.displayOrder,
+      })),
+      semester,
+      classLevel: student.studentClass.level,
+      hasUsScores,
+    })
+
+    const assignmentBySubjectId = new Map<number, (typeof teacherAssignments)[number]>()
+    teacherAssignments.forEach((row) => {
+      if (!assignmentBySubjectId.has(row.subjectId)) {
+        assignmentBySubjectId.set(row.subjectId, row)
+      }
+    })
+
+    const subjectIds = Array.from(
+      new Set([
+        ...teacherAssignments.map((row) => Number(row.subjectId)),
+        ...reportGrades.map((row) => Number(row.subjectId)),
+        ...studentGrades.map((row) => Number(row.subjectId)),
+      ].filter((value) => Number.isFinite(value) && value > 0)),
+    )
+
+    const missingSubjectIds = subjectIds.filter((subjectId) => !assignmentBySubjectId.has(subjectId))
+    const extraSubjects = missingSubjectIds.length
+      ? await prisma.subject.findMany({
+          where: {
+            id: {
+              in: missingSubjectIds,
+            },
+          },
+          select: {
+            id: true,
+            code: true,
+            name: true,
+          },
+        })
+      : []
+    const extraSubjectById = new Map(extraSubjects.map((row) => [row.id, row]))
+
+    const subjectRows = subjectIds
+      .map((subjectId) => {
+        const assignment = assignmentBySubjectId.get(subjectId) || null
+        const fallbackSubject = extraSubjectById.get(subjectId) || null
+        const subject = assignment?.subject || fallbackSubject
+        if (!subject) return null
+
+        const report = reportBySubjectId.get(subjectId) || null
+        const slotScores = parseSlotScoreMap(report?.slotScores)
+        const hasReportSnapshot = hasMeaningfulReportSnapshot(report)
+
+        const components = componentCatalog.map((component) => {
+          const componentCode = normalizeComponentCode(component.code || component.reportSlotCode || component.type)
+          const gradeRow = latestStudentGradeByComposite.get(`${subjectId}:${componentCode}`) || null
+          const formativeSeries =
+            component.reportSlotCode === 'FORMATIF'
+              ? formativeSeriesBySubjectId.get(subjectId) || []
+              : []
+
+          let score: number | null = null
+          let source: 'REPORT_GRADE' | 'STUDENT_GRADE' | 'NONE' = 'NONE'
+          let available = false
+
+          if (component.reportSlotCode === 'FORMATIF') {
+            const slotScore = hasOwnSlotScore(slotScores, 'FORMATIF')
+              ? slotScores[normalizeReportSlotCode('FORMATIF')]
+              : null
+            const reportScore =
+              report?.formatifScore !== null && report?.formatifScore !== undefined
+                ? Number(report.formatifScore)
+                : null
+            const seriesAverage = formativeSeries.length > 0 ? calculateAverage(formativeSeries) : null
+
+            if (slotScore !== null && slotScore !== undefined) {
+              score = roundDisplayScore(slotScore)
+              source = 'REPORT_GRADE'
+              available = true
+            } else if (reportScore !== null) {
+              score = roundDisplayScore(reportScore)
+              source = 'REPORT_GRADE'
+              available = true
+            } else if (seriesAverage !== null) {
+              score = roundDisplayScore(seriesAverage)
+              source = 'STUDENT_GRADE'
+              available = true
+            }
+          } else if (component.reportSlotCode === 'SBTS') {
+            const slotScore = hasOwnSlotScore(slotScores, 'SBTS')
+              ? slotScores[normalizeReportSlotCode('SBTS')]
+              : null
+            const reportScore =
+              report?.sbtsScore !== null && report?.sbtsScore !== undefined
+                ? Number(report.sbtsScore)
+                : null
+            if (slotScore !== null && slotScore !== undefined) {
+              score = roundDisplayScore(slotScore)
+              source = 'REPORT_GRADE'
+              available = true
+            } else if (reportScore !== null) {
+              score = roundDisplayScore(reportScore)
+              source = 'REPORT_GRADE'
+              available = true
+            }
+          } else if (component.reportSlotCode === 'SAS') {
+            const slotScore = hasOwnSlotScore(slotScores, 'SAS')
+              ? slotScores[normalizeReportSlotCode('SAS')]
+              : null
+            const reportScore =
+              report?.sasScore !== null && report?.sasScore !== undefined
+                ? Number(report.sasScore)
+                : null
+            if (slotScore !== null && slotScore !== undefined) {
+              score = roundDisplayScore(slotScore)
+              source = 'REPORT_GRADE'
+              available = true
+            } else if (reportScore !== null) {
+              score = roundDisplayScore(reportScore)
+              source = 'REPORT_GRADE'
+              available = true
+            }
+          } else if (component.reportSlotCode === 'SAT') {
+            const satSlot = slotScores[normalizeReportSlotCode('SAT')]
+            const finalEvenSlot = slotScores[normalizeReportSlotCode('FINAL_EVEN')]
+            if (satSlot !== null && satSlot !== undefined) {
+              score = roundDisplayScore(satSlot)
+              source = 'REPORT_GRADE'
+              available = true
+            } else if (finalEvenSlot !== null && finalEvenSlot !== undefined) {
+              score = roundDisplayScore(finalEvenSlot)
+              source = 'REPORT_GRADE'
+              available = true
+            }
+          } else if (component.reportSlotCode === 'US_THEORY') {
+            const theorySlot = slotScores[normalizeReportSlotCode('US_THEORY')]
+            const theoryAltSlot = slotScores[normalizeReportSlotCode('US_TEORI')]
+            if (theorySlot !== null && theorySlot !== undefined) {
+              score = roundDisplayScore(theorySlot)
+              source = 'REPORT_GRADE'
+              available = true
+            } else if (theoryAltSlot !== null && theoryAltSlot !== undefined) {
+              score = roundDisplayScore(theoryAltSlot)
+              source = 'REPORT_GRADE'
+              available = true
+            }
+          } else if (component.reportSlotCode === 'US_PRACTICE') {
+            const practiceSlot = slotScores[normalizeReportSlotCode('US_PRACTICE')]
+            const practiceAltSlot = slotScores[normalizeReportSlotCode('US_PRAKTEK')]
+            if (practiceSlot !== null && practiceSlot !== undefined) {
+              score = roundDisplayScore(practiceSlot)
+              source = 'REPORT_GRADE'
+              available = true
+            } else if (practiceAltSlot !== null && practiceAltSlot !== undefined) {
+              score = roundDisplayScore(practiceAltSlot)
+              source = 'REPORT_GRADE'
+              available = true
+            }
+          }
+
+          if (!available && gradeRow && score === null && component.reportSlotCode !== 'FORMATIF') {
+            const rawScore = normalizeNullableScore(gradeRow.score)
+            if (rawScore !== null) {
+              score = roundDisplayScore(rawScore)
+              source = 'STUDENT_GRADE'
+              available = true
+            }
+          }
+
+          return {
+            code: component.code,
+            label: component.label,
+            type: component.type,
+            reportSlotCode: component.reportSlotCode,
+            entryMode: component.entryMode,
+            includeInFinalScore: component.includeInFinalScore,
+            displayOrder: component.displayOrder,
+            score,
+            series: formativeSeries,
+            status: available ? 'AVAILABLE' : 'PENDING',
+            source,
+          }
+        })
+
+        const availableCount = components.filter((component) => component.status === 'AVAILABLE').length
+        const finalScore = hasReportSnapshot
+          ? roundDisplayScore(resolveEffectiveReportFinalScore(report))
+          : null
+        const predicate = hasReportSnapshot ? String(report?.predicate || '').trim() || null : null
+        const description = hasReportSnapshot ? String(report?.description || '').trim() || null : null
+
+        return {
+          subject: {
+            id: subject.id,
+            code: subject.code,
+            name: subject.name,
+          },
+          teacher: assignment?.teacher
+            ? {
+                id: assignment.teacher.id,
+                name: assignment.teacher.name,
+              }
+            : null,
+          kkm: Number(assignment?.kkm || 75),
+          finalScore,
+          predicate,
+          description,
+          status: availableCount > 0 || finalScore !== null ? 'AVAILABLE' : 'PENDING',
+          componentSummary: {
+            totalCount: components.length,
+            availableCount,
+            pendingCount: components.length - availableCount,
+          },
+          components,
+        }
+      })
+      .filter((row): row is NonNullable<typeof row> => row !== null)
+      .sort((a, b) => a.subject.name.localeCompare(b.subject.name, 'id-ID'))
+
+    const totalAvailableComponents = subjectRows.reduce(
+      (sum, row) => sum + row.componentSummary.availableCount,
+      0,
+    )
+    const totalPendingComponents = subjectRows.reduce(
+      (sum, row) => sum + row.componentSummary.pendingCount,
+      0,
+    )
+    const finalScores = subjectRows
+      .map((row) => row.finalScore)
+      .filter((value): value is number => value !== null && value !== undefined)
+
+    return ApiResponseHelper.success(
+      res,
+      {
+        meta: {
+          academicYearId: activeYear.id,
+          academicYearName: activeYear.name,
+          semester,
+          semesterLabel: formatSemesterDisplayLabel(semester),
+          student: {
+            id: student.id,
+            name: student.name,
+            nis: student.nis,
+            nisn: student.nisn,
+          },
+          class: student.studentClass
+            ? {
+                id: student.studentClass.id,
+                name: student.studentClass.name,
+                level: student.studentClass.level,
+                major: student.studentClass.major
+                  ? {
+                      id: student.studentClass.major.id,
+                      name: student.studentClass.major.name,
+                      code: student.studentClass.major.code,
+                    }
+                  : null,
+              }
+            : null,
+        },
+        summary: {
+          totalSubjects: subjectRows.length,
+          subjectsWithAnyScore: subjectRows.filter((row) => row.status === 'AVAILABLE').length,
+          availableComponents: totalAvailableComponents,
+          pendingComponents: totalPendingComponents,
+          averageFinalScore:
+            finalScores.length > 0 ? roundDisplayScore(calculateAverage(finalScores)) : null,
+        },
+        components: componentCatalog,
+        subjects: subjectRows,
+      },
+      'Student grade overview retrieved successfully',
+    )
+  } catch (error) {
+    console.error('Get student grade overview error:', error)
+    if (error instanceof ApiError) throw error
+    throw new ApiError(500, 'Failed to retrieve student grade overview')
   }
 }
 

@@ -18,6 +18,12 @@ router.get(
 
 // STUDENT GRADES (Input Nilai per Komponen)
 router.get(
+  '/student-overview',
+  roleMiddleware(['STUDENT']),
+  asyncHandler(gradeController.getStudentGradeOverview)
+);
+
+router.get(
   '/student-grades',
   roleMiddleware(['ADMIN', 'TEACHER', 'STUDENT']),
   asyncHandler(gradeController.getStudentGrades)

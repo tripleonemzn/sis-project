@@ -1,25 +1,18 @@
 import { apiClient } from '../../lib/api/client';
-import { StudentGrade } from './types';
+import { StudentGradeOverviewData } from './types';
 
-type StudentGradeResponse = {
+type StudentGradeOverviewResponse = {
   success: boolean;
   message: string;
-  data: StudentGrade[];
+  data: StudentGradeOverviewData;
 };
 
 export const gradeApi = {
-  async getStudentGrades(params: { studentId: number; semester?: 'ALL' | 'ODD' | 'EVEN' }) {
-    const query: Record<string, string | number> = {
-      student_id: params.studentId,
-    };
-    if (params.semester && params.semester !== 'ALL') {
-      query.semester = params.semester;
+  async getStudentOverview(): Promise<StudentGradeOverviewData> {
+    const response = await apiClient.get<StudentGradeOverviewResponse>('/grades/student-overview');
+    if (!response.data?.data) {
+      throw new Error('Data nilai siswa tidak tersedia.');
     }
-
-    const response = await apiClient.get<StudentGradeResponse>('/grades/student-grades', {
-      params: query,
-    });
-    return response.data?.data || [];
+    return response.data.data;
   },
 };
-

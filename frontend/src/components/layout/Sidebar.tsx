@@ -858,7 +858,7 @@ export const getMenuItems = (
           path: '/student/academic',
           icon: GraduationCap,
           children: [
-            { label: 'Riwayat Nilai', path: '/student/grades', icon: FileText },
+            { label: 'Nilai Saya', path: '/student/grades', icon: FileText },
             { label: 'Riwayat Kehadiran', path: '/student/attendance', icon: UserCheck },
           ]
         },
@@ -930,7 +930,7 @@ export const getMenuItems = (
         path: '/student/grades-group',
         icon: GraduationCap,
         children: [
-            { label: 'Riwayat Nilai', path: '/student/grades', icon: FileText },
+            { label: 'Nilai Saya', path: '/student/grades', icon: FileText },
         ]
       },
       {

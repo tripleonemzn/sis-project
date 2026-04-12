@@ -881,7 +881,7 @@ const buildSidebarCrumbLookup = (roleSegment: string, user: User | null): Record
 
       // NILAI SAYA / AKADEMIK (depending on status)
       'grades-group': { label: 'NILAI SAYA', group: 'NILAI SAYA' },
-      grades: { label: 'Riwayat Nilai', group: isAlumni ? 'AKADEMIK' : 'NILAI SAYA' },
+      grades: { label: 'Nilai Saya', group: isAlumni ? 'AKADEMIK' : 'NILAI SAYA' },
 
       // EKSTRAKURIKULER
       extracurricular: { label: 'Ekstrakurikuler' },
