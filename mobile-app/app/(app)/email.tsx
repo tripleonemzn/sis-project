@@ -7,6 +7,7 @@ import { Feather } from '@expo/vector-icons';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { WebView } from 'react-native-webview';
 import { AppLoadingScreen } from '../../src/components/AppLoadingScreen';
+import MobileDetailModal from '../../src/components/MobileDetailModal';
 import { QueryStateView } from '../../src/components/QueryStateView';
 import { BRAND_COLORS } from '../../src/config/brand';
 import { useAuth } from '../../src/features/auth/AuthProvider';
@@ -213,6 +214,7 @@ export default function MobileEmailScreen() {
   const { isAuthenticated, isLoading, user } = useAuth();
   const isScreenActive = useIsScreenActive();
   const pagePadding = getStandardPagePadding(insets, { bottom: 16 });
+  const scrollViewRef = useRef<ScrollView | null>(null);
   const webviewRef = useRef<WebView | null>(null);
   const hasNativeWebView = useMemo(() => Boolean(UIManager.getViewManagerConfig?.('RNCWebView')), []);
   const [webmailUrl, setWebmailUrl] = useState<string | null>(null);
@@ -233,6 +235,8 @@ export default function MobileEmailScreen() {
     password: string;
     resetAt: string;
   } | null>(null);
+  const [isEmailDetailVisible, setIsEmailDetailVisible] = useState(false);
+  const [panelSectionY, setPanelSectionY] = useState(0);
   const [bridgeCredentials, setBridgeCredentials] = useState<BridgeCredentials | null>(null);
   const [selectedEmailGuid, setSelectedEmailGuid] = useState<string | null>(null);
   const [isComposeMode, setIsComposeMode] = useState(false);
@@ -327,7 +331,8 @@ export default function MobileEmailScreen() {
       isAllowedRole &&
       isScreenActive &&
       !isWebmailMode &&
-      emailFeedQuery.data?.mailboxAvailable !== false,
+      emailFeedQuery.data?.mailboxAvailable !== false &&
+      (isEmailDetailVisible || composeModeKind === 'reply'),
     staleTime: 30_000,
   });
 
@@ -450,6 +455,7 @@ export default function MobileEmailScreen() {
   };
 
   const openNewCompose = () => {
+    setIsEmailDetailVisible(false);
     setIsComposeMode(true);
     setComposeModeKind('new');
     setComposeTo('');
@@ -460,12 +466,27 @@ export default function MobileEmailScreen() {
 
   const openReplyCompose = () => {
     const replyTarget = String(selectedEmailDetailQuery.data?.from || selectedEmail?.from || '').trim();
+    setIsEmailDetailVisible(false);
     setIsComposeMode(true);
     setComposeModeKind('reply');
     setComposeTo(replyTarget);
     setComposeCc('');
     setComposeSubject(normalizeReplySubject(selectedEmail?.subject));
     setComposeBody('');
+  };
+
+  const openPanelAccess = () => {
+    setPanelError(null);
+    setIsRegisterMode(false);
+    setIsEmailDetailVisible(false);
+    if (isSsoMode) {
+      startSsoMutation.mutate();
+      return;
+    }
+    scrollViewRef.current?.scrollTo({
+      y: Math.max(panelSectionY - 12, 0),
+      animated: true,
+    });
   };
 
   const handleLogin = async () => {
@@ -536,6 +557,7 @@ export default function MobileEmailScreen() {
 
   const handleSelectEmail = async (item: MobileWebmailMessageSummary) => {
     setSelectedEmailGuid(item.guid);
+    setIsEmailDetailVisible(true);
     if (item.isRead) return;
     try {
       await markAsReadMutation.mutateAsync(item.guid);
@@ -614,7 +636,11 @@ export default function MobileEmailScreen() {
 
   return (
     <View style={{ flex: 1, backgroundColor: '#e9eefb' }}>
-      <ScrollView style={{ flex: 1 }} contentContainerStyle={{ paddingTop: Math.max(insets.top, 10), paddingBottom: 10 }}>
+      <ScrollView
+        ref={scrollViewRef}
+        style={{ flex: 1 }}
+        contentContainerStyle={{ paddingTop: Math.max(insets.top, 10), paddingBottom: 10 }}
+      >
         <View style={{ paddingHorizontal: 12, gap: 10 }}>
           <SectionCard
             title="Email"
@@ -732,14 +758,7 @@ export default function MobileEmailScreen() {
               </Pressable>
 
               <Pressable
-                onPress={() => {
-                  setPanelError(null);
-                  setIsRegisterMode(false);
-                  setIsWebmailMode(false);
-                  if (isSsoMode) {
-                    startSsoMutation.mutate();
-                  }
-                }}
+                onPress={openPanelAccess}
                 style={{
                   flex: 1,
                   borderRadius: 12,
@@ -805,6 +824,9 @@ export default function MobileEmailScreen() {
               </View>
             ) : (
               <View style={{ gap: 8 }}>
+                <Text style={{ color: '#64748b', fontSize: 12, lineHeight: 18 }}>
+                  Ketuk salah satu email untuk membuka detail dalam tampilan terpisah tanpa perlu scroll sampai ke bawah daftar inbox.
+                </Text>
                 {mailboxMessages.map((item) => (
                   <EmailInboxItem
                     key={item.guid}
@@ -817,93 +839,6 @@ export default function MobileEmailScreen() {
                 ))}
               </View>
             )}
-
-            {selectedEmail ? (
-              <View
-                style={{
-                  borderRadius: 14,
-                  borderWidth: 1,
-                  borderColor: '#dbeafe',
-                  backgroundColor: '#f8fbff',
-                  paddingHorizontal: 12,
-                  paddingVertical: 12,
-                  gap: 8,
-                }}
-              >
-                <Text style={{ color: '#0f172a', fontWeight: '800', fontSize: 14 }}>Detail Email Terpilih</Text>
-                <Text style={{ color: '#334155', fontSize: 12 }}>
-                  Dari: <Text style={{ color: '#0f172a', fontWeight: '700' }}>{selectedSenderLabel}</Text>
-                </Text>
-                <Text style={{ color: '#334155', fontSize: 12 }}>
-                  Subjek: <Text style={{ color: '#0f172a', fontWeight: '700' }}>{selectedSubjectLabel}</Text>
-                </Text>
-                <Text style={{ color: '#334155', fontSize: 12 }}>
-                  Waktu: <Text style={{ color: '#0f172a', fontWeight: '700' }}>{formatDateTime(selectedEmail.date)}</Text>
-                </Text>
-                {selectedEmailDetailQuery.isLoading ? (
-                  <View style={{ paddingVertical: 8, alignItems: 'center', gap: 8 }}>
-                    <ActivityIndicator size="small" color="#2563eb" />
-                    <Text style={{ color: '#64748b', fontSize: 12 }}>Memuat isi email...</Text>
-                  </View>
-                ) : selectedEmailDetailQuery.isError ? (
-                  <QueryStateView
-                    type="error"
-                    message={resolveErrorMessage(selectedEmailDetailQuery.error, 'Gagal memuat isi email.')}
-                    onRetry={() => selectedEmailDetailQuery.refetch()}
-                  />
-                ) : (
-                  <View
-                    style={{
-                      borderRadius: 12,
-                      borderWidth: 1,
-                      borderColor: '#dbe4f4',
-                      backgroundColor: '#ffffff',
-                      paddingHorizontal: 12,
-                      paddingVertical: 12,
-                      gap: 8,
-                    }}
-                  >
-                    {selectedEmailDetailQuery.data?.to ? (
-                      <Text style={{ color: '#334155', fontSize: 12 }}>
-                        Ke: <Text style={{ color: '#0f172a', fontWeight: '700' }}>{selectedEmailDetailQuery.data.to}</Text>
-                      </Text>
-                    ) : null}
-                    {selectedEmailDetailQuery.data?.cc ? (
-                      <Text style={{ color: '#334155', fontSize: 12 }}>
-                        CC: <Text style={{ color: '#0f172a', fontWeight: '700' }}>{selectedEmailDetailQuery.data.cc}</Text>
-                      </Text>
-                    ) : null}
-                    <Text style={{ color: '#334155', fontSize: 12, lineHeight: 20 }}>
-                      {selectedBodyText || 'Isi email tidak tersedia.'}
-                    </Text>
-                    <Text style={{ color: '#64748b', fontSize: 12, lineHeight: 18 }}>
-                      Isi email utama sekarang sudah bisa dibaca langsung di sini. Panel lengkap tetap dipakai untuk compose, balas email, pencarian lanjutan, atau folder arsip lain.
-                    </Text>
-                  </View>
-                )}
-
-                <Pressable
-                  onPress={() => {
-                    setPanelError(null);
-                    if (isSsoMode) {
-                      startSsoMutation.mutate();
-                      return;
-                    }
-                    setIsWebmailMode(false);
-                  }}
-                  style={{
-                    borderRadius: 10,
-                    backgroundColor: '#0f172a',
-                    paddingVertical: 11,
-                    alignItems: 'center',
-                  }}
-                >
-                  <Text style={{ color: '#ffffff', fontWeight: '700' }}>
-                    {isSsoMode ? 'Buka Panel Lengkap' : 'Lanjut ke Panel Lengkap'}
-                  </Text>
-                </Pressable>
-              </View>
-            ) : null}
           </SectionCard>
 
           {isComposeMode ? (
@@ -1027,7 +962,12 @@ export default function MobileEmailScreen() {
           ) : null}
 
           {!isWebmailMode ? (
-            <SectionCard
+            <View
+              onLayout={(event) => {
+                setPanelSectionY(event.nativeEvent.layout.y);
+              }}
+            >
+              <SectionCard
               title={isRegisterMode ? 'Daftar Mailbox' : 'Panel Lengkap Webmail'}
               subtitle={
                 isRegisterMode
@@ -1277,7 +1217,8 @@ export default function MobileEmailScreen() {
                   </Pressable>
                 </>
               )}
-            </SectionCard>
+              </SectionCard>
+            </View>
           ) : (
             <SectionCard
               title="Panel Lengkap Aktif"
@@ -1391,6 +1332,117 @@ export default function MobileEmailScreen() {
             </View>
           </View>
         ) : null}
+
+        <MobileDetailModal
+          visible={isEmailDetailVisible && Boolean(selectedEmail)}
+          title="Detail Email"
+          subtitle="Baca isi email tanpa keluar dari daftar inbox utama."
+          iconName="mail"
+          accentColor="#2563eb"
+          onClose={() => setIsEmailDetailVisible(false)}
+        >
+          {selectedEmail ? (
+            <View style={{ gap: 12 }}>
+              <View
+                style={{
+                  borderWidth: 1,
+                  borderColor: '#dbe7fb',
+                  borderRadius: 14,
+                  backgroundColor: '#f8fbff',
+                  paddingHorizontal: 12,
+                  paddingVertical: 12,
+                  gap: 6,
+                }}
+              >
+                <Text style={{ color: '#334155', fontSize: 12 }}>
+                  Dari: <Text style={{ color: '#0f172a', fontWeight: '700' }}>{selectedSenderLabel}</Text>
+                </Text>
+                <Text style={{ color: '#334155', fontSize: 12 }}>
+                  Subjek: <Text style={{ color: '#0f172a', fontWeight: '700' }}>{selectedSubjectLabel}</Text>
+                </Text>
+                <Text style={{ color: '#334155', fontSize: 12 }}>
+                  Waktu: <Text style={{ color: '#0f172a', fontWeight: '700' }}>{formatDateTime(selectedEmail.date)}</Text>
+                </Text>
+              </View>
+
+              <View style={{ flexDirection: 'row', gap: 8 }}>
+                <Pressable
+                  onPress={() => {
+                    openReplyCompose();
+                  }}
+                  style={{
+                    flex: 1,
+                    borderRadius: 12,
+                    backgroundColor: '#3250b9',
+                    paddingVertical: 11,
+                    alignItems: 'center',
+                  }}
+                >
+                  <Text style={{ color: '#ffffff', fontWeight: '700' }}>Balas Email</Text>
+                </Pressable>
+
+                <Pressable
+                  onPress={openPanelAccess}
+                  style={{
+                    flex: 1,
+                    borderRadius: 12,
+                    borderWidth: 1,
+                    borderColor: '#cbd5e1',
+                    backgroundColor: '#ffffff',
+                    paddingVertical: 11,
+                    alignItems: 'center',
+                  }}
+                >
+                  <Text style={{ color: '#1e293b', fontWeight: '700' }}>
+                    {isSsoMode ? 'Buka Panel Lengkap' : 'Akses Panel Lengkap'}
+                  </Text>
+                </Pressable>
+              </View>
+
+              {selectedEmailDetailQuery.isLoading ? (
+                <View style={{ paddingVertical: 8, alignItems: 'center', gap: 8 }}>
+                  <ActivityIndicator size="small" color="#2563eb" />
+                  <Text style={{ color: '#64748b', fontSize: 12 }}>Memuat isi email...</Text>
+                </View>
+              ) : selectedEmailDetailQuery.isError ? (
+                <QueryStateView
+                  type="error"
+                  message={resolveErrorMessage(selectedEmailDetailQuery.error, 'Gagal memuat isi email.')}
+                  onRetry={() => selectedEmailDetailQuery.refetch()}
+                />
+              ) : (
+                <View
+                  style={{
+                    borderRadius: 12,
+                    borderWidth: 1,
+                    borderColor: '#dbe4f4',
+                    backgroundColor: '#ffffff',
+                    paddingHorizontal: 12,
+                    paddingVertical: 12,
+                    gap: 8,
+                  }}
+                >
+                  {selectedEmailDetailQuery.data?.to ? (
+                    <Text style={{ color: '#334155', fontSize: 12 }}>
+                      Ke: <Text style={{ color: '#0f172a', fontWeight: '700' }}>{selectedEmailDetailQuery.data.to}</Text>
+                    </Text>
+                  ) : null}
+                  {selectedEmailDetailQuery.data?.cc ? (
+                    <Text style={{ color: '#334155', fontSize: 12 }}>
+                      CC: <Text style={{ color: '#0f172a', fontWeight: '700' }}>{selectedEmailDetailQuery.data.cc}</Text>
+                    </Text>
+                  ) : null}
+                  <Text style={{ color: '#334155', fontSize: 12, lineHeight: 20 }}>
+                    {selectedBodyText || 'Isi email tidak tersedia.'}
+                  </Text>
+                  <Text style={{ color: '#64748b', fontSize: 12, lineHeight: 18 }}>
+                    Detail email dibuka terpisah agar daftar inbox tetap ringkas dan nyaman dipakai walau email masuk banyak.
+                  </Text>
+                </View>
+              )}
+            </View>
+          ) : null}
+        </MobileDetailModal>
       </ScrollView>
     </View>
   );
