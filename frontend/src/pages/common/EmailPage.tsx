@@ -546,7 +546,7 @@ export const EmailPage = () => {
                     <form className="mt-5 space-y-4" onSubmit={handleRegisterSubmit}>
                       <div>
                         <label className="mb-2 block text-lg font-medium text-slate-800 md:text-[18px]">Username Akun SIS</label>
-                        <div className="border-b border-slate-500 pb-2">
+                        <div className="flex items-center gap-3 rounded-2xl border border-slate-200 bg-white px-4 py-3 shadow-[0_1px_2px_rgba(15,23,42,0.04)]">
                           <input
                             type="text"
                             value={registerUser}
@@ -554,8 +554,11 @@ export const EmailPage = () => {
                             placeholder={expectedVerificationUsername || 'masukkan username akun SIS'}
                             required
                             autoComplete="off"
-                            className="w-full border-0 bg-transparent text-base text-slate-700 placeholder:italic placeholder:text-slate-400 focus:outline-none"
+                            className="min-w-0 flex-1 border-0 bg-transparent text-base text-slate-700 placeholder:italic placeholder:text-slate-400 focus:outline-none"
                           />
+                          <span className="shrink-0 rounded-full border border-slate-200 bg-slate-50 px-3 py-1 text-[11px] font-semibold uppercase tracking-[0.14em] text-slate-500">
+                            Akun SIS
+                          </span>
                         </div>
                         <p className="mt-2 text-xs text-slate-500">
                           Dipakai hanya untuk verifikasi agar satu akun SIS tidak bisa membuat lebih dari satu mailbox.

@@ -1172,16 +1172,33 @@ export default function MobileEmailScreen() {
                       borderRadius: 12,
                       paddingHorizontal: 12,
                       paddingVertical: 11,
+                      backgroundColor: '#ffffff',
+                      flexDirection: 'row',
+                      alignItems: 'center',
+                      gap: 8,
                     }}
                   >
                     <TextInput
                       value={registerUser}
                       onChangeText={setRegisterUser}
                       autoCapitalize="characters"
+                      autoCorrect={false}
                       placeholder={expectedVerificationUsername || 'Masukkan username akun SIS'}
                       placeholderTextColor="#94a3b8"
-                      style={{ color: BRAND_COLORS.textDark, padding: 0 }}
+                      style={{ flex: 1, minWidth: 0, color: BRAND_COLORS.textDark, padding: 0 }}
                     />
+                    <View
+                      style={{
+                        borderRadius: 999,
+                        borderWidth: 1,
+                        borderColor: '#dbe4f4',
+                        backgroundColor: '#f8fafc',
+                        paddingHorizontal: 10,
+                        paddingVertical: 5,
+                      }}
+                    >
+                      <Text style={{ color: '#64748b', fontSize: 10, fontWeight: '800' }}>AKUN SIS</Text>
+                    </View>
                   </View>
 
                   <Text style={{ color: '#64748b', fontSize: 12, lineHeight: 18 }}>
