@@ -253,10 +253,6 @@ export default function MobileEmailScreen() {
   const [panelError, setPanelError] = useState<string | null>(null);
   const [isWebmailMode, setIsWebmailMode] = useState(false);
   const [isRegisterMode, setIsRegisterMode] = useState(false);
-  const [isPanelAccessMode, setIsPanelAccessMode] = useState(false);
-  const [loginUser, setLoginUser] = useState('');
-  const [hasEditedLoginUser, setHasEditedLoginUser] = useState(false);
-  const [loginPass, setLoginPass] = useState('');
   const [registerUser, setRegisterUser] = useState('');
   const [registerPass, setRegisterPass] = useState('');
   const [registerPassConfirm, setRegisterPassConfirm] = useState('');
@@ -303,11 +299,7 @@ export default function MobileEmailScreen() {
   const mailboxDomain = String(config?.defaultDomain || 'siskgb2.id').trim().toLowerCase() || 'siskgb2.id';
   const selfRegistrationEnabled = !isSsoMode && Boolean(config?.selfRegistrationEnabled);
   const quotaLabel = asQuotaLabel(config?.mailboxQuotaMb);
-  const mailboxIdentity = String(config?.mailboxIdentity || '').trim().toLowerCase();
   const suggestedMailboxUsername = String(config?.user?.username || '').trim().toLowerCase();
-  const mailboxPreview =
-    mailboxIdentity || `${suggestedMailboxUsername || 'username'}@${mailboxDomain}`.trim().toLowerCase();
-  const loginIdentityValue = hasEditedLoginUser ? loginUser : mailboxPreview;
   const mailboxAvailable = emailFeedQuery.data?.mailboxAvailable !== false;
 
   const mailboxMessages = useMemo(() => emailFeedQuery.data?.messages ?? [], [emailFeedQuery.data?.messages]);
@@ -368,7 +360,6 @@ export default function MobileEmailScreen() {
       const nextFolderKey = folderKey || activeFolderKey;
       setActiveFolderKey(nextFolderKey);
       setPanelError(null);
-      setIsPanelAccessMode(false);
       setWebmailUrl(getMailboxFolderUrl(data.launchUrl, nextFolderKey));
       setIsWebmailMode(true);
       setWebviewKey((value) => value + 1);
@@ -392,11 +383,9 @@ export default function MobileEmailScreen() {
       setRegisterUser('');
       setRegisterPass('');
       setRegisterPassConfirm('');
-      setLoginUser(createdMailboxIdentity);
-      setHasEditedLoginUser(true);
-      setLoginPass(variables.password);
+      setActiveFolderKey('INBOX');
       setBridgeCredentials({ email: createdMailboxIdentity, password: variables.password });
-      setWebmailUrl(bridgeLoginUrl);
+      setWebmailUrl(getMailboxFolderUrl(bridgeLoginUrl, 'INBOX'));
       setIsWebmailMode(true);
       setWebviewKey((value) => value + 1);
     },
@@ -444,29 +433,18 @@ export default function MobileEmailScreen() {
     },
   });
 
-  const openBridgePanel = async (email: string, password: string) => {
-    const targetFolderKey = activeFolderKey;
-    setPanelError(null);
-    setIsPanelAccessMode(false);
-    setBridgeCredentials({ email, password });
-    setWebmailUrl(getMailboxFolderUrl(bridgeLoginUrl, targetFolderKey));
-    setIsWebmailMode(true);
-    setWebviewKey((value) => value + 1);
-  };
-
   const leavePanelMode = () => {
     setIsWebmailMode(false);
-    setIsPanelAccessMode(false);
     setIsRegisterMode(false);
     setActiveFolderKey('INBOX');
     setBridgeCredentials(null);
     setPanelError(null);
+    setWebmailUrl(null);
     setWebviewKey((value) => value + 1);
   };
 
   const openNewCompose = () => {
     setIsEmailDetailVisible(false);
-    setIsPanelAccessMode(false);
     setIsRegisterMode(false);
     setIsComposeMode(true);
     setComposeModeKind('new');
@@ -479,7 +457,6 @@ export default function MobileEmailScreen() {
   const openReplyCompose = () => {
     const replyTarget = String(selectedEmailDetailQuery.data?.from || selectedEmail?.from || '').trim();
     setIsEmailDetailVisible(false);
-    setIsPanelAccessMode(false);
     setIsRegisterMode(false);
     setIsComposeMode(true);
     setComposeModeKind('reply');
@@ -492,6 +469,7 @@ export default function MobileEmailScreen() {
   const openPanelAccess = (targetFolderKey?: WebmailFolderKey) => {
     const nextFolderKey = targetFolderKey || activeFolderKey;
     setPanelError(null);
+    setRegisterError(null);
     setIsRegisterMode(false);
     setIsEmailDetailVisible(false);
     setIsComposeMode(false);
@@ -504,21 +482,16 @@ export default function MobileEmailScreen() {
     }
 
     if (isSsoMode) {
-      setIsPanelAccessMode(true);
+      setWebmailUrl(null);
+      setIsWebmailMode(true);
       startSsoMutation.mutate(nextFolderKey);
       return;
     }
 
-    if (webmailUrl) {
-      setBridgeCredentials(null);
-      setIsPanelAccessMode(false);
-      setWebmailUrl(getMailboxFolderUrl(bridgeLoginUrl, nextFolderKey));
-      setIsWebmailMode(true);
-      setWebviewKey((value) => value + 1);
-      return;
-    }
-
-    setIsPanelAccessMode(true);
+    setBridgeCredentials(null);
+    setWebmailUrl(getMailboxFolderUrl(bridgeLoginUrl, nextFolderKey));
+    setIsWebmailMode(true);
+    setWebviewKey((value) => value + 1);
   };
 
   const handleFolderShortcutPress = (folderKey: WebmailFolderKey, usesPanel: boolean) => {
@@ -529,7 +502,6 @@ export default function MobileEmailScreen() {
     setActiveFolderKey(folderKey);
 
     if (!usesPanel) {
-      setIsPanelAccessMode(false);
       scrollViewRef.current?.scrollTo({
         y: Math.max(inboxSectionY - 12, 0),
         animated: true,
@@ -537,29 +509,7 @@ export default function MobileEmailScreen() {
       return;
     }
 
-    if (isWebmailMode) {
-      setWebmailUrl(getMailboxFolderUrl(webmailUrl || bridgeLoginUrl, folderKey));
-      setWebviewKey((value) => value + 1);
-      return;
-    }
-
     openPanelAccess(folderKey);
-  };
-
-  const handleLogin = async () => {
-    if (!config) return;
-    if (isSsoMode) {
-      startSsoMutation.mutate(activeFolderKey);
-      return;
-    }
-
-    const normalizedEmail = loginIdentityValue.trim().toLowerCase();
-    if (!normalizedEmail || !loginPass.trim()) {
-      setPanelError('Email dan password webmail wajib diisi.');
-      return;
-    }
-
-    await openBridgePanel(normalizedEmail, loginPass);
   };
 
   const handleRegister = () => {
@@ -626,11 +576,13 @@ export default function MobileEmailScreen() {
     await sendMessageMutation.mutateAsync();
   };
 
-  const closeAccessModal = () => {
-    setIsPanelAccessMode(false);
+  const closeRegisterModal = () => {
     setIsRegisterMode(false);
     setPanelError(null);
     setRegisterError(null);
+    setRegisterUser('');
+    setRegisterPass('');
+    setRegisterPassConfirm('');
     setActiveFolderKey('INBOX');
   };
 
@@ -688,10 +640,6 @@ export default function MobileEmailScreen() {
         uri: webmailUrl || inboxUrl,
       };
   const accessModalTitle = activeFolderKey === 'INBOX' ? 'Panel Lengkap Webmail' : activeFolderLabel;
-  const accessModalSubtitle =
-    activeFolderKey === 'INBOX'
-      ? 'Masuk ke panel webmail penuh untuk pencarian lanjutan, balas email, dan pengelolaan folder.'
-      : `Folder ${activeFolderLabel} akan dibuka langsung dalam panel webmail penuh.`;
 
   return (
     <View style={{ flex: 1, backgroundColor: '#e9eefb' }}>
@@ -723,8 +671,8 @@ export default function MobileEmailScreen() {
                 if (!targetFolder) return;
                 handleFolderShortcutPress(targetFolder.key, targetFolder.usesPanel);
               }}
-              minTabWidth={58}
-              maxTabWidth={58}
+              minTabWidth={52}
+              maxTabWidth={52}
               compact
             />
           </View>
@@ -795,7 +743,6 @@ export default function MobileEmailScreen() {
                       onPress={() => {
                         setRegisterError(null);
                         setPanelError(null);
-                        setIsPanelAccessMode(false);
                         setIsRegisterMode(true);
                       }}
                       style={{
@@ -850,7 +797,7 @@ export default function MobileEmailScreen() {
         </View>
       </ScrollView>
 
-      {mailboxAvailable && !isComposeMode && !isPanelAccessMode && !isRegisterMode && !isWebmailMode ? (
+      {mailboxAvailable && !isComposeMode && !isRegisterMode && !isWebmailMode ? (
         <View
           style={{
             position: 'absolute',
@@ -993,7 +940,7 @@ export default function MobileEmailScreen() {
         subtitle="Buat mailbox sekolah baru dengan username email pilihan Anda. Domain sekolah tetap mengikuti server."
         iconName="user-plus"
         accentColor="#3250b9"
-        onClose={closeAccessModal}
+        onClose={closeRegisterModal}
       >
         <View style={{ gap: 12 }}>
           <Text style={{ color: '#0f172a', fontSize: 13, fontWeight: '700' }}>Username Email</Text>
@@ -1083,123 +1030,6 @@ export default function MobileEmailScreen() {
               {registerMutation.isPending ? 'Memproses...' : 'Daftar Mailbox'}
             </Text>
           </Pressable>
-        </View>
-      </MobileDetailModal>
-
-      <MobileDetailModal
-        visible={isPanelAccessMode && !isWebmailMode && !isRegisterMode}
-        title={accessModalTitle}
-        subtitle={accessModalSubtitle}
-        iconName="external-link"
-        accentColor="#2563eb"
-        onClose={closeAccessModal}
-      >
-        <View style={{ gap: 12 }}>
-          {isSsoMode ? (
-            <View
-              style={{
-                borderRadius: 10,
-                borderWidth: 1,
-                borderColor: '#c7d2fe',
-                backgroundColor: '#eef2ff',
-                paddingHorizontal: 10,
-                paddingVertical: 10,
-              }}
-            >
-              <Text style={{ color: '#1e3a8a', fontSize: 12, lineHeight: 18 }}>
-                Mode keamanan SSO aktif. Lanjutkan untuk membuka panel email lengkap.
-              </Text>
-            </View>
-          ) : (
-            <>
-              <Text style={{ color: '#0f172a', fontSize: 13, fontWeight: '700' }}>Email</Text>
-              <TextInput
-                value={loginIdentityValue}
-                onChangeText={(value) => {
-                  setHasEditedLoginUser(true);
-                  setLoginUser(value);
-                }}
-                autoCapitalize="none"
-                keyboardType="email-address"
-                placeholder={mailboxPreview || `username@${mailboxDomain}`}
-                placeholderTextColor="#94a3b8"
-                style={{
-                  borderWidth: 1,
-                  borderColor: '#cbd5e1',
-                  borderRadius: 12,
-                  paddingHorizontal: 12,
-                  paddingVertical: 11,
-                  color: BRAND_COLORS.textDark,
-                }}
-              />
-
-              <Text style={{ color: '#0f172a', fontSize: 13, fontWeight: '700' }}>Password</Text>
-              <TextInput
-                value={loginPass}
-                onChangeText={setLoginPass}
-                secureTextEntry
-                placeholder="Masukkan password webmail"
-                placeholderTextColor="#94a3b8"
-                style={{
-                  borderWidth: 1,
-                  borderColor: '#cbd5e1',
-                  borderRadius: 12,
-                  paddingHorizontal: 12,
-                  paddingVertical: 11,
-                  color: BRAND_COLORS.textDark,
-                }}
-              />
-            </>
-          )}
-
-          {panelError ? <Text style={{ color: '#b91c1c', fontSize: 12 }}>{panelError}</Text> : null}
-
-          <Pressable
-            onPress={() => {
-              void handleLogin();
-            }}
-            disabled={startSsoMutation.isPending}
-            style={{
-              borderRadius: 12,
-              backgroundColor: '#f59e0b',
-              paddingVertical: 11,
-              alignItems: 'center',
-              opacity: startSsoMutation.isPending ? 0.7 : 1,
-            }}
-          >
-            <Text style={{ color: '#111827', fontWeight: '700' }}>
-              {startSsoMutation.isPending
-                ? 'Menyiapkan...'
-                : isSsoMode
-                  ? activeFolderKey === 'INBOX'
-                    ? 'Buka Panel Lengkap'
-                    : `Buka ${activeFolderLabel}`
-                  : activeFolderKey === 'INBOX'
-                    ? 'Masuk ke Panel Lengkap'
-                    : `Masuk ke ${activeFolderLabel}`}
-            </Text>
-          </Pressable>
-
-          {selfRegistrationEnabled && !mailboxAvailable ? (
-            <Pressable
-              onPress={() => {
-                setRegisterError(null);
-                setPanelError(null);
-                setIsPanelAccessMode(false);
-                setIsRegisterMode(true);
-              }}
-              style={{
-                borderRadius: 12,
-                borderWidth: 1,
-                borderColor: '#c7d2fe',
-                backgroundColor: '#eef2ff',
-                paddingVertical: 11,
-                alignItems: 'center',
-              }}
-            >
-              <Text style={{ color: '#1d4ed8', fontWeight: '700' }}>Daftar Mailbox</Text>
-            </Pressable>
-          ) : null}
         </View>
       </MobileDetailModal>
 
@@ -1299,7 +1129,6 @@ export default function MobileEmailScreen() {
                       if (!bridgeCredentials) return;
                       setBridgeCredentials(null);
                       setWebmailUrl(getMailboxFolderUrl(bridgeLoginUrl, activeFolderKey));
-                      setLoginPass('');
                     }}
                     onHttpError={() => {
                       setPanelError('Panel email gagal dimuat. Coba muat ulang sesi.');
