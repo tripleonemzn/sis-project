@@ -586,6 +586,153 @@ async function syncSubjectGradeComponentsFromExamMaster(subjectId: number, acade
   }
 }
 
+async function resolveValidatedGradeComponentContext(params: {
+  gradeComponentId: number
+  subjectId: number
+  academicYearId: number
+  semester: Semester
+  user?: AuthUserLike | null
+  studentId?: number | null
+  classId?: number | null
+}): Promise<{
+  id: number
+  code: string
+  type: GradeComponentType
+  entryMode: GradeEntryMode
+}> {
+  await syncSubjectGradeComponentsFromExamMaster(
+    Number(params.subjectId),
+    Number(params.academicYearId),
+  )
+
+  const component = await prisma.gradeComponent.findUnique({
+    where: { id: Number(params.gradeComponentId) },
+    select: {
+      id: true,
+      subjectId: true,
+      code: true,
+      type: true,
+      typeCode: true,
+      isActive: true,
+    },
+  })
+
+  if (!component || !component.isActive || Number(component.subjectId) !== Number(params.subjectId)) {
+    throw new ApiError(400, 'Komponen nilai tidak valid untuk mapel ini.')
+  }
+
+  const normalizedCode = normalizeComponentCode(
+    component.code || component.typeCode || defaultComponentCodeByType(component.type),
+  )
+  if (!normalizedCode) {
+    throw new ApiError(400, 'Komponen nilai tidak memiliki kode yang valid.')
+  }
+
+  const master = await (prisma.examGradeComponent as any).findFirst({
+    where: {
+      academicYearId: Number(params.academicYearId),
+      isActive: true,
+      code: normalizedCode,
+    },
+    select: {
+      code: true,
+      label: true,
+      type: true,
+      entryMode: true,
+      entryModeCode: true,
+    },
+  }) as {
+    code: string
+    label?: string | null
+    type: GradeComponentType
+    entryMode?: GradeEntryMode | null
+    entryModeCode?: string | null
+  } | null
+
+  if (!master) {
+    throw new ApiError(
+      400,
+      'Komponen nilai ini sudah tidak berlaku pada konfigurasi aktif. Muat ulang halaman lalu pilih komponen yang tersedia.',
+    )
+  }
+
+  let resolvedClassId = Number(params.classId || 0)
+  if (!resolvedClassId && params.studentId) {
+    resolvedClassId =
+      Number(await resolveStudentClassId(Number(params.studentId), Number(params.academicYearId))) || 0
+  }
+
+  let classLevelToken = ''
+  if (resolvedClassId > 0) {
+    const classRow = await prisma.class.findUnique({
+      where: { id: resolvedClassId },
+      select: { level: true },
+    })
+    classLevelToken = normalizeClassLevelTokenForScope(classRow?.level)
+  }
+
+  const teacherId = Number(params.user?.id || 0)
+  const scopedPrograms = await prisma.examProgramConfig.findMany({
+    where: {
+      academicYearId: Number(params.academicYearId),
+      isActive: true,
+      gradeComponentCode: normalizedCode,
+      OR: [{ fixedSemester: params.semester }, { fixedSemester: null }],
+    },
+    select: {
+      allowedSubjectIds: true,
+      targetClassLevels: true,
+      allowedAuthorIds: true,
+    },
+  })
+
+  if (scopedPrograms.length > 0) {
+    const isAllowed = scopedPrograms.some((row) => {
+      const allowedBySubject =
+        !Array.isArray(row.allowedSubjectIds) ||
+        row.allowedSubjectIds.length === 0 ||
+        row.allowedSubjectIds.some((allowedSubjectId) => Number(allowedSubjectId) === Number(params.subjectId))
+      if (!allowedBySubject) return false
+
+      const normalizedTargetLevels = (Array.isArray(row.targetClassLevels) ? row.targetClassLevels : [])
+        .map((item) => normalizeClassLevelTokenForScope(item))
+        .filter((item): item is string => Boolean(item))
+      if (normalizedTargetLevels.length > 0) {
+        if (!classLevelToken) return false
+        if (!normalizedTargetLevels.includes(classLevelToken)) return false
+      }
+
+      if (isTeacherUser(params.user)) {
+        const normalizedAllowedAuthors = (Array.isArray(row.allowedAuthorIds) ? row.allowedAuthorIds : [])
+          .map((authorId) => Number(authorId))
+          .filter((authorId) => Number.isFinite(authorId) && authorId > 0)
+        if (normalizedAllowedAuthors.length > 0 && !normalizedAllowedAuthors.includes(teacherId)) {
+          return false
+        }
+      }
+
+      return true
+    })
+
+    if (!isAllowed) {
+      const componentLabel = String(master.label || normalizedCode).trim() || normalizedCode
+      throw new ApiError(
+        400,
+        `Komponen ${componentLabel} tidak berlaku untuk konteks kelas/mapel/semester ini.`,
+      )
+    }
+  }
+
+  return {
+    id: Number(component.id),
+    code: normalizedCode,
+    type: component.type,
+    entryMode:
+      normalizeGradeEntryModeCode(master.entryModeCode || master.entryMode) ||
+      defaultGradeEntryModeByCode(normalizedCode),
+  }
+}
+
 function calculateAverage(values: number[]): number | null {
   if (!Array.isArray(values) || values.length === 0) return null
   const sum = values.reduce((acc, value) => acc + value, 0)
@@ -3135,19 +3282,15 @@ export const createOrUpdateStudentGrade = async (req: Request, res: Response) =>
       studentId: Number(student_id),
     })
 
-    const component = await prisma.gradeComponent.findUnique({
-      where: { id: Number(grade_component_id) },
-      select: { type: true, code: true },
-    })
-    if (!component) {
-      throw new ApiError(404, 'Komponen nilai tidak ditemukan.')
-    }
-
-    const componentEntryMode = await resolveGradeEntryModeFromMasterConfig({
+    const component = await resolveValidatedGradeComponentContext({
+      gradeComponentId: Number(grade_component_id),
+      subjectId: Number(subject_id),
       academicYearId: Number(academic_year_id),
-      componentCode: component.code,
-      componentType: component.type,
+      semester: semester as Semester,
+      user,
+      studentId: Number(student_id),
     })
+    const componentEntryMode = component.entryMode
     const isFormativeComponent = componentEntryMode === GradeEntryMode.NF_SERIES
     const parsedNf1 = parseOptionalScoreValue(nf1, 'NF1')
     const parsedNf2 = parseOptionalScoreValue(nf2, 'NF2')
@@ -3348,6 +3491,7 @@ export const bulkCreateOrUpdateStudentGrades = async (req: Request, res: Respons
   try {
     const { grades } = req.body
     const user = (req as any).user as AuthUserLike
+    const studentClassMap = new Map<string, number>()
 
     if (!Array.isArray(grades) || grades.length === 0) {
       throw new ApiError(400, 'Grades array is required')
@@ -3401,8 +3545,6 @@ export const bulkCreateOrUpdateStudentGrades = async (req: Request, res: Respons
           })),
         ),
       )
-      const studentClassMap = new Map<string, number>()
-
       grades.forEach((gradeData: any) => {
         const studentId = toPositiveInt(gradeData?.student_id)
         const academicYearId = toPositiveInt(gradeData?.academic_year_id)
@@ -3475,7 +3617,7 @@ export const bulkCreateOrUpdateStudentGrades = async (req: Request, res: Respons
 
     const uniqueKeys = new Set<string>();
     const componentConfigCache = new Map<
-      number,
+      string,
       { type: GradeComponentType; code?: string | null; entryMode: GradeEntryMode }
     >()
 
@@ -3497,26 +3639,30 @@ export const bulkCreateOrUpdateStudentGrades = async (req: Request, res: Respons
         uniqueKeys.add(`${student_id}-${subject_id}-${academic_year_id}-${semester}`);
 
         const componentId = Number(grade_component_id)
-        let componentConfig = componentConfigCache.get(componentId)
+        const subjectIdKey = Number(subject_id)
+        const academicYearIdKey = Number(academic_year_id)
+        const studentIdKey = Number(student_id)
+        const semesterKey = semester as Semester
+        const classIdKey = Number(studentClassMap.get(`${studentIdKey}:${academicYearIdKey}`) || 0)
+        const cacheScopeKey = classIdKey > 0 ? `class:${classIdKey}` : `student:${studentIdKey}`
+        const cacheKey = `${componentId}:${subjectIdKey}:${academicYearIdKey}:${semesterKey}:${cacheScopeKey}`
+        let componentConfig = componentConfigCache.get(cacheKey)
         if (!componentConfig) {
-          const component = await prisma.gradeComponent.findUnique({
-            where: { id: componentId },
-            select: { type: true, code: true },
-          })
-          if (!component) {
-            throw new ApiError(404, `Komponen nilai tidak ditemukan (id=${componentId}).`)
-          }
-          const entryMode = await resolveGradeEntryModeFromMasterConfig({
-            academicYearId: Number(academic_year_id),
-            componentCode: component.code,
-            componentType: component.type,
+          const component = await resolveValidatedGradeComponentContext({
+            gradeComponentId: componentId,
+            subjectId: subjectIdKey,
+            academicYearId: academicYearIdKey,
+            semester: semesterKey,
+            user,
+            studentId: studentIdKey,
+            classId: classIdKey || null,
           })
           componentConfig = {
             type: component.type,
             code: component.code,
-            entryMode,
+            entryMode: component.entryMode,
           }
-          componentConfigCache.set(componentId, componentConfig)
+          componentConfigCache.set(cacheKey, componentConfig)
         }
 
         const isFormativeComponent = componentConfig.entryMode === GradeEntryMode.NF_SERIES

@@ -837,15 +837,17 @@ export const TeacherGradesPage = () => {
 
         const formativeSeriesValues = parseFormativeSeriesInput(formativeSeriesInput).values;
         const formativeAverage = averageValues(formativeSeriesValues);
+        const existingScore =
+          existing?.score === null || existing?.score === undefined || existing?.score === ''
+            ? ''
+            : String(existing.score);
 
         return {
           student_id: student.id,
           score:
-            formativeAverage !== null
+            isFormatifComponent && formativeAverage !== null
               ? formativeAverage.toFixed(2)
-              : existing?.score === null || existing?.score === undefined || existing?.score === ''
-                ? ''
-                : String(existing.score),
+              : existingScore,
           formativeSeriesInput,
         };
       });
