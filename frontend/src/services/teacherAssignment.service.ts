@@ -121,6 +121,7 @@ export const teacherAssignmentService = {
     limit?: number;
     search?: string;
     academicYearId?: number;
+    semester?: 'ODD' | 'EVEN';
     teacherId?: number;
     subjectId?: number;
     classId?: number;
@@ -159,16 +160,23 @@ export const teacherAssignmentService = {
     return response.data;
   },
 
-  getById: async (id: number) => {
+  getById: async (id: number, semester?: 'ODD' | 'EVEN') => {
     ensurePositiveAssignmentId(id);
-    const response = await api.get<{ data: TeacherAssignment }>(`/teacher-assignments/${id}`);
+    const response = await api.get<{ data: TeacherAssignment }>(`/teacher-assignments/${id}`, {
+      params: semester ? { semester } : undefined,
+    });
     return response.data;
   },
 
-  updateCompetencyThresholds: async (id: number, competencyThresholds: { A?: string; B?: string; C?: string; D?: string }) => {
+  updateCompetencyThresholds: async (
+    id: number,
+    competencyThresholds: { A?: string; B?: string; C?: string; D?: string },
+    semester?: 'ODD' | 'EVEN',
+  ) => {
     ensurePositiveAssignmentId(id);
     const response = await api.put<{ data: TeacherAssignment }>(`/teacher-assignments/${id}/competency`, {
       competencyThresholds,
+      ...(semester ? { semester } : {}),
     });
     return response.data;
   },

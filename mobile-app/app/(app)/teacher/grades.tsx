@@ -306,9 +306,9 @@ export default function TeacherGradesScreen() {
   );
 
   const assignmentDetailQuery = useQuery({
-    queryKey: ['mobile-grade-assignment-detail', user?.id, selectedAssignmentId],
+    queryKey: ['mobile-grade-assignment-detail', user?.id, selectedAssignmentId, semester],
     enabled: isAuthenticated && user?.role === 'TEACHER' && !!selectedAssignmentId,
-    queryFn: () => teacherAssignmentApi.getById(selectedAssignmentId!),
+    queryFn: () => teacherAssignmentApi.getById(selectedAssignmentId!, semester || undefined),
   });
 
   const componentsQuery = useQuery({
@@ -636,16 +636,17 @@ export default function TeacherGradesScreen() {
   const saveCompetencyMutation = useMutation({
     mutationFn: async () => {
       if (!selectedAssignmentId) throw new Error('Assignment belum dipilih.');
+      if (!semester) throw new Error('Pilih semester terlebih dahulu.');
       return teacherAssignmentApi.updateCompetencyThresholds(selectedAssignmentId, {
         A: competencySettings.A.trim(),
         B: competencySettings.B.trim(),
         C: competencySettings.C.trim(),
         D: competencySettings.D.trim(),
-      });
+      }, semester);
     },
     onSuccess: async () => {
       await queryClient.invalidateQueries({
-        queryKey: ['mobile-grade-assignment-detail', user?.id, selectedAssignmentId],
+        queryKey: ['mobile-grade-assignment-detail', user?.id, selectedAssignmentId, semester],
       });
       setShowCompetencyModal(false);
       notifySuccess('Pengaturan deskripsi predikat berhasil disimpan.');

@@ -352,6 +352,7 @@ export const TeacherGradesPage = () => {
   const gradeComponentRequestRef = useRef(0);
   const studentsRequestRef = useRef(0);
   const existingGradesRequestRef = useRef(0);
+  const assignmentsRequestRef = useRef(0);
   
   const selectedAcademicYearNum = Number(selectedAcademicYear);
   const assignmentOptions = useMemo(() => {
@@ -454,7 +455,9 @@ export const TeacherGradesPage = () => {
   const fetchAssignmentsByAcademicYear = async (
     academicYearId: string,
     preferredAssignmentId?: string,
+    preferredSemester?: 'ODD' | 'EVEN' | '',
   ) => {
+    const requestId = ++assignmentsRequestRef.current;
     const parsedAcademicYearId = Number(academicYearId);
     if (!Number.isFinite(parsedAcademicYearId) || parsedAcademicYearId <= 0) {
       setAssignments([]);
@@ -465,9 +468,12 @@ export const TeacherGradesPage = () => {
     const assignRes = await teacherAssignmentService.list({
       limit: 1000,
       academicYearId: parsedAcademicYearId,
+      semester: preferredSemester || undefined,
     });
     const assignResponse = assignRes as { data?: { assignments?: TeacherAssignment[] }, assignments?: TeacherAssignment[] };
     const assignsData = assignResponse.data?.assignments || assignResponse.assignments || [];
+
+    if (requestId !== assignmentsRequestRef.current) return;
 
     if (!Array.isArray(assignsData)) {
       setAssignments([]);
@@ -521,7 +527,7 @@ export const TeacherGradesPage = () => {
     if (selectedAssignment) {
       fetchStudents();
     }
-  }, [selectedAssignment]); // eslint-disable-line react-hooks/exhaustive-deps
+  }, [selectedAssignment, selectedSemester, assignments]); // eslint-disable-line react-hooks/exhaustive-deps
 
   useEffect(() => {
     if (selectedAssignment && selectedAcademicYear && selectedSemester) {
@@ -619,7 +625,11 @@ export const TeacherGradesPage = () => {
 
   useEffect(() => {
     if (!selectedAcademicYear || !isFilterRestoreDone) return;
-    fetchAssignmentsByAcademicYear(selectedAcademicYear, restoredAssignmentRef.current).catch((error) => {
+    fetchAssignmentsByAcademicYear(
+      selectedAcademicYear,
+      restoredAssignmentRef.current,
+      selectedSemester,
+    ).catch((error) => {
       console.error('Fetch assignments by academic year error:', error);
       toast.error('Gagal memuat assignment guru');
       setAssignments([]);
@@ -627,7 +637,7 @@ export const TeacherGradesPage = () => {
     }).finally(() => {
       restoredAssignmentRef.current = undefined;
     });
-  }, [selectedAcademicYear, isFilterRestoreDone]);
+  }, [selectedAcademicYear, selectedSemester, isFilterRestoreDone]);
 
   useEffect(() => {
     if (!selectedAssignment) return;
@@ -1032,7 +1042,11 @@ export const TeacherGradesPage = () => {
     if (!selectedAssignment) return;
     try {
         setSaving(true);
-        await teacherAssignmentService.updateCompetencyThresholds(parseInt(selectedAssignment), competencySettings);
+        await teacherAssignmentService.updateCompetencyThresholds(
+          parseInt(selectedAssignment),
+          competencySettings,
+          selectedSemester || undefined,
+        );
         toast.success('Pengaturan Capaian Kompetensi berhasil disimpan');
         setShowSettingsModal(false);
         

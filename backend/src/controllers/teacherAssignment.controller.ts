@@ -1,5 +1,6 @@
 import { Request, Response } from 'express';
 import { z } from 'zod';
+import { Prisma, Semester } from '@prisma/client';
 import prisma from '../utils/prisma';
 import { ApiError, ApiResponse, asyncHandler } from '../utils/api';
 import { writeAuditLog } from '../utils/auditLog';
@@ -33,17 +34,267 @@ const updateCompetencySchema = z.object({
     C: z.string().optional(),
     D: z.string().optional(),
   }),
+  semester: z.nativeEnum(Semester).optional(),
 });
+
+const semesterQuerySchema = z.object({
+  semester: z.nativeEnum(Semester).optional(),
+});
+
+type CompetencyThresholdSet = {
+  A: string;
+  B: string;
+  C: string;
+  D: string;
+};
+
+type TeacherAssignmentWithScope = {
+  id: number;
+  teacherId: number;
+  subjectId: number;
+  academicYearId: number;
+  competencyThresholds: unknown;
+  class: {
+    level: string | null;
+  };
+};
+
+const emptyCompetencyThresholds = (): CompetencyThresholdSet => ({
+  A: '',
+  B: '',
+  C: '',
+  D: '',
+});
+
+const normalizeSemesterCode = (raw: unknown): Semester | null => {
+  const normalized = String(raw || '').trim().toUpperCase();
+  if (normalized === Semester.ODD) return Semester.ODD;
+  if (normalized === Semester.EVEN) return Semester.EVEN;
+  return null;
+};
+
+const coerceThresholdSet = (raw: unknown): CompetencyThresholdSet => {
+  if (!raw || typeof raw !== 'object' || Array.isArray(raw)) {
+    return emptyCompetencyThresholds();
+  }
+
+  const source = raw as Record<string, unknown>;
+  return {
+    A: String(source.A || '').trim(),
+    B: String(source.B || '').trim(),
+    C: String(source.C || '').trim(),
+    D: String(source.D || '').trim(),
+  };
+};
+
+const hasAnyThresholdValue = (value: CompetencyThresholdSet | null | undefined) =>
+  Boolean(
+    value &&
+      (String(value.A || '').trim() ||
+        String(value.B || '').trim() ||
+        String(value.C || '').trim() ||
+        String(value.D || '').trim()),
+  );
+
+const resolveCompetencyThresholdSet = (
+  raw: unknown,
+  preferredSemester?: Semester | null,
+): CompetencyThresholdSet => {
+  if (!raw || typeof raw !== 'object' || Array.isArray(raw)) {
+    return emptyCompetencyThresholds();
+  }
+
+  const source = raw as Record<string, unknown>;
+  const root = coerceThresholdSet(source);
+  const bucketSource =
+    source._bySemester && typeof source._bySemester === 'object' && !Array.isArray(source._bySemester)
+      ? (source._bySemester as Record<string, unknown>)
+      : {};
+
+  const preferred =
+    preferredSemester && bucketSource[preferredSemester]
+      ? coerceThresholdSet(bucketSource[preferredSemester])
+      : emptyCompetencyThresholds();
+
+  if (hasAnyThresholdValue(preferred)) {
+    return preferred;
+  }
+
+  if (hasAnyThresholdValue(root)) {
+    return root;
+  }
+
+  const odd = coerceThresholdSet(bucketSource[Semester.ODD]);
+  if (hasAnyThresholdValue(odd)) return odd;
+
+  const even = coerceThresholdSet(bucketSource[Semester.EVEN]);
+  if (hasAnyThresholdValue(even)) return even;
+
+  return emptyCompetencyThresholds();
+};
+
+const mergeCompetencyThresholdSet = (
+  raw: unknown,
+  semester: Semester,
+  nextValue: CompetencyThresholdSet,
+): Prisma.InputJsonValue => {
+  const base =
+    raw && typeof raw === 'object' && !Array.isArray(raw) ? { ...(raw as Record<string, unknown>) } : {};
+  const bucketSource =
+    base._bySemester && typeof base._bySemester === 'object' && !Array.isArray(base._bySemester)
+      ? { ...(base._bySemester as Record<string, unknown>) }
+      : {};
+
+  bucketSource[semester] = {
+    A: nextValue.A,
+    B: nextValue.B,
+    C: nextValue.C,
+    D: nextValue.D,
+  };
+
+  const rootThresholds = coerceThresholdSet(base);
+  const merged: Record<string, unknown> = {
+    ...base,
+    _bySemester: bucketSource,
+  };
+
+  if (!hasAnyThresholdValue(rootThresholds)) {
+    merged.A = nextValue.A;
+    merged.B = nextValue.B;
+    merged.C = nextValue.C;
+    merged.D = nextValue.D;
+  }
+
+  return merged as Prisma.InputJsonValue;
+};
+
+const buildAssignmentScopeKey = (assignment: TeacherAssignmentWithScope) =>
+  `${assignment.teacherId}:${assignment.subjectId}:${assignment.academicYearId}:${String(
+    assignment.class?.level || '',
+  ).trim().toUpperCase()}`;
+
+const normalizeAssignmentsForSemester = <T extends TeacherAssignmentWithScope>(
+  assignments: T[],
+  preferredSemester?: Semester | null,
+): T[] => {
+  const assignmentsByScope = new Map<string, T[]>();
+  assignments.forEach((assignment) => {
+    const key = buildAssignmentScopeKey(assignment);
+    const current = assignmentsByScope.get(key) || [];
+    current.push(assignment);
+    assignmentsByScope.set(key, current);
+  });
+
+  return assignments.map((assignment) => {
+    const ownResolved = resolveCompetencyThresholdSet(
+      assignment.competencyThresholds,
+      preferredSemester,
+    );
+
+    if (hasAnyThresholdValue(ownResolved)) {
+      return {
+        ...assignment,
+        competencyThresholds: ownResolved,
+      };
+    }
+
+    const siblings = assignmentsByScope.get(buildAssignmentScopeKey(assignment)) || [];
+    const siblingResolved =
+      siblings
+        .filter((row) => row.id !== assignment.id)
+        .map((row) => resolveCompetencyThresholdSet(row.competencyThresholds, preferredSemester))
+        .find((row) => hasAnyThresholdValue(row)) || emptyCompetencyThresholds();
+
+    return {
+      ...assignment,
+      competencyThresholds: siblingResolved,
+    };
+  });
+};
+
+const resolvePreferredSemester = async (explicit?: Semester | null) => {
+  if (explicit) return explicit;
+  const activeYear = await prisma.academicYear.findFirst({
+    where: { isActive: true },
+    select: { name: true },
+  });
+  const activeYearName = String(activeYear?.name || '').toUpperCase();
+  return activeYearName.includes('GENAP') ? Semester.EVEN : Semester.ODD;
+};
 
 export const updateCompetencyThresholds = asyncHandler(async (req: Request, res: Response) => {
   const { id } = teacherAssignmentIdSchema.parse(req.params);
-  const { competencyThresholds } = updateCompetencySchema.parse(req.body);
+  const { competencyThresholds, semester } = updateCompetencySchema.parse(req.body);
+  const targetSemester = await resolvePreferredSemester(semester || null);
 
-  const before = await prisma.teacherAssignment.findUnique({ where: { id } });
-  const assignment = await prisma.teacherAssignment.update({
+  const normalizedThresholds = coerceThresholdSet(competencyThresholds);
+
+  const before = await prisma.teacherAssignment.findUnique({
     where: { id },
-    data: { competencyThresholds },
+    include: {
+      class: {
+        select: {
+          level: true,
+        },
+      },
+    },
   });
+  if (!before) {
+    throw new ApiError(404, 'Penugasan tidak ditemukan');
+  }
+
+  const siblingAssignments = await prisma.teacherAssignment.findMany({
+    where: {
+      teacherId: before.teacherId,
+      subjectId: before.subjectId,
+      academicYearId: before.academicYearId,
+      class: {
+        level: before.class.level,
+      },
+    },
+    include: {
+      class: {
+        select: {
+          level: true,
+        },
+      },
+    },
+  });
+
+  await prisma.$transaction(
+    siblingAssignments.map((assignment) =>
+      prisma.teacherAssignment.update({
+        where: { id: assignment.id },
+        data: {
+          competencyThresholds: mergeCompetencyThresholdSet(
+            assignment.competencyThresholds,
+            targetSemester,
+            normalizedThresholds,
+          ),
+        },
+      }),
+    ),
+  );
+
+  const refreshedAssignments = await prisma.teacherAssignment.findMany({
+    where: {
+      teacherId: before.teacherId,
+      subjectId: before.subjectId,
+      academicYearId: before.academicYearId,
+      class: {
+        level: before.class.level,
+      },
+    },
+    include: {
+      class: {
+        select: {
+          level: true,
+        },
+      },
+    },
+  });
+  const normalizedAssignments = normalizeAssignmentsForSemester(refreshedAssignments, targetSemester);
+  const assignment = normalizedAssignments.find((item) => item.id === id);
 
   const authUser = (req as any).user;
   const dutyUser = await prisma.user.findUnique({
@@ -51,13 +302,30 @@ export const updateCompetencyThresholds = asyncHandler(async (req: Request, res:
     select: { role: true, additionalDuties: true },
   });
   const dutiesArr = (dutyUser?.additionalDuties || []).map((d: any) => String(d).trim().toUpperCase());
-  await writeAuditLog(authUser.id, dutyUser?.role || authUser.role, dutiesArr, 'UPDATE', 'TEACHER_ASSIGNMENT_COMPETENCY', id, before, assignment, (req.body as any)?.reason);
+  await writeAuditLog(
+    authUser.id,
+    dutyUser?.role || authUser.role,
+    dutiesArr,
+    'UPDATE',
+    'TEACHER_ASSIGNMENT_COMPETENCY',
+    id,
+    before,
+    {
+      assignmentId: id,
+      semester: targetSemester,
+      thresholds: normalizedThresholds,
+      affectedAssignmentIds: refreshedAssignments.map((item) => item.id),
+    },
+    (req.body as any)?.reason,
+  );
 
   res.status(200).json(new ApiResponse(200, assignment, 'Deskripsi capaian kompetensi berhasil disimpan'));
 });
 
 export const getTeacherAssignmentById = asyncHandler(async (req: Request, res: Response) => {
   const { id } = teacherAssignmentIdSchema.parse(req.params);
+  const { semester } = semesterQuerySchema.parse(req.query);
+  const preferredSemester = await resolvePreferredSemester(semester || null);
 
   const assignment = await prisma.teacherAssignment.findUnique({
     where: { id },
@@ -84,7 +352,29 @@ export const getTeacherAssignmentById = asyncHandler(async (req: Request, res: R
     throw new ApiError(404, 'Penugasan tidak ditemukan');
   }
 
-  res.status(200).json(new ApiResponse(200, assignment, 'Detail penugasan berhasil diambil'));
+  const siblings = await prisma.teacherAssignment.findMany({
+    where: {
+      teacherId: assignment.teacherId,
+      subjectId: assignment.subjectId,
+      academicYearId: assignment.academicYearId,
+      class: {
+        level: assignment.class.level,
+      },
+    },
+    include: {
+      class: {
+        select: {
+          level: true,
+        },
+      },
+    },
+  });
+  const normalizedAssignments = normalizeAssignmentsForSemester(siblings, preferredSemester);
+  const normalizedAssignment = normalizedAssignments.find((item) => item.id === id);
+
+  res.status(200).json(
+    new ApiResponse(200, normalizedAssignment || assignment, 'Detail penugasan berhasil diambil'),
+  );
 });
 
 export const createTeacherAssignments = asyncHandler(async (req: Request, res: Response) => {
@@ -127,9 +417,13 @@ export const createTeacherAssignments = asyncHandler(async (req: Request, res: R
       subjectId,
       academicYearId,
     },
-    select: {
-      id: true,
-      classId: true,
+    include: {
+      class: {
+        select: {
+          id: true,
+          level: true,
+        },
+      },
     },
   });
 
@@ -155,6 +449,13 @@ export const createTeacherAssignments = asyncHandler(async (req: Request, res: R
     const kkm = subjectKkm?.kkm ?? 75;
 
     const existing = existingAssignments.find((a) => a.classId === cls.id);
+    const siblingTemplate = existingAssignments.find(
+      (assignment) =>
+        assignment.classId !== cls.id &&
+        String(assignment.class?.level || '').trim().toUpperCase() ===
+          String(cls.level || '').trim().toUpperCase() &&
+        assignment.competencyThresholds,
+    );
 
     let assignment;
 
@@ -171,6 +472,7 @@ export const createTeacherAssignments = asyncHandler(async (req: Request, res: R
           academicYearId,
           classId: cls.id,
           kkm,
+          competencyThresholds: siblingTemplate?.competencyThresholds ?? undefined,
         },
       });
     }
@@ -201,6 +503,8 @@ export const createTeacherAssignments = asyncHandler(async (req: Request, res: R
 export const getTeacherAssignments = asyncHandler(async (req: Request, res: Response) => {
   const { page = 1, limit = 10, search, academicYearId, teacherId, subjectId, classId, scope } =
     listTeacherAssignmentsSchema.parse(req.query);
+  const { semester } = semesterQuerySchema.parse(req.query);
+  const preferredSemester = await resolvePreferredSemester(semester || null);
 
   const user = (req as any).user;
 
@@ -324,11 +628,13 @@ export const getTeacherAssignments = asyncHandler(async (req: Request, res: Resp
     }),
   ]);
 
+  const normalizedAssignments = normalizeAssignmentsForSemester(assignments, preferredSemester);
+
   res.status(200).json(
     new ApiResponse(
       200,
       {
-        assignments,
+        assignments: normalizedAssignments,
         pagination: {
           page,
           limit,
