@@ -314,13 +314,18 @@ export const ExamListPage = () => {
                       (assignment) => String(assignment.subject?.id) === String(selectedSubject),
                   )
                 : undefined;
+        const draftMatchesSelectedSubject =
+            !selectedSubject ||
+            String(assignmentFromDraft?.subject?.id || '') === String(selectedSubject);
         const fallbackAssignment =
-            assignmentFromDraft || assignmentFromFilterSubject || filteredAssignmentsByProgram[0];
+            assignmentFromFilterSubject ||
+            (draftMatchesSelectedSubject ? assignmentFromDraft : undefined) ||
+            filteredAssignmentsByProgram[0];
 
         setCreateExamInfoDraft((prev) => ({
             ...prev,
-            assignmentId: String(prev.assignmentId || fallbackAssignment?.id || ''),
-            subjectId: String(prev.subjectId || fallbackAssignment?.subject?.id || ''),
+            assignmentId: String(fallbackAssignment?.id || ''),
+            subjectId: String(fallbackAssignment?.subject?.id || ''),
             semester: fixedSemester || semesterFromFilter || prev.semester || 'ODD',
         }));
         setIsCreateInfoModalOpen(true);
@@ -417,18 +422,39 @@ export const ExamListPage = () => {
     useEffect(() => {
         if (filteredSubjects.length === 0) {
             setSelectedSubject('');
-            setCreateExamInfoDraft((prev) => ({ ...prev, subjectId: '' }));
+            setCreateExamInfoDraft((prev) => ({ ...prev, assignmentId: '', subjectId: '' }));
             return;
         }
         if (selectedSubject && !filteredSubjects.some((subject) => String(subject.id) === String(selectedSubject))) {
             setSelectedSubject('');
         }
         setCreateExamInfoDraft((prev) => {
-            if (!prev.subjectId) return prev;
-            if (filteredSubjects.some((subject) => String(subject.id) === String(prev.subjectId))) return prev;
-            return { ...prev, subjectId: '' };
+            const currentAssignment = filteredAssignmentsByProgram.find(
+                (assignment) => String(assignment.id) === String(prev.assignmentId),
+            );
+            const currentSubjectId = String(currentAssignment?.subject?.id || prev.subjectId || '');
+            const subjectStillVisible = currentSubjectId
+                ? filteredSubjects.some((subject) => String(subject.id) === currentSubjectId)
+                : false;
+            const assignmentMatchesSelectedSubject =
+                !selectedSubject || String(currentAssignment?.subject?.id || '') === String(selectedSubject);
+
+            if (subjectStillVisible && assignmentMatchesSelectedSubject) return prev;
+
+            const fallbackAssignment =
+                (selectedSubject
+                    ? filteredAssignmentsByProgram.find(
+                          (assignment) => String(assignment.subject?.id) === String(selectedSubject),
+                      )
+                    : undefined) || filteredAssignmentsByProgram[0];
+
+            return {
+                ...prev,
+                assignmentId: String(fallbackAssignment?.id || ''),
+                subjectId: String(fallbackAssignment?.subject?.id || ''),
+            };
         });
-    }, [filteredSubjects, selectedSubject]);
+    }, [filteredSubjects, filteredAssignmentsByProgram, selectedSubject]);
 
     const getPageTitle = () => {
         if (isBankSoal) return 'Bank Soal';

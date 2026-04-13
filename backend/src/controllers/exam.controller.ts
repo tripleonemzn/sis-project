@@ -4412,6 +4412,17 @@ function normalizeQuestionsPayload(rawQuestions: unknown): NormalizedExamQuestio
     return rawQuestions.map((question, idx) => normalizeExamQuestionPayload(question, idx));
 }
 
+function stripQuestionSupportMetadata(
+    questions: NormalizedExamQuestion[] | undefined,
+): NormalizedExamQuestion[] | undefined {
+    if (!questions) return undefined;
+    return questions.map((question) => ({
+        ...question,
+        blueprint: undefined,
+        questionCard: undefined,
+    }));
+}
+
 function deriveAnswerKeyFromOptions(options: unknown[] | undefined): string | undefined {
     if (!options || options.length === 0) return undefined;
     const correctOptionIds = options
@@ -6655,7 +6666,7 @@ export const createPacket = asyncHandler(async (req: Request, res: Response) => 
         programCode,
         legacyType: type,
     });
-    const normalizedQuestions = normalizeQuestionsPayload(questions);
+    const normalizedQuestions = stripQuestionSupportMetadata(normalizeQuestionsPayload(questions));
     const scopedAssignment = await resolvePacketAssignmentScope({
         teacherAssignmentId,
         academicYearId: normalizedAcademicYearId,
@@ -6815,7 +6826,9 @@ export const updatePacket = asyncHandler(async (req: Request, res: Response) => 
     if (!Number.isFinite(effectiveSubjectId) || effectiveSubjectId <= 0) {
         throw new ApiError(400, 'subjectId wajib diisi.');
     }
-    const normalizedQuestions = normalizeQuestionsPayload(questions);
+    const normalizedQuestions = isCurriculumManagedPacket
+        ? normalizeQuestionsPayload(questions)
+        : stripQuestionSupportMetadata(normalizeQuestionsPayload(questions));
     const normalizedPublishedQuestionCount =
         publishedQuestionCount === undefined
             ? undefined

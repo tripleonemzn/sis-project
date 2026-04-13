@@ -1088,6 +1088,7 @@ export const ExamEditorPage = () => {
         selectedProgramCode ||
         resolvedPacketType;
     const isCurriculumManagedPacket = Boolean(loadedPacket?.isCurriculumManaged);
+    const supportsQuestionSupport = isCurriculumManagedPacket;
     const curriculumScheduledClassNames = useMemo(() => {
         const classNames = (loadedPacket?.schedules || [])
             .map((schedule) => String(schedule.class?.name || '').trim())
@@ -2312,11 +2313,21 @@ export const ExamEditorPage = () => {
                     : effectiveFixedSemester === 'ODD' || effectiveFixedSemester === 'EVEN'
                     ? effectiveFixedSemester
                     : data.semester,
-            questions: finalQuestions.map((question) => ({
-                ...question,
-                content: sanitizeQuestionHtml(question.content),
-                questionCard: buildDerivedQuestionCard(question),
-            }))
+            questions: finalQuestions.map((question) => {
+                const sanitizedQuestion = {
+                    ...question,
+                    content: sanitizeQuestionHtml(question.content),
+                };
+                if (!supportsQuestionSupport) {
+                    const { blueprint, questionCard, ...restQuestion } = sanitizedQuestion;
+                    return restQuestion;
+                }
+                return {
+                    ...sanitizedQuestion,
+                    blueprint: normalizeBlueprint(question.blueprint),
+                    questionCard: buildDerivedQuestionCard(question),
+                };
+            })
         };
 
         try {
@@ -3077,22 +3088,24 @@ export const ExamEditorPage = () => {
                                                 </div>
                                             </div>
 
-                                            <button
-                                                type="button"
-                                                onClick={() => setIsQuestionSupportModalOpen(true)}
-                                                className={`inline-flex items-center gap-2 rounded-lg border px-3 py-2 text-sm font-normal transition-colors ${
-                                                    activeQuestion
-                                                        ? activeQuestionSupportMeta.buttonClassName
-                                                        : 'border-gray-200 bg-white text-gray-700 hover:bg-gray-50'
-                                                }`}
-                                            >
-                                                <span>Kisi-kisi & Kartu Soal</span>
-                                                {activeQuestion ? (
-                                                    <span className={`rounded-full px-2.5 py-0.5 text-[11px] font-semibold ${activeQuestionSupportMeta.badgeClassName}`}>
-                                                        {activeQuestionSupportMeta.label}
-                                                    </span>
-                                                ) : null}
-                                            </button>
+                                            {supportsQuestionSupport ? (
+                                                <button
+                                                    type="button"
+                                                    onClick={() => setIsQuestionSupportModalOpen(true)}
+                                                    className={`inline-flex items-center gap-2 rounded-lg border px-3 py-2 text-sm font-normal transition-colors ${
+                                                        activeQuestion
+                                                            ? activeQuestionSupportMeta.buttonClassName
+                                                            : 'border-gray-200 bg-white text-gray-700 hover:bg-gray-50'
+                                                    }`}
+                                                >
+                                                    <span>Kisi-kisi & Kartu Soal</span>
+                                                    {activeQuestion ? (
+                                                        <span className={`rounded-full px-2.5 py-0.5 text-[11px] font-semibold ${activeQuestionSupportMeta.badgeClassName}`}>
+                                                            {activeQuestionSupportMeta.label}
+                                                        </span>
+                                                    ) : null}
+                                                </button>
+                                            ) : null}
                                             <button
                                                 type="button"
                                                 onClick={() => setIsStudentPreviewOpen(true)}
@@ -3856,7 +3869,7 @@ export const ExamEditorPage = () => {
                 </div>
             )}
 
-            {isQuestionSupportModalOpen && activeQuestion ? (
+            {supportsQuestionSupport && isQuestionSupportModalOpen && activeQuestion ? (
                 <div className="fixed inset-0 z-50 flex items-start justify-center px-4 pb-6 pt-24">
                     <div className="flex max-h-[calc(100vh-8rem)] w-full max-w-3xl flex-col overflow-hidden rounded-3xl border border-slate-200 bg-white shadow-2xl">
                         <div className="flex items-start justify-between gap-4 border-b border-slate-200 px-6 py-4">

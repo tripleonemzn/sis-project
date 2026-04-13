@@ -905,6 +905,7 @@ export default function TeacherExamEditorScreen() {
   });
   const currentPacketDetail = packetDetailQuery.data || null;
   const isCurriculumManagedPacket = Boolean(currentPacketDetail?.isCurriculumManaged);
+  const supportsQuestionSupport = isCurriculumManagedPacket;
   const curriculumScheduledClassNames = useMemo(() => {
     const classNames = (currentPacketDetail?.schedules || [])
       .map((schedule) => String(schedule.class?.name || '').trim())
@@ -1294,11 +1295,13 @@ export default function TeacherExamEditorScreen() {
           throw new Error(`Isi soal nomor ${idx + 1} masih kosong.`);
         }
 
-        const blueprint = normalizeBlueprint(question.blueprint);
-        if (!String(blueprint.learningObjective || '').trim() || !String(blueprint.indicator || '').trim()) {
-          throw new Error(
-            `Soal nomor ${idx + 1} wajib mengisi kisi-kisi: tujuan pembelajaran dan indikator soal.`,
-          );
+        if (supportsQuestionSupport) {
+          const blueprint = normalizeBlueprint(question.blueprint);
+          if (!String(blueprint.learningObjective || '').trim() || !String(blueprint.indicator || '').trim()) {
+            throw new Error(
+              `Soal nomor ${idx + 1} wajib mengisi kisi-kisi: tujuan pembelajaran dan indikator soal.`,
+            );
+          }
         }
 
         if (question.type !== 'ESSAY') {
@@ -1362,7 +1365,11 @@ export default function TeacherExamEditorScreen() {
         instructions: instructions.trim() || undefined,
         kkm: isCurriculumManagedPacket ? Number(currentPacketDetail?.kkm || kkmValue) : kkmValue,
         saveToBank,
-        questions: cleanedQuestions,
+        questions: cleanedQuestions.map((question) => {
+          if (supportsQuestionSupport) return question;
+          const { blueprint, questionCard, ...restQuestion } = question;
+          return restQuestion;
+        }),
       };
       assertFixedSemesterMatch(lockedSemester, payload.semester);
 
@@ -1503,7 +1510,9 @@ export default function TeacherExamEditorScreen() {
         >
           <Text style={{ color: '#1e3a8a', fontWeight: '700', marginBottom: 4 }}>Tahap 2: Butir Soal</Text>
           <Text style={{ color: '#334155', fontSize: 12 }}>
-            Fokus menyusun isi soal, kisi-kisi, kartu soal, serta opsi jawaban. Informasi ujian sudah dipisahkan di tahap 1.
+            {supportsQuestionSupport
+              ? 'Fokus menyusun isi soal, kisi-kisi, kartu soal, serta opsi jawaban. Informasi ujian sudah dipisahkan di tahap 1.'
+              : 'Fokus menyusun isi soal dan opsi jawaban. Informasi ujian sudah dipisahkan di tahap 1.'}
           </Text>
         </View>
       )}
@@ -2119,6 +2128,8 @@ export default function TeacherExamEditorScreen() {
             }}
           />
 
+          {supportsQuestionSupport ? (
+            <>
           <View
             style={{
               borderWidth: 1,
@@ -2398,6 +2409,8 @@ export default function TeacherExamEditorScreen() {
               }}
             />
           </View>
+            </>
+          ) : null}
 
           {question.type === 'MATRIX_SINGLE_CHOICE' ? (
             (() => {
