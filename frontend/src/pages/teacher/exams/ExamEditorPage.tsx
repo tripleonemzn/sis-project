@@ -165,6 +165,98 @@ function sanitizeQuestionHtml(value: string | undefined | null): string {
         .trim();
 }
 
+function hasInlineMediaData(value: unknown): boolean {
+    return typeof value === 'string' && /data:(image|video)\//i.test(value);
+}
+
+function sanitizeQuestionForSubmit(
+    question: ExtendedQuestion,
+    index: number,
+    supportsQuestionSupport: boolean,
+): Record<string, unknown> {
+    const sanitizedContent = sanitizeQuestionHtml(question.content);
+    if (hasInlineMediaData(sanitizedContent) || hasInlineMediaData(question.question_image_url) || hasInlineMediaData(question.question_video_url)) {
+        throw new Error(
+            `Soal nomor ${index + 1} memuat media inline yang terlalu besar. Upload gambar/video lewat tombol upload yang tersedia.`,
+        );
+    }
+
+    const payload: Record<string, unknown> = {
+        id: String(question.id || `q-${index + 1}`),
+        type: question.type,
+        content: sanitizedContent,
+        score: normalizePositiveScore(question.score),
+        question_image_url: question.question_image_url || undefined,
+        question_video_url: question.question_video_url || undefined,
+        question_video_type: question.question_video_type || undefined,
+        question_media_position: question.question_media_position || undefined,
+    };
+
+    if (question.type === 'MATRIX_SINGLE_CHOICE') {
+        const matrixPromptColumns = normalizeMatrixPromptColumns(question.matrixPromptColumns);
+        const matrixColumns = normalizeMatrixColumns(question.matrixColumns);
+        const matrixRows = normalizeMatrixRows(question.matrixRows, matrixPromptColumns, matrixColumns).map((row) => {
+            if (hasInlineMediaData(row.content)) {
+                throw new Error(
+                    `Baris grid pada soal nomor ${index + 1} memuat media inline yang terlalu besar. Gunakan teks biasa atau upload media pada area soal utama.`,
+                );
+            }
+            return {
+                id: row.id,
+                content: row.content,
+                cells: Array.isArray(row.cells)
+                    ? row.cells.map((cell) => {
+                        if (hasInlineMediaData(cell.content)) {
+                            throw new Error(
+                                `Kolom data pada soal nomor ${index + 1} memuat media inline yang terlalu besar.`,
+                            );
+                        }
+                        return {
+                            columnId: cell.columnId,
+                            content: cell.content,
+                        };
+                    })
+                    : [],
+                correctOptionId: row.correctOptionId,
+            };
+        });
+
+        payload.matrixPromptColumns = matrixPromptColumns.map((column) => ({
+            id: column.id,
+            label: column.label,
+        }));
+        payload.matrixColumns = matrixColumns.map((column) => ({
+            id: column.id,
+            content: column.content,
+        }));
+        payload.matrixRows = matrixRows;
+    } else if (question.type !== 'ESSAY') {
+        payload.options = Array.isArray(question.options)
+            ? question.options.map((option, optionIndex) => {
+                const normalizedOptionContent = sanitizeQuestionHtml(option.content);
+                if (hasInlineMediaData(normalizedOptionContent) || hasInlineMediaData(option.image_url)) {
+                    throw new Error(
+                        `Opsi jawaban pada soal nomor ${index + 1} memuat media inline yang terlalu besar. Upload gambar opsi lewat tombol upload gambar opsi.`,
+                    );
+                }
+                return {
+                    id: String(option.id || `${question.id || `q-${index + 1}`}-opt-${optionIndex + 1}`),
+                    content: normalizedOptionContent,
+                    isCorrect: Boolean(option.isCorrect),
+                    image_url: option.image_url || undefined,
+                };
+            })
+            : [];
+    }
+
+    if (supportsQuestionSupport) {
+        payload.blueprint = normalizeBlueprint(question.blueprint);
+        payload.questionCard = buildDerivedQuestionCard(question);
+    }
+
+    return payload;
+}
+
 function normalizePositiveScore(value: unknown, fallback = 1): number {
     const parsed = Number(value);
     if (!Number.isFinite(parsed) || parsed <= 0) return fallback;
@@ -2276,6 +2368,10 @@ export const ExamEditorPage = () => {
             }
         }
 
+        const sanitizedQuestions = finalQuestions.map((question, index) =>
+            sanitizeQuestionForSubmit(question, index, supportsQuestionSupport),
+        );
+
         const payload = {
             ...data,
             type: effectiveType,
@@ -2313,21 +2409,7 @@ export const ExamEditorPage = () => {
                     : effectiveFixedSemester === 'ODD' || effectiveFixedSemester === 'EVEN'
                     ? effectiveFixedSemester
                     : data.semester,
-            questions: finalQuestions.map((question) => {
-                const sanitizedQuestion = {
-                    ...question,
-                    content: sanitizeQuestionHtml(question.content),
-                };
-                if (!supportsQuestionSupport) {
-                    const { blueprint, questionCard, ...restQuestion } = sanitizedQuestion;
-                    return restQuestion;
-                }
-                return {
-                    ...sanitizedQuestion,
-                    blueprint: normalizeBlueprint(question.blueprint),
-                    questionCard: buildDerivedQuestionCard(question),
-                };
-            })
+            questions: sanitizedQuestions,
         };
 
         try {

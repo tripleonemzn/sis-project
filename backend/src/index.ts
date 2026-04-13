@@ -19,6 +19,7 @@ dotenv.config();
 const app = express();
 const PORT = process.env.PORT || 3000;
 const HOST = String(process.env.HOST || '').trim();
+const JSON_BODY_LIMIT = String(process.env.JSON_BODY_LIMIT || '2mb').trim() || '2mb';
 
 const SKIP_REALTIME_MUTATION_PATTERNS: RegExp[] = [
   /^\/api\/exams\/\d+\/answers$/,
@@ -44,7 +45,8 @@ app.use(
     },
   }),
 );
-app.use(express.json());
+app.use(express.json({ limit: JSON_BODY_LIMIT }));
+app.use(express.urlencoded({ extended: true, limit: JSON_BODY_LIMIT }));
 
 app.use((req, res, next) => {
   const method = String(req.method || '').toUpperCase();
@@ -143,6 +145,16 @@ import { MulterError } from 'multer';
 
 // Global Error Handler
 app.use((err: any, req: express.Request, res: express.Response, next: express.NextFunction) => {
+  if (err?.type === 'entity.too.large' || Number(err?.status || err?.statusCode) === 413) {
+    return res.status(413).json({
+      success: false,
+      statusCode: 413,
+      message:
+        'Payload soal terlalu besar. Gunakan upload gambar/video yang tersedia dan hindari paste media langsung ke editor.',
+      errors: [],
+    });
+  }
+
   if (err instanceof MulterError) {
     if (err.code === 'LIMIT_FILE_SIZE') {
       const maybeQuestionVideoLimitMb = Number(process.env.QUESTION_VIDEO_MAX_MB || 12);
