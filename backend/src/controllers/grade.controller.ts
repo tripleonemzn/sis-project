@@ -13,6 +13,10 @@ import {
   syncAdditionalNfSeriesEntriesFromStudentGrade,
   syncScoreEntriesFromStudentGrade,
 } from '../services/scoreEntry.service'
+import {
+  computeNormalizedWeightedAverage,
+  resolveDefaultGradeWeightByCode,
+} from '../utils/gradeWeights'
 
 const DEFAULT_REPORT_SLOT_CODE = 'NONE'
 
@@ -528,6 +532,7 @@ async function syncSubjectGradeComponentsFromExamMaster(subjectId: number, acade
         id: true,
         code: true,
         name: true,
+        weight: true,
         type: true,
         isActive: true,
       },
@@ -551,9 +556,12 @@ async function syncSubjectGradeComponentsFromExamMaster(subjectId: number, acade
     const existing = existingByCode.get(normalizedCode)
     if (existing) {
       const nextName = String(master.label || '').trim() || normalizedCode.replace(/_/g, ' ')
+      const nextWeight =
+        resolveDefaultGradeWeightByCode(normalizedCode || master.type) || Number(existing.weight || 0)
       const shouldUpdate =
         String(existing.code || '') !== normalizedCode ||
         String(existing.name || '').trim() !== nextName ||
+        Number(existing.weight || 0) !== nextWeight ||
         existing.type !== master.type ||
         existing.isActive !== true
 
@@ -563,6 +571,7 @@ async function syncSubjectGradeComponentsFromExamMaster(subjectId: number, acade
           data: {
             code: normalizedCode,
             name: nextName,
+            weight: nextWeight,
             type: master.type,
             typeCode: normalizeComponentCode(master.type || normalizedCode) || normalizedCode,
             isActive: true,
@@ -579,7 +588,7 @@ async function syncSubjectGradeComponentsFromExamMaster(subjectId: number, acade
         name: String(master.label || '').trim() || normalizedCode.replace(/_/g, ' '),
         type: master.type,
         typeCode: normalizeComponentCode(master.type || normalizedCode) || normalizedCode,
-        weight: 1,
+        weight: resolveDefaultGradeWeightByCode(normalizedCode || master.type) || 1,
         isActive: true,
       },
     })
@@ -969,8 +978,7 @@ function computeDynamicReportFromGrades(
 ) {
   const slotBuckets = new Map<string, number[]>()
   const includeSlots = new Set<string>()
-  let weightedScoreSum = 0
-  let totalWeight = 0
+  const weightedComponentRows: Array<{ code?: unknown; score: number | null | undefined }> = []
 
   grades.forEach((grade) => {
     const normalizedCode = normalizeComponentCode(grade.component?.code)
@@ -989,12 +997,10 @@ function computeDynamicReportFromGrades(
     if (includeInFinal && reportSlotCode !== DEFAULT_REPORT_SLOT_CODE) {
       includeSlots.add(reportSlotCode)
     }
-
-    const weight = Number(grade.component?.weight ?? 0)
-    if (Number.isFinite(weight) && weight > 0) {
-      weightedScoreSum += grade.score * (weight / 100)
-      totalWeight += weight
-    }
+    weightedComponentRows.push({
+      code: normalizedCode || grade.component?.type,
+      score: grade.score,
+    })
   })
 
   const slotScoresByCode: Record<string, number | null> = {}
@@ -1003,17 +1009,20 @@ function computeDynamicReportFromGrades(
   })
   const legacySlotScores = buildLegacySlotScoreMap(slotScoresByCode)
 
-  const selectedSlotScores = Array.from(includeSlots)
-    .map((slot) => slotScoresByCode[slot])
-    .filter((value): value is number => value !== null && value !== undefined)
-
   let finalScore = 0
-  if (selectedSlotScores.length > 0) {
-    finalScore = selectedSlotScores.reduce((sum, value) => sum + value, 0) / selectedSlotScores.length
-  } else if (totalWeight > 0 && totalWeight !== 100) {
-    finalScore = (weightedScoreSum / totalWeight) * 100
-  } else if (totalWeight > 0) {
-    finalScore = weightedScoreSum
+  const weightedIncludedScore = computeNormalizedWeightedAverage(
+    Array.from(includeSlots).map((slot) => ({
+      code: slot,
+      score: slotScoresByCode[slot],
+    })),
+  )
+  if (weightedIncludedScore !== null) {
+    finalScore = weightedIncludedScore
+  } else {
+    const weightedComponentScore = computeNormalizedWeightedAverage(weightedComponentRows)
+    if (weightedComponentScore !== null) {
+      finalScore = weightedComponentScore
+    }
   }
 
   return {
@@ -1482,19 +1491,24 @@ function recomputeFinalScoreFromSlots(
   includeSlots: Set<string>,
   fallbackScore: number,
 ): number {
-  const selectedSlotScores = Array.from(includeSlots)
-    .map((slot) => slotScores[slot])
-    .filter((value): value is number => value !== null && value !== undefined)
-
-  if (selectedSlotScores.length > 0) {
-    return selectedSlotScores.reduce((sum, value) => sum + value, 0) / selectedSlotScores.length
+  const weightedIncludedScore = computeNormalizedWeightedAverage(
+    Array.from(includeSlots).map((slot) => ({
+      code: slot,
+      score: slotScores[slot],
+    })),
+  )
+  if (weightedIncludedScore !== null) {
+    return weightedIncludedScore
   }
 
-  const allSlotScores = Object.values(slotScores).filter(
-    (value): value is number => value !== null && value !== undefined,
+  const weightedAllSlotScore = computeNormalizedWeightedAverage(
+    Object.entries(slotScores).map(([slot, score]) => ({
+      code: slot,
+      score,
+    })),
   )
-  if (allSlotScores.length > 0) {
-    return allSlotScores.reduce((sum, value) => sum + value, 0) / allSlotScores.length
+  if (weightedAllSlotScore !== null) {
+    return weightedAllSlotScore
   }
 
   return fallbackScore

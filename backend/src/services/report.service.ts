@@ -5,6 +5,7 @@ import {
   getHistoricalStudentSnapshot,
   listHistoricalStudentsForClass,
 } from '../utils/studentAcademicHistory';
+import { computeNormalizedWeightedAverage } from '../utils/gradeWeights';
 
 const normalizeLedgerCode = (raw: unknown): string =>
   String(raw || '')
@@ -1022,8 +1023,13 @@ export class ReportService {
             formatifAvg = fallbackFormative;
         }
 
-        // Final score for midterm report is derived from the weighted aggregate.
-        const finalScore = (formatifAvg + sbtsScore) / 2;
+        // Final score for midterm report follows the active component weighting,
+        // normalized against whichever slots are already available.
+        const finalScore =
+          computeNormalizedWeightedAverage([
+            { code: formativeSlotCode, score: formatifAvg },
+            { code: midtermSlotCode, score: sbtsScore },
+          ]) ?? 0;
 
         col1Score = formatifAvg > 0 ? Math.round(formatifAvg) : null;
         col1Predicate = formatifAvg > 0 ? getPredicate(formatifAvg, kkm) : null;
