@@ -349,6 +349,9 @@ export const TeacherGradesPage = () => {
   const [formativePendingSlots, setFormativePendingSlots] = useState<Record<number, number>>({});
   const [isFilterRestoreDone, setIsFilterRestoreDone] = useState(false);
   const restoredAssignmentRef = useRef<string | undefined>(undefined);
+  const gradeComponentRequestRef = useRef(0);
+  const studentsRequestRef = useRef(0);
+  const existingGradesRequestRef = useRef(0);
   
   const selectedAcademicYearNum = Number(selectedAcademicYear);
   const assignmentOptions = useMemo(() => {
@@ -648,6 +651,7 @@ export const TeacherGradesPage = () => {
   }, [filteredComponents, selectedAssignmentObj, selectedComponent]);
 
   const fetchGradeComponents = async () => {
+    const requestId = ++gradeComponentRequestRef.current;
     try {
       const assignment = selectedAssignmentObj;
       if (!assignment || !selectedAcademicYear || !selectedSemester) return;
@@ -664,6 +668,8 @@ export const TeacherGradesPage = () => {
           ? payload.data
           : (Array.isArray(payload) ? payload : []);
 
+      if (requestId !== gradeComponentRequestRef.current) return;
+
       const sorted = [...components].sort((a, b) => {
         const aOrder = Number(a.displayOrder ?? 999);
         const bOrder = Number(b.displayOrder ?? 999);
@@ -678,6 +684,7 @@ export const TeacherGradesPage = () => {
         return exists ? previous : '';
       });
     } catch (error) {
+      if (requestId !== gradeComponentRequestRef.current) return;
       console.error('Fetch grade components error:', error);
       toast.error('Gagal memuat komponen nilai dinamis');
       setGradeComponents([]);
@@ -686,6 +693,7 @@ export const TeacherGradesPage = () => {
   };
 
   const fetchStudents = async () => {
+    const requestId = ++studentsRequestRef.current;
     try {
       if (!selectedAssignment) return;
       
@@ -714,6 +722,8 @@ export const TeacherGradesPage = () => {
         
         const usersResponse = usersRes as { data?: User[] } | User[];
         const studentsData = 'data' in usersResponse && Array.isArray(usersResponse.data) ? usersResponse.data : (Array.isArray(usersResponse) ? usersResponse : []);
+
+        if (requestId !== studentsRequestRef.current) return;
         
         if (Array.isArray(studentsData)) {
             setStudents(studentsData.map((s: User) => ({
@@ -733,12 +743,14 @@ export const TeacherGradesPage = () => {
         }
       }
     } catch (error) {
+      if (requestId !== studentsRequestRef.current) return;
       console.error('Fetch students error:', error);
       toast.error('Gagal memuat data siswa');
     }
   };
 
   const fetchExistingGrades = async () => {
+    const requestId = ++existingGradesRequestRef.current;
     try {
       const assignment = selectedAssignmentObj;
       if (!assignment) return;
@@ -776,6 +788,7 @@ export const TeacherGradesPage = () => {
         }
       });
       const allGrades = latestGradesByKey.size > 0 ? Array.from(latestGradesByKey.values()) : rawGrades;
+      if (requestId !== existingGradesRequestRef.current) return;
       
       try {
           const reportRes = await gradeService.getReportGrades({
@@ -810,10 +823,12 @@ export const TeacherGradesPage = () => {
                   }
               });
           }
+          if (requestId !== existingGradesRequestRef.current) return;
           setReportGradeMap(nextReportMap);
           setDescriptions(isFinalComponent ? nextDescriptions : {});
           setFormativePendingSlots({});
       } catch (e) {
+          if (requestId !== existingGradesRequestRef.current) return;
           console.error('Error fetching report grades', e);
           setReportGradeMap({});
           setDescriptions({});
@@ -884,11 +899,13 @@ export const TeacherGradesPage = () => {
               ? formativeAverage.toFixed(2)
               : existingScore,
           formativeSeriesInput,
-        };
+          };
       });
+      if (requestId !== existingGradesRequestRef.current) return;
       setGrades(nextGrades);
 
     } catch (error) {
+      if (requestId !== existingGradesRequestRef.current) return;
       console.error('Fetch existing grades error:', error);
     }
   };
