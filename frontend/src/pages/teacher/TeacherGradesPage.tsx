@@ -1550,9 +1550,6 @@ export const TeacherGradesPage = () => {
                                                         <p className="font-medium text-slate-900">
                                                           {previewCompetencyDescription || 'Deskripsi belum diatur di tombol + Deskripsi.'}
                                                         </p>
-                                                        <p className="mt-1 text-xs text-slate-500">
-                                                          Read only. Ubah capaian kompetensi melalui tombol + Deskripsi.
-                                                        </p>
                                                       </div>
                                                   </td>
                                               </>

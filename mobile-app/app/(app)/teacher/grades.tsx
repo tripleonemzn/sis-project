@@ -1321,7 +1321,7 @@ export default function TeacherGradesScreen() {
                                       const backendDescription = reportMap[student.id]?.description?.trim();
                                       const fallbackDescription =
                                         deriveCompetencyDescription(effectiveFinal, selectedKkm, competencySettings);
-                                      return `Read only • Predikat ${predicate} • ${backendDescription || fallbackDescription || 'Deskripsi belum diatur di + Deskripsi'} • Nilai ${toFixedOrInt(effectiveFinal)}`;
+                                      return `Predikat ${predicate} • ${backendDescription || fallbackDescription || 'Deskripsi belum diatur di + Deskripsi'} • Nilai ${toFixedOrInt(effectiveFinal)}`;
                                     })()}
                                   </Text>
                                 </View>
