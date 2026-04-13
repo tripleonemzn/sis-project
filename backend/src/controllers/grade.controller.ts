@@ -2076,164 +2076,182 @@ export const syncReportGrade = async (
   academicYearId: number,
   semester: Semester
 ) => {
-  try {
-    // 1. Get all grades for this student/subject/semester
-    const grades = await prisma.studentGrade.findMany({
-      where: {
-        studentId,
-        subjectId,
-        academicYearId,
-        semester,
+  // 1. Get all grades for this student/subject/semester
+  const grades = await prisma.studentGrade.findMany({
+    where: {
+      studentId,
+      subjectId,
+      academicYearId,
+      semester,
+    },
+    include: { component: true }
+  });
+
+  const [componentRuleMap, academicYear] = await Promise.all([
+    getExamComponentRuleMap(academicYearId),
+    prisma.academicYear.findUnique({
+      where: { id: academicYearId },
+      select: {
+        semester1Start: true,
+        semester1End: true,
+        semester2Start: true,
+        semester2End: true,
       },
-      include: { component: true }
-    });
+    }),
+  ])
 
-    const [componentRuleMap, academicYear] = await Promise.all([
-      getExamComponentRuleMap(academicYearId),
-      prisma.academicYear.findUnique({
-        where: { id: academicYearId },
-        select: {
-          semester1Start: true,
-          semester1End: true,
-          semester2Start: true,
-          semester2End: true,
-        },
-      }),
-    ])
+  if (!academicYear) {
+    throw new ApiError(404, 'Academic year not found')
+  }
 
-    if (!academicYear) {
-      throw new ApiError(404, 'Academic year not found')
+  const includeSlots = resolveIncludedReportSlots(componentRuleMap)
+  const primarySlots = resolvePrimarySlotCodesFromRules(componentRuleMap)
+  const semesterRange = resolveSemesterRange(academicYear, semester)
+  const programSlotMap = await getProgramReportSlotMap(academicYearId, componentRuleMap)
+
+  const activeGrades = grades.filter((grade) => grade.component?.isActive !== false)
+  const dynamicResult = computeDynamicReportFromGrades(activeGrades, componentRuleMap)
+  const scoreEntryRows = await collectDynamicScoreEntryRows({
+    studentId,
+    subjectId,
+    academicYearId,
+    semester,
+  })
+  const entrySlotScores = computeDynamicSlotScoresFromScoreEntries(scoreEntryRows)
+  const formativeReferenceScores = computeFormativeReferenceScoresFromScoreEntries({
+    rows: scoreEntryRows,
+    formativeSlotCode: primarySlots.formative,
+    midtermSlotCode: primarySlots.midterm,
+    finalSlotCode: primarySlots.final,
+  })
+
+  Object.entries(entrySlotScores).forEach(([slot, value]) => {
+    if (value !== undefined) {
+      dynamicResult.slotScoresByCode[slot] = value
     }
+  })
 
-    const includeSlots = resolveIncludedReportSlots(componentRuleMap)
-    const primarySlots = resolvePrimarySlotCodesFromRules(componentRuleMap)
-    const semesterRange = resolveSemesterRange(academicYear, semester)
-    const programSlotMap = await getProgramReportSlotMap(academicYearId, componentRuleMap)
+  const dynamicFormativeScores = await collectDynamicFormativeScores({
+    studentId,
+    subjectId,
+    academicYearId,
+    semester,
+    semesterRange,
+    programSlotMap,
+    formativeSlotCode: primarySlots.formative,
+  })
 
-    const activeGrades = grades.filter((grade) => grade.component?.isActive !== false)
-    const dynamicResult = computeDynamicReportFromGrades(activeGrades, componentRuleMap)
-    const scoreEntryRows = await collectDynamicScoreEntryRows({
-      studentId,
-      subjectId,
-      academicYearId,
-      semester,
-    })
-    const entrySlotScores = computeDynamicSlotScoresFromScoreEntries(scoreEntryRows)
-    const formativeReferenceScores = computeFormativeReferenceScoresFromScoreEntries({
-      rows: scoreEntryRows,
-      formativeSlotCode: primarySlots.formative,
-      midtermSlotCode: primarySlots.midterm,
-      finalSlotCode: primarySlots.final,
-    })
+  if (entrySlotScores[primarySlots.formative] === undefined && dynamicFormativeScores.length > 0) {
+    dynamicResult.slotScoresByCode[primarySlots.formative] = calculateAverage(dynamicFormativeScores)
+  }
 
-    Object.entries(entrySlotScores).forEach(([slot, value]) => {
-      if (value !== undefined) {
-        dynamicResult.slotScoresByCode[slot] = value
-      }
-    })
+  const midtermFormativeReference =
+    formativeReferenceScores.midterm ??
+    dynamicResult.slotScoresByCode[primarySlots.formative] ??
+    calculateAverage(dynamicFormativeScores)
+  const finalFormativeReference =
+    formativeReferenceScores.final ??
+    dynamicResult.slotScoresByCode[primarySlots.formative] ??
+    calculateAverage(dynamicFormativeScores)
 
-    const dynamicFormativeScores = await collectDynamicFormativeScores({
-      studentId,
-      subjectId,
-      academicYearId,
-      semester,
-      semesterRange,
-      programSlotMap,
-      formativeSlotCode: primarySlots.formative,
-    })
+  if (midtermFormativeReference !== null) {
+    dynamicResult.slotScoresByCode[
+      buildFormativeReferenceSlotCode(primarySlots.formative, 'MIDTERM')
+    ] = midtermFormativeReference
+  }
+  if (finalFormativeReference !== null) {
+    dynamicResult.slotScoresByCode[
+      buildFormativeReferenceSlotCode(primarySlots.formative, 'FINAL')
+    ] = finalFormativeReference
+  }
 
-    if (entrySlotScores[primarySlots.formative] === undefined && dynamicFormativeScores.length > 0) {
-      dynamicResult.slotScoresByCode[primarySlots.formative] = calculateAverage(dynamicFormativeScores)
-    }
+  dynamicResult.legacySlotScores = buildLegacySlotScoreMap(dynamicResult.slotScoresByCode)
+  let finalScore = recomputeFinalScoreFromSlots(
+    dynamicResult.slotScoresByCode,
+    includeSlots,
+    dynamicResult.finalScore,
+  )
+  const reportScores = {
+    FORMATIVE: dynamicResult.slotScoresByCode[primarySlots.formative] ?? null,
+    MIDTERM: dynamicResult.slotScoresByCode[primarySlots.midterm] ?? null,
+    FINAL: dynamicResult.slotScoresByCode[primarySlots.final] ?? null,
+  }
 
-    const midtermFormativeReference =
-      formativeReferenceScores.midterm ??
-      dynamicResult.slotScoresByCode[primarySlots.formative] ??
-      calculateAverage(dynamicFormativeScores)
-    const finalFormativeReference =
-      formativeReferenceScores.final ??
-      dynamicResult.slotScoresByCode[primarySlots.formative] ??
-      calculateAverage(dynamicFormativeScores)
+  // Get KKM
+  let kkm = 75;
+  const studentClassId = await resolveStudentClassId(studentId, academicYearId)
 
-    if (midtermFormativeReference !== null) {
-      dynamicResult.slotScoresByCode[
-        buildFormativeReferenceSlotCode(primarySlots.formative, 'MIDTERM')
-      ] = midtermFormativeReference
-    }
-    if (finalFormativeReference !== null) {
-      dynamicResult.slotScoresByCode[
-        buildFormativeReferenceSlotCode(primarySlots.formative, 'FINAL')
-      ] = finalFormativeReference
-    }
+  if (studentClassId) {
+      const assignment = await prisma.teacherAssignment.findFirst({
+          where: {
+              classId: studentClassId,
+              subjectId: subjectId,
+              academicYearId: academicYearId
+          },
+          select: { kkm: true }
+      });
+      if (assignment) kkm = assignment.kkm;
+  }
 
-    dynamicResult.legacySlotScores = buildLegacySlotScoreMap(dynamicResult.slotScoresByCode)
-    let finalScore = recomputeFinalScoreFromSlots(
-      dynamicResult.slotScoresByCode,
-      includeSlots,
-      dynamicResult.finalScore,
-    )
-    const reportScores = {
-      FORMATIVE: dynamicResult.slotScoresByCode[primarySlots.formative] ?? null,
-      MIDTERM: dynamicResult.slotScoresByCode[primarySlots.midterm] ?? null,
-      FINAL: dynamicResult.slotScoresByCode[primarySlots.final] ?? null,
-    }
+  const predicate = calculatePredicate(finalScore, kkm);
 
-    // Get KKM
-    let kkm = 75;
-    const studentClassId = await resolveStudentClassId(studentId, academicYearId)
+  // 4. US Score Logic (dinamis dari slot score, tanpa hardcode nama mapel)
+  const usScore = computeUsScoreFromSlotScores(dynamicResult.slotScoresByCode);
 
-    if (studentClassId) {
-        const assignment = await prisma.teacherAssignment.findFirst({
-            where: {
-                classId: studentClassId,
-                subjectId: subjectId,
-                academicYearId: academicYearId
-            },
-            select: { kkm: true }
-        });
-        if (assignment) kkm = assignment.kkm;
-    }
+  // 5. Upsert ReportGrade
+  const existing = await prisma.reportGrade.findFirst({
+      where: { studentId, subjectId, academicYearId, semester }
+  });
 
-    const predicate = calculatePredicate(finalScore, kkm);
+  if (existing) {
+      await prisma.reportGrade.update({
+          where: { id: existing.id },
+          data: {
+              formatifScore: reportScores.FORMATIVE,
+              sbtsScore: reportScores.MIDTERM,
+              sasScore: reportScores.FINAL,
+              slotScores: dynamicResult.slotScoresByCode,
+              finalScore,
+              predicate,
+              usScore
+          } as any
+      });
+  } else {
+      await prisma.reportGrade.create({
+          data: {
+              studentId, subjectId, academicYearId, semester,
+              formatifScore: reportScores.FORMATIVE,
+              sbtsScore: reportScores.MIDTERM,
+              sasScore: reportScores.FINAL,
+              slotScores: dynamicResult.slotScoresByCode,
+              finalScore,
+              predicate,
+              usScore
+          } as any
+      });
+  }
+};
 
-    // 4. US Score Logic (dinamis dari slot score, tanpa hardcode nama mapel)
-    const usScore = computeUsScoreFromSlotScores(dynamicResult.slotScoresByCode);
+type ReportSyncResult = {
+  success: boolean;
+  error: string | null;
+};
 
-    // 5. Upsert ReportGrade
-    const existing = await prisma.reportGrade.findFirst({
-        where: { studentId, subjectId, academicYearId, semester }
-    });
-
-    if (existing) {
-        await prisma.reportGrade.update({
-            where: { id: existing.id },
-            data: {
-                formatifScore: reportScores.FORMATIVE,
-                sbtsScore: reportScores.MIDTERM,
-                sasScore: reportScores.FINAL,
-                slotScores: dynamicResult.slotScoresByCode,
-                finalScore,
-                predicate,
-                usScore
-            } as any
-        });
-    } else {
-        await prisma.reportGrade.create({
-            data: {
-                studentId, subjectId, academicYearId, semester,
-                formatifScore: reportScores.FORMATIVE,
-                sbtsScore: reportScores.MIDTERM,
-                sasScore: reportScores.FINAL,
-                slotScores: dynamicResult.slotScoresByCode,
-                finalScore,
-                predicate,
-                usScore
-            } as any
-        });
-    }
+const syncReportGradeSafely = async (
+  studentId: number,
+  subjectId: number,
+  academicYearId: number,
+  semester: Semester,
+): Promise<ReportSyncResult> => {
+  try {
+    await syncReportGrade(studentId, subjectId, academicYearId, semester);
+    return { success: true, error: null };
   } catch (error) {
     console.error('Error syncing report grade:', error);
-    // Don't throw, just log. We don't want to block the main save operation.
+    return {
+      success: false,
+      error: error instanceof Error ? error.message : 'Sinkronisasi report grade gagal',
+    };
   }
 };
 
@@ -3369,16 +3387,12 @@ export const createOrUpdateStudentGrade = async (req: Request, res: Response) =>
       if (existingGrades.length > 0) {
         await cleanupStudentGradeDuplicates(existingGrades.map((row) => row.id))
       }
-      try {
-        await syncReportGrade(
-          Number(student_id),
-          Number(subject_id),
-          Number(academic_year_id),
-          semester as Semester
-        )
-      } catch (error) {
-        console.error('Failed to sync report grade after deleting student grade:', error)
-      }
+      const reportSync = await syncReportGradeSafely(
+        Number(student_id),
+        Number(subject_id),
+        Number(academic_year_id),
+        semester as Semester
+      )
       return ApiResponseHelper.success(
         res,
         {
@@ -3387,8 +3401,13 @@ export const createOrUpdateStudentGrade = async (req: Request, res: Response) =>
           subject_id: Number(subject_id),
           component_id: Number(grade_component_id),
           semester,
+          reportSync,
         },
-        existingGrade ? 'Student grade deleted successfully' : 'No student grade found to delete',
+        reportSync.success
+          ? existingGrade
+            ? 'Student grade deleted successfully'
+            : 'No student grade found to delete'
+          : 'Nilai tersimpan, tetapi sinkronisasi rapor gagal. Silakan cek ulang.',
       )
     }
 
@@ -3481,19 +3500,23 @@ export const createOrUpdateStudentGrade = async (req: Request, res: Response) =>
       console.error('Failed to sync score entries from student grade:', scoreEntryError)
     }
 
-    // Sync Report Grade
-    try {
-      await syncReportGrade(
-        Number(student_id),
-        Number(subject_id),
-        Number(academic_year_id),
-        semester as Semester
-      )
-    } catch (error) {
-      console.error('Failed to sync report grade:', error)
-    }
+    const reportSync = await syncReportGradeSafely(
+      Number(student_id),
+      Number(subject_id),
+      Number(academic_year_id),
+      semester as Semester
+    )
 
-    return ApiResponseHelper.success(res, grade, 'Student grade saved successfully')
+    return ApiResponseHelper.success(
+      res,
+      {
+        ...grade,
+        reportSync,
+      },
+      reportSync.success
+        ? 'Student grade saved successfully'
+        : 'Nilai tersimpan, tetapi sinkronisasi rapor gagal. Silakan cek ulang.',
+    )
   } catch (error) {
     console.error('Create/Update student grade error:', error)
     if (error instanceof ApiError) throw error
@@ -3626,10 +3649,19 @@ export const bulkCreateOrUpdateStudentGrades = async (req: Request, res: Respons
     const results = {
       success: 0,
       failed: 0,
-      errors: [] as any[]
+      errors: [] as any[],
+      reportSync: {
+        success: 0,
+        failed: 0,
+        errors: [] as Array<{ student_id: number; subject_id: number; academic_year_id: number; semester: Semester; error: string }>,
+      },
     }
 
     const uniqueKeys = new Set<string>();
+    const pendingDescriptions = new Map<
+      string,
+      { studentId: number; subjectId: number; academicYearId: number; semester: Semester; description: string }
+    >();
     const componentConfigCache = new Map<
       string,
       { type: GradeComponentType; code?: string | null; entryMode: GradeEntryMode }
@@ -3720,40 +3752,17 @@ export const bulkCreateOrUpdateStudentGrades = async (req: Request, res: Respons
           additionalSeriesScores = seriesValues.slice(6)
         }
 
-        // Handle ReportGrade description update if provided
         if (description !== undefined) {
-          // Find or create ReportGrade to update description
-          const reportGrade = await prisma.reportGrade.findFirst({
-            where: {
+          pendingDescriptions.set(
+            `${student_id}-${subject_id}-${academic_year_id}-${semester}`,
+            {
               studentId: Number(student_id),
               subjectId: Number(subject_id),
               academicYearId: Number(academic_year_id),
-              semester: semester as Semester
-            }
-          })
-
-          if (reportGrade) {
-            await prisma.reportGrade.update({
-              where: { id: reportGrade.id },
-              data: { description: description }
-            })
-          } else {
-            // If ReportGrade doesn't exist, we might need to create it or wait for generation
-            // Ideally it should exist or be created via generateReportGrades.
-            // But let's create a placeholder if it doesn't exist, preserving the description.
-            // However, creating it without scores might be premature.
-            // Let's assume we only update if it exists or create with minimal data.
-            await prisma.reportGrade.create({
-              data: {
-                studentId: Number(student_id),
-                subjectId: Number(subject_id),
-                academicYearId: Number(academic_year_id),
-                semester: semester as Semester,
-                finalScore: 0, // Default
-                description: description
-              }
-            })
-          }
+              semester: semester as Semester,
+              description: String(description || '').trim(),
+            },
+          )
         }
 
         // Check if grade already exists
@@ -3847,19 +3856,48 @@ export const bulkCreateOrUpdateStudentGrades = async (req: Request, res: Respons
     // But for consistency, we might want to await. Given it's a few students, await is safer.
     const syncPromises = Array.from(uniqueKeys).map(async (key) => {
       const [studentId, subjectId, academicYearId, semester] = key.split('-')
-      try {
-        await syncReportGrade(
-          Number(studentId),
-          Number(subjectId),
-          Number(academicYearId),
-          semester as Semester
-        )
-      } catch (err) {
-        console.error(`Failed to sync report grade for ${key}:`, err)
+      const syncResult = await syncReportGradeSafely(
+        Number(studentId),
+        Number(subjectId),
+        Number(academicYearId),
+        semester as Semester
+      )
+      if (syncResult.success) {
+        results.reportSync.success += 1
+      } else {
+        results.reportSync.failed += 1
+        results.reportSync.errors.push({
+          student_id: Number(studentId),
+          subject_id: Number(subjectId),
+          academic_year_id: Number(academicYearId),
+          semester: semester as Semester,
+          error: syncResult.error || 'Sinkronisasi report grade gagal',
+        })
       }
     })
 
     await Promise.all(syncPromises)
+
+    if (pendingDescriptions.size > 0) {
+      await Promise.all(
+        Array.from(pendingDescriptions.values()).map(async (item) => {
+          const reportGrade = await prisma.reportGrade.findFirst({
+            where: {
+              studentId: item.studentId,
+              subjectId: item.subjectId,
+              academicYearId: item.academicYearId,
+              semester: item.semester,
+            },
+            select: { id: true },
+          })
+          if (!reportGrade) return
+          await prisma.reportGrade.update({
+            where: { id: reportGrade.id },
+            data: { description: item.description || null },
+          })
+        }),
+      )
+    }
 
     return ApiResponseHelper.success(res, results, 'Bulk grade operation completed')
   } catch (error) {

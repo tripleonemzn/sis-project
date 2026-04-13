@@ -626,6 +626,12 @@ export default function TeacherGradesScreen() {
           queryKey: ['mobile-grade-report-rows', user?.id, selectedAssignmentId, semester],
         }),
       ]);
+      if ((result.reportSync?.failed || 0) > 0) {
+        notifySuccess(
+          `Nilai tersimpan. Entri berhasil: ${result.success}, gagal: ${result.failed}, tetapi sinkronisasi rapor gagal pada ${result.reportSync?.failed} siswa.`,
+        );
+        return;
+      }
       notifySuccess(`Simpan nilai selesai. Berhasil: ${result.success}, Gagal: ${result.failed}`);
     },
     onError: (error: unknown) => {

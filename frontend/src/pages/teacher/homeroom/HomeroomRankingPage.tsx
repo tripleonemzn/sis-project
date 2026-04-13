@@ -34,9 +34,9 @@ export const HomeroomRankingPage = ({ classId, academicYearId, semester }: Homer
   const { data, isLoading } = useQuery({
     queryKey: ['class-rankings', classId, academicYearId, semester],
     queryFn: () => reportService.getClassRankings({ classId, academicYearId, semester }),
-    staleTime: 0,
-    refetchOnWindowFocus: true,
-    refetchOnMount: true
+    staleTime: 60_000,
+    refetchOnWindowFocus: false,
+    refetchOnMount: false,
   });
 
   const handlePrint = () => {

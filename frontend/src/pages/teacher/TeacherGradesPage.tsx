@@ -89,6 +89,17 @@ type GradeBulkPayload = {
 
 const TEACHER_GRADES_FILTER_STORAGE_KEY = 'teacher-grades:filters:v1';
 
+type BulkGradeSaveResult = {
+  success?: number;
+  failed?: number;
+  errors?: Array<{ student_id: number; error: string }>;
+  reportSync?: {
+    success?: number;
+    failed?: number;
+    errors?: Array<{ student_id: number; error: string }>;
+  };
+};
+
 const parseFormativeSeriesInput = (raw: string): { values: number[]; invalid: boolean } => {
   const cleaned = String(raw || '').trim();
   if (!cleaned) return { values: [], invalid: false };
@@ -1121,7 +1132,15 @@ export const TeacherGradesPage = () => {
 
                 // Execute save in background (or await if we made this async)
                 gradeService.bulkInputGrades({ grades: gradesPayload })
-                    .then(() => toast.success('Deskripsi otomatis disimpan ke database'))
+                    .then((result: BulkGradeSaveResult) => {
+                      if ((result?.reportSync?.failed || 0) > 0) {
+                        toast.error(
+                          `Deskripsi tersimpan, tetapi sinkronisasi rapor gagal pada ${result.reportSync?.failed} siswa.`,
+                        );
+                        return;
+                      }
+                      toast.success('Deskripsi otomatis disimpan ke database');
+                    })
                     .catch(err => console.error('Auto-save description error:', err));
             }
         }
@@ -1202,8 +1221,14 @@ export const TeacherGradesPage = () => {
 
     setSaving(true);
     try {
-        await gradeService.bulkInputGrades({ grades: gradesPayload });
-        toast.success('Nilai berhasil disimpan');
+        const result = (await gradeService.bulkInputGrades({ grades: gradesPayload })) as BulkGradeSaveResult;
+        if ((result?.reportSync?.failed || 0) > 0) {
+          toast.error(
+            `Nilai tersimpan, tetapi sinkronisasi rapor gagal pada ${result.reportSync?.failed} siswa. Silakan cek ulang.`,
+          );
+        } else {
+          toast.success('Nilai berhasil disimpan');
+        }
         fetchExistingGrades();
     } catch (error: unknown) {
         const runtimeError = error as { message?: string };

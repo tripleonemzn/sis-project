@@ -57,6 +57,24 @@ interface LedgerResponse {
   };
 }
 
+const hasLedgerSlotEvidence = (slotScores?: Record<string, number | null>) =>
+  !!slotScores &&
+  Object.values(slotScores).some((value) => value !== null && value !== undefined);
+
+const hasLedgerScoreEvidence = (grades?: LedgerGrade) => {
+  if (!grades) return false;
+  return (
+    hasLedgerSlotEvidence(grades.slotScores) ||
+    [grades.nf1, grades.nf2, grades.nf3, grades.nf4, grades.nf5, grades.nf6].some(
+      (value) => value !== null && value !== undefined,
+    ) ||
+    [grades.formatif, grades.sbts, grades.finalComponent].some(
+      (value) => value !== null && value !== undefined,
+    ) ||
+    (grades.finalScore !== null && grades.finalScore !== undefined && grades.finalScore !== 0)
+  );
+};
+
 const normalizeLedgerCode = (raw: unknown): string =>
   String(raw || '')
     .trim()
@@ -227,17 +245,28 @@ export const HomeroomLedgerPage = ({
 
                     if (isFinalView) {
                       col1Value =
-                        grades?.finalScore !== null && grades?.finalScore !== undefined
+                        hasLedgerScoreEvidence(grades) &&
+                        grades?.finalScore !== null &&
+                        grades?.finalScore !== undefined
                           ? Math.round(grades.finalScore)
                           : '-';
-                      col2Value = (grades?.description && grades.description.trim() !== '') ? grades.description : '-';
+                      col2Value =
+                        hasLedgerScoreEvidence(grades) &&
+                        grades?.description &&
+                        grades.description.trim() !== ''
+                          ? grades.description
+                          : '-';
                     } else {
                       col1Value =
-                        grades?.formatif !== null && grades?.formatif !== undefined
+                        hasLedgerScoreEvidence(grades) &&
+                        grades?.formatif !== null &&
+                        grades?.formatif !== undefined
                           ? Math.round(grades.formatif)
                           : '-';
                       col2Value =
-                        grades?.sbts !== null && grades?.sbts !== undefined
+                        hasLedgerScoreEvidence(grades) &&
+                        grades?.sbts !== null &&
+                        grades?.sbts !== undefined
                           ? Math.round(grades.sbts)
                           : '-';
                     }

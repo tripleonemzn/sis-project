@@ -1481,6 +1481,12 @@ export class ReportService {
           ).trim()
         : 'Capaian Kompetensi';
 
+    const hasAnyNumericValue = (values: Array<number | null | undefined>) =>
+      values.some((value) => value !== null && value !== undefined);
+
+    const hasSlotScoreEvidence = (slotScores: Record<string, number | null>) =>
+      Object.values(slotScores).some((value) => value !== null && value !== undefined);
+
     // 4. Transform data
     const students = classStudents.map(student => {
       const grades: Record<number, any> = {};
@@ -1511,6 +1517,28 @@ export class ReportService {
           finalSlotCode,
           resolveLegacyFinalScore(reportScore, finalSlotCode),
         );
+        const hasStudentGradeEvidence = hasAnyNumericValue([
+          sGrade?.score,
+          sGrade?.nf1,
+          sGrade?.nf2,
+          sGrade?.nf3,
+          sGrade?.nf4,
+          sGrade?.nf5,
+          sGrade?.nf6,
+        ]);
+        const hasReportComponentEvidence = hasAnyNumericValue([
+          rGrade?.formatifScore,
+          rGrade?.sbtsScore,
+          rGrade?.sasScore,
+          reportScore?.usScore ?? null,
+        ]);
+        const hasAnyEvidence =
+          hasStudentGradeEvidence ||
+          hasReportComponentEvidence ||
+          hasSlotScoreEvidence(slotScores) ||
+          (rGrade?.finalScore !== null && rGrade?.finalScore !== undefined && rGrade.finalScore !== 0);
+        const normalizedFinalScore =
+          isUsReport ? reportScore?.usScore ?? rGrade?.finalScore ?? null : rGrade?.finalScore ?? null;
 
         grades[subject.id] = {
           nf1: sGrade?.nf1 ?? null,
@@ -1519,13 +1547,13 @@ export class ReportService {
           nf4: sGrade?.nf4 ?? null,
           nf5: sGrade?.nf5 ?? null,
           nf6: sGrade?.nf6 ?? null,
-          formatif: formatifAvg,
-          sbts: midtermScore,
-          finalComponent: finalComponentScore,
-          finalScore: isUsReport ? reportScore?.usScore ?? rGrade?.finalScore ?? null : rGrade?.finalScore ?? null,
-          usScore: reportScore?.usScore ?? null,
-          predicate: rGrade?.predicate ?? null,
-          description: rGrade?.description ?? null,
+          formatif: hasAnyEvidence ? formatifAvg : null,
+          sbts: hasAnyEvidence ? midtermScore : null,
+          finalComponent: hasAnyEvidence ? finalComponentScore : null,
+          finalScore: hasAnyEvidence ? normalizedFinalScore : null,
+          usScore: hasAnyEvidence ? reportScore?.usScore ?? null : null,
+          predicate: hasAnyEvidence ? rGrade?.predicate ?? null : null,
+          description: hasAnyEvidence ? rGrade?.description ?? null : null,
           slotScores,
         };
       });

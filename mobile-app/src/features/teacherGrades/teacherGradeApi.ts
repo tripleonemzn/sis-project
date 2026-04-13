@@ -91,6 +91,17 @@ type BulkSaveResponse = {
     success: number;
     failed: number;
     errors: Array<{ student_id: number; error: string }>;
+    reportSync?: {
+      success: number;
+      failed: number;
+      errors: Array<{
+        student_id: number;
+        subject_id: number;
+        academic_year_id: number;
+        semester: 'ODD' | 'EVEN';
+        error: string;
+      }>;
+    };
   };
 };
 
