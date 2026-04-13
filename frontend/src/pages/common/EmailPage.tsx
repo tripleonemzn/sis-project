@@ -324,10 +324,41 @@ const buildEmailHtmlDocument = (value?: string | null): string => {
     </html>`;
 };
 
-const EmailHtmlPreview = ({ html }: { html: string }) => {
+const EmailHtmlPreview = ({
+  html,
+  onImagePress,
+}: {
+  html: string;
+  onImagePress?: (src: string) => void;
+}) => {
   const iframeRef = useRef<HTMLIFrameElement | null>(null);
   const [height, setHeight] = useState(EMAIL_HTML_FRAME_MIN_HEIGHT);
   const srcDoc = useMemo(() => buildEmailHtmlDocument(html), [html]);
+
+  const bindImagePreviewHandlers = useCallback(() => {
+    const frame = iframeRef.current;
+    if (!frame || typeof onImagePress !== 'function') return;
+
+    try {
+      const doc = frame.contentDocument;
+      const images = Array.from(doc?.images || []);
+      images.forEach((image) => {
+        if (image.dataset.sisEmailPreviewBound === '1') return;
+        image.dataset.sisEmailPreviewBound = '1';
+        image.style.cursor = 'zoom-in';
+        image.addEventListener('click', (event) => {
+          event.preventDefault();
+          event.stopPropagation();
+          const resolvedSrc = String(image.currentSrc || image.src || '').trim();
+          if (resolvedSrc) {
+            onImagePress(resolvedSrc);
+          }
+        });
+      });
+    } catch {
+      // Ignore iframe access issues and keep email readable.
+    }
+  }, [onImagePress]);
 
   const syncHeight = useCallback(() => {
     const frame = iframeRef.current;
@@ -335,6 +366,7 @@ const EmailHtmlPreview = ({ html }: { html: string }) => {
 
     try {
       const doc = frame.contentDocument;
+      bindImagePreviewHandlers();
       const nextHeight = Math.max(
         doc?.body?.scrollHeight || 0,
         doc?.documentElement?.scrollHeight || 0,
@@ -344,7 +376,7 @@ const EmailHtmlPreview = ({ html }: { html: string }) => {
     } catch {
       setHeight(EMAIL_HTML_FRAME_MIN_HEIGHT);
     }
-  }, []);
+  }, [bindImagePreviewHandlers]);
 
   useEffect(() => {
     setHeight(EMAIL_HTML_FRAME_MIN_HEIGHT);
@@ -539,6 +571,7 @@ export const EmailPage = () => {
   const [composeCc, setComposeCc] = useState('');
   const [composeSubject, setComposeSubject] = useState('');
   const [composeBody, setComposeBody] = useState('');
+  const [previewImageSrc, setPreviewImageSrc] = useState<string | null>(null);
   const [searchDraft, setSearchDraft] = useState('');
   const [appliedSearch, setAppliedSearch] = useState('');
   const [visibleLimit, setVisibleLimit] = useState(DEFAULT_EMAIL_PAGE_LIMIT);
@@ -1500,7 +1533,12 @@ export const EmailPage = () => {
                         </button>
                       </div>
                     ) : selectedBodyHtml ? (
-                      <EmailHtmlPreview html={selectedBodyHtml} />
+                      <EmailHtmlPreview
+                        html={selectedBodyHtml}
+                        onImagePress={(src) => {
+                          setPreviewImageSrc(src);
+                        }}
+                      />
                     ) : (
                       <p className="whitespace-pre-wrap text-sm leading-6 text-slate-700">{selectedBodyText || 'Isi email tidak tersedia.'}</p>
                     )}
@@ -1598,6 +1636,24 @@ export const EmailPage = () => {
                   </div>
                 </div>
               </div>
+            </div>
+          </div>
+        ) : null}
+
+        {previewImageSrc ? (
+          <div className="fixed inset-0 z-50 flex items-center justify-center bg-slate-900/20 px-4 py-6" onClick={() => setPreviewImageSrc(null)}>
+            <div
+              className="relative flex max-h-[90vh] w-full max-w-5xl items-center justify-center rounded-3xl border border-slate-200 bg-white/95 p-4 shadow-[0_24px_60px_rgba(15,23,42,0.14)]"
+              onClick={(event) => event.stopPropagation()}
+            >
+              <button
+                type="button"
+                onClick={() => setPreviewImageSrc(null)}
+                className="absolute right-4 top-4 flex h-10 w-10 items-center justify-center rounded-2xl border border-slate-200 bg-white text-slate-500 transition hover:bg-slate-50 hover:text-slate-700"
+              >
+                <X className="h-4 w-4" />
+              </button>
+              <img src={previewImageSrc} alt="Pratinjau gambar email" className="max-h-[82vh] max-w-full rounded-2xl object-contain" />
             </div>
           </div>
         ) : null}

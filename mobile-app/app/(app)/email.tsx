@@ -2,7 +2,7 @@ import { useMemo, useRef, useState } from 'react';
 import type { ComponentProps, ReactNode } from 'react';
 import { Redirect } from 'expo-router';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
-import { ActivityIndicator, Modal, Pressable, ScrollView, Text, TextInput, UIManager, View } from 'react-native';
+import { ActivityIndicator, Image, Modal, Pressable, ScrollView, Text, TextInput, UIManager, View } from 'react-native';
 import { Feather } from '@expo/vector-icons';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { WebView } from 'react-native-webview';
@@ -357,21 +357,15 @@ function ActionTile({
     <Pressable
       disabled={disabled}
       onPress={onPress}
-      style={{
-        flexBasis: '30%',
-        flexGrow: 1,
-        minWidth: 86,
-        borderRadius: 14,
-        borderWidth: 1,
-        borderColor: palette.borderColor,
-        backgroundColor: palette.backgroundColor,
-        paddingHorizontal: 10,
-        paddingVertical: 12,
+      style={({ pressed }) => ({
+        width: 84,
+        paddingHorizontal: 4,
+        paddingVertical: 4,
         alignItems: 'center',
         justifyContent: 'center',
         gap: 8,
-        opacity: disabled ? 0.7 : 1,
-      }}
+        opacity: disabled ? 0.7 : pressed ? 0.8 : 1,
+      })}
     >
       <View
         style={{
@@ -413,6 +407,7 @@ export default function MobileEmailScreen() {
   const [registerPassConfirm, setRegisterPassConfirm] = useState('');
   const [registerError, setRegisterError] = useState<string | null>(null);
   const [isEmailDetailVisible, setIsEmailDetailVisible] = useState(false);
+  const [previewImageSrc, setPreviewImageSrc] = useState<string | null>(null);
   const [activeFolderKey, setActiveFolderKey] = useState<WebmailFolderKey>('INBOX');
   const [inboxSectionY, setInboxSectionY] = useState(0);
   const [bridgeCredentials, setBridgeCredentials] = useState<BridgeCredentials | null>(null);
@@ -1658,6 +1653,9 @@ export default function MobileEmailScreen() {
                       minHeight={140}
                       backgroundColor="#ffffff"
                       textAlign="left"
+                      onImagePress={(src) => {
+                        setPreviewImageSrc(src);
+                      }}
                     />
                   ) : (
                     <Text style={{ color: '#334155', fontSize: 12, lineHeight: 20 }}>
@@ -1672,6 +1670,68 @@ export default function MobileEmailScreen() {
             </View>
           ) : null}
         </MobileDetailModal>
+
+      <Modal visible={Boolean(previewImageSrc)} transparent animationType="fade" onRequestClose={() => setPreviewImageSrc(null)}>
+        <Pressable
+          onPress={() => setPreviewImageSrc(null)}
+          style={{
+            flex: 1,
+            backgroundColor: 'rgba(15, 23, 42, 0.20)',
+            paddingTop: insets.top + 12,
+            paddingBottom: insets.bottom + 12,
+            paddingHorizontal: 12,
+            alignItems: 'center',
+            justifyContent: 'center',
+          }}
+        >
+          <Pressable
+            onPress={(event) => {
+              event.stopPropagation();
+            }}
+            style={{
+              width: '100%',
+              maxWidth: 720,
+              borderRadius: 22,
+              borderWidth: 1,
+              borderColor: '#dbe4f4',
+              backgroundColor: 'rgba(255, 255, 255, 0.96)',
+              padding: 14,
+              gap: 10,
+              alignItems: 'stretch',
+            }}
+          >
+            <View style={{ flexDirection: 'row', justifyContent: 'flex-end' }}>
+              <Pressable
+                onPress={() => setPreviewImageSrc(null)}
+                style={{
+                  width: 38,
+                  height: 38,
+                  borderRadius: 12,
+                  borderWidth: 1,
+                  borderColor: '#dbe4f4',
+                  backgroundColor: '#ffffff',
+                  alignItems: 'center',
+                  justifyContent: 'center',
+                }}
+              >
+                <Feather name="x" size={18} color="#64748b" />
+              </Pressable>
+            </View>
+            {previewImageSrc ? (
+              <Image
+                source={{ uri: previewImageSrc }}
+                resizeMode="contain"
+                style={{
+                  width: '100%',
+                  height: Math.max(280, Math.min(520, 520 - insets.top)),
+                  borderRadius: 16,
+                  backgroundColor: 'transparent',
+                }}
+              />
+            ) : null}
+          </Pressable>
+        </Pressable>
+      </Modal>
     </View>
   );
 }

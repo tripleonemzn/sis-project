@@ -406,7 +406,7 @@ export function ExamHtmlContent({
               var handleImageClick = function (event) {
                 var target = event.target;
                 if (!target || target.tagName !== 'IMG') return;
-                var src = String(target.getAttribute('src') || '').trim();
+                var src = String(target.currentSrc || target.src || target.getAttribute('src') || '').trim();
                 if (!src) return;
                 event.preventDefault();
                 postMessage({ type: 'image-preview', src: src });
