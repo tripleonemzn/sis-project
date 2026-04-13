@@ -168,6 +168,10 @@ function extractSubjectLabel(item: { subject?: string | null }) {
   return String(item.subject || '').trim() || '(Tanpa subjek)';
 }
 
+function normalizeSnippet(value?: string | null) {
+  return String(value || '').replace(/\s+/g, ' ').trim();
+}
+
 function normalizeReplySubject(subject?: string | null) {
   const normalized = String(subject || '').trim();
   if (!normalized) return 'Re: (Tanpa subjek)';
@@ -273,64 +277,119 @@ function EmailInboxItem({
 }) {
   const senderLabel = extractSenderLabel(item);
   const subjectLabel = extractSubjectLabel(item);
+  const snippetLabel = normalizeSnippet(item.snippet || '');
 
   return (
     <Pressable
       onPress={onPress}
       style={{
-        borderRadius: 14,
+        borderRadius: 12,
         borderWidth: 1,
         borderColor: selected ? '#93c5fd' : item.isRead ? '#e2e8f0' : '#bfdbfe',
-        backgroundColor: selected ? '#eff6ff' : item.isRead ? '#ffffff' : '#f8fbff',
+        backgroundColor: selected ? '#f8fbff' : item.isRead ? '#ffffff' : '#f8fbff',
         paddingHorizontal: 12,
-        paddingVertical: 11,
-        gap: 8,
+        paddingVertical: 10,
       }}
     >
       <View style={{ flexDirection: 'row', alignItems: 'flex-start', gap: 10 }}>
         <View
           style={{
-            width: 38,
-            height: 38,
-            borderRadius: 999,
-            borderWidth: 1,
-            borderColor: item.isRead ? '#dbe4f4' : '#bfdbfe',
-            backgroundColor: item.isRead ? '#f8fafc' : '#eff6ff',
+            width: 10,
+            paddingTop: 4,
             alignItems: 'center',
-            justifyContent: 'center',
           }}
         >
-          <Feather name="mail" size={16} color={item.isRead ? '#64748b' : '#2563eb'} />
+          <View
+            style={{
+              width: 7,
+              height: 7,
+              borderRadius: 999,
+              backgroundColor: item.isRead ? '#cbd5e1' : '#2563eb',
+            }}
+          />
         </View>
 
-        <View style={{ flex: 1, gap: 4 }}>
+        <View style={{ flex: 1, gap: 3 }}>
           <View style={{ flexDirection: 'row', alignItems: 'center', gap: 8 }}>
-            <Text style={{ flex: 1, color: '#0f172a', fontWeight: '700', fontSize: 13 }} numberOfLines={1}>
+            <Text
+              style={{ flex: 1, color: '#0f172a', fontWeight: item.isRead ? '600' : '700', fontSize: 13 }}
+              numberOfLines={1}
+            >
               {senderLabel}
             </Text>
-            {!item.isRead ? (
-              <View
-                style={{
-                  borderRadius: 999,
-                  borderWidth: 1,
-                  borderColor: '#bfdbfe',
-                  backgroundColor: '#dbeafe',
-                  paddingHorizontal: 7,
-                  paddingVertical: 2,
-                }}
-              >
-                <Text style={{ fontSize: 10, color: '#1d4ed8', fontWeight: '800' }}>BARU</Text>
-              </View>
-            ) : null}
+            <Text style={{ color: '#64748b', fontSize: 11, fontWeight: '600' }}>{formatDateTime(item.date)}</Text>
           </View>
 
-          <Text style={{ color: '#334155', fontWeight: item.isRead ? '600' : '700', fontSize: 13 }} numberOfLines={2}>
+          <Text style={{ color: item.isRead ? '#334155' : '#0f172a', fontWeight: item.isRead ? '600' : '700', fontSize: 13 }} numberOfLines={1}>
             {subjectLabel}
+            {snippetLabel ? <Text style={{ color: '#64748b', fontWeight: '500' }}>{`  ${snippetLabel}`}</Text> : null}
           </Text>
-
-          <Text style={{ color: '#64748b', fontSize: 11 }}>{formatDateTime(item.date)}</Text>
         </View>
       </View>
+    </Pressable>
+  );
+}
+
+function getFolderMoveActionIconName(targetFolderKey: WebmailFolderKey): FeatherIconName {
+  if (targetFolderKey === 'Archive') return 'archive';
+  if (targetFolderKey === 'Junk') return 'alert-circle';
+  return 'inbox';
+}
+
+function ActionTile({
+  label,
+  iconName,
+  tone,
+  onPress,
+  disabled = false,
+  busy = false,
+}: {
+  label: string;
+  iconName: FeatherIconName;
+  tone: FolderMoveActionTone;
+  onPress: () => void;
+  disabled?: boolean;
+  busy?: boolean;
+}) {
+  const palette = getFolderMoveActionPalette(tone);
+
+  return (
+    <Pressable
+      disabled={disabled}
+      onPress={onPress}
+      style={{
+        flexBasis: '30%',
+        flexGrow: 1,
+        minWidth: 86,
+        borderRadius: 14,
+        borderWidth: 1,
+        borderColor: palette.borderColor,
+        backgroundColor: palette.backgroundColor,
+        paddingHorizontal: 10,
+        paddingVertical: 12,
+        alignItems: 'center',
+        justifyContent: 'center',
+        gap: 8,
+        opacity: disabled ? 0.7 : 1,
+      }}
+    >
+      <View
+        style={{
+          width: 38,
+          height: 38,
+          borderRadius: 999,
+          borderWidth: 1,
+          borderColor: palette.borderColor,
+          backgroundColor: '#ffffff',
+          alignItems: 'center',
+          justifyContent: 'center',
+        }}
+      >
+        {busy ? <ActivityIndicator size="small" color={palette.iconColor} /> : <Feather name={iconName} size={15} color={palette.iconColor} />}
+      </View>
+      <Text style={{ color: palette.textColor, fontWeight: '700', fontSize: 11, textAlign: 'center', lineHeight: 15 }}>
+        {busy ? 'Memproses...' : label}
+      </Text>
     </Pressable>
   );
 }
@@ -870,6 +929,10 @@ export default function MobileEmailScreen() {
   const availableMoveActions = getFolderMoveActions(activeFolderKey);
   const isDetailActionPending =
     moveMessageMutation.isPending || markAsUnreadMutation.isPending || deleteMessageMutation.isPending;
+  const closeEmailDetail = () => {
+    setIsEmailDetailVisible(false);
+    setSelectedEmailGuid(null);
+  };
   const webSource = bridgeCredentials
     ? {
         uri: bridgeLoginUrl,
@@ -1051,7 +1114,7 @@ export default function MobileEmailScreen() {
                     <EmailInboxItem
                       key={item.guid}
                       item={item}
-                      selected={item.guid === selectedEmailGuid}
+                      selected={isEmailDetailVisible && item.guid === selectedEmailGuid}
                       onPress={() => {
                         void handleSelectEmail(item);
                       }}
@@ -1460,7 +1523,7 @@ export default function MobileEmailScreen() {
           subtitle={`Baca isi email tanpa keluar dari daftar ${activeFolderLabel.toLowerCase()}.`}
           iconName="mail"
           accentColor="#2563eb"
-          onClose={() => setIsEmailDetailVisible(false)}
+          onClose={closeEmailDetail}
         >
           {selectedEmail ? (
             <View style={{ gap: 12 }}>
@@ -1486,104 +1549,50 @@ export default function MobileEmailScreen() {
                 </Text>
               </View>
 
-              <View style={{ flexDirection: 'row', gap: 8 }}>
-                {canReplyFromSelectedFolder ? (
-                  <Pressable
-                    onPress={() => {
-                      openReplyCompose();
-                    }}
-                    style={{
-                      flex: 1,
-                      borderRadius: 12,
-                      backgroundColor: '#3250b9',
-                      paddingVertical: 11,
-                      alignItems: 'center',
-                    }}
-                  >
-                    <Text style={{ color: '#ffffff', fontWeight: '700' }}>Balas Email</Text>
-                  </Pressable>
-                ) : null}
-                <Pressable
-                  onPress={() => {
-                    openPanelAccess(activeFolderKey);
-                  }}
-                  style={{
-                    flex: 1,
-                    borderRadius: 12,
-                    borderWidth: 1,
-                    borderColor: '#cbd5e1',
-                    backgroundColor: '#ffffff',
-                    paddingVertical: 11,
-                    alignItems: 'center',
-                  }}
-                >
-                  <Text style={{ color: '#1e293b', fontWeight: '700' }}>
-                    {isSsoMode ? 'Buka Panel Lengkap' : 'Panel Lengkap'}
-                  </Text>
-                </Pressable>
-              </View>
-
               <View style={{ gap: 8 }}>
                 <Text style={{ color: '#475569', fontSize: 12, fontWeight: '700' }}>Aksi Email</Text>
                 <View style={{ flexDirection: 'row', flexWrap: 'wrap', gap: 8 }}>
-                  {canMarkSelectedEmailUnread ? (
-                    <Pressable
+                  {canReplyFromSelectedFolder ? (
+                    <ActionTile
+                      label="Balas Email"
+                      iconName="corner-up-left"
+                      tone="primary"
+                      onPress={() => {
+                        openReplyCompose();
+                      }}
                       disabled={isDetailActionPending}
+                    />
+                  ) : null}
+                  {canMarkSelectedEmailUnread ? (
+                    <ActionTile
+                      label="Belum Dibaca"
+                      iconName="mail"
+                      tone="primary"
                       onPress={() => {
                         void handleMarkSelectedEmailUnread();
                       }}
-                      style={{
-                        minWidth: 132,
-                        flexGrow: 1,
-                        borderRadius: 12,
-                        borderWidth: 1,
-                        borderColor: '#93c5fd',
-                        backgroundColor: '#eff6ff',
-                        paddingHorizontal: 12,
-                        paddingVertical: 11,
-                        alignItems: 'center',
-                        justifyContent: 'center',
-                        flexDirection: 'row',
-                        gap: 6,
-                        opacity: isDetailActionPending ? 0.7 : 1,
-                      }}
-                    >
-                      {markAsUnreadMutation.isPending ? (
-                        <ActivityIndicator size="small" color="#2563eb" />
-                      ) : (
-                        <Feather name="mail" size={14} color="#2563eb" />
-                      )}
-                      <Text style={{ color: '#1d4ed8', fontWeight: '700', fontSize: 12 }}>Tandai Belum Dibaca</Text>
-                    </Pressable>
+                      disabled={isDetailActionPending}
+                      busy={markAsUnreadMutation.isPending}
+                    />
                   ) : null}
-                  <Pressable
-                    disabled={isDetailActionPending}
+                  <ActionTile
+                    label="Hapus"
+                    iconName="trash-2"
+                    tone="danger"
                     onPress={() => {
                       void handleDeleteSelectedEmail();
                     }}
-                    style={{
-                      minWidth: 132,
-                      flexGrow: 1,
-                      borderRadius: 12,
-                      borderWidth: 1,
-                      borderColor: '#fecaca',
-                      backgroundColor: '#fef2f2',
-                      paddingHorizontal: 12,
-                      paddingVertical: 11,
-                      alignItems: 'center',
-                      justifyContent: 'center',
-                      flexDirection: 'row',
-                      gap: 6,
-                      opacity: isDetailActionPending ? 0.7 : 1,
+                    disabled={isDetailActionPending}
+                    busy={deleteMessageMutation.isPending}
+                  />
+                  <ActionTile
+                    label="Panel Lengkap"
+                    iconName="external-link"
+                    tone="neutral"
+                    onPress={() => {
+                      openPanelAccess(activeFolderKey);
                     }}
-                  >
-                    {deleteMessageMutation.isPending ? (
-                      <ActivityIndicator size="small" color="#dc2626" />
-                    ) : (
-                      <Feather name="trash-2" size={14} color="#dc2626" />
-                    )}
-                    <Text style={{ color: '#b91c1c', fontWeight: '700', fontSize: 12 }}>Hapus</Text>
-                  </Pressable>
+                  />
                 </View>
               </View>
 
@@ -1592,41 +1601,18 @@ export default function MobileEmailScreen() {
                   <Text style={{ color: '#475569', fontSize: 12, fontWeight: '700' }}>Aksi Folder</Text>
                   <View style={{ flexDirection: 'row', flexWrap: 'wrap', gap: 8 }}>
                     {availableMoveActions.map((action) => {
-                      const palette = getFolderMoveActionPalette(action.tone);
                       return (
-                        <Pressable
+                        <ActionTile
                           key={action.key}
-                          disabled={isDetailActionPending}
+                          label={action.label}
+                          iconName={getFolderMoveActionIconName(action.targetFolderKey)}
+                          tone={action.tone}
                           onPress={() => {
                             void handleMoveSelectedEmail(action.targetFolderKey);
                           }}
-                          style={{
-                            minWidth: 132,
-                            flexGrow: 1,
-                            borderRadius: 12,
-                            borderWidth: 1,
-                            borderColor: palette.borderColor,
-                            backgroundColor: palette.backgroundColor,
-                            paddingHorizontal: 12,
-                            paddingVertical: 11,
-                            alignItems: 'center',
-                            justifyContent: 'center',
-                            flexDirection: 'row',
-                            gap: 6,
-                            opacity: isDetailActionPending ? 0.7 : 1,
-                          }}
-                        >
-                          {moveMessageMutation.isPending ? (
-                            <ActivityIndicator size="small" color={palette.iconColor} />
-                          ) : (
-                            <Feather
-                              name={action.targetFolderKey === 'Archive' ? 'archive' : action.targetFolderKey === 'Junk' ? 'alert-circle' : 'corner-up-left'}
-                              size={14}
-                              color={palette.iconColor}
-                            />
-                          )}
-                          <Text style={{ color: palette.textColor, fontWeight: '700', fontSize: 12 }}>{action.label}</Text>
-                        </Pressable>
+                          disabled={isDetailActionPending}
+                          busy={moveMessageMutation.isPending}
+                        />
                       );
                     })}
                   </View>

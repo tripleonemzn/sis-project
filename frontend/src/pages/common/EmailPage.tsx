@@ -4,12 +4,14 @@ import {
   AlertCircle,
   Archive,
   ArrowLeft,
+  ExternalLink,
   Inbox,
-  Mail,
+  MailOpen,
   RefreshCw,
   Reply,
   Send,
   SquarePen,
+  Trash2,
   X,
   type LucideIcon,
 } from 'lucide-react';
@@ -165,6 +167,10 @@ const extractSubjectLabel = (item: { subject?: string | null }): string => {
   return String(item.subject || '').trim() || '(Tanpa subjek)';
 };
 
+const normalizeSnippet = (value?: string | null): string => {
+  return String(value || '').replace(/\s+/g, ' ').trim();
+};
+
 const normalizeReplySubject = (subject?: string | null): string => {
   const normalized = String(subject || '').trim();
   if (!normalized) return 'Re: (Tanpa subjek)';
@@ -194,19 +200,6 @@ const getFolderEmptyState = (folderKey: WebmailFolderKey, folderLabel: string): 
         : folderKey === 'Junk'
           ? 'Belum ada email yang masuk ke folder Spam.'
           : `Belum ada email di folder ${folderLabel}.`;
-};
-
-const getFolderMoveButtonClassName = (tone: FolderMoveActionTone): string => {
-  if (tone === 'danger') {
-    return 'border-rose-200 bg-rose-50 text-rose-700 hover:bg-rose-100';
-  }
-  if (tone === 'warning') {
-    return 'border-amber-200 bg-amber-50 text-amber-800 hover:bg-amber-100';
-  }
-  if (tone === 'primary') {
-    return 'border-blue-200 bg-blue-50 text-blue-700 hover:bg-blue-100';
-  }
-  return 'border-slate-200 bg-slate-50 text-slate-700 hover:bg-slate-100';
 };
 
 const splitRecipientInput = (value: string): string[] => {
@@ -246,27 +239,6 @@ const SectionCard = ({
       </div>
       {children}
     </section>
-  );
-};
-
-const StatusChip = ({
-  children,
-  tone = 'default',
-}: {
-  children: ReactNode;
-  tone?: 'default' | 'accent' | 'danger';
-}) => {
-  const toneClassName =
-    tone === 'accent'
-      ? 'border-blue-200 bg-blue-50 text-blue-700'
-      : tone === 'danger'
-        ? 'border-red-200 bg-red-50 text-red-700'
-        : 'border-slate-200 bg-slate-50 text-slate-700';
-
-  return (
-    <span className={`inline-flex items-center rounded-full border px-3 py-1 text-xs font-semibold ${toneClassName}`}>
-      {children}
-    </span>
   );
 };
 
@@ -407,42 +379,99 @@ const EmailInboxItem = ({
 }) => {
   const senderLabel = extractSenderLabel(item);
   const subjectLabel = extractSubjectLabel(item);
+  const snippetLabel = normalizeSnippet(item.snippet || '');
   const wrapperClassName = selected
-    ? 'border-blue-300 bg-blue-50'
+    ? 'border-blue-300 bg-blue-50/70'
     : item.isRead
       ? 'border-slate-200 bg-white'
-      : 'border-blue-200 bg-blue-50/40';
-  const iconClassName = item.isRead
-    ? 'border-slate-200 bg-slate-50 text-slate-500'
-    : 'border-blue-200 bg-blue-50 text-blue-600';
+      : 'border-blue-200 bg-blue-50/35';
 
   return (
     <button
       type="button"
       onClick={onPress}
-      className={`w-full rounded-2xl border p-4 text-left transition hover:border-blue-300 hover:bg-blue-50/60 ${wrapperClassName}`}
+      className={`w-full rounded-xl border px-4 py-3 text-left transition hover:border-blue-300 hover:bg-blue-50/60 ${wrapperClassName}`}
     >
       <div className="flex items-start gap-3">
-        <div className={`flex h-10 w-10 shrink-0 items-center justify-center rounded-full border ${iconClassName}`}>
-          <Mail className="h-4 w-4" />
-        </div>
+        <span className={`mt-1.5 h-2.5 w-2.5 shrink-0 rounded-full ${item.isRead ? 'bg-slate-200' : 'bg-blue-500'}`} />
 
-        <div className="min-w-0 flex-1 space-y-2">
-          <div className="flex items-start gap-2">
-            <p className="min-w-0 flex-1 truncate text-sm font-bold text-slate-900">{senderLabel}</p>
-            {!item.isRead ? (
-              <span className="rounded-full border border-blue-200 bg-blue-100 px-2 py-0.5 text-[10px] font-extrabold text-blue-700">
-                BARU
-              </span>
-            ) : null}
+        <div className="min-w-0 flex-1">
+          <div className="flex flex-col gap-1.5 lg:flex-row lg:items-start lg:gap-3">
+            <p className={`min-w-0 truncate text-sm ${item.isRead ? 'font-semibold text-slate-800' : 'font-bold text-slate-900'} lg:w-56 lg:shrink-0`}>
+              {senderLabel}
+            </p>
+            <p className={`min-w-0 flex-1 truncate text-sm ${item.isRead ? 'text-slate-700' : 'text-slate-800'}`}>
+              <span className={item.isRead ? 'font-semibold' : 'font-bold'}>{subjectLabel}</span>
+              {snippetLabel ? <span className="ml-2 font-normal text-slate-500">{snippetLabel}</span> : null}
+            </p>
+            <p className="shrink-0 text-xs font-medium text-slate-500">{formatDateTime(item.date)}</p>
           </div>
-
-          <p className={`line-clamp-2 text-sm ${item.isRead ? 'font-semibold text-slate-700' : 'font-bold text-slate-800'}`}>
-            {subjectLabel}
-          </p>
-          <p className="text-xs text-slate-500">{formatDateTime(item.date)}</p>
         </div>
       </div>
+    </button>
+  );
+};
+
+const getActionTileClasses = (tone: FolderMoveActionTone) => {
+  if (tone === 'danger') {
+    return {
+      button: 'border-rose-200 bg-rose-50 text-rose-700 hover:bg-rose-100',
+      icon: 'border-rose-200 bg-white text-rose-600',
+    };
+  }
+  if (tone === 'warning') {
+    return {
+      button: 'border-amber-200 bg-amber-50 text-amber-800 hover:bg-amber-100',
+      icon: 'border-amber-200 bg-white text-amber-700',
+    };
+  }
+  if (tone === 'primary') {
+    return {
+      button: 'border-blue-200 bg-blue-50 text-blue-700 hover:bg-blue-100',
+      icon: 'border-blue-200 bg-white text-blue-600',
+    };
+  }
+  return {
+    button: 'border-slate-200 bg-slate-50 text-slate-700 hover:bg-slate-100',
+    icon: 'border-slate-200 bg-white text-slate-600',
+  };
+};
+
+const getFolderActionIcon = (targetFolderKey: WebmailFolderKey): LucideIcon => {
+  if (targetFolderKey === 'Archive') return Archive;
+  if (targetFolderKey === 'Junk') return AlertCircle;
+  return Inbox;
+};
+
+const ActionTile = ({
+  label,
+  icon: Icon,
+  tone,
+  onClick,
+  disabled = false,
+  busy = false,
+}: {
+  label: string;
+  icon: LucideIcon;
+  tone: FolderMoveActionTone;
+  onClick: () => void;
+  disabled?: boolean;
+  busy?: boolean;
+}) => {
+  const classes = getActionTileClasses(tone);
+  const Indicator = busy ? RefreshCw : Icon;
+
+  return (
+    <button
+      type="button"
+      onClick={onClick}
+      disabled={disabled}
+      className={`flex min-w-[88px] flex-1 flex-col items-center justify-center gap-2 rounded-2xl border px-3 py-3 text-center transition disabled:cursor-not-allowed disabled:opacity-60 ${classes.button}`}
+    >
+      <span className={`flex h-10 w-10 items-center justify-center rounded-full border ${classes.icon}`}>
+        <Indicator className={`h-4 w-4 ${busy ? 'animate-spin' : ''}`} />
+      </span>
+      <span className="text-[11px] font-semibold leading-4">{busy ? 'Memproses...' : label}</span>
     </button>
   );
 };
@@ -530,8 +559,6 @@ export const EmailPage = () => {
   const totalMessageCount = Number(mailboxFeed?.pagination.total || 0);
   const hasAppliedSearch = appliedSearch.trim().length > 0;
   const canLoadMore = mailboxMessages.length < totalMessageCount;
-  const unreadEmailCount = mailboxMessages.filter((item) => !item.isRead).length;
-  const latestEmailAt = mailboxMessages[0] ? formatDateTime(mailboxMessages[0].date) : '-';
   const activeFolderLabel = WEBMAIL_FOLDER_SHORTCUTS.find((item) => item.key === activeFolderKey)?.label || 'Inbox';
   const activeFolderDescription = getFolderDescription(activeFolderKey);
   const activeFolderEmptyState = hasAppliedSearch
@@ -560,6 +587,10 @@ export const EmailPage = () => {
   const selectedBodyHtml = String(selectedEmailDetail?.html || '').trim();
   const selectedBodyText = selectedEmailDetail?.plainText || selectedEmailDetail?.previewText || selectedEmail?.snippet || '';
   const availableMoveActions = getFolderMoveActions(activeFolderKey);
+  const closeEmailDetail = () => {
+    setIsEmailDetailVisible(false);
+    setSelectedEmailGuid(null);
+  };
 
   const persistWebmailMode = useCallback(
     (enabled: boolean) => {
@@ -1183,196 +1214,164 @@ export const EmailPage = () => {
       </form>
 
       <div className="space-y-6">
-        <div className="space-y-3 px-1">
-          <div className="space-y-1">
-            <h1 className="text-lg font-semibold text-slate-900">Email</h1>
-            <p className="text-sm leading-6 text-slate-500">Mailbox sekolah Anda tampil langsung di halaman ini.</p>
-          </div>
-
-          <div className="flex flex-wrap gap-2">
-            <StatusChip tone="accent">{isSsoMode ? 'SSO Aktif' : 'Bridge Login'}</StatusChip>
-            <StatusChip tone={unreadEmailCount > 0 ? 'danger' : 'default'}>{unreadEmailCount} belum dibaca</StatusChip>
-          </div>
-
-          <div className="flex flex-wrap items-center gap-x-5 gap-y-1 text-sm text-slate-500">
-            <p className="font-semibold text-slate-900">Mailbox: {mailboxIdentity || 'Belum terhubung'}</p>
-            <p>Email terbaru: {latestEmailAt}</p>
-            <p>Kuota: {mailboxQuotaLabel}</p>
-          </div>
-
-          <div className="grid gap-3 sm:grid-cols-2 lg:max-w-3xl">
-            <button
-              type="button"
-              onClick={openNewCompose}
-              className="inline-flex items-center justify-center gap-2 rounded-2xl bg-slate-900 px-4 py-3 text-sm font-semibold text-white transition hover:bg-slate-800"
-            >
-              <SquarePen className="h-4 w-4" />
-              Tulis Email Baru
-            </button>
-            <button
-              type="button"
-              onClick={openReplyCompose}
-              disabled={!selectedEmail || !canReplyFromSelectedFolder}
-              className="inline-flex items-center justify-center gap-2 rounded-2xl border border-slate-200 bg-white px-4 py-3 text-sm font-semibold text-slate-800 transition hover:bg-slate-50 disabled:cursor-not-allowed disabled:bg-slate-50 disabled:text-slate-400"
-            >
-              <Reply className="h-4 w-4" />
-              Balas Email
-            </button>
-          </div>
+        <div className="space-y-1 px-1">
+          <h1 className="text-lg font-semibold text-slate-900">Email</h1>
+          <p className="text-sm leading-6 text-slate-500">
+            Mailbox sekolah tampil langsung seperti daftar email harian.
+            {mailboxIdentity ? ` Mailbox aktif: ${mailboxIdentity}.` : ''}
+          </p>
         </div>
 
-        <SectionCard
-          title={activeFolderTitle}
-          subtitle={activeFolderDescription}
-        >
-          <div className="grid grid-cols-3 gap-2 sm:grid-cols-5 sm:gap-3">
-            {WEBMAIL_FOLDER_SHORTCUTS.map((folder) => {
-              const isActive = folder.key === activeFolderKey;
-              const Icon = folder.icon;
-              return (
-                <button
-                  key={folder.key}
-                  type="button"
-                  onClick={() => {
-                    setActiveFolderKey(folder.key);
-                    setIsEmailDetailVisible(false);
-                    setSelectedEmailGuid(null);
-                    setSearchDraft('');
-                    setAppliedSearch('');
-                    setVisibleLimit(DEFAULT_EMAIL_PAGE_LIMIT);
-                  }}
-                  className="min-w-0"
-                >
-                  <span className="flex flex-col items-center gap-2">
-                    <span
-                      className={`flex h-10 w-10 items-center justify-center rounded-full border transition ${
-                        isActive
-                          ? 'border-blue-200 bg-blue-50 text-blue-700'
-                          : 'border-slate-200 bg-slate-50 text-slate-500 hover:border-slate-300 hover:text-slate-700'
-                      }`}
-                    >
-                      <Icon className="h-4 w-4" />
+        <SectionCard title={activeFolderTitle} subtitle={activeFolderDescription}>
+          <div className="space-y-5">
+            <div className="grid grid-cols-3 gap-2 sm:grid-cols-5 sm:gap-3">
+              {WEBMAIL_FOLDER_SHORTCUTS.map((folder) => {
+                const isActive = folder.key === activeFolderKey;
+                const Icon = folder.icon;
+                return (
+                  <button
+                    key={folder.key}
+                    type="button"
+                    onClick={() => {
+                      setActiveFolderKey(folder.key);
+                      closeEmailDetail();
+                      setSearchDraft('');
+                      setAppliedSearch('');
+                      setVisibleLimit(DEFAULT_EMAIL_PAGE_LIMIT);
+                    }}
+                    className="min-w-0"
+                  >
+                    <span className="flex flex-col items-center gap-2">
+                      <span
+                        className={`flex h-10 w-10 items-center justify-center rounded-full border transition ${
+                          isActive
+                            ? 'border-blue-200 bg-blue-50 text-blue-700'
+                            : 'border-slate-200 bg-slate-50 text-slate-500 hover:border-slate-300 hover:text-slate-700'
+                        }`}
+                      >
+                        <Icon className="h-4 w-4" />
+                      </span>
+                      <span className={`text-center text-xs font-semibold ${isActive ? 'text-blue-700' : 'text-slate-600'}`}>
+                        {folder.label}
+                      </span>
                     </span>
-                    <span className={`text-center text-xs font-semibold ${isActive ? 'text-blue-700' : 'text-slate-600'}`}>
-                      {folder.label}
-                    </span>
-                  </span>
-                </button>
-              );
-            })}
-          </div>
+                  </button>
+                );
+              })}
+            </div>
 
-          {mailboxFeed?.mailboxAvailable !== false ? (
-            <div className="space-y-2">
-              <p className="text-sm font-semibold text-slate-700">Cari Email</p>
-              <form
-                className="flex flex-col gap-2 sm:flex-row"
-                onSubmit={(event) => {
-                  event.preventDefault();
-                  handleApplySearch();
-                }}
-              >
-                <input
-                  type="text"
-                  value={searchDraft}
-                  onChange={(event) => setSearchDraft(event.target.value)}
-                  placeholder="Cari pengirim, subjek, atau isi email"
-                  className="flex-1 rounded-2xl border border-slate-200 bg-white px-4 py-3 text-sm text-slate-900 outline-none transition focus:border-blue-300 focus:ring-2 focus:ring-blue-100"
-                />
-                <button
-                  type="submit"
-                  className="rounded-2xl bg-[#3250b9] px-5 py-3 text-sm font-semibold text-white transition hover:bg-[#2a44a0]"
+            {mailboxFeed?.mailboxAvailable !== false ? (
+              <div className="space-y-3">
+                <p className="text-sm font-semibold text-slate-700">Cari Email</p>
+                <form
+                  className="flex flex-col gap-2 sm:flex-row"
+                  onSubmit={(event) => {
+                    event.preventDefault();
+                    handleApplySearch();
+                  }}
                 >
-                  Cari
-                </button>
-              </form>
-              {hasAppliedSearch || searchDraft.trim().length > 0 ? (
-                <button
-                  type="button"
-                  onClick={handleResetSearch}
-                  className="text-left text-sm font-semibold text-[#3250b9] transition hover:text-[#274194]"
-                >
-                  Reset Pencarian
-                </button>
-              ) : null}
-            </div>
-          ) : null}
+                  <input
+                    type="text"
+                    value={searchDraft}
+                    onChange={(event) => setSearchDraft(event.target.value)}
+                    placeholder="Cari pengirim, subjek, atau isi email"
+                    className="flex-1 rounded-2xl border border-slate-200 bg-white px-4 py-3 text-sm text-slate-900 outline-none transition focus:border-blue-300 focus:ring-2 focus:ring-blue-100"
+                  />
+                  <button
+                    type="submit"
+                    className="rounded-2xl bg-[#3250b9] px-5 py-3 text-sm font-semibold text-white transition hover:bg-[#2a44a0]"
+                  >
+                    Cari
+                  </button>
+                </form>
+                {hasAppliedSearch || searchDraft.trim().length > 0 ? (
+                  <button
+                    type="button"
+                    onClick={handleResetSearch}
+                    className="text-left text-sm font-semibold text-[#3250b9] transition hover:text-[#274194]"
+                  >
+                    Reset Pencarian
+                  </button>
+                ) : null}
+              </div>
+            ) : null}
 
-          {emailFeedQuery.isLoading ? (
-            <div className="rounded-2xl border border-slate-200 bg-slate-50 px-4 py-5 text-sm text-slate-500">
-              Memuat {activeFolderLabel.toLowerCase()}...
-            </div>
-          ) : emailFeedQuery.isError ? (
-            <div className="space-y-3 rounded-2xl border border-rose-200 bg-rose-50 px-4 py-5">
-              <p className="text-sm font-semibold text-rose-700">
-                {getErrorMessage(emailFeedQuery.error, `Gagal memuat folder ${activeFolderLabel}.`)}
-              </p>
-              <button
-                type="button"
-                onClick={() => {
-                  void emailFeedQuery.refetch();
-                }}
-                className="rounded-full bg-rose-600 px-4 py-2 text-sm font-semibold text-white transition hover:bg-rose-700"
-              >
-                Coba Lagi
-              </button>
-            </div>
-          ) : mailboxFeed?.mailboxAvailable === false ? (
-            <div className="rounded-2xl border border-amber-200 bg-amber-50 px-4 py-5">
-              <p className="text-sm font-semibold text-amber-900">Mailbox belum tersedia</p>
-              <p className="mt-2 text-sm leading-6 text-amber-800">
-                Akun ini sudah dikenali, tetapi mailbox di server mail belum aktif.
-              </p>
-              {isSelfRegistrationEnabled ? (
+            {emailFeedQuery.isLoading ? (
+              <div className="rounded-xl border border-slate-200 bg-slate-50 px-4 py-4 text-sm text-slate-500">
+                Memuat {activeFolderLabel.toLowerCase()}...
+              </div>
+            ) : emailFeedQuery.isError ? (
+              <div className="space-y-3 rounded-xl border border-rose-200 bg-rose-50 px-4 py-4">
+                <p className="text-sm font-semibold text-rose-700">
+                  {getErrorMessage(emailFeedQuery.error, `Gagal memuat folder ${activeFolderLabel}.`)}
+                </p>
                 <button
                   type="button"
                   onClick={() => {
-                    setIsRegisterMode(true);
-                    setRegisterError(null);
+                    void emailFeedQuery.refetch();
                   }}
-                  className="mt-4 rounded-2xl bg-[#3250b9] px-4 py-3 text-sm font-semibold text-white transition hover:bg-[#2a44a0]"
+                  className="rounded-full bg-rose-600 px-4 py-2 text-sm font-semibold text-white transition hover:bg-rose-700"
                 >
-                  Daftar Mailbox
+                  Coba Lagi
                 </button>
-              ) : null}
-            </div>
-          ) : mailboxMessages.length === 0 ? (
-            <div className="rounded-2xl border border-slate-200 bg-slate-50 px-4 py-5">
-              <p className="text-sm font-semibold text-slate-900">{activeFolderLabel} masih kosong</p>
-              <p className="mt-2 text-sm leading-6 text-slate-500">{activeFolderEmptyState}</p>
-            </div>
-          ) : (
-            <div className="space-y-4">
-              <p className="pt-1 text-sm leading-6 text-slate-500">
-                {hasAppliedSearch
-                  ? `Menampilkan ${mailboxMessages.length} dari ${totalMessageCount} email yang cocok dengan "${appliedSearch}".`
-                  : `Menampilkan ${mailboxMessages.length} dari ${totalMessageCount} email di folder ${activeFolderLabel}.`}
-              </p>
-              {mailboxMessages.map((item) => (
-                <EmailInboxItem
-                  key={item.guid}
-                  item={item}
-                  selected={item.guid === selectedEmailGuid}
-                  onPress={() => {
-                    void handleSelectEmail(item);
-                  }}
-                />
-              ))}
-              {canLoadMore ? (
-                <button
-                  type="button"
-                  disabled={emailFeedQuery.isFetching}
-                  onClick={() => {
-                    setVisibleLimit((current) => current + DEFAULT_EMAIL_PAGE_LIMIT);
-                  }}
-                  className="inline-flex items-center justify-center gap-2 rounded-2xl border border-slate-200 bg-white px-4 py-3 text-sm font-semibold text-slate-800 transition hover:bg-slate-50 disabled:cursor-not-allowed disabled:opacity-60"
-                >
-                  <RefreshCw className={`h-4 w-4 ${emailFeedQuery.isFetching && !emailFeedQuery.isLoading ? 'animate-spin' : ''}`} />
-                  Muat Lebih Banyak
-                </button>
+              </div>
+            ) : mailboxFeed?.mailboxAvailable === false ? (
+              <div className="rounded-xl border border-amber-200 bg-amber-50 px-4 py-4">
+                <p className="text-sm font-semibold text-amber-900">Mailbox belum tersedia</p>
+                <p className="mt-2 text-sm leading-6 text-amber-800">
+                  Akun ini sudah dikenali, tetapi mailbox di server mail belum aktif.
+                </p>
+                {isSelfRegistrationEnabled ? (
+                  <button
+                    type="button"
+                    onClick={() => {
+                      setIsRegisterMode(true);
+                      setRegisterError(null);
+                    }}
+                    className="mt-4 rounded-2xl bg-[#3250b9] px-4 py-3 text-sm font-semibold text-white transition hover:bg-[#2a44a0]"
+                  >
+                    Daftar Mailbox
+                  </button>
+                ) : null}
+              </div>
+            ) : mailboxMessages.length === 0 ? (
+              <div className="space-y-2 rounded-xl border border-slate-200 bg-slate-50 px-4 py-4">
+                <p className="text-sm font-semibold text-slate-900">{activeFolderLabel} masih kosong</p>
+                <p className="text-sm leading-6 text-slate-500">{activeFolderEmptyState}</p>
+              </div>
+            ) : (
+              <div className="space-y-3">
+                <p className="text-sm leading-6 text-slate-500">
+                  {hasAppliedSearch
+                    ? `Menampilkan ${mailboxMessages.length} dari ${totalMessageCount} email yang cocok dengan "${appliedSearch}".`
+                    : `Menampilkan ${mailboxMessages.length} dari ${totalMessageCount} email di folder ${activeFolderLabel}.`}
+                </p>
+                {mailboxMessages.map((item) => (
+                  <EmailInboxItem
+                    key={item.guid}
+                    item={item}
+                    selected={isEmailDetailVisible && item.guid === selectedEmailGuid}
+                    onPress={() => {
+                      void handleSelectEmail(item);
+                    }}
+                  />
+                ))}
+                {canLoadMore ? (
+                  <button
+                    type="button"
+                    disabled={emailFeedQuery.isFetching}
+                    onClick={() => {
+                      setVisibleLimit((current) => current + DEFAULT_EMAIL_PAGE_LIMIT);
+                    }}
+                    className="inline-flex items-center justify-center gap-2 rounded-2xl border border-slate-200 bg-white px-4 py-3 text-sm font-semibold text-slate-800 transition hover:bg-slate-50 disabled:cursor-not-allowed disabled:opacity-60"
+                  >
+                    <RefreshCw className={`h-4 w-4 ${emailFeedQuery.isFetching && !emailFeedQuery.isLoading ? 'animate-spin' : ''}`} />
+                    Muat Lebih Banyak
+                  </button>
                 ) : null}
               </div>
             )}
+          </div>
         </SectionCard>
 
         {selectedEmail && isEmailDetailVisible ? (
@@ -1385,7 +1384,7 @@ export const EmailPage = () => {
                 </div>
                 <button
                   type="button"
-                  onClick={() => setIsEmailDetailVisible(false)}
+                  onClick={closeEmailDetail}
                   className="flex h-10 w-10 items-center justify-center rounded-2xl border border-slate-200 bg-white text-slate-500 transition hover:bg-slate-50 hover:text-slate-700"
                 >
                   <X className="h-4 w-4" />
@@ -1420,64 +1419,57 @@ export const EmailPage = () => {
 
                   <div className="space-y-2">
                     <p className="text-sm font-semibold text-slate-700">Aksi Email</p>
-                    <div className="flex flex-wrap gap-2">
+                    <div className="grid grid-cols-2 gap-3 sm:grid-cols-4">
                       {canReplyFromSelectedFolder ? (
-                        <button
-                          type="button"
-                          onClick={openReplyCompose}
-                          className="rounded-2xl bg-[#3250b9] px-4 py-2.5 text-sm font-semibold text-white transition hover:bg-[#2a44a0]"
-                        >
-                          Balas Email
-                        </button>
+                        <ActionTile label="Balas Email" icon={Reply} tone="primary" onClick={openReplyCompose} disabled={isDetailActionPending} />
                       ) : null}
                       {canMarkSelectedEmailUnread ? (
-                        <button
-                          type="button"
+                        <ActionTile
+                          label="Belum Dibaca"
+                          icon={MailOpen}
+                          tone="primary"
                           onClick={() => {
                             void handleMarkSelectedEmailUnread();
                           }}
                           disabled={isDetailActionPending}
-                          className={`rounded-2xl border px-4 py-2.5 text-sm font-semibold transition disabled:cursor-not-allowed disabled:opacity-60 ${getFolderMoveButtonClassName('primary')}`}
-                        >
-                          {markAsUnreadMutation.isPending ? 'Memproses...' : 'Tandai Belum Dibaca'}
-                        </button>
+                          busy={markAsUnreadMutation.isPending}
+                        />
                       ) : null}
-                      <button
-                        type="button"
+                      <ActionTile
+                        label="Hapus"
+                        icon={Trash2}
+                        tone="danger"
                         onClick={() => {
                           void handleDeleteSelectedEmail();
                         }}
                         disabled={isDetailActionPending}
-                        className={`rounded-2xl border px-4 py-2.5 text-sm font-semibold transition disabled:cursor-not-allowed disabled:opacity-60 ${getFolderMoveButtonClassName('danger')}`}
-                      >
-                        {deleteMessageMutation.isPending ? 'Memproses...' : 'Hapus'}
-                      </button>
-                      <button
-                        type="button"
+                        busy={deleteMessageMutation.isPending}
+                      />
+                      <ActionTile
+                        label="Panel Lengkap"
+                        icon={ExternalLink}
+                        tone="neutral"
                         onClick={() => openPanelSection(true)}
-                        className="rounded-2xl border border-slate-200 bg-white px-4 py-2.5 text-sm font-semibold text-slate-800 transition hover:bg-slate-50"
-                      >
-                        {isSsoMode ? 'Buka Panel Lengkap' : 'Lanjut ke Panel Lengkap'}
-                      </button>
+                      />
                     </div>
                   </div>
 
                   {availableMoveActions.length > 0 ? (
                     <div className="space-y-2">
                       <p className="text-sm font-semibold text-slate-700">Aksi Folder</p>
-                      <div className="flex flex-wrap gap-2">
+                      <div className="grid grid-cols-2 gap-3 sm:grid-cols-4">
                         {availableMoveActions.map((action) => (
-                          <button
+                          <ActionTile
                             key={action.key}
-                            type="button"
+                            label={action.label}
+                            icon={getFolderActionIcon(action.targetFolderKey)}
+                            tone={action.tone}
                             onClick={() => {
                               void handleMoveSelectedEmail(action.targetFolderKey);
                             }}
                             disabled={isDetailActionPending}
-                            className={`rounded-2xl border px-4 py-2.5 text-sm font-semibold transition disabled:cursor-not-allowed disabled:opacity-60 ${getFolderMoveButtonClassName(action.tone)}`}
-                          >
-                            {moveMessageMutation.isPending ? 'Memproses...' : action.label}
-                          </button>
+                            busy={moveMessageMutation.isPending}
+                          />
                         ))}
                       </div>
                     </div>
@@ -1514,79 +1506,94 @@ export const EmailPage = () => {
         ) : null}
 
         {isComposeMode ? (
-          <SectionCard
-            title={composeModeKind === 'reply' ? 'Balas Email' : 'Tulis Email Baru'}
-            subtitle={
-              composeModeKind === 'reply'
-                ? 'Balasan akan dikirim dari mailbox sekolah Anda dan salinannya otomatis disimpan ke folder Sent.'
-                : 'Email akan dikirim dari mailbox sekolah Anda dan salinannya otomatis disimpan ke folder Sent.'
-            }
-          >
-            <div className="space-y-4">
-              <div className="space-y-2">
-                <label className="text-sm font-semibold text-slate-800">Kepada</label>
-                <input
-                  type="text"
-                  value={composeTo}
-                  onChange={(event) => setComposeTo(event.target.value)}
-                  placeholder="email@tujuan.com"
-                  className="w-full rounded-2xl border border-slate-200 bg-white px-4 py-3 text-sm text-slate-800 placeholder:text-slate-400 focus:border-slate-400 focus:outline-none"
-                />
-              </div>
-
-              <div className="space-y-2">
-                <label className="text-sm font-semibold text-slate-800">CC</label>
-                <input
-                  type="text"
-                  value={composeCc}
-                  onChange={(event) => setComposeCc(event.target.value)}
-                  placeholder="opsional"
-                  className="w-full rounded-2xl border border-slate-200 bg-white px-4 py-3 text-sm text-slate-800 placeholder:text-slate-400 focus:border-slate-400 focus:outline-none"
-                />
-              </div>
-
-              <div className="space-y-2">
-                <label className="text-sm font-semibold text-slate-800">Subjek</label>
-                <input
-                  type="text"
-                  value={composeSubject}
-                  onChange={(event) => setComposeSubject(event.target.value)}
-                  placeholder="Subjek email"
-                  className="w-full rounded-2xl border border-slate-200 bg-white px-4 py-3 text-sm text-slate-800 placeholder:text-slate-400 focus:border-slate-400 focus:outline-none"
-                />
-              </div>
-
-              <div className="space-y-2">
-                <label className="text-sm font-semibold text-slate-800">Isi Email</label>
-                <textarea
-                  value={composeBody}
-                  onChange={(event) => setComposeBody(event.target.value)}
-                  placeholder="Tulis isi email di sini..."
-                  className="min-h-[180px] w-full rounded-2xl border border-slate-200 bg-white px-4 py-3 text-sm text-slate-800 placeholder:text-slate-400 focus:border-slate-400 focus:outline-none"
-                />
-              </div>
-
-              <div className="grid gap-3 sm:grid-cols-2">
-                <button
-                  type="button"
-                  onClick={() => {
-                    void handleSendCompose();
-                  }}
-                  disabled={sendMessageMutation.isPending}
-                  className="rounded-2xl bg-[#3250b9] px-4 py-3 text-sm font-semibold text-white transition hover:bg-[#2a44a0] disabled:cursor-not-allowed disabled:opacity-70"
-                >
-                  {sendMessageMutation.isPending ? 'Mengirim...' : 'Kirim Email'}
-                </button>
+          <div className="fixed inset-0 z-40 flex items-center justify-center bg-slate-900/15 px-4 py-6">
+            <div className="w-full max-w-2xl overflow-hidden rounded-3xl border border-slate-200 bg-white shadow-[0_24px_60px_rgba(15,23,42,0.14)]">
+              <div className="flex items-start justify-between gap-4 border-b border-slate-200 px-6 py-5">
+                <div className="space-y-1">
+                  <h2 className="text-lg font-semibold text-slate-900">{composeModeKind === 'reply' ? 'Balas Email' : 'Tulis Email Baru'}</h2>
+                  <p className="text-sm leading-6 text-slate-500">
+                    {composeModeKind === 'reply'
+                      ? 'Balasan akan dikirim dari mailbox sekolah Anda dan salinannya otomatis disimpan ke folder Sent.'
+                      : 'Email akan dikirim dari mailbox sekolah Anda dan salinannya otomatis disimpan ke folder Sent.'}
+                  </p>
+                </div>
                 <button
                   type="button"
                   onClick={() => setIsComposeMode(false)}
-                  className="rounded-2xl border border-slate-200 bg-white px-4 py-3 text-sm font-semibold text-slate-800 transition hover:bg-slate-50"
+                  className="flex h-10 w-10 items-center justify-center rounded-2xl border border-slate-200 bg-white text-slate-500 transition hover:bg-slate-50 hover:text-slate-700"
                 >
-                  Tutup
+                  <X className="h-4 w-4" />
                 </button>
               </div>
+
+              <div className="max-h-[calc(100vh-12rem)] overflow-y-auto px-6 py-5">
+                <div className="space-y-4">
+                  <div className="space-y-2">
+                    <label className="text-sm font-semibold text-slate-800">Kepada</label>
+                    <input
+                      type="text"
+                      value={composeTo}
+                      onChange={(event) => setComposeTo(event.target.value)}
+                      placeholder="email@tujuan.com"
+                      className="w-full rounded-2xl border border-slate-200 bg-white px-4 py-3 text-sm text-slate-800 placeholder:text-slate-400 focus:border-slate-400 focus:outline-none"
+                    />
+                  </div>
+
+                  <div className="space-y-2">
+                    <label className="text-sm font-semibold text-slate-800">CC</label>
+                    <input
+                      type="text"
+                      value={composeCc}
+                      onChange={(event) => setComposeCc(event.target.value)}
+                      placeholder="opsional"
+                      className="w-full rounded-2xl border border-slate-200 bg-white px-4 py-3 text-sm text-slate-800 placeholder:text-slate-400 focus:border-slate-400 focus:outline-none"
+                    />
+                  </div>
+
+                  <div className="space-y-2">
+                    <label className="text-sm font-semibold text-slate-800">Subjek</label>
+                    <input
+                      type="text"
+                      value={composeSubject}
+                      onChange={(event) => setComposeSubject(event.target.value)}
+                      placeholder="Subjek email"
+                      className="w-full rounded-2xl border border-slate-200 bg-white px-4 py-3 text-sm text-slate-800 placeholder:text-slate-400 focus:border-slate-400 focus:outline-none"
+                    />
+                  </div>
+
+                  <div className="space-y-2">
+                    <label className="text-sm font-semibold text-slate-800">Isi Email</label>
+                    <textarea
+                      value={composeBody}
+                      onChange={(event) => setComposeBody(event.target.value)}
+                      placeholder="Tulis isi email di sini..."
+                      className="min-h-[180px] w-full rounded-2xl border border-slate-200 bg-white px-4 py-3 text-sm text-slate-800 placeholder:text-slate-400 focus:border-slate-400 focus:outline-none"
+                    />
+                  </div>
+
+                  <div className="grid gap-3 sm:grid-cols-2">
+                    <button
+                      type="button"
+                      onClick={() => {
+                        void handleSendCompose();
+                      }}
+                      disabled={sendMessageMutation.isPending}
+                      className="rounded-2xl bg-[#3250b9] px-4 py-3 text-sm font-semibold text-white transition hover:bg-[#2a44a0] disabled:cursor-not-allowed disabled:opacity-70"
+                    >
+                      {sendMessageMutation.isPending ? 'Mengirim...' : 'Kirim Email'}
+                    </button>
+                    <button
+                      type="button"
+                      onClick={() => setIsComposeMode(false)}
+                      className="rounded-2xl border border-slate-200 bg-white px-4 py-3 text-sm font-semibold text-slate-800 transition hover:bg-slate-50"
+                    >
+                      Tutup
+                    </button>
+                  </div>
+                </div>
+              </div>
             </div>
-          </SectionCard>
+          </div>
         ) : null}
 
         {isWebmailMode ? (
@@ -1640,6 +1647,19 @@ export const EmailPage = () => {
           </div>
         ) : null}
       </div>
+
+      {mailboxFeed?.mailboxAvailable !== false && !isComposeMode && !isRegisterMode && !isWebmailMode ? (
+        <div className="pointer-events-none fixed bottom-6 right-6 z-30 flex flex-col items-center gap-1 sm:right-8">
+          <button
+            type="button"
+            onClick={openNewCompose}
+            className="pointer-events-auto flex h-14 w-14 items-center justify-center rounded-full bg-slate-900 text-white shadow-[0_14px_30px_rgba(15,23,42,0.22)] transition hover:bg-slate-800"
+          >
+            <SquarePen className="h-5 w-5" />
+          </button>
+          <span className="rounded-full bg-white/90 px-2 py-0.5 text-[11px] font-semibold text-slate-700 shadow-sm">Tulis</span>
+        </div>
+      ) : null}
 
       {isRegisterMode ? (
         <div className="fixed inset-0 z-40 flex items-center justify-center bg-slate-900/15 px-4 py-6">

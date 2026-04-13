@@ -94,11 +94,17 @@ export class MailboxMessageNotFoundError extends Error {}
 
 type DoveadmRecord = Record<string, string>;
 
+type ParsedInlineResource = {
+  references: string[];
+  dataUrl: string;
+};
+
 type ParsedMimeEntity = {
   headers: Record<string, string>;
   body: string;
   plainTextParts: string[];
   htmlParts: string[];
+  inlineResources: ParsedInlineResource[];
 };
 
 function normalizeMailboxIdentity(value: string) {
@@ -163,6 +169,10 @@ function parsePositiveInt(rawValue: unknown, fallbackValue: number, minValue: nu
   if (parsed < minValue) return minValue;
   if (parsed > maxValue) return maxValue;
   return parsed;
+}
+
+function escapeRegExp(value: string) {
+  return String(value || '').replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
 }
 
 function mapCharsetName(rawCharset: string) {
@@ -281,6 +291,28 @@ function decodeQuotedPrintableBody(value: string, charset: string) {
   return decodeBufferWithCharset(Buffer.from(bytes), charset);
 }
 
+function decodeQuotedPrintableBuffer(value: string) {
+  const normalized = String(value || '')
+    .replace(/=\r?\n/g, '')
+    .replace(/=\s+\r?\n/g, '');
+  const bytes: number[] = [];
+
+  for (let index = 0; index < normalized.length; index += 1) {
+    const current = normalized[index];
+    if (current === '=') {
+      const hex = normalized.slice(index + 1, index + 3);
+      if (/^[0-9a-fA-F]{2}$/.test(hex)) {
+        bytes.push(Number.parseInt(hex, 16));
+        index += 2;
+        continue;
+      }
+    }
+    bytes.push(current.charCodeAt(0));
+  }
+
+  return Buffer.from(bytes);
+}
+
 function decodeHtmlEntities(value: string) {
   return String(value || '')
     .replace(/&nbsp;/gi, ' ')
@@ -384,6 +416,86 @@ function decodeBodyValue(rawBody: string, encoding: string, charset: string) {
   return String(rawBody || '').replace(/\r\n/g, '\n').trim();
 }
 
+function decodeBodyBuffer(rawBody: string, encoding: string) {
+  const normalizedEncoding = String(encoding || '').trim().toLowerCase();
+  if (normalizedEncoding === 'base64') {
+    try {
+      return Buffer.from(String(rawBody || '').replace(/\s+/g, ''), 'base64');
+    } catch {
+      return Buffer.from(String(rawBody || ''), 'utf8');
+    }
+  }
+  if (normalizedEncoding === 'quoted-printable') {
+    return decodeQuotedPrintableBuffer(rawBody);
+  }
+  return Buffer.from(String(rawBody || '').replace(/\r\n/g, '\n'), 'utf8');
+}
+
+function extractHeaderParameter(headerValue: string, parameterName: string) {
+  const pattern = new RegExp(`(?:^|;)\\s*${escapeRegExp(parameterName)}\\*?=(?:"([^"]*)"|([^;]+))`, 'i');
+  const match = String(headerValue || '').match(pattern);
+  const rawValue = match ? match[1] || match[2] || '' : '';
+  return decodeMimeHeaderValue(String(rawValue || '').trim());
+}
+
+function normalizeInlineReference(value: string) {
+  let normalized = decodeMimeHeaderValue(String(value || ''))
+    .trim()
+    .replace(/^cid:/i, '')
+    .replace(/^<+|>+$/g, '')
+    .replace(/^['"]+|['"]+$/g, '');
+
+  try {
+    normalized = decodeURIComponent(normalized);
+  } catch {
+    // ignore malformed URI-style identifiers
+  }
+
+  return normalized.trim().toLowerCase();
+}
+
+function collectInlineResourceReferences(headers: Record<string, string>) {
+  const references = new Set<string>();
+  const contentId = normalizeInlineReference(String(headers['content-id'] || ''));
+  const contentLocation = normalizeInlineReference(String(headers['content-location'] || ''));
+  const contentTypeName = normalizeInlineReference(extractHeaderParameter(String(headers['content-type'] || ''), 'name'));
+  const contentDispositionFilename = normalizeInlineReference(
+    extractHeaderParameter(String(headers['content-disposition'] || ''), 'filename'),
+  );
+
+  if (contentId) references.add(contentId);
+  if (contentLocation) {
+    references.add(contentLocation);
+    const pathParts = contentLocation.split('/').filter((part) => part.length > 0);
+    const basename = pathParts[pathParts.length - 1] || '';
+    if (basename) references.add(basename);
+  }
+  if (contentTypeName) references.add(contentTypeName);
+  if (contentDispositionFilename) references.add(contentDispositionFilename);
+
+  return Array.from(references);
+}
+
+const MAX_INLINE_RESOURCE_COUNT = 12;
+const MAX_INLINE_RESOURCE_BYTES = 6 * 1024 * 1024;
+
+function buildInlineResource(headers: Record<string, string>, normalizedType: string, rawBody: string, transferEncoding: string) {
+  const references = collectInlineResourceReferences(headers);
+  if (references.length === 0) return null;
+  if (normalizedType.startsWith('text/plain') || normalizedType.startsWith('text/html')) return null;
+
+  const contentBuffer = decodeBodyBuffer(rawBody, transferEncoding);
+  if (!contentBuffer.length || contentBuffer.length > MAX_INLINE_RESOURCE_BYTES) {
+    return null;
+  }
+
+  const contentType = normalizedType || 'application/octet-stream';
+  return {
+    references,
+    dataUrl: `data:${contentType};base64,${contentBuffer.toString('base64')}`,
+  } satisfies ParsedInlineResource;
+}
+
 function splitMultipartSections(rawBody: string, boundary: string) {
   const normalizedBody = String(rawBody || '').replace(/\r\n/g, '\n');
   const marker = `--${boundary}`;
@@ -412,6 +524,7 @@ function parseMimeEntity(rawMessage: string): ParsedMimeEntity {
       body: rawBody,
       plainTextParts: parsedParts.flatMap((part) => part.plainTextParts),
       htmlParts: parsedParts.flatMap((part) => part.htmlParts),
+      inlineResources: parsedParts.flatMap((part) => part.inlineResources).slice(0, MAX_INLINE_RESOURCE_COUNT),
     };
   }
 
@@ -422,17 +535,57 @@ function parseMimeEntity(rawMessage: string): ParsedMimeEntity {
       body: rawBody,
       plainTextParts: nested.plainTextParts,
       htmlParts: nested.htmlParts,
+      inlineResources: nested.inlineResources.slice(0, MAX_INLINE_RESOURCE_COUNT),
     };
   }
 
   const decodedBody = decodeBodyValue(rawBody, transferEncoding, charset);
+  const inlineResource = buildInlineResource(headers, normalizedType, rawBody, transferEncoding);
 
   return {
     headers,
     body: decodedBody,
     plainTextParts: normalizedType.startsWith('text/plain') ? [decodedBody] : [],
     htmlParts: normalizedType.startsWith('text/html') ? [decodedBody] : [],
+    inlineResources: inlineResource ? [inlineResource] : [],
   };
+}
+
+function resolveInlineHtmlResource(reference: string, resourceMap: Map<string, string>) {
+  const normalizedReference = normalizeInlineReference(reference);
+  return normalizedReference ? resourceMap.get(normalizedReference) || null : null;
+}
+
+function replaceHtmlInlineAttribute(value: string, resourceMap: Map<string, string>) {
+  return String(value || '')
+    .replace(/\b(src|href|poster)\s*=\s*(["'])(.*?)\2/gi, (match, attr, quote, rawReference) => {
+      const resolved = resolveInlineHtmlResource(rawReference, resourceMap);
+      return resolved ? `${attr}=${quote}${resolved}${quote}` : match;
+    })
+    .replace(/\b(src|href|poster)\s*=\s*([^\s>]+)/gi, (match, attr, rawReference) => {
+      const resolved = resolveInlineHtmlResource(rawReference, resourceMap);
+      return resolved ? `${attr}="${resolved}"` : match;
+    })
+    .replace(/url\((['"]?)(.*?)\1\)/gi, (match, quote, rawReference) => {
+      const resolved = resolveInlineHtmlResource(rawReference, resourceMap);
+      return resolved ? `url(${quote || '"'}${resolved}${quote || '"'})` : match;
+    });
+}
+
+function resolveInlineResourcesInHtml(html: string | null, inlineResources: ParsedInlineResource[]) {
+  if (!html || inlineResources.length === 0) return html;
+
+  const resourceMap = new Map<string, string>();
+  for (const resource of inlineResources.slice(0, MAX_INLINE_RESOURCE_COUNT)) {
+    for (const reference of resource.references) {
+      if (reference && !resourceMap.has(reference)) {
+        resourceMap.set(reference, resource.dataUrl);
+      }
+    }
+  }
+
+  if (resourceMap.size === 0) return html;
+  return replaceHtmlInlineAttribute(html, resourceMap);
 }
 
 function parseDoveadmRecords(stdout: string) {
@@ -862,7 +1015,8 @@ export async function getWebmailMessageDetail(options: {
   const rawMessage = String(record['text'] || '').trim();
   const parsedMessage = parseMimeEntity(rawMessage);
   const plainText = parsedMessage.plainTextParts.map((item) => item.trim()).filter((item) => item.length > 0).join('\n\n') || null;
-  const html = parsedMessage.htmlParts.map((item) => item.trim()).filter((item) => item.length > 0).join('\n\n') || null;
+  const rawHtml = parsedMessage.htmlParts.map((item) => item.trim()).filter((item) => item.length > 0).join('\n\n') || null;
+  const html = resolveInlineResourcesInHtml(rawHtml, parsedMessage.inlineResources);
   const previewText = normalizeSnippet(plainText || stripHtml(html || '') || summary.snippet);
 
   return {
