@@ -686,12 +686,82 @@ function parseUidValue(record: DoveadmRecord) {
   return Number.isFinite(parsedUid) && parsedUid > 0 ? parsedUid : 0;
 }
 
+type MailboxSearchPlan = {
+  args: string[];
+  score: number;
+};
+
 function buildMailboxSearchArgs(folderKey: WebmailFolderKey, query?: string) {
   const normalizedQuery = toMaybeString(query);
   if (!normalizedQuery) {
     return ['mailbox', folderKey, 'all'];
   }
   return ['mailbox', folderKey, 'text', normalizedQuery];
+}
+
+function buildMailboxSearchPlans(folderKey: WebmailFolderKey, query: string) {
+  const normalizedQuery = toMaybeString(query);
+  const normalizedTerms = Array.from(
+    new Set(
+      normalizedQuery
+        .split(/\s+/)
+        .map((term) => toMaybeString(term))
+        .filter((term) => term.length >= 2 && term !== normalizedQuery),
+    ),
+  ).slice(0, 3);
+
+  const primary: MailboxSearchPlan[] = [
+    { args: ['mailbox', folderKey, 'from', normalizedQuery], score: 320 },
+    { args: ['mailbox', folderKey, 'subject', normalizedQuery], score: 220 },
+    { args: ['mailbox', folderKey, 'text', normalizedQuery], score: 140 },
+  ];
+
+  const fallback = normalizedTerms.flatMap<MailboxSearchPlan>((term) => [
+    { args: ['mailbox', folderKey, 'from', term], score: 240 },
+    { args: ['mailbox', folderKey, 'subject', term], score: 160 },
+  ]);
+
+  return {
+    primary,
+    fallback,
+  };
+}
+
+async function runDoveadmUidSearch(mailboxIdentity: string, searchArgs: string[]) {
+  return (await runDoveadmFetch(mailboxIdentity, 'uid', searchArgs))
+    .map((record) => parseUidValue(record))
+    .filter((uid) => uid > 0);
+}
+
+async function collectMailboxSearchUids(mailboxIdentity: string, folderKey: WebmailFolderKey, query?: string) {
+  const normalizedQuery = toMaybeString(query);
+  if (!normalizedQuery) {
+    return (await runDoveadmUidSearch(mailboxIdentity, buildMailboxSearchArgs(folderKey))).sort((left, right) => right - left);
+  }
+
+  const { primary, fallback } = buildMailboxSearchPlans(folderKey, normalizedQuery);
+  const scoreByUid = new Map<number, number>();
+
+  const mergePlanResults = async (plans: MailboxSearchPlan[]) => {
+    for (const plan of plans) {
+      const matchedUids = await runDoveadmUidSearch(mailboxIdentity, plan.args);
+      for (const uid of matchedUids) {
+        const currentScore = scoreByUid.get(uid) || 0;
+        if (plan.score > currentScore) {
+          scoreByUid.set(uid, plan.score);
+        }
+      }
+    }
+  };
+
+  await mergePlanResults(primary);
+  if (scoreByUid.size === 0 && fallback.length > 0) {
+    await mergePlanResults(fallback);
+  }
+
+  return Array.from(scoreByUid.entries())
+    .sort((left, right) => right[1] - left[1] || right[0] - left[0])
+    .map(([uid]) => uid);
 }
 
 function buildUidSequenceSet(uids: number[]) {
@@ -938,17 +1008,7 @@ export async function listWebmailMessages(options: {
     throw error;
   }
 
-  const searchArgs = buildMailboxSearchArgs(folderKey, query || undefined);
-  const matchedUids = (
-    await runDoveadmFetch(
-      mailboxIdentity,
-      'uid',
-      searchArgs,
-    )
-  )
-    .map((record) => parseUidValue(record))
-    .filter((uid) => uid > 0)
-    .sort((left, right) => right - left);
+  const matchedUids = await collectMailboxSearchUids(mailboxIdentity, folderKey, query || undefined);
 
   const total = matchedUids.length;
   const totalPages = total > 0 ? Math.ceil(total / limit) : 0;
