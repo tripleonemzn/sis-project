@@ -8,7 +8,6 @@ import {
     Clock, 
     Calendar, 
     Edit, 
-    Trash2,
     BookOpen,
     BarChart3,
     Users,
@@ -26,7 +25,6 @@ import { teacherAssignmentService } from '../../../services/teacherAssignment.se
 import type { TeacherAssignment } from '../../../services/teacherAssignment.service';
 
 import { QuestionBankView } from '../../../components/teacher/exams/QuestionBankView';
-import { ConfirmationModal } from '../../../components/common/ConfirmationModal';
 
 type SemesterFilter = 'GANJIL' | 'GENAP' | '';
 type CreateExamInfoDraft = {
@@ -163,8 +161,6 @@ export const ExamListPage = () => {
     const [isScheduleModalOpen, setIsScheduleModalOpen] = useState(false);
     const [schedulePacket, setSchedulePacket] = useState<ExamPacket | null>(null);
     const [scheduleRows, setScheduleRows] = useState<ScheduleDraftRow[]>([]);
-    const [packetToDelete, setPacketToDelete] = useState<ExamPacket | null>(null);
-    const [deletingPacketId, setDeletingPacketId] = useState<number | null>(null);
     const [isScheduleLoading, setIsScheduleLoading] = useState(false);
     const [isScheduleSaving, setIsScheduleSaving] = useState(false);
     const [createExamInfoDraft, setCreateExamInfoDraft] = useState<CreateExamInfoDraft>({
@@ -556,23 +552,6 @@ export const ExamListPage = () => {
         });
     }, [packets, search, resolvePacketDisplayTitle, resolvePacketLabel]);
 
-    // Handle delete with refetch
-    const handleDelete = async () => {
-        if (!packetToDelete) return;
-        setDeletingPacketId(packetToDelete.id);
-        try {
-            await examService.deletePacket(packetToDelete.id);
-            toast.success('Paket ujian berhasil dihapus');
-            setPacketToDelete(null);
-            refetchPackets();
-        } catch (error: unknown) {
-            const err = error as { response?: { data?: { message?: string } } };
-            toast.error(err.response?.data?.message || 'Gagal menghapus paket ujian');
-        } finally {
-            setDeletingPacketId(null);
-        }
-    };
-
     const handleScheduleRowChange = (
         classId: number,
         field: 'selected' | 'startTime' | 'endTime',
@@ -952,7 +931,6 @@ export const ExamListPage = () => {
                                         Jadwal program ini dibuat oleh {CURRICULUM_EXAM_MANAGER_LABEL}.
                                     </p>
                                 ) : null}
-
                                 <div className="flex items-center justify-end gap-1">
                                     <button 
                                         onClick={() =>
@@ -968,13 +946,6 @@ export const ExamListPage = () => {
                                         title="Edit Soal"
                                     >
                                         <Edit className="w-3 h-3" />
-                                    </button>
-                                    <button 
-                                        onClick={() => setPacketToDelete(packet)}
-                                        className="p-1.5 text-gray-500 hover:text-red-600 hover:bg-red-50 rounded-lg border border-transparent hover:border-red-100 transition-all"
-                                        title="Hapus"
-                                    >
-                                        <Trash2 className="w-3 h-3" />
                                     </button>
                                 </div>
                             </div>
@@ -1267,21 +1238,6 @@ export const ExamListPage = () => {
                     </div>
                 </div>
             )}
-
-            <ConfirmationModal
-                open={Boolean(packetToDelete)}
-                title="Hapus Paket Ujian"
-                message={`Apakah Anda yakin ingin menghapus paket "${packetToDelete?.title || 'ujian ini'}"?`}
-                confirmLabel={deletingPacketId !== null ? 'Menghapus...' : 'Ya, Hapus'}
-                cancelLabel="Batal"
-                confirmVariant="danger"
-                confirmDisabled={deletingPacketId !== null}
-                onCancel={() => {
-                    if (deletingPacketId !== null) return;
-                    setPacketToDelete(null);
-                }}
-                onConfirm={handleDelete}
-            />
         </div>
     );
 };

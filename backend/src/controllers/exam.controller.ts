@@ -6909,6 +6909,18 @@ export const updatePacket = asyncHandler(async (req: Request, res: Response) => 
 export const deletePacket = asyncHandler(async (req: Request, res: Response) => {
     const { id } = req.params;
     const packetId = parseInt(id, 10);
+    const authUser = (req as any).user as { id?: number; role?: string } | undefined;
+    const authRole = String(authUser?.role || '')
+        .trim()
+        .toUpperCase();
+
+    if (authRole !== 'ADMIN') {
+        throw new ApiError(
+            403,
+            'Paket ujian tidak dapat dihapus dari menu guru. Silakan edit informasi ujian atau isi soal yang tersedia.',
+        );
+    }
+
     await prisma.examPacket.delete({ where: { id: packetId } });
     invalidateStartExamScheduleCacheByPacket(packetId);
     res.json(new ApiResponse(200, null, 'Exam packet deleted successfully'));
