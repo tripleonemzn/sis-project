@@ -1,6 +1,18 @@
 import { useCallback, useEffect, useRef, useState, type FormEvent, type ReactNode } from 'react';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
-import { ArrowLeft, Inbox, Mail, RefreshCw, Reply, SquarePen } from 'lucide-react';
+import {
+  AlertCircle,
+  Archive,
+  ArrowLeft,
+  Inbox,
+  Mail,
+  RefreshCw,
+  Reply,
+  Send,
+  SquarePen,
+  X,
+  type LucideIcon,
+} from 'lucide-react';
 import { toast } from 'react-hot-toast';
 import { authService } from '../../services/auth.service';
 import { webmailService, type WebmailFolderKey, type WebmailMessageSummary } from '../../services/webmail.service';
@@ -30,12 +42,16 @@ type FolderMoveAction = {
   tone: FolderMoveActionTone;
 };
 
-const WEBMAIL_FOLDER_SHORTCUTS: Array<{ key: WebmailFolderKey; label: string }> = [
-  { key: 'INBOX', label: 'Inbox' },
-  { key: 'Drafts', label: 'Draft' },
-  { key: 'Sent', label: 'Terkirim' },
-  { key: 'Junk', label: 'Spam' },
-  { key: 'Archive', label: 'Arsip' },
+const WEBMAIL_FOLDER_SHORTCUTS: Array<{
+  key: WebmailFolderKey;
+  label: string;
+  icon: LucideIcon;
+}> = [
+  { key: 'INBOX', label: 'Inbox', icon: Inbox },
+  { key: 'Drafts', label: 'Draft', icon: SquarePen },
+  { key: 'Sent', label: 'Terkirim', icon: Send },
+  { key: 'Junk', label: 'Spam', icon: AlertCircle },
+  { key: 'Archive', label: 'Arsip', icon: Archive },
 ];
 
 const getFolderLabel = (folderKey: WebmailFolderKey | 'Trash'): string => {
@@ -223,9 +239,9 @@ const SectionCard = ({
   children: ReactNode;
 }) => {
   return (
-    <section className="rounded-[28px] border border-slate-200 bg-white p-5 shadow-[0_16px_40px_rgba(15,23,42,0.08)] sm:p-6">
-      <div className="mb-4 space-y-1">
-        <h2 className="text-xl font-extrabold text-slate-900">{title}</h2>
+    <section className="rounded-3xl border border-slate-200 bg-white p-5 shadow-[0_12px_32px_rgba(15,23,42,0.05)] sm:p-6">
+      <div className="mb-4 space-y-1.5">
+        <h2 className="text-lg font-semibold text-slate-900 sm:text-[1.15rem]">{title}</h2>
         {subtitle ? <p className="text-sm leading-6 text-slate-500">{subtitle}</p> : null}
       </div>
       {children}
@@ -248,7 +264,7 @@ const StatusChip = ({
         : 'border-slate-200 bg-slate-50 text-slate-700';
 
   return (
-    <span className={`inline-flex items-center rounded-full border px-3 py-1 text-xs font-extrabold tracking-wide ${toneClassName}`}>
+    <span className={`inline-flex items-center rounded-full border px-3 py-1 text-xs font-semibold ${toneClassName}`}>
       {children}
     </span>
   );
@@ -345,19 +361,14 @@ export const EmailPage = () => {
   const mailboxQuotaLabel = asQuotaLabel(webmailConfig?.mailboxQuotaMb);
   const mailboxIdentity = String(webmailConfig?.mailboxIdentity || '').trim().toLowerCase();
   const suggestedMailboxUsername = String(webmailConfig?.user?.username || '').trim().toLowerCase();
-  const mailboxPreview =
-    mailboxIdentity || `${suggestedMailboxUsername || 'username'}@${mailboxDomain}`.trim().toLowerCase();
 
   const [loginUser, setLoginUser] = useState('');
-  const [hasEditedLoginUser, setHasEditedLoginUser] = useState(false);
   const [loginPass, setLoginPass] = useState('');
   const [isRegisterMode, setIsRegisterMode] = useState(false);
   const [registerUser, setRegisterUser] = useState('');
   const [registerPass, setRegisterPass] = useState('');
   const [registerPassConfirm, setRegisterPassConfirm] = useState('');
   const [registerError, setRegisterError] = useState<string | null>(null);
-  const [resetError, setResetError] = useState<string | null>(null);
-  const [resetResult, setResetResult] = useState<{ mailboxIdentity: string; password: string; resetAt: string } | null>(null);
   const [panelError, setPanelError] = useState<string | null>(null);
   const [isWebmailMode, setIsWebmailMode] = useState(false);
   const [shouldSubmitBridgeLogin, setShouldSubmitBridgeLogin] = useState(false);
@@ -375,8 +386,6 @@ export const EmailPage = () => {
   const [searchDraft, setSearchDraft] = useState('');
   const [appliedSearch, setAppliedSearch] = useState('');
   const [visibleLimit, setVisibleLimit] = useState(DEFAULT_EMAIL_PAGE_LIMIT);
-
-  const loginIdentityValue = hasEditedLoginUser ? loginUser : mailboxPreview;
 
   const emailFeedQuery = useQuery({
     queryKey: ['webmail-folder-feed', mailboxIdentity || 'all', activeFolderKey, visibleLimit, appliedSearch],
@@ -460,18 +469,31 @@ export const EmailPage = () => {
   const openPanelSection = (openImmediatelyWhenSso = false) => {
     setPanelError(null);
     setRegisterError(null);
-    setResetError(null);
-    setResetResult(null);
     setIsRegisterMode(false);
 
     if (openImmediatelyWhenSso && useSsoMode) {
       handleOpenSso(activeFolderKey);
+      window.setTimeout(() => {
+        panelSectionRef.current?.scrollIntoView({
+          behavior: 'smooth',
+          block: 'start',
+        });
+      }, 80);
+      return;
     }
 
-    panelSectionRef.current?.scrollIntoView({
-      behavior: 'smooth',
-      block: 'start',
-    });
+    setShouldSubmitBridgeLogin(false);
+    setIframeSrc(getMailboxFolderUrl(bridgeLoginUrl, activeFolderKey));
+    setIsWebmailMode(true);
+    persistWebmailMode(true);
+    setIframeNonce((previous) => previous + 1);
+
+    window.setTimeout(() => {
+      panelSectionRef.current?.scrollIntoView({
+        behavior: 'smooth',
+        block: 'start',
+      });
+    }, 80);
   };
 
   const openWebmailWithBridgeLogin = (email: string, password: string) => {
@@ -522,8 +544,6 @@ export const EmailPage = () => {
       }
 
       setRegisterError(null);
-      setResetError(null);
-      setResetResult(null);
       setRegisterUser('');
       setRegisterPass('');
       setRegisterPassConfirm('');
@@ -533,27 +553,6 @@ export const EmailPage = () => {
     },
     onError: (error) => {
       setRegisterError(getErrorMessage(error, 'Gagal membuat akun webmail.'));
-    },
-  });
-
-  const resetPasswordMutation = useMutation({
-    mutationFn: webmailService.resetPassword,
-    onSuccess: (response) => {
-      const nextMailboxIdentity = String(response?.data?.mailboxIdentity || mailboxPreview).trim().toLowerCase();
-      setResetError(null);
-      setResetResult({
-        mailboxIdentity: nextMailboxIdentity,
-        password: String(response?.data?.password || ''),
-        resetAt: String(response?.data?.resetAt || new Date().toISOString()),
-      });
-      setHasEditedLoginUser(false);
-      setLoginUser(nextMailboxIdentity);
-      setLoginPass('');
-      toast.success('Password webmail berhasil direset.');
-    },
-    onError: (error) => {
-      setResetResult(null);
-      setResetError(getErrorMessage(error, 'Gagal mereset password webmail.'));
     },
   });
 
@@ -721,15 +720,12 @@ export const EmailPage = () => {
       setIsWebmailMode(shouldRestoreWebmailMode);
       setPendingAutoBridgeCredentials(shouldRestoreWebmailMode ? restoredCredentials : null);
       setLoginUser('');
-      setHasEditedLoginUser(false);
       setLoginPass('');
       setIsRegisterMode(false);
       setRegisterUser('');
       setRegisterPass('');
       setRegisterPassConfirm('');
       setRegisterError(null);
-      setResetError(null);
-      setResetResult(null);
       setPanelError(null);
       setShouldSubmitBridgeLogin(false);
       setIframeSrc(webmailInboxUrl);
@@ -833,25 +829,6 @@ export const EmailPage = () => {
     startSsoMutation.mutate(folderKey || activeFolderKey);
   };
 
-  const handleLoginSubmit = (event: FormEvent<HTMLFormElement>) => {
-    event.preventDefault();
-
-    if (useSsoMode) {
-      handleOpenSso(activeFolderKey);
-      return;
-    }
-
-    if (!isPortalReady) return;
-
-    const email = loginIdentityValue.trim().toLowerCase();
-    if (!email || !loginPass.trim()) {
-      setPanelError('Email dan password webmail wajib diisi.');
-      return;
-    }
-
-    openWebmailWithBridgeLogin(email, loginPass);
-  };
-
   const handleRegisterSubmit = (event: FormEvent<HTMLFormElement>) => {
     event.preventDefault();
     if (!isSelfRegistrationEnabled) return;
@@ -882,16 +859,7 @@ export const EmailPage = () => {
     }
 
     setRegisterError(null);
-    setResetError(null);
-    setResetResult(null);
     registerMutation.mutate({ username, password, confirmPassword });
-  };
-
-  const handleResetPassword = () => {
-    setRegisterError(null);
-    setResetError(null);
-    setResetResult(null);
-    resetPasswordMutation.mutate();
   };
 
   const handleDisconnectClick = () => {
@@ -902,7 +870,6 @@ export const EmailPage = () => {
     lastBridgeAuthAtRef.current = 0;
     setPanelError(null);
     setLoginUser('');
-    setHasEditedLoginUser(false);
     setLoginPass('');
     setShouldSubmitBridgeLogin(false);
     setPendingAutoBridgeCredentials(null);
@@ -1079,564 +1046,391 @@ export const EmailPage = () => {
         <input type="hidden" name="logout" value="1" readOnly />
       </form>
 
-      <div className="grid gap-6 xl:grid-cols-[minmax(0,1.1fr)_minmax(340px,0.9fr)]">
-        <div className="space-y-6">
-          <SectionCard
-            title="Email"
-            subtitle="Kotak masuk utama sekarang ditampilkan langsung di halaman ini. Panel webmail lengkap tetap tersedia untuk pencarian lanjutan, arsip, dan compose."
-          >
-            <div className="flex flex-wrap gap-2">
-              <StatusChip tone="accent">{isSsoMode ? 'SSO Aktif' : 'Bridge Login'}</StatusChip>
-              <StatusChip tone={unreadEmailCount > 0 ? 'danger' : 'default'}>{unreadEmailCount} belum dibaca</StatusChip>
-            </div>
+      <div className="space-y-6">
+        <SectionCard
+          title="Email"
+          subtitle="Ringkasan mailbox sekolah Anda dan akses cepat untuk menulis atau membalas email."
+        >
+          <div className="flex flex-wrap gap-2">
+            <StatusChip tone="accent">{isSsoMode ? 'SSO Aktif' : 'Bridge Login'}</StatusChip>
+            <StatusChip tone={unreadEmailCount > 0 ? 'danger' : 'default'}>{unreadEmailCount} belum dibaca</StatusChip>
+          </div>
 
-            <div className="space-y-1">
-              <p className="text-sm font-bold text-slate-900">Mailbox: {mailboxIdentity || 'Belum terhubung'}</p>
-              <p className="text-sm text-slate-500">Email terbaru: {latestEmailAt} • Kuota: {mailboxQuotaLabel}</p>
-            </div>
+          <div className="space-y-1">
+            <p className="text-sm font-semibold text-slate-900">Mailbox: {mailboxIdentity || 'Belum terhubung'}</p>
+            <p className="text-sm text-slate-500">Email terbaru: {latestEmailAt} • Kuota: {mailboxQuotaLabel}</p>
+          </div>
 
-            <div className="grid gap-3 sm:grid-cols-2">
-              <button
-                type="button"
-                onClick={openNewCompose}
-                className="inline-flex items-center justify-center gap-2 rounded-2xl bg-slate-900 px-4 py-3 text-sm font-bold text-white transition hover:bg-slate-800"
+          <div className="grid gap-3 sm:grid-cols-2">
+            <button
+              type="button"
+              onClick={openNewCompose}
+              className="inline-flex items-center justify-center gap-2 rounded-2xl bg-slate-900 px-4 py-3 text-sm font-semibold text-white transition hover:bg-slate-800"
+            >
+              <SquarePen className="h-4 w-4" />
+              Tulis Email Baru
+            </button>
+            <button
+              type="button"
+              onClick={openReplyCompose}
+              disabled={!selectedEmail || !canReplyFromSelectedFolder}
+              className="inline-flex items-center justify-center gap-2 rounded-2xl border border-slate-200 bg-white px-4 py-3 text-sm font-semibold text-slate-800 transition hover:bg-slate-50 disabled:cursor-not-allowed disabled:bg-slate-50 disabled:text-slate-400"
+            >
+              <Reply className="h-4 w-4" />
+              Balas Email
+            </button>
+          </div>
+        </SectionCard>
+
+        <SectionCard
+          title={activeFolderTitle}
+          subtitle={activeFolderDescription}
+        >
+          <div className="grid grid-cols-3 gap-2 sm:grid-cols-5 sm:gap-3">
+            {WEBMAIL_FOLDER_SHORTCUTS.map((folder) => {
+              const isActive = folder.key === activeFolderKey;
+              const Icon = folder.icon;
+              return (
+                <button
+                  key={folder.key}
+                  type="button"
+                  onClick={() => {
+                    setActiveFolderKey(folder.key);
+                    setSelectedEmailGuid(null);
+                    setSearchDraft('');
+                    setAppliedSearch('');
+                    setVisibleLimit(DEFAULT_EMAIL_PAGE_LIMIT);
+                  }}
+                  className="min-w-0"
+                >
+                  <span className="flex flex-col items-center gap-2">
+                    <span
+                      className={`flex h-10 w-10 items-center justify-center rounded-full border transition ${
+                        isActive
+                          ? 'border-blue-200 bg-blue-50 text-blue-700'
+                          : 'border-slate-200 bg-slate-50 text-slate-500 hover:border-slate-300 hover:text-slate-700'
+                      }`}
+                    >
+                      <Icon className="h-4 w-4" />
+                    </span>
+                    <span className={`text-center text-xs font-semibold ${isActive ? 'text-blue-700' : 'text-slate-600'}`}>
+                      {folder.label}
+                    </span>
+                  </span>
+                </button>
+              );
+            })}
+          </div>
+
+          {mailboxFeed?.mailboxAvailable !== false ? (
+            <div className="space-y-2">
+              <p className="text-sm font-semibold text-slate-700">Cari Email</p>
+              <form
+                className="flex flex-col gap-2 sm:flex-row"
+                onSubmit={(event) => {
+                  event.preventDefault();
+                  handleApplySearch();
+                }}
               >
-                <SquarePen className="h-4 w-4" />
-                Tulis Email Baru
-              </button>
-              <button
-                type="button"
-                onClick={openReplyCompose}
-                disabled={!selectedEmail || !canReplyFromSelectedFolder}
-                className="inline-flex items-center justify-center gap-2 rounded-2xl border border-slate-200 bg-white px-4 py-3 text-sm font-bold text-slate-800 transition hover:bg-slate-50 disabled:cursor-not-allowed disabled:bg-slate-50 disabled:text-slate-400"
-              >
-                <Reply className="h-4 w-4" />
-                Balas Email
-              </button>
+                <input
+                  type="text"
+                  value={searchDraft}
+                  onChange={(event) => setSearchDraft(event.target.value)}
+                  placeholder="Cari pengirim, subjek, atau isi email"
+                  className="flex-1 rounded-2xl border border-slate-200 bg-white px-4 py-3 text-sm text-slate-900 outline-none transition focus:border-blue-300 focus:ring-2 focus:ring-blue-100"
+                />
+                <button
+                  type="submit"
+                  className="rounded-2xl bg-[#3250b9] px-5 py-3 text-sm font-semibold text-white transition hover:bg-[#2a44a0]"
+                >
+                  Cari
+                </button>
+              </form>
+              {hasAppliedSearch || searchDraft.trim().length > 0 ? (
+                <button
+                  type="button"
+                  onClick={handleResetSearch}
+                  className="text-left text-sm font-semibold text-[#3250b9] transition hover:text-[#274194]"
+                >
+                  Reset Pencarian
+                </button>
+              ) : null}
             </div>
-          </SectionCard>
+          ) : null}
 
-          <SectionCard
-            title={activeFolderTitle}
-            subtitle={activeFolderDescription}
-          >
-            <div className="flex flex-wrap gap-2">
-              {WEBMAIL_FOLDER_SHORTCUTS.map((folder) => {
-                const isActive = folder.key === activeFolderKey;
-                return (
-                  <button
-                    key={folder.key}
-                    type="button"
-                    onClick={() => {
-                      setActiveFolderKey(folder.key);
-                      setSelectedEmailGuid(null);
-                      setSearchDraft('');
-                      setAppliedSearch('');
-                      setVisibleLimit(DEFAULT_EMAIL_PAGE_LIMIT);
-                    }}
-                    className={`rounded-full px-4 py-2 text-sm font-bold transition ${
-                      isActive
-                        ? 'border border-blue-200 bg-blue-50 text-blue-700'
-                        : 'border border-slate-200 bg-white text-slate-700 hover:bg-slate-50'
-                    }`}
-                  >
-                    {folder.label}
-                  </button>
-                );
-              })}
+          {emailFeedQuery.isLoading ? (
+            <div className="rounded-2xl border border-slate-200 bg-slate-50 px-4 py-5 text-sm text-slate-500">
+              Memuat {activeFolderLabel.toLowerCase()}...
             </div>
-
-            <div className="grid gap-3 sm:grid-cols-2">
+          ) : emailFeedQuery.isError ? (
+            <div className="space-y-3 rounded-2xl border border-rose-200 bg-rose-50 px-4 py-5">
+              <p className="text-sm font-semibold text-rose-700">
+                {getErrorMessage(emailFeedQuery.error, `Gagal memuat folder ${activeFolderLabel}.`)}
+              </p>
               <button
                 type="button"
                 onClick={() => {
                   void emailFeedQuery.refetch();
                 }}
-                className="inline-flex items-center justify-center gap-2 rounded-2xl border border-slate-200 bg-white px-4 py-3 text-sm font-bold text-slate-800 transition hover:bg-slate-50"
+                className="rounded-full bg-rose-600 px-4 py-2 text-sm font-semibold text-white transition hover:bg-rose-700"
               >
-                <RefreshCw className={`h-4 w-4 ${emailFeedQuery.isFetching && !emailFeedQuery.isLoading ? 'animate-spin' : ''}`} />
-                Sinkronkan {activeFolderLabel}
-              </button>
-              <button
-                type="button"
-                onClick={() => openPanelSection(true)}
-                className="inline-flex items-center justify-center gap-2 rounded-2xl bg-[#3250b9] px-4 py-3 text-sm font-bold text-white transition hover:bg-[#2a44a0]"
-              >
-                <Inbox className="h-4 w-4" />
-                {isSsoMode ? 'Buka Panel Lengkap' : 'Akses Panel Lengkap'}
+                Coba Lagi
               </button>
             </div>
-
-            {mailboxFeed?.mailboxAvailable !== false ? (
-              <div className="space-y-2">
-                <p className="text-sm font-bold text-slate-700">Cari Email</p>
-                <form
-                  className="flex flex-col gap-2 sm:flex-row"
-                  onSubmit={(event) => {
-                    event.preventDefault();
-                    handleApplySearch();
-                  }}
-                >
-                  <input
-                    type="text"
-                    value={searchDraft}
-                    onChange={(event) => setSearchDraft(event.target.value)}
-                    placeholder="Cari pengirim, subjek, atau isi email"
-                    className="flex-1 rounded-2xl border border-slate-200 bg-white px-4 py-3 text-sm text-slate-900 outline-none transition focus:border-blue-300 focus:ring-2 focus:ring-blue-100"
-                  />
-                  <button
-                    type="submit"
-                    className="rounded-2xl bg-[#3250b9] px-5 py-3 text-sm font-bold text-white transition hover:bg-[#2a44a0]"
-                  >
-                    Cari
-                  </button>
-                </form>
-                {hasAppliedSearch || searchDraft.trim().length > 0 ? (
-                  <button
-                    type="button"
-                    onClick={handleResetSearch}
-                    className="text-left text-sm font-bold text-[#3250b9] transition hover:text-[#274194]"
-                  >
-                    Reset Pencarian
-                  </button>
-                ) : null}
-              </div>
-            ) : null}
-
-            {emailFeedQuery.isLoading ? (
-              <div className="rounded-2xl border border-slate-200 bg-slate-50 px-4 py-5 text-sm text-slate-500">
-                Memuat {activeFolderLabel.toLowerCase()}...
-              </div>
-            ) : emailFeedQuery.isError ? (
-              <div className="space-y-3 rounded-2xl border border-rose-200 bg-rose-50 px-4 py-5">
-                <p className="text-sm font-semibold text-rose-700">
-                  {getErrorMessage(emailFeedQuery.error, `Gagal memuat folder ${activeFolderLabel}.`)}
-                </p>
+          ) : mailboxFeed?.mailboxAvailable === false ? (
+            <div className="rounded-2xl border border-amber-200 bg-amber-50 px-4 py-5">
+              <p className="text-sm font-semibold text-amber-900">Mailbox belum tersedia</p>
+              <p className="mt-2 text-sm leading-6 text-amber-800">
+                Akun ini sudah dikenali, tetapi mailbox di server mail belum aktif.
+              </p>
+              {isSelfRegistrationEnabled ? (
                 <button
                   type="button"
                   onClick={() => {
-                    void emailFeedQuery.refetch();
+                    setIsRegisterMode(true);
+                    setRegisterError(null);
                   }}
-                  className="rounded-full bg-rose-600 px-4 py-2 text-sm font-semibold text-white transition hover:bg-rose-700"
+                  className="mt-4 rounded-2xl bg-[#3250b9] px-4 py-3 text-sm font-semibold text-white transition hover:bg-[#2a44a0]"
                 >
-                  Coba Lagi
+                  Daftar Mailbox
                 </button>
-              </div>
-            ) : mailboxFeed?.mailboxAvailable === false ? (
-              <div className="rounded-2xl border border-amber-200 bg-amber-50 px-4 py-5">
-                <p className="text-sm font-bold text-amber-900">Mailbox belum tersedia</p>
-                <p className="mt-2 text-sm leading-6 text-amber-800">
-                  Akun ini sudah dikenali, tetapi mailbox di server mail belum aktif. Jika role Anda mendukung pendaftaran mandiri,
-                  buat mailbox dulu di bagian panel bawah.
-                </p>
-              </div>
-            ) : mailboxMessages.length === 0 ? (
-              <div className="rounded-2xl border border-slate-200 bg-slate-50 px-4 py-5">
-                <p className="text-sm font-bold text-slate-900">{activeFolderLabel} masih kosong</p>
-                <p className="mt-2 text-sm leading-6 text-slate-500">{activeFolderEmptyState}</p>
-              </div>
-            ) : (
-              <div className="space-y-3">
-                <p className="text-sm text-slate-500">
-                  {hasAppliedSearch
-                    ? `Menampilkan ${mailboxMessages.length} dari ${totalMessageCount} email yang cocok dengan "${appliedSearch}".`
-                    : `Menampilkan ${mailboxMessages.length} dari ${totalMessageCount} email di folder ${activeFolderLabel}.`}
-                </p>
-                {mailboxMessages.map((item) => (
-                  <EmailInboxItem
-                    key={item.guid}
-                    item={item}
-                    selected={item.guid === effectiveSelectedEmailGuid}
-                    onPress={() => {
-                      void handleSelectEmail(item);
-                    }}
-                  />
-                ))}
-                {canLoadMore ? (
-                  <button
-                    type="button"
-                    disabled={emailFeedQuery.isFetching}
-                    onClick={() => {
-                      setVisibleLimit((current) => current + DEFAULT_EMAIL_PAGE_LIMIT);
-                    }}
-                    className="inline-flex items-center justify-center gap-2 rounded-2xl border border-slate-200 bg-white px-4 py-3 text-sm font-bold text-slate-800 transition hover:bg-slate-50 disabled:cursor-not-allowed disabled:opacity-60"
-                  >
-                    <RefreshCw className={`h-4 w-4 ${emailFeedQuery.isFetching && !emailFeedQuery.isLoading ? 'animate-spin' : ''}`} />
-                    Muat Lebih Banyak
-                  </button>
-                ) : null}
-              </div>
-            )}
-
-            {selectedEmail ? (
-              <div className="rounded-2xl border border-blue-200 bg-blue-50/60 p-4">
-                <div className="space-y-2">
-                  <h3 className="text-sm font-extrabold text-slate-900">Detail {activeFolderLabel}</h3>
-                  <p className="text-sm text-slate-600">
-                    Dari: <span className="font-bold text-slate-900">{selectedSenderLabel}</span>
-                  </p>
-                  <p className="text-sm text-slate-600">
-                    Subjek: <span className="font-bold text-slate-900">{selectedSubjectLabel}</span>
-                  </p>
-                  <p className="text-sm text-slate-600">
-                    Waktu: <span className="font-bold text-slate-900">{formatDateTime(selectedEmail.date)}</span>
-                  </p>
-                </div>
-
-                <div className="mt-4 rounded-2xl border border-slate-200 bg-white p-4">
-                  {selectedEmailDetailQuery.isLoading ? (
-                    <p className="text-sm text-slate-500">Memuat isi email...</p>
-                  ) : selectedEmailDetailQuery.isError ? (
-                    <div className="space-y-3">
-                      <p className="text-sm font-semibold text-rose-700">
-                        {getErrorMessage(selectedEmailDetailQuery.error, 'Gagal memuat isi email.')}
-                      </p>
-                      <button
-                        type="button"
-                        onClick={() => {
-                          void selectedEmailDetailQuery.refetch();
-                        }}
-                        className="rounded-full bg-rose-600 px-4 py-2 text-sm font-semibold text-white transition hover:bg-rose-700"
-                      >
-                        Coba Lagi
-                      </button>
-                    </div>
-                  ) : (
-                    <div className="space-y-3">
-                      {selectedEmailDetail?.to ? (
-                        <p className="text-sm text-slate-600">
-                          Ke: <span className="font-bold text-slate-900">{selectedEmailDetail.to}</span>
-                        </p>
-                      ) : null}
-                      {selectedEmailDetail?.cc ? (
-                        <p className="text-sm text-slate-600">
-                          CC: <span className="font-bold text-slate-900">{selectedEmailDetail.cc}</span>
-                        </p>
-                      ) : null}
-                      <p className="whitespace-pre-wrap text-sm leading-6 text-slate-700">{selectedBodyText || 'Isi email tidak tersedia.'}</p>
-                      <p className="text-sm leading-6 text-slate-500">
-                        Isi email utama sekarang sudah bisa dibaca langsung di sini. Panel lengkap tetap dipakai untuk compose,
-                        pencarian lanjutan, atau folder lain di luar tampilan native ini.
-                      </p>
-                    </div>
-                  )}
-                </div>
-
-                <div className="mt-4 space-y-2">
-                  <p className="text-sm font-bold text-slate-700">Aksi Email</p>
-                  <div className="flex flex-wrap gap-2">
-                    {canMarkSelectedEmailUnread ? (
-                      <button
-                        type="button"
-                        onClick={() => {
-                          void handleMarkSelectedEmailUnread();
-                        }}
-                        disabled={isDetailActionPending}
-                        className={`rounded-2xl border px-4 py-2 text-sm font-bold transition disabled:cursor-not-allowed disabled:opacity-60 ${getFolderMoveButtonClassName('primary')}`}
-                      >
-                        {markAsUnreadMutation.isPending ? 'Memproses...' : 'Tandai Belum Dibaca'}
-                      </button>
-                    ) : null}
-                    <button
-                      type="button"
-                      onClick={() => {
-                        void handleDeleteSelectedEmail();
-                      }}
-                      disabled={isDetailActionPending}
-                      className={`rounded-2xl border px-4 py-2 text-sm font-bold transition disabled:cursor-not-allowed disabled:opacity-60 ${getFolderMoveButtonClassName('danger')}`}
-                    >
-                      {deleteMessageMutation.isPending ? 'Memproses...' : 'Hapus'}
-                    </button>
-                  </div>
-                </div>
-
-                {availableMoveActions.length > 0 ? (
-                  <div className="mt-4 space-y-2">
-                    <p className="text-sm font-bold text-slate-700">Aksi Folder</p>
-                    <div className="flex flex-wrap gap-2">
-                      {availableMoveActions.map((action) => (
-                        <button
-                          key={action.key}
-                          type="button"
-                          onClick={() => {
-                            void handleMoveSelectedEmail(action.targetFolderKey);
-                          }}
-                          disabled={isDetailActionPending}
-                          className={`rounded-2xl border px-4 py-2 text-sm font-bold transition disabled:cursor-not-allowed disabled:opacity-60 ${getFolderMoveButtonClassName(action.tone)}`}
-                        >
-                          {moveMessageMutation.isPending ? 'Memproses...' : action.label}
-                        </button>
-                      ))}
-                    </div>
-                  </div>
-                ) : null}
-
+              ) : null}
+            </div>
+          ) : mailboxMessages.length === 0 ? (
+            <div className="rounded-2xl border border-slate-200 bg-slate-50 px-4 py-5">
+              <p className="text-sm font-semibold text-slate-900">{activeFolderLabel} masih kosong</p>
+              <p className="mt-2 text-sm leading-6 text-slate-500">{activeFolderEmptyState}</p>
+            </div>
+          ) : (
+            <div className="space-y-3">
+              <p className="text-sm text-slate-500">
+                {hasAppliedSearch
+                  ? `Menampilkan ${mailboxMessages.length} dari ${totalMessageCount} email yang cocok dengan "${appliedSearch}".`
+                  : `Menampilkan ${mailboxMessages.length} dari ${totalMessageCount} email di folder ${activeFolderLabel}.`}
+              </p>
+              {mailboxMessages.map((item) => (
+                <EmailInboxItem
+                  key={item.guid}
+                  item={item}
+                  selected={item.guid === effectiveSelectedEmailGuid}
+                  onPress={() => {
+                    void handleSelectEmail(item);
+                  }}
+                />
+              ))}
+              {canLoadMore ? (
                 <button
                   type="button"
-                  onClick={() => openPanelSection(true)}
-                  className="mt-4 inline-flex items-center justify-center rounded-2xl bg-slate-900 px-4 py-3 text-sm font-bold text-white transition hover:bg-slate-800"
+                  disabled={emailFeedQuery.isFetching}
+                  onClick={() => {
+                    setVisibleLimit((current) => current + DEFAULT_EMAIL_PAGE_LIMIT);
+                  }}
+                  className="inline-flex items-center justify-center gap-2 rounded-2xl border border-slate-200 bg-white px-4 py-3 text-sm font-semibold text-slate-800 transition hover:bg-slate-50 disabled:cursor-not-allowed disabled:opacity-60"
                 >
-                  {isSsoMode ? 'Buka Panel Lengkap' : 'Lanjut ke Panel Lengkap'}
+                  <RefreshCw className={`h-4 w-4 ${emailFeedQuery.isFetching && !emailFeedQuery.isLoading ? 'animate-spin' : ''}`} />
+                  Muat Lebih Banyak
                 </button>
+              ) : null}
+            </div>
+          )}
+
+          {selectedEmail ? (
+            <div className="rounded-2xl border border-blue-200 bg-blue-50/60 p-4">
+              <div className="space-y-2">
+                <h3 className="text-sm font-semibold text-slate-900">Detail {activeFolderLabel}</h3>
+                <p className="text-sm text-slate-600">
+                  Dari: <span className="font-semibold text-slate-900">{selectedSenderLabel}</span>
+                </p>
+                <p className="text-sm text-slate-600">
+                  Subjek: <span className="font-semibold text-slate-900">{selectedSubjectLabel}</span>
+                </p>
+                <p className="text-sm text-slate-600">
+                  Waktu: <span className="font-semibold text-slate-900">{formatDateTime(selectedEmail.date)}</span>
+                </p>
               </div>
-            ) : null}
-          </SectionCard>
 
-          {isComposeMode ? (
-            <SectionCard
-              title={composeModeKind === 'reply' ? 'Balas Email' : 'Tulis Email Baru'}
-              subtitle={
-                composeModeKind === 'reply'
-                  ? 'Balasan akan dikirim dari mailbox sekolah Anda dan salinannya otomatis disimpan ke folder Sent.'
-                  : 'Email akan dikirim dari mailbox sekolah Anda dan salinannya otomatis disimpan ke folder Sent.'
-              }
-            >
-              <div className="space-y-4">
-                <div className="space-y-2">
-                  <label className="text-sm font-semibold text-slate-800">Kepada</label>
-                  <input
-                    type="text"
-                    value={composeTo}
-                    onChange={(event) => setComposeTo(event.target.value)}
-                    placeholder="email@tujuan.com"
-                    className="w-full rounded-2xl border border-slate-200 bg-white px-4 py-3 text-sm text-slate-800 placeholder:text-slate-400 focus:border-slate-400 focus:outline-none"
-                  />
-                </div>
+              <div className="mt-4 rounded-2xl border border-slate-200 bg-white p-4">
+                {selectedEmailDetailQuery.isLoading ? (
+                  <p className="text-sm text-slate-500">Memuat isi email...</p>
+                ) : selectedEmailDetailQuery.isError ? (
+                  <div className="space-y-3">
+                    <p className="text-sm font-semibold text-rose-700">
+                      {getErrorMessage(selectedEmailDetailQuery.error, 'Gagal memuat isi email.')}
+                    </p>
+                    <button
+                      type="button"
+                      onClick={() => {
+                        void selectedEmailDetailQuery.refetch();
+                      }}
+                      className="rounded-full bg-rose-600 px-4 py-2 text-sm font-semibold text-white transition hover:bg-rose-700"
+                    >
+                      Coba Lagi
+                    </button>
+                  </div>
+                ) : (
+                  <div className="space-y-3">
+                    {selectedEmailDetail?.to ? (
+                      <p className="text-sm text-slate-600">
+                        Ke: <span className="font-semibold text-slate-900">{selectedEmailDetail.to}</span>
+                      </p>
+                    ) : null}
+                    {selectedEmailDetail?.cc ? (
+                      <p className="text-sm text-slate-600">
+                        CC: <span className="font-semibold text-slate-900">{selectedEmailDetail.cc}</span>
+                      </p>
+                    ) : null}
+                    <p className="whitespace-pre-wrap text-sm leading-6 text-slate-700">{selectedBodyText || 'Isi email tidak tersedia.'}</p>
+                  </div>
+                )}
+              </div>
 
-                <div className="space-y-2">
-                  <label className="text-sm font-semibold text-slate-800">CC</label>
-                  <input
-                    type="text"
-                    value={composeCc}
-                    onChange={(event) => setComposeCc(event.target.value)}
-                    placeholder="opsional"
-                    className="w-full rounded-2xl border border-slate-200 bg-white px-4 py-3 text-sm text-slate-800 placeholder:text-slate-400 focus:border-slate-400 focus:outline-none"
-                  />
-                </div>
-
-                <div className="space-y-2">
-                  <label className="text-sm font-semibold text-slate-800">Subjek</label>
-                  <input
-                    type="text"
-                    value={composeSubject}
-                    onChange={(event) => setComposeSubject(event.target.value)}
-                    placeholder="Subjek email"
-                    className="w-full rounded-2xl border border-slate-200 bg-white px-4 py-3 text-sm text-slate-800 placeholder:text-slate-400 focus:border-slate-400 focus:outline-none"
-                  />
-                </div>
-
-                <div className="space-y-2">
-                  <label className="text-sm font-semibold text-slate-800">Isi Email</label>
-                  <textarea
-                    value={composeBody}
-                    onChange={(event) => setComposeBody(event.target.value)}
-                    placeholder="Tulis isi email di sini..."
-                    className="min-h-[180px] w-full rounded-2xl border border-slate-200 bg-white px-4 py-3 text-sm text-slate-800 placeholder:text-slate-400 focus:border-slate-400 focus:outline-none"
-                  />
-                </div>
-
-                <div className="grid gap-3 sm:grid-cols-2">
+              <div className="mt-4 space-y-2">
+                <p className="text-sm font-semibold text-slate-700">Aksi Email</p>
+                <div className="flex flex-wrap gap-2">
+                  {canMarkSelectedEmailUnread ? (
+                    <button
+                      type="button"
+                      onClick={() => {
+                        void handleMarkSelectedEmailUnread();
+                      }}
+                      disabled={isDetailActionPending}
+                      className={`rounded-2xl border px-4 py-2 text-sm font-semibold transition disabled:cursor-not-allowed disabled:opacity-60 ${getFolderMoveButtonClassName('primary')}`}
+                    >
+                      {markAsUnreadMutation.isPending ? 'Memproses...' : 'Tandai Belum Dibaca'}
+                    </button>
+                  ) : null}
                   <button
                     type="button"
                     onClick={() => {
-                      void handleSendCompose();
+                      void handleDeleteSelectedEmail();
                     }}
-                    disabled={sendMessageMutation.isPending}
-                    className="rounded-2xl bg-[#3250b9] px-4 py-3 text-sm font-bold text-white transition hover:bg-[#2a44a0] disabled:cursor-not-allowed disabled:opacity-70"
+                    disabled={isDetailActionPending}
+                    className={`rounded-2xl border px-4 py-2 text-sm font-semibold transition disabled:cursor-not-allowed disabled:opacity-60 ${getFolderMoveButtonClassName('danger')}`}
                   >
-                    {sendMessageMutation.isPending ? 'Mengirim...' : 'Kirim Email'}
-                  </button>
-                  <button
-                    type="button"
-                    onClick={() => setIsComposeMode(false)}
-                    className="rounded-2xl border border-slate-200 bg-white px-4 py-3 text-sm font-bold text-slate-800 transition hover:bg-slate-50"
-                  >
-                    Tutup
+                    {deleteMessageMutation.isPending ? 'Memproses...' : 'Hapus'}
                   </button>
                 </div>
               </div>
-            </SectionCard>
+
+              {availableMoveActions.length > 0 ? (
+                <div className="mt-4 space-y-2">
+                  <p className="text-sm font-semibold text-slate-700">Aksi Folder</p>
+                  <div className="flex flex-wrap gap-2">
+                    {availableMoveActions.map((action) => (
+                      <button
+                        key={action.key}
+                        type="button"
+                        onClick={() => {
+                          void handleMoveSelectedEmail(action.targetFolderKey);
+                        }}
+                        disabled={isDetailActionPending}
+                        className={`rounded-2xl border px-4 py-2 text-sm font-semibold transition disabled:cursor-not-allowed disabled:opacity-60 ${getFolderMoveButtonClassName(action.tone)}`}
+                      >
+                        {moveMessageMutation.isPending ? 'Memproses...' : action.label}
+                      </button>
+                    ))}
+                  </div>
+                </div>
+              ) : null}
+
+              <button
+                type="button"
+                onClick={() => openPanelSection(true)}
+                className="mt-4 inline-flex items-center justify-center rounded-2xl bg-slate-900 px-4 py-3 text-sm font-semibold text-white transition hover:bg-slate-800"
+              >
+                {isSsoMode ? 'Buka Panel Lengkap' : 'Lanjut ke Panel Lengkap'}
+              </button>
+            </div>
           ) : null}
-        </div>
+        </SectionCard>
 
-        <div ref={panelSectionRef} className="space-y-6">
-          {!isWebmailMode ? (
-            <SectionCard
-              title={isRegisterMode ? 'Daftar Mailbox' : 'Panel Lengkap Webmail'}
-              subtitle={
-                isRegisterMode
-                  ? 'Buat mailbox sekolah baru dengan username email pilihan Anda. Domain sekolah tetap mengikuti server.'
-                  : 'Bagian ini dipakai hanya saat Anda perlu akses penuh seperti balas email, pencarian lanjut, atau pengelolaan folder.'
-              }
-            >
-              {isRegisterMode ? (
-                <form className="space-y-4" onSubmit={handleRegisterSubmit}>
-                  <div className="space-y-2">
-                    <label className="text-sm font-semibold text-slate-800">Username Email</label>
-                    <div className="flex items-center rounded-2xl border border-slate-200 bg-white px-4 py-3">
-                      <input
-                        type="text"
-                        value={registerUser}
-                        onChange={(event) => setRegisterUser(event.target.value.toLowerCase())}
-                        placeholder={suggestedMailboxUsername || 'username email'}
-                        autoComplete="off"
-                        className="min-w-0 flex-1 border-0 bg-transparent text-sm text-slate-800 placeholder:text-slate-400 focus:outline-none"
-                      />
-                      <span className="pl-2 text-sm text-slate-500">@{mailboxDomain}</span>
-                    </div>
-                    <p className="text-sm leading-6 text-slate-500">
-                      Isi username email sesuai keinginan Anda. Domain sekolah akan otomatis memakai @{mailboxDomain}, dan setiap akun hanya boleh memiliki satu mailbox.
-                    </p>
-                    <p className="text-sm text-slate-500">Gunakan huruf kecil, angka, titik, underscore, atau dash.</p>
-                  </div>
+        {isComposeMode ? (
+          <SectionCard
+            title={composeModeKind === 'reply' ? 'Balas Email' : 'Tulis Email Baru'}
+            subtitle={
+              composeModeKind === 'reply'
+                ? 'Balasan akan dikirim dari mailbox sekolah Anda dan salinannya otomatis disimpan ke folder Sent.'
+                : 'Email akan dikirim dari mailbox sekolah Anda dan salinannya otomatis disimpan ke folder Sent.'
+            }
+          >
+            <div className="space-y-4">
+              <div className="space-y-2">
+                <label className="text-sm font-semibold text-slate-800">Kepada</label>
+                <input
+                  type="text"
+                  value={composeTo}
+                  onChange={(event) => setComposeTo(event.target.value)}
+                  placeholder="email@tujuan.com"
+                  className="w-full rounded-2xl border border-slate-200 bg-white px-4 py-3 text-sm text-slate-800 placeholder:text-slate-400 focus:border-slate-400 focus:outline-none"
+                />
+              </div>
 
-                  <div className="space-y-2">
-                    <label className="text-sm font-semibold text-slate-800">Password</label>
-                    <input
-                      type="password"
-                      value={registerPass}
-                      onChange={(event) => setRegisterPass(event.target.value)}
-                      placeholder="Buat password webmail"
-                      autoComplete="new-password"
-                      className="w-full rounded-2xl border border-slate-200 bg-white px-4 py-3 text-sm text-slate-800 placeholder:text-slate-400 focus:border-slate-400 focus:outline-none"
-                    />
-                  </div>
+              <div className="space-y-2">
+                <label className="text-sm font-semibold text-slate-800">CC</label>
+                <input
+                  type="text"
+                  value={composeCc}
+                  onChange={(event) => setComposeCc(event.target.value)}
+                  placeholder="opsional"
+                  className="w-full rounded-2xl border border-slate-200 bg-white px-4 py-3 text-sm text-slate-800 placeholder:text-slate-400 focus:border-slate-400 focus:outline-none"
+                />
+              </div>
 
-                  <div className="space-y-2">
-                    <label className="text-sm font-semibold text-slate-800">Konfirmasi Password</label>
-                    <input
-                      type="password"
-                      value={registerPassConfirm}
-                      onChange={(event) => setRegisterPassConfirm(event.target.value)}
-                      placeholder="Konfirmasi password"
-                      autoComplete="new-password"
-                      className="w-full rounded-2xl border border-slate-200 bg-white px-4 py-3 text-sm text-slate-800 placeholder:text-slate-400 focus:border-slate-400 focus:outline-none"
-                    />
-                  </div>
+              <div className="space-y-2">
+                <label className="text-sm font-semibold text-slate-800">Subjek</label>
+                <input
+                  type="text"
+                  value={composeSubject}
+                  onChange={(event) => setComposeSubject(event.target.value)}
+                  placeholder="Subjek email"
+                  className="w-full rounded-2xl border border-slate-200 bg-white px-4 py-3 text-sm text-slate-800 placeholder:text-slate-400 focus:border-slate-400 focus:outline-none"
+                />
+              </div>
 
-                  <p className="text-sm leading-6 text-slate-500">
-                    Kapasitas mailbox: {mailboxQuotaLabel} per user. Mailbox mengikuti identitas email sekolah yang sudah ditetapkan server.
-                  </p>
+              <div className="space-y-2">
+                <label className="text-sm font-semibold text-slate-800">Isi Email</label>
+                <textarea
+                  value={composeBody}
+                  onChange={(event) => setComposeBody(event.target.value)}
+                  placeholder="Tulis isi email di sini..."
+                  className="min-h-[180px] w-full rounded-2xl border border-slate-200 bg-white px-4 py-3 text-sm text-slate-800 placeholder:text-slate-400 focus:border-slate-400 focus:outline-none"
+                />
+              </div>
 
-                  {registerError ? <p className="text-sm font-semibold text-rose-700">{registerError}</p> : null}
+              <div className="grid gap-3 sm:grid-cols-2">
+                <button
+                  type="button"
+                  onClick={() => {
+                    void handleSendCompose();
+                  }}
+                  disabled={sendMessageMutation.isPending}
+                  className="rounded-2xl bg-[#3250b9] px-4 py-3 text-sm font-semibold text-white transition hover:bg-[#2a44a0] disabled:cursor-not-allowed disabled:opacity-70"
+                >
+                  {sendMessageMutation.isPending ? 'Mengirim...' : 'Kirim Email'}
+                </button>
+                <button
+                  type="button"
+                  onClick={() => setIsComposeMode(false)}
+                  className="rounded-2xl border border-slate-200 bg-white px-4 py-3 text-sm font-semibold text-slate-800 transition hover:bg-slate-50"
+                >
+                  Tutup
+                </button>
+              </div>
+            </div>
+          </SectionCard>
+        ) : null}
 
-                  <div className="grid gap-3 sm:grid-cols-2">
-                    <button
-                      type="submit"
-                      disabled={registerMutation.isPending || !isPortalReady}
-                      className="rounded-2xl bg-[#3250b9] px-4 py-3 text-sm font-bold text-white transition hover:bg-[#2a44a0] disabled:cursor-not-allowed disabled:opacity-70"
-                    >
-                      {registerMutation.isPending ? 'Memproses...' : 'Daftar Mailbox'}
-                    </button>
-                    <button
-                      type="button"
-                      onClick={() => {
-                        setIsRegisterMode(false);
-                        setRegisterError(null);
-                        setResetError(null);
-                      }}
-                      className="rounded-2xl bg-amber-500 px-4 py-3 text-sm font-bold text-slate-900 transition hover:bg-amber-400"
-                    >
-                      Kembali ke Panel
-                    </button>
-                  </div>
-                </form>
-              ) : (
-                <form className="space-y-4" onSubmit={handleLoginSubmit}>
-                  {useSsoMode ? (
-                    <div className="rounded-2xl border border-blue-200 bg-blue-50 px-4 py-4 text-sm leading-6 text-blue-700">
-                      Mode keamanan SSO aktif. Tekan tombol di bawah untuk masuk ke panel email lengkap.
-                    </div>
-                  ) : (
-                    <>
-                      <div className="space-y-2">
-                        <label className="text-sm font-semibold text-slate-800">Email</label>
-                        <input
-                          type="email"
-                          value={loginIdentityValue}
-                          onChange={(event) => {
-                            setHasEditedLoginUser(true);
-                            setLoginUser(event.target.value);
-                          }}
-                          placeholder={mailboxPreview || `username@${mailboxDomain}`}
-                          autoComplete="username"
-                          className="w-full rounded-2xl border border-slate-200 bg-white px-4 py-3 text-sm text-slate-800 placeholder:text-slate-400 focus:border-slate-400 focus:outline-none"
-                        />
-                      </div>
-
-                      <div className="space-y-2">
-                        <label className="text-sm font-semibold text-slate-800">Password</label>
-                        <input
-                          type="password"
-                          value={loginPass}
-                          onChange={(event) => setLoginPass(event.target.value)}
-                          placeholder="Masukkan password webmail"
-                          autoComplete="current-password"
-                          className="w-full rounded-2xl border border-slate-200 bg-white px-4 py-3 text-sm text-slate-800 placeholder:text-slate-400 focus:border-slate-400 focus:outline-none"
-                        />
-                      </div>
-                    </>
-                  )}
-
-                  {panelError ? <p className="text-sm font-semibold text-rose-700">{panelError}</p> : null}
-                  {resetError ? <p className="text-sm font-semibold text-rose-700">{resetError}</p> : null}
-                  {resetResult ? (
-                    <div className="space-y-2 rounded-2xl border border-amber-200 bg-amber-50 px-4 py-4">
-                      <p className="text-sm font-extrabold text-amber-900">Password baru berhasil dibuat.</p>
-                      <p className="text-sm text-amber-800">Mailbox: {resetResult.mailboxIdentity}</p>
-                      <p className="break-all text-sm font-extrabold text-slate-900">{resetResult.password}</p>
-                      <p className="text-xs leading-5 text-amber-800">
-                        Simpan password ini sekarang. Reset dilakukan pada {formatDateTime(resetResult.resetAt)}.
-                      </p>
-                    </div>
-                  ) : null}
-
-                  <button
-                    type="submit"
-                    disabled={startSsoMutation.isPending || !isPortalReady}
-                    className="w-full rounded-2xl bg-amber-500 px-4 py-3 text-sm font-bold text-slate-900 transition hover:bg-amber-400 disabled:cursor-not-allowed disabled:opacity-70"
-                  >
-                    {startSsoMutation.isPending ? 'Menyiapkan...' : useSsoMode ? 'Masuk Panel Lengkap' : 'Login ke Panel Lengkap'}
-                  </button>
-
-                  {isSelfRegistrationEnabled ? (
-                    <button
-                      type="button"
-                      onClick={() => {
-                        setIsRegisterMode(true);
-                        setRegisterError(null);
-                        setResetError(null);
-                        setResetResult(null);
-                      }}
-                      className="w-full rounded-2xl bg-[#3250b9] px-4 py-3 text-sm font-bold text-white transition hover:bg-[#2a44a0]"
-                    >
-                      Daftar Mailbox
-                    </button>
-                  ) : null}
-
-                  {!useSsoMode ? (
-                    <button
-                      type="button"
-                      onClick={handleResetPassword}
-                      disabled={resetPasswordMutation.isPending || !isPortalReady}
-                      className="w-full py-1 text-center text-sm font-bold text-slate-500 transition hover:text-slate-700 disabled:cursor-not-allowed disabled:opacity-70"
-                    >
-                      {resetPasswordMutation.isPending ? 'Mereset Password...' : 'Lupa Password?'}
-                    </button>
-                  ) : null}
-                </form>
-              )}
-            </SectionCard>
-          ) : (
+        {isWebmailMode ? (
+          <div ref={panelSectionRef} className="space-y-4">
             <SectionCard
               title="Panel Lengkap Aktif"
-              subtitle="Panel ini dipertahankan untuk aksi lanjutan seperti baca isi lengkap, pencarian mailbox, compose, dan pengelolaan folder."
+              subtitle="Panel webmail penuh dibuka hanya saat Anda membutuhkan fitur lanjutan."
             >
               <div className="grid gap-3 sm:grid-cols-2">
                 <button
                   type="button"
                   onClick={handleReloadPanel}
-                  className="inline-flex items-center justify-center gap-2 rounded-2xl border border-slate-200 bg-white px-4 py-3 text-sm font-bold text-slate-800 transition hover:bg-slate-50"
+                  className="inline-flex items-center justify-center gap-2 rounded-2xl border border-slate-200 bg-white px-4 py-3 text-sm font-semibold text-slate-800 transition hover:bg-slate-50"
                 >
                   <RefreshCw className="h-4 w-4" />
                   Muat Ulang
@@ -1644,39 +1438,135 @@ export const EmailPage = () => {
                 <button
                   type="button"
                   onClick={handleDisconnectClick}
-                  className="inline-flex items-center justify-center gap-2 rounded-2xl border border-amber-200 bg-amber-50 px-4 py-3 text-sm font-bold text-amber-800 transition hover:bg-amber-100"
+                  className="inline-flex items-center justify-center gap-2 rounded-2xl border border-amber-200 bg-amber-50 px-4 py-3 text-sm font-semibold text-amber-800 transition hover:bg-amber-100"
                 >
                   <ArrowLeft className="h-4 w-4" />
                   Tutup Panel Lengkap
                 </button>
               </div>
             </SectionCard>
-          )}
-        </div>
+
+            <div className="overflow-hidden rounded-3xl border border-slate-200 bg-white shadow-[0_16px_36px_rgba(15,23,42,0.08)]">
+              {panelError ? (
+                <div className="space-y-3 border-b border-rose-200 bg-rose-50 px-6 py-5">
+                  <p className="text-sm font-semibold text-rose-700">{panelError}</p>
+                  <button
+                    type="button"
+                    onClick={handleReloadPanel}
+                    className="rounded-full bg-rose-600 px-4 py-2 text-sm font-semibold text-white transition hover:bg-rose-700"
+                  >
+                    Coba Muat Ulang
+                  </button>
+                </div>
+              ) : null}
+              <iframe
+                key={iframeNonce}
+                name={WEBMAIL_FRAME_NAME}
+                title="Webmail SIS KGB2"
+                allow="clipboard-write"
+                src={iframeSrc}
+                className="h-[calc(100vh-12rem)] min-h-[620px] w-full border-0 bg-white"
+              />
+            </div>
+          </div>
+        ) : null}
       </div>
 
-      {isWebmailMode ? (
-        <div className="overflow-hidden rounded-[28px] border border-slate-200 bg-white shadow-[0_18px_45px_rgba(15,23,42,0.12)]">
-          {panelError ? (
-            <div className="space-y-3 border-b border-rose-200 bg-rose-50 px-6 py-5">
-              <p className="text-sm font-semibold text-rose-700">{panelError}</p>
+      {isRegisterMode ? (
+        <div className="fixed inset-0 z-40 flex items-center justify-center bg-slate-900/15 px-4 py-6">
+          <div className="w-full max-w-xl overflow-hidden rounded-3xl border border-slate-200 bg-white shadow-[0_24px_60px_rgba(15,23,42,0.14)]">
+            <div className="flex items-start justify-between gap-4 border-b border-slate-200 px-6 py-5">
+              <div className="space-y-1">
+                <h2 className="text-lg font-semibold text-slate-900">Daftar Mailbox</h2>
+                <p className="text-sm leading-6 text-slate-500">
+                  Buat mailbox sekolah baru dengan username email pilihan Anda. Domain sekolah tetap mengikuti server.
+                </p>
+              </div>
               <button
                 type="button"
-                onClick={handleReloadPanel}
-                className="rounded-full bg-rose-600 px-4 py-2 text-sm font-semibold text-white transition hover:bg-rose-700"
+                onClick={() => {
+                  setIsRegisterMode(false);
+                  setRegisterError(null);
+                }}
+                className="flex h-10 w-10 items-center justify-center rounded-2xl border border-slate-200 bg-white text-slate-500 transition hover:bg-slate-50 hover:text-slate-700"
               >
-                Coba Muat Ulang
+                <X className="h-4 w-4" />
               </button>
             </div>
-          ) : null}
-          <iframe
-            key={iframeNonce}
-            name={WEBMAIL_FRAME_NAME}
-            title="Webmail SIS KGB2"
-            allow="clipboard-write"
-            src={iframeSrc}
-            className="h-[calc(100vh-12rem)] min-h-[620px] w-full border-0 bg-white"
-          />
+
+            <div className="max-h-[calc(100vh-12rem)] overflow-y-auto px-6 py-5">
+              <form className="space-y-4" onSubmit={handleRegisterSubmit}>
+                <div className="space-y-2">
+                  <label className="text-sm font-semibold text-slate-800">Username Email</label>
+                  <div className="flex items-center rounded-2xl border border-slate-200 bg-white px-4 py-3">
+                    <input
+                      type="text"
+                      value={registerUser}
+                      onChange={(event) => setRegisterUser(event.target.value.toLowerCase())}
+                      placeholder={suggestedMailboxUsername || 'username email'}
+                      autoComplete="off"
+                      className="min-w-0 flex-1 border-0 bg-transparent text-sm text-slate-800 placeholder:text-slate-400 focus:outline-none"
+                    />
+                    <span className="pl-2 text-sm text-slate-500">@{mailboxDomain}</span>
+                  </div>
+                  <p className="text-sm leading-6 text-slate-500">
+                    Isi username email sesuai keinginan Anda. Domain sekolah akan otomatis memakai @{mailboxDomain}, dan setiap akun hanya boleh memiliki satu mailbox.
+                  </p>
+                  <p className="text-sm text-slate-500">Gunakan huruf kecil, angka, titik, underscore, atau dash.</p>
+                </div>
+
+                <div className="space-y-2">
+                  <label className="text-sm font-semibold text-slate-800">Password</label>
+                  <input
+                    type="password"
+                    value={registerPass}
+                    onChange={(event) => setRegisterPass(event.target.value)}
+                    placeholder="Buat password webmail"
+                    autoComplete="new-password"
+                    className="w-full rounded-2xl border border-slate-200 bg-white px-4 py-3 text-sm text-slate-800 placeholder:text-slate-400 focus:border-slate-400 focus:outline-none"
+                  />
+                </div>
+
+                <div className="space-y-2">
+                  <label className="text-sm font-semibold text-slate-800">Konfirmasi Password</label>
+                  <input
+                    type="password"
+                    value={registerPassConfirm}
+                    onChange={(event) => setRegisterPassConfirm(event.target.value)}
+                    placeholder="Konfirmasi password"
+                    autoComplete="new-password"
+                    className="w-full rounded-2xl border border-slate-200 bg-white px-4 py-3 text-sm text-slate-800 placeholder:text-slate-400 focus:border-slate-400 focus:outline-none"
+                  />
+                </div>
+
+                <p className="text-sm leading-6 text-slate-500">
+                  Kapasitas mailbox: {mailboxQuotaLabel} per user. Mailbox mengikuti identitas email sekolah yang sudah ditetapkan server.
+                </p>
+
+                {registerError ? <p className="text-sm font-semibold text-rose-700">{registerError}</p> : null}
+
+                <div className="grid gap-3 sm:grid-cols-2">
+                  <button
+                    type="submit"
+                    disabled={registerMutation.isPending || !isPortalReady}
+                    className="rounded-2xl bg-[#3250b9] px-4 py-3 text-sm font-semibold text-white transition hover:bg-[#2a44a0] disabled:cursor-not-allowed disabled:opacity-70"
+                  >
+                    {registerMutation.isPending ? 'Memproses...' : 'Daftar Mailbox'}
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => {
+                      setIsRegisterMode(false);
+                      setRegisterError(null);
+                    }}
+                    className="rounded-2xl border border-slate-200 bg-white px-4 py-3 text-sm font-semibold text-slate-800 transition hover:bg-slate-50"
+                  >
+                    Tutup
+                  </button>
+                </div>
+              </form>
+            </div>
+          </div>
         </div>
       ) : null}
     </div>

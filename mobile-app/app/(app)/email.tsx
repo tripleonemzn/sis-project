@@ -899,34 +899,6 @@ export default function MobileEmailScreen() {
       >
         <View style={{ paddingHorizontal: 12, gap: 10 }}>
           <View
-            style={{
-              borderRadius: 18,
-              borderWidth: 1,
-              borderColor: '#dbe4f4',
-              backgroundColor: '#ffffff',
-              paddingHorizontal: 8,
-              paddingVertical: 10,
-            }}
-          >
-            <MobileMenuTabBar
-              items={WEBMAIL_FOLDER_SHORTCUTS.map((item) => ({
-                key: item.key,
-                label: item.label,
-                iconName: item.iconName,
-              }))}
-              activeKey={activeFolderKey}
-              onChange={(key) => {
-                const targetFolder = WEBMAIL_FOLDER_SHORTCUTS.find((item) => item.key === key);
-                if (!targetFolder) return;
-                handleFolderShortcutPress(targetFolder.key);
-              }}
-              minTabWidth={52}
-              maxTabWidth={52}
-              compact
-            />
-          </View>
-
-          <View
             onLayout={(event) => {
               setInboxSectionY(event.nativeEvent.layout.y);
             }}
@@ -935,51 +907,23 @@ export default function MobileEmailScreen() {
               title={activeFolderTitle}
               subtitle={activeFolderDescription}
             >
-              <View style={{ flexDirection: 'row', gap: 8 }}>
-                <Pressable
-                  onPress={() => emailFeedQuery.refetch()}
-                  style={{
-                    flex: 1,
-                    borderRadius: 12,
-                    borderWidth: 1,
-                    borderColor: '#cbd5e1',
-                    paddingVertical: 10,
-                    alignItems: 'center',
-                    justifyContent: 'center',
-                    flexDirection: 'row',
-                    gap: 6,
-                    backgroundColor: '#ffffff',
-                  }}
-                >
-                  {emailFeedQuery.isFetching && !emailFeedQuery.isLoading ? (
-                    <ActivityIndicator size="small" color="#2563eb" />
-                  ) : (
-                    <Feather name="refresh-cw" size={14} color="#1e293b" />
-                  )}
-                  <Text style={{ color: '#1e293b', fontSize: 12, fontWeight: '700' }}>Sinkronkan</Text>
-                </Pressable>
-
-                {mailboxAvailable ? (
-                  <Pressable
-                    onPress={() => openPanelAccess(activeFolderKey)}
-                    style={{
-                      flex: 1,
-                      borderRadius: 12,
-                      borderWidth: 1,
-                      borderColor: '#c7d2fe',
-                      backgroundColor: '#eef2ff',
-                      paddingVertical: 10,
-                      alignItems: 'center',
-                      justifyContent: 'center',
-                      flexDirection: 'row',
-                      gap: 6,
-                    }}
-                  >
-                    <Feather name="external-link" size={14} color="#3250b9" />
-                    <Text style={{ color: '#3250b9', fontSize: 12, fontWeight: '700' }}>Panel Lengkap</Text>
-                  </Pressable>
-                ) : null}
-              </View>
+              <MobileMenuTabBar
+                items={WEBMAIL_FOLDER_SHORTCUTS.map((item) => ({
+                  key: item.key,
+                  label: item.label,
+                  iconName: item.iconName,
+                }))}
+                activeKey={activeFolderKey}
+                onChange={(key) => {
+                  const targetFolder = WEBMAIL_FOLDER_SHORTCUTS.find((item) => item.key === key);
+                  if (!targetFolder) return;
+                  handleFolderShortcutPress(targetFolder.key);
+                }}
+                compact
+                layout="fill"
+                tabVariant="plain"
+                gap={4}
+              />
 
               {mailboxAvailable ? (
                 <View style={{ gap: 8 }}>

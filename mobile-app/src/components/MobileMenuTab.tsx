@@ -12,6 +12,8 @@ type MobileMenuTabProps = {
   minWidth?: number;
   maxWidth?: number;
   compact?: boolean;
+  variant?: 'card' | 'plain';
+  fill?: boolean;
   style?: StyleProp<ViewStyle>;
 };
 
@@ -74,10 +76,13 @@ export function MobileMenuTab({
   minWidth = 76,
   maxWidth = 114,
   compact = true,
+  variant = 'card',
+  fill = false,
   style,
 }: MobileMenuTabProps) {
   const iconMeta = resolveIconMeta(label, iconName);
   const { colors, resolvedTheme } = useAppTheme();
+  const isPlainVariant = variant === 'plain';
   return (
     <Pressable
       accessibilityRole="tab"
@@ -85,20 +90,25 @@ export function MobileMenuTab({
       onPress={onPress}
       style={({ pressed }) => [
         {
-          minWidth,
-          maxWidth,
-          borderWidth: 1,
+          minWidth: fill ? 0 : minWidth,
+          ...(fill ? null : maxWidth ? { maxWidth } : null),
+          borderWidth: isPlainVariant ? 0 : 1,
           borderColor: active ? colors.primary : colors.borderSoft,
-          backgroundColor: active ? (resolvedTheme === 'dark' ? colors.primarySoft : '#f8fbff') : colors.surface,
-          borderRadius: compact ? 16 : 18,
-          paddingHorizontal: compact ? 10 : 12,
+          backgroundColor: isPlainVariant
+            ? 'transparent'
+            : active
+              ? (resolvedTheme === 'dark' ? colors.primarySoft : '#f8fbff')
+              : colors.surface,
+          borderRadius: isPlainVariant ? 0 : compact ? 16 : 18,
+          paddingHorizontal: isPlainVariant ? 4 : compact ? 10 : 12,
           paddingTop: compact ? 9 : 11,
           paddingBottom: compact ? 8 : 10,
           alignItems: 'center',
           justifyContent: 'center',
-          alignSelf: 'flex-start',
+          alignSelf: fill ? 'stretch' : 'flex-start',
+          flex: fill ? 1 : undefined,
           opacity: pressed ? 0.88 : 1,
-          ...(active
+          ...(!isPlainVariant && active
             ? {
                 shadowColor: '#2563eb',
                 shadowOpacity: resolvedTheme === 'dark' ? 0.28 : 0.1,
@@ -131,7 +141,7 @@ export function MobileMenuTab({
           fontSize: compact ? 10.5 : 11.5,
           lineHeight: compact ? 13 : 14,
           fontWeight: active ? '700' : '600',
-          color: active ? colors.primary : colors.text,
+          color: active ? colors.primary : isPlainVariant ? colors.textMuted : colors.text,
           minHeight: compact ? 24 : 28,
         }}
       >

@@ -17,6 +17,9 @@ type MobileMenuTabBarProps = {
   minTabWidth?: number;
   maxTabWidth?: number;
   compact?: boolean;
+  layout?: 'scroll' | 'fill';
+  tabVariant?: 'card' | 'plain';
+  gap?: number;
 };
 
 export function MobileMenuTabBar({
@@ -28,11 +31,37 @@ export function MobileMenuTabBar({
   minTabWidth = 76,
   maxTabWidth = 112,
   compact = true,
+  layout = 'scroll',
+  tabVariant = 'card',
+  gap = 8,
 }: MobileMenuTabBarProps) {
+  if (layout === 'fill') {
+    return (
+      <View style={style}>
+        <View style={[{ flexDirection: 'row', alignItems: 'flex-start' }, contentContainerStyle]}>
+          {items.map((item, index) => (
+            <View key={item.key} style={{ flex: 1, minWidth: 0, marginRight: index === items.length - 1 ? 0 : gap }}>
+              <MobileMenuTab
+                active={activeKey === item.key}
+                label={item.label}
+                iconName={item.iconName}
+                onPress={() => onChange(item.key)}
+                minWidth={0}
+                compact={compact}
+                variant={tabVariant}
+                fill
+              />
+            </View>
+          ))}
+        </View>
+      </View>
+    );
+  }
+
   return (
     <ScrollView horizontal showsHorizontalScrollIndicator={false} style={style} contentContainerStyle={contentContainerStyle}>
       {items.map((item, index) => (
-        <View key={item.key} style={{ marginRight: index === items.length - 1 ? 0 : 8 }}>
+        <View key={item.key} style={{ marginRight: index === items.length - 1 ? 0 : gap }}>
           <MobileMenuTab
             active={activeKey === item.key}
             label={item.label}
@@ -41,6 +70,7 @@ export function MobileMenuTabBar({
             minWidth={minTabWidth}
             maxWidth={maxTabWidth}
             compact={compact}
+            variant={tabVariant}
           />
         </View>
       ))}
