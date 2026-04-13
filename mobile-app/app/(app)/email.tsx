@@ -1,4 +1,4 @@
-import { useMemo, useRef, useState } from 'react';
+import { useEffect, useMemo, useRef, useState } from 'react';
 import type { ComponentProps, ReactNode } from 'react';
 import { Redirect } from 'expo-router';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
@@ -22,6 +22,7 @@ import { useIsScreenActive } from '../../src/hooks/useIsScreenActive';
 const ALLOWED_WEBMAIL_ROLES = new Set(['ADMIN', 'TEACHER', 'PRINCIPAL', 'STAFF', 'EXTRACURRICULAR_TUTOR']);
 const MAILBOX_USERNAME_PATTERN = /^[a-z0-9][a-z0-9._-]{2,62}$/;
 const DEFAULT_EMAIL_PAGE_LIMIT = 20;
+const AUTO_APPLY_SEARCH_DELAY_MS = 350;
 type FeatherIconName = ComponentProps<typeof Feather>['name'];
 type WebmailFolderKey = MobileWebmailFolderKey;
 type FolderMoveActionTone = 'primary' | 'neutral' | 'warning' | 'danger';
@@ -539,6 +540,34 @@ export default function MobileEmailScreen() {
 
   const activeFolderLabel =
     WEBMAIL_FOLDER_SHORTCUTS.find((item) => item.key === activeFolderKey)?.label || 'Inbox';
+
+  useEffect(() => {
+    if (!isAuthenticated || !isAllowedRole || !isScreenActive || isWebmailMode || mailboxFeed?.mailboxAvailable === false) {
+      return;
+    }
+
+    const nextSearch = searchDraft.trim();
+    if (nextSearch === appliedSearch) return;
+
+    const timeoutId = setTimeout(() => {
+      setIsEmailDetailVisible(false);
+      setSelectedEmailGuid(null);
+      setVisibleLimit(DEFAULT_EMAIL_PAGE_LIMIT);
+      setAppliedSearch(nextSearch);
+    }, AUTO_APPLY_SEARCH_DELAY_MS);
+
+    return () => {
+      clearTimeout(timeoutId);
+    };
+  }, [
+    appliedSearch,
+    isAllowedRole,
+    isAuthenticated,
+    isScreenActive,
+    isWebmailMode,
+    mailboxFeed?.mailboxAvailable,
+    searchDraft,
+  ]);
 
   const startSsoMutation = useMutation({
     mutationFn: (folderKey?: WebmailFolderKey) => webmailApi.startSso().then((data) => ({ data, folderKey })),

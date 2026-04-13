@@ -26,6 +26,7 @@ const DEFAULT_WEBMAIL_DOMAIN = 'siskgb2.id';
 const MAILBOX_USERNAME_PATTERN = /^[a-z0-9][a-z0-9._-]{2,62}$/;
 const BRIDGE_REAUTH_IDLE_MS = 1000 * 60 * 15;
 const DEFAULT_EMAIL_PAGE_LIMIT = 20;
+const AUTO_APPLY_SEARCH_DELAY_MS = 350;
 
 const getWebmailModeStorageKey = (scopeKey: string) => `sis-webmail-mode:${scopeKey}`;
 const getWebmailBridgeStorageKey = (scopeKey: string) => `sis-webmail-bridge:${scopeKey}`;
@@ -624,6 +625,24 @@ export const EmailPage = () => {
     setIsEmailDetailVisible(false);
     setSelectedEmailGuid(null);
   };
+
+  useEffect(() => {
+    if (!isPortalReady || isWebmailMode || mailboxFeed?.mailboxAvailable === false) return;
+
+    const nextSearch = searchDraft.trim();
+    if (nextSearch === appliedSearch) return;
+
+    const timeoutId = window.setTimeout(() => {
+      setIsEmailDetailVisible(false);
+      setSelectedEmailGuid(null);
+      setVisibleLimit(DEFAULT_EMAIL_PAGE_LIMIT);
+      setAppliedSearch(nextSearch);
+    }, AUTO_APPLY_SEARCH_DELAY_MS);
+
+    return () => {
+      window.clearTimeout(timeoutId);
+    };
+  }, [appliedSearch, isPortalReady, isWebmailMode, mailboxFeed?.mailboxAvailable, searchDraft]);
 
   const persistWebmailMode = useCallback(
     (enabled: boolean) => {
