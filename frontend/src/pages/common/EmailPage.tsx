@@ -415,25 +415,25 @@ const EmailInboxItem = ({
 const getActionTileClasses = (tone: FolderMoveActionTone) => {
   if (tone === 'danger') {
     return {
-      button: 'border-rose-200 bg-rose-50 text-rose-700 hover:bg-rose-100',
       icon: 'border-rose-200 bg-white text-rose-600',
+      text: 'text-rose-700',
     };
   }
   if (tone === 'warning') {
     return {
-      button: 'border-amber-200 bg-amber-50 text-amber-800 hover:bg-amber-100',
       icon: 'border-amber-200 bg-white text-amber-700',
+      text: 'text-amber-800',
     };
   }
   if (tone === 'primary') {
     return {
-      button: 'border-blue-200 bg-blue-50 text-blue-700 hover:bg-blue-100',
       icon: 'border-blue-200 bg-white text-blue-600',
+      text: 'text-blue-700',
     };
   }
   return {
-    button: 'border-slate-200 bg-slate-50 text-slate-700 hover:bg-slate-100',
     icon: 'border-slate-200 bg-white text-slate-600',
+    text: 'text-slate-700',
   };
 };
 
@@ -466,12 +466,12 @@ const ActionTile = ({
       type="button"
       onClick={onClick}
       disabled={disabled}
-      className={`flex min-w-[88px] flex-1 flex-col items-center justify-center gap-2 rounded-2xl border px-3 py-3 text-center transition disabled:cursor-not-allowed disabled:opacity-60 ${classes.button}`}
+      className="flex min-w-[72px] flex-col items-center justify-center gap-2 px-1 py-1 text-center transition hover:opacity-85 disabled:cursor-not-allowed disabled:opacity-60"
     >
       <span className={`flex h-10 w-10 items-center justify-center rounded-full border ${classes.icon}`}>
         <Indicator className={`h-4 w-4 ${busy ? 'animate-spin' : ''}`} />
       </span>
-      <span className="text-[11px] font-semibold leading-4">{busy ? 'Memproses...' : label}</span>
+      <span className={`text-[11px] font-semibold leading-4 ${classes.text}`}>{busy ? 'Memproses...' : label}</span>
     </button>
   );
 };
@@ -1224,77 +1224,81 @@ export const EmailPage = () => {
 
         <SectionCard title={activeFolderTitle} subtitle={activeFolderDescription}>
           <div className="space-y-5">
-            <div className="grid grid-cols-3 gap-2 sm:grid-cols-5 sm:gap-3">
-              {WEBMAIL_FOLDER_SHORTCUTS.map((folder) => {
-                const isActive = folder.key === activeFolderKey;
-                const Icon = folder.icon;
-                return (
-                  <button
-                    key={folder.key}
-                    type="button"
-                    onClick={() => {
-                      setActiveFolderKey(folder.key);
-                      closeEmailDetail();
-                      setSearchDraft('');
-                      setAppliedSearch('');
-                      setVisibleLimit(DEFAULT_EMAIL_PAGE_LIMIT);
-                    }}
-                    className="min-w-0"
-                  >
-                    <span className="flex flex-col items-center gap-2">
-                      <span
-                        className={`flex h-10 w-10 items-center justify-center rounded-full border transition ${
-                          isActive
-                            ? 'border-blue-200 bg-blue-50 text-blue-700'
-                            : 'border-slate-200 bg-slate-50 text-slate-500 hover:border-slate-300 hover:text-slate-700'
-                        }`}
-                      >
-                        <Icon className="h-4 w-4" />
+            <div className="flex flex-col gap-4 xl:flex-row xl:items-end xl:justify-between">
+              <div className="flex flex-wrap items-start gap-4 xl:flex-nowrap">
+                {WEBMAIL_FOLDER_SHORTCUTS.map((folder) => {
+                  const isActive = folder.key === activeFolderKey;
+                  const Icon = folder.icon;
+                  return (
+                    <button
+                      key={folder.key}
+                      type="button"
+                      onClick={() => {
+                        setActiveFolderKey(folder.key);
+                        closeEmailDetail();
+                        setSearchDraft('');
+                        setAppliedSearch('');
+                        setVisibleLimit(DEFAULT_EMAIL_PAGE_LIMIT);
+                      }}
+                      className="min-w-[68px] shrink-0"
+                    >
+                      <span className="flex flex-col items-center gap-2">
+                        <span
+                          className={`flex h-10 w-10 items-center justify-center rounded-full border transition ${
+                            isActive
+                              ? 'border-blue-200 bg-blue-50 text-blue-700'
+                              : 'border-slate-200 bg-slate-50 text-slate-500 hover:border-slate-300 hover:text-slate-700'
+                          }`}
+                        >
+                          <Icon className="h-4 w-4" />
+                        </span>
+                        <span className={`text-center text-xs font-semibold ${isActive ? 'text-blue-700' : 'text-slate-600'}`}>
+                          {folder.label}
+                        </span>
                       </span>
-                      <span className={`text-center text-xs font-semibold ${isActive ? 'text-blue-700' : 'text-slate-600'}`}>
-                        {folder.label}
-                      </span>
-                    </span>
-                  </button>
-                );
-              })}
-            </div>
-
-            {mailboxFeed?.mailboxAvailable !== false ? (
-              <div className="space-y-3">
-                <p className="text-sm font-semibold text-slate-700">Cari Email</p>
-                <form
-                  className="flex flex-col gap-2 sm:flex-row"
-                  onSubmit={(event) => {
-                    event.preventDefault();
-                    handleApplySearch();
-                  }}
-                >
-                  <input
-                    type="text"
-                    value={searchDraft}
-                    onChange={(event) => setSearchDraft(event.target.value)}
-                    placeholder="Cari pengirim, subjek, atau isi email"
-                    className="flex-1 rounded-2xl border border-slate-200 bg-white px-4 py-3 text-sm text-slate-900 outline-none transition focus:border-blue-300 focus:ring-2 focus:ring-blue-100"
-                  />
-                  <button
-                    type="submit"
-                    className="rounded-2xl bg-[#3250b9] px-5 py-3 text-sm font-semibold text-white transition hover:bg-[#2a44a0]"
-                  >
-                    Cari
-                  </button>
-                </form>
-                {hasAppliedSearch || searchDraft.trim().length > 0 ? (
-                  <button
-                    type="button"
-                    onClick={handleResetSearch}
-                    className="text-left text-sm font-semibold text-[#3250b9] transition hover:text-[#274194]"
-                  >
-                    Reset Pencarian
-                  </button>
-                ) : null}
+                    </button>
+                  );
+                })}
               </div>
-            ) : null}
+
+              {mailboxFeed?.mailboxAvailable !== false ? (
+                <div className="space-y-2 xl:min-w-0 xl:flex-1">
+                  <form
+                    className="flex flex-col gap-2 lg:flex-row lg:items-center xl:justify-end"
+                    onSubmit={(event) => {
+                      event.preventDefault();
+                      handleApplySearch();
+                    }}
+                  >
+                    <label className="shrink-0 text-sm font-semibold text-slate-700">Cari Email</label>
+                    <input
+                      type="text"
+                      value={searchDraft}
+                      onChange={(event) => setSearchDraft(event.target.value)}
+                      placeholder="Cari pengirim, subjek, atau isi email"
+                      className="w-full rounded-2xl border border-slate-200 bg-white px-4 py-3 text-sm text-slate-900 outline-none transition focus:border-blue-300 focus:ring-2 focus:ring-blue-100 xl:max-w-md"
+                    />
+                    <button
+                      type="submit"
+                      className="rounded-2xl bg-[#3250b9] px-5 py-3 text-sm font-semibold text-white transition hover:bg-[#2a44a0]"
+                    >
+                      Cari
+                    </button>
+                  </form>
+                  {hasAppliedSearch || searchDraft.trim().length > 0 ? (
+                    <div className="xl:text-right">
+                      <button
+                        type="button"
+                        onClick={handleResetSearch}
+                        className="text-sm font-semibold text-[#3250b9] transition hover:text-[#274194]"
+                      >
+                        Reset Pencarian
+                      </button>
+                    </div>
+                  ) : null}
+                </div>
+              ) : null}
+            </div>
 
             {emailFeedQuery.isLoading ? (
               <div className="rounded-xl border border-slate-200 bg-slate-50 px-4 py-4 text-sm text-slate-500">
@@ -1417,63 +1421,65 @@ export const EmailPage = () => {
                     </div>
                   </div>
 
-                  <div className="space-y-2">
-                    <p className="text-sm font-semibold text-slate-700">Aksi Email</p>
-                    <div className="grid grid-cols-2 gap-3 sm:grid-cols-4">
-                      {canReplyFromSelectedFolder ? (
-                        <ActionTile label="Balas Email" icon={Reply} tone="primary" onClick={openReplyCompose} disabled={isDetailActionPending} />
-                      ) : null}
-                      {canMarkSelectedEmailUnread ? (
-                        <ActionTile
-                          label="Belum Dibaca"
-                          icon={MailOpen}
-                          tone="primary"
-                          onClick={() => {
-                            void handleMarkSelectedEmailUnread();
-                          }}
-                          disabled={isDetailActionPending}
-                          busy={markAsUnreadMutation.isPending}
-                        />
-                      ) : null}
-                      <ActionTile
-                        label="Hapus"
-                        icon={Trash2}
-                        tone="danger"
-                        onClick={() => {
-                          void handleDeleteSelectedEmail();
-                        }}
-                        disabled={isDetailActionPending}
-                        busy={deleteMessageMutation.isPending}
-                      />
-                      <ActionTile
-                        label="Panel Lengkap"
-                        icon={ExternalLink}
-                        tone="neutral"
-                        onClick={() => openPanelSection(true)}
-                      />
-                    </div>
-                  </div>
-
-                  {availableMoveActions.length > 0 ? (
+                  <div className="grid gap-6 lg:grid-cols-[minmax(0,1fr)_minmax(0,1fr)]">
                     <div className="space-y-2">
-                      <p className="text-sm font-semibold text-slate-700">Aksi Folder</p>
-                      <div className="grid grid-cols-2 gap-3 sm:grid-cols-4">
-                        {availableMoveActions.map((action) => (
+                      <p className="text-sm font-semibold text-slate-700">Aksi Email</p>
+                      <div className="flex flex-wrap items-start gap-4">
+                        {canReplyFromSelectedFolder ? (
+                          <ActionTile label="Balas Email" icon={Reply} tone="primary" onClick={openReplyCompose} disabled={isDetailActionPending} />
+                        ) : null}
+                        {canMarkSelectedEmailUnread ? (
                           <ActionTile
-                            key={action.key}
-                            label={action.label}
-                            icon={getFolderActionIcon(action.targetFolderKey)}
-                            tone={action.tone}
+                            label="Belum Dibaca"
+                            icon={MailOpen}
+                            tone="primary"
                             onClick={() => {
-                              void handleMoveSelectedEmail(action.targetFolderKey);
+                              void handleMarkSelectedEmailUnread();
                             }}
                             disabled={isDetailActionPending}
-                            busy={moveMessageMutation.isPending}
+                            busy={markAsUnreadMutation.isPending}
                           />
-                        ))}
+                        ) : null}
+                        <ActionTile
+                          label="Hapus"
+                          icon={Trash2}
+                          tone="danger"
+                          onClick={() => {
+                            void handleDeleteSelectedEmail();
+                          }}
+                          disabled={isDetailActionPending}
+                          busy={deleteMessageMutation.isPending}
+                        />
+                        <ActionTile
+                          label="Panel Lengkap"
+                          icon={ExternalLink}
+                          tone="neutral"
+                          onClick={() => openPanelSection(true)}
+                        />
                       </div>
                     </div>
-                  ) : null}
+
+                    {availableMoveActions.length > 0 ? (
+                      <div className="space-y-2">
+                        <p className="text-sm font-semibold text-slate-700">Aksi Folder</p>
+                        <div className="flex flex-wrap items-start gap-4">
+                          {availableMoveActions.map((action) => (
+                            <ActionTile
+                              key={action.key}
+                              label={action.label}
+                              icon={getFolderActionIcon(action.targetFolderKey)}
+                              tone={action.tone}
+                              onClick={() => {
+                                void handleMoveSelectedEmail(action.targetFolderKey);
+                              }}
+                              disabled={isDetailActionPending}
+                              busy={moveMessageMutation.isPending}
+                            />
+                          ))}
+                        </div>
+                      </div>
+                    ) : <div />}
+                  </div>
 
                   <div className="rounded-2xl border border-slate-200 bg-white p-4">
                     {selectedEmailDetailQuery.isLoading ? (
