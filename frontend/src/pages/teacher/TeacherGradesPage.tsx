@@ -143,10 +143,46 @@ const averageValues = (values: number[]): number | null => {
   return values.reduce((acc, item) => acc + item, 0) / values.length;
 };
 
+const computeWeightedPreviewScore = (
+  rows: Array<{ score: number | null | undefined; weight: number | null | undefined }>,
+): number | null => {
+  let weightedScoreTotal = 0;
+  let weightTotal = 0;
+
+  rows.forEach((row) => {
+    const score = Number(row.score);
+    const weight = Number(row.weight);
+    if (!Number.isFinite(score) || !Number.isFinite(weight) || weight <= 0) return;
+    weightedScoreTotal += score * weight;
+    weightTotal += weight;
+  });
+
+  if (weightTotal <= 0) return null;
+  return weightedScoreTotal / weightTotal;
+};
+
 const formatSeriesValues = (values: number[]) =>
   values
     .map((value) => (Number.isInteger(value) ? String(value) : value.toFixed(2)))
     .join(', ');
+
+const formatWeightPercent = (weight: number | null | undefined) => {
+  const numeric = Number(weight);
+  if (!Number.isFinite(numeric)) return '0%';
+  if (Number.isInteger(numeric)) return `${numeric}%`;
+  return `${numeric.toFixed(2)}%`;
+};
+
+const deriveCompetencyDescription = (
+  score: number | null | undefined,
+  kkm: number,
+  settings: { A: string; B: string; C: string; D: string },
+): string => {
+  const numericScore = Number(score);
+  if (!Number.isFinite(numericScore)) return '';
+  const predicate = numericScore >= 86 ? 'A' : numericScore >= kkm ? 'B' : numericScore >= 60 ? 'C' : 'D';
+  return String(settings[predicate as keyof typeof settings] || '').trim();
+};
 
 const resolveComponentReportSlotCode = (component?: GradeComponent): string => {
   const explicit = normalizeSlotCode(component?.reportSlotCode || component?.reportSlot);
@@ -181,7 +217,7 @@ const buildComponentDisplayLabel = (component: GradeComponent) => {
   return `${baseLabel} (${modeLabel} • ${slotLabel})`;
 };
 
-const resolveReadableComponentLabel = (component?: GradeComponent, fallback = 'Komponen') => {
+const resolveReadableComponentLabel = (component?: GradeComponent | null, fallback = 'Komponen') => {
   const label = String(component?.name || component?.code || '').trim();
   return label || fallback;
 };
@@ -368,22 +404,19 @@ export const TeacherGradesPage = () => {
     selectedComponentSlotCode && selectedComponentSlotCode !== 'NONE' ? selectedComponentSlotCode : 'TANPA SLOT';
   const selectedComponentInputModeLabel =
     selectedComponentEntryMode === 'NF_SERIES' ? 'Bertahap (banyak butir nilai)' : 'Satu nilai per siswa';
-  const formativeComponentLabel = resolveReadableComponentLabel(
+  const formativeComponentObj =
     filteredComponents.find(
       (item) =>
         resolveComponentEntryMode(item) === 'NF_SERIES' ||
         resolveComponentReportSlotCode(item) === formativePrimarySlot,
-    ),
-    'Komponen 1',
-  );
-  const midtermComponentLabel = resolveReadableComponentLabel(
-    filteredComponents.find((item) => resolveComponentReportSlotCode(item) === midtermPrimarySlot),
-    'Komponen 2',
-  );
-  const finalComponentLabel = resolveReadableComponentLabel(
-    filteredComponents.find((item) => resolveComponentReportSlotCode(item) === finalPrimarySlot),
-    'Komponen 3',
-  );
+    ) || null;
+  const midtermComponentObj =
+    filteredComponents.find((item) => resolveComponentReportSlotCode(item) === midtermPrimarySlot) || null;
+  const finalComponentObj =
+    filteredComponents.find((item) => resolveComponentReportSlotCode(item) === finalPrimarySlot) || null;
+  const formativeComponentLabel = resolveReadableComponentLabel(formativeComponentObj, 'Komponen 1');
+  const midtermComponentLabel = resolveReadableComponentLabel(midtermComponentObj, 'Komponen 2');
+  const finalComponentLabel = resolveReadableComponentLabel(finalComponentObj, 'Komponen 3');
   const selectedComponentFlowLabel = isFormatifComponent
     ? 'Formatif Bertahap'
     : isMidtermComponent
@@ -394,9 +427,9 @@ export const TeacherGradesPage = () => {
   const selectedComponentFormulaHint = isFormatifComponent
     ? `Input bertahap, sistem hitung rata-rata ${resolveReadableComponentLabel(selectedComponentObj, 'komponen')} otomatis.`
     : isMidtermComponent
-      ? `Nilai rapor dihitung dari rata-rata (${formativeComponentLabel} + ${resolveReadableComponentLabel(selectedComponentObj, 'komponen ini')}).`
+      ? `Nilai rapor dihitung berbobot: ${formativeComponentLabel} ${formatWeightPercent(formativeComponentObj?.weight)} + ${resolveReadableComponentLabel(selectedComponentObj, 'komponen ini')} ${formatWeightPercent(selectedComponentObj?.weight)}.`
       : isFinalComponent
-        ? `Nilai rapor dihitung dari rata-rata (${formativeComponentLabel} + ${midtermComponentLabel} + ${resolveReadableComponentLabel(selectedComponentObj, 'komponen ini')}).`
+        ? `Nilai rapor dihitung berbobot: ${formativeComponentLabel} ${formatWeightPercent(formativeComponentObj?.weight)} + ${midtermComponentLabel} ${formatWeightPercent(midtermComponentObj?.weight)} + ${resolveReadableComponentLabel(selectedComponentObj, 'komponen ini')} ${formatWeightPercent(selectedComponentObj?.weight)}.`
         : 'Komponen ini memakai satu nilai per siswa.';
   const primaryFormativeComponentId =
     filteredComponents.find((item) => resolveComponentEntryMode(item) === 'NF_SERIES')?.id ?? null;
@@ -978,13 +1011,6 @@ export const TeacherGradesPage = () => {
     }));
   };
 
-  const handleDescriptionChange = (studentId: number, value: string) => {
-    setDescriptions(prev => ({
-        ...prev,
-        [studentId]: value
-    }));
-  };
-
   const handleSaveSettings = async () => {
     if (!selectedAssignment) return;
     try {
@@ -1107,15 +1133,35 @@ export const TeacherGradesPage = () => {
             };
         });
     } else {
-        gradesPayload = grades.map(grade => ({
-            student_id: grade.student_id,
-            subject_id: assignment.subject.id,
-            academic_year_id: parseInt(selectedAcademicYear),
-            grade_component_id: parseInt(selectedComponent),
-            semester: selectedSemester as 'ODD' | 'EVEN',
-            score: grade.score === '' ? null : parseFloat(grade.score),
-            description: isFinalComponent ? (descriptions[grade.student_id] || '') : undefined
-        }));
+        gradesPayload = grades.map(grade => {
+            const parsedScore = grade.score === '' ? null : parseFloat(grade.score);
+            let description: string | undefined;
+
+            if (isFinalComponent) {
+                const report = reportGradeMap[grade.student_id];
+                const backendFormative = resolveReportSlotScore(report, formativePrimarySlot, report?.formatifScore ?? null);
+                const backendSbts = resolveReportSlotScore(report, midtermPrimarySlot, report?.sbtsScore ?? null);
+                const previewFinalScore =
+                  computeWeightedPreviewScore([
+                    { score: backendFormative, weight: formativeComponentObj?.weight },
+                    { score: backendSbts, weight: midtermComponentObj?.weight },
+                    { score: parsedScore, weight: selectedComponentObj?.weight },
+                  ]) ?? parsedScore;
+                description =
+                  deriveCompetencyDescription(previewFinalScore, kkm, competencySettings) ||
+                  undefined;
+            }
+
+            return {
+                student_id: grade.student_id,
+                subject_id: assignment.subject.id,
+                academic_year_id: parseInt(selectedAcademicYear),
+                grade_component_id: parseInt(selectedComponent),
+                semester: selectedSemester as 'ODD' | 'EVEN',
+                score: parsedScore,
+                description
+            };
+        });
     }
 
     if (gradesPayload.length === 0) {
@@ -1368,20 +1414,31 @@ export const TeacherGradesPage = () => {
 	                                      : '-';
 	                                  const previewSbtsFinal = (() => {
 	                                    if (!isMidtermComponent) return backendFinal;
-	                                    const values = [previewFormative, currentScore]
-	                                      .map((value) => Number(value))
-	                                      .filter((value) => Number.isFinite(value));
-	                                    const avg = averageValues(values);
-	                                    return avg === null ? backendFinal : avg;
+	                                    return (
+	                                      computeWeightedPreviewScore([
+	                                        { score: previewFormative, weight: formativeComponentObj?.weight },
+	                                        { score: currentScore, weight: selectedComponentObj?.weight },
+	                                      ]) ?? backendFinal
+	                                    );
 	                                  })();
 	                                  const previewSasFinal = (() => {
 	                                    if (!isFinalComponent) return backendFinal;
-	                                    const values = [previewFormative, backendSbts, currentScore]
-	                                      .map((value) => Number(value))
-	                                      .filter((value) => Number.isFinite(value));
-	                                    const avg = averageValues(values);
-	                                    return avg === null ? backendFinal : avg;
+	                                    return (
+	                                      computeWeightedPreviewScore([
+	                                        { score: previewFormative, weight: formativeComponentObj?.weight },
+	                                        { score: backendSbts, weight: midtermComponentObj?.weight },
+	                                        { score: currentScore, weight: selectedComponentObj?.weight },
+	                                      ]) ?? backendFinal
+	                                    );
 	                                  })();
+                                  const previewCompetencyTargetScore = previewSasFinal ?? backendFinal;
+                                  const previewCompetencyDescription =
+                                    deriveCompetencyDescription(
+                                      previewCompetencyTargetScore,
+                                      kkm,
+                                      competencySettings,
+                                    ) ||
+                                    String(descriptions[student.id] || report?.description || '').trim();
                                   const rowStatusScorePreview =
                                     isFormatifComponent
                                       ? previewFormative ?? 0
@@ -1488,16 +1545,15 @@ export const TeacherGradesPage = () => {
 	                                                  <td className={`px-6 py-4 whitespace-nowrap text-center text-sm font-bold ${(previewSasFinal ?? 0) < kkm && previewSasFinal !== null ? 'text-red-600' : 'text-gray-900'} bg-yellow-50`}>
 	                                                      {previewSasFinal !== null && previewSasFinal !== undefined ? previewSasFinal.toFixed(2) : '-'}
 	                                                  </td>
-                                                  <td className="px-6 py-4 whitespace-nowrap text-center">
-                                                       <textarea 
-                                                          name={`description-${student.id}`}
-                                                          id={`description-${student.id}`}
-                                                          placeholder="Deskripsi Capaian"
-                                                          rows={2}
-                                                          className="w-full min-w-[300px] px-2 py-1 border border-gray-300 rounded text-sm focus:ring-blue-500 focus:border-blue-500"
-                                                          value={descriptions[student.id] || ''}
-                                                          onChange={(e) => handleDescriptionChange(student.id, e.target.value)}
-                                                      />
+                                                  <td className="px-6 py-4">
+                                                      <div className="w-full min-w-[300px] rounded-lg border border-blue-100 bg-blue-50 px-3 py-2 text-left text-sm text-slate-700">
+                                                        <p className="font-medium text-slate-900">
+                                                          {previewCompetencyDescription || 'Deskripsi belum diatur di tombol + Deskripsi.'}
+                                                        </p>
+                                                        <p className="mt-1 text-xs text-slate-500">
+                                                          Read only. Ubah capaian kompetensi melalui tombol + Deskripsi.
+                                                        </p>
+                                                      </div>
                                                   </td>
                                               </>
                                           ) : (

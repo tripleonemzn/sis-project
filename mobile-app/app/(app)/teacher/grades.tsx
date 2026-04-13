@@ -101,6 +101,35 @@ function averageValues(values: number[]) {
   return values.reduce((acc, value) => acc + value, 0) / values.length;
 }
 
+function computeWeightedPreviewScore(
+  rows: Array<{ score: number | null | undefined; weight: number | null | undefined }>,
+) {
+  let weightedScoreTotal = 0;
+  let weightTotal = 0;
+
+  rows.forEach((row) => {
+    const score = Number(row.score);
+    const weight = Number(row.weight);
+    if (!Number.isFinite(score) || !Number.isFinite(weight) || weight <= 0) return;
+    weightedScoreTotal += score * weight;
+    weightTotal += weight;
+  });
+
+  if (weightTotal <= 0) return null;
+  return weightedScoreTotal / weightTotal;
+}
+
+function deriveCompetencyDescription(
+  score: number | null | undefined,
+  kkm: number,
+  settings: CompetencySettings,
+) {
+  const numericScore = Number(score);
+  if (!Number.isFinite(numericScore)) return '';
+  const predicate = calculatePredicate(numericScore, kkm);
+  return String(settings[predicate as keyof CompetencySettings] || '').trim();
+}
+
 function formatSeriesValues(values: number[]) {
   return values
     .map((value) => (Number.isInteger(value) ? String(value) : value.toFixed(2)))
@@ -1248,13 +1277,12 @@ export default function TeacherGradesScreen() {
                                       const sbtsRaw = Number(scoreDraft[`${student.id}:${selectedComponent.id}`]);
                                       const sbtsScore = Number.isFinite(sbtsRaw) ? sbtsRaw : null;
                                       const formatif = backendFormative;
-                                      const avg = averageValues(
-                                        [formatif, sbtsScore]
-                                          .map((value) => Number(value))
-                                          .filter((value) => Number.isFinite(value)),
-                                      );
-                                      if (avg === null) return '-';
-                                      return `${toFixedOrInt(avg)} (otomatis saat simpan)`;
+                                      const weightedScore = computeWeightedPreviewScore([
+                                        { score: formatif, weight: formativeComponent?.weight },
+                                        { score: sbtsScore, weight: selectedComponent.weight },
+                                      ]);
+                                      if (weightedScore === null) return '-';
+                                      return `${toFixedOrInt(weightedScore)} (otomatis saat simpan)`;
                                     })()}
                                   </Text>
                                 </View>
@@ -1272,7 +1300,7 @@ export default function TeacherGradesScreen() {
                                   }}
                                 >
                                   <Text style={{ color: '#64748b', fontSize: 11, marginBottom: 2 }}>
-                                    Predikat otomatis
+                                    Capaian Kompetensi
                                   </Text>
                                   <Text style={{ color: '#1e3a8a', fontWeight: '700', fontSize: 12 }}>
                                     {(() => {
@@ -1280,19 +1308,20 @@ export default function TeacherGradesScreen() {
                                       const finalScore = Number.isFinite(finalRaw) ? finalRaw : null;
                                       const formatif = backendFormative;
                                       const sbts = backendMidterm;
-                                      const previewFinal = averageValues(
-                                        [formatif, sbts, finalScore]
-                                          .map((value) => Number(value))
-                                          .filter((value) => Number.isFinite(value)),
-                                      );
+                                      const previewFinal = computeWeightedPreviewScore([
+                                        { score: formatif, weight: formativeComponent?.weight },
+                                        { score: sbts, weight: midtermComponent?.weight },
+                                        { score: finalScore, weight: selectedComponent.weight },
+                                      ]);
                                       const effectiveFinal = previewFinal ?? backendFinalFromSlot;
                                       if (effectiveFinal === null || effectiveFinal === undefined) {
                                         return 'Belum ada cukup data nilai.';
                                       }
                                       const predicate = calculatePredicate(effectiveFinal, selectedKkm);
                                       const backendDescription = reportMap[student.id]?.description?.trim();
-                                      const fallbackDescription = competencySettings[predicate as keyof CompetencySettings]?.trim();
-                                      return `Predikat ${predicate} • ${backendDescription || fallbackDescription || 'Deskripsi belum diatur'} • Nilai ${toFixedOrInt(effectiveFinal)}`;
+                                      const fallbackDescription =
+                                        deriveCompetencyDescription(effectiveFinal, selectedKkm, competencySettings);
+                                      return `Read only • Predikat ${predicate} • ${backendDescription || fallbackDescription || 'Deskripsi belum diatur di + Deskripsi'} • Nilai ${toFixedOrInt(effectiveFinal)}`;
                                     })()}
                                   </Text>
                                 </View>
