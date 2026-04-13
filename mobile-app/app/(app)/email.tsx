@@ -7,6 +7,7 @@ import { Feather } from '@expo/vector-icons';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { WebView } from 'react-native-webview';
 import { AppLoadingScreen } from '../../src/components/AppLoadingScreen';
+import { ExamHtmlContent } from '../../src/components/ExamHtmlContent';
 import MobileDetailModal from '../../src/components/MobileDetailModal';
 import MobileMenuTabBar from '../../src/components/MobileMenuTabBar';
 import { QueryStateView } from '../../src/components/QueryStateView';
@@ -463,23 +464,16 @@ export default function MobileEmailScreen() {
     },
   });
 
-  const effectiveSelectedEmailGuid = useMemo(() => {
-    if (selectedEmailGuid && mailboxMessages.some((item) => item.guid === selectedEmailGuid)) {
-      return selectedEmailGuid;
-    }
-    return mailboxMessages.find((item) => !item.isRead)?.guid ?? mailboxMessages[0]?.guid ?? null;
-  }, [mailboxMessages, selectedEmailGuid]);
-
   const selectedEmail = useMemo(
-    () => mailboxMessages.find((item) => item.guid === effectiveSelectedEmailGuid) ?? null,
-    [effectiveSelectedEmailGuid, mailboxMessages],
+    () => mailboxMessages.find((item) => item.guid === selectedEmailGuid) ?? null,
+    [mailboxMessages, selectedEmailGuid],
   );
 
   const selectedEmailDetailQuery = useQuery({
-    queryKey: ['mobile-email-message-detail', activeFolderKey, effectiveSelectedEmailGuid || 'empty'],
-    queryFn: () => webmailApi.getMessageDetail(String(effectiveSelectedEmailGuid), { folderKey: activeFolderKey }),
+    queryKey: ['mobile-email-message-detail', activeFolderKey, selectedEmailGuid || 'empty'],
+    queryFn: () => webmailApi.getMessageDetail(String(selectedEmailGuid), { folderKey: activeFolderKey }),
     enabled:
-      Boolean(effectiveSelectedEmailGuid) &&
+      Boolean(selectedEmailGuid) &&
       isAuthenticated &&
       isAllowedRole &&
       isScreenActive &&
@@ -860,6 +854,7 @@ export default function MobileEmailScreen() {
 
   const selectedSenderLabel = selectedEmail ? extractSenderLabel(selectedEmail) : '-';
   const selectedSubjectLabel = selectedEmail ? extractSubjectLabel(selectedEmail) : '-';
+  const selectedBodyHtml = String(selectedEmailDetailQuery.data?.html || '').trim();
   const selectedBodyText =
     selectedEmailDetailQuery.data?.plainText ||
     selectedEmailDetailQuery.data?.previewText ||
@@ -1056,7 +1051,7 @@ export default function MobileEmailScreen() {
                     <EmailInboxItem
                       key={item.guid}
                       item={item}
-                      selected={item.guid === effectiveSelectedEmailGuid}
+                      selected={item.guid === selectedEmailGuid}
                       onPress={() => {
                         void handleSelectEmail(item);
                       }}
@@ -1671,9 +1666,18 @@ export default function MobileEmailScreen() {
                       CC: <Text style={{ color: '#0f172a', fontWeight: '700' }}>{selectedEmailDetailQuery.data.cc}</Text>
                     </Text>
                   ) : null}
-                  <Text style={{ color: '#334155', fontSize: 12, lineHeight: 20 }}>
-                    {selectedBodyText || 'Isi email tidak tersedia.'}
-                  </Text>
+                  {selectedBodyHtml ? (
+                    <ExamHtmlContent
+                      html={selectedBodyHtml}
+                      minHeight={140}
+                      backgroundColor="#ffffff"
+                      textAlign="left"
+                    />
+                  ) : (
+                    <Text style={{ color: '#334155', fontSize: 12, lineHeight: 20 }}>
+                      {selectedBodyText || 'Isi email tidak tersedia.'}
+                    </Text>
+                  )}
                   <Text style={{ color: '#64748b', fontSize: 12, lineHeight: 18 }}>
                     Detail email dibuka terpisah agar daftar {activeFolderLabel.toLowerCase()} tetap ringkas dan nyaman dipakai walau email banyak.
                   </Text>

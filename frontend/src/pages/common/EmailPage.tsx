@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useRef, useState, type FormEvent, type ReactNode } from 'react';
+import { useCallback, useEffect, useMemo, useRef, useState, type FormEvent, type ReactNode } from 'react';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import {
   AlertCircle,
@@ -270,6 +270,132 @@ const StatusChip = ({
   );
 };
 
+const EMAIL_HTML_FRAME_MIN_HEIGHT = 180;
+
+const sanitizeEmailHtml = (value?: string | null): string => {
+  const normalized = String(value || '').trim();
+  if (!normalized) return '';
+
+  const bodyMatch = normalized.match(/<body\b[^>]*>([\s\S]*?)<\/body>/i);
+  const bodyHtml = bodyMatch ? bodyMatch[1] : normalized;
+
+  return bodyHtml
+    .replace(/<script\b[^>]*>[\s\S]*?<\/script>/gi, '')
+    .replace(/<\/?(html|head|body|meta|title|base)\b[^>]*>/gi, '')
+    .replace(/\son[a-z]+\s*=\s*(["'])[\s\S]*?\1/gi, '')
+    .replace(/\son[a-z]+\s*=\s*[^\s>]+/gi, '')
+    .replace(/\s(href|src)\s*=\s*(["'])\s*javascript:[\s\S]*?\2/gi, ' $1=$2#$2')
+    .trim();
+};
+
+const buildEmailHtmlDocument = (value?: string | null): string => {
+  const content = sanitizeEmailHtml(value);
+  return `<!DOCTYPE html>
+    <html>
+      <head>
+        <meta charset="utf-8" />
+        <meta name="viewport" content="width=device-width, initial-scale=1" />
+        <base target="_blank" />
+        <style>
+          :root {
+            color-scheme: light;
+          }
+          * {
+            box-sizing: border-box;
+          }
+          html, body {
+            margin: 0;
+            padding: 0;
+            background: #ffffff;
+            color: #0f172a;
+            font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
+            font-size: 15px;
+            line-height: 1.65;
+          }
+          body {
+            padding: 0;
+            overflow-wrap: break-word;
+            word-break: normal;
+          }
+          img, video, iframe, table {
+            max-width: 100%;
+          }
+          img {
+            height: auto;
+            display: block;
+            border-radius: 12px;
+            margin: 0 0 12px;
+          }
+          a {
+            color: #1d4ed8;
+          }
+          p, div, li {
+            margin-top: 0;
+          }
+          blockquote {
+            margin: 0 0 12px;
+            padding-left: 12px;
+            border-left: 3px solid #cbd5e1;
+            color: #475569;
+          }
+          pre {
+            white-space: pre-wrap;
+            word-break: break-word;
+            background: #f8fafc;
+            border: 1px solid #e2e8f0;
+            border-radius: 12px;
+            padding: 12px;
+          }
+        </style>
+      </head>
+      <body>${content || '<p>Isi email tidak tersedia.</p>'}</body>
+    </html>`;
+};
+
+const EmailHtmlPreview = ({ html }: { html: string }) => {
+  const iframeRef = useRef<HTMLIFrameElement | null>(null);
+  const [height, setHeight] = useState(EMAIL_HTML_FRAME_MIN_HEIGHT);
+  const srcDoc = useMemo(() => buildEmailHtmlDocument(html), [html]);
+
+  const syncHeight = useCallback(() => {
+    const frame = iframeRef.current;
+    if (!frame) return;
+
+    try {
+      const doc = frame.contentDocument;
+      const nextHeight = Math.max(
+        doc?.body?.scrollHeight || 0,
+        doc?.documentElement?.scrollHeight || 0,
+        EMAIL_HTML_FRAME_MIN_HEIGHT,
+      );
+      setHeight(Math.min(nextHeight, 640));
+    } catch {
+      setHeight(EMAIL_HTML_FRAME_MIN_HEIGHT);
+    }
+  }, []);
+
+  useEffect(() => {
+    setHeight(EMAIL_HTML_FRAME_MIN_HEIGHT);
+    const timers = [0, 180, 600].map((delay) => window.setTimeout(syncHeight, delay));
+    return () => {
+      timers.forEach((timerId) => window.clearTimeout(timerId));
+    };
+  }, [srcDoc, syncHeight]);
+
+  return (
+    <iframe
+      ref={iframeRef}
+      title="Isi email"
+      sandbox="allow-popups allow-popups-to-escape-sandbox allow-same-origin"
+      srcDoc={srcDoc}
+      onLoad={syncHeight}
+      referrerPolicy="no-referrer"
+      className="w-full rounded-2xl border border-slate-200 bg-white"
+      style={{ height }}
+    />
+  );
+};
+
 const EmailInboxItem = ({
   item,
   selected,
@@ -377,6 +503,7 @@ export const EmailPage = () => {
   const [iframeSrc, setIframeSrc] = useState(DEFAULT_WEBMAIL_INBOX_URL);
   const [activeFolderKey, setActiveFolderKey] = useState<WebmailFolderKey>('INBOX');
   const [selectedEmailGuid, setSelectedEmailGuid] = useState<string | null>(null);
+  const [isEmailDetailVisible, setIsEmailDetailVisible] = useState(false);
   const [isComposeMode, setIsComposeMode] = useState(false);
   const [composeModeKind, setComposeModeKind] = useState<ComposeModeKind>('new');
   const [composeTo, setComposeTo] = useState('');
@@ -412,18 +539,17 @@ export const EmailPage = () => {
     : getFolderEmptyState(activeFolderKey, activeFolderLabel);
   const activeFolderTitle = activeFolderKey === 'INBOX' ? 'Kotak Masuk' : activeFolderLabel;
   const canReplyFromSelectedFolder = activeFolderKey !== 'Drafts';
-
-  let effectiveSelectedEmailGuid = selectedEmailGuid;
-  if (!effectiveSelectedEmailGuid || !mailboxMessages.some((item) => item.guid === effectiveSelectedEmailGuid)) {
-    effectiveSelectedEmailGuid = mailboxMessages.find((item) => !item.isRead)?.guid ?? mailboxMessages[0]?.guid ?? null;
-  }
-
-  const selectedEmail = mailboxMessages.find((item) => item.guid === effectiveSelectedEmailGuid) ?? null;
+  const selectedEmail = mailboxMessages.find((item) => item.guid === selectedEmailGuid) ?? null;
 
   const selectedEmailDetailQuery = useQuery({
-    queryKey: ['webmail-message-detail', activeFolderKey, effectiveSelectedEmailGuid || 'empty'],
-    queryFn: () => webmailService.getMessageDetail(String(effectiveSelectedEmailGuid), { folderKey: activeFolderKey }),
-    enabled: Boolean(effectiveSelectedEmailGuid) && isPortalReady && !isWebmailMode && mailboxFeed?.mailboxAvailable !== false,
+    queryKey: ['webmail-message-detail', activeFolderKey, selectedEmailGuid || 'empty'],
+    queryFn: () => webmailService.getMessageDetail(String(selectedEmailGuid), { folderKey: activeFolderKey }),
+    enabled:
+      Boolean(selectedEmailGuid) &&
+      isPortalReady &&
+      !isWebmailMode &&
+      mailboxFeed?.mailboxAvailable !== false &&
+      (isEmailDetailVisible || (isComposeMode && composeModeKind === 'reply')),
     staleTime: 30_000,
     retry: false,
   });
@@ -431,6 +557,7 @@ export const EmailPage = () => {
   const selectedEmailDetail = selectedEmailDetailQuery.data?.data;
   const selectedSenderLabel = selectedEmail ? extractSenderLabel(selectedEmail) : '-';
   const selectedSubjectLabel = selectedEmail ? extractSubjectLabel(selectedEmail) : '-';
+  const selectedBodyHtml = String(selectedEmailDetail?.html || '').trim();
   const selectedBodyText = selectedEmailDetail?.plainText || selectedEmailDetail?.previewText || selectedEmail?.snippet || '';
   const availableMoveActions = getFolderMoveActions(activeFolderKey);
 
@@ -470,6 +597,7 @@ export const EmailPage = () => {
     setPanelError(null);
     setRegisterError(null);
     setIsRegisterMode(false);
+    setIsEmailDetailVisible(false);
 
     if (openImmediatelyWhenSso && useSsoMode) {
       handleOpenSso(activeFolderKey);
@@ -579,6 +707,7 @@ export const EmailPage = () => {
       webmailService.markMessageUnread(guid, { folderKey }),
     onSuccess: async () => {
       toast.success('Email berhasil ditandai sebagai belum dibaca.');
+      setIsEmailDetailVisible(false);
       setSelectedEmailGuid(null);
       await queryClient.invalidateQueries({
         queryKey: ['webmail-folder-feed'],
@@ -606,6 +735,7 @@ export const EmailPage = () => {
     }) => webmailService.moveMessage(guid, { sourceFolderKey, targetFolderKey }),
     onSuccess: async (response) => {
       toast.success(`Email berhasil dipindahkan ke folder ${getFolderLabel(response.data.targetFolderKey)}.`);
+      setIsEmailDetailVisible(false);
       setSelectedEmailGuid(null);
       await queryClient.invalidateQueries({
         queryKey: ['webmail-folder-feed'],
@@ -626,6 +756,7 @@ export const EmailPage = () => {
       webmailService.deleteMessage(guid, { folderKey }),
     onSuccess: async () => {
       toast.success('Email berhasil dipindahkan ke folder Sampah.');
+      setIsEmailDetailVisible(false);
       setSelectedEmailGuid(null);
       await queryClient.invalidateQueries({
         queryKey: ['webmail-folder-feed'],
@@ -903,6 +1034,7 @@ export const EmailPage = () => {
   };
 
   const openNewCompose = () => {
+    setIsEmailDetailVisible(false);
     setIsComposeMode(true);
     setComposeModeKind('new');
     setComposeTo('');
@@ -913,6 +1045,7 @@ export const EmailPage = () => {
 
   const openReplyCompose = () => {
     const replyTarget = String(selectedEmailDetail?.from || selectedEmail?.from || '').trim();
+    setIsEmailDetailVisible(false);
     setIsComposeMode(true);
     setComposeModeKind('reply');
     setComposeTo(replyTarget);
@@ -923,6 +1056,7 @@ export const EmailPage = () => {
 
   const handleSelectEmail = async (item: WebmailMessageSummary) => {
     setSelectedEmailGuid(item.guid);
+    setIsEmailDetailVisible(true);
     if (item.isRead) return;
 
     try {
@@ -934,6 +1068,7 @@ export const EmailPage = () => {
 
   const handleApplySearch = () => {
     const nextSearch = searchDraft.trim();
+    setIsEmailDetailVisible(false);
     setSelectedEmailGuid(null);
     setVisibleLimit(DEFAULT_EMAIL_PAGE_LIMIT);
     if (nextSearch === appliedSearch) {
@@ -946,6 +1081,7 @@ export const EmailPage = () => {
   const handleResetSearch = () => {
     setSearchDraft('');
     setAppliedSearch('');
+    setIsEmailDetailVisible(false);
     setSelectedEmailGuid(null);
     setVisibleLimit(DEFAULT_EMAIL_PAGE_LIMIT);
   };
@@ -1047,21 +1183,24 @@ export const EmailPage = () => {
       </form>
 
       <div className="space-y-6">
-        <SectionCard
-          title="Email"
-          subtitle="Ringkasan mailbox sekolah Anda dan akses cepat untuk menulis atau membalas email."
-        >
+        <div className="space-y-3 px-1">
+          <div className="space-y-1">
+            <h1 className="text-lg font-semibold text-slate-900">Email</h1>
+            <p className="text-sm leading-6 text-slate-500">Mailbox sekolah Anda tampil langsung di halaman ini.</p>
+          </div>
+
           <div className="flex flex-wrap gap-2">
             <StatusChip tone="accent">{isSsoMode ? 'SSO Aktif' : 'Bridge Login'}</StatusChip>
             <StatusChip tone={unreadEmailCount > 0 ? 'danger' : 'default'}>{unreadEmailCount} belum dibaca</StatusChip>
           </div>
 
-          <div className="space-y-1">
-            <p className="text-sm font-semibold text-slate-900">Mailbox: {mailboxIdentity || 'Belum terhubung'}</p>
-            <p className="text-sm text-slate-500">Email terbaru: {latestEmailAt} • Kuota: {mailboxQuotaLabel}</p>
+          <div className="flex flex-wrap items-center gap-x-5 gap-y-1 text-sm text-slate-500">
+            <p className="font-semibold text-slate-900">Mailbox: {mailboxIdentity || 'Belum terhubung'}</p>
+            <p>Email terbaru: {latestEmailAt}</p>
+            <p>Kuota: {mailboxQuotaLabel}</p>
           </div>
 
-          <div className="grid gap-3 sm:grid-cols-2">
+          <div className="grid gap-3 sm:grid-cols-2 lg:max-w-3xl">
             <button
               type="button"
               onClick={openNewCompose}
@@ -1080,7 +1219,7 @@ export const EmailPage = () => {
               Balas Email
             </button>
           </div>
-        </SectionCard>
+        </div>
 
         <SectionCard
           title={activeFolderTitle}
@@ -1096,6 +1235,7 @@ export const EmailPage = () => {
                   type="button"
                   onClick={() => {
                     setActiveFolderKey(folder.key);
+                    setIsEmailDetailVisible(false);
                     setSelectedEmailGuid(null);
                     setSearchDraft('');
                     setAppliedSearch('');
@@ -1202,8 +1342,8 @@ export const EmailPage = () => {
               <p className="mt-2 text-sm leading-6 text-slate-500">{activeFolderEmptyState}</p>
             </div>
           ) : (
-            <div className="space-y-3">
-              <p className="text-sm text-slate-500">
+            <div className="space-y-4">
+              <p className="pt-1 text-sm leading-6 text-slate-500">
                 {hasAppliedSearch
                   ? `Menampilkan ${mailboxMessages.length} dari ${totalMessageCount} email yang cocok dengan "${appliedSearch}".`
                   : `Menampilkan ${mailboxMessages.length} dari ${totalMessageCount} email di folder ${activeFolderLabel}.`}
@@ -1212,7 +1352,7 @@ export const EmailPage = () => {
                 <EmailInboxItem
                   key={item.guid}
                   item={item}
-                  selected={item.guid === effectiveSelectedEmailGuid}
+                  selected={item.guid === selectedEmailGuid}
                   onPress={() => {
                     void handleSelectEmail(item);
                   }}
@@ -1230,119 +1370,148 @@ export const EmailPage = () => {
                   <RefreshCw className={`h-4 w-4 ${emailFeedQuery.isFetching && !emailFeedQuery.isLoading ? 'animate-spin' : ''}`} />
                   Muat Lebih Banyak
                 </button>
-              ) : null}
-            </div>
-          )}
-
-          {selectedEmail ? (
-            <div className="rounded-2xl border border-blue-200 bg-blue-50/60 p-4">
-              <div className="space-y-2">
-                <h3 className="text-sm font-semibold text-slate-900">Detail {activeFolderLabel}</h3>
-                <p className="text-sm text-slate-600">
-                  Dari: <span className="font-semibold text-slate-900">{selectedSenderLabel}</span>
-                </p>
-                <p className="text-sm text-slate-600">
-                  Subjek: <span className="font-semibold text-slate-900">{selectedSubjectLabel}</span>
-                </p>
-                <p className="text-sm text-slate-600">
-                  Waktu: <span className="font-semibold text-slate-900">{formatDateTime(selectedEmail.date)}</span>
-                </p>
+                ) : null}
               </div>
+            )}
+        </SectionCard>
 
-              <div className="mt-4 rounded-2xl border border-slate-200 bg-white p-4">
-                {selectedEmailDetailQuery.isLoading ? (
-                  <p className="text-sm text-slate-500">Memuat isi email...</p>
-                ) : selectedEmailDetailQuery.isError ? (
-                  <div className="space-y-3">
-                    <p className="text-sm font-semibold text-rose-700">
-                      {getErrorMessage(selectedEmailDetailQuery.error, 'Gagal memuat isi email.')}
-                    </p>
-                    <button
-                      type="button"
-                      onClick={() => {
-                        void selectedEmailDetailQuery.refetch();
-                      }}
-                      className="rounded-full bg-rose-600 px-4 py-2 text-sm font-semibold text-white transition hover:bg-rose-700"
-                    >
-                      Coba Lagi
-                    </button>
-                  </div>
-                ) : (
-                  <div className="space-y-3">
-                    {selectedEmailDetail?.to ? (
-                      <p className="text-sm text-slate-600">
-                        Ke: <span className="font-semibold text-slate-900">{selectedEmailDetail.to}</span>
-                      </p>
-                    ) : null}
-                    {selectedEmailDetail?.cc ? (
-                      <p className="text-sm text-slate-600">
-                        CC: <span className="font-semibold text-slate-900">{selectedEmailDetail.cc}</span>
-                      </p>
-                    ) : null}
-                    <p className="whitespace-pre-wrap text-sm leading-6 text-slate-700">{selectedBodyText || 'Isi email tidak tersedia.'}</p>
-                  </div>
-                )}
-              </div>
-
-              <div className="mt-4 space-y-2">
-                <p className="text-sm font-semibold text-slate-700">Aksi Email</p>
-                <div className="flex flex-wrap gap-2">
-                  {canMarkSelectedEmailUnread ? (
-                    <button
-                      type="button"
-                      onClick={() => {
-                        void handleMarkSelectedEmailUnread();
-                      }}
-                      disabled={isDetailActionPending}
-                      className={`rounded-2xl border px-4 py-2 text-sm font-semibold transition disabled:cursor-not-allowed disabled:opacity-60 ${getFolderMoveButtonClassName('primary')}`}
-                    >
-                      {markAsUnreadMutation.isPending ? 'Memproses...' : 'Tandai Belum Dibaca'}
-                    </button>
-                  ) : null}
-                  <button
-                    type="button"
-                    onClick={() => {
-                      void handleDeleteSelectedEmail();
-                    }}
-                    disabled={isDetailActionPending}
-                    className={`rounded-2xl border px-4 py-2 text-sm font-semibold transition disabled:cursor-not-allowed disabled:opacity-60 ${getFolderMoveButtonClassName('danger')}`}
-                  >
-                    {deleteMessageMutation.isPending ? 'Memproses...' : 'Hapus'}
-                  </button>
+        {selectedEmail && isEmailDetailVisible ? (
+          <div className="fixed inset-0 z-40 flex items-center justify-center bg-slate-900/15 px-4 py-6">
+            <div className="w-full max-w-4xl overflow-hidden rounded-3xl border border-slate-200 bg-white shadow-[0_24px_60px_rgba(15,23,42,0.14)]">
+              <div className="flex items-start justify-between gap-4 border-b border-slate-200 px-6 py-5">
+                <div className="space-y-1">
+                  <h2 className="text-lg font-semibold text-slate-900">Detail {activeFolderLabel}</h2>
+                  <p className="text-sm leading-6 text-slate-500">Baca isi email tanpa kehilangan posisi daftar {activeFolderLabel.toLowerCase()}.</p>
                 </div>
+                <button
+                  type="button"
+                  onClick={() => setIsEmailDetailVisible(false)}
+                  className="flex h-10 w-10 items-center justify-center rounded-2xl border border-slate-200 bg-white text-slate-500 transition hover:bg-slate-50 hover:text-slate-700"
+                >
+                  <X className="h-4 w-4" />
+                </button>
               </div>
 
-              {availableMoveActions.length > 0 ? (
-                <div className="mt-4 space-y-2">
-                  <p className="text-sm font-semibold text-slate-700">Aksi Folder</p>
-                  <div className="flex flex-wrap gap-2">
-                    {availableMoveActions.map((action) => (
+              <div className="max-h-[calc(100vh-10rem)] overflow-y-auto px-6 py-5">
+                <div className="space-y-5">
+                  <div className="rounded-2xl border border-blue-100 bg-blue-50/60 p-4">
+                    <div className="grid gap-2 sm:grid-cols-2">
+                      <p className="text-sm text-slate-600">
+                        Dari: <span className="font-semibold text-slate-900">{selectedSenderLabel}</span>
+                      </p>
+                      <p className="text-sm text-slate-600">
+                        Waktu: <span className="font-semibold text-slate-900">{formatDateTime(selectedEmail.date)}</span>
+                      </p>
+                      <p className="text-sm text-slate-600 sm:col-span-2">
+                        Subjek: <span className="font-semibold text-slate-900">{selectedSubjectLabel}</span>
+                      </p>
+                      {selectedEmailDetail?.to ? (
+                        <p className="text-sm text-slate-600 sm:col-span-2">
+                          Ke: <span className="font-semibold text-slate-900">{selectedEmailDetail.to}</span>
+                        </p>
+                      ) : null}
+                      {selectedEmailDetail?.cc ? (
+                        <p className="text-sm text-slate-600 sm:col-span-2">
+                          CC: <span className="font-semibold text-slate-900">{selectedEmailDetail.cc}</span>
+                        </p>
+                      ) : null}
+                    </div>
+                  </div>
+
+                  <div className="space-y-2">
+                    <p className="text-sm font-semibold text-slate-700">Aksi Email</p>
+                    <div className="flex flex-wrap gap-2">
+                      {canReplyFromSelectedFolder ? (
+                        <button
+                          type="button"
+                          onClick={openReplyCompose}
+                          className="rounded-2xl bg-[#3250b9] px-4 py-2.5 text-sm font-semibold text-white transition hover:bg-[#2a44a0]"
+                        >
+                          Balas Email
+                        </button>
+                      ) : null}
+                      {canMarkSelectedEmailUnread ? (
+                        <button
+                          type="button"
+                          onClick={() => {
+                            void handleMarkSelectedEmailUnread();
+                          }}
+                          disabled={isDetailActionPending}
+                          className={`rounded-2xl border px-4 py-2.5 text-sm font-semibold transition disabled:cursor-not-allowed disabled:opacity-60 ${getFolderMoveButtonClassName('primary')}`}
+                        >
+                          {markAsUnreadMutation.isPending ? 'Memproses...' : 'Tandai Belum Dibaca'}
+                        </button>
+                      ) : null}
                       <button
-                        key={action.key}
                         type="button"
                         onClick={() => {
-                          void handleMoveSelectedEmail(action.targetFolderKey);
+                          void handleDeleteSelectedEmail();
                         }}
                         disabled={isDetailActionPending}
-                        className={`rounded-2xl border px-4 py-2 text-sm font-semibold transition disabled:cursor-not-allowed disabled:opacity-60 ${getFolderMoveButtonClassName(action.tone)}`}
+                        className={`rounded-2xl border px-4 py-2.5 text-sm font-semibold transition disabled:cursor-not-allowed disabled:opacity-60 ${getFolderMoveButtonClassName('danger')}`}
                       >
-                        {moveMessageMutation.isPending ? 'Memproses...' : action.label}
+                        {deleteMessageMutation.isPending ? 'Memproses...' : 'Hapus'}
                       </button>
-                    ))}
+                      <button
+                        type="button"
+                        onClick={() => openPanelSection(true)}
+                        className="rounded-2xl border border-slate-200 bg-white px-4 py-2.5 text-sm font-semibold text-slate-800 transition hover:bg-slate-50"
+                      >
+                        {isSsoMode ? 'Buka Panel Lengkap' : 'Lanjut ke Panel Lengkap'}
+                      </button>
+                    </div>
+                  </div>
+
+                  {availableMoveActions.length > 0 ? (
+                    <div className="space-y-2">
+                      <p className="text-sm font-semibold text-slate-700">Aksi Folder</p>
+                      <div className="flex flex-wrap gap-2">
+                        {availableMoveActions.map((action) => (
+                          <button
+                            key={action.key}
+                            type="button"
+                            onClick={() => {
+                              void handleMoveSelectedEmail(action.targetFolderKey);
+                            }}
+                            disabled={isDetailActionPending}
+                            className={`rounded-2xl border px-4 py-2.5 text-sm font-semibold transition disabled:cursor-not-allowed disabled:opacity-60 ${getFolderMoveButtonClassName(action.tone)}`}
+                          >
+                            {moveMessageMutation.isPending ? 'Memproses...' : action.label}
+                          </button>
+                        ))}
+                      </div>
+                    </div>
+                  ) : null}
+
+                  <div className="rounded-2xl border border-slate-200 bg-white p-4">
+                    {selectedEmailDetailQuery.isLoading ? (
+                      <p className="text-sm text-slate-500">Memuat isi email...</p>
+                    ) : selectedEmailDetailQuery.isError ? (
+                      <div className="space-y-3">
+                        <p className="text-sm font-semibold text-rose-700">
+                          {getErrorMessage(selectedEmailDetailQuery.error, 'Gagal memuat isi email.')}
+                        </p>
+                        <button
+                          type="button"
+                          onClick={() => {
+                            void selectedEmailDetailQuery.refetch();
+                          }}
+                          className="rounded-full bg-rose-600 px-4 py-2 text-sm font-semibold text-white transition hover:bg-rose-700"
+                        >
+                          Coba Lagi
+                        </button>
+                      </div>
+                    ) : selectedBodyHtml ? (
+                      <EmailHtmlPreview html={selectedBodyHtml} />
+                    ) : (
+                      <p className="whitespace-pre-wrap text-sm leading-6 text-slate-700">{selectedBodyText || 'Isi email tidak tersedia.'}</p>
+                    )}
                   </div>
                 </div>
-              ) : null}
-
-              <button
-                type="button"
-                onClick={() => openPanelSection(true)}
-                className="mt-4 inline-flex items-center justify-center rounded-2xl bg-slate-900 px-4 py-3 text-sm font-semibold text-white transition hover:bg-slate-800"
-              >
-                {isSsoMode ? 'Buka Panel Lengkap' : 'Lanjut ke Panel Lengkap'}
-              </button>
+              </div>
             </div>
-          ) : null}
-        </SectionCard>
+          </div>
+        ) : null}
 
         {isComposeMode ? (
           <SectionCard
