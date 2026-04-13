@@ -310,7 +310,7 @@ export const TeacherGradesPage = () => {
   const [grades, setGrades] = useState<StudentGrade[]>([]);
   const [reportGradeMap, setReportGradeMap] = useState<Record<number, StudentReportGrade>>({});
   const [descriptions, setDescriptions] = useState<Record<number, string>>({});
-  const [formativeNewScoreDraft, setFormativeNewScoreDraft] = useState<Record<number, string>>({});
+  const [formativePendingSlots, setFormativePendingSlots] = useState<Record<number, number>>({});
   const [isFilterRestoreDone, setIsFilterRestoreDone] = useState(false);
   const restoredAssignmentRef = useRef<string | undefined>(undefined);
   
@@ -779,10 +779,12 @@ export const TeacherGradesPage = () => {
           }
           setReportGradeMap(nextReportMap);
           setDescriptions(isFinalComponent ? nextDescriptions : {});
+          setFormativePendingSlots({});
       } catch (e) {
           console.error('Error fetching report grades', e);
           setReportGradeMap({});
           setDescriptions({});
+          setFormativePendingSlots({});
       }
 
       // Rebuild grade rows from student list to avoid refresh race condition.
@@ -886,6 +888,13 @@ export const TeacherGradesPage = () => {
     return parsed.values;
   };
 
+  const getStudentFormativeDisplayValues = (studentId: number): Array<number | null> => {
+    const current = getStudentFormativeSeriesValues(studentId);
+    const pending = Math.max(0, Number(formativePendingSlots[studentId] || 0));
+    const display = [...current, ...Array.from({ length: pending }, () => null)];
+    return display.length > 0 ? display : [null];
+  };
+
   const applyFormativeSeriesValues = (studentId: number, values: number[]) => {
     const sanitized = values
       .map((item) => Number(item))
@@ -904,24 +913,51 @@ export const TeacherGradesPage = () => {
   };
 
   const handleFormativeValueChange = (studentId: number, index: number, rawValue: string) => {
+    const current = getStudentFormativeSeriesValues(studentId);
+    const pending = Math.max(0, Number(formativePendingSlots[studentId] || 0));
     if (rawValue.trim() === '') {
-      const current = getStudentFormativeSeriesValues(studentId);
-      applyFormativeSeriesValues(
-        studentId,
-        current.filter((_, currentIndex) => currentIndex !== index),
-      );
+      if (index < current.length) {
+        applyFormativeSeriesValues(
+          studentId,
+          current.filter((_, currentIndex) => currentIndex !== index),
+        );
+      } else if (pending > 0) {
+        setFormativePendingSlots((prev) => ({
+          ...prev,
+          [studentId]: Math.max(0, pending - 1),
+        }));
+      }
       return;
     }
     const parsed = Number(rawValue.replace(',', '.'));
     if (!Number.isFinite(parsed) || parsed < 0 || parsed > 100) return;
-    const current = getStudentFormativeSeriesValues(studentId);
-    const next = [...current];
-    next[index] = parsed;
-    applyFormativeSeriesValues(studentId, next);
+    if (index < current.length) {
+      const next = [...current];
+      next[index] = parsed;
+      applyFormativeSeriesValues(studentId, next);
+      return;
+    }
+    applyFormativeSeriesValues(studentId, [...current, parsed]);
+    if (pending > 0) {
+      setFormativePendingSlots((prev) => ({
+        ...prev,
+        [studentId]: Math.max(0, pending - 1),
+      }));
+    }
   };
 
   const handleRemoveFormativeValue = (studentId: number, index: number) => {
     const current = getStudentFormativeSeriesValues(studentId);
+    const pending = Math.max(0, Number(formativePendingSlots[studentId] || 0));
+    if (index >= current.length) {
+      if (pending > 0) {
+        setFormativePendingSlots((prev) => ({
+          ...prev,
+          [studentId]: Math.max(0, pending - 1),
+        }));
+      }
+      return;
+    }
     const currentValue = current[index];
     if (currentValue !== undefined && currentValue !== null) {
       const confirmed = window.confirm(
@@ -936,17 +972,9 @@ export const TeacherGradesPage = () => {
   };
 
   const handleAddFormativeValue = (studentId: number) => {
-    const raw = (formativeNewScoreDraft[studentId] || '').trim();
-    const parsed = Number(raw.replace(',', '.'));
-    if (!Number.isFinite(parsed) || parsed < 0 || parsed > 100) {
-      toast.error('Nilai formatif baru harus angka 0-100.');
-      return;
-    }
-    const current = getStudentFormativeSeriesValues(studentId);
-    applyFormativeSeriesValues(studentId, [...current, parsed]);
-    setFormativeNewScoreDraft((prev) => ({
+    setFormativePendingSlots((prev) => ({
       ...prev,
-      [studentId]: '',
+      [studentId]: Math.max(0, Number(prev[studentId] || 0)) + 1,
     }));
   };
 
@@ -1374,7 +1402,7 @@ export const TeacherGradesPage = () => {
 		                                                  <td className="px-6 py-4">
 		                                                      <div className="space-y-2 min-w-[280px]">
 		                                                        <div className="flex flex-wrap gap-2">
-		                                                          {(formativeParsed.values.length > 0 ? formativeParsed.values : [null]).map((item, itemIndex) => (
+		                                                          {getStudentFormativeDisplayValues(student.id).map((item, itemIndex) => (
 		                                                            <div key={`${student.id}-${itemIndex}`} className="relative">
 		                                                              <input
 		                                                                type="number"
@@ -1398,20 +1426,6 @@ export const TeacherGradesPage = () => {
 		                                                          ))}
 		                                                        </div>
 		                                                        <div className="flex items-center gap-2">
-		                                                          <input
-	                                                            type="number"
-	                                                            min={0}
-	                                                            max={100}
-	                                                            value={formativeNewScoreDraft[student.id] || ''}
-	                                                            onChange={(e) =>
-	                                                              setFormativeNewScoreDraft((prev) => ({
-	                                                                ...prev,
-	                                                                [student.id]: e.target.value,
-	                                                              }))
-	                                                            }
-	                                                            placeholder="Nilai baru 0-100"
-	                                                            className="w-32 px-2 py-1 border border-gray-300 rounded text-xs focus:ring-blue-500 focus:border-blue-500"
-	                                                          />
 	                                                          <button
 	                                                            type="button"
 	                                                            onClick={() => handleAddFormativeValue(student.id)}
@@ -1424,7 +1438,7 @@ export const TeacherGradesPage = () => {
 		                                                      <p className={`mt-1 text-[11px] ${formativeParsed.invalid ? 'text-red-600' : 'text-gray-500'}`}>
 		                                                        {formativeParsed.invalid
 		                                                          ? 'Format tidak valid. Gunakan angka 0-100 dipisahkan koma.'
-		                                                          : `${Math.max(formativeParsed.values.length, 1)} kotak entri dinamis`}
+		                                                          : `${getStudentFormativeDisplayValues(student.id).length} kotak entri dinamis`}
 	                                                      </p>
 		                                                  </td>
                                                   <td className={`px-6 py-4 whitespace-nowrap text-center text-sm font-medium ${(backendFormative ?? 0) < kkm && backendFormative !== null ? 'text-red-600 font-bold' : 'text-gray-900'} bg-blue-50`}>

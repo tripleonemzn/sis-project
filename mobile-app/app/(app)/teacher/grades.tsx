@@ -255,7 +255,7 @@ export default function TeacherGradesScreen() {
   const [searchQuery, setSearchQuery] = useState('');
   const [scoreDraft, setScoreDraft] = useState<Record<string, string>>({});
   const [formativeSeriesDraft, setFormativeSeriesDraft] = useState<Record<string, string>>({});
-  const [formativeNewValueDraft, setFormativeNewValueDraft] = useState<Record<string, string>>({});
+  const [formativePendingSlots, setFormativePendingSlots] = useState<Record<string, number>>({});
   const [showCompetencyModal, setShowCompetencyModal] = useState(false);
   const [competencySettings, setCompetencySettings] = useState<CompetencySettings>(emptyCompetencySettings());
 
@@ -429,6 +429,7 @@ export default function TeacherGradesScreen() {
       }
       setScoreDraft(nextScoreDraft);
       setFormativeSeriesDraft(nextSeriesDraft);
+      setFormativePendingSlots({});
     }, 0);
     return () => clearTimeout(timerId);
   }, [selectedAssignmentId, semester, gradesQuery.data]);
@@ -709,6 +710,14 @@ export default function TeacherGradesScreen() {
     return parsed.values;
   };
 
+  const getFormativeDisplayValues = (studentId: number, componentId: number): Array<number | null> => {
+    const key = `${studentId}:${componentId}`;
+    const current = getFormativeSeriesValues(studentId, componentId);
+    const pending = Math.max(0, Number(formativePendingSlots[key] || 0));
+    const display = [...current, ...Array.from({ length: pending }, () => null)];
+    return display.length > 0 ? display : [null];
+  };
+
   const applyFormativeSeriesValues = (studentId: number, componentId: number, values: number[]) => {
     const key = `${studentId}:${componentId}`;
     const sanitized = values
@@ -727,25 +736,54 @@ export default function TeacherGradesScreen() {
   };
 
   const onFormativeValueChange = (studentId: number, componentId: number, index: number, rawValue: string) => {
+    const key = `${studentId}:${componentId}`;
+    const current = getFormativeSeriesValues(studentId, componentId);
+    const pending = Math.max(0, Number(formativePendingSlots[key] || 0));
     if (rawValue.trim() === '') {
-      const current = getFormativeSeriesValues(studentId, componentId);
-      applyFormativeSeriesValues(
-        studentId,
-        componentId,
-        current.filter((_, currentIndex) => currentIndex !== index),
-      );
+      if (index < current.length) {
+        applyFormativeSeriesValues(
+          studentId,
+          componentId,
+          current.filter((_, currentIndex) => currentIndex !== index),
+        );
+      } else if (pending > 0) {
+        setFormativePendingSlots((prev) => ({
+          ...prev,
+          [key]: Math.max(0, pending - 1),
+        }));
+      }
       return;
     }
     const parsed = Number(rawValue.replace(',', '.'));
     if (!Number.isFinite(parsed) || parsed < 0 || parsed > 100) return;
-    const current = getFormativeSeriesValues(studentId, componentId);
-    const next = [...current];
-    next[index] = parsed;
-    applyFormativeSeriesValues(studentId, componentId, next);
+    if (index < current.length) {
+      const next = [...current];
+      next[index] = parsed;
+      applyFormativeSeriesValues(studentId, componentId, next);
+      return;
+    }
+    applyFormativeSeriesValues(studentId, componentId, [...current, parsed]);
+    if (pending > 0) {
+      setFormativePendingSlots((prev) => ({
+        ...prev,
+        [key]: Math.max(0, pending - 1),
+      }));
+    }
   };
 
   const onFormativeValueRemove = (studentId: number, componentId: number, index: number) => {
+    const key = `${studentId}:${componentId}`;
     const current = getFormativeSeriesValues(studentId, componentId);
+    const pending = Math.max(0, Number(formativePendingSlots[key] || 0));
+    if (index >= current.length) {
+      if (pending > 0) {
+        setFormativePendingSlots((prev) => ({
+          ...prev,
+          [key]: Math.max(0, pending - 1),
+        }));
+      }
+      return;
+    }
     const currentValue = current[index];
     const applyRemove = () => {
       applyFormativeSeriesValues(
@@ -770,17 +808,9 @@ export default function TeacherGradesScreen() {
 
   const onFormativeValueAdd = (studentId: number, componentId: number) => {
     const key = `${studentId}:${componentId}`;
-    const raw = (formativeNewValueDraft[key] || '').trim();
-    const parsed = Number(raw.replace(',', '.'));
-    if (!Number.isFinite(parsed) || parsed < 0 || parsed > 100) {
-      notifyApiError(new Error('Nilai formatif baru harus angka 0-100.'), 'Input formatif tidak valid.');
-      return;
-    }
-    const current = getFormativeSeriesValues(studentId, componentId);
-    applyFormativeSeriesValues(studentId, componentId, [...current, parsed]);
-    setFormativeNewValueDraft((prev) => ({
+    setFormativePendingSlots((prev) => ({
       ...prev,
-      [key]: '',
+      [key]: Math.max(0, Number(prev[key] || 0)) + 1,
     }));
   };
 
@@ -1067,7 +1097,7 @@ export default function TeacherGradesScreen() {
                                       Butir nilai formatif (dinamis)
                                     </Text>
                                     <View style={{ flexDirection: 'row', flexWrap: 'wrap', marginHorizontal: -3, marginBottom: 6 }}>
-                                      {(parsedSeries.values.length > 0 ? parsedSeries.values : [null]).map((value, valueIndex) => (
+                                      {getFormativeDisplayValues(student.id, selectedComponent.id).map((value, valueIndex) => (
                                         <View key={`${seriesKey}-${valueIndex}`} style={{ position: 'relative', paddingHorizontal: 3, marginBottom: 6 }}>
                                           <TextInput
                                             value={value === null ? '' : toFixedOrInt(value)}
@@ -1109,30 +1139,6 @@ export default function TeacherGradesScreen() {
                                       ))}
                                     </View>
                                     <View style={{ flexDirection: 'row', alignItems: 'center', marginHorizontal: -3 }}>
-                                      <View style={{ flex: 1, paddingHorizontal: 3 }}>
-                                        <TextInput
-                                          value={formativeNewValueDraft[seriesKey] || ''}
-                                          onChangeText={(value) =>
-                                            setFormativeNewValueDraft((prev) => ({
-                                              ...prev,
-                                              [seriesKey]: value,
-                                            }))
-                                          }
-                                          keyboardType="numeric"
-                                          placeholder={`Tambah nilai ${formativeComponentLabel}`}
-                                          placeholderTextColor="#94a3b8"
-                                          style={{
-                                            borderWidth: 1,
-                                            borderColor: '#cbd5e1',
-                                            borderRadius: 8,
-                                            paddingHorizontal: 8,
-                                            paddingVertical: 7,
-                                            backgroundColor: '#fff',
-                                            fontSize: 12,
-                                            color: '#0f172a',
-                                          }}
-                                        />
-                                      </View>
                                       <View style={{ paddingHorizontal: 3 }}>
                                         <Pressable
                                           onPress={() => onFormativeValueAdd(student.id, selectedComponent.id)}
@@ -1158,7 +1164,7 @@ export default function TeacherGradesScreen() {
                                     >
                                       {parsedSeries.invalid
                                         ? 'Format salah. Gunakan angka 0-100 dipisahkan koma.'
-                                        : `${Math.max(parsedSeries.values.length, 1)} kotak entri dinamis`}
+                                        : `${getFormativeDisplayValues(student.id, selectedComponent.id).length} kotak entri dinamis`}
                                     </Text>
                                   </View>
                                 );
