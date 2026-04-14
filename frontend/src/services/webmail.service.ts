@@ -3,6 +3,7 @@ import type { ApiResponse } from '../types/api.types';
 
 export type WebmailAuthMode = 'BRIDGE' | 'SSO';
 export type WebmailFolderKey = 'INBOX' | 'Drafts' | 'Sent' | 'Junk' | 'Archive';
+export type WebmailMailboxIdentitySource = 'stored' | 'legacy' | 'none';
 
 export interface WebmailConfig {
   mode: WebmailAuthMode;
@@ -12,6 +13,7 @@ export interface WebmailConfig {
   ssoEntryUrl: string | null;
   tokenTtlSeconds: number;
   mailboxIdentity?: string | null;
+  mailboxIdentitySource?: WebmailMailboxIdentitySource;
   selfRegistrationEnabled?: boolean;
   mailboxQuotaMb?: number;
   user: {

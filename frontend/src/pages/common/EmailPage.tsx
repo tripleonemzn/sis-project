@@ -37,6 +37,7 @@ type WebmailBridgeCredentials = {
 };
 
 type ComposeModeKind = 'new' | 'reply';
+type NativeMailboxState = 'LOADING' | 'READY' | 'UNREGISTERED' | 'UNAVAILABLE' | 'ERROR';
 type FolderMoveActionTone = 'primary' | 'neutral' | 'warning' | 'danger';
 type FolderMoveAction = {
   key: string;
@@ -548,7 +549,9 @@ export const EmailPage = () => {
   const isSelfRegistrationEnabled = !useSsoMode && Boolean(webmailConfig?.selfRegistrationEnabled);
   const mailboxQuotaLabel = asQuotaLabel(webmailConfig?.mailboxQuotaMb);
   const mailboxIdentity = String(webmailConfig?.mailboxIdentity || '').trim().toLowerCase();
+  const mailboxIdentitySource = webmailConfig?.mailboxIdentitySource || 'none';
   const suggestedMailboxUsername = String(webmailConfig?.user?.username || '').trim().toLowerCase();
+  const canResolveMailboxCandidate = mailboxIdentitySource !== 'none' && Boolean(mailboxIdentity);
 
   const [loginUser, setLoginUser] = useState('');
   const [loginPass, setLoginPass] = useState('');
@@ -580,17 +583,32 @@ export const EmailPage = () => {
   const emailFeedQuery = useQuery({
     queryKey: ['webmail-folder-feed', mailboxIdentity || 'all', activeFolderKey, visibleLimit, appliedSearch],
     queryFn: () => webmailService.getMessages({ page: 1, limit: visibleLimit, folderKey: activeFolderKey, query: appliedSearch }),
-    enabled: isPortalReady && !isWebmailMode,
+    enabled: isPortalReady && canResolveMailboxCandidate && !isWebmailMode,
     staleTime: 30_000,
-    refetchInterval: isPortalReady && !isWebmailMode && visibleLimit === DEFAULT_EMAIL_PAGE_LIMIT && !appliedSearch ? 60_000 : false,
+    refetchInterval:
+      isPortalReady && canResolveMailboxCandidate && !isWebmailMode && visibleLimit === DEFAULT_EMAIL_PAGE_LIMIT && !appliedSearch
+        ? 60_000
+        : false,
     refetchIntervalInBackground: false,
     refetchOnReconnect: true,
     retry: false,
   });
 
   const mailboxFeed = emailFeedQuery.data?.data;
-  const mailboxMessages = mailboxFeed?.messages ?? [];
-  const totalMessageCount = Number(mailboxFeed?.pagination.total || 0);
+  const nativeMailboxState: NativeMailboxState = !canResolveMailboxCandidate
+    ? 'UNREGISTERED'
+    : mailboxFeed?.mailboxAvailable === true
+      ? 'READY'
+      : mailboxFeed?.mailboxAvailable === false
+        ? mailboxIdentitySource === 'stored'
+          ? 'UNAVAILABLE'
+          : 'UNREGISTERED'
+        : emailFeedQuery.isError
+          ? 'ERROR'
+          : 'LOADING';
+  const isNativeMailboxReady = nativeMailboxState === 'READY';
+  const mailboxMessages = isNativeMailboxReady ? mailboxFeed?.messages ?? [] : [];
+  const totalMessageCount = isNativeMailboxReady ? Number(mailboxFeed?.pagination.total || 0) : 0;
   const hasAppliedSearch = appliedSearch.trim().length > 0;
   const canLoadMore = mailboxMessages.length < totalMessageCount;
   const activeFolderLabel = WEBMAIL_FOLDER_SHORTCUTS.find((item) => item.key === activeFolderKey)?.label || 'Inbox';
@@ -608,8 +626,8 @@ export const EmailPage = () => {
     enabled:
       Boolean(selectedEmailGuid) &&
       isPortalReady &&
+      isNativeMailboxReady &&
       !isWebmailMode &&
-      mailboxFeed?.mailboxAvailable !== false &&
       (isEmailDetailVisible || (isComposeMode && composeModeKind === 'reply')),
     staleTime: 30_000,
     retry: false,
@@ -620,6 +638,13 @@ export const EmailPage = () => {
   const selectedSubjectLabel = selectedEmail ? extractSubjectLabel(selectedEmail) : '-';
   const selectedBodyHtml = String(selectedEmailDetail?.html || '').trim();
   const selectedBodyText = selectedEmailDetail?.plainText || selectedEmailDetail?.previewText || selectedEmail?.snippet || '';
+  const pageDescription = isNativeMailboxReady
+    ? `Mailbox sekolah tampil langsung seperti daftar email harian. Mailbox aktif: ${mailboxIdentity}.`
+    : nativeMailboxState === 'LOADING'
+      ? 'Sistem sedang memeriksa status mailbox sekolah Anda sebelum membuka email harian.'
+    : nativeMailboxState === 'UNAVAILABLE'
+      ? 'Mailbox sekolah untuk akun ini sudah terhubung, tetapi server mail belum menyiapkannya sepenuhnya.'
+      : 'Daftarkan mailbox sekolah terlebih dahulu sebelum mulai memakai email harian.';
   const availableMoveActions = getFolderMoveActions(activeFolderKey);
   const closeEmailDetail = () => {
     setIsEmailDetailVisible(false);
@@ -627,7 +652,7 @@ export const EmailPage = () => {
   };
 
   useEffect(() => {
-    if (!isPortalReady || isWebmailMode || mailboxFeed?.mailboxAvailable === false) return;
+    if (!isPortalReady || !isNativeMailboxReady || isWebmailMode) return;
 
     const nextSearch = searchDraft.trim();
     if (nextSearch === appliedSearch) return;
@@ -642,7 +667,7 @@ export const EmailPage = () => {
     return () => {
       window.clearTimeout(timeoutId);
     };
-  }, [appliedSearch, isPortalReady, isWebmailMode, mailboxFeed?.mailboxAvailable, searchDraft]);
+  }, [appliedSearch, isNativeMailboxReady, isPortalReady, isWebmailMode, searchDraft]);
 
   const persistWebmailMode = useCallback(
     (enabled: boolean) => {
@@ -747,7 +772,7 @@ export const EmailPage = () => {
 
   const registerMutation = useMutation({
     mutationFn: webmailService.register,
-    onSuccess: (response, variables) => {
+    onSuccess: async (response, variables) => {
       const nextMailboxIdentity = String(response?.data?.mailboxIdentity || '').trim().toLowerCase();
       if (!nextMailboxIdentity) {
         setRegisterError('Mailbox berhasil dibuat, tetapi identitas mailbox tidak ditemukan.');
@@ -760,6 +785,14 @@ export const EmailPage = () => {
       setRegisterPassConfirm('');
       setActiveFolderKey('INBOX');
       setIsRegisterMode(false);
+      await queryClient.invalidateQueries({
+        queryKey: ['webmail-config', userScopeKey],
+        refetchType: 'active',
+      });
+      await queryClient.invalidateQueries({
+        queryKey: ['webmail-folder-feed'],
+        refetchType: 'active',
+      });
       openWebmailWithBridgeLogin(nextMailboxIdentity, variables.password);
     },
     onError: (error) => {
@@ -1268,52 +1301,121 @@ export const EmailPage = () => {
       <div className="space-y-6">
         <div className="space-y-1 px-1">
           <h1 className="text-lg font-semibold text-slate-900">Email</h1>
-          <p className="text-sm leading-6 text-slate-500">
-            Mailbox sekolah tampil langsung seperti daftar email harian.
-            {mailboxIdentity ? ` Mailbox aktif: ${mailboxIdentity}.` : ''}
-          </p>
+          <p className="text-sm leading-6 text-slate-500">{pageDescription}</p>
         </div>
 
-        <SectionCard title={activeFolderTitle} subtitle={activeFolderDescription}>
-          <div className="space-y-5">
-            <div className="flex flex-col gap-4 xl:flex-row xl:items-end xl:justify-between">
-              <div className="flex flex-wrap items-start gap-4 xl:flex-nowrap">
-                {WEBMAIL_FOLDER_SHORTCUTS.map((folder) => {
-                  const isActive = folder.key === activeFolderKey;
-                  const Icon = folder.icon;
-                  return (
-                    <button
-                      key={folder.key}
-                      type="button"
-                      onClick={() => {
-                        setActiveFolderKey(folder.key);
-                        closeEmailDetail();
-                        setSearchDraft('');
-                        setAppliedSearch('');
-                        setVisibleLimit(DEFAULT_EMAIL_PAGE_LIMIT);
-                      }}
-                      className="min-w-[68px] shrink-0"
-                    >
-                      <span className="flex flex-col items-center gap-2">
-                        <span
-                          className={`flex h-10 w-10 items-center justify-center rounded-full border transition ${
-                            isActive
-                              ? 'border-blue-200 bg-blue-50 text-blue-700'
-                              : 'border-slate-200 bg-slate-50 text-slate-500 hover:border-slate-300 hover:text-slate-700'
-                          }`}
-                        >
-                          <Icon className="h-4 w-4" />
-                        </span>
-                        <span className={`text-center text-xs font-semibold ${isActive ? 'text-blue-700' : 'text-slate-600'}`}>
-                          {folder.label}
-                        </span>
-                      </span>
-                    </button>
-                  );
-                })}
+        <SectionCard
+          title={isNativeMailboxReady ? activeFolderTitle : nativeMailboxState === 'LOADING' ? 'Memeriksa Mailbox' : 'Akses Email Sekolah'}
+          subtitle={
+            isNativeMailboxReady
+              ? activeFolderDescription
+              : nativeMailboxState === 'LOADING'
+                ? 'Sistem sedang memeriksa status mailbox sekolah Anda sebelum membuka daftar email harian.'
+                : nativeMailboxState === 'UNAVAILABLE'
+                  ? 'Mailbox sekolah Anda sudah terhubung ke akun SIS, tetapi server mail belum menyiapkannya sepenuhnya.'
+                  : 'Akun Anda belum memiliki mailbox sekolah aktif. Daftarkan mailbox terlebih dahulu sebelum mulai memakai email.'
+          }
+        >
+          {nativeMailboxState === 'LOADING' ? (
+            <div className="rounded-2xl border border-slate-200 bg-slate-50 px-4 py-4 text-sm leading-6 text-slate-500">
+              Memeriksa kesiapan mailbox sekolah Anda...
+            </div>
+          ) : nativeMailboxState === 'ERROR' ? (
+            <div className="space-y-3 rounded-xl border border-rose-200 bg-rose-50 px-4 py-4">
+              <p className="text-sm font-semibold text-rose-700">
+                {getErrorMessage(emailFeedQuery.error, 'Gagal memeriksa status mailbox sekolah.')}
+              </p>
+              <button
+                type="button"
+                onClick={() => {
+                  void emailFeedQuery.refetch();
+                }}
+                className="rounded-full bg-rose-600 px-4 py-2 text-sm font-semibold text-white transition hover:bg-rose-700"
+              >
+                Coba Lagi
+              </button>
+            </div>
+          ) : !isNativeMailboxReady ? (
+            <div className="space-y-4">
+              <div className="rounded-2xl border border-slate-200 bg-slate-50 px-4 py-4">
+                <p className="text-sm font-semibold text-slate-900">
+                  {nativeMailboxState === 'UNAVAILABLE' ? 'Mailbox belum aktif di server' : 'Belum punya mailbox sekolah'}
+                </p>
+                <p className="mt-2 text-sm leading-6 text-slate-600">
+                  {nativeMailboxState === 'UNAVAILABLE'
+                    ? 'Mailbox sudah tercatat untuk akun ini, tetapi inbox native dan panel email penuh baru bisa dipakai setelah server mail selesai menyiapkannya.'
+                    : 'Daftar mailbox sekolah terlebih dahulu. Setelah mailbox aktif, halaman ini akan otomatis berubah menjadi daftar inbox email harian.'}
+                </p>
+                {nativeMailboxState === 'UNAVAILABLE' && mailboxIdentity ? (
+                  <div className="mt-4 rounded-2xl border border-amber-200 bg-amber-50 px-4 py-3">
+                    <p className="text-xs font-semibold uppercase tracking-[0.14em] text-amber-700">Mailbox Terhubung</p>
+                    <p className="mt-1 text-sm font-semibold text-slate-900">{mailboxIdentity}</p>
+                  </div>
+                ) : null}
               </div>
 
-              {mailboxFeed?.mailboxAvailable !== false ? (
+              {nativeMailboxState === 'UNREGISTERED' ? (
+                isSelfRegistrationEnabled ? (
+                  <button
+                    type="button"
+                    onClick={() => {
+                      setIsRegisterMode(true);
+                      setRegisterError(null);
+                    }}
+                    className="rounded-2xl bg-[#3250b9] px-4 py-3 text-sm font-semibold text-white transition hover:bg-[#2a44a0]"
+                  >
+                    Daftar Mailbox
+                  </button>
+                ) : (
+                  <div className="rounded-2xl border border-slate-200 bg-white px-4 py-4 text-sm leading-6 text-slate-600">
+                    Pendaftaran mailbox mandiri tidak tersedia untuk akun ini. Silakan hubungi admin jika Anda membutuhkan akun email sekolah.
+                  </div>
+                )
+              ) : (
+                <div className="rounded-2xl border border-amber-200 bg-amber-50 px-4 py-4 text-sm leading-6 text-amber-800">
+                  Silakan tunggu beberapa saat. Jika mailbox belum aktif juga, hubungi admin agar status mailbox sekolah Anda dapat diperiksa.
+                </div>
+              )}
+            </div>
+          ) : (
+            <div className="space-y-5">
+              <div className="flex flex-col gap-4 xl:flex-row xl:items-end xl:justify-between">
+                <div className="flex flex-wrap items-start gap-4 xl:flex-nowrap">
+                  {WEBMAIL_FOLDER_SHORTCUTS.map((folder) => {
+                    const isActive = folder.key === activeFolderKey;
+                    const Icon = folder.icon;
+                    return (
+                      <button
+                        key={folder.key}
+                        type="button"
+                        onClick={() => {
+                          setActiveFolderKey(folder.key);
+                          closeEmailDetail();
+                          setSearchDraft('');
+                          setAppliedSearch('');
+                          setVisibleLimit(DEFAULT_EMAIL_PAGE_LIMIT);
+                        }}
+                        className="min-w-[68px] shrink-0"
+                      >
+                        <span className="flex flex-col items-center gap-2">
+                          <span
+                            className={`flex h-10 w-10 items-center justify-center rounded-full border transition ${
+                              isActive
+                                ? 'border-blue-200 bg-blue-50 text-blue-700'
+                                : 'border-slate-200 bg-slate-50 text-slate-500 hover:border-slate-300 hover:text-slate-700'
+                            }`}
+                          >
+                            <Icon className="h-4 w-4" />
+                          </span>
+                          <span className={`text-center text-xs font-semibold ${isActive ? 'text-blue-700' : 'text-slate-600'}`}>
+                            {folder.label}
+                          </span>
+                        </span>
+                      </button>
+                    );
+                  })}
+                </div>
+
                 <div className="space-y-2 xl:min-w-0 xl:flex-1">
                   <form
                     className="flex flex-col gap-2 lg:flex-row lg:items-center xl:justify-end"
@@ -1349,85 +1451,47 @@ export const EmailPage = () => {
                     </div>
                   ) : null}
                 </div>
-              ) : null}
-            </div>
+              </div>
 
-            {emailFeedQuery.isLoading ? (
-              <div className="rounded-xl border border-slate-200 bg-slate-50 px-4 py-4 text-sm text-slate-500">
-                Memuat {activeFolderLabel.toLowerCase()}...
-              </div>
-            ) : emailFeedQuery.isError ? (
-              <div className="space-y-3 rounded-xl border border-rose-200 bg-rose-50 px-4 py-4">
-                <p className="text-sm font-semibold text-rose-700">
-                  {getErrorMessage(emailFeedQuery.error, `Gagal memuat folder ${activeFolderLabel}.`)}
-                </p>
-                <button
-                  type="button"
-                  onClick={() => {
-                    void emailFeedQuery.refetch();
-                  }}
-                  className="rounded-full bg-rose-600 px-4 py-2 text-sm font-semibold text-white transition hover:bg-rose-700"
-                >
-                  Coba Lagi
-                </button>
-              </div>
-            ) : mailboxFeed?.mailboxAvailable === false ? (
-              <div className="rounded-xl border border-amber-200 bg-amber-50 px-4 py-4">
-                <p className="text-sm font-semibold text-amber-900">Mailbox belum tersedia</p>
-                <p className="mt-2 text-sm leading-6 text-amber-800">
-                  Akun ini sudah dikenali, tetapi mailbox di server mail belum aktif.
-                </p>
-                {isSelfRegistrationEnabled ? (
-                  <button
-                    type="button"
-                    onClick={() => {
-                      setIsRegisterMode(true);
-                      setRegisterError(null);
-                    }}
-                    className="mt-4 rounded-2xl bg-[#3250b9] px-4 py-3 text-sm font-semibold text-white transition hover:bg-[#2a44a0]"
-                  >
-                    Daftar Mailbox
-                  </button>
-                ) : null}
-              </div>
-            ) : mailboxMessages.length === 0 ? (
-              <div className="space-y-2 rounded-xl border border-slate-200 bg-slate-50 px-4 py-4">
-                <p className="text-sm font-semibold text-slate-900">{activeFolderLabel} masih kosong</p>
-                <p className="text-sm leading-6 text-slate-500">{activeFolderEmptyState}</p>
-              </div>
-            ) : (
-              <div className="space-y-3">
-                <p className="text-sm leading-6 text-slate-500">
-                  {hasAppliedSearch
-                    ? `Menampilkan ${mailboxMessages.length} dari ${totalMessageCount} email yang cocok dengan "${appliedSearch}".`
-                    : `Menampilkan ${mailboxMessages.length} dari ${totalMessageCount} email di folder ${activeFolderLabel}.`}
-                </p>
-                {mailboxMessages.map((item) => (
-                  <EmailInboxItem
-                    key={item.guid}
-                    item={item}
-                    selected={isEmailDetailVisible && item.guid === selectedEmailGuid}
-                    onPress={() => {
-                      void handleSelectEmail(item);
-                    }}
-                  />
-                ))}
-                {canLoadMore ? (
-                  <button
-                    type="button"
-                    disabled={emailFeedQuery.isFetching}
-                    onClick={() => {
-                      setVisibleLimit((current) => current + DEFAULT_EMAIL_PAGE_LIMIT);
-                    }}
-                    className="inline-flex items-center justify-center gap-2 rounded-2xl border border-slate-200 bg-white px-4 py-3 text-sm font-semibold text-slate-800 transition hover:bg-slate-50 disabled:cursor-not-allowed disabled:opacity-60"
-                  >
-                    <RefreshCw className={`h-4 w-4 ${emailFeedQuery.isFetching && !emailFeedQuery.isLoading ? 'animate-spin' : ''}`} />
-                    Muat Lebih Banyak
-                  </button>
-                ) : null}
-              </div>
-            )}
-          </div>
+              {mailboxMessages.length === 0 ? (
+                <div className="space-y-2 rounded-xl border border-slate-200 bg-slate-50 px-4 py-4">
+                  <p className="text-sm font-semibold text-slate-900">{activeFolderLabel} masih kosong</p>
+                  <p className="text-sm leading-6 text-slate-500">{activeFolderEmptyState}</p>
+                </div>
+              ) : (
+                <div className="space-y-3">
+                  <p className="text-sm leading-6 text-slate-500">
+                    {hasAppliedSearch
+                      ? `Menampilkan ${mailboxMessages.length} dari ${totalMessageCount} email yang cocok dengan "${appliedSearch}".`
+                      : `Menampilkan ${mailboxMessages.length} dari ${totalMessageCount} email di folder ${activeFolderLabel}.`}
+                  </p>
+                  {mailboxMessages.map((item) => (
+                    <EmailInboxItem
+                      key={item.guid}
+                      item={item}
+                      selected={isEmailDetailVisible && item.guid === selectedEmailGuid}
+                      onPress={() => {
+                        void handleSelectEmail(item);
+                      }}
+                    />
+                  ))}
+                  {canLoadMore ? (
+                    <button
+                      type="button"
+                      disabled={emailFeedQuery.isFetching}
+                      onClick={() => {
+                        setVisibleLimit((current) => current + DEFAULT_EMAIL_PAGE_LIMIT);
+                      }}
+                      className="inline-flex items-center justify-center gap-2 rounded-2xl border border-slate-200 bg-white px-4 py-3 text-sm font-semibold text-slate-800 transition hover:bg-slate-50 disabled:cursor-not-allowed disabled:opacity-60"
+                    >
+                      <RefreshCw className={`h-4 w-4 ${emailFeedQuery.isFetching && !emailFeedQuery.isLoading ? 'animate-spin' : ''}`} />
+                      Muat Lebih Banyak
+                    </button>
+                  ) : null}
+                </div>
+              )}
+            </div>
+          )}
         </SectionCard>
 
         {selectedEmail && isEmailDetailVisible ? (
@@ -1680,7 +1744,7 @@ export const EmailPage = () => {
         {isWebmailMode ? (
           <div ref={panelSectionRef} className="space-y-4">
             <SectionCard
-              title="Panel Lengkap Aktif"
+              title="Panel Email Aktif"
               subtitle="Panel webmail penuh dibuka hanya saat Anda membutuhkan fitur lanjutan."
             >
               <div className="grid gap-3 sm:grid-cols-2">
@@ -1698,7 +1762,7 @@ export const EmailPage = () => {
                   className="inline-flex items-center justify-center gap-2 rounded-2xl border border-amber-200 bg-amber-50 px-4 py-3 text-sm font-semibold text-amber-800 transition hover:bg-amber-100"
                 >
                   <ArrowLeft className="h-4 w-4" />
-                  Tutup Panel Lengkap
+                  Keluar Panel Email
                 </button>
               </div>
             </SectionCard>
@@ -1729,7 +1793,7 @@ export const EmailPage = () => {
         ) : null}
       </div>
 
-      {mailboxFeed?.mailboxAvailable !== false && !isComposeMode && !isRegisterMode && !isWebmailMode ? (
+      {isNativeMailboxReady && !isComposeMode && !isRegisterMode && !isWebmailMode ? (
         <div className="pointer-events-none fixed bottom-6 right-6 z-30 flex flex-col items-center gap-1 sm:right-8">
           <button
             type="button"

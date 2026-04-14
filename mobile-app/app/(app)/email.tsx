@@ -25,6 +25,7 @@ const DEFAULT_EMAIL_PAGE_LIMIT = 20;
 const AUTO_APPLY_SEARCH_DELAY_MS = 350;
 type FeatherIconName = ComponentProps<typeof Feather>['name'];
 type WebmailFolderKey = MobileWebmailFolderKey;
+type NativeMailboxState = 'LOADING' | 'READY' | 'UNREGISTERED' | 'UNAVAILABLE' | 'ERROR';
 type FolderMoveActionTone = 'primary' | 'neutral' | 'warning' | 'danger';
 
 type FolderMoveAction = {
@@ -401,6 +402,7 @@ export default function MobileEmailScreen() {
   const [webmailUrl, setWebmailUrl] = useState<string | null>(null);
   const [webviewKey, setWebviewKey] = useState(0);
   const [panelError, setPanelError] = useState<string | null>(null);
+  const [isPanelLogoutPending, setIsPanelLogoutPending] = useState(false);
   const [isWebmailMode, setIsWebmailMode] = useState(false);
   const [isRegisterMode, setIsRegisterMode] = useState(false);
   const [registerUser, setRegisterUser] = useState('');
@@ -435,15 +437,29 @@ export default function MobileEmailScreen() {
     staleTime: 5 * 60 * 1000,
   });
 
+  const config = configQuery.data;
+  const webmailBaseUrl = String(config?.webmailUrl || '').trim();
+  const bridgeLoginUrl = useMemo(() => getBridgeLoginUrl(webmailBaseUrl), [webmailBaseUrl]);
+  const inboxUrl = useMemo(() => getInboxUrl(bridgeLoginUrl), [bridgeLoginUrl]);
+  const isSsoMode = config?.mode === 'SSO' && Boolean(config?.ssoEnabled);
+  const mailboxDomain = String(config?.defaultDomain || 'siskgb2.id').trim().toLowerCase() || 'siskgb2.id';
+  const selfRegistrationEnabled = !isSsoMode && Boolean(config?.selfRegistrationEnabled);
+  const quotaLabel = asQuotaLabel(config?.mailboxQuotaMb);
+  const mailboxIdentity = String(config?.mailboxIdentity || '').trim().toLowerCase();
+  const mailboxIdentitySource = config?.mailboxIdentitySource || 'none';
+  const suggestedMailboxUsername = String(config?.user?.username || '').trim().toLowerCase();
+  const canResolveMailboxCandidate = mailboxIdentitySource !== 'none' && Boolean(mailboxIdentity);
+
   const emailFeedQuery = useQuery({
-    queryKey: ['mobile-email-folder-feed', configQuery.data?.mailboxIdentity || 'all', activeFolderKey, visibleLimit, appliedSearch],
+    queryKey: ['mobile-email-folder-feed', mailboxIdentity || 'all', activeFolderKey, visibleLimit, appliedSearch],
     queryFn: () => webmailApi.getMessages({ page: 1, limit: visibleLimit, folderKey: activeFolderKey, query: appliedSearch }),
-    enabled: isAuthenticated && isAllowedRole && isScreenActive && !isWebmailMode,
+    enabled: isAuthenticated && isAllowedRole && isScreenActive && canResolveMailboxCandidate && !isWebmailMode,
     staleTime: 30_000,
     refetchInterval:
       isAuthenticated &&
       isAllowedRole &&
       isScreenActive &&
+      canResolveMailboxCandidate &&
       !isWebmailMode &&
       visibleLimit === DEFAULT_EMAIL_PAGE_LIMIT &&
       !appliedSearch
@@ -453,20 +469,29 @@ export default function MobileEmailScreen() {
     refetchOnReconnect: true,
   });
 
-  const config = configQuery.data;
-  const webmailBaseUrl = String(config?.webmailUrl || '').trim();
-  const bridgeLoginUrl = useMemo(() => getBridgeLoginUrl(webmailBaseUrl), [webmailBaseUrl]);
-  const inboxUrl = useMemo(() => getInboxUrl(bridgeLoginUrl), [bridgeLoginUrl]);
-  const isSsoMode = config?.mode === 'SSO' && Boolean(config?.ssoEnabled);
-  const mailboxDomain = String(config?.defaultDomain || 'siskgb2.id').trim().toLowerCase() || 'siskgb2.id';
-  const selfRegistrationEnabled = !isSsoMode && Boolean(config?.selfRegistrationEnabled);
-  const quotaLabel = asQuotaLabel(config?.mailboxQuotaMb);
-  const suggestedMailboxUsername = String(config?.user?.username || '').trim().toLowerCase();
   const mailboxFeed = emailFeedQuery.data;
-  const mailboxAvailable = mailboxFeed?.mailboxAvailable !== false;
+  const nativeMailboxState: NativeMailboxState = !canResolveMailboxCandidate
+    ? 'UNREGISTERED'
+    : mailboxFeed?.mailboxAvailable === true
+      ? 'READY'
+      : mailboxFeed?.mailboxAvailable === false
+        ? mailboxIdentitySource === 'stored'
+          ? 'UNAVAILABLE'
+          : 'UNREGISTERED'
+        : emailFeedQuery.isError
+          ? 'ERROR'
+          : 'LOADING';
+  const mailboxAvailable = nativeMailboxState === 'READY';
+  const pageDescription = mailboxAvailable
+    ? `Mailbox sekolah tampil langsung seperti daftar email harian. Mailbox aktif: ${mailboxIdentity}.`
+    : nativeMailboxState === 'LOADING'
+      ? 'Sistem sedang memeriksa status mailbox sekolah Anda sebelum membuka email harian.'
+    : nativeMailboxState === 'UNAVAILABLE'
+      ? 'Mailbox sekolah untuk akun ini sudah terhubung, tetapi server mail belum menyiapkannya sepenuhnya.'
+      : 'Daftarkan mailbox sekolah terlebih dahulu sebelum mulai memakai email harian.';
 
-  const mailboxMessages = useMemo(() => mailboxFeed?.messages ?? [], [mailboxFeed?.messages]);
-  const totalMessageCount = Number(mailboxFeed?.pagination.total || 0);
+  const mailboxMessages = useMemo(() => (mailboxAvailable ? mailboxFeed?.messages ?? [] : []), [mailboxAvailable, mailboxFeed?.messages]);
+  const totalMessageCount = mailboxAvailable ? Number(mailboxFeed?.pagination.total || 0) : 0;
   const hasAppliedSearch = appliedSearch.trim().length > 0;
   const canLoadMore = mailboxMessages.length < totalMessageCount;
 
@@ -532,8 +557,8 @@ export default function MobileEmailScreen() {
       isAuthenticated &&
       isAllowedRole &&
       isScreenActive &&
+      mailboxAvailable &&
       !isWebmailMode &&
-      mailboxFeed?.mailboxAvailable !== false &&
       (isEmailDetailVisible || (isComposeMode && composeModeKind === 'reply')),
     staleTime: 30_000,
   });
@@ -542,7 +567,7 @@ export default function MobileEmailScreen() {
     WEBMAIL_FOLDER_SHORTCUTS.find((item) => item.key === activeFolderKey)?.label || 'Inbox';
 
   useEffect(() => {
-    if (!isAuthenticated || !isAllowedRole || !isScreenActive || isWebmailMode || mailboxFeed?.mailboxAvailable === false) {
+    if (!isAuthenticated || !isAllowedRole || !isScreenActive || isWebmailMode || !mailboxAvailable) {
       return;
     }
 
@@ -563,9 +588,9 @@ export default function MobileEmailScreen() {
     appliedSearch,
     isAllowedRole,
     isAuthenticated,
+    mailboxAvailable,
     isScreenActive,
     isWebmailMode,
-    mailboxFeed?.mailboxAvailable,
     searchDraft,
   ]);
 
@@ -586,7 +611,7 @@ export default function MobileEmailScreen() {
 
   const registerMutation = useMutation({
     mutationFn: webmailApi.register,
-    onSuccess: (result, variables) => {
+    onSuccess: async (result, variables) => {
       const createdMailboxIdentity = String(result.mailboxIdentity || '').trim().toLowerCase();
       if (!createdMailboxIdentity) {
         setRegisterError('Mailbox berhasil dibuat, tetapi identitas mailbox tidak ditemukan.');
@@ -599,6 +624,14 @@ export default function MobileEmailScreen() {
       setRegisterPass('');
       setRegisterPassConfirm('');
       setActiveFolderKey('INBOX');
+      await queryClient.invalidateQueries({
+        queryKey: ['mobile-webmail-config'],
+        refetchType: 'active',
+      });
+      await queryClient.invalidateQueries({
+        queryKey: ['mobile-email-folder-feed'],
+        refetchType: 'active',
+      });
       setBridgeCredentials({ email: createdMailboxIdentity, password: variables.password });
       setWebmailUrl(getMailboxFolderUrl(bridgeLoginUrl, 'INBOX'));
       setIsWebmailMode(true);
@@ -712,9 +745,23 @@ export default function MobileEmailScreen() {
   const leavePanelMode = () => {
     setIsWebmailMode(false);
     setIsRegisterMode(false);
+    setIsPanelLogoutPending(false);
     setBridgeCredentials(null);
     setPanelError(null);
     setWebmailUrl(null);
+    setWebviewKey((value) => value + 1);
+  };
+
+  const handleLogoutPanel = () => {
+    setPanelError(null);
+    setBridgeCredentials(null);
+
+    if (isSsoMode) {
+      leavePanelMode();
+      return;
+    }
+
+    setIsPanelLogoutPending(true);
     setWebviewKey((value) => value + 1);
   };
 
@@ -750,11 +797,13 @@ export default function MobileEmailScreen() {
     setIsComposeMode(false);
     setActiveFolderKey(nextFolderKey);
 
-    if (!mailboxAvailable && selfRegistrationEnabled) {
+    if (nativeMailboxState === 'UNREGISTERED' && selfRegistrationEnabled) {
       setRegisterError(null);
       setIsRegisterMode(true);
       return;
     }
+
+    if (!mailboxAvailable) return;
 
     if (isSsoMode) {
       setWebmailUrl(null);
@@ -957,7 +1006,16 @@ export default function MobileEmailScreen() {
     setIsEmailDetailVisible(false);
     setSelectedEmailGuid(null);
   };
-  const webSource = bridgeCredentials
+  const webSource = isPanelLogoutPending
+    ? {
+        uri: bridgeLoginUrl,
+        method: 'POST' as const,
+        headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
+        body: encodeFormBody({
+          logout: '1',
+        }),
+      }
+    : bridgeCredentials
     ? {
         uri: bridgeLoginUrl,
         method: 'POST' as const,
@@ -980,198 +1038,268 @@ export default function MobileEmailScreen() {
         contentContainerStyle={{ paddingTop: Math.max(insets.top, 10), paddingBottom: 96 }}
       >
         <View style={{ paddingHorizontal: 12, gap: 10 }}>
+          <View style={{ gap: 4, paddingHorizontal: 2 }}>
+            <Text style={{ fontSize: 22, fontWeight: '800', color: '#0f172a' }}>Email</Text>
+            <Text style={{ fontSize: 12, color: '#64748b', lineHeight: 18 }}>{pageDescription}</Text>
+          </View>
+
           <View
             onLayout={(event) => {
               setInboxSectionY(event.nativeEvent.layout.y);
             }}
           >
             <SectionCard
-              title={activeFolderTitle}
-              subtitle={activeFolderDescription}
+              title={mailboxAvailable ? activeFolderTitle : nativeMailboxState === 'LOADING' ? 'Memeriksa Mailbox' : 'Akses Email Sekolah'}
+              subtitle={
+                mailboxAvailable
+                  ? activeFolderDescription
+                  : nativeMailboxState === 'LOADING'
+                    ? 'Sistem sedang memeriksa status mailbox sekolah Anda sebelum membuka daftar email harian.'
+                    : nativeMailboxState === 'UNAVAILABLE'
+                      ? 'Mailbox sekolah Anda sudah terhubung ke akun SIS, tetapi server mail belum menyiapkannya sepenuhnya.'
+                      : 'Akun Anda belum memiliki mailbox sekolah aktif. Daftarkan mailbox terlebih dahulu sebelum mulai memakai email.'
+              }
             >
-              <MobileMenuTabBar
-                items={WEBMAIL_FOLDER_SHORTCUTS.map((item) => ({
-                  key: item.key,
-                  label: item.label,
-                  iconName: item.iconName,
-                }))}
-                activeKey={activeFolderKey}
-                onChange={(key) => {
-                  const targetFolder = WEBMAIL_FOLDER_SHORTCUTS.find((item) => item.key === key);
-                  if (!targetFolder) return;
-                  handleFolderShortcutPress(targetFolder.key);
-                }}
-                compact
-                layout="fill"
-                tabVariant="plain"
-                gap={4}
-              />
-
-              {mailboxAvailable ? (
-                <View style={{ gap: 8 }}>
-                  <Text style={{ color: '#475569', fontSize: 12, fontWeight: '700' }}>Cari Email</Text>
-                  <View style={{ flexDirection: 'row', gap: 8 }}>
-                    <View
-                      style={{
-                        flex: 1,
-                        flexDirection: 'row',
-                        alignItems: 'center',
-                        gap: 8,
-                        borderRadius: 12,
-                        borderWidth: 1,
-                        borderColor: '#cbd5e1',
-                        backgroundColor: '#ffffff',
-                        paddingHorizontal: 12,
-                      }}
-                    >
-                      <Feather name="search" size={14} color="#64748b" />
-                      <TextInput
-                        value={searchDraft}
-                        onChangeText={setSearchDraft}
-                        onSubmitEditing={handleApplySearch}
-                        placeholder="Cari pengirim, subjek, atau isi email"
-                        placeholderTextColor="#94a3b8"
-                        autoCapitalize="none"
-                        autoCorrect={false}
-                        returnKeyType="search"
-                        style={{
-                          flex: 1,
-                          minHeight: 42,
-                          color: '#0f172a',
-                          fontSize: 13,
-                        }}
-                      />
-                    </View>
-                    <Pressable
-                      onPress={handleApplySearch}
-                      style={{
-                        borderRadius: 12,
-                        backgroundColor: '#3250b9',
-                        paddingHorizontal: 14,
-                        alignItems: 'center',
-                        justifyContent: 'center',
-                      }}
-                    >
-                      <Text style={{ color: '#ffffff', fontSize: 12, fontWeight: '700' }}>Cari</Text>
-                    </Pressable>
-                  </View>
-                  {hasAppliedSearch || searchDraft.trim().length > 0 ? (
-                    <Pressable
-                      onPress={handleResetSearch}
-                      style={{ alignSelf: 'flex-start', paddingVertical: 2 }}
-                    >
-                      <Text style={{ color: '#3250b9', fontSize: 12, fontWeight: '700' }}>Reset Pencarian</Text>
-                    </Pressable>
-                  ) : null}
-                </View>
-              ) : null}
-
-              {emailFeedQuery.isLoading ? (
+              {nativeMailboxState === 'LOADING' ? (
                 <View style={{ paddingVertical: 12, alignItems: 'center', justifyContent: 'center', gap: 8 }}>
                   <ActivityIndicator size="small" color="#2563eb" />
-                  <Text style={{ color: '#64748b', fontSize: 12 }}>Memuat {activeFolderLabel.toLowerCase()}...</Text>
+                  <Text style={{ color: '#64748b', fontSize: 12 }}>Memeriksa kesiapan mailbox sekolah Anda...</Text>
                 </View>
-              ) : emailFeedQuery.isError ? (
+              ) : nativeMailboxState === 'ERROR' ? (
                 <QueryStateView
                   type="error"
-                  message={resolveErrorMessage(emailFeedQuery.error, `Gagal memuat folder ${activeFolderLabel}.`)}
+                  message={resolveErrorMessage(emailFeedQuery.error, 'Gagal memeriksa status mailbox sekolah.')}
                   onRetry={() => emailFeedQuery.refetch()}
                 />
               ) : !mailboxAvailable ? (
-                <View
-                  style={{
-                    borderRadius: 14,
-                    borderWidth: 1,
-                    borderColor: '#fde68a',
-                    backgroundColor: '#fffbeb',
-                    paddingHorizontal: 12,
-                    paddingVertical: 14,
-                    gap: 6,
-                  }}
-                >
-                  <Text style={{ color: '#92400e', fontWeight: '700' }}>Mailbox belum tersedia</Text>
-                  <Text style={{ color: '#78350f', fontSize: 12, lineHeight: 18 }}>
-                    Akun ini sudah dikenali, tetapi mailbox di server mail belum aktif.
-                  </Text>
-                  {selfRegistrationEnabled ? (
-                    <Pressable
-                      onPress={() => {
-                        setRegisterError(null);
-                        setPanelError(null);
-                        setIsRegisterMode(true);
-                      }}
+                <View style={{ gap: 12 }}>
+                  <View
+                    style={{
+                      borderRadius: 14,
+                      borderWidth: 1,
+                      borderColor: '#e2e8f0',
+                      backgroundColor: '#f8fafc',
+                      paddingHorizontal: 12,
+                      paddingVertical: 14,
+                      gap: 6,
+                    }}
+                  >
+                    <Text style={{ color: '#0f172a', fontWeight: '700' }}>
+                      {nativeMailboxState === 'UNAVAILABLE' ? 'Mailbox belum aktif di server' : 'Belum punya mailbox sekolah'}
+                    </Text>
+                    <Text style={{ color: '#475569', fontSize: 12, lineHeight: 18 }}>
+                      {nativeMailboxState === 'UNAVAILABLE'
+                        ? 'Mailbox sudah tercatat untuk akun ini, tetapi inbox native dan panel email penuh baru bisa dipakai setelah server mail selesai menyiapkannya.'
+                        : 'Daftar mailbox sekolah terlebih dahulu. Setelah mailbox aktif, halaman ini akan otomatis berubah menjadi daftar inbox email harian.'}
+                    </Text>
+                    {nativeMailboxState === 'UNAVAILABLE' && mailboxIdentity ? (
+                      <View
+                        style={{
+                          marginTop: 6,
+                          borderRadius: 12,
+                          borderWidth: 1,
+                          borderColor: '#fde68a',
+                          backgroundColor: '#fffbeb',
+                          paddingHorizontal: 12,
+                          paddingVertical: 10,
+                          gap: 4,
+                        }}
+                      >
+                        <Text style={{ color: '#b45309', fontSize: 11, fontWeight: '700' }}>Mailbox Terhubung</Text>
+                        <Text style={{ color: '#0f172a', fontSize: 13, fontWeight: '700' }}>{mailboxIdentity}</Text>
+                      </View>
+                    ) : null}
+                  </View>
+
+                  {nativeMailboxState === 'UNREGISTERED' ? (
+                    selfRegistrationEnabled ? (
+                      <Pressable
+                        onPress={() => {
+                          setRegisterError(null);
+                          setPanelError(null);
+                          setIsRegisterMode(true);
+                        }}
+                        style={{
+                          borderRadius: 12,
+                          backgroundColor: '#3250b9',
+                          paddingVertical: 11,
+                          alignItems: 'center',
+                        }}
+                      >
+                        <Text style={{ color: '#ffffff', fontWeight: '700' }}>Daftar Mailbox</Text>
+                      </Pressable>
+                    ) : (
+                      <View
+                        style={{
+                          borderRadius: 14,
+                          borderWidth: 1,
+                          borderColor: '#e2e8f0',
+                          backgroundColor: '#ffffff',
+                          paddingHorizontal: 12,
+                          paddingVertical: 14,
+                        }}
+                      >
+                        <Text style={{ color: '#475569', fontSize: 12, lineHeight: 18 }}>
+                          Pendaftaran mailbox mandiri tidak tersedia untuk akun ini. Silakan hubungi admin jika Anda membutuhkan akun email sekolah.
+                        </Text>
+                      </View>
+                    )
+                  ) : (
+                    <View
                       style={{
-                        marginTop: 6,
-                        borderRadius: 12,
-                        backgroundColor: '#3250b9',
-                        paddingVertical: 10,
-                        alignItems: 'center',
+                        borderRadius: 14,
+                        borderWidth: 1,
+                        borderColor: '#fde68a',
+                        backgroundColor: '#fffbeb',
+                        paddingHorizontal: 12,
+                        paddingVertical: 14,
                       }}
                     >
-                      <Text style={{ color: '#ffffff', fontWeight: '700' }}>Daftar Mailbox</Text>
-                    </Pressable>
-                  ) : null}
-                </View>
-              ) : mailboxMessages.length === 0 ? (
-                <View
-                  style={{
-                    borderRadius: 14,
-                    borderWidth: 1,
-                    borderColor: '#e2e8f0',
-                    backgroundColor: '#f8fafc',
-                    paddingHorizontal: 12,
-                    paddingVertical: 14,
-                    gap: 6,
-                  }}
-                >
-                  <Text style={{ color: '#0f172a', fontWeight: '700' }}>{activeFolderLabel} masih kosong</Text>
-                  <Text style={{ color: '#64748b', fontSize: 12, lineHeight: 18 }}>{activeFolderEmptyState}</Text>
+                      <Text style={{ color: '#92400e', fontSize: 12, lineHeight: 18 }}>
+                        Silakan tunggu beberapa saat. Jika mailbox belum aktif juga, hubungi admin agar status mailbox sekolah Anda dapat diperiksa.
+                      </Text>
+                    </View>
+                  )}
                 </View>
               ) : (
-                <View style={{ gap: 8 }}>
-                  <Text style={{ color: '#64748b', fontSize: 12, lineHeight: 18 }}>
-                    {hasAppliedSearch
-                      ? `Menampilkan ${mailboxMessages.length} dari ${totalMessageCount} email yang cocok dengan "${appliedSearch}".`
-                      : `Menampilkan ${mailboxMessages.length} dari ${totalMessageCount} email di folder ${activeFolderLabel}.`}
-                  </Text>
-                  {mailboxMessages.map((item) => (
-                    <EmailInboxItem
-                      key={item.guid}
-                      item={item}
-                      selected={isEmailDetailVisible && item.guid === selectedEmailGuid}
-                      onPress={() => {
-                        void handleSelectEmail(item);
-                      }}
-                    />
-                  ))}
-                  {canLoadMore ? (
-                    <Pressable
-                      disabled={emailFeedQuery.isFetching}
-                      onPress={() => {
-                        setVisibleLimit((current) => current + DEFAULT_EMAIL_PAGE_LIMIT);
-                      }}
+                <>
+                  <MobileMenuTabBar
+                    items={WEBMAIL_FOLDER_SHORTCUTS.map((item) => ({
+                      key: item.key,
+                      label: item.label,
+                      iconName: item.iconName,
+                    }))}
+                    activeKey={activeFolderKey}
+                    onChange={(key) => {
+                      const targetFolder = WEBMAIL_FOLDER_SHORTCUTS.find((item) => item.key === key);
+                      if (!targetFolder) return;
+                      handleFolderShortcutPress(targetFolder.key);
+                    }}
+                    compact
+                    layout="fill"
+                    tabVariant="plain"
+                    gap={4}
+                  />
+
+                  <View style={{ gap: 8 }}>
+                    <Text style={{ color: '#475569', fontSize: 12, fontWeight: '700' }}>Cari Email</Text>
+                    <View style={{ flexDirection: 'row', gap: 8 }}>
+                      <View
+                        style={{
+                          flex: 1,
+                          flexDirection: 'row',
+                          alignItems: 'center',
+                          gap: 8,
+                          borderRadius: 12,
+                          borderWidth: 1,
+                          borderColor: '#cbd5e1',
+                          backgroundColor: '#ffffff',
+                          paddingHorizontal: 12,
+                        }}
+                      >
+                        <Feather name="search" size={14} color="#64748b" />
+                        <TextInput
+                          value={searchDraft}
+                          onChangeText={setSearchDraft}
+                          onSubmitEditing={handleApplySearch}
+                          placeholder="Cari pengirim, subjek, atau isi email"
+                          placeholderTextColor="#94a3b8"
+                          autoCapitalize="none"
+                          autoCorrect={false}
+                          returnKeyType="search"
+                          style={{
+                            flex: 1,
+                            minHeight: 42,
+                            color: '#0f172a',
+                            fontSize: 13,
+                          }}
+                        />
+                      </View>
+                      <Pressable
+                        onPress={handleApplySearch}
+                        style={{
+                          borderRadius: 12,
+                          backgroundColor: '#3250b9',
+                          paddingHorizontal: 14,
+                          alignItems: 'center',
+                          justifyContent: 'center',
+                        }}
+                      >
+                        <Text style={{ color: '#ffffff', fontSize: 12, fontWeight: '700' }}>Cari</Text>
+                      </Pressable>
+                    </View>
+                    {hasAppliedSearch || searchDraft.trim().length > 0 ? (
+                      <Pressable
+                        onPress={handleResetSearch}
+                        style={{ alignSelf: 'flex-start', paddingVertical: 2 }}
+                      >
+                        <Text style={{ color: '#3250b9', fontSize: 12, fontWeight: '700' }}>Reset Pencarian</Text>
+                      </Pressable>
+                    ) : null}
+                  </View>
+
+                  {mailboxMessages.length === 0 ? (
+                    <View
                       style={{
-                        borderRadius: 12,
+                        borderRadius: 14,
                         borderWidth: 1,
-                        borderColor: '#cbd5e1',
-                        backgroundColor: '#ffffff',
-                        paddingVertical: 11,
-                        alignItems: 'center',
-                        justifyContent: 'center',
-                        flexDirection: 'row',
+                        borderColor: '#e2e8f0',
+                        backgroundColor: '#f8fafc',
+                        paddingHorizontal: 12,
+                        paddingVertical: 14,
                         gap: 6,
-                        opacity: emailFeedQuery.isFetching ? 0.7 : 1,
                       }}
                     >
-                      {emailFeedQuery.isFetching && !emailFeedQuery.isLoading ? (
-                        <ActivityIndicator size="small" color="#2563eb" />
-                      ) : (
-                        <Feather name="chevrons-down" size={14} color="#1e293b" />
-                      )}
-                      <Text style={{ color: '#1e293b', fontSize: 12, fontWeight: '700' }}>Muat Lebih Banyak</Text>
-                    </Pressable>
-                  ) : null}
-                </View>
+                      <Text style={{ color: '#0f172a', fontWeight: '700' }}>{activeFolderLabel} masih kosong</Text>
+                      <Text style={{ color: '#64748b', fontSize: 12, lineHeight: 18 }}>{activeFolderEmptyState}</Text>
+                    </View>
+                  ) : (
+                    <View style={{ gap: 8 }}>
+                      <Text style={{ color: '#64748b', fontSize: 12, lineHeight: 18 }}>
+                        {hasAppliedSearch
+                          ? `Menampilkan ${mailboxMessages.length} dari ${totalMessageCount} email yang cocok dengan "${appliedSearch}".`
+                          : `Menampilkan ${mailboxMessages.length} dari ${totalMessageCount} email di folder ${activeFolderLabel}.`}
+                      </Text>
+                      {mailboxMessages.map((item) => (
+                        <EmailInboxItem
+                          key={item.guid}
+                          item={item}
+                          selected={isEmailDetailVisible && item.guid === selectedEmailGuid}
+                          onPress={() => {
+                            void handleSelectEmail(item);
+                          }}
+                        />
+                      ))}
+                      {canLoadMore ? (
+                        <Pressable
+                          disabled={emailFeedQuery.isFetching}
+                          onPress={() => {
+                            setVisibleLimit((current) => current + DEFAULT_EMAIL_PAGE_LIMIT);
+                          }}
+                          style={{
+                            borderRadius: 12,
+                            borderWidth: 1,
+                            borderColor: '#cbd5e1',
+                            backgroundColor: '#ffffff',
+                            paddingVertical: 11,
+                            alignItems: 'center',
+                            justifyContent: 'center',
+                            flexDirection: 'row',
+                            gap: 6,
+                            opacity: emailFeedQuery.isFetching ? 0.7 : 1,
+                          }}
+                        >
+                          {emailFeedQuery.isFetching && !emailFeedQuery.isLoading ? (
+                            <ActivityIndicator size="small" color="#2563eb" />
+                          ) : (
+                            <Feather name="chevrons-down" size={14} color="#1e293b" />
+                          )}
+                          <Text style={{ color: '#1e293b', fontSize: 12, fontWeight: '700' }}>Muat Lebih Banyak</Text>
+                        </Pressable>
+                      ) : null}
+                    </View>
+                  )}
+                </>
               )}
             </SectionCard>
           </View>
@@ -1449,21 +1577,40 @@ export default function MobileEmailScreen() {
                   <Text style={{ color: '#0f172a', fontSize: 18, fontWeight: '800' }}>{accessModalTitle}</Text>
                   <Text style={{ color: '#64748b', fontSize: 12, marginTop: 2 }}>Panel webmail penuh</Text>
                 </View>
-                <Pressable
-                  onPress={leavePanelMode}
-                  style={{
-                    width: 36,
-                    height: 36,
-                    borderRadius: 12,
-                    borderWidth: 1,
-                    borderColor: '#dbe4f4',
-                    backgroundColor: '#f8fbff',
-                    alignItems: 'center',
-                    justifyContent: 'center',
-                  }}
-                >
-                  <Feather name="x" size={18} color="#64748b" />
-                </Pressable>
+                <View style={{ flexDirection: 'row', alignItems: 'center', gap: 8 }}>
+                  <Pressable
+                    onPress={handleLogoutPanel}
+                    style={{
+                      borderRadius: 999,
+                      borderWidth: 1,
+                      borderColor: '#fde68a',
+                      backgroundColor: '#fffbeb',
+                      paddingHorizontal: 12,
+                      paddingVertical: 8,
+                      flexDirection: 'row',
+                      alignItems: 'center',
+                      gap: 6,
+                    }}
+                  >
+                    <Feather name="log-out" size={13} color="#92400e" />
+                    <Text style={{ color: '#92400e', fontSize: 12, fontWeight: '700' }}>Keluar Panel Email</Text>
+                  </Pressable>
+                  <Pressable
+                    onPress={handleLogoutPanel}
+                    style={{
+                      width: 36,
+                      height: 36,
+                      borderRadius: 12,
+                      borderWidth: 1,
+                      borderColor: '#dbe4f4',
+                      backgroundColor: '#f8fbff',
+                      alignItems: 'center',
+                      justifyContent: 'center',
+                    }}
+                  >
+                    <Feather name="x" size={18} color="#64748b" />
+                  </Pressable>
+                </View>
               </View>
 
               <Pressable
@@ -1508,14 +1655,29 @@ export default function MobileEmailScreen() {
                     sharedCookiesEnabled
                     thirdPartyCookiesEnabled
                     onLoadEnd={() => {
+                      if (isPanelLogoutPending) {
+                        setIsPanelLogoutPending(false);
+                        leavePanelMode();
+                        return;
+                      }
                       if (!bridgeCredentials) return;
                       setBridgeCredentials(null);
                       setWebmailUrl(getMailboxFolderUrl(bridgeLoginUrl, activeFolderKey));
                     }}
                     onHttpError={() => {
+                      if (isPanelLogoutPending) {
+                        setIsPanelLogoutPending(false);
+                        leavePanelMode();
+                        return;
+                      }
                       setPanelError('Panel email gagal dimuat. Coba muat ulang sesi.');
                     }}
                     onError={() => {
+                      if (isPanelLogoutPending) {
+                        setIsPanelLogoutPending(false);
+                        leavePanelMode();
+                        return;
+                      }
                       setPanelError('Koneksi ke panel email gagal. Periksa koneksi dan coba lagi.');
                     }}
                   />

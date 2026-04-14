@@ -9,6 +9,7 @@ type ApiEnvelope<T> = {
 
 export type MobileWebmailAuthMode = 'BRIDGE' | 'SSO';
 export type MobileWebmailFolderKey = 'INBOX' | 'Drafts' | 'Sent' | 'Junk' | 'Archive';
+export type MobileWebmailMailboxIdentitySource = 'stored' | 'legacy' | 'none';
 
 export type MobileWebmailConfig = {
   mode: MobileWebmailAuthMode;
@@ -18,6 +19,7 @@ export type MobileWebmailConfig = {
   ssoEntryUrl: string | null;
   tokenTtlSeconds: number;
   mailboxIdentity: string | null;
+  mailboxIdentitySource?: MobileWebmailMailboxIdentitySource;
   selfRegistrationEnabled?: boolean;
   mailboxQuotaMb?: number;
   user: {

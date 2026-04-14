@@ -24,6 +24,7 @@ import {
 } from '../services/webmailMailbox.service';
 
 type WebmailMode = 'BRIDGE' | 'SSO';
+type WebmailMailboxIdentitySource = 'stored' | 'legacy' | 'none';
 
 const DEFAULT_WEBMAIL_URL = 'https://mail.siskgb2.id/';
 const DEFAULT_WEBMAIL_DOMAIN = 'siskgb2.id';
@@ -249,6 +250,34 @@ const resolveMailboxIdentity = (
   return resolveStoredMailboxIdentity(user) || resolveLegacyMailboxIdentity(user);
 };
 
+const resolveMailboxIdentityDescriptor = (
+  user: { username: string; email: string | null; webmailMailboxIdentity?: string | null },
+): {
+  mailboxIdentity: string | null;
+  mailboxIdentitySource: WebmailMailboxIdentitySource;
+} => {
+  const storedMailboxIdentity = resolveStoredMailboxIdentity(user);
+  if (storedMailboxIdentity) {
+    return {
+      mailboxIdentity: storedMailboxIdentity,
+      mailboxIdentitySource: 'stored',
+    };
+  }
+
+  const legacyMailboxIdentity = resolveLegacyMailboxIdentity(user);
+  if (legacyMailboxIdentity) {
+    return {
+      mailboxIdentity: legacyMailboxIdentity,
+      mailboxIdentitySource: 'legacy',
+    };
+  }
+
+  return {
+    mailboxIdentity: null,
+    mailboxIdentitySource: 'none',
+  };
+};
+
 const createRandomString = (length: number, charset: string): string => {
   let output = '';
   for (let index = 0; index < length; index += 1) {
@@ -320,7 +349,7 @@ export const getWebmailConfig = asyncHandler(async (req: AuthRequest, res: Respo
   const defaultDomain = getWebmailDefaultDomain();
   const ssoEntryUrl = getSsoEntryUrl(webmailUrl);
   const ssoSecret = String(process.env.WEBMAIL_SSO_SHARED_SECRET || '').trim();
-  const mailboxIdentity = resolveMailboxIdentity(user);
+  const { mailboxIdentity, mailboxIdentitySource } = resolveMailboxIdentityDescriptor(user);
   const ssoEnabled = mode === 'SSO' && Boolean(ssoSecret);
   const selfRegistrationEnabled = mode === 'BRIDGE' && WEBMAIL_SELF_REGISTER_ROLES.includes(user.role);
   const tokenTtlSeconds = clamp(
@@ -340,6 +369,7 @@ export const getWebmailConfig = asyncHandler(async (req: AuthRequest, res: Respo
         ssoEntryUrl: ssoEnabled ? ssoEntryUrl : null,
         tokenTtlSeconds,
         mailboxIdentity,
+        mailboxIdentitySource,
         selfRegistrationEnabled,
         mailboxQuotaMb: MAILBOX_DEFAULT_QUOTA_MB,
         user: {
