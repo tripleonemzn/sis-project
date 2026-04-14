@@ -5,10 +5,12 @@ import {
   Image,
   Platform,
   Pressable,
-  SafeAreaView,
+  ScrollView,
   Text,
+  useWindowDimensions,
   View,
 } from 'react-native';
+import { SafeAreaView, useSafeAreaInsets } from 'react-native-safe-area-context';
 import { StatusBar } from 'expo-status-bar';
 import { useAuth } from '../../src/features/auth/AuthProvider';
 import { AppLoadingScreen } from '../../src/components/AppLoadingScreen';
@@ -43,6 +45,8 @@ const formatPhotoDescription = (raw?: string) => {
 
 export default function WelcomeScreen() {
   const router = useRouter();
+  const insets = useSafeAreaInsets();
+  const { height: screenHeight } = useWindowDimensions();
   const { isLoading, isAuthenticated } = useAuth();
   const [activeIndex, setActiveIndex] = useState(0);
   const [galleryItems, setGalleryItems] = useState<GalleryItem[]>([]);
@@ -164,10 +168,17 @@ export default function WelcomeScreen() {
       ? formatPhotoDescription(sourceDescriptionMap.get(displaySources[activeIndex]) || '')
       : '';
 
+  const contentTopPadding = Math.max(insets.top + 12, 24);
+  const contentBottomPadding = Math.max(insets.bottom + 24, 32);
+  const heroTopSpacing = Math.min(Math.max(screenHeight * 0.05, 24), 56);
+  const sectionSpacing = Math.min(Math.max(screenHeight * 0.04, 24), 42);
+  const galleryHeight = Math.min(Math.max(screenHeight * 0.32, 220), 300);
+  const contentMinHeight = Math.max(screenHeight - insets.top - insets.bottom - 12, 0);
+
   return (
-    <SafeAreaView style={{ flex: 1, backgroundColor: BRAND_COLORS.navy }}>
+    <SafeAreaView style={{ flex: 1, backgroundColor: BRAND_COLORS.navy }} edges={['left', 'right']}>
       <StatusBar style="light" />
-      <View style={{ flex: 1, paddingHorizontal: 24, paddingTop: 36, paddingBottom: 28 }}>
+      <View style={{ flex: 1 }}>
         <View
           style={{
             position: 'absolute',
@@ -205,188 +216,198 @@ export default function WelcomeScreen() {
           }}
         />
 
-        <View style={{ flex: 1 }}>
-          <View style={{ alignItems: 'center', marginTop: 54 }}>
-            <View
-              style={{
-                marginBottom: 18,
-                shadowColor: '#000000',
-                shadowOffset: { width: 0, height: 7 },
-                shadowOpacity: 0.24,
-                shadowRadius: 12,
-                elevation: 12,
-              }}
-            >
-              <Image source={logoSource} style={{ width: 108, height: 108 }} resizeMode="contain" />
-            </View>
-
-            <Text
-              style={{
-                color: BRAND_COLORS.white,
-                fontSize: 38,
-                fontWeight: '700',
-                fontFamily: Platform.select({ ios: 'Georgia', android: 'serif', default: 'serif' }),
-                marginBottom: 3,
-                textAlign: 'center',
-                letterSpacing: 0.2,
-                transform: [{ translateY: 10 }],
-              }}
-            >
-              Selamat Datang
-            </Text>
-
-            <Text
-              style={{
-                color: '#dbeafe',
-                fontSize: 17,
-                lineHeight: 28,
-                textAlign: 'center',
-                maxWidth: 320,
-                transform: [{ translateY: 10 }],
-              }}
-            >
-              di Platform Digital{'\n'}
-              Sistem Integrasi Sekolah
-            </Text>
-          </View>
-
-          <View style={{ marginTop: 42 }}>
-            <View
-              style={{
-                height: 280,
-                borderRadius: 18,
-                overflow: 'hidden',
-                borderWidth: 1,
-                borderColor: 'rgba(255,255,255,0.35)',
-                backgroundColor: 'rgba(10, 22, 55, 0.28)',
-              }}
-            >
-              {displaySources.length > 0 ? (
-                displaySources.map((src, idx) => (
-                  <Image
-                    key={`${src}-${idx}`}
-                    source={{ uri: src }}
-                    style={{
-                      position: 'absolute',
-                      top: 0,
-                      right: 0,
-                      bottom: 0,
-                      left: 0,
-                      width: '100%',
-                      height: '100%',
-                      opacity: idx === activeIndex ? 1 : 0,
-                    }}
-                    resizeMode="cover"
-                    onError={() => {
-                      setBrokenSources((prev) => {
-                        if (prev.has(src)) return prev;
-                        const next = new Set(prev);
-                        next.add(src);
-                        return next;
-                      });
-                    }}
-                  />
-                ))
-              ) : (
-                <View style={{ flex: 1, alignItems: 'center', justifyContent: 'center', paddingHorizontal: 16 }}>
-                  {isGalleryLoading ? (
-                    <ActivityIndicator size="small" color={BRAND_COLORS.white} />
-                  ) : (
-                    <Text style={{ color: '#dbeafe', textAlign: 'center', fontSize: 13 }}>
-                      Foto kegiatan belum tersedia.
-                    </Text>
-                  )}
-                </View>
-              )}
-
-              <View
-                style={{
-                  position: 'absolute',
-                  left: 0,
-                  right: 0,
-                  bottom: 0,
-                  paddingHorizontal: 14,
-                  paddingVertical: 10,
-                  backgroundColor: 'rgba(0,0,0,0.34)',
-                }}
-              >
-                <Text
-                  numberOfLines={2}
+        <ScrollView
+          style={{ flex: 1 }}
+          contentContainerStyle={{
+            paddingHorizontal: 24,
+            paddingTop: contentTopPadding,
+            paddingBottom: contentBottomPadding,
+            flexGrow: 1,
+          }}
+          showsVerticalScrollIndicator={false}
+        >
+          <View style={{ flexGrow: 1, minHeight: contentMinHeight, justifyContent: 'space-between' }}>
+            <View>
+              <View style={{ alignItems: 'center', marginTop: heroTopSpacing }}>
+                <View
                   style={{
-                    color: BRAND_COLORS.white,
-                    fontSize: 12,
-                    textAlign: 'center',
+                    marginBottom: 18,
+                    shadowColor: '#000000',
+                    shadowOffset: { width: 0, height: 7 },
+                    shadowOpacity: 0.24,
+                    shadowRadius: 12,
+                    elevation: 12,
                   }}
                 >
-                  {currentDescription || 'Kegiatan SMKS Karya Guna Bhakti 2'}
+                  <Image source={logoSource} style={{ width: 108, height: 108 }} resizeMode="contain" />
+                </View>
+
+                <Text
+                  style={{
+                    color: BRAND_COLORS.white,
+                    fontSize: 38,
+                    fontWeight: '700',
+                    fontFamily: Platform.select({ ios: 'Georgia', android: 'serif', default: 'serif' }),
+                    marginBottom: 12,
+                    textAlign: 'center',
+                    letterSpacing: 0.2,
+                  }}
+                >
+                  Selamat Datang
+                </Text>
+
+                <Text
+                  style={{
+                    color: '#dbeafe',
+                    fontSize: 17,
+                    lineHeight: 28,
+                    textAlign: 'center',
+                    maxWidth: 320,
+                  }}
+                >
+                  di Platform Digital{'\n'}
+                  Sistem Integrasi Sekolah
+                </Text>
+              </View>
+
+              <View style={{ marginTop: sectionSpacing }}>
+                <View
+                  style={{
+                    height: galleryHeight,
+                    borderRadius: 18,
+                    overflow: 'hidden',
+                    borderWidth: 1,
+                    borderColor: 'rgba(255,255,255,0.35)',
+                    backgroundColor: 'rgba(10, 22, 55, 0.28)',
+                  }}
+                >
+                  {displaySources.length > 0 ? (
+                    displaySources.map((src, idx) => (
+                      <Image
+                        key={`${src}-${idx}`}
+                        source={{ uri: src }}
+                        style={{
+                          position: 'absolute',
+                          top: 0,
+                          right: 0,
+                          bottom: 0,
+                          left: 0,
+                          width: '100%',
+                          height: '100%',
+                          opacity: idx === activeIndex ? 1 : 0,
+                        }}
+                        resizeMode="cover"
+                        onError={() => {
+                          setBrokenSources((prev) => {
+                            if (prev.has(src)) return prev;
+                            const next = new Set(prev);
+                            next.add(src);
+                            return next;
+                          });
+                        }}
+                      />
+                    ))
+                  ) : (
+                    <View style={{ flex: 1, alignItems: 'center', justifyContent: 'center', paddingHorizontal: 16 }}>
+                      {isGalleryLoading ? (
+                        <ActivityIndicator size="small" color={BRAND_COLORS.white} />
+                      ) : (
+                        <Text style={{ color: '#dbeafe', textAlign: 'center', fontSize: 13 }}>
+                          Foto kegiatan belum tersedia.
+                        </Text>
+                      )}
+                    </View>
+                  )}
+
+                  <View
+                    style={{
+                      position: 'absolute',
+                      left: 0,
+                      right: 0,
+                      bottom: 0,
+                      paddingHorizontal: 14,
+                      paddingVertical: 10,
+                      backgroundColor: 'rgba(0,0,0,0.34)',
+                    }}
+                  >
+                    <Text
+                      numberOfLines={2}
+                      style={{
+                        color: BRAND_COLORS.white,
+                        fontSize: 12,
+                        textAlign: 'center',
+                      }}
+                    >
+                      {currentDescription || 'Kegiatan SMKS Karya Guna Bhakti 2'}
+                    </Text>
+                  </View>
+                </View>
+                <Text
+                  style={{
+                    color: '#dbeafe',
+                    fontSize: 11,
+                    lineHeight: 16,
+                    textAlign: 'center',
+                    marginTop: 10,
+                    paddingHorizontal: 8,
+                    fontStyle: 'italic',
+                  }}
+                >
+                  Menjadi SMK yang Unggul dalam Membentuk Lulusan Berakhlak Mulia, Kreatif, Kompeten, dan
+                  Berkarakter.
                 </Text>
               </View>
             </View>
-            <Text
-              style={{
-                color: '#dbeafe',
-                fontSize: 11,
-                lineHeight: 16,
-                textAlign: 'center',
-                marginTop: 10,
-                marginBottom: 16,
-                paddingHorizontal: 8,
-                fontStyle: 'italic',
-              }}
-            >
-              Menjadi SMK yang Unggul dalam Membentuk Lulusan Berakhlak Mulia, Kreatif, Kompeten, dan
-              Berkarakter.
-            </Text>
-          </View>
 
-          <View style={{ marginTop: 'auto' }}>
-            <Pressable
-              onPress={() => router.push('/login')}
-              style={{
-                backgroundColor: BRAND_COLORS.gold,
-                borderRadius: 12,
-                paddingVertical: 14,
-                alignItems: 'center',
-                marginBottom: 10,
-              }}
-            >
-              <Text style={{ color: BRAND_COLORS.textDark, fontSize: 16, fontWeight: '700' }}>
-                Masuk
+            <View style={{ marginTop: sectionSpacing }}>
+              <Pressable
+                onPress={() => router.push('/login')}
+                style={{
+                  backgroundColor: BRAND_COLORS.gold,
+                  borderRadius: 12,
+                  paddingVertical: 14,
+                  alignItems: 'center',
+                  marginBottom: 10,
+                }}
+              >
+                <Text style={{ color: BRAND_COLORS.textDark, fontSize: 16, fontWeight: '700' }}>
+                  Masuk
+                </Text>
+              </Pressable>
+
+              <Pressable
+                onPress={() => router.push('/register')}
+                style={{
+                  borderWidth: 1.4,
+                  borderColor: '#cfe0ff',
+                  borderRadius: 12,
+                  paddingVertical: 14,
+                  alignItems: 'center',
+                  backgroundColor: 'rgba(255,255,255,0.08)',
+                }}
+              >
+                <Text style={{ color: BRAND_COLORS.white, fontSize: 16, fontWeight: '700' }}>
+                  Daftar
+                </Text>
+              </Pressable>
+
+              <Text
+                style={{
+                  color: '#cbd5e1',
+                  marginTop: 16,
+                  textAlign: 'center',
+                  fontSize: 10.5,
+                  lineHeight: 16,
+                  fontWeight: '400',
+                  paddingHorizontal: 6,
+                }}
+              >
+                © 2025 JHA Teknologi Solusi. All rights reserved.{'\n'}Licensed to SMKS Karya Guna Bhakti 2 for use
+                only.
               </Text>
-            </Pressable>
-
-            <Pressable
-              onPress={() => router.push('/register')}
-              style={{
-                borderWidth: 1.4,
-                borderColor: '#cfe0ff',
-                borderRadius: 12,
-                paddingVertical: 14,
-                alignItems: 'center',
-                backgroundColor: 'rgba(255,255,255,0.08)',
-              }}
-            >
-              <Text style={{ color: BRAND_COLORS.white, fontSize: 16, fontWeight: '700' }}>
-                Daftar
-              </Text>
-            </Pressable>
-
-            <Text
-              style={{
-                color: '#cbd5e1',
-                marginTop: 16,
-                textAlign: 'center',
-                fontSize: 10.5,
-                lineHeight: 16,
-                fontWeight: '400',
-                paddingHorizontal: 6,
-              }}
-            >
-              © 2025 JHA Teknologi Solusi. All rights reserved.{'\n'}Licensed to SMKS Karya Guna Bhakti 2 for
-              {' '}use only.
-            </Text>
+            </View>
           </View>
-        </View>
+        </ScrollView>
       </View>
     </SafeAreaView>
   );

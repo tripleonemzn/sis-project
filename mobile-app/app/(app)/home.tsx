@@ -847,7 +847,11 @@ export default function HomeScreen() {
     () => (profile.role === 'STAFF' ? resolveStaffDivision(profile) : 'GENERAL'),
     [profile],
   );
-  const homeContentPadding = getStandardPagePadding(insets, { horizontal: 18, bottom: 148 });
+  const footerBaseOffset = Platform.OS === 'ios' ? 18 : 12;
+  const footerSystemInset = Platform.OS === 'android' ? Math.max(insets.bottom, 10) : insets.bottom;
+  const footerBottomOffset = footerBaseOffset + footerSystemInset;
+  const footerReservedSpace = footerBottomOffset + 100;
+  const homeContentPadding = getStandardPagePadding(insets, { horizontal: 18, bottom: footerReservedSpace });
   const teacherAssignmentsQuery = useTeacherAssignmentsQuery({ enabled: isAuthenticated, user: profile });
   const activeAcademicYearQuery = useQuery({
     queryKey: ['mobile-home-active-academic-year', profile.id],
@@ -2154,7 +2158,6 @@ export default function HomeScreen() {
     menuSearchInputRef.current?.blur();
   };
 
-  const footerBaseBottom = Platform.OS === 'ios' ? 22 : 14;
   const footerKeyboardOffset = keyboardHeight > 0 ? Math.max(0, keyboardHeight - insets.bottom + 8) : 0;
 
   if (isLoading) return <AppLoadingScreen message="Memuat dashboard..." />;
@@ -3055,7 +3058,7 @@ export default function HomeScreen() {
           position: 'absolute',
           left: 16,
           right: 16,
-          bottom: footerBaseBottom + footerKeyboardOffset,
+          bottom: footerBottomOffset + footerKeyboardOffset,
         }}
       >
         {isInlineSearchVisible ? (
