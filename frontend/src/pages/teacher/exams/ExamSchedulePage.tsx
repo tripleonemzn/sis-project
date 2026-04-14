@@ -142,7 +142,7 @@ export const ExamSchedulePage = () => {
             </button>
 
             <div className="bg-white rounded-xl shadow-sm border border-gray-100 p-6 mb-6">
-                <h1 className="text-2xl font-bold text-gray-900 mb-2">Jadwalkan Ujian: {packet.title}</h1>
+                <h1 className="text-page-title font-bold text-gray-900 mb-2">Jadwalkan Ujian: {packet.title}</h1>
                 <div className="flex gap-4 text-sm text-gray-600">
                     <span className="flex items-center gap-1"><Calendar className="w-4 h-4" /> {packet.type}</span>
                     <span className="flex items-center gap-1"><Clock className="w-4 h-4" /> {packet.duration} Menit</span>

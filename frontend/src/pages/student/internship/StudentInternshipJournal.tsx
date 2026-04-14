@@ -129,7 +129,7 @@ const StudentInternshipJournal = () => {
     <div className="space-y-6">
       <div className="flex justify-between items-center">
         <div>
-           <h1 className="text-2xl font-bold text-gray-800">Jurnal Harian PKL</h1>
+           <h1 className="text-page-title font-bold text-gray-800">Jurnal Harian PKL</h1>
            <p className="text-gray-500">Catat kegiatan harian Anda selama PKL</p>
         </div>
         <button

@@ -287,7 +287,7 @@ const StudentInternshipDashboard = () => {
       <div className="space-y-6">
         <div className="flex items-center justify-between">
           <div>
-            <h1 className="text-2xl font-bold text-gray-800">Dashboard PKL</h1>
+            <h1 className="text-page-title font-bold text-gray-800">Dashboard PKL</h1>
             <p className="text-gray-500">Informasi tempat PKL dan status pengajuan</p>
           </div>
           {getStatusBadge(internship.status)}
@@ -611,7 +611,7 @@ const StudentInternshipDashboard = () => {
           <div className="w-16 h-16 bg-blue-50 rounded-full flex items-center justify-center mx-auto mb-4">
             <Briefcase className="w-8 h-8 text-blue-600" />
           </div>
-          <h1 className="text-2xl font-bold text-gray-900">Pengajuan PKL</h1>
+          <h1 className="text-page-title font-bold text-gray-900">Pengajuan PKL</h1>
           <p className="text-gray-500 mt-2">Silahkan lengkapi data tempat PKL yang Anda tuju.</p>
         </div>
 

@@ -1032,7 +1032,7 @@ const ExamSittingManagementPage = () => {
       <div className="bg-white p-4 rounded-lg shadow-sm border border-gray-200">
         <div className="flex flex-col md:flex-row md:items-center justify-between gap-4">
           <div>
-            <h1 className="text-2xl font-bold text-gray-900">Kelola Ruang Ujian</h1>
+            <h1 className="text-page-title font-bold text-gray-900">Kelola Ruang Ujian</h1>
             <p className="text-gray-500 text-sm mt-1">Buat ruang ujian dan atur komposisi siswa (lintas kelas)</p>
           </div>
           

@@ -1160,7 +1160,7 @@ const HeadTuWorkspace = () => {
     return (
       <div className="space-y-6">
         <div>
-          <h2 className="text-2xl font-bold text-gray-900">Data Siswa</h2>
+          <h2 className="text-section-title font-bold text-gray-900">Data Siswa</h2>
           <p className="mt-1 text-sm text-gray-500">Kontrol data siswa lintas kelas untuk layanan tata usaha.</p>
         </div>
 
@@ -1234,7 +1234,7 @@ const HeadTuWorkspace = () => {
     return (
       <div className="space-y-6">
         <div>
-          <h2 className="text-2xl font-bold text-gray-900">Data Guru & Staff</h2>
+          <h2 className="text-section-title font-bold text-gray-900">Data Guru & Staff</h2>
           <p className="mt-1 text-sm text-gray-500">Pantau data guru, staff administrasi, staff keuangan, dan kepala TU dalam satu layar.</p>
         </div>
 
@@ -1309,7 +1309,7 @@ const HeadTuWorkspace = () => {
     return (
       <div className="space-y-6">
         <div>
-          <h2 className="text-2xl font-bold text-gray-900">Perizinan Siswa</h2>
+          <h2 className="text-section-title font-bold text-gray-900">Perizinan Siswa</h2>
           <p className="mt-1 text-sm text-gray-500">Monitor pengajuan izin siswa lintas kelas untuk kontrol tata usaha.</p>
         </div>
 
@@ -1388,7 +1388,7 @@ const HeadTuWorkspace = () => {
     return (
       <div className="space-y-6">
         <div>
-          <h2 className="text-2xl font-bold text-gray-900">Surat-Menyurat</h2>
+          <h2 className="text-section-title font-bold text-gray-900">Surat-Menyurat</h2>
           <p className="mt-1 text-sm text-gray-500">Buat surat administrasi sekolah untuk siswa, guru/staff, dan layanan ujian.</p>
         </div>
 
@@ -1897,7 +1897,7 @@ const HeadTuWorkspace = () => {
     return (
       <div className="space-y-6">
         <div>
-          <h2 className="text-2xl font-bold text-gray-900">Monitoring Keuangan</h2>
+          <h2 className="text-section-title font-bold text-gray-900">Monitoring Keuangan</h2>
           <p className="mt-1 text-sm text-gray-500">Ringkasan performa tagihan dan piutang siswa untuk kontrol Kepala TU.</p>
         </div>
 
@@ -3190,7 +3190,7 @@ const HeadTuWorkspace = () => {
     return (
       <div className="space-y-6">
         <div>
-          <h2 className="text-2xl font-bold text-gray-900">Operasional Tata Usaha</h2>
+          <h2 className="text-section-title font-bold text-gray-900">Operasional Tata Usaha</h2>
           <p className="mt-1 text-sm text-gray-500">Kontrol operasional staff administrasi dan layanan siswa/guru dalam satu dashboard.</p>
         </div>
 

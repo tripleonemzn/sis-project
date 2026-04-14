@@ -2054,7 +2054,7 @@ export default function StudentExamTakePage() {
               <div className="w-16 h-16 bg-blue-100 rounded-full flex items-center justify-center mx-auto mb-4">
                 <CheckCircle className="w-8 h-8 text-blue-600" />
               </div>
-              <h2 className="text-2xl font-bold text-gray-900 mb-2">Kumpulkan Ujian?</h2>
+              <h2 className="text-section-title font-bold text-gray-900 mb-2">Kumpulkan Ujian?</h2>
               <p className="text-gray-600">
                 Anda telah menjawab <span className="font-bold text-gray-900">{answeredCount}</span> dari <span className="font-bold text-gray-900">{totalQuestions}</span> soal.
               </p>

@@ -269,8 +269,8 @@ export const TeacherSchedulePage = () => {
     <div className="space-y-6">
       <div className="flex items-center justify-between">
         <div>
-          <h1 className="text-2xl font-bold text-gray-900">Jadwal Mengajar</h1>
-          <p className="text-gray-500 text-sm">
+          <h1 className="text-page-title font-bold text-gray-900">Jadwal Mengajar</h1>
+          <p className="text-body text-gray-500">
             Daftar penugasan mengajar Anda pada tahun ajaran aktif.
           </p>
         </div>
@@ -345,7 +345,7 @@ export const TeacherSchedulePage = () => {
                       <BookOpen className="w-5 h-5" />
                     </div>
                     <div>
-                      <div className="text-sm font-semibold text-gray-900 line-clamp-2" title={group.subject.name}>
+                      <div className="text-card-title font-semibold text-gray-900 line-clamp-2" title={group.subject.name}>
                         {group.subject.code} • {group.subject.name}
                       </div>
                       <div className="text-xs text-gray-500 mt-0.5">Tingkat {group.level}</div>
@@ -377,10 +377,10 @@ export const TeacherSchedulePage = () => {
       <div className="bg-white rounded-xl shadow-sm border border-gray-100">
         <div className="px-5 py-4 border-b border-gray-100 flex items-center justify-between">
           <div>
-            <h2 className="text-sm font-semibold text-gray-900">
+            <h2 className="text-card-title font-semibold text-gray-900">
               Jadwal Mengajar Anda
             </h2>
-            <p className="text-xs text-gray-500 mt-0.5">
+            <p className="text-label text-gray-500 mt-0.5">
               Menampilkan jadwal per hari dan jam berdasarkan pengaturan jadwal pelajaran.
             </p>
           </div>
@@ -402,7 +402,7 @@ export const TeacherSchedulePage = () => {
                 className="group flex flex-col items-start bg-white border border-gray-200 rounded-xl p-5 hover:border-blue-500 hover:shadow-md transition-all duration-200 text-left w-full"
               >
                 <div className="flex items-center justify-between w-full mb-3">
-                  <h3 className="text-lg font-bold text-gray-900 group-hover:text-blue-600 transition-colors">
+                  <h3 className="text-section-title font-semibold text-gray-900 group-hover:text-blue-600 transition-colors">
                     {day.label}
                   </h3>
                   <div className="p-1.5 bg-blue-50 text-blue-600 rounded-lg group-hover:bg-blue-600 group-hover:text-white transition-colors">
@@ -429,8 +429,8 @@ export const TeacherSchedulePage = () => {
           <div className="bg-white rounded-xl shadow-xl max-w-2xl w-full max-h-[80vh] overflow-hidden flex flex-col" onClick={(e) => e.stopPropagation()}>
             <div className="p-6 border-b border-gray-100 flex justify-between items-center bg-white">
               <div>
-                <h2 className="text-xl font-bold text-gray-900">{selectedDayDetail.label}</h2>
-                <p className="text-sm text-gray-500 mt-1">Jadwal Mengajar Anda</p>
+                <h2 className="text-section-title font-semibold text-gray-900">{selectedDayDetail.label}</h2>
+                <p className="text-body text-gray-500 mt-1">Jadwal Mengajar Anda</p>
               </div>
               <button 
                 onClick={() => setSelectedDayDetail(null)} 

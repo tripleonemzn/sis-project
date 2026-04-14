@@ -462,7 +462,7 @@ export const StudentDashboard = () => {
             </div>
           </div>
           <div>
-            <h1 className="text-page-title font-bold text-gray-900 mb-1">
+            <h1 className="text-hero-title font-bold text-gray-900 mb-1">
               {isAlumni ? 'Selamat Datang Kembali,' : 'Selamat Datang,'} {user?.name}
             </h1>
             <p className="text-body text-gray-500">
@@ -490,7 +490,7 @@ export const StudentDashboard = () => {
             </div>
             <div>
               <p className="text-sm text-blue-700/80 font-medium">Kehadiran</p>
-              <h3 className="text-2xl font-bold text-blue-900">
+              <h3 className="text-metric font-bold text-blue-900">
                 {attendancePercentage !== null
                   ? `${attendancePercentage.toFixed(1)}%`
                   : '-'}
@@ -516,7 +516,7 @@ export const StudentDashboard = () => {
             </div>
             <div>
               <p className="text-sm text-teal-700/80 font-medium">Mata Pelajaran</p>
-              <h3 className="text-2xl font-bold text-teal-900">{totalSubjects}</h3>
+              <h3 className="text-metric font-bold text-teal-900">{totalSubjects}</h3>
               <p className="text-xs text-teal-800/70 mt-1">Per minggu pada jadwal aktif</p>
             </div>
           </div>
@@ -534,7 +534,7 @@ export const StudentDashboard = () => {
             </div>
             <div>
               <p className="text-sm text-orange-700/80 font-medium">Total Jam/Minggu</p>
-              <h3 className="text-2xl font-bold text-orange-900">
+              <h3 className="text-metric font-bold text-orange-900">
                 {totalWeeklyPeriods || '-'}
               </h3>
               <p className="text-xs text-orange-800/70 mt-1">

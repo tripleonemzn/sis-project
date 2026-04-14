@@ -335,7 +335,7 @@ export const InternshipComponentPage = () => {
     <div className="space-y-6">
       <div className="flex justify-between items-center">
         <div>
-          <h1 className="text-2xl font-bold text-gray-900">Nilai PKL</h1>
+          <h1 className="text-page-title font-bold text-gray-900">Nilai PKL</h1>
           <p className="text-gray-500">Manajemen nilai industri, komponen sidang, dan rekapitulasi.</p>
         </div>
       </div>

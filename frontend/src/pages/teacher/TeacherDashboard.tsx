@@ -318,7 +318,7 @@ export const TeacherDashboard = () => {
             </div>
           </div>
           <div>
-            <h1 className="text-page-title font-bold text-gray-900 mb-1">
+            <h1 className="text-hero-title font-bold text-gray-900 mb-1">
               Selamat Datang, {userName}! 👋
             </h1>
             <p className="text-body text-gray-500">
@@ -358,7 +358,7 @@ export const TeacherDashboard = () => {
               {showLoadingStats ? (
                   <Loader2 className="w-6 h-6 animate-spin text-blue-600 mt-1" />
               ) : (
-                  <h3 className="text-2xl font-bold text-blue-900">{isDataMissing ? '-' : uniqueSubjects}</h3>
+                  <h3 className="text-metric font-bold text-blue-900">{isDataMissing ? '-' : uniqueSubjects}</h3>
               )}
             </div>
           </div>
@@ -379,7 +379,7 @@ export const TeacherDashboard = () => {
               {showLoadingStats ? (
                   <Loader2 className="w-6 h-6 animate-spin text-teal-700 mt-1" />
               ) : (
-                  <h3 className="text-2xl font-bold text-teal-900">{isDataMissing ? '-' : uniqueClasses}</h3>
+                  <h3 className="text-metric font-bold text-teal-900">{isDataMissing ? '-' : uniqueClasses}</h3>
               )}
             </div>
           </div>
@@ -400,7 +400,7 @@ export const TeacherDashboard = () => {
               {showLoadingStats ? (
                   <Loader2 className="w-6 h-6 animate-spin text-orange-700 mt-1" />
               ) : (
-                  <h3 className="text-2xl font-bold text-orange-900">{isDataMissing ? '-' : totalHours}</h3>
+                  <h3 className="text-metric font-bold text-orange-900">{isDataMissing ? '-' : totalHours}</h3>
               )}
             </div>
           </div>

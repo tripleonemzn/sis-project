@@ -753,7 +753,7 @@ export const ExamListPage = () => {
             <div className="space-y-6">
                 <div className="flex flex-col md:flex-row justify-between items-start md:items-center gap-4">
                     <div>
-                        <h1 className="text-2xl font-bold text-gray-800">{getPageTitle()}</h1>
+                        <h1 className="text-page-title font-bold text-gray-800">{getPageTitle()}</h1>
                         <p className="text-gray-600">Kumpulan soal untuk referensi dan penggunaan ulang</p>
                     </div>
                 </div>
@@ -766,7 +766,7 @@ export const ExamListPage = () => {
         <div className="space-y-6">
             <div className="flex flex-col md:flex-row justify-between items-start md:items-center gap-4">
                 <div>
-                    <h1 className="text-2xl font-bold text-gray-800">{getPageTitle()}</h1>
+                    <h1 className="text-page-title font-bold text-gray-800">{getPageTitle()}</h1>
                     <p className="text-gray-600">Kelola paket soal dan jadwal ujian</p>
                 </div>
                 {!isBankSoal && selectedProgram && canTeacherDirectSchedulePacket({

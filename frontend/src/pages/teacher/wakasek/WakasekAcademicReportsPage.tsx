@@ -239,7 +239,7 @@ export default function WakasekAcademicReportsPage() {
     <div className="space-y-6 w-full pb-20">
       <div className="flex flex-col gap-3 md:flex-row md:items-center md:justify-between">
         <div>
-          <h1 className="text-2xl font-bold text-gray-900">Laporan Akademik</h1>
+          <h1 className="text-page-title font-bold text-gray-900">Laporan Akademik</h1>
           <p className="text-gray-500">
             Rekap nilai akhir, kehadiran kelas, dan ringkasan berita acara ujian untuk kurikulum.
           </p>

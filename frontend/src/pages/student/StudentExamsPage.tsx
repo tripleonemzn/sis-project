@@ -1304,7 +1304,7 @@ export default function StudentExamsPage() {
       {/* Header */}
       <div className="flex flex-col gap-3 md:flex-row md:items-start md:justify-between">
         <div>
-          <h1 className="text-2xl font-bold text-gray-900">{pageTitle}</h1>
+          <h1 className="text-page-title font-bold text-gray-900">{pageTitle}</h1>
           <p className="text-gray-500 mt-1">{pageDescription}</p>
         </div>
         <button
@@ -1872,7 +1872,7 @@ export default function StudentExamsPage() {
               <div className="w-16 h-16 bg-blue-100 rounded-full flex items-center justify-center mx-auto mb-4">
                 <Play className="w-8 h-8 text-blue-600 ml-1" />
               </div>
-              <h2 className="text-2xl font-bold text-gray-900 mb-2">Mulai Ujian?</h2>
+              <h2 className="text-section-title font-bold text-gray-900 mb-2">Mulai Ujian?</h2>
               <p className="text-gray-600 font-medium">{selectedExam.title}</p>
               {selectedExam.sessionLabel ? (
                 <p className="text-sm text-indigo-600 font-medium mt-1">{selectedExam.sessionLabel}</p>

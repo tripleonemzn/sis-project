@@ -504,7 +504,7 @@ export function TeacherBpBkPage() {
   return (
     <div className="space-y-5">
       <div className="rounded-2xl border border-blue-100 bg-blue-50/40 p-5">
-        <h1 className="text-2xl font-bold text-gray-900">BP/BK Center</h1>
+        <h1 className="text-page-title font-bold text-gray-900">BP/BK Center</h1>
         <p className="mt-1 text-sm text-gray-600">Monitoring perilaku, perizinan, konseling, dan tindak lanjut siswa lintas kelas.</p>
       </div>
 

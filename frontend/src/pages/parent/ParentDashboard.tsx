@@ -468,7 +468,7 @@ function useParentChildrenData() {
 function PageHeader({ title, subtitle }: { title: string; subtitle: string }) {
   return (
     <div>
-      <h2 className="text-2xl font-bold text-gray-900">{title}</h2>
+      <h2 className="text-section-title font-bold text-gray-900">{title}</h2>
       <p className="mt-1 text-sm text-gray-500">{subtitle}</p>
     </div>
   );

@@ -298,7 +298,7 @@ export const StaffAdministrationWorkspace = () => {
     return (
       <div className="space-y-6">
         <div>
-          <h2 className="text-2xl font-bold text-gray-900">Administrasi Siswa</h2>
+          <h2 className="text-section-title font-bold text-gray-900">Administrasi Siswa</h2>
           <p className="mt-1 text-sm text-gray-500">
             Validasi data dasar siswa, status verifikasi, dan kelengkapan administrasi utama.
           </p>
@@ -432,7 +432,7 @@ export const StaffAdministrationWorkspace = () => {
     return (
       <div className="space-y-6">
         <div>
-          <h2 className="text-2xl font-bold text-gray-900">Administrasi Guru</h2>
+          <h2 className="text-section-title font-bold text-gray-900">Administrasi Guru</h2>
           <p className="mt-1 text-sm text-gray-500">
             Pantau data dasar guru, status verifikasi akun, dan identitas kepegawaian.
           </p>
@@ -563,7 +563,7 @@ export const StaffAdministrationWorkspace = () => {
     return (
       <div className="space-y-6">
         <div>
-          <h2 className="text-2xl font-bold text-gray-900">Perizinan Siswa</h2>
+          <h2 className="text-section-title font-bold text-gray-900">Perizinan Siswa</h2>
           <p className="mt-1 text-sm text-gray-500">
             Monitor pengajuan izin siswa untuk kebutuhan administrasi dan tindak lanjut layanan sekolah.
           </p>

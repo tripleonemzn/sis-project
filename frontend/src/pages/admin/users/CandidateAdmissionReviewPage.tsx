@@ -302,7 +302,7 @@ export const CandidateAdmissionReviewPage = () => {
     <div className="space-y-6">
       <div className="flex flex-col gap-3 lg:flex-row lg:items-end lg:justify-between">
         <div>
-          <h1 className="text-2xl font-bold text-gray-900">PPDB Calon Siswa</h1>
+          <h1 className="text-page-title font-bold text-gray-900">PPDB Calon Siswa</h1>
           <p className="text-gray-500">
             Admin dapat mereview formulir calon siswa, memberi catatan perbaikan, dan mempromosikan yang sudah
             diterima menjadi akun siswa resmi.

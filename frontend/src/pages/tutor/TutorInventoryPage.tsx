@@ -149,7 +149,7 @@ export const TutorInventoryPage = () => {
     <div className="space-y-6">
       <div className="flex flex-col md:flex-row md:items-center justify-between gap-4">
         <div>
-          <h1 className="text-2xl font-bold text-gray-900">{scopeTitle}</h1>
+          <h1 className="text-page-title font-bold text-gray-900">{scopeTitle}</h1>
           <p className="text-sm text-gray-500">
             Data inventaris ini terhubung dari modul Sarpras.
           </p>

@@ -347,7 +347,7 @@ export const StaffFinanceWorkspace = () => {
     return (
       <div className="space-y-6">
         <div>
-          <h2 className="text-2xl font-bold text-gray-900">Data Siswa</h2>
+          <h2 className="text-section-title font-bold text-gray-900">Data Siswa</h2>
           <p className="mt-1 text-sm text-gray-500">Daftar siswa untuk kebutuhan administrasi staff.</p>
         </div>
 
@@ -734,7 +734,7 @@ export const StaffFinanceWorkspace = () => {
   if (!isAdminPage && !isPaymentsPage) {
     return (
       <div>
-        <h2 className="text-2xl font-bold mb-4">Dashboard Staff</h2>
+        <h2 className="text-section-title font-bold mb-4">Dashboard Staff</h2>
         <div className="bg-white p-6 rounded-lg shadow">
           <p className="text-gray-700 text-sm">
             Pilih menu di sidebar untuk mengelola pembayaran SPP atau administrasi.
@@ -750,7 +750,7 @@ export const StaffFinanceWorkspace = () => {
     <div className="space-y-6">
       <div className="flex items-center justify-between">
         <div>
-          <h2 className="text-2xl font-bold text-gray-900">Realisasi Pengajuan Anggaran</h2>
+          <h2 className="text-section-title font-bold text-gray-900">Realisasi Pengajuan Anggaran</h2>
           <p className="mt-1 text-sm text-gray-500">
             Konfirmasi realisasi pengajuan anggaran yang telah disetujui Kepala Sekolah.
           </p>

@@ -144,7 +144,7 @@ export function DashboardWelcomeCard({
               {eyebrow}
             </p>
           ) : null}
-          <h1 className="text-page-title font-bold text-gray-900 mb-1">{titleText}</h1>
+          <h1 className="text-hero-title font-bold text-gray-900 mb-1">{titleText}</h1>
           <p className="text-body text-gray-500">{subtitle}</p>
           {meta ? <p className="mt-2 text-label font-medium text-gray-500">{meta}</p> : null}
         </div>

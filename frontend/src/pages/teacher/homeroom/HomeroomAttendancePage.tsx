@@ -347,7 +347,7 @@ export const HomeroomAttendancePage = () => {
     <div className="space-y-6">
       <div className="flex items-center justify-between">
         <div>
-          <h1 className="text-2xl font-bold text-gray-900">Rekap Presensi</h1>
+          <h1 className="text-page-title font-bold text-gray-900">Rekap Presensi</h1>
           <p className="text-gray-500 text-sm">
             Pantau rekapitulasi kehadiran dan keterlambatan siswa di kelas Anda.
           </p>

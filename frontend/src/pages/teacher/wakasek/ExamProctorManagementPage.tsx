@@ -1078,7 +1078,7 @@ const ExamProctorManagementPage = () => {
     <div className="space-y-6 w-full pb-20">
       {/* Header */}
       <div className="bg-white p-6 rounded-xl shadow-sm border border-gray-200">
-        <h1 className="text-2xl font-bold text-gray-900 mb-2">Jadwal Mengawas</h1>
+        <h1 className="text-page-title font-bold text-gray-900 mb-2">Jadwal Mengawas</h1>
         <p className="text-gray-500">
           Atur pengawas berdasarkan <span className="font-semibold text-gray-700">Ruang Ujian</span>. 
           Ruang ujian otomatis terdeteksi dari data "Kelola Ruang Ujian", dan daftar pengawas menampilkan semua guru.

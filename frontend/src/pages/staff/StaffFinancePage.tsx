@@ -2881,7 +2881,7 @@ export const StaffFinancePage = ({ activeSection = 'overview' }: StaffFinancePag
   return (
     <div className="space-y-6">
       <div>
-        <h2 className="text-2xl font-bold text-gray-900">{activeSectionMeta.title}</h2>
+        <h2 className="text-section-title font-bold text-gray-900">{activeSectionMeta.title}</h2>
         <p className="mt-1 text-sm text-gray-500">{activeSectionMeta.description}</p>
       </div>
 

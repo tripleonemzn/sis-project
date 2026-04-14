@@ -91,7 +91,7 @@ export const ExaminerDashboard = () => {
             </div>
           </div>
           <div>
-            <h1 className="text-page-title font-bold text-gray-900 mb-1">Selamat Datang, {user.name}! 👋</h1>
+            <h1 className="text-hero-title font-bold text-gray-900 mb-1">Selamat Datang, {user.name}! 👋</h1>
             <p className="text-body text-gray-500">
               Dashboard ini khusus untuk pengelolaan skema dan penilaian UKK.
             </p>
@@ -111,7 +111,7 @@ export const ExaminerDashboard = () => {
             </div>
             <div>
               <p className="text-sm text-blue-700/80 font-medium">Total Skema UKK</p>
-              <h3 className="text-2xl font-bold text-blue-900">{schemes.length}</h3>
+              <h3 className="text-metric font-bold text-blue-900">{schemes.length}</h3>
             </div>
           </div>
         </div>
@@ -128,7 +128,7 @@ export const ExaminerDashboard = () => {
             </div>
             <div>
               <p className="text-sm text-teal-700/80 font-medium">Mapel Tercakup</p>
-              <h3 className="text-2xl font-bold text-teal-900">{subjectCount}</h3>
+              <h3 className="text-metric font-bold text-teal-900">{subjectCount}</h3>
             </div>
           </div>
         </div>

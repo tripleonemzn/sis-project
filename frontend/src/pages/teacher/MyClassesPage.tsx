@@ -73,7 +73,7 @@ export const MyClassesPage = () => {
       {/* Header Section */}
       <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4">
         <div>
-          <h1 className="text-2xl font-bold text-gray-900">Kelas & Mata Pelajaran</h1>
+          <h1 className="text-page-title font-bold text-gray-900">Kelas & Mata Pelajaran</h1>
           <p className="text-gray-500">
             Daftar kelas yang Anda ajar pada tahun ajaran aktif.
           </p>

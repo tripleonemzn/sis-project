@@ -91,7 +91,7 @@ export const TutorDashboardPage = () => {
               </div>
               <div>
                 <p className="text-sm text-blue-700/80">Ekstrakurikuler Binaan</p>
-                <h3 className="text-2xl font-bold text-blue-900">{extracurricularAssignments.length}</h3>
+                <h3 className="text-metric font-bold text-blue-900">{extracurricularAssignments.length}</h3>
                 <p className="mt-1 text-xs text-blue-700/75">
                   {extracurricularAssignments.length > 0
                     ? 'Kelola anggota dan nilai ekstrakurikuler aktif.'
@@ -113,7 +113,7 @@ export const TutorDashboardPage = () => {
               </div>
               <div>
                 <p className="text-sm text-emerald-700/80">Ruang Terkelola</p>
-                <h3 className="text-2xl font-bold text-emerald-900">{inventoryRoomCount}</h3>
+                <h3 className="text-metric font-bold text-emerald-900">{inventoryRoomCount}</h3>
                 <p className="mt-1 text-xs text-emerald-700/75">
                   {inventoryItemCount} item inventaris tercatat.
                 </p>
@@ -133,7 +133,7 @@ export const TutorDashboardPage = () => {
               </div>
               <div>
                 <p className="text-sm text-amber-700/80">Program Kerja</p>
-                <h3 className="text-2xl font-bold text-amber-900">{extracurricularAssignments.length}</h3>
+                <h3 className="text-metric font-bold text-amber-900">{extracurricularAssignments.length}</h3>
                 <p className="mt-1 text-xs text-amber-700/75">
                   Program kerja pembina ekstrakurikuler siap dikelola.
                 </p>

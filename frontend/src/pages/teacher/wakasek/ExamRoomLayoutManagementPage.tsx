@@ -809,7 +809,7 @@ export default function ExamRoomLayoutManagementPage() {
     <>
       <div className="space-y-6">
         <div>
-          <h2 className="text-2xl font-bold text-gray-900">Generate Denah Ruang</h2>
+          <h2 className="text-section-title font-bold text-gray-900">Generate Denah Ruang</h2>
           <p className="mt-1 text-sm text-gray-500">
             Pilih ruang ujian, lakukan setup denah lewat popup, lalu atur penempatan siswa per rombel secara fokus saat denah dibuka.
           </p>
