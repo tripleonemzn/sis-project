@@ -404,6 +404,7 @@ export default function MobileEmailScreen() {
   const [panelError, setPanelError] = useState<string | null>(null);
   const [isPanelLogoutPending, setIsPanelLogoutPending] = useState(false);
   const [isWebmailMode, setIsWebmailMode] = useState(false);
+  const [isAccessMenuVisible, setIsAccessMenuVisible] = useState(false);
   const [isRegisterMode, setIsRegisterMode] = useState(false);
   const [registerUser, setRegisterUser] = useState('');
   const [registerPass, setRegisterPass] = useState('');
@@ -489,6 +490,7 @@ export default function MobileEmailScreen() {
     : nativeMailboxState === 'UNAVAILABLE'
       ? 'Mailbox sekolah untuk akun ini sudah terhubung, tetapi server mail belum menyiapkannya sepenuhnya.'
       : 'Daftarkan mailbox sekolah terlebih dahulu sebelum mulai memakai email harian.';
+  const canShowEmailAccessMenu = mailboxAvailable || (nativeMailboxState === 'UNREGISTERED' && selfRegistrationEnabled);
 
   const mailboxMessages = useMemo(() => (mailboxAvailable ? mailboxFeed?.messages ?? [] : []), [mailboxAvailable, mailboxFeed?.messages]);
   const totalMessageCount = mailboxAvailable ? Number(mailboxFeed?.pagination.total || 0) : 0;
@@ -753,7 +755,11 @@ export default function MobileEmailScreen() {
   };
 
   const handleLogoutPanel = () => {
+    setIsAccessMenuVisible(false);
     setPanelError(null);
+    setIsComposeMode(false);
+    setIsEmailDetailVisible(false);
+    setIsRegisterMode(false);
     setBridgeCredentials(null);
 
     if (isSsoMode) {
@@ -761,8 +767,22 @@ export default function MobileEmailScreen() {
       return;
     }
 
+    setWebmailUrl(getMailboxFolderUrl(bridgeLoginUrl, activeFolderKey));
+    setIsWebmailMode(true);
     setIsPanelLogoutPending(true);
     setWebviewKey((value) => value + 1);
+  };
+
+  const handleHeaderOpenPanel = () => {
+    setIsAccessMenuVisible(false);
+    openPanelAccess(activeFolderKey);
+  };
+
+  const handleHeaderOpenRegister = () => {
+    setIsAccessMenuVisible(false);
+    setRegisterError(null);
+    setPanelError(null);
+    setIsRegisterMode(true);
   };
 
   const openNewCompose = () => {
@@ -1038,9 +1058,28 @@ export default function MobileEmailScreen() {
         contentContainerStyle={{ paddingTop: Math.max(insets.top, 10), paddingBottom: 96 }}
       >
         <View style={{ paddingHorizontal: 12, gap: 10 }}>
-          <View style={{ gap: 4, paddingHorizontal: 2 }}>
-            <Text style={{ fontSize: 22, fontWeight: '800', color: '#0f172a' }}>Email</Text>
-            <Text style={{ fontSize: 12, color: '#64748b', lineHeight: 18 }}>{pageDescription}</Text>
+          <View style={{ flexDirection: 'row', alignItems: 'flex-start', justifyContent: 'space-between', gap: 12, paddingHorizontal: 2 }}>
+            <View style={{ flex: 1, gap: 4 }}>
+              <Text style={{ fontSize: 22, fontWeight: '800', color: '#0f172a' }}>Email</Text>
+              <Text style={{ fontSize: 12, color: '#64748b', lineHeight: 18 }}>{pageDescription}</Text>
+            </View>
+            {canShowEmailAccessMenu ? (
+              <Pressable
+                onPress={() => setIsAccessMenuVisible(true)}
+                style={{
+                  width: 40,
+                  height: 40,
+                  borderRadius: 14,
+                  borderWidth: 1,
+                  borderColor: '#dbe4f4',
+                  backgroundColor: '#ffffff',
+                  alignItems: 'center',
+                  justifyContent: 'center',
+                }}
+              >
+                <Feather name="settings" size={16} color="#475569" />
+              </Pressable>
+            ) : null}
           </View>
 
           <View
@@ -1341,6 +1380,125 @@ export default function MobileEmailScreen() {
       ) : null}
 
       <MobileDetailModal
+        visible={isAccessMenuVisible}
+        title="Akses Email"
+        subtitle="Kelola masuk panel email atau pendaftaran mailbox sekolah dari sini."
+        iconName="settings"
+        accentColor="#3250b9"
+        onClose={() => setIsAccessMenuVisible(false)}
+      >
+        <View style={{ gap: 10 }}>
+          {mailboxAvailable ? (
+            <Pressable
+              onPress={handleHeaderOpenPanel}
+              style={{
+                borderRadius: 14,
+                borderWidth: 1,
+                borderColor: '#dbe4f4',
+                backgroundColor: '#ffffff',
+                paddingHorizontal: 14,
+                paddingVertical: 12,
+                flexDirection: 'row',
+                alignItems: 'flex-start',
+                gap: 10,
+              }}
+            >
+              <View
+                style={{
+                  width: 34,
+                  height: 34,
+                  borderRadius: 12,
+                  backgroundColor: 'rgba(50, 80, 185, 0.12)',
+                  alignItems: 'center',
+                  justifyContent: 'center',
+                }}
+              >
+                <Feather name="log-in" size={15} color="#3250b9" />
+              </View>
+              <View style={{ flex: 1, gap: 2 }}>
+                <Text style={{ color: '#0f172a', fontSize: 14, fontWeight: '700' }}>Masuk ke Panel Email</Text>
+                <Text style={{ color: '#64748b', fontSize: 12, lineHeight: 18 }}>
+                  Buka panel webmail penuh untuk fitur lanjutan seperti folder tambahan dan pengelolaan akun.
+                </Text>
+              </View>
+            </Pressable>
+          ) : null}
+
+          {mailboxAvailable ? (
+            <Pressable
+              onPress={handleLogoutPanel}
+              style={{
+                borderRadius: 14,
+                borderWidth: 1,
+                borderColor: '#fde68a',
+                backgroundColor: '#fffbeb',
+                paddingHorizontal: 14,
+                paddingVertical: 12,
+                flexDirection: 'row',
+                alignItems: 'flex-start',
+                gap: 10,
+              }}
+            >
+              <View
+                style={{
+                  width: 34,
+                  height: 34,
+                  borderRadius: 12,
+                  backgroundColor: 'rgba(245, 158, 11, 0.14)',
+                  alignItems: 'center',
+                  justifyContent: 'center',
+                }}
+              >
+                <Feather name="log-out" size={15} color="#92400e" />
+              </View>
+              <View style={{ flex: 1, gap: 2 }}>
+                <Text style={{ color: '#0f172a', fontSize: 14, fontWeight: '700' }}>Keluar Panel Email</Text>
+                <Text style={{ color: '#64748b', fontSize: 12, lineHeight: 18 }}>
+                  Akhiri sesi panel email agar tidak tetap tersambung di perangkat ini.
+                </Text>
+              </View>
+            </Pressable>
+          ) : null}
+
+          {nativeMailboxState === 'UNREGISTERED' && selfRegistrationEnabled ? (
+            <Pressable
+              onPress={handleHeaderOpenRegister}
+              style={{
+                borderRadius: 14,
+                borderWidth: 1,
+                borderColor: '#dbe4f4',
+                backgroundColor: '#ffffff',
+                paddingHorizontal: 14,
+                paddingVertical: 12,
+                flexDirection: 'row',
+                alignItems: 'flex-start',
+                gap: 10,
+              }}
+            >
+              <View
+                style={{
+                  width: 34,
+                  height: 34,
+                  borderRadius: 12,
+                  backgroundColor: 'rgba(50, 80, 185, 0.12)',
+                  alignItems: 'center',
+                  justifyContent: 'center',
+                }}
+              >
+                <Feather name="user-plus" size={15} color="#3250b9" />
+              </View>
+              <View style={{ flex: 1, gap: 2 }}>
+                <Text style={{ color: '#0f172a', fontSize: 14, fontWeight: '700' }}>Daftar Mailbox</Text>
+                <Text style={{ color: '#64748b', fontSize: 12, lineHeight: 18 }}>
+                  Buat alamat email sekolah dengan username yang Anda inginkan.
+                </Text>
+              </View>
+            </Pressable>
+          ) : null}
+        </View>
+      </MobileDetailModal>
+
+      <MobileDetailModal
         visible={isComposeMode}
         title={composeModeKind === 'reply' ? 'Balas Email' : 'Tulis Email Baru'}
         subtitle={
@@ -1596,7 +1754,7 @@ export default function MobileEmailScreen() {
                     <Text style={{ color: '#92400e', fontSize: 12, fontWeight: '700' }}>Keluar Panel Email</Text>
                   </Pressable>
                   <Pressable
-                    onPress={handleLogoutPanel}
+                    onPress={leavePanelMode}
                     style={{
                       width: 36,
                       height: 36,

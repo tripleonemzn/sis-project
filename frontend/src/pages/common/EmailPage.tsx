@@ -6,10 +6,13 @@ import {
   ArrowLeft,
   ExternalLink,
   Inbox,
+  LogIn,
+  LogOut,
   MailOpen,
   RefreshCw,
   Reply,
   Send,
+  Settings,
   SquarePen,
   Trash2,
   X,
@@ -22,6 +25,7 @@ import { webmailService, type WebmailFolderKey, type WebmailMessageSummary } fro
 const WEBMAIL_URL = 'https://mail.siskgb2.id/';
 const DEFAULT_WEBMAIL_INBOX_URL = 'https://mail.siskgb2.id/?_task=mail&_mbox=INBOX&_layout=list&_skin=elastic';
 const WEBMAIL_FRAME_NAME = 'sis-webmail-frame';
+const WEBMAIL_ACTION_FRAME_NAME = 'sis-webmail-action-frame';
 const DEFAULT_WEBMAIL_DOMAIN = 'siskgb2.id';
 const MAILBOX_USERNAME_PATTERN = /^[a-z0-9][a-z0-9._-]{2,62}$/;
 const BRIDGE_REAUTH_IDLE_MS = 1000 * 60 * 15;
@@ -513,6 +517,7 @@ const ActionTile = ({
 export const EmailPage = () => {
   const queryClient = useQueryClient();
   const panelSectionRef = useRef<HTMLDivElement | null>(null);
+  const accessMenuRef = useRef<HTMLDivElement | null>(null);
   const webmailBridgeFormRef = useRef<HTMLFormElement | null>(null);
   const webmailLogoutFormRef = useRef<HTMLFormElement | null>(null);
   const lastHydratedScopeRef = useRef<string>('');
@@ -566,6 +571,7 @@ export const EmailPage = () => {
   const [pendingAutoBridgeCredentials, setPendingAutoBridgeCredentials] = useState<WebmailBridgeCredentials | null>(null);
   const [iframeNonce, setIframeNonce] = useState(0);
   const [iframeSrc, setIframeSrc] = useState(DEFAULT_WEBMAIL_INBOX_URL);
+  const [isAccessMenuOpen, setIsAccessMenuOpen] = useState(false);
   const [activeFolderKey, setActiveFolderKey] = useState<WebmailFolderKey>('INBOX');
   const [selectedEmailGuid, setSelectedEmailGuid] = useState<string | null>(null);
   const [isEmailDetailVisible, setIsEmailDetailVisible] = useState(false);
@@ -645,6 +651,7 @@ export const EmailPage = () => {
     : nativeMailboxState === 'UNAVAILABLE'
       ? 'Mailbox sekolah untuk akun ini sudah terhubung, tetapi server mail belum menyiapkannya sepenuhnya.'
       : 'Daftarkan mailbox sekolah terlebih dahulu sebelum mulai memakai email harian.';
+  const canShowEmailAccessMenu = isNativeMailboxReady || (nativeMailboxState === 'UNREGISTERED' && isSelfRegistrationEnabled);
   const availableMoveActions = getFolderMoveActions(activeFolderKey);
   const closeEmailDetail = () => {
     setIsEmailDetailVisible(false);
@@ -668,6 +675,24 @@ export const EmailPage = () => {
       window.clearTimeout(timeoutId);
     };
   }, [appliedSearch, isNativeMailboxReady, isPortalReady, isWebmailMode, searchDraft]);
+
+  useEffect(() => {
+    if (!isAccessMenuOpen) return;
+
+    const handlePointerDown = (event: MouseEvent | TouchEvent) => {
+      if (!accessMenuRef.current) return;
+      if (accessMenuRef.current.contains(event.target as Node)) return;
+      setIsAccessMenuOpen(false);
+    };
+
+    document.addEventListener('mousedown', handlePointerDown);
+    document.addEventListener('touchstart', handlePointerDown);
+
+    return () => {
+      document.removeEventListener('mousedown', handlePointerDown);
+      document.removeEventListener('touchstart', handlePointerDown);
+    };
+  }, [isAccessMenuOpen]);
 
   const persistWebmailMode = useCallback(
     (enabled: boolean) => {
@@ -1110,7 +1135,9 @@ export const EmailPage = () => {
   };
 
   const handleDisconnectClick = () => {
-    webmailLogoutFormRef.current?.submit();
+    if (!useSsoMode) {
+      webmailLogoutFormRef.current?.submit();
+    }
     persistWebmailMode(false);
     clearBridgeCredentials();
     bridgeLoginInFlightRef.current = false;
@@ -1126,6 +1153,23 @@ export const EmailPage = () => {
       setIframeSrc(getMailboxFolderUrl(bridgeLoginUrl, activeFolderKey));
       setIframeNonce((previous) => previous + 1);
     }, 120);
+  };
+
+  const handleHeaderOpenPanelClick = () => {
+    setIsAccessMenuOpen(false);
+    openPanelSection(true);
+  };
+
+  const handleHeaderOpenRegisterClick = () => {
+    setIsAccessMenuOpen(false);
+    setRegisterError(null);
+    setPanelError(null);
+    setIsRegisterMode(true);
+  };
+
+  const handleHeaderLogoutClick = () => {
+    setIsAccessMenuOpen(false);
+    handleDisconnectClick();
   };
 
   const handleReloadPanel = () => {
@@ -1294,14 +1338,73 @@ export const EmailPage = () => {
           <input type="hidden" name="pass_user" value={loginPass} readOnly />
         </form>
       ) : null}
-      <form ref={webmailLogoutFormRef} action={bridgeLoginUrl} method="post" target={WEBMAIL_FRAME_NAME} className="hidden">
+      <form ref={webmailLogoutFormRef} action={bridgeLoginUrl} method="post" target={WEBMAIL_ACTION_FRAME_NAME} className="hidden">
         <input type="hidden" name="logout" value="1" readOnly />
       </form>
+      <iframe title="Aksi Webmail SIS KGB2" name={WEBMAIL_ACTION_FRAME_NAME} className="hidden" />
 
       <div className="space-y-6">
-        <div className="space-y-1 px-1">
-          <h1 className="text-lg font-semibold text-slate-900">Email</h1>
-          <p className="text-sm leading-6 text-slate-500">{pageDescription}</p>
+        <div className="flex items-start justify-between gap-4 px-1">
+          <div className="space-y-1">
+            <h1 className="text-lg font-semibold text-slate-900">Email</h1>
+            <p className="text-sm leading-6 text-slate-500">{pageDescription}</p>
+          </div>
+          {canShowEmailAccessMenu ? (
+            <div ref={accessMenuRef} className="relative shrink-0">
+              <button
+                type="button"
+                onClick={() => setIsAccessMenuOpen((previous) => !previous)}
+                className="flex h-11 w-11 items-center justify-center rounded-2xl border border-slate-200 bg-white text-slate-600 shadow-sm transition hover:bg-slate-50 hover:text-slate-900"
+                aria-label="Aksi email"
+                aria-expanded={isAccessMenuOpen}
+              >
+                <Settings className="h-4 w-4" />
+              </button>
+              {isAccessMenuOpen ? (
+                <div className="absolute right-0 top-full z-20 mt-2 flex w-64 flex-col gap-1 rounded-2xl border border-slate-200 bg-white p-2 shadow-[0_18px_40px_rgba(15,23,42,0.12)]">
+                  {isNativeMailboxReady ? (
+                    <button
+                      type="button"
+                      onClick={handleHeaderOpenPanelClick}
+                      className="flex items-start gap-3 rounded-2xl px-3 py-3 text-left transition hover:bg-slate-50"
+                    >
+                      <LogIn className="mt-0.5 h-4 w-4 text-[#3250b9]" />
+                      <div className="space-y-1">
+                        <p className="text-sm font-semibold text-slate-900">Masuk ke Panel Email</p>
+                        <p className="text-xs leading-5 text-slate-500">Buka panel webmail penuh untuk fitur lanjutan.</p>
+                      </div>
+                    </button>
+                  ) : null}
+                  {isNativeMailboxReady ? (
+                    <button
+                      type="button"
+                      onClick={handleHeaderLogoutClick}
+                      className="flex items-start gap-3 rounded-2xl px-3 py-3 text-left transition hover:bg-amber-50"
+                    >
+                      <LogOut className="mt-0.5 h-4 w-4 text-amber-700" />
+                      <div className="space-y-1">
+                        <p className="text-sm font-semibold text-slate-900">Keluar Panel Email</p>
+                        <p className="text-xs leading-5 text-slate-500">Akhiri sesi panel email agar tidak tetap tersambung.</p>
+                      </div>
+                    </button>
+                  ) : null}
+                  {nativeMailboxState === 'UNREGISTERED' && isSelfRegistrationEnabled ? (
+                    <button
+                      type="button"
+                      onClick={handleHeaderOpenRegisterClick}
+                      className="flex items-start gap-3 rounded-2xl px-3 py-3 text-left transition hover:bg-slate-50"
+                    >
+                      <SquarePen className="mt-0.5 h-4 w-4 text-[#3250b9]" />
+                      <div className="space-y-1">
+                        <p className="text-sm font-semibold text-slate-900">Daftar Mailbox</p>
+                        <p className="text-xs leading-5 text-slate-500">Buat alamat email sekolah dengan username yang Anda pilih.</p>
+                      </div>
+                    </button>
+                  ) : null}
+                </div>
+              ) : null}
+            </div>
+          ) : null}
         </div>
 
         <SectionCard
