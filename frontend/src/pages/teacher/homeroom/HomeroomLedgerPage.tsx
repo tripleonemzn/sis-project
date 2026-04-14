@@ -75,6 +75,13 @@ const hasLedgerScoreEvidence = (grades?: LedgerGrade) => {
   );
 };
 
+const formatLedgerFinalScore = (value: number | null | undefined) => {
+  if (value === null || value === undefined) return '-';
+  const parsed = Number(value);
+  if (!Number.isFinite(parsed)) return '-';
+  return parsed.toFixed(2);
+};
+
 const normalizeLedgerCode = (raw: unknown): string =>
   String(raw || '')
     .trim()
@@ -248,7 +255,7 @@ export const HomeroomLedgerPage = ({
                         hasLedgerScoreEvidence(grades) &&
                         grades?.finalScore !== null &&
                         grades?.finalScore !== undefined
-                          ? Math.round(grades.finalScore)
+                          ? formatLedgerFinalScore(grades.finalScore)
                           : '-';
                       col2Value =
                         hasLedgerScoreEvidence(grades) &&

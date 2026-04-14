@@ -5,7 +5,7 @@ import {
   getHistoricalStudentSnapshot,
   listHistoricalStudentsForClass,
 } from '../utils/studentAcademicHistory';
-import { computeNormalizedWeightedAverage } from '../utils/gradeWeights';
+import { computeNormalizedWeightedAverage, normalizeRoundedFinalScore } from '../utils/gradeWeights';
 
 const normalizeLedgerCode = (raw: unknown): string =>
   String(raw || '')
@@ -1131,7 +1131,10 @@ export class ReportService {
         col2Score = sbtsScore > 0 ? sbtsScore : null;
         col2Predicate = sbtsScore > 0 ? getPredicate(sbtsScore, kkm) : null;
 
-        finalScoreVal = finalScore > 0 ? Math.round(finalScore) : null;
+        finalScoreVal =
+          finalScore > 0
+            ? normalizeRoundedFinalScore(finalScore)
+            : null;
         finalPredicateVal = finalScore > 0 ? getPredicate(finalScore, kkm) : null;
         
         // Midterm report keeps KET empty.
@@ -1142,9 +1145,10 @@ export class ReportService {
 
         const effectiveFinalScore = resolveEffectiveReportFinalScore(report as any);
 
-        col1Score = effectiveFinalScore !== null && effectiveFinalScore > 0
-          ? Math.round(effectiveFinalScore)
-          : null;
+        col1Score =
+          effectiveFinalScore !== null && effectiveFinalScore > 0
+            ? normalizeRoundedFinalScore(effectiveFinalScore)
+            : null;
         col1Predicate = effectiveFinalScore !== null && effectiveFinalScore > 0
           ? getPredicate(effectiveFinalScore, kkm)
           : null;

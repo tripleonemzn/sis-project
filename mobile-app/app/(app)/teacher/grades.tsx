@@ -37,6 +37,17 @@ function toFixedOrInt(value: number) {
   return value.toFixed(2);
 }
 
+function normalizeFinalRoundedScore(raw: number | null | undefined) {
+  const parsed = Number(raw);
+  if (!Number.isFinite(parsed)) return null;
+  const fixedTwo = Number(parsed.toFixed(2));
+  const fractional = fixedTwo - Math.trunc(fixedTwo);
+  if (fractional > 0.5) {
+    return Number(Math.ceil(fixedTwo).toFixed(2));
+  }
+  return fixedTwo;
+}
+
 function emptyCompetencySettings(): CompetencySettings {
   return { A: '', B: '', C: '', D: '' };
 }
@@ -594,6 +605,8 @@ export default function TeacherGradesScreen() {
           } else if (weightTotal === 0) {
             raporSas = (formativeScore + midtermScore + finalScore) / 3;
           }
+
+          raporSas = normalizeFinalRoundedScore(raporSas) ?? raporSas;
 
           const predicate = calculatePredicate(raporSas, selectedKkm);
           const mappedDescription = competencySettings[predicate as keyof CompetencySettings]?.trim();
@@ -1315,11 +1328,12 @@ export default function TeacherGradesScreen() {
                                       const finalScore = Number.isFinite(finalRaw) ? finalRaw : null;
                                       const formatif = backendFormative;
                                       const sbts = backendMidterm;
-                                      const previewFinal = computeWeightedPreviewScore([
+                                      const previewFinalRaw = computeWeightedPreviewScore([
                                         { score: formatif, weight: formativeComponent?.weight },
                                         { score: sbts, weight: midtermComponent?.weight },
                                         { score: finalScore, weight: selectedComponent.weight },
                                       ]);
+                                      const previewFinal = normalizeFinalRoundedScore(previewFinalRaw);
                                       const effectiveFinal = previewFinal ?? backendFinalFromSlot;
                                       if (effectiveFinal === null || effectiveFinal === undefined) {
                                         return 'Belum ada cukup data nilai.';
@@ -1328,7 +1342,7 @@ export default function TeacherGradesScreen() {
                                       const backendDescription = reportMap[student.id]?.description?.trim();
                                       const fallbackDescription =
                                         deriveCompetencyDescription(effectiveFinal, selectedKkm, competencySettings);
-                                      return `Predikat ${predicate} • ${backendDescription || fallbackDescription || 'Deskripsi belum diatur di + Deskripsi'} • Nilai ${toFixedOrInt(effectiveFinal)}`;
+                                      return `Predikat ${predicate} • ${backendDescription || fallbackDescription || 'Deskripsi belum diatur di + Deskripsi'} • Nilai ${Number(effectiveFinal).toFixed(2)}`;
                                     })()}
                                   </Text>
                                 </View>

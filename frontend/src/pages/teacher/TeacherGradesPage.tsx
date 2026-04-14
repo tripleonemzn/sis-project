@@ -154,6 +154,17 @@ const averageValues = (values: number[]): number | null => {
   return values.reduce((acc, item) => acc + item, 0) / values.length;
 };
 
+const normalizeFinalRoundedScore = (raw: number | null | undefined): number | null => {
+  const parsed = Number(raw);
+  if (!Number.isFinite(parsed)) return null;
+  const fixedTwo = Number(parsed.toFixed(2));
+  const fractional = fixedTwo - Math.trunc(fixedTwo);
+  if (fractional > 0.5) {
+    return Number(Math.ceil(fixedTwo).toFixed(2));
+  }
+  return fixedTwo;
+};
+
 const computeWeightedPreviewScore = (
   rows: Array<{ score: number | null | undefined; weight: number | null | undefined }>,
 ): number | null => {
@@ -1479,7 +1490,7 @@ export const TeacherGradesPage = () => {
 	                                  })();
 	                                  const previewSasFinal = (() => {
 	                                    if (!isFinalComponent) return backendFinal;
-	                                    return (
+	                                    return normalizeFinalRoundedScore(
 	                                      computeWeightedPreviewScore([
 	                                        { score: previewFormative, weight: formativeComponentObj?.weight },
 	                                        { score: backendSbts, weight: midtermComponentObj?.weight },

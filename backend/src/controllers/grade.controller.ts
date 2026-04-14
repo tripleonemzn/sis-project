@@ -15,6 +15,7 @@ import {
 } from '../services/scoreEntry.service'
 import {
   computeNormalizedWeightedAverage,
+  normalizeRoundedFinalScore,
   resolveDefaultGradeWeightByCode,
 } from '../utils/gradeWeights'
 
@@ -1201,6 +1202,8 @@ function computeDynamicReportFromGrades(
     }
   }
 
+  finalScore = normalizeRoundedFinalScore(finalScore) ?? finalScore
+
   return {
     slotScoresByCode,
     legacySlotScores,
@@ -1384,7 +1387,7 @@ function normalizeNullableScore(raw: unknown): number | null {
 function roundDisplayScore(raw: unknown): number | null {
   const parsed = normalizeNullableScore(raw)
   if (parsed === null) return null
-  return Number(parsed.toFixed(2))
+  return normalizeRoundedFinalScore(parsed)
 }
 
 function hasOwnSlotScore(
@@ -1743,7 +1746,7 @@ function recomputeFinalScoreFromSlots(
     })),
   )
   if (weightedIncludedScore !== null) {
-    return weightedIncludedScore
+    return normalizeRoundedFinalScore(weightedIncludedScore) ?? weightedIncludedScore
   }
 
   const weightedAllSlotScore = computeNormalizedWeightedAverage(
@@ -1753,10 +1756,10 @@ function recomputeFinalScoreFromSlots(
     })),
   )
   if (weightedAllSlotScore !== null) {
-    return weightedAllSlotScore
+    return normalizeRoundedFinalScore(weightedAllSlotScore) ?? weightedAllSlotScore
   }
 
-  return fallbackScore
+  return normalizeRoundedFinalScore(fallbackScore) ?? fallbackScore
 }
 
 async function collectDynamicFormativeScores(params: {

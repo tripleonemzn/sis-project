@@ -71,6 +71,20 @@ const computeNormalizedWeightedAverage = (
   return weightedScoreTotal / weightTotal
 }
 
+const normalizeRoundedFinalScore = (raw: number | null | undefined): number | null => {
+  const parsed = Number(raw)
+  if (!Number.isFinite(parsed)) return null
+
+  const fixedTwo = Number(parsed.toFixed(2))
+  const fractional = fixedTwo - Math.trunc(fixedTwo)
+
+  if (fractional > 0.5) {
+    return Number(Math.ceil(fixedTwo).toFixed(2))
+  }
+
+  return fixedTwo
+}
+
 export {
   normalizeGradeWeightCode,
   isFormativeWeightCode,
@@ -80,4 +94,5 @@ export {
   isUsPracticeWeightCode,
   resolveDefaultGradeWeightByCode,
   computeNormalizedWeightedAverage,
+  normalizeRoundedFinalScore,
 }
