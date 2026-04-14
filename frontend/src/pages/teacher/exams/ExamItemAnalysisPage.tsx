@@ -210,7 +210,7 @@ export const ExamItemAnalysisPage = () => {
     if (!Number.isFinite(packetId) || packetId <= 0) {
         return (
             <div className="p-6">
-                <h1 className="text-page-title font-bold text-gray-900 mb-2">Analisis Butir Soal</h1>
+                <h1 className="text-lg font-bold text-gray-900 mb-2">Analisis Butir Soal</h1>
                 <p className="text-sm text-red-600">ID packet ujian tidak valid.</p>
             </div>
         );
@@ -219,7 +219,7 @@ export const ExamItemAnalysisPage = () => {
     if (analysisQuery.isLoading) {
         return (
             <div className="p-6">
-                <h1 className="text-page-title font-bold text-gray-900 mb-2">Analisis Butir Soal</h1>
+                <h1 className="text-lg font-bold text-gray-900 mb-2">Analisis Butir Soal</h1>
                 <p className="text-sm text-gray-500">Memuat analisis butir...</p>
             </div>
         );
@@ -228,7 +228,7 @@ export const ExamItemAnalysisPage = () => {
     if (analysisQuery.isError || !analysisQuery.data) {
         return (
             <div className="p-6 space-y-4">
-                <h1 className="text-page-title font-bold text-gray-900">Analisis Butir Soal</h1>
+                <h1 className="text-lg font-bold text-gray-900">Analisis Butir Soal</h1>
                 <p className="text-sm text-red-600">Gagal mengambil analisis butir soal.</p>
                 <button
                     onClick={() => analysisQuery.refetch()}
@@ -254,7 +254,7 @@ export const ExamItemAnalysisPage = () => {
                         <ArrowLeft className="w-4 h-4" />
                         Kembali
                     </button>
-                    <h1 className="text-page-title font-bold text-gray-900">Analisis Butir Soal</h1>
+                    <h1 className="text-lg font-bold text-gray-900">Analisis Butir Soal</h1>
                     <p className="text-sm text-gray-600">
                         {packet.title} • {packet.subject.name} ({packet.subject.code})
                     </p>

@@ -98,7 +98,7 @@ export const TeacherClassStudentsPage = () => {
           <ArrowLeft className="w-6 h-6 text-gray-600" />
         </button>
         <div>
-          <h1 className="text-page-title font-bold text-gray-900">{className}</h1>
+          <h1 className="text-lg font-bold text-gray-900">{className}</h1>
           <p className="text-gray-500">Daftar siswa dalam kelas ini</p>
         </div>
       </div>

@@ -462,7 +462,7 @@ export const StudentDashboard = () => {
             </div>
           </div>
           <div>
-            <h1 className="text-hero-title font-bold text-gray-900 mb-1">
+            <h1 className="text-lg font-bold text-gray-900 mb-1">
               {isAlumni ? 'Selamat Datang Kembali,' : 'Selamat Datang,'} {user?.name}
             </h1>
             <p className="text-body text-gray-500">

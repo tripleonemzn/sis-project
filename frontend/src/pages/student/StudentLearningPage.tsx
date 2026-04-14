@@ -308,7 +308,7 @@ export default function StudentLearningPage() {
     <div className="space-y-6">
       <div className="flex flex-col md:flex-row justify-between items-start md:items-center gap-4">
         <div>
-          <h1 className="text-page-title font-bold text-gray-900">Materi & Tugas</h1>
+          <h1 className="text-lg font-bold text-gray-900">Materi & Tugas</h1>
           <p className="text-gray-500">Akses materi pelajaran dan tugas kelas Anda</p>
         </div>
       </div>

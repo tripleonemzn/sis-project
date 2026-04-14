@@ -210,7 +210,7 @@ export const StudentClassAttendancePage = () => {
     <div className="space-y-6">
       <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4">
         <div>
-          <h1 className="text-page-title font-bold text-gray-900">Presensi Kelas</h1>
+          <h1 className="text-lg font-bold text-gray-900">Presensi Kelas</h1>
           <p className="text-gray-500 text-sm">
             Input kehadiran harian siswa kelas {studentClass?.name}
           </p>

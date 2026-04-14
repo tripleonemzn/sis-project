@@ -239,7 +239,7 @@ export const InventoryDetailPage = () => {
         
         <div className="flex flex-col md:flex-row md:items-center justify-between gap-4">
           <div>
-            <h1 className="text-page-title font-bold text-gray-900 flex items-center gap-2">
+            <h1 className="text-lg font-bold text-gray-900 flex items-center gap-2">
               <Box className="text-blue-600" />
               Inventaris: {room.name}
             </h1>

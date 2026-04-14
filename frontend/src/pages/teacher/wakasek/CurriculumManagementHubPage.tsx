@@ -48,7 +48,7 @@ export default function CurriculumManagementHubPage() {
   return (
     <div className="space-y-6 w-full pb-20">
       <div>
-        <h1 className="text-page-title font-bold text-gray-900">Kelola Kurikulum</h1>
+        <h1 className="text-lg font-bold text-gray-900">Kelola Kurikulum</h1>
         <p className="text-gray-500">Akses Kategori Mapel, Mata Pelajaran, Data KKM, Assignment Guru, Kalender Akademik, Jadwal Pelajaran, dan Rekap Jam Mengajar.</p>
       </div>
 

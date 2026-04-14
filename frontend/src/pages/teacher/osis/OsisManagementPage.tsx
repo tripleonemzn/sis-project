@@ -971,7 +971,7 @@ export const OsisManagementPage = () => {
       <div className="rounded-3xl border border-slate-200 bg-white p-6 shadow-sm">
         <div className="flex flex-col gap-4 xl:flex-row xl:items-start xl:justify-between">
           <div>
-            <h1 className="text-page-title font-bold text-slate-900">Struktur & Nilai OSIS</h1>
+            <h1 className="text-lg font-bold text-slate-900">Struktur & Nilai OSIS</h1>
             <p className="mt-1 max-w-3xl text-sm text-slate-600">
               Halaman ini disusun bertahap agar pembina OSIS lebih mudah mengikuti alur: pemilihan, transisi kepengurusan,
               pembentukan struktur, penempatan pengurus, lalu penilaian.

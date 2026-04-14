@@ -108,7 +108,7 @@ const ExaminerInternshipPage = () => {
   return (
     <div className="space-y-6">
       <div>
-        <h1 className="text-page-title font-bold text-gray-800">Pengujian Sidang PKL</h1>
+        <h1 className="text-lg font-bold text-gray-800">Pengujian Sidang PKL</h1>
         <p className="text-gray-500">Daftar siswa yang harus diuji dalam sidang PKL</p>
       </div>
 

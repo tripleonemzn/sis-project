@@ -57,7 +57,7 @@ export const HumasSettingsPage: React.FC = () => {
           <Settings className="w-6 h-6 text-blue-600" />
         </div>
         <div>
-          <h1 className="text-page-title font-bold text-gray-800">Pengaturan PKL</h1>
+          <h1 className="text-lg font-bold text-gray-800">Pengaturan PKL</h1>
           <p className="text-gray-500 text-sm">Konfigurasi pelaksanaan Praktik Kerja Lapangan</p>
         </div>
       </div>

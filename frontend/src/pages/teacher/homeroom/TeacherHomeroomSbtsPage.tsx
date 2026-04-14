@@ -159,7 +159,7 @@ export const TeacherHomeroomSbtsPage = ({
       {/* Page Header */}
       <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4">
         <div>
-          <h1 className="text-page-title font-bold text-gray-900">{`Rapor ${resolvedProgramLabel}`}</h1>
+          <h1 className="text-lg font-bold text-gray-900">{`Rapor ${resolvedProgramLabel}`}</h1>
           <p className="text-gray-500 text-sm">
             Kelola rapor, leger nilai, dan ekstrakurikuler sesuai Program Ujian aktif.
           </p>

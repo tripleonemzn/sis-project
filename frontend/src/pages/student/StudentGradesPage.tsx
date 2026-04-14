@@ -379,7 +379,7 @@ export default function StudentGradesPage() {
   if (String(user?.role || '').toUpperCase() !== 'STUDENT') {
     return (
       <div className="rounded-3xl border border-slate-200 bg-white p-6">
-        <h1 className="text-page-title font-bold text-slate-900">Nilai Saya</h1>
+        <h1 className="text-lg font-bold text-slate-900">Nilai Saya</h1>
         <p className="mt-2 text-sm text-slate-500">Fitur nilai siswa hanya tersedia untuk role siswa.</p>
       </div>
     );
@@ -389,7 +389,7 @@ export default function StudentGradesPage() {
     <div className="space-y-6">
       <div className="flex flex-col gap-4 lg:flex-row lg:items-end lg:justify-between">
         <div>
-          <h1 className="text-page-title font-bold text-slate-900">Nilai Saya</h1>
+          <h1 className="text-lg font-bold text-slate-900">Nilai Saya</h1>
           <p className="mt-1 text-sm text-slate-500">
             Ringkasan nilai siswa dipisahkan antara program ujian aktif dan rapor semester berjalan.
           </p>

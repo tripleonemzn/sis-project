@@ -1271,7 +1271,7 @@ export const WorkProgramPage = () => {
     <div className="space-y-6">
       <div className="flex flex-col md:flex-row md:items-center justify-between gap-4">
         <div>
-          <h1 className="text-page-title font-bold text-gray-900">{pageTitle}</h1>
+          <h1 className="text-lg font-bold text-gray-900">{pageTitle}</h1>
           <p className="text-gray-500 text-sm">Kelola program kerja dan anggaran untuk tugas tambahan Anda.</p>
         </div>
         <div className="flex gap-2">

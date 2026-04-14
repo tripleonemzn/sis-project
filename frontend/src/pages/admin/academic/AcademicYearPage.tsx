@@ -571,7 +571,7 @@ export const AcademicYearPage = () => {
     <div className="space-y-6">
       <div className="flex flex-col gap-4 sm:flex-row sm:items-center sm:justify-between">
         <div>
-          <h1 className="text-page-title font-bold text-gray-900">Tahun Ajaran</h1>
+          <h1 className="text-lg font-bold text-gray-900">Tahun Ajaran</h1>
           <p className="text-gray-500">Kelola tahun ajaran, status aktif, dan promotion kenaikan kelas.</p>
         </div>
         {!showForm && (

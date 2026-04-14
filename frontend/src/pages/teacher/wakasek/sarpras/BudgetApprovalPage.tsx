@@ -283,7 +283,7 @@ export const BudgetApprovalPage = () => {
     <div className="space-y-6">
       <div className="flex items-center justify-between">
         <div>
-          <h1 className="text-page-title font-semibold text-gray-900">
+          <h1 className="text-lg font-semibold text-gray-900">
             {isKesiswaanApprover
               ? `Persetujuan Pengajuan ${advisorFlowSummary.equipmentTitle}`
               : 'Persetujuan Anggaran Sarpras'}

@@ -228,7 +228,7 @@ export const AttendanceRecapPage = () => {
     <div className="space-y-6">
       <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4">
         <div>
-          <h1 className="text-page-title font-bold text-gray-900">Rekap Absensi Kelas</h1>
+          <h1 className="text-lg font-bold text-gray-900">Rekap Absensi Kelas</h1>
           <p className="text-gray-500">
             Lihat rekap kehadiran harian per kelas, termasuk catatan keterlambatan.
           </p>

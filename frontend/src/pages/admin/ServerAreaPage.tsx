@@ -1432,7 +1432,7 @@ const ServerAreaPage: React.FC = () => {
   return (
     <div className="space-y-6">
       <div>
-        <h1 className="text-page-title font-bold text-gray-900">Area Server</h1>
+        <h1 className="text-lg font-bold text-gray-900">Area Server</h1>
         <p className="text-sm text-gray-500 mt-1">
           Pantau informasi server, kapasitas storage, dan kondisi performa untuk menjaga stabilitas SIS.
         </p>

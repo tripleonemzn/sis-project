@@ -376,7 +376,7 @@ export const TeacherInternshipGuidance = () => {
     <div className="space-y-6">
       <div className="flex justify-between items-center">
         <div>
-          <h1 className="text-page-title font-bold text-gray-900">Bimbingan PKL</h1>
+          <h1 className="text-lg font-bold text-gray-900">Bimbingan PKL</h1>
           <p className="text-gray-500 mt-1">Pantau jurnal harian dan absensi siswa bimbingan Anda.</p>
         </div>
       </div>

@@ -311,7 +311,7 @@ const ProctorMonitoringPage: React.FC = () => {
           </button>
             <div className="h-6 w-px bg-gray-200 mt-1 hidden sm:block"></div>
             <div>
-              <h1 className="text-page-title font-bold text-gray-900">{title}</h1>
+              <h1 className="text-lg font-bold text-gray-900">{title}</h1>
               <p className="text-sm text-gray-600 mt-1">{orderedClassNames.join(' • ')}</p>
             </div>
           </div>

@@ -155,7 +155,7 @@ export const TeachingLoadSummaryPage = ({ scope = 'DEFAULT' }: TeachingLoadSumma
     <div className="space-y-6">
       <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4">
         <div>
-          <h1 className="text-page-title font-bold text-gray-900">Rekap Jam Mengajar Guru</h1>
+          <h1 className="text-lg font-bold text-gray-900">Rekap Jam Mengajar Guru</h1>
           <p className="text-gray-500">
             Ringkasan jumlah mata pelajaran, kelas, dan total jam mengajar per guru
             berdasarkan jadwal pelajaran.

@@ -406,7 +406,7 @@ export const TeacherManagementPage = () => {
     <div className="space-y-6">
       <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4">
         <div>
-          <h1 className="text-page-title font-bold text-gray-900">Kelola Guru</h1>
+          <h1 className="text-lg font-bold text-gray-900">Kelola Guru</h1>
           <p className="text-gray-500">Daftar akun guru yang terdaftar di sistem.</p>
         </div>
         {!showForm && (

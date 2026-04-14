@@ -28,7 +28,7 @@ export default function ExamManagementHubPage() {
   return (
     <div className="space-y-6 w-full pb-20">
       <div>
-        <h1 className="text-page-title font-bold text-gray-900">Kelola Ujian</h1>
+        <h1 className="text-lg font-bold text-gray-900">Kelola Ujian</h1>
         <p className="text-gray-500">Pengelolaan Jadwal, Ruang, Mengawas, dan Program Ujian dalam satu halaman.</p>
       </div>
 
