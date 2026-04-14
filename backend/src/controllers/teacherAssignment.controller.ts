@@ -97,6 +97,17 @@ const hasAnyThresholdValue = (value: CompetencyThresholdSet | null | undefined) 
         String(value.D || '').trim()),
   );
 
+const hasAnySemesterThresholdValue = (raw: unknown) => {
+  if (!raw || typeof raw !== 'object' || Array.isArray(raw)) return false;
+  const source = raw as Record<string, unknown>;
+  const bucketSource =
+    source._bySemester && typeof source._bySemester === 'object' && !Array.isArray(source._bySemester)
+      ? (source._bySemester as Record<string, unknown>)
+      : {};
+
+  return Object.values(bucketSource).some((entry) => hasAnyThresholdValue(coerceThresholdSet(entry)));
+};
+
 const deriveThresholdDescription = (
   thresholds: CompetencyThresholdSet,
   predicate: string | null | undefined,
@@ -141,6 +152,10 @@ const resolveCompetencyThresholdSet = (
 
   if (hasAnyThresholdValue(preferred)) {
     return preferred;
+  }
+
+  if (preferredSemester && hasAnySemesterThresholdValue(source)) {
+    return emptyCompetencyThresholds();
   }
 
   if (hasAnyThresholdValue(root)) {

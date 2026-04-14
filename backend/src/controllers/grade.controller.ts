@@ -233,6 +233,20 @@ function hasAnyCompetencyThresholdValue(value: CompetencyThresholdSet | null | u
   )
 }
 
+function hasAnySemesterCompetencyThresholdValue(raw: unknown): boolean {
+  if (!raw || typeof raw !== 'object' || Array.isArray(raw)) return false
+
+  const source = raw as Record<string, unknown>
+  const bucketSource =
+    source._bySemester && typeof source._bySemester === 'object' && !Array.isArray(source._bySemester)
+      ? (source._bySemester as Record<string, unknown>)
+      : {}
+
+  return Object.values(bucketSource).some((entry) =>
+    hasAnyCompetencyThresholdValue(coerceCompetencyThresholdSet(entry)),
+  )
+}
+
 function resolveCompetencyThresholdSet(
   raw: unknown,
   preferredSemester?: Semester | null,
@@ -255,6 +269,10 @@ function resolveCompetencyThresholdSet(
 
   if (hasAnyCompetencyThresholdValue(preferred)) {
     return preferred
+  }
+
+  if (preferredSemester && hasAnySemesterCompetencyThresholdValue(source)) {
+    return emptyCompetencyThresholds()
   }
 
   if (hasAnyCompetencyThresholdValue(root)) {
