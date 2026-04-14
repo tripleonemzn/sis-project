@@ -342,7 +342,7 @@ export default function TeacherProctoringScheduleScreen() {
         Pantau jadwal ujian yang ditugaskan kepada Anda dengan breakdown per hari.
       </Text>
 
-      <View style={{ flexDirection: 'row', alignItems: 'stretch', marginHorizontal: -4, marginBottom: 10 }}>
+      <View style={{ flexDirection: 'row', marginHorizontal: -4, marginBottom: 10 }}>
         <View style={{ flex: 1, paddingHorizontal: 4 }}>
           <MobileSummaryCard
             title="Slot Ujian"
@@ -351,7 +351,6 @@ export default function TeacherProctoringScheduleScreen() {
             iconName="calendar"
             accentColor="#2563eb"
             align="center"
-            style={{ height: '100%' }}
           />
         </View>
         <View style={{ flex: 1, paddingHorizontal: 4 }}>
@@ -362,7 +361,6 @@ export default function TeacherProctoringScheduleScreen() {
             iconName="play-circle"
             accentColor="#16a34a"
             align="center"
-            style={{ height: '100%' }}
           />
         </View>
         <View style={{ flex: 1, paddingHorizontal: 4 }}>
@@ -373,7 +371,6 @@ export default function TeacherProctoringScheduleScreen() {
             iconName="users"
             accentColor="#0f766e"
             align="center"
-            style={{ height: '100%' }}
           />
         </View>
       </View>
