@@ -14,6 +14,8 @@ export interface WebmailConfig {
   tokenTtlSeconds: number;
   mailboxIdentity?: string | null;
   mailboxIdentitySource?: WebmailMailboxIdentitySource;
+  mailboxAvailable?: boolean;
+  mailSessionAuthenticated?: boolean;
   selfRegistrationEnabled?: boolean;
   mailboxQuotaMb?: number;
   user: {
@@ -39,6 +41,28 @@ export interface WebmailRegisterResult {
   mailboxIdentity: string;
   quotaMb: number;
   createdAt: string;
+  mailSessionAuthenticated?: boolean;
+  mailSession?: WebmailSessionState;
+}
+
+export interface WebmailSessionState {
+  accessToken: string;
+  expiresAt: string;
+  expiresInSeconds: number;
+}
+
+export interface WebmailLoginPayload {
+  password?: string;
+}
+
+export interface WebmailLoginResult {
+  mailboxIdentity: string;
+  mailSessionAuthenticated: boolean;
+  mailSession: WebmailSessionState;
+}
+
+export interface WebmailLogoutResult {
+  mailSessionAuthenticated: boolean;
 }
 
 export interface WebmailPasswordResetResult {
@@ -136,6 +160,16 @@ export const webmailService = {
 
   register: async (payload: WebmailRegisterPayload): Promise<ApiResponse<WebmailRegisterResult>> => {
     const response = await api.post<ApiResponse<WebmailRegisterResult>>('/webmail/register', payload);
+    return response.data;
+  },
+
+  loginSession: async (payload?: WebmailLoginPayload): Promise<ApiResponse<WebmailLoginResult>> => {
+    const response = await api.post<ApiResponse<WebmailLoginResult>>('/webmail/session/login', payload || {});
+    return response.data;
+  },
+
+  logoutSession: async (): Promise<ApiResponse<WebmailLogoutResult>> => {
+    const response = await api.post<ApiResponse<WebmailLogoutResult>>('/webmail/session/logout');
     return response.data;
   },
 

@@ -20,6 +20,8 @@ export type MobileWebmailConfig = {
   tokenTtlSeconds: number;
   mailboxIdentity: string | null;
   mailboxIdentitySource?: MobileWebmailMailboxIdentitySource;
+  mailboxAvailable?: boolean;
+  mailSessionAuthenticated?: boolean;
   selfRegistrationEnabled?: boolean;
   mailboxQuotaMb?: number;
   user: {
@@ -45,6 +47,28 @@ export type MobileWebmailRegisterResult = {
   mailboxIdentity: string;
   quotaMb: number;
   createdAt: string;
+  mailSessionAuthenticated?: boolean;
+  mailSession?: MobileWebmailSessionState;
+};
+
+export type MobileWebmailSessionState = {
+  accessToken: string;
+  expiresAt: string;
+  expiresInSeconds: number;
+};
+
+export type MobileWebmailLoginPayload = {
+  password?: string;
+};
+
+export type MobileWebmailLoginResult = {
+  mailboxIdentity: string;
+  mailSessionAuthenticated: boolean;
+  mailSession: MobileWebmailSessionState;
+};
+
+export type MobileWebmailLogoutResult = {
+  mailSessionAuthenticated: boolean;
 };
 
 export type MobileWebmailPasswordResetResult = {
@@ -147,6 +171,16 @@ export const webmailApi = {
 
   async register(payload: MobileWebmailRegisterPayload) {
     const response = await apiClient.post<ApiEnvelope<MobileWebmailRegisterResult>>('/webmail/register', payload);
+    return response.data.data;
+  },
+
+  async loginSession(payload?: MobileWebmailLoginPayload) {
+    const response = await apiClient.post<ApiEnvelope<MobileWebmailLoginResult>>('/webmail/session/login', payload || {});
+    return response.data.data;
+  },
+
+  async logoutSession() {
+    const response = await apiClient.post<ApiEnvelope<MobileWebmailLogoutResult>>('/webmail/session/logout');
     return response.data.data;
   },
 

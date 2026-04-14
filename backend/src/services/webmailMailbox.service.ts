@@ -656,6 +656,40 @@ export async function isWebmailMailboxAvailable(mailboxIdentity: string) {
   }
 }
 
+export async function validateWebmailMailboxPassword(mailboxIdentity: string, password: string) {
+  const normalizedMailbox = normalizeMailboxIdentity(mailboxIdentity);
+  const normalizedPassword = String(password || '');
+  if (!normalizedMailbox || !normalizedPassword) return false;
+
+  await ensureMailboxAvailable(normalizedMailbox);
+
+  try {
+    await execFileAsync(
+      'docker',
+      ['exec', getDovecotContainerName(), 'doveadm', 'auth', 'test', '-u', normalizedMailbox, normalizedMailbox, normalizedPassword],
+      {
+        timeout: DOVEADM_TIMEOUT_MS,
+        maxBuffer: 1024 * 1024,
+      },
+    );
+    return true;
+  } catch (error: unknown) {
+    const message = extractExecErrorMessage(error).toLowerCase();
+    if (
+      message.includes('auth failed') ||
+      message.includes('authentication failed') ||
+      message.includes('password mismatch') ||
+      message.includes('unknown user')
+    ) {
+      return false;
+    }
+    if (message.includes("user doesn't exist")) {
+      throw new MailboxUnavailableError(`Mailbox ${mailboxIdentity} belum tersedia di Dovecot`);
+    }
+    throw new Error(`Gagal memverifikasi password mailbox ${mailboxIdentity}: ${extractExecErrorMessage(error)}`);
+  }
+}
+
 function getDovecotContainerName() {
   return String(process.env.MAILBOX_NOTIFICATION_DOVECOT_CONTAINER || DEFAULT_DOVECOT_CONTAINER).trim() || DEFAULT_DOVECOT_CONTAINER;
 }

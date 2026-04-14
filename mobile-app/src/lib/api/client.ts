@@ -1,6 +1,7 @@
 import axios from 'axios';
 import { ENV } from '../../config/env';
 import { tokenStorage } from '../storage/tokenStorage';
+import { webmailSessionStorage } from '../storage/webmailSessionStorage';
 import { isJwtExpired } from '../auth/tokenUtils';
 import { authSession } from '../auth/authSession';
 import { authEventLogger } from '../auth/authEventLogger';
@@ -50,6 +51,10 @@ apiClient.interceptors.request.use(async (config) => {
       return Promise.reject(new Error('Sesi login telah kadaluarsa.'));
     }
     config.headers.Authorization = `Bearer ${token}`;
+  }
+  const webmailSessionToken = await webmailSessionStorage.getAccessToken();
+  if (webmailSessionToken) {
+    config.headers['X-Webmail-Session'] = webmailSessionToken;
   }
   return config;
 });

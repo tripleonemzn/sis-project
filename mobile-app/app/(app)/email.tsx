@@ -2,7 +2,7 @@ import { useEffect, useMemo, useRef, useState } from 'react';
 import type { ComponentProps, ReactNode } from 'react';
 import { Redirect } from 'expo-router';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
-import { ActivityIndicator, Image, Modal, Pressable, ScrollView, Text, TextInput, UIManager, View } from 'react-native';
+import { ActivityIndicator, Alert, Image, Modal, Pressable, ScrollView, Text, TextInput, UIManager, View } from 'react-native';
 import { Feather } from '@expo/vector-icons';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { WebView } from 'react-native-webview';
@@ -18,6 +18,7 @@ import { MobileWebmailFolderKey, MobileWebmailMessageSummary, webmailApi } from 
 import { getStandardPagePadding } from '../../src/lib/ui/pageLayout';
 import { notifyApiError, notifySuccess } from '../../src/lib/ui/feedback';
 import { useIsScreenActive } from '../../src/hooks/useIsScreenActive';
+import { webmailSessionStorage } from '../../src/lib/storage/webmailSessionStorage';
 
 const ALLOWED_WEBMAIL_ROLES = new Set(['ADMIN', 'TEACHER', 'PRINCIPAL', 'STAFF', 'EXTRACURRICULAR_TUTOR']);
 const MAILBOX_USERNAME_PATTERN = /^[a-z0-9][a-z0-9._-]{2,62}$/;
@@ -402,9 +403,10 @@ export default function MobileEmailScreen() {
   const [webmailUrl, setWebmailUrl] = useState<string | null>(null);
   const [webviewKey, setWebviewKey] = useState(0);
   const [panelError, setPanelError] = useState<string | null>(null);
-  const [isPanelLogoutPending, setIsPanelLogoutPending] = useState(false);
   const [isWebmailMode, setIsWebmailMode] = useState(false);
   const [isAccessMenuVisible, setIsAccessMenuVisible] = useState(false);
+  const [loginPass, setLoginPass] = useState('');
+  const [loginError, setLoginError] = useState<string | null>(null);
   const [isRegisterMode, setIsRegisterMode] = useState(false);
   const [registerUser, setRegisterUser] = useState('');
   const [registerPass, setRegisterPass] = useState('');
@@ -448,19 +450,30 @@ export default function MobileEmailScreen() {
   const quotaLabel = asQuotaLabel(config?.mailboxQuotaMb);
   const mailboxIdentity = String(config?.mailboxIdentity || '').trim().toLowerCase();
   const mailboxIdentitySource = config?.mailboxIdentitySource || 'none';
+  const mailboxAvailableFromConfig = config?.mailboxAvailable === true;
+  const mailSessionAuthenticated = Boolean(config?.mailSessionAuthenticated);
   const suggestedMailboxUsername = String(config?.user?.username || '').trim().toLowerCase();
   const canResolveMailboxCandidate = mailboxIdentitySource !== 'none' && Boolean(mailboxIdentity);
 
   const emailFeedQuery = useQuery({
     queryKey: ['mobile-email-folder-feed', mailboxIdentity || 'all', activeFolderKey, visibleLimit, appliedSearch],
     queryFn: () => webmailApi.getMessages({ page: 1, limit: visibleLimit, folderKey: activeFolderKey, query: appliedSearch }),
-    enabled: isAuthenticated && isAllowedRole && isScreenActive && canResolveMailboxCandidate && !isWebmailMode,
+    enabled:
+      isAuthenticated &&
+      isAllowedRole &&
+      isScreenActive &&
+      canResolveMailboxCandidate &&
+      mailboxAvailableFromConfig &&
+      mailSessionAuthenticated &&
+      !isWebmailMode,
     staleTime: 30_000,
     refetchInterval:
       isAuthenticated &&
       isAllowedRole &&
       isScreenActive &&
       canResolveMailboxCandidate &&
+      mailboxAvailableFromConfig &&
+      mailSessionAuthenticated &&
       !isWebmailMode &&
       visibleLimit === DEFAULT_EMAIL_PAGE_LIMIT &&
       !appliedSearch
@@ -473,24 +486,27 @@ export default function MobileEmailScreen() {
   const mailboxFeed = emailFeedQuery.data;
   const nativeMailboxState: NativeMailboxState = !canResolveMailboxCandidate
     ? 'UNREGISTERED'
-    : mailboxFeed?.mailboxAvailable === true
+    : mailboxAvailableFromConfig
       ? 'READY'
-      : mailboxFeed?.mailboxAvailable === false
+      : config?.mailboxAvailable === false
         ? mailboxIdentitySource === 'stored'
           ? 'UNAVAILABLE'
           : 'UNREGISTERED'
-        : emailFeedQuery.isError
+        : configQuery.isError
           ? 'ERROR'
           : 'LOADING';
-  const mailboxAvailable = nativeMailboxState === 'READY';
+  const mailboxRegistered = nativeMailboxState === 'READY';
+  const mailboxAvailable = mailboxRegistered && mailSessionAuthenticated;
   const pageDescription = mailboxAvailable
     ? `Mailbox sekolah tampil langsung seperti daftar email harian. Mailbox aktif: ${mailboxIdentity}.`
+    : mailboxRegistered
+      ? `Masuk ke mailbox sekolah ${mailboxIdentity} terlebih dahulu untuk membuka email harian.`
     : nativeMailboxState === 'LOADING'
       ? 'Sistem sedang memeriksa status mailbox sekolah Anda sebelum membuka email harian.'
     : nativeMailboxState === 'UNAVAILABLE'
       ? 'Mailbox sekolah untuk akun ini sudah terhubung, tetapi server mail belum menyiapkannya sepenuhnya.'
       : 'Daftarkan mailbox sekolah terlebih dahulu sebelum mulai memakai email harian.';
-  const canShowEmailAccessMenu = mailboxAvailable || (nativeMailboxState === 'UNREGISTERED' && selfRegistrationEnabled);
+  const canShowEmailAccessMenu = mailboxAvailable;
 
   const mailboxMessages = useMemo(() => (mailboxAvailable ? mailboxFeed?.messages ?? [] : []), [mailboxAvailable, mailboxFeed?.messages]);
   const totalMessageCount = mailboxAvailable ? Number(mailboxFeed?.pagination.total || 0) : 0;
@@ -596,6 +612,24 @@ export default function MobileEmailScreen() {
     searchDraft,
   ]);
 
+  useEffect(() => {
+    if (!config) return;
+
+    if (!config.mailSessionAuthenticated) {
+      void webmailSessionStorage.clearAccessToken();
+      void webmailSessionStorage.clearBridgeCredentials();
+      setBridgeCredentials(null);
+      return;
+    }
+
+    if (isSsoMode) return;
+
+    void webmailSessionStorage.getBridgeCredentials().then((credentials) => {
+      if (!credentials || credentials.email !== mailboxIdentity) return;
+      setBridgeCredentials(credentials);
+    });
+  }, [config, isSsoMode, mailboxIdentity]);
+
   const startSsoMutation = useMutation({
     mutationFn: (folderKey?: WebmailFolderKey) => webmailApi.startSso().then((data) => ({ data, folderKey })),
     onSuccess: ({ data, folderKey }) => {
@@ -611,20 +645,65 @@ export default function MobileEmailScreen() {
     },
   });
 
+  const loginSessionMutation = useMutation({
+    mutationFn: (password?: string) => webmailApi.loginSession(isSsoMode ? {} : { password }),
+    onSuccess: async (result) => {
+      const accessToken = String(result.mailSession?.accessToken || '').trim();
+      if (!accessToken) {
+        setLoginError('Sesi mailbox berhasil dibuat, tetapi token sesi tidak ditemukan.');
+        return;
+      }
+
+      await webmailSessionStorage.setAccessToken(accessToken);
+      if (!isSsoMode) {
+        const nextCredentials = {
+          email: String(result.mailboxIdentity || mailboxIdentity || '').trim().toLowerCase(),
+          password: String(loginPass || ''),
+        };
+        if (nextCredentials.email && nextCredentials.password) {
+          await webmailSessionStorage.setBridgeCredentials(nextCredentials);
+          setBridgeCredentials(nextCredentials);
+        }
+      }
+
+      setLoginPass('');
+      setLoginError(null);
+      setIsWebmailMode(false);
+      await queryClient.invalidateQueries({
+        queryKey: ['mobile-webmail-config'],
+        refetchType: 'active',
+      });
+      await queryClient.invalidateQueries({
+        queryKey: ['mobile-email-folder-feed'],
+        refetchType: 'active',
+      });
+    },
+    onError: (error) => {
+      setLoginError(resolveErrorMessage(error, 'Gagal masuk ke mailbox sekolah.'));
+    },
+  });
+
   const registerMutation = useMutation({
     mutationFn: webmailApi.register,
     onSuccess: async (result, variables) => {
       const createdMailboxIdentity = String(result.mailboxIdentity || '').trim().toLowerCase();
+      const accessToken = String(result.mailSession?.accessToken || '').trim();
       if (!createdMailboxIdentity) {
         setRegisterError('Mailbox berhasil dibuat, tetapi identitas mailbox tidak ditemukan.');
         return;
       }
 
+      if (accessToken) {
+        await webmailSessionStorage.setAccessToken(accessToken);
+      }
+      await webmailSessionStorage.setBridgeCredentials({ email: createdMailboxIdentity, password: variables.password });
       setRegisterError(null);
+      setLoginError(null);
       setIsRegisterMode(false);
       setRegisterUser('');
       setRegisterPass('');
       setRegisterPassConfirm('');
+      setLoginPass('');
       setActiveFolderKey('INBOX');
       await queryClient.invalidateQueries({
         queryKey: ['mobile-webmail-config'],
@@ -635,9 +714,6 @@ export default function MobileEmailScreen() {
         refetchType: 'active',
       });
       setBridgeCredentials({ email: createdMailboxIdentity, password: variables.password });
-      setWebmailUrl(getMailboxFolderUrl(bridgeLoginUrl, 'INBOX'));
-      setIsWebmailMode(true);
-      setWebviewKey((value) => value + 1);
     },
     onError: (error) => {
       setRegisterError(resolveErrorMessage(error, 'Gagal membuat akun webmail.'));
@@ -747,42 +823,52 @@ export default function MobileEmailScreen() {
   const leavePanelMode = () => {
     setIsWebmailMode(false);
     setIsRegisterMode(false);
-    setIsPanelLogoutPending(false);
-    setBridgeCredentials(null);
     setPanelError(null);
     setWebmailUrl(null);
     setWebviewKey((value) => value + 1);
   };
 
-  const handleLogoutPanel = () => {
-    setIsAccessMenuVisible(false);
+  const completeMailboxLogout = async () => {
     setPanelError(null);
+    setLoginError(null);
     setIsComposeMode(false);
     setIsEmailDetailVisible(false);
     setIsRegisterMode(false);
+    setIsAccessMenuVisible(false);
+    setLoginPass('');
     setBridgeCredentials(null);
-
-    if (isSsoMode) {
-      leavePanelMode();
-      return;
-    }
-
-    setWebmailUrl(getMailboxFolderUrl(bridgeLoginUrl, activeFolderKey));
-    setIsWebmailMode(true);
-    setIsPanelLogoutPending(true);
-    setWebviewKey((value) => value + 1);
+    setWebmailUrl(null);
+    setIsWebmailMode(false);
+    setActiveFolderKey('INBOX');
+    setSearchDraft('');
+    setAppliedSearch('');
+    setVisibleLimit(DEFAULT_EMAIL_PAGE_LIMIT);
+    await webmailSessionStorage.clearAll();
+    void webmailApi.logoutSession().catch(() => undefined);
+    await queryClient.invalidateQueries({
+      queryKey: ['mobile-webmail-config'],
+      refetchType: 'active',
+    });
+    await queryClient.removeQueries({
+      queryKey: ['mobile-email-folder-feed'],
+    });
+    await queryClient.removeQueries({
+      queryKey: ['mobile-email-message-detail'],
+    });
   };
 
-  const handleHeaderOpenPanel = () => {
+  const requestMailboxLogout = () => {
     setIsAccessMenuVisible(false);
-    openPanelAccess(activeFolderKey);
-  };
-
-  const handleHeaderOpenRegister = () => {
-    setIsAccessMenuVisible(false);
-    setRegisterError(null);
-    setPanelError(null);
-    setIsRegisterMode(true);
+    Alert.alert('Keluar dari Mailbox', 'Apakah Anda yakin ingin keluar dari mailbox sekolah?', [
+      { text: 'Batal', style: 'cancel' },
+      {
+        text: 'Ya',
+        style: 'destructive',
+        onPress: () => {
+          void completeMailboxLogout();
+        },
+      },
+    ]);
   };
 
   const openNewCompose = () => {
@@ -808,10 +894,29 @@ export default function MobileEmailScreen() {
     setComposeBody('');
   };
 
-  const openPanelAccess = (targetFolderKey?: WebmailFolderKey) => {
+  const handleLoginSubmit = () => {
+    setLoginError(null);
+    setRegisterError(null);
+
+    if (isSsoMode) {
+      loginSessionMutation.mutate(undefined);
+      return;
+    }
+
+    const password = String(loginPass || '');
+    if (!password) {
+      setLoginError('Password mailbox wajib diisi.');
+      return;
+    }
+
+    loginSessionMutation.mutate(password);
+  };
+
+  const openPanelAccess = async (targetFolderKey?: WebmailFolderKey) => {
     const nextFolderKey = targetFolderKey || activeFolderKey;
     setPanelError(null);
     setRegisterError(null);
+    setLoginError(null);
     setIsRegisterMode(false);
     setIsEmailDetailVisible(false);
     setIsComposeMode(false);
@@ -832,7 +937,17 @@ export default function MobileEmailScreen() {
       return;
     }
 
-    setBridgeCredentials(null);
+    const nextBridgeCredentials =
+      bridgeCredentials && bridgeCredentials.email === mailboxIdentity
+        ? bridgeCredentials
+        : await webmailSessionStorage.getBridgeCredentials();
+
+    if (!nextBridgeCredentials || nextBridgeCredentials.email !== mailboxIdentity) {
+      setPanelError('Sesi panel email belum siap. Silakan masuk ulang ke mailbox sekolah.');
+      return;
+    }
+
+    setBridgeCredentials(nextBridgeCredentials);
     setWebmailUrl(getMailboxFolderUrl(bridgeLoginUrl, nextFolderKey));
     setIsWebmailMode(true);
     setWebviewKey((value) => value + 1);
@@ -966,6 +1081,7 @@ export default function MobileEmailScreen() {
     setIsRegisterMode(false);
     setPanelError(null);
     setRegisterError(null);
+    setLoginError(null);
     setRegisterUser('');
     setRegisterPass('');
     setRegisterPassConfirm('');
@@ -1026,16 +1142,7 @@ export default function MobileEmailScreen() {
     setIsEmailDetailVisible(false);
     setSelectedEmailGuid(null);
   };
-  const webSource = isPanelLogoutPending
-    ? {
-        uri: bridgeLoginUrl,
-        method: 'POST' as const,
-        headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
-        body: encodeFormBody({
-          logout: '1',
-        }),
-      }
-    : bridgeCredentials
+  const webSource = bridgeCredentials
     ? {
         uri: bridgeLoginUrl,
         method: 'POST' as const,
@@ -1088,15 +1195,27 @@ export default function MobileEmailScreen() {
             }}
           >
             <SectionCard
-              title={mailboxAvailable ? activeFolderTitle : nativeMailboxState === 'LOADING' ? 'Memeriksa Mailbox' : 'Akses Email Sekolah'}
+              title={
+                mailboxAvailable
+                  ? activeFolderTitle
+                  : mailboxRegistered
+                    ? 'Masuk ke Mailbox'
+                    : nativeMailboxState === 'LOADING'
+                      ? 'Memeriksa Mailbox'
+                      : 'Akses Email Sekolah'
+              }
               subtitle={
                 mailboxAvailable
                   ? activeFolderDescription
-                  : nativeMailboxState === 'LOADING'
-                    ? 'Sistem sedang memeriksa status mailbox sekolah Anda sebelum membuka daftar email harian.'
-                    : nativeMailboxState === 'UNAVAILABLE'
-                      ? 'Mailbox sekolah Anda sudah terhubung ke akun SIS, tetapi server mail belum menyiapkannya sepenuhnya.'
-                      : 'Akun Anda belum memiliki mailbox sekolah aktif. Daftarkan mailbox terlebih dahulu sebelum mulai memakai email.'
+                  : mailboxRegistered
+                    ? isSsoMode
+                      ? 'Masuk ke mailbox sekolah Anda terlebih dahulu agar inbox dapat dibuka.'
+                      : 'Masukkan password mailbox sekolah Anda terlebih dahulu agar inbox dapat dibuka.'
+                    : nativeMailboxState === 'LOADING'
+                      ? 'Sistem sedang memeriksa status mailbox sekolah Anda sebelum membuka daftar email harian.'
+                      : nativeMailboxState === 'UNAVAILABLE'
+                        ? 'Mailbox sekolah Anda sudah terhubung ke akun SIS, tetapi server mail belum menyiapkannya sepenuhnya.'
+                        : 'Akun Anda belum memiliki mailbox sekolah aktif. Daftarkan mailbox terlebih dahulu sebelum mulai memakai email.'
               }
             >
               {nativeMailboxState === 'LOADING' ? (
@@ -1107,11 +1226,84 @@ export default function MobileEmailScreen() {
               ) : nativeMailboxState === 'ERROR' ? (
                 <QueryStateView
                   type="error"
-                  message={resolveErrorMessage(emailFeedQuery.error, 'Gagal memeriksa status mailbox sekolah.')}
-                  onRetry={() => emailFeedQuery.refetch()}
+                  message={resolveErrorMessage(configQuery.error, 'Gagal memeriksa status mailbox sekolah.')}
+                  onRetry={() => configQuery.refetch()}
                 />
               ) : !mailboxAvailable ? (
                 <View style={{ gap: 12 }}>
+                  {mailboxRegistered ? (
+                    <View
+                      style={{
+                        borderRadius: 14,
+                        borderWidth: 1,
+                        borderColor: '#e2e8f0',
+                        backgroundColor: '#f8fafc',
+                        paddingHorizontal: 12,
+                        paddingVertical: 14,
+                        gap: 10,
+                      }}
+                    >
+                      <Text style={{ color: '#0f172a', fontSize: 13, fontWeight: '700' }}>Email</Text>
+                      <TextInput
+                        value={mailboxIdentity}
+                        editable={false}
+                        selectTextOnFocus={false}
+                        style={{
+                          borderWidth: 1,
+                          borderColor: '#cbd5e1',
+                          borderRadius: 12,
+                          paddingHorizontal: 12,
+                          paddingVertical: 11,
+                          color: '#334155',
+                          backgroundColor: '#ffffff',
+                        }}
+                      />
+
+                      {!isSsoMode ? (
+                        <>
+                          <Text style={{ color: '#0f172a', fontSize: 13, fontWeight: '700' }}>Password</Text>
+                          <TextInput
+                            value={loginPass}
+                            onChangeText={(value) => {
+                              setLoginPass(value);
+                              if (loginError) setLoginError(null);
+                            }}
+                            secureTextEntry
+                            placeholder="Masukkan password mailbox"
+                            placeholderTextColor="#94a3b8"
+                            style={{
+                              borderWidth: 1,
+                              borderColor: '#cbd5e1',
+                              borderRadius: 12,
+                              paddingHorizontal: 12,
+                              paddingVertical: 11,
+                              color: BRAND_COLORS.textDark,
+                              backgroundColor: '#ffffff',
+                            }}
+                          />
+                        </>
+                      ) : null}
+
+                      {loginError ? <Text style={{ color: '#b91c1c', fontSize: 12 }}>{loginError}</Text> : null}
+
+                      <Pressable
+                        onPress={handleLoginSubmit}
+                        disabled={loginSessionMutation.isPending}
+                        style={{
+                          borderRadius: 12,
+                          backgroundColor: '#3250b9',
+                          paddingVertical: 11,
+                          alignItems: 'center',
+                          opacity: loginSessionMutation.isPending ? 0.7 : 1,
+                        }}
+                      >
+                        <Text style={{ color: '#ffffff', fontWeight: '700' }}>
+                          {loginSessionMutation.isPending ? 'Memproses...' : 'Masuk ke Mailbox'}
+                        </Text>
+                      </Pressable>
+                    </View>
+                  ) : null}
+
                   <View
                     style={{
                       borderRadius: 14,
@@ -1124,14 +1316,20 @@ export default function MobileEmailScreen() {
                     }}
                   >
                     <Text style={{ color: '#0f172a', fontWeight: '700' }}>
-                      {nativeMailboxState === 'UNAVAILABLE' ? 'Mailbox belum aktif di server' : 'Belum punya mailbox sekolah'}
+                      {nativeMailboxState === 'UNAVAILABLE'
+                        ? 'Mailbox belum aktif di server'
+                        : mailboxRegistered
+                          ? 'Mailbox siap dipakai'
+                          : 'Belum punya mailbox sekolah'}
                     </Text>
                     <Text style={{ color: '#475569', fontSize: 12, lineHeight: 18 }}>
                       {nativeMailboxState === 'UNAVAILABLE'
                         ? 'Mailbox sudah tercatat untuk akun ini, tetapi inbox native dan panel email penuh baru bisa dipakai setelah server mail selesai menyiapkannya.'
-                        : 'Daftar mailbox sekolah terlebih dahulu. Setelah mailbox aktif, halaman ini akan otomatis berubah menjadi daftar inbox email harian.'}
+                        : mailboxRegistered
+                          ? 'Setelah berhasil masuk, halaman ini akan langsung berubah menjadi inbox email harian Anda.'
+                          : 'Daftar mailbox sekolah terlebih dahulu. Setelah mailbox aktif, halaman ini akan otomatis berubah menjadi daftar inbox email harian.'}
                     </Text>
-                    {nativeMailboxState === 'UNAVAILABLE' && mailboxIdentity ? (
+                    {(nativeMailboxState === 'UNAVAILABLE' || mailboxRegistered) && mailboxIdentity ? (
                       <View
                         style={{
                           marginTop: 6,
@@ -1155,6 +1353,7 @@ export default function MobileEmailScreen() {
                       <Pressable
                         onPress={() => {
                           setRegisterError(null);
+                          setLoginError(null);
                           setPanelError(null);
                           setIsRegisterMode(true);
                         }}
@@ -1381,8 +1580,8 @@ export default function MobileEmailScreen() {
 
       <MobileDetailModal
         visible={isAccessMenuVisible}
-        title="Akses Email"
-        subtitle="Kelola masuk panel email atau pendaftaran mailbox sekolah dari sini."
+        title="Pengaturan Mailbox"
+        subtitle="Kelola sesi mailbox sekolah dari sini."
         iconName="settings"
         accentColor="#3250b9"
         onClose={() => setIsAccessMenuVisible(false)}
@@ -1390,43 +1589,7 @@ export default function MobileEmailScreen() {
         <View style={{ gap: 10 }}>
           {mailboxAvailable ? (
             <Pressable
-              onPress={handleHeaderOpenPanel}
-              style={{
-                borderRadius: 14,
-                borderWidth: 1,
-                borderColor: '#dbe4f4',
-                backgroundColor: '#ffffff',
-                paddingHorizontal: 14,
-                paddingVertical: 12,
-                flexDirection: 'row',
-                alignItems: 'flex-start',
-                gap: 10,
-              }}
-            >
-              <View
-                style={{
-                  width: 34,
-                  height: 34,
-                  borderRadius: 12,
-                  backgroundColor: 'rgba(50, 80, 185, 0.12)',
-                  alignItems: 'center',
-                  justifyContent: 'center',
-                }}
-              >
-                <Feather name="log-in" size={15} color="#3250b9" />
-              </View>
-              <View style={{ flex: 1, gap: 2 }}>
-                <Text style={{ color: '#0f172a', fontSize: 14, fontWeight: '700' }}>Masuk ke Panel Email</Text>
-                <Text style={{ color: '#64748b', fontSize: 12, lineHeight: 18 }}>
-                  Buka panel webmail penuh untuk fitur lanjutan seperti folder tambahan dan pengelolaan akun.
-                </Text>
-              </View>
-            </Pressable>
-          ) : null}
-
-          {mailboxAvailable ? (
-            <Pressable
-              onPress={handleLogoutPanel}
+              onPress={requestMailboxLogout}
               style={{
                 borderRadius: 14,
                 borderWidth: 1,
@@ -1438,9 +1601,9 @@ export default function MobileEmailScreen() {
                 alignItems: 'flex-start',
                 gap: 10,
               }}
-            >
-              <View
-                style={{
+              >
+                <View
+                  style={{
                   width: 34,
                   height: 34,
                   borderRadius: 12,
@@ -1452,45 +1615,9 @@ export default function MobileEmailScreen() {
                 <Feather name="log-out" size={15} color="#92400e" />
               </View>
               <View style={{ flex: 1, gap: 2 }}>
-                <Text style={{ color: '#0f172a', fontSize: 14, fontWeight: '700' }}>Keluar Panel Email</Text>
+                <Text style={{ color: '#0f172a', fontSize: 14, fontWeight: '700' }}>Keluar dari Mailbox</Text>
                 <Text style={{ color: '#64748b', fontSize: 12, lineHeight: 18 }}>
-                  Akhiri sesi panel email agar tidak tetap tersambung di perangkat ini.
-                </Text>
-              </View>
-            </Pressable>
-          ) : null}
-
-          {nativeMailboxState === 'UNREGISTERED' && selfRegistrationEnabled ? (
-            <Pressable
-              onPress={handleHeaderOpenRegister}
-              style={{
-                borderRadius: 14,
-                borderWidth: 1,
-                borderColor: '#dbe4f4',
-                backgroundColor: '#ffffff',
-                paddingHorizontal: 14,
-                paddingVertical: 12,
-                flexDirection: 'row',
-                alignItems: 'flex-start',
-                gap: 10,
-              }}
-            >
-              <View
-                style={{
-                  width: 34,
-                  height: 34,
-                  borderRadius: 12,
-                  backgroundColor: 'rgba(50, 80, 185, 0.12)',
-                  alignItems: 'center',
-                  justifyContent: 'center',
-                }}
-              >
-                <Feather name="user-plus" size={15} color="#3250b9" />
-              </View>
-              <View style={{ flex: 1, gap: 2 }}>
-                <Text style={{ color: '#0f172a', fontSize: 14, fontWeight: '700' }}>Daftar Mailbox</Text>
-                <Text style={{ color: '#64748b', fontSize: 12, lineHeight: 18 }}>
-                  Buat alamat email sekolah dengan username yang Anda inginkan.
+                  Akhiri sesi mailbox sekolah dan kembali ke halaman login email.
                 </Text>
               </View>
             </Pressable>
@@ -1735,40 +1862,21 @@ export default function MobileEmailScreen() {
                   <Text style={{ color: '#0f172a', fontSize: 18, fontWeight: '800' }}>{accessModalTitle}</Text>
                   <Text style={{ color: '#64748b', fontSize: 12, marginTop: 2 }}>Panel webmail penuh</Text>
                 </View>
-                <View style={{ flexDirection: 'row', alignItems: 'center', gap: 8 }}>
-                  <Pressable
-                    onPress={handleLogoutPanel}
-                    style={{
-                      borderRadius: 999,
-                      borderWidth: 1,
-                      borderColor: '#fde68a',
-                      backgroundColor: '#fffbeb',
-                      paddingHorizontal: 12,
-                      paddingVertical: 8,
-                      flexDirection: 'row',
-                      alignItems: 'center',
-                      gap: 6,
-                    }}
-                  >
-                    <Feather name="log-out" size={13} color="#92400e" />
-                    <Text style={{ color: '#92400e', fontSize: 12, fontWeight: '700' }}>Keluar Panel Email</Text>
-                  </Pressable>
-                  <Pressable
-                    onPress={leavePanelMode}
-                    style={{
-                      width: 36,
-                      height: 36,
-                      borderRadius: 12,
-                      borderWidth: 1,
-                      borderColor: '#dbe4f4',
-                      backgroundColor: '#f8fbff',
-                      alignItems: 'center',
-                      justifyContent: 'center',
-                    }}
-                  >
-                    <Feather name="x" size={18} color="#64748b" />
-                  </Pressable>
-                </View>
+                <Pressable
+                  onPress={leavePanelMode}
+                  style={{
+                    width: 36,
+                    height: 36,
+                    borderRadius: 12,
+                    borderWidth: 1,
+                    borderColor: '#dbe4f4',
+                    backgroundColor: '#f8fbff',
+                    alignItems: 'center',
+                    justifyContent: 'center',
+                  }}
+                >
+                  <Feather name="x" size={18} color="#64748b" />
+                </Pressable>
               </View>
 
               <Pressable
@@ -1813,29 +1921,14 @@ export default function MobileEmailScreen() {
                     sharedCookiesEnabled
                     thirdPartyCookiesEnabled
                     onLoadEnd={() => {
-                      if (isPanelLogoutPending) {
-                        setIsPanelLogoutPending(false);
-                        leavePanelMode();
-                        return;
-                      }
                       if (!bridgeCredentials) return;
                       setBridgeCredentials(null);
                       setWebmailUrl(getMailboxFolderUrl(bridgeLoginUrl, activeFolderKey));
                     }}
                     onHttpError={() => {
-                      if (isPanelLogoutPending) {
-                        setIsPanelLogoutPending(false);
-                        leavePanelMode();
-                        return;
-                      }
                       setPanelError('Panel email gagal dimuat. Coba muat ulang sesi.');
                     }}
                     onError={() => {
-                      if (isPanelLogoutPending) {
-                        setIsPanelLogoutPending(false);
-                        leavePanelMode();
-                        return;
-                      }
                       setPanelError('Koneksi ke panel email gagal. Periksa koneksi dan coba lagi.');
                     }}
                   />
@@ -1934,7 +2027,7 @@ export default function MobileEmailScreen() {
                     iconName="external-link"
                     tone="neutral"
                     onPress={() => {
-                      openPanelAccess(activeFolderKey);
+                      void openPanelAccess(activeFolderKey);
                     }}
                   />
                 </View>

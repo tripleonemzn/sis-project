@@ -19,6 +19,7 @@ import {
   moveWebmailMessage,
   normalizeWebmailFolderKey,
   sendWebmailMessage,
+  validateWebmailMailboxPassword,
   type WebmailFolderKey,
   type WebmailMailboxFolderKey,
 } from '../services/webmailMailbox.service';
@@ -32,8 +33,11 @@ const DEFAULT_SSO_AUDIENCE = 'siskgb2-webmail';
 const DEFAULT_SSO_ISSUER = 'sis-kgb2-app';
 const DEFAULT_SSO_TOKEN_PARAM = 'sso_token';
 const DEFAULT_SSO_TTL_SECONDS = 45;
+const DEFAULT_MAIL_SESSION_TTL_SECONDS = 60 * 60 * 12;
 const MIN_SSO_TTL_SECONDS = 10;
 const MAX_SSO_TTL_SECONDS = 300;
+const MIN_MAIL_SESSION_TTL_SECONDS = 60 * 15;
+const MAX_MAIL_SESSION_TTL_SECONDS = 60 * 60 * 24 * 7;
 const MAILCOW_API_TIMEOUT_MS = 15000;
 const MAILBOX_DEFAULT_QUOTA_MB = 5120;
 const MIN_WEBMAIL_PASSWORD_LENGTH = 8;
@@ -46,6 +50,8 @@ const WEBMAIL_PASSWORD_NUMBERS = '23456789';
 const WEBMAIL_PASSWORD_SYMBOLS = '!@#$%^&*()-_=+';
 const WEBMAIL_RESET_AUDIT_ENTITY = 'WEBMAIL_MAILBOX';
 const WEBMAIL_SELF_RESET_AUDIT_ACTION = 'SELF_RESET_PASSWORD';
+const WEBMAIL_SESSION_HEADER = 'x-webmail-session';
+const WEBMAIL_SESSION_TYPE = 'webmail-session';
 const RESERVED_MAILBOX_LOCAL_PARTS = new Set([
   'admin',
   'administrator',
@@ -71,6 +77,10 @@ type RegisterMailboxBody = {
   verificationUsername?: unknown;
   password?: unknown;
   confirmPassword?: unknown;
+};
+
+type LoginMailboxSessionBody = {
+  password?: unknown;
 };
 
 type SendWebmailBody = {
@@ -159,6 +169,81 @@ const clamp = (value: number, min: number, max: number): number => {
   if (value < min) return min;
   if (value > max) return max;
   return value;
+};
+
+type WebmailSessionClaims = {
+  sub: string;
+  mailbox: string;
+  type: string;
+  jti: string;
+};
+
+const getWebmailSessionSecret = (): string => {
+  const configured = toMaybeString(process.env.WEBMAIL_SESSION_SECRET);
+  if (configured) return configured;
+  const jwtSecret = toMaybeString(process.env.JWT_SECRET);
+  if (jwtSecret) return `${jwtSecret}:webmail-session`;
+  throw new ApiError(500, 'Konfigurasi WEBMAIL_SESSION_SECRET belum diatur di server');
+};
+
+const getWebmailSessionTtlSeconds = (): number => {
+  return clamp(
+    parsePositiveInt(process.env.WEBMAIL_SESSION_TTL_SECONDS, DEFAULT_MAIL_SESSION_TTL_SECONDS),
+    MIN_MAIL_SESSION_TTL_SECONDS,
+    MAX_MAIL_SESSION_TTL_SECONDS,
+  );
+};
+
+const readWebmailSessionToken = (req: AuthRequest): string => {
+  const headerValue = req.header(WEBMAIL_SESSION_HEADER);
+  return toMaybeString(Array.isArray(headerValue) ? headerValue[0] : headerValue);
+};
+
+const signWebmailSessionToken = (userId: number, mailboxIdentity: string) => {
+  const expiresInSeconds = getWebmailSessionTtlSeconds();
+  const token = jwt.sign(
+    {
+      sub: String(userId),
+      mailbox: mailboxIdentity,
+      type: WEBMAIL_SESSION_TYPE,
+      jti: randomUUID(),
+    },
+    getWebmailSessionSecret(),
+    {
+      algorithm: 'HS256',
+      expiresIn: expiresInSeconds,
+      issuer: DEFAULT_SSO_ISSUER,
+      audience: DEFAULT_SSO_AUDIENCE,
+    },
+  );
+
+  return {
+    accessToken: token,
+    expiresInSeconds,
+    expiresAt: new Date(Date.now() + expiresInSeconds * 1000).toISOString(),
+  };
+};
+
+const parseWebmailSessionToken = (token: string): WebmailSessionClaims | null => {
+  if (!token) return null;
+  try {
+    const payload = jwt.verify(token, getWebmailSessionSecret(), {
+      algorithms: ['HS256'],
+      issuer: DEFAULT_SSO_ISSUER,
+      audience: DEFAULT_SSO_AUDIENCE,
+    });
+    if (!payload || typeof payload !== 'object') return null;
+    const claims = payload as Partial<WebmailSessionClaims>;
+    if (claims.type !== WEBMAIL_SESSION_TYPE) return null;
+    return {
+      sub: String(claims.sub || ''),
+      mailbox: toMaybeString(claims.mailbox).toLowerCase(),
+      type: String(claims.type || ''),
+      jti: String(claims.jti || ''),
+    };
+  } catch {
+    return null;
+  }
 };
 
 const getWebmailBaseUrl = (): string => {
@@ -342,6 +427,19 @@ const ensureWebmailAccess = async (req: AuthRequest) => {
   return user;
 };
 
+const hasAuthenticatedMailboxSession = (req: AuthRequest, userId: number, mailboxIdentity: string | null): boolean => {
+  if (!mailboxIdentity) return false;
+  const claims = parseWebmailSessionToken(readWebmailSessionToken(req));
+  if (!claims) return false;
+  return claims.sub === String(userId) && claims.mailbox === String(mailboxIdentity || '').trim().toLowerCase();
+};
+
+const ensureAuthenticatedMailboxSession = (req: AuthRequest, userId: number, mailboxIdentity: string | null) => {
+  if (!hasAuthenticatedMailboxSession(req, userId, mailboxIdentity)) {
+    throw new ApiError(428, 'Silakan masuk ke mailbox sekolah terlebih dahulu');
+  }
+};
+
 export const getWebmailConfig = asyncHandler(async (req: AuthRequest, res: Response) => {
   const user = await ensureWebmailAccess(req);
   const mode = parseWebmailMode();
@@ -350,6 +448,8 @@ export const getWebmailConfig = asyncHandler(async (req: AuthRequest, res: Respo
   const ssoEntryUrl = getSsoEntryUrl(webmailUrl);
   const ssoSecret = String(process.env.WEBMAIL_SSO_SHARED_SECRET || '').trim();
   const { mailboxIdentity, mailboxIdentitySource } = resolveMailboxIdentityDescriptor(user);
+  const mailboxAvailable = mailboxIdentity ? await isWebmailMailboxAvailable(mailboxIdentity) : false;
+  const mailSessionAuthenticated = hasAuthenticatedMailboxSession(req, user.id, mailboxIdentity);
   const ssoEnabled = mode === 'SSO' && Boolean(ssoSecret);
   const selfRegistrationEnabled = mode === 'BRIDGE' && WEBMAIL_SELF_REGISTER_ROLES.includes(user.role);
   const tokenTtlSeconds = clamp(
@@ -370,6 +470,8 @@ export const getWebmailConfig = asyncHandler(async (req: AuthRequest, res: Respo
         tokenTtlSeconds,
         mailboxIdentity,
         mailboxIdentitySource,
+        mailboxAvailable,
+        mailSessionAuthenticated,
         selfRegistrationEnabled,
         mailboxQuotaMb: MAILBOX_DEFAULT_QUOTA_MB,
         user: {
@@ -526,6 +628,8 @@ export const registerWebmailMailbox = asyncHandler(async (req: AuthRequest, res:
     },
   });
 
+  const mailSession = signWebmailSessionToken(user.id, mailboxIdentity);
+
   res.status(201).json(
     new ApiResponse(
       201,
@@ -533,8 +637,66 @@ export const registerWebmailMailbox = asyncHandler(async (req: AuthRequest, res:
         mailboxIdentity,
         quotaMb: MAILBOX_DEFAULT_QUOTA_MB,
         createdAt: new Date().toISOString(),
+        mailSessionAuthenticated: true,
+        mailSession,
       },
       'Mailbox webmail berhasil dibuat',
+    ),
+  );
+});
+
+export const loginWebmailMailboxSession = asyncHandler(async (req: AuthRequest, res: Response) => {
+  const user = await ensureWebmailAccess(req);
+  const mailboxIdentity = resolveMailboxIdentity(user);
+
+  if (!mailboxIdentity) {
+    throw new ApiError(400, 'Akun Anda belum memiliki identitas mailbox sekolah yang valid');
+  }
+
+  const mailboxAvailable = await isWebmailMailboxAvailable(mailboxIdentity);
+  if (!mailboxAvailable) {
+    throw new ApiError(404, 'Mailbox sekolah Anda belum tersedia di server');
+  }
+
+  const mode = parseWebmailMode();
+  if (mode === 'BRIDGE') {
+    const body = (req.body || {}) as LoginMailboxSessionBody;
+    const password = String(body.password ?? '');
+    if (!password) {
+      throw new ApiError(400, 'Password mailbox wajib diisi');
+    }
+
+    const passwordValid = await validateWebmailMailboxPassword(mailboxIdentity, password);
+    if (!passwordValid) {
+      throw new ApiError(400, 'Password mailbox salah');
+    }
+  }
+
+  const mailSession = signWebmailSessionToken(user.id, mailboxIdentity);
+
+  res.status(200).json(
+    new ApiResponse(
+      200,
+      {
+        mailboxIdentity,
+        mailSessionAuthenticated: true,
+        mailSession,
+      },
+      'Berhasil masuk ke mailbox sekolah',
+    ),
+  );
+});
+
+export const logoutWebmailMailboxSession = asyncHandler(async (req: AuthRequest, res: Response) => {
+  await ensureWebmailAccess(req);
+
+  res.status(200).json(
+    new ApiResponse(
+      200,
+      {
+        mailSessionAuthenticated: false,
+      },
+      'Sesi mailbox sekolah berhasil diakhiri',
     ),
   );
 });
@@ -640,6 +802,7 @@ export const listWebmailInboxMessages = asyncHandler(async (req: AuthRequest, re
   if (!mailboxIdentity) {
     throw new ApiError(400, 'Akun Anda belum memiliki identitas mailbox (email) yang valid');
   }
+  ensureAuthenticatedMailboxSession(req, user.id, mailboxIdentity);
 
   const page = clamp(parsePositiveInt(req.query?.page as string | undefined, 1), 1, 9999);
   const limit = clamp(parsePositiveInt(req.query?.limit as string | undefined, 20), 1, 100);
@@ -668,6 +831,7 @@ export const getWebmailInboxMessageDetail = asyncHandler(async (req: AuthRequest
   if (!mailboxIdentity) {
     throw new ApiError(400, 'Akun Anda belum memiliki identitas mailbox (email) yang valid');
   }
+  ensureAuthenticatedMailboxSession(req, user.id, mailboxIdentity);
 
   const guid = toMaybeString(req.params?.guid);
   if (!guid) {
@@ -700,6 +864,7 @@ export const markWebmailInboxMessageRead = asyncHandler(async (req: AuthRequest,
   if (!mailboxIdentity) {
     throw new ApiError(400, 'Akun Anda belum memiliki identitas mailbox (email) yang valid');
   }
+  ensureAuthenticatedMailboxSession(req, user.id, mailboxIdentity);
 
   const guid = toMaybeString(req.params?.guid);
   if (!guid) {
@@ -739,6 +904,7 @@ export const markWebmailInboxMessageUnread = asyncHandler(async (req: AuthReques
   if (!mailboxIdentity) {
     throw new ApiError(400, 'Akun Anda belum memiliki identitas mailbox (email) yang valid');
   }
+  ensureAuthenticatedMailboxSession(req, user.id, mailboxIdentity);
 
   const guid = toMaybeString(req.params?.guid);
   if (!guid) {
@@ -778,6 +944,7 @@ export const sendWebmailInboxMessage = asyncHandler(async (req: AuthRequest, res
   if (!mailboxIdentity) {
     throw new ApiError(400, 'Akun Anda belum memiliki identitas mailbox (email) yang valid');
   }
+  ensureAuthenticatedMailboxSession(req, user.id, mailboxIdentity);
 
   const body = (req.body || {}) as SendWebmailBody;
   const toList = toStringList(body.to);
@@ -831,6 +998,7 @@ export const moveWebmailInboxMessage = asyncHandler(async (req: AuthRequest, res
   if (!mailboxIdentity) {
     throw new ApiError(400, 'Akun Anda belum memiliki identitas mailbox (email) yang valid');
   }
+  ensureAuthenticatedMailboxSession(req, user.id, mailboxIdentity);
 
   const guid = toMaybeString(req.params?.guid);
   if (!guid) {
@@ -878,6 +1046,7 @@ export const deleteWebmailInboxMessage = asyncHandler(async (req: AuthRequest, r
   if (!mailboxIdentity) {
     throw new ApiError(400, 'Akun Anda belum memiliki identitas mailbox (email) yang valid');
   }
+  ensureAuthenticatedMailboxSession(req, user.id, mailboxIdentity);
 
   const guid = toMaybeString(req.params?.guid);
   if (!guid) {
@@ -942,6 +1111,7 @@ export const startWebmailSso = asyncHandler(async (req: AuthRequest, res: Respon
   if (!mailboxIdentity) {
     throw new ApiError(400, 'Akun Anda belum memiliki identitas mailbox (email) yang valid');
   }
+  ensureAuthenticatedMailboxSession(req, user.id, mailboxIdentity);
 
   const token = jwt.sign(
     {

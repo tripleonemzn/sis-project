@@ -3,10 +3,8 @@ import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import {
   AlertCircle,
   Archive,
-  ArrowLeft,
   ExternalLink,
   Inbox,
-  LogIn,
   LogOut,
   MailOpen,
   RefreshCw,
@@ -21,6 +19,7 @@ import {
 import { toast } from 'react-hot-toast';
 import { authService } from '../../services/auth.service';
 import { webmailService, type WebmailFolderKey, type WebmailMessageSummary } from '../../services/webmail.service';
+import { webmailSessionStorage } from '../../services/webmailSessionStorage';
 
 const WEBMAIL_URL = 'https://mail.siskgb2.id/';
 const DEFAULT_WEBMAIL_INBOX_URL = 'https://mail.siskgb2.id/?_task=mail&_mbox=INBOX&_layout=list&_skin=elastic';
@@ -555,6 +554,8 @@ export const EmailPage = () => {
   const mailboxQuotaLabel = asQuotaLabel(webmailConfig?.mailboxQuotaMb);
   const mailboxIdentity = String(webmailConfig?.mailboxIdentity || '').trim().toLowerCase();
   const mailboxIdentitySource = webmailConfig?.mailboxIdentitySource || 'none';
+  const mailboxAvailableFromConfig = webmailConfig?.mailboxAvailable === true;
+  const mailSessionAuthenticated = Boolean(webmailConfig?.mailSessionAuthenticated);
   const suggestedMailboxUsername = String(webmailConfig?.user?.username || '').trim().toLowerCase();
   const canResolveMailboxCandidate = mailboxIdentitySource !== 'none' && Boolean(mailboxIdentity);
 
@@ -565,6 +566,7 @@ export const EmailPage = () => {
   const [registerPass, setRegisterPass] = useState('');
   const [registerPassConfirm, setRegisterPassConfirm] = useState('');
   const [registerError, setRegisterError] = useState<string | null>(null);
+  const [loginError, setLoginError] = useState<string | null>(null);
   const [panelError, setPanelError] = useState<string | null>(null);
   const [isWebmailMode, setIsWebmailMode] = useState(false);
   const [shouldSubmitBridgeLogin, setShouldSubmitBridgeLogin] = useState(false);
@@ -589,10 +591,16 @@ export const EmailPage = () => {
   const emailFeedQuery = useQuery({
     queryKey: ['webmail-folder-feed', mailboxIdentity || 'all', activeFolderKey, visibleLimit, appliedSearch],
     queryFn: () => webmailService.getMessages({ page: 1, limit: visibleLimit, folderKey: activeFolderKey, query: appliedSearch }),
-    enabled: isPortalReady && canResolveMailboxCandidate && !isWebmailMode,
+    enabled: isPortalReady && canResolveMailboxCandidate && mailboxAvailableFromConfig && mailSessionAuthenticated && !isWebmailMode,
     staleTime: 30_000,
     refetchInterval:
-      isPortalReady && canResolveMailboxCandidate && !isWebmailMode && visibleLimit === DEFAULT_EMAIL_PAGE_LIMIT && !appliedSearch
+      isPortalReady &&
+      canResolveMailboxCandidate &&
+      mailboxAvailableFromConfig &&
+      mailSessionAuthenticated &&
+      !isWebmailMode &&
+      visibleLimit === DEFAULT_EMAIL_PAGE_LIMIT &&
+      !appliedSearch
         ? 60_000
         : false,
     refetchIntervalInBackground: false,
@@ -603,16 +611,17 @@ export const EmailPage = () => {
   const mailboxFeed = emailFeedQuery.data?.data;
   const nativeMailboxState: NativeMailboxState = !canResolveMailboxCandidate
     ? 'UNREGISTERED'
-    : mailboxFeed?.mailboxAvailable === true
+    : mailboxAvailableFromConfig
       ? 'READY'
-      : mailboxFeed?.mailboxAvailable === false
+      : webmailConfig?.mailboxAvailable === false
         ? mailboxIdentitySource === 'stored'
           ? 'UNAVAILABLE'
           : 'UNREGISTERED'
-        : emailFeedQuery.isError
+        : configQuery.isError
           ? 'ERROR'
           : 'LOADING';
-  const isNativeMailboxReady = nativeMailboxState === 'READY';
+  const isMailboxRegistered = nativeMailboxState === 'READY';
+  const isNativeMailboxReady = isMailboxRegistered && mailSessionAuthenticated;
   const mailboxMessages = isNativeMailboxReady ? mailboxFeed?.messages ?? [] : [];
   const totalMessageCount = isNativeMailboxReady ? Number(mailboxFeed?.pagination.total || 0) : 0;
   const hasAppliedSearch = appliedSearch.trim().length > 0;
@@ -646,12 +655,14 @@ export const EmailPage = () => {
   const selectedBodyText = selectedEmailDetail?.plainText || selectedEmailDetail?.previewText || selectedEmail?.snippet || '';
   const pageDescription = isNativeMailboxReady
     ? `Mailbox sekolah tampil langsung seperti daftar email harian. Mailbox aktif: ${mailboxIdentity}.`
+    : isMailboxRegistered
+      ? `Masuk ke mailbox sekolah ${mailboxIdentity} terlebih dahulu untuk membuka email harian.`
     : nativeMailboxState === 'LOADING'
       ? 'Sistem sedang memeriksa status mailbox sekolah Anda sebelum membuka email harian.'
     : nativeMailboxState === 'UNAVAILABLE'
       ? 'Mailbox sekolah untuk akun ini sudah terhubung, tetapi server mail belum menyiapkannya sepenuhnya.'
       : 'Daftarkan mailbox sekolah terlebih dahulu sebelum mulai memakai email harian.';
-  const canShowEmailAccessMenu = isNativeMailboxReady || (nativeMailboxState === 'UNREGISTERED' && isSelfRegistrationEnabled);
+  const canShowEmailAccessMenu = isNativeMailboxReady;
   const availableMoveActions = getFolderMoveActions(activeFolderKey);
   const closeEmailDetail = () => {
     setIsEmailDetailVisible(false);
@@ -694,6 +705,18 @@ export const EmailPage = () => {
     };
   }, [isAccessMenuOpen]);
 
+  useEffect(() => {
+    if (mailboxIdentity) {
+      setLoginUser(mailboxIdentity);
+    }
+  }, [mailboxIdentity]);
+
+  useEffect(() => {
+    if (!webmailConfig) return;
+    if (webmailConfig.mailSessionAuthenticated) return;
+    webmailSessionStorage.clearAccessToken();
+  }, [webmailConfig]);
+
   const persistWebmailMode = useCallback(
     (enabled: boolean) => {
       if (typeof window === 'undefined' || !userScopeKey) return;
@@ -729,6 +752,7 @@ export const EmailPage = () => {
   const openPanelSection = (openImmediatelyWhenSso = false) => {
     setPanelError(null);
     setRegisterError(null);
+    setLoginError(null);
     setIsRegisterMode(false);
     setIsEmailDetailVisible(false);
 
@@ -743,7 +767,18 @@ export const EmailPage = () => {
       return;
     }
 
-    setShouldSubmitBridgeLogin(false);
+    if (typeof window !== 'undefined' && userScopeKey) {
+      const credentials = parseBridgeCredentials(window.sessionStorage.getItem(getWebmailBridgeStorageKey(userScopeKey)));
+      if (credentials) {
+        setLoginUser(credentials.email);
+        setLoginPass(credentials.password);
+        setShouldSubmitBridgeLogin(true);
+      } else {
+        setShouldSubmitBridgeLogin(false);
+      }
+    } else {
+      setShouldSubmitBridgeLogin(false);
+    }
     setIframeSrc(getMailboxFolderUrl(bridgeLoginUrl, activeFolderKey));
     setIsWebmailMode(true);
     persistWebmailMode(true);
@@ -755,26 +790,6 @@ export const EmailPage = () => {
         block: 'start',
       });
     }, 80);
-  };
-
-  const openWebmailWithBridgeLogin = (email: string, password: string) => {
-    if (!userScopeKey) return;
-
-    const normalizedEmail = String(email || '').trim().toLowerCase();
-    setPanelError(null);
-    setLoginUser(normalizedEmail);
-    setLoginPass(password);
-    setShouldSubmitBridgeLogin(true);
-    setPendingAutoBridgeCredentials(null);
-    persistWebmailMode(true);
-    persistBridgeCredentials(normalizedEmail, password);
-
-    if (!isWebmailMode) {
-      setIsWebmailMode(true);
-      return;
-    }
-
-    setIframeNonce((previous) => previous + 1);
   };
 
   const startSsoMutation = useMutation({
@@ -795,21 +810,27 @@ export const EmailPage = () => {
     },
   });
 
-  const registerMutation = useMutation({
-    mutationFn: webmailService.register,
-    onSuccess: async (response, variables) => {
-      const nextMailboxIdentity = String(response?.data?.mailboxIdentity || '').trim().toLowerCase();
-      if (!nextMailboxIdentity) {
-        setRegisterError('Mailbox berhasil dibuat, tetapi identitas mailbox tidak ditemukan.');
+  const loginSessionMutation = useMutation({
+    mutationFn: (password?: string) => webmailService.loginSession(useSsoMode ? {} : { password }),
+    onSuccess: async (response) => {
+      const nextMailboxIdentity = String(response?.data?.mailboxIdentity || mailboxIdentity || '').trim().toLowerCase();
+      const accessToken = String(response?.data?.mailSession?.accessToken || '').trim();
+      if (!accessToken) {
+        setLoginError('Sesi mailbox berhasil dibuat, tetapi token sesi tidak ditemukan.');
+        toast.error('Sesi mailbox berhasil dibuat, tetapi token sesi tidak ditemukan.');
         return;
       }
 
-      setRegisterError(null);
-      setRegisterUser('');
-      setRegisterPass('');
-      setRegisterPassConfirm('');
-      setActiveFolderKey('INBOX');
-      setIsRegisterMode(false);
+      webmailSessionStorage.setAccessToken(accessToken);
+      if (nextMailboxIdentity && !useSsoMode && loginPass) {
+        persistBridgeCredentials(nextMailboxIdentity, loginPass);
+      }
+
+      setLoginUser(nextMailboxIdentity || mailboxIdentity);
+      setLoginPass('');
+      setLoginError(null);
+      setPanelError(null);
+      setIsWebmailMode(false);
       await queryClient.invalidateQueries({
         queryKey: ['webmail-config', userScopeKey],
         refetchType: 'active',
@@ -818,7 +839,44 @@ export const EmailPage = () => {
         queryKey: ['webmail-folder-feed'],
         refetchType: 'active',
       });
-      openWebmailWithBridgeLogin(nextMailboxIdentity, variables.password);
+    },
+    onError: (error) => {
+      setLoginError(getErrorMessage(error, 'Gagal masuk ke mailbox sekolah.'));
+    },
+  });
+
+  const registerMutation = useMutation({
+    mutationFn: webmailService.register,
+    onSuccess: async (response, variables) => {
+      const nextMailboxIdentity = String(response?.data?.mailboxIdentity || '').trim().toLowerCase();
+      const accessToken = String(response?.data?.mailSession?.accessToken || '').trim();
+      if (!nextMailboxIdentity) {
+        setRegisterError('Mailbox berhasil dibuat, tetapi identitas mailbox tidak ditemukan.');
+        return;
+      }
+
+      if (accessToken) {
+        webmailSessionStorage.setAccessToken(accessToken);
+      }
+      persistBridgeCredentials(nextMailboxIdentity, variables.password);
+      setRegisterError(null);
+      setLoginError(null);
+      setRegisterUser('');
+      setRegisterPass('');
+      setRegisterPassConfirm('');
+      setLoginUser(nextMailboxIdentity);
+      setLoginPass('');
+      setActiveFolderKey('INBOX');
+      setIsRegisterMode(false);
+      setIsWebmailMode(false);
+      await queryClient.invalidateQueries({
+        queryKey: ['webmail-config', userScopeKey],
+        refetchType: 'active',
+      });
+      await queryClient.invalidateQueries({
+        queryKey: ['webmail-folder-feed'],
+        refetchType: 'active',
+      });
     },
     onError: (error) => {
       setRegisterError(getErrorMessage(error, 'Gagal membuat akun webmail.'));
@@ -1104,6 +1162,7 @@ export const EmailPage = () => {
   const handleRegisterSubmit = (event: FormEvent<HTMLFormElement>) => {
     event.preventDefault();
     if (!isSelfRegistrationEnabled) return;
+    setLoginError(null);
 
     const username = registerUser.trim().toLowerCase();
     const password = registerPass;
@@ -1135,41 +1194,69 @@ export const EmailPage = () => {
   };
 
   const handleDisconnectClick = () => {
-    if (!useSsoMode) {
-      webmailLogoutFormRef.current?.submit();
-    }
     persistWebmailMode(false);
-    clearBridgeCredentials();
-    bridgeLoginInFlightRef.current = false;
-    lastBridgeAuthAtRef.current = 0;
     setPanelError(null);
-    setLoginUser('');
-    setLoginPass('');
     setShouldSubmitBridgeLogin(false);
     setPendingAutoBridgeCredentials(null);
 
     window.setTimeout(() => {
       setIsWebmailMode(false);
-      setIframeSrc(getMailboxFolderUrl(bridgeLoginUrl, activeFolderKey));
-      setIframeNonce((previous) => previous + 1);
     }, 120);
-  };
-
-  const handleHeaderOpenPanelClick = () => {
-    setIsAccessMenuOpen(false);
-    openPanelSection(true);
-  };
-
-  const handleHeaderOpenRegisterClick = () => {
-    setIsAccessMenuOpen(false);
-    setRegisterError(null);
-    setPanelError(null);
-    setIsRegisterMode(true);
   };
 
   const handleHeaderLogoutClick = () => {
     setIsAccessMenuOpen(false);
-    handleDisconnectClick();
+    const confirmed =
+      typeof window === 'undefined' ? true : window.confirm('Apakah Anda yakin ingin keluar dari mailbox sekolah?');
+    if (!confirmed) return;
+
+    if (!useSsoMode) {
+      webmailLogoutFormRef.current?.submit();
+    }
+    webmailSessionStorage.clearAccessToken();
+    clearBridgeCredentials();
+    persistWebmailMode(false);
+    bridgeLoginInFlightRef.current = false;
+    lastBridgeAuthAtRef.current = 0;
+    setPanelError(null);
+    setIsWebmailMode(false);
+    setShouldSubmitBridgeLogin(false);
+    setPendingAutoBridgeCredentials(null);
+    setLoginPass('');
+    setLoginError(null);
+    setActiveFolderKey('INBOX');
+    setSearchDraft('');
+    setAppliedSearch('');
+    setVisibleLimit(DEFAULT_EMAIL_PAGE_LIMIT);
+    void webmailService.logoutSession().catch(() => undefined);
+    void queryClient.invalidateQueries({
+      queryKey: ['webmail-config', userScopeKey],
+      refetchType: 'active',
+    });
+    void queryClient.removeQueries({
+      queryKey: ['webmail-folder-feed'],
+    });
+    closeEmailDetail();
+    setIsComposeMode(false);
+  };
+
+  const handleLoginSubmit = (event: FormEvent<HTMLFormElement>) => {
+    event.preventDefault();
+    setRegisterError(null);
+    setLoginError(null);
+
+    if (useSsoMode) {
+      loginSessionMutation.mutate(undefined);
+      return;
+    }
+
+    const password = String(loginPass || '');
+    if (!password) {
+      setLoginError('Password mailbox wajib diisi.');
+      return;
+    }
+
+    loginSessionMutation.mutate(password);
   };
 
   const handleReloadPanel = () => {
@@ -1365,39 +1452,13 @@ export const EmailPage = () => {
                   {isNativeMailboxReady ? (
                     <button
                       type="button"
-                      onClick={handleHeaderOpenPanelClick}
-                      className="flex items-start gap-3 rounded-2xl px-3 py-3 text-left transition hover:bg-slate-50"
-                    >
-                      <LogIn className="mt-0.5 h-4 w-4 text-[#3250b9]" />
-                      <div className="space-y-1">
-                        <p className="text-sm font-semibold text-slate-900">Masuk ke Panel Email</p>
-                        <p className="text-xs leading-5 text-slate-500">Buka panel webmail penuh untuk fitur lanjutan.</p>
-                      </div>
-                    </button>
-                  ) : null}
-                  {isNativeMailboxReady ? (
-                    <button
-                      type="button"
                       onClick={handleHeaderLogoutClick}
                       className="flex items-start gap-3 rounded-2xl px-3 py-3 text-left transition hover:bg-amber-50"
                     >
                       <LogOut className="mt-0.5 h-4 w-4 text-amber-700" />
                       <div className="space-y-1">
-                        <p className="text-sm font-semibold text-slate-900">Keluar Panel Email</p>
-                        <p className="text-xs leading-5 text-slate-500">Akhiri sesi panel email agar tidak tetap tersambung.</p>
-                      </div>
-                    </button>
-                  ) : null}
-                  {nativeMailboxState === 'UNREGISTERED' && isSelfRegistrationEnabled ? (
-                    <button
-                      type="button"
-                      onClick={handleHeaderOpenRegisterClick}
-                      className="flex items-start gap-3 rounded-2xl px-3 py-3 text-left transition hover:bg-slate-50"
-                    >
-                      <SquarePen className="mt-0.5 h-4 w-4 text-[#3250b9]" />
-                      <div className="space-y-1">
-                        <p className="text-sm font-semibold text-slate-900">Daftar Mailbox</p>
-                        <p className="text-xs leading-5 text-slate-500">Buat alamat email sekolah dengan username yang Anda pilih.</p>
+                        <p className="text-sm font-semibold text-slate-900">Keluar dari Mailbox</p>
+                        <p className="text-xs leading-5 text-slate-500">Kembali ke halaman login mailbox sekolah.</p>
                       </div>
                     </button>
                   ) : null}
@@ -1408,10 +1469,22 @@ export const EmailPage = () => {
         </div>
 
         <SectionCard
-          title={isNativeMailboxReady ? activeFolderTitle : nativeMailboxState === 'LOADING' ? 'Memeriksa Mailbox' : 'Akses Email Sekolah'}
+          title={
+            isNativeMailboxReady
+              ? activeFolderTitle
+              : isMailboxRegistered
+                ? 'Masuk ke Mailbox'
+                : nativeMailboxState === 'LOADING'
+                  ? 'Memeriksa Mailbox'
+                  : 'Akses Email Sekolah'
+          }
           subtitle={
             isNativeMailboxReady
               ? activeFolderDescription
+              : isMailboxRegistered
+                ? useSsoMode
+                  ? 'Masuk ke mailbox sekolah Anda terlebih dahulu agar inbox dapat dibuka.'
+                  : 'Masukkan password mailbox sekolah Anda terlebih dahulu agar inbox dapat dibuka.'
               : nativeMailboxState === 'LOADING'
                 ? 'Sistem sedang memeriksa status mailbox sekolah Anda sebelum membuka daftar email harian.'
                 : nativeMailboxState === 'UNAVAILABLE'
@@ -1426,12 +1499,12 @@ export const EmailPage = () => {
           ) : nativeMailboxState === 'ERROR' ? (
             <div className="space-y-3 rounded-xl border border-rose-200 bg-rose-50 px-4 py-4">
               <p className="text-sm font-semibold text-rose-700">
-                {getErrorMessage(emailFeedQuery.error, 'Gagal memeriksa status mailbox sekolah.')}
+                {getErrorMessage(configQuery.error, 'Gagal memeriksa status mailbox sekolah.')}
               </p>
               <button
                 type="button"
                 onClick={() => {
-                  void emailFeedQuery.refetch();
+                  void configQuery.refetch();
                 }}
                 className="rounded-full bg-rose-600 px-4 py-2 text-sm font-semibold text-white transition hover:bg-rose-700"
               >
@@ -1440,16 +1513,61 @@ export const EmailPage = () => {
             </div>
           ) : !isNativeMailboxReady ? (
             <div className="space-y-4">
+              {isMailboxRegistered ? (
+                <form className="space-y-4 rounded-2xl border border-slate-200 bg-slate-50 px-4 py-4" onSubmit={handleLoginSubmit}>
+                  <div className="space-y-2">
+                    <label className="text-sm font-semibold text-slate-800">Email</label>
+                    <input
+                      type="text"
+                      value={mailboxIdentity}
+                      readOnly
+                      className="w-full rounded-2xl border border-slate-200 bg-white px-4 py-3 text-sm text-slate-700"
+                    />
+                  </div>
+                  {!useSsoMode ? (
+                    <div className="space-y-2">
+                      <label className="text-sm font-semibold text-slate-800">Password</label>
+                      <input
+                        type="password"
+                        value={loginPass}
+                        onChange={(event) => {
+                          setLoginPass(event.target.value);
+                          if (loginError) setLoginError(null);
+                        }}
+                        placeholder="Masukkan password mailbox"
+                        className="w-full rounded-2xl border border-slate-200 bg-white px-4 py-3 text-sm text-slate-800 placeholder:text-slate-400 focus:border-slate-400 focus:outline-none"
+                      />
+                    </div>
+                  ) : null}
+                  {loginError ? (
+                    <div className="rounded-2xl border border-rose-200 bg-rose-50 px-4 py-3 text-sm leading-6 text-rose-700">{loginError}</div>
+                  ) : null}
+                  <button
+                    type="submit"
+                    disabled={loginSessionMutation.isPending}
+                    className="rounded-2xl bg-[#3250b9] px-4 py-3 text-sm font-semibold text-white transition hover:bg-[#2a44a0] disabled:cursor-not-allowed disabled:opacity-70"
+                  >
+                    {loginSessionMutation.isPending ? 'Memproses...' : 'Masuk ke Mailbox'}
+                  </button>
+                </form>
+              ) : null}
+
               <div className="rounded-2xl border border-slate-200 bg-slate-50 px-4 py-4">
                 <p className="text-sm font-semibold text-slate-900">
-                  {nativeMailboxState === 'UNAVAILABLE' ? 'Mailbox belum aktif di server' : 'Belum punya mailbox sekolah'}
+                  {nativeMailboxState === 'UNAVAILABLE'
+                    ? 'Mailbox belum aktif di server'
+                    : isMailboxRegistered
+                      ? 'Mailbox siap dipakai'
+                      : 'Belum punya mailbox sekolah'}
                 </p>
                 <p className="mt-2 text-sm leading-6 text-slate-600">
                   {nativeMailboxState === 'UNAVAILABLE'
                     ? 'Mailbox sudah tercatat untuk akun ini, tetapi inbox native dan panel email penuh baru bisa dipakai setelah server mail selesai menyiapkannya.'
+                    : isMailboxRegistered
+                      ? 'Setelah berhasil masuk, halaman ini akan langsung berubah menjadi inbox email harian Anda.'
                     : 'Daftar mailbox sekolah terlebih dahulu. Setelah mailbox aktif, halaman ini akan otomatis berubah menjadi daftar inbox email harian.'}
                 </p>
-                {nativeMailboxState === 'UNAVAILABLE' && mailboxIdentity ? (
+                {(nativeMailboxState === 'UNAVAILABLE' || isMailboxRegistered) && mailboxIdentity ? (
                   <div className="mt-4 rounded-2xl border border-amber-200 bg-amber-50 px-4 py-3">
                     <p className="text-xs font-semibold uppercase tracking-[0.14em] text-amber-700">Mailbox Terhubung</p>
                     <p className="mt-1 text-sm font-semibold text-slate-900">{mailboxIdentity}</p>
@@ -1464,6 +1582,7 @@ export const EmailPage = () => {
                     onClick={() => {
                       setIsRegisterMode(true);
                       setRegisterError(null);
+                      setLoginError(null);
                     }}
                     className="rounded-2xl bg-[#3250b9] px-4 py-3 text-sm font-semibold text-white transition hover:bg-[#2a44a0]"
                   >
@@ -1856,10 +1975,10 @@ export const EmailPage = () => {
                   <button
                     type="button"
                     onClick={handleDisconnectClick}
-                    className="inline-flex items-center justify-center gap-2 rounded-2xl border border-amber-200 bg-amber-50 px-4 py-3 text-sm font-semibold text-amber-800 transition hover:bg-amber-100"
+                    className="inline-flex items-center justify-center gap-2 rounded-2xl border border-slate-200 bg-white px-4 py-3 text-sm font-semibold text-slate-800 transition hover:bg-slate-50"
                   >
-                    <ArrowLeft className="h-4 w-4" />
-                    Keluar Panel Email
+                    <X className="h-4 w-4" />
+                    Tutup Panel
                   </button>
                   <button
                     type="button"
@@ -1924,6 +2043,7 @@ export const EmailPage = () => {
                 onClick={() => {
                   setIsRegisterMode(false);
                   setRegisterError(null);
+                  setLoginError(null);
                 }}
                 className="flex h-10 w-10 items-center justify-center rounded-2xl border border-slate-200 bg-white text-slate-500 transition hover:bg-slate-50 hover:text-slate-700"
               >
@@ -1995,6 +2115,7 @@ export const EmailPage = () => {
                     onClick={() => {
                       setIsRegisterMode(false);
                       setRegisterError(null);
+                      setLoginError(null);
                     }}
                     className="rounded-2xl border border-slate-200 bg-white px-4 py-3 text-sm font-semibold text-slate-800 transition hover:bg-slate-50"
                   >

@@ -1,4 +1,5 @@
 import axios from 'axios';
+import { webmailSessionStorage } from './webmailSessionStorage';
 
 const port = typeof window !== 'undefined' ? window.location.port : '';
 const isViteDev = port === '5173';
@@ -48,6 +49,10 @@ api.interceptors.request.use(
     const token = localStorage.getItem('token');
     if (token) {
       config.headers.Authorization = `Bearer ${token}`;
+    }
+    const webmailSessionToken = webmailSessionStorage.getAccessToken();
+    if (webmailSessionToken) {
+      config.headers['X-Webmail-Session'] = webmailSessionToken;
     }
     return config;
   },

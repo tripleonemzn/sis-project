@@ -4,7 +4,9 @@ import {
   deleteWebmailInboxMessage,
   getWebmailConfig,
   getWebmailInboxMessageDetail,
+  loginWebmailMailboxSession,
   listWebmailInboxMessages,
+  logoutWebmailMailboxSession,
   markWebmailInboxMessageRead,
   markWebmailInboxMessageUnread,
   moveWebmailInboxMessage,
@@ -18,6 +20,8 @@ const router = Router();
 
 router.use(authMiddleware);
 router.get('/config', getWebmailConfig);
+router.post('/session/login', loginWebmailMailboxSession);
+router.post('/session/logout', logoutWebmailMailboxSession);
 router.get('/messages', listWebmailInboxMessages);
 router.get('/messages/:guid', getWebmailInboxMessageDetail);
 router.patch('/messages/:guid/read', markWebmailInboxMessageRead);
