@@ -1,4 +1,11 @@
-import type { QuestionBlueprint, QuestionCard } from '../services/exam.service';
+import type {
+  QuestionBlueprint,
+  QuestionCard,
+  QuestionMatrixColumn,
+  QuestionMatrixPromptColumn,
+  QuestionMatrixRow,
+  QuestionMatrixRowCell,
+} from '../services/exam.service';
 
 type SupportOptionLike = {
   content?: string | null;
@@ -15,6 +22,9 @@ type SupportQuestionLike = {
   question_video_url?: string | null;
   video_url?: string | null;
   options?: SupportOptionLike[] | null;
+  matrixPromptColumns?: QuestionMatrixPromptColumn[] | null;
+  matrixColumns?: QuestionMatrixColumn[] | null;
+  matrixRows?: QuestionMatrixRow[] | null;
   blueprint?: QuestionBlueprint | null;
   questionCard?: QuestionCard | null;
 };
@@ -88,6 +98,65 @@ const stripHtmlText = (value: unknown): string => {
 
 export const hasFilledSupportText = (value: unknown): boolean => stripHtmlText(value).length > 0;
 
+function normalizeMatrixPromptColumns(
+  raw: QuestionMatrixPromptColumn[] | null | undefined,
+): QuestionMatrixPromptColumn[] {
+  if (!Array.isArray(raw)) return [];
+  return raw
+    .map((item, index) => ({
+      id: String(item?.id || `matrix-prompt-col-${index + 1}`),
+      label: String(item?.label || '').trim(),
+    }))
+    .filter((item) => item.label.length > 0);
+}
+
+function normalizeMatrixColumns(raw: QuestionMatrixColumn[] | null | undefined): QuestionMatrixColumn[] {
+  if (!Array.isArray(raw)) return [];
+  return raw
+    .map((item, index) => ({
+      id: String(item?.id || `matrix-col-${index + 1}`),
+      content: String(item?.content || '').trim(),
+    }))
+    .filter((item) => item.content.length > 0);
+}
+
+function normalizeMatrixRowCells(
+  raw: QuestionMatrixRowCell[] | null | undefined,
+  validPromptColumnIds: Set<string>,
+): QuestionMatrixRowCell[] {
+  if (!Array.isArray(raw)) return [];
+  return raw
+    .map((item) => ({
+      columnId: String(item?.columnId || '').trim(),
+      content: String(item?.content || '').trim(),
+    }))
+    .filter((item) => item.columnId && validPromptColumnIds.has(item.columnId) && item.content.length > 0);
+}
+
+function normalizeMatrixRows(
+  raw: QuestionMatrixRow[] | null | undefined,
+  promptColumns: QuestionMatrixPromptColumn[],
+  columns: QuestionMatrixColumn[],
+): QuestionMatrixRow[] {
+  if (!Array.isArray(raw)) return [];
+  const validPromptColumnIds = new Set(promptColumns.map((column) => column.id));
+  const validColumnIds = new Set(columns.map((column) => column.id));
+
+  return raw.reduce<QuestionMatrixRow[]>((rows, item, index) => {
+    const content = String(item?.content || '').trim();
+    const cells = normalizeMatrixRowCells(item?.cells || [], validPromptColumnIds);
+    const correctOptionId = String(item?.correctOptionId || '').trim();
+    if (!content && cells.length === 0) return rows;
+    rows.push({
+      id: String(item?.id || `matrix-row-${index + 1}`),
+      content,
+      cells,
+      correctOptionId: correctOptionId && validColumnIds.has(correctOptionId) ? correctOptionId : '',
+    });
+    return rows;
+  }, []);
+}
+
 const getSectionStatus = (hasAnyValue: boolean, isComplete: boolean): ExamQuestionSupportStatus => {
   if (!hasAnyValue) return 'EMPTY';
   return isComplete ? 'COMPLETE' : 'PARTIAL';
@@ -141,6 +210,9 @@ export const getExamQuestionSupportSnapshot = (
   const blueprint = normalizeBlueprint(question.blueprint);
   const questionCard = normalizeQuestionCard(question.questionCard);
   const options = Array.isArray(question.options) ? question.options : [];
+  const matrixPromptColumns = normalizeMatrixPromptColumns(question.matrixPromptColumns);
+  const matrixColumns = normalizeMatrixColumns(question.matrixColumns);
+  const matrixRows = normalizeMatrixRows(question.matrixRows, matrixPromptColumns, matrixColumns);
   const nonEmptyOptions = options.filter(
     (option) =>
       hasFilledSupportText(option.content) ||
@@ -156,14 +228,32 @@ export const getExamQuestionSupportSnapshot = (
   const hasCorrectMetadata = options.some((option) => typeof option.isCorrect === 'boolean');
   const hasCorrectAnswer = hasCorrectMetadata ? options.some((option) => option.isCorrect) : true;
   const normalizedType = String(question.type || '').trim().toUpperCase();
+  const validMatrixColumnIds = new Set(matrixColumns.map((column) => column.id));
+  const hasMatrixStructure = matrixPromptColumns.length > 0 || matrixColumns.length > 0 || matrixRows.length > 0;
+  const isMatrixQuestionReady =
+    hasQuestionPrompt &&
+    matrixPromptColumns.length > 0 &&
+    matrixColumns.length >= 2 &&
+    matrixRows.length > 0 &&
+    matrixRows.every((row) => {
+      const rowHasContent =
+        hasFilledSupportText(row.content) ||
+        (Array.isArray(row.cells) && row.cells.some((cell) => hasFilledSupportText(cell.content)));
+      const correctOptionId = String(row.correctOptionId || '').trim();
+      return rowHasContent && Boolean(correctOptionId) && validMatrixColumnIds.has(correctOptionId);
+    });
   const questionReady =
     normalizedType === 'ESSAY'
       ? hasQuestionPrompt
-      : hasQuestionPrompt && nonEmptyOptions.length > 0 && hasCorrectAnswer;
+      : normalizedType === 'MATRIX_SINGLE_CHOICE'
+        ? isMatrixQuestionReady
+        : hasQuestionPrompt && nonEmptyOptions.length > 0 && hasCorrectAnswer;
   const questionTouched =
-    hasQuestionPrompt ||
-    nonEmptyOptions.length > 0 ||
-    (hasCorrectMetadata && options.some((option) => option.isCorrect));
+    normalizedType === 'MATRIX_SINGLE_CHOICE'
+      ? hasQuestionPrompt || hasMatrixStructure
+      : hasQuestionPrompt ||
+        nonEmptyOptions.length > 0 ||
+        (hasCorrectMetadata && options.some((option) => option.isCorrect));
 
   const blueprintTouched =
     hasFilledSupportText(blueprint.competency) ||

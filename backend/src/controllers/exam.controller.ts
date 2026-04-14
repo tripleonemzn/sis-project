@@ -4250,6 +4250,27 @@ function buildDerivedQuestionCard(question: NormalizedExamQuestion): ExamQuestio
     return Object.values(normalized).some(Boolean) ? normalized : undefined;
 }
 
+function isBlueprintSupportComplete(raw: ExamQuestionBlueprint | undefined): boolean {
+    const blueprint = normalizeBlueprint(raw);
+    return Boolean(
+        blueprint?.competency &&
+            blueprint.learningObjective &&
+            blueprint.indicator &&
+            blueprint.materialScope &&
+            blueprint.cognitiveLevel,
+    );
+}
+
+function isQuestionCardSupportComplete(raw: ExamQuestionCard | undefined): boolean {
+    const questionCard = normalizeQuestionCard(raw);
+    return Boolean(
+        questionCard?.stimulus &&
+            questionCard.answerRationale &&
+            questionCard.scoringGuideline &&
+            questionCard.distractorNotes,
+    );
+}
+
 function normalizeReviewFeedback(raw: unknown): ExamQuestionReviewFeedback | undefined {
     const source = asRecord(raw);
     if (!source) return undefined;
@@ -4302,14 +4323,17 @@ function summarizePacketSupport(questionPayload: unknown): {
     let blueprintCount = 0;
     let questionCardCount = 0;
 
-    questions.forEach((question) => {
-        const source = asRecord(question);
-        const metadata = asRecord(source?.metadata);
-        if (normalizeBlueprint(source?.blueprint ?? metadata?.blueprint)) {
-            blueprintCount += 1;
-        }
-        if (normalizeQuestionCard(source?.questionCard ?? metadata?.questionCard)) {
-            questionCardCount += 1;
+    questions.forEach((question, index) => {
+        try {
+            const normalizedQuestion = normalizeExamQuestionPayload(question, index);
+            if (isBlueprintSupportComplete(normalizedQuestion.blueprint)) {
+                blueprintCount += 1;
+            }
+            if (isQuestionCardSupportComplete(normalizedQuestion.questionCard)) {
+                questionCardCount += 1;
+            }
+        } catch {
+            // Abaikan butir yang tidak valid agar summary kesiapan tidak memutus list jadwal.
         }
     });
 
