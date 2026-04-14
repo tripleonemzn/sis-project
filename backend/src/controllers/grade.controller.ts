@@ -1662,6 +1662,75 @@ function resolvePrimarySlotCodesFromRules(componentRuleMap: Map<string, ExamComp
   return { formative, midterm, final }
 }
 
+function listAvailableFinalSlotCodes(componentRuleMap: Map<string, ExamComponentRule>): string[] {
+  const finalSlots: string[] = []
+
+  componentRuleMap.forEach((rule) => {
+    const slotCode = normalizeReportSlotCode(rule.reportSlotCode || rule.reportSlot)
+    if (slotCode === DEFAULT_REPORT_SLOT_CODE) return
+    if (!isFinalAliasCode(slotCode)) return
+    if (!finalSlots.includes(slotCode)) {
+      finalSlots.push(slotCode)
+    }
+  })
+
+  return finalSlots
+}
+
+function resolveSemesterFinalSlotCode(
+  finalSlots: string[],
+  semester: Semester | null | undefined,
+): string | null {
+  const normalizedFinalSlots = finalSlots
+    .map((slot) => normalizeReportSlotCode(slot))
+    .filter((slot, index, arr) => slot !== DEFAULT_REPORT_SLOT_CODE && arr.indexOf(slot) === index)
+
+  if (normalizedFinalSlots.length === 0) return null
+
+  if (semester === Semester.EVEN) {
+    return (
+      normalizedFinalSlots.find((slot) => isFinalEvenAliasCode(slot)) ||
+      normalizedFinalSlots.find((slot) => !isFinalOddAliasCode(slot)) ||
+      normalizedFinalSlots[normalizedFinalSlots.length - 1]
+    )
+  }
+
+  if (semester === Semester.ODD) {
+    return (
+      normalizedFinalSlots.find((slot) => isFinalOddAliasCode(slot)) ||
+      normalizedFinalSlots.find((slot) => !isFinalEvenAliasCode(slot)) ||
+      normalizedFinalSlots[0]
+    )
+  }
+
+  return normalizedFinalSlots[0]
+}
+
+function resolvePrimarySlotCodesForSemester(
+  componentRuleMap: Map<string, ExamComponentRule>,
+  semester: Semester | null | undefined,
+): {
+  formative: string
+  midterm: string
+  final: string
+} {
+  const primarySlots = resolvePrimarySlotCodesFromRules(componentRuleMap)
+  const semesterFinalSlot = resolveSemesterFinalSlotCode(
+    listAvailableFinalSlotCodes(componentRuleMap),
+    semester,
+  )
+
+  if (
+    semesterFinalSlot &&
+    semesterFinalSlot !== primarySlots.formative &&
+    semesterFinalSlot !== primarySlots.midterm
+  ) {
+    primarySlots.final = semesterFinalSlot
+  }
+
+  return primarySlots
+}
+
 function recomputeFinalScoreFromSlots(
   slotScores: Record<string, number | null>,
   includeSlots: Set<string>,
@@ -1789,6 +1858,8 @@ type DynamicScoreEntryRow = {
   reportSlot?: ReportComponentSlot | null
   score: number | null
   recordedAt?: Date | null
+  sourceType?: string | null
+  sourceKey?: string | null
 }
 
 async function collectDynamicScoreEntryRows(params: {
@@ -1815,6 +1886,8 @@ async function collectDynamicScoreEntryRows(params: {
         reportSlot: true,
         score: true,
         recordedAt: true,
+        sourceType: true,
+        sourceKey: true,
       },
     })) as DynamicScoreEntryRow[]
 
@@ -1838,6 +1911,8 @@ async function collectDynamicScoreEntryRows(params: {
               reportSlot: true,
               score: true,
               recordedAt: true,
+              sourceType: true,
+              sourceKey: true,
             },
           })) as DynamicScoreEntryRow[]
 
@@ -1855,20 +1930,70 @@ async function collectDynamicScoreEntryRows(params: {
 function computeDynamicSlotScoresFromScoreEntries(rows: DynamicScoreEntryRow[]): Record<string, number> {
   if (!Array.isArray(rows) || rows.length === 0) return {}
 
-  const buckets = new Map<string, number[]>()
+  const buckets = new Map<string, DynamicScoreEntryRow[]>()
   rows.forEach((row) => {
     const slot = normalizeReportSlotCode(row.reportSlotCode || row.reportSlot)
     if (slot === DEFAULT_REPORT_SLOT_CODE) return
     const score = Number(row.score)
     if (!Number.isFinite(score)) return
     const values = buckets.get(slot) || []
-    values.push(score)
+    values.push(row)
     buckets.set(slot, values)
   })
 
   const result: Record<string, number> = {}
-  buckets.forEach((values, slot) => {
-    const average = calculateAverage(values)
+  buckets.forEach((entries, slot) => {
+    const manualEntries = entries.filter(
+      (entry) => normalizeComponentCode(entry.sourceType) === 'MANUAL_GRADE',
+    )
+    const prioritizedEntries = manualEntries.length > 0 ? manualEntries : entries
+
+    if (manualEntries.length > 0) {
+      const seriesRows = prioritizedEntries.filter((entry) =>
+        /^studentGrade:\d+:(nf\d+|nf_extra:\d+)$/i.test(String(entry.sourceKey || '')),
+      )
+
+      if (seriesRows.length > 0) {
+        const latestBySourceKey = new Map<string, DynamicScoreEntryRow>()
+        seriesRows.forEach((entry) => {
+          const sourceKey = String(entry.sourceKey || '').trim()
+          if (!sourceKey) return
+          const previous = latestBySourceKey.get(sourceKey)
+          const previousTime = previous?.recordedAt ? new Date(previous.recordedAt).getTime() : 0
+          const nextTime = entry.recordedAt ? new Date(entry.recordedAt).getTime() : 0
+          if (!previous || nextTime >= previousTime) {
+            latestBySourceKey.set(sourceKey, entry)
+          }
+        })
+        const averaged = calculateAverage(
+          Array.from(latestBySourceKey.values())
+            .map((entry) => Number(entry.score))
+            .filter((score) => Number.isFinite(score)),
+        )
+        if (averaged !== null) {
+          result[slot] = averaged
+        }
+        return
+      }
+
+      const latestManualEntry = prioritizedEntries.reduce<DynamicScoreEntryRow | null>((latest, entry) => {
+        if (!latest) return entry
+        const latestTime = latest.recordedAt ? new Date(latest.recordedAt).getTime() : 0
+        const nextTime = entry.recordedAt ? new Date(entry.recordedAt).getTime() : 0
+        return nextTime >= latestTime ? entry : latest
+      }, null)
+      const latestScore = Number(latestManualEntry?.score)
+      if (Number.isFinite(latestScore)) {
+        result[slot] = latestScore
+      }
+      return
+    }
+
+    const average = calculateAverage(
+      prioritizedEntries
+        .map((entry) => Number(entry.score))
+        .filter((score) => Number.isFinite(score)),
+    )
     if (average !== null) {
       result[slot] = average
     }
@@ -2281,7 +2406,7 @@ export const syncReportGrade = async (
   }
 
   const includeSlots = resolveIncludedReportSlots(componentRuleMap)
-  const primarySlots = resolvePrimarySlotCodesFromRules(componentRuleMap)
+  const primarySlots = resolvePrimarySlotCodesForSemester(componentRuleMap, semester)
   const semesterRange = resolveSemesterRange(academicYear, semester)
   const programSlotMap = await getProgramReportSlotMap(academicYearId, componentRuleMap)
 
@@ -4143,7 +4268,7 @@ export const generateReportGrades = async (req: Request, res: Response) => {
     const reportGrades = []
     const componentRuleMap = await getExamComponentRuleMap(Number(academic_year_id))
     const includeSlots = resolveIncludedReportSlots(componentRuleMap)
-    const primarySlots = resolvePrimarySlotCodesFromRules(componentRuleMap)
+    const primarySlots = resolvePrimarySlotCodesForSemester(componentRuleMap, semester as Semester)
     const academicYear = await prisma.academicYear.findUnique({
       where: { id: Number(academic_year_id) },
       select: {
@@ -4578,7 +4703,10 @@ export const getReportGrades = async (req: Request, res: Response) => {
           .catch(() => []),
       ])
 
-      const resolvedPrimary = resolvePrimarySlotCodesFromRules(componentRuleMap)
+      const resolvedPrimary = resolvePrimarySlotCodesForSemester(
+        componentRuleMap,
+        semester ? (semester as Semester) : null,
+      )
       const resolvedIncludeSlots = Array.from(resolveIncludedReportSlots(componentRuleMap))
       const slotLabels: Record<string, { label: string; componentType: GradeComponentType }> = {}
 
@@ -4659,7 +4787,7 @@ export const updateReportGrade = async (req: Request, res: Response) => {
 
     const componentRuleMap = await getExamComponentRuleMap(existingGrade.academicYearId)
     const includeSlots = resolveIncludedReportSlots(componentRuleMap)
-    const primarySlots = resolvePrimarySlotCodesFromRules(componentRuleMap)
+    const primarySlots = resolvePrimarySlotCodesForSemester(componentRuleMap, existingGrade.semester)
     const nextSlotScores = parseSlotScoreMap(existingGrade.slotScores)
 
     if (nextSlotScores[primarySlots.formative] === undefined && existingGrade.formatifScore !== null) {
