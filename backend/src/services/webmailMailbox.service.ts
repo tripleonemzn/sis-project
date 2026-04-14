@@ -666,7 +666,17 @@ export async function validateWebmailMailboxPassword(mailboxIdentity: string, pa
   try {
     await execFileAsync(
       'docker',
-      ['exec', getDovecotContainerName(), 'doveadm', 'auth', 'test', '-u', normalizedMailbox, normalizedMailbox, normalizedPassword],
+      [
+        'exec',
+        getDovecotContainerName(),
+        'doveadm',
+        'auth',
+        'test',
+        '-x',
+        'service=imap',
+        normalizedMailbox,
+        normalizedPassword,
+      ],
       {
         timeout: DOVEADM_TIMEOUT_MS,
         maxBuffer: 1024 * 1024,

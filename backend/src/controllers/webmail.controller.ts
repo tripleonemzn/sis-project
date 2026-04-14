@@ -766,6 +766,11 @@ export const resetOwnWebmailPassword = asyncHandler(async (req: AuthRequest, res
     );
   }
 
+  const passwordReady = await validateWebmailMailboxPassword(mailboxIdentity, nextPassword);
+  if (!passwordReady) {
+    throw new ApiError(502, 'Password mailbox gagal diverifikasi setelah reset. Silakan coba lagi.');
+  }
+
   await writeAuditLog(
     user.id,
     String(user.role),

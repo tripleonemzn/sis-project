@@ -9,6 +9,7 @@ import { ApiError, ApiResponse, asyncHandler } from '../utils/api';
 import { AuthRequest } from '../middleware/auth';
 import prisma from '../utils/prisma';
 import { writeAuditLog } from '../utils/auditLog';
+import { validateWebmailMailboxPassword } from '../services/webmailMailbox.service';
 import {
   getRealtimePresenceSnapshot,
   type RealtimePresencePlatform,
@@ -1096,6 +1097,11 @@ export const resetWebmailMailboxPassword = asyncHandler(async (req: AuthRequest,
       400,
       detailMessage ? `Gagal reset password mailbox: ${detailMessage}` : 'Gagal reset password mailbox di Mailcow',
     );
+  }
+
+  const passwordReady = await validateWebmailMailboxPassword(mailboxIdentity, nextPassword);
+  if (!passwordReady) {
+    throw new ApiError(502, 'Password mailbox gagal diverifikasi setelah reset. Silakan coba lagi.');
   }
 
   const auditReason = toMaybeString(req.body?.reason) || 'Reset password mailbox webmail oleh admin';
