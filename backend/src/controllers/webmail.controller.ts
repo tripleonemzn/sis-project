@@ -50,6 +50,7 @@ const WEBMAIL_PASSWORD_NUMBERS = '23456789';
 const WEBMAIL_PASSWORD_SYMBOLS = '!@#$%^&*()-_=+';
 const WEBMAIL_RESET_AUDIT_ENTITY = 'WEBMAIL_MAILBOX';
 const WEBMAIL_SELF_RESET_AUDIT_ACTION = 'SELF_RESET_PASSWORD';
+const WEBMAIL_SELF_CHANGE_AUDIT_ACTION = 'SELF_CHANGE_PASSWORD';
 const WEBMAIL_SESSION_HEADER = 'x-webmail-session';
 const WEBMAIL_SESSION_TYPE = 'webmail-session';
 const RESERVED_MAILBOX_LOCAL_PARTS = new Set([
@@ -81,6 +82,12 @@ type RegisterMailboxBody = {
 
 type LoginMailboxSessionBody = {
   password?: unknown;
+};
+
+type ChangeMailboxPasswordBody = {
+  currentPassword?: unknown;
+  newPassword?: unknown;
+  confirmPassword?: unknown;
 };
 
 type SendWebmailBody = {
@@ -797,6 +804,124 @@ export const resetOwnWebmailPassword = asyncHandler(async (req: AuthRequest, res
         resetAt: new Date().toISOString(),
       },
       'Password mailbox berhasil direset',
+    ),
+  );
+});
+
+export const changeOwnWebmailPassword = asyncHandler(async (req: AuthRequest, res: Response) => {
+  const user = await ensureWebmailAccess(req);
+  const mailboxIdentity = resolveMailboxIdentity(user);
+
+  if (!mailboxIdentity) {
+    throw new ApiError(400, 'Akun Anda belum memiliki identitas mailbox sekolah yang valid');
+  }
+
+  ensureAuthenticatedMailboxSession(req, user.id, mailboxIdentity);
+
+  const mailboxAvailable = await isWebmailMailboxAvailable(mailboxIdentity);
+  if (!mailboxAvailable) {
+    throw new ApiError(404, 'Mailbox sekolah Anda belum tersedia di server');
+  }
+
+  const body = (req.body || {}) as ChangeMailboxPasswordBody;
+  const currentPassword = String(body.currentPassword ?? '');
+  const nextPassword = String(body.newPassword ?? '');
+  const confirmPassword = String(body.confirmPassword ?? '');
+
+  if (!currentPassword || !nextPassword || !confirmPassword) {
+    throw new ApiError(400, 'Password lama, password baru, dan konfirmasi password wajib diisi');
+  }
+
+  if (nextPassword.length < MIN_WEBMAIL_PASSWORD_LENGTH) {
+    throw new ApiError(400, `Password baru minimal ${MIN_WEBMAIL_PASSWORD_LENGTH} karakter`);
+  }
+
+  if (nextPassword.length > MAX_WEBMAIL_PASSWORD_LENGTH) {
+    throw new ApiError(400, `Password baru maksimal ${MAX_WEBMAIL_PASSWORD_LENGTH} karakter`);
+  }
+
+  if (nextPassword !== confirmPassword) {
+    throw new ApiError(400, 'Konfirmasi password baru tidak cocok');
+  }
+
+  const oldPasswordValid = await validateWebmailMailboxPassword(mailboxIdentity, currentPassword);
+  if (!oldPasswordValid) {
+    throw new ApiError(400, 'Password lama mailbox salah');
+  }
+
+  const mailcowApiKey = toMaybeString(process.env.MAILCOW_API_KEY);
+  if (!mailcowApiKey) {
+    throw new ApiError(500, 'Konfigurasi MAILCOW_API_KEY belum diatur di server');
+  }
+
+  const endpoint = resolveMailcowEditMailboxEndpoint();
+  const response = await axios.post<MailcowApiEntry[] | MailcowApiEntry>(
+    endpoint,
+    {
+      items: [mailboxIdentity],
+      attr: {
+        password: nextPassword,
+        password2: confirmPassword,
+      },
+    },
+    {
+      timeout: MAILCOW_API_TIMEOUT_MS,
+      headers: {
+        'Content-Type': 'application/json',
+        'X-API-Key': mailcowApiKey,
+      },
+      validateStatus: () => true,
+    },
+  );
+
+  if (response.status === 401 || response.status === 403) {
+    throw new ApiError(502, 'Autentikasi Mailcow API gagal. Periksa API key dan allowlist IP API Mailcow.');
+  }
+
+  if (response.status >= 400) {
+    throw new ApiError(502, `Mailcow API mengembalikan HTTP ${response.status}`);
+  }
+
+  const payloadEntries = Array.isArray(response.data) ? response.data : [response.data];
+  const successEntry = payloadEntries.find((entry) => toMaybeString(entry?.type).toLowerCase() === 'success');
+
+  if (!successEntry) {
+    const firstEntry = payloadEntries[0];
+    const detailMessage = parseMailcowMessage(firstEntry?.msg) || parseMailcowMessage(firstEntry);
+    throw new ApiError(
+      400,
+      detailMessage ? `Gagal mengganti password mailbox: ${detailMessage}` : 'Gagal mengganti password mailbox di Mailcow',
+    );
+  }
+
+  const passwordReady = await validateWebmailMailboxPassword(mailboxIdentity, nextPassword);
+  if (!passwordReady) {
+    throw new ApiError(502, 'Password mailbox gagal diverifikasi setelah diganti. Silakan coba lagi.');
+  }
+
+  await writeAuditLog(
+    user.id,
+    String(user.role),
+    null,
+    WEBMAIL_SELF_CHANGE_AUDIT_ACTION,
+    WEBMAIL_RESET_AUDIT_ENTITY,
+    user.id,
+    null,
+    {
+      mailboxIdentity,
+      passwordLength: nextPassword.length,
+    },
+    'Ganti password mailbox webmail oleh pemilik akun',
+  );
+
+  res.status(200).json(
+    new ApiResponse(
+      200,
+      {
+        mailboxIdentity,
+        changedAt: new Date().toISOString(),
+      },
+      'Password mailbox berhasil diganti',
     ),
   );
 });

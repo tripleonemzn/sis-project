@@ -405,8 +405,13 @@ export default function MobileEmailScreen() {
   const [panelError, setPanelError] = useState<string | null>(null);
   const [isWebmailMode, setIsWebmailMode] = useState(false);
   const [isAccessMenuVisible, setIsAccessMenuVisible] = useState(false);
+  const [isChangePasswordVisible, setIsChangePasswordVisible] = useState(false);
   const [loginPass, setLoginPass] = useState('');
   const [loginError, setLoginError] = useState<string | null>(null);
+  const [changeCurrentPassword, setChangeCurrentPassword] = useState('');
+  const [changeNextPassword, setChangeNextPassword] = useState('');
+  const [changeConfirmPassword, setChangeConfirmPassword] = useState('');
+  const [changePasswordError, setChangePasswordError] = useState<string | null>(null);
   const [isRegisterMode, setIsRegisterMode] = useState(false);
   const [registerUser, setRegisterUser] = useState('');
   const [registerPass, setRegisterPass] = useState('');
@@ -720,6 +725,38 @@ export default function MobileEmailScreen() {
     },
   });
 
+  const changePasswordMutation = useMutation({
+    mutationFn: webmailApi.changePassword,
+    onSuccess: async (_result, variables) => {
+      if (!isSsoMode && mailboxIdentity) {
+        const nextCredentials = {
+          email: mailboxIdentity,
+          password: variables.newPassword,
+        };
+        await webmailSessionStorage.setBridgeCredentials(nextCredentials);
+        setBridgeCredentials(nextCredentials);
+      }
+
+      setChangeCurrentPassword('');
+      setChangeNextPassword('');
+      setChangeConfirmPassword('');
+      setChangePasswordError(null);
+      setIsChangePasswordVisible(false);
+      setIsAccessMenuVisible(false);
+      setLoginPass('');
+      notifySuccess('Password mailbox berhasil diganti.', {
+        title: 'Email',
+      });
+      await queryClient.invalidateQueries({
+        queryKey: ['mobile-webmail-config'],
+        refetchType: 'active',
+      });
+    },
+    onError: (error: unknown) => {
+      setChangePasswordError(resolveErrorMessage(error, 'Gagal mengganti password mailbox.'));
+    },
+  });
+
   const sendMessageMutation = useMutation({
     mutationFn: () =>
       webmailApi.sendMessage({
@@ -871,6 +908,24 @@ export default function MobileEmailScreen() {
     ]);
   };
 
+  const openChangePasswordModal = () => {
+    setIsAccessMenuVisible(false);
+    setChangeCurrentPassword('');
+    setChangeNextPassword('');
+    setChangeConfirmPassword('');
+    setChangePasswordError(null);
+    setIsChangePasswordVisible(true);
+  };
+
+  const closeChangePasswordModal = () => {
+    if (changePasswordMutation.isPending) return;
+    setIsChangePasswordVisible(false);
+    setChangeCurrentPassword('');
+    setChangeNextPassword('');
+    setChangeConfirmPassword('');
+    setChangePasswordError(null);
+  };
+
   const openNewCompose = () => {
     setIsEmailDetailVisible(false);
     setIsRegisterMode(false);
@@ -910,6 +965,35 @@ export default function MobileEmailScreen() {
     }
 
     loginSessionMutation.mutate(password);
+  };
+
+  const handleChangePasswordSubmit = () => {
+    setChangePasswordError(null);
+
+    const currentPassword = String(changeCurrentPassword || '');
+    const newPassword = String(changeNextPassword || '');
+    const confirmPassword = String(changeConfirmPassword || '');
+
+    if (!currentPassword || !newPassword || !confirmPassword) {
+      setChangePasswordError('Password lama, password baru, dan konfirmasi password wajib diisi.');
+      return;
+    }
+
+    if (newPassword.length < 8) {
+      setChangePasswordError('Password baru minimal 8 karakter.');
+      return;
+    }
+
+    if (newPassword !== confirmPassword) {
+      setChangePasswordError('Konfirmasi password baru tidak cocok.');
+      return;
+    }
+
+    changePasswordMutation.mutate({
+      currentPassword,
+      newPassword,
+      confirmPassword,
+    });
   };
 
   const openPanelAccess = async (targetFolderKey?: WebmailFolderKey) => {
@@ -1589,6 +1673,41 @@ export default function MobileEmailScreen() {
         <View style={{ gap: 10 }}>
           {mailboxAvailable ? (
             <Pressable
+              onPress={openChangePasswordModal}
+              style={{
+                borderRadius: 14,
+                borderWidth: 1,
+                borderColor: '#bfdbfe',
+                backgroundColor: '#eff6ff',
+                paddingHorizontal: 14,
+                paddingVertical: 12,
+                flexDirection: 'row',
+                alignItems: 'flex-start',
+                gap: 10,
+              }}
+            >
+              <View
+                style={{
+                  width: 34,
+                  height: 34,
+                  borderRadius: 12,
+                  backgroundColor: 'rgba(37, 99, 235, 0.14)',
+                  alignItems: 'center',
+                  justifyContent: 'center',
+                }}
+              >
+                <Feather name="key" size={15} color="#1d4ed8" />
+              </View>
+              <View style={{ flex: 1, gap: 2 }}>
+                <Text style={{ color: '#0f172a', fontSize: 14, fontWeight: '700' }}>Ganti Password</Text>
+                <Text style={{ color: '#64748b', fontSize: 12, lineHeight: 18 }}>
+                  Perbarui password mailbox sekolah dengan verifikasi password lama.
+                </Text>
+              </View>
+            </Pressable>
+          ) : null}
+          {mailboxAvailable ? (
+            <Pressable
               onPress={requestMailboxLogout}
               style={{
                 borderRadius: 14,
@@ -1622,6 +1741,91 @@ export default function MobileEmailScreen() {
               </View>
             </Pressable>
           ) : null}
+        </View>
+      </MobileDetailModal>
+
+      <MobileDetailModal
+        visible={isChangePasswordVisible}
+        title="Ganti Password"
+        subtitle="Verifikasi password lama, lalu masukkan password baru minimal 8 karakter."
+        iconName="key"
+        accentColor="#3250b9"
+        onClose={closeChangePasswordModal}
+      >
+        <View style={{ gap: 12 }}>
+          <Text style={{ color: '#0f172a', fontSize: 13, fontWeight: '700' }}>Password Lama</Text>
+          <TextInput
+            value={changeCurrentPassword}
+            onChangeText={setChangeCurrentPassword}
+            secureTextEntry
+            placeholder="Masukkan password mailbox saat ini"
+            placeholderTextColor="#94a3b8"
+            style={{
+              borderWidth: 1,
+              borderColor: '#cbd5e1',
+              borderRadius: 12,
+              paddingHorizontal: 12,
+              paddingVertical: 11,
+              color: BRAND_COLORS.textDark,
+            }}
+          />
+
+          <Text style={{ color: '#0f172a', fontSize: 13, fontWeight: '700' }}>Password Baru</Text>
+          <TextInput
+            value={changeNextPassword}
+            onChangeText={setChangeNextPassword}
+            secureTextEntry
+            placeholder="Minimal 8 karakter"
+            placeholderTextColor="#94a3b8"
+            style={{
+              borderWidth: 1,
+              borderColor: '#cbd5e1',
+              borderRadius: 12,
+              paddingHorizontal: 12,
+              paddingVertical: 11,
+              color: BRAND_COLORS.textDark,
+            }}
+          />
+          <Text style={{ color: '#64748b', fontSize: 12, lineHeight: 18 }}>
+            Password baru cukup minimal 8 karakter, tanpa syarat tambahan.
+          </Text>
+
+          <Text style={{ color: '#0f172a', fontSize: 13, fontWeight: '700' }}>Konfirmasi Password Baru</Text>
+          <TextInput
+            value={changeConfirmPassword}
+            onChangeText={setChangeConfirmPassword}
+            secureTextEntry
+            placeholder="Ulangi password baru"
+            placeholderTextColor="#94a3b8"
+            style={{
+              borderWidth: 1,
+              borderColor: '#cbd5e1',
+              borderRadius: 12,
+              paddingHorizontal: 12,
+              paddingVertical: 11,
+              color: BRAND_COLORS.textDark,
+            }}
+          />
+
+          {changePasswordError ? (
+            <Text style={{ color: '#be123c', fontSize: 12, fontWeight: '700', lineHeight: 18 }}>{changePasswordError}</Text>
+          ) : null}
+
+          <Pressable
+            onPress={handleChangePasswordSubmit}
+            disabled={changePasswordMutation.isPending}
+            style={({ pressed }) => ({
+              borderRadius: 12,
+              backgroundColor: '#3250b9',
+              paddingVertical: 12,
+              alignItems: 'center',
+              opacity: changePasswordMutation.isPending ? 0.7 : pressed ? 0.9 : 1,
+            })}
+          >
+            <Text style={{ color: '#ffffff', fontWeight: '700' }}>
+              {changePasswordMutation.isPending ? 'Menyimpan...' : 'Simpan Password Baru'}
+            </Text>
+          </Pressable>
         </View>
       </MobileDetailModal>
 

@@ -5,6 +5,7 @@ import {
   Archive,
   ExternalLink,
   Inbox,
+  KeyRound,
   LogOut,
   MailOpen,
   RefreshCw,
@@ -574,6 +575,11 @@ export const EmailPage = () => {
   const [iframeNonce, setIframeNonce] = useState(0);
   const [iframeSrc, setIframeSrc] = useState(DEFAULT_WEBMAIL_INBOX_URL);
   const [isAccessMenuOpen, setIsAccessMenuOpen] = useState(false);
+  const [isChangePasswordMode, setIsChangePasswordMode] = useState(false);
+  const [changeCurrentPassword, setChangeCurrentPassword] = useState('');
+  const [changeNextPassword, setChangeNextPassword] = useState('');
+  const [changeConfirmPassword, setChangeConfirmPassword] = useState('');
+  const [changePasswordError, setChangePasswordError] = useState<string | null>(null);
   const [activeFolderKey, setActiveFolderKey] = useState<WebmailFolderKey>('INBOX');
   const [selectedEmailGuid, setSelectedEmailGuid] = useState<string | null>(null);
   const [isEmailDetailVisible, setIsEmailDetailVisible] = useState(false);
@@ -880,6 +886,30 @@ export const EmailPage = () => {
     },
     onError: (error) => {
       setRegisterError(getErrorMessage(error, 'Gagal membuat akun webmail.'));
+    },
+  });
+
+  const changePasswordMutation = useMutation({
+    mutationFn: webmailService.changePassword,
+    onSuccess: async (_response, variables) => {
+      if (!useSsoMode && mailboxIdentity) {
+        persistBridgeCredentials(mailboxIdentity, variables.newPassword);
+      }
+      setChangeCurrentPassword('');
+      setChangeNextPassword('');
+      setChangeConfirmPassword('');
+      setChangePasswordError(null);
+      setLoginPass('');
+      setIsChangePasswordMode(false);
+      setIsAccessMenuOpen(false);
+      toast.success('Password mailbox berhasil diganti.');
+      await queryClient.invalidateQueries({
+        queryKey: ['webmail-config', userScopeKey],
+        refetchType: 'active',
+      });
+    },
+    onError: (error) => {
+      setChangePasswordError(getErrorMessage(error, 'Gagal mengganti password mailbox.'));
     },
   });
 
@@ -1240,6 +1270,24 @@ export const EmailPage = () => {
     setIsComposeMode(false);
   };
 
+  const openChangePasswordModal = () => {
+    setIsAccessMenuOpen(false);
+    setChangeCurrentPassword('');
+    setChangeNextPassword('');
+    setChangeConfirmPassword('');
+    setChangePasswordError(null);
+    setIsChangePasswordMode(true);
+  };
+
+  const closeChangePasswordModal = () => {
+    if (changePasswordMutation.isPending) return;
+    setIsChangePasswordMode(false);
+    setChangeCurrentPassword('');
+    setChangeNextPassword('');
+    setChangeConfirmPassword('');
+    setChangePasswordError(null);
+  };
+
   const handleLoginSubmit = (event: FormEvent<HTMLFormElement>) => {
     event.preventDefault();
     setRegisterError(null);
@@ -1257,6 +1305,36 @@ export const EmailPage = () => {
     }
 
     loginSessionMutation.mutate(password);
+  };
+
+  const handleChangePasswordSubmit = (event: FormEvent<HTMLFormElement>) => {
+    event.preventDefault();
+    setChangePasswordError(null);
+
+    const currentPassword = String(changeCurrentPassword || '');
+    const newPassword = String(changeNextPassword || '');
+    const confirmPassword = String(changeConfirmPassword || '');
+
+    if (!currentPassword || !newPassword || !confirmPassword) {
+      setChangePasswordError('Password lama, password baru, dan konfirmasi password wajib diisi.');
+      return;
+    }
+
+    if (newPassword.length < 8) {
+      setChangePasswordError('Password baru minimal 8 karakter.');
+      return;
+    }
+
+    if (newPassword !== confirmPassword) {
+      setChangePasswordError('Konfirmasi password baru tidak cocok.');
+      return;
+    }
+
+    changePasswordMutation.mutate({
+      currentPassword,
+      newPassword,
+      confirmPassword,
+    });
   };
 
   const handleReloadPanel = () => {
@@ -1449,6 +1527,19 @@ export const EmailPage = () => {
               </button>
               {isAccessMenuOpen ? (
                 <div className="absolute right-0 top-full z-20 mt-2 flex w-64 flex-col gap-1 rounded-2xl border border-slate-200 bg-white p-2 shadow-[0_18px_40px_rgba(15,23,42,0.12)]">
+                  {isNativeMailboxReady ? (
+                    <button
+                      type="button"
+                      onClick={openChangePasswordModal}
+                      className="flex items-start gap-3 rounded-2xl px-3 py-3 text-left transition hover:bg-blue-50"
+                    >
+                      <KeyRound className="mt-0.5 h-4 w-4 text-blue-700" />
+                      <div className="space-y-1">
+                        <p className="text-sm font-semibold text-slate-900">Ganti Password</p>
+                        <p className="text-xs leading-5 text-slate-500">Perbarui password mailbox sekolah dengan verifikasi password lama.</p>
+                      </div>
+                    </button>
+                  ) : null}
                   {isNativeMailboxReady ? (
                     <button
                       type="button"
@@ -2120,6 +2211,88 @@ export const EmailPage = () => {
                     className="rounded-2xl border border-slate-200 bg-white px-4 py-3 text-sm font-semibold text-slate-800 transition hover:bg-slate-50"
                   >
                     Tutup
+                  </button>
+                </div>
+              </form>
+            </div>
+          </div>
+        </div>
+      ) : null}
+
+      {isChangePasswordMode ? (
+        <div className="fixed inset-0 z-40 flex items-center justify-center bg-slate-900/15 px-4 py-6">
+          <div className="w-full max-w-xl overflow-hidden rounded-3xl border border-slate-200 bg-white shadow-[0_24px_60px_rgba(15,23,42,0.14)]">
+            <div className="flex items-start justify-between gap-4 border-b border-slate-200 px-6 py-5">
+              <div className="space-y-1">
+                <h2 className="text-lg font-semibold text-slate-900">Ganti Password</h2>
+                <p className="text-sm leading-6 text-slate-500">
+                  Verifikasi password lama mailbox sekolah Anda, lalu masukkan password baru minimal 8 karakter.
+                </p>
+              </div>
+              <button
+                type="button"
+                onClick={closeChangePasswordModal}
+                className="flex h-10 w-10 items-center justify-center rounded-2xl border border-slate-200 bg-white text-slate-500 transition hover:bg-slate-50 hover:text-slate-700"
+              >
+                <X className="h-4 w-4" />
+              </button>
+            </div>
+
+            <div className="max-h-[calc(100vh-12rem)] overflow-y-auto px-6 py-5">
+              <form className="space-y-4" onSubmit={handleChangePasswordSubmit}>
+                <div className="space-y-2">
+                  <label className="text-sm font-semibold text-slate-800">Password Lama</label>
+                  <input
+                    type="password"
+                    value={changeCurrentPassword}
+                    onChange={(event) => setChangeCurrentPassword(event.target.value)}
+                    placeholder="Masukkan password mailbox saat ini"
+                    autoComplete="current-password"
+                    className="w-full rounded-2xl border border-slate-200 bg-white px-4 py-3 text-sm text-slate-800 placeholder:text-slate-400 focus:border-slate-400 focus:outline-none"
+                  />
+                </div>
+
+                <div className="space-y-2">
+                  <label className="text-sm font-semibold text-slate-800">Password Baru</label>
+                  <input
+                    type="password"
+                    value={changeNextPassword}
+                    onChange={(event) => setChangeNextPassword(event.target.value)}
+                    placeholder="Minimal 8 karakter"
+                    autoComplete="new-password"
+                    className="w-full rounded-2xl border border-slate-200 bg-white px-4 py-3 text-sm text-slate-800 placeholder:text-slate-400 focus:border-slate-400 focus:outline-none"
+                  />
+                  <p className="text-sm text-slate-500">Password baru cukup minimal 8 karakter, tanpa syarat tambahan.</p>
+                </div>
+
+                <div className="space-y-2">
+                  <label className="text-sm font-semibold text-slate-800">Konfirmasi Password Baru</label>
+                  <input
+                    type="password"
+                    value={changeConfirmPassword}
+                    onChange={(event) => setChangeConfirmPassword(event.target.value)}
+                    placeholder="Ulangi password baru"
+                    autoComplete="new-password"
+                    className="w-full rounded-2xl border border-slate-200 bg-white px-4 py-3 text-sm text-slate-800 placeholder:text-slate-400 focus:border-slate-400 focus:outline-none"
+                  />
+                </div>
+
+                {changePasswordError ? <p className="text-sm font-semibold text-rose-700">{changePasswordError}</p> : null}
+
+                <div className="grid gap-3 sm:grid-cols-2">
+                  <button
+                    type="submit"
+                    disabled={changePasswordMutation.isPending}
+                    className="rounded-2xl bg-[#3250b9] px-4 py-3 text-sm font-semibold text-white transition hover:bg-[#2a44a0] disabled:cursor-not-allowed disabled:opacity-70"
+                  >
+                    {changePasswordMutation.isPending ? 'Menyimpan...' : 'Simpan Password Baru'}
+                  </button>
+                  <button
+                    type="button"
+                    onClick={closeChangePasswordModal}
+                    className="rounded-2xl border border-slate-200 bg-white px-4 py-3 text-sm font-semibold text-slate-800 transition hover:bg-slate-50"
+                  >
+                    Batal
                   </button>
                 </div>
               </form>

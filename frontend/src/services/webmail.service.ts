@@ -72,6 +72,17 @@ export interface WebmailPasswordResetResult {
   resetAt: string;
 }
 
+export interface WebmailChangePasswordPayload {
+  currentPassword: string;
+  newPassword: string;
+  confirmPassword: string;
+}
+
+export interface WebmailChangePasswordResult {
+  mailboxIdentity: string;
+  changedAt: string;
+}
+
 export interface WebmailMessageSummary {
   uid: number;
   guid: string;
@@ -175,6 +186,11 @@ export const webmailService = {
 
   resetPassword: async (): Promise<ApiResponse<WebmailPasswordResetResult>> => {
     const response = await api.post<ApiResponse<WebmailPasswordResetResult>>('/webmail/reset-password');
+    return response.data;
+  },
+
+  changePassword: async (payload: WebmailChangePasswordPayload): Promise<ApiResponse<WebmailChangePasswordResult>> => {
+    const response = await api.post<ApiResponse<WebmailChangePasswordResult>>('/webmail/change-password', payload);
     return response.data;
   },
 

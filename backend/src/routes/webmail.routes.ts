@@ -1,6 +1,7 @@
 import { Router } from 'express';
 import { authMiddleware } from '../middleware/auth';
 import {
+  changeOwnWebmailPassword,
   deleteWebmailInboxMessage,
   getWebmailConfig,
   getWebmailInboxMessageDetail,
@@ -31,6 +32,7 @@ router.post('/messages/:guid/move', moveWebmailInboxMessage);
 router.post('/messages/send', sendWebmailInboxMessage);
 router.post('/register', registerWebmailMailbox);
 router.post('/reset-password', resetOwnWebmailPassword);
+router.post('/change-password', changeOwnWebmailPassword);
 router.post('/sso/start', startWebmailSso);
 
 export default router;

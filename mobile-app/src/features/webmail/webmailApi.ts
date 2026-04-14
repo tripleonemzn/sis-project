@@ -78,6 +78,17 @@ export type MobileWebmailPasswordResetResult = {
   resetAt: string;
 };
 
+export type MobileWebmailChangePasswordPayload = {
+  currentPassword: string;
+  newPassword: string;
+  confirmPassword: string;
+};
+
+export type MobileWebmailChangePasswordResult = {
+  mailboxIdentity: string;
+  changedAt: string;
+};
+
 export type MobileWebmailMessageSummary = {
   uid: number;
   guid: string;
@@ -186,6 +197,11 @@ export const webmailApi = {
 
   async resetPassword() {
     const response = await apiClient.post<ApiEnvelope<MobileWebmailPasswordResetResult>>('/webmail/reset-password');
+    return response.data.data;
+  },
+
+  async changePassword(payload: MobileWebmailChangePasswordPayload) {
+    const response = await apiClient.post<ApiEnvelope<MobileWebmailChangePasswordResult>>('/webmail/change-password', payload);
     return response.data.data;
   },
 
