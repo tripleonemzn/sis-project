@@ -85,8 +85,54 @@ const hasPersistedFinalReportEvidence = (
   return false;
 };
 
+const readSlotScoreByMatcher = (
+  slotScores: Record<string, number | null>,
+  matcher: (slotCode: string) => boolean,
+): number | null => {
+  for (const [rawSlotCode, rawScore] of Object.entries(slotScores)) {
+    const score = parseScoreNumber(rawScore);
+    if (score === null) continue;
+    const normalizedSlotCode = normalizeLedgerCode(rawSlotCode);
+    if (!normalizedSlotCode || normalizedSlotCode === 'NONE') continue;
+    if (normalizedSlotCode.endsWith('_REF')) continue;
+    if (matcher(normalizedSlotCode)) return score;
+  }
+  return null;
+};
+
+const resolvePreferredFinalComponentScore = (
+  grade: {
+    semester?: Semester | null;
+    sasScore?: number | null;
+    satScore?: number | null;
+    slotScores?: unknown;
+  } | null | undefined,
+): { slotCode: 'SAS' | 'SAT'; score: number | null } => {
+  const slotScores = parseSlotScoreMap(grade?.slotScores);
+  const satScore =
+    readSlotScoreByMatcher(slotScores, isFinalEvenAliasCode) ??
+    parseScoreNumber(grade?.satScore);
+  const sasScore =
+    readSlotScoreByMatcher(slotScores, isFinalOddAliasCode) ??
+    parseScoreNumber(grade?.sasScore);
+
+  if (grade?.semester === Semester.EVEN) {
+    return { slotCode: 'SAT', score: satScore ?? sasScore };
+  }
+  if (grade?.semester === Semester.ODD) {
+    return { slotCode: 'SAS', score: sasScore ?? satScore };
+  }
+  if (satScore !== null) {
+    return { slotCode: 'SAT', score: satScore };
+  }
+  return { slotCode: 'SAS', score: sasScore };
+};
+
 const resolveEffectiveReportFinalScore = (
   grade: {
+    semester?: Semester | null;
+    formatifScore?: number | null;
+    sbtsScore?: number | null;
     usScore?: number | null;
     finalScore?: number | null;
     sasScore?: number | null;
@@ -95,16 +141,41 @@ const resolveEffectiveReportFinalScore = (
   } | null | undefined,
 ): number | null => {
   if (!grade) return null;
+  const slotScores = parseSlotScoreMap(grade.slotScores);
   const finalScore = parseScoreNumber(grade.finalScore);
   const usScore = parseScoreNumber(grade.usScore);
-  const hasUsEvidence = hasUsSlotScore(grade.slotScores) || usScore !== null;
+  const hasUsEvidence = hasUsSlotScore(slotScores) || usScore !== null;
   const hasFinalEvidence = hasPersistedFinalReportEvidence(grade);
 
   if (usScore !== null && hasUsEvidence) {
-    return usScore;
+    return normalizeRoundedFinalScore(usScore) ?? usScore;
+  }
+
+  const formativeScore =
+    readSlotOrLegacyScore(
+      slotScores,
+      buildFormativeReferenceSlotCode('FORMATIF', 'FINAL'),
+      null,
+    ) ??
+    readSlotScoreByMatcher(slotScores, isFormativeAliasCode) ??
+    parseScoreNumber(grade.formatifScore);
+  const midtermScore =
+    readSlotScoreByMatcher(slotScores, isMidtermAliasCode) ??
+    parseScoreNumber(grade.sbtsScore);
+  const finalComponent = resolvePreferredFinalComponentScore(grade);
+
+  if (finalComponent.score !== null) {
+    const recomputedScore = computeNormalizedWeightedAverage([
+      { code: 'FORMATIF', score: formativeScore },
+      { code: 'SBTS', score: midtermScore },
+      { code: finalComponent.slotCode, score: finalComponent.score },
+    ]);
+    if (recomputedScore !== null) {
+      return normalizeRoundedFinalScore(recomputedScore) ?? recomputedScore;
+    }
   }
   if (hasFinalEvidence && finalScore !== null) {
-    return finalScore;
+    return normalizeRoundedFinalScore(finalScore) ?? finalScore;
   }
   return null;
 };
@@ -1077,11 +1148,11 @@ export class ReportService {
       const kkm = assignment.kkm || 75;
       const slotScores = parseSlotScoreMap((report as any)?.slotScores);
 
-      let col1Score: number | null = 0;
+      let col1Score: number | null = null;
       let col1Predicate: string | null = null;
-      let col2Score: number | null = 0;
+      let col2Score: number | null = null;
       let col2Predicate: string | null = null;
-      let finalScoreVal: number | null = 0;
+      let finalScoreVal: number | null = null;
       let finalPredicateVal: string | null = null;
       let description: string = '-';
 
@@ -1146,10 +1217,10 @@ export class ReportService {
         const effectiveFinalScore = resolveEffectiveReportFinalScore(report as any);
 
         col1Score =
-          effectiveFinalScore !== null && effectiveFinalScore > 0
+          effectiveFinalScore !== null
             ? normalizeRoundedFinalScore(effectiveFinalScore)
             : null;
-        col1Predicate = effectiveFinalScore !== null && effectiveFinalScore > 0
+        col1Predicate = effectiveFinalScore !== null
           ? getPredicate(effectiveFinalScore, kkm)
           : null;
         finalScoreVal = col1Score;

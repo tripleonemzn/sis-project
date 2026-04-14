@@ -128,6 +128,13 @@ const readRowSlotScore = (
   return fallback ?? null;
 };
 
+const formatFinalScore = (value: number | null | undefined) => {
+  if (value === null || value === undefined) return '-';
+  const parsed = Number(value);
+  if (!Number.isFinite(parsed)) return '-';
+  return parsed.toFixed(2);
+};
+
 export const TeacherSubjectReportPage = () => {
   // Filter States
   const [selectedAssignment, setSelectedAssignment] = useState<string>('');
@@ -385,7 +392,7 @@ export const TeacherSubjectReportPage = () => {
                           : '-'}
                       </td>
                       <td className="px-6 py-4 text-center font-bold text-blue-600 bg-blue-50/30">
-                        {grade.finalScore !== null ? Math.round(grade.finalScore) : '-'}
+                        {formatFinalScore(grade.finalScore)}
                       </td>
                       <td className="px-6 py-4 text-center">
                         {grade.predicate ? (

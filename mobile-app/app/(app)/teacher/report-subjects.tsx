@@ -27,6 +27,13 @@ function roundScore(value: number | null) {
   return String(Math.round(value));
 }
 
+function formatFinalScore(value: number | null) {
+  if (value === null || value === undefined) return '-';
+  const parsed = Number(value);
+  if (!Number.isFinite(parsed)) return '-';
+  return parsed.toFixed(2);
+}
+
 function predicateStyle(predicate: string | null) {
   if (predicate === 'A') return { bg: '#dcfce7', border: '#86efac', text: '#166534' };
   if (predicate === 'B') return { bg: '#dbeafe', border: '#93c5fd', text: '#1d4ed8' };
@@ -438,7 +445,7 @@ export default function TeacherSubjectReportScreen() {
                                 label: slotLabelsByCode[primarySlots.final] || primarySlots.final,
                                 value: roundScore(readRowSlotScore(item, primarySlots.final, item.sasScore)),
                               },
-                              { label: 'Akhir', value: roundScore(item.finalScore) },
+                              { label: 'Akhir', value: formatFinalScore(item.finalScore) },
                             ].map((score) => (
                               <View key={score.label} style={{ width: '25%', paddingHorizontal: 4, marginBottom: 6 }}>
                                 <View

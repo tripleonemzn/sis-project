@@ -582,8 +582,54 @@ function hasPersistedFinalReportEvidence(
   return false
 }
 
+function readSlotScoreByMatcher(
+  slotScores: Record<string, number | null>,
+  matcher: (slotCode: string) => boolean,
+): number | null {
+  for (const [rawSlotCode, rawScore] of Object.entries(slotScores)) {
+    const score = normalizeNullableScore(rawScore)
+    if (score === null) continue
+    const normalizedSlotCode = normalizeReportSlotCode(rawSlotCode)
+    if (!normalizedSlotCode || normalizedSlotCode === DEFAULT_REPORT_SLOT_CODE) continue
+    if (normalizedSlotCode.endsWith('_REF')) continue
+    if (matcher(normalizedSlotCode)) return score
+  }
+  return null
+}
+
+function resolvePreferredFinalComponentScore(
+  grade: {
+    semester?: Semester | null
+    sasScore?: number | null
+    satScore?: number | null
+    slotScores?: unknown
+  } | null | undefined,
+): { slotCode: 'SAS' | 'SAT'; score: number | null } {
+  const slotScores = parseSlotScoreMap(grade?.slotScores)
+  const satScore =
+    readSlotScoreByMatcher(slotScores, isFinalEvenAliasCode) ??
+    normalizeNullableScore(grade?.satScore)
+  const sasScore =
+    readSlotScoreByMatcher(slotScores, isFinalOddAliasCode) ??
+    normalizeNullableScore(grade?.sasScore)
+
+  if (grade?.semester === Semester.EVEN) {
+    return { slotCode: 'SAT', score: satScore ?? sasScore }
+  }
+  if (grade?.semester === Semester.ODD) {
+    return { slotCode: 'SAS', score: sasScore ?? satScore }
+  }
+  if (satScore !== null) {
+    return { slotCode: 'SAT', score: satScore }
+  }
+  return { slotCode: 'SAS', score: sasScore }
+}
+
 function resolveEffectiveReportFinalScore(
   grade: {
+    semester?: Semester | null
+    formatifScore?: number | null
+    sbtsScore?: number | null
     usScore?: number | null
     finalScore?: number | null
     sasScore?: number | null
@@ -592,19 +638,51 @@ function resolveEffectiveReportFinalScore(
   } | null | undefined,
 ): number | null {
   if (!grade) return null
-  const hasUsSlot = hasUsSlotInScoreMap(grade.slotScores)
+  const slotScores = parseSlotScoreMap(grade.slotScores)
+  const hasUsSlot = hasUsSlotInScoreMap(slotScores)
   const hasPrimaryFinalEvidence = hasPersistedFinalReportEvidence(grade)
-  const finalScore = Number(grade.finalScore)
-  const hasFinalScore = Number.isFinite(finalScore)
-  const usScore = Number(grade.usScore)
-  const hasUsScore = Number.isFinite(usScore)
+  const finalScore = normalizeNullableScore(grade.finalScore)
+  const usScore = normalizeNullableScore(grade.usScore)
+  const hasFinalScore = finalScore !== null
+  const hasUsScore = usScore !== null
   const hasUsEvidence = hasUsSlot || hasUsScore
 
   if (hasUsScore && hasUsEvidence) {
-    return usScore
+    return normalizeRoundedFinalScore(usScore) ?? usScore
+  }
+
+  const formativeScore =
+    (() => {
+      const referenceSlotCode = normalizeReportSlotCode(
+        buildFormativeReferenceSlotCode('FORMATIF', 'FINAL'),
+      )
+      if (
+        referenceSlotCode &&
+        Object.prototype.hasOwnProperty.call(slotScores, referenceSlotCode)
+      ) {
+        return slotScores[referenceSlotCode] ?? null
+      }
+      return null
+    })() ??
+    readSlotScoreByMatcher(slotScores, isFormativeAliasCode) ??
+    normalizeNullableScore(grade.formatifScore)
+  const midtermScore =
+    readSlotScoreByMatcher(slotScores, isMidtermAliasCode) ??
+    normalizeNullableScore(grade.sbtsScore)
+  const finalComponent = resolvePreferredFinalComponentScore(grade)
+
+  if (finalComponent.score !== null) {
+    const recomputedScore = computeNormalizedWeightedAverage([
+      { code: 'FORMATIF', score: formativeScore },
+      { code: 'SBTS', score: midtermScore },
+      { code: finalComponent.slotCode, score: finalComponent.score },
+    ])
+    if (recomputedScore !== null) {
+      return normalizeRoundedFinalScore(recomputedScore) ?? recomputedScore
+    }
   }
   if (hasPrimaryFinalEvidence && hasFinalScore) {
-    return finalScore
+    return normalizeRoundedFinalScore(finalScore) ?? finalScore
   }
   return null
 }
