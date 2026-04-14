@@ -107,11 +107,7 @@ function getErrorMessage(error: unknown, fallback: string) {
 export default function MaterialsAndAssignmentsPage() {
   const navigate = useNavigate();
   const [searchParams, setSearchParams] = useSearchParams();
-  
-  // State for tabs
-  const [activeTab, setActiveTab] = useState<'materials' | 'assignments'>(
-    (searchParams.get('tab') as 'materials' | 'assignments') || 'materials'
-  );
+  const activeTab = searchParams.get('tab') === 'assignments' ? 'assignments' : 'materials';
 
   const [loading, setLoading] = useState(true);
   const [teacherAssignments, setTeacherAssignments] = useState<TeacherAssignment[]>([]);
@@ -164,9 +160,24 @@ export default function MaterialsAndAssignmentsPage() {
     is_published: false
   });
 
-  // Sync tab with URL
   useEffect(() => {
-    setSearchParams({ tab: activeTab });
+    if (searchParams.get('tab')) return;
+
+    setSearchParams((prev) => {
+      const nextParams = new URLSearchParams(prev);
+      nextParams.set('tab', activeTab);
+      return nextParams;
+    }, { replace: true });
+  }, [activeTab, searchParams, setSearchParams]);
+
+  const handleTabChange = useCallback((tab: 'materials' | 'assignments') => {
+    if (tab === activeTab) return;
+
+    setSearchParams((prev) => {
+      const nextParams = new URLSearchParams(prev);
+      nextParams.set('tab', tab);
+      return nextParams;
+    }, { replace: true });
   }, [activeTab, setSearchParams]);
 
   const { user: contextUser, activeYear: contextActiveYear } = useOutletContext<PageOutletContext>() || {};
@@ -636,7 +647,7 @@ export default function MaterialsAndAssignmentsPage() {
       <div className="bg-white p-4 rounded-xl shadow-sm border border-gray-200 mb-6">
         <div className="flex space-x-1 bg-white p-1 rounded-lg border border-gray-200 w-fit">
           <button
-            onClick={() => setActiveTab('materials')}
+            onClick={() => handleTabChange('materials')}
             className={`px-4 py-2 text-sm font-medium rounded-md transition-colors ${
               activeTab === 'materials'
                 ? 'bg-blue-50 text-blue-700'
@@ -649,7 +660,7 @@ export default function MaterialsAndAssignmentsPage() {
             </div>
           </button>
           <button
-            onClick={() => setActiveTab('assignments')}
+            onClick={() => handleTabChange('assignments')}
             className={`px-4 py-2 text-sm font-medium rounded-md transition-colors ${
               activeTab === 'assignments'
                 ? 'bg-blue-50 text-blue-700'

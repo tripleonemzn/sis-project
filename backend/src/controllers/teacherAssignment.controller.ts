@@ -371,9 +371,15 @@ export const getTeacherAssignmentById = asyncHandler(async (req: Request, res: R
   });
   const normalizedAssignments = normalizeAssignmentsForSemester(siblings, preferredSemester);
   const normalizedAssignment = normalizedAssignments.find((item) => item.id === id);
+  const detailAssignment = {
+    ...assignment,
+    competencyThresholds:
+      normalizedAssignment?.competencyThresholds ??
+      resolveCompetencyThresholdSet(assignment.competencyThresholds, preferredSemester),
+  };
 
   res.status(200).json(
-    new ApiResponse(200, normalizedAssignment || assignment, 'Detail penugasan berhasil diambil'),
+    new ApiResponse(200, detailAssignment, 'Detail penugasan berhasil diambil'),
   );
 });
 

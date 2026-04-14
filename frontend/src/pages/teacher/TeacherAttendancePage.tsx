@@ -97,7 +97,11 @@ export const TeacherAttendancePage = () => {
       subjectId: assignment!.subjectId,
       academicYearId: assignment!.academicYearId,
     }),
-    enabled: !!assignment && !!selectedDate,
+    enabled:
+      Boolean(assignment?.classId) &&
+      Boolean(assignment?.subjectId) &&
+      Boolean(assignment?.academicYearId) &&
+      Boolean(selectedDate),
   });
 
   // 3. Initialize/Update Local State when data changes
@@ -203,7 +207,9 @@ export const TeacherAttendancePage = () => {
     );
   }
 
-  const students = assignment.class.students || [];
+  const students = Array.isArray(assignment.class?.students) ? assignment.class.students : [];
+  const className = String(assignment.class?.name || 'Kelas belum tersedia');
+  const subjectName = String(assignment.subject?.name || 'Mata pelajaran belum tersedia');
 
   return (
     <div className="space-y-6 pb-20">
@@ -244,7 +250,7 @@ export const TeacherAttendancePage = () => {
             </div>
             <div>
               <p className="text-xs text-blue-600 font-semibold uppercase tracking-wider">Kelas</p>
-              <p className="font-bold text-gray-900">{assignment.class.name}</p>
+              <p className="font-bold text-gray-900">{className}</p>
             </div>
           </div>
           <div className="flex items-center gap-3">
@@ -253,7 +259,7 @@ export const TeacherAttendancePage = () => {
             </div>
             <div>
               <p className="text-xs text-indigo-600 font-semibold uppercase tracking-wider">Mata Pelajaran</p>
-              <p className="font-bold text-gray-900">{assignment.subject.name}</p>
+              <p className="font-bold text-gray-900">{subjectName}</p>
             </div>
           </div>
           <div className="flex items-center gap-3">

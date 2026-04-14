@@ -162,7 +162,7 @@ export const teacherAssignmentService = {
 
   getById: async (id: number, semester?: 'ODD' | 'EVEN') => {
     ensurePositiveAssignmentId(id);
-    const response = await api.get<{ data: TeacherAssignment }>(`/teacher-assignments/${id}`, {
+    const response = await api.get<{ data: TeacherAssignmentDetail }>(`/teacher-assignments/${id}`, {
       params: semester ? { semester } : undefined,
     });
     return response.data;
