@@ -86,11 +86,13 @@ Dokumen ini adalah policy kerja default untuk setiap sesi baru yang mengerjakan 
    - Setelah pekerjaan selesai:
      - semua perubahan yang memang bagian dari task harus di-commit
      - tidak boleh ada file nyangkut, perubahan setengah jadi, atau worktree kotor
+     - commit hasil pekerjaan wajib sudah di-push ke `origin/main` sebelum laporan hasil akhir diberikan, agar environment ujicoba selalu sinkron dengan source of truth terbaru
    - Selalu cek `git status --short` sebelum penutupan pekerjaan.
    - Jika ada perubahan user yang tidak terkait task, jangan disentuh kecuali diminta.
 
 8. **UI/frontend harus selalu up to date untuk ujicoba**
    - Jika perubahan menyentuh web/mobile UI yang dipakai tester, hasilnya harus dirilis sesuai workflow existing project.
+   - Jika user meminta hasil langsung bisa diuji, deploy/publish sesuai workflow existing project adalah bagian wajib dari penyelesaian task dan tidak boleh ditunda ke langkah terpisah, kecuali user meminta eksplisit untuk belum dipublish.
    - Jika ada pengembangan menu, sub-menu, tab, atau fitur baru yang muncul di navigasi user, pastikan breadcrumb juga ikut disesuaikan agar konteks halaman tetap jelas dan konsisten.
    - Jangan menambah fitur/menu baru dengan breadcrumb yang tertinggal, salah label, atau tidak mengenali tab aktif.
    - Untuk mobile tester:
@@ -184,3 +186,4 @@ Dokumen ini adalah policy kerja default untuk setiap sesi baru yang mengerjakan 
    - status publish/live bila ada
    - progress % bila pekerjaan masih bertahap
    - konfirmasi bahwa worktree sudah clean
+   - konfirmasi bahwa commit task sudah dipush ke `origin/main`
