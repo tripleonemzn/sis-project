@@ -342,7 +342,7 @@ export default function TeacherProctoringScheduleScreen() {
         Pantau jadwal ujian yang ditugaskan kepada Anda dengan breakdown per hari.
       </Text>
 
-      <View style={{ flexDirection: 'row', marginHorizontal: -4, marginBottom: 10 }}>
+      <View style={{ flexDirection: 'row', alignItems: 'stretch', marginHorizontal: -4, marginBottom: 10 }}>
         <View style={{ flex: 1, paddingHorizontal: 4 }}>
           <MobileSummaryCard
             title="Slot Ujian"
@@ -350,6 +350,8 @@ export default function TeacherProctoringScheduleScreen() {
             subtitle={`${summary.totalDays} hari ujian`}
             iconName="calendar"
             accentColor="#2563eb"
+            align="center"
+            style={{ height: '100%' }}
           />
         </View>
         <View style={{ flex: 1, paddingHorizontal: 4 }}>
@@ -359,6 +361,8 @@ export default function TeacherProctoringScheduleScreen() {
             subtitle="Slot aktif saat ini"
             iconName="play-circle"
             accentColor="#16a34a"
+            align="center"
+            style={{ height: '100%' }}
           />
         </View>
         <View style={{ flex: 1, paddingHorizontal: 4 }}>
@@ -368,6 +372,8 @@ export default function TeacherProctoringScheduleScreen() {
             subtitle="Total sesi siswa"
             iconName="users"
             accentColor="#0f766e"
+            align="center"
+            style={{ height: '100%' }}
           />
         </View>
       </View>
@@ -397,8 +403,8 @@ export default function TeacherProctoringScheduleScreen() {
           borderWidth: 1,
           borderColor: '#dbe7fb',
           borderRadius: 12,
-          paddingVertical: 10,
-          paddingHorizontal: 12,
+          paddingVertical: 8,
+          paddingHorizontal: 10,
           marginBottom: 10,
         }}
       >
@@ -406,10 +412,10 @@ export default function TeacherProctoringScheduleScreen() {
           items={timeFilterItems}
           activeKey={timeFilter}
           onChange={(next) => setTimeFilter((next as TimeFilter) || 'TODAY')}
-          minTabWidth={108}
-          maxTabWidth={144}
-          contentContainerStyle={{ paddingHorizontal: 2 }}
+          layout="fill"
+          contentContainerStyle={{ alignItems: 'stretch' }}
           tabVariant="plain"
+          gap={0}
         />
       </View>
 
