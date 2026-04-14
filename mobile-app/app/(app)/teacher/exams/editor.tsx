@@ -2141,6 +2141,9 @@ export default function TeacherExamEditorScreen() {
             }}
           >
             <Text style={{ color: '#1e3a8a', fontWeight: '700', marginBottom: 6 }}>Kisi-kisi Soal</Text>
+            <Text style={{ color: '#1e3a8a', fontSize: 11, fontWeight: '700', marginBottom: 4 }}>
+              Tujuan Pembelajaran
+            </Text>
             <TextInput
               value={String(question.blueprint.learningObjective || '')}
               onChangeText={(value) =>
@@ -2168,7 +2171,12 @@ export default function TeacherExamEditorScreen() {
                 backgroundColor: '#fff',
                 marginBottom: 6,
               }}
+              multiline
+              textAlignVertical="top"
             />
+            <Text style={{ color: '#1e3a8a', fontSize: 11, fontWeight: '700', marginBottom: 4 }}>
+              Indikator Soal
+            </Text>
             <TextInput
               value={String(question.blueprint.indicator || '')}
               onChangeText={(value) =>
@@ -2196,7 +2204,12 @@ export default function TeacherExamEditorScreen() {
                 backgroundColor: '#fff',
                 marginBottom: 6,
               }}
+              multiline
+              textAlignVertical="top"
             />
+            <Text style={{ color: '#1e3a8a', fontSize: 11, fontWeight: '700', marginBottom: 4 }}>
+              Kompetensi / Capaian
+            </Text>
             <TextInput
               value={String(question.blueprint.competency || '')}
               onChangeText={(value) =>
@@ -2224,67 +2237,74 @@ export default function TeacherExamEditorScreen() {
                 backgroundColor: '#fff',
                 marginBottom: 6,
               }}
+              multiline
+              textAlignVertical="top"
             />
-            <View style={{ flexDirection: 'row', marginHorizontal: -4 }}>
-              <View style={{ flex: 1, paddingHorizontal: 4 }}>
-                <TextInput
-                  value={String(question.blueprint.materialScope || '')}
-                  onChangeText={(value) =>
-                    setQuestions((prev) =>
-                      prev.map((item) =>
-                        item.id === question.id
-                          ? {
-                              ...item,
-                              blueprint: {
-                                ...normalizeBlueprint(item.blueprint),
-                                materialScope: value,
-                              },
-                            }
-                          : item,
-                      ),
-                    )
-                  }
-                  placeholder="Ruang lingkup materi"
-                  style={{
-                    borderWidth: 1,
-                    borderColor: '#bfdbfe',
-                    borderRadius: 10,
-                    paddingHorizontal: 10,
-                    paddingVertical: 9,
-                    backgroundColor: '#fff',
-                  }}
-                />
-              </View>
-              <View style={{ flex: 1, paddingHorizontal: 4 }}>
-                <TextInput
-                  value={String(question.blueprint.cognitiveLevel || '')}
-                  onChangeText={(value) =>
-                    setQuestions((prev) =>
-                      prev.map((item) =>
-                        item.id === question.id
-                          ? {
-                              ...item,
-                              blueprint: {
-                                ...normalizeBlueprint(item.blueprint),
-                                cognitiveLevel: value,
-                              },
-                            }
-                          : item,
-                      ),
-                    )
-                  }
-                  placeholder="Level kognitif"
-                  style={{
-                    borderWidth: 1,
-                    borderColor: '#bfdbfe',
-                    borderRadius: 10,
-                    paddingHorizontal: 10,
-                    paddingVertical: 9,
-                    backgroundColor: '#fff',
-                  }}
-                />
-              </View>
-            </View>
+            <Text style={{ color: '#1e3a8a', fontSize: 11, fontWeight: '700', marginBottom: 4 }}>
+              Ruang Lingkup Materi
+            </Text>
+            <TextInput
+              value={String(question.blueprint.materialScope || '')}
+              onChangeText={(value) =>
+                setQuestions((prev) =>
+                  prev.map((item) =>
+                    item.id === question.id
+                      ? {
+                          ...item,
+                          blueprint: {
+                            ...normalizeBlueprint(item.blueprint),
+                            materialScope: value,
+                          },
+                        }
+                      : item,
+                  ),
+                )
+              }
+              placeholder="Ruang lingkup materi"
+              style={{
+                borderWidth: 1,
+                borderColor: '#bfdbfe',
+                borderRadius: 10,
+                paddingHorizontal: 10,
+                paddingVertical: 9,
+                backgroundColor: '#fff',
+                marginBottom: 6,
+              }}
+              multiline
+              textAlignVertical="top"
+            />
+            <Text style={{ color: '#1e3a8a', fontSize: 11, fontWeight: '700', marginBottom: 4 }}>
+              Level Kognitif
+            </Text>
+            <TextInput
+              value={String(question.blueprint.cognitiveLevel || '')}
+              onChangeText={(value) =>
+                setQuestions((prev) =>
+                  prev.map((item) =>
+                    item.id === question.id
+                      ? {
+                          ...item,
+                          blueprint: {
+                            ...normalizeBlueprint(item.blueprint),
+                            cognitiveLevel: value,
+                          },
+                        }
+                      : item,
+                  ),
+                )
+              }
+              placeholder="Level kognitif"
+              style={{
+                borderWidth: 1,
+                borderColor: '#bfdbfe',
+                borderRadius: 10,
+                paddingHorizontal: 10,
+                paddingVertical: 9,
+                backgroundColor: '#fff',
+              }}
+              multiline
+              textAlignVertical="top"
+            />
           </View>
 
           <View

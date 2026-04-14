@@ -352,18 +352,40 @@ const normalizeReviewQuestions = (rawQuestions: unknown): ReviewableQuestion[] =
                 : null,
         }))
       : [];
-    const matrixColumns = Array.isArray(source.matrixColumns)
-      ? source.matrixColumns.map((column: any, columnIndex: number) => ({
+    const matrixPromptColumnsSource = Array.isArray(source.matrixPromptColumns)
+      ? source.matrixPromptColumns
+      : Array.isArray(metadata.matrixPromptColumns)
+        ? metadata.matrixPromptColumns
+        : [];
+    const matrixColumnsSource = Array.isArray(source.matrixColumns)
+      ? source.matrixColumns
+      : Array.isArray(metadata.matrixColumns)
+        ? metadata.matrixColumns
+        : [];
+    const matrixRowsSource = Array.isArray(source.matrixRows)
+      ? source.matrixRows
+      : Array.isArray(metadata.matrixRows)
+        ? metadata.matrixRows
+        : [];
+    const matrixPromptColumns = matrixPromptColumnsSource.map((column: any, columnIndex: number) => ({
+      id: String(column?.id || `matrix-prompt-col-${index + 1}-${columnIndex + 1}`),
+      label: String(column?.label || ''),
+    }));
+    const matrixColumns = matrixColumnsSource.map((column: any, columnIndex: number) => ({
           id: String(column?.id || `matrix-col-${index + 1}-${columnIndex + 1}`),
           content: String(column?.content || ''),
-        }))
-      : [];
-    const matrixRows = Array.isArray(source.matrixRows)
-      ? source.matrixRows.map((row: any, rowIndex: number) => ({
+        }));
+    const matrixRows = matrixRowsSource.map((row: any, rowIndex: number) => ({
           id: String(row?.id || `matrix-row-${index + 1}-${rowIndex + 1}`),
           content: String(row?.content || ''),
-        }))
-      : [];
+          cells: Array.isArray(row?.cells)
+            ? row.cells.map((cell: any, cellIndex: number) => ({
+                columnId: String(cell?.columnId || `matrix-prompt-col-${index + 1}-${cellIndex + 1}`),
+                content: String(cell?.content || ''),
+              }))
+            : [],
+          correctOptionId: String(row?.correctOptionId || ''),
+        }));
 
     return {
       id: String(source.id || `question-${index + 1}`),
@@ -399,6 +421,7 @@ const normalizeReviewQuestions = (rawQuestions: unknown): ReviewableQuestion[] =
           : null,
       question_media_position: source.question_media_position || 'top',
       options,
+      matrixPromptColumns,
       matrixColumns,
       matrixRows,
       blueprint: {

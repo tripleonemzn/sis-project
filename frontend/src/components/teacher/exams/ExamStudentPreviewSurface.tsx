@@ -34,6 +34,7 @@ export type ExamStudentPreviewMatrixRow = {
   id: string;
   content: string;
   cells?: ExamStudentPreviewMatrixRowCell[];
+  correctOptionId?: string;
 };
 
 export type ExamStudentPreviewQuestion = {

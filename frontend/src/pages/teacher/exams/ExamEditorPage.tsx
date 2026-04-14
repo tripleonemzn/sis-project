@@ -3992,36 +3992,66 @@ export const ExamEditorPage = () => {
                                     </div>
 
                                     <div className="grid grid-cols-1 gap-3">
-                                        <input
-                                            value={activeQuestionBlueprint.competency || ''}
-                                            onChange={(e) => updateQuestionBlueprintField(activeQuestion.id, 'competency', e.target.value)}
-                                            placeholder="Kompetensi/Capaian"
-                                            className="w-full rounded-2xl border border-slate-300 px-4 py-3 text-sm focus:border-blue-500 focus:outline-none"
-                                        />
-                                        <input
-                                            value={activeQuestionBlueprint.learningObjective || ''}
-                                            onChange={(e) => updateQuestionBlueprintField(activeQuestion.id, 'learningObjective', e.target.value)}
-                                            placeholder="Tujuan pembelajaran"
-                                            className="w-full rounded-2xl border border-slate-300 px-4 py-3 text-sm focus:border-blue-500 focus:outline-none"
-                                        />
-                                        <input
-                                            value={activeQuestionBlueprint.indicator || ''}
-                                            onChange={(e) => updateQuestionBlueprintField(activeQuestion.id, 'indicator', e.target.value)}
-                                            placeholder="Indikator soal"
-                                            className="w-full rounded-2xl border border-slate-300 px-4 py-3 text-sm focus:border-blue-500 focus:outline-none"
-                                        />
-                                        <input
-                                            value={activeQuestionBlueprint.materialScope || ''}
-                                            onChange={(e) => updateQuestionBlueprintField(activeQuestion.id, 'materialScope', e.target.value)}
-                                            placeholder="Ruang lingkup materi"
-                                            className="w-full rounded-2xl border border-slate-300 px-4 py-3 text-sm focus:border-blue-500 focus:outline-none"
-                                        />
-                                        <input
-                                            value={activeQuestionBlueprint.cognitiveLevel || ''}
-                                            onChange={(e) => updateQuestionBlueprintField(activeQuestion.id, 'cognitiveLevel', e.target.value)}
-                                            placeholder="Level kognitif (C1-C6)"
-                                            className="w-full rounded-2xl border border-slate-300 px-4 py-3 text-sm focus:border-blue-500 focus:outline-none"
-                                        />
+                                        <div>
+                                            <p className="mb-2 text-xs font-semibold uppercase tracking-wide text-blue-700">
+                                                Kompetensi/Capaian
+                                            </p>
+                                            <textarea
+                                                value={activeQuestionBlueprint.competency || ''}
+                                                onChange={(e) => updateQuestionBlueprintField(activeQuestion.id, 'competency', e.target.value)}
+                                                rows={3}
+                                                placeholder="Tulis kompetensi atau capaian yang menjadi dasar butir soal."
+                                                className="w-full rounded-2xl border border-blue-200 bg-white px-4 py-3 text-sm leading-6 text-slate-700 focus:border-blue-500 focus:outline-none"
+                                            />
+                                        </div>
+                                        <div>
+                                            <p className="mb-2 text-xs font-semibold uppercase tracking-wide text-blue-700">
+                                                Tujuan Pembelajaran
+                                            </p>
+                                            <textarea
+                                                value={activeQuestionBlueprint.learningObjective || ''}
+                                                onChange={(e) => updateQuestionBlueprintField(activeQuestion.id, 'learningObjective', e.target.value)}
+                                                rows={3}
+                                                placeholder="Tulis tujuan pembelajaran yang ingin dicapai."
+                                                className="w-full rounded-2xl border border-blue-200 bg-white px-4 py-3 text-sm leading-6 text-slate-700 focus:border-blue-500 focus:outline-none"
+                                            />
+                                        </div>
+                                        <div>
+                                            <p className="mb-2 text-xs font-semibold uppercase tracking-wide text-blue-700">
+                                                Indikator Soal
+                                            </p>
+                                            <textarea
+                                                value={activeQuestionBlueprint.indicator || ''}
+                                                onChange={(e) => updateQuestionBlueprintField(activeQuestion.id, 'indicator', e.target.value)}
+                                                rows={3}
+                                                placeholder="Tulis indikator yang dipakai untuk menilai butir soal."
+                                                className="w-full rounded-2xl border border-blue-200 bg-white px-4 py-3 text-sm leading-6 text-slate-700 focus:border-blue-500 focus:outline-none"
+                                            />
+                                        </div>
+                                        <div>
+                                            <p className="mb-2 text-xs font-semibold uppercase tracking-wide text-blue-700">
+                                                Ruang Lingkup Materi
+                                            </p>
+                                            <textarea
+                                                value={activeQuestionBlueprint.materialScope || ''}
+                                                onChange={(e) => updateQuestionBlueprintField(activeQuestion.id, 'materialScope', e.target.value)}
+                                                rows={3}
+                                                placeholder="Tulis ruang lingkup materi yang dibahas."
+                                                className="w-full rounded-2xl border border-blue-200 bg-white px-4 py-3 text-sm leading-6 text-slate-700 focus:border-blue-500 focus:outline-none"
+                                            />
+                                        </div>
+                                        <div>
+                                            <p className="mb-2 text-xs font-semibold uppercase tracking-wide text-blue-700">
+                                                Level Kognitif
+                                            </p>
+                                            <textarea
+                                                value={activeQuestionBlueprint.cognitiveLevel || ''}
+                                                onChange={(e) => updateQuestionBlueprintField(activeQuestion.id, 'cognitiveLevel', e.target.value)}
+                                                rows={2}
+                                                placeholder="Contoh: C1-C6"
+                                                className="w-full rounded-2xl border border-blue-200 bg-white px-4 py-3 text-sm leading-6 text-slate-700 focus:border-blue-500 focus:outline-none"
+                                            />
+                                        </div>
                                     </div>
 
                                     {activeQuestionReviewFeedback?.blueprintComment ? (
