@@ -17,6 +17,8 @@ const normalizeLedgerCode = (raw: unknown): string =>
     .replace(/^_+|_+$/g, '');
 
 const parseScoreNumber = (raw: unknown): number | null => {
+  if (raw === null || raw === undefined) return null;
+  if (typeof raw === 'string' && raw.trim() === '') return null;
   const value = Number(raw);
   if (!Number.isFinite(value)) return null;
   return value;
@@ -350,6 +352,30 @@ const pickReportComponentLike = <T extends ExamGradeComponentLite>(
   return components.find((item) => matcher(item)) || null;
 };
 
+const pickPreferredFinalComponent = <T extends ExamGradeComponentLite>(
+  components: T[],
+  resolveSlotCode: (component?: T | null, fallback?: string) => string,
+  preferredSlot?: string | null,
+): T | null => {
+  const normalizedPreferredSlot = normalizeLedgerCode(preferredSlot);
+  if (normalizedPreferredSlot && normalizedPreferredSlot !== 'NONE') {
+    const exactMatch =
+      components.find(
+        (item) =>
+          isFinalComponentLike(item) &&
+          normalizeLedgerCode(resolveSlotCode(item, normalizedPreferredSlot)) === normalizedPreferredSlot,
+      ) || null;
+    if (exactMatch) return exactMatch;
+  }
+
+  return pickReportComponentLike(
+    components,
+    isFinalComponentLike,
+    resolveSlotCode,
+    normalizedPreferredSlot || undefined,
+  );
+};
+
 const resolveCoreReportComponents = <T extends ExamGradeComponentLite>(
   components: T[],
   resolveSlotCode: (component?: T | null, fallback?: string) => string,
@@ -374,14 +400,36 @@ const resolveCoreReportComponents = <T extends ExamGradeComponentLite>(
     isMidtermComponentLike,
     resolveSlotCode,
   );
-  const finalComponent = pickReportComponentLike(
+  const finalComponent = pickPreferredFinalComponent(
     components,
-    isFinalComponentLike,
     resolveSlotCode,
     finalFallbackSlot,
   );
 
   return { formativeComponent, midtermComponent, finalComponent };
+};
+
+const isSubjectAllowedForReportContext = (params: {
+  subjectId: number;
+  subjectCategoryCode: string | null | undefined;
+  allowedSubjectIds: Set<number>;
+  reportSlotCode: string | null | undefined;
+  programComponentType: string | null | undefined;
+}): boolean => {
+  if (params.allowedSubjectIds.size > 0 && !params.allowedSubjectIds.has(Number(params.subjectId))) {
+    return false;
+  }
+
+  const normalizedReportSlotCode = normalizeLedgerCode(params.reportSlotCode);
+  const normalizedProgramComponentType = normalizeLedgerCode(params.programComponentType);
+  const isUsTheoryContext =
+    isUsAliasCode(normalizedReportSlotCode) || normalizedProgramComponentType === 'US_THEORY';
+
+  if (!isUsTheoryContext && String(params.subjectCategoryCode || '').trim().toUpperCase() === 'TEORI_KEJURUAN') {
+    return false;
+  }
+
+  return true;
 };
 
 const buildProgramReportAliases = (program: ProgramReportAliasSource): string[] => {
@@ -830,6 +878,7 @@ export class ReportService {
           gradeComponentType: true,
           gradeComponentTypeCode: true,
           fixedSemester: true,
+          allowedSubjectIds: true,
           displayOrder: true,
         },
         orderBy: [{ displayOrder: 'asc' }, { code: 'asc' }],
@@ -862,6 +911,13 @@ export class ReportService {
     const activeProgramComponentType =
       normalizeLedgerCode(activeProgram?.gradeComponentTypeCode || activeProgram?.gradeComponentType) ||
       reportProgramContext.programComponentType;
+    const activeProgramAllowedSubjectIds = new Set(
+      Array.isArray(activeProgram?.allowedSubjectIds)
+        ? activeProgram.allowedSubjectIds
+            .map((subjectId) => Number(subjectId))
+            .filter((subjectId) => Number.isFinite(subjectId) && subjectId > 0)
+        : [],
+    );
     const isMidtermReport = resolveMidtermMode(
       activeProgramComponentType,
       resolvedReportSlotCode,
@@ -893,6 +949,15 @@ export class ReportService {
               'Komponen 2',
           ).trim()
         : 'Capaian Kompetensi';
+    const scopedTeacherAssignments = teacherAssignments.filter((assignment) =>
+      isSubjectAllowedForReportContext({
+        subjectId: Number(assignment.subjectId),
+        subjectCategoryCode: assignment.subject?.category?.code || null,
+        allowedSubjectIds: activeProgramAllowedSubjectIds,
+        reportSlotCode: resolvedReportSlotCode,
+        programComponentType: activeProgramComponentType,
+      }),
+    );
 
     // Fetch non-academic activities
     const nonAcademicReportSlot = resolveNonAcademicReportSlot(semester, {
@@ -1004,7 +1069,7 @@ export class ReportService {
     const bucketB_Kompetensi: any[] = [];
     const bucketB_Pilihan: any[] = [];
 
-    teacherAssignments.forEach((assignment) => {
+    scopedTeacherAssignments.forEach((assignment) => {
       const subject = assignment.subject;
       const grade = studentGrades.find((g) => g.subjectId === subject.id);
       const report = reportGrades.find((r) => r.subjectId === subject.id);
@@ -1375,22 +1440,6 @@ export class ReportService {
       'MUATAN_LOKAL': 5,
     };
 
-    const subjects = teacherAssignments
-      .map(ta => ta.subject)
-      .sort((a, b) => {
-        const codeA = a.category?.code || '';
-        const codeB = b.category?.code || '';
-        
-        const orderA = categoryOrder[codeA] ?? 99;
-        const orderB = categoryOrder[codeB] ?? 99;
-        
-        if (orderA !== orderB) {
-          return orderA - orderB;
-        }
-        
-        return a.code.localeCompare(b.code);
-      });
-
     // 3. Fetch Grades & dynamic exam config for this class context
     const studentIds = classStudents.map(s => s.id);
     
@@ -1438,6 +1487,7 @@ export class ReportService {
           gradeComponentType: true,
           gradeComponentTypeCode: true,
           fixedSemester: true,
+          allowedSubjectIds: true,
           displayOrder: true,
         },
         orderBy: [{ displayOrder: 'asc' }, { code: 'asc' }],
@@ -1470,6 +1520,13 @@ export class ReportService {
     const activeProgramComponentType =
       normalizeLedgerCode(activeProgram?.gradeComponentTypeCode || activeProgram?.gradeComponentType) ||
       reportProgramContext.programComponentType;
+    const activeProgramAllowedSubjectIds = new Set(
+      Array.isArray(activeProgram?.allowedSubjectIds)
+        ? activeProgram.allowedSubjectIds
+            .map((subjectId) => Number(subjectId))
+            .filter((subjectId) => Number.isFinite(subjectId) && subjectId > 0)
+        : [],
+    );
     const isMidtermReport = resolveMidtermMode(
       activeProgramComponentType,
       resolvedReportSlotCode,
@@ -1507,6 +1564,30 @@ export class ReportService {
               'Komponen 2',
           ).trim()
         : 'Capaian Kompetensi';
+    const scopedTeacherAssignments = teacherAssignments.filter((assignment) =>
+      isSubjectAllowedForReportContext({
+        subjectId: Number(assignment.subjectId),
+        subjectCategoryCode: assignment.subject?.category?.code || null,
+        allowedSubjectIds: activeProgramAllowedSubjectIds,
+        reportSlotCode: resolvedReportSlotCode,
+        programComponentType: activeProgramComponentType,
+      }),
+    );
+    const subjects = scopedTeacherAssignments
+      .map((ta) => ta.subject)
+      .sort((a, b) => {
+        const codeA = a.category?.code || '';
+        const codeB = b.category?.code || '';
+
+        const orderA = categoryOrder[codeA] ?? 99;
+        const orderB = categoryOrder[codeB] ?? 99;
+
+        if (orderA !== orderB) {
+          return orderA - orderB;
+        }
+
+        return a.code.localeCompare(b.code);
+      });
 
     const hasAnyNumericValue = (values: Array<number | null | undefined>) =>
       values.some((value) => value !== null && value !== undefined);

@@ -56,6 +56,8 @@ const isFormativeAliasCode = (raw: unknown): boolean => {
 };
 
 const parseNumericScore = (raw: unknown): number | null => {
+  if (raw === null || raw === undefined) return null;
+  if (typeof raw === 'string' && raw.trim() === '') return null;
   const parsed = Number(raw);
   if (!Number.isFinite(parsed)) return null;
   return parsed;
