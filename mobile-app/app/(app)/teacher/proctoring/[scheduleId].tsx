@@ -11,6 +11,7 @@ import { BRAND_COLORS } from '../../../../src/config/brand';
 import { useAuth } from '../../../../src/features/auth/AuthProvider';
 import { proctoringApi } from '../../../../src/features/proctoring/proctoringApi';
 import { ProctorScheduleStatus } from '../../../../src/features/proctoring/types';
+import { useIsScreenActive } from '../../../../src/hooks/useIsScreenActive';
 import { getStandardPagePadding } from '../../../../src/lib/ui/pageLayout';
 import { notifyApiError, notifySuccess } from '../../../../src/lib/ui/feedback';
 
@@ -24,7 +25,7 @@ function parseScheduleId(raw: string | string[] | undefined): number | null {
 
 function statusLabel(status: ProctorScheduleStatus) {
   if (status === 'NOT_STARTED') return 'Belum Mulai';
-  if (status === 'IN_PROGRESS') return 'Mengerjakan';
+  if (status === 'IN_PROGRESS') return 'Sedang Mengerjakan';
   if (status === 'COMPLETED') return 'Selesai';
   return 'Waktu Habis';
 }
@@ -65,9 +66,43 @@ function normalizeExamHeading(label?: string | null) {
   return normalized ? normalized.toUpperCase() : 'UJIAN';
 }
 
+function romanLevelRank(level: string): number {
+  const value = String(level || '').toUpperCase();
+  if (value === 'X') return 10;
+  if (value === 'XI') return 11;
+  if (value === 'XII') return 12;
+  return 99;
+}
+
+function parseClassName(raw?: string | null) {
+  const text = String(raw || '').trim();
+  const parts = text.split(/\s+/).filter(Boolean);
+  const level = parts[0] || '';
+  const tail = parts.slice(1).join(' ');
+  const numberMatch = tail.match(/(\d+)\s*$/);
+  const roomNumber = numberMatch ? Number(numberMatch[1]) : Number.MAX_SAFE_INTEGER;
+  const major = numberMatch ? tail.replace(/\s*\d+\s*$/, '').trim() : tail;
+  return {
+    levelRank: romanLevelRank(level),
+    major: major.toUpperCase(),
+    roomNumber,
+    original: text,
+  };
+}
+
+function compareClassName(a?: string | null, b?: string | null) {
+  const parsedA = parseClassName(a);
+  const parsedB = parseClassName(b);
+  if (parsedA.levelRank !== parsedB.levelRank) return parsedA.levelRank - parsedB.levelRank;
+  if (parsedA.major !== parsedB.major) return parsedA.major.localeCompare(parsedB.major, 'id');
+  if (parsedA.roomNumber !== parsedB.roomNumber) return parsedA.roomNumber - parsedB.roomNumber;
+  return parsedA.original.localeCompare(parsedB.original, 'id');
+}
+
 export default function TeacherProctoringDetailScreen() {
   const router = useRouter();
   const insets = useSafeAreaInsets();
+  const isScreenActive = useIsScreenActive();
   const { scheduleId } = useLocalSearchParams<{ scheduleId?: string | string[] }>();
   const parsedScheduleId = useMemo(() => parseScheduleId(scheduleId), [scheduleId]);
   const { isAuthenticated, isLoading, user } = useAuth();
@@ -80,6 +115,8 @@ export default function TeacherProctoringDetailScreen() {
     queryKey: ['mobile-proctoring-detail', parsedScheduleId],
     enabled: isAuthenticated && user?.role === 'TEACHER' && !!parsedScheduleId,
     queryFn: async () => proctoringApi.getScheduleDetail(Number(parsedScheduleId)),
+    refetchInterval: isScreenActive ? 7000 : false,
+    refetchIntervalInBackground: false,
   });
 
   const submitMutation = useMutation({
@@ -120,8 +157,29 @@ export default function TeacherProctoringDetailScreen() {
     })[0] || null;
   }, [detailQuery.data?.schedule?.proctoringReports]);
   const reportSubmitted = Boolean(latestReport?.id);
-  const inProgressCount = students.filter((item) => item.status === 'IN_PROGRESS').length;
-  const completedCount = students.filter((item) => item.status === 'COMPLETED').length;
+  const orderedClassNames = useMemo(() => {
+    const sourceClassNames =
+      detailQuery.data?.schedule?.classNames?.length
+        ? detailQuery.data.schedule.classNames
+        : detailQuery.data?.schedule?.class?.name
+          ? [detailQuery.data.schedule.class.name]
+          : [];
+    return [...sourceClassNames].sort(compareClassName);
+  }, [detailQuery.data?.schedule?.class?.name, detailQuery.data?.schedule?.classNames]);
+  const orderedStudents = useMemo(
+    () =>
+      [...students].sort((a, b) => {
+        const classCompare = compareClassName(a.className, b.className);
+        if (classCompare !== 0) return classCompare;
+        return String(a.name || '').localeCompare(String(b.name || ''), 'id');
+      }),
+    [students],
+  );
+  const inProgressCount = orderedStudents.filter((item) => item.status === 'IN_PROGRESS').length;
+  const completedCount = orderedStudents.filter((item) => item.status === 'COMPLETED').length;
+  const notStartedCount = orderedStudents.filter((item) => item.status === 'NOT_STARTED').length;
+  const totalViolations = orderedStudents.reduce((acc, item) => acc + Number(item.monitoring?.totalViolations || 0), 0);
+  const studentsWithViolations = orderedStudents.filter((item) => Number(item.monitoring?.totalViolations || 0) > 0).length;
 
   useEffect(() => {
     if (!latestReport?.id) return;
@@ -163,7 +221,7 @@ export default function TeacherProctoringDetailScreen() {
     Number(detailQuery.data?.schedule?.attendanceSummary?.expectedParticipants) || students.length;
   const presentParticipants =
     Number(detailQuery.data?.schedule?.attendanceSummary?.presentParticipants) ||
-    students.filter((item) => !!item.startTime || item.status !== 'NOT_STARTED').length;
+    orderedStudents.filter((item) => !!item.startTime || item.status !== 'NOT_STARTED').length;
   const absentParticipants = Math.max(
     0,
     Number(detailQuery.data?.schedule?.attendanceSummary?.absentParticipants) ||
@@ -173,7 +231,21 @@ export default function TeacherProctoringDetailScreen() {
     ? new Date(detailQuery.data.schedule.serverNow).getTime()
     : Date.now();
   const scheduleStartMs = new Date(String(detailQuery.data?.schedule?.startTime || '')).getTime();
+  const scheduleEndMs = new Date(String(detailQuery.data?.schedule?.endTime || '')).getTime();
   const isScheduleStarted = Number.isFinite(scheduleStartMs) && referenceNowMs >= scheduleStartMs;
+  const isScheduleRunning =
+    Number.isFinite(scheduleStartMs) &&
+    Number.isFinite(scheduleEndMs) &&
+    referenceNowMs >= scheduleStartMs &&
+    referenceNowMs <= scheduleEndMs;
+  const serverTimeDriftMinutes = detailQuery.data?.schedule?.serverNow
+    ? (() => {
+        const serverNowMs = new Date(detailQuery.data.schedule.serverNow || '').getTime();
+        if (!Number.isFinite(serverNowMs)) return null;
+        const driftMs = Math.abs(Date.now() - serverNowMs);
+        return driftMs >= 2 * 60 * 1000 ? Math.round(driftMs / 60000) : null;
+      })()
+    : null;
 
   if (isLoading) return <AppLoadingScreen message="Memuat monitoring ujian..." />;
   if (!isAuthenticated) return <Redirect href="/welcome" />;
@@ -227,7 +299,9 @@ export default function TeacherProctoringDetailScreen() {
         </Pressable>
         <View style={{ flex: 1 }}>
           <Text style={{ fontSize: 24, fontWeight: '700', color: BRAND_COLORS.textDark }}>Monitoring Ujian</Text>
-          <Text style={{ color: BRAND_COLORS.textMuted }}>Pantau status peserta dan siapkan berita acara untuk Kurikulum.</Text>
+          <Text style={{ color: BRAND_COLORS.textMuted }}>
+            Pantau status peserta, pelanggaran, dan siapkan berita acara untuk Kurikulum.
+          </Text>
         </View>
       </View>
 
@@ -244,6 +318,27 @@ export default function TeacherProctoringDetailScreen() {
 
       {!detailQuery.isLoading && !detailQuery.isError && detailQuery.data ? (
         <>
+          {(serverTimeDriftMinutes !== null || (isScheduleRunning && notStartedCount > 0)) ? (
+            <View
+              style={{
+                backgroundColor: '#fef3c7',
+                borderWidth: 1,
+                borderColor: '#fcd34d',
+                borderRadius: 12,
+                paddingHorizontal: 12,
+                paddingVertical: 10,
+                marginBottom: 10,
+              }}
+            >
+              <Text style={{ color: '#92400e', fontWeight: '700' }}>Peringatan Sinkronisasi Waktu</Text>
+              <Text style={{ color: '#92400e', fontSize: 12, marginTop: 4, lineHeight: 18 }}>
+                {serverTimeDriftMinutes !== null
+                  ? `Jam perangkat pengawas berbeda sekitar ${serverTimeDriftMinutes} menit dari server. Aktifkan sinkronisasi waktu otomatis agar monitoring akurat.`
+                  : 'Jika siswa melapor tombol mulai tidak muncul, cek jam perangkat siswa dan pastikan sinkronisasi waktu otomatis aktif.'}
+              </Text>
+            </View>
+          ) : null}
+
           <View
             style={{
               backgroundColor: '#1e3a8a',
@@ -251,25 +346,30 @@ export default function TeacherProctoringDetailScreen() {
               padding: 12,
               marginBottom: 10,
             }}
-          >
-            <Text style={{ color: '#bfdbfe', fontSize: 12 }}>Jadwal Ujian</Text>
-            <Text style={{ color: '#fff', fontSize: 18, fontWeight: '700', marginTop: 3 }}>
-              {detailQuery.data.schedule.packet?.title || 'Paket Tidak Ditemukan'}
-            </Text>
-            <Text style={{ color: '#dbeafe', fontSize: 12, marginTop: 3 }}>
-              {detailQuery.data.schedule.packet?.subject?.name || '-'} • {detailQuery.data.schedule.class?.name || '-'}
-            </Text>
-            <Text style={{ color: '#dbeafe', fontSize: 12, marginTop: 3 }}>
-              {formatDateTime(detailQuery.data.schedule.startTime)} - {formatTime(detailQuery.data.schedule.endTime)}
-            </Text>
-            <Text style={{ color: '#dbeafe', fontSize: 12, marginTop: 3 }}>
-              Ruangan: {detailQuery.data.schedule.room || 'Belum ditentukan'} • Token:{' '}
-              {detailQuery.data.schedule.token || '-'}
-            </Text>
-          </View>
+            >
+              <Text style={{ color: '#bfdbfe', fontSize: 12 }}>Jadwal Ujian</Text>
+              <Text style={{ color: '#fff', fontSize: 18, fontWeight: '700', marginTop: 3 }}>
+                {detailQuery.data.schedule.displayTitle || detailQuery.data.schedule.packet?.title || 'Paket Tidak Ditemukan'}
+              </Text>
+              <Text style={{ color: '#dbeafe', fontSize: 12, marginTop: 3 }}>
+                {detailQuery.data.schedule.packet?.subject?.name || '-'} • {orderedClassNames.join(' • ') || '-'}
+              </Text>
+              <Text style={{ color: '#dbeafe', fontSize: 12, marginTop: 3 }}>
+                {formatDateTime(detailQuery.data.schedule.startTime)} - {formatTime(detailQuery.data.schedule.endTime)}
+              </Text>
+              <Text style={{ color: '#dbeafe', fontSize: 12, marginTop: 3 }}>
+                Ruangan: {detailQuery.data.schedule.room || 'Belum ditentukan'} • Token:{' '}
+                {detailQuery.data.schedule.token || '-'}
+              </Text>
+              {detailQuery.data.schedule.teacherNames?.length ? (
+                <Text style={{ color: '#dbeafe', fontSize: 12, marginTop: 3 }}>
+                  Guru Pengampu: {detailQuery.data.schedule.teacherNames.join(', ')}
+                </Text>
+              ) : null}
+            </View>
 
-          <View style={{ flexDirection: 'row', marginHorizontal: -4, marginBottom: 10 }}>
-            <View style={{ flex: 1, paddingHorizontal: 4 }}>
+          <View style={{ flexDirection: 'row', flexWrap: 'wrap', marginHorizontal: -4, marginBottom: 10 }}>
+            <View style={{ width: '50%', paddingHorizontal: 4, marginBottom: 8 }}>
               <MobileSummaryCard
                 title="Seharusnya"
                 value={String(expectedParticipants)}
@@ -278,22 +378,31 @@ export default function TeacherProctoringDetailScreen() {
                 accentColor="#2563eb"
               />
             </View>
-            <View style={{ flex: 1, paddingHorizontal: 4 }}>
+            <View style={{ width: '50%', paddingHorizontal: 4, marginBottom: 8 }}>
               <MobileSummaryCard
-                title="Mengerjakan"
+                title="Sedang Mengerjakan"
                 value={String(inProgressCount)}
-                subtitle="Sedang berlangsung"
+                subtitle="Sesi berlangsung"
                 iconName="play-circle"
                 accentColor="#0f766e"
               />
             </View>
-            <View style={{ flex: 1, paddingHorizontal: 4 }}>
+            <View style={{ width: '50%', paddingHorizontal: 4, marginBottom: 8 }}>
               <MobileSummaryCard
                 title="Selesai"
                 value={String(completedCount)}
                 subtitle={`Tidak hadir ${absentParticipants}`}
                 iconName="check-circle"
                 accentColor="#16a34a"
+              />
+            </View>
+            <View style={{ width: '50%', paddingHorizontal: 4, marginBottom: 8 }}>
+              <MobileSummaryCard
+                title="Pelanggaran"
+                value={String(totalViolations)}
+                subtitle={`${studentsWithViolations} peserta terdampak`}
+                iconName="alert-triangle"
+                accentColor="#dc2626"
               />
             </View>
           </View>
@@ -313,7 +422,7 @@ export default function TeacherProctoringDetailScreen() {
           >
             <Text style={{ color: '#0f766e', fontWeight: '700' }}>Hadir {presentParticipants}</Text>
             <Text style={{ color: '#b91c1c', fontWeight: '700' }}>Tidak hadir {absentParticipants}</Text>
-            <Text style={{ color: '#475569' }}>Belum mulai {Math.max(0, students.filter((item) => item.status === 'NOT_STARTED').length)}</Text>
+            <Text style={{ color: '#475569' }}>Belum mulai {Math.max(0, notStartedCount)}</Text>
           </View>
 
           <View
@@ -325,11 +434,12 @@ export default function TeacherProctoringDetailScreen() {
               padding: 12,
               marginBottom: 10,
             }}
-          >
-            <Text style={{ color: BRAND_COLORS.textDark, fontWeight: '700', marginBottom: 8 }}>Status Peserta</Text>
-            {students.length > 0 ? (
-              students.map((student) => {
+            >
+              <Text style={{ color: BRAND_COLORS.textDark, fontWeight: '700', marginBottom: 8 }}>Status Peserta</Text>
+            {orderedStudents.length > 0 ? (
+              orderedStudents.map((student) => {
                 const style = statusStyle(student.status);
+                const totalStudentViolations = Number(student.monitoring?.totalViolations || 0);
                 return (
                   <View
                     key={student.id}
@@ -345,6 +455,9 @@ export default function TeacherProctoringDetailScreen() {
                       <View style={{ flex: 1, paddingRight: 8 }}>
                         <Text style={{ color: BRAND_COLORS.textDark, fontWeight: '700' }}>{student.name}</Text>
                         <Text style={{ color: '#64748b', fontSize: 12, marginTop: 2 }}>NIS: {student.nis || '-'}</Text>
+                        <Text style={{ color: '#64748b', fontSize: 12, marginTop: 2 }}>
+                          Kelas: {student.className || '-'}
+                        </Text>
                       </View>
                       <View
                         style={{
@@ -365,6 +478,49 @@ export default function TeacherProctoringDetailScreen() {
                       Mulai: {formatTime(student.startTime)} • Selesai: {formatTime(student.submitTime)} • Nilai:{' '}
                       {student.score ?? '-'}
                     </Text>
+                    {student.status === 'IN_PROGRESS' || totalStudentViolations > 0 || student.answeredCount || student.monitoring ? (
+                      <View
+                        style={{
+                          marginTop: 8,
+                          borderWidth: 1,
+                          borderColor: totalStudentViolations > 0 ? '#fecaca' : '#dbeafe',
+                          backgroundColor: totalStudentViolations > 0 ? '#fef2f2' : '#f8fafc',
+                          borderRadius: 10,
+                          paddingHorizontal: 10,
+                          paddingVertical: 8,
+                          gap: 4,
+                        }}
+                      >
+                        <Text style={{ color: '#334155', fontSize: 12 }}>
+                          Progres: {student.answeredCount || 0} dari {student.totalQuestions || 0} soal
+                        </Text>
+                        {student.status === 'IN_PROGRESS' ? (
+                          <Text style={{ color: '#1d4ed8', fontSize: 12, fontWeight: '700' }}>
+                            Soal aktif: {student.monitoring?.currentQuestionNumber || ((student.monitoring?.currentQuestionIndex || 0) + 1)}
+                          </Text>
+                        ) : null}
+                        <Text
+                          style={{
+                            color: totalStudentViolations > 0 ? '#b91c1c' : '#475569',
+                            fontSize: 12,
+                            fontWeight: '700',
+                          }}
+                        >
+                          Pelanggaran: {totalStudentViolations} (tab {student.monitoring?.tabSwitchCount || 0}, fullscreen{' '}
+                          {student.monitoring?.fullscreenExitCount || 0}, app {student.monitoring?.appSwitchCount || 0})
+                        </Text>
+                        {student.monitoring?.lastViolationType || student.monitoring?.lastViolationAt ? (
+                          <Text style={{ color: '#64748b', fontSize: 11 }}>
+                            Terakhir: {student.monitoring?.lastViolationType || '-'} • {formatDateTime(student.monitoring?.lastViolationAt)}
+                          </Text>
+                        ) : null}
+                        {student.monitoring?.lastSyncAt ? (
+                          <Text style={{ color: '#64748b', fontSize: 11 }}>
+                            Sinkron terakhir: {formatDateTime(student.monitoring.lastSyncAt)}
+                          </Text>
+                        ) : null}
+                      </View>
+                    ) : null}
                   </View>
                 );
               })

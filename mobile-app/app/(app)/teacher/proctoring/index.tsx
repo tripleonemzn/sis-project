@@ -33,6 +33,70 @@ type ProctorRoomGroup = {
   scheduleIds: number[];
 };
 
+function groupSchedulesForDisplay(sourceSchedules: ProctorScheduleSummary[]): ProctorRoomGroup[] {
+  const map = new Map<string, ProctorRoomGroup>();
+
+  sourceSchedules.forEach((schedule) => {
+    const roomName = schedule.room || 'Ruangan belum ditentukan';
+    const subjectName = schedule.subjectName || schedule.packet?.subject?.name || '-';
+    const title = schedule.packet?.title || `Ujian ${subjectName}`;
+    const sessionLabel = String(schedule.sessionLabel || '').trim() || null;
+    const dateKey = formatDayKey(schedule.startTime);
+    const key = [
+      dateKey,
+      roomName,
+      schedule.startTime,
+      schedule.endTime,
+      schedule.periodNumber || 0,
+      subjectName,
+      sessionLabel || '__NO_SESSION__',
+    ].join('::');
+
+    if (!map.has(key)) {
+      map.set(key, {
+        key,
+        dateKey,
+        dateLabel: formatDayLabel(schedule.startTime),
+        roomName,
+        startTime: schedule.startTime,
+        endTime: schedule.endTime,
+        periodNumber: Number.isFinite(Number(schedule.periodNumber)) ? Number(schedule.periodNumber) : null,
+        sessionLabel,
+        title,
+        subjectName,
+        classNames: [],
+        totalActiveParticipants: 0,
+        scheduleIds: [],
+      });
+    }
+
+    const group = map.get(key)!;
+    const resolvedClassNames =
+      Array.isArray(schedule.classNames) && schedule.classNames.length > 0
+        ? schedule.classNames
+        : [schedule.class?.name || '-'];
+    resolvedClassNames.forEach((className) => {
+      if (!group.classNames.includes(className)) {
+        group.classNames.push(className);
+      }
+    });
+    group.classNames.sort(compareClassName);
+    const resolvedParticipantCount = Number.isFinite(Number(schedule.participantCount))
+      ? Number(schedule.participantCount)
+      : Number(schedule._count?.sessions || 0);
+    group.totalActiveParticipants = Math.max(group.totalActiveParticipants, resolvedParticipantCount);
+    group.scheduleIds.push(schedule.id);
+  });
+
+  return Array.from(map.values()).sort((a, b) => {
+    const timeDiff = new Date(a.startTime).getTime() - new Date(b.startTime).getTime();
+    if (timeDiff !== 0) return timeDiff;
+    const periodDiff = Number(a.periodNumber || 0) - Number(b.periodNumber || 0);
+    if (periodDiff !== 0) return periodDiff;
+    return compareRoomName(a.roomName, b.roomName);
+  });
+}
+
 function normalizeExamType(raw?: string | null) {
   const value = String(raw || '').toUpperCase();
   if (value === 'QUIZ') return 'FORMATIF';
@@ -205,67 +269,7 @@ export default function TeacherProctoringScheduleScreen() {
   }, [scheduleQuery.data, search, timeFilter]);
 
   const groupedRows = useMemo<ProctorRoomGroup[]>(() => {
-    const map = new Map<string, ProctorRoomGroup>();
-
-    filteredRows.forEach((schedule) => {
-      const roomName = schedule.room || 'Ruangan belum ditentukan';
-      const subjectName = schedule.subjectName || schedule.packet?.subject?.name || '-';
-      const title = schedule.packet?.title || `Ujian ${subjectName}`;
-      const sessionLabel = String(schedule.sessionLabel || '').trim() || null;
-      const dateKey = formatDayKey(schedule.startTime);
-      const key = [
-        dateKey,
-        roomName,
-        schedule.startTime,
-        schedule.endTime,
-        schedule.periodNumber || 0,
-        subjectName,
-        sessionLabel || '__NO_SESSION__',
-      ].join('::');
-
-      if (!map.has(key)) {
-        map.set(key, {
-          key,
-          dateKey,
-          dateLabel: formatDayLabel(schedule.startTime),
-          roomName,
-          startTime: schedule.startTime,
-          endTime: schedule.endTime,
-          periodNumber: Number.isFinite(Number(schedule.periodNumber)) ? Number(schedule.periodNumber) : null,
-          sessionLabel,
-          title,
-          subjectName,
-          classNames: [],
-          totalActiveParticipants: 0,
-          scheduleIds: [],
-        });
-      }
-
-      const group = map.get(key)!;
-      const resolvedClassNames =
-        Array.isArray(schedule.classNames) && schedule.classNames.length > 0
-          ? schedule.classNames
-          : [schedule.class?.name || '-'];
-      resolvedClassNames.forEach((className) => {
-        if (!group.classNames.includes(className)) {
-          group.classNames.push(className);
-        }
-      });
-      group.classNames.sort(compareClassName);
-      const resolvedParticipantCount = Number.isFinite(Number(schedule.participantCount))
-        ? Number(schedule.participantCount)
-        : Number(schedule._count?.sessions || 0);
-      group.totalActiveParticipants = Math.max(group.totalActiveParticipants, resolvedParticipantCount);
-      group.scheduleIds.push(schedule.id);
-    });
-
-    return Array.from(map.values()).sort((a, b) => {
-      const timeDiff = new Date(a.startTime).getTime() - new Date(b.startTime).getTime();
-      if (timeDiff !== 0) return timeDiff;
-      const periodDiff = Number(a.periodNumber || 0) - Number(b.periodNumber || 0);
-      if (periodDiff !== 0) return periodDiff;
-      return compareRoomName(a.roomName, b.roomName);
-    });
+    return groupSchedulesForDisplay(filteredRows);
   }, [filteredRows]);
 
   const groupedDays = useMemo(() => {
@@ -284,25 +288,15 @@ export default function TeacherProctoringScheduleScreen() {
   }, [groupedRows]);
 
   const summary = useMemo(() => {
-    const all = scheduleQuery.data || [];
-    const activeNow = all.filter((item) => scheduleStatusLabel(item) === 'Sedang Berlangsung').length;
-    const groupedAll = new Map<string, number>();
-    all.forEach((item) => {
-      const roomName = item.room || 'Ruangan belum ditentukan';
-      const subjectName = item.subjectName || item.packet?.subject?.name || '-';
-      const sessionLabel = String(item.sessionLabel || '').trim() || null;
-      const key = `${roomName}::${item.startTime}::${item.endTime}::${item.periodNumber || 0}::${subjectName}::${sessionLabel || '__NO_SESSION__'}`;
-      const resolvedParticipantCount = Number.isFinite(Number(item.participantCount))
-        ? Number(item.participantCount)
-        : Number(item._count?.sessions || 0);
-      groupedAll.set(key, Math.max(groupedAll.get(key) || 0, resolvedParticipantCount));
-    });
-    const totalParticipants = Array.from(groupedAll.values()).reduce((acc, count) => acc + count, 0);
+    const all = (scheduleQuery.data || []).filter((item) => item.packet !== null);
+    const groupedAll = groupSchedulesForDisplay(all);
+    const activeNow = groupedAll.filter((item) => scheduleStatusLabel(item) === 'Sedang Berlangsung').length;
+    const totalParticipants = groupedAll.reduce((acc, item) => acc + item.totalActiveParticipants, 0);
     return {
-      total: all.length,
+      total: groupedAll.length,
       activeNow,
       totalParticipants,
-      totalDays: new Set(all.map((item) => formatDayKey(item.startTime))).size,
+      totalDays: new Set(groupedAll.map((item) => item.dateKey)).size,
     };
   }, [scheduleQuery.data]);
 
@@ -341,7 +335,9 @@ export default function TeacherProctoringScheduleScreen() {
         />
       }
     >
-      <Text style={{ fontSize: 24, fontWeight: '700', marginBottom: 6, color: BRAND_COLORS.textDark }}>Jadwal Mengawas</Text>
+      <Text style={{ fontSize: 24, fontWeight: '700', marginBottom: 6, color: BRAND_COLORS.textDark }}>
+        Jadwal Mengawas & Monitoring
+      </Text>
       <Text style={{ color: BRAND_COLORS.textMuted, marginBottom: 12 }}>
         Pantau jadwal ujian yang ditugaskan kepada Anda dengan breakdown per hari.
       </Text>
@@ -349,7 +345,7 @@ export default function TeacherProctoringScheduleScreen() {
       <View style={{ flexDirection: 'row', marginHorizontal: -4, marginBottom: 10 }}>
         <View style={{ flex: 1, paddingHorizontal: 4 }}>
           <MobileSummaryCard
-            title="Total Jadwal"
+            title="Slot Ujian"
             value={String(summary.total)}
             subtitle={`${summary.totalDays} hari ujian`}
             iconName="calendar"
@@ -358,9 +354,9 @@ export default function TeacherProctoringScheduleScreen() {
         </View>
         <View style={{ flex: 1, paddingHorizontal: 4 }}>
           <MobileSummaryCard
-            title="Sedang Jalan"
+            title="Sedang Berlangsung"
             value={String(summary.activeNow)}
-            subtitle="Sesi aktif saat ini"
+            subtitle="Slot aktif saat ini"
             iconName="play-circle"
             accentColor="#16a34a"
           />
@@ -413,6 +409,7 @@ export default function TeacherProctoringScheduleScreen() {
           minTabWidth={108}
           maxTabWidth={144}
           contentContainerStyle={{ paddingHorizontal: 2 }}
+          tabVariant="plain"
         />
       </View>
 

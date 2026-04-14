@@ -76,7 +76,7 @@ export function MobileMenuTab({
   minWidth = 76,
   maxWidth = 114,
   compact = true,
-  variant = 'card',
+  variant = 'plain',
   fill = false,
   style,
 }: MobileMenuTabProps) {

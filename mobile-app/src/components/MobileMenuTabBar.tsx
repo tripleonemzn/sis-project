@@ -32,7 +32,7 @@ export function MobileMenuTabBar({
   maxTabWidth = 112,
   compact = true,
   layout = 'scroll',
-  tabVariant = 'card',
+  tabVariant = 'plain',
   gap = 8,
 }: MobileMenuTabBarProps) {
   if (layout === 'fill') {
