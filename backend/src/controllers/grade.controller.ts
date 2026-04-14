@@ -60,6 +60,13 @@ type AuthUserLike = {
   role?: string | null
 }
 
+type CompetencyThresholdSet = {
+  A: string
+  B: string
+  C: string
+  D: string
+}
+
 function getStudentScoreEntryDelegate(): StudentScoreEntryFindManyDelegate | null {
   const delegate = (prisma as unknown as { studentScoreEntry?: StudentScoreEntryFindManyDelegate }).studentScoreEntry
   if (!delegate || typeof delegate.findMany !== 'function') {
@@ -191,6 +198,127 @@ async function resolveStudentClassId(
   }
 
   return Number(student?.classId || 0) || null
+}
+
+function emptyCompetencyThresholds(): CompetencyThresholdSet {
+  return {
+    A: '',
+    B: '',
+    C: '',
+    D: '',
+  }
+}
+
+function coerceCompetencyThresholdSet(raw: unknown): CompetencyThresholdSet {
+  if (!raw || typeof raw !== 'object' || Array.isArray(raw)) {
+    return emptyCompetencyThresholds()
+  }
+
+  const source = raw as Record<string, unknown>
+  return {
+    A: String(source.A || '').trim(),
+    B: String(source.B || '').trim(),
+    C: String(source.C || '').trim(),
+    D: String(source.D || '').trim(),
+  }
+}
+
+function hasAnyCompetencyThresholdValue(value: CompetencyThresholdSet | null | undefined): boolean {
+  return Boolean(
+    value &&
+      (String(value.A || '').trim() ||
+        String(value.B || '').trim() ||
+        String(value.C || '').trim() ||
+        String(value.D || '').trim()),
+  )
+}
+
+function resolveCompetencyThresholdSet(
+  raw: unknown,
+  preferredSemester?: Semester | null,
+): CompetencyThresholdSet {
+  if (!raw || typeof raw !== 'object' || Array.isArray(raw)) {
+    return emptyCompetencyThresholds()
+  }
+
+  const source = raw as Record<string, unknown>
+  const root = coerceCompetencyThresholdSet(source)
+  const bucketSource =
+    source._bySemester && typeof source._bySemester === 'object' && !Array.isArray(source._bySemester)
+      ? (source._bySemester as Record<string, unknown>)
+      : {}
+
+  const preferred =
+    preferredSemester && bucketSource[preferredSemester]
+      ? coerceCompetencyThresholdSet(bucketSource[preferredSemester])
+      : emptyCompetencyThresholds()
+
+  if (hasAnyCompetencyThresholdValue(preferred)) {
+    return preferred
+  }
+
+  if (hasAnyCompetencyThresholdValue(root)) {
+    return root
+  }
+
+  const odd = coerceCompetencyThresholdSet(bucketSource[Semester.ODD])
+  if (hasAnyCompetencyThresholdValue(odd)) return odd
+
+  const even = coerceCompetencyThresholdSet(bucketSource[Semester.EVEN])
+  if (hasAnyCompetencyThresholdValue(even)) return even
+
+  return emptyCompetencyThresholds()
+}
+
+function deriveCompetencyDescriptionFromThresholds(
+  thresholds: CompetencyThresholdSet,
+  predicate: string | null | undefined,
+): string | null {
+  const normalizedPredicate = String(predicate || '').trim().toUpperCase()
+  if (!normalizedPredicate || !['A', 'B', 'C', 'D'].includes(normalizedPredicate)) {
+    return null
+  }
+  const description = String(
+    thresholds[normalizedPredicate as keyof CompetencyThresholdSet] || '',
+  ).trim()
+  return description || null
+}
+
+async function resolveReportCompetencyDescription(params: {
+  studentId: number
+  subjectId: number
+  academicYearId: number
+  semester: Semester
+  finalScore: number | null
+  predicate?: string | null
+}) {
+  if (params.finalScore === null || params.finalScore === undefined) return null
+
+  const studentClassId = await resolveStudentClassId(params.studentId, params.academicYearId)
+  if (!studentClassId) return null
+
+  const assignment = await prisma.teacherAssignment.findFirst({
+    where: {
+      classId: studentClassId,
+      subjectId: params.subjectId,
+      academicYearId: params.academicYearId,
+    },
+    select: {
+      kkm: true,
+      competencyThresholds: true,
+    },
+  })
+
+  if (!assignment) return null
+
+  const thresholds = resolveCompetencyThresholdSet(assignment.competencyThresholds, params.semester)
+  if (!hasAnyCompetencyThresholdValue(thresholds)) return null
+
+  const predicate =
+    String(params.predicate || '').trim() ||
+    calculatePredicate(Number(params.finalScore || 0), Number(assignment.kkm || 75))
+
+  return deriveCompetencyDescriptionFromThresholds(thresholds, predicate)
 }
 
 async function runWithConcurrencyLimit<T>(
@@ -2194,6 +2322,19 @@ export const syncReportGrade = async (
   }
 
   const predicate = calculatePredicate(finalScore, kkm);
+  const hasFinalComponentEvidence =
+    dynamicResult.slotScoresByCode[primarySlots.final] !== null &&
+    dynamicResult.slotScoresByCode[primarySlots.final] !== undefined;
+  const competencyDescription = hasFinalComponentEvidence
+    ? await resolveReportCompetencyDescription({
+        studentId,
+        subjectId,
+        academicYearId,
+        semester,
+        finalScore,
+        predicate,
+      })
+    : null;
 
   // 4. US Score Logic (dinamis dari slot score, tanpa hardcode nama mapel)
   const usScore = computeUsScoreFromSlotScores(dynamicResult.slotScoresByCode);
@@ -2213,7 +2354,8 @@ export const syncReportGrade = async (
               slotScores: dynamicResult.slotScoresByCode,
               finalScore,
               predicate,
-              usScore
+              usScore,
+              description: competencyDescription,
           } as any
       });
   } else {
@@ -2226,7 +2368,8 @@ export const syncReportGrade = async (
               slotScores: dynamicResult.slotScoresByCode,
               finalScore,
               predicate,
-              usScore
+              usScore,
+              description: competencyDescription,
           } as any
       });
   }
@@ -3658,10 +3801,6 @@ export const bulkCreateOrUpdateStudentGrades = async (req: Request, res: Respons
     }
 
     const uniqueKeys = new Set<string>();
-    const pendingDescriptions = new Map<
-      string,
-      { studentId: number; subjectId: number; academicYearId: number; semester: Semester; description: string }
-    >();
     const componentConfigCache = new Map<
       string,
       { type: GradeComponentType; code?: string | null; entryMode: GradeEntryMode }
@@ -3678,7 +3817,6 @@ export const bulkCreateOrUpdateStudentGrades = async (req: Request, res: Respons
           score,
           nf1, nf2, nf3, nf4, nf5, nf6,
           formative_series,
-          description // Add description to destructured variables
         } = gradeData
 
         // Track for sync
@@ -3750,19 +3888,6 @@ export const bulkCreateOrUpdateStudentGrades = async (req: Request, res: Respons
           }
           nfValues = normalizedNfValues
           additionalSeriesScores = seriesValues.slice(6)
-        }
-
-        if (description !== undefined) {
-          pendingDescriptions.set(
-            `${student_id}-${subject_id}-${academic_year_id}-${semester}`,
-            {
-              studentId: Number(student_id),
-              subjectId: Number(subject_id),
-              academicYearId: Number(academic_year_id),
-              semester: semester as Semester,
-              description: String(description || '').trim(),
-            },
-          )
         }
 
         // Check if grade already exists
@@ -3877,27 +4002,6 @@ export const bulkCreateOrUpdateStudentGrades = async (req: Request, res: Respons
     })
 
     await Promise.all(syncPromises)
-
-    if (pendingDescriptions.size > 0) {
-      await Promise.all(
-        Array.from(pendingDescriptions.values()).map(async (item) => {
-          const reportGrade = await prisma.reportGrade.findFirst({
-            where: {
-              studentId: item.studentId,
-              subjectId: item.subjectId,
-              academicYearId: item.academicYearId,
-              semester: item.semester,
-            },
-            select: { id: true },
-          })
-          if (!reportGrade) return
-          await prisma.reportGrade.update({
-            where: { id: reportGrade.id },
-            data: { description: item.description || null },
-          })
-        }),
-      )
-    }
 
     return ApiResponseHelper.success(res, results, 'Bulk grade operation completed')
   } catch (error) {

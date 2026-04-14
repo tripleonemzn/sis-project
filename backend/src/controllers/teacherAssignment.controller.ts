@@ -4,6 +4,7 @@ import { Prisma, Semester } from '@prisma/client';
 import prisma from '../utils/prisma';
 import { ApiError, ApiResponse, asyncHandler } from '../utils/api';
 import { writeAuditLog } from '../utils/auditLog';
+import { listHistoricalStudentsForClass } from '../utils/studentAcademicHistory';
 
 const createTeacherAssignmentsSchema = z.object({
   academicYearId: z.number().int(),
@@ -95,6 +96,28 @@ const hasAnyThresholdValue = (value: CompetencyThresholdSet | null | undefined) 
         String(value.C || '').trim() ||
         String(value.D || '').trim()),
   );
+
+const deriveThresholdDescription = (
+  thresholds: CompetencyThresholdSet,
+  predicate: string | null | undefined,
+): string | null => {
+  const normalizedPredicate = String(predicate || '').trim().toUpperCase();
+  if (!normalizedPredicate || !['A', 'B', 'C', 'D'].includes(normalizedPredicate)) {
+    return null;
+  }
+  const description = String(
+    thresholds[normalizedPredicate as keyof CompetencyThresholdSet] || '',
+  ).trim();
+  return description || null;
+};
+
+const calculatePredicateFromScore = (score: number, kkm: number): string => {
+  const roundedScore = Math.round(score);
+  if (roundedScore >= 86) return 'A';
+  if (roundedScore >= kkm) return 'B';
+  if (roundedScore >= 60) return 'C';
+  return 'D';
+};
 
 const resolveCompetencyThresholdSet = (
   raw: unknown,
@@ -275,6 +298,94 @@ export const updateCompetencyThresholds = asyncHandler(async (req: Request, res:
       }),
     ),
   );
+
+  const affectedClassIds = Array.from(
+    new Set(
+      siblingAssignments
+        .map((assignment) => Number(assignment.classId || 0))
+        .filter((classId) => Number.isFinite(classId) && classId > 0),
+    ),
+  );
+
+  if (affectedClassIds.length > 0) {
+    const studentRosters = await Promise.all(
+      affectedClassIds.map((classId) => listHistoricalStudentsForClass(classId, before.academicYearId)),
+    );
+    const classByStudentId = new Map<number, number>();
+    studentRosters.forEach((roster, rosterIndex) => {
+      const classId = affectedClassIds[rosterIndex];
+      roster.forEach((student) => {
+        classByStudentId.set(Number(student.id), classId);
+      });
+    });
+
+    const studentIds = Array.from(classByStudentId.keys());
+    if (studentIds.length > 0) {
+      const reportGrades = await prisma.reportGrade.findMany({
+        where: {
+          studentId: { in: studentIds },
+          subjectId: before.subjectId,
+          academicYearId: before.academicYearId,
+          semester: targetSemester,
+        },
+        select: {
+          id: true,
+          studentId: true,
+          finalScore: true,
+          predicate: true,
+          sasScore: true,
+          usScore: true,
+          slotScores: true,
+        },
+      });
+
+      const kkmByClassId = new Map<number, number>(
+        siblingAssignments.map((assignment) => [
+          Number(assignment.classId || 0),
+          Number(assignment.kkm || 75),
+        ]),
+      );
+
+      await prisma.$transaction(
+        reportGrades.map((reportGrade) => {
+          const classId = Number(classByStudentId.get(Number(reportGrade.studentId)) || 0);
+          const kkm = Number(kkmByClassId.get(classId) || 75);
+          const slotScoreEvidence =
+            reportGrade.slotScores &&
+            typeof reportGrade.slotScores === 'object' &&
+            !Array.isArray(reportGrade.slotScores) &&
+            Object.values(reportGrade.slotScores as Record<string, unknown>).some(
+              (value) => value !== null && value !== undefined,
+            );
+          const hasFinalEvidence =
+            slotScoreEvidence ||
+            reportGrade.sasScore !== null ||
+            reportGrade.usScore !== null ||
+            Number(reportGrade.finalScore || 0) !== 0;
+          if (!hasFinalEvidence) {
+            return prisma.reportGrade.update({
+              where: { id: reportGrade.id },
+              data: {
+                description: null,
+              },
+            });
+          }
+          const predicate =
+            String(reportGrade.predicate || '').trim() ||
+            calculatePredicateFromScore(Number(reportGrade.finalScore || 0), kkm);
+          const description = deriveThresholdDescription(normalizedThresholds, predicate);
+
+          return prisma.reportGrade.update({
+            where: { id: reportGrade.id },
+            data: {
+              predicate,
+              description,
+            },
+          });
+        }),
+      );
+    }
+  }
 
   const refreshedAssignments = await prisma.teacherAssignment.findMany({
     where: {
