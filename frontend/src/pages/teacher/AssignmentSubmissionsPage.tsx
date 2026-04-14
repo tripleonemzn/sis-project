@@ -131,7 +131,7 @@ export const AssignmentSubmissionsPage = () => {
   if (!Number.isFinite(assignmentId) || assignmentId <= 0) {
     return (
       <div className="p-6">
-        <h1 className="text-lg font-bold text-gray-900 mb-2">Submisi Tugas</h1>
+        <h1 className="text-2xl font-bold text-gray-900 mb-2">Submisi Tugas</h1>
         <p className="text-sm text-red-600">Assignment ID tidak valid.</p>
       </div>
     );
@@ -148,7 +148,7 @@ export const AssignmentSubmissionsPage = () => {
             <ArrowLeft className="w-4 h-4" />
             Kembali
           </button>
-          <h1 className="text-lg font-bold text-gray-900">Submisi Tugas</h1>
+          <h1 className="text-2xl font-bold text-gray-900">Submisi Tugas</h1>
           <p className="text-sm text-gray-600">{summary.title}</p>
         </div>
         <button

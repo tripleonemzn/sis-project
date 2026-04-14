@@ -653,7 +653,7 @@ export default function TeachingResourceProgramManagementPage() {
     <div className="space-y-6 w-full pb-28">
       <div className="flex flex-wrap items-start justify-between gap-3">
         <div>
-          <h1 className="text-lg font-bold text-gray-900">Program Perangkat Ajar</h1>
+          <h1 className="text-2xl font-bold text-gray-900">Program Perangkat Ajar</h1>
           <p className="text-gray-500">
             Kelola daftar menu Perangkat Ajar secara dinamis per tahun ajaran. Perubahan langsung tersinkron ke menu guru.
           </p>

@@ -698,7 +698,7 @@ export const TutorMembersPage = () => {
     <div className="space-y-6">
       <div className="mb-6 flex flex-col md:flex-row md:items-center justify-between gap-4">
         <div>
-          <h1 className="text-lg font-bold text-gray-800">
+          <h1 className="text-2xl font-bold text-gray-800">
             {selectedScope === 'osis' ? 'Anggota OSIS' : 'Anggota Ekstrakurikuler'}
           </h1>
           <p className="text-gray-600">

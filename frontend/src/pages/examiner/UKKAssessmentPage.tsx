@@ -423,7 +423,7 @@ export const UKKAssessmentPage = () => {
         <div className="space-y-6">
             <div className="flex items-center justify-between">
               <div>
-                <h1 className="text-lg font-bold text-gray-900">Input Nilai UKK</h1>
+                <h1 className="text-2xl font-bold text-gray-900">Input Nilai UKK</h1>
                 <p className="text-gray-500 text-sm">
                   Pilih skema penilaian untuk mulai mengisi nilai siswa.
                 </p>
@@ -515,7 +515,7 @@ export const UKKAssessmentPage = () => {
           >
             <ArrowLeft size={16} className="mr-1" /> Kembali ke Daftar Skema
           </button>
-	          <h1 className="text-lg font-bold text-gray-900">{scheme.name}</h1>
+	          <h1 className="text-2xl font-bold text-gray-900">{scheme.name}</h1>
 	          <p className="text-gray-500 text-sm mt-1">{scheme.major?.name}</p>
         </div>
         <div className="flex items-center gap-3">

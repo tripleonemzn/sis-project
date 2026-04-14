@@ -39,7 +39,7 @@ export default function StudentManagementHubPage() {
   return (
     <div className="space-y-6 w-full pb-20">
       <div>
-        <h1 className="text-lg font-bold text-gray-900">Kelola Kesiswaan</h1>
+        <h1 className="text-2xl font-bold text-gray-900">Kelola Kesiswaan</h1>
         <p className="text-gray-500">
           Akses ekstrakurikuler, data siswa, orang tua, tutor eksternal, dan rekap absensi.
           Penugasan guru aktif sebagai pembina dikelola dari menu Ekstrakurikuler, termasuk monitoring Buku Wali Kelas secara read only.

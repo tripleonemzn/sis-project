@@ -352,7 +352,7 @@ export const UjianSekolahPage = () => {
   return (
       <div className="space-y-6">
       <div className="flex flex-wrap items-center justify-between gap-3">
-          <h1 className="text-lg font-bold text-gray-800">Input Nilai Ujian Sekolah</h1>
+          <h1 className="text-2xl font-bold text-gray-800">Input Nilai Ujian Sekolah</h1>
           <button
             onClick={handleSave}
             disabled={saving || loading || !selectedSemester || !selectedComponent || isReadOnly()}

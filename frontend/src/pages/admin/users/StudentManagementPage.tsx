@@ -500,7 +500,7 @@ export const StudentManagementPage = () => {
     <div className="space-y-6">
       <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4">
         <div>
-          <h1 className="text-lg font-bold text-gray-900">Kelola Siswa</h1>
+          <h1 className="text-2xl font-bold text-gray-900">Kelola Siswa</h1>
           <p className="text-gray-500">Daftar akun siswa yang terdaftar di sistem.</p>
         </div>
         {!showForm && (

@@ -99,7 +99,7 @@ export const ExamSubmissionsPage = () => {
   if (!Number.isFinite(packetId) || packetId <= 0) {
     return (
       <div className="p-6">
-        <h1 className="text-lg font-bold text-gray-900 mb-2">Submission Ujian</h1>
+        <h1 className="text-2xl font-bold text-gray-900 mb-2">Submission Ujian</h1>
         <p className="text-sm text-red-600">ID packet ujian tidak valid.</p>
       </div>
     );
@@ -116,7 +116,7 @@ export const ExamSubmissionsPage = () => {
             <ArrowLeft className="w-4 h-4" />
             Kembali
           </button>
-          <h1 className="text-lg font-bold text-gray-900">Submission Ujian</h1>
+          <h1 className="text-2xl font-bold text-gray-900">Submission Ujian</h1>
           <p className="text-sm text-gray-600">
             {packet ? `${packet.title} • ${packet.subject.name} (${packet.subject.code})` : 'Memuat data packet...'}
           </p>

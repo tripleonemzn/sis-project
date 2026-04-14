@@ -269,7 +269,7 @@ export const TeacherSchedulePage = () => {
     <div className="space-y-6">
       <div className="flex items-center justify-between">
         <div>
-          <h1 className="text-lg font-bold text-gray-900">Jadwal Mengajar</h1>
+          <h1 className="text-2xl font-bold text-gray-900">Jadwal Mengajar</h1>
           <p className="text-body text-gray-500">
             Daftar penugasan mengajar Anda pada tahun ajaran aktif.
           </p>

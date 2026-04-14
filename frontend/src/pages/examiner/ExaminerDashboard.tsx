@@ -91,7 +91,7 @@ export const ExaminerDashboard = () => {
             </div>
           </div>
           <div>
-            <h1 className="text-lg font-bold text-gray-900 mb-1">Selamat Datang, {user.name}! 👋</h1>
+            <h1 className="text-2xl font-bold text-gray-900 mb-1">Selamat Datang, {user.name}! 👋</h1>
             <p className="text-body text-gray-500">
               Dashboard ini khusus untuk pengelolaan skema dan penilaian UKK.
             </p>

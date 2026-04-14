@@ -1261,7 +1261,7 @@ export const TeacherGradesPage = () => {
       <div className="space-y-6">
       <div className="flex justify-between items-center">
         <div>
-          <h1 className="text-lg font-bold text-gray-800">Input Nilai Siswa</h1>
+          <h1 className="text-2xl font-bold text-gray-800">Input Nilai Siswa</h1>
           <p className="text-gray-600">Input nilai per komponen untuk siswa</p>
         </div>
       </div>

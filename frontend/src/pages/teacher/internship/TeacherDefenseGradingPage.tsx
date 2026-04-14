@@ -180,7 +180,7 @@ export const TeacherDefenseGradingPage = () => {
     <div className="space-y-6">
       <div className="flex justify-between items-center">
         <div>
-          <h1 className="text-lg font-bold text-gray-800">Lembar Penilaian Sidang PKL</h1>
+          <h1 className="text-2xl font-bold text-gray-800">Lembar Penilaian Sidang PKL</h1>
           <p className="text-gray-600">Input nilai sidang siswa secara langsung</p>
         </div>
       </div>

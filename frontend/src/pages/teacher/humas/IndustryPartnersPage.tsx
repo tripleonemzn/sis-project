@@ -20,7 +20,7 @@ export const IndustryPartnersPage = () => {
     <div className="space-y-6">
       {/* Header */}
       <div>
-        <h1 className="text-lg font-bold text-gray-900">Mitra Industri & BKK</h1>
+        <h1 className="text-2xl font-bold text-gray-900">Mitra Industri & BKK</h1>
         <p className="mt-1 text-sm text-gray-500">
           Kelola data mitra industri dan informasi Bursa Kerja Khusus (BKK)
         </p>

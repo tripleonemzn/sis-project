@@ -92,7 +92,7 @@ export const AdminBkkApplicationsPage = () => {
           <ClipboardList className="h-5 w-5" />
         </div>
         <div>
-          <h1 className="text-lg font-bold text-gray-900">Lamaran BKK</h1>
+          <h1 className="text-2xl font-bold text-gray-900">Lamaran BKK</h1>
           <p className="mt-1 text-sm text-gray-500">
             Admin dapat memantau pelamar BKK, melihat status lamaran, dan ikut melakukan review tanpa harus masuk ke modul Humas.
           </p>
