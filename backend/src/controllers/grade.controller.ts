@@ -556,23 +556,53 @@ function hasUsSlotInScoreMap(rawSlotScores: unknown): boolean {
   )
 }
 
+function hasPrimaryFinalSlotInScoreMap(rawSlotScores: unknown): boolean {
+  const slotScores = parseSlotScoreMap(rawSlotScores)
+  return Object.entries(slotScores).some(([slotCode, score]) => {
+    if (score === null || score === undefined) return false
+    const normalizedSlotCode = normalizeReportSlotCode(slotCode)
+    if (!normalizedSlotCode || normalizedSlotCode === DEFAULT_REPORT_SLOT_CODE) return false
+    if (normalizedSlotCode.endsWith('_REF')) return false
+    return isFinalAliasCode(normalizedSlotCode)
+  })
+}
+
+function hasPersistedFinalReportEvidence(
+  grade: { sasScore?: number | null; satScore?: number | null; slotScores?: unknown } | null | undefined,
+): boolean {
+  if (!grade) return false
+  if (hasPrimaryFinalSlotInScoreMap(grade.slotScores)) return true
+  if (grade.sasScore !== null && grade.sasScore !== undefined && Number.isFinite(Number(grade.sasScore))) {
+    return true
+  }
+  if (grade.satScore !== null && grade.satScore !== undefined && Number.isFinite(Number(grade.satScore))) {
+    return true
+  }
+  return false
+}
+
 function resolveEffectiveReportFinalScore(
-  grade: { usScore?: number | null; finalScore?: number | null; slotScores?: unknown } | null | undefined,
+  grade: {
+    usScore?: number | null
+    finalScore?: number | null
+    sasScore?: number | null
+    satScore?: number | null
+    slotScores?: unknown
+  } | null | undefined,
 ): number | null {
   if (!grade) return null
   const hasUsSlot = hasUsSlotInScoreMap(grade.slotScores)
+  const hasPrimaryFinalEvidence = hasPersistedFinalReportEvidence(grade)
   const finalScore = Number(grade.finalScore)
   const hasFinalScore = Number.isFinite(finalScore)
+  const usScore = Number(grade.usScore)
+  const hasUsScore = Number.isFinite(usScore)
+  const hasUsEvidence = hasUsSlot || hasUsScore
 
-  if (
-    grade.usScore !== null &&
-    grade.usScore !== undefined &&
-    Number.isFinite(Number(grade.usScore)) &&
-    (hasUsSlot || !hasFinalScore || finalScore <= 0)
-  ) {
-    return Number(grade.usScore)
+  if (hasUsScore && hasUsEvidence) {
+    return usScore
   }
-  if (grade.finalScore !== null && grade.finalScore !== undefined && hasFinalScore) {
+  if (hasPrimaryFinalEvidence && hasFinalScore) {
     return finalScore
   }
   return null
@@ -3304,6 +3334,7 @@ export const getStudentGradeOverview = async (req: Request, res: Response) => {
         const report = reportBySubjectId.get(row.subject.id) || null
         const hasReportData = hasMeaningfulReportSnapshot(report)
         const finalScore = hasReportData ? roundDisplayScore(resolveEffectiveReportFinalScore(report)) : null
+        const hasResolvedFinalReport = finalScore !== null
         const predicate = hasReportData ? String(report?.predicate || '').trim() || null : null
         const description = hasReportData ? String(report?.description || '').trim() || null : null
 
@@ -3311,10 +3342,10 @@ export const getStudentGradeOverview = async (req: Request, res: Response) => {
           subject: row.subject,
           teacher: row.teacher,
           kkm: row.kkm,
-          finalScore: reportRelease.canViewDetails && hasReportData ? finalScore : null,
-          predicate: reportRelease.canViewDetails && hasReportData ? predicate : null,
-          description: reportRelease.canViewDetails && hasReportData ? description : null,
-          status: reportRelease.canViewDetails ? (hasReportData ? 'AVAILABLE' : 'PENDING') : 'LOCKED',
+          finalScore: reportRelease.canViewDetails && hasResolvedFinalReport ? finalScore : null,
+          predicate: reportRelease.canViewDetails && hasResolvedFinalReport ? predicate : null,
+          description: reportRelease.canViewDetails && hasResolvedFinalReport ? description : null,
+          status: reportRelease.canViewDetails ? (hasResolvedFinalReport ? 'AVAILABLE' : 'PENDING') : 'LOCKED',
         }
       })
       .sort((a, b) => a.subject.name.localeCompare(b.subject.name, 'id-ID'))

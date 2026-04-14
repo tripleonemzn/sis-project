@@ -62,17 +62,46 @@ const hasUsSlotScore = (rawSlotScores: unknown): boolean => {
   });
 };
 
+const hasPrimaryFinalSlotScore = (rawSlotScores: unknown): boolean => {
+  const slotScores = parseSlotScoreMap(rawSlotScores);
+  return Object.entries(slotScores).some(([slotCode, score]) => {
+    if (score === null || score === undefined) return false;
+    const normalizedSlotCode = normalizeLedgerCode(slotCode);
+    if (!normalizedSlotCode || normalizedSlotCode === 'NONE') return false;
+    if (normalizedSlotCode.endsWith('_REF')) return false;
+    return isFinalAliasCode(normalizedSlotCode);
+  });
+};
+
+const hasPersistedFinalReportEvidence = (
+  grade: { sasScore?: number | null; satScore?: number | null; slotScores?: unknown } | null | undefined,
+): boolean => {
+  if (!grade) return false;
+  if (hasPrimaryFinalSlotScore(grade.slotScores)) return true;
+  if (parseScoreNumber(grade.sasScore) !== null) return true;
+  if (parseScoreNumber(grade.satScore) !== null) return true;
+  return false;
+};
+
 const resolveEffectiveReportFinalScore = (
-  grade: { usScore?: number | null; finalScore?: number | null; slotScores?: unknown } | null | undefined,
+  grade: {
+    usScore?: number | null;
+    finalScore?: number | null;
+    sasScore?: number | null;
+    satScore?: number | null;
+    slotScores?: unknown;
+  } | null | undefined,
 ): number | null => {
   if (!grade) return null;
   const finalScore = parseScoreNumber(grade.finalScore);
   const usScore = parseScoreNumber(grade.usScore);
+  const hasUsEvidence = hasUsSlotScore(grade.slotScores) || usScore !== null;
+  const hasFinalEvidence = hasPersistedFinalReportEvidence(grade);
 
-  if (usScore !== null && (hasUsSlotScore(grade.slotScores) || finalScore === null || finalScore <= 0)) {
+  if (usScore !== null && hasUsEvidence) {
     return usScore;
   }
-  if (finalScore !== null) {
+  if (hasFinalEvidence && finalScore !== null) {
     return finalScore;
   }
   return null;
@@ -1046,22 +1075,20 @@ export class ReportService {
       } else {
         // FINAL-like report: column-1 final score, column-2 competency narrative.
 
-        const finalComponentScore =
-          readSlotOrLegacyScore(
-            slotScores,
-            finalSlotCode,
-            resolveLegacyFinalScore(reportScore, finalSlotCode),
-          ) ?? 0;
-        const finalScore = isUsReport
-          ? reportScore?.usScore ?? report?.finalScore ?? finalComponentScore ?? 0
-          : report?.finalScore ?? finalComponentScore ?? 0;
-        
-        col1Score = finalScore > 0 ? Math.round(finalScore) : null;
-        col1Predicate = finalScore > 0 ? getPredicate(finalScore, kkm) : null;
+        const effectiveFinalScore = resolveEffectiveReportFinalScore(report as any);
+
+        col1Score = effectiveFinalScore !== null && effectiveFinalScore > 0
+          ? Math.round(effectiveFinalScore)
+          : null;
+        col1Predicate = effectiveFinalScore !== null && effectiveFinalScore > 0
+          ? getPredicate(effectiveFinalScore, kkm)
+          : null;
+        finalScoreVal = col1Score;
+        finalPredicateVal = col1Predicate;
 
         col2Score = null;
-        col2Predicate = report?.predicate ?? null;
-        description = report?.description || '-';
+        col2Predicate = effectiveFinalScore !== null ? report?.predicate ?? null : null;
+        description = effectiveFinalScore !== null ? report?.description || '-' : '-';
       }
 
       const item = {
@@ -1530,6 +1557,7 @@ export class ReportService {
           rGrade?.formatifScore,
           rGrade?.sbtsScore,
           rGrade?.sasScore,
+          reportScore?.satScore ?? null,
           reportScore?.usScore ?? null,
         ]);
         const hasAnyEvidence =
@@ -1537,8 +1565,8 @@ export class ReportService {
           hasReportComponentEvidence ||
           hasSlotScoreEvidence(slotScores) ||
           (rGrade?.finalScore !== null && rGrade?.finalScore !== undefined && rGrade.finalScore !== 0);
-        const normalizedFinalScore =
-          isUsReport ? reportScore?.usScore ?? rGrade?.finalScore ?? null : rGrade?.finalScore ?? null;
+        const effectiveFinalScore = resolveEffectiveReportFinalScore(rGrade as any);
+        const hasEffectiveFinalScore = effectiveFinalScore !== null;
 
         grades[subject.id] = {
           nf1: sGrade?.nf1 ?? null,
@@ -1550,10 +1578,10 @@ export class ReportService {
           formatif: hasAnyEvidence ? formatifAvg : null,
           sbts: hasAnyEvidence ? midtermScore : null,
           finalComponent: hasAnyEvidence ? finalComponentScore : null,
-          finalScore: hasAnyEvidence ? normalizedFinalScore : null,
-          usScore: hasAnyEvidence ? reportScore?.usScore ?? null : null,
-          predicate: hasAnyEvidence ? rGrade?.predicate ?? null : null,
-          description: hasAnyEvidence ? rGrade?.description ?? null : null,
+          finalScore: hasEffectiveFinalScore ? effectiveFinalScore : null,
+          usScore: hasEffectiveFinalScore ? reportScore?.usScore ?? null : null,
+          predicate: hasEffectiveFinalScore ? rGrade?.predicate ?? null : null,
+          description: hasEffectiveFinalScore ? rGrade?.description ?? null : null,
           slotScores,
         };
       });
