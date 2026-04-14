@@ -67,6 +67,7 @@ import {
 } from '../../src/features/tutor/tutorAccess';
 import { osisApi } from '../../src/features/osis/osisApi';
 import { useAppTheme } from '../../src/theme/AppThemeProvider';
+import { MOBILE_FONT_SIZES, MOBILE_TYPOGRAPHY } from '../../src/theme/typography';
 
 type FeatherIconName = ComponentProps<typeof Feather>['name'];
 type ManagedInventoryRoom = {
@@ -2037,13 +2038,27 @@ export default function HomeScreen() {
                     <Text style={{ color: colors.textMuted, fontSize: 10, textAlign: 'center', marginTop: 6 }} numberOfLines={2}>
                       {item.label}
                     </Text>
-                    <Text style={{ color: valueColor, fontWeight: '700', fontSize: item.value.length > 12 ? 12 : 15, marginTop: 2 }}>
+                    <Text
+                      style={{
+                        color: valueColor,
+                        fontWeight: '700',
+                        fontSize: item.value.length > 12 ? MOBILE_FONT_SIZES.label : 15,
+                        marginTop: 2,
+                      }}
+                    >
                       {item.value}
                     </Text>
                   </>
                 ) : (
                   <>
-                    <Text style={{ color: valueColor, fontWeight: '700', fontSize: item.value.length > 12 ? 12 : 15, marginTop: 6 }}>
+                    <Text
+                      style={{
+                        color: valueColor,
+                        fontWeight: '700',
+                        fontSize: item.value.length > 12 ? MOBILE_FONT_SIZES.label : 15,
+                        marginTop: 6,
+                      }}
+                    >
                       {item.value}
                     </Text>
                     <Text style={{ color: colors.textMuted, fontSize: 10, textAlign: 'center' }} numberOfLines={2}>
@@ -2102,8 +2117,10 @@ export default function HomeScreen() {
                   <Feather name={item.icon} size={18} color={iconColor} />
                 )}
               </View>
-              <Text style={{ color: metricColor, fontWeight: '700', fontSize: 17, marginTop: 6 }}>{item.value}</Text>
-              <Text style={{ color: colors.textMuted, fontSize: 10, textAlign: 'center' }} numberOfLines={2}>
+              <Text style={{ color: metricColor, fontWeight: '700', fontSize: MOBILE_FONT_SIZES.metricCompact, marginTop: 6 }}>
+                {item.value}
+              </Text>
+              <Text style={{ color: colors.textMuted, fontSize: MOBILE_FONT_SIZES.micro, textAlign: 'center' }} numberOfLines={2}>
                 {isOpeningThisMenu ? 'Membuka...' : item.label}
               </Text>
             </Pressable>
@@ -2239,8 +2256,7 @@ export default function HomeScreen() {
           style={{
             marginTop: 12,
             color: colors.text,
-            fontSize: 20,
-            fontWeight: '700',
+            ...MOBILE_TYPOGRAPHY.pageTitle,
           }}
         >
           Halo, {displayName}
@@ -3244,7 +3260,7 @@ export default function HomeScreen() {
             >
               <Feather name="log-out" size={18} color={colors.primary} />
             </View>
-            <Text style={{ color: colors.text, fontSize: 22, fontWeight: '700', marginBottom: 6 }}>
+            <Text style={{ color: colors.text, fontSize: 20, fontWeight: '700', marginBottom: 6 }}>
               Konfirmasi Logout
             </Text>
             <Text style={{ color: colors.textMuted, fontSize: 14, marginBottom: 14 }}>

@@ -44,7 +44,7 @@ export default function ParentOverviewScreen() {
   if (user?.role !== 'PARENT') {
     return (
       <ScrollView style={{ flex: 1, backgroundColor: '#f8fafc' }} contentContainerStyle={pagePadding}>
-        <Text style={{ fontSize: 24, fontWeight: '700', color: BRAND_COLORS.textDark, marginBottom: 8 }}>Dashboard Orang Tua</Text>
+        <Text style={{ fontSize: 20, fontWeight: '700', color: BRAND_COLORS.textDark, marginBottom: 8 }}>Dashboard Orang Tua</Text>
         <QueryStateView type="error" message="Halaman ini khusus untuk role orang tua." />
       </ScrollView>
     );
@@ -64,7 +64,7 @@ export default function ParentOverviewScreen() {
         />
       }
     >
-      <Text style={{ fontSize: 24, fontWeight: '700', color: BRAND_COLORS.textDark, marginBottom: 6 }}>Dashboard Orang Tua</Text>
+      <Text style={{ fontSize: 20, fontWeight: '700', color: BRAND_COLORS.textDark, marginBottom: 6 }}>Dashboard Orang Tua</Text>
       <Text style={{ color: BRAND_COLORS.textMuted, marginBottom: 12 }}>
         Ringkasan anak, keuangan, dan akses cepat modul parent.
       </Text>

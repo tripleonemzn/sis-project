@@ -1315,7 +1315,7 @@ export function HomeroomReportModuleScreen({
   if (user?.role !== 'TEACHER') {
     return (
       <ScrollView style={{ flex: 1, backgroundColor: '#f8fafc' }} contentContainerStyle={pagePadding}>
-        <Text style={{ fontSize: 24, fontWeight: '700', marginBottom: 8 }}>{moduleConfig.title}</Text>
+        <Text style={{ fontSize: 20, fontWeight: '700', marginBottom: 8 }}>{moduleConfig.title}</Text>
         <QueryStateView type="error" message="Halaman ini khusus untuk role guru." />
         <Pressable
           onPress={() => router.replace('/home')}
@@ -1336,7 +1336,7 @@ export function HomeroomReportModuleScreen({
   if (!isAllowed) {
     return (
       <ScrollView style={{ flex: 1, backgroundColor: '#f8fafc' }} contentContainerStyle={pagePadding}>
-        <Text style={{ fontSize: 24, fontWeight: '700', marginBottom: 6, color: BRAND_COLORS.textDark }}>
+        <Text style={{ fontSize: 20, fontWeight: '700', marginBottom: 6, color: BRAND_COLORS.textDark }}>
           {moduleConfig.title}
         </Text>
         <Text style={{ color: BRAND_COLORS.textMuted, marginBottom: 12 }}>
@@ -1362,7 +1362,7 @@ export function HomeroomReportModuleScreen({
   if (examProgramsQuery.isSuccess && !activeProgram) {
     return (
       <ScrollView style={{ flex: 1, backgroundColor: '#f8fafc' }} contentContainerStyle={pagePadding}>
-        <Text style={{ fontSize: 24, fontWeight: '700', marginBottom: 6, color: BRAND_COLORS.textDark }}>
+        <Text style={{ fontSize: 20, fontWeight: '700', marginBottom: 6, color: BRAND_COLORS.textDark }}>
           {moduleConfig.title}
         </Text>
         <Text style={{ color: BRAND_COLORS.textMuted, marginBottom: 12 }}>
@@ -1410,7 +1410,7 @@ export function HomeroomReportModuleScreen({
         />
       }
     >
-      <Text style={{ fontSize: 24, fontWeight: '700', marginBottom: 6, color: BRAND_COLORS.textDark }}>{moduleConfig.title}</Text>
+      <Text style={{ fontSize: 20, fontWeight: '700', marginBottom: 6, color: BRAND_COLORS.textDark }}>{moduleConfig.title}</Text>
       <Text style={{ color: BRAND_COLORS.textMuted, marginBottom: 12 }}>{moduleConfig.subtitle}</Text>
 
       <View

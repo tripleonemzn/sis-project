@@ -137,7 +137,7 @@ export default function TeacherAssignmentSubmissionsScreen() {
   if (user?.role !== 'TEACHER') {
     return (
       <ScrollView style={{ flex: 1, backgroundColor: '#f8fafc' }} contentContainerStyle={pageContentPadding}>
-        <Text style={{ fontSize: 22, fontWeight: '700', marginBottom: 8 }}>Submisi Tugas</Text>
+        <Text style={{ fontSize: 20, fontWeight: '700', marginBottom: 8 }}>Submisi Tugas</Text>
         <QueryStateView type="error" message="Halaman ini khusus untuk role guru." />
       </ScrollView>
     );
@@ -146,7 +146,7 @@ export default function TeacherAssignmentSubmissionsScreen() {
   if (!assignmentId || Number.isNaN(assignmentId)) {
     return (
       <ScrollView style={{ flex: 1, backgroundColor: '#f8fafc' }} contentContainerStyle={pageContentPadding}>
-        <Text style={{ fontSize: 22, fontWeight: '700', marginBottom: 8 }}>Submisi Tugas</Text>
+        <Text style={{ fontSize: 20, fontWeight: '700', marginBottom: 8 }}>Submisi Tugas</Text>
         <QueryStateView type="error" message="Assignment ID tidak valid." />
         <Pressable
           onPress={() => router.back()}
@@ -178,7 +178,7 @@ export default function TeacherAssignmentSubmissionsScreen() {
           />
         }
       >
-        <Text style={{ fontSize: 24, fontWeight: '700', marginBottom: 6 }}>Submisi Tugas</Text>
+        <Text style={{ fontSize: 20, fontWeight: '700', marginBottom: 6 }}>Submisi Tugas</Text>
         <Text style={{ color: '#334155', marginBottom: 3, fontWeight: '600' }} numberOfLines={2}>
           {assignmentTitle}
         </Text>

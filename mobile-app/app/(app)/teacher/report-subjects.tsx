@@ -246,7 +246,7 @@ export default function TeacherSubjectReportScreen() {
   if (user?.role !== 'TEACHER') {
     return (
       <ScrollView style={{ flex: 1, backgroundColor: '#f8fafc' }} contentContainerStyle={pageContentPadding}>
-        <Text style={{ fontSize: 22, fontWeight: '700', marginBottom: 8 }}>Rapor Mapel</Text>
+        <Text style={{ fontSize: 20, fontWeight: '700', marginBottom: 8 }}>Rapor Mapel</Text>
         <QueryStateView type="error" message="Halaman ini khusus untuk role guru." />
       </ScrollView>
     );
@@ -266,7 +266,7 @@ export default function TeacherSubjectReportScreen() {
           />
         }
       >
-      <Text style={{ fontSize: 24, fontWeight: '700', marginBottom: 6 }}>Rapor Mapel</Text>
+      <Text style={{ fontSize: 20, fontWeight: '700', marginBottom: 6 }}>Rapor Mapel</Text>
       <Text style={{ color: '#64748b', marginBottom: 12 }}>
         Rekap nilai akhir per mata pelajaran dan kelas.
       </Text>

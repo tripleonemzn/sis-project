@@ -318,10 +318,10 @@ export const TeacherDashboard = () => {
             </div>
           </div>
           <div>
-            <h1 className="text-2xl font-bold text-gray-900 mb-1">
+            <h1 className="text-page-title font-bold text-gray-900 mb-1">
               Selamat Datang, {userName}! 👋
             </h1>
-            <p className="text-gray-500 text-sm">
+            <p className="text-body text-gray-500">
               Berikut adalah ringkasan kegiatan mengajar Anda | {isExaminer ? (user.institution || 'Instansi Luar') : user.username}
             </p>
           </div>

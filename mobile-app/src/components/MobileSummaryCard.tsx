@@ -2,6 +2,7 @@ import { Feather } from '@expo/vector-icons';
 import { Pressable, Text, View, type StyleProp, type ViewStyle } from 'react-native';
 import { BRAND_COLORS } from '../config/brand';
 import { useAppTheme } from '../theme/AppThemeProvider';
+import { MOBILE_TYPOGRAPHY } from '../theme/typography';
 
 type FeatherIconName = React.ComponentProps<typeof Feather>['name'];
 
@@ -70,8 +71,7 @@ export function MobileSummaryCard({
       <Text
         style={{
           color: colors.textMuted,
-          fontSize: 11,
-          lineHeight: 14,
+          ...MOBILE_TYPOGRAPHY.caption,
           minHeight: 28,
           textAlign: isCentered ? 'center' : 'left',
           width: '100%',
@@ -83,9 +83,7 @@ export function MobileSummaryCard({
       <Text
         style={{
           color: colors.text,
-          fontWeight: '700',
-          fontSize: 19,
-          lineHeight: 24,
+          ...MOBILE_TYPOGRAPHY.metric,
           marginTop: 4,
           textAlign: isCentered ? 'center' : 'left',
           width: '100%',
@@ -98,8 +96,7 @@ export function MobileSummaryCard({
         <Text
           style={{
             color: colors.textMuted,
-            fontSize: 10.5,
-            lineHeight: 13,
+            ...MOBILE_TYPOGRAPHY.caption,
             minHeight: 26,
             marginTop: 3,
             textAlign: isCentered ? 'center' : 'left',

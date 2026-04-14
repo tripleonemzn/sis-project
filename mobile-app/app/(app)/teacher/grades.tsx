@@ -869,7 +869,7 @@ export default function TeacherGradesScreen() {
   if (user?.role !== 'TEACHER') {
     return (
       <ScrollView style={{ flex: 1, backgroundColor: '#f8fafc' }} contentContainerStyle={pageContentPadding}>
-        <Text style={{ fontSize: 22, fontWeight: '700', marginBottom: 8 }}>Input Nilai</Text>
+        <Text style={{ fontSize: 20, fontWeight: '700', marginBottom: 8 }}>Input Nilai</Text>
         <QueryStateView type="error" message="Halaman ini khusus untuk role guru." />
       </ScrollView>
     );
@@ -899,7 +899,7 @@ export default function TeacherGradesScreen() {
           />
         }
       >
-      <Text style={{ fontSize: 24, fontWeight: '700', marginBottom: 6 }}>Input Nilai</Text>
+      <Text style={{ fontSize: 20, fontWeight: '700', marginBottom: 6 }}>Input Nilai</Text>
       <Text style={{ color: '#64748b', marginBottom: 12 }}>Masukkan nilai per komponen untuk kelas ajar Anda.</Text>
 
       {assignmentsQuery.isLoading ? <QueryStateView type="loading" message="Memuat assignment..." /> : null}

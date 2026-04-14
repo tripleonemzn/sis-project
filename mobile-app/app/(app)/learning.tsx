@@ -249,7 +249,7 @@ export default function LearningScreen() {
   if (user?.role !== 'STUDENT') {
     return (
       <ScrollView style={{ flex: 1, backgroundColor: '#f8fafc' }} contentContainerStyle={pageContentPadding}>
-        <Text style={{ fontSize: 22, fontWeight: '700', marginBottom: 8 }}>Materi & Tugas</Text>
+        <Text style={{ fontSize: 20, fontWeight: '700', marginBottom: 8 }}>Materi & Tugas</Text>
         <QueryStateView type="error" message="Halaman ini khusus untuk role siswa." />
       </ScrollView>
     );
@@ -266,7 +266,7 @@ export default function LearningScreen() {
         />
       }
     >
-      <Text style={{ fontSize: 24, fontWeight: '700', marginBottom: 6 }}>Materi & Tugas</Text>
+      <Text style={{ fontSize: 20, fontWeight: '700', marginBottom: 6 }}>Materi & Tugas</Text>
       <Text style={{ color: '#64748b', marginBottom: 12 }}>Akses materi pelajaran dan pengumpulan tugas Anda.</Text>
 
       <View style={{ flexDirection: 'row', marginHorizontal: -4, marginBottom: 10 }}>

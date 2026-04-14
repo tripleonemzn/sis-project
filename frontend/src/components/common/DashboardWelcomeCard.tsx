@@ -140,13 +140,13 @@ export function DashboardWelcomeCard({
         </div>
         <div>
           {eyebrow ? (
-            <p className={clsx('text-xs font-semibold uppercase tracking-[0.22em]', palette.eyebrow)}>
+            <p className={clsx('text-label font-semibold uppercase tracking-[0.22em]', palette.eyebrow)}>
               {eyebrow}
             </p>
           ) : null}
-          <h1 className="text-2xl font-bold text-gray-900 mb-1">{titleText}</h1>
-          <p className="text-gray-500 text-sm">{subtitle}</p>
-          {meta ? <p className="mt-2 text-xs font-medium text-gray-500">{meta}</p> : null}
+          <h1 className="text-page-title font-bold text-gray-900 mb-1">{titleText}</h1>
+          <p className="text-body text-gray-500">{subtitle}</p>
+          {meta ? <p className="mt-2 text-label font-medium text-gray-500">{meta}</p> : null}
         </div>
       </div>
 

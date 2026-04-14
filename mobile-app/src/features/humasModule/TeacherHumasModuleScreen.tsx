@@ -723,7 +723,7 @@ export function TeacherHumasModuleScreen({
   if (user?.role !== 'TEACHER') {
     return (
       <ScrollView style={{ flex: 1, backgroundColor: '#f8fafc' }} contentContainerStyle={pagePadding}>
-        <Text style={{ fontSize: 24, fontWeight: '700', marginBottom: 8 }}>{title}</Text>
+        <Text style={{ fontSize: 20, fontWeight: '700', marginBottom: 8 }}>{title}</Text>
         <QueryStateView type="error" message="Halaman ini khusus untuk role guru." />
       </ScrollView>
     );
@@ -732,7 +732,7 @@ export function TeacherHumasModuleScreen({
   if (!isAllowedRole) {
     return (
       <ScrollView style={{ flex: 1, backgroundColor: '#f8fafc' }} contentContainerStyle={pagePadding}>
-        <Text style={{ fontSize: 24, fontWeight: '700', marginBottom: 8 }}>{title}</Text>
+        <Text style={{ fontSize: 20, fontWeight: '700', marginBottom: 8 }}>{title}</Text>
         <QueryStateView type="error" message="Akses modul ini membutuhkan tugas tambahan Wakasek Humas." />
       </ScrollView>
     );

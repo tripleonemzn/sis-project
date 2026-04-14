@@ -1511,8 +1511,8 @@ export const EmailPage = () => {
       <div className="space-y-6">
         <div className="flex items-start justify-between gap-4 px-1">
           <div className="space-y-1">
-            <h1 className="text-lg font-semibold text-slate-900">Email</h1>
-            <p className="text-sm leading-6 text-slate-500">{pageDescription}</p>
+            <h1 className="text-page-title font-semibold text-slate-900">Email</h1>
+            <p className="text-body leading-6 text-slate-500">{pageDescription}</p>
           </div>
           {canShowEmailAccessMenu ? (
             <div ref={accessMenuRef} className="relative shrink-0">

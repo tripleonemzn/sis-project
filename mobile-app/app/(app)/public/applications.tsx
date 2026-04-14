@@ -127,7 +127,7 @@ export default function PublicBkkApplicationsScreen() {
         >
           <Feather name="arrow-left" size={18} color={BRAND_COLORS.textDark} />
         </Pressable>
-        <Text style={{ marginLeft: 10, color: BRAND_COLORS.textDark, fontSize: 22, fontWeight: '700' }}>
+        <Text style={{ marginLeft: 10, color: BRAND_COLORS.textDark, fontSize: 20, fontWeight: '700' }}>
           Lamaran Saya
         </Text>
       </View>
@@ -153,14 +153,14 @@ export default function PublicBkkApplicationsScreen() {
           <View style={{ flexDirection: 'row', flexWrap: 'wrap', gap: 12, marginBottom: 12 }}>
             <View style={{ width: '47%' }}>
               <InfoCard title="Total">
-                <Text style={{ color: BRAND_COLORS.textDark, fontSize: 28, fontWeight: '800' }}>
+                <Text style={{ color: BRAND_COLORS.textDark, fontSize: 20, fontWeight: '800' }}>
                   {applicationsQuery.data?.summary.total || 0}
                 </Text>
               </InfoCard>
             </View>
             <View style={{ width: '47%' }}>
               <InfoCard title="Diterima Mitra">
-                <Text style={{ color: BRAND_COLORS.textDark, fontSize: 28, fontWeight: '800' }}>
+                <Text style={{ color: BRAND_COLORS.textDark, fontSize: 20, fontWeight: '800' }}>
                   {publicBkkApi.getSuccessfulPlacementCount(
                     applicationsQuery.data?.summary || {
                       total: 0,
@@ -181,7 +181,7 @@ export default function PublicBkkApplicationsScreen() {
           </View>
 
           <InfoCard title="Sedang Diproses">
-            <Text style={{ color: BRAND_COLORS.textDark, fontSize: 28, fontWeight: '800' }}>
+            <Text style={{ color: BRAND_COLORS.textDark, fontSize: 20, fontWeight: '800' }}>
               {publicBkkApi.getActiveProcessingCount(
                 applicationsQuery.data?.summary || {
                   total: 0,

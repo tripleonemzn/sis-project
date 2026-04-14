@@ -100,7 +100,7 @@ export function MobileAppearancePreferenceCard({
             paddingVertical: 7,
           }}
         >
-          <Text style={{ color: colors.primary, fontSize: 10.5, fontWeight: '700' }}>
+          <Text style={{ color: colors.primary, fontSize: 11, fontWeight: '700' }}>
             {mode === 'dark' ? 'GELAP' : 'SISTEM'}
           </Text>
         </View>

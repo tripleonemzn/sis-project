@@ -261,7 +261,7 @@ export default function StudentInternshipScreen() {
         />
       }
     >
-      <Text style={{ fontSize: 24, fontWeight: '700', color: BRAND_COLORS.textDark, marginBottom: 6 }}>PKL (Prakerin)</Text>
+      <Text style={{ fontSize: 20, fontWeight: '700', color: BRAND_COLORS.textDark, marginBottom: 6 }}>PKL (Prakerin)</Text>
       <Text style={{ color: BRAND_COLORS.textMuted, marginBottom: 12 }}>
         Kelola pengajuan, jurnal, absensi, dan laporan PKL langsung dari mobile.
       </Text>

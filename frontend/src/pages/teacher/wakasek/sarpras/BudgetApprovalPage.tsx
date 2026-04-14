@@ -283,12 +283,12 @@ export const BudgetApprovalPage = () => {
     <div className="space-y-6">
       <div className="flex items-center justify-between">
         <div>
-          <h1 className="text-xl font-semibold text-gray-900">
+          <h1 className="text-page-title font-semibold text-gray-900">
             {isKesiswaanApprover
               ? `Persetujuan Pengajuan ${advisorFlowSummary.equipmentTitle}`
               : 'Persetujuan Anggaran Sarpras'}
           </h1>
-          <p className="mt-1 text-sm text-gray-500">
+          <p className="mt-1 text-body text-gray-500">
             {isKesiswaanApprover
               ? `Verifikasi awal pengajuan ${advisorFlowSummary.equipmentLabel} sebelum diteruskan ke Sarpras.`
               : 'Kelola pengajuan anggaran dari Program Kerja dan kebutuhan operasional.'}

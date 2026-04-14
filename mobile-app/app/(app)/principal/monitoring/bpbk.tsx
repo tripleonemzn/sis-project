@@ -60,7 +60,7 @@ export default function PrincipalBpBkMonitoringScreen() {
   if (user?.role !== 'PRINCIPAL') {
     return (
       <ScrollView style={{ flex: 1, backgroundColor: '#f8fafc' }} contentContainerStyle={pagePadding}>
-        <Text style={{ fontSize: 24, fontWeight: '700', marginBottom: 8 }}>Ringkasan BP/BK</Text>
+        <Text style={{ fontSize: 20, fontWeight: '700', marginBottom: 8 }}>Ringkasan BP/BK</Text>
         <QueryStateView type="error" message="Halaman ini khusus untuk role kepala sekolah." />
       </ScrollView>
     );
@@ -82,7 +82,7 @@ export default function PrincipalBpBkMonitoringScreen() {
         />
       }
     >
-      <Text style={{ fontSize: 24, fontWeight: '700', color: BRAND_COLORS.textDark, marginBottom: 6 }}>
+      <Text style={{ fontSize: 20, fontWeight: '700', color: BRAND_COLORS.textDark, marginBottom: 6 }}>
         Ringkasan BP/BK
       </Text>
       <Text style={{ color: BRAND_COLORS.textMuted, marginBottom: 12 }}>

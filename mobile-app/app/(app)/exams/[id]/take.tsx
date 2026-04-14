@@ -849,7 +849,7 @@ export default function StudentExamTakeScreen() {
     return (
       <ScrollView style={{ flex: 1, backgroundColor: '#f8fafc' }} contentContainerStyle={pageContentPadding}>
         <Stack.Screen options={{ headerShown: false, gestureEnabled: false }} />
-        <Text style={{ fontSize: 22, fontWeight: '700', marginBottom: 8 }}>
+        <Text style={{ fontSize: 20, fontWeight: '700', marginBottom: 8 }}>
           {`Mengerjakan ${examTakeLabel}`}
         </Text>
         <QueryStateView type="error" message="Halaman ini hanya tersedia untuk peserta ujian yang aktif." />
@@ -861,7 +861,7 @@ export default function StudentExamTakeScreen() {
     return (
       <ScrollView style={{ flex: 1, backgroundColor: '#f8fafc' }} contentContainerStyle={pageContentPadding}>
         <Stack.Screen options={{ headerShown: false, gestureEnabled: false }} />
-        <Text style={{ fontSize: 22, fontWeight: '700', marginBottom: 8 }}>{`Mengerjakan ${examTakeLabel}`}</Text>
+        <Text style={{ fontSize: 20, fontWeight: '700', marginBottom: 8 }}>{`Mengerjakan ${examTakeLabel}`}</Text>
         <View
           style={{
             borderWidth: 1,
@@ -884,7 +884,7 @@ export default function StudentExamTakeScreen() {
     return (
       <ScrollView style={{ flex: 1, backgroundColor: '#f8fafc' }} contentContainerStyle={pageContentPadding}>
         <Stack.Screen options={{ headerShown: false, gestureEnabled: false }} />
-        <Text style={{ fontSize: 22, fontWeight: '700', marginBottom: 8 }}>{`Mengerjakan ${examTakeLabel}`}</Text>
+        <Text style={{ fontSize: 20, fontWeight: '700', marginBottom: 8 }}>{`Mengerjakan ${examTakeLabel}`}</Text>
         <QueryStateView type="error" message={`ID jadwal ${examTakeLabel.toLowerCase()} tidak valid.`} />
       </ScrollView>
     );
@@ -896,7 +896,7 @@ export default function StudentExamTakeScreen() {
     return (
       <ScrollView style={{ flex: 1, backgroundColor: '#f8fafc' }} contentContainerStyle={pageContentPadding}>
         <Stack.Screen options={{ headerShown: false, gestureEnabled: false }} />
-        <Text style={{ fontSize: 22, fontWeight: '700', marginBottom: 8 }}>{`Mengerjakan ${examTakeLabel}`}</Text>
+        <Text style={{ fontSize: 20, fontWeight: '700', marginBottom: 8 }}>{`Mengerjakan ${examTakeLabel}`}</Text>
         <QueryStateView
           type="error"
           message={`Gagal memulai sesi ${examTakeLabel.toLowerCase()}.`}
@@ -922,7 +922,7 @@ export default function StudentExamTakeScreen() {
     return (
       <ScrollView style={{ flex: 1, backgroundColor: '#f8fafc' }} contentContainerStyle={pageContentPadding}>
         <Stack.Screen options={{ headerShown: false, gestureEnabled: false }} />
-        <Text style={{ fontSize: 22, fontWeight: '700', marginBottom: 8 }}>{`Mengerjakan ${examTakeLabel}`}</Text>
+        <Text style={{ fontSize: 20, fontWeight: '700', marginBottom: 8 }}>{`Mengerjakan ${examTakeLabel}`}</Text>
         <QueryStateView type="error" message={`Soal ${examTakeLabel.toLowerCase()} tidak tersedia.`} />
         <Pressable
           onPress={() => router.replace('/exams')}
@@ -1041,7 +1041,7 @@ export default function StudentExamTakeScreen() {
           elevation: 2,
         }}
       >
-        <Text style={{ color: '#0f172a', fontWeight: '800', fontSize: 19, marginBottom: 6 }}>
+        <Text style={{ color: '#0f172a', fontWeight: '800', fontSize: 18, marginBottom: 6 }}>
           {startQuery.data.packet.title}
         </Text>
         <Text style={{ color: '#64748b', fontSize: 13, marginBottom: 10 }}>

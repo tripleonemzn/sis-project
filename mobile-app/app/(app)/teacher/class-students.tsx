@@ -101,7 +101,7 @@ export default function TeacherClassStudentsScreen() {
   if (user?.role !== 'TEACHER') {
     return (
       <ScrollView style={{ flex: 1, backgroundColor: '#f8fafc' }} contentContainerStyle={pagePadding}>
-        <Text style={{ fontSize: 24, fontWeight: '700', marginBottom: 8 }}>Daftar Siswa Kelas</Text>
+        <Text style={{ fontSize: 20, fontWeight: '700', marginBottom: 8 }}>Daftar Siswa Kelas</Text>
         <QueryStateView type="error" message="Halaman ini khusus untuk role guru." />
       </ScrollView>
     );
@@ -110,7 +110,7 @@ export default function TeacherClassStudentsScreen() {
   if (!classId && !assignmentId) {
     return (
       <ScrollView style={{ flex: 1, backgroundColor: '#f8fafc' }} contentContainerStyle={pagePadding}>
-        <Text style={{ fontSize: 24, fontWeight: '700', marginBottom: 8 }}>Daftar Siswa Kelas</Text>
+        <Text style={{ fontSize: 20, fontWeight: '700', marginBottom: 8 }}>Daftar Siswa Kelas</Text>
         <QueryStateView type="error" message="Parameter kelas tidak ditemukan." />
       </ScrollView>
     );
@@ -137,7 +137,7 @@ export default function TeacherClassStudentsScreen() {
         />
       }
     >
-      <Text style={{ fontSize: 24, fontWeight: '700', marginBottom: 6 }}>Daftar Siswa Kelas</Text>
+      <Text style={{ fontSize: 20, fontWeight: '700', marginBottom: 6 }}>Daftar Siswa Kelas</Text>
       <Text style={{ color: '#64748b', marginBottom: 12 }}>
         Data siswa untuk kelas {className} {majorName !== '-' ? `(${majorName})` : ''}.
       </Text>

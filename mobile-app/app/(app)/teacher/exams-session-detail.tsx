@@ -74,7 +74,7 @@ export default function TeacherExamSessionDetailScreen() {
   if (user?.role !== 'TEACHER') {
     return (
       <ScrollView style={{ flex: 1, backgroundColor: '#f8fafc' }} contentContainerStyle={pageContentPadding}>
-        <Text style={{ fontSize: 22, fontWeight: '700', marginBottom: 8 }}>Detail Jawaban</Text>
+        <Text style={{ fontSize: 20, fontWeight: '700', marginBottom: 8 }}>Detail Jawaban</Text>
         <QueryStateView type="error" message="Halaman ini khusus untuk role guru." />
       </ScrollView>
     );
@@ -83,7 +83,7 @@ export default function TeacherExamSessionDetailScreen() {
   if (!sessionId) {
     return (
       <ScrollView style={{ flex: 1, backgroundColor: '#f8fafc' }} contentContainerStyle={pageContentPadding}>
-        <Text style={{ fontSize: 22, fontWeight: '700', marginBottom: 8 }}>Detail Jawaban</Text>
+        <Text style={{ fontSize: 20, fontWeight: '700', marginBottom: 8 }}>Detail Jawaban</Text>
         <QueryStateView type="error" message="Session ID tidak valid." />
       </ScrollView>
     );
@@ -102,7 +102,7 @@ export default function TeacherExamSessionDetailScreen() {
         />
       }
     >
-      <Text style={{ fontSize: 24, fontWeight: '700', marginBottom: 6 }}>Detail Jawaban</Text>
+      <Text style={{ fontSize: 20, fontWeight: '700', marginBottom: 6 }}>Detail Jawaban</Text>
       <Text style={{ color: '#334155', marginBottom: 3, fontWeight: '600' }} numberOfLines={2}>
         {packetTitle}
       </Text>

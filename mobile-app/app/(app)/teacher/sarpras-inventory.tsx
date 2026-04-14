@@ -1515,7 +1515,7 @@ export default function TeacherSarprasInventoryScreen() {
   if (!(user?.role === 'TEACHER' || isManagedRoomContext)) {
     return (
       <ScrollView style={{ flex: 1, backgroundColor: '#f8fafc' }} contentContainerStyle={pagePadding}>
-        <Text style={{ fontSize: 24, fontWeight: '700', marginBottom: 8 }}>Aset Sekolah</Text>
+        <Text style={{ fontSize: 20, fontWeight: '700', marginBottom: 8 }}>Aset Sekolah</Text>
         <QueryStateView type="error" message="Halaman ini tidak tersedia untuk role Anda." />
         <Pressable
           onPress={() => router.replace('/home')}
@@ -1536,7 +1536,7 @@ export default function TeacherSarprasInventoryScreen() {
   if (!isAllowed) {
     return (
       <ScrollView style={{ flex: 1, backgroundColor: '#f8fafc' }} contentContainerStyle={pagePadding}>
-        <Text style={{ fontSize: 24, fontWeight: '700', marginBottom: 6, color: BRAND_COLORS.textDark }}>{pageTitle}</Text>
+        <Text style={{ fontSize: 20, fontWeight: '700', marginBottom: 6, color: BRAND_COLORS.textDark }}>{pageTitle}</Text>
         <Text style={{ color: BRAND_COLORS.textMuted, marginBottom: 12 }}>
           {isManagedRoomContext
             ? 'Modul ini hanya muncul jika Anda memiliki ruangan inventaris yang ditugaskan.'
@@ -1586,7 +1586,7 @@ export default function TeacherSarprasInventoryScreen() {
         />
       }
     >
-      <Text style={{ fontSize: 24, fontWeight: '700', marginBottom: 6, color: BRAND_COLORS.textDark }}>{pageTitle}</Text>
+      <Text style={{ fontSize: 20, fontWeight: '700', marginBottom: 6, color: BRAND_COLORS.textDark }}>{pageTitle}</Text>
       <Text style={{ color: BRAND_COLORS.textMuted, marginBottom: 12 }}>{pageSubtitle}</Text>
 
       <MobileMenuTabBar
@@ -3002,7 +3002,7 @@ export default function TeacherSarprasInventoryScreen() {
           <View style={{ gap: 10 }}>
             <View style={{ borderWidth: 1, borderColor: '#dbe7fb', borderRadius: 12, backgroundColor: '#f8fbff', padding: 12 }}>
               <Text style={{ color: BRAND_COLORS.textDark, fontWeight: '700' }}>Total unit tersimpan</Text>
-              <Text style={{ color: BRAND_COLORS.blue, fontSize: 22, fontWeight: '700', marginTop: 4 }}>
+              <Text style={{ color: BRAND_COLORS.blue, fontSize: 20, fontWeight: '700', marginTop: 4 }}>
                 {formatNumber(inventorySummary.totalUnits)}
               </Text>
               <Text style={{ color: BRAND_COLORS.textMuted, marginTop: 4 }}>

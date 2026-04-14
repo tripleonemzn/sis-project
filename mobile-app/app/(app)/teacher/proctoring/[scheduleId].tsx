@@ -253,7 +253,7 @@ export default function TeacherProctoringDetailScreen() {
   if (user?.role !== 'TEACHER') {
     return (
       <ScrollView style={{ flex: 1, backgroundColor: '#f8fafc' }} contentContainerStyle={pagePadding}>
-        <Text style={{ fontSize: 24, fontWeight: '700', marginBottom: 8 }}>Monitoring Ujian</Text>
+        <Text style={{ fontSize: 20, fontWeight: '700', marginBottom: 8 }}>Monitoring Ujian</Text>
         <QueryStateView type="error" message="Halaman ini khusus untuk role guru." />
       </ScrollView>
     );
@@ -298,7 +298,7 @@ export default function TeacherProctoringDetailScreen() {
           <Feather name="arrow-left" size={18} color="#334155" />
         </Pressable>
         <View style={{ flex: 1 }}>
-          <Text style={{ fontSize: 24, fontWeight: '700', color: BRAND_COLORS.textDark }}>Monitoring Ujian</Text>
+          <Text style={{ fontSize: 20, fontWeight: '700', color: BRAND_COLORS.textDark }}>Monitoring Ujian</Text>
           <Text style={{ color: BRAND_COLORS.textMuted }}>
             Pantau status peserta, pelanggaran, dan siapkan berita acara untuk Kurikulum.
           </Text>

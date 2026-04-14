@@ -343,7 +343,7 @@ export default function TeacherSarprasReportsScreen() {
   if (user?.role !== 'TEACHER') {
     return (
       <ScrollView style={{ flex: 1, backgroundColor: '#f8fafc' }} contentContainerStyle={pagePadding}>
-        <Text style={{ fontSize: 24, fontWeight: '700', marginBottom: 8 }}>Laporan</Text>
+        <Text style={{ fontSize: 20, fontWeight: '700', marginBottom: 8 }}>Laporan</Text>
         <QueryStateView type="error" message="Halaman ini khusus untuk role guru." />
         <Pressable
           onPress={() => router.replace('/home')}
@@ -364,7 +364,7 @@ export default function TeacherSarprasReportsScreen() {
   if (!isAllowed) {
     return (
       <ScrollView style={{ flex: 1, backgroundColor: '#f8fafc' }} contentContainerStyle={pagePadding}>
-        <Text style={{ fontSize: 24, fontWeight: '700', marginBottom: 6, color: BRAND_COLORS.textDark }}>
+        <Text style={{ fontSize: 20, fontWeight: '700', marginBottom: 6, color: BRAND_COLORS.textDark }}>
           Laporan
         </Text>
         <Text style={{ color: BRAND_COLORS.textMuted, marginBottom: 12 }}>
@@ -401,7 +401,7 @@ export default function TeacherSarprasReportsScreen() {
         />
       }
     >
-      <Text style={{ fontSize: 24, fontWeight: '700', marginBottom: 6, color: BRAND_COLORS.textDark }}>Laporan</Text>
+      <Text style={{ fontSize: 20, fontWeight: '700', marginBottom: 6, color: BRAND_COLORS.textDark }}>Laporan</Text>
       <Text style={{ color: BRAND_COLORS.textMuted, marginBottom: 12 }}>
         Ringkasan aset sekolah dan pengajuan anggaran sarpras
         {activeYearQuery.data?.name ? ` • ${activeYearQuery.data.name}` : ''}.
@@ -756,13 +756,13 @@ export default function TeacherSarprasReportsScreen() {
           <View style={{ gap: 10 }}>
             <View style={{ borderWidth: 1, borderColor: '#dbe7fb', borderRadius: 12, backgroundColor: '#f8fbff', padding: 12 }}>
               <Text style={{ color: BRAND_COLORS.textDark, fontWeight: '700' }}>Kategori Aktif</Text>
-              <Text style={{ color: '#8b5cf6', fontSize: 22, fontWeight: '700', marginTop: 4 }}>
+              <Text style={{ color: '#8b5cf6', fontSize: 20, fontWeight: '700', marginTop: 4 }}>
                 {formatNumber(categories.length)}
               </Text>
             </View>
             <View style={{ borderWidth: 1, borderColor: '#dbe7fb', borderRadius: 12, backgroundColor: '#f8fbff', padding: 12 }}>
               <Text style={{ color: BRAND_COLORS.textDark, fontWeight: '700' }}>Total Ruangan</Text>
-              <Text style={{ color: '#16a34a', fontSize: 22, fontWeight: '700', marginTop: 4 }}>
+              <Text style={{ color: '#16a34a', fontSize: 20, fontWeight: '700', marginTop: 4 }}>
                 {formatNumber(roomSummary.totalRooms)}
               </Text>
             </View>
@@ -816,13 +816,13 @@ export default function TeacherSarprasReportsScreen() {
           <View style={{ gap: 10 }}>
             <View style={{ borderWidth: 1, borderColor: '#dbe7fb', borderRadius: 12, backgroundColor: '#f8fbff', padding: 12 }}>
               <Text style={{ color: BRAND_COLORS.textDark, fontWeight: '700' }}>Total Pengajuan</Text>
-              <Text style={{ color: '#0f766e', fontSize: 22, fontWeight: '700', marginTop: 4 }}>
+              <Text style={{ color: '#0f766e', fontSize: 20, fontWeight: '700', marginTop: 4 }}>
                 {formatCurrency(budgetSummary.totalAmount)}
               </Text>
             </View>
             <View style={{ borderWidth: 1, borderColor: '#dbe7fb', borderRadius: 12, backgroundColor: '#f8fbff', padding: 12 }}>
               <Text style={{ color: BRAND_COLORS.textDark, fontWeight: '700' }}>Nominal Disetujui</Text>
-              <Text style={{ color: '#2563eb', fontSize: 22, fontWeight: '700', marginTop: 4 }}>
+              <Text style={{ color: '#2563eb', fontSize: 20, fontWeight: '700', marginTop: 4 }}>
                 {formatCurrency(budgetSummary.approvedAmount)}
               </Text>
             </View>

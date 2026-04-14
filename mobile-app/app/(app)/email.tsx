@@ -1178,7 +1178,7 @@ export default function MobileEmailScreen() {
     return (
       <View style={{ flex: 1, backgroundColor: '#f8fafc' }}>
         <View style={pagePadding}>
-          <Text style={{ fontSize: 22, fontWeight: '700', color: BRAND_COLORS.textDark, marginBottom: 8 }}>Email</Text>
+          <Text style={{ fontSize: 20, fontWeight: '700', color: BRAND_COLORS.textDark, marginBottom: 8 }}>Email</Text>
           <QueryStateView type="error" message="Fitur email tidak tersedia untuk role Anda." />
         </View>
       </View>
@@ -1193,7 +1193,7 @@ export default function MobileEmailScreen() {
     return (
       <View style={{ flex: 1, backgroundColor: '#f8fafc' }}>
         <View style={pagePadding}>
-          <Text style={{ fontSize: 22, fontWeight: '700', color: BRAND_COLORS.textDark, marginBottom: 8 }}>Email</Text>
+          <Text style={{ fontSize: 20, fontWeight: '700', color: BRAND_COLORS.textDark, marginBottom: 8 }}>Email</Text>
           <QueryStateView
             type="error"
             message={resolveErrorMessage(configQuery.error, 'Gagal memuat konfigurasi email.')}
@@ -1251,7 +1251,7 @@ export default function MobileEmailScreen() {
         <View style={{ paddingHorizontal: 12, gap: 10 }}>
           <View style={{ flexDirection: 'row', alignItems: 'flex-start', justifyContent: 'space-between', gap: 12, paddingHorizontal: 2 }}>
             <View style={{ flex: 1, gap: 4 }}>
-              <Text style={{ fontSize: 22, fontWeight: '800', color: '#0f172a' }}>Email</Text>
+              <Text style={{ fontSize: 20, fontWeight: '800', color: '#0f172a' }}>Email</Text>
               <Text style={{ fontSize: 12, color: '#64748b', lineHeight: 18 }}>{pageDescription}</Text>
             </View>
             {canShowEmailAccessMenu ? (

@@ -224,8 +224,8 @@ export const TeacherAttendancePage = () => {
               <ArrowLeft className="w-5 h-5 text-gray-600" />
             </button>
             <div>
-              <h1 className="text-xl font-bold text-gray-900">Input Presensi</h1>
-              <p className="text-sm text-gray-500">Catat kehadiran siswa di kelas</p>
+              <h1 className="text-page-title font-bold text-gray-900">Input Presensi</h1>
+              <p className="text-body text-gray-500">Catat kehadiran siswa di kelas</p>
             </div>
           </div>
           <div className="flex items-center gap-2">

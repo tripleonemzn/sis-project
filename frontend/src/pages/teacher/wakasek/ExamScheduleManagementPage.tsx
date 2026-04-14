@@ -1656,8 +1656,8 @@ const ExamScheduleManagementPage = () => {
       <div className="bg-white p-4 rounded-lg shadow-sm border border-gray-200">
         <div className="flex flex-col md:flex-row justify-between items-start md:items-center gap-4">
           <div>
-            <h1 className="text-xl font-bold text-gray-800">Kelola Jadwal Ujian</h1>
-            <p className="text-sm text-gray-500 mt-1">Atur jadwal pelaksanaan ujian</p>
+            <h1 className="text-page-title font-bold text-gray-800">Kelola Jadwal Ujian</h1>
+            <p className="mt-1 text-body text-gray-500">Atur jadwal pelaksanaan ujian</p>
           </div>
           
           <div className="flex flex-col sm:flex-row gap-3 w-full md:w-auto">

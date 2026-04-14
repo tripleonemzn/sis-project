@@ -1491,7 +1491,7 @@ export default function ProfileScreen() {
         />
       }
     >
-      <Text style={{ fontSize: 24, fontWeight: '700', marginBottom: 6, color: colors.text }}>{profileCopy.title}</Text>
+      <Text style={{ fontSize: 20, fontWeight: '700', marginBottom: 6, color: colors.text }}>{profileCopy.title}</Text>
       <Text style={{ color: colors.textMuted, marginBottom: 14 }}>{profileCopy.subtitle}</Text>
 
       {profile ? (
@@ -1721,7 +1721,7 @@ export default function ProfileScreen() {
                     <>
                       <View style={{ flexDirection: 'row', justifyContent: 'space-between', alignItems: 'flex-start' }}>
                         <View style={{ flex: 1, paddingRight: 12 }}>
-                          <Text style={{ color: '#0f172a', fontSize: 28, fontWeight: '700' }}>{completeness.percent}%</Text>
+                          <Text style={{ color: '#0f172a', fontSize: 20, fontWeight: '700' }}>{completeness.percent}%</Text>
                           <Text style={{ color: '#64748b', fontSize: 13, marginTop: 4, lineHeight: 19 }}>
                             {completeness.completed} dari {completeness.total} data prioritas sudah terisi
                           </Text>

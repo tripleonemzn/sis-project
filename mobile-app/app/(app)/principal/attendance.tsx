@@ -141,7 +141,7 @@ export default function PrincipalAttendanceScreen() {
   if (user?.role !== 'PRINCIPAL') {
     return (
       <ScrollView style={{ flex: 1, backgroundColor: '#f8fafc' }} contentContainerStyle={pagePadding}>
-        <Text style={{ fontSize: 24, fontWeight: '700', marginBottom: 8 }}>Rekap Absensi</Text>
+        <Text style={{ fontSize: 20, fontWeight: '700', marginBottom: 8 }}>Rekap Absensi</Text>
         <QueryStateView type="error" message="Halaman ini khusus untuk role kepala sekolah." />
         <Pressable
           onPress={() => router.replace('/home')}
@@ -174,7 +174,7 @@ export default function PrincipalAttendanceScreen() {
         />
       }
     >
-      <Text style={{ fontSize: 24, fontWeight: '700', marginBottom: 6, color: BRAND_COLORS.textDark }}>Rekap Absensi</Text>
+      <Text style={{ fontSize: 20, fontWeight: '700', marginBottom: 6, color: BRAND_COLORS.textDark }}>Rekap Absensi</Text>
       <Text style={{ color: BRAND_COLORS.textMuted, marginBottom: 12 }}>
         Monitoring kehadiran siswa per kelas
         {activeYearQuery.data?.name ? ` • ${activeYearQuery.data.name}` : ''}.

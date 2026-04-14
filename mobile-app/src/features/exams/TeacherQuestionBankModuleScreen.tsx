@@ -135,7 +135,7 @@ export function TeacherQuestionBankModuleScreen() {
         />
       }
     >
-      <Text style={{ fontSize: 24, fontWeight: '700', marginBottom: 6, color: '#0f172a' }}>Bank Soal</Text>
+      <Text style={{ fontSize: 20, fontWeight: '700', marginBottom: 6, color: '#0f172a' }}>Bank Soal</Text>
       <Text style={{ color: '#64748b', marginBottom: 12 }}>
         Daftar butir soal mengikuti konsep web: filter mapel, semester, tipe, lalu buka pratinjau soal yang sebenarnya.
       </Text>
@@ -284,7 +284,7 @@ export function TeacherQuestionBankModuleScreen() {
           }}
         >
           <Text style={{ color: BRAND_COLORS.textMuted, fontSize: 12 }}>Total Soal</Text>
-          <Text style={{ color: BRAND_COLORS.textDark, fontSize: 22, fontWeight: '700', marginTop: 4 }}>
+          <Text style={{ color: BRAND_COLORS.textDark, fontSize: 20, fontWeight: '700', marginTop: 4 }}>
             {String(pagination.total || 0)}
           </Text>
         </View>
@@ -299,7 +299,7 @@ export function TeacherQuestionBankModuleScreen() {
           }}
         >
           <Text style={{ color: BRAND_COLORS.textMuted, fontSize: 12 }}>Halaman</Text>
-          <Text style={{ color: BRAND_COLORS.textDark, fontSize: 22, fontWeight: '700', marginTop: 4 }}>
+          <Text style={{ color: BRAND_COLORS.textDark, fontSize: 20, fontWeight: '700', marginTop: 4 }}>
             {currentPage}/{totalPages}
           </Text>
         </View>

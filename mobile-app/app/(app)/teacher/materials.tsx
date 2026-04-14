@@ -513,7 +513,7 @@ export default function TeacherMaterialsScreen() {
   if (user?.role !== 'TEACHER') {
     return (
       <ScrollView style={{ flex: 1, backgroundColor: '#f8fafc' }} contentContainerStyle={pageContentPadding}>
-        <Text style={{ fontSize: 22, fontWeight: '700', marginBottom: 8 }}>Materi & Tugas</Text>
+        <Text style={{ fontSize: 20, fontWeight: '700', marginBottom: 8 }}>Materi & Tugas</Text>
         <QueryStateView type="error" message="Halaman ini khusus untuk role guru." />
       </ScrollView>
     );
@@ -535,7 +535,7 @@ export default function TeacherMaterialsScreen() {
           />
         }
       >
-      <Text style={{ fontSize: 24, fontWeight: '700', marginBottom: 6 }}>Materi & Tugas</Text>
+      <Text style={{ fontSize: 20, fontWeight: '700', marginBottom: 6 }}>Materi & Tugas</Text>
       <Text style={{ color: '#64748b', marginBottom: 12 }}>
         Kelola materi dan tugas siswa langsung dari mobile.
       </Text>

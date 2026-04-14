@@ -677,7 +677,7 @@ export function TeacherWorkProgramModuleScreen({
   if (!isAllowedRole) {
     return (
       <ScrollView style={{ flex: 1, backgroundColor: '#f8fafc' }} contentContainerStyle={pagePadding}>
-        <Text style={{ fontSize: 24, fontWeight: '700', marginBottom: 8 }}>{title}</Text>
+        <Text style={{ fontSize: 20, fontWeight: '700', marginBottom: 8 }}>{title}</Text>
         <QueryStateView type="error" message="Halaman ini tidak tersedia untuk role akun Anda." />
       </ScrollView>
     );
@@ -689,7 +689,7 @@ export function TeacherWorkProgramModuleScreen({
       contentContainerStyle={pagePadding}
       refreshControl={<RefreshControl refreshing={activeQuery.isFetching || activeYearQuery.isFetching} onRefresh={refreshData} />}
     >
-      <Text style={{ fontSize: 24, fontWeight: '700', marginBottom: 6, color: BRAND_COLORS.textDark }}>{title}</Text>
+      <Text style={{ fontSize: 20, fontWeight: '700', marginBottom: 6, color: BRAND_COLORS.textDark }}>{title}</Text>
       <Text style={{ color: BRAND_COLORS.textMuted, marginBottom: 12 }}>{subtitle}</Text>
 
       {isOsisOwnerDuty ? (

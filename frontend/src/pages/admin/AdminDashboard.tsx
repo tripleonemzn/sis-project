@@ -402,10 +402,10 @@ export const AdminDashboard = () => {
             </div>
           </div>
           <div>
-            <h1 className="text-2xl font-bold text-gray-900 mb-1">
+            <h1 className="text-page-title font-bold text-gray-900 mb-1">
               Selamat Datang, {user.name}! 👋
             </h1>
-            <p className="text-gray-500 text-sm">
+            <p className="text-body text-gray-500">
               Ringkasan statistik dan aktivitas sekolah hari ini | {user.username}
             </p>
           </div>

@@ -629,7 +629,7 @@ export default function StaffAdminScreen() {
   if (user?.role !== 'STAFF') {
     return (
       <ScrollView style={{ flex: 1, backgroundColor: '#f8fafc' }} contentContainerStyle={pagePadding}>
-        <Text style={{ fontSize: 24, fontWeight: '700', color: BRAND_COLORS.textDark, marginBottom: 8 }}>Administrasi</Text>
+        <Text style={{ fontSize: 20, fontWeight: '700', color: BRAND_COLORS.textDark, marginBottom: 8 }}>Administrasi</Text>
         <QueryStateView type="error" message="Halaman ini khusus untuk role staff." />
       </ScrollView>
     );
@@ -680,7 +680,7 @@ export default function StaffAdminScreen() {
         <RefreshControl refreshing={dataQuery.isFetching && !dataQuery.isLoading} onRefresh={handleRefresh} />
       }
     >
-      <Text style={{ fontSize: 24, fontWeight: '700', color: BRAND_COLORS.textDark, marginBottom: 6 }}>{title}</Text>
+      <Text style={{ fontSize: 20, fontWeight: '700', color: BRAND_COLORS.textDark, marginBottom: 6 }}>{title}</Text>
       <Text style={{ color: BRAND_COLORS.textMuted, marginBottom: 12 }}>{subtitle}</Text>
 
       {dataQuery.isLoading ? <QueryStateView type="loading" message="Mengambil data staff..." /> : null}

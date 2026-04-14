@@ -126,7 +126,7 @@ export default function TeacherClassesScreen() {
   if (user?.role !== 'TEACHER') {
     return (
       <ScrollView style={{ flex: 1, backgroundColor: '#f8fafc' }} contentContainerStyle={pageContentPadding}>
-        <Text style={{ fontSize: 22, fontWeight: '700', marginBottom: 8 }}>Kelas & Mapel</Text>
+        <Text style={{ fontSize: 20, fontWeight: '700', marginBottom: 8 }}>Kelas & Mapel</Text>
         <QueryStateView type="error" message="Halaman ini khusus untuk role guru." />
         <Pressable
           onPress={() => router.replace('/home')}
@@ -158,7 +158,7 @@ export default function TeacherClassesScreen() {
         />
       }
     >
-      <Text style={{ fontSize: 24, fontWeight: '700', marginBottom: 6 }}>Kelas & Mapel</Text>
+      <Text style={{ fontSize: 20, fontWeight: '700', marginBottom: 6 }}>Kelas & Mapel</Text>
       <Text style={{ color: '#64748b', marginBottom: 12 }}>
         Daftar kelas ajar aktif {assignmentsQuery.data?.activeYear?.name ? `(${assignmentsQuery.data.activeYear.name})` : ''}.
       </Text>

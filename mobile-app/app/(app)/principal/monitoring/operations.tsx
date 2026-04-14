@@ -67,7 +67,7 @@ function MonitoringCard({
       }}
     >
       <Text style={{ color: '#64748b', fontSize: 11 }}>{title}</Text>
-      <Text style={{ color: BRAND_COLORS.textDark, fontWeight: '700', fontSize: 22, marginTop: 6 }}>{value}</Text>
+      <Text style={{ color: BRAND_COLORS.textDark, fontWeight: '700', fontSize: 20, marginTop: 6 }}>{value}</Text>
       <Text style={{ color: BRAND_COLORS.textMuted, fontSize: 12, marginTop: 4 }}>{subtitle}</Text>
     </View>
   );
@@ -255,7 +255,7 @@ export default function PrincipalMonitoringOperationsScreen() {
   if (user?.role !== 'PRINCIPAL') {
     return (
       <ScrollView style={{ flex: 1, backgroundColor: '#f8fafc' }} contentContainerStyle={pagePadding}>
-        <Text style={{ fontSize: 24, fontWeight: '700', marginBottom: 8 }}>Monitoring</Text>
+        <Text style={{ fontSize: 20, fontWeight: '700', marginBottom: 8 }}>Monitoring</Text>
         <QueryStateView type="error" message="Halaman ini khusus untuk role kepala sekolah." />
       </ScrollView>
     );
@@ -275,7 +275,7 @@ export default function PrincipalMonitoringOperationsScreen() {
         />
       }
     >
-      <Text style={{ fontSize: 24, fontWeight: '700', color: BRAND_COLORS.textDark, marginBottom: 6 }}>
+      <Text style={{ fontSize: 20, fontWeight: '700', color: BRAND_COLORS.textDark, marginBottom: 6 }}>
         Monitoring
       </Text>
       <Text style={{ color: BRAND_COLORS.textMuted, marginBottom: 12 }}>

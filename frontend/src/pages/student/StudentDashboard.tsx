@@ -462,10 +462,10 @@ export const StudentDashboard = () => {
             </div>
           </div>
           <div>
-            <h1 className="text-2xl font-bold text-gray-900 mb-1">
+            <h1 className="text-page-title font-bold text-gray-900 mb-1">
               {isAlumni ? 'Selamat Datang Kembali,' : 'Selamat Datang,'} {user?.name}
             </h1>
-            <p className="text-gray-500 text-sm">
+            <p className="text-body text-gray-500">
               {isAlumni
                 ? 'Anda terdaftar sebagai alumni. Anda dapat melihat riwayat belajar dan nilai.'
                 : `Berikut adalah ringkasan aktivitas akademik Anda | ${user.username}`}

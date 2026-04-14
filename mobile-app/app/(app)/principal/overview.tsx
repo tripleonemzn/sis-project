@@ -63,7 +63,7 @@ export default function PrincipalOverviewScreen() {
   if (user?.role !== 'PRINCIPAL') {
     return (
       <ScrollView style={{ flex: 1, backgroundColor: '#f8fafc' }} contentContainerStyle={pagePadding}>
-        <Text style={{ fontSize: 24, fontWeight: '700', marginBottom: 8 }}>Dashboard Kepala Sekolah</Text>
+        <Text style={{ fontSize: 20, fontWeight: '700', marginBottom: 8 }}>Dashboard Kepala Sekolah</Text>
         <QueryStateView type="error" message="Halaman ini khusus untuk role kepala sekolah." />
         <Pressable
           onPress={() => router.replace('/home')}
@@ -92,7 +92,7 @@ export default function PrincipalOverviewScreen() {
         />
       }
     >
-      <Text style={{ fontSize: 24, fontWeight: '700', marginBottom: 6, color: BRAND_COLORS.textDark }}>Dashboard Kepala Sekolah</Text>
+      <Text style={{ fontSize: 20, fontWeight: '700', marginBottom: 6, color: BRAND_COLORS.textDark }}>Dashboard Kepala Sekolah</Text>
       <Text style={{ color: BRAND_COLORS.textMuted, marginBottom: 12 }}>
         {dashboard?.activeAcademicYear?.name
           ? `Ringkasan akademik, keuangan, dan SDM untuk tahun ajaran ${dashboard.activeAcademicYear.name}.`

@@ -308,7 +308,7 @@ function RegularConfirmationModal(props: RegularConfirmationModalProps) {
           >
             <Feather name="award" size={18} color={BRAND_COLORS.blue} />
           </View>
-          <Text style={{ color: BRAND_COLORS.textDark, fontSize: 22, fontWeight: '700', marginBottom: 6 }}>
+          <Text style={{ color: BRAND_COLORS.textDark, fontSize: 20, fontWeight: '700', marginBottom: 6 }}>
             Konfirmasi Pilihan Ekskul
           </Text>
           <Text style={{ color: BRAND_COLORS.textMuted, fontSize: 14, lineHeight: 20, marginBottom: 14 }}>
@@ -491,7 +491,7 @@ export default function StudentExtracurricularScreen() {
   if (user?.role !== 'STUDENT') {
     return (
       <ScrollView style={{ flex: 1, backgroundColor: '#f8fafc' }} contentContainerStyle={pagePadding}>
-        <Text style={{ fontSize: 24, fontWeight: '700', marginBottom: 8 }}>Ekstrakurikuler</Text>
+        <Text style={{ fontSize: 20, fontWeight: '700', marginBottom: 8 }}>Ekstrakurikuler</Text>
         <QueryStateView type="error" message="Halaman ini khusus untuk role siswa." />
       </ScrollView>
     );
@@ -525,7 +525,7 @@ export default function StudentExtracurricularScreen() {
           />
         }
       >
-        <Text style={{ fontSize: 24, fontWeight: '700', marginBottom: 6, color: BRAND_COLORS.textDark }}>
+        <Text style={{ fontSize: 20, fontWeight: '700', marginBottom: 6, color: BRAND_COLORS.textDark }}>
           Ekstrakurikuler
         </Text>
         <Text style={{ color: BRAND_COLORS.textMuted, marginBottom: 12 }}>
@@ -647,7 +647,7 @@ export default function StudentExtracurricularScreen() {
                       }}
                     >
                       <Text style={{ color: item.color, fontSize: 11, fontWeight: '700' }}>{item.label}</Text>
-                      <Text style={{ color: item.color, fontSize: 22, fontWeight: '700', marginTop: 2 }}>{item.value}</Text>
+                      <Text style={{ color: item.color, fontSize: 20, fontWeight: '700', marginTop: 2 }}>{item.value}</Text>
                     </View>
                   ))}
                 </View>

@@ -30,7 +30,7 @@ export default function HtmlPreviewScreen() {
   if (!preview) {
     return (
       <ScrollView style={{ flex: 1, backgroundColor: '#f8fafc' }} contentContainerStyle={pagePadding}>
-        <Text style={{ fontSize: 24, fontWeight: '700', marginBottom: 8, color: BRAND_COLORS.textDark }}>
+        <Text style={{ fontSize: 20, fontWeight: '700', marginBottom: 8, color: BRAND_COLORS.textDark }}>
           Pratinjau Tidak Tersedia
         </Text>
         <QueryStateView
@@ -82,7 +82,7 @@ export default function HtmlPreviewScreen() {
           </Pressable>
 
           <View style={{ flex: 1 }}>
-            <Text numberOfLines={1} style={{ fontSize: 24, fontWeight: '700', color: BRAND_COLORS.textDark }}>
+            <Text numberOfLines={1} style={{ fontSize: 20, fontWeight: '700', color: BRAND_COLORS.textDark }}>
               {preview.title}
             </Text>
             {preview.helper ? (

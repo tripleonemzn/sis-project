@@ -892,7 +892,7 @@ export function TeacherBpBkModuleScreen({
   if (user?.role !== 'TEACHER') {
     return (
       <ScrollView style={{ flex: 1, backgroundColor: '#f8fafc' }} contentContainerStyle={pagePadding}>
-        <Text style={{ fontSize: 24, fontWeight: '700', marginBottom: 8, color: BRAND_COLORS.textDark }}>
+        <Text style={{ fontSize: 20, fontWeight: '700', marginBottom: 8, color: BRAND_COLORS.textDark }}>
           {title}
         </Text>
         <QueryStateView type="error" message="Halaman ini khusus untuk role guru." />
@@ -903,7 +903,7 @@ export function TeacherBpBkModuleScreen({
   if (!isAllowed) {
     return (
       <ScrollView style={{ flex: 1, backgroundColor: '#f8fafc' }} contentContainerStyle={pagePadding}>
-        <Text style={{ fontSize: 24, fontWeight: '700', marginBottom: 8, color: BRAND_COLORS.textDark }}>
+        <Text style={{ fontSize: 20, fontWeight: '700', marginBottom: 8, color: BRAND_COLORS.textDark }}>
           {title}
         </Text>
         <QueryStateView
@@ -919,7 +919,7 @@ export function TeacherBpBkModuleScreen({
   if (!activeYearId) {
     return (
       <ScrollView style={{ flex: 1, backgroundColor: '#f8fafc' }} contentContainerStyle={pagePadding}>
-        <Text style={{ fontSize: 24, fontWeight: '700', marginBottom: 8, color: BRAND_COLORS.textDark }}>
+        <Text style={{ fontSize: 20, fontWeight: '700', marginBottom: 8, color: BRAND_COLORS.textDark }}>
           {title}
         </Text>
         <QueryStateView
@@ -973,7 +973,7 @@ export function TeacherBpBkModuleScreen({
             <Feather name="shield" size={20} color={BRAND_COLORS.blue} />
           </View>
           <View style={{ flex: 1 }}>
-            <Text style={{ color: BRAND_COLORS.textDark, fontWeight: '800', fontSize: 22 }}>{title}</Text>
+            <Text style={{ color: BRAND_COLORS.textDark, fontWeight: '800', fontSize: 20 }}>{title}</Text>
             <Text style={{ color: BRAND_COLORS.textMuted, marginTop: 2 }}>{subtitle}</Text>
           </View>
         </View>

@@ -91,7 +91,7 @@ export function MobileActiveAcademicYearNotice({
             ) : null}
           </View>
           <Text style={{ fontSize: 14, fontWeight: '700', color: BRAND_COLORS.textDark }}>{name || '-'}</Text>
-          <Text style={{ fontSize: 11.5, lineHeight: 18, color: '#1e40af', marginTop: 4 }}>{helperText}</Text>
+          <Text style={{ fontSize: 11, lineHeight: 18, color: '#1e40af', marginTop: 4 }}>{helperText}</Text>
         </View>
       </View>
     </View>

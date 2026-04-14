@@ -88,7 +88,7 @@ export default function ParentAttendanceScreen() {
   if (user?.role !== 'PARENT') {
     return (
       <ScrollView style={{ flex: 1, backgroundColor: '#f8fafc' }} contentContainerStyle={pagePadding}>
-        <Text style={{ fontSize: 24, fontWeight: '700', marginBottom: 8 }}>Absensi Anak</Text>
+        <Text style={{ fontSize: 20, fontWeight: '700', marginBottom: 8 }}>Absensi Anak</Text>
         <QueryStateView type="error" message="Halaman ini khusus untuk role orang tua." />
         <Pressable
           onPress={() => router.replace('/home')}
@@ -124,7 +124,7 @@ export default function ParentAttendanceScreen() {
         />
       }
     >
-      <Text style={{ fontSize: 24, fontWeight: '700', marginBottom: 6, color: BRAND_COLORS.textDark }}>Absensi Anak</Text>
+      <Text style={{ fontSize: 20, fontWeight: '700', marginBottom: 6, color: BRAND_COLORS.textDark }}>Absensi Anak</Text>
       <Text style={{ color: BRAND_COLORS.textMuted, marginBottom: 12 }}>
         Pantau kehadiran harian anak berdasarkan periode bulan.
       </Text>

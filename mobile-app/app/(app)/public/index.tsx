@@ -122,7 +122,7 @@ export default function PublicBkkDashboardScreen() {
         />
       }
     >
-      <Text style={{ color: BRAND_COLORS.textDark, fontSize: 24, fontWeight: '700', marginBottom: 6 }}>
+      <Text style={{ color: BRAND_COLORS.textDark, fontSize: 20, fontWeight: '700', marginBottom: 6 }}>
         Dashboard BKK
       </Text>
       <Text style={{ color: BRAND_COLORS.textMuted, marginBottom: 12 }}>
@@ -153,7 +153,7 @@ export default function PublicBkkDashboardScreen() {
       <View style={{ flexDirection: 'row', flexWrap: 'wrap', gap: 12, marginBottom: 12 }}>
         <View style={{ width: '47%' }}>
           <InfoCard title="Profil Pelamar">
-            <Text style={{ color: BRAND_COLORS.textDark, fontWeight: '800', fontSize: 28 }}>
+            <Text style={{ color: BRAND_COLORS.textDark, fontWeight: '800', fontSize: 20 }}>
               {profileQuery.data?.completeness.isReady ? 'Siap' : 'Belum'}
             </Text>
             <Text style={{ color: BRAND_COLORS.textMuted, marginTop: 6 }}>
@@ -163,7 +163,7 @@ export default function PublicBkkDashboardScreen() {
         </View>
         <View style={{ width: '47%' }}>
           <InfoCard title="Lamaran Aktif">
-            <Text style={{ color: BRAND_COLORS.textDark, fontWeight: '800', fontSize: 28 }}>
+            <Text style={{ color: BRAND_COLORS.textDark, fontWeight: '800', fontSize: 20 }}>
               {publicBkkApi.getActiveProcessingCount(summary)}
             </Text>
             <Text style={{ color: BRAND_COLORS.textMuted, marginTop: 6 }}>Sedang diproses BKK</Text>

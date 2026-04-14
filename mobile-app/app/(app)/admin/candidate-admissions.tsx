@@ -824,7 +824,7 @@ export default function AdminCandidateAdmissionsScreen() {
                 }}
               >
                 <Chip label={selectedSummary.financeMeta.label} meta={selectedSummary.financeMeta} />
-                <Text style={{ color: BRAND_COLORS.textDark, fontSize: 22, fontWeight: '800', marginTop: 8 }}>
+                <Text style={{ color: BRAND_COLORS.textDark, fontSize: 20, fontWeight: '800', marginTop: 8 }}>
                   {formatCurrency(selectedSummary.financeSummary?.outstandingAmount || 0)}
                 </Text>
                 <Text style={{ color: '#475569', marginTop: 6 }}>
@@ -847,7 +847,7 @@ export default function AdminCandidateAdmissionsScreen() {
           </SectionCard>
 
           <SectionCard title="Kelengkapan Formulir">
-            <Text style={{ color: BRAND_COLORS.textDark, fontWeight: '800', fontSize: 22 }}>
+            <Text style={{ color: BRAND_COLORS.textDark, fontWeight: '800', fontSize: 20 }}>
               {detail.completeness.completedCount}/{detail.completeness.totalFields}
             </Text>
             <Text style={{ color: BRAND_COLORS.textMuted, marginTop: 6 }}>

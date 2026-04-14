@@ -132,7 +132,7 @@ export default function CandidateDashboardScreen() {
         />
       }
     >
-      <Text style={{ color: BRAND_COLORS.textDark, fontSize: 24, fontWeight: '700', marginBottom: 6 }}>
+      <Text style={{ color: BRAND_COLORS.textDark, fontSize: 20, fontWeight: '700', marginBottom: 6 }}>
         Dashboard Pendaftaran
       </Text>
       <Text style={{ color: BRAND_COLORS.textMuted, marginBottom: 12 }}>
@@ -162,7 +162,7 @@ export default function CandidateDashboardScreen() {
           <View style={{ flexDirection: 'row', flexWrap: 'wrap', gap: 12, marginBottom: 12 }}>
             <View style={{ width: '47%' }}>
               <InfoCard title="Kelengkapan">
-                <Text style={{ color: BRAND_COLORS.textDark, fontWeight: '800', fontSize: 28 }}>
+                <Text style={{ color: BRAND_COLORS.textDark, fontWeight: '800', fontSize: 20 }}>
                   {admission.completeness.percent}%
                 </Text>
                 <Text style={{ color: BRAND_COLORS.textMuted, marginTop: 6 }}>
@@ -172,7 +172,7 @@ export default function CandidateDashboardScreen() {
             </View>
             <View style={{ width: '47%' }}>
               <InfoCard title="Dokumen Wajib">
-                <Text style={{ color: BRAND_COLORS.textDark, fontWeight: '800', fontSize: 28 }}>
+                <Text style={{ color: BRAND_COLORS.textDark, fontWeight: '800', fontSize: 20 }}>
                   {admission.documentChecklist.summary.requiredUploaded}/{admission.documentChecklist.summary.requiredTotal}
                 </Text>
                 <Text style={{ color: BRAND_COLORS.textMuted, marginTop: 6 }}>
@@ -197,7 +197,7 @@ export default function CandidateDashboardScreen() {
             >
               <Text style={{ color: financeMeta.textColor, fontWeight: '700', fontSize: 12 }}>{financeMeta.label}</Text>
             </View>
-            <Text style={{ color: BRAND_COLORS.textDark, fontWeight: '800', fontSize: 24 }}>
+            <Text style={{ color: BRAND_COLORS.textDark, fontWeight: '800', fontSize: 20 }}>
               {formatCandidateCurrency(financeSummary?.outstandingAmount || 0)}
             </Text>
             <Text style={{ color: BRAND_COLORS.textMuted, marginTop: 6 }}>

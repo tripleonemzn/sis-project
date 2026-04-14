@@ -134,7 +134,7 @@ export default function PermissionsScreen() {
   if (user?.role !== 'STUDENT') {
     return (
       <ScrollView style={{ flex: 1, backgroundColor: '#f8fafc' }} contentContainerStyle={pageContentPadding}>
-        <Text style={{ fontSize: 22, fontWeight: '700', marginBottom: 8 }}>Perizinan</Text>
+        <Text style={{ fontSize: 20, fontWeight: '700', marginBottom: 8 }}>Perizinan</Text>
         <QueryStateView type="error" message="Halaman ini khusus untuk role siswa." />
       </ScrollView>
     );
@@ -151,7 +151,7 @@ export default function PermissionsScreen() {
         />
       }
     >
-      <Text style={{ fontSize: 24, fontWeight: '700', marginBottom: 6 }}>Perizinan Siswa</Text>
+      <Text style={{ fontSize: 20, fontWeight: '700', marginBottom: 6 }}>Perizinan Siswa</Text>
       <Text style={{ color: '#64748b', marginBottom: 12 }}>Ajukan izin dan pantau status persetujuannya.</Text>
 
       <View

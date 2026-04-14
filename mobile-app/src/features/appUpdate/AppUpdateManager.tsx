@@ -290,7 +290,7 @@ export function AppUpdateManager() {
               {UPDATE_NOTIFICATION_BADGE}
             </Text>
           </View>
-          <Text style={{ color: '#0f172a', fontWeight: '700', fontSize: 19, marginBottom: 6 }}>
+          <Text style={{ color: '#0f172a', fontWeight: '700', fontSize: 18, marginBottom: 6 }}>
             {UPDATE_NOTIFICATION_TITLE}
           </Text>
           <Text style={{ color: '#334155', fontSize: 13, marginBottom: 10 }}>

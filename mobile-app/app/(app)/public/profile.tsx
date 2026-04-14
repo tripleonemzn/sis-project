@@ -347,7 +347,7 @@ export default function PublicBkkProfileScreen() {
         >
           <Feather name="arrow-left" size={18} color={BRAND_COLORS.textDark} />
         </Pressable>
-        <Text style={{ marginLeft: 10, color: BRAND_COLORS.textDark, fontSize: 22, fontWeight: '700' }}>
+        <Text style={{ marginLeft: 10, color: BRAND_COLORS.textDark, fontSize: 20, fontWeight: '700' }}>
           Lengkapi Profil Karier BKK
         </Text>
       </View>
@@ -391,7 +391,7 @@ export default function PublicBkkProfileScreen() {
           </InfoCard>
 
           <InfoCard title="Status Profil">
-            <Text style={{ color: BRAND_COLORS.textDark, fontWeight: '700', fontSize: 24 }}>
+            <Text style={{ color: BRAND_COLORS.textDark, fontWeight: '700', fontSize: 20 }}>
               {profileQuery.data?.completeness.isReady ? 'Siap' : 'Belum'}
             </Text>
             <Text style={{ color: BRAND_COLORS.textMuted, marginTop: 6 }}>
@@ -402,7 +402,7 @@ export default function PublicBkkProfileScreen() {
           </InfoCard>
 
           <InfoCard title="Status Verifikasi">
-            <Text style={{ color: BRAND_COLORS.textDark, fontWeight: '700', fontSize: 24 }}>
+            <Text style={{ color: BRAND_COLORS.textDark, fontWeight: '700', fontSize: 20 }}>
               {normalizedVerificationStatus}
             </Text>
             <Text style={{ color: BRAND_COLORS.textMuted, marginTop: 6 }}>

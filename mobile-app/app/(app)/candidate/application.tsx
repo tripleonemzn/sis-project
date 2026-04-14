@@ -320,13 +320,13 @@ function SummaryTabCard({
       >
         <Feather name={iconName} size={16} color={accentColor} />
       </View>
-      <Text style={{ color: '#64748b', fontSize: 10.5, fontWeight: '700' }} numberOfLines={2}>
+      <Text style={{ color: '#64748b', fontSize: 11, fontWeight: '700' }} numberOfLines={2}>
         {title}
       </Text>
       <Text style={{ color: '#0f172a', fontSize: 16, fontWeight: '800', marginTop: 3 }} numberOfLines={1}>
         {value}
       </Text>
-      <Text style={{ color: '#475569', fontSize: 10.5, lineHeight: 14, marginTop: 4 }} numberOfLines={2}>
+      <Text style={{ color: '#475569', fontSize: 11, lineHeight: 14, marginTop: 4 }} numberOfLines={2}>
         {subtitle}
       </Text>
     </Pressable>
@@ -547,7 +547,7 @@ export default function CandidateApplicationScreen() {
         >
           <Feather name="arrow-left" size={18} color={BRAND_COLORS.textDark} />
         </Pressable>
-        <Text style={{ marginLeft: 10, color: BRAND_COLORS.textDark, fontSize: 22, fontWeight: '700' }}>
+        <Text style={{ marginLeft: 10, color: BRAND_COLORS.textDark, fontSize: 20, fontWeight: '700' }}>
           Formulir PPDB
         </Text>
       </View>
@@ -920,7 +920,7 @@ export default function CandidateApplicationScreen() {
 
                   {activeSummaryId === 'completeness' ? (
                     <>
-                      <Text style={{ color: BRAND_COLORS.textDark, fontWeight: '700', fontSize: 28 }}>
+                      <Text style={{ color: BRAND_COLORS.textDark, fontWeight: '700', fontSize: 20 }}>
                         {admission.completeness.percent}%
                       </Text>
                       <Text style={{ color: BRAND_COLORS.textMuted, marginTop: 8, lineHeight: 20 }}>
@@ -939,7 +939,7 @@ export default function CandidateApplicationScreen() {
 
                   {activeSummaryId === 'documents' ? (
                     <>
-                      <Text style={{ color: BRAND_COLORS.textDark, fontWeight: '700', fontSize: 26 }}>
+                      <Text style={{ color: BRAND_COLORS.textDark, fontWeight: '700', fontSize: 20 }}>
                         {admission.documentChecklist.summary.requiredUploaded}/{admission.documentChecklist.summary.requiredTotal}
                       </Text>
                       <Text style={{ color: BRAND_COLORS.textMuted, marginTop: 8, lineHeight: 20 }}>
@@ -990,7 +990,7 @@ export default function CandidateApplicationScreen() {
 
                   {activeSummaryId === 'selection' ? (
                     <>
-                      <Text style={{ color: BRAND_COLORS.textDark, fontWeight: '700', fontSize: 26 }}>
+                      <Text style={{ color: BRAND_COLORS.textDark, fontWeight: '700', fontSize: 20 }}>
                         {selectionSummary?.averageScore ?? '-'}
                       </Text>
                       <Text style={{ color: BRAND_COLORS.textMuted, marginTop: 8 }}>
@@ -1076,7 +1076,7 @@ export default function CandidateApplicationScreen() {
                       >
                         <Text style={{ color: financeMeta.textColor, fontWeight: '700', fontSize: 12 }}>{financeMeta.label}</Text>
                       </View>
-                      <Text style={{ color: BRAND_COLORS.textDark, fontWeight: '700', fontSize: 26, marginTop: 12 }}>
+                      <Text style={{ color: BRAND_COLORS.textDark, fontWeight: '700', fontSize: 20, marginTop: 12 }}>
                         {formatCandidateCurrency(financeSummary?.outstandingAmount || 0)}
                       </Text>
                       <Text style={{ color: BRAND_COLORS.textMuted, marginTop: 8, lineHeight: 20 }}>

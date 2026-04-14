@@ -107,8 +107,8 @@ export const AuditLogPage = () => {
       <div className="bg-white rounded-xl border border-gray-200 shadow-sm overflow-hidden">
         <div className="px-6 py-4 border-b border-gray-100 flex items-center justify-between">
           <div>
-            <h1 className="text-lg font-bold text-gray-900">Riwayat Audit</h1>
-            <p className="text-sm text-gray-600">Pantau perubahan data kurikulum yang terekam.</p>
+            <h1 className="text-page-title font-bold text-gray-900">Riwayat Audit</h1>
+            <p className="text-body text-gray-600">Pantau perubahan data kurikulum yang terekam.</p>
           </div>
           <div className="flex items-center gap-2">
             <button

@@ -248,7 +248,7 @@ export default function StudentFinanceScreen() {
   if (user?.role !== 'STUDENT') {
     return (
       <ScrollView style={{ flex: 1, backgroundColor: '#f8fafc' }} contentContainerStyle={pagePadding}>
-        <Text style={{ fontSize: 24, fontWeight: '700', marginBottom: 8, color: BRAND_COLORS.textDark }}>Keuangan</Text>
+        <Text style={{ fontSize: 20, fontWeight: '700', marginBottom: 8, color: BRAND_COLORS.textDark }}>Keuangan</Text>
         <QueryStateView type="error" message="Halaman ini khusus untuk role siswa." />
       </ScrollView>
     );
@@ -265,7 +265,7 @@ export default function StudentFinanceScreen() {
         />
       }
     >
-      <Text style={{ fontSize: 24, fontWeight: '700', marginBottom: 6, color: BRAND_COLORS.textDark }}>Keuangan</Text>
+      <Text style={{ fontSize: 20, fontWeight: '700', marginBottom: 6, color: BRAND_COLORS.textDark }}>Keuangan</Text>
       <Text style={{ color: BRAND_COLORS.textMuted, marginBottom: 12 }}>
         Ringkasan tagihan dan histori pembayaran Anda.
       </Text>

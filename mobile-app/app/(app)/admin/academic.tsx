@@ -515,7 +515,7 @@ function StatCard({
       }}
     >
       <Text style={{ color: BRAND_COLORS.textMuted, fontSize: 12 }}>{title}</Text>
-      <Text style={{ color: BRAND_COLORS.textDark, fontSize: 22, fontWeight: '700', marginTop: 4 }}>{value}</Text>
+      <Text style={{ color: BRAND_COLORS.textDark, fontSize: 20, fontWeight: '700', marginTop: 4 }}>{value}</Text>
       <Text style={{ color: BRAND_COLORS.textMuted, fontSize: 11, marginTop: 2 }}>{subtitle}</Text>
     </View>
   );
@@ -2823,7 +2823,7 @@ export default function AdminAcademicScreen() {
         >
           <Feather name="arrow-left" size={18} color={BRAND_COLORS.textDark} />
         </Pressable>
-        <Text style={{ marginLeft: 10, color: BRAND_COLORS.textDark, fontSize: 22, fontWeight: '700' }}>Akademik</Text>
+        <Text style={{ marginLeft: 10, color: BRAND_COLORS.textDark, fontSize: 20, fontWeight: '700' }}>Akademik</Text>
       </View>
       <Text style={{ color: BRAND_COLORS.textMuted, marginBottom: 12 }}>{sectionMeta.description}</Text>
 

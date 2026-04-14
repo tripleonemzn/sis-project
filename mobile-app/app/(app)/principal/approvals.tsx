@@ -430,7 +430,7 @@ export default function PrincipalApprovalsScreen() {
   if (user?.role !== 'PRINCIPAL') {
     return (
       <ScrollView style={{ flex: 1, backgroundColor: '#f8fafc' }} contentContainerStyle={pagePadding}>
-        <Text style={{ fontSize: 24, fontWeight: '700', marginBottom: 8 }}>Persetujuan Anggaran</Text>
+        <Text style={{ fontSize: 20, fontWeight: '700', marginBottom: 8 }}>Persetujuan Anggaran</Text>
         <QueryStateView type="error" message="Halaman ini khusus untuk role kepala sekolah." />
         <Pressable
           onPress={() => router.replace('/home')}
@@ -582,7 +582,7 @@ export default function PrincipalApprovalsScreen() {
         />
       }
     >
-      <Text style={{ fontSize: 24, fontWeight: '700', marginBottom: 6, color: BRAND_COLORS.textDark }}>Persetujuan Anggaran</Text>
+      <Text style={{ fontSize: 20, fontWeight: '700', marginBottom: 6, color: BRAND_COLORS.textDark }}>Persetujuan Anggaran</Text>
       <Text style={{ color: BRAND_COLORS.textMuted, marginBottom: 12 }}>
         Verifikasi pengajuan anggaran dari unit kerja sekolah.
       </Text>

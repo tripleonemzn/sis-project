@@ -1,6 +1,7 @@
 import { Feather } from '@expo/vector-icons';
 import { Pressable, Text, View, type StyleProp, type ViewStyle } from 'react-native';
 import { useAppTheme } from '../theme/AppThemeProvider';
+import { MOBILE_FONT_SIZES, MOBILE_TYPOGRAPHY } from '../theme/typography';
 
 type FeatherIconName = React.ComponentProps<typeof Feather>['name'];
 
@@ -138,8 +139,8 @@ export function MobileMenuTab({
         numberOfLines={2}
         style={{
           textAlign: 'center',
-          fontSize: compact ? 10.5 : 11.5,
-          lineHeight: compact ? 13 : 14,
+          fontSize: compact ? MOBILE_FONT_SIZES.caption : MOBILE_FONT_SIZES.label,
+          lineHeight: compact ? MOBILE_TYPOGRAPHY.caption.lineHeight : MOBILE_TYPOGRAPHY.label.lineHeight,
           fontWeight: active ? '700' : '600',
           color: active ? colors.primary : isPlainVariant ? colors.textMuted : colors.text,
           minHeight: compact ? 24 : 28,

@@ -338,7 +338,7 @@ export default function TeacherSarprasBudgetsScreen() {
   if (user?.role !== 'TEACHER') {
     return (
       <ScrollView style={{ flex: 1, backgroundColor: '#f8fafc' }} contentContainerStyle={pagePadding}>
-        <Text style={{ fontSize: 24, fontWeight: '700', marginBottom: 8 }}>Persetujuan Anggaran</Text>
+        <Text style={{ fontSize: 20, fontWeight: '700', marginBottom: 8 }}>Persetujuan Anggaran</Text>
         <QueryStateView type="error" message="Halaman ini khusus untuk role guru." />
         <Pressable
           onPress={() => router.replace('/home')}
@@ -359,7 +359,7 @@ export default function TeacherSarprasBudgetsScreen() {
   if (!isAllowed) {
     return (
       <ScrollView style={{ flex: 1, backgroundColor: '#f8fafc' }} contentContainerStyle={pagePadding}>
-        <Text style={{ fontSize: 24, fontWeight: '700', marginBottom: 6, color: BRAND_COLORS.textDark }}>
+        <Text style={{ fontSize: 20, fontWeight: '700', marginBottom: 6, color: BRAND_COLORS.textDark }}>
           Persetujuan Anggaran
         </Text>
         <Text style={{ color: BRAND_COLORS.textMuted, marginBottom: 12 }}>
@@ -397,7 +397,7 @@ export default function TeacherSarprasBudgetsScreen() {
         />
       }
     >
-      <Text style={{ fontSize: 24, fontWeight: '700', marginBottom: 6, color: BRAND_COLORS.textDark }}>
+      <Text style={{ fontSize: 20, fontWeight: '700', marginBottom: 6, color: BRAND_COLORS.textDark }}>
         Persetujuan Anggaran
       </Text>
       <Text style={{ color: BRAND_COLORS.textMuted, marginBottom: 12 }}>
@@ -912,7 +912,7 @@ export default function TeacherSarprasBudgetsScreen() {
           <View style={{ gap: 10 }}>
             <View style={{ borderWidth: 1, borderColor: '#dbe7fb', borderRadius: 12, backgroundColor: '#f8fbff', padding: 12 }}>
               <Text style={{ color: BRAND_COLORS.textDark, fontWeight: '700' }}>Jumlah pengajuan terfilter</Text>
-              <Text style={{ color: '#2563eb', fontSize: 22, fontWeight: '700', marginTop: 4 }}>
+              <Text style={{ color: '#2563eb', fontSize: 20, fontWeight: '700', marginTop: 4 }}>
                 {filteredBudgets.length}
               </Text>
             </View>
@@ -926,7 +926,7 @@ export default function TeacherSarprasBudgetsScreen() {
           <View style={{ gap: 10 }}>
             <View style={{ borderWidth: 1, borderColor: '#dbe7fb', borderRadius: 12, backgroundColor: '#f8fbff', padding: 12 }}>
               <Text style={{ color: BRAND_COLORS.textDark, fontWeight: '700' }}>Akumulasi dana terfilter</Text>
-              <Text style={{ color: '#0f766e', fontSize: 22, fontWeight: '700', marginTop: 4 }}>
+              <Text style={{ color: '#0f766e', fontSize: 20, fontWeight: '700', marginTop: 4 }}>
                 {formatCurrency(totalAmount)}
               </Text>
             </View>
@@ -937,7 +937,7 @@ export default function TeacherSarprasBudgetsScreen() {
           <View style={{ gap: 10 }}>
             <View style={{ borderWidth: 1, borderColor: '#dbe7fb', borderRadius: 12, backgroundColor: '#fffbeb', padding: 12 }}>
               <Text style={{ color: BRAND_COLORS.textDark, fontWeight: '700' }}>Pengajuan menunggu proses</Text>
-              <Text style={{ color: '#b45309', fontSize: 22, fontWeight: '700', marginTop: 4 }}>
+              <Text style={{ color: '#b45309', fontSize: 20, fontWeight: '700', marginTop: 4 }}>
                 {pendingCount}
               </Text>
             </View>
@@ -948,7 +948,7 @@ export default function TeacherSarprasBudgetsScreen() {
           <View style={{ gap: 10 }}>
             <View style={{ borderWidth: 1, borderColor: '#dbe7fb', borderRadius: 12, backgroundColor: '#f5f3ff', padding: 12 }}>
               <Text style={{ color: BRAND_COLORS.textDark, fontWeight: '700' }}>LPJ siap audit</Text>
-              <Text style={{ color: '#7c3aed', fontSize: 22, fontWeight: '700', marginTop: 4 }}>
+              <Text style={{ color: '#7c3aed', fontSize: 20, fontWeight: '700', marginTop: 4 }}>
                 {lpjReadyCount}
               </Text>
             </View>

@@ -35,7 +35,7 @@ export default function ParentChildrenScreen() {
   if (user?.role !== 'PARENT') {
     return (
       <ScrollView style={{ flex: 1, backgroundColor: '#f8fafc' }} contentContainerStyle={pagePadding}>
-        <Text style={{ fontSize: 24, fontWeight: '700', marginBottom: 8 }}>Data Anak</Text>
+        <Text style={{ fontSize: 20, fontWeight: '700', marginBottom: 8 }}>Data Anak</Text>
         <QueryStateView type="error" message="Halaman ini khusus untuk role orang tua." />
         <Pressable
           onPress={() => router.replace('/home')}
@@ -146,7 +146,7 @@ export default function ParentChildrenScreen() {
         />
       }
     >
-      <Text style={{ fontSize: 24, fontWeight: '700', marginBottom: 6, color: BRAND_COLORS.textDark }}>Data Anak</Text>
+      <Text style={{ fontSize: 20, fontWeight: '700', marginBottom: 6, color: BRAND_COLORS.textDark }}>Data Anak</Text>
       <Text style={{ color: BRAND_COLORS.textMuted, marginBottom: 12 }}>
         {isLinkMode
           ? 'Cari siswa dengan NISN, cek datanya, lalu hubungkan ke akun orang tua ini.'
@@ -359,7 +359,7 @@ export default function ParentChildrenScreen() {
         }}
       >
         <Text style={{ color: '#c6dbff', fontSize: 12, marginBottom: 3 }}>Total Anak Terdaftar</Text>
-        <Text style={{ color: '#fff', fontWeight: '700', fontSize: 26 }}>{children.length}</Text>
+        <Text style={{ color: '#fff', fontWeight: '700', fontSize: 20 }}>{children.length}</Text>
       </View>
 
       {childrenQuery.isLoading ? <QueryStateView type="loading" message="Mengambil data anak..." /> : null}

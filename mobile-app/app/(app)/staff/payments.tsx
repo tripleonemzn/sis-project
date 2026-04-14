@@ -2675,7 +2675,7 @@ export default function StaffPaymentsScreen() {
   if (user?.role === 'STAFF' && !canOpenPayments) {
     return (
       <ScrollView style={{ flex: 1, backgroundColor: '#f8fafc' }} contentContainerStyle={pagePadding}>
-        <Text style={{ fontSize: 24, fontWeight: '700', color: BRAND_COLORS.textDark, marginBottom: 8 }}>
+        <Text style={{ fontSize: 20, fontWeight: '700', color: BRAND_COLORS.textDark, marginBottom: 8 }}>
           Pembayaran Staff
         </Text>
         <QueryStateView type="error" message={getStaffPaymentsBlockedMessage(user)} />
@@ -2698,7 +2698,7 @@ export default function StaffPaymentsScreen() {
   if (user?.role !== 'STAFF') {
     return (
       <ScrollView style={{ flex: 1, backgroundColor: '#f8fafc' }} contentContainerStyle={pagePadding}>
-        <Text style={{ fontSize: 24, fontWeight: '700', marginBottom: 8, color: BRAND_COLORS.textDark }}>
+        <Text style={{ fontSize: 20, fontWeight: '700', marginBottom: 8, color: BRAND_COLORS.textDark }}>
           Staff Keuangan
         </Text>
         <QueryStateView type="error" message="Halaman ini khusus role staff." />
@@ -2784,7 +2784,7 @@ export default function StaffPaymentsScreen() {
         />
       }
     >
-      <Text style={{ fontSize: 24, fontWeight: '700', marginBottom: 6, color: BRAND_COLORS.textDark }}>
+      <Text style={{ fontSize: 20, fontWeight: '700', marginBottom: 6, color: BRAND_COLORS.textDark }}>
         {activeSectionConfig.title}
       </Text>
       <Text style={{ color: BRAND_COLORS.textMuted, marginBottom: 12 }}>

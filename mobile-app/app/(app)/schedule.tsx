@@ -106,7 +106,7 @@ export default function ScheduleScreen() {
         <RefreshControl refreshing={scheduleQuery.isFetching && !scheduleQuery.isLoading} onRefresh={() => scheduleQuery.refetch()} />
       }
     >
-      <Text style={{ fontSize: 24, fontWeight: '700', marginBottom: 6 }}>Jadwal</Text>
+      <Text style={{ fontSize: 20, fontWeight: '700', marginBottom: 6 }}>Jadwal</Text>
       <Text style={{ color: '#64748b', marginBottom: 16 }}>
         Jadwal pembelajaran aktif
       </Text>

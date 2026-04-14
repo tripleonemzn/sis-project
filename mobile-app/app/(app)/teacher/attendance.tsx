@@ -200,7 +200,7 @@ export default function TeacherAttendanceScreen() {
   if (user?.role !== 'TEACHER') {
     return (
       <ScrollView style={{ flex: 1, backgroundColor: '#f8fafc' }} contentContainerStyle={pageContentPadding}>
-        <Text style={{ fontSize: 22, fontWeight: '700', marginBottom: 8 }}>Presensi Siswa</Text>
+        <Text style={{ fontSize: 20, fontWeight: '700', marginBottom: 8 }}>Presensi Siswa</Text>
         <QueryStateView type="error" message="Halaman ini khusus untuk role guru." />
         <Pressable
           onPress={() => router.replace('/home')}
@@ -235,7 +235,7 @@ export default function TeacherAttendanceScreen() {
         />
       }
     >
-      <Text style={{ fontSize: 24, fontWeight: '700', marginBottom: 6 }}>Presensi Siswa</Text>
+      <Text style={{ fontSize: 20, fontWeight: '700', marginBottom: 6 }}>Presensi Siswa</Text>
       <Text style={{ color: '#64748b', marginBottom: 12 }}>
         Isi kehadiran per mapel untuk kelas yang Anda ampu.
       </Text>

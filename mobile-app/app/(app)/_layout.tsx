@@ -176,7 +176,7 @@ export default function AppProtectedLayout() {
                 >
                   <Feather name="log-out" size={18} color={BRAND_COLORS.blue} />
                 </View>
-                <Text style={{ color: BRAND_COLORS.textDark, fontSize: 22, fontWeight: '700', marginBottom: 6 }}>
+                <Text style={{ color: BRAND_COLORS.textDark, fontSize: 20, fontWeight: '700', marginBottom: 6 }}>
                   Konfirmasi Logout
                 </Text>
                 <Text style={{ color: BRAND_COLORS.textMuted, fontSize: 14, marginBottom: 14 }}>

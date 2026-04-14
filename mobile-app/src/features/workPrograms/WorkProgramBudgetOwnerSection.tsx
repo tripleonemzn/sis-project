@@ -598,7 +598,7 @@ export function WorkProgramBudgetOwnerSection({
 
   return (
     <View style={{ marginTop: 18 }}>
-      <Text style={{ fontSize: 22, fontWeight: '700', color: BRAND_COLORS.textDark, marginBottom: 6 }}>
+      <Text style={{ fontSize: 20, fontWeight: '700', color: BRAND_COLORS.textDark, marginBottom: 6 }}>
         {budgetSectionTitle}
       </Text>
       <Text style={{ color: BRAND_COLORS.textMuted, marginBottom: 12 }}>

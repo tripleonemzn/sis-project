@@ -80,7 +80,7 @@ export default function TeacherExamSubmissionsScreen() {
   if (user?.role !== 'TEACHER') {
     return (
       <ScrollView style={{ flex: 1, backgroundColor: '#f8fafc' }} contentContainerStyle={pageContentPadding}>
-        <Text style={{ fontSize: 22, fontWeight: '700', marginBottom: 8 }}>Submission Ujian</Text>
+        <Text style={{ fontSize: 20, fontWeight: '700', marginBottom: 8 }}>Submission Ujian</Text>
         <QueryStateView type="error" message="Halaman ini khusus untuk role guru." />
       </ScrollView>
     );
@@ -89,7 +89,7 @@ export default function TeacherExamSubmissionsScreen() {
   if (!packetId) {
     return (
       <ScrollView style={{ flex: 1, backgroundColor: '#f8fafc' }} contentContainerStyle={pageContentPadding}>
-        <Text style={{ fontSize: 22, fontWeight: '700', marginBottom: 8 }}>Submission Ujian</Text>
+        <Text style={{ fontSize: 20, fontWeight: '700', marginBottom: 8 }}>Submission Ujian</Text>
         <QueryStateView type="error" message="Packet ID tidak valid." />
         <Pressable
           onPress={() => router.back()}
@@ -120,7 +120,7 @@ export default function TeacherExamSubmissionsScreen() {
         />
       }
     >
-      <Text style={{ fontSize: 24, fontWeight: '700', marginBottom: 6 }}>Submission Ujian</Text>
+      <Text style={{ fontSize: 20, fontWeight: '700', marginBottom: 6 }}>Submission Ujian</Text>
       <Text style={{ color: '#334155', marginBottom: 3, fontWeight: '600' }} numberOfLines={2}>
         {packetTitle}
       </Text>

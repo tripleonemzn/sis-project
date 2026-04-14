@@ -100,7 +100,7 @@ function GradeComponentCard({ item }: { item: StudentGradeOverviewSubjectCompone
       <View style={{ flexDirection: 'row', alignItems: 'flex-end', justifyContent: 'space-between', gap: 12 }}>
         <View>
           <Text style={{ color: colors.textMuted, fontSize: 11 }}>Nilai</Text>
-          <Text style={{ color: colors.text, fontWeight: '800', fontSize: 24, marginTop: 2 }}>
+          <Text style={{ color: colors.text, fontWeight: '800', fontSize: 20, marginTop: 2 }}>
             {formatScore(item.score)}
           </Text>
         </View>
@@ -246,7 +246,7 @@ function ProgramSubjectCard(props: {
           <Text style={{ color: colors.textMuted, fontSize: 11, fontWeight: '700', letterSpacing: 0.6 }}>
             NILAI PROGRAM
           </Text>
-          <Text style={{ color: colors.text, fontWeight: '800', fontSize: 24, marginTop: 6 }}>
+          <Text style={{ color: colors.text, fontWeight: '800', fontSize: 20, marginTop: 6 }}>
             {formatScore(component.score)}
           </Text>
           <Text style={{ color: colors.textMuted, fontSize: 12, marginTop: 4 }}>
@@ -488,7 +488,7 @@ export default function GradesScreen() {
   if (user?.role !== 'STUDENT') {
     return (
       <ScrollView style={{ flex: 1, backgroundColor: '#f8fafc' }} contentContainerStyle={pageContentPadding}>
-        <Text style={{ fontSize: 24, fontWeight: '700', marginBottom: 8, color: '#0f172a' }}>Nilai Saya</Text>
+        <Text style={{ fontSize: 20, fontWeight: '700', marginBottom: 8, color: '#0f172a' }}>Nilai Saya</Text>
         <QueryStateView type="error" message="Fitur nilai siswa hanya tersedia untuk role siswa." />
       </ScrollView>
     );
@@ -506,7 +506,7 @@ export default function GradesScreen() {
       }
     >
       <View style={{ gap: 6 }}>
-        <Text style={{ fontSize: 24, fontWeight: '700', color: '#0f172a' }}>Nilai Saya</Text>
+        <Text style={{ fontSize: 20, fontWeight: '700', color: '#0f172a' }}>Nilai Saya</Text>
         <Text style={{ color: '#64748b' }}>
           Ringkasan nilai siswa dipisahkan antara program ujian aktif dan rapor semester berjalan.
         </Text>
@@ -666,7 +666,7 @@ export default function GradesScreen() {
                     }}
                   >
                     <Text style={{ color: colors.text, fontWeight: '700', fontSize: 13 }}>Mapel Sudah Tersedia</Text>
-                    <Text style={{ color: colors.text, fontWeight: '800', fontSize: 28 }}>
+                    <Text style={{ color: colors.text, fontWeight: '800', fontSize: 20 }}>
                       {activeProgramSummary.availableSubjects}
                     </Text>
                     <Text style={{ color: colors.textMuted, fontSize: 12 }}>
@@ -685,7 +685,7 @@ export default function GradesScreen() {
                     }}
                   >
                     <Text style={{ color: colors.text, fontWeight: '700', fontSize: 13 }}>Mapel Masih Menunggu</Text>
-                    <Text style={{ color: colors.text, fontWeight: '800', fontSize: 28 }}>
+                    <Text style={{ color: colors.text, fontWeight: '800', fontSize: 20 }}>
                       {activeProgramSummary.pendingSubjects}
                     </Text>
                     <Text style={{ color: colors.textMuted, fontSize: 12 }}>
@@ -704,7 +704,7 @@ export default function GradesScreen() {
                     }}
                   >
                     <Text style={{ color: colors.text, fontWeight: '700', fontSize: 13 }}>Cakupan Program</Text>
-                    <Text style={{ color: colors.text, fontWeight: '800', fontSize: 28 }}>
+                    <Text style={{ color: colors.text, fontWeight: '800', fontSize: 20 }}>
                       {activeProgramSummary.totalSubjects}
                     </Text>
                     <Text style={{ color: colors.textMuted, fontSize: 12 }}>

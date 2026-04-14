@@ -413,7 +413,7 @@ export default function TeacherWakakurRoomLayoutScreen() {
   if (!sittingId) {
     return (
       <ScrollView style={{ flex: 1, backgroundColor: '#f8fafc' }} contentContainerStyle={pagePadding}>
-        <Text style={{ fontSize: 24, fontWeight: '700', marginBottom: 8, color: BRAND_COLORS.textDark }}>
+        <Text style={{ fontSize: 20, fontWeight: '700', marginBottom: 8, color: BRAND_COLORS.textDark }}>
           Generate Denah Ruang
         </Text>
         <QueryStateView type="error" message="Ruang ujian tidak valid." />
@@ -453,7 +453,7 @@ export default function TeacherWakakurRoomLayoutScreen() {
           >
             <Feather name="arrow-left" size={18} color={BRAND_COLORS.textDark} />
           </Pressable>
-          <Text style={{ marginLeft: 10, color: BRAND_COLORS.textDark, fontSize: 22, fontWeight: '700' }}>
+          <Text style={{ marginLeft: 10, color: BRAND_COLORS.textDark, fontSize: 20, fontWeight: '700' }}>
             Generate Denah Ruang
           </Text>
         </View>

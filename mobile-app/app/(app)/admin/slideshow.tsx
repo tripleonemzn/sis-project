@@ -272,7 +272,7 @@ export default function AdminSlideshowScreen() {
         >
           <Feather name="arrow-left" size={18} color={BRAND_COLORS.textDark} />
         </Pressable>
-        <Text style={{ marginLeft: 10, color: BRAND_COLORS.textDark, fontSize: 22, fontWeight: '700' }}>Slideshow</Text>
+        <Text style={{ marginLeft: 10, color: BRAND_COLORS.textDark, fontSize: 20, fontWeight: '700' }}>Slideshow</Text>
       </View>
 
       <Text style={{ color: BRAND_COLORS.textMuted, marginBottom: 12 }}>

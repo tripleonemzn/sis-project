@@ -1416,7 +1416,7 @@ export default function TeacherExamEditorScreen() {
   if (user?.role !== 'TEACHER') {
     return (
       <ScrollView style={{ flex: 1, backgroundColor: '#f8fafc' }} contentContainerStyle={pageContentPadding}>
-        <Text style={{ fontSize: 22, fontWeight: '700', marginBottom: 8 }}>Editor Ujian</Text>
+        <Text style={{ fontSize: 20, fontWeight: '700', marginBottom: 8 }}>Editor Ujian</Text>
         <QueryStateView type="error" message="Halaman ini khusus untuk role guru." />
       </ScrollView>
     );
@@ -1429,7 +1429,7 @@ export default function TeacherExamEditorScreen() {
   if (isEditMode && (packetDetailQuery.isError || !packetDetailQuery.data)) {
     return (
       <ScrollView style={{ flex: 1, backgroundColor: '#f8fafc' }} contentContainerStyle={pageContentPadding}>
-        <Text style={{ fontSize: 22, fontWeight: '700', marginBottom: 8 }}>Editor Ujian</Text>
+        <Text style={{ fontSize: 20, fontWeight: '700', marginBottom: 8 }}>Editor Ujian</Text>
         <QueryStateView
           type="error"
           message="Gagal memuat detail packet ujian."
@@ -1455,7 +1455,7 @@ export default function TeacherExamEditorScreen() {
         />
       }
     >
-      <Text style={{ fontSize: 24, fontWeight: '700', marginBottom: 6 }}>
+      <Text style={{ fontSize: 20, fontWeight: '700', marginBottom: 6 }}>
         {isEditMode ? 'Edit Paket Ujian' : 'Buat Paket Ujian'}
       </Text>
       <Text style={{ color: '#64748b', marginBottom: 12 }}>

@@ -293,8 +293,8 @@ const ProctorSchedulePage: React.FC = () => {
     <div className="space-y-6">
       <div className="rounded-2xl border border-gray-200 bg-white shadow-sm">
         <div className="px-6 py-5">
-          <h1 className="text-2xl font-bold text-gray-900">Jadwal Mengawas & Monitoring</h1>
-          <p className="mt-1 text-gray-600">Pantau pelaksanaan ujian yang ditugaskan kepada Anda dengan breakdown per hari.</p>
+          <h1 className="text-page-title font-bold text-gray-900">Jadwal Mengawas & Monitoring</h1>
+          <p className="mt-1 text-body text-gray-600">Pantau pelaksanaan ujian yang ditugaskan kepada Anda dengan breakdown per hari.</p>
           <div className="mt-4 flex flex-wrap items-center gap-3 text-sm text-gray-500">
             <span className="inline-flex items-center gap-2 rounded-full border border-blue-100 bg-blue-50 px-3 py-1.5 text-blue-700">
               <Calendar className="h-4 w-4" />

@@ -298,7 +298,7 @@ export default function ExaminerAssessmentScreen() {
   if (!isExaminer) {
     return (
       <ScrollView style={{ flex: 1, backgroundColor: '#f8fafc' }} contentContainerStyle={pagePadding}>
-        <Text style={{ fontSize: 24, fontWeight: '700', marginBottom: 8 }}>Penilaian UKK</Text>
+        <Text style={{ fontSize: 20, fontWeight: '700', marginBottom: 8 }}>Penilaian UKK</Text>
         <QueryStateView type="error" message="Halaman ini khusus untuk role penguji." />
         <Pressable
           onPress={() => router.replace('/home')}
@@ -340,7 +340,7 @@ export default function ExaminerAssessmentScreen() {
           />
         }
       >
-        <Text style={{ fontSize: 24, fontWeight: '700', marginBottom: 6, color: BRAND_COLORS.textDark }}>
+        <Text style={{ fontSize: 20, fontWeight: '700', marginBottom: 6, color: BRAND_COLORS.textDark }}>
           Penilaian UKK
         </Text>
         <Text style={{ color: BRAND_COLORS.textMuted, marginBottom: 12 }}>
@@ -466,7 +466,7 @@ export default function ExaminerAssessmentScreen() {
         <Text style={{ color: BRAND_COLORS.textMuted, fontWeight: '700', fontSize: 12 }}>Daftar Skema</Text>
       </Pressable>
 
-      <Text style={{ fontSize: 24, fontWeight: '700', marginBottom: 6, color: BRAND_COLORS.textDark }}>
+      <Text style={{ fontSize: 20, fontWeight: '700', marginBottom: 6, color: BRAND_COLORS.textDark }}>
         {selectedSchemeName}
       </Text>
       <Text style={{ color: BRAND_COLORS.textMuted, marginBottom: 12 }}>

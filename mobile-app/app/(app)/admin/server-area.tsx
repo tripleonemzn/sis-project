@@ -302,7 +302,7 @@ export default function AdminServerAreaScreen() {
   if (user?.role !== 'ADMIN') {
     return (
       <ScrollView style={{ flex: 1, backgroundColor: '#f8fafc' }} contentContainerStyle={pagePadding}>
-        <Text style={{ fontSize: 22, fontWeight: '700', color: BRAND_COLORS.textDark, marginBottom: 8 }}>
+        <Text style={{ fontSize: 20, fontWeight: '700', color: BRAND_COLORS.textDark, marginBottom: 8 }}>
           Area Server
         </Text>
         <QueryStateView type="error" message="Halaman ini khusus untuk role admin." />
@@ -332,7 +332,7 @@ export default function AdminServerAreaScreen() {
           style={{
             marginLeft: 10,
             color: BRAND_COLORS.textDark,
-            fontSize: 22,
+            fontSize: 20,
             fontWeight: '700',
           }}
         >
@@ -1084,7 +1084,7 @@ export default function AdminServerAreaScreen() {
             }}
           >
             <Text style={{ fontSize: 12, color: '#6b7280', marginBottom: 4 }}>User Online</Text>
-            <Text style={{ fontSize: 28, fontWeight: '700', color: '#111827' }}>
+            <Text style={{ fontSize: 20, fontWeight: '700', color: '#111827' }}>
               {String(onlineUsers.totalUsers || 0)}
             </Text>
             <Text style={{ fontSize: 12, color: '#6b7280', marginTop: 4 }}>
@@ -1104,7 +1104,7 @@ export default function AdminServerAreaScreen() {
             }}
           >
             <Text style={{ fontSize: 12, color: '#6b7280', marginBottom: 4 }}>Koneksi Aktif</Text>
-            <Text style={{ fontSize: 28, fontWeight: '700', color: '#111827' }}>
+            <Text style={{ fontSize: 20, fontWeight: '700', color: '#111827' }}>
               {String(onlineUsers.totalConnections || 0)}
             </Text>
             <Text style={{ fontSize: 12, color: '#6b7280', marginTop: 4 }}>

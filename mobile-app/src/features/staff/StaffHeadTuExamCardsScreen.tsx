@@ -615,7 +615,7 @@ export function StaffHeadTuExamCardsScreen() {
       }
     >
       <View style={{ marginBottom: 16 }}>
-        <Text style={{ fontSize: 28, fontWeight: '800', color: BRAND_COLORS.textDark }}>Kartu Ujian</Text>
+        <Text style={{ fontSize: 20, fontWeight: '800', color: BRAND_COLORS.textDark }}>Kartu Ujian</Text>
         <Text style={{ marginTop: 6, color: BRAND_COLORS.textMuted }}>
           Generate kartu ujian digital untuk siswa yang layak ikut ujian, lalu buka pratinjau dokumen resminya dari Kepala TU.
         </Text>

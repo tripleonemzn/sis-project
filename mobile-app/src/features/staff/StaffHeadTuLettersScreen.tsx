@@ -733,7 +733,7 @@ export function StaffHeadTuLettersScreen() {
   if (activeYearQuery.isError || !activeYearQuery.data) {
     return (
       <ScrollView style={{ flex: 1, backgroundColor: '#f8fafc' }} contentContainerStyle={pagePadding}>
-        <Text style={{ fontSize: 24, fontWeight: '700', marginBottom: 8, color: BRAND_COLORS.textDark }}>
+        <Text style={{ fontSize: 20, fontWeight: '700', marginBottom: 8, color: BRAND_COLORS.textDark }}>
           Surat-Menyurat
         </Text>
         <QueryStateView type="error" message="Tahun ajaran aktif tidak ditemukan." onRetry={() => activeYearQuery.refetch()} />
@@ -748,7 +748,7 @@ export function StaffHeadTuLettersScreen() {
       refreshControl={<RefreshControl refreshing={false} onRefresh={() => void onRefresh()} tintColor={BRAND_COLORS.blue} />}
     >
       <View style={{ marginBottom: 16 }}>
-        <Text style={{ fontSize: 28, fontWeight: '800', color: BRAND_COLORS.textDark }}>Surat-Menyurat</Text>
+        <Text style={{ fontSize: 20, fontWeight: '800', color: BRAND_COLORS.textDark }}>Surat-Menyurat</Text>
         <Text style={{ marginTop: 6, color: BRAND_COLORS.textMuted }}>
           Kelola arsip surat, finalisasi surat hasil seleksi PPDB, dan pratinjau dokumen TU langsung dari mobile.
         </Text>

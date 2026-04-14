@@ -80,7 +80,7 @@ export default function TeacherExamItemAnalysisScreen() {
   if (user?.role !== 'TEACHER') {
     return (
       <ScrollView style={{ flex: 1, backgroundColor: '#f8fafc' }} contentContainerStyle={pageContentPadding}>
-        <Text style={{ fontSize: 22, fontWeight: '700', marginBottom: 8 }}>Analisis Butir Soal</Text>
+        <Text style={{ fontSize: 20, fontWeight: '700', marginBottom: 8 }}>Analisis Butir Soal</Text>
         <QueryStateView type="error" message="Halaman ini khusus untuk role guru." />
       </ScrollView>
     );
@@ -89,7 +89,7 @@ export default function TeacherExamItemAnalysisScreen() {
   if (!packetId) {
     return (
       <ScrollView style={{ flex: 1, backgroundColor: '#f8fafc' }} contentContainerStyle={pageContentPadding}>
-        <Text style={{ fontSize: 22, fontWeight: '700', marginBottom: 8 }}>Analisis Butir Soal</Text>
+        <Text style={{ fontSize: 20, fontWeight: '700', marginBottom: 8 }}>Analisis Butir Soal</Text>
         <QueryStateView type="error" message="Packet ID tidak valid." />
       </ScrollView>
     );
@@ -108,7 +108,7 @@ export default function TeacherExamItemAnalysisScreen() {
         />
       }
     >
-      <Text style={{ fontSize: 24, fontWeight: '700', marginBottom: 6 }}>Analisis Butir Soal</Text>
+      <Text style={{ fontSize: 20, fontWeight: '700', marginBottom: 6 }}>Analisis Butir Soal</Text>
       <Text style={{ color: '#334155', fontWeight: '600', marginBottom: 3 }} numberOfLines={2}>
         {title}
       </Text>

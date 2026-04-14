@@ -100,7 +100,7 @@ export default function AttendanceScreen() {
   if (user?.role !== 'STUDENT') {
     return (
       <ScrollView style={{ flex: 1, backgroundColor: '#f8fafc' }} contentContainerStyle={pageContentPadding}>
-        <Text style={{ fontSize: 22, fontWeight: '700', marginBottom: 8 }}>Absensi</Text>
+        <Text style={{ fontSize: 20, fontWeight: '700', marginBottom: 8 }}>Absensi</Text>
         <QueryStateView type="error" message="Fitur absensi mobile saat ini tersedia untuk role siswa." />
         <Pressable
           onPress={() => router.replace('/home')}
@@ -133,7 +133,7 @@ export default function AttendanceScreen() {
         />
       }
     >
-      <Text style={{ fontSize: 24, fontWeight: '700', marginBottom: 6 }}>Absensi Saya</Text>
+      <Text style={{ fontSize: 20, fontWeight: '700', marginBottom: 6 }}>Absensi Saya</Text>
       <Text style={{ color: '#64748b', marginBottom: 12 }}>Riwayat kehadiran bulanan.</Text>
 
       <View style={{ flexDirection: 'row', marginBottom: 12, gap: 8 }}>

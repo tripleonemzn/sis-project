@@ -209,7 +209,7 @@ export function AppAlertHost() {
             <Feather name={palette.icon} size={18} color={palette.iconColor} />
           </View>
 
-          <Text style={{ color: palette.titleColor, fontSize: 22, fontWeight: '700', marginBottom: 6 }}>
+          <Text style={{ color: palette.titleColor, fontSize: 20, fontWeight: '700', marginBottom: 6 }}>
             {activeAlert.title || 'Informasi'}
           </Text>
           <Text style={{ color: palette.messageColor, fontSize: 14, marginBottom: 14, lineHeight: 21 }}>

@@ -338,7 +338,7 @@ export default function DiagnosticsScreen() {
 
   return (
     <ScrollView style={{ flex: 1, backgroundColor: '#f8fafc' }} contentContainerStyle={pageContentPadding}>
-      <Text style={{ fontSize: 24, fontWeight: '700', marginBottom: 6 }}>Diagnostics</Text>
+      <Text style={{ fontSize: 20, fontWeight: '700', marginBottom: 6 }}>Diagnostics</Text>
       <Text style={{ color: '#64748b', marginBottom: 14 }}>
         Event auth lokal untuk membantu troubleshooting pilot.
       </Text>

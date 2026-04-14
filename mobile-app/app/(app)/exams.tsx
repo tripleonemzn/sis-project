@@ -516,7 +516,7 @@ export default function StudentExamsScreen() {
   if (!canAccessExams) {
     return (
       <ScrollView style={{ flex: 1, backgroundColor: '#f8fafc' }} contentContainerStyle={pageContentPadding}>
-        <Text style={{ fontSize: 22, fontWeight: '700', marginBottom: 8 }}>Ujian</Text>
+        <Text style={{ fontSize: 20, fontWeight: '700', marginBottom: 8 }}>Ujian</Text>
         <QueryStateView type="error" message="Halaman ini hanya tersedia untuk peserta ujian yang aktif." />
       </ScrollView>
     );
@@ -547,7 +547,7 @@ export default function StudentExamsScreen() {
     >
       <View style={{ flexDirection: 'row', justifyContent: 'space-between', alignItems: 'flex-start', marginBottom: 12, gap: 12 }}>
         <View style={{ flex: 1 }}>
-          <Text style={{ fontSize: 24, fontWeight: '700', marginBottom: 6 }}>
+          <Text style={{ fontSize: 20, fontWeight: '700', marginBottom: 6 }}>
             {isCandidateMode
               ? lockedProgramLabel || 'Tes Seleksi'
               : isApplicantMode
