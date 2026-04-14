@@ -1743,31 +1743,31 @@ export const EmailPage = () => {
 
         {isWebmailMode ? (
           <div ref={panelSectionRef} className="space-y-4">
-            <SectionCard
-              title="Panel Email Aktif"
-              subtitle="Panel webmail penuh dibuka hanya saat Anda membutuhkan fitur lanjutan."
-            >
-              <div className="grid gap-3 sm:grid-cols-2">
-                <button
-                  type="button"
-                  onClick={handleReloadPanel}
-                  className="inline-flex items-center justify-center gap-2 rounded-2xl border border-slate-200 bg-white px-4 py-3 text-sm font-semibold text-slate-800 transition hover:bg-slate-50"
-                >
-                  <RefreshCw className="h-4 w-4" />
-                  Muat Ulang
-                </button>
-                <button
-                  type="button"
-                  onClick={handleDisconnectClick}
-                  className="inline-flex items-center justify-center gap-2 rounded-2xl border border-amber-200 bg-amber-50 px-4 py-3 text-sm font-semibold text-amber-800 transition hover:bg-amber-100"
-                >
-                  <ArrowLeft className="h-4 w-4" />
-                  Keluar Panel Email
-                </button>
-              </div>
-            </SectionCard>
-
             <div className="overflow-hidden rounded-3xl border border-slate-200 bg-white shadow-[0_16px_36px_rgba(15,23,42,0.08)]">
+              <div className="sticky top-0 z-10 flex flex-col gap-4 border-b border-slate-200 bg-white/95 px-6 py-5 backdrop-blur lg:flex-row lg:items-center lg:justify-between">
+                <div className="space-y-1">
+                  <h2 className="text-lg font-semibold text-slate-900">Panel Email Aktif</h2>
+                  <p className="text-sm leading-6 text-slate-500">Panel webmail penuh dibuka hanya saat Anda membutuhkan fitur lanjutan.</p>
+                </div>
+                <div className="flex flex-col gap-3 sm:flex-row">
+                  <button
+                    type="button"
+                    onClick={handleDisconnectClick}
+                    className="inline-flex items-center justify-center gap-2 rounded-2xl border border-amber-200 bg-amber-50 px-4 py-3 text-sm font-semibold text-amber-800 transition hover:bg-amber-100"
+                  >
+                    <ArrowLeft className="h-4 w-4" />
+                    Keluar Panel Email
+                  </button>
+                  <button
+                    type="button"
+                    onClick={handleReloadPanel}
+                    className="inline-flex items-center justify-center gap-2 rounded-2xl border border-slate-200 bg-white px-4 py-3 text-sm font-semibold text-slate-800 transition hover:bg-slate-50"
+                  >
+                    <RefreshCw className="h-4 w-4" />
+                    Muat Ulang
+                  </button>
+                </div>
+              </div>
               {panelError ? (
                 <div className="space-y-3 border-b border-rose-200 bg-rose-50 px-6 py-5">
                   <p className="text-sm font-semibold text-rose-700">{panelError}</p>
