@@ -10333,6 +10333,400 @@ async function syncBkkOnlineTestAssessmentFromExamSession(params: {
     });
 }
 
+const EXAM_POST_SUBMIT_QUEUE_CONCURRENCY = Math.max(
+    1,
+    Math.min(
+        4,
+        Number.isFinite(Number(process.env.EXAM_POST_SUBMIT_QUEUE_CONCURRENCY))
+            ? Number(process.env.EXAM_POST_SUBMIT_QUEUE_CONCURRENCY)
+            : 1,
+    ),
+);
+const EXAM_POST_SUBMIT_RETRY_LIMIT = Math.max(
+    0,
+    Math.min(
+        5,
+        Number.isFinite(Number(process.env.EXAM_POST_SUBMIT_RETRY_LIMIT))
+            ? Number(process.env.EXAM_POST_SUBMIT_RETRY_LIMIT)
+            : 2,
+    ),
+);
+const EXAM_POST_SUBMIT_RETRY_BASE_MS = Math.max(
+    250,
+    Number.isFinite(Number(process.env.EXAM_POST_SUBMIT_RETRY_BASE_MS))
+        ? Number(process.env.EXAM_POST_SUBMIT_RETRY_BASE_MS)
+        : 1000,
+);
+
+type ExamPostSubmitTask = {
+    sessionId: number;
+    studentId: number;
+    accessRole: ExamAccessRole;
+    attempt: number;
+    enqueuedAt: number;
+};
+
+type ExamPostSubmitPacketSummary = {
+    id: number;
+    subjectId: number;
+    academicYearId: number;
+    semester: Semester;
+    type: ExamType;
+    programCode: string | null;
+    questions: unknown;
+};
+
+const examPostSubmitQueue: ExamPostSubmitTask[] = [];
+const examPostSubmitQueuedSessionIds = new Set<number>();
+const examPostSubmitInFlightSessionIds = new Set<number>();
+let examPostSubmitActiveWorkers = 0;
+let examPostSubmitDrainScheduled = false;
+
+function resolveScoringQuestionsForSession(params: {
+    packetQuestions: Record<string, unknown>[];
+    sessionAnswers: Record<string, unknown>;
+    fallbackQuestionSet?: ReturnType<typeof sanitizeQuestionSetMeta> | null;
+}): Record<string, unknown>[] {
+    const sessionQuestionSet =
+        sanitizeQuestionSetMeta((params.sessionAnswers as Record<string, unknown>).__questionSet)
+        || params.fallbackQuestionSet
+        || null;
+
+    if (!sessionQuestionSet?.ids?.length) {
+        return params.packetQuestions;
+    }
+
+    const packetMap = new Map<string, Record<string, unknown>>();
+    params.packetQuestions.forEach((question) => {
+        const questionId = String(question?.id || '').trim();
+        if (!questionId) return;
+        packetMap.set(questionId, question);
+    });
+
+    const selected = sessionQuestionSet.ids
+        .map((questionId) => packetMap.get(questionId))
+        .filter((question): question is Record<string, unknown> => Boolean(question));
+
+    return selected.length > 0 ? selected : params.packetQuestions;
+}
+
+async function syncCompletedStudentExamArtifacts(params: {
+    sessionId: number;
+    studentId: number;
+    score: number;
+    packet: ExamPostSubmitPacketSummary;
+}) {
+    const { subjectId, academicYearId, semester, type, programCode } = params.packet;
+    const gradeComponentConfig = await resolveGradeComponentConfigForPacket({
+        academicYearId,
+        type,
+        programCode,
+    });
+    const {
+        componentType,
+        componentCode,
+        componentLabel,
+        gradeEntryMode,
+    } = gradeComponentConfig;
+
+    let component = componentCode
+        ? await prisma.gradeComponent.findFirst({
+              where: { subjectId, code: componentCode, isActive: true },
+          })
+        : null;
+
+    if (!component) {
+        component = await prisma.gradeComponent.findFirst({
+            where: { subjectId, type: componentType, isActive: true },
+        });
+    }
+
+    if (!component) {
+        const componentName = componentLabel || componentCode || type;
+
+        try {
+            component = await prisma.gradeComponent.create({
+                data: {
+                    code: componentCode,
+                    subjectId,
+                    type: componentType,
+                    name: componentName,
+                    weight: 1,
+                    isActive: true,
+                },
+            });
+        } catch (error) {
+            console.error('Failed to auto-create grade component:', error);
+        }
+    }
+
+    if (!component) return;
+
+    let syncedStudentGradeId: number | null = null;
+    const grade = await prisma.studentGrade.findFirst({
+        where: {
+            studentId: params.studentId,
+            subjectId,
+            academicYearId,
+            componentId: component.id,
+            semester,
+        },
+    });
+
+    if (grade) {
+        const updateData: Record<string, unknown> = {};
+        if (gradeEntryMode === GradeEntryMode.NF_SERIES) {
+            if (grade.nf1 === null) updateData.nf1 = params.score;
+            else if (grade.nf2 === null) updateData.nf2 = params.score;
+            else if (grade.nf3 === null) updateData.nf3 = params.score;
+            else if (grade.nf4 === null) updateData.nf4 = params.score;
+            else if (grade.nf5 === null) updateData.nf5 = params.score;
+            else if (grade.nf6 === null) updateData.nf6 = params.score;
+
+            const nfs = [
+                (updateData.nf1 as number | undefined) ?? grade.nf1,
+                (updateData.nf2 as number | undefined) ?? grade.nf2,
+                (updateData.nf3 as number | undefined) ?? grade.nf3,
+                (updateData.nf4 as number | undefined) ?? grade.nf4,
+                (updateData.nf5 as number | undefined) ?? grade.nf5,
+                (updateData.nf6 as number | undefined) ?? grade.nf6,
+            ].filter((value): value is number => value !== null && value !== undefined);
+
+            if (nfs.length > 0) {
+                updateData.score = nfs.reduce((left, right) => left + right, 0) / nfs.length;
+            }
+        } else {
+            updateData.score = params.score;
+        }
+
+        if (Object.keys(updateData).length > 0) {
+            const updatedGrade = await prisma.studentGrade.update({
+                where: { id: grade.id },
+                data: updateData,
+            });
+            syncedStudentGradeId = updatedGrade.id;
+        }
+    } else {
+        const createData: {
+            studentId: number;
+            subjectId: number;
+            academicYearId: number;
+            componentId: number;
+            semester: Semester;
+            score: number;
+            nf1?: number;
+        } = {
+            studentId: params.studentId,
+            subjectId,
+            academicYearId,
+            componentId: component.id,
+            semester,
+            score: params.score,
+        };
+
+        if (gradeEntryMode === GradeEntryMode.NF_SERIES) {
+            createData.nf1 = params.score;
+        }
+
+        const createdGrade = await prisma.studentGrade.create({
+            data: createData,
+        });
+        syncedStudentGradeId = createdGrade.id;
+    }
+
+    if (syncedStudentGradeId) {
+        try {
+            await syncScoreEntriesFromStudentGrade(syncedStudentGradeId);
+        } catch (scoreEntryError) {
+            console.error('Failed to sync score entry from student grade auto-fill:', scoreEntryError);
+        }
+    }
+
+    try {
+        await upsertScoreEntryFromExamSession({
+            sessionId: params.sessionId,
+            studentId: params.studentId,
+            subjectId,
+            academicYearId,
+            semester,
+            examType: type,
+            programCode: programCode || null,
+            score: params.score,
+        });
+    } catch (scoreEntryError) {
+        console.error('Failed to upsert score entry from exam session:', scoreEntryError);
+    }
+
+    await syncReportGrade(params.studentId, subjectId, academicYearId, semester);
+}
+
+async function processExamPostSubmitTask(task: ExamPostSubmitTask) {
+    const session = await prisma.studentExamSession.findUnique({
+        where: { id: task.sessionId },
+        select: {
+            id: true,
+            studentId: true,
+            status: true,
+            submitTime: true,
+            score: true,
+            answers: true,
+            schedule: {
+                select: {
+                    jobVacancyId: true,
+                    packet: {
+                        select: {
+                            id: true,
+                            subjectId: true,
+                            academicYearId: true,
+                            semester: true,
+                            type: true,
+                            programCode: true,
+                            questions: true,
+                        },
+                    },
+                },
+            },
+        },
+    });
+
+    if (!session?.schedule?.packet) {
+        return;
+    }
+
+    if (!['COMPLETED', 'TIMEOUT'].includes(String(session.status || '').toUpperCase()) || !session.submitTime) {
+        return;
+    }
+
+    const normalizedAnswers = sanitizeAnswersForStorage(session.answers);
+    const packetQuestions = Array.isArray(session.schedule.packet.questions)
+        ? (session.schedule.packet.questions as Record<string, unknown>[])
+        : [];
+    const scoringQuestions = resolveScoringQuestionsForSession({
+        packetQuestions,
+        sessionAnswers: normalizedAnswers,
+    });
+    const resolvedScore =
+        typeof session.score === 'number'
+            ? session.score
+            : packetQuestions.length > 0
+              ? calculateScore(scoringQuestions, normalizedAnswers)
+              : undefined;
+
+    if (typeof resolvedScore === 'number' && session.score !== resolvedScore) {
+        await prisma.studentExamSession.update({
+            where: { id: session.id },
+            data: {
+                score: resolvedScore,
+            },
+        });
+    }
+
+    if (typeof resolvedScore === 'number' && task.accessRole === 'STUDENT') {
+        await syncCompletedStudentExamArtifacts({
+            sessionId: session.id,
+            studentId: session.studentId,
+            score: resolvedScore,
+            packet: session.schedule.packet,
+        });
+    }
+
+    if (
+        typeof resolvedScore === 'number' &&
+        task.accessRole === 'UMUM' &&
+        Number.isFinite(Number(session.schedule.jobVacancyId || 0))
+    ) {
+        await syncBkkOnlineTestAssessmentFromExamSession({
+            applicantId: session.studentId,
+            vacancyId: Number(session.schedule.jobVacancyId),
+            score: resolvedScore,
+            assessedAt: new Date(),
+        });
+    }
+
+    invalidateSessionDetailCacheBySession(session.id);
+    invalidatePacketSubmissionsCacheByPacket(session.schedule.packet.id);
+    invalidatePacketItemAnalysisCacheByPacket(session.schedule.packet.id);
+}
+
+function scheduleExamPostSubmitRetry(task: ExamPostSubmitTask) {
+    if (task.attempt >= EXAM_POST_SUBMIT_RETRY_LIMIT) {
+        console.error(
+            `[EXAM_POST_SUBMIT] Session ${task.sessionId} gagal diproses setelah ${task.attempt + 1} percobaan.`,
+        );
+        return;
+    }
+
+    const nextAttempt = task.attempt + 1;
+    const delayMs = EXAM_POST_SUBMIT_RETRY_BASE_MS * Math.max(1, 2 ** task.attempt);
+
+    setTimeout(() => {
+        enqueueExamPostSubmitTask({
+            sessionId: task.sessionId,
+            studentId: task.studentId,
+            accessRole: task.accessRole,
+            attempt: nextAttempt,
+        });
+    }, delayMs);
+}
+
+async function drainExamPostSubmitQueue() {
+    while (
+        examPostSubmitActiveWorkers < EXAM_POST_SUBMIT_QUEUE_CONCURRENCY &&
+        examPostSubmitQueue.length > 0
+    ) {
+        const task = examPostSubmitQueue.shift();
+        if (!task) break;
+
+        examPostSubmitQueuedSessionIds.delete(task.sessionId);
+        examPostSubmitInFlightSessionIds.add(task.sessionId);
+        examPostSubmitActiveWorkers += 1;
+
+        void processExamPostSubmitTask(task)
+            .catch((error) => {
+                console.error(
+                    `[EXAM_POST_SUBMIT] Gagal memproses session ${task.sessionId}:`,
+                    error,
+                );
+                scheduleExamPostSubmitRetry(task);
+            })
+            .finally(() => {
+                examPostSubmitInFlightSessionIds.delete(task.sessionId);
+                examPostSubmitActiveWorkers = Math.max(0, examPostSubmitActiveWorkers - 1);
+                scheduleExamPostSubmitDrain();
+            });
+    }
+}
+
+function scheduleExamPostSubmitDrain() {
+    if (examPostSubmitDrainScheduled) return;
+    examPostSubmitDrainScheduled = true;
+
+    setTimeout(() => {
+        examPostSubmitDrainScheduled = false;
+        void drainExamPostSubmitQueue();
+    }, 0);
+}
+
+function enqueueExamPostSubmitTask(
+    task: Omit<ExamPostSubmitTask, 'attempt' | 'enqueuedAt'> & { attempt?: number },
+) {
+    if (!Number.isFinite(task.sessionId) || task.sessionId <= 0) return;
+    if (
+        examPostSubmitQueuedSessionIds.has(task.sessionId) ||
+        examPostSubmitInFlightSessionIds.has(task.sessionId)
+    ) {
+        return;
+    }
+
+    examPostSubmitQueue.push({
+        ...task,
+        attempt: Number.isFinite(Number(task.attempt)) ? Number(task.attempt) : 0,
+        enqueuedAt: Date.now(),
+    });
+    examPostSubmitQueuedSessionIds.add(task.sessionId);
+    scheduleExamPostSubmitDrain();
+}
+
 export const submitAnswers = asyncHandler(async (req: Request, res: Response) => {
     const { id } = req.params; // scheduleId
     const { answers, finish, is_final_submit, force_submit } = req.body;
@@ -10390,8 +10784,6 @@ export const submitAnswers = asyncHandler(async (req: Request, res: Response) =>
         }
     }
 
-    // Calculate score if finishing
-    let finalScore: number | undefined = undefined;
     let finishedSchedule:
         | {
               jobVacancyId: number | null;
@@ -10429,33 +10821,19 @@ export const submitAnswers = asyncHandler(async (req: Request, res: Response) =>
         
         if (finishedSchedule?.packet?.questions) {
              const packetQuestions = Array.isArray(finishedSchedule.packet.questions)
-                 ? (finishedSchedule.packet.questions as any[])
+                 ? (finishedSchedule.packet.questions as Record<string, unknown>[])
                  : [];
-             const sessionQuestionSet =
-                 sanitizeQuestionSetMeta(
-                     (normalizedIncomingAnswers as Record<string, unknown>).__questionSet,
-                 ) || previousQuestionSet;
-             let scoringQuestions = packetQuestions;
-             if (sessionQuestionSet?.ids?.length) {
-                 const packetMap = new Map<string, any>();
-                 packetQuestions.forEach((question: any) => {
-                     const questionId = String(question?.id || '').trim();
-                     if (!questionId) return;
-                     packetMap.set(questionId, question);
-                 });
-                 const selected = sessionQuestionSet.ids
-                     .map((questionId) => packetMap.get(questionId))
-                     .filter((question: any) => Boolean(question));
-                 if (selected.length > 0) {
-                     scoringQuestions = selected;
-                 }
-             }
+             const scoringQuestions = resolveScoringQuestionsForSession({
+                 packetQuestions,
+                 sessionAnswers: normalizedIncomingAnswers,
+                 fallbackQuestionSet: previousQuestionSet,
+             });
 
              if (!forceSubmit && !shouldForceTimeout) {
                  const unansweredCount = scoringQuestions.filter(
-                     (question: any) =>
+                     (question) =>
                          !isAnsweredForQuestion(
-                             question as Record<string, unknown>,
+                             question,
                              normalizedIncomingAnswers[String(question?.id || '').trim()],
                          ),
                  ).length;
@@ -10466,8 +10844,6 @@ export const submitAnswers = asyncHandler(async (req: Request, res: Response) =>
                      );
                  }
              }
-
-             finalScore = calculateScore(scoringQuestions, normalizedIncomingAnswers);
         }
     }
 
@@ -10478,7 +10854,6 @@ export const submitAnswers = asyncHandler(async (req: Request, res: Response) =>
             status: shouldForceTimeout ? 'TIMEOUT' : shouldCloseSession ? 'COMPLETED' : 'IN_PROGRESS',
             submitTime: shouldCloseSession ? new Date() : undefined,
             endTime: shouldCloseSession ? new Date() : undefined,
-            score: finalScore
         }
     });
 
@@ -10488,181 +10863,17 @@ export const submitAnswers = asyncHandler(async (req: Request, res: Response) =>
     }
     invalidateSessionDetailCacheBySession(session.id);
 
-    // Auto-fill StudentGrade if finished and score calculated
-    if (shouldCloseSession && finalScore !== undefined && accessRole === 'STUDENT') {
-        try {
-            if (finishedSchedule?.packet) {
-                const { subjectId, academicYearId, semester, type, programCode } = finishedSchedule.packet;
-                const gradeComponentConfig = await resolveGradeComponentConfigForPacket({
-                    academicYearId,
-                    type,
-                    programCode,
-                });
-                const {
-                    componentType,
-                    componentCode,
-                    componentLabel,
-                    gradeEntryMode,
-                } = gradeComponentConfig;
-
-                // Find or Create Grade Component
-                let component = componentCode
-                    ? await prisma.gradeComponent.findFirst({
-                        where: { subjectId, code: componentCode, isActive: true }
-                    })
-                    : null;
-
-                if (!component) {
-                    component = await prisma.gradeComponent.findFirst({
-                        where: { subjectId, type: componentType, isActive: true }
-                    });
-                }
-
-                // Auto-create component if missing (essential for auto-grading)
-                if (!component) {
-                    const componentName = componentLabel || componentCode || type;
-
-                    try {
-                        component = await prisma.gradeComponent.create({
-                            data: {
-                                code: componentCode,
-                                subjectId,
-                                type: componentType,
-                                name: componentName,
-                                weight: 1,
-                                isActive: true
-                            }
-                        });
-                    } catch (e) {
-                        console.error('Failed to auto-create grade component:', e);
-                    }
-                }
-
-                if (component) {
-                    let syncedStudentGradeId: number | null = null;
-                    // Find existing grade
-                    const grade = await prisma.studentGrade.findFirst({
-                        where: {
-                            studentId,
-                            subjectId,
-                            academicYearId,
-                            componentId: component.id,
-                            semester
-                        }
-                    });
-
-                    if (grade) {
-                        // Update existing
-                        const updateData: any = {};
-                        if (gradeEntryMode === GradeEntryMode.NF_SERIES) {
-                            // Fill first empty NF
-                            if (grade.nf1 === null) updateData.nf1 = finalScore;
-                            else if (grade.nf2 === null) updateData.nf2 = finalScore;
-                            else if (grade.nf3 === null) updateData.nf3 = finalScore;
-                            else if (grade.nf4 === null) updateData.nf4 = finalScore;
-                            else if (grade.nf5 === null) updateData.nf5 = finalScore;
-                            else if (grade.nf6 === null) updateData.nf6 = finalScore;
-
-                            // Recalculate Average Score
-                            const nfs = [
-                                updateData.nf1 ?? grade.nf1,
-                                updateData.nf2 ?? grade.nf2,
-                                updateData.nf3 ?? grade.nf3,
-                                updateData.nf4 ?? grade.nf4,
-                                updateData.nf5 ?? grade.nf5,
-                                updateData.nf6 ?? grade.nf6
-                            ].filter((n: number | null) => n !== null) as number[];
-
-                            if (nfs.length > 0) {
-                                updateData.score = nfs.reduce((a: number, b: number) => a + b, 0) / nfs.length;
-                            }
-                        } else {
-                            // For MIDTERM / FINAL / US/Skill, just update score
-                            updateData.score = finalScore;
-                        }
-
-                        if (Object.keys(updateData).length > 0) {
-                            const updatedGrade = await prisma.studentGrade.update({
-                                where: { id: grade.id },
-                                data: updateData
-                            });
-                            syncedStudentGradeId = updatedGrade.id;
-                        }
-                    } else {
-                        // Create new
-                        const createData: any = {
-                            studentId,
-                            subjectId,
-                            academicYearId,
-                            componentId: component.id,
-                            semester,
-                            score: finalScore
-                        };
-
-                        if (gradeEntryMode === GradeEntryMode.NF_SERIES) {
-                            createData.nf1 = finalScore;
-                        }
-
-                        const createdGrade = await prisma.studentGrade.create({
-                            data: createData
-                        });
-                        syncedStudentGradeId = createdGrade.id;
-                    }
-
-                    if (syncedStudentGradeId) {
-                        try {
-                            await syncScoreEntriesFromStudentGrade(syncedStudentGradeId);
-                        } catch (scoreEntryError) {
-                            console.error('Failed to sync score entry from student grade auto-fill:', scoreEntryError);
-                        }
-                    }
-
-                    try {
-                        await upsertScoreEntryFromExamSession({
-                            sessionId: updatedSession.id,
-                            studentId,
-                            subjectId,
-                            academicYearId,
-                            semester,
-                            examType: type,
-                            programCode: programCode || null,
-                            score: finalScore,
-                        });
-                    } catch (scoreEntryError) {
-                        console.error('Failed to upsert score entry from exam session:', scoreEntryError);
-                    }
-
-                    // Sync Report Grade
-                    await syncReportGrade(studentId, subjectId, academicYearId, semester);
-                }
-            }
-        } catch (error) {
-            console.error('Auto-fill grade error:', error);
-            // Don't fail the response, just log
-        }
-    }
-
-    if (
-        shouldCloseSession &&
-        finalScore !== undefined &&
-        accessRole === 'UMUM' &&
-        Number.isFinite(Number(finishedSchedule?.jobVacancyId || 0))
-    ) {
-        try {
-            await syncBkkOnlineTestAssessmentFromExamSession({
-                applicantId: studentId,
-                vacancyId: Number(finishedSchedule?.jobVacancyId),
-                score: finalScore,
-                assessedAt: new Date(),
-            });
-        } catch (error) {
-            console.error('Auto-sync BKK online test assessment error:', error);
-        }
-    }
-
     availableExamsCache.delete(studentId);
 
     res.json(new ApiResponse(200, updatedSession, 'Answers saved'));
+
+    if (shouldCloseSession && finishedSchedule?.packet?.id) {
+        enqueueExamPostSubmitTask({
+            sessionId: updatedSession.id,
+            studentId,
+            accessRole,
+        });
+    }
 });
 
 // ==========================================
