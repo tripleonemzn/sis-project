@@ -270,6 +270,18 @@ function getYoutubeEmbedUrl(url?: string | null) {
   return '';
 }
 
+const MIN_PROGRESS_SYNC_GAP_MS = 5000;
+const DEFAULT_PROGRESS_SYNC_DELAY_MS = 1400;
+const FAST_PROGRESS_SYNC_DELAY_MS = 850;
+const HEARTBEAT_PROGRESS_SYNC_MIN_MS = 17000;
+const HEARTBEAT_PROGRESS_SYNC_MAX_MS = 25000;
+
+function getHeartbeatProgressSyncDelayMs() {
+  const spread = HEARTBEAT_PROGRESS_SYNC_MAX_MS - HEARTBEAT_PROGRESS_SYNC_MIN_MS;
+  if (spread <= 0) return HEARTBEAT_PROGRESS_SYNC_MIN_MS;
+  return HEARTBEAT_PROGRESS_SYNC_MIN_MS + Math.round(Math.random() * spread);
+}
+
 function normalizeSubjectToken(value: string | null | undefined): string {
   return String(value || '')
     .trim()
@@ -369,6 +381,12 @@ export default function StudentExamTakeScreen() {
   const backAttemptRef = useRef(0);
   const lastViolationFingerprintRef = useRef<{ key: string; at: number } | null>(null);
   const violationSubmitGuardRef = useRef(false);
+  const progressSyncTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const progressHeartbeatTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const hasDirtyProgressRef = useRef(false);
+  const lastSyncedFingerprintRef = useRef('');
+  const lastProgressSyncAtRef = useRef(0);
+  const lastQueuedQuestionIndexRef = useRef<number | null>(null);
   const monitoringStatsRef = useRef<MonitoringStats>({
     totalViolations: 0,
     tabSwitchCount: 0,
@@ -468,6 +486,25 @@ export default function StudentExamTakeScreen() {
     };
   }, [currentIndex, questions]);
 
+  const buildSyncFingerprint = useCallback((submissionAnswers: Record<string, unknown>) => {
+    const monitoring =
+      submissionAnswers.__monitoring && typeof submissionAnswers.__monitoring === 'object'
+        ? { ...(submissionAnswers.__monitoring as Record<string, unknown>) }
+        : null;
+    if (monitoring) {
+      delete monitoring.lastSyncAt;
+    }
+    const normalizedPayload = monitoring
+      ? { ...submissionAnswers, __monitoring: monitoring }
+      : submissionAnswers;
+    return JSON.stringify(normalizedPayload);
+  }, []);
+
+  const markProgressDirty = useCallback(() => {
+    hasDirtyProgressRef.current = true;
+    setAutosaveState((prev) => (prev === 'saving' ? prev : 'idle'));
+  }, []);
+
   const submitMutation = useMutation({
     mutationFn: async (payload: { answers: Record<string, unknown>; isFinalSubmit: boolean }) => {
       if (!scheduleId) throw new Error('Schedule ID tidak valid.');
@@ -488,6 +525,17 @@ export default function StudentExamTakeScreen() {
   useEffect(() => {
     answersRef.current = effectiveAnswers;
   }, [effectiveAnswers]);
+
+  useEffect(() => {
+    return () => {
+      if (progressSyncTimeoutRef.current) {
+        clearTimeout(progressSyncTimeoutRef.current);
+      }
+      if (progressHeartbeatTimeoutRef.current) {
+        clearTimeout(progressHeartbeatTimeoutRef.current);
+      }
+    };
+  }, []);
 
   useEffect(() => {
     violationsRef.current = violations;
@@ -525,17 +573,39 @@ export default function StudentExamTakeScreen() {
     return () => clearInterval(timer);
   }, [isExamReady, isFinished]);
 
-  const saveProgress = useCallback(async (isFinalSubmit: boolean): Promise<boolean> => {
+  const saveProgress = useCallback(async (
+    isFinalSubmit: boolean,
+    options?: { force?: boolean },
+  ): Promise<boolean> => {
     if (isFinished) return false;
     if (submitMutation.isPending && !isFinalSubmit) return false;
+
+    const submissionAnswers = buildSubmissionAnswers(answersRef.current);
+    const syncFingerprint = isFinalSubmit ? '' : buildSyncFingerprint(submissionAnswers);
+    if (!isFinalSubmit) {
+      const nowMs = Date.now();
+      if (!options?.force && nowMs - lastProgressSyncAtRef.current < MIN_PROGRESS_SYNC_GAP_MS) {
+        hasDirtyProgressRef.current = true;
+        return false;
+      }
+      if (!options?.force && syncFingerprint === lastSyncedFingerprintRef.current) {
+        hasDirtyProgressRef.current = false;
+        return true;
+      }
+    }
 
     try {
       if (!isFinalSubmit) setAutosaveState('saving');
       const savedSession = await submitMutation.mutateAsync({
-        answers: buildSubmissionAnswers(answersRef.current),
+        answers: submissionAnswers,
         isFinalSubmit,
       });
       const savedStatus = String(savedSession?.status || '').toUpperCase();
+      if (!isFinalSubmit) {
+        lastProgressSyncAtRef.current = Date.now();
+        lastSyncedFingerprintRef.current = syncFingerprint;
+        hasDirtyProgressRef.current = false;
+      }
       if (!isFinalSubmit && savedStatus === 'TIMEOUT') {
         setAutosaveState('saved');
         setIsFinished(true);
@@ -558,6 +628,7 @@ export default function StudentExamTakeScreen() {
       const err = error as { response?: { data?: { message?: string } }; message?: string };
       const msg = err.response?.data?.message || err.message || 'Gagal menyimpan jawaban.';
       if (!isFinalSubmit) {
+        hasDirtyProgressRef.current = true;
         setAutosaveState('error');
       } else {
         if (finalSubmitOriginRef.current === 'auto' || finalSubmitOriginRef.current === 'violation') {
@@ -576,7 +647,62 @@ export default function StudentExamTakeScreen() {
       }
       return false;
     }
-  }, [buildSubmissionAnswers, isFinished, router, submitMutation]);
+  }, [buildSubmissionAnswers, buildSyncFingerprint, isFinished, router, submitMutation]);
+
+  const queueProgressSync = useCallback(
+    (delay = DEFAULT_PROGRESS_SYNC_DELAY_MS, options?: { force?: boolean }) => {
+      hasDirtyProgressRef.current = true;
+      if (progressSyncTimeoutRef.current) {
+        clearTimeout(progressSyncTimeoutRef.current);
+      }
+      progressSyncTimeoutRef.current = setTimeout(() => {
+        void saveProgress(false, options);
+      }, delay);
+    },
+    [saveProgress],
+  );
+
+  useEffect(() => {
+    if (!isExamReady || isFinished || !hasAcknowledgedStart) return;
+    if (lastQueuedQuestionIndexRef.current === null) {
+      lastQueuedQuestionIndexRef.current = currentIndex;
+      return;
+    }
+    if (lastQueuedQuestionIndexRef.current === currentIndex) {
+      return;
+    }
+    lastQueuedQuestionIndexRef.current = currentIndex;
+    markProgressDirty();
+    queueProgressSync(FAST_PROGRESS_SYNC_DELAY_MS, { force: true });
+  }, [currentIndex, hasAcknowledgedStart, isExamReady, isFinished, markProgressDirty, queueProgressSync]);
+
+  useEffect(() => {
+    if (!isExamReady || isFinished || isFinalSubmitting || !hasAcknowledgedStart) return;
+
+    let cancelled = false;
+    const scheduleNextSync = () => {
+      if (cancelled) return;
+      if (progressHeartbeatTimeoutRef.current) {
+        clearTimeout(progressHeartbeatTimeoutRef.current);
+      }
+      progressHeartbeatTimeoutRef.current = setTimeout(() => {
+        if (cancelled) return;
+        if (appStateRef.current === 'active' && hasDirtyProgressRef.current) {
+          void saveProgress(false);
+        }
+        scheduleNextSync();
+      }, getHeartbeatProgressSyncDelayMs());
+    };
+
+    scheduleNextSync();
+
+    return () => {
+      cancelled = true;
+      if (progressHeartbeatTimeoutRef.current) {
+        clearTimeout(progressHeartbeatTimeoutRef.current);
+      }
+    };
+  }, [hasAcknowledgedStart, isExamReady, isFinished, isFinalSubmitting, saveProgress]);
 
   const toggleOptionValue = useCallback(
     (questionId: string, optionId: string, type: ExamQuestionType) => {
@@ -594,14 +720,16 @@ export default function StudentExamTakeScreen() {
             [questionId]: [...existing, optionId],
           };
         });
+        markProgressDirty();
         return;
       }
       setAnswers((prev) => ({
         ...prev,
         [questionId]: optionId,
       }));
+      markProgressDirty();
     },
-    [],
+    [markProgressDirty],
   );
 
   const setMatrixAnswerValue = useCallback((questionId: string, rowId: string, columnId: string) => {
@@ -618,7 +746,8 @@ export default function StudentExamTakeScreen() {
         },
       };
     });
-  }, []);
+    markProgressDirty();
+  }, [markProgressDirty]);
 
   const triggerViolationAutoSubmit = useCallback((reason: string) => {
     if (violationSubmitGuardRef.current || isFinished || autoSubmitGuardRef.current) return;
@@ -678,13 +807,13 @@ export default function StudentExamTakeScreen() {
       return;
     }
 
-    void saveProgress(false);
+    queueProgressSync(FAST_PROGRESS_SYNC_DELAY_MS, { force: true });
 
     Alert.alert(
       'Pelanggaran Terdeteksi',
       `${type}\n\nPelanggaran ${nextCount}/3. Pelanggaran ke-4 akan mengumpulkan ujian otomatis.`,
     );
-  }, [hasAcknowledgedStart, isExamReady, isFinished, saveProgress, triggerViolationAutoSubmit]);
+  }, [hasAcknowledgedStart, isExamReady, isFinished, queueProgressSync, triggerViolationAutoSubmit]);
 
   const handleBackAttempt = useCallback(() => {
     if (!hasAcknowledgedStart || !isExamReady || isFinished) return true;
@@ -705,14 +834,6 @@ export default function StudentExamTakeScreen() {
     recordViolation('Menekan tombol kembali berulang');
     return true;
   }, [hasAcknowledgedStart, isExamReady, isFinished, recordViolation]);
-
-  useEffect(() => {
-    if (!isExamReady || isFinished || isFinalSubmitting) return;
-    const interval = setInterval(() => {
-      void saveProgress(false);
-    }, 20000);
-    return () => clearInterval(interval);
-  }, [isExamReady, isFinished, isFinalSubmitting, saveProgress]);
 
   useEffect(() => {
     if (!isExamReady || isFinished || isFinalSubmitting) return;
@@ -742,18 +863,21 @@ export default function StudentExamTakeScreen() {
       const previousState = appStateRef.current;
       appStateRef.current = nextAppState;
       if (previousState === 'active' && nextAppState !== 'active') {
-        recordViolation(
+        const violationType =
           nextAppState === 'background'
             ? 'Berpindah aplikasi / tekan Home'
-            : 'Membuka panel notifikasi / recent apps / keluar fokus ujian',
+            : 'Membuka panel notifikasi / recent apps / keluar fokus ujian';
+        recordViolation(
+          violationType,
         );
+        void saveProgress(false, { force: true });
       }
     });
 
     return () => {
       subscription.remove();
     };
-  }, [hasAcknowledgedStart, isExamReady, isFinished, recordViolation]);
+  }, [hasAcknowledgedStart, isExamReady, isFinished, recordViolation, saveProgress]);
 
   useEffect(() => {
     if (!isExamReady || isFinished || !hasAcknowledgedStart) return;
@@ -1228,6 +1352,7 @@ export default function StudentExamTakeScreen() {
                 ...prev,
                 [currentQuestion.id]: value,
               }));
+              markProgressDirty();
             }}
             multiline
             textAlignVertical="top"

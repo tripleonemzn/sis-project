@@ -240,7 +240,14 @@ function supportsDocumentFullscreen(): boolean {
 const MIN_PROGRESS_SYNC_GAP_MS = 5000
 const DEFAULT_PROGRESS_SYNC_DELAY_MS = 1400
 const FAST_PROGRESS_SYNC_DELAY_MS = 850
-const HEARTBEAT_PROGRESS_SYNC_INTERVAL_MS = 20000
+const HEARTBEAT_PROGRESS_SYNC_MIN_MS = 17000
+const HEARTBEAT_PROGRESS_SYNC_MAX_MS = 25000
+
+function getHeartbeatProgressSyncDelayMs() {
+  const spread = HEARTBEAT_PROGRESS_SYNC_MAX_MS - HEARTBEAT_PROGRESS_SYNC_MIN_MS
+  if (spread <= 0) return HEARTBEAT_PROGRESS_SYNC_MIN_MS
+  return HEARTBEAT_PROGRESS_SYNC_MIN_MS + Math.round(Math.random() * spread)
+}
 
 function getNavigatorConnection(): BrowserNetworkInformation | null {
   if (typeof navigator === 'undefined') return null
@@ -657,11 +664,32 @@ export default function StudentExamTakePage() {
 
   useEffect(() => {
     if (!examStartTime || !exam || hasAutoSubmitted.current) return
-    const heartbeat = setInterval(() => {
-      if (!hasDirtyProgressRef.current) return
-      syncProgressInBackground(answersRef.current)
-    }, HEARTBEAT_PROGRESS_SYNC_INTERVAL_MS)
-    return () => clearInterval(heartbeat)
+    let cancelled = false
+    let heartbeatTimer: ReturnType<typeof setTimeout> | null = null
+
+    const scheduleNextHeartbeat = () => {
+      if (cancelled) return
+      heartbeatTimer = setTimeout(() => {
+        if (cancelled) return
+        if (
+          hasDirtyProgressRef.current &&
+          !document.hidden &&
+          (typeof navigator === 'undefined' || navigator.onLine)
+        ) {
+          void syncProgressInBackground(answersRef.current)
+        }
+        scheduleNextHeartbeat()
+      }, getHeartbeatProgressSyncDelayMs())
+    }
+
+    scheduleNextHeartbeat()
+
+    return () => {
+      cancelled = true
+      if (heartbeatTimer) {
+        clearTimeout(heartbeatTimer)
+      }
+    }
   }, [examStartTime, exam, syncProgressInBackground])
 
   const handleAutoSubmit = useCallback(async (reason: string) => {
