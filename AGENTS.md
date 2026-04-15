@@ -178,9 +178,33 @@ Dokumen ini adalah policy kerja default untuk setiap sesi baru yang mengerjakan 
    - Setiap pengembangan fitur baru wajib melakukan sanity check bahwa konteks `tahun ajaran` di web, mobile, dan header tetap konsisten sebelum dianggap final.
    - Jika ada keraguan apakah sebuah layar termasuk operasional atau historis, default yang aman adalah menganggap layar tersebut `operasional` dan menguncinya ke tahun ajaran aktif.
 
+16. **Realtime harus event-driven, scoped, dan hemat beban**
+   - Untuk fitur baru yang datanya dipakai lintas user/role/screen, jangan default ke polling agresif atau refetch global.
+   - Realtime harus mengikuti prinsip berikut:
+     - gunakan event domain yang kecil dan jelas, bukan broadcast data besar
+     - invalidate/refetch hanya query yang relevan dengan scope perubahan
+     - hindari `invalidateQueries()` global kecuali benar-benar tidak ada scope aman lain
+     - layar observasi/monitoring boleh auto-refresh
+     - layar form/edit/input tidak boleh auto-overwrite state user yang sedang mengetik; jika ada perubahan dari luar, tampilkan sinyal untuk muat ulang dengan sadar
+     - layar berat seperti preview akhir, ledger besar, ranking besar, export, dan laporan lintas banyak data harus memakai konsep `stale-aware snapshot`, bukan recompute penuh setiap ada mutasi kecil
+   - Polling hanya boleh dipakai sebagai fallback, bukan source of truth utama, dengan aturan:
+     - harus mati saat screen/tab/background tidak aktif jika platform memungkinkan
+     - interval harus sejarang mungkin sesuai kebutuhan operasional
+     - jangan menambah polling baru jika event scoped yang aman sudah bisa dipakai
+   - Websocket/realtime wajib diberi guardrail:
+     - backoff/cooldown reconnect
+     - debounce/batching invalidate bila perlu
+     - jangan membuat satu mutasi kecil memicu fan-out refetch ke banyak modul yang tidak relevan
+   - Untuk fitur baru, urutan desain yang wajib diutamakan adalah:
+     - tentukan source of truth data
+     - tentukan query key yang scoped
+     - tentukan event domain/mutation target yang scoped
+     - baru tentukan fallback polling yang ringan jika memang masih diperlukan
+   - Jika ada tradeoff antara realtime penuh vs kesehatan server/database, selalu pilih desain yang lebih aman untuk server walaupun refresh user tidak benar-benar instan.
+
 ## Default Close-Out
 
-16. **Penutupan pekerjaan minimal harus memuat**
+17. **Penutupan pekerjaan minimal harus memuat**
    - apa yang dikerjakan
    - verifikasi yang dijalankan
    - status publish/live bila ada
