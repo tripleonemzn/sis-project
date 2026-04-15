@@ -12,6 +12,7 @@ const MAX_SHORT_LIVED_CONNECTIONS = 3;
 const SOCKET_COOLDOWN_MS = 5 * 60 * 1000;
 const GRADE_REPORT_QUERY_PREFIXES = [
   'mobile-student-grade-overview',
+  'mobile-teacher-subject-report',
   'mobile-homeroom-report-ledger',
   'mobile-homeroom-report-ranking',
   'mobile-homeroom-report-student',

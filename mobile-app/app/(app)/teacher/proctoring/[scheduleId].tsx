@@ -66,6 +66,9 @@ function normalizeExamHeading(label?: string | null) {
   return normalized ? normalized.toUpperCase() : 'UJIAN';
 }
 
+const ACTIVE_MONITORING_INTERVAL_MS = 7000;
+const IDLE_MONITORING_INTERVAL_MS = 30000;
+
 function romanLevelRank(level: string): number {
   const value = String(level || '').toUpperCase();
   if (value === 'X') return 10;
@@ -115,7 +118,17 @@ export default function TeacherProctoringDetailScreen() {
     queryKey: ['mobile-proctoring-detail', parsedScheduleId],
     enabled: isAuthenticated && user?.role === 'TEACHER' && !!parsedScheduleId,
     queryFn: async () => proctoringApi.getScheduleDetail(Number(parsedScheduleId)),
-    refetchInterval: isScreenActive ? 7000 : false,
+    refetchInterval: (query) => {
+      if (!isScreenActive) return false;
+      const nextSchedule = (query.state.data as { schedule?: { startTime?: string | null; endTime?: string | null; serverNow?: string | null } } | undefined)?.schedule;
+      const startMs = new Date(String(nextSchedule?.startTime || '')).getTime();
+      const endMs = new Date(String(nextSchedule?.endTime || '')).getTime();
+      const referenceNowMs = nextSchedule?.serverNow ? new Date(nextSchedule.serverNow).getTime() : Date.now();
+      if (Number.isFinite(startMs) && Number.isFinite(endMs) && referenceNowMs >= startMs && referenceNowMs <= endMs) {
+        return ACTIVE_MONITORING_INTERVAL_MS;
+      }
+      return IDLE_MONITORING_INTERVAL_MS;
+    },
     refetchIntervalInBackground: false,
   });
 

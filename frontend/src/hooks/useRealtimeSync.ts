@@ -1,5 +1,6 @@
 import { useEffect } from 'react';
 import { useQueryClient } from '@tanstack/react-query';
+import { REALTIME_DOMAIN_ACTIVITY_EVENT, type RealtimeDomainActivityDetail } from '../lib/realtime/domainActivity';
 
 const INITIAL_BACKOFF_MS = 1000;
 const MAX_BACKOFF_MS = 15000;
@@ -19,6 +20,7 @@ const NOTIFICATION_MUTATION_PATTERNS: RegExp[] = [
 ];
 const GRADE_REPORT_QUERY_PREFIXES = [
   'student-grade-overview',
+  'teacher-subject-report',
   'class-ledger',
   'class-rankings',
   'wakasek-academic-ledger-preview',
@@ -29,6 +31,8 @@ const ATTENDANCE_QUERY_PREFIXES = [
   'student-attendance-history',
 ];
 const PROCTORING_QUERY_PREFIXES = [
+  'teacher-proctor-schedules',
+  'teacher-proctor-monitoring',
   'wakasek-academic-proctor-summary',
 ];
 const DOMAIN_QUERY_TARGETS: Record<string, string[]> = {
@@ -192,6 +196,19 @@ export function useRealtimeSync(enabled: boolean) {
       return DOMAIN_QUERY_TARGETS[normalized] || [];
     };
 
+    const emitDomainActivity = (domain: string | undefined) => {
+      const normalized = String(domain || '').trim().toUpperCase();
+      if (!normalized) return;
+      window.dispatchEvent(
+        new CustomEvent<RealtimeDomainActivityDetail>(REALTIME_DOMAIN_ACTIVITY_EVENT, {
+          detail: {
+            domain: normalized,
+            occurredAt: Date.now(),
+          },
+        }),
+      );
+    };
+
     const scheduleInvalidate = (queryKeyPrefixes?: string[]) => {
       if (Array.isArray(queryKeyPrefixes) && queryKeyPrefixes.length > 0) {
         queryKeyPrefixes.forEach((queryKeyPrefix) => {
@@ -270,6 +287,7 @@ export function useRealtimeSync(enabled: boolean) {
           return;
         }
         if (payload?.type === 'DOMAIN_EVENT') {
+          emitDomainActivity(payload.domain);
           const targets = resolveDomainQueryKeyPrefixes(payload.domain);
           scheduleInvalidate(targets.length > 0 ? targets : undefined);
           return;

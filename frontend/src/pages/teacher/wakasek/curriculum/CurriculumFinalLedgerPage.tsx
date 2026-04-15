@@ -10,6 +10,7 @@ import {
   type FinalLedgerPreviewRow,
 } from '../../../../services/report.service';
 import type { User } from '../../../../types/auth';
+import { REALTIME_DOMAIN_ACTIVITY_EVENT, type RealtimeDomainActivityDetail } from '../../../../lib/realtime/domainActivity';
 
 type AcademicYearOption = {
   id: number;
@@ -123,6 +124,9 @@ export default function CurriculumFinalLedgerPage() {
   const [printHtml, setPrintHtml] = useState('');
   const [printFrameReady, setPrintFrameReady] = useState(false);
   const [preview, setPreview] = useState<FinalLedgerPreviewResult | null>(null);
+  const [previewComputedAt, setPreviewComputedAt] = useState<number | null>(null);
+  const [previewDataStale, setPreviewDataStale] = useState(false);
+  const [previewFilterSignature, setPreviewFilterSignature] = useState<string | null>(null);
   const [searchQuery, setSearchQuery] = useState('');
   const [signatories, setSignatories] = useState<LedgerSignatories>({
     principal: SIGNATORY_PLACEHOLDER,
@@ -180,6 +184,37 @@ export default function CurriculumFinalLedgerPage() {
     return rows;
   }, [semesterOdd, semesterEven]);
 
+  const currentPreviewSignature = useMemo(
+    () =>
+      JSON.stringify({
+        years: [...selectedYearIds].sort((a, b) => a - b),
+        semesters: [...selectedSemesters],
+        classId: selectedClassId || '',
+      }),
+    [selectedClassId, selectedSemesters, selectedYearIds],
+  );
+
+  const previewNeedsRefresh = Boolean(
+    preview &&
+      (previewDataStale || (previewFilterSignature !== null && previewFilterSignature !== currentPreviewSignature)),
+  );
+
+  useEffect(() => {
+    const handleDomainActivity = (event: Event) => {
+      if (!preview) return;
+      const detail = (event as CustomEvent<RealtimeDomainActivityDetail>).detail;
+      const domain = String(detail?.domain || '').toUpperCase();
+      if (domain === 'GRADES' || domain === 'REPORTS') {
+        setPreviewDataStale(true);
+      }
+    };
+
+    window.addEventListener(REALTIME_DOMAIN_ACTIVITY_EVENT, handleDomainActivity as EventListener);
+    return () => {
+      window.removeEventListener(REALTIME_DOMAIN_ACTIVITY_EVENT, handleDomainActivity as EventListener);
+    };
+  }, [preview]);
+
   const filteredRows = useMemo(() => {
     if (!preview?.rows) return [];
     const q = searchQuery.trim().toLowerCase();
@@ -214,6 +249,9 @@ export default function CurriculumFinalLedgerPage() {
         limitStudents: 1000,
       });
       setPreview(result);
+      setPreviewComputedAt(Date.now());
+      setPreviewDataStale(false);
+      setPreviewFilterSignature(currentPreviewSignature);
       toast.success('Preview leger nilai akhir berhasil dihitung.');
     } catch (error: any) {
       toast.error(error?.response?.data?.message || 'Gagal menghitung preview leger.');
@@ -223,6 +261,10 @@ export default function CurriculumFinalLedgerPage() {
   };
 
   const exportExcel = async () => {
+    if (previewNeedsRefresh) {
+      toast.error('Preview sudah berubah. Klik Hitung Preview lagi sebelum export.');
+      return;
+    }
     if (!selectedYearIds.length) {
       toast.error('Pilih minimal satu tahun ajaran sumber.');
       return;
@@ -292,6 +334,10 @@ export default function CurriculumFinalLedgerPage() {
   }, [preview, filteredRows]);
 
   const printReady = () => {
+    if (previewNeedsRefresh) {
+      toast.error('Preview sudah berubah. Klik Hitung Preview lagi sebelum mencetak.');
+      return;
+    }
     if (!preview) {
       toast.error('Jalankan Hitung Preview terlebih dahulu.');
       return;
@@ -576,6 +622,11 @@ export default function CurriculumFinalLedgerPage() {
             <p className="text-xs text-gray-500">
               Kolom mapel disusun dinamis ke samping sesuai data mapel yang tersedia.
             </p>
+            {previewComputedAt ? (
+              <p className="mt-1 text-[11px] text-gray-400">
+                Preview terakhir dihitung {new Date(previewComputedAt).toLocaleString('id-ID')}
+              </p>
+            ) : null}
           </div>
           <div className="flex w-full flex-col gap-2 md:w-auto md:flex-row md:items-center">
             <button
@@ -607,6 +658,12 @@ export default function CurriculumFinalLedgerPage() {
             </div>
           </div>
         </div>
+
+        {previewNeedsRefresh ? (
+          <div className="rounded-lg border border-amber-200 bg-amber-50 px-4 py-3 text-sm text-amber-800">
+            Data nilai berubah setelah preview ini dihitung. Klik <span className="font-semibold">Hitung Preview</span> lagi agar leger akhir tetap sinkron tanpa menjalankan query berat terus-menerus.
+          </div>
+        ) : null}
 
         {preview ? (
           <div className="grid gap-3 md:grid-cols-5">

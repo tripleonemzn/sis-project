@@ -1,5 +1,5 @@
-import { useState, useEffect, useMemo, useCallback } from 'react';
-import { useQuery } from '@tanstack/react-query';
+import { useState, useEffect, useMemo } from 'react';
+import { keepPreviousData, useQuery } from '@tanstack/react-query';
 import { 
   Loader2, 
   Search, 
@@ -13,7 +13,6 @@ import {
   sortTeacherAssignmentsBySubjectClass,
 } from '../../services/teacherAssignment.service';
 import { gradeService } from '../../services/grade.service';
-import { toast } from 'react-hot-toast';
 import { useActiveAcademicYear } from '../../hooks/useActiveAcademicYear';
 
 interface ReportGrade {
@@ -142,9 +141,6 @@ export const TeacherSubjectReportPage = () => {
   const [searchQuery, setSearchQuery] = useState('');
 
   // Data States
-  const [reportGrades, setReportGrades] = useState<ReportGrade[]>([]);
-  const [reportMeta, setReportMeta] = useState<ReportGradeMeta | null>(null);
-  const [loading, setLoading] = useState(false);
   const { data: activeAcademicYear, isLoading: isLoadingActiveAcademicYear } = useActiveAcademicYear();
   const activeAcademicYearId = Number(activeAcademicYear?.id || activeAcademicYear?.academicYearId || 0) || null;
 
@@ -175,44 +171,36 @@ export const TeacherSubjectReportPage = () => {
     }
   }, [assignments, selectedAssignment]);
 
-  const fetchReportGrades = useCallback(async () => {
-    if (!activeAcademicYearId || !selectedAssignment || !selectedSemester) {
-      setReportGrades([]);
-      setReportMeta(null);
-      return;
-    }
+  const selectedAssignmentData = useMemo(
+    () => assignments.find((item) => String(item.id) === selectedAssignment) || null,
+    [assignments, selectedAssignment],
+  );
 
-    try {
-      setLoading(true);
-      const assignment = assignments.find((item) => String(item.id) === selectedAssignment);
-      
-      if (!assignment) return;
-
+  const reportQuery = useQuery({
+    queryKey: ['teacher-subject-report', activeAcademicYearId || 0, selectedAssignment || 'none', selectedSemester || 'none'],
+    enabled: Boolean(activeAcademicYearId && selectedAssignmentData && selectedSemester),
+    placeholderData: keepPreviousData,
+    staleTime: 15_000,
+    refetchOnWindowFocus: false,
+    queryFn: async () => {
+      if (!activeAcademicYearId || !selectedAssignmentData || !selectedSemester) {
+        return { rows: [] as ReportGrade[], meta: null as ReportGradeMeta | null };
+      }
       const response = await gradeService.getReportGrades({
-        class_id: assignment.class.id,
-        subject_id: assignment.subject.id,
+        class_id: selectedAssignmentData.class.id,
+        subject_id: selectedAssignmentData.subject.id,
         academic_year_id: activeAcademicYearId,
         semester: selectedSemester,
         include_meta: 1,
       });
-
-      const payload = extractReportGradesPayload(response);
-      setReportGrades(payload.rows);
-      setReportMeta(payload.meta);
-    } catch (error) {
-      console.error('Error fetching report grades:', error);
-      toast.error('Gagal memuat data nilai rapor');
-    } finally {
-      setLoading(false);
-    }
-  }, [activeAcademicYearId, assignments, selectedAssignment, selectedSemester]);
-
-  // Fetch Report Grades when filters change
-  useEffect(() => {
-    void fetchReportGrades();
-  }, [fetchReportGrades]);
+      return extractReportGradesPayload(response);
+    },
+  });
 
   // Filtered Display Data
+  const reportGrades = reportQuery.data?.rows || [];
+  const reportMeta = reportQuery.data?.meta || null;
+
   const filteredGrades = reportGrades.filter(grade => 
     grade.student.name.toLowerCase().includes(searchQuery.toLowerCase()) ||
     grade.student.nis?.includes(searchQuery) ||
@@ -345,12 +333,30 @@ export const TeacherSubjectReportPage = () => {
                 </tr>
               </thead>
               <tbody className="divide-y divide-gray-100">
-                {loading ? (
+                {reportQuery.isLoading ? (
                   <tr>
                     <td colSpan={9} className="px-6 py-12 text-center">
                       <div className="flex flex-col items-center justify-center text-gray-500">
                         <Loader2 className="w-8 h-8 animate-spin mb-2 text-blue-600" />
                         <p>Memuat data nilai...</p>
+                      </div>
+                    </td>
+                  </tr>
+                ) : reportQuery.isError ? (
+                  <tr>
+                    <td colSpan={9} className="px-6 py-12 text-center text-gray-500">
+                      <div className="flex flex-col items-center justify-center">
+                        <AlertCircle className="w-12 h-12 text-red-300 mb-3" />
+                        <p className="text-lg font-medium text-gray-900">Gagal memuat rapor mapel</p>
+                        <p className="text-sm">Coba muat ulang data agar hasil rapor terbaru bisa ditampilkan.</p>
+                        <button
+                          type="button"
+                          onClick={() => void reportQuery.refetch()}
+                          className="mt-4 inline-flex items-center gap-2 rounded-lg border border-blue-200 bg-blue-50 px-4 py-2 text-sm font-medium text-blue-700"
+                        >
+                          <Loader2 className={`h-4 w-4 ${reportQuery.isFetching ? 'animate-spin' : ''}`} />
+                          Muat Ulang
+                        </button>
                       </div>
                     </td>
                   </tr>

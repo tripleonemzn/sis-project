@@ -1,8 +1,10 @@
 import React, { useEffect, useMemo, useState } from 'react';
+import { useQuery } from '@tanstack/react-query';
 import { useNavigate, useSearchParams } from 'react-router-dom';
-import { AlarmClock, Calendar, CalendarDays, ChevronDown, ChevronRight, Clock, History, MapPin, Monitor, Users } from 'lucide-react';
+import { AlarmClock, AlertCircle, Calendar, CalendarDays, ChevronDown, ChevronRight, Clock, History, Loader2, MapPin, Monitor, Users } from 'lucide-react';
 import { toast } from 'react-hot-toast';
 import api from '../../../services/api';
+import { liveQueryOptions } from '../../../lib/query/liveQuery';
 
 type TimeFilter = 'today' | 'upcoming' | 'history';
 
@@ -198,8 +200,6 @@ function groupSchedulesForDisplay(sourceSchedules: ExamSchedule[]): ProctorRoomG
 const ProctorSchedulePage: React.FC = () => {
   const navigate = useNavigate();
   const [searchParams, setSearchParams] = useSearchParams();
-  const [schedules, setSchedules] = useState<ExamSchedule[]>([]);
-  const [loading, setLoading] = useState(true);
   const [expandedDayKey, setExpandedDayKey] = useState<string | null>(null);
   const filterParam = searchParams.get('tab');
   const filter: TimeFilter = filterParam === 'upcoming' || filterParam === 'history' ? filterParam : 'today';
@@ -210,19 +210,16 @@ const ProctorSchedulePage: React.FC = () => {
     setSearchParams(nextParams, { replace: true });
   };
 
-  useEffect(() => {
-    void (async () => {
-      try {
-        const res = await api.get('/proctoring/schedules');
-        setSchedules(res.data.data);
-      } catch (error) {
-        console.error('Error fetching schedules:', error);
-        toast.error('Gagal memuat jadwal ujian');
-      } finally {
-        setLoading(false);
-      }
-    })();
-  }, []);
+  const scheduleQuery = useQuery({
+    queryKey: ['teacher-proctor-schedules'],
+    queryFn: async () => {
+      const res = await api.get('/proctoring/schedules');
+      return Array.isArray(res.data?.data) ? (res.data.data as ExamSchedule[]) : [];
+    },
+    ...liveQueryOptions,
+  });
+
+  const schedules = scheduleQuery.data || [];
 
   const scheduleCountsByFilter = useMemo(() => {
     const buckets: Record<TimeFilter, number> = { today: 0, upcoming: 0, history: 0 };
@@ -233,11 +230,12 @@ const ProctorSchedulePage: React.FC = () => {
   }, [schedules]);
 
   useEffect(() => {
-    if (loading || filterParam) return;
+    if (scheduleQuery.isLoading) return;
+    if (filterParam) return;
     if (scheduleCountsByFilter.today === 0 && scheduleCountsByFilter.upcoming > 0) {
       setFilter('upcoming');
     }
-  }, [filterParam, loading, scheduleCountsByFilter.today, scheduleCountsByFilter.upcoming]);
+  }, [filterParam, scheduleQuery.isLoading, scheduleCountsByFilter.today, scheduleCountsByFilter.upcoming]);
 
   const filteredSchedules = useMemo(
     () => schedules.filter((schedule) => resolveScheduleBucket(schedule) === filter),
@@ -285,8 +283,31 @@ const ProctorSchedulePage: React.FC = () => {
     });
   }, [groupedDays]);
 
-  if (loading) {
-    return <div className="p-6">Loading...</div>;
+  if (scheduleQuery.isLoading) {
+    return (
+      <div className="flex items-center justify-center gap-2 p-10 text-gray-500">
+        <Loader2 className="h-5 w-5 animate-spin text-blue-600" />
+        Memuat jadwal mengawas...
+      </div>
+    );
+  }
+
+  if (scheduleQuery.isError) {
+    return (
+      <div className="rounded-2xl border border-red-200 bg-white p-8 text-center shadow-sm">
+        <AlertCircle className="mx-auto h-10 w-10 text-red-400" />
+        <h3 className="mt-3 text-base font-semibold text-gray-900">Gagal memuat jadwal mengawas</h3>
+        <p className="mt-1 text-sm text-gray-500">Coba muat ulang agar jadwal terbaru bisa ditampilkan.</p>
+        <button
+          type="button"
+          onClick={() => void scheduleQuery.refetch()}
+          className="mt-4 inline-flex items-center gap-2 rounded-xl border border-blue-200 bg-blue-50 px-4 py-2 text-sm font-semibold text-blue-700"
+        >
+          <Loader2 className={`h-4 w-4 ${scheduleQuery.isFetching ? 'animate-spin' : ''}`} />
+          Muat Ulang
+        </button>
+      </div>
+    );
   }
 
   return (

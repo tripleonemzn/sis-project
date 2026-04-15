@@ -1,4 +1,5 @@
-import React, { useState, useEffect, useCallback, useRef } from 'react';
+import React, { useState, useEffect, useMemo } from 'react';
+import { useQuery } from '@tanstack/react-query';
 import { useParams, useNavigate } from 'react-router-dom';
 import { ArrowLeft, RefreshCw, Save, Clock, BookOpen, UserCircle2, MapPin, FileText, X } from 'lucide-react';
 import api from '../../../services/api';
@@ -76,81 +77,47 @@ function normalizeExamHeading(label?: string | null) {
   return normalized ? normalized.toUpperCase() : 'UJIAN';
 }
 
+const ACTIVE_MONITORING_INTERVAL_MS = 7000;
+const IDLE_MONITORING_INTERVAL_MS = 30000;
+
 const ProctorMonitoringPage: React.FC = () => {
   const { id: scheduleId } = useParams<{ id: string }>();
   const navigate = useNavigate();
-  const [schedule, setSchedule] = useState<ExamSchedule | null>(null);
-  const [students, setStudents] = useState<StudentData[]>([]);
-  const [loading, setLoading] = useState(true);
   const [refreshing, setRefreshing] = useState(false);
   const [serverTimeDriftMinutes, setServerTimeDriftMinutes] = useState<number | null>(null);
-  const pollingInFlightRef = useRef(false);
 
   // Berita Acara State
   const [notes, setNotes] = useState('');
   const [submittingReport, setSubmittingReport] = useState(false);
   const [reportSubmitted, setReportSubmitted] = useState(false);
   const [isReportModalOpen, setIsReportModalOpen] = useState(false);
-  const hasHydratedExistingReportRef = useRef(false);
 
-  const fetchData = useCallback(async (options?: { silent?: boolean }) => {
-    if (!scheduleId || pollingInFlightRef.current) return;
-    pollingInFlightRef.current = true;
-    try {
+  const detailQuery = useQuery({
+    queryKey: ['teacher-proctor-monitoring', scheduleId || 'unknown'],
+    enabled: Boolean(scheduleId),
+    queryFn: async () => {
       const res = await api.get(`/proctoring/schedules/${scheduleId}`);
-      const nextSchedule = res.data.data.schedule as ExamSchedule;
-      setSchedule(nextSchedule);
-      setStudents(res.data.data.students);
-      const reportRows = Array.isArray(nextSchedule?.proctoringReports)
-        ? [...nextSchedule.proctoringReports]
-        : [];
-      const latestReport = reportRows
-        .sort((a, b) => {
-          const aTime = new Date(String(a.updatedAt || a.signedAt || 0)).getTime();
-          const bTime = new Date(String(b.updatedAt || b.signedAt || 0)).getTime();
-          return bTime - aTime;
-        })[0] || null;
-      const hasExistingReport = Boolean(latestReport?.id);
-      setReportSubmitted(hasExistingReport);
-      if (hasExistingReport && !hasHydratedExistingReportRef.current) {
-        setNotes(mergeProctorReportNotes(latestReport?.notes, latestReport?.incident));
-        hasHydratedExistingReportRef.current = true;
+      return res.data.data as { schedule: ExamSchedule; students: StudentData[] };
+    },
+    staleTime: 10_000,
+    refetchOnWindowFocus: false,
+    refetchOnReconnect: true,
+    refetchInterval: (query) => {
+      if (typeof document !== 'undefined' && document.visibilityState !== 'visible') return false;
+      const nextSchedule = (query.state.data as { schedule?: ExamSchedule } | undefined)?.schedule;
+      const startMs = new Date(String(nextSchedule?.startTime || '')).getTime();
+      const endMs = new Date(String(nextSchedule?.endTime || '')).getTime();
+      const serverNowMs = nextSchedule?.serverNow ? new Date(nextSchedule.serverNow).getTime() : Date.now();
+      if (Number.isFinite(startMs) && Number.isFinite(endMs) && serverNowMs >= startMs && serverNowMs <= endMs) {
+        return ACTIVE_MONITORING_INTERVAL_MS;
       }
-      const serverNowMs = nextSchedule?.serverNow ? new Date(nextSchedule.serverNow).getTime() : NaN;
-      if (Number.isFinite(serverNowMs)) {
-        const driftMs = Math.abs(Date.now() - serverNowMs);
-        setServerTimeDriftMinutes(driftMs >= 2 * 60 * 1000 ? Math.round(driftMs / 60000) : null);
-      } else {
-        setServerTimeDriftMinutes(null);
-      }
-    } catch (error) {
-      console.error('Error fetching proctoring data:', error);
-      if (!options?.silent) {
-        toast.error('Gagal memuat data ujian');
-      }
-    } finally {
-      pollingInFlightRef.current = false;
-    }
-  }, [scheduleId]);
+      return IDLE_MONITORING_INTERVAL_MS;
+    },
+    refetchIntervalInBackground: false,
+  });
 
-  useEffect(() => {
-    let mounted = true;
-    setLoading(true);
-    fetchData({ silent: true }).finally(() => {
-      if (mounted) setLoading(false);
-    });
-    return () => {
-      mounted = false;
-    };
-  }, [fetchData]);
-
-  useEffect(() => {
-    const polling = setInterval(() => {
-      if (document.visibilityState !== 'visible') return;
-      void fetchData({ silent: true });
-    }, 7000);
-    return () => clearInterval(polling);
-  }, [fetchData]);
+  const schedule = detailQuery.data?.schedule || null;
+  const students = detailQuery.data?.students || [];
 
   useEffect(() => {
     if (!isReportModalOpen) return;
@@ -163,9 +130,14 @@ const ProctorMonitoringPage: React.FC = () => {
 
   const handleRefresh = async () => {
     setRefreshing(true);
-    await fetchData({ silent: false });
-    setRefreshing(false);
-    toast.success('Data diperbarui');
+    try {
+      await detailQuery.refetch();
+      toast.success('Data diperbarui');
+    } catch {
+      toast.error('Gagal memuat data ujian');
+    } finally {
+      setRefreshing(false);
+    }
   };
 
   const handleSubmitReport = async () => {
@@ -194,9 +166,8 @@ const ProctorMonitoringPage: React.FC = () => {
         studentCountAbsent: absentCount
       });
       setReportSubmitted(true);
-      hasHydratedExistingReportRef.current = true;
       toast.success('Berita acara berhasil dikirim ke Kurikulum');
-      await fetchData({ silent: true });
+      await detailQuery.refetch();
     } catch (error) {
       console.error('Error submitting report:', error);
       toast.error('Gagal mengirim berita acara');
@@ -205,7 +176,39 @@ const ProctorMonitoringPage: React.FC = () => {
     }
   };
 
-  if (loading) return <div className="p-6">Loading...</div>;
+  const latestReport = useMemo(() => {
+    const reportRows = Array.isArray(schedule?.proctoringReports)
+      ? [...schedule.proctoringReports]
+      : [];
+    return reportRows
+      .sort((a, b) => {
+        const aTime = new Date(String(a.updatedAt || a.signedAt || 0)).getTime();
+        const bTime = new Date(String(b.updatedAt || b.signedAt || 0)).getTime();
+        return bTime - aTime;
+      })[0] || null;
+  }, [schedule?.proctoringReports]);
+
+  useEffect(() => {
+    const hasExistingReport = Boolean(latestReport?.id);
+    setReportSubmitted(hasExistingReport);
+    if (!hasExistingReport) return;
+    if (!isReportModalOpen) {
+      setNotes((current) => (current.trim() ? current : mergeProctorReportNotes(latestReport?.notes, latestReport?.incident)));
+    }
+  }, [isReportModalOpen, latestReport?.id, latestReport?.incident, latestReport?.notes]);
+
+  useEffect(() => {
+    const serverNowMs = schedule?.serverNow ? new Date(schedule.serverNow).getTime() : NaN;
+    if (Number.isFinite(serverNowMs)) {
+      const driftMs = Math.abs(Date.now() - serverNowMs);
+      setServerTimeDriftMinutes(driftMs >= 2 * 60 * 1000 ? Math.round(driftMs / 60000) : null);
+      return;
+    }
+    setServerTimeDriftMinutes(null);
+  }, [schedule?.serverNow]);
+
+  if (detailQuery.isLoading) return <div className="p-6">Loading...</div>;
+  if (detailQuery.isError) return <div className="p-6">Gagal memuat data monitoring ujian</div>;
   if (!schedule) return <div className="p-6">Jadwal tidak ditemukan</div>;
 
   const romanLevelRank = (level: string): number => {
@@ -271,14 +274,6 @@ const ProctorMonitoringPage: React.FC = () => {
     (Number(schedule.attendanceSummary?.absentParticipants) || expectedCount - presentCount),
   );
   const notStartedCount = orderedStudents.filter((student) => student.status === 'NOT_STARTED').length;
-  const latestReport = Array.isArray(schedule.proctoringReports)
-    ? [...schedule.proctoringReports]
-        .sort((a, b) => {
-          const aTime = new Date(String(a.updatedAt || a.signedAt || 0)).getTime();
-          const bTime = new Date(String(b.updatedAt || b.signedAt || 0)).getTime();
-          return bTime - aTime;
-        })[0] || null
-    : null;
   const previewDate = new Date(schedule.startTime);
   const previewWeekday = Number.isNaN(previewDate.getTime())
     ? '-'
