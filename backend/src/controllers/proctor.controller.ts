@@ -4,6 +4,7 @@ import { AdditionalDuty, ExamSessionStatus, Prisma, Semester } from '@prisma/cli
 import QRCode from 'qrcode';
 import prisma from '../utils/prisma';
 import { ApiError, asyncHandler, ApiResponse } from '../utils/api';
+import { broadcastDomainEvent } from '../realtime/realtimeGateway';
 import {
     listHistoricalStudentsByIdsForAcademicYear,
     listHistoricalStudentsForClass,
@@ -2633,6 +2634,24 @@ export const submitBeritaAcara = asyncHandler(async (req: Request, res: Response
             skipDuplicates: false,
         });
     }
+
+    const proctorRealtimeScope: Record<
+        string,
+        string | number | boolean | null | Array<string | number | boolean | null>
+    > = {
+        scheduleIds: [parsedScheduleId],
+        classIds: scope.monitoredClassIds,
+        mode: 'REPORT',
+    };
+    if (schedule.academicYearId) {
+        proctorRealtimeScope.academicYearIds = [Number(schedule.academicYearId)];
+    }
+
+    broadcastDomainEvent({
+        domain: 'PROCTORING',
+        action: 'UPDATED',
+        scope: proctorRealtimeScope,
+    });
 
     res.json(
         new ApiResponse(

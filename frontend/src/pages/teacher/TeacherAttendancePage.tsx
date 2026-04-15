@@ -1,4 +1,4 @@
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useRef } from 'react';
 import { useParams, useNavigate } from 'react-router-dom';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { toast } from 'react-hot-toast';
@@ -72,6 +72,8 @@ export const TeacherAttendancePage = () => {
   
   // Local state for attendance records before saving
   const [attendanceRecords, setAttendanceRecords] = useState<Record<number, { status: AttendanceStatus; note: string }>>({});
+  const [hasUnsavedChanges, setHasUnsavedChanges] = useState(false);
+  const hydratedContextKeyRef = useRef<string>('');
 
   useEffect(() => {
     if (assignmentId && !hasValidAssignmentId) {
@@ -109,6 +111,12 @@ export const TeacherAttendancePage = () => {
   useEffect(() => {
     if (!assignment?.class.students) return;
 
+    const nextContextKey = `${assignment.id}:${selectedDate}`;
+    const shouldForceHydrate = hydratedContextKeyRef.current !== nextContextKey;
+    if (hasUnsavedChanges && !shouldForceHydrate) {
+      return;
+    }
+
     const initialRecords: Record<number, { status: AttendanceStatus; note: string }> = {};
     
     // Default to PRESENT for all students if no existing data
@@ -129,13 +137,16 @@ export const TeacherAttendancePage = () => {
     }
 
     setAttendanceRecords(initialRecords);
-  }, [assignment, attendanceData, selectedDate]);
+    hydratedContextKeyRef.current = nextContextKey;
+    setHasUnsavedChanges(false);
+  }, [assignment, attendanceData, selectedDate, hasUnsavedChanges]);
   /* eslint-enable react-hooks/set-state-in-effect */
 
   // Mutation for saving
   const saveMutation = useMutation({
     mutationFn: attendanceService.saveSubjectAttendance,
     onSuccess: () => {
+      setHasUnsavedChanges(false);
       toast.success('Data presensi berhasil disimpan');
       queryClient.invalidateQueries({ queryKey: ['subject-attendance', assignmentId, selectedDate] });
     },
@@ -146,6 +157,7 @@ export const TeacherAttendancePage = () => {
   });
 
   const handleStatusChange = (studentId: number, status: AttendanceStatus) => {
+    setHasUnsavedChanges(true);
     setAttendanceRecords(prev => ({
       ...prev,
       [studentId]: { ...prev[studentId], status }
@@ -153,6 +165,7 @@ export const TeacherAttendancePage = () => {
   };
 
   const handleNoteChange = (studentId: number, note: string) => {
+    setHasUnsavedChanges(true);
     setAttendanceRecords(prev => ({
       ...prev,
       [studentId]: { ...prev[studentId], note }
@@ -178,6 +191,7 @@ export const TeacherAttendancePage = () => {
   };
 
   const markAll = (status: AttendanceStatus) => {
+    setHasUnsavedChanges(true);
     setAttendanceRecords(prev => {
       const next = { ...prev };
       Object.keys(next).forEach(key => {

@@ -10,9 +10,65 @@ const INVALIDATE_DEBOUNCE_MS = 150;
 const SHORT_LIVED_CONNECTION_MS = 5000;
 const MAX_SHORT_LIVED_CONNECTIONS = 3;
 const SOCKET_COOLDOWN_MS = 5 * 60 * 1000;
+const GRADE_REPORT_QUERY_PREFIXES = [
+  'mobile-student-grade-overview',
+  'mobile-homeroom-report-ledger',
+  'mobile-homeroom-report-ranking',
+  'mobile-homeroom-report-student',
+  'mobile-wakakur-reports-ledger',
+];
+const ATTENDANCE_QUERY_PREFIXES = [
+  'mobile-teacher-subject-attendance',
+  'mobile-student-attendance',
+  'mobile-student-class-attendance',
+  'mobile-homeroom-daily',
+  'mobile-homeroom-recap',
+  'mobile-homeroom-late',
+  'mobile-principal-attendance-recap',
+  'mobile-admin-academic-late-summary',
+  'mobile-wakakur-reports-attendance',
+];
+const PROCTORING_QUERY_PREFIXES = [
+  'mobile-proctoring-schedules',
+  'mobile-proctoring-detail',
+];
+const DOMAIN_QUERY_TARGETS: Record<string, string[]> = {
+  GRADES: GRADE_REPORT_QUERY_PREFIXES,
+  REPORTS: GRADE_REPORT_QUERY_PREFIXES,
+  ATTENDANCE: ATTENDANCE_QUERY_PREFIXES,
+  PROCTORING: PROCTORING_QUERY_PREFIXES,
+};
+const MUTATION_QUERY_TARGETS: Array<{ pattern: RegExp; queryKeyPrefixes: string[] }> = [
+  {
+    pattern: /^\/api\/grades(?:\/|$)/,
+    queryKeyPrefixes: GRADE_REPORT_QUERY_PREFIXES,
+  },
+  {
+    pattern: /^\/api\/reports(?:\/|$)/,
+    queryKeyPrefixes: GRADE_REPORT_QUERY_PREFIXES,
+  },
+  {
+    pattern: /^\/api\/teacher-assignments(?:\/|$)/,
+    queryKeyPrefixes: GRADE_REPORT_QUERY_PREFIXES,
+  },
+  {
+    pattern: /^\/api\/attendances\/(?:subject|daily)(?:\/|$)/,
+    queryKeyPrefixes: ATTENDANCE_QUERY_PREFIXES,
+  },
+  {
+    pattern: /^\/api\/proctoring\/schedules(?:\/|$)/,
+    queryKeyPrefixes: PROCTORING_QUERY_PREFIXES,
+  },
+  {
+    pattern: /^\/api\/server\/(?:info|storage|monitoring)(?:\/|$)/,
+    queryKeyPrefixes: ['mobile-admin-server-info', 'mobile-admin-server-storage', 'mobile-admin-server-monitoring'],
+  },
+];
 
 type RealtimeEventPayload = {
   type?: string;
+  path?: string;
+  domain?: string;
 };
 
 function buildRealtimeWsUrl(token: string) {
@@ -38,6 +94,8 @@ export function useMobileRealtimeSync(enabled: boolean) {
     let shortLivedConnections = 0;
     let socketCooldownUntil = 0;
     let lastOpenedAt = 0;
+    let pendingGlobalInvalidate = false;
+    const pendingQueryKeyPrefixes = new Set<string>();
 
     const isAppActive = () => appState === 'active';
 
@@ -56,11 +114,49 @@ export function useMobileRealtimeSync(enabled: boolean) {
       }, Math.max(delayMs, INITIAL_BACKOFF_MS));
     };
 
-    const scheduleInvalidate = () => {
+    const resolveMutationQueryKeyPrefixes = (path: string): string[] => {
+      for (const target of MUTATION_QUERY_TARGETS) {
+        if (target.pattern.test(path)) {
+          return target.queryKeyPrefixes;
+        }
+      }
+      return [];
+    };
+
+    const resolveDomainQueryKeyPrefixes = (domain: string | undefined): string[] => {
+      const normalized = String(domain || '').trim().toUpperCase();
+      return DOMAIN_QUERY_TARGETS[normalized] || [];
+    };
+
+    const scheduleInvalidate = (queryKeyPrefixes?: string[]) => {
+      if (Array.isArray(queryKeyPrefixes) && queryKeyPrefixes.length > 0) {
+        queryKeyPrefixes.forEach((queryKeyPrefix) => {
+          if (!queryKeyPrefix) return;
+          pendingQueryKeyPrefixes.add(queryKeyPrefix);
+        });
+      } else {
+        pendingGlobalInvalidate = true;
+      }
+
       if (invalidateTimer) return;
       invalidateTimer = setTimeout(() => {
         invalidateTimer = null;
-        void queryClient.invalidateQueries({ refetchType: 'active' });
+        if (pendingGlobalInvalidate) {
+          pendingGlobalInvalidate = false;
+          pendingQueryKeyPrefixes.clear();
+          void queryClient.invalidateQueries({ refetchType: 'active' });
+          return;
+        }
+
+        if (pendingQueryKeyPrefixes.size === 0) return;
+        const targets = Array.from(pendingQueryKeyPrefixes);
+        pendingQueryKeyPrefixes.clear();
+        targets.forEach((queryKeyPrefix) => {
+          void queryClient.invalidateQueries({
+            queryKey: [queryKeyPrefix],
+            refetchType: 'active',
+          });
+        });
       }, INVALIDATE_DEBOUNCE_MS);
     };
 
@@ -104,14 +200,17 @@ export function useMobileRealtimeSync(enabled: boolean) {
             const payload = JSON.parse(event.data) as RealtimeEventPayload;
             if (payload?.type === 'READY') return;
             if (payload?.type === 'PRESENCE') {
-              void queryClient.invalidateQueries({
-                queryKey: ['mobile-admin-server-online-users'],
-                refetchType: 'active',
-              });
-              void queryClient.invalidateQueries({
-                queryKey: ['mobile-admin-server-monitoring'],
-                refetchType: 'active',
-              });
+              scheduleInvalidate(['mobile-admin-server-online-users', 'mobile-admin-server-monitoring']);
+              return;
+            }
+            if (payload?.type === 'DOMAIN_EVENT') {
+              const targets = resolveDomainQueryKeyPrefixes(payload.domain);
+              scheduleInvalidate(targets.length > 0 ? targets : undefined);
+              return;
+            }
+            if (payload?.type === 'MUTATION' && typeof payload.path === 'string') {
+              const targets = resolveMutationQueryKeyPrefixes(payload.path);
+              scheduleInvalidate(targets.length > 0 ? targets : undefined);
               return;
             }
           } catch {

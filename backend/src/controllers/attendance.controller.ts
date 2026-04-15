@@ -2,6 +2,7 @@ import { Request, Response } from 'express';
 import { z } from 'zod';
 import prisma from '../utils/prisma';
 import { ApiError, ApiResponse, asyncHandler } from '../utils/api';
+import { broadcastDomainEvent } from '../realtime/realtimeGateway';
 import { listHistoricalStudentsForClass } from '../utils/studentAcademicHistory';
 import {
   ensureAcademicYearArchiveReadAccess,
@@ -85,6 +86,17 @@ export const saveDailyAttendance = asyncHandler(async (req: Request, res: Respon
               });
           }
       }
+  });
+
+  broadcastDomainEvent({
+    domain: 'ATTENDANCE',
+    action: 'UPDATED',
+    scope: {
+      classIds: [classId],
+      academicYearIds: [academicYearId],
+      dates: [date.toISOString().slice(0, 10)],
+      attendanceMode: 'DAILY',
+    },
   });
   
   res.status(200).json(new ApiResponse(200, null, 'Presensi harian berhasil disimpan'));
@@ -248,6 +260,18 @@ export const saveSubjectAttendance = asyncHandler(async (req: Request, res: Resp
     }
 
     return attendance;
+  });
+
+  broadcastDomainEvent({
+    domain: 'ATTENDANCE',
+    action: 'UPDATED',
+    scope: {
+      classIds: [classId],
+      subjectIds: [subjectId],
+      academicYearIds: [academicYearId],
+      dates: [date.toISOString().slice(0, 10)],
+      attendanceMode: 'SUBJECT',
+    },
   });
 
   res.status(200).json(new ApiResponse(200, result, 'Presensi mapel berhasil disimpan'));

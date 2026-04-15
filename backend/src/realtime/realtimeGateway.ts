@@ -86,6 +86,19 @@ export type RealtimeMutationEventPayload = {
   durationMs: number;
 };
 
+type RealtimeDomainEventScopeValue =
+  | string
+  | number
+  | boolean
+  | null
+  | Array<string | number | boolean | null>;
+
+export type RealtimeDomainEventPayload = {
+  domain: 'GRADES' | 'REPORTS' | 'ATTENDANCE' | 'PROCTORING';
+  action: 'UPDATED' | 'STALE';
+  scope?: Record<string, RealtimeDomainEventScopeValue>;
+};
+
 type RealtimeMutationEvent = {
   type: 'MUTATION';
   eventId: string;
@@ -94,6 +107,15 @@ type RealtimeMutationEvent = {
   path: string;
   statusCode: number;
   durationMs: number;
+};
+
+type RealtimeDomainEvent = {
+  type: 'DOMAIN_EVENT';
+  eventId: string;
+  at: string;
+  domain: RealtimeDomainEventPayload['domain'];
+  action: RealtimeDomainEventPayload['action'];
+  scope?: Record<string, RealtimeDomainEventScopeValue>;
 };
 
 type RealtimePresenceEvent = {
@@ -635,6 +657,19 @@ export function initializeRealtimeGateway(server: HttpServer) {
   return wsServer;
 }
 
+function broadcastJsonMessage(message: string) {
+  if (!wsServer) return;
+
+  for (const socket of wsServer.clients) {
+    if (socket.readyState !== WebSocket.OPEN) continue;
+    try {
+      socket.send(message);
+    } catch {
+      // skip dead socket
+    }
+  }
+}
+
 export function broadcastMutationEvent(payload: RealtimeMutationEventPayload) {
   if (!wsServer) return;
 
@@ -648,15 +683,22 @@ export function broadcastMutationEvent(payload: RealtimeMutationEventPayload) {
     durationMs: payload.durationMs,
   };
 
-  const message = JSON.stringify(event);
-  for (const socket of wsServer.clients) {
-    if (socket.readyState !== WebSocket.OPEN) continue;
-    try {
-      socket.send(message);
-    } catch {
-      // skip dead socket
-    }
-  }
+  broadcastJsonMessage(JSON.stringify(event));
+}
+
+export function broadcastDomainEvent(payload: RealtimeDomainEventPayload) {
+  if (!wsServer) return;
+
+  const event: RealtimeDomainEvent = {
+    type: 'DOMAIN_EVENT',
+    eventId: nextEventId(),
+    at: new Date().toISOString(),
+    domain: payload.domain,
+    action: payload.action,
+    scope: payload.scope,
+  };
+
+  broadcastJsonMessage(JSON.stringify(event));
 }
 
 export async function getRealtimePresenceSnapshot(): Promise<RealtimePresenceSnapshot> {

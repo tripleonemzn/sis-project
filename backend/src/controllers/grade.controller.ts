@@ -3,6 +3,7 @@ import { Semester, GradeComponentType, GradeEntryMode, Prisma, ReportComponentSl
 import prisma from '../utils/prisma'
 import { ApiResponseHelper } from '../utils/ApiResponse'
 import { ApiError } from '../utils/api'
+import { broadcastDomainEvent } from '../realtime/realtimeGateway'
 import {
   getHistoricalStudentSnapshotForAcademicYear,
   listHistoricalStudentsByIdsForAcademicYear,
@@ -60,6 +61,59 @@ type StudentScoreEntryFindManyDelegate = {
 type AuthUserLike = {
   id?: number | string
   role?: string | null
+}
+
+function uniqPositiveNumbers(values: unknown[]): number[] {
+  const unique = new Set<number>()
+  values.forEach((value) => {
+    const parsed = Number(value)
+    if (!Number.isFinite(parsed) || parsed <= 0) return
+    unique.add(parsed)
+  })
+  return Array.from(unique)
+}
+
+function uniqSemesterValues(values: unknown[]): Semester[] {
+  const unique = new Set<Semester>()
+  values.forEach((value) => {
+    const normalized = parseStudentReportSemester(value)
+    if (!normalized) return
+    unique.add(normalized)
+  })
+  return Array.from(unique)
+}
+
+function emitGradeRealtimeRefresh(params: {
+  studentIds?: unknown[]
+  subjectIds?: unknown[]
+  academicYearIds?: unknown[]
+  semesters?: unknown[]
+  includeReports?: boolean
+}) {
+  const studentIds = uniqPositiveNumbers(params.studentIds || [])
+  const subjectIds = uniqPositiveNumbers(params.subjectIds || [])
+  const academicYearIds = uniqPositiveNumbers(params.academicYearIds || [])
+  const semesters = uniqSemesterValues(params.semesters || [])
+
+  const scope: Record<string, string | number | boolean | null | Array<string | number | boolean | null>> = {}
+  if (studentIds.length > 0) scope.studentIds = studentIds
+  if (subjectIds.length > 0) scope.subjectIds = subjectIds
+  if (academicYearIds.length > 0) scope.academicYearIds = academicYearIds
+  if (semesters.length > 0) scope.semesters = semesters
+
+  broadcastDomainEvent({
+    domain: 'GRADES',
+    action: 'UPDATED',
+    scope: Object.keys(scope).length > 0 ? scope : undefined,
+  })
+
+  if (params.includeReports) {
+    broadcastDomainEvent({
+      domain: 'REPORTS',
+      action: 'UPDATED',
+      scope: Object.keys(scope).length > 0 ? scope : undefined,
+    })
+  }
 }
 
 type CompetencyThresholdSet = {
@@ -3825,6 +3879,13 @@ export const createOrUpdateStudentGrade = async (req: Request, res: Response) =>
         Number(academic_year_id),
         semester as Semester
       )
+      emitGradeRealtimeRefresh({
+        studentIds: [student_id],
+        subjectIds: [subject_id],
+        academicYearIds: [academic_year_id],
+        semesters: [semester],
+        includeReports: reportSync.success,
+      })
       return ApiResponseHelper.success(
         res,
         {
@@ -3938,6 +3999,13 @@ export const createOrUpdateStudentGrade = async (req: Request, res: Response) =>
       Number(academic_year_id),
       semester as Semester
     )
+    emitGradeRealtimeRefresh({
+      studentIds: [student_id],
+      subjectIds: [subject_id],
+      academicYearIds: [academic_year_id],
+      semesters: [semester],
+      includeReports: reportSync.success,
+    })
 
     return ApiResponseHelper.success(
       res,
@@ -4309,6 +4377,16 @@ export const bulkCreateOrUpdateStudentGrades = async (req: Request, res: Respons
     })
 
     await Promise.all(syncPromises)
+
+    if (results.success > 0) {
+      emitGradeRealtimeRefresh({
+        studentIds: grades.map((item: any) => item?.student_id),
+        subjectIds: grades.map((item: any) => item?.subject_id),
+        academicYearIds: grades.map((item: any) => item?.academic_year_id),
+        semesters: grades.map((item: any) => item?.semester),
+        includeReports: results.reportSync.success > 0,
+      })
+    }
 
     return ApiResponseHelper.success(res, results, 'Bulk grade operation completed')
   } catch (error) {

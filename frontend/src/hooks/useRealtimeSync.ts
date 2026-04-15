@@ -17,6 +17,26 @@ const NOTIFICATION_MUTATION_PATTERNS: RegExp[] = [
   /^\/api\/exams\/packets\/\d+\/review-feedback(?:\/|$)/,
   /^\/api\/notifications(?:\/|$)/,
 ];
+const GRADE_REPORT_QUERY_PREFIXES = [
+  'student-grade-overview',
+  'class-ledger',
+  'class-rankings',
+  'wakasek-academic-ledger-preview',
+];
+const ATTENDANCE_QUERY_PREFIXES = [
+  'subject-attendance',
+  'student-daily-attendance',
+  'student-attendance-history',
+];
+const PROCTORING_QUERY_PREFIXES = [
+  'wakasek-academic-proctor-summary',
+];
+const DOMAIN_QUERY_TARGETS: Record<string, string[]> = {
+  GRADES: GRADE_REPORT_QUERY_PREFIXES,
+  REPORTS: GRADE_REPORT_QUERY_PREFIXES,
+  ATTENDANCE: ATTENDANCE_QUERY_PREFIXES,
+  PROCTORING: PROCTORING_QUERY_PREFIXES,
+};
 const MUTATION_QUERY_TARGETS: Array<{ pattern: RegExp; queryKeyPrefixes: string[] }> = [
   {
     pattern: /^\/api\/exams\/packets(?:\/|$)/,
@@ -32,7 +52,28 @@ const MUTATION_QUERY_TARGETS: Array<{ pattern: RegExp; queryKeyPrefixes: string[
   },
   {
     pattern: /^\/api\/teacher-assignments(?:\/|$)/,
-    queryKeyPrefixes: ['teacher-assignments', 'teacher-assignments-dashboard', 'teaching-load-summary'],
+    queryKeyPrefixes: [
+      'teacher-assignments',
+      'teacher-assignments-dashboard',
+      'teaching-load-summary',
+      ...GRADE_REPORT_QUERY_PREFIXES,
+    ],
+  },
+  {
+    pattern: /^\/api\/grades(?:\/|$)/,
+    queryKeyPrefixes: GRADE_REPORT_QUERY_PREFIXES,
+  },
+  {
+    pattern: /^\/api\/reports(?:\/|$)/,
+    queryKeyPrefixes: GRADE_REPORT_QUERY_PREFIXES,
+  },
+  {
+    pattern: /^\/api\/attendances\/(?:subject|daily)(?:\/|$)/,
+    queryKeyPrefixes: ATTENDANCE_QUERY_PREFIXES,
+  },
+  {
+    pattern: /^\/api\/proctoring\/schedules(?:\/|$)/,
+    queryKeyPrefixes: PROCTORING_QUERY_PREFIXES,
   },
   {
     pattern: /^\/api\/academic-years(?:\/|$)/,
@@ -51,6 +92,7 @@ const MUTATION_QUERY_TARGETS: Array<{ pattern: RegExp; queryKeyPrefixes: string[
 type RealtimeMutationPayload = {
   type?: string;
   path?: string;
+  domain?: string;
 };
 
 function buildRealtimeWsUrl(token: string) {
@@ -145,6 +187,11 @@ export function useRealtimeSync(enabled: boolean) {
       return [];
     };
 
+    const resolveDomainQueryKeyPrefixes = (domain: string | undefined): string[] => {
+      const normalized = String(domain || '').trim().toUpperCase();
+      return DOMAIN_QUERY_TARGETS[normalized] || [];
+    };
+
     const scheduleInvalidate = (queryKeyPrefixes?: string[]) => {
       if (Array.isArray(queryKeyPrefixes) && queryKeyPrefixes.length > 0) {
         queryKeyPrefixes.forEach((queryKeyPrefix) => {
@@ -220,6 +267,11 @@ export function useRealtimeSync(enabled: boolean) {
         if (payload?.type === 'READY') return;
         if (payload?.type === 'PRESENCE') {
           scheduleInvalidate(['admin-server-online-users', 'admin-server-monitoring']);
+          return;
+        }
+        if (payload?.type === 'DOMAIN_EVENT') {
+          const targets = resolveDomainQueryKeyPrefixes(payload.domain);
+          scheduleInvalidate(targets.length > 0 ? targets : undefined);
           return;
         }
         if (payload?.type === 'MUTATION' && typeof payload.path === 'string') {

@@ -3,6 +3,7 @@ import { z } from 'zod';
 import { Prisma, Semester } from '@prisma/client';
 import prisma from '../utils/prisma';
 import { ApiError, ApiResponse, asyncHandler } from '../utils/api';
+import { broadcastDomainEvent } from '../realtime/realtimeGateway';
 import { writeAuditLog } from '../utils/auditLog';
 import { listHistoricalStudentsForClass } from '../utils/studentAcademicHistory';
 
@@ -444,6 +445,17 @@ export const updateCompetencyThresholds = asyncHandler(async (req: Request, res:
     },
     (req.body as any)?.reason,
   );
+
+  broadcastDomainEvent({
+    domain: 'REPORTS',
+    action: 'UPDATED',
+    scope: {
+      academicYearIds: [Number(before.academicYearId)],
+      subjectIds: [Number(before.subjectId)],
+      semesters: [targetSemester],
+      classIds: affectedClassIds,
+    },
+  });
 
   res.status(200).json(new ApiResponse(200, assignment, 'Deskripsi capaian kompetensi berhasil disimpan'));
 });
