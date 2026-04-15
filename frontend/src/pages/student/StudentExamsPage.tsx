@@ -1375,27 +1375,28 @@ export default function StudentExamsPage() {
                       </div>
 
                       <div className="relative border-b border-gray-200 px-3 py-2.5">
-                        <div className="mx-auto grid max-w-[438px] grid-cols-[56px_minmax(0,1fr)_56px] items-center gap-3 text-center">
-                          <div className="flex h-14 w-14 shrink-0 items-center justify-center justify-self-center md:h-16 md:w-16">
+                        <div className="mx-auto flex max-w-[438px] justify-center text-center">
+                          <div className="inline-flex max-w-[336px] items-center gap-3 md:max-w-[360px]">
+                            <div className="flex h-14 w-14 shrink-0 items-center justify-center md:h-16 md:w-16">
                             {schoolLogoUrl ? (
                               <img src={schoolLogoUrl} alt="Logo KGB2" className="h-14 w-14 object-contain md:h-16 md:w-16" />
                             ) : null}
+                            </div>
+                            <div className="min-w-0 max-w-[268px] text-center leading-tight md:max-w-[292px]">
+                              <div className="text-[11px] font-semibold uppercase leading-tight text-gray-900 md:text-[13px]">
+                                {card.payload.cardTitle || 'Kartu Peserta'}
+                              </div>
+                              <div className="mt-0.5 text-[11px] font-semibold uppercase leading-tight text-gray-900 md:text-[13px]">
+                                {card.payload.examTitle || card.payload.programLabel}
+                              </div>
+                              <div className="mt-0.5 text-[11px] font-semibold uppercase leading-tight text-gray-900 md:text-[13px]">
+                                {card.payload.institutionName || card.payload.schoolName}
+                              </div>
+                              <div className="mt-0.5 text-[11px] font-semibold uppercase leading-tight text-gray-900 md:text-[13px]">
+                                {`Tahun Ajaran ${card.payload.academicYearName}`}
+                              </div>
+                            </div>
                           </div>
-                          <div className="text-center leading-tight">
-                            <div className="text-[11px] font-semibold uppercase leading-tight text-gray-900 md:text-[13px]">
-                              {card.payload.cardTitle || 'Kartu Peserta'}
-                            </div>
-                            <div className="mt-0.5 text-[11px] font-semibold uppercase leading-tight text-gray-900 md:text-[13px]">
-                              {card.payload.examTitle || card.payload.programLabel}
-                            </div>
-                            <div className="mt-0.5 text-[11px] font-semibold uppercase leading-tight text-gray-900 md:text-[13px]">
-                              {card.payload.institutionName || card.payload.schoolName}
-                            </div>
-                            <div className="mt-0.5 text-[11px] font-semibold uppercase leading-tight text-gray-900 md:text-[13px]">
-                              {`Tahun Ajaran ${card.payload.academicYearName}`}
-                            </div>
-                          </div>
-                          <div className="h-14 w-14 md:h-16 md:w-16" aria-hidden="true" />
                         </div>
                       </div>
 

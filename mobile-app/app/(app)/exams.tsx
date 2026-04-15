@@ -741,10 +741,11 @@ export default function StudentExamsScreen() {
                       <View
                         style={{
                           alignSelf: 'center',
-                          width: '100%',
                           maxWidth: 292,
                           flexDirection: 'row',
                           alignItems: 'center',
+                          justifyContent: 'center',
+                          paddingHorizontal: 4,
                         }}
                       >
                         <View style={{ width: 48, alignItems: 'center', justifyContent: 'center' }}>
@@ -756,7 +757,7 @@ export default function StudentExamsScreen() {
                             />
                           ) : null}
                         </View>
-                        <View style={{ flex: 1, paddingHorizontal: 8 }}>
+                        <View style={{ maxWidth: 224, flexShrink: 1, paddingHorizontal: 8 }}>
                           <Text
                             style={{
                               color: '#0f172a',
@@ -809,7 +810,6 @@ export default function StudentExamsScreen() {
                             {`Tahun Ajaran ${card.payload.academicYearName}`}
                           </Text>
                         </View>
-                        <View style={{ width: 48 }} />
                       </View>
                     </View>
 
