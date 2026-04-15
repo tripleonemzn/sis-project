@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useMemo, useState } from 'react';
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { Redirect, useRouter } from 'expo-router';
 import { Feather } from '@expo/vector-icons';
 import { useMutation, useQueryClient } from '@tanstack/react-query';
@@ -784,6 +784,8 @@ export default function ProfileScreen() {
   const [activeProfileInsight, setActiveProfileInsight] = useState<ProfileInsightId | null>(null);
   const [form, setForm] = useState<EditableProfileForm>(emptyForm);
   const [educationHistories, setEducationHistories] = useState<ProfileEducationHistory[]>([]);
+  const shouldHydrateProfileRef = useRef(true);
+  const lastHydratedProfileKeyRef = useRef<string | null>(null);
 
   const profile = profileQuery.data?.profile ?? null;
   const baseline = useMemo(() => (profile ? buildForm(profile) : emptyForm), [profile]);
@@ -1100,24 +1102,40 @@ export default function ProfileScreen() {
     }, [isAuthenticated, queryClient]),
   );
 
-  useEffect(() => {
-    if (!profile) return;
-    setForm(buildForm(profile));
-    setEducationHistories(baselineEducationHistories);
-  }, [baselineEducationHistories, profile]);
-
-  useEffect(() => {
-    if (!visibleTabs.includes(activeTab)) {
-      setActiveTab(visibleTabs[0]);
-    }
-  }, [activeTab, visibleTabs]);
-
   const isDirty = useMemo(
     () =>
       JSON.stringify(form) !== JSON.stringify(baseline) ||
       JSON.stringify(educationHistories) !== JSON.stringify(baselineEducationHistories),
     [baseline, baselineEducationHistories, educationHistories, form],
   );
+
+  const refreshProfileQuery = useCallback(async () => {
+    shouldHydrateProfileRef.current = true;
+    await queryClient.invalidateQueries({ queryKey: MOBILE_PROFILE_QUERY_KEY });
+    await profileQuery.refetch();
+  }, [profileQuery, queryClient]);
+
+  useEffect(() => {
+    if (!profile) return;
+    const profileKey = `${profile.id}:${String(profile.updatedAt || '')}`;
+    const shouldHydrate =
+      shouldHydrateProfileRef.current ||
+      lastHydratedProfileKeyRef.current === null ||
+      !isDirty;
+    if (!shouldHydrate || profileKey === lastHydratedProfileKeyRef.current) {
+      return;
+    }
+    setForm(buildForm(profile));
+    setEducationHistories(baselineEducationHistories);
+    lastHydratedProfileKeyRef.current = profileKey;
+    shouldHydrateProfileRef.current = false;
+  }, [baselineEducationHistories, isDirty, profile]);
+
+  useEffect(() => {
+    if (!visibleTabs.includes(activeTab)) {
+      setActiveTab(visibleTabs[0]);
+    }
+  }, [activeTab, visibleTabs]);
 
   const saveMutation = useMutation({
     mutationFn: async () => {
@@ -1190,8 +1208,7 @@ export default function ProfileScreen() {
       return profileApi.updateSelf(profile.id, payload);
     },
     onSuccess: async () => {
-      await queryClient.invalidateQueries({ queryKey: MOBILE_PROFILE_QUERY_KEY });
-      await profileQuery.refetch();
+      await refreshProfileQuery();
       notifySuccess('Profil berhasil diperbarui.');
     },
     onError: (error: unknown) => {
@@ -1243,8 +1260,7 @@ export default function ProfileScreen() {
         type: mime,
       });
       await profileApi.updateSelf(profile.id, { photo: uploaded.url });
-      await queryClient.invalidateQueries({ queryKey: MOBILE_PROFILE_QUERY_KEY });
-      await profileQuery.refetch();
+      await refreshProfileQuery();
       notifySuccess('Foto profil berhasil diperbarui.');
     } catch (error) {
       notifyApiError(error, 'Gagal mengunggah foto profil.');
@@ -1307,8 +1323,7 @@ export default function ProfileScreen() {
         ],
       });
 
-      await queryClient.invalidateQueries({ queryKey: MOBILE_PROFILE_QUERY_KEY });
-      await profileQuery.refetch();
+      await refreshProfileQuery();
       notifySuccess('Dokumen berhasil diunggah.');
     } catch (error) {
       notifyApiError(error, 'Gagal mengunggah dokumen.');
@@ -1329,8 +1344,7 @@ export default function ProfileScreen() {
         }));
 
       await profileApi.updateSelf(profile.id, { documents: nextDocs });
-      await queryClient.invalidateQueries({ queryKey: MOBILE_PROFILE_QUERY_KEY });
-      await profileQuery.refetch();
+      await refreshProfileQuery();
       notifySuccess('Dokumen berhasil dihapus.');
     } catch (error) {
       notifyApiError(error, 'Gagal menghapus dokumen.');
@@ -1384,8 +1398,7 @@ export default function ProfileScreen() {
         category: document.category,
       })),
     });
-    await queryClient.invalidateQueries({ queryKey: MOBILE_PROFILE_QUERY_KEY });
-    await profileQuery.refetch();
+    await refreshProfileQuery();
     notifySuccess('Dokumen pendukung berhasil disimpan.');
   };
 
@@ -1402,22 +1415,38 @@ export default function ProfileScreen() {
     });
   };
 
-  const handleEducationHistorySave = (history: ProfileEducationHistory) => {
-    setEducationHistories((prev) =>
-      sanitizeEducationHistories(
-        prev.map((entry) => (entry.level === history.level ? history : entry)),
-        educationTrack,
-      ),
+  const handleEducationHistorySave = async (history: ProfileEducationHistory) => {
+    const nextHistories = sanitizeEducationHistories(
+      educationHistories.map((entry) => (entry.level === history.level ? history : entry)),
+      educationTrack,
     );
+    if (!profile?.id) {
+      setEducationHistories(nextHistories);
+      return;
+    }
+    await profileApi.updateSelf(profile.id, {
+      educationHistories: nextHistories,
+    });
+    setEducationHistories(nextHistories);
+    await refreshProfileQuery();
+    notifySuccess('Riwayat pendidikan berhasil disimpan.');
   };
 
-  const handleEducationHistoryRemove = (level: ProfileEducationLevel) => {
-    setEducationHistories((prev) =>
-      sanitizeEducationHistories(
-        prev.map((entry) => (entry.level === level ? createEmptyEducationHistory(level) : entry)),
-        educationTrack,
-      ),
+  const handleEducationHistoryRemove = async (level: ProfileEducationLevel) => {
+    const nextHistories = sanitizeEducationHistories(
+      educationHistories.map((entry) => (entry.level === level ? createEmptyEducationHistory(level) : entry)),
+      educationTrack,
     );
+    if (!profile?.id) {
+      setEducationHistories(nextHistories);
+      return;
+    }
+    await profileApi.updateSelf(profile.id, {
+      educationHistories: nextHistories,
+    });
+    setEducationHistories(nextHistories);
+    await refreshProfileQuery();
+    notifySuccess('Riwayat pendidikan berhasil diperbarui.');
   };
 
   const handleEducationDocumentPick = async (): Promise<ProfileEducationDocument | null> => {
@@ -1454,7 +1483,7 @@ export default function ProfileScreen() {
         size: uploaded.size ?? null,
         uploadedAt: new Date().toISOString(),
       };
-      notifySuccess('Dokumen riwayat pendidikan berhasil diunggah. Simpan riwayat pendidikan untuk merekam perubahan.');
+      notifySuccess('Dokumen riwayat pendidikan berhasil diunggah. Klik Simpan Riwayat Pendidikan untuk menyimpan ke profil.');
       return document;
     } catch (error) {
       notifyApiError(error, 'Gagal mengunggah dokumen riwayat pendidikan.');

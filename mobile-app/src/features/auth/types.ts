@@ -45,6 +45,7 @@ export type AuthUser = {
   role: string;
   isDemo?: boolean;
   username: string;
+  updatedAt?: string | null;
   verificationStatus?: 'PENDING' | 'VERIFIED' | 'REJECTED' | null;
   gender?: 'MALE' | 'FEMALE' | null;
   citizenship?: string | null;

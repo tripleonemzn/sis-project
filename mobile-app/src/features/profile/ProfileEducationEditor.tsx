@@ -21,8 +21,8 @@ type EditableEducationField = 'institutionName' | 'faculty' | 'studyProgram' | '
 type ProfileEducationEditorProps = {
   track: ProfileEducationTrack;
   histories: ProfileEducationHistory[];
-  onSaveHistory: (history: ProfileEducationHistory) => void;
-  onRemoveHistory: (level: ProfileEducationLevel) => void;
+  onSaveHistory: (history: ProfileEducationHistory) => Promise<void> | void;
+  onRemoveHistory: (level: ProfileEducationLevel) => Promise<void> | void;
   onPickDocument: () => Promise<ProfileEducationDocument | null>;
   onViewDocument?: (document: ProfileEducationDocument) => void;
 };
@@ -116,6 +116,8 @@ export function ProfileEducationEditor({
   const [draftHistory, setDraftHistory] = useState<ProfileEducationHistory | null>(null);
   const [uploadingKind, setUploadingKind] = useState<ProfileEducationDocumentKind | null>(null);
   const [draftError, setDraftError] = useState('');
+  const [isPersisting, setIsPersisting] = useState(false);
+  const [removingLevel, setRemovingLevel] = useState<ProfileEducationLevel | null>(null);
 
   useEffect(() => {
     if (!isModalOpen) return;
@@ -153,6 +155,7 @@ export function ProfileEducationEditor({
   };
 
   const closeModal = () => {
+    if (isPersisting) return;
     setIsModalOpen(false);
     setModalMode('create');
     setDraftHistory(null);
@@ -203,7 +206,7 @@ export function ProfileEducationEditor({
     );
   };
 
-  const handleSaveDraft = () => {
+  const handleSaveDraft = async () => {
     if (!draftHistory) return;
     if (!hasEducationHistoryContent(draftHistory)) {
       setDraftError(
@@ -211,8 +214,13 @@ export function ProfileEducationEditor({
       );
       return;
     }
-    onSaveHistory(draftHistory);
-    closeModal();
+    setIsPersisting(true);
+    try {
+      await onSaveHistory(draftHistory);
+      closeModal();
+    } finally {
+      setIsPersisting(false);
+    }
   };
 
   const confirmRemoveHistory = (history: ProfileEducationHistory) => {
@@ -224,7 +232,12 @@ export function ProfileEducationEditor({
         {
           text: 'Hapus',
           style: 'destructive',
-          onPress: () => onRemoveHistory(history.level),
+          onPress: () => {
+            setRemovingLevel(history.level);
+            Promise.resolve(onRemoveHistory(history.level)).finally(() => {
+              setRemovingLevel(null);
+            });
+          },
         },
       ],
     );
@@ -374,6 +387,7 @@ export function ProfileEducationEditor({
                 <View style={{ paddingHorizontal: 4, marginBottom: 8 }}>
                   <Pressable
                     onPress={() => confirmRemoveHistory(history)}
+                    disabled={removingLevel === history.level}
                     style={{
                       borderWidth: 1,
                       borderColor: '#fecaca',
@@ -383,7 +397,9 @@ export function ProfileEducationEditor({
                       paddingVertical: 10,
                     }}
                   >
-                    <Text style={{ color: '#dc2626', fontWeight: '700' }}>Hapus</Text>
+                    <Text style={{ color: '#dc2626', fontWeight: '700' }}>
+                      {removingLevel === history.level ? 'Menghapus...' : 'Hapus'}
+                    </Text>
                   </Pressable>
                 </View>
               </View>
@@ -450,6 +466,7 @@ export function ProfileEducationEditor({
               </View>
               <Pressable
                 onPress={closeModal}
+                disabled={isPersisting}
                 style={{
                   borderWidth: 1,
                   borderColor: '#cbd5e1',
@@ -693,17 +710,22 @@ export function ProfileEducationEditor({
                 <Text style={{ color: '#334155', fontWeight: '700' }}>Batal</Text>
               </Pressable>
               <Pressable
-                onPress={handleSaveDraft}
+                onPress={() => {
+                  void handleSaveDraft();
+                }}
+                disabled={isPersisting}
                 style={{
                   borderWidth: 1,
                   borderColor: '#2563eb',
                   borderRadius: 12,
                   paddingVertical: 10,
                   paddingHorizontal: 14,
-                  backgroundColor: '#2563eb',
+                  backgroundColor: isPersisting ? '#93c5fd' : '#2563eb',
                 }}
               >
-                <Text style={{ color: '#fff', fontWeight: '700' }}>Simpan Riwayat Pendidikan</Text>
+                <Text style={{ color: '#fff', fontWeight: '700' }}>
+                  {isPersisting ? 'Menyimpan...' : 'Simpan Riwayat Pendidikan'}
+                </Text>
               </Pressable>
             </View>
           </View>

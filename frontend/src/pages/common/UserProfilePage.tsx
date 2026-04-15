@@ -635,6 +635,10 @@ export const UserProfilePage = () => {
   const fileInputRef = useRef<HTMLInputElement | null>(null);
   
   const queryClient = useQueryClient();
+  const refreshSelfProfile = async () => {
+    authService.clearMeCache();
+    await queryClient.invalidateQueries({ queryKey: ['me'] });
+  };
 
   const { data: userResponse, isLoading: isUserLoading } = useQuery<{ data: User }>({
     queryKey: ['me'],
@@ -1252,9 +1256,8 @@ export const UserProfilePage = () => {
 
        return userService.update(id, finalPayload);
     },
-    onSuccess: () => {
-      authService.clearMeCache();
-      queryClient.invalidateQueries({ queryKey: ['me'] });
+    onSuccess: async () => {
+      await refreshSelfProfile();
       toast.success('Profil berhasil diperbarui');
     },
     onError: (error: unknown) => {
@@ -1331,7 +1334,7 @@ export const UserProfilePage = () => {
                     category: d.category
                 }))
             });
-            queryClient.invalidateQueries({ queryKey: ['me'] });
+            await refreshSelfProfile();
           } catch (error) {
             console.error('Auto-save failed:', error);
             // Non-blocking error
@@ -1348,22 +1351,38 @@ export const UserProfilePage = () => {
     }
   };
 
-  const handleEducationHistorySave = (history: ProfileEducationHistory) => {
-    setEducationHistories((prev) =>
-      sanitizeEducationHistories(
-        prev.map((entry) => (entry.level === history.level ? history : entry)),
-        educationTrack,
-      ),
+  const handleEducationHistorySave = async (history: ProfileEducationHistory) => {
+    const nextHistories = sanitizeEducationHistories(
+      educationHistories.map((entry) => (entry.level === history.level ? history : entry)),
+      educationTrack,
     );
+    if (!user?.id) {
+      setEducationHistories(nextHistories);
+      return;
+    }
+    await userService.update(user.id, {
+      educationHistories: nextHistories,
+    });
+    setEducationHistories(nextHistories);
+    await refreshSelfProfile();
+    toast.success('Riwayat pendidikan berhasil disimpan');
   };
 
-  const handleEducationHistoryRemove = (level: ProfileEducationLevel) => {
-    setEducationHistories((prev) =>
-      sanitizeEducationHistories(
-        prev.map((entry) => (entry.level === level ? createEmptyEducationHistory(level) : entry)),
-        educationTrack,
-      ),
+  const handleEducationHistoryRemove = async (level: ProfileEducationLevel) => {
+    const nextHistories = sanitizeEducationHistories(
+      educationHistories.map((entry) => (entry.level === level ? createEmptyEducationHistory(level) : entry)),
+      educationTrack,
     );
+    if (!user?.id) {
+      setEducationHistories(nextHistories);
+      return;
+    }
+    await userService.update(user.id, {
+      educationHistories: nextHistories,
+    });
+    setEducationHistories(nextHistories);
+    await refreshSelfProfile();
+    toast.success('Riwayat pendidikan berhasil diperbarui');
   };
 
   const handleEducationDocumentUpload = async (file: File): Promise<ProfileEducationDocument> => {
@@ -1387,7 +1406,7 @@ export const UserProfilePage = () => {
         size: uploaded.size,
         uploadedAt: new Date().toISOString(),
       };
-      toast.success(`${file.name} berhasil diunggah. Simpan riwayat pendidikan untuk merekam perubahan.`);
+      toast.success(`${file.name} berhasil diunggah. Klik Simpan Riwayat Pendidikan untuk menyimpan ke profil.`);
       return document;
     } catch (error) {
       console.error(error);
@@ -1441,7 +1460,7 @@ export const UserProfilePage = () => {
           category: document.category,
         })),
       });
-      queryClient.invalidateQueries({ queryKey: ['me'] });
+      await refreshSelfProfile();
       toast.success('Dokumen pendukung berhasil disimpan');
     } catch (error) {
       setValue('documents', previousDocuments, { shouldDirty: false, shouldValidate: false });
@@ -1507,8 +1526,7 @@ export const UserProfilePage = () => {
           // Auto-save photo to user profile
           if (user?.id) {
              await userService.update(user.id, { photo: result.url });
-             // Invalidate queries to refresh data
-             queryClient.invalidateQueries({ queryKey: ['me'] });
+             await refreshSelfProfile();
           }
           
           toast.success('Foto profil berhasil diperbarui');
@@ -2970,7 +2988,7 @@ export const UserProfilePage = () => {
                                       category: doc.category,
                                     })),
                                   });
-                                  queryClient.invalidateQueries({ queryKey: ['me'] });
+                                  await refreshSelfProfile();
                                   toast.success('Dokumen berhasil dihapus');
                                 } catch (error) {
                                   console.error(error);

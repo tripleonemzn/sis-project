@@ -21,8 +21,8 @@ type EditableEducationField = 'institutionName' | 'faculty' | 'studyProgram' | '
 type ProfileEducationEditorProps = {
   track: ProfileEducationTrack;
   histories: ProfileEducationHistory[];
-  onSaveHistory: (history: ProfileEducationHistory) => void;
-  onRemoveHistory: (level: ProfileEducationLevel) => void;
+  onSaveHistory: (history: ProfileEducationHistory) => Promise<void> | void;
+  onRemoveHistory: (level: ProfileEducationLevel) => Promise<void> | void;
   onUploadDocument: (file: File) => Promise<ProfileEducationDocument>;
 };
 
@@ -79,6 +79,8 @@ export function ProfileEducationEditor({
   const [draftHistory, setDraftHistory] = useState<ProfileEducationHistory | null>(null);
   const [uploadingKind, setUploadingKind] = useState<ProfileEducationDocumentKind | null>(null);
   const [draftError, setDraftError] = useState('');
+  const [isPersisting, setIsPersisting] = useState(false);
+  const [removingLevel, setRemovingLevel] = useState<ProfileEducationLevel | null>(null);
 
   useEffect(() => {
     if (!isModalOpen) return;
@@ -116,6 +118,7 @@ export function ProfileEducationEditor({
   };
 
   const closeModal = () => {
+    if (isPersisting) return;
     setIsModalOpen(false);
     setModalMode('create');
     setDraftHistory(null);
@@ -167,7 +170,7 @@ export function ProfileEducationEditor({
     );
   };
 
-  const handleSaveDraft = () => {
+  const handleSaveDraft = async () => {
     if (!draftHistory) return;
     if (!hasEducationHistoryContent(draftHistory)) {
       setDraftError(
@@ -175,16 +178,26 @@ export function ProfileEducationEditor({
       );
       return;
     }
-    onSaveHistory(draftHistory);
-    closeModal();
+    setIsPersisting(true);
+    try {
+      await onSaveHistory(draftHistory);
+      closeModal();
+    } finally {
+      setIsPersisting(false);
+    }
   };
 
-  const confirmRemoveHistory = (history: ProfileEducationHistory) => {
+  const confirmRemoveHistory = async (history: ProfileEducationHistory) => {
     const confirmed = window.confirm(
       `Hapus riwayat pendidikan ${getEducationLevelLabel(history.level)} dari daftar profil?`,
     );
     if (!confirmed) return;
-    onRemoveHistory(history.level);
+    setRemovingLevel(history.level);
+    try {
+      await onRemoveHistory(history.level);
+    } finally {
+      setRemovingLevel(null);
+    }
   };
 
   const currentDraft = draftHistory;
@@ -275,11 +288,14 @@ export function ProfileEducationEditor({
                       </button>
                       <button
                         type="button"
-                        onClick={() => confirmRemoveHistory(history)}
+                        onClick={() => {
+                          void confirmRemoveHistory(history);
+                        }}
+                        disabled={removingLevel === history.level}
                         className="inline-flex items-center justify-center gap-2 rounded-2xl border border-rose-200 bg-rose-50 px-4 py-2.5 text-sm font-semibold text-rose-600 transition hover:bg-rose-100"
                       >
                         <Trash2 size={15} />
-                        Hapus
+                        {removingLevel === history.level ? 'Menghapus...' : 'Hapus'}
                       </button>
                     </div>
                   </div>
@@ -482,16 +498,20 @@ export function ProfileEducationEditor({
               <button
                 type="button"
                 onClick={closeModal}
+                disabled={isPersisting}
                 className="inline-flex items-center justify-center rounded-2xl border border-slate-200 bg-white px-4 py-3 text-sm font-semibold text-slate-700 transition hover:bg-slate-50"
               >
                 Batal
               </button>
               <button
                 type="button"
-                onClick={handleSaveDraft}
+                onClick={() => {
+                  void handleSaveDraft();
+                }}
+                disabled={isPersisting}
                 className="inline-flex items-center justify-center rounded-2xl bg-blue-600 px-4 py-3 text-sm font-semibold text-white shadow-[0_18px_36px_rgba(37,99,235,0.2)] transition hover:bg-blue-700"
               >
-                Simpan Riwayat Pendidikan
+                {isPersisting ? 'Menyimpan...' : 'Simpan Riwayat Pendidikan'}
               </button>
             </div>
           </div>
