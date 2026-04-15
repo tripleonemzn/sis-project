@@ -202,9 +202,36 @@ Dokumen ini adalah policy kerja default untuk setiap sesi baru yang mengerjakan 
      - baru tentukan fallback polling yang ringan jika memang masih diperlukan
    - Jika ada tradeoff antara realtime penuh vs kesehatan server/database, selalu pilih desain yang lebih aman untuk server walaupun refresh user tidak benar-benar instan.
 
+17. **Notifikasi harus tepat sasaran, actionable, dan tidak nyasar**
+   - Untuk fitur baru yang membuat notifikasi, tentukan dulu dengan jelas:
+     - siapa pengirim/aktor
+     - siapa penerima
+     - apakah notifikasi bersifat individual, per kelas, per wali kelas, per divisi, per additional duty, atau lintas role tertentu
+     - apakah notifikasi hanya informasional atau memang harus membuka layar tertentu
+   - Jangan broadcast notifikasi ke role besar hanya karena lebih mudah. Selalu pilih scope penerima terkecil yang benar-benar relevan.
+   - Jika notifikasi bersifat actionable, payload notifikasi wajib membawa `route` yang valid dan konsisten di web/mobile. Jangan mengandalkan fallback generic jika source of truth rutenya sebenarnya sudah jelas.
+   - Jika notifikasi hanya informasional, boleh tanpa `route`, tetapi harus tetap jelas konteksnya di `title/message` agar user tidak bingung saat membukanya dari inbox.
+   - Data notifikasi baru wajib semaksimal mungkin membawa metadata ringan yang cukup untuk audit dan routing, terutama:
+     - `module`
+     - `route` jika actionable
+     - `actorId` / `actorName` / `actorRole` jika relevan
+     - `scope` seperti `studentId`, `classId`, `scheduleId`, `packetId`, `periodId`, atau identifier domain lain yang memang diperlukan
+   - Jangan membuat payload notifikasi terlalu besar, jangan memasukkan snapshot data berat, dan jangan menjadikan notifikasi sebagai source of truth utama layar.
+   - Untuk notifikasi lintas role, parity web/mobile wajib dijaga:
+     - arti notifikasi sama
+     - tujuan navigasi sama
+     - fallback route tidak boleh saling bertentangan
+   - Jika satu domain punya penerima berbasis duty/jabatan khusus, gunakan source of truth duty/jabatan tersebut secara eksplisit; jangan hardcode satu jabatan jika secara operasional scope-nya mencakup beberapa jabatan setara.
+   - Untuk reminder/notification yang berpotensi sering muncul, wajib ada guardrail dedupe, cooldown, atau pembatasan frekuensi agar tidak spam user dan tidak membebani server/database.
+   - Saat mengembangkan notifikasi baru, lakukan sanity check minimal:
+     - apakah penerima yang dipilih sudah paling tepat
+     - apakah role lain tidak ikut menerima tanpa alasan
+     - apakah klik notifikasi benar-benar membuka layar yang relevan
+     - apakah inbox web dan mobile menafsirkan notifikasi itu dengan perilaku yang sama
+
 ## Default Close-Out
 
-17. **Penutupan pekerjaan minimal harus memuat**
+18. **Penutupan pekerjaan minimal harus memuat**
    - apa yang dikerjakan
    - verifikasi yang dijalankan
    - status publish/live bila ada
