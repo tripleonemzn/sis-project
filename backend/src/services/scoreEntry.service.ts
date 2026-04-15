@@ -621,6 +621,7 @@ export async function upsertScoreEntryFromExamSession(params: {
   examType: ExamType
   programCode?: string | null
   score: number
+  metadata?: Record<string, unknown> | null
 }) {
   const programConfig = await resolveProgramConfig({
     academicYearId: params.academicYearId,
@@ -647,6 +648,7 @@ export async function upsertScoreEntryFromExamSession(params: {
       sessionId: params.sessionId,
       examType: params.examType,
       programCode: normalizeCode(params.programCode),
+      ...(params.metadata || {}),
     },
   })
 }

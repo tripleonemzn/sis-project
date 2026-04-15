@@ -10357,6 +10357,18 @@ const EXAM_POST_SUBMIT_RETRY_BASE_MS = Math.max(
         ? Number(process.env.EXAM_POST_SUBMIT_RETRY_BASE_MS)
         : 1000,
 );
+const EXAM_POST_SUBMIT_QUEUE_HIGH_WATERMARK = Math.max(
+    20,
+    Number.isFinite(Number(process.env.EXAM_POST_SUBMIT_QUEUE_HIGH_WATERMARK))
+        ? Number(process.env.EXAM_POST_SUBMIT_QUEUE_HIGH_WATERMARK)
+        : 120,
+);
+const EXAM_POST_SUBMIT_QUEUE_BACKPRESSURE_MS = Math.max(
+    0,
+    Number.isFinite(Number(process.env.EXAM_POST_SUBMIT_QUEUE_BACKPRESSURE_MS))
+        ? Number(process.env.EXAM_POST_SUBMIT_QUEUE_BACKPRESSURE_MS)
+        : 25,
+);
 
 type ExamPostSubmitTask = {
     sessionId: number;
@@ -10376,11 +10388,26 @@ type ExamPostSubmitPacketSummary = {
     questions: unknown;
 };
 
+type ExamPostSubmitNfField = 'nf1' | 'nf2' | 'nf3' | 'nf4' | 'nf5' | 'nf6';
+
+type ExamSessionScoreEntrySyncState = {
+    gradeId: number | null;
+    componentId: number | null;
+    componentCode: string | null;
+    entryMode: string | null;
+    nfField: ExamPostSubmitNfField | null;
+    reservedAt: string | null;
+    syncedAt: string | null;
+};
+
+const EXAM_POST_SUBMIT_NF_FIELDS: ExamPostSubmitNfField[] = ['nf1', 'nf2', 'nf3', 'nf4', 'nf5', 'nf6'];
+
 const examPostSubmitQueue: ExamPostSubmitTask[] = [];
 const examPostSubmitQueuedSessionIds = new Set<number>();
 const examPostSubmitInFlightSessionIds = new Set<number>();
 let examPostSubmitActiveWorkers = 0;
 let examPostSubmitDrainScheduled = false;
+let examPostSubmitBackpressureWarningOpen = false;
 
 function resolveScoringQuestionsForSession(params: {
     packetQuestions: Record<string, unknown>[];
@@ -10408,6 +10435,100 @@ function resolveScoringQuestionsForSession(params: {
         .filter((question): question is Record<string, unknown> => Boolean(question));
 
     return selected.length > 0 ? selected : params.packetQuestions;
+}
+
+function resolveExamSessionScoreEntrySourceKey(sessionId: number): string {
+    return `examSession:${sessionId}`;
+}
+
+function resolveExamPostSubmitNfField(raw: unknown): ExamPostSubmitNfField | null {
+    const normalized = String(raw || '').trim().toLowerCase();
+    if ((EXAM_POST_SUBMIT_NF_FIELDS as string[]).includes(normalized)) {
+        return normalized as ExamPostSubmitNfField;
+    }
+    return null;
+}
+
+function parseExamSessionScoreEntrySyncState(rawMetadata: unknown): ExamSessionScoreEntrySyncState | null {
+    if (!rawMetadata || typeof rawMetadata !== 'object' || Array.isArray(rawMetadata)) {
+        return null;
+    }
+
+    const source = rawMetadata as Record<string, unknown>;
+    const rawSyncState = source.autoFillStudentGrade;
+    if (!rawSyncState || typeof rawSyncState !== 'object' || Array.isArray(rawSyncState)) {
+        return null;
+    }
+
+    const syncState = rawSyncState as Record<string, unknown>;
+    const parsedGradeId = Number(syncState.gradeId);
+    const parsedComponentId = Number(syncState.componentId);
+
+    return {
+        gradeId: Number.isFinite(parsedGradeId) && parsedGradeId > 0 ? parsedGradeId : null,
+        componentId: Number.isFinite(parsedComponentId) && parsedComponentId > 0 ? parsedComponentId : null,
+        componentCode: syncState.componentCode ? String(syncState.componentCode) : null,
+        entryMode: syncState.entryMode ? String(syncState.entryMode) : null,
+        nfField: resolveExamPostSubmitNfField(syncState.nfField),
+        reservedAt: syncState.reservedAt ? String(syncState.reservedAt) : null,
+        syncedAt: syncState.syncedAt ? String(syncState.syncedAt) : null,
+    };
+}
+
+function resolveNextExamPostSubmitNfField(
+    grade:
+        | {
+              nf1?: number | null;
+              nf2?: number | null;
+              nf3?: number | null;
+              nf4?: number | null;
+              nf5?: number | null;
+              nf6?: number | null;
+          }
+        | null,
+): ExamPostSubmitNfField | null {
+    if (!grade) {
+        return 'nf1';
+    }
+
+    for (const field of EXAM_POST_SUBMIT_NF_FIELDS) {
+        const value = grade[field];
+        if (value === null || value === undefined) {
+            return field;
+        }
+    }
+
+    return null;
+}
+
+function buildExamSessionScoreEntrySyncMetadata(params: {
+    componentId: number;
+    componentCode: string | null;
+    entryMode: GradeEntryMode;
+    gradeId: number | null;
+    nfField: ExamPostSubmitNfField | null;
+    reservedAt: string;
+    syncedAt?: string | null;
+}) {
+    return {
+        autoFillStudentGrade: {
+            componentId: params.componentId,
+            componentCode: params.componentCode,
+            entryMode: String(params.entryMode || ''),
+            gradeId: params.gradeId,
+            nfField: params.nfField,
+            reservedAt: params.reservedAt,
+            syncedAt: params.syncedAt || null,
+        },
+    };
+}
+
+function resolveExamPostSubmitDrainDelayMs(): number {
+    const pendingDepth = examPostSubmitQueue.length + examPostSubmitActiveWorkers;
+    if (pendingDepth >= EXAM_POST_SUBMIT_QUEUE_HIGH_WATERMARK) {
+        return EXAM_POST_SUBMIT_QUEUE_BACKPRESSURE_MS;
+    }
+    return 0;
 }
 
 async function syncCompletedStudentExamArtifacts(params: {
@@ -10462,35 +10583,90 @@ async function syncCompletedStudentExamArtifacts(params: {
 
     if (!component) return;
 
-    let syncedStudentGradeId: number | null = null;
-    const grade = await prisma.studentGrade.findFirst({
-        where: {
-            studentId: params.studentId,
-            subjectId,
-            academicYearId,
-            componentId: component.id,
-            semester,
-        },
+    const scoreEntrySourceKey = resolveExamSessionScoreEntrySourceKey(params.sessionId);
+    const existingScoreEntry = await prisma.studentScoreEntry.findUnique({
+        where: { sourceKey: scoreEntrySourceKey },
+        select: { metadata: true },
     });
+    const existingSyncState = parseExamSessionScoreEntrySyncState(existingScoreEntry?.metadata);
 
+    let grade =
+        existingSyncState?.gradeId
+            ? await prisma.studentGrade.findFirst({
+                  where: {
+                      id: existingSyncState.gradeId,
+                      studentId: params.studentId,
+                      subjectId,
+                      academicYearId,
+                      componentId: component.id,
+                      semester,
+                  },
+              })
+            : null;
+
+    if (!grade) {
+        grade = await prisma.studentGrade.findFirst({
+            where: {
+                studentId: params.studentId,
+                subjectId,
+                academicYearId,
+                componentId: component.id,
+                semester,
+            },
+        });
+    }
+
+    const reservedAt = existingSyncState?.reservedAt || new Date().toISOString();
+    const reservedNfField =
+        gradeEntryMode === GradeEntryMode.NF_SERIES
+            ? existingSyncState?.nfField || resolveNextExamPostSubmitNfField(grade)
+            : null;
+
+    if (!existingSyncState?.syncedAt) {
+        try {
+            await upsertScoreEntryFromExamSession({
+                sessionId: params.sessionId,
+                studentId: params.studentId,
+                subjectId,
+                academicYearId,
+                semester,
+                examType: type,
+                programCode: programCode || null,
+                score: params.score,
+                metadata: buildExamSessionScoreEntrySyncMetadata({
+                    componentId: component.id,
+                    componentCode: component.code || componentCode || null,
+                    entryMode: gradeEntryMode,
+                    gradeId: grade?.id ?? existingSyncState?.gradeId ?? null,
+                    nfField: reservedNfField,
+                    reservedAt,
+                    syncedAt: existingSyncState?.syncedAt || null,
+                }),
+            });
+        } catch (scoreEntryError) {
+            console.error('Failed to reserve exam session score entry sync state:', scoreEntryError);
+            throw scoreEntryError;
+        }
+    }
+
+    if (existingSyncState?.syncedAt) {
+        return;
+    }
+
+    let syncedStudentGradeId: number | null = grade?.id ?? existingSyncState?.gradeId ?? null;
     if (grade) {
         const updateData: Record<string, unknown> = {};
         if (gradeEntryMode === GradeEntryMode.NF_SERIES) {
-            if (grade.nf1 === null) updateData.nf1 = params.score;
-            else if (grade.nf2 === null) updateData.nf2 = params.score;
-            else if (grade.nf3 === null) updateData.nf3 = params.score;
-            else if (grade.nf4 === null) updateData.nf4 = params.score;
-            else if (grade.nf5 === null) updateData.nf5 = params.score;
-            else if (grade.nf6 === null) updateData.nf6 = params.score;
+            if (reservedNfField) {
+                updateData[reservedNfField] = params.score;
+            }
 
-            const nfs = [
-                (updateData.nf1 as number | undefined) ?? grade.nf1,
-                (updateData.nf2 as number | undefined) ?? grade.nf2,
-                (updateData.nf3 as number | undefined) ?? grade.nf3,
-                (updateData.nf4 as number | undefined) ?? grade.nf4,
-                (updateData.nf5 as number | undefined) ?? grade.nf5,
-                (updateData.nf6 as number | undefined) ?? grade.nf6,
-            ].filter((value): value is number => value !== null && value !== undefined);
+            const nfs = EXAM_POST_SUBMIT_NF_FIELDS.map((field) => {
+                if (field === reservedNfField) {
+                    return params.score;
+                }
+                return grade?.[field] ?? null;
+            }).filter((value): value is number => value !== null && value !== undefined);
 
             if (nfs.length > 0) {
                 updateData.score = nfs.reduce((left, right) => left + right, 0) / nfs.length;
@@ -10505,17 +10681,10 @@ async function syncCompletedStudentExamArtifacts(params: {
                 data: updateData,
             });
             syncedStudentGradeId = updatedGrade.id;
+            grade = updatedGrade;
         }
     } else {
-        const createData: {
-            studentId: number;
-            subjectId: number;
-            academicYearId: number;
-            componentId: number;
-            semester: Semester;
-            score: number;
-            nf1?: number;
-        } = {
+        const createData: Prisma.StudentGradeUncheckedCreateInput = {
             studentId: params.studentId,
             subjectId,
             academicYearId,
@@ -10525,13 +10694,14 @@ async function syncCompletedStudentExamArtifacts(params: {
         };
 
         if (gradeEntryMode === GradeEntryMode.NF_SERIES) {
-            createData.nf1 = params.score;
+            createData[reservedNfField || 'nf1'] = params.score;
         }
 
         const createdGrade = await prisma.studentGrade.create({
             data: createData,
         });
         syncedStudentGradeId = createdGrade.id;
+        grade = createdGrade;
     }
 
     if (syncedStudentGradeId) {
@@ -10539,6 +10709,7 @@ async function syncCompletedStudentExamArtifacts(params: {
             await syncScoreEntriesFromStudentGrade(syncedStudentGradeId);
         } catch (scoreEntryError) {
             console.error('Failed to sync score entry from student grade auto-fill:', scoreEntryError);
+            throw scoreEntryError;
         }
     }
 
@@ -10552,9 +10723,19 @@ async function syncCompletedStudentExamArtifacts(params: {
             examType: type,
             programCode: programCode || null,
             score: params.score,
+            metadata: buildExamSessionScoreEntrySyncMetadata({
+                componentId: component.id,
+                componentCode: component.code || componentCode || null,
+                entryMode: gradeEntryMode,
+                gradeId: syncedStudentGradeId,
+                nfField: reservedNfField,
+                reservedAt,
+                syncedAt: new Date().toISOString(),
+            }),
         });
     } catch (scoreEntryError) {
         console.error('Failed to upsert score entry from exam session:', scoreEntryError);
+        throw scoreEntryError;
     }
 
     await syncReportGrade(params.studentId, subjectId, academicYearId, semester);
@@ -10692,19 +10873,19 @@ async function drainExamPostSubmitQueue() {
             .finally(() => {
                 examPostSubmitInFlightSessionIds.delete(task.sessionId);
                 examPostSubmitActiveWorkers = Math.max(0, examPostSubmitActiveWorkers - 1);
-                scheduleExamPostSubmitDrain();
+                scheduleExamPostSubmitDrain(resolveExamPostSubmitDrainDelayMs());
             });
     }
 }
 
-function scheduleExamPostSubmitDrain() {
+function scheduleExamPostSubmitDrain(delayMs = 0) {
     if (examPostSubmitDrainScheduled) return;
     examPostSubmitDrainScheduled = true;
 
     setTimeout(() => {
         examPostSubmitDrainScheduled = false;
         void drainExamPostSubmitQueue();
-    }, 0);
+    }, Math.max(0, delayMs));
 }
 
 function enqueueExamPostSubmitTask(
@@ -10724,7 +10905,18 @@ function enqueueExamPostSubmitTask(
         enqueuedAt: Date.now(),
     });
     examPostSubmitQueuedSessionIds.add(task.sessionId);
-    scheduleExamPostSubmitDrain();
+    const pendingDepth = examPostSubmitQueue.length + examPostSubmitActiveWorkers;
+    if (pendingDepth >= EXAM_POST_SUBMIT_QUEUE_HIGH_WATERMARK) {
+        if (!examPostSubmitBackpressureWarningOpen) {
+            console.warn(
+                `[EXAM_POST_SUBMIT] Backpressure aktif. Pending queue depth=${pendingDepth}, concurrency=${EXAM_POST_SUBMIT_QUEUE_CONCURRENCY}.`,
+            );
+            examPostSubmitBackpressureWarningOpen = true;
+        }
+    } else if (examPostSubmitBackpressureWarningOpen && pendingDepth < EXAM_POST_SUBMIT_QUEUE_HIGH_WATERMARK / 2) {
+        examPostSubmitBackpressureWarningOpen = false;
+    }
+    scheduleExamPostSubmitDrain(resolveExamPostSubmitDrainDelayMs());
 }
 
 export const submitAnswers = asyncHandler(async (req: Request, res: Response) => {
