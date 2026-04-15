@@ -63,6 +63,16 @@ function countUploadedDocuments(history: ProfileEducationHistory) {
   return history.documents.filter((document) => String(document.fileUrl || '').trim()).length;
 }
 
+function getDocumentActionLabel(kind: ProfileEducationDocumentKind, hasDocument: boolean) {
+  if (kind === 'SERTIFIKAT') {
+    return hasDocument ? 'Ganti Sertifikat' : 'Upload Sertifikat';
+  }
+  if (kind === 'TRANSKRIP') {
+    return hasDocument ? 'Ganti Transkrip Nilai' : 'Upload Transkrip Nilai';
+  }
+  return hasDocument ? 'Ganti File' : 'Upload File';
+}
+
 function Field({
   label,
   value,
@@ -259,7 +269,7 @@ export function ProfileEducationEditor({
   const isCertification = currentLevel ? levelUsesCertificationFields(currentLevel) : false;
   const usesAcademicFields = isHigherEducation || isCertification;
   const uploadSectionTitle =
-    currentDocumentKinds.length === 1 && currentDocumentKinds[0] === 'SERTIFIKAT' ? 'Upload Sertifikat' : 'Upload Dokumen';
+    isCertification && currentDocumentKinds.length > 0 ? 'Upload Dokumen Sertifikasi' : 'Upload Dokumen';
 
   return (
     <View>
@@ -662,15 +672,7 @@ export function ProfileEducationEditor({
                                 }}
                               >
                                 <Text style={{ color: '#1d4ed8', fontWeight: '700' }}>
-                                  {isUploading
-                                    ? 'Mengunggah...'
-                                    : kind === 'SERTIFIKAT'
-                                      ? document
-                                        ? 'Ganti Sertifikat'
-                                        : 'Upload Sertifikat'
-                                      : document
-                                        ? 'Ganti File'
-                                        : 'Upload File'}
+                                  {isUploading ? 'Mengunggah...' : getDocumentActionLabel(kind, Boolean(document))}
                                 </Text>
                               </Pressable>
                             </View>

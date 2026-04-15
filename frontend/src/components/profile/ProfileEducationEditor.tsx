@@ -62,6 +62,16 @@ function countUploadedDocuments(history: ProfileEducationHistory) {
   return history.documents.filter((document) => String(document.fileUrl || '').trim()).length;
 }
 
+function getDocumentActionLabel(kind: ProfileEducationDocumentKind, hasDocument: boolean) {
+  if (kind === 'SERTIFIKAT') {
+    return hasDocument ? 'Ganti Sertifikat' : 'Upload Sertifikat';
+  }
+  if (kind === 'TRANSKRIP') {
+    return hasDocument ? 'Ganti Transkrip Nilai' : 'Upload Transkrip Nilai';
+  }
+  return hasDocument ? 'Ganti File' : 'Upload File';
+}
+
 export function ProfileEducationEditor({
   track,
   histories,
@@ -216,7 +226,7 @@ export function ProfileEducationEditor({
   const isCertification = currentLevel ? levelUsesCertificationFields(currentLevel) : false;
   const usesAcademicFields = isHigherEducation || isCertification;
   const uploadSectionTitle =
-    currentDocumentKinds.length === 1 && currentDocumentKinds[0] === 'SERTIFIKAT' ? 'Upload Sertifikat' : 'Upload Dokumen';
+    isCertification && currentDocumentKinds.length > 0 ? 'Upload Dokumen Sertifikasi' : 'Upload Dokumen';
 
   return (
     <div className="space-y-4">
@@ -472,15 +482,7 @@ export function ProfileEducationEditor({
                         <div className="mt-3 flex flex-wrap items-center gap-3">
                           <label className="inline-flex cursor-pointer items-center gap-2 rounded-xl bg-blue-600 px-4 py-2 text-sm font-semibold text-white transition hover:bg-blue-700">
                             <UploadCloud size={16} />
-                            {isUploading
-                              ? 'Mengunggah...'
-                              : kind === 'SERTIFIKAT'
-                                ? document
-                                  ? 'Ganti Sertifikat'
-                                  : 'Upload Sertifikat'
-                                : document
-                                  ? 'Ganti File'
-                                  : 'Upload File'}
+                            {isUploading ? 'Mengunggah...' : getDocumentActionLabel(kind, Boolean(document))}
                             <input
                               type="file"
                               accept=".pdf,.jpg,.jpeg,.png"

@@ -136,7 +136,7 @@ export function getAllowedEducationDocumentKinds(
     return ['IJAZAH', 'SKHUN'];
   }
   if (levelUsesCertificationFields(level)) {
-    return ['SERTIFIKAT'];
+    return ['SERTIFIKAT', 'TRANSKRIP'];
   }
   if (levelUsesHigherEducationFields(level)) {
     return ['IJAZAH', 'TRANSKRIP'];
