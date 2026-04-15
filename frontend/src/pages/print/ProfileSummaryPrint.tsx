@@ -200,20 +200,6 @@ function formatDate(value?: string | null) {
   });
 }
 
-function formatDateTime(value?: string | null) {
-  const raw = normalizeText(value);
-  if (!raw) return '';
-  const date = new Date(raw);
-  if (Number.isNaN(date.getTime())) return raw;
-  return date.toLocaleString('id-ID', {
-    day: '2-digit',
-    month: 'long',
-    year: 'numeric',
-    hour: '2-digit',
-    minute: '2-digit',
-  });
-}
-
 function pushIfValue(rows: PrintRow[], label: string, value: unknown, options?: { indentLabel?: boolean }) {
   const normalized = normalizeText(value);
   if (!normalized) return;
@@ -589,7 +575,7 @@ export default function ProfileSummaryPrint() {
     );
   }
 
-  const { generatedAt, schoolName, formalPhotoUrl, verification, user } = documentQuery.data;
+  const { schoolName, formalPhotoUrl, verification, user } = documentQuery.data;
   const printableRole = formatRoleLabel(user.role).toUpperCase();
 
   return (
@@ -635,13 +621,10 @@ export default function ProfileSummaryPrint() {
             Ringkasan Profil {printableRole}
           </div>
           {normalizeText(schoolName) ? (
-            <div className="mt-1 text-center text-[13px] uppercase tracking-[0.02em] text-black">
+            <div className="mt-1 text-center text-[18px] font-normal uppercase text-black">
               {schoolName}
             </div>
           ) : null}
-          <div className="mt-1 text-center text-[12px] text-slate-600">
-            Dicetak pada {formatDateTime(generatedAt)}
-          </div>
 
           {sections.map((section) => (
             <SimpleSection key={section.id} title={section.title} rows={section.rows} />
@@ -673,12 +656,15 @@ export default function ProfileSummaryPrint() {
 
           <SimpleSection title="Dokumen Pendukung" rows={supportingDocumentRows} />
 
-          <div className="mt-12 flex flex-col items-center">
+          <div className="mt-12 ml-auto flex w-[140px] flex-col items-center">
             <img
               src={verification.verificationQrDataUrl}
               alt="Barcode Verifikasi Ringkasan Profil"
               className="h-[110px] w-[110px] object-contain"
             />
+            <div className="mt-2 text-center text-[11px] uppercase tracking-[0.02em] text-black">
+              Scan Barcode untuk Verifikasi
+            </div>
           </div>
         </div>
       </PrintLayout>
