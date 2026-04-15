@@ -12,6 +12,7 @@ import { validateCandidateProfileDocuments } from '../utils/candidateAdmissionDo
 import { getNisnValidationMessage, normalizeNisnInput } from '../utils/nisn';
 import { resolveHistoricalStudentScope } from '../utils/studentAcademicHistory';
 import { ensureAcademicYearArchiveReadAccess } from '../utils/academicYearArchiveAccess';
+import { resolveStandardSchoolDocumentHeaderSnapshot } from '../utils/standardSchoolDocumentHeader';
 import {
   deriveEducationSummary,
   educationHistoriesSchema,
@@ -210,7 +211,7 @@ function resolveProfilePrintFormalPhotoUrl(params: {
   if (preferredDocument?.fileUrl) {
     return normalizeProfilePrintMediaUrl(preferredDocument.fileUrl);
   }
-  return normalizeProfilePrintMediaUrl(params.photo);
+  return null;
 }
 
 function buildProfilePrintFingerprint(user: any) {
@@ -394,17 +395,24 @@ function resolveProfilePrintPublicBaseUrl(req: Request): string {
 }
 
 type ProfilePrintVerificationTokenPayload = {
-  kind: 'PROFILE_SUMMARY';
   userId: number;
   fingerprint: string;
   generatedAtMs: number;
 };
 
 function buildProfilePrintVerificationToken(payload: ProfilePrintVerificationTokenPayload) {
-  return jwt.sign(payload, JWT_SIGNING_SECRET, {
-    subject: `profile-summary:${payload.userId}:${payload.generatedAtMs}`,
+  return jwt.sign(
+    {
+      k: 'PS',
+      u: payload.userId,
+      f: payload.fingerprint.slice(0, 24),
+      g: payload.generatedAtMs,
+    },
+    JWT_SIGNING_SECRET,
+    {
     noTimestamp: true,
-  });
+    },
+  );
 }
 
 function verifyProfilePrintVerificationToken(token: string): ProfilePrintVerificationTokenPayload {
@@ -417,37 +425,48 @@ function verifyProfilePrintVerificationToken(token: string): ProfilePrintVerific
   if (!decoded || typeof decoded !== 'object') {
     throw new ApiError(404, 'Tautan verifikasi ringkasan profil tidak valid.');
   }
-  const record = decoded as Partial<ProfilePrintVerificationTokenPayload>;
-  if (record.kind !== 'PROFILE_SUMMARY') {
+  const record = decoded as Partial<ProfilePrintVerificationTokenPayload> & {
+    kind?: string;
+    userId?: number;
+    fingerprint?: string;
+    generatedAtMs?: number;
+    k?: string;
+    u?: number;
+    f?: string;
+    g?: number;
+  };
+  const kind = normalizeProfilePrintText(record.k || record.kind).toUpperCase();
+  if (kind !== 'PS' && kind !== 'PROFILE_SUMMARY') {
     throw new ApiError(404, 'Tautan verifikasi ringkasan profil tidak valid.');
   }
-  if (!Number.isFinite(Number(record.userId)) || Number(record.userId) <= 0) {
+  const userId = Number(record.u ?? record.userId);
+  if (!Number.isFinite(userId) || userId <= 0) {
     throw new ApiError(404, 'Tautan verifikasi ringkasan profil tidak valid.');
   }
-  const fingerprint = normalizeProfilePrintText(record.fingerprint);
+  const fingerprint = normalizeProfilePrintText(record.f || record.fingerprint);
   if (!fingerprint) {
     throw new ApiError(404, 'Tautan verifikasi ringkasan profil tidak valid.');
   }
-  if (!Number.isFinite(Number(record.generatedAtMs)) || Number(record.generatedAtMs) <= 0) {
+  const generatedAtMs = Number(record.g ?? record.generatedAtMs);
+  if (!Number.isFinite(generatedAtMs) || generatedAtMs <= 0) {
     throw new ApiError(404, 'Tautan verifikasi ringkasan profil tidak valid.');
   }
   return {
-    kind: 'PROFILE_SUMMARY',
-    userId: Number(record.userId),
+    userId,
     fingerprint,
-    generatedAtMs: Number(record.generatedAtMs),
+    generatedAtMs,
   };
 }
 
 function buildProfilePrintVerificationUrl(baseUrl: string, verificationToken: string) {
-  return `${baseUrl}/verify/profile-summary/${verificationToken}`;
+  return `${baseUrl}/v/ps/${verificationToken}`;
 }
 
 async function buildProfilePrintVerificationQrDataUrl(verificationUrl: string) {
   return QRCode.toDataURL(verificationUrl, {
-    width: 192,
-    margin: 2,
-    errorCorrectionLevel: 'M',
+    width: 240,
+    margin: 1,
+    errorCorrectionLevel: 'L',
     color: {
       dark: '#000000',
       light: '#FFFFFFFF',
@@ -1009,10 +1028,13 @@ export const getMyProfilePrintSummary = asyncHandler(async (req: Request, res: R
     throw new ApiError(401, 'Sesi login tidak valid');
   }
 
-  const user = await prisma.user.findUnique({
-    where: { id: Number(currentUser.id) },
-    select: profilePrintUserSelect,
-  });
+  const [documentHeader, user] = await Promise.all([
+    resolveStandardSchoolDocumentHeaderSnapshot(),
+    prisma.user.findUnique({
+      where: { id: Number(currentUser.id) },
+      select: profilePrintUserSelect,
+    }),
+  ]);
 
   if (!user) {
     throw new ApiError(404, 'Profil pengguna tidak ditemukan');
@@ -1021,7 +1043,6 @@ export const getMyProfilePrintSummary = asyncHandler(async (req: Request, res: R
   const generatedAt = new Date().toISOString();
   const fingerprint = buildProfilePrintFingerprint(user);
   const verificationToken = buildProfilePrintVerificationToken({
-    kind: 'PROFILE_SUMMARY',
     userId: Number(user.id),
     fingerprint,
     generatedAtMs: new Date(generatedAt).getTime(),
@@ -1041,6 +1062,7 @@ export const getMyProfilePrintSummary = asyncHandler(async (req: Request, res: R
       200,
       {
         generatedAt,
+        schoolName: documentHeader.schoolFormalName,
         formalPhotoUrl,
         verification: {
           token: verificationToken,
@@ -1071,7 +1093,7 @@ export const verifyPublicProfilePrintSummary = asyncHandler(async (req: Request,
   }
 
   const fingerprint = buildProfilePrintFingerprint(user);
-  if (fingerprint !== decoded.fingerprint) {
+  if (!fingerprint.startsWith(decoded.fingerprint)) {
     throw new ApiError(404, 'Ringkasan profil ini sudah tidak sesuai dengan data terbaru.');
   }
 

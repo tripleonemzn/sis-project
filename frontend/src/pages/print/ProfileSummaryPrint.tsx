@@ -1,7 +1,7 @@
 import { useMemo } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { useQuery } from '@tanstack/react-query';
-import { ArrowLeft, Printer, RefreshCw } from 'lucide-react';
+import { ArrowLeft, Printer, RefreshCw, UserRound } from 'lucide-react';
 import api from '../../services/api';
 import PrintLayout from './PrintLayout';
 import { DEFAULT_SUPPORTING_DOCUMENT_TEMPLATES } from '../../features/profileDocuments/supportingDocuments';
@@ -99,6 +99,7 @@ type PrintUser = {
 
 type ProfilePrintSummaryResponse = {
   generatedAt: string;
+  schoolName?: string | null;
   formalPhotoUrl?: string | null;
   verification: {
     token: string;
@@ -111,6 +112,7 @@ type ProfilePrintSummaryResponse = {
 type PrintRow = {
   label: string;
   value: string;
+  indentLabel?: boolean;
 };
 
 type PrintSection = {
@@ -212,10 +214,10 @@ function formatDateTime(value?: string | null) {
   });
 }
 
-function pushIfValue(rows: PrintRow[], label: string, value: unknown) {
+function pushIfValue(rows: PrintRow[], label: string, value: unknown, options?: { indentLabel?: boolean }) {
   const normalized = normalizeText(value);
   if (!normalized) return;
-  rows.push({ label, value: normalized });
+  rows.push({ label, value: normalized, indentLabel: Boolean(options?.indentLabel) });
 }
 
 function formatRoleLabel(role?: string | null) {
@@ -290,12 +292,14 @@ function buildProfileSections(user: PrintUser): PrintSection[] {
   pushIfValue(personalRows, 'NIK', user.nik);
   pushIfValue(personalRows, 'No. KK', user.familyCardNumber);
   pushIfValue(personalRows, 'Alamat', user.address);
-  pushIfValue(personalRows, 'RT / RW', [normalizeText(user.rt), normalizeText(user.rw)].filter(Boolean).join(' / '));
-  pushIfValue(personalRows, 'Dusun', user.dusun);
-  pushIfValue(personalRows, 'Kelurahan / Desa', user.village);
-  pushIfValue(personalRows, 'Kecamatan', user.subdistrict);
-  pushIfValue(personalRows, 'Kabupaten / Kota', user.cityRegency);
-  pushIfValue(personalRows, 'Provinsi', user.province);
+  pushIfValue(personalRows, 'RT / RW', [normalizeText(user.rt), normalizeText(user.rw)].filter(Boolean).join(' / '), {
+    indentLabel: true,
+  });
+  pushIfValue(personalRows, 'Dusun', user.dusun, { indentLabel: true });
+  pushIfValue(personalRows, 'Kelurahan / Desa', user.village, { indentLabel: true });
+  pushIfValue(personalRows, 'Kecamatan', user.subdistrict, { indentLabel: true });
+  pushIfValue(personalRows, 'Kabupaten / Kota', user.cityRegency, { indentLabel: true });
+  pushIfValue(personalRows, 'Provinsi', user.province, { indentLabel: true });
   pushIfValue(personalRows, 'Kode Pos', user.postalCode);
 
   const employmentRows: PrintRow[] = [];
@@ -521,11 +525,13 @@ function SimpleSection({ title, rows }: { title: string; rows: PrintRow[] }) {
   return (
     <section className="mt-10">
       <h2 className="text-[15px] font-medium uppercase tracking-[0.02em] text-[#0066cc]">{title}</h2>
-      <table className="mt-4 w-full border-collapse text-[13px] leading-7 text-black">
+      <table className="mt-4 w-full border-collapse text-[13px] leading-[1.35] text-black">
         <tbody>
           {rows.map((row) => (
             <tr key={`${title}-${row.label}`}>
-              <td className="w-[190px] align-top pr-4">{row.label}</td>
+              <td className="w-[190px] align-top pr-4" style={row.indentLabel ? { paddingLeft: '1cm' } : undefined}>
+                {row.label}
+              </td>
               <td className="w-[20px] align-top text-center">:</td>
               <td className="align-top whitespace-pre-line">{row.value}</td>
             </tr>
@@ -583,7 +589,7 @@ export default function ProfileSummaryPrint() {
     );
   }
 
-  const { generatedAt, formalPhotoUrl, verification, user } = documentQuery.data;
+  const { generatedAt, schoolName, formalPhotoUrl, verification, user } = documentQuery.data;
   const printableRole = formatRoleLabel(user.role).toUpperCase();
 
   return (
@@ -619,14 +625,22 @@ export default function ProfileSummaryPrint() {
                 />
               </div>
             ) : (
-              <div className="flex h-[180px] w-[120px] items-center justify-center border border-[#3b6bbd] px-3 text-center text-[12px] leading-6 text-black">
-                DI AMBIL DARI FOTO FORMAL YANG ADA DI DOKUMEN PENDUKUNG (PASTIKAN UKURAN 4X6)
+              <div className="flex h-[180px] w-[120px] items-center justify-center border border-[#3b6bbd] text-[#5f6f8f]">
+                <UserRound className="h-16 w-16" strokeWidth={1.5} />
               </div>
             )}
           </div>
 
           <div className="mt-8 text-center text-[18px] font-normal uppercase">
-            Ringkasan Profil [{printableRole}]
+            Ringkasan Profil {printableRole}
+          </div>
+          {normalizeText(schoolName) ? (
+            <div className="mt-1 text-center text-[13px] uppercase tracking-[0.02em] text-black">
+              {schoolName}
+            </div>
+          ) : null}
+          <div className="mt-1 text-center text-[12px] text-slate-600">
+            Dicetak pada {formatDateTime(generatedAt)}
           </div>
 
           {sections.map((section) => (
@@ -640,7 +654,7 @@ export default function ProfileSummaryPrint() {
                 {educationBlocks.map((block) => (
                   <div key={block.title}>
                     <div className="text-[13px] font-semibold uppercase text-slate-800">{block.title}</div>
-                    <table className="mt-2 w-full border-collapse text-[13px] leading-7 text-black">
+                    <table className="mt-2 w-full border-collapse text-[13px] leading-[1.35] text-black">
                       <tbody>
                         {block.rows.map((row) => (
                           <tr key={`${block.title}-${row.label}`}>
@@ -663,18 +677,8 @@ export default function ProfileSummaryPrint() {
             <img
               src={verification.verificationQrDataUrl}
               alt="Barcode Verifikasi Ringkasan Profil"
-              className="h-[120px] w-[120px] object-contain"
+              className="h-[110px] w-[110px] object-contain"
             />
-            <div className="mt-2 text-[12px] font-semibold uppercase tracking-[0.08em] text-slate-700">
-              Barcode Verifikasi
-            </div>
-            <div className="mt-1 text-center text-[11px] leading-5 text-slate-500">
-              Scan barcode ini untuk memverifikasi keaslian ringkasan profil di sistem SIS KGB2.
-            </div>
-            <div className="mt-1 text-center text-[11px] text-slate-500">
-              Dicetak pada {formatDateTime(generatedAt)}
-            </div>
-            <div className="mt-2 break-all text-center text-[10px] text-slate-400">{verification.verificationUrl}</div>
           </div>
         </div>
       </PrintLayout>

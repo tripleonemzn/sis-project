@@ -25,6 +25,11 @@ const PrintLayout: React.FC<PrintLayoutProps> = ({ children, title = 'Cetak Doku
 
       <style dangerouslySetInnerHTML={{ __html: `
         @media print {
+          @page {
+            size: A4 portrait;
+            margin: 20mm;
+          }
+
           /* Paksa body putih dan terlihat */
           html, body {
             background: white !important;
