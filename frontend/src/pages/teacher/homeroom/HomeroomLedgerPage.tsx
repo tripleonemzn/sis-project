@@ -28,6 +28,11 @@ interface LedgerGrade {
   slotScores?: Record<string, number | null>;
 }
 
+const isBelowKkmPredicate = (predicate: string | null | undefined) => {
+  const normalized = String(predicate || '').trim().toUpperCase();
+  return normalized === 'C' || normalized === 'D';
+};
+
 interface LedgerStudent {
   id: number;
   name: string;
@@ -71,7 +76,7 @@ const hasLedgerScoreEvidence = (grades?: LedgerGrade) => {
     [grades.formatif, grades.sbts, grades.finalComponent].some(
       (value) => value !== null && value !== undefined,
     ) ||
-    (grades.finalScore !== null && grades.finalScore !== undefined && grades.finalScore !== 0)
+    (grades.finalScore !== null && grades.finalScore !== undefined)
   );
 };
 
@@ -280,7 +285,13 @@ export const HomeroomLedgerPage = ({
 
                     return (
                       <Fragment key={`${student.id}-${subject.id}`}>
-                        <td className="px-2 py-3 text-center border-r border-gray-200 text-gray-600">
+                        <td
+                          className={`px-2 py-3 text-center border-r border-gray-200 ${
+                            isFinalView && isBelowKkmPredicate(grades?.predicate)
+                              ? 'text-red-600 font-bold'
+                              : 'text-gray-600'
+                          }`}
+                        >
                           {col1Value}
                         </td>
                         <td className={isFinalView 

@@ -5,7 +5,11 @@ import {
   getHistoricalStudentSnapshot,
   listHistoricalStudentsForClass,
 } from '../utils/studentAcademicHistory';
-import { computeNormalizedWeightedAverage, normalizeRoundedFinalScore } from '../utils/gradeWeights';
+import {
+  computeFixedWeightedAverage,
+  computeNormalizedWeightedAverage,
+  normalizeRoundedFinalScore,
+} from '../utils/gradeWeights';
 
 const normalizeLedgerCode = (raw: unknown): string =>
   String(raw || '')
@@ -145,7 +149,6 @@ const resolveEffectiveReportFinalScore = (
   const finalScore = parseScoreNumber(grade.finalScore);
   const usScore = parseScoreNumber(grade.usScore);
   const hasUsEvidence = hasUsSlotScore(slotScores) || usScore !== null;
-  const hasFinalEvidence = hasPersistedFinalReportEvidence(grade);
 
   if (usScore !== null && hasUsEvidence) {
     return normalizeRoundedFinalScore(usScore) ?? usScore;
@@ -163,9 +166,13 @@ const resolveEffectiveReportFinalScore = (
     readSlotScoreByMatcher(slotScores, isMidtermAliasCode) ??
     parseScoreNumber(grade.sbtsScore);
   const finalComponent = resolvePreferredFinalComponentScore(grade);
+  const hasAnyFinalComputationEvidence =
+    formativeScore !== null ||
+    midtermScore !== null ||
+    finalComponent.score !== null;
 
-  if (finalComponent.score !== null) {
-    const recomputedScore = computeNormalizedWeightedAverage([
+  if (hasAnyFinalComputationEvidence) {
+    const recomputedScore = computeFixedWeightedAverage([
       { code: 'FORMATIF', score: formativeScore },
       { code: 'SBTS', score: midtermScore },
       { code: finalComponent.slotCode, score: finalComponent.score },
@@ -174,7 +181,7 @@ const resolveEffectiveReportFinalScore = (
       return normalizeRoundedFinalScore(recomputedScore) ?? recomputedScore;
     }
   }
-  if (hasFinalEvidence && finalScore !== null) {
+  if (finalScore !== null) {
     return normalizeRoundedFinalScore(finalScore) ?? finalScore;
   }
   return null;

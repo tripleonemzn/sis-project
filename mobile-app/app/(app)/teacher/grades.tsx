@@ -130,6 +130,30 @@ function computeWeightedPreviewScore(
   return weightedScoreTotal / weightTotal;
 }
 
+function computeFixedWeightedPreviewScore(
+  rows: Array<{ score: number | null | undefined; weight: number | null | undefined }>,
+) {
+  let weightedScoreTotal = 0;
+  let weightTotal = 0;
+  let hasAnyScoreEvidence = false;
+
+  rows.forEach((row) => {
+    const weight = Number(row.weight);
+    if (!Number.isFinite(weight) || weight <= 0) return;
+
+    const score = Number(row.score);
+    if (Number.isFinite(score)) {
+      weightedScoreTotal += score * weight;
+      hasAnyScoreEvidence = true;
+    }
+
+    weightTotal += weight;
+  });
+
+  if (!hasAnyScoreEvidence || weightTotal <= 0) return null;
+  return weightedScoreTotal / weightTotal;
+}
+
 function deriveCompetencyDescription(
   score: number | null | undefined,
   kkm: number,
@@ -1328,7 +1352,7 @@ export default function TeacherGradesScreen() {
                                       const finalScore = Number.isFinite(finalRaw) ? finalRaw : null;
                                       const formatif = backendFormative;
                                       const sbts = backendMidterm;
-                                      const previewFinalRaw = computeWeightedPreviewScore([
+                                      const previewFinalRaw = computeFixedWeightedPreviewScore([
                                         { score: formatif, weight: formativeComponent?.weight },
                                         { score: sbts, weight: midtermComponent?.weight },
                                         { score: finalScore, weight: selectedComponent.weight },

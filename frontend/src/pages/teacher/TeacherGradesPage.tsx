@@ -183,6 +183,30 @@ const computeWeightedPreviewScore = (
   return weightedScoreTotal / weightTotal;
 };
 
+const computeFixedWeightedPreviewScore = (
+  rows: Array<{ score: number | null | undefined; weight: number | null | undefined }>,
+): number | null => {
+  let weightedScoreTotal = 0;
+  let weightTotal = 0;
+  let hasAnyScoreEvidence = false;
+
+  rows.forEach((row) => {
+    const weight = Number(row.weight);
+    if (!Number.isFinite(weight) || weight <= 0) return;
+
+    const score = Number(row.score);
+    if (Number.isFinite(score)) {
+      weightedScoreTotal += score * weight;
+      hasAnyScoreEvidence = true;
+    }
+
+    weightTotal += weight;
+  });
+
+  if (!hasAnyScoreEvidence || weightTotal <= 0) return null;
+  return weightedScoreTotal / weightTotal;
+};
+
 const formatSeriesValues = (values: number[]) =>
   values
     .map((value) => (Number.isInteger(value) ? String(value) : value.toFixed(2)))
@@ -1203,7 +1227,7 @@ export const TeacherGradesPage = () => {
                 const backendFormative = resolveReportSlotScore(report, formativePrimarySlot, report?.formatifScore ?? null);
                 const backendSbts = resolveReportSlotScore(report, midtermPrimarySlot, report?.sbtsScore ?? null);
                 const previewFinalScore =
-                  computeWeightedPreviewScore([
+                  computeFixedWeightedPreviewScore([
                     { score: backendFormative, weight: formativeComponentObj?.weight },
                     { score: backendSbts, weight: midtermComponentObj?.weight },
                     { score: parsedScore, weight: selectedComponentObj?.weight },
@@ -1491,7 +1515,7 @@ export const TeacherGradesPage = () => {
 	                                  const previewSasFinal = (() => {
 	                                    if (!isFinalComponent) return backendFinal;
 	                                    return normalizeFinalRoundedScore(
-	                                      computeWeightedPreviewScore([
+	                                      computeFixedWeightedPreviewScore([
 	                                        { score: previewFormative, weight: formativeComponentObj?.weight },
 	                                        { score: backendSbts, weight: midtermComponentObj?.weight },
 	                                        { score: currentScore, weight: selectedComponentObj?.weight },

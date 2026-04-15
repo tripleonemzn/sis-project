@@ -71,6 +71,30 @@ const computeNormalizedWeightedAverage = (
   return weightedScoreTotal / weightTotal
 }
 
+const computeFixedWeightedAverage = (
+  rows: Array<{ code?: unknown; score: number | null | undefined }>,
+): number | null => {
+  let weightedScoreTotal = 0
+  let weightTotal = 0
+  let hasAnyScoreEvidence = false
+
+  rows.forEach((row) => {
+    const weight = resolveDefaultGradeWeightByCode(row.code)
+    if (!Number.isFinite(weight) || weight <= 0) return
+
+    const score = Number(row.score)
+    if (Number.isFinite(score)) {
+      weightedScoreTotal += score * weight
+      hasAnyScoreEvidence = true
+    }
+
+    weightTotal += weight
+  })
+
+  if (!hasAnyScoreEvidence || weightTotal <= 0) return null
+  return weightedScoreTotal / weightTotal
+}
+
 const normalizeRoundedFinalScore = (raw: number | null | undefined): number | null => {
   const parsed = Number(raw)
   if (!Number.isFinite(parsed)) return null
@@ -94,5 +118,6 @@ export {
   isUsPracticeWeightCode,
   resolveDefaultGradeWeightByCode,
   computeNormalizedWeightedAverage,
+  computeFixedWeightedAverage,
   normalizeRoundedFinalScore,
 }

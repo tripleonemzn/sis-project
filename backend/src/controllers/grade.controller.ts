@@ -14,6 +14,7 @@ import {
   syncScoreEntriesFromStudentGrade,
 } from '../services/scoreEntry.service'
 import {
+  computeFixedWeightedAverage,
   computeNormalizedWeightedAverage,
   normalizeRoundedFinalScore,
   resolveDefaultGradeWeightByCode,
@@ -582,6 +583,10 @@ function hasPersistedFinalReportEvidence(
   return false
 }
 
+function hasAnyNumericSlotScore(slotScores: Record<string, number | null>): boolean {
+  return Object.values(slotScores).some((score) => score !== null && score !== undefined)
+}
+
 function readSlotScoreByMatcher(
   slotScores: Record<string, number | null>,
   matcher: (slotCode: string) => boolean,
@@ -640,10 +645,8 @@ function resolveEffectiveReportFinalScore(
   if (!grade) return null
   const slotScores = parseSlotScoreMap(grade.slotScores)
   const hasUsSlot = hasUsSlotInScoreMap(slotScores)
-  const hasPrimaryFinalEvidence = hasPersistedFinalReportEvidence(grade)
   const finalScore = normalizeNullableScore(grade.finalScore)
   const usScore = normalizeNullableScore(grade.usScore)
-  const hasFinalScore = finalScore !== null
   const hasUsScore = usScore !== null
   const hasUsEvidence = hasUsSlot || hasUsScore
 
@@ -670,9 +673,13 @@ function resolveEffectiveReportFinalScore(
     readSlotScoreByMatcher(slotScores, isMidtermAliasCode) ??
     normalizeNullableScore(grade.sbtsScore)
   const finalComponent = resolvePreferredFinalComponentScore(grade)
+  const hasAnyFinalComputationEvidence =
+    formativeScore !== null ||
+    midtermScore !== null ||
+    finalComponent.score !== null
 
-  if (finalComponent.score !== null) {
-    const recomputedScore = computeNormalizedWeightedAverage([
+  if (hasAnyFinalComputationEvidence) {
+    const recomputedScore = computeFixedWeightedAverage([
       { code: 'FORMATIF', score: formativeScore },
       { code: 'SBTS', score: midtermScore },
       { code: finalComponent.slotCode, score: finalComponent.score },
@@ -681,7 +688,7 @@ function resolveEffectiveReportFinalScore(
       return normalizeRoundedFinalScore(recomputedScore) ?? recomputedScore
     }
   }
-  if (hasPrimaryFinalEvidence && hasFinalScore) {
+  if (finalScore !== null) {
     return normalizeRoundedFinalScore(finalScore) ?? finalScore
   }
   return null
@@ -1816,7 +1823,28 @@ function recomputeFinalScoreFromSlots(
   slotScores: Record<string, number | null>,
   includeSlots: Set<string>,
   fallbackScore: number,
+  primarySlots?: {
+    formative: string
+    midterm: string
+    final: string
+  } | null,
 ): number {
+  const prioritizedSlots = primarySlots
+    ? [primarySlots.formative, primarySlots.midterm, primarySlots.final]
+        .map((slot) => normalizeReportSlotCode(slot))
+        .filter((slot, index, arr) => slot !== DEFAULT_REPORT_SLOT_CODE && arr.indexOf(slot) === index)
+    : []
+
+  const fixedIncludedScore = computeFixedWeightedAverage(
+    (prioritizedSlots.length > 0 ? prioritizedSlots : Array.from(includeSlots)).map((slot) => ({
+      code: slot,
+      score: slotScores[slot] ?? null,
+    })),
+  )
+  if (fixedIncludedScore !== null) {
+    return normalizeRoundedFinalScore(fixedIncludedScore) ?? fixedIncludedScore
+  }
+
   const weightedIncludedScore = computeNormalizedWeightedAverage(
     Array.from(includeSlots).map((slot) => ({
       code: slot,
@@ -2552,6 +2580,7 @@ export const syncReportGrade = async (
     dynamicResult.slotScoresByCode,
     includeSlots,
     dynamicResult.finalScore,
+    primarySlots,
   )
   const reportScores = {
     FORMATIVE: dynamicResult.slotScoresByCode[primarySlots.formative] ?? null,
@@ -2576,10 +2605,8 @@ export const syncReportGrade = async (
   }
 
   const predicate = calculatePredicate(finalScore, kkm);
-  const hasFinalComponentEvidence =
-    dynamicResult.slotScoresByCode[primarySlots.final] !== null &&
-    dynamicResult.slotScoresByCode[primarySlots.final] !== undefined;
-  const competencyDescription = hasFinalComponentEvidence
+  const hasAnySemesterComponentEvidence = hasAnyNumericSlotScore(dynamicResult.slotScoresByCode)
+  const competencyDescription = hasAnySemesterComponentEvidence
     ? await resolveReportCompetencyDescription({
         studentId,
         subjectId,
@@ -2597,6 +2624,13 @@ export const syncReportGrade = async (
   const existing = await prisma.reportGrade.findFirst({
       where: { studentId, subjectId, academicYearId, semester }
   });
+
+  if (!hasAnySemesterComponentEvidence) {
+      if (existing) {
+          await prisma.reportGrade.delete({ where: { id: existing.id } })
+      }
+      return
+  }
 
   if (existing) {
       await prisma.reportGrade.update({
@@ -4166,6 +4200,24 @@ export const bulkCreateOrUpdateStudentGrades = async (req: Request, res: Respons
           if (existingGrades.length > 0) {
             await cleanupStudentGradeDuplicates(existingGrades.map((row) => row.id))
           }
+          const reportSync = await syncReportGradeSafely(
+            Number(student_id),
+            Number(subject_id),
+            Number(academic_year_id),
+            semester as Semester,
+          )
+          if (reportSync.success) {
+            results.reportSync.success += 1
+          } else {
+            results.reportSync.failed += 1
+            results.reportSync.errors.push({
+              student_id: Number(student_id),
+              subject_id: Number(subject_id),
+              academic_year_id: Number(academic_year_id),
+              semester: semester as Semester,
+              error: reportSync.error || 'Sinkronisasi rapor gagal setelah hapus nilai kosong.',
+            })
+          }
           results.success++
           continue
         }
@@ -4427,6 +4479,7 @@ export const generateReportGrades = async (req: Request, res: Response) => {
         dynamicResult.slotScoresByCode,
         includeSlots,
         dynamicResult.finalScore,
+        primarySlots,
       )
 
       const kkm = kkmMap.get(Number(subjectId)) || 75
@@ -4931,6 +4984,7 @@ export const updateReportGrade = async (req: Request, res: Response) => {
         nextSlotScores,
         includeSlots,
         existingGrade.finalScore,
+        primarySlots,
       )
 
       let kkm = 75
