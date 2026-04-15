@@ -6606,7 +6606,7 @@ export const replyPacketReviewFeedback = asyncHandler(async (req: Request, res: 
                     {
                         role: 'TEACHER',
                         additionalDuties: {
-                            has: 'WAKASEK_KURIKULUM',
+                            hasSome: ['WAKASEK_KURIKULUM', 'SEKRETARIS_KURIKULUM'],
                         },
                     },
                 ],

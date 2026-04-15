@@ -184,6 +184,15 @@ export default function NotificationsScreen() {
         : null;
     if (payloadRoute) return payloadRoute;
 
+    if (item.type === 'EXAM_PROCTOR_REPORT' && user?.role === 'TEACHER') {
+      return '/teacher/wakakur-exams?section=mengawas';
+    }
+
+    if (item.type === 'OSIS_ELECTION') {
+      if (user?.role === 'PRINCIPAL') return '/principal/monitoring/osis';
+      if (user?.role === 'TEACHER') return '/teacher/osis/election';
+    }
+
     if (item.type.startsWith('FINANCE_')) {
       if (user?.role === 'PARENT') return '/parent/finance';
       if (user?.role === 'STUDENT') return '/student/finance';

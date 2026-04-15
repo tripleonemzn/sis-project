@@ -48,6 +48,23 @@ function normalizeCurriculumExamRoute(route: string): string | null {
   return query ? `/teacher/wakakur-exams?${query}` : '/teacher/wakakur-exams';
 }
 
+function normalizeWakasekStudentElectionRoute(route: string): string | null {
+  const trimmed = String(route || '').trim();
+  if (trimmed !== '/teacher/wakasek/student-election') return null;
+  return '/teacher/osis/election';
+}
+
+function normalizeStaffWorkspaceRoute(route: string): string | null {
+  const trimmed = String(route || '').trim();
+  if (trimmed === '/staff/head-tu/finance') {
+    return '/staff/admin?focus=finance';
+  }
+  if (trimmed === '/staff/administration') {
+    return '/staff/admin?focus=administration';
+  }
+  return null;
+}
+
 export function resolveMobileNotificationTarget(route: unknown): string {
   const rawRoute = typeof route === 'string' ? route.trim() : '';
   if (!rawRoute.startsWith('/')) return '/notifications';
@@ -58,6 +75,12 @@ export function resolveMobileNotificationTarget(route: unknown): string {
 
   const curriculumExamTarget = normalizeCurriculumExamRoute(rawRoute);
   if (curriculumExamTarget) return curriculumExamTarget;
+
+  const wakasekStudentElectionTarget = normalizeWakasekStudentElectionRoute(rawRoute);
+  if (wakasekStudentElectionTarget) return wakasekStudentElectionTarget;
+
+  const staffWorkspaceTarget = normalizeStaffWorkspaceRoute(rawRoute);
+  if (staffWorkspaceTarget) return staffWorkspaceTarget;
 
   return rawRoute;
 }

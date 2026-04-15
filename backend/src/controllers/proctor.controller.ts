@@ -2606,12 +2606,12 @@ export const submitBeritaAcara = asyncHandler(async (req: Request, res: Response
                 {
                     role: 'TEACHER',
                     additionalDuties: {
-                        has: AdditionalDuty.WAKASEK_KURIKULUM,
+                        hasSome: [AdditionalDuty.WAKASEK_KURIKULUM, AdditionalDuty.SEKRETARIS_KURIKULUM],
                     },
                 },
             ],
         },
-        select: { id: true },
+        select: { id: true, role: true },
     });
     if (curriculumReceivers.length > 0) {
         await createManyInAppNotifications({
@@ -2629,6 +2629,13 @@ export const submitBeritaAcara = asyncHandler(async (req: Request, res: Response
                     presentCount,
                     absentCount,
                     documentNumber: artifactBundle.documentNumber,
+                    module: 'EXAM_PROCTORING',
+                    ...(schedule.academicYearId ? { academicYearId: Number(schedule.academicYearId) } : {}),
+                    ...(receiver.role === 'TEACHER'
+                        ? {
+                              route: '/teacher/wakasek/exams?section=mengawas',
+                          }
+                        : {}),
                 } as any,
             })),
             skipDuplicates: false,

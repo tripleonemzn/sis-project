@@ -293,7 +293,7 @@ const getStakeholderNotificationReceivers = async () => {
         },
       ],
     },
-    select: { id: true },
+    select: { id: true, role: true },
   });
   return receivers;
 };
@@ -323,6 +323,11 @@ const notifyElectionStatusChange = async (
         status: period.status,
         startAt: period.startAt,
         endAt: period.endAt,
+        module: 'OSIS_ELECTION',
+        route:
+          receiver.role === 'PRINCIPAL'
+            ? '/principal/monitoring/osis'
+            : '/teacher/wakasek/student-election',
       },
     })),
   });

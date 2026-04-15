@@ -202,8 +202,16 @@ export const NotificationDropdown = () => {
 
     if (notification.type === 'EXAM_PROCTOR' && notification.data?.scheduleId) {
       navigate(`/teacher/proctoring/${notification.data.scheduleId}`);
+    } else if (notification.type === 'EXAM_PROCTOR_REPORT' && currentUser?.role === 'TEACHER') {
+      navigate('/teacher/wakasek/exams?section=mengawas');
     } else if (notification.type === 'EXAM_SCHEDULE' && notification.data?.scheduleId) {
       navigate('/teacher/proctoring');
+    } else if (notification.type === 'OSIS_ELECTION') {
+      if (currentUser?.role === 'PRINCIPAL') {
+        navigate('/principal/monitoring/osis');
+      } else if (currentUser?.role === 'TEACHER') {
+        navigate('/teacher/wakasek/student-election');
+      }
     } else if (routeFromPayload) {
       navigate(routeFromPayload);
     } else if (notification.type.startsWith('FINANCE_')) {
