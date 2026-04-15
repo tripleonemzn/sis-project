@@ -6,6 +6,7 @@ import { AuthProvider } from '../src/features/auth/AuthProvider';
 import { AppUpdateManager } from '../src/features/appUpdate/AppUpdateManager';
 import { AppAlertHost } from '../src/components/AppAlertHost';
 import { AppNoticeHost } from '../src/components/AppNoticeHost';
+import { TabletOrientationManager } from '../src/components/TabletOrientationManager';
 import { PushPermissionManager } from '../src/features/pushNotifications/PushPermissionManager';
 import { installMobileWebRedirectGuard } from '../src/lib/navigation/mobileWebGuard';
 import { NotificationRealtimeBridge } from '../src/features/notifications/NotificationRealtimeBridge';
@@ -20,6 +21,7 @@ function RootStack() {
     <>
       <StatusBar style={resolvedTheme === 'dark' ? 'light' : 'dark'} />
       <Stack screenOptions={{ headerShown: false }} />
+      <TabletOrientationManager />
       <PushPermissionManager />
       <AppUpdateManager />
       <NotificationRealtimeBridge />

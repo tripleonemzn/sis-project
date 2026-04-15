@@ -2,9 +2,9 @@
   "expo": {
     "name": "SIS KGB2",
     "slug": "sis-kgb2-mobile",
-    "version": "0.2.0",
+    "version": "0.2.1",
     "icon": "./src/assets/logo_sis_kgb2_icon_square.png",
-    "orientation": "portrait",
+    "orientation": "default",
     "scheme": "siskgb2",
     "userInterfaceStyle": "light",
     "assetBundlePatterns": [
@@ -13,7 +13,7 @@
     "android": {
       "package": "id.siskgb2.mobile",
       "googleServicesFile": "./google-services.json",
-      "versionCode": 3,
+      "versionCode": 4,
       "permissions": [
         "POST_NOTIFICATIONS"
       ],
@@ -29,7 +29,7 @@
     },
     "ios": {
       "bundleIdentifier": "id.siskgb2.mobile",
-      "buildNumber": "2",
+      "buildNumber": "3",
       "infoPlist": {
         "ITSAppUsesNonExemptEncryption": false
       }

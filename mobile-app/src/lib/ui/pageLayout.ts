@@ -1,5 +1,6 @@
-import { Platform } from 'react-native';
+import { Dimensions, Platform } from 'react-native';
 import type { EdgeInsets } from 'react-native-safe-area-context';
+import { getMobileViewportMetrics } from './mobileViewport';
 
 type StandardPagePaddingOptions = {
   horizontal?: number;
@@ -17,10 +18,22 @@ export function getStandardPagePadding(
   const topMin = options.topMin ?? 28;
   const topOffset = options.topOffset ?? 10;
   const safeBottomInset = Platform.OS === 'android' ? Math.max(insets.bottom, 10) : insets.bottom;
+  const { width, height } = Dimensions.get('window');
+  const viewport = getMobileViewportMetrics(width, height);
+  const resolvedHorizontal = viewport.isTablet
+    ? Math.max(horizontal, viewport.recommendedHorizontalPadding)
+    : horizontal;
 
   return {
-    paddingHorizontal: horizontal,
+    paddingHorizontal: resolvedHorizontal,
     paddingBottom: bottom + safeBottomInset,
     paddingTop: Math.max(insets.top + topOffset, topMin),
+    ...(viewport.contentMaxWidth
+      ? {
+          width: '100%' as const,
+          maxWidth: viewport.contentMaxWidth,
+          alignSelf: 'center' as const,
+        }
+      : null),
   };
 }
