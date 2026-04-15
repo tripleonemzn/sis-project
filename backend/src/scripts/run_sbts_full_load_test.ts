@@ -15,6 +15,11 @@ const LOAD_TEST_HEADER_NAME = 'x-sbts-load-test-secret';
 const DEFAULT_AUTOSAVE_WINDOW_MS = 20_000;
 const DEFAULT_AUTOSAVE_ROUNDS = 2;
 const DEFAULT_REPORT_DIR = '/tmp/sis-sbts-load-tests';
+const DEFAULT_POST_SUBMIT_SETTLE_TIMEOUT_MS = 120_000;
+const DEFAULT_POST_SUBMIT_SETTLE_POLL_MS = 500;
+const DEFAULT_POST_SUBMIT_SETTLE_STABLE_POLLS = 4;
+const DEFAULT_RESTORE_RETRY_LIMIT = 3;
+const DEFAULT_RESTORE_RETRY_DELAY_MS = 1_000;
 
 type CliArgs = {
     mode: 'run' | 'restore';
@@ -212,6 +217,20 @@ type PhaseSummary = {
         avg: number;
     };
     sampleErrors: string[];
+};
+
+type PostSubmitSettleResult = {
+    settled: boolean;
+    timedOut: boolean;
+    waitedMs: number;
+    expectedSessionCount: number;
+    completedOrTimedOutSessionCount: number;
+    scoredSessionCount: number;
+    syncedScoreEntryCount: number;
+    studentGradeCount: number;
+    studentScoreEntryCount: number;
+    reportGradeCount: number;
+    stablePolls: number;
 };
 
 function printUsage() {
@@ -1083,6 +1102,167 @@ async function restoreSnapshot(snapshot: SnapshotPayload) {
     };
 }
 
+function sleep(ms: number) {
+    return new Promise((resolve) => setTimeout(resolve, Math.max(0, ms)));
+}
+
+function hasSyncedExamSessionScoreEntry(metadata: Prisma.JsonValue | null) {
+    if (!metadata || typeof metadata !== 'object' || Array.isArray(metadata)) {
+        return false;
+    }
+
+    const autoFill = (metadata as Record<string, unknown>).autoFillStudentGrade;
+    if (!autoFill || typeof autoFill !== 'object' || Array.isArray(autoFill)) {
+        return false;
+    }
+
+    return Boolean(String((autoFill as Record<string, unknown>).syncedAt || '').trim());
+}
+
+function isRestoreSnapshotClean(result: Record<string, unknown> | null) {
+    if (!result) return false;
+
+    return (
+        Number(result.studentExamSessionCount || 0) === Number(result.expectedStudentExamSessionCount || 0) &&
+        Number(result.studentGradeCount || 0) === Number(result.expectedStudentGradeCount || 0) &&
+        Number(result.studentScoreEntryCount || 0) === Number(result.expectedStudentScoreEntryCount || 0) &&
+        Number(result.reportGradeCount || 0) === Number(result.expectedReportGradeCount || 0) &&
+        Boolean(result.gradeComponentsMatch)
+    );
+}
+
+async function waitForPostSubmitArtifactsToSettle(params: {
+    snapshot: SnapshotPayload;
+    expectedSessionCount: number;
+    timeoutMs?: number;
+    pollIntervalMs?: number;
+    stablePollsRequired?: number;
+}): Promise<PostSubmitSettleResult> {
+    const timeoutMs = Math.max(5_000, params.timeoutMs ?? DEFAULT_POST_SUBMIT_SETTLE_TIMEOUT_MS);
+    const pollIntervalMs = Math.max(250, params.pollIntervalMs ?? DEFAULT_POST_SUBMIT_SETTLE_POLL_MS);
+    const stablePollsRequired = Math.max(2, params.stablePollsRequired ?? DEFAULT_POST_SUBMIT_SETTLE_STABLE_POLLS);
+    const startedAt = Date.now();
+    const scopeWhere = {
+        studentId: { in: params.snapshot.meta.studentIds },
+        subjectId: { in: params.snapshot.meta.subjectIds },
+        academicYearId: params.snapshot.meta.academicYearId,
+        semester: params.snapshot.meta.semester,
+    } as const;
+
+    let stablePolls = 0;
+    let previousSignature = '';
+    let lastObserved: PostSubmitSettleResult = {
+        settled: false,
+        timedOut: false,
+        waitedMs: 0,
+        expectedSessionCount: params.expectedSessionCount,
+        completedOrTimedOutSessionCount: 0,
+        scoredSessionCount: 0,
+        syncedScoreEntryCount: 0,
+        studentGradeCount: 0,
+        studentScoreEntryCount: 0,
+        reportGradeCount: 0,
+        stablePolls: 0,
+    };
+
+    while (Date.now() - startedAt <= timeoutMs) {
+        const sessions = await prisma.studentExamSession.findMany({
+            where: {
+                studentId: { in: params.snapshot.meta.studentIds },
+                scheduleId: { in: params.snapshot.meta.scheduleIds },
+                status: { in: ['COMPLETED', 'TIMEOUT'] },
+            },
+            select: {
+                id: true,
+                score: true,
+            },
+        });
+        const sessionSourceKeys = sessions.map((session) => `examSession:${session.id}`);
+        const [scopedScoreEntries, studentGradeCount, studentScoreEntryCount, reportGradeCount] = await Promise.all([
+            sessionSourceKeys.length > 0
+                ? prisma.studentScoreEntry.findMany({
+                      where: {
+                          sourceKey: { in: sessionSourceKeys },
+                      },
+                      select: {
+                          metadata: true,
+                      },
+                  })
+                : Promise.resolve([] as Array<{ metadata: Prisma.JsonValue | null }>),
+            prisma.studentGrade.count({ where: scopeWhere }),
+            prisma.studentScoreEntry.count({ where: scopeWhere }),
+            prisma.reportGrade.count({ where: scopeWhere }),
+        ]);
+
+        const completedOrTimedOutSessionCount = sessions.length;
+        const scoredSessionCount = sessions.filter((session) => typeof session.score === 'number').length;
+        const syncedScoreEntryCount = scopedScoreEntries.filter((entry) => hasSyncedExamSessionScoreEntry(entry.metadata)).length;
+        const ready =
+            completedOrTimedOutSessionCount >= params.expectedSessionCount &&
+            scoredSessionCount >= params.expectedSessionCount &&
+            syncedScoreEntryCount >= params.expectedSessionCount;
+        const signature = [
+            completedOrTimedOutSessionCount,
+            scoredSessionCount,
+            syncedScoreEntryCount,
+            studentGradeCount,
+            studentScoreEntryCount,
+            reportGradeCount,
+        ].join(':');
+
+        if (ready) {
+            stablePolls = signature === previousSignature ? stablePolls + 1 : 1;
+        } else {
+            stablePolls = 0;
+        }
+        previousSignature = signature;
+
+        lastObserved = {
+            settled: ready && stablePolls >= stablePollsRequired,
+            timedOut: false,
+            waitedMs: Date.now() - startedAt,
+            expectedSessionCount: params.expectedSessionCount,
+            completedOrTimedOutSessionCount,
+            scoredSessionCount,
+            syncedScoreEntryCount,
+            studentGradeCount,
+            studentScoreEntryCount,
+            reportGradeCount,
+            stablePolls,
+        };
+
+        if (lastObserved.settled) {
+            return lastObserved;
+        }
+
+        await sleep(pollIntervalMs);
+    }
+
+    return {
+        ...lastObserved,
+        settled: false,
+        timedOut: true,
+        waitedMs: Date.now() - startedAt,
+    };
+}
+
+async function restoreSnapshotWithRetries(snapshot: SnapshotPayload) {
+    let attempt = 1;
+    let result = await restoreSnapshot(snapshot);
+
+    while (!isRestoreSnapshotClean(result) && attempt < DEFAULT_RESTORE_RETRY_LIMIT) {
+        await sleep(DEFAULT_RESTORE_RETRY_DELAY_MS);
+        attempt += 1;
+        result = await restoreSnapshot(snapshot);
+    }
+
+    return {
+        ...result,
+        restoreAttempts: attempt,
+        fullyRestored: isRestoreSnapshotClean(result),
+    };
+}
+
 async function loadSnapshotFromFile(snapshotPath: string): Promise<SnapshotPayload> {
     const raw = await readFile(snapshotPath, 'utf8');
     return JSON.parse(raw) as SnapshotPayload;
@@ -1401,8 +1581,12 @@ async function runLoadTest(args: CliArgs) {
             completedSessionCount,
             timeoutSessionCount,
         };
+        report.postSubmitSettle = await waitForPostSubmitArtifactsToSettle({
+            snapshot,
+            expectedSessionCount: startedExams.length,
+        });
     } finally {
-        restoreResult = await restoreSnapshot(snapshot);
+        restoreResult = await restoreSnapshotWithRetries(snapshot);
         report.restore = restoreResult;
         shouldDeleteSnapshot = true;
         await mkdir(path.dirname(reportPath), { recursive: true });
@@ -1429,7 +1613,7 @@ async function runLoadTest(args: CliArgs) {
 
 async function runRestoreOnly(snapshotPath: string) {
     const snapshot = await loadSnapshotFromFile(snapshotPath);
-    const result = await restoreSnapshot(snapshot);
+    const result = await restoreSnapshotWithRetries(snapshot);
     process.stdout.write(
         `${JSON.stringify(
             {

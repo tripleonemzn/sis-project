@@ -1565,6 +1565,45 @@ function isSameSlotTime(
 const AVAILABLE_EXAMS_CACHE_TTL_MS = 3000;
 const AVAILABLE_EXAMS_CACHE_MAX_ENTRIES = 2000;
 const availableExamsCache = new Map<number, { expiresAt: number; payload: unknown }>();
+const EXAM_RUNTIME_MODE_ENABLED = String(process.env.EXAM_RUNTIME_MODE_ENABLED || 'false')
+    .trim()
+    .toLowerCase() === 'true';
+const EXAM_RUNTIME_ACTIVE_YEAR_CACHE_TTL_MS = Math.max(
+    5000,
+    Number.isFinite(Number(process.env.EXAM_RUNTIME_ACTIVE_YEAR_CACHE_TTL_MS))
+        ? Number(process.env.EXAM_RUNTIME_ACTIVE_YEAR_CACHE_TTL_MS)
+        : 15_000,
+);
+const EXAM_RUNTIME_SNAPSHOT_TTL_MS = Math.max(
+    5000,
+    Number.isFinite(Number(process.env.EXAM_RUNTIME_SNAPSHOT_TTL_MS))
+        ? Number(process.env.EXAM_RUNTIME_SNAPSHOT_TTL_MS)
+        : 20_000,
+);
+const EXAM_RUNTIME_SNAPSHOT_MAX_ENTRIES = Math.max(
+    50,
+    Number.isFinite(Number(process.env.EXAM_RUNTIME_SNAPSHOT_MAX_ENTRIES))
+        ? Number(process.env.EXAM_RUNTIME_SNAPSHOT_MAX_ENTRIES)
+        : 250,
+);
+const EXAM_RUNTIME_PREWARM_START_ENABLED = String(process.env.EXAM_RUNTIME_PREWARM_START_ENABLED || 'false')
+    .trim()
+    .toLowerCase() === 'true';
+const EXAM_RUNTIME_PREWARM_LOOKAHEAD_MINUTES = Math.max(
+    5,
+    Number.isFinite(Number(process.env.EXAM_RUNTIME_PREWARM_LOOKAHEAD_MINUTES))
+        ? Number(process.env.EXAM_RUNTIME_PREWARM_LOOKAHEAD_MINUTES)
+        : 45,
+);
+const EXAM_RUNTIME_PREWARM_MAX_SCHEDULES = Math.max(
+    1,
+    Math.min(
+        24,
+        Number.isFinite(Number(process.env.EXAM_RUNTIME_PREWARM_MAX_SCHEDULES))
+            ? Number(process.env.EXAM_RUNTIME_PREWARM_MAX_SCHEDULES)
+            : 12,
+    ),
+);
 const PROGRAM_TARGET_CANDIDATE = 'CALON_SISWA';
 const PROGRAM_TARGET_BKK_APPLICANT = 'PELAMAR_BKK';
 type ExamAccessRole = 'STUDENT' | 'CALON_SISWA' | 'UMUM';
@@ -1657,6 +1696,106 @@ type StartExamSchedulePayload = {
 };
 const startExamScheduleCache = new Map<number, { expiresAt: number; payload: StartExamSchedulePayload }>();
 const startExamScheduleInFlight = new Map<number, Promise<StartExamSchedulePayload | null>>();
+const studentAvailableExamSnapshotScheduleSelect = {
+    id: true,
+    classId: true,
+    jobVacancyId: true,
+    subjectId: true,
+    subject: {
+        select: {
+            id: true,
+            name: true,
+            code: true,
+        },
+    },
+    packetId: true,
+    startTime: true,
+    endTime: true,
+    sessionId: true,
+    sessionLabel: true,
+    isActive: true,
+    room: true,
+    examType: true,
+    academicYearId: true,
+    semester: true,
+    jobVacancy: {
+        select: {
+            id: true,
+            title: true,
+            companyName: true,
+            industryPartner: {
+                select: {
+                    id: true,
+                    name: true,
+                    city: true,
+                    sector: true,
+                },
+            },
+        },
+    },
+    packet: {
+        select: {
+            id: true,
+            title: true,
+            description: true,
+            type: true,
+            programCode: true,
+            semester: true,
+            duration: true,
+            publishedQuestionCount: true,
+            instructions: true,
+            subjectId: true,
+            academicYearId: true,
+            subject: {
+                select: {
+                    id: true,
+                    name: true,
+                    code: true,
+                },
+            },
+        },
+    },
+} satisfies Prisma.ExamScheduleSelect;
+type StudentAvailableExamSnapshotScheduleRow = Prisma.ExamScheduleGetPayload<{
+    select: typeof studentAvailableExamSnapshotScheduleSelect;
+}>;
+type StudentAvailableExamClassSnapshot = {
+    classId: number;
+    academicYearId: number;
+    semester: Semester;
+    scheduleIds: number[];
+    schedules: StudentAvailableExamSnapshotScheduleRow[];
+    questionCountByPacketId: Map<number, number>;
+};
+type ActiveAcademicYearWindowSnapshot = {
+    id: number;
+    semester1End: Date | null;
+    semester2Start: Date | null;
+    semester2End: Date | null;
+};
+let activeAcademicYearWindowCache:
+    | {
+          expiresAt: number;
+          payload: ActiveAcademicYearWindowSnapshot | null;
+      }
+    | null = null;
+const studentAvailableExamClassSnapshotCache = new Map<
+    string,
+    { expiresAt: number; payload: StudentAvailableExamClassSnapshot }
+>();
+const studentAvailableExamClassSnapshotInFlight = new Map<
+    string,
+    Promise<StudentAvailableExamClassSnapshot>
+>();
+const automaticExamRestrictionSnapshotCache = new Map<
+    string,
+    { expiresAt: number; payload: Map<number, AutomaticExamRestrictionInfo> }
+>();
+const automaticExamRestrictionSnapshotInFlight = new Map<
+    string,
+    Promise<Map<number, AutomaticExamRestrictionInfo>>
+>();
+const examRuntimePrewarmUntilByKey = new Map<string, number>();
 type ExamBrowserLaunchTokenPayload = {
     sub: string;
     studentId: number;
@@ -1717,6 +1856,302 @@ function setCachedAvailableExams(studentId: number, payload: unknown) {
     if (oldestKey !== undefined) {
         availableExamsCache.delete(oldestKey);
     }
+}
+
+async function getActiveAcademicYearWindowSnapshot(): Promise<ActiveAcademicYearWindowSnapshot | null> {
+    const now = Date.now();
+    if (activeAcademicYearWindowCache && activeAcademicYearWindowCache.expiresAt > now) {
+        return activeAcademicYearWindowCache.payload;
+    }
+
+    const payload = await prisma.academicYear.findFirst({
+        where: { isActive: true },
+        select: {
+            id: true,
+            semester1End: true,
+            semester2Start: true,
+            semester2End: true,
+        },
+    });
+
+    activeAcademicYearWindowCache = {
+        expiresAt: now + EXAM_RUNTIME_ACTIVE_YEAR_CACHE_TTL_MS,
+        payload,
+    };
+
+    return payload;
+}
+
+function buildStudentAvailableExamClassSnapshotKey(params: {
+    classId: number;
+    academicYearId: number;
+    semester: Semester;
+}) {
+    return `${params.classId}:${params.academicYearId}:${params.semester}`;
+}
+
+function getCachedStudentAvailableExamClassSnapshot(
+    key: string,
+): StudentAvailableExamClassSnapshot | null {
+    const now = Date.now();
+    const cached = studentAvailableExamClassSnapshotCache.get(key);
+    if (!cached) return null;
+    if (cached.expiresAt <= now) {
+        studentAvailableExamClassSnapshotCache.delete(key);
+        return null;
+    }
+    return cached.payload;
+}
+
+function setCachedStudentAvailableExamClassSnapshot(
+    key: string,
+    payload: StudentAvailableExamClassSnapshot,
+) {
+    const now = Date.now();
+    studentAvailableExamClassSnapshotCache.set(key, {
+        expiresAt: now + EXAM_RUNTIME_SNAPSHOT_TTL_MS,
+        payload,
+    });
+
+    if (studentAvailableExamClassSnapshotCache.size <= EXAM_RUNTIME_SNAPSHOT_MAX_ENTRIES) return;
+
+    for (const [cacheKey, entry] of studentAvailableExamClassSnapshotCache.entries()) {
+        if (entry.expiresAt <= now) {
+            studentAvailableExamClassSnapshotCache.delete(cacheKey);
+        }
+    }
+
+    if (studentAvailableExamClassSnapshotCache.size <= EXAM_RUNTIME_SNAPSHOT_MAX_ENTRIES) return;
+    const oldestKey = studentAvailableExamClassSnapshotCache.keys().next().value;
+    if (oldestKey !== undefined) {
+        studentAvailableExamClassSnapshotCache.delete(oldestKey);
+    }
+}
+
+async function loadStudentAvailableExamClassSnapshot(params: {
+    classId: number;
+    academicYearId: number;
+    semester: Semester;
+}): Promise<StudentAvailableExamClassSnapshot> {
+    const schedules = await prisma.examSchedule.findMany({
+        where: {
+            classId: params.classId,
+            isActive: true,
+            academicYearId: params.academicYearId,
+            semester: params.semester,
+        },
+        select: studentAvailableExamSnapshotScheduleSelect,
+        orderBy: { startTime: 'asc' },
+    });
+
+    const packetIds = Array.from(
+        new Set(
+            schedules
+                .map((schedule) => Number(schedule.packet?.id))
+                .filter((packetId) => Number.isFinite(packetId) && packetId > 0),
+        ),
+    );
+    const packetQuestionCounts = packetIds.length > 0
+        ? await prisma.$queryRaw<Array<{ id: number; question_count: number }>>(
+              Prisma.sql`
+                SELECT
+                    id,
+                    CASE
+                        WHEN jsonb_typeof(questions) = 'array' THEN jsonb_array_length(questions)
+                        ELSE 0
+                    END AS question_count
+                FROM exam_packets
+                WHERE id IN (${Prisma.join(packetIds)})
+              `,
+          )
+        : [];
+    const questionCountByPacketId = new Map<number, number>(
+        packetQuestionCounts.map((row) => [Number(row.id), Number(row.question_count) || 0]),
+    );
+
+    const programTaggedTargets = Array.from(
+        new Map(
+            schedules
+                .map((schedule) => {
+                    const taggedProgramCode = normalizeProgramCode(schedule.packet?.programCode);
+                    if (!taggedProgramCode) return null;
+                    return {
+                        academicYearId: Number(schedule.academicYearId),
+                        programCode: taggedProgramCode,
+                    };
+                })
+                .filter((target): target is { academicYearId: number; programCode: string } => !!target)
+                .map((target) => [`${target.academicYearId}:${target.programCode}`, target]),
+        ).values(),
+    );
+
+    const activeProgramKeys =
+        programTaggedTargets.length > 0
+            ? new Set(
+                  (
+                      await prisma.examProgramConfig.findMany({
+                          where: {
+                              isActive: true,
+                              OR: programTaggedTargets.map((target) => ({
+                                  academicYearId: target.academicYearId,
+                                  code: target.programCode,
+                              })),
+                          },
+                          select: {
+                              academicYearId: true,
+                              code: true,
+                          },
+                      })
+                  ).map((program) => `${Number(program.academicYearId)}:${String(program.code).trim().toUpperCase()}`),
+              )
+            : null;
+
+    const filteredSchedules = schedules.filter((schedule) => {
+        const taggedProgramCode = normalizeProgramCode(schedule.packet?.programCode);
+        if (!taggedProgramCode || !activeProgramKeys) return true;
+        return activeProgramKeys.has(`${Number(schedule.academicYearId)}:${taggedProgramCode}`);
+    });
+
+    return {
+        classId: params.classId,
+        academicYearId: params.academicYearId,
+        semester: params.semester,
+        scheduleIds: filteredSchedules.map((schedule) => schedule.id),
+        schedules: filteredSchedules,
+        questionCountByPacketId,
+    };
+}
+
+async function getOrCreateStudentAvailableExamClassSnapshot(params: {
+    classId: number;
+    academicYearId: number;
+    semester: Semester;
+}): Promise<StudentAvailableExamClassSnapshot> {
+    const key = buildStudentAvailableExamClassSnapshotKey(params);
+    const cached = getCachedStudentAvailableExamClassSnapshot(key);
+    if (cached) return cached;
+
+    const inFlight = studentAvailableExamClassSnapshotInFlight.get(key);
+    if (inFlight) return inFlight;
+
+    const runner = loadStudentAvailableExamClassSnapshot(params)
+        .then((payload) => {
+            setCachedStudentAvailableExamClassSnapshot(key, payload);
+            return payload;
+        })
+        .finally(() => {
+            studentAvailableExamClassSnapshotInFlight.delete(key);
+        });
+
+    studentAvailableExamClassSnapshotInFlight.set(key, runner);
+    return runner;
+}
+
+function buildAutomaticExamRestrictionSnapshotKey(params: {
+    classId: number;
+    academicYearId: number;
+    semester: Semester;
+    programCode?: string | null;
+    examType?: ExamType | null;
+}) {
+    return `${params.classId}:${params.academicYearId}:${params.semester}:${
+        normalizeProgramCode(params.programCode || '') || '-'
+    }:${String(params.examType || '-')}`;
+}
+
+function getCachedAutomaticExamRestrictionSnapshot(
+    key: string,
+): Map<number, AutomaticExamRestrictionInfo> | null {
+    const now = Date.now();
+    const cached = automaticExamRestrictionSnapshotCache.get(key);
+    if (!cached) return null;
+    if (cached.expiresAt <= now) {
+        automaticExamRestrictionSnapshotCache.delete(key);
+        return null;
+    }
+    return cached.payload;
+}
+
+function setCachedAutomaticExamRestrictionSnapshot(
+    key: string,
+    payload: Map<number, AutomaticExamRestrictionInfo>,
+) {
+    const now = Date.now();
+    automaticExamRestrictionSnapshotCache.set(key, {
+        expiresAt: now + EXAM_RUNTIME_SNAPSHOT_TTL_MS,
+        payload,
+    });
+
+    if (automaticExamRestrictionSnapshotCache.size <= EXAM_RUNTIME_SNAPSHOT_MAX_ENTRIES) return;
+
+    for (const [cacheKey, entry] of automaticExamRestrictionSnapshotCache.entries()) {
+        if (entry.expiresAt <= now) {
+            automaticExamRestrictionSnapshotCache.delete(cacheKey);
+        }
+    }
+
+    if (automaticExamRestrictionSnapshotCache.size <= EXAM_RUNTIME_SNAPSHOT_MAX_ENTRIES) return;
+    const oldestKey = automaticExamRestrictionSnapshotCache.keys().next().value;
+    if (oldestKey !== undefined) {
+        automaticExamRestrictionSnapshotCache.delete(oldestKey);
+    }
+}
+
+async function loadAutomaticExamRestrictionSnapshot(params: {
+    classId: number;
+    academicYearId: number;
+    semester: Semester;
+    programCode?: string | null;
+    examType?: ExamType | null;
+}): Promise<Map<number, AutomaticExamRestrictionInfo>> {
+    const classStudents = await prisma.user.findMany({
+        where: {
+            classId: params.classId,
+            studentStatus: 'ACTIVE',
+        },
+        select: {
+            id: true,
+        },
+    });
+    const studentIds = classStudents
+        .map((student) => Number(student.id))
+        .filter((studentId) => Number.isFinite(studentId) && studentId > 0);
+
+    return buildAutomaticExamRestrictionMap({
+        classId: params.classId,
+        academicYearId: params.academicYearId,
+        semester: params.semester,
+        studentIds,
+        programCode: params.programCode,
+        examType: params.examType,
+    });
+}
+
+async function getOrCreateAutomaticExamRestrictionSnapshot(params: {
+    classId: number;
+    academicYearId: number;
+    semester: Semester;
+    programCode?: string | null;
+    examType?: ExamType | null;
+}): Promise<Map<number, AutomaticExamRestrictionInfo>> {
+    const key = buildAutomaticExamRestrictionSnapshotKey(params);
+    const cached = getCachedAutomaticExamRestrictionSnapshot(key);
+    if (cached) return cached;
+
+    const inFlight = automaticExamRestrictionSnapshotInFlight.get(key);
+    if (inFlight) return inFlight;
+
+    const runner = loadAutomaticExamRestrictionSnapshot(params)
+        .then((payload) => {
+            setCachedAutomaticExamRestrictionSnapshot(key, payload);
+            return payload;
+        })
+        .finally(() => {
+            automaticExamRestrictionSnapshotInFlight.delete(key);
+        });
+
+    automaticExamRestrictionSnapshotInFlight.set(key, runner);
+    return runner;
 }
 
 function getCachedStartExamSchedule(scheduleId: number): StartExamSchedulePayload | null {
@@ -1963,6 +2398,66 @@ async function getOrCreateStartExamSchedule(scheduleId: number): Promise<StartEx
 
     startExamScheduleInFlight.set(scheduleId, runner);
     return runner;
+}
+
+async function prewarmStartExamSchedules(scheduleIds: number[]) {
+    const normalizedScheduleIds = Array.from(
+        new Set(scheduleIds.filter((scheduleId) => Number.isFinite(scheduleId) && scheduleId > 0)),
+    );
+    for (let index = 0; index < normalizedScheduleIds.length; index += 2) {
+        const chunk = normalizedScheduleIds.slice(index, index + 2);
+        await Promise.all(
+            chunk.map(async (scheduleId) => {
+                try {
+                    await getOrCreateStartExamSchedule(scheduleId);
+                } catch (error) {
+                    console.error(`[EXAM_RUNTIME_PREWARM] Gagal prewarm schedule ${scheduleId}:`, error);
+                }
+            }),
+        );
+    }
+}
+
+function maybeQueueExamRuntimeStartPrewarm(params: {
+    classId: number;
+    academicYearId: number;
+    semester: Semester;
+    schedules: Array<{
+        id: number;
+        startTime: Date;
+        endTime: Date;
+        isActive: boolean;
+        packet: { id: number } | null;
+    }>;
+}) {
+    if (!EXAM_RUNTIME_MODE_ENABLED || !EXAM_RUNTIME_PREWARM_START_ENABLED) return;
+
+    const now = Date.now();
+    const key = `${params.classId}:${params.academicYearId}:${params.semester}`;
+    const prewarmUntil = examRuntimePrewarmUntilByKey.get(key) || 0;
+    if (prewarmUntil > now) return;
+
+    const lookaheadMs = EXAM_RUNTIME_PREWARM_LOOKAHEAD_MINUTES * 60_000;
+    const candidateScheduleIds = params.schedules
+        .filter((schedule) => {
+            if (!schedule.isActive || !schedule.packet) return false;
+            if (schedule.endTime.getTime() + 30 * 60_000 < now) return false;
+            return schedule.startTime.getTime() - lookaheadMs <= now;
+        })
+        .sort((left, right) => left.startTime.getTime() - right.startTime.getTime())
+        .slice(0, EXAM_RUNTIME_PREWARM_MAX_SCHEDULES)
+        .map((schedule) => schedule.id);
+
+    if (!candidateScheduleIds.length) return;
+
+    examRuntimePrewarmUntilByKey.set(
+        key,
+        now + Math.max(5000, Math.floor(EXAM_RUNTIME_SNAPSHOT_TTL_MS / 2)),
+    );
+
+    setTimeout(() => {
+        void prewarmStartExamSchedules(candidateScheduleIds);
+    }, 0);
 }
 
 function stableSerializeJson(value: unknown): string {
@@ -9044,18 +9539,7 @@ export const getAvailableExams = asyncHandler(async (req: Request, res: Response
     }
 
     const now = new Date();
-    const activeAcademicYearWindow =
-        accessRole === 'STUDENT'
-            ? await prisma.academicYear.findFirst({
-                  where: { isActive: true },
-                  select: {
-                      id: true,
-                      semester1End: true,
-                      semester2Start: true,
-                      semester2End: true,
-                  },
-              })
-            : null;
+    const activeAcademicYearWindow = accessRole === 'STUDENT' ? await getActiveAcademicYearWindowSnapshot() : null;
     const activeSemesterForStudent = activeAcademicYearWindow
         ? resolveCurrentAcademicYearSemester(activeAcademicYearWindow, now)
         : null;
@@ -9147,10 +9631,12 @@ export const getAvailableExams = asyncHandler(async (req: Request, res: Response
             },
         },
     } satisfies Prisma.ExamScheduleSelect;
+    type AvailableExamScheduleRow = Prisma.ExamScheduleGetPayload<{ select: typeof scheduleSelect }>;
 
     let studentClassId: number | null = null;
     let audienceProgramKeys: Set<string> | null = null;
-    let schedules: Prisma.ExamScheduleGetPayload<{ select: typeof scheduleSelect }>[] = [];
+    let schedules: AvailableExamScheduleRow[] = [];
+    let sharedQuestionCountByPacketId: Map<number, number> | null = null;
 
     if (accessRole === 'STUDENT') {
         const student = await prisma.user.findUnique({
@@ -9178,22 +9664,105 @@ export const getAvailableExams = asyncHandler(async (req: Request, res: Response
         }
 
         studentClassId = Number(student.classId);
-        schedules = await prisma.examSchedule.findMany({
-            where: {
-                classId: student.classId,
-                isActive: true,
-                ...(activeAcademicYearWindow?.id ? { academicYearId: activeAcademicYearWindow.id } : {}),
-                ...(activeSemesterForStudent ? { semester: activeSemesterForStudent } : {}),
-            },
-            select: scheduleSelect,
-            orderBy: { startTime: 'asc' },
-        });
+        if (EXAM_RUNTIME_MODE_ENABLED && activeAcademicYearWindow?.id && activeSemesterForStudent) {
+            const classSnapshot = await getOrCreateStudentAvailableExamClassSnapshot({
+                classId: studentClassId,
+                academicYearId: activeAcademicYearWindow.id,
+                semester: activeSemesterForStudent,
+            });
+            sharedQuestionCountByPacketId = classSnapshot.questionCountByPacketId;
+            maybeQueueExamRuntimeStartPrewarm({
+                classId: studentClassId,
+                academicYearId: activeAcademicYearWindow.id,
+                semester: activeSemesterForStudent,
+                schedules: classSnapshot.schedules.map((schedule) => ({
+                    id: schedule.id,
+                    startTime: schedule.startTime,
+                    endTime: schedule.endTime,
+                    isActive: schedule.isActive,
+                    packet: schedule.packet ? { id: schedule.packet.id } : null,
+                })),
+            });
+
+            if (classSnapshot.scheduleIds.length > 0) {
+                const [studentSessions, studentMakeupAccesses] = await Promise.all([
+                    prisma.studentExamSession.findMany({
+                        where: {
+                            studentId,
+                            scheduleId: { in: classSnapshot.scheduleIds },
+                        },
+                        select: {
+                            id: true,
+                            studentId: true,
+                            scheduleId: true,
+                            startTime: true,
+                            endTime: true,
+                            submitTime: true,
+                            status: true,
+                            answers: true,
+                            score: true,
+                            updatedAt: true,
+                        },
+                    }),
+                    prisma.examScheduleMakeupAccess.findMany({
+                        where: {
+                            studentId,
+                            scheduleId: { in: classSnapshot.scheduleIds },
+                            isActive: true,
+                        },
+                        select: {
+                            scheduleId: true,
+                            id: true,
+                            startTime: true,
+                            endTime: true,
+                            reason: true,
+                            isActive: true,
+                        },
+                    }),
+                ]);
+
+                const sessionsByScheduleId = new Map<number, AvailableExamScheduleRow['sessions']>();
+                studentSessions.forEach((session) => {
+                    const current = sessionsByScheduleId.get(session.scheduleId) || [];
+                    current.push(session);
+                    sessionsByScheduleId.set(session.scheduleId, current);
+                });
+
+                const makeupAccessByScheduleId = new Map<number, AvailableExamScheduleRow['makeupAccesses']>();
+                studentMakeupAccesses.forEach((access) => {
+                    const current = makeupAccessByScheduleId.get(access.scheduleId) || [];
+                    current.push({
+                        id: access.id,
+                        startTime: access.startTime,
+                        endTime: access.endTime,
+                        reason: access.reason,
+                        isActive: access.isActive,
+                    });
+                    makeupAccessByScheduleId.set(access.scheduleId, current);
+                });
+
+                schedules = classSnapshot.schedules.map((schedule) => ({
+                    ...schedule,
+                    sessions: sessionsByScheduleId.get(schedule.id) || [],
+                    makeupAccesses: makeupAccessByScheduleId.get(schedule.id) || [],
+                }));
+            } else {
+                schedules = [];
+            }
+        } else {
+            schedules = await prisma.examSchedule.findMany({
+                where: {
+                    classId: student.classId,
+                    isActive: true,
+                    ...(activeAcademicYearWindow?.id ? { academicYearId: activeAcademicYearWindow.id } : {}),
+                    ...(activeSemesterForStudent ? { semester: activeSemesterForStudent } : {}),
+                },
+                select: scheduleSelect,
+                orderBy: { startTime: 'asc' },
+            });
+        }
     } else if (accessRole === 'CALON_SISWA') {
-        const activeAcademicYear = await prisma.academicYear.findFirst({
-            where: { isActive: true },
-            orderBy: { id: 'desc' },
-            select: { id: true },
-        });
+        const activeAcademicYear = await getActiveAcademicYearWindowSnapshot();
         const audiencePrograms = await prisma.examProgramConfig.findMany({
             where: {
                 isActive: true,
@@ -9482,23 +10051,31 @@ export const getAvailableExams = asyncHandler(async (req: Request, res: Response
                 .filter((packetId) => Number.isFinite(packetId) && packetId > 0),
         ),
     );
-    const packetQuestionCounts = packetIds.length > 0
-        ? await prisma.$queryRaw<Array<{ id: number; question_count: number }>>(
-              Prisma.sql`
-                SELECT
-                    id,
-                    CASE
-                        WHEN jsonb_typeof(questions) = 'array' THEN jsonb_array_length(questions)
-                        ELSE 0
-                    END AS question_count
-                FROM exam_packets
-                WHERE id IN (${Prisma.join(packetIds)})
-              `,
+    const questionCountByPacketId = sharedQuestionCountByPacketId
+        ? new Map(
+              packetIds.map((packetId) => [
+                  packetId,
+                  Number(sharedQuestionCountByPacketId?.get(packetId) || 0),
+              ]),
           )
-        : [];
-    const questionCountByPacketId = new Map<number, number>(
-        packetQuestionCounts.map((row) => [Number(row.id), Number(row.question_count) || 0]),
-    );
+        : packetIds.length > 0
+            ? new Map(
+                  (
+                      await prisma.$queryRaw<Array<{ id: number; question_count: number }>>(
+                          Prisma.sql`
+                            SELECT
+                                id,
+                                CASE
+                                    WHEN jsonb_typeof(questions) = 'array' THEN jsonb_array_length(questions)
+                                    ELSE 0
+                                END AS question_count
+                            FROM exam_packets
+                            WHERE id IN (${Prisma.join(packetIds)})
+                          `,
+                      )
+                  ).map((row) => [Number(row.id), Number(row.question_count) || 0]),
+              )
+            : new Map<number, number>();
 
     const scheduleTargets =
         accessRole === 'STUDENT'
@@ -9587,14 +10164,22 @@ export const getAvailableExams = asyncHandler(async (req: Request, res: Response
             automaticRestrictionTargets.length && studentClassId
                 ? Promise.all(
                       automaticRestrictionTargets.map(async (target) => {
-                          const restrictionMap = await buildAutomaticExamRestrictionMap({
-                              classId: studentClassId,
-                              academicYearId: target.academicYearId,
-                              semester: target.semester,
-                              studentIds: [studentId],
-                              programCode: target.programCode,
-                              examType: target.examType,
-                          });
+                          const restrictionMap = EXAM_RUNTIME_MODE_ENABLED
+                              ? await getOrCreateAutomaticExamRestrictionSnapshot({
+                                    classId: studentClassId,
+                                    academicYearId: target.academicYearId,
+                                    semester: target.semester,
+                                    programCode: target.programCode,
+                                    examType: target.examType,
+                                })
+                              : await buildAutomaticExamRestrictionMap({
+                                    classId: studentClassId,
+                                    academicYearId: target.academicYearId,
+                                    semester: target.semester,
+                                    studentIds: [studentId],
+                                    programCode: target.programCode,
+                                    examType: target.examType,
+                                });
 
                           return [
                               buildAutomaticRestrictionKey(
@@ -9855,15 +10440,7 @@ async function buildStartExamPayload(params: {
         throw new ApiError(400, 'Soal untuk ujian ini belum siap dibuka.');
     }
     if (accessRole === 'STUDENT') {
-        const activeAcademicYearWindow = await prisma.academicYear.findFirst({
-            where: { isActive: true },
-            select: {
-                id: true,
-                semester1End: true,
-                semester2Start: true,
-                semester2End: true,
-            },
-        });
+        const activeAcademicYearWindow = await getActiveAcademicYearWindowSnapshot();
         const activeSemesterForStudent = activeAcademicYearWindow
             ? resolveCurrentAcademicYearSemester(activeAcademicYearWindow, new Date())
             : null;
@@ -9909,14 +10486,22 @@ async function buildStartExamPayload(params: {
 
         const automaticRestriction =
             (
-                await buildAutomaticExamRestrictionMap({
-                    classId: student.classId,
-                    academicYearId: schedule.packet.academicYearId,
-                    semester: schedule.packet.semester,
-                    studentIds: [studentId],
-                    programCode: normalizedProgramCode,
-                    examType: schedule.packet.type,
-                })
+                EXAM_RUNTIME_MODE_ENABLED
+                    ? await getOrCreateAutomaticExamRestrictionSnapshot({
+                          classId: student.classId,
+                          academicYearId: schedule.packet.academicYearId,
+                          semester: schedule.packet.semester,
+                          programCode: normalizedProgramCode,
+                          examType: schedule.packet.type,
+                      })
+                    : await buildAutomaticExamRestrictionMap({
+                          classId: student.classId,
+                          academicYearId: schedule.packet.academicYearId,
+                          semester: schedule.packet.semester,
+                          studentIds: [studentId],
+                          programCode: normalizedProgramCode,
+                          examType: schedule.packet.type,
+                      })
             ).get(studentId) || null;
         const effectiveRestriction = buildEffectiveExamRestrictionState({
             manualRestriction: programRestriction ?? legacyRestriction ?? null,
