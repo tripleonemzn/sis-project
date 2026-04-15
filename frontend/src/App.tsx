@@ -137,6 +137,7 @@ const ProctorAttendancePrint = lazy(() => import("./pages/print/ProctorAttendanc
 const ProfileSummaryPrint = lazy(() => import("./pages/print/ProfileSummaryPrint"));
 const ProctorReportVerificationPage = lazy(() => import("./pages/public/ProctorReportVerificationPage"));
 const ExamCardVerificationPage = lazy(() => import("./pages/public/ExamCardVerificationPage"));
+const ProfileSummaryVerificationPage = lazy(() => import("./pages/public/ProfileSummaryVerificationPage"));
 const EmailPage = lazy(() => import("./pages/common/EmailPage").then(m => ({ default: m.EmailPage })));
 
 // Helper hook for auth
@@ -245,6 +246,7 @@ function App() {
           <Route path="/print/profile-summary" element={<ProfileSummaryPrint />} />
           <Route path="/verify/proctor-report/:token" element={<ProctorReportVerificationPage />} />
           <Route path="/verify/exam-card/:token" element={<ExamCardVerificationPage />} />
+          <Route path="/verify/profile-summary/:token" element={<ProfileSummaryVerificationPage />} />
         
           <Route path="/" element={<DashboardLayout />}>
             <Route index element={<DashboardRedirect />} />

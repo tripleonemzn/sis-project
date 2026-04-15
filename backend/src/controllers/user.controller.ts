@@ -1,5 +1,8 @@
 import { Request, Response } from 'express';
+import { createHash } from 'crypto';
 import bcrypt from 'bcryptjs';
+import jwt from 'jsonwebtoken';
+import QRCode from 'qrcode';
 import prisma from '../utils/prisma';
 import { ApiError, ApiResponse, asyncHandler } from '../utils/api';
 import { writeAuditLog } from '../utils/auditLog';
@@ -9,7 +12,6 @@ import { validateCandidateProfileDocuments } from '../utils/candidateAdmissionDo
 import { getNisnValidationMessage, normalizeNisnInput } from '../utils/nisn';
 import { resolveHistoricalStudentScope } from '../utils/studentAcademicHistory';
 import { ensureAcademicYearArchiveReadAccess } from '../utils/academicYearArchiveAccess';
-import { resolveStandardSchoolDocumentHeaderSnapshot } from '../utils/standardSchoolDocumentHeader';
 import {
   deriveEducationSummary,
   educationHistoriesSchema,
@@ -19,6 +21,7 @@ import {
 
 const USER_LIST_CACHE_TTL_MS = 60_000;
 const USER_LIST_MAX_LIMIT = 1000;
+const JWT_SIGNING_SECRET = String(process.env.JWT_SECRET || 'secret').trim();
 
 type CachedUserListEntry = {
   expiresAt: number;
@@ -60,6 +63,397 @@ const setCachedUserList = (key: string, data: any[]) => {
 const clearUserListCache = () => {
   userListCache.clear();
 };
+
+const profilePrintUserSelect = {
+  id: true,
+  username: true,
+  name: true,
+  role: true,
+  verificationStatus: true,
+  email: true,
+  phone: true,
+  address: true,
+  photo: true,
+  nip: true,
+  nis: true,
+  nisn: true,
+  gender: true,
+  citizenship: true,
+  maritalStatus: true,
+  birthPlace: true,
+  birthDate: true,
+  nik: true,
+  familyCardNumber: true,
+  nuptk: true,
+  highestEducation: true,
+  studyProgram: true,
+  religion: true,
+  motherName: true,
+  motherNik: true,
+  childNumber: true,
+  distanceToSchool: true,
+  familyStatus: true,
+  livingWith: true,
+  transportationMode: true,
+  travelTimeToSchool: true,
+  kipNumber: true,
+  pkhNumber: true,
+  kksNumber: true,
+  siblingsCount: true,
+  fatherName: true,
+  fatherNik: true,
+  fatherEducation: true,
+  fatherOccupation: true,
+  fatherIncome: true,
+  motherEducation: true,
+  motherOccupation: true,
+  motherIncome: true,
+  guardianName: true,
+  guardianEducation: true,
+  guardianOccupation: true,
+  guardianPhone: true,
+  rt: true,
+  rw: true,
+  dusun: true,
+  province: true,
+  cityRegency: true,
+  village: true,
+  subdistrict: true,
+  postalCode: true,
+  ptkType: true,
+  employeeStatus: true,
+  appointmentDecree: true,
+  appointmentDate: true,
+  assignmentDecree: true,
+  assignmentDate: true,
+  institution: true,
+  employeeActiveStatus: true,
+  salarySource: true,
+  additionalDuties: true,
+  educationHistories: true,
+  studentClass: {
+    select: {
+      id: true,
+      name: true,
+      major: {
+        select: {
+          id: true,
+          name: true,
+          code: true,
+        },
+      },
+    },
+  },
+  managedMajors: {
+    select: {
+      id: true,
+      name: true,
+      code: true,
+    },
+  },
+  examinerMajor: {
+    select: {
+      id: true,
+      name: true,
+      code: true,
+    },
+  },
+  children: {
+    select: {
+      id: true,
+      name: true,
+      username: true,
+      nisn: true,
+    },
+  },
+  documents: {
+    select: {
+      title: true,
+      fileUrl: true,
+      category: true,
+    },
+    orderBy: {
+      createdAt: 'asc' as const,
+    },
+  },
+} as const;
+
+function normalizeProfilePrintText(value: unknown) {
+  return String(value || '').trim();
+}
+
+function normalizeProfilePrintMediaUrl(value: unknown) {
+  const raw = normalizeProfilePrintText(value);
+  if (!raw) return null;
+  if (/^(data:|https?:)/i.test(raw)) return raw;
+  if (raw.startsWith('/api/uploads/')) return raw;
+  if (raw.startsWith('/uploads/')) return `/api${raw}`;
+  if (raw.startsWith('/api/')) return raw;
+  if (raw.startsWith('/')) return raw;
+  return `/api/uploads/${raw.replace(/^\/+/, '')}`;
+}
+
+function normalizeProfilePrintTitle(value: unknown) {
+  return normalizeProfilePrintText(value)
+    .toUpperCase()
+    .replace(/[^A-Z0-9]+/g, ' ')
+    .replace(/\s+/g, ' ')
+    .trim();
+}
+
+function resolveProfilePrintFormalPhotoUrl(params: {
+  photo?: string | null;
+  documents?: Array<{ title?: string | null; fileUrl?: string | null }>;
+}) {
+  const preferredDocument =
+    (params.documents || []).find((document) => normalizeProfilePrintTitle(document.title) === 'FOTO FORMAL') || null;
+  if (preferredDocument?.fileUrl) {
+    return normalizeProfilePrintMediaUrl(preferredDocument.fileUrl);
+  }
+  return normalizeProfilePrintMediaUrl(params.photo);
+}
+
+function buildProfilePrintFingerprint(user: any) {
+  const normalized = {
+    id: Number(user?.id || 0),
+    username: normalizeProfilePrintText(user?.username),
+    name: normalizeProfilePrintText(user?.name),
+    role: normalizeProfilePrintText(user?.role),
+    verificationStatus: normalizeProfilePrintText(user?.verificationStatus),
+    email: normalizeProfilePrintText(user?.email),
+    phone: normalizeProfilePrintText(user?.phone),
+    address: normalizeProfilePrintText(user?.address),
+    photo: normalizeProfilePrintMediaUrl(user?.photo),
+    nip: normalizeProfilePrintText(user?.nip),
+    nis: normalizeProfilePrintText(user?.nis),
+    nisn: normalizeProfilePrintText(user?.nisn),
+    gender: normalizeProfilePrintText(user?.gender),
+    citizenship: normalizeProfilePrintText(user?.citizenship),
+    maritalStatus: normalizeProfilePrintText(user?.maritalStatus),
+    birthPlace: normalizeProfilePrintText(user?.birthPlace),
+    birthDate: user?.birthDate ? new Date(user.birthDate).toISOString() : '',
+    nik: normalizeProfilePrintText(user?.nik),
+    familyCardNumber: normalizeProfilePrintText(user?.familyCardNumber),
+    nuptk: normalizeProfilePrintText(user?.nuptk),
+    highestEducation: normalizeProfilePrintText(user?.highestEducation),
+    studyProgram: normalizeProfilePrintText(user?.studyProgram),
+    religion: normalizeProfilePrintText(user?.religion),
+    motherName: normalizeProfilePrintText(user?.motherName),
+    motherNik: normalizeProfilePrintText(user?.motherNik),
+    childNumber: user?.childNumber ?? null,
+    distanceToSchool: normalizeProfilePrintText(user?.distanceToSchool),
+    familyStatus: normalizeProfilePrintText(user?.familyStatus),
+    livingWith: normalizeProfilePrintText(user?.livingWith),
+    transportationMode: normalizeProfilePrintText(user?.transportationMode),
+    travelTimeToSchool: normalizeProfilePrintText(user?.travelTimeToSchool),
+    kipNumber: normalizeProfilePrintText(user?.kipNumber),
+    pkhNumber: normalizeProfilePrintText(user?.pkhNumber),
+    kksNumber: normalizeProfilePrintText(user?.kksNumber),
+    siblingsCount: user?.siblingsCount ?? null,
+    fatherName: normalizeProfilePrintText(user?.fatherName),
+    fatherNik: normalizeProfilePrintText(user?.fatherNik),
+    fatherEducation: normalizeProfilePrintText(user?.fatherEducation),
+    fatherOccupation: normalizeProfilePrintText(user?.fatherOccupation),
+    fatherIncome: normalizeProfilePrintText(user?.fatherIncome),
+    motherEducation: normalizeProfilePrintText(user?.motherEducation),
+    motherOccupation: normalizeProfilePrintText(user?.motherOccupation),
+    motherIncome: normalizeProfilePrintText(user?.motherIncome),
+    guardianName: normalizeProfilePrintText(user?.guardianName),
+    guardianEducation: normalizeProfilePrintText(user?.guardianEducation),
+    guardianOccupation: normalizeProfilePrintText(user?.guardianOccupation),
+    guardianPhone: normalizeProfilePrintText(user?.guardianPhone),
+    rt: normalizeProfilePrintText(user?.rt),
+    rw: normalizeProfilePrintText(user?.rw),
+    dusun: normalizeProfilePrintText(user?.dusun),
+    province: normalizeProfilePrintText(user?.province),
+    cityRegency: normalizeProfilePrintText(user?.cityRegency),
+    village: normalizeProfilePrintText(user?.village),
+    subdistrict: normalizeProfilePrintText(user?.subdistrict),
+    postalCode: normalizeProfilePrintText(user?.postalCode),
+    ptkType: normalizeProfilePrintText(user?.ptkType),
+    employeeStatus: normalizeProfilePrintText(user?.employeeStatus),
+    appointmentDecree: normalizeProfilePrintText(user?.appointmentDecree),
+    appointmentDate: user?.appointmentDate ? new Date(user.appointmentDate).toISOString() : '',
+    assignmentDecree: normalizeProfilePrintText(user?.assignmentDecree),
+    assignmentDate: user?.assignmentDate ? new Date(user.assignmentDate).toISOString() : '',
+    institution: normalizeProfilePrintText(user?.institution),
+    employeeActiveStatus: normalizeProfilePrintText(user?.employeeActiveStatus),
+    salarySource: normalizeProfilePrintText(user?.salarySource),
+    additionalDuties: Array.isArray(user?.additionalDuties)
+      ? user.additionalDuties.map((item: unknown) => normalizeProfilePrintText(item)).filter(Boolean).sort()
+      : [],
+    studentClass: user?.studentClass
+      ? {
+          id: Number(user.studentClass.id || 0),
+          name: normalizeProfilePrintText(user.studentClass.name),
+          major: user.studentClass.major
+            ? {
+                id: Number(user.studentClass.major.id || 0),
+                name: normalizeProfilePrintText(user.studentClass.major.name),
+                code: normalizeProfilePrintText(user.studentClass.major.code),
+              }
+            : null,
+        }
+      : null,
+    managedMajors: Array.isArray(user?.managedMajors)
+      ? user.managedMajors
+          .map((major: any) => ({
+            id: Number(major?.id || 0),
+            name: normalizeProfilePrintText(major?.name),
+            code: normalizeProfilePrintText(major?.code),
+          }))
+          .sort((a: { code: string; name: string }, b: { code: string; name: string }) =>
+            `${a.code}-${a.name}`.localeCompare(`${b.code}-${b.name}`),
+          )
+      : [],
+    examinerMajor: user?.examinerMajor
+      ? {
+          id: Number(user.examinerMajor.id || 0),
+          name: normalizeProfilePrintText(user.examinerMajor.name),
+          code: normalizeProfilePrintText(user.examinerMajor.code),
+        }
+      : null,
+    children: Array.isArray(user?.children)
+      ? user.children
+          .map((child: any) => ({
+            id: Number(child?.id || 0),
+            name: normalizeProfilePrintText(child?.name),
+            username: normalizeProfilePrintText(child?.username),
+            nisn: normalizeProfilePrintText(child?.nisn),
+          }))
+          .sort((a: { name: string; nisn: string }, b: { name: string; nisn: string }) =>
+            `${a.name}-${a.nisn}`.localeCompare(`${b.name}-${b.nisn}`),
+          )
+      : [],
+    educationHistories: Array.isArray(user?.educationHistories)
+      ? user.educationHistories.map((history: any) => ({
+          level: normalizeProfilePrintText(history?.level),
+          institutionName: normalizeProfilePrintText(history?.institutionName),
+          faculty: normalizeProfilePrintText(history?.faculty),
+          studyProgram: normalizeProfilePrintText(history?.studyProgram),
+          gpa: normalizeProfilePrintText(history?.gpa),
+          degree: normalizeProfilePrintText(history?.degree),
+          nrg: normalizeProfilePrintText(history?.nrg),
+          documents: Array.isArray(history?.documents)
+            ? history.documents
+                .map((document: any) => ({
+                  kind: normalizeProfilePrintText(document?.kind),
+                  label: normalizeProfilePrintText(document?.label),
+                  originalName: normalizeProfilePrintText(document?.originalName),
+                  fileUrl: normalizeProfilePrintMediaUrl(document?.fileUrl),
+                }))
+                .sort((a: { kind: string; label: string }, b: { kind: string; label: string }) =>
+                  `${a.kind}-${a.label}`.localeCompare(`${b.kind}-${b.label}`),
+                )
+            : [],
+        }))
+      : [],
+    documents: Array.isArray(user?.documents)
+      ? user.documents
+          .map((document: any) => ({
+            title: normalizeProfilePrintText(document?.title),
+            fileUrl: normalizeProfilePrintMediaUrl(document?.fileUrl),
+            category: normalizeProfilePrintText(document?.category),
+          }))
+          .sort((a: { title: string; category: string }, b: { title: string; category: string }) =>
+            `${a.title}-${a.category}`.localeCompare(`${b.title}-${b.category}`),
+          )
+      : [],
+  };
+
+  return createHash('sha256').update(JSON.stringify(normalized)).digest('hex');
+}
+
+function getFirstProfileHeaderValue(value: string | string[] | undefined) {
+  const rawValue = Array.isArray(value) ? value[0] : value;
+  return String(rawValue || '')
+    .split(',')
+    .map((item) => item.trim())
+    .find((item) => item.length > 0) || '';
+}
+
+function resolveProfilePrintPublicBaseUrl(req: Request): string {
+  const configuredBaseUrl = String(
+    process.env.APP_BASE_URL || process.env.PUBLIC_APP_URL || process.env.FRONTEND_BASE_URL || '',
+  ).trim();
+
+  if (configuredBaseUrl) {
+    const normalized = /^https?:\/\//i.test(configuredBaseUrl) ? configuredBaseUrl : `https://${configuredBaseUrl}`;
+    return normalized.replace(/\/+$/, '');
+  }
+
+  const forwardedProto = getFirstProfileHeaderValue(req.headers['x-forwarded-proto']);
+  const forwardedHost = getFirstProfileHeaderValue(req.headers['x-forwarded-host']);
+  const host = forwardedHost || getFirstProfileHeaderValue(req.headers.host);
+  if (host) {
+    const protocol = forwardedProto || req.protocol || 'https';
+    return `${protocol}://${host}`.replace(/\/+$/, '');
+  }
+
+  return 'https://siskgb2.id';
+}
+
+type ProfilePrintVerificationTokenPayload = {
+  kind: 'PROFILE_SUMMARY';
+  userId: number;
+  fingerprint: string;
+  generatedAtMs: number;
+};
+
+function buildProfilePrintVerificationToken(payload: ProfilePrintVerificationTokenPayload) {
+  return jwt.sign(payload, JWT_SIGNING_SECRET, {
+    subject: `profile-summary:${payload.userId}:${payload.generatedAtMs}`,
+    noTimestamp: true,
+  });
+}
+
+function verifyProfilePrintVerificationToken(token: string): ProfilePrintVerificationTokenPayload {
+  let decoded: string | jwt.JwtPayload;
+  try {
+    decoded = jwt.verify(token, JWT_SIGNING_SECRET);
+  } catch {
+    throw new ApiError(404, 'Tautan verifikasi ringkasan profil tidak valid.');
+  }
+  if (!decoded || typeof decoded !== 'object') {
+    throw new ApiError(404, 'Tautan verifikasi ringkasan profil tidak valid.');
+  }
+  const record = decoded as Partial<ProfilePrintVerificationTokenPayload>;
+  if (record.kind !== 'PROFILE_SUMMARY') {
+    throw new ApiError(404, 'Tautan verifikasi ringkasan profil tidak valid.');
+  }
+  if (!Number.isFinite(Number(record.userId)) || Number(record.userId) <= 0) {
+    throw new ApiError(404, 'Tautan verifikasi ringkasan profil tidak valid.');
+  }
+  const fingerprint = normalizeProfilePrintText(record.fingerprint);
+  if (!fingerprint) {
+    throw new ApiError(404, 'Tautan verifikasi ringkasan profil tidak valid.');
+  }
+  if (!Number.isFinite(Number(record.generatedAtMs)) || Number(record.generatedAtMs) <= 0) {
+    throw new ApiError(404, 'Tautan verifikasi ringkasan profil tidak valid.');
+  }
+  return {
+    kind: 'PROFILE_SUMMARY',
+    userId: Number(record.userId),
+    fingerprint,
+    generatedAtMs: Number(record.generatedAtMs),
+  };
+}
+
+function buildProfilePrintVerificationUrl(baseUrl: string, verificationToken: string) {
+  return `${baseUrl}/verify/profile-summary/${verificationToken}`;
+}
+
+async function buildProfilePrintVerificationQrDataUrl(verificationUrl: string) {
+  return QRCode.toDataURL(verificationUrl, {
+    width: 192,
+    margin: 2,
+    errorCorrectionLevel: 'M',
+    color: {
+      dark: '#000000',
+      light: '#FFFFFFFF',
+    },
+  });
+}
 
 const dateSchema = z
   .string()
@@ -615,139 +1009,88 @@ export const getMyProfilePrintSummary = asyncHandler(async (req: Request, res: R
     throw new ApiError(401, 'Sesi login tidak valid');
   }
 
-  const [documentHeader, user] = await Promise.all([
-    resolveStandardSchoolDocumentHeaderSnapshot(),
-    prisma.user.findUnique({
-      where: { id: Number(currentUser.id) },
-      select: {
-        id: true,
-        username: true,
-        name: true,
-        role: true,
-        verificationStatus: true,
-        email: true,
-        phone: true,
-        address: true,
-        photo: true,
-        nip: true,
-        nis: true,
-        nisn: true,
-        gender: true,
-        citizenship: true,
-        maritalStatus: true,
-        birthPlace: true,
-        birthDate: true,
-        nik: true,
-        familyCardNumber: true,
-        nuptk: true,
-        highestEducation: true,
-        studyProgram: true,
-        religion: true,
-        motherName: true,
-        motherNik: true,
-        childNumber: true,
-        distanceToSchool: true,
-        familyStatus: true,
-        livingWith: true,
-        transportationMode: true,
-        travelTimeToSchool: true,
-        kipNumber: true,
-        pkhNumber: true,
-        kksNumber: true,
-        siblingsCount: true,
-        fatherName: true,
-        fatherNik: true,
-        fatherEducation: true,
-        fatherOccupation: true,
-        fatherIncome: true,
-        motherEducation: true,
-        motherOccupation: true,
-        motherIncome: true,
-        guardianName: true,
-        guardianEducation: true,
-        guardianOccupation: true,
-        guardianPhone: true,
-        rt: true,
-        rw: true,
-        dusun: true,
-        province: true,
-        cityRegency: true,
-        village: true,
-        subdistrict: true,
-        postalCode: true,
-        ptkType: true,
-        employeeStatus: true,
-        appointmentDecree: true,
-        appointmentDate: true,
-        assignmentDecree: true,
-        assignmentDate: true,
-        institution: true,
-        employeeActiveStatus: true,
-        salarySource: true,
-        additionalDuties: true,
-        educationHistories: true,
-        studentClass: {
-          select: {
-            id: true,
-            name: true,
-            major: {
-              select: {
-                id: true,
-                name: true,
-                code: true,
-              },
-            },
-          },
-        },
-        managedMajors: {
-          select: {
-            id: true,
-            name: true,
-            code: true,
-          },
-        },
-        examinerMajor: {
-          select: {
-            id: true,
-            name: true,
-            code: true,
-          },
-        },
-        children: {
-          select: {
-            id: true,
-            name: true,
-            username: true,
-            nisn: true,
-          },
-        },
-        documents: {
-          select: {
-            title: true,
-            fileUrl: true,
-            category: true,
-          },
-          orderBy: {
-            createdAt: 'asc',
-          },
-        },
-      },
-    }),
-  ]);
+  const user = await prisma.user.findUnique({
+    where: { id: Number(currentUser.id) },
+    select: profilePrintUserSelect,
+  });
 
   if (!user) {
     throw new ApiError(404, 'Profil pengguna tidak ditemukan');
+  }
+
+  const generatedAt = new Date().toISOString();
+  const fingerprint = buildProfilePrintFingerprint(user);
+  const verificationToken = buildProfilePrintVerificationToken({
+    kind: 'PROFILE_SUMMARY',
+    userId: Number(user.id),
+    fingerprint,
+    generatedAtMs: new Date(generatedAt).getTime(),
+  });
+  const verificationUrl = buildProfilePrintVerificationUrl(
+    resolveProfilePrintPublicBaseUrl(req),
+    verificationToken,
+  );
+  const verificationQrDataUrl = await buildProfilePrintVerificationQrDataUrl(verificationUrl);
+  const formalPhotoUrl = resolveProfilePrintFormalPhotoUrl({
+    photo: user.photo,
+    documents: user.documents,
+  });
+
+  res.status(200).json(
+    new ApiResponse(
+      200,
+      {
+        generatedAt,
+        formalPhotoUrl,
+        verification: {
+          token: verificationToken,
+          verificationUrl,
+          verificationQrDataUrl,
+        },
+        user,
+      },
+      'Ringkasan print profil berhasil diambil',
+    ),
+  );
+});
+
+export const verifyPublicProfilePrintSummary = asyncHandler(async (req: Request, res: Response) => {
+  const token = normalizeProfilePrintText(req.params.token);
+  if (!token) {
+    throw new ApiError(404, 'Tautan verifikasi ringkasan profil tidak valid.');
+  }
+
+  const decoded = verifyProfilePrintVerificationToken(token);
+  const user = await prisma.user.findUnique({
+    where: { id: decoded.userId },
+    select: profilePrintUserSelect,
+  });
+
+  if (!user) {
+    throw new ApiError(404, 'Profil pengguna tidak ditemukan.');
+  }
+
+  const fingerprint = buildProfilePrintFingerprint(user);
+  if (fingerprint !== decoded.fingerprint) {
+    throw new ApiError(404, 'Ringkasan profil ini sudah tidak sesuai dengan data terbaru.');
   }
 
   res.status(200).json(
     new ApiResponse(
       200,
       {
-        documentHeader,
-        generatedAt: new Date().toISOString(),
-        user,
+        valid: true,
+        verifiedAt: new Date().toISOString(),
+        generatedAt: new Date(decoded.generatedAtMs).toISOString(),
+        snapshot: {
+          formalPhotoUrl: resolveProfilePrintFormalPhotoUrl({
+            photo: user.photo,
+            documents: user.documents,
+          }),
+          user,
+        },
       },
-      'Ringkasan print profil berhasil diambil',
+      'Ringkasan profil berhasil diverifikasi',
     ),
   );
 });
