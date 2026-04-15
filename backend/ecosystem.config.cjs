@@ -21,6 +21,10 @@ module.exports = {
       env: {
         NODE_ENV: 'production',
         TZ: 'Asia/Jakarta',
+        SBTS_LOAD_TEST_BYPASS_ENABLED: process.env.SBTS_LOAD_TEST_BYPASS_ENABLED || 'false',
+        SBTS_LOAD_TEST_BYPASS_SECRET: process.env.SBTS_LOAD_TEST_BYPASS_SECRET || '',
+        SBTS_LOAD_TEST_BYPASS_ACADEMIC_YEAR_ID: process.env.SBTS_LOAD_TEST_BYPASS_ACADEMIC_YEAR_ID || '',
+        SBTS_LOAD_TEST_BYPASS_SEMESTER: process.env.SBTS_LOAD_TEST_BYPASS_SEMESTER || '',
       },
     },
   ],

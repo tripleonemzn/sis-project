@@ -1048,6 +1048,79 @@ function buildEffectiveExamRestrictionState(params: {
     };
 }
 
+function hasSbtsLoadTestBypassSecret(rawSecret: unknown): boolean {
+    if (!SBTS_LOAD_TEST_BYPASS_ENABLED) return false;
+    if (!SBTS_LOAD_TEST_BYPASS_SECRET) return false;
+    return String(rawSecret || '').trim() === SBTS_LOAD_TEST_BYPASS_SECRET;
+}
+
+function canUseSbtsLoadTestBypass(params: {
+    providedSecret?: unknown;
+    accessRole: ExamAccessRole;
+    academicYearId: number;
+    semester: Semester;
+    programCode?: string | null;
+    examType?: ExamType | null;
+}): boolean {
+    if (!hasSbtsLoadTestBypassSecret(params.providedSecret)) return false;
+    if (params.accessRole !== 'STUDENT') return false;
+
+    const normalizedProgramCode = normalizeProgramCode(params.programCode || params.examType);
+    if (normalizedProgramCode !== SBTS_LOAD_TEST_BYPASS_PROGRAM_CODE) return false;
+
+    if (
+        Number.isFinite(Number(SBTS_LOAD_TEST_BYPASS_ACADEMIC_YEAR_ID)) &&
+        Number(params.academicYearId) !== Number(SBTS_LOAD_TEST_BYPASS_ACADEMIC_YEAR_ID)
+    ) {
+        return false;
+    }
+
+    if (SBTS_LOAD_TEST_BYPASS_SEMESTER && params.semester !== SBTS_LOAD_TEST_BYPASS_SEMESTER) {
+        return false;
+    }
+
+    return true;
+}
+
+function maybeApplySbtsLoadTestRestrictionBypass(params: {
+    providedSecret?: unknown;
+    accessRole: ExamAccessRole;
+    academicYearId: number;
+    semester: Semester;
+    programCode?: string | null;
+    examType?: ExamType | null;
+    automaticRestriction: AutomaticExamRestrictionInfo | null;
+    effectiveRestriction: ReturnType<typeof buildEffectiveExamRestrictionState>;
+}): ReturnType<typeof buildEffectiveExamRestrictionState> {
+    if (
+        !canUseSbtsLoadTestBypass({
+            providedSecret: params.providedSecret,
+            accessRole: params.accessRole,
+            academicYearId: params.academicYearId,
+            semester: params.semester,
+            programCode: params.programCode,
+            examType: params.examType,
+        })
+    ) {
+        return params.effectiveRestriction;
+    }
+
+    if (!params.automaticRestriction?.flags.belowKkm) {
+        return params.effectiveRestriction;
+    }
+
+    if (params.effectiveRestriction.manualBlocked || params.automaticRestriction.flags.financeBlocked) {
+        return params.effectiveRestriction;
+    }
+
+    return {
+        ...params.effectiveRestriction,
+        isBlocked: false,
+        autoBlocked: false,
+        reason: '',
+    };
+}
+
 function buildExamFinanceClearanceSummary(
     automaticRestriction: AutomaticExamRestrictionInfo | null,
 ): ExamFinanceClearanceSummary {
@@ -1518,6 +1591,25 @@ const EXAM_BROWSER_SESSION_TOKEN_TTL_SECONDS = Math.max(
         ? Number(process.env.EXAM_BROWSER_SESSION_TOKEN_TTL_SECONDS)
         : 6 * 60 * 60,
 );
+const SBTS_LOAD_TEST_BYPASS_ENABLED = String(process.env.SBTS_LOAD_TEST_BYPASS_ENABLED || 'false')
+    .trim()
+    .toLowerCase() === 'true';
+const SBTS_LOAD_TEST_BYPASS_SECRET = String(process.env.SBTS_LOAD_TEST_BYPASS_SECRET || '').trim();
+const SBTS_LOAD_TEST_BYPASS_HEADER_NAME = 'x-sbts-load-test-secret';
+const SBTS_LOAD_TEST_BYPASS_PROGRAM_CODE = 'SBTS';
+const SBTS_LOAD_TEST_BYPASS_ACADEMIC_YEAR_ID = Number.isFinite(
+    Number.parseInt(String(process.env.SBTS_LOAD_TEST_BYPASS_ACADEMIC_YEAR_ID || '').trim(), 10),
+)
+    ? Number.parseInt(String(process.env.SBTS_LOAD_TEST_BYPASS_ACADEMIC_YEAR_ID || '').trim(), 10)
+    : null;
+const SBTS_LOAD_TEST_BYPASS_SEMESTER = (() => {
+    const raw = String(process.env.SBTS_LOAD_TEST_BYPASS_SEMESTER || '')
+        .trim()
+        .toUpperCase();
+    if (raw === 'ODD' || raw === 'GANJIL') return Semester.ODD;
+    if (raw === 'EVEN' || raw === 'GENAP') return Semester.EVEN;
+    return null;
+})();
 const JWT_SIGNING_SECRET = String(process.env.JWT_SECRET || 'secret').trim();
 const EXAM_BROWSER_CONSUMED_TOKEN_CACHE_TTL_MS = EXAM_BROWSER_LAUNCH_TTL_SECONDS * 1000 + 60_000;
 const consumedExamBrowserLaunchTokens = new Map<string, number>();
@@ -8937,14 +9029,18 @@ export const getAvailableExams = asyncHandler(async (req: Request, res: Response
     const authUser = (req as Request & { user?: { id: number; role: string } }).user;
     const studentId = Number(authUser?.id || 0);
     const accessRole = resolveExamAccessRole(authUser?.role);
+    const loadTestBypassSecret = req.header(SBTS_LOAD_TEST_BYPASS_HEADER_NAME);
+    const skipAvailableExamsCache = hasSbtsLoadTestBypassSecret(loadTestBypassSecret);
     if (!Number.isFinite(studentId) || studentId <= 0) {
         throw new ApiError(401, 'Sesi login tidak valid.');
     }
 
-    const cachedPayload = getCachedAvailableExams(studentId);
-    if (cachedPayload) {
-        res.setHeader('Cache-Control', 'private, max-age=3');
-        return res.json(new ApiResponse(200, cachedPayload));
+    if (!skipAvailableExamsCache) {
+        const cachedPayload = getCachedAvailableExams(studentId);
+        if (cachedPayload) {
+            res.setHeader('Cache-Control', 'private, max-age=3');
+            return res.json(new ApiResponse(200, cachedPayload));
+        }
     }
 
     const now = new Date();
@@ -9067,8 +9163,12 @@ export const getAvailableExams = asyncHandler(async (req: Request, res: Response
                 exams: [],
                 serverNow: now.toISOString(),
             };
-            setCachedAvailableExams(studentId, payload);
-            res.setHeader('Cache-Control', 'private, max-age=3');
+            if (!skipAvailableExamsCache) {
+                setCachedAvailableExams(studentId, payload);
+                res.setHeader('Cache-Control', 'private, max-age=3');
+            } else {
+                res.setHeader('Cache-Control', 'no-store');
+            }
             res.json(new ApiResponse(200, payload));
             return;
         }
@@ -9569,8 +9669,18 @@ export const getAvailableExams = asyncHandler(async (req: Request, res: Response
                 manualRestriction: programRestriction ?? legacyRestriction ?? null,
                 automaticRestriction,
             });
-            isBlocked = effectiveRestriction.isBlocked;
-            blockReason = effectiveRestriction.reason || '';
+            const resolvedRestriction = maybeApplySbtsLoadTestRestrictionBypass({
+                providedSecret: loadTestBypassSecret,
+                accessRole,
+                academicYearId: packet.academicYearId,
+                semester: packet.semester,
+                programCode: normalizedProgramCode,
+                examType: packet.type,
+                automaticRestriction,
+                effectiveRestriction,
+            });
+            isBlocked = resolvedRestriction.isBlocked;
+            blockReason = resolvedRestriction.reason || '';
             financeClearance = buildExamFinanceClearanceSummary(automaticRestriction);
         }
 
@@ -9685,8 +9795,12 @@ export const getAvailableExams = asyncHandler(async (req: Request, res: Response
         serverNow: now.toISOString(),
     };
 
-    setCachedAvailableExams(studentId, payload);
-    res.setHeader('Cache-Control', 'private, max-age=3');
+    if (!skipAvailableExamsCache) {
+        setCachedAvailableExams(studentId, payload);
+        res.setHeader('Cache-Control', 'private, max-age=3');
+    } else {
+        res.setHeader('Cache-Control', 'no-store');
+    }
     res.json(new ApiResponse(200, payload));
 });
 
@@ -9694,6 +9808,7 @@ async function buildStartExamPayload(params: {
     scheduleId: number;
     studentId: number;
     accessRole: ExamAccessRole;
+    loadTestBypassSecret?: string | null;
 }): Promise<{
     session: StudentExamSessionSummary;
     packet: StartExamSchedulePayload['packet'] & {
@@ -9707,7 +9822,7 @@ async function buildStartExamPayload(params: {
         makeupReason: string | null;
     };
 }> {
-    const { scheduleId, studentId, accessRole } = params;
+    const { scheduleId, studentId, accessRole, loadTestBypassSecret } = params;
     const schedule = await getOrCreateStartExamSchedule(scheduleId);
 
     if (!schedule || !schedule.packet) throw new ApiError(404, 'Exam not found');
@@ -9807,13 +9922,33 @@ async function buildStartExamPayload(params: {
             manualRestriction: programRestriction ?? legacyRestriction ?? null,
             automaticRestriction,
         });
-        if (effectiveRestriction.isBlocked) {
-            throw new ApiError(403, effectiveRestriction.reason || 'Access denied by homeroom teacher');
+        const resolvedRestriction = maybeApplySbtsLoadTestRestrictionBypass({
+            providedSecret: loadTestBypassSecret,
+            accessRole,
+            academicYearId: schedule.packet.academicYearId,
+            semester: schedule.packet.semester,
+            programCode: normalizedProgramCode,
+            examType: schedule.packet.type,
+            automaticRestriction,
+            effectiveRestriction,
+        });
+        if (resolvedRestriction.isBlocked) {
+            throw new ApiError(403, resolvedRestriction.reason || 'Access denied by homeroom teacher');
         }
     }
 
     const now = new Date();
-    if (now < schedule.startTime) throw new ApiError(400, 'Exam has not started yet');
+    const allowSbtsLoadTestTimeBypass = canUseSbtsLoadTestBypass({
+        providedSecret: loadTestBypassSecret,
+        accessRole,
+        academicYearId: schedule.packet.academicYearId,
+        semester: schedule.packet.semester,
+        programCode: normalizedProgramCode,
+        examType: schedule.packet.type,
+    });
+    if (now < schedule.startTime && !allowSbtsLoadTestTimeBypass) {
+        throw new ApiError(400, 'Exam has not started yet');
+    }
 
     // Create or get session (race-safe for concurrent start requests).
     let session = await findStudentExamSessionSummary(schedule.id, studentId);
@@ -9863,7 +9998,12 @@ async function buildStartExamPayload(params: {
         hasSessionAttempt: Boolean(session),
         manualAccess: manualMakeupAccess,
     });
-    if (now > schedule.endTime && !resumeInProgressSession && !makeupContext.availableNow) {
+    if (
+        now > schedule.endTime &&
+        !resumeInProgressSession &&
+        !makeupContext.availableNow &&
+        !allowSbtsLoadTestTimeBypass
+    ) {
         if (makeupContext.mode === 'FORMAL' && makeupContext.scheduled) {
             throw new ApiError(400, 'Jadwal susulan belum dimulai.');
         }
@@ -10067,7 +10207,13 @@ export const exchangeExamBrowserLaunchToken = asyncHandler(async (req: Request, 
         throw new ApiError(400, 'Payload token launch tidak valid.');
     }
 
-    const payload = await buildStartExamPayload({ scheduleId, studentId, accessRole });
+    const loadTestBypassSecret = req.header(SBTS_LOAD_TEST_BYPASS_HEADER_NAME);
+    const payload = await buildStartExamPayload({
+        scheduleId,
+        studentId,
+        accessRole,
+        loadTestBypassSecret,
+    });
     const examAccessToken = createExamBrowserSessionAccessToken({
         scheduleId,
         studentId,
@@ -10099,7 +10245,13 @@ export const startExam = asyncHandler(async (req: Request, res: Response) => {
         }
     }
 
-    const payload = await buildStartExamPayload({ scheduleId, studentId, accessRole });
+    const loadTestBypassSecret = req.header(SBTS_LOAD_TEST_BYPASS_HEADER_NAME);
+    const payload = await buildStartExamPayload({
+        scheduleId,
+        studentId,
+        accessRole,
+        loadTestBypassSecret,
+    });
     res.json(new ApiResponse(200, payload));
 });
 
