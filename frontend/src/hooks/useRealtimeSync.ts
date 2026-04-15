@@ -18,6 +18,7 @@ const NOTIFICATION_MUTATION_PATTERNS: RegExp[] = [
   /^\/api\/exams\/packets\/\d+\/review-feedback(?:\/|$)/,
   /^\/api\/notifications(?:\/|$)/,
 ];
+const NOTIFICATION_QUERY_PREFIXES = ['web-notifications'];
 const GRADE_REPORT_QUERY_PREFIXES = [
   'student-grade-overview',
   'teacher-subject-report',
@@ -34,6 +35,23 @@ const PROCTORING_QUERY_PREFIXES = [
   'teacher-proctor-schedules',
   'teacher-proctor-monitoring',
   'wakasek-academic-proctor-summary',
+];
+const PRINCIPAL_APPROVAL_QUERY_PREFIXES = [
+  'budget-requests',
+  'principal-finance-write-offs',
+  'principal-finance-payment-reversals',
+  'principal-finance-cash-sessions',
+  'principal-finance-cash-session-approvals',
+  'principal-finance-bank-reconciliations',
+  'principal-finance-budget-realization',
+  'principal-finance-governance',
+  'principal-finance-audit',
+  'principal-finance-performance',
+  'principal-finance-integrity',
+  'principal-finance-closing-periods',
+  'principal-finance-closing-period-approvals',
+  'principal-finance-closing-period-reopen-requests',
+  'principal-finance-closing-period-reopen-approvals',
 ];
 const DOMAIN_QUERY_TARGETS: Record<string, string[]> = {
   GRADES: GRADE_REPORT_QUERY_PREFIXES,
@@ -72,12 +90,24 @@ const MUTATION_QUERY_TARGETS: Array<{ pattern: RegExp; queryKeyPrefixes: string[
     queryKeyPrefixes: GRADE_REPORT_QUERY_PREFIXES,
   },
   {
+    pattern: /^\/api\/notifications(?:\/|$)/,
+    queryKeyPrefixes: NOTIFICATION_QUERY_PREFIXES,
+  },
+  {
     pattern: /^\/api\/attendances\/(?:subject|daily)(?:\/|$)/,
     queryKeyPrefixes: ATTENDANCE_QUERY_PREFIXES,
   },
   {
     pattern: /^\/api\/proctoring\/schedules(?:\/|$)/,
     queryKeyPrefixes: PROCTORING_QUERY_PREFIXES,
+  },
+  {
+    pattern: /^\/api\/budget-requests(?:\/|$)/,
+    queryKeyPrefixes: PRINCIPAL_APPROVAL_QUERY_PREFIXES,
+  },
+  {
+    pattern: /^\/api\/payments\/(?:cash-sessions|closing-periods|closing-period-reopen-requests|write-offs|reversals)(?:\/|$)/,
+    queryKeyPrefixes: PRINCIPAL_APPROVAL_QUERY_PREFIXES,
   },
   {
     pattern: /^\/api\/academic-years(?:\/|$)/,

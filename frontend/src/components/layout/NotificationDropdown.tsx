@@ -1,6 +1,6 @@
-import { useState, useEffect, useRef, useCallback } from 'react';
+import { useEffect, useMemo, useRef, useState } from 'react';
 import { useLocation, useNavigate } from 'react-router-dom';
-import { useQuery } from '@tanstack/react-query';
+import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { Bell, Clock } from 'lucide-react';
 import api from '../../services/api';
 import clsx from 'clsx';
@@ -27,15 +27,35 @@ interface Notification {
   createdAt: string;
 }
 
-const UNREAD_POLL_INTERVAL_MS = 120000;
+type NotificationInboxResult = {
+  notifications: Notification[];
+  unreadCount: number;
+};
+
+const UNREAD_POLL_INTERVAL_MS = 180_000;
 const NOTIFICATION_REFRESH_EVENT = 'sis:notifications:refresh';
+const WEB_NOTIFICATIONS_QUERY_KEY = ['web-notifications'] as const;
+const WEB_NOTIFICATIONS_INBOX_QUERY_KEY = [...WEB_NOTIFICATIONS_QUERY_KEY, 'inbox'] as const;
+const WEB_NOTIFICATIONS_UNREAD_QUERY_KEY = [...WEB_NOTIFICATIONS_QUERY_KEY, 'unread'] as const;
+
+async function fetchNotificationInbox(limit = 10): Promise<NotificationInboxResult> {
+  const response = await api.get('/notifications', { params: { limit } });
+  return {
+    notifications: response.data?.data?.notifications || [],
+    unreadCount: Number(response.data?.data?.unreadCount || 0) || 0,
+  };
+}
+
+async function fetchUnreadCount(): Promise<number> {
+  const response = await api.get('/notifications/unread-count');
+  const nextUnreadCount = Number(response.data?.data?.unreadCount || 0);
+  return Number.isFinite(nextUnreadCount) ? nextUnreadCount : 0;
+}
 
 export const NotificationDropdown = () => {
   const [isOpen, setIsOpen] = useState(false);
-  const [notifications, setNotifications] = useState<Notification[]>([]);
-  const [unreadCount, setUnreadCount] = useState(0);
-  const [loading, setLoading] = useState(false);
   const dropdownRef = useRef<HTMLDivElement>(null);
+  const queryClient = useQueryClient();
   const navigate = useNavigate();
   const location = useLocation();
   const isExamTakePage = /^\/student\/exams\/\d+\/take$/.test(location.pathname);
@@ -46,74 +66,92 @@ export const NotificationDropdown = () => {
   });
   const currentUser = meResponse?.data;
 
-  const fetchNotifications = useCallback(async (limit = 10) => {
-    try {
-      setLoading(true);
-      const response = await api.get('/notifications', { params: { limit } });
-      if (response.data?.data?.notifications) {
-        setNotifications(response.data.data.notifications || []);
-        setUnreadCount(response.data.data.unreadCount || 0);
-      } else {
-        setNotifications([]);
-        setUnreadCount(0);
-      }
-    } catch (error) {
-      console.error('Failed to fetch notifications:', error);
-      setNotifications([]);
-    } finally {
-      setLoading(false);
-    }
-  }, []);
+  const unreadCountQuery = useQuery({
+    queryKey: WEB_NOTIFICATIONS_UNREAD_QUERY_KEY,
+    queryFn: fetchUnreadCount,
+    enabled: !isExamTakePage,
+    refetchInterval: !isExamTakePage ? UNREAD_POLL_INTERVAL_MS : false,
+    refetchIntervalInBackground: false,
+    staleTime: 60_000,
+    refetchOnReconnect: true,
+  });
 
-  const fetchUnreadCount = useCallback(async () => {
-    try {
-      const response = await api.get('/notifications/unread-count');
-      const nextUnreadCount = Number(response.data?.data?.unreadCount || 0);
-      setUnreadCount(Number.isFinite(nextUnreadCount) ? nextUnreadCount : 0);
-    } catch (error) {
-      console.error('Failed to fetch unread notification count:', error);
-    }
-  }, []);
+  const notificationsQuery = useQuery({
+    queryKey: WEB_NOTIFICATIONS_INBOX_QUERY_KEY,
+    queryFn: () => fetchNotificationInbox(10),
+    enabled: isOpen && !isExamTakePage,
+    staleTime: 30_000,
+    refetchOnReconnect: true,
+  });
 
-  useEffect(() => {
-    if (isExamTakePage) return;
+  const notifications = notificationsQuery.data?.notifications ?? [];
+  const unreadCount = useMemo(
+    () => notificationsQuery.data?.unreadCount ?? unreadCountQuery.data ?? 0,
+    [notificationsQuery.data?.unreadCount, unreadCountQuery.data],
+  );
 
-    let intervalId: number | null = null;
-    const startPolling = () => {
-      if (document.visibilityState !== 'visible') return;
-      if (intervalId !== null) return;
-      intervalId = window.setInterval(() => {
-        void fetchUnreadCount();
-      }, UNREAD_POLL_INTERVAL_MS);
-    };
-    const stopPolling = () => {
-      if (intervalId === null) return;
-      window.clearInterval(intervalId);
-      intervalId = null;
-    };
-    const handleVisibilityChange = () => {
-      if (document.visibilityState === 'visible') {
-        void fetchUnreadCount();
-        startPolling();
-        return;
-      }
-      stopPolling();
-    };
+  const invalidateNotificationQueries = async () => {
+    await queryClient.invalidateQueries({
+      queryKey: WEB_NOTIFICATIONS_QUERY_KEY,
+      refetchType: 'active',
+    });
+  };
 
-    void fetchUnreadCount();
-    startPolling();
-    document.addEventListener('visibilitychange', handleVisibilityChange);
+  const markAsReadMutation = useMutation({
+    mutationFn: async (notificationId: number) => {
+      await api.patch(`/notifications/${notificationId}/read`);
+      return notificationId;
+    },
+    onSuccess: async (notificationId) => {
+      queryClient.setQueryData<NotificationInboxResult | undefined>(
+        WEB_NOTIFICATIONS_INBOX_QUERY_KEY,
+        (current) => {
+          if (!current) return current;
+          return {
+            notifications: current.notifications.map((notification) =>
+              notification.id === notificationId
+                ? { ...notification, isRead: true }
+                : notification,
+            ),
+            unreadCount: Math.max(0, current.unreadCount - 1),
+          };
+        },
+      );
+      queryClient.setQueryData<number | undefined>(WEB_NOTIFICATIONS_UNREAD_QUERY_KEY, (current) =>
+        Math.max(0, Number(current || 0) - 1),
+      );
+      await invalidateNotificationQueries();
+    },
+    onError: (error) => {
+      console.error('Failed to mark notification as read:', error);
+    },
+  });
 
-    return () => {
-      stopPolling();
-      document.removeEventListener('visibilitychange', handleVisibilityChange);
-    };
-  }, [fetchUnreadCount, isExamTakePage]);
-
-  useEffect(() => {
-    if (!isOpen) return;
-    void fetchNotifications(10);
-  }, [fetchNotifications, isOpen]);
+  const markAllAsReadMutation = useMutation({
+    mutationFn: async () => {
+      await api.patch('/notifications/all/read');
+    },
+    onSuccess: async () => {
+      queryClient.setQueryData<NotificationInboxResult | undefined>(
+        WEB_NOTIFICATIONS_INBOX_QUERY_KEY,
+        (current) => {
+          if (!current) return current;
+          return {
+            notifications: current.notifications.map((notification) => ({
+              ...notification,
+              isRead: true,
+            })),
+            unreadCount: 0,
+          };
+        },
+      );
+      queryClient.setQueryData(WEB_NOTIFICATIONS_UNREAD_QUERY_KEY, 0);
+      await invalidateNotificationQueries();
+    },
+    onError: (error) => {
+      console.error('Failed to mark all notifications as read:', error);
+    },
+  });
 
   useEffect(() => {
     if (isExamTakePage) return;
@@ -125,10 +163,7 @@ export const NotificationDropdown = () => {
       }
       refreshTimer = window.setTimeout(() => {
         refreshTimer = null;
-        void fetchUnreadCount();
-        if (isOpen) {
-          void fetchNotifications(10);
-        }
+        void invalidateNotificationQueries();
       }, 150);
     };
 
@@ -139,9 +174,8 @@ export const NotificationDropdown = () => {
       }
       window.removeEventListener(NOTIFICATION_REFRESH_EVENT, handleNotificationRefresh);
     };
-  }, [fetchNotifications, fetchUnreadCount, isExamTakePage, isOpen]);
+  }, [isExamTakePage, queryClient]);
 
-  // Click outside to close
   useEffect(() => {
     const handleClickOutside = (event: MouseEvent) => {
       if (dropdownRef.current && !dropdownRef.current.contains(event.target as Node)) {
@@ -152,16 +186,12 @@ export const NotificationDropdown = () => {
     return () => document.removeEventListener('mousedown', handleClickOutside);
   }, []);
 
-  const handleMarkAsRead = async (notification: Notification) => {
+  const handleOpenNotification = async (notification: Notification) => {
     if (!notification.isRead) {
       try {
-        await api.patch(`/notifications/${notification.id}/read`);
-        setNotifications(prev => 
-          prev.map(n => n.id === notification.id ? { ...n, isRead: true } : n)
-        );
-        setUnreadCount(prev => Math.max(0, prev - 1));
-      } catch (error) {
-        console.error('Failed to mark notification as read:', error);
+        await markAsReadMutation.mutateAsync(notification.id);
+      } catch {
+        return;
       }
     }
 
@@ -170,13 +200,9 @@ export const NotificationDropdown = () => {
         ? notification.data.route.trim()
         : null;
 
-    // Navigate based on type/data
     if (notification.type === 'EXAM_PROCTOR' && notification.data?.scheduleId) {
       navigate(`/teacher/proctoring/${notification.data.scheduleId}`);
     } else if (notification.type === 'EXAM_SCHEDULE' && notification.data?.scheduleId) {
-      // Navigate to subject teacher monitoring view (ProctorSchedulePage with activeTab='author')
-      // Since ProctorSchedulePage uses internal state for tab, we might need to handle this.
-      // For now, just go to the schedule page, and user can switch tab.
       navigate('/teacher/proctoring');
     } else if (routeFromPayload) {
       navigate(routeFromPayload);
@@ -189,27 +215,17 @@ export const NotificationDropdown = () => {
         navigate(getStaffFinanceNotificationPath(currentUser));
       }
     }
-    
-    setIsOpen(false);
-  };
 
-  const handleMarkAllRead = async () => {
-    try {
-        await api.patch('/notifications/all/read');
-        setNotifications(prev => prev.map(n => ({ ...n, isRead: true })));
-        setUnreadCount(0);
-    } catch (error) {
-        console.error('Failed to mark all notifications as read:', error);
-    }
+    setIsOpen(false);
   };
 
   return (
     <div className="relative" ref={dropdownRef}>
       <button
-        onClick={() => setIsOpen(!isOpen)}
+        onClick={() => setIsOpen((current) => !current)}
         className="relative p-2 rounded-full hover:bg-gray-100 transition-colors focus:outline-none"
       >
-        <Bell className={clsx("w-6 h-6", unreadCount > 0 ? "text-blue-600" : "text-gray-500")} />
+        <Bell className={clsx('w-6 h-6', unreadCount > 0 ? 'text-blue-600' : 'text-gray-500')} />
         {unreadCount > 0 && (
           <span className="absolute top-1 right-1 flex h-4 w-4 items-center justify-center rounded-full bg-red-500 text-[10px] font-bold text-white ring-2 ring-white">
             {unreadCount > 9 ? '9+' : unreadCount}
@@ -222,27 +238,28 @@ export const NotificationDropdown = () => {
           <div className="flex items-center justify-between px-4 py-3 border-b border-gray-50 bg-gray-50/50">
             <h3 className="font-semibold text-gray-900 text-sm">Notifikasi</h3>
             <div className="flex gap-2">
-                {unreadCount > 0 && (
-                    <button 
-                        onClick={handleMarkAllRead}
-                        className="text-xs text-blue-600 hover:text-blue-800 font-medium"
-                    >
-                        Tandai semua dibaca
-                    </button>
-                )}
-                <button 
-                    onClick={() => {
-                      void fetchNotifications(10);
-                    }}
-                    className="text-xs text-gray-500 hover:text-gray-700"
+              {unreadCount > 0 && (
+                <button
+                  onClick={() => markAllAsReadMutation.mutate()}
+                  className="text-xs text-blue-600 hover:text-blue-800 font-medium"
                 >
-                    Refresh
+                  Tandai semua dibaca
                 </button>
+              )}
+              <button
+                onClick={() => {
+                  void unreadCountQuery.refetch();
+                  void notificationsQuery.refetch();
+                }}
+                className="text-xs text-gray-500 hover:text-gray-700"
+              >
+                Refresh
+              </button>
             </div>
           </div>
 
           <div className="max-h-[400px] overflow-y-auto custom-scrollbar">
-            {loading && notifications.length === 0 ? (
+            {notificationsQuery.isFetching && notifications.length === 0 ? (
               <div className="p-4 text-center text-gray-500 text-sm">Memuat...</div>
             ) : notifications.length === 0 ? (
               <div className="p-8 text-center">
@@ -252,21 +269,28 @@ export const NotificationDropdown = () => {
             ) : (
               <ul className="divide-y divide-gray-50">
                 {notifications.map((notification) => (
-                  <li 
+                  <li
                     key={notification.id}
-                    onClick={() => handleMarkAsRead(notification)}
+                    onClick={() => handleOpenNotification(notification)}
                     className={clsx(
-                      "px-4 py-3 hover:bg-gray-50 cursor-pointer transition-colors",
-                      !notification.isRead && "bg-blue-50/30"
+                      'px-4 py-3 hover:bg-gray-50 cursor-pointer transition-colors',
+                      !notification.isRead && 'bg-blue-50/30',
                     )}
                   >
                     <div className="flex gap-3">
-                      <div className={clsx(
-                        "flex-shrink-0 w-2 h-2 mt-2 rounded-full",
-                        !notification.isRead ? "bg-blue-600" : "bg-transparent"
-                      )} />
+                      <div
+                        className={clsx(
+                          'flex-shrink-0 w-2 h-2 mt-2 rounded-full',
+                          !notification.isRead ? 'bg-blue-600' : 'bg-transparent',
+                        )}
+                      />
                       <div className="flex-1 min-w-0">
-                        <p className={clsx("text-sm font-medium mb-1", !notification.isRead ? "text-gray-900" : "text-gray-600")}>
+                        <p
+                          className={clsx(
+                            'text-sm font-medium mb-1',
+                            !notification.isRead ? 'text-gray-900' : 'text-gray-600',
+                          )}
+                        >
                           {notification.title}
                         </p>
                         <p className="text-xs text-gray-500 line-clamp-2 mb-1.5">

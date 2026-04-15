@@ -10,6 +10,7 @@ const INVALIDATE_DEBOUNCE_MS = 150;
 const SHORT_LIVED_CONNECTION_MS = 5000;
 const MAX_SHORT_LIVED_CONNECTIONS = 3;
 const SOCKET_COOLDOWN_MS = 5 * 60 * 1000;
+const NOTIFICATION_QUERY_PREFIXES = ['mobile-notifications'];
 const GRADE_REPORT_QUERY_PREFIXES = [
   'mobile-student-grade-overview',
   'mobile-teacher-subject-report',
@@ -33,6 +34,23 @@ const PROCTORING_QUERY_PREFIXES = [
   'mobile-proctoring-schedules',
   'mobile-proctoring-detail',
 ];
+const PRINCIPAL_APPROVAL_QUERY_PREFIXES = [
+  'mobile-principal-approvals',
+  'mobile-principal-write-offs',
+  'mobile-principal-payment-reversals',
+  'mobile-principal-cash-sessions',
+  'mobile-principal-cash-session-approvals',
+  'mobile-principal-bank-reconciliations',
+  'mobile-principal-budget-realization',
+  'mobile-principal-governance',
+  'mobile-principal-finance-audit',
+  'mobile-principal-finance-performance',
+  'mobile-principal-finance-integrity',
+  'mobile-principal-closing-periods',
+  'mobile-principal-closing-period-approvals',
+  'mobile-principal-closing-period-reopen-requests',
+  'mobile-principal-closing-period-reopen-approvals',
+];
 const DOMAIN_QUERY_TARGETS: Record<string, string[]> = {
   GRADES: GRADE_REPORT_QUERY_PREFIXES,
   REPORTS: GRADE_REPORT_QUERY_PREFIXES,
@@ -53,12 +71,24 @@ const MUTATION_QUERY_TARGETS: Array<{ pattern: RegExp; queryKeyPrefixes: string[
     queryKeyPrefixes: GRADE_REPORT_QUERY_PREFIXES,
   },
   {
+    pattern: /^\/api\/notifications(?:\/|$)/,
+    queryKeyPrefixes: NOTIFICATION_QUERY_PREFIXES,
+  },
+  {
     pattern: /^\/api\/attendances\/(?:subject|daily)(?:\/|$)/,
     queryKeyPrefixes: ATTENDANCE_QUERY_PREFIXES,
   },
   {
     pattern: /^\/api\/proctoring\/schedules(?:\/|$)/,
     queryKeyPrefixes: PROCTORING_QUERY_PREFIXES,
+  },
+  {
+    pattern: /^\/api\/budget-requests(?:\/|$)/,
+    queryKeyPrefixes: PRINCIPAL_APPROVAL_QUERY_PREFIXES,
+  },
+  {
+    pattern: /^\/api\/payments\/(?:cash-sessions|closing-periods|closing-period-reopen-requests|write-offs|reversals)(?:\/|$)/,
+    queryKeyPrefixes: PRINCIPAL_APPROVAL_QUERY_PREFIXES,
   },
   {
     pattern: /^\/api\/server\/(?:info|storage|monitoring)(?:\/|$)/,

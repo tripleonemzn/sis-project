@@ -129,9 +129,10 @@ export default function NotificationsScreen() {
     queryKey: MOBILE_NOTIFICATIONS_INBOX_QUERY_KEY,
     queryFn: () => notificationApi.getNotifications({ page: 1, limit: 50 }),
     enabled: isAuthenticated && isScreenActive,
-    refetchInterval: isAuthenticated && isScreenActive ? 30_000 : false,
+    refetchInterval: isAuthenticated && isScreenActive ? 120_000 : false,
     refetchIntervalInBackground: false,
     refetchOnReconnect: true,
+    staleTime: 60_000,
   });
 
   const invalidateNotificationQueries = async () => {

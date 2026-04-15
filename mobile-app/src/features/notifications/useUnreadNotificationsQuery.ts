@@ -4,7 +4,7 @@ import {
   notificationApi,
 } from './notificationApi';
 
-const DEFAULT_UNREAD_REFETCH_INTERVAL_MS = 90_000;
+const DEFAULT_UNREAD_REFETCH_INTERVAL_MS = 180_000;
 
 export function useUnreadNotificationsQuery(enabled: boolean, pollingEnabled = enabled) {
   return useQuery({
@@ -13,7 +13,7 @@ export function useUnreadNotificationsQuery(enabled: boolean, pollingEnabled = e
     enabled,
     refetchInterval: enabled && pollingEnabled ? DEFAULT_UNREAD_REFETCH_INTERVAL_MS : false,
     refetchIntervalInBackground: false,
-    staleTime: 30_000,
+    staleTime: 60_000,
     refetchOnReconnect: true,
   });
 }
