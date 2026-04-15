@@ -167,7 +167,7 @@ export const LoginPage = () => {
         label: 'Download Android App',
         href:
           import.meta.env.VITE_ANDROID_APP_DOWNLOAD_URL?.trim() ||
-          'https://expo.dev/artifacts/eas/kfjvxLowu5X6ejdFmN8Ypd.apk',
+          '/downloads/sis-kgb2-mobile-latest.apk',
         disabled: false,
         icon: <AndroidIcon className="h-[1.15rem] w-[1.15rem]" />,
       },
