@@ -56,6 +56,30 @@ const createDefaultQuestionCard = (): QuestionCard => ({
   distractorNotes: '',
 });
 
+const SUPPORT_PLACEHOLDER_WORDS = new Set([
+  '-',
+  '--',
+  '---',
+  '_',
+  '__',
+  '___',
+  '...',
+  '..',
+  '/',
+  'n/a',
+  'na',
+  'nihil',
+  'kosong',
+  'belum ada',
+  'belum diisi',
+  'belum dibuat',
+  'tidak ada',
+  'none',
+  'null',
+]);
+
+const SUPPORT_PLACEHOLDER_SYMBOL_PATTERN = /^[-–—_=+~./\\|,:;()[\]{}'"`*•]+$/;
+
 const normalizeBlueprint = (raw: QuestionBlueprint | null | undefined): QuestionBlueprint => ({
   ...createDefaultBlueprint(),
   competency: String(raw?.competency || '').trim(),
@@ -97,6 +121,18 @@ const stripHtmlText = (value: unknown): string => {
 };
 
 export const hasFilledSupportText = (value: unknown): boolean => stripHtmlText(value).length > 0;
+
+export const hasMeaningfulSupportText = (value: unknown): boolean => {
+  const normalized = stripHtmlText(value)
+    .replace(/\s+/g, ' ')
+    .trim()
+    .toLowerCase();
+
+  if (!normalized) return false;
+  if (SUPPORT_PLACEHOLDER_WORDS.has(normalized)) return false;
+  if (SUPPORT_PLACEHOLDER_SYMBOL_PATTERN.test(normalized)) return false;
+  return true;
+};
 
 function normalizeMatrixPromptColumns(
   raw: QuestionMatrixPromptColumn[] | null | undefined,
@@ -256,28 +292,28 @@ export const getExamQuestionSupportSnapshot = (
         (hasCorrectMetadata && options.some((option) => option.isCorrect));
 
   const blueprintTouched =
-    hasFilledSupportText(blueprint.competency) ||
-    hasFilledSupportText(blueprint.learningObjective) ||
-    hasFilledSupportText(blueprint.indicator) ||
-    hasFilledSupportText(blueprint.materialScope) ||
-    hasFilledSupportText(blueprint.cognitiveLevel);
+    hasMeaningfulSupportText(blueprint.competency) ||
+    hasMeaningfulSupportText(blueprint.learningObjective) ||
+    hasMeaningfulSupportText(blueprint.indicator) ||
+    hasMeaningfulSupportText(blueprint.materialScope) ||
+    hasMeaningfulSupportText(blueprint.cognitiveLevel);
   const blueprintReady =
-    hasFilledSupportText(blueprint.competency) &&
-    hasFilledSupportText(blueprint.learningObjective) &&
-    hasFilledSupportText(blueprint.indicator) &&
-    hasFilledSupportText(blueprint.materialScope) &&
-    hasFilledSupportText(blueprint.cognitiveLevel);
+    hasMeaningfulSupportText(blueprint.competency) &&
+    hasMeaningfulSupportText(blueprint.learningObjective) &&
+    hasMeaningfulSupportText(blueprint.indicator) &&
+    hasMeaningfulSupportText(blueprint.materialScope) &&
+    hasMeaningfulSupportText(blueprint.cognitiveLevel);
 
   const questionCardTouched =
-    hasFilledSupportText(questionCard.stimulus) ||
-    hasFilledSupportText(questionCard.answerRationale) ||
-    hasFilledSupportText(questionCard.scoringGuideline) ||
-    hasFilledSupportText(questionCard.distractorNotes);
+    hasMeaningfulSupportText(questionCard.stimulus) ||
+    hasMeaningfulSupportText(questionCard.answerRationale) ||
+    hasMeaningfulSupportText(questionCard.scoringGuideline) ||
+    hasMeaningfulSupportText(questionCard.distractorNotes);
   const questionCardReady =
-    hasFilledSupportText(questionCard.stimulus) &&
-    hasFilledSupportText(questionCard.answerRationale) &&
-    hasFilledSupportText(questionCard.scoringGuideline) &&
-    hasFilledSupportText(questionCard.distractorNotes);
+    hasMeaningfulSupportText(questionCard.stimulus) &&
+    hasMeaningfulSupportText(questionCard.answerRationale) &&
+    hasMeaningfulSupportText(questionCard.scoringGuideline) &&
+    hasMeaningfulSupportText(questionCard.distractorNotes);
 
   const questionStatus = getSectionStatus(questionTouched, questionReady);
   const blueprintStatus = getSectionStatus(blueprintTouched, blueprintReady);

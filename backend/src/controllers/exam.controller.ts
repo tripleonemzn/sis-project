@@ -3878,6 +3878,65 @@ function normalizeOptionalString(value: unknown, maxLength = 2000): string | und
     return trimmed.slice(0, maxLength);
 }
 
+const EXAM_SUPPORT_PLACEHOLDER_WORDS = new Set([
+    '-',
+    '--',
+    '---',
+    '_',
+    '__',
+    '___',
+    '...',
+    '..',
+    '/',
+    'n/a',
+    'na',
+    'nihil',
+    'kosong',
+    'belum ada',
+    'belum diisi',
+    'belum dibuat',
+    'tidak ada',
+    'none',
+    'null',
+]);
+
+const EXAM_SUPPORT_PLACEHOLDER_SYMBOL_PATTERN = /^[-–—_=+~./\\|,:;()[\]{}'"`*•]+$/;
+
+function stripExamSupportText(value: unknown): string {
+    return String(value || '')
+        .replace(/<br\s*\/?>/gi, '\n')
+        .replace(/<\/p>\s*<p>/gi, '\n')
+        .replace(/<\/div>\s*<div>/gi, '\n')
+        .replace(/<li\b[^>]*>/gi, '- ')
+        .replace(/<\/li>/gi, '\n')
+        .replace(/<\/(p|div|ul|ol|table|tr|section|article|blockquote)>/gi, '\n')
+        .replace(/<[^>]*>/g, ' ')
+        .replace(/&nbsp;/gi, ' ')
+        .replace(/&amp;/gi, '&')
+        .replace(/&lt;/gi, '<')
+        .replace(/&gt;/gi, '>')
+        .replace(/&quot;/gi, '"')
+        .replace(/&#39;/gi, "'")
+        .replace(/\u00a0/g, ' ')
+        .replace(/[ \t]+\n/g, '\n')
+        .replace(/\n[ \t]+/g, '\n')
+        .replace(/\n{3,}/g, '\n\n')
+        .replace(/[ \t]{2,}/g, ' ')
+        .trim();
+}
+
+function hasMeaningfulExamSupportText(value: unknown): boolean {
+    const normalized = stripExamSupportText(value)
+        .replace(/\s+/g, ' ')
+        .trim()
+        .toLowerCase();
+
+    if (!normalized) return false;
+    if (EXAM_SUPPORT_PLACEHOLDER_WORDS.has(normalized)) return false;
+    if (EXAM_SUPPORT_PLACEHOLDER_SYMBOL_PATTERN.test(normalized)) return false;
+    return true;
+}
+
 function normalizeOptionalNumber(value: unknown): number | undefined {
     const parsed = typeof value === 'number' ? value : Number(value);
     if (!Number.isFinite(parsed)) return undefined;
@@ -4253,21 +4312,21 @@ function buildDerivedQuestionCard(question: NormalizedExamQuestion): ExamQuestio
 function isBlueprintSupportComplete(raw: ExamQuestionBlueprint | undefined): boolean {
     const blueprint = normalizeBlueprint(raw);
     return Boolean(
-        blueprint?.competency &&
-            blueprint.learningObjective &&
-            blueprint.indicator &&
-            blueprint.materialScope &&
-            blueprint.cognitiveLevel,
+        hasMeaningfulExamSupportText(blueprint?.competency) &&
+            hasMeaningfulExamSupportText(blueprint?.learningObjective) &&
+            hasMeaningfulExamSupportText(blueprint?.indicator) &&
+            hasMeaningfulExamSupportText(blueprint?.materialScope) &&
+            hasMeaningfulExamSupportText(blueprint?.cognitiveLevel),
     );
 }
 
 function isQuestionCardSupportComplete(raw: ExamQuestionCard | undefined): boolean {
     const questionCard = normalizeQuestionCard(raw);
     return Boolean(
-        questionCard?.stimulus &&
-            questionCard.answerRationale &&
-            questionCard.scoringGuideline &&
-            questionCard.distractorNotes,
+        hasMeaningfulExamSupportText(questionCard?.stimulus) &&
+            hasMeaningfulExamSupportText(questionCard?.answerRationale) &&
+            hasMeaningfulExamSupportText(questionCard?.scoringGuideline) &&
+            hasMeaningfulExamSupportText(questionCard?.distractorNotes),
     );
 }
 
