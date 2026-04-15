@@ -1376,13 +1376,13 @@ export default function StudentExamsPage() {
 
                       <div className="relative border-b border-gray-200 px-3 py-2.5">
                         <div className="mx-auto flex max-w-[438px] justify-center text-center">
-                          <div className="inline-flex max-w-[336px] items-center gap-3 md:max-w-[360px]">
+                          <div className="inline-flex max-w-[344px] items-center gap-4 md:max-w-[368px] md:gap-5">
                             <div className="flex h-14 w-14 shrink-0 items-center justify-center md:h-16 md:w-16">
                             {schoolLogoUrl ? (
                               <img src={schoolLogoUrl} alt="Logo KGB2" className="h-14 w-14 object-contain md:h-16 md:w-16" />
                             ) : null}
                             </div>
-                            <div className="min-w-0 max-w-[268px] text-center leading-tight md:max-w-[292px]">
+                            <div className="min-w-0 max-w-[272px] text-center leading-tight md:max-w-[296px]">
                               <div className="text-[11px] font-semibold uppercase leading-tight text-gray-900 md:text-[13px]">
                                 {card.payload.cardTitle || 'Kartu Peserta'}
                               </div>

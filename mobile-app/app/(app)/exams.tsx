@@ -746,6 +746,7 @@ export default function StudentExamsScreen() {
                           alignItems: 'center',
                           justifyContent: 'center',
                           paddingHorizontal: 4,
+                          columnGap: 12,
                         }}
                       >
                         <View style={{ width: 48, alignItems: 'center', justifyContent: 'center' }}>
@@ -757,7 +758,7 @@ export default function StudentExamsScreen() {
                             />
                           ) : null}
                         </View>
-                        <View style={{ maxWidth: 224, flexShrink: 1, paddingHorizontal: 8 }}>
+                        <View style={{ maxWidth: 228, flexShrink: 1, paddingHorizontal: 10 }}>
                           <Text
                             style={{
                               color: '#0f172a',
