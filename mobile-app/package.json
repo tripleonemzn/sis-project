@@ -1,6 +1,6 @@
 {
   "name": "sis-mobile-app",
-  "version": "0.2.1",
+  "version": "0.2.0",
   "private": true,
   "main": "expo-router/entry",
   "scripts": {
@@ -54,7 +54,6 @@
     "expo-linking": "~8.0.11",
     "expo-notifications": "~0.32.16",
     "expo-router": "~6.0.14",
-    "expo-screen-orientation": "~9.0.8",
     "expo-secure-store": "~15.0.7",
     "expo-status-bar": "~3.0.8",
     "expo-updates": "~29.0.16",
