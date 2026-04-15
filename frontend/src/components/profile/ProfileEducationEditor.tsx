@@ -214,6 +214,7 @@ export function ProfileEducationEditor({
   const currentDocumentKinds = currentLevel ? getAllowedDocumentKindsForLevel(track, currentLevel) : [];
   const isHigherEducation = currentLevel ? levelUsesHigherEducationFields(currentLevel) : false;
   const isCertification = currentLevel ? levelUsesCertificationFields(currentLevel) : false;
+  const usesAcademicFields = isHigherEducation || isCertification;
   const uploadSectionTitle =
     currentDocumentKinds.length === 1 && currentDocumentKinds[0] === 'SERTIFIKAT' ? 'Upload Sertifikat' : 'Upload Dokumen';
 
@@ -259,6 +260,7 @@ export function ProfileEducationEditor({
             const institutionValue = history.institutionName || `Belum mengisi ${institutionLabel.toLowerCase()}`;
             const isHigherEntry = levelUsesHigherEducationFields(history.level);
             const isCertificationEntry = levelUsesCertificationFields(history.level);
+            const showsAcademicFields = isHigherEntry || isCertificationEntry;
 
             return (
               <div
@@ -274,7 +276,7 @@ export function ProfileEducationEditor({
                       <p className="text-sm font-medium text-slate-500">{institutionLabel}</p>
                       <p className="mt-1 text-base font-semibold text-slate-900">{institutionValue}</p>
                     </div>
-                    {isHigherEntry ? (
+                    {showsAcademicFields ? (
                       <div className="grid gap-2 text-sm text-slate-600 sm:grid-cols-2">
                         {!isCertificationEntry ? <p>Fakultas: {history.faculty || '-'}</p> : null}
                         <p>Program Studi/Jurusan: {history.studyProgram || '-'}</p>
@@ -392,7 +394,7 @@ export function ProfileEducationEditor({
                   <input
                     value={currentDraft.institutionName}
                     onChange={(event) => handleFieldChange('institutionName', event.target.value)}
-                    placeholder={isHigherEducation ? 'Masukkan nama perguruan tinggi' : 'Masukkan nama sekolah'}
+                    placeholder={usesAcademicFields ? 'Masukkan nama perguruan tinggi' : 'Masukkan nama sekolah'}
                     className="w-full rounded-2xl border border-slate-200 bg-white px-4 py-3 text-sm text-slate-700 outline-none transition focus:border-blue-400 focus:ring-2 focus:ring-blue-100"
                   />
                 </label>
@@ -409,7 +411,7 @@ export function ProfileEducationEditor({
                   </label>
                 ) : null}
 
-                {isHigherEducation ? (
+                {usesAcademicFields ? (
                   <>
                     <label className="block">
                       <span className="mb-1 block text-sm font-medium text-gray-700">Program Studi/Jurusan</span>

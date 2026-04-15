@@ -257,6 +257,7 @@ export function ProfileEducationEditor({
   const currentDocumentKinds = currentLevel ? getAllowedDocumentKindsForLevel(track, currentLevel) : [];
   const isHigherEducation = currentLevel ? levelUsesHigherEducationFields(currentLevel) : false;
   const isCertification = currentLevel ? levelUsesCertificationFields(currentLevel) : false;
+  const usesAcademicFields = isHigherEducation || isCertification;
   const uploadSectionTitle =
     currentDocumentKinds.length === 1 && currentDocumentKinds[0] === 'SERTIFIKAT' ? 'Upload Sertifikat' : 'Upload Dokumen';
 
@@ -318,6 +319,7 @@ export function ProfileEducationEditor({
           const documentCount = countUploadedDocuments(history);
           const isHigherEntry = levelUsesHigherEducationFields(history.level);
           const isCertificationEntry = levelUsesCertificationFields(history.level);
+          const showsAcademicFields = isHigherEntry || isCertificationEntry;
 
           return (
             <View
@@ -353,7 +355,7 @@ export function ProfileEducationEditor({
                 {history.institutionName || `Belum mengisi ${institutionLabel.toLowerCase()}`}
               </Text>
 
-              {isHigherEntry ? (
+              {showsAcademicFields ? (
                 <View style={{ marginTop: 10 }}>
                   {!isCertificationEntry ? (
                     <Text style={{ color: '#475569', marginBottom: 4 }}>Fakultas: {history.faculty || '-'}</Text>
@@ -563,7 +565,7 @@ export function ProfileEducationEditor({
                     label={currentLevel ? getEducationInstitutionLabel(currentLevel) : 'Nama Institusi'}
                     value={currentDraft.institutionName}
                     onChangeText={(value) => handleFieldChange('institutionName', value)}
-                    placeholder={isHigherEducation ? 'Masukkan nama perguruan tinggi' : 'Masukkan nama sekolah'}
+                    placeholder={usesAcademicFields ? 'Masukkan nama perguruan tinggi' : 'Masukkan nama sekolah'}
                   />
 
                   {isHigherEducation && !isCertification ? (
@@ -577,7 +579,7 @@ export function ProfileEducationEditor({
                     </>
                   ) : null}
 
-                  {isHigherEducation ? (
+                  {usesAcademicFields ? (
                     <>
                       <Field
                         label="Program Studi/Jurusan"
