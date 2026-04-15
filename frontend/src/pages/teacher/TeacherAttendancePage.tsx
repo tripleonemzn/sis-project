@@ -25,40 +25,40 @@ const STATUS_OPTIONS: { value: AttendanceStatus; label: string; icon: LucideIcon
     label: 'Hadir', 
     icon: CheckCircle, 
     color: 'text-green-600',
-    activeClass: 'bg-green-100 text-green-700 border-green-200 ring-1 ring-green-400',
-    inactiveClass: 'bg-white text-gray-400 border-gray-200 hover:bg-gray-50'
+    activeClass: 'text-green-700',
+    inactiveClass: 'text-gray-400 hover:text-gray-600'
   },
   { 
     value: 'SICK', 
     label: 'Sakit', 
     icon: PlusCircle, 
     color: 'text-blue-600',
-    activeClass: 'bg-blue-100 text-blue-700 border-blue-200 ring-1 ring-blue-400',
-    inactiveClass: 'bg-white text-gray-400 border-gray-200 hover:bg-gray-50'
+    activeClass: 'text-blue-700',
+    inactiveClass: 'text-gray-400 hover:text-gray-600'
   },
   { 
     value: 'PERMISSION', 
     label: 'Izin', 
     icon: FileText, 
     color: 'text-yellow-600',
-    activeClass: 'bg-yellow-100 text-yellow-700 border-yellow-200 ring-1 ring-yellow-400',
-    inactiveClass: 'bg-white text-gray-400 border-gray-200 hover:bg-gray-50'
+    activeClass: 'text-yellow-700',
+    inactiveClass: 'text-gray-400 hover:text-gray-600'
   },
   { 
     value: 'ABSENT', 
     label: 'Alpha', 
     icon: XCircle, 
     color: 'text-red-600',
-    activeClass: 'bg-red-100 text-red-700 border-red-200 ring-1 ring-red-400',
-    inactiveClass: 'bg-white text-gray-400 border-gray-200 hover:bg-gray-50'
+    activeClass: 'text-red-700',
+    inactiveClass: 'text-gray-400 hover:text-gray-600'
   },
   { 
     value: 'LATE', 
     label: 'Telat', 
     icon: Clock, 
     color: 'text-orange-600',
-    activeClass: 'bg-orange-100 text-orange-700 border-orange-200 ring-1 ring-orange-400',
-    inactiveClass: 'bg-white text-gray-400 border-gray-200 hover:bg-gray-50'
+    activeClass: 'text-orange-700',
+    inactiveClass: 'text-gray-400 hover:text-gray-600'
   },
 ];
 
@@ -323,12 +323,12 @@ export const TeacherAttendancePage = () => {
                         </span>
                       </td>
                       <td className="px-4 py-3">
-                        <div className="flex flex-wrap gap-2">
+                        <div className="flex flex-wrap gap-4">
                           {STATUS_OPTIONS.map((option) => (
                             <label
                               key={option.value}
                               className={`
-                                cursor-pointer flex items-center justify-center w-10 h-10 rounded-full border transition-all select-none relative group
+                                cursor-pointer inline-flex flex-col items-center justify-start min-w-[54px] transition-all select-none relative group
                                 ${record.status === option.value 
                                   ? option.activeClass
                                   : option.inactiveClass
@@ -345,11 +345,22 @@ export const TeacherAttendancePage = () => {
                                 onChange={() => handleStatusChange(student.id, option.value)}
                                 className="sr-only"
                               />
-                              <option.icon className={`w-5 h-5 ${record.status === option.value ? option.color : 'text-gray-400 group-hover:text-gray-600'}`} />
+                              <span className="relative flex h-7 items-center justify-center">
+                                <option.icon className={`w-6 h-6 ${record.status === option.value ? option.color : 'text-gray-400 group-hover:text-gray-600'}`} />
+                                {record.status === option.value ? (
+                                  <span className={`absolute -top-1.5 right-[-4px] h-2.5 w-2.5 rounded-full ${option.color.replace('text-', 'bg-')}`}></span>
+                                ) : null}
+                              </span>
+                              <span
+                                className={`mt-1 text-[11px] font-semibold ${
+                                  record.status === option.value ? option.color : 'text-gray-500 group-hover:text-gray-700'
+                                }`}
+                              >
+                                {option.label}
+                              </span>
                               {record.status === option.value && (
-                                <span className="absolute -top-1 -right-1 flex h-3 w-3">
-                                  <span className={`animate-ping absolute inline-flex h-full w-full rounded-full opacity-75 ${option.color.replace('text-', 'bg-')}`}></span>
-                                  <span className={`relative inline-flex rounded-full h-3 w-3 ${option.color.replace('text-', 'bg-')}`}></span>
+                                <span className="mt-1 h-0.5 w-8 rounded-full bg-current opacity-70">
+                                  <span className="sr-only">Status aktif</span>
                                 </span>
                               )}
                             </label>

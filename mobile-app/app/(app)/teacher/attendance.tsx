@@ -29,10 +29,10 @@ type StatusConfig = {
 };
 
 const STATUS_OPTIONS: StatusConfig[] = [
-  { value: 'PRESENT', label: 'Hadir', shortLabel: 'H', iconName: 'check', bg: '#dcfce7', border: '#86efac', text: '#166534' },
-  { value: 'SICK', label: 'Sakit', shortLabel: 'S', iconName: 'activity', bg: '#dbeafe', border: '#93c5fd', text: '#1d4ed8' },
+  { value: 'PRESENT', label: 'Hadir', shortLabel: 'H', iconName: 'check-circle', bg: '#dcfce7', border: '#86efac', text: '#166534' },
+  { value: 'SICK', label: 'Sakit', shortLabel: 'S', iconName: 'plus-circle', bg: '#dbeafe', border: '#93c5fd', text: '#1d4ed8' },
   { value: 'PERMISSION', label: 'Izin', shortLabel: 'I', iconName: 'file-text', bg: '#ffedd5', border: '#fdba74', text: '#9a3412' },
-  { value: 'ABSENT', label: 'Alpha', shortLabel: 'A', iconName: 'x', bg: '#fee2e2', border: '#fca5a5', text: '#991b1b' },
+  { value: 'ABSENT', label: 'Alpha', shortLabel: 'A', iconName: 'x-circle', bg: '#fee2e2', border: '#fca5a5', text: '#991b1b' },
   { value: 'LATE', label: 'Telat', shortLabel: 'T', iconName: 'clock', bg: '#fef3c7', border: '#fcd34d', text: '#92400e' },
 ];
 
@@ -506,32 +506,58 @@ export default function TeacherAttendanceScreen() {
                                       accessibilityLabel={option.label}
                                       onPress={() => handleStatusChange(student.id, option.value)}
                                       style={{
-                                        borderWidth: 1,
-                                        borderColor: selected ? option.border : '#cbd5e1',
-                                        backgroundColor: selected ? option.bg : '#fff',
-                                        borderRadius: 12,
-                                        minHeight: 46,
+                                        minHeight: 52,
                                         alignItems: 'center',
                                         justifyContent: 'center',
-                                        paddingVertical: 5,
+                                        paddingVertical: 4,
                                       }}
                                     >
-                                      <Feather
-                                        name={option.iconName}
-                                        size={14}
-                                        color={selected ? option.text : '#64748b'}
-                                      />
+                                      <View style={{ minHeight: 26, alignItems: 'center', justifyContent: 'center' }}>
+                                        <View style={{ position: 'relative', alignItems: 'center', justifyContent: 'center' }}>
+                                          <Feather
+                                            name={option.iconName}
+                                            size={18}
+                                            color={selected ? option.text : '#94a3b8'}
+                                          />
+                                          {selected ? (
+                                            <View
+                                              style={{
+                                                position: 'absolute',
+                                                top: -5,
+                                                right: -6,
+                                                width: 8,
+                                                height: 8,
+                                                borderRadius: 999,
+                                                backgroundColor: option.text,
+                                              }}
+                                            />
+                                          ) : null}
+                                        </View>
+                                      </View>
                                       <Text
                                         style={{
                                           color: selected ? option.text : '#64748b',
-                                          fontSize: 8,
+                                          fontSize: 9,
                                           fontWeight: '700',
-                                          marginTop: 3,
+                                          marginTop: 4,
+                                          textAlign: 'center',
                                         }}
-                                        numberOfLines={1}
+                                        numberOfLines={2}
                                       >
                                         {option.label}
                                       </Text>
+                                      {selected ? (
+                                        <View
+                                          style={{
+                                            marginTop: 4,
+                                            width: 28,
+                                            height: 2,
+                                            borderRadius: 999,
+                                            backgroundColor: option.text,
+                                            opacity: 0.7,
+                                          }}
+                                        />
+                                      ) : null}
                                     </Pressable>
                                   </View>
                                 );
