@@ -9,6 +9,7 @@ import { validateCandidateProfileDocuments } from '../utils/candidateAdmissionDo
 import { getNisnValidationMessage, normalizeNisnInput } from '../utils/nisn';
 import { resolveHistoricalStudentScope } from '../utils/studentAcademicHistory';
 import { ensureAcademicYearArchiveReadAccess } from '../utils/academicYearArchiveAccess';
+import { resolveStandardSchoolDocumentHeaderSnapshot } from '../utils/standardSchoolDocumentHeader';
 import {
   deriveEducationSummary,
   educationHistoriesSchema,
@@ -606,6 +607,149 @@ export const getUserById = asyncHandler(async (req: Request, res: Response) => {
   const { password, ...userWithoutPassword } = user;
 
   res.status(200).json(new ApiResponse(200, userWithoutPassword, 'Data pengguna berhasil diambil'));
+});
+
+export const getMyProfilePrintSummary = asyncHandler(async (req: Request, res: Response) => {
+  const currentUser = (req as Request & { user?: { id: number } }).user;
+  if (!currentUser?.id) {
+    throw new ApiError(401, 'Sesi login tidak valid');
+  }
+
+  const [documentHeader, user] = await Promise.all([
+    resolveStandardSchoolDocumentHeaderSnapshot(),
+    prisma.user.findUnique({
+      where: { id: Number(currentUser.id) },
+      select: {
+        id: true,
+        username: true,
+        name: true,
+        role: true,
+        verificationStatus: true,
+        email: true,
+        phone: true,
+        address: true,
+        photo: true,
+        nip: true,
+        nis: true,
+        nisn: true,
+        gender: true,
+        citizenship: true,
+        maritalStatus: true,
+        birthPlace: true,
+        birthDate: true,
+        nik: true,
+        familyCardNumber: true,
+        nuptk: true,
+        highestEducation: true,
+        studyProgram: true,
+        religion: true,
+        motherName: true,
+        motherNik: true,
+        childNumber: true,
+        distanceToSchool: true,
+        familyStatus: true,
+        livingWith: true,
+        transportationMode: true,
+        travelTimeToSchool: true,
+        kipNumber: true,
+        pkhNumber: true,
+        kksNumber: true,
+        siblingsCount: true,
+        fatherName: true,
+        fatherNik: true,
+        fatherEducation: true,
+        fatherOccupation: true,
+        fatherIncome: true,
+        motherEducation: true,
+        motherOccupation: true,
+        motherIncome: true,
+        guardianName: true,
+        guardianEducation: true,
+        guardianOccupation: true,
+        guardianPhone: true,
+        rt: true,
+        rw: true,
+        dusun: true,
+        province: true,
+        cityRegency: true,
+        village: true,
+        subdistrict: true,
+        postalCode: true,
+        ptkType: true,
+        employeeStatus: true,
+        appointmentDecree: true,
+        appointmentDate: true,
+        assignmentDecree: true,
+        assignmentDate: true,
+        institution: true,
+        employeeActiveStatus: true,
+        salarySource: true,
+        additionalDuties: true,
+        educationHistories: true,
+        studentClass: {
+          select: {
+            id: true,
+            name: true,
+            major: {
+              select: {
+                id: true,
+                name: true,
+                code: true,
+              },
+            },
+          },
+        },
+        managedMajors: {
+          select: {
+            id: true,
+            name: true,
+            code: true,
+          },
+        },
+        examinerMajor: {
+          select: {
+            id: true,
+            name: true,
+            code: true,
+          },
+        },
+        children: {
+          select: {
+            id: true,
+            name: true,
+            username: true,
+            nisn: true,
+          },
+        },
+        documents: {
+          select: {
+            title: true,
+            fileUrl: true,
+            category: true,
+          },
+          orderBy: {
+            createdAt: 'asc',
+          },
+        },
+      },
+    }),
+  ]);
+
+  if (!user) {
+    throw new ApiError(404, 'Profil pengguna tidak ditemukan');
+  }
+
+  res.status(200).json(
+    new ApiResponse(
+      200,
+      {
+        documentHeader,
+        generatedAt: new Date().toISOString(),
+        user,
+      },
+      'Ringkasan print profil berhasil diambil',
+    ),
+  );
 });
 
 export const listMyChildren = asyncHandler(async (req: Request, res: Response) => {

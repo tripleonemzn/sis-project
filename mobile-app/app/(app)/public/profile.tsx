@@ -279,8 +279,8 @@ export default function PublicBkkProfileScreen() {
         notifyError('Dokumen riwayat pendidikan hanya boleh berformat PDF, JPG, JPEG, atau PNG.');
         throw new Error('Tipe file dokumen riwayat pendidikan tidak didukung');
       }
-      if ((asset.size || 0) > 500 * 1024) {
-        notifyError('Ukuran dokumen riwayat pendidikan maksimal 500KB.');
+      if ((asset.size || 0) > 1 * 1024 * 1024) {
+        notifyError('Ukuran dokumen riwayat pendidikan maksimal 1MB.');
         throw new Error('Ukuran dokumen riwayat pendidikan melebihi batas');
       }
       const uploaded = await profileApi.uploadEducationHistoryDocument({

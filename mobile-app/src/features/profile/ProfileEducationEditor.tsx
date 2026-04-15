@@ -286,7 +286,7 @@ export function ProfileEducationEditor({
         <Text style={{ color: '#1e3a8a', fontWeight: '700', marginBottom: 6 }}>Ketentuan Upload Riwayat Pendidikan</Text>
         <Text style={{ color: '#1d4ed8', fontSize: 12, lineHeight: 18 }}>
           Tambahkan riwayat pendidikan satu per satu agar form tetap ringkas. Dokumen hanya menerima format PDF,
-          JPG, JPEG, atau PNG dengan ukuran maksimal 500KB per file.
+          JPG, JPEG, atau PNG dengan ukuran maksimal 1MB per file.
         </Text>
       </View>
 
@@ -376,10 +376,18 @@ export function ProfileEducationEditor({
                   {!isCertificationEntry ? (
                     <Text style={{ color: '#475569', marginBottom: 4 }}>IPK: {history.gpa || '-'}</Text>
                   ) : null}
-                  <Text style={{ color: '#475569' }}>Gelar Akademik: {history.degree || '-'}</Text>
                   {isCertificationEntry ? (
-                    <Text style={{ color: '#475569', marginTop: 4 }}>NRG: {history.nrg || '-'}</Text>
-                  ) : null}
+                    <View style={{ flexDirection: 'row', flexWrap: 'wrap', marginHorizontal: -6 }}>
+                      <View style={{ width: '50%', paddingHorizontal: 6 }}>
+                        <Text style={{ color: '#475569' }}>Gelar Akademik: {history.degree || '-'}</Text>
+                      </View>
+                      <View style={{ width: '50%', paddingHorizontal: 6 }}>
+                        <Text style={{ color: '#475569' }}>NRG: {history.nrg || '-'}</Text>
+                      </View>
+                    </View>
+                  ) : (
+                    <Text style={{ color: '#475569' }}>Gelar Akademik: {history.degree || '-'}</Text>
+                  )}
                 </View>
               ) : null}
 
@@ -605,19 +613,33 @@ export function ProfileEducationEditor({
                           placeholder="Contoh: 3.72"
                         />
                       ) : (
-                        <Field
-                          label="NRG (No. Registrasi Guru)"
-                          value={currentDraft.nrg}
-                          onChangeText={(value) => handleFieldChange('nrg', value)}
-                          placeholder="Masukkan NRG"
-                        />
+                        <View style={{ flexDirection: 'row', marginHorizontal: -6 }}>
+                          <View style={{ width: '50%', paddingHorizontal: 6 }}>
+                            <Field
+                              label="Gelar Akademik"
+                              value={currentDraft.degree}
+                              onChangeText={(value) => handleFieldChange('degree', value)}
+                              placeholder="Contoh: S.Pd."
+                            />
+                          </View>
+                          <View style={{ width: '50%', paddingHorizontal: 6 }}>
+                            <Field
+                              label="NRG (No. Registrasi Guru)"
+                              value={currentDraft.nrg}
+                              onChangeText={(value) => handleFieldChange('nrg', value)}
+                              placeholder="Masukkan NRG"
+                            />
+                          </View>
+                        </View>
                       )}
-                      <Field
-                        label="Gelar Akademik"
-                        value={currentDraft.degree}
-                        onChangeText={(value) => handleFieldChange('degree', value)}
-                        placeholder="Contoh: S.Kom., S.Pd., M.M."
-                      />
+                      {!isCertification ? (
+                        <Field
+                          label="Gelar Akademik"
+                          value={currentDraft.degree}
+                          onChangeText={(value) => handleFieldChange('degree', value)}
+                          placeholder="Contoh: S.Kom., S.Pd., M.M."
+                        />
+                      ) : null}
                     </>
                   ) : null}
 
@@ -633,7 +655,7 @@ export function ProfileEducationEditor({
                   >
                     <Text style={{ color: '#0f172a', fontWeight: '700', marginBottom: 4 }}>{uploadSectionTitle}</Text>
                     <Text style={{ color: '#64748b', fontSize: 12, marginBottom: 10 }}>
-                      Format file: PDF, JPG, JPEG, PNG. Ukuran maksimal 500KB per file.
+                      Format file: PDF, JPG, JPEG, PNG. Ukuran maksimal 1MB per file.
                     </Text>
 
                     {currentDocumentKinds.map((kind) => {

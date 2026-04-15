@@ -202,8 +202,8 @@ export const BkkCareerProfilePage = () => {
       toast.error('Dokumen riwayat pendidikan hanya boleh berformat PDF, JPG, JPEG, atau PNG.');
       throw new Error('Tipe file dokumen riwayat pendidikan tidak didukung');
     }
-    if (file.size > 500 * 1024) {
-      toast.error(`Ukuran file ${file.name} melebihi 500KB.`);
+    if (file.size > 1 * 1024 * 1024) {
+      toast.error(`Ukuran file ${file.name} melebihi 1MB.`);
       throw new Error('Ukuran dokumen riwayat pendidikan melebihi batas');
     }
     try {

@@ -234,7 +234,7 @@ export function ProfileEducationEditor({
         <p className="text-sm font-semibold text-blue-900">Ketentuan Upload Riwayat Pendidikan</p>
         <p className="mt-1 text-xs leading-5 text-blue-700">
           Tambahkan riwayat pendidikan satu per satu agar form tetap ringkas. Dokumen hanya menerima format PDF,
-          JPG, JPEG, atau PNG dengan ukuran maksimal 500KB per file.
+          JPG, JPEG, atau PNG dengan ukuran maksimal 1MB per file.
         </p>
       </div>
 
@@ -289,7 +289,9 @@ export function ProfileEducationEditor({
                     {showsAcademicFields ? (
                       <div className="grid gap-2 text-sm text-slate-600 sm:grid-cols-2">
                         {!isCertificationEntry ? <p>Fakultas: {history.faculty || '-'}</p> : null}
-                        <p>Program Studi/Jurusan: {history.studyProgram || '-'}</p>
+                        <p className={isCertificationEntry ? 'sm:col-span-2' : ''}>
+                          Program Studi/Jurusan: {history.studyProgram || '-'}
+                        </p>
                         {!isCertificationEntry ? <p>IPK: {history.gpa || '-'}</p> : null}
                         <p>Gelar Akademik: {history.degree || '-'}</p>
                         {isCertificationEntry ? <p>NRG: {history.nrg || '-'}</p> : null}
@@ -423,7 +425,7 @@ export function ProfileEducationEditor({
 
                 {usesAcademicFields ? (
                   <>
-                    <label className="block">
+                    <label className={`block ${isCertification ? 'xl:col-span-2' : ''}`}>
                       <span className="mb-1 block text-sm font-medium text-gray-700">Program Studi/Jurusan</span>
                       <input
                         value={currentDraft.studyProgram}
@@ -453,7 +455,7 @@ export function ProfileEducationEditor({
                         />
                       </label>
                     )}
-                    <label className="block xl:col-span-2">
+                    <label className="block">
                       <span className="mb-1 block text-sm font-medium text-gray-700">Gelar Akademik</span>
                       <input
                         value={currentDraft.degree}
@@ -469,7 +471,7 @@ export function ProfileEducationEditor({
               <div className="rounded-3xl border border-slate-200 bg-slate-50/80 p-5">
                 <p className="text-sm font-semibold text-slate-900">{uploadSectionTitle}</p>
                 <p className="mt-1 text-xs leading-5 text-slate-500">
-                  Format file: PDF, JPG, JPEG, PNG. Ukuran maksimal 500KB per file.
+                  Format file: PDF, JPG, JPEG, PNG. Ukuran maksimal 1MB per file.
                 </p>
                 <div className="mt-4 grid gap-3 xl:grid-cols-2">
                   {currentDocumentKinds.map((kind) => {

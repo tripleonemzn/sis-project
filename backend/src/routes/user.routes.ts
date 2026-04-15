@@ -10,6 +10,7 @@ import {
   lookupMyChild,
   linkMyChild,
   unlinkMyChild,
+  getMyProfilePrintSummary,
 } from '../controllers/user.controller';
 import { authMiddleware } from '../middleware/auth';
 import { roleMiddleware } from '../middleware/role';
@@ -20,6 +21,7 @@ const router = Router();
 router.use(authMiddleware);
 
 router.get('/', getUsers);
+router.get('/me/print-summary', getMyProfilePrintSummary);
 router.get('/me/children', roleMiddleware(['PARENT']), listMyChildren);
 router.get('/me/children/lookup', roleMiddleware(['PARENT']), lookupMyChild);
 router.post('/me/children/link', roleMiddleware(['PARENT']), linkMyChild);

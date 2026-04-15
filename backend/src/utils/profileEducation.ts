@@ -36,7 +36,7 @@ export type ProfileEducationHistory = {
   documents: ProfileEducationDocument[];
 };
 
-const MAX_PROFILE_EDUCATION_FILE_SIZE = 500 * 1024;
+const MAX_PROFILE_EDUCATION_FILE_SIZE = 1 * 1024 * 1024;
 
 const PROFILE_EDUCATION_LEVEL_LABELS: Record<ProfileEducationLevel, string> = {
   TK: 'TK',
@@ -72,7 +72,7 @@ const optionalFileSizeSchema = z
   .optional()
   .nullable()
   .refine((value) => value == null || value <= MAX_PROFILE_EDUCATION_FILE_SIZE, {
-    message: 'Ukuran file pendidikan maksimal 500KB',
+    message: 'Ukuran file pendidikan maksimal 1MB',
   });
 
 const educationDocumentSchema = z.object({

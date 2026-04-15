@@ -134,6 +134,7 @@ const CandidateDecisionLetterPrint = lazy(() => import("./pages/print/CandidateD
 const BkkShortlistBatchPrint = lazy(() => import("./pages/print/BkkShortlistBatchPrint"));
 const ProctorReportPrint = lazy(() => import("./pages/print/ProctorReportPrint"));
 const ProctorAttendancePrint = lazy(() => import("./pages/print/ProctorAttendancePrint"));
+const ProfileSummaryPrint = lazy(() => import("./pages/print/ProfileSummaryPrint"));
 const ProctorReportVerificationPage = lazy(() => import("./pages/public/ProctorReportVerificationPage"));
 const ExamCardVerificationPage = lazy(() => import("./pages/public/ExamCardVerificationPage"));
 const EmailPage = lazy(() => import("./pages/common/EmailPage").then(m => ({ default: m.EmailPage })));
@@ -241,6 +242,7 @@ function App() {
           <Route path="/print/bkk-shortlist-batch" element={<BkkShortlistBatchPrint />} />
           <Route path="/print/proctor-report/:reportId" element={<ProctorReportPrint />} />
           <Route path="/print/proctor-attendance/:reportId" element={<ProctorAttendancePrint />} />
+          <Route path="/print/profile-summary" element={<ProfileSummaryPrint />} />
           <Route path="/verify/proctor-report/:token" element={<ProctorReportVerificationPage />} />
           <Route path="/verify/exam-card/:token" element={<ExamCardVerificationPage />} />
         

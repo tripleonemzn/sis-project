@@ -1474,8 +1474,8 @@ export default function ProfileScreen() {
         notifyError('Dokumen pendidikan hanya boleh berformat PDF, JPG, JPEG, atau PNG.');
         throw new Error('Tipe file dokumen pendidikan tidak didukung');
       }
-      if ((asset.size || 0) > 500 * 1024) {
-        notifyError('Ukuran dokumen pendidikan maksimal 500KB.');
+      if ((asset.size || 0) > 1 * 1024 * 1024) {
+        notifyError('Ukuran dokumen pendidikan maksimal 1MB.');
         throw new Error('Ukuran dokumen pendidikan melebihi batas');
       }
       const uploaded = await profileApi.uploadEducationHistoryDocument({
@@ -1613,6 +1613,30 @@ export default function ProfileScreen() {
               <Text style={{ color: '#1d4ed8', fontWeight: '700' }}>Buka Formulir PPDB</Text>
             </Pressable>
           ) : null}
+
+          <Pressable
+            onPress={() =>
+              openWebModuleRoute(router, {
+                moduleKey: 'profile-print',
+                webPath: '/print/profile-summary',
+                label: 'Print Profil',
+              })
+            }
+            style={{
+              marginBottom: 12,
+              borderWidth: 1,
+              borderColor: '#cbd5e1',
+              backgroundColor: '#fff',
+              borderRadius: 10,
+              paddingVertical: 12,
+              alignItems: 'center',
+              flexDirection: 'row',
+              justifyContent: 'center',
+            }}
+          >
+            <Feather name="printer" size={16} color="#334155" />
+            <Text style={{ color: '#334155', fontWeight: '700', marginLeft: 8 }}>Lihat & Print Profil</Text>
+          </Pressable>
 
           <ScrollView
             horizontal

@@ -164,10 +164,13 @@ app.use((err: any, req: express.Request, res: express.Response, next: express.Ne
           : 12;
       const isQuestionVideoUploadPath = String(req.originalUrl || req.url || '').includes('/api/upload/question-video');
       const isSlideshowUploadPath = String(req.originalUrl || req.url || '').includes('/api/gallery/slides/upload');
+      const isProfileEducationUploadPath = String(req.originalUrl || req.url || '').includes('/api/upload/profile-education/document');
       const limitHint = isQuestionVideoUploadPath
         ? `Ukuran video soal terlalu besar (maksimal ${normalizedQuestionVideoLimitMb}MB). Untuk video lebih besar gunakan link YouTube.`
         : isSlideshowUploadPath
           ? 'Ukuran file slideshow terlalu besar (maksimal 1MB)'
+          : isProfileEducationUploadPath
+            ? 'Ukuran dokumen riwayat pendidikan terlalu besar (maksimal 1MB)'
           : 'Ukuran file terlalu besar (maksimal 5MB)';
       return res.status(400).json({
         success: false,

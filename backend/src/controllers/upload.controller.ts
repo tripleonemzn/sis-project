@@ -82,7 +82,7 @@ export const teacherPhotoUpload = multer({
 
 export const profileEducationDocumentUpload = multer({
   storage: profileEducationDocumentStorage,
-  limits: { fileSize: 500 * 1024 },
+  limits: { fileSize: 1 * 1024 * 1024 },
   fileFilter: (req, file, cb) => {
     const normalizedMime = String(file.mimetype || '').toLowerCase();
     const allowedMimeTypes = ['application/pdf', 'image/jpeg', 'image/jpg', 'image/png'];

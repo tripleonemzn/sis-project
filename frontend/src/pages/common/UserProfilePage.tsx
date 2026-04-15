@@ -10,7 +10,7 @@ import {
   getCandidateDocumentCategoryLabel,
 } from '../public/candidateShared';
 import type { User, UserWrite } from '../../types/auth';
-import { Loader2, Save, Trash2, X } from 'lucide-react';
+import { Loader2, Printer, Save, Trash2, X } from 'lucide-react';
 import { Link } from 'react-router-dom';
 import { useForm } from 'react-hook-form';
 import { z } from 'zod';
@@ -1400,8 +1400,8 @@ export const UserProfilePage = () => {
       toast.error('Dokumen pendidikan hanya boleh berformat PDF, JPG, JPEG, atau PNG.');
       throw new Error('Tipe file dokumen pendidikan tidak didukung');
     }
-    if (file.size > 500 * 1024) {
-      toast.error(`Ukuran file ${file.name} melebihi 500KB.`);
+    if (file.size > 1 * 1024 * 1024) {
+      toast.error(`Ukuran file ${file.name} melebihi 1MB.`);
       throw new Error('Ukuran dokumen pendidikan melebihi batas');
     }
     try {
@@ -1589,6 +1589,14 @@ export const UserProfilePage = () => {
               Buka Formulir PPDB
             </Link>
           ) : null}
+          <button
+            type="button"
+            onClick={() => window.open('/print/profile-summary', '_blank', 'noopener')}
+            className="inline-flex items-center rounded-lg border border-slate-200 bg-white px-4 py-2 text-sm font-medium text-slate-700 transition hover:bg-slate-50"
+          >
+            <Printer size={18} className="mr-2" />
+            Print Profil
+          </button>
           <button
             onClick={handleSubmit(onSubmit)}
             className="flex items-center gap-2 px-4 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700 transition-colors"
