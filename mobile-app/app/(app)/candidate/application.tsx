@@ -526,7 +526,7 @@ export default function CandidateApplicationScreen() {
   return (
     <ScrollView
       style={{ flex: 1, backgroundColor: '#e9eefb' }}
-      contentContainerStyle={{ ...pageContentPadding, paddingHorizontal: 16, paddingBottom: 24 }}
+      contentContainerStyle={{ ...pageContentPadding, paddingHorizontal: 16 }}
       keyboardShouldPersistTaps="handled"
       keyboardDismissMode="on-drag"
       automaticallyAdjustKeyboardInsets

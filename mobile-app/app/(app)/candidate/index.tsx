@@ -124,7 +124,7 @@ export default function CandidateDashboardScreen() {
   return (
     <ScrollView
       style={{ flex: 1, backgroundColor: '#e9eefb' }}
-      contentContainerStyle={{ ...pagePadding, paddingHorizontal: 16, paddingBottom: 24 }}
+      contentContainerStyle={{ ...pagePadding, paddingHorizontal: 16 }}
       refreshControl={
         <RefreshControl
           refreshing={admissionQuery.isFetching && !admissionQuery.isLoading}
