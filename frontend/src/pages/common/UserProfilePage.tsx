@@ -651,6 +651,7 @@ export const UserProfilePage = () => {
   const profileCopy = useMemo(() => getProfileCopy(fixedRole), [fixedRole]);
   const visibleTabs = useMemo(() => getVisibleTabs(fixedRole), [fixedRole]);
   const educationTrack = useMemo(() => resolveProfileEducationTrackForRole(fixedRole), [fixedRole]);
+  const includeCertificationHistory = educationTrack === 'NON_STUDENT';
   const canUploadPhoto = [
     'ADMIN',
     'TEACHER',
@@ -674,8 +675,11 @@ export const UserProfilePage = () => {
   ].includes(fixedRole);
   const verificationMeta = getVerificationStatusMeta(user?.verificationStatus);
   const educationSummary = useMemo(
-    () => resolveEducationSummaryFromHistories(educationHistories, educationTrack),
-    [educationHistories, educationTrack],
+    () =>
+      resolveEducationSummaryFromHistories(educationHistories, educationTrack, {
+        includeCertification: includeCertificationHistory,
+      }),
+    [educationHistories, educationTrack, includeCertificationHistory],
   );
   const isEmployeeProfile = profileVariant === 'employee';
   const isStudentProfile = profileVariant === 'student';
@@ -1138,6 +1142,7 @@ export const UserProfilePage = () => {
           legacyHighestEducation: user.highestEducation,
           legacyInstitutionName: '',
           legacyStudyProgram: user.studyProgram,
+          includeCertification: includeCertificationHistory,
         }),
       );
       setPhotoPreview(user.photo || null);
@@ -1151,7 +1156,7 @@ export const UserProfilePage = () => {
       isInitializedRef.current = true;
       lastUserIdRef.current = user.id;
     }
-  }, [educationTrack, employeeRoleOptions, fixedRole, reset, user]);
+  }, [educationTrack, employeeRoleOptions, fixedRole, includeCertificationHistory, reset, user]);
 
   useEffect(() => {
     if (!visibleTabs.includes(activeTab)) {
@@ -1234,7 +1239,9 @@ export const UserProfilePage = () => {
 
       const finalPayload: Partial<UserWrite> = {
         ...basePayload,
-        educationHistories: sanitizeEducationHistories(educationHistories, educationTrack),
+        educationHistories: sanitizeEducationHistories(educationHistories, educationTrack, {
+          includeCertification: includeCertificationHistory,
+        }),
         documents: documents?.map((d) => ({
           title: d.title,
           fileUrl: d.fileUrl,
@@ -1355,6 +1362,7 @@ export const UserProfilePage = () => {
     const nextHistories = sanitizeEducationHistories(
       educationHistories.map((entry) => (entry.level === history.level ? history : entry)),
       educationTrack,
+      { includeCertification: includeCertificationHistory },
     );
     if (!user?.id) {
       setEducationHistories(nextHistories);
@@ -1372,6 +1380,7 @@ export const UserProfilePage = () => {
     const nextHistories = sanitizeEducationHistories(
       educationHistories.map((entry) => (entry.level === level ? createEmptyEducationHistory(level) : entry)),
       educationTrack,
+      { includeCertification: includeCertificationHistory },
     );
     if (!user?.id) {
       setEducationHistories(nextHistories);
@@ -2858,6 +2867,7 @@ export const UserProfilePage = () => {
                 <ProfileEducationEditor
                   track={educationTrack}
                   histories={educationHistories}
+                  includeCertification={includeCertificationHistory}
                   onSaveHistory={handleEducationHistorySave}
                   onRemoveHistory={handleEducationHistoryRemove}
                   onUploadDocument={handleEducationDocumentUpload}

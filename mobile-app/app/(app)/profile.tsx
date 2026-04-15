@@ -813,6 +813,7 @@ export default function ProfileScreen() {
   const verificationMeta = useMemo(() => getVerificationStatusMeta(profile?.verificationStatus), [profile?.verificationStatus]);
   const visibleTabs = useMemo(() => getVisibleTabs(profile?.role), [profile?.role]);
   const educationTrack = useMemo(() => resolveProfileEducationTrackForRole(profile?.role), [profile?.role]);
+  const includeCertificationHistory = educationTrack === 'NON_STUDENT';
   const baselineEducationHistories = useMemo(
     () =>
       buildEducationHistoryState({
@@ -821,12 +822,16 @@ export default function ProfileScreen() {
         legacyHighestEducation: profile?.highestEducation,
         legacyInstitutionName: '',
         legacyStudyProgram: profile?.studyProgram,
+        includeCertification: includeCertificationHistory,
       }),
-    [educationTrack, profile?.educationHistories, profile?.highestEducation, profile?.studyProgram],
+    [educationTrack, includeCertificationHistory, profile?.educationHistories, profile?.highestEducation, profile?.studyProgram],
   );
   const educationSummary = useMemo(
-    () => resolveEducationSummaryFromHistories(educationHistories, educationTrack),
-    [educationHistories, educationTrack],
+    () =>
+      resolveEducationSummaryFromHistories(educationHistories, educationTrack, {
+        includeCertification: includeCertificationHistory,
+      }),
+    [educationHistories, educationTrack, includeCertificationHistory],
   );
   const supportingDocuments = useMemo<SupportingDocumentRecord[]>(
     () =>
@@ -1153,7 +1158,9 @@ export default function ProfileScreen() {
         nik: toNullable(form.nik),
         familyCardNumber: toNullable(form.familyCardNumber),
         nuptk: toNullable(form.nuptk),
-        educationHistories: sanitizeEducationHistories(educationHistories, educationTrack),
+        educationHistories: sanitizeEducationHistories(educationHistories, educationTrack, {
+          includeCertification: includeCertificationHistory,
+        }),
         motherName: toNullable(form.motherName),
         motherNik: toNullable(form.motherNik),
         religion: toNullable(form.religion),
@@ -1419,6 +1426,7 @@ export default function ProfileScreen() {
     const nextHistories = sanitizeEducationHistories(
       educationHistories.map((entry) => (entry.level === history.level ? history : entry)),
       educationTrack,
+      { includeCertification: includeCertificationHistory },
     );
     if (!profile?.id) {
       setEducationHistories(nextHistories);
@@ -1436,6 +1444,7 @@ export default function ProfileScreen() {
     const nextHistories = sanitizeEducationHistories(
       educationHistories.map((entry) => (entry.level === level ? createEmptyEducationHistory(level) : entry)),
       educationTrack,
+      { includeCertification: includeCertificationHistory },
     );
     if (!profile?.id) {
       setEducationHistories(nextHistories);
@@ -2476,6 +2485,7 @@ export default function ProfileScreen() {
               <ProfileEducationEditor
                 track={educationTrack}
                 histories={educationHistories}
+                includeCertification={includeCertificationHistory}
                 onSaveHistory={handleEducationHistorySave}
                 onRemoveHistory={handleEducationHistoryRemove}
                 onPickDocument={handleEducationDocumentPick}

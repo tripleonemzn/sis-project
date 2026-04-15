@@ -51,14 +51,15 @@ export const publicBkkApi = {
     schoolName?: string;
     major?: string;
     educationHistories?: Array<{
-      level: 'TK' | 'SD' | 'SMP_MTS' | 'SLTA' | 'D3' | 'D4_S1' | 'S2' | 'S3';
+      level: 'TK' | 'SD' | 'SMP_MTS' | 'SLTA' | 'D3' | 'D4_S1' | 'S2' | 'S3' | 'CERTIFICATION';
       institutionName?: string | null;
       faculty?: string | null;
       studyProgram?: string | null;
       gpa?: string | null;
       degree?: string | null;
+      nrg?: string | null;
       documents: Array<{
-        kind: 'IJAZAH' | 'SKHUN' | 'TRANSKRIP';
+        kind: 'IJAZAH' | 'SKHUN' | 'TRANSKRIP' | 'SERTIFIKAT';
         label: string;
         fileUrl: string;
         originalName?: string | null;

@@ -2,12 +2,14 @@ import type { UserRole } from '../../types/auth';
 
 export const STUDENT_PROFILE_EDUCATION_LEVELS = ['TK', 'SD', 'SMP_MTS'] as const;
 export const NON_STUDENT_PROFILE_EDUCATION_LEVELS = ['SLTA', 'D3', 'D4_S1', 'S2', 'S3'] as const;
+export const NON_STUDENT_PROFILE_CERTIFICATION_LEVELS = ['CERTIFICATION'] as const;
 export const PROFILE_EDUCATION_LEVELS = [
   ...STUDENT_PROFILE_EDUCATION_LEVELS,
   ...NON_STUDENT_PROFILE_EDUCATION_LEVELS,
+  ...NON_STUDENT_PROFILE_CERTIFICATION_LEVELS,
 ] as const;
 export const PROFILE_EDUCATION_HIGHER_LEVELS = ['D3', 'D4_S1', 'S2', 'S3'] as const;
-export const PROFILE_EDUCATION_DOCUMENT_KINDS = ['IJAZAH', 'SKHUN', 'TRANSKRIP'] as const;
+export const PROFILE_EDUCATION_DOCUMENT_KINDS = ['IJAZAH', 'SKHUN', 'TRANSKRIP', 'SERTIFIKAT'] as const;
 
 export type ProfileEducationTrack = 'STUDENT' | 'NON_STUDENT';
 export type ProfileEducationLevel = (typeof PROFILE_EDUCATION_LEVELS)[number];
@@ -30,6 +32,7 @@ export type ProfileEducationHistory = {
   studyProgram: string;
   gpa: string;
   degree: string;
+  nrg: string;
   documents: ProfileEducationDocument[];
 };
 
@@ -42,6 +45,7 @@ const LEVEL_LABELS: Record<ProfileEducationLevel, string> = {
   D4_S1: 'D4/S1',
   S2: 'S2',
   S3: 'S3',
+  CERTIFICATION: 'Sertifikasi',
 };
 
 const LEGACY_LEVEL_MAP: Record<string, ProfileEducationLevel> = {
@@ -68,12 +72,15 @@ const LEGACY_LEVEL_MAP: Record<string, ProfileEducationLevel> = {
   S1: 'D4_S1',
   S2: 'S2',
   S3: 'S3',
+  SERTIFIKASI: 'CERTIFICATION',
+  CERTIFICATION: 'CERTIFICATION',
 };
 
 const DOCUMENT_LABELS: Record<ProfileEducationDocumentKind, string> = {
   IJAZAH: 'Ijazah',
   SKHUN: 'SKHUN / Dokumen Sejenis',
   TRANSKRIP: 'Transkrip Nilai',
+  SERTIFIKAT: 'Sertifikat',
 };
 
 const normalizeText = (value?: string | null) => String(value || '').trim();
@@ -96,8 +103,24 @@ export function getEducationLevelsForTrack(track: ProfileEducationTrack) {
     : [...NON_STUDENT_PROFILE_EDUCATION_LEVELS];
 }
 
+export function getEducationLevelsForTrackWithOptions(
+  track: ProfileEducationTrack,
+  options?: { includeCertification?: boolean },
+) {
+  if (track === 'STUDENT') {
+    return [...STUDENT_PROFILE_EDUCATION_LEVELS];
+  }
+  return options?.includeCertification
+    ? [...NON_STUDENT_PROFILE_EDUCATION_LEVELS, ...NON_STUDENT_PROFILE_CERTIFICATION_LEVELS]
+    : [...NON_STUDENT_PROFILE_EDUCATION_LEVELS];
+}
+
 export function levelUsesHigherEducationFields(level: ProfileEducationLevel) {
   return PROFILE_EDUCATION_HIGHER_LEVELS.includes(level as (typeof PROFILE_EDUCATION_HIGHER_LEVELS)[number]);
+}
+
+export function levelUsesCertificationFields(level: ProfileEducationLevel) {
+  return level === 'CERTIFICATION';
 }
 
 export function getAllowedDocumentKindsForLevel(
@@ -106,6 +129,9 @@ export function getAllowedDocumentKindsForLevel(
 ): ProfileEducationDocumentKind[] {
   if (track === 'STUDENT') {
     return ['IJAZAH', 'SKHUN'];
+  }
+  if (levelUsesCertificationFields(level)) {
+    return ['SERTIFIKAT'];
   }
   if (levelUsesHigherEducationFields(level)) {
     return ['IJAZAH', 'TRANSKRIP'];
@@ -118,7 +144,9 @@ export function getEducationDocumentLabel(kind: ProfileEducationDocumentKind) {
 }
 
 export function getEducationInstitutionLabel(level: ProfileEducationLevel) {
-  return levelUsesHigherEducationFields(level) ? 'Nama Perguruan Tinggi' : 'Nama Sekolah';
+  return levelUsesHigherEducationFields(level) || levelUsesCertificationFields(level)
+    ? 'Nama Perguruan Tinggi'
+    : 'Nama Sekolah';
 }
 
 export function createEmptyEducationHistory(level: ProfileEducationLevel): ProfileEducationHistory {
@@ -129,6 +157,7 @@ export function createEmptyEducationHistory(level: ProfileEducationLevel): Profi
     studyProgram: '',
     gpa: '',
     degree: '',
+    nrg: '',
     documents: [],
   };
 }
@@ -142,8 +171,9 @@ export function getEducationLevelFromLegacyLabel(label?: string | null): Profile
 export function sanitizeEducationHistories(
   histories: ProfileEducationHistory[],
   track: ProfileEducationTrack,
+  options?: { includeCertification?: boolean },
 ): ProfileEducationHistory[] {
-  const allowedLevels = new Set(getEducationLevelsForTrack(track));
+  const allowedLevels = new Set(getEducationLevelsForTrackWithOptions(track, options));
   const normalizedByLevel = new Map<ProfileEducationLevel, ProfileEducationHistory>();
 
   for (const entry of histories) {
@@ -168,18 +198,28 @@ export function sanitizeEducationHistories(
     normalizedByLevel.set(entry.level, {
       level: entry.level,
       institutionName: normalizeText(entry.institutionName),
-      faculty: levelUsesHigherEducationFields(entry.level) ? normalizeText(entry.faculty) : '',
+      faculty:
+        levelUsesHigherEducationFields(entry.level) && !levelUsesCertificationFields(entry.level)
+          ? normalizeText(entry.faculty)
+          : '',
       studyProgram:
-        track === 'STUDENT' || levelUsesHigherEducationFields(entry.level)
+        track === 'STUDENT' || levelUsesHigherEducationFields(entry.level) || levelUsesCertificationFields(entry.level)
           ? normalizeText(entry.studyProgram)
           : '',
-      gpa: levelUsesHigherEducationFields(entry.level) ? normalizeText(entry.gpa) : '',
-      degree: levelUsesHigherEducationFields(entry.level) ? normalizeText(entry.degree) : '',
+      gpa:
+        levelUsesHigherEducationFields(entry.level) && !levelUsesCertificationFields(entry.level)
+          ? normalizeText(entry.gpa)
+          : '',
+      degree:
+        levelUsesHigherEducationFields(entry.level) || levelUsesCertificationFields(entry.level)
+          ? normalizeText(entry.degree)
+          : '',
+      nrg: levelUsesCertificationFields(entry.level) ? normalizeText(entry.nrg) : '',
       documents: Array.from(documentMap.values()),
     });
   }
 
-  return getEducationLevelsForTrack(track).map((level) =>
+  return getEducationLevelsForTrackWithOptions(track, options).map((level) =>
     normalizedByLevel.get(level) || createEmptyEducationHistory(level),
   );
 }
@@ -190,8 +230,11 @@ export function buildEducationHistoryState(args: {
   legacyHighestEducation?: string | null;
   legacyInstitutionName?: string | null;
   legacyStudyProgram?: string | null;
+  includeCertification?: boolean;
 }) {
-  const normalizedHistories = sanitizeEducationHistories(args.histories || [], args.track);
+  const normalizedHistories = sanitizeEducationHistories(args.histories || [], args.track, {
+    includeCertification: args.includeCertification,
+  });
   const hasAnyHistory = normalizedHistories.some((entry) => hasEducationHistoryContent(entry));
   if (hasAnyHistory) {
     return normalizedHistories;
@@ -220,6 +263,7 @@ export function hasEducationHistoryContent(entry: ProfileEducationHistory) {
       normalizeText(entry.studyProgram) ||
       normalizeText(entry.gpa) ||
       normalizeText(entry.degree) ||
+      normalizeText(entry.nrg) ||
       entry.documents.length > 0,
   );
 }
@@ -227,10 +271,12 @@ export function hasEducationHistoryContent(entry: ProfileEducationHistory) {
 export function resolveEducationSummaryFromHistories(
   histories: ProfileEducationHistory[],
   track: ProfileEducationTrack,
+  options?: { includeCertification?: boolean },
 ) {
-  const sanitized = sanitizeEducationHistories(histories, track).filter((entry) => hasEducationHistoryContent(entry));
+  const sanitized = sanitizeEducationHistories(histories, track, options).filter((entry) => hasEducationHistoryContent(entry));
   const order = getEducationLevelsForTrack(track) as ProfileEducationLevel[];
-  const highestEntry = [...sanitized]
+  const summaryCandidates = sanitized.filter((entry) => order.includes(entry.level));
+  const highestEntry = [...summaryCandidates]
     .sort((left, right) => order.indexOf(left.level) - order.indexOf(right.level))
     .at(-1);
 

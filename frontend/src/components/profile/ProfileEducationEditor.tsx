@@ -6,8 +6,9 @@ import {
   getEducationDocumentLabel,
   getEducationInstitutionLabel,
   getEducationLevelLabel,
-  getEducationLevelsForTrack,
+  getEducationLevelsForTrackWithOptions,
   hasEducationHistoryContent,
+  levelUsesCertificationFields,
   levelUsesHigherEducationFields,
   type ProfileEducationDocument,
   type ProfileEducationDocumentKind,
@@ -16,11 +17,12 @@ import {
   type ProfileEducationTrack,
 } from '../../features/profileEducation/profileEducation';
 
-type EditableEducationField = 'institutionName' | 'faculty' | 'studyProgram' | 'gpa' | 'degree';
+type EditableEducationField = 'institutionName' | 'faculty' | 'studyProgram' | 'gpa' | 'degree' | 'nrg';
 
 type ProfileEducationEditorProps = {
   track: ProfileEducationTrack;
   histories: ProfileEducationHistory[];
+  includeCertification?: boolean;
   onSaveHistory: (history: ProfileEducationHistory) => Promise<void> | void;
   onRemoveHistory: (level: ProfileEducationLevel) => Promise<void> | void;
   onUploadDocument: (file: File) => Promise<ProfileEducationDocument>;
@@ -40,15 +42,18 @@ function normalizeDraftForLevel(
 ): ProfileEducationHistory {
   const nextHistory = cloneHistory(history);
   const higherEducation = levelUsesHigherEducationFields(level);
+  const certification = levelUsesCertificationFields(level);
   const allowedKinds = new Set(getAllowedDocumentKindsForLevel(track, level));
 
   return {
     ...nextHistory,
     level,
-    faculty: higherEducation ? nextHistory.faculty : '',
-    studyProgram: higherEducation ? nextHistory.studyProgram : track === 'STUDENT' ? nextHistory.studyProgram : '',
-    gpa: higherEducation ? nextHistory.gpa : '',
-    degree: higherEducation ? nextHistory.degree : '',
+    faculty: higherEducation && !certification ? nextHistory.faculty : '',
+    studyProgram:
+      higherEducation || certification ? nextHistory.studyProgram : track === 'STUDENT' ? nextHistory.studyProgram : '',
+    gpa: higherEducation && !certification ? nextHistory.gpa : '',
+    degree: higherEducation || certification ? nextHistory.degree : '',
+    nrg: certification ? nextHistory.nrg : '',
     documents: nextHistory.documents.filter((document) => allowedKinds.has(document.kind)),
   };
 }
@@ -60,11 +65,15 @@ function countUploadedDocuments(history: ProfileEducationHistory) {
 export function ProfileEducationEditor({
   track,
   histories,
+  includeCertification = false,
   onSaveHistory,
   onRemoveHistory,
   onUploadDocument,
 }: ProfileEducationEditorProps) {
-  const allLevels = useMemo(() => getEducationLevelsForTrack(track), [track]);
+  const allLevels = useMemo(
+    () => getEducationLevelsForTrackWithOptions(track, { includeCertification }),
+    [includeCertification, track],
+  );
   const activeHistories = useMemo(
     () => histories.filter((history) => hasEducationHistoryContent(history)),
     [histories],
@@ -204,6 +213,9 @@ export function ProfileEducationEditor({
   const currentLevel = currentDraft?.level ?? null;
   const currentDocumentKinds = currentLevel ? getAllowedDocumentKindsForLevel(track, currentLevel) : [];
   const isHigherEducation = currentLevel ? levelUsesHigherEducationFields(currentLevel) : false;
+  const isCertification = currentLevel ? levelUsesCertificationFields(currentLevel) : false;
+  const uploadSectionTitle =
+    currentDocumentKinds.length === 1 && currentDocumentKinds[0] === 'SERTIFIKAT' ? 'Upload Sertifikat' : 'Upload Dokumen';
 
   return (
     <div className="space-y-4">
@@ -245,6 +257,8 @@ export function ProfileEducationEditor({
             const documentCount = countUploadedDocuments(history);
             const institutionLabel = getEducationInstitutionLabel(history.level);
             const institutionValue = history.institutionName || `Belum mengisi ${institutionLabel.toLowerCase()}`;
+            const isHigherEntry = levelUsesHigherEducationFields(history.level);
+            const isCertificationEntry = levelUsesCertificationFields(history.level);
 
             return (
               <div
@@ -260,12 +274,13 @@ export function ProfileEducationEditor({
                       <p className="text-sm font-medium text-slate-500">{institutionLabel}</p>
                       <p className="mt-1 text-base font-semibold text-slate-900">{institutionValue}</p>
                     </div>
-                    {isHigherEducation ? (
+                    {isHigherEntry ? (
                       <div className="grid gap-2 text-sm text-slate-600 sm:grid-cols-2">
-                        <p>Fakultas: {history.faculty || '-'}</p>
+                        {!isCertificationEntry ? <p>Fakultas: {history.faculty || '-'}</p> : null}
                         <p>Program Studi/Jurusan: {history.studyProgram || '-'}</p>
-                        <p>IPK: {history.gpa || '-'}</p>
+                        {!isCertificationEntry ? <p>IPK: {history.gpa || '-'}</p> : null}
                         <p>Gelar Akademik: {history.degree || '-'}</p>
+                        {isCertificationEntry ? <p>NRG: {history.nrg || '-'}</p> : null}
                       </div>
                     ) : null}
                   </div>
@@ -382,7 +397,7 @@ export function ProfileEducationEditor({
                   />
                 </label>
 
-                {isHigherEducation ? (
+                {isHigherEducation && !isCertification ? (
                   <label className="block">
                     <span className="mb-1 block text-sm font-medium text-gray-700">Fakultas</span>
                     <input
@@ -405,15 +420,27 @@ export function ProfileEducationEditor({
                         className="w-full rounded-2xl border border-slate-200 bg-white px-4 py-3 text-sm text-slate-700 outline-none transition focus:border-blue-400 focus:ring-2 focus:ring-blue-100"
                       />
                     </label>
-                    <label className="block">
-                      <span className="mb-1 block text-sm font-medium text-gray-700">IPK</span>
-                      <input
-                        value={currentDraft.gpa}
-                        onChange={(event) => handleFieldChange('gpa', event.target.value)}
-                        placeholder="Contoh: 3.72"
-                        className="w-full rounded-2xl border border-slate-200 bg-white px-4 py-3 text-sm text-slate-700 outline-none transition focus:border-blue-400 focus:ring-2 focus:ring-blue-100"
-                      />
-                    </label>
+                    {!isCertification ? (
+                      <label className="block">
+                        <span className="mb-1 block text-sm font-medium text-gray-700">IPK</span>
+                        <input
+                          value={currentDraft.gpa}
+                          onChange={(event) => handleFieldChange('gpa', event.target.value)}
+                          placeholder="Contoh: 3.72"
+                          className="w-full rounded-2xl border border-slate-200 bg-white px-4 py-3 text-sm text-slate-700 outline-none transition focus:border-blue-400 focus:ring-2 focus:ring-blue-100"
+                        />
+                      </label>
+                    ) : (
+                      <label className="block">
+                        <span className="mb-1 block text-sm font-medium text-gray-700">NRG (No. Registrasi Guru)</span>
+                        <input
+                          value={currentDraft.nrg}
+                          onChange={(event) => handleFieldChange('nrg', event.target.value)}
+                          placeholder="Masukkan NRG"
+                          className="w-full rounded-2xl border border-slate-200 bg-white px-4 py-3 text-sm text-slate-700 outline-none transition focus:border-blue-400 focus:ring-2 focus:ring-blue-100"
+                        />
+                      </label>
+                    )}
                     <label className="block xl:col-span-2">
                       <span className="mb-1 block text-sm font-medium text-gray-700">Gelar Akademik</span>
                       <input
@@ -428,7 +455,7 @@ export function ProfileEducationEditor({
               </div>
 
               <div className="rounded-3xl border border-slate-200 bg-slate-50/80 p-5">
-                <p className="text-sm font-semibold text-slate-900">Upload Dokumen</p>
+                <p className="text-sm font-semibold text-slate-900">{uploadSectionTitle}</p>
                 <p className="mt-1 text-xs leading-5 text-slate-500">
                   Format file: PDF, JPG, JPEG, PNG. Ukuran maksimal 500KB per file.
                 </p>
@@ -443,7 +470,15 @@ export function ProfileEducationEditor({
                         <div className="mt-3 flex flex-wrap items-center gap-3">
                           <label className="inline-flex cursor-pointer items-center gap-2 rounded-xl bg-blue-600 px-4 py-2 text-sm font-semibold text-white transition hover:bg-blue-700">
                             <UploadCloud size={16} />
-                            {isUploading ? 'Mengunggah...' : document ? 'Ganti File' : 'Upload File'}
+                            {isUploading
+                              ? 'Mengunggah...'
+                              : kind === 'SERTIFIKAT'
+                                ? document
+                                  ? 'Ganti Sertifikat'
+                                  : 'Upload Sertifikat'
+                                : document
+                                  ? 'Ganti File'
+                                  : 'Upload File'}
                             <input
                               type="file"
                               accept=".pdf,.jpg,.jpeg,.png"

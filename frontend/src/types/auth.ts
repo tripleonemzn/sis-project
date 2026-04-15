@@ -10,7 +10,7 @@ export type UserRole =
   | 'EXAMINER'
   | 'EXTRACURRICULAR_TUTOR';
 
-export type ProfileEducationDocumentKind = 'IJAZAH' | 'SKHUN' | 'TRANSKRIP';
+export type ProfileEducationDocumentKind = 'IJAZAH' | 'SKHUN' | 'TRANSKRIP' | 'SERTIFIKAT';
 
 export interface ProfileEducationDocument {
   kind: ProfileEducationDocumentKind;
@@ -23,12 +23,13 @@ export interface ProfileEducationDocument {
 }
 
 export interface ProfileEducationHistory {
-  level: 'TK' | 'SD' | 'SMP_MTS' | 'SLTA' | 'D3' | 'D4_S1' | 'S2' | 'S3';
+  level: 'TK' | 'SD' | 'SMP_MTS' | 'SLTA' | 'D3' | 'D4_S1' | 'S2' | 'S3' | 'CERTIFICATION';
   institutionName?: string | null;
   faculty?: string | null;
   studyProgram?: string | null;
   gpa?: string | null;
   degree?: string | null;
+  nrg?: string | null;
   documents: ProfileEducationDocument[];
 }
 

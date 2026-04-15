@@ -6,8 +6,9 @@ import {
   getEducationDocumentLabel,
   getEducationInstitutionLabel,
   getEducationLevelLabel,
-  getEducationLevelsForTrack,
+  getEducationLevelsForTrackWithOptions,
   hasEducationHistoryContent,
+  levelUsesCertificationFields,
   levelUsesHigherEducationFields,
   type ProfileEducationDocument,
   type ProfileEducationDocumentKind,
@@ -16,11 +17,12 @@ import {
   type ProfileEducationTrack,
 } from './profileEducation';
 
-type EditableEducationField = 'institutionName' | 'faculty' | 'studyProgram' | 'gpa' | 'degree';
+type EditableEducationField = 'institutionName' | 'faculty' | 'studyProgram' | 'gpa' | 'degree' | 'nrg';
 
 type ProfileEducationEditorProps = {
   track: ProfileEducationTrack;
   histories: ProfileEducationHistory[];
+  includeCertification?: boolean;
   onSaveHistory: (history: ProfileEducationHistory) => Promise<void> | void;
   onRemoveHistory: (level: ProfileEducationLevel) => Promise<void> | void;
   onPickDocument: () => Promise<ProfileEducationDocument | null>;
@@ -41,15 +43,18 @@ function normalizeDraftForLevel(
 ): ProfileEducationHistory {
   const nextHistory = cloneHistory(history);
   const higherEducation = levelUsesHigherEducationFields(level);
+  const certification = levelUsesCertificationFields(level);
   const allowedKinds = new Set(getAllowedDocumentKindsForLevel(track, level));
 
   return {
     ...nextHistory,
     level,
-    faculty: higherEducation ? nextHistory.faculty : '',
-    studyProgram: higherEducation ? nextHistory.studyProgram : track === 'STUDENT' ? nextHistory.studyProgram : '',
-    gpa: higherEducation ? nextHistory.gpa : '',
-    degree: higherEducation ? nextHistory.degree : '',
+    faculty: higherEducation && !certification ? nextHistory.faculty : '',
+    studyProgram:
+      higherEducation || certification ? nextHistory.studyProgram : track === 'STUDENT' ? nextHistory.studyProgram : '',
+    gpa: higherEducation && !certification ? nextHistory.gpa : '',
+    degree: higherEducation || certification ? nextHistory.degree : '',
+    nrg: certification ? nextHistory.nrg : '',
     documents: nextHistory.documents.filter((document) => allowedKinds.has(document.kind)),
   };
 }
@@ -96,12 +101,16 @@ function Field({
 export function ProfileEducationEditor({
   track,
   histories,
+  includeCertification = false,
   onSaveHistory,
   onRemoveHistory,
   onPickDocument,
   onViewDocument,
 }: ProfileEducationEditorProps) {
-  const allLevels = useMemo(() => getEducationLevelsForTrack(track), [track]);
+  const allLevels = useMemo(
+    () => getEducationLevelsForTrackWithOptions(track, { includeCertification }),
+    [includeCertification, track],
+  );
   const activeHistories = useMemo(
     () => histories.filter((history) => hasEducationHistoryContent(history)),
     [histories],
@@ -247,6 +256,9 @@ export function ProfileEducationEditor({
   const currentLevel = currentDraft?.level ?? null;
   const currentDocumentKinds = currentLevel ? getAllowedDocumentKindsForLevel(track, currentLevel) : [];
   const isHigherEducation = currentLevel ? levelUsesHigherEducationFields(currentLevel) : false;
+  const isCertification = currentLevel ? levelUsesCertificationFields(currentLevel) : false;
+  const uploadSectionTitle =
+    currentDocumentKinds.length === 1 && currentDocumentKinds[0] === 'SERTIFIKAT' ? 'Upload Sertifikat' : 'Upload Dokumen';
 
   return (
     <View>
@@ -305,6 +317,7 @@ export function ProfileEducationEditor({
           const institutionLabel = getEducationInstitutionLabel(history.level);
           const documentCount = countUploadedDocuments(history);
           const isHigherEntry = levelUsesHigherEducationFields(history.level);
+          const isCertificationEntry = levelUsesCertificationFields(history.level);
 
           return (
             <View
@@ -342,12 +355,19 @@ export function ProfileEducationEditor({
 
               {isHigherEntry ? (
                 <View style={{ marginTop: 10 }}>
-                  <Text style={{ color: '#475569', marginBottom: 4 }}>Fakultas: {history.faculty || '-'}</Text>
+                  {!isCertificationEntry ? (
+                    <Text style={{ color: '#475569', marginBottom: 4 }}>Fakultas: {history.faculty || '-'}</Text>
+                  ) : null}
                   <Text style={{ color: '#475569', marginBottom: 4 }}>
                     Program Studi/Jurusan: {history.studyProgram || '-'}
                   </Text>
-                  <Text style={{ color: '#475569', marginBottom: 4 }}>IPK: {history.gpa || '-'}</Text>
+                  {!isCertificationEntry ? (
+                    <Text style={{ color: '#475569', marginBottom: 4 }}>IPK: {history.gpa || '-'}</Text>
+                  ) : null}
                   <Text style={{ color: '#475569' }}>Gelar Akademik: {history.degree || '-'}</Text>
+                  {isCertificationEntry ? (
+                    <Text style={{ color: '#475569', marginTop: 4 }}>NRG: {history.nrg || '-'}</Text>
+                  ) : null}
                 </View>
               ) : null}
 
@@ -546,7 +566,7 @@ export function ProfileEducationEditor({
                     placeholder={isHigherEducation ? 'Masukkan nama perguruan tinggi' : 'Masukkan nama sekolah'}
                   />
 
-                  {isHigherEducation ? (
+                  {isHigherEducation && !isCertification ? (
                     <>
                       <Field
                         label="Fakultas"
@@ -554,18 +574,32 @@ export function ProfileEducationEditor({
                         onChangeText={(value) => handleFieldChange('faculty', value)}
                         placeholder="Masukkan nama fakultas"
                       />
+                    </>
+                  ) : null}
+
+                  {isHigherEducation ? (
+                    <>
                       <Field
                         label="Program Studi/Jurusan"
                         value={currentDraft.studyProgram}
                         onChangeText={(value) => handleFieldChange('studyProgram', value)}
                         placeholder="Masukkan program studi atau jurusan"
                       />
-                      <Field
-                        label="IPK"
-                        value={currentDraft.gpa}
-                        onChangeText={(value) => handleFieldChange('gpa', value)}
-                        placeholder="Contoh: 3.72"
-                      />
+                      {!isCertification ? (
+                        <Field
+                          label="IPK"
+                          value={currentDraft.gpa}
+                          onChangeText={(value) => handleFieldChange('gpa', value)}
+                          placeholder="Contoh: 3.72"
+                        />
+                      ) : (
+                        <Field
+                          label="NRG (No. Registrasi Guru)"
+                          value={currentDraft.nrg}
+                          onChangeText={(value) => handleFieldChange('nrg', value)}
+                          placeholder="Masukkan NRG"
+                        />
+                      )}
                       <Field
                         label="Gelar Akademik"
                         value={currentDraft.degree}
@@ -585,7 +619,7 @@ export function ProfileEducationEditor({
                       marginTop: 2,
                     }}
                   >
-                    <Text style={{ color: '#0f172a', fontWeight: '700', marginBottom: 4 }}>Upload Dokumen</Text>
+                    <Text style={{ color: '#0f172a', fontWeight: '700', marginBottom: 4 }}>{uploadSectionTitle}</Text>
                     <Text style={{ color: '#64748b', fontSize: 12, marginBottom: 10 }}>
                       Format file: PDF, JPG, JPEG, PNG. Ukuran maksimal 500KB per file.
                     </Text>
@@ -626,7 +660,15 @@ export function ProfileEducationEditor({
                                 }}
                               >
                                 <Text style={{ color: '#1d4ed8', fontWeight: '700' }}>
-                                  {isUploading ? 'Mengunggah...' : document ? 'Ganti File' : 'Upload File'}
+                                  {isUploading
+                                    ? 'Mengunggah...'
+                                    : kind === 'SERTIFIKAT'
+                                      ? document
+                                        ? 'Ganti Sertifikat'
+                                        : 'Upload Sertifikat'
+                                      : document
+                                        ? 'Ganti File'
+                                        : 'Upload File'}
                                 </Text>
                               </Pressable>
                             </View>
