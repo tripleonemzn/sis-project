@@ -43,6 +43,7 @@ import {
 import { majorService, type Major } from '../../services/major.service';
 import { userService } from '../../services/user.service';
 import type { User } from '../../types/auth';
+import { computeVisibleRefetchInterval } from '../../lib/query/liveQuery';
 
 const PERIODICITY_OPTIONS: Array<{ value: FinanceComponentPeriodicity; label: string }> = [
   { value: 'MONTHLY', label: 'Bulanan' },
@@ -1026,7 +1027,9 @@ export const StaffFinancePage = ({ activeSection = 'overview' }: StaffFinancePag
         limit: 6,
       }),
     staleTime: 30_000,
-    refetchInterval: 45_000,
+    refetchInterval: () => computeVisibleRefetchInterval(180_000),
+    refetchIntervalInBackground: false,
+    refetchOnWindowFocus: false,
   });
 
   const closingPeriodApprovalPolicyQuery = useQuery({

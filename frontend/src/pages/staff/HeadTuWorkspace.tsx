@@ -48,6 +48,7 @@ import {
 import { getStaffDivisionLabel, resolveStaffDivision } from '../../utils/staffRole';
 import { DashboardWelcomeCard } from '../../components/common/DashboardWelcomeCard';
 import { HeadTuExamCardsPanel } from '../../components/staff/HeadTuExamCardsPanel';
+import { computeVisibleRefetchInterval } from '../../lib/query/liveQuery';
 
 function matchesSearch(term: string, values: Array<string | number | null | undefined>) {
   if (!term) return true;
@@ -482,7 +483,8 @@ const HeadTuWorkspace = () => {
     enabled: isFinancePage || isDashboardPage,
     staleTime: 60_000,
     refetchOnWindowFocus: false,
-    refetchInterval: 45_000,
+    refetchInterval: () => computeVisibleRefetchInterval(180_000),
+    refetchIntervalInBackground: false,
   });
 
   const financeClosingPeriodsQuery = useQuery({

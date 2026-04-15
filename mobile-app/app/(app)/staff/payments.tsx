@@ -954,9 +954,9 @@ export default function StaffPaymentsScreen() {
     queryFn: () =>
       staffFinanceApi.getIntegritySummary({
         limit: 6,
-      }),
+    }),
     staleTime: 30_000,
-    refetchInterval: isScreenActive ? 120_000 : false,
+    refetchInterval: isScreenActive ? 300_000 : false,
     refetchIntervalInBackground: false,
   });
 

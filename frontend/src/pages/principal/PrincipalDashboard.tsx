@@ -65,6 +65,7 @@ import { getMenuItems, type MenuItem } from '../../components/layout/Sidebar';
 import type { User } from '../../types/auth';
 import { DashboardWelcomeCard } from '../../components/common/DashboardWelcomeCard';
 import HomeroomBookPanel from '../../components/homeroom/HomeroomBookPanel';
+import { computeVisibleRefetchInterval } from '../../lib/query/liveQuery';
 
 type StatTone = 'blue' | 'orange' | 'red' | 'teal';
 
@@ -3432,7 +3433,9 @@ const PrincipalFinancePage = () => {
         limit: 6,
       }),
     enabled: isFinancePage,
-    refetchInterval: 45_000,
+    refetchInterval: () => computeVisibleRefetchInterval(180_000),
+    refetchIntervalInBackground: false,
+    refetchOnWindowFocus: false,
   });
 
   const { data: financeClosingPeriodsData, isLoading: isFinanceClosingPeriodsLoading } = useQuery({

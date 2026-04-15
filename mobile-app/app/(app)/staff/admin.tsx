@@ -302,9 +302,9 @@ export default function StaffAdminScreen() {
     queryFn: () =>
       staffFinanceApi.getIntegritySummary({
         limit: 6,
-      }),
+    }),
     staleTime: 60 * 1000,
-    refetchInterval: isScreenActive ? 120_000 : false,
+    refetchInterval: isScreenActive ? 300_000 : false,
     refetchIntervalInBackground: false,
   });
 

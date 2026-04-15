@@ -51,6 +51,45 @@ const PRINCIPAL_APPROVAL_QUERY_PREFIXES = [
   'mobile-principal-closing-period-reopen-requests',
   'mobile-principal-closing-period-reopen-approvals',
 ];
+const STAFF_FINANCE_QUERY_PREFIXES = [
+  'mobile-staff-finance-bank-accounts',
+  'mobile-staff-finance-bank-reconciliations',
+  'mobile-staff-finance-payment-verifications',
+  'mobile-staff-finance-ledger-books',
+  'mobile-staff-finance-components',
+  'mobile-staff-finance-tariffs',
+  'mobile-staff-finance-adjustments',
+  'mobile-staff-finance-invoices',
+  'mobile-staff-finance-credits',
+  'mobile-staff-finance-cash-sessions',
+  'mobile-staff-finance-write-offs',
+  'mobile-staff-finance-payment-reversals',
+  'mobile-staff-finance-dashboard',
+  'mobile-staff-finance-reminder-policy',
+  'mobile-staff-finance-cash-session-policy',
+  'mobile-staff-finance-closing-periods',
+  'mobile-staff-finance-closing-period-reopen-requests',
+  'mobile-staff-finance-closing-period-policy',
+  'mobile-staff-finance-budget-realization',
+  'mobile-staff-finance-performance-summary',
+  'mobile-staff-finance-integrity-summary',
+];
+const HEAD_TU_FINANCE_QUERY_PREFIXES = [
+  'mobile-head-tu-finance-write-offs',
+  'mobile-head-tu-finance-payment-reversals',
+  'mobile-head-tu-finance-cash-sessions',
+  'mobile-head-tu-finance-cash-session-approvals',
+  'mobile-head-tu-finance-bank-reconciliations',
+  'mobile-head-tu-finance-budget-realization',
+  'mobile-head-tu-finance-governance',
+  'mobile-head-tu-finance-audit',
+  'mobile-head-tu-finance-performance',
+  'mobile-head-tu-finance-integrity',
+  'mobile-head-tu-finance-closing-periods',
+  'mobile-head-tu-finance-closing-period-approvals',
+  'mobile-head-tu-finance-closing-period-reopen-requests',
+  'mobile-head-tu-finance-closing-period-reopen-approvals',
+];
 const DOMAIN_QUERY_TARGETS: Record<string, string[]> = {
   GRADES: GRADE_REPORT_QUERY_PREFIXES,
   REPORTS: GRADE_REPORT_QUERY_PREFIXES,
@@ -84,11 +123,15 @@ const MUTATION_QUERY_TARGETS: Array<{ pattern: RegExp; queryKeyPrefixes: string[
   },
   {
     pattern: /^\/api\/budget-requests(?:\/|$)/,
-    queryKeyPrefixes: PRINCIPAL_APPROVAL_QUERY_PREFIXES,
+    queryKeyPrefixes: [...PRINCIPAL_APPROVAL_QUERY_PREFIXES, ...STAFF_FINANCE_QUERY_PREFIXES],
   },
   {
     pattern: /^\/api\/payments\/(?:cash-sessions|closing-periods|closing-period-reopen-requests|write-offs|reversals)(?:\/|$)/,
-    queryKeyPrefixes: PRINCIPAL_APPROVAL_QUERY_PREFIXES,
+    queryKeyPrefixes: [
+      ...PRINCIPAL_APPROVAL_QUERY_PREFIXES,
+      ...STAFF_FINANCE_QUERY_PREFIXES,
+      ...HEAD_TU_FINANCE_QUERY_PREFIXES,
+    ],
   },
   {
     pattern: /^\/api\/server\/(?:info|storage|monitoring)(?:\/|$)/,

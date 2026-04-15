@@ -32,11 +32,11 @@ import { getStandardPagePadding } from '../../../src/lib/ui/pageLayout';
 type TabKey = 'info' | 'storage' | 'monitoring' | 'online' | 'webmail';
 
 const REFRESH_INTERVAL = {
-  info: 20000,
-  storage: 20000,
-  monitoring: 5000,
-  online: 15000,
-  webmail: 15000,
+  info: 60000,
+  storage: 60000,
+  monitoring: 10000,
+  online: 60000,
+  webmail: 60000,
 } as const;
 
 function resolveTabKey(value: string | string[] | undefined): TabKey {

@@ -3,6 +3,7 @@ import { Activity, AlertTriangle, Copy, Database, HardDrive, KeyRound, Network, 
 import api from '../../services/api';
 import React, { useState } from 'react';
 import { useSearchParams } from 'react-router-dom';
+import { computeVisibleRefetchInterval } from '../../lib/query/liveQuery';
 
 type ApiEnvelope<T> = {
   statusCode: number;
@@ -227,11 +228,11 @@ const isServerAreaTab = (value: string | null): value is ServerAreaTab => {
 };
 
 const REFRESH_INTERVAL = {
-  info: 20000,
-  storage: 20000,
-  monitoring: 5000,
-  online: 15000,
-  webmail: 15000,
+  info: 60000,
+  storage: 60000,
+  monitoring: 10000,
+  online: 60000,
+  webmail: 60000,
 } as const;
 
 const formatBytes = (value: number) => {
@@ -358,7 +359,7 @@ const ServerAreaPage: React.FC = () => {
       return response.data.data;
     },
     enabled: activeTab === 'info',
-    refetchInterval: activeTab === 'info' ? REFRESH_INTERVAL.info : false,
+    refetchInterval: () => (activeTab === 'info' ? computeVisibleRefetchInterval(REFRESH_INTERVAL.info) : false),
     refetchIntervalInBackground: false,
     refetchOnWindowFocus: false,
   });
@@ -375,7 +376,7 @@ const ServerAreaPage: React.FC = () => {
       return response.data.data;
     },
     enabled: activeTab === 'storage',
-    refetchInterval: activeTab === 'storage' ? REFRESH_INTERVAL.storage : false,
+    refetchInterval: () => (activeTab === 'storage' ? computeVisibleRefetchInterval(REFRESH_INTERVAL.storage) : false),
     refetchIntervalInBackground: false,
     refetchOnWindowFocus: false,
   });
@@ -387,7 +388,7 @@ const ServerAreaPage: React.FC = () => {
       return response.data.data;
     },
     enabled: activeTab === 'monitoring',
-    refetchInterval: activeTab === 'monitoring' ? REFRESH_INTERVAL.monitoring : false,
+    refetchInterval: () => (activeTab === 'monitoring' ? computeVisibleRefetchInterval(REFRESH_INTERVAL.monitoring) : false),
     refetchIntervalInBackground: false,
     refetchOnWindowFocus: false,
   });
@@ -399,7 +400,7 @@ const ServerAreaPage: React.FC = () => {
       return response.data.data;
     },
     enabled: activeTab === 'online',
-    refetchInterval: activeTab === 'online' ? REFRESH_INTERVAL.online : false,
+    refetchInterval: () => (activeTab === 'online' ? computeVisibleRefetchInterval(REFRESH_INTERVAL.online) : false),
     refetchIntervalInBackground: false,
     refetchOnWindowFocus: false,
   });
@@ -413,7 +414,7 @@ const ServerAreaPage: React.FC = () => {
       return response.data.data;
     },
     enabled: activeTab === 'webmail',
-    refetchInterval: activeTab === 'webmail' ? REFRESH_INTERVAL.webmail : false,
+    refetchInterval: () => (activeTab === 'webmail' ? computeVisibleRefetchInterval(REFRESH_INTERVAL.webmail) : false),
     refetchIntervalInBackground: false,
     refetchOnWindowFocus: false,
   });
