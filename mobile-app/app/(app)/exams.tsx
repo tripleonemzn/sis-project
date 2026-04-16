@@ -18,6 +18,10 @@ import { getStandardPagePadding } from '../../src/lib/ui/pageLayout';
 import { examApi, ExamProgramItem } from '../../src/features/exams/examApi';
 import { examCardApi } from '../../src/features/examCards/examCardApi';
 import { useIsScreenActive } from '../../src/hooks/useIsScreenActive';
+import {
+  MOBILE_FOREGROUND_REFETCH_MIN_INTERVAL_MS,
+  shouldRunForegroundRefetch,
+} from '../../src/lib/query/foregroundRefetch';
 
 type StatusFilter = 'ALL' | 'OPEN' | 'MAKEUP' | 'UPCOMING' | 'MISSED' | 'COMPLETED';
 type ExamLabelMap = Record<string, string>;
@@ -235,6 +239,7 @@ export default function StudentExamsScreen() {
   const [isCardsExpanded, setIsCardsExpanded] = useState(false);
   const [isPlacementsExpanded, setIsPlacementsExpanded] = useState(false);
   const screenBecameActiveRef = useRef(false);
+  const foregroundExamRefreshAtRef = useRef(0);
   const seatBlink = useMemo(() => new Animated.Value(1), []);
   const warningBlink = useMemo(() => new Animated.Value(1), []);
   const [showRulesModal, setShowRulesModal] = useState(false);
@@ -248,6 +253,7 @@ export default function StudentExamsScreen() {
       !applicantVerificationLocked &&
       user?.role === 'STUDENT',
     staleTime: 60_000,
+    refetchOnMount: false,
     queryFn: () => examApi.getMyExamSittings(),
   });
 
@@ -287,6 +293,7 @@ export default function StudentExamsScreen() {
       user?.role === 'STUDENT' &&
       shouldShowExamCardSections,
     staleTime: 60_000,
+    refetchOnMount: false,
     queryFn: () => examCardApi.getMyCards({ programCode: lockedProgramCode || undefined }),
   });
 
@@ -321,18 +328,61 @@ export default function StudentExamsScreen() {
     const becameActive = isScreenActive && !screenBecameActiveRef.current;
     screenBecameActiveRef.current = isScreenActive;
     if (!becameActive || !canAccessExams || applicantVerificationLocked) return;
-    void examsQuery.refetch();
-    if (!isCandidateMode && !isApplicantMode && user?.role === 'STUDENT' && shouldShowExamCardSections) {
+    const now = Date.now();
+    const shouldRefetchExamList = shouldRunForegroundRefetch({
+      dataUpdatedAt: examsQuery.dataUpdatedAt,
+      isFetching: examsQuery.isFetching,
+      lastTriggeredAt: foregroundExamRefreshAtRef.current,
+      minIntervalMs: MOBILE_FOREGROUND_REFETCH_MIN_INTERVAL_MS,
+      now,
+    });
+    const shouldRefetchExamCards =
+      !isCandidateMode &&
+      !isApplicantMode &&
+      user?.role === 'STUDENT' &&
+      shouldShowExamCardSections &&
+      shouldRunForegroundRefetch({
+        dataUpdatedAt: studentExamCardsQuery.dataUpdatedAt,
+        isFetching: studentExamCardsQuery.isFetching,
+        lastTriggeredAt: foregroundExamRefreshAtRef.current,
+        minIntervalMs: MOBILE_FOREGROUND_REFETCH_MIN_INTERVAL_MS,
+        now,
+      });
+    const shouldRefetchExamPlacements =
+      !isCandidateMode &&
+      !isApplicantMode &&
+      user?.role === 'STUDENT' &&
+      shouldRunForegroundRefetch({
+        dataUpdatedAt: studentExamPlacementsQuery.dataUpdatedAt,
+        isFetching: studentExamPlacementsQuery.isFetching,
+        lastTriggeredAt: foregroundExamRefreshAtRef.current,
+        minIntervalMs: MOBILE_FOREGROUND_REFETCH_MIN_INTERVAL_MS,
+        now,
+      });
+    if (!shouldRefetchExamList && !shouldRefetchExamCards && !shouldRefetchExamPlacements) return;
+    foregroundExamRefreshAtRef.current = now;
+    if (shouldRefetchExamList) {
+      void examsQuery.refetch();
+    }
+    if (shouldRefetchExamCards) {
       void studentExamCardsQuery.refetch();
+    }
+    if (shouldRefetchExamPlacements) {
       void studentExamPlacementsQuery.refetch();
     }
   }, [
     applicantVerificationLocked,
     canAccessExams,
+    examsQuery.dataUpdatedAt,
+    examsQuery.isFetching,
     isScreenActive,
     isApplicantMode,
     isCandidateMode,
     shouldShowExamCardSections,
+    studentExamCardsQuery.dataUpdatedAt,
+    studentExamCardsQuery.isFetching,
+    studentExamPlacementsQuery.dataUpdatedAt,
+    studentExamPlacementsQuery.isFetching,
     user?.role,
   ]);
   useEffect(() => {

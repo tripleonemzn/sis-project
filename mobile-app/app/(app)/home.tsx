@@ -54,6 +54,10 @@ import type { AuthUser } from '../../src/features/auth/types';
 import { useUnreadNotificationsQuery } from '../../src/features/notifications/useUnreadNotificationsQuery';
 import { useIsScreenActive } from '../../src/hooks/useIsScreenActive';
 import {
+  MOBILE_FOREGROUND_REFETCH_MIN_INTERVAL_MS,
+  shouldRunForegroundRefetch,
+} from '../../src/lib/query/foregroundRefetch';
+import {
   getStaffHomeSubtitle,
   getStaffPreferredMenuKeys,
   getStaffSectionTitle,
@@ -814,6 +818,7 @@ export default function HomeScreen() {
   const [openingMenuKey, setOpeningMenuKey] = useState<string | null>(null);
   const openingMenuResetTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const studentExamFocusActiveRef = useRef(false);
+  const studentExamForegroundRefetchAtRef = useRef(0);
   const menuSearchInputRef = useRef<TextInput | null>(null);
   const isMountedRef = useRef(true);
 
@@ -1007,8 +1012,18 @@ export default function HomeScreen() {
     const becameActive = isScreenActive && !studentExamFocusActiveRef.current;
     studentExamFocusActiveRef.current = isScreenActive;
     if (!becameActive || profile.role !== 'STUDENT') return;
+    const now = Date.now();
+    const shouldRefetchStudentExams = shouldRunForegroundRefetch({
+      dataUpdatedAt: studentExamsQuery.dataUpdatedAt,
+      isFetching: studentExamsQuery.isFetching,
+      lastTriggeredAt: studentExamForegroundRefetchAtRef.current,
+      minIntervalMs: MOBILE_FOREGROUND_REFETCH_MIN_INTERVAL_MS,
+      now,
+    });
+    if (!shouldRefetchStudentExams) return;
+    studentExamForegroundRefetchAtRef.current = now;
     void studentExamsQuery.refetch();
-  }, [isScreenActive, profile.role]);
+  }, [isScreenActive, profile.role, studentExamsQuery.dataUpdatedAt, studentExamsQuery.isFetching]);
 
   const extracurricularTutorAssignments = useMemo(
     () => getExtracurricularTutorAssignments(mergedTutorAssignments),

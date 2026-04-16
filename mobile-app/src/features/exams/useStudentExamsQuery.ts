@@ -20,8 +20,8 @@ export function useStudentExamsQuery({ enabled, user }: Params) {
   return useQuery({
     queryKey: ['mobile-student-exams', user?.id],
     enabled: enabled && !!user && canAccessExams,
-    staleTime: 30_000,
-    refetchOnMount: true,
+    staleTime: 60_000,
+    refetchOnMount: false,
     refetchOnReconnect: false,
     refetchOnWindowFocus: false,
     queryFn: async (): Promise<StudentExamsQueryData> => {
