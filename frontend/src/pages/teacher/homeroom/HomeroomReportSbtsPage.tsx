@@ -150,7 +150,7 @@ export const HomeroomReportSbtsPage = ({
       const availableScores = [parseNumeric(item.col1?.score), parseNumeric(item.col2?.score)].filter(
         (value): value is number => value !== null,
       );
-      if (availableScores.length === 0) return 'Tidak ada Penilaian';
+      if (availableScores.length === 0) return '-';
       const numericKkm = parseNumeric(item.kkm);
       if (numericKkm === null) return '-';
       return availableScores.some((score) => score < numericKkm) ? 'Belum Tuntas' : 'Tuntas';
@@ -204,7 +204,10 @@ export const HomeroomReportSbtsPage = ({
           <td class="center align-middle" style="color: ${col2Color}; font-weight: ${col2Color === '#dc2626' ? '700' : '400'};">${item.col2?.score ?? '-'}</td>
           <td class="center align-middle" style="color: ${col2Color}; font-weight: ${col2Color === '#dc2626' ? '700' : '400'};">${item.col2?.predicate ?? '-'}</td>
           `
-          : `<td colspan="2" class="center align-middle empty-component-cell">Tidak ada Penilaian</td>`;
+          : `
+          <td class="center align-middle">-</td>
+          <td class="center align-middle">-</td>
+          `;
         
         return `
         <tr>

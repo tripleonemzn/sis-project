@@ -260,7 +260,7 @@ function resolveCompletionStatus(
     .map((value) => parseScore(value))
     .filter((value): value is number => value !== null);
   const numericKkm = parseScore(kkm);
-  if (availableScores.length === 0) return 'Tidak ada Penilaian';
+  if (availableScores.length === 0) return '-';
   if (numericKkm === null) return '-';
   return availableScores.some((score) => score < numericKkm) ? 'Belum Tuntas' : 'Tuntas';
 }
@@ -428,15 +428,15 @@ function SubjectRow({
         </View>
       )}
 
-      {isMidterm ? (
+      {isMidterm && status !== '-' ? (
         <Text style={{ color: statusColor, fontSize: 12, marginTop: 8, fontWeight: status === 'Belum Tuntas' ? '700' : '600' }}>
           Status: {status}
         </Text>
-      ) : (
+      ) : !isMidterm ? (
         <Text style={{ color: '#475569', fontSize: 12, marginTop: 8 }}>
           Capaian: {safeText(description)}
         </Text>
-      )}
+      ) : null}
     </View>
   );
 }
