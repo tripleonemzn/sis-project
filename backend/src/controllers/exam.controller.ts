@@ -2990,6 +2990,24 @@ function isCurriculumManagedPacketDescription(rawDescription: unknown): boolean 
     return String(rawDescription || '').trim() === AUTO_CURRICULUM_PACKET_DESCRIPTION;
 }
 
+function buildAutoCurriculumPacketProgramFallbackFilters(
+    normalizedPacketType: ExamType | null,
+): Prisma.ExamPacketWhereInput[] {
+    if (!normalizedPacketType) return [];
+
+    // Jangan fallback ke `semester: null`.
+    // Field `exam_packets.semester` adalah enum non-null, dan bentuk filter lama
+    // seperti `OR: [{ semester: 'EVEN' }, { semester: null, ... }]` akan ditolak
+    // Prisma dengan error `Argument semester is missing`.
+    return [
+        {
+            programCode: null,
+            description: AUTO_CURRICULUM_PACKET_DESCRIPTION,
+            type: normalizedPacketType,
+        },
+    ];
+}
+
 function toUtcDateKey(value: Date): string {
     return value.toISOString().slice(0, 10);
 }
@@ -6818,16 +6836,9 @@ export const getPackets = asyncHandler(async (req: Request, res: Response) => {
         if (!normalizedRequestedProgramCode) {
             throw new ApiError(400, 'Filter program ujian tidak valid.');
         }
-        const fallbackAutoPacketFilter =
-            normalizedPacketType && normalizedTypeCode
-                ? [
-                      {
-                          programCode: null,
-                          description: AUTO_CURRICULUM_PACKET_DESCRIPTION,
-                          type: normalizedPacketType,
-                      },
-                  ]
-                : [];
+        const fallbackAutoPacketFilter = buildAutoCurriculumPacketProgramFallbackFilters(
+            normalizedPacketType && normalizedTypeCode ? normalizedPacketType : null,
+        );
         andFilters.push({
             OR: [{ programCode: normalizedRequestedProgramCode }, ...fallbackAutoPacketFilter],
         });
