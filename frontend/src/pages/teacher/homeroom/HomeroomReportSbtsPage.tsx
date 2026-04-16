@@ -129,7 +129,40 @@ export const HomeroomReportSbtsPage = ({
     const meta = data?.body?.meta || {};
     const col1Label = String(meta.col1Label || 'Komponen 1');
     const col2Label = String(meta.col2Label || resolvedReportLabel || 'Komponen 2');
-    const finalLabel = `Nilai Rapor ${col2Label}`;
+
+    const parseNumeric = (value: string | number | null | undefined): number | null => {
+      if (value === null || value === undefined || value === '') return null;
+      const parsed = Number(value);
+      return Number.isFinite(parsed) ? parsed : null;
+    };
+
+    const isBelowKkm = (
+      value: string | number | null | undefined,
+      kkm: string | number | null | undefined,
+    ): boolean => {
+      const numericValue = parseNumeric(value);
+      const numericKkm = parseNumeric(kkm);
+      if (numericValue === null || numericKkm === null) return false;
+      return numericValue < numericKkm;
+    };
+
+    const resolveStatus = (item: ReportRow): string => {
+      const numericKkm = parseNumeric(item.kkm);
+      const referenceScore =
+        parseNumeric(item.final?.score) ??
+        parseNumeric(item.col2?.score) ??
+        parseNumeric(item.col1?.score);
+      if (numericKkm === null || referenceScore === null) return '-';
+      return referenceScore >= numericKkm ? 'Tuntas' : 'Belum Tuntas';
+    };
+
+    const resolveStatusColor = (status: string): string =>
+      status === 'Belum Tuntas' ? '#dc2626' : '#111827';
+
+    const resolveCellColor = (
+      value: string | number | null | undefined,
+      kkm: string | number | null | undefined,
+    ): string => (isBelowKkm(value, kkm) ? '#dc2626' : '#111827');
 
     const renderRows = (items: ReportRow[]) => {
       if (!items || items.length === 0) return '';
@@ -147,10 +180,15 @@ export const HomeroomReportSbtsPage = ({
            return `
             <tr>
               ${noCell}
-              <td colspan="9" class="align-middle" style="font-weight: bold;">${item.name}</td>
+              <td colspan="7" class="align-middle" style="font-weight: bold;">${item.name}</td>
             </tr>
            `;
         }
+
+        const col1Color = resolveCellColor(item.col1?.score, item.kkm);
+        const col2Color = resolveCellColor(item.col2?.score, item.kkm);
+        const status = resolveStatus(item);
+        const statusColor = resolveStatusColor(status);
         
         return `
         <tr>
@@ -162,18 +200,14 @@ export const HomeroomReportSbtsPage = ({
           <td class="center align-middle">${item.kkm}</td>
           
           <!-- Kolom 1 Dinamis -->
-          <td class="center align-middle">${item.col1?.score ?? '-'}</td>
-          <td class="center align-middle">${item.col1?.predicate ?? '-'}</td>
+          <td class="center align-middle" style="color: ${col1Color}; font-weight: ${col1Color === '#dc2626' ? '700' : '400'};">${item.col1?.score ?? '-'}</td>
+          <td class="center align-middle" style="color: ${col1Color}; font-weight: ${col1Color === '#dc2626' ? '700' : '400'};">${item.col1?.predicate ?? '-'}</td>
           
           <!-- Kolom 2 Dinamis -->
-          <td class="center align-middle">${item.col2?.score ?? '-'}</td>
-          <td class="center align-middle">${item.col2?.predicate ?? '-'}</td>
+          <td class="center align-middle" style="color: ${col2Color}; font-weight: ${col2Color === '#dc2626' ? '700' : '400'};">${item.col2?.score ?? '-'}</td>
+          <td class="center align-middle" style="color: ${col2Color}; font-weight: ${col2Color === '#dc2626' ? '700' : '400'};">${item.col2?.predicate ?? '-'}</td>
           
-          <!-- Nilai Akhir -->
-          <td class="center align-middle">${item.final?.score ?? '-'}</td>
-          <td class="center align-middle">${item.final?.predicate ?? '-'}</td>
-          
-          <td style="padding: 4px 8px; font-size: 11px;" class="align-middle">${item.description}</td>
+          <td style="padding: 4px 8px; font-size: 11px; color: ${statusColor}; font-weight: ${status === 'Belum Tuntas' ? '700' : '600'};" class="align-middle">${status}</td>
         </tr>
       `}).join('');
     };
@@ -182,7 +216,7 @@ export const HomeroomReportSbtsPage = ({
       if (!items || items.length === 0) return '';
       return `
         <tr>
-          <td colspan="10" style="background-color: #f9f9f9; font-weight: bold; padding: 5px;">${groupTitle}</td>
+          <td colspan="8" style="background-color: #f9f9f9; font-weight: bold; padding: 5px;">${groupTitle}</td>
         </tr>
         ${renderRows(items)}
       `;
@@ -318,12 +352,9 @@ export const HomeroomReportSbtsPage = ({
               <th rowspan="2" width="5%">KKTP</th>
               <th colspan="2">${col1Label.toUpperCase()}</th>
               <th colspan="2">${col2Label.toUpperCase()}</th>
-              <th colspan="2">${finalLabel.toUpperCase()}</th>
               <th rowspan="2" width="10%">KET</th>
             </tr>
             <tr>
-              <th width="5%">Angka</th>
-              <th width="5%">Predikat</th>
               <th width="5%">Angka</th>
               <th width="5%">Predikat</th>
               <th width="5%">Angka</th>

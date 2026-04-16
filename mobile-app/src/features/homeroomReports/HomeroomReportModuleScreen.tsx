@@ -236,6 +236,32 @@ function formatScore(value: number | null | undefined) {
   return Number.isInteger(num) ? String(num) : num.toFixed(1);
 }
 
+function parseScore(value: number | string | null | undefined) {
+  if (value === null || value === undefined || value === '') return null;
+  const parsed = Number(value);
+  return Number.isFinite(parsed) ? parsed : null;
+}
+
+function isBelowKkmScore(
+  value: number | string | null | undefined,
+  kkm: number | string | null | undefined,
+) {
+  const numericValue = parseScore(value);
+  const numericKkm = parseScore(kkm);
+  if (numericValue === null || numericKkm === null) return false;
+  return numericValue < numericKkm;
+}
+
+function resolveCompletionStatus(
+  score: number | string | null | undefined,
+  kkm: number | string | null | undefined,
+) {
+  const numericScore = parseScore(score);
+  const numericKkm = parseScore(kkm);
+  if (numericScore === null || numericKkm === null) return '-';
+  return numericScore >= numericKkm ? 'Tuntas' : 'Belum Tuntas';
+}
+
 function formatNumber(value: number | null | undefined, digits = 0) {
   if (value === null || value === undefined || Number.isNaN(Number(value))) return '-';
   const num = Number(value);
@@ -306,6 +332,10 @@ function SubjectRow({
 
   const finalPredicate = row.final?.predicate ?? row.col2?.predicate ?? null;
   const description = safeText(row.description || row.col2?.description || '');
+  const formatifBelowKkm = isBelowKkmScore(formatifScore, row.kkm);
+  const examBelowKkm = isBelowKkmScore(examScore, row.kkm);
+  const status = resolveCompletionStatus(finalScore ?? examScore ?? formatifScore, row.kkm);
+  const statusColor = status === 'Belum Tuntas' ? '#dc2626' : '#0f172a';
 
   return (
     <View
@@ -337,7 +367,9 @@ function SubjectRow({
               }}
             >
               <Text style={{ color: '#64748b', fontSize: 10 }}>{safeText(col1Label, 'Komponen 1')}</Text>
-              <Text style={{ color: BRAND_COLORS.textDark, fontWeight: '700' }}>{formatScore(formatifScore)}</Text>
+              <Text style={{ color: formatifBelowKkm ? '#dc2626' : BRAND_COLORS.textDark, fontWeight: '700' }}>
+                {formatScore(formatifScore)}
+              </Text>
             </View>
           </View>
           <View style={{ flex: 1, paddingHorizontal: 4 }}>
@@ -352,22 +384,9 @@ function SubjectRow({
               }}
             >
               <Text style={{ color: '#64748b', fontSize: 10 }}>{safeText(col2Label, 'Komponen 2')}</Text>
-              <Text style={{ color: BRAND_COLORS.textDark, fontWeight: '700' }}>{formatScore(examScore)}</Text>
-            </View>
-          </View>
-          <View style={{ flex: 1, paddingHorizontal: 4 }}>
-            <View
-              style={{
-                borderWidth: 1,
-                borderColor: '#dbe7fb',
-                borderRadius: 8,
-                paddingVertical: 7,
-                alignItems: 'center',
-                backgroundColor: '#f8fbff',
-              }}
-            >
-              <Text style={{ color: '#64748b', fontSize: 10 }}>Nilai Akhir</Text>
-              <Text style={{ color: BRAND_COLORS.textDark, fontWeight: '700' }}>{formatScore(finalScore)}</Text>
+              <Text style={{ color: examBelowKkm ? '#dc2626' : BRAND_COLORS.textDark, fontWeight: '700' }}>
+                {formatScore(examScore)}
+              </Text>
             </View>
           </View>
         </View>
@@ -406,9 +425,15 @@ function SubjectRow({
         </View>
       )}
 
-      <Text style={{ color: '#475569', fontSize: 12, marginTop: 8 }}>
-        Capaian: {isMidterm ? safeText(description, '-') : safeText(description)}
-      </Text>
+      {isMidterm ? (
+        <Text style={{ color: statusColor, fontSize: 12, marginTop: 8, fontWeight: status === 'Belum Tuntas' ? '700' : '600' }}>
+          Keterangan: {status}
+        </Text>
+      ) : (
+        <Text style={{ color: '#475569', fontSize: 12, marginTop: 8 }}>
+          Capaian: {safeText(description)}
+        </Text>
+      )}
     </View>
   );
 }
