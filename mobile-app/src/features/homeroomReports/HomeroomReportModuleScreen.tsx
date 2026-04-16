@@ -428,7 +428,7 @@ function SubjectRow({
 
       {isMidterm ? (
         <Text style={{ color: statusColor, fontSize: 12, marginTop: 8, fontWeight: status === 'Belum Tuntas' ? '700' : '600' }}>
-          Keterangan: {status}
+          Status: {status}
         </Text>
       ) : (
         <Text style={{ color: '#475569', fontSize: 12, marginTop: 8 }}>

@@ -358,7 +358,7 @@ export const HomeroomReportSbtsPage = ({
               <th rowspan="2" width="5%">KKTP</th>
               <th colspan="2">${col1Label.toUpperCase()}</th>
               <th colspan="2">${col2Label.toUpperCase()}</th>
-              <th rowspan="2" class="ket-header">KET</th>
+              <th rowspan="2" class="ket-header">STATUS</th>
             </tr>
             <tr>
               <th width="5%">Angka</th>
