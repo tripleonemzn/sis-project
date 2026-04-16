@@ -21,7 +21,41 @@ import { getStandardPagePadding } from '../../../src/lib/ui/pageLayout';
 type Semester = 'ODD' | 'EVEN';
 type SemesterOption = Semester | '';
 
-type CompetencySettings = { A: string; B: string; C: string; D: string };
+type CompetencyThresholdSet = { A: string; B: string; C: string; D: string };
+type CompetencySettings = CompetencyThresholdSet & {
+  _byReligion?: Record<string, CompetencyThresholdSet>;
+};
+type ReligionOption = { value: string; label: string };
+
+const EMPTY_COMPETENCY_SET: CompetencyThresholdSet = { A: '', B: '', C: '', D: '' };
+
+const RELIGION_LABELS: Record<string, string> = {
+  ISLAM: 'Islam',
+  KRISTEN: 'Kristen',
+  KATOLIK: 'Katolik',
+  HINDU: 'Hindu',
+  BUDDHA: 'Buddha',
+  KONGHUCU: 'Konghucu',
+};
+
+const RELIGION_ALIASES: Record<string, string> = {
+  ISLAM: 'ISLAM',
+  MUSLIM: 'ISLAM',
+  MOSLEM: 'ISLAM',
+  KRISTEN: 'KRISTEN',
+  KRISTEN_PROTESTAN: 'KRISTEN',
+  PROTESTAN: 'KRISTEN',
+  CHRISTIAN: 'KRISTEN',
+  KATOLIK: 'KATOLIK',
+  CATHOLIC: 'KATOLIK',
+  HINDU: 'HINDU',
+  BUDDHA: 'BUDDHA',
+  BUDHA: 'BUDDHA',
+  BUDDHIST: 'BUDDHA',
+  KONGHUCU: 'KONGHUCU',
+  KHONGHUCU: 'KONGHUCU',
+  CONFUCIAN: 'KONGHUCU',
+};
 
 function parseScore(raw?: string) {
   if (raw === undefined) return { value: null as number | null, invalid: false };
@@ -49,7 +83,7 @@ function normalizeFinalRoundedScore(raw: number | null | undefined) {
 }
 
 function emptyCompetencySettings(): CompetencySettings {
-  return { A: '', B: '', C: '', D: '' };
+  return { ...EMPTY_COMPETENCY_SET };
 }
 
 function calculatePredicate(score: number, kkm: number) {
@@ -154,17 +188,6 @@ function computeFixedWeightedPreviewScore(
   return weightedScoreTotal / weightTotal;
 }
 
-function deriveCompetencyDescription(
-  score: number | null | undefined,
-  kkm: number,
-  settings: CompetencySettings,
-) {
-  const numericScore = Number(score);
-  if (!Number.isFinite(numericScore)) return '';
-  const predicate = calculatePredicate(numericScore, kkm);
-  return String(settings[predicate as keyof CompetencySettings] || '').trim();
-}
-
 function formatSeriesValues(values: number[]) {
   return values
     .map((value) => (Number.isInteger(value) ? String(value) : value.toFixed(2)))
@@ -173,6 +196,225 @@ function formatSeriesValues(values: number[]) {
 
 function normalizeSlotCode(raw: unknown): string {
   return String(raw || '').trim().toUpperCase();
+}
+
+function normalizeSubjectIdentityToken(raw: unknown): string {
+  return String(raw || '')
+    .trim()
+    .toUpperCase()
+    .replace(/[^A-Z0-9]+/g, '_')
+    .replace(/_+/g, '_')
+    .replace(/^_+|_+$/g, '');
+}
+
+function normalizeReligionKey(raw: unknown): string | null {
+  const normalized = normalizeSubjectIdentityToken(raw);
+  if (!normalized) return null;
+  return RELIGION_ALIASES[normalized] || normalized;
+}
+
+function formatReligionLabel(raw: unknown): string {
+  const normalizedKey = normalizeReligionKey(raw);
+  if (!normalizedKey) return '';
+  if (RELIGION_LABELS[normalizedKey]) return RELIGION_LABELS[normalizedKey];
+  return normalizedKey
+    .split('_')
+    .filter(Boolean)
+    .map((token) => token.charAt(0) + token.slice(1).toLowerCase())
+    .join(' ');
+}
+
+function emptyCompetencyThresholdSet(): CompetencyThresholdSet {
+  return { ...EMPTY_COMPETENCY_SET };
+}
+
+function coerceCompetencySettings(raw: unknown): CompetencySettings {
+  if (!raw || typeof raw !== 'object' || Array.isArray(raw)) {
+    return emptyCompetencySettings();
+  }
+
+  const source = raw as Record<string, unknown>;
+  const byReligionSource =
+    source._byReligion && typeof source._byReligion === 'object' && !Array.isArray(source._byReligion)
+      ? (source._byReligion as Record<string, unknown>)
+      : {};
+
+  const byReligion = Object.fromEntries(
+    Object.entries(byReligionSource)
+      .map(([rawKey, value]) => {
+        const religionKey = normalizeReligionKey(rawKey);
+        if (!religionKey || !value || typeof value !== 'object' || Array.isArray(value)) return null;
+        const thresholdSet = {
+          A: String((value as Record<string, unknown>).A || '').trim(),
+          B: String((value as Record<string, unknown>).B || '').trim(),
+          C: String((value as Record<string, unknown>).C || '').trim(),
+          D: String((value as Record<string, unknown>).D || '').trim(),
+        };
+        const hasValue = Object.values(thresholdSet).some((entry) => String(entry || '').trim());
+        return hasValue ? [religionKey, thresholdSet] : null;
+      })
+      .filter(
+        (
+          entry,
+        ): entry is [string, CompetencyThresholdSet] => Array.isArray(entry) && entry.length === 2,
+      ),
+  );
+
+  const settings: CompetencySettings = {
+    A: String(source.A || '').trim(),
+    B: String(source.B || '').trim(),
+    C: String(source.C || '').trim(),
+    D: String(source.D || '').trim(),
+  };
+
+  if (Object.keys(byReligion).length > 0) {
+    settings._byReligion = byReligion;
+  }
+
+  return settings;
+}
+
+function getReligionThresholdSet(settings: CompetencySettings, religionKey?: string | null): CompetencyThresholdSet {
+  const normalizedReligionKey = normalizeReligionKey(religionKey);
+  if (!normalizedReligionKey) return emptyCompetencyThresholdSet();
+  return settings._byReligion?.[normalizedReligionKey] || emptyCompetencyThresholdSet();
+}
+
+function updateCompetencySettingValue(
+  settings: CompetencySettings,
+  predicate: keyof CompetencyThresholdSet,
+  value: string,
+  options?: {
+    religionKey?: string | null;
+    useReligionThreshold?: boolean;
+  },
+): CompetencySettings {
+  if (options?.useReligionThreshold) {
+    const normalizedReligionKey = normalizeReligionKey(options.religionKey);
+    if (!normalizedReligionKey) return settings;
+    const currentSet = getReligionThresholdSet(settings, normalizedReligionKey);
+    const nextByReligion = {
+      ...(settings._byReligion || {}),
+      [normalizedReligionKey]: {
+        ...currentSet,
+        [predicate]: value,
+      },
+    };
+    const hasReligionValue = Object.values(nextByReligion[normalizedReligionKey]).some((entry) => String(entry || '').trim());
+    if (!hasReligionValue) {
+      delete nextByReligion[normalizedReligionKey];
+    }
+    return {
+      ...settings,
+      _byReligion: Object.keys(nextByReligion).length > 0 ? nextByReligion : undefined,
+    };
+  }
+
+  return {
+    ...settings,
+    [predicate]: value,
+  };
+}
+
+function hasAnyCompetencySettingValue(settings: CompetencySettings, useReligionThreshold: boolean) {
+  if (useReligionThreshold) {
+    return Object.values(settings._byReligion || {}).some((entry) =>
+      Object.values(entry).some((value) => String(value || '').trim()),
+    );
+  }
+  return (['A', 'B', 'C', 'D'] as Array<keyof CompetencyThresholdSet>).some((predicate) =>
+    String(settings[predicate] || '').trim(),
+  );
+}
+
+function sanitizeCompetencySettingsForSave(
+  settings: CompetencySettings,
+  useReligionThreshold: boolean,
+): CompetencySettings {
+  if (!useReligionThreshold) {
+    return {
+      A: String(settings.A || '').trim(),
+      B: String(settings.B || '').trim(),
+      C: String(settings.C || '').trim(),
+      D: String(settings.D || '').trim(),
+    };
+  }
+
+  const nextByReligion = Object.fromEntries(
+    Object.entries(settings._byReligion || {})
+      .map(([rawKey, entry]) => {
+        const religionKey = normalizeReligionKey(rawKey);
+        if (!religionKey) return null;
+        const thresholdSet = {
+          A: String(entry?.A || '').trim(),
+          B: String(entry?.B || '').trim(),
+          C: String(entry?.C || '').trim(),
+          D: String(entry?.D || '').trim(),
+        };
+        const hasValue = Object.values(thresholdSet).some((value) => String(value || '').trim());
+        return hasValue ? [religionKey, thresholdSet] : null;
+      })
+      .filter(
+        (
+          entry,
+        ): entry is [string, CompetencyThresholdSet] => Array.isArray(entry) && entry.length === 2,
+      ),
+  );
+
+  return {
+    ...EMPTY_COMPETENCY_SET,
+    _byReligion: Object.keys(nextByReligion).length > 0 ? nextByReligion : undefined,
+  };
+}
+
+function deriveCompetencyDescription(
+  score: number | null | undefined,
+  kkm: number,
+  settings: CompetencySettings,
+  options?: {
+    religionKey?: string | null;
+    useReligionThreshold?: boolean;
+  },
+) {
+  const numericScore = Number(score);
+  if (!Number.isFinite(numericScore)) return '';
+  const predicate = calculatePredicate(numericScore, kkm);
+  if (options?.useReligionThreshold) {
+    return String(
+      getReligionThresholdSet(settings, options.religionKey)[predicate as keyof CompetencyThresholdSet] || '',
+    ).trim();
+  }
+  return String(settings[predicate as keyof CompetencyThresholdSet] || '').trim();
+}
+
+function isReligionCompetencySubject(subject?: { name?: string | null; code?: string | null } | null) {
+  const normalizedName = normalizeSubjectIdentityToken(subject?.name);
+  const normalizedCode = normalizeSubjectIdentityToken(subject?.code);
+  if (!normalizedName && !normalizedCode) return false;
+  if (
+    [
+      'PAI',
+      'PAK',
+      'PAKB',
+      'PAH',
+      'PAB',
+      'PAKH',
+      'PABP',
+      'PABP_ISLAM',
+      'PABP_KRISTEN',
+      'PABP_KATOLIK',
+      'PABP_HINDU',
+      'PABP_BUDDHA',
+      'PABP_KONGHUCU',
+    ].includes(normalizedCode)
+  ) {
+    return true;
+  }
+  return (
+    normalizedName.includes('PENDIDIKAN_AGAMA') ||
+    normalizedName === 'AGAMA' ||
+    normalizedName.startsWith('AGAMA_')
+  );
 }
 
 function resolveComponentEntryMode(component?: GradeComponent | null): 'NF_SERIES' | 'SINGLE_SCORE' {
@@ -322,8 +564,10 @@ export default function TeacherGradesScreen() {
   const [formativePendingSlots, setFormativePendingSlots] = useState<Record<string, number>>({});
   const [showCompetencyModal, setShowCompetencyModal] = useState(false);
   const [competencySettings, setCompetencySettings] = useState<CompetencySettings>(emptyCompetencySettings());
+  const [selectedReligionKey, setSelectedReligionKey] = useState<string>('');
 
   const selectedAssignment = assignments.find((item) => item.id === selectedAssignmentId) || null;
+  const isReligionSubject = isReligionCompetencySubject(selectedAssignment?.subject);
   const assignmentOptions = useMemo(
     () =>
       assignments.map((item) => ({
@@ -393,6 +637,28 @@ export default function TeacherGradesScreen() {
       }),
   });
   const selectedKkm = selectedAssignment?.kkm ?? assignmentDetailQuery.data?.kkm ?? 75;
+  const religionOptions = useMemo<ReligionOption[]>(() => {
+    if (!isReligionSubject) return [];
+    const optionMap = new Map<string, string>();
+
+    (assignmentDetailQuery.data?.class.students || []).forEach((student) => {
+      const religionKey = normalizeReligionKey(student.religion);
+      if (!religionKey) return;
+      optionMap.set(religionKey, formatReligionLabel(student.religion || religionKey));
+    });
+
+    Object.keys(competencySettings._byReligion || {}).forEach((rawKey) => {
+      const religionKey = normalizeReligionKey(rawKey);
+      if (!religionKey) return;
+      if (!optionMap.has(religionKey)) {
+        optionMap.set(religionKey, formatReligionLabel(religionKey));
+      }
+    });
+
+    return Array.from(optionMap.entries())
+      .sort((left, right) => left[1].localeCompare(right[1], 'id', { sensitivity: 'base' }))
+      .map(([value, label]) => ({ value, label }));
+  }, [assignmentDetailQuery.data?.class.students, competencySettings._byReligion, isReligionSubject]);
   const components = useMemo(() => componentsQuery.data || [], [componentsQuery.data]);
   const filteredComponents = useMemo(() => {
     if (!selectedAssignment) return [];
@@ -462,15 +728,28 @@ export default function TeacherGradesScreen() {
       setCompetencySettings(emptyCompetencySettings());
       return;
     }
-    setCompetencySettings({
-      A: assignmentThresholds.A || '',
-      B: assignmentThresholds.B || '',
-      C: assignmentThresholds.C || '',
-      D: assignmentThresholds.D || '',
-    });
+    setCompetencySettings(coerceCompetencySettings(assignmentThresholds));
     }, 0);
     return () => clearTimeout(timerId);
   }, [selectedAssignmentId, assignmentDetailQuery.data?.competencyThresholds]);
+
+  useEffect(() => {
+    if (!isReligionSubject) {
+      if (selectedReligionKey) {
+        setSelectedReligionKey('');
+      }
+      return;
+    }
+    if (religionOptions.length === 0) {
+      if (selectedReligionKey) {
+        setSelectedReligionKey('');
+      }
+      return;
+    }
+    if (!religionOptions.some((option) => option.value === selectedReligionKey)) {
+      setSelectedReligionKey(religionOptions[0].value);
+    }
+  }, [isReligionSubject, religionOptions, selectedReligionKey]);
 
   useEffect(() => {
     const timerId = setTimeout(() => {
@@ -632,9 +911,11 @@ export default function TeacherGradesScreen() {
 
           raporSas = normalizeFinalRoundedScore(raporSas) ?? raporSas;
 
-          const predicate = calculatePredicate(raporSas, selectedKkm);
-          const mappedDescription = competencySettings[predicate as keyof CompetencySettings]?.trim();
-          description = mappedDescription || undefined;
+          description =
+            deriveCompetencyDescription(raporSas, selectedKkm, competencySettings, {
+              religionKey: student.religion,
+              useReligionThreshold: isReligionSubject,
+            }) || undefined;
         }
 
         payload.push({
@@ -680,11 +961,16 @@ export default function TeacherGradesScreen() {
     mutationFn: async () => {
       if (!selectedAssignmentId) throw new Error('Assignment belum dipilih.');
       if (!semester) throw new Error('Pilih semester terlebih dahulu.');
+      if (isReligionSubject && religionOptions.length === 0) {
+        throw new Error('Belum ada agama siswa valid di profile untuk mapel ini.');
+      }
+      const payload = sanitizeCompetencySettingsForSave(competencySettings, isReligionSubject);
       return teacherAssignmentApi.updateCompetencyThresholds(selectedAssignmentId, {
-        A: competencySettings.A.trim(),
-        B: competencySettings.B.trim(),
-        C: competencySettings.C.trim(),
-        D: competencySettings.D.trim(),
+        A: payload.A.trim(),
+        B: payload.B.trim(),
+        C: payload.C.trim(),
+        D: payload.D.trim(),
+        _byReligion: payload._byReligion,
       }, semester);
     },
     onSuccess: async () => {
@@ -703,6 +989,9 @@ export default function TeacherGradesScreen() {
     () => assignmentDetailQuery.data?.class.students || [],
     [assignmentDetailQuery.data?.class.students],
   );
+  const activeCompetencyThresholdSet = isReligionSubject
+    ? getReligionThresholdSet(competencySettings, selectedReligionKey)
+    : competencySettings;
   const filteredStudents = useMemo(() => {
     const q = searchQuery.trim().toLowerCase();
     if (!q) return students;
@@ -759,14 +1048,8 @@ export default function TeacherGradesScreen() {
   })();
 
   const competencyConfigured = useMemo(
-    () =>
-      !!(
-        competencySettings.A.trim() ||
-        competencySettings.B.trim() ||
-        competencySettings.C.trim() ||
-        competencySettings.D.trim()
-      ),
-    [competencySettings],
+    () => hasAnyCompetencySettingValue(competencySettings, isReligionSubject),
+    [competencySettings, isReligionSubject],
   );
 
   const onScoreChange = (studentId: number, componentId: number, value: string) => {
@@ -1084,6 +1367,11 @@ export default function TeacherGradesScreen() {
                     <Text style={{ color: '#64748b', fontSize: 12, marginBottom: 8 }}>
                       A: nilai minimal 86, B: nilai minimal KKM sampai 85, C: nilai 60 sampai di bawah KKM, D: nilai di bawah 60
                     </Text>
+                    {isReligionSubject ? (
+                      <Text style={{ color: '#92400e', fontSize: 12, marginBottom: 8 }}>
+                        Mapel Agama memakai template deskripsi per agama siswa sesuai profile.
+                      </Text>
+                    ) : null}
                     <Pressable
                       onPress={() => setShowCompetencyModal(true)}
                       style={{
@@ -1365,8 +1653,17 @@ export default function TeacherGradesScreen() {
                                       const predicate = calculatePredicate(effectiveFinal, selectedKkm);
                                       const backendDescription = reportMap[student.id]?.description?.trim();
                                       const fallbackDescription =
-                                        deriveCompetencyDescription(effectiveFinal, selectedKkm, competencySettings);
-                                      return `Predikat ${predicate} • ${backendDescription || fallbackDescription || 'Deskripsi belum diatur di + Deskripsi'} • Nilai ${Number(effectiveFinal).toFixed(2)}`;
+                                        deriveCompetencyDescription(effectiveFinal, selectedKkm, competencySettings, {
+                                          religionKey: student.religion,
+                                          useReligionThreshold: isReligionSubject,
+                                        });
+                                      const religionKey = normalizeReligionKey(student.religion);
+                                      const emptyDescriptionMessage = isReligionSubject
+                                        ? religionKey
+                                          ? `Deskripsi agama ${formatReligionLabel(religionKey)} belum diatur di + Deskripsi`
+                                          : 'Agama siswa belum terisi di profile'
+                                        : 'Deskripsi belum diatur di + Deskripsi';
+                                      return `Predikat ${predicate} • ${backendDescription || fallbackDescription || emptyDescriptionMessage} • Nilai ${Number(effectiveFinal).toFixed(2)}`;
                                     })()}
                                   </Text>
                                 </View>
@@ -1478,6 +1775,22 @@ export default function TeacherGradesScreen() {
             <Text style={{ color: '#64748b', fontSize: 12, marginBottom: 10 }}>
               {`Deskripsi ini akan diterapkan otomatis ke komponen ${finalComponentLabel}.`}
             </Text>
+            {isReligionSubject ? (
+              <View
+                style={{
+                  borderWidth: 1,
+                  borderColor: '#fcd34d',
+                  borderRadius: 8,
+                  padding: 10,
+                  backgroundColor: '#fef3c7',
+                  marginBottom: 10,
+                }}
+              >
+                <Text style={{ color: '#92400e', fontSize: 12 }}>
+                  Deskripsi mapel Agama disimpan per agama siswa dan mengikuti data `Agama` pada profile siswa.
+                </Text>
+              </View>
+            ) : null}
             <View
               style={{
                 borderWidth: 1,
@@ -1494,26 +1807,46 @@ export default function TeacherGradesScreen() {
               <Text style={{ color: '#1e3a8a', fontSize: 12 }}>D: Nilai di bawah 60</Text>
             </View>
 
+            {isReligionSubject ? (
+              <View style={{ marginBottom: 8 }}>
+                <MobileSelectField
+                  label="Agama"
+                  value={selectedReligionKey}
+                  options={religionOptions}
+                  onChange={(value) => setSelectedReligionKey(value)}
+                  placeholder={religionOptions.length > 0 ? 'Pilih agama' : 'Belum ada agama siswa'}
+                  helperText="Pilihan agama diambil dari profile siswa aktif pada mapel ini."
+                  disabled={religionOptions.length === 0}
+                />
+              </View>
+            ) : null}
+
             {(['A', 'B', 'C', 'D'] as const).map((key) => (
               <View key={key} style={{ marginBottom: 8 }}>
                 <Text style={{ color: '#334155', fontSize: 12, fontWeight: '700', marginBottom: 4 }}>
                   Deskripsi Predikat {key}
                 </Text>
                 <TextInput
-                  value={competencySettings[key]}
+                  value={activeCompetencyThresholdSet[key]}
                   onChangeText={(value) => {
-                    setCompetencySettings((prev) => ({ ...prev, [key]: value }));
+                    setCompetencySettings((prev) =>
+                      updateCompetencySettingValue(prev, key, value, {
+                        religionKey: selectedReligionKey,
+                        useReligionThreshold: isReligionSubject,
+                      }),
+                    );
                   }}
                   multiline
                   numberOfLines={2}
                   placeholder={`Tulis deskripsi untuk predikat ${key}`}
+                  editable={!isReligionSubject || Boolean(selectedReligionKey)}
                   style={{
                     borderWidth: 1,
                     borderColor: '#cbd5e1',
                     borderRadius: 8,
                     paddingHorizontal: 10,
                     paddingVertical: 8,
-                    backgroundColor: '#fff',
+                    backgroundColor: !isReligionSubject || selectedReligionKey ? '#fff' : '#f8fafc',
                     minHeight: 56,
                     textAlignVertical: 'top',
                   }}
@@ -1541,12 +1874,15 @@ export default function TeacherGradesScreen() {
               <View style={{ flex: 1, paddingHorizontal: 4 }}>
                 <Pressable
                   onPress={() => saveCompetencyMutation.mutate()}
-                  disabled={saveCompetencyMutation.isPending}
+                  disabled={saveCompetencyMutation.isPending || (isReligionSubject && religionOptions.length === 0)}
                   style={{
                     borderRadius: 8,
                     paddingVertical: 10,
                     alignItems: 'center',
-                    backgroundColor: saveCompetencyMutation.isPending ? '#93c5fd' : '#1d4ed8',
+                    backgroundColor:
+                      saveCompetencyMutation.isPending || (isReligionSubject && religionOptions.length === 0)
+                        ? '#93c5fd'
+                        : '#1d4ed8',
                   }}
                 >
                   <Text style={{ color: '#fff', fontWeight: '700' }}>

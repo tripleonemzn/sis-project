@@ -12,6 +12,15 @@ export interface TeacherAssignment {
     B?: string;
     C?: string;
     D?: string;
+    _byReligion?: Record<
+      string,
+      {
+        A?: string;
+        B?: string;
+        C?: string;
+        D?: string;
+      }
+    >;
   } | null;
   teacher: {
     id: number;
@@ -38,6 +47,7 @@ export interface TeacherAssignment {
       nis: string | null;
       nisn?: string | null;
       gender: 'MALE' | 'FEMALE';
+      religion?: string | null;
     }[];
     _count?: {
       students: number;
@@ -71,6 +81,7 @@ export interface TeacherAssignmentDetail extends TeacherAssignment {
       nis: string | null;
       nisn: string | null;
       gender: 'MALE' | 'FEMALE';
+      religion?: string | null;
     }>;
   };
   subject: {
@@ -170,7 +181,13 @@ export const teacherAssignmentService = {
 
   updateCompetencyThresholds: async (
     id: number,
-    competencyThresholds: { A?: string; B?: string; C?: string; D?: string },
+    competencyThresholds: {
+      A?: string;
+      B?: string;
+      C?: string;
+      D?: string;
+      _byReligion?: Record<string, { A?: string; B?: string; C?: string; D?: string }>;
+    },
     semester?: 'ODD' | 'EVEN',
   ) => {
     ensurePositiveAssignmentId(id);

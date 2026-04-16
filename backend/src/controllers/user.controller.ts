@@ -837,6 +837,7 @@ export const getUsers = asyncHandler(async (req: Request, res: Response) => {
       nuptk: true,
       highestEducation: true,
       studyProgram: true,
+      religion: true,
       educationHistories: true,
       motherName: true,
       motherNik: true,

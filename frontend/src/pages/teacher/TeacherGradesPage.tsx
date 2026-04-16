@@ -18,6 +18,7 @@ interface Student {
   full_name: string;
   nisn: string;
   nis: string;
+  religion?: string | null;
 }
 
 interface StudentGrade {
@@ -87,6 +88,22 @@ type GradeBulkPayload = {
   description?: string;
 };
 
+type CompetencyThresholdSet = {
+  A: string;
+  B: string;
+  C: string;
+  D: string;
+};
+
+type CompetencySettings = CompetencyThresholdSet & {
+  _byReligion?: Record<string, CompetencyThresholdSet>;
+};
+
+type ReligionOption = {
+  value: string;
+  label: string;
+};
+
 const TEACHER_GRADES_FILTER_STORAGE_KEY = 'teacher-grades:filters:v1';
 
 type BulkGradeSaveResult = {
@@ -98,6 +115,36 @@ type BulkGradeSaveResult = {
     failed?: number;
     errors?: Array<{ student_id: number; error: string }>;
   };
+};
+
+const EMPTY_COMPETENCY_SET: CompetencyThresholdSet = { A: '', B: '', C: '', D: '' };
+
+const RELIGION_LABELS: Record<string, string> = {
+  ISLAM: 'Islam',
+  KRISTEN: 'Kristen',
+  KATOLIK: 'Katolik',
+  HINDU: 'Hindu',
+  BUDDHA: 'Buddha',
+  KONGHUCU: 'Konghucu',
+};
+
+const RELIGION_ALIASES: Record<string, string> = {
+  ISLAM: 'ISLAM',
+  MUSLIM: 'ISLAM',
+  MOSLEM: 'ISLAM',
+  KRISTEN: 'KRISTEN',
+  KRISTEN_PROTESTAN: 'KRISTEN',
+  PROTESTAN: 'KRISTEN',
+  CHRISTIAN: 'KRISTEN',
+  KATOLIK: 'KATOLIK',
+  CATHOLIC: 'KATOLIK',
+  HINDU: 'HINDU',
+  BUDDHA: 'BUDDHA',
+  BUDHA: 'BUDDHA',
+  BUDDHIST: 'BUDDHA',
+  KONGHUCU: 'KONGHUCU',
+  KHONGHUCU: 'KONGHUCU',
+  CONFUCIAN: 'KONGHUCU',
 };
 
 const parseFormativeSeriesInput = (raw: string): { values: number[]; invalid: boolean } => {
@@ -219,17 +266,6 @@ const formatWeightPercent = (weight: number | null | undefined) => {
   return `${numeric.toFixed(2)}%`;
 };
 
-const deriveCompetencyDescription = (
-  score: number | null | undefined,
-  kkm: number,
-  settings: { A: string; B: string; C: string; D: string },
-): string => {
-  const numericScore = Number(score);
-  if (!Number.isFinite(numericScore)) return '';
-  const predicate = numericScore >= 86 ? 'A' : numericScore >= kkm ? 'B' : numericScore >= 60 ? 'C' : 'D';
-  return String(settings[predicate as keyof typeof settings] || '').trim();
-};
-
 const resolveComponentReportSlotCode = (component?: GradeComponent): string => {
   const explicit = normalizeSlotCode(component?.reportSlotCode || component?.reportSlot);
   if (explicit) return explicit;
@@ -282,6 +318,228 @@ const normalizeSubjectIdentityToken = (raw: unknown): string =>
     .replace(/[^A-Z0-9]+/g, '_')
     .replace(/_+/g, '_')
     .replace(/^_+|_+$/g, '');
+
+const normalizeReligionKey = (raw: unknown): string | null => {
+  const normalized = normalizeSubjectIdentityToken(raw);
+  if (!normalized) return null;
+  return RELIGION_ALIASES[normalized] || normalized;
+};
+
+const formatReligionLabel = (raw: unknown): string => {
+  const normalizedKey = normalizeReligionKey(raw);
+  if (!normalizedKey) return '';
+  if (RELIGION_LABELS[normalizedKey]) return RELIGION_LABELS[normalizedKey];
+  return normalizedKey
+    .split('_')
+    .filter(Boolean)
+    .map((token) => token.charAt(0) + token.slice(1).toLowerCase())
+    .join(' ');
+};
+
+const emptyCompetencySettings = (): CompetencySettings => ({
+  ...EMPTY_COMPETENCY_SET,
+});
+
+const emptyCompetencyThresholdSet = (): CompetencyThresholdSet => ({
+  ...EMPTY_COMPETENCY_SET,
+});
+
+const coerceCompetencySettings = (raw: unknown): CompetencySettings => {
+  if (!raw || typeof raw !== 'object' || Array.isArray(raw)) {
+    return emptyCompetencySettings();
+  }
+
+  const source = raw as Record<string, unknown>;
+  const byReligionSource =
+    source._byReligion && typeof source._byReligion === 'object' && !Array.isArray(source._byReligion)
+      ? (source._byReligion as Record<string, unknown>)
+      : {};
+
+  const byReligion = Object.fromEntries(
+    Object.entries(byReligionSource)
+      .map(([rawKey, value]) => {
+        const religionKey = normalizeReligionKey(rawKey);
+        if (!religionKey || !value || typeof value !== 'object' || Array.isArray(value)) return null;
+        const thresholdSet = {
+          A: String((value as Record<string, unknown>).A || '').trim(),
+          B: String((value as Record<string, unknown>).B || '').trim(),
+          C: String((value as Record<string, unknown>).C || '').trim(),
+          D: String((value as Record<string, unknown>).D || '').trim(),
+        };
+        const hasValue = Object.values(thresholdSet).some((entry) => String(entry || '').trim());
+        return hasValue ? [religionKey, thresholdSet] : null;
+      })
+      .filter(
+        (
+          entry,
+        ): entry is [string, CompetencyThresholdSet] => Array.isArray(entry) && entry.length === 2,
+      ),
+  );
+
+  const settings: CompetencySettings = {
+    A: String(source.A || '').trim(),
+    B: String(source.B || '').trim(),
+    C: String(source.C || '').trim(),
+    D: String(source.D || '').trim(),
+  };
+
+  if (Object.keys(byReligion).length > 0) {
+    settings._byReligion = byReligion;
+  }
+
+  return settings;
+};
+
+const getReligionThresholdSet = (
+  settings: CompetencySettings,
+  religionKey?: string | null,
+): CompetencyThresholdSet => {
+  const normalizedReligionKey = normalizeReligionKey(religionKey);
+  if (!normalizedReligionKey) return emptyCompetencyThresholdSet();
+  return settings._byReligion?.[normalizedReligionKey] || emptyCompetencyThresholdSet();
+};
+
+const updateCompetencySettingValue = (
+  settings: CompetencySettings,
+  predicate: keyof CompetencyThresholdSet,
+  value: string,
+  options?: {
+    religionKey?: string | null;
+    useReligionThreshold?: boolean;
+  },
+): CompetencySettings => {
+  if (options?.useReligionThreshold) {
+    const normalizedReligionKey = normalizeReligionKey(options.religionKey);
+    if (!normalizedReligionKey) return settings;
+    const currentSet = getReligionThresholdSet(settings, normalizedReligionKey);
+    const nextByReligion = {
+      ...(settings._byReligion || {}),
+      [normalizedReligionKey]: {
+        ...currentSet,
+        [predicate]: value,
+      },
+    };
+    const hasReligionValue = Object.values(nextByReligion[normalizedReligionKey]).some((entry) => String(entry || '').trim());
+    if (!hasReligionValue) {
+      delete nextByReligion[normalizedReligionKey];
+    }
+    return {
+      ...settings,
+      _byReligion: Object.keys(nextByReligion).length > 0 ? nextByReligion : undefined,
+    };
+  }
+
+  return {
+    ...settings,
+    [predicate]: value,
+  };
+};
+
+const hasAnyCompetencySettingValue = (
+  settings: CompetencySettings,
+  useReligionThreshold: boolean,
+): boolean => {
+  if (useReligionThreshold) {
+    return Object.values(settings._byReligion || {}).some((entry) =>
+      Object.values(entry).some((value) => String(value || '').trim()),
+    );
+  }
+  return (['A', 'B', 'C', 'D'] as Array<keyof CompetencyThresholdSet>).some((predicate) =>
+    String(settings[predicate] || '').trim(),
+  );
+};
+
+const sanitizeCompetencySettingsForSave = (
+  settings: CompetencySettings,
+  useReligionThreshold: boolean,
+): CompetencySettings => {
+  if (!useReligionThreshold) {
+    return {
+      A: String(settings.A || '').trim(),
+      B: String(settings.B || '').trim(),
+      C: String(settings.C || '').trim(),
+      D: String(settings.D || '').trim(),
+    };
+  }
+
+  const nextByReligion = Object.fromEntries(
+    Object.entries(settings._byReligion || {})
+      .map(([rawKey, entry]) => {
+        const religionKey = normalizeReligionKey(rawKey);
+        if (!religionKey) return null;
+        const thresholdSet = {
+          A: String(entry?.A || '').trim(),
+          B: String(entry?.B || '').trim(),
+          C: String(entry?.C || '').trim(),
+          D: String(entry?.D || '').trim(),
+        };
+        const hasValue = Object.values(thresholdSet).some((value) => String(value || '').trim());
+        return hasValue ? [religionKey, thresholdSet] : null;
+      })
+      .filter(
+        (
+          entry,
+        ): entry is [string, CompetencyThresholdSet] => Array.isArray(entry) && entry.length === 2,
+      ),
+  );
+
+  return {
+    ...EMPTY_COMPETENCY_SET,
+    _byReligion: Object.keys(nextByReligion).length > 0 ? nextByReligion : undefined,
+  };
+};
+
+const deriveCompetencyDescription = (
+  score: number | null | undefined,
+  kkm: number,
+  settings: CompetencySettings,
+  options?: {
+    religionKey?: string | null;
+    useReligionThreshold?: boolean;
+  },
+): string => {
+  const numericScore = Number(score);
+  if (!Number.isFinite(numericScore)) return '';
+  const predicate = numericScore >= 86 ? 'A' : numericScore >= kkm ? 'B' : numericScore >= 60 ? 'C' : 'D';
+  if (options?.useReligionThreshold) {
+    return String(
+      getReligionThresholdSet(settings, options.religionKey)[predicate as keyof CompetencyThresholdSet] || '',
+    ).trim();
+  }
+  return String(settings[predicate as keyof CompetencyThresholdSet] || '').trim();
+};
+
+const isReligionCompetencySubject = (
+  subject?: Pick<TeacherAssignment['subject'], 'name' | 'code'> | null,
+): boolean => {
+  const normalizedName = normalizeSubjectIdentityToken(subject?.name);
+  const normalizedCode = normalizeSubjectIdentityToken(subject?.code);
+  if (!normalizedName && !normalizedCode) return false;
+  if (
+    [
+      'PAI',
+      'PAK',
+      'PAKB',
+      'PAH',
+      'PAB',
+      'PAKH',
+      'PABP',
+      'PABP_ISLAM',
+      'PABP_KRISTEN',
+      'PABP_KATOLIK',
+      'PABP_HINDU',
+      'PABP_BUDDHA',
+      'PABP_KONGHUCU',
+    ].includes(normalizedCode)
+  ) {
+    return true;
+  }
+  return (
+    normalizedName.includes('PENDIDIKAN_AGAMA') ||
+    normalizedName === 'AGAMA' ||
+    normalizedName.startsWith('AGAMA_')
+  );
+};
 
 const isTheoryKejuruanSubject = (subject?: Pick<TeacherAssignment['subject'], 'name' | 'code'> | null): boolean => {
   const normalizedName = normalizeSubjectIdentityToken(subject?.name);
@@ -385,7 +643,8 @@ export const TeacherGradesPage = () => {
   const [selectedSemester, setSelectedSemester] = useState<'ODD' | 'EVEN' | ''>('');
   const [kkm, setKkm] = useState(75);
   const [showSettingsModal, setShowSettingsModal] = useState(false);
-  const [competencySettings, setCompetencySettings] = useState<{A: string, B: string, C: string, D: string}>({A: '', B: '', C: '', D: ''});
+  const [competencySettings, setCompetencySettings] = useState<CompetencySettings>(emptyCompetencySettings());
+  const [selectedReligionKey, setSelectedReligionKey] = useState<string>('');
   
   // Data states
   const [students, setStudents] = useState<Student[]>([]);
@@ -415,6 +674,7 @@ export const TeacherGradesPage = () => {
   const isFormatifComponent = selectedComponentEntryMode === 'NF_SERIES';
   // Derived state for filtered components
   const selectedAssignmentObj = assignmentOptions.find(a => a.id.toString() === selectedAssignment);
+  const isReligionSubject = isReligionCompetencySubject(selectedAssignmentObj?.subject);
   const filteredComponents = useMemo(() => {
     if (!selectedAssignmentObj) return [];
     const theoryKejuruanOnly = isTheoryKejuruanSubject(selectedAssignmentObj.subject);
@@ -483,6 +743,31 @@ export const TeacherGradesPage = () => {
         : 'Komponen ini memakai satu nilai per siswa.';
   const primaryFormativeComponentId =
     filteredComponents.find((item) => resolveComponentEntryMode(item) === 'NF_SERIES')?.id ?? null;
+  const religionOptions = useMemo<ReligionOption[]>(() => {
+    if (!isReligionSubject) return [];
+    const optionMap = new Map<string, string>();
+
+    students.forEach((student) => {
+      const religionKey = normalizeReligionKey(student.religion);
+      if (!religionKey) return;
+      optionMap.set(religionKey, formatReligionLabel(student.religion || religionKey));
+    });
+
+    Object.keys(competencySettings._byReligion || {}).forEach((rawKey) => {
+      const religionKey = normalizeReligionKey(rawKey);
+      if (!religionKey) return;
+      if (!optionMap.has(religionKey)) {
+        optionMap.set(religionKey, formatReligionLabel(religionKey));
+      }
+    });
+
+    return Array.from(optionMap.entries())
+      .sort((left, right) => left[1].localeCompare(right[1], 'id', { sensitivity: 'base' }))
+      .map(([value, label]) => ({ value, label }));
+  }, [competencySettings._byReligion, isReligionSubject, students]);
+  const activeCompetencyThresholdSet = isReligionSubject
+    ? getReligionThresholdSet(competencySettings, selectedReligionKey)
+    : competencySettings;
 
   const getDescription = () => {
     const componentName = String(selectedComponentObj?.name || selectedComponentObj?.code || 'komponen ini').trim();
@@ -596,42 +881,44 @@ export const TeacherGradesPage = () => {
     }
   }, [selectedAssignment, selectedComponent, selectedAcademicYear, selectedSemester, students]); // eslint-disable-line react-hooks/exhaustive-deps
 
-  // Auto-fill descriptions for missing entries (defensive fix)
   useEffect(() => {
-    if (isFinalComponent && (competencySettings.A || competencySettings.B || competencySettings.C || competencySettings.D)) {
-        setDescriptions(prev => {
-            const next = { ...prev };
-            let hasChanges = false;
-
-            students.forEach(student => {
-                // Check if description is empty OR matches a default competency setting (auto-generated)
-                // We want to update it if the grade changes, UNLESS the user manually edited it to something custom.
-                const currentDesc = next[student.id];
-                const isAutoGenerated = !currentDesc || 
-                                      currentDesc === competencySettings.A || 
-                                      currentDesc === competencySettings.B || 
-                                      currentDesc === competencySettings.C || 
-                                      currentDesc === competencySettings.D;
-
-                if (!isAutoGenerated) return;
-
-                const grade = grades.find(g => g.student_id === student.id);
-                const report = reportGradeMap[student.id];
-                if (grade && report?.finalScore !== null && report?.finalScore !== undefined) {
-                    const predicate = calculatePredicate(report.finalScore, kkm);
-                    const desc = competencySettings[predicate as keyof typeof competencySettings];
-                    
-                    if (desc && desc !== currentDesc) {
-                        next[student.id] = desc;
-                        hasChanges = true;
-                    }
-                }
-            });
-
-            return hasChanges ? next : prev;
-        });
+    if (!isReligionSubject) {
+      if (selectedReligionKey) {
+        setSelectedReligionKey('');
+      }
+      return;
     }
-  }, [grades, isFinalComponent, competencySettings, students, reportGradeMap, kkm, gradeComponents]);
+    if (religionOptions.length === 0) {
+      if (selectedReligionKey) {
+        setSelectedReligionKey('');
+      }
+      return;
+    }
+    if (!religionOptions.some((option) => option.value === selectedReligionKey)) {
+      setSelectedReligionKey(religionOptions[0].value);
+    }
+  }, [isReligionSubject, religionOptions, selectedReligionKey]);
+
+  useEffect(() => {
+    if (!isFinalComponent || !hasAnyCompetencySettingValue(competencySettings, isReligionSubject)) {
+      setDescriptions({});
+      return;
+    }
+
+    const nextDescriptions: Record<number, string> = {};
+    students.forEach((student) => {
+      const report = reportGradeMap[student.id];
+      if (report?.finalScore === null || report?.finalScore === undefined) return;
+      const nextDescription = deriveCompetencyDescription(report.finalScore, kkm, competencySettings, {
+        religionKey: student.religion,
+        useReligionThreshold: isReligionSubject,
+      });
+      if (nextDescription) {
+        nextDescriptions[student.id] = nextDescription;
+      }
+    });
+    setDescriptions(nextDescriptions);
+  }, [competencySettings, isFinalComponent, isReligionSubject, kkm, reportGradeMap, students]);
 
   const fetchInitialData = async () => {
     try {
@@ -758,16 +1045,7 @@ export const TeacherGradesPage = () => {
       
       if (assignment) {
         setKkm(assignment.kkm);
-        if (assignment.competencyThresholds) {
-            setCompetencySettings({
-                A: assignment.competencyThresholds.A || '',
-                B: assignment.competencyThresholds.B || '',
-                C: assignment.competencyThresholds.C || '',
-                D: assignment.competencyThresholds.D || ''
-            });
-        } else {
-             setCompetencySettings({A: '', B: '', C: '', D: ''});
-        }
+        setCompetencySettings(coerceCompetencySettings(assignment.competencyThresholds));
         
         // Fetch students
         const usersRes = await userService.getAll({ 
@@ -786,7 +1064,8 @@ export const TeacherGradesPage = () => {
                 id: s.id,
                 full_name: s.name, // User interface has name, not full_name
                 nisn: s.nisn || '',
-                nis: s.nis || ''
+                nis: s.nis || '',
+                religion: s.religion || null,
             })));
             
             // Initialize grades
@@ -966,13 +1245,6 @@ export const TeacherGradesPage = () => {
     }
   };
 
-  const calculatePredicate = (score: number, kkmVal: number) => {
-    if (score >= 86) return 'A';
-    if (score >= kkmVal) return 'B';
-    if (score >= 60) return 'C';
-    return 'D';
-  };
-
   const handleScoreChange = (studentId: number, value: string) => {
     if (value !== '' && (isNaN(Number(value)) || Number(value) < 0 || Number(value) > 100)) {
       return;
@@ -1086,11 +1358,16 @@ export const TeacherGradesPage = () => {
 
   const handleSaveSettings = async () => {
     if (!selectedAssignment) return;
+    if (isReligionSubject && religionOptions.length === 0) {
+      toast.error('Belum ada agama siswa valid di profile untuk mapel ini.');
+      return;
+    }
     try {
+        const payload = sanitizeCompetencySettingsForSave(competencySettings, isReligionSubject);
         setSaving(true);
         await teacherAssignmentService.updateCompetencyThresholds(
           parseInt(selectedAssignment),
-          competencySettings,
+          payload,
           selectedSemester || undefined,
         );
         toast.success('Pengaturan Capaian Kompetensi berhasil disimpan');
@@ -1109,7 +1386,7 @@ export const TeacherGradesPage = () => {
   const handleRefreshDescriptions = async (silent = false, saveToBackend = false) => {
     if (!isFinalComponent) return;
     
-    if (!competencySettings.A && !competencySettings.B && !competencySettings.C && !competencySettings.D) {
+    if (!hasAnyCompetencySettingValue(competencySettings, isReligionSubject)) {
         if (!silent) toast.error('Pengaturan Capaian Kompetensi belum diatur');
         return;
     }
@@ -1124,8 +1401,10 @@ export const TeacherGradesPage = () => {
             if (grade) {
                 const report = reportGradeMap[student.id];
                 if (!report || report.finalScore === null || report.finalScore === undefined) return;
-                const predicate = calculatePredicate(report.finalScore, kkm);
-                const desc = competencySettings[predicate as keyof typeof competencySettings];
+                const desc = deriveCompetencyDescription(report.finalScore, kkm, competencySettings, {
+                  religionKey: student.religion,
+                  useReligionThreshold: isReligionSubject,
+                });
                 
                 // Update if description exists and is different
                 if (desc && desc !== next[student.id]) {
@@ -1223,6 +1502,7 @@ export const TeacherGradesPage = () => {
             let description: string | undefined;
 
             if (isFinalComponent) {
+                const student = students.find((item) => item.id === grade.student_id);
                 const report = reportGradeMap[grade.student_id];
                 const backendFormative = resolveReportSlotScore(report, formativePrimarySlot, report?.formatifScore ?? null);
                 const backendSbts = resolveReportSlotScore(report, midtermPrimarySlot, report?.sbtsScore ?? null);
@@ -1232,9 +1512,10 @@ export const TeacherGradesPage = () => {
                     { score: backendSbts, weight: midtermComponentObj?.weight },
                     { score: parsedScore, weight: selectedComponentObj?.weight },
                   ]) ?? parsedScore;
-                description =
-                  deriveCompetencyDescription(previewFinalScore, kkm, competencySettings) ||
-                  undefined;
+                description = deriveCompetencyDescription(previewFinalScore, kkm, competencySettings, {
+                  religionKey: student?.religion,
+                  useReligionThreshold: isReligionSubject,
+                }) || undefined;
             }
 
             return {
@@ -1523,13 +1804,23 @@ export const TeacherGradesPage = () => {
 	                                    );
 	                                  })();
                                   const previewCompetencyTargetScore = previewSasFinal ?? backendFinal;
+                                  const studentReligionKey = normalizeReligionKey(student.religion);
                                   const previewCompetencyDescription =
                                     deriveCompetencyDescription(
                                       previewCompetencyTargetScore,
                                       kkm,
                                       competencySettings,
+                                      {
+                                        religionKey: student.religion,
+                                        useReligionThreshold: isReligionSubject,
+                                      },
                                     ) ||
                                     String(descriptions[student.id] || report?.description || '').trim();
+                                  const previewCompetencyPlaceholder = isReligionSubject
+                                    ? studentReligionKey
+                                      ? `Deskripsi agama ${formatReligionLabel(studentReligionKey)} belum diatur di tombol + Deskripsi.`
+                                      : 'Agama siswa belum terisi di profile.'
+                                    : 'Deskripsi belum diatur di tombol + Deskripsi.';
                                   const rowStatusScorePreview =
                                     isFormatifComponent
                                       ? previewFormative ?? 0
@@ -1639,7 +1930,7 @@ export const TeacherGradesPage = () => {
                                                   <td className="px-6 py-4">
                                                       <div className="w-full min-w-[300px] rounded-lg border border-blue-100 bg-blue-50 px-3 py-2 text-left text-sm text-slate-700">
                                                         <p className="font-medium text-slate-900">
-                                                          {previewCompetencyDescription || 'Deskripsi belum diatur di tombol + Deskripsi.'}
+                                                          {previewCompetencyDescription || previewCompetencyPlaceholder}
                                                         </p>
                                                       </div>
                                                   </td>
@@ -1709,43 +2000,89 @@ export const TeacherGradesPage = () => {
                         </ul>
                     </div>
 
+                    {isReligionSubject ? (
+                      <div className="rounded-lg border border-amber-200 bg-amber-50 px-4 py-3 text-sm text-amber-900">
+                        Deskripsi mapel Agama disimpan per agama siswa dan otomatis mengikuti data `Agama` pada profile siswa.
+                      </div>
+                    ) : null}
+
+                    {isReligionSubject ? (
+                      <div>
+                        <label htmlFor="competency-religion" className="block text-sm font-medium text-gray-700 mb-1">
+                          Agama
+                        </label>
+                        <select
+                          id="competency-religion"
+                          value={selectedReligionKey}
+                          onChange={(e) => setSelectedReligionKey(e.target.value)}
+                          className="w-full px-4 py-2 border border-gray-300 rounded-lg focus:ring-blue-500 focus:border-blue-500"
+                        >
+                          {religionOptions.length === 0 ? <option value="">Belum ada agama siswa</option> : null}
+                          {religionOptions.map((option) => (
+                            <option key={option.value} value={option.value}>
+                              {option.label}
+                            </option>
+                          ))}
+                        </select>
+                        <p className="mt-1 text-xs text-gray-500">
+                          Pilihan agama diambil dari profile siswa aktif pada mapel ini.
+                        </p>
+                      </div>
+                    ) : null}
+
                     <div>
                         <label className="block text-sm font-medium text-gray-700 mb-1">Deskripsi Predikat A</label>
                         <textarea 
-                            className="w-full px-4 py-2 border border-gray-300 rounded-lg focus:ring-blue-500 focus:border-blue-500"
+                            className="w-full px-4 py-2 border border-gray-300 rounded-lg focus:ring-blue-500 focus:border-blue-500 disabled:bg-gray-50 disabled:text-gray-400"
                             rows={2}
-                            value={competencySettings.A}
-                            onChange={e => setCompetencySettings(prev => ({...prev, A: e.target.value}))}
+                            value={activeCompetencyThresholdSet.A}
+                            onChange={e => setCompetencySettings(prev => updateCompetencySettingValue(prev, 'A', e.target.value, {
+                              religionKey: selectedReligionKey,
+                              useReligionThreshold: isReligionSubject,
+                            }))}
+                            disabled={isReligionSubject && !selectedReligionKey}
                             placeholder="Contoh: Sangat baik dalam memahami materi..."
                         />
                     </div>
                      <div>
                         <label className="block text-sm font-medium text-gray-700 mb-1">Deskripsi Predikat B</label>
                         <textarea 
-                            className="w-full px-4 py-2 border border-gray-300 rounded-lg focus:ring-blue-500 focus:border-blue-500"
+                            className="w-full px-4 py-2 border border-gray-300 rounded-lg focus:ring-blue-500 focus:border-blue-500 disabled:bg-gray-50 disabled:text-gray-400"
                             rows={2}
-                            value={competencySettings.B}
-                            onChange={e => setCompetencySettings(prev => ({...prev, B: e.target.value}))}
+                            value={activeCompetencyThresholdSet.B}
+                            onChange={e => setCompetencySettings(prev => updateCompetencySettingValue(prev, 'B', e.target.value, {
+                              religionKey: selectedReligionKey,
+                              useReligionThreshold: isReligionSubject,
+                            }))}
+                            disabled={isReligionSubject && !selectedReligionKey}
                             placeholder="Contoh: Baik dalam memahami materi..."
                         />
                     </div>
                      <div>
                         <label className="block text-sm font-medium text-gray-700 mb-1">Deskripsi Predikat C</label>
                         <textarea 
-                            className="w-full px-4 py-2 border border-gray-300 rounded-lg focus:ring-blue-500 focus:border-blue-500"
+                            className="w-full px-4 py-2 border border-gray-300 rounded-lg focus:ring-blue-500 focus:border-blue-500 disabled:bg-gray-50 disabled:text-gray-400"
                             rows={2}
-                            value={competencySettings.C}
-                            onChange={e => setCompetencySettings(prev => ({...prev, C: e.target.value}))}
+                            value={activeCompetencyThresholdSet.C}
+                            onChange={e => setCompetencySettings(prev => updateCompetencySettingValue(prev, 'C', e.target.value, {
+                              religionKey: selectedReligionKey,
+                              useReligionThreshold: isReligionSubject,
+                            }))}
+                            disabled={isReligionSubject && !selectedReligionKey}
                             placeholder="Contoh: Cukup dalam memahami materi..."
                         />
                     </div>
                      <div>
                         <label className="block text-sm font-medium text-gray-700 mb-1">Deskripsi Predikat D</label>
                         <textarea 
-                            className="w-full px-4 py-2 border border-gray-300 rounded-lg focus:ring-blue-500 focus:border-blue-500"
+                            className="w-full px-4 py-2 border border-gray-300 rounded-lg focus:ring-blue-500 focus:border-blue-500 disabled:bg-gray-50 disabled:text-gray-400"
                             rows={2}
-                            value={competencySettings.D}
-                            onChange={e => setCompetencySettings(prev => ({...prev, D: e.target.value}))}
+                            value={activeCompetencyThresholdSet.D}
+                            onChange={e => setCompetencySettings(prev => updateCompetencySettingValue(prev, 'D', e.target.value, {
+                              religionKey: selectedReligionKey,
+                              useReligionThreshold: isReligionSubject,
+                            }))}
+                            disabled={isReligionSubject && !selectedReligionKey}
                             placeholder="Contoh: Perlu bimbingan dalam memahami materi..."
                         />
                     </div>
@@ -1761,7 +2098,7 @@ export const TeacherGradesPage = () => {
                     </button>
                     <button 
                         onClick={handleSaveSettings}
-                        disabled={saving}
+                        disabled={saving || (isReligionSubject && religionOptions.length === 0)}
                         className="px-4 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700 font-medium transition-colors flex items-center gap-2"
                     >
                         {saving ? <Loader2 className="w-4 h-4 animate-spin" /> : <Save className="w-4 h-4" />}

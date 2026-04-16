@@ -20,6 +20,13 @@ import {
   normalizeRoundedFinalScore,
   resolveDefaultGradeWeightByCode,
 } from '../utils/gradeWeights'
+import {
+  deriveThresholdDescription,
+  hasAnyCompetencyThresholdBucketValue,
+  isReligionCompetencySubject,
+  normalizeReligionKey,
+  resolveCompetencyThresholdBucket,
+} from '../utils/competencyThresholds'
 
 const DEFAULT_REPORT_SLOT_CODE = 'NONE'
 
@@ -114,13 +121,6 @@ function emitGradeRealtimeRefresh(params: {
       scope: Object.keys(scope).length > 0 ? scope : undefined,
     })
   }
-}
-
-type CompetencyThresholdSet = {
-  A: string
-  B: string
-  C: string
-  D: string
 }
 
 function getStudentScoreEntryDelegate(): StudentScoreEntryFindManyDelegate | null {
@@ -256,108 +256,6 @@ async function resolveStudentClassId(
   return Number(student?.classId || 0) || null
 }
 
-function emptyCompetencyThresholds(): CompetencyThresholdSet {
-  return {
-    A: '',
-    B: '',
-    C: '',
-    D: '',
-  }
-}
-
-function coerceCompetencyThresholdSet(raw: unknown): CompetencyThresholdSet {
-  if (!raw || typeof raw !== 'object' || Array.isArray(raw)) {
-    return emptyCompetencyThresholds()
-  }
-
-  const source = raw as Record<string, unknown>
-  return {
-    A: String(source.A || '').trim(),
-    B: String(source.B || '').trim(),
-    C: String(source.C || '').trim(),
-    D: String(source.D || '').trim(),
-  }
-}
-
-function hasAnyCompetencyThresholdValue(value: CompetencyThresholdSet | null | undefined): boolean {
-  return Boolean(
-    value &&
-      (String(value.A || '').trim() ||
-        String(value.B || '').trim() ||
-        String(value.C || '').trim() ||
-        String(value.D || '').trim()),
-  )
-}
-
-function hasAnySemesterCompetencyThresholdValue(raw: unknown): boolean {
-  if (!raw || typeof raw !== 'object' || Array.isArray(raw)) return false
-
-  const source = raw as Record<string, unknown>
-  const bucketSource =
-    source._bySemester && typeof source._bySemester === 'object' && !Array.isArray(source._bySemester)
-      ? (source._bySemester as Record<string, unknown>)
-      : {}
-
-  return Object.values(bucketSource).some((entry) =>
-    hasAnyCompetencyThresholdValue(coerceCompetencyThresholdSet(entry)),
-  )
-}
-
-function resolveCompetencyThresholdSet(
-  raw: unknown,
-  preferredSemester?: Semester | null,
-): CompetencyThresholdSet {
-  if (!raw || typeof raw !== 'object' || Array.isArray(raw)) {
-    return emptyCompetencyThresholds()
-  }
-
-  const source = raw as Record<string, unknown>
-  const root = coerceCompetencyThresholdSet(source)
-  const bucketSource =
-    source._bySemester && typeof source._bySemester === 'object' && !Array.isArray(source._bySemester)
-      ? (source._bySemester as Record<string, unknown>)
-      : {}
-
-  const preferred =
-    preferredSemester && bucketSource[preferredSemester]
-      ? coerceCompetencyThresholdSet(bucketSource[preferredSemester])
-      : emptyCompetencyThresholds()
-
-  if (hasAnyCompetencyThresholdValue(preferred)) {
-    return preferred
-  }
-
-  if (preferredSemester && hasAnySemesterCompetencyThresholdValue(source)) {
-    return emptyCompetencyThresholds()
-  }
-
-  if (hasAnyCompetencyThresholdValue(root)) {
-    return root
-  }
-
-  const odd = coerceCompetencyThresholdSet(bucketSource[Semester.ODD])
-  if (hasAnyCompetencyThresholdValue(odd)) return odd
-
-  const even = coerceCompetencyThresholdSet(bucketSource[Semester.EVEN])
-  if (hasAnyCompetencyThresholdValue(even)) return even
-
-  return emptyCompetencyThresholds()
-}
-
-function deriveCompetencyDescriptionFromThresholds(
-  thresholds: CompetencyThresholdSet,
-  predicate: string | null | undefined,
-): string | null {
-  const normalizedPredicate = String(predicate || '').trim().toUpperCase()
-  if (!normalizedPredicate || !['A', 'B', 'C', 'D'].includes(normalizedPredicate)) {
-    return null
-  }
-  const description = String(
-    thresholds[normalizedPredicate as keyof CompetencyThresholdSet] || '',
-  ).trim()
-  return description || null
-}
-
 async function resolveReportCompetencyDescription(params: {
   studentId: number
   subjectId: number
@@ -380,19 +278,39 @@ async function resolveReportCompetencyDescription(params: {
     select: {
       kkm: true,
       competencyThresholds: true,
+      subject: {
+        select: {
+          name: true,
+          code: true,
+        },
+      },
     },
   })
 
   if (!assignment) return null
 
-  const thresholds = resolveCompetencyThresholdSet(assignment.competencyThresholds, params.semester)
-  if (!hasAnyCompetencyThresholdValue(thresholds)) return null
+  const thresholds = resolveCompetencyThresholdBucket(assignment.competencyThresholds, params.semester)
+  if (!hasAnyCompetencyThresholdBucketValue(thresholds)) return null
+  const useReligionThresholds = isReligionCompetencySubject(assignment.subject)
 
   const predicate =
     String(params.predicate || '').trim() ||
     calculatePredicate(Number(params.finalScore || 0), Number(assignment.kkm || 75))
 
-  return deriveCompetencyDescriptionFromThresholds(thresholds, predicate)
+  let religionKey: string | null = null
+  if (useReligionThresholds) {
+    const student = await prisma.user.findUnique({
+      where: { id: params.studentId },
+      select: { religion: true },
+    })
+    religionKey = normalizeReligionKey(student?.religion)
+  }
+
+  return deriveThresholdDescription(thresholds, predicate, {
+    religionKey,
+    preferReligion: useReligionThresholds,
+    allowGeneralFallback: !useReligionThresholds,
+  })
 }
 
 async function runWithConcurrencyLimit<T>(

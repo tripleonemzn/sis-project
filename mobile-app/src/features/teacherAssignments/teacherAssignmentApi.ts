@@ -50,7 +50,13 @@ export const teacherAssignmentApi = {
   },
   async updateCompetencyThresholds(
     id: number,
-    competencyThresholds: { A?: string; B?: string; C?: string; D?: string },
+    competencyThresholds: {
+      A?: string;
+      B?: string;
+      C?: string;
+      D?: string;
+      _byReligion?: Record<string, { A?: string; B?: string; C?: string; D?: string }>;
+    },
     semester?: Semester,
   ) {
     const response = await apiClient.put<TeacherAssignmentMutationResponse>(`/teacher-assignments/${id}/competency`, {

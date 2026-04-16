@@ -10,6 +10,15 @@ export type TeacherAssignment = {
     B?: string;
     C?: string;
     D?: string;
+    _byReligion?: Record<
+      string,
+      {
+        A?: string;
+        B?: string;
+        C?: string;
+        D?: string;
+      }
+    >;
   } | null;
   teacher: {
     id: number;
@@ -56,6 +65,15 @@ export type TeacherAssignmentDetail = {
     B?: string;
     C?: string;
     D?: string;
+    _byReligion?: Record<
+      string,
+      {
+        A?: string;
+        B?: string;
+        C?: string;
+        D?: string;
+      }
+    >;
   } | null;
   teacher: {
     id: number;
@@ -81,6 +99,7 @@ export type TeacherAssignmentDetail = {
       nis: string | null;
       nisn: string | null;
       gender: 'MALE' | 'FEMALE';
+      religion?: string | null;
     }>;
   };
   academicYear: {
