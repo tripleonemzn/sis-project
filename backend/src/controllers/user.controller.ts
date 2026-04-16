@@ -599,6 +599,7 @@ const updateUserSchema = z.object({
   password: z.string().min(6).optional(),
   name: z.string().min(1).optional(),
   role: z.nativeEnum(Role).optional(),
+  profileSnapshotUpdatedAt: z.string().optional().nullable(),
   // Profile fields
   nip: z.string().optional().nullable(),
   nis: z.string().optional().nullable(),
@@ -1483,7 +1484,15 @@ export const updateUser = asyncHandler(async (req: Request, res: Response) => {
     throw new ApiError(403, 'Anda tidak memiliki izin untuk mengubah data pengguna ini');
   }
 
-  const { documents, childNisns, managedMajorIds, examinerMajorId, educationHistories, ...body } =
+  const {
+    documents,
+    childNisns,
+    managedMajorIds,
+    examinerMajorId,
+    educationHistories,
+    profileSnapshotUpdatedAt,
+    ...body
+  } =
     updateUserSchema.parse(req.body);
 
   // Prevent non-admin from updating sensitive fields
@@ -1502,6 +1511,17 @@ export const updateUser = asyncHandler(async (req: Request, res: Response) => {
 
   if (!user) {
     throw new ApiError(404, 'Pengguna tidak ditemukan');
+  }
+
+  if (profileSnapshotUpdatedAt) {
+    const snapshotDate = new Date(profileSnapshotUpdatedAt);
+    if (Number.isNaN(snapshotDate.getTime())) {
+      throw new ApiError(400, 'Versi profil yang dikirim tidak valid.');
+    }
+
+    if (user.updatedAt.toISOString() !== snapshotDate.toISOString()) {
+      throw new ApiError(409, 'Profil sudah berubah di server. Muat ulang profil lalu simpan kembali.');
+    }
   }
 
   if (body.username && body.username !== user.username) {

@@ -641,11 +641,17 @@ export const UserProfilePage = () => {
   };
 
   const { data: userResponse, isLoading: isUserLoading } = useQuery<{ data: User }>({
-    queryKey: ['me'],
-    queryFn: authService.getMe,
+    queryKey: ['me', 'profile-editor'],
+    queryFn: () => authService.getMeFresh(),
   });
 
   const user = userResponse?.data;
+  const buildProfileSnapshotPayload = () =>
+    user?.updatedAt
+      ? {
+          profileSnapshotUpdatedAt: user.updatedAt,
+        }
+      : {};
   const fixedRole = resolveUserFormRole(user?.role);
   const profileVariant = getProfileVariant(fixedRole);
   const profileCopy = useMemo(() => getProfileCopy(fixedRole), [fixedRole]);
@@ -1261,7 +1267,10 @@ export const UserProfilePage = () => {
         finalPayload.managedMajorIds = managedMajorIds;
       }
 
-       return userService.update(id, finalPayload);
+       return userService.update(id, {
+         ...finalPayload,
+         ...buildProfileSnapshotPayload(),
+       });
     },
     onSuccess: async () => {
       await refreshSelfProfile();
@@ -1335,6 +1344,7 @@ export const UserProfilePage = () => {
       if (user?.id) {
           try {
             await userService.update(user.id, { 
+                ...buildProfileSnapshotPayload(),
                 documents: updatedDocs.map((d) => ({
                     title: d.title,
                     fileUrl: d.fileUrl,
@@ -1369,6 +1379,7 @@ export const UserProfilePage = () => {
       return;
     }
     await userService.update(user.id, {
+      ...buildProfileSnapshotPayload(),
       educationHistories: nextHistories,
     });
     setEducationHistories(nextHistories);
@@ -1387,6 +1398,7 @@ export const UserProfilePage = () => {
       return;
     }
     await userService.update(user.id, {
+      ...buildProfileSnapshotPayload(),
       educationHistories: nextHistories,
     });
     setEducationHistories(nextHistories);
@@ -1463,6 +1475,7 @@ export const UserProfilePage = () => {
 
     try {
       await userService.update(user.id, {
+        ...buildProfileSnapshotPayload(),
         documents: nextDocuments.map((document) => ({
           title: document.title,
           fileUrl: document.fileUrl,
@@ -1534,7 +1547,10 @@ export const UserProfilePage = () => {
           
           // Auto-save photo to user profile
           if (user?.id) {
-             await userService.update(user.id, { photo: result.url });
+             await userService.update(user.id, {
+               ...buildProfileSnapshotPayload(),
+               photo: result.url,
+             });
              await refreshSelfProfile();
           }
           
@@ -3000,6 +3016,7 @@ export const UserProfilePage = () => {
                               if (user?.id) {
                                 try {
                                   await userService.update(user.id, {
+                                    ...buildProfileSnapshotPayload(),
                                     documents: updatedDocs.map((doc) => ({
                                       title: doc.title,
                                       fileUrl: doc.fileUrl,

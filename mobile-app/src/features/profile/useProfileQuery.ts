@@ -21,7 +21,8 @@ export function useProfileQuery(enabled: boolean) {
     refetchOnReconnect: true,
     queryFn: async (): Promise<ProfileQueryData> => {
       try {
-        const profile = await authService.me();
+        // Editable profile must always start from the latest server snapshot.
+        const profile = await authService.me({ force: true });
         const cache = await offlineCache.set(PROFILE_CACHE_KEY, profile);
         await offlineCache.prunePrefix('mobile_cache_profile', Math.max(1, CACHE_MAX_SNAPSHOTS_PER_FEATURE));
         return { profile, fromCache: false, cachedAt: cache.updatedAt };

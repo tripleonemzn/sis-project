@@ -1,5 +1,6 @@
 import { apiClient } from '../../lib/api/client';
 import { AuthUser } from '../auth/types';
+import { authService } from '../auth/authService';
 
 type ApiEnvelope<T> = {
   statusCode: number;
@@ -103,6 +104,7 @@ export type UpdateSelfProfilePayload = {
   institution?: string | null;
   photo?: string | null;
   preferences?: Record<string, unknown> | null;
+  profileSnapshotUpdatedAt?: string | null;
   documents?: Array<{
     title: string;
     fileUrl: string;
@@ -113,6 +115,7 @@ export type UpdateSelfProfilePayload = {
 export const profileApi = {
   async updateSelf(userId: number, payload: UpdateSelfProfilePayload) {
     const response = await apiClient.put<ApiEnvelope<AuthUser>>(`/users/${userId}`, payload);
+    authService.clearMeCache();
     return response.data?.data;
   },
   async uploadProfilePhoto(file: { uri: string; name: string; type: string }) {

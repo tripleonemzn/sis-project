@@ -108,6 +108,8 @@ export const authService = {
 
   getMeSafe: async (): Promise<ApiResponse<User>> => getMeInternal({ allowStaleOnError: true }),
 
+  getMeFresh: async (): Promise<ApiResponse<User>> => getMeInternal({ force: true }),
+
   logout: () => {
     meCache = null;
     meInFlight = null;

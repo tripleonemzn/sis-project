@@ -1,4 +1,5 @@
 import api from './api';
+import { authService } from './auth.service';
 import type {
   ParentChildLinkPayload,
   ParentChildLookupResult,
@@ -29,8 +30,12 @@ export const userService = {
     return response.data;
   },
 
-  update: async (id: number, data: Partial<UserWrite> & { password?: string }) => {
+  update: async (
+    id: number,
+    data: Partial<UserWrite> & { password?: string; profileSnapshotUpdatedAt?: string | null },
+  ) => {
     const response = await api.put<{ data: User }>(`/users/${id}`, data);
+    authService.clearMeCache();
     return response.data;
   },
 

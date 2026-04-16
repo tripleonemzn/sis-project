@@ -1113,6 +1113,24 @@ export default function ProfileScreen() {
       JSON.stringify(educationHistories) !== JSON.stringify(baselineEducationHistories),
     [baseline, baselineEducationHistories, educationHistories, form],
   );
+  const isProfileFromCache = Boolean(profileQuery.data?.fromCache);
+  const buildProfileSnapshotPayload = useCallback(
+    () =>
+      profile?.updatedAt
+        ? {
+            profileSnapshotUpdatedAt: profile.updatedAt,
+          }
+        : {},
+    [profile?.updatedAt],
+  );
+  const ensureFreshProfileBeforeMutation = useCallback(() => {
+    if (!isProfileFromCache) {
+      return true;
+    }
+
+    notifyError('Profil sedang dibuka dari cache offline. Muat ulang saat koneksi normal sebelum menyimpan perubahan.');
+    return false;
+  }, [isProfileFromCache]);
 
   const refreshProfileQuery = useCallback(async () => {
     shouldHydrateProfileRef.current = true;
@@ -1146,6 +1164,7 @@ export default function ProfileScreen() {
     mutationFn: async () => {
       if (!profile?.id) throw new Error('Data profil belum siap.');
       const payload: UpdateSelfProfilePayload = {
+        ...buildProfileSnapshotPayload(),
         gender: (form.gender || null) as 'MALE' | 'FEMALE' | null,
         citizenship: toNullable(form.citizenship),
         maritalStatus: toNullable(form.maritalStatus),
@@ -1224,6 +1243,10 @@ export default function ProfileScreen() {
   });
 
   const handleSave = () => {
+    if (!ensureFreshProfileBeforeMutation()) {
+      return;
+    }
+
     const validationMessage = getProfileValidationMessage(form, {
       showNik,
       showNuptk,
@@ -1240,6 +1263,7 @@ export default function ProfileScreen() {
 
   const handleUploadPhoto = async () => {
     if (!profile?.id || !canUploadPhoto || photoUploading) return;
+    if (!ensureFreshProfileBeforeMutation()) return;
     try {
       const result = await DocumentPicker.getDocumentAsync({
         type: ['image/jpeg', 'image/jpg', 'image/png'],
@@ -1266,7 +1290,10 @@ export default function ProfileScreen() {
         name,
         type: mime,
       });
-      await profileApi.updateSelf(profile.id, { photo: uploaded.url });
+      await profileApi.updateSelf(profile.id, {
+        ...buildProfileSnapshotPayload(),
+        photo: uploaded.url,
+      });
       await refreshProfileQuery();
       notifySuccess('Foto profil berhasil diperbarui.');
     } catch (error) {
@@ -1278,6 +1305,7 @@ export default function ProfileScreen() {
 
   const handleUploadDocument = async () => {
     if (!profile?.id || !canUploadDocuments || documentUploading) return;
+    if (!ensureFreshProfileBeforeMutation()) return;
     try {
       const result = await DocumentPicker.getDocumentAsync({
         type: ['application/pdf', 'image/jpeg', 'image/jpg', 'image/png'],
@@ -1320,6 +1348,7 @@ export default function ProfileScreen() {
       }));
 
       await profileApi.updateSelf(profile.id, {
+        ...buildProfileSnapshotPayload(),
         documents: [
           ...existingDocs,
           {
@@ -1341,6 +1370,7 @@ export default function ProfileScreen() {
 
   const handleDeleteDocument = async (index: number) => {
     if (!profile?.id) return;
+    if (!ensureFreshProfileBeforeMutation()) return;
     try {
       const nextDocs = (profile.documents || [])
         .filter((_, idx: number) => idx !== index)
@@ -1350,7 +1380,10 @@ export default function ProfileScreen() {
           category: doc.category || 'Dokumen Pendukung',
         }));
 
-      await profileApi.updateSelf(profile.id, { documents: nextDocs });
+      await profileApi.updateSelf(profile.id, {
+        ...buildProfileSnapshotPayload(),
+        documents: nextDocs,
+      });
       await refreshProfileQuery();
       notifySuccess('Dokumen berhasil dihapus.');
     } catch (error) {
@@ -1359,6 +1392,7 @@ export default function ProfileScreen() {
   };
 
   const handleSupportingDocumentPick = async (): Promise<SupportingDocumentRecord | null> => {
+    if (!ensureFreshProfileBeforeMutation()) return null;
     try {
       const result = await DocumentPicker.getDocumentAsync({
         type: ['application/pdf', 'image/jpeg', 'image/jpg', 'image/png'],
@@ -1398,7 +1432,9 @@ export default function ProfileScreen() {
 
   const persistSupportingDocuments = async (nextDocuments: SupportingDocumentRecord[]) => {
     if (!profile?.id) return;
+    if (!ensureFreshProfileBeforeMutation()) return;
     await profileApi.updateSelf(profile.id, {
+      ...buildProfileSnapshotPayload(),
       documents: nextDocuments.map((document) => ({
         title: document.title,
         fileUrl: document.fileUrl,
@@ -1423,6 +1459,7 @@ export default function ProfileScreen() {
   };
 
   const handleEducationHistorySave = async (history: ProfileEducationHistory) => {
+    if (!ensureFreshProfileBeforeMutation()) return;
     const nextHistories = sanitizeEducationHistories(
       educationHistories.map((entry) => (entry.level === history.level ? history : entry)),
       educationTrack,
@@ -1433,6 +1470,7 @@ export default function ProfileScreen() {
       return;
     }
     await profileApi.updateSelf(profile.id, {
+      ...buildProfileSnapshotPayload(),
       educationHistories: nextHistories,
     });
     setEducationHistories(nextHistories);
@@ -1441,6 +1479,7 @@ export default function ProfileScreen() {
   };
 
   const handleEducationHistoryRemove = async (level: ProfileEducationLevel) => {
+    if (!ensureFreshProfileBeforeMutation()) return;
     const nextHistories = sanitizeEducationHistories(
       educationHistories.map((entry) => (entry.level === level ? createEmptyEducationHistory(level) : entry)),
       educationTrack,
@@ -1451,6 +1490,7 @@ export default function ProfileScreen() {
       return;
     }
     await profileApi.updateSelf(profile.id, {
+      ...buildProfileSnapshotPayload(),
       educationHistories: nextHistories,
     });
     setEducationHistories(nextHistories);
@@ -1459,6 +1499,7 @@ export default function ProfileScreen() {
   };
 
   const handleEducationDocumentPick = async (): Promise<ProfileEducationDocument | null> => {
+    if (!ensureFreshProfileBeforeMutation()) return null;
     try {
       const result = await DocumentPicker.getDocumentAsync({
         type: ['application/pdf', 'image/jpeg', 'image/jpg', 'image/png'],
@@ -2688,11 +2729,11 @@ export default function ProfileScreen() {
           ) : null}
 
           <Pressable
-            disabled={!isDirty || saveMutation.isPending}
+            disabled={!isDirty || saveMutation.isPending || isProfileFromCache}
             onPress={handleSave}
             style={{
               marginBottom: 12,
-              backgroundColor: !isDirty || saveMutation.isPending ? '#93c5fd' : '#1d4ed8',
+              backgroundColor: !isDirty || saveMutation.isPending || isProfileFromCache ? '#93c5fd' : '#1d4ed8',
               borderRadius: 10,
               paddingVertical: 12,
               alignItems: 'center',
@@ -2702,6 +2743,12 @@ export default function ProfileScreen() {
               {saveMutation.isPending ? 'Menyimpan...' : profileCopy.saveLabel}
             </Text>
           </Pressable>
+          {isProfileFromCache ? (
+            <Text style={{ color: '#b45309', fontSize: 12, lineHeight: 18, marginBottom: 12 }}>
+              Simpan profil dinonaktifkan saat data masih berasal dari cache offline. Muat ulang profil saat koneksi normal
+              agar perubahan tidak menimpa data terbaru.
+            </Text>
+          ) : null}
 
         </>
       ) : null}
