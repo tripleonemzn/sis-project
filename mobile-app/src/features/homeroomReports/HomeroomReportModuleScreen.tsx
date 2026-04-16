@@ -258,7 +258,8 @@ function resolveCompletionStatus(
 ) {
   const numericScore = parseScore(score);
   const numericKkm = parseScore(kkm);
-  if (numericScore === null || numericKkm === null) return '-';
+  if (numericScore === null) return 'Tidak ada Penilaian';
+  if (numericKkm === null) return '-';
   return numericScore >= numericKkm ? 'Tuntas' : 'Belum Tuntas';
 }
 

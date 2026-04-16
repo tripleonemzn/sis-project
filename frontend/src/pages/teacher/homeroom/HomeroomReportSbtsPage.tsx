@@ -147,6 +147,11 @@ export const HomeroomReportSbtsPage = ({
     };
 
     const resolveStatus = (item: ReportRow): string => {
+      const hasVisibleScore =
+        parseNumeric(item.col1?.score) !== null ||
+        parseNumeric(item.col2?.score) !== null;
+      if (!hasVisibleScore) return 'Tidak ada Penilaian';
+
       const numericKkm = parseNumeric(item.kkm);
       const referenceScore =
         parseNumeric(item.final?.score) ??
@@ -207,7 +212,7 @@ export const HomeroomReportSbtsPage = ({
           <td class="center align-middle" style="color: ${col2Color}; font-weight: ${col2Color === '#dc2626' ? '700' : '400'};">${item.col2?.score ?? '-'}</td>
           <td class="center align-middle" style="color: ${col2Color}; font-weight: ${col2Color === '#dc2626' ? '700' : '400'};">${item.col2?.predicate ?? '-'}</td>
           
-          <td style="padding: 4px 8px; font-size: 11px; color: ${statusColor}; font-weight: ${status === 'Belum Tuntas' ? '700' : '600'};" class="align-middle">${status}</td>
+          <td style="padding: 4px 8px; font-size: 11px; color: ${statusColor}; font-weight: ${status === 'Belum Tuntas' ? '700' : '600'};" class="center align-middle ket-cell">${status}</td>
         </tr>
       `}).join('');
     };
@@ -308,6 +313,7 @@ export const HomeroomReportSbtsPage = ({
           .content-table { width: 100%; border-collapse: collapse; margin-bottom: 20px; font-size: 12px; }
           .content-table th, .content-table td { border: 1px solid black; padding: 4px; }
           .content-table th { text-align: center; background-color: #f0f0f0; font-weight: bold; vertical-align: middle; }
+          .ket-header, .ket-cell { white-space: nowrap; width: 1%; }
           
           .center { text-align: center; }
           .align-middle { vertical-align: middle; }
@@ -348,11 +354,11 @@ export const HomeroomReportSbtsPage = ({
           <thead>
             <tr>
               <th rowspan="2" width="5%">No</th>
-              <th rowspan="2" width="50%">MATA PELAJARAN</th>
+              <th rowspan="2" width="49%">MATA PELAJARAN</th>
               <th rowspan="2" width="5%">KKTP</th>
               <th colspan="2">${col1Label.toUpperCase()}</th>
               <th colspan="2">${col2Label.toUpperCase()}</th>
-              <th rowspan="2" width="10%">KET</th>
+              <th rowspan="2" class="ket-header">KET</th>
             </tr>
             <tr>
               <th width="5%">Angka</th>
