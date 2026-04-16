@@ -1,8 +1,21 @@
 import { useMutation } from '@tanstack/react-query';
 import { Redirect, Stack, useLocalSearchParams, useRouter } from 'expo-router';
-import { StatusBar } from 'expo-status-bar';
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
-import { Alert, Animated, AppState, AppStateStatus, BackHandler, Image, Pressable, ScrollView, Text, TextInput, View } from 'react-native';
+import {
+  Alert,
+  Animated,
+  AppState,
+  AppStateStatus,
+  BackHandler,
+  Image,
+  Platform,
+  Pressable,
+  ScrollView,
+  StatusBar as NativeStatusBar,
+  Text,
+  TextInput,
+  View,
+} from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { WebView } from 'react-native-webview';
 import { AppLoadingScreen } from '../../../../src/components/AppLoadingScreen';
@@ -273,6 +286,7 @@ function getYoutubeEmbedUrl(url?: string | null) {
 const MIN_PROGRESS_SYNC_GAP_MS = 5000;
 const DEFAULT_PROGRESS_SYNC_DELAY_MS = 1400;
 const FAST_PROGRESS_SYNC_DELAY_MS = 850;
+const APP_FOCUS_VIOLATION_THROTTLE_MS = 5000;
 const HEARTBEAT_PROGRESS_SYNC_MIN_MS = 17000;
 const HEARTBEAT_PROGRESS_SYNC_MAX_MS = 25000;
 
@@ -380,6 +394,7 @@ export default function StudentExamTakeScreen() {
   const violationsRef = useRef(0);
   const backAttemptRef = useRef(0);
   const lastViolationFingerprintRef = useRef<{ key: string; at: number } | null>(null);
+  const lastAppFocusViolationAtRef = useRef(0);
   const violationSubmitGuardRef = useRef(false);
   const progressSyncTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const progressHeartbeatTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null);
@@ -572,6 +587,15 @@ export default function StudentExamTakeScreen() {
 
     return () => clearInterval(timer);
   }, [isExamReady, isFinished]);
+
+  useEffect(() => {
+    const shouldHideStatusBar = hasAcknowledgedStart && !isFinished;
+    NativeStatusBar.setHidden(shouldHideStatusBar, 'none');
+
+    return () => {
+      NativeStatusBar.setHidden(false, 'none');
+    };
+  }, [hasAcknowledgedStart, isFinished]);
 
   const saveProgress = useCallback(async (
     isFinalSubmit: boolean,
@@ -862,16 +886,19 @@ export default function StudentExamTakeScreen() {
     const subscription = AppState.addEventListener('change', (nextAppState) => {
       const previousState = appStateRef.current;
       appStateRef.current = nextAppState;
-      if (previousState === 'active' && nextAppState !== 'active') {
-        const violationType =
-          nextAppState === 'background'
-            ? 'Berpindah aplikasi / tekan Home'
-            : 'Membuka panel notifikasi / recent apps / keluar fokus ujian';
-        recordViolation(
-          violationType,
-        );
-        void saveProgress(false, { force: true });
-      }
+      if (previousState !== 'active' || nextAppState === 'active') return;
+      if (Platform.OS === 'android' && nextAppState === 'inactive') return;
+
+      const now = Date.now();
+      if (now - lastAppFocusViolationAtRef.current < APP_FOCUS_VIOLATION_THROTTLE_MS) return;
+      lastAppFocusViolationAtRef.current = now;
+
+      const violationType =
+        nextAppState === 'background'
+          ? 'Berpindah aplikasi / tekan Home'
+          : 'Membuka panel notifikasi / recent apps / keluar fokus ujian';
+      recordViolation(violationType);
+      void saveProgress(false, { force: true });
     });
 
     return () => {
@@ -1147,7 +1174,6 @@ export default function StudentExamTakeScreen() {
 
   return (
     <>
-      <StatusBar hidden={hasAcknowledgedStart && !isFinished} animated />
       <Stack.Screen options={{ headerShown: false, gestureEnabled: false }} />
       <ScrollView style={{ flex: 1, backgroundColor: '#f8fafc' }} contentContainerStyle={pageContentPaddingCompact}>
       <View
