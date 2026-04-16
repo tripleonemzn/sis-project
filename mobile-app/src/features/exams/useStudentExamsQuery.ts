@@ -20,10 +20,10 @@ export function useStudentExamsQuery({ enabled, user }: Params) {
   return useQuery({
     queryKey: ['mobile-student-exams', user?.id],
     enabled: enabled && !!user && canAccessExams,
-    staleTime: 0,
-    refetchOnMount: 'always',
-    refetchOnReconnect: true,
-    refetchOnWindowFocus: true,
+    staleTime: 30_000,
+    refetchOnMount: true,
+    refetchOnReconnect: false,
+    refetchOnWindowFocus: false,
     queryFn: async (): Promise<StudentExamsQueryData> => {
       const exams = await examApi.getStudentAvailableExams();
       return { exams, fromCache: false, cachedAt: null };

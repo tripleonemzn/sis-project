@@ -10,7 +10,80 @@ const INVALIDATE_DEBOUNCE_MS = 150;
 const SHORT_LIVED_CONNECTION_MS = 5000;
 const MAX_SHORT_LIVED_CONNECTIONS = 3;
 const SOCKET_COOLDOWN_MS = 5 * 60 * 1000;
+const HIGH_FREQUENCY_MUTATION_PATTERNS: RegExp[] = [
+  /^\/api\/exams\/\d+\/answers$/,
+];
 const NOTIFICATION_QUERY_PREFIXES = ['mobile-notifications'];
+const EXAM_QUERY_PREFIXES = [
+  'mobile-student-exams',
+  'mobile-student-exam-start',
+  'mobile-student-exam-programs',
+  'mobile-student-exam-cards',
+  'mobile-student-exam-placements',
+  'mobile-home-exam-programs',
+  'mobile-teacher-exam-programs',
+  'mobile-teacher-exam-packets',
+  'mobile-teacher-exam-packet-detail',
+  'mobile-teacher-exam-editor-programs',
+  'mobile-teacher-exam-session-detail',
+  'mobile-teacher-exam-submissions',
+  'mobile-teacher-exam-item-analysis',
+  'mobile-head-tu-exam-cards-overview',
+  'mobile-head-tu-exam-cards-programs',
+  'mobile-homeroom-book-exam-programs',
+  'mobile-wakakur-exam-programs',
+  'mobile-wakakur-exam-program-config',
+  'mobile-wakakur-exam-components',
+  'mobile-wakakur-exam-schedules',
+  'mobile-wakakur-exam-sittings',
+];
+const SCHEDULE_QUERY_PREFIXES = [
+  'mobile-schedule',
+  'mobile-home-teacher-schedule',
+  'mobile-home-teacher-schedule-time-config',
+  'mobile-home-student-schedule',
+  'mobile-home-student-schedule-time-config',
+  'mobile-admin-schedule-entries',
+  'mobile-admin-schedule-time-config',
+];
+const INTERNSHIP_QUERY_PREFIXES = [
+  'mobile-home-student-internship-overview',
+  'mobile-student-internship-overview',
+  'mobile-student-internship-journals',
+  'mobile-student-internship-attendances',
+  'mobile-internship-duty',
+  'mobile-internship-duty-journals',
+  'mobile-internship-duty-attendances',
+  'mobile-humas-internships',
+];
+const OSIS_QUERY_PREFIXES = [
+  'mobile-home-active-osis-election',
+  'mobile-student-osis-options',
+  'mobile-teacher-osis-active-election',
+  'mobile-osis-election-periods',
+  'mobile-osis-election-quick-count',
+  'mobile-osis-management-periods',
+  'mobile-osis-work-program-readiness',
+  'mobile-osis-divisions',
+  'mobile-osis-positions',
+  'mobile-osis-memberships',
+  'mobile-osis-join-requests',
+  'mobile-osis-grade-templates',
+  'mobile-principal-osis-periods',
+  'mobile-principal-osis-management-periods',
+  'mobile-principal-osis-readiness',
+  'mobile-principal-osis-quick-count',
+];
+const ACADEMIC_YEAR_QUERY_PREFIXES = [
+  'mobile-home-active-academic-year',
+  'mobile-osis-management-active-year',
+  'mobile-osis-election-active-year',
+  'mobile-head-tu-exam-cards-active-year',
+  'mobile-principal-osis-active-year',
+  'mobile-principal-exam-reports-active-year',
+  'mobile-wakakur-exams-active-year',
+  'mobile-staff-finance-academic-years',
+];
 const GRADE_REPORT_QUERY_PREFIXES = [
   'mobile-student-grade-overview',
   'mobile-teacher-subject-report',
@@ -98,6 +171,22 @@ const DOMAIN_QUERY_TARGETS: Record<string, string[]> = {
 };
 const MUTATION_QUERY_TARGETS: Array<{ pattern: RegExp; queryKeyPrefixes: string[] }> = [
   {
+    pattern: /^\/api\/exams\/packets(?:\/|$)/,
+    queryKeyPrefixes: EXAM_QUERY_PREFIXES,
+  },
+  {
+    pattern: /^\/api\/exams\/schedules(?:\/|$)/,
+    queryKeyPrefixes: EXAM_QUERY_PREFIXES,
+  },
+  {
+    pattern: /^\/api\/exams\/programs(?:\/|$)/,
+    queryKeyPrefixes: EXAM_QUERY_PREFIXES,
+  },
+  {
+    pattern: /^\/api\/exam-sittings(?:\/|$)/,
+    queryKeyPrefixes: EXAM_QUERY_PREFIXES,
+  },
+  {
     pattern: /^\/api\/grades(?:\/|$)/,
     queryKeyPrefixes: GRADE_REPORT_QUERY_PREFIXES,
   },
@@ -112,6 +201,26 @@ const MUTATION_QUERY_TARGETS: Array<{ pattern: RegExp; queryKeyPrefixes: string[
   {
     pattern: /^\/api\/notifications(?:\/|$)/,
     queryKeyPrefixes: NOTIFICATION_QUERY_PREFIXES,
+  },
+  {
+    pattern: /^\/api\/schedules(?:\/|$)/,
+    queryKeyPrefixes: SCHEDULE_QUERY_PREFIXES,
+  },
+  {
+    pattern: /^\/api\/schedule-time-configs(?:\/|$)/,
+    queryKeyPrefixes: SCHEDULE_QUERY_PREFIXES,
+  },
+  {
+    pattern: /^\/api\/academic-years(?:\/|$)/,
+    queryKeyPrefixes: [...ACADEMIC_YEAR_QUERY_PREFIXES, ...EXAM_QUERY_PREFIXES, ...SCHEDULE_QUERY_PREFIXES],
+  },
+  {
+    pattern: /^\/api\/internships(?:\/|$)/,
+    queryKeyPrefixes: INTERNSHIP_QUERY_PREFIXES,
+  },
+  {
+    pattern: /^\/api\/osis(?:\/|$)/,
+    queryKeyPrefixes: OSIS_QUERY_PREFIXES,
   },
   {
     pattern: /^\/api\/attendances\/(?:subject|daily)(?:\/|$)/,
@@ -168,7 +277,6 @@ export function useMobileRealtimeSync(enabled: boolean) {
     let shortLivedConnections = 0;
     let socketCooldownUntil = 0;
     let lastOpenedAt = 0;
-    let pendingGlobalInvalidate = false;
     const pendingQueryKeyPrefixes = new Set<string>();
 
     const isAppActive = () => appState === 'active';
@@ -188,6 +296,9 @@ export function useMobileRealtimeSync(enabled: boolean) {
       }, Math.max(delayMs, INITIAL_BACKOFF_MS));
     };
 
+    const shouldSkipMutationInvalidate = (path: string) =>
+      HIGH_FREQUENCY_MUTATION_PATTERNS.some((pattern) => pattern.test(path));
+
     const resolveMutationQueryKeyPrefixes = (path: string): string[] => {
       for (const target of MUTATION_QUERY_TARGETS) {
         if (target.pattern.test(path)) {
@@ -203,25 +314,14 @@ export function useMobileRealtimeSync(enabled: boolean) {
     };
 
     const scheduleInvalidate = (queryKeyPrefixes?: string[]) => {
-      if (Array.isArray(queryKeyPrefixes) && queryKeyPrefixes.length > 0) {
-        queryKeyPrefixes.forEach((queryKeyPrefix) => {
-          if (!queryKeyPrefix) return;
-          pendingQueryKeyPrefixes.add(queryKeyPrefix);
-        });
-      } else {
-        pendingGlobalInvalidate = true;
-      }
-
+      if (!Array.isArray(queryKeyPrefixes) || queryKeyPrefixes.length === 0) return;
+      queryKeyPrefixes.forEach((queryKeyPrefix) => {
+        if (!queryKeyPrefix) return;
+        pendingQueryKeyPrefixes.add(queryKeyPrefix);
+      });
       if (invalidateTimer) return;
       invalidateTimer = setTimeout(() => {
         invalidateTimer = null;
-        if (pendingGlobalInvalidate) {
-          pendingGlobalInvalidate = false;
-          pendingQueryKeyPrefixes.clear();
-          void queryClient.invalidateQueries({ refetchType: 'active' });
-          return;
-        }
-
         if (pendingQueryKeyPrefixes.size === 0) return;
         const targets = Array.from(pendingQueryKeyPrefixes);
         pendingQueryKeyPrefixes.clear();
@@ -263,7 +363,6 @@ export function useMobileRealtimeSync(enabled: boolean) {
 
       socket.onopen = () => {
         backoffMs = INITIAL_BACKOFF_MS;
-        shortLivedConnections = 0;
         socketCooldownUntil = 0;
         clearReconnectTimer();
       };
@@ -279,19 +378,19 @@ export function useMobileRealtimeSync(enabled: boolean) {
             }
             if (payload?.type === 'DOMAIN_EVENT') {
               const targets = resolveDomainQueryKeyPrefixes(payload.domain);
-              scheduleInvalidate(targets.length > 0 ? targets : undefined);
+              scheduleInvalidate(targets);
               return;
             }
             if (payload?.type === 'MUTATION' && typeof payload.path === 'string') {
+              if (shouldSkipMutationInvalidate(payload.path)) return;
               const targets = resolveMutationQueryKeyPrefixes(payload.path);
-              scheduleInvalidate(targets.length > 0 ? targets : undefined);
+              scheduleInvalidate(targets);
               return;
             }
           } catch {
             // noop
           }
         }
-        scheduleInvalidate();
       };
 
       socket.onerror = () => {

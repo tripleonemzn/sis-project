@@ -813,6 +813,7 @@ export default function HomeScreen() {
   const [openGroupKey, setOpenGroupKey] = useState<string | null>(null);
   const [openingMenuKey, setOpeningMenuKey] = useState<string | null>(null);
   const openingMenuResetTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const studentExamFocusActiveRef = useRef(false);
   const menuSearchInputRef = useRef<TextInput | null>(null);
   const isMountedRef = useRef(true);
 
@@ -1003,9 +1004,11 @@ export default function HomeScreen() {
   const hasPendingDefense = profile.role === 'TEACHER' && (teacherDefenseQuery.data?.length || 0) > 0;
 
   useEffect(() => {
-    if (!isScreenActive || profile.role !== 'STUDENT') return;
+    const becameActive = isScreenActive && !studentExamFocusActiveRef.current;
+    studentExamFocusActiveRef.current = isScreenActive;
+    if (!becameActive || profile.role !== 'STUDENT') return;
     void studentExamsQuery.refetch();
-  }, [isScreenActive, profile.role, studentExamsQuery.refetch]);
+  }, [isScreenActive, profile.role]);
 
   const extracurricularTutorAssignments = useMemo(
     () => getExtracurricularTutorAssignments(mergedTutorAssignments),

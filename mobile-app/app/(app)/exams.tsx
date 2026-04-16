@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useState } from 'react';
+import { useEffect, useMemo, useRef, useState } from 'react';
 import { Feather } from '@expo/vector-icons';
 import { Redirect, useLocalSearchParams, useRouter } from 'expo-router';
 import { useQuery } from '@tanstack/react-query';
@@ -234,6 +234,7 @@ export default function StudentExamsScreen() {
   const [selectedPlacementGroup, setSelectedPlacementGroup] = useState<PlacementRoomGroup | null>(null);
   const [isCardsExpanded, setIsCardsExpanded] = useState(false);
   const [isPlacementsExpanded, setIsPlacementsExpanded] = useState(false);
+  const screenBecameActiveRef = useRef(false);
   const seatBlink = useMemo(() => new Animated.Value(1), []);
   const warningBlink = useMemo(() => new Animated.Value(1), []);
   const [showRulesModal, setShowRulesModal] = useState(false);
@@ -317,7 +318,9 @@ export default function StudentExamsScreen() {
 
   const examTypeLabel = (type: string) => resolveExamTypeLabel(type, examTypeLabels);
   useEffect(() => {
-    if (!isScreenActive || !canAccessExams || applicantVerificationLocked) return;
+    const becameActive = isScreenActive && !screenBecameActiveRef.current;
+    screenBecameActiveRef.current = isScreenActive;
+    if (!becameActive || !canAccessExams || applicantVerificationLocked) return;
     void examsQuery.refetch();
     if (!isCandidateMode && !isApplicantMode && user?.role === 'STUDENT' && shouldShowExamCardSections) {
       void studentExamCardsQuery.refetch();
@@ -326,13 +329,10 @@ export default function StudentExamsScreen() {
   }, [
     applicantVerificationLocked,
     canAccessExams,
-    examsQuery.refetch,
     isScreenActive,
     isApplicantMode,
     isCandidateMode,
     shouldShowExamCardSections,
-    studentExamCardsQuery.refetch,
-    studentExamPlacementsQuery.refetch,
     user?.role,
   ]);
   useEffect(() => {
