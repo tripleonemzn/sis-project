@@ -41,7 +41,7 @@ type WebmailBridgeCredentials = {
 };
 
 type ComposeModeKind = 'new' | 'reply';
-type NativeMailboxState = 'LOADING' | 'READY' | 'UNREGISTERED' | 'UNAVAILABLE' | 'ERROR';
+type NativeMailboxState = 'LOADING' | 'READY' | 'ACCESS' | 'UNREGISTERED' | 'ERROR';
 type FolderMoveActionTone = 'primary' | 'neutral' | 'warning' | 'danger';
 type FolderMoveAction = {
   key: string;
@@ -559,8 +559,11 @@ export const EmailPage = () => {
   const mailSessionAuthenticated = Boolean(webmailConfig?.mailSessionAuthenticated);
   const suggestedMailboxUsername = String(webmailConfig?.user?.username || '').trim().toLowerCase();
   const canResolveMailboxCandidate = mailboxIdentitySource !== 'none' && Boolean(mailboxIdentity);
-  const hasRegisteredMailbox = canResolveMailboxCandidate;
+  const hasStoredMailboxIdentity = mailboxIdentitySource === 'stored' && Boolean(mailboxIdentity);
+  const hasRegisteredMailbox = hasStoredMailboxIdentity || mailboxAvailableFromConfig;
   const canLoginMailbox = hasRegisteredMailbox && mailboxAvailableFromConfig;
+  const canShowMailboxLogin = Boolean(mailboxIdentity) && hasRegisteredMailbox;
+  const mailboxNeedsRefreshHint = hasStoredMailboxIdentity && !mailboxAvailableFromConfig;
 
   const [loginUser, setLoginUser] = useState('');
   const [loginPass, setLoginPass] = useState('');
@@ -616,19 +619,17 @@ export const EmailPage = () => {
     retry: false,
   });
 
-  const mailboxFeed = emailFeedQuery.data?.data;
-  const nativeMailboxState: NativeMailboxState = !canResolveMailboxCandidate
-    ? 'UNREGISTERED'
-    : canLoginMailbox
-      ? 'READY'
-      : webmailConfig?.mailboxAvailable === false
-        ? hasRegisteredMailbox
-          ? 'UNAVAILABLE'
-          : 'UNREGISTERED'
-        : configQuery.isError
-          ? 'ERROR'
-          : 'LOADING';
   const isNativeMailboxReady = canLoginMailbox && mailSessionAuthenticated;
+  const mailboxFeed = emailFeedQuery.data?.data;
+  const nativeMailboxState: NativeMailboxState = isNativeMailboxReady
+    ? 'READY'
+    : canShowMailboxLogin
+      ? 'ACCESS'
+      : configQuery.isError
+        ? 'ERROR'
+        : webmailConfig
+          ? 'UNREGISTERED'
+          : 'LOADING';
   const mailboxMessages = isNativeMailboxReady ? mailboxFeed?.messages ?? [] : [];
   const totalMessageCount = isNativeMailboxReady ? Number(mailboxFeed?.pagination.total || 0) : 0;
   const hasAppliedSearch = appliedSearch.trim().length > 0;
@@ -662,14 +663,10 @@ export const EmailPage = () => {
   const selectedBodyText = selectedEmailDetail?.plainText || selectedEmailDetail?.previewText || selectedEmail?.snippet || '';
   const pageDescription = isNativeMailboxReady
     ? `Mailbox sekolah tampil langsung seperti daftar email harian. Mailbox aktif: ${mailboxIdentity}.`
-    : canLoginMailbox
+    : canShowMailboxLogin
       ? `Masuk ke mailbox sekolah ${mailboxIdentity} terlebih dahulu untuk membuka email harian.`
-    : nativeMailboxState === 'LOADING'
+      : nativeMailboxState === 'LOADING'
       ? 'Sistem sedang memeriksa status mailbox sekolah Anda sebelum membuka email harian.'
-    : nativeMailboxState === 'UNAVAILABLE'
-      ? mailSessionAuthenticated
-        ? 'Mailbox sekolah Anda berhasil dibuat dan sedang disiapkan di server mail. Anda tidak perlu daftar ulang; periksa status mailbox lagi dalam beberapa saat.'
-        : 'Mailbox sekolah untuk akun ini sudah terhubung, tetapi server mail belum menyiapkannya sepenuhnya.'
       : 'Daftarkan mailbox sekolah terlebih dahulu sebelum mulai memakai email harian.';
   const canShowEmailAccessMenu = isNativeMailboxReady;
   const availableMoveActions = getFolderMoveActions(activeFolderKey);
@@ -1598,10 +1595,8 @@ export const EmailPage = () => {
           title={
             isNativeMailboxReady
               ? activeFolderTitle
-              : canLoginMailbox
+              : canShowMailboxLogin
                 ? 'Masuk ke Mailbox'
-                : nativeMailboxState === 'UNAVAILABLE'
-                  ? 'Mailbox Sedang Disiapkan'
                 : nativeMailboxState === 'LOADING'
                   ? 'Memeriksa Mailbox'
                   : 'Akses Email Sekolah'
@@ -1609,16 +1604,12 @@ export const EmailPage = () => {
           subtitle={
             isNativeMailboxReady
               ? activeFolderDescription
-              : canLoginMailbox
+              : canShowMailboxLogin
                 ? useSsoMode
                   ? 'Masuk ke mailbox sekolah Anda terlebih dahulu agar inbox dapat dibuka.'
                   : 'Masukkan password mailbox sekolah Anda terlebih dahulu agar inbox dapat dibuka.'
-              : nativeMailboxState === 'LOADING'
-                ? 'Sistem sedang memeriksa status mailbox sekolah Anda sebelum membuka daftar email harian.'
-                : nativeMailboxState === 'UNAVAILABLE'
-                  ? mailSessionAuthenticated
-                    ? 'Mailbox berhasil dibuat, tetapi server mail masih menyiapkan inbox. Anda tidak perlu daftar ulang.'
-                    : 'Mailbox sekolah Anda sudah terhubung ke akun SIS, tetapi server mail belum menyiapkannya sepenuhnya.'
+                : nativeMailboxState === 'LOADING'
+                  ? 'Sistem sedang memeriksa status mailbox sekolah Anda sebelum membuka daftar email harian.'
                   : 'Akun Anda belum memiliki mailbox sekolah aktif. Daftarkan mailbox terlebih dahulu sebelum mulai memakai email.'
           }
         >
@@ -1643,7 +1634,7 @@ export const EmailPage = () => {
             </div>
           ) : !isNativeMailboxReady ? (
             <div className="space-y-4">
-              {canLoginMailbox ? (
+              {canShowMailboxLogin ? (
                 <form className="space-y-4 rounded-2xl border border-slate-200 bg-slate-50 px-4 py-4" onSubmit={handleLoginSubmit}>
                   <div className="space-y-2">
                     <label className="text-sm font-semibold text-slate-800">Email</label>
@@ -1684,30 +1675,22 @@ export const EmailPage = () => {
 
               <div className="rounded-2xl border border-slate-200 bg-slate-50 px-4 py-4">
                 <p className="text-sm font-semibold text-slate-900">
-                  {nativeMailboxState === 'UNAVAILABLE'
-                    ? mailSessionAuthenticated
-                      ? 'Mailbox sedang disiapkan'
-                      : 'Mailbox belum aktif di server'
-                    : canLoginMailbox
+                  {mailboxNeedsRefreshHint
+                    ? 'Mailbox terhubung'
+                    : canShowMailboxLogin
                       ? 'Mailbox siap dipakai'
-                      : hasRegisteredMailbox
-                        ? 'Mailbox terhubung'
                       : 'Belum punya mailbox sekolah'}
                 </p>
                 <p className="mt-2 text-sm leading-6 text-slate-600">
-                  {nativeMailboxState === 'UNAVAILABLE'
-                    ? mailSessionAuthenticated
-                      ? 'Mailbox berhasil dibuat dan sesi Anda sudah tercatat. Server mail masih menyelesaikan penyiapan inbox. Begitu aktif, halaman ini akan otomatis berubah menjadi inbox email harian.'
-                      : 'Mailbox sudah tercatat untuk akun ini, tetapi inbox native dan panel email penuh baru bisa dipakai setelah server mail selesai menyiapkannya.'
-                    : canLoginMailbox
+                  {mailboxNeedsRefreshHint
+                    ? 'Mailbox sekolah sudah tercatat untuk akun SIS. Anda bisa mencoba login sekarang; jika inbox belum terbuka, tekan "Periksa Status Mailbox" untuk memuat kesiapan terbaru dari server mail.'
+                    : canShowMailboxLogin
                       ? 'Setelah berhasil masuk, halaman ini akan langsung berubah menjadi inbox email harian Anda.'
-                      : hasRegisteredMailbox
-                        ? 'Mailbox sudah terhubung ke akun SIS. Tekan "Periksa Status Mailbox" untuk memuat kesiapan terbaru dari server mail.'
                       : 'Daftar mailbox sekolah terlebih dahulu. Setelah mailbox aktif, halaman ini akan otomatis berubah menjadi daftar inbox email harian.'}
                 </p>
-                {(nativeMailboxState === 'UNAVAILABLE' || hasRegisteredMailbox) && mailboxIdentity ? (
+                {canShowMailboxLogin && mailboxIdentity ? (
                   <div className="mt-4 rounded-2xl border border-amber-200 bg-amber-50 px-4 py-3">
-                    <p className="text-xs font-semibold uppercase tracking-[0.14em] text-amber-700">Mailbox Terhubung</p>
+                    <p className="text-xs font-semibold uppercase tracking-[0.14em] text-amber-700">Mailbox Sekolah</p>
                     <p className="mt-1 text-sm font-semibold text-slate-900">{mailboxIdentity}</p>
                   </div>
                 ) : null}
@@ -1731,7 +1714,7 @@ export const EmailPage = () => {
                     Pendaftaran mailbox mandiri tidak tersedia untuk akun ini. Silakan hubungi admin jika Anda membutuhkan akun email sekolah.
                   </div>
                 )
-              ) : nativeMailboxState === 'UNAVAILABLE' ? (
+              ) : mailboxNeedsRefreshHint ? (
                 <button
                   type="button"
                   onClick={() => {
@@ -1741,11 +1724,7 @@ export const EmailPage = () => {
                 >
                   Periksa Status Mailbox
                 </button>
-              ) : (
-                <div className="rounded-2xl border border-amber-200 bg-amber-50 px-4 py-4 text-sm leading-6 text-amber-800">
-                  Silakan tunggu beberapa saat. Jika mailbox belum aktif juga, hubungi admin agar status mailbox sekolah Anda dapat diperiksa.
-                </div>
-              )}
+              ) : null}
             </div>
           ) : (
             <div className="space-y-5">
