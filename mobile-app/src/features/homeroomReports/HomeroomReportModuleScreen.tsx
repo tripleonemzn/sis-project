@@ -253,14 +253,16 @@ function isBelowKkmScore(
 }
 
 function resolveCompletionStatus(
-  score: number | string | null | undefined,
+  scores: Array<number | string | null | undefined>,
   kkm: number | string | null | undefined,
 ) {
-  const numericScore = parseScore(score);
+  const availableScores = scores
+    .map((value) => parseScore(value))
+    .filter((value): value is number => value !== null);
   const numericKkm = parseScore(kkm);
-  if (numericScore === null) return 'Tidak ada Penilaian';
+  if (availableScores.length === 0) return 'Tidak ada Penilaian';
   if (numericKkm === null) return '-';
-  return numericScore >= numericKkm ? 'Tuntas' : 'Belum Tuntas';
+  return availableScores.some((score) => score < numericKkm) ? 'Belum Tuntas' : 'Tuntas';
 }
 
 function formatNumber(value: number | null | undefined, digits = 0) {
@@ -335,7 +337,7 @@ function SubjectRow({
   const description = safeText(row.description || row.col2?.description || '');
   const formatifBelowKkm = isBelowKkmScore(formatifScore, row.kkm);
   const examBelowKkm = isBelowKkmScore(examScore, row.kkm);
-  const status = resolveCompletionStatus(finalScore ?? examScore ?? formatifScore, row.kkm);
+  const status = resolveCompletionStatus([formatifScore, examScore], row.kkm);
   const statusColor = status === 'Belum Tuntas' ? '#dc2626' : '#0f172a';
 
   return (

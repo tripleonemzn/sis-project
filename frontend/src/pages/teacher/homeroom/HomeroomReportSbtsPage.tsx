@@ -147,18 +147,13 @@ export const HomeroomReportSbtsPage = ({
     };
 
     const resolveStatus = (item: ReportRow): string => {
-      const hasVisibleScore =
-        parseNumeric(item.col1?.score) !== null ||
-        parseNumeric(item.col2?.score) !== null;
-      if (!hasVisibleScore) return 'Tidak ada Penilaian';
-
+      const availableScores = [parseNumeric(item.col1?.score), parseNumeric(item.col2?.score)].filter(
+        (value): value is number => value !== null,
+      );
+      if (availableScores.length === 0) return 'Tidak ada Penilaian';
       const numericKkm = parseNumeric(item.kkm);
-      const referenceScore =
-        parseNumeric(item.final?.score) ??
-        parseNumeric(item.col2?.score) ??
-        parseNumeric(item.col1?.score);
-      if (numericKkm === null || referenceScore === null) return '-';
-      return referenceScore >= numericKkm ? 'Tuntas' : 'Belum Tuntas';
+      if (numericKkm === null) return '-';
+      return availableScores.some((score) => score < numericKkm) ? 'Belum Tuntas' : 'Tuntas';
     };
 
     const resolveStatusColor = (status: string): string =>
@@ -192,8 +187,24 @@ export const HomeroomReportSbtsPage = ({
 
         const col1Color = resolveCellColor(item.col1?.score, item.kkm);
         const col2Color = resolveCellColor(item.col2?.score, item.kkm);
+        const hasCol1Value =
+          parseNumeric(item.col1?.score) !== null || String(item.col1?.predicate || '').trim().length > 0;
+        const hasCol2Value =
+          parseNumeric(item.col2?.score) !== null || String(item.col2?.predicate || '').trim().length > 0;
         const status = resolveStatus(item);
         const statusColor = resolveStatusColor(status);
+        const col1Cells = hasCol1Value
+          ? `
+          <td class="center align-middle" style="color: ${col1Color}; font-weight: ${col1Color === '#dc2626' ? '700' : '400'};">${item.col1?.score ?? '-'}</td>
+          <td class="center align-middle" style="color: ${col1Color}; font-weight: ${col1Color === '#dc2626' ? '700' : '400'};">${item.col1?.predicate ?? '-'}</td>
+          `
+          : `<td colspan="2" class="center align-middle empty-component-cell">Tidak ada Penilaian</td>`;
+        const col2Cells = hasCol2Value
+          ? `
+          <td class="center align-middle" style="color: ${col2Color}; font-weight: ${col2Color === '#dc2626' ? '700' : '400'};">${item.col2?.score ?? '-'}</td>
+          <td class="center align-middle" style="color: ${col2Color}; font-weight: ${col2Color === '#dc2626' ? '700' : '400'};">${item.col2?.predicate ?? '-'}</td>
+          `
+          : `<td colspan="2" class="center align-middle empty-component-cell">Tidak ada Penilaian</td>`;
         
         return `
         <tr>
@@ -205,12 +216,10 @@ export const HomeroomReportSbtsPage = ({
           <td class="center align-middle">${item.kkm}</td>
           
           <!-- Kolom 1 Dinamis -->
-          <td class="center align-middle" style="color: ${col1Color}; font-weight: ${col1Color === '#dc2626' ? '700' : '400'};">${item.col1?.score ?? '-'}</td>
-          <td class="center align-middle" style="color: ${col1Color}; font-weight: ${col1Color === '#dc2626' ? '700' : '400'};">${item.col1?.predicate ?? '-'}</td>
+          ${col1Cells}
           
           <!-- Kolom 2 Dinamis -->
-          <td class="center align-middle" style="color: ${col2Color}; font-weight: ${col2Color === '#dc2626' ? '700' : '400'};">${item.col2?.score ?? '-'}</td>
-          <td class="center align-middle" style="color: ${col2Color}; font-weight: ${col2Color === '#dc2626' ? '700' : '400'};">${item.col2?.predicate ?? '-'}</td>
+          ${col2Cells}
           
           <td style="padding: 4px 8px; font-size: 11px; color: ${statusColor}; font-weight: ${status === 'Belum Tuntas' ? '700' : '600'};" class="center align-middle ket-cell">${status}</td>
         </tr>
@@ -314,6 +323,7 @@ export const HomeroomReportSbtsPage = ({
           .content-table th, .content-table td { border: 1px solid black; padding: 4px; }
           .content-table th { text-align: center; background-color: #f0f0f0; font-weight: bold; vertical-align: middle; }
           .ket-header, .ket-cell { white-space: nowrap; width: 1%; }
+          .empty-component-cell { text-align: center; color: #64748b; font-style: italic; white-space: nowrap; }
           
           .center { text-align: center; }
           .align-middle { vertical-align: middle; }
