@@ -678,6 +678,9 @@ export async function validateWebmailMailboxPassword(mailboxIdentity: string, pa
         'rip=127.0.0.1',
         '-x',
         'lip=127.0.0.1',
+        // Akhiri parsing opsi agar password yang diawali `-`
+        // tidak dibaca sebagai flag command oleh `doveadm auth test`.
+        '--',
         normalizedMailbox,
         normalizedPassword,
       ],

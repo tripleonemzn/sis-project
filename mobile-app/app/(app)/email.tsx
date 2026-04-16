@@ -459,6 +459,8 @@ export default function MobileEmailScreen() {
   const mailSessionAuthenticated = Boolean(config?.mailSessionAuthenticated);
   const suggestedMailboxUsername = String(config?.user?.username || '').trim().toLowerCase();
   const canResolveMailboxCandidate = mailboxIdentitySource !== 'none' && Boolean(mailboxIdentity);
+  const hasRegisteredMailbox = canResolveMailboxCandidate;
+  const canLoginMailbox = hasRegisteredMailbox && mailboxAvailableFromConfig;
 
   const emailFeedQuery = useQuery({
     queryKey: ['mobile-email-folder-feed', mailboxIdentity || 'all', activeFolderKey, visibleLimit, appliedSearch],
@@ -491,25 +493,26 @@ export default function MobileEmailScreen() {
   const mailboxFeed = emailFeedQuery.data;
   const nativeMailboxState: NativeMailboxState = !canResolveMailboxCandidate
     ? 'UNREGISTERED'
-    : mailboxAvailableFromConfig
+    : canLoginMailbox
       ? 'READY'
       : config?.mailboxAvailable === false
-        ? mailboxIdentitySource === 'stored'
+        ? hasRegisteredMailbox
           ? 'UNAVAILABLE'
           : 'UNREGISTERED'
         : configQuery.isError
           ? 'ERROR'
           : 'LOADING';
-  const mailboxRegistered = nativeMailboxState === 'READY';
-  const mailboxAvailable = mailboxRegistered && mailSessionAuthenticated;
+  const mailboxAvailable = canLoginMailbox && mailSessionAuthenticated;
   const pageDescription = mailboxAvailable
     ? `Mailbox sekolah tampil langsung seperti daftar email harian. Mailbox aktif: ${mailboxIdentity}.`
-    : mailboxRegistered
+    : canLoginMailbox
       ? `Masuk ke mailbox sekolah ${mailboxIdentity} terlebih dahulu untuk membuka email harian.`
     : nativeMailboxState === 'LOADING'
       ? 'Sistem sedang memeriksa status mailbox sekolah Anda sebelum membuka email harian.'
     : nativeMailboxState === 'UNAVAILABLE'
-      ? 'Mailbox sekolah untuk akun ini sudah terhubung, tetapi server mail belum menyiapkannya sepenuhnya.'
+      ? mailSessionAuthenticated
+        ? 'Mailbox sekolah Anda berhasil dibuat dan sedang disiapkan di server mail. Anda tidak perlu daftar ulang; periksa status mailbox lagi dalam beberapa saat.'
+        : 'Mailbox sekolah untuk akun ini sudah terhubung, tetapi server mail belum menyiapkannya sepenuhnya.'
       : 'Daftarkan mailbox sekolah terlebih dahulu sebelum mulai memakai email harian.';
   const canShowEmailAccessMenu = mailboxAvailable;
 
@@ -719,6 +722,13 @@ export default function MobileEmailScreen() {
         refetchType: 'active',
       });
       setBridgeCredentials({ email: createdMailboxIdentity, password: variables.password });
+      const refreshed = await configQuery.refetch();
+      const nextConfig = refreshed.data;
+      if (nextConfig?.mailboxAvailable && nextConfig?.mailSessionAuthenticated) {
+        notifySuccess('Mailbox berhasil dibuat dan langsung siap dipakai.');
+      } else {
+        notifySuccess('Mailbox berhasil dibuat. Jika inbox belum muncul, tekan "Periksa Status Mailbox".');
+      }
     },
     onError: (error) => {
       setRegisterError(resolveErrorMessage(error, 'Gagal membuat akun webmail.'));
@@ -965,6 +975,31 @@ export default function MobileEmailScreen() {
     }
 
     loginSessionMutation.mutate(password);
+  };
+
+  const handleRefreshMailboxStatus = async () => {
+    setPanelError(null);
+    setRegisterError(null);
+    setLoginError(null);
+
+    try {
+      const refreshed = await configQuery.refetch();
+      const nextConfig = refreshed.data;
+      const nextMailboxReady = Boolean(nextConfig?.mailboxAvailable);
+      const nextSessionAuthenticated = Boolean(nextConfig?.mailSessionAuthenticated);
+
+      if (nextMailboxReady && nextSessionAuthenticated) {
+        notifySuccess('Mailbox sekolah sudah siap dan inbox dapat dibuka.');
+        return;
+      }
+      if (nextMailboxReady) {
+        notifySuccess('Mailbox sekolah sudah siap. Silakan masuk ke mailbox.');
+        return;
+      }
+      notifySuccess('Status mailbox diperbarui. Server mail masih menyiapkan inbox Anda.');
+    } catch (error) {
+      notifyApiError(error, 'Gagal memeriksa status mailbox sekolah.');
+    }
   };
 
   const handleChangePasswordSubmit = () => {
@@ -1282,8 +1317,10 @@ export default function MobileEmailScreen() {
               title={
                 mailboxAvailable
                   ? activeFolderTitle
-                  : mailboxRegistered
+                  : canLoginMailbox
                     ? 'Masuk ke Mailbox'
+                    : nativeMailboxState === 'UNAVAILABLE'
+                      ? 'Mailbox Sedang Disiapkan'
                     : nativeMailboxState === 'LOADING'
                       ? 'Memeriksa Mailbox'
                       : 'Akses Email Sekolah'
@@ -1291,14 +1328,16 @@ export default function MobileEmailScreen() {
               subtitle={
                 mailboxAvailable
                   ? activeFolderDescription
-                  : mailboxRegistered
+                  : canLoginMailbox
                     ? isSsoMode
                       ? 'Masuk ke mailbox sekolah Anda terlebih dahulu agar inbox dapat dibuka.'
                       : 'Masukkan password mailbox sekolah Anda terlebih dahulu agar inbox dapat dibuka.'
                     : nativeMailboxState === 'LOADING'
                       ? 'Sistem sedang memeriksa status mailbox sekolah Anda sebelum membuka daftar email harian.'
                       : nativeMailboxState === 'UNAVAILABLE'
-                        ? 'Mailbox sekolah Anda sudah terhubung ke akun SIS, tetapi server mail belum menyiapkannya sepenuhnya.'
+                        ? mailSessionAuthenticated
+                          ? 'Mailbox berhasil dibuat, tetapi server mail masih menyiapkan inbox. Anda tidak perlu daftar ulang.'
+                          : 'Mailbox sekolah Anda sudah terhubung ke akun SIS, tetapi server mail belum menyiapkannya sepenuhnya.'
                         : 'Akun Anda belum memiliki mailbox sekolah aktif. Daftarkan mailbox terlebih dahulu sebelum mulai memakai email.'
               }
             >
@@ -1315,7 +1354,7 @@ export default function MobileEmailScreen() {
                 />
               ) : !mailboxAvailable ? (
                 <View style={{ gap: 12 }}>
-                  {mailboxRegistered ? (
+                  {canLoginMailbox ? (
                     <View
                       style={{
                         borderRadius: 14,
@@ -1401,19 +1440,27 @@ export default function MobileEmailScreen() {
                   >
                     <Text style={{ color: '#0f172a', fontWeight: '700' }}>
                       {nativeMailboxState === 'UNAVAILABLE'
-                        ? 'Mailbox belum aktif di server'
-                        : mailboxRegistered
+                        ? mailSessionAuthenticated
+                          ? 'Mailbox sedang disiapkan'
+                          : 'Mailbox belum aktif di server'
+                        : canLoginMailbox
                           ? 'Mailbox siap dipakai'
+                          : hasRegisteredMailbox
+                            ? 'Mailbox terhubung'
                           : 'Belum punya mailbox sekolah'}
                     </Text>
                     <Text style={{ color: '#475569', fontSize: 12, lineHeight: 18 }}>
                       {nativeMailboxState === 'UNAVAILABLE'
-                        ? 'Mailbox sudah tercatat untuk akun ini, tetapi inbox native dan panel email penuh baru bisa dipakai setelah server mail selesai menyiapkannya.'
-                        : mailboxRegistered
+                        ? mailSessionAuthenticated
+                          ? 'Mailbox berhasil dibuat dan sesi Anda sudah tercatat. Server mail masih menyelesaikan penyiapan inbox. Begitu aktif, halaman ini akan otomatis berubah menjadi inbox email harian.'
+                          : 'Mailbox sudah tercatat untuk akun ini, tetapi inbox native dan panel email penuh baru bisa dipakai setelah server mail selesai menyiapkannya.'
+                        : canLoginMailbox
                           ? 'Setelah berhasil masuk, halaman ini akan langsung berubah menjadi inbox email harian Anda.'
+                          : hasRegisteredMailbox
+                            ? 'Mailbox sudah terhubung ke akun SIS. Tekan "Periksa Status Mailbox" untuk memuat kesiapan terbaru dari server mail.'
                           : 'Daftar mailbox sekolah terlebih dahulu. Setelah mailbox aktif, halaman ini akan otomatis berubah menjadi daftar inbox email harian.'}
                     </Text>
-                    {(nativeMailboxState === 'UNAVAILABLE' || mailboxRegistered) && mailboxIdentity ? (
+                    {(nativeMailboxState === 'UNAVAILABLE' || hasRegisteredMailbox) && mailboxIdentity ? (
                       <View
                         style={{
                           marginTop: 6,
@@ -1466,6 +1513,22 @@ export default function MobileEmailScreen() {
                         </Text>
                       </View>
                     )
+                  ) : nativeMailboxState === 'UNAVAILABLE' ? (
+                    <Pressable
+                      onPress={() => {
+                        void handleRefreshMailboxStatus();
+                      }}
+                      style={{
+                        borderRadius: 12,
+                        borderWidth: 1,
+                        borderColor: '#cbd5e1',
+                        backgroundColor: '#ffffff',
+                        paddingVertical: 11,
+                        alignItems: 'center',
+                      }}
+                    >
+                      <Text style={{ color: '#334155', fontWeight: '700' }}>Periksa Status Mailbox</Text>
+                    </Pressable>
                   ) : (
                     <View
                       style={{
