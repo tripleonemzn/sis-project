@@ -11,8 +11,11 @@ import { notifyApiError, notifySuccess } from '../../src/lib/ui/feedback';
 import { useUnreadNotificationsQuery } from '../../src/features/notifications/useUnreadNotificationsQuery';
 
 export default function AppProtectedLayout() {
-  const { isLoading, isAuthenticated, logout } = useAuth();
-  useMobileRealtimeSync(isAuthenticated);
+  const { isLoading, isAuthenticated, user, logout } = useAuth();
+  const shouldEnableRealtime =
+    isAuthenticated &&
+    !['STUDENT', 'CALON_SISWA', 'UMUM'].includes(String(user?.role || '').trim().toUpperCase());
+  useMobileRealtimeSync(shouldEnableRealtime);
   const insets = useSafeAreaInsets();
   const router = useRouter();
   const [isLogoutConfirmVisible, setIsLogoutConfirmVisible] = useState(false);
