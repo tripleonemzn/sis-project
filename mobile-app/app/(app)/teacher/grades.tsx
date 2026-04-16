@@ -38,6 +38,15 @@ const RELIGION_LABELS: Record<string, string> = {
   KONGHUCU: 'Konghucu',
 };
 
+const STANDARD_RELIGION_OPTIONS: ReligionOption[] = [
+  { value: 'ISLAM', label: 'Islam' },
+  { value: 'KRISTEN', label: 'Kristen' },
+  { value: 'KATOLIK', label: 'Katolik' },
+  { value: 'HINDU', label: 'Hindu' },
+  { value: 'BUDDHA', label: 'Buddha' },
+  { value: 'KONGHUCU', label: 'Konghucu' },
+];
+
 const RELIGION_ALIASES: Record<string, string> = {
   ISLAM: 'ISLAM',
   MUSLIM: 'ISLAM',
@@ -641,6 +650,10 @@ export default function TeacherGradesScreen() {
     if (!isReligionSubject) return [];
     const optionMap = new Map<string, string>();
 
+    STANDARD_RELIGION_OPTIONS.forEach((option) => {
+      optionMap.set(option.value, option.label);
+    });
+
     (assignmentDetailQuery.data?.availableReligions || []).forEach((rawKey) => {
       const religionKey = normalizeReligionKey(rawKey);
       if (!religionKey) return;
@@ -967,9 +980,6 @@ export default function TeacherGradesScreen() {
     mutationFn: async () => {
       if (!selectedAssignmentId) throw new Error('Assignment belum dipilih.');
       if (!semester) throw new Error('Pilih semester terlebih dahulu.');
-      if (isReligionSubject && religionOptions.length === 0) {
-        throw new Error('Belum ada agama siswa valid di profile untuk mapel ini.');
-      }
       const payload = sanitizeCompetencySettingsForSave(competencySettings, isReligionSubject);
       return teacherAssignmentApi.updateCompetencyThresholds(selectedAssignmentId, {
         A: payload.A.trim(),
@@ -1820,9 +1830,8 @@ export default function TeacherGradesScreen() {
                   value={selectedReligionKey}
                   options={religionOptions}
                   onChange={(value) => setSelectedReligionKey(value)}
-                  placeholder={religionOptions.length > 0 ? 'Pilih agama' : 'Belum ada agama siswa'}
-                  helperText="Pilihan agama diambil dari profile siswa pada scope mapel dan level aktif."
-                  disabled={religionOptions.length === 0}
+                  placeholder="Pilih agama"
+                  helperText="Semua agama baku tersedia untuk diisi, lalu sistem otomatis mengikuti agama di profile siswa."
                 />
               </View>
             ) : null}
@@ -1880,13 +1889,13 @@ export default function TeacherGradesScreen() {
               <View style={{ flex: 1, paddingHorizontal: 4 }}>
                 <Pressable
                   onPress={() => saveCompetencyMutation.mutate()}
-                  disabled={saveCompetencyMutation.isPending || (isReligionSubject && religionOptions.length === 0)}
+                  disabled={saveCompetencyMutation.isPending}
                   style={{
                     borderRadius: 8,
                     paddingVertical: 10,
                     alignItems: 'center',
                     backgroundColor:
-                      saveCompetencyMutation.isPending || (isReligionSubject && religionOptions.length === 0)
+                      saveCompetencyMutation.isPending
                         ? '#93c5fd'
                         : '#1d4ed8',
                   }}

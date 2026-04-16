@@ -126,6 +126,15 @@ const RELIGION_LABELS: Record<string, string> = {
   KONGHUCU: 'Konghucu',
 };
 
+const STANDARD_RELIGION_OPTIONS: ReligionOption[] = [
+  { value: 'ISLAM', label: 'Islam' },
+  { value: 'KRISTEN', label: 'Kristen' },
+  { value: 'KATOLIK', label: 'Katolik' },
+  { value: 'HINDU', label: 'Hindu' },
+  { value: 'BUDDHA', label: 'Buddha' },
+  { value: 'KONGHUCU', label: 'Konghucu' },
+];
+
 const RELIGION_ALIASES: Record<string, string> = {
   ISLAM: 'ISLAM',
   MUSLIM: 'ISLAM',
@@ -745,6 +754,10 @@ export const TeacherGradesPage = () => {
   const religionOptions = useMemo<ReligionOption[]>(() => {
     if (!isReligionSubject) return [];
     const optionMap = new Map<string, string>();
+
+    STANDARD_RELIGION_OPTIONS.forEach((option) => {
+      optionMap.set(option.value, option.label);
+    });
 
     availableReligionKeys.forEach((rawKey) => {
       const religionKey = normalizeReligionKey(rawKey);
@@ -1375,10 +1388,6 @@ export const TeacherGradesPage = () => {
 
   const handleSaveSettings = async () => {
     if (!selectedAssignment) return;
-    if (isReligionSubject && religionOptions.length === 0) {
-      toast.error('Belum ada agama siswa valid di profile untuk mapel ini.');
-      return;
-    }
     try {
         const payload = sanitizeCompetencySettingsForSave(competencySettings, isReligionSubject);
         setSaving(true);
@@ -2034,7 +2043,6 @@ export const TeacherGradesPage = () => {
                           onChange={(e) => setSelectedReligionKey(e.target.value)}
                           className="w-full px-4 py-2 border border-gray-300 rounded-lg focus:ring-blue-500 focus:border-blue-500"
                         >
-                          {religionOptions.length === 0 ? <option value="">Belum ada agama siswa</option> : null}
                           {religionOptions.map((option) => (
                             <option key={option.value} value={option.value}>
                               {option.label}
@@ -2042,7 +2050,7 @@ export const TeacherGradesPage = () => {
                           ))}
                         </select>
                         <p className="mt-1 text-xs text-gray-500">
-                          Pilihan agama diambil dari profile siswa pada scope mapel dan level yang memakai template ini.
+                          Semua agama baku tersedia untuk diisi, lalu sistem otomatis menyesuaikan dengan agama di profile siswa.
                         </p>
                       </div>
                     ) : null}
@@ -2113,10 +2121,10 @@ export const TeacherGradesPage = () => {
                     >
                         Batal
                     </button>
-                    <button 
-                        onClick={handleSaveSettings}
-                        disabled={saving || (isReligionSubject && religionOptions.length === 0)}
-                        className="px-4 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700 font-medium transition-colors flex items-center gap-2"
+                    <button
+                      onClick={handleSaveSettings}
+                        disabled={saving}
+                      className="px-4 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700 font-medium transition-colors flex items-center gap-2"
                     >
                         {saving ? <Loader2 className="w-4 h-4 animate-spin" /> : <Save className="w-4 h-4" />}
                         Simpan & Terapkan
