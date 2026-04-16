@@ -68,6 +68,55 @@ type TeacherAssignmentWithScope = {
   };
 };
 
+const listAvailableReligionsForAssignments = async (
+  assignments: Array<{ classId?: number | null }>,
+  academicYearId: number,
+): Promise<string[]> => {
+  const classIds = Array.from(
+    new Set(
+      assignments
+        .map((assignment) => Number(assignment.classId || 0))
+        .filter((classId) => Number.isFinite(classId) && classId > 0),
+    ),
+  );
+
+  if (classIds.length === 0) {
+    return [];
+  }
+
+  const rosters = await Promise.all(
+    classIds.map((classId) => listHistoricalStudentsForClass(classId, academicYearId)),
+  );
+  const studentIds = Array.from(
+    new Set(
+      rosters
+        .flatMap((roster) => roster.map((student) => Number(student.id)))
+        .filter((studentId) => Number.isFinite(studentId) && studentId > 0),
+    ),
+  );
+
+  if (studentIds.length === 0) {
+    return [];
+  }
+
+  const religionRows = await prisma.user.findMany({
+    where: {
+      id: { in: studentIds },
+    },
+    select: {
+      religion: true,
+    },
+  });
+
+  return Array.from(
+    new Set(
+      religionRows
+        .map((row) => normalizeReligionKey(row.religion))
+        .filter((religion): religion is string => Boolean(religion)),
+    ),
+  ).sort((left, right) => left.localeCompare(right, 'id', { sensitivity: 'base' }));
+};
+
 const calculatePredicateFromScore = (score: number, kkm: number): string => {
   const roundedScore = Math.round(score);
   if (roundedScore >= 86) return 'A';
@@ -403,11 +452,16 @@ export const getTeacherAssignmentById = asyncHandler(async (req: Request, res: R
   });
   const normalizedAssignments = normalizeAssignmentsForSemester(siblings, preferredSemester);
   const normalizedAssignment = normalizedAssignments.find((item) => item.id === id);
+  const availableReligions = await listAvailableReligionsForAssignments(
+    siblings,
+    Number(assignment.academicYearId),
+  );
   const detailAssignment = {
     ...assignment,
     competencyThresholds:
       normalizedAssignment?.competencyThresholds ??
       resolveCompetencyThresholdBucket(assignment.competencyThresholds, preferredSemester),
+    availableReligions,
   };
 
   res.status(200).json(

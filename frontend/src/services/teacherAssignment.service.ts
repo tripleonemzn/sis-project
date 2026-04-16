@@ -70,6 +70,7 @@ export interface TeacherAssignmentResponse {
 }
 
 export interface TeacherAssignmentDetail extends TeacherAssignment {
+  availableReligions?: string[];
   class: {
     id: number;
     name: string;

@@ -60,6 +60,7 @@ export type TeacherAssignmentDetail = {
   academicYearId: number;
   classId: number;
   kkm: number;
+  availableReligions?: string[];
   competencyThresholds?: {
     A?: string;
     B?: string;

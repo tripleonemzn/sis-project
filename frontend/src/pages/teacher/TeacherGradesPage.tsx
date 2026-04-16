@@ -4,13 +4,11 @@ import { toast } from 'react-hot-toast';
 import { gradeService } from '../../services/grade.service';
 import type { GradeComponent } from '../../services/grade.service';
 import { teacherAssignmentService } from '../../services/teacherAssignment.service';
-import type { TeacherAssignment } from '../../services/teacherAssignment.service';
+import type { TeacherAssignment, TeacherAssignmentDetail } from '../../services/teacherAssignment.service';
 import {
   formatTeacherAssignmentLabel,
   sortTeacherAssignmentsBySubjectClass,
 } from '../../services/teacherAssignment.service';
-import { userService } from '../../services/user.service';
-import type { User } from '../../types/auth';
 import { useActiveAcademicYear } from '../../hooks/useActiveAcademicYear';
 
 interface Student {
@@ -645,6 +643,7 @@ export const TeacherGradesPage = () => {
   const [showSettingsModal, setShowSettingsModal] = useState(false);
   const [competencySettings, setCompetencySettings] = useState<CompetencySettings>(emptyCompetencySettings());
   const [selectedReligionKey, setSelectedReligionKey] = useState<string>('');
+  const [availableReligionKeys, setAvailableReligionKeys] = useState<string[]>([]);
   
   // Data states
   const [students, setStudents] = useState<Student[]>([]);
@@ -747,6 +746,12 @@ export const TeacherGradesPage = () => {
     if (!isReligionSubject) return [];
     const optionMap = new Map<string, string>();
 
+    availableReligionKeys.forEach((rawKey) => {
+      const religionKey = normalizeReligionKey(rawKey);
+      if (!religionKey) return;
+      optionMap.set(religionKey, formatReligionLabel(religionKey));
+    });
+
     students.forEach((student) => {
       const religionKey = normalizeReligionKey(student.religion);
       if (!religionKey) return;
@@ -764,7 +769,7 @@ export const TeacherGradesPage = () => {
     return Array.from(optionMap.entries())
       .sort((left, right) => left[1].localeCompare(right[1], 'id', { sensitivity: 'base' }))
       .map(([value, label]) => ({ value, label }));
-  }, [competencySettings._byReligion, isReligionSubject, students]);
+  }, [availableReligionKeys, competencySettings._byReligion, isReligionSubject, students]);
   const activeCompetencyThresholdSet = isReligionSubject
     ? getReligionThresholdSet(competencySettings, selectedReligionKey)
     : competencySettings;
@@ -1038,49 +1043,61 @@ export const TeacherGradesPage = () => {
   const fetchStudents = async () => {
     const requestId = ++studentsRequestRef.current;
     try {
-      if (!selectedAssignment) return;
-      
-      // Get fresh assignment for KKM
-      const assignment = selectedAssignmentObj;
-      
-      if (assignment) {
-        setKkm(assignment.kkm);
-        setCompetencySettings(coerceCompetencySettings(assignment.competencyThresholds));
-        
-        // Fetch students
-        const usersRes = await userService.getAll({ 
-            role: 'STUDENT', 
-            class_id: assignment.class.id,
-            limit: 1000 
-        });
-        
-        const usersResponse = usersRes as { data?: User[] } | User[];
-        const studentsData = 'data' in usersResponse && Array.isArray(usersResponse.data) ? usersResponse.data : (Array.isArray(usersResponse) ? usersResponse : []);
-
-        if (requestId !== studentsRequestRef.current) return;
-        
-        if (Array.isArray(studentsData)) {
-            setStudents(studentsData.map((s: User) => ({
-                id: s.id,
-                full_name: s.name, // User interface has name, not full_name
-                nisn: s.nisn || '',
-                nis: s.nis || '',
-                religion: s.religion || null,
-            })));
-            
-            // Initialize grades
-            const initialGrades = studentsData.map((student: User) => ({
-                student_id: student.id,
-                formativeSeriesInput: '',
-                score: ''
-            }));
-            setGrades(initialGrades);
-        }
+      if (!selectedAssignment) {
+        setStudents([]);
+        setGrades([]);
+        setAvailableReligionKeys([]);
+        return;
       }
+
+      const assignDetail = await teacherAssignmentService.getById(
+        Number(selectedAssignment),
+        selectedSemester || undefined,
+      );
+      const detailAssignment = assignDetail.data as TeacherAssignmentDetail | undefined;
+
+      if (requestId !== studentsRequestRef.current) return;
+      if (!detailAssignment || typeof detailAssignment !== 'object') {
+        setStudents([]);
+        setGrades([]);
+        setAvailableReligionKeys([]);
+        return;
+      }
+
+      setKkm(Number(detailAssignment.kkm || selectedAssignmentObj?.kkm || 75));
+      setCompetencySettings(coerceCompetencySettings(detailAssignment.competencyThresholds));
+      setAvailableReligionKeys(
+        Array.isArray(detailAssignment.availableReligions) ? detailAssignment.availableReligions : [],
+      );
+
+      const studentsData = Array.isArray(detailAssignment.class?.students)
+        ? detailAssignment.class.students
+        : [];
+
+      setStudents(
+        studentsData.map((student) => ({
+          id: student.id,
+          full_name: student.name,
+          nisn: student.nisn || '',
+          nis: student.nis || '',
+          religion: student.religion || null,
+        })),
+      );
+
+      setGrades(
+        studentsData.map((student) => ({
+          student_id: student.id,
+          formativeSeriesInput: '',
+          score: '',
+        })),
+      );
     } catch (error) {
       if (requestId !== studentsRequestRef.current) return;
       console.error('Fetch students error:', error);
       toast.error('Gagal memuat data siswa');
+      setStudents([]);
+      setGrades([]);
+      setAvailableReligionKeys([]);
     }
   };
 
@@ -2025,7 +2042,7 @@ export const TeacherGradesPage = () => {
                           ))}
                         </select>
                         <p className="mt-1 text-xs text-gray-500">
-                          Pilihan agama diambil dari profile siswa aktif pada mapel ini.
+                          Pilihan agama diambil dari profile siswa pada scope mapel dan level yang memakai template ini.
                         </p>
                       </div>
                     ) : null}

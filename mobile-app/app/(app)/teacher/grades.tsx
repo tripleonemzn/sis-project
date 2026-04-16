@@ -641,6 +641,12 @@ export default function TeacherGradesScreen() {
     if (!isReligionSubject) return [];
     const optionMap = new Map<string, string>();
 
+    (assignmentDetailQuery.data?.availableReligions || []).forEach((rawKey) => {
+      const religionKey = normalizeReligionKey(rawKey);
+      if (!religionKey) return;
+      optionMap.set(religionKey, formatReligionLabel(religionKey));
+    });
+
     (assignmentDetailQuery.data?.class.students || []).forEach((student) => {
       const religionKey = normalizeReligionKey(student.religion);
       if (!religionKey) return;
@@ -658,7 +664,7 @@ export default function TeacherGradesScreen() {
     return Array.from(optionMap.entries())
       .sort((left, right) => left[1].localeCompare(right[1], 'id', { sensitivity: 'base' }))
       .map(([value, label]) => ({ value, label }));
-  }, [assignmentDetailQuery.data?.class.students, competencySettings._byReligion, isReligionSubject]);
+  }, [assignmentDetailQuery.data?.availableReligions, assignmentDetailQuery.data?.class.students, competencySettings._byReligion, isReligionSubject]);
   const components = useMemo(() => componentsQuery.data || [], [componentsQuery.data]);
   const filteredComponents = useMemo(() => {
     if (!selectedAssignment) return [];
@@ -1815,7 +1821,7 @@ export default function TeacherGradesScreen() {
                   options={religionOptions}
                   onChange={(value) => setSelectedReligionKey(value)}
                   placeholder={religionOptions.length > 0 ? 'Pilih agama' : 'Belum ada agama siswa'}
-                  helperText="Pilihan agama diambil dari profile siswa aktif pada mapel ini."
+                  helperText="Pilihan agama diambil dari profile siswa pada scope mapel dan level aktif."
                   disabled={religionOptions.length === 0}
                 />
               </View>
