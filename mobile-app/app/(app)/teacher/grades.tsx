@@ -674,9 +674,7 @@ export default function TeacherGradesScreen() {
       }
     });
 
-    return Array.from(optionMap.entries())
-      .sort((left, right) => left[1].localeCompare(right[1], 'id', { sensitivity: 'base' }))
-      .map(([value, label]) => ({ value, label }));
+    return Array.from(optionMap.entries()).map(([value, label]) => ({ value, label }));
   }, [assignmentDetailQuery.data?.availableReligions, assignmentDetailQuery.data?.class.students, competencySettings._byReligion, isReligionSubject]);
   const components = useMemo(() => componentsQuery.data || [], [componentsQuery.data]);
   const filteredComponents = useMemo(() => {

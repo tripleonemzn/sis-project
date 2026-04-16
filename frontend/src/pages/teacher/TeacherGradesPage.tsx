@@ -779,9 +779,7 @@ export const TeacherGradesPage = () => {
       }
     });
 
-    return Array.from(optionMap.entries())
-      .sort((left, right) => left[1].localeCompare(right[1], 'id', { sensitivity: 'base' }))
-      .map(([value, label]) => ({ value, label }));
+    return Array.from(optionMap.entries()).map(([value, label]) => ({ value, label }));
   }, [availableReligionKeys, competencySettings._byReligion, isReligionSubject, students]);
   const activeCompetencyThresholdSet = isReligionSubject
     ? getReligionThresholdSet(competencySettings, selectedReligionKey)
