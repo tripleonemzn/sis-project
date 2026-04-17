@@ -4,6 +4,7 @@ import { Modal, Pressable, Text, View } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { BRAND_COLORS } from '../config/brand';
 import { AppAlertPayload, type AppAlertButton, subscribeAppAlert } from '../lib/ui/appAlert';
+import { useAppTextScale } from '../theme/AppTextScaleProvider';
 
 type QueueItem = AppAlertPayload & { id: number };
 
@@ -92,6 +93,7 @@ function getTonePalette(tone: AlertTone) {
 
 export function AppAlertHost() {
   const insets = useSafeAreaInsets();
+  const { scaleFont, scaleLineHeight, fontSizes } = useAppTextScale();
   const queueRef = useRef<QueueItem[]>([]);
   const seedRef = useRef(1);
   const [activeAlert, setActiveAlert] = useState<QueueItem | null>(null);
@@ -209,10 +211,25 @@ export function AppAlertHost() {
             <Feather name={palette.icon} size={18} color={palette.iconColor} />
           </View>
 
-          <Text style={{ color: palette.titleColor, fontSize: 20, fontWeight: '700', marginBottom: 6 }}>
+          <Text
+            style={{
+              color: palette.titleColor,
+              fontSize: scaleFont(20),
+              lineHeight: scaleLineHeight(28),
+              fontWeight: '700',
+              marginBottom: 6,
+            }}
+          >
             {activeAlert.title || 'Informasi'}
           </Text>
-          <Text style={{ color: palette.messageColor, fontSize: 14, marginBottom: 14, lineHeight: 21 }}>
+          <Text
+            style={{
+              color: palette.messageColor,
+              fontSize: scaleFont(14),
+              lineHeight: scaleLineHeight(21),
+              marginBottom: 14,
+            }}
+          >
             {activeAlert.message || 'Pilih aksi yang ingin dilakukan.'}
           </Text>
 
@@ -245,6 +262,7 @@ export function AppAlertHost() {
                     style={{
                       color: primary ? BRAND_COLORS.white : cancel ? BRAND_COLORS.textMuted : palette.secondaryText,
                       fontWeight: '700',
+                      fontSize: fontSizes.label,
                     }}
                   >
                     {button.text || (index === buttons.length - 1 ? 'OK' : 'Batal')}

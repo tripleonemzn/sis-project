@@ -2,6 +2,7 @@ import { useCallback, useEffect, useRef, useState } from 'react';
 import { Pressable, Text, View } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { AppNoticePayload, NoticeTone, subscribeAppNotice } from '../lib/ui/notice';
+import { useAppTextScale } from '../theme/AppTextScaleProvider';
 
 type QueueItem = AppNoticePayload & { id: number };
 
@@ -34,6 +35,7 @@ function toneStyle(tone: NoticeTone) {
 
 export function AppNoticeHost() {
   const insets = useSafeAreaInsets();
+  const { scaleFont, scaleLineHeight } = useAppTextScale();
   const [activeNotice, setActiveNotice] = useState<QueueItem | null>(null);
   const queueRef = useRef<QueueItem[]>([]);
   const timerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
@@ -116,8 +118,10 @@ export function AppNoticeHost() {
           elevation: 4,
         }}
       >
-        <Text style={{ color: palette.title, fontWeight: '700', fontSize: 13 }}>{title}</Text>
-        <Text style={{ color: palette.message, marginTop: 2 }}>{activeNotice.message}</Text>
+        <Text style={{ color: palette.title, fontWeight: '700', fontSize: scaleFont(13) }}>{title}</Text>
+        <Text style={{ color: palette.message, marginTop: 2, fontSize: scaleFont(13), lineHeight: scaleLineHeight(20) }}>
+          {activeNotice.message}
+        </Text>
       </Pressable>
     </View>
   );

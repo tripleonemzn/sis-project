@@ -651,10 +651,13 @@ function getProfileValidationMessage(
 }
 
 function ProfileRow({ label, value }: { label: string; value?: string | null }) {
+  const { scaleFont, scaleLineHeight } = useAppTextScale();
   return (
     <View style={{ marginBottom: 10 }}>
-      <Text style={{ fontSize: 12, color: '#64748b', marginBottom: 3 }}>{label}</Text>
-      <Text style={{ fontSize: 14, color: '#0f172a' }}>{value && value.trim() ? value : '-'}</Text>
+      <Text style={{ fontSize: scaleFont(12), color: '#64748b', marginBottom: 3 }}>{label}</Text>
+      <Text style={{ fontSize: scaleFont(14), lineHeight: scaleLineHeight(21), color: '#0f172a' }}>
+        {value && value.trim() ? value : '-'}
+      </Text>
     </View>
   );
 }
@@ -671,10 +674,11 @@ function FormField({
   helperText,
   maxLength,
 }: FormFieldProps) {
+  const { scaleFont, scaleLineHeight, fontSizes } = useAppTextScale();
   const resolvedPlaceholder = placeholder || `Masukkan ${label.toLowerCase()}`;
   return (
     <View style={{ marginBottom: 10 }}>
-      <Text style={{ fontSize: 12, color: '#64748b', marginBottom: 4 }}>{label}</Text>
+      <Text style={{ fontSize: scaleFont(12), color: '#64748b', marginBottom: 4 }}>{label}</Text>
       <TextInput
         value={value}
         onChangeText={onChangeText}
@@ -693,11 +697,17 @@ function FormField({
           paddingHorizontal: 12,
           paddingVertical: multiline ? 10 : 9,
           color: '#0f172a',
+          fontSize: fontSizes.body,
+          lineHeight: multiline ? scaleLineHeight(20) : undefined,
           backgroundColor: '#fff',
           minHeight: multiline ? 88 : undefined,
         }}
       />
-      {helperText ? <Text style={{ marginTop: 4, fontSize: 11, color: '#64748b' }}>{helperText}</Text> : null}
+      {helperText ? (
+        <Text style={{ marginTop: 4, fontSize: scaleFont(11), lineHeight: scaleLineHeight(17), color: '#64748b' }}>
+          {helperText}
+        </Text>
+      ) : null}
     </View>
   );
 }
@@ -737,6 +747,7 @@ function ProfileInsightCard({
   accentColor: string;
   onPress: () => void;
 }) {
+  const { scaleFont, scaleLineHeight } = useAppTextScale();
   return (
     <Pressable
       onPress={onPress}
@@ -764,10 +775,10 @@ function ProfileInsightCard({
       >
         <Feather name={iconName} size={17} color={accentColor} />
       </View>
-      <Text style={{ color: '#0f172a', fontSize: 11, fontWeight: '700', lineHeight: 15 }} numberOfLines={2}>
+      <Text style={{ color: '#0f172a', fontSize: scaleFont(11), fontWeight: '700', lineHeight: scaleLineHeight(15) }} numberOfLines={2}>
         {title}
       </Text>
-      <Text style={{ color: '#475569', fontSize: 11, lineHeight: 15, marginTop: 4 }} numberOfLines={3}>
+      <Text style={{ color: '#475569', fontSize: scaleFont(11), lineHeight: scaleLineHeight(15), marginTop: 4 }} numberOfLines={3}>
         {subtitle}
       </Text>
     </Pressable>
@@ -780,7 +791,7 @@ export default function ProfileScreen() {
   const insets = useSafeAreaInsets();
   const { isAuthenticated, isLoading } = useAuth();
   const { colors } = useAppTheme();
-  const { typography } = useAppTextScale();
+  const { typography, scaleFont, scaleLineHeight, fontSizes } = useAppTextScale();
   const profileQuery = useProfileQuery(isAuthenticated);
   const pageContentPadding = getStandardPagePadding(insets, { bottom: 120 });
   const [activeTab, setActiveTab] = useState<ProfileTabId>('account');
@@ -1589,7 +1600,7 @@ export default function ProfileScreen() {
                 paddingVertical: 6,
               }}
             >
-              <Text style={{ color: colors.textMuted, fontSize: 12, fontWeight: '700' }}>
+              <Text style={{ color: colors.textMuted, fontSize: scaleFont(12), fontWeight: '700' }}>
                 {ROLE_LABELS[profile.role] || profile.role}
               </Text>
             </View>
@@ -1605,7 +1616,7 @@ export default function ProfileScreen() {
                 paddingVertical: 6,
               }}
             >
-              <Text style={{ color: verificationMeta.textColor, fontSize: 12, fontWeight: '700' }}>
+              <Text style={{ color: verificationMeta.textColor, fontSize: scaleFont(12), fontWeight: '700' }}>
                 {verificationMeta.label}
               </Text>
             </View>
@@ -1654,7 +1665,7 @@ export default function ProfileScreen() {
                 alignItems: 'center',
               }}
             >
-              <Text style={{ color: '#1d4ed8', fontWeight: '700' }}>Buka Formulir PPDB</Text>
+              <Text style={{ color: '#1d4ed8', fontWeight: '700', fontSize: fontSizes.label }}>Buka Formulir PPDB</Text>
             </Pressable>
           ) : null}
 
@@ -1679,7 +1690,9 @@ export default function ProfileScreen() {
             }}
           >
             <Feather name="printer" size={16} color="#334155" />
-            <Text style={{ color: '#334155', fontWeight: '700', marginLeft: 8 }}>Lihat & Print Profil</Text>
+            <Text style={{ color: '#334155', fontWeight: '700', fontSize: fontSizes.label, marginLeft: 8 }}>
+              Lihat & Print Profil
+            </Text>
           </Pressable>
 
           <MobileTextScalePreferenceCard userId={profile.id} currentPreferences={profile.preferences} />
@@ -1758,10 +1771,10 @@ export default function ProfileScreen() {
                       </View>
                     ) : null}
                     <View style={{ flex: 1 }}>
-                      <Text style={{ color: '#0f172a', fontSize: 16, fontWeight: '700' }}>
+                      <Text style={{ color: '#0f172a', fontSize: scaleFont(16), lineHeight: scaleLineHeight(23), fontWeight: '700' }}>
                         {activeInsightMeta?.title || 'Detail Profil'}
                       </Text>
-                      <Text style={{ color: '#64748b', fontSize: 12, marginTop: 2 }}>
+                      <Text style={{ color: '#64748b', fontSize: scaleFont(12), lineHeight: scaleLineHeight(18), marginTop: 2 }}>
                         Ketuk area luar untuk menutup popup ini.
                       </Text>
                     </View>
@@ -1793,13 +1806,13 @@ export default function ProfileScreen() {
                           padding: 14,
                         }}
                       >
-                        <Text style={{ color: '#2563eb', fontSize: 11, fontWeight: '700', letterSpacing: 1.3 }}>
+                        <Text style={{ color: '#2563eb', fontSize: scaleFont(11), fontWeight: '700', letterSpacing: 1.3 }}>
                           STRUKTUR PROFIL
                         </Text>
-                        <Text style={{ color: '#0f172a', fontSize: 20, fontWeight: '700', marginTop: 8 }}>
+                        <Text style={{ color: '#0f172a', fontSize: scaleFont(20), lineHeight: scaleLineHeight(28), fontWeight: '700', marginTop: 8 }}>
                           {ROLE_LABELS[profile.role] || profile.role}
                         </Text>
-                        <Text style={{ color: '#475569', fontSize: 13, lineHeight: 20, marginTop: 10 }}>
+                        <Text style={{ color: '#475569', fontSize: scaleFont(13), lineHeight: scaleLineHeight(20), marginTop: 10 }}>
                           {profileCopy.readinessHelper}
                         </Text>
                       </View>
@@ -1818,7 +1831,7 @@ export default function ProfileScreen() {
                               marginBottom: 8,
                             }}
                           >
-                            <Text style={{ color: '#475569', fontSize: 13, lineHeight: 19 }}>{line}</Text>
+                            <Text style={{ color: '#475569', fontSize: scaleFont(13), lineHeight: scaleLineHeight(19) }}>{line}</Text>
                           </View>
                         ))}
                       </View>
@@ -1829,8 +1842,10 @@ export default function ProfileScreen() {
                     <>
                       <View style={{ flexDirection: 'row', justifyContent: 'space-between', alignItems: 'flex-start' }}>
                         <View style={{ flex: 1, paddingRight: 12 }}>
-                          <Text style={{ color: '#0f172a', fontSize: 20, fontWeight: '700' }}>{completeness.percent}%</Text>
-                          <Text style={{ color: '#64748b', fontSize: 13, marginTop: 4, lineHeight: 19 }}>
+                          <Text style={{ color: '#0f172a', fontSize: scaleFont(20), lineHeight: scaleLineHeight(28), fontWeight: '700' }}>
+                            {completeness.percent}%
+                          </Text>
+                          <Text style={{ color: '#64748b', fontSize: scaleFont(13), marginTop: 4, lineHeight: scaleLineHeight(19) }}>
                             {completeness.completed} dari {completeness.total} data prioritas sudah terisi
                           </Text>
                         </View>
@@ -1842,7 +1857,7 @@ export default function ProfileScreen() {
                             paddingVertical: 8,
                           }}
                         >
-                          <Text style={{ color: '#334155', fontSize: 13, fontWeight: '700' }}>
+                          <Text style={{ color: '#334155', fontSize: scaleFont(13), fontWeight: '700' }}>
                             {completeness.missing.length === 0 ? 'Siap' : `${completeness.missing.length} belum`}
                           </Text>
                         </View>
@@ -1867,7 +1882,7 @@ export default function ProfileScreen() {
                         />
                       </View>
 
-                      <Text style={{ color: '#475569', fontSize: 13, lineHeight: 20, marginTop: 12 }}>
+                      <Text style={{ color: '#475569', fontSize: scaleFont(13), lineHeight: scaleLineHeight(20), marginTop: 12 }}>
                         {completeness.missing.length === 0
                           ? 'Data prioritas yang tersedia di sistem sudah terisi rapi.'
                           : `Masih perlu dilengkapi: ${completeness.missing.join(', ')}.`}
@@ -1887,8 +1902,10 @@ export default function ProfileScreen() {
                           marginBottom: 10,
                         }}
                       >
-                        <Text style={{ color: '#94a3b8', fontSize: 11, fontWeight: '700', letterSpacing: 1.2 }}>USERNAME</Text>
-                        <Text style={{ color: '#0f172a', fontSize: 14, fontWeight: '700', marginTop: 4 }}>{profile.username}</Text>
+                        <Text style={{ color: '#94a3b8', fontSize: scaleFont(11), fontWeight: '700', letterSpacing: 1.2 }}>USERNAME</Text>
+                        <Text style={{ color: '#0f172a', fontSize: scaleFont(14), lineHeight: scaleLineHeight(21), fontWeight: '700', marginTop: 4 }}>
+                          {profile.username}
+                        </Text>
                       </View>
                       <View
                         style={{
@@ -1900,8 +1917,10 @@ export default function ProfileScreen() {
                           marginBottom: 14,
                         }}
                       >
-                        <Text style={{ color: '#94a3b8', fontSize: 11, fontWeight: '700', letterSpacing: 1.2 }}>STATUS AKUN</Text>
-                        <Text style={{ color: '#0f172a', fontSize: 14, fontWeight: '700', marginTop: 4 }}>{verificationMeta.label}</Text>
+                        <Text style={{ color: '#94a3b8', fontSize: scaleFont(11), fontWeight: '700', letterSpacing: 1.2 }}>STATUS AKUN</Text>
+                        <Text style={{ color: '#0f172a', fontSize: scaleFont(14), lineHeight: scaleLineHeight(21), fontWeight: '700', marginTop: 4 }}>
+                          {verificationMeta.label}
+                        </Text>
                       </View>
                       {summaryLines.map((line) => (
                         <View
@@ -1916,7 +1935,7 @@ export default function ProfileScreen() {
                             marginBottom: 8,
                           }}
                         >
-                          <Text style={{ color: '#5b21b6', fontSize: 13, lineHeight: 19 }}>{line}</Text>
+                          <Text style={{ color: '#5b21b6', fontSize: scaleFont(13), lineHeight: scaleLineHeight(19) }}>{line}</Text>
                         </View>
                       ))}
                     </>
@@ -1928,7 +1947,7 @@ export default function ProfileScreen() {
 
           {activeTab === 'account' ? (
             <View style={cardStyle}>
-            <Text style={{ color: '#0f172a', fontWeight: '700', marginBottom: 10 }}>Data Akun</Text>
+            <Text style={{ color: '#0f172a', fontWeight: '700', fontSize: scaleFont(15), marginBottom: 10 }}>Data Akun</Text>
             <ProfileRow label="Username" value={profile.username} />
             <ProfileRow label="Role" value={profile.role} />
             {isStudent ? (
@@ -1953,15 +1972,15 @@ export default function ProfileScreen() {
 
             {isParent ? (
               <View style={{ marginTop: 2 }}>
-                <Text style={{ fontSize: 12, color: '#64748b', marginBottom: 4 }}>Anak Terhubung</Text>
+                <Text style={{ fontSize: scaleFont(12), color: '#64748b', marginBottom: 4 }}>Anak Terhubung</Text>
                 {(profile.children || []).length > 0 ? (
                   (profile.children || []).map((child) => (
-                    <Text key={child.id} style={{ color: '#0f172a', fontSize: 13, marginBottom: 3 }}>
+                    <Text key={child.id} style={{ color: '#0f172a', fontSize: scaleFont(13), lineHeight: scaleLineHeight(20), marginBottom: 3 }}>
                       {(child.nisn ? `${child.nisn} - ` : '') + child.name}
                     </Text>
                   ))
                 ) : (
-                  <Text style={{ color: '#64748b' }}>Tidak ada data anak.</Text>
+                  <Text style={{ color: '#64748b', fontSize: fontSizes.body, lineHeight: scaleLineHeight(20) }}>Tidak ada data anak.</Text>
                 )}
               </View>
             ) : null}
@@ -1999,11 +2018,11 @@ export default function ProfileScreen() {
                     resizeMode="cover"
                   />
                 ) : (
-                  <Text style={{ color: '#64748b', fontSize: 11 }}>No Photo</Text>
+                  <Text style={{ color: '#64748b', fontSize: scaleFont(11) }}>No Photo</Text>
                 )}
               </View>
               <View style={{ flex: 1 }}>
-                <Text style={{ color: '#334155', fontSize: 12, marginBottom: 6 }}>
+                <Text style={{ color: '#334155', fontSize: scaleFont(12), lineHeight: scaleLineHeight(18), marginBottom: 6 }}>
                   Foto Profil (JPG/PNG max 500KB)
                 </Text>
                 <Pressable
@@ -2020,12 +2039,12 @@ export default function ProfileScreen() {
                     alignItems: 'center',
                   }}
                 >
-                  <Text style={{ color: '#1d4ed8', fontWeight: '700' }}>
+                  <Text style={{ color: '#1d4ed8', fontWeight: '700', fontSize: fontSizes.label }}>
                     {photoUploading ? 'Mengunggah Foto...' : 'Upload Foto'}
                   </Text>
                 </Pressable>
                 {!canUploadPhoto ? (
-                  <Text style={{ color: '#64748b', fontSize: 11, marginTop: 6 }}>
+                  <Text style={{ color: '#64748b', fontSize: scaleFont(11), lineHeight: scaleLineHeight(17), marginTop: 6 }}>
                     Upload foto tidak tersedia untuk role ini.
                   </Text>
                 ) : null}

@@ -9,6 +9,7 @@ import { Feather } from '@expo/vector-icons';
 import { BRAND_COLORS } from '../../src/config/brand';
 import { notifyApiError, notifySuccess } from '../../src/lib/ui/feedback';
 import { useUnreadNotificationsQuery } from '../../src/features/notifications/useUnreadNotificationsQuery';
+import { useAppTextScale } from '../../src/theme/AppTextScaleProvider';
 
 export default function AppProtectedLayout() {
   const { isLoading, isAuthenticated, user, logout } = useAuth();
@@ -17,6 +18,7 @@ export default function AppProtectedLayout() {
     !['STUDENT', 'CALON_SISWA', 'UMUM'].includes(String(user?.role || '').trim().toUpperCase());
   useMobileRealtimeSync(shouldEnableRealtime);
   const insets = useSafeAreaInsets();
+  const { scaleFont, scaleLineHeight, fontSizes } = useAppTextScale();
   const router = useRouter();
   const [isLogoutConfirmVisible, setIsLogoutConfirmVisible] = useState(false);
   const [isLoggingOut, setIsLoggingOut] = useState(false);
@@ -91,7 +93,9 @@ export default function AppProtectedLayout() {
             >
               <Pressable onPress={() => router.push('/profile')} style={{ alignItems: 'center', width: 64 }}>
                 <Feather name="user" size={17} color={BRAND_COLORS.white} />
-                <Text style={{ color: BRAND_COLORS.white, fontSize: 11, marginTop: 2 }}>Profil</Text>
+                <Text style={{ color: BRAND_COLORS.white, fontSize: scaleFont(11), lineHeight: scaleLineHeight(16), marginTop: 2 }}>
+                  Profil
+                </Text>
               </Pressable>
 
               <Pressable onPress={handleNotificationPress} style={{ alignItems: 'center', width: 64 }}>
@@ -114,18 +118,20 @@ export default function AppProtectedLayout() {
                         justifyContent: 'center',
                       }}
                     >
-                      <Text style={{ color: '#fff', fontSize: 9, fontWeight: '700' }}>
+                      <Text style={{ color: '#fff', fontSize: scaleFont(9), lineHeight: scaleLineHeight(12), fontWeight: '700' }}>
                         {unreadCount > 99 ? '99+' : unreadCount}
                       </Text>
                     </View>
                   ) : null}
                 </View>
-                <Text style={{ color: BRAND_COLORS.white, fontSize: 11, marginTop: 2 }}>Notifikasi</Text>
+                <Text style={{ color: BRAND_COLORS.white, fontSize: scaleFont(11), lineHeight: scaleLineHeight(16), marginTop: 2 }}>
+                  Notifikasi
+                </Text>
               </Pressable>
 
               <Pressable onPress={handleLogout} disabled={isLoggingOut} style={{ alignItems: 'center', width: 64 }}>
                 <Feather name="log-out" size={17} color={BRAND_COLORS.white} />
-                <Text style={{ color: BRAND_COLORS.white, fontSize: 11, marginTop: 2 }}>
+                <Text style={{ color: BRAND_COLORS.white, fontSize: scaleFont(11), lineHeight: scaleLineHeight(16), marginTop: 2 }}>
                   {isLoggingOut ? 'Proses' : 'Logout'}
                 </Text>
               </Pressable>
@@ -179,10 +185,25 @@ export default function AppProtectedLayout() {
                 >
                   <Feather name="log-out" size={18} color={BRAND_COLORS.blue} />
                 </View>
-                <Text style={{ color: BRAND_COLORS.textDark, fontSize: 20, fontWeight: '700', marginBottom: 6 }}>
+                <Text
+                  style={{
+                    color: BRAND_COLORS.textDark,
+                    fontSize: scaleFont(20),
+                    lineHeight: scaleLineHeight(28),
+                    fontWeight: '700',
+                    marginBottom: 6,
+                  }}
+                >
                   Konfirmasi Logout
                 </Text>
-                <Text style={{ color: BRAND_COLORS.textMuted, fontSize: 14, marginBottom: 14 }}>
+                <Text
+                  style={{
+                    color: BRAND_COLORS.textMuted,
+                    fontSize: scaleFont(14),
+                    lineHeight: scaleLineHeight(22),
+                    marginBottom: 14,
+                  }}
+                >
                   Anda akan keluar dari sesi saat ini. Lanjutkan logout?
                 </Text>
 
@@ -201,7 +222,7 @@ export default function AppProtectedLayout() {
                       opacity: isLoggingOut ? 0.6 : 1,
                     }}
                   >
-                    <Text style={{ color: BRAND_COLORS.textMuted, fontWeight: '700' }}>Batal</Text>
+                    <Text style={{ color: BRAND_COLORS.textMuted, fontWeight: '700', fontSize: fontSizes.label }}>Batal</Text>
                   </Pressable>
                   <Pressable
                     disabled={isLoggingOut}
@@ -217,7 +238,7 @@ export default function AppProtectedLayout() {
                       opacity: isLoggingOut ? 0.6 : 1,
                     }}
                   >
-                    <Text style={{ color: BRAND_COLORS.white, fontWeight: '700' }}>
+                    <Text style={{ color: BRAND_COLORS.white, fontWeight: '700', fontSize: fontSizes.label }}>
                       {isLoggingOut ? 'Memproses...' : 'Logout'}
                     </Text>
                   </Pressable>
