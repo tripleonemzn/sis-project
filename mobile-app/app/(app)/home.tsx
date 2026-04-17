@@ -71,7 +71,7 @@ import {
 } from '../../src/features/tutor/tutorAccess';
 import { osisApi } from '../../src/features/osis/osisApi';
 import { useAppTheme } from '../../src/theme/AppThemeProvider';
-import { MOBILE_FONT_SIZES, MOBILE_TYPOGRAPHY } from '../../src/theme/typography';
+import { useAppTextScale } from '../../src/theme/AppTextScaleProvider';
 
 type FeatherIconName = ComponentProps<typeof Feather>['name'];
 type ManagedInventoryRoom = {
@@ -809,6 +809,7 @@ export default function HomeScreen() {
   const insets = useSafeAreaInsets();
   const { user, isAuthenticated, isLoading, logout } = useAuth();
   const { colors, mode } = useAppTheme();
+  const { scaleFont, scaleLineHeight, fontSizes, typography } = useAppTextScale();
   const isDarkModeActive = mode === 'dark';
   const isScreenActive = useIsScreenActive();
   const unreadNotificationsQuery = useUnreadNotificationsQuery(isAuthenticated && isScreenActive, isScreenActive);
@@ -2060,14 +2061,14 @@ export default function HomeScreen() {
                 </View>
                 {labelPosition === 'top' ? (
                   <>
-                    <Text style={{ color: colors.textMuted, fontSize: 10, textAlign: 'center', marginTop: 6 }} numberOfLines={2}>
+                    <Text style={{ color: colors.textMuted, fontSize: scaleFont(10), textAlign: 'center', marginTop: 6 }} numberOfLines={2}>
                       {item.label}
                     </Text>
                     <Text
                       style={{
                         color: valueColor,
                         fontWeight: '700',
-                        fontSize: item.value.length > 12 ? MOBILE_FONT_SIZES.label : 15,
+                        fontSize: item.value.length > 12 ? fontSizes.label : scaleFont(15),
                         marginTop: 2,
                       }}
                     >
@@ -2080,13 +2081,13 @@ export default function HomeScreen() {
                       style={{
                         color: valueColor,
                         fontWeight: '700',
-                        fontSize: item.value.length > 12 ? MOBILE_FONT_SIZES.label : 15,
+                        fontSize: item.value.length > 12 ? fontSizes.label : scaleFont(15),
                         marginTop: 6,
                       }}
                     >
                       {item.value}
                     </Text>
-                    <Text style={{ color: colors.textMuted, fontSize: 10, textAlign: 'center' }} numberOfLines={2}>
+                    <Text style={{ color: colors.textMuted, fontSize: scaleFont(10), textAlign: 'center' }} numberOfLines={2}>
                       {isOpeningThisMenu ? 'Membuka...' : item.label}
                     </Text>
                   </>
@@ -2142,10 +2143,10 @@ export default function HomeScreen() {
                   <Feather name={item.icon} size={18} color={iconColor} />
                 )}
               </View>
-              <Text style={{ color: metricColor, fontWeight: '700', fontSize: MOBILE_FONT_SIZES.metricCompact, marginTop: 6 }}>
+              <Text style={{ color: metricColor, fontWeight: '700', fontSize: fontSizes.metricCompact, marginTop: 6 }}>
                 {item.value}
               </Text>
-              <Text style={{ color: colors.textMuted, fontSize: MOBILE_FONT_SIZES.micro, textAlign: 'center' }} numberOfLines={2}>
+              <Text style={{ color: colors.textMuted, fontSize: fontSizes.micro, textAlign: 'center' }} numberOfLines={2}>
                 {isOpeningThisMenu ? 'Membuka...' : item.label}
               </Text>
             </Pressable>
@@ -2267,11 +2268,11 @@ export default function HomeScreen() {
             />
           </Pressable>
           <View style={{ flex: 1 }}>
-            <Text style={{ color: colors.textMuted, fontSize: 12 }}>Tahun Ajaran Aktif</Text>
-            <Text style={{ color: colors.text, fontWeight: '700', fontSize: 14 }}>
+            <Text style={{ color: colors.textMuted, fontSize: scaleFont(12) }}>Tahun Ajaran Aktif</Text>
+            <Text style={{ color: colors.text, fontWeight: '700', fontSize: scaleFont(14) }}>
               {activeAcademicYearLabel} ({activeAcademicSemesterLabel})
             </Text>
-            <Text style={{ color: colors.textMuted, fontSize: 12, marginTop: 2 }}>
+            <Text style={{ color: colors.textMuted, fontSize: scaleFont(12), marginTop: 2 }}>
               {todayLabel}
             </Text>
           </View>
@@ -2281,12 +2282,12 @@ export default function HomeScreen() {
           style={{
             marginTop: 12,
             color: colors.text,
-            ...MOBILE_TYPOGRAPHY.pageTitle,
+            ...typography.pageTitle,
           }}
         >
           Halo, {displayName}
         </Text>
-        <Text style={{ color: colors.textMuted, marginTop: 2, marginBottom: 12 }}>
+        <Text style={{ color: colors.textMuted, fontSize: scaleFont(14), lineHeight: scaleLineHeight(22), marginTop: 2, marginBottom: 12 }}>
           {homeSubtitle}
         </Text>
 
@@ -2301,13 +2302,13 @@ export default function HomeScreen() {
               marginBottom: 12,
             }}
           >
-            <Text style={{ color: colors.text, fontWeight: '700', marginBottom: 8 }}>Statistik Mengajar</Text>
+            <Text style={{ color: colors.text, fontWeight: '700', fontSize: scaleFont(15), marginBottom: 8 }}>Statistik Mengajar</Text>
             {teacherAssignmentsQuery.isLoading || teacherScheduleQuery.isLoading ? (
-              <Text style={{ color: colors.textMuted, fontSize: 12 }}>Memuat statistik mengajar...</Text>
+              <Text style={{ color: colors.textMuted, fontSize: scaleFont(12) }}>Memuat statistik mengajar...</Text>
             ) : null}
             {(teacherAssignmentsQuery.isError || teacherScheduleQuery.isError) &&
             !(teacherAssignmentsQuery.isLoading || teacherScheduleQuery.isLoading) ? (
-              <Text style={{ color: isDarkModeActive ? '#fca5a5' : '#b91c1c', fontSize: 12 }}>
+              <Text style={{ color: isDarkModeActive ? '#fca5a5' : '#b91c1c', fontSize: scaleFont(12), lineHeight: scaleLineHeight(18) }}>
                 Gagal memuat statistik mengajar. Tarik layar ke bawah untuk muat ulang.
               </Text>
             ) : null}
@@ -2331,17 +2332,17 @@ export default function HomeScreen() {
               marginBottom: 12,
             }}
           >
-            <Text style={{ color: colors.text, fontWeight: '700', marginBottom: 8 }}>Statistik Admin</Text>
+            <Text style={{ color: colors.text, fontWeight: '700', fontSize: scaleFont(15), marginBottom: 8 }}>Statistik Admin</Text>
             {adminStatsQuery.data?.activeYearName ? (
-              <Text style={{ color: colors.textMuted, fontSize: 12, marginBottom: 8 }}>
+              <Text style={{ color: colors.textMuted, fontSize: scaleFont(12), marginBottom: 8 }}>
                 Tahun ajaran aktif: {adminStatsQuery.data.activeYearName}
               </Text>
             ) : null}
             {adminStatsQuery.isLoading ? (
-              <Text style={{ color: colors.textMuted, fontSize: 12 }}>Memuat statistik admin...</Text>
+              <Text style={{ color: colors.textMuted, fontSize: scaleFont(12) }}>Memuat statistik admin...</Text>
             ) : null}
             {adminStatsQuery.isError && !adminStatsQuery.isLoading ? (
-              <Text style={{ color: isDarkModeActive ? '#fca5a5' : '#b91c1c', fontSize: 12 }}>
+              <Text style={{ color: isDarkModeActive ? '#fca5a5' : '#b91c1c', fontSize: scaleFont(12), lineHeight: scaleLineHeight(18) }}>
                 Gagal memuat statistik admin. Tarik layar ke bawah untuk muat ulang.
               </Text>
             ) : null}
@@ -2360,18 +2361,18 @@ export default function HomeScreen() {
               marginBottom: 12,
             }}
           >
-            <Text style={{ color: colors.text, fontWeight: '700', marginBottom: 8 }}>Dashboard Kepala Sekolah</Text>
+            <Text style={{ color: colors.text, fontWeight: '700', fontSize: scaleFont(15), marginBottom: 8 }}>Dashboard Kepala Sekolah</Text>
             {principalStatsQuery.isLoading ? (
-              <Text style={{ color: colors.textMuted, fontSize: 12 }}>Memuat ringkasan kepala sekolah...</Text>
+              <Text style={{ color: colors.textMuted, fontSize: scaleFont(12) }}>Memuat ringkasan kepala sekolah...</Text>
             ) : null}
             {principalStatsQuery.isError && !principalStatsQuery.isLoading ? (
-              <Text style={{ color: isDarkModeActive ? '#fca5a5' : '#b91c1c', fontSize: 12 }}>
+              <Text style={{ color: isDarkModeActive ? '#fca5a5' : '#b91c1c', fontSize: scaleFont(12), lineHeight: scaleLineHeight(18) }}>
                 Gagal memuat ringkasan kepala sekolah. Tarik layar ke bawah untuk muat ulang.
               </Text>
             ) : null}
             {!principalStatsQuery.isLoading && !principalStatsQuery.isError ? (
               <>
-                <Text style={{ color: colors.textMuted, fontSize: 12, marginBottom: 8 }}>
+                <Text style={{ color: colors.textMuted, fontSize: scaleFont(12), marginBottom: 8 }}>
                   Tahun Ajaran Aktif: {principalStatsQuery.data?.activeAcademicYearName || '-'}
                 </Text>
                 {renderStatGrid(principalStatCards)}
@@ -2395,15 +2396,15 @@ export default function HomeScreen() {
               {getStaffSectionTitle(profile)}
             </Text>
             {staffStatsQuery.data?.activeAcademicYearName ? (
-              <Text style={{ color: colors.textMuted, fontSize: 12, marginBottom: 8 }}>
+              <Text style={{ color: colors.textMuted, fontSize: scaleFont(12), marginBottom: 8 }}>
                 Tahun ajaran aktif: {staffStatsQuery.data.activeAcademicYearName}
               </Text>
             ) : null}
             {staffStatsQuery.isLoading ? (
-              <Text style={{ color: colors.textMuted, fontSize: 12 }}>Memuat statistik staff...</Text>
+              <Text style={{ color: colors.textMuted, fontSize: scaleFont(12) }}>Memuat statistik staff...</Text>
             ) : null}
             {staffStatsQuery.isError && !staffStatsQuery.isLoading ? (
-              <Text style={{ color: isDarkModeActive ? '#fca5a5' : '#b91c1c', fontSize: 12 }}>
+              <Text style={{ color: isDarkModeActive ? '#fca5a5' : '#b91c1c', fontSize: scaleFont(12), lineHeight: scaleLineHeight(18) }}>
                 Gagal memuat statistik staff. Tarik layar ke bawah untuk muat ulang.
               </Text>
             ) : null}
@@ -2422,12 +2423,12 @@ export default function HomeScreen() {
               marginBottom: 12,
             }}
           >
-            <Text style={{ color: colors.text, fontWeight: '700', marginBottom: 8 }}>Ringkasan Keuangan Anak</Text>
+            <Text style={{ color: colors.text, fontWeight: '700', fontSize: scaleFont(15), marginBottom: 8 }}>Ringkasan Keuangan Anak</Text>
             {parentOverviewQuery.isLoading ? (
-              <Text style={{ color: colors.textMuted, fontSize: 12 }}>Memuat ringkasan keuangan...</Text>
+              <Text style={{ color: colors.textMuted, fontSize: scaleFont(12) }}>Memuat ringkasan keuangan...</Text>
             ) : null}
             {parentOverviewQuery.isError && !parentOverviewQuery.isLoading ? (
-              <Text style={{ color: isDarkModeActive ? '#fca5a5' : '#b91c1c', fontSize: 12 }}>
+              <Text style={{ color: isDarkModeActive ? '#fca5a5' : '#b91c1c', fontSize: scaleFont(12), lineHeight: scaleLineHeight(18) }}>
                 Gagal memuat ringkasan keuangan. Tarik layar ke bawah untuk muat ulang.
               </Text>
             ) : null}
@@ -2447,7 +2448,7 @@ export default function HomeScreen() {
                 marginBottom: 12,
               }}
             >
-              <Text style={{ color: colors.text, fontWeight: '700', marginBottom: 8 }}>Info Siswa</Text>
+              <Text style={{ color: colors.text, fontWeight: '700', fontSize: scaleFont(15), marginBottom: 8 }}>Info Siswa</Text>
               {renderStatGrid(studentStatCards)}
             </View>
 
@@ -2461,12 +2462,12 @@ export default function HomeScreen() {
                 marginBottom: 12,
               }}
             >
-              <Text style={{ color: colors.text, fontWeight: '700', marginBottom: 8 }}>Jadwal Pelajaran Hari Ini</Text>
+              <Text style={{ color: colors.text, fontWeight: '700', fontSize: scaleFont(15), marginBottom: 8 }}>Jadwal Pelajaran Hari Ini</Text>
               {studentScheduleQuery.isLoading ? (
-                <Text style={{ color: colors.textMuted, fontSize: 12 }}>Memuat jadwal pelajaran hari ini...</Text>
+                <Text style={{ color: colors.textMuted, fontSize: scaleFont(12) }}>Memuat jadwal pelajaran hari ini...</Text>
               ) : null}
               {studentScheduleQuery.isError && !studentScheduleQuery.isLoading ? (
-                <Text style={{ color: isDarkModeActive ? '#fca5a5' : '#b91c1c', fontSize: 12 }}>
+                <Text style={{ color: isDarkModeActive ? '#fca5a5' : '#b91c1c', fontSize: scaleFont(12), lineHeight: scaleLineHeight(18) }}>
                   Gagal memuat jadwal pelajaran. Tarik layar ke bawah untuk muat ulang.
                 </Text>
               ) : null}
@@ -2499,23 +2500,23 @@ export default function HomeScreen() {
                             marginRight: 10,
                           }}
                         >
-                          <Text style={{ color: isDarkModeActive ? '#bfdbfe' : '#2563eb', fontWeight: '600', fontSize: 10 }}>
+                          <Text style={{ color: isDarkModeActive ? '#bfdbfe' : '#2563eb', fontWeight: '600', fontSize: scaleFont(10) }}>
                             Jam ke
                           </Text>
-                          <Text style={{ color: isDarkModeActive ? '#dbeafe' : '#1d4ed8', fontWeight: '800', fontSize: 18, marginTop: 2 }}>
+                          <Text style={{ color: isDarkModeActive ? '#dbeafe' : '#1d4ed8', fontWeight: '800', fontSize: scaleFont(18), marginTop: 2 }}>
                             {group.periodStart === group.periodEnd ? `${group.periodStart}` : `${group.periodStart}-${group.periodEnd}`}
                           </Text>
                           {group.entries.length > 1 ? (
-                            <Text style={{ color: isDarkModeActive ? '#93c5fd' : '#3b82f6', fontWeight: '700', fontSize: 10, marginTop: 1 }}>
+                            <Text style={{ color: isDarkModeActive ? '#93c5fd' : '#3b82f6', fontWeight: '700', fontSize: scaleFont(10), marginTop: 1 }}>
                               {group.entries.length} JP
                             </Text>
                           ) : null}
                         </View>
                         <View style={{ flex: 1 }}>
-                          <Text style={{ color: colors.text, fontWeight: '700', fontSize: 13 }} numberOfLines={1}>
+                          <Text style={{ color: colors.text, fontWeight: '700', fontSize: scaleFont(13) }} numberOfLines={1}>
                             {group.subjectCode ? `${group.subjectCode} • ${group.subjectName}` : group.subjectName}
                           </Text>
-                          <Text style={{ color: colors.textMuted, fontSize: 11, marginTop: 1 }} numberOfLines={1}>
+                          <Text style={{ color: colors.textMuted, fontSize: scaleFont(11), marginTop: 1 }} numberOfLines={1}>
                             Guru {group.teacherName}
                             {group.roomLabel !== '-' ? ` • Ruang ${group.roomLabel}` : ''}
                           </Text>
@@ -2534,7 +2535,7 @@ export default function HomeScreen() {
                             }}
                           >
                             <Feather name="clock" size={12} color={isDarkModeActive ? '#bfdbfe' : '#1d4ed8'} />
-                            <Text style={{ color: isDarkModeActive ? '#bfdbfe' : '#1d4ed8', fontWeight: '700', fontSize: 11 }}>
+                            <Text style={{ color: isDarkModeActive ? '#bfdbfe' : '#1d4ed8', fontWeight: '700', fontSize: scaleFont(11) }}>
                               {group.timeRange}
                             </Text>
                           </View>
@@ -2574,9 +2575,9 @@ export default function HomeScreen() {
                       padding: 12,
                     }}
                   >
-                    <Text style={{ color: colors.textMuted, textAlign: 'center' }}>
-                      Tidak ada jadwal pelajaran untuk hari ini.
-                    </Text>
+                      <Text style={{ color: colors.textMuted, fontSize: scaleFont(13), lineHeight: scaleLineHeight(20), textAlign: 'center' }}>
+                        Tidak ada jadwal pelajaran untuk hari ini.
+                      </Text>
                   </View>
                 )
               ) : null}
@@ -2592,12 +2593,12 @@ export default function HomeScreen() {
                 marginBottom: 12,
               }}
             >
-              <Text style={{ color: colors.text, fontWeight: '700', marginBottom: 8 }}>Jadwal Ujian Terdekat</Text>
+              <Text style={{ color: colors.text, fontWeight: '700', fontSize: scaleFont(15), marginBottom: 8 }}>Jadwal Ujian Terdekat</Text>
               {studentExamsQuery.isLoading ? (
-                <Text style={{ color: colors.textMuted, fontSize: 12 }}>Memuat jadwal ujian terdekat...</Text>
+                <Text style={{ color: colors.textMuted, fontSize: scaleFont(12) }}>Memuat jadwal ujian terdekat...</Text>
               ) : null}
               {studentExamsQuery.isError && !studentExamsQuery.isLoading ? (
-                <Text style={{ color: isDarkModeActive ? '#fca5a5' : '#b91c1c', fontSize: 12 }}>
+                <Text style={{ color: isDarkModeActive ? '#fca5a5' : '#b91c1c', fontSize: scaleFont(12), lineHeight: scaleLineHeight(18) }}>
                   Gagal memuat jadwal ujian. Tarik layar ke bawah untuk muat ulang.
                 </Text>
               ) : null}
@@ -2628,7 +2629,7 @@ export default function HomeScreen() {
                         >
                           <View style={{ flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center' }}>
                             <Text
-                              style={{ color: colors.text, fontWeight: '700', fontSize: 13, flex: 1, paddingRight: 8 }}
+                              style={{ color: colors.text, fontWeight: '700', fontSize: scaleFont(13), flex: 1, paddingRight: 8 }}
                               numberOfLines={1}
                             >
                               {item.packet?.title || '-'}
@@ -2642,21 +2643,21 @@ export default function HomeScreen() {
                                 borderRadius: 999,
                                 paddingHorizontal: 8,
                                 paddingVertical: 2,
-                                fontSize: 10,
+                                fontSize: scaleFont(10),
                                 fontWeight: '700',
                               }}
                             >
                               {tone.label}
                             </Text>
                           </View>
-                          <Text style={{ color: colors.textMuted, fontSize: 11, marginTop: 2 }} numberOfLines={1}>
+                          <Text style={{ color: colors.textMuted, fontSize: scaleFont(11), marginTop: 2 }} numberOfLines={1}>
                             {`${resolveExamSubjectName(item)} • ${examType}`}
                           </Text>
-                          <Text style={{ color: colors.textMuted, fontSize: 11, marginTop: 1 }}>
+                          <Text style={{ color: colors.textMuted, fontSize: scaleFont(11), marginTop: 1 }}>
                             Mulai: {formatExamDateTime(item.startTime)}
                           </Text>
                           {item.isBlocked ? (
-                            <Text style={{ color: isDarkModeActive ? '#fecaca' : '#991b1b', fontSize: 11, marginTop: 2 }}>
+                            <Text style={{ color: isDarkModeActive ? '#fecaca' : '#991b1b', fontSize: scaleFont(11), lineHeight: scaleLineHeight(17), marginTop: 2 }}>
                               Diblokir: {item.blockReason || 'Akses ujian dibatasi wali kelas.'}
                             </Text>
                           ) : null}
@@ -2674,9 +2675,9 @@ export default function HomeScreen() {
                       padding: 12,
                     }}
                   >
-                    <Text style={{ color: colors.textMuted, textAlign: 'center' }}>
-                      Tidak ada jadwal ujian aktif saat ini.
-                    </Text>
+                      <Text style={{ color: colors.textMuted, fontSize: scaleFont(13), lineHeight: scaleLineHeight(20), textAlign: 'center' }}>
+                        Tidak ada jadwal ujian aktif saat ini.
+                      </Text>
                   </View>
                 )
               ) : null}
@@ -2697,14 +2698,14 @@ export default function HomeScreen() {
             }}
           >
             <View style={{ flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', marginBottom: 8 }}>
-              <Text style={{ color: colors.text, fontWeight: '700' }}>Jadwal Hari Ini</Text>
-              <Text style={{ color: colors.textMuted, fontSize: 11 }}>{todayLabel}</Text>
+              <Text style={{ color: colors.text, fontWeight: '700', fontSize: scaleFont(15) }}>Jadwal Hari Ini</Text>
+              <Text style={{ color: colors.textMuted, fontSize: scaleFont(11) }}>{todayLabel}</Text>
             </View>
             {teacherScheduleQuery.isLoading ? (
-              <Text style={{ color: colors.textMuted, fontSize: 12 }}>Memuat jadwal mengajar hari ini...</Text>
+              <Text style={{ color: colors.textMuted, fontSize: scaleFont(12) }}>Memuat jadwal mengajar hari ini...</Text>
             ) : null}
             {teacherScheduleQuery.isError && !teacherScheduleQuery.isLoading ? (
-              <Text style={{ color: isDarkModeActive ? '#fca5a5' : '#b91c1c', fontSize: 12 }}>
+              <Text style={{ color: isDarkModeActive ? '#fca5a5' : '#b91c1c', fontSize: scaleFont(12), lineHeight: scaleLineHeight(18) }}>
                 Gagal memuat jadwal hari ini. Tarik layar ke bawah untuk muat ulang.
               </Text>
             ) : null}
@@ -2739,23 +2740,23 @@ export default function HomeScreen() {
                             marginRight: 10,
                           }}
                         >
-                          <Text style={{ color: isDarkModeActive ? '#bfdbfe' : '#2563eb', fontWeight: '600', fontSize: 10 }}>Jam ke</Text>
-                          <Text style={{ color: isDarkModeActive ? '#dbeafe' : '#1d4ed8', fontWeight: '800', fontSize: 18, marginTop: 2 }}>
+                          <Text style={{ color: isDarkModeActive ? '#bfdbfe' : '#2563eb', fontWeight: '600', fontSize: scaleFont(10) }}>Jam ke</Text>
+                          <Text style={{ color: isDarkModeActive ? '#dbeafe' : '#1d4ed8', fontWeight: '800', fontSize: scaleFont(18), marginTop: 2 }}>
                             {group.periodStart === group.periodEnd
                               ? `${group.periodStart}`
                               : `${group.periodStart}-${group.periodEnd}`}
                           </Text>
                           {group.entries.length > 1 ? (
-                            <Text style={{ color: isDarkModeActive ? '#93c5fd' : '#3b82f6', fontWeight: '700', fontSize: 10, marginTop: 1 }}>
+                            <Text style={{ color: isDarkModeActive ? '#93c5fd' : '#3b82f6', fontWeight: '700', fontSize: scaleFont(10), marginTop: 1 }}>
                               {group.entries.length} JP
                             </Text>
                           ) : null}
                         </View>
                         <View style={{ flex: 1 }}>
-                          <Text style={{ color: colors.text, fontWeight: '700', fontSize: 13 }} numberOfLines={1}>
+                          <Text style={{ color: colors.text, fontWeight: '700', fontSize: scaleFont(13) }} numberOfLines={1}>
                             {group.subjectCode ? `${group.subjectCode} • ${group.subjectName}` : group.subjectName}
                           </Text>
-                          <Text style={{ color: colors.textMuted, fontSize: 11, marginTop: 1 }} numberOfLines={1}>
+                          <Text style={{ color: colors.textMuted, fontSize: scaleFont(11), marginTop: 1 }} numberOfLines={1}>
                             Kelas {group.className}
                             {group.roomLabel !== '-' ? ` • Ruang ${group.roomLabel}` : ''}
                           </Text>
@@ -2774,7 +2775,7 @@ export default function HomeScreen() {
                             }}
                           >
                             <Feather name="clock" size={12} color={isDarkModeActive ? '#bfdbfe' : '#1d4ed8'} />
-                            <Text style={{ color: isDarkModeActive ? '#bfdbfe' : '#1d4ed8', fontWeight: '700', fontSize: 11 }}>{group.timeRange}</Text>
+                            <Text style={{ color: isDarkModeActive ? '#bfdbfe' : '#1d4ed8', fontWeight: '700', fontSize: scaleFont(11) }}>{group.timeRange}</Text>
                           </View>
                         ) : null}
                       </View>
@@ -2813,7 +2814,14 @@ export default function HomeScreen() {
                       opacity: pressed || openingMenuKey === teachingScheduleMenu.key ? 0.82 : 1,
                     })}
                   >
-                    <Text style={{ color: isDarkModeActive ? '#bfdbfe' : BRAND_COLORS.navy, fontWeight: '700' }}>
+                    <Text
+                      style={{
+                        color: isDarkModeActive ? '#bfdbfe' : BRAND_COLORS.navy,
+                        fontWeight: '700',
+                        fontSize: fontSizes.label,
+                        lineHeight: scaleLineHeight(18),
+                      }}
+                    >
                       {openingMenuKey === teachingScheduleMenu.key ? 'Membuka modul...' : 'Lihat Jadwal Lengkap'}
                     </Text>
                   </Pressable>
@@ -2832,7 +2840,9 @@ export default function HomeScreen() {
               marginBottom: 12,
             }}
           >
-            <Text style={{ color: colors.text, fontWeight: '700', marginBottom: 8 }}>Aksi Cepat</Text>
+            <Text style={{ color: colors.text, fontWeight: '700', fontSize: scaleFont(15), marginBottom: 8 }}>
+              Aksi Cepat
+            </Text>
             <View style={{ flexDirection: 'row', flexWrap: 'wrap', marginHorizontal: -4 }}>
               {roleQuickMenus.map((menu) => {
                 const icon = getMenuIcon(menu);
@@ -2872,7 +2882,14 @@ export default function HomeScreen() {
                         )}
                       </View>
                       <Text
-                        style={{ color: colors.text, fontWeight: '700', fontSize: 11, marginTop: 5, textAlign: 'center' }}
+                        style={{
+                          color: colors.text,
+                          fontWeight: '700',
+                          fontSize: scaleFont(11),
+                          lineHeight: scaleLineHeight(16),
+                          marginTop: 5,
+                          textAlign: 'center',
+                        }}
                         numberOfLines={2}
                       >
                         {isOpeningThisMenu ? 'Membuka...' : menu.label}
@@ -2914,15 +2931,15 @@ export default function HomeScreen() {
             }}
           >
             <ActivityIndicator size="small" color={colors.primary} />
-            <Text style={{ color: colors.textMuted, fontSize: 12, marginLeft: 8 }}>
+            <Text style={{ color: colors.textMuted, fontSize: scaleFont(12), lineHeight: scaleLineHeight(18), marginLeft: 8 }}>
               Membuka modul...
             </Text>
           </View>
         ) : null}
 
         <View style={{ flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', marginBottom: 10 }}>
-          <Text style={{ color: colors.text, fontWeight: '700', fontSize: 15 }}>Menu Berdasarkan Kategori</Text>
-          <Text style={{ color: colors.textMuted, fontSize: 12 }}>{profile.role}</Text>
+          <Text style={{ color: colors.text, fontWeight: '700', fontSize: scaleFont(15) }}>Menu Berdasarkan Kategori</Text>
+          <Text style={{ color: colors.textMuted, fontSize: scaleFont(12) }}>{profile.role}</Text>
         </View>
         {menuSearch.trim() ? (
           <View
@@ -2940,13 +2957,13 @@ export default function HomeScreen() {
             }}
           >
             <Text
-              style={{ color: colors.textMuted, fontSize: 12, flex: 1 }}
+              style={{ color: colors.textMuted, fontSize: scaleFont(12), lineHeight: scaleLineHeight(18), flex: 1 }}
               numberOfLines={1}
             >
               Filter pencarian: "{menuSearch}"
             </Text>
             <Pressable onPress={() => setMenuSearch('')}>
-              <Text style={{ color: colors.primary, fontSize: 12, fontWeight: '700', marginLeft: 10 }}>
+              <Text style={{ color: colors.primary, fontSize: scaleFont(12), fontWeight: '700', marginLeft: 10 }}>
                 Hapus
               </Text>
             </Pressable>
@@ -2963,7 +2980,7 @@ export default function HomeScreen() {
               marginBottom: 12,
             }}
           >
-            <Text style={{ color: colors.text, textAlign: 'center', fontWeight: '600' }}>
+            <Text style={{ color: colors.text, textAlign: 'center', fontWeight: '600', fontSize: fontSizes.body, lineHeight: scaleLineHeight(20) }}>
               Menu tidak ditemukan.
             </Text>
           </View>
@@ -3018,8 +3035,8 @@ export default function HomeScreen() {
                 </View>
 
                 <View style={{ flex: 1 }}>
-                  <Text style={{ color: colors.text, fontWeight: '700', fontSize: 15 }}>{group.label}</Text>
-                  <Text style={{ color: colors.textMuted, fontSize: 12, marginTop: 2 }}>
+                  <Text style={{ color: colors.text, fontWeight: '700', fontSize: scaleFont(15) }}>{group.label}</Text>
+                  <Text style={{ color: colors.textMuted, fontSize: scaleFont(12), marginTop: 2 }}>
                     {group.items.length} submenu
                   </Text>
                 </View>
@@ -3073,7 +3090,8 @@ export default function HomeScreen() {
                               style={{
                                 color: colors.text,
                                 fontWeight: '700',
-                                fontSize: 11,
+                                fontSize: scaleFont(11),
+                                lineHeight: scaleLineHeight(16),
                                 marginTop: 6,
                                 textAlign: 'center',
                               }}
@@ -3127,6 +3145,7 @@ export default function HomeScreen() {
                 paddingVertical: 10,
                 paddingHorizontal: 8,
                 color: colors.text,
+                fontSize: fontSizes.body,
               }}
             />
             {menuSearch.trim() ? (
@@ -3160,12 +3179,30 @@ export default function HomeScreen() {
         >
           <Pressable onPress={() => router.replace('/home')} style={{ alignItems: 'center', width: 56 }}>
             <Feather name="home" size={17} color={BRAND_COLORS.gold} />
-            <Text style={{ color: isDarkModeActive ? colors.text : BRAND_COLORS.white, fontSize: 11, marginTop: 2 }}>Home</Text>
+            <Text
+              style={{
+                color: isDarkModeActive ? colors.text : BRAND_COLORS.white,
+                fontSize: scaleFont(11),
+                lineHeight: scaleLineHeight(16),
+                marginTop: 2,
+              }}
+            >
+              Home
+            </Text>
           </Pressable>
 
           <Pressable onPress={() => router.push('/profile')} style={{ alignItems: 'center', width: 56 }}>
             <Feather name="user" size={17} color={isDarkModeActive ? colors.text : BRAND_COLORS.white} />
-            <Text style={{ color: isDarkModeActive ? colors.text : BRAND_COLORS.white, fontSize: 11, marginTop: 2 }}>Profil</Text>
+            <Text
+              style={{
+                color: isDarkModeActive ? colors.text : BRAND_COLORS.white,
+                fontSize: scaleFont(11),
+                lineHeight: scaleLineHeight(16),
+                marginTop: 2,
+              }}
+            >
+              Profil
+            </Text>
           </Pressable>
 
           <View style={{ width: 58 }} />
@@ -3190,18 +3227,34 @@ export default function HomeScreen() {
                     justifyContent: 'center',
                   }}
                 >
-                  <Text style={{ color: '#fff', fontSize: 9, fontWeight: '700' }}>
+                  <Text style={{ color: '#fff', fontSize: scaleFont(9), fontWeight: '700', lineHeight: scaleLineHeight(12) }}>
                     {unreadNotificationCount > 99 ? '99+' : unreadNotificationCount}
                   </Text>
                 </View>
               ) : null}
             </View>
-            <Text style={{ color: isDarkModeActive ? colors.text : BRAND_COLORS.white, fontSize: 11, marginTop: 2 }}>Notifikasi</Text>
+            <Text
+              style={{
+                color: isDarkModeActive ? colors.text : BRAND_COLORS.white,
+                fontSize: scaleFont(11),
+                lineHeight: scaleLineHeight(16),
+                marginTop: 2,
+              }}
+            >
+              Notifikasi
+            </Text>
           </Pressable>
 
           <Pressable onPress={handleLogout} disabled={isLoggingOut} style={{ alignItems: 'center', width: 56 }}>
             <Feather name="log-out" size={17} color={isDarkModeActive ? colors.text : BRAND_COLORS.white} />
-            <Text style={{ color: isDarkModeActive ? colors.text : BRAND_COLORS.white, fontSize: 11, marginTop: 2 }}>
+            <Text
+              style={{
+                color: isDarkModeActive ? colors.text : BRAND_COLORS.white,
+                fontSize: scaleFont(11),
+                lineHeight: scaleLineHeight(16),
+                marginTop: 2,
+              }}
+            >
               {isLoggingOut ? 'Proses' : 'Logout'}
             </Text>
           </Pressable>
@@ -3285,10 +3338,10 @@ export default function HomeScreen() {
             >
               <Feather name="log-out" size={18} color={colors.primary} />
             </View>
-            <Text style={{ color: colors.text, fontSize: 20, fontWeight: '700', marginBottom: 6 }}>
+            <Text style={{ color: colors.text, fontSize: scaleFont(20), lineHeight: scaleLineHeight(28), fontWeight: '700', marginBottom: 6 }}>
               Konfirmasi Logout
             </Text>
-            <Text style={{ color: colors.textMuted, fontSize: 14, marginBottom: 14 }}>
+            <Text style={{ color: colors.textMuted, fontSize: scaleFont(14), lineHeight: scaleLineHeight(22), marginBottom: 14 }}>
               Anda akan keluar dari sesi saat ini. Lanjutkan logout?
             </Text>
 
@@ -3307,7 +3360,7 @@ export default function HomeScreen() {
                   opacity: isLoggingOut ? 0.6 : 1,
                 }}
               >
-                <Text style={{ color: colors.textMuted, fontWeight: '700' }}>Batal</Text>
+                <Text style={{ color: colors.textMuted, fontWeight: '700', fontSize: fontSizes.label }}>Batal</Text>
               </Pressable>
               <Pressable
                 disabled={isLoggingOut}
@@ -3323,7 +3376,7 @@ export default function HomeScreen() {
                   opacity: isLoggingOut ? 0.6 : 1,
                 }}
               >
-                <Text style={{ color: BRAND_COLORS.white, fontWeight: '700' }}>
+                <Text style={{ color: BRAND_COLORS.white, fontWeight: '700', fontSize: fontSizes.label }}>
                   {isLoggingOut ? 'Memproses...' : 'Logout'}
                 </Text>
               </Pressable>

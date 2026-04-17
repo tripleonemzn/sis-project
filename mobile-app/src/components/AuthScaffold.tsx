@@ -4,6 +4,7 @@ import { SafeAreaView, useSafeAreaInsets } from 'react-native-safe-area-context'
 import { StatusBar } from 'expo-status-bar';
 import { BRAND_COLORS } from '../config/brand';
 import logoSource from '../assets/logo_sis_kgb2.png';
+import { useAppTextScale } from '../theme/AppTextScaleProvider';
 
 type AuthScaffoldProps = {
   children: ReactNode;
@@ -20,6 +21,7 @@ export function AuthScaffold({
 }: AuthScaffoldProps) {
   const insets = useSafeAreaInsets();
   const { height: screenHeight } = useWindowDimensions();
+  const { scaleFont, scaleLineHeight } = useAppTextScale();
 
   const headerTopPadding = Math.max(insets.top + 18, 28);
   const headerBottomPadding = clamp(screenHeight * 0.08, 56, 92);
@@ -50,10 +52,10 @@ export function AuthScaffold({
               >
                 <Image source={logoSource} style={{ width: 74, height: 74 }} resizeMode="contain" />
               </View>
-              <Text style={{ color: '#e0ecff', fontWeight: '700', fontSize: 21, marginBottom: 6 }}>
+              <Text style={{ color: '#e0ecff', fontWeight: '700', fontSize: scaleFont(21), marginBottom: 6 }}>
                 Sistem Integrasi Sekolah
               </Text>
-              <Text style={{ color: '#dbeafe', fontSize: 14, textAlign: 'center' }}>
+              <Text style={{ color: '#dbeafe', fontSize: scaleFont(14), lineHeight: scaleLineHeight(20), textAlign: 'center' }}>
                 SMKS Karya Guna Bhakti 2
               </Text>
             </View>

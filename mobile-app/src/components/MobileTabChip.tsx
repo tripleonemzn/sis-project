@@ -2,6 +2,7 @@ import { Feather } from '@expo/vector-icons';
 import { type ComponentProps, type ReactNode } from 'react';
 import { Pressable, Text, View, type StyleProp, type TextStyle, type ViewStyle } from 'react-native';
 import { BRAND_COLORS } from '../config/brand';
+import { useAppTextScale } from '../theme/AppTextScaleProvider';
 
 type FeatherIconName = ComponentProps<typeof Feather>['name'];
 
@@ -97,6 +98,7 @@ export function MobileTabChip({
   style,
   textStyle,
 }: MobileTabChipProps) {
+  const { scaleFont, scaleLineHeight } = useAppTextScale();
   const autoIcon = useAutoIcon ? getAutoIconSpec(label) : null;
   const resolvedIcon =
     icon || autoIcon ? (
@@ -177,8 +179,8 @@ export function MobileTabChip({
             {
               color: active ? '#1d4ed8' : BRAND_COLORS.textDark,
               fontWeight: active ? '700' : '600',
-              fontSize: stacked ? 11.5 : compact ? 11.5 : 12.5,
-              lineHeight: stacked ? 14 : undefined,
+              fontSize: scaleFont(stacked ? 11.5 : compact ? 11.5 : 12.5),
+              lineHeight: stacked ? scaleLineHeight(14) : undefined,
               letterSpacing: 0.1,
               textAlign: stacked ? 'center' : 'left',
             },

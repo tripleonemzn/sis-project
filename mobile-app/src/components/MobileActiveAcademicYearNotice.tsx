@@ -1,6 +1,7 @@
 import { Feather } from '@expo/vector-icons';
 import { Text, View } from 'react-native';
 import { BRAND_COLORS } from '../config/brand';
+import { useAppTextScale } from '../theme/AppTextScaleProvider';
 
 type MobileActiveAcademicYearNoticeProps = {
   name?: string | null;
@@ -20,6 +21,7 @@ export function MobileActiveAcademicYearNotice({
   helperText = 'Semua data operasional di halaman ini otomatis mengikuti tahun ajaran aktif yang tampil di header aplikasi.',
 }: MobileActiveAcademicYearNoticeProps) {
   const semesterLabel = resolveSemesterLabel(semester);
+  const { scaleFont, scaleLineHeight } = useAppTextScale();
 
   return (
     <View
@@ -53,7 +55,7 @@ export function MobileActiveAcademicYearNotice({
           <View style={{ flexDirection: 'row', flexWrap: 'wrap', alignItems: 'center', marginBottom: 4 }}>
             <Text
               style={{
-                fontSize: 11,
+                fontSize: scaleFont(11),
                 fontWeight: '700',
                 textTransform: 'uppercase',
                 color: '#1d4ed8',
@@ -72,7 +74,7 @@ export function MobileActiveAcademicYearNotice({
                 marginBottom: 4,
               }}
             >
-              <Text style={{ fontSize: 10, fontWeight: '700', color: '#15803d' }}>Aktif</Text>
+                <Text style={{ fontSize: scaleFont(10), fontWeight: '700', color: '#15803d' }}>Aktif</Text>
             </View>
             {semesterLabel ? (
               <View
@@ -86,12 +88,14 @@ export function MobileActiveAcademicYearNotice({
                   marginBottom: 4,
                 }}
               >
-                <Text style={{ fontSize: 10, fontWeight: '700', color: '#1d4ed8' }}>{semesterLabel}</Text>
+                <Text style={{ fontSize: scaleFont(10), fontWeight: '700', color: '#1d4ed8' }}>{semesterLabel}</Text>
               </View>
             ) : null}
           </View>
-          <Text style={{ fontSize: 14, fontWeight: '700', color: BRAND_COLORS.textDark }}>{name || '-'}</Text>
-          <Text style={{ fontSize: 11, lineHeight: 18, color: '#1e40af', marginTop: 4 }}>{helperText}</Text>
+          <Text style={{ fontSize: scaleFont(14), fontWeight: '700', color: BRAND_COLORS.textDark }}>{name || '-'}</Text>
+          <Text style={{ fontSize: scaleFont(11), lineHeight: scaleLineHeight(18), color: '#1e40af', marginTop: 4 }}>
+            {helperText}
+          </Text>
         </View>
       </View>
     </View>

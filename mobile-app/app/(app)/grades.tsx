@@ -18,6 +18,7 @@ import {
 import { useStudentGradesQuery } from '../../src/features/grades/useStudentGradesQuery';
 import { getStandardPagePadding } from '../../src/lib/ui/pageLayout';
 import { useAppTheme } from '../../src/theme/AppThemeProvider';
+import { useAppTextScale } from '../../src/theme/AppTextScaleProvider';
 
 type GradeTabKey = 'PROGRAM' | 'REPORT';
 type ReportSemesterValue = '' | 'ODD' | 'EVEN';
@@ -62,6 +63,7 @@ function getProgramTabIconName(programCode: string): React.ComponentProps<typeof
 
 function GradeComponentCard({ item }: { item: StudentGradeOverviewSubjectComponent }) {
   const { colors } = useAppTheme();
+  const { scaleFont, scaleLineHeight } = useAppTextScale();
   const available = item.status === 'AVAILABLE';
 
   return (
@@ -78,8 +80,8 @@ function GradeComponentCard({ item }: { item: StudentGradeOverviewSubjectCompone
     >
       <View style={{ flexDirection: 'row', alignItems: 'flex-start', justifyContent: 'space-between', gap: 12 }}>
         <View style={{ flex: 1 }}>
-          <Text style={{ color: colors.text, fontWeight: '700', fontSize: 13 }}>{item.label}</Text>
-          <Text style={{ color: colors.textMuted, fontSize: 11, marginTop: 2 }}>
+          <Text style={{ color: colors.text, fontWeight: '700', fontSize: scaleFont(13) }}>{item.label}</Text>
+          <Text style={{ color: colors.textMuted, fontSize: scaleFont(11), marginTop: 2 }}>
             {String(item.reportSlotCode || '').replace(/_/g, ' ')}
           </Text>
         </View>
@@ -91,7 +93,7 @@ function GradeComponentCard({ item }: { item: StudentGradeOverviewSubjectCompone
             backgroundColor: available ? '#dcfce7' : '#e2e8f0',
           }}
         >
-          <Text style={{ color: available ? '#15803d' : '#475569', fontSize: 11, fontWeight: '700' }}>
+          <Text style={{ color: available ? '#15803d' : '#475569', fontSize: scaleFont(11), fontWeight: '700' }}>
             {available ? 'Tersedia' : 'Belum tersedia'}
           </Text>
         </View>
@@ -99,12 +101,12 @@ function GradeComponentCard({ item }: { item: StudentGradeOverviewSubjectCompone
 
       <View style={{ flexDirection: 'row', alignItems: 'flex-end', justifyContent: 'space-between', gap: 12 }}>
         <View>
-          <Text style={{ color: colors.textMuted, fontSize: 11 }}>Nilai</Text>
-          <Text style={{ color: colors.text, fontWeight: '800', fontSize: 20, marginTop: 2 }}>
+          <Text style={{ color: colors.textMuted, fontSize: scaleFont(11) }}>Nilai</Text>
+          <Text style={{ color: colors.text, fontWeight: '800', fontSize: scaleFont(20), marginTop: 2 }}>
             {formatScore(item.score)}
           </Text>
         </View>
-        <Text style={{ color: colors.textMuted, fontSize: 11 }}>
+        <Text style={{ color: colors.textMuted, fontSize: scaleFont(11), lineHeight: scaleLineHeight(17) }}>
           {item.entryMode === 'NF_SERIES' ? 'Seri NF' : 'Skor tunggal'}
         </Text>
       </View>
@@ -123,7 +125,7 @@ function GradeComponentCard({ item }: { item: StudentGradeOverviewSubjectCompone
                 paddingVertical: 5,
               }}
             >
-              <Text style={{ color: '#1d4ed8', fontSize: 11, fontWeight: '600' }}>
+              <Text style={{ color: '#1d4ed8', fontSize: scaleFont(11), fontWeight: '600' }}>
                 NF{index + 1}: {formatScore(score)}
               </Text>
             </View>
@@ -139,6 +141,7 @@ function ProgramSubjectCard(props: {
   component: StudentGradeOverviewSubjectComponent;
 }) {
   const { colors } = useAppTheme();
+  const { scaleFont, scaleLineHeight } = useAppTextScale();
   const { item, component } = props;
   const available = component.status === 'AVAILABLE';
 
@@ -173,8 +176,8 @@ function ProgramSubjectCard(props: {
         <View style={{ flex: 1, gap: 10 }}>
           <View style={{ flexDirection: 'row', alignItems: 'flex-start', gap: 12 }}>
             <View style={{ flex: 1 }}>
-              <Text style={{ color: colors.text, fontWeight: '800', fontSize: 15 }}>{item.subject.name}</Text>
-              <Text style={{ color: colors.textMuted, fontSize: 12, marginTop: 3 }}>
+              <Text style={{ color: colors.text, fontWeight: '800', fontSize: scaleFont(15) }}>{item.subject.name}</Text>
+              <Text style={{ color: colors.textMuted, fontSize: scaleFont(12), marginTop: 3 }}>
                 {item.subject.code}
                 {item.teacher?.name ? ` • ${item.teacher.name}` : ''}
               </Text>
@@ -192,7 +195,7 @@ function ProgramSubjectCard(props: {
                 paddingVertical: 6,
               }}
             >
-              <Text style={{ color: colors.textMuted, fontSize: 11, fontWeight: '600' }}>KKM {item.kkm}</Text>
+              <Text style={{ color: colors.textMuted, fontSize: scaleFont(11), fontWeight: '600' }}>KKM {item.kkm}</Text>
             </View>
             <View
               style={{
@@ -204,7 +207,7 @@ function ProgramSubjectCard(props: {
                 paddingVertical: 6,
               }}
             >
-              <Text style={{ color: colors.textMuted, fontSize: 11, fontWeight: '600' }}>
+              <Text style={{ color: colors.textMuted, fontSize: scaleFont(11), fontWeight: '600' }}>
                 Program {component.reportSlotCode}
               </Text>
             </View>
@@ -221,7 +224,7 @@ function ProgramSubjectCard(props: {
               <Text
                 style={{
                   color: available ? '#15803d' : '#b45309',
-                  fontSize: 11,
+                  fontSize: scaleFont(11),
                   fontWeight: '700',
                 }}
               >
@@ -243,13 +246,13 @@ function ProgramSubjectCard(props: {
             paddingVertical: 12,
           }}
         >
-          <Text style={{ color: colors.textMuted, fontSize: 11, fontWeight: '700', letterSpacing: 0.6 }}>
+          <Text style={{ color: colors.textMuted, fontSize: scaleFont(11), fontWeight: '700', letterSpacing: 0.6 }}>
             NILAI PROGRAM
           </Text>
-          <Text style={{ color: colors.text, fontWeight: '800', fontSize: 20, marginTop: 6 }}>
+          <Text style={{ color: colors.text, fontWeight: '800', fontSize: scaleFont(20), marginTop: 6 }}>
             {formatScore(component.score)}
           </Text>
-          <Text style={{ color: colors.textMuted, fontSize: 12, marginTop: 4 }}>
+          <Text style={{ color: colors.textMuted, fontSize: scaleFont(12), marginTop: 4 }}>
             {component.entryMode === 'NF_SERIES' ? 'Seri NF' : 'Skor tunggal'}
           </Text>
         </View>
@@ -266,7 +269,7 @@ function ProgramSubjectCard(props: {
             paddingVertical: 12,
           }}
         >
-          <Text style={{ color: colors.text, fontSize: 13, lineHeight: 20 }}>
+          <Text style={{ color: colors.text, fontSize: scaleFont(13), lineHeight: scaleLineHeight(20) }}>
             {available
               ? `Nilai ${component.reportSlotCode} untuk mapel ini sudah tersedia dan mengikuti semester berjalan.`
               : `Nilai ${component.reportSlotCode} untuk mapel ini belum tersedia. Data akan tampil setelah guru menyelesaikan input nilai program terkait.`}
@@ -279,6 +282,7 @@ function ProgramSubjectCard(props: {
 
 function ReportSubjectCard({ item }: { item: StudentSemesterReportSubjectRow }) {
   const { colors } = useAppTheme();
+  const { scaleFont, scaleLineHeight } = useAppTextScale();
   const isLocked = item.status === 'LOCKED';
 
   return (
@@ -294,8 +298,8 @@ function ReportSubjectCard({ item }: { item: StudentSemesterReportSubjectRow }) 
       }}
     >
       <View style={{ gap: 4 }}>
-        <Text style={{ color: colors.text, fontWeight: '800', fontSize: 15 }}>{item.subject.name}</Text>
-        <Text style={{ color: colors.textMuted, fontSize: 12 }}>
+        <Text style={{ color: colors.text, fontWeight: '800', fontSize: scaleFont(15) }}>{item.subject.name}</Text>
+        <Text style={{ color: colors.textMuted, fontSize: scaleFont(12) }}>
           {item.subject.code}
           {item.teacher?.name ? ` • ${item.teacher.name}` : ''}
         </Text>
@@ -312,7 +316,7 @@ function ReportSubjectCard({ item }: { item: StudentSemesterReportSubjectRow }) 
             paddingVertical: 12,
           }}
         >
-          <Text style={{ color: '#b45309', fontSize: 12, lineHeight: 18, fontWeight: '600' }}>
+          <Text style={{ color: '#b45309', fontSize: scaleFont(12), lineHeight: scaleLineHeight(18), fontWeight: '600' }}>
             Nilai rapor untuk mapel ini akan tampil setelah rapor semester dirilis.
           </Text>
         </View>
@@ -328,7 +332,7 @@ function ReportSubjectCard({ item }: { item: StudentSemesterReportSubjectRow }) 
               paddingVertical: 6,
             }}
           >
-            <Text style={{ color: colors.textMuted, fontSize: 11, fontWeight: '600' }}>KKM {item.kkm}</Text>
+            <Text style={{ color: colors.textMuted, fontSize: scaleFont(11), fontWeight: '600' }}>KKM {item.kkm}</Text>
           </View>
           <View
             style={{
@@ -340,7 +344,7 @@ function ReportSubjectCard({ item }: { item: StudentSemesterReportSubjectRow }) 
               paddingVertical: 6,
             }}
           >
-            <Text style={{ color: colors.textMuted, fontSize: 11, fontWeight: '600' }}>
+            <Text style={{ color: colors.textMuted, fontSize: scaleFont(11), fontWeight: '600' }}>
               Nilai Akhir {formatScore(item.finalScore)}
             </Text>
           </View>
@@ -354,7 +358,7 @@ function ReportSubjectCard({ item }: { item: StudentSemesterReportSubjectRow }) 
               paddingVertical: 6,
             }}
           >
-            <Text style={{ color: colors.textMuted, fontSize: 11, fontWeight: '600' }}>
+            <Text style={{ color: colors.textMuted, fontSize: scaleFont(11), fontWeight: '600' }}>
               Predikat {item.predicate || '-'}
             </Text>
           </View>
@@ -371,10 +375,10 @@ function ReportSubjectCard({ item }: { item: StudentSemesterReportSubjectRow }) 
           paddingVertical: 12,
         }}
       >
-        <Text style={{ color: colors.textMuted, fontSize: 11, fontWeight: '700', letterSpacing: 0.6 }}>
+        <Text style={{ color: colors.textMuted, fontSize: scaleFont(11), fontWeight: '700', letterSpacing: 0.6 }}>
           {isLocked ? 'STATUS RILIS' : 'CATATAN KOMPETENSI'}
         </Text>
-        <Text style={{ color: colors.text, fontSize: 13, lineHeight: 20, marginTop: 6 }}>
+        <Text style={{ color: colors.text, fontSize: scaleFont(13), lineHeight: scaleLineHeight(20), marginTop: 6 }}>
           {isLocked ? 'Detail rapor semester masih terkunci sampai tanggal rilis tiba.' : item.description || 'Deskripsi rapor belum tersedia.'}
         </Text>
       </View>
@@ -385,6 +389,7 @@ function ReportSubjectCard({ item }: { item: StudentSemesterReportSubjectRow }) 
 export default function GradesScreen() {
   const insets = useSafeAreaInsets();
   const { colors } = useAppTheme();
+  const { scaleFont, scaleLineHeight } = useAppTextScale();
   const { isAuthenticated, isLoading, user } = useAuth();
   const [activeTab, setActiveTab] = useState<GradeTabKey>('PROGRAM');
   const [activeProgramCode, setActiveProgramCode] = useState<string>('');
@@ -488,7 +493,7 @@ export default function GradesScreen() {
   if (user?.role !== 'STUDENT') {
     return (
       <ScrollView style={{ flex: 1, backgroundColor: '#f8fafc' }} contentContainerStyle={pageContentPadding}>
-        <Text style={{ fontSize: 20, fontWeight: '700', marginBottom: 8, color: '#0f172a' }}>Nilai Saya</Text>
+        <Text style={{ fontSize: scaleFont(20), fontWeight: '700', marginBottom: 8, color: '#0f172a' }}>Nilai Saya</Text>
         <QueryStateView type="error" message="Fitur nilai siswa hanya tersedia untuk role siswa." />
       </ScrollView>
     );
@@ -506,8 +511,8 @@ export default function GradesScreen() {
       }
     >
       <View style={{ gap: 6 }}>
-        <Text style={{ fontSize: 20, fontWeight: '700', color: '#0f172a' }}>Nilai Saya</Text>
-        <Text style={{ color: '#64748b' }}>
+        <Text style={{ fontSize: scaleFont(20), fontWeight: '700', color: '#0f172a' }}>Nilai Saya</Text>
+        <Text style={{ color: '#64748b', fontSize: scaleFont(14), lineHeight: scaleLineHeight(22) }}>
           Ringkasan nilai siswa dipisahkan antara program ujian aktif dan rapor semester berjalan.
         </Text>
       </View>
@@ -529,7 +534,7 @@ export default function GradesScreen() {
           }}
         >
           <Feather name="award" size={14} color="#1d4ed8" />
-          <Text style={{ color: '#1d4ed8', fontWeight: '700', fontSize: 12 }}>
+          <Text style={{ color: '#1d4ed8', fontWeight: '700', fontSize: scaleFont(12) }}>
             Semester {overview.meta.semesterLabel}
           </Text>
         </View>
@@ -553,7 +558,7 @@ export default function GradesScreen() {
             activeKey={activeTab}
             onChange={(key) => setActiveTab(key as GradeTabKey)}
           />
-          <Text style={{ color: colors.textMuted, fontSize: 13, lineHeight: 20 }}>
+          <Text style={{ color: colors.textMuted, fontSize: scaleFont(13), lineHeight: scaleLineHeight(20) }}>
             {activeTab === 'PROGRAM' ? programTabSubtitle : reportTabSubtitle}
           </Text>
 
@@ -570,8 +575,8 @@ export default function GradesScreen() {
                   gap: 12,
                 }}
               >
-                <Text style={{ color: colors.text, fontSize: 18, fontWeight: '800' }}>Program Ujian Aktif</Text>
-                <Text style={{ color: colors.textMuted, fontSize: 13, lineHeight: 20 }}>{programTabSubtitle}</Text>
+                <Text style={{ color: colors.text, fontSize: scaleFont(18), fontWeight: '800' }}>Program Ujian Aktif</Text>
+                <Text style={{ color: colors.textMuted, fontSize: scaleFont(13), lineHeight: scaleLineHeight(20) }}>{programTabSubtitle}</Text>
                 <MobileMenuTabBar
                   items={programTabs.map((program) => ({
                     key: program.key,
@@ -592,7 +597,7 @@ export default function GradesScreen() {
                     paddingVertical: 6,
                   }}
                 >
-                  <Text style={{ color: colors.textMuted, fontSize: 12, fontWeight: '600' }}>
+                  <Text style={{ color: colors.textMuted, fontSize: scaleFont(12), fontWeight: '600' }}>
                     Mengikuti semester berjalan
                   </Text>
                 </View>
@@ -647,10 +652,10 @@ export default function GradesScreen() {
                   gap: 12,
                 }}
               >
-                <Text style={{ color: colors.text, fontSize: 18, fontWeight: '800' }}>
+                <Text style={{ color: colors.text, fontSize: scaleFont(18), fontWeight: '800' }}>
                   Ringkasan {activeProgram?.fullLabel || 'Program Ujian'}
                 </Text>
-                <Text style={{ color: colors.textMuted, fontSize: 13, lineHeight: 20 }}>
+                <Text style={{ color: colors.textMuted, fontSize: scaleFont(13), lineHeight: scaleLineHeight(20) }}>
                   Menampilkan kesiapan nilai {activeProgram?.key || 'program aktif'} untuk setiap mata pelajaran pada semester berjalan.
                 </Text>
                 <View style={{ gap: 10 }}>
@@ -665,11 +670,11 @@ export default function GradesScreen() {
                       gap: 6,
                     }}
                   >
-                    <Text style={{ color: colors.text, fontWeight: '700', fontSize: 13 }}>Mapel Sudah Tersedia</Text>
-                    <Text style={{ color: colors.text, fontWeight: '800', fontSize: 20 }}>
+                    <Text style={{ color: colors.text, fontWeight: '700', fontSize: scaleFont(13) }}>Mapel Sudah Tersedia</Text>
+                    <Text style={{ color: colors.text, fontWeight: '800', fontSize: scaleFont(20) }}>
                       {activeProgramSummary.availableSubjects}
                     </Text>
-                    <Text style={{ color: colors.textMuted, fontSize: 12 }}>
+                    <Text style={{ color: colors.textMuted, fontSize: scaleFont(12), lineHeight: scaleLineHeight(18) }}>
                       Mapel yang sudah memiliki nilai {activeProgram?.key || 'program ini'}.
                     </Text>
                   </View>
@@ -684,11 +689,11 @@ export default function GradesScreen() {
                       gap: 6,
                     }}
                   >
-                    <Text style={{ color: colors.text, fontWeight: '700', fontSize: 13 }}>Mapel Masih Menunggu</Text>
-                    <Text style={{ color: colors.text, fontWeight: '800', fontSize: 20 }}>
+                    <Text style={{ color: colors.text, fontWeight: '700', fontSize: scaleFont(13) }}>Mapel Masih Menunggu</Text>
+                    <Text style={{ color: colors.text, fontWeight: '800', fontSize: scaleFont(20) }}>
                       {activeProgramSummary.pendingSubjects}
                     </Text>
-                    <Text style={{ color: colors.textMuted, fontSize: 12 }}>
+                    <Text style={{ color: colors.textMuted, fontSize: scaleFont(12), lineHeight: scaleLineHeight(18) }}>
                       Mapel yang belum memiliki nilai {activeProgram?.key || 'program ini'}.
                     </Text>
                   </View>
@@ -703,11 +708,11 @@ export default function GradesScreen() {
                       gap: 6,
                     }}
                   >
-                    <Text style={{ color: colors.text, fontWeight: '700', fontSize: 13 }}>Cakupan Program</Text>
-                    <Text style={{ color: colors.text, fontWeight: '800', fontSize: 20 }}>
+                    <Text style={{ color: colors.text, fontWeight: '700', fontSize: scaleFont(13) }}>Cakupan Program</Text>
+                    <Text style={{ color: colors.text, fontWeight: '800', fontSize: scaleFont(20) }}>
                       {activeProgramSummary.totalSubjects}
                     </Text>
-                    <Text style={{ color: colors.textMuted, fontSize: 12 }}>
+                    <Text style={{ color: colors.textMuted, fontSize: scaleFont(12), lineHeight: scaleLineHeight(18) }}>
                       Total mata pelajaran aktif yang mengikuti program ini pada semester berjalan.
                     </Text>
                   </View>
@@ -724,10 +729,10 @@ export default function GradesScreen() {
                   paddingVertical: 14,
                 }}
               >
-                <Text style={{ color: colors.text, fontSize: 18, fontWeight: '800' }}>
+                <Text style={{ color: colors.text, fontSize: scaleFont(18), fontWeight: '800' }}>
                   Daftar Nilai {activeProgram?.fullLabel || 'Program Ujian'}
                 </Text>
-                <Text style={{ color: colors.textMuted, marginTop: 4, fontSize: 13, lineHeight: 20 }}>
+                <Text style={{ color: colors.textMuted, marginTop: 4, fontSize: scaleFont(13), lineHeight: scaleLineHeight(20) }}>
                   {activeProgramSummary.totalSubjects} mata pelajaran aktif • {activeProgramSummary.pendingSubjects} mapel belum tersedia
                 </Text>
               </View>
@@ -756,10 +761,10 @@ export default function GradesScreen() {
                   }}
                 >
                   <Feather name="file-text" size={34} color={colors.textMuted} />
-                  <Text style={{ color: colors.text, fontWeight: '800', fontSize: 16, marginTop: 12 }}>
+                  <Text style={{ color: colors.text, fontWeight: '800', fontSize: scaleFont(16), marginTop: 12 }}>
                     Belum ada data nilai program
                   </Text>
-                  <Text style={{ color: colors.textMuted, textAlign: 'center', marginTop: 6, lineHeight: 20 }}>
+                  <Text style={{ color: colors.textMuted, textAlign: 'center', marginTop: 6, fontSize: scaleFont(13), lineHeight: scaleLineHeight(20) }}>
                     Nilai {activeProgram?.key || 'program ini'} untuk semester berjalan belum tersedia.
                   </Text>
                 </View>
@@ -777,8 +782,8 @@ export default function GradesScreen() {
                   paddingVertical: 14,
                 }}
               >
-                <Text style={{ color: colors.text, fontSize: 18, fontWeight: '800' }}>Semester Rapor</Text>
-                <Text style={{ color: colors.textMuted, marginTop: 6, fontSize: 13, lineHeight: 20 }}>
+                <Text style={{ color: colors.text, fontSize: scaleFont(18), fontWeight: '800' }}>Semester Rapor</Text>
+                <Text style={{ color: colors.textMuted, marginTop: 6, fontSize: scaleFont(13), lineHeight: scaleLineHeight(20) }}>
                   Pilihan semester ini hanya mengubah tampilan rapor. Nilai Program Ujian tetap mengikuti semester aktif {overview.meta.semesterLabel}.
                 </Text>
                 <View style={{ marginTop: 12 }}>
@@ -825,17 +830,17 @@ export default function GradesScreen() {
                     paddingVertical: 6,
                   }}
                   >
-                    <Text style={{ color: colors.text, fontSize: 12, fontWeight: '700' }}>
+                    <Text style={{ color: colors.text, fontSize: scaleFont(12), fontWeight: '700' }}>
                       Rilis Semester: {overview.reportCard.release.label}
                     </Text>
                   </View>
-                  <Text style={{ color: colors.text, fontSize: 13, lineHeight: 20 }}>
+                  <Text style={{ color: colors.text, fontSize: scaleFont(13), lineHeight: scaleLineHeight(20) }}>
                     {overview.reportCard.release.description}
                   </Text>
-                  <Text style={{ color: colors.textMuted, fontSize: 12 }}>
+                  <Text style={{ color: colors.textMuted, fontSize: scaleFont(12) }}>
                     Kesiapan data: {overview.reportCard.status.label}
                   </Text>
-                  <Text style={{ color: colors.textMuted, fontSize: 12 }}>
+                  <Text style={{ color: colors.textMuted, fontSize: scaleFont(12), lineHeight: scaleLineHeight(18) }}>
                     {overview.reportCard.reportDate
                       ? `${overview.reportCard.reportDate.place} • ${formatDateLabel(overview.reportCard.reportDate.date)} • Semester ${effectiveReportSemesterLabel} • ${overview.reportCard.semesterType}`
                       : `Tanggal rapor belum diatur • Semester ${effectiveReportSemesterLabel} • ${overview.reportCard.semesterType}`}
@@ -898,8 +903,8 @@ export default function GradesScreen() {
                     paddingVertical: 14,
                   }}
                 >
-                  <Text style={{ color: colors.text, fontSize: 18, fontWeight: '800' }}>Detail Rapor Semester Menunggu Rilis</Text>
-                  <Text style={{ color: colors.text, marginTop: 8, lineHeight: 22 }}>
+                  <Text style={{ color: colors.text, fontSize: scaleFont(18), fontWeight: '800' }}>Detail Rapor Semester Menunggu Rilis</Text>
+                  <Text style={{ color: colors.text, marginTop: 8, fontSize: scaleFont(13), lineHeight: scaleLineHeight(22) }}>
                     Nama mapel semester {effectiveReportSemesterLabel.toLowerCase()} sudah ditampilkan, tetapi nilai akhir, predikat, dan catatan kompetensi baru akan terbuka setelah tanggal rilis rapor.
                   </Text>
                 </View>
@@ -916,8 +921,8 @@ export default function GradesScreen() {
                     paddingVertical: 14,
                   }}
                 >
-                  <Text style={{ color: colors.text, fontSize: 18, fontWeight: '800' }}>Catatan Wali Kelas</Text>
-                  <Text style={{ color: colors.text, marginTop: 10, lineHeight: 22 }}>
+                  <Text style={{ color: colors.text, fontSize: scaleFont(18), fontWeight: '800' }}>Catatan Wali Kelas</Text>
+                  <Text style={{ color: colors.text, marginTop: 10, fontSize: scaleFont(13), lineHeight: scaleLineHeight(22) }}>
                     {overview.reportCard.homeroomNote}
                   </Text>
                 </View>
@@ -943,10 +948,10 @@ export default function GradesScreen() {
                   }}
                 >
                   <Feather name="file-text" size={34} color={colors.textMuted} />
-                  <Text style={{ color: colors.text, fontWeight: '800', fontSize: 16, marginTop: 12 }}>
+                  <Text style={{ color: colors.text, fontWeight: '800', fontSize: scaleFont(16), marginTop: 12 }}>
                     Belum ada data rapor semester
                   </Text>
-                  <Text style={{ color: colors.textMuted, textAlign: 'center', marginTop: 6, lineHeight: 20 }}>
+                  <Text style={{ color: colors.textMuted, textAlign: 'center', marginTop: 6, fontSize: scaleFont(13), lineHeight: scaleLineHeight(20) }}>
                     Rapor semester berjalan belum siap ditampilkan.
                   </Text>
                 </View>
