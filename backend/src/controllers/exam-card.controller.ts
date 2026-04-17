@@ -52,6 +52,18 @@ type ExamCardEntrySnapshot = {
   seatLabel: string | null;
 };
 
+type ExamCardScheduleEntryCandidate = {
+  roomName: string;
+  roomToken: string;
+  sessionLabel: string | null;
+  sessionToken: string;
+  startTime: Date | null;
+  endTime: Date | null;
+  startTimeToken: number | null;
+  endTimeToken: number | null;
+  dateToken: string;
+};
+
 type ExamCardOverviewRow = {
   studentId: number;
   studentName: string;
@@ -144,6 +156,19 @@ function normalizeDocumentTitle(value: unknown) {
 function normalizeOptionalSessionLabel(raw: unknown) {
   const normalized = normalizeText(raw).replace(/\s+/g, ' ').trim();
   return normalized || null;
+}
+
+function resolveRepresentativeScheduleEntry(
+  entries: ExamCardScheduleEntryCandidate[],
+  matchedEntry: ExamCardScheduleEntryCandidate | null,
+) {
+  if (matchedEntry) return matchedEntry;
+  return (
+    entries.find((entry) => entry.startTimeToken !== null && entry.endTimeToken !== null) ||
+    entries.find((entry) => entry.startTimeToken !== null) ||
+    entries[0] ||
+    null
+  );
 }
 
 function resolveProgramCodeCandidates(params: {
@@ -772,20 +797,7 @@ async function buildExamCardOverview(params: {
   );
   const generatedCardMap = new Map(generatedCards.map((card) => [card.studentId, card]));
   const entriesByStudent = new Map<number, ExamCardEntrySnapshot[]>();
-  const scheduleEntriesByClassId = new Map<
-    number,
-    Array<{
-      roomName: string;
-      roomToken: string;
-      sessionLabel: string | null;
-      sessionToken: string;
-      startTime: Date | null;
-      endTime: Date | null;
-      startTimeToken: number | null;
-      endTimeToken: number | null;
-      dateToken: string;
-    }>
-  >();
+  const scheduleEntriesByClassId = new Map<number, ExamCardScheduleEntryCandidate[]>();
 
   activeSchedules.forEach((schedule) => {
     const classId = Number(schedule.classId || 0);
@@ -932,14 +944,15 @@ async function buildExamCardOverview(params: {
         ) ||
         scheduleEntries.find((entry) => Boolean(sittingDateToken) && entry.dateToken === sittingDateToken) ||
         null;
-      if (!matchedSchedule) return;
+      const representativeSchedule = resolveRepresentativeScheduleEntry(scheduleEntries, matchedSchedule);
+      if (!representativeSchedule) return;
       const current = entriesByStudent.get(studentId) || [];
       current.push({
         sittingId: sitting.id,
         roomName: normalizedRoomName,
-        sessionLabel: normalizedSittingSession || matchedSchedule.sessionLabel || null,
-        startTime: sitting.startTime || matchedSchedule.startTime,
-        endTime: sitting.endTime || matchedSchedule.endTime,
+        sessionLabel: normalizedSittingSession || representativeSchedule.sessionLabel || null,
+        startTime: sitting.startTime || representativeSchedule.startTime,
+        endTime: sitting.endTime || representativeSchedule.endTime,
         seatLabel: seatLabelByStudent.get(studentId) || null,
       });
       entriesByStudent.set(studentId, current);
