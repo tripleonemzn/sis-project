@@ -44,6 +44,7 @@ import {
   TeacherExamSchedule,
 } from '../../../src/features/exams/types';
 import { getStandardPagePadding } from '../../../src/lib/ui/pageLayout';
+import { useAppTextScale } from '../../../src/theme/AppTextScaleProvider';
 
 type ExamHubSection = 'JADWAL' | 'RUANG' | 'DENAH' | 'MENGAWAS' | 'PROGRAM';
 type ExamTypeFilter = 'ALL' | ExamDisplayType;
@@ -860,6 +861,35 @@ export default function TeacherWakakurExamsScreen() {
   const queryClient = useQueryClient();
   const { isAuthenticated, isLoading, user } = useAuth();
   const pagePadding = getStandardPagePadding(insets, { bottom: 120 });
+  const { scaleFont, scaleLineHeight } = useAppTextScale();
+  const headingTextStyle = useMemo(
+    () => ({ fontSize: scaleFont(20), lineHeight: scaleLineHeight(28) }),
+    [scaleFont, scaleLineHeight],
+  );
+  const sectionTitleTextStyle = useMemo(
+    () => ({ fontSize: scaleFont(16), lineHeight: scaleLineHeight(24) }),
+    [scaleFont, scaleLineHeight],
+  );
+  const itemTitleTextStyle = useMemo(
+    () => ({ fontSize: scaleFont(15), lineHeight: scaleLineHeight(22) }),
+    [scaleFont, scaleLineHeight],
+  );
+  const bodyTextStyle = useMemo(
+    () => ({ fontSize: scaleFont(12), lineHeight: scaleLineHeight(18) }),
+    [scaleFont, scaleLineHeight],
+  );
+  const paragraphTextStyle = useMemo(
+    () => ({ fontSize: scaleFont(13), lineHeight: scaleLineHeight(20) }),
+    [scaleFont, scaleLineHeight],
+  );
+  const helperTextStyle = useMemo(
+    () => ({ fontSize: scaleFont(11), lineHeight: scaleLineHeight(16) }),
+    [scaleFont, scaleLineHeight],
+  );
+  const inputTextStyle = useMemo(
+    () => ({ fontSize: scaleFont(13), lineHeight: scaleLineHeight(20) }),
+    [scaleFont, scaleLineHeight],
+  );
   const [section, setSection] = useState<ExamHubSection>('JADWAL');
   const [activeSummaryId, setActiveSummaryId] = useState<ExamSummaryId | null>(null);
   const [examTypeFilter, setExamTypeFilter] = useState<ExamTypeFilter>('ALL');
@@ -2499,7 +2529,7 @@ export default function TeacherWakakurExamsScreen() {
   if (user?.role !== 'TEACHER') {
     return (
       <ScrollView style={{ flex: 1, backgroundColor: '#f8fafc' }} contentContainerStyle={pagePadding}>
-        <Text style={{ fontSize: 20, fontWeight: '700', marginBottom: 8 }}>Kelola Ujian</Text>
+        <Text style={{ ...headingTextStyle, fontWeight: '700', marginBottom: 8 }}>Kelola Ujian</Text>
         <QueryStateView type="error" message="Halaman ini khusus untuk role guru." />
         <Pressable
           onPress={() => router.replace('/home')}
@@ -2520,7 +2550,7 @@ export default function TeacherWakakurExamsScreen() {
   if (!isAllowed) {
     return (
       <ScrollView style={{ flex: 1, backgroundColor: '#f8fafc' }} contentContainerStyle={pagePadding}>
-        <Text style={{ fontSize: 20, fontWeight: '700', marginBottom: 8, color: BRAND_COLORS.textDark }}>
+        <Text style={{ ...headingTextStyle, fontWeight: '700', marginBottom: 8, color: BRAND_COLORS.textDark }}>
           Kelola Ujian
         </Text>
         <QueryStateView
@@ -2589,12 +2619,12 @@ export default function TeacherWakakurExamsScreen() {
         >
           <Feather name="arrow-left" size={18} color={BRAND_COLORS.textDark} />
         </Pressable>
-        <Text style={{ marginLeft: 10, color: BRAND_COLORS.textDark, fontSize: 20, fontWeight: '700' }}>
+        <Text style={{ marginLeft: 10, color: BRAND_COLORS.textDark, fontWeight: '700', ...headingTextStyle }}>
           Kelola Ujian
         </Text>
       </View>
 
-      <Text style={{ color: BRAND_COLORS.textMuted, marginBottom: 10 }}>
+      <Text style={{ color: BRAND_COLORS.textMuted, ...paragraphTextStyle, marginBottom: 10 }}>
         Pengelolaan jadwal ujian, ruang ujian, generate denah ruang, jadwal mengawas, dan program ujian.
       </Text>
 
@@ -2643,7 +2673,14 @@ export default function TeacherWakakurExamsScreen() {
               onChangeText={setSearch}
               placeholder="Cari mapel, kelas, ruang, pengawas, atau status denah"
               placeholderTextColor="#94a3b8"
-              style={{ flex: 1, color: BRAND_COLORS.textDark, paddingVertical: 10, paddingHorizontal: 10 }}
+              style={{
+                flex: 1,
+                color: BRAND_COLORS.textDark,
+                paddingVertical: 10,
+                paddingHorizontal: 10,
+                fontSize: scaleFont(13),
+                lineHeight: scaleLineHeight(20),
+              }}
             />
           </View>
 
@@ -2773,7 +2810,7 @@ export default function TeacherWakakurExamsScreen() {
               >
                 <View style={{ flexDirection: 'row', gap: 8, marginBottom: 8 }}>
                   <View style={{ flex: 1 }}>
-                    <Text style={{ color: '#64748b', fontSize: 11, marginBottom: 4 }}>Kode Komponen</Text>
+                    <Text style={{ color: '#64748b', ...helperTextStyle, marginBottom: 4 }}>Kode Komponen</Text>
                     <TextInput
                       value={component.code}
                       onChangeText={(value) => {
@@ -2802,11 +2839,12 @@ export default function TeacherWakakurExamsScreen() {
                         paddingHorizontal: 10,
                         paddingVertical: 8,
                         color: BRAND_COLORS.textDark,
+                        ...inputTextStyle,
                       }}
                     />
                   </View>
                   <View style={{ flex: 1 }}>
-                    <Text style={{ color: '#64748b', fontSize: 11, marginBottom: 4 }}>Label</Text>
+                    <Text style={{ color: '#64748b', ...helperTextStyle, marginBottom: 4 }}>Label</Text>
                     <TextInput
                       value={component.label}
                       onChangeText={(value) => updateComponentDraft(component.rowId, { label: value })}
@@ -2820,6 +2858,7 @@ export default function TeacherWakakurExamsScreen() {
                         paddingHorizontal: 10,
                         paddingVertical: 8,
                         color: BRAND_COLORS.textDark,
+                        ...inputTextStyle,
                       }}
                     />
                   </View>
@@ -2827,7 +2866,7 @@ export default function TeacherWakakurExamsScreen() {
 
                 <View style={{ flexDirection: 'row', gap: 8, marginBottom: 8 }}>
                   <View style={{ flex: 1 }}>
-                    <Text style={{ color: '#64748b', fontSize: 11, marginBottom: 4 }}>Kode Tipe</Text>
+                    <Text style={{ color: '#64748b', ...helperTextStyle, marginBottom: 4 }}>Kode Tipe</Text>
                     <TextInput
                       value={component.typeCode}
                       onChangeText={(value) => {
@@ -2847,11 +2886,12 @@ export default function TeacherWakakurExamsScreen() {
                         paddingHorizontal: 10,
                         paddingVertical: 8,
                         color: BRAND_COLORS.textDark,
+                        ...inputTextStyle,
                       }}
                     />
                   </View>
                   <View style={{ flex: 1 }}>
-                    <Text style={{ color: '#64748b', fontSize: 11, marginBottom: 4 }}>Kode Mode Input</Text>
+                    <Text style={{ color: '#64748b', ...helperTextStyle, marginBottom: 4 }}>Kode Mode Input</Text>
                     <TextInput
                       value={component.entryModeCode}
                       onChangeText={(value) => {
@@ -2871,6 +2911,7 @@ export default function TeacherWakakurExamsScreen() {
                         paddingHorizontal: 10,
                         paddingVertical: 8,
                         color: BRAND_COLORS.textDark,
+                        ...inputTextStyle,
                       }}
                     />
                   </View>
@@ -2878,7 +2919,7 @@ export default function TeacherWakakurExamsScreen() {
 
                 <View style={{ flexDirection: 'row', gap: 8, marginBottom: 8 }}>
                   <View style={{ flex: 1 }}>
-                    <Text style={{ color: '#64748b', fontSize: 11, marginBottom: 4 }}>Mode Input</Text>
+                    <Text style={{ color: '#64748b', ...helperTextStyle, marginBottom: 4 }}>Mode Input</Text>
                     <View style={{ flexDirection: 'row', flexWrap: 'wrap', gap: 6 }}>
                       {GRADE_ENTRY_MODE_OPTIONS.map((option) => {
                         const active = component.entryMode === option.value;
@@ -2900,7 +2941,7 @@ export default function TeacherWakakurExamsScreen() {
                               paddingHorizontal: 10,
                             }}
                           >
-                            <Text style={{ color: active ? BRAND_COLORS.navy : BRAND_COLORS.textMuted, fontSize: 11 }}>
+                            <Text style={{ color: active ? BRAND_COLORS.navy : BRAND_COLORS.textMuted, ...helperTextStyle }}>
                               {option.label}
                             </Text>
                           </Pressable>
@@ -2910,7 +2951,7 @@ export default function TeacherWakakurExamsScreen() {
                   </View>
                 </View>
 
-                <Text style={{ color: '#64748b', fontSize: 11, marginBottom: 4 }}>Kode Slot Rapor</Text>
+                <Text style={{ color: '#64748b', ...helperTextStyle, marginBottom: 4 }}>Kode Slot Rapor</Text>
                 <TextInput
                   value={component.reportSlotCode}
                   onChangeText={(value) => {
@@ -2931,6 +2972,7 @@ export default function TeacherWakakurExamsScreen() {
                     paddingVertical: 8,
                     color: BRAND_COLORS.textDark,
                     marginBottom: 8,
+                    ...inputTextStyle,
                   }}
                 />
 
@@ -2956,7 +2998,7 @@ export default function TeacherWakakurExamsScreen() {
                           paddingHorizontal: 10,
                         }}
                       >
-                        <Text style={{ color: active ? BRAND_COLORS.navy : BRAND_COLORS.textMuted, fontSize: 11 }}>
+                        <Text style={{ color: active ? BRAND_COLORS.navy : BRAND_COLORS.textMuted, ...helperTextStyle }}>
                           {slot.label}
                         </Text>
                       </Pressable>
@@ -2979,6 +3021,7 @@ export default function TeacherWakakurExamsScreen() {
                         paddingHorizontal: 10,
                         paddingVertical: 8,
                         color: BRAND_COLORS.textDark,
+                        ...inputTextStyle,
                       }}
                     />
                   </View>
@@ -3001,6 +3044,7 @@ export default function TeacherWakakurExamsScreen() {
                         paddingHorizontal: 10,
                         paddingVertical: 8,
                         color: BRAND_COLORS.textDark,
+                        ...inputTextStyle,
                       }}
                     />
                   </View>
@@ -3018,7 +3062,7 @@ export default function TeacherWakakurExamsScreen() {
                       paddingHorizontal: 10,
                     }}
                   >
-                    <Text style={{ color: component.isActive ? '#166534' : BRAND_COLORS.textMuted, fontSize: 12 }}>
+                    <Text style={{ color: component.isActive ? '#166534' : BRAND_COLORS.textMuted, ...bodyTextStyle }}>
                       Aktif
                     </Text>
                   </Pressable>
@@ -3040,7 +3084,7 @@ export default function TeacherWakakurExamsScreen() {
                     <Text
                       style={{
                         color: component.includeInFinalScore ? '#166534' : BRAND_COLORS.textMuted,
-                        fontSize: 12,
+                        ...bodyTextStyle,
                       }}
                     >
                       Ikut Nilai Akhir
@@ -3057,7 +3101,7 @@ export default function TeacherWakakurExamsScreen() {
                       paddingHorizontal: 10,
                     }}
                   >
-                    <Text style={{ color: '#be123c', fontSize: 12 }}>Hapus</Text>
+                    <Text style={{ color: '#be123c', ...bodyTextStyle }}>Hapus</Text>
                   </Pressable>
                 </View>
               </View>
@@ -3120,7 +3164,7 @@ export default function TeacherWakakurExamsScreen() {
                 }}
               >
                 <View style={{ flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', marginBottom: 8 }}>
-                  <Text style={{ color: BRAND_COLORS.textDark, fontWeight: '700', fontSize: 16 }}>
+                  <Text style={{ color: BRAND_COLORS.textDark, fontWeight: '700', ...sectionTitleTextStyle }}>
                     {program.code || 'PROGRAM_BARU'}
                   </Text>
                   <View style={{ flexDirection: 'row', gap: 8 }}>
@@ -3136,7 +3180,7 @@ export default function TeacherWakakurExamsScreen() {
                           paddingHorizontal: 8,
                         }}
                       >
-                        <Text style={{ color: '#1d4ed8', fontWeight: '700', fontSize: 11 }}>Edit</Text>
+                        <Text style={{ color: '#1d4ed8', fontWeight: '700', ...helperTextStyle }}>Edit</Text>
                       </Pressable>
                     ) : (
                       <Pressable
@@ -3150,7 +3194,7 @@ export default function TeacherWakakurExamsScreen() {
                           paddingHorizontal: 8,
                         }}
                       >
-                        <Text style={{ color: BRAND_COLORS.textMuted, fontWeight: '700', fontSize: 11 }}>Batal</Text>
+                        <Text style={{ color: BRAND_COLORS.textMuted, fontWeight: '700', ...helperTextStyle }}>Batal</Text>
                       </Pressable>
                     )}
                     <Pressable
@@ -3164,14 +3208,14 @@ export default function TeacherWakakurExamsScreen() {
                         paddingHorizontal: 8,
                       }}
                     >
-                      <Text style={{ color: '#be123c', fontWeight: '700', fontSize: 11 }}>Hapus</Text>
+                      <Text style={{ color: '#be123c', fontWeight: '700', ...helperTextStyle }}>Hapus</Text>
                     </Pressable>
                   </View>
                 </View>
 
                 <View style={{ flexDirection: 'row', gap: 8, marginBottom: 8 }}>
                   <View style={{ flex: 1 }}>
-                    <Text style={{ color: '#64748b', fontSize: 11, marginBottom: 4 }}>Kode Program</Text>
+                    <Text style={{ color: '#64748b', ...helperTextStyle, marginBottom: 4 }}>Kode Program</Text>
                     <TextInput
                       value={program.code}
                       editable={!program.isCodeLocked}
@@ -3186,11 +3230,12 @@ export default function TeacherWakakurExamsScreen() {
                         paddingHorizontal: 10,
                         paddingVertical: 8,
                         color: BRAND_COLORS.textDark,
+                        ...inputTextStyle,
                       }}
                     />
                   </View>
                   <View style={{ flex: 1 }}>
-                    <Text style={{ color: '#64748b', fontSize: 11, marginBottom: 4 }}>Label Menu</Text>
+                    <Text style={{ color: '#64748b', ...helperTextStyle, marginBottom: 4 }}>Label Menu</Text>
                     <TextInput
                       value={program.label}
                       onChangeText={(value) => updateProgramDraft(program.rowId, { label: value })}
@@ -3204,12 +3249,13 @@ export default function TeacherWakakurExamsScreen() {
                         paddingHorizontal: 10,
                         paddingVertical: 8,
                         color: BRAND_COLORS.textDark,
+                        ...inputTextStyle,
                       }}
                     />
                   </View>
                 </View>
 
-                <Text style={{ color: '#64748b', fontSize: 11, marginBottom: 4 }}>Komponen Nilai</Text>
+                <Text style={{ color: '#64748b', ...helperTextStyle, marginBottom: 4 }}>Komponen Nilai</Text>
                 <View style={{ flexDirection: 'row', flexWrap: 'wrap', gap: 8, marginBottom: 8 }}>
                   {componentDrafts.map((component) => {
                     const active = normalizeProgramCode(program.gradeComponentCode) === normalizeProgramCode(component.code);
@@ -3249,7 +3295,7 @@ export default function TeacherWakakurExamsScreen() {
                           paddingHorizontal: 10,
                         }}
                       >
-                        <Text style={{ color: active ? BRAND_COLORS.navy : BRAND_COLORS.textMuted, fontSize: 11 }}>
+                        <Text style={{ color: active ? BRAND_COLORS.navy : BRAND_COLORS.textMuted, ...helperTextStyle }}>
                           {component.code}
                         </Text>
                       </Pressable>
@@ -3259,7 +3305,7 @@ export default function TeacherWakakurExamsScreen() {
 
                 <View style={{ flexDirection: 'row', gap: 8, marginBottom: 8 }}>
                   <View style={{ flex: 1 }}>
-                    <Text style={{ color: '#64748b', fontSize: 11, marginBottom: 4 }}>Kode Pola</Text>
+                    <Text style={{ color: '#64748b', ...helperTextStyle, marginBottom: 4 }}>Kode Pola</Text>
                     <TextInput
                       value={program.baseTypeCode}
                       onChangeText={(value) => {
@@ -3283,11 +3329,12 @@ export default function TeacherWakakurExamsScreen() {
                         paddingHorizontal: 10,
                         paddingVertical: 8,
                         color: BRAND_COLORS.textDark,
+                        ...inputTextStyle,
                       }}
                     />
                   </View>
                   <View style={{ flex: 1 }}>
-                    <Text style={{ color: '#64748b', fontSize: 11, marginBottom: 4 }}>Kode Mode Input</Text>
+                    <Text style={{ color: '#64748b', ...helperTextStyle, marginBottom: 4 }}>Kode Mode Input</Text>
                     <TextInput
                       value={program.gradeEntryModeCode}
                       onChangeText={(value) => {
@@ -3310,6 +3357,7 @@ export default function TeacherWakakurExamsScreen() {
                         paddingHorizontal: 10,
                         paddingVertical: 8,
                         color: BRAND_COLORS.textDark,
+                        ...inputTextStyle,
                       }}
                     />
                   </View>
@@ -3330,6 +3378,7 @@ export default function TeacherWakakurExamsScreen() {
                         paddingHorizontal: 10,
                         paddingVertical: 8,
                         color: BRAND_COLORS.textDark,
+                        ...inputTextStyle,
                       }}
                     />
                   </View>
@@ -3352,6 +3401,7 @@ export default function TeacherWakakurExamsScreen() {
                         paddingHorizontal: 10,
                         paddingVertical: 8,
                         color: BRAND_COLORS.textDark,
+                        ...inputTextStyle,
                       }}
                     />
                   </View>
@@ -3387,18 +3437,18 @@ export default function TeacherWakakurExamsScreen() {
                           paddingHorizontal: 10,
                         }}
                       >
-                        <Text style={{ color: active ? BRAND_COLORS.navy : BRAND_COLORS.textMuted, fontSize: 11 }}>
+                        <Text style={{ color: active ? BRAND_COLORS.navy : BRAND_COLORS.textMuted, ...helperTextStyle }}>
                           {option.label}
                         </Text>
                       </Pressable>
                     );
                   })}
                 </View>
-                <Text style={{ color: '#64748b', fontSize: 11, marginBottom: 8 }}>
+                <Text style={{ color: '#64748b', ...helperTextStyle, marginBottom: 8 }}>
                   Finance: {getFinanceClearanceSummary(program)}
                 </Text>
 
-                <Text style={{ color: '#64748b', fontSize: 11, marginBottom: 4 }}>Target Tingkat Kelas (opsional)</Text>
+                <Text style={{ color: '#64748b', ...helperTextStyle, marginBottom: 4 }}>Target Tingkat Kelas (opsional)</Text>
                 <View style={{ flexDirection: 'row', flexWrap: 'wrap', gap: 8, marginBottom: 8 }}>
                   <Pressable
                     onPress={() => updateProgramDraft(program.rowId, { targetClassLevels: [] })}
@@ -3414,7 +3464,7 @@ export default function TeacherWakakurExamsScreen() {
                     <Text
                       style={{
                         color: program.targetClassLevels.length === 0 ? BRAND_COLORS.navy : BRAND_COLORS.textMuted,
-                        fontSize: 11,
+                        ...helperTextStyle,
                       }}
                     >
                       Semua Tingkat
@@ -3440,7 +3490,7 @@ export default function TeacherWakakurExamsScreen() {
                           paddingHorizontal: 10,
                         }}
                       >
-                        <Text style={{ color: active ? BRAND_COLORS.navy : BRAND_COLORS.textMuted, fontSize: 11 }}>
+                        <Text style={{ color: active ? BRAND_COLORS.navy : BRAND_COLORS.textMuted, ...helperTextStyle }}>
                           {level}
                         </Text>
                       </Pressable>
@@ -3448,7 +3498,7 @@ export default function TeacherWakakurExamsScreen() {
                   })}
                 </View>
 
-                <Text style={{ color: '#64748b', fontSize: 11, marginBottom: 4 }}>Mapel Diizinkan (opsional)</Text>
+                <Text style={{ color: '#64748b', ...helperTextStyle, marginBottom: 4 }}>Mapel Diizinkan (opsional)</Text>
                 <TextInput
                   value={programSubjectSearch[program.rowId] || ''}
                   onChangeText={(value) =>
@@ -3468,6 +3518,7 @@ export default function TeacherWakakurExamsScreen() {
                     paddingVertical: 8,
                     color: BRAND_COLORS.textDark,
                     marginBottom: 6,
+                    ...inputTextStyle,
                   }}
                 />
                 <View style={{ flexDirection: 'row', flexWrap: 'wrap', gap: 8, marginBottom: 8 }}>
@@ -3485,7 +3536,7 @@ export default function TeacherWakakurExamsScreen() {
                     <Text
                       style={{
                         color: program.allowedSubjectIds.length === 0 ? BRAND_COLORS.navy : BRAND_COLORS.textMuted,
-                        fontSize: 11,
+                        ...helperTextStyle,
                       }}
                     >
                       Semua Mapel
@@ -3520,7 +3571,7 @@ export default function TeacherWakakurExamsScreen() {
                             paddingHorizontal: 10,
                           }}
                         >
-                          <Text style={{ color: active ? '#166534' : BRAND_COLORS.textMuted, fontSize: 11 }}>
+                          <Text style={{ color: active ? '#166534' : BRAND_COLORS.textMuted, ...helperTextStyle }}>
                             {subject.code}
                           </Text>
                         </Pressable>
@@ -3528,7 +3579,7 @@ export default function TeacherWakakurExamsScreen() {
                     })}
                 </View>
 
-                <Text style={{ color: '#64748b', fontSize: 11, marginBottom: 4 }}>Policy Clearance Finance</Text>
+                <Text style={{ color: '#64748b', ...helperTextStyle, marginBottom: 4 }}>Policy Clearance Finance</Text>
                 <View style={{ gap: 8, marginBottom: 8 }}>
                   <View style={{ flexDirection: 'row', flexWrap: 'wrap', gap: 8 }}>
                     {FINANCE_CLEARANCE_MODE_OPTIONS.map((option) => {
@@ -3550,14 +3601,14 @@ export default function TeacherWakakurExamsScreen() {
                             paddingHorizontal: 10,
                           }}
                         >
-                          <Text style={{ color: active ? '#92400e' : BRAND_COLORS.textMuted, fontSize: 11, fontWeight: '600' }}>
+                          <Text style={{ color: active ? '#92400e' : BRAND_COLORS.textMuted, fontWeight: '600', ...helperTextStyle }}>
                             {option.label}
                           </Text>
                         </Pressable>
                       );
                     })}
                   </View>
-                  <Text style={{ color: '#92400e', fontSize: 11 }}>
+                  <Text style={{ color: '#92400e', ...helperTextStyle }}>
                     {
                       FINANCE_CLEARANCE_MODE_OPTIONS.find(
                         (option) => option.value === normalizeFinanceClearanceMode(program.financeClearanceMode),
@@ -3566,7 +3617,7 @@ export default function TeacherWakakurExamsScreen() {
                   </Text>
                   {shouldShowFinanceThresholdAmount(program.financeClearanceMode) ? (
                     <View>
-                      <Text style={{ color: '#64748b', fontSize: 11, marginBottom: 4 }}>Ambang Outstanding</Text>
+                      <Text style={{ color: '#64748b', ...helperTextStyle, marginBottom: 4 }}>Ambang Outstanding</Text>
                       <TextInput
                         value={String(program.financeMinOutstandingAmount)}
                         onChangeText={(value) =>
@@ -3585,13 +3636,14 @@ export default function TeacherWakakurExamsScreen() {
                           paddingHorizontal: 10,
                           paddingVertical: 8,
                           color: BRAND_COLORS.textDark,
+                          ...inputTextStyle,
                         }}
                       />
                     </View>
                   ) : null}
                   {shouldShowFinanceOverdueCount(program.financeClearanceMode) ? (
                     <View>
-                      <Text style={{ color: '#64748b', fontSize: 11, marginBottom: 4 }}>Minimal Invoice Overdue</Text>
+                      <Text style={{ color: '#64748b', ...helperTextStyle, marginBottom: 4 }}>Minimal Invoice Overdue</Text>
                       <TextInput
                         value={String(program.financeMinOverdueInvoices)}
                         onChangeText={(value) =>
@@ -3610,12 +3662,13 @@ export default function TeacherWakakurExamsScreen() {
                           paddingHorizontal: 10,
                           paddingVertical: 8,
                           color: BRAND_COLORS.textDark,
+                          ...inputTextStyle,
                         }}
                       />
                     </View>
                   ) : null}
                   <View>
-                    <Text style={{ color: '#64748b', fontSize: 11, marginBottom: 4 }}>Catatan Policy (opsional)</Text>
+                    <Text style={{ color: '#64748b', ...helperTextStyle, marginBottom: 4 }}>Catatan Policy (opsional)</Text>
                     <TextInput
                       value={program.financeClearanceNotes}
                       onChangeText={(value) => updateProgramDraft(program.rowId, { financeClearanceNotes: value })}
@@ -3632,12 +3685,13 @@ export default function TeacherWakakurExamsScreen() {
                         paddingVertical: 8,
                         color: BRAND_COLORS.textDark,
                         textAlignVertical: 'top',
+                        ...inputTextStyle,
                       }}
                     />
                   </View>
                 </View>
 
-                <Text style={{ color: '#64748b', fontSize: 11, marginBottom: 4 }}>Pembuat Soal Diizinkan (opsional)</Text>
+                <Text style={{ color: '#64748b', ...helperTextStyle, marginBottom: 4 }}>Pembuat Soal Diizinkan (opsional)</Text>
                 <TextInput
                   value={programAuthorSearch[program.rowId] || ''}
                   onChangeText={(value) =>
@@ -3657,6 +3711,7 @@ export default function TeacherWakakurExamsScreen() {
                     paddingVertical: 8,
                     color: BRAND_COLORS.textDark,
                     marginBottom: 6,
+                    ...inputTextStyle,
                   }}
                 />
                 <View style={{ flexDirection: 'row', flexWrap: 'wrap', gap: 8, marginBottom: 8 }}>
@@ -3674,7 +3729,7 @@ export default function TeacherWakakurExamsScreen() {
                     <Text
                       style={{
                         color: program.allowedAuthorIds.length === 0 ? BRAND_COLORS.navy : BRAND_COLORS.textMuted,
-                        fontSize: 11,
+                        ...helperTextStyle,
                       }}
                     >
                       Semua Guru
@@ -3710,7 +3765,7 @@ export default function TeacherWakakurExamsScreen() {
                             paddingHorizontal: 10,
                           }}
                         >
-                          <Text style={{ color: active ? '#166534' : BRAND_COLORS.textMuted, fontSize: 11 }}>
+                          <Text style={{ color: active ? '#166534' : BRAND_COLORS.textMuted, ...helperTextStyle }}>
                             {teacher.username}
                           </Text>
                         </Pressable>
@@ -3732,6 +3787,7 @@ export default function TeacherWakakurExamsScreen() {
                     paddingVertical: 8,
                     color: BRAND_COLORS.textDark,
                     marginBottom: 8,
+                    ...inputTextStyle,
                   }}
                 />
 
@@ -3757,7 +3813,7 @@ export default function TeacherWakakurExamsScreen() {
                         paddingHorizontal: 10,
                       }}
                     >
-                      <Text style={{ color: toggle.value ? '#166534' : BRAND_COLORS.textMuted, fontSize: 12 }}>
+                      <Text style={{ color: toggle.value ? '#166534' : BRAND_COLORS.textMuted, ...bodyTextStyle }}>
                         {toggle.label}
                       </Text>
                     </Pressable>
@@ -3817,14 +3873,14 @@ export default function TeacherWakakurExamsScreen() {
                         }}
                       >
                         <View style={{ flex: 1 }}>
-                          <Text style={{ color: BRAND_COLORS.textDark, fontWeight: '800', fontSize: 16 }}>
+                          <Text style={{ color: BRAND_COLORS.textDark, fontWeight: '800', ...sectionTitleTextStyle }}>
                             {day.dateLabel}
                           </Text>
-                          <Text style={{ color: BRAND_COLORS.textMuted, marginTop: 2, fontSize: 12 }}>
+                          <Text style={{ color: BRAND_COLORS.textMuted, marginTop: 2, ...bodyTextStyle }}>
                             {day.slots.length} slot jadwal pada hari ini
                           </Text>
                         </View>
-                        <Text style={{ color: '#1d4ed8', fontWeight: '700', fontSize: 12 }}>
+                        <Text style={{ color: '#1d4ed8', fontWeight: '700', ...bodyTextStyle }}>
                           {isExpanded ? 'Tutup Hari' : 'Buka Hari'}
                         </Text>
                       </Pressable>
@@ -3856,13 +3912,13 @@ export default function TeacherWakakurExamsScreen() {
                                   }}
                                 >
                                   <View style={{ flex: 1 }}>
-                                    <Text style={{ color: BRAND_COLORS.textDark, fontWeight: '700', fontSize: 15 }}>
+                                    <Text style={{ color: BRAND_COLORS.textDark, fontWeight: '700', ...itemTitleTextStyle }}>
                                       {group.subjectName} ({group.subjectCode})
                                     </Text>
-                                    <Text style={{ color: BRAND_COLORS.textMuted, marginTop: 3, fontSize: 12 }}>
+                                    <Text style={{ color: BRAND_COLORS.textMuted, marginTop: 3, ...bodyTextStyle }}>
                                       {resolvePeriodLabel(group.periodNumber)} • {formatTimeRangeSummary(group.startTime, group.endTime)}
                                     </Text>
-                                    <Text style={{ color: BRAND_COLORS.textMuted, marginTop: 2, fontSize: 12 }}>
+                                    <Text style={{ color: BRAND_COLORS.textMuted, marginTop: 2, ...bodyTextStyle }}>
                                       {group.sessionLabel ? `Sesi ${group.sessionLabel}` : 'Tanpa sesi'} • {group.schedules.length} target
                                     </Text>
                                   </View>
@@ -3876,13 +3932,13 @@ export default function TeacherWakakurExamsScreen() {
                                         borderRadius: 999,
                                         paddingHorizontal: 8,
                                         paddingVertical: 2,
-                                        fontSize: 11,
+                                        ...helperTextStyle,
                                         fontWeight: '700',
                                       }}
                                     >
                                       {group.examType}
                                     </Text>
-                                    <Text style={{ color: '#1d4ed8', fontWeight: '700', fontSize: 12 }}>
+                                    <Text style={{ color: '#1d4ed8', fontWeight: '700', ...bodyTextStyle }}>
                                       {isSlotExpanded ? 'Tutup Detail' : 'Lihat Detail'}
                                     </Text>
                                   </View>
@@ -3903,10 +3959,10 @@ export default function TeacherWakakurExamsScreen() {
                                         <Text style={{ color: BRAND_COLORS.textDark, fontWeight: '700' }}>
                                           {item.class?.name || '-'}
                                         </Text>
-                                        <Text style={{ color: BRAND_COLORS.textMuted, fontSize: 12 }}>
+                                        <Text style={{ color: BRAND_COLORS.textMuted, ...bodyTextStyle }}>
                                           Ruang: {item.room || '-'} • Pengawas: {item.proctor?.name || '-'}
                                         </Text>
-                                        <Text style={{ color: '#64748b', fontSize: 12, marginTop: 2 }}>
+                                        <Text style={{ color: '#64748b', ...bodyTextStyle, marginTop: 2 }}>
                                           Packet: {item.packet?.title || '-'}
                                         </Text>
                                         <View style={{ flexDirection: 'row', flexWrap: 'wrap', gap: 8, marginTop: 8 }}>
@@ -3921,7 +3977,7 @@ export default function TeacherWakakurExamsScreen() {
                                               paddingHorizontal: 10,
                                             }}
                                           >
-                                            <Text style={{ color: BRAND_COLORS.textDark, fontWeight: '700', fontSize: 12 }}>
+                                            <Text style={{ color: BRAND_COLORS.textDark, fontWeight: '700', ...bodyTextStyle }}>
                                               Edit Jadwal
                                             </Text>
                                           </Pressable>
@@ -3937,7 +3993,7 @@ export default function TeacherWakakurExamsScreen() {
                                                 paddingHorizontal: 10,
                                               }}
                                             >
-                                              <Text style={{ color: '#1d4ed8', fontWeight: '700', fontSize: 12 }}>
+                                              <Text style={{ color: '#1d4ed8', fontWeight: '700', ...bodyTextStyle }}>
                                                 Kelola Susulan
                                               </Text>
                                             </Pressable>
@@ -3954,7 +4010,7 @@ export default function TeacherWakakurExamsScreen() {
                                               paddingHorizontal: 10,
                                             }}
                                           >
-                                            <Text style={{ color: '#be123c', fontWeight: '700', fontSize: 12 }}>
+                                            <Text style={{ color: '#be123c', fontWeight: '700', ...bodyTextStyle }}>
                                               {deleteScheduleMutation.isPending ? 'Memproses...' : 'Hapus Jadwal'}
                                             </Text>
                                           </Pressable>
@@ -4003,19 +4059,19 @@ export default function TeacherWakakurExamsScreen() {
                       }}
                     >
                       <View style={{ flexDirection: 'row', justifyContent: 'space-between', marginBottom: 4, gap: 8 }}>
-                        <Text style={{ color: BRAND_COLORS.textDark, fontWeight: '700', fontSize: 16, flex: 1 }}>
+                        <Text style={{ color: BRAND_COLORS.textDark, fontWeight: '700', flex: 1, ...sectionTitleTextStyle }}>
                           {sitting.roomName || '-'}
                         </Text>
                         <Text style={{ color: BRAND_COLORS.navy, fontWeight: '700' }}>{sitting.studentCount} siswa</Text>
                       </View>
 
-                      <Text style={{ color: BRAND_COLORS.textMuted, marginBottom: 2, fontSize: 12 }}>
+                      <Text style={{ color: BRAND_COLORS.textMuted, marginBottom: 2, ...bodyTextStyle }}>
                         {formatDateTime(String(sitting.startTime || ''))} - {formatDateTime(String(sitting.endTime || ''))}
                       </Text>
-                      <Text style={{ color: BRAND_COLORS.textMuted, marginBottom: 6, fontSize: 12 }}>
+                      <Text style={{ color: BRAND_COLORS.textMuted, marginBottom: 6, ...bodyTextStyle }}>
                         Program: {examTypeLabel(normalizeProgramCode(sitting.examType))} • Sesi: {sitting.sessionLabel || '-'}
                       </Text>
-                      <Text style={{ color: '#64748b', fontSize: 12, marginBottom: 8 }}>
+                      <Text style={{ color: '#64748b', ...bodyTextStyle, marginBottom: 8 }}>
                         Kelas: {sitting.classes.length > 0 ? sitting.classes.join(', ') : '-'} • Pengawas:{' '}
                         {sitting.proctor?.name || '-'}
                       </Text>
@@ -4033,7 +4089,7 @@ export default function TeacherWakakurExamsScreen() {
                           alignItems: 'center',
                         }}
                       >
-                        <Text style={{ color: '#1d4ed8', fontWeight: '700', fontSize: 12 }}>Kelola Ruang & Siswa</Text>
+                        <Text style={{ color: '#1d4ed8', fontWeight: '700', ...bodyTextStyle }}>Kelola Ruang & Siswa</Text>
                       </Pressable>
                     </View>
                   ))
@@ -4079,13 +4135,13 @@ export default function TeacherWakakurExamsScreen() {
                           }}
                         >
                           <View style={{ flex: 1 }}>
-                            <Text style={{ color: BRAND_COLORS.textDark, fontWeight: '800', fontSize: 16 }}>
+                            <Text style={{ color: BRAND_COLORS.textDark, fontWeight: '800', ...sectionTitleTextStyle }}>
                               {sitting.roomName || '-'}
                             </Text>
-                            <Text style={{ color: BRAND_COLORS.textMuted, marginTop: 3, fontSize: 12 }}>
+                            <Text style={{ color: BRAND_COLORS.textMuted, marginTop: 3, ...bodyTextStyle }}>
                               {formatScheduleSummary(sitting.startTime, sitting.endTime)}
                             </Text>
-                            <Text style={{ color: BRAND_COLORS.textMuted, marginTop: 3, fontSize: 12 }}>
+                            <Text style={{ color: BRAND_COLORS.textMuted, marginTop: 3, ...bodyTextStyle }}>
                               {examTypeLabel(normalizeProgramCode(sitting.examType))} • {formatSessionSummary(sitting.sessionLabel)}
                             </Text>
                           </View>
@@ -4101,7 +4157,7 @@ export default function TeacherWakakurExamsScreen() {
                               style={{
                                 color: hasLayout ? '#047857' : '#b45309',
                                 fontWeight: '800',
-                                fontSize: 11,
+                                ...helperTextStyle,
                               }}
                             >
                               {hasLayout ? 'Siap Edit' : 'Belum Digenerate'}
@@ -4118,7 +4174,7 @@ export default function TeacherWakakurExamsScreen() {
                               paddingVertical: 6,
                             }}
                           >
-                            <Text style={{ color: '#475569', fontSize: 12, fontWeight: '700' }}>
+                            <Text style={{ color: '#475569', fontWeight: '700', ...bodyTextStyle }}>
                               {sitting.studentCount} siswa
                             </Text>
                           </View>
@@ -4131,7 +4187,7 @@ export default function TeacherWakakurExamsScreen() {
                                 paddingVertical: 6,
                               }}
                             >
-                              <Text style={{ color: '#1d4ed8', fontSize: 12, fontWeight: '700' }}>
+                              <Text style={{ color: '#1d4ed8', fontWeight: '700', ...bodyTextStyle }}>
                                 {sitting.layout.rows} x {sitting.layout.columns}
                               </Text>
                             </View>
@@ -4147,7 +4203,7 @@ export default function TeacherWakakurExamsScreen() {
                             <Text
                               style={{
                                 color: '#475569',
-                                fontSize: 12,
+                                ...bodyTextStyle,
                                 fontWeight: '700',
                               }}
                             >
@@ -4158,7 +4214,7 @@ export default function TeacherWakakurExamsScreen() {
                           </View>
                         </View>
 
-                        <Text style={{ color: '#64748b', fontSize: 12, marginTop: 10 }}>
+                        <Text style={{ color: '#64748b', ...bodyTextStyle, marginTop: 10 }}>
                           Kelas: {sitting.classes.length > 0 ? sitting.classes.join(', ') : '-'}
                         </Text>
 
@@ -4176,7 +4232,7 @@ export default function TeacherWakakurExamsScreen() {
                             alignItems: 'center',
                           }}
                         >
-                          <Text style={{ color: '#1d4ed8', fontWeight: '700', fontSize: 12 }}>
+                          <Text style={{ color: '#1d4ed8', fontWeight: '700', ...bodyTextStyle }}>
                             {hasLayout ? 'Lihat Denah' : 'Setup Denah'}
                           </Text>
                         </Pressable>
@@ -4229,14 +4285,14 @@ export default function TeacherWakakurExamsScreen() {
                           }}
                         >
                           <View style={{ flex: 1 }}>
-                            <Text style={{ color: BRAND_COLORS.textDark, fontWeight: '800', fontSize: 16 }}>
+                            <Text style={{ color: BRAND_COLORS.textDark, fontWeight: '800', ...sectionTitleTextStyle }}>
                               {day.dateLabel}
                             </Text>
-                            <Text style={{ color: BRAND_COLORS.textMuted, marginTop: 2, fontSize: 12 }}>
+                            <Text style={{ color: BRAND_COLORS.textMuted, marginTop: 2, ...bodyTextStyle }}>
                               {day.slots.length} slot mapel pada hari ini
                             </Text>
                           </View>
-                          <Text style={{ color: '#1d4ed8', fontWeight: '700', fontSize: 12 }}>
+                          <Text style={{ color: '#1d4ed8', fontWeight: '700', ...bodyTextStyle }}>
                             {isDayExpanded ? 'Tutup Hari' : 'Buka Hari'}
                           </Text>
                         </Pressable>
@@ -4269,14 +4325,14 @@ export default function TeacherWakakurExamsScreen() {
                                     }}
                                   >
                                     <View style={{ flex: 1 }}>
-                                      <Text style={{ color: BRAND_COLORS.textDark, fontWeight: '700', fontSize: 15 }}>
+                                      <Text style={{ color: BRAND_COLORS.textDark, fontWeight: '700', ...itemTitleTextStyle }}>
                                         {slot.subjectName}
                                         {slot.subjectCode ? ` (${slot.subjectCode})` : ''}
                                       </Text>
-                                      <Text style={{ color: BRAND_COLORS.textMuted, marginTop: 3, fontSize: 12 }}>
+                                      <Text style={{ color: BRAND_COLORS.textMuted, marginTop: 3, ...bodyTextStyle }}>
                                         {resolvePeriodLabel(slot.periodNumber)} • {formatTimeRangeSummary(slot.startTime, slot.endTime)}
                                       </Text>
-                                      <Text style={{ color: BRAND_COLORS.textMuted, marginTop: 2, fontSize: 12 }}>
+                                      <Text style={{ color: BRAND_COLORS.textMuted, marginTop: 2, ...bodyTextStyle }}>
                                         {slot.items.length} ruang • {slot.sessionLabel ? `Sesi ${slot.sessionLabel}` : 'Tanpa sesi'}
                                       </Text>
                                     </View>
@@ -4289,7 +4345,7 @@ export default function TeacherWakakurExamsScreen() {
                                         borderRadius: 999,
                                         paddingHorizontal: 8,
                                         paddingVertical: 2,
-                                        fontSize: 11,
+                                        ...helperTextStyle,
                                         fontWeight: '700',
                                       }}
                                     >
@@ -4316,10 +4372,10 @@ export default function TeacherWakakurExamsScreen() {
                                             <Text style={{ color: BRAND_COLORS.textDark, fontWeight: '700' }}>
                                               Ruang: {item.roomName || '-'}
                                             </Text>
-                                            <Text style={{ color: BRAND_COLORS.textMuted, fontSize: 12, marginTop: 3 }}>
+                                            <Text style={{ color: BRAND_COLORS.textMuted, ...bodyTextStyle, marginTop: 3 }}>
                                               {(item.classNames || []).join(', ') || '-'}
                                             </Text>
-                                            <Text style={{ color: BRAND_COLORS.textMuted, fontSize: 12, marginTop: 2 }}>
+                                            <Text style={{ color: BRAND_COLORS.textMuted, ...bodyTextStyle, marginTop: 2 }}>
                                               Pengawas: {item.proctor?.name || 'Belum ditentukan'} • {item.participantCount} peserta
                                             </Text>
 
@@ -4336,7 +4392,7 @@ export default function TeacherWakakurExamsScreen() {
                                                     paddingHorizontal: 10,
                                                   }}
                                                 >
-                                                  <Text style={{ color: '#1d4ed8', fontWeight: '700', fontSize: 12 }}>Ubah Pengawas</Text>
+                                                  <Text style={{ color: '#1d4ed8', fontWeight: '700', ...bodyTextStyle }}>Ubah Pengawas</Text>
                                                 </Pressable>
                                                 <Pressable
                                                   onPress={() => handleAssignProctor(item, user.id)}
@@ -4350,7 +4406,7 @@ export default function TeacherWakakurExamsScreen() {
                                                     paddingHorizontal: 10,
                                                   }}
                                                 >
-                                                  <Text style={{ color: BRAND_COLORS.navy, fontWeight: '700', fontSize: 12 }}>
+                                                  <Text style={{ color: BRAND_COLORS.navy, fontWeight: '700', ...bodyTextStyle }}>
                                                     {updateProctorMutation.isPending ? 'Memproses...' : 'Set Saya'}
                                                   </Text>
                                                 </Pressable>
@@ -4401,12 +4457,12 @@ export default function TeacherWakakurExamsScreen() {
                                                         }}
                                                       >
                                                         <Text
-                                                          style={{ color: BRAND_COLORS.textDark, fontWeight: '700', fontSize: 12 }}
+                                                          style={{ color: BRAND_COLORS.textDark, fontWeight: '700', ...bodyTextStyle }}
                                                           numberOfLines={1}
                                                         >
                                                           {teacher.name}
                                                         </Text>
-                                                        <Text style={{ color: BRAND_COLORS.textMuted, fontSize: 11 }} numberOfLines={1}>
+                                                        <Text style={{ color: BRAND_COLORS.textMuted, ...helperTextStyle }} numberOfLines={1}>
                                                           @{teacher.username}
                                                         </Text>
                                                       </Pressable>
@@ -4429,7 +4485,7 @@ export default function TeacherWakakurExamsScreen() {
                                                     backgroundColor: '#fff',
                                                   }}
                                                 >
-                                                  <Text style={{ color: BRAND_COLORS.textMuted, fontWeight: '700', fontSize: 12 }}>Batal</Text>
+                                                  <Text style={{ color: BRAND_COLORS.textMuted, fontWeight: '700', ...bodyTextStyle }}>Batal</Text>
                                                 </Pressable>
                                               </View>
                                             )}
@@ -4502,10 +4558,10 @@ export default function TeacherWakakurExamsScreen() {
             <Text style={{ color: BRAND_COLORS.textDark, fontWeight: '700', marginBottom: 4 }}>
               {resolveScheduleSubject(editingSchedule).subjectName} ({resolveScheduleSubject(editingSchedule).subjectCode})
             </Text>
-            <Text style={{ color: BRAND_COLORS.textMuted, fontSize: 12, marginBottom: 2 }}>
+            <Text style={{ color: BRAND_COLORS.textMuted, ...bodyTextStyle, marginBottom: 2 }}>
               Target: {editingSchedule.class?.name || 'Calon Siswa'}
             </Text>
-            <Text style={{ color: BRAND_COLORS.textMuted, fontSize: 12 }}>
+            <Text style={{ color: BRAND_COLORS.textMuted, ...bodyTextStyle }}>
               Program: {examTypeLabel(normalizeProgramCode(editingSchedule.examType || '') || editingSchedule.examType || 'FORMATIF')}
             </Text>
           </View>
@@ -4572,7 +4628,7 @@ export default function TeacherWakakurExamsScreen() {
         />
 
         <View style={{ marginBottom: 10 }}>
-          <Text style={{ fontSize: 12, color: BRAND_COLORS.textMuted, marginBottom: 6 }}>Tanggal</Text>
+          <Text style={{ color: BRAND_COLORS.textMuted, ...bodyTextStyle, marginBottom: 6 }}>Tanggal</Text>
           <TextInput
             value={scheduleEditForm.date}
             onChangeText={(value) => setScheduleEditForm((prev) => ({ ...prev, date: value }))}
@@ -4586,12 +4642,13 @@ export default function TeacherWakakurExamsScreen() {
               paddingHorizontal: 12,
               paddingVertical: 11,
               color: BRAND_COLORS.textDark,
+              ...inputTextStyle,
             }}
           />
         </View>
 
         <View style={{ marginBottom: 10 }}>
-          <Text style={{ fontSize: 12, color: BRAND_COLORS.textMuted, marginBottom: 6 }}>Hari</Text>
+          <Text style={{ color: BRAND_COLORS.textMuted, ...bodyTextStyle, marginBottom: 6 }}>Hari</Text>
           <View
             style={{
               borderWidth: 1,
@@ -4602,7 +4659,7 @@ export default function TeacherWakakurExamsScreen() {
               paddingVertical: 11,
             }}
           >
-            <Text style={{ color: BRAND_COLORS.textDark, fontWeight: '600' }}>{selectedScheduleEditDayLabel}</Text>
+            <Text style={{ color: BRAND_COLORS.textDark, fontWeight: '600', ...bodyTextStyle }}>{selectedScheduleEditDayLabel}</Text>
           </View>
         </View>
 
@@ -4617,7 +4674,7 @@ export default function TeacherWakakurExamsScreen() {
 
         <View style={{ flexDirection: 'row', gap: 10, marginBottom: 10 }}>
           <View style={{ flex: 1 }}>
-            <Text style={{ fontSize: 12, color: BRAND_COLORS.textMuted, marginBottom: 6 }}>Tambah Jam Ke Baru</Text>
+            <Text style={{ color: BRAND_COLORS.textMuted, ...bodyTextStyle, marginBottom: 6 }}>Tambah Jam Ke Baru</Text>
             <TextInput
               value={newSchedulePeriodDraft}
               onChangeText={setNewSchedulePeriodDraft}
@@ -4632,6 +4689,7 @@ export default function TeacherWakakurExamsScreen() {
                 paddingHorizontal: 12,
                 paddingVertical: 11,
                 color: BRAND_COLORS.textDark,
+                ...inputTextStyle,
               }}
             />
           </View>
@@ -4654,7 +4712,7 @@ export default function TeacherWakakurExamsScreen() {
 
         <View style={{ flexDirection: 'row', gap: 10, marginBottom: 10 }}>
           <View style={{ flex: 1 }}>
-            <Text style={{ fontSize: 12, color: BRAND_COLORS.textMuted, marginBottom: 6 }}>Jam Mulai</Text>
+            <Text style={{ color: BRAND_COLORS.textMuted, ...bodyTextStyle, marginBottom: 6 }}>Jam Mulai</Text>
             <TextInput
               value={scheduleEditForm.startTime}
               onChangeText={(value) => setScheduleEditForm((prev) => ({ ...prev, startTime: value }))}
@@ -4668,11 +4726,12 @@ export default function TeacherWakakurExamsScreen() {
                 paddingHorizontal: 12,
                 paddingVertical: 11,
                 color: BRAND_COLORS.textDark,
+                ...inputTextStyle,
               }}
             />
           </View>
           <View style={{ flex: 1 }}>
-            <Text style={{ fontSize: 12, color: BRAND_COLORS.textMuted, marginBottom: 6 }}>Jam Selesai</Text>
+            <Text style={{ color: BRAND_COLORS.textMuted, ...bodyTextStyle, marginBottom: 6 }}>Jam Selesai</Text>
             <TextInput
               value={scheduleEditForm.endTime}
               onChangeText={(value) => setScheduleEditForm((prev) => ({ ...prev, endTime: value }))}
@@ -4686,6 +4745,7 @@ export default function TeacherWakakurExamsScreen() {
                 paddingHorizontal: 12,
                 paddingVertical: 11,
                 color: BRAND_COLORS.textDark,
+                ...inputTextStyle,
               }}
             />
           </View>
@@ -4750,15 +4810,15 @@ export default function TeacherWakakurExamsScreen() {
               {makeupOverview?.schedule.subject.code || resolveScheduleSubject(selectedMakeupSchedule).subjectCode}
               )
             </Text>
-            <Text style={{ color: BRAND_COLORS.textMuted, fontSize: 12, marginBottom: 2 }}>
+            <Text style={{ color: BRAND_COLORS.textMuted, ...bodyTextStyle, marginBottom: 2 }}>
               Kelas: {makeupOverview?.schedule.className || selectedMakeupSchedule.class?.name || '-'}
             </Text>
-            <Text style={{ color: BRAND_COLORS.textMuted, fontSize: 12 }}>
+            <Text style={{ color: BRAND_COLORS.textMuted, ...bodyTextStyle }}>
               Jadwal reguler: {formatDateTime(makeupOverview?.schedule.startTime || selectedMakeupSchedule.startTime)}
               {' - '}
               {formatDateTime(makeupOverview?.schedule.endTime || selectedMakeupSchedule.endTime)}
             </Text>
-            <Text style={{ color: '#1d4ed8', fontSize: 11, marginTop: 8 }}>
+            <Text style={{ color: '#1d4ed8', ...helperTextStyle, marginTop: 8 }}>
               Susulan hanya berlaku jika diatur dari menu ini, waktunya harus sesudah jadwal reguler berakhir, dan hanya untuk siswa yang belum mulai ujian reguler.
             </Text>
           </View>
@@ -4777,7 +4837,7 @@ export default function TeacherWakakurExamsScreen() {
           placeholder="Pilih siswa"
         />
 
-        <Text style={{ color: '#64748b', fontSize: 11, marginBottom: 4 }}>Catatan / Alasan</Text>
+        <Text style={{ color: '#64748b', ...helperTextStyle, marginBottom: 4 }}>Catatan / Alasan</Text>
         <TextInput
           value={makeupForm.reason}
           onChangeText={(value) => setMakeupForm((prev) => ({ ...prev, reason: value }))}
@@ -4792,12 +4852,13 @@ export default function TeacherWakakurExamsScreen() {
             paddingVertical: 10,
             color: BRAND_COLORS.textDark,
             marginBottom: 10,
+            ...inputTextStyle,
           }}
         />
 
         <View style={{ flexDirection: 'row', gap: 8, marginBottom: 10 }}>
           <View style={{ flex: 1 }}>
-            <Text style={{ color: '#64748b', fontSize: 11, marginBottom: 4 }}>Tanggal Susulan</Text>
+            <Text style={{ color: '#64748b', ...helperTextStyle, marginBottom: 4 }}>Tanggal Susulan</Text>
             <TextInput
               value={makeupForm.date}
               onChangeText={(value) => setMakeupForm((prev) => ({ ...prev, date: value }))}
@@ -4811,11 +4872,12 @@ export default function TeacherWakakurExamsScreen() {
                 paddingHorizontal: 12,
                 paddingVertical: 10,
                 color: BRAND_COLORS.textDark,
+                ...inputTextStyle,
               }}
             />
           </View>
           <View style={{ flex: 1 }}>
-            <Text style={{ color: '#64748b', fontSize: 11, marginBottom: 4 }}>Jam Mulai</Text>
+            <Text style={{ color: '#64748b', ...helperTextStyle, marginBottom: 4 }}>Jam Mulai</Text>
             <TextInput
               value={makeupForm.startTime}
               onChangeText={(value) => setMakeupForm((prev) => ({ ...prev, startTime: value }))}
@@ -4829,11 +4891,12 @@ export default function TeacherWakakurExamsScreen() {
                 paddingHorizontal: 12,
                 paddingVertical: 10,
                 color: BRAND_COLORS.textDark,
+                ...inputTextStyle,
               }}
             />
           </View>
           <View style={{ flex: 1 }}>
-            <Text style={{ color: '#64748b', fontSize: 11, marginBottom: 4 }}>Jam Selesai</Text>
+            <Text style={{ color: '#64748b', ...helperTextStyle, marginBottom: 4 }}>Jam Selesai</Text>
             <TextInput
               value={makeupForm.endTime}
               onChangeText={(value) => setMakeupForm((prev) => ({ ...prev, endTime: value }))}
@@ -4847,6 +4910,7 @@ export default function TeacherWakakurExamsScreen() {
                 paddingHorizontal: 12,
                 paddingVertical: 10,
                 color: BRAND_COLORS.textDark,
+                ...inputTextStyle,
               }}
             />
           </View>
@@ -4935,7 +4999,7 @@ export default function TeacherWakakurExamsScreen() {
                 <View style={{ flexDirection: 'row', justifyContent: 'space-between', gap: 8, marginBottom: 6 }}>
                   <View style={{ flex: 1 }}>
                     <Text style={{ color: BRAND_COLORS.textDark, fontWeight: '700' }}>{row.student.name}</Text>
-                    <Text style={{ color: BRAND_COLORS.textMuted, fontSize: 12, marginTop: 2 }}>
+                    <Text style={{ color: BRAND_COLORS.textMuted, ...bodyTextStyle, marginTop: 2 }}>
                       {row.student.nis ? `NIS ${row.student.nis}` : 'Tanpa NIS'}
                       {row.student.nisn ? ` • NISN ${row.student.nisn}` : ''}
                     </Text>
@@ -4951,22 +5015,22 @@ export default function TeacherWakakurExamsScreen() {
                       alignSelf: 'flex-start',
                     }}
                   >
-                    <Text style={{ color: makeupState.text, fontWeight: '700', fontSize: 11 }}>
+                    <Text style={{ color: makeupState.text, fontWeight: '700', ...helperTextStyle }}>
                       {makeupState.label}
                     </Text>
                   </View>
                 </View>
 
-                <Text style={{ color: BRAND_COLORS.textMuted, fontSize: 12 }}>
+                <Text style={{ color: BRAND_COLORS.textMuted, ...bodyTextStyle }}>
                   Status reguler: {row.session ? row.session.status : 'Belum mulai'}
                 </Text>
                 {row.makeupAccess ? (
-                  <Text style={{ color: BRAND_COLORS.textMuted, fontSize: 12, marginTop: 4 }}>
+                  <Text style={{ color: BRAND_COLORS.textMuted, ...bodyTextStyle, marginTop: 4 }}>
                     Susulan: {formatDateTime(row.makeupAccess.startTime)} - {formatDateTime(row.makeupAccess.endTime)}
                   </Text>
                 ) : null}
                 {row.makeupAccess?.reason ? (
-                  <Text style={{ color: '#64748b', fontSize: 12, marginTop: 4 }}>
+                  <Text style={{ color: '#64748b', ...bodyTextStyle, marginTop: 4 }}>
                     Alasan: {row.makeupAccess.reason}
                   </Text>
                 ) : null}
@@ -4984,7 +5048,7 @@ export default function TeacherWakakurExamsScreen() {
                       alignItems: 'center',
                     }}
                   >
-                    <Text style={{ color: '#1d4ed8', fontWeight: '700', fontSize: 12 }}>Isi Form</Text>
+                    <Text style={{ color: '#1d4ed8', fontWeight: '700', ...bodyTextStyle }}>Isi Form</Text>
                   </Pressable>
                   {row.makeupAccess && row.makeupAccess.state !== 'REVOKED' ? (
                     <Pressable
@@ -4999,7 +5063,7 @@ export default function TeacherWakakurExamsScreen() {
                         alignItems: 'center',
                       }}
                     >
-                      <Text style={{ color: '#be123c', fontWeight: '700', fontSize: 12 }}>Cabut</Text>
+                      <Text style={{ color: '#be123c', fontWeight: '700', ...bodyTextStyle }}>Cabut</Text>
                     </Pressable>
                   ) : null}
                 </View>
@@ -5022,7 +5086,7 @@ export default function TeacherWakakurExamsScreen() {
             <Text style={{ color: BRAND_COLORS.textDark, fontWeight: '700', marginBottom: 6 }}>
               Total jadwal sesuai filter: {stats.totalSchedules}
             </Text>
-            <Text style={{ color: BRAND_COLORS.textMuted, lineHeight: 20, marginBottom: 12 }}>
+            <Text style={{ color: BRAND_COLORS.textMuted, ...paragraphTextStyle, marginBottom: 12 }}>
               Daftar ini mengikuti pencarian dan tipe ujian yang sedang aktif di halaman.
             </Text>
             {groupedScheduleSlots.slice(0, 6).map((group) => (
@@ -5033,7 +5097,7 @@ export default function TeacherWakakurExamsScreen() {
                 <Text style={{ color: BRAND_COLORS.textDark, fontWeight: '700' }}>
                   {group.subjectName} ({group.subjectCode})
                 </Text>
-                <Text style={{ color: BRAND_COLORS.textMuted, fontSize: 12, marginTop: 3 }}>
+                <Text style={{ color: BRAND_COLORS.textMuted, ...bodyTextStyle, marginTop: 3 }}>
                   {resolvePeriodLabel(group.periodNumber)} • {group.schedules.length} jadwal • {group.examType}
                 </Text>
               </View>
@@ -5046,7 +5110,7 @@ export default function TeacherWakakurExamsScreen() {
             <Text style={{ color: BRAND_COLORS.textDark, fontWeight: '700', marginBottom: 6 }}>
               Paket siap pakai: {stats.readyPacketCount}
             </Text>
-            <Text style={{ color: BRAND_COLORS.textMuted, lineHeight: 20, marginBottom: 12 }}>
+            <Text style={{ color: BRAND_COLORS.textMuted, ...paragraphTextStyle, marginBottom: 12 }}>
               Nilai ini menunjukkan jadwal yang sudah terhubung dengan packet ujian.
             </Text>
             <Text style={{ color: BRAND_COLORS.textMuted }}>
@@ -5060,7 +5124,7 @@ export default function TeacherWakakurExamsScreen() {
             <Text style={{ color: BRAND_COLORS.textDark, fontWeight: '700', marginBottom: 6 }}>
               Ruang tanpa pengawas: {stats.noProctorCount}
             </Text>
-            <Text style={{ color: BRAND_COLORS.textMuted, lineHeight: 20, marginBottom: 12 }}>
+            <Text style={{ color: BRAND_COLORS.textMuted, ...paragraphTextStyle, marginBottom: 12 }}>
               Gunakan section <Text style={{ fontWeight: '700', color: BRAND_COLORS.textDark }}>Jadwal Mengawas</Text> untuk melengkapi assignment pengawas yang belum terisi.
             </Text>
             {filteredProctorRoomSlots
@@ -5074,7 +5138,7 @@ export default function TeacherWakakurExamsScreen() {
                   <Text style={{ color: BRAND_COLORS.textDark, fontWeight: '700' }}>
                     {item.roomName || '-'} • {item.subjectName}
                   </Text>
-                  <Text style={{ color: BRAND_COLORS.textMuted, fontSize: 12, marginTop: 3 }}>
+                  <Text style={{ color: BRAND_COLORS.textMuted, ...bodyTextStyle, marginTop: 3 }}>
                     {(item.classNames || []).join(', ') || '-'} • {formatDateTime(item.startTime)}
                   </Text>
                 </View>
@@ -5087,7 +5151,7 @@ export default function TeacherWakakurExamsScreen() {
             <Text style={{ color: BRAND_COLORS.textDark, fontWeight: '700', marginBottom: 6 }}>
               Total ruang aktif: {stats.totalRooms}
             </Text>
-            <Text style={{ color: BRAND_COLORS.textMuted, lineHeight: 20, marginBottom: 12 }}>
+            <Text style={{ color: BRAND_COLORS.textMuted, ...paragraphTextStyle, marginBottom: 12 }}>
               Ringkasan ini mengikuti ruang yang benar-benar terpakai pada jadwal sesuai filter.
             </Text>
             {managedSittings.slice(0, 6).map((item) => (
@@ -5096,7 +5160,7 @@ export default function TeacherWakakurExamsScreen() {
                 style={{ borderWidth: 1, borderColor: '#e2e8f0', borderRadius: 12, padding: 10, marginBottom: 8 }}
               >
                 <Text style={{ color: BRAND_COLORS.textDark, fontWeight: '700' }}>{item.roomName || '-'}</Text>
-                <Text style={{ color: BRAND_COLORS.textMuted, fontSize: 12, marginTop: 3 }}>
+                <Text style={{ color: BRAND_COLORS.textMuted, ...bodyTextStyle, marginTop: 3 }}>
                   {item.studentCount} siswa • {item.classes.join(', ') || '-'}
                 </Text>
               </View>
@@ -5109,7 +5173,7 @@ export default function TeacherWakakurExamsScreen() {
             <Text style={{ color: BRAND_COLORS.textDark, fontWeight: '700', marginBottom: 6 }}>
               Total master komponen: {componentStats.total}
             </Text>
-            <Text style={{ color: BRAND_COLORS.textMuted, lineHeight: 20, marginBottom: 12 }}>
+            <Text style={{ color: BRAND_COLORS.textMuted, ...paragraphTextStyle, marginBottom: 12 }}>
               Komponen ini menjadi dasar penilaian yang bisa dipakai dalam program ujian aktif.
             </Text>
             <Text style={{ color: BRAND_COLORS.textMuted }}>
@@ -5123,7 +5187,7 @@ export default function TeacherWakakurExamsScreen() {
             <Text style={{ color: BRAND_COLORS.textDark, fontWeight: '700', marginBottom: 6 }}>
               Total program ujian: {programStats.total}
             </Text>
-            <Text style={{ color: BRAND_COLORS.textMuted, lineHeight: 20, marginBottom: 12 }}>
+            <Text style={{ color: BRAND_COLORS.textMuted, ...paragraphTextStyle, marginBottom: 12 }}>
               Program ujian menentukan tipe ujian, visibilitas menu, dan aturan kebijakan yang berlaku di guru maupun siswa.
             </Text>
             <Text style={{ color: BRAND_COLORS.textMuted }}>
@@ -5137,7 +5201,7 @@ export default function TeacherWakakurExamsScreen() {
             <Text style={{ color: BRAND_COLORS.textDark, fontWeight: '700', marginBottom: 6 }}>
               Program aktif siap pakai: {programStats.activeCount}
             </Text>
-            <Text style={{ color: BRAND_COLORS.textMuted, lineHeight: 20, marginBottom: 12 }}>
+            <Text style={{ color: BRAND_COLORS.textMuted, ...paragraphTextStyle, marginBottom: 12 }}>
               Hanya program aktif yang ikut tersedia sebagai pilihan saat operasional ujian berjalan.
             </Text>
             <Text style={{ color: BRAND_COLORS.textMuted }}>
@@ -5151,7 +5215,7 @@ export default function TeacherWakakurExamsScreen() {
             <Text style={{ color: BRAND_COLORS.textDark, fontWeight: '700', marginBottom: 6 }}>
               Komponen aktif siap pakai: {componentStats.activeCount}
             </Text>
-            <Text style={{ color: BRAND_COLORS.textMuted, lineHeight: 20, marginBottom: 12 }}>
+            <Text style={{ color: BRAND_COLORS.textMuted, ...paragraphTextStyle, marginBottom: 12 }}>
               Hanya komponen aktif yang akan ikut tersedia saat kurikulum menyusun program ujian berjalan.
             </Text>
             <Text style={{ color: BRAND_COLORS.textMuted }}>
