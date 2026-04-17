@@ -70,6 +70,8 @@ type ExamAvailabilityPayload = {
   sessions?: ExamSessionPayload[]
   isBlocked?: boolean
   blockReason?: string
+  manualBlocked?: boolean
+  autoBlocked?: boolean
   academicClearance?: {
     blocksExam: boolean
     warningOnly?: boolean
@@ -253,6 +255,8 @@ interface Exam {
   }
   isBlocked?: boolean
   blockReason?: string
+  manualBlocked?: boolean
+  autoBlocked?: boolean
   academicClearance?: {
     blocksExam: boolean
     warningOnly?: boolean
@@ -629,6 +633,8 @@ export default function StudentExamsPage() {
           } : undefined,
           isBlocked: item.isBlocked,
           blockReason: item.blockReason,
+          manualBlocked: item.manualBlocked,
+          autoBlocked: item.autoBlocked,
           academicClearance: item.academicClearance || null,
           financeClearance: item.financeClearance || null,
           makeupAvailable: Boolean(item.makeupAvailable),
@@ -1239,10 +1245,12 @@ export default function StudentExamsPage() {
             <div className="flex flex-col items-center">
               <span className="inline-flex items-center gap-1 px-3 py-2 bg-red-100 text-red-700 text-sm font-medium rounded mb-1">
                 <XCircle className="w-4 h-4" />
-                <span>Akses Ditolak</span>
+                <span>{exam.manualBlocked ? 'Diblokir Wali Kelas' : 'Akses Ditolak'}</span>
               </span>
               <span className="text-xs text-red-600 max-w-[200px] whitespace-normal text-center">
-                {exam.blockReason}
+                {exam.manualBlocked
+                  ? `Keterangan wali kelas: ${exam.blockReason || 'Akses ujian dibatasi secara manual.'}`
+                  : exam.blockReason}
               </span>
               {exam.financeClearance?.hasOutstanding ? (
                 <div className="mt-2 rounded-lg border border-amber-200 bg-amber-50 px-3 py-2 text-left text-[11px] text-amber-800">

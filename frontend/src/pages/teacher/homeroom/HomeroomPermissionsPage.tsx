@@ -311,7 +311,7 @@ export const HomeroomPermissionsPage = () => {
     if (!item.isBlocked) {
       const reason = window.prompt(
         `Masukkan alasan pembatasan ujian untuk ${item.student.name}:`,
-        'Belum menyelesaikan administrasi',
+        'Masih ada administrasi/tunggakan yang belum diselesaikan. Silakan hubungi wali kelas.',
       );
       if (reason === null) return;
 
@@ -502,6 +502,12 @@ export const HomeroomPermissionsPage = () => {
           </div>
         ) : (
         <div className="overflow-x-auto">
+          {activeTab === 'exam_restrictions' ? (
+            <div className="mx-4 mt-4 rounded-xl border border-amber-200 bg-amber-50 px-4 py-3 text-sm text-amber-900">
+              Gunakan blokir manual ini untuk kasus administrasi atau tunggakan yang belum tersinkron di modul finance.
+              Keterangan yang Anda isi akan tampil ke siswa pada menu ujian.
+            </div>
+          ) : null}
           {activeTab === 'permissions' ? (
               /* Permissions Table */
             <table className="min-w-full divide-y divide-gray-200">

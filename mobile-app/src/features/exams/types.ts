@@ -164,6 +164,8 @@ export type StudentExamItem = {
   notReadyReason?: string | null;
   isBlocked?: boolean;
   blockReason?: string;
+  manualBlocked?: boolean;
+  autoBlocked?: boolean;
   academicClearance?: {
     blocksExam: boolean;
     warningOnly?: boolean;

@@ -1419,7 +1419,10 @@ export default function StudentExamsScreen() {
                                 }}
                               >
                                 <Text style={{ color: '#991b1b', fontSize: 12, fontWeight: '600' }}>
-                                  Diblokir: {item.blockReason || 'Akses dibatasi wali kelas'}
+                                  {item.manualBlocked ? 'Diblokir wali kelas' : 'Diblokir'}:{' '}
+                                  {item.manualBlocked
+                                    ? item.blockReason || 'Akses ujian dibatasi secara manual.'
+                                    : item.blockReason || 'Akses dibatasi wali kelas'}
                                 </Text>
                                 {item.financeClearance?.hasOutstanding ? (
                                   <View

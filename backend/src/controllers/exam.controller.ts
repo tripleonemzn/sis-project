@@ -21,6 +21,7 @@ import { syncScoreEntriesFromStudentGrade, upsertScoreEntryFromExamSession } fro
 import {
     getHistoricalStudentSnapshotForAcademicYear,
     listHistoricalStudentsForAcademicYear,
+    validateHistoricalStudentClassMembership,
 } from '../utils/studentAcademicHistory';
 import { createInAppNotification } from '../services/mobilePushNotification.service';
 import { assertCurriculumExamManagerAccess } from '../utils/examManagementAccess';
@@ -1558,6 +1559,54 @@ async function createHomeroomAutomaticRestrictionNotification(params: {
             },
         },
     });
+}
+
+async function assertExamRestrictionClassAccess(params: {
+    req: Request;
+    academicYearId: number;
+    classId: number;
+    studentId?: number | null;
+}) {
+    const actor = (params.req as any).user as { id?: number; role?: string } | undefined;
+    if (!actor?.id || !actor.role) {
+        throw new ApiError(401, 'Tidak memiliki otorisasi');
+    }
+
+    const classRecord = await prisma.class.findFirst({
+        where: {
+            id: params.classId,
+            academicYearId: params.academicYearId,
+        },
+        select: {
+            id: true,
+            teacherId: true,
+        },
+    });
+
+    if (!classRecord) {
+        throw new ApiError(400, 'Kelas tidak valid untuk tahun ajaran yang dipilih.');
+    }
+
+    if (actor.role !== 'ADMIN') {
+        if (actor.role !== 'TEACHER') {
+            throw new ApiError(403, 'Akses izin ujian hanya tersedia untuk wali kelas atau admin.');
+        }
+
+        if (Number(classRecord.teacherId || 0) !== Number(actor.id)) {
+            throw new ApiError(403, 'Anda hanya bisa mengelola izin ujian untuk kelas yang Anda ampu sebagai wali kelas.');
+        }
+    }
+
+    if (params.studentId) {
+        const validation = await validateHistoricalStudentClassMembership({
+            academicYearId: params.academicYearId,
+            classId: params.classId,
+            studentId: params.studentId,
+        });
+        if (!validation?.student) {
+            throw new ApiError(400, 'Siswa tidak terdaftar pada kelas dan tahun ajaran yang dipilih.');
+        }
+    }
 }
 
 function resolveExamTypeCandidates(raw: unknown): string[] {
@@ -10287,6 +10336,8 @@ export const getAvailableExams = asyncHandler(async (req: Request, res: Response
         const assignedSitting = matchingSittings[0] || slotSittings[0] || null;
         let isBlocked = false;
         let blockReason = '';
+        let manualBlocked = false;
+        let autoBlocked = false;
         let financeClearance: ExamFinanceClearanceSummary | null = null;
         let academicClearance: ExamAcademicClearanceSummary | null = null;
         const packetQuestionCount = schedule.packet ? questionCountByPacketId.get(schedule.packet.id) || 0 : 0;
@@ -10334,6 +10385,8 @@ export const getAvailableExams = asyncHandler(async (req: Request, res: Response
             });
             isBlocked = resolvedRestriction.isBlocked;
             blockReason = resolvedRestriction.reason || '';
+            manualBlocked = resolvedRestriction.manualBlocked;
+            autoBlocked = resolvedRestriction.autoBlocked;
             financeClearance = buildExamFinanceClearanceSummary(automaticRestriction);
             academicClearance = buildExamAcademicClearanceSummary(automaticRestriction);
         }
@@ -10432,6 +10485,8 @@ export const getAvailableExams = asyncHandler(async (req: Request, res: Response
             has_submitted: normalizedSessionStatus === 'COMPLETED' || normalizedSessionStatus === 'TIMEOUT',
             isBlocked,
             blockReason,
+            manualBlocked,
+            autoBlocked,
             isReady,
             notReadyReason,
             financeClearance,
@@ -11745,6 +11800,11 @@ export const getExamRestrictions = asyncHandler(async (req: Request, res: Respon
     if (!Number.isFinite(parsedAcademicYearId) || parsedAcademicYearId <= 0) {
         throw new ApiError(400, 'academicYearId tidak valid.');
     }
+    await assertExamRestrictionClassAccess({
+        req,
+        academicYearId: parsedAcademicYearId,
+        classId: parsedClassId,
+    });
     const parsedSemester = normalizePacketSemester(semester);
     const restrictionTarget = await resolveRestrictionTarget({
         academicYearId: parsedAcademicYearId,
@@ -11866,6 +11926,16 @@ export const updateExamRestriction = asyncHandler(async (req: Request, res: Resp
     if (!studentSnapshot) {
         throw new ApiError(400, 'Siswa tidak valid untuk tahun ajaran restriction yang dipilih.');
     }
+    const studentClassId = Number(studentSnapshot.studentClass?.id || 0);
+    if (!Number.isFinite(studentClassId) || studentClassId <= 0) {
+        throw new ApiError(400, 'Siswa belum memiliki kelas aktif pada tahun ajaran restriction yang dipilih.');
+    }
+    await assertExamRestrictionClassAccess({
+        req,
+        academicYearId: parsedAcademicYearId,
+        classId: studentClassId,
+        studentId: parsedStudentId,
+    });
     const normalizedReason = String(reason || '').trim();
     const normalizedBlockState =
         typeof isBlocked === 'string'
