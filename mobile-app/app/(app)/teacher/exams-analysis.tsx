@@ -8,6 +8,7 @@ import { QueryStateView } from '../../../src/components/QueryStateView';
 import { useAuth } from '../../../src/features/auth/AuthProvider';
 import { examApi } from '../../../src/features/exams/examApi';
 import { getStandardPagePadding } from '../../../src/lib/ui/pageLayout';
+import { useAppTextScale } from '../../../src/theme/AppTextScaleProvider';
 
 function parsePacketId(raw: string | string[] | undefined): number | null {
   const value = Array.isArray(raw) ? raw[0] : raw;
@@ -49,6 +50,7 @@ export default function TeacherExamItemAnalysisScreen() {
   const packetId = useMemo(() => parsePacketId(params.packetId), [params.packetId]);
   const title = String(Array.isArray(params.title) ? params.title[0] : params.title || 'Packet Ujian');
   const { isAuthenticated, isLoading, user } = useAuth();
+  const { scaleFont, scaleLineHeight } = useAppTextScale();
 
   const analysisQuery = useQuery({
     queryKey: ['mobile-teacher-exam-item-analysis', packetId],
@@ -80,7 +82,9 @@ export default function TeacherExamItemAnalysisScreen() {
   if (user?.role !== 'TEACHER') {
     return (
       <ScrollView style={{ flex: 1, backgroundColor: '#f8fafc' }} contentContainerStyle={pageContentPadding}>
-        <Text style={{ fontSize: 20, fontWeight: '700', marginBottom: 8 }}>Analisis Butir Soal</Text>
+        <Text style={{ fontSize: scaleFont(20), lineHeight: scaleLineHeight(28), fontWeight: '700', marginBottom: 8 }}>
+          Analisis Butir Soal
+        </Text>
         <QueryStateView type="error" message="Halaman ini khusus untuk role guru." />
       </ScrollView>
     );
@@ -89,7 +93,9 @@ export default function TeacherExamItemAnalysisScreen() {
   if (!packetId) {
     return (
       <ScrollView style={{ flex: 1, backgroundColor: '#f8fafc' }} contentContainerStyle={pageContentPadding}>
-        <Text style={{ fontSize: 20, fontWeight: '700', marginBottom: 8 }}>Analisis Butir Soal</Text>
+        <Text style={{ fontSize: scaleFont(20), lineHeight: scaleLineHeight(28), fontWeight: '700', marginBottom: 8 }}>
+          Analisis Butir Soal
+        </Text>
         <QueryStateView type="error" message="Packet ID tidak valid." />
       </ScrollView>
     );
@@ -108,11 +114,13 @@ export default function TeacherExamItemAnalysisScreen() {
         />
       }
     >
-      <Text style={{ fontSize: 20, fontWeight: '700', marginBottom: 6 }}>Analisis Butir Soal</Text>
+      <Text style={{ fontSize: scaleFont(20), lineHeight: scaleLineHeight(28), fontWeight: '700', marginBottom: 6 }}>
+        Analisis Butir Soal
+      </Text>
       <Text style={{ color: '#334155', fontWeight: '600', marginBottom: 3 }} numberOfLines={2}>
         {title}
       </Text>
-      <Text style={{ color: '#64748b', marginBottom: 12 }}>
+      <Text style={{ color: '#64748b', fontSize: scaleFont(13), lineHeight: scaleLineHeight(20), marginBottom: 12 }}>
         Ringkasan kualitas butir soal berdasarkan hasil pengerjaan siswa.
       </Text>
 
@@ -143,18 +151,18 @@ export default function TeacherExamItemAnalysisScreen() {
             <Text style={{ color: '#0f172a', fontWeight: '700', marginBottom: 6 }}>
               {analysisQuery.data.packet.subject.name} ({analysisQuery.data.packet.subject.code})
             </Text>
-            <Text style={{ color: '#334155', fontSize: 12, marginBottom: 2 }}>
+            <Text style={{ color: '#334155', fontSize: scaleFont(12), lineHeight: scaleLineHeight(18), marginBottom: 2 }}>
               Diperbarui: {formatDateTime(analysisQuery.data.summary.generatedAt)}
             </Text>
-            <Text style={{ color: '#334155', fontSize: 12, marginBottom: 2 }}>
+            <Text style={{ color: '#334155', fontSize: scaleFont(12), lineHeight: scaleLineHeight(18), marginBottom: 2 }}>
               Responden: {analysisQuery.data.summary.participantCount} • In Progress:{' '}
               {analysisQuery.data.summary.inProgressCount}
             </Text>
-            <Text style={{ color: '#334155', fontSize: 12, marginBottom: 2 }}>
+            <Text style={{ color: '#334155', fontSize: scaleFont(12), lineHeight: scaleLineHeight(18), marginBottom: 2 }}>
               Soal: {analysisQuery.data.summary.totalQuestions} (Objektif {analysisQuery.data.summary.objectiveQuestions} /
               Esai {analysisQuery.data.summary.essayQuestions})
             </Text>
-            <Text style={{ color: '#334155', fontSize: 12 }}>
+            <Text style={{ color: '#334155', fontSize: scaleFont(12), lineHeight: scaleLineHeight(18) }}>
               Rata-rata: {analysisQuery.data.summary.averageScore?.toFixed(2) || '-'} • Tertinggi:{' '}
               {analysisQuery.data.summary.highestScore?.toFixed(2) || '-'} • Terendah:{' '}
               {analysisQuery.data.summary.lowestScore?.toFixed(2) || '-'}
@@ -191,7 +199,9 @@ export default function TeacherExamItemAnalysisScreen() {
                 backgroundColor: '#fff',
               }}
             >
-              <Text style={{ color: '#334155' }}>Belum ada data sesi siswa untuk dianalisis.</Text>
+              <Text style={{ color: '#334155', fontSize: scaleFont(13), lineHeight: scaleLineHeight(20) }}>
+                Belum ada data sesi siswa untuk dianalisis.
+              </Text>
             </View>
           ) : (
             <View>
@@ -210,18 +220,20 @@ export default function TeacherExamItemAnalysisScreen() {
                   <Text style={{ color: '#0f172a', fontWeight: '700', marginBottom: 2 }}>
                     Soal {item.orderNumber} • {item.type}
                   </Text>
-                  <Text style={{ color: '#334155', fontSize: 12, marginBottom: 6 }}>{item.contentPreview}</Text>
+                  <Text style={{ color: '#334155', fontSize: scaleFont(12), lineHeight: scaleLineHeight(18), marginBottom: 6 }}>
+                    {item.contentPreview}
+                  </Text>
 
-                  <Text style={{ color: '#475569', fontSize: 12 }}>
+                  <Text style={{ color: '#475569', fontSize: scaleFont(12), lineHeight: scaleLineHeight(18) }}>
                     Dijawab: {item.answeredCount} • Kosong: {item.unansweredCount} ({formatPercent(item.unansweredRate)})
                   </Text>
-                  <Text style={{ color: '#475569', fontSize: 12 }}>
+                  <Text style={{ color: '#475569', fontSize: scaleFont(12), lineHeight: scaleLineHeight(18) }}>
                     Benar: {item.correctCount ?? '-'} • Salah: {item.incorrectCount ?? '-'}
                   </Text>
-                  <Text style={{ color: '#475569', fontSize: 12 }}>
+                  <Text style={{ color: '#475569', fontSize: scaleFont(12), lineHeight: scaleLineHeight(18) }}>
                     Indeks Kesukaran: {formatNumber(item.difficultyIndex)} ({item.difficultyCategory || '-'})
                   </Text>
-                  <Text style={{ color: '#475569', fontSize: 12, marginBottom: 6 }}>
+                  <Text style={{ color: '#475569', fontSize: scaleFont(12), lineHeight: scaleLineHeight(18), marginBottom: 6 }}>
                     Daya Pembeda: {formatNumber(item.discriminationIndex)} ({item.discriminationCategory || '-'})
                   </Text>
 
@@ -239,7 +251,7 @@ export default function TeacherExamItemAnalysisScreen() {
                               paddingVertical: 4,
                             }}
                           >
-                            <Text style={{ color: '#334155', fontSize: 11 }}>
+                            <Text style={{ color: '#334155', fontSize: scaleFont(11), lineHeight: scaleLineHeight(16) }}>
                               {opt.label}: {opt.selectedCount} ({formatPercent(opt.selectedRate)})
                             </Text>
                           </View>

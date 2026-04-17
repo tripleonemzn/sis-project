@@ -8,6 +8,7 @@ import { QueryStateView } from '../../../src/components/QueryStateView';
 import { useAuth } from '../../../src/features/auth/AuthProvider';
 import { examApi } from '../../../src/features/exams/examApi';
 import { getStandardPagePadding } from '../../../src/lib/ui/pageLayout';
+import { useAppTextScale } from '../../../src/theme/AppTextScaleProvider';
 
 type SessionStatusFilter = 'ALL' | 'IN_PROGRESS' | 'COMPLETED' | 'TIMEOUT';
 
@@ -64,6 +65,7 @@ export default function TeacherExamSubmissionsScreen() {
   const packetId = useMemo(() => parseNumericParam(params.packetId), [params.packetId]);
   const packetTitle = parseStringParam(params.title, 'Packet Ujian');
   const [statusFilter, setStatusFilter] = useState<SessionStatusFilter>('ALL');
+  const { scaleFont, scaleLineHeight } = useAppTextScale();
 
   const submissionsQuery = useQuery({
     queryKey: ['mobile-teacher-exam-submissions', packetId, statusFilter],
@@ -80,7 +82,9 @@ export default function TeacherExamSubmissionsScreen() {
   if (user?.role !== 'TEACHER') {
     return (
       <ScrollView style={{ flex: 1, backgroundColor: '#f8fafc' }} contentContainerStyle={pageContentPadding}>
-        <Text style={{ fontSize: 20, fontWeight: '700', marginBottom: 8 }}>Submission Ujian</Text>
+        <Text style={{ fontSize: scaleFont(20), lineHeight: scaleLineHeight(28), fontWeight: '700', marginBottom: 8 }}>
+          Submission Ujian
+        </Text>
         <QueryStateView type="error" message="Halaman ini khusus untuk role guru." />
       </ScrollView>
     );
@@ -89,7 +93,9 @@ export default function TeacherExamSubmissionsScreen() {
   if (!packetId) {
     return (
       <ScrollView style={{ flex: 1, backgroundColor: '#f8fafc' }} contentContainerStyle={pageContentPadding}>
-        <Text style={{ fontSize: 20, fontWeight: '700', marginBottom: 8 }}>Submission Ujian</Text>
+        <Text style={{ fontSize: scaleFont(20), lineHeight: scaleLineHeight(28), fontWeight: '700', marginBottom: 8 }}>
+          Submission Ujian
+        </Text>
         <QueryStateView type="error" message="Packet ID tidak valid." />
         <Pressable
           onPress={() => router.back()}
@@ -120,11 +126,13 @@ export default function TeacherExamSubmissionsScreen() {
         />
       }
     >
-      <Text style={{ fontSize: 20, fontWeight: '700', marginBottom: 6 }}>Submission Ujian</Text>
+      <Text style={{ fontSize: scaleFont(20), lineHeight: scaleLineHeight(28), fontWeight: '700', marginBottom: 6 }}>
+        Submission Ujian
+      </Text>
       <Text style={{ color: '#334155', marginBottom: 3, fontWeight: '600' }} numberOfLines={2}>
         {packetTitle}
       </Text>
-      <Text style={{ color: '#64748b', marginBottom: 12 }}>
+      <Text style={{ color: '#64748b', fontSize: scaleFont(13), lineHeight: scaleLineHeight(20), marginBottom: 12 }}>
         Pantau progres siswa dan buka detail jawaban setiap sesi.
       </Text>
 
@@ -149,7 +157,7 @@ export default function TeacherExamSubmissionsScreen() {
                   alignItems: 'center',
                 }}
               >
-                <Text style={{ color: active ? '#1d4ed8' : '#475569', fontWeight: '700', fontSize: 11 }}>
+                <Text style={{ color: active ? '#1d4ed8' : '#475569', fontWeight: '700', fontSize: scaleFont(11) }}>
                   {item.label}
                 </Text>
               </Pressable>
@@ -194,8 +202,8 @@ export default function TeacherExamSubmissionsScreen() {
                     alignItems: 'center',
                   }}
                 >
-                  <Text style={{ color: item.color, fontWeight: '700', fontSize: 16 }}>{item.value}</Text>
-                  <Text style={{ color: '#64748b', fontSize: 10 }}>{item.label}</Text>
+                  <Text style={{ color: item.color, fontWeight: '700', fontSize: scaleFont(16) }}>{item.value}</Text>
+                  <Text style={{ color: '#64748b', fontSize: scaleFont(10), lineHeight: scaleLineHeight(14) }}>{item.label}</Text>
                 </View>
               </View>
             ))}
@@ -240,7 +248,7 @@ export default function TeacherExamSubmissionsScreen() {
                     </Text>
                     <Text
                       style={{
-                        fontSize: 11,
+                        fontSize: scaleFont(11),
                         fontWeight: '700',
                         color: badge.text,
                         backgroundColor: badge.bg,
@@ -255,14 +263,14 @@ export default function TeacherExamSubmissionsScreen() {
                     </Text>
                   </View>
 
-                  <Text style={{ color: '#64748b', fontSize: 12, marginBottom: 2 }}>
+                  <Text style={{ color: '#64748b', fontSize: scaleFont(12), lineHeight: scaleLineHeight(18), marginBottom: 2 }}>
                     NIS: {item.student.nis || '-'} • Kelas: {item.class?.name || '-'}
                   </Text>
-                  <Text style={{ color: '#334155', fontSize: 12, marginBottom: 2 }}>
+                  <Text style={{ color: '#334155', fontSize: scaleFont(12), lineHeight: scaleLineHeight(18), marginBottom: 2 }}>
                     Nilai: {item.score === null ? '-' : item.score.toFixed(2)} • Progress:{' '}
                     {item.answeredCount}/{item.totalQuestions} ({formatPercent(item.completionRate)})
                   </Text>
-                  <Text style={{ color: '#64748b', fontSize: 12, marginBottom: 8 }}>
+                  <Text style={{ color: '#64748b', fontSize: scaleFont(12), lineHeight: scaleLineHeight(18), marginBottom: 8 }}>
                     Mulai: {formatDateTime(item.startTime)} • Kumpul: {formatDateTime(item.submitTime)}
                   </Text>
 
@@ -281,7 +289,7 @@ export default function TeacherExamSubmissionsScreen() {
                       alignItems: 'center',
                     }}
                   >
-                    <Text style={{ color: '#1d4ed8', fontWeight: '700', fontSize: 12 }}>Lihat Detail Jawaban</Text>
+                    <Text style={{ color: '#1d4ed8', fontWeight: '700', fontSize: scaleFont(12) }}>Lihat Detail Jawaban</Text>
                   </Pressable>
                 </View>
               );
@@ -318,4 +326,3 @@ export default function TeacherExamSubmissionsScreen() {
     </ScrollView>
   );
 }
-

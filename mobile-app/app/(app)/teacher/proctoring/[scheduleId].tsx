@@ -14,6 +14,7 @@ import { ProctorScheduleStatus } from '../../../../src/features/proctoring/types
 import { useIsScreenActive } from '../../../../src/hooks/useIsScreenActive';
 import { getStandardPagePadding } from '../../../../src/lib/ui/pageLayout';
 import { notifyApiError, notifySuccess } from '../../../../src/lib/ui/feedback';
+import { useAppTextScale } from '../../../../src/theme/AppTextScaleProvider';
 
 function parseScheduleId(raw: string | string[] | undefined): number | null {
   const value = Array.isArray(raw) ? raw[0] : raw;
@@ -110,6 +111,7 @@ export default function TeacherProctoringDetailScreen() {
   const parsedScheduleId = useMemo(() => parseScheduleId(scheduleId), [scheduleId]);
   const { isAuthenticated, isLoading, user } = useAuth();
   const pagePadding = getStandardPagePadding(insets, { bottom: 120 });
+  const { scaleFont, scaleLineHeight } = useAppTextScale();
 
   const [notes, setNotes] = useState('');
   const [isReportModalOpen, setIsReportModalOpen] = useState(false);
@@ -266,7 +268,9 @@ export default function TeacherProctoringDetailScreen() {
   if (user?.role !== 'TEACHER') {
     return (
       <ScrollView style={{ flex: 1, backgroundColor: '#f8fafc' }} contentContainerStyle={pagePadding}>
-        <Text style={{ fontSize: 20, fontWeight: '700', marginBottom: 8 }}>Monitoring Ujian</Text>
+        <Text style={{ fontSize: scaleFont(20), lineHeight: scaleLineHeight(28), fontWeight: '700', marginBottom: 8 }}>
+          Monitoring Ujian
+        </Text>
         <QueryStateView type="error" message="Halaman ini khusus untuk role guru." />
       </ScrollView>
     );
@@ -311,8 +315,10 @@ export default function TeacherProctoringDetailScreen() {
           <Feather name="arrow-left" size={18} color="#334155" />
         </Pressable>
         <View style={{ flex: 1 }}>
-          <Text style={{ fontSize: 20, fontWeight: '700', color: BRAND_COLORS.textDark }}>Monitoring Ujian</Text>
-          <Text style={{ color: BRAND_COLORS.textMuted }}>
+          <Text style={{ fontSize: scaleFont(20), lineHeight: scaleLineHeight(28), fontWeight: '700', color: BRAND_COLORS.textDark }}>
+            Monitoring Ujian
+          </Text>
+          <Text style={{ color: BRAND_COLORS.textMuted, fontSize: scaleFont(13), lineHeight: scaleLineHeight(20) }}>
             Pantau status peserta, pelanggaran, dan siapkan berita acara untuk Kurikulum.
           </Text>
         </View>
@@ -344,7 +350,7 @@ export default function TeacherProctoringDetailScreen() {
               }}
             >
               <Text style={{ color: '#92400e', fontWeight: '700' }}>Peringatan Sinkronisasi Waktu</Text>
-              <Text style={{ color: '#92400e', fontSize: 12, marginTop: 4, lineHeight: 18 }}>
+              <Text style={{ color: '#92400e', fontSize: scaleFont(12), marginTop: 4, lineHeight: scaleLineHeight(18) }}>
                 {serverTimeDriftMinutes !== null
                   ? `Jam perangkat pengawas berbeda sekitar ${serverTimeDriftMinutes} menit dari server. Aktifkan sinkronisasi waktu otomatis agar monitoring akurat.`
                   : 'Jika siswa melapor tombol mulai tidak muncul, cek jam perangkat siswa dan pastikan sinkronisasi waktu otomatis aktif.'}
@@ -360,22 +366,22 @@ export default function TeacherProctoringDetailScreen() {
               marginBottom: 10,
             }}
             >
-              <Text style={{ color: '#bfdbfe', fontSize: 12 }}>Jadwal Ujian</Text>
-              <Text style={{ color: '#fff', fontSize: 18, fontWeight: '700', marginTop: 3 }}>
+              <Text style={{ color: '#bfdbfe', fontSize: scaleFont(12), lineHeight: scaleLineHeight(18) }}>Jadwal Ujian</Text>
+              <Text style={{ color: '#fff', fontSize: scaleFont(18), lineHeight: scaleLineHeight(24), fontWeight: '700', marginTop: 3 }}>
                 {detailQuery.data.schedule.displayTitle || detailQuery.data.schedule.packet?.title || 'Paket Tidak Ditemukan'}
               </Text>
-              <Text style={{ color: '#dbeafe', fontSize: 12, marginTop: 3 }}>
+              <Text style={{ color: '#dbeafe', fontSize: scaleFont(12), lineHeight: scaleLineHeight(18), marginTop: 3 }}>
                 {detailQuery.data.schedule.packet?.subject?.name || '-'} • {orderedClassNames.join(' • ') || '-'}
               </Text>
-              <Text style={{ color: '#dbeafe', fontSize: 12, marginTop: 3 }}>
+              <Text style={{ color: '#dbeafe', fontSize: scaleFont(12), lineHeight: scaleLineHeight(18), marginTop: 3 }}>
                 {formatDateTime(detailQuery.data.schedule.startTime)} - {formatTime(detailQuery.data.schedule.endTime)}
               </Text>
-              <Text style={{ color: '#dbeafe', fontSize: 12, marginTop: 3 }}>
+              <Text style={{ color: '#dbeafe', fontSize: scaleFont(12), lineHeight: scaleLineHeight(18), marginTop: 3 }}>
                 Ruangan: {detailQuery.data.schedule.room || 'Belum ditentukan'} • Token:{' '}
                 {detailQuery.data.schedule.token || '-'}
               </Text>
               {detailQuery.data.schedule.teacherNames?.length ? (
-                <Text style={{ color: '#dbeafe', fontSize: 12, marginTop: 3 }}>
+                <Text style={{ color: '#dbeafe', fontSize: scaleFont(12), lineHeight: scaleLineHeight(18), marginTop: 3 }}>
                   Guru Pengampu: {detailQuery.data.schedule.teacherNames.join(', ')}
                 </Text>
               ) : null}
@@ -467,8 +473,10 @@ export default function TeacherProctoringDetailScreen() {
                     <View style={{ flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center' }}>
                       <View style={{ flex: 1, paddingRight: 8 }}>
                         <Text style={{ color: BRAND_COLORS.textDark, fontWeight: '700' }}>{student.name}</Text>
-                        <Text style={{ color: '#64748b', fontSize: 12, marginTop: 2 }}>NIS: {student.nis || '-'}</Text>
-                        <Text style={{ color: '#64748b', fontSize: 12, marginTop: 2 }}>
+                        <Text style={{ color: '#64748b', fontSize: scaleFont(12), lineHeight: scaleLineHeight(18), marginTop: 2 }}>
+                          NIS: {student.nis || '-'}
+                        </Text>
+                        <Text style={{ color: '#64748b', fontSize: scaleFont(12), lineHeight: scaleLineHeight(18), marginTop: 2 }}>
                           Kelas: {student.className || '-'}
                         </Text>
                       </View>
@@ -482,12 +490,12 @@ export default function TeacherProctoringDetailScreen() {
                           paddingVertical: 3,
                         }}
                       >
-                        <Text style={{ color: style.text, fontWeight: '700', fontSize: 11 }}>
+                        <Text style={{ color: style.text, fontWeight: '700', fontSize: scaleFont(11) }}>
                           {statusLabel(student.status)}
                         </Text>
                       </View>
                     </View>
-                    <Text style={{ color: '#334155', fontSize: 12, marginTop: 6 }}>
+                    <Text style={{ color: '#334155', fontSize: scaleFont(12), lineHeight: scaleLineHeight(18), marginTop: 6 }}>
                       Mulai: {formatTime(student.startTime)} • Selesai: {formatTime(student.submitTime)} • Nilai:{' '}
                       {student.score ?? '-'}
                     </Text>
@@ -504,18 +512,18 @@ export default function TeacherProctoringDetailScreen() {
                           gap: 4,
                         }}
                       >
-                        <Text style={{ color: '#334155', fontSize: 12 }}>
+                        <Text style={{ color: '#334155', fontSize: scaleFont(12), lineHeight: scaleLineHeight(18) }}>
                           Progres: {student.answeredCount || 0} dari {student.totalQuestions || 0} soal
                         </Text>
                         {student.status === 'IN_PROGRESS' ? (
-                          <Text style={{ color: '#1d4ed8', fontSize: 12, fontWeight: '700' }}>
+                          <Text style={{ color: '#1d4ed8', fontSize: scaleFont(12), lineHeight: scaleLineHeight(18), fontWeight: '700' }}>
                             Soal aktif: {student.monitoring?.currentQuestionNumber || ((student.monitoring?.currentQuestionIndex || 0) + 1)}
                           </Text>
                         ) : null}
                         <Text
                           style={{
                             color: totalStudentViolations > 0 ? '#b91c1c' : '#475569',
-                            fontSize: 12,
+                            fontSize: scaleFont(12),
                             fontWeight: '700',
                           }}
                         >
@@ -523,12 +531,12 @@ export default function TeacherProctoringDetailScreen() {
                           {student.monitoring?.fullscreenExitCount || 0}, app {student.monitoring?.appSwitchCount || 0})
                         </Text>
                         {student.monitoring?.lastViolationType || student.monitoring?.lastViolationAt ? (
-                          <Text style={{ color: '#64748b', fontSize: 11 }}>
+                          <Text style={{ color: '#64748b', fontSize: scaleFont(11), lineHeight: scaleLineHeight(16) }}>
                             Terakhir: {student.monitoring?.lastViolationType || '-'} • {formatDateTime(student.monitoring?.lastViolationAt)}
                           </Text>
                         ) : null}
                         {student.monitoring?.lastSyncAt ? (
-                          <Text style={{ color: '#64748b', fontSize: 11 }}>
+                          <Text style={{ color: '#64748b', fontSize: scaleFont(11), lineHeight: scaleLineHeight(16) }}>
                             Sinkron terakhir: {formatDateTime(student.monitoring.lastSyncAt)}
                           </Text>
                         ) : null}
@@ -576,13 +584,15 @@ export default function TeacherProctoringDetailScreen() {
               <Text style={{ color: BRAND_COLORS.textDark, fontWeight: '700' }}>
                 {reportSubmitted ? 'Berita acara sudah dikirim' : 'Siapkan berita acara sebelum dikirim'}
               </Text>
-              <Text style={{ color: '#64748b', fontSize: 12, marginTop: 4, lineHeight: 18 }}>
+              <Text style={{ color: '#64748b', fontSize: scaleFont(12), marginTop: 4, lineHeight: scaleLineHeight(18) }}>
                 {reportSubmitted
                   ? 'Setelah terkirim, berita acara menjadi arsip dan catatan pengawas bersifat read-only dari sisi pengawas.'
                   : 'Buka panel berita acara untuk meninjau preview dokumen, mengisi catatan pengawas, lalu kirim ke Kurikulum.'}
               </Text>
               {latestReport?.documentNumber ? (
-                <Text style={{ color: '#64748b', fontSize: 12, marginTop: 4 }}>No. Dokumen: {latestReport.documentNumber}</Text>
+                <Text style={{ color: '#64748b', fontSize: scaleFont(12), lineHeight: scaleLineHeight(18), marginTop: 4 }}>
+                  No. Dokumen: {latestReport.documentNumber}
+                </Text>
               ) : null}
             </View>
             <Pressable
@@ -643,8 +653,10 @@ export default function TeacherProctoringDetailScreen() {
               }}
             >
               <View style={{ flex: 1 }}>
-                <Text style={{ color: BRAND_COLORS.textDark, fontWeight: '700', fontSize: 16 }}>Pratinjau Berita Acara</Text>
-                <Text style={{ color: '#64748b', fontSize: 12, marginTop: 4, lineHeight: 18 }}>
+                <Text style={{ color: BRAND_COLORS.textDark, fontWeight: '700', fontSize: scaleFont(16), lineHeight: scaleLineHeight(22) }}>
+                  Pratinjau Berita Acara
+                </Text>
+                <Text style={{ color: '#64748b', fontSize: scaleFont(12), marginTop: 4, lineHeight: scaleLineHeight(18) }}>
                   {reportSubmitted
                     ? 'Berita acara ini sudah dikirim ke Kurikulum dan tampil sebagai arsip pengawas.'
                     : 'Tinjau isi dokumen resmi sebelum dikirim ke Kurikulum.'}
@@ -682,7 +694,7 @@ export default function TeacherProctoringDetailScreen() {
                   backgroundColor: reportSubmitted ? '#ecfdf5' : '#fff',
                 }}
               >
-                <Text style={{ color: reportSubmitted ? '#047857' : '#475569', fontSize: 11, fontWeight: '700' }}>
+                <Text style={{ color: reportSubmitted ? '#047857' : '#475569', fontSize: scaleFont(11), fontWeight: '700' }}>
                   {reportSubmitted ? 'ARSIP' : 'DRAFT'}
                 </Text>
               </View>
@@ -698,7 +710,7 @@ export default function TeacherProctoringDetailScreen() {
                   }}
                 >
                   <Text style={{ color: '#047857', fontWeight: '700' }}>Berita acara sudah terkirim ke Kurikulum.</Text>
-                  <Text style={{ color: '#047857', fontSize: 12, marginTop: 4 }}>
+                  <Text style={{ color: '#047857', fontSize: scaleFont(12), lineHeight: scaleLineHeight(18), marginTop: 4 }}>
                     Dokumen resmi diverifikasi dan dicetak dari sisi Wakasek Kurikulum / sekretaris.
                   </Text>
                 </View>
@@ -713,29 +725,29 @@ export default function TeacherProctoringDetailScreen() {
                   backgroundColor: '#fff',
                 }}
               >
-                <Text style={{ color: BRAND_COLORS.textDark, textAlign: 'center', fontSize: 17, fontWeight: '800' }}>
+                <Text style={{ color: BRAND_COLORS.textDark, textAlign: 'center', fontSize: scaleFont(17), lineHeight: scaleLineHeight(24), fontWeight: '800' }}>
                   BERITA ACARA
                 </Text>
-                <Text style={{ color: BRAND_COLORS.textDark, textAlign: 'center', fontSize: 12, fontWeight: '700', marginTop: 4 }}>
+                <Text style={{ color: BRAND_COLORS.textDark, textAlign: 'center', fontSize: scaleFont(12), lineHeight: scaleLineHeight(18), fontWeight: '700', marginTop: 4 }}>
                   {previewExamHeading}
                 </Text>
-                <Text style={{ color: BRAND_COLORS.textDark, textAlign: 'center', fontSize: 12, fontWeight: '700', marginTop: 2 }}>
+                <Text style={{ color: BRAND_COLORS.textDark, textAlign: 'center', fontSize: scaleFont(12), lineHeight: scaleLineHeight(18), fontWeight: '700', marginTop: 2 }}>
                   SMKS KARYA GUNA BHAKTI 2
                 </Text>
-                <Text style={{ color: BRAND_COLORS.textDark, textAlign: 'center', fontSize: 11, fontWeight: '700', marginTop: 2 }}>
+                <Text style={{ color: BRAND_COLORS.textDark, textAlign: 'center', fontSize: scaleFont(11), lineHeight: scaleLineHeight(16), fontWeight: '700', marginTop: 2 }}>
                   Tahun Ajaran {detailQuery.data?.schedule?.academicYearName || '-'}
                 </Text>
                 <View style={{ borderTopWidth: 1, borderTopColor: '#0f172a', marginTop: 12 }} />
                 <View style={{ borderTopWidth: 2, borderTopColor: '#0f172a', marginTop: 4 }} />
-                <Text style={{ color: '#0f172a', fontSize: 12, lineHeight: 20, marginTop: 12 }}>
+                <Text style={{ color: '#0f172a', fontSize: scaleFont(12), lineHeight: scaleLineHeight(20), marginTop: 12 }}>
                   {previewNarrative}
                 </Text>
                 <View style={{ marginTop: 12, gap: 6 }}>
-                  <Text style={{ color: '#0f172a', fontSize: 12 }}>Jumlah Peserta Seharusnya: {expectedParticipants}</Text>
-                  <Text style={{ color: '#0f172a', fontSize: 12 }}>Jumlah Peserta yang tidak hadir: {absentParticipants}</Text>
-                  <Text style={{ color: '#0f172a', fontSize: 12 }}>Jumlah Peserta yang hadir: {presentParticipants}</Text>
+                  <Text style={{ color: '#0f172a', fontSize: scaleFont(12), lineHeight: scaleLineHeight(18) }}>Jumlah Peserta Seharusnya: {expectedParticipants}</Text>
+                  <Text style={{ color: '#0f172a', fontSize: scaleFont(12), lineHeight: scaleLineHeight(18) }}>Jumlah Peserta yang tidak hadir: {absentParticipants}</Text>
+                  <Text style={{ color: '#0f172a', fontSize: scaleFont(12), lineHeight: scaleLineHeight(18) }}>Jumlah Peserta yang hadir: {presentParticipants}</Text>
                 </View>
-                <Text style={{ color: '#0f172a', fontSize: 12, marginTop: 12, fontWeight: '700' }}>
+                <Text style={{ color: '#0f172a', fontSize: scaleFont(12), lineHeight: scaleLineHeight(18), marginTop: 12, fontWeight: '700' }}>
                   Catatan Pengawas selama Ujian berlangsung.
                 </Text>
                 <TextInput
@@ -753,24 +765,26 @@ export default function TeacherProctoringDetailScreen() {
                     marginTop: 8,
                     color: reportSubmitted ? '#64748b' : '#0f172a',
                     backgroundColor: reportSubmitted ? '#f8fafc' : '#fff',
-                    lineHeight: 20,
-                    fontSize: 12,
+                    lineHeight: scaleLineHeight(20),
+                    fontSize: scaleFont(12),
                   }}
                   placeholderTextColor="#94a3b8"
                   multiline
                   editable={!reportSubmitted && isScheduleStarted}
                 />
                 {!reportSubmitted && !isScheduleStarted ? (
-                  <Text style={{ color: '#b45309', fontSize: 12, marginTop: 8 }}>
+                  <Text style={{ color: '#b45309', fontSize: scaleFont(12), lineHeight: scaleLineHeight(18), marginTop: 8 }}>
                     Berita acara baru bisa diisi setelah waktu ujian mulai sesuai jadwal pelaksanaan.
                   </Text>
                 ) : null}
                 {reportSubmitted ? (
-                  <Text style={{ color: '#64748b', fontSize: 12, marginTop: 8 }}>
+                  <Text style={{ color: '#64748b', fontSize: scaleFont(12), lineHeight: scaleLineHeight(18), marginTop: 8 }}>
                     Catatan tidak bisa diubah lagi karena berita acara sudah masuk arsip setelah dikirim ke Kurikulum.
                   </Text>
                 ) : null}
-                <Text style={{ color: '#64748b', fontSize: 12, marginTop: 8 }}>Waktu pelaksanaan: {previewTimeLabel}</Text>
+                <Text style={{ color: '#64748b', fontSize: scaleFont(12), lineHeight: scaleLineHeight(18), marginTop: 8 }}>
+                  Waktu pelaksanaan: {previewTimeLabel}
+                </Text>
               </View>
 
               <Pressable

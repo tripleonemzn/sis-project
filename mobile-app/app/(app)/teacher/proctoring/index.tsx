@@ -14,6 +14,7 @@ import { useAuth } from '../../../../src/features/auth/AuthProvider';
 import { proctoringApi } from '../../../../src/features/proctoring/proctoringApi';
 import { ProctorScheduleSummary } from '../../../../src/features/proctoring/types';
 import { getStandardPagePadding } from '../../../../src/lib/ui/pageLayout';
+import { useAppTextScale } from '../../../../src/theme/AppTextScaleProvider';
 
 type TimeFilter = 'TODAY' | 'UPCOMING' | 'HISTORY';
 type ModeFilter = 'PROCTOR' | 'AUTHOR';
@@ -190,6 +191,7 @@ export default function TeacherProctoringScheduleScreen() {
   const insets = useSafeAreaInsets();
   const { isAuthenticated, isLoading, user } = useAuth();
   const pagePadding = getStandardPagePadding(insets, { bottom: 120 });
+  const { scaleFont, scaleLineHeight } = useAppTextScale();
 
   const [timeFilter, setTimeFilter] = useState<TimeFilter>('TODAY');
   const [modeFilter, setModeFilter] = useState<ModeFilter>('PROCTOR');
@@ -316,7 +318,9 @@ export default function TeacherProctoringScheduleScreen() {
   if (user?.role !== 'TEACHER') {
     return (
       <ScrollView style={{ flex: 1, backgroundColor: '#f8fafc' }} contentContainerStyle={pagePadding}>
-        <Text style={{ fontSize: 20, fontWeight: '700', marginBottom: 8 }}>Jadwal Mengawas</Text>
+        <Text style={{ fontSize: scaleFont(20), lineHeight: scaleLineHeight(28), fontWeight: '700', marginBottom: 8 }}>
+          Jadwal Mengawas
+        </Text>
         <QueryStateView type="error" message="Halaman ini khusus untuk role guru." />
       </ScrollView>
     );
@@ -335,10 +339,10 @@ export default function TeacherProctoringScheduleScreen() {
         />
       }
     >
-      <Text style={{ fontSize: 20, fontWeight: '700', marginBottom: 6, color: BRAND_COLORS.textDark }}>
+      <Text style={{ fontSize: scaleFont(20), lineHeight: scaleLineHeight(28), fontWeight: '700', marginBottom: 6, color: BRAND_COLORS.textDark }}>
         Jadwal Mengawas & Monitoring
       </Text>
-      <Text style={{ color: BRAND_COLORS.textMuted, marginBottom: 12 }}>
+      <Text style={{ color: BRAND_COLORS.textMuted, fontSize: scaleFont(13), lineHeight: scaleLineHeight(20), marginBottom: 12 }}>
         Pantau jadwal ujian yang ditugaskan kepada Anda dengan breakdown per hari.
       </Text>
 
@@ -479,13 +483,15 @@ export default function TeacherProctoringScheduleScreen() {
                 }}
               >
                 <View style={{ flex: 1, paddingRight: 10 }}>
-                  <Text style={{ color: BRAND_COLORS.textDark, fontWeight: '700', fontSize: 16 }}>{day.dateLabel}</Text>
-                  <Text style={{ color: '#64748b', marginTop: 4, fontSize: 12 }}>
+                  <Text style={{ color: BRAND_COLORS.textDark, fontWeight: '700', fontSize: scaleFont(16), lineHeight: scaleLineHeight(22) }}>
+                    {day.dateLabel}
+                  </Text>
+                  <Text style={{ color: '#64748b', marginTop: 4, fontSize: scaleFont(12), lineHeight: scaleLineHeight(18) }}>
                     {day.rows.length} slot ujian • {new Set(day.rows.map((row) => row.roomName)).size} ruang aktif
                   </Text>
                 </View>
                 <View style={{ flexDirection: 'row', alignItems: 'center' }}>
-                  <Text style={{ color: BRAND_COLORS.blue, fontWeight: '700', fontSize: 12, marginRight: 6 }}>
+                  <Text style={{ color: BRAND_COLORS.blue, fontWeight: '700', fontSize: scaleFont(12), marginRight: 6 }}>
                     {expandedDayKey === day.dateKey ? 'Tutup Hari' : 'Buka Hari'}
                   </Text>
                   <Feather
@@ -514,7 +520,9 @@ export default function TeacherProctoringScheduleScreen() {
                     <View style={{ flexDirection: 'row', justifyContent: 'space-between', alignItems: 'flex-start' }}>
                       <View style={{ flex: 1, paddingRight: 8 }}>
                         <Text style={{ color: BRAND_COLORS.textDark, fontWeight: '700' }}>{group.title}</Text>
-                        <Text style={{ color: '#64748b', marginTop: 2, fontSize: 12 }}>{group.subjectName}</Text>
+                        <Text style={{ color: '#64748b', marginTop: 2, fontSize: scaleFont(12), lineHeight: scaleLineHeight(18) }}>
+                          {group.subjectName}
+                        </Text>
                       </View>
                       <View
                         style={{
@@ -526,20 +534,22 @@ export default function TeacherProctoringScheduleScreen() {
                           paddingVertical: 3,
                         }}
                       >
-                        <Text style={{ color: statusStyle.text, fontWeight: '700', fontSize: 11 }}>{status}</Text>
+                        <Text style={{ color: statusStyle.text, fontWeight: '700', fontSize: scaleFont(11) }}>{status}</Text>
                       </View>
                     </View>
 
                     <View style={{ marginTop: 8 }}>
-                      <Text style={{ color: '#334155', fontSize: 12 }}>
+                      <Text style={{ color: '#334155', fontSize: scaleFont(12), lineHeight: scaleLineHeight(18) }}>
                         {formatTimeRange(group.startTime, group.endTime)}
                         {group.periodNumber ? ` • Jam Ke-${group.periodNumber}` : ''}
                       </Text>
-                      <Text style={{ color: '#334155', fontSize: 12, marginTop: 2 }}>Ruangan: {group.roomName}</Text>
-                      <Text style={{ color: '#334155', fontSize: 12, marginTop: 2 }}>
+                      <Text style={{ color: '#334155', fontSize: scaleFont(12), lineHeight: scaleLineHeight(18), marginTop: 2 }}>
+                        Ruangan: {group.roomName}
+                      </Text>
+                      <Text style={{ color: '#334155', fontSize: scaleFont(12), lineHeight: scaleLineHeight(18), marginTop: 2 }}>
                         {group.sessionLabel ? `Sesi: ${group.sessionLabel}` : 'Tanpa sesi'}
                       </Text>
-                      <Text style={{ color: '#334155', fontSize: 12, marginTop: 2 }}>
+                      <Text style={{ color: '#334155', fontSize: scaleFont(12), lineHeight: scaleLineHeight(18), marginTop: 2 }}>
                         Peserta aktif: {group.totalActiveParticipants}
                       </Text>
                     </View>
@@ -559,7 +569,7 @@ export default function TeacherProctoringScheduleScreen() {
                             marginBottom: 6,
                           }}
                         >
-                          <Text style={{ color: '#1d4ed8', fontSize: 11 }}>{className}</Text>
+                          <Text style={{ color: '#1d4ed8', fontSize: scaleFont(11), lineHeight: scaleLineHeight(16) }}>{className}</Text>
                         </View>
                       ))}
                     </View>

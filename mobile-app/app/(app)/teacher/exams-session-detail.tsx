@@ -8,6 +8,7 @@ import { QueryStateView } from '../../../src/components/QueryStateView';
 import { useAuth } from '../../../src/features/auth/AuthProvider';
 import { examApi } from '../../../src/features/exams/examApi';
 import { getStandardPagePadding } from '../../../src/lib/ui/pageLayout';
+import { useAppTextScale } from '../../../src/theme/AppTextScaleProvider';
 
 function parseSessionId(raw: string | string[] | undefined): number | null {
   const value = Array.isArray(raw) ? raw[0] : raw;
@@ -61,6 +62,7 @@ export default function TeacherExamSessionDetailScreen() {
   const params = useLocalSearchParams<{ sessionId?: string | string[]; title?: string | string[] }>();
   const sessionId = useMemo(() => parseSessionId(params.sessionId), [params.sessionId]);
   const packetTitle = String(Array.isArray(params.title) ? params.title[0] : params.title || 'Detail Jawaban');
+  const { scaleFont, scaleLineHeight } = useAppTextScale();
 
   const detailQuery = useQuery({
     queryKey: ['mobile-teacher-exam-session-detail', sessionId],
@@ -74,7 +76,9 @@ export default function TeacherExamSessionDetailScreen() {
   if (user?.role !== 'TEACHER') {
     return (
       <ScrollView style={{ flex: 1, backgroundColor: '#f8fafc' }} contentContainerStyle={pageContentPadding}>
-        <Text style={{ fontSize: 20, fontWeight: '700', marginBottom: 8 }}>Detail Jawaban</Text>
+        <Text style={{ fontSize: scaleFont(20), lineHeight: scaleLineHeight(28), fontWeight: '700', marginBottom: 8 }}>
+          Detail Jawaban
+        </Text>
         <QueryStateView type="error" message="Halaman ini khusus untuk role guru." />
       </ScrollView>
     );
@@ -83,7 +87,9 @@ export default function TeacherExamSessionDetailScreen() {
   if (!sessionId) {
     return (
       <ScrollView style={{ flex: 1, backgroundColor: '#f8fafc' }} contentContainerStyle={pageContentPadding}>
-        <Text style={{ fontSize: 20, fontWeight: '700', marginBottom: 8 }}>Detail Jawaban</Text>
+        <Text style={{ fontSize: scaleFont(20), lineHeight: scaleLineHeight(28), fontWeight: '700', marginBottom: 8 }}>
+          Detail Jawaban
+        </Text>
         <QueryStateView type="error" message="Session ID tidak valid." />
       </ScrollView>
     );
@@ -102,11 +108,13 @@ export default function TeacherExamSessionDetailScreen() {
         />
       }
     >
-      <Text style={{ fontSize: 20, fontWeight: '700', marginBottom: 6 }}>Detail Jawaban</Text>
+      <Text style={{ fontSize: scaleFont(20), lineHeight: scaleLineHeight(28), fontWeight: '700', marginBottom: 6 }}>
+        Detail Jawaban
+      </Text>
       <Text style={{ color: '#334155', marginBottom: 3, fontWeight: '600' }} numberOfLines={2}>
         {packetTitle}
       </Text>
-      <Text style={{ color: '#64748b', marginBottom: 12 }}>
+      <Text style={{ color: '#64748b', fontSize: scaleFont(13), lineHeight: scaleLineHeight(20), marginBottom: 12 }}>
         Review jawaban siswa per butir soal untuk sesi ini.
       </Text>
 
@@ -137,17 +145,17 @@ export default function TeacherExamSessionDetailScreen() {
             <Text style={{ color: '#0f172a', fontWeight: '700', marginBottom: 4 }}>
               {detailQuery.data.session.student.name} • {detailQuery.data.session.student.class?.name || '-'}
             </Text>
-            <Text style={{ color: '#334155', fontSize: 12, marginBottom: 2 }}>
+            <Text style={{ color: '#334155', fontSize: scaleFont(12), lineHeight: scaleLineHeight(18), marginBottom: 2 }}>
               Status: {statusLabel(detailQuery.data.session.status)}
             </Text>
-            <Text style={{ color: '#334155', fontSize: 12, marginBottom: 2 }}>
+            <Text style={{ color: '#334155', fontSize: scaleFont(12), lineHeight: scaleLineHeight(18), marginBottom: 2 }}>
               Nilai: {detailQuery.data.session.score === null ? '-' : detailQuery.data.session.score.toFixed(2)}
             </Text>
-            <Text style={{ color: '#334155', fontSize: 12, marginBottom: 2 }}>
+            <Text style={{ color: '#334155', fontSize: scaleFont(12), lineHeight: scaleLineHeight(18), marginBottom: 2 }}>
               Progres: {detailQuery.data.summary.answeredCount}/{detailQuery.data.summary.totalQuestions} (
               {formatPercent(detailQuery.data.summary.completionRate)})
             </Text>
-            <Text style={{ color: '#334155', fontSize: 12 }}>
+            <Text style={{ color: '#334155', fontSize: scaleFont(12), lineHeight: scaleLineHeight(18) }}>
               Objektif benar: {detailQuery.data.summary.objectiveCorrectCount}/
               {detailQuery.data.summary.objectiveEvaluableCount}
             </Text>
@@ -164,13 +172,13 @@ export default function TeacherExamSessionDetailScreen() {
             }}
           >
             <Text style={{ color: '#0f172a', fontWeight: '700', marginBottom: 4 }}>Timeline</Text>
-            <Text style={{ color: '#475569', fontSize: 12 }}>
+            <Text style={{ color: '#475569', fontSize: scaleFont(12), lineHeight: scaleLineHeight(18) }}>
               Mulai: {formatDateTime(detailQuery.data.session.startTime)}
             </Text>
-            <Text style={{ color: '#475569', fontSize: 12 }}>
+            <Text style={{ color: '#475569', fontSize: scaleFont(12), lineHeight: scaleLineHeight(18) }}>
               Kumpul: {formatDateTime(detailQuery.data.session.submitTime)}
             </Text>
-            <Text style={{ color: '#475569', fontSize: 12 }}>
+            <Text style={{ color: '#475569', fontSize: scaleFont(12), lineHeight: scaleLineHeight(18) }}>
               Jadwal: {formatDateTime(detailQuery.data.session.schedule.startTime)} -{' '}
               {formatDateTime(detailQuery.data.session.schedule.endTime)}
             </Text>
@@ -197,7 +205,7 @@ export default function TeacherExamSessionDetailScreen() {
                     </Text>
                     <Text
                       style={{
-                        fontSize: 11,
+                        fontSize: scaleFont(11),
                         fontWeight: '700',
                         color: badge.text,
                         backgroundColor: badge.bg,
@@ -212,15 +220,17 @@ export default function TeacherExamSessionDetailScreen() {
                     </Text>
                   </View>
 
-                  <Text style={{ color: '#334155', fontSize: 12, marginBottom: 6 }}>{question.contentPreview}</Text>
-                  <Text style={{ color: '#64748b', fontSize: 12, marginBottom: 2 }}>
+                  <Text style={{ color: '#334155', fontSize: scaleFont(12), lineHeight: scaleLineHeight(18), marginBottom: 6 }}>
+                    {question.contentPreview}
+                  </Text>
+                  <Text style={{ color: '#64748b', fontSize: scaleFont(12), lineHeight: scaleLineHeight(18), marginBottom: 2 }}>
                     Jawaban teks: {question.answerText || '-'}
                   </Text>
-                  <Text style={{ color: '#64748b', fontSize: 12, marginBottom: 2 }}>
+                  <Text style={{ color: '#64748b', fontSize: scaleFont(12), lineHeight: scaleLineHeight(18), marginBottom: 2 }}>
                     Opsi dipilih:{' '}
                     {question.selectedOptionLabels.length > 0 ? question.selectedOptionLabels.join(', ') : '-'}
                   </Text>
-                  <Text style={{ color: '#64748b', fontSize: 12, marginBottom: 2 }}>
+                  <Text style={{ color: '#64748b', fontSize: scaleFont(12), lineHeight: scaleLineHeight(18), marginBottom: 2 }}>
                     Opsi benar:{' '}
                     {question.correctOptionLabels.length > 0 ? question.correctOptionLabels.join(', ') : '-'}
                   </Text>
@@ -236,7 +246,9 @@ export default function TeacherExamSessionDetailScreen() {
                         padding: 8,
                       }}
                     >
-                      <Text style={{ color: '#334155', fontSize: 12 }}>Pembahasan: {question.explanation}</Text>
+                      <Text style={{ color: '#334155', fontSize: scaleFont(12), lineHeight: scaleLineHeight(18) }}>
+                        Pembahasan: {question.explanation}
+                      </Text>
                     </View>
                   ) : null}
                 </View>
@@ -261,4 +273,3 @@ export default function TeacherExamSessionDetailScreen() {
     </ScrollView>
   );
 }
-
