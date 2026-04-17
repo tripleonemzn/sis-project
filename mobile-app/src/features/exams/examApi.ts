@@ -206,6 +206,37 @@ type SessionDetailApiResponse = {
   data: SessionDetailResponse;
 };
 
+type ExamRestrictionsResponse = {
+  statusCode: number;
+  success: boolean;
+  message: string;
+  data: {
+    restrictions: ExamRestrictionItem[];
+    meta: {
+      page: number;
+      limit: number;
+      total: number;
+      totalPages: number;
+    };
+  };
+};
+
+type ExamRestrictionMutationResponse = {
+  statusCode: number;
+  success: boolean;
+  message: string;
+  data: {
+    id: number;
+    studentId: number;
+    academicYearId: number;
+    semester: 'ODD' | 'EVEN';
+    examType?: string;
+    programCode?: string;
+    isBlocked: boolean;
+    reason: string | null;
+  };
+};
+
 function parseStudentExamsPayload(payload: unknown): StudentExamItem[] | null {
   if (Array.isArray(payload)) return payload as StudentExamItem[];
   if (!payload || typeof payload !== 'object') return null;
@@ -272,6 +303,39 @@ export type ExamProgramItem = {
   financeMinOverdueInvoices?: number;
   financeClearanceNotes?: string | null;
   source: 'default' | 'custom';
+};
+
+export type ExamRestrictionItem = {
+  student: {
+    id: number;
+    nisn: string | null;
+    name: string;
+  };
+  isBlocked: boolean;
+  reason: string | null;
+  manualBlocked: boolean;
+  autoBlocked: boolean;
+  flags: {
+    belowKkm: boolean;
+    financeOutstanding: boolean;
+    financeOverdue: boolean;
+    financeBlocked: boolean;
+  };
+  details: {
+    belowKkmSubjects: Array<{
+      subjectId: number;
+      subjectName: string;
+      score: number;
+      kkm: number;
+    }>;
+    outstandingAmount: number;
+    outstandingInvoices: number;
+    overdueInvoices: number;
+    financeClearanceMode?: ExamFinanceClearanceMode;
+    financeMinOutstandingAmount?: number;
+    financeMinOverdueInvoices?: number;
+    financeClearanceNotes?: string | null;
+  };
 };
 
 type ExamProgramsResponse = {
@@ -732,5 +796,41 @@ export const examApi = {
       },
     });
     return Array.isArray(response.data?.data) ? response.data.data : [];
+  },
+  async getExamRestrictions(params: {
+    classId: number;
+    academicYearId: number;
+    semester: 'ODD' | 'EVEN';
+    examType?: string;
+    programCode?: string;
+    page?: number;
+    limit?: number;
+    search?: string;
+  }) {
+    const response = await apiClient.get<ExamRestrictionsResponse>('/exams/restrictions', {
+      params: {
+        classId: params.classId,
+        academicYearId: params.academicYearId,
+        semester: params.semester,
+        examType: params.examType,
+        programCode: params.programCode,
+        page: params.page ?? 1,
+        limit: params.limit ?? 250,
+        search: params.search,
+      },
+    });
+    return response.data.data;
+  },
+  async updateExamRestriction(payload: {
+    studentId: number;
+    academicYearId: number;
+    semester: 'ODD' | 'EVEN';
+    examType?: string;
+    programCode?: string;
+    isBlocked: boolean;
+    reason?: string;
+  }) {
+    const response = await apiClient.put<ExamRestrictionMutationResponse>('/exams/restrictions', payload);
+    return response.data.data;
   },
 };

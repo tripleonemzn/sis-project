@@ -23,7 +23,7 @@ import { ENV } from '../../../src/config/env';
 import { useAuth } from '../../../src/features/auth/AuthProvider';
 import { academicYearApi } from '../../../src/features/academicYear/academicYearApi';
 import { adminApi } from '../../../src/features/admin/adminApi';
-import { examApi } from '../../../src/features/exams/examApi';
+import { examApi, type ExamRestrictionItem } from '../../../src/features/exams/examApi';
 import HomeroomBookMobilePanel from '../../../src/features/homeroomBook/HomeroomBookMobilePanel';
 import { permissionApi } from '../../../src/features/permissions/permissionApi';
 import { PermissionStatus, PermissionType, StudentPermission } from '../../../src/features/permissions/types';
@@ -32,7 +32,10 @@ import { openWebModuleRoute } from '../../../src/lib/navigation/webModuleRoute';
 
 type StatusFilter = 'ALL' | PermissionStatus;
 type TypeFilter = 'ALL' | PermissionType;
-type HomeroomPermissionTab = 'IZIN' | 'BUKU_WALI_KELAS';
+type HomeroomPermissionTab = 'IZIN' | 'AKSES_UJIAN' | 'BUKU_WALI_KELAS';
+
+const DEFAULT_MANUAL_RESTRICTION_REASON =
+  'Masih ada administrasi/tunggakan yang belum diselesaikan. Silakan hubungi wali kelas.';
 
 const STATUS_LABEL: Record<StatusFilter, string> = {
   ALL: 'Semua',
@@ -80,6 +83,31 @@ function typeStyle(type: PermissionType) {
   return { text: '#475569', bg: '#e2e8f0' };
 }
 
+function formatExamCurrency(value: number) {
+  try {
+    return new Intl.NumberFormat('id-ID', {
+      style: 'currency',
+      currency: 'IDR',
+      maximumFractionDigits: 0,
+    }).format(Math.round(Number(value || 0)));
+  } catch {
+    return `Rp ${Math.round(Number(value || 0))}`;
+  }
+}
+
+function resolveRestrictionAutoReasons(item: ExamRestrictionItem) {
+  const reasons: string[] = [];
+  if (item.flags.belowKkm) reasons.push('nilai masih di bawah KKM');
+  if (item.flags.financeBlocked) {
+    reasons.push(
+      item.flags.financeOverdue
+        ? 'policy clearance finance belum terpenuhi karena ada tunggakan jatuh tempo'
+        : 'policy clearance finance belum terpenuhi',
+    );
+  }
+  return reasons;
+}
+
 function resolveFileUrl(fileUrl: string | null | undefined) {
   if (!fileUrl) return null;
   if (/^https?:\/\//i.test(fileUrl)) return fileUrl;
@@ -100,8 +128,13 @@ export default function TeacherHomeroomPermissionsScreen() {
   const [activeTab, setActiveTab] = useState<HomeroomPermissionTab>('IZIN');
   const [search, setSearch] = useState('');
   const [selectedClassId, setSelectedClassId] = useState<number | null>(null);
+  const [selectedSemesterOverride, setSelectedSemesterOverride] = useState<'ODD' | 'EVEN' | ''>('');
+  const [selectedExamTypeOverride, setSelectedExamTypeOverride] = useState('');
   const [rejectionNotes, setRejectionNotes] = useState<Record<number, string>>({});
   const [summaryDetailVisible, setSummaryDetailVisible] = useState(false);
+  const [restrictionModalVisible, setRestrictionModalVisible] = useState(false);
+  const [restrictionTarget, setRestrictionTarget] = useState<ExamRestrictionItem | null>(null);
+  const [restrictionReasonDraft, setRestrictionReasonDraft] = useState(DEFAULT_MANUAL_RESTRICTION_REASON);
 
   const isAllowed = user?.role === 'TEACHER' && isHomeroomTeacher(user?.additionalDuties, user?.teacherClasses?.length);
 
@@ -133,7 +166,11 @@ export default function TeacherHomeroomPermissionsScreen() {
 
   const examProgramsQuery = useQuery({
     queryKey: ['mobile-homeroom-book-exam-programs', activeYearQuery.data?.id],
-    enabled: isAuthenticated && !!isAllowed && !!activeYearQuery.data?.id && activeTab === 'BUKU_WALI_KELAS',
+    enabled:
+      isAuthenticated &&
+      !!isAllowed &&
+      !!activeYearQuery.data?.id &&
+      (activeTab === 'AKSES_UJIAN' || activeTab === 'BUKU_WALI_KELAS'),
     queryFn: async () => {
       const result = await examApi.getExamPrograms({
         academicYearId: Number(activeYearQuery.data?.id),
@@ -170,6 +207,43 @@ export default function TeacherHomeroomPermissionsScreen() {
     [],
   );
 
+  const defaultSemester = useMemo<'ODD' | 'EVEN' | ''>(() => {
+    const name = String(activeYearQuery.data?.name || '').toUpperCase();
+    if (name.includes('GANJIL')) return 'ODD';
+    if (name.includes('GENAP')) return 'EVEN';
+    return '';
+  }, [activeYearQuery.data?.name]);
+
+  const selectedSemester = selectedSemesterOverride || defaultSemester;
+
+  const examTypeOptions = useMemo(() => {
+    const programs = Array.isArray(examProgramsQuery.data) ? examProgramsQuery.data : [];
+    const dedupByCode = new Map<string, { value: string; label: string }>();
+
+    for (const program of programs) {
+      if (!program?.isActive || !program?.showOnStudentMenu) continue;
+      const fixedSemester = program.fixedSemester as 'ODD' | 'EVEN' | null;
+      if (selectedSemester && fixedSemester && fixedSemester !== selectedSemester) continue;
+
+      const value = String(program.code || '').trim().toUpperCase();
+      if (!value || dedupByCode.has(value)) continue;
+
+      const baseType = String(program.baseTypeCode || program.baseType || '').trim().toUpperCase();
+      const rawLabel = String(program.shortLabel || program.label || value).trim();
+      const label = baseType ? `${rawLabel} (${baseType})` : rawLabel;
+      dedupByCode.set(value, { value, label: label || value });
+    }
+
+    return Array.from(dedupByCode.values());
+  }, [examProgramsQuery.data, selectedSemester]);
+
+  const selectedExamType = useMemo(() => {
+    if (!selectedExamTypeOverride) return '';
+    return examTypeOptions.some((option) => option.value === selectedExamTypeOverride)
+      ? selectedExamTypeOverride
+      : '';
+  }, [examTypeOptions, selectedExamTypeOverride]);
+
   const permissionsQuery = useQuery({
     queryKey: [
       'mobile-homeroom-permissions',
@@ -179,7 +253,12 @@ export default function TeacherHomeroomPermissionsScreen() {
       typeFilter,
       search,
     ],
-    enabled: isAuthenticated && !!isAllowed && !!effectiveSelectedClassId && !!activeYearQuery.data?.id,
+    enabled:
+      isAuthenticated &&
+      !!isAllowed &&
+      !!effectiveSelectedClassId &&
+      !!activeYearQuery.data?.id &&
+      activeTab === 'IZIN',
     queryFn: async () =>
       permissionApi.listForHomeroom({
         classId: Number(effectiveSelectedClassId),
@@ -189,6 +268,36 @@ export default function TeacherHomeroomPermissionsScreen() {
         search: search.trim() || undefined,
         page: 1,
         limit: 250,
+      }),
+  });
+
+  const restrictionsQuery = useQuery({
+    queryKey: [
+      'mobile-homeroom-exam-restrictions',
+      effectiveSelectedClassId,
+      activeYearQuery.data?.id,
+      selectedSemester,
+      selectedExamType,
+      search,
+    ],
+    enabled:
+      isAuthenticated &&
+      !!isAllowed &&
+      !!effectiveSelectedClassId &&
+      !!activeYearQuery.data?.id &&
+      activeTab === 'AKSES_UJIAN' &&
+      !!selectedSemester &&
+      !!selectedExamType,
+    queryFn: async () =>
+      examApi.getExamRestrictions({
+        classId: Number(effectiveSelectedClassId),
+        academicYearId: Number(activeYearQuery.data?.id),
+        semester: selectedSemester as 'ODD' | 'EVEN',
+        examType: selectedExamType,
+        programCode: selectedExamType,
+        page: 1,
+        limit: 250,
+        search: search.trim() || undefined,
       }),
   });
 
@@ -208,9 +317,41 @@ export default function TeacherHomeroomPermissionsScreen() {
     },
   });
 
+  const updateRestrictionMutation = useMutation({
+    mutationFn: (payload: {
+      studentId: number;
+      academicYearId: number;
+      semester: 'ODD' | 'EVEN';
+      examType: string;
+      programCode: string;
+      isBlocked: boolean;
+      reason?: string;
+    }) => examApi.updateExamRestriction(payload),
+    onSuccess: async (_, payload) => {
+      await queryClient.invalidateQueries({ queryKey: ['mobile-homeroom-exam-restrictions'] });
+      setRestrictionModalVisible(false);
+      setRestrictionTarget(null);
+      setRestrictionReasonDraft(DEFAULT_MANUAL_RESTRICTION_REASON);
+      Alert.alert(
+        'Berhasil',
+        payload.isBlocked ? 'Akses ujian berhasil ditolak.' : 'Akses ujian berhasil dibuka kembali.',
+      );
+    },
+    onError: (error: unknown) => {
+      const normalized = error as { response?: { data?: { message?: string } }; message?: string };
+      const message =
+        normalized.response?.data?.message || normalized.message || 'Gagal memperbarui akses ujian.';
+      Alert.alert('Proses Gagal', message);
+    },
+  });
+
   const permissions = useMemo(
     () => permissionsQuery.data?.permissions || [],
     [permissionsQuery.data?.permissions],
+  );
+  const restrictions = useMemo(
+    () => restrictionsQuery.data?.restrictions || [],
+    [restrictionsQuery.data?.restrictions],
   );
   const selectedClass = classItems.find((item) => item.id === effectiveSelectedClassId) || null;
 
@@ -235,6 +376,21 @@ export default function TeacherHomeroomPermissionsScreen() {
     }
     return result;
   }, [permissions]);
+
+  const restrictionSummary = useMemo(() => {
+    const result = {
+      total: restrictions.length,
+      blocked: 0,
+      manual: 0,
+      automatic: 0,
+    };
+    for (const item of restrictions) {
+      if (item.isBlocked) result.blocked += 1;
+      if (item.manualBlocked) result.manual += 1;
+      if (item.autoBlocked) result.automatic += 1;
+    }
+    return result;
+  }, [restrictions]);
 
   const openAttachment = async (item: StudentPermission) => {
     const url = resolveFileUrl(item.fileUrl);
@@ -279,6 +435,72 @@ export default function TeacherHomeroomPermissionsScreen() {
           }),
       },
     ]);
+  };
+
+  const openRestrictionModal = (item: ExamRestrictionItem) => {
+    if (!activeYearQuery.data?.id || !selectedSemester || !selectedExamType) {
+      Alert.alert('Filter Belum Lengkap', 'Pilih semester dan jenis ujian terlebih dahulu.');
+      return;
+    }
+
+    if (item.isBlocked && item.autoBlocked) {
+      const autoReasons = resolveRestrictionAutoReasons(item);
+      Alert.alert(
+        'Akses Otomatis Ditolak',
+        autoReasons.length > 0
+          ? `Akses ujian otomatis ditolak karena ${autoReasons.join(', ')}. Selesaikan sumber masalahnya terlebih dahulu.`
+          : 'Akses ujian otomatis ditolak. Selesaikan sumber masalahnya terlebih dahulu.',
+      );
+      return;
+    }
+
+    if (!item.isBlocked) {
+      setRestrictionTarget(item);
+      setRestrictionReasonDraft(item.reason?.trim() || DEFAULT_MANUAL_RESTRICTION_REASON);
+      setRestrictionModalVisible(true);
+      return;
+    }
+
+    Alert.alert('Buka Akses Ujian', `Buka akses ujian manual untuk ${item.student.name}?`, [
+      { text: 'Batal', style: 'cancel' },
+      {
+        text: 'Buka Akses',
+        style: 'default',
+        onPress: () =>
+          updateRestrictionMutation.mutate({
+            studentId: item.student.id,
+            academicYearId: Number(activeYearQuery.data?.id),
+            semester: selectedSemester as 'ODD' | 'EVEN',
+            examType: selectedExamType,
+            programCode: selectedExamType,
+            isBlocked: false,
+            reason: '',
+          }),
+      },
+    ]);
+  };
+
+  const submitRestrictionBlock = () => {
+    if (!restrictionTarget || !activeYearQuery.data?.id || !selectedSemester || !selectedExamType) {
+      Alert.alert('Filter Belum Lengkap', 'Pilih semester dan jenis ujian terlebih dahulu.');
+      return;
+    }
+
+    const normalizedReason = restrictionReasonDraft.trim();
+    if (!normalizedReason) {
+      Alert.alert('Keterangan Wajib', 'Masukkan keterangan yang akan ditampilkan ke siswa.');
+      return;
+    }
+
+    updateRestrictionMutation.mutate({
+      studentId: restrictionTarget.student.id,
+      academicYearId: Number(activeYearQuery.data?.id),
+      semester: selectedSemester as 'ODD' | 'EVEN',
+      examType: selectedExamType,
+      programCode: selectedExamType,
+      isBlocked: true,
+      reason: normalizedReason,
+    });
   };
 
   if (isLoading) return <AppLoadingScreen message="Memuat persetujuan izin..." />;
@@ -340,31 +562,39 @@ export default function TeacherHomeroomPermissionsScreen() {
           refreshing={
             activeYearQuery.isFetching ||
             classesQuery.isFetching ||
-            permissionsQuery.isFetching ||
-            examProgramsQuery.isFetching
+            (activeTab === 'IZIN' && permissionsQuery.isFetching) ||
+            (activeTab === 'AKSES_UJIAN' && restrictionsQuery.isFetching) ||
+            ((activeTab === 'AKSES_UJIAN' || activeTab === 'BUKU_WALI_KELAS') && examProgramsQuery.isFetching)
           }
           onRefresh={() => {
             void activeYearQuery.refetch();
             void classesQuery.refetch();
-            void permissionsQuery.refetch();
+            if (activeTab === 'IZIN') {
+              void permissionsQuery.refetch();
+              return;
+            }
+            if (activeTab === 'AKSES_UJIAN') {
+              void restrictionsQuery.refetch();
+              void examProgramsQuery.refetch();
+              return;
+            }
             void examProgramsQuery.refetch();
           }}
         />
       }
     >
       <Text style={{ fontSize: 20, fontWeight: '700', marginBottom: 6, color: BRAND_COLORS.textDark }}>
-        {activeTab === 'IZIN' ? 'Persetujuan Izin' : 'Buku Wali Kelas'}
+        Persetujuan Izin
       </Text>
       <Text style={{ color: BRAND_COLORS.textMuted, marginBottom: 12 }}>
-        {activeTab === 'IZIN'
-          ? 'Verifikasi pengajuan izin siswa pada kelas wali.'
-          : 'Kelola pengecualian ujian finance dan laporan kasus siswa pada kelas wali.'}
+        Kelola perizinan, akses ujian, dan Buku Wali Kelas siswa.
       </Text>
 
       <MobileMenuTabBar
         items={[
           { key: 'IZIN', label: 'Daftar Izin', iconName: 'file-text' },
-          { key: 'BUKU_WALI_KELAS', label: 'Buku Wali', iconName: 'book-open' },
+          { key: 'AKSES_UJIAN', label: 'Akses Ujian', iconName: 'shield' },
+          { key: 'BUKU_WALI_KELAS', label: 'Buku Wali Kelas', iconName: 'book-open' },
         ]}
         activeKey={activeTab}
         onChange={(key) => setActiveTab(key as HomeroomPermissionTab)}
@@ -804,6 +1034,404 @@ export default function TeacherHomeroomPermissionsScreen() {
         </View>
       </MobileDetailModal>
       </>
+      ) : activeTab === 'AKSES_UJIAN' ? (
+      <>
+        <View style={{ flexDirection: 'row', flexWrap: 'wrap', marginHorizontal: -4, marginBottom: 12 }}>
+          {[
+            {
+              key: 'total',
+              title: 'Total Siswa',
+              value: `${restrictionSummary.total}`,
+              subtitle: 'Sesuai filter ujian aktif',
+              iconName: 'users' as const,
+              accentColor: '#2563eb',
+            },
+            {
+              key: 'blocked',
+              title: 'Ditolak',
+              value: `${restrictionSummary.blocked}`,
+              subtitle: 'Akses ujian sedang dibatasi',
+              iconName: 'x-circle' as const,
+              accentColor: '#dc2626',
+            },
+            {
+              key: 'manual',
+              title: 'Manual',
+              value: `${restrictionSummary.manual}`,
+              subtitle: 'Blokir wali kelas',
+              iconName: 'shield' as const,
+              accentColor: '#d97706',
+            },
+            {
+              key: 'automatic',
+              title: 'Otomatis',
+              value: `${restrictionSummary.automatic}`,
+              subtitle: 'Dari policy sistem',
+              iconName: 'alert-triangle' as const,
+              accentColor: '#7c3aed',
+            },
+          ].map((item) => (
+            <View key={item.key} style={{ width: '50%', paddingHorizontal: 4, marginBottom: 8 }}>
+              <MobileSummaryCard
+                title={item.title}
+                value={item.value}
+                subtitle={item.subtitle}
+                iconName={item.iconName}
+                accentColor={item.accentColor}
+              />
+            </View>
+          ))}
+        </View>
+
+        <View
+          style={{
+            borderWidth: 1,
+            borderColor: '#fcd34d',
+            backgroundColor: '#fffbeb',
+            borderRadius: 12,
+            padding: 12,
+            marginBottom: 12,
+          }}
+        >
+          <Text style={{ color: '#92400e', fontWeight: '700', marginBottom: 4 }}>Akses Ujian</Text>
+          <Text style={{ color: '#92400e', fontSize: 12, lineHeight: 18 }}>
+            Gunakan blokir manual ini untuk kasus administrasi atau tunggakan yang belum tersinkron di modul finance.
+            Keterangan yang Anda isi akan tampil ke siswa pada menu ujian.
+          </Text>
+        </View>
+
+        <View
+          style={{
+            flexDirection: 'row',
+            alignItems: 'center',
+            borderWidth: 1,
+            borderColor: '#d5e0f5',
+            borderRadius: 10,
+            paddingHorizontal: 10,
+            backgroundColor: '#fff',
+            marginBottom: 10,
+          }}
+        >
+          <Feather name="search" size={16} color={BRAND_COLORS.textMuted} />
+          <TextInput
+            value={search}
+            onChangeText={setSearch}
+            placeholder="Cari siswa / NISN"
+            placeholderTextColor="#8ea0bf"
+            style={{
+              flex: 1,
+              paddingVertical: 11,
+              paddingHorizontal: 9,
+              color: BRAND_COLORS.textDark,
+            }}
+          />
+        </View>
+
+        <View
+          style={{
+            backgroundColor: '#fff',
+            borderWidth: 1,
+            borderColor: '#dbe7fb',
+            borderRadius: 12,
+            padding: 12,
+            marginBottom: 12,
+          }}
+        >
+          <MobileSelectField
+            label="Semester"
+            value={selectedSemester}
+            options={[
+              { value: 'ODD', label: 'Ganjil' },
+              { value: 'EVEN', label: 'Genap' },
+            ]}
+            onChange={(next) => {
+              setSelectedSemesterOverride((next as 'ODD' | 'EVEN' | '') || '');
+              setSelectedExamTypeOverride('');
+            }}
+            placeholder="Pilih semester"
+          />
+          <MobileSelectField
+            label="Jenis Ujian"
+            value={selectedExamType}
+            options={examTypeOptions}
+            onChange={(next) => setSelectedExamTypeOverride(next || '')}
+            placeholder="Pilih jenis ujian"
+            helperText={examTypeOptions.length === 0 ? 'Program ujian siswa belum tersedia untuk semester ini.' : undefined}
+          />
+        </View>
+
+        {!selectedSemester || !selectedExamType ? (
+          <View
+            style={{
+              borderWidth: 1,
+              borderColor: '#cbd5e1',
+              borderStyle: 'dashed',
+              borderRadius: 10,
+              padding: 16,
+              backgroundColor: '#fff',
+            }}
+          >
+            <Text style={{ color: BRAND_COLORS.textDark, fontWeight: '700', marginBottom: 4 }}>
+              Filter Belum Lengkap
+            </Text>
+            <Text style={{ color: BRAND_COLORS.textMuted }}>
+              Pilih semester dan jenis ujian terlebih dahulu untuk memuat akses ujian siswa.
+            </Text>
+          </View>
+        ) : null}
+
+        {selectedSemester && selectedExamType ? (
+          <>
+            {restrictionsQuery.isLoading ? (
+              <QueryStateView type="loading" message="Mengambil data akses ujian..." />
+            ) : null}
+            {restrictionsQuery.isError ? (
+              <QueryStateView
+                type="error"
+                message="Gagal memuat data akses ujian."
+                onRetry={() => restrictionsQuery.refetch()}
+              />
+            ) : null}
+
+            {!restrictionsQuery.isLoading && !restrictionsQuery.isError ? (
+              restrictions.length > 0 ? (
+                restrictions.map((item) => {
+                  const isBlocked = item.isBlocked;
+                  const canToggleManual = !item.autoBlocked;
+                  const statusText = isBlocked ? 'Ditolak' : 'Diizinkan';
+                  const actionLabel = !isBlocked
+                    ? 'Blokir Manual'
+                    : item.autoBlocked
+                      ? 'Tinjau Penyebab'
+                      : 'Buka Akses';
+                  const statusColors = isBlocked
+                    ? { text: '#b91c1c', border: '#fca5a5', bg: '#fee2e2' }
+                    : { text: '#15803d', border: '#86efac', bg: '#dcfce7' };
+
+                  return (
+                    <View
+                      key={item.student.id}
+                      style={{
+                        borderWidth: 1,
+                        borderColor: '#dbe7fb',
+                        borderRadius: 12,
+                        backgroundColor: '#fff',
+                        padding: 12,
+                        marginBottom: 10,
+                      }}
+                    >
+                      <View
+                        style={{
+                          flexDirection: 'row',
+                          justifyContent: 'space-between',
+                          alignItems: 'flex-start',
+                          gap: 10,
+                          marginBottom: 6,
+                        }}
+                      >
+                        <View style={{ flex: 1 }}>
+                          <Text style={{ color: BRAND_COLORS.textDark, fontWeight: '700', fontSize: 15 }}>
+                            {item.student.name}
+                          </Text>
+                          <Text style={{ color: '#64748b', marginTop: 2 }}>
+                            NISN: {item.student.nisn || '-'}
+                          </Text>
+                        </View>
+                        <View
+                          style={{
+                            borderWidth: 1,
+                            borderColor: statusColors.border,
+                            backgroundColor: statusColors.bg,
+                            borderRadius: 999,
+                            paddingHorizontal: 8,
+                            paddingVertical: 3,
+                          }}
+                        >
+                          <Text style={{ color: statusColors.text, fontWeight: '700', fontSize: 11 }}>{statusText}</Text>
+                        </View>
+                      </View>
+
+                      {isBlocked ? (
+                        <View
+                          style={{
+                            borderWidth: 1,
+                            borderColor: '#fecaca',
+                            backgroundColor: '#fff1f2',
+                            borderRadius: 8,
+                            padding: 8,
+                            marginBottom: 8,
+                          }}
+                        >
+                          <Text style={{ color: '#991b1b', fontSize: 12 }}>
+                            {item.reason || 'Akses ditutup'}
+                          </Text>
+                        </View>
+                      ) : (
+                        <Text style={{ color: '#15803d', fontSize: 12, marginBottom: 8 }}>
+                          Akses ujian terbuka untuk siswa ini.
+                        </Text>
+                      )}
+
+                      <View style={{ flexDirection: 'row', flexWrap: 'wrap', gap: 6, marginBottom: 8 }}>
+                        {item.manualBlocked ? (
+                          <View
+                            style={{
+                              borderRadius: 999,
+                              backgroundColor: '#fef3c7',
+                              paddingHorizontal: 10,
+                              paddingVertical: 4,
+                            }}
+                          >
+                            <Text style={{ color: '#92400e', fontSize: 11, fontWeight: '700' }}>Manual</Text>
+                          </View>
+                        ) : null}
+                        {item.flags.belowKkm ? (
+                          <View
+                            style={{
+                              borderRadius: 999,
+                              backgroundColor: '#fee2e2',
+                              paddingHorizontal: 10,
+                              paddingVertical: 4,
+                            }}
+                          >
+                            <Text style={{ color: '#b91c1c', fontSize: 11, fontWeight: '700' }}>Nilai &lt; KKM</Text>
+                          </View>
+                        ) : null}
+                        {item.flags.financeBlocked ? (
+                          <View
+                            style={{
+                              borderRadius: 999,
+                              backgroundColor: '#ffedd5',
+                              paddingHorizontal: 10,
+                              paddingVertical: 4,
+                            }}
+                          >
+                            <Text style={{ color: '#c2410c', fontSize: 11, fontWeight: '700' }}>Tunggakan</Text>
+                          </View>
+                        ) : null}
+                        {item.flags.financeBlocked && item.flags.financeOverdue ? (
+                          <View
+                            style={{
+                              borderRadius: 999,
+                              backgroundColor: '#ffe4e6',
+                              paddingHorizontal: 10,
+                              paddingVertical: 4,
+                            }}
+                          >
+                            <Text style={{ color: '#be123c', fontSize: 11, fontWeight: '700' }}>Jatuh Tempo</Text>
+                          </View>
+                        ) : null}
+                        {item.flags.financeOutstanding && !item.flags.financeBlocked ? (
+                          <View
+                            style={{
+                              borderRadius: 999,
+                              backgroundColor: '#fef3c7',
+                              paddingHorizontal: 10,
+                              paddingVertical: 4,
+                            }}
+                          >
+                            <Text style={{ color: '#a16207', fontSize: 11, fontWeight: '700' }}>Info Finance</Text>
+                          </View>
+                        ) : null}
+                      </View>
+
+                      {item.details.belowKkmSubjects.length > 0 ? (
+                        <View
+                          style={{
+                            borderWidth: 1,
+                            borderColor: '#fecaca',
+                            backgroundColor: '#fef2f2',
+                            borderRadius: 8,
+                            padding: 8,
+                            marginBottom: 8,
+                          }}
+                        >
+                          <Text style={{ color: '#b91c1c', fontSize: 12, fontWeight: '700', marginBottom: 4 }}>
+                            Mapel di bawah KKM
+                          </Text>
+                          <Text style={{ color: '#b91c1c', fontSize: 12 }}>
+                            {item.details.belowKkmSubjects
+                              .slice(0, 3)
+                              .map((subject) => `${subject.subjectName} (${subject.score}/${subject.kkm})`)
+                              .join(', ')}
+                            {item.details.belowKkmSubjects.length > 3
+                              ? ` +${item.details.belowKkmSubjects.length - 3} mapel lainnya`
+                              : ''}
+                          </Text>
+                        </View>
+                      ) : null}
+
+                      {item.flags.financeOutstanding ? (
+                        <View
+                          style={{
+                            borderWidth: 1,
+                            borderColor: '#fed7aa',
+                            backgroundColor: '#fff7ed',
+                            borderRadius: 8,
+                            padding: 8,
+                            marginBottom: 8,
+                          }}
+                        >
+                          <Text style={{ color: '#c2410c', fontSize: 12, fontWeight: '700', marginBottom: 4 }}>
+                            Tunggakan {formatExamCurrency(item.details.outstandingAmount)}
+                          </Text>
+                          <Text style={{ color: '#c2410c', fontSize: 12 }}>
+                            {item.details.outstandingInvoices} tagihan aktif
+                            {item.details.overdueInvoices > 0
+                              ? `, ${item.details.overdueInvoices} sudah jatuh tempo`
+                              : ''}
+                          </Text>
+                          {!item.flags.financeBlocked ? (
+                            <Text style={{ color: '#c2410c', fontSize: 11, marginTop: 4 }}>
+                              Program ujian ini tidak memblokir akses dari status tunggakan tersebut.
+                            </Text>
+                          ) : null}
+                        </View>
+                      ) : null}
+
+                      <Pressable
+                        onPress={() => openRestrictionModal(item)}
+                        disabled={updateRestrictionMutation.isPending}
+                        style={{
+                          borderWidth: 1,
+                          borderColor: !isBlocked ? '#f59e0b' : canToggleManual ? '#16a34a' : '#cbd5e1',
+                          backgroundColor: !isBlocked ? '#fffbeb' : canToggleManual ? '#f0fdf4' : '#f8fafc',
+                          borderRadius: 10,
+                          paddingVertical: 10,
+                          alignItems: 'center',
+                          opacity: updateRestrictionMutation.isPending ? 0.7 : 1,
+                        }}
+                      >
+                        <Text
+                          style={{
+                            color: !isBlocked ? '#b45309' : canToggleManual ? '#166534' : '#64748b',
+                            fontWeight: '700',
+                          }}
+                        >
+                          {actionLabel}
+                        </Text>
+                      </Pressable>
+                    </View>
+                  );
+                })
+              ) : (
+                <View
+                  style={{
+                    borderWidth: 1,
+                    borderColor: '#cbd5e1',
+                    borderStyle: 'dashed',
+                    borderRadius: 10,
+                    padding: 16,
+                    backgroundColor: '#fff',
+                  }}
+                >
+                  <Text style={{ color: BRAND_COLORS.textMuted }}>Tidak ada siswa yang ditemukan.</Text>
+                </View>
+              )
+            ) : null}
+          </>
+        ) : null}
+      </>
       ) : (
         <HomeroomBookMobilePanel
           mode="homeroom"
@@ -812,6 +1440,76 @@ export default function TeacherHomeroomPermissionsScreen() {
           examPrograms={examProgramsQuery.data || []}
         />
       )}
+
+      <MobileDetailModal
+        visible={restrictionModalVisible}
+        title="Blokir Manual Akses Ujian"
+        subtitle="Keterangan ini akan tampil ke siswa pada menu ujian."
+        iconName="shield"
+        accentColor="#d97706"
+        onClose={() => {
+          if (updateRestrictionMutation.isPending) return;
+          setRestrictionModalVisible(false);
+          setRestrictionTarget(null);
+          setRestrictionReasonDraft(DEFAULT_MANUAL_RESTRICTION_REASON);
+        }}
+      >
+        <View style={{ gap: 10 }}>
+          <View
+            style={{
+              borderWidth: 1,
+              borderColor: '#dbe7fb',
+              borderRadius: 12,
+              padding: 12,
+              backgroundColor: '#f8fbff',
+            }}
+          >
+            <Text style={{ color: '#64748b', fontSize: 11, marginBottom: 4 }}>Siswa</Text>
+            <Text style={{ color: BRAND_COLORS.textDark, fontWeight: '700', fontSize: 15 }}>
+              {restrictionTarget?.student.name || '-'}
+            </Text>
+            <Text style={{ color: BRAND_COLORS.textMuted, marginTop: 2 }}>
+              NISN: {restrictionTarget?.student.nisn || '-'}
+            </Text>
+          </View>
+
+          <TextInput
+            value={restrictionReasonDraft}
+            onChangeText={setRestrictionReasonDraft}
+            placeholder="Masukkan keterangan pembatasan ujian"
+            placeholderTextColor="#94a3b8"
+            multiline
+            numberOfLines={5}
+            style={{
+              borderWidth: 1,
+              borderColor: '#d6e2f7',
+              borderRadius: 10,
+              paddingHorizontal: 12,
+              paddingVertical: 10,
+              color: BRAND_COLORS.textDark,
+              minHeight: 120,
+              textAlignVertical: 'top',
+              backgroundColor: '#fff',
+            }}
+          />
+
+          <Pressable
+            onPress={submitRestrictionBlock}
+            disabled={updateRestrictionMutation.isPending}
+            style={{
+              borderRadius: 12,
+              backgroundColor: '#d97706',
+              paddingVertical: 12,
+              alignItems: 'center',
+              opacity: updateRestrictionMutation.isPending ? 0.7 : 1,
+            }}
+          >
+            <Text style={{ color: '#fff', fontWeight: '700' }}>
+              {updateRestrictionMutation.isPending ? 'Menyimpan...' : 'Simpan Blokir Manual'}
+            </Text>
+          </Pressable>
+        </View>
+      </MobileDetailModal>
 
     </ScrollView>
   );
