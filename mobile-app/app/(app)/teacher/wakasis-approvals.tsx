@@ -24,6 +24,7 @@ import { kesiswaanApi } from '../../../src/features/kesiswaan/kesiswaanApi';
 import { KesiswaanPermission, KesiswaanPermissionStatus, KesiswaanPermissionType } from '../../../src/features/kesiswaan/types';
 import { getStandardPagePadding } from '../../../src/lib/ui/pageLayout';
 import { openWebModuleRoute } from '../../../src/lib/navigation/webModuleRoute';
+import { useAppTextScale } from '../../../src/theme/AppTextScaleProvider';
 
 type StatusFilter = 'ALL' | KesiswaanPermissionStatus;
 type TypeFilter = 'ALL' | KesiswaanPermissionType;
@@ -93,6 +94,7 @@ export default function TeacherWakasisApprovalsScreen() {
   const queryClient = useQueryClient();
   const { isAuthenticated, isLoading, user } = useAuth();
   const pagePadding = getStandardPagePadding(insets, { bottom: 120 });
+  const { scaleFont, scaleLineHeight } = useAppTextScale();
 
   const [statusFilter, setStatusFilter] = useState<StatusFilter>('PENDING');
   const [typeFilter, setTypeFilter] = useState<TypeFilter>('ALL');
@@ -100,6 +102,26 @@ export default function TeacherWakasisApprovalsScreen() {
   const [search, setSearch] = useState('');
   const [rejectingId, setRejectingId] = useState<number | null>(null);
   const [rejectionNote, setRejectionNote] = useState('');
+  const headingTextStyle = useMemo(
+    () => ({ fontSize: scaleFont(20), lineHeight: scaleLineHeight(28) }),
+    [scaleFont, scaleLineHeight],
+  );
+  const sectionTitleTextStyle = useMemo(
+    () => ({ fontSize: scaleFont(16), lineHeight: scaleLineHeight(24) }),
+    [scaleFont, scaleLineHeight],
+  );
+  const bodyTextStyle = useMemo(
+    () => ({ fontSize: scaleFont(12), lineHeight: scaleLineHeight(18) }),
+    [scaleFont, scaleLineHeight],
+  );
+  const helperTextStyle = useMemo(
+    () => ({ fontSize: scaleFont(11), lineHeight: scaleLineHeight(16) }),
+    [scaleFont, scaleLineHeight],
+  );
+  const inputTextStyle = useMemo(
+    () => ({ fontSize: scaleFont(13), lineHeight: scaleLineHeight(20) }),
+    [scaleFont, scaleLineHeight],
+  );
 
   const isAllowed = user?.role === 'TEACHER' && hasStudentAffairsDuty(user?.additionalDuties);
 
@@ -261,7 +283,7 @@ export default function TeacherWakasisApprovalsScreen() {
   if (user?.role !== 'TEACHER') {
     return (
       <ScrollView style={{ flex: 1, backgroundColor: '#f8fafc' }} contentContainerStyle={pagePadding}>
-        <Text style={{ fontSize: 20, fontWeight: '700', marginBottom: 8 }}>Persetujuan</Text>
+        <Text style={{ ...headingTextStyle, fontWeight: '700', marginBottom: 8 }}>Persetujuan</Text>
         <QueryStateView type="error" message="Halaman ini khusus untuk role guru." />
         <Pressable
           onPress={() => router.replace('/home')}
@@ -273,7 +295,7 @@ export default function TeacherWakasisApprovalsScreen() {
             alignItems: 'center',
           }}
         >
-          <Text style={{ color: '#fff', fontWeight: '700' }}>Kembali ke Home</Text>
+          <Text style={{ color: '#fff', fontWeight: '700', ...bodyTextStyle }}>Kembali ke Home</Text>
         </Pressable>
       </ScrollView>
     );
@@ -282,7 +304,7 @@ export default function TeacherWakasisApprovalsScreen() {
   if (!isAllowed) {
     return (
       <ScrollView style={{ flex: 1, backgroundColor: '#f8fafc' }} contentContainerStyle={pagePadding}>
-        <Text style={{ fontSize: 20, fontWeight: '700', marginBottom: 8, color: BRAND_COLORS.textDark }}>
+        <Text style={{ ...headingTextStyle, fontWeight: '700', marginBottom: 8, color: BRAND_COLORS.textDark }}>
           Persetujuan
         </Text>
         <QueryStateView
@@ -299,7 +321,7 @@ export default function TeacherWakasisApprovalsScreen() {
             alignItems: 'center',
           }}
         >
-          <Text style={{ color: '#fff', fontWeight: '700' }}>Kembali ke Home</Text>
+          <Text style={{ color: '#fff', fontWeight: '700', ...bodyTextStyle }}>Kembali ke Home</Text>
         </Pressable>
       </ScrollView>
     );
@@ -338,12 +360,12 @@ export default function TeacherWakasisApprovalsScreen() {
         >
           <Feather name="arrow-left" size={18} color={BRAND_COLORS.textDark} />
         </Pressable>
-        <Text style={{ marginLeft: 10, color: BRAND_COLORS.textDark, fontSize: 20, fontWeight: '700' }}>
+        <Text style={{ marginLeft: 10, color: BRAND_COLORS.textDark, fontWeight: '700', ...headingTextStyle }}>
           Persetujuan
         </Text>
       </View>
 
-      <Text style={{ color: BRAND_COLORS.textMuted, marginBottom: 10 }}>
+      <Text style={{ color: BRAND_COLORS.textMuted, marginBottom: 10, ...inputTextStyle }}>
         Verifikasi pengajuan izin siswa dan tindak lanjuti status persetujuannya.
       </Text>
 
@@ -380,6 +402,7 @@ export default function TeacherWakasisApprovalsScreen() {
               paddingVertical: 10,
               paddingHorizontal: 8,
               color: BRAND_COLORS.textDark,
+              ...inputTextStyle,
             }}
           />
         </View>
@@ -409,10 +432,10 @@ export default function TeacherWakasisApprovalsScreen() {
           maxHeight={260}
         />
 
-        <Text style={{ color: BRAND_COLORS.textMuted, fontSize: 12, marginTop: 10 }}>
+        <Text style={{ color: BRAND_COLORS.textMuted, marginTop: 10, ...bodyTextStyle }}>
           Filter aktif: <Text style={{ color: BRAND_COLORS.textDark, fontWeight: '700' }}>{selectedClassLabel}</Text>
         </Text>
-        <Text style={{ color: BRAND_COLORS.textMuted, fontSize: 12, marginTop: 2 }}>
+        <Text style={{ color: BRAND_COLORS.textMuted, marginTop: 2, ...bodyTextStyle }}>
           Total data: <Text style={{ color: BRAND_COLORS.textDark, fontWeight: '700' }}>{totalFiltered.toLocaleString('id-ID')}</Text> • Pending: <Text style={{ color: '#b45309', fontWeight: '700' }}>{pendingCount.toLocaleString('id-ID')}</Text>
         </Text>
       </View>
@@ -440,10 +463,10 @@ export default function TeacherWakasisApprovalsScreen() {
               >
                 <View style={{ flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', marginBottom: 6 }}>
                   <View style={{ flex: 1, paddingRight: 8 }}>
-                    <Text style={{ color: BRAND_COLORS.textDark, fontWeight: '700', fontSize: 15 }}>
+                    <Text style={{ color: BRAND_COLORS.textDark, fontWeight: '700', ...sectionTitleTextStyle }}>
                       {item.student?.name || '-'}
                     </Text>
-                    <Text style={{ color: BRAND_COLORS.textMuted, fontSize: 12 }}>
+                    <Text style={{ color: BRAND_COLORS.textMuted, ...bodyTextStyle }}>
                       NIS: {item.student?.nis || '-'} | NISN: {item.student?.nisn || '-'}
                     </Text>
                   </View>
@@ -457,7 +480,7 @@ export default function TeacherWakasisApprovalsScreen() {
                       backgroundColor: statusBg(item.status),
                     }}
                   >
-                    <Text style={{ color: statusColor(item.status), fontWeight: '700', fontSize: 11 }}>
+                    <Text style={{ color: statusColor(item.status), fontWeight: '700', ...helperTextStyle }}>
                       {STATUS_LABEL[item.status]}
                     </Text>
                   </View>
@@ -474,17 +497,17 @@ export default function TeacherWakasisApprovalsScreen() {
                       marginRight: 8,
                     }}
                   >
-                    <Text style={{ color: typeColor(item.type), fontWeight: '700', fontSize: 11 }}>{TYPE_LABEL[item.type]}</Text>
+                    <Text style={{ color: typeColor(item.type), fontWeight: '700', ...helperTextStyle }}>{TYPE_LABEL[item.type]}</Text>
                   </View>
-                  <Text style={{ color: BRAND_COLORS.textMuted, fontSize: 12 }}>
+                  <Text style={{ color: BRAND_COLORS.textMuted, ...bodyTextStyle }}>
                     {formatDateRange(item.startDate, item.endDate)}
                   </Text>
                 </View>
 
-                <Text style={{ color: BRAND_COLORS.textMuted, marginBottom: 6 }}>{item.reason || '-'}</Text>
+                <Text style={{ color: BRAND_COLORS.textMuted, marginBottom: 6, ...bodyTextStyle }}>{item.reason || '-'}</Text>
 
                 {item.approvedBy?.name ? (
-                  <Text style={{ color: BRAND_COLORS.textMuted, fontSize: 12, marginBottom: 2 }}>
+                  <Text style={{ color: BRAND_COLORS.textMuted, marginBottom: 2, ...bodyTextStyle }}>
                     Diproses oleh: <Text style={{ color: BRAND_COLORS.textDark, fontWeight: '700' }}>{item.approvedBy.name}</Text>
                   </Text>
                 ) : null}
@@ -501,7 +524,7 @@ export default function TeacherWakasisApprovalsScreen() {
                       marginBottom: 8,
                     }}
                   >
-                    <Text style={{ color: BRAND_COLORS.textMuted, fontSize: 12 }}>{item.approvalNote}</Text>
+                    <Text style={{ color: BRAND_COLORS.textMuted, ...bodyTextStyle }}>{item.approvalNote}</Text>
                   </View>
                 ) : null}
 
@@ -518,7 +541,7 @@ export default function TeacherWakasisApprovalsScreen() {
                       backgroundColor: '#fff',
                     }}
                   >
-                    <Text style={{ color: BRAND_COLORS.textDark, fontWeight: '700' }}>Lihat Bukti</Text>
+                    <Text style={{ color: BRAND_COLORS.textDark, fontWeight: '700', ...bodyTextStyle }}>Lihat Bukti</Text>
                   </Pressable>
                   <Pressable
                     onPress={() => {
@@ -537,7 +560,7 @@ export default function TeacherWakasisApprovalsScreen() {
                       backgroundColor: item.status === 'PENDING' ? BRAND_COLORS.blue : '#93c5fd',
                     }}
                   >
-                    <Text style={{ color: '#fff', fontWeight: '700' }}>
+                    <Text style={{ color: '#fff', fontWeight: '700', ...bodyTextStyle }}>
                       {decisionMutation.isPending ? 'Memproses...' : 'Setujui'}
                     </Text>
                   </Pressable>
@@ -562,6 +585,7 @@ export default function TeacherWakasisApprovalsScreen() {
                           paddingVertical: 8,
                           minHeight: 72,
                           textAlignVertical: 'top',
+                          ...inputTextStyle,
                         }}
                       />
 
@@ -581,7 +605,7 @@ export default function TeacherWakasisApprovalsScreen() {
                             backgroundColor: '#fff',
                           }}
                         >
-                          <Text style={{ color: BRAND_COLORS.textDark, fontWeight: '700' }}>Batal</Text>
+                          <Text style={{ color: BRAND_COLORS.textDark, fontWeight: '700', ...bodyTextStyle }}>Batal</Text>
                         </Pressable>
                         <Pressable
                           onPress={() => submitReject(item.id)}
@@ -594,7 +618,7 @@ export default function TeacherWakasisApprovalsScreen() {
                             backgroundColor: '#dc2626',
                           }}
                         >
-                          <Text style={{ color: '#fff', fontWeight: '700' }}>
+                          <Text style={{ color: '#fff', fontWeight: '700', ...bodyTextStyle }}>
                             {decisionMutation.isPending ? 'Memproses...' : 'Kirim Tolak'}
                           </Text>
                         </Pressable>
@@ -616,7 +640,7 @@ export default function TeacherWakasisApprovalsScreen() {
                         backgroundColor: '#fff5f5',
                       }}
                     >
-                      <Text style={{ color: '#b91c1c', fontWeight: '700' }}>Tolak Pengajuan</Text>
+                      <Text style={{ color: '#b91c1c', fontWeight: '700', ...bodyTextStyle }}>Tolak Pengajuan</Text>
                     </Pressable>
                   )
                 ) : null}
@@ -635,8 +659,8 @@ export default function TeacherWakasisApprovalsScreen() {
               marginBottom: 10,
             }}
           >
-            <Text style={{ color: BRAND_COLORS.textDark, fontWeight: '700', marginBottom: 4 }}>Tidak ada data</Text>
-            <Text style={{ color: BRAND_COLORS.textMuted }}>Belum ada pengajuan izin sesuai filter saat ini.</Text>
+            <Text style={{ color: BRAND_COLORS.textDark, fontWeight: '700', marginBottom: 4, ...sectionTitleTextStyle }}>Tidak ada data</Text>
+            <Text style={{ color: BRAND_COLORS.textMuted, ...bodyTextStyle }}>Belum ada pengajuan izin sesuai filter saat ini.</Text>
           </View>
         )
       ) : null}
@@ -651,11 +675,11 @@ export default function TeacherWakasisApprovalsScreen() {
           marginBottom: 10,
         }}
       >
-        <Text style={{ color: BRAND_COLORS.textDark, fontWeight: '700', marginBottom: 4 }}>Ringkasan Filter Saat Ini</Text>
-        <Text style={{ color: BRAND_COLORS.textMuted, marginBottom: 2 }}>
+        <Text style={{ color: BRAND_COLORS.textDark, fontWeight: '700', marginBottom: 4, ...sectionTitleTextStyle }}>Ringkasan Filter Saat Ini</Text>
+        <Text style={{ color: BRAND_COLORS.textMuted, marginBottom: 2, ...bodyTextStyle }}>
           Pending: {statusStats.PENDING.toLocaleString('id-ID')} | Disetujui: {statusStats.APPROVED.toLocaleString('id-ID')}
         </Text>
-        <Text style={{ color: BRAND_COLORS.textMuted }}>
+        <Text style={{ color: BRAND_COLORS.textMuted, ...bodyTextStyle }}>
           Ditolak: {statusStats.REJECTED.toLocaleString('id-ID')}
         </Text>
       </View>

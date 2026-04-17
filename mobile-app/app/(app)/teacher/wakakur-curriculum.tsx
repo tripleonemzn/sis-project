@@ -27,6 +27,7 @@ import {
 } from '../../../src/features/admin/adminApi';
 import { academicYearApi } from '../../../src/features/academicYear/academicYearApi';
 import { getStandardPagePadding } from '../../../src/lib/ui/pageLayout';
+import { useAppTextScale } from '../../../src/theme/AppTextScaleProvider';
 
 type CurriculumSection = 'OVERVIEW' | 'CATEGORIES' | 'SUBJECTS' | 'ASSIGNMENTS' | 'LOAD';
 type CurriculumSummaryId = 'categories' | 'subjects' | 'assignments' | 'load';
@@ -49,9 +50,26 @@ export default function TeacherWakakurCurriculumScreen() {
   const insets = useSafeAreaInsets();
   const { isAuthenticated, isLoading, user } = useAuth();
   const pagePadding = getStandardPagePadding(insets, { bottom: 120 });
+  const { scaleFont, scaleLineHeight } = useAppTextScale();
   const [section, setSection] = useState<CurriculumSection>('OVERVIEW');
   const [activeSummaryId, setActiveSummaryId] = useState<CurriculumSummaryId | null>(null);
   const [search, setSearch] = useState('');
+  const headingTextStyle = useMemo(
+    () => ({ fontSize: scaleFont(20), lineHeight: scaleLineHeight(28) }),
+    [scaleFont, scaleLineHeight],
+  );
+  const sectionTitleTextStyle = useMemo(
+    () => ({ fontSize: scaleFont(16), lineHeight: scaleLineHeight(24) }),
+    [scaleFont, scaleLineHeight],
+  );
+  const bodyTextStyle = useMemo(
+    () => ({ fontSize: scaleFont(12), lineHeight: scaleLineHeight(18) }),
+    [scaleFont, scaleLineHeight],
+  );
+  const inputTextStyle = useMemo(
+    () => ({ fontSize: scaleFont(13), lineHeight: scaleLineHeight(20) }),
+    [scaleFont, scaleLineHeight],
+  );
   const openCurriculumCrud = (target: 'subject-categories' | 'subjects' | 'teacher-assignments' | 'schedule' | 'teaching-load') => {
     if (target === 'subject-categories' || target === 'subjects') {
       router.push(`/admin/master-data?section=${target}` as never);
@@ -237,7 +255,7 @@ export default function TeacherWakakurCurriculumScreen() {
   if (user?.role !== 'TEACHER') {
     return (
       <ScrollView style={{ flex: 1, backgroundColor: '#f8fafc' }} contentContainerStyle={pagePadding}>
-        <Text style={{ fontSize: 20, fontWeight: '700', marginBottom: 8 }}>Kelola Kurikulum</Text>
+        <Text style={{ ...headingTextStyle, fontWeight: '700', marginBottom: 8 }}>Kelola Kurikulum</Text>
         <QueryStateView type="error" message="Halaman ini khusus untuk role guru." />
         <Pressable
           onPress={() => router.replace('/home')}
@@ -249,7 +267,7 @@ export default function TeacherWakakurCurriculumScreen() {
             alignItems: 'center',
           }}
         >
-          <Text style={{ color: '#fff', fontWeight: '700' }}>Kembali ke Home</Text>
+          <Text style={{ color: '#fff', fontWeight: '700', ...bodyTextStyle }}>Kembali ke Home</Text>
         </Pressable>
       </ScrollView>
     );
@@ -258,7 +276,7 @@ export default function TeacherWakakurCurriculumScreen() {
   if (!isAllowed) {
     return (
       <ScrollView style={{ flex: 1, backgroundColor: '#f8fafc' }} contentContainerStyle={pagePadding}>
-        <Text style={{ fontSize: 20, fontWeight: '700', marginBottom: 8, color: BRAND_COLORS.textDark }}>
+        <Text style={{ ...headingTextStyle, fontWeight: '700', marginBottom: 8, color: BRAND_COLORS.textDark }}>
           Kelola Kurikulum
         </Text>
         <QueryStateView
@@ -275,7 +293,7 @@ export default function TeacherWakakurCurriculumScreen() {
             alignItems: 'center',
           }}
         >
-          <Text style={{ color: '#fff', fontWeight: '700' }}>Kembali ke Home</Text>
+          <Text style={{ color: '#fff', fontWeight: '700', ...bodyTextStyle }}>Kembali ke Home</Text>
         </Pressable>
       </ScrollView>
     );
@@ -311,12 +329,12 @@ export default function TeacherWakakurCurriculumScreen() {
         >
           <Feather name="arrow-left" size={18} color={BRAND_COLORS.textDark} />
         </Pressable>
-        <Text style={{ marginLeft: 10, color: BRAND_COLORS.textDark, fontSize: 20, fontWeight: '700' }}>
+        <Text style={{ marginLeft: 10, color: BRAND_COLORS.textDark, fontWeight: '700', ...headingTextStyle }}>
           Kelola Kurikulum
         </Text>
       </View>
 
-      <Text style={{ color: BRAND_COLORS.textMuted, marginBottom: 10 }}>
+      <Text style={{ color: BRAND_COLORS.textMuted, marginBottom: 10, ...inputTextStyle }}>
         Ringkasan kurikulum, assignment guru, dan beban jam mengajar.
       </Text>
 
@@ -353,7 +371,7 @@ export default function TeacherWakakurCurriculumScreen() {
           onChangeText={setSearch}
           placeholder="Cari kategori, mapel, assignment, atau guru"
           placeholderTextColor="#94a3b8"
-          style={{ flex: 1, color: BRAND_COLORS.textDark, paddingVertical: 10, paddingHorizontal: 10 }}
+          style={{ flex: 1, color: BRAND_COLORS.textDark, paddingVertical: 10, paddingHorizontal: 10, ...inputTextStyle }}
         />
       </View>
 
@@ -386,7 +404,7 @@ export default function TeacherWakakurCurriculumScreen() {
                   marginBottom: 12,
                 }}
               >
-                <Text style={{ color: BRAND_COLORS.textDark, fontWeight: '700', marginBottom: 8 }}>Aksi Cepat</Text>
+                <Text style={{ color: BRAND_COLORS.textDark, fontWeight: '700', marginBottom: 8, ...sectionTitleTextStyle }}>Aksi Cepat</Text>
                 <View style={{ flexDirection: 'row', flexWrap: 'wrap', marginHorizontal: -4 }}>
                   {[
                     { label: 'Kategori Mapel', onPress: () => setSection('CATEGORIES') },
@@ -412,7 +430,7 @@ export default function TeacherWakakurCurriculumScreen() {
                           paddingHorizontal: 8,
                         }}
                       >
-                        <Text style={{ color: BRAND_COLORS.navy, fontWeight: '700', fontSize: 12 }}>{item.label}</Text>
+                        <Text style={{ color: BRAND_COLORS.navy, fontWeight: '700', ...bodyTextStyle }}>{item.label}</Text>
                       </Pressable>
                     </View>
                   ))}
@@ -429,7 +447,7 @@ export default function TeacherWakakurCurriculumScreen() {
                   marginBottom: 12,
                 }}
               >
-                <Text style={{ color: BRAND_COLORS.textDark, fontWeight: '700', marginBottom: 8 }}>
+                <Text style={{ color: BRAND_COLORS.textDark, fontWeight: '700', marginBottom: 8, ...sectionTitleTextStyle }}>
                   Distribusi Assignment per Kelas
                 </Text>
                 {assignmentPerClass.length > 0 ? (
@@ -444,12 +462,12 @@ export default function TeacherWakakurCurriculumScreen() {
                         justifyContent: 'space-between',
                       }}
                     >
-                      <Text style={{ color: BRAND_COLORS.textDark, fontWeight: '600' }}>{item.className}</Text>
-                      <Text style={{ color: BRAND_COLORS.navy, fontWeight: '700' }}>{item.total}</Text>
+                      <Text style={{ color: BRAND_COLORS.textDark, fontWeight: '600', ...bodyTextStyle }}>{item.className}</Text>
+                      <Text style={{ color: BRAND_COLORS.navy, fontWeight: '700', ...bodyTextStyle }}>{item.total}</Text>
                     </View>
                   ))
                 ) : (
-                  <Text style={{ color: BRAND_COLORS.textMuted }}>Belum ada data assignment.</Text>
+                  <Text style={{ color: BRAND_COLORS.textMuted, ...bodyTextStyle }}>Belum ada data assignment.</Text>
                 )}
               </View>
 
@@ -463,7 +481,7 @@ export default function TeacherWakakurCurriculumScreen() {
                   marginBottom: 12,
                 }}
               >
-                <Text style={{ color: BRAND_COLORS.textDark, fontWeight: '700', marginBottom: 8 }}>
+                <Text style={{ color: BRAND_COLORS.textDark, fontWeight: '700', marginBottom: 8, ...sectionTitleTextStyle }}>
                   Top Guru Berdasarkan Jam Mengajar
                 </Text>
                 {topTeachersByLoad.length > 0 ? (
@@ -476,17 +494,17 @@ export default function TeacherWakakurCurriculumScreen() {
                         paddingVertical: 8,
                       }}
                     >
-                      <Text style={{ color: BRAND_COLORS.textDark, fontWeight: '700' }}>{item.teacherName}</Text>
-                      <Text style={{ color: BRAND_COLORS.textMuted, fontSize: 12 }}>
+                      <Text style={{ color: BRAND_COLORS.textDark, fontWeight: '700', ...bodyTextStyle }}>{item.teacherName}</Text>
+                      <Text style={{ color: BRAND_COLORS.textMuted, ...bodyTextStyle }}>
                         @{item.teacherUsername} • Kelas: {item.totalClasses} • Mapel: {item.totalSubjects}
                       </Text>
-                      <Text style={{ color: BRAND_COLORS.navy, fontWeight: '700', marginTop: 2 }}>
+                      <Text style={{ color: BRAND_COLORS.navy, fontWeight: '700', marginTop: 2, ...bodyTextStyle }}>
                         {item.totalHours} jam ({item.totalSessions} sesi)
                       </Text>
                     </View>
                   ))
                 ) : (
-                  <Text style={{ color: BRAND_COLORS.textMuted }}>Belum ada data rekap jam mengajar.</Text>
+                  <Text style={{ color: BRAND_COLORS.textMuted, ...bodyTextStyle }}>Belum ada data rekap jam mengajar.</Text>
                 )}
               </View>
             </>
@@ -503,7 +521,7 @@ export default function TeacherWakakurCurriculumScreen() {
                 marginBottom: 12,
               }}
             >
-              <Text style={{ color: BRAND_COLORS.textDark, fontWeight: '700', marginBottom: 8 }}>
+              <Text style={{ color: BRAND_COLORS.textDark, fontWeight: '700', marginBottom: 8, ...sectionTitleTextStyle }}>
                 Kategori Mata Pelajaran
               </Text>
               <Pressable
@@ -518,24 +536,24 @@ export default function TeacherWakakurCurriculumScreen() {
                   marginBottom: 8,
                 }}
               >
-                <Text style={{ color: '#1d4ed8', fontWeight: '700' }}>Kelola Kategori (Tambah/Edit/Hapus)</Text>
+                <Text style={{ color: '#1d4ed8', fontWeight: '700', ...bodyTextStyle }}>Kelola Kategori (Tambah/Edit/Hapus)</Text>
               </Pressable>
               {filteredCategories.length > 0 ? (
                 filteredCategories.map((item: AdminSubjectCategory) => (
                   <View key={item.id} style={{ borderTopWidth: 1, borderTopColor: '#eef3ff', paddingVertical: 8 }}>
-                    <Text style={{ color: BRAND_COLORS.textDark, fontWeight: '700' }}>
+                    <Text style={{ color: BRAND_COLORS.textDark, fontWeight: '700', ...bodyTextStyle }}>
                       {item.code} - {item.name}
                     </Text>
-                    <Text style={{ color: BRAND_COLORS.textMuted, fontSize: 12 }}>
+                    <Text style={{ color: BRAND_COLORS.textMuted, ...bodyTextStyle }}>
                       Mapel: {subjectPerCategory.get(item.id) || item._count?.subjects || 0}
                     </Text>
                     {item.description ? (
-                      <Text style={{ color: '#64748b', fontSize: 12, marginTop: 2 }}>{item.description}</Text>
+                      <Text style={{ color: '#64748b', marginTop: 2, ...bodyTextStyle }}>{item.description}</Text>
                     ) : null}
                   </View>
                 ))
               ) : (
-                <Text style={{ color: BRAND_COLORS.textMuted }}>Tidak ada kategori sesuai pencarian.</Text>
+                <Text style={{ color: BRAND_COLORS.textMuted, ...bodyTextStyle }}>Tidak ada kategori sesuai pencarian.</Text>
               )}
             </View>
           ) : null}
@@ -551,7 +569,7 @@ export default function TeacherWakakurCurriculumScreen() {
                 marginBottom: 12,
               }}
             >
-              <Text style={{ color: BRAND_COLORS.textDark, fontWeight: '700', marginBottom: 8 }}>Mata Pelajaran</Text>
+              <Text style={{ color: BRAND_COLORS.textDark, fontWeight: '700', marginBottom: 8, ...sectionTitleTextStyle }}>Mata Pelajaran</Text>
               <Pressable
                 onPress={() => openCurriculumCrud('subjects')}
                 style={{
@@ -564,7 +582,7 @@ export default function TeacherWakakurCurriculumScreen() {
                   marginBottom: 8,
                 }}
               >
-                <Text style={{ color: '#1d4ed8', fontWeight: '700' }}>Kelola Mapel (Tambah/Edit/Hapus)</Text>
+                <Text style={{ color: '#1d4ed8', fontWeight: '700', ...bodyTextStyle }}>Kelola Mapel (Tambah/Edit/Hapus)</Text>
               </Pressable>
               {filteredSubjects.length > 0 ? (
                 filteredSubjects.map((item: AdminSubject) => {
@@ -573,20 +591,20 @@ export default function TeacherWakakurCurriculumScreen() {
                   const kkmXII = item.kkms?.find((k) => k.classLevel === 'XII')?.kkm ?? '-';
                   return (
                     <View key={item.id} style={{ borderTopWidth: 1, borderTopColor: '#eef3ff', paddingVertical: 8 }}>
-                      <Text style={{ color: BRAND_COLORS.textDark, fontWeight: '700' }}>
+                      <Text style={{ color: BRAND_COLORS.textDark, fontWeight: '700', ...bodyTextStyle }}>
                         {item.code} - {item.name}
                       </Text>
-                      <Text style={{ color: BRAND_COLORS.textMuted, fontSize: 12 }}>
+                      <Text style={{ color: BRAND_COLORS.textMuted, ...bodyTextStyle }}>
                         Kategori: {item.category?.name || '-'}
                       </Text>
-                      <Text style={{ color: '#64748b', fontSize: 12, marginTop: 2 }}>
+                      <Text style={{ color: '#64748b', marginTop: 2, ...bodyTextStyle }}>
                         KKM X/XI/XII: {kkmX} / {kkmXI} / {kkmXII}
                       </Text>
                     </View>
                   );
                 })
               ) : (
-                <Text style={{ color: BRAND_COLORS.textMuted }}>Tidak ada mapel sesuai pencarian.</Text>
+                <Text style={{ color: BRAND_COLORS.textMuted, ...bodyTextStyle }}>Tidak ada mapel sesuai pencarian.</Text>
               )}
             </View>
           ) : null}
@@ -602,7 +620,7 @@ export default function TeacherWakakurCurriculumScreen() {
                 marginBottom: 12,
               }}
             >
-              <Text style={{ color: BRAND_COLORS.textDark, fontWeight: '700', marginBottom: 8 }}>Assignment Guru</Text>
+              <Text style={{ color: BRAND_COLORS.textDark, fontWeight: '700', marginBottom: 8, ...sectionTitleTextStyle }}>Assignment Guru</Text>
               <Pressable
                 onPress={() => openCurriculumCrud('teacher-assignments')}
                 style={{
@@ -615,24 +633,24 @@ export default function TeacherWakakurCurriculumScreen() {
                   marginBottom: 8,
                 }}
               >
-                <Text style={{ color: '#1d4ed8', fontWeight: '700' }}>Kelola Assignment (Tambah/Hapus)</Text>
+                <Text style={{ color: '#1d4ed8', fontWeight: '700', ...bodyTextStyle }}>Kelola Assignment (Tambah/Hapus)</Text>
               </Pressable>
               {filteredAssignments.length > 0 ? (
                 filteredAssignments.map((item: AdminTeacherAssignment) => (
                   <View key={item.id} style={{ borderTopWidth: 1, borderTopColor: '#eef3ff', paddingVertical: 8 }}>
-                    <Text style={{ color: BRAND_COLORS.textDark, fontWeight: '700' }}>
+                    <Text style={{ color: BRAND_COLORS.textDark, fontWeight: '700', ...bodyTextStyle }}>
                       {item.subject?.code || '-'} - {item.subject?.name || '-'}
                     </Text>
-                    <Text style={{ color: BRAND_COLORS.textMuted, fontSize: 12 }}>
+                    <Text style={{ color: BRAND_COLORS.textMuted, ...bodyTextStyle }}>
                       {item.class?.name || '-'} • {item.teacher?.name || '-'}
                     </Text>
-                    <Text style={{ color: '#64748b', fontSize: 12, marginTop: 2 }}>
+                    <Text style={{ color: '#64748b', marginTop: 2, ...bodyTextStyle }}>
                       Sesi terjadwal: {item._count?.scheduleEntries || 0}
                     </Text>
                   </View>
                 ))
               ) : (
-                <Text style={{ color: BRAND_COLORS.textMuted }}>Tidak ada assignment sesuai pencarian.</Text>
+                <Text style={{ color: BRAND_COLORS.textMuted, ...bodyTextStyle }}>Tidak ada assignment sesuai pencarian.</Text>
               )}
             </View>
           ) : null}
@@ -648,9 +666,9 @@ export default function TeacherWakakurCurriculumScreen() {
                 marginBottom: 12,
               }}
             >
-              <Text style={{ color: BRAND_COLORS.textDark, fontWeight: '700', marginBottom: 8 }}>
-                Rekap Jam Mengajar
-              </Text>
+                <Text style={{ color: BRAND_COLORS.textDark, fontWeight: '700', marginBottom: 8, ...sectionTitleTextStyle }}>
+                  Rekap Jam Mengajar
+                </Text>
               <Pressable
                 onPress={() => openCurriculumCrud('teaching-load')}
                 style={{
@@ -663,27 +681,27 @@ export default function TeacherWakakurCurriculumScreen() {
                   marginBottom: 8,
                 }}
               >
-                <Text style={{ color: '#1d4ed8', fontWeight: '700' }}>Buka Modul Jam Mengajar</Text>
+                <Text style={{ color: '#1d4ed8', fontWeight: '700', ...bodyTextStyle }}>Buka Modul Jam Mengajar</Text>
               </Pressable>
               {filteredTeachingLoad.length > 0 ? (
                 filteredTeachingLoad.map((item: AdminTeachingLoadTeacher) => (
                   <View key={item.teacherId} style={{ borderTopWidth: 1, borderTopColor: '#eef3ff', paddingVertical: 8 }}>
-                    <Text style={{ color: BRAND_COLORS.textDark, fontWeight: '700' }}>{item.teacherName}</Text>
-                    <Text style={{ color: BRAND_COLORS.textMuted, fontSize: 12 }}>
+                    <Text style={{ color: BRAND_COLORS.textDark, fontWeight: '700', ...bodyTextStyle }}>{item.teacherName}</Text>
+                    <Text style={{ color: BRAND_COLORS.textMuted, ...bodyTextStyle }}>
                       @{item.teacherUsername} • Kelas: {item.totalClasses} • Mapel: {item.totalSubjects}
                     </Text>
-                    <Text style={{ color: BRAND_COLORS.navy, fontWeight: '700', marginTop: 2 }}>
+                    <Text style={{ color: BRAND_COLORS.navy, fontWeight: '700', marginTop: 2, ...bodyTextStyle }}>
                       {item.totalHours} jam ({item.totalSessions} sesi)
                     </Text>
                     {item.details.slice(0, 2).map((detail) => (
-                      <Text key={`${item.teacherId}-${detail.subjectId}`} style={{ color: '#64748b', fontSize: 12, marginTop: 2 }}>
+                      <Text key={`${item.teacherId}-${detail.subjectId}`} style={{ color: '#64748b', marginTop: 2, ...bodyTextStyle }}>
                         {detail.subjectCode} - {detail.subjectName}: {detail.hours} jam
                       </Text>
                     ))}
                   </View>
                 ))
               ) : (
-                <Text style={{ color: BRAND_COLORS.textMuted }}>Tidak ada data rekap sesuai pencarian.</Text>
+                <Text style={{ color: BRAND_COLORS.textMuted, ...bodyTextStyle }}>Tidak ada data rekap sesuai pencarian.</Text>
               )}
             </View>
           ) : null}
@@ -700,7 +718,7 @@ export default function TeacherWakakurCurriculumScreen() {
           alignItems: 'center',
         }}
       >
-        <Text style={{ color: '#fff', fontWeight: '700' }}>Kembali ke Home</Text>
+        <Text style={{ color: '#fff', fontWeight: '700', ...bodyTextStyle }}>Kembali ke Home</Text>
       </Pressable>
 
       <MobileDetailModal
@@ -713,10 +731,10 @@ export default function TeacherWakakurCurriculumScreen() {
       >
         {activeSummaryId === 'categories' ? (
           <>
-            <Text style={{ color: BRAND_COLORS.textDark, fontWeight: '700', marginBottom: 6 }}>
+            <Text style={{ color: BRAND_COLORS.textDark, fontWeight: '700', marginBottom: 6, ...sectionTitleTextStyle }}>
               Total kategori sesuai filter: {filteredCategories.length}
             </Text>
-            <Text style={{ color: BRAND_COLORS.textMuted, lineHeight: 20, marginBottom: 12 }}>
+            <Text style={{ color: BRAND_COLORS.textMuted, ...bodyTextStyle, marginBottom: 12 }}>
               Gunakan ringkasan ini untuk melihat sebaran kategori mapel yang aktif dan jumlah mapel pada tiap kategori.
             </Text>
             {categories.slice(0, 8).map((item) => (
@@ -731,10 +749,10 @@ export default function TeacherWakakurCurriculumScreen() {
                   backgroundColor: '#fff',
                 }}
               >
-                <Text style={{ color: BRAND_COLORS.textDark, fontWeight: '700' }}>
+                <Text style={{ color: BRAND_COLORS.textDark, fontWeight: '700', ...bodyTextStyle }}>
                   {item.code} - {item.name}
                 </Text>
-                <Text style={{ color: BRAND_COLORS.textMuted, fontSize: 12, marginTop: 3 }}>
+                <Text style={{ color: BRAND_COLORS.textMuted, marginTop: 3, ...bodyTextStyle }}>
                   Total mapel: {subjectPerCategory.get(item.id) || item._count?.subjects || 0}
                 </Text>
               </View>
@@ -744,10 +762,10 @@ export default function TeacherWakakurCurriculumScreen() {
 
         {activeSummaryId === 'subjects' ? (
           <>
-            <Text style={{ color: BRAND_COLORS.textDark, fontWeight: '700', marginBottom: 6 }}>
+            <Text style={{ color: BRAND_COLORS.textDark, fontWeight: '700', marginBottom: 6, ...sectionTitleTextStyle }}>
               Total mata pelajaran: {curriculumQuery.data?.subjectTotal || 0}
             </Text>
-            <Text style={{ color: BRAND_COLORS.textMuted, lineHeight: 20, marginBottom: 12 }}>
+            <Text style={{ color: BRAND_COLORS.textMuted, ...bodyTextStyle, marginBottom: 12 }}>
               Nilai ini menghitung seluruh mapel yang sudah tersusun pada data kurikulum aktif.
             </Text>
             {filteredSubjects.slice(0, 8).map((item) => (
@@ -761,10 +779,10 @@ export default function TeacherWakakurCurriculumScreen() {
                   marginBottom: 8,
                 }}
               >
-                <Text style={{ color: BRAND_COLORS.textDark, fontWeight: '700' }}>
+                <Text style={{ color: BRAND_COLORS.textDark, fontWeight: '700', ...bodyTextStyle }}>
                   {item.code} - {item.name}
                 </Text>
-                <Text style={{ color: BRAND_COLORS.textMuted, fontSize: 12, marginTop: 3 }}>
+                <Text style={{ color: BRAND_COLORS.textMuted, marginTop: 3, ...bodyTextStyle }}>
                   Kategori: {item.category?.name || '-'}
                 </Text>
               </View>
@@ -774,10 +792,10 @@ export default function TeacherWakakurCurriculumScreen() {
 
         {activeSummaryId === 'assignments' ? (
           <>
-            <Text style={{ color: BRAND_COLORS.textDark, fontWeight: '700', marginBottom: 6 }}>
+            <Text style={{ color: BRAND_COLORS.textDark, fontWeight: '700', marginBottom: 6, ...sectionTitleTextStyle }}>
               Total assignment guru: {curriculumQuery.data?.assignmentTotal || 0}
             </Text>
-            <Text style={{ color: BRAND_COLORS.textMuted, lineHeight: 20, marginBottom: 12 }}>
+            <Text style={{ color: BRAND_COLORS.textMuted, ...bodyTextStyle, marginBottom: 12 }}>
               Distribusi ini membantu melihat kelas mana yang paling padat assignment-nya.
             </Text>
             {assignmentPerClass.length > 0 ? (
@@ -792,24 +810,24 @@ export default function TeacherWakakurCurriculumScreen() {
                     marginBottom: 8,
                   }}
                 >
-                  <Text style={{ color: BRAND_COLORS.textDark, fontWeight: '700' }}>{item.className}</Text>
-                  <Text style={{ color: BRAND_COLORS.textMuted, fontSize: 12, marginTop: 3 }}>
+                  <Text style={{ color: BRAND_COLORS.textDark, fontWeight: '700', ...bodyTextStyle }}>{item.className}</Text>
+                  <Text style={{ color: BRAND_COLORS.textMuted, marginTop: 3, ...bodyTextStyle }}>
                     Total assignment: {item.total}
                   </Text>
                 </View>
               ))
             ) : (
-              <Text style={{ color: BRAND_COLORS.textMuted }}>Belum ada data assignment untuk ditampilkan.</Text>
+              <Text style={{ color: BRAND_COLORS.textMuted, ...bodyTextStyle }}>Belum ada data assignment untuk ditampilkan.</Text>
             )}
           </>
         ) : null}
 
         {activeSummaryId === 'load' ? (
           <>
-            <Text style={{ color: BRAND_COLORS.textDark, fontWeight: '700', marginBottom: 6 }}>
+            <Text style={{ color: BRAND_COLORS.textDark, fontWeight: '700', marginBottom: 6, ...sectionTitleTextStyle }}>
               Total guru dengan rekap jam: {teachingLoad.length}
             </Text>
-            <Text style={{ color: BRAND_COLORS.textMuted, lineHeight: 20, marginBottom: 12 }}>
+            <Text style={{ color: BRAND_COLORS.textMuted, ...bodyTextStyle, marginBottom: 12 }}>
               Ringkasan ini menunjukkan guru dengan total jam mengajar tertinggi pada tahun ajaran aktif.
             </Text>
             {topTeachersByLoad.length > 0 ? (
@@ -824,14 +842,14 @@ export default function TeacherWakakurCurriculumScreen() {
                     marginBottom: 8,
                   }}
                 >
-                  <Text style={{ color: BRAND_COLORS.textDark, fontWeight: '700' }}>{item.teacherName}</Text>
-                  <Text style={{ color: BRAND_COLORS.textMuted, fontSize: 12, marginTop: 3 }}>
+                  <Text style={{ color: BRAND_COLORS.textDark, fontWeight: '700', ...bodyTextStyle }}>{item.teacherName}</Text>
+                  <Text style={{ color: BRAND_COLORS.textMuted, marginTop: 3, ...bodyTextStyle }}>
                     {item.totalHours} jam • {item.totalSessions} sesi • {item.totalClasses} kelas
                   </Text>
                 </View>
               ))
             ) : (
-              <Text style={{ color: BRAND_COLORS.textMuted }}>Belum ada data beban mengajar untuk ditampilkan.</Text>
+              <Text style={{ color: BRAND_COLORS.textMuted, ...bodyTextStyle }}>Belum ada data beban mengajar untuk ditampilkan.</Text>
             )}
           </>
         ) : null}
