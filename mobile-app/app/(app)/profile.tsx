@@ -52,7 +52,6 @@ import { ENV } from '../../src/config/env';
 import { openWebModuleRoute } from '../../src/lib/navigation/webModuleRoute';
 import { useAppTheme } from '../../src/theme/AppThemeProvider';
 import { useAppTextScale } from '../../src/theme/AppTextScaleProvider';
-import { MobileTextScalePreferenceCard } from '../../src/features/theme/MobileTextScalePreferenceCard';
 
 type EditableProfileForm = {
   name: string;
@@ -1668,34 +1667,6 @@ export default function ProfileScreen() {
               <Text style={{ color: '#1d4ed8', fontWeight: '700', fontSize: fontSizes.label }}>Buka Formulir PPDB</Text>
             </Pressable>
           ) : null}
-
-          <Pressable
-            onPress={() =>
-              openWebModuleRoute(router, {
-                moduleKey: 'profile-print',
-                webPath: '/print/profile-summary',
-                label: 'Print Profil',
-              })
-            }
-            style={{
-              marginBottom: 12,
-              borderWidth: 1,
-              borderColor: '#cbd5e1',
-              backgroundColor: '#fff',
-              borderRadius: 10,
-              paddingVertical: 12,
-              alignItems: 'center',
-              flexDirection: 'row',
-              justifyContent: 'center',
-            }}
-          >
-            <Feather name="printer" size={16} color="#334155" />
-            <Text style={{ color: '#334155', fontWeight: '700', fontSize: fontSizes.label, marginLeft: 8 }}>
-              Lihat & Print Profil
-            </Text>
-          </Pressable>
-
-          <MobileTextScalePreferenceCard userId={profile.id} currentPreferences={profile.preferences} />
 
           <ScrollView
             horizontal

@@ -416,6 +416,7 @@ function getMenuIconTone(menuKey: string): MenuIconTone {
 const getMenuIcon = (menu: RoleMenuItem): FeatherIconName => {
   if (menu.key.includes('email') || menu.key.includes('mail')) return 'mail';
   if (menu.key.includes('profile')) return 'user';
+  if (menu.key.includes('accessibility')) return 'type';
   if (menu.key.includes('diagnostics')) return 'activity';
   if (menu.key.includes('schedule')) return 'calendar';
   if (menu.key.includes('academic')) return 'book-open';

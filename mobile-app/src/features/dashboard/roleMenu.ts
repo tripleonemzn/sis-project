@@ -287,6 +287,7 @@ const ROLE_MENUS: Record<string, RoleMenuItem[]> = {
     { key: 'student-grade-history', label: 'Nilai Saya', route: '/grades' },
     { key: 'student-finance', label: 'Keuangan', route: '/student/finance' },
     { key: 'student-profile-web', label: 'Profil', route: '/profile' },
+    { key: 'student-accessibility', label: 'Aksesibilitas', route: '/accessibility' },
   ],
   TEACHER: [
     { key: 'teacher-dashboard', label: 'Dashboard', route: '/home' },
@@ -605,6 +606,7 @@ const ROLE_MENUS: Record<string, RoleMenuItem[]> = {
       route: '/teacher/head-library-inventory',
     },
     { key: 'teacher-profile', label: 'Profil', route: '/profile' },
+    { key: 'teacher-accessibility', label: 'Aksesibilitas', route: '/accessibility' },
   ],
   ADMIN: [
     { key: 'admin-dashboard', label: 'Dashboard', route: '/home' },
@@ -710,6 +712,7 @@ const ROLE_MENUS: Record<string, RoleMenuItem[]> = {
     { key: 'admin-server-area', label: 'Area Server', route: '/admin/server-area' },
     { key: 'admin-school-profile', label: 'Profil Sekolah', route: '/profile' },
     { key: 'admin-password', label: 'Ubah Password', route: '/profile' },
+    { key: 'admin-accessibility', label: 'Aksesibilitas', route: '/accessibility' },
   ],
   EXAMINER: [
     { key: 'examiner-dashboard', label: 'Dashboard', route: '/home' },
@@ -724,6 +727,7 @@ const ROLE_MENUS: Record<string, RoleMenuItem[]> = {
       route: '/examiner/assessment',
     },
     { key: 'examiner-profile', label: 'Profil', route: '/profile' },
+    { key: 'examiner-accessibility', label: 'Aksesibilitas', route: '/accessibility' },
   ],
   PRINCIPAL: [
     {
@@ -764,6 +768,8 @@ const ROLE_MENUS: Record<string, RoleMenuItem[]> = {
       route: '/principal/monitoring/osis',
     },
     { key: 'principal-teachers', label: 'Data Guru', route: '/principal/teachers' },
+    { key: 'principal-profile', label: 'Profil', route: '/profile' },
+    { key: 'principal-accessibility', label: 'Aksesibilitas', route: '/accessibility' },
   ],
   STAFF: [
     { key: 'staff-dashboard', label: 'Dashboard', route: '/home' },
@@ -771,6 +777,8 @@ const ROLE_MENUS: Record<string, RoleMenuItem[]> = {
     { key: 'staff-payments', label: 'Ringkasan Keuangan', route: '/staff/payments' },
     { key: 'staff-students', label: 'Data Siswa', route: '/staff/students' },
     { key: 'staff-admin', label: 'Administrasi', route: '/staff/admin' },
+    { key: 'staff-profile', label: 'Profil', route: '/profile' },
+    { key: 'staff-accessibility', label: 'Aksesibilitas', route: '/accessibility' },
   ],
   PARENT: [
     { key: 'parent-dashboard', label: 'Dashboard', route: '/parent/overview' },
@@ -778,6 +786,8 @@ const ROLE_MENUS: Record<string, RoleMenuItem[]> = {
     { key: 'child-link', label: 'Hubungkan Anak', route: '/parent/children?mode=link' },
     { key: 'parent-finance', label: 'Keuangan', route: '/parent/finance' },
     { key: 'child-attendance', label: 'Absensi Anak', route: '/parent/attendance' },
+    { key: 'parent-profile', label: 'Profil', route: '/profile' },
+    { key: 'parent-accessibility', label: 'Aksesibilitas', route: '/accessibility' },
   ],
   CALON_SISWA: [
     { key: 'candidate-dashboard', label: 'Dashboard', route: '/candidate' },
@@ -785,6 +795,7 @@ const ROLE_MENUS: Record<string, RoleMenuItem[]> = {
     { key: 'candidate-information', label: 'Informasi PPDB', route: '/candidate/information' },
     { key: 'candidate-exams', label: 'Tes Seleksi', route: '/candidate/exams' },
     { key: 'candidate-profile', label: 'Profil', route: '/candidate/profile' },
+    { key: 'candidate-accessibility', label: 'Aksesibilitas', route: '/accessibility' },
   ],
   UMUM: [
     { key: 'public-dashboard', label: 'Dashboard BKK', route: '/public' },
@@ -792,6 +803,7 @@ const ROLE_MENUS: Record<string, RoleMenuItem[]> = {
     { key: 'public-applications', label: 'Lamaran Saya', route: '/public/applications' },
     { key: 'public-exams', label: 'Tes BKK', route: '/public/exams' },
     { key: 'public-profile', label: 'Profil Pelamar', route: '/public/profile' },
+    { key: 'public-accessibility', label: 'Aksesibilitas', route: '/accessibility' },
   ],
   EXTRACURRICULAR_TUTOR: [
     { key: 'tutor-dashboard', label: 'Dashboard', route: '/tutor/dashboard' },
@@ -800,6 +812,7 @@ const ROLE_MENUS: Record<string, RoleMenuItem[]> = {
     { key: 'tutor-members', label: 'Anggota & Nilai', route: '/tutor/members' },
     { key: 'tutor-inventory', label: 'Kelola Inventaris', route: '/tutor/inventory' },
     { key: 'tutor-profile', label: 'Profil', route: '/profile' },
+    { key: 'tutor-accessibility', label: 'Aksesibilitas', route: '/accessibility' },
   ],
 };
 
@@ -884,6 +897,7 @@ function shouldShowMenuItem(user: AuthUser, item: RoleMenuItem, options?: RoleMe
         'student-grade-history',
         'student-attendance-history',
         'student-profile-web',
+        'student-accessibility',
       ]);
       return alumniAllowed.has(item.key);
     }
@@ -1034,7 +1048,7 @@ const ROLE_MENU_GROUPS: Record<string, GroupDefinition[]> = {
     },
     { key: 'grades', label: 'NILAI SAYA', menuKeys: ['student-grade-history'] },
     { key: 'administration', label: 'ADMINISTRASI', menuKeys: ['student-finance'] },
-    { key: 'settings', label: 'PENGATURAN', menuKeys: ['student-profile-web'] },
+    { key: 'settings', label: 'PENGATURAN', menuKeys: ['student-profile-web', 'student-accessibility'] },
   ],
   TEACHER: [
     { key: 'dashboard', label: 'Dashboard', menuKeys: ['teacher-dashboard', 'teacher-email'] },
@@ -1158,7 +1172,7 @@ const ROLE_MENU_GROUPS: Record<string, GroupDefinition[]> = {
       label: 'KEPALA PERPUSTAKAAN',
       menuKeys: ['teacher-head-library-inventory'],
     },
-    { key: 'settings', label: 'PENGATURAN', menuKeys: ['teacher-profile'] },
+    { key: 'settings', label: 'PENGATURAN', menuKeys: ['teacher-profile', 'teacher-accessibility'] },
   ],
   ADMIN: [
     { key: 'dashboard', label: 'Dashboard', menuKeys: ['admin-dashboard', 'admin-email'] },
@@ -1217,7 +1231,7 @@ const ROLE_MENU_GROUPS: Record<string, GroupDefinition[]> = {
     {
       key: 'settings',
       label: 'PENGATURAN',
-      menuKeys: ['admin-slideshow', 'admin-server-area', 'admin-school-profile', 'admin-password'],
+      menuKeys: ['admin-slideshow', 'admin-server-area', 'admin-school-profile', 'admin-password', 'admin-accessibility'],
     },
   ],
   PRINCIPAL: [
@@ -1226,43 +1240,46 @@ const ROLE_MENU_GROUPS: Record<string, GroupDefinition[]> = {
     { key: 'finance', label: 'KEUANGAN', menuKeys: ['principal-finance-requests'] },
     { key: 'students', label: 'KESISWAAN', menuKeys: ['principal-students'] },
     { key: 'teachers', label: 'SDM GURU', menuKeys: ['principal-teachers'] },
+    { key: 'settings', label: 'PENGATURAN', menuKeys: ['principal-profile', 'principal-accessibility'] },
   ],
   STAFF: [
     { key: 'dashboard', label: 'Dashboard', menuKeys: ['staff-dashboard', 'staff-email'] },
     { key: 'payments', label: 'KEUANGAN', menuKeys: ['staff-payments', 'staff-students', 'staff-admin'] },
+    { key: 'settings', label: 'PENGATURAN', menuKeys: ['staff-profile', 'staff-accessibility'] },
   ],
   PARENT: [
     { key: 'dashboard', label: 'Dashboard', menuKeys: ['parent-dashboard'] },
     { key: 'children', label: 'Data Anak', menuKeys: ['child-progress', 'child-link'] },
     { key: 'finance', label: 'Keuangan', menuKeys: ['parent-finance'] },
     { key: 'attendance', label: 'Absensi Anak', menuKeys: ['child-attendance'] },
+    { key: 'settings', label: 'PENGATURAN', menuKeys: ['parent-profile', 'parent-accessibility'] },
   ],
   EXAMINER: [
     { key: 'dashboard', label: 'Dashboard', menuKeys: ['examiner-dashboard'] },
     { key: 'schemes', label: 'Data Skema', menuKeys: ['examiner-schemes'] },
     { key: 'assessment', label: 'Penilaian UKK', menuKeys: ['assessment'] },
-    { key: 'settings', label: 'PENGATURAN', menuKeys: ['examiner-profile'] },
+    { key: 'settings', label: 'PENGATURAN', menuKeys: ['examiner-profile', 'examiner-accessibility'] },
   ],
   EXTRACURRICULAR_TUTOR: [
     { key: 'dashboard', label: 'Dashboard', menuKeys: ['tutor-dashboard', 'tutor-email'] },
     { key: 'work-program', label: 'Program Kerja', menuKeys: ['tutor-work-program'] },
     { key: 'members', label: 'Anggota & Nilai', menuKeys: ['tutor-members'] },
     { key: 'inventory', label: 'Kelola Inventaris', menuKeys: ['tutor-inventory'] },
-    { key: 'settings', label: 'PENGATURAN', menuKeys: ['tutor-profile'] },
+    { key: 'settings', label: 'PENGATURAN', menuKeys: ['tutor-profile', 'tutor-accessibility'] },
   ],
   CALON_SISWA: [
     { key: 'dashboard', label: 'Dashboard', menuKeys: ['candidate-dashboard'] },
     { key: 'registration', label: 'Formulir PPDB', menuKeys: ['candidate-application'] },
     { key: 'information', label: 'Informasi PPDB', menuKeys: ['candidate-information'] },
     { key: 'exam', label: 'Tes Seleksi', menuKeys: ['candidate-exams'] },
-    { key: 'profile', label: 'Profil', menuKeys: ['candidate-profile'] },
+    { key: 'settings', label: 'PENGATURAN', menuKeys: ['candidate-profile', 'candidate-accessibility'] },
   ],
   UMUM: [
     { key: 'dashboard', label: 'Dashboard BKK', menuKeys: ['public-dashboard'] },
     { key: 'vacancies', label: 'Lowongan BKK', menuKeys: ['public-vacancies'] },
     { key: 'applications', label: 'Lamaran Saya', menuKeys: ['public-applications'] },
     { key: 'exam', label: 'Tes BKK', menuKeys: ['public-exams'] },
-    { key: 'profile', label: 'Profil Pelamar', menuKeys: ['public-profile'] },
+    { key: 'settings', label: 'PENGATURAN', menuKeys: ['public-profile', 'public-accessibility'] },
   ],
 };
 
@@ -1385,7 +1402,7 @@ function getStaffMenuItemByKey(key: string) {
 
 function buildStaffRoleMenu(user: AuthUser) {
   const division = resolveStaffDivision(user);
-  const baseKeys = ['staff-dashboard', 'staff-email'];
+  const baseKeys = ['staff-dashboard', 'staff-email', 'staff-profile', 'staff-accessibility'];
   const roleKeys =
     division === 'HEAD_TU'
       ? [
@@ -1445,6 +1462,7 @@ function buildStaffGroups(user: AuthUser, menus: RoleMenuItem[]) {
       'staff-head-tu-teachers',
       'staff-head-tu-permissions',
     ]);
+    pushGroup(groups, 'settings', 'PENGATURAN', ['staff-profile', 'staff-accessibility']);
     return groups;
   }
 
@@ -1454,10 +1472,12 @@ function buildStaffGroups(user: AuthUser, menus: RoleMenuItem[]) {
       'staff-administration-teachers',
       'staff-administration-permissions',
     ]);
+    pushGroup(groups, 'settings', 'PENGATURAN', ['staff-profile', 'staff-accessibility']);
     return groups;
   }
 
   pushGroup(groups, 'payments', 'KEUANGAN', ['staff-payments', 'staff-students', 'staff-admin']);
+  pushGroup(groups, 'settings', 'PENGATURAN', ['staff-profile', 'staff-accessibility']);
   return groups;
 }
 
@@ -1503,6 +1523,7 @@ function buildPrincipalGroups(menus: RoleMenuItem[]) {
   pushGroup('finance', 'KEUANGAN', ['principal-finance-requests']);
   pushGroup('students', 'KESISWAAN', ['principal-students', 'principal-osis-monitoring']);
   pushGroup('teachers', 'SDM GURU', ['principal-teachers']);
+  pushGroup('settings', 'PENGATURAN', ['principal-profile', 'principal-accessibility']);
 
   const inventoryItems = menus.filter((item) => item.key.startsWith('principal-assigned-inventory'));
   if (inventoryItems.length > 0) {
@@ -1555,7 +1576,7 @@ function buildStudentAlumniGroups(menus: RoleMenuItem[]): RoleMenuGroup[] {
     });
   }
 
-  const settingsItems = pickMenus(byKey, ['student-profile-web']);
+  const settingsItems = pickMenus(byKey, ['student-profile-web', 'student-accessibility']);
   if (settingsItems.length > 0) {
     groups.push({
       key: 'settings',
@@ -1829,7 +1850,7 @@ function buildTeacherGroups(
     ]);
   }
 
-  pushGroup('settings', 'PENGATURAN', pickMenus(byKey, ['teacher-profile']));
+  pushGroup('settings', 'PENGATURAN', pickMenus(byKey, ['teacher-profile', 'teacher-accessibility']));
 
   return groups;
 }
@@ -1880,7 +1901,7 @@ function buildTutorGroups(menus: RoleMenuItem[], options?: RoleMenuBuildOptions)
     );
   });
 
-  pushGroup('settings', 'PENGATURAN', pickMenus(byKey, ['tutor-profile']));
+  pushGroup('settings', 'PENGATURAN', pickMenus(byKey, ['tutor-profile', 'tutor-accessibility']));
 
   return groups;
 }
