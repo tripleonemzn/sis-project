@@ -811,7 +811,7 @@ export default function HomeScreen() {
   const { colors, mode } = useAppTheme();
   const isDarkModeActive = mode === 'dark';
   const isScreenActive = useIsScreenActive();
-  const unreadNotificationsQuery = useUnreadNotificationsQuery(isAuthenticated, isScreenActive);
+  const unreadNotificationsQuery = useUnreadNotificationsQuery(isAuthenticated && isScreenActive, isScreenActive);
   const unreadNotificationCount = unreadNotificationsQuery.data ?? 0;
   const profileQuery = useProfileQuery(isAuthenticated);
   const [isRefreshing, setIsRefreshing] = useState(false);
