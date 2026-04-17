@@ -12,6 +12,7 @@ import { adminApi, type AdminExamQuestionType } from '../admin/adminApi';
 import { useAuth } from '../auth/AuthProvider';
 import { useTeacherAssignmentsQuery } from '../teacherAssignments/useTeacherAssignmentsQuery';
 import { getStandardPagePadding } from '../../lib/ui/pageLayout';
+import { useAppTextScale } from '../../theme/AppTextScaleProvider';
 
 const QUESTION_TYPE_OPTIONS: Array<{ label: string; value: '' | AdminExamQuestionType }> = [
   { label: 'Semua Tipe Soal', value: '' },
@@ -57,6 +58,7 @@ export function TeacherQuestionBankModuleScreen() {
   const insets = useSafeAreaInsets();
   const { isAuthenticated, isLoading, user } = useAuth();
   const pageContentPadding = getStandardPagePadding(insets, { bottom: 120 });
+  const { scaleFont, scaleLineHeight } = useAppTextScale();
   const teacherAssignmentsQuery = useTeacherAssignmentsQuery({ enabled: isAuthenticated, user });
 
   const [subjectId, setSubjectId] = useState('');
@@ -135,8 +137,10 @@ export function TeacherQuestionBankModuleScreen() {
         />
       }
     >
-      <Text style={{ fontSize: 20, fontWeight: '700', marginBottom: 6, color: '#0f172a' }}>Bank Soal</Text>
-      <Text style={{ color: '#64748b', marginBottom: 12 }}>
+      <Text style={{ fontSize: scaleFont(20), lineHeight: scaleLineHeight(28), fontWeight: '700', marginBottom: 6, color: '#0f172a' }}>
+        Bank Soal
+      </Text>
+      <Text style={{ color: '#64748b', fontSize: scaleFont(13), lineHeight: scaleLineHeight(20), marginBottom: 12 }}>
         Daftar butir soal mengikuti konsep web: filter mapel, semester, tipe, lalu buka pratinjau soal yang sebenarnya.
       </Text>
 
@@ -153,7 +157,7 @@ export function TeacherQuestionBankModuleScreen() {
           }}
         >
           <Text style={{ color: '#92400e', fontWeight: '700', marginBottom: 4 }}>Tahun ajaran aktif belum tersedia</Text>
-          <Text style={{ color: '#b45309', fontSize: 12 }}>
+          <Text style={{ color: '#b45309', fontSize: scaleFont(12), lineHeight: scaleLineHeight(18) }}>
             Aktifkan tahun ajaran terlebih dahulu agar bank soal tidak ambigu.
           </Text>
         </View>
@@ -172,7 +176,9 @@ export function TeacherQuestionBankModuleScreen() {
             alignItems: 'center',
           }}
         >
-          <Text style={{ color: '#1d4ed8', fontWeight: '700', fontSize: 12 }}>Buka Program Ujian</Text>
+          <Text style={{ color: '#1d4ed8', fontWeight: '700', fontSize: scaleFont(12), lineHeight: scaleLineHeight(18) }}>
+            Buka Program Ujian
+          </Text>
         </Pressable>
         <Pressable
           onPress={() => router.push('/teacher/exams/editor' as never)}
@@ -186,7 +192,9 @@ export function TeacherQuestionBankModuleScreen() {
             alignItems: 'center',
           }}
         >
-          <Text style={{ color: '#334155', fontWeight: '700', fontSize: 12 }}>Buat Paket Baru</Text>
+          <Text style={{ color: '#334155', fontWeight: '700', fontSize: scaleFont(12), lineHeight: scaleLineHeight(18) }}>
+            Buat Paket Baru
+          </Text>
         </Pressable>
       </View>
 
@@ -200,8 +208,10 @@ export function TeacherQuestionBankModuleScreen() {
           marginBottom: 12,
         }}
       >
-        <Text style={{ color: BRAND_COLORS.textDark, fontSize: 16, fontWeight: '700' }}>Filter Bank Soal</Text>
-        <Text style={{ color: BRAND_COLORS.textMuted, fontSize: 12, marginTop: 2, marginBottom: 10 }}>
+        <Text style={{ color: BRAND_COLORS.textDark, fontSize: scaleFont(16), lineHeight: scaleLineHeight(24), fontWeight: '700' }}>
+          Filter Bank Soal
+        </Text>
+        <Text style={{ color: BRAND_COLORS.textMuted, fontSize: scaleFont(12), lineHeight: scaleLineHeight(18), marginTop: 2, marginBottom: 10 }}>
           Gunakan dropdown seperti di web agar pemilihan filter lebih jelas.
         </Text>
 
@@ -251,6 +261,8 @@ export function TeacherQuestionBankModuleScreen() {
               paddingVertical: 9,
               color: '#0f172a',
               backgroundColor: '#fff',
+              fontSize: scaleFont(13),
+              lineHeight: scaleLineHeight(20),
             }}
           />
           <Pressable
@@ -267,7 +279,9 @@ export function TeacherQuestionBankModuleScreen() {
               justifyContent: 'center',
             }}
           >
-            <Text style={{ color: '#1d4ed8', fontWeight: '700', fontSize: 12 }}>Cari</Text>
+            <Text style={{ color: '#1d4ed8', fontWeight: '700', fontSize: scaleFont(12), lineHeight: scaleLineHeight(18) }}>
+              Cari
+            </Text>
           </Pressable>
         </View>
       </View>
@@ -283,8 +297,8 @@ export function TeacherQuestionBankModuleScreen() {
             padding: 12,
           }}
         >
-          <Text style={{ color: BRAND_COLORS.textMuted, fontSize: 12 }}>Total Soal</Text>
-          <Text style={{ color: BRAND_COLORS.textDark, fontSize: 20, fontWeight: '700', marginTop: 4 }}>
+          <Text style={{ color: BRAND_COLORS.textMuted, fontSize: scaleFont(12), lineHeight: scaleLineHeight(18) }}>Total Soal</Text>
+          <Text style={{ color: BRAND_COLORS.textDark, fontSize: scaleFont(20), lineHeight: scaleLineHeight(28), fontWeight: '700', marginTop: 4 }}>
             {String(pagination.total || 0)}
           </Text>
         </View>
@@ -298,8 +312,8 @@ export function TeacherQuestionBankModuleScreen() {
             padding: 12,
           }}
         >
-          <Text style={{ color: BRAND_COLORS.textMuted, fontSize: 12 }}>Halaman</Text>
-          <Text style={{ color: BRAND_COLORS.textDark, fontSize: 20, fontWeight: '700', marginTop: 4 }}>
+          <Text style={{ color: BRAND_COLORS.textMuted, fontSize: scaleFont(12), lineHeight: scaleLineHeight(18) }}>Halaman</Text>
+          <Text style={{ color: BRAND_COLORS.textDark, fontSize: scaleFont(20), lineHeight: scaleLineHeight(28), fontWeight: '700', marginTop: 4 }}>
             {currentPage}/{totalPages}
           </Text>
         </View>
@@ -343,7 +357,9 @@ export function TeacherQuestionBankModuleScreen() {
                       #{item.id} • {getQuestionTypeLabel(item.type)}
                     </Text>
                     <View style={{ alignItems: 'flex-end', gap: 6 }}>
-                      <Text style={{ color: '#64748b', fontSize: 11 }}>{item.points ? `${item.points} poin` : '-'}</Text>
+                      <Text style={{ color: '#64748b', fontSize: scaleFont(11), lineHeight: scaleLineHeight(16) }}>
+                        {item.points ? `${item.points} poin` : '-'}
+                      </Text>
                       <Pressable
                         onPress={() =>
                           Alert.alert('Hapus Soal Bank', 'Apakah Anda yakin ingin menghapus soal ini dari bank soal?', [
@@ -368,15 +384,17 @@ export function TeacherQuestionBankModuleScreen() {
                           opacity: deleteQuestionMutation.isPending ? 0.6 : 1,
                         }}
                       >
-                        <Text style={{ color: '#b91c1c', fontSize: 11, fontWeight: '700' }}>Hapus</Text>
+                        <Text style={{ color: '#b91c1c', fontSize: scaleFont(11), lineHeight: scaleLineHeight(16), fontWeight: '700' }}>
+                          Hapus
+                        </Text>
                       </Pressable>
                     </View>
                   </View>
-                  <Text style={{ color: '#64748b', fontSize: 12 }}>
+                  <Text style={{ color: '#64748b', fontSize: scaleFont(12), lineHeight: scaleLineHeight(18) }}>
                     {item.bank?.subject?.code || '-'} {item.bank?.subject?.name || '-'} • {item.bank?.academicYear?.name || '-'} •{' '}
                     {item.bank?.semester === 'EVEN' ? 'Genap' : item.bank?.semester === 'ODD' ? 'Ganjil' : '-'}
                   </Text>
-                  <Text style={{ color: '#475569', fontSize: 12, marginTop: 6 }}>
+                  <Text style={{ color: '#475569', fontSize: scaleFont(12), lineHeight: scaleLineHeight(18), marginTop: 6 }}>
                     {previewText.slice(0, 180) || '-'}
                     {previewText.length > 180 ? '...' : ''}
                   </Text>
@@ -393,7 +411,7 @@ export function TeacherQuestionBankModuleScreen() {
                       paddingVertical: 6,
                     }}
                   >
-                    <Text style={{ color: '#1d4ed8', fontSize: 12, fontWeight: '700' }}>
+                    <Text style={{ color: '#1d4ed8', fontSize: scaleFont(12), lineHeight: scaleLineHeight(18), fontWeight: '700' }}>
                       {isPreviewOpen ? 'Tutup Pratinjau' : 'Lihat Soal'}
                     </Text>
                   </Pressable>
@@ -445,7 +463,8 @@ export function TeacherQuestionBankModuleScreen() {
                                   style={{
                                     color: option.isCorrect ? '#166534' : '#1d4ed8',
                                     fontWeight: '700',
-                                    fontSize: 11,
+                                    fontSize: scaleFont(11),
+                                    lineHeight: scaleLineHeight(16),
                                   }}
                                 >
                                   {String.fromCharCode(65 + optionIndex)}
@@ -495,7 +514,9 @@ export function TeacherQuestionBankModuleScreen() {
             opacity: currentPage <= 1 ? 0.5 : 1,
           }}
         >
-          <Text style={{ color: '#475569', fontWeight: '700', fontSize: 12 }}>Sebelumnya</Text>
+          <Text style={{ color: '#475569', fontWeight: '700', fontSize: scaleFont(12), lineHeight: scaleLineHeight(18) }}>
+            Sebelumnya
+          </Text>
         </Pressable>
         <Pressable
           onPress={() => setPage((prev) => Math.min(totalPages, prev + 1))}
@@ -511,7 +532,9 @@ export function TeacherQuestionBankModuleScreen() {
             opacity: currentPage >= totalPages ? 0.5 : 1,
           }}
         >
-          <Text style={{ color: '#475569', fontWeight: '700', fontSize: 12 }}>Berikutnya</Text>
+          <Text style={{ color: '#475569', fontWeight: '700', fontSize: scaleFont(12), lineHeight: scaleLineHeight(18) }}>
+            Berikutnya
+          </Text>
         </Pressable>
       </View>
     </ScrollView>

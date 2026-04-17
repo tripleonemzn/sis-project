@@ -12,6 +12,7 @@ import { useAuth } from '../auth/AuthProvider';
 import { useTeacherExamPacketsQuery } from './useTeacherExamPacketsQuery';
 import { useTeacherAssignmentsQuery } from '../teacherAssignments/useTeacherAssignmentsQuery';
 import { getStandardPagePadding } from '../../lib/ui/pageLayout';
+import { useAppTextScale } from '../../theme/AppTextScaleProvider';
 import { examApi, ExamProgramItem } from './examApi';
 import { ExamQuestion, ExamQuestionOption, ExamQuestionType } from './types';
 
@@ -225,6 +226,7 @@ export function TeacherExamPacketsModuleScreen({
   const insets = useSafeAreaInsets();
   const { isAuthenticated, isLoading, user } = useAuth();
   const pageContentPadding = getStandardPagePadding(insets, { bottom: 120 });
+  const { scaleFont, scaleLineHeight } = useAppTextScale();
   const teacherAssignmentsQuery = useTeacherAssignmentsQuery({ enabled: isAuthenticated, user });
   const assignmentOptions = useMemo(
     () => teacherAssignmentsQuery.data?.assignments || [],
@@ -428,7 +430,9 @@ export function TeacherExamPacketsModuleScreen({
   if (user?.role !== 'TEACHER') {
     return (
       <ScrollView style={{ flex: 1, backgroundColor: '#f8fafc' }} contentContainerStyle={pageContentPadding}>
-        <Text style={{ fontSize: 20, fontWeight: '700', marginBottom: 8 }}>{title}</Text>
+        <Text style={{ fontSize: scaleFont(20), lineHeight: scaleLineHeight(28), fontWeight: '700', marginBottom: 8 }}>
+          {title}
+        </Text>
         <QueryStateView type="error" message="Halaman ini khusus untuk role guru." />
       </ScrollView>
     );
@@ -447,10 +451,20 @@ export function TeacherExamPacketsModuleScreen({
         />
       }
     >
-      <Text style={{ fontSize: 20, fontWeight: '700', marginBottom: 6, color: BRAND_COLORS.textDark }}>
+      <Text
+        style={{
+          fontSize: scaleFont(20),
+          lineHeight: scaleLineHeight(28),
+          fontWeight: '700',
+          marginBottom: 6,
+          color: BRAND_COLORS.textDark,
+        }}
+      >
         {resolvedTitle}
       </Text>
-      <Text style={{ color: BRAND_COLORS.textMuted, marginBottom: 12 }}>{resolvedSubtitle}</Text>
+      <Text style={{ color: BRAND_COLORS.textMuted, fontSize: scaleFont(13), lineHeight: scaleLineHeight(20), marginBottom: 12 }}>
+        {resolvedSubtitle}
+      </Text>
 
       <View style={{ flexDirection: 'row', marginHorizontal: -4, marginBottom: 10 }}>
         <View style={{ flex: 1, paddingHorizontal: 4 }}>
@@ -463,8 +477,8 @@ export function TeacherExamPacketsModuleScreen({
               padding: 10,
             }}
           >
-            <Text style={{ color: '#64748b', fontSize: 11 }}>Paket</Text>
-            <Text style={{ color: BRAND_COLORS.textDark, fontWeight: '700', fontSize: 20, marginTop: 2 }}>
+            <Text style={{ color: '#64748b', fontSize: scaleFont(11), lineHeight: scaleLineHeight(16) }}>Paket</Text>
+            <Text style={{ color: BRAND_COLORS.textDark, fontWeight: '700', fontSize: scaleFont(20), lineHeight: scaleLineHeight(28), marginTop: 2 }}>
               {summary.totalPackets}
             </Text>
           </View>
@@ -479,8 +493,8 @@ export function TeacherExamPacketsModuleScreen({
               padding: 10,
             }}
           >
-            <Text style={{ color: '#64748b', fontSize: 11 }}>Jumlah Soal</Text>
-            <Text style={{ color: BRAND_COLORS.textDark, fontWeight: '700', fontSize: 20, marginTop: 2 }}>
+            <Text style={{ color: '#64748b', fontSize: scaleFont(11), lineHeight: scaleLineHeight(16) }}>Jumlah Soal</Text>
+            <Text style={{ color: BRAND_COLORS.textDark, fontWeight: '700', fontSize: scaleFont(20), lineHeight: scaleLineHeight(28), marginTop: 2 }}>
               {summary.totalQuestions}
             </Text>
           </View>
@@ -495,8 +509,8 @@ export function TeacherExamPacketsModuleScreen({
               padding: 10,
             }}
           >
-            <Text style={{ color: '#64748b', fontSize: 11 }}>Durasi Rata2</Text>
-            <Text style={{ color: BRAND_COLORS.textDark, fontWeight: '700', fontSize: 20, marginTop: 2 }}>
+            <Text style={{ color: '#64748b', fontSize: scaleFont(11), lineHeight: scaleLineHeight(16) }}>Durasi Rata2</Text>
+            <Text style={{ color: BRAND_COLORS.textDark, fontWeight: '700', fontSize: scaleFont(20), lineHeight: scaleLineHeight(28), marginTop: 2 }}>
               {summary.avgDuration || 0}
             </Text>
           </View>
@@ -544,10 +558,17 @@ export function TeacherExamPacketsModuleScreen({
                     padding: 8,
                   }}
                 >
-                  <Text style={{ color: selected ? '#1d4ed8' : '#0f172a', fontWeight: '700', fontSize: 11 }}>
+                  <Text
+                    style={{
+                      color: selected ? '#1d4ed8' : '#0f172a',
+                      fontWeight: '700',
+                      fontSize: scaleFont(11),
+                      lineHeight: scaleLineHeight(16),
+                    }}
+                  >
                     {item.class.name}
                   </Text>
-                  <Text style={{ color: '#334155', fontSize: 11 }} numberOfLines={2}>
+                  <Text style={{ color: '#334155', fontSize: scaleFont(11), lineHeight: scaleLineHeight(16) }} numberOfLines={2}>
                     {item.subject.name}
                   </Text>
                 </Pressable>
@@ -556,14 +577,16 @@ export function TeacherExamPacketsModuleScreen({
           })}
         </View>
         {filteredAssignmentOptions.length === 0 ? (
-          <Text style={{ color: '#b45309', fontSize: 11, marginTop: 4 }}>
+          <Text style={{ color: '#b45309', fontSize: scaleFont(11), lineHeight: scaleLineHeight(16), marginTop: 4 }}>
             Tidak ada mapel penugasan yang diizinkan untuk program ini.
           </Text>
         ) : null}
       </View>
 
       <View style={{ marginBottom: 10 }}>
-        <Text style={{ color: '#475569', fontSize: 12, fontWeight: '700', marginBottom: 6 }}>Cari Paket Ujian</Text>
+        <Text style={{ color: '#475569', fontSize: scaleFont(12), lineHeight: scaleLineHeight(18), fontWeight: '700', marginBottom: 6 }}>
+          Cari Paket Ujian
+        </Text>
         <TextInput
           value={searchQuery}
           onChangeText={setSearchQuery}
@@ -576,6 +599,8 @@ export function TeacherExamPacketsModuleScreen({
             paddingHorizontal: 12,
             paddingVertical: 10,
             backgroundColor: '#fff',
+            fontSize: scaleFont(13),
+            lineHeight: scaleLineHeight(20),
           }}
         />
       </View>
@@ -601,7 +626,7 @@ export function TeacherExamPacketsModuleScreen({
               paddingVertical: 6,
             }}
           >
-            <Text style={{ color: '#1d4ed8', fontWeight: '700', fontSize: 12 }}>
+            <Text style={{ color: '#1d4ed8', fontWeight: '700', fontSize: scaleFont(12), lineHeight: scaleLineHeight(18) }}>
               Filter Tetap: {examTypeLabel(lockedProgramCode)}
             </Text>
           </View>
@@ -621,7 +646,7 @@ export function TeacherExamPacketsModuleScreen({
               paddingVertical: 6,
             }}
           >
-            <Text style={{ color: '#1d4ed8', fontWeight: '700', fontSize: 12 }}>
+            <Text style={{ color: '#1d4ed8', fontWeight: '700', fontSize: scaleFont(12), lineHeight: scaleLineHeight(18) }}>
               Semester Tetap: {lockedSemester === 'ODD' ? 'Ganjil' : 'Genap'} (sesuai program ujian)
             </Text>
           </View>
@@ -687,25 +712,26 @@ export function TeacherExamPacketsModuleScreen({
                         borderRadius: 999,
                         paddingHorizontal: 8,
                         paddingVertical: 2,
-                        fontSize: 11,
+                        fontSize: scaleFont(11),
+                        lineHeight: scaleLineHeight(16),
                         fontWeight: '700',
                       }}
                     >
                       {examTypeLabel(type)}
                     </Text>
                   </View>
-                  <Text style={{ color: '#64748b', fontSize: 12, marginBottom: 4 }}>
+                  <Text style={{ color: '#64748b', fontSize: scaleFont(12), lineHeight: scaleLineHeight(18), marginBottom: 4 }}>
                     {item.subject.name} • Semester {item.semester || '-'}
                   </Text>
-                  <Text style={{ color: '#334155', fontSize: 12, marginBottom: 2 }}>
+                  <Text style={{ color: '#334155', fontSize: scaleFont(12), lineHeight: scaleLineHeight(18), marginBottom: 2 }}>
                     Durasi: {item.duration} menit • Soal: {qCount}
                   </Text>
-                  <Text style={{ color: '#475569', fontSize: 11, marginBottom: 4 }} numberOfLines={2}>
+                  <Text style={{ color: '#475569', fontSize: scaleFont(11), lineHeight: scaleLineHeight(16), marginBottom: 4 }} numberOfLines={2}>
                     {firstQuestionPreview
                       ? `Preview soal: ${firstQuestionPreview}`
                       : 'Preview soal belum tersedia. Buka pratinjau untuk melihat isi bank soal.'}
                   </Text>
-                  <Text style={{ color: '#64748b', fontSize: 11, marginBottom: 8 }}>
+                  <Text style={{ color: '#64748b', fontSize: scaleFont(11), lineHeight: scaleLineHeight(16), marginBottom: 8 }}>
                     Dibuat: {formatDate(item.createdAt)}
                   </Text>
                   <View style={{ flexDirection: 'row', marginHorizontal: -4 }}>
@@ -719,7 +745,9 @@ export function TeacherExamPacketsModuleScreen({
                           alignItems: 'center',
                         }}
                       >
-                        <Text style={{ color: '#fff', fontWeight: '700', fontSize: 12 }}>Edit Paket</Text>
+                        <Text style={{ color: '#fff', fontWeight: '700', fontSize: scaleFont(12), lineHeight: scaleLineHeight(18) }}>
+                          Edit Paket
+                        </Text>
                       </Pressable>
                     </View>
                     <View style={{ flex: 1, paddingHorizontal: 4 }}>
@@ -738,7 +766,9 @@ export function TeacherExamPacketsModuleScreen({
                           alignItems: 'center',
                         }}
                       >
-                        <Text style={{ color: '#047857', fontWeight: '700', fontSize: 12 }}>Analisis</Text>
+                        <Text style={{ color: '#047857', fontWeight: '700', fontSize: scaleFont(12), lineHeight: scaleLineHeight(18) }}>
+                          Analisis
+                        </Text>
                       </Pressable>
                     </View>
                   </View>
@@ -760,7 +790,9 @@ export function TeacherExamPacketsModuleScreen({
                             alignItems: 'center',
                           }}
                         >
-                          <Text style={{ color: '#6d28d9', fontWeight: '700', fontSize: 12 }}>Submisi</Text>
+                          <Text style={{ color: '#6d28d9', fontWeight: '700', fontSize: scaleFont(12), lineHeight: scaleLineHeight(18) }}>
+                            Submisi
+                          </Text>
                         </Pressable>
                       </View>
                       <View style={{ flex: 1, paddingHorizontal: 4 }}>
@@ -775,7 +807,7 @@ export function TeacherExamPacketsModuleScreen({
                             alignItems: 'center',
                           }}
                         >
-                          <Text style={{ color: '#1d4ed8', fontWeight: '700', fontSize: 12 }}>
+                          <Text style={{ color: '#1d4ed8', fontWeight: '700', fontSize: scaleFont(12), lineHeight: scaleLineHeight(18) }}>
                             {isPreviewOpen ? 'Tutup Pratinjau' : 'Lihat Pratinjau'}
                           </Text>
                         </Pressable>
@@ -811,7 +843,9 @@ export function TeacherExamPacketsModuleScreen({
                           >
                             <View style={{ flexDirection: 'row', justifyContent: 'space-between', marginBottom: 8 }}>
                               <Text style={{ color: '#0f172a', fontWeight: '700' }}>Soal {questionIndex + 1}</Text>
-                              <Text style={{ color: '#64748b', fontSize: 11 }}>{resolveQuestionTypeLabel(question)}</Text>
+                              <Text style={{ color: '#64748b', fontSize: scaleFont(11), lineHeight: scaleLineHeight(16) }}>
+                                {resolveQuestionTypeLabel(question)}
+                              </Text>
                             </View>
                             <ExamHtmlContent
                               html={resolveQuestionHtml(question)}
@@ -845,7 +879,7 @@ export function TeacherExamPacketsModuleScreen({
                                           marginTop: 2,
                                         }}
                                       >
-                                        <Text style={{ color: '#1d4ed8', fontWeight: '700', fontSize: 11 }}>
+                                        <Text style={{ color: '#1d4ed8', fontWeight: '700', fontSize: scaleFont(11), lineHeight: scaleLineHeight(16) }}>
                                           {String.fromCharCode(65 + optionIndex)}
                                         </Text>
                                       </View>
@@ -861,19 +895,19 @@ export function TeacherExamPacketsModuleScreen({
                                 })}
                               </View>
                             ) : (
-                              <Text style={{ color: '#64748b', fontSize: 12, marginTop: 8 }}>
+                              <Text style={{ color: '#64748b', fontSize: scaleFont(12), lineHeight: scaleLineHeight(18), marginTop: 8 }}>
                                 Soal ini tidak memiliki opsi jawaban pilihan ganda.
                               </Text>
                             )}
                           </View>
                         ))
                       ) : (
-                        <Text style={{ color: '#64748b', fontSize: 12 }}>
+                        <Text style={{ color: '#64748b', fontSize: scaleFont(12), lineHeight: scaleLineHeight(18) }}>
                           Isi soal belum dapat dibaca dari data paket ini.
                         </Text>
                       )}
                       {parsedQuestions.length > 2 ? (
-                        <Text style={{ color: '#475569', fontSize: 12, marginTop: 8 }}>
+                        <Text style={{ color: '#475569', fontSize: scaleFont(12), lineHeight: scaleLineHeight(18), marginTop: 8 }}>
                           + {parsedQuestions.length - 2} soal lain tersedia di paket ini.
                         </Text>
                       ) : null}

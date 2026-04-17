@@ -20,6 +20,7 @@ import { teacherMaterialsApi } from '../../../src/features/teacherMaterials/teac
 import { TeacherAssignmentSubmission } from '../../../src/features/teacherMaterials/types';
 import { getStandardPagePadding } from '../../../src/lib/ui/pageLayout';
 import { openWebModuleRoute } from '../../../src/lib/navigation/webModuleRoute';
+import { useAppTextScale } from '../../../src/theme/AppTextScaleProvider';
 
 function formatDateTime(value: string) {
   const date = new Date(value);
@@ -52,6 +53,7 @@ export default function TeacherAssignmentSubmissionsScreen() {
   const queryClient = useQueryClient();
   const { isAuthenticated, isLoading, user } = useAuth();
   const pageContentPadding = getStandardPagePadding(insets, { bottom: 110 });
+  const { scaleFont, scaleLineHeight } = useAppTextScale();
   const params = useLocalSearchParams<{ assignmentId?: string; title?: string }>();
   const assignmentId = Number(params.assignmentId || 0);
   const assignmentTitle = typeof params.title === 'string' ? params.title : 'Tugas';
@@ -137,7 +139,9 @@ export default function TeacherAssignmentSubmissionsScreen() {
   if (user?.role !== 'TEACHER') {
     return (
       <ScrollView style={{ flex: 1, backgroundColor: '#f8fafc' }} contentContainerStyle={pageContentPadding}>
-        <Text style={{ fontSize: 20, fontWeight: '700', marginBottom: 8 }}>Submisi Tugas</Text>
+        <Text style={{ fontSize: scaleFont(20), lineHeight: scaleLineHeight(28), fontWeight: '700', marginBottom: 8 }}>
+          Submisi Tugas
+        </Text>
         <QueryStateView type="error" message="Halaman ini khusus untuk role guru." />
       </ScrollView>
     );
@@ -146,7 +150,9 @@ export default function TeacherAssignmentSubmissionsScreen() {
   if (!assignmentId || Number.isNaN(assignmentId)) {
     return (
       <ScrollView style={{ flex: 1, backgroundColor: '#f8fafc' }} contentContainerStyle={pageContentPadding}>
-        <Text style={{ fontSize: 20, fontWeight: '700', marginBottom: 8 }}>Submisi Tugas</Text>
+        <Text style={{ fontSize: scaleFont(20), lineHeight: scaleLineHeight(28), fontWeight: '700', marginBottom: 8 }}>
+          Submisi Tugas
+        </Text>
         <QueryStateView type="error" message="Assignment ID tidak valid." />
         <Pressable
           onPress={() => router.back()}
@@ -178,11 +184,13 @@ export default function TeacherAssignmentSubmissionsScreen() {
           />
         }
       >
-        <Text style={{ fontSize: 20, fontWeight: '700', marginBottom: 6 }}>Submisi Tugas</Text>
+        <Text style={{ fontSize: scaleFont(20), lineHeight: scaleLineHeight(28), fontWeight: '700', marginBottom: 6 }}>
+          Submisi Tugas
+        </Text>
         <Text style={{ color: '#334155', marginBottom: 3, fontWeight: '600' }} numberOfLines={2}>
           {assignmentTitle}
         </Text>
-        <Text style={{ color: '#64748b', marginBottom: 12 }}>
+        <Text style={{ color: '#64748b', fontSize: scaleFont(13), lineHeight: scaleLineHeight(20), marginBottom: 12 }}>
           Lihat pengumpulan siswa dan input nilai seperti modul web.
         </Text>
 
@@ -213,8 +221,12 @@ export default function TeacherAssignmentSubmissionsScreen() {
                     alignItems: 'center',
                   }}
                 >
-                  <Text style={{ color: item.color, fontWeight: '700', fontSize: 17 }}>{item.value}</Text>
-                  <Text style={{ color: '#64748b', fontSize: 11 }}>{item.label}</Text>
+                  <Text style={{ color: item.color, fontWeight: '700', fontSize: scaleFont(17), lineHeight: scaleLineHeight(24) }}>
+                    {item.value}
+                  </Text>
+                  <Text style={{ color: '#64748b', fontSize: scaleFont(11), lineHeight: scaleLineHeight(16) }}>
+                    {item.label}
+                  </Text>
                 </View>
               </View>
             ))}
@@ -258,7 +270,8 @@ export default function TeacherAssignmentSubmissionsScreen() {
                       </Text>
                       <Text
                         style={{
-                          fontSize: 11,
+                          fontSize: scaleFont(11),
+                          lineHeight: scaleLineHeight(16),
                           fontWeight: '700',
                           color: scoreStyle.text,
                           backgroundColor: scoreStyle.bg,
@@ -272,16 +285,16 @@ export default function TeacherAssignmentSubmissionsScreen() {
                         {scoreStyle.label}
                       </Text>
                     </View>
-                    <Text style={{ color: '#64748b', fontSize: 12, marginBottom: 3 }}>
+                    <Text style={{ color: '#64748b', fontSize: scaleFont(12), lineHeight: scaleLineHeight(18), marginBottom: 3 }}>
                       NIS: {item.student.nis || '-'}
                     </Text>
-                    <Text style={{ color: '#64748b', fontSize: 12, marginBottom: 4 }}>
+                    <Text style={{ color: '#64748b', fontSize: scaleFont(12), lineHeight: scaleLineHeight(18), marginBottom: 4 }}>
                       Dikumpulkan: {formatDateTime(item.submittedAt)}
                     </Text>
-                    <Text style={{ color: '#334155', fontSize: 12, marginBottom: 4 }}>
+                    <Text style={{ color: '#334155', fontSize: scaleFont(12), lineHeight: scaleLineHeight(18), marginBottom: 4 }}>
                       {item.content?.trim() ? item.content : 'Tidak ada teks jawaban.'}
                     </Text>
-                    <Text style={{ color: '#64748b', fontSize: 12, marginBottom: 8 }}>
+                    <Text style={{ color: '#64748b', fontSize: scaleFont(12), lineHeight: scaleLineHeight(18), marginBottom: 8 }}>
                       Feedback: {item.feedback?.trim() ? item.feedback : '-'}
                     </Text>
 
@@ -303,7 +316,8 @@ export default function TeacherAssignmentSubmissionsScreen() {
                             style={{
                               color: item.fileUrl ? '#334155' : '#94a3b8',
                               fontWeight: '700',
-                              fontSize: 12,
+                              fontSize: scaleFont(12),
+                              lineHeight: scaleLineHeight(18),
                             }}
                           >
                             Lampiran
@@ -322,7 +336,7 @@ export default function TeacherAssignmentSubmissionsScreen() {
                             backgroundColor: '#eff6ff',
                           }}
                         >
-                          <Text style={{ color: '#1d4ed8', fontWeight: '700', fontSize: 12 }}>
+                          <Text style={{ color: '#1d4ed8', fontWeight: '700', fontSize: scaleFont(12), lineHeight: scaleLineHeight(18) }}>
                             {item.score === null || item.score === undefined ? 'Beri Nilai' : 'Edit Nilai'}
                           </Text>
                         </Pressable>
@@ -390,12 +404,14 @@ export default function TeacherAssignmentSubmissionsScreen() {
               padding: 14,
             }}
           >
-            <Text style={{ color: '#0f172a', fontWeight: '700', fontSize: 18, marginBottom: 4 }}>Input Nilai</Text>
-            <Text style={{ color: '#334155', fontSize: 13, marginBottom: 10 }}>
+            <Text style={{ color: '#0f172a', fontWeight: '700', fontSize: scaleFont(18), lineHeight: scaleLineHeight(26), marginBottom: 4 }}>
+              Input Nilai
+            </Text>
+            <Text style={{ color: '#334155', fontSize: scaleFont(13), lineHeight: scaleLineHeight(20), marginBottom: 10 }}>
               {gradingTarget?.student.name || '-'}
             </Text>
 
-            <Text style={{ color: '#64748b', fontSize: 12, marginBottom: 4 }}>
+            <Text style={{ color: '#64748b', fontSize: scaleFont(12), lineHeight: scaleLineHeight(18), marginBottom: 4 }}>
               Nilai (max {gradingTarget?.assignment?.maxScore ?? 100})
             </Text>
             <TextInput
@@ -412,10 +428,14 @@ export default function TeacherAssignmentSubmissionsScreen() {
                 color: '#0f172a',
                 backgroundColor: '#fff',
                 marginBottom: 10,
+                fontSize: scaleFont(13),
+                lineHeight: scaleLineHeight(20),
               }}
             />
 
-            <Text style={{ color: '#64748b', fontSize: 12, marginBottom: 4 }}>Feedback</Text>
+            <Text style={{ color: '#64748b', fontSize: scaleFont(12), lineHeight: scaleLineHeight(18), marginBottom: 4 }}>
+              Feedback
+            </Text>
             <TextInput
               value={feedbackInput}
               onChangeText={setFeedbackInput}
@@ -432,6 +452,8 @@ export default function TeacherAssignmentSubmissionsScreen() {
                 color: '#0f172a',
                 backgroundColor: '#fff',
                 minHeight: 88,
+                fontSize: scaleFont(13),
+                lineHeight: scaleLineHeight(20),
               }}
             />
 
