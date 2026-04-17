@@ -26,7 +26,7 @@ import { examService, type ExamProgram } from '../../services/exam.service';
 import { isNonScheduledExamProgram } from '../../lib/examProgramMenu';
 import { useActiveAcademicYear } from '../../hooks/useActiveAcademicYear';
 
-type StatusFilter = 'ALL' | 'PUBLISHED' | 'READY' | 'SYNC_REQUIRED';
+type StatusFilter = 'ALL' | 'PUBLISHED' | 'READY' | 'BLOCKED_KKM' | 'BLOCKED_FINANCE' | 'REVIEW_REQUIRED';
 
 function formatDateTime(value?: string | null) {
   if (!value) return '-';
@@ -441,18 +441,43 @@ function buildPlacementTimeRangeLabel(placement?: {
   return '';
 }
 
-function deriveExamCardRowState(row: ExamCardOverviewRow) {
-  const hasOperationalEntry = row.entries.length > 0;
-  const hasActiveCard = Boolean(row.card?.payload);
-  const isOperationallyEligible = row.eligibility.isEligible && hasOperationalEntry;
-  return {
-    hasOperationalEntry,
-    hasActiveCard,
-    isOperationallyEligible,
-    isPublishedActive: hasActiveCard && isOperationallyEligible,
-    isReadyToGenerate: !hasActiveCard && isOperationallyEligible,
-    requiresSync: !isOperationallyEligible,
-  };
+function matchesStatusFilter(filter: StatusFilter, row: ExamCardOverviewRow) {
+  if (filter === 'ALL') return true;
+  if (filter === 'PUBLISHED') return row.status.category === 'PUBLISHED';
+  if (filter === 'READY') return row.status.category === 'READY';
+  if (filter === 'BLOCKED_KKM') return row.status.category === 'BLOCKED_KKM';
+  if (filter === 'BLOCKED_FINANCE') return row.status.category === 'BLOCKED_FINANCE';
+  return row.status.category === 'REVIEW_REQUIRED';
+}
+
+function resolveStatusTone(code: ExamCardOverviewRow['status']['code']) {
+  switch (code) {
+    case 'PUBLISHED_ACTIVE':
+      return {
+        pillClassName: 'bg-rose-100 text-rose-700',
+        detailClassName: 'text-rose-700',
+      };
+    case 'READY_TO_GENERATE':
+      return {
+        pillClassName: 'bg-emerald-100 text-emerald-700',
+        detailClassName: 'text-emerald-700',
+      };
+    case 'BLOCKED_KKM':
+      return {
+        pillClassName: 'bg-amber-100 text-amber-700',
+        detailClassName: 'text-amber-700',
+      };
+    case 'BLOCKED_FINANCE':
+      return {
+        pillClassName: 'bg-orange-100 text-orange-700',
+        detailClassName: 'text-orange-700',
+      };
+    default:
+      return {
+        pillClassName: 'bg-slate-100 text-slate-700',
+        detailClassName: 'text-slate-700',
+      };
+  }
 }
 
 export function HeadTuExamCardsPanel() {
@@ -571,34 +596,26 @@ export function HeadTuExamCardsPanel() {
     [overviewQuery.data?.rows],
   );
 
-  const rowViewModels = useMemo(
-    () =>
-      (overviewQuery.data?.rows || []).map((row) => ({
-        row,
-        ...deriveExamCardRowState(row),
-      })),
-    [overviewQuery.data?.rows],
-  );
-
   const summaryCards = useMemo(
     () => ({
-      totalStudents: rowViewModels.length,
-      readyToGenerate: rowViewModels.filter((item) => item.isReadyToGenerate).length,
-      syncRequired: rowViewModels.filter((item) => item.requiresSync).length,
-      publishedActive: rowViewModels.filter((item) => item.isPublishedActive).length,
+      totalStudents: overviewQuery.data?.summary.totalStudents || 0,
+      readyToGenerate: overviewQuery.data?.summary.statusCounts.readyToGenerate || 0,
+      publishedActive: overviewQuery.data?.summary.statusCounts.publishedActive || 0,
+      blockedKkm: overviewQuery.data?.summary.statusCounts.blockedKkm || 0,
+      blockedFinance: overviewQuery.data?.summary.statusCounts.blockedFinance || 0,
+      reviewRequired: overviewQuery.data?.summary.statusCounts.reviewRequired || 0,
+      blockedManual: overviewQuery.data?.summary.statusCounts.blockedManual || 0,
+      needsPlacementSync: overviewQuery.data?.summary.statusCounts.needsPlacementSync || 0,
+      staleCard: overviewQuery.data?.summary.statusCounts.staleCard || 0,
+      needsDataSync: overviewQuery.data?.summary.statusCounts.needsDataSync || 0,
     }),
-    [rowViewModels],
+    [overviewQuery.data?.summary],
   );
 
   const filteredRows = useMemo(() => {
     const keyword = search.trim().toLowerCase();
-    return rowViewModels.filter((item) => {
-      const { row } = item;
-      const statusMatches =
-        statusFilter === 'ALL' ||
-        (statusFilter === 'PUBLISHED' && item.isPublishedActive) ||
-        (statusFilter === 'READY' && item.isReadyToGenerate) ||
-        (statusFilter === 'SYNC_REQUIRED' && item.requiresSync);
+    return (overviewQuery.data?.rows || []).filter((row) => {
+      const statusMatches = matchesStatusFilter(statusFilter, row);
       const classMatches = classFilter === 'ALL' || String(row.className || '') === classFilter;
       const keywordMatches = matchesSearch(keyword, [
         row.studentName,
@@ -614,13 +631,13 @@ export function HeadTuExamCardsPanel() {
       ]);
       return statusMatches && classMatches && keywordMatches;
     });
-  }, [classFilter, rowViewModels, search, statusFilter]);
+  }, [classFilter, overviewQuery.data?.rows, search, statusFilter]);
 
   const printableCards = useMemo(
     () =>
       filteredRows
-        .filter((item) => item.isPublishedActive)
-        .map((item) => item.row.card?.payload)
+        .filter((row) => row.status.category === 'PUBLISHED')
+        .map((row) => row.card?.payload)
         .filter((payload): payload is ExamGeneratedCardPayload => Boolean(payload)),
     [filteredRows],
   );
@@ -747,7 +764,7 @@ export function HeadTuExamCardsPanel() {
                 !overviewQuery.data ||
                 !issueDate ||
                 issueLocation.trim().length === 0 ||
-                summaryCards.totalStudents === 0 ||
+                summaryCards.readyToGenerate === 0 ||
                 generateMutation.isPending
               }
               className="inline-flex min-h-[42px] items-center justify-center rounded-lg bg-blue-600 px-4 py-2.5 text-sm font-semibold text-white hover:bg-blue-700 disabled:cursor-not-allowed disabled:bg-blue-300"
@@ -768,26 +785,38 @@ export function HeadTuExamCardsPanel() {
         </div>
       </div>
 
-      <div className="grid gap-4 md:grid-cols-2 xl:grid-cols-4">
+      <div className="grid gap-4 md:grid-cols-2 xl:grid-cols-3">
         <div className="rounded-xl border border-blue-100 bg-blue-50 p-4">
           <div className="text-xs font-semibold uppercase tracking-wide text-blue-700">Peserta Program Ujian</div>
           <div className="mt-2 text-2xl font-bold text-blue-900">{summaryCards.totalStudents}</div>
           <div className="mt-1 text-xs text-blue-800/80">Total siswa yang benar-benar masuk jadwal aktif program ujian ini.</div>
         </div>
+        <div className="rounded-xl border border-rose-100 bg-rose-50 p-4">
+          <div className="text-xs font-semibold uppercase tracking-wide text-rose-700">Sudah Dipublikasikan</div>
+          <div className="mt-2 text-2xl font-bold text-rose-900">{summaryCards.publishedActive}</div>
+          <div className="mt-1 text-xs text-rose-800/80">Kartu digital aktif sudah terbit dan tampil di akun siswa.</div>
+        </div>
         <div className="rounded-xl border border-emerald-100 bg-emerald-50 p-4">
-          <div className="text-xs font-semibold uppercase tracking-wide text-emerald-700">Siap Digenerate Baru</div>
+          <div className="text-xs font-semibold uppercase tracking-wide text-emerald-700">Siap Digenerate</div>
           <div className="mt-2 text-2xl font-bold text-emerald-900">{summaryCards.readyToGenerate}</div>
-          <div className="mt-1 text-xs text-emerald-800/80">Sudah layak ikut ujian dan punya penempatan ruang aktif, tetapi belum punya kartu aktif terbaru.</div>
+          <div className="mt-1 text-xs text-emerald-800/80">Sudah eligible dan tinggal dipublikasikan lewat generate kartu.</div>
         </div>
         <div className="rounded-xl border border-amber-100 bg-amber-50 p-4">
-          <div className="text-xs font-semibold uppercase tracking-wide text-amber-700">Perlu Sinkronisasi</div>
-          <div className="mt-2 text-2xl font-bold text-amber-900">{summaryCards.syncRequired}</div>
-          <div className="mt-1 text-xs text-amber-800/80">Termasuk siswa yang belum layak, belum punya ruang aktif, atau kartu lamanya sudah tidak sinkron.</div>
+          <div className="text-xs font-semibold uppercase tracking-wide text-amber-700">Blocked KKM</div>
+          <div className="mt-2 text-2xl font-bold text-amber-900">{summaryCards.blockedKkm}</div>
+          <div className="mt-1 text-xs text-amber-800/80">Tidak bisa dapat kartu karena masih ada nilai di bawah KKM.</div>
         </div>
-        <div className="rounded-xl border border-rose-100 bg-rose-50 p-4">
-          <div className="text-xs font-semibold uppercase tracking-wide text-rose-700">Sudah Dipublikasikan Aktif</div>
-          <div className="mt-2 text-2xl font-bold text-rose-900">{summaryCards.publishedActive}</div>
-          <div className="mt-1 text-xs text-rose-800/80">Kartu digital aktif masih sesuai jadwal terbaru, tampil di akun siswa, dan siap dicetak ulang.</div>
+        <div className="rounded-xl border border-orange-100 bg-orange-50 p-4">
+          <div className="text-xs font-semibold uppercase tracking-wide text-orange-700">Blocked Finance</div>
+          <div className="mt-2 text-2xl font-bold text-orange-900">{summaryCards.blockedFinance}</div>
+          <div className="mt-1 text-xs text-orange-800/80">Tidak bisa dapat kartu karena clearance finance masih memblokir ujian.</div>
+        </div>
+        <div className="rounded-xl border border-slate-200 bg-slate-50 p-4">
+          <div className="text-xs font-semibold uppercase tracking-wide text-slate-700">Perlu Review Data</div>
+          <div className="mt-2 text-2xl font-bold text-slate-900">{summaryCards.reviewRequired}</div>
+          <div className="mt-1 text-xs text-slate-700/80">
+            Manual {summaryCards.blockedManual} • penempatan {summaryCards.needsPlacementSync} • kartu stale {summaryCards.staleCard} • data lain {summaryCards.needsDataSync}
+          </div>
         </div>
       </div>
 
@@ -824,7 +853,9 @@ export function HeadTuExamCardsPanel() {
               <option value="ALL">Semua Status</option>
               <option value="PUBLISHED">Sudah Dipublikasikan</option>
               <option value="READY">Siap Digenerate</option>
-              <option value="SYNC_REQUIRED">Perlu Sinkronisasi</option>
+              <option value="BLOCKED_KKM">Blocked KKM</option>
+              <option value="BLOCKED_FINANCE">Blocked Finance</option>
+              <option value="REVIEW_REQUIRED">Perlu Review Data</option>
             </select>
           </div>
           <div className="text-sm text-gray-500">
@@ -859,13 +890,15 @@ export function HeadTuExamCardsPanel() {
               <div className="text-right text-xs font-semibold uppercase tracking-wide text-slate-500">Print</div>
             </div>
             <div className="divide-y divide-gray-200">
-            {filteredRows.map((item) => {
-              const { row, hasOperationalEntry, hasActiveCard, isPublishedActive, isReadyToGenerate } = item;
+            {filteredRows.map((row) => {
               const primaryEntry = row.entries[0] || null;
               const fallbackPlacement = row.card?.payload?.placement || null;
               const placementMeta = buildPlacementMetaLabel(fallbackPlacement);
               const placementTimeRange = buildPlacementTimeRangeLabel(fallbackPlacement);
               const isExpanded = expandedStudentId === row.studentId;
+              const hasOperationalEntry = row.entries.length > 0;
+              const isPublishedActive = row.status.code === 'PUBLISHED_ACTIVE';
+              const statusTone = resolveStatusTone(row.status.code);
               return (
                 <div key={row.studentId}>
                   <div
@@ -916,43 +949,19 @@ export function HeadTuExamCardsPanel() {
                     </div>
 
                     <div className="text-sm text-gray-700">
-                      {isPublishedActive ? (
-                        <>
-                          <div className="inline-flex items-center rounded-full bg-rose-100 px-3 py-1 text-xs font-semibold text-rose-700">
-                            <ClipboardList className="mr-1.5 h-3.5 w-3.5" />
-                            Sudah Dipublikasikan
-                          </div>
-                          <div className="mt-2 text-xs text-rose-700">Kartu aktif • diterbitkan {formatDateTime(row.card?.generatedAt)}.</div>
-                        </>
-                      ) : isReadyToGenerate ? (
-                        <>
-                          <div className="inline-flex items-center rounded-full bg-emerald-100 px-3 py-1 text-xs font-semibold text-emerald-700">
-                            <Sparkles className="mr-1.5 h-3.5 w-3.5" />
-                            Siap Digenerate
-                          </div>
-                          <div className="mt-2 text-xs text-emerald-700">Siswa memenuhi syarat kartu ujian digital.</div>
-                        </>
-                      ) : hasActiveCard || !hasOperationalEntry ? (
-                        <>
-                          <div className="inline-flex items-center rounded-full bg-amber-100 px-3 py-1 text-xs font-semibold text-amber-700">
-                            <ShieldCheck className="mr-1.5 h-3.5 w-3.5" />
-                            Perlu Sinkronisasi
-                          </div>
-                          <div className="mt-2 text-xs text-amber-700">
-                            {hasActiveCard
-                              ? 'Kartu lama masih tersimpan, tetapi jadwal aktifnya sudah berubah.'
-                              : 'Penempatan ruang aktif belum tersedia untuk siswa ini.'}
-                          </div>
-                        </>
-                      ) : (
-                        <>
-                          <div className="inline-flex items-center rounded-full bg-amber-100 px-3 py-1 text-xs font-semibold text-amber-700">
-                            <ShieldCheck className="mr-1.5 h-3.5 w-3.5" />
-                            Belum Layak
-                          </div>
-                          <div className="mt-2 text-xs text-amber-700">{row.eligibility.reason || 'Masih ada syarat ujian yang belum terpenuhi.'}</div>
-                        </>
-                      )}
+                      <div
+                        className={`inline-flex items-center rounded-full px-3 py-1 text-xs font-semibold ${statusTone.pillClassName}`}
+                      >
+                        {row.status.code === 'PUBLISHED_ACTIVE' ? (
+                          <ClipboardList className="mr-1.5 h-3.5 w-3.5" />
+                        ) : row.status.code === 'READY_TO_GENERATE' ? (
+                          <Sparkles className="mr-1.5 h-3.5 w-3.5" />
+                        ) : (
+                          <ShieldCheck className="mr-1.5 h-3.5 w-3.5" />
+                        )}
+                        {row.status.label}
+                      </div>
+                      <div className={`mt-2 text-xs ${statusTone.detailClassName}`}>{row.status.detail}</div>
                     </div>
 
                     <div className="text-sm text-gray-700">
@@ -962,15 +971,21 @@ export function HeadTuExamCardsPanel() {
                         </div>
                       ) : isPublishedActive ? (
                         <div className="text-xs text-emerald-700">Sudah digenerate pada {formatDateTime(row.card?.generatedAt)}.</div>
-                      ) : hasActiveCard ? (
-                        <div className="text-xs text-amber-700">Generate ulang agar kartu aktif mengikuti jadwal dan ruang terbaru.</div>
-                      ) : !hasOperationalEntry ? (
-                        <div className="text-xs text-amber-700">Belum ada penempatan ruang aktif atau denah kursi belum tersinkron.</div>
-                      ) : isReadyToGenerate ? (
+                      ) : row.status.code === 'READY_TO_GENERATE' ? (
                         <div className="text-xs text-emerald-700">Siap dipublikasikan setelah generate kartu.</div>
+                      ) : row.status.code === 'BLOCKED_FINANCE' ? (
+                        <div className="text-xs text-orange-700">
+                          {row.eligibility.financeClearance.reason || row.status.detail}
+                        </div>
+                      ) : row.status.code === 'REVIEW_STALE_CARD' ? (
+                        <div className="text-xs text-slate-700">Generate ulang agar kartu aktif mengikuti status terbaru.</div>
+                      ) : row.status.code === 'REVIEW_PLACEMENT_SYNC' ? (
+                        <div className="text-xs text-slate-700">Periksa penempatan ruang, denah kursi, dan jadwal aktif siswa ini.</div>
+                      ) : !hasOperationalEntry ? (
+                        <div className="text-xs text-slate-700">Belum ada entry ruang aktif yang terbaca di overview kartu.</div>
                       ) : (
-                        <div className="space-y-2 text-xs text-amber-700">
-                          <div>{row.eligibility.reason || 'Masih ada syarat ujian yang belum terpenuhi.'}</div>
+                        <div className="space-y-2 text-xs text-slate-700">
+                          <div>{row.status.detail}</div>
                           {row.eligibility.automatic.details.belowKkmSubjects.length > 0 ? (
                             <div className="rounded-lg border border-amber-100 bg-amber-50 px-3 py-2 text-[11px] text-amber-800">
                               {row.eligibility.automatic.details.belowKkmSubjects

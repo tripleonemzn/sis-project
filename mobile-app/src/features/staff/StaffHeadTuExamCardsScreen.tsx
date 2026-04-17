@@ -25,7 +25,7 @@ import {
 } from '../examCards/examCardApi';
 import { resolveStaffDivision } from './staffRole';
 
-type StatusFilter = 'ALL' | 'PUBLISHED' | 'ELIGIBLE' | 'BLOCKED';
+type StatusFilter = 'ALL' | 'PUBLISHED' | 'READY' | 'BLOCKED_KKM' | 'BLOCKED_FINANCE' | 'REVIEW_REQUIRED';
 
 function formatDateTime(value?: string | null) {
   if (!value) return '-';
@@ -349,10 +349,28 @@ function formatEntryMeta(entry: ExamCardOverviewRow['entries'][number]) {
   return parts.join(' • ');
 }
 
+function matchesStatusFilter(filter: StatusFilter, row: ExamCardOverviewRow) {
+  if (filter === 'ALL') return true;
+  if (filter === 'PUBLISHED') return row.status.category === 'PUBLISHED';
+  if (filter === 'READY') return row.status.category === 'READY';
+  if (filter === 'BLOCKED_KKM') return row.status.category === 'BLOCKED_KKM';
+  if (filter === 'BLOCKED_FINANCE') return row.status.category === 'BLOCKED_FINANCE';
+  return row.status.category === 'REVIEW_REQUIRED';
+}
+
 function statusPill(row: ExamCardOverviewRow) {
-  if (row.card) return { label: 'Sudah Dipublikasikan', bg: '#ffe4e6', border: '#fecdd3', text: '#be123c' };
-  if (row.eligibility.isEligible) return { label: 'Siap Digenerate', bg: '#dcfce7', border: '#86efac', text: '#166534' };
-  return { label: 'Belum Layak', bg: '#fffbeb', border: '#fde68a', text: '#b45309' };
+  switch (row.status.code) {
+    case 'PUBLISHED_ACTIVE':
+      return { label: row.status.label, bg: '#ffe4e6', border: '#fecdd3', text: '#be123c' };
+    case 'READY_TO_GENERATE':
+      return { label: row.status.label, bg: '#dcfce7', border: '#86efac', text: '#166534' };
+    case 'BLOCKED_KKM':
+      return { label: row.status.label, bg: '#fffbeb', border: '#fde68a', text: '#b45309' };
+    case 'BLOCKED_FINANCE':
+      return { label: row.status.label, bg: '#ffedd5', border: '#fdba74', text: '#c2410c' };
+    default:
+      return { label: row.status.label, bg: '#f1f5f9', border: '#cbd5e1', text: '#334155' };
+  }
 }
 
 function SectionCard({
@@ -547,11 +565,7 @@ export function StaffHeadTuExamCardsScreen() {
   const filteredRows = useMemo(() => {
     const keyword = search.trim().toLowerCase();
     return (overviewQuery.data?.rows || []).filter((row) => {
-      const matchesStatus =
-        statusFilter === 'ALL' ||
-        (statusFilter === 'PUBLISHED' && Boolean(row.card)) ||
-        (statusFilter === 'ELIGIBLE' && row.eligibility.isEligible && !row.card) ||
-        (statusFilter === 'BLOCKED' && !row.eligibility.isEligible);
+      const matchesStatus = matchesStatusFilter(statusFilter, row);
       const matchesClass = classFilter === 'ALL' || String(row.className || '') === classFilter;
       const matchesKeyword = matchesSearch(keyword, [
         row.studentName,
@@ -649,25 +663,41 @@ export function StaffHeadTuExamCardsScreen() {
           accentColor="#1d4ed8"
         />
         <SummaryCard
+          title="Sudah Dipublikasikan"
+          value={String(overviewQuery.data?.summary.statusCounts.publishedActive || 0)}
+          subtitle="Kartu digital aktif sudah terbit di akun siswa"
+          iconName="file-text"
+          accentColor="#be123c"
+        />
+        <SummaryCard
           title="Siap Digenerate"
-          value={String(overviewQuery.data?.summary.eligibleStudents || 0)}
-          subtitle="Sudah layak ikut ujian dan punya penempatan ruang aktif"
+          value={String(overviewQuery.data?.summary.statusCounts.readyToGenerate || 0)}
+          subtitle="Sudah eligible dan tinggal dipublikasikan"
           iconName="check-circle"
           accentColor="#047857"
         />
         <SummaryCard
-          title="Belum Bisa Digenerate"
-          value={String(overviewQuery.data?.summary.blockedStudents || 0)}
-          subtitle="Masih ada syarat kelayakan atau data penempatan yang belum terpenuhi"
+          title="Blocked KKM"
+          value={String(overviewQuery.data?.summary.statusCounts.blockedKkm || 0)}
+          subtitle="Tidak bisa dapat kartu karena nilai masih di bawah KKM"
           iconName="alert-triangle"
           accentColor="#c2410c"
         />
         <SummaryCard
-          title="Sudah Dipublikasikan"
-          value={String(overviewQuery.data?.summary.publishedCards || 0)}
-          subtitle="Kartu digital aktif sudah terbit dan tampil di akun siswa"
-          iconName="file-text"
-          accentColor="#be123c"
+          title="Blocked Finance"
+          value={String(overviewQuery.data?.summary.statusCounts.blockedFinance || 0)}
+          subtitle="Tidak bisa dapat kartu karena clearance finance memblokir ujian"
+          iconName="credit-card"
+          accentColor="#c2410c"
+        />
+        <SummaryCard
+          title="Perlu Review Data"
+          value={String(overviewQuery.data?.summary.statusCounts.reviewRequired || 0)}
+          subtitle={`Manual ${overviewQuery.data?.summary.statusCounts.blockedManual || 0} • penempatan ${
+            overviewQuery.data?.summary.statusCounts.needsPlacementSync || 0
+          } • stale ${overviewQuery.data?.summary.statusCounts.staleCard || 0}`}
+          iconName="shield"
+          accentColor="#475569"
         />
       </View>
 
@@ -762,8 +792,10 @@ export function StaffHeadTuExamCardsScreen() {
           options={[
             { value: 'ALL', label: 'Semua Status' },
             { value: 'PUBLISHED', label: 'Sudah Dipublikasikan' },
-            { value: 'ELIGIBLE', label: 'Siap Digenerate' },
-            { value: 'BLOCKED', label: 'Belum Layak' },
+            { value: 'READY', label: 'Siap Digenerate' },
+            { value: 'BLOCKED_KKM', label: 'Blocked KKM' },
+            { value: 'BLOCKED_FINANCE', label: 'Blocked Finance' },
+            { value: 'REVIEW_REQUIRED', label: 'Perlu Review Data' },
           ]}
           onChange={(value) => setStatusFilter(value as StatusFilter)}
           placeholder="Pilih status"
@@ -775,12 +807,12 @@ export function StaffHeadTuExamCardsScreen() {
             label={generateMutation.isPending ? 'Memproses Generate...' : 'Generate Kartu Ujian'}
             onPress={() => generateMutation.mutate()}
             disabled={
-              !overviewQuery.data ||
-              !activeProgramCode ||
-              !issueDate ||
-              issueLocation.trim().length === 0 ||
-              overviewQuery.data.summary.eligibleStudents === 0 ||
-              generateMutation.isPending
+                      !overviewQuery.data ||
+                      !activeProgramCode ||
+                      !issueDate ||
+                      issueLocation.trim().length === 0 ||
+                      (overviewQuery.data.summary.statusCounts.readyToGenerate || 0) === 0 ||
+                      generateMutation.isPending
             }
           />
           <ActionButton
@@ -825,10 +857,11 @@ export function StaffHeadTuExamCardsScreen() {
           <EmptyState message="Belum ada data siswa yang sesuai dengan filter." />
         ) : (
           <View style={{ gap: 10 }}>
-            {filteredRows.map((row) => {
-              const pill = statusPill(row);
-              return (
-                <View
+                    {filteredRows.map((row) => {
+                      const pill = statusPill(row);
+                      const isPublishedActive = row.status.code === 'PUBLISHED_ACTIVE';
+                      return (
+                        <View
                   key={row.studentId}
                   style={{
                     borderWidth: 1,
@@ -920,33 +953,70 @@ export function StaffHeadTuExamCardsScreen() {
                     )}
                   </View>
 
-                  <View
-                    style={{
-                      marginTop: 10,
-                      borderWidth: 1,
-                      borderColor: row.eligibility.isEligible ? '#bbf7d0' : '#fde68a',
-                      backgroundColor: row.eligibility.isEligible ? '#f0fdf4' : '#fffbeb',
-                      borderRadius: 12,
-                      padding: 10,
-                    }}
-                  >
-                    <Text
+                    <View
                       style={{
-                        color: row.eligibility.isEligible ? '#166534' : '#92400e',
-                        fontSize: 12,
-                        fontWeight: '700',
+                        marginTop: 10,
+                        borderWidth: 1,
+                        borderColor:
+                          row.status.category === 'READY'
+                            ? '#bbf7d0'
+                            : row.status.category === 'PUBLISHED'
+                              ? '#fecdd3'
+                              : row.status.category === 'BLOCKED_FINANCE'
+                                ? '#fdba74'
+                                : row.status.category === 'BLOCKED_KKM'
+                                  ? '#fde68a'
+                                  : '#cbd5e1',
+                        backgroundColor:
+                          row.status.category === 'READY'
+                            ? '#f0fdf4'
+                            : row.status.category === 'PUBLISHED'
+                              ? '#fff1f2'
+                              : row.status.category === 'BLOCKED_FINANCE'
+                                ? '#fff7ed'
+                                : row.status.category === 'BLOCKED_KKM'
+                                  ? '#fffbeb'
+                                  : '#f8fafc',
+                        borderRadius: 12,
+                        padding: 10,
                       }}
                     >
-                      {row.eligibility.reason}
-                    </Text>
-                    {row.eligibility.financeExceptionApplied ? (
-                      <Text style={{ color: '#166534', fontSize: 11, marginTop: 4 }}>
-                        Ada pengecualian finance dari wali kelas untuk siswa ini.
+                      <Text
+                        style={{
+                          color:
+                            row.status.category === 'READY'
+                              ? '#166534'
+                              : row.status.category === 'PUBLISHED'
+                                ? '#be123c'
+                                : row.status.category === 'BLOCKED_FINANCE'
+                                  ? '#c2410c'
+                                  : row.status.category === 'BLOCKED_KKM'
+                                    ? '#92400e'
+                                    : '#334155',
+                          fontSize: 12,
+                          fontWeight: '700',
+                        }}
+                      >
+                      {row.status.detail}
                       </Text>
-                    ) : null}
-                    {!row.eligibility.isEligible &&
-                    row.eligibility.automatic.details.belowKkmSubjects.length > 0 ? (
-                      <Text style={{ color: '#92400e', fontSize: 11, marginTop: 4 }}>
+                      {row.eligibility.financeExceptionApplied ? (
+                        <Text style={{ color: '#166534', fontSize: 11, marginTop: 4 }}>
+                          Ada pengecualian finance dari wali kelas untuk siswa ini.
+                        </Text>
+                      ) : null}
+                      {isPublishedActive ? (
+                        <Text style={{ color: '#be123c', fontSize: 11, marginTop: 4 }}>
+                          Kartu aktif terakhir diterbitkan {formatDateTime(row.card?.generatedAt)}.
+                        </Text>
+                      ) : null}
+                      {row.status.code === 'BLOCKED_FINANCE' && row.eligibility.financeClearance.reason ? (
+                        <Text style={{ color: '#c2410c', fontSize: 11, marginTop: 4 }}>
+                          {row.eligibility.financeClearance.reason}
+                        </Text>
+                      ) : null}
+                      {!row.eligibility.isEligible &&
+                      row.eligibility.automatic.details.belowKkmSubjects.length > 0 ? (
+                        <Text style={{ color: '#92400e', fontSize: 11, marginTop: 4 }}>
                         Nilai di bawah KKM: {row.eligibility.automatic.details.belowKkmSubjects
                           .map((subject) => subject.subjectName)
                           .join(', ')}

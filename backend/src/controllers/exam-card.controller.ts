@@ -52,6 +52,30 @@ type ExamCardEntrySnapshot = {
   seatLabel: string | null;
 };
 
+type ExamCardOverviewStatusCategory =
+  | 'PUBLISHED'
+  | 'READY'
+  | 'BLOCKED_KKM'
+  | 'BLOCKED_FINANCE'
+  | 'REVIEW_REQUIRED';
+
+type ExamCardOverviewStatusCode =
+  | 'PUBLISHED_ACTIVE'
+  | 'READY_TO_GENERATE'
+  | 'BLOCKED_KKM'
+  | 'BLOCKED_FINANCE'
+  | 'REVIEW_MANUAL_BLOCK'
+  | 'REVIEW_PLACEMENT_SYNC'
+  | 'REVIEW_STALE_CARD'
+  | 'REVIEW_DATA_SYNC';
+
+type ExamCardOverviewStatus = {
+  code: ExamCardOverviewStatusCode;
+  category: ExamCardOverviewStatusCategory;
+  label: string;
+  detail: string;
+};
+
 type ExamCardScheduleEntryCandidate = {
   roomName: string;
   roomToken: string;
@@ -79,6 +103,7 @@ type ExamCardOverviewRow = {
   formalPhotoUrl: string | null;
   entries: ExamCardEntrySnapshot[];
   eligibility: ExamEligibilityStatus;
+  status: ExamCardOverviewStatus;
   card: {
     id: number;
     generatedAt: Date;
@@ -169,6 +194,84 @@ function resolveRepresentativeScheduleEntry(
     entries[0] ||
     null
   );
+}
+
+function deriveExamCardOverviewStatus(params: {
+  eligibility: ExamEligibilityStatus;
+  entries: ExamCardEntrySnapshot[];
+  hasActiveCard: boolean;
+}) {
+  const hasOperationalEntry = params.entries.length > 0;
+  const hasBelowKkm = Boolean(params.eligibility.automatic.flags.belowKkm);
+  const hasFinanceBlock = Boolean(params.eligibility.automatic.flags.financeBlocked);
+
+  if (params.eligibility.isEligible) {
+    if (params.hasActiveCard) {
+      return {
+        code: 'PUBLISHED_ACTIVE',
+        category: 'PUBLISHED',
+        label: 'Sudah Dipublikasikan',
+        detail: 'Kartu aktif sudah terbit dan tampil di akun siswa.',
+      } satisfies ExamCardOverviewStatus;
+    }
+    if (hasOperationalEntry) {
+      return {
+        code: 'READY_TO_GENERATE',
+        category: 'READY',
+        label: 'Siap Digenerate',
+        detail: 'Siswa memenuhi syarat dan siap dipublikasikan setelah generate kartu.',
+      } satisfies ExamCardOverviewStatus;
+    }
+    return {
+      code: 'REVIEW_PLACEMENT_SYNC',
+      category: 'REVIEW_REQUIRED',
+      label: 'Perlu Review Penempatan',
+      detail: 'Siswa sudah eligible, tetapi penempatan ruang atau jadwal aktif belum terbaca penuh.',
+    } satisfies ExamCardOverviewStatus;
+  }
+
+  if (hasBelowKkm) {
+    return {
+      code: 'BLOCKED_KKM',
+      category: 'BLOCKED_KKM',
+      label: 'Blocked KKM',
+      detail: params.eligibility.reason || 'Masih ada nilai di bawah KKM.',
+    } satisfies ExamCardOverviewStatus;
+  }
+
+  if (hasFinanceBlock) {
+    return {
+      code: 'BLOCKED_FINANCE',
+      category: 'BLOCKED_FINANCE',
+      label: 'Blocked Finance',
+      detail: params.eligibility.reason || 'Masih ada tunggakan finance yang memblokir ujian.',
+    } satisfies ExamCardOverviewStatus;
+  }
+
+  if (params.eligibility.manualBlocked) {
+    return {
+      code: 'REVIEW_MANUAL_BLOCK',
+      category: 'REVIEW_REQUIRED',
+      label: 'Blocked Manual',
+      detail: params.eligibility.reason || 'Siswa sedang diblokir manual dan perlu review operator.',
+    } satisfies ExamCardOverviewStatus;
+  }
+
+  if (params.hasActiveCard) {
+    return {
+      code: 'REVIEW_STALE_CARD',
+      category: 'REVIEW_REQUIRED',
+      label: 'Kartu Perlu Sinkronisasi',
+      detail: 'Kartu lama masih aktif, tetapi status kelayakan atau jadwal terbarunya perlu ditinjau ulang.',
+    } satisfies ExamCardOverviewStatus;
+  }
+
+  return {
+    code: 'REVIEW_DATA_SYNC',
+    category: 'REVIEW_REQUIRED',
+    label: 'Perlu Review Data',
+    detail: params.eligibility.reason || 'Masih ada data kelayakan ujian yang perlu ditinjau.',
+  } satisfies ExamCardOverviewStatus;
 }
 
 function resolveProgramCodeCandidates(params: {
@@ -983,6 +1086,11 @@ async function buildExamCardOverview(params: {
     });
     const studentAssets = studentAssetMap.get(student.id) || { photo: null, documents: [] };
     const formalPhotoUrl = resolveFormalPhotoUrl(studentAssets);
+    const status = deriveExamCardOverviewStatus({
+      eligibility,
+      entries,
+      hasActiveCard: Boolean(card),
+    });
 
     accumulator.push({
       studentId: student.id,
@@ -999,6 +1107,7 @@ async function buildExamCardOverview(params: {
       formalPhotoUrl,
       entries,
       eligibility,
+      status,
       card: card
         ? {
             id: card.id,
@@ -1036,6 +1145,17 @@ async function buildExamCardOverview(params: {
       blockedStudents: rows.filter((row) => !row.eligibility.isEligible).length,
       publishedCards: rows.filter((row) => Boolean(row.card)).length,
       financeExceptionStudents: rows.filter((row) => row.eligibility.financeExceptionApplied).length,
+      statusCounts: {
+        publishedActive: rows.filter((row) => row.status.code === 'PUBLISHED_ACTIVE').length,
+        readyToGenerate: rows.filter((row) => row.status.code === 'READY_TO_GENERATE').length,
+        blockedKkm: rows.filter((row) => row.status.code === 'BLOCKED_KKM').length,
+        blockedFinance: rows.filter((row) => row.status.code === 'BLOCKED_FINANCE').length,
+        reviewRequired: rows.filter((row) => row.status.category === 'REVIEW_REQUIRED').length,
+        blockedManual: rows.filter((row) => row.status.code === 'REVIEW_MANUAL_BLOCK').length,
+        needsPlacementSync: rows.filter((row) => row.status.code === 'REVIEW_PLACEMENT_SYNC').length,
+        staleCard: rows.filter((row) => row.status.code === 'REVIEW_STALE_CARD').length,
+        needsDataSync: rows.filter((row) => row.status.code === 'REVIEW_DATA_SYNC').length,
+      },
     },
   };
 }

@@ -119,6 +119,20 @@ export interface ExamCardOverviewRow {
       };
     };
   };
+  status: {
+    code:
+      | 'PUBLISHED_ACTIVE'
+      | 'READY_TO_GENERATE'
+      | 'BLOCKED_KKM'
+      | 'BLOCKED_FINANCE'
+      | 'REVIEW_MANUAL_BLOCK'
+      | 'REVIEW_PLACEMENT_SYNC'
+      | 'REVIEW_STALE_CARD'
+      | 'REVIEW_DATA_SYNC';
+    category: 'PUBLISHED' | 'READY' | 'BLOCKED_KKM' | 'BLOCKED_FINANCE' | 'REVIEW_REQUIRED';
+    label: string;
+    detail: string;
+  };
   card: {
     id: number;
     generatedAt: string;
@@ -145,6 +159,17 @@ export interface ExamCardOverviewResponse {
     blockedStudents: number;
     publishedCards: number;
     financeExceptionStudents: number;
+    statusCounts: {
+      publishedActive: number;
+      readyToGenerate: number;
+      blockedKkm: number;
+      blockedFinance: number;
+      reviewRequired: number;
+      blockedManual: number;
+      needsPlacementSync: number;
+      staleCard: number;
+      needsDataSync: number;
+    };
   };
   rows: ExamCardOverviewRow[];
 }
