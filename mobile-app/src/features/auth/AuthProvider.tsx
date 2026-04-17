@@ -12,8 +12,9 @@ import {
   syncPushDeviceRegistration,
 } from '../pushNotifications/pushNotificationService';
 
-const PUSH_SYNC_RETRY_DELAYS_MS = [0, 15000, 60000] as const;
 const PUSH_SYNC_INTERVAL_MS = 6 * 60 * 60 * 1000;
+const PUSH_SYNC_RESUME_COOLDOWN_MS = 2 * 60 * 1000;
+const PUSH_SYNC_FOLLOW_UP_DELAY_MS = 20 * 1000;
 
 type AuthContextValue = {
   user: AuthUser | null;
@@ -32,6 +33,15 @@ export function AuthProvider({ children }: PropsWithChildren) {
   const [isLoading, setIsLoading] = useState(true);
   const [restoreError, setRestoreError] = useState<string | null>(null);
   const appResumePushSyncCleanupRef = useRef<(() => void) | null>(null);
+  const pushSyncInFlightRef = useRef<Promise<void> | null>(null);
+  const pushSyncFollowUpTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const lastPushSyncStartedAtRef = useRef(0);
+
+  const clearPendingPushSyncFollowUp = useCallback(() => {
+    if (!pushSyncFollowUpTimerRef.current) return;
+    clearTimeout(pushSyncFollowUpTimerRef.current);
+    pushSyncFollowUpTimerRef.current = null;
+  }, []);
 
   const rehydrate = useCallback(async () => {
     setIsLoading(true);
@@ -88,54 +98,70 @@ export function AuthProvider({ children }: PropsWithChildren) {
     };
   }, []);
 
-  const schedulePushSyncWithRetry = useCallback(() => {
-    let cancelled = false;
-    let hasRegistered = false;
-    const timerIds: Array<ReturnType<typeof setTimeout>> = [];
-
-    const runAttempt = async () => {
-      if (cancelled || hasRegistered) return;
-      const result = await syncPushDeviceRegistration();
-      if (result.registered) {
-        hasRegistered = true;
+  const runPushDeviceSync = useCallback(
+    async (options?: { force?: boolean; allowFollowUp?: boolean }) => {
+      const nowTs = Date.now();
+      if (!options?.force && nowTs - lastPushSyncStartedAtRef.current < PUSH_SYNC_RESUME_COOLDOWN_MS) {
+        return;
       }
-    };
 
-    for (const delayMs of PUSH_SYNC_RETRY_DELAYS_MS) {
-      const timerId = setTimeout(() => {
-        void runAttempt();
-      }, delayMs);
-      timerIds.push(timerId);
-    }
-
-    return () => {
-      cancelled = true;
-      for (const timerId of timerIds) {
-        clearTimeout(timerId);
+      if (pushSyncInFlightRef.current) {
+        await pushSyncInFlightRef.current;
+        return;
       }
-    };
-  }, []);
+
+      clearPendingPushSyncFollowUp();
+      lastPushSyncStartedAtRef.current = nowTs;
+
+      const inFlight = (async () => {
+        const result = await syncPushDeviceRegistration({ allowPermissionPrompt: false });
+        const shouldScheduleFollowUp =
+          Boolean(options?.allowFollowUp) &&
+          !result.registered &&
+          result.permission.granted &&
+          result.reason === 'permission_or_token_unavailable';
+
+        if (shouldScheduleFollowUp) {
+          pushSyncFollowUpTimerRef.current = setTimeout(() => {
+            pushSyncFollowUpTimerRef.current = null;
+            void runPushDeviceSync({ force: true, allowFollowUp: false });
+          }, PUSH_SYNC_FOLLOW_UP_DELAY_MS);
+        }
+      })();
+
+      pushSyncInFlightRef.current = inFlight;
+
+      try {
+        await inFlight;
+      } finally {
+        pushSyncInFlightRef.current = null;
+      }
+    },
+    [clearPendingPushSyncFollowUp],
+  );
 
   useEffect(() => {
     if (!user) return;
-    const cleanup = schedulePushSyncWithRetry();
+    void runPushDeviceSync({ force: true, allowFollowUp: true });
     return () => {
-      cleanup();
+      clearPendingPushSyncFollowUp();
     };
-  }, [user, schedulePushSyncWithRetry]);
+  }, [user, clearPendingPushSyncFollowUp, runPushDeviceSync]);
 
   useEffect(() => {
     if (!user) return;
 
     let currentState: AppStateStatus = AppState.currentState;
     const appStateSubscription = AppState.addEventListener('change', (nextState) => {
-      const wasBackground = currentState === 'background' || currentState === 'inactive';
+      // Abaikan transisi `inactive` Android yang sering muncul saat status bar/system UI bergerak.
+      const wasBackground = currentState === 'background';
       const nowActive = nextState === 'active';
       currentState = nextState;
       if (!wasBackground || !nowActive) return;
 
       appResumePushSyncCleanupRef.current?.();
-      appResumePushSyncCleanupRef.current = schedulePushSyncWithRetry();
+      appResumePushSyncCleanupRef.current = clearPendingPushSyncFollowUp;
+      void runPushDeviceSync({ allowFollowUp: true });
     });
 
     return () => {
@@ -143,19 +169,19 @@ export function AuthProvider({ children }: PropsWithChildren) {
       appResumePushSyncCleanupRef.current = null;
       appStateSubscription.remove();
     };
-  }, [user, schedulePushSyncWithRetry]);
+  }, [user, clearPendingPushSyncFollowUp, runPushDeviceSync]);
 
   useEffect(() => {
     if (!user) return;
 
     const syncIntervalId = setInterval(() => {
-      void syncPushDeviceRegistration();
+      void runPushDeviceSync({ force: true, allowFollowUp: false });
     }, PUSH_SYNC_INTERVAL_MS);
 
     return () => {
       clearInterval(syncIntervalId);
     };
-  }, [user]);
+  }, [user, runPushDeviceSync]);
 
   const value = useMemo<AuthContextValue>(
     () => ({

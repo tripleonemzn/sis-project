@@ -38,6 +38,10 @@ export type PushSyncResult = {
   syncedAt: string;
 };
 
+type PushTokenRequestOptions = {
+  allowPermissionPrompt?: boolean;
+};
+
 export type LocalPushDebugSnapshot = {
   permission: PushPermissionSnapshot;
   storedToken: string | null;
@@ -290,14 +294,14 @@ export async function consumeNotificationSettingsPromptEligibility() {
   return true;
 }
 
-async function requestExpoPushToken() {
+async function requestExpoPushToken(options?: PushTokenRequestOptions) {
   ensureNotificationHandler();
   await ensureAndroidNotificationChannels();
 
   const permission = await Notifications.getPermissionsAsync();
   let permissionSnapshot = toPermissionSnapshot(permission);
 
-  if (!permissionSnapshot.granted) {
+  if (!permissionSnapshot.granted && options?.allowPermissionPrompt && permissionSnapshot.canAskAgain) {
     const requestPermission = await Notifications.requestPermissionsAsync();
     permissionSnapshot = toPermissionSnapshot(requestPermission);
   }
@@ -391,14 +395,14 @@ function canReuseRecentPushSync(params: {
   return Date.now() - lastSyncedAt < PUSH_SYNC_MIN_INTERVAL_MS;
 }
 
-export async function syncPushDeviceRegistration(): Promise<PushSyncResult> {
+export async function syncPushDeviceRegistration(options?: PushTokenRequestOptions): Promise<PushSyncResult> {
   const syncedAt = new Date().toISOString();
   const deviceName = resolveDeviceName();
   const appVersion = resolveAppVersion();
   const updateChannel = resolveUpdateChannel();
   const runtimeVersion = resolveRuntimeVersion();
   try {
-    const tokenRequest = await requestExpoPushToken();
+    const tokenRequest = await requestExpoPushToken(options);
     const nextToken = tokenRequest.token;
     if (!nextToken) {
       const result: PushSyncResult = {

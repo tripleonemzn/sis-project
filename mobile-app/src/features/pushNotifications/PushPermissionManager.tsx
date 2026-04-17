@@ -4,6 +4,7 @@ import { notifyInfo } from '../../lib/ui/feedback';
 import {
   consumeNotificationSettingsPromptEligibility,
   ensureNotificationPermissionOnStartup,
+  syncPushDeviceRegistration,
 } from './pushNotificationService';
 
 export function PushPermissionManager() {
@@ -15,7 +16,12 @@ export function PushPermissionManager() {
 
     const run = async () => {
       const permission = await ensureNotificationPermissionOnStartup();
-      if (permission.granted) return;
+      if (permission.granted) {
+        if (permission.prompted) {
+          void syncPushDeviceRegistration({ allowPermissionPrompt: false });
+        }
+        return;
+      }
 
       if (permission.canAskAgain) {
         if (permission.prompted) return;

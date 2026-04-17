@@ -1,5 +1,5 @@
 import { useEffect } from 'react';
-import { AppState, Platform } from 'react-native';
+import { AppState, AppStateStatus, Platform } from 'react-native';
 import { useQueryClient } from '@tanstack/react-query';
 import { ENV } from '../../config/env';
 import { tokenStorage } from '../../lib/storage/tokenStorage';
@@ -279,7 +279,9 @@ export function useMobileRealtimeSync(enabled: boolean) {
     let lastOpenedAt = 0;
     const pendingQueryKeyPrefixes = new Set<string>();
 
-    const isAppActive = () => appState === 'active';
+    const isEffectivelyActiveState = (state: AppStateStatus) =>
+      state === 'active' || (Platform.OS === 'android' && state === 'inactive');
+    const isAppActive = () => isEffectivelyActiveState(appState);
 
     const clearReconnectTimer = () => {
       if (!reconnectTimer) return;
@@ -422,7 +424,7 @@ export function useMobileRealtimeSync(enabled: boolean) {
 
     const appStateSubscription = AppState.addEventListener('change', (state) => {
       appState = state;
-      if (state !== 'active') {
+      if (!isEffectivelyActiveState(state)) {
         clearReconnectTimer();
         closeSocket();
         return;
