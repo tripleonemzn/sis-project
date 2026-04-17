@@ -6,7 +6,9 @@ import {
   Pressable,
   RefreshControl,
   ScrollView,
+  StyleProp,
   Text,
+  TextStyle,
   TextInput,
   View,
 } from 'react-native';
@@ -38,11 +40,13 @@ import {
   type InventoryTemplateProfile,
 } from '../../../src/features/sarpras/inventoryTemplateProfiles';
 import { getStandardPagePadding } from '../../../src/lib/ui/pageLayout';
+import { useAppTextScale } from '../../../src/theme/AppTextScaleProvider';
 
 type SarprasSection = 'RINGKASAN' | 'RUANGAN' | 'INVENTARIS' | 'PEMINJAMAN';
 type InventoryScope = 'ALL' | 'LAB' | 'LIBRARY';
 type InventoryAttributeMap = Record<string, string | number>;
 type SarprasSummaryId = 'categories' | 'rooms' | 'items' | 'units' | 'loans' | 'returns';
+type ScaledTextStyle = StyleProp<TextStyle>;
 
 const SARPRAS_SECTION_ITEMS: Array<{
   key: SarprasSection;
@@ -248,7 +252,13 @@ function normalizeItemAttributes(item?: SarprasInventoryItem | null): InventoryA
   return next;
 }
 
-function ConditionBadge({ condition }: { condition: string | null | undefined }) {
+function ConditionBadge({
+  condition,
+  textStyle,
+}: {
+  condition: string | null | undefined;
+  textStyle?: ScaledTextStyle;
+}) {
   const style = resolveConditionStyle(condition);
   return (
     <View
@@ -261,12 +271,20 @@ function ConditionBadge({ condition }: { condition: string | null | undefined })
         backgroundColor: style.bg,
       }}
     >
-      <Text style={{ color: style.text, fontWeight: '700', fontSize: 11 }}>{resolveConditionLabel(condition)}</Text>
+      <Text style={[{ color: style.text, fontWeight: '700', fontSize: 11 }, textStyle]}>
+        {resolveConditionLabel(condition)}
+      </Text>
     </View>
   );
 }
 
-function ReturnStatusBadge({ status }: { status: LibraryLoanStatusCode }) {
+function ReturnStatusBadge({
+  status,
+  textStyle,
+}: {
+  status: LibraryLoanStatusCode;
+  textStyle?: ScaledTextStyle;
+}) {
   const isReturned = status === 'RETURNED';
   const isOverdue = status === 'OVERDUE';
   const borderColor = isReturned ? '#86efac' : isOverdue ? '#fca5a5' : '#fdba74';
@@ -284,7 +302,7 @@ function ReturnStatusBadge({ status }: { status: LibraryLoanStatusCode }) {
         backgroundColor,
       }}
     >
-      <Text style={{ color: textColor, fontWeight: '700', fontSize: 11 }}>{label}</Text>
+      <Text style={[{ color: textColor, fontWeight: '700', fontSize: 11 }, textStyle]}>{label}</Text>
     </View>
   );
 }
@@ -304,6 +322,11 @@ function RoomCard({
   onEdit,
   onDelete,
   deletePending,
+  titleTextStyle,
+  bodyTextStyle,
+  helperTextStyle,
+  actionTextStyle,
+  badgeTextStyle,
 }: {
   room: SarprasRoom;
   selected: boolean;
@@ -312,6 +335,11 @@ function RoomCard({
   onEdit: (room: SarprasRoom) => void;
   onDelete: (room: SarprasRoom) => void;
   deletePending: boolean;
+  titleTextStyle?: ScaledTextStyle;
+  bodyTextStyle?: ScaledTextStyle;
+  helperTextStyle?: ScaledTextStyle;
+  actionTextStyle?: ScaledTextStyle;
+  badgeTextStyle?: ScaledTextStyle;
 }) {
   return (
     <View
@@ -326,15 +354,17 @@ function RoomCard({
     >
       <View style={{ flexDirection: 'row', justifyContent: 'space-between', alignItems: 'flex-start', gap: 10 }}>
         <Pressable onPress={onPress} style={{ flex: 1 }}>
-          <Text style={{ color: BRAND_COLORS.textDark, fontWeight: '700', fontSize: 15 }}>{room.name}</Text>
-          <Text style={{ color: BRAND_COLORS.textMuted, marginTop: 2 }}>
+          <Text style={[{ color: BRAND_COLORS.textDark, fontWeight: '700', fontSize: 15 }, titleTextStyle]}>
+            {room.name}
+          </Text>
+          <Text style={[{ color: BRAND_COLORS.textMuted, marginTop: 2 }, bodyTextStyle]}>
             {room.location || '-'} • Kapasitas {formatNumber(Number(room.capacity || 0))}
           </Text>
-          <Text style={{ color: '#64748b', fontSize: 12, marginTop: 4 }}>
+          <Text style={[{ color: '#64748b', fontSize: 12, marginTop: 4 }, helperTextStyle]}>
             Item: {formatNumber(Number(room._count?.items || 0))}
           </Text>
         </Pressable>
-        <ConditionBadge condition={room.condition} />
+        <ConditionBadge condition={room.condition} textStyle={badgeTextStyle} />
       </View>
 
       {canManageStructure ? (
@@ -351,7 +381,7 @@ function RoomCard({
               backgroundColor: '#eff6ff',
             }}
           >
-            <Text style={{ color: '#1d4ed8', fontWeight: '700' }}>Edit</Text>
+            <Text style={[{ color: '#1d4ed8', fontWeight: '700' }, actionTextStyle]}>Edit</Text>
           </Pressable>
           <Pressable
             onPress={() => onDelete(room)}
@@ -367,7 +397,7 @@ function RoomCard({
               opacity: deletePending ? 0.7 : 1,
             }}
           >
-            <Text style={{ color: '#b91c1c', fontWeight: '700' }}>Hapus</Text>
+            <Text style={[{ color: '#b91c1c', fontWeight: '700' }, actionTextStyle]}>Hapus</Text>
           </Pressable>
         </View>
       ) : null}
@@ -382,6 +412,12 @@ function InventoryCard({
   onEdit,
   onDelete,
   deletePending,
+  titleTextStyle,
+  bodyTextStyle,
+  helperTextStyle,
+  smallTextStyle,
+  metricTextStyle,
+  actionTextStyle,
 }: {
   item: SarprasInventoryItem;
   templateProfile: InventoryTemplateProfile;
@@ -389,6 +425,12 @@ function InventoryCard({
   onEdit: (item: SarprasInventoryItem) => void;
   onDelete: (item: SarprasInventoryItem) => void;
   deletePending: boolean;
+  titleTextStyle?: ScaledTextStyle;
+  bodyTextStyle?: ScaledTextStyle;
+  helperTextStyle?: ScaledTextStyle;
+  smallTextStyle?: ScaledTextStyle;
+  metricTextStyle?: ScaledTextStyle;
+  actionTextStyle?: ScaledTextStyle;
 }) {
   const minor = Number(item.minorDamageQty || 0);
   const major = Number(item.majorDamageQty || 0);
@@ -415,12 +457,16 @@ function InventoryCard({
     >
       <View style={{ flexDirection: 'row', justifyContent: 'space-between', alignItems: 'flex-start', gap: 10 }}>
         <View style={{ flex: 1 }}>
-          <Text style={{ color: BRAND_COLORS.textDark, fontWeight: '700', fontSize: 15 }}>{item.name}</Text>
+          <Text style={[{ color: BRAND_COLORS.textDark, fontWeight: '700', fontSize: 15 }, titleTextStyle]}>
+            {item.name}
+          </Text>
           {codeBrandChunks.length ? (
-            <Text style={{ color: BRAND_COLORS.textMuted, marginTop: 2 }}>{codeBrandChunks.join(' • ')}</Text>
+            <Text style={[{ color: BRAND_COLORS.textMuted, marginTop: 2 }, bodyTextStyle]}>
+              {codeBrandChunks.join(' • ')}
+            </Text>
           ) : null}
         </View>
-        <Text style={{ color: BRAND_COLORS.navy, fontWeight: '700', fontSize: 16 }}>
+        <Text style={[{ color: BRAND_COLORS.navy, fontWeight: '700', fontSize: 16 }, metricTextStyle]}>
           {formatNumber(total)} {unitsLabel}
         </Text>
       </View>
@@ -440,10 +486,10 @@ function InventoryCard({
                 alignItems: 'center',
               }}
             >
-              <Text style={{ color: segment.color, fontWeight: '700', fontSize: 12 }}>
+              <Text style={[{ color: segment.color, fontWeight: '700', fontSize: 12 }, bodyTextStyle]}>
                 {formatNumber(segment.value)}
               </Text>
-              <Text style={{ color: segment.color, fontSize: 11 }}>{segment.label}</Text>
+              <Text style={[{ color: segment.color, fontSize: 11 }, smallTextStyle]}>{segment.label}</Text>
             </View>
           </View>
         ))}
@@ -455,7 +501,7 @@ function InventoryCard({
             const raw = attributes[field.key];
             const value = raw === null || raw === undefined || raw === '' ? '-' : String(raw);
             return (
-              <Text key={`${item.id}-${field.key}`} style={{ color: '#475569', fontSize: 12, marginTop: 2 }}>
+              <Text key={`${item.id}-${field.key}`} style={[{ color: '#475569', fontSize: 12, marginTop: 2 }, helperTextStyle]}>
                 {field.label}: {value}
               </Text>
             );
@@ -464,13 +510,13 @@ function InventoryCard({
       ) : null}
 
       {templateProfile.showPurchaseInfo ? (
-        <Text style={{ color: '#64748b', fontSize: 12, marginTop: 6 }}>
+        <Text style={[{ color: '#64748b', fontSize: 12, marginTop: 6 }, helperTextStyle]}>
           Sumber: {item.source || '-'} • Harga: {item.price ? formatCurrency(item.price) : '-'}
         </Text>
       ) : null}
 
       {item.description ? (
-        <Text style={{ color: '#64748b', fontSize: 12, marginTop: 6 }}>
+        <Text style={[{ color: '#64748b', fontSize: 12, marginTop: 6 }, helperTextStyle]}>
           {templateProfile.descriptionLabel}: {item.description}
         </Text>
       ) : null}
@@ -489,7 +535,7 @@ function InventoryCard({
               backgroundColor: '#eff6ff',
             }}
           >
-            <Text style={{ color: '#1d4ed8', fontWeight: '700' }}>Edit</Text>
+            <Text style={[{ color: '#1d4ed8', fontWeight: '700' }, actionTextStyle]}>Edit</Text>
           </Pressable>
           <Pressable
             onPress={() => onDelete(item)}
@@ -505,7 +551,7 @@ function InventoryCard({
               opacity: deletePending ? 0.7 : 1,
             }}
           >
-            <Text style={{ color: '#b91c1c', fontWeight: '700' }}>Hapus</Text>
+            <Text style={[{ color: '#b91c1c', fontWeight: '700' }, actionTextStyle]}>Hapus</Text>
           </Pressable>
         </View>
       ) : null}
@@ -526,6 +572,7 @@ export default function TeacherSarprasInventoryScreen() {
   const queryClient = useQueryClient();
   const { isAuthenticated, isLoading, user } = useAuth();
   const pagePadding = getStandardPagePadding(insets, { bottom: 120 });
+  const { scaleFont, scaleLineHeight } = useAppTextScale();
   const inventoryScope = parseScope(params.scope);
   const managedOnly = parseBooleanParam(params.managedOnly);
   const requestedRoomId = useMemo(() => {
@@ -611,6 +658,61 @@ export default function TeacherSarprasInventoryScreen() {
     [managedInventoryRooms],
   );
   const isManagedRoomContext = managedOnly && (user?.role === 'PRINCIPAL' || user?.role === 'TEACHER');
+  const headingTextStyle = useMemo(
+    () => ({ fontSize: scaleFont(20), lineHeight: scaleLineHeight(28) }),
+    [scaleFont, scaleLineHeight],
+  );
+  const sectionTitleTextStyle = useMemo(
+    () => ({ fontSize: scaleFont(16), lineHeight: scaleLineHeight(24) }),
+    [scaleFont, scaleLineHeight],
+  );
+  const cardTitleTextStyle = useMemo(
+    () => ({ fontSize: scaleFont(15), lineHeight: scaleLineHeight(22) }),
+    [scaleFont, scaleLineHeight],
+  );
+  const bodyTextStyle = useMemo(
+    () => ({ fontSize: scaleFont(13), lineHeight: scaleLineHeight(20) }),
+    [scaleFont, scaleLineHeight],
+  );
+  const helperTextStyle = useMemo(
+    () => ({ fontSize: scaleFont(12), lineHeight: scaleLineHeight(18) }),
+    [scaleFont, scaleLineHeight],
+  );
+  const smallTextStyle = useMemo(
+    () => ({ fontSize: scaleFont(11), lineHeight: scaleLineHeight(16) }),
+    [scaleFont, scaleLineHeight],
+  );
+  const inputTextStyle = useMemo(
+    () => ({ fontSize: scaleFont(13), lineHeight: scaleLineHeight(20) }),
+    [scaleFont, scaleLineHeight],
+  );
+  const actionTextStyle = useMemo(
+    () => ({ fontSize: scaleFont(13), lineHeight: scaleLineHeight(18) }),
+    [scaleFont, scaleLineHeight],
+  );
+  const metricTextStyle = useMemo(
+    () => ({ fontSize: scaleFont(16), lineHeight: scaleLineHeight(22) }),
+    [scaleFont, scaleLineHeight],
+  );
+  const largeMetricTextStyle = useMemo(
+    () => ({ fontSize: scaleFont(18), lineHeight: scaleLineHeight(24) }),
+    [scaleFont, scaleLineHeight],
+  );
+  const summaryValueTextStyle = useMemo(
+    () => ({ fontSize: scaleFont(20), lineHeight: scaleLineHeight(28) }),
+    [scaleFont, scaleLineHeight],
+  );
+  const inputBaseStyle = useMemo(
+    () => ({
+      borderWidth: 1,
+      borderColor: '#cbd5e1',
+      borderRadius: 8,
+      paddingHorizontal: 10,
+      paddingVertical: 10,
+      color: '#0f172a',
+    }),
+    [],
+  );
 
   useEffect(() => {
     if (inventoryScope !== 'LIBRARY' && section === 'PEMINJAMAN') {
@@ -1515,7 +1617,7 @@ export default function TeacherSarprasInventoryScreen() {
   if (!(user?.role === 'TEACHER' || isManagedRoomContext)) {
     return (
       <ScrollView style={{ flex: 1, backgroundColor: '#f8fafc' }} contentContainerStyle={pagePadding}>
-        <Text style={{ fontSize: 20, fontWeight: '700', marginBottom: 8 }}>Aset Sekolah</Text>
+        <Text style={[{ fontWeight: '700', marginBottom: 8 }, headingTextStyle]}>Aset Sekolah</Text>
         <QueryStateView type="error" message="Halaman ini tidak tersedia untuk role Anda." />
         <Pressable
           onPress={() => router.replace('/home')}
@@ -1527,7 +1629,7 @@ export default function TeacherSarprasInventoryScreen() {
             alignItems: 'center',
           }}
         >
-          <Text style={{ color: '#fff', fontWeight: '700' }}>Kembali ke Home</Text>
+          <Text style={[{ color: '#fff', fontWeight: '700' }, actionTextStyle]}>Kembali ke Home</Text>
         </Pressable>
       </ScrollView>
     );
@@ -1536,8 +1638,10 @@ export default function TeacherSarprasInventoryScreen() {
   if (!isAllowed) {
     return (
       <ScrollView style={{ flex: 1, backgroundColor: '#f8fafc' }} contentContainerStyle={pagePadding}>
-        <Text style={{ fontSize: 20, fontWeight: '700', marginBottom: 6, color: BRAND_COLORS.textDark }}>{pageTitle}</Text>
-        <Text style={{ color: BRAND_COLORS.textMuted, marginBottom: 12 }}>
+        <Text style={[{ fontWeight: '700', marginBottom: 6, color: BRAND_COLORS.textDark }, headingTextStyle]}>
+          {pageTitle}
+        </Text>
+        <Text style={[{ color: BRAND_COLORS.textMuted, marginBottom: 12 }, bodyTextStyle]}>
           {isManagedRoomContext
             ? 'Modul ini hanya muncul jika Anda memiliki ruangan inventaris yang ditugaskan.'
             : 'Modul ini tersedia sesuai tugas tambahan Sarpras/Kepala Lab/Kepala Perpustakaan.'}
@@ -1553,7 +1657,7 @@ export default function TeacherSarprasInventoryScreen() {
             alignItems: 'center',
           }}
         >
-          <Text style={{ color: '#fff', fontWeight: '700' }}>Kembali ke Home</Text>
+          <Text style={[{ color: '#fff', fontWeight: '700' }, actionTextStyle]}>Kembali ke Home</Text>
         </Pressable>
       </ScrollView>
     );
@@ -1586,8 +1690,10 @@ export default function TeacherSarprasInventoryScreen() {
         />
       }
     >
-      <Text style={{ fontSize: 20, fontWeight: '700', marginBottom: 6, color: BRAND_COLORS.textDark }}>{pageTitle}</Text>
-      <Text style={{ color: BRAND_COLORS.textMuted, marginBottom: 12 }}>{pageSubtitle}</Text>
+      <Text style={[{ fontWeight: '700', marginBottom: 6, color: BRAND_COLORS.textDark }, headingTextStyle]}>
+        {pageTitle}
+      </Text>
+      <Text style={[{ color: BRAND_COLORS.textMuted, marginBottom: 12 }, bodyTextStyle]}>{pageSubtitle}</Text>
 
       <MobileMenuTabBar
         items={sectionItems}
@@ -1622,7 +1728,9 @@ export default function TeacherSarprasInventoryScreen() {
                   marginBottom: 12,
                 }}
               >
-                <Text style={{ color: BRAND_COLORS.textDark, fontWeight: '700', marginBottom: 8 }}>Kategori Ruang</Text>
+                <Text style={[{ color: BRAND_COLORS.textDark, fontWeight: '700', marginBottom: 8 }, sectionTitleTextStyle]}>
+                  Kategori Ruang
+                </Text>
                 <MobileSelectField
                   value={selectedCategoryId ? String(selectedCategoryId) : ''}
                   options={categoryOptions}
@@ -1654,7 +1762,7 @@ export default function TeacherSarprasInventoryScreen() {
                         backgroundColor: '#eff6ff',
                       }}
                     >
-                      <Text style={{ color: '#1d4ed8', fontWeight: '700' }}>Edit Kategori</Text>
+                      <Text style={[{ color: '#1d4ed8', fontWeight: '700' }, actionTextStyle]}>Edit Kategori</Text>
                     </Pressable>
                     <Pressable
                       onPress={() => askDeleteCategory(selectedCategory)}
@@ -1670,7 +1778,7 @@ export default function TeacherSarprasInventoryScreen() {
                         opacity: deleteCategoryMutation.isPending ? 0.7 : 1,
                       }}
                     >
-                      <Text style={{ color: '#b91c1c', fontWeight: '700' }}>Hapus Kategori</Text>
+                      <Text style={[{ color: '#b91c1c', fontWeight: '700' }, actionTextStyle]}>Hapus Kategori</Text>
                     </Pressable>
                   </View>
                 ) : null}
@@ -1687,7 +1795,7 @@ export default function TeacherSarprasInventoryScreen() {
                   marginBottom: 12,
                 }}
               >
-                <Text style={{ color: BRAND_COLORS.textMuted }}>
+                <Text style={[{ color: BRAND_COLORS.textMuted }, bodyTextStyle]}>
                   {inventoryScope === 'ALL'
                     ? 'Belum ada kategori ruangan tersedia.'
                     : 'Kategori ruangan untuk filter ini belum tersedia.'}
@@ -1716,12 +1824,7 @@ export default function TeacherSarprasInventoryScreen() {
           onChangeText={setSearch}
           placeholder={getSearchPlaceholder(section)}
           placeholderTextColor="#8ea0bf"
-          style={{
-            flex: 1,
-            paddingVertical: 11,
-            paddingHorizontal: 9,
-            color: BRAND_COLORS.textDark,
-          }}
+          style={[{ flex: 1, paddingVertical: 11, paddingHorizontal: 9, color: BRAND_COLORS.textDark }, inputTextStyle]}
         />
       </View>
 
@@ -1737,37 +1840,21 @@ export default function TeacherSarprasInventoryScreen() {
               marginBottom: 10,
             }}
           >
-            <Text style={{ color: BRAND_COLORS.textDark, fontWeight: '700', marginBottom: 8 }}>
+            <Text style={[{ color: BRAND_COLORS.textDark, fontWeight: '700', marginBottom: 8 }, sectionTitleTextStyle]}>
               {editingCategoryId ? 'Edit Kategori Ruang' : 'Tambah Kategori Ruang'}
             </Text>
             <TextInput
               value={categoryFormName}
               onChangeText={setCategoryFormName}
               placeholder="Nama kategori *"
-              style={{
-                borderWidth: 1,
-                borderColor: '#cbd5e1',
-                borderRadius: 8,
-                paddingHorizontal: 10,
-                paddingVertical: 10,
-                color: '#0f172a',
-                marginBottom: 8,
-              }}
+              style={[inputBaseStyle, inputTextStyle, { marginBottom: 8 }]}
               placeholderTextColor="#94a3b8"
             />
             <TextInput
               value={categoryFormDescription}
               onChangeText={setCategoryFormDescription}
               placeholder="Deskripsi kategori (opsional)"
-              style={{
-                borderWidth: 1,
-                borderColor: '#cbd5e1',
-                borderRadius: 8,
-                paddingHorizontal: 10,
-                paddingVertical: 10,
-                color: '#0f172a',
-                marginBottom: 10,
-              }}
+              style={[inputBaseStyle, inputTextStyle, { marginBottom: 10 }]}
               placeholderTextColor="#94a3b8"
               multiline
             />
@@ -1781,7 +1868,7 @@ export default function TeacherSarprasInventoryScreen() {
               onChange={(next) => setCategoryFormTemplateKey((next || 'STANDARD') as InventoryTemplateKey)}
               placeholder="Pilih template inventaris"
             />
-            <Text style={{ color: '#64748b', fontSize: 12, marginBottom: 10 }}>
+            <Text style={[{ color: '#64748b', marginBottom: 10 }, helperTextStyle]}>
               {
                 INVENTORY_TEMPLATE_OPTIONS.find((option) => option.key === categoryFormTemplateKey)?.hint
               }
@@ -1799,7 +1886,7 @@ export default function TeacherSarprasInventoryScreen() {
                   opacity: saveCategoryMutation.isPending ? 0.7 : 1,
                 }}
               >
-                <Text style={{ color: '#fff', fontWeight: '700' }}>
+                <Text style={[{ color: '#fff', fontWeight: '700' }, actionTextStyle]}>
                   {saveCategoryMutation.isPending ? 'Menyimpan...' : editingCategoryId ? 'Simpan Kategori' : 'Tambah Kategori'}
                 </Text>
               </Pressable>
@@ -1816,7 +1903,7 @@ export default function TeacherSarprasInventoryScreen() {
                     backgroundColor: '#fff',
                   }}
                 >
-                  <Text style={{ color: '#334155', fontWeight: '700' }}>Batal</Text>
+                  <Text style={[{ color: '#334155', fontWeight: '700' }, actionTextStyle]}>Batal</Text>
                 </Pressable>
               ) : null}
             </View>
@@ -1832,22 +1919,14 @@ export default function TeacherSarprasInventoryScreen() {
               marginBottom: 10,
             }}
           >
-            <Text style={{ color: BRAND_COLORS.textDark, fontWeight: '700', marginBottom: 8 }}>
+            <Text style={[{ color: BRAND_COLORS.textDark, fontWeight: '700', marginBottom: 8 }, sectionTitleTextStyle]}>
               {editingRoomId ? 'Edit Ruangan' : `Tambah Ruangan${selectedCategory ? ` (${selectedCategory.name})` : ''}`}
             </Text>
             <TextInput
               value={roomFormName}
               onChangeText={setRoomFormName}
               placeholder="Nama ruangan *"
-              style={{
-                borderWidth: 1,
-                borderColor: '#cbd5e1',
-                borderRadius: 8,
-                paddingHorizontal: 10,
-                paddingVertical: 10,
-                color: '#0f172a',
-                marginBottom: 8,
-              }}
+              style={[inputBaseStyle, inputTextStyle, { marginBottom: 8 }]}
               placeholderTextColor="#94a3b8"
             />
             <View style={{ flexDirection: 'row', gap: 8, marginBottom: 8 }}>
@@ -1855,15 +1934,7 @@ export default function TeacherSarprasInventoryScreen() {
                 value={roomFormLocation}
                 onChangeText={setRoomFormLocation}
                 placeholder="Lokasi"
-                style={{
-                  flex: 1,
-                  borderWidth: 1,
-                  borderColor: '#cbd5e1',
-                  borderRadius: 8,
-                  paddingHorizontal: 10,
-                  paddingVertical: 10,
-                  color: '#0f172a',
-                }}
+                style={[inputBaseStyle, inputTextStyle, { flex: 1 }]}
                 placeholderTextColor="#94a3b8"
               />
               <TextInput
@@ -1871,15 +1942,7 @@ export default function TeacherSarprasInventoryScreen() {
                 onChangeText={setRoomFormCapacity}
                 placeholder="Kapasitas"
                 keyboardType="numeric"
-                style={{
-                  flex: 1,
-                  borderWidth: 1,
-                  borderColor: '#cbd5e1',
-                  borderRadius: 8,
-                  paddingHorizontal: 10,
-                  paddingVertical: 10,
-                  color: '#0f172a',
-                }}
+                style={[inputBaseStyle, inputTextStyle, { flex: 1 }]}
                 placeholderTextColor="#94a3b8"
               />
             </View>
@@ -1894,15 +1957,7 @@ export default function TeacherSarprasInventoryScreen() {
               value={roomFormDescription}
               onChangeText={setRoomFormDescription}
               placeholder="Deskripsi ruangan (opsional)"
-              style={{
-                borderWidth: 1,
-                borderColor: '#cbd5e1',
-                borderRadius: 8,
-                paddingHorizontal: 10,
-                paddingVertical: 10,
-                color: '#0f172a',
-                marginBottom: 10,
-              }}
+              style={[inputBaseStyle, inputTextStyle, { marginBottom: 10 }]}
               placeholderTextColor="#94a3b8"
               multiline
             />
@@ -1919,7 +1974,7 @@ export default function TeacherSarprasInventoryScreen() {
                   opacity: saveRoomMutation.isPending || !selectedCategoryId ? 0.7 : 1,
                 }}
               >
-                <Text style={{ color: '#fff', fontWeight: '700' }}>
+                <Text style={[{ color: '#fff', fontWeight: '700' }, actionTextStyle]}>
                   {saveRoomMutation.isPending ? 'Menyimpan...' : editingRoomId ? 'Simpan Ruangan' : 'Tambah Ruangan'}
                 </Text>
               </Pressable>
@@ -1936,7 +1991,7 @@ export default function TeacherSarprasInventoryScreen() {
                     backgroundColor: '#fff',
                   }}
                 >
-                  <Text style={{ color: '#334155', fontWeight: '700' }}>Batal</Text>
+                  <Text style={[{ color: '#334155', fontWeight: '700' }, actionTextStyle]}>Batal</Text>
                 </Pressable>
               ) : null}
             </View>
@@ -1955,25 +2010,17 @@ export default function TeacherSarprasInventoryScreen() {
             marginBottom: 10,
           }}
         >
-          <Text style={{ color: BRAND_COLORS.textDark, fontWeight: '700', marginBottom: 8 }}>
+          <Text style={[{ color: BRAND_COLORS.textDark, fontWeight: '700', marginBottom: 8 }, sectionTitleTextStyle]}>
             {editingItemId ? 'Edit Item Inventaris' : 'Tambah Item Inventaris'}
           </Text>
-          <Text style={{ color: '#475569', fontSize: 12, marginBottom: 8 }}>
+          <Text style={[{ color: '#475569', marginBottom: 8 }, helperTextStyle]}>
             Template aktif: {selectedTemplateProfile.label}
           </Text>
           <TextInput
             value={itemFormName}
             onChangeText={setItemFormName}
             placeholder={`${selectedTemplateProfile.itemNameLabel} *`}
-            style={{
-              borderWidth: 1,
-              borderColor: '#cbd5e1',
-              borderRadius: 8,
-              paddingHorizontal: 10,
-              paddingVertical: 10,
-              color: '#0f172a',
-              marginBottom: 8,
-            }}
+            style={[inputBaseStyle, inputTextStyle, { marginBottom: 8 }]}
             placeholderTextColor="#94a3b8"
           />
           {selectedTemplateProfile.showCode || selectedTemplateProfile.showBrand ? (
@@ -1983,15 +2030,7 @@ export default function TeacherSarprasInventoryScreen() {
                   value={itemFormCode}
                   onChangeText={setItemFormCode}
                   placeholder={selectedTemplateProfile.codeLabel}
-                  style={{
-                    flex: 1,
-                    borderWidth: 1,
-                    borderColor: '#cbd5e1',
-                    borderRadius: 8,
-                    paddingHorizontal: 10,
-                    paddingVertical: 10,
-                    color: '#0f172a',
-                  }}
+                  style={[inputBaseStyle, inputTextStyle, { flex: 1 }]}
                   placeholderTextColor="#94a3b8"
                 />
               ) : null}
@@ -2000,15 +2039,7 @@ export default function TeacherSarprasInventoryScreen() {
                   value={itemFormBrand}
                   onChangeText={setItemFormBrand}
                   placeholder={selectedTemplateProfile.brandLabel}
-                  style={{
-                    flex: 1,
-                    borderWidth: 1,
-                    borderColor: '#cbd5e1',
-                    borderRadius: 8,
-                    paddingHorizontal: 10,
-                    paddingVertical: 10,
-                    color: '#0f172a',
-                  }}
+                  style={[inputBaseStyle, inputTextStyle, { flex: 1 }]}
                   placeholderTextColor="#94a3b8"
                 />
               ) : null}
@@ -2019,7 +2050,7 @@ export default function TeacherSarprasInventoryScreen() {
             if (selectedTemplateProfile.key === 'LIBRARY' && field.key === 'category') {
               return (
                 <View key={`item-attr-${field.key}`} style={{ marginBottom: 8 }}>
-                  <Text style={{ color: BRAND_COLORS.textDark, fontWeight: '700', marginBottom: 6 }}>
+                  <Text style={[{ color: BRAND_COLORS.textDark, fontWeight: '700', marginBottom: 6 }, bodyTextStyle]}>
                     {field.label}
                     {field.required ? ' *' : ''}
                   </Text>
@@ -2032,20 +2063,12 @@ export default function TeacherSarprasInventoryScreen() {
                       }))
                     }
                     placeholder={`${field.label}${field.required ? ' *' : ''}`}
-                    style={{
-                      borderWidth: 1,
-                      borderColor: '#cbd5e1',
-                      borderRadius: 8,
-                      paddingHorizontal: 10,
-                      paddingVertical: 10,
-                      color: '#0f172a',
-                      marginBottom: 6,
-                    }}
+                    style={[inputBaseStyle, inputTextStyle, { marginBottom: 6 }]}
                     placeholderTextColor="#94a3b8"
                   />
                   {libraryBookCategories.length ? (
                     <View>
-                      <Text style={{ color: '#64748b', fontSize: 11, marginBottom: 5 }}>
+                      <Text style={[{ color: '#64748b', marginBottom: 5 }, smallTextStyle]}>
                         Pilih kategori tersimpan atau hapus kategori yang tidak dipakai.
                       </Text>
                       <View style={{ flexDirection: 'row', flexWrap: 'wrap', gap: 6 }}>
@@ -2078,13 +2101,7 @@ export default function TeacherSarprasInventoryScreen() {
                               }
                               style={{ paddingVertical: 6, paddingLeft: 10, paddingRight: 8 }}
                             >
-                              <Text
-                                style={{
-                                  color: BRAND_COLORS.textDark,
-                                  fontSize: 12,
-                                  fontWeight: '700',
-                                }}
-                              >
+                              <Text style={[{ color: BRAND_COLORS.textDark, fontWeight: '700' }, helperTextStyle]}>
                                 {categoryName}
                               </Text>
                             </Pressable>
@@ -2118,22 +2135,14 @@ export default function TeacherSarprasInventoryScreen() {
                 }
                 placeholder={`${field.label}${field.required ? ' *' : ''}`}
                 keyboardType={field.type === 'number' ? 'numeric' : 'default'}
-                style={{
-                  borderWidth: 1,
-                  borderColor: '#cbd5e1',
-                  borderRadius: 8,
-                  paddingHorizontal: 10,
-                  paddingVertical: 10,
-                  color: '#0f172a',
-                  marginBottom: 8,
-                }}
+                style={[inputBaseStyle, inputTextStyle, { marginBottom: 8 }]}
                 placeholderTextColor="#94a3b8"
                 multiline={field.type === 'textarea'}
               />
             );
           })}
 
-          <Text style={{ color: BRAND_COLORS.textDark, fontWeight: '700', marginBottom: 6 }}>
+          <Text style={[{ color: BRAND_COLORS.textDark, fontWeight: '700', marginBottom: 6 }, bodyTextStyle]}>
             {selectedTemplateProfile.conditionLabel}
           </Text>
           <View style={{ flexDirection: 'row', gap: 8, marginBottom: 8 }}>
@@ -2142,15 +2151,7 @@ export default function TeacherSarprasInventoryScreen() {
               onChangeText={setItemFormGoodQty}
               placeholder="Baik"
               keyboardType="numeric"
-              style={{
-                flex: 1,
-                borderWidth: 1,
-                borderColor: '#cbd5e1',
-                borderRadius: 8,
-                paddingHorizontal: 10,
-                paddingVertical: 10,
-                color: '#0f172a',
-              }}
+              style={[inputBaseStyle, inputTextStyle, { flex: 1 }]}
               placeholderTextColor="#94a3b8"
             />
             <TextInput
@@ -2158,15 +2159,7 @@ export default function TeacherSarprasInventoryScreen() {
               onChangeText={setItemFormMinorQty}
               placeholder="Rusak Ringan"
               keyboardType="numeric"
-              style={{
-                flex: 1,
-                borderWidth: 1,
-                borderColor: '#cbd5e1',
-                borderRadius: 8,
-                paddingHorizontal: 10,
-                paddingVertical: 10,
-                color: '#0f172a',
-              }}
+              style={[inputBaseStyle, inputTextStyle, { flex: 1 }]}
               placeholderTextColor="#94a3b8"
             />
             <TextInput
@@ -2174,15 +2167,7 @@ export default function TeacherSarprasInventoryScreen() {
               onChangeText={setItemFormMajorQty}
               placeholder="Rusak Berat"
               keyboardType="numeric"
-              style={{
-                flex: 1,
-                borderWidth: 1,
-                borderColor: '#cbd5e1',
-                borderRadius: 8,
-                paddingHorizontal: 10,
-                paddingVertical: 10,
-                color: '#0f172a',
-              }}
+              style={[inputBaseStyle, inputTextStyle, { flex: 1 }]}
               placeholderTextColor="#94a3b8"
             />
           </View>
@@ -2193,15 +2178,7 @@ export default function TeacherSarprasInventoryScreen() {
                   value={itemFormPurchaseDate}
                   onChangeText={setItemFormPurchaseDate}
                   placeholder="Tanggal Beli (YYYY-MM-DD)"
-                  style={{
-                    flex: 1,
-                    borderWidth: 1,
-                    borderColor: '#cbd5e1',
-                    borderRadius: 8,
-                    paddingHorizontal: 10,
-                    paddingVertical: 10,
-                    color: '#0f172a',
-                  }}
+                  style={[inputBaseStyle, inputTextStyle, { flex: 1 }]}
                   placeholderTextColor="#94a3b8"
                 />
                 <TextInput
@@ -2209,15 +2186,7 @@ export default function TeacherSarprasInventoryScreen() {
                   onChangeText={setItemFormPrice}
                   placeholder="Harga"
                   keyboardType="numeric"
-                  style={{
-                    flex: 1,
-                    borderWidth: 1,
-                    borderColor: '#cbd5e1',
-                    borderRadius: 8,
-                    paddingHorizontal: 10,
-                    paddingVertical: 10,
-                    color: '#0f172a',
-                  }}
+                  style={[inputBaseStyle, inputTextStyle, { flex: 1 }]}
                   placeholderTextColor="#94a3b8"
                 />
               </View>
@@ -2225,15 +2194,7 @@ export default function TeacherSarprasInventoryScreen() {
                 value={itemFormSource}
                 onChangeText={setItemFormSource}
                 placeholder="Sumber"
-                style={{
-                  borderWidth: 1,
-                  borderColor: '#cbd5e1',
-                  borderRadius: 8,
-                  paddingHorizontal: 10,
-                  paddingVertical: 10,
-                  color: '#0f172a',
-                  marginBottom: 8,
-                }}
+                style={[inputBaseStyle, inputTextStyle, { marginBottom: 8 }]}
                 placeholderTextColor="#94a3b8"
               />
             </>
@@ -2242,15 +2203,7 @@ export default function TeacherSarprasInventoryScreen() {
             value={itemFormDescription}
             onChangeText={setItemFormDescription}
             placeholder={selectedTemplateProfile.descriptionLabel}
-            style={{
-              borderWidth: 1,
-              borderColor: '#cbd5e1',
-              borderRadius: 8,
-              paddingHorizontal: 10,
-              paddingVertical: 10,
-              color: '#0f172a',
-              marginBottom: 10,
-            }}
+            style={[inputBaseStyle, inputTextStyle, { marginBottom: 10 }]}
             placeholderTextColor="#94a3b8"
             multiline
           />
@@ -2267,7 +2220,7 @@ export default function TeacherSarprasInventoryScreen() {
                 opacity: saveItemMutation.isPending ? 0.7 : 1,
               }}
             >
-              <Text style={{ color: '#fff', fontWeight: '700' }}>
+              <Text style={[{ color: '#fff', fontWeight: '700' }, actionTextStyle]}>
                 {saveItemMutation.isPending ? 'Menyimpan...' : editingItemId ? 'Simpan Item' : 'Tambah Item'}
               </Text>
             </Pressable>
@@ -2284,7 +2237,7 @@ export default function TeacherSarprasInventoryScreen() {
                   backgroundColor: '#fff',
                 }}
               >
-                <Text style={{ color: '#334155', fontWeight: '700' }}>Batal</Text>
+                <Text style={[{ color: '#334155', fontWeight: '700' }, actionTextStyle]}>Batal</Text>
               </Pressable>
             ) : null}
           </View>
@@ -2305,10 +2258,10 @@ export default function TeacherSarprasInventoryScreen() {
                   marginBottom: 10,
                 }}
               >
-                <Text style={{ color: BRAND_COLORS.textDark, fontWeight: '700', marginBottom: 6 }}>
+                <Text style={[{ color: BRAND_COLORS.textDark, fontWeight: '700', marginBottom: 6 }, sectionTitleTextStyle]}>
                   Pengaturan Denda Keterlambatan
                 </Text>
-                <Text style={{ color: '#64748b', fontSize: 12, marginBottom: 8 }}>
+                <Text style={[{ color: '#64748b', marginBottom: 8 }, helperTextStyle]}>
                   Status pinjaman ditentukan otomatis: saat simpan = Dipinjam, lewat tenggat = Terlambat, saat
                   dikonfirmasi kembali = Dikembalikan.
                 </Text>
@@ -2318,15 +2271,7 @@ export default function TeacherSarprasInventoryScreen() {
                     onChangeText={setLoanFinePerDayInput}
                     keyboardType="numeric"
                     placeholder="Tarif / hari (Rp)"
-                    style={{
-                      flex: 1,
-                      borderWidth: 1,
-                      borderColor: '#cbd5e1',
-                      borderRadius: 8,
-                      paddingHorizontal: 10,
-                      paddingVertical: 10,
-                      color: '#0f172a',
-                    }}
+                    style={[inputBaseStyle, inputTextStyle, { flex: 1 }]}
                     placeholderTextColor="#94a3b8"
                   />
                   <Pressable
@@ -2340,7 +2285,7 @@ export default function TeacherSarprasInventoryScreen() {
                       opacity: libraryLoanSettingsQuery.isFetching || saveLibraryLoanSettingsMutation.isPending ? 0.7 : 1,
                     }}
                   >
-                    <Text style={{ color: '#fff', fontWeight: '700', fontSize: 12 }}>
+                    <Text style={[{ color: '#fff', fontWeight: '700', fontSize: 12 }, actionTextStyle]}>
                       {saveLibraryLoanSettingsMutation.isPending ? 'Menyimpan...' : 'Simpan'}
                     </Text>
                   </Pressable>
@@ -2357,7 +2302,7 @@ export default function TeacherSarprasInventoryScreen() {
                 marginBottom: 10,
               }}
             >
-              <Text style={{ color: BRAND_COLORS.textDark, fontWeight: '700', marginBottom: 8 }}>
+              <Text style={[{ color: BRAND_COLORS.textDark, fontWeight: '700', marginBottom: 8 }, sectionTitleTextStyle]}>
                 {editingLoanId ? 'Edit Peminjaman Buku' : 'Tambah Peminjaman Buku'}
               </Text>
               <View style={{ flexDirection: 'row', gap: 8, marginBottom: 8 }}>
@@ -2365,15 +2310,7 @@ export default function TeacherSarprasInventoryScreen() {
                   value={loanBorrowDate}
                   onChangeText={setLoanBorrowDate}
                   placeholder="Tanggal Pinjam (YYYY-MM-DD) *"
-                  style={{
-                    flex: 1,
-                    borderWidth: 1,
-                    borderColor: '#cbd5e1',
-                    borderRadius: 8,
-                    paddingHorizontal: 10,
-                    paddingVertical: 10,
-                    color: '#0f172a',
-                  }}
+                  style={[inputBaseStyle, inputTextStyle, { flex: 1 }]}
                   placeholderTextColor="#94a3b8"
                 />
                 <TextInput
@@ -2381,15 +2318,7 @@ export default function TeacherSarprasInventoryScreen() {
                   onChangeText={setLoanPublishYear}
                   placeholder="Thn. Terbit"
                   keyboardType="numeric"
-                  style={{
-                    width: 130,
-                    borderWidth: 1,
-                    borderColor: '#cbd5e1',
-                    borderRadius: 8,
-                    paddingHorizontal: 10,
-                    paddingVertical: 10,
-                    color: '#0f172a',
-                  }}
+                  style={[inputBaseStyle, inputTextStyle, { width: 130 }]}
                   placeholderTextColor="#94a3b8"
                 />
               </View>
@@ -2397,15 +2326,7 @@ export default function TeacherSarprasInventoryScreen() {
                 value={loanBorrowerName}
                 onChangeText={setLoanBorrowerName}
                 placeholder="Nama Peminjam *"
-                style={{
-                  borderWidth: 1,
-                  borderColor: '#cbd5e1',
-                  borderRadius: 8,
-                  paddingHorizontal: 10,
-                  paddingVertical: 10,
-                  color: '#0f172a',
-                  marginBottom: 8,
-                }}
+                style={[inputBaseStyle, inputTextStyle, { marginBottom: 8 }]}
                 placeholderTextColor="#94a3b8"
               />
               <MobileSelectField
@@ -2448,15 +2369,7 @@ export default function TeacherSarprasInventoryScreen() {
                 value={loanBookTitle}
                 onChangeText={setLoanBookTitle}
                 placeholder="Judul Buku *"
-                style={{
-                  borderWidth: 1,
-                  borderColor: '#cbd5e1',
-                  borderRadius: 8,
-                  paddingHorizontal: 10,
-                  paddingVertical: 10,
-                  color: '#0f172a',
-                  marginBottom: 8,
-                }}
+                style={[inputBaseStyle, inputTextStyle, { marginBottom: 8 }]}
                 placeholderTextColor="#94a3b8"
               />
               <View style={{ flexDirection: 'row', gap: 8, marginBottom: 8 }}>
@@ -2464,15 +2377,7 @@ export default function TeacherSarprasInventoryScreen() {
                   value={loanReturnDate}
                   onChangeText={setLoanReturnDate}
                   placeholder="Tgl. Pengembalian (YYYY-MM-DD)"
-                  style={{
-                    flex: 1,
-                    borderWidth: 1,
-                    borderColor: '#cbd5e1',
-                    borderRadius: 8,
-                    paddingHorizontal: 10,
-                    paddingVertical: 10,
-                    color: '#0f172a',
-                  }}
+                  style={[inputBaseStyle, inputTextStyle, { flex: 1 }]}
                   placeholderTextColor="#94a3b8"
                 />
                 <TextInput
@@ -2480,19 +2385,11 @@ export default function TeacherSarprasInventoryScreen() {
                   onChangeText={setLoanPhoneNumber}
                   placeholder="No. Telpon"
                   keyboardType="phone-pad"
-                  style={{
-                    flex: 1,
-                    borderWidth: 1,
-                    borderColor: '#cbd5e1',
-                    borderRadius: 8,
-                    paddingHorizontal: 10,
-                    paddingVertical: 10,
-                    color: '#0f172a',
-                  }}
+                  style={[inputBaseStyle, inputTextStyle, { flex: 1 }]}
                   placeholderTextColor="#94a3b8"
                 />
               </View>
-              <Text style={{ color: '#64748b', fontSize: 12, marginBottom: 10 }}>
+              <Text style={[{ color: '#64748b', marginBottom: 10 }, helperTextStyle]}>
                 Status pengembalian akan mengikuti sistem otomatis.
               </Text>
 
@@ -2509,7 +2406,7 @@ export default function TeacherSarprasInventoryScreen() {
                     opacity: saveLibraryLoanMutation.isPending ? 0.7 : 1,
                   }}
                 >
-                  <Text style={{ color: '#fff', fontWeight: '700' }}>
+                  <Text style={[{ color: '#fff', fontWeight: '700' }, actionTextStyle]}>
                     {saveLibraryLoanMutation.isPending
                       ? 'Menyimpan...'
                       : editingLoanId
@@ -2530,7 +2427,7 @@ export default function TeacherSarprasInventoryScreen() {
                       backgroundColor: '#fff',
                     }}
                   >
-                    <Text style={{ color: '#334155', fontWeight: '700' }}>Batal</Text>
+                    <Text style={[{ color: '#334155', fontWeight: '700' }, actionTextStyle]}>Batal</Text>
                   </Pressable>
                 ) : null}
               </View>
@@ -2567,7 +2464,9 @@ export default function TeacherSarprasInventoryScreen() {
               marginBottom: 12,
             }}
           >
-            <Text style={{ color: BRAND_COLORS.textDark, fontWeight: '700', marginBottom: 8 }}>Kondisi Ruangan</Text>
+            <Text style={[{ color: BRAND_COLORS.textDark, fontWeight: '700', marginBottom: 8 }, sectionTitleTextStyle]}>
+              Kondisi Ruangan
+            </Text>
             <View style={{ flexDirection: 'row', flexWrap: 'wrap', marginHorizontal: -4 }}>
               {[
                 { label: 'Baik', value: roomConditionSummary.good, bg: '#dcfce7', color: '#166534' },
@@ -2584,10 +2483,10 @@ export default function TeacherSarprasInventoryScreen() {
                       alignItems: 'center',
                     }}
                   >
-                    <Text style={{ color: segment.color, fontWeight: '700', fontSize: 18 }}>
+                    <Text style={[{ color: segment.color, fontWeight: '700', fontSize: 18 }, largeMetricTextStyle]}>
                       {formatNumber(segment.value)}
                     </Text>
-                    <Text style={{ color: segment.color, fontSize: 12 }}>{segment.label}</Text>
+                    <Text style={[{ color: segment.color, fontSize: 12 }, helperTextStyle]}>{segment.label}</Text>
                   </View>
                 </View>
               ))}
@@ -2604,7 +2503,9 @@ export default function TeacherSarprasInventoryScreen() {
               marginBottom: 12,
             }}
           >
-            <Text style={{ color: BRAND_COLORS.textDark, fontWeight: '700', marginBottom: 8 }}>Kondisi Inventaris Ruang Terpilih</Text>
+            <Text style={[{ color: BRAND_COLORS.textDark, fontWeight: '700', marginBottom: 8 }, sectionTitleTextStyle]}>
+              Kondisi Inventaris Ruang Terpilih
+            </Text>
             <View style={{ flexDirection: 'row', flexWrap: 'wrap', marginHorizontal: -4 }}>
               {[
                 { label: 'Baik', value: inventorySummary.good, bg: '#dcfce7', color: '#166534' },
@@ -2621,10 +2522,10 @@ export default function TeacherSarprasInventoryScreen() {
                       alignItems: 'center',
                     }}
                   >
-                    <Text style={{ color: segment.color, fontWeight: '700', fontSize: 18 }}>
+                    <Text style={[{ color: segment.color, fontWeight: '700', fontSize: 18 }, largeMetricTextStyle]}>
                       {formatNumber(segment.value)}
                     </Text>
-                    <Text style={{ color: segment.color, fontSize: 12 }}>{segment.label}</Text>
+                    <Text style={[{ color: segment.color, fontSize: 12 }, helperTextStyle]}>{segment.label}</Text>
                   </View>
                 </View>
               ))}
@@ -2660,6 +2561,11 @@ export default function TeacherSarprasInventoryScreen() {
                   onEdit={editRoom}
                   onDelete={askDeleteRoom}
                   deletePending={deleteRoomMutation.isPending}
+                  titleTextStyle={cardTitleTextStyle}
+                  bodyTextStyle={bodyTextStyle}
+                  helperTextStyle={helperTextStyle}
+                  actionTextStyle={actionTextStyle}
+                  badgeTextStyle={smallTextStyle}
                   onPress={() => {
                     setSelectedRoomId(room.id);
                     setSection('INVENTARIS');
@@ -2678,7 +2584,7 @@ export default function TeacherSarprasInventoryScreen() {
                   marginBottom: 12,
                 }}
               >
-                <Text style={{ color: BRAND_COLORS.textMuted }}>
+                <Text style={[{ color: BRAND_COLORS.textMuted }, bodyTextStyle]}>
                   Tidak ada ruangan yang cocok dengan pencarian pada kategori ini.
                 </Text>
               </View>
@@ -2700,12 +2606,14 @@ export default function TeacherSarprasInventoryScreen() {
                 marginBottom: 12,
               }}
             >
-              <Text style={{ color: BRAND_COLORS.textDark, fontWeight: '700', fontSize: 16 }}>{selectedRoom.name}</Text>
-              <Text style={{ color: BRAND_COLORS.textMuted, marginTop: 2 }}>
+              <Text style={[{ color: BRAND_COLORS.textDark, fontWeight: '700', fontSize: 16 }, sectionTitleTextStyle]}>
+                {selectedRoom.name}
+              </Text>
+              <Text style={[{ color: BRAND_COLORS.textMuted, marginTop: 2 }, bodyTextStyle]}>
                 {selectedCategory?.name || '-'} • {selectedRoom.location || '-'}
               </Text>
               <View style={{ marginTop: 6 }}>
-                <ConditionBadge condition={selectedRoom.condition} />
+                <ConditionBadge condition={selectedRoom.condition} textStyle={smallTextStyle} />
               </View>
             </View>
           ) : (
@@ -2720,7 +2628,9 @@ export default function TeacherSarprasInventoryScreen() {
                 marginBottom: 12,
               }}
             >
-              <Text style={{ color: BRAND_COLORS.textMuted }}>Pilih ruangan terlebih dahulu dari tab Ruangan.</Text>
+              <Text style={[{ color: BRAND_COLORS.textMuted }, bodyTextStyle]}>
+                Pilih ruangan terlebih dahulu dari tab Ruangan.
+              </Text>
             </View>
           )}
 
@@ -2746,6 +2656,12 @@ export default function TeacherSarprasInventoryScreen() {
                       onEdit={editItem}
                       onDelete={askDeleteItem}
                       deletePending={deleteItemMutation.isPending}
+                      titleTextStyle={cardTitleTextStyle}
+                      bodyTextStyle={bodyTextStyle}
+                      helperTextStyle={helperTextStyle}
+                      smallTextStyle={smallTextStyle}
+                      metricTextStyle={metricTextStyle}
+                      actionTextStyle={actionTextStyle}
                     />
                   ))
                 ) : (
@@ -2760,7 +2676,7 @@ export default function TeacherSarprasInventoryScreen() {
                       marginBottom: 12,
                     }}
                   >
-                    <Text style={{ color: BRAND_COLORS.textMuted }}>
+                    <Text style={[{ color: BRAND_COLORS.textMuted }, bodyTextStyle]}>
                       Tidak ada item inventaris yang cocok untuk pencarian ini.
                     </Text>
                   </View>
@@ -2798,29 +2714,39 @@ export default function TeacherSarprasInventoryScreen() {
                 >
                   <View style={{ flexDirection: 'row', justifyContent: 'space-between', alignItems: 'flex-start', gap: 8 }}>
                     <View style={{ flex: 1 }}>
-                      <Text style={{ color: '#1d4ed8', fontWeight: '700', marginBottom: 3 }}>No. {index + 1}</Text>
-                      <Text style={{ color: BRAND_COLORS.textDark, fontWeight: '700', fontSize: 15 }}>{loan.borrowerName}</Text>
-                      <Text style={{ color: '#475569', marginTop: 2 }}>{loan.bookTitle}</Text>
+                      <Text style={[{ color: '#1d4ed8', fontWeight: '700', marginBottom: 3 }, bodyTextStyle]}>
+                        No. {index + 1}
+                      </Text>
+                      <Text style={[{ color: BRAND_COLORS.textDark, fontWeight: '700', fontSize: 15 }, cardTitleTextStyle]}>
+                        {loan.borrowerName}
+                      </Text>
+                      <Text style={[{ color: '#475569', marginTop: 2 }, bodyTextStyle]}>{loan.bookTitle}</Text>
                     </View>
-                    <ReturnStatusBadge status={status.code} />
+                    <ReturnStatusBadge status={status.code} textStyle={smallTextStyle} />
                   </View>
 
                   <View style={{ marginTop: 8 }}>
-                    <Text style={{ color: '#475569', fontSize: 12 }}>Tanggal Pinjam: {formatDateLabel(loan.borrowDate)}</Text>
-                    <Text style={{ color: '#475569', fontSize: 12 }}>
+                    <Text style={[{ color: '#475569', fontSize: 12 }, helperTextStyle]}>
+                      Tanggal Pinjam: {formatDateLabel(loan.borrowDate)}
+                    </Text>
+                    <Text style={[{ color: '#475569', fontSize: 12 }, helperTextStyle]}>
                       Status Peminjam: {resolveBorrowerStatusLabel(loan.borrowerStatus)}
                     </Text>
-                    <Text style={{ color: '#475569', fontSize: 12 }}>
+                    <Text style={[{ color: '#475569', fontSize: 12 }, helperTextStyle]}>
                       Kelas: {loan.borrowerStatus === 'STUDENT' ? resolveClassLabel(loan.class) : '-'}
                     </Text>
-                    <Text style={{ color: '#475569', fontSize: 12 }}>Thn. Terbit: {loan.publishYear || '-'}</Text>
-                    <Text style={{ color: '#475569', fontSize: 12 }}>
+                    <Text style={[{ color: '#475569', fontSize: 12 }, helperTextStyle]}>
+                      Thn. Terbit: {loan.publishYear || '-'}
+                    </Text>
+                    <Text style={[{ color: '#475569', fontSize: 12 }, helperTextStyle]}>
                       Tgl. Pengembalian: {loan.returnDate ? formatDateLabel(loan.returnDate) : '-'}
                     </Text>
-                    <Text style={{ color: '#475569', fontSize: 12 }}>No. Telpon: {loan.phoneNumber || '-'}</Text>
-                    <Text style={{ color: '#475569', fontSize: 12 }}>Status: {status.label}</Text>
+                    <Text style={[{ color: '#475569', fontSize: 12 }, helperTextStyle]}>
+                      No. Telpon: {loan.phoneNumber || '-'}
+                    </Text>
+                    <Text style={[{ color: '#475569', fontSize: 12 }, helperTextStyle]}>Status: {status.label}</Text>
                     {status.code === 'OVERDUE' ? (
-                      <Text style={{ color: '#b91c1c', fontSize: 12, fontWeight: '700' }}>
+                      <Text style={[{ color: '#b91c1c', fontSize: 12, fontWeight: '700' }, helperTextStyle]}>
                         Denda: {formatCurrency(status.fineAmount)}
                       </Text>
                     ) : null}
@@ -2859,7 +2785,7 @@ export default function TeacherSarprasInventoryScreen() {
                           backgroundColor: '#eff6ff',
                         }}
                       >
-                        <Text style={{ color: '#1d4ed8', fontWeight: '700' }}>Edit</Text>
+                        <Text style={[{ color: '#1d4ed8', fontWeight: '700' }, actionTextStyle]}>Edit</Text>
                       </Pressable>
                       <Pressable
                         onPress={() => askDeleteLibraryLoan(loan)}
@@ -2875,7 +2801,7 @@ export default function TeacherSarprasInventoryScreen() {
                           opacity: deleteLibraryLoanMutation.isPending ? 0.7 : 1,
                         }}
                       >
-                        <Text style={{ color: '#b91c1c', fontWeight: '700' }}>Hapus</Text>
+                        <Text style={[{ color: '#b91c1c', fontWeight: '700' }, actionTextStyle]}>Hapus</Text>
                       </Pressable>
                     </View>
                   ) : null}
@@ -2893,7 +2819,7 @@ export default function TeacherSarprasInventoryScreen() {
                   marginBottom: 12,
                 }}
               >
-                <Text style={{ color: BRAND_COLORS.textMuted }}>
+                <Text style={[{ color: BRAND_COLORS.textMuted }, bodyTextStyle]}>
                   Tidak ada data peminjaman buku yang cocok untuk pencarian ini.
                 </Text>
               </View>
@@ -2911,7 +2837,9 @@ export default function TeacherSarprasInventoryScreen() {
       >
         {activeSummaryId === 'categories' ? (
           <View style={{ gap: 10 }}>
-            <Text style={{ color: BRAND_COLORS.textDark, fontWeight: '700' }}>Kategori ruang aktif</Text>
+            <Text style={[{ color: BRAND_COLORS.textDark, fontWeight: '700' }, sectionTitleTextStyle]}>
+              Kategori ruang aktif
+            </Text>
             {scopedCategories.length > 0 ? (
               scopedCategories.map((category) => (
                 <View
@@ -2924,8 +2852,8 @@ export default function TeacherSarprasInventoryScreen() {
                     padding: 12,
                   }}
                 >
-                  <Text style={{ color: BRAND_COLORS.textDark, fontWeight: '700' }}>{category.name}</Text>
-                  <Text style={{ color: BRAND_COLORS.textMuted, marginTop: 3 }}>
+                  <Text style={[{ color: BRAND_COLORS.textDark, fontWeight: '700' }, bodyTextStyle]}>{category.name}</Text>
+                  <Text style={[{ color: BRAND_COLORS.textMuted, marginTop: 3 }, helperTextStyle]}>
                     {formatNumber(Number(category._count?.rooms || 0))} ruang • Template{' '}
                     {getInventoryTemplateProfile(
                       resolveInventoryTemplateKey({
@@ -2937,7 +2865,9 @@ export default function TeacherSarprasInventoryScreen() {
                 </View>
               ))
             ) : (
-              <Text style={{ color: BRAND_COLORS.textMuted }}>Belum ada kategori ruang untuk konteks ini.</Text>
+              <Text style={[{ color: BRAND_COLORS.textMuted }, bodyTextStyle]}>
+                Belum ada kategori ruang untuk konteks ini.
+              </Text>
             )}
           </View>
         ) : null}
@@ -2960,8 +2890,8 @@ export default function TeacherSarprasInventoryScreen() {
                   padding: 12,
                 }}
               >
-                <Text style={{ color: item.color, fontWeight: '700' }}>{item.label}</Text>
-                <Text style={{ color: item.color, fontSize: 20, fontWeight: '700', marginTop: 4 }}>
+                <Text style={[{ color: item.color, fontWeight: '700' }, bodyTextStyle]}>{item.label}</Text>
+                <Text style={[{ color: item.color, fontSize: 20, fontWeight: '700', marginTop: 4 }, summaryValueTextStyle]}>
                   {formatNumber(item.value)}
                 </Text>
               </View>
@@ -2971,7 +2901,7 @@ export default function TeacherSarprasInventoryScreen() {
 
         {activeSummaryId === 'items' ? (
           <View style={{ gap: 10 }}>
-            <Text style={{ color: BRAND_COLORS.textDark, fontWeight: '700' }}>
+            <Text style={[{ color: BRAND_COLORS.textDark, fontWeight: '700' }, sectionTitleTextStyle]}>
               Ringkasan kondisi item pada {selectedRoom?.name || 'ruangan terpilih'}
             </Text>
             {[
@@ -2989,8 +2919,8 @@ export default function TeacherSarprasInventoryScreen() {
                   padding: 12,
                 }}
               >
-                <Text style={{ color: BRAND_COLORS.textDark, fontWeight: '700' }}>{item.label}</Text>
-                <Text style={{ color: item.color, fontSize: 20, fontWeight: '700', marginTop: 4 }}>
+                <Text style={[{ color: BRAND_COLORS.textDark, fontWeight: '700' }, bodyTextStyle]}>{item.label}</Text>
+                <Text style={[{ color: item.color, fontSize: 20, fontWeight: '700', marginTop: 4 }, summaryValueTextStyle]}>
                   {formatNumber(item.value)}
                 </Text>
               </View>
@@ -3001,11 +2931,13 @@ export default function TeacherSarprasInventoryScreen() {
         {activeSummaryId === 'units' ? (
           <View style={{ gap: 10 }}>
             <View style={{ borderWidth: 1, borderColor: '#dbe7fb', borderRadius: 12, backgroundColor: '#f8fbff', padding: 12 }}>
-              <Text style={{ color: BRAND_COLORS.textDark, fontWeight: '700' }}>Total unit tersimpan</Text>
-              <Text style={{ color: BRAND_COLORS.blue, fontSize: 20, fontWeight: '700', marginTop: 4 }}>
+              <Text style={[{ color: BRAND_COLORS.textDark, fontWeight: '700' }, sectionTitleTextStyle]}>
+                Total unit tersimpan
+              </Text>
+              <Text style={[{ color: BRAND_COLORS.blue, fontSize: 20, fontWeight: '700', marginTop: 4 }, summaryValueTextStyle]}>
                 {formatNumber(inventorySummary.totalUnits)}
               </Text>
-              <Text style={{ color: BRAND_COLORS.textMuted, marginTop: 4 }}>
+              <Text style={[{ color: BRAND_COLORS.textMuted, marginTop: 4 }, helperTextStyle]}>
                 Tersebar di {formatNumber(inventorySummary.itemCount)} jenis item inventaris.
               </Text>
             </View>
@@ -3028,8 +2960,8 @@ export default function TeacherSarprasInventoryScreen() {
                   padding: 12,
                 }}
               >
-                <Text style={{ color: BRAND_COLORS.textDark, fontWeight: '700' }}>{item.label}</Text>
-                <Text style={{ color: item.color, fontSize: 20, fontWeight: '700', marginTop: 4 }}>
+                <Text style={[{ color: BRAND_COLORS.textDark, fontWeight: '700' }, bodyTextStyle]}>{item.label}</Text>
+                <Text style={[{ color: item.color, fontSize: 20, fontWeight: '700', marginTop: 4 }, summaryValueTextStyle]}>
                   {formatNumber(item.value)}
                 </Text>
               </View>
@@ -3053,8 +2985,8 @@ export default function TeacherSarprasInventoryScreen() {
                   padding: 12,
                 }}
               >
-                <Text style={{ color: BRAND_COLORS.textDark, fontWeight: '700' }}>{item.label}</Text>
-                <Text style={{ color: item.color, fontSize: 20, fontWeight: '700', marginTop: 4 }}>
+                <Text style={[{ color: BRAND_COLORS.textDark, fontWeight: '700' }, bodyTextStyle]}>{item.label}</Text>
+                <Text style={[{ color: item.color, fontSize: 20, fontWeight: '700', marginTop: 4 }, summaryValueTextStyle]}>
                   {formatNumber(item.value)}
                 </Text>
               </View>
