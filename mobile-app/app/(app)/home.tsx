@@ -186,6 +186,12 @@ const getEffectiveTeachingHourValue = (
   return teachingCounter > 0 ? teachingCounter : null;
 };
 
+const PASSIVE_HOME_QUERY_OPTIONS = {
+  staleTime: 5 * 60 * 1000,
+  refetchOnMount: false,
+  refetchOnReconnect: false,
+} as const;
+
 const getPeriodTimeValue = (
   config: AdminScheduleTimeConfigPayload | null | undefined,
   day: DayOfWeek,
@@ -863,7 +869,7 @@ export default function HomeScreen() {
   const activeAcademicYearQuery = useQuery({
     queryKey: ['mobile-home-active-academic-year', profile.id],
     enabled: isAuthenticated,
-    staleTime: 1000 * 60,
+    ...PASSIVE_HOME_QUERY_OPTIONS,
     queryFn: async () => {
       try {
         return await academicYearApi.getActive({ force: true, allowStaleOnError: true });
@@ -917,6 +923,7 @@ export default function HomeScreen() {
   const studentScheduleQuery = useQuery({
     queryKey: ['mobile-home-student-schedule', profile.id, activeAcademicYearQuery.data?.id, studentClassId],
     enabled: profile.role === 'STUDENT' && Boolean(activeAcademicYearQuery.data?.id) && Boolean(studentClassId),
+    ...PASSIVE_HOME_QUERY_OPTIONS,
     queryFn: () =>
       scheduleApi.list({
         academicYearId: activeAcademicYearQuery.data!.id,
@@ -926,7 +933,7 @@ export default function HomeScreen() {
   const studentScheduleTimeConfigQuery = useQuery({
     queryKey: ['mobile-home-student-schedule-time-config', activeAcademicYearQuery.data?.id],
     enabled: profile.role === 'STUDENT' && Boolean(activeAcademicYearQuery.data?.id),
-    staleTime: 1000 * 60 * 5,
+    ...PASSIVE_HOME_QUERY_OPTIONS,
     queryFn: () => adminApi.getScheduleTimeConfig(activeAcademicYearQuery.data!.id),
   });
   const studentExamsQuery = useStudentExamsQuery({
@@ -936,7 +943,7 @@ export default function HomeScreen() {
   const studentInternshipOverviewQuery = useQuery({
     queryKey: ['mobile-home-student-internship-overview', profile.id],
     enabled: isAuthenticated && profile.role === 'STUDENT',
-    staleTime: 5 * 60 * 1000,
+    ...PASSIVE_HOME_QUERY_OPTIONS,
     queryFn: () => studentInternshipApi.getMyInternship(),
   });
 
@@ -1002,7 +1009,7 @@ export default function HomeScreen() {
     enabled:
       isAuthenticated &&
       ['TEACHER', 'STUDENT', 'STAFF'].includes(profile.role),
-    staleTime: 5 * 60 * 1000,
+    ...PASSIVE_HOME_QUERY_OPTIONS,
     queryFn: () => osisApi.getActiveElection(),
   });
 
