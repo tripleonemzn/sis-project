@@ -25,6 +25,7 @@ import { headTuOfficeApi, type OfficeLetter, type OfficeLetterType } from './hea
 import { resolveStaffDivision } from './staffRole';
 import { staffApi } from './staffApi';
 import type { StaffPersonnel, StaffStudent } from './types';
+import { scaleWithAppTextScale } from '../../theme/AppTextScaleProvider';
 
 type CandidateLetterFormState = {
   issueCity: string;
@@ -251,7 +252,7 @@ function SectionCard({
         marginBottom: 14,
       }}
     >
-      <Text style={{ color: BRAND_COLORS.textDark, fontWeight: '800', fontSize: 16 }}>{title}</Text>
+      <Text style={{ color: BRAND_COLORS.textDark, fontWeight: '800', fontSize: scaleWithAppTextScale(16) }}>{title}</Text>
       {helper ? <Text style={{ color: BRAND_COLORS.textMuted, marginTop: 4 }}>{helper}</Text> : null}
       <View style={{ marginTop: 10 }}>{children}</View>
     </View>
@@ -273,7 +274,7 @@ function Field({
 }) {
   return (
     <View style={{ marginBottom: 10 }}>
-      <Text style={{ color: '#64748b', fontSize: 12, marginBottom: 4 }}>{label}</Text>
+      <Text style={{ color: '#64748b', fontSize: scaleWithAppTextScale(12), marginBottom: 4 }}>{label}</Text>
       <TextInput
         value={value}
         onChangeText={onChangeText}
@@ -372,7 +373,7 @@ function StatusChip({ status }: { status?: string | null }) {
         paddingVertical: 5,
       }}
     >
-      <Text style={{ color: meta.text, fontSize: 11, fontWeight: '700' }}>{meta.label}</Text>
+      <Text style={{ color: meta.text, fontSize: scaleWithAppTextScale(11), fontWeight: '700' }}>{meta.label}</Text>
     </View>
   );
 }
@@ -733,7 +734,7 @@ export function StaffHeadTuLettersScreen() {
   if (activeYearQuery.isError || !activeYearQuery.data) {
     return (
       <ScrollView style={{ flex: 1, backgroundColor: '#f8fafc' }} contentContainerStyle={pagePadding}>
-        <Text style={{ fontSize: 20, fontWeight: '700', marginBottom: 8, color: BRAND_COLORS.textDark }}>
+        <Text style={{ fontSize: scaleWithAppTextScale(20), fontWeight: '700', marginBottom: 8, color: BRAND_COLORS.textDark }}>
           Surat-Menyurat
         </Text>
         <QueryStateView type="error" message="Tahun ajaran aktif tidak ditemukan." onRetry={() => activeYearQuery.refetch()} />
@@ -748,7 +749,7 @@ export function StaffHeadTuLettersScreen() {
       refreshControl={<RefreshControl refreshing={false} onRefresh={() => void onRefresh()} tintColor={BRAND_COLORS.blue} />}
     >
       <View style={{ marginBottom: 16 }}>
-        <Text style={{ fontSize: 20, fontWeight: '800', color: BRAND_COLORS.textDark }}>Surat-Menyurat</Text>
+        <Text style={{ fontSize: scaleWithAppTextScale(20), fontWeight: '800', color: BRAND_COLORS.textDark }}>Surat-Menyurat</Text>
         <Text style={{ marginTop: 6, color: BRAND_COLORS.textMuted }}>
           Kelola arsip surat, finalisasi surat hasil seleksi PPDB, dan pratinjau dokumen TU langsung dari mobile.
         </Text>
@@ -811,7 +812,7 @@ export function StaffHeadTuLettersScreen() {
           </View>
           {selectedRecipient ? (
             <View style={{ marginTop: 10 }}>
-              <Text style={{ color: '#64748b', fontSize: 12 }}>
+              <Text style={{ color: '#64748b', fontSize: scaleWithAppTextScale(12) }}>
                 {selectedRecipient.username ? `@${selectedRecipient.username}` : '-'} • {selectedRecipient.primaryId || '-'}
               </Text>
             </View>
@@ -924,10 +925,10 @@ export function StaffHeadTuLettersScreen() {
                 <View style={{ flexDirection: 'row', justifyContent: 'space-between', gap: 12 }}>
                   <View style={{ flex: 1 }}>
                     <Text style={{ color: BRAND_COLORS.textDark, fontWeight: '700' }}>{item.user.name}</Text>
-                    <Text style={{ marginTop: 4, color: BRAND_COLORS.textMuted, fontSize: 12 }}>
+                    <Text style={{ marginTop: 4, color: BRAND_COLORS.textMuted, fontSize: scaleWithAppTextScale(12) }}>
                       {item.registrationNumber} • {item.user.nisn || item.user.username}
                     </Text>
-                    <Text style={{ marginTop: 6, color: BRAND_COLORS.textMuted, fontSize: 12 }}>
+                    <Text style={{ marginTop: 6, color: BRAND_COLORS.textMuted, fontSize: scaleWithAppTextScale(12) }}>
                       {item.decisionLetter?.letterNumber || 'Draft otomatis'} • {item.decisionLetter?.officialFileUrl ? 'Surat resmi tersedia' : 'Belum ada file resmi'}
                     </Text>
                   </View>
@@ -956,7 +957,7 @@ export function StaffHeadTuLettersScreen() {
               >
                 <View style={{ flexDirection: 'row', justifyContent: 'space-between', gap: 12 }}>
                   <View style={{ flex: 1 }}>
-                    <Text style={{ color: BRAND_COLORS.textDark, fontWeight: '800', fontSize: 16 }}>
+                    <Text style={{ color: BRAND_COLORS.textDark, fontWeight: '800', fontSize: scaleWithAppTextScale(16) }}>
                       {candidateDetail.user.name}
                     </Text>
                     <Text style={{ marginTop: 4, color: BRAND_COLORS.textMuted }}>
@@ -1138,10 +1139,10 @@ export function StaffHeadTuLettersScreen() {
                 <Text style={{ marginTop: 4, color: BRAND_COLORS.textMuted }}>
                   {getLetterTypeLabel(letter.type)} • {letter.recipientName}
                 </Text>
-                <Text style={{ marginTop: 4, color: BRAND_COLORS.textMuted, fontSize: 12 }}>
+                <Text style={{ marginTop: 4, color: BRAND_COLORS.textMuted, fontSize: scaleWithAppTextScale(12) }}>
                   {letter.recipientClass || letter.recipientRole || '-'} • {letter.purpose || '-'}
                 </Text>
-                <Text style={{ marginTop: 4, color: BRAND_COLORS.textMuted, fontSize: 12 }}>
+                <Text style={{ marginTop: 4, color: BRAND_COLORS.textMuted, fontSize: scaleWithAppTextScale(12) }}>
                   Dicetak {formatDateTime(letter.printedAt || letter.createdAt)}
                 </Text>
                 <View style={{ marginTop: 10 }}>

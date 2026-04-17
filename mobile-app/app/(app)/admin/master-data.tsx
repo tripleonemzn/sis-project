@@ -13,6 +13,7 @@ import { QueryStateView } from '../../../src/components/QueryStateView';
 import { BRAND_COLORS } from '../../../src/config/brand';
 import { useAuth } from '../../../src/features/auth/AuthProvider';
 import { type AdminClass, type AdminExtracurricular, type AdminMajor, type AdminSubject, type AdminSubjectCategory, type AdminTrainingClass, adminApi } from '../../../src/features/admin/adminApi';
+import { scaleLineHeightWithAppTextScale, scaleWithAppTextScale } from '../../../src/theme/AppTextScaleProvider';
 import {
   EXTRACURRICULAR_CATEGORY_OPTIONS,
   getExtracurricularCategoryLabel,
@@ -73,8 +74,8 @@ function SectionCard({
         marginBottom: 12,
       }}
     >
-      <Text style={{ color: BRAND_COLORS.textDark, fontSize: 16, fontWeight: '700' }}>{title}</Text>
-      <Text style={{ color: BRAND_COLORS.textMuted, fontSize: 12, marginTop: 2, marginBottom: 10 }}>{subtitle}</Text>
+      <Text style={{ color: BRAND_COLORS.textDark, fontSize: scaleWithAppTextScale(16), fontWeight: '700' }}>{title}</Text>
+      <Text style={{ color: BRAND_COLORS.textMuted, fontSize: scaleWithAppTextScale(12), marginTop: 2, marginBottom: 10 }}>{subtitle}</Text>
       {children}
     </View>
   );
@@ -889,7 +890,7 @@ export default function AdminMasterDataScreen() {
         >
           <Feather name="arrow-left" size={18} color={BRAND_COLORS.textDark} />
         </Pressable>
-        <Text style={{ marginLeft: 10, color: BRAND_COLORS.textDark, fontSize: 20, fontWeight: '700' }}>Master Data</Text>
+        <Text style={{ marginLeft: 10, color: BRAND_COLORS.textDark, fontSize: scaleWithAppTextScale(20), fontWeight: '700' }}>Master Data</Text>
       </View>
       <Text style={{ color: BRAND_COLORS.textMuted, marginBottom: 12 }}>{sectionMeta.description}</Text>
 
@@ -1038,7 +1039,7 @@ export default function AdminMasterDataScreen() {
                   <Text style={{ color: BRAND_COLORS.textDark, fontWeight: '700' }}>
                     {item.code} - {item.name}
                   </Text>
-                  <Text style={{ color: BRAND_COLORS.textMuted, fontSize: 12, marginBottom: 6 }}>
+                  <Text style={{ color: BRAND_COLORS.textMuted, fontSize: scaleWithAppTextScale(12), marginBottom: 6 }}>
                     {item._count?.classes || 0} kelas terhubung
                   </Text>
                   <View style={{ flexDirection: 'row', gap: 8 }}>
@@ -1053,7 +1054,7 @@ export default function AdminMasterDataScreen() {
                         paddingVertical: 6,
                       }}
                     >
-                      <Text style={{ color: '#1d4ed8', fontWeight: '700', fontSize: 12 }}>Edit</Text>
+                      <Text style={{ color: '#1d4ed8', fontWeight: '700', fontSize: scaleWithAppTextScale(12) }}>Edit</Text>
                     </Pressable>
                     <Pressable
                       onPress={() => confirmDeleteMajor(item)}
@@ -1066,7 +1067,7 @@ export default function AdminMasterDataScreen() {
                         paddingVertical: 6,
                       }}
                     >
-                      <Text style={{ color: '#b91c1c', fontWeight: '700', fontSize: 12 }}>Hapus</Text>
+                      <Text style={{ color: '#b91c1c', fontWeight: '700', fontSize: scaleWithAppTextScale(12) }}>Hapus</Text>
                     </Pressable>
                   </View>
                 </View>
@@ -1170,7 +1171,7 @@ export default function AdminMasterDataScreen() {
                   <Text style={{ color: BRAND_COLORS.textDark, fontWeight: '700' }}>
                     {item.code} - {item.name}
                   </Text>
-                  <Text style={{ color: BRAND_COLORS.textMuted, fontSize: 12, marginBottom: 6 }}>
+                  <Text style={{ color: BRAND_COLORS.textMuted, fontSize: scaleWithAppTextScale(12), marginBottom: 6 }}>
                     Jumlah mapel: {item._count?.subjects || 0}
                   </Text>
                   <View style={{ flexDirection: 'row', gap: 8 }}>
@@ -1185,7 +1186,7 @@ export default function AdminMasterDataScreen() {
                         paddingVertical: 6,
                       }}
                     >
-                      <Text style={{ color: '#1d4ed8', fontWeight: '700', fontSize: 12 }}>Edit</Text>
+                      <Text style={{ color: '#1d4ed8', fontWeight: '700', fontSize: scaleWithAppTextScale(12) }}>Edit</Text>
                     </Pressable>
                     <Pressable
                       onPress={() => confirmDeleteCategory(item)}
@@ -1198,7 +1199,7 @@ export default function AdminMasterDataScreen() {
                         paddingVertical: 6,
                       }}
                     >
-                      <Text style={{ color: '#b91c1c', fontWeight: '700', fontSize: 12 }}>Hapus</Text>
+                      <Text style={{ color: '#b91c1c', fontWeight: '700', fontSize: scaleWithAppTextScale(12) }}>Hapus</Text>
                     </Pressable>
                   </View>
                 </View>
@@ -1360,7 +1361,7 @@ export default function AdminMasterDataScreen() {
                   <Text style={{ color: BRAND_COLORS.textDark, fontWeight: '700' }}>
                     {item.code} - {item.name}
                   </Text>
-                  <Text style={{ color: BRAND_COLORS.textMuted, fontSize: 12 }}>
+                  <Text style={{ color: BRAND_COLORS.textMuted, fontSize: scaleWithAppTextScale(12) }}>
                     Kategori: {item.category?.name || '-'} | KKM X/XI/XII: {subjectKkmDisplay(item, 'X')} / {subjectKkmDisplay(item, 'XI')} / {subjectKkmDisplay(item, 'XII')}
                   </Text>
                   <View style={{ flexDirection: 'row', gap: 8, marginTop: 6 }}>
@@ -1375,7 +1376,7 @@ export default function AdminMasterDataScreen() {
                         paddingVertical: 6,
                       }}
                     >
-                      <Text style={{ color: '#1d4ed8', fontWeight: '700', fontSize: 12 }}>Edit</Text>
+                      <Text style={{ color: '#1d4ed8', fontWeight: '700', fontSize: scaleWithAppTextScale(12) }}>Edit</Text>
                     </Pressable>
                     <Pressable
                       onPress={() => confirmDeleteSubject(item)}
@@ -1388,7 +1389,7 @@ export default function AdminMasterDataScreen() {
                         paddingVertical: 6,
                       }}
                     >
-                      <Text style={{ color: '#b91c1c', fontWeight: '700', fontSize: 12 }}>Hapus</Text>
+                      <Text style={{ color: '#b91c1c', fontWeight: '700', fontSize: scaleWithAppTextScale(12) }}>Hapus</Text>
                     </Pressable>
                   </View>
                 </View>
@@ -1530,7 +1531,7 @@ export default function AdminMasterDataScreen() {
                   <Text style={{ color: BRAND_COLORS.textDark, fontWeight: '700' }}>
                     {item.name} ({item.level})
                   </Text>
-                  <Text style={{ color: BRAND_COLORS.textMuted, fontSize: 12 }}>
+                  <Text style={{ color: BRAND_COLORS.textMuted, fontSize: scaleWithAppTextScale(12) }}>
                     Jurusan: {item.major?.name || '-'} | Wali kelas: {item.teacher?.name || '-'} | Siswa: {item._count?.students || 0}
                   </Text>
                   <View style={{ flexDirection: 'row', gap: 8, marginTop: 6 }}>
@@ -1545,7 +1546,7 @@ export default function AdminMasterDataScreen() {
                         paddingVertical: 6,
                       }}
                     >
-                      <Text style={{ color: '#1d4ed8', fontWeight: '700', fontSize: 12 }}>Edit</Text>
+                      <Text style={{ color: '#1d4ed8', fontWeight: '700', fontSize: scaleWithAppTextScale(12) }}>Edit</Text>
                     </Pressable>
                     <Pressable
                       onPress={() => confirmDeleteClass(item)}
@@ -1558,7 +1559,7 @@ export default function AdminMasterDataScreen() {
                         paddingVertical: 6,
                       }}
                     >
-                      <Text style={{ color: '#b91c1c', fontWeight: '700', fontSize: 12 }}>Hapus</Text>
+                      <Text style={{ color: '#b91c1c', fontWeight: '700', fontSize: scaleWithAppTextScale(12) }}>Hapus</Text>
                     </Pressable>
                   </View>
                 </View>
@@ -1706,7 +1707,7 @@ export default function AdminMasterDataScreen() {
               {filteredTrainingClasses.slice(0, 40).map((item) => (
                 <View key={item.id} style={{ borderTopWidth: 1, borderTopColor: '#eef3ff', paddingVertical: 8 }}>
                   <Text style={{ color: BRAND_COLORS.textDark, fontWeight: '700' }}>{item.name}</Text>
-                  <Text style={{ color: BRAND_COLORS.textMuted, fontSize: 12 }}>
+                  <Text style={{ color: BRAND_COLORS.textMuted, fontSize: scaleWithAppTextScale(12) }}>
                     Tahun: {item.academicYear?.name || '-'} | Instruktur: {item.instructor?.name || '-'} | Peserta: {item._count?.enrollments || 0}
                   </Text>
                   <View style={{ flexDirection: 'row', gap: 8, marginTop: 6 }}>
@@ -1721,7 +1722,7 @@ export default function AdminMasterDataScreen() {
                         paddingVertical: 6,
                       }}
                     >
-                      <Text style={{ color: '#1d4ed8', fontWeight: '700', fontSize: 12 }}>Edit</Text>
+                      <Text style={{ color: '#1d4ed8', fontWeight: '700', fontSize: scaleWithAppTextScale(12) }}>Edit</Text>
                     </Pressable>
                     <Pressable
                       onPress={() => confirmDeleteTrainingClass(item)}
@@ -1734,7 +1735,7 @@ export default function AdminMasterDataScreen() {
                         paddingVertical: 6,
                       }}
                     >
-                      <Text style={{ color: '#b91c1c', fontWeight: '700', fontSize: 12 }}>Hapus</Text>
+                      <Text style={{ color: '#b91c1c', fontWeight: '700', fontSize: scaleWithAppTextScale(12) }}>Hapus</Text>
                     </Pressable>
                   </View>
                 </View>
@@ -1835,10 +1836,10 @@ export default function AdminMasterDataScreen() {
               {filteredExtracurriculars.slice(0, 40).map((item) => (
                 <View key={item.id} style={{ borderTopWidth: 1, borderTopColor: '#eef3ff', paddingVertical: 8 }}>
                   <Text style={{ color: BRAND_COLORS.textDark, fontWeight: '700' }}>{item.name}</Text>
-                  <Text style={{ color: '#475569', fontSize: 12, marginTop: 2 }}>
+                  <Text style={{ color: '#475569', fontSize: scaleWithAppTextScale(12), marginTop: 2 }}>
                     Kategori: {getExtracurricularCategoryLabel(item.category)}
                   </Text>
-                  <Text style={{ color: BRAND_COLORS.textMuted, fontSize: 12 }}>
+                  <Text style={{ color: BRAND_COLORS.textMuted, fontSize: scaleWithAppTextScale(12) }}>
                     Pembina aktif: {item.tutorAssignments?.length || 0}
                   </Text>
                   <View style={{ flexDirection: 'row', gap: 8, marginTop: 6 }}>
@@ -1853,7 +1854,7 @@ export default function AdminMasterDataScreen() {
                         paddingVertical: 6,
                       }}
                     >
-                      <Text style={{ color: '#1d4ed8', fontWeight: '700', fontSize: 12 }}>Edit</Text>
+                      <Text style={{ color: '#1d4ed8', fontWeight: '700', fontSize: scaleWithAppTextScale(12) }}>Edit</Text>
                     </Pressable>
                     <Pressable
                       onPress={() => confirmDeleteExtracurricular(item)}
@@ -1866,7 +1867,7 @@ export default function AdminMasterDataScreen() {
                         paddingVertical: 6,
                       }}
                     >
-                      <Text style={{ color: '#b91c1c', fontWeight: '700', fontSize: 12 }}>Hapus</Text>
+                      <Text style={{ color: '#b91c1c', fontWeight: '700', fontSize: scaleWithAppTextScale(12) }}>Hapus</Text>
                     </Pressable>
                   </View>
                 </View>
@@ -1894,7 +1895,7 @@ export default function AdminMasterDataScreen() {
             <Text style={{ color: BRAND_COLORS.textDark, fontWeight: '700', marginBottom: 6 }}>
               Total jurusan: {majors.length}
             </Text>
-            <Text style={{ color: BRAND_COLORS.textMuted, lineHeight: 20, marginBottom: 12 }}>
+            <Text style={{ color: BRAND_COLORS.textMuted, lineHeight: scaleLineHeightWithAppTextScale(20), marginBottom: 12 }}>
               Gunakan daftar ini untuk memeriksa jurusan yang sudah aktif di master data.
             </Text>
             {majors.slice(0, 8).map((item) => (
@@ -1915,7 +1916,7 @@ export default function AdminMasterDataScreen() {
             <Text style={{ color: BRAND_COLORS.textDark, fontWeight: '700', marginBottom: 6 }}>
               Total mata pelajaran: {subjects.length}
             </Text>
-            <Text style={{ color: BRAND_COLORS.textMuted, lineHeight: 20, marginBottom: 12 }}>
+            <Text style={{ color: BRAND_COLORS.textMuted, lineHeight: scaleLineHeightWithAppTextScale(20), marginBottom: 12 }}>
               Ringkasan ini menampilkan beberapa mapel awal yang sudah tersusun pada master data.
             </Text>
             {subjects.slice(0, 8).map((item) => (
@@ -1926,7 +1927,7 @@ export default function AdminMasterDataScreen() {
                 <Text style={{ color: BRAND_COLORS.textDark, fontWeight: '700' }}>
                   {item.code} - {item.name}
                 </Text>
-                <Text style={{ color: BRAND_COLORS.textMuted, fontSize: 12, marginTop: 3 }}>
+                <Text style={{ color: BRAND_COLORS.textMuted, fontSize: scaleWithAppTextScale(12), marginTop: 3 }}>
                   Kategori: {item.category?.name || '-'}
                 </Text>
               </View>
@@ -1939,7 +1940,7 @@ export default function AdminMasterDataScreen() {
             <Text style={{ color: BRAND_COLORS.textDark, fontWeight: '700', marginBottom: 6 }}>
               Total kelas aktif: {classes.length}
             </Text>
-            <Text style={{ color: BRAND_COLORS.textMuted, lineHeight: 20, marginBottom: 12 }}>
+            <Text style={{ color: BRAND_COLORS.textMuted, lineHeight: scaleLineHeightWithAppTextScale(20), marginBottom: 12 }}>
               Detail ini membantu memeriksa kelas yang sudah tersedia pada tahun ajaran aktif.
             </Text>
             {classes.slice(0, 8).map((item) => (
@@ -1948,7 +1949,7 @@ export default function AdminMasterDataScreen() {
                 style={{ borderWidth: 1, borderColor: '#e2e8f0', borderRadius: 12, padding: 10, marginBottom: 8 }}
               >
                 <Text style={{ color: BRAND_COLORS.textDark, fontWeight: '700' }}>{item.name}</Text>
-                <Text style={{ color: BRAND_COLORS.textMuted, fontSize: 12, marginTop: 3 }}>
+                <Text style={{ color: BRAND_COLORS.textMuted, fontSize: scaleWithAppTextScale(12), marginTop: 3 }}>
                   {item.level} • {item.major?.name || '-'}
                 </Text>
               </View>
@@ -1961,7 +1962,7 @@ export default function AdminMasterDataScreen() {
             <Text style={{ color: BRAND_COLORS.textDark, fontWeight: '700', marginBottom: 6 }}>
               Total kategori mapel: {categories.length}
             </Text>
-            <Text style={{ color: BRAND_COLORS.textMuted, lineHeight: 20, marginBottom: 12 }}>
+            <Text style={{ color: BRAND_COLORS.textMuted, lineHeight: scaleLineHeightWithAppTextScale(20), marginBottom: 12 }}>
               Kategori ini dipakai untuk mengelompokkan mapel dan mendukung struktur kurikulum.
             </Text>
             {categories.slice(0, 8).map((item) => (

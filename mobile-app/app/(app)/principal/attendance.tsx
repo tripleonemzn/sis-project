@@ -18,6 +18,7 @@ import { AttendanceRecapPayload } from '../../../src/features/attendanceRecap/ty
 import { getStandardPagePadding } from '../../../src/lib/ui/pageLayout';
 import { offlineCache } from '../../../src/lib/storage/offlineCache';
 import { CACHE_MAX_SNAPSHOTS_PER_FEATURE, CACHE_TTL_MS } from '../../../src/config/cache';
+import { scaleWithAppTextScale } from '../../../src/theme/AppTextScaleProvider';
 
 function defaultSemesterByDate(): 'ODD' | 'EVEN' {
   const month = new Date().getMonth() + 1;
@@ -141,7 +142,7 @@ export default function PrincipalAttendanceScreen() {
   if (user?.role !== 'PRINCIPAL') {
     return (
       <ScrollView style={{ flex: 1, backgroundColor: '#f8fafc' }} contentContainerStyle={pagePadding}>
-        <Text style={{ fontSize: 20, fontWeight: '700', marginBottom: 8 }}>Rekap Absensi</Text>
+        <Text style={{ fontSize: scaleWithAppTextScale(20), fontWeight: '700', marginBottom: 8 }}>Rekap Absensi</Text>
         <QueryStateView type="error" message="Halaman ini khusus untuk role kepala sekolah." />
         <Pressable
           onPress={() => router.replace('/home')}
@@ -174,7 +175,7 @@ export default function PrincipalAttendanceScreen() {
         />
       }
     >
-      <Text style={{ fontSize: 20, fontWeight: '700', marginBottom: 6, color: BRAND_COLORS.textDark }}>Rekap Absensi</Text>
+      <Text style={{ fontSize: scaleWithAppTextScale(20), fontWeight: '700', marginBottom: 6, color: BRAND_COLORS.textDark }}>Rekap Absensi</Text>
       <Text style={{ color: BRAND_COLORS.textMuted, marginBottom: 12 }}>
         Monitoring kehadiran siswa per kelas
         {activeYearQuery.data?.name ? ` • ${activeYearQuery.data.name}` : ''}.
@@ -252,7 +253,7 @@ export default function PrincipalAttendanceScreen() {
             marginBottom: 12,
           }}
         >
-          <Text style={{ color: BRAND_COLORS.textDark, fontWeight: '700', fontSize: 16 }}>{selectedClass.name}</Text>
+          <Text style={{ color: BRAND_COLORS.textDark, fontWeight: '700', fontSize: scaleWithAppTextScale(16) }}>{selectedClass.name}</Text>
           <Text style={{ color: BRAND_COLORS.textMuted, marginTop: 2 }}>
             {selectedClass.major?.name || '-'} • Wali: {selectedClass.teacher?.name || '-'}
           </Text>
@@ -340,7 +341,7 @@ export default function PrincipalAttendanceScreen() {
                   }}
                 >
                   <Text style={{ color: BRAND_COLORS.textDark, fontWeight: '700', marginBottom: 3 }}>{row.student.name}</Text>
-                  <Text style={{ color: '#64748b', fontSize: 12, marginBottom: 8 }}>
+                  <Text style={{ color: '#64748b', fontSize: scaleWithAppTextScale(12), marginBottom: 8 }}>
                     NIS: {row.student.nis || '-'} • NISN: {row.student.nisn || '-'}
                   </Text>
                   <View style={{ flexDirection: 'row', flexWrap: 'wrap', marginHorizontal: -3 }}>
@@ -362,7 +363,7 @@ export default function PrincipalAttendanceScreen() {
                             alignItems: 'center',
                           }}
                         >
-                          <Text style={{ color: '#64748b', fontSize: 10 }}>{item.label}</Text>
+                          <Text style={{ color: '#64748b', fontSize: scaleWithAppTextScale(10) }}>{item.label}</Text>
                           <Text style={{ color: item.color, fontWeight: '700' }}>{item.value}</Text>
                         </View>
                       </View>
@@ -429,9 +430,9 @@ export default function PrincipalAttendanceScreen() {
                 backgroundColor: '#f8fbff',
               }}
             >
-              <Text style={{ color: '#64748b', fontSize: 11, marginBottom: 4 }}>{item.label}</Text>
-              <Text style={{ color: BRAND_COLORS.textDark, fontWeight: '700', fontSize: 18 }}>{item.value}</Text>
-              <Text style={{ color: BRAND_COLORS.textMuted, fontSize: 11, marginTop: 3 }}>{item.note}</Text>
+              <Text style={{ color: '#64748b', fontSize: scaleWithAppTextScale(11), marginBottom: 4 }}>{item.label}</Text>
+              <Text style={{ color: BRAND_COLORS.textDark, fontWeight: '700', fontSize: scaleWithAppTextScale(18) }}>{item.value}</Text>
+              <Text style={{ color: BRAND_COLORS.textMuted, fontSize: scaleWithAppTextScale(11), marginTop: 3 }}>{item.note}</Text>
             </View>
           ))}
           <View
@@ -444,7 +445,7 @@ export default function PrincipalAttendanceScreen() {
               backgroundColor: '#fff',
             }}
           >
-            <Text style={{ color: '#64748b', fontSize: 11, marginBottom: 4 }}>Konteks Aktif</Text>
+            <Text style={{ color: '#64748b', fontSize: scaleWithAppTextScale(11), marginBottom: 4 }}>Konteks Aktif</Text>
             <Text style={{ color: BRAND_COLORS.textDark, fontWeight: '600' }}>
               Kelas: {selectedClass?.name || 'Belum dipilih'}
             </Text>

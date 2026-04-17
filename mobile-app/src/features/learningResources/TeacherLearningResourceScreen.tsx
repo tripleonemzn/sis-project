@@ -16,6 +16,7 @@ import { notifyApiError, notifyInfo, notifySuccess } from '../../lib/ui/feedback
 import { academicYearApi } from '../academicYear/academicYearApi';
 import { useAuth } from '../auth/AuthProvider';
 import { useTeacherAssignmentsQuery } from '../teacherAssignments/useTeacherAssignmentsQuery';
+import { scaleWithAppTextScale } from '../../theme/AppTextScaleProvider';
 import {
   buildTeacherAssignmentOptionLabel,
   filterRegularTeacherAssignments,
@@ -137,7 +138,7 @@ const INPUT_BASE_STYLE = {
   paddingHorizontal: 10,
   paddingVertical: 9,
   color: BRAND_COLORS.textDark,
-  fontSize: 13,
+  fontSize: scaleWithAppTextScale(13),
 } as const;
 
 function formatDateTime(value?: string | null) {
@@ -653,7 +654,7 @@ export function TeacherLearningResourceScreen({ section }: { section: LearningRe
   if (user?.role !== 'TEACHER') {
     return (
       <ScrollView style={{ flex: 1, backgroundColor: '#f8fafc' }} contentContainerStyle={pagePadding}>
-        <Text style={{ fontSize: 20, fontWeight: '700', marginBottom: 8 }}>{config.title}</Text>
+        <Text style={{ fontSize: scaleWithAppTextScale(20), fontWeight: '700', marginBottom: 8 }}>{config.title}</Text>
         <QueryStateView type="error" message="Halaman ini khusus untuk role guru." />
       </ScrollView>
     );
@@ -702,7 +703,7 @@ export function TeacherLearningResourceScreen({ section }: { section: LearningRe
           <Feather name={config.icon} size={18} color="#e2e8f0" />
         </View>
         <View style={{ flex: 1 }}>
-          <Text style={{ color: '#fff', fontSize: 20, fontWeight: '700' }}>{config.title}</Text>
+          <Text style={{ color: '#fff', fontSize: scaleWithAppTextScale(20), fontWeight: '700' }}>{config.title}</Text>
           <Text style={{ color: '#dbeafe', marginTop: 2 }}>{config.subtitle}</Text>
         </View>
       </View>
@@ -811,7 +812,7 @@ export function TeacherLearningResourceScreen({ section }: { section: LearningRe
             marginBottom: 10,
           }}
         >
-          <Text style={{ color: '#64748b', fontSize: 12 }}>Konteks Aktif</Text>
+          <Text style={{ color: '#64748b', fontSize: scaleWithAppTextScale(12) }}>Konteks Aktif</Text>
           <Text style={{ color: BRAND_COLORS.textDark, fontWeight: '700', marginTop: 2 }}>
             {selectedAssignment.subject.name} - {selectedAssignment.class.name}
           </Text>
@@ -861,7 +862,7 @@ export function TeacherLearningResourceScreen({ section }: { section: LearningRe
               Isi elemen + teks CP, generate analisis otomatis, lalu simpan ke dokumen.
             </Text>
 
-            <Text style={{ color: '#64748b', fontSize: 12, marginBottom: 4 }}>Elemen CP</Text>
+            <Text style={{ color: '#64748b', fontSize: scaleWithAppTextScale(12), marginBottom: 4 }}>Elemen CP</Text>
             <TextInput
               value={cpElement}
               onChangeText={setCpElement}
@@ -870,7 +871,7 @@ export function TeacherLearningResourceScreen({ section }: { section: LearningRe
               style={INPUT_BASE_STYLE}
             />
 
-            <Text style={{ color: '#64748b', fontSize: 12, marginBottom: 4, marginTop: 10 }}>Teks CP</Text>
+            <Text style={{ color: '#64748b', fontSize: scaleWithAppTextScale(12), marginBottom: 4, marginTop: 10 }}>Teks CP</Text>
             <TextInput
               value={cpText}
               onChangeText={setCpText}
@@ -938,7 +939,7 @@ export function TeacherLearningResourceScreen({ section }: { section: LearningRe
                       </Pressable>
                     </View>
 
-                    <Text style={{ color: '#64748b', fontSize: 12, marginBottom: 3, marginTop: 8 }}>Kompetensi</Text>
+                    <Text style={{ color: '#64748b', fontSize: scaleWithAppTextScale(12), marginBottom: 3, marginTop: 8 }}>Kompetensi</Text>
                     <TextInput
                       value={item.competency}
                       onChangeText={(value) => updateCpItem(item.id, 'competency', value)}
@@ -947,7 +948,7 @@ export function TeacherLearningResourceScreen({ section }: { section: LearningRe
                       style={INPUT_BASE_STYLE}
                     />
 
-                    <Text style={{ color: '#64748b', fontSize: 12, marginBottom: 3, marginTop: 8 }}>Materi/Konten</Text>
+                    <Text style={{ color: '#64748b', fontSize: scaleWithAppTextScale(12), marginBottom: 3, marginTop: 8 }}>Materi/Konten</Text>
                     <TextInput
                       value={item.material}
                       onChangeText={(value) => updateCpItem(item.id, 'material', value)}
@@ -956,7 +957,7 @@ export function TeacherLearningResourceScreen({ section }: { section: LearningRe
                       style={INPUT_BASE_STYLE}
                     />
 
-                    <Text style={{ color: '#64748b', fontSize: 12, marginBottom: 3, marginTop: 8 }}>Tujuan Pembelajaran</Text>
+                    <Text style={{ color: '#64748b', fontSize: scaleWithAppTextScale(12), marginBottom: 3, marginTop: 8 }}>Tujuan Pembelajaran</Text>
                     <TextInput
                       value={item.tp}
                       onChangeText={(value) => updateCpItem(item.id, 'tp', value)}
@@ -972,7 +973,7 @@ export function TeacherLearningResourceScreen({ section }: { section: LearningRe
                       ]}
                     />
 
-                    <Text style={{ color: '#64748b', fontSize: 12, marginBottom: 4, marginTop: 8 }}>Profil Lulusan</Text>
+                    <Text style={{ color: '#64748b', fontSize: scaleWithAppTextScale(12), marginBottom: 4, marginTop: 8 }}>Profil Lulusan</Text>
                     <View style={{ flexDirection: 'row', flexWrap: 'wrap', gap: 6 }}>
                       {PROFILE_DIMENSIONS.map((profile) => {
                         const selected = item.profiles.includes(profile);
@@ -989,7 +990,7 @@ export function TeacherLearningResourceScreen({ section }: { section: LearningRe
                               paddingVertical: 6,
                             }}
                           >
-                            <Text style={{ color: selected ? BRAND_COLORS.navy : '#475569', fontSize: 11, fontWeight: '600' }}>
+                            <Text style={{ color: selected ? BRAND_COLORS.navy : '#475569', fontSize: scaleWithAppTextScale(11), fontWeight: '600' }}>
                               {profile}
                             </Text>
                           </Pressable>
@@ -1055,7 +1056,7 @@ export function TeacherLearningResourceScreen({ section }: { section: LearningRe
               Digunakan untuk informasi penandatangan dokumen hasil analisis.
             </Text>
 
-            <Text style={{ color: '#64748b', fontSize: 12, marginBottom: 4 }}>Nama Kepala Sekolah</Text>
+            <Text style={{ color: '#64748b', fontSize: scaleWithAppTextScale(12), marginBottom: 4 }}>Nama Kepala Sekolah</Text>
             <TextInput
               value={principalName}
               onChangeText={setPrincipalName}
@@ -1064,7 +1065,7 @@ export function TeacherLearningResourceScreen({ section }: { section: LearningRe
               style={INPUT_BASE_STYLE}
             />
 
-            <Text style={{ color: '#64748b', fontSize: 12, marginBottom: 4, marginTop: 10 }}>Titimangsa</Text>
+            <Text style={{ color: '#64748b', fontSize: scaleWithAppTextScale(12), marginBottom: 4, marginTop: 10 }}>Titimangsa</Text>
             <TextInput
               value={titimangsa}
               onChangeText={setTitimangsa}
@@ -1091,7 +1092,7 @@ export function TeacherLearningResourceScreen({ section }: { section: LearningRe
               </Text>
             </Pressable>
 
-            <Text style={{ color: '#64748b', fontSize: 12, marginTop: 8 }}>
+            <Text style={{ color: '#64748b', fontSize: scaleWithAppTextScale(12), marginTop: 8 }}>
               Terakhir tersimpan: {cpSummary.updatedAt ? formatDateTime(cpSummary.updatedAt) : '-'}
             </Text>
           </View>
@@ -1155,16 +1156,16 @@ export function TeacherLearningResourceScreen({ section }: { section: LearningRe
                   <Text style={{ color: '#475569', marginTop: 4 }} numberOfLines={4}>
                     {row.cpText || '-'}
                   </Text>
-                  <Text style={{ color: '#64748b', marginTop: 6, fontSize: 12 }}>Item Analisis: {row.items.length}</Text>
+                  <Text style={{ color: '#64748b', marginTop: 6, fontSize: scaleWithAppTextScale(12) }}>Item Analisis: {row.items.length}</Text>
                   {row.items.slice(0, 3).map((item) => (
                     <View key={item.id} style={{ marginTop: 4 }}>
-                      <Text style={{ color: '#0f172a', fontSize: 12, fontWeight: '600' }}>
+                      <Text style={{ color: '#0f172a', fontSize: scaleWithAppTextScale(12), fontWeight: '600' }}>
                         • {item.tp || `${item.competency} ${item.material}`.trim() || 'TP belum diisi'}
                       </Text>
                     </View>
                   ))}
                   {row.items.length > 3 ? (
-                    <Text style={{ color: '#64748b', fontSize: 12, marginTop: 4 }}>+{row.items.length - 3} item lainnya</Text>
+                    <Text style={{ color: '#64748b', fontSize: scaleWithAppTextScale(12), marginTop: 4 }}>+{row.items.length - 3} item lainnya</Text>
                   ) : null}
                 </View>
               ))

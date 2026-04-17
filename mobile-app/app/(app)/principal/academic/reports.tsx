@@ -9,6 +9,7 @@ import { BRAND_COLORS } from '../../../../src/config/brand';
 import { useAuth } from '../../../../src/features/auth/AuthProvider';
 import { usePrincipalOverviewQuery } from '../../../../src/features/principal/usePrincipalOverviewQuery';
 import { getStandardPagePadding } from '../../../../src/lib/ui/pageLayout';
+import { scaleWithAppTextScale } from '../../../../src/theme/AppTextScaleProvider';
 
 function defaultSemesterByDate(): 'ODD' | 'EVEN' {
   const month = new Date().getMonth() + 1;
@@ -45,7 +46,7 @@ export default function PrincipalAcademicReportsScreen() {
   if (user?.role !== 'PRINCIPAL') {
     return (
       <ScrollView style={{ flex: 1, backgroundColor: '#f8fafc' }} contentContainerStyle={pagePadding}>
-        <Text style={{ fontSize: 20, fontWeight: '700', marginBottom: 8 }}>Rapor & Ranking</Text>
+        <Text style={{ fontSize: scaleWithAppTextScale(20), fontWeight: '700', marginBottom: 8 }}>Rapor & Ranking</Text>
         <QueryStateView type="error" message="Halaman ini khusus untuk role kepala sekolah." />
       </ScrollView>
     );
@@ -62,7 +63,7 @@ export default function PrincipalAcademicReportsScreen() {
         />
       }
     >
-      <Text style={{ fontSize: 20, fontWeight: '700', color: BRAND_COLORS.textDark, marginBottom: 6 }}>
+      <Text style={{ fontSize: scaleWithAppTextScale(20), fontWeight: '700', color: BRAND_COLORS.textDark, marginBottom: 6 }}>
         Rapor & Ranking
       </Text>
       <Text style={{ color: BRAND_COLORS.textMuted, marginBottom: 12 }}>
@@ -135,8 +136,8 @@ export default function PrincipalAcademicReportsScreen() {
                   padding: 10,
                 }}
               >
-                <Text style={{ color: '#64748b', fontSize: 11, marginBottom: 3 }}>Rata-rata Sekolah</Text>
-                <Text style={{ color: BRAND_COLORS.textDark, fontWeight: '700', fontSize: 18 }}>
+                <Text style={{ color: '#64748b', fontSize: scaleWithAppTextScale(11), marginBottom: 3 }}>Rata-rata Sekolah</Text>
+                <Text style={{ color: BRAND_COLORS.textDark, fontWeight: '700', fontSize: scaleWithAppTextScale(18) }}>
                   {academicSummary.schoolAverage.toFixed(2)}
                 </Text>
               </View>
@@ -151,8 +152,8 @@ export default function PrincipalAcademicReportsScreen() {
                   padding: 10,
                 }}
               >
-                <Text style={{ color: '#64748b', fontSize: 11, marginBottom: 3 }}>Siswa Aktif Sistem</Text>
-                <Text style={{ color: BRAND_COLORS.textDark, fontWeight: '700', fontSize: 18 }}>
+                <Text style={{ color: '#64748b', fontSize: scaleWithAppTextScale(11), marginBottom: 3 }}>Siswa Aktif Sistem</Text>
+                <Text style={{ color: BRAND_COLORS.textDark, fontWeight: '700', fontSize: scaleWithAppTextScale(18) }}>
                   {dashboard?.totals.students || 0}
                 </Text>
               </View>
@@ -167,8 +168,8 @@ export default function PrincipalAcademicReportsScreen() {
                   padding: 10,
                 }}
               >
-                <Text style={{ color: '#64748b', fontSize: 11, marginBottom: 3 }}>Siswa dengan Data Nilai</Text>
-                <Text style={{ color: BRAND_COLORS.textDark, fontWeight: '700', fontSize: 18 }}>
+                <Text style={{ color: '#64748b', fontSize: scaleWithAppTextScale(11), marginBottom: 3 }}>Siswa dengan Data Nilai</Text>
+                <Text style={{ color: BRAND_COLORS.textDark, fontWeight: '700', fontSize: scaleWithAppTextScale(18) }}>
                   {academicSummary.totalStudents}
                 </Text>
               </View>
@@ -183,8 +184,8 @@ export default function PrincipalAcademicReportsScreen() {
                   padding: 10,
                 }}
               >
-                <Text style={{ color: '#64748b', fontSize: 11, marginBottom: 3 }}>Kompetensi Keahlian</Text>
-                <Text style={{ color: BRAND_COLORS.textDark, fontWeight: '700', fontSize: 18 }}>
+                <Text style={{ color: '#64748b', fontSize: scaleWithAppTextScale(11), marginBottom: 3 }}>Kompetensi Keahlian</Text>
+                <Text style={{ color: BRAND_COLORS.textDark, fontWeight: '700', fontSize: scaleWithAppTextScale(18) }}>
                   {academicSummary.totalMajors}
                 </Text>
               </View>
@@ -211,7 +212,7 @@ export default function PrincipalAcademicReportsScreen() {
                   <Text style={{ color: BRAND_COLORS.textDark, fontWeight: '700' }}>
                     #{index + 1} {student.name}
                   </Text>
-                  <Text style={{ color: BRAND_COLORS.textMuted, fontSize: 12, marginTop: 3 }}>
+                  <Text style={{ color: BRAND_COLORS.textMuted, fontSize: scaleWithAppTextScale(12), marginTop: 3 }}>
                     {student.class?.name || '-'} • {student.major?.code || student.major?.name || '-'}
                   </Text>
                   <Text style={{ color: BRAND_COLORS.navy, fontWeight: '700', marginTop: 4 }}>
@@ -255,7 +256,7 @@ export default function PrincipalAcademicReportsScreen() {
                   <Text style={{ color: BRAND_COLORS.textDark, fontWeight: '700' }}>
                     {major.name} {major.code ? `(${major.code})` : ''}
                   </Text>
-                  <Text style={{ color: BRAND_COLORS.textMuted, fontSize: 12, marginTop: 4 }}>
+                  <Text style={{ color: BRAND_COLORS.textMuted, fontSize: scaleWithAppTextScale(12), marginTop: 4 }}>
                     Siswa {major.totalStudents} • Kelas {major.totalClasses}
                   </Text>
                 </View>
@@ -296,7 +297,7 @@ export default function PrincipalAcademicReportsScreen() {
                   <Text style={{ color: BRAND_COLORS.textDark, fontWeight: '700' }}>
                     {major.name} {major.code ? `(${major.code})` : ''}
                   </Text>
-                  <Text style={{ color: BRAND_COLORS.textMuted, fontSize: 12, marginTop: 4 }}>
+                  <Text style={{ color: BRAND_COLORS.textMuted, fontSize: scaleWithAppTextScale(12), marginTop: 4 }}>
                     Total siswa {major.totalStudents} • Rata-rata {Number(major.averageScore || 0).toFixed(2)}
                   </Text>
                 </View>

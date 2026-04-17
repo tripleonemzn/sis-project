@@ -10,6 +10,7 @@ import { academicYearApi } from '../../../../src/features/academicYear/academicY
 import { useAuth } from '../../../../src/features/auth/AuthProvider';
 import { osisApi } from '../../../../src/features/osis/osisApi';
 import { getStandardPagePadding } from '../../../../src/lib/ui/pageLayout';
+import { scaleWithAppTextScale } from '../../../../src/theme/AppTextScaleProvider';
 
 function formatDateTime(value?: string | null) {
   if (!value) return '-';
@@ -97,7 +98,7 @@ export default function PrincipalMonitoringOsisScreen() {
   if (user?.role !== 'PRINCIPAL') {
     return (
       <ScrollView style={{ flex: 1, backgroundColor: '#f8fafc' }} contentContainerStyle={pagePadding}>
-        <Text style={{ fontSize: 20, fontWeight: '700', marginBottom: 8 }}>Pemilihan OSIS</Text>
+        <Text style={{ fontSize: scaleWithAppTextScale(20), fontWeight: '700', marginBottom: 8 }}>Pemilihan OSIS</Text>
         <QueryStateView type="error" message="Halaman ini khusus untuk role kepala sekolah." />
       </ScrollView>
     );
@@ -125,7 +126,7 @@ export default function PrincipalMonitoringOsisScreen() {
         />
       }
     >
-      <Text style={{ fontSize: 20, fontWeight: '700', color: BRAND_COLORS.textDark, marginBottom: 6 }}>
+      <Text style={{ fontSize: scaleWithAppTextScale(20), fontWeight: '700', color: BRAND_COLORS.textDark, marginBottom: 6 }}>
         Pemilihan OSIS
       </Text>
       <Text style={{ color: BRAND_COLORS.textMuted, marginBottom: 12 }}>
@@ -156,9 +157,9 @@ export default function PrincipalMonitoringOsisScreen() {
                 padding: 10,
               }}
             >
-              <Text style={{ color: '#64748b', fontSize: 11 }}>{String(title)}</Text>
-              <Text style={{ color: BRAND_COLORS.textDark, fontWeight: '700', fontSize: 20, marginTop: 5 }}>{Number(value)}</Text>
-              <Text style={{ color: BRAND_COLORS.textMuted, fontSize: 11, marginTop: 4 }}>{String(subtitle)}</Text>
+              <Text style={{ color: '#64748b', fontSize: scaleWithAppTextScale(11) }}>{String(title)}</Text>
+              <Text style={{ color: BRAND_COLORS.textDark, fontWeight: '700', fontSize: scaleWithAppTextScale(20), marginTop: 5 }}>{Number(value)}</Text>
+              <Text style={{ color: BRAND_COLORS.textMuted, fontSize: scaleWithAppTextScale(11), marginTop: 4 }}>{String(subtitle)}</Text>
             </View>
           </View>
         ))}
@@ -192,10 +193,10 @@ export default function PrincipalMonitoringOsisScreen() {
                 }}
               >
                 <Text style={{ color: BRAND_COLORS.textDark, fontWeight: '700' }}>{period.title || `Periode #${period.id}`}</Text>
-                <Text style={{ color: BRAND_COLORS.textMuted, fontSize: 12, marginTop: 3 }}>
+                <Text style={{ color: BRAND_COLORS.textMuted, fontSize: scaleWithAppTextScale(12), marginTop: 3 }}>
                   {formatDateTime(period.startAt)} - {formatDateTime(period.endAt)}
                 </Text>
-                <Text style={{ color: active ? BRAND_COLORS.navy : BRAND_COLORS.textMuted, fontSize: 12, marginTop: 4 }}>
+                <Text style={{ color: active ? BRAND_COLORS.navy : BRAND_COLORS.textMuted, fontSize: scaleWithAppTextScale(12), marginTop: 4 }}>
                   Status {period.status || '-'}
                 </Text>
               </Pressable>
@@ -217,16 +218,16 @@ export default function PrincipalMonitoringOsisScreen() {
         }}
       >
         <Text style={{ color: BRAND_COLORS.textDark, fontWeight: '700', marginBottom: 8 }}>Kesiapan Program Kerja OSIS</Text>
-        <Text style={{ color: BRAND_COLORS.textMuted, fontSize: 12 }}>
+        <Text style={{ color: BRAND_COLORS.textMuted, fontSize: scaleWithAppTextScale(12) }}>
           {readinessQuery.data?.message || 'Belum ada status kesiapan program kerja OSIS.'}
         </Text>
         {readinessQuery.data?.activeManagementPeriod ? (
-          <Text style={{ color: BRAND_COLORS.textDark, fontSize: 12, marginTop: 6 }}>
+          <Text style={{ color: BRAND_COLORS.textDark, fontSize: scaleWithAppTextScale(12), marginTop: 6 }}>
             Periode aktif: {readinessQuery.data.activeManagementPeriod.title}
           </Text>
         ) : null}
         {readinessQuery.data?.latestClosedElection ? (
-          <Text style={{ color: BRAND_COLORS.textDark, fontSize: 12, marginTop: 4 }}>
+          <Text style={{ color: BRAND_COLORS.textDark, fontSize: scaleWithAppTextScale(12), marginTop: 4 }}>
             Pemilihan terakhir: {readinessQuery.data.latestClosedElection.title}
           </Text>
         ) : null}
@@ -257,7 +258,7 @@ export default function PrincipalMonitoringOsisScreen() {
               }}
             >
               <Text style={{ color: BRAND_COLORS.textDark, fontWeight: '700' }}>{period.title}</Text>
-              <Text style={{ color: BRAND_COLORS.textMuted, fontSize: 12, marginTop: 3 }}>
+              <Text style={{ color: BRAND_COLORS.textMuted, fontSize: scaleWithAppTextScale(12), marginTop: 3 }}>
                 {period.status} • Divisi {period._count?.divisions || 0} • Posisi {period._count?.positions || 0}
               </Text>
             </View>
@@ -292,13 +293,13 @@ export default function PrincipalMonitoringOsisScreen() {
                   <Text style={{ color: BRAND_COLORS.textDark, fontWeight: '700' }}>
                     No. {candidate.candidateNumber} • {candidate.student.name}
                   </Text>
-                  <Text style={{ color: BRAND_COLORS.textMuted, fontSize: 12, marginTop: 3 }}>
+                  <Text style={{ color: BRAND_COLORS.textMuted, fontSize: scaleWithAppTextScale(12), marginTop: 3 }}>
                     {candidate.student.studentClass?.name || '-'} • {candidate.student.nis || '-'}
                   </Text>
-                  <Text style={{ color: BRAND_COLORS.textMuted, fontSize: 12, marginTop: 4 }}>
+                  <Text style={{ color: BRAND_COLORS.textMuted, fontSize: scaleWithAppTextScale(12), marginTop: 4 }}>
                     {candidate.vision || 'Belum ada visi yang dicatat.'}
                   </Text>
-                  <Text style={{ color: BRAND_COLORS.navy, fontWeight: '700', fontSize: 12, marginTop: 6 }}>
+                  <Text style={{ color: BRAND_COLORS.navy, fontWeight: '700', fontSize: scaleWithAppTextScale(12), marginTop: 6 }}>
                     {quickCount ? `${quickCount.votes} suara • ${quickCount.percentage}%` : 'Quick count belum tersedia'}
                   </Text>
                 </View>

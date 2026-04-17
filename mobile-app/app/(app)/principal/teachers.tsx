@@ -9,6 +9,7 @@ import { useAuth } from '../../../src/features/auth/AuthProvider';
 import { adminApi } from '../../../src/features/admin/adminApi';
 import { getStandardPagePadding } from '../../../src/lib/ui/pageLayout';
 import { BRAND_COLORS } from '../../../src/config/brand';
+import { scaleWithAppTextScale } from '../../../src/theme/AppTextScaleProvider';
 
 function normalizeDuty(value?: string) {
   return String(value || '').trim().toUpperCase();
@@ -62,7 +63,7 @@ export default function PrincipalTeachersScreen() {
   if (user?.role !== 'PRINCIPAL') {
     return (
       <ScrollView style={{ flex: 1, backgroundColor: '#f8fafc' }} contentContainerStyle={pagePadding}>
-        <Text style={{ fontSize: 20, fontWeight: '700', color: BRAND_COLORS.textDark, marginBottom: 8 }}>Data Guru</Text>
+        <Text style={{ fontSize: scaleWithAppTextScale(20), fontWeight: '700', color: BRAND_COLORS.textDark, marginBottom: 8 }}>Data Guru</Text>
         <QueryStateView type="error" message="Halaman ini khusus untuk role kepala sekolah." />
       </ScrollView>
     );
@@ -76,7 +77,7 @@ export default function PrincipalTeachersScreen() {
         <RefreshControl refreshing={teachersQuery.isFetching && !teachersQuery.isLoading} onRefresh={() => teachersQuery.refetch()} />
       }
     >
-      <Text style={{ fontSize: 20, fontWeight: '700', color: BRAND_COLORS.textDark, marginBottom: 6 }}>Data Guru</Text>
+      <Text style={{ fontSize: scaleWithAppTextScale(20), fontWeight: '700', color: BRAND_COLORS.textDark, marginBottom: 6 }}>Data Guru</Text>
       <Text style={{ color: BRAND_COLORS.textMuted, marginBottom: 12 }}>
         Monitoring data guru dan tambahan jabatan struktural.
       </Text>
@@ -151,7 +152,7 @@ export default function PrincipalTeachersScreen() {
           ))}
         </View>
 
-        <Text style={{ color: BRAND_COLORS.textMuted, fontSize: 12 }}>
+        <Text style={{ color: BRAND_COLORS.textMuted, fontSize: scaleWithAppTextScale(12) }}>
           Total guru terfilter: <Text style={{ color: BRAND_COLORS.textDark, fontWeight: '700' }}>{filteredTeachers.length}</Text>
         </Text>
       </View>
@@ -175,7 +176,7 @@ export default function PrincipalTeachersScreen() {
                 marginBottom: 10,
               }}
             >
-              <Text style={{ color: BRAND_COLORS.textDark, fontWeight: '700', fontSize: 15 }}>{teacher.name}</Text>
+              <Text style={{ color: BRAND_COLORS.textDark, fontWeight: '700', fontSize: scaleWithAppTextScale(15) }}>{teacher.name}</Text>
               <Text style={{ color: BRAND_COLORS.textMuted, marginTop: 3 }}>@{teacher.username}</Text>
               <Text style={{ color: '#475569', marginTop: 6 }}>
                 Email: <Text style={{ color: BRAND_COLORS.textDark, fontWeight: '600' }}>{teacher.email || '-'}</Text>

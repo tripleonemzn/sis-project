@@ -1,6 +1,7 @@
 import { useMemo, useState } from 'react';
 import { Redirect, useRouter } from 'expo-router';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
+import { scaleWithAppTextScale } from '../../theme/AppTextScaleProvider';
 import {
   Alert,
   Modal,
@@ -64,7 +65,7 @@ const INPUT_BASE_STYLE = {
   paddingHorizontal: 10,
   paddingVertical: 9,
   color: BRAND_COLORS.textDark,
-  fontSize: 13,
+  fontSize: scaleWithAppTextScale(13),
 } as const;
 
 const STATUS_META: Record<
@@ -939,7 +940,7 @@ export function TeacherLearningResourceProgramScreen({
   if (user?.role !== 'TEACHER') {
     return (
       <ScrollView style={{ flex: 1, backgroundColor: '#f8fafc' }} contentContainerStyle={pagePadding}>
-        <Text style={{ fontSize: 20, fontWeight: '700', marginBottom: 8 }}>{effectiveTitle}</Text>
+        <Text style={{ fontSize: scaleWithAppTextScale(20), fontWeight: '700', marginBottom: 8 }}>{effectiveTitle}</Text>
         <QueryStateView type="error" message="Halaman ini khusus untuk role guru." />
       </ScrollView>
     );
@@ -993,7 +994,7 @@ export function TeacherLearningResourceProgramScreen({
             <Feather name={icon} size={18} color="#e2e8f0" />
           </View>
           <View style={{ flex: 1 }}>
-            <Text style={{ color: '#fff', fontSize: 20, fontWeight: '700' }}>{effectiveTitle}</Text>
+            <Text style={{ color: '#fff', fontSize: scaleWithAppTextScale(20), fontWeight: '700' }}>{effectiveTitle}</Text>
             <Text style={{ color: '#dbeafe', marginTop: 2 }}>{effectiveDescription}</Text>
           </View>
         </View>
@@ -1088,7 +1089,7 @@ export function TeacherLearningResourceProgramScreen({
                     marginBottom: 6,
                   }}
                 >
-                  <Text style={{ color: active ? BRAND_COLORS.navy : '#64748b', fontWeight: '600', fontSize: 11 }}>
+                  <Text style={{ color: active ? BRAND_COLORS.navy : '#64748b', fontWeight: '600', fontSize: scaleWithAppTextScale(11) }}>
                     {item.label}
                   </Text>
                 </Pressable>
@@ -1181,7 +1182,7 @@ export function TeacherLearningResourceProgramScreen({
                   >
                     <View style={{ flexDirection: 'row', justifyContent: 'space-between', alignItems: 'flex-start' }}>
                       <View style={{ flex: 1, marginRight: 10 }}>
-                        <Text style={{ color: BRAND_COLORS.textDark, fontWeight: '700', fontSize: 15 }}>{entry.title}</Text>
+                        <Text style={{ color: BRAND_COLORS.textDark, fontWeight: '700', fontSize: scaleWithAppTextScale(15) }}>{entry.title}</Text>
                         {entry.summary ? (
                           <Text style={{ color: '#64748b', marginTop: 2 }}>{entry.summary}</Text>
                         ) : null}
@@ -1196,12 +1197,12 @@ export function TeacherLearningResourceProgramScreen({
                           paddingVertical: 4,
                         }}
                       >
-                        <Text style={{ color: statusMeta.pillText, fontWeight: '700', fontSize: 11 }}>{statusMeta.label}</Text>
+                        <Text style={{ color: statusMeta.pillText, fontWeight: '700', fontSize: scaleWithAppTextScale(11) }}>{statusMeta.label}</Text>
                       </View>
                     </View>
 
-                    <Text style={{ color: '#64748b', fontSize: 12, marginTop: 6 }}>Update: {formatDateTime(entry.updatedAt)}</Text>
-                    {assignmentLabel ? <Text style={{ color: '#64748b', fontSize: 12, marginTop: 2 }}>{assignmentLabel}</Text> : null}
+                    <Text style={{ color: '#64748b', fontSize: scaleWithAppTextScale(12), marginTop: 6 }}>Update: {formatDateTime(entry.updatedAt)}</Text>
+                    {assignmentLabel ? <Text style={{ color: '#64748b', fontSize: scaleWithAppTextScale(12), marginTop: 2 }}>{assignmentLabel}</Text> : null}
 
                     <View style={{ flexDirection: 'row', marginTop: 10 }}>
                       <Pressable
@@ -1359,7 +1360,7 @@ export function TeacherLearningResourceProgramScreen({
                 justifyContent: 'space-between',
               }}
             >
-              <Text style={{ color: BRAND_COLORS.textDark, fontWeight: '700', fontSize: 16 }}>
+              <Text style={{ color: BRAND_COLORS.textDark, fontWeight: '700', fontSize: scaleWithAppTextScale(16) }}>
                 {editingEntry ? 'Edit Dokumen' : 'Dokumen Baru'}
               </Text>
               <Pressable onPress={closeEditor} hitSlop={8}>
@@ -1368,7 +1369,7 @@ export function TeacherLearningResourceProgramScreen({
             </View>
 
             <ScrollView contentContainerStyle={{ padding: 14 }}>
-              <Text style={{ color: '#64748b', fontSize: 12, marginBottom: 4 }}>Judul Dokumen</Text>
+              <Text style={{ color: '#64748b', fontSize: scaleWithAppTextScale(12), marginBottom: 4 }}>Judul Dokumen</Text>
               <TextInput
                 value={entryTitle}
                 onChangeText={setEntryTitle}
@@ -1377,7 +1378,7 @@ export function TeacherLearningResourceProgramScreen({
                 style={INPUT_BASE_STYLE}
               />
 
-              <Text style={{ color: '#64748b', fontSize: 12, marginBottom: 4, marginTop: 10 }}>Ringkasan</Text>
+              <Text style={{ color: '#64748b', fontSize: scaleWithAppTextScale(12), marginBottom: 4, marginTop: 10 }}>Ringkasan</Text>
               <TextInput
                 value={entrySummary}
                 onChangeText={setEntrySummary}
@@ -1388,7 +1389,7 @@ export function TeacherLearningResourceProgramScreen({
 
               {!usesSheetTemplate ? (
                 <>
-                  <Text style={{ color: '#64748b', fontSize: 12, marginBottom: 4, marginTop: 10 }}>
+                  <Text style={{ color: '#64748b', fontSize: scaleWithAppTextScale(12), marginBottom: 4, marginTop: 10 }}>
                     Tag (pisahkan koma)
                   </Text>
                   <TextInput
@@ -1399,7 +1400,7 @@ export function TeacherLearningResourceProgramScreen({
                     style={INPUT_BASE_STYLE}
                   />
 
-                  <Text style={{ color: '#64748b', fontSize: 12, marginBottom: 4, marginTop: 10 }}>Catatan</Text>
+                  <Text style={{ color: '#64748b', fontSize: scaleWithAppTextScale(12), marginBottom: 4, marginTop: 10 }}>Catatan</Text>
                   <TextInput
                     value={entryNotes}
                     onChangeText={setEntryNotes}
@@ -1434,7 +1435,7 @@ export function TeacherLearningResourceProgramScreen({
                             : `Bagian ${index + 1}`}
                         </Text>
                         {resolveSectionSchema(section)?.description ? (
-                          <Text style={{ color: '#64748b', fontSize: 11, marginTop: 2 }}>
+                          <Text style={{ color: '#64748b', fontSize: scaleWithAppTextScale(11), marginTop: 2 }}>
                             {resolveSectionSchema(section)?.description}
                           </Text>
                         ) : null}
@@ -1448,7 +1449,7 @@ export function TeacherLearningResourceProgramScreen({
 
                     {canEditSectionTitle(section) ? (
                       <>
-                        <Text style={{ color: '#64748b', fontSize: 12, marginBottom: 4, marginTop: 8 }}>Judul Bagian</Text>
+                        <Text style={{ color: '#64748b', fontSize: scaleWithAppTextScale(12), marginBottom: 4, marginTop: 8 }}>Judul Bagian</Text>
                         <TextInput
                           value={section.title}
                           onChangeText={(value) => updateSection(section.id, 'title', value)}
@@ -1489,7 +1490,7 @@ export function TeacherLearningResourceProgramScreen({
                         >
                           {(resolveSectionSchema(section)?.columns || []).map((column) => (
                             <View key={`${section.id}-single-${column.key}`} style={{ marginTop: 8 }}>
-                              <Text style={{ color: '#64748b', fontSize: 12, marginBottom: 4 }}>{column.label}</Text>
+                              <Text style={{ color: '#64748b', fontSize: scaleWithAppTextScale(12), marginBottom: 4 }}>{column.label}</Text>
                               <TextInput
                                 value={String(section.rows[0]?.values?.[column.key] || '')}
                                 onChangeText={(value) =>
@@ -1524,7 +1525,7 @@ export function TeacherLearningResourceProgramScreen({
                               }}
                             >
                               <View style={{ flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center' }}>
-                                <Text style={{ color: '#475569', fontSize: 12, fontWeight: '700' }}>Baris {rowIndex + 1}</Text>
+                                <Text style={{ color: '#475569', fontSize: scaleWithAppTextScale(12), fontWeight: '700' }}>Baris {rowIndex + 1}</Text>
                                 <Pressable
                                   onPress={() => removeSectionRow(section.id, row.id)}
                                   disabled={section.rows.length <= getMinimumRowCount(section)}
@@ -1538,12 +1539,12 @@ export function TeacherLearningResourceProgramScreen({
                                     paddingVertical: 4,
                                   }}
                                 >
-                                  <Text style={{ color: '#b91c1c', fontSize: 11, fontWeight: '700' }}>Hapus</Text>
+                                  <Text style={{ color: '#b91c1c', fontSize: scaleWithAppTextScale(11), fontWeight: '700' }}>Hapus</Text>
                                 </Pressable>
                               </View>
                               {(resolveSectionSchema(section)?.columns || []).map((column) => (
                                 <View key={`${row.id}-${column.key}`} style={{ marginTop: 8 }}>
-                                  <Text style={{ color: '#64748b', fontSize: 12, marginBottom: 4 }}>{column.label}</Text>
+                                  <Text style={{ color: '#64748b', fontSize: scaleWithAppTextScale(12), marginBottom: 4 }}>{column.label}</Text>
                                   <TextInput
                                     value={String(row.values[column.key] || '')}
                                     onChangeText={(value) => updateSectionRow(section.id, row.id, column.key, value)}
@@ -1576,7 +1577,7 @@ export function TeacherLearningResourceProgramScreen({
                       )
                     ) : (
                       <>
-                        <Text style={{ color: '#64748b', fontSize: 12, marginBottom: 4, marginTop: 8 }}>Isi</Text>
+                        <Text style={{ color: '#64748b', fontSize: scaleWithAppTextScale(12), marginBottom: 4, marginTop: 8 }}>Isi</Text>
                         <TextInput
                           value={section.body}
                           onChangeText={(value) => updateSection(section.id, 'body', value)}

@@ -13,6 +13,7 @@ import { tutorApi } from '../../../src/features/tutor/tutorApi';
 import { canAccessTutorWorkspace } from '../../../src/features/tutor/tutorAccess';
 import { getStandardPagePadding } from '../../../src/lib/ui/pageLayout';
 import { notifyApiError, notifySuccess } from '../../../src/lib/ui/feedback';
+import { scaleWithAppTextScale } from '../../../src/theme/AppTextScaleProvider';
 
 function parseNonNegativeInt(raw: string, fallback = 0) {
   const parsed = Number.parseInt(String(raw || '').trim(), 10);
@@ -138,7 +139,7 @@ export default function TutorInventoryScreen() {
   if (!hasTutorWorkspaceAccess) {
     return (
       <ScrollView style={{ flex: 1, backgroundColor: '#f8fafc' }} contentContainerStyle={pagePadding}>
-        <Text style={{ fontSize: 20, fontWeight: '700', color: BRAND_COLORS.textDark, marginBottom: 8 }}>
+        <Text style={{ fontSize: scaleWithAppTextScale(20), fontWeight: '700', color: BRAND_COLORS.textDark, marginBottom: 8 }}>
           Kelola Inventaris
         </Text>
         <QueryStateView type="error" message="Halaman ini tersedia untuk pembina ekstrakurikuler aktif." />
@@ -160,7 +161,7 @@ export default function TutorInventoryScreen() {
         />
       }
     >
-      <Text style={{ fontSize: 20, fontWeight: '700', color: BRAND_COLORS.textDark, marginBottom: 6 }}>
+      <Text style={{ fontSize: scaleWithAppTextScale(20), fontWeight: '700', color: BRAND_COLORS.textDark, marginBottom: 6 }}>
         Kelola Inventaris
       </Text>
       <Text style={{ color: BRAND_COLORS.textMuted, marginBottom: 12 }}>
@@ -228,7 +229,7 @@ export default function TutorInventoryScreen() {
         >
           <Text style={{ color: BRAND_COLORS.textDark, fontWeight: '700', marginBottom: 8 }}>Form Item Inventaris</Text>
 
-          <Text style={{ color: BRAND_COLORS.textMuted, marginBottom: 6, fontSize: 12 }}>Ekskul Tujuan</Text>
+          <Text style={{ color: BRAND_COLORS.textMuted, marginBottom: 6, fontSize: scaleWithAppTextScale(12) }}>Ekskul Tujuan</Text>
           <View style={{ flexDirection: 'row', flexWrap: 'wrap', marginHorizontal: -4, marginBottom: 8 }}>
             {rowsWithRoom.map((row) => {
               const selected = Number(effectiveTargetAssignmentId) === Number(row.assignmentId);
@@ -248,7 +249,7 @@ export default function TutorInventoryScreen() {
                     <Text numberOfLines={1} style={{ color: selected ? BRAND_COLORS.navy : BRAND_COLORS.textDark, fontWeight: '700' }}>
                       {row.ekskulName}
                     </Text>
-                    <Text numberOfLines={1} style={{ color: BRAND_COLORS.textMuted, fontSize: 11, marginTop: 2 }}>
+                    <Text numberOfLines={1} style={{ color: BRAND_COLORS.textMuted, fontSize: scaleWithAppTextScale(11), marginTop: 2 }}>
                       {row.room?.name || '-'}
                     </Text>
                   </Pressable>
@@ -281,7 +282,7 @@ export default function TutorInventoryScreen() {
             },
           ].map((field) => (
             <View key={field.label} style={{ marginBottom: 8 }}>
-              <Text style={{ color: BRAND_COLORS.textMuted, marginBottom: 4, fontSize: 12 }}>{field.label}</Text>
+              <Text style={{ color: BRAND_COLORS.textMuted, marginBottom: 4, fontSize: scaleWithAppTextScale(12) }}>{field.label}</Text>
               <TextInput
                 value={field.value}
                 onChangeText={field.onChangeText}
@@ -310,7 +311,7 @@ export default function TutorInventoryScreen() {
               { label: 'Rusak Berat', value: majorDamageQty, setter: setMajorDamageQty },
             ].map((field) => (
               <View key={field.label} style={{ flex: 1, paddingHorizontal: 4 }}>
-                <Text style={{ color: BRAND_COLORS.textMuted, marginBottom: 4, fontSize: 12 }}>{field.label}</Text>
+                <Text style={{ color: BRAND_COLORS.textMuted, marginBottom: 4, fontSize: scaleWithAppTextScale(12) }}>{field.label}</Text>
                 <TextInput
                   value={field.value}
                   onChangeText={field.setter}
@@ -369,19 +370,19 @@ export default function TutorInventoryScreen() {
               >
                 <View style={{ flexDirection: 'row', justifyContent: 'space-between', gap: 8 }}>
                   <View style={{ flex: 1 }}>
-                    <Text style={{ color: BRAND_COLORS.textDark, fontWeight: '700', fontSize: 16 }}>
+                    <Text style={{ color: BRAND_COLORS.textDark, fontWeight: '700', fontSize: scaleWithAppTextScale(16) }}>
                       {row.ekskulName}
                     </Text>
-                    <Text style={{ color: BRAND_COLORS.textMuted, fontSize: 12, marginTop: 2 }}>
+                    <Text style={{ color: BRAND_COLORS.textMuted, fontSize: scaleWithAppTextScale(12), marginTop: 2 }}>
                       {row.academicYearName}
                     </Text>
                   </View>
                   {row.room ? (
                     <View style={{ alignItems: 'flex-end', maxWidth: '55%' }}>
-                      <Text style={{ color: BRAND_COLORS.navy, fontSize: 12, fontWeight: '700' }} numberOfLines={1}>
+                      <Text style={{ color: BRAND_COLORS.navy, fontSize: scaleWithAppTextScale(12), fontWeight: '700' }} numberOfLines={1}>
                         {row.room.name}
                       </Text>
-                      <Text style={{ color: BRAND_COLORS.textMuted, fontSize: 11 }} numberOfLines={1}>
+                      <Text style={{ color: BRAND_COLORS.textMuted, fontSize: scaleWithAppTextScale(11) }} numberOfLines={1}>
                         {row.room.categoryName || 'Kategori belum diatur'}
                       </Text>
                     </View>
@@ -396,12 +397,12 @@ export default function TutorInventoryScreen() {
                         paddingVertical: 4,
                       }}
                     >
-                      <Text style={{ color: '#92400e', fontSize: 11, fontWeight: '700' }}>Ruang belum ditautkan</Text>
+                      <Text style={{ color: '#92400e', fontSize: scaleWithAppTextScale(11), fontWeight: '700' }}>Ruang belum ditautkan</Text>
                     </View>
                   )}
                 </View>
 
-                <Text style={{ color: '#64748b', fontSize: 12, marginTop: 8, marginBottom: 6 }}>
+                <Text style={{ color: '#64748b', fontSize: scaleWithAppTextScale(12), marginTop: 8, marginBottom: 6 }}>
                   Total Item: {row.items.length} • Total Qty: {totalQty}
                 </Text>
 
@@ -417,10 +418,10 @@ export default function TutorInventoryScreen() {
                       }}
                     >
                       <Text style={{ color: BRAND_COLORS.textDark, fontWeight: '700' }}>{item.name}</Text>
-                      <Text style={{ color: BRAND_COLORS.textMuted, fontSize: 12 }}>
+                      <Text style={{ color: BRAND_COLORS.textMuted, fontSize: scaleWithAppTextScale(12) }}>
                         Merk: {item.brand || '-'} • Qty: {item.quantity ?? 0}
                       </Text>
-                      <Text style={{ color: '#64748b', fontSize: 12 }}>
+                      <Text style={{ color: '#64748b', fontSize: scaleWithAppTextScale(12) }}>
                         Baik: {item.goodQty ?? 0} • Rusak Ringan: {item.minorDamageQty ?? 0} • Rusak Berat:{' '}
                         {item.majorDamageQty ?? 0}
                       </Text>

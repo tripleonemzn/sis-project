@@ -2,6 +2,7 @@ import { useMemo } from 'react';
 import { Redirect, useRouter } from 'expo-router';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { Feather } from '@expo/vector-icons';
+import { scaleLineHeightWithAppTextScale, scaleWithAppTextScale } from '../../theme/AppTextScaleProvider';
 import {
   Image,
   Pressable,
@@ -93,7 +94,7 @@ function SectionCard({
       }}
     >
       <View>
-        <Text style={{ color: BRAND_COLORS.textDark, fontWeight: '800', fontSize: 16 }}>{title}</Text>
+        <Text style={{ color: BRAND_COLORS.textDark, fontWeight: '800', fontSize: scaleWithAppTextScale(16) }}>{title}</Text>
         {subtitle ? <Text style={{ color: BRAND_COLORS.textMuted, marginTop: 4 }}>{subtitle}</Text> : null}
       </View>
       {children}
@@ -163,7 +164,7 @@ export function TeacherOsisVoteModuleScreen() {
   if (user?.role !== 'TEACHER' || !hasOsisDuty(user?.additionalDuties)) {
     return (
       <ScrollView style={{ flex: 1, backgroundColor: '#f8fafc' }} contentContainerStyle={pagePadding}>
-        <Text style={{ fontSize: 20, fontWeight: '700', color: BRAND_COLORS.textDark, marginBottom: 8 }}>
+        <Text style={{ fontSize: scaleWithAppTextScale(20), fontWeight: '700', color: BRAND_COLORS.textDark, marginBottom: 8 }}>
           Pemungutan Suara OSIS
         </Text>
         <QueryStateView type="error" message="Halaman ini khusus pembina OSIS." />
@@ -184,7 +185,7 @@ export function TeacherOsisVoteModuleScreen() {
         />
       }
     >
-      <Text style={{ fontSize: 20, fontWeight: '800', color: BRAND_COLORS.textDark, marginBottom: 6 }}>
+      <Text style={{ fontSize: scaleWithAppTextScale(20), fontWeight: '800', color: BRAND_COLORS.textDark, marginBottom: 6 }}>
         Pemungutan Suara OSIS
       </Text>
       <Text style={{ color: BRAND_COLORS.textMuted, marginBottom: 12 }}>
@@ -235,7 +236,7 @@ export function TeacherOsisVoteModuleScreen() {
         <>
           <SectionCard title={election.title} subtitle={`${formatDateTime(election.startAt)} - ${formatDateTime(election.endAt)}`}>
             {election.description ? (
-              <Text style={{ color: BRAND_COLORS.textMuted, lineHeight: 20 }}>{election.description}</Text>
+              <Text style={{ color: BRAND_COLORS.textMuted, lineHeight: scaleLineHeightWithAppTextScale(20) }}>{election.description}</Text>
             ) : null}
             <View style={{ flexDirection: 'row', flexWrap: 'wrap', gap: 8 }}>
               <SummaryCard title="Calon Aktif" value={String(stats.totalCandidates)} subtitle="Kandidat pada periode ini" iconName="users" accentColor="#2563eb" />
@@ -281,10 +282,10 @@ export function TeacherOsisVoteModuleScreen() {
                   >
                     <View style={{ flexDirection: 'row', justifyContent: 'space-between', gap: 12 }}>
                       <View style={{ flex: 1 }}>
-                        <Text style={{ color: BRAND_COLORS.blue, fontWeight: '800', fontSize: 12 }}>
+                        <Text style={{ color: BRAND_COLORS.blue, fontWeight: '800', fontSize: scaleWithAppTextScale(12) }}>
                           CALON NO. {candidate.candidateNumber}
                         </Text>
-                        <Text style={{ color: BRAND_COLORS.textDark, fontWeight: '800', fontSize: 18, marginTop: 2 }}>
+                        <Text style={{ color: BRAND_COLORS.textDark, fontWeight: '800', fontSize: scaleWithAppTextScale(18), marginTop: 2 }}>
                           {candidate.student.name}
                         </Text>
                         <Text style={{ color: BRAND_COLORS.textMuted, marginTop: 2 }}>
@@ -293,21 +294,21 @@ export function TeacherOsisVoteModuleScreen() {
                       </View>
                       {isSelected ? (
                         <View style={{ backgroundColor: '#dcfce7', borderRadius: 999, paddingHorizontal: 10, paddingVertical: 4 }}>
-                          <Text style={{ color: '#166534', fontWeight: '800', fontSize: 11 }}>PILIHAN ANDA</Text>
+                          <Text style={{ color: '#166534', fontWeight: '800', fontSize: scaleWithAppTextScale(11) }}>PILIHAN ANDA</Text>
                         </View>
                       ) : null}
                     </View>
 
                     <View style={{ gap: 8 }}>
                       <View>
-                        <Text style={{ color: '#64748b', fontSize: 11, fontWeight: '700' }}>VISI</Text>
-                        <Text style={{ color: BRAND_COLORS.textDark, marginTop: 3, lineHeight: 20 }}>
+                        <Text style={{ color: '#64748b', fontSize: scaleWithAppTextScale(11), fontWeight: '700' }}>VISI</Text>
+                        <Text style={{ color: BRAND_COLORS.textDark, marginTop: 3, lineHeight: scaleLineHeightWithAppTextScale(20) }}>
                           {candidate.vision || 'Belum diisi.'}
                         </Text>
                       </View>
                       <View>
-                        <Text style={{ color: '#64748b', fontSize: 11, fontWeight: '700' }}>MISI</Text>
-                        <Text style={{ color: BRAND_COLORS.textDark, marginTop: 3, lineHeight: 20 }}>
+                        <Text style={{ color: '#64748b', fontSize: scaleWithAppTextScale(11), fontWeight: '700' }}>MISI</Text>
+                        <Text style={{ color: BRAND_COLORS.textDark, marginTop: 3, lineHeight: scaleLineHeightWithAppTextScale(20) }}>
                           {candidate.mission || 'Belum diisi.'}
                         </Text>
                       </View>

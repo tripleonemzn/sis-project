@@ -9,6 +9,7 @@ import { QueryStateView } from '../../../src/components/QueryStateView';
 import { useAuth } from '../../../src/features/auth/AuthProvider';
 import { adminApi } from '../../../src/features/admin/adminApi';
 import { tutorApi } from '../../../src/features/tutor/tutorApi';
+import { scaleWithAppTextScale } from '../../../src/theme/AppTextScaleProvider';
 import {
   canAccessTutorWorkspace,
   getExtracurricularTutorAssignments,
@@ -53,7 +54,7 @@ export default function TutorDashboardScreen() {
   if (!hasTutorWorkspaceAccess) {
     return (
       <ScrollView style={{ flex: 1, backgroundColor: '#f8fafc' }} contentContainerStyle={pagePadding}>
-        <Text style={{ fontSize: 20, fontWeight: '700', color: BRAND_COLORS.textDark, marginBottom: 8 }}>Dashboard</Text>
+        <Text style={{ fontSize: scaleWithAppTextScale(20), fontWeight: '700', color: BRAND_COLORS.textDark, marginBottom: 8 }}>Dashboard</Text>
         <QueryStateView type="error" message="Halaman ini tersedia untuk pembina ekstrakurikuler aktif." />
       </ScrollView>
     );
@@ -73,7 +74,7 @@ export default function TutorDashboardScreen() {
         />
       }
     >
-      <Text style={{ fontSize: 20, fontWeight: '700', color: BRAND_COLORS.textDark, marginBottom: 6 }}>Dashboard</Text>
+      <Text style={{ fontSize: scaleWithAppTextScale(20), fontWeight: '700', color: BRAND_COLORS.textDark, marginBottom: 6 }}>Dashboard</Text>
       <Text style={{ color: BRAND_COLORS.textMuted, marginBottom: 12 }}>
         Pantau assignment pembina ekstrakurikuler pada periode berjalan.
       </Text>
@@ -136,10 +137,10 @@ export default function TutorDashboardScreen() {
                 }}
               >
                 <Text style={{ color: BRAND_COLORS.textDark, fontWeight: '700' }}>{item.ekskul?.name || '-'}</Text>
-                <Text style={{ color: BRAND_COLORS.textMuted, fontSize: 12, marginTop: 2 }}>
+                <Text style={{ color: BRAND_COLORS.textMuted, fontSize: scaleWithAppTextScale(12), marginTop: 2 }}>
                   Tahun: {item.academicYear?.name || '-'}
                 </Text>
-                <Text style={{ color: item.isActive ? '#15803d' : '#b45309', fontSize: 12, marginTop: 4, fontWeight: '700' }}>
+                <Text style={{ color: item.isActive ? '#15803d' : '#b45309', fontSize: scaleWithAppTextScale(12), marginTop: 4, fontWeight: '700' }}>
                   {item.isActive ? 'Aktif' : 'Nonaktif'}
                 </Text>
               </Pressable>

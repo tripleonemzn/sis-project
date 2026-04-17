@@ -11,6 +11,7 @@ import { BRAND_COLORS } from '../../../src/config/brand';
 import { ENV } from '../../../src/config/env';
 import { getStandardPagePadding } from '../../../src/lib/ui/pageLayout';
 import { tokenStorage } from '../../../src/lib/storage/tokenStorage';
+import { scaleWithAppTextScale } from '../../../src/theme/AppTextScaleProvider';
 
 function resolveWebUrl(path: string) {
   const webBaseUrl = ENV.API_BASE_URL.replace(/\/api\/?$/, '');
@@ -190,7 +191,7 @@ export default function InternalViewerScreen() {
   if (!viewerKey || !targetUrl) {
     return (
       <ScrollView style={{ flex: 1, backgroundColor: '#f8fafc' }} contentContainerStyle={pagePadding}>
-        <Text style={{ fontSize: 20, fontWeight: '700', marginBottom: 8, color: BRAND_COLORS.textDark }}>
+        <Text style={{ fontSize: scaleWithAppTextScale(20), fontWeight: '700', marginBottom: 8, color: BRAND_COLORS.textDark }}>
           Viewer Tidak Tersedia
         </Text>
         <QueryStateView type="error" message="Konten yang ingin dibuka belum tersedia untuk viewer internal." />
@@ -213,7 +214,7 @@ export default function InternalViewerScreen() {
   if (!hasNativeWebView) {
     return (
       <ScrollView style={{ flex: 1, backgroundColor: '#f8fafc' }} contentContainerStyle={pagePadding}>
-        <Text style={{ fontSize: 20, fontWeight: '700', marginBottom: 8, color: BRAND_COLORS.textDark }}>
+        <Text style={{ fontSize: scaleWithAppTextScale(20), fontWeight: '700', marginBottom: 8, color: BRAND_COLORS.textDark }}>
           {effectiveLabel}
         </Text>
         <QueryStateView type="error" message="Viewer internal belum tersedia di build ini. Silakan update aplikasi tester terbaru." />
@@ -266,10 +267,10 @@ export default function InternalViewerScreen() {
           </Pressable>
 
           <View style={{ flex: 1 }}>
-            <Text numberOfLines={1} style={{ fontSize: 20, fontWeight: '700', color: BRAND_COLORS.textDark }}>
+            <Text numberOfLines={1} style={{ fontSize: scaleWithAppTextScale(20), fontWeight: '700', color: BRAND_COLORS.textDark }}>
               {effectiveLabel}
             </Text>
-            <Text numberOfLines={1} style={{ fontSize: 12, color: BRAND_COLORS.textMuted, marginTop: 2 }}>
+            <Text numberOfLines={1} style={{ fontSize: scaleWithAppTextScale(12), color: BRAND_COLORS.textMuted, marginTop: 2 }}>
               Viewer internal aplikasi
             </Text>
           </View>

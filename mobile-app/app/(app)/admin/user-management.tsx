@@ -10,6 +10,7 @@ import { MobileSelectField } from '../../../src/components/MobileSelectField';
 import { QueryStateView } from '../../../src/components/QueryStateView';
 import { BRAND_COLORS } from '../../../src/config/brand';
 import { useAuth } from '../../../src/features/auth/AuthProvider';
+import { scaleWithAppTextScale } from '../../../src/theme/AppTextScaleProvider';
 import {
   type AdminUser,
   type AdminUserCreatePayload,
@@ -230,7 +231,7 @@ function MultiSelectChip({
         backgroundColor: active ? '#dbeafe' : BRAND_COLORS.white,
       }}
     >
-      <Text style={{ color: active ? BRAND_COLORS.blue : BRAND_COLORS.textMuted, fontWeight: '700', fontSize: 12 }}>
+      <Text style={{ color: active ? BRAND_COLORS.blue : BRAND_COLORS.textMuted, fontWeight: '700', fontSize: scaleWithAppTextScale(12) }}>
         {label}
       </Text>
     </Pressable>
@@ -256,7 +257,7 @@ function FormInput({
 }) {
   return (
     <View style={{ marginBottom: 8 }}>
-      <Text style={{ color: BRAND_COLORS.textMuted, fontSize: 12, marginBottom: 4 }}>{label}</Text>
+      <Text style={{ color: BRAND_COLORS.textMuted, fontSize: scaleWithAppTextScale(12), marginBottom: 4 }}>{label}</Text>
       <TextInput
         value={value}
         onChangeText={onChangeText}
@@ -317,16 +318,16 @@ function UserCard({
     >
       <View style={{ flexDirection: 'row', justifyContent: 'space-between', alignItems: 'flex-start', gap: 8 }}>
         <View style={{ flex: 1 }}>
-          <Text style={{ color: BRAND_COLORS.textDark, fontWeight: '700', fontSize: 15 }}>{item.name}</Text>
+          <Text style={{ color: BRAND_COLORS.textDark, fontWeight: '700', fontSize: scaleWithAppTextScale(15) }}>{item.name}</Text>
           <Text style={{ color: BRAND_COLORS.textMuted, marginTop: 2 }}>@{item.username}</Text>
-          <Text style={{ color: BRAND_COLORS.textMuted, fontSize: 12, marginTop: 6 }}>
+          <Text style={{ color: BRAND_COLORS.textMuted, fontSize: scaleWithAppTextScale(12), marginTop: 6 }}>
             Role: {item.role} | Verifikasi: {item.verificationStatus || '-'}
           </Text>
-          <Text style={{ color: BRAND_COLORS.textMuted, fontSize: 12 }}>
+          <Text style={{ color: BRAND_COLORS.textMuted, fontSize: scaleWithAppTextScale(12) }}>
             Kelas: {item.studentClass?.name || '-'} {item.studentClass?.major?.code ? `(${item.studentClass.major.code})` : ''}
           </Text>
-          {item.nisn ? <Text style={{ color: BRAND_COLORS.textMuted, fontSize: 12 }}>NISN: {item.nisn}</Text> : null}
-          {item.nip ? <Text style={{ color: BRAND_COLORS.textMuted, fontSize: 12 }}>NIP: {item.nip}</Text> : null}
+          {item.nisn ? <Text style={{ color: BRAND_COLORS.textMuted, fontSize: scaleWithAppTextScale(12) }}>NISN: {item.nisn}</Text> : null}
+          {item.nip ? <Text style={{ color: BRAND_COLORS.textMuted, fontSize: scaleWithAppTextScale(12) }}>NIP: {item.nip}</Text> : null}
         </View>
       </View>
 
@@ -1027,7 +1028,7 @@ export default function AdminUserManagementScreen() {
         >
           <Feather name="arrow-left" size={18} color={BRAND_COLORS.textDark} />
         </Pressable>
-        <Text style={{ marginLeft: 10, color: BRAND_COLORS.textDark, fontSize: 20, fontWeight: '700' }}>Manajemen User</Text>
+        <Text style={{ marginLeft: 10, color: BRAND_COLORS.textDark, fontSize: scaleWithAppTextScale(20), fontWeight: '700' }}>Manajemen User</Text>
       </View>
       <Text style={{ color: BRAND_COLORS.textMuted, marginBottom: 12 }}>{screenSubtitle}</Text>
 
@@ -1081,7 +1082,7 @@ export default function AdminUserManagementScreen() {
           }}
         >
           <Text style={{ color: BRAND_COLORS.textDark, fontWeight: '700', marginBottom: 8 }}>Import Data Excel</Text>
-          <Text style={{ color: BRAND_COLORS.textMuted, fontSize: 12, marginBottom: 10 }}>
+          <Text style={{ color: BRAND_COLORS.textMuted, fontSize: scaleWithAppTextScale(12), marginBottom: 10 }}>
             Pilih file `.xlsx` dari perangkat. Ekspor template tetap disarankan lewat web admin.
           </Text>
           <View style={{ flexDirection: 'row', gap: 8, marginBottom: 8 }}>
@@ -1097,7 +1098,7 @@ export default function AdminUserManagementScreen() {
                 opacity: importMutation.isPending ? 0.65 : 1,
               }}
             >
-              <Text style={{ color: '#fff', fontWeight: '700', fontSize: 12 }}>Import Guru</Text>
+              <Text style={{ color: '#fff', fontWeight: '700', fontSize: scaleWithAppTextScale(12) }}>Import Guru</Text>
             </Pressable>
             <Pressable
               onPress={() => handlePickImportFile('students')}
@@ -1111,7 +1112,7 @@ export default function AdminUserManagementScreen() {
                 opacity: importMutation.isPending ? 0.65 : 1,
               }}
             >
-              <Text style={{ color: '#fff', fontWeight: '700', fontSize: 12 }}>Import Siswa</Text>
+              <Text style={{ color: '#fff', fontWeight: '700', fontSize: scaleWithAppTextScale(12) }}>Import Siswa</Text>
             </Pressable>
           </View>
           <Pressable
@@ -1125,7 +1126,7 @@ export default function AdminUserManagementScreen() {
               opacity: importMutation.isPending ? 0.65 : 1,
             }}
           >
-            <Text style={{ color: '#fff', fontWeight: '700', fontSize: 12 }}>
+            <Text style={{ color: '#fff', fontWeight: '700', fontSize: scaleWithAppTextScale(12) }}>
               {importMutation.isPending ? 'Memproses...' : 'Import Orang Tua'}
             </Text>
           </Pressable>
@@ -1150,10 +1151,10 @@ export default function AdminUserManagementScreen() {
             }}
           >
             <Text style={{ color: BRAND_COLORS.textDark, fontWeight: '700', marginBottom: 4 }}>Ringkasan</Text>
-            <Text style={{ color: BRAND_COLORS.textMuted, fontSize: 12, marginBottom: 6 }}>
+            <Text style={{ color: BRAND_COLORS.textMuted, fontSize: scaleWithAppTextScale(12), marginBottom: 6 }}>
               Total user terfilter: {filteredUsers.length}
             </Text>
-              <Text style={{ color: BRAND_COLORS.textMuted, fontSize: 12, marginBottom: 8 }}>
+              <Text style={{ color: BRAND_COLORS.textMuted, fontSize: scaleWithAppTextScale(12), marginBottom: 8 }}>
                 Total PENDING: {pendingUsers.length}
               </Text>
 
@@ -1184,7 +1185,7 @@ export default function AdminUserManagementScreen() {
                         opacity: bulkVerifyMutation.isPending || pendingUsers.length === 0 ? 0.6 : 1,
                       }}
                     >
-                      <Text style={{ color: '#fff', fontWeight: '700', fontSize: 12 }}>
+                      <Text style={{ color: '#fff', fontWeight: '700', fontSize: scaleWithAppTextScale(12) }}>
                         {bulkVerifyMutation.isPending ? 'Memproses...' : 'Verifikasi Semua'}
                       </Text>
                     </Pressable>
@@ -1201,7 +1202,7 @@ export default function AdminUserManagementScreen() {
                       backgroundColor: '#fff',
                     }}
                   >
-                    <Text style={{ color: '#475569', fontSize: 12, textAlign: 'center' }}>
+                    <Text style={{ color: '#475569', fontSize: scaleWithAppTextScale(12), textAlign: 'center' }}>
                       Mode Wakasis: edit & verifikasi data user yang sudah ada.
                     </Text>
                   </View>
@@ -1209,7 +1210,7 @@ export default function AdminUserManagementScreen() {
               </View>
 
             {roleSummary.slice(0, 8).map(([role, count]) => (
-              <Text key={role} style={{ color: BRAND_COLORS.textMuted, fontSize: 12 }}>
+              <Text key={role} style={{ color: BRAND_COLORS.textMuted, fontSize: scaleWithAppTextScale(12) }}>
                 {role}: {count}
               </Text>
             ))}
@@ -1260,7 +1261,7 @@ export default function AdminUserManagementScreen() {
                     placeholder="NIS (opsional)"
                   />
 
-                  <Text style={{ color: BRAND_COLORS.textMuted, fontSize: 12, marginBottom: 4 }}>Cari Kelas</Text>
+                  <Text style={{ color: BRAND_COLORS.textMuted, fontSize: scaleWithAppTextScale(12), marginBottom: 4 }}>Cari Kelas</Text>
                   <TextInput
                     value={classSearch}
                     onChangeText={setClassSearch}
@@ -1288,7 +1289,7 @@ export default function AdminUserManagementScreen() {
                   />
 
                   {selectedClass ? (
-                    <Text style={{ color: BRAND_COLORS.textMuted, fontSize: 12, marginBottom: 8 }}>
+                    <Text style={{ color: BRAND_COLORS.textMuted, fontSize: scaleWithAppTextScale(12), marginBottom: 8 }}>
                       Kelas terpilih: {selectedClass.name}
                     </Text>
                   ) : null}
@@ -1370,7 +1371,7 @@ export default function AdminUserManagementScreen() {
 
               {form.role === 'TEACHER' || form.role === 'STAFF' ? (
                 <>
-                  <Text style={{ color: BRAND_COLORS.textMuted, fontSize: 12, marginBottom: 4 }}>Additional Duties</Text>
+                  <Text style={{ color: BRAND_COLORS.textMuted, fontSize: scaleWithAppTextScale(12), marginBottom: 4 }}>Additional Duties</Text>
                   <View style={{ flexDirection: 'row', flexWrap: 'wrap', gap: 8, marginBottom: 8 }}>
                     {ADDITIONAL_DUTY_OPTIONS.map((item) => (
                       <MultiSelectChip
@@ -1384,7 +1385,7 @@ export default function AdminUserManagementScreen() {
 
                   {form.role === 'TEACHER' && form.additionalDuties.includes('KAPROG') ? (
                     <>
-                      <Text style={{ color: BRAND_COLORS.textMuted, fontSize: 12, marginBottom: 4 }}>
+                      <Text style={{ color: BRAND_COLORS.textMuted, fontSize: scaleWithAppTextScale(12), marginBottom: 4 }}>
                         Managed Major (untuk duty KAPROG)
                       </Text>
                       <TextInput
@@ -1420,7 +1421,7 @@ export default function AdminUserManagementScreen() {
 
               {form.role === 'EXAMINER' ? (
                 <>
-                  <Text style={{ color: BRAND_COLORS.textMuted, fontSize: 12, marginBottom: 4 }}>Jurusan Penguji</Text>
+                  <Text style={{ color: BRAND_COLORS.textMuted, fontSize: scaleWithAppTextScale(12), marginBottom: 4 }}>Jurusan Penguji</Text>
                   <TextInput
                     value={majorSearch}
                     onChangeText={setMajorSearch}
@@ -1450,7 +1451,7 @@ export default function AdminUserManagementScreen() {
 
               {form.role === 'PARENT' ? (
                 <>
-                  <Text style={{ color: BRAND_COLORS.textMuted, fontSize: 12, marginBottom: 4 }}>Cari Siswa Anak</Text>
+                  <Text style={{ color: BRAND_COLORS.textMuted, fontSize: scaleWithAppTextScale(12), marginBottom: 4 }}>Cari Siswa Anak</Text>
                   <TextInput
                     value={parentStudentSearch}
                     onChangeText={setParentStudentSearch}
@@ -1480,7 +1481,7 @@ export default function AdminUserManagementScreen() {
                       />
                     ))}
                   </View>
-                  <Text style={{ color: BRAND_COLORS.textMuted, fontSize: 12, marginBottom: 8 }}>
+                  <Text style={{ color: BRAND_COLORS.textMuted, fontSize: scaleWithAppTextScale(12), marginBottom: 8 }}>
                     Total siswa terpilih: {form.childNisns.length}
                   </Text>
                 </>
@@ -1567,7 +1568,7 @@ export default function AdminUserManagementScreen() {
           ) : null}
 
           {filteredUsers.length > 120 ? (
-            <Text style={{ color: BRAND_COLORS.textMuted, textAlign: 'center', fontSize: 12, marginTop: 2 }}>
+            <Text style={{ color: BRAND_COLORS.textMuted, textAlign: 'center', fontSize: scaleWithAppTextScale(12), marginTop: 2 }}>
               Menampilkan 120 user pertama dari {filteredUsers.length} data.
             </Text>
           ) : null}

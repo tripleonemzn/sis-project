@@ -3,6 +3,7 @@ import { useEffect, useMemo, useState } from 'react';
 import { Redirect, useRouter } from 'expo-router';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { Feather } from '@expo/vector-icons';
+import { scaleWithAppTextScale } from '../../../src/theme/AppTextScaleProvider';
 import {
   Alert,
   Pressable,
@@ -286,7 +287,7 @@ function SectionCard({
         marginBottom: 14,
       }}
     >
-      <Text style={{ color: BRAND_COLORS.textDark, fontWeight: '800', fontSize: 16 }}>{title}</Text>
+      <Text style={{ color: BRAND_COLORS.textDark, fontWeight: '800', fontSize: scaleWithAppTextScale(16) }}>{title}</Text>
       {helper ? <Text style={{ color: BRAND_COLORS.textMuted, marginTop: 4 }}>{helper}</Text> : null}
       <View style={{ marginTop: 10 }}>{children}</View>
     </View>
@@ -328,7 +329,7 @@ function Chip({
         paddingVertical: 5,
       }}
     >
-      <Text style={{ color: meta.text, fontSize: 11, fontWeight: '700' }}>{label}</Text>
+      <Text style={{ color: meta.text, fontSize: scaleWithAppTextScale(11), fontWeight: '700' }}>{label}</Text>
     </View>
   );
 }
@@ -350,7 +351,7 @@ function Field({
 }) {
   return (
     <View style={{ marginBottom: 10 }}>
-      <Text style={{ color: '#64748b', fontSize: 12, marginBottom: 4 }}>{label}</Text>
+      <Text style={{ color: '#64748b', fontSize: scaleWithAppTextScale(12), marginBottom: 4 }}>{label}</Text>
       <TextInput
         value={value}
         onChangeText={onChangeText}
@@ -695,7 +696,7 @@ export default function AdminCandidateAdmissionsScreen() {
                 >
                   <View style={{ flexDirection: 'row', justifyContent: 'space-between', gap: 12 }}>
                     <View style={{ flex: 1 }}>
-                      <Text style={{ color: BRAND_COLORS.textDark, fontWeight: '800', fontSize: 15 }}>
+                      <Text style={{ color: BRAND_COLORS.textDark, fontWeight: '800', fontSize: scaleWithAppTextScale(15) }}>
                         {item.user.name}
                       </Text>
                       <Text style={{ color: BRAND_COLORS.textMuted, marginTop: 2 }}>
@@ -706,13 +707,13 @@ export default function AdminCandidateAdmissionsScreen() {
                   </View>
 
                   <View style={{ flexDirection: 'row', flexWrap: 'wrap', gap: 10 }}>
-                    <Text style={{ color: '#475569', fontSize: 12 }}>
+                    <Text style={{ color: '#475569', fontSize: scaleWithAppTextScale(12) }}>
                       Jurusan: {item.desiredMajor ? `${item.desiredMajor.code} - ${item.desiredMajor.name}` : '-'}
                     </Text>
-                    <Text style={{ color: '#475569', fontSize: 12 }}>
+                    <Text style={{ color: '#475569', fontSize: scaleWithAppTextScale(12) }}>
                       Kelengkapan: {item.completeness.percent}% • {item.documentCount} dokumen
                     </Text>
-                    <Text style={{ color: '#475569', fontSize: 12 }}>
+                    <Text style={{ color: '#475569', fontSize: scaleWithAppTextScale(12) }}>
                       Dikirim: {formatDateTime(item.submittedAt)}
                     </Text>
                   </View>
@@ -795,13 +796,13 @@ export default function AdminCandidateAdmissionsScreen() {
             <View style={{ gap: 12 }}>
               <View style={{ flexDirection: 'row', flexWrap: 'wrap', gap: 10 }}>
                 <View style={{ flexBasis: '48%', flexGrow: 1 }}>
-                  <Text style={{ color: '#64748b', fontSize: 12 }}>Kontak</Text>
+                  <Text style={{ color: '#64748b', fontSize: scaleWithAppTextScale(12) }}>Kontak</Text>
                   <Text style={{ color: BRAND_COLORS.textDark, marginTop: 4 }}>{detail.user.phone || '-'}</Text>
                   <Text style={{ color: BRAND_COLORS.textDark }}>{detail.user.email || '-'}</Text>
                   <Text style={{ color: BRAND_COLORS.textDark }}>{detail.user.address || '-'}</Text>
                 </View>
                 <View style={{ flexBasis: '48%', flexGrow: 1 }}>
-                  <Text style={{ color: '#64748b', fontSize: 12 }}>PPDB</Text>
+                  <Text style={{ color: '#64748b', fontSize: scaleWithAppTextScale(12) }}>PPDB</Text>
                   <Text style={{ color: BRAND_COLORS.textDark, marginTop: 4 }}>
                     Asal sekolah: {detail.previousSchool || '-'}
                   </Text>
@@ -824,7 +825,7 @@ export default function AdminCandidateAdmissionsScreen() {
                 }}
               >
                 <Chip label={selectedSummary.financeMeta.label} meta={selectedSummary.financeMeta} />
-                <Text style={{ color: BRAND_COLORS.textDark, fontSize: 20, fontWeight: '800', marginTop: 8 }}>
+                <Text style={{ color: BRAND_COLORS.textDark, fontSize: scaleWithAppTextScale(20), fontWeight: '800', marginTop: 8 }}>
                   {formatCurrency(selectedSummary.financeSummary?.outstandingAmount || 0)}
                 </Text>
                 <Text style={{ color: '#475569', marginTop: 6 }}>
@@ -836,10 +837,10 @@ export default function AdminCandidateAdmissionsScreen() {
                         ? `${selectedSummary.financeSummary.activeInvoices} tagihan masih aktif.`
                         : 'Tagihan administrasi untuk akun ini sudah clear.'}
                 </Text>
-                <Text style={{ color: '#64748b', marginTop: 4, fontSize: 12 }}>
+                <Text style={{ color: '#64748b', marginTop: 4, fontSize: scaleWithAppTextScale(12) }}>
                   Jatuh tempo terdekat: {formatDateTime(selectedSummary.financeSummary?.nextDueDate)}
                 </Text>
-                <Text style={{ color: '#64748b', marginTop: 2, fontSize: 12 }}>
+                <Text style={{ color: '#64748b', marginTop: 2, fontSize: scaleWithAppTextScale(12) }}>
                   Pembayaran terakhir: {formatDateTime(selectedSummary.financeSummary?.lastPaymentAt)}
                 </Text>
               </View>
@@ -847,7 +848,7 @@ export default function AdminCandidateAdmissionsScreen() {
           </SectionCard>
 
           <SectionCard title="Kelengkapan Formulir">
-            <Text style={{ color: BRAND_COLORS.textDark, fontWeight: '800', fontSize: 20 }}>
+            <Text style={{ color: BRAND_COLORS.textDark, fontWeight: '800', fontSize: scaleWithAppTextScale(20) }}>
               {detail.completeness.completedCount}/{detail.completeness.totalFields}
             </Text>
             <Text style={{ color: BRAND_COLORS.textMuted, marginTop: 6 }}>
@@ -875,14 +876,14 @@ export default function AdminCandidateAdmissionsScreen() {
                     {item.isComplete ? `${item.validUploadedCount} file valid terunggah` : 'Belum ada file valid'}
                   </Text>
                   {item.invalidCount > 0 ? (
-                    <Text style={{ color: '#b91c1c', marginTop: 4, fontSize: 12 }}>
+                    <Text style={{ color: '#b91c1c', marginTop: 4, fontSize: scaleWithAppTextScale(12) }}>
                       {item.invalidCount} file salah format. Gunakan {item.acceptedFormats.join(', ')}.
                     </Text>
                   ) : null}
                 </View>
               ))}
               {detail.documentChecklist.summary.uncategorizedCount ? (
-                <Text style={{ color: '#b45309', fontSize: 12 }}>
+                <Text style={{ color: '#b45309', fontSize: scaleWithAppTextScale(12) }}>
                   Ada {detail.documentChecklist.summary.uncategorizedCount} dokumen tanpa kategori PPDB yang tepat.
                 </Text>
               ) : null}
@@ -905,7 +906,7 @@ export default function AdminCandidateAdmissionsScreen() {
                     }}
                   >
                     <Text style={{ color: BRAND_COLORS.textDark, fontWeight: '700' }}>{document.title}</Text>
-                    <Text style={{ color: BRAND_COLORS.textMuted, fontSize: 12 }}>
+                    <Text style={{ color: BRAND_COLORS.textMuted, fontSize: scaleWithAppTextScale(12) }}>
                       {document.category || 'Dokumen pendukung'} • {formatDateTime(document.createdAt)}
                     </Text>
                     <Pressable
@@ -1180,7 +1181,7 @@ export default function AdminCandidateAdmissionsScreen() {
                     Langkah berikutnya: {detail.decisionAnnouncement.nextSteps}
                   </Text>
                 ) : null}
-                <Text style={{ color: '#15803d', marginTop: 6, fontSize: 12 }}>
+                <Text style={{ color: '#15803d', marginTop: 6, fontSize: scaleWithAppTextScale(12) }}>
                   Dipublikasikan {formatDateTime(detail.decisionAnnouncement.publishedAt)}
                 </Text>
               </View>

@@ -2,6 +2,7 @@ import { Feather } from '@expo/vector-icons';
 import { Redirect, useRouter } from 'expo-router';
 import { useMemo, useState } from 'react';
 import { useQuery } from '@tanstack/react-query';
+import { scaleWithAppTextScale } from '../../../src/theme/AppTextScaleProvider';
 import {
   Alert,
   Linking,
@@ -91,8 +92,8 @@ function SummaryMetric({
         paddingVertical: 10,
       }}
     >
-      <Text style={{ color: text, fontSize: 12 }}>{label}</Text>
-      <Text style={{ color: BRAND_COLORS.textDark, fontSize: 18, fontWeight: '800', marginTop: 4 }}>{value}</Text>
+      <Text style={{ color: text, fontSize: scaleWithAppTextScale(12) }}>{label}</Text>
+      <Text style={{ color: BRAND_COLORS.textDark, fontSize: scaleWithAppTextScale(18), fontWeight: '800', marginTop: 4 }}>{value}</Text>
     </View>
   );
 }
@@ -109,8 +110,8 @@ function StudentPreviewCard({ row }: { row: FinalLedgerPreviewRow }) {
         backgroundColor: '#fff',
       }}
     >
-      <Text style={{ color: BRAND_COLORS.textDark, fontWeight: '700', fontSize: 14 }}>{row.student.name}</Text>
-      <Text style={{ color: '#64748b', fontSize: 12, marginTop: 2 }}>
+      <Text style={{ color: BRAND_COLORS.textDark, fontWeight: '700', fontSize: scaleWithAppTextScale(14) }}>{row.student.name}</Text>
+      <Text style={{ color: '#64748b', fontSize: scaleWithAppTextScale(12), marginTop: 2 }}>
         {row.student.class?.name || '-'} • {row.student.major?.code || '-'}
       </Text>
       <View style={{ flexDirection: 'row', flexWrap: 'wrap', gap: 8, marginTop: 10 }}>
@@ -277,7 +278,7 @@ export default function TeacherWakakurReportsScreen() {
   if (user?.role !== 'TEACHER') {
     return (
       <ScrollView style={{ flex: 1, backgroundColor: '#f8fafc' }} contentContainerStyle={pagePadding}>
-        <Text style={{ fontSize: 20, fontWeight: '700', marginBottom: 8 }}>Laporan Akademik</Text>
+        <Text style={{ fontSize: scaleWithAppTextScale(20), fontWeight: '700', marginBottom: 8 }}>Laporan Akademik</Text>
         <QueryStateView type="error" message="Halaman ini khusus untuk role guru." />
       </ScrollView>
     );
@@ -286,7 +287,7 @@ export default function TeacherWakakurReportsScreen() {
   if (!isAllowed) {
     return (
       <ScrollView style={{ flex: 1, backgroundColor: '#f8fafc' }} contentContainerStyle={pagePadding}>
-        <Text style={{ fontSize: 20, fontWeight: '700', marginBottom: 8, color: BRAND_COLORS.textDark }}>
+        <Text style={{ fontSize: scaleWithAppTextScale(20), fontWeight: '700', marginBottom: 8, color: BRAND_COLORS.textDark }}>
           Laporan Akademik
         </Text>
         <QueryStateView
@@ -336,7 +337,7 @@ export default function TeacherWakakurReportsScreen() {
         >
           <Feather name="arrow-left" size={18} color={BRAND_COLORS.textDark} />
         </Pressable>
-        <Text style={{ marginLeft: 10, color: BRAND_COLORS.textDark, fontSize: 20, fontWeight: '700' }}>
+        <Text style={{ marginLeft: 10, color: BRAND_COLORS.textDark, fontSize: scaleWithAppTextScale(20), fontWeight: '700' }}>
           Laporan Akademik
         </Text>
       </View>
@@ -538,7 +539,7 @@ export default function TeacherWakakurReportsScreen() {
                       <Text style={{ color: BRAND_COLORS.textDark, fontWeight: '700' }}>
                         {row.room || 'Belum ditentukan'}
                       </Text>
-                      <Text style={{ color: '#64748b', fontSize: 12, marginTop: 2 }}>
+                      <Text style={{ color: '#64748b', fontSize: scaleWithAppTextScale(12), marginTop: 2 }}>
                         {row.sessionLabel || '-'} • {row.classNames.join(', ') || 'Belum ada kelas'}
                       </Text>
                       <Text style={{ color: '#b91c1c', fontWeight: '700', marginTop: 8 }}>
@@ -568,10 +569,10 @@ export default function TeacherWakakurReportsScreen() {
                         <Text style={{ color: BRAND_COLORS.textDark, fontWeight: '700' }}>
                           {row.room || 'Belum ditentukan'}
                         </Text>
-                        <Text style={{ color: '#64748b', fontSize: 12, marginTop: 2 }}>
+                        <Text style={{ color: '#64748b', fontSize: scaleWithAppTextScale(12), marginTop: 2 }}>
                           BA: {row.report?.documentNumber || 'Nomor dokumen dibuat saat preview dibuka.'}
                         </Text>
-                        <Text style={{ color: '#64748b', fontSize: 12, marginTop: 2 }}>
+                        <Text style={{ color: '#64748b', fontSize: scaleWithAppTextScale(12), marginTop: 2 }}>
                           Pengawas: {row.report?.proctor?.name || '-'}
                         </Text>
                         <View style={{ flexDirection: 'row', flexWrap: 'wrap', gap: 8, marginTop: 10 }}>

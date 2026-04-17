@@ -9,6 +9,7 @@ import { useAuth } from '../../../src/features/auth/AuthProvider';
 import { adminApi } from '../../../src/features/admin/adminApi';
 import { examApi, ExamProgramItem } from '../../../src/features/exams/examApi';
 import { tutorApi } from '../../../src/features/tutor/tutorApi';
+import { scaleWithAppTextScale } from '../../../src/theme/AppTextScaleProvider';
 import {
   canAccessTutorWorkspace,
   getExtracurricularTutorAssignments,
@@ -266,7 +267,7 @@ export default function TutorMembersScreen() {
   if (!hasTutorWorkspaceAccess) {
     return (
       <ScrollView style={{ flex: 1, backgroundColor: '#f8fafc' }} contentContainerStyle={pagePadding}>
-        <Text style={{ fontSize: 20, fontWeight: '700', color: BRAND_COLORS.textDark, marginBottom: 8 }}>Anggota & Nilai</Text>
+        <Text style={{ fontSize: scaleWithAppTextScale(20), fontWeight: '700', color: BRAND_COLORS.textDark, marginBottom: 8 }}>Anggota & Nilai</Text>
         <QueryStateView type="error" message="Halaman ini tersedia untuk pembina ekstrakurikuler aktif." />
       </ScrollView>
     );
@@ -287,7 +288,7 @@ export default function TutorMembersScreen() {
         />
       }
     >
-      <Text style={{ fontSize: 20, fontWeight: '700', color: BRAND_COLORS.textDark, marginBottom: 6 }}>Anggota & Nilai</Text>
+      <Text style={{ fontSize: scaleWithAppTextScale(20), fontWeight: '700', color: BRAND_COLORS.textDark, marginBottom: 6 }}>Anggota & Nilai</Text>
       <Text style={{ color: BRAND_COLORS.textMuted, marginBottom: 12 }}>
         Input nilai ekstrakurikuler sesuai Program Ujian aktif dan semester.
       </Text>
@@ -326,7 +327,7 @@ export default function TutorMembersScreen() {
                   <Text numberOfLines={1} style={{ color: selected ? BRAND_COLORS.navy : BRAND_COLORS.textDark, fontWeight: '700' }}>
                     {item.ekskul?.name || '-'}
                   </Text>
-                  <Text style={{ color: BRAND_COLORS.textMuted, fontSize: 11, marginTop: 2 }}>
+                  <Text style={{ color: BRAND_COLORS.textMuted, fontSize: scaleWithAppTextScale(11), marginTop: 2 }}>
                     {item.academicYear?.name || '-'}
                   </Text>
                 </Pressable>
@@ -366,7 +367,7 @@ export default function TutorMembersScreen() {
                     >
                       {String(program.label || program.shortLabel || program.code)}
                     </Text>
-                    <Text style={{ color: BRAND_COLORS.textMuted, fontSize: 11, marginTop: 2 }}>
+                    <Text style={{ color: BRAND_COLORS.textMuted, fontSize: scaleWithAppTextScale(11), marginTop: 2 }}>
                       {program.fixedSemester === 'ODD'
                         ? 'Semester Ganjil'
                         : program.fixedSemester === 'EVEN'
@@ -390,7 +391,7 @@ export default function TutorMembersScreen() {
             }}
           >
             <Text style={{ color: '#854d0e', fontWeight: '700' }}>Program ujian belum tersedia.</Text>
-            <Text style={{ color: '#854d0e', fontSize: 12, marginTop: 2 }}>
+            <Text style={{ color: '#854d0e', fontSize: scaleWithAppTextScale(12), marginTop: 2 }}>
               Aktifkan program ujian komponen rapor dari menu Wakasek Kurikulum.
             </Text>
           </View>
@@ -481,7 +482,7 @@ export default function TutorMembersScreen() {
                 }}
               >
                 <Text style={{ color: BRAND_COLORS.textDark, fontWeight: '700' }}>{item.student?.name || '-'}</Text>
-                <Text style={{ color: BRAND_COLORS.textMuted, fontSize: 12, marginTop: 2 }}>
+                <Text style={{ color: BRAND_COLORS.textMuted, fontSize: scaleWithAppTextScale(12), marginTop: 2 }}>
                   {item.student?.studentClass?.name || '-'} • NIS: {item.student?.nis || '-'}
                 </Text>
 

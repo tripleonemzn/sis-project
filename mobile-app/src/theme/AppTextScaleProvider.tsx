@@ -26,6 +26,7 @@ type AppTextScaleContextValue = {
 };
 
 const AppTextScaleContext = createContext<AppTextScaleContextValue | null>(null);
+let activeAppTextScaleMultiplier = 1;
 
 function clampValue(value: number, options?: ScaleFontOptions) {
   if (typeof options?.min === 'number') {
@@ -47,6 +48,7 @@ export function AppTextScaleProvider({ children }: PropsWithChildren) {
   }, [preferredMode]);
 
   const scaleMultiplier = useMemo(() => resolveMobileTextScaleMultiplier(mode), [mode]);
+  activeAppTextScaleMultiplier = scaleMultiplier;
   const fontSizes = useMemo(() => buildMobileFontSizes(scaleMultiplier), [scaleMultiplier]);
   const typography = useMemo(() => buildMobileTypography(scaleMultiplier), [scaleMultiplier]);
 
@@ -86,4 +88,12 @@ export function useAppTextScale() {
     throw new Error('useAppTextScale harus dipakai di dalam AppTextScaleProvider.');
   }
   return context;
+}
+
+export function scaleWithAppTextScale(value: number, options?: ScaleFontOptions) {
+  return clampValue(scaleMobileFontSize(value, activeAppTextScaleMultiplier), options);
+}
+
+export function scaleLineHeightWithAppTextScale(value: number, options?: ScaleFontOptions) {
+  return clampValue(scaleMobileLineHeight(value, activeAppTextScaleMultiplier), options);
 }

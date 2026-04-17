@@ -2,6 +2,7 @@ import { useEffect, useMemo, useState } from 'react';
 import { Feather } from '@expo/vector-icons';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { Redirect, useLocalSearchParams, useRouter } from 'expo-router';
+import { scaleLineHeightWithAppTextScale, scaleWithAppTextScale } from '../../../src/theme/AppTextScaleProvider';
 import {
   Pressable,
   RefreshControl,
@@ -413,7 +414,7 @@ export default function TeacherWakakurRoomLayoutScreen() {
   if (!sittingId) {
     return (
       <ScrollView style={{ flex: 1, backgroundColor: '#f8fafc' }} contentContainerStyle={pagePadding}>
-        <Text style={{ fontSize: 20, fontWeight: '700', marginBottom: 8, color: BRAND_COLORS.textDark }}>
+        <Text style={{ fontSize: scaleWithAppTextScale(20), fontWeight: '700', marginBottom: 8, color: BRAND_COLORS.textDark }}>
           Generate Denah Ruang
         </Text>
         <QueryStateView type="error" message="Ruang ujian tidak valid." />
@@ -453,7 +454,7 @@ export default function TeacherWakakurRoomLayoutScreen() {
           >
             <Feather name="arrow-left" size={18} color={BRAND_COLORS.textDark} />
           </Pressable>
-          <Text style={{ marginLeft: 10, color: BRAND_COLORS.textDark, fontSize: 20, fontWeight: '700' }}>
+          <Text style={{ marginLeft: 10, color: BRAND_COLORS.textDark, fontSize: scaleWithAppTextScale(20), fontWeight: '700' }}>
             Generate Denah Ruang
           </Text>
         </View>
@@ -500,17 +501,17 @@ export default function TeacherWakakurRoomLayoutScreen() {
                       paddingVertical: 5,
                     }}
                   >
-                    <Text style={{ color: '#1d4ed8', fontWeight: '700', fontSize: 12 }}>
+                    <Text style={{ color: '#1d4ed8', fontWeight: '700', fontSize: scaleWithAppTextScale(12) }}>
                       {detailQuery.data.sitting.roomName}
                     </Text>
                   </View>
-                  <Text style={{ color: BRAND_COLORS.textDark, fontWeight: '800', fontSize: 18, marginTop: 12 }}>
+                  <Text style={{ color: BRAND_COLORS.textDark, fontWeight: '800', fontSize: scaleWithAppTextScale(18), marginTop: 12 }}>
                     {detailQuery.data.sitting.examType}
                   </Text>
                   <Text style={{ color: BRAND_COLORS.textMuted, marginTop: 4 }}>
                     {formatScheduleSummary(detailQuery.data.sitting.startTime, detailQuery.data.sitting.endTime)}
                   </Text>
-                  <Text style={{ color: BRAND_COLORS.textMuted, marginTop: 4, fontSize: 12 }}>
+                  <Text style={{ color: BRAND_COLORS.textMuted, marginTop: 4, fontSize: scaleWithAppTextScale(12) }}>
                     {formatSessionSummary(
                       detailQuery.data.sitting.programSession?.label || detailQuery.data.sitting.sessionLabel,
                     )}
@@ -528,7 +529,7 @@ export default function TeacherWakakurRoomLayoutScreen() {
                     paddingVertical: 10,
                   }}
                   >
-                  <Text style={{ color: '#1d4ed8', fontWeight: '700', fontSize: 12 }}>
+                  <Text style={{ color: '#1d4ed8', fontWeight: '700', fontSize: scaleWithAppTextScale(12) }}>
                     {draft ? 'Setup Ulang Denah' : 'Setup Denah'}
                   </Text>
                 </Pressable>
@@ -543,7 +544,7 @@ export default function TeacherWakakurRoomLayoutScreen() {
                     paddingVertical: 6,
                   }}
                 >
-                  <Text style={{ color: '#475569', fontWeight: '700', fontSize: 12 }}>
+                  <Text style={{ color: '#475569', fontWeight: '700', fontSize: scaleWithAppTextScale(12) }}>
                     {seatStats.studentCount} peserta
                   </Text>
                 </View>
@@ -557,7 +558,7 @@ export default function TeacherWakakurRoomLayoutScreen() {
                         paddingVertical: 6,
                       }}
                     >
-                      <Text style={{ color: '#475569', fontWeight: '700', fontSize: 12 }}>
+                      <Text style={{ color: '#475569', fontWeight: '700', fontSize: scaleWithAppTextScale(12) }}>
                         {seatStats.totalSeats} kursi
                       </Text>
                     </View>
@@ -569,7 +570,7 @@ export default function TeacherWakakurRoomLayoutScreen() {
                         paddingVertical: 6,
                       }}
                     >
-                      <Text style={{ color: '#475569', fontWeight: '700', fontSize: 12 }}>
+                      <Text style={{ color: '#475569', fontWeight: '700', fontSize: scaleWithAppTextScale(12) }}>
                         {seatStats.filledSeats} terisi
                       </Text>
                     </View>
@@ -584,7 +585,7 @@ export default function TeacherWakakurRoomLayoutScreen() {
                       paddingVertical: 6,
                     }}
                   >
-                    <Text style={{ color: '#1d4ed8', fontWeight: '700', fontSize: 12 }}>
+                    <Text style={{ color: '#1d4ed8', fontWeight: '700', fontSize: scaleWithAppTextScale(12) }}>
                       {detailQuery.data.layout.rows} x {detailQuery.data.layout.columns}
                     </Text>
                   </View>
@@ -623,7 +624,7 @@ export default function TeacherWakakurRoomLayoutScreen() {
                 }}
               >
                 <Feather name="grid" size={28} color="#1d4ed8" />
-                <Text style={{ color: BRAND_COLORS.textDark, fontWeight: '800', fontSize: 17, marginTop: 12 }}>
+                <Text style={{ color: BRAND_COLORS.textDark, fontWeight: '800', fontSize: scaleWithAppTextScale(17), marginTop: 12 }}>
                   Denah Belum Dibuat
                 </Text>
                 <Text
@@ -631,7 +632,7 @@ export default function TeacherWakakurRoomLayoutScreen() {
                     color: BRAND_COLORS.textMuted,
                     marginTop: 6,
                     textAlign: 'center',
-                    lineHeight: 20,
+                    lineHeight: scaleLineHeightWithAppTextScale(20),
                   }}
                 >
                   Buka popup setup denah untuk menentukan ukuran grid awal sebelum editor penuh dipakai.
@@ -673,7 +674,7 @@ export default function TeacherWakakurRoomLayoutScreen() {
                         style={{
                           color: unassignedStudents.length > 0 ? '#92400e' : '#166534',
                           fontWeight: '800',
-                          fontSize: 14,
+                          fontSize: scaleWithAppTextScale(14),
                         }}
                       >
                         {unassignedStudents.length > 0
@@ -684,8 +685,8 @@ export default function TeacherWakakurRoomLayoutScreen() {
                         style={{
                           color: unassignedStudents.length > 0 ? '#92400e' : '#166534',
                           marginTop: 4,
-                          fontSize: 12,
-                          lineHeight: 18,
+                          fontSize: scaleWithAppTextScale(12),
+                          lineHeight: scaleLineHeightWithAppTextScale(18),
                         }}
                       >
                         {unassignedStudents.length > 0
@@ -706,7 +707,7 @@ export default function TeacherWakakurRoomLayoutScreen() {
                     marginBottom: 14,
                   }}
                 >
-                  <Text style={{ color: BRAND_COLORS.textDark, fontWeight: '800', fontSize: 16 }}>
+                  <Text style={{ color: BRAND_COLORS.textDark, fontWeight: '800', fontSize: scaleWithAppTextScale(16) }}>
                     Editor Denah
                   </Text>
                   <Text style={{ color: BRAND_COLORS.textMuted, marginTop: 4 }}>
@@ -759,14 +760,14 @@ export default function TeacherWakakurRoomLayoutScreen() {
                                       <Text
                                         style={{
                                           color: isSeat ? '#1d4ed8' : '#475569',
-                                          fontSize: 11,
+                                          fontSize: scaleWithAppTextScale(11),
                                           fontWeight: '800',
                                         }}
                                       >
                                         {isSeat ? cell.seatLabel || getSeatLabel(cell.rowIndex, cell.columnIndex) : 'LORONG'}
                                       </Text>
                                     </View>
-                                    <Text style={{ color: '#94a3b8', fontSize: 11, fontWeight: '700' }}>
+                                    <Text style={{ color: '#94a3b8', fontSize: scaleWithAppTextScale(11), fontWeight: '700' }}>
                                       {cell.rowIndex + 1}-{cell.columnIndex + 1}
                                     </Text>
                                   </View>
@@ -775,7 +776,7 @@ export default function TeacherWakakurRoomLayoutScreen() {
                                     numberOfLines={2}
                                     style={{
                                       color: BRAND_COLORS.textDark,
-                                      fontSize: 13,
+                                      fontSize: scaleWithAppTextScale(13),
                                       fontWeight: '800',
                                       marginTop: 12,
                                     }}
@@ -791,8 +792,8 @@ export default function TeacherWakakurRoomLayoutScreen() {
                                     numberOfLines={2}
                                     style={{
                                       color: isSeat ? '#64748b' : '#94a3b8',
-                                      fontSize: 11,
-                                      lineHeight: 16,
+                                      fontSize: scaleWithAppTextScale(11),
+                                      lineHeight: scaleLineHeightWithAppTextScale(16),
                                     }}
                                   >
                                     {isSeat
@@ -802,7 +803,7 @@ export default function TeacherWakakurRoomLayoutScreen() {
                                       : 'Dipakai untuk jalur pengawas atau jarak antar kursi.'}
                                   </Text>
                                   {isSeat ? (
-                                    <Text style={{ color: '#1d4ed8', fontSize: 11, fontWeight: '700', marginTop: 4 }}>
+                                    <Text style={{ color: '#1d4ed8', fontSize: scaleWithAppTextScale(11), fontWeight: '700', marginTop: 4 }}>
                                       No. Peserta {assignedStudent?.participantNumber || '-'}
                                     </Text>
                                   ) : null}
@@ -835,7 +836,7 @@ export default function TeacherWakakurRoomLayoutScreen() {
                     }}
                   >
                     <View style={{ flex: 1 }}>
-                      <Text style={{ color: BRAND_COLORS.textDark, fontWeight: '800', fontSize: 16 }}>
+                      <Text style={{ color: BRAND_COLORS.textDark, fontWeight: '800', fontSize: scaleWithAppTextScale(16) }}>
                         Pengaturan Penempatan Rombel
                       </Text>
                       <Text style={{ color: BRAND_COLORS.textMuted, marginTop: 4 }}>
@@ -851,7 +852,7 @@ export default function TeacherWakakurRoomLayoutScreen() {
                         backgroundColor: BRAND_COLORS.blue,
                       }}
                     >
-                      <Text style={{ color: '#fff', fontWeight: '700', fontSize: 12 }}>
+                      <Text style={{ color: '#fff', fontWeight: '700', fontSize: scaleWithAppTextScale(12) }}>
                         Terapkan Penempatan
                       </Text>
                     </Pressable>
@@ -889,10 +890,10 @@ export default function TeacherWakakurRoomLayoutScreen() {
                           }}
                         >
                           <View style={{ flex: 1 }}>
-                            <Text style={{ color: BRAND_COLORS.textDark, fontWeight: '700', fontSize: 14 }}>
+                            <Text style={{ color: BRAND_COLORS.textDark, fontWeight: '700', fontSize: scaleWithAppTextScale(14) }}>
                               {group.className}
                             </Text>
-                            <Text style={{ color: BRAND_COLORS.textMuted, marginTop: 4, fontSize: 12 }}>
+                            <Text style={{ color: BRAND_COLORS.textMuted, marginTop: 4, fontSize: scaleWithAppTextScale(12) }}>
                               {group.count} siswa • giliran kolom ke-{index + 1}
                             </Text>
                           </View>
@@ -910,7 +911,7 @@ export default function TeacherWakakurRoomLayoutScreen() {
                                 opacity: index === 0 ? 0.55 : 1,
                               }}
                             >
-                              <Text style={{ color: '#475569', fontWeight: '700', fontSize: 12 }}>Naik</Text>
+                              <Text style={{ color: '#475569', fontWeight: '700', fontSize: scaleWithAppTextScale(12) }}>Naik</Text>
                             </Pressable>
                             <Pressable
                               onPress={() => movePlacementClass(index, 1)}
@@ -925,7 +926,7 @@ export default function TeacherWakakurRoomLayoutScreen() {
                                 opacity: index === placementGroups.length - 1 ? 0.55 : 1,
                               }}
                             >
-                              <Text style={{ color: '#475569', fontWeight: '700', fontSize: 12 }}>Turun</Text>
+                              <Text style={{ color: '#475569', fontWeight: '700', fontSize: scaleWithAppTextScale(12) }}>Turun</Text>
                             </Pressable>
                           </View>
                         </View>
@@ -944,12 +945,12 @@ export default function TeacherWakakurRoomLayoutScreen() {
                     }}
                   >
                     <Text style={{ color: '#1d4ed8', fontWeight: '700' }}>Pola yang diterapkan</Text>
-                    <Text style={{ color: '#1e40af', marginTop: 4, fontSize: 12, lineHeight: 18 }}>
+                    <Text style={{ color: '#1e40af', marginTop: 4, fontSize: scaleWithAppTextScale(12), lineHeight: scaleLineHeightWithAppTextScale(18) }}>
                       Contoh: A1-E1 untuk rombel pertama, A2-E2 untuk rombel kedua, lalu kolom berikutnya kembali mengikuti urutan rombel yang sama sampai semua siswa terpasang.
                     </Text>
                   </View>
 
-                  <Text style={{ fontSize: 12, color: '#64748b', marginTop: 12, marginBottom: 6 }}>
+                  <Text style={{ fontSize: scaleWithAppTextScale(12), color: '#64748b', marginTop: 12, marginBottom: 6 }}>
                     Catatan Denah
                   </Text>
                   <TextInput
@@ -997,13 +998,13 @@ export default function TeacherWakakurRoomLayoutScreen() {
                 marginBottom: 14,
               }}
             >
-              <Text style={{ color: '#1d4ed8', fontWeight: '800', fontSize: 15 }}>
+              <Text style={{ color: '#1d4ed8', fontWeight: '800', fontSize: scaleWithAppTextScale(15) }}>
                 {detailQuery.data.sitting.roomName}
               </Text>
-              <Text style={{ color: '#1e40af', marginTop: 4, fontSize: 12 }}>
+              <Text style={{ color: '#1e40af', marginTop: 4, fontSize: scaleWithAppTextScale(12) }}>
                 {formatScheduleSummary(detailQuery.data.sitting.startTime, detailQuery.data.sitting.endTime)}
               </Text>
-              <Text style={{ color: '#1e40af', marginTop: 4, fontSize: 12 }}>
+              <Text style={{ color: '#1e40af', marginTop: 4, fontSize: scaleWithAppTextScale(12) }}>
                 {detailQuery.data.sitting.examType} •{' '}
                 {formatSessionSummary(
                   detailQuery.data.sitting.programSession?.label || detailQuery.data.sitting.sessionLabel,
@@ -1013,7 +1014,7 @@ export default function TeacherWakakurRoomLayoutScreen() {
 
             <View style={{ flexDirection: 'row', gap: 10 }}>
               <View style={{ flex: 1 }}>
-                <Text style={{ fontSize: 12, color: '#64748b', marginBottom: 6 }}>Baris</Text>
+                <Text style={{ fontSize: scaleWithAppTextScale(12), color: '#64748b', marginBottom: 6 }}>Baris</Text>
                 <TextInput
                   value={generateRowsInput}
                   onChangeText={setGenerateRowsInput}
@@ -1028,12 +1029,12 @@ export default function TeacherWakakurRoomLayoutScreen() {
                     color: BRAND_COLORS.textDark,
                   }}
                 />
-                <Text style={{ color: BRAND_COLORS.textMuted, marginTop: 6, fontSize: 11 }}>
+                <Text style={{ color: BRAND_COLORS.textMuted, marginTop: 6, fontSize: scaleWithAppTextScale(11) }}>
                   Memanjang ke samping
                 </Text>
               </View>
               <View style={{ flex: 1 }}>
-                <Text style={{ fontSize: 12, color: '#64748b', marginBottom: 6 }}>Kolom</Text>
+                <Text style={{ fontSize: scaleWithAppTextScale(12), color: '#64748b', marginBottom: 6 }}>Kolom</Text>
                 <TextInput
                   value={generateColumnsInput}
                   onChangeText={setGenerateColumnsInput}
@@ -1048,7 +1049,7 @@ export default function TeacherWakakurRoomLayoutScreen() {
                     color: BRAND_COLORS.textDark,
                   }}
                 />
-                <Text style={{ color: BRAND_COLORS.textMuted, marginTop: 6, fontSize: 11 }}>
+                <Text style={{ color: BRAND_COLORS.textMuted, marginTop: 6, fontSize: scaleWithAppTextScale(11) }}>
                   Memanjang ke bawah
                 </Text>
               </View>
@@ -1067,13 +1068,13 @@ export default function TeacherWakakurRoomLayoutScreen() {
               <Text style={{ color: BRAND_COLORS.textDark, fontWeight: '700' }}>
                 {detailQuery.data.meta.studentCount} siswa pada ruang ini
               </Text>
-              <Text style={{ color: BRAND_COLORS.textMuted, marginTop: 4, fontSize: 12 }}>
+              <Text style={{ color: BRAND_COLORS.textMuted, marginTop: 4, fontSize: scaleWithAppTextScale(12) }}>
                 Rekomendasi saat ini: {detailQuery.data.meta.suggestedDimensions.rows} x{' '}
                 {detailQuery.data.meta.suggestedDimensions.columns}
               </Text>
             </View>
 
-            <Text style={{ fontSize: 12, color: '#64748b', marginTop: 12, marginBottom: 6 }}>
+            <Text style={{ fontSize: scaleWithAppTextScale(12), color: '#64748b', marginTop: 12, marginBottom: 6 }}>
               Catatan Denah
             </Text>
             <TextInput

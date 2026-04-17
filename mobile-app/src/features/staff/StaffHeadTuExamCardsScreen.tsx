@@ -18,6 +18,7 @@ import { createHtmlPreviewEntry } from '../../lib/viewer/htmlPreviewStore';
 import { useAuth } from '../auth/AuthProvider';
 import { academicYearApi } from '../academicYear/academicYearApi';
 import { examApi, type ExamProgramItem } from '../exams/examApi';
+import { scaleWithAppTextScale } from '../../theme/AppTextScaleProvider';
 import {
   examCardApi,
   type ExamCardOverviewRow,
@@ -427,7 +428,7 @@ function SectionCard({
         marginBottom: 14,
       }}
     >
-      <Text style={{ color: BRAND_COLORS.textDark, fontWeight: '800', fontSize: 16 }}>{title}</Text>
+      <Text style={{ color: BRAND_COLORS.textDark, fontWeight: '800', fontSize: scaleWithAppTextScale(16) }}>{title}</Text>
       {helper ? <Text style={{ color: BRAND_COLORS.textMuted, marginTop: 4 }}>{helper}</Text> : null}
       <View style={{ marginTop: 10 }}>{children}</View>
     </View>
@@ -663,7 +664,7 @@ export function StaffHeadTuExamCardsScreen() {
       }
     >
       <View style={{ marginBottom: 16 }}>
-        <Text style={{ fontSize: 20, fontWeight: '800', color: BRAND_COLORS.textDark }}>Kartu Ujian</Text>
+        <Text style={{ fontSize: scaleWithAppTextScale(20), fontWeight: '800', color: BRAND_COLORS.textDark }}>Kartu Ujian</Text>
         <Text style={{ marginTop: 6, color: BRAND_COLORS.textMuted }}>
           Generate kartu ujian digital untuk siswa yang layak ikut ujian, lalu buka pratinjau dokumen resminya dari Kepala TU.
         </Text>
@@ -682,7 +683,7 @@ export function StaffHeadTuExamCardsScreen() {
           }}
         >
           <Text style={{ color: '#92400e', fontWeight: '700', marginBottom: 4 }}>Tahun ajaran aktif belum tersedia</Text>
-          <Text style={{ color: '#b45309', fontSize: 12 }}>
+          <Text style={{ color: '#b45309', fontSize: scaleWithAppTextScale(12) }}>
             Aktifkan tahun ajaran terlebih dahulu agar kartu ujian tidak ambigu.
           </Text>
         </View>
@@ -743,7 +744,7 @@ export function StaffHeadTuExamCardsScreen() {
       </View>
 
       <SectionCard title="Filter Kartu Ujian" helper="Pilih program ujian yang ingin digenerate atau dipantau.">
-        <Text style={{ color: '#64748b', fontSize: 12, marginBottom: 8 }}>Program Ujian</Text>
+        <Text style={{ color: '#64748b', fontSize: scaleWithAppTextScale(12), marginBottom: 8 }}>Program Ujian</Text>
         <MobileMenuTabBar
           items={visiblePrograms.map((item) => ({
             key: item.code,
@@ -759,7 +760,7 @@ export function StaffHeadTuExamCardsScreen() {
         />
         <View style={{ flexDirection: 'row', gap: 10, marginBottom: 12 }}>
           <View style={{ flex: 1 }}>
-            <Text style={{ color: '#64748b', fontSize: 12, marginBottom: 4 }}>Lokasi TTD Kepala Sekolah</Text>
+            <Text style={{ color: '#64748b', fontSize: scaleWithAppTextScale(12), marginBottom: 4 }}>Lokasi TTD Kepala Sekolah</Text>
             <TextInput
               value={issueLocation}
               onChangeText={setIssueLocation}
@@ -777,7 +778,7 @@ export function StaffHeadTuExamCardsScreen() {
             />
           </View>
           <View style={{ flex: 1 }}>
-            <Text style={{ color: '#64748b', fontSize: 12, marginBottom: 4 }}>Tanggal Terbit</Text>
+            <Text style={{ color: '#64748b', fontSize: scaleWithAppTextScale(12), marginBottom: 4 }}>Tanggal Terbit</Text>
             <TextInput
               value={issueDate}
               onChangeText={setIssueDate}
@@ -797,7 +798,7 @@ export function StaffHeadTuExamCardsScreen() {
           </View>
         </View>
 
-        <Text style={{ color: '#64748b', fontSize: 12, marginBottom: 4 }}>Cari siswa / ruang / kursi</Text>
+        <Text style={{ color: '#64748b', fontSize: scaleWithAppTextScale(12), marginBottom: 4 }}>Cari siswa / ruang / kursi</Text>
         <TextInput
           value={search}
           onChangeText={setSearch}
@@ -918,7 +919,7 @@ export function StaffHeadTuExamCardsScreen() {
                   <View style={{ flexDirection: 'row', justifyContent: 'space-between', gap: 12 }}>
                     <View style={{ flex: 1 }}>
                       <Text style={{ color: BRAND_COLORS.textDark, fontWeight: '700' }}>{row.studentName}</Text>
-                      <Text style={{ marginTop: 4, color: BRAND_COLORS.textMuted, fontSize: 12 }}>
+                      <Text style={{ marginTop: 4, color: BRAND_COLORS.textMuted, fontSize: scaleWithAppTextScale(12) }}>
                         @{row.username} • {row.className || '-'}
                       </Text>
                       <View
@@ -933,11 +934,11 @@ export function StaffHeadTuExamCardsScreen() {
                           paddingVertical: 5,
                         }}
                       >
-                        <Text style={{ color: '#1d4ed8', fontWeight: '700', fontSize: 11 }}>
+                        <Text style={{ color: '#1d4ed8', fontWeight: '700', fontSize: scaleWithAppTextScale(11) }}>
                           No. Peserta {row.participantNumber || '-'}
                         </Text>
                       </View>
-                      <Text style={{ marginTop: 4, color: BRAND_COLORS.textMuted, fontSize: 12 }}>
+                      <Text style={{ marginTop: 4, color: BRAND_COLORS.textMuted, fontSize: scaleWithAppTextScale(12) }}>
                         NIS {row.nis || '-'} • NISN {row.nisn || '-'}
                       </Text>
                     </View>
@@ -952,7 +953,7 @@ export function StaffHeadTuExamCardsScreen() {
                         alignSelf: 'flex-start',
                       }}
                     >
-                      <Text style={{ color: pill.text, fontWeight: '700', fontSize: 12 }}>{pill.label}</Text>
+                      <Text style={{ color: pill.text, fontWeight: '700', fontSize: scaleWithAppTextScale(12) }}>{pill.label}</Text>
                     </View>
                   </View>
 
@@ -967,7 +968,7 @@ export function StaffHeadTuExamCardsScreen() {
                           padding: 10,
                         }}
                       >
-                        <Text style={{ color: '#b45309', fontSize: 12, fontWeight: '700' }}>
+                        <Text style={{ color: '#b45309', fontSize: scaleWithAppTextScale(12), fontWeight: '700' }}>
                           Belum ada data ruang ujian aktif untuk siswa ini.
                         </Text>
                       </View>
@@ -985,11 +986,11 @@ export function StaffHeadTuExamCardsScreen() {
                         >
                           <Text style={{ color: BRAND_COLORS.textDark, fontWeight: '700' }}>{entry.roomName}</Text>
                           {formatEntryMeta(entry) ? (
-                            <Text style={{ marginTop: 4, color: BRAND_COLORS.textMuted, fontSize: 12 }}>
+                            <Text style={{ marginTop: 4, color: BRAND_COLORS.textMuted, fontSize: scaleWithAppTextScale(12) }}>
                               {formatEntryMeta(entry)}
                             </Text>
                           ) : null}
-                          <Text style={{ marginTop: 4, color: BRAND_COLORS.textMuted, fontSize: 12 }}>
+                          <Text style={{ marginTop: 4, color: BRAND_COLORS.textMuted, fontSize: scaleWithAppTextScale(12) }}>
                             {formatDateTime(entry.startTime)} - {formatDateTime(entry.endTime)}
                           </Text>
                         </View>
@@ -1037,24 +1038,24 @@ export function StaffHeadTuExamCardsScreen() {
                                   : row.status.category === 'BLOCKED_KKM'
                                     ? '#92400e'
                                     : '#334155',
-                          fontSize: 12,
+                          fontSize: scaleWithAppTextScale(12),
                           fontWeight: '700',
                         }}
                       >
                       {row.status.detail}
                       </Text>
                       {row.eligibility.financeExceptionApplied ? (
-                        <Text style={{ color: '#166534', fontSize: 11, marginTop: 4 }}>
+                        <Text style={{ color: '#166534', fontSize: scaleWithAppTextScale(11), marginTop: 4 }}>
                           Ada pengecualian finance dari wali kelas untuk siswa ini.
                         </Text>
                       ) : null}
                       {isPublishedActive ? (
-                        <Text style={{ color: '#be123c', fontSize: 11, marginTop: 4 }}>
+                        <Text style={{ color: '#be123c', fontSize: scaleWithAppTextScale(11), marginTop: 4 }}>
                           Kartu aktif terakhir diterbitkan {formatDateTime(row.card?.generatedAt)}.
                         </Text>
                       ) : null}
                       {row.status.code === 'BLOCKED_FINANCE' && row.eligibility.financeClearance.reason ? (
-                        <Text style={{ color: '#c2410c', fontSize: 11, marginTop: 4 }}>
+                        <Text style={{ color: '#c2410c', fontSize: scaleWithAppTextScale(11), marginTop: 4 }}>
                           {row.eligibility.financeClearance.reason}
                         </Text>
                       ) : null}
@@ -1075,7 +1076,7 @@ export function StaffHeadTuExamCardsScreen() {
                               key={item}
                               style={{
                                 color: hasAcademicWarning || row.status.code === 'BLOCKED_KKM' ? '#b91c1c' : '#92400e',
-                                fontSize: 11,
+                                fontSize: scaleWithAppTextScale(11),
                               }}
                             >
                               {item}

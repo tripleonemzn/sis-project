@@ -12,6 +12,7 @@ import { adminApi } from '../../../src/features/admin/adminApi';
 import HomeroomBookMobilePanel from '../../../src/features/homeroomBook/HomeroomBookMobilePanel';
 import { getStandardPagePadding } from '../../../src/lib/ui/pageLayout';
 import { BRAND_COLORS } from '../../../src/config/brand';
+import { scaleWithAppTextScale } from '../../../src/theme/AppTextScaleProvider';
 
 export default function PrincipalStudentsScreen() {
   const router = useRouter();
@@ -73,7 +74,7 @@ export default function PrincipalStudentsScreen() {
   if (user?.role !== 'PRINCIPAL') {
     return (
       <ScrollView style={{ flex: 1, backgroundColor: '#f8fafc' }} contentContainerStyle={pagePadding}>
-        <Text style={{ fontSize: 20, fontWeight: '700', color: BRAND_COLORS.textDark, marginBottom: 8 }}>Data Siswa</Text>
+        <Text style={{ fontSize: scaleWithAppTextScale(20), fontWeight: '700', color: BRAND_COLORS.textDark, marginBottom: 8 }}>Data Siswa</Text>
         <QueryStateView type="error" message="Halaman ini khusus untuk role kepala sekolah." />
       </ScrollView>
     );
@@ -100,7 +101,7 @@ export default function PrincipalStudentsScreen() {
         />
       }
     >
-      <Text style={{ fontSize: 20, fontWeight: '700', color: BRAND_COLORS.textDark, marginBottom: 6 }}>
+      <Text style={{ fontSize: scaleWithAppTextScale(20), fontWeight: '700', color: BRAND_COLORS.textDark, marginBottom: 6 }}>
         {section === 'SISWA' ? 'Data Siswa' : 'Buku Wali Kelas'}
       </Text>
       <Text style={{ color: BRAND_COLORS.textMuted, marginBottom: 12 }}>
@@ -192,7 +193,7 @@ export default function PrincipalStudentsScreen() {
             ))}
           </View>
 
-          <Text style={{ color: BRAND_COLORS.textMuted, fontSize: 12 }}>
+          <Text style={{ color: BRAND_COLORS.textMuted, fontSize: scaleWithAppTextScale(12) }}>
             Total siswa terfilter: <Text style={{ color: BRAND_COLORS.textDark, fontWeight: '700' }}>{filteredStudents.length}</Text>
           </Text>
         </View>
@@ -216,7 +217,7 @@ export default function PrincipalStudentsScreen() {
                   marginBottom: 10,
                 }}
               >
-                <Text style={{ color: BRAND_COLORS.textDark, fontWeight: '700', fontSize: 15 }}>{item.name}</Text>
+                <Text style={{ color: BRAND_COLORS.textDark, fontWeight: '700', fontSize: scaleWithAppTextScale(15) }}>{item.name}</Text>
                 <Text style={{ color: BRAND_COLORS.textMuted, marginTop: 3 }}>@{item.username}</Text>
                 <Text style={{ color: '#475569', marginTop: 6 }}>
                   Kelas: <Text style={{ color: BRAND_COLORS.textDark, fontWeight: '600' }}>{item.studentClass?.name || '-'}</Text>

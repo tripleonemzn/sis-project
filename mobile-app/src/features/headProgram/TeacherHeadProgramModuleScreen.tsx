@@ -17,6 +17,7 @@ import { academicYearApi } from '../academicYear/academicYearApi';
 import { useAuth } from '../auth/AuthProvider';
 import { headProgramApi } from './headProgramApi';
 import { HeadProgramClassRow, HeadProgramInternshipRow, IndustryPartnerRow, JobVacancyRow } from './types';
+import { scaleWithAppTextScale } from '../../theme/AppTextScaleProvider';
 
 type ModuleMode = 'CLASSES' | 'PKL' | 'PARTNERS';
 type InternshipStatusFilter = 'ALL' | 'PENDING' | 'ONGOING' | 'DONE';
@@ -190,13 +191,13 @@ function ClassListCard({ item }: { item: HeadProgramClassRow }) {
       }}
     >
       <Text style={{ color: BRAND_COLORS.textDark, fontWeight: '700' }}>{toText(item.name)}</Text>
-      <Text style={{ color: '#64748b', marginTop: 2, fontSize: 12 }}>
+      <Text style={{ color: '#64748b', marginTop: 2, fontSize: scaleWithAppTextScale(12) }}>
         Level {toText(item.level)} • {toText(item.major?.code || item.major?.name)}
       </Text>
-      <Text style={{ color: '#334155', marginTop: 6, fontSize: 12 }}>
+      <Text style={{ color: '#334155', marginTop: 6, fontSize: scaleWithAppTextScale(12) }}>
         Jumlah siswa: {item._count?.students || 0}
       </Text>
-      <Text style={{ color: '#334155', marginTop: 2, fontSize: 12 }}>Wali kelas: {toText(item.teacher?.name)}</Text>
+      <Text style={{ color: '#334155', marginTop: 2, fontSize: scaleWithAppTextScale(12) }}>Wali kelas: {toText(item.teacher?.name)}</Text>
     </View>
   );
 }
@@ -219,7 +220,7 @@ function InternshipListCard({ item }: { item: HeadProgramInternshipRow }) {
       <View style={{ flexDirection: 'row', justifyContent: 'space-between', alignItems: 'flex-start' }}>
         <View style={{ flex: 1, paddingRight: 8 }}>
           <Text style={{ color: BRAND_COLORS.textDark, fontWeight: '700' }}>{toText(item.student?.name)}</Text>
-          <Text style={{ color: '#64748b', marginTop: 2, fontSize: 12 }}>
+          <Text style={{ color: '#64748b', marginTop: 2, fontSize: scaleWithAppTextScale(12) }}>
             {toText(item.student?.studentClass?.name)} • {toText(item.student?.studentClass?.major?.code || item.student?.studentClass?.major?.name)}
           </Text>
         </View>
@@ -233,19 +234,19 @@ function InternshipListCard({ item }: { item: HeadProgramInternshipRow }) {
             paddingVertical: 3,
           }}
         >
-          <Text style={{ color: badge.text, fontWeight: '700', fontSize: 11 }}>{badge.label}</Text>
+          <Text style={{ color: badge.text, fontWeight: '700', fontSize: scaleWithAppTextScale(11) }}>{badge.label}</Text>
         </View>
       </View>
 
-      <Text style={{ color: '#334155', fontSize: 12, marginTop: 8 }}>Perusahaan: {toText(item.companyName)}</Text>
-      <Text style={{ color: '#334155', fontSize: 12, marginTop: 2 }}>Pembimbing: {toText(item.teacher?.name)}</Text>
-      <Text style={{ color: '#334155', fontSize: 12, marginTop: 2 }}>
+      <Text style={{ color: '#334155', fontSize: scaleWithAppTextScale(12), marginTop: 8 }}>Perusahaan: {toText(item.companyName)}</Text>
+      <Text style={{ color: '#334155', fontSize: scaleWithAppTextScale(12), marginTop: 2 }}>Pembimbing: {toText(item.teacher?.name)}</Text>
+      <Text style={{ color: '#334155', fontSize: scaleWithAppTextScale(12), marginTop: 2 }}>
         Mulai: {formatDateTime(item.startDate)}
       </Text>
-      <Text style={{ color: '#334155', fontSize: 12, marginTop: 2 }}>
+      <Text style={{ color: '#334155', fontSize: scaleWithAppTextScale(12), marginTop: 2 }}>
         Selesai: {formatDateTime(item.endDate)}
       </Text>
-      <Text style={{ color: '#64748b', fontSize: 11, marginTop: 4 }}>
+      <Text style={{ color: '#64748b', fontSize: scaleWithAppTextScale(11), marginTop: 4 }}>
         Nilai akhir: {typeof item.finalGrade === 'number' ? item.finalGrade.toFixed(2) : '-'}
       </Text>
     </View>
@@ -275,14 +276,14 @@ function PartnerListCard({
       }}
     >
       <Text style={{ color: BRAND_COLORS.textDark, fontWeight: '700' }}>{toText(item.name)}</Text>
-      <Text style={{ color: '#64748b', marginTop: 2, fontSize: 12 }}>
+      <Text style={{ color: '#64748b', marginTop: 2, fontSize: scaleWithAppTextScale(12) }}>
         Bidang: {toText(item.sector || item.field)} • Status: {toText(item.cooperationStatus)}
       </Text>
-      <Text style={{ color: '#334155', fontSize: 12, marginTop: 6 }}>Alamat: {toText(item.address)}</Text>
-      <Text style={{ color: '#334155', fontSize: 12, marginTop: 2 }}>
+      <Text style={{ color: '#334155', fontSize: scaleWithAppTextScale(12), marginTop: 6 }}>Alamat: {toText(item.address)}</Text>
+      <Text style={{ color: '#334155', fontSize: scaleWithAppTextScale(12), marginTop: 2 }}>
         PIC: {toText(item.contactPerson || item.picName)}
       </Text>
-      <Text style={{ color: '#334155', fontSize: 12, marginTop: 2 }}>
+      <Text style={{ color: '#334155', fontSize: scaleWithAppTextScale(12), marginTop: 2 }}>
         Kontak: {toText(item.phone || item.email || item.picPhone || item.picEmail)}
       </Text>
 
@@ -345,11 +346,11 @@ function VacancyListCard({
       }}
     >
       <Text style={{ color: BRAND_COLORS.textDark, fontWeight: '700' }}>{toText(item.title)}</Text>
-      <Text style={{ color: '#64748b', marginTop: 2, fontSize: 12 }}>
+      <Text style={{ color: '#64748b', marginTop: 2, fontSize: scaleWithAppTextScale(12) }}>
         Mitra: {toText(item.industryPartner?.name || item.companyName)} • Status: {item.isOpen ? 'Aktif' : 'Tutup'}
       </Text>
-      <Text style={{ color: '#334155', fontSize: 12, marginTop: 6 }}>{toText(item.description)}</Text>
-      <Text style={{ color: '#334155', fontSize: 12, marginTop: 2 }}>
+      <Text style={{ color: '#334155', fontSize: scaleWithAppTextScale(12), marginTop: 6 }}>{toText(item.description)}</Text>
+      <Text style={{ color: '#334155', fontSize: scaleWithAppTextScale(12), marginTop: 2 }}>
         Batas akhir: {formatDateTime(item.deadline || item.closingDate)}
       </Text>
 
@@ -780,7 +781,7 @@ export function TeacherHeadProgramModuleScreen({
   if (user?.role !== 'TEACHER') {
     return (
       <ScrollView style={{ flex: 1, backgroundColor: '#f8fafc' }} contentContainerStyle={pagePadding}>
-        <Text style={{ fontSize: 20, fontWeight: '700', marginBottom: 8 }}>{title}</Text>
+        <Text style={{ fontSize: scaleWithAppTextScale(20), fontWeight: '700', marginBottom: 8 }}>{title}</Text>
         <QueryStateView type="error" message="Halaman ini khusus untuk role guru." />
       </ScrollView>
     );
@@ -789,7 +790,7 @@ export function TeacherHeadProgramModuleScreen({
   if (!isAllowedRole) {
     return (
       <ScrollView style={{ flex: 1, backgroundColor: '#f8fafc' }} contentContainerStyle={pagePadding}>
-        <Text style={{ fontSize: 20, fontWeight: '700', marginBottom: 8 }}>{title}</Text>
+        <Text style={{ fontSize: scaleWithAppTextScale(20), fontWeight: '700', marginBottom: 8 }}>{title}</Text>
         <QueryStateView type="error" message="Akses modul ini membutuhkan tugas tambahan kepala kompetensi." />
       </ScrollView>
     );
@@ -827,7 +828,7 @@ export function TeacherHeadProgramModuleScreen({
           <Feather name={modeIcon(mode)} size={18} color="#e2e8f0" />
         </View>
         <View style={{ flex: 1 }}>
-          <Text style={{ color: '#fff', fontSize: 20, fontWeight: '700' }}>{title}</Text>
+          <Text style={{ color: '#fff', fontSize: scaleWithAppTextScale(20), fontWeight: '700' }}>{title}</Text>
           <Text style={{ color: '#dbeafe', marginTop: 2 }}>{subtitle}</Text>
         </View>
       </View>
@@ -901,7 +902,7 @@ export function TeacherHeadProgramModuleScreen({
                   paddingVertical: 7,
                 }}
               >
-                <Text style={{ color: BRAND_COLORS.navy, fontWeight: '700', fontSize: 12 }}>
+                <Text style={{ color: BRAND_COLORS.navy, fontWeight: '700', fontSize: scaleWithAppTextScale(12) }}>
                   {major.code ? `${major.code} - ` : ''}
                   {major.name}
                 </Text>

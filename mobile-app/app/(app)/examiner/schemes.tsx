@@ -15,6 +15,7 @@ import { ExaminerScheme, ExaminerSchemeCriteria } from '../../../src/features/ex
 import { getStandardPagePadding } from '../../../src/lib/ui/pageLayout';
 import { BRAND_COLORS } from '../../../src/config/brand';
 import { notifyApiError, notifySuccess } from '../../../src/lib/ui/feedback';
+import { scaleWithAppTextScale } from '../../../src/theme/AppTextScaleProvider';
 
 type SchemeFormMode = 'CREATE' | 'EDIT' | null;
 
@@ -193,7 +194,7 @@ export default function ExaminerSchemesScreen() {
   if (user?.role !== 'EXAMINER') {
     return (
       <ScrollView style={{ flex: 1, backgroundColor: '#f8fafc' }} contentContainerStyle={pagePadding}>
-        <Text style={{ fontSize: 20, fontWeight: '700', marginBottom: 8 }}>Data Skema</Text>
+        <Text style={{ fontSize: scaleWithAppTextScale(20), fontWeight: '700', marginBottom: 8 }}>Data Skema</Text>
         <QueryStateView type="error" message="Halaman ini khusus untuk role penguji." />
         <Pressable
           onPress={() => router.replace('/home')}
@@ -225,7 +226,7 @@ export default function ExaminerSchemesScreen() {
         />
       }
     >
-      <Text style={{ fontSize: 20, fontWeight: '700', marginBottom: 6, color: BRAND_COLORS.textDark }}>
+      <Text style={{ fontSize: scaleWithAppTextScale(20), fontWeight: '700', marginBottom: 6, color: BRAND_COLORS.textDark }}>
         Data Skema UKK
       </Text>
       <Text style={{ color: BRAND_COLORS.textMuted, marginBottom: 12 }}>
@@ -240,18 +241,18 @@ export default function ExaminerSchemesScreen() {
           marginBottom: 12,
         }}
       >
-        <Text style={{ color: '#c6dbff', fontSize: 12, marginBottom: 8 }}>Ringkasan</Text>
+        <Text style={{ color: '#c6dbff', fontSize: scaleWithAppTextScale(12), marginBottom: 8 }}>Ringkasan</Text>
         <View style={{ flexDirection: 'row', marginHorizontal: -4 }}>
           <View style={{ flex: 1, paddingHorizontal: 4 }}>
             <View style={{ backgroundColor: 'rgba(255,255,255,0.14)', borderRadius: 10, padding: 10 }}>
-              <Text style={{ color: '#c6dbff', fontSize: 11, marginBottom: 4 }}>Total Skema</Text>
-              <Text style={{ color: '#fff', fontWeight: '700', fontSize: 18 }}>{schemes.length}</Text>
+              <Text style={{ color: '#c6dbff', fontSize: scaleWithAppTextScale(11), marginBottom: 4 }}>Total Skema</Text>
+              <Text style={{ color: '#fff', fontWeight: '700', fontSize: scaleWithAppTextScale(18) }}>{schemes.length}</Text>
             </View>
           </View>
           <View style={{ flex: 1, paddingHorizontal: 4 }}>
             <View style={{ backgroundColor: 'rgba(255,255,255,0.14)', borderRadius: 10, padding: 10 }}>
-              <Text style={{ color: '#c6dbff', fontSize: 11, marginBottom: 4 }}>Tahun Aktif</Text>
-              <Text style={{ color: '#fff', fontWeight: '700', fontSize: 14 }}>
+              <Text style={{ color: '#c6dbff', fontSize: scaleWithAppTextScale(11), marginBottom: 4 }}>Tahun Aktif</Text>
+              <Text style={{ color: '#fff', fontWeight: '700', fontSize: scaleWithAppTextScale(14) }}>
                 {schemesQuery.data?.activeYear?.name || '-'}
               </Text>
             </View>
@@ -370,7 +371,7 @@ export default function ExaminerSchemesScreen() {
                       >
                         {subject.name}
                       </Text>
-                      <Text numberOfLines={1} style={{ color: BRAND_COLORS.textMuted, fontSize: 11, marginTop: 2 }}>
+                      <Text numberOfLines={1} style={{ color: BRAND_COLORS.textMuted, fontSize: scaleWithAppTextScale(11), marginTop: 2 }}>
                         {subject.code}
                       </Text>
                     </Pressable>
@@ -390,7 +391,7 @@ export default function ExaminerSchemesScreen() {
                 marginBottom: 10,
               }}
             >
-              <Text style={{ color: BRAND_COLORS.textMuted, fontSize: 11 }}>Mata Pelajaran</Text>
+              <Text style={{ color: BRAND_COLORS.textMuted, fontSize: scaleWithAppTextScale(11) }}>Mata Pelajaran</Text>
               <Text style={{ color: BRAND_COLORS.textDark, fontWeight: '700', marginTop: 2 }}>
                 {selectedSubject?.name || '-'}
               </Text>
@@ -490,7 +491,7 @@ export default function ExaminerSchemesScreen() {
                   paddingVertical: 5,
                 }}
               >
-                <Text style={{ color: '#be123c', fontWeight: '700', fontSize: 12 }}>Hapus</Text>
+                <Text style={{ color: '#be123c', fontWeight: '700', fontSize: scaleWithAppTextScale(12) }}>Hapus</Text>
               </Pressable>
             </View>
           ))}
@@ -606,7 +607,7 @@ export default function ExaminerSchemesScreen() {
                     marginBottom: 10,
                   }}
                 >
-                  <Text style={{ fontSize: 16, fontWeight: '700', color: BRAND_COLORS.textDark }}>
+                  <Text style={{ fontSize: scaleWithAppTextScale(16), fontWeight: '700', color: BRAND_COLORS.textDark }}>
                     {scheme.name}
                   </Text>
                   <Text style={{ color: '#475569', marginTop: 4 }}>

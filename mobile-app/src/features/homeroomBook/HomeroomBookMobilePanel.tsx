@@ -9,6 +9,7 @@ import { QueryStateView } from '../../components/QueryStateView';
 import { BRAND_COLORS } from '../../config/brand';
 import { adminApi } from '../admin/adminApi';
 import type { ExamProgramItem } from '../exams/examApi';
+import { scaleWithAppTextScale } from '../../theme/AppTextScaleProvider';
 import {
   homeroomBookApi,
   type HomeroomBookEntry,
@@ -336,7 +337,7 @@ export function HomeroomBookMobilePanel({ mode, academicYearId, classId, examPro
 
   return (
     <View>
-      <Text style={{ fontSize: 20, fontWeight: '700', color: BRAND_COLORS.textDark, marginBottom: 6 }}>{getPanelTitle(mode)}</Text>
+      <Text style={{ fontSize: scaleWithAppTextScale(20), fontWeight: '700', color: BRAND_COLORS.textDark, marginBottom: 6 }}>{getPanelTitle(mode)}</Text>
       <Text style={{ color: BRAND_COLORS.textMuted, marginBottom: 12 }}>{getPanelDescription(mode)}</Text>
 
       {!canLoad ? (
@@ -478,7 +479,7 @@ export function HomeroomBookMobilePanel({ mode, academicYearId, classId, examPro
                 marginBottom: 12,
               }}
             >
-              <Text style={{ color: BRAND_COLORS.textDark, fontWeight: '700', fontSize: 15, marginBottom: 10 }}>
+              <Text style={{ color: BRAND_COLORS.textDark, fontWeight: '700', fontSize: scaleWithAppTextScale(15), marginBottom: 10 }}>
                 {editingEntry ? 'Perbarui Buku Wali Kelas' : 'Tambah Buku Wali Kelas'}
               </Text>
 
@@ -655,18 +656,18 @@ export function HomeroomBookMobilePanel({ mode, academicYearId, classId, examPro
                 <Text style={{ color: BRAND_COLORS.textDark, fontWeight: '700' }}>
                   {attachments.length > 0 ? `Lampiran Dipilih (${attachments.length})` : 'Pilih Lampiran'}
                 </Text>
-                <Text style={{ color: BRAND_COLORS.textMuted, fontSize: 12, marginTop: 3 }}>
+                <Text style={{ color: BRAND_COLORS.textMuted, fontSize: scaleWithAppTextScale(12), marginTop: 3 }}>
                   PDF/JPG/JPEG/PNG, maksimal 500KB per file
                 </Text>
               </Pressable>
 
               {editingEntry?.attachments.length ? (
-                <Text style={{ color: BRAND_COLORS.textMuted, fontSize: 12, marginBottom: 8 }}>
+                <Text style={{ color: BRAND_COLORS.textMuted, fontSize: scaleWithAppTextScale(12), marginBottom: 8 }}>
                   Lampiran saat ini: {editingEntry.attachments.map((item) => item.originalName).join(', ')}
                 </Text>
               ) : null}
               {attachments.map((asset) => (
-                <Text key={`${asset.uri}-${asset.name}`} style={{ color: '#475569', fontSize: 12, marginBottom: 4 }}>
+                <Text key={`${asset.uri}-${asset.name}`} style={{ color: '#475569', fontSize: scaleWithAppTextScale(12), marginBottom: 4 }}>
                   • {asset.name}
                 </Text>
               ))}
@@ -726,7 +727,7 @@ export function HomeroomBookMobilePanel({ mode, academicYearId, classId, examPro
                   >
                     <View style={{ flexDirection: 'row', justifyContent: 'space-between', gap: 10 }}>
                       <View style={{ flex: 1 }}>
-                        <Text style={{ color: BRAND_COLORS.textDark, fontWeight: '700', fontSize: 15 }}>{entry.title}</Text>
+                        <Text style={{ color: BRAND_COLORS.textDark, fontWeight: '700', fontSize: scaleWithAppTextScale(15) }}>{entry.title}</Text>
                         <Text style={{ color: BRAND_COLORS.textMuted, marginTop: 3 }}>
                           {entry.student.name} • {entry.class.name}
                         </Text>
@@ -745,7 +746,7 @@ export function HomeroomBookMobilePanel({ mode, academicYearId, classId, examPro
                           alignSelf: 'flex-start',
                         }}
                       >
-                        <Text style={{ color: statusStyle.text, fontWeight: '700', fontSize: 11 }}>{entry.status}</Text>
+                        <Text style={{ color: statusStyle.text, fontWeight: '700', fontSize: scaleWithAppTextScale(11) }}>{entry.status}</Text>
                       </View>
                     </View>
 
@@ -754,12 +755,12 @@ export function HomeroomBookMobilePanel({ mode, academicYearId, classId, examPro
 
                     {entry.entryType === 'EXAM_FINANCE_EXCEPTION' ? (
                       <View style={{ marginTop: 8 }}>
-                        <Text style={{ color: '#475569', fontSize: 12 }}>
+                        <Text style={{ color: '#475569', fontSize: scaleWithAppTextScale(12) }}>
                           Semester: {entry.relatedSemester === 'ODD' ? 'Ganjil' : entry.relatedSemester === 'EVEN' ? 'Genap' : '-'}
                         </Text>
-                        <Text style={{ color: '#475569', fontSize: 12, marginTop: 2 }}>Program: {entry.relatedProgramCode || '-'}</Text>
+                        <Text style={{ color: '#475569', fontSize: scaleWithAppTextScale(12), marginTop: 2 }}>Program: {entry.relatedProgramCode || '-'}</Text>
                         {entry.allowsExamAccess ? (
-                          <Text style={{ color: '#166534', fontSize: 12, fontWeight: '700', marginTop: 4 }}>
+                          <Text style={{ color: '#166534', fontSize: scaleWithAppTextScale(12), fontWeight: '700', marginTop: 4 }}>
                             Akses ujian aktif dari pengecualian wali kelas
                           </Text>
                         ) : null}
@@ -769,12 +770,12 @@ export function HomeroomBookMobilePanel({ mode, academicYearId, classId, examPro
                     <View style={{ flexDirection: 'row', flexWrap: 'wrap', gap: 8, marginTop: 10 }}>
                       {entry.visibilityToPrincipal ? (
                         <View style={{ borderRadius: 999, backgroundColor: '#eff6ff', paddingHorizontal: 10, paddingVertical: 5 }}>
-                          <Text style={{ color: '#1d4ed8', fontSize: 11, fontWeight: '700' }}>Principal</Text>
+                          <Text style={{ color: '#1d4ed8', fontSize: scaleWithAppTextScale(11), fontWeight: '700' }}>Principal</Text>
                         </View>
                       ) : null}
                       {entry.visibilityToStudentAffairs ? (
                         <View style={{ borderRadius: 999, backgroundColor: '#fff7ed', paddingHorizontal: 10, paddingVertical: 5 }}>
-                          <Text style={{ color: '#b45309', fontSize: 11, fontWeight: '700' }}>Wakasek Kesiswaan</Text>
+                          <Text style={{ color: '#b45309', fontSize: scaleWithAppTextScale(11), fontWeight: '700' }}>Wakasek Kesiswaan</Text>
                         </View>
                       ) : null}
                     </View>

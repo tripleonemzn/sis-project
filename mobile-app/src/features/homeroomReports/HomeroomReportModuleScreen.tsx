@@ -1,6 +1,7 @@
 import { useEffect, useMemo, useState } from 'react';
 import { Redirect, useRouter } from 'expo-router';
 import { useQuery } from '@tanstack/react-query';
+import { scaleWithAppTextScale } from '../../theme/AppTextScaleProvider';
 import {
   Pressable,
   RefreshControl,
@@ -324,7 +325,7 @@ function SubjectRow({
           marginBottom: 8,
         }}
       >
-        <Text style={{ color: BRAND_COLORS.navy, fontWeight: '700', fontSize: 12 }}>{safeText(row.name)}</Text>
+        <Text style={{ color: BRAND_COLORS.navy, fontWeight: '700', fontSize: scaleWithAppTextScale(12) }}>{safeText(row.name)}</Text>
       </View>
     );
   }
@@ -352,7 +353,7 @@ function SubjectRow({
       }}
     >
       <Text style={{ color: BRAND_COLORS.textDark, fontWeight: '700' }}>{safeText(row.name)}</Text>
-      <Text style={{ color: '#64748b', fontSize: 11, marginTop: 2 }}>
+      <Text style={{ color: '#64748b', fontSize: scaleWithAppTextScale(11), marginTop: 2 }}>
         KKTP: {formatScore(row.kkm ?? null)} • Guru: {safeText(row.teacherName)}
       </Text>
 
@@ -369,7 +370,7 @@ function SubjectRow({
                 backgroundColor: '#f8fbff',
               }}
             >
-              <Text style={{ color: '#64748b', fontSize: 10 }}>{safeText(col1Label, 'Komponen 1')}</Text>
+              <Text style={{ color: '#64748b', fontSize: scaleWithAppTextScale(10) }}>{safeText(col1Label, 'Komponen 1')}</Text>
               <Text style={{ color: formatifBelowKkm ? '#dc2626' : BRAND_COLORS.textDark, fontWeight: '700' }}>
                 {formatScore(formatifScore)}
               </Text>
@@ -386,7 +387,7 @@ function SubjectRow({
                 backgroundColor: '#f8fbff',
               }}
             >
-              <Text style={{ color: '#64748b', fontSize: 10 }}>{safeText(col2Label, 'Komponen 2')}</Text>
+              <Text style={{ color: '#64748b', fontSize: scaleWithAppTextScale(10) }}>{safeText(col2Label, 'Komponen 2')}</Text>
               <Text style={{ color: examBelowKkm ? '#dc2626' : BRAND_COLORS.textDark, fontWeight: '700' }}>
                 {formatScore(examScore)}
               </Text>
@@ -406,7 +407,7 @@ function SubjectRow({
                 backgroundColor: '#f8fbff',
               }}
             >
-              <Text style={{ color: '#64748b', fontSize: 10 }}>Nilai Akhir</Text>
+              <Text style={{ color: '#64748b', fontSize: scaleWithAppTextScale(10) }}>Nilai Akhir</Text>
               <Text style={{ color: BRAND_COLORS.textDark, fontWeight: '700' }}>{formatScore(row.col1?.score ?? finalScore)}</Text>
             </View>
           </View>
@@ -421,7 +422,7 @@ function SubjectRow({
                 backgroundColor: '#f8fbff',
               }}
             >
-              <Text style={{ color: '#64748b', fontSize: 10 }}>Predikat</Text>
+              <Text style={{ color: '#64748b', fontSize: scaleWithAppTextScale(10) }}>Predikat</Text>
               <Text style={{ color: BRAND_COLORS.textDark, fontWeight: '700' }}>{safeText(finalPredicate)}</Text>
             </View>
           </View>
@@ -429,11 +430,11 @@ function SubjectRow({
       )}
 
       {isMidterm && status !== '-' ? (
-        <Text style={{ color: statusColor, fontSize: 12, marginTop: 8, fontWeight: status === 'Belum Tuntas' ? '700' : '600' }}>
+        <Text style={{ color: statusColor, fontSize: scaleWithAppTextScale(12), marginTop: 8, fontWeight: status === 'Belum Tuntas' ? '700' : '600' }}>
           Status: {status}
         </Text>
       ) : !isMidterm ? (
-        <Text style={{ color: '#475569', fontSize: 12, marginTop: 8 }}>
+        <Text style={{ color: '#475569', fontSize: scaleWithAppTextScale(12), marginTop: 8 }}>
           Capaian: {safeText(description)}
         </Text>
       ) : null}
@@ -783,7 +784,7 @@ export function HomeroomReportModuleScreen({
                       >
                         {safeText(student.name)}
                       </Text>
-                      <Text numberOfLines={1} style={{ color: '#64748b', fontSize: 11, marginTop: 2 }}>
+                      <Text numberOfLines={1} style={{ color: '#64748b', fontSize: scaleWithAppTextScale(11), marginTop: 2 }}>
                         NIS: {safeText(student.nis)}
                       </Text>
                     </Pressable>
@@ -807,9 +808,9 @@ export function HomeroomReportModuleScreen({
               marginBottom: 12,
             }}
           >
-            <Text style={{ color: '#bfdbfe', fontSize: 12 }}>Siswa Terpilih</Text>
-            <Text style={{ color: '#fff', fontSize: 18, fontWeight: '700', marginTop: 3 }}>{safeText(selectedStudent.name)}</Text>
-            <Text style={{ color: '#dbeafe', fontSize: 12, marginTop: 3 }}>
+            <Text style={{ color: '#bfdbfe', fontSize: scaleWithAppTextScale(12) }}>Siswa Terpilih</Text>
+            <Text style={{ color: '#fff', fontSize: scaleWithAppTextScale(18), fontWeight: '700', marginTop: 3 }}>{safeText(selectedStudent.name)}</Text>
+            <Text style={{ color: '#dbeafe', fontSize: scaleWithAppTextScale(12), marginTop: 3 }}>
               NIS: {safeText(selectedStudent.nis)} • NISN: {safeText(selectedStudent.nisn)}
             </Text>
           </View>
@@ -928,8 +929,8 @@ export function HomeroomReportModuleScreen({
                 <Text style={{ color: BRAND_COLORS.textDark, fontWeight: '700', marginBottom: 8 }}>Ekstrakurikuler</Text>
                 {studentReportQuery.data.body.extracurriculars.slice(0, 5).map((item, idx) => (
                   <View key={`${item.name}-${idx}`} style={{ marginBottom: idx === 4 ? 0 : 8 }}>
-                    <Text style={{ color: BRAND_COLORS.textDark, fontWeight: '700', fontSize: 13 }}>{safeText(item.name)}</Text>
-                    <Text style={{ color: '#64748b', fontSize: 12 }}>
+                    <Text style={{ color: BRAND_COLORS.textDark, fontWeight: '700', fontSize: scaleWithAppTextScale(13) }}>{safeText(item.name)}</Text>
+                    <Text style={{ color: '#64748b', fontSize: scaleWithAppTextScale(12) }}>
                       Predikat: {safeText(item.grade)} • {safeText(item.description)}
                     </Text>
                   </View>
@@ -951,10 +952,10 @@ export function HomeroomReportModuleScreen({
                 <Text style={{ color: BRAND_COLORS.textDark, fontWeight: '700', marginBottom: 8 }}>OSIS</Text>
                 {studentReportQuery.data.body.organizations.slice(0, 5).map((item, idx) => (
                   <View key={`${item.name}-${item.positionName || 'osis'}-${idx}`} style={{ marginBottom: idx === 4 ? 0 : 8 }}>
-                    <Text style={{ color: BRAND_COLORS.textDark, fontWeight: '700', fontSize: 13 }}>
+                    <Text style={{ color: BRAND_COLORS.textDark, fontWeight: '700', fontSize: scaleWithAppTextScale(13) }}>
                       {safeText(item.positionName || item.name)}
                     </Text>
-                    <Text style={{ color: '#64748b', fontSize: 12 }}>
+                    <Text style={{ color: '#64748b', fontSize: scaleWithAppTextScale(12) }}>
                       {safeText(item.divisionName || 'Organisasi Siswa')} • Predikat: {safeText(item.grade)} • {safeText(item.description)}
                     </Text>
                   </View>
@@ -1091,7 +1092,7 @@ export function HomeroomReportModuleScreen({
                 }}
               >
                 <Text style={{ color: BRAND_COLORS.textDark, fontWeight: '700' }}>{safeText(item.name)}</Text>
-                <Text style={{ color: '#64748b', fontSize: 12, marginTop: 2 }}>
+                <Text style={{ color: '#64748b', fontSize: scaleWithAppTextScale(12), marginTop: 2 }}>
                   NIS: {safeText(item.nis)} • NISN: {safeText(item.nisn)}
                 </Text>
 
@@ -1184,7 +1185,7 @@ export function HomeroomReportModuleScreen({
             }}
           >
             <Text style={{ color: BRAND_COLORS.textDark, fontWeight: '700' }}>{safeText(item.name)}</Text>
-            <Text style={{ color: '#64748b', fontSize: 12, marginTop: 2 }}>
+            <Text style={{ color: '#64748b', fontSize: scaleWithAppTextScale(12), marginTop: 2 }}>
               NIS: {safeText(item.nis)} • NISN: {safeText(item.nisn)}
             </Text>
 
@@ -1205,8 +1206,8 @@ export function HomeroomReportModuleScreen({
               {item.extracurriculars.length > 0 ? (
                 item.extracurriculars.map((ekskul) => (
                   <View key={ekskul.id} style={{ marginBottom: 6 }}>
-                    <Text style={{ color: '#0f172a', fontWeight: '700', fontSize: 13 }}>{safeText(ekskul.ekskulName)}</Text>
-                    <Text style={{ color: '#64748b', fontSize: 12 }}>
+                    <Text style={{ color: '#0f172a', fontWeight: '700', fontSize: scaleWithAppTextScale(13) }}>{safeText(ekskul.ekskulName)}</Text>
+                    <Text style={{ color: '#64748b', fontSize: scaleWithAppTextScale(12) }}>
                       Predikat: {safeText(ekskul.grade)} • {safeText(ekskul.description)}
                     </Text>
                   </View>
@@ -1221,10 +1222,10 @@ export function HomeroomReportModuleScreen({
               {item.organizations.length > 0 ? (
                 item.organizations.map((organization, idx) => (
                   <View key={`${organization.sourceType}-${organization.positionName || 'osis'}-${idx}`} style={{ marginBottom: 6 }}>
-                    <Text style={{ color: '#0f172a', fontWeight: '700', fontSize: 13 }}>
+                    <Text style={{ color: '#0f172a', fontWeight: '700', fontSize: scaleWithAppTextScale(13) }}>
                       {safeText(organization.positionName || organization.name)}
                     </Text>
-                    <Text style={{ color: '#64748b', fontSize: 12 }}>
+                    <Text style={{ color: '#64748b', fontSize: scaleWithAppTextScale(12) }}>
                       {safeText(organization.divisionName || 'Organisasi Siswa')} • Predikat: {safeText(organization.grade)} • {safeText(organization.description)}
                     </Text>
                   </View>
@@ -1238,7 +1239,7 @@ export function HomeroomReportModuleScreen({
               <View style={{ marginTop: 8 }}>
                 <Text style={{ color: BRAND_COLORS.textDark, fontWeight: '700', marginBottom: 6 }}>Prestasi</Text>
                 {item.achievements.slice(0, 4).map((achievement) => (
-                  <Text key={achievement.id} style={{ color: '#475569', fontSize: 12, marginBottom: 4 }}>
+                  <Text key={achievement.id} style={{ color: '#475569', fontSize: scaleWithAppTextScale(12), marginBottom: 4 }}>
                     • {safeText(achievement.name)} ({safeText(achievement.rank)} - {safeText(achievement.level)})
                   </Text>
                 ))}
@@ -1323,10 +1324,10 @@ export function HomeroomReportModuleScreen({
 
             <View style={{ flex: 1 }}>
               <Text style={{ color: BRAND_COLORS.textDark, fontWeight: '700' }}>{safeText(item.student.name)}</Text>
-              <Text style={{ color: '#64748b', fontSize: 12 }}>
+              <Text style={{ color: '#64748b', fontSize: scaleWithAppTextScale(12) }}>
                 NIS: {safeText(item.student.nis)} • NISN: {safeText(item.student.nisn)}
               </Text>
-              <Text style={{ color: '#334155', fontSize: 12, marginTop: 3 }}>
+              <Text style={{ color: '#334155', fontSize: scaleWithAppTextScale(12), marginTop: 3 }}>
                 Skor total: {formatNumber(item.totalScore, 2)} • Rata-rata: {formatNumber(item.averageScore, 2)} • Mapel:{' '}
                 {formatNumber(item.subjectCount)}
               </Text>
@@ -1343,7 +1344,7 @@ export function HomeroomReportModuleScreen({
   if (user?.role !== 'TEACHER') {
     return (
       <ScrollView style={{ flex: 1, backgroundColor: '#f8fafc' }} contentContainerStyle={pagePadding}>
-        <Text style={{ fontSize: 20, fontWeight: '700', marginBottom: 8 }}>{moduleConfig.title}</Text>
+        <Text style={{ fontSize: scaleWithAppTextScale(20), fontWeight: '700', marginBottom: 8 }}>{moduleConfig.title}</Text>
         <QueryStateView type="error" message="Halaman ini khusus untuk role guru." />
         <Pressable
           onPress={() => router.replace('/home')}
@@ -1364,7 +1365,7 @@ export function HomeroomReportModuleScreen({
   if (!isAllowed) {
     return (
       <ScrollView style={{ flex: 1, backgroundColor: '#f8fafc' }} contentContainerStyle={pagePadding}>
-        <Text style={{ fontSize: 20, fontWeight: '700', marginBottom: 6, color: BRAND_COLORS.textDark }}>
+        <Text style={{ fontSize: scaleWithAppTextScale(20), fontWeight: '700', marginBottom: 6, color: BRAND_COLORS.textDark }}>
           {moduleConfig.title}
         </Text>
         <Text style={{ color: BRAND_COLORS.textMuted, marginBottom: 12 }}>
@@ -1390,7 +1391,7 @@ export function HomeroomReportModuleScreen({
   if (examProgramsQuery.isSuccess && !activeProgram) {
     return (
       <ScrollView style={{ flex: 1, backgroundColor: '#f8fafc' }} contentContainerStyle={pagePadding}>
-        <Text style={{ fontSize: 20, fontWeight: '700', marginBottom: 6, color: BRAND_COLORS.textDark }}>
+        <Text style={{ fontSize: scaleWithAppTextScale(20), fontWeight: '700', marginBottom: 6, color: BRAND_COLORS.textDark }}>
           {moduleConfig.title}
         </Text>
         <Text style={{ color: BRAND_COLORS.textMuted, marginBottom: 12 }}>
@@ -1438,7 +1439,7 @@ export function HomeroomReportModuleScreen({
         />
       }
     >
-      <Text style={{ fontSize: 20, fontWeight: '700', marginBottom: 6, color: BRAND_COLORS.textDark }}>{moduleConfig.title}</Text>
+      <Text style={{ fontSize: scaleWithAppTextScale(20), fontWeight: '700', marginBottom: 6, color: BRAND_COLORS.textDark }}>{moduleConfig.title}</Text>
       <Text style={{ color: BRAND_COLORS.textMuted, marginBottom: 12 }}>{moduleConfig.subtitle}</Text>
 
       <View
@@ -1451,9 +1452,9 @@ export function HomeroomReportModuleScreen({
           marginBottom: 12,
         }}
       >
-        <Text style={{ color: '#64748b', fontSize: 12 }}>Program Ujian Aktif</Text>
+        <Text style={{ color: '#64748b', fontSize: scaleWithAppTextScale(12) }}>Program Ujian Aktif</Text>
         <Text style={{ color: BRAND_COLORS.textDark, fontWeight: '700', marginTop: 2 }}>{activeProgramLabel}</Text>
-        <Text style={{ color: '#64748b', fontSize: 12, marginTop: 2 }}>
+        <Text style={{ color: '#64748b', fontSize: scaleWithAppTextScale(12), marginTop: 2 }}>
           Kode: {activeProgramCode} • Base: {resolvedMode}
         </Text>
       </View>
@@ -1492,7 +1493,7 @@ export function HomeroomReportModuleScreen({
                       >
                         {classItem.name}
                       </Text>
-                      <Text numberOfLines={1} style={{ color: '#64748b', fontSize: 12, marginTop: 2 }}>
+                      <Text numberOfLines={1} style={{ color: '#64748b', fontSize: scaleWithAppTextScale(12), marginTop: 2 }}>
                         {classItem.major?.code || classItem.major?.name || '-'}
                       </Text>
                     </Pressable>
@@ -1517,9 +1518,9 @@ export function HomeroomReportModuleScreen({
             marginBottom: 12,
           }}
         >
-          <Text style={{ color: '#64748b', fontSize: 12 }}>Kelas Aktif</Text>
+          <Text style={{ color: '#64748b', fontSize: scaleWithAppTextScale(12) }}>Kelas Aktif</Text>
           <Text style={{ color: BRAND_COLORS.textDark, fontWeight: '700', marginTop: 2 }}>{selectedClass.name}</Text>
-          <Text style={{ color: '#64748b', fontSize: 12, marginTop: 2 }}>
+          <Text style={{ color: '#64748b', fontSize: scaleWithAppTextScale(12), marginTop: 2 }}>
             {selectedClass.major?.name || '-'} • {selectedClass.academicYear?.name || activeYearQuery.data?.name || '-'}
           </Text>
         </View>

@@ -3,6 +3,7 @@ import { Redirect, useRouter } from 'expo-router';
 import { Feather } from '@expo/vector-icons';
 import { useQuery } from '@tanstack/react-query';
 import * as DocumentPicker from 'expo-document-picker';
+import { scaleWithAppTextScale } from '../../../src/theme/AppTextScaleProvider';
 import {
   ActivityIndicator,
   Alert,
@@ -272,7 +273,7 @@ export default function AdminSlideshowScreen() {
         >
           <Feather name="arrow-left" size={18} color={BRAND_COLORS.textDark} />
         </Pressable>
-        <Text style={{ marginLeft: 10, color: BRAND_COLORS.textDark, fontSize: 20, fontWeight: '700' }}>Slideshow</Text>
+        <Text style={{ marginLeft: 10, color: BRAND_COLORS.textDark, fontSize: scaleWithAppTextScale(20), fontWeight: '700' }}>Slideshow</Text>
       </View>
 
       <Text style={{ color: BRAND_COLORS.textMuted, marginBottom: 12 }}>
@@ -289,10 +290,10 @@ export default function AdminSlideshowScreen() {
           marginBottom: 12,
         }}
       >
-        <Text style={{ color: BRAND_COLORS.textDark, fontWeight: '700', fontSize: 16, marginBottom: 4 }}>
+        <Text style={{ color: BRAND_COLORS.textDark, fontWeight: '700', fontSize: scaleWithAppTextScale(16), marginBottom: 4 }}>
           Durasi Slide Foto
         </Text>
-        <Text style={{ color: BRAND_COLORS.textMuted, fontSize: 12, marginBottom: 8 }}>
+        <Text style={{ color: BRAND_COLORS.textMuted, fontSize: scaleWithAppTextScale(12), marginBottom: 8 }}>
           Atur jeda pergantian foto slideshow (login web & welcome mobile) dalam detik.
         </Text>
         <View style={{ flexDirection: 'row', alignItems: 'center', gap: 10 }}>
@@ -313,12 +314,12 @@ export default function AdminSlideshowScreen() {
               color: BRAND_COLORS.textDark,
             }}
           />
-          <Text style={{ color: BRAND_COLORS.textMuted, fontSize: 13 }}>detik per foto</Text>
+          <Text style={{ color: BRAND_COLORS.textMuted, fontSize: scaleWithAppTextScale(13) }}>detik per foto</Text>
           <Pressable
             onPress={() => setSlideIntervalSeconds(3.5)}
             style={{ marginLeft: 4, paddingHorizontal: 8, paddingVertical: 4 }}
           >
-            <Text style={{ color: BRAND_COLORS.textMuted, fontSize: 12 }}>Reset ke 3.5</Text>
+            <Text style={{ color: BRAND_COLORS.textMuted, fontSize: scaleWithAppTextScale(12) }}>Reset ke 3.5</Text>
           </Pressable>
           <Pressable
             onPress={() => {
@@ -337,7 +338,7 @@ export default function AdminSlideshowScreen() {
             {pendingActionKey === 'save-settings' ? (
               <ActivityIndicator size="small" color={BRAND_COLORS.white} />
             ) : (
-              <Text style={{ color: BRAND_COLORS.white, fontWeight: '700', fontSize: 12 }}>Simpan Durasi</Text>
+              <Text style={{ color: BRAND_COLORS.white, fontWeight: '700', fontSize: scaleWithAppTextScale(12) }}>Simpan Durasi</Text>
             )}
           </Pressable>
         </View>
@@ -360,10 +361,10 @@ export default function AdminSlideshowScreen() {
               marginBottom: 12,
             }}
           >
-            <Text style={{ color: BRAND_COLORS.textDark, fontWeight: '700', fontSize: 16, marginBottom: 2 }}>
+            <Text style={{ color: BRAND_COLORS.textDark, fontWeight: '700', fontSize: scaleWithAppTextScale(16), marginBottom: 2 }}>
               Tambah Slide Baru
             </Text>
-            <Text style={{ color: BRAND_COLORS.textMuted, fontSize: 12, marginBottom: 10 }}>
+            <Text style={{ color: BRAND_COLORS.textMuted, fontSize: scaleWithAppTextScale(12), marginBottom: 10 }}>
               Tidak dibatasi 16 gambar. Tambah slide sesuai kebutuhan.
             </Text>
 
@@ -386,7 +387,7 @@ export default function AdminSlideshowScreen() {
               <Text style={{ color: BRAND_COLORS.textDark, fontWeight: '700' }}>
                 {uploadFile ? 'Ganti Foto' : 'Pilih Foto'}
               </Text>
-              <Text style={{ color: BRAND_COLORS.textMuted, fontSize: 12, marginTop: 2 }}>
+              <Text style={{ color: BRAND_COLORS.textMuted, fontSize: scaleWithAppTextScale(12), marginTop: 2 }}>
                 {uploadFile?.name || 'Format: JPG/JPEG/PNG/WEBP, maksimal 1MB'}
               </Text>
             </Pressable>
@@ -439,8 +440,8 @@ export default function AdminSlideshowScreen() {
               padding: 14,
             }}
           >
-            <Text style={{ color: BRAND_COLORS.textDark, fontWeight: '700', fontSize: 16 }}>Daftar Slide</Text>
-            <Text style={{ color: BRAND_COLORS.textMuted, fontSize: 12, marginTop: 2, marginBottom: 8 }}>
+            <Text style={{ color: BRAND_COLORS.textDark, fontWeight: '700', fontSize: scaleWithAppTextScale(16) }}>Daftar Slide</Text>
+            <Text style={{ color: BRAND_COLORS.textMuted, fontSize: scaleWithAppTextScale(12), marginTop: 2, marginBottom: 8 }}>
               Total {slides.length} slide • {activeSlideCount} aktif
             </Text>
 
@@ -476,7 +477,7 @@ export default function AdminSlideshowScreen() {
                     resizeMode="cover"
                   />
 
-                  <Text style={{ color: BRAND_COLORS.textMuted, fontSize: 11, marginTop: 6 }}>
+                  <Text style={{ color: BRAND_COLORS.textMuted, fontSize: scaleWithAppTextScale(11), marginTop: 6 }}>
                     Urutan #{slide.order + 1} • {slide.filename}
                   </Text>
 
@@ -527,7 +528,7 @@ export default function AdminSlideshowScreen() {
                         alignItems: 'center',
                       }}
                     >
-                      <Text style={{ color: draft.isActive ? '#15803d' : BRAND_COLORS.textMuted, fontWeight: '700', fontSize: 12 }}>
+                      <Text style={{ color: draft.isActive ? '#15803d' : BRAND_COLORS.textMuted, fontWeight: '700', fontSize: scaleWithAppTextScale(12) }}>
                         Aktif
                       </Text>
                     </Pressable>
@@ -551,7 +552,7 @@ export default function AdminSlideshowScreen() {
                         alignItems: 'center',
                       }}
                     >
-                      <Text style={{ color: !draft.isActive ? '#b45309' : BRAND_COLORS.textMuted, fontWeight: '700', fontSize: 12 }}>
+                      <Text style={{ color: !draft.isActive ? '#b45309' : BRAND_COLORS.textMuted, fontWeight: '700', fontSize: scaleWithAppTextScale(12) }}>
                         Nonaktif
                       </Text>
                     </Pressable>
@@ -574,7 +575,7 @@ export default function AdminSlideshowScreen() {
                         opacity: pendingActionKey || slide.order <= 0 ? 0.6 : 1,
                       }}
                     >
-                      <Text style={{ color: BRAND_COLORS.textMuted, fontWeight: '700', fontSize: 12 }}>Naik</Text>
+                      <Text style={{ color: BRAND_COLORS.textMuted, fontWeight: '700', fontSize: scaleWithAppTextScale(12) }}>Naik</Text>
                     </Pressable>
                     <Pressable
                       onPress={() => {
@@ -592,7 +593,7 @@ export default function AdminSlideshowScreen() {
                         opacity: pendingActionKey || slide.order >= slides.length - 1 ? 0.6 : 1,
                       }}
                     >
-                      <Text style={{ color: BRAND_COLORS.textMuted, fontWeight: '700', fontSize: 12 }}>Turun</Text>
+                      <Text style={{ color: BRAND_COLORS.textMuted, fontWeight: '700', fontSize: scaleWithAppTextScale(12) }}>Turun</Text>
                     </Pressable>
                   </View>
 
@@ -616,7 +617,7 @@ export default function AdminSlideshowScreen() {
                       {isSaving ? (
                         <ActivityIndicator size="small" color={BRAND_COLORS.white} />
                       ) : (
-                        <Text style={{ color: BRAND_COLORS.white, fontWeight: '700', fontSize: 12 }}>Simpan</Text>
+                        <Text style={{ color: BRAND_COLORS.white, fontWeight: '700', fontSize: scaleWithAppTextScale(12) }}>Simpan</Text>
                       )}
                     </Pressable>
                     <Pressable
@@ -633,7 +634,7 @@ export default function AdminSlideshowScreen() {
                         opacity: pendingActionKey || !hasDraftChanges(slide) ? 0.65 : 1,
                       }}
                     >
-                      <Text style={{ color: BRAND_COLORS.textMuted, fontWeight: '700', fontSize: 12 }}>Reset</Text>
+                      <Text style={{ color: BRAND_COLORS.textMuted, fontWeight: '700', fontSize: scaleWithAppTextScale(12) }}>Reset</Text>
                     </Pressable>
                     <Pressable
                       onPress={() => confirmDeleteSlide(slide)}
@@ -652,7 +653,7 @@ export default function AdminSlideshowScreen() {
                       {isDeleting || isReordering ? (
                         <ActivityIndicator size="small" color="#b91c1c" />
                       ) : (
-                        <Text style={{ color: '#b91c1c', fontWeight: '700', fontSize: 12 }}>Hapus</Text>
+                        <Text style={{ color: '#b91c1c', fontWeight: '700', fontSize: scaleWithAppTextScale(12) }}>Hapus</Text>
                       )}
                     </Pressable>
                   </View>

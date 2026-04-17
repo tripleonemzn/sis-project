@@ -9,6 +9,7 @@ import { QueryStateView } from '../../../src/components/QueryStateView';
 import { useAuth } from '../../../src/features/auth/AuthProvider';
 import { permissionApi } from '../../../src/features/permissions/permissionApi';
 import type { StudentPermission } from '../../../src/features/permissions/types';
+import { scaleLineHeightWithAppTextScale, scaleWithAppTextScale } from '../../../src/theme/AppTextScaleProvider';
 import {
   staffAdministrationApi,
   type StaffAdministrationSummary,
@@ -72,7 +73,7 @@ function NativeMigrationNotice({ message }: { message: string }) {
         marginBottom: 10,
       }}
     >
-      <Text style={{ color: BRAND_COLORS.textMuted, fontSize: 12, lineHeight: 18 }}>{message}</Text>
+      <Text style={{ color: BRAND_COLORS.textMuted, fontSize: scaleWithAppTextScale(12), lineHeight: scaleLineHeightWithAppTextScale(18) }}>{message}</Text>
     </View>
   );
 }
@@ -629,7 +630,7 @@ export default function StaffAdminScreen() {
   if (user?.role !== 'STAFF') {
     return (
       <ScrollView style={{ flex: 1, backgroundColor: '#f8fafc' }} contentContainerStyle={pagePadding}>
-        <Text style={{ fontSize: 20, fontWeight: '700', color: BRAND_COLORS.textDark, marginBottom: 8 }}>Administrasi</Text>
+        <Text style={{ fontSize: scaleWithAppTextScale(20), fontWeight: '700', color: BRAND_COLORS.textDark, marginBottom: 8 }}>Administrasi</Text>
         <QueryStateView type="error" message="Halaman ini khusus untuk role staff." />
       </ScrollView>
     );
@@ -680,7 +681,7 @@ export default function StaffAdminScreen() {
         <RefreshControl refreshing={dataQuery.isFetching && !dataQuery.isLoading} onRefresh={handleRefresh} />
       }
     >
-      <Text style={{ fontSize: 20, fontWeight: '700', color: BRAND_COLORS.textDark, marginBottom: 6 }}>{title}</Text>
+      <Text style={{ fontSize: scaleWithAppTextScale(20), fontWeight: '700', color: BRAND_COLORS.textDark, marginBottom: 6 }}>{title}</Text>
       <Text style={{ color: BRAND_COLORS.textMuted, marginBottom: 12 }}>{subtitle}</Text>
 
       {dataQuery.isLoading ? <QueryStateView type="loading" message="Mengambil data staff..." /> : null}
@@ -724,7 +725,7 @@ export default function StaffAdminScreen() {
           >
             <View style={{ marginBottom: 8 }}>
               <Text style={{ color: BRAND_COLORS.textDark, fontWeight: '700' }}>Performance Trend 6 Bulan</Text>
-              <Text style={{ color: BRAND_COLORS.textMuted, fontSize: 12, marginTop: 2 }}>
+              <Text style={{ color: BRAND_COLORS.textMuted, fontSize: scaleWithAppTextScale(12), marginTop: 2 }}>
                 Tren invoice, koleksi, pending verifikasi, treasury flow, dan closing untuk monitoring Kepala TU.
               </Text>
             </View>
@@ -780,10 +781,10 @@ export default function StaffAdminScreen() {
                       <View style={{ flexDirection: 'row', justifyContent: 'space-between', alignItems: 'flex-start', gap: 8 }}>
                         <View style={{ flex: 1 }}>
                           <Text style={{ color: BRAND_COLORS.textDark, fontWeight: '700' }}>{signal.title}</Text>
-                          <Text style={{ color: BRAND_COLORS.textMuted, fontSize: 12, marginTop: 2 }}>{signal.detail}</Text>
+                          <Text style={{ color: BRAND_COLORS.textMuted, fontSize: scaleWithAppTextScale(12), marginTop: 2 }}>{signal.detail}</Text>
                         </View>
                         <View style={{ borderWidth: 1, borderColor: badge.border, backgroundColor: badge.bg, borderRadius: 999, paddingHorizontal: 8, paddingVertical: 2 }}>
-                          <Text style={{ color: badge.text, fontSize: 11, fontWeight: '700' }}>{signal.tone}</Text>
+                          <Text style={{ color: badge.text, fontSize: scaleWithAppTextScale(11), fontWeight: '700' }}>{signal.tone}</Text>
                         </View>
                       </View>
                     </View>
@@ -794,16 +795,16 @@ export default function StaffAdminScreen() {
                 {headTuPerformance.monthlyTrend.map((row) => (
                   <View key={row.periodKey} style={{ borderTopWidth: 1, borderTopColor: '#eef3ff', paddingVertical: 8 }}>
                     <Text style={{ color: BRAND_COLORS.textDark, fontWeight: '700' }}>{row.label}</Text>
-                    <Text style={{ color: BRAND_COLORS.textMuted, fontSize: 12, marginTop: 2 }}>
+                    <Text style={{ color: BRAND_COLORS.textMuted, fontSize: scaleWithAppTextScale(12), marginTop: 2 }}>
                       {row.issuedInvoiceCount} invoice • rate {row.collectionRate.toFixed(1)}%
                     </Text>
-                    <Text style={{ color: '#166534', fontSize: 12, marginTop: 3 }}>
+                    <Text style={{ color: '#166534', fontSize: scaleWithAppTextScale(12), marginTop: 3 }}>
                       Collected {formatCurrency(row.collectedAgainstIssuedAmount)} • Net Flow {formatCurrency(row.netFlowAmount)}
                     </Text>
-                    <Text style={{ color: '#92400e', fontSize: 12, marginTop: 3 }}>
+                    <Text style={{ color: '#92400e', fontSize: scaleWithAppTextScale(12), marginTop: 3 }}>
                       Outstanding {formatCurrency(row.outstandingAmount)} • overdue {formatCurrency(row.overdueOutstandingAmount)}
                     </Text>
-                    <Text style={{ color: '#991b1b', fontSize: 12, marginTop: 3 }}>
+                    <Text style={{ color: '#991b1b', fontSize: scaleWithAppTextScale(12), marginTop: 3 }}>
                       Pending {formatCurrency(row.pendingVerificationAmount)} • {row.pendingPaymentCount} payment
                     </Text>
                   </View>
@@ -825,7 +826,7 @@ export default function StaffAdminScreen() {
         <View style={{ flexDirection: 'row', justifyContent: 'space-between', alignItems: 'flex-start', gap: 8, marginBottom: 8 }}>
           <View style={{ flex: 1 }}>
             <Text style={{ color: BRAND_COLORS.textDark, fontWeight: '700' }}>Integrity &amp; Readiness</Text>
-            <Text style={{ color: BRAND_COLORS.textMuted, fontSize: 12, marginTop: 2 }}>
+            <Text style={{ color: BRAND_COLORS.textMuted, fontSize: scaleWithAppTextScale(12), marginTop: 2 }}>
               Checklist final untuk melihat apakah finance sudah benar-benar bersih dari backlog dan blocker.
             </Text>
           </View>
@@ -834,7 +835,7 @@ export default function StaffAdminScreen() {
               const badge = getIntegrityStatusStyle(headTuIntegrity.overview.status);
               return (
                 <View style={{ borderWidth: 1, borderColor: badge.border, backgroundColor: badge.bg, borderRadius: 999, paddingHorizontal: 8, paddingVertical: 2 }}>
-                  <Text style={{ color: badge.text, fontSize: 11, fontWeight: '700' }}>{headTuIntegrity.overview.status}</Text>
+                  <Text style={{ color: badge.text, fontSize: scaleWithAppTextScale(11), fontWeight: '700' }}>{headTuIntegrity.overview.status}</Text>
                 </View>
               );
             })()
@@ -878,10 +879,10 @@ export default function StaffAdminScreen() {
                   <View style={{ flexDirection: 'row', justifyContent: 'space-between', alignItems: 'flex-start', gap: 8 }}>
                     <View style={{ flex: 1 }}>
                       <Text style={{ color: BRAND_COLORS.textDark, fontWeight: '700' }}>{item.title}</Text>
-                      <Text style={{ color: BRAND_COLORS.textMuted, fontSize: 12, marginTop: 3 }}>{item.detail}</Text>
+                      <Text style={{ color: BRAND_COLORS.textMuted, fontSize: scaleWithAppTextScale(12), marginTop: 3 }}>{item.detail}</Text>
                     </View>
                     <View style={{ borderWidth: 1, borderColor: badge.border, backgroundColor: badge.bg, borderRadius: 999, paddingHorizontal: 8, paddingVertical: 2 }}>
-                      <Text style={{ color: badge.text, fontSize: 11, fontWeight: '700' }}>{badge.label}</Text>
+                      <Text style={{ color: badge.text, fontSize: scaleWithAppTextScale(11), fontWeight: '700' }}>{badge.label}</Text>
                     </View>
                   </View>
                 </View>
@@ -900,16 +901,16 @@ export default function StaffAdminScreen() {
                       <View style={{ flex: 1 }}>
                         <View style={{ flexDirection: 'row', alignItems: 'center', gap: 6 }}>
                           <View style={{ borderWidth: 1, borderColor: badge.border, backgroundColor: badge.bg, borderRadius: 999, paddingHorizontal: 8, paddingVertical: 2 }}>
-                            <Text style={{ color: badge.text, fontSize: 11, fontWeight: '700' }}>{issue.severity}</Text>
+                            <Text style={{ color: badge.text, fontSize: scaleWithAppTextScale(11), fontWeight: '700' }}>{issue.severity}</Text>
                           </View>
-                          <Text style={{ color: BRAND_COLORS.textMuted, fontSize: 11 }}>{issue.area}</Text>
+                          <Text style={{ color: BRAND_COLORS.textMuted, fontSize: scaleWithAppTextScale(11) }}>{issue.area}</Text>
                         </View>
                         <Text style={{ color: BRAND_COLORS.textDark, fontWeight: '700', marginTop: 6 }}>{issue.title}</Text>
-                        <Text style={{ color: BRAND_COLORS.textMuted, fontSize: 12, marginTop: 3 }}>{issue.detail}</Text>
+                        <Text style={{ color: BRAND_COLORS.textMuted, fontSize: scaleWithAppTextScale(12), marginTop: 3 }}>{issue.detail}</Text>
                       </View>
                       <View style={{ alignItems: 'flex-end' }}>
                         <Text style={{ color: BRAND_COLORS.textDark, fontWeight: '700' }}>{formatCurrency(issue.amount)}</Text>
-                        <Text style={{ color: '#94a3b8', fontSize: 11, marginTop: 2 }}>{issue.count} item</Text>
+                        <Text style={{ color: '#94a3b8', fontSize: scaleWithAppTextScale(11), marginTop: 2 }}>{issue.count} item</Text>
                       </View>
                     </View>
                   </View>
@@ -958,7 +959,7 @@ export default function StaffAdminScreen() {
               financeRecentPendingBudgets.map((item) => (
                 <View key={item.id} style={{ borderTopWidth: 1, borderTopColor: '#eef3ff', paddingVertical: 8 }}>
                   <Text style={{ color: BRAND_COLORS.textDark, fontWeight: '700' }}>{item.title || 'Tanpa judul'}</Text>
-                  <Text style={{ color: BRAND_COLORS.textMuted, fontSize: 12, marginTop: 2 }}>
+                  <Text style={{ color: BRAND_COLORS.textMuted, fontSize: scaleWithAppTextScale(12), marginTop: 2 }}>
                     Pengaju: {item.requester?.name || '-'} • Rp {Number(item.totalAmount || 0).toLocaleString('id-ID')}
                   </Text>
                 </View>
@@ -981,7 +982,7 @@ export default function StaffAdminScreen() {
             <View style={{ flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', marginBottom: 8, gap: 8 }}>
               <View style={{ flex: 1 }}>
                 <Text style={{ color: BRAND_COLORS.textDark, fontWeight: '700' }}>Approval Reversal Pembayaran</Text>
-                <Text style={{ color: BRAND_COLORS.textMuted, fontSize: 12, marginTop: 2 }}>
+                <Text style={{ color: BRAND_COLORS.textMuted, fontSize: scaleWithAppTextScale(12), marginTop: 2 }}>
                   Review koreksi pembayaran sebelum diteruskan ke Kepala Sekolah.
                 </Text>
               </View>
@@ -995,7 +996,7 @@ export default function StaffAdminScreen() {
                   paddingVertical: 4,
                 }}
               >
-                <Text style={{ color: '#c2410c', fontSize: 11, fontWeight: '700' }}>{headTuPendingPaymentReversals.length} menunggu</Text>
+                <Text style={{ color: '#c2410c', fontSize: scaleWithAppTextScale(11), fontWeight: '700' }}>{headTuPendingPaymentReversals.length} menunggu</Text>
               </View>
             </View>
 
@@ -1013,22 +1014,22 @@ export default function StaffAdminScreen() {
               headTuPendingPaymentReversals.slice(0, 5).map((request) => (
                 <View key={request.id} style={{ borderTopWidth: 1, borderTopColor: '#eef3ff', paddingVertical: 10 }}>
                   <Text style={{ color: BRAND_COLORS.textDark, fontWeight: '700' }}>{request.requestNo}</Text>
-                  <Text style={{ color: BRAND_COLORS.textMuted, fontSize: 12, marginTop: 3 }}>
+                  <Text style={{ color: BRAND_COLORS.textMuted, fontSize: scaleWithAppTextScale(12), marginTop: 3 }}>
                     {request.student?.name || '-'} • {request.student?.studentClass?.name || '-'}
                   </Text>
-                  <Text style={{ color: '#475569', fontSize: 12, marginTop: 3 }}>
+                  <Text style={{ color: '#475569', fontSize: scaleWithAppTextScale(12), marginTop: 3 }}>
                     Pembayaran {request.payment?.paymentNo || '-'} • invoice {request.invoice?.invoiceNo || '-'}
                   </Text>
-                  <Text style={{ color: '#475569', fontSize: 12, marginTop: 3 }}>
+                  <Text style={{ color: '#475569', fontSize: scaleWithAppTextScale(12), marginTop: 3 }}>
                     Permintaan{' '}
                     <Text style={{ color: '#b45309', fontWeight: '700' }}>
                       {formatCurrency(request.requestedAmount)}
                     </Text>
                   </Text>
-                  <Text style={{ color: '#475569', fontSize: 12, marginTop: 3 }}>
+                  <Text style={{ color: '#475569', fontSize: scaleWithAppTextScale(12), marginTop: 3 }}>
                     Alokasi {formatCurrency(request.requestedAllocatedAmount || 0)} • kredit {formatCurrency(request.requestedCreditedAmount || 0)}
                   </Text>
-                  <Text style={{ color: BRAND_COLORS.textMuted, fontSize: 12, marginTop: 3 }}>{request.reason}</Text>
+                  <Text style={{ color: BRAND_COLORS.textMuted, fontSize: scaleWithAppTextScale(12), marginTop: 3 }}>{request.reason}</Text>
 
                   <View style={{ flexDirection: 'row', gap: 8, marginTop: 10 }}>
                     <Pressable
@@ -1105,15 +1106,15 @@ export default function StaffAdminScreen() {
                     <View style={{ flexDirection: 'row', justifyContent: 'space-between', alignItems: 'flex-start', gap: 8 }}>
                       <View style={{ flex: 1 }}>
                         <Text style={{ color: BRAND_COLORS.textDark, fontWeight: '700' }}>{row.studentName}</Text>
-                        <Text style={{ color: BRAND_COLORS.textMuted, fontSize: 12, marginTop: 2 }}>
+                        <Text style={{ color: BRAND_COLORS.textMuted, fontSize: scaleWithAppTextScale(12), marginTop: 2 }}>
                           {row.className} • {row.nis || row.username}
                         </Text>
                       </View>
                       <View style={{ backgroundColor: badge.bg, borderColor: badge.border, borderWidth: 1, borderRadius: 999, paddingHorizontal: 10, paddingVertical: 4 }}>
-                        <Text style={{ color: badge.text, fontSize: 11, fontWeight: '700' }}>{row.priority}</Text>
+                        <Text style={{ color: badge.text, fontSize: scaleWithAppTextScale(11), fontWeight: '700' }}>{row.priority}</Text>
                       </View>
                     </View>
-                    <Text style={{ color: '#475569', fontSize: 12, marginTop: 6 }}>
+                    <Text style={{ color: '#475569', fontSize: scaleWithAppTextScale(12), marginTop: 6 }}>
                       Outstanding <Text style={{ color: BRAND_COLORS.textDark, fontWeight: '700' }}>Rp {Math.round(row.totalOutstanding).toLocaleString('id-ID')}</Text> • overdue Rp {Math.round(row.overdueOutstanding).toLocaleString('id-ID')}
                     </Text>
                   </View>
@@ -1139,10 +1140,10 @@ export default function StaffAdminScreen() {
               financeDashboard.dueSoonInvoices.slice(0, 4).map((row) => (
                 <View key={row.invoiceId} style={{ borderTopWidth: 1, borderTopColor: '#eef3ff', paddingVertical: 8 }}>
                   <Text style={{ color: BRAND_COLORS.textDark, fontWeight: '700' }}>{row.studentName}</Text>
-                  <Text style={{ color: BRAND_COLORS.textMuted, fontSize: 12, marginTop: 2 }}>
+                  <Text style={{ color: BRAND_COLORS.textMuted, fontSize: scaleWithAppTextScale(12), marginTop: 2 }}>
                     {row.invoiceNo} • {row.className} • {getDueSoonLabel(row.daysUntilDue)}
                   </Text>
-                  <Text style={{ color: '#0369a1', fontSize: 11, marginTop: 2 }}>
+                  <Text style={{ color: '#0369a1', fontSize: scaleWithAppTextScale(11), marginTop: 2 }}>
                     {formatDate(row.dueDate)} • Rp {Math.round(row.balanceAmount).toLocaleString('id-ID')}
                   </Text>
                 </View>
@@ -1267,7 +1268,7 @@ export default function StaffAdminScreen() {
               administrationSummary.studentClassRecap.slice(0, 5).map((row) => (
                 <View key={`${row.classId ?? 0}-${row.className}`} style={{ borderTopWidth: 1, borderTopColor: '#eef3ff', paddingVertical: 8 }}>
                   <Text style={{ color: BRAND_COLORS.textDark, fontWeight: '700' }}>{row.className}</Text>
-                  <Text style={{ color: BRAND_COLORS.textMuted, fontSize: 12, marginTop: 2 }}>
+                  <Text style={{ color: BRAND_COLORS.textMuted, fontSize: scaleWithAppTextScale(12), marginTop: 2 }}>
                     {row.totalStudents} siswa • kelengkapan {row.completenessRate}% • prioritas {row.priorityCount}
                   </Text>
                 </View>
@@ -1288,7 +1289,7 @@ export default function StaffAdminScreen() {
             <View style={{ flexDirection: 'row', justifyContent: 'space-between', alignItems: 'flex-start', marginBottom: 8, gap: 8 }}>
               <View style={{ flex: 1 }}>
                 <Text style={{ color: BRAND_COLORS.textDark, fontWeight: '700' }}>Governance Summary</Text>
-                <Text style={{ color: BRAND_COLORS.textMuted, fontSize: 12, marginTop: 2 }}>
+                <Text style={{ color: BRAND_COLORS.textMuted, fontSize: scaleWithAppTextScale(12), marginTop: 2 }}>
                   Ringkasan kontrol finance untuk area risiko utama Kepala TU.
                 </Text>
               </View>
@@ -1303,7 +1304,7 @@ export default function StaffAdminScreen() {
                     paddingVertical: 4,
                   }}
                 >
-                  <Text style={{ color: getGovernanceRiskStyle(headTuGovernance.overview.riskLevel).text, fontSize: 11, fontWeight: '700' }}>
+                  <Text style={{ color: getGovernanceRiskStyle(headTuGovernance.overview.riskLevel).text, fontSize: scaleWithAppTextScale(11), fontWeight: '700' }}>
                     {getGovernanceRiskStyle(headTuGovernance.overview.riskLevel).label}
                   </Text>
                 </View>
@@ -1327,8 +1328,8 @@ export default function StaffAdminScreen() {
                   }}
                 >
                   <Text style={{ color: BRAND_COLORS.textDark, fontWeight: '700' }}>{headTuGovernance.overview.headline}</Text>
-                  <Text style={{ color: BRAND_COLORS.textMuted, fontSize: 12, marginTop: 4 }}>{headTuGovernance.overview.detail}</Text>
-                  <Text style={{ color: '#64748b', fontSize: 12, marginTop: 4 }}>
+                  <Text style={{ color: BRAND_COLORS.textMuted, fontSize: scaleWithAppTextScale(12), marginTop: 4 }}>{headTuGovernance.overview.detail}</Text>
+                  <Text style={{ color: '#64748b', fontSize: scaleWithAppTextScale(12), marginTop: 4 }}>
                     {headTuGovernance.overview.attentionItems} item perhatian • {formatCurrency(headTuGovernance.overview.attentionAmount)}
                   </Text>
                 </View>
@@ -1384,13 +1385,13 @@ export default function StaffAdminScreen() {
                           <View style={{ flex: 1 }}>
                             <View style={{ flexDirection: 'row', gap: 6, alignItems: 'center', marginBottom: 4 }}>
                               <View style={{ borderWidth: 1, borderColor: badge.border, backgroundColor: badge.bg, borderRadius: 999, paddingHorizontal: 8, paddingVertical: 2 }}>
-                                <Text style={{ color: badge.text, fontSize: 11, fontWeight: '700' }}>{item.severity}</Text>
+                                <Text style={{ color: badge.text, fontSize: scaleWithAppTextScale(11), fontWeight: '700' }}>{item.severity}</Text>
                               </View>
-                              <Text style={{ color: BRAND_COLORS.textMuted, fontSize: 11 }}>{item.category}</Text>
+                              <Text style={{ color: BRAND_COLORS.textMuted, fontSize: scaleWithAppTextScale(11) }}>{item.category}</Text>
                             </View>
                             <Text style={{ color: BRAND_COLORS.textDark, fontWeight: '700' }}>{item.title}</Text>
-                            <Text style={{ color: BRAND_COLORS.textMuted, fontSize: 12, marginTop: 2 }}>{item.detail}</Text>
-                            <Text style={{ color: '#64748b', fontSize: 12, marginTop: 2 }}>
+                            <Text style={{ color: BRAND_COLORS.textMuted, fontSize: scaleWithAppTextScale(12), marginTop: 2 }}>{item.detail}</Text>
+                            <Text style={{ color: '#64748b', fontSize: scaleWithAppTextScale(12), marginTop: 2 }}>
                               {item.referenceLabel ? `${item.referenceLabel} • ` : ''}
                               {item.updatedAt ? formatDate(item.updatedAt) : 'Perlu ditinjau'}
                             </Text>
@@ -1417,7 +1418,7 @@ export default function StaffAdminScreen() {
           >
             <View style={{ marginBottom: 8 }}>
               <Text style={{ color: BRAND_COLORS.textDark, fontWeight: '700' }}>Audit Finance 30 Hari</Text>
-              <Text style={{ color: BRAND_COLORS.textMuted, fontSize: 12, marginTop: 2 }}>
+              <Text style={{ color: BRAND_COLORS.textMuted, fontSize: scaleWithAppTextScale(12), marginTop: 2 }}>
                 Ringkasan perubahan policy, approval sensitif, dan kontrol treasury terbaru untuk audit Kepala TU.
               </Text>
             </View>
@@ -1469,7 +1470,7 @@ export default function StaffAdminScreen() {
                     {headTuAudit.actorSummary.map((actor) => (
                       <View key={actor.actorId} style={{ borderTopWidth: 1, borderTopColor: '#eef3ff', paddingVertical: 8 }}>
                         <Text style={{ color: BRAND_COLORS.textDark, fontWeight: '700' }}>{actor.actorName}</Text>
-                        <Text style={{ color: BRAND_COLORS.textMuted, fontSize: 12, marginTop: 2 }}>
+                        <Text style={{ color: BRAND_COLORS.textMuted, fontSize: scaleWithAppTextScale(12), marginTop: 2 }}>
                           {actor.totalEvents} event • kritis {actor.criticalCount} • approval {actor.approvalCount}
                         </Text>
                       </View>
@@ -1489,18 +1490,18 @@ export default function StaffAdminScreen() {
                           <View style={{ flex: 1 }}>
                             <View style={{ flexDirection: 'row', gap: 6, alignItems: 'center', marginBottom: 4 }}>
                               <View style={{ borderWidth: 1, borderColor: badge.border, backgroundColor: badge.bg, borderRadius: 999, paddingHorizontal: 8, paddingVertical: 2 }}>
-                                <Text style={{ color: badge.text, fontSize: 11, fontWeight: '700' }}>{event.severity}</Text>
+                                <Text style={{ color: badge.text, fontSize: scaleWithAppTextScale(11), fontWeight: '700' }}>{event.severity}</Text>
                               </View>
-                              <Text style={{ color: BRAND_COLORS.textMuted, fontSize: 11 }}>{event.category}</Text>
+                              <Text style={{ color: BRAND_COLORS.textMuted, fontSize: scaleWithAppTextScale(11) }}>{event.category}</Text>
                             </View>
                             <Text style={{ color: BRAND_COLORS.textDark, fontWeight: '700' }}>{event.label}</Text>
-                            <Text style={{ color: BRAND_COLORS.textMuted, fontSize: 12, marginTop: 2 }}>{event.summary}</Text>
-                            <Text style={{ color: '#64748b', fontSize: 12, marginTop: 2 }}>
+                            <Text style={{ color: BRAND_COLORS.textMuted, fontSize: scaleWithAppTextScale(12), marginTop: 2 }}>{event.summary}</Text>
+                            <Text style={{ color: '#64748b', fontSize: scaleWithAppTextScale(12), marginTop: 2 }}>
                               {event.actor.label} • {formatDate(event.createdAt)}
                               {event.entityId ? ` • Ref #${event.entityId}` : ''}
                             </Text>
                           </View>
-                          <Text style={{ color: '#64748b', fontSize: 11, fontWeight: '700' }}>{event.action}</Text>
+                          <Text style={{ color: '#64748b', fontSize: scaleWithAppTextScale(11), fontWeight: '700' }}>{event.action}</Text>
                         </View>
                       </View>
                     );
@@ -1523,7 +1524,7 @@ export default function StaffAdminScreen() {
             <View style={{ flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', marginBottom: 8, gap: 8 }}>
               <View style={{ flex: 1 }}>
                 <Text style={{ color: BRAND_COLORS.textDark, fontWeight: '700' }}>Budget vs Realization</Text>
-                <Text style={{ color: BRAND_COLORS.textMuted, fontSize: 12, marginTop: 2 }}>
+                <Text style={{ color: BRAND_COLORS.textMuted, fontSize: scaleWithAppTextScale(12), marginTop: 2 }}>
                   Monitoring budget approved, progres LPJ, actual spent, dan variance untuk melihat bottleneck realisasi finance.
                 </Text>
               </View>
@@ -1537,7 +1538,7 @@ export default function StaffAdminScreen() {
                   paddingVertical: 4,
                 }}
               >
-                <Text style={{ color: '#334155', fontSize: 11, fontWeight: '700' }}>
+                <Text style={{ color: '#334155', fontSize: scaleWithAppTextScale(11), fontWeight: '700' }}>
                   {formatCurrency(headTuBudgetRealization?.overview.approvedBudgetAmount || 0)}
                 </Text>
               </View>
@@ -1549,7 +1550,7 @@ export default function StaffAdminScreen() {
               <Text style={{ color: BRAND_COLORS.textMuted }}>Ringkasan budget vs realization belum tersedia.</Text>
             ) : (
               <>
-                <Text style={{ color: BRAND_COLORS.textMuted, fontSize: 12, marginBottom: 8 }}>
+                <Text style={{ color: BRAND_COLORS.textMuted, fontSize: scaleWithAppTextScale(12), marginBottom: 8 }}>
                   Actual {formatCurrency(headTuBudgetRealization.overview.actualRealizedAmount)} • variance {formatCurrency(headTuBudgetRealization.overview.varianceAmount)} • review LPJ{' '}
                   {headTuBudgetRealization.overview.stageSummary.financeReviewCount +
                     headTuBudgetRealization.overview.stageSummary.returnedByFinanceCount}
@@ -1558,13 +1559,13 @@ export default function StaffAdminScreen() {
                 {headTuBudgetRealization.dutyRecap.slice(0, 4).map((row) => (
                   <View key={row.additionalDuty} style={{ borderTopWidth: 1, borderTopColor: '#eef3ff', paddingVertical: 8 }}>
                     <Text style={{ color: BRAND_COLORS.textDark, fontWeight: '700' }}>{row.additionalDutyLabel}</Text>
-                    <Text style={{ color: BRAND_COLORS.textMuted, fontSize: 12, marginTop: 2 }}>
+                    <Text style={{ color: BRAND_COLORS.textMuted, fontSize: scaleWithAppTextScale(12), marginTop: 2 }}>
                       {row.totalRequests} request • {row.realizationRate.toFixed(1)}%
                     </Text>
-                    <Text style={{ color: '#475569', fontSize: 12, marginTop: 2 }}>
+                    <Text style={{ color: '#475569', fontSize: scaleWithAppTextScale(12), marginTop: 2 }}>
                       Approved {formatCurrency(row.approvedBudgetAmount)} • Actual {formatCurrency(row.actualRealizedAmount)}
                     </Text>
-                    <Text style={{ color: '#6b21a8', fontSize: 12, marginTop: 2 }}>
+                    <Text style={{ color: '#6b21a8', fontSize: scaleWithAppTextScale(12), marginTop: 2 }}>
                       Variance {formatCurrency(row.varianceAmount)}
                     </Text>
                   </View>
@@ -1580,18 +1581,18 @@ export default function StaffAdminScreen() {
                           <View style={{ flexDirection: 'row', justifyContent: 'space-between', alignItems: 'flex-start', gap: 8 }}>
                             <View style={{ flex: 1 }}>
                               <Text style={{ color: BRAND_COLORS.textDark, fontWeight: '700' }}>{row.title}</Text>
-                              <Text style={{ color: BRAND_COLORS.textMuted, fontSize: 12, marginTop: 2 }}>
+                              <Text style={{ color: BRAND_COLORS.textMuted, fontSize: scaleWithAppTextScale(12), marginTop: 2 }}>
                                 {row.requesterName} • {row.additionalDutyLabel}
                               </Text>
                             </View>
                             <View style={{ borderWidth: 1, borderColor: stage.border, backgroundColor: stage.bg, borderRadius: 999, paddingHorizontal: 8, paddingVertical: 2 }}>
-                              <Text style={{ color: stage.text, fontSize: 11, fontWeight: '700' }}>{stage.label}</Text>
+                              <Text style={{ color: stage.text, fontSize: scaleWithAppTextScale(11), fontWeight: '700' }}>{stage.label}</Text>
                             </View>
                           </View>
-                          <Text style={{ color: '#475569', fontSize: 12, marginTop: 3 }}>
+                          <Text style={{ color: '#475569', fontSize: scaleWithAppTextScale(12), marginTop: 3 }}>
                             Approved {formatCurrency(row.approvedBudgetAmount)} • Actual {formatCurrency(row.actualRealizedAmount)}
                           </Text>
-                          <Text style={{ color: '#64748b', fontSize: 12, marginTop: 3 }}>
+                          <Text style={{ color: '#64748b', fontSize: scaleWithAppTextScale(12), marginTop: 3 }}>
                             {row.pendingSince ? `Sejak ${formatDate(row.pendingSince)}` : 'Belum ada tanggal stage'} • {row.daysInStage} hari
                             {row.latestLpjStatus ? ` • LPJ ${row.latestLpjStatus}` : ''}
                           </Text>
@@ -1617,7 +1618,7 @@ export default function StaffAdminScreen() {
             <View style={{ flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', marginBottom: 8, gap: 8 }}>
               <View style={{ flex: 1 }}>
                 <Text style={{ color: BRAND_COLORS.textDark, fontWeight: '700' }}>Closing Period Finance</Text>
-                <Text style={{ color: BRAND_COLORS.textMuted, fontSize: 12, marginTop: 2 }}>
+                <Text style={{ color: BRAND_COLORS.textMuted, fontSize: scaleWithAppTextScale(12), marginTop: 2 }}>
                   Monitoring snapshot lock periode finance sebelum ditutup final.
                 </Text>
               </View>
@@ -1631,11 +1632,11 @@ export default function StaffAdminScreen() {
                   paddingVertical: 4,
                 }}
               >
-                <Text style={{ color: '#334155', fontSize: 11, fontWeight: '700' }}>{headTuClosingPeriodSummary?.totalPeriods || 0} period</Text>
+                <Text style={{ color: '#334155', fontSize: scaleWithAppTextScale(11), fontWeight: '700' }}>{headTuClosingPeriodSummary?.totalPeriods || 0} period</Text>
               </View>
             </View>
 
-            <Text style={{ color: BRAND_COLORS.textMuted, fontSize: 12, marginBottom: 8 }}>
+            <Text style={{ color: BRAND_COLORS.textMuted, fontSize: scaleWithAppTextScale(12), marginBottom: 8 }}>
               Review {headTuClosingPeriodSummary?.reviewCount || 0} • locked {headTuClosingPeriodSummary?.closedCount || 0} • pending verifikasi {formatCurrency(headTuClosingPeriodSummary?.totalPendingVerificationAmount || 0)}
             </Text>
 
@@ -1652,23 +1653,23 @@ export default function StaffAdminScreen() {
                     <View style={{ flexDirection: 'row', justifyContent: 'space-between', alignItems: 'flex-start', gap: 8 }}>
                       <View style={{ flex: 1 }}>
                         <Text style={{ color: BRAND_COLORS.textDark, fontWeight: '700' }}>{period.label}</Text>
-                        <Text style={{ color: BRAND_COLORS.textMuted, fontSize: 12, marginTop: 2 }}>
+                        <Text style={{ color: BRAND_COLORS.textMuted, fontSize: scaleWithAppTextScale(12), marginTop: 2 }}>
                           {period.periodNo} • {formatDate(period.periodStart)} - {formatDate(period.periodEnd)}
                         </Text>
-                        <Text style={{ color: '#475569', fontSize: 12, marginTop: 2 }}>
+                        <Text style={{ color: '#475569', fontSize: scaleWithAppTextScale(12), marginTop: 2 }}>
                           Outstanding {formatCurrency(period.summary.outstandingAmount)} • pending {formatCurrency(period.summary.pendingVerificationAmount)}
                         </Text>
-                        <Text style={{ color: '#475569', fontSize: 12, marginTop: 2 }}>
+                        <Text style={{ color: '#475569', fontSize: scaleWithAppTextScale(12), marginTop: 2 }}>
                           Unmatched {formatCurrency(period.summary.unmatchedBankAmount)} • kas/bank {formatCurrency(period.summary.cashClosingBalance)} / {formatCurrency(period.summary.bankClosingBalance)}
                         </Text>
                         {period.closedAt ? (
-                          <Text style={{ color: '#166534', fontSize: 12, marginTop: 2 }}>
+                          <Text style={{ color: '#166534', fontSize: scaleWithAppTextScale(12), marginTop: 2 }}>
                             Locked {formatDate(period.closedAt)}
                             {period.closedBy?.name ? ` oleh ${period.closedBy.name}` : ''}
                           </Text>
                         ) : null}
                         {period.reopenedAt ? (
-                          <Text style={{ color: '#0f766e', fontSize: 12, marginTop: 2 }}>
+                          <Text style={{ color: '#0f766e', fontSize: scaleWithAppTextScale(12), marginTop: 2 }}>
                             Direopen {formatDate(period.reopenedAt)}
                             {period.reopenedBy?.name ? ` oleh ${period.reopenedBy.name}` : ''}
                             {period.reopenNote ? ` • ${period.reopenNote}` : ''}
@@ -1688,18 +1689,18 @@ export default function StaffAdminScreen() {
                               paddingVertical: 2,
                             }}
                           >
-                            <Text style={{ color: badge.text, fontSize: 11, fontWeight: '700' }}>{badge.label}</Text>
+                            <Text style={{ color: badge.text, fontSize: scaleWithAppTextScale(11), fontWeight: '700' }}>{badge.label}</Text>
                           </View>
                         ))}
                       </View>
                     </View>
                     {period.headTuDecisionNote ? (
-                      <Text style={{ color: BRAND_COLORS.textMuted, fontSize: 12, marginTop: 3 }}>
+                      <Text style={{ color: BRAND_COLORS.textMuted, fontSize: scaleWithAppTextScale(12), marginTop: 3 }}>
                         Review Kepala TU: {period.headTuDecisionNote}
                       </Text>
                     ) : null}
                     {period.principalDecisionNote ? (
-                      <Text style={{ color: BRAND_COLORS.textMuted, fontSize: 12, marginTop: 3 }}>
+                      <Text style={{ color: BRAND_COLORS.textMuted, fontSize: scaleWithAppTextScale(12), marginTop: 3 }}>
                         Keputusan Kepsek: {period.principalDecisionNote}
                       </Text>
                     ) : null}
@@ -1722,7 +1723,7 @@ export default function StaffAdminScreen() {
             <View style={{ flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', marginBottom: 8, gap: 8 }}>
               <View style={{ flex: 1 }}>
                 <Text style={{ color: BRAND_COLORS.textDark, fontWeight: '700' }}>Approval Closing Period</Text>
-                <Text style={{ color: BRAND_COLORS.textMuted, fontSize: 12, marginTop: 2 }}>
+                <Text style={{ color: BRAND_COLORS.textMuted, fontSize: scaleWithAppTextScale(12), marginTop: 2 }}>
                   Review closing period sebelum ditutup final atau diteruskan ke Kepala Sekolah.
                 </Text>
               </View>
@@ -1736,7 +1737,7 @@ export default function StaffAdminScreen() {
                   paddingVertical: 4,
                 }}
               >
-                <Text style={{ color: '#c2410c', fontSize: 11, fontWeight: '700' }}>{headTuPendingClosingPeriods.length} menunggu</Text>
+                <Text style={{ color: '#c2410c', fontSize: scaleWithAppTextScale(11), fontWeight: '700' }}>{headTuPendingClosingPeriods.length} menunggu</Text>
               </View>
             </View>
 
@@ -1748,17 +1749,17 @@ export default function StaffAdminScreen() {
               headTuPendingClosingPeriods.map((period) => (
                 <View key={period.id} style={{ borderTopWidth: 1, borderTopColor: '#eef3ff', paddingVertical: 10 }}>
                   <Text style={{ color: BRAND_COLORS.textDark, fontWeight: '700' }}>{period.label}</Text>
-                  <Text style={{ color: BRAND_COLORS.textMuted, fontSize: 12, marginTop: 3 }}>
+                  <Text style={{ color: BRAND_COLORS.textMuted, fontSize: scaleWithAppTextScale(12), marginTop: 3 }}>
                     {period.periodNo} • {formatDate(period.periodStart)} - {formatDate(period.periodEnd)}
                   </Text>
-                  <Text style={{ color: '#475569', fontSize: 12, marginTop: 3 }}>
+                  <Text style={{ color: '#475569', fontSize: scaleWithAppTextScale(12), marginTop: 3 }}>
                     Outstanding {formatCurrency(period.summary.outstandingAmount)} • pending {formatCurrency(period.summary.pendingVerificationAmount)}
                   </Text>
-                  <Text style={{ color: '#475569', fontSize: 12, marginTop: 3 }}>
+                  <Text style={{ color: '#475569', fontSize: scaleWithAppTextScale(12), marginTop: 3 }}>
                     Unmatched {formatCurrency(period.summary.unmatchedBankAmount)} • kas/rekon terbuka {period.summary.openCashSessionCount}/{period.summary.openReconciliationCount}
                   </Text>
                   {period.closingNote ? (
-                    <Text style={{ color: BRAND_COLORS.textMuted, fontSize: 12, marginTop: 3 }}>{period.closingNote}</Text>
+                    <Text style={{ color: BRAND_COLORS.textMuted, fontSize: scaleWithAppTextScale(12), marginTop: 3 }}>{period.closingNote}</Text>
                   ) : null}
 
                   <View style={{ flexDirection: 'row', gap: 8, marginTop: 10 }}>
@@ -1811,7 +1812,7 @@ export default function StaffAdminScreen() {
             <View style={{ flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', marginBottom: 8, gap: 8 }}>
               <View style={{ flex: 1 }}>
                 <Text style={{ color: BRAND_COLORS.textDark, fontWeight: '700' }}>Approval Reopen Closing</Text>
-                <Text style={{ color: BRAND_COLORS.textMuted, fontSize: 12, marginTop: 2 }}>
+                <Text style={{ color: BRAND_COLORS.textMuted, fontSize: scaleWithAppTextScale(12), marginTop: 2 }}>
                   Review unlock period sebelum diteruskan ke Kepala Sekolah atau ditolak.
                 </Text>
               </View>
@@ -1825,7 +1826,7 @@ export default function StaffAdminScreen() {
                   paddingVertical: 4,
                 }}
               >
-                <Text style={{ color: '#c2410c', fontSize: 11, fontWeight: '700' }}>{headTuPendingClosingPeriodReopens.length} menunggu</Text>
+                <Text style={{ color: '#c2410c', fontSize: scaleWithAppTextScale(11), fontWeight: '700' }}>{headTuPendingClosingPeriodReopens.length} menunggu</Text>
               </View>
             </View>
 
@@ -1841,12 +1842,12 @@ export default function StaffAdminScreen() {
                     <View style={{ flexDirection: 'row', justifyContent: 'space-between', gap: 8 }}>
                       <View style={{ flex: 1 }}>
                         <Text style={{ color: BRAND_COLORS.textDark, fontWeight: '700' }}>{request.closingPeriod.label}</Text>
-                        <Text style={{ color: BRAND_COLORS.textMuted, fontSize: 12, marginTop: 3 }}>
+                        <Text style={{ color: BRAND_COLORS.textMuted, fontSize: scaleWithAppTextScale(12), marginTop: 3 }}>
                           {request.requestNo} • {request.closingPeriod.periodNo}
                         </Text>
-                        <Text style={{ color: '#475569', fontSize: 12, marginTop: 3 }}>{request.reason}</Text>
+                        <Text style={{ color: '#475569', fontSize: scaleWithAppTextScale(12), marginTop: 3 }}>{request.reason}</Text>
                         {request.requestedNote ? (
-                          <Text style={{ color: BRAND_COLORS.textMuted, fontSize: 12, marginTop: 3 }}>{request.requestedNote}</Text>
+                          <Text style={{ color: BRAND_COLORS.textMuted, fontSize: scaleWithAppTextScale(12), marginTop: 3 }}>{request.requestedNote}</Text>
                         ) : null}
                       </View>
                       <View
@@ -1859,7 +1860,7 @@ export default function StaffAdminScreen() {
                           paddingVertical: 2,
                         }}
                       >
-                        <Text style={{ color: badge.text, fontSize: 11, fontWeight: '700' }}>{badge.label}</Text>
+                        <Text style={{ color: badge.text, fontSize: scaleWithAppTextScale(11), fontWeight: '700' }}>{badge.label}</Text>
                       </View>
                     </View>
 
@@ -1901,7 +1902,7 @@ export default function StaffAdminScreen() {
             )}
 
             {headTuClosingPeriodReopenRequests.length > 0 ? (
-              <Text style={{ color: BRAND_COLORS.textMuted, fontSize: 12, marginTop: 8 }}>
+              <Text style={{ color: BRAND_COLORS.textMuted, fontSize: scaleWithAppTextScale(12), marginTop: 8 }}>
                 Riwayat reopen tercatat {headTuClosingPeriodReopenSummary?.totalRequests || 0} request,{' '}
                 {headTuClosingPeriodReopenSummary?.appliedCount || 0} sudah direopen.
               </Text>
@@ -1925,7 +1926,7 @@ export default function StaffAdminScreen() {
               administrationSummary.teacherPtkRecap.slice(0, 5).map((row) => (
                 <View key={row.ptkType} style={{ borderTopWidth: 1, borderTopColor: '#eef3ff', paddingVertical: 8 }}>
                   <Text style={{ color: BRAND_COLORS.textDark, fontWeight: '700' }}>{row.ptkType || '-'}</Text>
-                  <Text style={{ color: BRAND_COLORS.textMuted, fontSize: 12, marginTop: 2 }}>
+                  <Text style={{ color: BRAND_COLORS.textMuted, fontSize: scaleWithAppTextScale(12), marginTop: 2 }}>
                     {row.totalTeachers} guru • kelengkapan {row.completenessRate}% • prioritas {row.priorityCount}
                   </Text>
                 </View>
@@ -1950,7 +1951,7 @@ export default function StaffAdminScreen() {
               administrationSummary.studentPriorityQueue.slice(0, 5).map((row) => (
                 <View key={row.id} style={{ borderTopWidth: 1, borderTopColor: '#eef3ff', paddingVertical: 8 }}>
                   <Text style={{ color: BRAND_COLORS.textDark, fontWeight: '700' }}>{row.name}</Text>
-                  <Text style={{ color: BRAND_COLORS.textMuted, fontSize: 12, marginTop: 2 }}>
+                  <Text style={{ color: BRAND_COLORS.textMuted, fontSize: scaleWithAppTextScale(12), marginTop: 2 }}>
                     {row.className} • kurang {row.missingFields.join(', ')}
                   </Text>
                 </View>
@@ -1975,7 +1976,7 @@ export default function StaffAdminScreen() {
               administrationSummary.teacherPriorityQueue.slice(0, 5).map((row) => (
                 <View key={row.id} style={{ borderTopWidth: 1, borderTopColor: '#eef3ff', paddingVertical: 8 }}>
                   <Text style={{ color: BRAND_COLORS.textDark, fontWeight: '700' }}>{row.name}</Text>
-                  <Text style={{ color: BRAND_COLORS.textMuted, fontSize: 12, marginTop: 2 }}>
+                  <Text style={{ color: BRAND_COLORS.textMuted, fontSize: scaleWithAppTextScale(12), marginTop: 2 }}>
                     {row.ptkType} • kurang {row.missingFields.join(', ')}
                   </Text>
                 </View>
@@ -2000,10 +2001,10 @@ export default function StaffAdminScreen() {
               administrationSummary.permissionQueue.slice(0, 5).map((row) => (
                 <View key={row.id} style={{ borderTopWidth: 1, borderTopColor: '#eef3ff', paddingVertical: 8 }}>
                   <Text style={{ color: BRAND_COLORS.textDark, fontWeight: '700' }}>{row.studentName}</Text>
-                  <Text style={{ color: BRAND_COLORS.textMuted, fontSize: 12, marginTop: 2 }}>
+                  <Text style={{ color: BRAND_COLORS.textMuted, fontSize: scaleWithAppTextScale(12), marginTop: 2 }}>
                     {row.className} • {row.type} • {row.ageDays} hari
                   </Text>
-                  <Text style={{ color: '#64748b', fontSize: 11, marginTop: 2 }}>
+                  <Text style={{ color: '#64748b', fontSize: scaleWithAppTextScale(11), marginTop: 2 }}>
                     {formatDate(row.startDate)} - {formatDate(row.endDate)} • {row.agingLabel}
                   </Text>
                 </View>
@@ -2128,7 +2129,7 @@ export default function StaffAdminScreen() {
             <View style={{ flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', marginBottom: 8, gap: 8 }}>
               <View style={{ flex: 1 }}>
                 <Text style={{ color: BRAND_COLORS.textDark, fontWeight: '700' }}>Settlement Kas Harian</Text>
-                <Text style={{ color: BRAND_COLORS.textMuted, fontSize: 12, marginTop: 2 }}>
+                <Text style={{ color: BRAND_COLORS.textMuted, fontSize: scaleWithAppTextScale(12), marginTop: 2 }}>
                   Monitoring read-only sesi kas bendahara untuk expected closing dan selisih settlement.
                 </Text>
               </View>
@@ -2142,10 +2143,10 @@ export default function StaffAdminScreen() {
                   paddingVertical: 4,
                 }}
               >
-                <Text style={{ color: '#c2410c', fontSize: 11, fontWeight: '700' }}>{headTuCashSummary?.openCount || 0} terbuka</Text>
+                <Text style={{ color: '#c2410c', fontSize: scaleWithAppTextScale(11), fontWeight: '700' }}>{headTuCashSummary?.openCount || 0} terbuka</Text>
               </View>
             </View>
-            <Text style={{ color: BRAND_COLORS.textMuted, fontSize: 12, marginBottom: 8 }}>
+            <Text style={{ color: BRAND_COLORS.textMuted, fontSize: scaleWithAppTextScale(12), marginBottom: 8 }}>
               Pending review {headTuCashSummary?.pendingHeadTuCount || 0} • pending Kepsek {headTuCashSummary?.pendingPrincipalCount || 0}
             </Text>
             {headTuCashSessionsQuery.isLoading ? (
@@ -2156,18 +2157,18 @@ export default function StaffAdminScreen() {
               headTuCashSessions.slice(0, 4).map((session: StaffFinanceCashSession) => (
                 <View key={session.id} style={{ borderTopWidth: 1, borderTopColor: '#eef3ff', paddingVertical: 8 }}>
                   <Text style={{ color: BRAND_COLORS.textDark, fontWeight: '700' }}>{session.sessionNo}</Text>
-                  <Text style={{ color: BRAND_COLORS.textMuted, fontSize: 12, marginTop: 2 }}>
+                  <Text style={{ color: BRAND_COLORS.textMuted, fontSize: scaleWithAppTextScale(12), marginTop: 2 }}>
                     {formatDate(session.businessDate)} • {session.openedBy?.name || '-'} • {session.status === 'OPEN' ? 'Masih dibuka' : 'Sudah ditutup'}
                   </Text>
-                  <Text style={{ color: '#475569', fontSize: 12, marginTop: 2 }}>
+                  <Text style={{ color: '#475569', fontSize: scaleWithAppTextScale(12), marginTop: 2 }}>
                     Expected {formatCurrency(session.expectedClosingBalance)} • aktual {session.actualClosingBalance == null ? '-' : formatCurrency(session.actualClosingBalance)}
                   </Text>
                   {session.varianceAmount != null ? (
-                    <Text style={{ color: Number(session.varianceAmount) === 0 ? '#166534' : '#b91c1c', fontSize: 12, marginTop: 2 }}>
+                    <Text style={{ color: Number(session.varianceAmount) === 0 ? '#166534' : '#b91c1c', fontSize: scaleWithAppTextScale(12), marginTop: 2 }}>
                       Selisih {formatCurrency(session.varianceAmount)}
                     </Text>
                   ) : null}
-                  <Text style={{ color: '#1d4ed8', fontSize: 12, marginTop: 2 }}>
+                  <Text style={{ color: '#1d4ed8', fontSize: scaleWithAppTextScale(12), marginTop: 2 }}>
                     {session.approvalStatus === 'PENDING_HEAD_TU'
                       ? 'Menunggu review Kepala TU'
                       : session.approvalStatus === 'PENDING_PRINCIPAL'
@@ -2196,7 +2197,7 @@ export default function StaffAdminScreen() {
             <View style={{ flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', marginBottom: 8, gap: 8 }}>
               <View style={{ flex: 1 }}>
                 <Text style={{ color: BRAND_COLORS.textDark, fontWeight: '700' }}>Rekonsiliasi Bank</Text>
-                <Text style={{ color: BRAND_COLORS.textMuted, fontSize: 12, marginTop: 2 }}>
+                <Text style={{ color: BRAND_COLORS.textMuted, fontSize: scaleWithAppTextScale(12), marginTop: 2 }}>
                   Monitoring read-only transaksi bank non-tunai untuk melihat variance dan item yang belum matched.
                 </Text>
               </View>
@@ -2210,12 +2211,12 @@ export default function StaffAdminScreen() {
                   paddingVertical: 4,
                 }}
               >
-                <Text style={{ color: '#4338ca', fontSize: 11, fontWeight: '700' }}>
+                <Text style={{ color: '#4338ca', fontSize: scaleWithAppTextScale(11), fontWeight: '700' }}>
                   {headTuBankReconciliationSummary?.openCount || 0} terbuka
                 </Text>
               </View>
             </View>
-            <Text style={{ color: BRAND_COLORS.textMuted, fontSize: 12, marginBottom: 8 }}>
+            <Text style={{ color: BRAND_COLORS.textMuted, fontSize: scaleWithAppTextScale(12), marginBottom: 8 }}>
               Final {headTuBankReconciliationSummary?.finalizedCount || 0} • unmatched statement {headTuBankReconciliationSummary?.totalUnmatchedStatementEntries || 0}
             </Text>
             {headTuBankReconciliationsQuery.isLoading ? (
@@ -2226,19 +2227,19 @@ export default function StaffAdminScreen() {
               headTuBankReconciliations.slice(0, 4).map((reconciliation: StaffFinanceBankReconciliation) => (
                 <View key={reconciliation.id} style={{ borderTopWidth: 1, borderTopColor: '#eef3ff', paddingVertical: 8 }}>
                   <Text style={{ color: BRAND_COLORS.textDark, fontWeight: '700' }}>{reconciliation.reconciliationNo}</Text>
-                  <Text style={{ color: BRAND_COLORS.textMuted, fontSize: 12, marginTop: 2 }}>
+                  <Text style={{ color: BRAND_COLORS.textMuted, fontSize: scaleWithAppTextScale(12), marginTop: 2 }}>
                     {reconciliation.bankAccount.bankName} • {reconciliation.bankAccount.accountNumber}
                   </Text>
-                  <Text style={{ color: '#475569', fontSize: 12, marginTop: 2 }}>
+                  <Text style={{ color: '#475569', fontSize: scaleWithAppTextScale(12), marginTop: 2 }}>
                     {formatDate(reconciliation.periodStart)} - {formatDate(reconciliation.periodEnd)}
                   </Text>
-                  <Text style={{ color: '#475569', fontSize: 12, marginTop: 2 }}>
+                  <Text style={{ color: '#475569', fontSize: scaleWithAppTextScale(12), marginTop: 2 }}>
                     Expected {formatCurrency(reconciliation.summary.expectedClosingBalance)} • statement {formatCurrency(reconciliation.summary.statementComputedClosingBalance)}
                   </Text>
-                  <Text style={{ color: Number(reconciliation.summary.varianceAmount || 0) === 0 ? '#166534' : '#b91c1c', fontSize: 12, marginTop: 2 }}>
+                  <Text style={{ color: Number(reconciliation.summary.varianceAmount || 0) === 0 ? '#166534' : '#b91c1c', fontSize: scaleWithAppTextScale(12), marginTop: 2 }}>
                     Variance {formatCurrency(reconciliation.summary.varianceAmount)}
                   </Text>
-                  <Text style={{ color: '#4338ca', fontSize: 12, marginTop: 2 }}>
+                  <Text style={{ color: '#4338ca', fontSize: scaleWithAppTextScale(12), marginTop: 2 }}>
                     {reconciliation.status === 'FINALIZED' ? 'Final' : 'Terbuka'} • unmatched statement {reconciliation.summary.unmatchedStatementEntryCount} • payment {reconciliation.summary.unmatchedPaymentCount} • refund {reconciliation.summary.unmatchedRefundCount}
                   </Text>
                 </View>
@@ -2259,7 +2260,7 @@ export default function StaffAdminScreen() {
             <View style={{ flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', marginBottom: 8, gap: 8 }}>
               <View style={{ flex: 1 }}>
                 <Text style={{ color: BRAND_COLORS.textDark, fontWeight: '700' }}>Approval Settlement Kas</Text>
-                <Text style={{ color: BRAND_COLORS.textMuted, fontSize: 12, marginTop: 2 }}>
+                <Text style={{ color: BRAND_COLORS.textMuted, fontSize: scaleWithAppTextScale(12), marginTop: 2 }}>
                   Review settlement kas dengan selisih sebelum final atau diteruskan ke Kepala Sekolah.
                 </Text>
               </View>
@@ -2273,7 +2274,7 @@ export default function StaffAdminScreen() {
                   paddingVertical: 4,
                 }}
               >
-                <Text style={{ color: '#c2410c', fontSize: 11, fontWeight: '700' }}>{headTuPendingCashSessionApprovals.length} menunggu</Text>
+                <Text style={{ color: '#c2410c', fontSize: scaleWithAppTextScale(11), fontWeight: '700' }}>{headTuPendingCashSessionApprovals.length} menunggu</Text>
               </View>
             </View>
 
@@ -2285,17 +2286,17 @@ export default function StaffAdminScreen() {
               headTuPendingCashSessionApprovals.map((session) => (
                 <View key={session.id} style={{ borderTopWidth: 1, borderTopColor: '#eef3ff', paddingVertical: 10 }}>
                   <Text style={{ color: BRAND_COLORS.textDark, fontWeight: '700' }}>{session.sessionNo}</Text>
-                  <Text style={{ color: BRAND_COLORS.textMuted, fontSize: 12, marginTop: 3 }}>
+                  <Text style={{ color: BRAND_COLORS.textMuted, fontSize: scaleWithAppTextScale(12), marginTop: 3 }}>
                     {formatDate(session.businessDate)} • {session.openedBy?.name || '-'}
                   </Text>
-                  <Text style={{ color: '#475569', fontSize: 12, marginTop: 3 }}>
+                  <Text style={{ color: '#475569', fontSize: scaleWithAppTextScale(12), marginTop: 3 }}>
                     Expected {formatCurrency(session.expectedClosingBalance)} • aktual {session.actualClosingBalance == null ? '-' : formatCurrency(session.actualClosingBalance)}
                   </Text>
-                  <Text style={{ color: Number(session.varianceAmount || 0) === 0 ? '#166534' : '#b91c1c', fontSize: 12, marginTop: 3 }}>
+                  <Text style={{ color: Number(session.varianceAmount || 0) === 0 ? '#166534' : '#b91c1c', fontSize: scaleWithAppTextScale(12), marginTop: 3 }}>
                     Selisih {formatCurrency(session.varianceAmount || 0)}
                   </Text>
                   {session.closingNote ? (
-                    <Text style={{ color: BRAND_COLORS.textMuted, fontSize: 12, marginTop: 3 }}>{session.closingNote}</Text>
+                    <Text style={{ color: BRAND_COLORS.textMuted, fontSize: scaleWithAppTextScale(12), marginTop: 3 }}>{session.closingNote}</Text>
                   ) : null}
 
                   <View style={{ flexDirection: 'row', gap: 8, marginTop: 10 }}>
@@ -2348,7 +2349,7 @@ export default function StaffAdminScreen() {
             <View style={{ flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', marginBottom: 8, gap: 8 }}>
               <View style={{ flex: 1 }}>
                 <Text style={{ color: BRAND_COLORS.textDark, fontWeight: '700' }}>Approval Write-Off</Text>
-                <Text style={{ color: BRAND_COLORS.textMuted, fontSize: 12, marginTop: 2 }}>
+                <Text style={{ color: BRAND_COLORS.textMuted, fontSize: scaleWithAppTextScale(12), marginTop: 2 }}>
                   Review pengajuan penghapusan piutang sebelum diteruskan ke Kepala Sekolah.
                 </Text>
               </View>
@@ -2362,7 +2363,7 @@ export default function StaffAdminScreen() {
                   paddingVertical: 4,
                 }}
               >
-                <Text style={{ color: '#c2410c', fontSize: 11, fontWeight: '700' }}>{headTuPendingWriteOffs.length} menunggu</Text>
+                <Text style={{ color: '#c2410c', fontSize: scaleWithAppTextScale(11), fontWeight: '700' }}>{headTuPendingWriteOffs.length} menunggu</Text>
               </View>
             </View>
 
@@ -2380,22 +2381,22 @@ export default function StaffAdminScreen() {
               headTuPendingWriteOffs.slice(0, 5).map((request) => (
                 <View key={request.id} style={{ borderTopWidth: 1, borderTopColor: '#eef3ff', paddingVertical: 10 }}>
                   <Text style={{ color: BRAND_COLORS.textDark, fontWeight: '700' }}>{request.requestNo}</Text>
-                  <Text style={{ color: BRAND_COLORS.textMuted, fontSize: 12, marginTop: 3 }}>
+                  <Text style={{ color: BRAND_COLORS.textMuted, fontSize: scaleWithAppTextScale(12), marginTop: 3 }}>
                     {request.student?.name || '-'} • {request.student?.studentClass?.name || '-'}
                   </Text>
-                  <Text style={{ color: '#475569', fontSize: 12, marginTop: 3 }}>
+                  <Text style={{ color: '#475569', fontSize: scaleWithAppTextScale(12), marginTop: 3 }}>
                     Invoice {request.invoice?.invoiceNo || '-'} • outstanding{' '}
                     <Text style={{ color: BRAND_COLORS.textDark, fontWeight: '700' }}>
                       {formatCurrency(request.invoice?.balanceAmount || 0)}
                     </Text>
                   </Text>
-                  <Text style={{ color: '#475569', fontSize: 12, marginTop: 3 }}>
+                  <Text style={{ color: '#475569', fontSize: scaleWithAppTextScale(12), marginTop: 3 }}>
                     Permintaan{' '}
                     <Text style={{ color: '#b45309', fontWeight: '700' }}>
                       {formatCurrency(request.requestedAmount)}
                     </Text>
                   </Text>
-                  <Text style={{ color: BRAND_COLORS.textMuted, fontSize: 12, marginTop: 3 }}>{request.reason}</Text>
+                  <Text style={{ color: BRAND_COLORS.textMuted, fontSize: scaleWithAppTextScale(12), marginTop: 3 }}>{request.reason}</Text>
 
                   <View style={{ flexDirection: 'row', gap: 8, marginTop: 10 }}>
                     <Pressable

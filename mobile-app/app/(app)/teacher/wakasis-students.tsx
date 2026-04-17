@@ -1,6 +1,7 @@
 import { useMemo, useState } from 'react';
 import { Redirect, useRouter } from 'expo-router';
 import { useQuery } from '@tanstack/react-query';
+import { scaleLineHeightWithAppTextScale, scaleWithAppTextScale } from '../../../src/theme/AppTextScaleProvider';
 import {
   Pressable,
   RefreshControl,
@@ -101,7 +102,7 @@ function StatusBadge({ status }: { status: string | null | undefined }) {
         backgroundColor: style.bg,
       }}
     >
-      <Text style={{ color: style.text, fontWeight: '700', fontSize: 11 }}>
+      <Text style={{ color: style.text, fontWeight: '700', fontSize: scaleWithAppTextScale(11) }}>
         {resolveStudentStatusLabel(status)}
       </Text>
     </View>
@@ -443,7 +444,7 @@ export default function TeacherWakasisStudentsScreen() {
   if (user?.role !== 'TEACHER') {
     return (
       <ScrollView style={{ flex: 1, backgroundColor: '#f8fafc' }} contentContainerStyle={pagePadding}>
-        <Text style={{ fontSize: 20, fontWeight: '700', marginBottom: 8 }}>Kelola Kesiswaan</Text>
+        <Text style={{ fontSize: scaleWithAppTextScale(20), fontWeight: '700', marginBottom: 8 }}>Kelola Kesiswaan</Text>
         <QueryStateView type="error" message="Halaman ini khusus untuk role guru." />
         <Pressable
           onPress={() => router.replace('/home')}
@@ -464,7 +465,7 @@ export default function TeacherWakasisStudentsScreen() {
   if (!isAllowed) {
     return (
       <ScrollView style={{ flex: 1, backgroundColor: '#f8fafc' }} contentContainerStyle={pagePadding}>
-        <Text style={{ fontSize: 20, fontWeight: '700', marginBottom: 8, color: BRAND_COLORS.textDark }}>
+        <Text style={{ fontSize: scaleWithAppTextScale(20), fontWeight: '700', marginBottom: 8, color: BRAND_COLORS.textDark }}>
           Kelola Kesiswaan
         </Text>
         <QueryStateView
@@ -524,7 +525,7 @@ export default function TeacherWakasisStudentsScreen() {
         >
           <Feather name="arrow-left" size={18} color={BRAND_COLORS.textDark} />
         </Pressable>
-        <Text style={{ marginLeft: 10, color: BRAND_COLORS.textDark, fontSize: 20, fontWeight: '700' }}>
+        <Text style={{ marginLeft: 10, color: BRAND_COLORS.textDark, fontSize: scaleWithAppTextScale(20), fontWeight: '700' }}>
           Kelola Kesiswaan
         </Text>
       </View>
@@ -670,7 +671,7 @@ export default function TeacherWakasisStudentsScreen() {
                           paddingHorizontal: 8,
                         }}
                       >
-                        <Text style={{ color: BRAND_COLORS.navy, fontWeight: '700', fontSize: 12 }}>{item.label}</Text>
+                        <Text style={{ color: BRAND_COLORS.navy, fontWeight: '700', fontSize: scaleWithAppTextScale(12) }}>{item.label}</Text>
                       </Pressable>
                     </View>
                   ))}
@@ -711,22 +712,22 @@ export default function TeacherWakasisStudentsScreen() {
                     <View style={{ flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center' }}>
                       <View style={{ flex: 1, paddingRight: 8 }}>
                         <Text style={{ color: BRAND_COLORS.textDark, fontWeight: '700' }}>{student.name}</Text>
-                        <Text style={{ color: BRAND_COLORS.textMuted, fontSize: 12 }}>{student.username}</Text>
+                        <Text style={{ color: BRAND_COLORS.textMuted, fontSize: scaleWithAppTextScale(12) }}>{student.username}</Text>
                       </View>
                       <StatusBadge status={student.studentStatus} />
                     </View>
 
                     <View style={{ flexDirection: 'row', gap: 12, marginTop: 8 }}>
-                      <Text style={{ color: BRAND_COLORS.textMuted, fontSize: 12 }}>
+                      <Text style={{ color: BRAND_COLORS.textMuted, fontSize: scaleWithAppTextScale(12) }}>
                         Kelas: {student.studentClass?.name || '-'}
                       </Text>
-                      <Text style={{ color: BRAND_COLORS.textMuted, fontSize: 12 }}>NISN: {student.nisn || '-'}</Text>
+                      <Text style={{ color: BRAND_COLORS.textMuted, fontSize: scaleWithAppTextScale(12) }}>NISN: {student.nisn || '-'}</Text>
                     </View>
                   </View>
                 ))
               )}
               {filteredStudents.length > 150 ? (
-                <Text style={{ color: BRAND_COLORS.textMuted, textAlign: 'center', fontSize: 12 }}>
+                <Text style={{ color: BRAND_COLORS.textMuted, textAlign: 'center', fontSize: scaleWithAppTextScale(12) }}>
                   Menampilkan 150 dari {formatNumber(filteredStudents.length)} data siswa.
                 </Text>
               ) : null}
@@ -766,11 +767,11 @@ export default function TeacherWakasisStudentsScreen() {
                       }}
                     >
                       <Text style={{ color: BRAND_COLORS.textDark, fontWeight: '700' }}>{parent.name}</Text>
-                      <Text style={{ color: BRAND_COLORS.textMuted, fontSize: 12, marginTop: 2 }}>{parent.username}</Text>
+                      <Text style={{ color: BRAND_COLORS.textMuted, fontSize: scaleWithAppTextScale(12), marginTop: 2 }}>{parent.username}</Text>
                       <Text style={{ color: BRAND_COLORS.textMuted, marginTop: 6 }}>
                         Anak terhubung: {formatNumber(children.length)}
                       </Text>
-                      <Text style={{ color: '#64748b', marginTop: 2, fontSize: 12 }}>
+                      <Text style={{ color: '#64748b', marginTop: 2, fontSize: scaleWithAppTextScale(12) }}>
                         {childPreview || '-'}
                       </Text>
                     </View>
@@ -778,7 +779,7 @@ export default function TeacherWakasisStudentsScreen() {
                 })
               )}
               {filteredParents.length > 150 ? (
-                <Text style={{ color: BRAND_COLORS.textMuted, textAlign: 'center', fontSize: 12 }}>
+                <Text style={{ color: BRAND_COLORS.textMuted, textAlign: 'center', fontSize: scaleWithAppTextScale(12) }}>
                   Menampilkan 150 dari {formatNumber(filteredParents.length)} data orang tua.
                 </Text>
               ) : null}
@@ -807,7 +808,7 @@ export default function TeacherWakasisStudentsScreen() {
               >
                 <Text style={{ color: '#1d4ed8', fontWeight: '700' }}>Buka Kelola Tutor Eksternal</Text>
               </Pressable>
-              <Text style={{ color: BRAND_COLORS.textMuted, fontSize: 12 }}>
+              <Text style={{ color: BRAND_COLORS.textMuted, fontSize: scaleWithAppTextScale(12) }}>
                 Guru aktif sebagai pembina dikelola dari menu Kelola Ekstrakurikuler.
               </Text>
               {filteredTutors.length === 0 ? (
@@ -832,20 +833,20 @@ export default function TeacherWakasisStudentsScreen() {
                       }}
                     >
                       <Text style={{ color: BRAND_COLORS.textDark, fontWeight: '700' }}>{tutor.name}</Text>
-                      <Text style={{ color: BRAND_COLORS.textMuted, fontSize: 12, marginTop: 2 }}>{tutor.username}</Text>
-                      <Text style={{ color: '#1d4ed8', marginTop: 4, fontSize: 12, fontWeight: '700' }}>
+                      <Text style={{ color: BRAND_COLORS.textMuted, fontSize: scaleWithAppTextScale(12), marginTop: 2 }}>{tutor.username}</Text>
+                      <Text style={{ color: '#1d4ed8', marginTop: 4, fontSize: scaleWithAppTextScale(12), fontWeight: '700' }}>
                         {tutor.advisorSourceLabel}
                       </Text>
                       <Text style={{ color: BRAND_COLORS.textMuted, marginTop: 6 }}>
                         Tugas aktif: {formatNumber(rows.length)} ekstrakurikuler
                       </Text>
-                      <Text style={{ color: '#64748b', marginTop: 2, fontSize: 12 }}>{ekskulNames || '-'}</Text>
+                      <Text style={{ color: '#64748b', marginTop: 2, fontSize: scaleWithAppTextScale(12) }}>{ekskulNames || '-'}</Text>
                     </View>
                   );
                 })
               )}
               {filteredTutors.length > 150 ? (
-                <Text style={{ color: BRAND_COLORS.textMuted, textAlign: 'center', fontSize: 12 }}>
+                <Text style={{ color: BRAND_COLORS.textMuted, textAlign: 'center', fontSize: scaleWithAppTextScale(12) }}>
                   Menampilkan 150 dari {formatNumber(filteredTutors.length)} data pembina.
                 </Text>
               ) : null}
@@ -889,13 +890,13 @@ export default function TeacherWakasisStudentsScreen() {
                       }}
                     >
                       <Text style={{ color: BRAND_COLORS.textDark, fontWeight: '700' }}>{item.name}</Text>
-                      <Text style={{ color: BRAND_COLORS.textMuted, fontSize: 12, marginTop: 2 }}>
+                      <Text style={{ color: BRAND_COLORS.textMuted, fontSize: scaleWithAppTextScale(12), marginTop: 2 }}>
                         {item.description || '-'}
                       </Text>
                       <Text style={{ color: BRAND_COLORS.textMuted, marginTop: 6 }}>
                         Pembina aktif: {formatNumber(assignmentRows.length)}
                       </Text>
-                      <Text style={{ color: '#64748b', marginTop: 2, fontSize: 12 }}>{tutorNames || '-'}</Text>
+                      <Text style={{ color: '#64748b', marginTop: 2, fontSize: scaleWithAppTextScale(12) }}>{tutorNames || '-'}</Text>
                     </View>
                   );
                 })
@@ -990,14 +991,14 @@ export default function TeacherWakasisStudentsScreen() {
                           }}
                         >
                           <Text style={{ color: BRAND_COLORS.textDark, fontWeight: '700' }}>{item.className}</Text>
-                          <Text style={{ color: BRAND_COLORS.textMuted, fontSize: 12, marginTop: 2 }}>
+                          <Text style={{ color: BRAND_COLORS.textMuted, fontSize: scaleWithAppTextScale(12), marginTop: 2 }}>
                             Rata-rata hadir: {formatPercent(item.avgAttendance)} | Siswa: {formatNumber(item.students)}
                           </Text>
                           <View style={{ flexDirection: 'row', gap: 12, marginTop: 6 }}>
-                            <Text style={{ color: BRAND_COLORS.textMuted, fontSize: 12 }}>
+                            <Text style={{ color: BRAND_COLORS.textMuted, fontSize: scaleWithAppTextScale(12) }}>
                               Terlambat: {formatNumber(item.totalLate)}
                             </Text>
-                            <Text style={{ color: BRAND_COLORS.textMuted, fontSize: 12 }}>
+                            <Text style={{ color: BRAND_COLORS.textMuted, fontSize: scaleWithAppTextScale(12) }}>
                               Alpha: {formatNumber(item.totalAbsent)}
                             </Text>
                           </View>
@@ -1022,22 +1023,22 @@ export default function TeacherWakasisStudentsScreen() {
         onClose={() => setActiveSummaryId(null)}
       >
         {activeSummaryId === 'students' ? (
-          <Text style={{ color: BRAND_COLORS.textMuted, lineHeight: 20 }}>
+          <Text style={{ color: BRAND_COLORS.textMuted, lineHeight: scaleLineHeightWithAppTextScale(20) }}>
             Total siswa terdaftar: {formatNumber(studentStats.total)}. Siswa aktif saat ini: {formatNumber(studentStats.active)}, lulus: {formatNumber(studentStats.graduated)}, pindah: {formatNumber(studentStats.moved)}, dan drop out: {formatNumber(studentStats.droppedOut)}.
           </Text>
         ) : null}
         {activeSummaryId === 'parents' ? (
-          <Text style={{ color: BRAND_COLORS.textMuted, lineHeight: 20 }}>
+          <Text style={{ color: BRAND_COLORS.textMuted, lineHeight: scaleLineHeightWithAppTextScale(20) }}>
             Total akun orang tua: {formatNumber(summary.parentsTotal)}. Yang sudah terhubung dengan data anak: {formatNumber(summary.parentsWithChildren)}.
           </Text>
         ) : null}
         {activeSummaryId === 'advisors' ? (
-          <Text style={{ color: BRAND_COLORS.textMuted, lineHeight: 20 }}>
+          <Text style={{ color: BRAND_COLORS.textMuted, lineHeight: scaleLineHeightWithAppTextScale(20) }}>
             Total pembina/tutor terdata: {formatNumber(summary.tutorsTotal)}. Yang sudah mendapat penugasan aktif: {formatNumber(summary.tutorsAssigned)}.
           </Text>
         ) : null}
         {activeSummaryId === 'clubs' ? (
-          <Text style={{ color: BRAND_COLORS.textMuted, lineHeight: 20 }}>
+          <Text style={{ color: BRAND_COLORS.textMuted, lineHeight: scaleLineHeightWithAppTextScale(20) }}>
             Total ekstrakurikuler: {formatNumber(summary.extracurricularTotal)}. Yang sudah memiliki pembina aktif: {formatNumber(summary.extracurricularAssigned)}.
           </Text>
         ) : null}

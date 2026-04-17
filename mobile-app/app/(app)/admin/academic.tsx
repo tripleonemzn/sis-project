@@ -13,6 +13,7 @@ import { MobileSummaryCard } from '../../../src/components/MobileSummaryCard';
 import { QueryStateView } from '../../../src/components/QueryStateView';
 import { BRAND_COLORS } from '../../../src/config/brand';
 import { useAuth } from '../../../src/features/auth/AuthProvider';
+import { scaleWithAppTextScale } from '../../../src/theme/AppTextScaleProvider';
 import {
   adminApi,
   type AdminAcademicFeatureFlags,
@@ -514,9 +515,9 @@ function StatCard({
         padding: 12,
       }}
     >
-      <Text style={{ color: BRAND_COLORS.textMuted, fontSize: 12 }}>{title}</Text>
-      <Text style={{ color: BRAND_COLORS.textDark, fontSize: 20, fontWeight: '700', marginTop: 4 }}>{value}</Text>
-      <Text style={{ color: BRAND_COLORS.textMuted, fontSize: 11, marginTop: 2 }}>{subtitle}</Text>
+      <Text style={{ color: BRAND_COLORS.textMuted, fontSize: scaleWithAppTextScale(12) }}>{title}</Text>
+      <Text style={{ color: BRAND_COLORS.textDark, fontSize: scaleWithAppTextScale(20), fontWeight: '700', marginTop: 4 }}>{value}</Text>
+      <Text style={{ color: BRAND_COLORS.textMuted, fontSize: scaleWithAppTextScale(11), marginTop: 2 }}>{subtitle}</Text>
     </View>
   );
 }
@@ -541,8 +542,8 @@ function SectionCard({
         marginBottom: 12,
       }}
     >
-      <Text style={{ color: BRAND_COLORS.textDark, fontSize: 16, fontWeight: '700' }}>{title}</Text>
-      <Text style={{ color: BRAND_COLORS.textMuted, fontSize: 12, marginTop: 2, marginBottom: 8 }}>{subtitle}</Text>
+      <Text style={{ color: BRAND_COLORS.textDark, fontSize: scaleWithAppTextScale(16), fontWeight: '700' }}>{title}</Text>
+      <Text style={{ color: BRAND_COLORS.textMuted, fontSize: scaleWithAppTextScale(12), marginTop: 2, marginBottom: 8 }}>{subtitle}</Text>
       {children}
     </View>
   );
@@ -569,7 +570,7 @@ function SelectChip({
         backgroundColor: active ? '#eaf1ff' : '#fff',
       }}
     >
-      <Text style={{ fontSize: 12, fontWeight: '700', color: active ? BRAND_COLORS.blue : BRAND_COLORS.textMuted }}>
+      <Text style={{ fontSize: scaleWithAppTextScale(12), fontWeight: '700', color: active ? BRAND_COLORS.blue : BRAND_COLORS.textMuted }}>
         {label}
       </Text>
     </Pressable>
@@ -2823,7 +2824,7 @@ export default function AdminAcademicScreen() {
         >
           <Feather name="arrow-left" size={18} color={BRAND_COLORS.textDark} />
         </Pressable>
-        <Text style={{ marginLeft: 10, color: BRAND_COLORS.textDark, fontSize: 20, fontWeight: '700' }}>Akademik</Text>
+        <Text style={{ marginLeft: 10, color: BRAND_COLORS.textDark, fontSize: scaleWithAppTextScale(20), fontWeight: '700' }}>Akademik</Text>
       </View>
       <Text style={{ color: BRAND_COLORS.textMuted, marginBottom: 12 }}>{sectionMeta.description}</Text>
 
@@ -2877,7 +2878,7 @@ export default function AdminAcademicScreen() {
                 <Text style={{ color: BRAND_COLORS.textDark, fontWeight: '700', marginBottom: 8 }}>
                   {editingAcademicYearId ? `Edit Tahun Ajaran #${editingAcademicYearId}` : 'Tambah Tahun Ajaran'}
                 </Text>
-                <Text style={{ color: BRAND_COLORS.textMuted, fontSize: 12, marginBottom: 4 }}>Nama Tahun Ajaran</Text>
+                <Text style={{ color: BRAND_COLORS.textMuted, fontSize: scaleWithAppTextScale(12), marginBottom: 4 }}>Nama Tahun Ajaran</Text>
                 <TextInput
                   value={academicYearForm.name}
                   onChangeText={(value) => setAcademicYearForm((prev) => ({ ...prev, name: value }))}
@@ -2895,7 +2896,7 @@ export default function AdminAcademicScreen() {
                   }}
                 />
 
-                <Text style={{ color: BRAND_COLORS.textMuted, fontSize: 12, marginBottom: 4 }}>Semester 1 Mulai (YYYY-MM-DD)</Text>
+                <Text style={{ color: BRAND_COLORS.textMuted, fontSize: scaleWithAppTextScale(12), marginBottom: 4 }}>Semester 1 Mulai (YYYY-MM-DD)</Text>
                 <TextInput
                   value={academicYearForm.semester1Start}
                   onChangeText={(value) => setAcademicYearForm((prev) => ({ ...prev, semester1Start: value }))}
@@ -2913,7 +2914,7 @@ export default function AdminAcademicScreen() {
                   }}
                 />
 
-                <Text style={{ color: BRAND_COLORS.textMuted, fontSize: 12, marginBottom: 4 }}>Semester 1 Selesai (YYYY-MM-DD)</Text>
+                <Text style={{ color: BRAND_COLORS.textMuted, fontSize: scaleWithAppTextScale(12), marginBottom: 4 }}>Semester 1 Selesai (YYYY-MM-DD)</Text>
                 <TextInput
                   value={academicYearForm.semester1End}
                   onChangeText={(value) => setAcademicYearForm((prev) => ({ ...prev, semester1End: value }))}
@@ -2931,7 +2932,7 @@ export default function AdminAcademicScreen() {
                   }}
                 />
 
-                <Text style={{ color: BRAND_COLORS.textMuted, fontSize: 12, marginBottom: 4 }}>Semester 2 Mulai (YYYY-MM-DD)</Text>
+                <Text style={{ color: BRAND_COLORS.textMuted, fontSize: scaleWithAppTextScale(12), marginBottom: 4 }}>Semester 2 Mulai (YYYY-MM-DD)</Text>
                 <TextInput
                   value={academicYearForm.semester2Start}
                   onChangeText={(value) => setAcademicYearForm((prev) => ({ ...prev, semester2Start: value }))}
@@ -2949,7 +2950,7 @@ export default function AdminAcademicScreen() {
                   }}
                 />
 
-                <Text style={{ color: BRAND_COLORS.textMuted, fontSize: 12, marginBottom: 4 }}>Semester 2 Selesai (YYYY-MM-DD)</Text>
+                <Text style={{ color: BRAND_COLORS.textMuted, fontSize: scaleWithAppTextScale(12), marginBottom: 4 }}>Semester 2 Selesai (YYYY-MM-DD)</Text>
                 <TextInput
                   value={academicYearForm.semester2End}
                   onChangeText={(value) => setAcademicYearForm((prev) => ({ ...prev, semester2End: value }))}
@@ -3008,13 +3009,13 @@ export default function AdminAcademicScreen() {
               {(academicQuery.data?.years.items || []).map((item) => (
                 <View key={item.id} style={{ borderTopWidth: 1, borderTopColor: '#eef3ff', paddingVertical: 8 }}>
                   <Text style={{ color: BRAND_COLORS.textDark, fontWeight: '700' }}>{item.name}</Text>
-                  <Text style={{ color: BRAND_COLORS.textMuted, fontSize: 12 }}>
+                  <Text style={{ color: BRAND_COLORS.textMuted, fontSize: scaleWithAppTextScale(12) }}>
                     Semester 1: {formatDate(item.semester1Start)} - {formatDate(item.semester1End)}
                   </Text>
-                  <Text style={{ color: BRAND_COLORS.textMuted, fontSize: 12 }}>
+                  <Text style={{ color: BRAND_COLORS.textMuted, fontSize: scaleWithAppTextScale(12) }}>
                     Semester 2: {formatDate(item.semester2Start)} - {formatDate(item.semester2End)}
                   </Text>
-                  <Text style={{ color: BRAND_COLORS.textMuted, fontSize: 12 }}>
+                  <Text style={{ color: BRAND_COLORS.textMuted, fontSize: scaleWithAppTextScale(12) }}>
                     Status: {item.isActive ? 'Aktif' : 'Nonaktif'}
                   </Text>
                   <View style={{ flexDirection: 'row', gap: 8, marginTop: 8, flexWrap: 'wrap' }}>
@@ -3030,7 +3031,7 @@ export default function AdminAcademicScreen() {
                           opacity: activateYearMutation.isPending ? 0.65 : 1,
                         }}
                       >
-                        <Text style={{ color: '#fff', fontSize: 12, fontWeight: '700' }}>
+                        <Text style={{ color: '#fff', fontSize: scaleWithAppTextScale(12), fontWeight: '700' }}>
                           {activateYearMutation.isPending ? 'Memproses...' : 'Aktifkan'}
                         </Text>
                       </Pressable>
@@ -3048,7 +3049,7 @@ export default function AdminAcademicScreen() {
                         opacity: isSubmittingAcademicYear || deleteAcademicYearMutation.isPending ? 0.65 : 1,
                       }}
                     >
-                      <Text style={{ color: BRAND_COLORS.textDark, fontSize: 12, fontWeight: '700' }}>Edit</Text>
+                      <Text style={{ color: BRAND_COLORS.textDark, fontSize: scaleWithAppTextScale(12), fontWeight: '700' }}>Edit</Text>
                     </Pressable>
                     <Pressable
                       onPress={() => handleDeleteAcademicYear(item)}
@@ -3063,7 +3064,7 @@ export default function AdminAcademicScreen() {
                         opacity: isSubmittingAcademicYear || deleteAcademicYearMutation.isPending ? 0.65 : 1,
                       }}
                     >
-                      <Text style={{ color: '#b91c1c', fontSize: 12, fontWeight: '700' }}>
+                      <Text style={{ color: '#b91c1c', fontSize: scaleWithAppTextScale(12), fontWeight: '700' }}>
                         {deleteAcademicYearMutation.isPending ? 'Memproses...' : 'Hapus'}
                       </Text>
                     </Pressable>
@@ -3103,7 +3104,7 @@ export default function AdminAcademicScreen() {
                   }}
                 >
                   <Text style={{ color: '#92400e', fontWeight: '700', marginBottom: 4 }}>Rollover dimatikan</Text>
-                  <Text style={{ color: '#92400e', fontSize: 12 }}>
+                  <Text style={{ color: '#92400e', fontSize: scaleWithAppTextScale(12) }}>
                     Nyalakan env ACADEMIC_YEAR_ROLLOVER_ENABLED=true di server saat siap uji.
                   </Text>
                 </View>
@@ -3164,7 +3165,7 @@ export default function AdminAcademicScreen() {
                       }}
                     >
                       <Text style={{ color: '#92400e', fontWeight: '700', marginBottom: 4 }}>Tahun tidak valid</Text>
-                      <Text style={{ color: '#92400e', fontSize: 12 }}>
+                      <Text style={{ color: '#92400e', fontSize: scaleWithAppTextScale(12) }}>
                         Tahun sumber dan target harus berbeda.
                       </Text>
                     </View>
@@ -3206,7 +3207,7 @@ export default function AdminAcademicScreen() {
                         >
                           <Text style={{ color: '#b91c1c', fontWeight: '700', marginBottom: 6 }}>Blocking Issues</Text>
                           {rolloverWorkspace.validation.errors.map((item) => (
-                            <Text key={`rollover-global-error-${item}`} style={{ color: '#b91c1c', fontSize: 12, marginBottom: 4 }}>
+                            <Text key={`rollover-global-error-${item}`} style={{ color: '#b91c1c', fontSize: scaleWithAppTextScale(12), marginBottom: 4 }}>
                               • {item}
                             </Text>
                           ))}
@@ -3226,14 +3227,14 @@ export default function AdminAcademicScreen() {
                         >
                           <Text style={{ color: '#92400e', fontWeight: '700', marginBottom: 6 }}>Catatan Wizard</Text>
                           {rolloverWorkspace.validation.warnings.map((item) => (
-                            <Text key={`rollover-global-warning-${item}`} style={{ color: '#92400e', fontSize: 12, marginBottom: 4 }}>
+                            <Text key={`rollover-global-warning-${item}`} style={{ color: '#92400e', fontSize: scaleWithAppTextScale(12), marginBottom: 4 }}>
                               • {item}
                             </Text>
                           ))}
                         </View>
                       ) : null}
 
-                      <Text style={{ color: BRAND_COLORS.textMuted, fontSize: 12, marginBottom: 6 }}>Pilih Komponen Clone</Text>
+                      <Text style={{ color: BRAND_COLORS.textMuted, fontSize: scaleWithAppTextScale(12), marginBottom: 6 }}>Pilih Komponen Clone</Text>
                       <ScrollView horizontal showsHorizontalScrollIndicator={false} style={{ marginBottom: 12 }}>
                         <View style={{ flexDirection: 'row', gap: 8, paddingRight: 8 }}>
                           {rolloverComponentEntries.map(([key, component]) => (
@@ -3262,56 +3263,56 @@ export default function AdminAcademicScreen() {
                           <Text style={{ color: BRAND_COLORS.textDark, fontWeight: '700', marginBottom: 4 }}>
                             {component.label}
                           </Text>
-                          <Text style={{ color: BRAND_COLORS.textMuted, fontSize: 12, marginBottom: 8 }}>
+                          <Text style={{ color: BRAND_COLORS.textMuted, fontSize: scaleWithAppTextScale(12), marginBottom: 8 }}>
                             {component.description}
                           </Text>
-                          <Text style={{ color: BRAND_COLORS.textMuted, fontSize: 12 }}>
+                          <Text style={{ color: BRAND_COLORS.textMuted, fontSize: scaleWithAppTextScale(12) }}>
                             Sumber: {component.summary.sourceItems} | Create:{' '}
                             {'createCount' in component.summary ? component.summary.createCount : 0} | Skip existing:{' '}
                             {'existingCount' in component.summary ? component.summary.existingCount : 0}
                           </Text>
                           {'globalFallbackCount' in component.summary && component.summary.globalFallbackCount > 0 ? (
-                            <Text style={{ color: '#92400e', fontSize: 12, marginTop: 8 }}>
+                            <Text style={{ color: '#92400e', fontSize: scaleWithAppTextScale(12), marginTop: 8 }}>
                               Fallback global: {component.summary.globalFallbackCount}
                             </Text>
                           ) : null}
                           {'missingGradeComponentCount' in component.summary && component.summary.missingGradeComponentCount > 0 ? (
-                            <Text style={{ color: '#92400e', fontSize: 12, marginTop: 8 }}>
+                            <Text style={{ color: '#92400e', fontSize: scaleWithAppTextScale(12), marginTop: 8 }}>
                               Dependency komponen nilai: {component.summary.missingGradeComponentCount}
                             </Text>
                           ) : null}
                           {'skipNoTargetProgramCount' in component.summary && component.summary.skipNoTargetProgramCount > 0 ? (
-                            <Text style={{ color: '#92400e', fontSize: 12, marginTop: 8 }}>
+                            <Text style={{ color: '#92400e', fontSize: scaleWithAppTextScale(12), marginTop: 8 }}>
                               Menunggu program target: {component.summary.skipNoTargetProgramCount}
                             </Text>
                           ) : null}
                           {'skipNoTargetClassCount' in component.summary && component.summary.skipNoTargetClassCount > 0 ? (
-                            <Text style={{ color: '#92400e', fontSize: 12, marginTop: 8 }}>
+                            <Text style={{ color: '#92400e', fontSize: scaleWithAppTextScale(12), marginTop: 8 }}>
                               Menunggu kelas target: {component.summary.skipNoTargetClassCount}
                             </Text>
                           ) : null}
                           {'skipNoSourceCount' in component.summary && component.summary.skipNoSourceCount > 0 ? (
-                            <Text style={{ color: '#92400e', fontSize: 12, marginTop: 8 }}>
+                            <Text style={{ color: '#92400e', fontSize: scaleWithAppTextScale(12), marginTop: 8 }}>
                               Tidak ada source: {component.summary.skipNoSourceCount}
                             </Text>
                           ) : null}
                           {'skipOutsideTargetRangeCount' in component.summary && component.summary.skipOutsideTargetRangeCount > 0 ? (
-                            <Text style={{ color: '#92400e', fontSize: 12, marginTop: 8 }}>
+                            <Text style={{ color: '#92400e', fontSize: scaleWithAppTextScale(12), marginTop: 8 }}>
                               Di luar rentang target: {component.summary.skipOutsideTargetRangeCount}
                             </Text>
                           ) : null}
                           {'homeroomCarryCount' in component.summary ? (
                             <View style={{ marginTop: 8 }}>
-                              <Text style={{ color: BRAND_COLORS.textMuted, fontSize: 12 }}>
+                              <Text style={{ color: BRAND_COLORS.textMuted, fontSize: scaleWithAppTextScale(12) }}>
                                 Wali ikut pada kelas baru: {component.summary.homeroomCarryCount}
                               </Text>
-                              <Text style={{ color: BRAND_COLORS.textMuted, fontSize: 12, marginTop: 2 }}>
+                              <Text style={{ color: BRAND_COLORS.textMuted, fontSize: scaleWithAppTextScale(12), marginTop: 2 }}>
                                 Isi target kosong dari source: {component.summary.homeroomExistingFillCount}
                               </Text>
-                              <Text style={{ color: BRAND_COLORS.textMuted, fontSize: 12, marginTop: 2 }}>
+                              <Text style={{ color: BRAND_COLORS.textMuted, fontSize: scaleWithAppTextScale(12), marginTop: 2 }}>
                                 Target sudah punya wali: {component.summary.homeroomKeepExistingCount}
                               </Text>
-                              <Text style={{ color: BRAND_COLORS.textMuted, fontSize: 12, marginTop: 2 }}>
+                              <Text style={{ color: BRAND_COLORS.textMuted, fontSize: scaleWithAppTextScale(12), marginTop: 2 }}>
                                 Source tanpa wali: {component.summary.homeroomMissingSourceCount}
                               </Text>
                             </View>
@@ -3328,7 +3329,7 @@ export default function AdminAcademicScreen() {
                               }}
                             >
                               {component.errors.slice(0, 3).map((item) => (
-                                <Text key={`${key}-error-${item}`} style={{ color: '#b91c1c', fontSize: 12, marginBottom: 4 }}>
+                                <Text key={`${key}-error-${item}`} style={{ color: '#b91c1c', fontSize: scaleWithAppTextScale(12), marginBottom: 4 }}>
                                   • {item}
                                 </Text>
                               ))}
@@ -3346,7 +3347,7 @@ export default function AdminAcademicScreen() {
                               }}
                             >
                               {component.warnings.slice(0, 2).map((item) => (
-                                <Text key={`${key}-warning-${item}`} style={{ color: '#92400e', fontSize: 12, marginBottom: 4 }}>
+                                <Text key={`${key}-warning-${item}`} style={{ color: '#92400e', fontSize: scaleWithAppTextScale(12), marginBottom: 4 }}>
                                   • {item}
                                 </Text>
                               ))}
@@ -3357,13 +3358,13 @@ export default function AdminAcademicScreen() {
                               {component.items.slice(0, 6).map((item, index) => (
                                 <Text
                                   key={`${key}-${index}`}
-                                  style={{ color: BRAND_COLORS.textMuted, fontSize: 12, marginBottom: 4 }}
+                                  style={{ color: BRAND_COLORS.textMuted, fontSize: scaleWithAppTextScale(12), marginBottom: 4 }}
                                 >
                                   • {getRolloverPreviewItemLabel(item)}
                                 </Text>
                               ))}
                               {component.items.length > 6 ? (
-                                <Text style={{ color: BRAND_COLORS.textMuted, fontSize: 12 }}>
+                                <Text style={{ color: BRAND_COLORS.textMuted, fontSize: scaleWithAppTextScale(12) }}>
                                   + {component.items.length - 6} item lainnya
                                 </Text>
                               ) : null}
@@ -3382,12 +3383,12 @@ export default function AdminAcademicScreen() {
                           marginBottom: 12,
                         }}
                       >
-                        <Text style={{ color: BRAND_COLORS.textMuted, fontSize: 12, marginBottom: 6 }}>
+                        <Text style={{ color: BRAND_COLORS.textMuted, fontSize: scaleWithAppTextScale(12), marginBottom: 6 }}>
                           Tahun target: {rolloverWorkspace.targetAcademicYear.name}
                         </Text>
                         <Text style={{ color: BRAND_COLORS.textDark, fontWeight: '700', marginBottom: 6 }}>Catatan Operasional</Text>
                         {rolloverWorkspace.notes.map((item) => (
-                          <Text key={`rollover-note-${item}`} style={{ color: BRAND_COLORS.textMuted, fontSize: 12, marginBottom: 4 }}>
+                          <Text key={`rollover-note-${item}`} style={{ color: BRAND_COLORS.textMuted, fontSize: scaleWithAppTextScale(12), marginBottom: 4 }}>
                             • {item}
                           </Text>
                         ))}
@@ -3440,7 +3441,7 @@ export default function AdminAcademicScreen() {
                   }}
                 >
                   <Text style={{ color: '#92400e', fontWeight: '700', marginBottom: 4 }}>Promotion dimatikan</Text>
-                  <Text style={{ color: '#92400e', fontSize: 12 }}>
+                  <Text style={{ color: '#92400e', fontSize: scaleWithAppTextScale(12) }}>
                     Nyalakan env ACADEMIC_PROMOTION_V2_ENABLED=true di server saat siap uji.
                   </Text>
                 </View>
@@ -3478,7 +3479,7 @@ export default function AdminAcademicScreen() {
                       style={{
                         color: activateTargetYearAfterCommit ? BRAND_COLORS.blue : BRAND_COLORS.textMuted,
                         fontWeight: '700',
-                        fontSize: 12,
+                        fontSize: scaleWithAppTextScale(12),
                       }}
                     >
                       {activateTargetYearAfterCommit ? 'Aktifkan tahun target setelah commit: ON' : 'Aktifkan tahun target setelah commit: OFF'}
@@ -3501,7 +3502,7 @@ export default function AdminAcademicScreen() {
                   }}
                 >
                   <Text style={{ color: '#92400e', fontWeight: '700', marginBottom: 4 }}>Tahun tidak valid</Text>
-                  <Text style={{ color: '#92400e', fontSize: 12 }}>
+                  <Text style={{ color: '#92400e', fontSize: scaleWithAppTextScale(12) }}>
                     Tahun sumber dan target harus berbeda.
                   </Text>
                 </View>
@@ -3553,7 +3554,7 @@ export default function AdminAcademicScreen() {
                     >
                       <Text style={{ color: '#b91c1c', fontWeight: '700', marginBottom: 6 }}>Blocking Issues</Text>
                       {promotionWorkspaceQuery.data.validation.errors.map((item) => (
-                        <Text key={`promotion-global-error-${item}`} style={{ color: '#b91c1c', fontSize: 12, marginBottom: 4 }}>
+                        <Text key={`promotion-global-error-${item}`} style={{ color: '#b91c1c', fontSize: scaleWithAppTextScale(12), marginBottom: 4 }}>
                           • {item}
                         </Text>
                       ))}
@@ -3573,7 +3574,7 @@ export default function AdminAcademicScreen() {
                     >
                       <Text style={{ color: '#92400e', fontWeight: '700', marginBottom: 6 }}>Peringatan</Text>
                       {promotionWorkspaceQuery.data.validation.warnings.map((item) => (
-                        <Text key={`promotion-global-warning-${item}`} style={{ color: '#92400e', fontSize: 12, marginBottom: 4 }}>
+                        <Text key={`promotion-global-warning-${item}`} style={{ color: '#92400e', fontSize: scaleWithAppTextScale(12), marginBottom: 4 }}>
                           • {item}
                         </Text>
                       ))}
@@ -3644,10 +3645,10 @@ export default function AdminAcademicScreen() {
                         }}
                       >
                         <Text style={{ color: BRAND_COLORS.textDark, fontWeight: '700' }}>{item.sourceClassName}</Text>
-                        <Text style={{ color: BRAND_COLORS.textMuted, fontSize: 12 }}>
+                        <Text style={{ color: BRAND_COLORS.textMuted, fontSize: scaleWithAppTextScale(12) }}>
                           {item.major.code} • {item.studentCount} siswa aktif • {item.action === 'GRADUATE' ? 'Alumni' : `Naik ke ${item.expectedTargetLevel}`}
                         </Text>
-                        <Text style={{ color: BRAND_COLORS.textMuted, fontSize: 12, marginBottom: 6 }}>
+                        <Text style={{ color: BRAND_COLORS.textMuted, fontSize: scaleWithAppTextScale(12), marginBottom: 6 }}>
                           Source: {item.mappingSource === 'SAVED' ? 'mapping tersimpan' : item.mappingSource === 'SUGGESTED' ? 'saran otomatis' : item.mappingSource === 'GRADUATE' ? 'alumni' : 'belum dipilih'}
                         </Text>
 
@@ -3663,7 +3664,7 @@ export default function AdminAcademicScreen() {
                               marginBottom: 8,
                             }}
                           >
-                            <Text style={{ color: BRAND_COLORS.textMuted, fontSize: 12 }}>
+                            <Text style={{ color: BRAND_COLORS.textMuted, fontSize: scaleWithAppTextScale(12) }}>
                               Siswa kelas XII aktif akan diubah menjadi alumni.
                             </Text>
                           </View>
@@ -3687,7 +3688,7 @@ export default function AdminAcademicScreen() {
                               }
                               placeholder="Pilih kelas target"
                             />
-                            <Text style={{ color: BRAND_COLORS.textMuted, fontSize: 12, marginBottom: 8 }}>
+                            <Text style={{ color: BRAND_COLORS.textMuted, fontSize: scaleWithAppTextScale(12), marginBottom: 8 }}>
                               Saran: {suggestedTargetLabel}
                             </Text>
                           </>
@@ -3706,7 +3707,7 @@ export default function AdminAcademicScreen() {
                               marginBottom: 6,
                             }}
                           >
-                            <Text style={{ color: '#b91c1c', fontSize: 12 }}>{entry}</Text>
+                            <Text style={{ color: '#b91c1c', fontSize: scaleWithAppTextScale(12) }}>{entry}</Text>
                           </View>
                         ))}
                         {item.validation.warnings.map((entry) => (
@@ -3722,11 +3723,11 @@ export default function AdminAcademicScreen() {
                               marginBottom: 6,
                             }}
                           >
-                            <Text style={{ color: '#92400e', fontSize: 12 }}>{entry}</Text>
+                            <Text style={{ color: '#92400e', fontSize: scaleWithAppTextScale(12) }}>{entry}</Text>
                           </View>
                         ))}
                         {item.validation.errors.length === 0 && item.validation.warnings.length === 0 ? (
-                          <Text style={{ color: '#15803d', fontSize: 12, fontWeight: '700' }}>Siap</Text>
+                          <Text style={{ color: '#15803d', fontSize: scaleWithAppTextScale(12), fontWeight: '700' }}>Siap</Text>
                         ) : null}
                       </View>
                     );
@@ -3735,7 +3736,7 @@ export default function AdminAcademicScreen() {
                   <View style={{ marginTop: 8 }}>
                     <Text style={{ color: BRAND_COLORS.textDark, fontWeight: '700', marginBottom: 6 }}>Riwayat Run</Text>
                     {(promotionWorkspaceQuery.data.recentRuns || []).length === 0 ? (
-                      <Text style={{ color: BRAND_COLORS.textMuted, fontSize: 12 }}>
+                      <Text style={{ color: BRAND_COLORS.textMuted, fontSize: scaleWithAppTextScale(12) }}>
                         Belum ada run promotion untuk kombinasi source-target ini.
                       </Text>
                     ) : (
@@ -3770,7 +3771,7 @@ export default function AdminAcademicScreen() {
                             >
                               <Text
                                 style={{
-                                  fontSize: 11,
+                                  fontSize: scaleWithAppTextScale(11),
                                   fontWeight: '700',
                                   color:
                                     run.status === 'ROLLED_BACK'
@@ -3784,14 +3785,14 @@ export default function AdminAcademicScreen() {
                               </Text>
                             </View>
                           </View>
-                          <Text style={{ color: BRAND_COLORS.textMuted, fontSize: 12 }}>
+                          <Text style={{ color: BRAND_COLORS.textMuted, fontSize: scaleWithAppTextScale(12) }}>
                             Commit: {formatDateTime(run.committedAt || run.createdAt)}
                           </Text>
-                          <Text style={{ color: BRAND_COLORS.textMuted, fontSize: 12 }}>
+                          <Text style={{ color: BRAND_COLORS.textMuted, fontSize: scaleWithAppTextScale(12) }}>
                             {run.createdBy ? `Oleh ${run.createdBy.name}` : 'Oleh sistem'}
                           </Text>
                           {run.rolledBackAt ? (
-                            <Text style={{ color: '#92400e', fontSize: 12, marginTop: 2 }}>
+                            <Text style={{ color: '#92400e', fontSize: scaleWithAppTextScale(12), marginTop: 2 }}>
                               Rollback: {formatDateTime(run.rolledBackAt)}
                               {run.rolledBackBy?.name ? ` oleh ${run.rolledBackBy.name}` : ''}
                             </Text>
@@ -3810,12 +3811,12 @@ export default function AdminAcademicScreen() {
                               opacity: !run.canRollback || rollbackPromotionMutation.isPending ? 0.6 : 1,
                             }}
                           >
-                            <Text style={{ color: '#92400e', fontWeight: '700', fontSize: 12 }}>
+                            <Text style={{ color: '#92400e', fontWeight: '700', fontSize: scaleWithAppTextScale(12) }}>
                               {rollbackPromotionMutation.isPending ? 'Rollback...' : 'Rollback Run'}
                             </Text>
                           </Pressable>
                           {!run.canRollback && run.rollbackBlockedReason ? (
-                            <Text style={{ color: BRAND_COLORS.textMuted, fontSize: 12, marginTop: 6 }}>
+                            <Text style={{ color: BRAND_COLORS.textMuted, fontSize: scaleWithAppTextScale(12), marginTop: 6 }}>
                               {run.rollbackBlockedReason}
                             </Text>
                           ) : null}
@@ -3876,7 +3877,7 @@ export default function AdminAcademicScreen() {
                 <Text style={{ color: BRAND_COLORS.textDark, fontWeight: '700', marginBottom: 8 }}>
                   {editingAcademicEventId ? `Edit Event #${editingAcademicEventId}` : 'Tambah Event Kalender'}
                 </Text>
-                <Text style={{ color: BRAND_COLORS.textMuted, fontSize: 12, marginBottom: 4 }}>Judul Event</Text>
+                <Text style={{ color: BRAND_COLORS.textMuted, fontSize: scaleWithAppTextScale(12), marginBottom: 4 }}>Judul Event</Text>
                 <TextInput
                   value={academicEventForm.title}
                   onChangeText={(value) => setAcademicEventForm((prev) => ({ ...prev, title: value }))}
@@ -3894,7 +3895,7 @@ export default function AdminAcademicScreen() {
                   }}
                 />
 
-                <Text style={{ color: BRAND_COLORS.textMuted, fontSize: 12, marginBottom: 4 }}>Jenis Event</Text>
+                <Text style={{ color: BRAND_COLORS.textMuted, fontSize: scaleWithAppTextScale(12), marginBottom: 4 }}>Jenis Event</Text>
                 <ScrollView horizontal showsHorizontalScrollIndicator={false} style={{ marginBottom: 8 }}>
                   <View style={{ flexDirection: 'row', gap: 8, paddingRight: 8 }}>
                     {ACADEMIC_EVENT_TYPE_OPTIONS.map((item) => (
@@ -3908,7 +3909,7 @@ export default function AdminAcademicScreen() {
                   </View>
                 </ScrollView>
 
-                <Text style={{ color: BRAND_COLORS.textMuted, fontSize: 12, marginBottom: 4 }}>
+                <Text style={{ color: BRAND_COLORS.textMuted, fontSize: scaleWithAppTextScale(12), marginBottom: 4 }}>
                   Tanggal Mulai (YYYY-MM-DD)
                 </Text>
                 <TextInput
@@ -3928,7 +3929,7 @@ export default function AdminAcademicScreen() {
                   }}
                 />
 
-                <Text style={{ color: BRAND_COLORS.textMuted, fontSize: 12, marginBottom: 4 }}>
+                <Text style={{ color: BRAND_COLORS.textMuted, fontSize: scaleWithAppTextScale(12), marginBottom: 4 }}>
                   Tanggal Selesai (YYYY-MM-DD)
                 </Text>
                 <TextInput
@@ -3975,7 +3976,7 @@ export default function AdminAcademicScreen() {
                   placeholder="Pilih kategori hari"
                 />
 
-                <Text style={{ color: BRAND_COLORS.textMuted, fontSize: 12, marginBottom: 4 }}>Deskripsi (Opsional)</Text>
+                <Text style={{ color: BRAND_COLORS.textMuted, fontSize: scaleWithAppTextScale(12), marginBottom: 4 }}>Deskripsi (Opsional)</Text>
                 <TextInput
                   value={academicEventForm.description}
                   onChangeText={(value) => setAcademicEventForm((prev) => ({ ...prev, description: value }))}
@@ -4053,10 +4054,10 @@ export default function AdminAcademicScreen() {
                   {sortedAcademicEvents.map((item) => (
                     <View key={item.id} style={{ borderTopWidth: 1, borderTopColor: '#eef3ff', paddingVertical: 8 }}>
                       <Text style={{ color: BRAND_COLORS.textDark, fontWeight: '700' }}>{item.title}</Text>
-                      <Text style={{ color: BRAND_COLORS.textMuted, fontSize: 12 }}>
+                      <Text style={{ color: BRAND_COLORS.textMuted, fontSize: scaleWithAppTextScale(12) }}>
                         {getAcademicEventTypeLabel(item.type)} | {formatDate(item.startDate)} - {formatDate(item.endDate)}
                       </Text>
-                      <Text style={{ color: BRAND_COLORS.textMuted, fontSize: 12, marginBottom: 6 }}>
+                      <Text style={{ color: BRAND_COLORS.textMuted, fontSize: scaleWithAppTextScale(12), marginBottom: 6 }}>
                         Semester: {item.semester === 'ODD' ? 'Ganjil' : item.semester === 'EVEN' ? 'Genap' : 'Semua'} |{' '}
                         {item.isHoliday ? 'Hari Libur' : 'Hari Sekolah'}
                       </Text>
@@ -4074,7 +4075,7 @@ export default function AdminAcademicScreen() {
                             opacity: isSubmittingAcademicEvent || deleteAcademicEventMutation.isPending ? 0.65 : 1,
                           }}
                         >
-                          <Text style={{ color: BRAND_COLORS.textDark, fontWeight: '700', fontSize: 12 }}>Edit</Text>
+                          <Text style={{ color: BRAND_COLORS.textDark, fontWeight: '700', fontSize: scaleWithAppTextScale(12) }}>Edit</Text>
                         </Pressable>
                         <Pressable
                           onPress={() => handleDeleteAcademicEvent(item)}
@@ -4089,7 +4090,7 @@ export default function AdminAcademicScreen() {
                             opacity: isSubmittingAcademicEvent || deleteAcademicEventMutation.isPending ? 0.65 : 1,
                           }}
                         >
-                          <Text style={{ color: '#b91c1c', fontWeight: '700', fontSize: 12 }}>
+                          <Text style={{ color: '#b91c1c', fontWeight: '700', fontSize: scaleWithAppTextScale(12) }}>
                             {deleteAcademicEventMutation.isPending ? 'Memproses...' : 'Hapus'}
                           </Text>
                         </Pressable>
@@ -4126,7 +4127,7 @@ export default function AdminAcademicScreen() {
                   marginBottom: 6,
                 }}
               />
-              <Text style={{ color: BRAND_COLORS.textMuted, fontSize: 12, marginBottom: 6 }}>
+              <Text style={{ color: BRAND_COLORS.textMuted, fontSize: scaleWithAppTextScale(12), marginBottom: 6 }}>
                 Guru terpilih: {selectedAssignmentTeacher?.name || '-'}
               </Text>
               <ScrollView horizontal showsHorizontalScrollIndicator={false} style={{ marginBottom: 8 }}>
@@ -4157,7 +4158,7 @@ export default function AdminAcademicScreen() {
                   marginBottom: 6,
                 }}
               />
-              <Text style={{ color: BRAND_COLORS.textMuted, fontSize: 12, marginBottom: 6 }}>
+              <Text style={{ color: BRAND_COLORS.textMuted, fontSize: scaleWithAppTextScale(12), marginBottom: 6 }}>
                 Mapel terpilih: {selectedAssignmentSubject ? `${selectedAssignmentSubject.code} - ${selectedAssignmentSubject.name}` : '-'}
               </Text>
               <ScrollView horizontal showsHorizontalScrollIndicator={false} style={{ marginBottom: 8 }}>
@@ -4188,7 +4189,7 @@ export default function AdminAcademicScreen() {
                   marginBottom: 6,
                 }}
               />
-              <Text style={{ color: BRAND_COLORS.textMuted, fontSize: 12, marginBottom: 6 }}>
+              <Text style={{ color: BRAND_COLORS.textMuted, fontSize: scaleWithAppTextScale(12), marginBottom: 6 }}>
                 Kelas dipilih: {assignmentSelectedClassIds.length}
               </Text>
               <ScrollView horizontal showsHorizontalScrollIndicator={false} style={{ marginBottom: 10 }}>
@@ -4247,7 +4248,7 @@ export default function AdminAcademicScreen() {
                   <Text style={{ color: BRAND_COLORS.textDark, fontWeight: '700' }}>
                     {group.teacherName} - {group.subjectCode}
                   </Text>
-                  <Text style={{ color: BRAND_COLORS.textMuted, fontSize: 12, marginBottom: 6 }}>
+                  <Text style={{ color: BRAND_COLORS.textMuted, fontSize: scaleWithAppTextScale(12), marginBottom: 6 }}>
                     Kelas: {group.classNames.join(', ')}
                   </Text>
                   <Pressable
@@ -4262,7 +4263,7 @@ export default function AdminAcademicScreen() {
                       paddingVertical: 6,
                     }}
                   >
-                    <Text style={{ color: '#1d4ed8', fontWeight: '700', fontSize: 12 }}>Muat ke Form</Text>
+                    <Text style={{ color: '#1d4ed8', fontWeight: '700', fontSize: scaleWithAppTextScale(12) }}>Muat ke Form</Text>
                   </Pressable>
                 </View>
               ))}
@@ -4275,7 +4276,7 @@ export default function AdminAcademicScreen() {
                   <Text style={{ color: BRAND_COLORS.textDark, fontWeight: '700' }}>
                     {item.subject?.code || '-'} - {item.class?.name || '-'}
                   </Text>
-                  <Text style={{ color: BRAND_COLORS.textMuted, fontSize: 12, marginBottom: 6 }}>
+                  <Text style={{ color: BRAND_COLORS.textMuted, fontSize: scaleWithAppTextScale(12), marginBottom: 6 }}>
                     Guru: {item.teacher?.name || '-'} | Jadwal: {item._count?.scheduleEntries || 0}
                   </Text>
                   <Pressable
@@ -4294,7 +4295,7 @@ export default function AdminAcademicScreen() {
                       opacity: deleteAssignmentMutation.isPending ? 0.7 : 1,
                     }}
                   >
-                    <Text style={{ color: '#b91c1c', fontWeight: '700', fontSize: 12 }}>
+                    <Text style={{ color: '#b91c1c', fontWeight: '700', fontSize: scaleWithAppTextScale(12) }}>
                       {deleteAssignmentMutation.isPending ? 'Memproses...' : 'Hapus Assignment'}
                     </Text>
                   </Pressable>
@@ -4313,7 +4314,7 @@ export default function AdminAcademicScreen() {
               title="Manajemen Jadwal Pelajaran"
               subtitle="Setara web: pilih tahun ajaran/kelas, input per jam, hapus slot, dan atur konfigurasi waktu."
             >
-              <Text style={{ color: BRAND_COLORS.textMuted, fontSize: 12, marginBottom: 6 }}>Tahun Ajaran</Text>
+              <Text style={{ color: BRAND_COLORS.textMuted, fontSize: scaleWithAppTextScale(12), marginBottom: 6 }}>Tahun Ajaran</Text>
               <ScrollView horizontal showsHorizontalScrollIndicator={false} style={{ marginBottom: 8 }}>
                 <View style={{ flexDirection: 'row', gap: 8, paddingRight: 8 }}>
                   {(academicQuery.data?.years.items || []).map((item) => (
@@ -4374,7 +4375,7 @@ export default function AdminAcademicScreen() {
                   ))}
                 </View>
               </ScrollView>
-              <Text style={{ color: BRAND_COLORS.textMuted, fontSize: 12, marginBottom: 8 }}>
+              <Text style={{ color: BRAND_COLORS.textMuted, fontSize: scaleWithAppTextScale(12), marginBottom: 8 }}>
                 Kelas terpilih: {scheduleClasses.find((item) => item.id === effectiveScheduleClassId)?.name || '-'}
               </Text>
 
@@ -4390,7 +4391,7 @@ export default function AdminAcademicScreen() {
                     paddingVertical: 7,
                   }}
                 >
-                  <Text style={{ color: '#1d4ed8', fontWeight: '700', fontSize: 12 }}>
+                  <Text style={{ color: '#1d4ed8', fontWeight: '700', fontSize: scaleWithAppTextScale(12) }}>
                     {scheduleTimeEditorOpen ? 'Tutup Pengaturan Jam' : 'Atur Waktu Jam'}
                   </Text>
                 </Pressable>
@@ -4407,7 +4408,7 @@ export default function AdminAcademicScreen() {
                     opacity: saveScheduleConfigMutation.isPending || !effectiveScheduleAcademicYearId ? 0.65 : 1,
                   }}
                 >
-                  <Text style={{ color: '#166534', fontWeight: '700', fontSize: 12 }}>
+                  <Text style={{ color: '#166534', fontWeight: '700', fontSize: scaleWithAppTextScale(12) }}>
                     {saveScheduleConfigMutation.isPending ? 'Menyimpan...' : 'Simpan Konfigurasi Jam'}
                   </Text>
                 </Pressable>
@@ -4449,7 +4450,7 @@ export default function AdminAcademicScreen() {
                             backgroundColor: '#eff6ff',
                           }}
                         >
-                          <Text style={{ color: '#1d4ed8', fontWeight: '700', fontSize: 12 }}>+ Hari</Text>
+                          <Text style={{ color: '#1d4ed8', fontWeight: '700', fontSize: scaleWithAppTextScale(12) }}>+ Hari</Text>
                         </Pressable>
                       ) : null}
                     </View>
@@ -4467,7 +4468,7 @@ export default function AdminAcademicScreen() {
                         backgroundColor: '#fff',
                       }}
                     >
-                      <Text style={{ color: BRAND_COLORS.textMuted, fontWeight: '700', fontSize: 12 }}>
+                      <Text style={{ color: BRAND_COLORS.textMuted, fontWeight: '700', fontSize: scaleWithAppTextScale(12) }}>
                         Reset Hari Ini
                       </Text>
                     </Pressable>
@@ -4482,7 +4483,7 @@ export default function AdminAcademicScreen() {
                         backgroundColor: '#eff6ff',
                       }}
                     >
-                      <Text style={{ color: '#1d4ed8', fontWeight: '700', fontSize: 12 }}>+ Tambah Jam</Text>
+                      <Text style={{ color: '#1d4ed8', fontWeight: '700', fontSize: scaleWithAppTextScale(12) }}>+ Tambah Jam</Text>
                     </Pressable>
                     <Pressable
                       onPress={resetScheduleAllDays}
@@ -4495,7 +4496,7 @@ export default function AdminAcademicScreen() {
                         backgroundColor: '#fff1f2',
                       }}
                     >
-                      <Text style={{ color: '#b91c1c', fontWeight: '700', fontSize: 12 }}>Reset Semua</Text>
+                      <Text style={{ color: '#b91c1c', fontWeight: '700', fontSize: scaleWithAppTextScale(12) }}>Reset Semua</Text>
                     </Pressable>
                   </View>
 
@@ -4514,7 +4515,7 @@ export default function AdminAcademicScreen() {
                         }}
                       >
                         <View style={{ flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', marginBottom: 6 }}>
-                          <Text style={{ color: BRAND_COLORS.textDark, fontWeight: '700', fontSize: 12 }}>
+                          <Text style={{ color: BRAND_COLORS.textDark, fontWeight: '700', fontSize: scaleWithAppTextScale(12) }}>
                             Slot {period} ({SCHEDULE_DAY_LABELS[scheduleEditingDay]})
                           </Text>
                           <Pressable
@@ -4528,7 +4529,7 @@ export default function AdminAcademicScreen() {
                               backgroundColor: '#fff1f2',
                             }}
                           >
-                            <Text style={{ color: '#b91c1c', fontWeight: '700', fontSize: 11 }}>Hapus</Text>
+                            <Text style={{ color: '#b91c1c', fontWeight: '700', fontSize: scaleWithAppTextScale(11) }}>Hapus</Text>
                           </Pressable>
                         </View>
                         <TextInput
@@ -4632,7 +4633,7 @@ export default function AdminAcademicScreen() {
 
                 <View style={{ flexDirection: 'row', gap: 8, marginBottom: 8 }}>
                   <View style={{ flex: 1 }}>
-                    <Text style={{ color: BRAND_COLORS.textMuted, fontSize: 12, marginBottom: 4 }}>Jam Mulai (jam pelajaran ke-)</Text>
+                    <Text style={{ color: BRAND_COLORS.textMuted, fontSize: scaleWithAppTextScale(12), marginBottom: 4 }}>Jam Mulai (jam pelajaran ke-)</Text>
                     <TextInput
                       value={scheduleFormStartTeachingHour}
                       onChangeText={(value) => {
@@ -4654,7 +4655,7 @@ export default function AdminAcademicScreen() {
                     />
                   </View>
                   <View style={{ flex: 1 }}>
-                    <Text style={{ color: BRAND_COLORS.textMuted, fontSize: 12, marginBottom: 4 }}>Jam Akhir (opsional)</Text>
+                    <Text style={{ color: BRAND_COLORS.textMuted, fontSize: scaleWithAppTextScale(12), marginBottom: 4 }}>Jam Akhir (opsional)</Text>
                     <TextInput
                       value={scheduleFormEndTeachingHour}
                       onChangeText={(value) => {
@@ -4705,7 +4706,7 @@ export default function AdminAcademicScreen() {
                     ))}
                   </View>
                 </ScrollView>
-                <Text style={{ color: BRAND_COLORS.textMuted, fontSize: 12, marginBottom: 8 }}>
+                <Text style={{ color: BRAND_COLORS.textMuted, fontSize: scaleWithAppTextScale(12), marginBottom: 8 }}>
                   Assignment terpilih:{' '}
                   {scheduleClassAssignments.find((item) => String(item.id) === scheduleFormAssignmentId)
                     ? `${scheduleClassAssignments.find((item) => String(item.id) === scheduleFormAssignmentId)?.subject?.code || '-'} • ${scheduleClassAssignments.find((item) => String(item.id) === scheduleFormAssignmentId)?.teacher?.name || '-'}`
@@ -4827,10 +4828,10 @@ export default function AdminAcademicScreen() {
                               }}
                             >
                               <View style={{ flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', marginBottom: 4 }}>
-                                <Text style={{ color: BRAND_COLORS.textDark, fontWeight: '700', fontSize: 12 }}>
+                                <Text style={{ color: BRAND_COLORS.textDark, fontWeight: '700', fontSize: scaleWithAppTextScale(12) }}>
                                   Slot {period} | Jam ke: {teachingHour ?? '-'}
                                 </Text>
-                                <Text style={{ color: BRAND_COLORS.textMuted, fontSize: 11 }}>
+                                <Text style={{ color: BRAND_COLORS.textMuted, fontSize: scaleWithAppTextScale(11) }}>
                                   {schedulePeriodTimes[day]?.[period] || '-'}
                                 </Text>
                               </View>
@@ -4845,7 +4846,7 @@ export default function AdminAcademicScreen() {
                                     paddingVertical: 4,
                                   }}
                                 >
-                                  <Text style={{ color: noteColor, fontWeight: '700', fontSize: 11 }}>
+                                  <Text style={{ color: noteColor, fontWeight: '700', fontSize: scaleWithAppTextScale(11) }}>
                                     {note || periodType}
                                   </Text>
                                 </View>
@@ -4854,11 +4855,11 @@ export default function AdminAcademicScreen() {
                                   <Text style={{ color: BRAND_COLORS.textDark, fontWeight: '700' }}>
                                     {entry.teacherAssignment.subject.code} - {entry.teacherAssignment.subject.name}
                                   </Text>
-                                  <Text style={{ color: BRAND_COLORS.textMuted, fontSize: 12 }}>
+                                  <Text style={{ color: BRAND_COLORS.textMuted, fontSize: scaleWithAppTextScale(12) }}>
                                     Guru: {entry.teacherAssignment.teacher.name}
                                   </Text>
                                   {entry.room ? (
-                                    <Text style={{ color: BRAND_COLORS.textMuted, fontSize: 12 }}>Ruang: {entry.room}</Text>
+                                    <Text style={{ color: BRAND_COLORS.textMuted, fontSize: scaleWithAppTextScale(12) }}>Ruang: {entry.room}</Text>
                                   ) : null}
                                   <Pressable
                                     onPress={() =>
@@ -4880,13 +4881,13 @@ export default function AdminAcademicScreen() {
                                       opacity: deleteScheduleEntryMutation.isPending ? 0.65 : 1,
                                     }}
                                   >
-                                    <Text style={{ color: '#b91c1c', fontWeight: '700', fontSize: 12 }}>
+                                    <Text style={{ color: '#b91c1c', fontWeight: '700', fontSize: scaleWithAppTextScale(12) }}>
                                       {deleteScheduleEntryMutation.isPending ? 'Memproses...' : 'Hapus Slot'}
                                     </Text>
                                   </Pressable>
                                 </>
                               ) : (
-                                <Text style={{ color: BRAND_COLORS.textMuted, fontSize: 12 }}>Slot kosong</Text>
+                                <Text style={{ color: BRAND_COLORS.textMuted, fontSize: scaleWithAppTextScale(12) }}>Slot kosong</Text>
                               )}
                             </View>
                           );
@@ -4901,7 +4902,7 @@ export default function AdminAcademicScreen() {
 
           {shouldShow('teaching-load') ? (
             <SectionCard title="Rekap Jam Mengajar" subtitle="Filter tahun ajaran dan guru, lalu lihat detail sesi/jam per mapel.">
-              <Text style={{ color: BRAND_COLORS.textMuted, fontSize: 12, marginBottom: 6 }}>Tahun Ajaran</Text>
+              <Text style={{ color: BRAND_COLORS.textMuted, fontSize: scaleWithAppTextScale(12), marginBottom: 6 }}>Tahun Ajaran</Text>
               <ScrollView horizontal showsHorizontalScrollIndicator={false} style={{ marginBottom: 8 }}>
                 <View style={{ flexDirection: 'row', gap: 8, paddingRight: 8 }}>
                   {(academicQuery.data?.years.items || []).map((item) => (
@@ -4992,13 +4993,13 @@ export default function AdminAcademicScreen() {
                       <Text style={{ color: BRAND_COLORS.textDark, fontWeight: '700' }}>
                         {item.teacherName} (@{item.teacherUsername})
                       </Text>
-                      <Text style={{ color: BRAND_COLORS.textMuted, fontSize: 12 }}>
+                      <Text style={{ color: BRAND_COLORS.textMuted, fontSize: scaleWithAppTextScale(12) }}>
                         Kelas: {item.totalClasses} | Mapel: {item.totalSubjects} | Sesi: {item.totalSessions} | Jam: {item.totalHours}
                       </Text>
                       {(item.details || []).slice(0, 30).map((detail) => (
                         <Text
                           key={`teaching-load-detail-${item.teacherId}-${detail.subjectId}`}
-                          style={{ color: BRAND_COLORS.textMuted, fontSize: 12, marginTop: 2 }}
+                          style={{ color: BRAND_COLORS.textMuted, fontSize: scaleWithAppTextScale(12), marginTop: 2 }}
                         >
                           - {detail.subjectCode} {detail.subjectName}: {detail.classCount} kelas, {detail.sessionCount} sesi ({detail.hours} jam)
                         </Text>
@@ -5071,7 +5072,7 @@ export default function AdminAcademicScreen() {
                   <Text style={{ color: BRAND_COLORS.textDark, fontWeight: '700' }}>
                     {item.code} - {item.name}
                   </Text>
-                  <Text style={{ color: BRAND_COLORS.textMuted, fontSize: 12 }}>
+                  <Text style={{ color: BRAND_COLORS.textMuted, fontSize: scaleWithAppTextScale(12) }}>
                     {item.kkms?.map((kkm) => `${kkm.classLevel}:${kkm.kkm}`).join(' | ') || '-'}
                   </Text>
                 </View>
@@ -5118,7 +5119,7 @@ export default function AdminAcademicScreen() {
                 onChange={setAttendanceClassId}
                 placeholder="Pilih kelas"
               />
-              <Text style={{ color: BRAND_COLORS.textMuted, fontSize: 12, marginBottom: 6 }}>
+              <Text style={{ color: BRAND_COLORS.textMuted, fontSize: scaleWithAppTextScale(12), marginBottom: 6 }}>
                 Kelas terpilih: {selectedAttendanceClass?.name || '-'}
               </Text>
 
@@ -5135,7 +5136,7 @@ export default function AdminAcademicScreen() {
               />
 
               {dailyAttendanceRecapQuery.data?.meta?.dateRange ? (
-                <Text style={{ color: BRAND_COLORS.textMuted, fontSize: 12, marginBottom: 8 }}>
+                <Text style={{ color: BRAND_COLORS.textMuted, fontSize: scaleWithAppTextScale(12), marginBottom: 8 }}>
                   Rentang data:{' '}
                   {formatDate(dailyAttendanceRecapQuery.data.meta.dateRange.start || null)} -{' '}
                   {formatDate(dailyAttendanceRecapQuery.data.meta.dateRange.end || null)}
@@ -5191,10 +5192,10 @@ export default function AdminAcademicScreen() {
                   {attendanceDailyRecap.map((item) => (
                     <View key={`attendance-daily-${item.student.id}`} style={{ borderTopWidth: 1, borderTopColor: '#eef3ff', paddingVertical: 8 }}>
                       <Text style={{ color: BRAND_COLORS.textDark, fontWeight: '700' }}>{item.student.name}</Text>
-                      <Text style={{ color: BRAND_COLORS.textMuted, fontSize: 12 }}>
+                      <Text style={{ color: BRAND_COLORS.textMuted, fontSize: scaleWithAppTextScale(12) }}>
                         Hadir: {item.present} | Telat: {item.late} | Sakit: {item.sick} | Izin: {item.permission} | Alpha: {item.absent}
                       </Text>
-                      <Text style={{ color: BRAND_COLORS.textMuted, fontSize: 12 }}>
+                      <Text style={{ color: BRAND_COLORS.textMuted, fontSize: scaleWithAppTextScale(12) }}>
                         Total catatan: {item.total} | Kehadiran: {Number(item.percentage || 0).toFixed(1)}%
                       </Text>
                     </View>
@@ -5206,7 +5207,7 @@ export default function AdminAcademicScreen() {
                   {(lateSummaryByClassQuery.data?.recap || []).map((item) => (
                     <View key={item.student.id} style={{ borderTopWidth: 1, borderTopColor: '#eef3ff', paddingVertical: 8 }}>
                       <Text style={{ color: BRAND_COLORS.textDark, fontWeight: '700' }}>{item.student.name}</Text>
-                      <Text style={{ color: BRAND_COLORS.textMuted, fontSize: 12 }}>
+                      <Text style={{ color: BRAND_COLORS.textMuted, fontSize: scaleWithAppTextScale(12) }}>
                         Sem 1: {item.semester1Late} | Sem 2: {item.semester2Late} | Total: {item.totalLate}
                       </Text>
                     </View>
@@ -5257,7 +5258,7 @@ export default function AdminAcademicScreen() {
                 onChange={setReportClassId}
                 placeholder="Pilih kelas"
               />
-              <Text style={{ color: BRAND_COLORS.textMuted, fontSize: 12, marginBottom: 6 }}>
+              <Text style={{ color: BRAND_COLORS.textMuted, fontSize: scaleWithAppTextScale(12), marginBottom: 6 }}>
                 Kelas terpilih: {selectedReportClass?.name || '-'}
               </Text>
 
@@ -5314,10 +5315,10 @@ export default function AdminAcademicScreen() {
 
               {reportViewMode === 'REPORT' && !classReportSummaryQuery.isLoading && !classReportSummaryQuery.isError ? (
                 <>
-                  <Text style={{ color: BRAND_COLORS.textMuted, fontSize: 12 }}>
+                  <Text style={{ color: BRAND_COLORS.textMuted, fontSize: scaleWithAppTextScale(12) }}>
                     Total Mapel: {classReportSummaryQuery.data?.subjects?.length || 0}
                   </Text>
-                  <Text style={{ color: BRAND_COLORS.textMuted, fontSize: 12, marginBottom: 8 }}>
+                  <Text style={{ color: BRAND_COLORS.textMuted, fontSize: scaleWithAppTextScale(12), marginBottom: 8 }}>
                     Total Siswa: {classReportSummaryQuery.data?.students?.length || 0}
                   </Text>
 
@@ -5338,7 +5339,7 @@ export default function AdminAcademicScreen() {
                   />
 
                   {filteredReportSubjects.slice(0, 40).map((item, index) => (
-                    <Text key={`${item.subject?.id || index}`} style={{ color: BRAND_COLORS.textMuted, fontSize: 12 }}>
+                    <Text key={`${item.subject?.id || index}`} style={{ color: BRAND_COLORS.textMuted, fontSize: scaleWithAppTextScale(12) }}>
                       {item.subject?.code || '-'} - {item.subject?.name || '-'}
                     </Text>
                   ))}
@@ -5387,7 +5388,7 @@ export default function AdminAcademicScreen() {
                       <Text style={{ color: BRAND_COLORS.textDark, fontWeight: '700' }}>
                         #{item.rank} - {item.student.name}
                       </Text>
-                      <Text style={{ color: BRAND_COLORS.textMuted, fontSize: 12 }}>
+                      <Text style={{ color: BRAND_COLORS.textMuted, fontSize: scaleWithAppTextScale(12) }}>
                         Rata-rata: {item.averageScore} | Total Nilai: {item.totalScore} | Mapel: {item.subjectCount}
                       </Text>
                     </View>
@@ -5443,7 +5444,7 @@ export default function AdminAcademicScreen() {
                     justifyContent: 'center',
                   }}
                 >
-                  <Text style={{ color: '#1d4ed8', fontWeight: '700', fontSize: 12 }}>Cari</Text>
+                  <Text style={{ color: '#1d4ed8', fontWeight: '700', fontSize: scaleWithAppTextScale(12) }}>Cari</Text>
                 </Pressable>
               </View>
 
@@ -5515,11 +5516,11 @@ export default function AdminAcademicScreen() {
                           <Text style={{ color: BRAND_COLORS.textDark, fontWeight: '700' }}>
                             #{item.id} • {item.type || '-'}
                           </Text>
-                          <Text style={{ color: BRAND_COLORS.textMuted, fontSize: 12 }}>
+                          <Text style={{ color: BRAND_COLORS.textMuted, fontSize: scaleWithAppTextScale(12) }}>
                             Mapel: {item.bank?.subject?.code || '-'} {item.bank?.subject?.name || '-'} | TA:{' '}
                             {item.bank?.academicYear?.name || '-'} | Semester: {item.bank?.semester || '-'}
                           </Text>
-                          <Text style={{ color: BRAND_COLORS.textMuted, fontSize: 12, marginTop: 4 }}>
+                          <Text style={{ color: BRAND_COLORS.textMuted, fontSize: scaleWithAppTextScale(12), marginTop: 4 }}>
                             {previewText.slice(0, 180) || '-'}
                             {previewText.length > 180 ? '...' : ''}
                           </Text>
@@ -5532,7 +5533,7 @@ export default function AdminAcademicScreen() {
                               gap: 10,
                             }}
                           >
-                            <Text style={{ color: '#64748b', fontSize: 11, flex: 1 }}>
+                            <Text style={{ color: '#64748b', fontSize: scaleWithAppTextScale(11), flex: 1 }}>
                               {item.points ? `${item.points} poin` : 'Tanpa poin khusus'}
                               {questionOptions.length > 0 ? ` • ${questionOptions.length} opsi` : ''}
                             </Text>
@@ -5547,7 +5548,7 @@ export default function AdminAcademicScreen() {
                                 paddingVertical: 6,
                               }}
                             >
-                              <Text style={{ color: '#1d4ed8', fontSize: 12, fontWeight: '700' }}>
+                              <Text style={{ color: '#1d4ed8', fontSize: scaleWithAppTextScale(12), fontWeight: '700' }}>
                                 {isPreviewOpen ? 'Tutup Pratinjau' : 'Lihat Soal'}
                               </Text>
                             </Pressable>
@@ -5600,7 +5601,7 @@ export default function AdminAcademicScreen() {
                                           style={{
                                             color: option.isCorrect ? '#166534' : '#1d4ed8',
                                             fontWeight: '700',
-                                            fontSize: 11,
+                                            fontSize: scaleWithAppTextScale(11),
                                           }}
                                         >
                                           {String.fromCharCode(65 + optionIndex)}
@@ -5609,7 +5610,7 @@ export default function AdminAcademicScreen() {
                                       <View style={{ flex: 1 }}>
                                         <ExamHtmlContent html={option.content} minHeight={36} />
                                         {option.isCorrect ? (
-                                          <Text style={{ color: '#15803d', fontSize: 11, fontWeight: '700', marginTop: 4 }}>
+                                          <Text style={{ color: '#15803d', fontSize: scaleWithAppTextScale(11), fontWeight: '700', marginTop: 4 }}>
                                             Kunci jawaban
                                           </Text>
                                         ) : null}
@@ -5647,7 +5648,7 @@ export default function AdminAcademicScreen() {
                     opacity: questionBankCurrentPage <= 1 ? 0.5 : 1,
                   }}
                 >
-                  <Text style={{ color: BRAND_COLORS.textMuted, fontWeight: '700', fontSize: 12 }}>Prev</Text>
+                  <Text style={{ color: BRAND_COLORS.textMuted, fontWeight: '700', fontSize: scaleWithAppTextScale(12) }}>Prev</Text>
                 </Pressable>
                 <Pressable
                   onPress={() => goToQuestionBankPage(questionBankCurrentPage + 1)}
@@ -5663,7 +5664,7 @@ export default function AdminAcademicScreen() {
                     opacity: questionBankCurrentPage >= questionBankTotalPages ? 0.5 : 1,
                   }}
                 >
-                  <Text style={{ color: BRAND_COLORS.textMuted, fontWeight: '700', fontSize: 12 }}>Next</Text>
+                  <Text style={{ color: BRAND_COLORS.textMuted, fontWeight: '700', fontSize: scaleWithAppTextScale(12) }}>Next</Text>
                 </Pressable>
               </View>
             </SectionCard>
@@ -5741,7 +5742,7 @@ export default function AdminAcademicScreen() {
                   onChange={setExamSessionPacketId}
                   placeholder="Pilih paket ujian"
                 />
-                <Text style={{ color: BRAND_COLORS.textMuted, fontSize: 12, marginBottom: 8 }}>
+                <Text style={{ color: BRAND_COLORS.textMuted, fontSize: scaleWithAppTextScale(12), marginBottom: 8 }}>
                   Paket terpilih: {selectedExamSessionPacket?.title || '-'}
                 </Text>
 
@@ -5778,7 +5779,7 @@ export default function AdminAcademicScreen() {
                     marginBottom: 6,
                   }}
                 >
-                  <Text style={{ color: BRAND_COLORS.textMuted, fontWeight: '700', fontSize: 12 }}>
+                  <Text style={{ color: BRAND_COLORS.textMuted, fontWeight: '700', fontSize: scaleWithAppTextScale(12) }}>
                     {examSessionSelectedClassIds.length === examSessionClasses.length && examSessionClasses.length > 0
                       ? 'Batal Pilih Semua Kelas'
                       : 'Pilih Semua Kelas'}
@@ -5796,11 +5797,11 @@ export default function AdminAcademicScreen() {
                     ))}
                   </View>
                 </ScrollView>
-                <Text style={{ color: BRAND_COLORS.textMuted, fontSize: 12, marginBottom: 8 }}>
+                <Text style={{ color: BRAND_COLORS.textMuted, fontSize: scaleWithAppTextScale(12), marginBottom: 8 }}>
                   Kelas dipilih: {selectedExamSessionClasses.length}
                 </Text>
 
-                <Text style={{ color: BRAND_COLORS.textMuted, fontSize: 12, marginBottom: 4 }}>Tanggal Ujian (YYYY-MM-DD)</Text>
+                <Text style={{ color: BRAND_COLORS.textMuted, fontSize: scaleWithAppTextScale(12), marginBottom: 4 }}>Tanggal Ujian (YYYY-MM-DD)</Text>
                 <TextInput
                   value={examSessionDate}
                   onChangeText={setExamSessionDate}
@@ -5820,7 +5821,7 @@ export default function AdminAcademicScreen() {
 
                 <View style={{ flexDirection: 'row', gap: 8, marginBottom: 8 }}>
                   <View style={{ flex: 1 }}>
-                    <Text style={{ color: BRAND_COLORS.textMuted, fontSize: 12, marginBottom: 4 }}>Jam Mulai (HH:mm)</Text>
+                    <Text style={{ color: BRAND_COLORS.textMuted, fontSize: scaleWithAppTextScale(12), marginBottom: 4 }}>Jam Mulai (HH:mm)</Text>
                     <TextInput
                       value={examSessionStartTime}
                       onChangeText={setExamSessionStartTime}
@@ -5838,7 +5839,7 @@ export default function AdminAcademicScreen() {
                     />
                   </View>
                   <View style={{ flex: 1 }}>
-                    <Text style={{ color: BRAND_COLORS.textMuted, fontSize: 12, marginBottom: 4 }}>Jam Selesai (HH:mm)</Text>
+                    <Text style={{ color: BRAND_COLORS.textMuted, fontSize: scaleWithAppTextScale(12), marginBottom: 4 }}>Jam Selesai (HH:mm)</Text>
                     <TextInput
                       value={examSessionEndTime}
                       onChangeText={setExamSessionEndTime}
@@ -5857,7 +5858,7 @@ export default function AdminAcademicScreen() {
                   </View>
                 </View>
 
-                <Text style={{ color: BRAND_COLORS.textMuted, fontSize: 12, marginBottom: 4 }}>Ruang (opsional)</Text>
+                <Text style={{ color: BRAND_COLORS.textMuted, fontSize: scaleWithAppTextScale(12), marginBottom: 4 }}>Ruang (opsional)</Text>
                 <TextInput
                   value={examSessionRoom}
                   onChangeText={setExamSessionRoom}
@@ -5946,13 +5947,13 @@ export default function AdminAcademicScreen() {
                       <Text style={{ color: BRAND_COLORS.textDark, fontWeight: '700' }}>
                         {item.packet?.title || 'Sesi Ujian'}
                       </Text>
-                      <Text style={{ color: BRAND_COLORS.textMuted, fontSize: 12 }}>
+                      <Text style={{ color: BRAND_COLORS.textMuted, fontSize: scaleWithAppTextScale(12) }}>
                         {item.class?.name || '-'} | {getExamTypeLabel(item.packet?.type)} | {item.isActive ? 'Aktif' : 'Nonaktif'}
                       </Text>
-                      <Text style={{ color: BRAND_COLORS.textMuted, fontSize: 12 }}>
+                      <Text style={{ color: BRAND_COLORS.textMuted, fontSize: scaleWithAppTextScale(12) }}>
                         {formatDateTime(item.startTime)} - {formatDateTime(item.endTime)}
                       </Text>
-                      <Text style={{ color: BRAND_COLORS.textMuted, fontSize: 12, marginBottom: 6 }}>
+                      <Text style={{ color: BRAND_COLORS.textMuted, fontSize: scaleWithAppTextScale(12), marginBottom: 6 }}>
                         Ruang: {item.room || '-'} | Pengawas: {item.proctor?.name || '-'}
                       </Text>
                       <View style={{ flexDirection: 'row', gap: 8, flexWrap: 'wrap' }}>
@@ -5969,7 +5970,7 @@ export default function AdminAcademicScreen() {
                             opacity: updateExamSessionMutation.isPending ? 0.65 : 1,
                           }}
                         >
-                          <Text style={{ color: BRAND_COLORS.textDark, fontSize: 12, fontWeight: '700' }}>
+                          <Text style={{ color: BRAND_COLORS.textDark, fontSize: scaleWithAppTextScale(12), fontWeight: '700' }}>
                             {item.isActive ? 'Set Nonaktif' : 'Set Aktif'}
                           </Text>
                         </Pressable>
@@ -5988,7 +5989,7 @@ export default function AdminAcademicScreen() {
                             opacity: deleteExamSessionMutation.isPending ? 0.65 : 1,
                           }}
                         >
-                          <Text style={{ color: '#b91c1c', fontSize: 12, fontWeight: '700' }}>
+                          <Text style={{ color: '#b91c1c', fontSize: scaleWithAppTextScale(12), fontWeight: '700' }}>
                             {deleteExamSessionMutation.isPending ? 'Memproses...' : 'Hapus'}
                           </Text>
                         </Pressable>

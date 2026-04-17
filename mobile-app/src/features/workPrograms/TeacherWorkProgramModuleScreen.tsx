@@ -18,6 +18,7 @@ import { osisApi } from '../osis/osisApi';
 import { WorkProgramBudgetOwnerSection } from './WorkProgramBudgetOwnerSection';
 import { WorkProgramRecord } from './types';
 import { workProgramApi } from './workProgramApi';
+import { scaleLineHeightWithAppTextScale, scaleWithAppTextScale } from '../../theme/AppTextScaleProvider';
 
 type ModuleMode = 'OWNER' | 'APPROVAL';
 type FilterStatus = 'ALL' | 'PENDING' | 'APPROVED' | 'REJECTED';
@@ -158,7 +159,7 @@ function TextField({
 }) {
   return (
     <View style={{ marginBottom: 8 }}>
-      <Text style={{ color: BRAND_COLORS.textMuted, fontSize: 12, marginBottom: 4 }}>{label}</Text>
+      <Text style={{ color: BRAND_COLORS.textMuted, fontSize: scaleWithAppTextScale(12), marginBottom: 4 }}>{label}</Text>
       <TextInput
         value={value}
         onChangeText={onChangeText}
@@ -677,7 +678,7 @@ export function TeacherWorkProgramModuleScreen({
   if (!isAllowedRole) {
     return (
       <ScrollView style={{ flex: 1, backgroundColor: '#f8fafc' }} contentContainerStyle={pagePadding}>
-        <Text style={{ fontSize: 20, fontWeight: '700', marginBottom: 8 }}>{title}</Text>
+        <Text style={{ fontSize: scaleWithAppTextScale(20), fontWeight: '700', marginBottom: 8 }}>{title}</Text>
         <QueryStateView type="error" message="Halaman ini tidak tersedia untuk role akun Anda." />
       </ScrollView>
     );
@@ -689,7 +690,7 @@ export function TeacherWorkProgramModuleScreen({
       contentContainerStyle={pagePadding}
       refreshControl={<RefreshControl refreshing={activeQuery.isFetching || activeYearQuery.isFetching} onRefresh={refreshData} />}
     >
-      <Text style={{ fontSize: 20, fontWeight: '700', marginBottom: 6, color: BRAND_COLORS.textDark }}>{title}</Text>
+      <Text style={{ fontSize: scaleWithAppTextScale(20), fontWeight: '700', marginBottom: 6, color: BRAND_COLORS.textDark }}>{title}</Text>
       <Text style={{ color: BRAND_COLORS.textMuted, marginBottom: 12 }}>{subtitle}</Text>
 
       {isOsisOwnerDuty ? (
@@ -707,18 +708,18 @@ export function TeacherWorkProgramModuleScreen({
             style={{
               color: isOsisProgramLocked ? '#92400e' : '#166534',
               fontWeight: '700',
-              fontSize: 13,
+              fontSize: scaleWithAppTextScale(13),
               marginBottom: 4,
             }}
           >
             Alur Program Kerja OSIS
           </Text>
-          <Text style={{ color: isOsisProgramLocked ? '#a16207' : '#166534', fontSize: 13, lineHeight: 18 }}>
+          <Text style={{ color: isOsisProgramLocked ? '#a16207' : '#166534', fontSize: scaleWithAppTextScale(13), lineHeight: scaleLineHeightWithAppTextScale(18) }}>
             {osisReadiness?.message ||
               'Program kerja OSIS mengikuti kesiapan periode kepengurusan aktif.'}
           </Text>
           {osisReadiness?.activeManagementPeriod ? (
-            <Text style={{ color: isOsisProgramLocked ? '#a16207' : '#166534', fontSize: 12, marginTop: 6 }}>
+            <Text style={{ color: isOsisProgramLocked ? '#a16207' : '#166534', fontSize: scaleWithAppTextScale(12), marginTop: 6 }}>
               Periode aktif: {osisReadiness.activeManagementPeriod.title}
               {osisReadiness.activeManagementPeriod.transitionLabel && osisReadiness.activeManagementPeriod.transitionAt
                 ? ` • ${osisReadiness.activeManagementPeriod.transitionLabel} pada ${formatDate(
@@ -789,7 +790,7 @@ export function TeacherWorkProgramModuleScreen({
                 marginBottom: 10,
               }}
             >
-              <Text style={{ color: isOsisProgramLocked ? '#92400e' : '#166534', fontSize: 12, lineHeight: 18 }}>
+              <Text style={{ color: isOsisProgramLocked ? '#92400e' : '#166534', fontSize: scaleWithAppTextScale(12), lineHeight: scaleLineHeightWithAppTextScale(18) }}>
                 {osisReadiness?.message ||
                   'Program kerja OSIS mengikuti kesiapan periode kepengurusan aktif.'}
               </Text>
@@ -1006,7 +1007,7 @@ export function TeacherWorkProgramModuleScreen({
                 <View style={{ flexDirection: 'row', justifyContent: 'space-between', alignItems: 'flex-start' }}>
                   <View style={{ flex: 1, paddingRight: 10 }}>
                     <Text style={{ color: BRAND_COLORS.textDark, fontWeight: '700' }}>{record.title}</Text>
-                    <Text style={{ color: '#64748b', marginTop: 2, fontSize: 12 }}>
+                    <Text style={{ color: '#64748b', marginTop: 2, fontSize: scaleWithAppTextScale(12) }}>
                       {record.academicYear?.name || '-'} • {formatDuty(record.additionalDuty)}
                     </Text>
                   </View>
@@ -1020,35 +1021,35 @@ export function TeacherWorkProgramModuleScreen({
                       paddingVertical: 3,
                     }}
                   >
-                    <Text style={{ color: style.text, fontWeight: '700', fontSize: 11 }}>{style.label}</Text>
+                    <Text style={{ color: style.text, fontWeight: '700', fontSize: scaleWithAppTextScale(11) }}>{style.label}</Text>
                   </View>
                 </View>
 
                 <View style={{ marginTop: 8 }}>
                   {record.description ? (
-                    <Text style={{ color: '#334155', fontSize: 12, marginBottom: 2 }}>{record.description}</Text>
+                    <Text style={{ color: '#334155', fontSize: scaleWithAppTextScale(12), marginBottom: 2 }}>{record.description}</Text>
                   ) : null}
-                  <Text style={{ color: '#334155', fontSize: 12 }}>Semester: {formatSemester(record.semester)}</Text>
-                  <Text style={{ color: '#334155', fontSize: 12, marginTop: 2 }}>
+                  <Text style={{ color: '#334155', fontSize: scaleWithAppTextScale(12) }}>Semester: {formatSemester(record.semester)}</Text>
+                  <Text style={{ color: '#334155', fontSize: scaleWithAppTextScale(12), marginTop: 2 }}>
                     Periode: {formatPeriod(record)}
                   </Text>
-                  <Text style={{ color: '#334155', fontSize: 12, marginTop: 2 }}>
+                  <Text style={{ color: '#334155', fontSize: scaleWithAppTextScale(12), marginTop: 2 }}>
                     Jurusan: {record.major?.name || '-'}
                   </Text>
                   {mode === 'APPROVAL' ? (
-                    <Text style={{ color: '#334155', fontSize: 12, marginTop: 2 }}>
+                    <Text style={{ color: '#334155', fontSize: scaleWithAppTextScale(12), marginTop: 2 }}>
                       Pengaju: {record.owner?.name || '-'}
                     </Text>
                   ) : (
-                    <Text style={{ color: '#334155', fontSize: 12, marginTop: 2 }}>
+                    <Text style={{ color: '#334155', fontSize: scaleWithAppTextScale(12), marginTop: 2 }}>
                       Progress item: {doneItems}/{items.length}
                     </Text>
                   )}
-                  <Text style={{ color: '#64748b', fontSize: 11, marginTop: 4 }}>
+                  <Text style={{ color: '#64748b', fontSize: scaleWithAppTextScale(11), marginTop: 4 }}>
                     Dibuat: {formatDateTime(record.createdAt)}
                   </Text>
                   {record.feedback ? (
-                    <Text style={{ color: '#64748b', fontSize: 11, marginTop: 2 }}>Catatan: {record.feedback}</Text>
+                    <Text style={{ color: '#64748b', fontSize: scaleWithAppTextScale(11), marginTop: 2 }}>Catatan: {record.feedback}</Text>
                   ) : null}
                 </View>
 
@@ -1189,17 +1190,17 @@ export function TeacherWorkProgramModuleScreen({
                                 paddingVertical: 2,
                               }}
                             >
-                              <Text style={{ color: item.isCompleted ? '#166534' : '#1d4ed8', fontWeight: '700', fontSize: 11 }}>
+                              <Text style={{ color: item.isCompleted ? '#166534' : '#1d4ed8', fontWeight: '700', fontSize: scaleWithAppTextScale(11) }}>
                                 {item.isCompleted ? 'Selesai' : 'Proses'}
                               </Text>
                             </View>
                           </View>
 
-                          <Text style={{ color: '#475569', fontSize: 12, marginTop: 4 }}>
+                          <Text style={{ color: '#475569', fontSize: scaleWithAppTextScale(12), marginTop: 4 }}>
                             Target: {formatDate(item.targetDate)}
                           </Text>
                           {item.note ? (
-                            <Text style={{ color: '#64748b', fontSize: 12, marginTop: 2 }}>Catatan: {item.note}</Text>
+                            <Text style={{ color: '#64748b', fontSize: scaleWithAppTextScale(12), marginTop: 2 }}>Catatan: {item.note}</Text>
                           ) : null}
 
                           <View style={{ flexDirection: 'row', gap: 8, marginTop: 8 }}>
@@ -1374,7 +1375,7 @@ export function TeacherWorkProgramModuleScreen({
           }}
         >
           <Text style={{ color: BRAND_COLORS.textDark, fontWeight: '700', marginBottom: 6 }}>Anggaran & LPJ</Text>
-          <Text style={{ color: '#64748b', fontSize: 12, marginBottom: 8 }}>
+          <Text style={{ color: '#64748b', fontSize: scaleWithAppTextScale(12), marginBottom: 8 }}>
             Bagian ini dimuat terpisah agar halaman Program Kerja utama lebih ringan saat dibuka.
           </Text>
           <Pressable

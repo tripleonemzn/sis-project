@@ -12,6 +12,7 @@ import { getStandardPagePadding } from '../../../src/lib/ui/pageLayout';
 import { BRAND_COLORS } from '../../../src/config/brand';
 import { ENV } from '../../../src/config/env';
 import { tokenStorage } from '../../../src/lib/storage/tokenStorage';
+import { scaleWithAppTextScale } from '../../../src/theme/AppTextScaleProvider';
 
 function resolveWebUrl(path: string) {
   const webBaseUrl = ENV.API_BASE_URL.replace(/\/api\/?$/, '');
@@ -194,7 +195,7 @@ export default function GenericWebModuleScreen() {
   if (!moduleKey || !moduleUrl) {
     return (
       <ScrollView style={{ flex: 1, backgroundColor: '#f8fafc' }} contentContainerStyle={pagePadding}>
-        <Text style={{ fontSize: 20, fontWeight: '700', marginBottom: 8, color: BRAND_COLORS.textDark }}>
+        <Text style={{ fontSize: scaleWithAppTextScale(20), fontWeight: '700', marginBottom: 8, color: BRAND_COLORS.textDark }}>
           Modul Tidak Tersedia
         </Text>
         <QueryStateView type="error" message="Menu ini tidak tersedia untuk akun Anda saat ini." />
@@ -217,7 +218,7 @@ export default function GenericWebModuleScreen() {
   if (!hasNativeWebView) {
     return (
       <ScrollView style={{ flex: 1, backgroundColor: '#f8fafc' }} contentContainerStyle={pagePadding}>
-        <Text style={{ fontSize: 20, fontWeight: '700', marginBottom: 8, color: BRAND_COLORS.textDark }}>
+        <Text style={{ fontSize: scaleWithAppTextScale(20), fontWeight: '700', marginBottom: 8, color: BRAND_COLORS.textDark }}>
           {effectiveLabel}
         </Text>
         <QueryStateView
@@ -273,7 +274,7 @@ export default function GenericWebModuleScreen() {
           </Pressable>
 
           <View style={{ flex: 1 }}>
-            <Text numberOfLines={1} style={{ fontSize: 20, fontWeight: '700', color: BRAND_COLORS.textDark }}>
+            <Text numberOfLines={1} style={{ fontSize: scaleWithAppTextScale(20), fontWeight: '700', color: BRAND_COLORS.textDark }}>
               {effectiveLabel}
             </Text>
           </View>

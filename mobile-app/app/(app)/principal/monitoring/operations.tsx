@@ -12,6 +12,7 @@ import { teachingResourceProgramApi } from '../../../../src/features/learningRes
 import { principalApi } from '../../../../src/features/principal/principalApi';
 import { staffAdministrationApi } from '../../../../src/features/staff/staffAdministrationApi';
 import { getStandardPagePadding } from '../../../../src/lib/ui/pageLayout';
+import { scaleWithAppTextScale } from '../../../../src/theme/AppTextScaleProvider';
 
 function todayInput() {
   return new Date().toISOString().slice(0, 10);
@@ -66,9 +67,9 @@ function MonitoringCard({
         minHeight: 112,
       }}
     >
-      <Text style={{ color: '#64748b', fontSize: 11 }}>{title}</Text>
-      <Text style={{ color: BRAND_COLORS.textDark, fontWeight: '700', fontSize: 20, marginTop: 6 }}>{value}</Text>
-      <Text style={{ color: BRAND_COLORS.textMuted, fontSize: 12, marginTop: 4 }}>{subtitle}</Text>
+      <Text style={{ color: '#64748b', fontSize: scaleWithAppTextScale(11) }}>{title}</Text>
+      <Text style={{ color: BRAND_COLORS.textDark, fontWeight: '700', fontSize: scaleWithAppTextScale(20), marginTop: 6 }}>{value}</Text>
+      <Text style={{ color: BRAND_COLORS.textMuted, fontSize: scaleWithAppTextScale(12), marginTop: 4 }}>{subtitle}</Text>
     </View>
   );
 
@@ -255,7 +256,7 @@ export default function PrincipalMonitoringOperationsScreen() {
   if (user?.role !== 'PRINCIPAL') {
     return (
       <ScrollView style={{ flex: 1, backgroundColor: '#f8fafc' }} contentContainerStyle={pagePadding}>
-        <Text style={{ fontSize: 20, fontWeight: '700', marginBottom: 8 }}>Monitoring</Text>
+        <Text style={{ fontSize: scaleWithAppTextScale(20), fontWeight: '700', marginBottom: 8 }}>Monitoring</Text>
         <QueryStateView type="error" message="Halaman ini khusus untuk role kepala sekolah." />
       </ScrollView>
     );
@@ -275,7 +276,7 @@ export default function PrincipalMonitoringOperationsScreen() {
         />
       }
     >
-      <Text style={{ fontSize: 20, fontWeight: '700', color: BRAND_COLORS.textDark, marginBottom: 6 }}>
+      <Text style={{ fontSize: scaleWithAppTextScale(20), fontWeight: '700', color: BRAND_COLORS.textDark, marginBottom: 6 }}>
         Monitoring
       </Text>
       <Text style={{ color: BRAND_COLORS.textMuted, marginBottom: 12 }}>
@@ -309,7 +310,7 @@ export default function PrincipalMonitoringOperationsScreen() {
             backgroundColor: '#fff',
           }}
         />
-        <Text style={{ color: BRAND_COLORS.textMuted, fontSize: 11, marginTop: 6 }}>
+        <Text style={{ color: BRAND_COLORS.textMuted, fontSize: scaleWithAppTextScale(11), marginTop: 6 }}>
           Gunakan format tanggal `YYYY-MM-DD` agar ringkasan berita acara ujian sesuai hari yang dipilih.
         </Text>
       </View>
@@ -407,7 +408,7 @@ export default function PrincipalMonitoringOperationsScreen() {
                   }}
                 >
                   <Text style={{ color: BRAND_COLORS.textDark, fontWeight: '700' }}>{item.title}</Text>
-                  <Text style={{ color: BRAND_COLORS.textMuted, fontSize: 12, marginTop: 4 }}>{item.subtitle}</Text>
+                  <Text style={{ color: BRAND_COLORS.textMuted, fontSize: scaleWithAppTextScale(12), marginTop: 4 }}>{item.subtitle}</Text>
                 </Pressable>
               ))
             ) : (
@@ -433,10 +434,10 @@ export default function PrincipalMonitoringOperationsScreen() {
                   }}
                 >
                   <Text style={{ color: BRAND_COLORS.textDark, fontWeight: '700' }}>{row.studentName}</Text>
-                  <Text style={{ color: BRAND_COLORS.textMuted, fontSize: 12, marginTop: 3 }}>
+                  <Text style={{ color: BRAND_COLORS.textMuted, fontSize: scaleWithAppTextScale(12), marginTop: 3 }}>
                     {row.className || '-'} • {row.nis || row.nisn || '-'}
                   </Text>
-                  <Text style={{ color: '#7c3aed', fontSize: 12, marginTop: 4 }}>
+                  <Text style={{ color: '#7c3aed', fontSize: scaleWithAppTextScale(12), marginTop: 4 }}>
                     {row.negativeCaseCount} kasus negatif • {row.totalNegativePoint} poin
                   </Text>
                 </View>
@@ -475,10 +476,10 @@ export default function PrincipalMonitoringOperationsScreen() {
                   }}
                 >
                   <Text style={{ color: BRAND_COLORS.textDark, fontWeight: '700' }}>{entry.title}</Text>
-                  <Text style={{ color: BRAND_COLORS.textMuted, fontSize: 12, marginTop: 3 }}>
+                  <Text style={{ color: BRAND_COLORS.textMuted, fontSize: scaleWithAppTextScale(12), marginTop: 3 }}>
                     {entry.teacher?.name || '-'} • {entry.programCode}
                   </Text>
-                  <Text style={{ color: '#1d4ed8', fontSize: 12, marginTop: 4 }}>{entry.status}</Text>
+                  <Text style={{ color: '#1d4ed8', fontSize: scaleWithAppTextScale(12), marginTop: 4 }}>{entry.status}</Text>
                 </View>
               ))
             ) : (
@@ -517,10 +518,10 @@ export default function PrincipalMonitoringOperationsScreen() {
                   <Text style={{ color: BRAND_COLORS.textDark, fontWeight: '700' }}>
                     {letter.title || letter.recipientName}
                   </Text>
-                  <Text style={{ color: BRAND_COLORS.textMuted, fontSize: 12, marginTop: 3 }}>
+                  <Text style={{ color: BRAND_COLORS.textMuted, fontSize: scaleWithAppTextScale(12), marginTop: 3 }}>
                     {letter.letterNumber} • {letter.type}
                   </Text>
-                  <Text style={{ color: BRAND_COLORS.textMuted, fontSize: 12, marginTop: 2 }}>
+                  <Text style={{ color: BRAND_COLORS.textMuted, fontSize: scaleWithAppTextScale(12), marginTop: 2 }}>
                     Penerima: {letter.recipientName} • {formatDate(letter.createdAt)}
                   </Text>
                 </View>

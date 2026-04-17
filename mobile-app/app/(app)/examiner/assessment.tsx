@@ -16,6 +16,7 @@ import { ExaminerSchemeCriteria } from '../../../src/features/examiner/types';
 import { getStandardPagePadding } from '../../../src/lib/ui/pageLayout';
 import { BRAND_COLORS } from '../../../src/config/brand';
 import { notifyApiError, notifySuccess } from '../../../src/lib/ui/feedback';
+import { scaleWithAppTextScale } from '../../../src/theme/AppTextScaleProvider';
 
 type ScoreMap = Record<number, Record<string, number>>;
 type StudentClassWithLevel = NonNullable<AdminUser['studentClass']> & { level?: string | null };
@@ -298,7 +299,7 @@ export default function ExaminerAssessmentScreen() {
   if (!isExaminer) {
     return (
       <ScrollView style={{ flex: 1, backgroundColor: '#f8fafc' }} contentContainerStyle={pagePadding}>
-        <Text style={{ fontSize: 20, fontWeight: '700', marginBottom: 8 }}>Penilaian UKK</Text>
+        <Text style={{ fontSize: scaleWithAppTextScale(20), fontWeight: '700', marginBottom: 8 }}>Penilaian UKK</Text>
         <QueryStateView type="error" message="Halaman ini khusus untuk role penguji." />
         <Pressable
           onPress={() => router.replace('/home')}
@@ -340,7 +341,7 @@ export default function ExaminerAssessmentScreen() {
           />
         }
       >
-        <Text style={{ fontSize: 20, fontWeight: '700', marginBottom: 6, color: BRAND_COLORS.textDark }}>
+        <Text style={{ fontSize: scaleWithAppTextScale(20), fontWeight: '700', marginBottom: 6, color: BRAND_COLORS.textDark }}>
           Penilaian UKK
         </Text>
         <Text style={{ color: BRAND_COLORS.textMuted, marginBottom: 12 }}>
@@ -373,7 +374,7 @@ export default function ExaminerAssessmentScreen() {
                     marginBottom: 10,
                   }}
                 >
-                  <Text style={{ color: BRAND_COLORS.textDark, fontWeight: '700', fontSize: 16 }}>
+                  <Text style={{ color: BRAND_COLORS.textDark, fontWeight: '700', fontSize: scaleWithAppTextScale(16) }}>
                     {scheme.name}
                   </Text>
                   <Text style={{ color: BRAND_COLORS.textMuted, marginTop: 3 }}>
@@ -463,10 +464,10 @@ export default function ExaminerAssessmentScreen() {
         }}
       >
         <Feather name="arrow-left" size={14} color={BRAND_COLORS.textMuted} />
-        <Text style={{ color: BRAND_COLORS.textMuted, fontWeight: '700', fontSize: 12 }}>Daftar Skema</Text>
+        <Text style={{ color: BRAND_COLORS.textMuted, fontWeight: '700', fontSize: scaleWithAppTextScale(12) }}>Daftar Skema</Text>
       </Pressable>
 
-      <Text style={{ fontSize: 20, fontWeight: '700', marginBottom: 6, color: BRAND_COLORS.textDark }}>
+      <Text style={{ fontSize: scaleWithAppTextScale(20), fontWeight: '700', marginBottom: 6, color: BRAND_COLORS.textDark }}>
         {selectedSchemeName}
       </Text>
       <Text style={{ color: BRAND_COLORS.textMuted, marginBottom: 12 }}>
@@ -553,7 +554,7 @@ export default function ExaminerAssessmentScreen() {
           ))}
         </View>
 
-        <Text style={{ color: BRAND_COLORS.textMuted, fontSize: 12 }}>
+        <Text style={{ color: BRAND_COLORS.textMuted, fontSize: scaleWithAppTextScale(12) }}>
           Siswa terfilter: <Text style={{ color: BRAND_COLORS.textDark, fontWeight: '700' }}>{filteredStudents.length}</Text> • Maks total skor:{' '}
           <Text style={{ color: BRAND_COLORS.textDark, fontWeight: '700' }}>{maxTotalScore}</Text>
         </Text>
@@ -589,8 +590,8 @@ export default function ExaminerAssessmentScreen() {
                     marginBottom: 10,
                   }}
                 >
-                  <Text style={{ color: BRAND_COLORS.textDark, fontWeight: '700', fontSize: 15 }}>{student.name}</Text>
-                  <Text style={{ color: BRAND_COLORS.textMuted, fontSize: 12, marginTop: 2 }}>
+                  <Text style={{ color: BRAND_COLORS.textDark, fontWeight: '700', fontSize: scaleWithAppTextScale(15) }}>{student.name}</Text>
+                  <Text style={{ color: BRAND_COLORS.textMuted, fontSize: scaleWithAppTextScale(12), marginTop: 2 }}>
                     {student.studentClass?.name || '-'} • NIS: {student.nis || '-'}
                   </Text>
 
@@ -610,7 +611,7 @@ export default function ExaminerAssessmentScreen() {
                           >
                             <View style={{ flex: 1 }}>
                               <Text style={{ color: BRAND_COLORS.textDark, fontWeight: '600' }}>{item.name}</Text>
-                              <Text style={{ color: BRAND_COLORS.textMuted, fontSize: 11 }}>
+                              <Text style={{ color: BRAND_COLORS.textMuted, fontSize: scaleWithAppTextScale(11) }}>
                                 Maks: {item.maxScore}
                               </Text>
                             </View>

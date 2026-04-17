@@ -12,6 +12,7 @@ import { useAuth } from '../../../src/features/auth/AuthProvider';
 import { AdminBkkApplication, AdminBkkApplicationStatus, adminApi } from '../../../src/features/admin/adminApi';
 import { BRAND_COLORS } from '../../../src/config/brand';
 import { getStandardPagePadding } from '../../../src/lib/ui/pageLayout';
+import { scaleWithAppTextScale } from '../../../src/theme/AppTextScaleProvider';
 
 type StatusFilter = 'ALL' | 'REVIEWING' | 'SHORTLISTED' | 'PARTNER_INTERVIEW' | 'HIRED' | 'REJECTED';
 
@@ -94,7 +95,7 @@ function Chip({
         paddingVertical: 5,
       }}
     >
-      <Text style={{ color: meta.text, fontSize: 11, fontWeight: '700' }}>{label}</Text>
+      <Text style={{ color: meta.text, fontSize: scaleWithAppTextScale(11), fontWeight: '700' }}>{label}</Text>
     </View>
   );
 }
@@ -196,7 +197,7 @@ export default function AdminBkkApplicationsScreen() {
             <Feather name="clipboard" size={20} color={BRAND_COLORS.navy} />
           </View>
           <View style={{ flex: 1 }}>
-            <Text style={{ color: BRAND_COLORS.textDark, fontWeight: '800', fontSize: 20 }}>Lamaran BKK</Text>
+            <Text style={{ color: BRAND_COLORS.textDark, fontWeight: '800', fontSize: scaleWithAppTextScale(20) }}>Lamaran BKK</Text>
             <Text style={{ color: BRAND_COLORS.textMuted, marginTop: 4 }}>
               Pantau akun pelamar, status pipeline BKK, dan daftar lamaran terbaru langsung dari admin mobile.
             </Text>
@@ -254,7 +255,7 @@ export default function AdminBkkApplicationsScreen() {
           gap: 10,
         }}
       >
-        <Text style={{ color: BRAND_COLORS.textDark, fontWeight: '700', fontSize: 16 }}>Aksi Cepat Admin</Text>
+        <Text style={{ color: BRAND_COLORS.textDark, fontWeight: '700', fontSize: scaleWithAppTextScale(16) }}>Aksi Cepat Admin</Text>
         <Pressable
           onPress={() => router.push('/admin/user-management?role=UMUM' as never)}
           style={{
@@ -266,7 +267,7 @@ export default function AdminBkkApplicationsScreen() {
           }}
         >
           <Text style={{ color: BRAND_COLORS.textDark, fontWeight: '700' }}>Kelola Akun Pelamar</Text>
-          <Text style={{ color: BRAND_COLORS.textMuted, fontSize: 12, marginTop: 4 }}>
+          <Text style={{ color: BRAND_COLORS.textMuted, fontSize: scaleWithAppTextScale(12), marginTop: 4 }}>
             Verifikasi akun, cek identitas, dan rapikan data pelamar BKK langsung dari user management native.
           </Text>
         </Pressable>
@@ -281,7 +282,7 @@ export default function AdminBkkApplicationsScreen() {
           }}
         >
           <Text style={{ color: '#92400e', fontWeight: '700' }}>Tinjau Pelamar Pending</Text>
-          <Text style={{ color: '#a16207', fontSize: 12, marginTop: 4 }}>
+          <Text style={{ color: '#a16207', fontSize: scaleWithAppTextScale(12), marginTop: 4 }}>
             Ada {applicantSummary.pending} akun pelamar yang masih menunggu verifikasi admin.
           </Text>
         </Pressable>
@@ -297,7 +298,7 @@ export default function AdminBkkApplicationsScreen() {
           marginBottom: 14,
         }}
       >
-        <Text style={{ color: BRAND_COLORS.textDark, fontWeight: '700', fontSize: 16, marginBottom: 10 }}>Filter Status</Text>
+        <Text style={{ color: BRAND_COLORS.textDark, fontWeight: '700', fontSize: scaleWithAppTextScale(16), marginBottom: 10 }}>Filter Status</Text>
         <MobileSelectField
           label="Status Lamaran"
           value={statusFilter}
@@ -316,8 +317,8 @@ export default function AdminBkkApplicationsScreen() {
           padding: 14,
         }}
       >
-        <Text style={{ color: BRAND_COLORS.textDark, fontWeight: '700', fontSize: 16 }}>Lamaran Terbaru</Text>
-        <Text style={{ color: BRAND_COLORS.textMuted, fontSize: 12, marginTop: 4, marginBottom: 12 }}>
+        <Text style={{ color: BRAND_COLORS.textDark, fontWeight: '700', fontSize: scaleWithAppTextScale(16) }}>Lamaran Terbaru</Text>
+        <Text style={{ color: BRAND_COLORS.textMuted, fontSize: scaleWithAppTextScale(12), marginTop: 4, marginBottom: 12 }}>
           Menampilkan {applicationsQuery.data?.applications.length || 0} data terbaru dari total {applicationsQuery.data?.total || 0} lamaran.
         </Text>
 
@@ -364,10 +365,10 @@ export default function AdminBkkApplicationsScreen() {
                 >
                   <View style={{ flexDirection: 'row', justifyContent: 'space-between', alignItems: 'flex-start', gap: 10 }}>
                     <View style={{ flex: 1 }}>
-                      <Text style={{ color: BRAND_COLORS.textDark, fontWeight: '800', fontSize: 15 }}>
+                      <Text style={{ color: BRAND_COLORS.textDark, fontWeight: '800', fontSize: scaleWithAppTextScale(15) }}>
                         {application.applicant.name}
                       </Text>
-                      <Text style={{ color: BRAND_COLORS.textMuted, fontSize: 12, marginTop: 2 }}>
+                      <Text style={{ color: BRAND_COLORS.textMuted, fontSize: scaleWithAppTextScale(12), marginTop: 2 }}>
                         @{application.applicant.username}
                       </Text>
                     </View>
@@ -383,19 +384,19 @@ export default function AdminBkkApplicationsScreen() {
                   </View>
 
                   <View style={{ marginTop: 10, gap: 4 }}>
-                    <Text style={{ color: '#475569', fontSize: 12 }}>
+                    <Text style={{ color: '#475569', fontSize: scaleWithAppTextScale(12) }}>
                       Dikirim: {formatDateTime(application.appliedAt)}
                     </Text>
                     {application.profile?.schoolName ? (
-                      <Text style={{ color: '#475569', fontSize: 12 }}>
+                      <Text style={{ color: '#475569', fontSize: scaleWithAppTextScale(12) }}>
                         Sekolah asal: {application.profile.schoolName}
                       </Text>
                     ) : null}
                     {application.profile?.major ? (
-                      <Text style={{ color: '#475569', fontSize: 12 }}>Jurusan: {application.profile.major}</Text>
+                      <Text style={{ color: '#475569', fontSize: scaleWithAppTextScale(12) }}>Jurusan: {application.profile.major}</Text>
                     ) : null}
                     {application.partnerReferenceCode ? (
-                      <Text style={{ color: '#475569', fontSize: 12 }}>
+                      <Text style={{ color: '#475569', fontSize: scaleWithAppTextScale(12) }}>
                         Batch shortlist: {application.partnerReferenceCode}
                       </Text>
                     ) : null}
@@ -412,8 +413,8 @@ export default function AdminBkkApplicationsScreen() {
                         padding: 12,
                       }}
                     >
-                      <Text style={{ color: '#475569', fontSize: 11, fontWeight: '700', marginBottom: 4 }}>Catatan Reviewer</Text>
-                      <Text style={{ color: BRAND_COLORS.textDark, fontSize: 12 }}>{application.reviewerNotes}</Text>
+                      <Text style={{ color: '#475569', fontSize: scaleWithAppTextScale(11), fontWeight: '700', marginBottom: 4 }}>Catatan Reviewer</Text>
+                      <Text style={{ color: BRAND_COLORS.textDark, fontSize: scaleWithAppTextScale(12) }}>{application.reviewerNotes}</Text>
                     </View>
                   ) : null}
                 </View>

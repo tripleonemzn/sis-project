@@ -10,6 +10,7 @@ import { academicYearApi } from '../../../../src/features/academicYear/academicY
 import { useAuth } from '../../../../src/features/auth/AuthProvider';
 import { principalApi } from '../../../../src/features/principal/principalApi';
 import { getStandardPagePadding } from '../../../../src/lib/ui/pageLayout';
+import { scaleWithAppTextScale } from '../../../../src/theme/AppTextScaleProvider';
 
 export default function PrincipalBpBkMonitoringScreen() {
   const insets = useSafeAreaInsets();
@@ -60,7 +61,7 @@ export default function PrincipalBpBkMonitoringScreen() {
   if (user?.role !== 'PRINCIPAL') {
     return (
       <ScrollView style={{ flex: 1, backgroundColor: '#f8fafc' }} contentContainerStyle={pagePadding}>
-        <Text style={{ fontSize: 20, fontWeight: '700', marginBottom: 8 }}>Ringkasan BP/BK</Text>
+        <Text style={{ fontSize: scaleWithAppTextScale(20), fontWeight: '700', marginBottom: 8 }}>Ringkasan BP/BK</Text>
         <QueryStateView type="error" message="Halaman ini khusus untuk role kepala sekolah." />
       </ScrollView>
     );
@@ -82,7 +83,7 @@ export default function PrincipalBpBkMonitoringScreen() {
         />
       }
     >
-      <Text style={{ fontSize: 20, fontWeight: '700', color: BRAND_COLORS.textDark, marginBottom: 6 }}>
+      <Text style={{ fontSize: scaleWithAppTextScale(20), fontWeight: '700', color: BRAND_COLORS.textDark, marginBottom: 6 }}>
         Ringkasan BP/BK
       </Text>
       <Text style={{ color: BRAND_COLORS.textMuted, marginBottom: 12 }}>
@@ -132,7 +133,7 @@ export default function PrincipalBpBkMonitoringScreen() {
                   paddingVertical: 8,
                 }}
               >
-                <Text style={{ color: active ? BRAND_COLORS.navy : BRAND_COLORS.textMuted, fontWeight: '700', fontSize: 12 }}>
+                <Text style={{ color: active ? BRAND_COLORS.navy : BRAND_COLORS.textMuted, fontWeight: '700', fontSize: scaleWithAppTextScale(12) }}>
                   {item === 'ALL' ? 'Semua Status' : item}
                 </Text>
               </Pressable>
@@ -165,9 +166,9 @@ export default function PrincipalBpBkMonitoringScreen() {
                     padding: 10,
                   }}
                 >
-                  <Text style={{ color: '#64748b', fontSize: 11 }}>{String(title)}</Text>
-                  <Text style={{ color: BRAND_COLORS.textDark, fontWeight: '700', fontSize: 20, marginTop: 5 }}>{Number(value)}</Text>
-                  <Text style={{ color: BRAND_COLORS.textMuted, fontSize: 11, marginTop: 4 }}>{String(subtitle)}</Text>
+                  <Text style={{ color: '#64748b', fontSize: scaleWithAppTextScale(11) }}>{String(title)}</Text>
+                  <Text style={{ color: BRAND_COLORS.textDark, fontWeight: '700', fontSize: scaleWithAppTextScale(20), marginTop: 5 }}>{Number(value)}</Text>
+                  <Text style={{ color: BRAND_COLORS.textMuted, fontSize: scaleWithAppTextScale(11), marginTop: 4 }}>{String(subtitle)}</Text>
                 </View>
               </View>
             ))}
@@ -191,10 +192,10 @@ export default function PrincipalBpBkMonitoringScreen() {
                   }}
                 >
                   <Text style={{ color: BRAND_COLORS.textDark, fontWeight: '700' }}>{row.studentName}</Text>
-                  <Text style={{ color: BRAND_COLORS.textMuted, fontSize: 12, marginTop: 3 }}>
+                  <Text style={{ color: BRAND_COLORS.textMuted, fontSize: scaleWithAppTextScale(12), marginTop: 3 }}>
                     {row.className || '-'} • {row.nis || row.nisn || '-'}
                   </Text>
-                  <Text style={{ color: '#7c3aed', fontSize: 12, marginTop: 4 }}>
+                  <Text style={{ color: '#7c3aed', fontSize: scaleWithAppTextScale(12), marginTop: 4 }}>
                     {row.negativeCaseCount} kasus negatif • {row.totalNegativePoint} poin
                   </Text>
                 </View>
@@ -233,13 +234,13 @@ export default function PrincipalBpBkMonitoringScreen() {
                   }}
                 >
                   <Text style={{ color: BRAND_COLORS.textDark, fontWeight: '700' }}>{row.student.name}</Text>
-                  <Text style={{ color: BRAND_COLORS.textMuted, fontSize: 12, marginTop: 3 }}>
+                  <Text style={{ color: BRAND_COLORS.textMuted, fontSize: scaleWithAppTextScale(12), marginTop: 3 }}>
                     {row.student.className || '-'} • {row.student.nis || row.student.nisn || '-'}
                   </Text>
-                  <Text style={{ color: '#be123c', fontSize: 12, marginTop: 4 }}>
+                  <Text style={{ color: '#be123c', fontSize: scaleWithAppTextScale(12), marginTop: 4 }}>
                     {row.status} • {row.issueSummary || 'Tanpa ringkasan'}
                   </Text>
-                  <Text style={{ color: BRAND_COLORS.textMuted, fontSize: 12, marginTop: 4 }}>
+                  <Text style={{ color: BRAND_COLORS.textMuted, fontSize: scaleWithAppTextScale(12), marginTop: 4 }}>
                     Konselor: {row.counselor?.name || '-'}
                   </Text>
                 </View>

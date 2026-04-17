@@ -13,6 +13,7 @@ import { useAuth } from '../../../../src/features/auth/AuthProvider';
 import { principalApi } from '../../../../src/features/principal/principalApi';
 import { PrincipalProctorReportRow } from '../../../../src/features/principal/types';
 import { getStandardPagePadding } from '../../../../src/lib/ui/pageLayout';
+import { scaleWithAppTextScale } from '../../../../src/theme/AppTextScaleProvider';
 
 function todayInput() {
   return new Date().toISOString().slice(0, 10);
@@ -96,7 +97,7 @@ export default function PrincipalExamReportsScreen() {
   if (user?.role !== 'PRINCIPAL') {
     return (
       <ScrollView style={{ flex: 1, backgroundColor: '#f8fafc' }} contentContainerStyle={pagePadding}>
-        <Text style={{ fontSize: 20, fontWeight: '700', marginBottom: 8 }}>Berita Acara Ujian</Text>
+        <Text style={{ fontSize: scaleWithAppTextScale(20), fontWeight: '700', marginBottom: 8 }}>Berita Acara Ujian</Text>
         <QueryStateView type="error" message="Halaman ini khusus untuk role kepala sekolah." />
       </ScrollView>
     );
@@ -116,7 +117,7 @@ export default function PrincipalExamReportsScreen() {
         />
       }
     >
-      <Text style={{ fontSize: 20, fontWeight: '700', color: BRAND_COLORS.textDark, marginBottom: 6 }}>
+      <Text style={{ fontSize: scaleWithAppTextScale(20), fontWeight: '700', color: BRAND_COLORS.textDark, marginBottom: 6 }}>
         Berita Acara Ujian
       </Text>
       <Text style={{ color: BRAND_COLORS.textMuted, marginBottom: 12 }}>
@@ -222,21 +223,21 @@ export default function PrincipalExamReportsScreen() {
               }}
             >
               <Text style={{ color: BRAND_COLORS.textDark, fontWeight: '700' }}>{row.room || 'Ruang belum ditentukan'}</Text>
-              <Text style={{ color: BRAND_COLORS.textMuted, fontSize: 12, marginTop: 4 }}>
+              <Text style={{ color: BRAND_COLORS.textMuted, fontSize: scaleWithAppTextScale(12), marginTop: 4 }}>
                 {formatDate(row.startTime)} • {formatTime(row.startTime)} - {formatTime(row.endTime)}
                 {row.sessionLabel ? ` • ${row.sessionLabel}` : ''}
                 {row.examType ? ` • ${row.examType}` : ''}
               </Text>
-              <Text style={{ color: BRAND_COLORS.textMuted, fontSize: 12, marginTop: 4 }}>
+              <Text style={{ color: BRAND_COLORS.textMuted, fontSize: scaleWithAppTextScale(12), marginTop: 4 }}>
                 Kelas: {row.classNames.length > 0 ? row.classNames.join(', ') : '-'}
               </Text>
               <Text style={{ color: BRAND_COLORS.textDark, fontWeight: '700', marginTop: 8 }}>
                 Hadir {row.presentParticipants}/{row.totalParticipants} • Tidak hadir {row.absentParticipants}
               </Text>
-              <Text style={{ color: BRAND_COLORS.textMuted, fontSize: 12, marginTop: 4 }}>
+              <Text style={{ color: BRAND_COLORS.textMuted, fontSize: scaleWithAppTextScale(12), marginTop: 4 }}>
                 Pengawas: {row.report?.proctor?.name || 'Belum submit'}
               </Text>
-              <Text style={{ color: BRAND_COLORS.textMuted, fontSize: 12, marginTop: 4 }}>
+              <Text style={{ color: BRAND_COLORS.textMuted, fontSize: scaleWithAppTextScale(12), marginTop: 4 }}>
                 Catatan: {row.report?.notes || row.report?.incident || '-'}
               </Text>
 
@@ -274,10 +275,10 @@ export default function PrincipalExamReportsScreen() {
                       }}
                     >
                       <Text style={{ color: BRAND_COLORS.textDark, fontWeight: '700' }}>{student.name}</Text>
-                      <Text style={{ color: BRAND_COLORS.textMuted, fontSize: 12, marginTop: 3 }}>
+                      <Text style={{ color: BRAND_COLORS.textMuted, fontSize: scaleWithAppTextScale(12), marginTop: 3 }}>
                         {student.className || '-'} • {student.nis || '-'}
                       </Text>
-                      <Text style={{ color: '#be123c', fontSize: 12, marginTop: 4 }}>
+                      <Text style={{ color: '#be123c', fontSize: scaleWithAppTextScale(12), marginTop: 4 }}>
                         {student.absentReason || 'Tanpa keterangan'}
                       </Text>
                     </View>

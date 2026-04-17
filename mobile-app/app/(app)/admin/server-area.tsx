@@ -3,6 +3,7 @@ import Constants from 'expo-constants';
 import * as Updates from 'expo-updates';
 import { Redirect, useLocalSearchParams, useRouter } from 'expo-router';
 import { useQuery } from '@tanstack/react-query';
+import { scaleLineHeightWithAppTextScale, scaleWithAppTextScale } from '../../../src/theme/AppTextScaleProvider';
 import {
   ActivityIndicator,
   Pressable,
@@ -172,7 +173,7 @@ function StatusPill(props: { tone: 'success' | 'warning' | 'danger'; label: stri
         borderColor,
       }}
     >
-      <Text style={{ color: textColor, fontSize: 11, fontWeight: '600' }}>{props.label}</Text>
+      <Text style={{ color: textColor, fontSize: scaleWithAppTextScale(11), fontWeight: '600' }}>{props.label}</Text>
     </View>
   );
 }
@@ -302,7 +303,7 @@ export default function AdminServerAreaScreen() {
   if (user?.role !== 'ADMIN') {
     return (
       <ScrollView style={{ flex: 1, backgroundColor: '#f8fafc' }} contentContainerStyle={pagePadding}>
-        <Text style={{ fontSize: 20, fontWeight: '700', color: BRAND_COLORS.textDark, marginBottom: 8 }}>
+        <Text style={{ fontSize: scaleWithAppTextScale(20), fontWeight: '700', color: BRAND_COLORS.textDark, marginBottom: 8 }}>
           Area Server
         </Text>
         <QueryStateView type="error" message="Halaman ini khusus untuk role admin." />
@@ -332,7 +333,7 @@ export default function AdminServerAreaScreen() {
           style={{
             marginLeft: 10,
             color: BRAND_COLORS.textDark,
-            fontSize: 20,
+            fontSize: scaleWithAppTextScale(20),
             fontWeight: '700',
           }}
         >
@@ -352,7 +353,7 @@ export default function AdminServerAreaScreen() {
             borderColor: '#c7d2fe',
           }}
         >
-          <Text style={{ fontSize: 12, color: '#4b5563', marginBottom: 4 }}>Status Server</Text>
+          <Text style={{ fontSize: scaleWithAppTextScale(12), color: '#4b5563', marginBottom: 4 }}>Status Server</Text>
           <StatusPill tone={status.tone} label={status.label} />
         </View>
       )}
@@ -391,7 +392,7 @@ export default function AdminServerAreaScreen() {
             >
               <Text
                 style={{
-                  fontSize: 13,
+                  fontSize: scaleWithAppTextScale(13),
                   fontWeight: isActive ? '700' : '500',
                   color: isActive ? '#2563eb' : '#6b7280',
                 }}
@@ -441,7 +442,7 @@ export default function AdminServerAreaScreen() {
               padding: 14,
             }}
           >
-            <Text style={{ fontSize: 13, color: '#6b7280' }}>Info server belum tersedia.</Text>
+            <Text style={{ fontSize: scaleWithAppTextScale(13), color: '#6b7280' }}>Info server belum tersedia.</Text>
           </View>
         );
       }
@@ -461,18 +462,18 @@ export default function AdminServerAreaScreen() {
               padding: 14,
             }}
           >
-            <Text style={{ fontSize: 12, color: '#6b7280', marginBottom: 4 }}>Sistem Operasi</Text>
-            <Text style={{ fontSize: 14, color: '#111827', fontWeight: '600', marginBottom: 8 }}>
+            <Text style={{ fontSize: scaleWithAppTextScale(12), color: '#6b7280', marginBottom: 4 }}>Sistem Operasi</Text>
+            <Text style={{ fontSize: scaleWithAppTextScale(14), color: '#111827', fontWeight: '600', marginBottom: 8 }}>
               {os.distro || `${os.type} ${os.release}`}
             </Text>
-            <Text style={{ fontSize: 12, color: '#6b7280' }}>Hostname</Text>
-            <Text style={{ fontSize: 13, color: '#111827', marginBottom: 4 }}>{os.hostname}</Text>
-            <Text style={{ fontSize: 12, color: '#6b7280' }}>Platform</Text>
-            <Text style={{ fontSize: 13, color: '#111827', marginBottom: 4 }}>
+            <Text style={{ fontSize: scaleWithAppTextScale(12), color: '#6b7280' }}>Hostname</Text>
+            <Text style={{ fontSize: scaleWithAppTextScale(13), color: '#111827', marginBottom: 4 }}>{os.hostname}</Text>
+            <Text style={{ fontSize: scaleWithAppTextScale(12), color: '#6b7280' }}>Platform</Text>
+            <Text style={{ fontSize: scaleWithAppTextScale(13), color: '#111827', marginBottom: 4 }}>
               {os.platform} ({os.arch})
             </Text>
-            <Text style={{ fontSize: 12, color: '#6b7280' }}>Uptime</Text>
-            <Text style={{ fontSize: 13, color: '#111827' }}>{formatDuration(os.uptimeSeconds)}</Text>
+            <Text style={{ fontSize: scaleWithAppTextScale(12), color: '#6b7280' }}>Uptime</Text>
+            <Text style={{ fontSize: scaleWithAppTextScale(13), color: '#111827' }}>{formatDuration(os.uptimeSeconds)}</Text>
           </View>
 
           <View
@@ -484,14 +485,14 @@ export default function AdminServerAreaScreen() {
               padding: 14,
             }}
           >
-            <Text style={{ fontSize: 12, color: '#6b7280', marginBottom: 4 }}>CPU</Text>
-            <Text style={{ fontSize: 14, color: '#111827', fontWeight: '600', marginBottom: 6 }}>
+            <Text style={{ fontSize: scaleWithAppTextScale(12), color: '#6b7280', marginBottom: 4 }}>CPU</Text>
+            <Text style={{ fontSize: scaleWithAppTextScale(14), color: '#111827', fontWeight: '600', marginBottom: 6 }}>
               {cpu.model || '-'}
             </Text>
-            <Text style={{ fontSize: 12, color: '#6b7280' }}>Core</Text>
-            <Text style={{ fontSize: 13, color: '#111827', marginBottom: 4 }}>{cpu.cores}</Text>
-            <Text style={{ fontSize: 12, color: '#6b7280' }}>Kecepatan</Text>
-            <Text style={{ fontSize: 13, color: '#111827' }}>
+            <Text style={{ fontSize: scaleWithAppTextScale(12), color: '#6b7280' }}>Core</Text>
+            <Text style={{ fontSize: scaleWithAppTextScale(13), color: '#111827', marginBottom: 4 }}>{cpu.cores}</Text>
+            <Text style={{ fontSize: scaleWithAppTextScale(12), color: '#6b7280' }}>Kecepatan</Text>
+            <Text style={{ fontSize: scaleWithAppTextScale(13), color: '#111827' }}>
               {cpu.speedMHz ? `${cpu.speedMHz} MHz` : '-'}
             </Text>
           </View>
@@ -505,14 +506,14 @@ export default function AdminServerAreaScreen() {
               padding: 14,
             }}
           >
-            <Text style={{ fontSize: 12, color: '#6b7280', marginBottom: 4 }}>Memori</Text>
-            <Text style={{ fontSize: 13, color: '#111827', marginBottom: 4 }}>
+            <Text style={{ fontSize: scaleWithAppTextScale(12), color: '#6b7280', marginBottom: 4 }}>Memori</Text>
+            <Text style={{ fontSize: scaleWithAppTextScale(13), color: '#111827', marginBottom: 4 }}>
               Total {formatBytes(memory.totalBytes)}
             </Text>
-            <Text style={{ fontSize: 13, color: '#111827', marginBottom: 4 }}>
+            <Text style={{ fontSize: scaleWithAppTextScale(13), color: '#111827', marginBottom: 4 }}>
               Terpakai {formatBytes(memory.usedBytes)} ({formatPercent(memory.usedPercent)})
             </Text>
-            <Text style={{ fontSize: 13, color: '#111827' }}>
+            <Text style={{ fontSize: scaleWithAppTextScale(13), color: '#111827' }}>
               Tersisa {formatBytes(memory.freeBytes)}
             </Text>
           </View>
@@ -533,14 +534,14 @@ export default function AdminServerAreaScreen() {
             padding: 14,
           }}
         >
-          <Text style={{ fontSize: 12, color: '#6b7280', marginBottom: 4 }}>Aplikasi Mobile</Text>
-          <Text style={{ fontSize: 13, color: '#111827', marginBottom: 4 }}>
+          <Text style={{ fontSize: scaleWithAppTextScale(12), color: '#6b7280', marginBottom: 4 }}>Aplikasi Mobile</Text>
+          <Text style={{ fontSize: scaleWithAppTextScale(13), color: '#111827', marginBottom: 4 }}>
             Versi aplikasi: {appVersion || '-'}
           </Text>
-          <Text style={{ fontSize: 13, color: '#111827', marginBottom: 4 }}>
+          <Text style={{ fontSize: scaleWithAppTextScale(13), color: '#111827', marginBottom: 4 }}>
             Channel update OTA: {updateChannel}
           </Text>
-          <Text style={{ fontSize: 12, color: '#6b7280' }}>
+          <Text style={{ fontSize: scaleWithAppTextScale(12), color: '#6b7280' }}>
             Notifikasi update akan muncul otomatis ketika versi baru tersedia.
           </Text>
         </View>
@@ -578,7 +579,7 @@ export default function AdminServerAreaScreen() {
             padding: 14,
           }}
         >
-          <Text style={{ fontSize: 13, color: '#6b7280' }}>Data storage belum tersedia.</Text>
+          <Text style={{ fontSize: scaleWithAppTextScale(13), color: '#6b7280' }}>Data storage belum tersedia.</Text>
         </View>
       );
     }
@@ -600,13 +601,13 @@ export default function AdminServerAreaScreen() {
             padding: 14,
           }}
         >
-          <Text style={{ fontSize: 12, color: '#6b7280', marginBottom: 4 }}>Root Filesystem</Text>
+          <Text style={{ fontSize: scaleWithAppTextScale(12), color: '#6b7280', marginBottom: 4 }}>Root Filesystem</Text>
           {root ? (
             <>
               <Text
-                style={{ fontSize: 14, color: '#111827', fontWeight: '600' }}
+                style={{ fontSize: scaleWithAppTextScale(14), color: '#111827', fontWeight: '600' }}
               >{root.mountpoint}</Text>
-              <Text style={{ fontSize: 12, color: '#6b7280', marginTop: 8 }}>
+              <Text style={{ fontSize: scaleWithAppTextScale(12), color: '#6b7280', marginTop: 8 }}>
                 {formatBytes(root.usedBytes)} / {formatBytes(root.sizeBytes)} (
                 {formatPercent(root.usedPercent)})
               </Text>
@@ -634,7 +635,7 @@ export default function AdminServerAreaScreen() {
               </View>
             </>
           ) : (
-            <Text style={{ fontSize: 13, color: '#6b7280' }}>
+            <Text style={{ fontSize: scaleWithAppTextScale(13), color: '#6b7280' }}>
               Tidak ada informasi root filesystem.
             </Text>
           )}
@@ -650,7 +651,7 @@ export default function AdminServerAreaScreen() {
               padding: 14,
             }}
           >
-            <Text style={{ fontSize: 13, fontWeight: '600', color: '#111827', marginBottom: 8 }}>
+            <Text style={{ fontSize: scaleWithAppTextScale(13), fontWeight: '600', color: '#111827', marginBottom: 8 }}>
               Volume Terpasang
             </Text>
             {volumes.map((vol) => (
@@ -662,9 +663,9 @@ export default function AdminServerAreaScreen() {
                   borderTopColor: '#f3f4f6',
                 }}
               >
-                <Text style={{ fontSize: 12, color: '#6b7280' }}>{vol.mountpoint}</Text>
-                <Text style={{ fontSize: 13, color: '#111827' }}>{vol.filesystem}</Text>
-                <Text style={{ fontSize: 12, color: '#6b7280', marginTop: 2 }}>
+                <Text style={{ fontSize: scaleWithAppTextScale(12), color: '#6b7280' }}>{vol.mountpoint}</Text>
+                <Text style={{ fontSize: scaleWithAppTextScale(13), color: '#111827' }}>{vol.filesystem}</Text>
+                <Text style={{ fontSize: scaleWithAppTextScale(12), color: '#6b7280', marginTop: 2 }}>
                   {formatBytes(vol.usedBytes)} / {formatBytes(vol.sizeBytes)} (
                   {formatPercent(vol.usedPercent)})
                 </Text>
@@ -682,15 +683,15 @@ export default function AdminServerAreaScreen() {
             padding: 14,
           }}
         >
-          <Text style={{ fontSize: 13, fontWeight: '600', color: '#111827', marginBottom: 4 }}>
+          <Text style={{ fontSize: scaleWithAppTextScale(13), fontWeight: '600', color: '#111827', marginBottom: 4 }}>
             Media Fisik
           </Text>
-          <Text style={{ fontSize: 12, color: '#6b7280', marginBottom: 6 }}>
+          <Text style={{ fontSize: scaleWithAppTextScale(12), color: '#6b7280', marginBottom: 6 }}>
             {totalDisks} disk • {formatBytes(totalCapacity)}
           </Text>
 
           {storage.diskSummary.disks.length === 0 && (
-            <Text style={{ fontSize: 12, color: '#9ca3af' }}>Tidak ada disk terdeteksi.</Text>
+            <Text style={{ fontSize: scaleWithAppTextScale(12), color: '#9ca3af' }}>Tidak ada disk terdeteksi.</Text>
           )}
 
           {storage.diskSummary.disks.length > 0 && (
@@ -726,11 +727,11 @@ export default function AdminServerAreaScreen() {
                   <View style={{ flex: 1 }}>
                     <Text
                       numberOfLines={1}
-                      style={{ fontSize: 12, fontWeight: '600', color: '#111827' }}
+                      style={{ fontSize: scaleWithAppTextScale(12), fontWeight: '600', color: '#111827' }}
                     >
                       {disk.model || disk.name}
                     </Text>
-                    <Text style={{ fontSize: 11, color: '#6b7280' }}>
+                    <Text style={{ fontSize: scaleWithAppTextScale(11), color: '#6b7280' }}>
                       {formatBytes(disk.sizeBytes)} • {disk.mediaType || 'Tipe tidak diketahui'}
                     </Text>
                   </View>
@@ -773,7 +774,7 @@ export default function AdminServerAreaScreen() {
             padding: 14,
           }}
         >
-          <Text style={{ fontSize: 13, color: '#6b7280' }}>Data monitoring belum tersedia.</Text>
+          <Text style={{ fontSize: scaleWithAppTextScale(13), color: '#6b7280' }}>Data monitoring belum tersedia.</Text>
         </View>
       );
     }
@@ -801,16 +802,16 @@ export default function AdminServerAreaScreen() {
           }}
         >
           <View style={{ flexDirection: 'row', justifyContent: 'space-between', marginBottom: 4 }}>
-            <Text style={{ fontSize: 12, color: '#6b7280' }}>CPU</Text>
+            <Text style={{ fontSize: scaleWithAppTextScale(12), color: '#6b7280' }}>CPU</Text>
             <StatusPill
               tone={cpu.status === 'DANGER' ? 'danger' : cpu.status === 'WARNING' ? 'warning' : 'success'}
               label={cpu.status === 'DANGER' ? 'Bahaya' : cpu.status === 'WARNING' ? 'Perlu diperhatikan' : 'Aman'}
             />
           </View>
-          <Text style={{ fontSize: 13, color: '#111827', marginBottom: 2 }}>
+          <Text style={{ fontSize: scaleWithAppTextScale(13), color: '#111827', marginBottom: 2 }}>
             Load 1m: {cpu.loadAvg1.toFixed(2)} ({cpu.coreCount} core)
           </Text>
-          <Text style={{ fontSize: 12, color: '#6b7280', marginBottom: 6 }}>
+          <Text style={{ fontSize: scaleWithAppTextScale(12), color: '#6b7280', marginBottom: 6 }}>
             CPU Busy {formatPercent(cpu.busyPercent)} • Load/core: {cpu.loadPerCore.toFixed(2)}
           </Text>
           <View
@@ -846,7 +847,7 @@ export default function AdminServerAreaScreen() {
           }}
         >
           <View style={{ flexDirection: 'row', justifyContent: 'space-between', marginBottom: 4 }}>
-            <Text style={{ fontSize: 12, color: '#6b7280' }}>Memori</Text>
+            <Text style={{ fontSize: scaleWithAppTextScale(12), color: '#6b7280' }}>Memori</Text>
             <StatusPill
               tone={
                 memory.status === 'DANGER'
@@ -864,10 +865,10 @@ export default function AdminServerAreaScreen() {
               }
             />
           </View>
-          <Text style={{ fontSize: 13, color: '#111827', marginBottom: 2 }}>
+          <Text style={{ fontSize: scaleWithAppTextScale(13), color: '#111827', marginBottom: 2 }}>
             Terpakai {formatPercent(memory.usedPercent)}
           </Text>
-          <Text style={{ fontSize: 12, color: '#6b7280', marginBottom: 6 }}>
+          <Text style={{ fontSize: scaleWithAppTextScale(12), color: '#6b7280', marginBottom: 6 }}>
             {formatBytes(memory.usedBytes)} dari {formatBytes(memory.totalBytes)}
           </Text>
           <View
@@ -903,7 +904,7 @@ export default function AdminServerAreaScreen() {
           }}
         >
           <View style={{ flexDirection: 'row', justifyContent: 'space-between', marginBottom: 4 }}>
-            <Text style={{ fontSize: 12, color: '#6b7280' }}>Storage Root</Text>
+            <Text style={{ fontSize: scaleWithAppTextScale(12), color: '#6b7280' }}>Storage Root</Text>
             {storage.root && (
               <StatusPill
                 tone={
@@ -925,10 +926,10 @@ export default function AdminServerAreaScreen() {
           </View>
           {storage.root ? (
             <>
-              <Text style={{ fontSize: 13, color: '#111827', marginBottom: 2 }}>
+              <Text style={{ fontSize: scaleWithAppTextScale(13), color: '#111827', marginBottom: 2 }}>
                 {storage.root.mountpoint} ({formatPercent(storage.root.usedPercent)})
               </Text>
-              <Text style={{ fontSize: 12, color: '#6b7280', marginBottom: 6 }}>
+              <Text style={{ fontSize: scaleWithAppTextScale(12), color: '#6b7280', marginBottom: 6 }}>
                 {formatBytes(storage.root.usedBytes)} dari {formatBytes(storage.root.sizeBytes)}
               </Text>
               <View
@@ -954,7 +955,7 @@ export default function AdminServerAreaScreen() {
               </View>
             </>
           ) : (
-            <Text style={{ fontSize: 13, color: '#6b7280' }}>
+            <Text style={{ fontSize: scaleWithAppTextScale(13), color: '#6b7280' }}>
               Tidak dapat membaca penggunaan storage root.
             </Text>
           )}
@@ -970,7 +971,7 @@ export default function AdminServerAreaScreen() {
           }}
         >
           <View style={{ flexDirection: 'row', justifyContent: 'space-between', marginBottom: 4 }}>
-            <Text style={{ fontSize: 12, color: '#6b7280' }}>Bandwidth</Text>
+            <Text style={{ fontSize: scaleWithAppTextScale(12), color: '#6b7280' }}>Bandwidth</Text>
             {bandwidth && (
               <StatusPill
                 tone={
@@ -992,10 +993,10 @@ export default function AdminServerAreaScreen() {
           </View>
           {bandwidth ? (
             <>
-              <Text style={{ fontSize: 13, color: '#111827', marginBottom: 2 }}>
+              <Text style={{ fontSize: scaleWithAppTextScale(13), color: '#111827', marginBottom: 2 }}>
                 {bandwidth.interface.toUpperCase()}
               </Text>
-              <Text style={{ fontSize: 12, color: '#6b7280', marginBottom: 6 }}>
+              <Text style={{ fontSize: scaleWithAppTextScale(12), color: '#6b7280', marginBottom: 6 }}>
                 Download {bandwidth.rxMbps.toFixed(2)} Mbps • Upload {bandwidth.txMbps.toFixed(2)} Mbps
               </Text>
               <View
@@ -1021,7 +1022,7 @@ export default function AdminServerAreaScreen() {
               </View>
             </>
           ) : (
-            <Text style={{ fontSize: 13, color: '#6b7280' }}>
+            <Text style={{ fontSize: scaleWithAppTextScale(13), color: '#6b7280' }}>
               Menunggu sampling bandwidth pertama atau interface belum terdeteksi.
             </Text>
           )}
@@ -1060,7 +1061,7 @@ export default function AdminServerAreaScreen() {
             padding: 14,
           }}
         >
-          <Text style={{ fontSize: 13, color: '#6b7280' }}>Data user online belum tersedia.</Text>
+          <Text style={{ fontSize: scaleWithAppTextScale(13), color: '#6b7280' }}>Data user online belum tersedia.</Text>
         </View>
       );
     }
@@ -1083,11 +1084,11 @@ export default function AdminServerAreaScreen() {
               padding: 14,
             }}
           >
-            <Text style={{ fontSize: 12, color: '#6b7280', marginBottom: 4 }}>User Online</Text>
-            <Text style={{ fontSize: 20, fontWeight: '700', color: '#111827' }}>
+            <Text style={{ fontSize: scaleWithAppTextScale(12), color: '#6b7280', marginBottom: 4 }}>User Online</Text>
+            <Text style={{ fontSize: scaleWithAppTextScale(20), fontWeight: '700', color: '#111827' }}>
               {String(onlineUsers.totalUsers || 0)}
             </Text>
-            <Text style={{ fontSize: 12, color: '#6b7280', marginTop: 4 }}>
+            <Text style={{ fontSize: scaleWithAppTextScale(12), color: '#6b7280', marginTop: 4 }}>
               User unik yang sedang aktif di web, Android, atau iOS.
             </Text>
           </View>
@@ -1103,11 +1104,11 @@ export default function AdminServerAreaScreen() {
               padding: 14,
             }}
           >
-            <Text style={{ fontSize: 12, color: '#6b7280', marginBottom: 4 }}>Koneksi Aktif</Text>
-            <Text style={{ fontSize: 20, fontWeight: '700', color: '#111827' }}>
+            <Text style={{ fontSize: scaleWithAppTextScale(12), color: '#6b7280', marginBottom: 4 }}>Koneksi Aktif</Text>
+            <Text style={{ fontSize: scaleWithAppTextScale(20), fontWeight: '700', color: '#111827' }}>
               {String(onlineUsers.totalConnections || 0)}
             </Text>
-            <Text style={{ fontSize: 12, color: '#6b7280', marginTop: 4 }}>
+            <Text style={{ fontSize: scaleWithAppTextScale(12), color: '#6b7280', marginTop: 4 }}>
               Koneksi realtime yang masih tersambung sekarang.
             </Text>
           </View>
@@ -1122,10 +1123,10 @@ export default function AdminServerAreaScreen() {
             padding: 14,
           }}
         >
-          <Text style={{ fontSize: 13, fontWeight: '600', color: '#111827', marginBottom: 4 }}>
+          <Text style={{ fontSize: scaleWithAppTextScale(13), fontWeight: '600', color: '#111827', marginBottom: 4 }}>
             Snapshot Realtime
           </Text>
-          <Text style={{ fontSize: 12, color: '#6b7280' }}>
+          <Text style={{ fontSize: scaleWithAppTextScale(12), color: '#6b7280' }}>
             Diambil {formatDateTime(onlineUsers.sampledAt)} • Grace {onlineUsers.graceWindowSeconds} detik
           </Text>
         </View>
@@ -1139,7 +1140,7 @@ export default function AdminServerAreaScreen() {
             padding: 14,
           }}
         >
-          <Text style={{ fontSize: 13, fontWeight: '600', color: '#111827', marginBottom: 8 }}>
+          <Text style={{ fontSize: scaleWithAppTextScale(13), fontWeight: '600', color: '#111827', marginBottom: 8 }}>
             Breakdown Platform
           </Text>
           {platformItems.length > 0 ? (
@@ -1160,10 +1161,10 @@ export default function AdminServerAreaScreen() {
                   }}
                 >
                   <View style={{ flex: 1, marginRight: 12 }}>
-                    <Text style={{ fontSize: 13, fontWeight: '600', color: '#111827' }}>
+                    <Text style={{ fontSize: scaleWithAppTextScale(13), fontWeight: '600', color: '#111827' }}>
                       {formatPlatformLabel(item.platform)}
                     </Text>
-                    <Text style={{ fontSize: 11, color: '#6b7280' }}>{item.platform}</Text>
+                    <Text style={{ fontSize: scaleWithAppTextScale(11), color: '#6b7280' }}>{item.platform}</Text>
                   </View>
                   <View
                     style={{
@@ -1177,13 +1178,13 @@ export default function AdminServerAreaScreen() {
                       alignItems: 'center',
                     }}
                   >
-                    <Text style={{ fontSize: 13, fontWeight: '700', color: '#2563eb' }}>{item.count}</Text>
+                    <Text style={{ fontSize: scaleWithAppTextScale(13), fontWeight: '700', color: '#2563eb' }}>{item.count}</Text>
                   </View>
                 </View>
               ))}
             </View>
           ) : (
-            <Text style={{ fontSize: 12, color: '#6b7280' }}>Belum ada platform aktif yang terdeteksi.</Text>
+            <Text style={{ fontSize: scaleWithAppTextScale(12), color: '#6b7280' }}>Belum ada platform aktif yang terdeteksi.</Text>
           )}
         </View>
 
@@ -1196,7 +1197,7 @@ export default function AdminServerAreaScreen() {
             padding: 14,
           }}
         >
-          <Text style={{ fontSize: 13, fontWeight: '600', color: '#111827', marginBottom: 8 }}>
+          <Text style={{ fontSize: scaleWithAppTextScale(13), fontWeight: '600', color: '#111827', marginBottom: 8 }}>
             Sebaran Role
           </Text>
           {roleItems.length > 0 ? (
@@ -1217,10 +1218,10 @@ export default function AdminServerAreaScreen() {
                   }}
                 >
                   <View style={{ flex: 1, marginRight: 12 }}>
-                    <Text style={{ fontSize: 13, fontWeight: '600', color: '#111827' }}>
+                    <Text style={{ fontSize: scaleWithAppTextScale(13), fontWeight: '600', color: '#111827' }}>
                       {formatRoleLabel(item.role)}
                     </Text>
-                    <Text style={{ fontSize: 11, color: '#6b7280' }}>{item.role}</Text>
+                    <Text style={{ fontSize: scaleWithAppTextScale(11), color: '#6b7280' }}>{item.role}</Text>
                   </View>
                   <View
                     style={{
@@ -1234,13 +1235,13 @@ export default function AdminServerAreaScreen() {
                       alignItems: 'center',
                     }}
                   >
-                    <Text style={{ fontSize: 13, fontWeight: '700', color: '#2563eb' }}>{item.count}</Text>
+                    <Text style={{ fontSize: scaleWithAppTextScale(13), fontWeight: '700', color: '#2563eb' }}>{item.count}</Text>
                   </View>
                 </View>
               ))}
             </View>
           ) : (
-            <Text style={{ fontSize: 12, color: '#6b7280' }}>
+            <Text style={{ fontSize: scaleWithAppTextScale(12), color: '#6b7280' }}>
               Belum ada user yang sedang terhubung ke aplikasi saat ini.
             </Text>
           )}
@@ -1255,7 +1256,7 @@ export default function AdminServerAreaScreen() {
             padding: 14,
           }}
         >
-          <Text style={{ fontSize: 13, fontWeight: '600', color: '#111827', marginBottom: 8 }}>
+          <Text style={{ fontSize: scaleWithAppTextScale(13), fontWeight: '600', color: '#111827', marginBottom: 8 }}>
             Daftar User Aktif
           </Text>
           {userItems.length > 0 ? (
@@ -1274,11 +1275,11 @@ export default function AdminServerAreaScreen() {
                   }}
                 >
                   <View style={{ gap: 4 }}>
-                    <Text style={{ fontSize: 14, fontWeight: '700', color: '#111827' }}>{item.name}</Text>
-                    <Text style={{ fontSize: 12, color: '#6b7280' }}>
+                    <Text style={{ fontSize: scaleWithAppTextScale(14), fontWeight: '700', color: '#111827' }}>{item.name}</Text>
+                    <Text style={{ fontSize: scaleWithAppTextScale(12), color: '#6b7280' }}>
                       @{item.username} • {formatRoleLabel(item.role)}
                     </Text>
-                    <Text style={{ fontSize: 12, color: '#6b7280' }}>
+                    <Text style={{ fontSize: scaleWithAppTextScale(12), color: '#6b7280' }}>
                       Terlihat {formatDateTime(item.lastSeenAt)}
                     </Text>
                   </View>
@@ -1298,7 +1299,7 @@ export default function AdminServerAreaScreen() {
                             borderColor: colors.borderColor,
                           }}
                         >
-                          <Text style={{ fontSize: 11, fontWeight: '700', color: colors.textColor }}>
+                          <Text style={{ fontSize: scaleWithAppTextScale(11), fontWeight: '700', color: colors.textColor }}>
                             {formatPlatformLabel(platform)}
                           </Text>
                         </View>
@@ -1314,7 +1315,7 @@ export default function AdminServerAreaScreen() {
                         borderColor: '#d1d5db',
                       }}
                     >
-                      <Text style={{ fontSize: 11, fontWeight: '600', color: '#4b5563' }}>
+                      <Text style={{ fontSize: scaleWithAppTextScale(11), fontWeight: '600', color: '#4b5563' }}>
                         {String(item.totalConnections)} koneksi
                       </Text>
                     </View>
@@ -1323,7 +1324,7 @@ export default function AdminServerAreaScreen() {
               ))}
             </View>
           ) : (
-            <Text style={{ fontSize: 12, color: '#6b7280' }}>Belum ada user yang sedang aktif saat ini.</Text>
+            <Text style={{ fontSize: scaleWithAppTextScale(12), color: '#6b7280' }}>Belum ada user yang sedang aktif saat ini.</Text>
           )}
         </View>
 
@@ -1336,12 +1337,12 @@ export default function AdminServerAreaScreen() {
             padding: 14,
           }}
         >
-          <Text style={{ fontSize: 13, fontWeight: '600', color: '#1d4ed8', marginBottom: 6 }}>Catatan</Text>
-          <Text style={{ fontSize: 12, color: '#1e3a8a', lineHeight: 18 }}>
+          <Text style={{ fontSize: scaleWithAppTextScale(13), fontWeight: '600', color: '#1d4ed8', marginBottom: 6 }}>Catatan</Text>
+          <Text style={{ fontSize: scaleWithAppTextScale(12), color: '#1e3a8a', lineHeight: scaleLineHeightWithAppTextScale(18) }}>
             Total user online dihitung unik per user, walau user yang sama aktif di beberapa platform sekaligus.
             Breakdown platform menunjukkan user tersebut aktif di mana saja: Web, Android, atau iOS.
           </Text>
-          <Text style={{ fontSize: 12, color: '#1e3a8a', lineHeight: 18 }}>
+          <Text style={{ fontSize: scaleWithAppTextScale(12), color: '#1e3a8a', lineHeight: scaleLineHeightWithAppTextScale(18) }}>
             Grace window singkat dipakai agar user tidak langsung hilang saat reconnect kecil atau pindah jaringan.
           </Text>
         </View>
@@ -1359,17 +1360,17 @@ export default function AdminServerAreaScreen() {
         gap: 2,
       }}
     >
-      <Text style={{ fontSize: 11, color: '#6b7280' }}>{formatDateTime(item.createdAt)}</Text>
-      <Text style={{ fontSize: 13, color: '#111827', fontWeight: '600' }}>
+      <Text style={{ fontSize: scaleWithAppTextScale(11), color: '#6b7280' }}>{formatDateTime(item.createdAt)}</Text>
+      <Text style={{ fontSize: scaleWithAppTextScale(13), color: '#111827', fontWeight: '600' }}>
         {item.targetUser.username || '-'} {item.targetUser.role ? `(${item.targetUser.role})` : ''}
       </Text>
-      <Text style={{ fontSize: 12, color: '#374151' }}>
+      <Text style={{ fontSize: scaleWithAppTextScale(12), color: '#374151' }}>
         Mailbox: {item.mailboxIdentity || '-'} • Admin: {item.actor.username}
       </Text>
-      <Text style={{ fontSize: 11, color: '#6b7280' }}>
+      <Text style={{ fontSize: scaleWithAppTextScale(11), color: '#6b7280' }}>
         Mode: {item.generatedBySystem ? 'Otomatis' : 'Manual'} • Panjang: {item.passwordLength || 0} karakter
       </Text>
-      {item.reason ? <Text style={{ fontSize: 11, color: '#6b7280' }}>Catatan: {item.reason}</Text> : null}
+      {item.reason ? <Text style={{ fontSize: scaleWithAppTextScale(11), color: '#6b7280' }}>Catatan: {item.reason}</Text> : null}
     </View>
   );
 
@@ -1388,13 +1389,13 @@ export default function AdminServerAreaScreen() {
             gap: 8,
           }}
         >
-          <Text style={{ fontSize: 14, color: '#111827', fontWeight: '700' }}>Reset Password Webmail</Text>
-          <Text style={{ fontSize: 12, color: '#6b7280' }}>
+          <Text style={{ fontSize: scaleWithAppTextScale(14), color: '#111827', fontWeight: '700' }}>Reset Password Webmail</Text>
+          <Text style={{ fontSize: scaleWithAppTextScale(12), color: '#6b7280' }}>
             Reset cepat mailbox untuk Guru, Principal, Staff, dan Pembina Ekskul.
           </Text>
 
           <View>
-            <Text style={{ fontSize: 12, color: '#374151', marginBottom: 6 }}>Identifier User</Text>
+            <Text style={{ fontSize: scaleWithAppTextScale(12), color: '#374151', marginBottom: 6 }}>Identifier User</Text>
             <TextInput
               value={mailboxIdentifier}
               onChangeText={setMailboxIdentifier}
@@ -1408,14 +1409,14 @@ export default function AdminServerAreaScreen() {
                 backgroundColor: '#fff',
                 paddingHorizontal: 12,
                 paddingVertical: 10,
-                fontSize: 13,
+                fontSize: scaleWithAppTextScale(13),
                 color: '#111827',
               }}
             />
           </View>
 
           <View>
-            <Text style={{ fontSize: 12, color: '#374151', marginBottom: 6 }}>
+            <Text style={{ fontSize: scaleWithAppTextScale(12), color: '#374151', marginBottom: 6 }}>
               Password Manual (opsional)
             </Text>
             <TextInput
@@ -1431,17 +1432,17 @@ export default function AdminServerAreaScreen() {
                 backgroundColor: '#fff',
                 paddingHorizontal: 12,
                 paddingVertical: 10,
-                fontSize: 13,
+                fontSize: scaleWithAppTextScale(13),
                 color: '#111827',
               }}
             />
-            <Text style={{ fontSize: 11, color: '#6b7280', marginTop: 4 }}>
+            <Text style={{ fontSize: scaleWithAppTextScale(11), color: '#6b7280', marginTop: 4 }}>
               Minimal 10 karakter jika diisi manual.
             </Text>
           </View>
 
           <View>
-            <Text style={{ fontSize: 12, color: '#374151', marginBottom: 6 }}>Catatan Reset (opsional)</Text>
+            <Text style={{ fontSize: scaleWithAppTextScale(12), color: '#374151', marginBottom: 6 }}>Catatan Reset (opsional)</Text>
             <TextInput
               value={resetReason}
               onChangeText={setResetReason}
@@ -1455,7 +1456,7 @@ export default function AdminServerAreaScreen() {
                 backgroundColor: '#fff',
                 paddingHorizontal: 12,
                 paddingVertical: 10,
-                fontSize: 13,
+                fontSize: scaleWithAppTextScale(13),
                 color: '#111827',
               }}
             />
@@ -1473,7 +1474,7 @@ export default function AdminServerAreaScreen() {
               opacity: isSubmittingWebmailReset ? 0.7 : 1,
             }}
           >
-            <Text style={{ color: '#fff', fontSize: 13, fontWeight: '700' }}>
+            <Text style={{ color: '#fff', fontSize: scaleWithAppTextScale(13), fontWeight: '700' }}>
               {isSubmittingWebmailReset ? 'Memproses...' : 'Reset Password Mailbox'}
             </Text>
           </Pressable>
@@ -1489,7 +1490,7 @@ export default function AdminServerAreaScreen() {
                 paddingVertical: 8,
               }}
             >
-              <Text style={{ fontSize: 12, color: '#b91c1c' }}>{webmailResetError}</Text>
+              <Text style={{ fontSize: scaleWithAppTextScale(12), color: '#b91c1c' }}>{webmailResetError}</Text>
             </View>
           ) : null}
         </View>
@@ -1505,17 +1506,17 @@ export default function AdminServerAreaScreen() {
               gap: 4,
             }}
           >
-            <Text style={{ fontSize: 12, color: '#047857', fontWeight: '700' }}>Reset Berhasil</Text>
-            <Text style={{ fontSize: 12, color: '#065f46' }}>
+            <Text style={{ fontSize: scaleWithAppTextScale(12), color: '#047857', fontWeight: '700' }}>Reset Berhasil</Text>
+            <Text style={{ fontSize: scaleWithAppTextScale(12), color: '#065f46' }}>
               User: {webmailResetResult.user.username} ({webmailResetResult.user.name})
             </Text>
-            <Text style={{ fontSize: 12, color: '#065f46' }}>
+            <Text style={{ fontSize: scaleWithAppTextScale(12), color: '#065f46' }}>
               Mailbox: {webmailResetResult.mailboxIdentity}
             </Text>
-            <Text style={{ fontSize: 12, color: '#065f46' }}>
+            <Text style={{ fontSize: scaleWithAppTextScale(12), color: '#065f46' }}>
               Password baru: {webmailResetResult.password}
             </Text>
-            <Text style={{ fontSize: 11, color: '#065f46' }}>
+            <Text style={{ fontSize: scaleWithAppTextScale(11), color: '#065f46' }}>
               Mode: {webmailResetResult.generatedBySystem ? 'Otomatis' : 'Manual'} • {formatDateTime(webmailResetResult.resetAt)}
             </Text>
           </View>
@@ -1532,7 +1533,7 @@ export default function AdminServerAreaScreen() {
           }}
         >
           <View style={{ flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between' }}>
-            <Text style={{ fontSize: 14, color: '#111827', fontWeight: '700' }}>Riwayat Reset Password</Text>
+            <Text style={{ fontSize: scaleWithAppTextScale(14), color: '#111827', fontWeight: '700' }}>Riwayat Reset Password</Text>
             <Pressable
               onPress={() => webmailResetHistoryQuery.refetch()}
               style={{
@@ -1544,7 +1545,7 @@ export default function AdminServerAreaScreen() {
                 paddingVertical: 6,
               }}
             >
-              <Text style={{ fontSize: 12, color: '#1e293b', fontWeight: '600' }}>Muat Ulang</Text>
+              <Text style={{ fontSize: scaleWithAppTextScale(12), color: '#1e293b', fontWeight: '600' }}>Muat Ulang</Text>
             </Pressable>
           </View>
 
@@ -1561,17 +1562,17 @@ export default function AdminServerAreaScreen() {
               backgroundColor: '#fff',
               paddingHorizontal: 12,
               paddingVertical: 10,
-              fontSize: 13,
+              fontSize: scaleWithAppTextScale(13),
               color: '#111827',
             }}
           />
 
           {webmailResetHistoryQuery.isLoading ? (
-            <Text style={{ fontSize: 12, color: '#6b7280' }}>Memuat riwayat reset...</Text>
+            <Text style={{ fontSize: scaleWithAppTextScale(12), color: '#6b7280' }}>Memuat riwayat reset...</Text>
           ) : webmailResetHistoryQuery.isError ? (
-            <Text style={{ fontSize: 12, color: '#b91c1c' }}>Gagal memuat riwayat reset webmail.</Text>
+            <Text style={{ fontSize: scaleWithAppTextScale(12), color: '#b91c1c' }}>Gagal memuat riwayat reset webmail.</Text>
           ) : historyItems.length === 0 ? (
-            <Text style={{ fontSize: 12, color: '#6b7280' }}>Belum ada data riwayat reset.</Text>
+            <Text style={{ fontSize: scaleWithAppTextScale(12), color: '#6b7280' }}>Belum ada data riwayat reset.</Text>
           ) : (
             <View>{historyItems.map((item) => renderHistoryItem(item))}</View>
           )}

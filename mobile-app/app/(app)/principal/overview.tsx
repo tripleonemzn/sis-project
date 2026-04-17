@@ -9,6 +9,7 @@ import { useAuth } from '../../../src/features/auth/AuthProvider';
 import { usePrincipalOverviewQuery } from '../../../src/features/principal/usePrincipalOverviewQuery';
 import { getStandardPagePadding } from '../../../src/lib/ui/pageLayout';
 import { BRAND_COLORS } from '../../../src/config/brand';
+import { scaleWithAppTextScale } from '../../../src/theme/AppTextScaleProvider';
 
 function defaultSemesterByDate(): 'ODD' | 'EVEN' {
   const month = new Date().getMonth() + 1;
@@ -63,7 +64,7 @@ export default function PrincipalOverviewScreen() {
   if (user?.role !== 'PRINCIPAL') {
     return (
       <ScrollView style={{ flex: 1, backgroundColor: '#f8fafc' }} contentContainerStyle={pagePadding}>
-        <Text style={{ fontSize: 20, fontWeight: '700', marginBottom: 8 }}>Dashboard Kepala Sekolah</Text>
+        <Text style={{ fontSize: scaleWithAppTextScale(20), fontWeight: '700', marginBottom: 8 }}>Dashboard Kepala Sekolah</Text>
         <QueryStateView type="error" message="Halaman ini khusus untuk role kepala sekolah." />
         <Pressable
           onPress={() => router.replace('/home')}
@@ -92,7 +93,7 @@ export default function PrincipalOverviewScreen() {
         />
       }
     >
-      <Text style={{ fontSize: 20, fontWeight: '700', marginBottom: 6, color: BRAND_COLORS.textDark }}>Dashboard Kepala Sekolah</Text>
+      <Text style={{ fontSize: scaleWithAppTextScale(20), fontWeight: '700', marginBottom: 6, color: BRAND_COLORS.textDark }}>Dashboard Kepala Sekolah</Text>
       <Text style={{ color: BRAND_COLORS.textMuted, marginBottom: 12 }}>
         {dashboard?.activeAcademicYear?.name
           ? `Ringkasan akademik, keuangan, dan SDM untuk tahun ajaran ${dashboard.activeAcademicYear.name}.`
@@ -110,8 +111,8 @@ export default function PrincipalOverviewScreen() {
               padding: 10,
             }}
           >
-            <Text style={{ color: '#64748b', fontSize: 11, marginBottom: 3 }}>Tahun Ajaran Aktif</Text>
-            <Text style={{ color: BRAND_COLORS.textDark, fontWeight: '700', fontSize: 18 }}>
+            <Text style={{ color: '#64748b', fontSize: scaleWithAppTextScale(11), marginBottom: 3 }}>Tahun Ajaran Aktif</Text>
+            <Text style={{ color: BRAND_COLORS.textDark, fontWeight: '700', fontSize: scaleWithAppTextScale(18) }}>
               {dashboard?.activeAcademicYear?.name || '-'}
             </Text>
           </View>
@@ -126,8 +127,8 @@ export default function PrincipalOverviewScreen() {
               padding: 10,
             }}
           >
-            <Text style={{ color: '#64748b', fontSize: 11, marginBottom: 3 }}>Siswa Aktif</Text>
-            <Text style={{ color: BRAND_COLORS.textDark, fontWeight: '700', fontSize: 18 }}>
+            <Text style={{ color: '#64748b', fontSize: scaleWithAppTextScale(11), marginBottom: 3 }}>Siswa Aktif</Text>
+            <Text style={{ color: BRAND_COLORS.textDark, fontWeight: '700', fontSize: scaleWithAppTextScale(18) }}>
               {dashboard?.totals.students || 0}
             </Text>
           </View>
@@ -142,8 +143,8 @@ export default function PrincipalOverviewScreen() {
               padding: 10,
             }}
           >
-            <Text style={{ color: '#64748b', fontSize: 11, marginBottom: 3 }}>Guru & Staff</Text>
-            <Text style={{ color: BRAND_COLORS.textDark, fontWeight: '700', fontSize: 18 }}>
+            <Text style={{ color: '#64748b', fontSize: scaleWithAppTextScale(11), marginBottom: 3 }}>Guru & Staff</Text>
+            <Text style={{ color: BRAND_COLORS.textDark, fontWeight: '700', fontSize: scaleWithAppTextScale(18) }}>
               {dashboard?.totals.teachers || 0}
             </Text>
           </View>
@@ -158,11 +159,11 @@ export default function PrincipalOverviewScreen() {
               padding: 10,
             }}
           >
-            <Text style={{ color: '#64748b', fontSize: 11, marginBottom: 3 }}>Pengajuan Pending</Text>
-            <Text style={{ color: BRAND_COLORS.textDark, fontWeight: '700', fontSize: 18 }}>
+            <Text style={{ color: '#64748b', fontSize: scaleWithAppTextScale(11), marginBottom: 3 }}>Pengajuan Pending</Text>
+            <Text style={{ color: BRAND_COLORS.textDark, fontWeight: '700', fontSize: scaleWithAppTextScale(18) }}>
               {dashboard?.totals.pendingBudgetRequests || 0}
             </Text>
-            <Text style={{ color: BRAND_COLORS.textMuted, fontSize: 11, marginTop: 3 }}>
+            <Text style={{ color: BRAND_COLORS.textMuted, fontSize: scaleWithAppTextScale(11), marginTop: 3 }}>
               Rp {Math.round(Number(dashboard?.totals.totalPendingBudgetAmount || 0)).toLocaleString('id-ID')}
             </Text>
           </View>
@@ -177,8 +178,8 @@ export default function PrincipalOverviewScreen() {
               padding: 10,
             }}
           >
-            <Text style={{ color: '#64748b', fontSize: 11, marginBottom: 3 }}>Kompetensi Keahlian</Text>
-            <Text style={{ color: BRAND_COLORS.textDark, fontWeight: '700', fontSize: 18 }}>
+            <Text style={{ color: '#64748b', fontSize: scaleWithAppTextScale(11), marginBottom: 3 }}>Kompetensi Keahlian</Text>
+            <Text style={{ color: BRAND_COLORS.textDark, fontWeight: '700', fontSize: scaleWithAppTextScale(18) }}>
               {studentByMajor.length}
             </Text>
           </View>
@@ -193,8 +194,8 @@ export default function PrincipalOverviewScreen() {
               padding: 10,
             }}
           >
-            <Text style={{ color: '#64748b', fontSize: 11, marginBottom: 3 }}>Kelas Aktif</Text>
-            <Text style={{ color: BRAND_COLORS.textDark, fontWeight: '700', fontSize: 18 }}>{totalClasses}</Text>
+            <Text style={{ color: '#64748b', fontSize: scaleWithAppTextScale(11), marginBottom: 3 }}>Kelas Aktif</Text>
+            <Text style={{ color: BRAND_COLORS.textDark, fontWeight: '700', fontSize: scaleWithAppTextScale(18) }}>{totalClasses}</Text>
           </View>
         </View>
         <View style={{ width: '100%', paddingHorizontal: 4, marginBottom: 8 }}>
@@ -207,11 +208,11 @@ export default function PrincipalOverviewScreen() {
               padding: 10,
             }}
           >
-            <Text style={{ color: '#64748b', fontSize: 11, marginBottom: 3 }}>Kehadiran Hari Ini</Text>
-            <Text style={{ color: BRAND_COLORS.textDark, fontWeight: '700', fontSize: 18 }}>
+            <Text style={{ color: '#64748b', fontSize: scaleWithAppTextScale(11), marginBottom: 3 }}>Kehadiran Hari Ini</Text>
+            <Text style={{ color: BRAND_COLORS.textDark, fontWeight: '700', fontSize: scaleWithAppTextScale(18) }}>
               {attendanceSummary.percentage}%
             </Text>
-            <Text style={{ color: BRAND_COLORS.textMuted, fontSize: 11, marginTop: 3 }}>
+            <Text style={{ color: BRAND_COLORS.textMuted, fontSize: scaleWithAppTextScale(11), marginTop: 3 }}>
               Hadir {attendanceSummary.present} • Tidak hadir {attendanceSummary.absent}
             </Text>
           </View>
@@ -229,7 +230,7 @@ export default function PrincipalOverviewScreen() {
         }}
       >
         <Text style={{ color: BRAND_COLORS.textDark, fontWeight: '700', marginBottom: 4 }}>Filter Ringkasan Akademik</Text>
-        <Text style={{ color: BRAND_COLORS.textMuted, fontSize: 12, marginBottom: 8 }}>
+        <Text style={{ color: BRAND_COLORS.textMuted, fontSize: scaleWithAppTextScale(12), marginBottom: 8 }}>
           Semester ini memengaruhi top siswa dan rata-rata nilai per jurusan.
         </Text>
         <View style={{ flexDirection: 'row', gap: 8 }}>
@@ -328,8 +329,8 @@ export default function PrincipalOverviewScreen() {
                   padding: 10,
                 }}
               >
-                <Text style={{ color: '#64748b', fontSize: 11, marginBottom: 3 }}>Rata-rata Sekolah</Text>
-                <Text style={{ color: BRAND_COLORS.textDark, fontWeight: '700', fontSize: 18 }}>
+                <Text style={{ color: '#64748b', fontSize: scaleWithAppTextScale(11), marginBottom: 3 }}>Rata-rata Sekolah</Text>
+                <Text style={{ color: BRAND_COLORS.textDark, fontWeight: '700', fontSize: scaleWithAppTextScale(18) }}>
                   {academicSummary.schoolAverage.toFixed(2)}
                 </Text>
               </View>
@@ -344,8 +345,8 @@ export default function PrincipalOverviewScreen() {
                   padding: 10,
                 }}
               >
-                <Text style={{ color: '#64748b', fontSize: 11, marginBottom: 3 }}>Jurusan dengan Nilai</Text>
-                <Text style={{ color: BRAND_COLORS.textDark, fontWeight: '700', fontSize: 18 }}>
+                <Text style={{ color: '#64748b', fontSize: scaleWithAppTextScale(11), marginBottom: 3 }}>Jurusan dengan Nilai</Text>
+                <Text style={{ color: BRAND_COLORS.textDark, fontWeight: '700', fontSize: scaleWithAppTextScale(18) }}>
                   {academicSummary.totalMajors}
                 </Text>
               </View>
@@ -360,8 +361,8 @@ export default function PrincipalOverviewScreen() {
                   padding: 10,
                 }}
               >
-                <Text style={{ color: '#64748b', fontSize: 11, marginBottom: 3 }}>Siswa dengan Data Nilai</Text>
-                <Text style={{ color: BRAND_COLORS.textDark, fontWeight: '700', fontSize: 18 }}>
+                <Text style={{ color: '#64748b', fontSize: scaleWithAppTextScale(11), marginBottom: 3 }}>Siswa dengan Data Nilai</Text>
+                <Text style={{ color: BRAND_COLORS.textDark, fontWeight: '700', fontSize: scaleWithAppTextScale(18) }}>
                   {academicSummary.totalStudents}
                 </Text>
               </View>

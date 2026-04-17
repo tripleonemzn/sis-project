@@ -10,6 +10,7 @@ import { useAuth } from '../../../../src/features/auth/AuthProvider';
 import { BRAND_COLORS } from '../../../../src/config/brand';
 import { getStandardPagePadding } from '../../../../src/lib/ui/pageLayout';
 import { getHtmlPreviewEntry, pruneHtmlPreviewEntries } from '../../../../src/lib/viewer/htmlPreviewStore';
+import { scaleWithAppTextScale } from '../../../../src/theme/AppTextScaleProvider';
 
 export default function HtmlPreviewScreen() {
   const router = useRouter();
@@ -30,7 +31,7 @@ export default function HtmlPreviewScreen() {
   if (!preview) {
     return (
       <ScrollView style={{ flex: 1, backgroundColor: '#f8fafc' }} contentContainerStyle={pagePadding}>
-        <Text style={{ fontSize: 20, fontWeight: '700', marginBottom: 8, color: BRAND_COLORS.textDark }}>
+        <Text style={{ fontSize: scaleWithAppTextScale(20), fontWeight: '700', marginBottom: 8, color: BRAND_COLORS.textDark }}>
           Pratinjau Tidak Tersedia
         </Text>
         <QueryStateView
@@ -82,11 +83,11 @@ export default function HtmlPreviewScreen() {
           </Pressable>
 
           <View style={{ flex: 1 }}>
-            <Text numberOfLines={1} style={{ fontSize: 20, fontWeight: '700', color: BRAND_COLORS.textDark }}>
+            <Text numberOfLines={1} style={{ fontSize: scaleWithAppTextScale(20), fontWeight: '700', color: BRAND_COLORS.textDark }}>
               {preview.title}
             </Text>
             {preview.helper ? (
-              <Text numberOfLines={1} style={{ fontSize: 12, color: BRAND_COLORS.textMuted, marginTop: 2 }}>
+              <Text numberOfLines={1} style={{ fontSize: scaleWithAppTextScale(12), color: BRAND_COLORS.textMuted, marginTop: 2 }}>
                 {preview.helper}
               </Text>
             ) : null}

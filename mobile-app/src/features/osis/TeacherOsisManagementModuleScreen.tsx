@@ -13,6 +13,7 @@ import { BRAND_COLORS } from '../../config/brand';
 import { academicYearApi } from '../academicYear/academicYearApi';
 import { getStandardPagePadding } from '../../lib/ui/pageLayout';
 import { notifyApiError, notifySuccess } from '../../lib/ui/feedback';
+import { scaleWithAppTextScale } from '../../theme/AppTextScaleProvider';
 import {
   osisApi,
   type MobileOsisDivision,
@@ -195,7 +196,7 @@ function SectionCard({
       }}
     >
       <View>
-        <Text style={{ color: BRAND_COLORS.textDark, fontWeight: '800', fontSize: 16 }}>{title}</Text>
+        <Text style={{ color: BRAND_COLORS.textDark, fontWeight: '800', fontSize: scaleWithAppTextScale(16) }}>{title}</Text>
         {subtitle ? <Text style={{ color: BRAND_COLORS.textMuted, marginTop: 4 }}>{subtitle}</Text> : null}
       </View>
       {children}
@@ -212,7 +213,7 @@ function Field({
 }) {
   return (
     <View style={{ gap: 6 }}>
-      <Text style={{ color: '#475569', fontWeight: '700', fontSize: 12 }}>{label}</Text>
+      <Text style={{ color: '#475569', fontWeight: '700', fontSize: scaleWithAppTextScale(12) }}>{label}</Text>
       {children}
     </View>
   );
@@ -744,7 +745,7 @@ export function TeacherOsisManagementModuleScreen() {
   if (user?.role !== 'TEACHER' || !hasOsisDuty(user?.additionalDuties)) {
     return (
       <ScrollView style={{ flex: 1, backgroundColor: '#f8fafc' }} contentContainerStyle={pagePadding}>
-        <Text style={{ fontSize: 20, fontWeight: '700', color: BRAND_COLORS.textDark, marginBottom: 8 }}>
+        <Text style={{ fontSize: scaleWithAppTextScale(20), fontWeight: '700', color: BRAND_COLORS.textDark, marginBottom: 8 }}>
           Struktur & Nilai OSIS
         </Text>
         <QueryStateView type="error" message="Halaman ini khusus pembina OSIS." />
@@ -785,7 +786,7 @@ export function TeacherOsisManagementModuleScreen() {
         />
       }
     >
-      <Text style={{ fontSize: 20, fontWeight: '800', color: BRAND_COLORS.textDark, marginBottom: 6 }}>
+      <Text style={{ fontSize: scaleWithAppTextScale(20), fontWeight: '800', color: BRAND_COLORS.textDark, marginBottom: 6 }}>
         Struktur & Nilai OSIS
       </Text>
       <Text style={{ color: BRAND_COLORS.textMuted, marginBottom: 12 }}>

@@ -13,6 +13,7 @@ import { ENV } from '../../config/env';
 import { openWebModuleRoute } from '../../lib/navigation/webModuleRoute';
 import { mobileLiveQueryOptions } from '../../lib/query/liveQuery';
 import { useAuth } from '../auth/AuthProvider';
+import { scaleWithAppTextScale } from '../../theme/AppTextScaleProvider';
 import {
   formatWorkProgramDutyLabel,
   getAdvisorDutyMeta,
@@ -144,7 +145,7 @@ function TextField({
 }) {
   return (
     <View style={{ marginBottom: 8 }}>
-      <Text style={{ color: BRAND_COLORS.textMuted, fontSize: 12, marginBottom: 4 }}>{label}</Text>
+      <Text style={{ color: BRAND_COLORS.textMuted, fontSize: scaleWithAppTextScale(12), marginBottom: 4 }}>{label}</Text>
       <TextInput
         value={value}
         onChangeText={onChangeText}
@@ -598,7 +599,7 @@ export function WorkProgramBudgetOwnerSection({
 
   return (
     <View style={{ marginTop: 18 }}>
-      <Text style={{ fontSize: 20, fontWeight: '700', color: BRAND_COLORS.textDark, marginBottom: 6 }}>
+      <Text style={{ fontSize: scaleWithAppTextScale(20), fontWeight: '700', color: BRAND_COLORS.textDark, marginBottom: 6 }}>
         {budgetSectionTitle}
       </Text>
       <Text style={{ color: BRAND_COLORS.textMuted, marginBottom: 12 }}>
@@ -918,7 +919,7 @@ export function WorkProgramBudgetOwnerSection({
                         ? budget.title || budget.description
                         : budget.description || budget.title}
                     </Text>
-                    <Text style={{ color: '#64748b', marginTop: 2, fontSize: 12 }}>
+                    <Text style={{ color: '#64748b', marginTop: 2, fontSize: scaleWithAppTextScale(12) }}>
                       {isAdvisorDuty(budget.additionalDuty)
                         ? `${toDutyLabel(budget.additionalDuty)} • ${getAdvisorEquipmentTitle(budget.additionalDuty)}`
                         : `${toDutyLabel(budget.additionalDuty)} • Qty ${budget.quantity} • Unit ${formatCurrency(budget.unitPrice)}`}
@@ -934,36 +935,36 @@ export function WorkProgramBudgetOwnerSection({
                       paddingVertical: 3,
                     }}
                   >
-                    <Text style={{ color: status.text, fontWeight: '700', fontSize: 11 }}>{status.label}</Text>
+                    <Text style={{ color: status.text, fontWeight: '700', fontSize: scaleWithAppTextScale(11) }}>{status.label}</Text>
                   </View>
                 </View>
 
                 <View style={{ marginTop: 8 }}>
-                  <Text style={{ color: '#334155', fontSize: 12 }}>Total: {formatCurrency(budget.totalAmount)}</Text>
+                  <Text style={{ color: '#334155', fontSize: scaleWithAppTextScale(12) }}>Total: {formatCurrency(budget.totalAmount)}</Text>
                   {isAdvisorDuty(budget.additionalDuty) ? (
                     <>
-                      <Text style={{ color: '#334155', fontSize: 12, marginTop: 2 }}>
+                      <Text style={{ color: '#334155', fontSize: scaleWithAppTextScale(12), marginTop: 2 }}>
                         Keterangan: {budget.description || '-'}
                       </Text>
-                      <Text style={{ color: '#334155', fontSize: 12, marginTop: 2 }}>
+                      <Text style={{ color: '#334155', fontSize: scaleWithAppTextScale(12), marginTop: 2 }}>
                         Merk: {budget.brand || '-'}
                       </Text>
                     </>
                   ) : (
-                    <Text style={{ color: '#334155', fontSize: 12, marginTop: 2 }}>
+                    <Text style={{ color: '#334155', fontSize: scaleWithAppTextScale(12), marginTop: 2 }}>
                       Waktu: {budget.executionTime || '-'} • Brand: {budget.brand || '-'}
                     </Text>
                   )}
-                  <Text style={{ color: '#64748b', fontSize: 11, marginTop: 2 }}>
+                  <Text style={{ color: '#64748b', fontSize: scaleWithAppTextScale(11), marginTop: 2 }}>
                     Dibuat: {formatDateTime(budget.createdAt)}
                   </Text>
                   {waitingLabel ? (
-                    <Text style={{ color: '#475569', fontSize: 11, marginTop: 2 }}>{waitingLabel}</Text>
+                    <Text style={{ color: '#475569', fontSize: scaleWithAppTextScale(11), marginTop: 2 }}>{waitingLabel}</Text>
                   ) : null}
                   {budget.rejectionReason ? (
-                    <Text style={{ color: '#991b1b', fontSize: 11, marginTop: 2 }}>{budget.rejectionReason}</Text>
+                    <Text style={{ color: '#991b1b', fontSize: scaleWithAppTextScale(11), marginTop: 2 }}>{budget.rejectionReason}</Text>
                   ) : null}
-                  <Text style={{ color: '#334155', fontSize: 11, marginTop: 2 }}>
+                  <Text style={{ color: '#334155', fontSize: scaleWithAppTextScale(11), marginTop: 2 }}>
                     Realisasi: {budget.realizationConfirmedAt ? formatDateTime(budget.realizationConfirmedAt) : 'Belum dikonfirmasi'}
                   </Text>
                 </View>
@@ -982,7 +983,7 @@ export function WorkProgramBudgetOwnerSection({
                       opacity: canManageLpj ? 1 : 0.7,
                     }}
                   >
-                    <Text style={{ color: canManageLpj ? '#4338ca' : '#64748b', fontWeight: '700', fontSize: 12 }}>
+                    <Text style={{ color: canManageLpj ? '#4338ca' : '#64748b', fontWeight: '700', fontSize: scaleWithAppTextScale(12) }}>
                       {selected ? 'Tutup LPJ' : 'Kelola LPJ'}
                     </Text>
                   </Pressable>
@@ -1007,7 +1008,7 @@ export function WorkProgramBudgetOwnerSection({
                         opacity: uploadBudgetLpjMutation.isPending ? 0.7 : 1,
                       }}
                     >
-                      <Text style={{ color: '#166534', fontWeight: '700', fontSize: 12 }}>
+                      <Text style={{ color: '#166534', fontWeight: '700', fontSize: scaleWithAppTextScale(12) }}>
                         {uploadBudgetLpjMutation.isPending ? 'Mengunggah...' : 'Upload LPJ'}
                       </Text>
                     </Pressable>
@@ -1025,7 +1026,7 @@ export function WorkProgramBudgetOwnerSection({
                         paddingVertical: 8,
                       }}
                     >
-                      <Text style={{ color: '#1d4ed8', fontWeight: '700', fontSize: 12 }}>Lihat LPJ</Text>
+                      <Text style={{ color: '#1d4ed8', fontWeight: '700', fontSize: scaleWithAppTextScale(12) }}>Lihat LPJ</Text>
                     </Pressable>
                   ) : null}
 
@@ -1042,7 +1043,7 @@ export function WorkProgramBudgetOwnerSection({
                       opacity: deleteBudgetMutation.isPending ? 0.7 : 1,
                     }}
                   >
-                    <Text style={{ color: '#b91c1c', fontWeight: '700', fontSize: 12 }}>Hapus</Text>
+                    <Text style={{ color: '#b91c1c', fontWeight: '700', fontSize: scaleWithAppTextScale(12) }}>Hapus</Text>
                   </Pressable>
                 </View>
               </View>
@@ -1098,7 +1099,7 @@ export function WorkProgramBudgetOwnerSection({
                   marginBottom: 10,
                 }}
               >
-                <Text style={{ color: '#334155', fontSize: 12, marginBottom: 6 }}>
+                <Text style={{ color: '#334155', fontSize: scaleWithAppTextScale(12), marginBottom: 6 }}>
                   Total invoice: <Text style={{ fontWeight: '700' }}>{lpjInvoices.length}</Text>
                 </Text>
 
@@ -1168,12 +1169,12 @@ export function WorkProgramBudgetOwnerSection({
                           paddingVertical: 2,
                         }}
                       >
-                        <Text style={{ color: lpjInvoiceStatusStyle(selectedInvoice.status).text, fontWeight: '700', fontSize: 11 }}>
+                        <Text style={{ color: lpjInvoiceStatusStyle(selectedInvoice.status).text, fontWeight: '700', fontSize: scaleWithAppTextScale(11) }}>
                           {lpjInvoiceStatusLabel(selectedInvoice.status)}
                         </Text>
                       </View>
                     </View>
-                    <Text style={{ color: '#64748b', fontSize: 11, marginTop: 2 }}>
+                    <Text style={{ color: '#64748b', fontSize: scaleWithAppTextScale(11), marginTop: 2 }}>
                       Update: {formatDateTime(selectedInvoice.updatedAt)}
                     </Text>
                   </View>
@@ -1198,7 +1199,7 @@ export function WorkProgramBudgetOwnerSection({
                         opacity: !canEditInvoice || uploadInvoiceMutation.isPending ? 0.6 : 1,
                       }}
                     >
-                      <Text style={{ color: '#1d4ed8', fontWeight: '700', fontSize: 12 }}>
+                      <Text style={{ color: '#1d4ed8', fontWeight: '700', fontSize: scaleWithAppTextScale(12) }}>
                         {selectedInvoice.invoiceFileUrl ? 'Ganti Invoice' : 'Upload Invoice'}
                       </Text>
                     </Pressable>
@@ -1222,7 +1223,7 @@ export function WorkProgramBudgetOwnerSection({
                         opacity: !canEditInvoice || uploadProofMutation.isPending ? 0.6 : 1,
                       }}
                     >
-                      <Text style={{ color: '#166534', fontWeight: '700', fontSize: 12 }}>
+                      <Text style={{ color: '#166534', fontWeight: '700', fontSize: scaleWithAppTextScale(12) }}>
                         {selectedInvoice.proofFileUrl ? 'Ganti Bukti' : 'Upload Bukti'}
                       </Text>
                     </Pressable>
@@ -1239,7 +1240,7 @@ export function WorkProgramBudgetOwnerSection({
                           paddingVertical: 8,
                         }}
                       >
-                        <Text style={{ color: '#334155', fontWeight: '700', fontSize: 12 }}>Lihat Invoice</Text>
+                        <Text style={{ color: '#334155', fontWeight: '700', fontSize: scaleWithAppTextScale(12) }}>Lihat Invoice</Text>
                       </Pressable>
                     ) : null}
 
@@ -1255,7 +1256,7 @@ export function WorkProgramBudgetOwnerSection({
                           paddingVertical: 8,
                         }}
                       >
-                        <Text style={{ color: '#334155', fontWeight: '700', fontSize: 12 }}>Lihat Bukti</Text>
+                        <Text style={{ color: '#334155', fontWeight: '700', fontSize: scaleWithAppTextScale(12) }}>Lihat Bukti</Text>
                       </Pressable>
                     ) : null}
 
@@ -1271,7 +1272,7 @@ export function WorkProgramBudgetOwnerSection({
                           opacity: submitInvoiceMutation.isPending ? 0.7 : 1,
                         }}
                       >
-                        <Text style={{ color: '#fff', fontWeight: '700', fontSize: 12 }}>
+                        <Text style={{ color: '#fff', fontWeight: '700', fontSize: scaleWithAppTextScale(12) }}>
                           {submitInvoiceMutation.isPending ? 'Mengajukan...' : 'Ajukan ke Sarpras'}
                         </Text>
                       </Pressable>
@@ -1293,10 +1294,10 @@ export function WorkProgramBudgetOwnerSection({
                         }}
                       >
                         <Text style={{ color: BRAND_COLORS.textDark, fontWeight: '700' }}>{item.description}</Text>
-                        <Text style={{ color: '#475569', marginTop: 2, fontSize: 12 }}>
+                        <Text style={{ color: '#475569', marginTop: 2, fontSize: scaleWithAppTextScale(12) }}>
                           {item.brand || '-'} • QTY {item.quantity} • Harga {formatCurrency(item.unitPrice)}
                         </Text>
-                        <Text style={{ color: '#334155', marginTop: 2, fontSize: 12 }}>
+                        <Text style={{ color: '#334155', marginTop: 2, fontSize: scaleWithAppTextScale(12) }}>
                           Total: {formatCurrency(item.amount)}
                         </Text>
                         {canEditInvoice ? (
@@ -1314,7 +1315,7 @@ export function WorkProgramBudgetOwnerSection({
                               opacity: deleteItemMutation.isPending ? 0.7 : 1,
                             }}
                           >
-                            <Text style={{ color: '#b91c1c', fontWeight: '700', fontSize: 12 }}>Hapus Item</Text>
+                            <Text style={{ color: '#b91c1c', fontWeight: '700', fontSize: scaleWithAppTextScale(12) }}>Hapus Item</Text>
                           </Pressable>
                         ) : null}
                       </View>
@@ -1434,9 +1435,9 @@ export function WorkProgramBudgetOwnerSection({
                 backgroundColor: '#f8fbff',
               }}
             >
-              <Text style={{ color: '#64748b', fontSize: 11, marginBottom: 4 }}>{item.label}</Text>
-              <Text style={{ color: BRAND_COLORS.textDark, fontWeight: '700', fontSize: 18 }}>{item.value}</Text>
-              <Text style={{ color: BRAND_COLORS.textMuted, fontSize: 11, marginTop: 3 }}>{item.note}</Text>
+              <Text style={{ color: '#64748b', fontSize: scaleWithAppTextScale(11), marginBottom: 4 }}>{item.label}</Text>
+              <Text style={{ color: BRAND_COLORS.textDark, fontWeight: '700', fontSize: scaleWithAppTextScale(18) }}>{item.value}</Text>
+              <Text style={{ color: BRAND_COLORS.textMuted, fontSize: scaleWithAppTextScale(11), marginTop: 3 }}>{item.note}</Text>
             </View>
           ))}
           <View
@@ -1449,7 +1450,7 @@ export function WorkProgramBudgetOwnerSection({
               backgroundColor: '#fff',
             }}
           >
-            <Text style={{ color: '#64748b', fontSize: 11, marginBottom: 4 }}>Filter Aktif</Text>
+            <Text style={{ color: '#64748b', fontSize: scaleWithAppTextScale(11), marginBottom: 4 }}>Filter Aktif</Text>
             <Text style={{ color: BRAND_COLORS.textDark, fontWeight: '600' }}>
               Status: {statusFilterOptions.find((option) => option.value === statusFilter)?.label || 'Semua Status'}
             </Text>

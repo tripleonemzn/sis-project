@@ -14,6 +14,7 @@ import { mobileLiveQueryOptions } from '../../lib/query/liveQuery';
 import { getStandardPagePadding } from '../../lib/ui/pageLayout';
 import { useAuth } from '../auth/AuthProvider';
 import { humasApi } from './humasApi';
+import { scaleWithAppTextScale } from '../../theme/AppTextScaleProvider';
 import {
   HumasInternshipRow,
   HumasJournalRow,
@@ -723,7 +724,7 @@ export function TeacherHumasModuleScreen({
   if (user?.role !== 'TEACHER') {
     return (
       <ScrollView style={{ flex: 1, backgroundColor: '#f8fafc' }} contentContainerStyle={pagePadding}>
-        <Text style={{ fontSize: 20, fontWeight: '700', marginBottom: 8 }}>{title}</Text>
+        <Text style={{ fontSize: scaleWithAppTextScale(20), fontWeight: '700', marginBottom: 8 }}>{title}</Text>
         <QueryStateView type="error" message="Halaman ini khusus untuk role guru." />
       </ScrollView>
     );
@@ -732,7 +733,7 @@ export function TeacherHumasModuleScreen({
   if (!isAllowedRole) {
     return (
       <ScrollView style={{ flex: 1, backgroundColor: '#f8fafc' }} contentContainerStyle={pagePadding}>
-        <Text style={{ fontSize: 20, fontWeight: '700', marginBottom: 8 }}>{title}</Text>
+        <Text style={{ fontSize: scaleWithAppTextScale(20), fontWeight: '700', marginBottom: 8 }}>{title}</Text>
         <QueryStateView type="error" message="Akses modul ini membutuhkan tugas tambahan Wakasek Humas." />
       </ScrollView>
     );
@@ -770,7 +771,7 @@ export function TeacherHumasModuleScreen({
           <Feather name={modeIcon(mode)} size={18} color="#e2e8f0" />
         </View>
         <View style={{ flex: 1 }}>
-          <Text style={{ color: '#fff', fontSize: 20, fontWeight: '700' }}>{title}</Text>
+          <Text style={{ color: '#fff', fontSize: scaleWithAppTextScale(20), fontWeight: '700' }}>{title}</Text>
           <Text style={{ color: '#dbeafe', marginTop: 2 }}>{subtitle}</Text>
         </View>
       </View>
@@ -984,7 +985,7 @@ export function TeacherHumasModuleScreen({
                     <View style={{ flexDirection: 'row', justifyContent: 'space-between', alignItems: 'flex-start' }}>
                       <View style={{ flex: 1, paddingRight: 8 }}>
                         <Text style={{ color: BRAND_COLORS.textDark, fontWeight: '700' }}>{toText(item.student?.name)}</Text>
-                        <Text style={{ color: '#64748b', marginTop: 2, fontSize: 12 }}>
+                        <Text style={{ color: '#64748b', marginTop: 2, fontSize: scaleWithAppTextScale(12) }}>
                           {toText(item.student?.studentClass?.name)} • {toText(item.companyName)}
                         </Text>
                       </View>
@@ -998,18 +999,18 @@ export function TeacherHumasModuleScreen({
                           paddingVertical: 3,
                         }}
                       >
-                        <Text style={{ color: badge.text, fontWeight: '700', fontSize: 11 }}>{statusLabel}</Text>
+                        <Text style={{ color: badge.text, fontWeight: '700', fontSize: scaleWithAppTextScale(11) }}>{statusLabel}</Text>
                       </View>
                     </View>
 
-                    <Text style={{ color: '#334155', fontSize: 12, marginTop: 8 }}>
+                    <Text style={{ color: '#334155', fontSize: scaleWithAppTextScale(12), marginTop: 8 }}>
                       Mentor: {toText(item.mentorName)} • Pembimbing: {toText(item.teacher?.name)}
                     </Text>
-                    <Text style={{ color: '#64748b', fontSize: 11, marginTop: 4 }}>
+                    <Text style={{ color: '#64748b', fontSize: scaleWithAppTextScale(11), marginTop: 4 }}>
                       Diajukan: {formatDateTime(item.createdAt)}
                     </Text>
                     {item.rejectionReason ? (
-                      <Text style={{ color: '#991b1b', fontSize: 11, marginTop: 4 }}>Alasan tolak: {item.rejectionReason}</Text>
+                      <Text style={{ color: '#991b1b', fontSize: scaleWithAppTextScale(11), marginTop: 4 }}>Alasan tolak: {item.rejectionReason}</Text>
                     ) : null}
 
                     <View style={{ flexDirection: 'row', gap: 8, marginTop: 10 }}>
@@ -1146,11 +1147,11 @@ export function TeacherHumasModuleScreen({
                     }}
                   >
                     <Text style={{ color: BRAND_COLORS.textDark, fontWeight: '700' }}>{toText(component.name)}</Text>
-                    <Text style={{ color: '#64748b', marginTop: 2, fontSize: 12 }}>
+                    <Text style={{ color: '#64748b', marginTop: 2, fontSize: scaleWithAppTextScale(12) }}>
                       Bobot: {component.weight}% • Status: {component.isActive ? 'Aktif' : 'Nonaktif'}
                     </Text>
                     {component.description ? (
-                      <Text style={{ color: '#334155', marginTop: 6, fontSize: 12 }}>{component.description}</Text>
+                      <Text style={{ color: '#334155', marginTop: 6, fontSize: scaleWithAppTextScale(12) }}>{component.description}</Text>
                     ) : null}
 
                     <Pressable
@@ -1215,7 +1216,7 @@ export function TeacherHumasModuleScreen({
                         }}
                       >
                         <Text style={{ color: BRAND_COLORS.textDark, fontWeight: '700' }}>{toText(row.student?.name)}</Text>
-                        <Text style={{ color: '#64748b', marginTop: 2, fontSize: 12 }}>
+                        <Text style={{ color: '#64748b', marginTop: 2, fontSize: scaleWithAppTextScale(12) }}>
                           {toText(row.student?.studentClass?.name)} • {toText(row.companyName)}
                         </Text>
                       </Pressable>
@@ -1248,8 +1249,8 @@ export function TeacherHumasModuleScreen({
                         }}
                       >
                         <Text style={{ color: BRAND_COLORS.textDark, fontWeight: '700' }}>{formatDateTime(journal.date)}</Text>
-                        <Text style={{ color: '#334155', marginTop: 6, fontSize: 12 }}>{toText(journal.activity)}</Text>
-                        <Text style={{ color: '#64748b', fontSize: 11, marginTop: 6 }}>
+                        <Text style={{ color: '#334155', marginTop: 6, fontSize: scaleWithAppTextScale(12) }}>{toText(journal.activity)}</Text>
+                        <Text style={{ color: '#64748b', fontSize: scaleWithAppTextScale(11), marginTop: 6 }}>
                           Status: {journalStatus} {journal.feedback ? `• Catatan: ${journal.feedback}` : ''}
                         </Text>
 
@@ -1685,11 +1686,11 @@ export function TeacherHumasModuleScreen({
                         }}
                       >
                         <Text style={{ color: BRAND_COLORS.textDark, fontWeight: '700' }}>{toText(item.name)}</Text>
-                        <Text style={{ color: '#64748b', marginTop: 2, fontSize: 12 }}>
+                        <Text style={{ color: '#64748b', marginTop: 2, fontSize: scaleWithAppTextScale(12) }}>
                           {toText(item.city)} • {toText(item.sector)} • {toText(item.cooperationStatus)}
                         </Text>
-                        <Text style={{ color: '#334155', marginTop: 6, fontSize: 12 }}>PIC: {toText(item.contactPerson)}</Text>
-                        <Text style={{ color: '#334155', marginTop: 2, fontSize: 12 }}>
+                        <Text style={{ color: '#334155', marginTop: 6, fontSize: scaleWithAppTextScale(12) }}>PIC: {toText(item.contactPerson)}</Text>
+                        <Text style={{ color: '#334155', marginTop: 2, fontSize: scaleWithAppTextScale(12) }}>
                           Kontak: {toText(item.phone || item.email)}
                         </Text>
 
@@ -1742,11 +1743,11 @@ export function TeacherHumasModuleScreen({
                         }}
                       >
                         <Text style={{ color: BRAND_COLORS.textDark, fontWeight: '700' }}>{toText(item.title)}</Text>
-                        <Text style={{ color: '#64748b', marginTop: 2, fontSize: 12 }}>
+                        <Text style={{ color: '#64748b', marginTop: 2, fontSize: scaleWithAppTextScale(12) }}>
                           {toText(item.companyName || item.industryPartner?.name)} • {item.isOpen ? 'Aktif' : 'Tutup'}
                         </Text>
-                        <Text style={{ color: '#334155', marginTop: 6, fontSize: 12 }}>{toText(item.description)}</Text>
-                        <Text style={{ color: '#64748b', marginTop: 4, fontSize: 11 }}>
+                        <Text style={{ color: '#334155', marginTop: 6, fontSize: scaleWithAppTextScale(12) }}>{toText(item.description)}</Text>
+                        <Text style={{ color: '#64748b', marginTop: 4, fontSize: scaleWithAppTextScale(11) }}>
                           Batas: {formatDateTime(item.deadline)}
                         </Text>
 
@@ -1801,10 +1802,10 @@ export function TeacherHumasModuleScreen({
                 }}
               >
                 <Text style={{ color: BRAND_COLORS.textDark, fontWeight: '700', marginBottom: 6 }}>Ringkasan PKL</Text>
-                <Text style={{ color: '#334155', fontSize: 12 }}>Total data PKL: {summary.internshipTotal}</Text>
-                <Text style={{ color: '#334155', fontSize: 12, marginTop: 2 }}>Menunggu approval: {summary.internshipPending}</Text>
-                <Text style={{ color: '#334155', fontSize: 12, marginTop: 2 }}>Disetujui/berjalan: {summary.internshipApproved}</Text>
-                <Text style={{ color: '#334155', fontSize: 12, marginTop: 2 }}>Ditolak: {summary.internshipRejected}</Text>
+                <Text style={{ color: '#334155', fontSize: scaleWithAppTextScale(12) }}>Total data PKL: {summary.internshipTotal}</Text>
+                <Text style={{ color: '#334155', fontSize: scaleWithAppTextScale(12), marginTop: 2 }}>Menunggu approval: {summary.internshipPending}</Text>
+                <Text style={{ color: '#334155', fontSize: scaleWithAppTextScale(12), marginTop: 2 }}>Disetujui/berjalan: {summary.internshipApproved}</Text>
+                <Text style={{ color: '#334155', fontSize: scaleWithAppTextScale(12), marginTop: 2 }}>Ditolak: {summary.internshipRejected}</Text>
               </View>
 
               <View
@@ -1818,9 +1819,9 @@ export function TeacherHumasModuleScreen({
                 }}
               >
                 <Text style={{ color: BRAND_COLORS.textDark, fontWeight: '700', marginBottom: 6 }}>Ringkasan Kemitraan</Text>
-                <Text style={{ color: '#334155', fontSize: 12 }}>Mitra industri: {summary.partnersTotal}</Text>
-                <Text style={{ color: '#334155', fontSize: 12, marginTop: 2 }}>Lowongan BKK: {summary.vacanciesTotal}</Text>
-                <Text style={{ color: '#334155', fontSize: 12, marginTop: 2 }}>Lowongan aktif: {summary.openVacancies}</Text>
+                <Text style={{ color: '#334155', fontSize: scaleWithAppTextScale(12) }}>Mitra industri: {summary.partnersTotal}</Text>
+                <Text style={{ color: '#334155', fontSize: scaleWithAppTextScale(12), marginTop: 2 }}>Lowongan BKK: {summary.vacanciesTotal}</Text>
+                <Text style={{ color: '#334155', fontSize: scaleWithAppTextScale(12), marginTop: 2 }}>Lowongan aktif: {summary.openVacancies}</Text>
               </View>
 
               <View
@@ -1834,9 +1835,9 @@ export function TeacherHumasModuleScreen({
                 }}
               >
                 <Text style={{ color: BRAND_COLORS.textDark, fontWeight: '700', marginBottom: 6 }}>Ringkasan Komponen Nilai PKL</Text>
-                <Text style={{ color: '#334155', fontSize: 12 }}>Total komponen: {summary.componentsTotal}</Text>
-                <Text style={{ color: '#334155', fontSize: 12, marginTop: 2 }}>Komponen aktif: {summary.activeComponents}</Text>
-                <Text style={{ color: '#334155', fontSize: 12, marginTop: 2 }}>Total bobot aktif: {summary.activeWeight}%</Text>
+                <Text style={{ color: '#334155', fontSize: scaleWithAppTextScale(12) }}>Total komponen: {summary.componentsTotal}</Text>
+                <Text style={{ color: '#334155', fontSize: scaleWithAppTextScale(12), marginTop: 2 }}>Komponen aktif: {summary.activeComponents}</Text>
+                <Text style={{ color: '#334155', fontSize: scaleWithAppTextScale(12), marginTop: 2 }}>Total bobot aktif: {summary.activeWeight}%</Text>
               </View>
             </>
           ) : null}

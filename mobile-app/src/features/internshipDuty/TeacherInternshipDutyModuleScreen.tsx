@@ -15,6 +15,7 @@ import { getStandardPagePadding } from '../../lib/ui/pageLayout';
 import { useAuth } from '../auth/AuthProvider';
 import { internshipDutyApi } from './internshipDutyApi';
 import { InternshipAttendanceRow, InternshipJournalRow } from './types';
+import { scaleWithAppTextScale } from '../../theme/AppTextScaleProvider';
 
 type ModuleMode = 'GUIDANCE' | 'DEFENSE';
 type JournalFilter = 'ALL' | 'PENDING' | 'VERIFIED' | 'REJECTED';
@@ -357,7 +358,7 @@ export function TeacherInternshipDutyModuleScreen({
   if (!isTeacher) {
     return (
       <ScrollView style={{ flex: 1, backgroundColor: '#f8fafc' }} contentContainerStyle={pagePadding}>
-        <Text style={{ fontSize: 20, fontWeight: '700', marginBottom: 8 }}>{title}</Text>
+        <Text style={{ fontSize: scaleWithAppTextScale(20), fontWeight: '700', marginBottom: 8 }}>{title}</Text>
         <QueryStateView type="error" message="Halaman ini khusus untuk role guru." />
       </ScrollView>
     );
@@ -395,7 +396,7 @@ export function TeacherInternshipDutyModuleScreen({
           <Feather name={moduleIcon(mode)} size={18} color="#e2e8f0" />
         </View>
         <View style={{ flex: 1 }}>
-          <Text style={{ color: '#fff', fontSize: 20, fontWeight: '700' }}>{title}</Text>
+          <Text style={{ color: '#fff', fontSize: scaleWithAppTextScale(20), fontWeight: '700' }}>{title}</Text>
           <Text style={{ color: '#dbeafe', marginTop: 2 }}>{subtitle}</Text>
         </View>
       </View>
@@ -492,7 +493,7 @@ export function TeacherInternshipDutyModuleScreen({
                 <View style={{ flexDirection: 'row', justifyContent: 'space-between', alignItems: 'flex-start' }}>
                   <View style={{ flex: 1, paddingRight: 8 }}>
                     <Text style={{ color: BRAND_COLORS.textDark, fontWeight: '700' }}>{toText(item.student?.name)}</Text>
-                    <Text style={{ color: '#64748b', marginTop: 2, fontSize: 12 }}>
+                    <Text style={{ color: '#64748b', marginTop: 2, fontSize: scaleWithAppTextScale(12) }}>
                       {toText(item.student?.studentClass?.name)} • {toText(item.companyName)}
                     </Text>
                   </View>
@@ -506,25 +507,25 @@ export function TeacherInternshipDutyModuleScreen({
                       paddingVertical: 3,
                     }}
                   >
-                    <Text style={{ color: badge.text, fontWeight: '700', fontSize: 11 }}>
+                    <Text style={{ color: badge.text, fontWeight: '700', fontSize: scaleWithAppTextScale(11) }}>
                       {resolveInternshipStatusLabel(item.status)}
                     </Text>
                   </View>
                 </View>
 
-                <Text style={{ color: '#334155', fontSize: 12, marginTop: 8 }}>
+                <Text style={{ color: '#334155', fontSize: scaleWithAppTextScale(12), marginTop: 8 }}>
                   Mentor: {toText(item.mentorName)} • NIS: {toText(item.student?.nis)}
                 </Text>
-                <Text style={{ color: '#64748b', fontSize: 11, marginTop: 4 }}>
+                <Text style={{ color: '#64748b', fontSize: scaleWithAppTextScale(11), marginTop: 4 }}>
                   Mulai {formatDate(item.startDate)} • Selesai {formatDate(item.endDate)}
                 </Text>
                 {mode === 'DEFENSE' ? (
-                  <Text style={{ color: '#64748b', fontSize: 11, marginTop: 2 }}>
+                  <Text style={{ color: '#64748b', fontSize: scaleWithAppTextScale(11), marginTop: 2 }}>
                     Sidang: {formatDateTime(item.defenseDate)} • Ruang: {toText(item.defenseRoom)}
                   </Text>
                 ) : null}
                 {mode === 'DEFENSE' ? (
-                  <Text style={{ color: '#334155', fontSize: 11, marginTop: 2 }}>
+                  <Text style={{ color: '#334155', fontSize: scaleWithAppTextScale(11), marginTop: 2 }}>
                     Nilai industri: {typeof item.industryScore === 'number' ? item.industryScore.toFixed(2) : '-'} •
                     Nilai sidang: {typeof item.defenseScore === 'number' ? item.defenseScore.toFixed(2) : '-'} • Nilai akhir:{' '}
                     {typeof item.finalGrade === 'number' ? item.finalGrade.toFixed(2) : '-'}
@@ -600,17 +601,17 @@ export function TeacherInternshipDutyModuleScreen({
                           paddingVertical: 3,
                         }}
                       >
-                        <Text style={{ color: journalBadge.text, fontWeight: '700', fontSize: 11 }}>
+                        <Text style={{ color: journalBadge.text, fontWeight: '700', fontSize: scaleWithAppTextScale(11) }}>
                           {journalBadge.label}
                         </Text>
                       </View>
                     </View>
-                    <Text style={{ color: '#334155', fontSize: 12, marginTop: 6 }}>{toText(journal.activity)}</Text>
-                    <Text style={{ color: '#64748b', fontSize: 11, marginTop: 4 }}>
+                    <Text style={{ color: '#334155', fontSize: scaleWithAppTextScale(12), marginTop: 6 }}>{toText(journal.activity)}</Text>
+                    <Text style={{ color: '#64748b', fontSize: scaleWithAppTextScale(11), marginTop: 4 }}>
                       Dibuat: {formatDateTime(journal.createdAt)}
                     </Text>
                     {journal.feedback ? (
-                      <Text style={{ color: '#991b1b', fontSize: 11, marginTop: 4 }}>Catatan: {journal.feedback}</Text>
+                      <Text style={{ color: '#991b1b', fontSize: scaleWithAppTextScale(11), marginTop: 4 }}>Catatan: {journal.feedback}</Text>
                     ) : null}
                     {isPending ? (
                       <View style={{ flexDirection: 'row', gap: 8, marginTop: 8 }}>
@@ -686,7 +687,7 @@ export function TeacherInternshipDutyModuleScreen({
                   >
                     <View style={{ flex: 1 }}>
                       <Text style={{ color: BRAND_COLORS.textDark, fontWeight: '700' }}>{formatDate(attendance.date)}</Text>
-                      <Text style={{ color: '#64748b', marginTop: 2, fontSize: 12 }}>{toText(attendance.note)}</Text>
+                      <Text style={{ color: '#64748b', marginTop: 2, fontSize: scaleWithAppTextScale(12) }}>{toText(attendance.note)}</Text>
                     </View>
                     <View
                       style={{
@@ -698,7 +699,7 @@ export function TeacherInternshipDutyModuleScreen({
                         paddingVertical: 3,
                       }}
                     >
-                      <Text style={{ color: style.text, fontWeight: '700', fontSize: 11 }}>
+                      <Text style={{ color: style.text, fontWeight: '700', fontSize: scaleWithAppTextScale(11) }}>
                         {resolveAttendanceLabel(attendance.status)}
                       </Text>
                     </View>
@@ -732,7 +733,7 @@ export function TeacherInternshipDutyModuleScreen({
                 Isi komponen nilai untuk {toText(selectedInternship.student?.name)}.
               </Text>
 
-              <Text style={{ color: '#64748b', fontSize: 12, marginBottom: 4 }}>Presentasi (0-100)</Text>
+              <Text style={{ color: '#64748b', fontSize: scaleWithAppTextScale(12), marginBottom: 4 }}>Presentasi (0-100)</Text>
               <TextInput
                 value={scorePresentation}
                 onChangeText={setScorePresentation}
@@ -751,7 +752,7 @@ export function TeacherInternshipDutyModuleScreen({
                 }}
               />
 
-              <Text style={{ color: '#64748b', fontSize: 12, marginBottom: 4 }}>Pemahaman (0-100)</Text>
+              <Text style={{ color: '#64748b', fontSize: scaleWithAppTextScale(12), marginBottom: 4 }}>Pemahaman (0-100)</Text>
               <TextInput
                 value={scoreUnderstanding}
                 onChangeText={setScoreUnderstanding}
@@ -770,7 +771,7 @@ export function TeacherInternshipDutyModuleScreen({
                 }}
               />
 
-              <Text style={{ color: '#64748b', fontSize: 12, marginBottom: 4 }}>Relevansi (0-100)</Text>
+              <Text style={{ color: '#64748b', fontSize: scaleWithAppTextScale(12), marginBottom: 4 }}>Relevansi (0-100)</Text>
               <TextInput
                 value={scoreRelevance}
                 onChangeText={setScoreRelevance}
@@ -789,7 +790,7 @@ export function TeacherInternshipDutyModuleScreen({
                 }}
               />
 
-              <Text style={{ color: '#64748b', fontSize: 12, marginBottom: 4 }}>Sistematika (0-100)</Text>
+              <Text style={{ color: '#64748b', fontSize: scaleWithAppTextScale(12), marginBottom: 4 }}>Sistematika (0-100)</Text>
               <TextInput
                 value={scoreSystematics}
                 onChangeText={setScoreSystematics}
@@ -808,7 +809,7 @@ export function TeacherInternshipDutyModuleScreen({
                 }}
               />
 
-              <Text style={{ color: '#64748b', fontSize: 12, marginBottom: 4 }}>Catatan Sidang</Text>
+              <Text style={{ color: '#64748b', fontSize: scaleWithAppTextScale(12), marginBottom: 4 }}>Catatan Sidang</Text>
               <TextInput
                 value={defenseNotes}
                 onChangeText={setDefenseNotes}
@@ -892,9 +893,9 @@ export function TeacherInternshipDutyModuleScreen({
                 backgroundColor: '#f8fbff',
               }}
             >
-              <Text style={{ color: '#64748b', fontSize: 11, marginBottom: 4 }}>{item.label}</Text>
-              <Text style={{ color: BRAND_COLORS.textDark, fontWeight: '700', fontSize: 18 }}>{item.value}</Text>
-              <Text style={{ color: BRAND_COLORS.textMuted, fontSize: 11, marginTop: 3 }}>{item.note}</Text>
+              <Text style={{ color: '#64748b', fontSize: scaleWithAppTextScale(11), marginBottom: 4 }}>{item.label}</Text>
+              <Text style={{ color: BRAND_COLORS.textDark, fontWeight: '700', fontSize: scaleWithAppTextScale(18) }}>{item.value}</Text>
+              <Text style={{ color: BRAND_COLORS.textMuted, fontSize: scaleWithAppTextScale(11), marginTop: 3 }}>{item.note}</Text>
             </View>
           ))}
           {selectedInternship ? (
@@ -908,7 +909,7 @@ export function TeacherInternshipDutyModuleScreen({
                 backgroundColor: '#fff',
               }}
             >
-              <Text style={{ color: '#64748b', fontSize: 11, marginBottom: 4 }}>Data Aktif</Text>
+              <Text style={{ color: '#64748b', fontSize: scaleWithAppTextScale(11), marginBottom: 4 }}>Data Aktif</Text>
               <Text style={{ color: BRAND_COLORS.textDark, fontWeight: '600' }}>
                 Siswa: {toText(selectedInternship.student?.name)}
               </Text>

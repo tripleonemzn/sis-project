@@ -11,6 +11,7 @@ import { useStaffStudentsQuery } from '../../../src/features/staff/useStaffStude
 import { getStaffStudentsSubtitle } from '../../../src/features/staff/staffRole';
 import { getStandardPagePadding } from '../../../src/lib/ui/pageLayout';
 import { BRAND_COLORS } from '../../../src/config/brand';
+import { scaleWithAppTextScale } from '../../../src/theme/AppTextScaleProvider';
 
 export default function StaffStudentsScreen() {
   const router = useRouter();
@@ -55,7 +56,7 @@ export default function StaffStudentsScreen() {
   if (user?.role !== 'STAFF') {
     return (
       <ScrollView style={{ flex: 1, backgroundColor: '#f8fafc' }} contentContainerStyle={pagePadding}>
-        <Text style={{ fontSize: 20, fontWeight: '700', marginBottom: 8 }}>Data Siswa</Text>
+        <Text style={{ fontSize: scaleWithAppTextScale(20), fontWeight: '700', marginBottom: 8 }}>Data Siswa</Text>
         <QueryStateView type="error" message="Halaman ini khusus untuk role staff." />
         <Pressable
           onPress={() => router.replace('/home')}
@@ -84,7 +85,7 @@ export default function StaffStudentsScreen() {
         />
       }
     >
-      <Text style={{ fontSize: 20, fontWeight: '700', marginBottom: 6, color: BRAND_COLORS.textDark }}>Data Siswa</Text>
+      <Text style={{ fontSize: scaleWithAppTextScale(20), fontWeight: '700', marginBottom: 6, color: BRAND_COLORS.textDark }}>Data Siswa</Text>
       <Text style={{ color: BRAND_COLORS.textMuted, marginBottom: 12 }}>
         {getStaffStudentsSubtitle(user)}
       </Text>
@@ -167,7 +168,7 @@ export default function StaffStudentsScreen() {
           ))}
         </View>
 
-        <Text style={{ color: BRAND_COLORS.textMuted, fontSize: 12 }}>
+        <Text style={{ color: BRAND_COLORS.textMuted, fontSize: scaleWithAppTextScale(12) }}>
           Total siswa ditemukan: <Text style={{ color: BRAND_COLORS.textDark, fontWeight: '700' }}>{filteredStudents.length}</Text>
         </Text>
       </View>
@@ -193,7 +194,7 @@ export default function StaffStudentsScreen() {
                   marginBottom: 10,
                 }}
               >
-                <Text style={{ color: BRAND_COLORS.textDark, fontWeight: '700', fontSize: 16, marginBottom: 5 }}>{item.name}</Text>
+                <Text style={{ color: BRAND_COLORS.textDark, fontWeight: '700', fontSize: scaleWithAppTextScale(16), marginBottom: 5 }}>{item.name}</Text>
                 <Text style={{ color: '#475569', marginBottom: 2 }}>
                   Username: <Text style={{ color: BRAND_COLORS.textDark, fontWeight: '600' }}>{item.username}</Text>
                 </Text>
