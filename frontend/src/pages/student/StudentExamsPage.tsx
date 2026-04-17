@@ -70,6 +70,13 @@ type ExamAvailabilityPayload = {
   sessions?: ExamSessionPayload[]
   isBlocked?: boolean
   blockReason?: string
+  academicClearance?: {
+    blocksExam: boolean
+    warningOnly?: boolean
+    hasBelowKkm: boolean
+    hasMissingScores: boolean
+    reason?: string | null
+  } | null
   financeClearance?: {
     blocksExam: boolean
     hasOutstanding: boolean
@@ -246,6 +253,13 @@ interface Exam {
   }
   isBlocked?: boolean
   blockReason?: string
+  academicClearance?: {
+    blocksExam: boolean
+    warningOnly?: boolean
+    hasBelowKkm: boolean
+    hasMissingScores: boolean
+    reason?: string | null
+  } | null
   financeClearance?: {
     blocksExam: boolean
     hasOutstanding: boolean
@@ -615,6 +629,7 @@ export default function StudentExamsPage() {
           } : undefined,
           isBlocked: item.isBlocked,
           blockReason: item.blockReason,
+          academicClearance: item.academicClearance || null,
           financeClearance: item.financeClearance || null,
           makeupAvailable: Boolean(item.makeupAvailable),
           makeupMode: item.makeupMode || null,
@@ -1281,6 +1296,25 @@ export default function StudentExamsPage() {
               </div>
               <div className="mt-1 text-[11px] text-amber-700">
                 Program ini hanya memberi peringatan dan tidak memblokir ujian.
+              </div>
+            </div>
+          ) : null}
+          {!exam.isBlocked && exam.academicClearance?.warningOnly ? (
+            <div
+              className={`mt-2 rounded-lg border px-3 py-2 text-left text-[11px] ${
+                exam.academicClearance.hasBelowKkm
+                  ? 'border-red-200 bg-red-50 text-red-800'
+                  : 'border-amber-200 bg-amber-50 text-amber-800'
+              }`}
+            >
+              <div className="font-semibold">Warning akademik</div>
+              <div className="mt-1">
+                {exam.academicClearance.reason || 'Program ini tetap mengizinkan Anda ikut SBTS, tetapi status akademik tetap ditandai.'}
+              </div>
+              <div className="mt-1">
+                {exam.academicClearance.hasBelowKkm ? 'Nilai di bawah KKM tetap ditandai merah.' : null}
+                {exam.academicClearance.hasBelowKkm && exam.academicClearance.hasMissingScores ? ' ' : null}
+                {exam.academicClearance.hasMissingScores ? 'Masih ada nilai mapel yang belum lengkap.' : null}
               </div>
             </div>
           ) : null}

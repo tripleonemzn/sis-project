@@ -1471,6 +1471,49 @@ export default function StudentExamsScreen() {
                                 </Text>
                               </View>
                             ) : null}
+                            {!item.isBlocked && item.academicClearance?.warningOnly ? (
+                              <View
+                                style={{
+                                  marginBottom: 8,
+                                  borderWidth: 1,
+                                  borderColor: item.academicClearance.hasBelowKkm ? '#fecaca' : '#fde68a',
+                                  backgroundColor: item.academicClearance.hasBelowKkm ? '#fef2f2' : '#fffbeb',
+                                  borderRadius: 8,
+                                  padding: 8,
+                                }}
+                              >
+                                <Text
+                                  style={{
+                                    color: item.academicClearance.hasBelowKkm ? '#b91c1c' : '#92400e',
+                                    fontSize: 11,
+                                    fontWeight: '700',
+                                  }}
+                                >
+                                  Warning akademik
+                                </Text>
+                                <Text
+                                  style={{
+                                    color: item.academicClearance.hasBelowKkm ? '#b91c1c' : '#92400e',
+                                    fontSize: 11,
+                                    marginTop: 4,
+                                  }}
+                                >
+                                  {item.academicClearance.reason ||
+                                    'Program ini tetap mengizinkan Anda ikut SBTS, tetapi status akademik tetap ditandai.'}
+                                </Text>
+                                <Text
+                                  style={{
+                                    color: item.academicClearance.hasBelowKkm ? '#b91c1c' : '#92400e',
+                                    fontSize: 11,
+                                    marginTop: 4,
+                                  }}
+                                >
+                                  {item.academicClearance.hasBelowKkm ? 'Nilai di bawah KKM tetap ditandai merah.' : ''}
+                                  {item.academicClearance.hasBelowKkm && item.academicClearance.hasMissingScores ? ' ' : ''}
+                                  {item.academicClearance.hasMissingScores ? 'Masih ada nilai mapel yang belum lengkap.' : ''}
+                                </Text>
+                              </View>
+                            ) : null}
                             <Pressable
                               onPress={async () => {
                                 if ((status === 'OPEN' || status === 'MAKEUP') && !item.isBlocked && isReady) {

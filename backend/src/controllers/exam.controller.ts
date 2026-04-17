@@ -24,6 +24,10 @@ import {
 } from '../utils/studentAcademicHistory';
 import { createInAppNotification } from '../services/mobilePushNotification.service';
 import { assertCurriculumExamManagerAccess } from '../utils/examManagementAccess';
+import {
+    evaluateExamAcademicEligibility,
+    resolveExamAcademicEligibilityPolicy,
+} from '../utils/examAcademicPolicy';
 
 function normalizeAliasCode(raw: unknown): string {
     return String(raw || '')
@@ -488,6 +492,7 @@ type ExamFinanceClearanceMode =
 
 type AutomaticExamRestrictionFlags = {
     belowKkm: boolean;
+    missingScores: boolean;
     financeOutstanding: boolean;
     financeOverdue: boolean;
     financeBlocked: boolean;
@@ -500,8 +505,14 @@ type AutomaticExamRestrictionBelowKkmSubject = {
     kkm: number;
 };
 
+type AutomaticExamRestrictionMissingScoreSubject = {
+    subjectId: number;
+    subjectName: string;
+};
+
 type AutomaticExamRestrictionDetails = {
     belowKkmSubjects: AutomaticExamRestrictionBelowKkmSubject[];
+    missingScoreSubjects: AutomaticExamRestrictionMissingScoreSubject[];
     outstandingAmount: number;
     outstandingInvoices: number;
     overdueInvoices: number;
@@ -514,6 +525,8 @@ type AutomaticExamRestrictionDetails = {
 type AutomaticExamRestrictionInfo = {
     autoBlocked: boolean;
     reason: string;
+    academicBlocked: boolean;
+    academicReason: string;
     flags: AutomaticExamRestrictionFlags;
     details: AutomaticExamRestrictionDetails;
 };
@@ -530,6 +543,14 @@ type ExamFinanceClearanceSummary = {
     minOverdueInvoices: number;
     notes: string | null;
     warningOnly: boolean;
+    reason: string | null;
+};
+
+type ExamAcademicClearanceSummary = {
+    blocksExam: boolean;
+    warningOnly: boolean;
+    hasBelowKkm: boolean;
+    hasMissingScores: boolean;
     reason: string | null;
 };
 
@@ -598,14 +619,18 @@ const DEFAULT_EXAM_FINANCE_MIN_OVERDUE_INVOICES = 1;
 const emptyAutomaticExamRestrictionInfo = (): AutomaticExamRestrictionInfo => ({
     autoBlocked: false,
     reason: '',
+    academicBlocked: false,
+    academicReason: '',
     flags: {
         belowKkm: false,
+        missingScores: false,
         financeOutstanding: false,
         financeOverdue: false,
         financeBlocked: false,
     },
     details: {
         belowKkmSubjects: [],
+        missingScoreSubjects: [],
         outstandingAmount: 0,
         outstandingInvoices: 0,
         overdueInvoices: 0,
@@ -1152,6 +1177,19 @@ function buildExamFinanceClearanceSummary(
     };
 }
 
+function buildExamAcademicClearanceSummary(
+    automaticRestriction: AutomaticExamRestrictionInfo | null,
+): ExamAcademicClearanceSummary {
+    const info = automaticRestriction || emptyAutomaticExamRestrictionInfo();
+    return {
+        blocksExam: info.academicBlocked,
+        warningOnly: Boolean(info.academicReason) && !info.academicBlocked,
+        hasBelowKkm: info.flags.belowKkm,
+        hasMissingScores: info.flags.missingScores,
+        reason: info.academicReason || null,
+    };
+}
+
 async function buildAutomaticExamRestrictionMap(params: {
     classId: number;
     academicYearId: number;
@@ -1336,6 +1374,7 @@ async function buildAutomaticExamRestrictionMap(params: {
     });
 
     const belowKkmByStudent = new Map<number, AutomaticExamRestrictionBelowKkmSubject[]>();
+    const missingScoresByStudent = new Map<number, AutomaticExamRestrictionMissingScoreSubject[]>();
     studentIds.forEach((studentId) => {
         assignmentBySubjectId.forEach((assignment, subjectId) => {
             if (
@@ -1354,7 +1393,15 @@ async function buildAutomaticExamRestrictionMap(params: {
                 studentGrades: studentGradesBySubject.get(key) || [],
             });
 
-            if (resolvedScore === null) return;
+            if (resolvedScore === null) {
+                const current = missingScoresByStudent.get(studentId) || [];
+                current.push({
+                    subjectId,
+                    subjectName: assignment.subjectName,
+                });
+                missingScoresByStudent.set(studentId, current);
+                return;
+            }
             const score = Number(resolvedScore);
             if (score >= assignment.kkm) return;
 
@@ -1394,6 +1441,9 @@ async function buildAutomaticExamRestrictionMap(params: {
         const belowKkmSubjects = (belowKkmByStudent.get(studentId) || []).sort((a, b) =>
             a.subjectName.localeCompare(b.subjectName, 'id-ID'),
         );
+        const missingScoreSubjects = (missingScoresByStudent.get(studentId) || []).sort((a, b) =>
+            a.subjectName.localeCompare(b.subjectName, 'id-ID'),
+        );
         const finance = financeByStudent.get(studentId) || {
             outstandingAmount: 0,
             outstandingInvoices: 0,
@@ -1404,34 +1454,40 @@ async function buildAutomaticExamRestrictionMap(params: {
             policy: financePolicy,
         });
         const financeExceptionGranted = financeEvaluation.blocked && financeExceptionStudentIds.has(studentId);
+        const academicEvaluation = evaluateExamAcademicEligibility({
+            policy: resolveExamAcademicEligibilityPolicy({
+                programCode: params.programCode,
+                examType: params.examType,
+            }),
+            belowKkmSubjects,
+            missingScoreSubjects,
+        });
 
         const flags: AutomaticExamRestrictionFlags = {
             belowKkm: belowKkmSubjects.length > 0,
+            missingScores: missingScoreSubjects.length > 0,
             financeOutstanding: financeEvaluation.hasOutstanding,
             financeOverdue: financeEvaluation.hasOverdue,
             financeBlocked: financeEvaluation.blocked && !financeExceptionGranted,
         };
 
         const reasonParts: string[] = [];
-        if (flags.belowKkm) {
-            const subjectPreview = belowKkmSubjects
-                .slice(0, 3)
-                .map((subject) => `${subject.subjectName} (${subject.score}/${subject.kkm})`)
-                .join(', ');
-            reasonParts.push(
-                `Nilai di bawah KKM${subjectPreview ? `: ${subjectPreview}` : ''}${belowKkmSubjects.length > 3 ? ' dan lainnya' : ''}`,
-            );
+        if (academicEvaluation.academicBlocked && academicEvaluation.academicReason) {
+            reasonParts.push(academicEvaluation.academicReason);
         }
         if (flags.financeBlocked) {
             reasonParts.push(financeEvaluation.reason);
         }
 
         result.set(studentId, {
-            autoBlocked: flags.belowKkm || flags.financeBlocked,
+            autoBlocked: academicEvaluation.academicBlocked || flags.financeBlocked,
             reason: formatAutomaticRestrictionReason(reasonParts),
+            academicBlocked: academicEvaluation.academicBlocked,
+            academicReason: academicEvaluation.academicReason,
             flags,
             details: {
                 belowKkmSubjects,
+                missingScoreSubjects,
                 outstandingAmount: Number(finance.outstandingAmount.toFixed(2)),
                 outstandingInvoices: finance.outstandingInvoices,
                 overdueInvoices: finance.overdueInvoices,
@@ -10232,6 +10288,7 @@ export const getAvailableExams = asyncHandler(async (req: Request, res: Response
         let isBlocked = false;
         let blockReason = '';
         let financeClearance: ExamFinanceClearanceSummary | null = null;
+        let academicClearance: ExamAcademicClearanceSummary | null = null;
         const packetQuestionCount = schedule.packet ? questionCountByPacketId.get(schedule.packet.id) || 0 : 0;
         const isReady = packetQuestionCount > 0;
         const notReadyReason = isReady ? null : 'Soal untuk jadwal ini belum disiapkan guru.';
@@ -10278,6 +10335,7 @@ export const getAvailableExams = asyncHandler(async (req: Request, res: Response
             isBlocked = resolvedRestriction.isBlocked;
             blockReason = resolvedRestriction.reason || '';
             financeClearance = buildExamFinanceClearanceSummary(automaticRestriction);
+            academicClearance = buildExamAcademicClearanceSummary(automaticRestriction);
         }
 
         const session = pickBestSession(schedule.sessions);
@@ -10377,6 +10435,7 @@ export const getAvailableExams = asyncHandler(async (req: Request, res: Response
             isReady,
             notReadyReason,
             financeClearance,
+            academicClearance,
             makeupAvailable: makeupContext.availableNow,
             makeupMode: makeupContext.mode,
             makeupScheduled: makeupContext.scheduled,

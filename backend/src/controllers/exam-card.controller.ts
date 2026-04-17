@@ -204,6 +204,8 @@ function deriveExamCardOverviewStatus(params: {
   const hasOperationalEntry = params.entries.length > 0;
   const hasBelowKkm = Boolean(params.eligibility.automatic.flags.belowKkm);
   const hasFinanceBlock = Boolean(params.eligibility.automatic.flags.financeBlocked);
+  const hasAcademicWarning = Boolean(params.eligibility.academicClearance.warningOnly);
+  const academicWarningReason = params.eligibility.academicClearance.reason || 'Masih ada warning akademik pada SBTS.';
 
   if (params.eligibility.isEligible) {
     if (params.hasActiveCard) {
@@ -211,7 +213,9 @@ function deriveExamCardOverviewStatus(params: {
         code: 'PUBLISHED_ACTIVE',
         category: 'PUBLISHED',
         label: 'Sudah Dipublikasikan',
-        detail: 'Kartu aktif sudah terbit dan tampil di akun siswa.',
+        detail: hasAcademicWarning
+          ? `Kartu aktif sudah terbit, tetapi siswa ini masih punya warning akademik. ${academicWarningReason}`
+          : 'Kartu aktif sudah terbit dan tampil di akun siswa.',
       } satisfies ExamCardOverviewStatus;
     }
     if (hasOperationalEntry) {
@@ -219,7 +223,9 @@ function deriveExamCardOverviewStatus(params: {
         code: 'READY_TO_GENERATE',
         category: 'READY',
         label: 'Siap Digenerate',
-        detail: 'Siswa memenuhi syarat dan siap dipublikasikan setelah generate kartu.',
+        detail: hasAcademicWarning
+          ? `Siswa boleh ikut ujian dan siap dipublikasikan, tetapi masih punya warning akademik. ${academicWarningReason}`
+          : 'Siswa memenuhi syarat dan siap dipublikasikan setelah generate kartu.',
       } satisfies ExamCardOverviewStatus;
     }
     return {
@@ -1148,6 +1154,7 @@ async function buildExamCardOverview(params: {
       statusCounts: {
         publishedActive: rows.filter((row) => row.status.code === 'PUBLISHED_ACTIVE').length,
         readyToGenerate: rows.filter((row) => row.status.code === 'READY_TO_GENERATE').length,
+        warningAcademic: rows.filter((row) => row.eligibility.academicClearance.warningOnly).length,
         blockedKkm: rows.filter((row) => row.status.code === 'BLOCKED_KKM').length,
         blockedFinance: rows.filter((row) => row.status.code === 'BLOCKED_FINANCE').length,
         reviewRequired: rows.filter((row) => row.status.category === 'REVIEW_REQUIRED').length,

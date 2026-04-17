@@ -25,7 +25,14 @@ import {
 } from '../examCards/examCardApi';
 import { resolveStaffDivision } from './staffRole';
 
-type StatusFilter = 'ALL' | 'PUBLISHED' | 'READY' | 'BLOCKED_KKM' | 'BLOCKED_FINANCE' | 'REVIEW_REQUIRED';
+type StatusFilter =
+  | 'ALL'
+  | 'PUBLISHED'
+  | 'READY'
+  | 'WARNING_ACADEMIC'
+  | 'BLOCKED_KKM'
+  | 'BLOCKED_FINANCE'
+  | 'REVIEW_REQUIRED';
 
 function formatDateTime(value?: string | null) {
   if (!value) return '-';
@@ -353,9 +360,36 @@ function matchesStatusFilter(filter: StatusFilter, row: ExamCardOverviewRow) {
   if (filter === 'ALL') return true;
   if (filter === 'PUBLISHED') return row.status.category === 'PUBLISHED';
   if (filter === 'READY') return row.status.category === 'READY';
+  if (filter === 'WARNING_ACADEMIC') return Boolean(row.eligibility.academicClearance.warningOnly);
   if (filter === 'BLOCKED_KKM') return row.status.category === 'BLOCKED_KKM';
   if (filter === 'BLOCKED_FINANCE') return row.status.category === 'BLOCKED_FINANCE';
   return row.status.category === 'REVIEW_REQUIRED';
+}
+
+function buildAcademicWarningItems(row: ExamCardOverviewRow) {
+  const items: string[] = [];
+  const belowKkmItems = row.eligibility.automatic.details.belowKkmSubjects || [];
+  const missingScoreItems = row.eligibility.automatic.details.missingScoreSubjects || [];
+
+  if (belowKkmItems.length > 0) {
+    items.push(
+      `Nilai di bawah KKM: ${belowKkmItems
+        .slice(0, 3)
+        .map((subject) => `${subject.subjectName} (${subject.score}/${subject.kkm})`)
+        .join(', ')}${belowKkmItems.length > 3 ? ` +${belowKkmItems.length - 3} mapel lainnya` : ''}`,
+    );
+  }
+
+  if (missingScoreItems.length > 0) {
+    items.push(
+      `Nilai belum lengkap: ${missingScoreItems
+        .slice(0, 3)
+        .map((subject) => subject.subjectName)
+        .join(', ')}${missingScoreItems.length > 3 ? ` +${missingScoreItems.length - 3} mapel lainnya` : ''}`,
+    );
+  }
+
+  return items;
 }
 
 function statusPill(row: ExamCardOverviewRow) {
@@ -677,6 +711,13 @@ export function StaffHeadTuExamCardsScreen() {
           accentColor="#047857"
         />
         <SummaryCard
+          title="Warning Akademik"
+          value={String(overviewQuery.data?.summary.statusCounts.warningAcademic || 0)}
+          subtitle="Boleh ikut SBTS, tetapi warning akademik tetap ditandai"
+          iconName="alert-circle"
+          accentColor="#b91c1c"
+        />
+        <SummaryCard
           title="Blocked KKM"
           value={String(overviewQuery.data?.summary.statusCounts.blockedKkm || 0)}
           subtitle="Tidak bisa dapat kartu karena nilai masih di bawah KKM"
@@ -793,6 +834,7 @@ export function StaffHeadTuExamCardsScreen() {
             { value: 'ALL', label: 'Semua Status' },
             { value: 'PUBLISHED', label: 'Sudah Dipublikasikan' },
             { value: 'READY', label: 'Siap Digenerate' },
+            { value: 'WARNING_ACADEMIC', label: 'Warning Akademik' },
             { value: 'BLOCKED_KKM', label: 'Blocked KKM' },
             { value: 'BLOCKED_FINANCE', label: 'Blocked Finance' },
             { value: 'REVIEW_REQUIRED', label: 'Perlu Review Data' },
@@ -860,6 +902,8 @@ export function StaffHeadTuExamCardsScreen() {
                     {filteredRows.map((row) => {
                       const pill = statusPill(row);
                       const isPublishedActive = row.status.code === 'PUBLISHED_ACTIVE';
+                      const academicWarningItems = buildAcademicWarningItems(row);
+                      const hasAcademicWarning = Boolean(row.eligibility.academicClearance.warningOnly);
                       return (
                         <View
                   key={row.studentId}
@@ -1014,14 +1058,31 @@ export function StaffHeadTuExamCardsScreen() {
                           {row.eligibility.financeClearance.reason}
                         </Text>
                       ) : null}
-                      {!row.eligibility.isEligible &&
-                      row.eligibility.automatic.details.belowKkmSubjects.length > 0 ? (
-                        <Text style={{ color: '#92400e', fontSize: 11, marginTop: 4 }}>
-                        Nilai di bawah KKM: {row.eligibility.automatic.details.belowKkmSubjects
-                          .map((subject) => subject.subjectName)
-                          .join(', ')}
-                      </Text>
-                    ) : null}
+                      {academicWarningItems.length > 0 ? (
+                        <View
+                          style={{
+                            marginTop: 8,
+                            borderWidth: 1,
+                            borderColor: hasAcademicWarning || row.status.code === 'BLOCKED_KKM' ? '#fecaca' : '#fde68a',
+                            backgroundColor: hasAcademicWarning || row.status.code === 'BLOCKED_KKM' ? '#fef2f2' : '#fffbeb',
+                            borderRadius: 10,
+                            padding: 8,
+                            gap: 4,
+                          }}
+                        >
+                          {academicWarningItems.map((item) => (
+                            <Text
+                              key={item}
+                              style={{
+                                color: hasAcademicWarning || row.status.code === 'BLOCKED_KKM' ? '#b91c1c' : '#92400e',
+                                fontSize: 11,
+                              }}
+                            >
+                              {item}
+                            </Text>
+                          ))}
+                        </View>
+                      ) : null}
                   </View>
 
                   <View style={{ marginTop: 10 }}>

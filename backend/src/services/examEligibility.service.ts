@@ -6,6 +6,10 @@ import {
   Semester,
 } from '@prisma/client';
 import { ApiError } from '../utils/api';
+import {
+  evaluateExamAcademicEligibility,
+  resolveExamAcademicEligibilityPolicy,
+} from '../utils/examAcademicPolicy';
 import prisma from '../utils/prisma';
 import { HistoricalStudentSnapshot } from '../utils/studentAcademicHistory';
 
@@ -19,6 +23,7 @@ type ExamFinanceClearanceMode =
 
 type AutomaticExamRestrictionFlags = {
   belowKkm: boolean;
+  missingScores: boolean;
   financeOutstanding: boolean;
   financeOverdue: boolean;
   financeBlocked: boolean;
@@ -31,8 +36,14 @@ export type AutomaticExamRestrictionBelowKkmSubject = {
   kkm: number;
 };
 
+export type AutomaticExamRestrictionMissingScoreSubject = {
+  subjectId: number;
+  subjectName: string;
+};
+
 export type AutomaticExamRestrictionDetails = {
   belowKkmSubjects: AutomaticExamRestrictionBelowKkmSubject[];
+  missingScoreSubjects: AutomaticExamRestrictionMissingScoreSubject[];
   outstandingAmount: number;
   outstandingInvoices: number;
   overdueInvoices: number;
@@ -45,6 +56,8 @@ export type AutomaticExamRestrictionDetails = {
 export type AutomaticExamRestrictionInfo = {
   autoBlocked: boolean;
   reason: string;
+  academicBlocked: boolean;
+  academicReason: string;
   flags: AutomaticExamRestrictionFlags;
   details: AutomaticExamRestrictionDetails;
 };
@@ -64,6 +77,14 @@ export type ExamFinanceClearanceSummary = {
   reason: string | null;
 };
 
+export type ExamAcademicClearanceSummary = {
+  blocksExam: boolean;
+  warningOnly: boolean;
+  hasBelowKkm: boolean;
+  hasMissingScores: boolean;
+  reason: string | null;
+};
+
 export type ExamEligibilityStatus = {
   studentId: number;
   isEligible: boolean;
@@ -73,6 +94,7 @@ export type ExamEligibilityStatus = {
   financeExceptionApplied: boolean;
   automatic: AutomaticExamRestrictionInfo;
   financeClearance: ExamFinanceClearanceSummary;
+  academicClearance: ExamAcademicClearanceSummary;
 };
 
 type ResolvedExamFinanceClearancePolicy = {
@@ -137,6 +159,33 @@ const DEFAULT_EXAM_FINANCE_CLEARANCE_MODE: ExamFinanceClearanceMode = 'BLOCK_ANY
 const DEFAULT_EXAM_FINANCE_MIN_OUTSTANDING_AMOUNT = 0;
 const DEFAULT_EXAM_FINANCE_MIN_OVERDUE_INVOICES = 1;
 const currencyFormatterId = new Intl.NumberFormat('id-ID');
+
+function emptyAutomaticExamRestrictionInfo(): AutomaticExamRestrictionInfo {
+  return {
+    autoBlocked: false,
+    reason: '',
+    academicBlocked: false,
+    academicReason: '',
+    flags: {
+      belowKkm: false,
+      missingScores: false,
+      financeOutstanding: false,
+      financeOverdue: false,
+      financeBlocked: false,
+    },
+    details: {
+      belowKkmSubjects: [],
+      missingScoreSubjects: [],
+      outstandingAmount: 0,
+      outstandingInvoices: 0,
+      overdueInvoices: 0,
+      financeClearanceMode: DEFAULT_EXAM_FINANCE_CLEARANCE_MODE,
+      financeMinOutstandingAmount: DEFAULT_EXAM_FINANCE_MIN_OUTSTANDING_AMOUNT,
+      financeMinOverdueInvoices: DEFAULT_EXAM_FINANCE_MIN_OVERDUE_INVOICES,
+      financeClearanceNotes: null,
+    },
+  };
+}
 
 function normalizeAliasCode(raw: unknown): string {
   return String(raw || '')
@@ -689,28 +738,7 @@ function buildEffectiveExamRestrictionState(params: {
 function buildExamFinanceClearanceSummary(
   automaticRestriction: AutomaticExamRestrictionInfo | null,
 ): ExamFinanceClearanceSummary {
-  const info =
-    automaticRestriction ||
-    ({
-      autoBlocked: false,
-      reason: '',
-      flags: {
-        belowKkm: false,
-        financeOutstanding: false,
-        financeOverdue: false,
-        financeBlocked: false,
-      },
-      details: {
-        belowKkmSubjects: [],
-        outstandingAmount: 0,
-        outstandingInvoices: 0,
-        overdueInvoices: 0,
-        financeClearanceMode: DEFAULT_EXAM_FINANCE_CLEARANCE_MODE,
-        financeMinOutstandingAmount: DEFAULT_EXAM_FINANCE_MIN_OUTSTANDING_AMOUNT,
-        financeMinOverdueInvoices: DEFAULT_EXAM_FINANCE_MIN_OVERDUE_INVOICES,
-        financeClearanceNotes: null,
-      },
-    } satisfies AutomaticExamRestrictionInfo);
+  const info = automaticRestriction || emptyAutomaticExamRestrictionInfo();
   const hasOutstanding = info.details.outstandingAmount > 0 && info.details.outstandingInvoices > 0;
   const warningOnly =
     info.details.financeClearanceMode === 'WARN_ONLY' &&
@@ -735,6 +763,19 @@ function buildExamFinanceClearanceSummary(
     notes: info.details.financeClearanceNotes || null,
     warningOnly,
     reason: financeReason,
+  };
+}
+
+function buildExamAcademicClearanceSummary(
+  automaticRestriction: AutomaticExamRestrictionInfo | null,
+): ExamAcademicClearanceSummary {
+  const info = automaticRestriction || emptyAutomaticExamRestrictionInfo();
+  return {
+    blocksExam: info.academicBlocked,
+    warningOnly: Boolean(info.academicReason) && !info.academicBlocked,
+    hasBelowKkm: info.flags.belowKkm,
+    hasMissingScores: info.flags.missingScores,
+    reason: info.academicReason || null,
   };
 }
 
@@ -965,6 +1006,7 @@ export async function buildExamEligibilitySnapshot(params: {
   });
 
   const belowKkmByStudent = new Map<number, AutomaticExamRestrictionBelowKkmSubject[]>();
+  const missingScoresByStudent = new Map<number, AutomaticExamRestrictionMissingScoreSubject[]>();
   students.forEach((student) => {
     const classId = Number(student.studentClass?.id || 0);
     const classAssignments = assignmentByClassId.get(classId);
@@ -986,7 +1028,15 @@ export async function buildExamEligibilitySnapshot(params: {
         reportGrade: reportGradeMap.get(key) || null,
         studentGrades: studentGradesBySubject.get(key) || [],
       });
-      if (resolvedScore === null) return;
+      if (resolvedScore === null) {
+        const current = missingScoresByStudent.get(student.id) || [];
+        current.push({
+          subjectId,
+          subjectName: assignment.subjectName,
+        });
+        missingScoresByStudent.set(student.id, current);
+        return;
+      }
       const score = Number(resolvedScore);
       if (score >= assignment.kkm) return;
       const current = belowKkmByStudent.get(student.id) || [];
@@ -1025,6 +1075,9 @@ export async function buildExamEligibilitySnapshot(params: {
     const belowKkmSubjects = (belowKkmByStudent.get(studentId) || []).sort((a, b) =>
       a.subjectName.localeCompare(b.subjectName, 'id-ID'),
     );
+    const missingScoreSubjects = (missingScoresByStudent.get(studentId) || []).sort((a, b) =>
+      a.subjectName.localeCompare(b.subjectName, 'id-ID'),
+    );
     const finance = financeByStudent.get(studentId) || {
       outstandingAmount: 0,
       outstandingInvoices: 0,
@@ -1035,33 +1088,39 @@ export async function buildExamEligibilitySnapshot(params: {
       policy: financePolicy,
     });
     const financeExceptionApplied = financeEvaluation.blocked && financeExceptionStudentIds.has(studentId);
+    const academicEvaluation = evaluateExamAcademicEligibility({
+      policy: resolveExamAcademicEligibilityPolicy({
+        programCode: restrictionTarget.programCode,
+        examType: restrictionTarget.baseType,
+      }),
+      belowKkmSubjects,
+      missingScoreSubjects,
+    });
     const flags: AutomaticExamRestrictionFlags = {
       belowKkm: belowKkmSubjects.length > 0,
+      missingScores: missingScoreSubjects.length > 0,
       financeOutstanding: financeEvaluation.hasOutstanding,
       financeOverdue: financeEvaluation.hasOverdue,
       financeBlocked: financeEvaluation.blocked && !financeExceptionApplied,
     };
 
     const reasonParts: string[] = [];
-    if (flags.belowKkm) {
-      const subjectPreview = belowKkmSubjects
-        .slice(0, 3)
-        .map((subject) => `${subject.subjectName} (${subject.score}/${subject.kkm})`)
-        .join(', ');
-      reasonParts.push(
-        `Nilai di bawah KKM${subjectPreview ? `: ${subjectPreview}` : ''}${belowKkmSubjects.length > 3 ? ' dan lainnya' : ''}`,
-      );
+    if (academicEvaluation.academicBlocked && academicEvaluation.academicReason) {
+      reasonParts.push(academicEvaluation.academicReason);
     }
     if (flags.financeBlocked) {
       reasonParts.push(financeEvaluation.reason);
     }
 
     const automatic: AutomaticExamRestrictionInfo = {
-      autoBlocked: flags.belowKkm || flags.financeBlocked,
+      autoBlocked: academicEvaluation.academicBlocked || flags.financeBlocked,
       reason: formatAutomaticRestrictionReason(reasonParts),
+      academicBlocked: academicEvaluation.academicBlocked,
+      academicReason: academicEvaluation.academicReason,
       flags,
       details: {
         belowKkmSubjects,
+        missingScoreSubjects,
         outstandingAmount: Number(finance.outstandingAmount.toFixed(2)),
         outstandingInvoices: finance.outstandingInvoices,
         overdueInvoices: finance.overdueInvoices,
@@ -1087,6 +1146,7 @@ export async function buildExamEligibilitySnapshot(params: {
       financeExceptionApplied,
       automatic,
       financeClearance: buildExamFinanceClearanceSummary(automatic),
+      academicClearance: buildExamAcademicClearanceSummary(automatic),
     });
   });
 

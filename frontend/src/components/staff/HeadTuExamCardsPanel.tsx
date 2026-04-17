@@ -26,7 +26,14 @@ import { examService, type ExamProgram } from '../../services/exam.service';
 import { isNonScheduledExamProgram } from '../../lib/examProgramMenu';
 import { useActiveAcademicYear } from '../../hooks/useActiveAcademicYear';
 
-type StatusFilter = 'ALL' | 'PUBLISHED' | 'READY' | 'BLOCKED_KKM' | 'BLOCKED_FINANCE' | 'REVIEW_REQUIRED';
+type StatusFilter =
+  | 'ALL'
+  | 'PUBLISHED'
+  | 'READY'
+  | 'WARNING_ACADEMIC'
+  | 'BLOCKED_KKM'
+  | 'BLOCKED_FINANCE'
+  | 'REVIEW_REQUIRED';
 
 function formatDateTime(value?: string | null) {
   if (!value) return '-';
@@ -445,9 +452,36 @@ function matchesStatusFilter(filter: StatusFilter, row: ExamCardOverviewRow) {
   if (filter === 'ALL') return true;
   if (filter === 'PUBLISHED') return row.status.category === 'PUBLISHED';
   if (filter === 'READY') return row.status.category === 'READY';
+  if (filter === 'WARNING_ACADEMIC') return Boolean(row.eligibility.academicClearance.warningOnly);
   if (filter === 'BLOCKED_KKM') return row.status.category === 'BLOCKED_KKM';
   if (filter === 'BLOCKED_FINANCE') return row.status.category === 'BLOCKED_FINANCE';
   return row.status.category === 'REVIEW_REQUIRED';
+}
+
+function buildAcademicWarningItems(row: ExamCardOverviewRow) {
+  const items: string[] = [];
+  const belowKkmItems = row.eligibility.automatic.details.belowKkmSubjects || [];
+  const missingScoreItems = row.eligibility.automatic.details.missingScoreSubjects || [];
+
+  if (belowKkmItems.length > 0) {
+    items.push(
+      `Nilai di bawah KKM: ${belowKkmItems
+        .slice(0, 3)
+        .map((subject) => `${subject.subjectName} (${subject.score}/${subject.kkm})`)
+        .join(', ')}${belowKkmItems.length > 3 ? ` +${belowKkmItems.length - 3} mapel lainnya` : ''}`,
+    );
+  }
+
+  if (missingScoreItems.length > 0) {
+    items.push(
+      `Nilai belum lengkap: ${missingScoreItems
+        .slice(0, 3)
+        .map((subject) => subject.subjectName)
+        .join(', ')}${missingScoreItems.length > 3 ? ` +${missingScoreItems.length - 3} mapel lainnya` : ''}`,
+    );
+  }
+
+  return items;
 }
 
 function resolveStatusTone(code: ExamCardOverviewRow['status']['code']) {
@@ -603,6 +637,7 @@ export function HeadTuExamCardsPanel() {
       publishedActive: overviewQuery.data?.summary.statusCounts.publishedActive || 0,
       blockedKkm: overviewQuery.data?.summary.statusCounts.blockedKkm || 0,
       blockedFinance: overviewQuery.data?.summary.statusCounts.blockedFinance || 0,
+      warningAcademic: overviewQuery.data?.summary.statusCounts.warningAcademic || 0,
       reviewRequired: overviewQuery.data?.summary.statusCounts.reviewRequired || 0,
       blockedManual: overviewQuery.data?.summary.statusCounts.blockedManual || 0,
       needsPlacementSync: overviewQuery.data?.summary.statusCounts.needsPlacementSync || 0,
@@ -801,6 +836,11 @@ export function HeadTuExamCardsPanel() {
           <div className="mt-2 text-2xl font-bold text-emerald-900">{summaryCards.readyToGenerate}</div>
           <div className="mt-1 text-xs text-emerald-800/80">Sudah eligible dan tinggal dipublikasikan lewat generate kartu.</div>
         </div>
+        <div className="rounded-xl border border-red-100 bg-red-50 p-4">
+          <div className="text-xs font-semibold uppercase tracking-wide text-red-700">Warning Akademik</div>
+          <div className="mt-2 text-2xl font-bold text-red-900">{summaryCards.warningAcademic}</div>
+          <div className="mt-1 text-xs text-red-800/80">Boleh ikut SBTS, tetapi nilai di bawah KKM atau nilainya belum lengkap tetap ditandai.</div>
+        </div>
         <div className="rounded-xl border border-amber-100 bg-amber-50 p-4">
           <div className="text-xs font-semibold uppercase tracking-wide text-amber-700">Blocked KKM</div>
           <div className="mt-2 text-2xl font-bold text-amber-900">{summaryCards.blockedKkm}</div>
@@ -853,6 +893,7 @@ export function HeadTuExamCardsPanel() {
               <option value="ALL">Semua Status</option>
               <option value="PUBLISHED">Sudah Dipublikasikan</option>
               <option value="READY">Siap Digenerate</option>
+              <option value="WARNING_ACADEMIC">Warning Akademik</option>
               <option value="BLOCKED_KKM">Blocked KKM</option>
               <option value="BLOCKED_FINANCE">Blocked Finance</option>
               <option value="REVIEW_REQUIRED">Perlu Review Data</option>
@@ -898,6 +939,8 @@ export function HeadTuExamCardsPanel() {
               const isExpanded = expandedStudentId === row.studentId;
               const hasOperationalEntry = row.entries.length > 0;
               const isPublishedActive = row.status.code === 'PUBLISHED_ACTIVE';
+              const academicWarningItems = buildAcademicWarningItems(row);
+              const hasAcademicWarning = Boolean(row.eligibility.academicClearance.warningOnly);
               const statusTone = resolveStatusTone(row.status.code);
               return (
                 <div key={row.studentId}>
@@ -986,12 +1029,17 @@ export function HeadTuExamCardsPanel() {
                       ) : (
                         <div className="space-y-2 text-xs text-slate-700">
                           <div>{row.status.detail}</div>
-                          {row.eligibility.automatic.details.belowKkmSubjects.length > 0 ? (
-                            <div className="rounded-lg border border-amber-100 bg-amber-50 px-3 py-2 text-[11px] text-amber-800">
-                              {row.eligibility.automatic.details.belowKkmSubjects
-                                .slice(0, 3)
-                                .map((subject) => `${subject.subjectName} (${subject.score}/${subject.kkm})`)
-                                .join(', ')}
+                          {academicWarningItems.length > 0 ? (
+                            <div
+                              className={`rounded-lg border px-3 py-2 text-[11px] ${
+                                hasAcademicWarning || row.status.code === 'BLOCKED_KKM'
+                                  ? 'border-red-100 bg-red-50 text-red-800'
+                                  : 'border-amber-100 bg-amber-50 text-amber-800'
+                              }`}
+                            >
+                              {academicWarningItems.map((item) => (
+                                <div key={item}>{item}</div>
+                              ))}
                             </div>
                           ) : null}
                         </div>

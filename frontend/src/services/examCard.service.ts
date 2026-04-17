@@ -94,6 +94,13 @@ export interface ExamCardOverviewRow {
     manualBlocked: boolean;
     autoBlocked: boolean;
     financeExceptionApplied: boolean;
+    academicClearance: {
+      blocksExam: boolean;
+      warningOnly: boolean;
+      hasBelowKkm: boolean;
+      hasMissingScores: boolean;
+      reason?: string | null;
+    };
     financeClearance: {
       blocksExam: boolean;
       hasOutstanding: boolean;
@@ -109,12 +116,23 @@ export interface ExamCardOverviewRow {
       reason?: string | null;
     };
     automatic: {
+      flags: {
+        belowKkm: boolean;
+        missingScores: boolean;
+        financeOutstanding: boolean;
+        financeOverdue: boolean;
+        financeBlocked: boolean;
+      };
       details: {
         belowKkmSubjects: Array<{
           subjectId: number;
           subjectName: string;
           score: number;
           kkm: number;
+        }>;
+        missingScoreSubjects: Array<{
+          subjectId: number;
+          subjectName: string;
         }>;
       };
     };
@@ -162,6 +180,7 @@ export interface ExamCardOverviewResponse {
     statusCounts: {
       publishedActive: number;
       readyToGenerate: number;
+      warningAcademic: number;
       blockedKkm: number;
       blockedFinance: number;
       reviewRequired: number;

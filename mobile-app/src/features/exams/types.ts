@@ -164,6 +164,13 @@ export type StudentExamItem = {
   notReadyReason?: string | null;
   isBlocked?: boolean;
   blockReason?: string;
+  academicClearance?: {
+    blocksExam: boolean;
+    warningOnly?: boolean;
+    hasBelowKkm: boolean;
+    hasMissingScores: boolean;
+    reason?: string | null;
+  } | null;
   financeClearance?: {
     blocksExam: boolean;
     hasOutstanding: boolean;
