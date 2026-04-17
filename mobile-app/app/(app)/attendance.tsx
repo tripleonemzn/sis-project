@@ -9,6 +9,7 @@ import { StudentAttendanceHistory, StudentAttendanceStatus } from '../../src/fea
 import { useStudentAttendanceQuery } from '../../src/features/attendance/useStudentAttendanceQuery';
 import { OfflineCacheNotice } from '../../src/components/OfflineCacheNotice';
 import { getStandardPagePadding } from '../../src/lib/ui/pageLayout';
+import { useAppTextScale } from '../../src/theme/AppTextScaleProvider';
 
 const STATUS_LABELS: Record<StudentAttendanceStatus, string> = {
   PRESENT: 'Hadir',
@@ -36,6 +37,7 @@ function toMonthYear(date: Date) {
 }
 
 function AttendanceCard({ item }: { item: StudentAttendanceHistory }) {
+  const { scaleFont, scaleLineHeight } = useAppTextScale();
   const status = item.status;
   const color = STATUS_COLORS[status] || '#334155';
   const note = item.note || item.notes || '-';
@@ -60,10 +62,10 @@ function AttendanceCard({ item }: { item: StudentAttendanceHistory }) {
         })}
       </Text>
       <Text style={{ color, fontWeight: '700', marginBottom: 4 }}>{STATUS_LABELS[status] || status}</Text>
-      <Text style={{ fontSize: 12, color: '#475569', marginBottom: 3 }}>
+      <Text style={{ fontSize: scaleFont(12), lineHeight: scaleLineHeight(18), color: '#475569', marginBottom: 3 }}>
         Masuk: {item.checkInTime || '-'} | Pulang: {item.checkOutTime || '-'}
       </Text>
-      <Text style={{ fontSize: 12, color: '#64748b' }}>Catatan: {note}</Text>
+      <Text style={{ fontSize: scaleFont(12), lineHeight: scaleLineHeight(18), color: '#64748b' }}>Catatan: {note}</Text>
     </View>
   );
 }
@@ -72,6 +74,7 @@ export default function AttendanceScreen() {
   const router = useRouter();
   const insets = useSafeAreaInsets();
   const { isAuthenticated, isLoading, user } = useAuth();
+  const { scaleFont, scaleLineHeight, fontSizes } = useAppTextScale();
   const [cursorDate, setCursorDate] = useState(() => new Date());
   const { month, year } = toMonthYear(cursorDate);
   const pageContentPadding = getStandardPagePadding(insets);
@@ -100,7 +103,7 @@ export default function AttendanceScreen() {
   if (user?.role !== 'STUDENT') {
     return (
       <ScrollView style={{ flex: 1, backgroundColor: '#f8fafc' }} contentContainerStyle={pageContentPadding}>
-        <Text style={{ fontSize: 20, fontWeight: '700', marginBottom: 8 }}>Absensi</Text>
+        <Text style={{ fontSize: scaleFont(20), lineHeight: scaleLineHeight(28), fontWeight: '700', marginBottom: 8 }}>Absensi</Text>
         <QueryStateView type="error" message="Fitur absensi mobile saat ini tersedia untuk role siswa." />
         <Pressable
           onPress={() => router.replace('/home')}
@@ -112,7 +115,7 @@ export default function AttendanceScreen() {
             alignItems: 'center',
           }}
         >
-          <Text style={{ color: '#fff', fontWeight: '600' }}>Kembali ke Home</Text>
+          <Text style={{ color: '#fff', fontWeight: '600', fontSize: fontSizes.label }}>Kembali ke Home</Text>
         </Pressable>
       </ScrollView>
     );
@@ -133,8 +136,8 @@ export default function AttendanceScreen() {
         />
       }
     >
-      <Text style={{ fontSize: 20, fontWeight: '700', marginBottom: 6 }}>Absensi Saya</Text>
-      <Text style={{ color: '#64748b', marginBottom: 12 }}>Riwayat kehadiran bulanan.</Text>
+      <Text style={{ fontSize: scaleFont(20), lineHeight: scaleLineHeight(28), fontWeight: '700', marginBottom: 6 }}>Absensi Saya</Text>
+      <Text style={{ color: '#64748b', fontSize: fontSizes.body, lineHeight: scaleLineHeight(20), marginBottom: 12 }}>Riwayat kehadiran bulanan.</Text>
 
       <View style={{ flexDirection: 'row', marginBottom: 12, gap: 8 }}>
         <Pressable
@@ -149,7 +152,7 @@ export default function AttendanceScreen() {
             alignItems: 'center',
           }}
         >
-          <Text style={{ color: '#334155', fontWeight: '600' }}>Bulan Sebelumnya</Text>
+          <Text style={{ color: '#334155', fontWeight: '600', fontSize: fontSizes.label }}>Bulan Sebelumnya</Text>
         </Pressable>
         <Pressable
           onPress={() => moveMonth(1)}
@@ -163,7 +166,7 @@ export default function AttendanceScreen() {
             alignItems: 'center',
           }}
         >
-          <Text style={{ color: '#334155', fontWeight: '600' }}>Bulan Berikutnya</Text>
+          <Text style={{ color: '#334155', fontWeight: '600', fontSize: fontSizes.label }}>Bulan Berikutnya</Text>
         </Pressable>
       </View>
 
@@ -190,7 +193,7 @@ export default function AttendanceScreen() {
                 alignItems: 'center',
               }}
             >
-              <Text style={{ fontSize: 11, color: '#64748b', marginBottom: 2 }}>{s.label}</Text>
+              <Text style={{ fontSize: scaleFont(11), lineHeight: scaleLineHeight(16), color: '#64748b', marginBottom: 2 }}>{s.label}</Text>
               <Text style={{ fontWeight: '700', color: '#0f172a' }}>{s.value}</Text>
             </View>
           </View>
@@ -227,7 +230,7 @@ export default function AttendanceScreen() {
             }}
           >
             <Text style={{ fontWeight: '700', marginBottom: 4, color: '#0f172a' }}>Belum ada data absensi</Text>
-            <Text style={{ color: '#64748b' }}>Tidak ditemukan riwayat kehadiran untuk periode ini.</Text>
+            <Text style={{ color: '#64748b', fontSize: fontSizes.body, lineHeight: scaleLineHeight(20) }}>Tidak ditemukan riwayat kehadiran untuk periode ini.</Text>
           </View>
         )
       ) : null}
@@ -242,7 +245,7 @@ export default function AttendanceScreen() {
           alignItems: 'center',
         }}
       >
-        <Text style={{ color: '#fff', fontWeight: '600' }}>Kembali ke Home</Text>
+        <Text style={{ color: '#fff', fontWeight: '600', fontSize: fontSizes.label }}>Kembali ke Home</Text>
       </Pressable>
     </ScrollView>
   );

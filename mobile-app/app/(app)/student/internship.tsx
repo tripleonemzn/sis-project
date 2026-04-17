@@ -13,6 +13,7 @@ import { BRAND_COLORS } from '../../../src/config/brand';
 import { notifyApiError, notifySuccess } from '../../../src/lib/ui/feedback';
 import { ENV } from '../../../src/config/env';
 import { openWebModuleRoute } from '../../../src/lib/navigation/webModuleRoute';
+import { useAppTextScale } from '../../../src/theme/AppTextScaleProvider';
 
 type InternshipTab = 'OVERVIEW' | 'JOURNAL' | 'ATTENDANCE' | 'REPORT';
 
@@ -47,6 +48,7 @@ export default function StudentInternshipScreen() {
   const insets = useSafeAreaInsets();
   const queryClient = useQueryClient();
   const { isAuthenticated, isLoading, user } = useAuth();
+  const { scaleFont, fontSizes } = useAppTextScale();
   const pagePadding = getStandardPagePadding(insets, { bottom: 120 });
 
   const initialTab = String(params.tab || '').toUpperCase();
@@ -261,7 +263,7 @@ export default function StudentInternshipScreen() {
         />
       }
     >
-      <Text style={{ fontSize: 20, fontWeight: '700', color: BRAND_COLORS.textDark, marginBottom: 6 }}>PKL (Prakerin)</Text>
+      <Text style={{ fontSize: scaleFont(20), fontWeight: '700', color: BRAND_COLORS.textDark, marginBottom: 6 }}>PKL (Prakerin)</Text>
       <Text style={{ color: BRAND_COLORS.textMuted, marginBottom: 12 }}>
         Kelola pengajuan, jurnal, absensi, dan laporan PKL langsung dari mobile.
       </Text>
@@ -319,12 +321,12 @@ export default function StudentInternshipScreen() {
 
               {internship ? (
                 <>
-                  <Text style={{ color: BRAND_COLORS.textMuted, fontSize: 12 }}>Status PKL</Text>
+                  <Text style={{ color: BRAND_COLORS.textMuted, fontSize: scaleFont(12) }}>Status PKL</Text>
                   <Text style={{ color: BRAND_COLORS.textDark, fontWeight: '700', marginBottom: 10 }}>
                     {internship.status || '-'}
                   </Text>
 
-                  <Text style={{ color: BRAND_COLORS.textMuted, fontSize: 12 }}>Perusahaan</Text>
+                  <Text style={{ color: BRAND_COLORS.textMuted, fontSize: scaleFont(12) }}>Perusahaan</Text>
                   <Text style={{ color: BRAND_COLORS.textDark, fontWeight: '700', marginBottom: 6 }}>
                     {internship.companyName || '-'}
                   </Text>
@@ -658,7 +660,7 @@ export default function StudentInternshipScreen() {
                         >
                           <Text style={{ color: BRAND_COLORS.textDark, fontWeight: '700' }}>{formatDate(item.date)}</Text>
                           <Text style={{ color: '#334155', marginTop: 4 }}>{item.activity}</Text>
-                          <Text style={{ color: '#64748b', fontSize: 12, marginTop: 4 }}>
+                          <Text style={{ color: '#64748b', fontSize: scaleFont(12), marginTop: 4 }}>
                             Status: {item.status || '-'} {item.feedback ? `| Feedback: ${item.feedback}` : ''}
                           </Text>
                         </View>
@@ -699,6 +701,7 @@ export default function StudentInternshipScreen() {
                       borderRadius: 10,
                       paddingHorizontal: 12,
                       paddingVertical: 10,
+                      fontSize: fontSizes.body,
                       color: BRAND_COLORS.textDark,
                       backgroundColor: '#fff',
                       marginBottom: 8,
@@ -722,7 +725,7 @@ export default function StudentInternshipScreen() {
                             style={{
                               color: attendanceStatus === status ? BRAND_COLORS.navy : BRAND_COLORS.textMuted,
                               fontWeight: '700',
-                              fontSize: 11,
+                              fontSize: scaleFont(11),
                             }}
                           >
                             {status}
@@ -742,6 +745,7 @@ export default function StudentInternshipScreen() {
                       borderRadius: 10,
                       paddingHorizontal: 12,
                       paddingVertical: 10,
+                      fontSize: fontSizes.body,
                       color: BRAND_COLORS.textDark,
                       backgroundColor: '#fff',
                       marginBottom: 8,
@@ -815,7 +819,7 @@ export default function StudentInternshipScreen() {
                         >
                           <Text style={{ color: BRAND_COLORS.textDark, fontWeight: '700' }}>{formatDate(item.date)}</Text>
                           <Text style={{ color: '#334155', marginTop: 4 }}>Status: {item.status}</Text>
-                          <Text style={{ color: '#64748b', fontSize: 12, marginTop: 2 }}>
+                          <Text style={{ color: '#64748b', fontSize: scaleFont(12), marginTop: 2 }}>
                             Catatan: {item.note || '-'}
                           </Text>
                         </View>
@@ -844,7 +848,7 @@ export default function StudentInternshipScreen() {
                 <Text style={{ color: BRAND_COLORS.textMuted }}>Ajukan PKL terlebih dahulu sebelum upload laporan.</Text>
               ) : (
                 <>
-                  <Text style={{ color: BRAND_COLORS.textMuted, fontSize: 12 }}>Laporan Saat Ini</Text>
+                  <Text style={{ color: BRAND_COLORS.textMuted, fontSize: scaleFont(12) }}>Laporan Saat Ini</Text>
                   <Text style={{ color: BRAND_COLORS.textDark, fontWeight: '700', marginBottom: 8 }}>
                     {internship?.reportTitle || 'Belum ada judul laporan'}
                   </Text>

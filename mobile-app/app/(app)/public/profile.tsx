@@ -29,6 +29,7 @@ import { getStandardPagePadding } from '../../../src/lib/ui/pageLayout';
 import { notifyApiError, notifyError, notifySuccess } from '../../../src/lib/ui/feedback';
 import { openWebModuleRoute } from '../../../src/lib/navigation/webModuleRoute';
 import { ENV } from '../../../src/config/env';
+import { useAppTextScale } from '../../../src/theme/AppTextScaleProvider';
 
 type ProfileFormState = {
   name: string;
@@ -87,6 +88,7 @@ function InfoCard({
   title: string;
   children: React.ReactNode;
 }) {
+  const { scaleFont, scaleLineHeight } = useAppTextScale();
   return (
     <View
       style={{
@@ -98,7 +100,7 @@ function InfoCard({
         marginBottom: 12,
       }}
     >
-      <Text style={{ color: BRAND_COLORS.textDark, fontSize: 15, fontWeight: '700', marginBottom: 6 }}>{title}</Text>
+      <Text style={{ color: BRAND_COLORS.textDark, fontSize: scaleFont(15), lineHeight: scaleLineHeight(22), fontWeight: '700', marginBottom: 6 }}>{title}</Text>
       {children}
     </View>
   );
@@ -117,9 +119,10 @@ function Field({
   placeholder?: string;
   multiline?: boolean;
 }) {
+  const { scaleFont, fontSizes } = useAppTextScale();
   return (
     <View style={{ marginBottom: 10 }}>
-      <Text style={{ fontSize: 12, color: '#64748b', marginBottom: 4 }}>{label}</Text>
+      <Text style={{ fontSize: scaleFont(12), color: '#64748b', marginBottom: 4 }}>{label}</Text>
       <TextInput
         value={value}
         onChangeText={onChangeText}
@@ -133,6 +136,7 @@ function Field({
           borderRadius: 10,
           paddingHorizontal: 12,
           paddingVertical: multiline ? 10 : 9,
+          fontSize: fontSizes.body,
           color: '#0f172a',
           backgroundColor: '#fff',
           minHeight: multiline ? 96 : undefined,
@@ -172,6 +176,7 @@ export default function PublicBkkProfileScreen() {
   const insets = useSafeAreaInsets();
   const queryClient = useQueryClient();
   const { isLoading, isAuthenticated, user } = useAuth();
+  const { scaleFont } = useAppTextScale();
   const pageContentPadding = getStandardPagePadding(insets);
   const [formDraft, setFormDraft] = useState<ProfileFormState | null>(null);
   const [activeTab, setActiveTab] = useState<ProfileTabId>('main');
@@ -347,7 +352,7 @@ export default function PublicBkkProfileScreen() {
         >
           <Feather name="arrow-left" size={18} color={BRAND_COLORS.textDark} />
         </Pressable>
-        <Text style={{ marginLeft: 10, color: BRAND_COLORS.textDark, fontSize: 20, fontWeight: '700' }}>
+        <Text style={{ marginLeft: 10, color: BRAND_COLORS.textDark, fontSize: scaleFont(20), fontWeight: '700' }}>
           Lengkapi Profil Karier BKK
         </Text>
       </View>
@@ -391,7 +396,7 @@ export default function PublicBkkProfileScreen() {
           </InfoCard>
 
           <InfoCard title="Status Profil">
-            <Text style={{ color: BRAND_COLORS.textDark, fontWeight: '700', fontSize: 20 }}>
+            <Text style={{ color: BRAND_COLORS.textDark, fontWeight: '700', fontSize: scaleFont(20) }}>
               {profileQuery.data?.completeness.isReady ? 'Siap' : 'Belum'}
             </Text>
             <Text style={{ color: BRAND_COLORS.textMuted, marginTop: 6 }}>
@@ -402,7 +407,7 @@ export default function PublicBkkProfileScreen() {
           </InfoCard>
 
           <InfoCard title="Status Verifikasi">
-            <Text style={{ color: BRAND_COLORS.textDark, fontWeight: '700', fontSize: 20 }}>
+            <Text style={{ color: BRAND_COLORS.textDark, fontWeight: '700', fontSize: scaleFont(20) }}>
               {normalizedVerificationStatus}
             </Text>
             <Text style={{ color: BRAND_COLORS.textMuted, marginTop: 6 }}>

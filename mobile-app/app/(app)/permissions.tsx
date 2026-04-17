@@ -13,6 +13,7 @@ import { PermissionStatus, PermissionType } from '../../src/features/permissions
 import { useStudentPermissionsQuery } from '../../src/features/permissions/useStudentPermissionsQuery';
 import { getStandardPagePadding } from '../../src/lib/ui/pageLayout';
 import { notifyApiError, notifySuccess } from '../../src/lib/ui/feedback';
+import { useAppTextScale } from '../../src/theme/AppTextScaleProvider';
 
 function formatDate(dateString: string) {
   const date = new Date(dateString);
@@ -53,6 +54,7 @@ export default function PermissionsScreen() {
   const insets = useSafeAreaInsets();
   const queryClient = useQueryClient();
   const { isAuthenticated, isLoading, user } = useAuth();
+  const { scaleFont, scaleLineHeight, fontSizes } = useAppTextScale();
   const pageContentPadding = getStandardPagePadding(insets);
   const permissionsQuery = useStudentPermissionsQuery({ enabled: isAuthenticated, user });
 
@@ -134,7 +136,7 @@ export default function PermissionsScreen() {
   if (user?.role !== 'STUDENT') {
     return (
       <ScrollView style={{ flex: 1, backgroundColor: '#f8fafc' }} contentContainerStyle={pageContentPadding}>
-        <Text style={{ fontSize: 20, fontWeight: '700', marginBottom: 8 }}>Perizinan</Text>
+        <Text style={{ fontSize: scaleFont(20), lineHeight: scaleLineHeight(28), fontWeight: '700', marginBottom: 8 }}>Perizinan</Text>
         <QueryStateView type="error" message="Halaman ini khusus untuk role siswa." />
       </ScrollView>
     );
@@ -151,8 +153,8 @@ export default function PermissionsScreen() {
         />
       }
     >
-      <Text style={{ fontSize: 20, fontWeight: '700', marginBottom: 6 }}>Perizinan Siswa</Text>
-      <Text style={{ color: '#64748b', marginBottom: 12 }}>Ajukan izin dan pantau status persetujuannya.</Text>
+      <Text style={{ fontSize: scaleFont(20), lineHeight: scaleLineHeight(28), fontWeight: '700', marginBottom: 6 }}>Perizinan Siswa</Text>
+      <Text style={{ color: '#64748b', fontSize: fontSizes.body, lineHeight: scaleLineHeight(20), marginBottom: 12 }}>Ajukan izin dan pantau status persetujuannya.</Text>
 
       <View
         style={{
@@ -181,7 +183,7 @@ export default function PermissionsScreen() {
                     alignItems: 'center',
                   }}
                 >
-                  <Text style={{ color: selected ? '#1d4ed8' : '#334155', fontWeight: '700', fontSize: 12 }}>
+                  <Text style={{ color: selected ? '#1d4ed8' : '#334155', fontWeight: '700', fontSize: scaleFont(12) }}>
                     {TYPE_LABEL[item]}
                   </Text>
                 </Pressable>
@@ -190,7 +192,7 @@ export default function PermissionsScreen() {
           })}
         </View>
 
-        <Text style={{ color: '#334155', fontSize: 12, marginBottom: 4 }}>Tanggal Mulai (YYYY-MM-DD)</Text>
+        <Text style={{ color: '#334155', fontSize: scaleFont(12), marginBottom: 4 }}>Tanggal Mulai (YYYY-MM-DD)</Text>
         <TextInput
           value={startDate}
           onChangeText={setStartDate}
@@ -203,10 +205,11 @@ export default function PermissionsScreen() {
             paddingVertical: 9,
             backgroundColor: '#fff',
             marginBottom: 8,
+            fontSize: fontSizes.body,
           }}
         />
 
-        <Text style={{ color: '#334155', fontSize: 12, marginBottom: 4 }}>Tanggal Selesai (YYYY-MM-DD)</Text>
+        <Text style={{ color: '#334155', fontSize: scaleFont(12), marginBottom: 4 }}>Tanggal Selesai (YYYY-MM-DD)</Text>
         <TextInput
           value={endDate}
           onChangeText={setEndDate}
@@ -219,10 +222,11 @@ export default function PermissionsScreen() {
             paddingVertical: 9,
             backgroundColor: '#fff',
             marginBottom: 8,
+            fontSize: fontSizes.body,
           }}
         />
 
-        <Text style={{ color: '#334155', fontSize: 12, marginBottom: 4 }}>Alasan</Text>
+        <Text style={{ color: '#334155', fontSize: scaleFont(12), marginBottom: 4 }}>Alasan</Text>
         <TextInput
           value={reason}
           onChangeText={setReason}
@@ -238,6 +242,8 @@ export default function PermissionsScreen() {
             backgroundColor: '#fff',
             textAlignVertical: 'top',
             marginBottom: 10,
+            fontSize: fontSizes.body,
+            lineHeight: scaleLineHeight(20),
           }}
         />
         <View style={{ flexDirection: 'row', marginHorizontal: -4, marginBottom: 10 }}>
@@ -283,8 +289,8 @@ export default function PermissionsScreen() {
               marginBottom: 10,
             }}
           >
-            <Text style={{ color: '#64748b', fontSize: 11, marginBottom: 2 }}>File dipilih</Text>
-            <Text style={{ color: '#0f172a', fontWeight: '600', fontSize: 12 }} numberOfLines={2}>
+            <Text style={{ color: '#64748b', fontSize: scaleFont(11), marginBottom: 2 }}>File dipilih</Text>
+            <Text style={{ color: '#0f172a', fontWeight: '600', fontSize: scaleFont(12), lineHeight: scaleLineHeight(18) }} numberOfLines={2}>
               {attachment.name || attachment.uri}
             </Text>
           </View>
@@ -333,7 +339,7 @@ export default function PermissionsScreen() {
                     <Text style={{ color: '#0f172a', fontWeight: '700' }}>{TYPE_LABEL[item.type]}</Text>
                     <Text
                       style={{
-                        fontSize: 11,
+                        fontSize: scaleFont(11),
                         fontWeight: '700',
                         color: style.text,
                         backgroundColor: style.bg,
@@ -347,18 +353,18 @@ export default function PermissionsScreen() {
                       {style.label}
                     </Text>
                   </View>
-                  <Text style={{ color: '#64748b', fontSize: 12, marginBottom: 4 }}>
+                  <Text style={{ color: '#64748b', fontSize: scaleFont(12), lineHeight: scaleLineHeight(18), marginBottom: 4 }}>
                     Periode: {formatDate(item.startDate)} - {formatDate(item.endDate)}
                   </Text>
-                  <Text style={{ color: '#334155', fontSize: 12, marginBottom: 4 }}>
+                  <Text style={{ color: '#334155', fontSize: scaleFont(12), lineHeight: scaleLineHeight(18), marginBottom: 4 }}>
                     Alasan: {item.reason || '-'}
                   </Text>
                   {item.approvalNote ? (
-                    <Text style={{ color: '#334155', fontSize: 12, marginBottom: 4 }}>
+                    <Text style={{ color: '#334155', fontSize: scaleFont(12), lineHeight: scaleLineHeight(18), marginBottom: 4 }}>
                       Catatan: {item.approvalNote}
                     </Text>
                   ) : null}
-                  <Text style={{ color: '#64748b', fontSize: 11 }}>Dibuat: {formatDate(item.createdAt)}</Text>
+                  <Text style={{ color: '#64748b', fontSize: scaleFont(11), lineHeight: scaleLineHeight(16) }}>Dibuat: {formatDate(item.createdAt)}</Text>
                 </View>
               );
             })}
@@ -375,7 +381,7 @@ export default function PermissionsScreen() {
             }}
           >
             <Text style={{ fontWeight: '700', marginBottom: 4, color: '#0f172a' }}>Belum ada pengajuan</Text>
-            <Text style={{ color: '#64748b' }}>Riwayat izin Anda akan tampil di sini.</Text>
+            <Text style={{ color: '#64748b', fontSize: fontSizes.body, lineHeight: scaleLineHeight(20) }}>Riwayat izin Anda akan tampil di sini.</Text>
           </View>
         )
       ) : null}
@@ -390,7 +396,7 @@ export default function PermissionsScreen() {
           alignItems: 'center',
         }}
       >
-        <Text style={{ color: '#fff', fontWeight: '600' }}>Kembali ke Home</Text>
+        <Text style={{ color: '#fff', fontWeight: '600', fontSize: fontSizes.label }}>Kembali ke Home</Text>
       </Pressable>
     </ScrollView>
   );

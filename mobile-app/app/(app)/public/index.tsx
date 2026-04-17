@@ -8,6 +8,7 @@ import { BRAND_COLORS } from '../../../src/config/brand';
 import { useAuth } from '../../../src/features/auth/AuthProvider';
 import { publicBkkApi } from '../../../src/features/publicBkk/bkkApi';
 import { getStandardPagePadding } from '../../../src/lib/ui/pageLayout';
+import { useAppTextScale } from '../../../src/theme/AppTextScaleProvider';
 
 function InfoCard({
   title,
@@ -16,6 +17,7 @@ function InfoCard({
   title: string;
   children: React.ReactNode;
 }) {
+  const { scaleFont, scaleLineHeight } = useAppTextScale();
   return (
     <View
       style={{
@@ -27,7 +29,7 @@ function InfoCard({
         marginBottom: 12,
       }}
     >
-      <Text style={{ color: BRAND_COLORS.textDark, fontSize: 15, fontWeight: '700', marginBottom: 6 }}>{title}</Text>
+      <Text style={{ color: BRAND_COLORS.textDark, fontSize: scaleFont(15), lineHeight: scaleLineHeight(22), fontWeight: '700', marginBottom: 6 }}>{title}</Text>
       {children}
     </View>
   );
@@ -63,6 +65,7 @@ export default function PublicBkkDashboardScreen() {
   const router = useRouter();
   const insets = useSafeAreaInsets();
   const { isAuthenticated, isLoading, user } = useAuth();
+  const { scaleFont } = useAppTextScale();
   const pagePadding = getStandardPagePadding(insets);
   const profileQuery = useQuery({
     queryKey: ['mobile-public-bkk-dashboard-profile'],
@@ -122,7 +125,7 @@ export default function PublicBkkDashboardScreen() {
         />
       }
     >
-      <Text style={{ color: BRAND_COLORS.textDark, fontSize: 20, fontWeight: '700', marginBottom: 6 }}>
+      <Text style={{ color: BRAND_COLORS.textDark, fontSize: scaleFont(20), fontWeight: '700', marginBottom: 6 }}>
         Dashboard BKK
       </Text>
       <Text style={{ color: BRAND_COLORS.textMuted, marginBottom: 12 }}>
@@ -135,7 +138,7 @@ export default function PublicBkkDashboardScreen() {
       ) : null}
 
       <InfoCard title="Ringkasan Akun">
-        <Text style={{ color: BRAND_COLORS.textDark, fontWeight: '700', fontSize: 18 }}>{user.name}</Text>
+        <Text style={{ color: BRAND_COLORS.textDark, fontWeight: '700', fontSize: scaleFont(18) }}>{user.name}</Text>
         <Text style={{ color: BRAND_COLORS.textMuted, marginTop: 6 }}>Username: {user.username}</Text>
         <Text style={{ color: BRAND_COLORS.textMuted, marginTop: 4 }}>
           Status verifikasi: {String(profileQuery.data?.verificationStatus || user.verificationStatus || 'PENDING').toUpperCase()}
@@ -153,7 +156,7 @@ export default function PublicBkkDashboardScreen() {
       <View style={{ flexDirection: 'row', flexWrap: 'wrap', gap: 12, marginBottom: 12 }}>
         <View style={{ width: '47%' }}>
           <InfoCard title="Profil Pelamar">
-            <Text style={{ color: BRAND_COLORS.textDark, fontWeight: '800', fontSize: 20 }}>
+            <Text style={{ color: BRAND_COLORS.textDark, fontWeight: '800', fontSize: scaleFont(20) }}>
               {profileQuery.data?.completeness.isReady ? 'Siap' : 'Belum'}
             </Text>
             <Text style={{ color: BRAND_COLORS.textMuted, marginTop: 6 }}>
@@ -163,7 +166,7 @@ export default function PublicBkkDashboardScreen() {
         </View>
         <View style={{ width: '47%' }}>
           <InfoCard title="Lamaran Aktif">
-            <Text style={{ color: BRAND_COLORS.textDark, fontWeight: '800', fontSize: 20 }}>
+            <Text style={{ color: BRAND_COLORS.textDark, fontWeight: '800', fontSize: scaleFont(20) }}>
               {publicBkkApi.getActiveProcessingCount(summary)}
             </Text>
             <Text style={{ color: BRAND_COLORS.textMuted, marginTop: 6 }}>Sedang diproses BKK</Text>

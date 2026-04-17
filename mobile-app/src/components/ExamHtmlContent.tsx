@@ -2,6 +2,7 @@ import { useEffect, useMemo, useState } from 'react';
 import { Image, Pressable, Text, View, useWindowDimensions } from 'react-native';
 import { WebView } from 'react-native-webview';
 import { ENV } from '../config/env';
+import { useAppTextScale } from '../theme/AppTextScaleProvider';
 
 type ExamHtmlContentProps = {
   html?: string | null;
@@ -213,6 +214,7 @@ export function ExamHtmlContent({
   renderMode = 'webview',
   textAlign = 'left',
 }: ExamHtmlContentProps) {
+  const { scaleFont, scaleLineHeight } = useAppTextScale();
   const safeMinHeight = Number.isFinite(minHeight) ? Math.max(24, Math.floor(minHeight)) : 120;
   const [height, setHeight] = useState(safeMinHeight);
   const [nativeImageSize, setNativeImageSize] = useState<{ width: number; height: number } | null>(null);
@@ -440,8 +442,8 @@ export function ExamHtmlContent({
             selectable={false}
             style={{
               color: '#0f172a',
-              fontSize: 15,
-              lineHeight: 22,
+              fontSize: scaleFont(15),
+              lineHeight: scaleLineHeight(22),
               textAlign,
               marginBottom: hasImage ? 10 : 0,
             }}

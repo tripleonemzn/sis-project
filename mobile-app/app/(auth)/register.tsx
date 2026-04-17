@@ -17,6 +17,7 @@ import { getApiErrorMessage } from '../../src/lib/api/errorMessage';
 import { authService } from '../../src/features/auth/authService';
 import { BRAND_COLORS } from '../../src/config/brand';
 import { getNisnGuidanceText, getNisnValidationMessage, normalizeNisnInput } from '../../src/lib/nisn';
+import { useAppTextScale } from '../../src/theme/AppTextScaleProvider';
 
 type RegisterMode = 'candidate' | 'parent' | 'bkk';
 
@@ -139,10 +140,11 @@ function SectionHeading({
   title: string;
   subtitle: string;
 }) {
+  const { scaleFont, scaleLineHeight, fontSizes } = useAppTextScale();
   return (
     <View style={{ marginBottom: 20 }}>
-      <Text style={{ color: BRAND_COLORS.textDark, fontSize: 24, fontWeight: '700', marginBottom: 6 }}>{title}</Text>
-      <Text style={{ color: BRAND_COLORS.textMuted }}>{subtitle}</Text>
+      <Text style={{ color: BRAND_COLORS.textDark, fontSize: scaleFont(24), lineHeight: scaleLineHeight(32), fontWeight: '700', marginBottom: 6 }}>{title}</Text>
+      <Text style={{ color: BRAND_COLORS.textMuted, fontSize: fontSizes.body, lineHeight: scaleLineHeight(20) }}>{subtitle}</Text>
     </View>
   );
 }
@@ -154,6 +156,7 @@ function RegisterModeCard({
   mode: RegisterMode;
   onPress: () => void;
 }) {
+  const { scaleFont, scaleLineHeight } = useAppTextScale();
   const config = REGISTER_MODE_CONFIG[mode];
 
   return (
@@ -188,10 +191,10 @@ function RegisterModeCard({
         </View>
         <Feather name="arrow-right" size={18} color="#94a3b8" />
       </View>
-      <Text style={{ color: BRAND_COLORS.textDark, fontWeight: '700', fontSize: 17, marginTop: 14, marginBottom: 6 }}>
+      <Text style={{ color: BRAND_COLORS.textDark, fontWeight: '700', fontSize: scaleFont(17), lineHeight: scaleLineHeight(24), marginTop: 14, marginBottom: 6 }}>
         {config.title}
       </Text>
-      <Text style={{ color: BRAND_COLORS.textMuted, lineHeight: 20 }}>{config.subtitle}</Text>
+      <Text style={{ color: BRAND_COLORS.textMuted, fontSize: scaleFont(13), lineHeight: scaleLineHeight(20) }}>{config.subtitle}</Text>
     </Pressable>
   );
 }
@@ -223,6 +226,7 @@ function FormField({
   isSecureVisible?: boolean;
   onToggleSecure?: () => void;
 }) {
+  const { scaleFont, scaleLineHeight } = useAppTextScale();
   return (
     <View style={{ marginBottom: 12 }}>
       <Text style={{ fontWeight: '600', marginBottom: 6, color: BRAND_COLORS.textDark }}>{label}</Text>
@@ -264,7 +268,7 @@ function FormField({
           </Pressable>
         ) : null}
       </View>
-      {error ? <Text style={{ color: '#dc2626', marginTop: 4, fontSize: 12 }}>{error}</Text> : null}
+      {error ? <Text style={{ color: '#dc2626', marginTop: 4, fontSize: scaleFont(12), lineHeight: scaleLineHeight(18) }}>{error}</Text> : null}
     </View>
   );
 }
@@ -274,6 +278,7 @@ function BottomAuthLinks({
 }: {
   onBackToLogin: () => void;
 }) {
+  const { scaleFont, scaleLineHeight } = useAppTextScale();
   return (
     <View style={{ flexDirection: 'row', justifyContent: 'center', marginTop: 6 }}>
       <Text style={{ color: BRAND_COLORS.textMuted }}>Sudah punya akun? </Text>
@@ -289,6 +294,7 @@ function FeatureCards({
 }: {
   items: string[];
 }) {
+  const { scaleFont, scaleLineHeight } = useAppTextScale();
   return (
     <View style={{ marginBottom: 18 }}>
       {items.map((item) => (
@@ -304,7 +310,7 @@ function FeatureCards({
             marginBottom: 10,
           }}
         >
-          <Text style={{ color: BRAND_COLORS.textMuted, lineHeight: 20 }}>{item}</Text>
+          <Text style={{ color: BRAND_COLORS.textMuted, fontSize: scaleFont(13), lineHeight: scaleLineHeight(20) }}>{item}</Text>
         </View>
       ))}
     </View>
@@ -343,6 +349,7 @@ function CandidateRegisterForm({
   onBack: () => void;
   onBackToLogin: () => void;
 }) {
+  const { scaleFont, scaleLineHeight } = useAppTextScale();
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [showPassword, setShowPassword] = useState(false);
   const [showConfirmPassword, setShowConfirmPassword] = useState(false);
@@ -423,8 +430,8 @@ function CandidateRegisterForm({
         }}
       >
         <Text style={{ color: '#1e3a8a', fontWeight: '700', marginBottom: 4 }}>Gunakan NISN resmi</Text>
-        <Text style={{ color: '#1e40af', lineHeight: 20 }}>{getNisnGuidanceText()}</Text>
-        <Text style={{ color: '#1d4ed8', marginTop: 4, fontSize: 12 }}>
+        <Text style={{ color: '#1e40af', fontSize: scaleFont(13), lineHeight: scaleLineHeight(20) }}>{getNisnGuidanceText()}</Text>
+        <Text style={{ color: '#1d4ed8', marginTop: 4, fontSize: scaleFont(12), lineHeight: scaleLineHeight(18) }}>
           Pola dummy seperti 0000000000 atau 1234567890 akan ditolak.
         </Text>
       </View>

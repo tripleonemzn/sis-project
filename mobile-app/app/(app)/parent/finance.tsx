@@ -17,6 +17,7 @@ import { getStandardPagePadding } from '../../../src/lib/ui/pageLayout';
 import { BRAND_COLORS } from '../../../src/config/brand';
 import { ENV } from '../../../src/config/env';
 import { openWebModuleRoute } from '../../../src/lib/navigation/webModuleRoute';
+import { useAppTextScale } from '../../../src/theme/AppTextScaleProvider';
 
 const PAYMENT_STATUS_LABELS: Record<'PENDING' | 'PAID' | 'PARTIAL' | 'CANCELLED', string> = {
   PENDING: 'Belum Bayar',
@@ -124,6 +125,7 @@ export default function ParentFinanceScreen() {
   const insets = useSafeAreaInsets();
   const params = useLocalSearchParams<{ childId?: string }>();
   const { isAuthenticated, isLoading, user } = useAuth();
+  const { scaleFont, scaleLineHeight, fontSizes } = useAppTextScale();
   const pagePadding = getStandardPagePadding(insets, { bottom: 120 });
   const [manualSelectedChildId, setManualSelectedChildId] = useState<number | null>(null);
   const [semester, setSemester] = useState<'ODD' | 'EVEN'>(defaultSemesterByDate());
@@ -307,7 +309,7 @@ export default function ParentFinanceScreen() {
   if (user?.role !== 'PARENT') {
     return (
       <ScrollView style={{ flex: 1, backgroundColor: '#f8fafc' }} contentContainerStyle={pagePadding}>
-        <Text style={{ fontSize: 20, fontWeight: '700', marginBottom: 8 }}>Keuangan Anak</Text>
+        <Text style={{ fontSize: scaleFont(20), fontWeight: '700', marginBottom: 8 }}>Keuangan Anak</Text>
         <QueryStateView type="error" message="Halaman ini khusus untuk role orang tua." />
         <Pressable
           onPress={() => router.replace('/home')}
@@ -340,7 +342,7 @@ export default function ParentFinanceScreen() {
         />
       }
     >
-      <Text style={{ fontSize: 20, fontWeight: '700', marginBottom: 6, color: BRAND_COLORS.textDark }}>Keuangan Anak</Text>
+      <Text style={{ fontSize: scaleFont(20), fontWeight: '700', marginBottom: 6, color: BRAND_COLORS.textDark }}>Keuangan Anak</Text>
       <Text style={{ color: BRAND_COLORS.textMuted, marginBottom: 12 }}>
         Pantau ringkasan pembayaran dan riwayat transaksi anak secara real-time.
       </Text>
@@ -373,7 +375,7 @@ export default function ParentFinanceScreen() {
                       <Text numberOfLines={1} style={{ color: selected ? BRAND_COLORS.navy : BRAND_COLORS.textDark, fontWeight: '700' }}>
                         {child.name}
                       </Text>
-                      <Text numberOfLines={1} style={{ color: '#64748b', fontSize: 12, marginTop: 2 }}>
+                      <Text numberOfLines={1} style={{ color: '#64748b', fontSize: scaleFont(12), marginTop: 2 }}>
                         {child.studentClass?.name || '-'}
                       </Text>
                     </Pressable>
@@ -396,7 +398,7 @@ export default function ParentFinanceScreen() {
             marginBottom: 12,
           }}
         >
-          <Text style={{ color: BRAND_COLORS.textDark, fontWeight: '700', fontSize: 16 }}>{selectedChild.name}</Text>
+          <Text style={{ color: BRAND_COLORS.textDark, fontWeight: '700', fontSize: scaleFont(16) }}>{selectedChild.name}</Text>
           <Text style={{ color: BRAND_COLORS.textMuted, marginTop: 2 }}>
             {selectedChild.studentClass?.name || '-'} • {selectedChild.nisn || '-'}
           </Text>
@@ -426,8 +428,8 @@ export default function ParentFinanceScreen() {
                         padding: 10,
                       }}
                     >
-                      <Text style={{ color: '#64748b', fontSize: 11, marginBottom: 3 }}>Total Nominal</Text>
-                      <Text style={{ color: BRAND_COLORS.textDark, fontWeight: '700', fontSize: 15 }}>
+                      <Text style={{ color: '#64748b', fontSize: scaleFont(11), marginBottom: 3 }}>Total Nominal</Text>
+                      <Text style={{ color: BRAND_COLORS.textDark, fontWeight: '700', fontSize: scaleFont(15) }}>
                         {formatCurrency(selectedChildFinance.summary.totalAmount)}
                       </Text>
                     </View>
@@ -442,8 +444,8 @@ export default function ParentFinanceScreen() {
                         padding: 10,
                       }}
                     >
-                      <Text style={{ color: '#64748b', fontSize: 11, marginBottom: 3 }}>Nominal Lunas</Text>
-                      <Text style={{ color: '#15803d', fontWeight: '700', fontSize: 15 }}>
+                      <Text style={{ color: '#64748b', fontSize: scaleFont(11), marginBottom: 3 }}>Nominal Lunas</Text>
+                      <Text style={{ color: '#15803d', fontWeight: '700', fontSize: scaleFont(15) }}>
                         {formatCurrency(selectedChildFinance.summary.status.paidAmount)}
                       </Text>
                     </View>
@@ -458,8 +460,8 @@ export default function ParentFinanceScreen() {
                         padding: 10,
                       }}
                     >
-                      <Text style={{ color: '#64748b', fontSize: 11, marginBottom: 3 }}>Belum Lunas</Text>
-                      <Text style={{ color: '#b45309', fontWeight: '700', fontSize: 15 }}>
+                      <Text style={{ color: '#64748b', fontSize: scaleFont(11), marginBottom: 3 }}>Belum Lunas</Text>
+                      <Text style={{ color: '#b45309', fontWeight: '700', fontSize: scaleFont(15) }}>
                         {formatCurrency(selectedChildFinance.summary.status.pendingAmount + selectedChildFinance.summary.status.partialAmount)}
                       </Text>
                     </View>
@@ -474,11 +476,11 @@ export default function ParentFinanceScreen() {
                         padding: 10,
                       }}
                     >
-                      <Text style={{ color: '#64748b', fontSize: 11, marginBottom: 3 }}>Lewat Jatuh Tempo</Text>
-                      <Text style={{ color: '#b91c1c', fontWeight: '700', fontSize: 15 }}>
+                      <Text style={{ color: '#64748b', fontSize: scaleFont(11), marginBottom: 3 }}>Lewat Jatuh Tempo</Text>
+                      <Text style={{ color: '#b91c1c', fontWeight: '700', fontSize: scaleFont(15) }}>
                         {selectedChildFinance.summary.overdueCount} tagihan
                       </Text>
-                      <Text style={{ color: '#ef4444', marginTop: 2, fontSize: 12 }}>
+                      <Text style={{ color: '#ef4444', marginTop: 2, fontSize: scaleFont(12) }}>
                         {formatCurrency(selectedChildFinance.summary.overdueAmount)}
                       </Text>
                     </View>
@@ -493,11 +495,11 @@ export default function ParentFinanceScreen() {
                         padding: 10,
                       }}
                     >
-                      <Text style={{ color: '#64748b', fontSize: 11, marginBottom: 3 }}>Saldo Kredit</Text>
-                      <Text style={{ color: '#0369a1', fontWeight: '700', fontSize: 15 }}>
+                      <Text style={{ color: '#64748b', fontSize: scaleFont(11), marginBottom: 3 }}>Saldo Kredit</Text>
+                      <Text style={{ color: '#0369a1', fontWeight: '700', fontSize: scaleFont(15) }}>
                         {formatCurrency(selectedChildFinance.summary.creditBalance)}
                       </Text>
-                      <Text style={{ color: '#0ea5e9', marginTop: 2, fontSize: 12 }}>
+                      <Text style={{ color: '#0ea5e9', marginTop: 2, fontSize: scaleFont(12) }}>
                         Kelebihan bayar anak
                       </Text>
                     </View>
@@ -517,13 +519,13 @@ export default function ParentFinanceScreen() {
                   >
                     <View style={{ flexDirection: 'row', justifyContent: 'space-between', alignItems: 'flex-start', gap: 12 }}>
                       <View style={{ flex: 1 }}>
-                        <Text style={{ color: BRAND_COLORS.textMuted, fontSize: 12, textTransform: 'uppercase' }}>
+                        <Text style={{ color: BRAND_COLORS.textMuted, fontSize: scaleFont(12), textTransform: 'uppercase' }}>
                           Pusat Tindak Lanjut
                         </Text>
-                        <Text style={{ color: BRAND_COLORS.textDark, fontWeight: '700', fontSize: 16, marginTop: 6 }}>
+                        <Text style={{ color: BRAND_COLORS.textDark, fontWeight: '700', fontSize: scaleFont(16), marginTop: 6 }}>
                           {actionCenter.headline}
                         </Text>
-                        <Text style={{ color: BRAND_COLORS.textMuted, marginTop: 6, lineHeight: 20 }}>
+                        <Text style={{ color: BRAND_COLORS.textMuted, marginTop: 6, lineHeight: scaleLineHeight(20) }}>
                           {actionCenter.detail}
                         </Text>
                       </View>
@@ -537,7 +539,7 @@ export default function ParentFinanceScreen() {
                           paddingVertical: 4,
                         }}
                       >
-                        <Text style={{ color: actionTone.text, fontWeight: '700', fontSize: 11 }}>{actionTone.label}</Text>
+                        <Text style={{ color: actionTone.text, fontWeight: '700', fontSize: scaleFont(11) }}>{actionTone.label}</Text>
                       </View>
                     </View>
 
@@ -552,11 +554,11 @@ export default function ParentFinanceScreen() {
                           marginBottom: 8,
                         }}
                       >
-                        <Text style={{ color: '#6d28d9', fontSize: 11, textTransform: 'uppercase' }}>Termin Berikutnya</Text>
+                        <Text style={{ color: '#6d28d9', fontSize: scaleFont(11), textTransform: 'uppercase' }}>Termin Berikutnya</Text>
                         <Text style={{ color: '#4c1d95', fontWeight: '700', marginTop: 5 }}>
                           {actionCenter.nextDue?.invoiceNo || 'Belum ada agenda'}
                         </Text>
-                        <Text style={{ color: '#6d28d9', fontSize: 12, marginTop: 3 }}>
+                        <Text style={{ color: '#6d28d9', fontSize: scaleFont(12), marginTop: 3 }}>
                           {actionCenter.nextDue?.dueDate
                             ? `${formatDate(actionCenter.nextDue.dueDate)} • ${formatCurrency(actionCenter.nextDue.balanceAmount)}`
                             : 'Tidak ada termin aktif yang perlu dipantau'}
@@ -573,11 +575,11 @@ export default function ParentFinanceScreen() {
                           marginBottom: 8,
                         }}
                       >
-                        <Text style={{ color: '#b45309', fontSize: 11, textTransform: 'uppercase' }}>Potensi Denda</Text>
+                        <Text style={{ color: '#b45309', fontSize: scaleFont(11), textTransform: 'uppercase' }}>Potensi Denda</Text>
                         <Text style={{ color: '#92400e', fontWeight: '700', marginTop: 5 }}>
                           {formatCurrency(actionCenter.pendingLateFeeAmount)}
                         </Text>
-                        <Text style={{ color: '#b45309', fontSize: 12, marginTop: 3 }}>
+                        <Text style={{ color: '#b45309', fontSize: scaleFont(12), marginTop: 3 }}>
                           {actionCenter.overdueInstallmentCount} termin overdue • diterapkan{' '}
                           {formatCurrency(actionCenter.appliedLateFeeAmount)}
                         </Text>
@@ -592,11 +594,11 @@ export default function ParentFinanceScreen() {
                           padding: 10,
                         }}
                       >
-                        <Text style={{ color: '#0369a1', fontSize: 11, textTransform: 'uppercase' }}>Saldo Kredit & Refund</Text>
+                        <Text style={{ color: '#0369a1', fontSize: scaleFont(11), textTransform: 'uppercase' }}>Saldo Kredit & Refund</Text>
                         <Text style={{ color: '#0c4a6e', fontWeight: '700', marginTop: 5 }}>
                           {formatCurrency(actionCenter.creditBalanceAmount)}
                         </Text>
-                        <Text style={{ color: '#0369a1', fontSize: 12, marginTop: 3 }}>
+                        <Text style={{ color: '#0369a1', fontSize: scaleFont(12), marginTop: 3 }}>
                           {latestRefund
                             ? `Refund terakhir ${latestRefund.refundNo} • ${formatDate(latestRefund.refundedAt)}`
                             : 'Belum ada refund saldo kredit'}
@@ -618,13 +620,13 @@ export default function ParentFinanceScreen() {
                 >
                   <View style={{ flexDirection: 'row', justifyContent: 'space-between', alignItems: 'flex-start', gap: 12 }}>
                     <View style={{ flex: 1 }}>
-                      <Text style={{ color: BRAND_COLORS.textMuted, fontSize: 12, textTransform: 'uppercase' }}>
+                      <Text style={{ color: BRAND_COLORS.textMuted, fontSize: scaleFont(12), textTransform: 'uppercase' }}>
                         Kirim Bukti Bayar
                       </Text>
-                      <Text style={{ color: BRAND_COLORS.textDark, fontWeight: '700', fontSize: 16, marginTop: 6 }}>
+                      <Text style={{ color: BRAND_COLORS.textDark, fontWeight: '700', fontSize: scaleFont(16), marginTop: 6 }}>
                         Pembayaran Non-Tunai Anak
                       </Text>
-                      <Text style={{ color: BRAND_COLORS.textMuted, marginTop: 6, lineHeight: 20 }}>
+                      <Text style={{ color: BRAND_COLORS.textMuted, marginTop: 6, lineHeight: scaleLineHeight(20) }}>
                         Pilih tagihan anak, unggah bukti transfer/VA/e-wallet/QRIS, lalu tunggu verifikasi bendahara.
                       </Text>
                     </View>
@@ -638,12 +640,12 @@ export default function ParentFinanceScreen() {
                         paddingVertical: 4,
                       }}
                     >
-                      <Text style={{ color: '#b45309', fontWeight: '700', fontSize: 11 }}>Manual</Text>
+                      <Text style={{ color: '#b45309', fontWeight: '700', fontSize: scaleFont(11) }}>Manual</Text>
                     </View>
                   </View>
 
                   {!outstandingInvoices.length ? (
-                    <Text style={{ color: '#64748b', marginTop: 12, fontSize: 12 }}>
+                    <Text style={{ color: '#64748b', marginTop: 12, fontSize: scaleFont(12) }}>
                       Belum ada tagihan aktif untuk anak ini.
                     </Text>
                   ) : (
@@ -670,7 +672,7 @@ export default function ParentFinanceScreen() {
                                 <Text numberOfLines={1} style={{ color: selected ? BRAND_COLORS.navy : BRAND_COLORS.textDark, fontWeight: '700' }}>
                                   {invoice.invoiceNo}
                                 </Text>
-                                <Text style={{ color: '#64748b', fontSize: 12, marginTop: 2 }}>
+                                <Text style={{ color: '#64748b', fontSize: scaleFont(12), marginTop: 2 }}>
                                   {formatCurrency(invoice.balanceAmount)}
                                 </Text>
                               </Pressable>
@@ -702,7 +704,7 @@ export default function ParentFinanceScreen() {
                                   alignItems: 'center',
                                 }}
                               >
-                                <Text style={{ color: selected ? BRAND_COLORS.navy : BRAND_COLORS.textMuted, fontWeight: '700', fontSize: 12 }}>
+                                <Text style={{ color: selected ? BRAND_COLORS.navy : BRAND_COLORS.textMuted, fontWeight: '700', fontSize: scaleFont(12) }}>
                                   {option.label}
                                 </Text>
                               </Pressable>
@@ -727,16 +729,16 @@ export default function ParentFinanceScreen() {
                                   padding: 10,
                                 }}
                               >
-                                <Text style={{ color: selected ? BRAND_COLORS.navy : BRAND_COLORS.textDark, fontWeight: '700', fontSize: 12 }}>
+                                <Text style={{ color: selected ? BRAND_COLORS.navy : BRAND_COLORS.textDark, fontWeight: '700', fontSize: scaleFont(12) }}>
                                   {account.bankName} • {account.accountNumber}
                                 </Text>
-                                <Text style={{ color: '#64748b', fontSize: 12, marginTop: 2 }}>{account.accountName}</Text>
+                                <Text style={{ color: '#64748b', fontSize: scaleFont(12), marginTop: 2 }}>{account.accountName}</Text>
                               </Pressable>
                             </View>
                           );
                         })}
                         {bankAccountsQuery.isLoading ? (
-                          <Text style={{ color: '#64748b', fontSize: 12, paddingHorizontal: 4 }}>Memuat rekening aktif...</Text>
+                          <Text style={{ color: '#64748b', fontSize: scaleFont(12), paddingHorizontal: 4 }}>Memuat rekening aktif...</Text>
                         ) : null}
                       </View>
 
@@ -753,6 +755,7 @@ export default function ParentFinanceScreen() {
                           paddingHorizontal: 12,
                           paddingVertical: 10,
                           backgroundColor: '#fff',
+                          fontSize: fontSizes.body,
                           marginBottom: 10,
                         }}
                       />
@@ -769,6 +772,7 @@ export default function ParentFinanceScreen() {
                           paddingHorizontal: 12,
                           paddingVertical: 10,
                           backgroundColor: '#fff',
+                          fontSize: fontSizes.body,
                           marginBottom: 10,
                         }}
                       />
@@ -785,6 +789,7 @@ export default function ParentFinanceScreen() {
                           paddingHorizontal: 12,
                           paddingVertical: 10,
                           backgroundColor: '#fff',
+                          fontSize: fontSizes.body,
                           marginBottom: 10,
                         }}
                       />
@@ -804,6 +809,7 @@ export default function ParentFinanceScreen() {
                           paddingVertical: 10,
                           backgroundColor: '#fff',
                           minHeight: 88,
+                          fontSize: fontSizes.body,
                           marginBottom: 10,
                         }}
                       />
@@ -824,7 +830,7 @@ export default function ParentFinanceScreen() {
                           {proofFile ? 'Ganti Bukti Bayar' : 'Pilih Bukti Bayar'}
                         </Text>
                       </Pressable>
-                      <Text style={{ color: '#64748b', fontSize: 12 }}>
+                      <Text style={{ color: '#64748b', fontSize: scaleFont(12) }}>
                         {proofFile ? `${proofFile.name} • ${Math.round((proofFile.size || 0) / 1024)} KB` : 'Format gambar atau PDF, maksimal 3 MB.'}
                       </Text>
 
@@ -872,12 +878,12 @@ export default function ParentFinanceScreen() {
                             <Text style={{ color: BRAND_COLORS.textDark, fontWeight: '700' }} numberOfLines={1}>
                               {invoice.invoiceNo}
                             </Text>
-                            <Text style={{ color: '#64748b', marginTop: 2, fontSize: 12 }}>
+                            <Text style={{ color: '#64748b', marginTop: 2, fontSize: scaleFont(12) }}>
                               {invoice.title ||
                                 `${invoice.periodKey} • ${invoice.semester === 'ODD' ? 'Ganjil' : 'Genap'}`}
                             </Text>
                             {invoice.items.length ? (
-                              <Text style={{ color: '#64748b', marginTop: 2, fontSize: 12 }}>
+                              <Text style={{ color: '#64748b', marginTop: 2, fontSize: scaleFont(12) }}>
                                 Komponen: {invoice.items.map((item) => item.componentName).join(' • ')}
                               </Text>
                             ) : null}
@@ -890,43 +896,43 @@ export default function ParentFinanceScreen() {
                               paddingVertical: 3,
                             }}
                           >
-                            <Text style={{ color: INVOICE_STATUS_COLORS[invoice.status], fontSize: 11, fontWeight: '700' }}>
+                            <Text style={{ color: INVOICE_STATUS_COLORS[invoice.status], fontSize: scaleFont(11), fontWeight: '700' }}>
                               {INVOICE_STATUS_LABELS[invoice.status]}
                             </Text>
                           </View>
                         </View>
                         <View style={{ marginTop: 6, flexDirection: 'row', justifyContent: 'space-between' }}>
-                          <Text style={{ color: BRAND_COLORS.textMuted, fontSize: 12 }}>
+                          <Text style={{ color: BRAND_COLORS.textMuted, fontSize: scaleFont(12) }}>
                             Jatuh tempo: {formatDate(invoice.dueDate || '')}
                           </Text>
-                          <Text style={{ color: BRAND_COLORS.navy, fontWeight: '700', fontSize: 12 }}>
+                          <Text style={{ color: BRAND_COLORS.navy, fontWeight: '700', fontSize: scaleFont(12) }}>
                             Sisa: {formatCurrency(invoice.balanceAmount)}
                           </Text>
                         </View>
-                        <Text style={{ color: '#6d28d9', marginTop: 2, fontSize: 12 }}>
+                        <Text style={{ color: '#6d28d9', marginTop: 2, fontSize: scaleFont(12) }}>
                           {invoice.installmentSummary?.totalCount ?? (invoice.installments || []).length} termin •{' '}
                           {invoice.installmentSummary?.paidCount ?? (invoice.installments || []).filter((installment) => installment.status === 'PAID').length} lunas
                         </Text>
                         {invoice.installmentSummary?.nextInstallment ? (
-                          <Text style={{ color: '#6d28d9', marginTop: 2, fontSize: 12 }}>
+                          <Text style={{ color: '#6d28d9', marginTop: 2, fontSize: scaleFont(12) }}>
                             Termin berikutnya: {invoice.installmentSummary.nextInstallment.sequence} •{' '}
                             {formatDate(invoice.installmentSummary.nextInstallment.dueDate || '')}
                           </Text>
                         ) : null}
                         {(invoice.installmentSummary?.overdueCount || 0) > 0 ? (
-                          <Text style={{ color: '#b91c1c', marginTop: 2, fontSize: 12 }}>
+                          <Text style={{ color: '#b91c1c', marginTop: 2, fontSize: scaleFont(12) }}>
                             {invoice.installmentSummary?.overdueCount || 0} termin overdue • outstanding{' '}
                             {formatCurrency(invoice.installmentSummary?.overdueAmount || 0)}
                           </Text>
                         ) : null}
                         {invoice.lateFeeSummary?.configured ? (
-                          <Text style={{ color: '#b45309', marginTop: 2, fontSize: 12 }}>
+                          <Text style={{ color: '#b45309', marginTop: 2, fontSize: scaleFont(12) }}>
                             Denda keterlambatan: {formatCurrency(invoice.lateFeeSummary.appliedAmount)} diterapkan •{' '}
                             {formatCurrency(invoice.lateFeeSummary.pendingAmount)} berpotensi ditambahkan
                           </Text>
                         ) : null}
                         {invoice.isOverdue ? (
-                          <Text style={{ color: '#b91c1c', marginTop: 2, fontSize: 12 }}>
+                          <Text style={{ color: '#b91c1c', marginTop: 2, fontSize: scaleFont(12) }}>
                             Terlambat {invoice.daysPastDue} hari
                           </Text>
                         ) : null}
@@ -971,15 +977,15 @@ export default function ParentFinanceScreen() {
                               paddingVertical: 3,
                             }}
                           >
-                            <Text style={{ color: PAYMENT_STATUS_COLORS[payment.status], fontSize: 11, fontWeight: '700' }}>
+                            <Text style={{ color: PAYMENT_STATUS_COLORS[payment.status], fontSize: scaleFont(11), fontWeight: '700' }}>
                               {PAYMENT_STATUS_LABELS[payment.status]}
                             </Text>
                           </View>
                         </View>
-                        <Text style={{ color: BRAND_COLORS.textMuted, fontSize: 12, marginTop: 2 }}>
+                        <Text style={{ color: BRAND_COLORS.textMuted, fontSize: scaleFont(12), marginTop: 2 }}>
                           Sumber: {getPaymentSourceLabel(payment.source)}
                         </Text>
-                        <Text style={{ color: BRAND_COLORS.textMuted, fontSize: 12, marginTop: 2 }}>
+                        <Text style={{ color: BRAND_COLORS.textMuted, fontSize: scaleFont(12), marginTop: 2 }}>
                           {getPaymentMethodLabel(payment.method)}
                           {payment.referenceNo ? ` • Ref ${payment.referenceNo}` : ''}
                         </Text>
@@ -998,7 +1004,7 @@ export default function ParentFinanceScreen() {
                           <Text
                             style={{
                               color: getVerificationTone(payment.verificationStatus).text,
-                              fontSize: 11,
+                              fontSize: scaleFont(11),
                               fontWeight: '700',
                             }}
                           >
@@ -1009,16 +1015,16 @@ export default function ParentFinanceScreen() {
                           {formatCurrency(payment.amount)}
                         </Text>
                         {Number(payment.creditedAmount || 0) > 0 ? (
-                          <Text style={{ color: '#0369a1', fontSize: 12, marginTop: 2 }}>
+                          <Text style={{ color: '#0369a1', fontSize: scaleFont(12), marginTop: 2 }}>
                             Saldo kredit: {formatCurrency(payment.creditedAmount || 0)}
                           </Text>
                         ) : null}
                         {Number(payment.reversedAmount || 0) > 0 ? (
-                          <Text style={{ color: '#be123c', fontSize: 12, marginTop: 2 }}>
+                          <Text style={{ color: '#be123c', fontSize: scaleFont(12), marginTop: 2 }}>
                             Direversal: {formatCurrency(payment.reversedAmount || 0)}
                           </Text>
                         ) : null}
-                        <Text style={{ color: BRAND_COLORS.textMuted, fontSize: 12, marginTop: 2 }}>
+                        <Text style={{ color: BRAND_COLORS.textMuted, fontSize: scaleFont(12), marginTop: 2 }}>
                           Tanggal: {formatDate(payment.createdAt)}
                         </Text>
                         {payment.proofFile?.url ? (
@@ -1035,19 +1041,19 @@ export default function ParentFinanceScreen() {
                             }}
                             style={{ marginTop: 6 }}
                           >
-                            <Text style={{ color: BRAND_COLORS.blue, fontSize: 12, fontWeight: '700' }}>
+                            <Text style={{ color: BRAND_COLORS.blue, fontSize: scaleFont(12), fontWeight: '700' }}>
                               Lihat bukti bayar
                               {payment.proofFile?.name ? ` • ${payment.proofFile.name}` : ''}
                             </Text>
                           </Pressable>
                         ) : null}
                         {Number(payment.creditedAmount || 0) > 0 ? (
-                          <Text style={{ color: BRAND_COLORS.textMuted, fontSize: 12, marginTop: 2 }}>
+                          <Text style={{ color: BRAND_COLORS.textMuted, fontSize: scaleFont(12), marginTop: 2 }}>
                             Dialokasikan: {formatCurrency(payment.allocatedAmount || 0)}
                           </Text>
                         ) : null}
                         {Number(payment.reversedAmount || 0) > 0 ? (
-                          <Text style={{ color: BRAND_COLORS.textMuted, fontSize: 12, marginTop: 2 }}>
+                          <Text style={{ color: BRAND_COLORS.textMuted, fontSize: scaleFont(12), marginTop: 2 }}>
                             Dikoreksi: alokasi dibalik {formatCurrency(payment.reversedAllocatedAmount || 0)}
                             {Number(payment.reversedCreditedAmount || 0) > 0
                               ? ` • saldo kredit dibalik ${formatCurrency(payment.reversedCreditedAmount || 0)}`
@@ -1055,7 +1061,7 @@ export default function ParentFinanceScreen() {
                           </Text>
                         ) : null}
                         {payment.verificationNote ? (
-                          <Text style={{ color: BRAND_COLORS.textMuted, fontSize: 12, marginTop: 2 }}>
+                          <Text style={{ color: BRAND_COLORS.textMuted, fontSize: scaleFont(12), marginTop: 2 }}>
                             Catatan verifikasi: {payment.verificationNote}
                           </Text>
                         ) : null}
@@ -1101,8 +1107,8 @@ export default function ParentFinanceScreen() {
                           marginBottom: 10,
                         }}
                       >
-                        <Text style={{ color: '#0369a1', fontSize: 11 }}>Saldo kredit aktif</Text>
-                        <Text style={{ color: '#0c4a6e', fontWeight: '700', fontSize: 16, marginTop: 4 }}>
+                        <Text style={{ color: '#0369a1', fontSize: scaleFont(11) }}>Saldo kredit aktif</Text>
+                        <Text style={{ color: '#0c4a6e', fontWeight: '700', fontSize: scaleFont(16), marginTop: 4 }}>
                           {formatCurrency(selectedChildFinance.creditBalance.balanceAmount)}
                         </Text>
                       </View>
@@ -1116,12 +1122,12 @@ export default function ParentFinanceScreen() {
                           }}
                         >
                           <Text style={{ color: BRAND_COLORS.textDark, fontWeight: '700' }}>{refund.refundNo}</Text>
-                          <Text style={{ color: BRAND_COLORS.textMuted, fontSize: 12, marginTop: 2 }}>
+                          <Text style={{ color: BRAND_COLORS.textMuted, fontSize: scaleFont(12), marginTop: 2 }}>
                             {formatDate(refund.refundedAt)} • {getPaymentMethodLabel(refund.method)}
                             {refund.referenceNo ? ` • Ref ${refund.referenceNo}` : ''}
                           </Text>
                           {refund.note ? (
-                            <Text style={{ color: BRAND_COLORS.textMuted, fontSize: 12, marginTop: 2 }}>
+                            <Text style={{ color: BRAND_COLORS.textMuted, fontSize: scaleFont(12), marginTop: 2 }}>
                               {refund.note}
                             </Text>
                           ) : null}
@@ -1242,8 +1248,8 @@ export default function ParentFinanceScreen() {
                       padding: 10,
                     }}
                   >
-                    <Text style={{ color: '#64748b', fontSize: 11, marginBottom: 3 }}>Rata-rata Nilai</Text>
-                    <Text style={{ color: BRAND_COLORS.textDark, fontWeight: '700', fontSize: 18 }}>
+                    <Text style={{ color: '#64748b', fontSize: scaleFont(11), marginBottom: 3 }}>Rata-rata Nilai</Text>
+                    <Text style={{ color: BRAND_COLORS.textDark, fontWeight: '700', fontSize: scaleFont(18) }}>
                       {Number(reportCard?.average || 0).toFixed(2)}
                     </Text>
                   </View>
@@ -1258,8 +1264,8 @@ export default function ParentFinanceScreen() {
                       padding: 10,
                     }}
                   >
-                    <Text style={{ color: '#64748b', fontSize: 11, marginBottom: 3 }}>Jumlah Mapel</Text>
-                    <Text style={{ color: BRAND_COLORS.textDark, fontWeight: '700', fontSize: 18 }}>{subjectCount}</Text>
+                    <Text style={{ color: '#64748b', fontSize: scaleFont(11), marginBottom: 3 }}>Jumlah Mapel</Text>
+                    <Text style={{ color: BRAND_COLORS.textDark, fontWeight: '700', fontSize: scaleFont(18) }}>{subjectCount}</Text>
                   </View>
                 </View>
                 <View style={{ width: '50%', paddingHorizontal: 4, marginBottom: 8 }}>
@@ -1272,8 +1278,8 @@ export default function ParentFinanceScreen() {
                       padding: 10,
                     }}
                   >
-                    <Text style={{ color: '#64748b', fontSize: 11, marginBottom: 3 }}>Nilai Tertinggi</Text>
-                    <Text style={{ color: BRAND_COLORS.textDark, fontWeight: '700', fontSize: 18 }}>
+                    <Text style={{ color: '#64748b', fontSize: scaleFont(11), marginBottom: 3 }}>Nilai Tertinggi</Text>
+                    <Text style={{ color: BRAND_COLORS.textDark, fontWeight: '700', fontSize: scaleFont(18) }}>
                       {highestScore != null ? Number(highestScore).toFixed(2) : '-'}
                     </Text>
                   </View>
@@ -1288,8 +1294,8 @@ export default function ParentFinanceScreen() {
                       padding: 10,
                     }}
                   >
-                    <Text style={{ color: '#64748b', fontSize: 11, marginBottom: 3 }}>Total Kehadiran</Text>
-                    <Text style={{ color: BRAND_COLORS.textDark, fontWeight: '700', fontSize: 18 }}>
+                    <Text style={{ color: '#64748b', fontSize: scaleFont(11), marginBottom: 3 }}>Total Kehadiran</Text>
+                    <Text style={{ color: BRAND_COLORS.textDark, fontWeight: '700', fontSize: scaleFont(18) }}>
                       {(attendanceSummary?.hadir || 0) +
                         (attendanceSummary?.sakit || 0) +
                         (attendanceSummary?.izin || 0) +

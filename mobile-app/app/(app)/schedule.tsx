@@ -10,6 +10,7 @@ import { DayOfWeek, ScheduleEntry } from '../../src/features/schedule/types';
 import { useScheduleQuery } from '../../src/features/schedule/useScheduleQuery';
 import { OfflineCacheNotice } from '../../src/components/OfflineCacheNotice';
 import { getStandardPagePadding } from '../../src/lib/ui/pageLayout';
+import { useAppTextScale } from '../../src/theme/AppTextScaleProvider';
 
 const DAY_ORDER: DayOfWeek[] = [
   'MONDAY',
@@ -41,6 +42,7 @@ function getDayLabel(day: string) {
 }
 
 function ScheduleCard({ item }: { item: ScheduleEntry }) {
+  const { scaleFont, scaleLineHeight } = useAppTextScale();
   const displayHour = typeof item.teachingHour === 'number' ? item.teachingHour : item.period;
   return (
     <View
@@ -55,15 +57,15 @@ function ScheduleCard({ item }: { item: ScheduleEntry }) {
     >
       <View style={{ flexDirection: 'row', justifyContent: 'space-between', marginBottom: 6 }}>
         <Text style={{ fontWeight: '700', color: '#0f172a' }}>{item.teacherAssignment.subject.name}</Text>
-        <Text style={{ fontSize: 12, color: '#334155' }}>Jam ke-{displayHour}</Text>
+        <Text style={{ fontSize: scaleFont(12), color: '#334155' }}>Jam ke-{displayHour}</Text>
       </View>
-      <Text style={{ fontSize: 12, color: '#475569', marginBottom: 4 }}>
+      <Text style={{ fontSize: scaleFont(12), lineHeight: scaleLineHeight(18), color: '#475569', marginBottom: 4 }}>
         {item.teacherAssignment.subject.code}
       </Text>
-      <Text style={{ fontSize: 12, color: '#475569', marginBottom: 4 }}>
+      <Text style={{ fontSize: scaleFont(12), lineHeight: scaleLineHeight(18), color: '#475569', marginBottom: 4 }}>
         Guru: {item.teacherAssignment.teacher.name}
       </Text>
-      <Text style={{ fontSize: 12, color: '#475569' }}>
+      <Text style={{ fontSize: scaleFont(12), lineHeight: scaleLineHeight(18), color: '#475569' }}>
         Kelas: {item.teacherAssignment.class.name} {item.room ? `| Ruang: ${item.room}` : ''}
       </Text>
     </View>
@@ -76,6 +78,7 @@ export default function ScheduleScreen() {
   const { isAuthenticated, isLoading, user } = useAuth();
   const scheduleQuery = useScheduleQuery({ enabled: isAuthenticated, user });
   const [activeDay, setActiveDay] = useState<DayOfWeek>('MONDAY');
+  const { scaleFont, scaleLineHeight, fontSizes } = useAppTextScale();
   const pageContentPadding = getStandardPagePadding(insets);
   const entries = useMemo(() => scheduleQuery.data?.entries || [], [scheduleQuery.data?.entries]);
   const dayTabs = useMemo(() => {
@@ -106,8 +109,8 @@ export default function ScheduleScreen() {
         <RefreshControl refreshing={scheduleQuery.isFetching && !scheduleQuery.isLoading} onRefresh={() => scheduleQuery.refetch()} />
       }
     >
-      <Text style={{ fontSize: 20, fontWeight: '700', marginBottom: 6 }}>Jadwal</Text>
-      <Text style={{ color: '#64748b', marginBottom: 16 }}>
+      <Text style={{ fontSize: scaleFont(20), lineHeight: scaleLineHeight(28), fontWeight: '700', marginBottom: 6 }}>Jadwal</Text>
+      <Text style={{ color: '#64748b', fontSize: fontSizes.body, lineHeight: scaleLineHeight(20), marginBottom: 16 }}>
         Jadwal pembelajaran aktif
       </Text>
 
@@ -164,8 +167,8 @@ export default function ScheduleScreen() {
                       numberOfLines={1}
                       style={{
                         textAlign: 'center',
-                        fontSize: 10,
-                        lineHeight: 12,
+                        fontSize: scaleFont(10),
+                        lineHeight: scaleLineHeight(12),
                         fontWeight: active ? '700' : '600',
                         color: active ? '#1d4ed8' : '#334155',
                       }}
@@ -198,7 +201,7 @@ export default function ScheduleScreen() {
               <Text style={{ fontWeight: '700', marginBottom: 4, color: '#0f172a' }}>
                 Tidak ada jadwal
               </Text>
-                <Text style={{ color: '#64748b' }}>
+                <Text style={{ color: '#64748b', fontSize: fontSizes.body, lineHeight: scaleLineHeight(20) }}>
                 Belum ada entri jadwal untuk hari {DAY_LABELS[effectiveActiveDay]}.
               </Text>
             </View>
@@ -216,7 +219,7 @@ export default function ScheduleScreen() {
           alignItems: 'center',
         }}
       >
-        <Text style={{ color: '#fff', fontWeight: '600' }}>Kembali ke Home</Text>
+        <Text style={{ color: '#fff', fontWeight: '600', fontSize: fontSizes.label }}>Kembali ke Home</Text>
       </Pressable>
     </ScrollView>
   );

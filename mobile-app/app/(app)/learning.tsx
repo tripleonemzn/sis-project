@@ -12,6 +12,7 @@ import { learningApi } from '../../src/features/learning/learningApi';
 import { AssignmentWithSubmission, LearningMaterial } from '../../src/features/learning/types';
 import { useLearningQuery } from '../../src/features/learning/useLearningQuery';
 import { getStandardPagePadding } from '../../src/lib/ui/pageLayout';
+import { useAppTextScale } from '../../src/theme/AppTextScaleProvider';
 
 type TabKey = 'materials' | 'assignments';
 
@@ -28,6 +29,7 @@ function formatDate(dateString: string) {
 }
 
 function MaterialCard({ item }: { item: LearningMaterial }) {
+  const { scaleFont, scaleLineHeight } = useAppTextScale();
   return (
     <View
       style={{
@@ -39,11 +41,11 @@ function MaterialCard({ item }: { item: LearningMaterial }) {
         marginBottom: 10,
       }}
     >
-      <Text style={{ fontSize: 14, fontWeight: '700', color: '#0f172a', marginBottom: 3 }}>{item.title}</Text>
-      <Text style={{ fontSize: 12, color: '#64748b', marginBottom: 6 }}>
+      <Text style={{ fontSize: scaleFont(14), lineHeight: scaleLineHeight(21), fontWeight: '700', color: '#0f172a', marginBottom: 3 }}>{item.title}</Text>
+      <Text style={{ fontSize: scaleFont(12), lineHeight: scaleLineHeight(18), color: '#64748b', marginBottom: 6 }}>
         {item.subject.name} ({item.subject.code}) • {item.teacher.name}
       </Text>
-      <Text style={{ fontSize: 12, color: '#334155', marginBottom: 8 }}>{item.description || 'Tanpa deskripsi.'}</Text>
+      <Text style={{ fontSize: scaleFont(12), lineHeight: scaleLineHeight(18), color: '#334155', marginBottom: 8 }}>{item.description || 'Tanpa deskripsi.'}</Text>
       <View style={{ flexDirection: 'row', flexWrap: 'wrap', marginHorizontal: -3 }}>
         {item.fileName ? (
           <View style={{ width: '50%', paddingHorizontal: 3, marginBottom: 6 }}>
@@ -56,8 +58,8 @@ function MaterialCard({ item }: { item: LearningMaterial }) {
                 padding: 8,
               }}
             >
-              <Text style={{ color: '#64748b', fontSize: 11, marginBottom: 2 }}>Lampiran</Text>
-              <Text style={{ color: '#0f172a', fontWeight: '600', fontSize: 11 }} numberOfLines={2}>
+              <Text style={{ color: '#64748b', fontSize: scaleFont(11), marginBottom: 2 }}>Lampiran</Text>
+              <Text style={{ color: '#0f172a', fontWeight: '600', fontSize: scaleFont(11), lineHeight: scaleLineHeight(16) }} numberOfLines={2}>
                 {item.fileName}
               </Text>
             </View>
@@ -74,15 +76,15 @@ function MaterialCard({ item }: { item: LearningMaterial }) {
                 padding: 8,
               }}
             >
-              <Text style={{ color: '#64748b', fontSize: 11, marginBottom: 2 }}>Video</Text>
-              <Text style={{ color: '#1d4ed8', fontWeight: '600', fontSize: 11 }} numberOfLines={2}>
+              <Text style={{ color: '#64748b', fontSize: scaleFont(11), marginBottom: 2 }}>Video</Text>
+              <Text style={{ color: '#1d4ed8', fontWeight: '600', fontSize: scaleFont(11), lineHeight: scaleLineHeight(16) }} numberOfLines={2}>
                 {item.youtubeUrl}
               </Text>
             </View>
           </View>
         ) : null}
       </View>
-      <Text style={{ fontSize: 11, color: '#64748b' }}>Dibuat: {formatDate(item.createdAt)}</Text>
+      <Text style={{ fontSize: scaleFont(11), lineHeight: scaleLineHeight(16), color: '#64748b' }}>Dibuat: {formatDate(item.createdAt)}</Text>
     </View>
   );
 }
@@ -94,6 +96,7 @@ function AssignmentCard({
   item: AssignmentWithSubmission;
   onSubmit: (item: AssignmentWithSubmission) => void;
 }) {
+  const { scaleFont, scaleLineHeight, fontSizes } = useAppTextScale();
   const now = new Date().getTime();
   const dueTs = new Date(item.dueDate).getTime();
   const isOverdue = Number.isFinite(dueTs) && dueTs < now;
@@ -126,10 +129,10 @@ function AssignmentCard({
       }}
     >
       <View style={{ flexDirection: 'row', justifyContent: 'space-between', marginBottom: 6 }}>
-        <Text style={{ flex: 1, fontSize: 14, fontWeight: '700', color: '#0f172a', paddingRight: 8 }}>{item.title}</Text>
+        <Text style={{ flex: 1, fontSize: scaleFont(14), lineHeight: scaleLineHeight(21), fontWeight: '700', color: '#0f172a', paddingRight: 8 }}>{item.title}</Text>
         <Text
           style={{
-            fontSize: 11,
+            fontSize: scaleFont(11),
             fontWeight: '700',
             color: statusColor.text,
             backgroundColor: statusColor.bg,
@@ -143,13 +146,13 @@ function AssignmentCard({
           {status}
         </Text>
       </View>
-      <Text style={{ fontSize: 12, color: '#64748b', marginBottom: 4 }}>
+      <Text style={{ fontSize: scaleFont(12), lineHeight: scaleLineHeight(18), color: '#64748b', marginBottom: 4 }}>
         {item.subject.name} ({item.subject.code}) • {item.teacher.name}
       </Text>
-      <Text style={{ fontSize: 12, color: '#334155', marginBottom: 6 }}>{item.description || 'Tanpa deskripsi.'}</Text>
-      <Text style={{ fontSize: 11, color: '#64748b', marginBottom: 2 }}>Deadline: {formatDate(item.dueDate)}</Text>
+      <Text style={{ fontSize: scaleFont(12), lineHeight: scaleLineHeight(18), color: '#334155', marginBottom: 6 }}>{item.description || 'Tanpa deskripsi.'}</Text>
+      <Text style={{ fontSize: scaleFont(11), lineHeight: scaleLineHeight(16), color: '#64748b', marginBottom: 2 }}>Deadline: {formatDate(item.dueDate)}</Text>
       {item.submission?.submittedAt ? (
-        <Text style={{ fontSize: 11, color: '#64748b', marginBottom: 6 }}>
+        <Text style={{ fontSize: scaleFont(11), lineHeight: scaleLineHeight(16), color: '#64748b', marginBottom: 6 }}>
           Dikumpulkan: {formatDate(item.submission.submittedAt)}
         </Text>
       ) : (
@@ -165,7 +168,7 @@ function AssignmentCard({
           alignItems: 'center',
         }}
       >
-        <Text style={{ color: '#fff', fontWeight: '700' }}>
+        <Text style={{ color: '#fff', fontWeight: '700', fontSize: fontSizes.label }}>
           {item.submission ? 'Perbarui Pengumpulan' : 'Kumpulkan Tugas'}
         </Text>
       </Pressable>
@@ -179,6 +182,7 @@ export default function LearningScreen() {
   const queryClient = useQueryClient();
   const { isAuthenticated, isLoading, user } = useAuth();
   const learningQuery = useLearningQuery({ enabled: isAuthenticated, user });
+  const { scaleFont, scaleLineHeight, fontSizes } = useAppTextScale();
   const pageContentPadding = getStandardPagePadding(insets);
   const [activeTab, setActiveTab] = useState<TabKey>('materials');
   const [search, setSearch] = useState('');
@@ -249,7 +253,7 @@ export default function LearningScreen() {
   if (user?.role !== 'STUDENT') {
     return (
       <ScrollView style={{ flex: 1, backgroundColor: '#f8fafc' }} contentContainerStyle={pageContentPadding}>
-        <Text style={{ fontSize: 20, fontWeight: '700', marginBottom: 8 }}>Materi & Tugas</Text>
+        <Text style={{ fontSize: scaleFont(20), lineHeight: scaleLineHeight(28), fontWeight: '700', marginBottom: 8 }}>Materi & Tugas</Text>
         <QueryStateView type="error" message="Halaman ini khusus untuk role siswa." />
       </ScrollView>
     );
@@ -266,8 +270,8 @@ export default function LearningScreen() {
         />
       }
     >
-      <Text style={{ fontSize: 20, fontWeight: '700', marginBottom: 6 }}>Materi & Tugas</Text>
-      <Text style={{ color: '#64748b', marginBottom: 12 }}>Akses materi pelajaran dan pengumpulan tugas Anda.</Text>
+      <Text style={{ fontSize: scaleFont(20), lineHeight: scaleLineHeight(28), fontWeight: '700', marginBottom: 6 }}>Materi & Tugas</Text>
+      <Text style={{ color: '#64748b', fontSize: fontSizes.body, lineHeight: scaleLineHeight(20), marginBottom: 12 }}>Akses materi pelajaran dan pengumpulan tugas Anda.</Text>
 
       <View style={{ flexDirection: 'row', marginHorizontal: -4, marginBottom: 10 }}>
         <View style={{ flex: 1, paddingHorizontal: 4 }}>
@@ -282,7 +286,7 @@ export default function LearningScreen() {
               alignItems: 'center',
             }}
           >
-            <Text style={{ color: activeTab === 'materials' ? '#1d4ed8' : '#334155', fontWeight: '700' }}>Materi</Text>
+            <Text style={{ color: activeTab === 'materials' ? '#1d4ed8' : '#334155', fontWeight: '700', fontSize: fontSizes.label }}>Materi</Text>
           </Pressable>
         </View>
         <View style={{ flex: 1, paddingHorizontal: 4 }}>
@@ -297,7 +301,7 @@ export default function LearningScreen() {
               alignItems: 'center',
             }}
           >
-            <Text style={{ color: activeTab === 'assignments' ? '#1d4ed8' : '#334155', fontWeight: '700' }}>Tugas</Text>
+            <Text style={{ color: activeTab === 'assignments' ? '#1d4ed8' : '#334155', fontWeight: '700', fontSize: fontSizes.label }}>Tugas</Text>
           </Pressable>
         </View>
       </View>
@@ -316,6 +320,7 @@ export default function LearningScreen() {
           paddingVertical: 10,
           color: '#0f172a',
           marginBottom: 12,
+          fontSize: fontSizes.body,
         }}
       />
 
@@ -345,7 +350,7 @@ export default function LearningScreen() {
               }}
             >
               <Text style={{ fontWeight: '700', marginBottom: 4, color: '#0f172a' }}>Tidak ada materi</Text>
-              <Text style={{ color: '#64748b' }}>Belum ada materi untuk filter saat ini.</Text>
+              <Text style={{ color: '#64748b', fontSize: fontSizes.body, lineHeight: scaleLineHeight(20) }}>Belum ada materi untuk filter saat ini.</Text>
             </View>
           )
         ) : filteredAssignments.length > 0 ? (
@@ -374,7 +379,7 @@ export default function LearningScreen() {
             }}
           >
             <Text style={{ fontWeight: '700', marginBottom: 4, color: '#0f172a' }}>Tidak ada tugas</Text>
-            <Text style={{ color: '#64748b' }}>Belum ada tugas untuk filter saat ini.</Text>
+            <Text style={{ color: '#64748b', fontSize: fontSizes.body, lineHeight: scaleLineHeight(20) }}>Belum ada tugas untuk filter saat ini.</Text>
           </View>
         )
       ) : null}
@@ -393,7 +398,7 @@ export default function LearningScreen() {
           <Text style={{ fontWeight: '700', color: '#0f172a', marginBottom: 4 }}>
             Pengumpulan: {selectedAssignment.title}
           </Text>
-          <Text style={{ color: '#64748b', fontSize: 12, marginBottom: 8 }}>
+          <Text style={{ color: '#64748b', fontSize: scaleFont(12), lineHeight: scaleLineHeight(18), marginBottom: 8 }}>
             Kirim jawaban teks dan/atau lampiran file.
           </Text>
           <TextInput
@@ -413,6 +418,8 @@ export default function LearningScreen() {
               textAlignVertical: 'top',
               color: '#0f172a',
               marginBottom: 10,
+              fontSize: fontSizes.body,
+              lineHeight: scaleLineHeight(20),
             }}
           />
           <View style={{ flexDirection: 'row', marginHorizontal: -4, marginBottom: 10 }}>
@@ -458,8 +465,8 @@ export default function LearningScreen() {
                 marginBottom: 10,
               }}
             >
-              <Text style={{ color: '#64748b', fontSize: 11, marginBottom: 2 }}>File dipilih</Text>
-              <Text style={{ color: '#0f172a', fontWeight: '600', fontSize: 12 }} numberOfLines={2}>
+              <Text style={{ color: '#64748b', fontSize: scaleFont(11), marginBottom: 2 }}>File dipilih</Text>
+              <Text style={{ color: '#0f172a', fontWeight: '600', fontSize: scaleFont(12), lineHeight: scaleLineHeight(18) }} numberOfLines={2}>
                 {selectedFile.name || selectedFile.uri}
               </Text>
             </View>
@@ -483,7 +490,7 @@ export default function LearningScreen() {
                   alignItems: 'center',
                 }}
               >
-                <Text style={{ color: '#0f172a', fontWeight: '700' }}>Batal</Text>
+                <Text style={{ color: '#0f172a', fontWeight: '700', fontSize: fontSizes.label }}>Batal</Text>
               </Pressable>
             </View>
             <View style={{ flex: 1, paddingHorizontal: 4 }}>
@@ -497,7 +504,7 @@ export default function LearningScreen() {
                   alignItems: 'center',
                 }}
               >
-                <Text style={{ color: '#fff', fontWeight: '700' }}>
+                <Text style={{ color: '#fff', fontWeight: '700', fontSize: fontSizes.label }}>
                   {submitMutation.isPending ? 'Mengirim...' : 'Kirim'}
                 </Text>
               </Pressable>
@@ -516,7 +523,7 @@ export default function LearningScreen() {
           alignItems: 'center',
         }}
       >
-        <Text style={{ color: '#fff', fontWeight: '600' }}>Kembali ke Home</Text>
+        <Text style={{ color: '#fff', fontWeight: '600', fontSize: fontSizes.label }}>Kembali ke Home</Text>
       </Pressable>
     </ScrollView>
   );

@@ -11,6 +11,7 @@ import { useParentChildrenQuery } from '../../../src/features/parent/useParentCh
 import { useParentFinanceOverviewQuery } from '../../../src/features/parent/useParentFinanceOverviewQuery';
 import { getStandardPagePadding } from '../../../src/lib/ui/pageLayout';
 import { BRAND_COLORS } from '../../../src/config/brand';
+import { useAppTextScale } from '../../../src/theme/AppTextScaleProvider';
 
 function formatCurrency(value: number) {
   return new Intl.NumberFormat('id-ID', {
@@ -24,6 +25,7 @@ export default function ParentOverviewScreen() {
   const router = useRouter();
   const insets = useSafeAreaInsets();
   const { isAuthenticated, isLoading, user } = useAuth();
+  const { scaleFont } = useAppTextScale();
   const pagePadding = getStandardPagePadding(insets, { bottom: 120 });
 
   const childrenQuery = useParentChildrenQuery({ enabled: isAuthenticated, user });
@@ -44,7 +46,7 @@ export default function ParentOverviewScreen() {
   if (user?.role !== 'PARENT') {
     return (
       <ScrollView style={{ flex: 1, backgroundColor: '#f8fafc' }} contentContainerStyle={pagePadding}>
-        <Text style={{ fontSize: 20, fontWeight: '700', color: BRAND_COLORS.textDark, marginBottom: 8 }}>Dashboard Orang Tua</Text>
+        <Text style={{ fontSize: scaleFont(20), fontWeight: '700', color: BRAND_COLORS.textDark, marginBottom: 8 }}>Dashboard Orang Tua</Text>
         <QueryStateView type="error" message="Halaman ini khusus untuk role orang tua." />
       </ScrollView>
     );
@@ -64,7 +66,7 @@ export default function ParentOverviewScreen() {
         />
       }
     >
-      <Text style={{ fontSize: 20, fontWeight: '700', color: BRAND_COLORS.textDark, marginBottom: 6 }}>Dashboard Orang Tua</Text>
+      <Text style={{ fontSize: scaleFont(20), fontWeight: '700', color: BRAND_COLORS.textDark, marginBottom: 6 }}>Dashboard Orang Tua</Text>
       <Text style={{ color: BRAND_COLORS.textMuted, marginBottom: 12 }}>
         Ringkasan anak, keuangan, dan akses cepat modul parent.
       </Text>
@@ -140,7 +142,7 @@ export default function ParentOverviewScreen() {
               children.map((child) => (
                 <View key={child.id} style={{ borderTopWidth: 1, borderTopColor: '#eef3ff', paddingVertical: 8 }}>
                   <Text style={{ color: BRAND_COLORS.textDark, fontWeight: '700' }}>{child.name}</Text>
-                  <Text style={{ color: BRAND_COLORS.textMuted, fontSize: 12, marginTop: 2 }}>
+                  <Text style={{ color: BRAND_COLORS.textMuted, fontSize: scaleFont(12), marginTop: 2 }}>
                     {child.studentClass?.name || '-'} • NISN: {child.nisn || '-'}
                   </Text>
                 </View>
@@ -165,7 +167,7 @@ export default function ParentOverviewScreen() {
               topPendingChildren.map((row) => (
                 <View key={row.student.id} style={{ borderTopWidth: 1, borderTopColor: '#eef3ff', paddingVertical: 8 }}>
                   <Text style={{ color: BRAND_COLORS.textDark, fontWeight: '700' }}>{row.student.name}</Text>
-                  <Text style={{ color: BRAND_COLORS.textMuted, fontSize: 12, marginTop: 2 }}>
+                  <Text style={{ color: BRAND_COLORS.textMuted, fontSize: scaleFont(12), marginTop: 2 }}>
                     Pending: {formatCurrency(row.summary.status.pendingAmount + row.summary.status.partialAmount)}
                   </Text>
                 </View>

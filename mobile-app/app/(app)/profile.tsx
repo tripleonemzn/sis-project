@@ -2216,7 +2216,7 @@ export default function ProfileScreen() {
                   }}
                 >
                   <Text style={{ color: '#1e3a8a', fontWeight: '700', marginBottom: 6 }}>Bantuan Pendidikan</Text>
-                  <Text style={{ color: '#1d4ed8', fontSize: 12, marginBottom: 10 }}>
+                  <Text style={{ color: '#1d4ed8', fontSize: scaleFont(12), marginBottom: 10 }}>
                     Isi hanya jika siswa memang memiliki identitas bantuan resmi yang aktif.
                   </Text>
                   <FormField
@@ -2252,7 +2252,7 @@ export default function ProfileScreen() {
           {isStudent && activeTab === 'parents' ? (
             <View style={cardStyle}>
               <Text style={{ color: '#0f172a', fontWeight: '700', marginBottom: 10 }}>Data Keluarga</Text>
-              <Text style={{ color: '#0f172a', fontWeight: '700', fontSize: 13, marginBottom: 8 }}>Data Ayah</Text>
+              <Text style={{ color: '#0f172a', fontWeight: '700', fontSize: scaleFont(13), marginBottom: 8 }}>Data Ayah</Text>
               <FormField
                 label="Nama Ayah"
                 value={form.fatherName}
@@ -2283,7 +2283,7 @@ export default function ProfileScreen() {
                 onChangeText={(value) => setForm((prev) => ({ ...prev, fatherIncome: value }))}
               />
               <View style={{ height: 1, backgroundColor: '#e2e8f0', marginVertical: 10 }} />
-              <Text style={{ color: '#0f172a', fontWeight: '700', fontSize: 13, marginBottom: 8 }}>Data Ibu</Text>
+              <Text style={{ color: '#0f172a', fontWeight: '700', fontSize: scaleFont(13), marginBottom: 8 }}>Data Ibu</Text>
               <FormField
                 label="Nama Ibu"
                 value={form.motherName}
@@ -2314,7 +2314,7 @@ export default function ProfileScreen() {
                 onChangeText={(value) => setForm((prev) => ({ ...prev, motherIncome: value }))}
               />
               <View style={{ height: 1, backgroundColor: '#e2e8f0', marginVertical: 10 }} />
-              <Text style={{ color: '#0f172a', fontWeight: '700', fontSize: 13, marginBottom: 8 }}>
+              <Text style={{ color: '#0f172a', fontWeight: '700', fontSize: scaleFont(13), marginBottom: 8 }}>
                 Data Wali (Opsional)
               </Text>
               <FormField
@@ -2429,7 +2429,7 @@ export default function ProfileScreen() {
                     <Text style={{ color: '#1e3a8a', fontWeight: '700', marginBottom: 6 }}>
                       Kode Wilayah Administratif
                     </Text>
-                    <Text style={{ color: '#1d4ed8', fontSize: 12, marginBottom: 10 }}>
+                    <Text style={{ color: '#1d4ed8', fontSize: scaleFont(12), marginBottom: 10 }}>
                       Opsional untuk sinkronisasi data induk. Gunakan kode wilayah resmi: provinsi 2 digit, kabupaten/kota 4 digit, kecamatan 7 digit, desa/kelurahan 10 digit.
                     </Text>
                     <FormField
@@ -2546,7 +2546,7 @@ export default function ProfileScreen() {
                 placeholder={institutionPlaceholder}
               />
               {isStaff ? (
-                <Text style={{ color: '#64748b', fontSize: 12, marginTop: -2, marginBottom: 10 }}>
+                <Text style={{ color: '#64748b', fontSize: scaleFont(12), marginTop: -2, marginBottom: 10 }}>
                   Divisi kerja aktif: {getStaffPositionLabel(form.staffPosition) || normalizeStructuredFieldValue(form.ptkType) || '-'}
                 </Text>
               ) : null}
@@ -2613,7 +2613,7 @@ export default function ProfileScreen() {
                         <Text style={{ color: '#1e3a8a', fontWeight: '700', marginBottom: 6 }}>
                           Kategori Dokumen PPDB
                         </Text>
-                        <Text style={{ color: '#1d4ed8', fontSize: 12, marginBottom: 10 }}>
+                        <Text style={{ color: '#1d4ed8', fontSize: scaleFont(12), marginBottom: 10 }}>
                           Pilih kategori sebelum upload supaya checklist PPDB mengenali dokumen dengan benar.
                         </Text>
                         {MOBILE_CANDIDATE_DOCUMENT_OPTIONS.map((option) => {
@@ -2631,13 +2631,13 @@ export default function ProfileScreen() {
                                 marginBottom: 8,
                               }}
                             >
-                              <Text style={{ color: active ? '#1d4ed8' : '#0f172a', fontWeight: '700', fontSize: 13 }}>
+                              <Text style={{ color: active ? '#1d4ed8' : '#0f172a', fontWeight: '700', fontSize: scaleFont(13) }}>
                                 {option.label}
                               </Text>
-                              <Text style={{ color: '#64748b', fontSize: 12, marginTop: 3 }}>
+                              <Text style={{ color: '#64748b', fontSize: scaleFont(12), marginTop: 3 }}>
                                 {option.description}
                               </Text>
-                              <Text style={{ color: '#94a3b8', fontSize: 11, marginTop: 4 }}>
+                              <Text style={{ color: '#94a3b8', fontSize: scaleFont(11), marginTop: 4 }}>
                                 Format: {option.acceptedFormats.join(', ')}
                               </Text>
                             </Pressable>
@@ -2646,7 +2646,7 @@ export default function ProfileScreen() {
                       </View>
                     ) : null}
 
-                    <Text style={{ color: '#334155', fontSize: 12, marginBottom: 8 }}>
+                    <Text style={{ color: '#334155', fontSize: scaleFont(12), marginBottom: 8 }}>
                       Dokumen PPDB (PDF/JPG/PNG max 2MB)
                     </Text>
                     <Pressable
@@ -2670,7 +2670,7 @@ export default function ProfileScreen() {
                     </Pressable>
 
                     {!canUploadDocuments ? (
-                      <Text style={{ color: '#64748b', fontSize: 12, marginBottom: 8 }}>
+                      <Text style={{ color: '#64748b', fontSize: scaleFont(12), marginBottom: 8 }}>
                         Role ini tidak memiliki akses upload dokumen sesuai policy backend.
                       </Text>
                     ) : null}
@@ -2688,8 +2688,8 @@ export default function ProfileScreen() {
                             backgroundColor: '#fff',
                           }}
                         >
-                          <Text style={{ color: '#0f172a', fontWeight: '700', fontSize: 13 }}>{doc.title || 'Dokumen'}</Text>
-                          <Text style={{ color: '#64748b', fontSize: 12, marginBottom: 8 }}>
+                          <Text style={{ color: '#0f172a', fontWeight: '700', fontSize: scaleFont(13) }}>{doc.title || 'Dokumen'}</Text>
+                          <Text style={{ color: '#64748b', fontSize: scaleFont(12), marginBottom: 8 }}>
                             {getMobileCandidateDocumentCategoryLabel(doc.category)}
                           </Text>
                           <View style={{ flexDirection: 'row', marginHorizontal: -4 }}>
@@ -2713,7 +2713,7 @@ export default function ProfileScreen() {
                                   backgroundColor: '#eff6ff',
                                 }}
                               >
-                                <Text style={{ color: '#1d4ed8', fontWeight: '700', fontSize: 12 }}>Lihat</Text>
+                                <Text style={{ color: '#1d4ed8', fontWeight: '700', fontSize: scaleFont(12) }}>Lihat</Text>
                               </Pressable>
                             </View>
                             <View style={{ flex: 1, paddingHorizontal: 4 }}>
@@ -2730,14 +2730,14 @@ export default function ProfileScreen() {
                                   backgroundColor: '#fef2f2',
                                 }}
                               >
-                                <Text style={{ color: '#dc2626', fontWeight: '700', fontSize: 12 }}>Hapus</Text>
+                                <Text style={{ color: '#dc2626', fontWeight: '700', fontSize: scaleFont(12) }}>Hapus</Text>
                               </Pressable>
                             </View>
                           </View>
                         </View>
                       ))
                     ) : (
-                      <Text style={{ color: '#64748b', fontSize: 12 }}>Belum ada dokumen.</Text>
+                      <Text style={{ color: '#64748b', fontSize: scaleFont(12) }}>Belum ada dokumen.</Text>
                     )}
                   </>
                 )}
@@ -2746,7 +2746,7 @@ export default function ProfileScreen() {
             {(photoUploading || documentUploading) ? (
               <View style={{ flexDirection: 'row', alignItems: 'center', marginTop: 6 }}>
                 <ActivityIndicator color="#1d4ed8" size="small" />
-                <Text style={{ color: '#64748b', marginLeft: 8, fontSize: 12 }}>Menyinkronkan perubahan...</Text>
+                <Text style={{ color: '#64748b', marginLeft: 8, fontSize: scaleFont(12) }}>Menyinkronkan perubahan...</Text>
               </View>
             ) : null}
             </View>
@@ -2768,7 +2768,7 @@ export default function ProfileScreen() {
             </Text>
           </Pressable>
           {isProfileFromCache ? (
-            <Text style={{ color: '#b45309', fontSize: 12, lineHeight: 18, marginBottom: 12 }}>
+            <Text style={{ color: '#b45309', fontSize: scaleFont(12), lineHeight: scaleLineHeight(18), marginBottom: 12 }}>
               Simpan profil dinonaktifkan saat data masih berasal dari cache offline. Muat ulang profil saat koneksi normal
               agar perubahan tidak menimpa data terbaru.
             </Text>

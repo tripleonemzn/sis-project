@@ -17,6 +17,7 @@ import { MOBILE_PROFILE_QUERY_KEY } from '../../../src/features/profile/useProfi
 import { openWebModuleRoute } from '../../../src/lib/navigation/webModuleRoute';
 import { getStandardPagePadding } from '../../../src/lib/ui/pageLayout';
 import { notifyApiError, notifySuccess } from '../../../src/lib/ui/feedback';
+import { useAppTextScale } from '../../../src/theme/AppTextScaleProvider';
 
 type CandidateFormState = {
   name: string;
@@ -105,6 +106,7 @@ function InfoCard({
   title: string;
   children: React.ReactNode;
 }) {
+  const { scaleFont, scaleLineHeight } = useAppTextScale();
   return (
     <View
       style={{
@@ -116,13 +118,24 @@ function InfoCard({
         marginBottom: 12,
       }}
     >
-      <Text style={{ color: BRAND_COLORS.textDark, fontSize: 15, fontWeight: '700', marginBottom: 6 }}>{title}</Text>
+      <Text
+        style={{
+          color: BRAND_COLORS.textDark,
+          fontSize: scaleFont(15),
+          lineHeight: scaleLineHeight(22),
+          fontWeight: '700',
+          marginBottom: 6,
+        }}
+      >
+        {title}
+      </Text>
       {children}
     </View>
   );
 }
 
 function StatusChip({ status }: { status: MobileCandidateAdmissionDetail['status'] }) {
+  const { scaleFont } = useAppTextScale();
   const meta = candidateAdmissionApi.getStatusMeta(status);
   return (
     <View
@@ -136,12 +149,13 @@ function StatusChip({ status }: { status: MobileCandidateAdmissionDetail['status
         paddingVertical: 4,
       }}
     >
-      <Text style={{ color: meta.textColor, fontWeight: '700', fontSize: 12 }}>{meta.label}</Text>
+      <Text style={{ color: meta.textColor, fontWeight: '700', fontSize: scaleFont(12) }}>{meta.label}</Text>
     </View>
   );
 }
 
 function VerificationChip({ status }: { status?: 'PENDING' | 'VERIFIED' | 'REJECTED' | null }) {
+  const { scaleFont } = useAppTextScale();
   const normalized = String(status || 'PENDING').toUpperCase();
   const config =
     normalized === 'VERIFIED'
@@ -161,7 +175,7 @@ function VerificationChip({ status }: { status?: 'PENDING' | 'VERIFIED' | 'REJEC
         paddingVertical: 4,
       }}
     >
-      <Text style={{ color: config.textColor, fontWeight: '700', fontSize: 12 }}>{normalized}</Text>
+      <Text style={{ color: config.textColor, fontWeight: '700', fontSize: scaleFont(12) }}>{normalized}</Text>
     </View>
   );
 }
@@ -252,9 +266,10 @@ function Field({
   multiline?: boolean;
   editable?: boolean;
 }) {
+  const { scaleFont, fontSizes } = useAppTextScale();
   return (
     <View style={{ marginBottom: 10 }}>
-      <Text style={{ fontSize: 12, color: '#64748b', marginBottom: 4 }}>{label}</Text>
+      <Text style={{ fontSize: scaleFont(12), color: '#64748b', marginBottom: 4 }}>{label}</Text>
       <TextInput
         value={value}
         editable={editable}
@@ -269,6 +284,7 @@ function Field({
           borderRadius: 10,
           paddingHorizontal: 12,
           paddingVertical: multiline ? 10 : 9,
+          fontSize: fontSizes.body,
           color: '#0f172a',
           backgroundColor: editable ? '#fff' : '#f8fafc',
           minHeight: multiline ? 96 : undefined,
@@ -293,6 +309,7 @@ function SummaryTabCard({
   accentColor: string;
   onPress: () => void;
 }) {
+  const { scaleFont, scaleLineHeight } = useAppTextScale();
   return (
     <Pressable
       onPress={onPress}
@@ -320,13 +337,16 @@ function SummaryTabCard({
       >
         <Feather name={iconName} size={16} color={accentColor} />
       </View>
-      <Text style={{ color: '#64748b', fontSize: 11, fontWeight: '700' }} numberOfLines={2}>
+      <Text style={{ color: '#64748b', fontSize: scaleFont(11), fontWeight: '700' }} numberOfLines={2}>
         {title}
       </Text>
-      <Text style={{ color: '#0f172a', fontSize: 16, fontWeight: '800', marginTop: 3 }} numberOfLines={1}>
+      <Text style={{ color: '#0f172a', fontSize: scaleFont(16), fontWeight: '800', marginTop: 3 }} numberOfLines={1}>
         {value}
       </Text>
-      <Text style={{ color: '#475569', fontSize: 11, lineHeight: 14, marginTop: 4 }} numberOfLines={2}>
+      <Text
+        style={{ color: '#475569', fontSize: scaleFont(11), lineHeight: scaleLineHeight(14), marginTop: 4 }}
+        numberOfLines={2}
+      >
         {subtitle}
       </Text>
     </Pressable>
@@ -346,6 +366,7 @@ export default function CandidateApplicationScreen() {
   const insets = useSafeAreaInsets();
   const queryClient = useQueryClient();
   const { isLoading, isAuthenticated, user } = useAuth();
+  const { scaleFont, scaleLineHeight } = useAppTextScale();
   const pageContentPadding = getStandardPagePadding(insets);
   const [activeSummaryId, setActiveSummaryId] = useState<CandidateSummaryId | null>(null);
   const [formDraft, setFormDraft] = useState<CandidateFormState | null>(null);
@@ -547,7 +568,7 @@ export default function CandidateApplicationScreen() {
         >
           <Feather name="arrow-left" size={18} color={BRAND_COLORS.textDark} />
         </Pressable>
-        <Text style={{ marginLeft: 10, color: BRAND_COLORS.textDark, fontSize: 20, fontWeight: '700' }}>
+        <Text style={{ marginLeft: 10, color: BRAND_COLORS.textDark, fontSize: scaleFont(20), fontWeight: '700' }}>
           Formulir PPDB
         </Text>
       </View>
@@ -568,19 +589,19 @@ export default function CandidateApplicationScreen() {
         <>
           {admission.decisionAnnouncement.isPublished ? (
             <InfoCard title="Pengumuman Hasil Seleksi">
-              <Text style={{ color: BRAND_COLORS.textDark, fontSize: 18, fontWeight: '700' }}>
+              <Text style={{ color: BRAND_COLORS.textDark, fontSize: scaleFont(18), fontWeight: '700' }}>
                 {admission.decisionAnnouncement.title || 'Hasil Seleksi PPDB'}
               </Text>
-              <Text style={{ color: BRAND_COLORS.textMuted, marginTop: 8, lineHeight: 20 }}>
+              <Text style={{ color: BRAND_COLORS.textMuted, marginTop: 8, lineHeight: scaleLineHeight(20) }}>
                 {admission.decisionAnnouncement.summary ||
                   'Hasil resmi seleksi sudah dipublikasikan oleh admin sekolah.'}
               </Text>
               {admission.decisionAnnouncement.nextSteps ? (
-                <Text style={{ color: BRAND_COLORS.textMuted, marginTop: 8, lineHeight: 20 }}>
+                <Text style={{ color: BRAND_COLORS.textMuted, marginTop: 8, lineHeight: scaleLineHeight(20) }}>
                   Langkah berikutnya: {admission.decisionAnnouncement.nextSteps}
                 </Text>
               ) : null}
-              <Text style={{ color: '#475569', marginTop: 10, fontSize: 12 }}>
+              <Text style={{ color: '#475569', marginTop: 10, fontSize: scaleFont(12) }}>
                 Dipublikasikan {formatDateTime(admission.decisionAnnouncement.publishedAt)}
               </Text>
             </InfoCard>
@@ -807,7 +828,7 @@ export default function CandidateApplicationScreen() {
                     borderBottomColor: '#e2e8f0',
                   }}
                 >
-                  <Text style={{ color: BRAND_COLORS.textDark, fontSize: 18, fontWeight: '700' }}>
+                  <Text style={{ color: BRAND_COLORS.textDark, fontSize: scaleFont(18), fontWeight: '700' }}>
                     {summaryCards.find((item) => item.id === activeSummaryId)?.title || 'Ringkasan PPDB'}
                   </Text>
                   <Pressable
@@ -847,10 +868,10 @@ export default function CandidateApplicationScreen() {
                             paddingVertical: 4,
                           }}
                         >
-                          <Text style={{ color: financeMeta.textColor, fontWeight: '700', fontSize: 12 }}>{financeMeta.label}</Text>
+                          <Text style={{ color: financeMeta.textColor, fontWeight: '700', fontSize: scaleFont(12) }}>{financeMeta.label}</Text>
                         </View>
                       </View>
-                      <Text style={{ color: BRAND_COLORS.textMuted, marginTop: 10, lineHeight: 20 }}>
+                      <Text style={{ color: BRAND_COLORS.textMuted, marginTop: 10, lineHeight: scaleLineHeight(20) }}>
                         {admission.reviewNotes
                           ? `Catatan admin: ${admission.reviewNotes}`
                           : 'Belum ada catatan review dari admin sekolah.'}
@@ -860,7 +881,7 @@ export default function CandidateApplicationScreen() {
                           <Text style={{ color: BRAND_COLORS.textDark, fontWeight: '700' }}>
                             {decisionLetter.title || 'Surat Hasil Seleksi PPDB'}
                           </Text>
-                          <Text style={{ color: BRAND_COLORS.textMuted, marginTop: 6, lineHeight: 20 }}>
+                          <Text style={{ color: BRAND_COLORS.textMuted, marginTop: 6, lineHeight: scaleLineHeight(20) }}>
                             {decisionLetter.isFinalized
                               ? `Draft surat sudah difinalkan dengan nomor ${decisionLetter.letterNumber || '-'}`
                               : 'Draft surat otomatis sudah tersedia dari portal web sekolah.'}
@@ -920,10 +941,10 @@ export default function CandidateApplicationScreen() {
 
                   {activeSummaryId === 'completeness' ? (
                     <>
-                      <Text style={{ color: BRAND_COLORS.textDark, fontWeight: '700', fontSize: 20 }}>
+                      <Text style={{ color: BRAND_COLORS.textDark, fontWeight: '700', fontSize: scaleFont(20) }}>
                         {admission.completeness.percent}%
                       </Text>
-                      <Text style={{ color: BRAND_COLORS.textMuted, marginTop: 8, lineHeight: 20 }}>
+                      <Text style={{ color: BRAND_COLORS.textMuted, marginTop: 8, lineHeight: scaleLineHeight(20) }}>
                         {admission.completeness.isReady
                           ? 'Data inti sudah siap untuk dikirim.'
                           : `Masih perlu: ${admission.completeness.missingFields.join(', ') || 'lengkapi formulir'}.`}
@@ -939,10 +960,10 @@ export default function CandidateApplicationScreen() {
 
                   {activeSummaryId === 'documents' ? (
                     <>
-                      <Text style={{ color: BRAND_COLORS.textDark, fontWeight: '700', fontSize: 20 }}>
+                      <Text style={{ color: BRAND_COLORS.textDark, fontWeight: '700', fontSize: scaleFont(20) }}>
                         {admission.documentChecklist.summary.requiredUploaded}/{admission.documentChecklist.summary.requiredTotal}
                       </Text>
-                      <Text style={{ color: BRAND_COLORS.textMuted, marginTop: 8, lineHeight: 20 }}>
+                      <Text style={{ color: BRAND_COLORS.textMuted, marginTop: 8, lineHeight: scaleLineHeight(20) }}>
                         Upload dokumen wajib dari menu Profil agar checklist ini ikut terisi otomatis.
                       </Text>
                       <View style={{ marginTop: 12 }}>
@@ -959,11 +980,11 @@ export default function CandidateApplicationScreen() {
                             }}
                           >
                             <Text style={{ color: BRAND_COLORS.textDark, fontWeight: '700' }}>{item.label}</Text>
-                            <Text style={{ color: BRAND_COLORS.textMuted, marginTop: 4, fontSize: 12 }}>
+                            <Text style={{ color: BRAND_COLORS.textMuted, marginTop: 4, fontSize: scaleFont(12) }}>
                               {item.isComplete ? `${item.validUploadedCount} file valid terunggah` : 'Belum ada file valid'}
                             </Text>
                             {item.invalidCount > 0 ? (
-                              <Text style={{ color: '#be123c', marginTop: 4, fontSize: 12 }}>
+                              <Text style={{ color: '#be123c', marginTop: 4, fontSize: scaleFont(12) }}>
                                 {item.invalidCount} file salah format. Gunakan {item.acceptedFormats.join(', ')}.
                               </Text>
                             ) : null}
@@ -971,17 +992,17 @@ export default function CandidateApplicationScreen() {
                         ))}
                       </View>
                       {optionalDocuments.length > 0 ? (
-                        <Text style={{ color: BRAND_COLORS.textMuted, fontSize: 12 }}>
+                        <Text style={{ color: BRAND_COLORS.textMuted, fontSize: scaleFont(12) }}>
                           Opsional: {optionalDocuments.map((item) => item.label).join(', ')}.
                         </Text>
                       ) : null}
                       {admission.documentChecklist.summary.uncategorizedCount ? (
-                        <Text style={{ color: '#b45309', fontSize: 12, marginTop: 6 }}>
+                        <Text style={{ color: '#b45309', fontSize: scaleFont(12), marginTop: 6 }}>
                           Ada {admission.documentChecklist.summary.uncategorizedCount} dokumen tanpa kategori PPDB yang tepat.
                         </Text>
                       ) : null}
                       {admission.documentChecklist.summary.invalidCount ? (
-                        <Text style={{ color: '#be123c', fontSize: 12, marginTop: 6 }}>
+                        <Text style={{ color: '#be123c', fontSize: scaleFont(12), marginTop: 6 }}>
                           Ada {admission.documentChecklist.summary.invalidCount} dokumen PPDB dengan format file yang belum sesuai.
                         </Text>
                       ) : null}
@@ -990,7 +1011,7 @@ export default function CandidateApplicationScreen() {
 
                   {activeSummaryId === 'selection' ? (
                     <>
-                      <Text style={{ color: BRAND_COLORS.textDark, fontWeight: '700', fontSize: 20 }}>
+                      <Text style={{ color: BRAND_COLORS.textDark, fontWeight: '700', fontSize: scaleFont(20) }}>
                         {selectionSummary?.averageScore ?? '-'}
                       </Text>
                       <Text style={{ color: BRAND_COLORS.textMuted, marginTop: 8 }}>
@@ -1024,7 +1045,7 @@ export default function CandidateApplicationScreen() {
                                 <View style={{ flexDirection: 'row', justifyContent: 'space-between', gap: 8 }}>
                                   <View style={{ flex: 1 }}>
                                     <Text style={{ color: BRAND_COLORS.textDark, fontWeight: '700' }}>{item.title}</Text>
-                                    <Text style={{ color: BRAND_COLORS.textMuted, marginTop: 4, fontSize: 12 }}>
+                                    <Text style={{ color: BRAND_COLORS.textMuted, marginTop: 4, fontSize: scaleFont(12) }}>
                                       {item.subject?.name || item.programCode || 'Tes Seleksi'} • {formatDateTime(item.scheduleStartTime)}
                                     </Text>
                                   </View>
@@ -1039,7 +1060,7 @@ export default function CandidateApplicationScreen() {
                                       paddingVertical: 4,
                                     }}
                                   >
-                                    <Text style={{ color: statusMeta.textColor, fontWeight: '700', fontSize: 12 }}>
+                                    <Text style={{ color: statusMeta.textColor, fontWeight: '700', fontSize: scaleFont(12) }}>
                                       {statusMeta.label}
                                     </Text>
                                   </View>
@@ -1074,12 +1095,12 @@ export default function CandidateApplicationScreen() {
                           paddingVertical: 4,
                         }}
                       >
-                        <Text style={{ color: financeMeta.textColor, fontWeight: '700', fontSize: 12 }}>{financeMeta.label}</Text>
+                        <Text style={{ color: financeMeta.textColor, fontWeight: '700', fontSize: scaleFont(12) }}>{financeMeta.label}</Text>
                       </View>
-                      <Text style={{ color: BRAND_COLORS.textDark, fontWeight: '700', fontSize: 20, marginTop: 12 }}>
+                      <Text style={{ color: BRAND_COLORS.textDark, fontWeight: '700', fontSize: scaleFont(20), marginTop: 12 }}>
                         {formatCandidateCurrency(financeSummary?.outstandingAmount || 0)}
                       </Text>
-                      <Text style={{ color: BRAND_COLORS.textMuted, marginTop: 8, lineHeight: 20 }}>
+                      <Text style={{ color: BRAND_COLORS.textMuted, marginTop: 8, lineHeight: scaleLineHeight(20) }}>
                         {financeSummary?.state === 'NO_BILLING'
                           ? 'Tagihan administrasi akan tampil di sini setelah diterbitkan sekolah.'
                           : financeSummary?.hasOverdue
@@ -1109,7 +1130,7 @@ export default function CandidateApplicationScreen() {
                               }}
                             >
                               <Text style={{ color: BRAND_COLORS.textDark, fontWeight: '700' }}>{invoice.label}</Text>
-                              <Text style={{ color: BRAND_COLORS.textMuted, marginTop: 4, fontSize: 12 }}>
+                              <Text style={{ color: BRAND_COLORS.textMuted, marginTop: 4, fontSize: scaleFont(12) }}>
                                 {invoice.invoiceNo} • {invoice.periodKey}
                               </Text>
                               <Text style={{ color: BRAND_COLORS.textMuted, marginTop: 6 }}>
@@ -1138,7 +1159,7 @@ export default function CandidateApplicationScreen() {
                             paddingVertical: 8,
                           }}
                         >
-                          <Text style={{ color: BRAND_COLORS.textMuted, fontSize: 12 }}>Rekomendasi</Text>
+                          <Text style={{ color: BRAND_COLORS.textMuted, fontSize: scaleFont(12) }}>Rekomendasi</Text>
                           <Text style={{ color: BRAND_COLORS.textDark, fontWeight: '800' }}>
                             {assessmentBoard?.summary.recommendation || 'INCOMPLETE'}
                           </Text>
@@ -1153,7 +1174,7 @@ export default function CandidateApplicationScreen() {
                             paddingVertical: 8,
                           }}
                         >
-                          <Text style={{ color: BRAND_COLORS.textMuted, fontSize: 12 }}>Nilai Akhir</Text>
+                          <Text style={{ color: BRAND_COLORS.textMuted, fontSize: scaleFont(12) }}>Nilai Akhir</Text>
                           <Text style={{ color: BRAND_COLORS.textDark, fontWeight: '800' }}>
                             {assessmentBoard?.summary.weightedAverage ?? '-'}
                           </Text>
@@ -1168,7 +1189,7 @@ export default function CandidateApplicationScreen() {
                             paddingVertical: 8,
                           }}
                         >
-                          <Text style={{ color: BRAND_COLORS.textMuted, fontSize: 12 }}>Komponen</Text>
+                          <Text style={{ color: BRAND_COLORS.textMuted, fontSize: scaleFont(12) }}>Komponen</Text>
                           <Text style={{ color: BRAND_COLORS.textDark, fontWeight: '800' }}>
                             {assessmentBoard?.summary.completedComponents || 0}/{assessmentBoard?.summary.totalComponents || 0}
                           </Text>
@@ -1201,7 +1222,7 @@ export default function CandidateApplicationScreen() {
                             <View style={{ flexDirection: 'row', justifyContent: 'space-between', gap: 8 }}>
                               <View style={{ flex: 1 }}>
                                 <Text style={{ color: BRAND_COLORS.textDark, fontWeight: '700' }}>{item.title}</Text>
-                                <Text style={{ color: BRAND_COLORS.textMuted, marginTop: 4, fontSize: 12 }}>
+                                <Text style={{ color: BRAND_COLORS.textMuted, marginTop: 4, fontSize: scaleFont(12) }}>
                                   {item.sourceType} • Dinilai {formatDateTime(item.assessedAt)}
                                 </Text>
                               </View>
@@ -1216,7 +1237,7 @@ export default function CandidateApplicationScreen() {
                                   paddingVertical: 4,
                                 }}
                               >
-                                <Text style={{ color: meta.textColor, fontWeight: '700', fontSize: 12 }}>{meta.label}</Text>
+                                <Text style={{ color: meta.textColor, fontWeight: '700', fontSize: scaleFont(12) }}>{meta.label}</Text>
                               </View>
                             </View>
                             <Text style={{ color: BRAND_COLORS.textMuted, marginTop: 8 }}>

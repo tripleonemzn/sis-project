@@ -11,6 +11,7 @@ import { useParentChildrenQuery } from '../../../src/features/parent/useParentCh
 import { useParentChildAttendanceQuery } from '../../../src/features/parent/useParentChildAttendanceQuery';
 import { getStandardPagePadding } from '../../../src/lib/ui/pageLayout';
 import { BRAND_COLORS } from '../../../src/config/brand';
+import { useAppTextScale } from '../../../src/theme/AppTextScaleProvider';
 
 const STATUS_LABELS: Record<StudentAttendanceStatus, string> = {
   PRESENT: 'Hadir',
@@ -42,6 +43,7 @@ export default function ParentAttendanceScreen() {
   const insets = useSafeAreaInsets();
   const params = useLocalSearchParams<{ childId?: string }>();
   const { isAuthenticated, isLoading, user } = useAuth();
+  const { scaleFont } = useAppTextScale();
   const pagePadding = getStandardPagePadding(insets, { bottom: 120 });
   const [cursorDate, setCursorDate] = useState(() => new Date());
   const [manualSelectedChildId, setManualSelectedChildId] = useState<number | null>(null);
@@ -88,7 +90,7 @@ export default function ParentAttendanceScreen() {
   if (user?.role !== 'PARENT') {
     return (
       <ScrollView style={{ flex: 1, backgroundColor: '#f8fafc' }} contentContainerStyle={pagePadding}>
-        <Text style={{ fontSize: 20, fontWeight: '700', marginBottom: 8 }}>Absensi Anak</Text>
+        <Text style={{ fontSize: scaleFont(20), fontWeight: '700', marginBottom: 8 }}>Absensi Anak</Text>
         <QueryStateView type="error" message="Halaman ini khusus untuk role orang tua." />
         <Pressable
           onPress={() => router.replace('/home')}
@@ -124,7 +126,7 @@ export default function ParentAttendanceScreen() {
         />
       }
     >
-      <Text style={{ fontSize: 20, fontWeight: '700', marginBottom: 6, color: BRAND_COLORS.textDark }}>Absensi Anak</Text>
+      <Text style={{ fontSize: scaleFont(20), fontWeight: '700', marginBottom: 6, color: BRAND_COLORS.textDark }}>Absensi Anak</Text>
       <Text style={{ color: BRAND_COLORS.textMuted, marginBottom: 12 }}>
         Pantau kehadiran harian anak berdasarkan periode bulan.
       </Text>
@@ -157,7 +159,7 @@ export default function ParentAttendanceScreen() {
                       <Text numberOfLines={1} style={{ color: selected ? BRAND_COLORS.navy : BRAND_COLORS.textDark, fontWeight: '700' }}>
                         {child.name}
                       </Text>
-                      <Text numberOfLines={1} style={{ color: '#64748b', fontSize: 12, marginTop: 2 }}>
+                      <Text numberOfLines={1} style={{ color: '#64748b', fontSize: scaleFont(12), marginTop: 2 }}>
                         {child.studentClass?.name || '-'}
                       </Text>
                     </Pressable>
@@ -180,7 +182,7 @@ export default function ParentAttendanceScreen() {
             marginBottom: 12,
           }}
         >
-          <Text style={{ color: BRAND_COLORS.textDark, fontWeight: '700', fontSize: 16 }}>{selectedChild.name}</Text>
+          <Text style={{ color: BRAND_COLORS.textDark, fontWeight: '700', fontSize: scaleFont(16) }}>{selectedChild.name}</Text>
           <Text style={{ color: BRAND_COLORS.textMuted, marginTop: 2 }}>
             {selectedChild.studentClass?.name || '-'} • {selectedChild.nisn || '-'}
           </Text>
@@ -243,7 +245,7 @@ export default function ParentAttendanceScreen() {
                     alignItems: 'center',
                   }}
                 >
-                  <Text style={{ fontSize: 11, color: '#64748b', marginBottom: 2 }}>{s.label}</Text>
+                  <Text style={{ fontSize: scaleFont(11), color: '#64748b', marginBottom: 2 }}>{s.label}</Text>
                   <Text style={{ fontWeight: '700', color: '#0f172a' }}>{s.value}</Text>
                 </View>
               </View>
@@ -284,10 +286,10 @@ export default function ParentAttendanceScreen() {
                         })}
                       </Text>
                       <Text style={{ color, fontWeight: '700', marginBottom: 4 }}>{STATUS_LABELS[status] || status}</Text>
-                      <Text style={{ fontSize: 12, color: '#475569', marginBottom: 3 }}>
+                      <Text style={{ fontSize: scaleFont(12), color: '#475569', marginBottom: 3 }}>
                         Masuk: {item.checkInTime || '-'} | Pulang: {item.checkOutTime || '-'}
                       </Text>
-                      <Text style={{ fontSize: 12, color: '#64748b' }}>Catatan: {note}</Text>
+                      <Text style={{ fontSize: scaleFont(12), color: '#64748b' }}>Catatan: {note}</Text>
                     </View>
                   );
                 })}

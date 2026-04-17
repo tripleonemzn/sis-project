@@ -11,6 +11,7 @@ import { apiClient } from '../../../src/lib/api/client';
 import { getStandardPagePadding } from '../../../src/lib/ui/pageLayout';
 import { BRAND_COLORS } from '../../../src/config/brand';
 import { notifyApiError, notifySuccess } from '../../../src/lib/ui/feedback';
+import { useAppTextScale } from '../../../src/theme/AppTextScaleProvider';
 
 type DailyAttendanceStatus = 'PRESENT' | 'SICK' | 'PERMISSION' | 'ABSENT' | 'LATE';
 
@@ -45,6 +46,7 @@ export default function StudentClassAttendanceScreen() {
   const insets = useSafeAreaInsets();
   const queryClient = useQueryClient();
   const { isAuthenticated, isLoading, user } = useAuth();
+  const { scaleFont, fontSizes } = useAppTextScale();
   const pagePadding = getStandardPagePadding(insets, { bottom: 120 });
 
   const [date, setDate] = useState(() => new Date().toISOString().slice(0, 10));
@@ -137,7 +139,7 @@ export default function StudentClassAttendanceScreen() {
         />
       }
     >
-      <Text style={{ fontSize: 20, fontWeight: '700', color: BRAND_COLORS.textDark, marginBottom: 6 }}>
+      <Text style={{ fontSize: scaleFont(20), fontWeight: '700', color: BRAND_COLORS.textDark, marginBottom: 6 }}>
         Presensi Kelas
       </Text>
       <Text style={{ color: BRAND_COLORS.textMuted, marginBottom: 12 }}>
@@ -166,6 +168,7 @@ export default function StudentClassAttendanceScreen() {
             borderRadius: 10,
             paddingHorizontal: 12,
             paddingVertical: 10,
+            fontSize: fontSizes.body,
             color: BRAND_COLORS.textDark,
             backgroundColor: '#fff',
             marginBottom: 8,
@@ -182,6 +185,7 @@ export default function StudentClassAttendanceScreen() {
             borderRadius: 10,
             paddingHorizontal: 12,
             paddingVertical: 10,
+            fontSize: fontSizes.body,
             color: BRAND_COLORS.textDark,
             backgroundColor: '#fff',
           }}
@@ -212,7 +216,7 @@ export default function StudentClassAttendanceScreen() {
                   }}
                 >
                   <Text style={{ color: BRAND_COLORS.textDark, fontWeight: '700' }}>{row.student.name}</Text>
-                  <Text style={{ color: BRAND_COLORS.textMuted, fontSize: 12, marginBottom: 8 }}>
+                  <Text style={{ color: BRAND_COLORS.textMuted, fontSize: scaleFont(12), marginBottom: 8 }}>
                     NIS: {row.student.nis || '-'} | NISN: {row.student.nisn || '-'}
                   </Text>
                   <View style={{ flexDirection: 'row', flexWrap: 'wrap', marginHorizontal: -3, marginBottom: 8 }}>
@@ -238,7 +242,7 @@ export default function StudentClassAttendanceScreen() {
                             style={{
                               color: currentStatus === status ? BRAND_COLORS.navy : BRAND_COLORS.textMuted,
                               fontWeight: '700',
-                              fontSize: 11,
+                              fontSize: scaleFont(11),
                             }}
                           >
                             {STATUS_LABELS[status]}

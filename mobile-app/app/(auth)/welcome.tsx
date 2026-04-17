@@ -17,6 +17,7 @@ import { AppLoadingScreen } from '../../src/components/AppLoadingScreen';
 import { BRAND_COLORS } from '../../src/config/brand';
 import { ENV } from '../../src/config/env';
 import logoSource from '../../src/assets/logo_sis_kgb2.png';
+import { useAppTextScale } from '../../src/theme/AppTextScaleProvider';
 
 type GalleryItem = {
   url: string;
@@ -47,6 +48,7 @@ export default function WelcomeScreen() {
   const router = useRouter();
   const insets = useSafeAreaInsets();
   const { height: screenHeight } = useWindowDimensions();
+  const { scaleFont, scaleLineHeight } = useAppTextScale();
   const { isLoading, isAuthenticated } = useAuth();
   const [activeIndex, setActiveIndex] = useState(0);
   const [galleryItems, setGalleryItems] = useState<GalleryItem[]>([]);
@@ -245,7 +247,8 @@ export default function WelcomeScreen() {
                 <Text
                   style={{
                     color: BRAND_COLORS.white,
-                    fontSize: 38,
+                    fontSize: scaleFont(38),
+                    lineHeight: scaleLineHeight(44),
                     fontWeight: '700',
                     fontFamily: Platform.select({ ios: 'Georgia', android: 'serif', default: 'serif' }),
                     marginBottom: 12,
@@ -259,8 +262,8 @@ export default function WelcomeScreen() {
                 <Text
                   style={{
                     color: '#dbeafe',
-                    fontSize: 17,
-                    lineHeight: 28,
+                    fontSize: scaleFont(17),
+                    lineHeight: scaleLineHeight(28),
                     textAlign: 'center',
                     maxWidth: 320,
                   }}
@@ -312,7 +315,7 @@ export default function WelcomeScreen() {
                       {isGalleryLoading ? (
                         <ActivityIndicator size="small" color={BRAND_COLORS.white} />
                       ) : (
-                        <Text style={{ color: '#dbeafe', textAlign: 'center', fontSize: 13 }}>
+                        <Text style={{ color: '#dbeafe', textAlign: 'center', fontSize: scaleFont(13), lineHeight: scaleLineHeight(20) }}>
                           Foto kegiatan belum tersedia.
                         </Text>
                       )}
@@ -334,7 +337,8 @@ export default function WelcomeScreen() {
                       numberOfLines={2}
                       style={{
                         color: BRAND_COLORS.white,
-                        fontSize: 12,
+                        fontSize: scaleFont(12),
+                        lineHeight: scaleLineHeight(18),
                         textAlign: 'center',
                       }}
                     >
@@ -345,8 +349,8 @@ export default function WelcomeScreen() {
                 <Text
                   style={{
                     color: '#dbeafe',
-                    fontSize: 11,
-                    lineHeight: 16,
+                    fontSize: scaleFont(11),
+                    lineHeight: scaleLineHeight(16),
                     textAlign: 'center',
                     marginTop: 10,
                     paddingHorizontal: 8,
@@ -370,7 +374,7 @@ export default function WelcomeScreen() {
                   marginBottom: 10,
                 }}
               >
-                <Text style={{ color: BRAND_COLORS.textDark, fontSize: 16, fontWeight: '700' }}>
+                <Text style={{ color: BRAND_COLORS.textDark, fontSize: scaleFont(16), lineHeight: scaleLineHeight(22), fontWeight: '700' }}>
                   Masuk
                 </Text>
               </Pressable>
@@ -386,7 +390,7 @@ export default function WelcomeScreen() {
                   backgroundColor: 'rgba(255,255,255,0.08)',
                 }}
               >
-                <Text style={{ color: BRAND_COLORS.white, fontSize: 16, fontWeight: '700' }}>
+                <Text style={{ color: BRAND_COLORS.white, fontSize: scaleFont(16), lineHeight: scaleLineHeight(22), fontWeight: '700' }}>
                   Daftar
                 </Text>
               </Pressable>
@@ -396,8 +400,8 @@ export default function WelcomeScreen() {
                   color: '#cbd5e1',
                   marginTop: 16,
                   textAlign: 'center',
-                  fontSize: 10.5,
-                  lineHeight: 16,
+                  fontSize: scaleFont(10.5),
+                  lineHeight: scaleLineHeight(16),
                   fontWeight: '400',
                   paddingHorizontal: 6,
                 }}

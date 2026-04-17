@@ -13,12 +13,14 @@ import { getApiErrorMessage } from '../../../src/lib/api/errorMessage';
 import { getStandardPagePadding } from '../../../src/lib/ui/pageLayout';
 import { normalizeNisnInput } from '../../../src/lib/nisn';
 import { BRAND_COLORS } from '../../../src/config/brand';
+import { useAppTextScale } from '../../../src/theme/AppTextScaleProvider';
 
 export default function ParentChildrenScreen() {
   const router = useRouter();
   const params = useLocalSearchParams<{ mode?: string | string[] }>();
   const insets = useSafeAreaInsets();
   const { isAuthenticated, isLoading, user } = useAuth();
+  const { scaleFont, scaleLineHeight, fontSizes } = useAppTextScale();
   const childrenQuery = useParentChildrenQuery({ enabled: isAuthenticated, user });
   const pagePadding = getStandardPagePadding(insets, { bottom: 120 });
   const [linkForm, setLinkForm] = useState({ nisn: '', birthDate: '' });
@@ -35,7 +37,7 @@ export default function ParentChildrenScreen() {
   if (user?.role !== 'PARENT') {
     return (
       <ScrollView style={{ flex: 1, backgroundColor: '#f8fafc' }} contentContainerStyle={pagePadding}>
-        <Text style={{ fontSize: 20, fontWeight: '700', marginBottom: 8 }}>Data Anak</Text>
+        <Text style={{ fontSize: scaleFont(20), lineHeight: scaleLineHeight(28), fontWeight: '700', marginBottom: 8 }}>Data Anak</Text>
         <QueryStateView type="error" message="Halaman ini khusus untuk role orang tua." />
         <Pressable
           onPress={() => router.replace('/home')}
@@ -146,8 +148,8 @@ export default function ParentChildrenScreen() {
         />
       }
     >
-      <Text style={{ fontSize: 20, fontWeight: '700', marginBottom: 6, color: BRAND_COLORS.textDark }}>Data Anak</Text>
-      <Text style={{ color: BRAND_COLORS.textMuted, marginBottom: 12 }}>
+      <Text style={{ fontSize: scaleFont(20), lineHeight: scaleLineHeight(28), fontWeight: '700', marginBottom: 6, color: BRAND_COLORS.textDark }}>Data Anak</Text>
+      <Text style={{ color: BRAND_COLORS.textMuted, fontSize: fontSizes.body, lineHeight: scaleLineHeight(20), marginBottom: 12 }}>
         {isLinkMode
           ? 'Cari siswa dengan NISN, cek datanya, lalu hubungkan ke akun orang tua ini.'
           : 'Daftar anak yang terhubung dengan akun orang tua.'}
@@ -166,7 +168,7 @@ export default function ParentChildrenScreen() {
         <View style={{ flexDirection: 'row', justifyContent: 'space-between', gap: 12, marginBottom: 10 }}>
           <View style={{ flex: 1 }}>
             <Text style={{ color: BRAND_COLORS.textDark, fontWeight: '700', marginBottom: 4 }}>Hubungkan Anak</Text>
-            <Text style={{ color: BRAND_COLORS.textMuted, fontSize: 12 }}>
+            <Text style={{ color: BRAND_COLORS.textMuted, fontSize: scaleFont(12), lineHeight: scaleLineHeight(18) }}>
               Cari siswa dengan NISN, lalu verifikasi tanggal lahir dengan format `YYYY-MM-DD`.
             </Text>
           </View>
@@ -180,7 +182,7 @@ export default function ParentChildrenScreen() {
                 paddingVertical: 5,
               }}
             >
-              <Text style={{ color: '#1d4ed8', fontSize: 11, fontWeight: '700' }}>MODE HUBUNGKAN</Text>
+              <Text style={{ color: '#1d4ed8', fontSize: scaleFont(11), fontWeight: '700' }}>MODE HUBUNGKAN</Text>
             </View>
           ) : null}
         </View>
@@ -196,7 +198,7 @@ export default function ParentChildrenScreen() {
             marginBottom: 12,
           }}
         >
-          <Text style={{ color: '#92400e', fontSize: 12, lineHeight: 18 }}>
+          <Text style={{ color: '#92400e', fontSize: scaleFont(12), lineHeight: scaleLineHeight(18) }}>
             Setiap NISN cukup dikaitkan satu kali ke akun ini. Jika Anda memiliki lebih dari satu anak di sekolah,
             ulangi proses dengan NISN yang berbeda untuk masing-masing anak.
           </Text>
@@ -222,6 +224,7 @@ export default function ParentChildrenScreen() {
             paddingVertical: 11,
             color: BRAND_COLORS.textDark,
             marginBottom: 10,
+            fontSize: fontSizes.body,
           }}
         />
 
@@ -241,10 +244,11 @@ export default function ParentChildrenScreen() {
             paddingVertical: 11,
             color: BRAND_COLORS.textDark,
             marginBottom: 10,
+            fontSize: fontSizes.body,
           }}
         />
 
-        <Text style={{ color: BRAND_COLORS.textMuted, fontSize: 12, marginBottom: 10 }}>
+        <Text style={{ color: BRAND_COLORS.textMuted, fontSize: scaleFont(12), lineHeight: scaleLineHeight(18), marginBottom: 10 }}>
           Jika data siswa belum memiliki tanggal lahir di sistem, hubungan perlu dibantu admin sekolah.
         </Text>
 
@@ -293,11 +297,11 @@ export default function ParentChildrenScreen() {
           >
             <View style={{ flexDirection: 'row', justifyContent: 'space-between', gap: 12 }}>
               <View style={{ flex: 1 }}>
-                <Text style={{ color: '#64748b', fontSize: 11, fontWeight: '700', marginBottom: 4 }}>HASIL PENCARIAN NISN</Text>
-                <Text style={{ color: BRAND_COLORS.textDark, fontWeight: '700', fontSize: 16, marginBottom: 4 }}>
+                <Text style={{ color: '#64748b', fontSize: scaleFont(11), fontWeight: '700', marginBottom: 4 }}>HASIL PENCARIAN NISN</Text>
+                <Text style={{ color: BRAND_COLORS.textDark, fontWeight: '700', fontSize: scaleFont(16), lineHeight: scaleLineHeight(23), marginBottom: 4 }}>
                   {lookupResult.student.name}
                 </Text>
-                <Text style={{ color: '#475569', fontSize: 12 }}>
+                <Text style={{ color: '#475569', fontSize: scaleFont(12), lineHeight: scaleLineHeight(18) }}>
                   @{lookupResult.student.username} • {lookupResult.student.studentClass?.name || 'Belum ada kelas'}
                   {lookupResult.student.studentClass?.major?.code
                     ? ` (${lookupResult.student.studentClass.major.code})`
@@ -316,7 +320,7 @@ export default function ParentChildrenScreen() {
                 <Text
                   style={{
                     color: lookupResult.alreadyLinkedToCurrentParent ? '#92400e' : '#166534',
-                    fontSize: 11,
+                    fontSize: scaleFont(11),
                     fontWeight: '700',
                   }}
                 >
@@ -325,24 +329,24 @@ export default function ParentChildrenScreen() {
               </View>
             </View>
 
-            <Text style={{ color: '#475569', marginTop: 10, marginBottom: 2, fontSize: 12 }}>
+            <Text style={{ color: '#475569', marginTop: 10, marginBottom: 2, fontSize: scaleFont(12), lineHeight: scaleLineHeight(18) }}>
               NIS / NISN:{' '}
               <Text style={{ color: BRAND_COLORS.textDark, fontWeight: '600' }}>
                 {lookupResult.student.nis || '-'} / {lookupResult.student.nisn || '-'}
               </Text>
             </Text>
-            <Text style={{ color: '#475569', marginBottom: 2, fontSize: 12 }}>
+            <Text style={{ color: '#475569', marginBottom: 2, fontSize: scaleFont(12), lineHeight: scaleLineHeight(18) }}>
               Status:{' '}
               <Text style={{ color: BRAND_COLORS.textDark, fontWeight: '600' }}>
                 {lookupResult.student.studentStatus || '-'} / {lookupResult.student.verificationStatus || '-'}
               </Text>
             </Text>
-            <Text style={{ color: '#475569', marginBottom: 2, fontSize: 12 }}>
+            <Text style={{ color: '#475569', marginBottom: 2, fontSize: scaleFont(12), lineHeight: scaleLineHeight(18) }}>
               Sudah terhubung ke <Text style={{ color: BRAND_COLORS.textDark, fontWeight: '600' }}>{lookupResult.linkedParentCount}</Text> akun orang tua
             </Text>
-            <Text style={{ color: '#475569', marginTop: 8, fontSize: 12, lineHeight: 18 }}>{lookupResult.oneTimeWarning}</Text>
+            <Text style={{ color: '#475569', marginTop: 8, fontSize: scaleFont(12), lineHeight: scaleLineHeight(18) }}>{lookupResult.oneTimeWarning}</Text>
             {lookupResult.alreadyLinkedToCurrentParent ? (
-              <Text style={{ color: '#92400e', marginTop: 8, fontSize: 12, fontWeight: '700' }}>
+              <Text style={{ color: '#92400e', marginTop: 8, fontSize: scaleFont(12), lineHeight: scaleLineHeight(18), fontWeight: '700' }}>
                 NISN ini sudah pernah dikaitkan ke akun Anda. Untuk anak lain, gunakan NISN yang berbeda.
               </Text>
             ) : null}
@@ -358,8 +362,8 @@ export default function ParentChildrenScreen() {
           marginBottom: 12,
         }}
       >
-        <Text style={{ color: '#c6dbff', fontSize: 12, marginBottom: 3 }}>Total Anak Terdaftar</Text>
-        <Text style={{ color: '#fff', fontWeight: '700', fontSize: 20 }}>{children.length}</Text>
+        <Text style={{ color: '#c6dbff', fontSize: scaleFont(12), marginBottom: 3 }}>Total Anak Terdaftar</Text>
+        <Text style={{ color: '#fff', fontWeight: '700', fontSize: scaleFont(20), lineHeight: scaleLineHeight(28) }}>{children.length}</Text>
       </View>
 
       {childrenQuery.isLoading ? <QueryStateView type="loading" message="Mengambil data anak..." /> : null}
@@ -383,7 +387,7 @@ export default function ParentChildrenScreen() {
                   marginBottom: 10,
                 }}
               >
-                <Text style={{ color: BRAND_COLORS.textDark, fontWeight: '700', fontSize: 16, marginBottom: 4 }}>
+                <Text style={{ color: BRAND_COLORS.textDark, fontWeight: '700', fontSize: scaleFont(16), lineHeight: scaleLineHeight(23), marginBottom: 4 }}>
                   {child.name}
                 </Text>
                 <Text style={{ color: '#475569', marginBottom: 2 }}>

@@ -26,6 +26,7 @@ import { BRAND_COLORS } from '../../src/config/brand';
 import { getStaffFinanceNotificationTarget } from '../../src/features/staff/staffRole';
 import { useIsScreenActive } from '../../src/hooks/useIsScreenActive';
 import { resolveMobileNotificationTarget } from '../../src/features/notifications/notificationTargetResolver';
+import { useAppTextScale } from '../../src/theme/AppTextScaleProvider';
 
 function formatDateTime(value: string) {
   const date = new Date(value);
@@ -48,6 +49,7 @@ function NotificationCard({
   onOpen: () => void;
   loading: boolean;
 }) {
+  const { scaleFont, scaleLineHeight } = useAppTextScale();
   return (
     <Pressable
       onPress={onOpen}
@@ -84,7 +86,8 @@ function NotificationCard({
               style={{
                 color: '#0f172a',
                 fontWeight: item.isRead ? '600' : '700',
-                fontSize: 13,
+                fontSize: scaleFont(13),
+                lineHeight: scaleLineHeight(19),
                 flex: 1,
               }}
               numberOfLines={2}
@@ -103,14 +106,14 @@ function NotificationCard({
                   marginLeft: 8,
                 }}
               >
-                <Text style={{ color: '#1d4ed8', fontSize: 10, fontWeight: '700' }}>BARU</Text>
+                <Text style={{ color: '#1d4ed8', fontSize: scaleFont(10), fontWeight: '700' }}>BARU</Text>
               </View>
             ) : null}
           </View>
-          <Text style={{ color: '#475569', fontSize: 12, marginTop: 4 }} numberOfLines={3}>
+          <Text style={{ color: '#475569', fontSize: scaleFont(12), lineHeight: scaleLineHeight(18), marginTop: 4 }} numberOfLines={3}>
             {item.message || '-'}
           </Text>
-          <Text style={{ color: '#64748b', fontSize: 11, marginTop: 7 }}>{formatDateTime(item.createdAt)}</Text>
+          <Text style={{ color: '#64748b', fontSize: scaleFont(11), lineHeight: scaleLineHeight(16), marginTop: 7 }}>{formatDateTime(item.createdAt)}</Text>
         </View>
       </View>
     </Pressable>
@@ -124,6 +127,7 @@ export default function NotificationsScreen() {
   const queryClient = useQueryClient();
   const pageContentPadding = getStandardPagePadding(insets);
   const isScreenActive = useIsScreenActive();
+  const { scaleFont, scaleLineHeight, fontSizes } = useAppTextScale();
 
   const notificationsQuery = useQuery({
     queryKey: MOBILE_NOTIFICATIONS_INBOX_QUERY_KEY,
@@ -258,8 +262,8 @@ export default function NotificationsScreen() {
               <Feather name="bell" size={16} color={BRAND_COLORS.blue} />
             </View>
             <View style={{ flex: 1 }}>
-              <Text style={{ color: '#0f172a', fontSize: 18, fontWeight: '700' }}>Notifikasi</Text>
-              <Text style={{ color: '#64748b', marginTop: 1, fontSize: 12 }}>
+              <Text style={{ color: '#0f172a', fontSize: scaleFont(18), lineHeight: scaleLineHeight(25), fontWeight: '700' }}>Notifikasi</Text>
+              <Text style={{ color: '#64748b', marginTop: 1, fontSize: scaleFont(12), lineHeight: scaleLineHeight(18) }}>
                 {unreadCount > 0
                   ? `${unreadCount} notifikasi belum dibaca`
                   : 'Semua notifikasi sudah dibaca'}
@@ -301,7 +305,7 @@ export default function NotificationsScreen() {
               backgroundColor: '#fff',
             }}
           >
-            <Text style={{ color: '#475569', fontWeight: '600', fontSize: 12 }}>Kembali</Text>
+            <Text style={{ color: '#475569', fontWeight: '600', fontSize: fontSizes.label }}>Kembali</Text>
           </Pressable>
 
           <Pressable
@@ -322,7 +326,8 @@ export default function NotificationsScreen() {
               style={{
                 color: unreadCount > 0 ? '#fff' : '#94a3b8',
                 fontWeight: '700',
-                fontSize: 12,
+                fontSize: scaleFont(12),
+                lineHeight: scaleLineHeight(18),
               }}
             >
               {markAllAsReadMutation.isPending ? 'Memproses...' : 'Tandai Semua Dibaca'}
@@ -369,7 +374,7 @@ export default function NotificationsScreen() {
             <Text style={{ color: '#0f172a', fontWeight: '700', marginBottom: 4 }}>
               Belum ada notifikasi
             </Text>
-            <Text style={{ color: '#64748b', fontSize: 12 }}>
+            <Text style={{ color: '#64748b', fontSize: scaleFont(12), lineHeight: scaleLineHeight(18) }}>
               Notifikasi terbaru akan muncul otomatis di halaman ini.
             </Text>
           </View>

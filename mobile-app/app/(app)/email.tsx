@@ -19,6 +19,7 @@ import { getStandardPagePadding } from '../../src/lib/ui/pageLayout';
 import { notifyApiError, notifySuccess } from '../../src/lib/ui/feedback';
 import { useIsScreenActive } from '../../src/hooks/useIsScreenActive';
 import { webmailSessionStorage } from '../../src/lib/storage/webmailSessionStorage';
+import { useAppTextScale } from '../../src/theme/AppTextScaleProvider';
 
 const ALLOWED_WEBMAIL_ROLES = new Set(['ADMIN', 'TEACHER', 'PRINCIPAL', 'STAFF', 'EXTRACURRICULAR_TUTOR']);
 const MAILBOX_USERNAME_PATTERN = /^[a-z0-9][a-z0-9._-]{2,62}$/;
@@ -248,6 +249,7 @@ function SectionCard({
   subtitle?: string | null;
   children: ReactNode;
 }) {
+  const { scaleFont, scaleLineHeight } = useAppTextScale();
   return (
     <View
       style={{
@@ -261,8 +263,8 @@ function SectionCard({
       }}
     >
       <View style={{ gap: 4 }}>
-        <Text style={{ fontSize: 18, fontWeight: '800', color: '#0f172a' }}>{title}</Text>
-        {subtitle ? <Text style={{ fontSize: 12, color: '#64748b', lineHeight: 18 }}>{subtitle}</Text> : null}
+        <Text style={{ fontSize: scaleFont(18), fontWeight: '800', color: '#0f172a' }}>{title}</Text>
+        {subtitle ? <Text style={{ fontSize: scaleFont(12), color: '#64748b', lineHeight: scaleLineHeight(18) }}>{subtitle}</Text> : null}
       </View>
       {children}
     </View>
@@ -278,6 +280,7 @@ function EmailInboxItem({
   selected: boolean;
   onPress: () => void;
 }) {
+  const { scaleFont } = useAppTextScale();
   const senderLabel = extractSenderLabel(item);
   const subjectLabel = extractSubjectLabel(item);
   const snippetLabel = normalizeSnippet(item.snippet || '');
@@ -315,15 +318,15 @@ function EmailInboxItem({
         <View style={{ flex: 1, gap: 3 }}>
           <View style={{ flexDirection: 'row', alignItems: 'center', gap: 8 }}>
             <Text
-              style={{ flex: 1, color: '#0f172a', fontWeight: item.isRead ? '600' : '700', fontSize: 13 }}
+              style={{ flex: 1, color: '#0f172a', fontWeight: item.isRead ? '600' : '700', fontSize: scaleFont(13) }}
               numberOfLines={1}
             >
               {senderLabel}
             </Text>
-            <Text style={{ color: '#64748b', fontSize: 11, fontWeight: '600' }}>{formatDateTime(item.date)}</Text>
+            <Text style={{ color: '#64748b', fontSize: scaleFont(11), fontWeight: '600' }}>{formatDateTime(item.date)}</Text>
           </View>
 
-          <Text style={{ color: item.isRead ? '#334155' : '#0f172a', fontWeight: item.isRead ? '600' : '700', fontSize: 13 }} numberOfLines={1}>
+          <Text style={{ color: item.isRead ? '#334155' : '#0f172a', fontWeight: item.isRead ? '600' : '700', fontSize: scaleFont(13) }} numberOfLines={1}>
             {subjectLabel}
             {snippetLabel ? <Text style={{ color: '#64748b', fontWeight: '500' }}>{`  ${snippetLabel}`}</Text> : null}
           </Text>
@@ -354,6 +357,7 @@ function ActionTile({
   disabled?: boolean;
   busy?: boolean;
 }) {
+  const { scaleFont, scaleLineHeight } = useAppTextScale();
   const palette = getFolderMoveActionPalette(tone);
 
   return (
@@ -384,7 +388,9 @@ function ActionTile({
       >
         {busy ? <ActivityIndicator size="small" color={palette.iconColor} /> : <Feather name={iconName} size={15} color={palette.iconColor} />}
       </View>
-      <Text style={{ color: palette.textColor, fontWeight: '700', fontSize: 11, textAlign: 'center', lineHeight: 15 }}>
+      <Text
+        style={{ color: palette.textColor, fontWeight: '700', fontSize: scaleFont(11), textAlign: 'center', lineHeight: scaleLineHeight(15) }}
+      >
         {busy ? 'Memproses...' : label}
       </Text>
     </Pressable>
@@ -396,6 +402,7 @@ export default function MobileEmailScreen() {
   const queryClient = useQueryClient();
   const { isAuthenticated, isLoading, user } = useAuth();
   const isScreenActive = useIsScreenActive();
+  const { scaleFont, scaleLineHeight, fontSizes } = useAppTextScale();
   const pagePadding = getStandardPagePadding(insets, { bottom: 16 });
   const scrollViewRef = useRef<ScrollView | null>(null);
   const webviewRef = useRef<WebView | null>(null);
@@ -1210,7 +1217,7 @@ export default function MobileEmailScreen() {
     return (
       <View style={{ flex: 1, backgroundColor: '#f8fafc' }}>
         <View style={pagePadding}>
-          <Text style={{ fontSize: 20, fontWeight: '700', color: BRAND_COLORS.textDark, marginBottom: 8 }}>Email</Text>
+          <Text style={{ fontSize: scaleFont(20), fontWeight: '700', color: BRAND_COLORS.textDark, marginBottom: 8 }}>Email</Text>
           <QueryStateView type="error" message="Fitur email tidak tersedia untuk role Anda." />
         </View>
       </View>
@@ -1225,7 +1232,7 @@ export default function MobileEmailScreen() {
     return (
       <View style={{ flex: 1, backgroundColor: '#f8fafc' }}>
         <View style={pagePadding}>
-          <Text style={{ fontSize: 20, fontWeight: '700', color: BRAND_COLORS.textDark, marginBottom: 8 }}>Email</Text>
+          <Text style={{ fontSize: scaleFont(20), fontWeight: '700', color: BRAND_COLORS.textDark, marginBottom: 8 }}>Email</Text>
           <QueryStateView
             type="error"
             message={resolveErrorMessage(configQuery.error, 'Gagal memuat konfigurasi email.')}
@@ -1283,8 +1290,8 @@ export default function MobileEmailScreen() {
         <View style={{ paddingHorizontal: 12, gap: 10 }}>
           <View style={{ flexDirection: 'row', alignItems: 'flex-start', justifyContent: 'space-between', gap: 12, paddingHorizontal: 2 }}>
             <View style={{ flex: 1, gap: 4 }}>
-              <Text style={{ fontSize: 20, fontWeight: '800', color: '#0f172a' }}>Email</Text>
-              <Text style={{ fontSize: 12, color: '#64748b', lineHeight: 18 }}>{pageDescription}</Text>
+              <Text style={{ fontSize: scaleFont(20), fontWeight: '800', color: '#0f172a' }}>Email</Text>
+              <Text style={{ fontSize: scaleFont(12), color: '#64748b', lineHeight: scaleLineHeight(18) }}>{pageDescription}</Text>
             </View>
             {canShowEmailAccessMenu ? (
               <Pressable
@@ -1335,7 +1342,7 @@ export default function MobileEmailScreen() {
               {nativeMailboxState === 'LOADING' ? (
                 <View style={{ paddingVertical: 12, alignItems: 'center', justifyContent: 'center', gap: 8 }}>
                   <ActivityIndicator size="small" color="#2563eb" />
-                  <Text style={{ color: '#64748b', fontSize: 12 }}>Memeriksa kesiapan mailbox sekolah Anda...</Text>
+                  <Text style={{ color: '#64748b', fontSize: scaleFont(12) }}>Memeriksa kesiapan mailbox sekolah Anda...</Text>
                 </View>
               ) : nativeMailboxState === 'ERROR' ? (
                 <QueryStateView
@@ -1357,7 +1364,7 @@ export default function MobileEmailScreen() {
                         gap: 10,
                       }}
                     >
-                      <Text style={{ color: '#0f172a', fontSize: 13, fontWeight: '700' }}>Email</Text>
+                      <Text style={{ color: '#0f172a', fontSize: scaleFont(13), fontWeight: '700' }}>Email</Text>
                       <TextInput
                         value={mailboxIdentity}
                         editable={false}
@@ -1368,6 +1375,7 @@ export default function MobileEmailScreen() {
                           borderRadius: 12,
                           paddingHorizontal: 12,
                           paddingVertical: 11,
+                          fontSize: fontSizes.body,
                           color: '#334155',
                           backgroundColor: '#ffffff',
                         }}
@@ -1375,7 +1383,7 @@ export default function MobileEmailScreen() {
 
                       {!isSsoMode ? (
                         <>
-                          <Text style={{ color: '#0f172a', fontSize: 13, fontWeight: '700' }}>Password</Text>
+                          <Text style={{ color: '#0f172a', fontSize: scaleFont(13), fontWeight: '700' }}>Password</Text>
                           <TextInput
                             value={loginPass}
                             onChangeText={(value) => {
@@ -1391,6 +1399,7 @@ export default function MobileEmailScreen() {
                               borderRadius: 12,
                               paddingHorizontal: 12,
                               paddingVertical: 11,
+                              fontSize: fontSizes.body,
                               color: BRAND_COLORS.textDark,
                               backgroundColor: '#ffffff',
                             }}
@@ -1398,7 +1407,7 @@ export default function MobileEmailScreen() {
                         </>
                       ) : null}
 
-                      {loginError ? <Text style={{ color: '#b91c1c', fontSize: 12 }}>{loginError}</Text> : null}
+                      {loginError ? <Text style={{ color: '#b91c1c', fontSize: scaleFont(12) }}>{loginError}</Text> : null}
 
                       <Pressable
                         onPress={handleLoginSubmit}
@@ -1436,7 +1445,7 @@ export default function MobileEmailScreen() {
                           ? 'Mailbox siap dipakai'
                           : 'Belum punya mailbox sekolah'}
                     </Text>
-                    <Text style={{ color: '#475569', fontSize: 12, lineHeight: 18 }}>
+                    <Text style={{ color: '#475569', fontSize: scaleFont(12), lineHeight: scaleLineHeight(18) }}>
                       {mailboxNeedsRefreshHint
                         ? 'Mailbox sekolah sudah tercatat untuk akun SIS. Anda bisa mencoba login sekarang; jika inbox belum terbuka, tekan "Periksa Status Mailbox" untuk memuat kesiapan terbaru dari server mail.'
                         : canShowMailboxLogin
@@ -1456,8 +1465,8 @@ export default function MobileEmailScreen() {
                           gap: 4,
                         }}
                       >
-                        <Text style={{ color: '#b45309', fontSize: 11, fontWeight: '700' }}>Mailbox Sekolah</Text>
-                        <Text style={{ color: '#0f172a', fontSize: 13, fontWeight: '700' }}>{mailboxIdentity}</Text>
+                        <Text style={{ color: '#b45309', fontSize: scaleFont(11), fontWeight: '700' }}>Mailbox Sekolah</Text>
+                        <Text style={{ color: '#0f172a', fontSize: scaleFont(13), fontWeight: '700' }}>{mailboxIdentity}</Text>
                       </View>
                     ) : null}
                   </View>
@@ -1491,7 +1500,7 @@ export default function MobileEmailScreen() {
                           paddingVertical: 14,
                         }}
                       >
-                        <Text style={{ color: '#475569', fontSize: 12, lineHeight: 18 }}>
+                        <Text style={{ color: '#475569', fontSize: scaleFont(12), lineHeight: scaleLineHeight(18) }}>
                           Pendaftaran mailbox mandiri tidak tersedia untuk akun ini. Silakan hubungi admin jika Anda membutuhkan akun email sekolah.
                         </Text>
                       </View>
@@ -1535,7 +1544,7 @@ export default function MobileEmailScreen() {
                   />
 
                   <View style={{ gap: 8 }}>
-                    <Text style={{ color: '#475569', fontSize: 12, fontWeight: '700' }}>Cari Email</Text>
+                    <Text style={{ color: '#475569', fontSize: scaleFont(12), fontWeight: '700' }}>Cari Email</Text>
                     <View style={{ flexDirection: 'row', gap: 8 }}>
                       <View
                         style={{
@@ -1564,7 +1573,7 @@ export default function MobileEmailScreen() {
                             flex: 1,
                             minHeight: 42,
                             color: '#0f172a',
-                            fontSize: 13,
+                            fontSize: fontSizes.body,
                           }}
                         />
                       </View>
@@ -1578,7 +1587,7 @@ export default function MobileEmailScreen() {
                           justifyContent: 'center',
                         }}
                       >
-                        <Text style={{ color: '#ffffff', fontSize: 12, fontWeight: '700' }}>Cari</Text>
+                        <Text style={{ color: '#ffffff', fontSize: scaleFont(12), fontWeight: '700' }}>Cari</Text>
                       </Pressable>
                     </View>
                     {hasAppliedSearch || searchDraft.trim().length > 0 ? (
@@ -1586,7 +1595,7 @@ export default function MobileEmailScreen() {
                         onPress={handleResetSearch}
                         style={{ alignSelf: 'flex-start', paddingVertical: 2 }}
                       >
-                        <Text style={{ color: '#3250b9', fontSize: 12, fontWeight: '700' }}>Reset Pencarian</Text>
+                        <Text style={{ color: '#3250b9', fontSize: scaleFont(12), fontWeight: '700' }}>Reset Pencarian</Text>
                       </Pressable>
                     ) : null}
                   </View>
@@ -1604,11 +1613,11 @@ export default function MobileEmailScreen() {
                       }}
                     >
                       <Text style={{ color: '#0f172a', fontWeight: '700' }}>{activeFolderLabel} masih kosong</Text>
-                      <Text style={{ color: '#64748b', fontSize: 12, lineHeight: 18 }}>{activeFolderEmptyState}</Text>
+                      <Text style={{ color: '#64748b', fontSize: scaleFont(12), lineHeight: scaleLineHeight(18) }}>{activeFolderEmptyState}</Text>
                     </View>
                   ) : (
                     <View style={{ gap: 8 }}>
-                      <Text style={{ color: '#64748b', fontSize: 12, lineHeight: 18 }}>
+                      <Text style={{ color: '#64748b', fontSize: scaleFont(12), lineHeight: scaleLineHeight(18) }}>
                         {hasAppliedSearch
                           ? `Menampilkan ${mailboxMessages.length} dari ${totalMessageCount} email yang cocok dengan "${appliedSearch}".`
                           : `Menampilkan ${mailboxMessages.length} dari ${totalMessageCount} email di folder ${activeFolderLabel}.`}
@@ -1647,7 +1656,7 @@ export default function MobileEmailScreen() {
                           ) : (
                             <Feather name="chevrons-down" size={14} color="#1e293b" />
                           )}
-                          <Text style={{ color: '#1e293b', fontSize: 12, fontWeight: '700' }}>Muat Lebih Banyak</Text>
+                          <Text style={{ color: '#1e293b', fontSize: scaleFont(12), fontWeight: '700' }}>Muat Lebih Banyak</Text>
                         </Pressable>
                       ) : null}
                     </View>
@@ -1689,7 +1698,7 @@ export default function MobileEmailScreen() {
           >
             <Feather name="edit-3" size={20} color="#ffffff" />
           </Pressable>
-          <Text style={{ color: '#0f172a', fontSize: 11, fontWeight: '700' }}>Tulis</Text>
+          <Text style={{ color: '#0f172a', fontSize: scaleFont(11), fontWeight: '700' }}>Tulis</Text>
         </View>
       ) : null}
 
@@ -1730,8 +1739,8 @@ export default function MobileEmailScreen() {
                 <Feather name="key" size={15} color="#1d4ed8" />
               </View>
               <View style={{ flex: 1, gap: 2 }}>
-                <Text style={{ color: '#0f172a', fontSize: 14, fontWeight: '700' }}>Ganti Password</Text>
-                <Text style={{ color: '#64748b', fontSize: 12, lineHeight: 18 }}>
+                <Text style={{ color: '#0f172a', fontSize: scaleFont(14), fontWeight: '700' }}>Ganti Password</Text>
+                <Text style={{ color: '#64748b', fontSize: scaleFont(12), lineHeight: scaleLineHeight(18) }}>
                   Perbarui password mailbox sekolah dengan verifikasi password lama.
                 </Text>
               </View>
@@ -1765,8 +1774,8 @@ export default function MobileEmailScreen() {
                 <Feather name="log-out" size={15} color="#92400e" />
               </View>
               <View style={{ flex: 1, gap: 2 }}>
-                <Text style={{ color: '#0f172a', fontSize: 14, fontWeight: '700' }}>Keluar dari Mailbox</Text>
-                <Text style={{ color: '#64748b', fontSize: 12, lineHeight: 18 }}>
+                <Text style={{ color: '#0f172a', fontSize: scaleFont(14), fontWeight: '700' }}>Keluar dari Mailbox</Text>
+                <Text style={{ color: '#64748b', fontSize: scaleFont(12), lineHeight: scaleLineHeight(18) }}>
                   Akhiri sesi mailbox sekolah dan kembali ke halaman login email.
                 </Text>
               </View>
@@ -1784,7 +1793,7 @@ export default function MobileEmailScreen() {
         onClose={closeChangePasswordModal}
       >
         <View style={{ gap: 12 }}>
-          <Text style={{ color: '#0f172a', fontSize: 13, fontWeight: '700' }}>Password Lama</Text>
+          <Text style={{ color: '#0f172a', fontSize: scaleFont(13), fontWeight: '700' }}>Password Lama</Text>
           <TextInput
             value={changeCurrentPassword}
             onChangeText={setChangeCurrentPassword}
@@ -1797,11 +1806,12 @@ export default function MobileEmailScreen() {
               borderRadius: 12,
               paddingHorizontal: 12,
               paddingVertical: 11,
+              fontSize: fontSizes.body,
               color: BRAND_COLORS.textDark,
             }}
           />
 
-          <Text style={{ color: '#0f172a', fontSize: 13, fontWeight: '700' }}>Password Baru</Text>
+          <Text style={{ color: '#0f172a', fontSize: scaleFont(13), fontWeight: '700' }}>Password Baru</Text>
           <TextInput
             value={changeNextPassword}
             onChangeText={setChangeNextPassword}
@@ -1814,14 +1824,15 @@ export default function MobileEmailScreen() {
               borderRadius: 12,
               paddingHorizontal: 12,
               paddingVertical: 11,
+              fontSize: fontSizes.body,
               color: BRAND_COLORS.textDark,
             }}
           />
-          <Text style={{ color: '#64748b', fontSize: 12, lineHeight: 18 }}>
+          <Text style={{ color: '#64748b', fontSize: scaleFont(12), lineHeight: scaleLineHeight(18) }}>
             Password baru cukup minimal 8 karakter, tanpa syarat tambahan.
           </Text>
 
-          <Text style={{ color: '#0f172a', fontSize: 13, fontWeight: '700' }}>Konfirmasi Password Baru</Text>
+          <Text style={{ color: '#0f172a', fontSize: scaleFont(13), fontWeight: '700' }}>Konfirmasi Password Baru</Text>
           <TextInput
             value={changeConfirmPassword}
             onChangeText={setChangeConfirmPassword}
@@ -1834,12 +1845,13 @@ export default function MobileEmailScreen() {
               borderRadius: 12,
               paddingHorizontal: 12,
               paddingVertical: 11,
+              fontSize: fontSizes.body,
               color: BRAND_COLORS.textDark,
             }}
           />
 
           {changePasswordError ? (
-            <Text style={{ color: '#be123c', fontSize: 12, fontWeight: '700', lineHeight: 18 }}>{changePasswordError}</Text>
+            <Text style={{ color: '#be123c', fontSize: scaleFont(12), fontWeight: '700', lineHeight: scaleLineHeight(18) }}>{changePasswordError}</Text>
           ) : null}
 
           <Pressable
@@ -1873,7 +1885,7 @@ export default function MobileEmailScreen() {
         onClose={() => setIsComposeMode(false)}
       >
         <View style={{ gap: 12 }}>
-          <Text style={{ color: '#0f172a', fontSize: 13, fontWeight: '700' }}>Kepada</Text>
+          <Text style={{ color: '#0f172a', fontSize: scaleFont(13), fontWeight: '700' }}>Kepada</Text>
           <TextInput
             value={composeTo}
             onChangeText={setComposeTo}
@@ -1887,11 +1899,12 @@ export default function MobileEmailScreen() {
               borderRadius: 12,
               paddingHorizontal: 12,
               paddingVertical: 11,
+              fontSize: fontSizes.body,
               color: BRAND_COLORS.textDark,
             }}
           />
 
-          <Text style={{ color: '#0f172a', fontSize: 13, fontWeight: '700' }}>CC</Text>
+          <Text style={{ color: '#0f172a', fontSize: scaleFont(13), fontWeight: '700' }}>CC</Text>
           <TextInput
             value={composeCc}
             onChangeText={setComposeCc}
@@ -1905,11 +1918,12 @@ export default function MobileEmailScreen() {
               borderRadius: 12,
               paddingHorizontal: 12,
               paddingVertical: 11,
+              fontSize: fontSizes.body,
               color: BRAND_COLORS.textDark,
             }}
           />
 
-          <Text style={{ color: '#0f172a', fontSize: 13, fontWeight: '700' }}>Subjek</Text>
+          <Text style={{ color: '#0f172a', fontSize: scaleFont(13), fontWeight: '700' }}>Subjek</Text>
           <TextInput
             value={composeSubject}
             onChangeText={setComposeSubject}
@@ -1921,11 +1935,12 @@ export default function MobileEmailScreen() {
               borderRadius: 12,
               paddingHorizontal: 12,
               paddingVertical: 11,
+              fontSize: fontSizes.body,
               color: BRAND_COLORS.textDark,
             }}
           />
 
-          <Text style={{ color: '#0f172a', fontSize: 13, fontWeight: '700' }}>Isi Email</Text>
+          <Text style={{ color: '#0f172a', fontSize: scaleFont(13), fontWeight: '700' }}>Isi Email</Text>
           <TextInput
             value={composeBody}
             onChangeText={setComposeBody}
@@ -1940,6 +1955,7 @@ export default function MobileEmailScreen() {
               paddingHorizontal: 12,
               paddingVertical: 12,
               minHeight: 160,
+              fontSize: fontSizes.body,
               color: BRAND_COLORS.textDark,
             }}
           />
@@ -1973,7 +1989,7 @@ export default function MobileEmailScreen() {
         onClose={closeRegisterModal}
       >
         <View style={{ gap: 12 }}>
-          <Text style={{ color: '#0f172a', fontSize: 13, fontWeight: '700' }}>Username Email</Text>
+          <Text style={{ color: '#0f172a', fontSize: scaleFont(13), fontWeight: '700' }}>Username Email</Text>
           <View
             style={{
               borderWidth: 1,
@@ -1993,20 +2009,20 @@ export default function MobileEmailScreen() {
               autoCorrect={false}
               placeholder={suggestedMailboxUsername || 'username email'}
               placeholderTextColor="#94a3b8"
-              style={{ flex: 1, minWidth: 0, color: BRAND_COLORS.textDark, padding: 0 }}
+              style={{ flex: 1, minWidth: 0, color: BRAND_COLORS.textDark, padding: 0, fontSize: fontSizes.body }}
             />
             <Text style={{ color: '#64748b' }}>@{mailboxDomain}</Text>
           </View>
 
-          <Text style={{ color: '#64748b', fontSize: 12, lineHeight: 18 }}>
+          <Text style={{ color: '#64748b', fontSize: scaleFont(12), lineHeight: scaleLineHeight(18) }}>
             Isi username email sesuai keinginan Anda. Domain sekolah akan otomatis memakai @{mailboxDomain}, dan setiap akun hanya boleh memiliki satu mailbox.
           </Text>
 
-          <Text style={{ color: '#64748b', fontSize: 12, lineHeight: 18 }}>
+          <Text style={{ color: '#64748b', fontSize: scaleFont(12), lineHeight: scaleLineHeight(18) }}>
             Gunakan huruf kecil, angka, titik, underscore, atau dash.
           </Text>
 
-          <Text style={{ color: '#0f172a', fontSize: 13, fontWeight: '700' }}>Password</Text>
+          <Text style={{ color: '#0f172a', fontSize: scaleFont(13), fontWeight: '700' }}>Password</Text>
           <TextInput
             value={registerPass}
             onChangeText={setRegisterPass}
@@ -2019,11 +2035,12 @@ export default function MobileEmailScreen() {
               borderRadius: 12,
               paddingHorizontal: 12,
               paddingVertical: 11,
+              fontSize: fontSizes.body,
               color: BRAND_COLORS.textDark,
             }}
           />
 
-          <Text style={{ color: '#0f172a', fontSize: 13, fontWeight: '700' }}>Konfirmasi Password</Text>
+          <Text style={{ color: '#0f172a', fontSize: scaleFont(13), fontWeight: '700' }}>Konfirmasi Password</Text>
           <TextInput
             value={registerPassConfirm}
             onChangeText={setRegisterPassConfirm}
@@ -2036,14 +2053,15 @@ export default function MobileEmailScreen() {
               borderRadius: 12,
               paddingHorizontal: 12,
               paddingVertical: 11,
+              fontSize: fontSizes.body,
               color: BRAND_COLORS.textDark,
             }}
           />
 
-          <Text style={{ color: '#64748b', fontSize: 12, lineHeight: 18 }}>
+          <Text style={{ color: '#64748b', fontSize: scaleFont(12), lineHeight: scaleLineHeight(18) }}>
             Kapasitas mailbox: {quotaLabel} per user. Mailbox mengikuti identitas email sekolah yang sudah ditetapkan server.
           </Text>
-          {registerError ? <Text style={{ color: '#b91c1c', fontSize: 12 }}>{registerError}</Text> : null}
+          {registerError ? <Text style={{ color: '#b91c1c', fontSize: scaleFont(12) }}>{registerError}</Text> : null}
 
           <Pressable
             onPress={() => handleRegister()}
@@ -2094,8 +2112,8 @@ export default function MobileEmailScreen() {
             >
               <View style={{ flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', gap: 12 }}>
                 <View style={{ flex: 1 }}>
-                  <Text style={{ color: '#0f172a', fontSize: 18, fontWeight: '800' }}>{accessModalTitle}</Text>
-                  <Text style={{ color: '#64748b', fontSize: 12, marginTop: 2 }}>Panel webmail penuh</Text>
+                  <Text style={{ color: '#0f172a', fontSize: scaleFont(18), fontWeight: '800' }}>{accessModalTitle}</Text>
+                  <Text style={{ color: '#64748b', fontSize: scaleFont(12), marginTop: 2 }}>Panel webmail penuh</Text>
                 </View>
                 <Pressable
                   onPress={leavePanelMode}
@@ -2130,7 +2148,7 @@ export default function MobileEmailScreen() {
                 }}
               >
                 <Feather name="refresh-cw" size={13} color="#1e293b" />
-                <Text style={{ color: '#1e293b', fontSize: 12, fontWeight: '700' }}>Muat Ulang</Text>
+                <Text style={{ color: '#1e293b', fontSize: scaleFont(12), fontWeight: '700' }}>Muat Ulang</Text>
               </Pressable>
             </View>
 
@@ -2142,7 +2160,7 @@ export default function MobileEmailScreen() {
               ) : startSsoMutation.isPending ? (
                 <View style={{ flex: 1, alignItems: 'center', justifyContent: 'center', gap: 8 }}>
                   <ActivityIndicator size="small" color="#2563eb" />
-                  <Text style={{ fontSize: 13, color: '#64748b' }}>Menyiapkan sesi email...</Text>
+                  <Text style={{ fontSize: scaleFont(13), color: '#64748b' }}>Menyiapkan sesi email...</Text>
                 </View>
               ) : webmailUrl || inboxUrl ? (
                 hasNativeWebView ? (
@@ -2169,17 +2187,17 @@ export default function MobileEmailScreen() {
                   />
                 ) : (
                   <View style={{ flex: 1, alignItems: 'center', justifyContent: 'center', paddingHorizontal: 20 }}>
-                    <Text style={{ fontSize: 13, color: '#475569', textAlign: 'center', marginBottom: 6 }}>
+                    <Text style={{ fontSize: scaleFont(13), color: '#475569', textAlign: 'center', marginBottom: 6 }}>
                       Modul Email membutuhkan versi aplikasi terbaru.
                     </Text>
-                    <Text style={{ fontSize: 12, color: '#64748b', textAlign: 'center' }}>
+                    <Text style={{ fontSize: scaleFont(12), color: '#64748b', textAlign: 'center' }}>
                       Silakan update APK/internal build terbaru lalu buka ulang menu Email.
                     </Text>
                   </View>
                 )
               ) : (
                 <View style={{ flex: 1, alignItems: 'center', justifyContent: 'center', paddingHorizontal: 18 }}>
-                  <Text style={{ fontSize: 13, color: '#64748b', textAlign: 'center' }}>
+                  <Text style={{ fontSize: scaleFont(13), color: '#64748b', textAlign: 'center' }}>
                     URL email belum tersedia. Coba sinkronisasi konfigurasi.
                   </Text>
                 </View>
@@ -2210,19 +2228,19 @@ export default function MobileEmailScreen() {
                   gap: 6,
                 }}
               >
-                <Text style={{ color: '#334155', fontSize: 12 }}>
+                <Text style={{ color: '#334155', fontSize: scaleFont(12) }}>
                   Dari: <Text style={{ color: '#0f172a', fontWeight: '700' }}>{selectedSenderLabel}</Text>
                 </Text>
-                <Text style={{ color: '#334155', fontSize: 12 }}>
+                <Text style={{ color: '#334155', fontSize: scaleFont(12) }}>
                   Subjek: <Text style={{ color: '#0f172a', fontWeight: '700' }}>{selectedSubjectLabel}</Text>
                 </Text>
-                <Text style={{ color: '#334155', fontSize: 12 }}>
+                <Text style={{ color: '#334155', fontSize: scaleFont(12) }}>
                   Waktu: <Text style={{ color: '#0f172a', fontWeight: '700' }}>{formatDateTime(selectedEmail.date)}</Text>
                 </Text>
               </View>
 
               <View style={{ gap: 8 }}>
-                <Text style={{ color: '#475569', fontSize: 12, fontWeight: '700' }}>Aksi Email</Text>
+                <Text style={{ color: '#475569', fontSize: scaleFont(12), fontWeight: '700' }}>Aksi Email</Text>
                 <View style={{ flexDirection: 'row', flexWrap: 'wrap', gap: 8 }}>
                   {canReplyFromSelectedFolder ? (
                     <ActionTile
@@ -2270,7 +2288,7 @@ export default function MobileEmailScreen() {
 
               {availableMoveActions.length > 0 ? (
                 <View style={{ gap: 8 }}>
-                  <Text style={{ color: '#475569', fontSize: 12, fontWeight: '700' }}>Aksi Folder</Text>
+                  <Text style={{ color: '#475569', fontSize: scaleFont(12), fontWeight: '700' }}>Aksi Folder</Text>
                   <View style={{ flexDirection: 'row', flexWrap: 'wrap', gap: 8 }}>
                     {availableMoveActions.map((action) => {
                       return (
@@ -2294,7 +2312,7 @@ export default function MobileEmailScreen() {
               {selectedEmailDetailQuery.isLoading ? (
                 <View style={{ paddingVertical: 8, alignItems: 'center', gap: 8 }}>
                   <ActivityIndicator size="small" color="#2563eb" />
-                  <Text style={{ color: '#64748b', fontSize: 12 }}>Memuat isi email...</Text>
+                  <Text style={{ color: '#64748b', fontSize: scaleFont(12) }}>Memuat isi email...</Text>
                 </View>
               ) : selectedEmailDetailQuery.isError ? (
                 <QueryStateView
@@ -2315,12 +2333,12 @@ export default function MobileEmailScreen() {
                   }}
                 >
                   {selectedEmailDetailQuery.data?.to ? (
-                    <Text style={{ color: '#334155', fontSize: 12 }}>
+                    <Text style={{ color: '#334155', fontSize: scaleFont(12) }}>
                       Ke: <Text style={{ color: '#0f172a', fontWeight: '700' }}>{selectedEmailDetailQuery.data.to}</Text>
                     </Text>
                   ) : null}
                   {selectedEmailDetailQuery.data?.cc ? (
-                    <Text style={{ color: '#334155', fontSize: 12 }}>
+                    <Text style={{ color: '#334155', fontSize: scaleFont(12) }}>
                       CC: <Text style={{ color: '#0f172a', fontWeight: '700' }}>{selectedEmailDetailQuery.data.cc}</Text>
                     </Text>
                   ) : null}
@@ -2335,11 +2353,11 @@ export default function MobileEmailScreen() {
                       }}
                     />
                   ) : (
-                    <Text style={{ color: '#334155', fontSize: 12, lineHeight: 20 }}>
+                    <Text style={{ color: '#334155', fontSize: scaleFont(12), lineHeight: scaleLineHeight(20) }}>
                       {selectedBodyText || 'Isi email tidak tersedia.'}
                     </Text>
                   )}
-                  <Text style={{ color: '#64748b', fontSize: 12, lineHeight: 18 }}>
+                  <Text style={{ color: '#64748b', fontSize: scaleFont(12), lineHeight: scaleLineHeight(18) }}>
                     Detail email dibuka terpisah agar daftar {activeFolderLabel.toLowerCase()} tetap ringkas dan nyaman dipakai walau email banyak.
                   </Text>
                 </View>

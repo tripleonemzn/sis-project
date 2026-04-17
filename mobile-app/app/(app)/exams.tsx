@@ -568,7 +568,7 @@ export default function StudentExamsScreen() {
   if (!canAccessExams) {
     return (
       <ScrollView style={{ flex: 1, backgroundColor: '#f8fafc' }} contentContainerStyle={pageContentPadding}>
-        <Text style={{ fontSize: 20, fontWeight: '700', marginBottom: 8 }}>Ujian</Text>
+        <Text style={{ fontSize: scaleFont(20), fontWeight: '700', marginBottom: 8 }}>Ujian</Text>
         <QueryStateView type="error" message="Halaman ini hanya tersedia untuk peserta ujian yang aktif." />
       </ScrollView>
     );
@@ -814,11 +814,11 @@ export default function StudentExamsScreen() {
                           <Text
                             style={{
                               color: '#0f172a',
-                              fontSize: 10,
+                              fontSize: scaleFont(10, { max: 12 }),
                               fontWeight: '700',
                               textTransform: 'uppercase',
                               textAlign: 'center',
-                              lineHeight: 13,
+                              lineHeight: scaleLineHeight(13, { max: 15 }),
                             }}
                           >
                             {card.payload.cardTitle || 'Kartu Peserta'}
@@ -826,12 +826,12 @@ export default function StudentExamsScreen() {
                           <Text
                             style={{
                               color: '#0f172a',
-                              fontSize: 10,
+                              fontSize: scaleFont(10, { max: 12 }),
                               fontWeight: '700',
                               textTransform: 'uppercase',
                               textAlign: 'center',
                               marginTop: 1,
-                              lineHeight: 13,
+                              lineHeight: scaleLineHeight(13, { max: 15 }),
                             }}
                           >
                             {card.payload.examTitle || card.payload.programLabel}
@@ -839,12 +839,12 @@ export default function StudentExamsScreen() {
                           <Text
                             style={{
                               color: '#0f172a',
-                              fontSize: 10,
+                              fontSize: scaleFont(10, { max: 12 }),
                               fontWeight: '700',
                               textTransform: 'uppercase',
                               textAlign: 'center',
                               marginTop: 1,
-                              lineHeight: 13,
+                              lineHeight: scaleLineHeight(13, { max: 15 }),
                             }}
                           >
                             {card.payload.institutionName || card.payload.schoolName}
@@ -852,12 +852,12 @@ export default function StudentExamsScreen() {
                           <Text
                             style={{
                               color: '#0f172a',
-                              fontSize: 10,
+                              fontSize: scaleFont(10, { max: 12 }),
                               fontWeight: '700',
                               textTransform: 'uppercase',
                               textAlign: 'center',
                               marginTop: 1,
-                              lineHeight: 13,
+                              lineHeight: scaleLineHeight(13, { max: 15 }),
                             }}
                           >
                             {`Tahun Ajaran ${card.payload.academicYearName}`}
@@ -887,14 +887,14 @@ export default function StudentExamsScreen() {
                             ['Sesi', primaryEntry?.sessionLabel || '-'],
                           ].map(([label, value]) => (
                             <View key={label} style={{ flexDirection: 'row', alignItems: 'flex-start' }}>
-                              <Text style={{ width: 54, color: '#334155', fontSize: 9, lineHeight: 12 }}>{label}</Text>
-                              <Text style={{ width: 8, color: '#334155', fontSize: 9, lineHeight: 12 }}>:</Text>
+                              <Text style={{ width: 54, color: '#334155', fontSize: scaleFont(9, { max: 10.5 }), lineHeight: scaleLineHeight(12, { max: 13.5 }) }}>{label}</Text>
+                              <Text style={{ width: 8, color: '#334155', fontSize: scaleFont(9, { max: 10.5 }), lineHeight: scaleLineHeight(12, { max: 13.5 }) }}>:</Text>
                               <Text
                                 style={{
                                   flex: 1,
                                   color: label === 'No. Peserta' ? '#1d4ed8' : '#0f172a',
-                                  fontSize: 9,
-                                  lineHeight: 12,
+                                  fontSize: scaleFont(9, { max: 10.5 }),
+                                  lineHeight: scaleLineHeight(12, { max: 13.5 }),
                                   fontWeight: label === 'No. Peserta' ? '700' : '400',
                                 }}
                               >
@@ -905,10 +905,10 @@ export default function StudentExamsScreen() {
                         </View>
 
                         <View style={{ width: 98, alignItems: 'center' }}>
-                          <Text style={{ color: '#334155', fontSize: 8.5, textAlign: 'center', lineHeight: 11 }}>
+                          <Text style={{ color: '#334155', fontSize: scaleFont(8.5, { max: 10 }), textAlign: 'center', lineHeight: scaleLineHeight(11, { max: 12.5 }) }}>
                             {card.payload.issue?.signLabel || `Bekasi, ${formatDateOnly(card.payload.issue?.date || card.generatedAt)}`}
                           </Text>
-                          <Text style={{ color: '#334155', fontSize: 8.5, textAlign: 'center', marginTop: 2, lineHeight: 11 }}>
+                          <Text style={{ color: '#334155', fontSize: scaleFont(8.5, { max: 10 }), textAlign: 'center', marginTop: 2, lineHeight: scaleLineHeight(11, { max: 12.5 }) }}>
                             {card.payload.legality.principalTitle || 'Kepala Sekolah'}
                           </Text>
                           {card.payload.legality.principalBarcodeDataUrl ? (
@@ -931,8 +931,8 @@ export default function StudentExamsScreen() {
                               color: '#0f172a',
                               fontWeight: '700',
                               marginTop: 5,
-                              fontSize: 8,
-                              lineHeight: 10,
+                              fontSize: scaleFont(8, { max: 9.5 }),
+                              lineHeight: scaleLineHeight(10, { max: 11.5 }),
                               textAlign: 'center',
                               width: '100%',
                             }}
@@ -951,7 +951,7 @@ export default function StudentExamsScreen() {
                         paddingVertical: 5,
                       }}
                     >
-                      <Text style={{ color: '#047857', fontSize: 9, fontStyle: 'italic', lineHeight: 11 }}>
+                      <Text style={{ color: '#047857', fontSize: scaleFont(9, { max: 10.5 }), fontStyle: 'italic', lineHeight: scaleLineHeight(11, { max: 12.5 }) }}>
                         {card.payload.legality.footerNote || 'Berkas digital yang sah secara internal'}
                       </Text>
                     </View>
@@ -1813,21 +1813,21 @@ export default function StudentExamsScreen() {
                 }}
               >
                 <Text style={{ color: '#166534', fontWeight: '700' }}>Detail Kursi Peserta</Text>
-                <Text style={{ color: '#166534', fontSize: 13 }}>
+                <Text style={{ color: '#166534', fontSize: scaleFont(13) }}>
                   Nama: {selectedPlacementCard?.payload.student.name || fallbackIdentityCard?.payload.student.name || '-'}
                 </Text>
-                <Text style={{ color: '#166534', fontSize: 13 }}>
+                <Text style={{ color: '#166534', fontSize: scaleFont(13) }}>
                   Kelas: {selectedPlacementCard?.payload.student.className || fallbackIdentityCard?.payload.student.className || '-'}
                 </Text>
-                <Text style={{ color: '#166534', fontSize: 13 }}>
+                <Text style={{ color: '#166534', fontSize: scaleFont(13) }}>
                   Username: {selectedPlacementCard?.payload.student.username || fallbackIdentityCard?.payload.student.username || '-'}
                 </Text>
-                <Text style={{ color: '#1d4ed8', fontSize: 13, fontWeight: '700' }}>
+                <Text style={{ color: '#1d4ed8', fontSize: scaleFont(13), fontWeight: '700' }}>
                   No. Peserta: {selectedPlacementCard?.payload.participantNumber || '-'}
                 </Text>
-                <Text style={{ color: '#166534', fontSize: 13 }}>Ruang: {selectedPlacement.roomName}</Text>
-                <Text style={{ color: '#166534', fontSize: 13 }}>Kursi: {selectedPlacement.seatLabel || '-'}</Text>
-                <Text style={{ color: '#166534', fontSize: 13 }}>Sesi: {selectedPlacement.sessionLabel || '-'}</Text>
+                <Text style={{ color: '#166534', fontSize: scaleFont(13) }}>Ruang: {selectedPlacement.roomName}</Text>
+                <Text style={{ color: '#166534', fontSize: scaleFont(13) }}>Kursi: {selectedPlacement.seatLabel || '-'}</Text>
+                <Text style={{ color: '#166534', fontSize: scaleFont(13) }}>Sesi: {selectedPlacement.sessionLabel || '-'}</Text>
               </View>
             </View>
           ) : (
@@ -1888,10 +1888,10 @@ export default function StudentExamsScreen() {
                   >
                     <View style={{ flex: 1 }}>
                       <Text style={{ color: '#166534', fontWeight: '700' }}>{group.label}</Text>
-                      <Text style={{ color: '#15803d', fontSize: 12, marginTop: 4 }}>{group.entries.length} slot pengawas</Text>
+                      <Text style={{ color: '#15803d', fontSize: scaleFont(12), marginTop: 4 }}>{group.entries.length} slot pengawas</Text>
                     </View>
                     <View style={{ flexDirection: 'row', alignItems: 'center', gap: 4 }}>
-                      <Text style={{ color: '#047857', fontSize: 12, fontWeight: '700' }}>
+                      <Text style={{ color: '#047857', fontSize: scaleFont(12), fontWeight: '700' }}>
                         {isOpen ? 'Tutup Hari' : 'Buka Hari'}
                       </Text>
                       <Feather name={isOpen ? 'chevron-up' : 'chevron-down'} size={16} color="#047857" />
@@ -1911,13 +1911,13 @@ export default function StudentExamsScreen() {
                             padding: 10,
                           }}
                         >
-                          <Text style={{ color: '#0f172a', fontWeight: '700', fontSize: 13 }}>
+                          <Text style={{ color: '#0f172a', fontWeight: '700', fontSize: scaleFont(13) }}>
                             {formatDateTime(entry.startTime || '')} - {formatDateTime(entry.endTime || '')}
                           </Text>
-                          <Text style={{ color: '#64748b', fontSize: 12, marginTop: 4 }}>
+                          <Text style={{ color: '#64748b', fontSize: scaleFont(12), marginTop: 4 }}>
                             {entry.sessionLabel || 'Sesi belum diatur'}
                           </Text>
-                          <Text style={{ color: '#166534', fontSize: 12, marginTop: 6 }}>
+                          <Text style={{ color: '#166534', fontSize: scaleFont(12), marginTop: 6 }}>
                             Pengawas: <Text style={{ fontWeight: '700' }}>{entry.proctor?.name || 'Belum ditentukan'}</Text>
                           </Text>
                         </View>

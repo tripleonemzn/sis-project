@@ -17,6 +17,7 @@ import { AppLoadingScreen } from '../../src/components/AppLoadingScreen';
 import { AuthScaffold } from '../../src/components/AuthScaffold';
 import { getApiErrorMessage } from '../../src/lib/api/errorMessage';
 import { BRAND_COLORS } from '../../src/config/brand';
+import { useAppTextScale } from '../../src/theme/AppTextScaleProvider';
 
 const loginSchema = z.object({
   username: z.string().min(1, 'Username wajib diisi'),
@@ -28,6 +29,7 @@ type LoginForm = z.infer<typeof loginSchema>;
 export default function LoginScreen() {
   const router = useRouter();
   const { login, isAuthenticated, isLoading, restoreError, rehydrate } = useAuth();
+  const { scaleFont, scaleLineHeight, fontSizes } = useAppTextScale();
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [showPassword, setShowPassword] = useState(false);
   const {
@@ -73,7 +75,8 @@ export default function LoginScreen() {
       <Text
         style={{
           color: BRAND_COLORS.textDark,
-          fontSize: 24,
+          fontSize: scaleFont(24),
+          lineHeight: scaleLineHeight(32),
           fontWeight: '700',
           marginBottom: 6,
           textAlign: 'center',
@@ -81,7 +84,7 @@ export default function LoginScreen() {
       >
         Silahkan masuk untuk melanjutkan
       </Text>
-      <Text style={{ color: BRAND_COLORS.textMuted, marginBottom: 20, textAlign: 'center' }}>
+      <Text style={{ color: BRAND_COLORS.textMuted, fontSize: fontSizes.body, lineHeight: scaleLineHeight(20), marginBottom: 20, textAlign: 'center' }}>
         Masuk menggunakan akun Anda!
       </Text>
 
@@ -96,7 +99,7 @@ export default function LoginScreen() {
             marginBottom: 16,
           }}
         >
-          <Text style={{ color: '#991b1b', fontSize: 12, marginBottom: 10 }}>{restoreError}</Text>
+          <Text style={{ color: '#991b1b', fontSize: scaleFont(12), lineHeight: scaleLineHeight(18), marginBottom: 10 }}>{restoreError}</Text>
           <Pressable
             onPress={() => rehydrate()}
             style={{
@@ -106,7 +109,7 @@ export default function LoginScreen() {
               alignItems: 'center',
             }}
           >
-            <Text style={{ color: '#fff', fontWeight: '600', fontSize: 12 }}>Coba Pulihkan Sesi</Text>
+            <Text style={{ color: '#fff', fontWeight: '600', fontSize: fontSizes.label }}>Coba Pulihkan Sesi</Text>
           </Pressable>
         </View>
       ) : null}
@@ -140,13 +143,14 @@ export default function LoginScreen() {
                 paddingVertical: 12,
                 paddingHorizontal: 10,
                 color: BRAND_COLORS.textDark,
+                fontSize: fontSizes.body,
               }}
             />
           </View>
         )}
       />
       {errors.username?.message ? (
-        <Text style={{ color: '#dc2626', marginBottom: 8, fontSize: 12 }}>{errors.username.message}</Text>
+        <Text style={{ color: '#dc2626', marginBottom: 8, fontSize: scaleFont(12), lineHeight: scaleLineHeight(18) }}>{errors.username.message}</Text>
       ) : (
         <View style={{ marginBottom: 8 }} />
       )}
@@ -180,6 +184,7 @@ export default function LoginScreen() {
                 paddingVertical: 12,
                 paddingHorizontal: 10,
                 color: BRAND_COLORS.textDark,
+                fontSize: fontSizes.body,
               }}
             />
             <Pressable
@@ -194,7 +199,7 @@ export default function LoginScreen() {
         )}
       />
       {errors.password?.message ? (
-        <Text style={{ color: '#dc2626', marginBottom: 12, fontSize: 12 }}>{errors.password.message}</Text>
+        <Text style={{ color: '#dc2626', marginBottom: 12, fontSize: scaleFont(12), lineHeight: scaleLineHeight(18) }}>{errors.password.message}</Text>
       ) : (
         <View style={{ marginBottom: 12 }} />
       )}
@@ -210,15 +215,15 @@ export default function LoginScreen() {
           marginBottom: 10,
         }}
       >
-        <Text style={{ color: '#fff', fontWeight: '700' }}>
+        <Text style={{ color: '#fff', fontWeight: '700', fontSize: fontSizes.label }}>
           {isSubmitting ? 'Memproses...' : 'Masuk'}
         </Text>
       </Pressable>
 
       <View style={{ flexDirection: 'row', justifyContent: 'center', marginBottom: 14 }}>
-        <Text style={{ color: BRAND_COLORS.textMuted }}>Belum punya akun? </Text>
+        <Text style={{ color: BRAND_COLORS.textMuted, fontSize: fontSizes.body }}>Belum punya akun? </Text>
         <Pressable onPress={() => router.replace('/register')}>
-          <Text style={{ color: BRAND_COLORS.pink, fontWeight: '700' }}>Daftar</Text>
+          <Text style={{ color: BRAND_COLORS.pink, fontWeight: '700', fontSize: fontSizes.body }}>Daftar</Text>
         </Pressable>
       </View>
     </AuthScaffold>

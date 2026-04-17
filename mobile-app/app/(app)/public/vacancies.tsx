@@ -13,6 +13,7 @@ import type { PublicBkkVacancy } from '../../../src/features/publicBkk/types';
 import { openWebModuleRoute } from '../../../src/lib/navigation/webModuleRoute';
 import { getStandardPagePadding } from '../../../src/lib/ui/pageLayout';
 import { notifyApiError, notifySuccess } from '../../../src/lib/ui/feedback';
+import { useAppTextScale } from '../../../src/theme/AppTextScaleProvider';
 
 function InfoCard({
   title,
@@ -21,6 +22,7 @@ function InfoCard({
   title: string;
   children: React.ReactNode;
 }) {
+  const { scaleFont, scaleLineHeight } = useAppTextScale();
   return (
     <View
       style={{
@@ -32,13 +34,14 @@ function InfoCard({
         marginBottom: 12,
       }}
     >
-      <Text style={{ color: BRAND_COLORS.textDark, fontSize: 15, fontWeight: '700', marginBottom: 6 }}>{title}</Text>
+      <Text style={{ color: BRAND_COLORS.textDark, fontSize: scaleFont(15), lineHeight: scaleLineHeight(22), fontWeight: '700', marginBottom: 6 }}>{title}</Text>
       {children}
     </View>
   );
 }
 
 function StatusChip({ vacancy }: { vacancy: PublicBkkVacancy }) {
+  const { scaleFont } = useAppTextScale();
   return (
     <View
       style={{
@@ -51,7 +54,7 @@ function StatusChip({ vacancy }: { vacancy: PublicBkkVacancy }) {
         paddingVertical: 4,
       }}
     >
-      <Text style={{ color: vacancy.isOpen ? '#166534' : '#475569', fontWeight: '700', fontSize: 12 }}>
+      <Text style={{ color: vacancy.isOpen ? '#166534' : '#475569', fontWeight: '700', fontSize: scaleFont(12) }}>
         {vacancy.isOpen ? 'Aktif' : 'Tutup'}
       </Text>
     </View>
@@ -59,6 +62,7 @@ function StatusChip({ vacancy }: { vacancy: PublicBkkVacancy }) {
 }
 
 function ApplicationStatusChip({ status }: { status: NonNullable<PublicBkkVacancy['myApplication']>['status'] }) {
+  const { scaleFont } = useAppTextScale();
   const meta = publicBkkApi.getStatusMeta(status);
   return (
     <View
@@ -72,7 +76,7 @@ function ApplicationStatusChip({ status }: { status: NonNullable<PublicBkkVacanc
         paddingVertical: 4,
       }}
     >
-      <Text style={{ color: meta.textColor, fontWeight: '700', fontSize: 12 }}>{meta.label}</Text>
+      <Text style={{ color: meta.textColor, fontWeight: '700', fontSize: scaleFont(12) }}>{meta.label}</Text>
     </View>
   );
 }
@@ -82,6 +86,7 @@ export default function PublicBkkVacanciesScreen() {
   const insets = useSafeAreaInsets();
   const queryClient = useQueryClient();
   const { isLoading, isAuthenticated, user } = useAuth();
+  const { scaleFont, fontSizes } = useAppTextScale();
   const pageContentPadding = getStandardPagePadding(insets);
   const [selectedVacancyId, setSelectedVacancyId] = useState<number | null>(null);
   const [coverLetter, setCoverLetter] = useState('');
@@ -150,7 +155,7 @@ export default function PublicBkkVacanciesScreen() {
         >
           <Feather name="arrow-left" size={18} color={BRAND_COLORS.textDark} />
         </Pressable>
-        <Text style={{ marginLeft: 10, color: BRAND_COLORS.textDark, fontSize: 20, fontWeight: '700' }}>
+        <Text style={{ marginLeft: 10, color: BRAND_COLORS.textDark, fontSize: scaleFont(20), fontWeight: '700' }}>
           Lowongan BKK
         </Text>
       </View>
@@ -303,6 +308,7 @@ export default function PublicBkkVacanciesScreen() {
                     minHeight: 96,
                     paddingHorizontal: 12,
                     paddingVertical: 10,
+                    fontSize: fontSizes.body,
                     color: BRAND_COLORS.textDark,
                   }}
                 />
@@ -318,6 +324,7 @@ export default function PublicBkkVacanciesScreen() {
                     marginTop: 10,
                     paddingHorizontal: 12,
                     paddingVertical: 10,
+                    fontSize: fontSizes.body,
                     color: BRAND_COLORS.textDark,
                   }}
                 />

@@ -6,6 +6,7 @@ import { AppLoadingScreen } from '../../../src/components/AppLoadingScreen';
 import { BRAND_COLORS } from '../../../src/config/brand';
 import { useAuth } from '../../../src/features/auth/AuthProvider';
 import { getStandardPagePadding } from '../../../src/lib/ui/pageLayout';
+import { useAppTextScale } from '../../../src/theme/AppTextScaleProvider';
 
 function InfoCard({
   title,
@@ -14,6 +15,7 @@ function InfoCard({
   title: string;
   children: React.ReactNode;
 }) {
+  const { scaleFont, scaleLineHeight } = useAppTextScale();
   return (
     <View
       style={{
@@ -25,7 +27,7 @@ function InfoCard({
         marginBottom: 12,
       }}
     >
-      <Text style={{ color: BRAND_COLORS.textDark, fontSize: 15, fontWeight: '700', marginBottom: 6 }}>{title}</Text>
+      <Text style={{ color: BRAND_COLORS.textDark, fontSize: scaleFont(15), lineHeight: scaleLineHeight(22), fontWeight: '700', marginBottom: 6 }}>{title}</Text>
       {children}
     </View>
   );
@@ -35,6 +37,7 @@ export default function PublicInformationScreen() {
   const router = useRouter();
   const insets = useSafeAreaInsets();
   const { isLoading, isAuthenticated } = useAuth();
+  const { scaleFont } = useAppTextScale();
   const pageContentPadding = getStandardPagePadding(insets);
 
   if (isLoading) return <AppLoadingScreen message="Memuat informasi sekolah..." />;
@@ -61,7 +64,7 @@ export default function PublicInformationScreen() {
         >
           <Feather name="arrow-left" size={18} color={BRAND_COLORS.textDark} />
         </Pressable>
-        <Text style={{ marginLeft: 10, color: BRAND_COLORS.textDark, fontSize: 20, fontWeight: '700' }}>
+        <Text style={{ marginLeft: 10, color: BRAND_COLORS.textDark, fontSize: scaleFont(20), fontWeight: '700' }}>
           Informasi Sekolah
         </Text>
       </View>

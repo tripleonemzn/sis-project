@@ -23,6 +23,7 @@ import {
 import { getStandardPagePadding } from '../../../src/lib/ui/pageLayout';
 import { BRAND_COLORS } from '../../../src/config/brand';
 import { notifyApiError, notifySuccess } from '../../../src/lib/ui/feedback';
+import { useAppTextScale } from '../../../src/theme/AppTextScaleProvider';
 
 function formatShortDate(raw?: string | null) {
   if (!raw) return '-';
@@ -68,6 +69,7 @@ function formatProgramPeriod(
 }
 
 function EmptyState(props: { message: string }) {
+  const { scaleFont, scaleLineHeight } = useAppTextScale();
   return (
     <View
       style={{
@@ -80,7 +82,7 @@ function EmptyState(props: { message: string }) {
         paddingVertical: 16,
       }}
     >
-      <Text style={{ color: BRAND_COLORS.textMuted, fontSize: 13, lineHeight: 20 }}>{props.message}</Text>
+      <Text style={{ color: BRAND_COLORS.textMuted, fontSize: scaleFont(13), lineHeight: scaleLineHeight(20) }}>{props.message}</Text>
     </View>
   );
 }
@@ -109,6 +111,7 @@ type RegularConfirmationModalProps = {
 };
 
 function SelectionModal(props: SelectionModalProps) {
+  const { scaleFont, scaleLineHeight, fontSizes } = useAppTextScale();
   return (
     <Modal visible={props.visible} transparent animationType="fade" onRequestClose={props.onClose}>
       <View
@@ -140,8 +143,8 @@ function SelectionModal(props: SelectionModalProps) {
             }}
           >
             <View style={{ flex: 1 }}>
-              <Text style={{ fontSize: 20, fontWeight: '700', color: BRAND_COLORS.textDark }}>{props.title}</Text>
-              <Text style={{ marginTop: 4, color: BRAND_COLORS.textMuted, fontSize: 13, lineHeight: 18 }}>
+              <Text style={{ fontSize: scaleFont(20), fontWeight: '700', color: BRAND_COLORS.textDark }}>{props.title}</Text>
+              <Text style={{ marginTop: 4, color: BRAND_COLORS.textMuted, fontSize: scaleFont(13), lineHeight: scaleLineHeight(18) }}>
                 {props.description}
               </Text>
             </View>
@@ -157,7 +160,7 @@ function SelectionModal(props: SelectionModalProps) {
                 justifyContent: 'center',
               }}
             >
-              <Text style={{ fontSize: 18, color: '#475569' }}>x</Text>
+              <Text style={{ fontSize: scaleFont(18), color: '#475569' }}>x</Text>
             </Pressable>
           </View>
 
@@ -174,6 +177,7 @@ function SelectionModal(props: SelectionModalProps) {
                 backgroundColor: '#f8fbff',
                 paddingHorizontal: 14,
                 paddingVertical: 11,
+                fontSize: fontSizes.body,
                 color: BRAND_COLORS.textDark,
               }}
             />
@@ -201,7 +205,7 @@ function SelectionModal(props: SelectionModalProps) {
                   }}
                 >
                   <View style={{ flexDirection: 'row', alignItems: 'center', gap: 8 }}>
-                    <Text style={{ flex: 1, color: BRAND_COLORS.textDark, fontWeight: '700', fontSize: 16 }}>
+                    <Text style={{ flex: 1, color: BRAND_COLORS.textDark, fontWeight: '700', fontSize: scaleFont(16) }}>
                       {option.name}
                     </Text>
                     <View
@@ -214,7 +218,7 @@ function SelectionModal(props: SelectionModalProps) {
                     >
                       <Text
                         style={{
-                          fontSize: 11,
+                          fontSize: scaleFont(11),
                           fontWeight: '700',
                           color: option.category === 'OSIS' ? '#b45309' : '#1d4ed8',
                         }}
@@ -224,7 +228,7 @@ function SelectionModal(props: SelectionModalProps) {
                     </View>
                   </View>
 
-                  <Text style={{ color: '#64748b', fontSize: 12 }}>
+                  <Text style={{ color: '#64748b', fontSize: scaleFont(12) }}>
                     Pembina:{' '}
                     {(option.tutorAssignments || [])
                       .map((assignment) => assignment.tutor?.name)
@@ -233,7 +237,7 @@ function SelectionModal(props: SelectionModalProps) {
                   </Text>
 
                   {option.description ? (
-                    <Text style={{ color: BRAND_COLORS.textMuted, fontSize: 13 }}>{option.description}</Text>
+                    <Text style={{ color: BRAND_COLORS.textMuted, fontSize: scaleFont(13) }}>{option.description}</Text>
                   ) : null}
 
                   <Pressable
@@ -266,6 +270,7 @@ function SelectionModal(props: SelectionModalProps) {
 }
 
 function RegularConfirmationModal(props: RegularConfirmationModalProps) {
+  const { scaleFont, scaleLineHeight } = useAppTextScale();
   const selectedName = props.option?.name || 'ekskul ini';
 
   return (
@@ -308,14 +313,14 @@ function RegularConfirmationModal(props: RegularConfirmationModalProps) {
           >
             <Feather name="award" size={18} color={BRAND_COLORS.blue} />
           </View>
-          <Text style={{ color: BRAND_COLORS.textDark, fontSize: 20, fontWeight: '700', marginBottom: 6 }}>
+          <Text style={{ color: BRAND_COLORS.textDark, fontSize: scaleFont(20), fontWeight: '700', marginBottom: 6 }}>
             Konfirmasi Pilihan Ekskul
           </Text>
-          <Text style={{ color: BRAND_COLORS.textMuted, fontSize: 14, lineHeight: 20, marginBottom: 14 }}>
+          <Text style={{ color: BRAND_COLORS.textMuted, fontSize: scaleFont(14), lineHeight: scaleLineHeight(20), marginBottom: 14 }}>
             Ekskul reguler hanya bisa dipilih 1 kali pada tahun ajaran aktif. Pastikan Anda benar-benar yakin memilih{' '}
             <Text style={{ color: BRAND_COLORS.textDark, fontWeight: '700' }}>{selectedName}</Text>.
           </Text>
-          <Text style={{ color: BRAND_COLORS.textMuted, fontSize: 14, lineHeight: 20, marginBottom: 14 }}>
+          <Text style={{ color: BRAND_COLORS.textMuted, fontSize: scaleFont(14), lineHeight: scaleLineHeight(20), marginBottom: 14 }}>
             Setelah disimpan, pilihan ini tidak bisa diganti langsung dari menu ini.
           </Text>
 
@@ -365,6 +370,7 @@ export default function StudentExtracurricularScreen() {
   const insets = useSafeAreaInsets();
   const queryClient = useQueryClient();
   const { isAuthenticated, isLoading, user } = useAuth();
+  const { scaleFont, scaleLineHeight } = useAppTextScale();
   const pagePadding = getStandardPagePadding(insets, { bottom: 120 });
   const [regularModalOpen, setRegularModalOpen] = useState(false);
   const [osisModalOpen, setOsisModalOpen] = useState(false);
@@ -491,7 +497,7 @@ export default function StudentExtracurricularScreen() {
   if (user?.role !== 'STUDENT') {
     return (
       <ScrollView style={{ flex: 1, backgroundColor: '#f8fafc' }} contentContainerStyle={pagePadding}>
-        <Text style={{ fontSize: 20, fontWeight: '700', marginBottom: 8 }}>Ekstrakurikuler</Text>
+        <Text style={{ fontSize: scaleFont(20), fontWeight: '700', marginBottom: 8 }}>Ekstrakurikuler</Text>
         <QueryStateView type="error" message="Halaman ini khusus untuk role siswa." />
       </ScrollView>
     );
@@ -525,7 +531,7 @@ export default function StudentExtracurricularScreen() {
           />
         }
       >
-        <Text style={{ fontSize: 20, fontWeight: '700', marginBottom: 6, color: BRAND_COLORS.textDark }}>
+        <Text style={{ fontSize: scaleFont(20), fontWeight: '700', marginBottom: 6, color: BRAND_COLORS.textDark }}>
           Ekstrakurikuler
         </Text>
         <Text style={{ color: BRAND_COLORS.textMuted, marginBottom: 12 }}>
@@ -543,7 +549,7 @@ export default function StudentExtracurricularScreen() {
           }}
         >
           <Text style={{ color: '#92400e', fontWeight: '700', marginBottom: 4 }}>Rule Siswa</Text>
-          <Text style={{ color: '#92400e', fontSize: 12, lineHeight: 18 }}>
+          <Text style={{ color: '#92400e', fontSize: scaleFont(12), lineHeight: scaleLineHeight(18) }}>
             OSIS hanya bisa diajukan sebelum ekskul reguler dipilih. Jika OSIS sudah diajukan lebih dulu, Anda tetap
             boleh memilih 1 ekskul reguler. Setelah ekskul reguler dipilih, tombol pilihan akan dikunci.
           </Text>
@@ -559,10 +565,10 @@ export default function StudentExtracurricularScreen() {
             marginBottom: 12,
           }}
         >
-          <Text style={{ color: BRAND_COLORS.textDark, fontWeight: '700', fontSize: 18, marginBottom: 4 }}>
+          <Text style={{ color: BRAND_COLORS.textDark, fontWeight: '700', fontSize: scaleFont(18), marginBottom: 4 }}>
             Ekskul Reguler Saya
           </Text>
-          <Text style={{ color: BRAND_COLORS.textMuted, fontSize: 12, marginBottom: 12 }}>
+          <Text style={{ color: BRAND_COLORS.textMuted, fontSize: scaleFont(12), marginBottom: 12 }}>
             Ringkasan ekskul reguler yang aktif pada tahun ajaran {summary.academicYear?.name || '-'}.
           </Text>
 
@@ -578,13 +584,13 @@ export default function StudentExtracurricularScreen() {
                   marginBottom: 12,
                 }}
               >
-                <Text style={{ color: '#1d4ed8', fontWeight: '700', fontSize: 12, marginBottom: 4 }}>
+                <Text style={{ color: '#1d4ed8', fontWeight: '700', fontSize: scaleFont(12), marginBottom: 4 }}>
                   PILIHAN AKTIF
                 </Text>
-                <Text style={{ color: BRAND_COLORS.textDark, fontWeight: '700', fontSize: 20 }}>
+                <Text style={{ color: BRAND_COLORS.textDark, fontWeight: '700', fontSize: scaleFont(20) }}>
                   {regularEnrollment.ekskul.name}
                 </Text>
-                <Text style={{ color: '#475569', fontSize: 12, marginTop: 4 }}>
+                <Text style={{ color: '#475569', fontSize: scaleFont(12), marginTop: 4 }}>
                   Pembina:{' '}
                   {(regularEnrollment.ekskul.tutors || [])
                     .map((item) => item.name)
@@ -592,7 +598,7 @@ export default function StudentExtracurricularScreen() {
                     .join(', ') || '-'}
                 </Text>
                 {regularEnrollment.ekskul.description ? (
-                  <Text style={{ color: BRAND_COLORS.textMuted, fontSize: 13, marginTop: 6 }}>
+                  <Text style={{ color: BRAND_COLORS.textMuted, fontSize: scaleFont(13), marginTop: 6 }}>
                     {regularEnrollment.ekskul.description}
                   </Text>
                 ) : null}
@@ -611,12 +617,12 @@ export default function StudentExtracurricularScreen() {
                 <Text style={{ color: BRAND_COLORS.textDark, fontWeight: '700', marginBottom: 8 }}>
                   Nilai & Catatan Pembina
                 </Text>
-                <Text style={{ color: '#64748b', fontSize: 12 }}>Predikat / Nilai</Text>
-                <Text style={{ color: BRAND_COLORS.textDark, fontWeight: '700', fontSize: 18, marginTop: 2 }}>
+                <Text style={{ color: '#64748b', fontSize: scaleFont(12) }}>Predikat / Nilai</Text>
+                <Text style={{ color: BRAND_COLORS.textDark, fontWeight: '700', fontSize: scaleFont(18), marginTop: 2 }}>
                   {regularEnrollment.grade || '-'}
                 </Text>
-                <Text style={{ color: '#64748b', fontSize: 12, marginTop: 10 }}>Deskripsi</Text>
-                <Text style={{ color: BRAND_COLORS.textMuted, fontSize: 13, marginTop: 4 }}>
+                <Text style={{ color: '#64748b', fontSize: scaleFont(12), marginTop: 10 }}>Deskripsi</Text>
+                <Text style={{ color: BRAND_COLORS.textMuted, fontSize: scaleFont(13), marginTop: 4 }}>
                   {regularEnrollment.description || 'Belum ada catatan nilai dari pembina.'}
                 </Text>
               </View>
@@ -646,18 +652,18 @@ export default function StudentExtracurricularScreen() {
                         paddingVertical: 10,
                       }}
                     >
-                      <Text style={{ color: item.color, fontSize: 11, fontWeight: '700' }}>{item.label}</Text>
-                      <Text style={{ color: item.color, fontSize: 20, fontWeight: '700', marginTop: 2 }}>{item.value}</Text>
+                      <Text style={{ color: item.color, fontSize: scaleFont(11), fontWeight: '700' }}>{item.label}</Text>
+                      <Text style={{ color: item.color, fontSize: scaleFont(20), fontWeight: '700', marginTop: 2 }}>{item.value}</Text>
                     </View>
                   ))}
                 </View>
 
-                <Text style={{ color: '#64748b', fontSize: 12, marginTop: 10 }}>
+                <Text style={{ color: '#64748b', fontSize: scaleFont(12), marginTop: 10 }}>
                   Total sesi terekam: {regularEnrollment.attendanceSummary.totalSessions}
                 </Text>
 
                 <View style={{ marginTop: 10, gap: 8 }}>
-                  <Text style={{ color: '#64748b', fontSize: 12, fontWeight: '700' }}>Aktivitas Terakhir</Text>
+                  <Text style={{ color: '#64748b', fontSize: scaleFont(12), fontWeight: '700' }}>Aktivitas Terakhir</Text>
                   {regularEnrollment.attendanceSummary.latestRecords.length > 0 ? (
                     regularEnrollment.attendanceSummary.latestRecords.map((record, index) => (
                       <View
@@ -670,17 +676,17 @@ export default function StudentExtracurricularScreen() {
                           padding: 10,
                         }}
                       >
-                        <Text style={{ color: BRAND_COLORS.textDark, fontWeight: '700', fontSize: 13 }}>
+                        <Text style={{ color: BRAND_COLORS.textDark, fontWeight: '700', fontSize: scaleFont(13) }}>
                           {record.weekKey || 'Minggu tidak diketahui'} • Sesi {record.sessionIndex}
                         </Text>
-                        <Text style={{ color: BRAND_COLORS.textMuted, fontSize: 12, marginTop: 4 }}>
+                        <Text style={{ color: BRAND_COLORS.textMuted, fontSize: scaleFont(12), marginTop: 4 }}>
                           Status: {formatAttendanceStatus(record.status)}
                           {record.note ? ` • Catatan: ${record.note}` : ''}
                         </Text>
                       </View>
                     ))
                   ) : (
-                    <Text style={{ color: BRAND_COLORS.textMuted, fontSize: 13 }}>
+                    <Text style={{ color: BRAND_COLORS.textMuted, fontSize: scaleFont(13) }}>
                       Belum ada absensi ekskul yang direkam oleh pembina.
                     </Text>
                   )}
@@ -702,10 +708,10 @@ export default function StudentExtracurricularScreen() {
             marginBottom: 12,
           }}
         >
-          <Text style={{ color: BRAND_COLORS.textDark, fontWeight: '700', fontSize: 18, marginBottom: 4 }}>
+          <Text style={{ color: BRAND_COLORS.textDark, fontWeight: '700', fontSize: scaleFont(18), marginBottom: 4 }}>
             Status OSIS Saya
           </Text>
-          <Text style={{ color: BRAND_COLORS.textMuted, fontSize: 12, marginBottom: 12 }}>
+          <Text style={{ color: BRAND_COLORS.textMuted, fontSize: scaleFont(12), marginBottom: 12 }}>
             Status pengajuan atau keanggotaan OSIS pada tahun ajaran aktif.
           </Text>
 
@@ -719,11 +725,11 @@ export default function StudentExtracurricularScreen() {
                 padding: 12,
               }}
             >
-              <Text style={{ color: '#047857', fontWeight: '700', fontSize: 12, marginBottom: 4 }}>STATUS AKTIF</Text>
-              <Text style={{ color: BRAND_COLORS.textDark, fontWeight: '700', fontSize: 18 }}>
+              <Text style={{ color: '#047857', fontWeight: '700', fontSize: scaleFont(12), marginBottom: 4 }}>STATUS AKTIF</Text>
+              <Text style={{ color: BRAND_COLORS.textDark, fontWeight: '700', fontSize: scaleFont(18) }}>
                 {osisMembership.position?.name || 'Pengurus OSIS'}
               </Text>
-              <Text style={{ color: '#475569', fontSize: 12, marginTop: 4 }}>
+              <Text style={{ color: '#475569', fontSize: scaleFont(12), marginTop: 4 }}>
                 Divisi: {osisMembership.division?.name || osisMembership.position?.division?.name || '-'}
               </Text>
             </View>
@@ -737,21 +743,21 @@ export default function StudentExtracurricularScreen() {
                 padding: 12,
               }}
             >
-              <Text style={{ color: '#0f172a', fontWeight: '700', fontSize: 12, marginBottom: 4 }}>
+              <Text style={{ color: '#0f172a', fontWeight: '700', fontSize: scaleFont(12), marginBottom: 4 }}>
                 {osisRequest.status === 'PENDING'
                   ? 'MENUNGGU PROSES'
                   : osisRequest.status === 'REJECTED'
                     ? 'DITOLAK'
                     : 'RIWAYAT PENGAJUAN'}
               </Text>
-              <Text style={{ color: BRAND_COLORS.textDark, fontWeight: '700', fontSize: 18 }}>
+              <Text style={{ color: BRAND_COLORS.textDark, fontWeight: '700', fontSize: scaleFont(18) }}>
                 {osisRequest.ekskul?.name || 'OSIS'}
               </Text>
-              <Text style={{ color: '#475569', fontSize: 12, marginTop: 4 }}>
+              <Text style={{ color: '#475569', fontSize: scaleFont(12), marginTop: 4 }}>
                 Diajukan pada {formatShortDate(osisRequest.requestedAt)}
               </Text>
               {osisRequest.note ? (
-                <Text style={{ color: BRAND_COLORS.textMuted, fontSize: 13, marginTop: 6 }}>
+                <Text style={{ color: BRAND_COLORS.textMuted, fontSize: scaleFont(13), marginTop: 6 }}>
                   Catatan pembina: {osisRequest.note}
                 </Text>
               ) : null}
@@ -771,10 +777,10 @@ export default function StudentExtracurricularScreen() {
                 padding: 12,
               }}
             >
-              <Text style={{ color: BRAND_COLORS.textDark, fontWeight: '700', fontSize: 15, marginBottom: 4 }}>
+              <Text style={{ color: BRAND_COLORS.textDark, fontWeight: '700', fontSize: scaleFont(15), marginBottom: 4 }}>
                 Program Kerja OSIS
               </Text>
-              <Text style={{ color: BRAND_COLORS.textMuted, fontSize: 12, marginBottom: 10 }}>
+              <Text style={{ color: BRAND_COLORS.textMuted, fontSize: scaleFont(12), marginBottom: 10 }}>
                 Agenda yang sudah dipublikasikan pembina OSIS untuk pengurus aktif.
               </Text>
 
@@ -792,7 +798,7 @@ export default function StudentExtracurricularScreen() {
                       }}
                     >
                       <View style={{ flexDirection: 'row', alignItems: 'center', gap: 8, flexWrap: 'wrap' }}>
-                        <Text style={{ flexShrink: 1, color: BRAND_COLORS.textDark, fontWeight: '700', fontSize: 14 }}>
+                        <Text style={{ flexShrink: 1, color: BRAND_COLORS.textDark, fontWeight: '700', fontSize: scaleFont(14) }}>
                           {program.title}
                         </Text>
                         <View
@@ -803,13 +809,13 @@ export default function StudentExtracurricularScreen() {
                             paddingVertical: 4,
                           }}
                         >
-                          <Text style={{ color: '#1d4ed8', fontSize: 11, fontWeight: '700' }}>
+                          <Text style={{ color: '#1d4ed8', fontSize: scaleFont(11), fontWeight: '700' }}>
                             {program.semester === 'EVEN' ? 'SEMESTER GENAP' : 'SEMESTER GANJIL'}
                           </Text>
                         </View>
                       </View>
 
-                      <Text style={{ color: '#64748b', fontSize: 12, marginTop: 6 }}>
+                      <Text style={{ color: '#64748b', fontSize: scaleFont(12), marginTop: 6 }}>
                         {formatProgramPeriod(
                           program.startMonth,
                           program.endMonth,
@@ -820,7 +826,7 @@ export default function StudentExtracurricularScreen() {
                       </Text>
 
                       {program.description ? (
-                        <Text style={{ color: BRAND_COLORS.textMuted, fontSize: 13, marginTop: 8 }}>
+                        <Text style={{ color: BRAND_COLORS.textMuted, fontSize: scaleFont(13), marginTop: 8 }}>
                           {program.description}
                         </Text>
                       ) : null}
@@ -838,23 +844,23 @@ export default function StudentExtracurricularScreen() {
                                 padding: 10,
                               }}
                             >
-                              <Text style={{ color: BRAND_COLORS.textDark, fontWeight: '700', fontSize: 13 }}>
+                              <Text style={{ color: BRAND_COLORS.textDark, fontWeight: '700', fontSize: scaleFont(13) }}>
                                 {item.description}
                               </Text>
-                              <Text style={{ color: BRAND_COLORS.textMuted, fontSize: 12, marginTop: 4 }}>
+                              <Text style={{ color: BRAND_COLORS.textMuted, fontSize: scaleFont(12), marginTop: 4 }}>
                                 {item.targetDate ? `Target: ${formatShortDate(item.targetDate)}` : 'Tanpa tanggal target'}
                                 {item.note ? ` • ${item.note}` : ''}
                               </Text>
                             </View>
                           ))
                         ) : (
-                          <Text style={{ color: BRAND_COLORS.textMuted, fontSize: 13 }}>
+                          <Text style={{ color: BRAND_COLORS.textMuted, fontSize: scaleFont(13) }}>
                             Program kerja ini belum memiliki rincian agenda.
                           </Text>
                         )}
 
                         {(program.items || []).length > 3 ? (
-                          <Text style={{ color: '#64748b', fontSize: 12 }}>
+                          <Text style={{ color: '#64748b', fontSize: scaleFont(12) }}>
                             + {(program.items || []).length - 3} agenda OSIS lain sudah disiapkan pembina.
                           </Text>
                         ) : null}
@@ -863,7 +869,7 @@ export default function StudentExtracurricularScreen() {
                   ))}
                 </View>
               ) : (
-                <Text style={{ color: BRAND_COLORS.textMuted, fontSize: 13 }}>
+                <Text style={{ color: BRAND_COLORS.textMuted, fontSize: scaleFont(13) }}>
                   Anda sudah masuk struktur OSIS, tetapi program kerja OSIS belum dipublikasikan pembina.
                 </Text>
               )}
@@ -881,10 +887,10 @@ export default function StudentExtracurricularScreen() {
             marginBottom: 12,
           }}
         >
-          <Text style={{ color: BRAND_COLORS.textDark, fontWeight: '700', fontSize: 18, marginBottom: 4 }}>
+          <Text style={{ color: BRAND_COLORS.textDark, fontWeight: '700', fontSize: scaleFont(18), marginBottom: 4 }}>
             Aksi Yang Tersedia
           </Text>
-          <Text style={{ color: BRAND_COLORS.textMuted, fontSize: 12, marginBottom: 12 }}>
+          <Text style={{ color: BRAND_COLORS.textMuted, fontSize: scaleFont(12), marginBottom: 12 }}>
             Tombol hanya muncul jika masih sesuai dengan rule ekstrakurikuler siswa.
           </Text>
 
@@ -929,7 +935,7 @@ export default function StudentExtracurricularScreen() {
                   padding: 12,
                 }}
               >
-                <Text style={{ color: BRAND_COLORS.textMuted, fontSize: 13 }}>
+                <Text style={{ color: BRAND_COLORS.textMuted, fontSize: scaleFont(13) }}>
                   {canChooseRegular && canRequestOsis
                     ? 'Anda masih bisa mengajukan OSIS atau memilih 1 ekskul reguler.'
                     : canChooseRegular

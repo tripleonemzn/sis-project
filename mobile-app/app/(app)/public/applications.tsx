@@ -10,6 +10,7 @@ import { useAuth } from '../../../src/features/auth/AuthProvider';
 import { publicBkkApi } from '../../../src/features/publicBkk/bkkApi';
 import { getStandardPagePadding } from '../../../src/lib/ui/pageLayout';
 import { notifyApiError, notifySuccess } from '../../../src/lib/ui/feedback';
+import { useAppTextScale } from '../../../src/theme/AppTextScaleProvider';
 
 function InfoCard({
   title,
@@ -18,6 +19,7 @@ function InfoCard({
   title: string;
   children: React.ReactNode;
 }) {
+  const { scaleFont, scaleLineHeight } = useAppTextScale();
   return (
     <View
       style={{
@@ -29,13 +31,14 @@ function InfoCard({
         marginBottom: 12,
       }}
     >
-      <Text style={{ color: BRAND_COLORS.textDark, fontSize: 15, fontWeight: '700', marginBottom: 6 }}>{title}</Text>
+      <Text style={{ color: BRAND_COLORS.textDark, fontSize: scaleFont(15), lineHeight: scaleLineHeight(22), fontWeight: '700', marginBottom: 6 }}>{title}</Text>
       {children}
     </View>
   );
 }
 
 function StatusChip({ status }: { status: Parameters<typeof publicBkkApi.getStatusMeta>[0] }) {
+  const { scaleFont } = useAppTextScale();
   const meta = publicBkkApi.getStatusMeta(status);
   return (
     <View
@@ -49,12 +52,13 @@ function StatusChip({ status }: { status: Parameters<typeof publicBkkApi.getStat
         paddingVertical: 4,
       }}
     >
-      <Text style={{ color: meta.textColor, fontWeight: '700', fontSize: 12 }}>{meta.label}</Text>
+      <Text style={{ color: meta.textColor, fontWeight: '700', fontSize: scaleFont(12) }}>{meta.label}</Text>
     </View>
   );
 }
 
 function AssessmentStateChip({ completed, passed }: { completed: boolean; passed?: boolean | null }) {
+  const { scaleFont } = useAppTextScale();
   const meta = !completed
     ? { label: 'Menunggu', borderColor: '#fde68a', backgroundColor: '#fef3c7', textColor: '#b45309' }
     : passed === false
@@ -72,7 +76,7 @@ function AssessmentStateChip({ completed, passed }: { completed: boolean; passed
         paddingVertical: 4,
       }}
     >
-      <Text style={{ color: meta.textColor, fontWeight: '700', fontSize: 12 }}>{meta.label}</Text>
+      <Text style={{ color: meta.textColor, fontWeight: '700', fontSize: scaleFont(12) }}>{meta.label}</Text>
     </View>
   );
 }
@@ -82,6 +86,7 @@ export default function PublicBkkApplicationsScreen() {
   const insets = useSafeAreaInsets();
   const queryClient = useQueryClient();
   const { isLoading, isAuthenticated, user } = useAuth();
+  const { scaleFont } = useAppTextScale();
   const pageContentPadding = getStandardPagePadding(insets);
   const applicantVerified = String(user?.verificationStatus || 'PENDING').toUpperCase() === 'VERIFIED';
 
@@ -127,7 +132,7 @@ export default function PublicBkkApplicationsScreen() {
         >
           <Feather name="arrow-left" size={18} color={BRAND_COLORS.textDark} />
         </Pressable>
-        <Text style={{ marginLeft: 10, color: BRAND_COLORS.textDark, fontSize: 20, fontWeight: '700' }}>
+        <Text style={{ marginLeft: 10, color: BRAND_COLORS.textDark, fontSize: scaleFont(20), fontWeight: '700' }}>
           Lamaran Saya
         </Text>
       </View>
@@ -153,14 +158,14 @@ export default function PublicBkkApplicationsScreen() {
           <View style={{ flexDirection: 'row', flexWrap: 'wrap', gap: 12, marginBottom: 12 }}>
             <View style={{ width: '47%' }}>
               <InfoCard title="Total">
-                <Text style={{ color: BRAND_COLORS.textDark, fontSize: 20, fontWeight: '800' }}>
+                <Text style={{ color: BRAND_COLORS.textDark, fontSize: scaleFont(20), fontWeight: '800' }}>
                   {applicationsQuery.data?.summary.total || 0}
                 </Text>
               </InfoCard>
             </View>
             <View style={{ width: '47%' }}>
               <InfoCard title="Diterima Mitra">
-                <Text style={{ color: BRAND_COLORS.textDark, fontSize: 20, fontWeight: '800' }}>
+                <Text style={{ color: BRAND_COLORS.textDark, fontSize: scaleFont(20), fontWeight: '800' }}>
                   {publicBkkApi.getSuccessfulPlacementCount(
                     applicationsQuery.data?.summary || {
                       total: 0,
@@ -181,7 +186,7 @@ export default function PublicBkkApplicationsScreen() {
           </View>
 
           <InfoCard title="Sedang Diproses">
-            <Text style={{ color: BRAND_COLORS.textDark, fontSize: 20, fontWeight: '800' }}>
+            <Text style={{ color: BRAND_COLORS.textDark, fontSize: scaleFont(20), fontWeight: '800' }}>
               {publicBkkApi.getActiveProcessingCount(
                 applicationsQuery.data?.summary || {
                   total: 0,
@@ -337,7 +342,7 @@ export default function PublicBkkApplicationsScreen() {
                       <View style={{ flexDirection: 'row', justifyContent: 'space-between', gap: 8 }}>
                         <View style={{ flex: 1 }}>
                           <Text style={{ color: BRAND_COLORS.textDark, fontWeight: '700' }}>{stage.title}</Text>
-                          <Text style={{ color: BRAND_COLORS.textMuted, marginTop: 4, fontSize: 12 }}>
+                          <Text style={{ color: BRAND_COLORS.textMuted, marginTop: 4, fontSize: scaleFont(12) }}>
                             {stage.sourceType} • Dinilai:{' '}
                             {stage.assessedAt ? new Date(stage.assessedAt).toLocaleString('id-ID') : '-'}
                           </Text>
