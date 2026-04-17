@@ -263,7 +263,6 @@ async function reconcileMissingStudentPlacementsInternal(params: {
         };
       })
       .filter((item): item is { state: SittingCandidateState; classCount: number; roomMatched: boolean } => Boolean(item))
-      .filter((item) => item.roomMatched || item.classCount > 0)
       .sort((left, right) => {
         if (left.roomMatched !== right.roomMatched) return left.roomMatched ? -1 : 1;
         if (left.classCount !== right.classCount) return right.classCount - left.classCount;
@@ -272,9 +271,14 @@ async function reconcileMissingStudentPlacementsInternal(params: {
         }
         return compareRoomName(left.state.roomName, right.state.roomName);
       });
+    const hasPreferredRooms = preferredRooms.size > 0;
+    // Jika jadwal aktif sudah menentukan ruang resmi kelas, jangan auto-assign ke room drift.
+    const validCandidateStates = hasPreferredRooms
+      ? candidateStates.filter((item) => item.roomMatched)
+      : candidateStates.filter((item) => item.classCount > 0);
 
     for (const student of missingStudents) {
-      const targetCandidate = candidateStates.find((candidate) => candidate.state.freeSeatCellIds.length > 0) || null;
+      const targetCandidate = validCandidateStates.find((candidate) => candidate.state.freeSeatCellIds.length > 0) || null;
       const studentId = Number(student.id || 0);
       if (!targetCandidate || !Number.isFinite(studentId) || studentId <= 0) {
         unresolvedStudentIds.add(studentId);
