@@ -28,6 +28,7 @@ import {
 } from '../../../src/features/sarpras/types';
 import { getApiErrorMessage } from '../../../src/lib/api/errorMessage';
 import { getStandardPagePadding } from '../../../src/lib/ui/pageLayout';
+import { useAppTextScale } from '../../../src/theme/AppTextScaleProvider';
 
 type StatusFilter = 'ALL' | SarprasBudgetStatus;
 type SarprasBudgetSummaryId = 'filtered' | 'amount' | 'pending' | 'lpj';
@@ -117,6 +118,7 @@ export default function TeacherSarprasBudgetsScreen() {
   const queryClient = useQueryClient();
   const { isAuthenticated, isLoading, user } = useAuth();
   const pagePadding = getStandardPagePadding(insets, { bottom: 120 });
+  const { scaleFont, scaleLineHeight } = useAppTextScale();
 
   const [statusFilter, setStatusFilter] = useState<StatusFilter>('ALL');
   const [search, setSearch] = useState('');
@@ -125,6 +127,26 @@ export default function TeacherSarprasBudgetsScreen() {
   const [auditBudgetId, setAuditBudgetId] = useState<number | null>(null);
   const [selectedInvoiceId, setSelectedInvoiceId] = useState<number | null>(null);
   const [auditReportDrafts, setAuditReportDrafts] = useState<Record<number, string>>({});
+  const headingTextStyle = useMemo(
+    () => ({ fontSize: scaleFont(20), lineHeight: scaleLineHeight(28) }),
+    [scaleFont, scaleLineHeight],
+  );
+  const sectionTitleTextStyle = useMemo(
+    () => ({ fontSize: scaleFont(16), lineHeight: scaleLineHeight(24) }),
+    [scaleFont, scaleLineHeight],
+  );
+  const bodyTextStyle = useMemo(
+    () => ({ fontSize: scaleFont(12), lineHeight: scaleLineHeight(18) }),
+    [scaleFont, scaleLineHeight],
+  );
+  const helperTextStyle = useMemo(
+    () => ({ fontSize: scaleFont(11), lineHeight: scaleLineHeight(16) }),
+    [scaleFont, scaleLineHeight],
+  );
+  const inputTextStyle = useMemo(
+    () => ({ fontSize: scaleFont(13), lineHeight: scaleLineHeight(20) }),
+    [scaleFont, scaleLineHeight],
+  );
 
   const isAllowed = user?.role === 'TEACHER' && hasSarprasDuty(user?.additionalDuties);
 
@@ -338,7 +360,7 @@ export default function TeacherSarprasBudgetsScreen() {
   if (user?.role !== 'TEACHER') {
     return (
       <ScrollView style={{ flex: 1, backgroundColor: '#f8fafc' }} contentContainerStyle={pagePadding}>
-        <Text style={{ fontSize: 20, fontWeight: '700', marginBottom: 8 }}>Persetujuan Anggaran</Text>
+        <Text style={{ ...headingTextStyle, fontWeight: '700', marginBottom: 8 }}>Persetujuan Anggaran</Text>
         <QueryStateView type="error" message="Halaman ini khusus untuk role guru." />
         <Pressable
           onPress={() => router.replace('/home')}
@@ -350,7 +372,7 @@ export default function TeacherSarprasBudgetsScreen() {
             alignItems: 'center',
           }}
         >
-          <Text style={{ color: '#fff', fontWeight: '700' }}>Kembali ke Home</Text>
+          <Text style={{ color: '#fff', fontWeight: '700', ...bodyTextStyle }}>Kembali ke Home</Text>
         </Pressable>
       </ScrollView>
     );
@@ -359,10 +381,10 @@ export default function TeacherSarprasBudgetsScreen() {
   if (!isAllowed) {
     return (
       <ScrollView style={{ flex: 1, backgroundColor: '#f8fafc' }} contentContainerStyle={pagePadding}>
-        <Text style={{ fontSize: 20, fontWeight: '700', marginBottom: 6, color: BRAND_COLORS.textDark }}>
+        <Text style={{ ...headingTextStyle, fontWeight: '700', marginBottom: 6, color: BRAND_COLORS.textDark }}>
           Persetujuan Anggaran
         </Text>
-        <Text style={{ color: BRAND_COLORS.textMuted, marginBottom: 12 }}>
+        <Text style={{ color: BRAND_COLORS.textMuted, marginBottom: 12, ...inputTextStyle }}>
           Modul ini tersedia untuk tugas tambahan Wakasek Sarpras / Sekretaris Sarpras.
         </Text>
         <QueryStateView type="error" message="Anda tidak memiliki hak akses untuk modul ini." />
@@ -376,7 +398,7 @@ export default function TeacherSarprasBudgetsScreen() {
             alignItems: 'center',
           }}
         >
-          <Text style={{ color: '#fff', fontWeight: '700' }}>Kembali ke Home</Text>
+          <Text style={{ color: '#fff', fontWeight: '700', ...bodyTextStyle }}>Kembali ke Home</Text>
         </Pressable>
       </ScrollView>
     );
@@ -397,10 +419,10 @@ export default function TeacherSarprasBudgetsScreen() {
         />
       }
     >
-      <Text style={{ fontSize: 20, fontWeight: '700', marginBottom: 6, color: BRAND_COLORS.textDark }}>
+      <Text style={{ ...headingTextStyle, fontWeight: '700', marginBottom: 6, color: BRAND_COLORS.textDark }}>
         Persetujuan Anggaran
       </Text>
-      <Text style={{ color: BRAND_COLORS.textMuted, marginBottom: 12 }}>
+      <Text style={{ color: BRAND_COLORS.textMuted, marginBottom: 12, ...inputTextStyle }}>
         Verifikasi pengajuan anggaran unit sekolah
         {activeYearQuery.data?.name ? ` • ${activeYearQuery.data.name}` : ''}.
       </Text>
@@ -443,6 +465,7 @@ export default function TeacherSarprasBudgetsScreen() {
             paddingVertical: 11,
             paddingHorizontal: 9,
             color: BRAND_COLORS.textDark,
+            ...inputTextStyle,
           }}
         />
       </View>
@@ -493,10 +516,10 @@ export default function TeacherSarprasBudgetsScreen() {
               >
                 <View style={{ flexDirection: 'row', justifyContent: 'space-between', alignItems: 'flex-start', gap: 10 }}>
                   <View style={{ flex: 1 }}>
-                    <Text style={{ color: BRAND_COLORS.textDark, fontWeight: '700', fontSize: 15 }}>
+                    <Text style={{ color: BRAND_COLORS.textDark, fontWeight: '700', ...sectionTitleTextStyle }}>
                       {budget.title || 'Tanpa judul'}
                     </Text>
-                    <Text style={{ color: BRAND_COLORS.textMuted, marginTop: 3 }}>{budget.description || '-'}</Text>
+                    <Text style={{ color: BRAND_COLORS.textMuted, marginTop: 3, ...bodyTextStyle }}>{budget.description || '-'}</Text>
                   </View>
                   <View
                     style={{
@@ -508,27 +531,27 @@ export default function TeacherSarprasBudgetsScreen() {
                       paddingVertical: 3,
                     }}
                   >
-                    <Text style={{ color: statusStyle.text, fontWeight: '700', fontSize: 11 }}>
+                    <Text style={{ color: statusStyle.text, fontWeight: '700', ...helperTextStyle }}>
                       {STATUS_LABEL[budget.status]}
                     </Text>
                   </View>
                 </View>
 
                 <View style={{ marginTop: 8 }}>
-                  <Text style={{ color: '#475569', marginBottom: 2 }}>
+                  <Text style={{ color: '#475569', marginBottom: 2, ...bodyTextStyle }}>
                     Pengaju: <Text style={{ color: BRAND_COLORS.textDark, fontWeight: '600' }}>{budget.requester?.name || '-'}</Text>
                   </Text>
-                  <Text style={{ color: '#475569', marginBottom: 2 }}>
+                  <Text style={{ color: '#475569', marginBottom: 2, ...bodyTextStyle }}>
                     Unit: <Text style={{ color: BRAND_COLORS.textDark, fontWeight: '600' }}>{duty.label}</Text>
                   </Text>
-                  <Text style={{ color: '#475569', marginBottom: 2 }}>
+                  <Text style={{ color: '#475569', marginBottom: 2, ...bodyTextStyle }}>
                     Qty: <Text style={{ color: BRAND_COLORS.textDark, fontWeight: '600' }}>{budget.quantity}</Text> • Harga/unit:{' '}
                     <Text style={{ color: BRAND_COLORS.textDark, fontWeight: '600' }}>{formatCurrency(budget.unitPrice)}</Text>
                   </Text>
-                  <Text style={{ color: '#475569', marginBottom: 2 }}>
+                  <Text style={{ color: '#475569', marginBottom: 2, ...bodyTextStyle }}>
                     Total: <Text style={{ color: BRAND_COLORS.textDark, fontWeight: '700' }}>{formatCurrency(budget.totalAmount)}</Text>
                   </Text>
-                  <Text style={{ color: '#64748b', fontSize: 12 }}>
+                  <Text style={{ color: '#64748b', ...bodyTextStyle }}>
                     Dibuat: {formatDate(budget.createdAt)} • LPJ: {lpjProgressLabel(budget)}
                   </Text>
                 </View>
@@ -544,7 +567,7 @@ export default function TeacherSarprasBudgetsScreen() {
                       marginTop: 8,
                     }}
                   >
-                    <Text style={{ color: '#991b1b', fontSize: 12 }}>{budget.rejectionReason}</Text>
+                    <Text style={{ color: '#991b1b', ...bodyTextStyle }}>{budget.rejectionReason}</Text>
                   </View>
                 ) : null}
 
@@ -562,7 +585,7 @@ export default function TeacherSarprasBudgetsScreen() {
                         opacity: forwardMutation.isPending ? 0.7 : 1,
                       }}
                     >
-                      <Text style={{ color: '#fff', fontWeight: '700' }}>Teruskan ke Kepala Sekolah</Text>
+                      <Text style={{ color: '#fff', fontWeight: '700', ...bodyTextStyle }}>Teruskan ke Kepala Sekolah</Text>
                     </Pressable>
                   ) : null}
 
@@ -579,7 +602,7 @@ export default function TeacherSarprasBudgetsScreen() {
                         paddingVertical: 11,
                       }}
                     >
-                      <Text style={{ color: '#1d4ed8', fontWeight: '700' }}>
+                      <Text style={{ color: '#1d4ed8', fontWeight: '700', ...bodyTextStyle }}>
                         {auditBudgetId === budget.id ? 'Audit LPJ Aktif' : 'Audit LPJ'}
                       </Text>
                     </Pressable>
@@ -600,7 +623,7 @@ export default function TeacherSarprasBudgetsScreen() {
               marginBottom: 12,
             }}
           >
-            <Text style={{ color: BRAND_COLORS.textMuted }}>
+            <Text style={{ color: BRAND_COLORS.textMuted, ...bodyTextStyle }}>
               Tidak ada data pengajuan yang cocok dengan filter saat ini.
             </Text>
           </View>
@@ -620,10 +643,10 @@ export default function TeacherSarprasBudgetsScreen() {
         >
           <View style={{ flexDirection: 'row', justifyContent: 'space-between', alignItems: 'flex-start', gap: 10 }}>
             <View style={{ flex: 1 }}>
-              <Text style={{ color: '#1e3a8a', fontWeight: '700', fontSize: 16 }}>
+              <Text style={{ color: '#1e3a8a', fontWeight: '700', ...sectionTitleTextStyle }}>
                 Audit LPJ Anggaran
               </Text>
-              <Text style={{ color: '#334155', marginTop: 2, fontSize: 12 }}>
+              <Text style={{ color: '#334155', marginTop: 2, ...bodyTextStyle }}>
                 {auditBudget?.title || 'Pengajuan anggaran terpilih'}
               </Text>
             </View>
@@ -641,7 +664,7 @@ export default function TeacherSarprasBudgetsScreen() {
                 backgroundColor: '#fff',
               }}
             >
-              <Text style={{ color: '#1d4ed8', fontWeight: '700', fontSize: 12 }}>Tutup</Text>
+              <Text style={{ color: '#1d4ed8', fontWeight: '700', ...bodyTextStyle }}>Tutup</Text>
             </Pressable>
           </View>
 
@@ -682,7 +705,7 @@ export default function TeacherSarprasBudgetsScreen() {
                     <Text style={{ color: BRAND_COLORS.textDark, fontWeight: '700' }}>
                       {selectedInvoice.title || `Invoice #${selectedInvoice.id}`}
                     </Text>
-                    <Text style={{ color: '#475569', fontSize: 12, marginTop: 2 }}>
+                    <Text style={{ color: '#475569', marginTop: 2, ...bodyTextStyle }}>
                       Status: {lpjStatusLabel(selectedInvoice.status)}
                     </Text>
 
@@ -699,17 +722,17 @@ export default function TeacherSarprasBudgetsScreen() {
                             padding: 10,
                           }}
                         >
-                          <Text style={{ color: BRAND_COLORS.textDark, fontWeight: '700', fontSize: 13 }}>
+                          <Text style={{ color: BRAND_COLORS.textDark, fontWeight: '700', ...bodyTextStyle }}>
                             {item.description}
                           </Text>
-                          <Text style={{ color: '#64748b', fontSize: 12, marginTop: 2 }}>
+                          <Text style={{ color: '#64748b', marginTop: 2, ...bodyTextStyle }}>
                             QTY {item.quantity} • Harga {formatCurrency(item.unitPrice)} • Total {formatCurrency(item.amount)}
                           </Text>
-                          <Text style={{ color: '#64748b', fontSize: 12, marginTop: 2 }}>
+                          <Text style={{ color: '#64748b', marginTop: 2, ...bodyTextStyle }}>
                             Audit: {typeof item.isMatched === 'boolean' ? (item.isMatched ? 'Sesuai' : 'Tidak Sesuai') : 'Belum diaudit'}
                           </Text>
                           {item.auditNote ? (
-                            <Text style={{ color: '#475569', fontSize: 12, marginTop: 2 }}>
+                            <Text style={{ color: '#475569', marginTop: 2, ...bodyTextStyle }}>
                               Catatan: {item.auditNote}
                             </Text>
                           ) : null}
@@ -729,7 +752,7 @@ export default function TeacherSarprasBudgetsScreen() {
                                 opacity: auditItemMutation.isPending ? 0.7 : 1,
                               }}
                             >
-                              <Text style={{ color: '#166534', fontWeight: '700' }}>Sesuai</Text>
+                              <Text style={{ color: '#166534', fontWeight: '700', ...bodyTextStyle }}>Sesuai</Text>
                             </Pressable>
                             <Pressable
                               onPress={() => auditItemMutation.mutate({ id: item.id, isMatched: false })}
@@ -745,7 +768,7 @@ export default function TeacherSarprasBudgetsScreen() {
                                 opacity: auditItemMutation.isPending ? 0.7 : 1,
                               }}
                             >
-                              <Text style={{ color: '#991b1b', fontWeight: '700' }}>Tidak Sesuai</Text>
+                              <Text style={{ color: '#991b1b', fontWeight: '700', ...bodyTextStyle }}>Tidak Sesuai</Text>
                             </Pressable>
                           </View>
                         </View>
@@ -762,12 +785,12 @@ export default function TeacherSarprasBudgetsScreen() {
                           marginTop: 10,
                         }}
                       >
-                        <Text style={{ color: '#64748b' }}>Belum ada item pada invoice ini.</Text>
+                        <Text style={{ color: '#64748b', ...bodyTextStyle }}>Belum ada item pada invoice ini.</Text>
                       </View>
                     )}
 
                     <View style={{ marginTop: 10 }}>
-                      <Text style={{ color: BRAND_COLORS.textDark, fontWeight: '700', marginBottom: 6 }}>
+                      <Text style={{ color: BRAND_COLORS.textDark, fontWeight: '700', marginBottom: 6, ...sectionTitleTextStyle }}>
                         Berita Acara Audit
                       </Text>
                       <TextInput
@@ -787,6 +810,7 @@ export default function TeacherSarprasBudgetsScreen() {
                           paddingVertical: 10,
                           color: '#0f172a',
                           marginBottom: 8,
+                          ...inputTextStyle,
                         }}
                         placeholderTextColor="#94a3b8"
                         multiline
@@ -812,7 +836,7 @@ export default function TeacherSarprasBudgetsScreen() {
                           opacity: auditReportMutation.isPending ? 0.7 : 1,
                         }}
                       >
-                        <Text style={{ color: '#fff', fontWeight: '700' }}>
+                        <Text style={{ color: '#fff', fontWeight: '700', ...bodyTextStyle }}>
                           {auditReportMutation.isPending ? 'Menyimpan...' : 'Simpan Berita Acara'}
                         </Text>
                       </Pressable>
@@ -837,7 +861,7 @@ export default function TeacherSarprasBudgetsScreen() {
                               opacity: lpjDecisionMutation.isPending ? 0.7 : 1,
                             }}
                           >
-                            <Text style={{ color: '#166534', fontWeight: '700' }}>Setujui LPJ</Text>
+                            <Text style={{ color: '#166534', fontWeight: '700', ...bodyTextStyle }}>Setujui LPJ</Text>
                           </Pressable>
                           <Pressable
                             onPress={() =>
@@ -855,7 +879,7 @@ export default function TeacherSarprasBudgetsScreen() {
                               opacity: lpjDecisionMutation.isPending ? 0.7 : 1,
                             }}
                           >
-                            <Text style={{ color: '#991b1b', fontWeight: '700' }}>Kembalikan ke Guru</Text>
+                            <Text style={{ color: '#991b1b', fontWeight: '700', ...bodyTextStyle }}>Kembalikan ke Guru</Text>
                           </Pressable>
                         </>
                       ) : selectedInvoice.status === 'APPROVED_BY_SARPRAS' ? (
@@ -875,7 +899,7 @@ export default function TeacherSarprasBudgetsScreen() {
                             opacity: lpjDecisionMutation.isPending ? 0.7 : 1,
                           }}
                         >
-                          <Text style={{ color: '#0369a1', fontWeight: '700' }}>Kirim ke Keuangan</Text>
+                          <Text style={{ color: '#0369a1', fontWeight: '700', ...bodyTextStyle }}>Kirim ke Keuangan</Text>
                         </Pressable>
                       ) : null}
                     </View>
@@ -894,7 +918,7 @@ export default function TeacherSarprasBudgetsScreen() {
                   marginTop: 10,
                 }}
               >
-                <Text style={{ color: '#64748b' }}>Belum ada invoice LPJ untuk pengajuan ini.</Text>
+                <Text style={{ color: '#64748b', ...bodyTextStyle }}>Belum ada invoice LPJ untuk pengajuan ini.</Text>
               </View>
             )
           ) : null}
@@ -912,11 +936,11 @@ export default function TeacherSarprasBudgetsScreen() {
           <View style={{ gap: 10 }}>
             <View style={{ borderWidth: 1, borderColor: '#dbe7fb', borderRadius: 12, backgroundColor: '#f8fbff', padding: 12 }}>
               <Text style={{ color: BRAND_COLORS.textDark, fontWeight: '700' }}>Jumlah pengajuan terfilter</Text>
-              <Text style={{ color: '#2563eb', fontSize: 20, fontWeight: '700', marginTop: 4 }}>
+              <Text style={{ color: '#2563eb', fontSize: scaleFont(20), lineHeight: scaleLineHeight(28), fontWeight: '700', marginTop: 4 }}>
                 {filteredBudgets.length}
               </Text>
             </View>
-            <Text style={{ color: BRAND_COLORS.textMuted }}>
+            <Text style={{ color: BRAND_COLORS.textMuted, ...bodyTextStyle }}>
               Data di daftar utama sudah mengikuti pencarian, status, dan unit yang sedang dipilih.
             </Text>
           </View>
@@ -926,7 +950,7 @@ export default function TeacherSarprasBudgetsScreen() {
           <View style={{ gap: 10 }}>
             <View style={{ borderWidth: 1, borderColor: '#dbe7fb', borderRadius: 12, backgroundColor: '#f8fbff', padding: 12 }}>
               <Text style={{ color: BRAND_COLORS.textDark, fontWeight: '700' }}>Akumulasi dana terfilter</Text>
-              <Text style={{ color: '#0f766e', fontSize: 20, fontWeight: '700', marginTop: 4 }}>
+              <Text style={{ color: '#0f766e', fontSize: scaleFont(20), lineHeight: scaleLineHeight(28), fontWeight: '700', marginTop: 4 }}>
                 {formatCurrency(totalAmount)}
               </Text>
             </View>
@@ -937,7 +961,7 @@ export default function TeacherSarprasBudgetsScreen() {
           <View style={{ gap: 10 }}>
             <View style={{ borderWidth: 1, borderColor: '#dbe7fb', borderRadius: 12, backgroundColor: '#fffbeb', padding: 12 }}>
               <Text style={{ color: BRAND_COLORS.textDark, fontWeight: '700' }}>Pengajuan menunggu proses</Text>
-              <Text style={{ color: '#b45309', fontSize: 20, fontWeight: '700', marginTop: 4 }}>
+              <Text style={{ color: '#b45309', fontSize: scaleFont(20), lineHeight: scaleLineHeight(28), fontWeight: '700', marginTop: 4 }}>
                 {pendingCount}
               </Text>
             </View>
@@ -948,11 +972,11 @@ export default function TeacherSarprasBudgetsScreen() {
           <View style={{ gap: 10 }}>
             <View style={{ borderWidth: 1, borderColor: '#dbe7fb', borderRadius: 12, backgroundColor: '#f5f3ff', padding: 12 }}>
               <Text style={{ color: BRAND_COLORS.textDark, fontWeight: '700' }}>LPJ siap audit</Text>
-              <Text style={{ color: '#7c3aed', fontSize: 20, fontWeight: '700', marginTop: 4 }}>
+              <Text style={{ color: '#7c3aed', fontSize: scaleFont(20), lineHeight: scaleLineHeight(28), fontWeight: '700', marginTop: 4 }}>
                 {lpjReadyCount}
               </Text>
             </View>
-            <Text style={{ color: BRAND_COLORS.textMuted }}>
+            <Text style={{ color: BRAND_COLORS.textMuted, ...bodyTextStyle }}>
               LPJ siap audit berarti pengajuan sudah disetujui dan guru sudah mengunggah berkas LPJ.
             </Text>
           </View>

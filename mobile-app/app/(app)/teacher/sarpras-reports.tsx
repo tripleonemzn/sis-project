@@ -22,6 +22,7 @@ import { academicYearApi } from '../../../src/features/academicYear/academicYear
 import { sarprasApi } from '../../../src/features/sarpras/sarprasApi';
 import { SarprasBudgetRequest, SarprasRoom } from '../../../src/features/sarpras/types';
 import { getStandardPagePadding } from '../../../src/lib/ui/pageLayout';
+import { useAppTextScale } from '../../../src/theme/AppTextScaleProvider';
 
 type SarprasReportSection = 'RINGKASAN' | 'ASET' | 'ANGGARAN';
 type SarprasReportSummaryId = 'coverage' | 'items' | 'budgets' | 'amounts';
@@ -101,10 +102,31 @@ export default function TeacherSarprasReportsScreen() {
   const insets = useSafeAreaInsets();
   const { isAuthenticated, isLoading, user } = useAuth();
   const pagePadding = getStandardPagePadding(insets, { bottom: 120 });
+  const { scaleFont, scaleLineHeight } = useAppTextScale();
 
   const [section, setSection] = useState<SarprasReportSection>('RINGKASAN');
   const [activeSummaryId, setActiveSummaryId] = useState<SarprasReportSummaryId | null>(null);
   const [search, setSearch] = useState('');
+  const headingTextStyle = useMemo(
+    () => ({ fontSize: scaleFont(20), lineHeight: scaleLineHeight(28) }),
+    [scaleFont, scaleLineHeight],
+  );
+  const sectionTitleTextStyle = useMemo(
+    () => ({ fontSize: scaleFont(16), lineHeight: scaleLineHeight(24) }),
+    [scaleFont, scaleLineHeight],
+  );
+  const bodyTextStyle = useMemo(
+    () => ({ fontSize: scaleFont(12), lineHeight: scaleLineHeight(18) }),
+    [scaleFont, scaleLineHeight],
+  );
+  const helperTextStyle = useMemo(
+    () => ({ fontSize: scaleFont(11), lineHeight: scaleLineHeight(16) }),
+    [scaleFont, scaleLineHeight],
+  );
+  const inputTextStyle = useMemo(
+    () => ({ fontSize: scaleFont(13), lineHeight: scaleLineHeight(20) }),
+    [scaleFont, scaleLineHeight],
+  );
 
   const isAllowed = user?.role === 'TEACHER' && hasSarprasDuty(user?.additionalDuties);
 
@@ -343,7 +365,7 @@ export default function TeacherSarprasReportsScreen() {
   if (user?.role !== 'TEACHER') {
     return (
       <ScrollView style={{ flex: 1, backgroundColor: '#f8fafc' }} contentContainerStyle={pagePadding}>
-        <Text style={{ fontSize: 20, fontWeight: '700', marginBottom: 8 }}>Laporan</Text>
+        <Text style={{ ...headingTextStyle, fontWeight: '700', marginBottom: 8 }}>Laporan</Text>
         <QueryStateView type="error" message="Halaman ini khusus untuk role guru." />
         <Pressable
           onPress={() => router.replace('/home')}
@@ -355,7 +377,7 @@ export default function TeacherSarprasReportsScreen() {
             alignItems: 'center',
           }}
         >
-          <Text style={{ color: '#fff', fontWeight: '700' }}>Kembali ke Home</Text>
+          <Text style={{ color: '#fff', fontWeight: '700', ...bodyTextStyle }}>Kembali ke Home</Text>
         </Pressable>
       </ScrollView>
     );
@@ -364,10 +386,10 @@ export default function TeacherSarprasReportsScreen() {
   if (!isAllowed) {
     return (
       <ScrollView style={{ flex: 1, backgroundColor: '#f8fafc' }} contentContainerStyle={pagePadding}>
-        <Text style={{ fontSize: 20, fontWeight: '700', marginBottom: 6, color: BRAND_COLORS.textDark }}>
+        <Text style={{ ...headingTextStyle, fontWeight: '700', marginBottom: 6, color: BRAND_COLORS.textDark }}>
           Laporan
         </Text>
-        <Text style={{ color: BRAND_COLORS.textMuted, marginBottom: 12 }}>
+        <Text style={{ color: BRAND_COLORS.textMuted, marginBottom: 12, ...inputTextStyle }}>
           Modul ini tersedia untuk tugas tambahan Wakasek Sarpras / Sekretaris Sarpras.
         </Text>
         <QueryStateView type="error" message="Anda tidak memiliki hak akses untuk modul ini." />
@@ -381,7 +403,7 @@ export default function TeacherSarprasReportsScreen() {
             alignItems: 'center',
           }}
         >
-          <Text style={{ color: '#fff', fontWeight: '700' }}>Kembali ke Home</Text>
+          <Text style={{ color: '#fff', fontWeight: '700', ...bodyTextStyle }}>Kembali ke Home</Text>
         </Pressable>
       </ScrollView>
     );
@@ -401,8 +423,8 @@ export default function TeacherSarprasReportsScreen() {
         />
       }
     >
-      <Text style={{ fontSize: 20, fontWeight: '700', marginBottom: 6, color: BRAND_COLORS.textDark }}>Laporan</Text>
-      <Text style={{ color: BRAND_COLORS.textMuted, marginBottom: 12 }}>
+      <Text style={{ ...headingTextStyle, fontWeight: '700', marginBottom: 6, color: BRAND_COLORS.textDark }}>Laporan</Text>
+      <Text style={{ color: BRAND_COLORS.textMuted, marginBottom: 12, ...inputTextStyle }}>
         Ringkasan aset sekolah dan pengajuan anggaran sarpras
         {activeYearQuery.data?.name ? ` • ${activeYearQuery.data.name}` : ''}.
       </Text>
@@ -440,6 +462,7 @@ export default function TeacherSarprasReportsScreen() {
             paddingVertical: 11,
             paddingHorizontal: 9,
             color: BRAND_COLORS.textDark,
+            ...inputTextStyle,
           }}
         />
       </View>
@@ -478,7 +501,7 @@ export default function TeacherSarprasReportsScreen() {
                   marginBottom: 12,
                 }}
               >
-                <Text style={{ color: BRAND_COLORS.textDark, fontWeight: '700', marginBottom: 8 }}>Kondisi Ruangan</Text>
+                <Text style={{ color: BRAND_COLORS.textDark, fontWeight: '700', marginBottom: 8, ...sectionTitleTextStyle }}>Kondisi Ruangan</Text>
                 <View style={{ flexDirection: 'row', flexWrap: 'wrap', marginHorizontal: -4 }}>
                   {[
                     { label: 'Baik', value: roomSummary.good, bg: '#dcfce7', color: '#166534' },
@@ -495,10 +518,10 @@ export default function TeacherSarprasReportsScreen() {
                           alignItems: 'center',
                         }}
                       >
-                        <Text style={{ color: segment.color, fontWeight: '700', fontSize: 18 }}>
+                        <Text style={{ color: segment.color, fontWeight: '700', fontSize: scaleFont(18), lineHeight: scaleLineHeight(26) }}>
                           {formatNumber(segment.value)}
                         </Text>
-                        <Text style={{ color: segment.color, fontSize: 12 }}>{segment.label}</Text>
+                        <Text style={{ color: segment.color, ...bodyTextStyle }}>{segment.label}</Text>
                       </View>
                     </View>
                   ))}
@@ -515,7 +538,7 @@ export default function TeacherSarprasReportsScreen() {
                   marginBottom: 12,
                 }}
               >
-                <Text style={{ color: BRAND_COLORS.textDark, fontWeight: '700', marginBottom: 8 }}>Progress Anggaran & LPJ</Text>
+                <Text style={{ color: BRAND_COLORS.textDark, fontWeight: '700', marginBottom: 8, ...sectionTitleTextStyle }}>Progress Anggaran & LPJ</Text>
                 <View style={{ gap: 8 }}>
                   {[
                     { label: 'Pending', value: budgetSummary.pending, color: '#b45309' },
@@ -538,8 +561,8 @@ export default function TeacherSarprasReportsScreen() {
                         paddingHorizontal: 10,
                       }}
                     >
-                      <Text style={{ color: BRAND_COLORS.textDark, fontWeight: '600' }}>{row.label}</Text>
-                      <Text style={{ color: row.color, fontWeight: '700' }}>{formatNumber(row.value)}</Text>
+                      <Text style={{ color: BRAND_COLORS.textDark, fontWeight: '600', ...bodyTextStyle }}>{row.label}</Text>
+                      <Text style={{ color: row.color, fontWeight: '700', ...bodyTextStyle }}>{formatNumber(row.value)}</Text>
                     </View>
                   ))}
                 </View>
@@ -559,7 +582,7 @@ export default function TeacherSarprasReportsScreen() {
                   marginBottom: 12,
                 }}
               >
-                <Text style={{ color: BRAND_COLORS.textDark, fontWeight: '700', marginBottom: 8 }}>
+                <Text style={{ color: BRAND_COLORS.textDark, fontWeight: '700', marginBottom: 8, ...sectionTitleTextStyle }}>
                   Rekap Kategori Aset
                 </Text>
                 {filteredCategoryRows.length > 0 ? (
@@ -575,15 +598,15 @@ export default function TeacherSarprasReportsScreen() {
                         marginBottom: 8,
                       }}
                     >
-                      <Text style={{ color: BRAND_COLORS.textDark, fontWeight: '700' }}>{row.name}</Text>
-                      <Text style={{ color: '#64748b', marginTop: 2 }}>
+                      <Text style={{ color: BRAND_COLORS.textDark, fontWeight: '700', ...bodyTextStyle }}>{row.name}</Text>
+                      <Text style={{ color: '#64748b', marginTop: 2, ...bodyTextStyle }}>
                         Ruang: {formatNumber(row.roomCount)} • Item: {formatNumber(row.itemsCount)} • Kondisi perlu perhatian:{' '}
                         {formatNumber(row.damagedCount)}
                       </Text>
                     </View>
                   ))
                 ) : (
-                  <Text style={{ color: BRAND_COLORS.textMuted }}>Tidak ada kategori yang cocok dengan pencarian.</Text>
+                  <Text style={{ color: BRAND_COLORS.textMuted, ...bodyTextStyle }}>Tidak ada kategori yang cocok dengan pencarian.</Text>
                 )}
               </View>
 
@@ -597,7 +620,7 @@ export default function TeacherSarprasReportsScreen() {
                   marginBottom: 12,
                 }}
               >
-                <Text style={{ color: BRAND_COLORS.textDark, fontWeight: '700', marginBottom: 8 }}>
+                <Text style={{ color: BRAND_COLORS.textDark, fontWeight: '700', marginBottom: 8, ...sectionTitleTextStyle }}>
                   Ruang dengan Item Terbanyak
                 </Text>
                 {topRoomRows.length > 0 ? (
@@ -613,17 +636,17 @@ export default function TeacherSarprasReportsScreen() {
                         marginBottom: 8,
                       }}
                     >
-                      <Text style={{ color: BRAND_COLORS.textDark, fontWeight: '700' }}>{row.name}</Text>
-                      <Text style={{ color: '#64748b', marginTop: 2 }}>
+                      <Text style={{ color: BRAND_COLORS.textDark, fontWeight: '700', ...bodyTextStyle }}>{row.name}</Text>
+                      <Text style={{ color: '#64748b', marginTop: 2, ...bodyTextStyle }}>
                         {row.location} • Kondisi {row.conditionLabel}
                       </Text>
-                      <Text style={{ color: BRAND_COLORS.navy, marginTop: 2, fontWeight: '700' }}>
+                      <Text style={{ color: BRAND_COLORS.navy, marginTop: 2, fontWeight: '700', ...bodyTextStyle }}>
                         {formatNumber(row.itemCount)} item
                       </Text>
                     </View>
                   ))
                 ) : (
-                  <Text style={{ color: BRAND_COLORS.textMuted }}>Belum ada data ruang tersedia.</Text>
+                  <Text style={{ color: BRAND_COLORS.textMuted, ...bodyTextStyle }}>Belum ada data ruang tersedia.</Text>
                 )}
               </View>
             </>
@@ -641,7 +664,7 @@ export default function TeacherSarprasReportsScreen() {
                   marginBottom: 12,
                 }}
               >
-                <Text style={{ color: BRAND_COLORS.textDark, fontWeight: '700', marginBottom: 8 }}>
+                <Text style={{ color: BRAND_COLORS.textDark, fontWeight: '700', marginBottom: 8, ...sectionTitleTextStyle }}>
                   Rekap Unit Pengaju
                 </Text>
                 {filteredDutyRows.length > 0 ? (
@@ -657,18 +680,18 @@ export default function TeacherSarprasReportsScreen() {
                         marginBottom: 8,
                       }}
                     >
-                      <Text style={{ color: BRAND_COLORS.textDark, fontWeight: '700' }}>{row.label}</Text>
-                      <Text style={{ color: '#64748b', marginTop: 2 }}>
+                      <Text style={{ color: BRAND_COLORS.textDark, fontWeight: '700', ...bodyTextStyle }}>{row.label}</Text>
+                      <Text style={{ color: '#64748b', marginTop: 2, ...bodyTextStyle }}>
                         Total: {formatNumber(row.total)} • Pending: {formatNumber(row.pending)} • Disetujui:{' '}
                         {formatNumber(row.approved)} • Ditolak: {formatNumber(row.rejected)}
                       </Text>
-                      <Text style={{ color: BRAND_COLORS.navy, marginTop: 2, fontWeight: '700' }}>
+                      <Text style={{ color: BRAND_COLORS.navy, marginTop: 2, fontWeight: '700', ...bodyTextStyle }}>
                         Nominal: {formatCurrency(row.totalAmount)}
                       </Text>
                     </View>
                   ))
                 ) : (
-                  <Text style={{ color: BRAND_COLORS.textMuted }}>Tidak ada unit pengaju yang cocok dengan pencarian.</Text>
+                  <Text style={{ color: BRAND_COLORS.textMuted, ...bodyTextStyle }}>Tidak ada unit pengaju yang cocok dengan pencarian.</Text>
                 )}
               </View>
 
@@ -682,7 +705,7 @@ export default function TeacherSarprasReportsScreen() {
                   marginBottom: 12,
                 }}
               >
-                <Text style={{ color: BRAND_COLORS.textDark, fontWeight: '700', marginBottom: 8 }}>
+                <Text style={{ color: BRAND_COLORS.textDark, fontWeight: '700', marginBottom: 8, ...sectionTitleTextStyle }}>
                   Pengajuan Terbaru
                 </Text>
                 {latestBudgets.length > 0 ? (
@@ -710,13 +733,13 @@ export default function TeacherSarprasReportsScreen() {
                           }}
                         >
                           <View style={{ flex: 1 }}>
-                            <Text style={{ color: BRAND_COLORS.textDark, fontWeight: '700' }}>
+                            <Text style={{ color: BRAND_COLORS.textDark, fontWeight: '700', ...bodyTextStyle }}>
                               {budget.title || 'Tanpa judul'}
                             </Text>
-                            <Text style={{ color: '#64748b', marginTop: 2 }}>
+                            <Text style={{ color: '#64748b', marginTop: 2, ...bodyTextStyle }}>
                               {duty.label} • {budget.requester?.name || '-'}
                             </Text>
-                            <Text style={{ color: '#475569', marginTop: 2 }}>
+                            <Text style={{ color: '#475569', marginTop: 2, ...bodyTextStyle }}>
                               {formatCurrency(budget.totalAmount)} • {formatDate(budget.createdAt)}
                             </Text>
                           </View>
@@ -730,14 +753,14 @@ export default function TeacherSarprasReportsScreen() {
                               paddingVertical: 3,
                             }}
                           >
-                            <Text style={{ color: status.text, fontWeight: '700', fontSize: 11 }}>{status.label}</Text>
+                            <Text style={{ color: status.text, fontWeight: '700', ...helperTextStyle }}>{status.label}</Text>
                           </View>
                         </View>
                       </View>
                     );
                   })
                 ) : (
-                  <Text style={{ color: BRAND_COLORS.textMuted }}>Belum ada data pengajuan anggaran.</Text>
+                  <Text style={{ color: BRAND_COLORS.textMuted, ...bodyTextStyle }}>Belum ada data pengajuan anggaran.</Text>
                 )}
               </View>
             </>
@@ -756,13 +779,13 @@ export default function TeacherSarprasReportsScreen() {
           <View style={{ gap: 10 }}>
             <View style={{ borderWidth: 1, borderColor: '#dbe7fb', borderRadius: 12, backgroundColor: '#f8fbff', padding: 12 }}>
               <Text style={{ color: BRAND_COLORS.textDark, fontWeight: '700' }}>Kategori Aktif</Text>
-              <Text style={{ color: '#8b5cf6', fontSize: 20, fontWeight: '700', marginTop: 4 }}>
+              <Text style={{ color: '#8b5cf6', fontSize: scaleFont(20), lineHeight: scaleLineHeight(28), fontWeight: '700', marginTop: 4 }}>
                 {formatNumber(categories.length)}
               </Text>
             </View>
             <View style={{ borderWidth: 1, borderColor: '#dbe7fb', borderRadius: 12, backgroundColor: '#f8fbff', padding: 12 }}>
               <Text style={{ color: BRAND_COLORS.textDark, fontWeight: '700' }}>Total Ruangan</Text>
-              <Text style={{ color: '#16a34a', fontSize: 20, fontWeight: '700', marginTop: 4 }}>
+              <Text style={{ color: '#16a34a', fontSize: scaleFont(20), lineHeight: scaleLineHeight(28), fontWeight: '700', marginTop: 4 }}>
                 {formatNumber(roomSummary.totalRooms)}
               </Text>
             </View>
@@ -782,7 +805,7 @@ export default function TeacherSarprasReportsScreen() {
                 style={{ borderWidth: 1, borderColor: '#dbe7fb', borderRadius: 12, backgroundColor: item.bg, padding: 12 }}
               >
                 <Text style={{ color: item.color, fontWeight: '700' }}>{item.label}</Text>
-                <Text style={{ color: item.color, fontSize: 20, fontWeight: '700', marginTop: 4 }}>
+                <Text style={{ color: item.color, fontSize: scaleFont(20), lineHeight: scaleLineHeight(28), fontWeight: '700', marginTop: 4 }}>
                   {formatNumber(item.value)}
                 </Text>
               </View>
@@ -804,7 +827,7 @@ export default function TeacherSarprasReportsScreen() {
                 style={{ borderWidth: 1, borderColor: '#dbe7fb', borderRadius: 12, backgroundColor: '#fff', padding: 12 }}
               >
                 <Text style={{ color: BRAND_COLORS.textDark, fontWeight: '700' }}>{item.label}</Text>
-                <Text style={{ color: item.color, fontSize: 20, fontWeight: '700', marginTop: 4 }}>
+                <Text style={{ color: item.color, fontSize: scaleFont(20), lineHeight: scaleLineHeight(28), fontWeight: '700', marginTop: 4 }}>
                   {formatNumber(item.value)}
                 </Text>
               </View>
@@ -816,13 +839,13 @@ export default function TeacherSarprasReportsScreen() {
           <View style={{ gap: 10 }}>
             <View style={{ borderWidth: 1, borderColor: '#dbe7fb', borderRadius: 12, backgroundColor: '#f8fbff', padding: 12 }}>
               <Text style={{ color: BRAND_COLORS.textDark, fontWeight: '700' }}>Total Pengajuan</Text>
-              <Text style={{ color: '#0f766e', fontSize: 20, fontWeight: '700', marginTop: 4 }}>
+              <Text style={{ color: '#0f766e', fontSize: scaleFont(20), lineHeight: scaleLineHeight(28), fontWeight: '700', marginTop: 4 }}>
                 {formatCurrency(budgetSummary.totalAmount)}
               </Text>
             </View>
             <View style={{ borderWidth: 1, borderColor: '#dbe7fb', borderRadius: 12, backgroundColor: '#f8fbff', padding: 12 }}>
               <Text style={{ color: BRAND_COLORS.textDark, fontWeight: '700' }}>Nominal Disetujui</Text>
-              <Text style={{ color: '#2563eb', fontSize: 20, fontWeight: '700', marginTop: 4 }}>
+              <Text style={{ color: '#2563eb', fontSize: scaleFont(20), lineHeight: scaleLineHeight(28), fontWeight: '700', marginTop: 4 }}>
                 {formatCurrency(budgetSummary.approvedAmount)}
               </Text>
             </View>
