@@ -2,7 +2,7 @@ import { Feather } from '@expo/vector-icons';
 import { Pressable, Text, View, type StyleProp, type ViewStyle } from 'react-native';
 import { BRAND_COLORS } from '../config/brand';
 import { useAppTheme } from '../theme/AppThemeProvider';
-import { MOBILE_TYPOGRAPHY } from '../theme/typography';
+import { useAppTextScale } from '../theme/AppTextScaleProvider';
 
 type FeatherIconName = React.ComponentProps<typeof Feather>['name'];
 
@@ -28,6 +28,7 @@ export function MobileSummaryCard({
   style,
 }: MobileSummaryCardProps) {
   const { colors, resolvedTheme } = useAppTheme();
+  const { typography } = useAppTextScale();
   const isCentered = align === 'center';
   const content = (
     <View
@@ -71,8 +72,8 @@ export function MobileSummaryCard({
       <Text
         style={{
           color: colors.textMuted,
-          ...MOBILE_TYPOGRAPHY.caption,
-          minHeight: 28,
+          ...typography.caption,
+          minHeight: (typography.caption.lineHeight || 16) * 2,
           textAlign: isCentered ? 'center' : 'left',
           width: '100%',
         }}
@@ -83,7 +84,7 @@ export function MobileSummaryCard({
       <Text
         style={{
           color: colors.text,
-          ...MOBILE_TYPOGRAPHY.metric,
+          ...typography.metric,
           marginTop: 4,
           textAlign: isCentered ? 'center' : 'left',
           width: '100%',
@@ -96,8 +97,8 @@ export function MobileSummaryCard({
         <Text
           style={{
             color: colors.textMuted,
-            ...MOBILE_TYPOGRAPHY.caption,
-            minHeight: 26,
+            ...typography.caption,
+            minHeight: (typography.caption.lineHeight || 16) * 2,
             marginTop: 3,
             textAlign: isCentered ? 'center' : 'left',
             width: '100%',

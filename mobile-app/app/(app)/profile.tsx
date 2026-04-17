@@ -51,6 +51,8 @@ import { notifyApiError, notifyError, notifySuccess } from '../../src/lib/ui/fee
 import { ENV } from '../../src/config/env';
 import { openWebModuleRoute } from '../../src/lib/navigation/webModuleRoute';
 import { useAppTheme } from '../../src/theme/AppThemeProvider';
+import { useAppTextScale } from '../../src/theme/AppTextScaleProvider';
+import { MobileTextScalePreferenceCard } from '../../src/features/theme/MobileTextScalePreferenceCard';
 
 type EditableProfileForm = {
   name: string;
@@ -778,6 +780,7 @@ export default function ProfileScreen() {
   const insets = useSafeAreaInsets();
   const { isAuthenticated, isLoading } = useAuth();
   const { colors } = useAppTheme();
+  const { typography } = useAppTextScale();
   const profileQuery = useProfileQuery(isAuthenticated);
   const pageContentPadding = getStandardPagePadding(insets, { bottom: 120 });
   const [activeTab, setActiveTab] = useState<ProfileTabId>('account');
@@ -1570,8 +1573,8 @@ export default function ProfileScreen() {
         />
       }
     >
-      <Text style={{ fontSize: 20, fontWeight: '700', marginBottom: 6, color: colors.text }}>{profileCopy.title}</Text>
-      <Text style={{ color: colors.textMuted, marginBottom: 14 }}>{profileCopy.subtitle}</Text>
+      <Text style={{ ...typography.pageTitle, marginBottom: 6, color: colors.text }}>{profileCopy.title}</Text>
+      <Text style={{ ...typography.body, color: colors.textMuted, marginBottom: 14 }}>{profileCopy.subtitle}</Text>
 
       {profile ? (
         <View style={{ flexDirection: 'row', flexWrap: 'wrap', marginHorizontal: -4, marginBottom: 18 }}>
@@ -1678,6 +1681,8 @@ export default function ProfileScreen() {
             <Feather name="printer" size={16} color="#334155" />
             <Text style={{ color: '#334155', fontWeight: '700', marginLeft: 8 }}>Lihat & Print Profil</Text>
           </Pressable>
+
+          <MobileTextScalePreferenceCard userId={profile.id} currentPreferences={profile.preferences} />
 
           <ScrollView
             horizontal

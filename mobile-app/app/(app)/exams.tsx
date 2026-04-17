@@ -18,6 +18,7 @@ import { getStandardPagePadding } from '../../src/lib/ui/pageLayout';
 import { examApi, ExamProgramItem } from '../../src/features/exams/examApi';
 import { examCardApi } from '../../src/features/examCards/examCardApi';
 import { useIsScreenActive } from '../../src/hooks/useIsScreenActive';
+import { useAppTextScale } from '../../src/theme/AppTextScaleProvider';
 import {
   MOBILE_FOREGROUND_REFETCH_MIN_INTERVAL_MS,
   shouldRunForegroundRefetch,
@@ -219,6 +220,7 @@ export default function StudentExamsScreen() {
   const params = useLocalSearchParams<{ programCode?: string | string[] }>();
   const router = useRouter();
   const insets = useSafeAreaInsets();
+  const { scaleFont, scaleLineHeight } = useAppTextScale();
   const { isAuthenticated, isLoading, user } = useAuth();
   const canAccessExams = user?.role === 'STUDENT' || user?.role === 'CALON_SISWA' || user?.role === 'UMUM';
   const isScreenActive = useIsScreenActive();
@@ -597,14 +599,14 @@ export default function StudentExamsScreen() {
     >
       <View style={{ flexDirection: 'row', justifyContent: 'space-between', alignItems: 'flex-start', marginBottom: 12, gap: 12 }}>
         <View style={{ flex: 1 }}>
-          <Text style={{ fontSize: 20, fontWeight: '700', marginBottom: 6 }}>
+          <Text style={{ fontSize: scaleFont(20), fontWeight: '700', marginBottom: 6 }}>
             {isCandidateMode
               ? lockedProgramLabel || 'Tes Seleksi'
               : isApplicantMode
                 ? lockedProgramLabel || 'Tes BKK'
                 : lockedProgramLabel || 'Ujian'}
           </Text>
-          <Text style={{ color: '#64748b' }}>
+          <Text style={{ color: '#64748b', fontSize: scaleFont(14), lineHeight: scaleLineHeight(22) }}>
             {isCandidateMode
               ? lockedProgramLabel
                 ? `Lihat jadwal ${lockedProgramLabel.toLowerCase()} yang tersedia untuk calon siswa.`
@@ -671,8 +673,8 @@ export default function StudentExamsScreen() {
             style={{ flexDirection: 'row', justifyContent: 'space-between', alignItems: 'flex-start', gap: 12 }}
           >
             <View style={{ flex: 1 }}>
-              <Text style={{ color: '#0f172a', fontSize: 18, fontWeight: '700' }}>Kartu Ujian Digital</Text>
-              <Text style={{ color: '#64748b', marginTop: 4 }}>
+              <Text style={{ color: '#0f172a', fontSize: scaleFont(18), fontWeight: '700' }}>Kartu Ujian Digital</Text>
+              <Text style={{ color: '#64748b', marginTop: 4, fontSize: scaleFont(13), lineHeight: scaleLineHeight(20) }}>
                 Kartu ujian akan muncul di sini setelah dipublikasikan oleh Kepala TU.
               </Text>
             </View>
@@ -686,7 +688,7 @@ export default function StudentExamsScreen() {
                 paddingVertical: 6,
               }}
             >
-              <Text style={{ color: '#1d4ed8', fontWeight: '700', fontSize: 12 }}>
+              <Text style={{ color: '#1d4ed8', fontWeight: '700', fontSize: scaleFont(12) }}>
                 {studentExamCardsQuery.data?.length || 0} kartu
               </Text>
             </View>
@@ -993,8 +995,8 @@ export default function StudentExamsScreen() {
             style={{ flexDirection: 'row', justifyContent: 'space-between', alignItems: 'flex-start', gap: 12 }}
           >
             <View style={{ flex: 1 }}>
-              <Text style={{ color: '#0f172a', fontSize: 18, fontWeight: '700' }}>Denah Ruang Ujian</Text>
-              <Text style={{ color: '#64748b', marginTop: 4 }}>
+              <Text style={{ color: '#0f172a', fontSize: scaleFont(18), fontWeight: '700' }}>Denah Ruang Ujian</Text>
+              <Text style={{ color: '#64748b', marginTop: 4, fontSize: scaleFont(13), lineHeight: scaleLineHeight(20) }}>
                 Ruang, sesi, dan kursi yang ditetapkan Kurikulum akan muncul di sini meski kartu ujian digital belum dipublikasikan.
               </Text>
             </View>
@@ -1008,7 +1010,7 @@ export default function StudentExamsScreen() {
                 paddingVertical: 6,
               }}
             >
-              <Text style={{ color: '#1d4ed8', fontWeight: '700', fontSize: 12 }}>
+              <Text style={{ color: '#1d4ed8', fontWeight: '700', fontSize: scaleFont(12) }}>
                 {groupedPlacements.length} ruang
               </Text>
             </View>
@@ -1086,8 +1088,8 @@ export default function StudentExamsScreen() {
                   >
                     <View style={{ flexDirection: 'row', justifyContent: 'space-between', gap: 8 }}>
                       <View style={{ flex: 1 }}>
-                        <Text style={{ color: '#0f172a', fontWeight: '700' }}>{group.roomName}</Text>
-                        <Text style={{ color: '#64748b', marginTop: 4, fontSize: 12 }}>
+                        <Text style={{ color: '#0f172a', fontWeight: '700', fontSize: scaleFont(15) }}>{group.roomName}</Text>
+                        <Text style={{ color: '#64748b', marginTop: 4, fontSize: scaleFont(12), lineHeight: scaleLineHeight(18) }}>
                           {examTypeLabel(group.examType)} • {group.entries.length} jadwal
                         </Text>
                       </View>
@@ -1102,16 +1104,16 @@ export default function StudentExamsScreen() {
                           paddingVertical: 4,
                         }}
                       >
-                        <Text style={{ color: chip.text, fontSize: 11, fontWeight: '700' }}>{chip.label}</Text>
+                        <Text style={{ color: chip.text, fontSize: scaleFont(11), fontWeight: '700' }}>{chip.label}</Text>
                       </View>
                     </View>
-                    <Text style={{ color: '#334155', fontSize: 12, marginTop: 6 }}>
+                    <Text style={{ color: '#334155', fontSize: scaleFont(12), marginTop: 6 }}>
                       Kursi: {group.seatLabel || 'Menunggu denah dipublikasikan'}
                     </Text>
-                    <Text style={{ color: '#334155', fontSize: 12, marginTop: 4 }}>
+                    <Text style={{ color: '#334155', fontSize: scaleFont(12), marginTop: 4 }}>
                       Slot pertama: {formatDateTime(group.primaryPlacement.startTime || '')} - {formatDateTime(group.primaryPlacement.endTime || '')}
                     </Text>
-                    <Text style={{ color: '#64748b', fontSize: 12, marginTop: 4 }}>
+                    <Text style={{ color: '#64748b', fontSize: scaleFont(12), lineHeight: scaleLineHeight(18), marginTop: 4 }}>
                       {group.entries.length} slot ujian memakai ruang ini.
                     </Text>
                     <View style={{ flexDirection: 'row', flexWrap: 'wrap', gap: 8, marginTop: 10 }}>
@@ -1129,7 +1131,7 @@ export default function StudentExamsScreen() {
                           paddingVertical: 6,
                         }}
                       >
-                        <Text style={{ color: '#1d4ed8', fontWeight: '700', fontSize: 11 }}>Lihat Denah</Text>
+                        <Text style={{ color: '#1d4ed8', fontWeight: '700', fontSize: scaleFont(11) }}>Lihat Denah</Text>
                       </Pressable>
                       <Pressable
                         onPress={() => {
@@ -1146,7 +1148,7 @@ export default function StudentExamsScreen() {
                           paddingVertical: 6,
                         }}
                       >
-                        <Text style={{ color: '#047857', fontWeight: '700', fontSize: 11 }}>Daftar Pengawas</Text>
+                        <Text style={{ color: '#047857', fontWeight: '700', fontSize: scaleFont(11) }}>Daftar Pengawas</Text>
                       </Pressable>
                     </View>
                   </View>
@@ -1176,7 +1178,7 @@ export default function StudentExamsScreen() {
       <Text
         style={{
           color: '#334155',
-          fontSize: 12,
+          fontSize: scaleFont(12),
           fontWeight: '600',
           marginBottom: 4,
         }}
@@ -1202,7 +1204,7 @@ export default function StudentExamsScreen() {
       <Text
         style={{
           color: '#334155',
-          fontSize: 12,
+          fontSize: scaleFont(12),
           fontWeight: '600',
           marginBottom: 4,
         }}
@@ -1252,8 +1254,8 @@ export default function StudentExamsScreen() {
                 padding: 14,
               }}
             >
-              <Text style={{ color: '#0f172a', fontSize: 18, fontWeight: '700' }}>{examScheduleTitle}</Text>
-              <Text style={{ color: '#64748b', fontSize: 12, marginTop: 4 }}>
+              <Text style={{ color: '#0f172a', fontSize: scaleFont(18), fontWeight: '700' }}>{examScheduleTitle}</Text>
+              <Text style={{ color: '#64748b', fontSize: scaleFont(12), lineHeight: scaleLineHeight(18), marginTop: 4 }}>
                 Menampilkan {filtered.length} dari {(examsQuery.data?.exams || []).filter((item) => {
                   const type = normalizeProgramCode(item.packet.programCode || item.packet.type);
                   return effectiveTypeFilter === 'ALL' || type === effectiveTypeFilter;
@@ -1285,8 +1287,8 @@ export default function StudentExamsScreen() {
                     }}
                   >
                     <View style={{ flex: 1 }}>
-                      <Text style={{ color: '#0f172a', fontSize: 17, fontWeight: '700' }}>{group.label}</Text>
-                      <Text style={{ color: '#64748b', fontSize: 12, marginTop: 4 }}>
+                      <Text style={{ color: '#0f172a', fontSize: scaleFont(17), fontWeight: '700' }}>{group.label}</Text>
+                      <Text style={{ color: '#64748b', fontSize: scaleFont(12), marginTop: 4 }}>
                         {group.exams.length} {isApplicantMode ? 'tes' : 'mata pelajaran'} terjadwal
                       </Text>
                     </View>
@@ -1301,12 +1303,12 @@ export default function StudentExamsScreen() {
                           paddingVertical: 6,
                         }}
                       >
-                        <Text style={{ color: '#1d4ed8', fontWeight: '700', fontSize: 12 }}>
+                        <Text style={{ color: '#1d4ed8', fontWeight: '700', fontSize: scaleFont(12) }}>
                           {group.exams.length} slot
                         </Text>
                       </View>
                       <View style={{ flexDirection: 'row', alignItems: 'center', gap: 4 }}>
-                        <Text style={{ color: '#2563eb', fontSize: 12, fontWeight: '700' }}>
+                        <Text style={{ color: '#2563eb', fontSize: scaleFont(12), fontWeight: '700' }}>
                           {isOpen ? 'Tutup Hari' : 'Buka Hari'}
                         </Text>
                         <Feather name={isOpen ? 'chevron-up' : 'chevron-down'} size={16} color="#2563eb" />
@@ -1343,7 +1345,15 @@ export default function StudentExamsScreen() {
                             }}
                           >
                             <View style={{ flexDirection: 'row', justifyContent: 'space-between', marginBottom: 6 }}>
-                              <Text style={{ color: '#0f172a', fontWeight: '700', flex: 1, paddingRight: 8 }}>
+                              <Text
+                                style={{
+                                  color: '#0f172a',
+                                  fontWeight: '700',
+                                  fontSize: scaleFont(15),
+                                  flex: 1,
+                                  paddingRight: 8,
+                                }}
+                              >
                                 {item.packet.title}
                               </Text>
                               <Text
@@ -1355,7 +1365,7 @@ export default function StudentExamsScreen() {
                                   borderRadius: 999,
                                   paddingHorizontal: 8,
                                   paddingVertical: 2,
-                                  fontSize: 11,
+                                  fontSize: scaleFont(11),
                                   fontWeight: '700',
                                 }}
                               >
@@ -1364,15 +1374,15 @@ export default function StudentExamsScreen() {
                                   : statusChip.label}
                               </Text>
                             </View>
-                            <Text style={{ color: '#64748b', fontSize: 12, marginBottom: 4 }}>
+                            <Text style={{ color: '#64748b', fontSize: scaleFont(12), lineHeight: scaleLineHeight(18), marginBottom: 4 }}>
                               {isApplicantMode
                                 ? `${vacancyTitle || subjectName}${vacancyCompany ? ` • ${vacancyCompany}` : ''} • ${examTypeLabel(type)}`
                                 : `${subjectName}${subjectCode ? ` (${subjectCode})` : ''} • ${examTypeLabel(type)}`}
                             </Text>
-                            <Text style={{ color: '#334155', fontSize: 12, marginBottom: 4 }}>
+                            <Text style={{ color: '#334155', fontSize: scaleFont(12), marginBottom: 4 }}>
                               Mulai: {formatDateTime(item.startTime)}
                             </Text>
-                            <Text style={{ color: '#334155', fontSize: 12, marginBottom: 6 }}>
+                            <Text style={{ color: '#334155', fontSize: scaleFont(12), marginBottom: 6 }}>
                               Selesai: {formatDateTime(item.endTime)} • Durasi: {item.packet.duration} menit
                             </Text>
                             {!isReady ? (
@@ -1386,24 +1396,24 @@ export default function StudentExamsScreen() {
                                   padding: 8,
                                 }}
                               >
-                                <Text style={{ color: '#92400e', fontSize: 12, fontWeight: '700' }}>Soal Belum Siap</Text>
-                                <Text style={{ color: '#92400e', fontSize: 11, marginTop: 4 }}>
+                                <Text style={{ color: '#92400e', fontSize: scaleFont(12), fontWeight: '700' }}>Soal Belum Siap</Text>
+                                <Text style={{ color: '#92400e', fontSize: scaleFont(11), lineHeight: scaleLineHeight(17), marginTop: 4 }}>
                                   {item.notReadyReason || 'Soal untuk jadwal ini belum disiapkan guru.'}
                                 </Text>
                               </View>
                             ) : null}
                             {item.makeupMode === 'FORMAL' && item.makeupStartTime ? (
-                              <Text style={{ color: '#c2410c', fontSize: 12, marginBottom: 4 }}>
+                              <Text style={{ color: '#c2410c', fontSize: scaleFont(12), marginBottom: 4 }}>
                                 Jadwal susulan: {formatDateTime(item.makeupStartTime)}
                               </Text>
                             ) : null}
                             {item.makeupDeadline ? (
-                              <Text style={{ color: '#c2410c', fontSize: 12, marginBottom: 4 }}>
+                              <Text style={{ color: '#c2410c', fontSize: scaleFont(12), marginBottom: 4 }}>
                                 {status === 'MAKEUP' ? 'Susulan sampai' : 'Batas susulan'}: {formatDateTime(item.makeupDeadline)}
                               </Text>
                             ) : null}
                             {item.makeupReason ? (
-                              <Text style={{ color: '#64748b', fontSize: 12, marginBottom: 6 }}>
+                              <Text style={{ color: '#64748b', fontSize: scaleFont(12), lineHeight: scaleLineHeight(18), marginBottom: 6 }}>
                                 Alasan susulan: {item.makeupReason}
                               </Text>
                             ) : null}
@@ -1418,7 +1428,7 @@ export default function StudentExamsScreen() {
                                   marginBottom: 8,
                                 }}
                               >
-                                <Text style={{ color: '#991b1b', fontSize: 12, fontWeight: '600' }}>
+                                <Text style={{ color: '#991b1b', fontSize: scaleFont(12), lineHeight: scaleLineHeight(18), fontWeight: '600' }}>
                                   {item.manualBlocked ? 'Diblokir wali kelas' : 'Diblokir'}:{' '}
                                   {item.manualBlocked
                                     ? item.blockReason || 'Akses ujian dibatasi secara manual.'
@@ -1435,15 +1445,15 @@ export default function StudentExamsScreen() {
                                       padding: 8,
                                     }}
                                   >
-                                    <Text style={{ color: '#92400e', fontSize: 11, fontWeight: '700' }}>Clearance finance</Text>
-                                    <Text style={{ color: '#92400e', fontSize: 11, marginTop: 2 }}>
+                                    <Text style={{ color: '#92400e', fontSize: scaleFont(11), fontWeight: '700' }}>Clearance finance</Text>
+                                    <Text style={{ color: '#92400e', fontSize: scaleFont(11), marginTop: 2 }}>
                                       Outstanding: {formatExamCurrency(item.financeClearance.outstandingAmount)}
                                     </Text>
-                                    <Text style={{ color: '#92400e', fontSize: 11, marginTop: 2 }}>
+                                    <Text style={{ color: '#92400e', fontSize: scaleFont(11), marginTop: 2 }}>
                                       Tagihan aktif: {item.financeClearance.outstandingInvoices} • overdue: {item.financeClearance.overdueInvoices}
                                     </Text>
                                     {!item.financeClearance.blocksExam ? (
-                                      <Text style={{ color: '#92400e', fontSize: 11, marginTop: 4 }}>
+                                      <Text style={{ color: '#92400e', fontSize: scaleFont(11), lineHeight: scaleLineHeight(17), marginTop: 4 }}>
                                         Status finance ini tidak menjadi penyebab blokir pada program ujian ini.
                                       </Text>
                                     ) : null}
@@ -1462,14 +1472,14 @@ export default function StudentExamsScreen() {
                                   padding: 8,
                                 }}
                               >
-                                <Text style={{ color: '#92400e', fontSize: 11, fontWeight: '700' }}>Info finance</Text>
-                                <Text style={{ color: '#92400e', fontSize: 11, marginTop: 2 }}>
+                                <Text style={{ color: '#92400e', fontSize: scaleFont(11), fontWeight: '700' }}>Info finance</Text>
+                                <Text style={{ color: '#92400e', fontSize: scaleFont(11), marginTop: 2 }}>
                                   Outstanding: {formatExamCurrency(item.financeClearance.outstandingAmount)}
                                 </Text>
-                                <Text style={{ color: '#92400e', fontSize: 11, marginTop: 2 }}>
+                                <Text style={{ color: '#92400e', fontSize: scaleFont(11), marginTop: 2 }}>
                                   Tagihan aktif: {item.financeClearance.outstandingInvoices} • overdue: {item.financeClearance.overdueInvoices}
                                 </Text>
-                                <Text style={{ color: '#92400e', fontSize: 11, marginTop: 4 }}>
+                                <Text style={{ color: '#92400e', fontSize: scaleFont(11), lineHeight: scaleLineHeight(17), marginTop: 4 }}>
                                   Program ini hanya memberi peringatan dan tidak memblokir ujian.
                                 </Text>
                               </View>
@@ -1488,7 +1498,7 @@ export default function StudentExamsScreen() {
                                 <Text
                                   style={{
                                     color: item.academicClearance.hasBelowKkm ? '#b91c1c' : '#92400e',
-                                    fontSize: 11,
+                                    fontSize: scaleFont(11),
                                     fontWeight: '700',
                                   }}
                                 >
@@ -1497,7 +1507,8 @@ export default function StudentExamsScreen() {
                                 <Text
                                   style={{
                                     color: item.academicClearance.hasBelowKkm ? '#b91c1c' : '#92400e',
-                                    fontSize: 11,
+                                    fontSize: scaleFont(11),
+                                    lineHeight: scaleLineHeight(17),
                                     marginTop: 4,
                                   }}
                                 >
@@ -1507,7 +1518,8 @@ export default function StudentExamsScreen() {
                                 <Text
                                   style={{
                                     color: item.academicClearance.hasBelowKkm ? '#b91c1c' : '#92400e',
-                                    fontSize: 11,
+                                    fontSize: scaleFont(11),
+                                    lineHeight: scaleLineHeight(17),
                                     marginTop: 4,
                                   }}
                                 >
@@ -1643,7 +1655,7 @@ export default function StudentExamsScreen() {
             `Pelanggaran ke-4 akan otomatis submit ${isApplicantMode ? 'tes' : 'ujian'} Anda.`,
             'Pastikan koneksi internet stabil sepanjang sesi berjalan.',
           ].map((rule) => (
-            <Text key={rule} style={{ color: '#92400e', fontSize: 12, lineHeight: 20, marginBottom: 4 }}>
+            <Text key={rule} style={{ color: '#92400e', fontSize: scaleFont(12), lineHeight: scaleLineHeight(20), marginBottom: 4 }}>
               • {rule}
             </Text>
           ))}
@@ -1669,15 +1681,15 @@ export default function StudentExamsScreen() {
                 marginBottom: 12,
               }}
             >
-              <Text style={{ color: '#0f172a', fontSize: 17, fontWeight: '800' }}>{selectedExam.packet.title}</Text>
-              <Text style={{ color: '#64748b', marginTop: 4, fontSize: 13 }}>
+              <Text style={{ color: '#0f172a', fontSize: scaleFont(17), fontWeight: '800' }}>{selectedExam.packet.title}</Text>
+              <Text style={{ color: '#64748b', marginTop: 4, fontSize: scaleFont(13), lineHeight: scaleLineHeight(20) }}>
                 {resolveSubjectLabel(selectedExam).name}
                 {resolveSubjectLabel(selectedExam).code ? ` (${resolveSubjectLabel(selectedExam).code})` : ''}
               </Text>
-              <Text style={{ color: '#334155', marginTop: 8, fontSize: 12 }}>
+              <Text style={{ color: '#334155', marginTop: 8, fontSize: scaleFont(12) }}>
                 Mulai: {formatDateTime(selectedExam.startTime)}
               </Text>
-              <Text style={{ color: '#334155', marginTop: 4, fontSize: 12 }}>
+              <Text style={{ color: '#334155', marginTop: 4, fontSize: scaleFont(12) }}>
                 Selesai: {formatDateTime(selectedExam.endTime)} • Durasi: {selectedExam.packet.duration} menit
               </Text>
             </View>
@@ -1698,7 +1710,7 @@ export default function StudentExamsScreen() {
                 'Pelanggaran ke-4 akan mengumpulkan ujian otomatis.',
                 'Gambar soal dapat diperbesar tanpa keluar dari ujian.',
               ].map((rule) => (
-                <Text key={rule} style={{ color: '#92400e', fontSize: 12, lineHeight: 20, marginBottom: 4 }}>
+                <Text key={rule} style={{ color: '#92400e', fontSize: scaleFont(12), lineHeight: scaleLineHeight(20), marginBottom: 4 }}>
                   • {rule}
                 </Text>
               ))}

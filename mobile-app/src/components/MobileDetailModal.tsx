@@ -3,6 +3,7 @@ import { Feather } from '@expo/vector-icons';
 import { Modal, Pressable, ScrollView, Text, View } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { BRAND_COLORS } from '../config/brand';
+import { useAppTextScale } from '../theme/AppTextScaleProvider';
 
 type FeatherIconName = React.ComponentProps<typeof Feather>['name'];
 
@@ -26,6 +27,7 @@ export function MobileDetailModal({
   children,
 }: MobileDetailModalProps) {
   const insets = useSafeAreaInsets();
+  const { typography } = useAppTextScale();
 
   return (
     <Modal visible={visible} transparent animationType="fade" onRequestClose={onClose}>
@@ -70,9 +72,9 @@ export function MobileDetailModal({
                 <Feather name={iconName} size={17} color={accentColor} />
               </View>
               <View style={{ flex: 1 }}>
-                <Text style={{ color: BRAND_COLORS.textDark, fontSize: 18, fontWeight: '700' }}>{title}</Text>
+                <Text style={{ color: BRAND_COLORS.textDark, ...typography.sectionTitle }}>{title}</Text>
                 {subtitle ? (
-                  <Text style={{ color: BRAND_COLORS.textMuted, fontSize: 12, marginTop: 3, lineHeight: 18 }}>
+                  <Text style={{ color: BRAND_COLORS.textMuted, ...typography.caption, marginTop: 3 }}>
                     {subtitle}
                   </Text>
                 ) : null}
@@ -111,7 +113,7 @@ export function MobileDetailModal({
               alignItems: 'center',
             }}
           >
-            <Text style={{ color: BRAND_COLORS.textDark, fontWeight: '700' }}>Tutup</Text>
+            <Text style={{ color: BRAND_COLORS.textDark, ...typography.bodyCompact, fontWeight: '700' }}>Tutup</Text>
           </Pressable>
         </View>
       </View>

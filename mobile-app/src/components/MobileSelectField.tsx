@@ -2,7 +2,7 @@ import { useMemo, useState } from 'react';
 import { Feather } from '@expo/vector-icons';
 import { Pressable, ScrollView, Text, View } from 'react-native';
 import { useAppTheme } from '../theme/AppThemeProvider';
-import { MOBILE_FONT_SIZES, MOBILE_TYPOGRAPHY } from '../theme/typography';
+import { useAppTextScale } from '../theme/AppTextScaleProvider';
 
 export type MobileSelectOption = {
   label: string;
@@ -32,6 +32,7 @@ export function MobileSelectField({
 }: MobileSelectFieldProps) {
   const [open, setOpen] = useState(false);
   const { colors, resolvedTheme } = useAppTheme();
+  const { fontSizes, typography } = useAppTextScale();
 
   const selectedOption = useMemo(
     () => options.find((option) => String(option.value) === String(value)) || null,
@@ -40,7 +41,7 @@ export function MobileSelectField({
 
   return (
     <View style={{ marginBottom: 10 }}>
-      {label ? <Text style={{ ...MOBILE_TYPOGRAPHY.label, color: colors.textMuted, marginBottom: 6 }}>{label}</Text> : null}
+      {label ? <Text style={{ ...typography.label, color: colors.textMuted, marginBottom: 6 }}>{label}</Text> : null}
 
       <Pressable
         onPress={() => {
@@ -65,7 +66,7 @@ export function MobileSelectField({
           numberOfLines={1}
           style={{
             color: selectedOption ? colors.text : colors.textSoft,
-            fontSize: MOBILE_FONT_SIZES.bodyCompact,
+            fontSize: fontSizes.bodyCompact,
             fontWeight: selectedOption ? '600' : '500',
             flex: 1,
             paddingRight: 8,
@@ -128,14 +129,14 @@ export function MobileSelectField({
                       style={{
                         color: active ? colors.primary : colors.text,
                         fontWeight: active ? '700' : '600',
-                        fontSize: MOBILE_FONT_SIZES.bodyCompact,
+                        fontSize: fontSizes.bodyCompact,
                         flex: 1,
                       }}
                     >
                       {option.label}
                     </Text>
                   </View>
-                  {active ? <Text style={{ color: colors.primary, ...MOBILE_TYPOGRAPHY.caption, fontWeight: '700' }}>Terpilih</Text> : null}
+                  {active ? <Text style={{ color: colors.primary, ...typography.caption, fontWeight: '700' }}>Terpilih</Text> : null}
                 </Pressable>
               );
             })}
@@ -143,7 +144,7 @@ export function MobileSelectField({
         </View>
       ) : null}
 
-      {helperText ? <Text style={{ marginTop: 4, color: colors.textMuted, ...MOBILE_TYPOGRAPHY.caption }}>{helperText}</Text> : null}
+      {helperText ? <Text style={{ marginTop: 4, color: colors.textMuted, ...typography.caption }}>{helperText}</Text> : null}
     </View>
   );
 }

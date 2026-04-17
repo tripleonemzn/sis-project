@@ -11,6 +11,7 @@ import { installMobileWebRedirectGuard } from '../src/lib/navigation/mobileWebGu
 import { NotificationRealtimeBridge } from '../src/features/notifications/NotificationRealtimeBridge';
 import { installAppAlertOverride } from '../src/lib/ui/appAlert';
 import { AppThemeProvider, useAppTheme } from '../src/theme/AppThemeProvider';
+import { AppTextScaleProvider } from '../src/theme/AppTextScaleProvider';
 
 installAppAlertOverride();
 
@@ -38,7 +39,9 @@ export default function RootLayout() {
     <QueryProvider>
       <AuthProvider>
         <AppThemeProvider>
-          <RootStack />
+          <AppTextScaleProvider>
+            <RootStack />
+          </AppTextScaleProvider>
         </AppThemeProvider>
       </AuthProvider>
     </QueryProvider>

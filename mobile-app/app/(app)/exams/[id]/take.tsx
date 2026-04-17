@@ -28,6 +28,7 @@ import { ExamQuestion, ExamQuestionOption, ExamQuestionType } from '../../../../
 import { useStudentExamStartQuery } from '../../../../src/features/exams/useStudentExamStartQuery';
 import { ENV } from '../../../../src/config/env';
 import { getStandardPagePadding } from '../../../../src/lib/ui/pageLayout';
+import { useAppTextScale } from '../../../../src/theme/AppTextScaleProvider';
 
 function parseScheduleId(raw: string | string[] | undefined): number | null {
   const value = Array.isArray(raw) ? raw[0] : raw;
@@ -351,6 +352,7 @@ function resolveTakeExamSubject(packet: {
 export default function StudentExamTakeScreen() {
   const router = useRouter();
   const insets = useSafeAreaInsets();
+  const { scaleFont, scaleLineHeight } = useAppTextScale();
   const params = useLocalSearchParams<{ id?: string | string[]; ready?: string | string[] }>();
   const { isAuthenticated, isLoading, user } = useAuth();
   const canAccessExams = user?.role === 'STUDENT' || user?.role === 'CALON_SISWA' || user?.role === 'UMUM';
@@ -1000,7 +1002,7 @@ export default function StudentExamTakeScreen() {
     return (
       <ScrollView style={{ flex: 1, backgroundColor: '#f8fafc' }} contentContainerStyle={pageContentPadding}>
         <Stack.Screen options={{ headerShown: false, gestureEnabled: false }} />
-        <Text style={{ fontSize: 20, fontWeight: '700', marginBottom: 8 }}>
+        <Text style={{ fontSize: scaleFont(20), fontWeight: '700', marginBottom: 8 }}>
           {`Mengerjakan ${examTakeLabel}`}
         </Text>
         <QueryStateView type="error" message="Halaman ini hanya tersedia untuk peserta ujian yang aktif." />
@@ -1012,7 +1014,7 @@ export default function StudentExamTakeScreen() {
     return (
       <ScrollView style={{ flex: 1, backgroundColor: '#f8fafc' }} contentContainerStyle={pageContentPadding}>
         <Stack.Screen options={{ headerShown: false, gestureEnabled: false }} />
-        <Text style={{ fontSize: 20, fontWeight: '700', marginBottom: 8 }}>{`Mengerjakan ${examTakeLabel}`}</Text>
+        <Text style={{ fontSize: scaleFont(20), fontWeight: '700', marginBottom: 8 }}>{`Mengerjakan ${examTakeLabel}`}</Text>
         <View
           style={{
             borderWidth: 1,
@@ -1035,7 +1037,7 @@ export default function StudentExamTakeScreen() {
     return (
       <ScrollView style={{ flex: 1, backgroundColor: '#f8fafc' }} contentContainerStyle={pageContentPadding}>
         <Stack.Screen options={{ headerShown: false, gestureEnabled: false }} />
-        <Text style={{ fontSize: 20, fontWeight: '700', marginBottom: 8 }}>{`Mengerjakan ${examTakeLabel}`}</Text>
+        <Text style={{ fontSize: scaleFont(20), fontWeight: '700', marginBottom: 8 }}>{`Mengerjakan ${examTakeLabel}`}</Text>
         <QueryStateView type="error" message={`ID jadwal ${examTakeLabel.toLowerCase()} tidak valid.`} />
       </ScrollView>
     );
@@ -1047,7 +1049,7 @@ export default function StudentExamTakeScreen() {
     return (
       <ScrollView style={{ flex: 1, backgroundColor: '#f8fafc' }} contentContainerStyle={pageContentPadding}>
         <Stack.Screen options={{ headerShown: false, gestureEnabled: false }} />
-        <Text style={{ fontSize: 20, fontWeight: '700', marginBottom: 8 }}>{`Mengerjakan ${examTakeLabel}`}</Text>
+        <Text style={{ fontSize: scaleFont(20), fontWeight: '700', marginBottom: 8 }}>{`Mengerjakan ${examTakeLabel}`}</Text>
         <QueryStateView
           type="error"
           message={`Gagal memulai sesi ${examTakeLabel.toLowerCase()}.`}
@@ -1073,7 +1075,7 @@ export default function StudentExamTakeScreen() {
     return (
       <ScrollView style={{ flex: 1, backgroundColor: '#f8fafc' }} contentContainerStyle={pageContentPadding}>
         <Stack.Screen options={{ headerShown: false, gestureEnabled: false }} />
-        <Text style={{ fontSize: 20, fontWeight: '700', marginBottom: 8 }}>{`Mengerjakan ${examTakeLabel}`}</Text>
+        <Text style={{ fontSize: scaleFont(20), fontWeight: '700', marginBottom: 8 }}>{`Mengerjakan ${examTakeLabel}`}</Text>
         <QueryStateView type="error" message={`Soal ${examTakeLabel.toLowerCase()} tidak tersedia.`} />
         <Pressable
           onPress={() => router.replace('/exams')}
@@ -1105,21 +1107,21 @@ export default function StudentExamTakeScreen() {
             marginBottom: 12,
           }}
         >
-          <Text style={{ color: '#0f172a', fontWeight: '800', fontSize: 20, marginBottom: 6 }}>
+          <Text style={{ color: '#0f172a', fontWeight: '800', fontSize: scaleFont(20), marginBottom: 6 }}>
             {startQuery.data.packet.title}
           </Text>
-          <Text style={{ color: '#64748b', fontSize: 13, marginBottom: 10 }}>
+          <Text style={{ color: '#64748b', fontSize: scaleFont(13), lineHeight: scaleLineHeight(20), marginBottom: 10 }}>
             {resolvedTakeSubject.name}
             {resolvedTakeSubject.code ? ` (${resolvedTakeSubject.code})` : ''}
           </Text>
           <View style={{ flexDirection: 'row', flexWrap: 'wrap', gap: 8 }}>
             <View style={{ backgroundColor: '#eff6ff', borderColor: '#bfdbfe', borderWidth: 1, borderRadius: 999, paddingHorizontal: 10, paddingVertical: 6 }}>
-              <Text style={{ color: '#1d4ed8', fontSize: 12, fontWeight: '700' }}>
+              <Text style={{ color: '#1d4ed8', fontSize: scaleFont(12), fontWeight: '700' }}>
                 Mulai {formatDateTime(startQuery.data.session.startTime)}
               </Text>
             </View>
             <View style={{ backgroundColor: '#ecfeff', borderColor: '#a5f3fc', borderWidth: 1, borderRadius: 999, paddingHorizontal: 10, paddingVertical: 6 }}>
-              <Text style={{ color: '#0f766e', fontSize: 12, fontWeight: '700' }}>Durasi {formatTime(remainingSeconds)}</Text>
+              <Text style={{ color: '#0f766e', fontSize: scaleFont(12), fontWeight: '700' }}>Durasi {formatTime(remainingSeconds)}</Text>
             </View>
           </View>
         </View>
@@ -1134,10 +1136,10 @@ export default function StudentExamTakeScreen() {
             marginBottom: 14,
           }}
         >
-          <Text style={{ color: '#92400e', fontWeight: '800', fontSize: 18, marginBottom: 8 }}>
+          <Text style={{ color: '#92400e', fontWeight: '800', fontSize: scaleFont(18), marginBottom: 8 }}>
             Perhatian Sebelum Mengerjakan {examTakeLabel}
           </Text>
-          <Text style={{ color: '#92400e', fontSize: 13, lineHeight: 20, marginBottom: 6 }}>
+          <Text style={{ color: '#92400e', fontSize: scaleFont(13), lineHeight: scaleLineHeight(20), marginBottom: 6 }}>
             Sesi Anda sudah disiapkan. Baca aturan berikut sebelum soal dibuka.
           </Text>
           {[
@@ -1149,7 +1151,7 @@ export default function StudentExamTakeScreen() {
             'Bar status disembunyikan selama ujian untuk meminimalkan akses notifikasi.',
             'Gambar pada soal dapat diketuk untuk diperbesar tanpa keluar dari ujian.',
           ].map((rule) => (
-            <Text key={rule} style={{ color: '#92400e', fontSize: 13, lineHeight: 21, marginBottom: 4 }}>
+            <Text key={rule} style={{ color: '#92400e', fontSize: scaleFont(13), lineHeight: scaleLineHeight(21), marginBottom: 4 }}>
               • {rule}
             </Text>
           ))}
@@ -1166,7 +1168,7 @@ export default function StudentExamTakeScreen() {
             alignItems: 'center',
           }}
         >
-          <Text style={{ color: '#fff', fontWeight: '700', fontSize: 15 }}>{`Mulai ${examTakeLabel}`}</Text>
+          <Text style={{ color: '#fff', fontWeight: '700', fontSize: scaleFont(15) }}>{`Mulai ${examTakeLabel}`}</Text>
         </Pressable>
       </ScrollView>
     );
@@ -1191,10 +1193,10 @@ export default function StudentExamTakeScreen() {
           elevation: 2,
         }}
       >
-        <Text style={{ color: '#0f172a', fontWeight: '800', fontSize: 18, marginBottom: 6 }}>
+        <Text style={{ color: '#0f172a', fontWeight: '800', fontSize: scaleFont(18), marginBottom: 6 }}>
           {startQuery.data.packet.title}
         </Text>
-        <Text style={{ color: '#64748b', fontSize: 13, marginBottom: 10 }}>
+        <Text style={{ color: '#64748b', fontSize: scaleFont(13), lineHeight: scaleLineHeight(20), marginBottom: 10 }}>
           {resolvedTakeSubject.name}
           {resolvedTakeSubject.code ? ` (${resolvedTakeSubject.code})` : ''}
         </Text>
@@ -1210,18 +1212,18 @@ export default function StudentExamTakeScreen() {
               opacity: timerPulseOpacity,
             }}
           >
-            <Text style={{ color: timerChipPalette.textColor, fontSize: 12, fontWeight: '700' }}>
+            <Text style={{ color: timerChipPalette.textColor, fontSize: scaleFont(12), fontWeight: '700' }}>
               Sisa waktu {formatTime(remainingSeconds)}
             </Text>
           </Animated.View>
           <View style={{ backgroundColor: '#eff6ff', borderColor: '#bfdbfe', borderWidth: 1, borderRadius: 999, paddingHorizontal: 10, paddingVertical: 6 }}>
-            <Text style={{ color: '#1d4ed8', fontSize: 12, fontWeight: '700' }}>Mulai {formatDateTime(startQuery.data.session.startTime)}</Text>
+            <Text style={{ color: '#1d4ed8', fontSize: scaleFont(12), fontWeight: '700' }}>Mulai {formatDateTime(startQuery.data.session.startTime)}</Text>
           </View>
           <View style={{ backgroundColor: displayViolations > 0 ? '#fff1f2' : '#f8fafc', borderColor: displayViolations > 0 ? '#fecdd3' : '#e2e8f0', borderWidth: 1, borderRadius: 999, paddingHorizontal: 10, paddingVertical: 6 }}>
-            <Text style={{ color: displayViolations > 0 ? '#be123c' : '#475569', fontSize: 12, fontWeight: '700' }}>Pelanggaran {displayViolations}/3</Text>
+            <Text style={{ color: displayViolations > 0 ? '#be123c' : '#475569', fontSize: scaleFont(12), fontWeight: '700' }}>Pelanggaran {displayViolations}/3</Text>
           </View>
         </View>
-        <Text style={{ color: '#475569', fontSize: 12, marginTop: 10 }}>
+        <Text style={{ color: '#475569', fontSize: scaleFont(12), marginTop: 10 }}>
           Autosave:{' '}
           {autosaveState === 'saving'
             ? 'menyimpan...'
@@ -1243,7 +1245,7 @@ export default function StudentExamTakeScreen() {
               paddingVertical: 8,
             }}
           >
-            <Text style={{ color: '#9f1239', fontSize: 12, fontWeight: '700' }}>{lastViolationMessage}</Text>
+            <Text style={{ color: '#9f1239', fontSize: scaleFont(12), lineHeight: scaleLineHeight(18), fontWeight: '700' }}>{lastViolationMessage}</Text>
           </View>
         ) : null}
       </View>
@@ -1258,7 +1260,7 @@ export default function StudentExamTakeScreen() {
           marginBottom: 10,
         }}
       >
-        <Text style={{ color: '#334155', fontSize: 12, marginBottom: 8 }}>
+        <Text style={{ color: '#334155', fontSize: scaleFont(12), marginBottom: 8 }}>
           Progres: {answeredCount}/{questions.length} soal terisi
         </Text>
         <View style={{ flexDirection: 'row', flexWrap: 'wrap', marginHorizontal: -3 }}>
@@ -1288,7 +1290,7 @@ export default function StudentExamTakeScreen() {
                     justifyContent: 'center',
                   }}
                 >
-                  <Text style={{ color: isCurrent ? '#1d4ed8' : '#0f172a', fontSize: 11, fontWeight: '700' }}>
+                  <Text style={{ color: isCurrent ? '#1d4ed8' : '#0f172a', fontSize: scaleFont(11), fontWeight: '700' }}>
                     {index + 1}
                   </Text>
                 </Pressable>
@@ -1371,8 +1373,8 @@ export default function StudentExamTakeScreen() {
         ) : null}
 
         {currentType === 'ESSAY' ? (
-          <TextInput
-            value={typeof effectiveAnswers[currentQuestion.id] === 'string' ? (effectiveAnswers[currentQuestion.id] as string) : ''}
+        <TextInput
+          value={typeof effectiveAnswers[currentQuestion.id] === 'string' ? (effectiveAnswers[currentQuestion.id] as string) : ''}
             onChangeText={(value) => {
               setAnswers((prev) => ({
                 ...prev,
@@ -1383,16 +1385,18 @@ export default function StudentExamTakeScreen() {
             multiline
             textAlignVertical="top"
             placeholder="Tulis jawaban Anda..."
-            style={{
-              borderWidth: 1,
-              borderColor: '#cbd5e1',
-              borderRadius: 10,
-              minHeight: 140,
-              paddingHorizontal: 10,
-              paddingVertical: 10,
-              backgroundColor: '#fff',
-            }}
-          />
+          style={{
+            borderWidth: 1,
+            borderColor: '#cbd5e1',
+            borderRadius: 10,
+            minHeight: 140,
+            paddingHorizontal: 10,
+            paddingVertical: 10,
+            backgroundColor: '#fff',
+            fontSize: scaleFont(14),
+            lineHeight: scaleLineHeight(22),
+          }}
+        />
         ) : currentType === 'MATRIX_SINGLE_CHOICE' ? (
           <ScrollView horizontal showsHorizontalScrollIndicator={false}>
             <View style={{ borderWidth: 1, borderColor: '#cbd5e1', borderRadius: 12, overflow: 'hidden', backgroundColor: '#fff' }}>
@@ -1410,7 +1414,7 @@ export default function StudentExamTakeScreen() {
                       justifyContent: 'center',
                     }}
                   >
-                    <Text style={{ color: '#334155', fontWeight: '700', fontSize: 12 }}>{column.label}</Text>
+                    <Text style={{ color: '#334155', fontWeight: '700', fontSize: scaleFont(12) }}>{column.label}</Text>
                   </View>
                 ))}
                 {currentMatrixColumns.map((column) => (
@@ -1426,7 +1430,7 @@ export default function StudentExamTakeScreen() {
                       justifyContent: 'center',
                     }}
                   >
-                    <Text style={{ color: '#334155', fontWeight: '700', fontSize: 12, textAlign: 'center' }}>
+                    <Text style={{ color: '#334155', fontWeight: '700', fontSize: scaleFont(12), textAlign: 'center' }}>
                       {column.content}
                     </Text>
                   </View>
@@ -1460,7 +1464,7 @@ export default function StudentExamTakeScreen() {
                           paddingVertical: 12,
                         }}
                       >
-                        <Text style={{ color: '#0f172a', fontSize: 12 }}>
+                        <Text style={{ color: '#0f172a', fontSize: scaleFont(12), lineHeight: scaleLineHeight(18) }}>
                           {getMatrixRowCellContent(row, column.id, promptColumnIndex) || '-'}
                         </Text>
                       </View>
@@ -1550,7 +1554,7 @@ export default function StudentExamTakeScreen() {
                             justifyContent: 'center',
                           }}
                         >
-                          {selected ? <Text style={{ color: '#fff', fontSize: 13, fontWeight: '800' }}>✓</Text> : null}
+                          {selected ? <Text style={{ color: '#fff', fontSize: scaleFont(13), fontWeight: '800' }}>✓</Text> : null}
                         </View>
                       ) : (
                         <View
@@ -1616,7 +1620,7 @@ export default function StudentExamTakeScreen() {
                                 paddingVertical: 6,
                               }}
                             >
-                              <Text style={{ color: selected ? '#1d4ed8' : '#334155', fontSize: 12, fontWeight: '700' }}>
+                              <Text style={{ color: selected ? '#1d4ed8' : '#334155', fontSize: scaleFont(12), fontWeight: '700' }}>
                                 {selected ? 'Jawaban dipilih' : 'Pilih jawaban'}
                               </Text>
                             </Pressable>
@@ -1631,7 +1635,7 @@ export default function StudentExamTakeScreen() {
                                 paddingVertical: 6,
                               }}
                             >
-                              <Text style={{ color: '#1d4ed8', fontSize: 12, fontWeight: '700' }}>Perbesar gambar</Text>
+                              <Text style={{ color: '#1d4ed8', fontSize: scaleFont(12), fontWeight: '700' }}>Perbesar gambar</Text>
                             </Pressable>
                           </View>
                         </View>
@@ -1643,7 +1647,7 @@ export default function StudentExamTakeScreen() {
             })}
           </View>
         ) : (
-          <Text style={{ color: '#b91c1c', fontSize: 12 }}>Opsi jawaban tidak tersedia pada soal ini.</Text>
+          <Text style={{ color: '#b91c1c', fontSize: scaleFont(12), lineHeight: scaleLineHeight(18) }}>Opsi jawaban tidak tersedia pada soal ini.</Text>
         )}
       </View>
 
