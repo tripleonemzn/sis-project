@@ -7,6 +7,7 @@ import { QueryStateView } from '../../components/QueryStateView';
 import { BRAND_COLORS } from '../../config/brand';
 import { getStandardPagePadding } from '../../lib/ui/pageLayout';
 import { useAuth } from '../auth/AuthProvider';
+import { useAppTextScale } from '../../theme/AppTextScaleProvider';
 
 type QuickAction = {
   label: string;
@@ -46,6 +47,7 @@ export function TeacherWebBridgeModuleScreen({
   const router = useRouter();
   const { isAuthenticated, isLoading, user } = useAuth();
   const pagePadding = getStandardPagePadding(insets, { bottom: 120 });
+  const { scaleFont, scaleLineHeight } = useAppTextScale();
 
   const roleAllowed = user?.role === 'TEACHER';
   const dutyAllowed = !expectedDuties?.length || hasAnyDuty(user?.additionalDuties, expectedDuties);
@@ -66,7 +68,9 @@ export function TeacherWebBridgeModuleScreen({
   if (!roleAllowed) {
     return (
       <ScrollView style={{ flex: 1, backgroundColor: '#f8fafc' }} contentContainerStyle={pagePadding}>
-        <Text style={{ fontSize: 20, fontWeight: '700', marginBottom: 8 }}>{title}</Text>
+        <Text style={{ fontSize: scaleFont(20), lineHeight: scaleLineHeight(28), fontWeight: '700', marginBottom: 8 }}>
+          {title}
+        </Text>
         <QueryStateView type="error" message="Halaman ini khusus untuk role guru." />
       </ScrollView>
     );
@@ -75,7 +79,9 @@ export function TeacherWebBridgeModuleScreen({
   if (!isAllowed) {
     return (
       <ScrollView style={{ flex: 1, backgroundColor: '#f8fafc' }} contentContainerStyle={pagePadding}>
-        <Text style={{ fontSize: 20, fontWeight: '700', marginBottom: 8 }}>{title}</Text>
+        <Text style={{ fontSize: scaleFont(20), lineHeight: scaleLineHeight(28), fontWeight: '700', marginBottom: 8 }}>
+          {title}
+        </Text>
         <QueryStateView type="error" message="Anda belum memiliki akses ke modul ini." />
       </ScrollView>
     );
@@ -109,8 +115,12 @@ export function TeacherWebBridgeModuleScreen({
           <Feather name={icon} size={18} color="#e2e8f0" />
         </View>
         <View style={{ flex: 1 }}>
-          <Text style={{ color: '#fff', fontSize: 20, fontWeight: '700' }}>{title}</Text>
-          <Text style={{ color: '#dbeafe', marginTop: 2 }}>{subtitle}</Text>
+          <Text style={{ color: '#fff', fontSize: scaleFont(20), lineHeight: scaleLineHeight(28), fontWeight: '700' }}>
+            {title}
+          </Text>
+          <Text style={{ color: '#dbeafe', marginTop: 2, fontSize: scaleFont(13), lineHeight: scaleLineHeight(20) }}>
+            {subtitle}
+          </Text>
         </View>
       </View>
 
@@ -125,7 +135,7 @@ export function TeacherWebBridgeModuleScreen({
         }}
       >
         <Text style={{ color: BRAND_COLORS.textDark, fontWeight: '700', marginBottom: 6 }}>{helperTitle}</Text>
-        <Text style={{ color: '#475569', lineHeight: 20 }}>{helperDescription}</Text>
+        <Text style={{ color: '#475569', fontSize: scaleFont(13), lineHeight: scaleLineHeight(20) }}>{helperDescription}</Text>
       </View>
 
       {quickActions.length > 0 ? (
@@ -158,7 +168,9 @@ export function TeacherWebBridgeModuleScreen({
             >
               <Text style={{ color: BRAND_COLORS.textDark, fontWeight: '700' }}>{action.label}</Text>
               {action.description ? (
-                <Text style={{ color: '#64748b', marginTop: 2, fontSize: 12 }}>{action.description}</Text>
+                <Text style={{ color: '#64748b', marginTop: 2, fontSize: scaleFont(12), lineHeight: scaleLineHeight(18) }}>
+                  {action.description}
+                </Text>
               ) : null}
             </Pressable>
           ))}
@@ -176,7 +188,7 @@ export function TeacherWebBridgeModuleScreen({
           paddingHorizontal: 12,
         }}
       >
-        <Text style={{ color: '#334155', textAlign: 'center' }}>
+        <Text style={{ color: '#334155', textAlign: 'center', fontSize: scaleFont(13), lineHeight: scaleLineHeight(20) }}>
           Fitur operasional detail belum tersedia di web maupun mobile untuk modul ini.
         </Text>
       </View>

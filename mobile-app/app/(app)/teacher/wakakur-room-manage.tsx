@@ -11,6 +11,7 @@ import { adminApi } from '../../../src/features/admin/adminApi';
 import { examApi } from '../../../src/features/exams/examApi';
 import { getStandardPagePadding } from '../../../src/lib/ui/pageLayout';
 import { notifyApiError, notifySuccess } from '../../../src/lib/ui/feedback';
+import { useAppTextScale } from '../../../src/theme/AppTextScaleProvider';
 
 type StudentLite = {
   id: number;
@@ -72,6 +73,7 @@ export default function TeacherWakakurRoomManageScreen() {
   const queryClient = useQueryClient();
   const { isAuthenticated, isLoading, user } = useAuth();
   const pagePadding = getStandardPagePadding(insets, { bottom: 120 });
+  const { scaleFont, scaleLineHeight } = useAppTextScale();
   const sittingId = useMemo(() => parseSittingId(params.sittingId), [params.sittingId]);
 
   const [roomSearch, setRoomSearch] = useState('');
@@ -337,7 +339,9 @@ export default function TeacherWakakurRoomManageScreen() {
   if (!isAllowed) {
     return (
       <ScrollView style={{ flex: 1, backgroundColor: '#f8fafc' }} contentContainerStyle={pagePadding}>
-        <Text style={{ fontSize: 20, fontWeight: '700', marginBottom: 8 }}>Kelola Ruang Ujian</Text>
+        <Text style={{ fontSize: scaleFont(20), lineHeight: scaleLineHeight(28), fontWeight: '700', marginBottom: 8 }}>
+          Kelola Ruang Ujian
+        </Text>
         <QueryStateView type="error" message="Halaman ini khusus untuk role guru." />
       </ScrollView>
     );
@@ -346,7 +350,9 @@ export default function TeacherWakakurRoomManageScreen() {
   if (!sittingId) {
     return (
       <ScrollView style={{ flex: 1, backgroundColor: '#f8fafc' }} contentContainerStyle={pagePadding}>
-        <Text style={{ fontSize: 20, fontWeight: '700', marginBottom: 8 }}>Kelola Ruang Ujian</Text>
+        <Text style={{ fontSize: scaleFont(20), lineHeight: scaleLineHeight(28), fontWeight: '700', marginBottom: 8 }}>
+          Kelola Ruang Ujian
+        </Text>
         <QueryStateView type="error" message="Parameter ruang ujian tidak valid." />
       </ScrollView>
     );
@@ -379,8 +385,18 @@ export default function TeacherWakakurRoomManageScreen() {
         />
       }
     >
-      <Text style={{ fontSize: 20, fontWeight: '700', color: BRAND_COLORS.textDark, marginBottom: 6 }}>Kelola Ruang Ujian</Text>
-      <Text style={{ color: BRAND_COLORS.textMuted, marginBottom: 12 }}>
+      <Text
+        style={{
+          fontSize: scaleFont(20),
+          lineHeight: scaleLineHeight(28),
+          fontWeight: '700',
+          color: BRAND_COLORS.textDark,
+          marginBottom: 6,
+        }}
+      >
+        Kelola Ruang Ujian
+      </Text>
+      <Text style={{ color: BRAND_COLORS.textMuted, fontSize: scaleFont(13), lineHeight: scaleLineHeight(20), marginBottom: 12 }}>
         Atur ruang, pengawas, jam sesi, dan komposisi siswa secara penuh.
       </Text>
 
@@ -404,7 +420,7 @@ export default function TeacherWakakurRoomManageScreen() {
             <Text style={{ color: BRAND_COLORS.textDark, fontWeight: '700', marginBottom: 4 }}>
               {detailQuery.data.roomName} • {String(detailQuery.data.examType || '-')}
             </Text>
-            <Text style={{ color: BRAND_COLORS.textMuted, fontSize: 12 }}>
+            <Text style={{ color: BRAND_COLORS.textMuted, fontSize: scaleFont(12), lineHeight: scaleLineHeight(18) }}>
               Siswa terpasang: {selectedStudentIds.length} • Session: {detailQuery.data.sessionLabel || '-'}
             </Text>
           </View>
@@ -421,7 +437,9 @@ export default function TeacherWakakurRoomManageScreen() {
           >
             <Text style={{ color: BRAND_COLORS.textDark, fontWeight: '700', marginBottom: 8 }}>Pengaturan Ruang</Text>
 
-            <Text style={{ color: BRAND_COLORS.textMuted, fontSize: 12, marginBottom: 4 }}>Cari Ruang</Text>
+            <Text style={{ color: BRAND_COLORS.textMuted, fontSize: scaleFont(12), lineHeight: scaleLineHeight(18), marginBottom: 4 }}>
+              Cari Ruang
+            </Text>
             <TextInput
               value={roomSearch}
               onChangeText={setRoomSearch}
@@ -435,6 +453,8 @@ export default function TeacherWakakurRoomManageScreen() {
                 paddingVertical: 9,
                 color: BRAND_COLORS.textDark,
                 marginBottom: 8,
+                fontSize: scaleFont(13),
+                lineHeight: scaleLineHeight(20),
               }}
             />
 
@@ -457,7 +477,10 @@ export default function TeacherWakakurRoomManageScreen() {
                       <Text numberOfLines={1} style={{ color: selected ? BRAND_COLORS.navy : BRAND_COLORS.textDark, fontWeight: '700' }}>
                         {room.name}
                       </Text>
-                      <Text numberOfLines={1} style={{ color: BRAND_COLORS.textMuted, fontSize: 11, marginTop: 2 }}>
+                      <Text
+                        numberOfLines={1}
+                        style={{ color: BRAND_COLORS.textMuted, fontSize: scaleFont(11), lineHeight: scaleLineHeight(16), marginTop: 2 }}
+                      >
                         {room.category?.name || '-'}
                       </Text>
                     </Pressable>
@@ -466,7 +489,9 @@ export default function TeacherWakakurRoomManageScreen() {
               })}
             </View>
 
-            <Text style={{ color: BRAND_COLORS.textMuted, fontSize: 12, marginBottom: 4 }}>Cari Pengawas</Text>
+            <Text style={{ color: BRAND_COLORS.textMuted, fontSize: scaleFont(12), lineHeight: scaleLineHeight(18), marginBottom: 4 }}>
+              Cari Pengawas
+            </Text>
             <TextInput
               value={teacherSearch}
               onChangeText={setTeacherSearch}
@@ -480,6 +505,8 @@ export default function TeacherWakakurRoomManageScreen() {
                 paddingVertical: 9,
                 color: BRAND_COLORS.textDark,
                 marginBottom: 8,
+                fontSize: scaleFont(13),
+                lineHeight: scaleLineHeight(20),
               }}
             />
 
@@ -502,7 +529,10 @@ export default function TeacherWakakurRoomManageScreen() {
                       <Text numberOfLines={1} style={{ color: selected ? BRAND_COLORS.navy : BRAND_COLORS.textDark, fontWeight: '700' }}>
                         {teacher.name}
                       </Text>
-                      <Text numberOfLines={1} style={{ color: BRAND_COLORS.textMuted, fontSize: 11, marginTop: 2 }}>
+                      <Text
+                        numberOfLines={1}
+                        style={{ color: BRAND_COLORS.textMuted, fontSize: scaleFont(11), lineHeight: scaleLineHeight(16), marginTop: 2 }}
+                      >
                         {teacher.username || '-'}
                       </Text>
                     </Pressable>
@@ -511,7 +541,9 @@ export default function TeacherWakakurRoomManageScreen() {
               })}
             </View>
 
-            <Text style={{ color: BRAND_COLORS.textMuted, fontSize: 12, marginBottom: 4 }}>Label Sesi</Text>
+            <Text style={{ color: BRAND_COLORS.textMuted, fontSize: scaleFont(12), lineHeight: scaleLineHeight(18), marginBottom: 4 }}>
+              Label Sesi
+            </Text>
             <TextInput
               value={sessionLabel}
               onChangeText={setSessionLabel}
@@ -525,10 +557,14 @@ export default function TeacherWakakurRoomManageScreen() {
                 paddingVertical: 9,
                 color: BRAND_COLORS.textDark,
                 marginBottom: 8,
+                fontSize: scaleFont(13),
+                lineHeight: scaleLineHeight(20),
               }}
             />
 
-            <Text style={{ color: BRAND_COLORS.textMuted, fontSize: 12, marginBottom: 4 }}>Jam Mulai (YYYY-MM-DDTHH:mm)</Text>
+            <Text style={{ color: BRAND_COLORS.textMuted, fontSize: scaleFont(12), lineHeight: scaleLineHeight(18), marginBottom: 4 }}>
+              Jam Mulai (YYYY-MM-DDTHH:mm)
+            </Text>
             <TextInput
               value={startAt}
               onChangeText={setStartAt}
@@ -542,10 +578,14 @@ export default function TeacherWakakurRoomManageScreen() {
                 paddingVertical: 9,
                 color: BRAND_COLORS.textDark,
                 marginBottom: 8,
+                fontSize: scaleFont(13),
+                lineHeight: scaleLineHeight(20),
               }}
             />
 
-            <Text style={{ color: BRAND_COLORS.textMuted, fontSize: 12, marginBottom: 4 }}>Jam Selesai (YYYY-MM-DDTHH:mm)</Text>
+            <Text style={{ color: BRAND_COLORS.textMuted, fontSize: scaleFont(12), lineHeight: scaleLineHeight(18), marginBottom: 4 }}>
+              Jam Selesai (YYYY-MM-DDTHH:mm)
+            </Text>
             <TextInput
               value={endAt}
               onChangeText={setEndAt}
@@ -559,6 +599,8 @@ export default function TeacherWakakurRoomManageScreen() {
                 paddingVertical: 9,
                 color: BRAND_COLORS.textDark,
                 marginBottom: 8,
+                fontSize: scaleFont(13),
+                lineHeight: scaleLineHeight(20),
               }}
             />
 
@@ -611,7 +653,9 @@ export default function TeacherWakakurRoomManageScreen() {
           >
             <Text style={{ color: BRAND_COLORS.textDark, fontWeight: '700', marginBottom: 8 }}>Komposisi Siswa</Text>
 
-            <Text style={{ color: BRAND_COLORS.textMuted, fontSize: 12, marginBottom: 4 }}>Pilih Kelas</Text>
+            <Text style={{ color: BRAND_COLORS.textMuted, fontSize: scaleFont(12), lineHeight: scaleLineHeight(18), marginBottom: 4 }}>
+              Pilih Kelas
+            </Text>
             <View style={{ flexDirection: 'row', flexWrap: 'wrap', marginHorizontal: -4, marginBottom: 8 }}>
               {classes.map((classItem) => {
                 const selected = Number(selectedClassId || 0) === Number(classItem.id);
@@ -663,7 +707,7 @@ export default function TeacherWakakurRoomManageScreen() {
                         }}
                       >
                         <Text style={{ color: BRAND_COLORS.textDark, fontWeight: '700' }}>{student.name}</Text>
-                        <Text style={{ color: BRAND_COLORS.textMuted, fontSize: 12 }}>
+                        <Text style={{ color: BRAND_COLORS.textMuted, fontSize: scaleFont(12), lineHeight: scaleLineHeight(18) }}>
                           {studentClassName(student) || '-'}
                           {isOccupied && !selected ? ' • Sedang dipakai ruang lain' : ''}
                         </Text>
@@ -696,7 +740,9 @@ export default function TeacherWakakurRoomManageScreen() {
                 >
                   <View style={{ flex: 1 }}>
                     <Text style={{ color: BRAND_COLORS.textDark, fontWeight: '700' }}>{student.name}</Text>
-                    <Text style={{ color: BRAND_COLORS.textMuted, fontSize: 12 }}>{studentClassName(student) || '-'}</Text>
+                    <Text style={{ color: BRAND_COLORS.textMuted, fontSize: scaleFont(12), lineHeight: scaleLineHeight(18) }}>
+                      {studentClassName(student) || '-'}
+                    </Text>
                   </View>
                   <Pressable
                     onPress={() => removeSelectedStudent(student.id)}
@@ -709,7 +755,9 @@ export default function TeacherWakakurRoomManageScreen() {
                       paddingVertical: 6,
                     }}
                   >
-                    <Text style={{ color: '#be123c', fontWeight: '700', fontSize: 12 }}>Hapus</Text>
+                    <Text style={{ color: '#be123c', fontWeight: '700', fontSize: scaleFont(12), lineHeight: scaleLineHeight(18) }}>
+                      Hapus
+                    </Text>
                   </Pressable>
                 </View>
               ))
