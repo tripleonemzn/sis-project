@@ -3,9 +3,7 @@ import { useOutletContext } from 'react-router-dom';
 import { useQuery } from '@tanstack/react-query';
 import clsx from 'clsx';
 import {
-  BookOpen,
   CalendarDays,
-  CheckCircle2,
   Clock3,
   FileText,
   GraduationCap,
@@ -119,108 +117,6 @@ function TabButton(props: {
       <p className="text-sm font-semibold">{props.label}</p>
       <p className={clsx('mt-1 text-xs', props.active ? 'text-blue-600' : 'text-slate-500')}>{props.subtitle}</p>
     </button>
-  );
-}
-
-function SubjectCard(props: {
-  item: StudentGradeOverviewSubjectRow;
-  component: StudentGradeOverviewSubjectComponent;
-}) {
-  const { item, component } = props;
-  const available = component.status === 'AVAILABLE';
-
-  return (
-    <div className="overflow-hidden rounded-3xl border border-slate-200 bg-white shadow-sm">
-      <div className="border-b border-slate-200 bg-slate-50/80 px-5 py-4">
-        <div className="flex flex-col gap-4 lg:flex-row lg:items-start lg:justify-between">
-          <div className="flex items-start gap-3">
-            <div className="flex h-11 w-11 items-center justify-center rounded-2xl border border-slate-200 bg-white text-blue-600">
-              <BookOpen className="h-5 w-5" />
-            </div>
-            <div>
-              <h3 className="text-lg font-bold text-slate-900">{item.subject.name}</h3>
-              <p className="mt-1 text-sm text-slate-500">
-                {item.subject.code}
-                {item.teacher?.name ? ` • ${item.teacher.name}` : ''}
-              </p>
-            </div>
-          </div>
-
-          <div className="grid gap-3 sm:grid-cols-3">
-            <div className="rounded-2xl border border-slate-200 bg-white px-4 py-3">
-              <p className="text-xs font-semibold uppercase tracking-[0.14em] text-slate-500">KKM</p>
-              <p className="mt-2 text-xl font-bold text-slate-900">{item.kkm}</p>
-            </div>
-            <div className="rounded-2xl border border-slate-200 bg-white px-4 py-3">
-              <p className="text-xs font-semibold uppercase tracking-[0.14em] text-slate-500">Program</p>
-              <p className="mt-2 text-xl font-bold text-slate-900">{component.reportSlotCode}</p>
-            </div>
-            <div className="rounded-2xl border border-slate-200 bg-white px-4 py-3">
-              <p className="text-xs font-semibold uppercase tracking-[0.14em] text-slate-500">Status</p>
-              <p className="mt-2 text-xl font-bold text-slate-900">{available ? 'Tersedia' : 'Menunggu'}</p>
-            </div>
-          </div>
-        </div>
-      </div>
-
-      <div className="px-5 py-5">
-        <div className="grid gap-4 lg:grid-cols-[220px_minmax(0,1fr)]">
-          <div
-            className={clsx(
-              'rounded-2xl border p-4',
-              available ? 'border-emerald-100 bg-emerald-50/70' : 'border-slate-200 bg-slate-50/80',
-            )}
-          >
-            <p className="text-xs font-semibold uppercase tracking-[0.14em] text-slate-500">Nilai Program</p>
-            <p className="mt-2 text-3xl font-bold text-slate-900">{formatScore(component.score)}</p>
-            <p className="mt-2 text-xs text-slate-500">
-              {component.entryMode === 'NF_SERIES' ? 'Seri NF' : 'Skor tunggal'}
-            </p>
-          </div>
-
-          <div
-            className={clsx(
-              'rounded-2xl border p-4',
-              available ? 'border-emerald-100 bg-emerald-50/70' : 'border-slate-200 bg-slate-50/80',
-            )}
-          >
-            <div className="flex items-start justify-between gap-3">
-              <div>
-                <p className="text-sm font-semibold text-slate-900">{component.label}</p>
-                <p className="mt-1 text-xs text-slate-500">{component.reportSlotCode.replace(/_/g, ' ')}</p>
-              </div>
-              <span
-                className={clsx(
-                  'inline-flex rounded-full px-2.5 py-1 text-[11px] font-semibold',
-                  available ? 'bg-emerald-100 text-emerald-700' : 'bg-slate-200 text-slate-600',
-                )}
-              >
-                {available ? 'Tersedia' : 'Belum tersedia'}
-              </span>
-            </div>
-
-            {component.series.length > 0 ? (
-              <div className="mt-4 flex flex-wrap gap-2">
-                {component.series.map((score, index) => (
-                  <span
-                    key={`${component.code}-series-${index}`}
-                    className="rounded-full border border-blue-100 bg-blue-50 px-2.5 py-1 text-[11px] font-medium text-blue-700"
-                  >
-                    NF{index + 1}: {formatScore(score)}
-                  </span>
-                ))}
-              </div>
-            ) : null}
-
-            <p className="mt-4 text-sm leading-6 text-slate-700">
-              {available
-                ? `Nilai ${component.reportSlotCode} untuk mapel ini sudah tersedia dan mengikuti semester berjalan.`
-                : `Nilai ${component.reportSlotCode} untuk mapel ini belum tersedia. Data akan tampil setelah guru menyelesaikan input nilai program terkait.`}
-            </p>
-          </div>
-        </div>
-      </div>
-    </div>
   );
 }
 
@@ -365,6 +261,8 @@ export default function StudentGradesPage() {
       averageScore: calculateAverage(scores),
     };
   }, [activeProgramSubjects]);
+  const isProgramReleaseLocked = Boolean(reportCard && !reportCard.release.canViewDetails);
+  const programReleaseDateLabel = reportCard?.reportDate ? formatDateLabel(reportCard.reportDate.date) : 'Tanggal rapor belum diatur';
 
   useEffect(() => {
     if (!programTabs.length) {
@@ -456,45 +354,27 @@ export default function StudentGradesPage() {
                 </div>
               </div>
 
-              <div className="grid gap-4 md:grid-cols-2 xl:grid-cols-4">
-                <SummaryCard
-                  icon={<BookOpen className="h-5 w-5" />}
-                  label="Total Mapel"
-                  value={String(activeProgramSummary.totalSubjects)}
-                  tone="blue"
-                  subtitle={activeProgram ? `${activeProgram.label} • ${activeProgram.code}` : 'Mapel program aktif'}
-                />
-                <SummaryCard
-                  icon={<CheckCircle2 className="h-5 w-5" />}
-                  label="Mapel Tersedia"
-                  value={String(activeProgramSummary.availableSubjects)}
-                  tone="green"
-                  subtitle="Nilai program sudah tersedia"
-                />
-                <SummaryCard
-                  icon={<Clock3 className="h-5 w-5" />}
-                  label="Mapel Menunggu"
-                  value={String(activeProgramSummary.pendingSubjects)}
-                  tone={activeProgramSummary.pendingSubjects > 0 ? 'amber' : 'green'}
-                  subtitle="Masih menunggu input nilai"
-                />
-                <SummaryCard
-                  icon={<TrendingUp className="h-5 w-5" />}
-                  label={activeProgram ? `Rata-rata ${activeProgram.code}` : 'Rata-rata Program'}
-                  value={formatScore(activeProgramSummary.averageScore)}
-                  tone="amber"
-                  subtitle="Dihitung dari nilai program yang tersedia"
-                />
-              </div>
+              {isProgramReleaseLocked ? (
+                <div className="rounded-3xl border border-amber-100 bg-amber-50/80 p-5">
+                  <div className="inline-flex items-center gap-2 rounded-full bg-white/80 px-3 py-1.5 text-sm font-semibold text-amber-700">
+                    <CalendarDays className="h-4 w-4" />
+                    Nilai program menunggu rilis rapor
+                  </div>
+                  <p className="mt-3 text-sm leading-6 text-slate-700">
+                    Nilai {activeProgram?.code || 'program ujian'} untuk siswa disembunyikan sampai tanggal pembagian rapor tiba.
+                    Rilis saat ini mengikuti {programReleaseDateLabel}. {reportCard?.release.description}
+                  </p>
+                </div>
+              ) : null}
 
-              <div className="rounded-3xl border border-slate-200 bg-white p-5">
-                <div className="flex flex-col gap-4 lg:flex-row lg:items-center lg:justify-between">
+              <div className="overflow-hidden rounded-3xl border border-slate-200 bg-white">
+                <div className="flex flex-col gap-4 border-b border-slate-200 px-5 py-5 lg:flex-row lg:items-center lg:justify-between">
                   <div>
                     <h2 className="text-xl font-bold text-slate-900">
                       Ringkasan {activeProgram?.label || 'Program Ujian'}
                     </h2>
                     <p className="mt-1 text-sm text-slate-500">
-                      Menampilkan kesiapan nilai {activeProgram?.code || 'program aktif'} untuk setiap mata pelajaran pada semester berjalan.
+                      Tampilan ringkas nilai {activeProgram?.code || 'program aktif'} per mata pelajaran dengan format tabel.
                     </p>
                   </div>
                   <div className="inline-flex items-center gap-2 rounded-full border border-blue-100 bg-blue-50 px-4 py-2 text-sm font-medium text-blue-700">
@@ -503,40 +383,131 @@ export default function StudentGradesPage() {
                   </div>
                 </div>
 
-                <div className="mt-5 grid gap-3 md:grid-cols-2 xl:grid-cols-3">
-                  <div className="rounded-2xl border border-slate-200 bg-slate-50/70 p-4">
-                    <p className="text-sm font-semibold text-slate-900">Mapel Sudah Tersedia</p>
-                    <p className="mt-3 text-3xl font-bold text-slate-900">{activeProgramSummary.availableSubjects}</p>
-                    <p className="mt-2 text-sm text-slate-600">Mapel yang sudah memiliki nilai {activeProgram?.code || 'program ini'}.</p>
-                  </div>
-                  <div className="rounded-2xl border border-slate-200 bg-slate-50/70 p-4">
-                    <p className="text-sm font-semibold text-slate-900">Mapel Masih Menunggu</p>
-                    <p className="mt-3 text-3xl font-bold text-slate-900">{activeProgramSummary.pendingSubjects}</p>
-                    <p className="mt-2 text-sm text-slate-600">Mapel yang belum memiliki nilai {activeProgram?.code || 'program ini'}.</p>
-                  </div>
-                  <div className="rounded-2xl border border-slate-200 bg-slate-50/70 p-4">
-                    <p className="text-sm font-semibold text-slate-900">Cakupan Program</p>
-                    <p className="mt-3 text-3xl font-bold text-slate-900">{activeProgramSummary.totalSubjects}</p>
-                    <p className="mt-2 text-sm text-slate-600">Total mata pelajaran aktif yang mengikuti program ini pada semester berjalan.</p>
-                  </div>
+                <div className="overflow-x-auto">
+                  <table className="min-w-full text-sm">
+                    <thead className="bg-slate-50 text-slate-600">
+                      <tr>
+                        <th className="px-4 py-3 text-left font-semibold">Ringkasan</th>
+                        <th className="px-4 py-3 text-left font-semibold">Nilai</th>
+                        <th className="px-4 py-3 text-left font-semibold">Keterangan</th>
+                      </tr>
+                    </thead>
+                    <tbody className="divide-y divide-slate-200 bg-white">
+                      <tr>
+                        <td className="px-4 py-3 font-medium text-slate-900">Total Mapel</td>
+                        <td className="px-4 py-3 text-slate-900">{activeProgramSummary.totalSubjects}</td>
+                        <td className="px-4 py-3 text-slate-600">
+                          {activeProgram ? `${activeProgram.label} • ${activeProgram.code}` : 'Mapel program aktif'}
+                        </td>
+                      </tr>
+                      <tr>
+                        <td className="px-4 py-3 font-medium text-slate-900">Mapel Tersedia</td>
+                        <td className="px-4 py-3 text-slate-900">{activeProgramSummary.availableSubjects}</td>
+                        <td className="px-4 py-3 text-slate-600">
+                          {isProgramReleaseLocked ? 'Akan dibuka setelah tanggal pembagian rapor.' : 'Nilai program sudah tersedia.'}
+                        </td>
+                      </tr>
+                      <tr>
+                        <td className="px-4 py-3 font-medium text-slate-900">Mapel Menunggu</td>
+                        <td className="px-4 py-3 text-slate-900">{activeProgramSummary.pendingSubjects}</td>
+                        <td className="px-4 py-3 text-slate-600">
+                          {isProgramReleaseLocked ? 'Masih menunggu rilis nilai ke siswa.' : 'Masih menunggu input atau sinkronisasi nilai.'}
+                        </td>
+                      </tr>
+                      <tr>
+                        <td className="px-4 py-3 font-medium text-slate-900">
+                          {activeProgram ? `Rata-rata ${activeProgram.code}` : 'Rata-rata Program'}
+                        </td>
+                        <td className="px-4 py-3 text-slate-900">{formatScore(activeProgramSummary.averageScore)}</td>
+                        <td className="px-4 py-3 text-slate-600">Mengikuti standar font dan kepadatan tabel nilai.</td>
+                      </tr>
+                    </tbody>
+                  </table>
                 </div>
               </div>
 
-              <div className="rounded-3xl border border-slate-200 bg-white p-5">
-                <h2 className="text-xl font-bold text-slate-900">
-                  Daftar Nilai {activeProgram?.label || 'Program Ujian'}
-                </h2>
-                <p className="mt-1 text-sm text-slate-500">
-                  {activeProgramSummary.totalSubjects} mata pelajaran aktif • {activeProgramSummary.pendingSubjects} mapel belum tersedia
-                </p>
+              <div className="overflow-hidden rounded-3xl border border-slate-200 bg-white">
+                <div className="border-b border-slate-200 px-5 py-5">
+                  <h2 className="text-xl font-bold text-slate-900">
+                    Daftar Nilai {activeProgram?.label || 'Program Ujian'}
+                  </h2>
+                  <p className="mt-1 text-sm text-slate-500">
+                    {activeProgramSummary.totalSubjects} mata pelajaran aktif • {activeProgramSummary.pendingSubjects} mapel belum bisa dibaca siswa
+                  </p>
+                </div>
+                <div className="overflow-x-auto">
+                  <table className="min-w-full text-sm">
+                    <thead className="bg-slate-50 text-slate-600">
+                      <tr>
+                        <th className="px-4 py-3 text-left font-semibold">Mata Pelajaran</th>
+                        <th className="px-4 py-3 text-left font-semibold">Guru</th>
+                        <th className="px-4 py-3 text-left font-semibold">KKM</th>
+                        <th className="px-4 py-3 text-left font-semibold">Program</th>
+                        <th className="px-4 py-3 text-left font-semibold">Status</th>
+                        <th className="px-4 py-3 text-left font-semibold">Nilai</th>
+                        <th className="px-4 py-3 text-left font-semibold">Mode</th>
+                      </tr>
+                    </thead>
+                    <tbody className="divide-y divide-slate-200 bg-white">
+                      {activeProgramSubjects.map(({ subject, component }) => {
+                        const isAvailable = component.status === 'AVAILABLE';
+                        const statusLabel = isProgramReleaseLocked
+                          ? 'Menunggu rilis'
+                          : isAvailable
+                            ? 'Tersedia'
+                            : 'Menunggu';
+
+                        return (
+                          <tr key={`${subject.subject.id}-${component.reportSlotCode}`} className="align-top">
+                            <td className="px-4 py-3">
+                              <div className="font-medium text-slate-900">{subject.subject.name}</div>
+                              <div className="mt-1 text-xs text-slate-500">{subject.subject.code}</div>
+                            </td>
+                            <td className="px-4 py-3 text-slate-600">{subject.teacher?.name || '-'}</td>
+                            <td className="px-4 py-3 text-slate-900">{subject.kkm}</td>
+                            <td className="px-4 py-3 text-slate-900">{component.reportSlotCode}</td>
+                            <td className="px-4 py-3">
+                              <span
+                                className={clsx(
+                                  'inline-flex rounded-full px-2.5 py-1 text-xs font-semibold',
+                                  isProgramReleaseLocked && 'bg-amber-100 text-amber-700',
+                                  !isProgramReleaseLocked && isAvailable && 'bg-emerald-100 text-emerald-700',
+                                  !isProgramReleaseLocked && !isAvailable && 'bg-slate-200 text-slate-600',
+                                )}
+                              >
+                                {statusLabel}
+                              </span>
+                            </td>
+                            <td className="px-4 py-3 text-slate-900">
+                              <div className="font-medium">
+                                {isProgramReleaseLocked ? '-' : formatScore(component.score)}
+                              </div>
+                              {!isProgramReleaseLocked && component.series.length > 0 ? (
+                                <div className="mt-2 flex flex-wrap gap-1.5">
+                                  {component.series.map((score, index) => (
+                                    <span
+                                      key={`${component.code}-series-${index}`}
+                                      className="rounded-full border border-blue-100 bg-blue-50 px-2 py-0.5 text-[11px] font-medium text-blue-700"
+                                    >
+                                      NF{index + 1}: {formatScore(score)}
+                                    </span>
+                                  ))}
+                                </div>
+                              ) : null}
+                            </td>
+                            <td className="px-4 py-3 text-slate-600">
+                              {component.entryMode === 'NF_SERIES' ? 'Seri NF' : 'Skor tunggal'}
+                            </td>
+                          </tr>
+                        );
+                      })}
+                    </tbody>
+                  </table>
+                </div>
               </div>
 
               {activeProgramSubjects.length > 0 ? (
-                <div className="grid gap-5">
-                  {activeProgramSubjects.map(({ subject, component }) => (
-                    <SubjectCard key={`${subject.subject.id}-${component.reportSlotCode}`} item={subject} component={component} />
-                  ))}
-                </div>
+                null
               ) : (
                 <div className="rounded-3xl border border-dashed border-slate-300 bg-white p-10 text-center">
                   <FileText className="mx-auto h-12 w-12 text-slate-300" />

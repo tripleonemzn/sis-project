@@ -139,11 +139,12 @@ function GradeComponentCard({ item }: { item: StudentGradeOverviewSubjectCompone
 function ProgramSubjectCard(props: {
   item: StudentGradeOverviewSubjectRow;
   component: StudentGradeOverviewSubjectComponent;
+  releaseLocked: boolean;
 }) {
   const { colors } = useAppTheme();
   const { scaleFont, scaleLineHeight } = useAppTextScale();
-  const { item, component } = props;
-  const available = component.status === 'AVAILABLE';
+  const { item, component, releaseLocked } = props;
+  const available = !releaseLocked && component.status === 'AVAILABLE';
 
   return (
     <View
@@ -228,7 +229,7 @@ function ProgramSubjectCard(props: {
                   fontWeight: '700',
                 }}
               >
-                {available ? 'Tersedia' : 'Menunggu'}
+                {releaseLocked ? 'Menunggu rilis' : available ? 'Tersedia' : 'Menunggu'}
               </Text>
             </View>
           </View>
@@ -250,7 +251,7 @@ function ProgramSubjectCard(props: {
             NILAI PROGRAM
           </Text>
           <Text style={{ color: colors.text, fontWeight: '800', fontSize: scaleFont(20), marginTop: 6 }}>
-            {formatScore(component.score)}
+            {releaseLocked ? '-' : formatScore(component.score)}
           </Text>
           <Text style={{ color: colors.textMuted, fontSize: scaleFont(12), marginTop: 4 }}>
             {component.entryMode === 'NF_SERIES' ? 'Seri NF' : 'Skor tunggal'}
@@ -270,7 +271,9 @@ function ProgramSubjectCard(props: {
           }}
         >
           <Text style={{ color: colors.text, fontSize: scaleFont(13), lineHeight: scaleLineHeight(20) }}>
-            {available
+            {releaseLocked
+              ? `Nilai ${component.reportSlotCode} untuk mapel ini akan dibuka ke siswa setelah tanggal pembagian rapor tiba.`
+              : available
               ? `Nilai ${component.reportSlotCode} untuk mapel ini sudah tersedia dan mengikuti semester berjalan.`
               : `Nilai ${component.reportSlotCode} untuk mapel ini belum tersedia. Data akan tampil setelah guru menyelesaikan input nilai program terkait.`}
           </Text>
@@ -408,7 +411,14 @@ export default function GradesScreen() {
     'ODD'
   ) as 'ODD' | 'EVEN';
   const effectiveReportSemesterLabel = formatSemesterLabel(effectiveReportSemester);
+  const isProgramReleaseLocked = Boolean(overview && !overview.reportCard.release.canViewDetails);
+  const programReleaseDateLabel = overview?.reportCard.reportDate
+    ? formatDateLabel(overview.reportCard.reportDate.date)
+    : 'Tanggal rapor belum diatur';
   const programTabSubtitle = useMemo(() => {
+    if (overview && !overview.reportCard.release.canViewDetails) {
+      return `Nilai program ujian akan dibuka ke siswa setelah tanggal pembagian rapor (${programReleaseDateLabel}).`;
+    }
     if (!overview || overview.components.length === 0) {
       return 'Lihat komponen nilai program ujian aktif per mata pelajaran.'
     }
@@ -422,7 +432,7 @@ export default function GradesScreen() {
       return `Pilih tab ${labels[0]} atau ${labels[1]} untuk melihat nilai per program ujian.`
     }
     return `Pilih tab ${labels.slice(0, -1).join(', ')}, dan ${labels[labels.length - 1]} untuk melihat nilai per program ujian.`
-  }, [overview]);
+  }, [overview, programReleaseDateLabel]);
   const reportTabSubtitle = useMemo(
     () =>
       `Pilih semester rapor untuk melihat ringkasan nilai akhir, kehadiran, dan catatan wali kelas. Nilai Program Ujian tetap mengikuti semester aktif (${overview?.meta.semesterLabel || '-'}).`,
@@ -603,6 +613,38 @@ export default function GradesScreen() {
                 </View>
               </View>
 
+              {isProgramReleaseLocked ? (
+                <View
+                  style={{
+                    borderWidth: 1,
+                    borderColor: '#fde68a',
+                    backgroundColor: '#fffbeb',
+                    borderRadius: 18,
+                    paddingHorizontal: 14,
+                    paddingVertical: 14,
+                    gap: 8,
+                  }}
+                >
+                  <View
+                    style={{
+                      alignSelf: 'flex-start',
+                      borderRadius: 999,
+                      backgroundColor: colors.surface,
+                      paddingHorizontal: 10,
+                      paddingVertical: 6,
+                    }}
+                  >
+                    <Text style={{ color: '#b45309', fontSize: scaleFont(12), fontWeight: '700' }}>
+                      Nilai program menunggu rilis rapor
+                    </Text>
+                  </View>
+                  <Text style={{ color: colors.text, fontSize: scaleFont(13), lineHeight: scaleLineHeight(20) }}>
+                    Nilai {activeProgram?.key || 'program ujian'} disembunyikan sampai tanggal pembagian rapor tiba.
+                    Rilis saat ini mengikuti {programReleaseDateLabel}. {overview.reportCard.release.description}
+                  </Text>
+                </View>
+              ) : null}
+
               <View style={{ flexDirection: 'row', flexWrap: 'wrap', marginHorizontal: -6 }}>
                 <View style={{ width: '50%', paddingHorizontal: 6, marginBottom: 12 }}>
                   <MobileSummaryCard
@@ -616,7 +658,7 @@ export default function GradesScreen() {
                   <MobileSummaryCard
                     title="Mapel Tersedia"
                     value={String(activeProgramSummary.availableSubjects)}
-                    subtitle="Nilai program sudah tersedia"
+                    subtitle={isProgramReleaseLocked ? 'Akan dibuka setelah tanggal rapor' : 'Nilai program sudah tersedia'}
                     iconName="check-circle"
                     accentColor="#16a34a"
                   />
@@ -625,7 +667,7 @@ export default function GradesScreen() {
                   <MobileSummaryCard
                     title="Mapel Menunggu"
                     value={String(activeProgramSummary.pendingSubjects)}
-                    subtitle="Masih menunggu input nilai"
+                    subtitle={isProgramReleaseLocked ? 'Masih menunggu rilis nilai ke siswa' : 'Masih menunggu input nilai'}
                     iconName="clock"
                     accentColor={activeProgramSummary.pendingSubjects > 0 ? '#b45309' : '#16a34a'}
                   />
@@ -744,6 +786,7 @@ export default function GradesScreen() {
                       key={`${subject.subject.id}-${component.reportSlotCode}`}
                       item={subject}
                       component={component}
+                      releaseLocked={isProgramReleaseLocked}
                     />
                   ))}
                 </View>
@@ -765,7 +808,9 @@ export default function GradesScreen() {
                     Belum ada data nilai program
                   </Text>
                   <Text style={{ color: colors.textMuted, textAlign: 'center', marginTop: 6, fontSize: scaleFont(13), lineHeight: scaleLineHeight(20) }}>
-                    Nilai {activeProgram?.key || 'program ini'} untuk semester berjalan belum tersedia.
+                    {isProgramReleaseLocked
+                      ? `Nilai ${activeProgram?.key || 'program ini'} akan tampil setelah tanggal pembagian rapor.`
+                      : `Nilai ${activeProgram?.key || 'program ini'} untuk semester berjalan belum tersedia.`}
                   </Text>
                 </View>
               )}

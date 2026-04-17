@@ -1436,7 +1436,9 @@ export class ReportService {
         },
       },
       footer: {
-        date: reportDate?.date ? new Date(reportDate.date).toLocaleDateString('id-ID', { day: 'numeric', month: 'long', year: 'numeric' }) : new Date().toLocaleDateString('id-ID', { day: 'numeric', month: 'long', year: 'numeric' }),
+        date: reportDate?.date
+          ? new Date(reportDate.date).toLocaleDateString('id-ID', { day: 'numeric', month: 'long', year: 'numeric' })
+          : '',
         place: reportDate?.place || 'Bekasi',
         signatures: {
           homeroom: {

@@ -3525,7 +3525,35 @@ export const getStudentGradeOverview = async (req: Request, res: Response) => {
       .filter((row) => row.visibility.shouldShowToStudent)
       .sort((a, b) => a.subject.name.localeCompare(b.subject.name, 'id-ID'))
 
-    const subjectRows = visibleSubjectRows.map(({ visibility, ...row }) => row)
+    const reportRelease = resolveStudentSemesterReportRelease({ reportDate })
+
+    const subjectRows = visibleSubjectRows.map(({ visibility, ...row }) => {
+      if (reportRelease.canViewDetails) {
+        return row
+      }
+
+      const lockedComponents = row.components.map((component) => ({
+        ...component,
+        score: null,
+        series: [],
+        status: 'PENDING' as const,
+        source: 'NONE' as const,
+      }))
+
+      return {
+        ...row,
+        finalScore: null,
+        predicate: null,
+        description: null,
+        status: 'PENDING' as const,
+        componentSummary: {
+          totalCount: lockedComponents.length,
+          availableCount: 0,
+          pendingCount: lockedComponents.length,
+        },
+        components: lockedComponents,
+      }
+    })
 
     const totalAvailableComponents = subjectRows.reduce(
       (sum, row) => sum + row.componentSummary.availableCount,
@@ -3538,8 +3566,6 @@ export const getStudentGradeOverview = async (req: Request, res: Response) => {
     const finalScores = subjectRows
       .map((row) => row.finalScore)
       .filter((value): value is number => value !== null && value !== undefined)
-
-    const reportRelease = resolveStudentSemesterReportRelease({ reportDate })
 
     const reportCardSubjects = visibleSubjectRows
       .map((row) => {

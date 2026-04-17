@@ -57,6 +57,8 @@ type StudentReportPayload = {
     organizations?: ReportRow[];
   };
   footer: {
+    date?: string;
+    place?: string;
     signatures: {
       parent: { title?: string; name?: string };
       homeroom: { title?: string; name?: string };
@@ -74,9 +76,7 @@ export const HomeroomReportSasPage = ({
 }: HomeroomReportSasPageProps) => {
   const [searchQuery, setSearchQuery] = useState('');
   const [printPlace, setPrintPlace] = useState('Bekasi');
-  const [printDate, setPrintDate] = useState(() =>
-    new Date().toLocaleDateString('id-ID', { day: 'numeric', month: 'long', year: 'numeric' }),
-  );
+  const [printDate, setPrintDate] = useState('');
   const [printSchoolAddress, setPrintSchoolAddress] = useState('Jl. Anggrek 1, Duren Jaya Bekasi Timur');
   const printIframeRef = useRef<HTMLIFrameElement>(null);
   const resolvedReportType = String(reportType || '').toUpperCase();
@@ -382,7 +382,7 @@ export const HomeroomReportSasPage = ({
                     value={printDate}
                     onChange={(e) => setPrintDate(e.target.value)}
                     className="px-2 py-1.5 text-sm border border-gray-300 rounded-lg w-40 focus:outline-none focus:ring-2 focus:ring-blue-500"
-                    placeholder="DD MMMM YYYY"
+                    placeholder="Mengikuti tanggal rapor"
                 />
             </div>
         </div>

@@ -58,6 +58,8 @@ type StudentReportPayload = {
     homeroomNote?: string;
   };
   footer: {
+    date?: string;
+    place?: string;
     signatures: {
       parent: { title?: string; name?: string };
       homeroom: { title?: string; name?: string };
@@ -76,9 +78,7 @@ export const HomeroomReportPage2 = ({
 }: HomeroomReportPage2Props) => {
   const [searchQuery, setSearchQuery] = useState('');
   const [printPlace, setPrintPlace] = useState('Bekasi');
-  const [printDate, setPrintDate] = useState(() =>
-    new Date().toLocaleDateString('id-ID', { day: 'numeric', month: 'long', year: 'numeric' }),
-  );
+  const [printDate, setPrintDate] = useState('');
   const [printSchoolAddress, setPrintSchoolAddress] = useState('Jl. Anggrek 1, Duren Jaya Bekasi Timur');
   const printIframeRef = useRef<HTMLIFrameElement>(null);
   const resolvedReportType = String(reportType || '').toUpperCase();
@@ -122,6 +122,9 @@ export const HomeroomReportPage2 = ({
       return;
     }
     const printDoc = iframe.contentWindow.document;
+    const resolvedPrintPlace = String(printPlace || data.footer.place || '').trim() || 'Bekasi';
+    const resolvedPrintDate =
+      String(printDate || data.footer.date || '').trim() || 'Tanggal rapor belum diatur';
     const normalizedSemesterLabel = String(data?.header?.semester || '').trim().toUpperCase();
     const isSat =
       String(semester || '').toUpperCase() === 'EVEN' ||
@@ -353,7 +356,7 @@ export const HomeroomReportPage2 = ({
             </div>
             
             <div class="signature-box">
-               ${printPlace}, ${printDate}<br>
+               ${resolvedPrintPlace}, ${resolvedPrintDate}<br>
                ${data.footer.signatures.homeroom.title},
                <div class="signature-space"></div>
                <u style="font-weight: bold;">${data.footer.signatures.homeroom.name}</u><br>
@@ -442,7 +445,7 @@ export const HomeroomReportPage2 = ({
                     value={printDate}
                     onChange={(e) => setPrintDate(e.target.value)}
                     className="px-2 py-1.5 text-sm border border-gray-300 rounded-lg w-40 focus:outline-none focus:ring-2 focus:ring-blue-500"
-                    placeholder="DD MMMM YYYY"
+                    placeholder="Mengikuti tanggal rapor"
                 />
             </div>
         </div>
