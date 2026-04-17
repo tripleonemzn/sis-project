@@ -22,6 +22,7 @@ import { attendanceRecapApi } from '../../../src/features/attendanceRecap/attend
 import { AttendanceRecapRow } from '../../../src/features/attendanceRecap/types';
 import { getStandardPagePadding } from '../../../src/lib/ui/pageLayout';
 import { notifyApiError, notifySuccess } from '../../../src/lib/ui/feedback';
+import { useAppTextScale } from '../../../src/theme/AppTextScaleProvider';
 
 type TabKey = 'DAILY' | 'RECAP' | 'LATE';
 type Semester = 'ODD' | 'EVEN';
@@ -88,6 +89,7 @@ export default function TeacherHomeroomAttendanceScreen() {
   const queryClient = useQueryClient();
   const { isAuthenticated, isLoading, user } = useAuth();
   const pagePadding = getStandardPagePadding(insets, { bottom: 120 });
+  const { scaleFont, scaleLineHeight } = useAppTextScale();
 
   const [tab, setTab] = useState<TabKey>('DAILY');
   const [semester, setSemester] = useState<Semester>(defaultSemesterByDate());
@@ -333,7 +335,7 @@ export default function TeacherHomeroomAttendanceScreen() {
   if (user?.role !== 'TEACHER') {
     return (
       <ScrollView style={{ flex: 1, backgroundColor: '#f8fafc' }} contentContainerStyle={pagePadding}>
-        <Text style={{ fontSize: 20, fontWeight: '700', marginBottom: 8 }}>Rekap Presensi</Text>
+        <Text style={{ fontSize: scaleFont(20), lineHeight: scaleLineHeight(28), fontWeight: '700', marginBottom: 8 }}>Rekap Presensi</Text>
         <QueryStateView type="error" message="Halaman ini khusus untuk role guru." />
         <Pressable
           onPress={() => router.replace('/home')}
@@ -376,7 +378,7 @@ export default function TeacherHomeroomAttendanceScreen() {
         />
       }
     >
-      <Text style={{ fontSize: 20, fontWeight: '700', marginBottom: 6, color: BRAND_COLORS.textDark }}>
+      <Text style={{ fontSize: scaleFont(20), lineHeight: scaleLineHeight(28), fontWeight: '700', marginBottom: 6, color: BRAND_COLORS.textDark }}>
         Rekap Presensi
       </Text>
       <Text style={{ color: BRAND_COLORS.textMuted, marginBottom: 12 }}>
@@ -396,7 +398,7 @@ export default function TeacherHomeroomAttendanceScreen() {
           }}
         >
           <Text style={{ color: '#92400e', fontWeight: '700', marginBottom: 4 }}>Tahun ajaran aktif belum tersedia</Text>
-          <Text style={{ color: '#b45309', fontSize: 12 }}>
+          <Text style={{ color: '#b45309', fontSize: scaleFont(12), lineHeight: scaleLineHeight(18) }}>
             Aktifkan tahun ajaran terlebih dahulu agar presensi wali kelas tidak ambigu.
           </Text>
         </View>
@@ -608,8 +610,8 @@ export default function TeacherHomeroomAttendanceScreen() {
                     alignItems: 'center',
                   }}
                 >
-                  <Text style={{ color: '#64748b', fontSize: 11, marginBottom: 2 }}>{item.label}</Text>
-                  <Text style={{ color: BRAND_COLORS.textDark, fontWeight: '700' }}>{item.value}</Text>
+                  <Text style={{ color: '#64748b', fontSize: scaleFont(11), marginBottom: 2 }}>{item.label}</Text>
+                  <Text style={{ color: BRAND_COLORS.textDark, fontWeight: '700', fontSize: scaleFont(14) }}>{item.value}</Text>
                 </View>
               </View>
             ))}
@@ -637,7 +639,7 @@ export default function TeacherHomeroomAttendanceScreen() {
                           alignItems: 'center',
                         }}
                       >
-                        <Text style={{ color: statusItem.text, fontWeight: '700', fontSize: 12 }}>
+                        <Text style={{ color: statusItem.text, fontWeight: '700', fontSize: scaleFont(12) }}>
                           Semua {statusItem.label}
                         </Text>
                       </Pressable>
@@ -663,7 +665,7 @@ export default function TeacherHomeroomAttendanceScreen() {
                       paddingVertical: 9,
                     }}
                   >
-                    <Text style={{ color: '#334155', fontSize: 12, fontWeight: '700' }}>
+                    <Text style={{ color: '#334155', fontSize: scaleFont(12), fontWeight: '700' }}>
                       Daftar Presensi Harian ({filteredDailyRows.length}/{dailyRows.length})
                     </Text>
                   </View>
@@ -693,13 +695,16 @@ export default function TeacherHomeroomAttendanceScreen() {
                               marginRight: 8,
                             }}
                           >
-                            <Text style={{ color: '#334155', fontSize: 11, fontWeight: '700' }}>{index + 1}</Text>
+                            <Text style={{ color: '#334155', fontSize: scaleFont(11), fontWeight: '700' }}>{index + 1}</Text>
                           </View>
                           <View style={{ flex: 1 }}>
-                            <Text style={{ color: BRAND_COLORS.textDark, fontWeight: '700' }} numberOfLines={1}>
+                            <Text
+                              style={{ color: BRAND_COLORS.textDark, fontWeight: '700', fontSize: scaleFont(14), lineHeight: scaleLineHeight(20) }}
+                              numberOfLines={1}
+                            >
                               {row.student.name}
                             </Text>
-                            <Text style={{ color: '#64748b', fontSize: 11 }} numberOfLines={1}>
+                            <Text style={{ color: '#64748b', fontSize: scaleFont(11), lineHeight: scaleLineHeight(16) }} numberOfLines={1}>
                               NIS: {row.student.nis || '-'} • NISN: {row.student.nisn || '-'}
                             </Text>
                           </View>
@@ -729,7 +734,7 @@ export default function TeacherHomeroomAttendanceScreen() {
                                     style={{
                                       color: selected ? statusItem.text : BRAND_COLORS.textMuted,
                                       fontWeight: '700',
-                                      fontSize: 11,
+                                      fontSize: scaleFont(11),
                                     }}
                                   >
                                     {statusItem.shortLabel} • {statusItem.label}
@@ -809,8 +814,8 @@ export default function TeacherHomeroomAttendanceScreen() {
                   padding: 10,
                 }}
               >
-                <Text style={{ color: '#64748b', fontSize: 11, marginBottom: 3 }}>Rata-rata Kehadiran</Text>
-                <Text style={{ color: BRAND_COLORS.textDark, fontWeight: '700', fontSize: 18 }}>
+                <Text style={{ color: '#64748b', fontSize: scaleFont(11), marginBottom: 3 }}>Rata-rata Kehadiran</Text>
+                <Text style={{ color: BRAND_COLORS.textDark, fontWeight: '700', fontSize: scaleFont(18) }}>
                   {recapSummary.avgAttendance.toFixed(1)}%
                 </Text>
               </View>
@@ -825,8 +830,8 @@ export default function TeacherHomeroomAttendanceScreen() {
                   padding: 10,
                 }}
               >
-                <Text style={{ color: '#64748b', fontSize: 11, marginBottom: 3 }}>Total Alpha</Text>
-                <Text style={{ color: '#b91c1c', fontWeight: '700', fontSize: 18 }}>{recapSummary.totalAbsent}</Text>
+                <Text style={{ color: '#64748b', fontSize: scaleFont(11), marginBottom: 3 }}>Total Alpha</Text>
+                <Text style={{ color: '#b91c1c', fontWeight: '700', fontSize: scaleFont(18) }}>{recapSummary.totalAbsent}</Text>
               </View>
             </View>
             <View style={{ width: '100%', paddingHorizontal: 4, marginBottom: 8 }}>
@@ -839,8 +844,8 @@ export default function TeacherHomeroomAttendanceScreen() {
                   padding: 10,
                 }}
               >
-                <Text style={{ color: '#64748b', fontSize: 11, marginBottom: 3 }}>Total Terlambat</Text>
-                <Text style={{ color: '#92400e', fontWeight: '700', fontSize: 18 }}>{recapSummary.totalLate}</Text>
+                <Text style={{ color: '#64748b', fontSize: scaleFont(11), marginBottom: 3 }}>Total Terlambat</Text>
+                <Text style={{ color: '#92400e', fontWeight: '700', fontSize: scaleFont(18) }}>{recapSummary.totalLate}</Text>
               </View>
             </View>
           </View>
@@ -868,7 +873,7 @@ export default function TeacherHomeroomAttendanceScreen() {
                     <Text style={{ color: BRAND_COLORS.textDark, fontWeight: '700', marginBottom: 3 }}>
                       {row.student.name}
                     </Text>
-                    <Text style={{ color: '#64748b', fontSize: 12, marginBottom: 8 }}>
+                    <Text style={{ color: '#64748b', fontSize: scaleFont(12), lineHeight: scaleLineHeight(18), marginBottom: 8 }}>
                       NIS: {row.student.nis || '-'} • NISN: {row.student.nisn || '-'}
                     </Text>
                     <View style={{ flexDirection: 'row', flexWrap: 'wrap', marginHorizontal: -3 }}>
@@ -890,8 +895,8 @@ export default function TeacherHomeroomAttendanceScreen() {
                               alignItems: 'center',
                             }}
                           >
-                            <Text style={{ color: '#64748b', fontSize: 10 }}>{item.label}</Text>
-                            <Text style={{ color: item.color, fontWeight: '700' }}>{item.value}</Text>
+                            <Text style={{ color: '#64748b', fontSize: scaleFont(10) }}>{item.label}</Text>
+                            <Text style={{ color: item.color, fontWeight: '700', fontSize: scaleFont(14) }}>{item.value}</Text>
                           </View>
                         </View>
                       ))}
@@ -934,8 +939,8 @@ export default function TeacherHomeroomAttendanceScreen() {
                   alignItems: 'center',
                 }}
               >
-                <Text style={{ color: '#64748b', fontSize: 11, marginBottom: 3 }}>Sem. Ganjil</Text>
-                <Text style={{ color: '#92400e', fontWeight: '700', fontSize: 18 }}>{lateSummary.semester1}</Text>
+                <Text style={{ color: '#64748b', fontSize: scaleFont(11), marginBottom: 3 }}>Sem. Ganjil</Text>
+                <Text style={{ color: '#92400e', fontWeight: '700', fontSize: scaleFont(18) }}>{lateSummary.semester1}</Text>
               </View>
             </View>
             <View style={{ width: '33.3333%', paddingHorizontal: 4, marginBottom: 8 }}>
@@ -949,8 +954,8 @@ export default function TeacherHomeroomAttendanceScreen() {
                   alignItems: 'center',
                 }}
               >
-                <Text style={{ color: '#64748b', fontSize: 11, marginBottom: 3 }}>Sem. Genap</Text>
-                <Text style={{ color: '#92400e', fontWeight: '700', fontSize: 18 }}>{lateSummary.semester2}</Text>
+                <Text style={{ color: '#64748b', fontSize: scaleFont(11), marginBottom: 3 }}>Sem. Genap</Text>
+                <Text style={{ color: '#92400e', fontWeight: '700', fontSize: scaleFont(18) }}>{lateSummary.semester2}</Text>
               </View>
             </View>
             <View style={{ width: '33.3333%', paddingHorizontal: 4, marginBottom: 8 }}>
@@ -964,8 +969,8 @@ export default function TeacherHomeroomAttendanceScreen() {
                   alignItems: 'center',
                 }}
               >
-                <Text style={{ color: '#64748b', fontSize: 11, marginBottom: 3 }}>Total Telat</Text>
-                <Text style={{ color: '#92400e', fontWeight: '700', fontSize: 18 }}>{lateSummary.total}</Text>
+                <Text style={{ color: '#64748b', fontSize: scaleFont(11), marginBottom: 3 }}>Total Telat</Text>
+                <Text style={{ color: '#92400e', fontWeight: '700', fontSize: scaleFont(18) }}>{lateSummary.total}</Text>
               </View>
             </View>
           </View>
@@ -993,7 +998,7 @@ export default function TeacherHomeroomAttendanceScreen() {
                     <Text style={{ color: BRAND_COLORS.textDark, fontWeight: '700', marginBottom: 3 }}>
                       {row.student.name}
                     </Text>
-                    <Text style={{ color: '#64748b', fontSize: 12, marginBottom: 8 }}>
+                    <Text style={{ color: '#64748b', fontSize: scaleFont(12), lineHeight: scaleLineHeight(18), marginBottom: 8 }}>
                       NIS: {row.student.nis || '-'} • NISN: {row.student.nisn || '-'}
                     </Text>
                     <View style={{ flexDirection: 'row', marginHorizontal: -3 }}>
@@ -1013,8 +1018,8 @@ export default function TeacherHomeroomAttendanceScreen() {
                               alignItems: 'center',
                             }}
                           >
-                            <Text style={{ color: '#64748b', fontSize: 11 }}>{item.label}</Text>
-                            <Text style={{ color: '#92400e', fontWeight: '700' }}>{item.value}</Text>
+                            <Text style={{ color: '#64748b', fontSize: scaleFont(11) }}>{item.label}</Text>
+                            <Text style={{ color: '#92400e', fontWeight: '700', fontSize: scaleFont(14) }}>{item.value}</Text>
                           </View>
                         </View>
                       ))}

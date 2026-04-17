@@ -17,6 +17,7 @@ import {
 import { attendanceApi } from '../../../src/features/attendance/attendanceApi';
 import { TeacherAttendanceStatus } from '../../../src/features/attendance/types';
 import { getStandardPagePadding } from '../../../src/lib/ui/pageLayout';
+import { useAppTextScale } from '../../../src/theme/AppTextScaleProvider';
 
 type StatusConfig = {
   value: TeacherAttendanceStatus;
@@ -60,6 +61,7 @@ export default function TeacherAttendanceScreen() {
   const initialAssignmentId = params.assignmentId ? Number(params.assignmentId) : null;
   const { isAuthenticated, isLoading, user } = useAuth();
   const pageContentPadding = getStandardPagePadding(insets);
+  const { scaleFont, scaleLineHeight } = useAppTextScale();
   const assignmentsQuery = useTeacherAssignmentsQuery({ enabled: isAuthenticated, user });
   const [selectedAssignmentId, setSelectedAssignmentId] = useState<number | null>(
     Number.isFinite(initialAssignmentId || NaN) ? initialAssignmentId : null,
@@ -200,7 +202,7 @@ export default function TeacherAttendanceScreen() {
   if (user?.role !== 'TEACHER') {
     return (
       <ScrollView style={{ flex: 1, backgroundColor: '#f8fafc' }} contentContainerStyle={pageContentPadding}>
-        <Text style={{ fontSize: 20, fontWeight: '700', marginBottom: 8 }}>Presensi Siswa</Text>
+        <Text style={{ fontSize: scaleFont(20), lineHeight: scaleLineHeight(28), fontWeight: '700', marginBottom: 8 }}>Presensi Siswa</Text>
         <QueryStateView type="error" message="Halaman ini khusus untuk role guru." />
         <Pressable
           onPress={() => router.replace('/home')}
@@ -235,8 +237,8 @@ export default function TeacherAttendanceScreen() {
         />
       }
     >
-      <Text style={{ fontSize: 20, fontWeight: '700', marginBottom: 6 }}>Presensi Siswa</Text>
-      <Text style={{ color: '#64748b', marginBottom: 12 }}>
+      <Text style={{ fontSize: scaleFont(20), lineHeight: scaleLineHeight(28), fontWeight: '700', marginBottom: 6 }}>Presensi Siswa</Text>
+      <Text style={{ color: '#64748b', fontSize: scaleFont(13), lineHeight: scaleLineHeight(20), marginBottom: 12 }}>
         Isi kehadiran per mapel untuk kelas yang Anda ampu.
       </Text>
 
@@ -357,7 +359,7 @@ export default function TeacherAttendanceScreen() {
                     marginBottom: 12,
                   }}
                 >
-                  <Text style={{ color: '#bfdbfe', fontSize: 12, marginBottom: 6 }}>
+                  <Text style={{ color: '#bfdbfe', fontSize: scaleFont(12), marginBottom: 6 }}>
                     {detailQuery.data.subject.name} • {detailQuery.data.class.name}
                   </Text>
                   <View style={{ flexDirection: 'row', marginHorizontal: -3 }}>
@@ -377,10 +379,10 @@ export default function TeacherAttendanceScreen() {
                             alignItems: 'center',
                           }}
                         >
-                          <Text style={{ color: '#bfdbfe', fontSize: 10 }} numberOfLines={1}>
+                          <Text style={{ color: '#bfdbfe', fontSize: scaleFont(10) }} numberOfLines={1}>
                             {item.label}
                           </Text>
-                          <Text style={{ color: '#fff', fontWeight: '700', fontSize: 14 }}>{item.value}</Text>
+                          <Text style={{ color: '#fff', fontWeight: '700', fontSize: scaleFont(14) }}>{item.value}</Text>
                         </View>
                       </View>
                     ))}
@@ -429,7 +431,7 @@ export default function TeacherAttendanceScreen() {
                             }}
                           >
                             <Text
-                              style={{ color: statusOption.text, fontWeight: '700', fontSize: 10, textAlign: 'center' }}
+                              style={{ color: statusOption.text, fontWeight: '700', fontSize: scaleFont(10), textAlign: 'center' }}
                               numberOfLines={2}
                             >
                               Semua {statusOption.label}
@@ -457,7 +459,7 @@ export default function TeacherAttendanceScreen() {
                           paddingVertical: 9,
                         }}
                       >
-                        <Text style={{ color: '#334155', fontSize: 12, fontWeight: '700' }}>
+                        <Text style={{ color: '#334155', fontSize: scaleFont(12), fontWeight: '700' }}>
                           Daftar Presensi Kelas ({filteredStudents.length}/{students.length})
                         </Text>
                       </View>
@@ -485,13 +487,16 @@ export default function TeacherAttendanceScreen() {
                                   marginRight: 8,
                                 }}
                               >
-                                <Text style={{ color: '#334155', fontSize: 11, fontWeight: '700' }}>{index + 1}</Text>
+                                <Text style={{ color: '#334155', fontSize: scaleFont(11), fontWeight: '700' }}>{index + 1}</Text>
                               </View>
                               <View style={{ flex: 1 }}>
-                                <Text style={{ fontWeight: '700', color: '#0f172a' }} numberOfLines={1}>
+                                <Text
+                                  style={{ fontWeight: '700', color: '#0f172a', fontSize: scaleFont(14), lineHeight: scaleLineHeight(20) }}
+                                  numberOfLines={1}
+                                >
                                   {student.name}
                                 </Text>
-                                <Text style={{ color: '#64748b', fontSize: 11 }} numberOfLines={1}>
+                                <Text style={{ color: '#64748b', fontSize: scaleFont(11), lineHeight: scaleLineHeight(16) }} numberOfLines={1}>
                                   NIS: {student.nis || '-'} • NISN: {student.nisn || '-'}
                                 </Text>
                               </View>
@@ -537,7 +542,7 @@ export default function TeacherAttendanceScreen() {
                                       <Text
                                         style={{
                                           color: selected ? option.text : '#64748b',
-                                          fontSize: 9,
+                                          fontSize: scaleFont(9),
                                           fontWeight: '700',
                                           marginTop: 4,
                                           textAlign: 'center',

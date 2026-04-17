@@ -29,6 +29,7 @@ import { useTeacherMaterialsQuery } from '../../../src/features/teacherMaterials
 import { getStandardPagePadding } from '../../../src/lib/ui/pageLayout';
 import { notifyApiError, notifyInfo, notifySuccess } from '../../../src/lib/ui/feedback';
 import { openWebModuleRoute } from '../../../src/lib/navigation/webModuleRoute';
+import { useAppTextScale } from '../../../src/theme/AppTextScaleProvider';
 
 type TabKey = 'materials' | 'assignments';
 type CopySource = {
@@ -88,6 +89,7 @@ export default function TeacherMaterialsScreen() {
   const queryClient = useQueryClient();
   const { isAuthenticated, isLoading, user } = useAuth();
   const pageContentPadding = getStandardPagePadding(insets);
+  const { scaleFont, scaleLineHeight } = useAppTextScale();
   const teacherAssignmentsQuery = useTeacherAssignmentsQuery({ enabled: isAuthenticated, user });
   const materialsQuery = useTeacherMaterialsQuery({ enabled: isAuthenticated, user });
   const [activeTab, setActiveTab] = useState<TabKey>('materials');
@@ -513,7 +515,7 @@ export default function TeacherMaterialsScreen() {
   if (user?.role !== 'TEACHER') {
     return (
       <ScrollView style={{ flex: 1, backgroundColor: '#f8fafc' }} contentContainerStyle={pageContentPadding}>
-        <Text style={{ fontSize: 20, fontWeight: '700', marginBottom: 8 }}>Materi & Tugas</Text>
+        <Text style={{ fontSize: scaleFont(20), lineHeight: scaleLineHeight(28), fontWeight: '700', marginBottom: 8 }}>Materi & Tugas</Text>
         <QueryStateView type="error" message="Halaman ini khusus untuk role guru." />
       </ScrollView>
     );
@@ -535,8 +537,8 @@ export default function TeacherMaterialsScreen() {
           />
         }
       >
-      <Text style={{ fontSize: 20, fontWeight: '700', marginBottom: 6 }}>Materi & Tugas</Text>
-      <Text style={{ color: '#64748b', marginBottom: 12 }}>
+      <Text style={{ fontSize: scaleFont(20), lineHeight: scaleLineHeight(28), fontWeight: '700', marginBottom: 6 }}>Materi & Tugas</Text>
+      <Text style={{ color: '#64748b', fontSize: scaleFont(13), lineHeight: scaleLineHeight(20), marginBottom: 12 }}>
         Kelola materi dan tugas siswa langsung dari mobile.
       </Text>
 
@@ -557,7 +559,7 @@ export default function TeacherMaterialsScreen() {
         />
       </View>
 
-      <Text style={{ color: '#334155', fontSize: 12, fontWeight: '600', marginBottom: 4 }}>
+      <Text style={{ color: '#334155', fontSize: scaleFont(12), lineHeight: scaleLineHeight(18), fontWeight: '600', marginBottom: 4 }}>
         {activeTab === 'materials'
           ? 'Cari materi berdasarkan judul, mapel, atau kelas'
           : 'Cari tugas berdasarkan judul, mapel, atau kelas'}
@@ -573,6 +575,7 @@ export default function TeacherMaterialsScreen() {
           borderRadius: 10,
           paddingHorizontal: 12,
           paddingVertical: 10,
+          fontSize: scaleFont(14),
           backgroundColor: '#fff',
           color: '#0f172a',
           marginBottom: 10,
@@ -618,11 +621,11 @@ export default function TeacherMaterialsScreen() {
                 <Text style={{ color: '#0f172a', fontWeight: '700', marginBottom: 4 }}>
                   {editingMaterial ? 'Edit Materi' : 'Buat Materi Baru'}
                 </Text>
-                <Text style={{ color: '#64748b', fontSize: 12, marginBottom: 8 }}>
+                <Text style={{ color: '#64748b', fontSize: scaleFont(12), lineHeight: scaleLineHeight(18), marginBottom: 8 }}>
                   Isi data materi pada kolom yang tersedia agar siswa mudah memahami konten.
                 </Text>
                 {editingMaterial ? (
-                  <Text style={{ color: '#64748b', fontSize: 12, marginBottom: 8 }}>
+                  <Text style={{ color: '#64748b', fontSize: scaleFont(12), lineHeight: scaleLineHeight(18), marginBottom: 8 }}>
                     Sedang mengubah: {editingMaterial.title}
                   </Text>
                 ) : null}
@@ -635,7 +638,7 @@ export default function TeacherMaterialsScreen() {
                   placeholder="Pilih kelas & mapel"
                 />
 
-                <Text style={{ color: '#334155', fontSize: 12, fontWeight: '600', marginBottom: 4 }}>Judul Materi</Text>
+                <Text style={{ color: '#334155', fontSize: scaleFont(12), lineHeight: scaleLineHeight(18), fontWeight: '600', marginBottom: 4 }}>Judul Materi</Text>
                 <TextInput
                   value={materialTitle}
                   onChangeText={setMaterialTitle}
@@ -651,7 +654,7 @@ export default function TeacherMaterialsScreen() {
                     marginBottom: 8,
                   }}
                 />
-                <Text style={{ color: '#334155', fontSize: 12, fontWeight: '600', marginBottom: 4 }}>Deskripsi Materi</Text>
+                <Text style={{ color: '#334155', fontSize: scaleFont(12), lineHeight: scaleLineHeight(18), fontWeight: '600', marginBottom: 4 }}>Deskripsi Materi</Text>
                 <TextInput
                   value={materialDescription}
                   onChangeText={setMaterialDescription}
@@ -670,7 +673,7 @@ export default function TeacherMaterialsScreen() {
                     marginBottom: 8,
                   }}
                 />
-                <Text style={{ color: '#334155', fontSize: 12, fontWeight: '600', marginBottom: 4 }}>Link Video (Opsional)</Text>
+                <Text style={{ color: '#334155', fontSize: scaleFont(12), lineHeight: scaleLineHeight(18), fontWeight: '600', marginBottom: 4 }}>Link Video (Opsional)</Text>
                 <TextInput
                   value={materialYoutube}
                   onChangeText={setMaterialYoutube}
@@ -723,11 +726,11 @@ export default function TeacherMaterialsScreen() {
                 </View>
 
                 {materialFile ? (
-                  <Text style={{ color: '#64748b', fontSize: 11, marginBottom: 8 }} numberOfLines={2}>
+                  <Text style={{ color: '#64748b', fontSize: scaleFont(11), lineHeight: scaleLineHeight(16), marginBottom: 8 }} numberOfLines={2}>
                     File: {materialFile.name || materialFile.uri}
                   </Text>
                 ) : editingMaterial?.fileName ? (
-                  <Text style={{ color: '#64748b', fontSize: 11, marginBottom: 8 }} numberOfLines={2}>
+                  <Text style={{ color: '#64748b', fontSize: scaleFont(11), lineHeight: scaleLineHeight(16), marginBottom: 8 }} numberOfLines={2}>
                     File saat ini: {editingMaterial.fileName}
                   </Text>
                 ) : null}
@@ -795,11 +798,11 @@ export default function TeacherMaterialsScreen() {
                 <Text style={{ color: '#0f172a', fontWeight: '700', marginBottom: 4 }}>
                   {editingAssignment ? 'Edit Tugas' : 'Buat Tugas Baru'}
                 </Text>
-                <Text style={{ color: '#64748b', fontSize: 12, marginBottom: 8 }}>
+                <Text style={{ color: '#64748b', fontSize: scaleFont(12), lineHeight: scaleLineHeight(18), marginBottom: 8 }}>
                   Lengkapi detail tugas agar instruksi siswa jelas dan deadline tidak terlewat.
                 </Text>
                 {editingAssignment ? (
-                  <Text style={{ color: '#64748b', fontSize: 12, marginBottom: 8 }}>
+                  <Text style={{ color: '#64748b', fontSize: scaleFont(12), lineHeight: scaleLineHeight(18), marginBottom: 8 }}>
                     Sedang mengubah: {editingAssignment.title}
                   </Text>
                 ) : null}
@@ -812,7 +815,7 @@ export default function TeacherMaterialsScreen() {
                   placeholder="Pilih kelas & mapel"
                 />
 
-                <Text style={{ color: '#334155', fontSize: 12, fontWeight: '600', marginBottom: 4 }}>Judul Tugas</Text>
+                <Text style={{ color: '#334155', fontSize: scaleFont(12), lineHeight: scaleLineHeight(18), fontWeight: '600', marginBottom: 4 }}>Judul Tugas</Text>
                 <TextInput
                   value={assignmentTitle}
                   onChangeText={setAssignmentTitle}
@@ -828,7 +831,7 @@ export default function TeacherMaterialsScreen() {
                     marginBottom: 8,
                   }}
                 />
-                <Text style={{ color: '#334155', fontSize: 12, fontWeight: '600', marginBottom: 4 }}>Deskripsi Tugas</Text>
+                <Text style={{ color: '#334155', fontSize: scaleFont(12), lineHeight: scaleLineHeight(18), fontWeight: '600', marginBottom: 4 }}>Deskripsi Tugas</Text>
                 <TextInput
                   value={assignmentDescription}
                   onChangeText={setAssignmentDescription}
@@ -848,7 +851,7 @@ export default function TeacherMaterialsScreen() {
                   }}
                 />
 
-                <Text style={{ color: '#334155', fontSize: 12, fontWeight: '600', marginBottom: 4 }}>Deadline Pengumpulan</Text>
+                <Text style={{ color: '#334155', fontSize: scaleFont(12), lineHeight: scaleLineHeight(18), fontWeight: '600', marginBottom: 4 }}>Deadline Pengumpulan</Text>
                 <View style={{ flexDirection: 'row', marginHorizontal: -4, marginBottom: 8 }}>
                   <View style={{ flex: 1, paddingHorizontal: 4 }}>
                     <TextInput
@@ -884,7 +887,7 @@ export default function TeacherMaterialsScreen() {
                   </View>
                 </View>
 
-                <Text style={{ color: '#334155', fontSize: 12, fontWeight: '600', marginBottom: 4 }}>Pengaturan Penilaian</Text>
+                <Text style={{ color: '#334155', fontSize: scaleFont(12), lineHeight: scaleLineHeight(18), fontWeight: '600', marginBottom: 4 }}>Pengaturan Penilaian</Text>
                 <View style={{ flexDirection: 'row', marginHorizontal: -4, marginBottom: 8 }}>
                   <View style={{ flex: 1, paddingHorizontal: 4 }}>
                     <TextInput
@@ -958,11 +961,11 @@ export default function TeacherMaterialsScreen() {
                 </View>
 
                 {assignmentFile ? (
-                  <Text style={{ color: '#64748b', fontSize: 11, marginBottom: 8 }} numberOfLines={2}>
+                  <Text style={{ color: '#64748b', fontSize: scaleFont(11), lineHeight: scaleLineHeight(16), marginBottom: 8 }} numberOfLines={2}>
                     File: {assignmentFile.name || assignmentFile.uri}
                   </Text>
                 ) : editingAssignment?.fileName ? (
-                  <Text style={{ color: '#64748b', fontSize: 11, marginBottom: 8 }} numberOfLines={2}>
+                  <Text style={{ color: '#64748b', fontSize: scaleFont(11), lineHeight: scaleLineHeight(16), marginBottom: 8 }} numberOfLines={2}>
                     File saat ini: {editingAssignment.fileName}
                   </Text>
                 ) : null}
@@ -1029,10 +1032,10 @@ export default function TeacherMaterialsScreen() {
                 marginBottom: 12,
               }}
             >
-              <Text style={{ color: '#0f172a', fontWeight: '700', marginBottom: 4 }}>
+              <Text style={{ color: '#0f172a', fontWeight: '700', fontSize: scaleFont(14), marginBottom: 4 }}>
                 Assignment mapel belum tersedia
               </Text>
-              <Text style={{ color: '#64748b' }}>
+              <Text style={{ color: '#64748b', fontSize: scaleFont(13), lineHeight: scaleLineHeight(20) }}>
                 Anda perlu memiliki assignment kelas-mapel untuk membuat materi/tugas.
               </Text>
             </View>
@@ -1059,7 +1062,7 @@ export default function TeacherMaterialsScreen() {
                         <Text style={{ color: '#0f172a', fontWeight: '700', flex: 1, paddingRight: 8 }}>{item.title}</Text>
                         <Text
                           style={{
-                            fontSize: 11,
+                            fontSize: scaleFont(11),
                             fontWeight: '700',
                             color: style.text,
                             backgroundColor: style.bg,
@@ -1073,13 +1076,13 @@ export default function TeacherMaterialsScreen() {
                           {style.label}
                         </Text>
                       </View>
-                      <Text style={{ color: '#64748b', fontSize: 12, marginBottom: 4 }}>
+                      <Text style={{ color: '#64748b', fontSize: scaleFont(12), lineHeight: scaleLineHeight(18), marginBottom: 4 }}>
                         {(item.class?.name || '-') + ' • ' + item.subject.name}
                       </Text>
-                      <Text style={{ color: '#334155', fontSize: 12, marginBottom: 4 }}>
+                      <Text style={{ color: '#334155', fontSize: scaleFont(12), lineHeight: scaleLineHeight(18), marginBottom: 4 }}>
                         {item.description || 'Tanpa deskripsi'}
                       </Text>
-                      <Text style={{ color: '#64748b', fontSize: 11, marginBottom: 8 }}>
+                      <Text style={{ color: '#64748b', fontSize: scaleFont(11), lineHeight: scaleLineHeight(16), marginBottom: 8 }}>
                         Dibuat: {formatDateTime(item.createdAt)}
                       </Text>
                       <View style={{ flexDirection: 'row', flexWrap: 'wrap', marginHorizontal: -4 }}>
@@ -1095,7 +1098,7 @@ export default function TeacherMaterialsScreen() {
                               backgroundColor: '#eff6ff',
                             }}
                           >
-                            <Text style={{ color: '#1d4ed8', fontWeight: '700', fontSize: 12 }}>
+                            <Text style={{ color: '#1d4ed8', fontWeight: '700', fontSize: scaleFont(12) }}>
                               {item.isPublished ? 'Draft' : 'Publish'}
                             </Text>
                           </Pressable>
@@ -1112,7 +1115,7 @@ export default function TeacherMaterialsScreen() {
                               backgroundColor: '#fff',
                             }}
                           >
-                            <Text style={{ color: '#334155', fontWeight: '700', fontSize: 12 }}>Edit</Text>
+                            <Text style={{ color: '#334155', fontWeight: '700', fontSize: scaleFont(12) }}>Edit</Text>
                           </Pressable>
                         </View>
                         <View style={{ width: '33.333%', paddingHorizontal: 4, marginBottom: 8 }}>
@@ -1136,7 +1139,7 @@ export default function TeacherMaterialsScreen() {
                               backgroundColor: '#eff6ff',
                             }}
                           >
-                            <Text style={{ color: '#1d4ed8', fontWeight: '700', fontSize: 12 }}>Salin</Text>
+                            <Text style={{ color: '#1d4ed8', fontWeight: '700', fontSize: scaleFont(12) }}>Salin</Text>
                           </Pressable>
                         </View>
                         <View style={{ width: '33.333%', paddingHorizontal: 4 }}>
@@ -1156,7 +1159,7 @@ export default function TeacherMaterialsScreen() {
                               style={{
                                 color: item.fileUrl ? '#334155' : '#94a3b8',
                                 fontWeight: '700',
-                                fontSize: 12,
+                                fontSize: scaleFont(12),
                               }}
                             >
                               Lampiran
@@ -1181,7 +1184,7 @@ export default function TeacherMaterialsScreen() {
                               backgroundColor: '#fef2f2',
                             }}
                           >
-                            <Text style={{ color: '#b91c1c', fontWeight: '700', fontSize: 12 }}>Hapus</Text>
+                            <Text style={{ color: '#b91c1c', fontWeight: '700', fontSize: scaleFont(12) }}>Hapus</Text>
                           </Pressable>
                         </View>
                       </View>
@@ -1200,8 +1203,10 @@ export default function TeacherMaterialsScreen() {
                   backgroundColor: '#fff',
                 }}
               >
-                <Text style={{ color: '#0f172a', fontWeight: '700', marginBottom: 4 }}>Belum ada materi</Text>
-                <Text style={{ color: '#64748b' }}>Materi yang Anda buat akan muncul di sini.</Text>
+              <Text style={{ color: '#0f172a', fontWeight: '700', fontSize: scaleFont(14), marginBottom: 4 }}>Belum ada materi</Text>
+              <Text style={{ color: '#64748b', fontSize: scaleFont(13), lineHeight: scaleLineHeight(20) }}>
+                Materi yang Anda buat akan muncul di sini.
+              </Text>
               </View>
             )
           ) : filteredAssignments.length > 0 ? (
@@ -1224,7 +1229,7 @@ export default function TeacherMaterialsScreen() {
                       <Text style={{ color: '#0f172a', fontWeight: '700', flex: 1, paddingRight: 8 }}>{item.title}</Text>
                       <Text
                         style={{
-                          fontSize: 11,
+                          fontSize: scaleFont(11),
                           fontWeight: '700',
                           color: style.text,
                           backgroundColor: style.bg,
@@ -1238,10 +1243,10 @@ export default function TeacherMaterialsScreen() {
                         {style.label}
                       </Text>
                     </View>
-                    <Text style={{ color: '#64748b', fontSize: 12, marginBottom: 4 }}>
+                    <Text style={{ color: '#64748b', fontSize: scaleFont(12), lineHeight: scaleLineHeight(18), marginBottom: 4 }}>
                       {(item.class?.name || '-') + ' • ' + item.subject.name}
                     </Text>
-                    <Text style={{ color: '#334155', fontSize: 12, marginBottom: 4 }}>
+                    <Text style={{ color: '#334155', fontSize: scaleFont(12), lineHeight: scaleLineHeight(18), marginBottom: 4 }}>
                       Deadline: {formatDateTime(item.dueDate)} • Max: {item.maxScore} • Submit: {item._count?.submissions ?? 0}
                     </Text>
                     <View style={{ flexDirection: 'row', flexWrap: 'wrap', marginHorizontal: -4 }}>
@@ -1257,7 +1262,7 @@ export default function TeacherMaterialsScreen() {
                             backgroundColor: '#eff6ff',
                           }}
                         >
-                          <Text style={{ color: '#1d4ed8', fontWeight: '700', fontSize: 12 }}>
+                          <Text style={{ color: '#1d4ed8', fontWeight: '700', fontSize: scaleFont(12) }}>
                             {item.isPublished ? 'Draft' : 'Publish'}
                           </Text>
                         </Pressable>
@@ -1274,7 +1279,7 @@ export default function TeacherMaterialsScreen() {
                             backgroundColor: '#fff',
                           }}
                         >
-                          <Text style={{ color: '#334155', fontWeight: '700', fontSize: 12 }}>Edit</Text>
+                          <Text style={{ color: '#334155', fontWeight: '700', fontSize: scaleFont(12) }}>Edit</Text>
                         </Pressable>
                       </View>
                       <View style={{ width: '33.333%', paddingHorizontal: 4, marginBottom: 8 }}>
@@ -1298,7 +1303,7 @@ export default function TeacherMaterialsScreen() {
                             backgroundColor: '#eff6ff',
                           }}
                         >
-                          <Text style={{ color: '#1d4ed8', fontWeight: '700', fontSize: 12 }}>Salin</Text>
+                          <Text style={{ color: '#1d4ed8', fontWeight: '700', fontSize: scaleFont(12) }}>Salin</Text>
                         </Pressable>
                       </View>
                       <View style={{ width: '33.333%', paddingHorizontal: 4, marginBottom: 8 }}>
@@ -1321,7 +1326,7 @@ export default function TeacherMaterialsScreen() {
                             backgroundColor: '#eff6ff',
                           }}
                         >
-                          <Text style={{ color: '#1d4ed8', fontWeight: '700', fontSize: 12 }}>Submisi</Text>
+                          <Text style={{ color: '#1d4ed8', fontWeight: '700', fontSize: scaleFont(12) }}>Submisi</Text>
                         </Pressable>
                       </View>
                       <View style={{ width: '33.333%', paddingHorizontal: 4 }}>
@@ -1341,7 +1346,7 @@ export default function TeacherMaterialsScreen() {
                             style={{
                               color: item.fileUrl ? '#334155' : '#94a3b8',
                               fontWeight: '700',
-                              fontSize: 12,
+                              fontSize: scaleFont(12),
                             }}
                           >
                             Lampiran
@@ -1367,7 +1372,7 @@ export default function TeacherMaterialsScreen() {
                             backgroundColor: '#fef2f2',
                           }}
                         >
-                          <Text style={{ color: '#b91c1c', fontWeight: '700', fontSize: 12 }}>Hapus</Text>
+                          <Text style={{ color: '#b91c1c', fontWeight: '700', fontSize: scaleFont(12) }}>Hapus</Text>
                         </Pressable>
                       </View>
                     </View>
@@ -1386,8 +1391,10 @@ export default function TeacherMaterialsScreen() {
                 backgroundColor: '#fff',
               }}
             >
-              <Text style={{ color: '#0f172a', fontWeight: '700', marginBottom: 4 }}>Belum ada tugas</Text>
-              <Text style={{ color: '#64748b' }}>Tugas yang Anda buat akan muncul di sini.</Text>
+              <Text style={{ color: '#0f172a', fontWeight: '700', fontSize: scaleFont(14), marginBottom: 4 }}>Belum ada tugas</Text>
+              <Text style={{ color: '#64748b', fontSize: scaleFont(13), lineHeight: scaleLineHeight(20) }}>
+                Tugas yang Anda buat akan muncul di sini.
+              </Text>
             </View>
           )}
         </>
@@ -1435,10 +1442,10 @@ export default function TeacherMaterialsScreen() {
               maxHeight: '80%',
             }}
           >
-            <Text style={{ color: '#0f172a', fontWeight: '700', fontSize: 18, marginBottom: 4 }}>
+            <Text style={{ color: '#0f172a', fontWeight: '700', fontSize: scaleFont(18), lineHeight: scaleLineHeight(24), marginBottom: 4 }}>
               Salin ke Kelas Lain
             </Text>
-            <Text style={{ color: '#334155', fontSize: 13, marginBottom: 10 }}>
+            <Text style={{ color: '#334155', fontSize: scaleFont(13), lineHeight: scaleLineHeight(20), marginBottom: 10 }}>
               {copySource
                 ? `${copySource.type === 'material' ? 'Materi' : 'Tugas'}: ${copySource.title}`
                 : ''}
@@ -1465,15 +1472,24 @@ export default function TeacherMaterialsScreen() {
                         marginBottom: 8,
                       }}
                     >
-                      <Text style={{ color: selected ? '#1d4ed8' : '#0f172a', fontWeight: '700', fontSize: 13 }}>
+                      <Text
+                        style={{
+                          color: selected ? '#1d4ed8' : '#0f172a',
+                          fontWeight: '700',
+                          fontSize: scaleFont(13),
+                          lineHeight: scaleLineHeight(20),
+                        }}
+                      >
                         {item.class.name}
                       </Text>
-                      <Text style={{ color: '#64748b', fontSize: 12 }}>{item.subject.name}</Text>
+                      <Text style={{ color: '#64748b', fontSize: scaleFont(12), lineHeight: scaleLineHeight(18) }}>
+                        {item.subject.name}
+                      </Text>
                     </Pressable>
                   );
                 })
               ) : (
-                <Text style={{ color: '#64748b', fontSize: 12, marginBottom: 8 }}>
+                <Text style={{ color: '#64748b', fontSize: scaleFont(12), lineHeight: scaleLineHeight(18), marginBottom: 8 }}>
                   Tidak ada kelas setingkat lain untuk mapel ini.
                 </Text>
               )}
@@ -1561,13 +1577,13 @@ export default function TeacherMaterialsScreen() {
                 marginBottom: 8,
               }}
             >
-              <Text style={{ color: '#9f1239', fontWeight: '700', fontSize: 12 }}>Konfirmasi Hapus</Text>
+              <Text style={{ color: '#9f1239', fontWeight: '700', fontSize: scaleFont(12) }}>Konfirmasi Hapus</Text>
             </View>
 
-            <Text style={{ color: '#0f172a', fontWeight: '700', fontSize: 18, marginBottom: 6 }}>
+            <Text style={{ color: '#0f172a', fontWeight: '700', fontSize: scaleFont(18), lineHeight: scaleLineHeight(24), marginBottom: 6 }}>
               {deleteTarget?.type === 'material' ? 'Hapus Materi' : 'Hapus Tugas'}
             </Text>
-            <Text style={{ color: '#475569', fontSize: 13, marginBottom: 8 }}>
+            <Text style={{ color: '#475569', fontSize: scaleFont(13), lineHeight: scaleLineHeight(20), marginBottom: 8 }}>
               Yakin ingin menghapus <Text style={{ fontWeight: '700' }}>{deleteTarget?.title}</Text>?
             </Text>
             {deleteTarget?.type === 'assignment' && (deleteTarget.submissionCount || 0) > 0 ? (
@@ -1581,7 +1597,7 @@ export default function TeacherMaterialsScreen() {
                   marginBottom: 10,
                 }}
               >
-                <Text style={{ color: '#9a3412', fontSize: 12 }}>
+                <Text style={{ color: '#9a3412', fontSize: scaleFont(12), lineHeight: scaleLineHeight(18) }}>
                   Tugas ini sudah memiliki {deleteTarget.submissionCount} submisi. Jika backend menolak, data tetap aman
                   dan tidak akan terhapus.
                 </Text>

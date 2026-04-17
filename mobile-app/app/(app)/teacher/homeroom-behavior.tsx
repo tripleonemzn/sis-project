@@ -17,6 +17,7 @@ import { kesiswaanApi } from '../../../src/features/kesiswaan/kesiswaanApi';
 import { KesiswaanBehavior, KesiswaanBehaviorType } from '../../../src/features/kesiswaan/types';
 import { getStandardPagePadding } from '../../../src/lib/ui/pageLayout';
 import { notifyApiError, notifyInfo, notifySuccess } from '../../../src/lib/ui/feedback';
+import { useAppTextScale } from '../../../src/theme/AppTextScaleProvider';
 
 type TypeFilter = 'ALL' | KesiswaanBehaviorType;
 
@@ -75,6 +76,7 @@ export default function TeacherHomeroomBehaviorScreen() {
   const queryClient = useQueryClient();
   const { isAuthenticated, isLoading, user } = useAuth();
   const pagePadding = getStandardPagePadding(insets, { bottom: 120 });
+  const { scaleFont, scaleLineHeight } = useAppTextScale();
 
   const [selectedClassId, setSelectedClassId] = useState<number | null>(null);
   const [typeFilter, setTypeFilter] = useState<TypeFilter>('ALL');
@@ -342,7 +344,7 @@ export default function TeacherHomeroomBehaviorScreen() {
   if (user?.role !== 'TEACHER') {
     return (
       <ScrollView style={{ flex: 1, backgroundColor: '#f8fafc' }} contentContainerStyle={pagePadding}>
-        <Text style={{ fontSize: 20, fontWeight: '700', marginBottom: 8 }}>Catatan Perilaku</Text>
+        <Text style={{ fontSize: scaleFont(20), lineHeight: scaleLineHeight(28), fontWeight: '700', marginBottom: 8 }}>Catatan Perilaku</Text>
         <QueryStateView type="error" message="Halaman ini khusus untuk role guru." />
         <Pressable
           onPress={() => router.replace('/home')}
@@ -363,7 +365,7 @@ export default function TeacherHomeroomBehaviorScreen() {
   if (!isAllowed) {
     return (
       <ScrollView style={{ flex: 1, backgroundColor: '#f8fafc' }} contentContainerStyle={pagePadding}>
-        <Text style={{ fontSize: 20, fontWeight: '700', marginBottom: 6, color: BRAND_COLORS.textDark }}>
+        <Text style={{ fontSize: scaleFont(20), lineHeight: scaleLineHeight(28), fontWeight: '700', marginBottom: 6, color: BRAND_COLORS.textDark }}>
           Catatan Perilaku
         </Text>
         <Text style={{ color: BRAND_COLORS.textMuted, marginBottom: 12 }}>
@@ -407,7 +409,7 @@ export default function TeacherHomeroomBehaviorScreen() {
         />
       }
     >
-      <Text style={{ fontSize: 20, fontWeight: '700', marginBottom: 6, color: BRAND_COLORS.textDark }}>
+      <Text style={{ fontSize: scaleFont(20), lineHeight: scaleLineHeight(28), fontWeight: '700', marginBottom: 6, color: BRAND_COLORS.textDark }}>
         Catatan Perilaku
       </Text>
       <Text style={{ color: BRAND_COLORS.textMuted, marginBottom: 12 }}>
@@ -472,7 +474,9 @@ export default function TeacherHomeroomBehaviorScreen() {
             marginBottom: 12,
           }}
         >
-          <Text style={{ color: BRAND_COLORS.textDark, fontWeight: '700', fontSize: 16 }}>{selectedClass.name}</Text>
+          <Text style={{ color: BRAND_COLORS.textDark, fontWeight: '700', fontSize: scaleFont(16), lineHeight: scaleLineHeight(22) }}>
+            {selectedClass.name}
+          </Text>
           <Text style={{ color: BRAND_COLORS.textMuted, marginTop: 2 }}>
             {selectedClass.major?.name || '-'} • Wali: {selectedClass.teacher?.name || '-'}
           </Text>
@@ -786,7 +790,7 @@ export default function TeacherHomeroomBehaviorScreen() {
                   }}
                 >
                   <View style={{ flex: 1 }}>
-                    <Text style={{ color: BRAND_COLORS.textDark, fontWeight: '700', fontSize: 15 }}>
+                    <Text style={{ color: BRAND_COLORS.textDark, fontWeight: '700', fontSize: scaleFont(15), lineHeight: scaleLineHeight(22) }}>
                       {item.student?.name || '-'}
                     </Text>
                     <Text style={{ color: '#64748b', marginTop: 2 }}>
@@ -804,7 +808,7 @@ export default function TeacherHomeroomBehaviorScreen() {
                       paddingVertical: 3,
                     }}
                   >
-                    <Text style={{ color: style.text, fontWeight: '700', fontSize: 11 }}>{style.label}</Text>
+                    <Text style={{ color: style.text, fontWeight: '700', fontSize: scaleFont(11) }}>{style.label}</Text>
                   </View>
                 </View>
 
@@ -909,9 +913,9 @@ export default function TeacherHomeroomBehaviorScreen() {
                 backgroundColor: '#f8fbff',
               }}
             >
-              <Text style={{ color: '#64748b', fontSize: 11, marginBottom: 4 }}>{item.label}</Text>
-              <Text style={{ color: BRAND_COLORS.textDark, fontWeight: '700', fontSize: 18 }}>{item.value}</Text>
-              <Text style={{ color: BRAND_COLORS.textMuted, fontSize: 11, marginTop: 3 }}>{item.note}</Text>
+              <Text style={{ color: '#64748b', fontSize: scaleFont(11), marginBottom: 4 }}>{item.label}</Text>
+              <Text style={{ color: BRAND_COLORS.textDark, fontWeight: '700', fontSize: scaleFont(18) }}>{item.value}</Text>
+              <Text style={{ color: BRAND_COLORS.textMuted, fontSize: scaleFont(11), lineHeight: scaleLineHeight(16), marginTop: 3 }}>{item.note}</Text>
             </View>
           ))}
           <View
@@ -924,7 +928,7 @@ export default function TeacherHomeroomBehaviorScreen() {
               backgroundColor: '#fff',
             }}
           >
-            <Text style={{ color: '#64748b', fontSize: 11, marginBottom: 4 }}>Konteks Aktif</Text>
+            <Text style={{ color: '#64748b', fontSize: scaleFont(11), marginBottom: 4 }}>Konteks Aktif</Text>
             <Text style={{ color: BRAND_COLORS.textDark, fontWeight: '600' }}>
               Kelas: {selectedClass?.name || 'Belum dipilih'}
             </Text>

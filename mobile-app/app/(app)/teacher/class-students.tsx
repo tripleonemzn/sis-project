@@ -9,6 +9,7 @@ import { useAuth } from '../../../src/features/auth/AuthProvider';
 import { adminApi } from '../../../src/features/admin/adminApi';
 import { teacherAssignmentApi } from '../../../src/features/teacherAssignments/teacherAssignmentApi';
 import { getStandardPagePadding } from '../../../src/lib/ui/pageLayout';
+import { useAppTextScale } from '../../../src/theme/AppTextScaleProvider';
 
 type StudentRow = {
   id: number;
@@ -30,6 +31,7 @@ export default function TeacherClassStudentsScreen() {
   const insets = useSafeAreaInsets();
   const { isAuthenticated, isLoading, user } = useAuth();
   const pagePadding = getStandardPagePadding(insets, { bottom: 120 });
+  const { scaleFont, scaleLineHeight } = useAppTextScale();
   const params = useLocalSearchParams<{ assignmentId?: string; classId?: string }>();
   const [searchQuery, setSearchQuery] = useState('');
 
@@ -101,7 +103,7 @@ export default function TeacherClassStudentsScreen() {
   if (user?.role !== 'TEACHER') {
     return (
       <ScrollView style={{ flex: 1, backgroundColor: '#f8fafc' }} contentContainerStyle={pagePadding}>
-        <Text style={{ fontSize: 20, fontWeight: '700', marginBottom: 8 }}>Daftar Siswa Kelas</Text>
+        <Text style={{ fontSize: scaleFont(20), lineHeight: scaleLineHeight(28), fontWeight: '700', marginBottom: 8 }}>Daftar Siswa Kelas</Text>
         <QueryStateView type="error" message="Halaman ini khusus untuk role guru." />
       </ScrollView>
     );
@@ -110,7 +112,7 @@ export default function TeacherClassStudentsScreen() {
   if (!classId && !assignmentId) {
     return (
       <ScrollView style={{ flex: 1, backgroundColor: '#f8fafc' }} contentContainerStyle={pagePadding}>
-        <Text style={{ fontSize: 20, fontWeight: '700', marginBottom: 8 }}>Daftar Siswa Kelas</Text>
+        <Text style={{ fontSize: scaleFont(20), lineHeight: scaleLineHeight(28), fontWeight: '700', marginBottom: 8 }}>Daftar Siswa Kelas</Text>
         <QueryStateView type="error" message="Parameter kelas tidak ditemukan." />
       </ScrollView>
     );
@@ -137,8 +139,8 @@ export default function TeacherClassStudentsScreen() {
         />
       }
     >
-      <Text style={{ fontSize: 20, fontWeight: '700', marginBottom: 6 }}>Daftar Siswa Kelas</Text>
-      <Text style={{ color: '#64748b', marginBottom: 12 }}>
+      <Text style={{ fontSize: scaleFont(20), lineHeight: scaleLineHeight(28), fontWeight: '700', marginBottom: 6 }}>Daftar Siswa Kelas</Text>
+      <Text style={{ color: '#64748b', fontSize: scaleFont(13), lineHeight: scaleLineHeight(20), marginBottom: 12 }}>
         Data siswa untuk kelas {className} {majorName !== '-' ? `(${majorName})` : ''}.
       </Text>
 
@@ -150,26 +152,26 @@ export default function TeacherClassStudentsScreen() {
           marginBottom: 10,
         }}
       >
-        <Text style={{ color: '#bfdbfe', fontSize: 12, marginBottom: 6 }}>
+        <Text style={{ color: '#bfdbfe', fontSize: scaleFont(12), marginBottom: 6 }}>
           Ringkasan Kelas
         </Text>
         <View style={{ flexDirection: 'row', marginHorizontal: -4 }}>
           <View style={{ flex: 1, paddingHorizontal: 4 }}>
             <View style={{ backgroundColor: 'rgba(255,255,255,0.12)', borderRadius: 8, padding: 8 }}>
-              <Text style={{ color: '#bfdbfe', fontSize: 11 }}>Total Siswa</Text>
-              <Text style={{ color: '#fff', fontWeight: '700' }}>{summary.total}</Text>
+              <Text style={{ color: '#bfdbfe', fontSize: scaleFont(11) }}>Total Siswa</Text>
+              <Text style={{ color: '#fff', fontWeight: '700', fontSize: scaleFont(14) }}>{summary.total}</Text>
             </View>
           </View>
           <View style={{ flex: 1, paddingHorizontal: 4 }}>
             <View style={{ backgroundColor: 'rgba(255,255,255,0.12)', borderRadius: 8, padding: 8 }}>
-              <Text style={{ color: '#bfdbfe', fontSize: 11 }}>Laki-laki</Text>
-              <Text style={{ color: '#fff', fontWeight: '700' }}>{summary.male}</Text>
+              <Text style={{ color: '#bfdbfe', fontSize: scaleFont(11) }}>Laki-laki</Text>
+              <Text style={{ color: '#fff', fontWeight: '700', fontSize: scaleFont(14) }}>{summary.male}</Text>
             </View>
           </View>
           <View style={{ flex: 1, paddingHorizontal: 4 }}>
             <View style={{ backgroundColor: 'rgba(255,255,255,0.12)', borderRadius: 8, padding: 8 }}>
-              <Text style={{ color: '#bfdbfe', fontSize: 11 }}>Perempuan</Text>
-              <Text style={{ color: '#fff', fontWeight: '700' }}>{summary.female}</Text>
+              <Text style={{ color: '#bfdbfe', fontSize: scaleFont(11) }}>Perempuan</Text>
+              <Text style={{ color: '#fff', fontWeight: '700', fontSize: scaleFont(14) }}>{summary.female}</Text>
             </View>
           </View>
         </View>
@@ -185,6 +187,7 @@ export default function TeacherClassStudentsScreen() {
           borderRadius: 10,
           paddingHorizontal: 12,
           paddingVertical: 10,
+          fontSize: scaleFont(14),
           backgroundColor: '#fff',
           marginBottom: 10,
         }}
@@ -229,12 +232,14 @@ export default function TeacherClassStudentsScreen() {
                       marginRight: 8,
                     }}
                   >
-                    <Text style={{ color: '#334155', fontSize: 11, fontWeight: '700' }}>{index + 1}</Text>
+                    <Text style={{ color: '#334155', fontSize: scaleFont(11), fontWeight: '700' }}>{index + 1}</Text>
                   </View>
-                  <Text style={{ color: '#0f172a', fontWeight: '700', flex: 1 }}>{item.name}</Text>
+                  <Text style={{ color: '#0f172a', fontWeight: '700', fontSize: scaleFont(14), lineHeight: scaleLineHeight(20), flex: 1 }}>
+                    {item.name}
+                  </Text>
                   <Text
                     style={{
-                      fontSize: 11,
+                      fontSize: scaleFont(11),
                       fontWeight: '700',
                       color: '#1d4ed8',
                       backgroundColor: '#eff6ff',
@@ -248,7 +253,7 @@ export default function TeacherClassStudentsScreen() {
                     {normalizeGender(item.gender)}
                   </Text>
                 </View>
-                <Text style={{ color: '#475569', fontSize: 12 }}>
+                <Text style={{ color: '#475569', fontSize: scaleFont(12), lineHeight: scaleLineHeight(18) }}>
                   NIS: {item.nis || '-'} • NISN: {item.nisn || '-'}
                 </Text>
               </View>
@@ -265,8 +270,10 @@ export default function TeacherClassStudentsScreen() {
               backgroundColor: '#fff',
             }}
           >
-            <Text style={{ fontWeight: '700', marginBottom: 4, color: '#0f172a' }}>Data siswa tidak ditemukan</Text>
-            <Text style={{ color: '#64748b' }}>Belum ada data siswa yang sesuai dengan pencarian.</Text>
+            <Text style={{ fontWeight: '700', fontSize: scaleFont(14), marginBottom: 4, color: '#0f172a' }}>Data siswa tidak ditemukan</Text>
+            <Text style={{ color: '#64748b', fontSize: scaleFont(13), lineHeight: scaleLineHeight(20) }}>
+              Belum ada data siswa yang sesuai dengan pencarian.
+            </Text>
           </View>
         )
       ) : null}

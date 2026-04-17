@@ -29,6 +29,7 @@ import { permissionApi } from '../../../src/features/permissions/permissionApi';
 import { PermissionStatus, PermissionType, StudentPermission } from '../../../src/features/permissions/types';
 import { getStandardPagePadding } from '../../../src/lib/ui/pageLayout';
 import { openWebModuleRoute } from '../../../src/lib/navigation/webModuleRoute';
+import { useAppTextScale } from '../../../src/theme/AppTextScaleProvider';
 
 type StatusFilter = 'ALL' | PermissionStatus;
 type TypeFilter = 'ALL' | PermissionType;
@@ -122,6 +123,7 @@ export default function TeacherHomeroomPermissionsScreen() {
   const queryClient = useQueryClient();
   const { isAuthenticated, isLoading, user } = useAuth();
   const pagePadding = getStandardPagePadding(insets, { bottom: 120 });
+  const { scaleFont, scaleLineHeight } = useAppTextScale();
 
   const [statusFilter, setStatusFilter] = useState<StatusFilter>('PENDING');
   const [typeFilter, setTypeFilter] = useState<TypeFilter>('ALL');
@@ -509,7 +511,7 @@ export default function TeacherHomeroomPermissionsScreen() {
   if (user?.role !== 'TEACHER') {
     return (
       <ScrollView style={{ flex: 1, backgroundColor: '#f8fafc' }} contentContainerStyle={pagePadding}>
-        <Text style={{ fontSize: 20, fontWeight: '700', marginBottom: 8 }}>Persetujuan Izin</Text>
+        <Text style={{ fontSize: scaleFont(20), lineHeight: scaleLineHeight(28), fontWeight: '700', marginBottom: 8 }}>Persetujuan Izin</Text>
         <QueryStateView type="error" message="Halaman ini khusus untuk role guru." />
         <Pressable
           onPress={() => router.replace('/home')}
@@ -530,7 +532,7 @@ export default function TeacherHomeroomPermissionsScreen() {
   if (!isAllowed) {
     return (
       <ScrollView style={{ flex: 1, backgroundColor: '#f8fafc' }} contentContainerStyle={pagePadding}>
-        <Text style={{ fontSize: 20, fontWeight: '700', marginBottom: 6, color: BRAND_COLORS.textDark }}>
+        <Text style={{ fontSize: scaleFont(20), lineHeight: scaleLineHeight(28), fontWeight: '700', marginBottom: 6, color: BRAND_COLORS.textDark }}>
           Persetujuan Izin
         </Text>
         <Text style={{ color: BRAND_COLORS.textMuted, marginBottom: 12 }}>
@@ -583,7 +585,7 @@ export default function TeacherHomeroomPermissionsScreen() {
         />
       }
     >
-      <Text style={{ fontSize: 20, fontWeight: '700', marginBottom: 6, color: BRAND_COLORS.textDark }}>
+      <Text style={{ fontSize: scaleFont(20), lineHeight: scaleLineHeight(28), fontWeight: '700', marginBottom: 6, color: BRAND_COLORS.textDark }}>
         Persetujuan Izin
       </Text>
       <Text style={{ color: BRAND_COLORS.textMuted, marginBottom: 12 }}>
@@ -660,7 +662,9 @@ export default function TeacherHomeroomPermissionsScreen() {
             marginBottom: 12,
           }}
         >
-          <Text style={{ color: BRAND_COLORS.textDark, fontWeight: '700', fontSize: 16 }}>{selectedClass.name}</Text>
+          <Text style={{ color: BRAND_COLORS.textDark, fontWeight: '700', fontSize: scaleFont(16), lineHeight: scaleLineHeight(22) }}>
+            {selectedClass.name}
+          </Text>
           <Text style={{ color: BRAND_COLORS.textMuted, marginTop: 2 }}>
             {selectedClass.major?.name || '-'} • Wali: {selectedClass.teacher?.name || '-'}
           </Text>
@@ -807,7 +811,7 @@ export default function TeacherHomeroomPermissionsScreen() {
                   }}
                 >
                   <View style={{ flex: 1 }}>
-                    <Text style={{ color: BRAND_COLORS.textDark, fontWeight: '700', fontSize: 15 }}>
+                    <Text style={{ color: BRAND_COLORS.textDark, fontWeight: '700', fontSize: scaleFont(15), lineHeight: scaleLineHeight(22) }}>
                       {item.student?.name || '-'}
                     </Text>
                     <Text style={{ color: '#64748b', marginTop: 2 }}>
@@ -824,7 +828,7 @@ export default function TeacherHomeroomPermissionsScreen() {
                       paddingVertical: 3,
                     }}
                   >
-                    <Text style={{ color: currentStatusStyle.text, fontWeight: '700', fontSize: 11 }}>
+                    <Text style={{ color: currentStatusStyle.text, fontWeight: '700', fontSize: scaleFont(11) }}>
                       {STATUS_LABEL[item.status]}
                     </Text>
                   </View>
@@ -840,7 +844,7 @@ export default function TeacherHomeroomPermissionsScreen() {
                     marginBottom: 6,
                   }}
                 >
-                  <Text style={{ color: currentTypeStyle.text, fontWeight: '700', fontSize: 12 }}>{TYPE_LABEL[item.type]}</Text>
+                  <Text style={{ color: currentTypeStyle.text, fontWeight: '700', fontSize: scaleFont(12) }}>{TYPE_LABEL[item.type]}</Text>
                 </View>
 
                 <Text style={{ color: '#475569', marginBottom: 2 }}>
@@ -849,7 +853,7 @@ export default function TeacherHomeroomPermissionsScreen() {
                 <Text style={{ color: '#475569', marginBottom: 2 }}>
                   Alasan: <Text style={{ color: BRAND_COLORS.textDark }}>{item.reason || '-'}</Text>
                 </Text>
-                <Text style={{ color: '#64748b', fontSize: 12, marginBottom: 8 }}>
+                <Text style={{ color: '#64748b', fontSize: scaleFont(12), lineHeight: scaleLineHeight(18), marginBottom: 8 }}>
                   Diajukan: {formatDate(item.createdAt)}
                 </Text>
 
@@ -864,7 +868,7 @@ export default function TeacherHomeroomPermissionsScreen() {
                       marginBottom: 8,
                     }}
                   >
-                    <Text style={{ color: '#991b1b', fontSize: 12 }}>{item.approvalNote}</Text>
+                    <Text style={{ color: '#991b1b', fontSize: scaleFont(12), lineHeight: scaleLineHeight(18) }}>{item.approvalNote}</Text>
                   </View>
                 ) : null}
 
@@ -1005,9 +1009,9 @@ export default function TeacherHomeroomPermissionsScreen() {
                 backgroundColor: '#f8fbff',
               }}
             >
-              <Text style={{ color: '#64748b', fontSize: 11, marginBottom: 4 }}>{item.label}</Text>
-              <Text style={{ color: BRAND_COLORS.textDark, fontWeight: '700', fontSize: 18 }}>{item.value}</Text>
-              <Text style={{ color: BRAND_COLORS.textMuted, fontSize: 11, marginTop: 3 }}>{item.note}</Text>
+              <Text style={{ color: '#64748b', fontSize: scaleFont(11), marginBottom: 4 }}>{item.label}</Text>
+              <Text style={{ color: BRAND_COLORS.textDark, fontWeight: '700', fontSize: scaleFont(18) }}>{item.value}</Text>
+              <Text style={{ color: BRAND_COLORS.textMuted, fontSize: scaleFont(11), lineHeight: scaleLineHeight(16), marginTop: 3 }}>{item.note}</Text>
             </View>
           ))}
           <View
@@ -1020,7 +1024,7 @@ export default function TeacherHomeroomPermissionsScreen() {
               backgroundColor: '#fff',
             }}
           >
-            <Text style={{ color: '#64748b', fontSize: 11, marginBottom: 4 }}>Konteks Aktif</Text>
+            <Text style={{ color: '#64748b', fontSize: scaleFont(11), marginBottom: 4 }}>Konteks Aktif</Text>
             <Text style={{ color: BRAND_COLORS.textDark, fontWeight: '600' }}>
               Kelas: {selectedClass?.name || 'Semua kelas wali'}
             </Text>
@@ -1093,8 +1097,8 @@ export default function TeacherHomeroomPermissionsScreen() {
             marginBottom: 12,
           }}
         >
-          <Text style={{ color: '#92400e', fontWeight: '700', marginBottom: 4 }}>Akses Ujian</Text>
-          <Text style={{ color: '#92400e', fontSize: 12, lineHeight: 18 }}>
+          <Text style={{ color: '#92400e', fontWeight: '700', fontSize: scaleFont(14), marginBottom: 4 }}>Akses Ujian</Text>
+          <Text style={{ color: '#92400e', fontSize: scaleFont(12), lineHeight: scaleLineHeight(18) }}>
             Gunakan blokir manual ini untuk kasus administrasi atau tunggakan yang belum tersinkron di modul finance.
             Keterangan yang Anda isi akan tampil ke siswa pada menu ujian.
           </Text>
@@ -1230,7 +1234,7 @@ export default function TeacherHomeroomPermissionsScreen() {
                         }}
                       >
                         <View style={{ flex: 1 }}>
-                          <Text style={{ color: BRAND_COLORS.textDark, fontWeight: '700', fontSize: 15 }}>
+                          <Text style={{ color: BRAND_COLORS.textDark, fontWeight: '700', fontSize: scaleFont(15), lineHeight: scaleLineHeight(22) }}>
                             {item.student.name}
                           </Text>
                           <Text style={{ color: '#64748b', marginTop: 2 }}>
@@ -1247,7 +1251,7 @@ export default function TeacherHomeroomPermissionsScreen() {
                             paddingVertical: 3,
                           }}
                         >
-                          <Text style={{ color: statusColors.text, fontWeight: '700', fontSize: 11 }}>{statusText}</Text>
+                          <Text style={{ color: statusColors.text, fontWeight: '700', fontSize: scaleFont(11) }}>{statusText}</Text>
                         </View>
                       </View>
 
@@ -1262,12 +1266,12 @@ export default function TeacherHomeroomPermissionsScreen() {
                             marginBottom: 8,
                           }}
                         >
-                          <Text style={{ color: '#991b1b', fontSize: 12 }}>
+                          <Text style={{ color: '#991b1b', fontSize: scaleFont(12), lineHeight: scaleLineHeight(18) }}>
                             {item.reason || 'Akses ditutup'}
                           </Text>
                         </View>
                       ) : (
-                        <Text style={{ color: '#15803d', fontSize: 12, marginBottom: 8 }}>
+                        <Text style={{ color: '#15803d', fontSize: scaleFont(12), lineHeight: scaleLineHeight(18), marginBottom: 8 }}>
                           Akses ujian terbuka untuk siswa ini.
                         </Text>
                       )}
@@ -1282,7 +1286,7 @@ export default function TeacherHomeroomPermissionsScreen() {
                               paddingVertical: 4,
                             }}
                           >
-                            <Text style={{ color: '#92400e', fontSize: 11, fontWeight: '700' }}>Manual</Text>
+                            <Text style={{ color: '#92400e', fontSize: scaleFont(11), fontWeight: '700' }}>Manual</Text>
                           </View>
                         ) : null}
                         {item.flags.belowKkm ? (
@@ -1294,7 +1298,7 @@ export default function TeacherHomeroomPermissionsScreen() {
                               paddingVertical: 4,
                             }}
                           >
-                            <Text style={{ color: '#b91c1c', fontSize: 11, fontWeight: '700' }}>Nilai &lt; KKM</Text>
+                            <Text style={{ color: '#b91c1c', fontSize: scaleFont(11), fontWeight: '700' }}>Nilai &lt; KKM</Text>
                           </View>
                         ) : null}
                         {item.flags.financeBlocked ? (
@@ -1306,7 +1310,7 @@ export default function TeacherHomeroomPermissionsScreen() {
                               paddingVertical: 4,
                             }}
                           >
-                            <Text style={{ color: '#c2410c', fontSize: 11, fontWeight: '700' }}>Tunggakan</Text>
+                            <Text style={{ color: '#c2410c', fontSize: scaleFont(11), fontWeight: '700' }}>Tunggakan</Text>
                           </View>
                         ) : null}
                         {item.flags.financeBlocked && item.flags.financeOverdue ? (
@@ -1318,7 +1322,7 @@ export default function TeacherHomeroomPermissionsScreen() {
                               paddingVertical: 4,
                             }}
                           >
-                            <Text style={{ color: '#be123c', fontSize: 11, fontWeight: '700' }}>Jatuh Tempo</Text>
+                            <Text style={{ color: '#be123c', fontSize: scaleFont(11), fontWeight: '700' }}>Jatuh Tempo</Text>
                           </View>
                         ) : null}
                         {item.flags.financeOutstanding && !item.flags.financeBlocked ? (
@@ -1330,7 +1334,7 @@ export default function TeacherHomeroomPermissionsScreen() {
                               paddingVertical: 4,
                             }}
                           >
-                            <Text style={{ color: '#a16207', fontSize: 11, fontWeight: '700' }}>Info Finance</Text>
+                            <Text style={{ color: '#a16207', fontSize: scaleFont(11), fontWeight: '700' }}>Info Finance</Text>
                           </View>
                         ) : null}
                       </View>
@@ -1346,10 +1350,10 @@ export default function TeacherHomeroomPermissionsScreen() {
                             marginBottom: 8,
                           }}
                         >
-                          <Text style={{ color: '#b91c1c', fontSize: 12, fontWeight: '700', marginBottom: 4 }}>
+                          <Text style={{ color: '#b91c1c', fontSize: scaleFont(12), fontWeight: '700', marginBottom: 4 }}>
                             Mapel di bawah KKM
                           </Text>
-                          <Text style={{ color: '#b91c1c', fontSize: 12 }}>
+                          <Text style={{ color: '#b91c1c', fontSize: scaleFont(12), lineHeight: scaleLineHeight(18) }}>
                             {item.details.belowKkmSubjects
                               .slice(0, 3)
                               .map((subject) => `${subject.subjectName} (${subject.score}/${subject.kkm})`)
@@ -1372,17 +1376,17 @@ export default function TeacherHomeroomPermissionsScreen() {
                             marginBottom: 8,
                           }}
                         >
-                          <Text style={{ color: '#c2410c', fontSize: 12, fontWeight: '700', marginBottom: 4 }}>
+                          <Text style={{ color: '#c2410c', fontSize: scaleFont(12), fontWeight: '700', marginBottom: 4 }}>
                             Tunggakan {formatExamCurrency(item.details.outstandingAmount)}
                           </Text>
-                          <Text style={{ color: '#c2410c', fontSize: 12 }}>
+                          <Text style={{ color: '#c2410c', fontSize: scaleFont(12), lineHeight: scaleLineHeight(18) }}>
                             {item.details.outstandingInvoices} tagihan aktif
                             {item.details.overdueInvoices > 0
                               ? `, ${item.details.overdueInvoices} sudah jatuh tempo`
                               : ''}
                           </Text>
                           {!item.flags.financeBlocked ? (
-                            <Text style={{ color: '#c2410c', fontSize: 11, marginTop: 4 }}>
+                            <Text style={{ color: '#c2410c', fontSize: scaleFont(11), lineHeight: scaleLineHeight(16), marginTop: 4 }}>
                               Program ujian ini tidak memblokir akses dari status tunggakan tersebut.
                             </Text>
                           ) : null}
@@ -1464,8 +1468,8 @@ export default function TeacherHomeroomPermissionsScreen() {
               backgroundColor: '#f8fbff',
             }}
           >
-            <Text style={{ color: '#64748b', fontSize: 11, marginBottom: 4 }}>Siswa</Text>
-            <Text style={{ color: BRAND_COLORS.textDark, fontWeight: '700', fontSize: 15 }}>
+            <Text style={{ color: '#64748b', fontSize: scaleFont(11), marginBottom: 4 }}>Siswa</Text>
+            <Text style={{ color: BRAND_COLORS.textDark, fontWeight: '700', fontSize: scaleFont(15), lineHeight: scaleLineHeight(22) }}>
               {restrictionTarget?.student.name || '-'}
             </Text>
             <Text style={{ color: BRAND_COLORS.textMuted, marginTop: 2 }}>

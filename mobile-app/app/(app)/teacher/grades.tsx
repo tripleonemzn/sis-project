@@ -17,6 +17,7 @@ import {
 import { teacherGradeApi, type GradeComponent } from '../../../src/features/teacherGrades/teacherGradeApi';
 import { notifyApiError, notifySuccess } from '../../../src/lib/ui/feedback';
 import { getStandardPagePadding } from '../../../src/lib/ui/pageLayout';
+import { useAppTextScale } from '../../../src/theme/AppTextScaleProvider';
 
 type Semester = 'ODD' | 'EVEN';
 type SemesterOption = Semester | '';
@@ -559,6 +560,7 @@ export default function TeacherGradesScreen() {
   const queryClient = useQueryClient();
   const { isAuthenticated, isLoading, user } = useAuth();
   const pageContentPadding = getStandardPagePadding(insets);
+  const { scaleFont, scaleLineHeight } = useAppTextScale();
   const assignmentsQuery = useTeacherAssignmentsQuery({ enabled: isAuthenticated, user });
   const assignments = useMemo(
     () => sortTeacherAssignments(assignmentsQuery.data?.assignments || []),
@@ -1190,7 +1192,7 @@ export default function TeacherGradesScreen() {
   if (user?.role !== 'TEACHER') {
     return (
       <ScrollView style={{ flex: 1, backgroundColor: '#f8fafc' }} contentContainerStyle={pageContentPadding}>
-        <Text style={{ fontSize: 20, fontWeight: '700', marginBottom: 8 }}>Input Nilai</Text>
+        <Text style={{ fontSize: scaleFont(20), lineHeight: scaleLineHeight(28), fontWeight: '700', marginBottom: 8 }}>Input Nilai</Text>
         <QueryStateView type="error" message="Halaman ini khusus untuk role guru." />
       </ScrollView>
     );
@@ -1220,8 +1222,10 @@ export default function TeacherGradesScreen() {
           />
         }
       >
-      <Text style={{ fontSize: 20, fontWeight: '700', marginBottom: 6 }}>Input Nilai</Text>
-      <Text style={{ color: '#64748b', marginBottom: 12 }}>Masukkan nilai per komponen untuk kelas ajar Anda.</Text>
+      <Text style={{ fontSize: scaleFont(20), lineHeight: scaleLineHeight(28), fontWeight: '700', marginBottom: 6 }}>Input Nilai</Text>
+      <Text style={{ color: '#64748b', fontSize: scaleFont(13), lineHeight: scaleLineHeight(20), marginBottom: 12 }}>
+        Masukkan nilai per komponen untuk kelas ajar Anda.
+      </Text>
 
       {assignmentsQuery.isLoading ? <QueryStateView type="loading" message="Memuat assignment..." /> : null}
       {assignmentsQuery.isError ? (
@@ -1254,7 +1258,9 @@ export default function TeacherGradesScreen() {
                 disabled={!semester}
               />
               {!semester ? (
-                <Text style={{ color: '#dc2626', fontSize: 12, marginTop: 2 }}>Silahkan Pilih Semester</Text>
+                <Text style={{ color: '#dc2626', fontSize: scaleFont(12), lineHeight: scaleLineHeight(18), marginTop: 2 }}>
+                  Silahkan Pilih Semester
+                </Text>
               ) : null}
             </View>
 
@@ -1283,7 +1289,9 @@ export default function TeacherGradesScreen() {
             >
               <Text style={{ color: '#0f172a', fontWeight: '700', marginBottom: 8 }}>Pilih Komponen Nilai</Text>
               {componentsQuery.isLoading ? (
-                <Text style={{ color: '#64748b', fontSize: 12 }}>Memuat komponen mapel...</Text>
+                <Text style={{ color: '#64748b', fontSize: scaleFont(12), lineHeight: scaleLineHeight(18) }}>
+                  Memuat komponen mapel...
+                </Text>
               ) : filteredComponents.length > 0 ? (
                 <MobileSelectField
                   value={selectedComponentId ? String(selectedComponentId) : ''}
@@ -1294,12 +1302,14 @@ export default function TeacherGradesScreen() {
                   disabled={!selectedAssignmentId}
                 />
               ) : (
-                <Text style={{ color: '#64748b', fontSize: 12 }}>
+                <Text style={{ color: '#64748b', fontSize: scaleFont(12), lineHeight: scaleLineHeight(18) }}>
                   Komponen nilai untuk mapel ini belum tersedia.
                 </Text>
               )}
               {!selectedAssignmentId && semester ? (
-                <Text style={{ color: '#dc2626', fontSize: 12, marginTop: 2 }}>Silahkan Pilih Kelas & Mapel</Text>
+                <Text style={{ color: '#dc2626', fontSize: scaleFont(12), lineHeight: scaleLineHeight(18), marginTop: 2 }}>
+                  Silahkan Pilih Kelas & Mapel
+                </Text>
               ) : null}
             </View>
 
@@ -1314,6 +1324,7 @@ export default function TeacherGradesScreen() {
                 borderRadius: 10,
                 paddingHorizontal: 12,
                 paddingVertical: 10,
+                fontSize: scaleFont(14),
                 backgroundColor: '#fff',
                 color: '#0f172a',
                 marginBottom: 10,
@@ -1346,20 +1357,20 @@ export default function TeacherGradesScreen() {
                     marginBottom: 10,
                   }}
                 >
-                  <Text style={{ color: '#bfdbfe', fontSize: 12, marginBottom: 4 }}>
+                  <Text style={{ color: '#bfdbfe', fontSize: scaleFont(12), lineHeight: scaleLineHeight(18), marginBottom: 4 }}>
                     {selectedAssignment?.subject.name} • {selectedAssignment?.class.name} • Semester{' '}
                     {semester === 'ODD' ? 'Ganjil' : semester === 'EVEN' ? 'Genap' : '-'}
                   </Text>
                   <Text style={{ color: '#fff', fontWeight: '700' }}>
                     Terisi {recap.filled} / {recap.total} kolom nilai
                   </Text>
-                  <Text style={{ color: '#bfdbfe', fontSize: 11, marginTop: 2 }}>
+                  <Text style={{ color: '#bfdbfe', fontSize: scaleFont(11), lineHeight: scaleLineHeight(16), marginTop: 2 }}>
                     Menampilkan {filteredStudents.length} dari {students.length} siswa
                   </Text>
-                  <Text style={{ color: '#bfdbfe', fontSize: 11, marginTop: 2 }}>
+                  <Text style={{ color: '#bfdbfe', fontSize: scaleFont(11), lineHeight: scaleLineHeight(16), marginTop: 2 }}>
                     Komponen aktif: {selectedComponent ? formatComponentLabel(selectedComponent) : 'Belum dipilih'}
                   </Text>
-                  <Text style={{ color: '#bfdbfe', fontSize: 11, marginTop: 2 }}>
+                  <Text style={{ color: '#bfdbfe', fontSize: scaleFont(11), lineHeight: scaleLineHeight(16), marginTop: 2 }}>
                     KKM mapel: {selectedKkm}
                   </Text>
                 </View>
@@ -1378,11 +1389,11 @@ export default function TeacherGradesScreen() {
                     <Text style={{ color: '#0f172a', fontWeight: '700', marginBottom: 4 }}>
                       {`Deskripsi Predikat ${finalComponentLabel}`}
                     </Text>
-                    <Text style={{ color: '#64748b', fontSize: 12, marginBottom: 8 }}>
+                    <Text style={{ color: '#64748b', fontSize: scaleFont(12), lineHeight: scaleLineHeight(18), marginBottom: 8 }}>
                       A: nilai minimal 86, B: nilai minimal KKM sampai 85, C: nilai 60 sampai di bawah KKM, D: nilai di bawah 60
                     </Text>
                     {isReligionSubject ? (
-                      <Text style={{ color: '#92400e', fontSize: 12, marginBottom: 8 }}>
+                      <Text style={{ color: '#92400e', fontSize: scaleFont(12), lineHeight: scaleLineHeight(18), marginBottom: 8 }}>
                         Mapel Agama memakai template deskripsi per agama siswa sesuai profile.
                       </Text>
                     ) : null}
@@ -1456,11 +1467,11 @@ export default function TeacherGradesScreen() {
                         }}
                       >
                         <Text style={{ color: '#0f172a', fontWeight: '700', marginBottom: 2 }}>{student.name}</Text>
-                        <Text style={{ color: '#64748b', fontSize: 12, marginBottom: 8 }}>
+                        <Text style={{ color: '#64748b', fontSize: scaleFont(12), lineHeight: scaleLineHeight(18), marginBottom: 8 }}>
                           NIS: {student.nis || '-'} | NISN: {student.nisn || '-'}
                         </Text>
                         <View style={{ marginBottom: 8 }}>
-                          <Text style={{ color: '#334155', fontSize: 12, marginBottom: 4 }}>
+                          <Text style={{ color: '#334155', fontSize: scaleFont(12), lineHeight: scaleLineHeight(18), marginBottom: 4 }}>
                             {formatComponentLabel(selectedComponent)}
                           </Text>
                           {isFormatifComponent ? (
@@ -1468,7 +1479,7 @@ export default function TeacherGradesScreen() {
                               {(() => {
                                 return (
                                   <View style={{ marginBottom: 6 }}>
-                                    <Text style={{ color: '#64748b', fontSize: 10, marginBottom: 3 }}>
+                                    <Text style={{ color: '#64748b', fontSize: scaleFont(10), lineHeight: scaleLineHeight(14), marginBottom: 3 }}>
                                       Butir nilai formatif (dinamis)
                                     </Text>
                                     <View style={{ flexDirection: 'row', flexWrap: 'wrap', marginHorizontal: -3, marginBottom: 6 }}>
@@ -1490,7 +1501,7 @@ export default function TeacherGradesScreen() {
                                               paddingVertical: 6,
                                               backgroundColor: '#fff',
                                               color: '#0f172a',
-                                              fontSize: 12,
+                                              fontSize: scaleFont(12),
                                               textAlign: 'center',
                                             }}
                                           />
@@ -1508,7 +1519,7 @@ export default function TeacherGradesScreen() {
                                               justifyContent: 'center',
                                             }}
                                           >
-                                            <Text style={{ color: '#ffffff', fontSize: 10, fontWeight: '700', lineHeight: 12 }}>×</Text>
+                                            <Text style={{ color: '#ffffff', fontSize: scaleFont(10), fontWeight: '700', lineHeight: scaleLineHeight(12) }}>×</Text>
                                           </Pressable>
                                         </View>
                                       ))}
@@ -1526,14 +1537,14 @@ export default function TeacherGradesScreen() {
                                             paddingVertical: 8,
                                           }}
                                         >
-                                          <Text style={{ color: '#1d4ed8', fontWeight: '700', fontSize: 11 }}>+ Tambah</Text>
+                                          <Text style={{ color: '#1d4ed8', fontWeight: '700', fontSize: scaleFont(11) }}>+ Tambah</Text>
                                         </Pressable>
                                       </View>
                                     </View>
                                     <Text
                                       style={{
                                         color: parsedSeries.invalid ? '#dc2626' : '#64748b',
-                                        fontSize: 10,
+                                        fontSize: scaleFont(10),
                                         marginTop: 3,
                                       }}
                                     >
@@ -1556,7 +1567,7 @@ export default function TeacherGradesScreen() {
                                       alignItems: 'center',
                                     }}
                                   >
-                                    <Text style={{ color: '#64748b', fontSize: 10 }}>{`Referensi ${midtermComponentLabel}`}</Text>
+                                    <Text style={{ color: '#64748b', fontSize: scaleFont(10) }}>{`Referensi ${midtermComponentLabel}`}</Text>
                                     <Text style={{ color: '#1d4ed8', fontWeight: '700' }}>
                                       {previewMidtermReference === null || previewMidtermReference === undefined
                                         ? '-'
@@ -1576,7 +1587,7 @@ export default function TeacherGradesScreen() {
                                     alignItems: 'center',
                                   }}
                                 >
-                                  <Text style={{ color: '#166534', fontSize: 10 }}>{`Referensi ${finalComponentLabel}`}</Text>
+                                  <Text style={{ color: '#166534', fontSize: scaleFont(10) }}>{`Referensi ${finalComponentLabel}`}</Text>
                                   <Text style={{ color: '#166534', fontWeight: '700' }}>
                                     {previewFinalReference === null || previewFinalReference === undefined
                                       ? '-'
@@ -1615,10 +1626,10 @@ export default function TeacherGradesScreen() {
                                     backgroundColor: '#fefce8',
                                   }}
                                 >
-                                  <Text style={{ color: '#64748b', fontSize: 11, marginBottom: 2 }}>
+                                  <Text style={{ color: '#64748b', fontSize: scaleFont(11), lineHeight: scaleLineHeight(16), marginBottom: 2 }}>
                                     {`Nilai Rapor ${midtermComponentLabel} (preview)`}
                                   </Text>
-                                  <Text style={{ color: '#92400e', fontWeight: '700', fontSize: 12 }}>
+                                  <Text style={{ color: '#92400e', fontWeight: '700', fontSize: scaleFont(12), lineHeight: scaleLineHeight(18) }}>
                                     {(() => {
                                       const sbtsRaw = Number(scoreDraft[`${student.id}:${selectedComponent.id}`]);
                                       const sbtsScore = Number.isFinite(sbtsRaw) ? sbtsRaw : null;
@@ -1645,10 +1656,10 @@ export default function TeacherGradesScreen() {
                                     backgroundColor: '#eff6ff',
                                   }}
                                 >
-                                  <Text style={{ color: '#64748b', fontSize: 11, marginBottom: 2 }}>
+                                  <Text style={{ color: '#64748b', fontSize: scaleFont(11), lineHeight: scaleLineHeight(16), marginBottom: 2 }}>
                                     Capaian Kompetensi
                                   </Text>
-                                  <Text style={{ color: '#1e3a8a', fontWeight: '700', fontSize: 12 }}>
+                                  <Text style={{ color: '#1e3a8a', fontWeight: '700', fontSize: scaleFont(12), lineHeight: scaleLineHeight(18) }}>
                                     {(() => {
                                       const finalRaw = Number(scoreDraft[`${student.id}:${selectedComponent.id}`]);
                                       const finalScore = Number.isFinite(finalRaw) ? finalRaw : null;
@@ -1783,10 +1794,10 @@ export default function TeacherGradesScreen() {
               maxHeight: '85%',
             }}
           >
-            <Text style={{ color: '#0f172a', fontSize: 18, fontWeight: '700', marginBottom: 6 }}>
+            <Text style={{ color: '#0f172a', fontSize: scaleFont(18), lineHeight: scaleLineHeight(24), fontWeight: '700', marginBottom: 6 }}>
               Pengaturan Deskripsi Predikat
             </Text>
-            <Text style={{ color: '#64748b', fontSize: 12, marginBottom: 10 }}>
+            <Text style={{ color: '#64748b', fontSize: scaleFont(12), lineHeight: scaleLineHeight(18), marginBottom: 10 }}>
               {`Deskripsi ini akan diterapkan otomatis ke komponen ${finalComponentLabel}.`}
             </Text>
             {isReligionSubject ? (
@@ -1800,7 +1811,7 @@ export default function TeacherGradesScreen() {
                   marginBottom: 10,
                 }}
               >
-                <Text style={{ color: '#92400e', fontSize: 12 }}>
+                <Text style={{ color: '#92400e', fontSize: scaleFont(12), lineHeight: scaleLineHeight(18) }}>
                   Deskripsi mapel Agama disimpan per agama siswa dan mengikuti data `Agama` pada profile siswa.
                 </Text>
               </View>
@@ -1815,10 +1826,10 @@ export default function TeacherGradesScreen() {
                 marginBottom: 10,
               }}
             >
-              <Text style={{ color: '#1e3a8a', fontSize: 12, marginBottom: 2 }}>A: Nilai ≥ 86</Text>
-              <Text style={{ color: '#1e3a8a', fontSize: 12, marginBottom: 2 }}>B: Nilai minimal KKM sampai 85</Text>
-              <Text style={{ color: '#1e3a8a', fontSize: 12, marginBottom: 2 }}>C: Nilai 60 sampai di bawah KKM</Text>
-              <Text style={{ color: '#1e3a8a', fontSize: 12 }}>D: Nilai di bawah 60</Text>
+              <Text style={{ color: '#1e3a8a', fontSize: scaleFont(12), lineHeight: scaleLineHeight(18), marginBottom: 2 }}>A: Nilai ≥ 86</Text>
+              <Text style={{ color: '#1e3a8a', fontSize: scaleFont(12), lineHeight: scaleLineHeight(18), marginBottom: 2 }}>B: Nilai minimal KKM sampai 85</Text>
+              <Text style={{ color: '#1e3a8a', fontSize: scaleFont(12), lineHeight: scaleLineHeight(18), marginBottom: 2 }}>C: Nilai 60 sampai di bawah KKM</Text>
+              <Text style={{ color: '#1e3a8a', fontSize: scaleFont(12), lineHeight: scaleLineHeight(18) }}>D: Nilai di bawah 60</Text>
             </View>
 
             {isReligionSubject ? (
@@ -1836,7 +1847,7 @@ export default function TeacherGradesScreen() {
 
             {(['A', 'B', 'C', 'D'] as const).map((key) => (
               <View key={key} style={{ marginBottom: 8 }}>
-                <Text style={{ color: '#334155', fontSize: 12, fontWeight: '700', marginBottom: 4 }}>
+                <Text style={{ color: '#334155', fontSize: scaleFont(12), lineHeight: scaleLineHeight(18), fontWeight: '700', marginBottom: 4 }}>
                   Deskripsi Predikat {key}
                 </Text>
                 <TextInput

@@ -8,6 +8,7 @@ import { useAuth } from '../../../src/features/auth/AuthProvider';
 import { useTeacherAssignmentsQuery } from '../../../src/features/teacherAssignments/useTeacherAssignmentsQuery';
 import { filterRegularTeacherAssignments } from '../../../src/features/teacherAssignments/utils';
 import { getStandardPagePadding } from '../../../src/lib/ui/pageLayout';
+import { useAppTextScale } from '../../../src/theme/AppTextScaleProvider';
 
 function AssignmentCard({
   item,
@@ -24,6 +25,7 @@ function AssignmentCard({
   onTakeAttendance: (assignmentId: number) => void;
   onViewStudents: (assignmentId: number, classId: number) => void;
 }) {
+  const { scaleFont, scaleLineHeight } = useAppTextScale();
   return (
     <View
       style={{
@@ -36,12 +38,21 @@ function AssignmentCard({
       }}
     >
       <View style={{ flexDirection: 'row', justifyContent: 'space-between', marginBottom: 6 }}>
-        <Text style={{ fontSize: 15, fontWeight: '700', color: '#0f172a', flex: 1, paddingRight: 8 }}>
+        <Text
+          style={{
+            fontSize: scaleFont(15),
+            lineHeight: scaleLineHeight(22),
+            fontWeight: '700',
+            color: '#0f172a',
+            flex: 1,
+            paddingRight: 8,
+          }}
+        >
           {item.subject.name}
         </Text>
         <Text
           style={{
-            fontSize: 11,
+            fontSize: scaleFont(11),
             fontWeight: '700',
             color: '#1d4ed8',
             backgroundColor: '#eff6ff',
@@ -55,27 +66,27 @@ function AssignmentCard({
           Mata Pelajaran
         </Text>
       </View>
-      <Text style={{ color: '#334155', fontWeight: '600', marginBottom: 3 }}>Kelas: {item.class.name}</Text>
-      <Text style={{ color: '#64748b', fontSize: 12, marginBottom: 8 }}>
+      <Text style={{ color: '#334155', fontWeight: '600', fontSize: scaleFont(13), marginBottom: 3 }}>Kelas: {item.class.name}</Text>
+      <Text style={{ color: '#64748b', fontSize: scaleFont(12), lineHeight: scaleLineHeight(18), marginBottom: 8 }}>
         {item.class.major ? `${item.class.major.name} (${item.class.major.code})` : 'Tanpa kompetensi keahlian'}
       </Text>
       <View style={{ flexDirection: 'row', flexWrap: 'wrap', marginHorizontal: -4, marginBottom: 8 }}>
         <View style={{ width: '33.3333%', paddingHorizontal: 4, marginBottom: 6 }}>
           <View style={{ backgroundColor: '#f8fafc', borderRadius: 8, borderWidth: 1, borderColor: '#e2e8f0', padding: 8 }}>
-            <Text style={{ color: '#64748b', fontSize: 11, marginBottom: 3 }}>Siswa</Text>
-            <Text style={{ color: '#0f172a', fontWeight: '700' }}>{item.class._count?.students ?? 0}</Text>
+            <Text style={{ color: '#64748b', fontSize: scaleFont(11), marginBottom: 3 }}>Siswa</Text>
+            <Text style={{ color: '#0f172a', fontWeight: '700', fontSize: scaleFont(14) }}>{item.class._count?.students ?? 0}</Text>
           </View>
         </View>
         <View style={{ width: '33.3333%', paddingHorizontal: 4, marginBottom: 6 }}>
           <View style={{ backgroundColor: '#f8fafc', borderRadius: 8, borderWidth: 1, borderColor: '#e2e8f0', padding: 8 }}>
-            <Text style={{ color: '#64748b', fontSize: 11, marginBottom: 3 }}>Jadwal</Text>
-            <Text style={{ color: '#0f172a', fontWeight: '700' }}>{item._count?.scheduleEntries ?? 0}</Text>
+            <Text style={{ color: '#64748b', fontSize: scaleFont(11), marginBottom: 3 }}>Jadwal</Text>
+            <Text style={{ color: '#0f172a', fontWeight: '700', fontSize: scaleFont(14) }}>{item._count?.scheduleEntries ?? 0}</Text>
           </View>
         </View>
         <View style={{ width: '33.3333%', paddingHorizontal: 4, marginBottom: 6 }}>
           <View style={{ backgroundColor: '#f8fafc', borderRadius: 8, borderWidth: 1, borderColor: '#e2e8f0', padding: 8 }}>
-            <Text style={{ color: '#64748b', fontSize: 11, marginBottom: 3 }}>KKM</Text>
-            <Text style={{ color: '#0f172a', fontWeight: '700' }}>{item.kkm}</Text>
+            <Text style={{ color: '#64748b', fontSize: scaleFont(11), marginBottom: 3 }}>KKM</Text>
+            <Text style={{ color: '#0f172a', fontWeight: '700', fontSize: scaleFont(14) }}>{item.kkm}</Text>
           </View>
         </View>
       </View>
@@ -90,7 +101,7 @@ function AssignmentCard({
               paddingVertical: 10,
             }}
           >
-            <Text style={{ color: '#ffffff', fontWeight: '700', fontSize: 12 }}>Isi Presensi</Text>
+            <Text style={{ color: '#ffffff', fontWeight: '700', fontSize: scaleFont(12) }}>Isi Presensi</Text>
           </Pressable>
         </View>
         <View style={{ flex: 1, paddingHorizontal: 4 }}>
@@ -105,7 +116,7 @@ function AssignmentCard({
               paddingVertical: 10,
             }}
           >
-            <Text style={{ color: '#1d4ed8', fontWeight: '700', fontSize: 12 }}>Lihat Daftar Siswa</Text>
+            <Text style={{ color: '#1d4ed8', fontWeight: '700', fontSize: scaleFont(12) }}>Lihat Daftar Siswa</Text>
           </Pressable>
         </View>
       </View>
@@ -119,6 +130,7 @@ export default function TeacherClassesScreen() {
   const { isAuthenticated, isLoading, user } = useAuth();
   const assignmentsQuery = useTeacherAssignmentsQuery({ enabled: isAuthenticated, user });
   const pageContentPadding = getStandardPagePadding(insets);
+  const { scaleFont, scaleLineHeight } = useAppTextScale();
 
   if (isLoading) return <AppLoadingScreen message="Memuat data kelas..." />;
   if (!isAuthenticated) return <Redirect href="/welcome" />;
@@ -126,7 +138,7 @@ export default function TeacherClassesScreen() {
   if (user?.role !== 'TEACHER') {
     return (
       <ScrollView style={{ flex: 1, backgroundColor: '#f8fafc' }} contentContainerStyle={pageContentPadding}>
-        <Text style={{ fontSize: 20, fontWeight: '700', marginBottom: 8 }}>Kelas & Mapel</Text>
+        <Text style={{ fontSize: scaleFont(20), lineHeight: scaleLineHeight(28), fontWeight: '700', marginBottom: 8 }}>Kelas & Mapel</Text>
         <QueryStateView type="error" message="Halaman ini khusus untuk role guru." />
         <Pressable
           onPress={() => router.replace('/home')}
@@ -158,8 +170,8 @@ export default function TeacherClassesScreen() {
         />
       }
     >
-      <Text style={{ fontSize: 20, fontWeight: '700', marginBottom: 6 }}>Kelas & Mapel</Text>
-      <Text style={{ color: '#64748b', marginBottom: 12 }}>
+      <Text style={{ fontSize: scaleFont(20), lineHeight: scaleLineHeight(28), fontWeight: '700', marginBottom: 6 }}>Kelas & Mapel</Text>
+      <Text style={{ color: '#64748b', fontSize: scaleFont(13), lineHeight: scaleLineHeight(20), marginBottom: 12 }}>
         Daftar kelas ajar aktif {assignmentsQuery.data?.activeYear?.name ? `(${assignmentsQuery.data.activeYear.name})` : ''}.
       </Text>
 
@@ -171,18 +183,18 @@ export default function TeacherClassesScreen() {
           marginBottom: 12,
         }}
       >
-        <Text style={{ color: '#bfdbfe', fontSize: 12, marginBottom: 8 }}>Ringkasan Mengajar</Text>
+        <Text style={{ color: '#bfdbfe', fontSize: scaleFont(12), marginBottom: 8 }}>Ringkasan Mengajar</Text>
         <View style={{ flexDirection: 'row', marginHorizontal: -4 }}>
           <View style={{ flex: 1, paddingHorizontal: 4 }}>
             <View style={{ backgroundColor: 'rgba(255,255,255,0.12)', borderRadius: 9, padding: 10 }}>
-              <Text style={{ color: '#bfdbfe', fontSize: 11, marginBottom: 3 }}>Total Assignment</Text>
-              <Text style={{ color: '#ffffff', fontSize: 18, fontWeight: '700' }}>{assignments.length}</Text>
+              <Text style={{ color: '#bfdbfe', fontSize: scaleFont(11), marginBottom: 3 }}>Total Assignment</Text>
+              <Text style={{ color: '#ffffff', fontSize: scaleFont(18), fontWeight: '700' }}>{assignments.length}</Text>
             </View>
           </View>
           <View style={{ flex: 1, paddingHorizontal: 4 }}>
             <View style={{ backgroundColor: 'rgba(255,255,255,0.12)', borderRadius: 9, padding: 10 }}>
-              <Text style={{ color: '#bfdbfe', fontSize: 11, marginBottom: 3 }}>Total Siswa</Text>
-              <Text style={{ color: '#ffffff', fontSize: 18, fontWeight: '700' }}>{totalStudents}</Text>
+              <Text style={{ color: '#bfdbfe', fontSize: scaleFont(11), marginBottom: 3 }}>Total Siswa</Text>
+              <Text style={{ color: '#ffffff', fontSize: scaleFont(18), fontWeight: '700' }}>{totalStudents}</Text>
             </View>
           </View>
         </View>
@@ -219,8 +231,10 @@ export default function TeacherClassesScreen() {
               backgroundColor: '#fff',
             }}
           >
-            <Text style={{ fontWeight: '700', marginBottom: 4, color: '#0f172a' }}>Belum ada assignment</Text>
-            <Text style={{ color: '#64748b' }}>Penugasan mapel untuk guru ini belum tersedia pada tahun ajaran aktif.</Text>
+            <Text style={{ fontWeight: '700', fontSize: scaleFont(14), marginBottom: 4, color: '#0f172a' }}>Belum ada assignment</Text>
+            <Text style={{ color: '#64748b', fontSize: scaleFont(13), lineHeight: scaleLineHeight(20) }}>
+              Penugasan mapel untuk guru ini belum tersedia pada tahun ajaran aktif.
+            </Text>
           </View>
         )
       ) : null}
