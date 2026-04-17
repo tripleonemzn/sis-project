@@ -26,6 +26,7 @@ import { AttendanceRecapRow } from '../../../src/features/attendanceRecap/types'
 import { kesiswaanApi } from '../../../src/features/kesiswaan/kesiswaanApi';
 import { KesiswaanPermission } from '../../../src/features/kesiswaan/types';
 import { getStandardPagePadding } from '../../../src/lib/ui/pageLayout';
+import { useAppTextScale } from '../../../src/theme/AppTextScaleProvider';
 
 type ReportSection = 'RINGKASAN' | 'PER_KELAS' | 'PERIZINAN';
 type SemesterFilter = 'ODD' | 'EVEN';
@@ -154,13 +155,25 @@ const SECTION_ITEMS: Array<{ key: ReportSection; label: string; iconName: React.
   { key: 'PERIZINAN', label: 'Perizinan', iconName: 'file-text' },
 ];
 
-function ProgressRow({ label, valueText, percent }: { label: string; valueText: string; percent: number }) {
+function ProgressRow({
+  label,
+  valueText,
+  percent,
+  labelTextStyle,
+  valueTextStyle,
+}: {
+  label: string;
+  valueText: string;
+  percent: number;
+  labelTextStyle?: { fontSize?: number; lineHeight?: number };
+  valueTextStyle?: { fontSize?: number; lineHeight?: number };
+}) {
   const safePercent = Math.max(0, Math.min(100, percent));
   return (
     <View style={{ marginBottom: 10 }}>
       <View style={{ flexDirection: 'row', justifyContent: 'space-between', marginBottom: 5 }}>
-        <Text style={{ color: BRAND_COLORS.textDark, fontWeight: '600' }}>{label}</Text>
-        <Text style={{ color: BRAND_COLORS.textMuted, fontSize: 12 }}>{valueText}</Text>
+        <Text style={{ color: BRAND_COLORS.textDark, fontWeight: '600', ...labelTextStyle }}>{label}</Text>
+        <Text style={{ color: BRAND_COLORS.textMuted, ...valueTextStyle }}>{valueText}</Text>
       </View>
       <View style={{ height: 8, borderRadius: 999, backgroundColor: '#dde7fa', overflow: 'hidden' }}>
         <View
@@ -187,11 +200,32 @@ export default function TeacherWakasisReportsScreen() {
   const insets = useSafeAreaInsets();
   const { isAuthenticated, isLoading, user } = useAuth();
   const pagePadding = getStandardPagePadding(insets, { bottom: 120 });
+  const { scaleFont, scaleLineHeight } = useAppTextScale();
 
   const [section, setSection] = useState<ReportSection>('RINGKASAN');
   const [semester, setSemester] = useState<SemesterFilter>(defaultSemesterByDate());
   const [activeSummaryId, setActiveSummaryId] = useState<ReportSummaryId | null>(null);
   const [search, setSearch] = useState('');
+  const headingTextStyle = useMemo(
+    () => ({ fontSize: scaleFont(20), lineHeight: scaleLineHeight(28) }),
+    [scaleFont, scaleLineHeight],
+  );
+  const sectionTitleTextStyle = useMemo(
+    () => ({ fontSize: scaleFont(16), lineHeight: scaleLineHeight(24) }),
+    [scaleFont, scaleLineHeight],
+  );
+  const bodyTextStyle = useMemo(
+    () => ({ fontSize: scaleFont(12), lineHeight: scaleLineHeight(18) }),
+    [scaleFont, scaleLineHeight],
+  );
+  const helperTextStyle = useMemo(
+    () => ({ fontSize: scaleFont(11), lineHeight: scaleLineHeight(16) }),
+    [scaleFont, scaleLineHeight],
+  );
+  const inputTextStyle = useMemo(
+    () => ({ fontSize: scaleFont(13), lineHeight: scaleLineHeight(20) }),
+    [scaleFont, scaleLineHeight],
+  );
 
   const isAllowed = user?.role === 'TEACHER' && hasStudentAffairsDuty(user?.additionalDuties);
 
@@ -495,7 +529,7 @@ export default function TeacherWakasisReportsScreen() {
   if (user?.role !== 'TEACHER') {
     return (
       <ScrollView style={{ flex: 1, backgroundColor: '#f8fafc' }} contentContainerStyle={pagePadding}>
-        <Text style={{ fontSize: 20, fontWeight: '700', marginBottom: 8 }}>Laporan Kesiswaan</Text>
+        <Text style={{ ...headingTextStyle, fontWeight: '700', marginBottom: 8 }}>Laporan Kesiswaan</Text>
         <QueryStateView type="error" message="Halaman ini khusus untuk role guru." />
         <Pressable
           onPress={() => router.replace('/home')}
@@ -507,7 +541,7 @@ export default function TeacherWakasisReportsScreen() {
             alignItems: 'center',
           }}
         >
-          <Text style={{ color: '#fff', fontWeight: '700' }}>Kembali ke Home</Text>
+          <Text style={{ color: '#fff', fontWeight: '700', ...bodyTextStyle }}>Kembali ke Home</Text>
         </Pressable>
       </ScrollView>
     );
@@ -516,7 +550,7 @@ export default function TeacherWakasisReportsScreen() {
   if (!isAllowed) {
     return (
       <ScrollView style={{ flex: 1, backgroundColor: '#f8fafc' }} contentContainerStyle={pagePadding}>
-        <Text style={{ fontSize: 20, fontWeight: '700', marginBottom: 8, color: BRAND_COLORS.textDark }}>
+        <Text style={{ ...headingTextStyle, fontWeight: '700', marginBottom: 8, color: BRAND_COLORS.textDark }}>
           Laporan Kesiswaan
         </Text>
         <QueryStateView
@@ -533,7 +567,7 @@ export default function TeacherWakasisReportsScreen() {
             alignItems: 'center',
           }}
         >
-          <Text style={{ color: '#fff', fontWeight: '700' }}>Kembali ke Home</Text>
+          <Text style={{ color: '#fff', fontWeight: '700', ...bodyTextStyle }}>Kembali ke Home</Text>
         </Pressable>
       </ScrollView>
     );
@@ -569,12 +603,12 @@ export default function TeacherWakasisReportsScreen() {
         >
           <Feather name="arrow-left" size={18} color={BRAND_COLORS.textDark} />
         </Pressable>
-        <Text style={{ marginLeft: 10, color: BRAND_COLORS.textDark, fontSize: 20, fontWeight: '700' }}>
+        <Text style={{ marginLeft: 10, color: BRAND_COLORS.textDark, fontWeight: '700', ...headingTextStyle }}>
           Laporan Kesiswaan
         </Text>
       </View>
 
-      <Text style={{ color: BRAND_COLORS.textMuted, marginBottom: 10 }}>
+      <Text style={{ color: BRAND_COLORS.textMuted, marginBottom: 10, ...inputTextStyle }}>
         Ringkasan laporan absensi, perizinan siswa, dan temuan kelas prioritas.
       </Text>
 
@@ -619,6 +653,7 @@ export default function TeacherWakasisReportsScreen() {
             paddingHorizontal: 8,
             paddingVertical: 10,
             color: BRAND_COLORS.textDark,
+            ...inputTextStyle,
           }}
         />
       </View>
@@ -662,16 +697,22 @@ export default function TeacherWakasisReportsScreen() {
                   label="Rasio Persetujuan"
                   valueText={`${formatNumber(summary.approvedPermissions)} dari ${formatNumber(summary.totalPermissions)}`}
                   percent={toPercent(summary.approvedPermissions, summary.totalPermissions)}
+                  labelTextStyle={bodyTextStyle}
+                  valueTextStyle={helperTextStyle}
                 />
                 <ProgressRow
                   label="Jenis Izin Sakit"
                   valueText={`${formatNumber(summary.sickPermissions)} data`}
                   percent={toPercent(summary.sickPermissions, summary.totalPermissions)}
+                  labelTextStyle={bodyTextStyle}
+                  valueTextStyle={helperTextStyle}
                 />
                 <ProgressRow
                   label="Jenis Izin"
                   valueText={`${formatNumber(summary.permissionPermissions)} data`}
                   percent={toPercent(summary.permissionPermissions, summary.totalPermissions)}
+                  labelTextStyle={bodyTextStyle}
+                  valueTextStyle={helperTextStyle}
                 />
               </View>
 
@@ -685,14 +726,14 @@ export default function TeacherWakasisReportsScreen() {
                   marginBottom: 10,
                 }}
               >
-                <Text style={{ color: BRAND_COLORS.textDark, fontWeight: '700', marginBottom: 6 }}>Kelas Prioritas</Text>
+                <Text style={{ color: BRAND_COLORS.textDark, fontWeight: '700', marginBottom: 6, ...sectionTitleTextStyle }}>Kelas Prioritas</Text>
                 {topRiskClasses.length === 0 ? (
-                  <Text style={{ color: BRAND_COLORS.textMuted }}>Belum ada data kelas.</Text>
+                  <Text style={{ color: BRAND_COLORS.textMuted, ...bodyTextStyle }}>Belum ada data kelas.</Text>
                 ) : (
                   topRiskClasses.map((item) => (
                     <View key={item.classId} style={{ marginBottom: 6 }}>
-                      <Text style={{ color: BRAND_COLORS.textDark, fontWeight: '700' }}>{item.className}</Text>
-                      <Text style={{ color: BRAND_COLORS.textMuted, fontSize: 12 }}>
+                      <Text style={{ color: BRAND_COLORS.textDark, fontWeight: '700', ...bodyTextStyle }}>{item.className}</Text>
+                      <Text style={{ color: BRAND_COLORS.textMuted, ...bodyTextStyle }}>
                         Kehadiran {formatPercent(item.avgAttendance)} • Izin {formatNumber(item.permission.total)} • Alpha {formatNumber(item.totalAbsent)}
                       </Text>
                     </View>
@@ -721,28 +762,28 @@ export default function TeacherWakasisReportsScreen() {
                         padding: 12,
                       }}
                     >
-                      <Text style={{ color: BRAND_COLORS.textDark, fontWeight: '700' }}>{item.className}</Text>
-                      <Text style={{ color: BRAND_COLORS.textMuted, fontSize: 12, marginTop: 2 }}>
+                      <Text style={{ color: BRAND_COLORS.textDark, fontWeight: '700', ...sectionTitleTextStyle }}>{item.className}</Text>
+                      <Text style={{ color: BRAND_COLORS.textMuted, marginTop: 2, ...bodyTextStyle }}>
                         Siswa terekap: {formatNumber(item.studentCount)} • Kehadiran: {formatPercent(item.avgAttendance)}
                       </Text>
 
                       <View style={{ flexDirection: 'row', gap: 12, marginTop: 6 }}>
-                        <Text style={{ color: BRAND_COLORS.textMuted, fontSize: 12 }}>
+                        <Text style={{ color: BRAND_COLORS.textMuted, ...bodyTextStyle }}>
                           Alpha: {formatNumber(item.totalAbsent)}
                         </Text>
-                        <Text style={{ color: BRAND_COLORS.textMuted, fontSize: 12 }}>
+                        <Text style={{ color: BRAND_COLORS.textMuted, ...bodyTextStyle }}>
                           Telat: {formatNumber(item.totalLate)}
                         </Text>
                       </View>
 
                       <View style={{ flexDirection: 'row', gap: 12, marginTop: 4 }}>
-                        <Text style={{ color: BRAND_COLORS.textMuted, fontSize: 12 }}>
+                        <Text style={{ color: BRAND_COLORS.textMuted, ...bodyTextStyle }}>
                           Izin total: {formatNumber(item.permission.total)}
                         </Text>
-                        <Text style={{ color: BRAND_COLORS.textMuted, fontSize: 12 }}>
+                        <Text style={{ color: BRAND_COLORS.textMuted, ...bodyTextStyle }}>
                           Pending: {formatNumber(item.permission.pending)}
                         </Text>
-                        <Text style={{ color: BRAND_COLORS.textMuted, fontSize: 12 }}>
+                        <Text style={{ color: BRAND_COLORS.textMuted, ...bodyTextStyle }}>
                           Ditolak: {formatNumber(item.permission.rejected)}
                         </Text>
                       </View>
@@ -785,14 +826,14 @@ export default function TeacherWakasisReportsScreen() {
                   marginBottom: 10,
                 }}
               >
-                <Text style={{ color: BRAND_COLORS.textDark, fontWeight: '700', marginBottom: 6 }}>Tren Bulanan</Text>
+                <Text style={{ color: BRAND_COLORS.textDark, fontWeight: '700', marginBottom: 6, ...sectionTitleTextStyle }}>Tren Bulanan</Text>
                 {monthPermissionRows.length === 0 ? (
-                  <Text style={{ color: BRAND_COLORS.textMuted }}>Belum ada data perizinan.</Text>
+                  <Text style={{ color: BRAND_COLORS.textMuted, ...bodyTextStyle }}>Belum ada data perizinan.</Text>
                 ) : (
                   monthPermissionRows.slice(-6).map((item) => (
                     <View key={item.monthKey} style={{ marginBottom: 6 }}>
-                      <Text style={{ color: BRAND_COLORS.textDark, fontWeight: '700' }}>{item.monthLabel}</Text>
-                      <Text style={{ color: BRAND_COLORS.textMuted, fontSize: 12 }}>
+                      <Text style={{ color: BRAND_COLORS.textDark, fontWeight: '700', ...bodyTextStyle }}>{item.monthLabel}</Text>
+                      <Text style={{ color: BRAND_COLORS.textMuted, ...bodyTextStyle }}>
                         Total {formatNumber(item.total)} • Disetujui {formatNumber(item.approved)} • Ditolak {formatNumber(item.rejected)}
                       </Text>
                     </View>
@@ -810,14 +851,14 @@ export default function TeacherWakasisReportsScreen() {
                   marginBottom: 10,
                 }}
               >
-                <Text style={{ color: BRAND_COLORS.textDark, fontWeight: '700', marginBottom: 6 }}>Siswa Pengajuan Terbanyak</Text>
+                <Text style={{ color: BRAND_COLORS.textDark, fontWeight: '700', marginBottom: 6, ...sectionTitleTextStyle }}>Siswa Pengajuan Terbanyak</Text>
                 {topPermissionStudents.length === 0 ? (
-                  <Text style={{ color: BRAND_COLORS.textMuted }}>Belum ada data siswa.</Text>
+                  <Text style={{ color: BRAND_COLORS.textMuted, ...bodyTextStyle }}>Belum ada data siswa.</Text>
                 ) : (
                   topPermissionStudents.map((item) => (
                     <View key={item.studentId} style={{ marginBottom: 6 }}>
-                      <Text style={{ color: BRAND_COLORS.textDark, fontWeight: '700' }}>{item.studentName}</Text>
-                      <Text style={{ color: BRAND_COLORS.textMuted, fontSize: 12 }}>
+                      <Text style={{ color: BRAND_COLORS.textDark, fontWeight: '700', ...bodyTextStyle }}>{item.studentName}</Text>
+                      <Text style={{ color: BRAND_COLORS.textMuted, ...bodyTextStyle }}>
                         {item.className} • Total {formatNumber(item.total)} • Approved {formatNumber(item.approved)} • Rejected {formatNumber(item.rejected)}
                       </Text>
                     </View>
@@ -838,8 +879,8 @@ export default function TeacherWakasisReportsScreen() {
                         padding: 12,
                       }}
                     >
-                      <Text style={{ color: BRAND_COLORS.textDark, fontWeight: '700' }}>{item.studentName}</Text>
-                      <Text style={{ color: BRAND_COLORS.textMuted, fontSize: 12, marginTop: 2 }}>
+                      <Text style={{ color: BRAND_COLORS.textDark, fontWeight: '700', ...bodyTextStyle }}>{item.studentName}</Text>
+                      <Text style={{ color: BRAND_COLORS.textMuted, marginTop: 2, ...bodyTextStyle }}>
                         {item.className} • Total {formatNumber(item.total)} • Pending {formatNumber(item.pending)}
                       </Text>
                     </View>
@@ -863,22 +904,22 @@ export default function TeacherWakasisReportsScreen() {
         onClose={() => setActiveSummaryId(null)}
       >
         {activeSummaryId === 'permissions' ? (
-          <Text style={{ color: BRAND_COLORS.textMuted, lineHeight: 20 }}>
+          <Text style={{ color: BRAND_COLORS.textMuted, ...bodyTextStyle }}>
             Total pengajuan masuk: {formatNumber(summary.totalPermissions)}. Yang masih menunggu persetujuan saat ini sebanyak {formatNumber(summary.pendingPermissions)}.
           </Text>
         ) : null}
         {activeSummaryId === 'attendance' ? (
-          <Text style={{ color: BRAND_COLORS.textMuted, lineHeight: 20 }}>
+          <Text style={{ color: BRAND_COLORS.textMuted, ...bodyTextStyle }}>
             Rata-rata kehadiran seluruh kelas: {formatPercent(summary.avgAttendance)}. Kelas yang berada di bawah 85% saat ini berjumlah {formatNumber(summary.classLowAttendanceCount)}.
           </Text>
         ) : null}
         {activeSummaryId === 'approved' ? (
-          <Text style={{ color: BRAND_COLORS.textMuted, lineHeight: 20 }}>
+          <Text style={{ color: BRAND_COLORS.textMuted, ...bodyTextStyle }}>
             Pengajuan yang sudah disetujui: {formatNumber(summary.approvedPermissions)}. Pengajuan yang ditolak: {formatNumber(summary.rejectedPermissions)}.
           </Text>
         ) : null}
         {activeSummaryId === 'absent' ? (
-          <Text style={{ color: BRAND_COLORS.textMuted, lineHeight: 20 }}>
+          <Text style={{ color: BRAND_COLORS.textMuted, ...bodyTextStyle }}>
             Total alpha kumulatif: {formatNumber(summary.totalAbsent)}. Total keterlambatan kumulatif: {formatNumber(summary.totalLate)}.
           </Text>
         ) : null}

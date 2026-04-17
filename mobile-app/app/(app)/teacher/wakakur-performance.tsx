@@ -24,6 +24,7 @@ import { examApi } from '../../../src/features/exams/examApi';
 import { TeacherExamSchedule } from '../../../src/features/exams/types';
 import { teachingResourceProgramApi } from '../../../src/features/learningResources/teachingResourceProgramApi';
 import { getStandardPagePadding } from '../../../src/lib/ui/pageLayout';
+import { useAppTextScale } from '../../../src/theme/AppTextScaleProvider';
 
 type PerformanceSection = 'RINGKASAN' | 'GURU' | 'UJIAN';
 type PerformanceSummaryId =
@@ -91,18 +92,22 @@ function ProgressRow({
   label,
   valueText,
   percent,
+  labelTextStyle,
+  valueTextStyle,
 }: {
   label: string;
   valueText: string;
   percent: number;
+  labelTextStyle?: { fontSize?: number; lineHeight?: number };
+  valueTextStyle?: { fontSize?: number; lineHeight?: number };
 }) {
   const safePercent = Math.max(0, Math.min(100, percent));
 
   return (
     <View style={{ marginBottom: 10 }}>
       <View style={{ flexDirection: 'row', justifyContent: 'space-between', marginBottom: 5 }}>
-        <Text style={{ color: BRAND_COLORS.textDark, fontWeight: '600' }}>{label}</Text>
-        <Text style={{ color: BRAND_COLORS.textMuted, fontSize: 12 }}>{valueText}</Text>
+        <Text style={{ color: BRAND_COLORS.textDark, fontWeight: '600', ...labelTextStyle }}>{label}</Text>
+        <Text style={{ color: BRAND_COLORS.textMuted, ...valueTextStyle }}>{valueText}</Text>
       </View>
       <View style={{ height: 8, borderRadius: 999, backgroundColor: '#dde7fa', overflow: 'hidden' }}>
         <View
@@ -127,9 +132,30 @@ export default function TeacherWakakurPerformanceScreen() {
   const insets = useSafeAreaInsets();
   const { isAuthenticated, isLoading, user } = useAuth();
   const pagePadding = getStandardPagePadding(insets, { bottom: 120 });
+  const { scaleFont, scaleLineHeight } = useAppTextScale();
   const [section, setSection] = useState<PerformanceSection>('RINGKASAN');
   const [activeSummaryId, setActiveSummaryId] = useState<PerformanceSummaryId | null>(null);
   const [search, setSearch] = useState('');
+  const headingTextStyle = useMemo(
+    () => ({ fontSize: scaleFont(20), lineHeight: scaleLineHeight(28) }),
+    [scaleFont, scaleLineHeight],
+  );
+  const sectionTitleTextStyle = useMemo(
+    () => ({ fontSize: scaleFont(16), lineHeight: scaleLineHeight(24) }),
+    [scaleFont, scaleLineHeight],
+  );
+  const bodyTextStyle = useMemo(
+    () => ({ fontSize: scaleFont(12), lineHeight: scaleLineHeight(18) }),
+    [scaleFont, scaleLineHeight],
+  );
+  const helperTextStyle = useMemo(
+    () => ({ fontSize: scaleFont(11), lineHeight: scaleLineHeight(16) }),
+    [scaleFont, scaleLineHeight],
+  );
+  const inputTextStyle = useMemo(
+    () => ({ fontSize: scaleFont(13), lineHeight: scaleLineHeight(20) }),
+    [scaleFont, scaleLineHeight],
+  );
 
   const isAllowed = user?.role === 'TEACHER' && hasCurriculumDuty(user?.additionalDuties);
 
@@ -453,7 +479,7 @@ export default function TeacherWakakurPerformanceScreen() {
   if (user?.role !== 'TEACHER') {
     return (
       <ScrollView style={{ flex: 1, backgroundColor: '#f8fafc' }} contentContainerStyle={pagePadding}>
-        <Text style={{ fontSize: 20, fontWeight: '700', marginBottom: 8 }}>Monitoring Kinerja</Text>
+        <Text style={{ ...headingTextStyle, fontWeight: '700', marginBottom: 8 }}>Monitoring Kinerja</Text>
         <QueryStateView type="error" message="Halaman ini khusus untuk role guru." />
         <Pressable
           onPress={() => router.replace('/home')}
@@ -465,7 +491,7 @@ export default function TeacherWakakurPerformanceScreen() {
             alignItems: 'center',
           }}
         >
-          <Text style={{ color: '#fff', fontWeight: '700' }}>Kembali ke Home</Text>
+          <Text style={{ color: '#fff', fontWeight: '700', ...bodyTextStyle }}>Kembali ke Home</Text>
         </Pressable>
       </ScrollView>
     );
@@ -474,7 +500,7 @@ export default function TeacherWakakurPerformanceScreen() {
   if (!isAllowed) {
     return (
       <ScrollView style={{ flex: 1, backgroundColor: '#f8fafc' }} contentContainerStyle={pagePadding}>
-        <Text style={{ fontSize: 20, fontWeight: '700', marginBottom: 8, color: BRAND_COLORS.textDark }}>
+        <Text style={{ ...headingTextStyle, fontWeight: '700', marginBottom: 8, color: BRAND_COLORS.textDark }}>
           Monitoring Kinerja
         </Text>
         <QueryStateView
@@ -491,7 +517,7 @@ export default function TeacherWakakurPerformanceScreen() {
             alignItems: 'center',
           }}
         >
-          <Text style={{ color: '#fff', fontWeight: '700' }}>Kembali ke Home</Text>
+          <Text style={{ color: '#fff', fontWeight: '700', ...bodyTextStyle }}>Kembali ke Home</Text>
         </Pressable>
       </ScrollView>
     );
@@ -527,12 +553,12 @@ export default function TeacherWakakurPerformanceScreen() {
         >
           <Feather name="arrow-left" size={18} color={BRAND_COLORS.textDark} />
         </Pressable>
-        <Text style={{ marginLeft: 10, color: BRAND_COLORS.textDark, fontSize: 20, fontWeight: '700' }}>
+        <Text style={{ marginLeft: 10, color: BRAND_COLORS.textDark, fontWeight: '700', ...headingTextStyle }}>
           Monitoring Kinerja
         </Text>
       </View>
 
-      <Text style={{ color: BRAND_COLORS.textMuted, marginBottom: 10 }}>
+      <Text style={{ color: BRAND_COLORS.textMuted, marginBottom: 10, ...inputTextStyle }}>
         Pantau beban mengajar, cakupan assignment, dan kesiapan pelaksanaan ujian.
       </Text>
 
@@ -586,14 +612,15 @@ export default function TeacherWakakurPerformanceScreen() {
               onChangeText={setSearch}
               placeholder={section === 'GURU' ? 'Cari guru (nama/username)' : 'Cari kelas atau kata kunci'}
               placeholderTextColor="#94a3b8"
-              style={{
-                flex: 1,
-                paddingHorizontal: 8,
-                paddingVertical: 10,
-                color: BRAND_COLORS.textDark,
-              }}
-            />
-          </View>
+            style={{
+              flex: 1,
+              paddingHorizontal: 8,
+              paddingVertical: 10,
+              color: BRAND_COLORS.textDark,
+              ...inputTextStyle,
+            }}
+          />
+        </View>
 
           {section === 'RINGKASAN' ? (
             <>
@@ -626,16 +653,22 @@ export default function TeacherWakakurPerformanceScreen() {
                   label="Cakupan Mata Pelajaran"
                   valueText={`${formatNumber(summary.subjectCovered)} / ${formatNumber(subjectTotal)}`}
                   percent={summary.subjectCoveragePercent}
+                  labelTextStyle={bodyTextStyle}
+                  valueTextStyle={helperTextStyle}
                 />
                 <ProgressRow
                   label="Cakupan Kelas"
                   valueText={`${formatNumber(summary.classCovered)} / ${formatNumber(classTotal)}`}
                   percent={summary.classCoveragePercent}
+                  labelTextStyle={bodyTextStyle}
+                  valueTextStyle={helperTextStyle}
                 />
                 <ProgressRow
                   label="Jadwal Siap Ujian"
                   valueText={`${formatNumber(summary.scheduleReadyCount)} / ${formatNumber(summary.scheduleTotal)}`}
                   percent={summary.scheduleReadyPercent}
+                  labelTextStyle={bodyTextStyle}
+                  valueTextStyle={helperTextStyle}
                 />
               </View>
 
@@ -648,23 +681,23 @@ export default function TeacherWakakurPerformanceScreen() {
                   padding: 12,
                 }}
               >
-                <Text style={{ color: BRAND_COLORS.textDark, fontWeight: '700', marginBottom: 6 }}>Catatan Cepat</Text>
-                <Text style={{ color: BRAND_COLORS.textMuted, marginBottom: 4 }}>
+                <Text style={{ color: BRAND_COLORS.textDark, fontWeight: '700', marginBottom: 6, ...sectionTitleTextStyle }}>Catatan Cepat</Text>
+                <Text style={{ color: BRAND_COLORS.textMuted, marginBottom: 4, ...bodyTextStyle }}>
                   • Guru beban tinggi (≥ 30 jam): {formatNumber(summary.highLoadTeacherCount)}
                 </Text>
-                <Text style={{ color: BRAND_COLORS.textMuted, marginBottom: 4 }}>
+                <Text style={{ color: BRAND_COLORS.textMuted, marginBottom: 4, ...bodyTextStyle }}>
                   • Guru tanpa jam mengajar: {formatNumber(summary.zeroHoursTeacherCount)}
                 </Text>
-                <Text style={{ color: BRAND_COLORS.textMuted, marginBottom: 4 }}>
+                <Text style={{ color: BRAND_COLORS.textMuted, marginBottom: 4, ...bodyTextStyle }}>
                   • Jadwal tanpa pengawas: {formatNumber(summary.scheduleNoProctorCount)}
                 </Text>
-                <Text style={{ color: BRAND_COLORS.textMuted, marginBottom: 4 }}>
+                <Text style={{ color: BRAND_COLORS.textMuted, marginBottom: 4, ...bodyTextStyle }}>
                   • Jadwal tanpa ruang: {formatNumber(summary.scheduleNoRoomCount)}
                 </Text>
-                <Text style={{ color: BRAND_COLORS.textMuted }}>
+                <Text style={{ color: BRAND_COLORS.textMuted, ...bodyTextStyle }}>
                   • Jadwal tanpa paket soal: {formatNumber(summary.scheduleNoPacketCount)}
                 </Text>
-                <Text style={{ color: BRAND_COLORS.textMuted, marginTop: 4 }}>
+                <Text style={{ color: BRAND_COLORS.textMuted, marginTop: 4, ...bodyTextStyle }}>
                   • Perangkat ajar menunggu review: {formatNumber(teachingResourceSummary.submitted)}
                 </Text>
               </View>
@@ -691,8 +724,8 @@ export default function TeacherWakakurPerformanceScreen() {
                     >
                       <View style={{ flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center' }}>
                         <View style={{ flex: 1, paddingRight: 8 }}>
-                          <Text style={{ color: BRAND_COLORS.textDark, fontWeight: '700' }}>{item.teacherName}</Text>
-                          <Text style={{ color: BRAND_COLORS.textMuted, fontSize: 12 }}>{item.teacherUsername}</Text>
+                          <Text style={{ color: BRAND_COLORS.textDark, fontWeight: '700', ...sectionTitleTextStyle }}>{item.teacherName}</Text>
+                          <Text style={{ color: BRAND_COLORS.textMuted, ...bodyTextStyle }}>{item.teacherUsername}</Text>
                         </View>
                         <View
                           style={{
@@ -704,20 +737,20 @@ export default function TeacherWakakurPerformanceScreen() {
                             borderColor: '#bfdbfe',
                           }}
                         >
-                          <Text style={{ color: BRAND_COLORS.navy, fontWeight: '700', fontSize: 12 }}>
+                          <Text style={{ color: BRAND_COLORS.navy, fontWeight: '700', ...bodyTextStyle }}>
                             {item.totalHours} jam
                           </Text>
                         </View>
                       </View>
 
                       <View style={{ flexDirection: 'row', gap: 8, marginTop: 10 }}>
-                        <Text style={{ color: BRAND_COLORS.textMuted, fontSize: 12 }}>
+                        <Text style={{ color: BRAND_COLORS.textMuted, ...bodyTextStyle }}>
                           Assignment: {formatNumber(item.assignmentCount)}
                         </Text>
-                        <Text style={{ color: BRAND_COLORS.textMuted, fontSize: 12 }}>
+                        <Text style={{ color: BRAND_COLORS.textMuted, ...bodyTextStyle }}>
                           Kelas: {formatNumber(item.classCount)}
                         </Text>
-                        <Text style={{ color: BRAND_COLORS.textMuted, fontSize: 12 }}>
+                        <Text style={{ color: BRAND_COLORS.textMuted, ...bodyTextStyle }}>
                           Sesi: {formatNumber(item.totalSessions)}
                         </Text>
                       </View>
@@ -805,21 +838,21 @@ export default function TeacherWakakurPerformanceScreen() {
                           padding: 12,
                         }}
                       >
-                        <Text style={{ color: BRAND_COLORS.textDark, fontWeight: '700' }}>{item.className}</Text>
-                        <Text style={{ color: BRAND_COLORS.textMuted, fontSize: 12, marginTop: 2 }}>
+                        <Text style={{ color: BRAND_COLORS.textDark, fontWeight: '700', ...sectionTitleTextStyle }}>{item.className}</Text>
+                        <Text style={{ color: BRAND_COLORS.textMuted, marginTop: 2, ...bodyTextStyle }}>
                           Siap: {formatNumber(item.readySchedules)} / {formatNumber(item.totalSchedules)} (
                           {formatPercent(readinessPercent)})
                         </Text>
 
                         <View style={{ flexDirection: 'row', gap: 10, marginTop: 8 }}>
-                          <Text style={{ color: BRAND_COLORS.textMuted, fontSize: 12 }}>
+                          <Text style={{ color: BRAND_COLORS.textMuted, ...bodyTextStyle }}>
                             Tanpa Pengawas: {formatNumber(item.noProctorCount)}
                           </Text>
-                          <Text style={{ color: BRAND_COLORS.textMuted, fontSize: 12 }}>
+                          <Text style={{ color: BRAND_COLORS.textMuted, ...bodyTextStyle }}>
                             Tanpa Ruang: {formatNumber(item.noRoomCount)}
                           </Text>
                         </View>
-                        <Text style={{ color: BRAND_COLORS.textMuted, fontSize: 12, marginTop: 3 }}>
+                        <Text style={{ color: BRAND_COLORS.textMuted, marginTop: 3, ...bodyTextStyle }}>
                           Tanpa Paket: {formatNumber(item.noPacketCount)}
                         </Text>
                       </View>
@@ -842,32 +875,32 @@ export default function TeacherWakakurPerformanceScreen() {
         onClose={() => setActiveSummaryId(null)}
       >
         {activeSummaryId === 'teachers' ? (
-          <Text style={{ color: BRAND_COLORS.textMuted, lineHeight: 20 }}>
+          <Text style={{ color: BRAND_COLORS.textMuted, ...bodyTextStyle }}>
             Total guru aktif yang ikut terhitung: {formatNumber(summary.teacherCount)}. Dari jumlah itu, {formatNumber(summary.teachingTeacherCount)} guru sudah memiliki jam mengajar terdata.
           </Text>
         ) : null}
         {activeSummaryId === 'assignments' ? (
-          <Text style={{ color: BRAND_COLORS.textMuted, lineHeight: 20 }}>
+          <Text style={{ color: BRAND_COLORS.textMuted, ...bodyTextStyle }}>
             Total assignment guru pada tahun aktif: {formatNumber(summary.assignmentTotal)}. Assignment ini sudah mencakup {formatNumber(summary.classCovered)} kelas dan {formatNumber(summary.subjectCovered)} mapel.
           </Text>
         ) : null}
         {activeSummaryId === 'hours' ? (
-          <Text style={{ color: BRAND_COLORS.textMuted, lineHeight: 20 }}>
+          <Text style={{ color: BRAND_COLORS.textMuted, ...bodyTextStyle }}>
             Rata-rata beban mengajar saat ini {summary.averageHours.toFixed(1).replace('.', ',')} jam per guru. Guru beban tinggi ({'>= '}30 jam): {formatNumber(summary.highLoadTeacherCount)}.
           </Text>
         ) : null}
         {activeSummaryId === 'readiness' ? (
-          <Text style={{ color: BRAND_COLORS.textMuted, lineHeight: 20 }}>
+          <Text style={{ color: BRAND_COLORS.textMuted, ...bodyTextStyle }}>
             Kesiapan ujian berada di {formatPercent(summary.scheduleReadyPercent)}. Jadwal siap: {formatNumber(summary.scheduleReadyCount)} dari {formatNumber(summary.scheduleTotal)} total jadwal.
           </Text>
         ) : null}
         {activeSummaryId === 'resources' ? (
-          <Text style={{ color: BRAND_COLORS.textMuted, lineHeight: 20 }}>
+          <Text style={{ color: BRAND_COLORS.textMuted, ...bodyTextStyle }}>
             Perangkat ajar yang masih menunggu review: {formatNumber(teachingResourceSummary.submitted)}. Yang sudah disetujui: {formatNumber(teachingResourceSummary.approved)}.
           </Text>
         ) : null}
         {activeSummaryId === 'revisions' ? (
-          <Text style={{ color: BRAND_COLORS.textMuted, lineHeight: 20 }}>
+          <Text style={{ color: BRAND_COLORS.textMuted, ...bodyTextStyle }}>
             Perangkat yang perlu revisi: {formatNumber(teachingResourceSummary.rejected)}. Draft yang masih tersisa: {formatNumber(teachingResourceSummary.draft)}.
           </Text>
         ) : null}

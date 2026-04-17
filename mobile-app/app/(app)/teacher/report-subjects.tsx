@@ -19,6 +19,7 @@ import {
 } from '../../../src/features/teacherReports/teacherReportApi';
 import { getStandardPagePadding } from '../../../src/lib/ui/pageLayout';
 import { notifyApiError, notifySuccess } from '../../../src/lib/ui/feedback';
+import { useAppTextScale } from '../../../src/theme/AppTextScaleProvider';
 
 type Semester = 'ODD' | 'EVEN';
 
@@ -98,7 +99,28 @@ export default function TeacherSubjectReportScreen() {
   const insets = useSafeAreaInsets();
   const { isAuthenticated, isLoading, user } = useAuth();
   const pageContentPadding = getStandardPagePadding(insets);
+  const { scaleFont, scaleLineHeight } = useAppTextScale();
   const assignmentsQuery = useTeacherAssignmentsQuery({ enabled: isAuthenticated, user });
+  const headingTextStyle = useMemo(
+    () => ({ fontSize: scaleFont(20), lineHeight: scaleLineHeight(28) }),
+    [scaleFont, scaleLineHeight],
+  );
+  const sectionTitleTextStyle = useMemo(
+    () => ({ fontSize: scaleFont(16), lineHeight: scaleLineHeight(24) }),
+    [scaleFont, scaleLineHeight],
+  );
+  const bodyTextStyle = useMemo(
+    () => ({ fontSize: scaleFont(12), lineHeight: scaleLineHeight(18) }),
+    [scaleFont, scaleLineHeight],
+  );
+  const helperTextStyle = useMemo(
+    () => ({ fontSize: scaleFont(11), lineHeight: scaleLineHeight(16) }),
+    [scaleFont, scaleLineHeight],
+  );
+  const inputTextStyle = useMemo(
+    () => ({ fontSize: scaleFont(13), lineHeight: scaleLineHeight(20) }),
+    [scaleFont, scaleLineHeight],
+  );
   const assignments = useMemo(
     () => filterRegularTeacherAssignments(assignmentsQuery.data?.assignments || []),
     [assignmentsQuery.data?.assignments],
@@ -253,7 +275,7 @@ export default function TeacherSubjectReportScreen() {
   if (user?.role !== 'TEACHER') {
     return (
       <ScrollView style={{ flex: 1, backgroundColor: '#f8fafc' }} contentContainerStyle={pageContentPadding}>
-        <Text style={{ fontSize: 20, fontWeight: '700', marginBottom: 8 }}>Rapor Mapel</Text>
+        <Text style={{ ...headingTextStyle, fontWeight: '700', marginBottom: 8 }}>Rapor Mapel</Text>
         <QueryStateView type="error" message="Halaman ini khusus untuk role guru." />
       </ScrollView>
     );
@@ -273,8 +295,8 @@ export default function TeacherSubjectReportScreen() {
           />
         }
       >
-      <Text style={{ fontSize: 20, fontWeight: '700', marginBottom: 6 }}>Rapor Mapel</Text>
-      <Text style={{ color: '#64748b', marginBottom: 12 }}>
+      <Text style={{ ...headingTextStyle, fontWeight: '700', marginBottom: 6 }}>Rapor Mapel</Text>
+      <Text style={{ color: '#64748b', ...inputTextStyle, marginBottom: 12 }}>
         Rekap nilai akhir per mata pelajaran dan kelas.
       </Text>
 
@@ -294,8 +316,8 @@ export default function TeacherSubjectReportScreen() {
             marginBottom: 12,
           }}
         >
-          <Text style={{ color: '#92400e', fontWeight: '700', marginBottom: 4 }}>Tahun ajaran aktif belum tersedia</Text>
-          <Text style={{ color: '#b45309', fontSize: 12 }}>
+          <Text style={{ color: '#92400e', fontWeight: '700', ...bodyTextStyle, marginBottom: 4 }}>Tahun ajaran aktif belum tersedia</Text>
+          <Text style={{ color: '#b45309', ...bodyTextStyle }}>
             Aktifkan tahun ajaran terlebih dahulu agar rapor mapel tidak ambigu.
           </Text>
         </View>
@@ -314,7 +336,7 @@ export default function TeacherSubjectReportScreen() {
                 marginBottom: 10,
               }}
             >
-              <Text style={{ color: '#0f172a', fontWeight: '700', marginBottom: 8 }}>Pilih Kelas & Mapel</Text>
+              <Text style={{ color: '#0f172a', fontWeight: '700', ...sectionTitleTextStyle, marginBottom: 8 }}>Pilih Kelas & Mapel</Text>
               <MobileSelectField
                 value={effectiveSelectedAssignmentId ? String(effectiveSelectedAssignmentId) : ''}
                 options={assignmentOptions}
@@ -347,6 +369,7 @@ export default function TeacherSubjectReportScreen() {
                 paddingVertical: 10,
                 backgroundColor: '#fff',
                 marginBottom: 10,
+                ...inputTextStyle,
               }}
             />
 
@@ -365,26 +388,26 @@ export default function TeacherSubjectReportScreen() {
                     marginBottom: 10,
                   }}
                 >
-                  <Text style={{ color: '#bfdbfe', fontSize: 12, marginBottom: 4 }}>
+                  <Text style={{ color: '#bfdbfe', ...bodyTextStyle, marginBottom: 4 }}>
                     {selectedAssignment?.subject.name} • {selectedAssignment?.class.name}
                   </Text>
                   <View style={{ flexDirection: 'row', marginHorizontal: -4 }}>
                     <View style={{ flex: 1, paddingHorizontal: 4 }}>
                       <View style={{ backgroundColor: 'rgba(255,255,255,0.12)', borderRadius: 8, padding: 8 }}>
-                        <Text style={{ color: '#bfdbfe', fontSize: 11 }}>Siswa</Text>
-                        <Text style={{ color: '#fff', fontWeight: '700' }}>{summary.students}</Text>
+                        <Text style={{ color: '#bfdbfe', ...helperTextStyle }}>Siswa</Text>
+                        <Text style={{ color: '#fff', fontWeight: '700', ...sectionTitleTextStyle }}>{summary.students}</Text>
                       </View>
                     </View>
                     <View style={{ flex: 1, paddingHorizontal: 4 }}>
                       <View style={{ backgroundColor: 'rgba(255,255,255,0.12)', borderRadius: 8, padding: 8 }}>
-                        <Text style={{ color: '#bfdbfe', fontSize: 11 }}>Rata-rata Akhir</Text>
-                        <Text style={{ color: '#fff', fontWeight: '700' }}>{summary.avgFinal}</Text>
+                        <Text style={{ color: '#bfdbfe', ...helperTextStyle }}>Rata-rata Akhir</Text>
+                        <Text style={{ color: '#fff', fontWeight: '700', ...sectionTitleTextStyle }}>{summary.avgFinal}</Text>
                       </View>
                     </View>
                     <View style={{ flex: 1, paddingHorizontal: 4 }}>
                       <View style={{ backgroundColor: 'rgba(255,255,255,0.12)', borderRadius: 8, padding: 8 }}>
-                        <Text style={{ color: '#bfdbfe', fontSize: 11 }}>Tuntas</Text>
-                        <Text style={{ color: '#fff', fontWeight: '700' }}>{summary.passed}</Text>
+                        <Text style={{ color: '#bfdbfe', ...helperTextStyle }}>Tuntas</Text>
+                        <Text style={{ color: '#fff', fontWeight: '700', ...sectionTitleTextStyle }}>{summary.passed}</Text>
                       </View>
                     </View>
                   </View>
@@ -409,13 +432,13 @@ export default function TeacherSubjectReportScreen() {
                           <View style={{ flexDirection: 'row', justifyContent: 'space-between', marginBottom: 6 }}>
                             <View style={{ flex: 1, paddingRight: 8 }}>
                               <Text style={{ color: '#0f172a', fontWeight: '700' }}>{item.student?.name || '-'}</Text>
-                              <Text style={{ color: '#64748b', fontSize: 11 }}>
+                              <Text style={{ color: '#64748b', ...helperTextStyle }}>
                                 NIS: {item.student?.nis || '-'} | NISN: {item.student?.nisn || '-'}
                               </Text>
                             </View>
                             <Text
                               style={{
-                                fontSize: 11,
+                                ...helperTextStyle,
                                 fontWeight: '700',
                                 color: style.text,
                                 backgroundColor: style.bg,
@@ -458,13 +481,13 @@ export default function TeacherSubjectReportScreen() {
                                     alignItems: 'center',
                                   }}
                                 >
-                                  <Text style={{ color: '#64748b', fontSize: 10 }}>{score.label}</Text>
-                                  <Text style={{ color: '#0f172a', fontWeight: '700' }}>{score.value}</Text>
+                                  <Text style={{ color: '#64748b', ...helperTextStyle }}>{score.label}</Text>
+                                  <Text style={{ color: '#0f172a', fontWeight: '700', ...bodyTextStyle }}>{score.value}</Text>
                                 </View>
                               </View>
                             ))}
                           </View>
-                          <Text style={{ color: '#334155', fontSize: 12, marginBottom: 8 }}>
+                          <Text style={{ color: '#334155', ...bodyTextStyle, marginBottom: 8 }}>
                             Capaian: {item.description || '-'}
                           </Text>
                           <Pressable
@@ -478,7 +501,7 @@ export default function TeacherSubjectReportScreen() {
                               backgroundColor: '#eff6ff',
                             }}
                           >
-                            <Text style={{ color: '#1d4ed8', fontWeight: '700', fontSize: 12 }}>Edit Rapor</Text>
+                            <Text style={{ color: '#1d4ed8', fontWeight: '700', ...bodyTextStyle }}>Edit Rapor</Text>
                           </Pressable>
                         </View>
                       );
@@ -495,8 +518,8 @@ export default function TeacherSubjectReportScreen() {
                       backgroundColor: '#fff',
                     }}
                   >
-                    <Text style={{ fontWeight: '700', marginBottom: 4, color: '#0f172a' }}>Data kosong</Text>
-                    <Text style={{ color: '#64748b' }}>Belum ada data rapor untuk filter terpilih.</Text>
+                    <Text style={{ fontWeight: '700', marginBottom: 4, color: '#0f172a', ...bodyTextStyle }}>Data kosong</Text>
+                    <Text style={{ color: '#64748b', ...bodyTextStyle }}>Belum ada data rapor untuk filter terpilih.</Text>
                   </View>
                 )}
               </>
@@ -513,8 +536,8 @@ export default function TeacherSubjectReportScreen() {
               backgroundColor: '#fff',
             }}
           >
-            <Text style={{ fontWeight: '700', marginBottom: 4, color: '#0f172a' }}>Belum ada assignment</Text>
-            <Text style={{ color: '#64748b' }}>Guru belum memiliki assignment mapel aktif.</Text>
+            <Text style={{ fontWeight: '700', marginBottom: 4, color: '#0f172a', ...bodyTextStyle }}>Belum ada assignment</Text>
+            <Text style={{ color: '#64748b', ...bodyTextStyle }}>Guru belum memiliki assignment mapel aktif.</Text>
           </View>
         )
       ) : null}
@@ -529,7 +552,7 @@ export default function TeacherSubjectReportScreen() {
           alignItems: 'center',
         }}
       >
-        <Text style={{ color: '#fff', fontWeight: '600' }}>Kembali ke Home</Text>
+        <Text style={{ color: '#fff', fontWeight: '600', ...bodyTextStyle }}>Kembali ke Home</Text>
       </Pressable>
       </ScrollView>
 
@@ -559,15 +582,15 @@ export default function TeacherSubjectReportScreen() {
               padding: 14,
             }}
           >
-            <Text style={{ color: '#0f172a', fontWeight: '700', fontSize: 18, marginBottom: 4 }}>Edit Rapor</Text>
-            <Text style={{ color: '#334155', fontSize: 13, marginBottom: 10 }}>
+            <Text style={{ color: '#0f172a', fontWeight: '700', fontSize: scaleFont(18), lineHeight: scaleLineHeight(26), marginBottom: 4 }}>Edit Rapor</Text>
+            <Text style={{ color: '#334155', ...inputTextStyle, marginBottom: 10 }}>
               {editingRow?.student?.name || '-'}
             </Text>
 
             <View style={{ flexDirection: 'row', flexWrap: 'wrap', marginHorizontal: -4, marginBottom: 8 }}>
               {slotEditOrder.map((slotCode) => (
                 <View key={slotCode} style={{ width: slotInputWidth, paddingHorizontal: 4, marginBottom: 8 }}>
-                  <Text style={{ color: '#64748b', fontSize: 11, marginBottom: 4 }}>
+                  <Text style={{ color: '#64748b', ...helperTextStyle, marginBottom: 4 }}>
                     {slotLabelsByCode[slotCode] || slotCode}
                   </Text>
                   <TextInput
@@ -588,13 +611,14 @@ export default function TeacherSubjectReportScreen() {
                       paddingVertical: 8,
                       color: '#0f172a',
                       backgroundColor: '#fff',
+                      ...inputTextStyle,
                     }}
                   />
                 </View>
               ))}
             </View>
 
-            <Text style={{ color: '#64748b', fontSize: 12, marginBottom: 4 }}>Capaian Kompetensi</Text>
+            <Text style={{ color: '#64748b', ...bodyTextStyle, marginBottom: 4 }}>Capaian Kompetensi</Text>
             <TextInput
               value={editingDescription}
               onChangeText={setEditingDescription}
@@ -611,6 +635,7 @@ export default function TeacherSubjectReportScreen() {
                 color: '#0f172a',
                 backgroundColor: '#fff',
                 minHeight: 88,
+                ...inputTextStyle,
               }}
             />
 
@@ -630,7 +655,7 @@ export default function TeacherSubjectReportScreen() {
                     backgroundColor: '#fff',
                   }}
                 >
-                  <Text style={{ color: '#334155', fontWeight: '700' }}>Batal</Text>
+                  <Text style={{ color: '#334155', fontWeight: '700', ...bodyTextStyle }}>Batal</Text>
                 </Pressable>
               </View>
               <View style={{ flex: 1, paddingHorizontal: 4 }}>
@@ -646,7 +671,7 @@ export default function TeacherSubjectReportScreen() {
                     backgroundColor: saveEditMutation.isPending ? '#93c5fd' : '#1d4ed8',
                   }}
                 >
-                  <Text style={{ color: '#fff', fontWeight: '700' }}>
+                  <Text style={{ color: '#fff', fontWeight: '700', ...bodyTextStyle }}>
                     {saveEditMutation.isPending ? 'Menyimpan...' : 'Simpan'}
                   </Text>
                 </Pressable>
