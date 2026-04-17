@@ -30,6 +30,7 @@ import {
 import { useTeacherAssignmentsQuery } from '../../../../src/features/teacherAssignments/useTeacherAssignmentsQuery';
 import { getStandardPagePadding } from '../../../../src/lib/ui/pageLayout';
 import { profileApi } from '../../../../src/features/profile/profileApi';
+import { useAppTextScale } from '../../../../src/theme/AppTextScaleProvider';
 
 type OptionDraft = {
   id: string;
@@ -697,6 +698,27 @@ export default function TeacherExamEditorScreen() {
     user?.preferences && typeof user.preferences === 'object' ? user.preferences : {},
   );
   const pageContentPadding = getStandardPagePadding(insets);
+  const { scaleFont, scaleLineHeight } = useAppTextScale();
+  const headingTextStyle = useMemo(
+    () => ({ fontSize: scaleFont(20), lineHeight: scaleLineHeight(28) }),
+    [scaleFont, scaleLineHeight],
+  );
+  const bodyTextStyle = useMemo(
+    () => ({ fontSize: scaleFont(12), lineHeight: scaleLineHeight(18) }),
+    [scaleFont, scaleLineHeight],
+  );
+  const helperTextStyle = useMemo(
+    () => ({ fontSize: scaleFont(11), lineHeight: scaleLineHeight(16) }),
+    [scaleFont, scaleLineHeight],
+  );
+  const compactChipTextStyle = useMemo(
+    () => ({ fontSize: scaleFont(10), lineHeight: scaleLineHeight(14) }),
+    [scaleFont, scaleLineHeight],
+  );
+  const inputTextStyle = useMemo(
+    () => ({ fontSize: scaleFont(13), lineHeight: scaleLineHeight(20) }),
+    [scaleFont, scaleLineHeight],
+  );
   const teacherAssignmentsQuery = useTeacherAssignmentsQuery({ enabled: isAuthenticated, user });
   const assignments = useMemo(
     () => teacherAssignmentsQuery.data?.assignments || [],
@@ -1416,7 +1438,7 @@ export default function TeacherExamEditorScreen() {
   if (user?.role !== 'TEACHER') {
     return (
       <ScrollView style={{ flex: 1, backgroundColor: '#f8fafc' }} contentContainerStyle={pageContentPadding}>
-        <Text style={{ fontSize: 20, fontWeight: '700', marginBottom: 8 }}>Editor Ujian</Text>
+        <Text style={{ ...headingTextStyle, fontWeight: '700', marginBottom: 8 }}>Editor Ujian</Text>
         <QueryStateView type="error" message="Halaman ini khusus untuk role guru." />
       </ScrollView>
     );
@@ -1429,7 +1451,7 @@ export default function TeacherExamEditorScreen() {
   if (isEditMode && (packetDetailQuery.isError || !packetDetailQuery.data)) {
     return (
       <ScrollView style={{ flex: 1, backgroundColor: '#f8fafc' }} contentContainerStyle={pageContentPadding}>
-        <Text style={{ fontSize: 20, fontWeight: '700', marginBottom: 8 }}>Editor Ujian</Text>
+        <Text style={{ ...headingTextStyle, fontWeight: '700', marginBottom: 8 }}>Editor Ujian</Text>
         <QueryStateView
           type="error"
           message="Gagal memuat detail packet ujian."
@@ -1455,10 +1477,10 @@ export default function TeacherExamEditorScreen() {
         />
       }
     >
-      <Text style={{ fontSize: 20, fontWeight: '700', marginBottom: 6 }}>
+      <Text style={{ ...headingTextStyle, fontWeight: '700', marginBottom: 6 }}>
         {isEditMode ? 'Edit Paket Ujian' : 'Buat Paket Ujian'}
       </Text>
-      <Text style={{ color: '#64748b', marginBottom: 12 }}>
+      <Text style={{ color: '#64748b', ...inputTextStyle, marginBottom: 12 }}>
         Susun metadata ujian dan soal secara sederhana dari mobile.
       </Text>
 
@@ -1491,7 +1513,7 @@ export default function TeacherExamEditorScreen() {
           }}
         >
           <Text style={{ color: '#1e3a8a', fontWeight: '700', marginBottom: 4 }}>Tahap 1: Informasi Ujian</Text>
-          <Text style={{ color: '#334155', fontSize: 12 }}>
+          <Text style={{ color: '#334155', ...bodyTextStyle }}>
             {isCurriculumManagedPacket
               ? 'Judul dan instruksi masih bisa disesuaikan. Parameter lain mengikuti jadwal kurikulum.'
               : 'Lengkapi kelas/mapel, judul, tipe, semester, durasi, dan konfigurasi ujian sebelum menyusun butir soal.'}
@@ -1509,7 +1531,7 @@ export default function TeacherExamEditorScreen() {
           }}
         >
           <Text style={{ color: '#1e3a8a', fontWeight: '700', marginBottom: 4 }}>Tahap 2: Butir Soal</Text>
-          <Text style={{ color: '#334155', fontSize: 12 }}>
+          <Text style={{ color: '#334155', ...bodyTextStyle }}>
             {supportsQuestionSupport
               ? 'Fokus menyusun isi soal, kisi-kisi, kartu soal, serta opsi jawaban. Informasi ujian sudah dipisahkan di tahap 1.'
               : 'Fokus menyusun isi soal dan opsi jawaban. Informasi ujian sudah dipisahkan di tahap 1.'}
@@ -1531,7 +1553,7 @@ export default function TeacherExamEditorScreen() {
           }}
         >
           <Text style={{ color: '#1d4ed8', fontWeight: '700', marginBottom: 4 }}>Dikunci oleh Kurikulum</Text>
-          <Text style={{ color: '#334155', fontSize: 12 }}>
+          <Text style={{ color: '#334155', ...bodyTextStyle }}>
             Guru hanya dapat mengubah judul ujian dan instruksi. Mapel, kelas, semester, tipe ujian, durasi, jumlah soal tampil, dan KKM mengikuti jadwal kurikulum.
           </Text>
         </View>
@@ -1562,7 +1584,7 @@ export default function TeacherExamEditorScreen() {
                 marginBottom: 8,
               }}
             >
-              <Text style={{ color: '#475569', fontSize: 11, marginBottom: 3 }}>Mapel Terjadwal</Text>
+              <Text style={{ color: '#475569', ...helperTextStyle, marginBottom: 3 }}>Mapel Terjadwal</Text>
               <Text style={{ color: '#0f172a', fontWeight: '600' }}>{currentPacketDetail?.subject?.name || '-'}</Text>
             </View>
             <View
@@ -1575,7 +1597,7 @@ export default function TeacherExamEditorScreen() {
                 backgroundColor: '#f8fafc',
               }}
             >
-              <Text style={{ color: '#475569', fontSize: 11, marginBottom: 3 }}>Kelas / Rombel Terjadwal</Text>
+              <Text style={{ color: '#475569', ...helperTextStyle, marginBottom: 3 }}>Kelas / Rombel Terjadwal</Text>
               <Text style={{ color: '#0f172a', fontWeight: '600' }}>
                 {curriculumScheduledClassNames.length > 0
                   ? curriculumScheduledClassNames.join(', ')
@@ -1610,6 +1632,7 @@ export default function TeacherExamEditorScreen() {
           paddingVertical: 10,
           backgroundColor: '#fff',
           marginBottom: 8,
+          ...inputTextStyle,
         }}
       />
 
@@ -1628,6 +1651,7 @@ export default function TeacherExamEditorScreen() {
             minHeight: 80,
             backgroundColor: '#fff',
             marginBottom: 8,
+            ...inputTextStyle,
           }}
         />
       ) : null}
@@ -1646,6 +1670,7 @@ export default function TeacherExamEditorScreen() {
           minHeight: 80,
           backgroundColor: '#fff',
           marginBottom: 8,
+          ...inputTextStyle,
         }}
       />
 
@@ -1663,7 +1688,7 @@ export default function TeacherExamEditorScreen() {
                   backgroundColor: '#f8fafc',
                 }}
               >
-                <Text style={{ color: '#475569', fontSize: 11, marginBottom: 3 }}>Semester</Text>
+                <Text style={{ color: '#475569', ...helperTextStyle, marginBottom: 3 }}>Semester</Text>
                 <Text style={{ color: '#0f172a', fontWeight: '600' }}>
                   {currentPacketDetail?.semester === 'ODD' ? 'Semester Ganjil' : 'Semester Genap'}
                 </Text>
@@ -1680,7 +1705,7 @@ export default function TeacherExamEditorScreen() {
                   backgroundColor: '#f8fafc',
                 }}
               >
-                <Text style={{ color: '#475569', fontSize: 11, marginBottom: 3 }}>Tipe Ujian</Text>
+                <Text style={{ color: '#475569', ...helperTextStyle, marginBottom: 3 }}>Tipe Ujian</Text>
                 <Text style={{ color: '#0f172a', fontWeight: '600' }}>{selectedProgram?.label || currentPacketDetail?.programCode || currentPacketDetail?.type || '-'}</Text>
               </View>
             </View>
@@ -1697,7 +1722,7 @@ export default function TeacherExamEditorScreen() {
                   backgroundColor: '#f8fafc',
                 }}
               >
-                <Text style={{ color: '#475569', fontSize: 11, marginBottom: 3 }}>Durasi</Text>
+                <Text style={{ color: '#475569', ...helperTextStyle, marginBottom: 3 }}>Durasi</Text>
                 <Text style={{ color: '#0f172a', fontWeight: '600' }}>{currentPacketDetail?.duration || '-'} menit</Text>
               </View>
             </View>
@@ -1712,7 +1737,7 @@ export default function TeacherExamEditorScreen() {
                   backgroundColor: '#f8fafc',
                 }}
               >
-                <Text style={{ color: '#475569', fontSize: 11, marginBottom: 3 }}>KKM</Text>
+                <Text style={{ color: '#475569', ...helperTextStyle, marginBottom: 3 }}>KKM</Text>
                 <Text style={{ color: '#0f172a', fontWeight: '600' }}>{currentPacketDetail?.kkm || '-'}</Text>
               </View>
             </View>
@@ -1728,9 +1753,9 @@ export default function TeacherExamEditorScreen() {
               marginBottom: 8,
             }}
           >
-            <Text style={{ color: '#475569', fontSize: 11, marginBottom: 3 }}>Soal Ditampilkan ke Siswa</Text>
+            <Text style={{ color: '#475569', ...helperTextStyle, marginBottom: 3 }}>Soal Ditampilkan ke Siswa</Text>
             <Text style={{ color: '#0f172a', fontWeight: '600' }}>{curriculumPublishedQuestionLabel}</Text>
-            <Text style={{ color: '#64748b', fontSize: 11, marginTop: 4 }}>
+            <Text style={{ color: '#64748b', ...helperTextStyle, marginTop: 4 }}>
               Konfigurasi jumlah soal mengikuti packet yang dijadwalkan oleh kurikulum.
             </Text>
           </View>
@@ -1751,6 +1776,7 @@ export default function TeacherExamEditorScreen() {
                   paddingHorizontal: 12,
                   paddingVertical: 10,
                   backgroundColor: '#fff',
+                  ...inputTextStyle,
                 }}
               />
             </View>
@@ -1767,6 +1793,7 @@ export default function TeacherExamEditorScreen() {
                   paddingHorizontal: 12,
                   paddingVertical: 10,
                   backgroundColor: '#fff',
+                  ...inputTextStyle,
                 }}
               />
             </View>
@@ -1798,7 +1825,7 @@ export default function TeacherExamEditorScreen() {
                 marginBottom: 8,
               }}
             >
-              <Text style={{ color: '#991b1b', fontSize: 12 }}>
+              <Text style={{ color: '#991b1b', ...bodyTextStyle }}>
                 Program ujian belum tersedia. Minta {CURRICULUM_EXAM_MANAGER_LABEL} menambahkan Program Ujian terlebih dahulu.
               </Text>
             </View>
@@ -1817,7 +1844,7 @@ export default function TeacherExamEditorScreen() {
             disabled={Boolean(lockedSemester)}
           />
           {lockedSemester ? (
-            <Text style={{ color: '#475569', fontSize: 11, marginBottom: 8 }}>
+            <Text style={{ color: '#475569', ...helperTextStyle, marginBottom: 8 }}>
               Semester otomatis untuk {selectedProgram?.label || examType}: {lockedSemester === 'ODD' ? 'Ganjil' : 'Genap'}.
             </Text>
           ) : null}
@@ -1835,7 +1862,7 @@ export default function TeacherExamEditorScreen() {
         }}
       >
         <Text style={{ color: '#1e3a8a', fontWeight: '700', marginBottom: 4 }}>Sinkronisasi Nilai</Text>
-        <Text style={{ color: '#334155', fontSize: 12 }}>{scoreSyncHint}</Text>
+        <Text style={{ color: '#334155', ...bodyTextStyle }}>{scoreSyncHint}</Text>
       </View>
 
       <Pressable
@@ -1883,7 +1910,7 @@ export default function TeacherExamEditorScreen() {
             <View style={{ flex: 1, paddingRight: 8 }}>
               <Text style={{ color: '#0f172a', fontWeight: '700' }}>Soal {index + 1}</Text>
               {isRequestedQuestion ? (
-                <Text style={{ color: '#2563eb', fontSize: 11, marginTop: 2 }}>
+                <Text style={{ color: '#2563eb', ...helperTextStyle, marginTop: 2 }}>
                   Butir ini memiliki catatan review dari kurikulum.
                 </Text>
               ) : null}
@@ -1897,7 +1924,7 @@ export default function TeacherExamEditorScreen() {
                 setQuestions((prev) => prev.filter((item) => item.id !== question.id));
               }}
             >
-              <Text style={{ color: '#b91c1c', fontWeight: '700', fontSize: 12 }}>Hapus</Text>
+              <Text style={{ color: '#b91c1c', fontWeight: '700', ...bodyTextStyle }}>Hapus</Text>
             </Pressable>
           </View>
 
@@ -1912,11 +1939,11 @@ export default function TeacherExamEditorScreen() {
                 marginBottom: 10,
               }}
             >
-              <Text style={{ color: '#92400e', fontWeight: '700', fontSize: 12, marginBottom: 4 }}>
+              <Text style={{ color: '#92400e', fontWeight: '700', ...bodyTextStyle, marginBottom: 4 }}>
                 Catatan Review Kurikulum
               </Text>
               {(question.reviewFeedback.reviewer?.name || question.reviewFeedback.reviewedAt) ? (
-                <Text style={{ color: '#a16207', fontSize: 11, marginBottom: 6 }}>
+                <Text style={{ color: '#a16207', ...helperTextStyle, marginBottom: 6 }}>
                   {question.reviewFeedback.reviewer?.name
                     ? `Oleh ${question.reviewFeedback.reviewer.name}`
                     : 'Catatan tersimpan'}
@@ -1924,17 +1951,17 @@ export default function TeacherExamEditorScreen() {
                 </Text>
               ) : null}
               {question.reviewFeedback.questionComment ? (
-                <Text style={{ color: '#78350f', fontSize: 12, marginBottom: 4 }}>
+                <Text style={{ color: '#78350f', ...bodyTextStyle, marginBottom: 4 }}>
                   Soal: {question.reviewFeedback.questionComment}
                 </Text>
               ) : null}
               {question.reviewFeedback.blueprintComment ? (
-                <Text style={{ color: '#78350f', fontSize: 12, marginBottom: 4 }}>
+                <Text style={{ color: '#78350f', ...bodyTextStyle, marginBottom: 4 }}>
                   Kisi-kisi: {question.reviewFeedback.blueprintComment}
                 </Text>
               ) : null}
               {question.reviewFeedback.questionCardComment ? (
-                <Text style={{ color: '#78350f', fontSize: 12, marginBottom: 4 }}>
+                <Text style={{ color: '#78350f', ...bodyTextStyle, marginBottom: 4 }}>
                   Kartu soal: {question.reviewFeedback.questionCardComment}
                 </Text>
               ) : null}
@@ -1949,10 +1976,10 @@ export default function TeacherExamEditorScreen() {
                     marginTop: 8,
                   }}
                 >
-                  <Text style={{ color: '#1d4ed8', fontWeight: '700', fontSize: 12, marginBottom: 4 }}>
+                  <Text style={{ color: '#1d4ed8', fontWeight: '700', ...bodyTextStyle, marginBottom: 4 }}>
                     Balasan Guru
                   </Text>
-                  <Text style={{ color: '#334155', fontSize: 12 }}>{question.reviewFeedback.teacherResponse}</Text>
+                  <Text style={{ color: '#334155', ...bodyTextStyle }}>{question.reviewFeedback.teacherResponse}</Text>
                 </View>
               ) : null}
               <TextInput
@@ -1975,6 +2002,7 @@ export default function TeacherExamEditorScreen() {
                   paddingVertical: 10,
                   minHeight: 88,
                   marginTop: 10,
+                  ...inputTextStyle,
                 }}
               />
               <Pressable
@@ -1988,7 +2016,7 @@ export default function TeacherExamEditorScreen() {
                   marginTop: 10,
                 }}
               >
-                <Text style={{ color: '#fff', fontWeight: '700', fontSize: 12 }}>
+                <Text style={{ color: '#fff', fontWeight: '700', ...bodyTextStyle }}>
                   {reviewReplySubmittingQuestionId === question.id
                     ? 'Mengirim Balasan...'
                     : 'Kirim Balasan ke Kurikulum'}
@@ -2069,7 +2097,7 @@ export default function TeacherExamEditorScreen() {
                         alignItems: 'center',
                       }}
                     >
-                      <Text style={{ color: selected ? '#1d4ed8' : '#334155', fontSize: 10, fontWeight: '700' }}>
+                      <Text style={{ color: selected ? '#1d4ed8' : '#334155', fontWeight: '700', ...compactChipTextStyle }}>
                         {typeItem === 'MULTIPLE_CHOICE'
                           ? 'Pilihan Ganda'
                           : typeItem === 'COMPLEX_MULTIPLE_CHOICE'
@@ -2105,6 +2133,7 @@ export default function TeacherExamEditorScreen() {
               minHeight: 80,
               backgroundColor: '#fff',
               marginBottom: 8,
+              ...inputTextStyle,
             }}
           />
 
@@ -2125,6 +2154,7 @@ export default function TeacherExamEditorScreen() {
               paddingVertical: 9,
               backgroundColor: '#fff',
               marginBottom: 8,
+              ...inputTextStyle,
             }}
           />
 
@@ -2141,7 +2171,7 @@ export default function TeacherExamEditorScreen() {
             }}
           >
             <Text style={{ color: '#1e3a8a', fontWeight: '700', marginBottom: 6 }}>Kisi-kisi Soal</Text>
-            <Text style={{ color: '#1e3a8a', fontSize: 11, fontWeight: '700', marginBottom: 4 }}>
+            <Text style={{ color: '#1e3a8a', ...helperTextStyle, fontWeight: '700', marginBottom: 4 }}>
               Tujuan Pembelajaran
             </Text>
             <TextInput
@@ -2170,11 +2200,12 @@ export default function TeacherExamEditorScreen() {
                 paddingVertical: 9,
                 backgroundColor: '#fff',
                 marginBottom: 6,
+                ...inputTextStyle,
               }}
               multiline
               textAlignVertical="top"
             />
-            <Text style={{ color: '#1e3a8a', fontSize: 11, fontWeight: '700', marginBottom: 4 }}>
+            <Text style={{ color: '#1e3a8a', ...helperTextStyle, fontWeight: '700', marginBottom: 4 }}>
               Indikator Soal
             </Text>
             <TextInput
@@ -2203,11 +2234,12 @@ export default function TeacherExamEditorScreen() {
                 paddingVertical: 9,
                 backgroundColor: '#fff',
                 marginBottom: 6,
+                ...inputTextStyle,
               }}
               multiline
               textAlignVertical="top"
             />
-            <Text style={{ color: '#1e3a8a', fontSize: 11, fontWeight: '700', marginBottom: 4 }}>
+            <Text style={{ color: '#1e3a8a', ...helperTextStyle, fontWeight: '700', marginBottom: 4 }}>
               Kompetensi / Capaian
             </Text>
             <TextInput
@@ -2236,11 +2268,12 @@ export default function TeacherExamEditorScreen() {
                 paddingVertical: 9,
                 backgroundColor: '#fff',
                 marginBottom: 6,
+                ...inputTextStyle,
               }}
               multiline
               textAlignVertical="top"
             />
-            <Text style={{ color: '#1e3a8a', fontSize: 11, fontWeight: '700', marginBottom: 4 }}>
+            <Text style={{ color: '#1e3a8a', ...helperTextStyle, fontWeight: '700', marginBottom: 4 }}>
               Ruang Lingkup Materi
             </Text>
             <TextInput
@@ -2269,11 +2302,12 @@ export default function TeacherExamEditorScreen() {
                 paddingVertical: 9,
                 backgroundColor: '#fff',
                 marginBottom: 6,
+                ...inputTextStyle,
               }}
               multiline
               textAlignVertical="top"
             />
-            <Text style={{ color: '#1e3a8a', fontSize: 11, fontWeight: '700', marginBottom: 4 }}>
+            <Text style={{ color: '#1e3a8a', ...helperTextStyle, fontWeight: '700', marginBottom: 4 }}>
               Level Kognitif
             </Text>
             <TextInput
@@ -2301,6 +2335,7 @@ export default function TeacherExamEditorScreen() {
                 paddingHorizontal: 10,
                 paddingVertical: 9,
                 backgroundColor: '#fff',
+                ...inputTextStyle,
               }}
               multiline
               textAlignVertical="top"
@@ -2318,7 +2353,7 @@ export default function TeacherExamEditorScreen() {
             }}
           >
             <Text style={{ color: '#065f46', fontWeight: '700', marginBottom: 6 }}>Kartu Soal</Text>
-            <Text style={{ color: '#065f46', fontSize: 11, fontWeight: '700', marginBottom: 4 }}>
+            <Text style={{ color: '#065f46', ...helperTextStyle, fontWeight: '700', marginBottom: 4 }}>
               Teks Soal dan Optional
             </Text>
             <View
@@ -2333,18 +2368,18 @@ export default function TeacherExamEditorScreen() {
                 marginBottom: 6,
               }}
             >
-              <Text style={{ color: '#0f172a', fontSize: 12 }}>
+              <Text style={{ color: '#0f172a', ...bodyTextStyle }}>
                 {String(question.content || '').trim() || 'Belum ada teks soal.'}
               </Text>
               {question.type === 'MATRIX_SINGLE_CHOICE' ? (
                 <View style={{ marginTop: 8 }}>
                   {normalizeMatrixColumns(question.matrixColumns).length > 0 ? (
-                    <Text style={{ color: '#334155', fontSize: 12, fontWeight: '700', marginBottom: 4 }}>
+                    <Text style={{ color: '#334155', fontWeight: '700', ...bodyTextStyle, marginBottom: 4 }}>
                       Pilihan jawaban: {normalizeMatrixColumns(question.matrixColumns).map((column) => column.content).join(' • ')}
                     </Text>
                   ) : null}
                   {normalizeMatrixPromptColumns(question.matrixPromptColumns).length > 0 ? (
-                    <Text style={{ color: '#334155', fontSize: 12, fontWeight: '700', marginBottom: 4 }}>
+                    <Text style={{ color: '#334155', fontWeight: '700', ...bodyTextStyle, marginBottom: 4 }}>
                       Kolom data: {normalizeMatrixPromptColumns(question.matrixPromptColumns).map((column) => column.label).join(' • ')}
                     </Text>
                   ) : null}
@@ -2353,7 +2388,7 @@ export default function TeacherExamEditorScreen() {
                     normalizeMatrixPromptColumns(question.matrixPromptColumns),
                     normalizeMatrixColumns(question.matrixColumns),
                   ).map((row, rowIndex) => (
-                    <Text key={row.id || `${question.id}-matrix-preview-${rowIndex}`} style={{ color: '#334155', fontSize: 12, marginTop: 2 }}>
+                    <Text key={row.id || `${question.id}-matrix-preview-${rowIndex}`} style={{ color: '#334155', ...bodyTextStyle, marginTop: 2 }}>
                       {rowIndex + 1}. {buildMatrixRowDisplayText(row, normalizeMatrixPromptColumns(question.matrixPromptColumns))}
                     </Text>
                   ))}
@@ -2362,7 +2397,7 @@ export default function TeacherExamEditorScreen() {
               {(question.options || []).length > 0 ? (
                 <View style={{ marginTop: 8 }}>
                   {(question.options || []).map((option, optionIndex) => (
-                    <Text key={option.id || `${question.id}-preview-${optionIndex}`} style={{ color: '#334155', fontSize: 12, marginTop: 2 }}>
+                    <Text key={option.id || `${question.id}-preview-${optionIndex}`} style={{ color: '#334155', ...bodyTextStyle, marginTop: 2 }}>
                       {getQuestionOptionLabel(optionIndex)}. {String(option.content || '').trim() || 'Opsi tanpa teks'}
                     </Text>
                   ))}
@@ -2370,7 +2405,7 @@ export default function TeacherExamEditorScreen() {
               ) : null}
             </View>
 
-            <Text style={{ color: '#065f46', fontSize: 11, fontWeight: '700', marginBottom: 4 }}>
+            <Text style={{ color: '#065f46', ...helperTextStyle, fontWeight: '700', marginBottom: 4 }}>
               Indikator Soal
             </Text>
             <TextInput
@@ -2387,10 +2422,11 @@ export default function TeacherExamEditorScreen() {
                 minHeight: 60,
                 marginBottom: 6,
                 color: '#0f172a',
+                ...inputTextStyle,
               }}
             />
 
-            <Text style={{ color: '#065f46', fontSize: 11, fontWeight: '700', marginBottom: 4 }}>
+            <Text style={{ color: '#065f46', ...helperTextStyle, fontWeight: '700', marginBottom: 4 }}>
               Kunci Jawaban
             </Text>
             <TextInput
@@ -2407,10 +2443,11 @@ export default function TeacherExamEditorScreen() {
                 minHeight: 54,
                 marginBottom: 6,
                 color: '#0f172a',
+                ...inputTextStyle,
               }}
             />
 
-            <Text style={{ color: '#065f46', fontSize: 11, fontWeight: '700', marginBottom: 4 }}>
+            <Text style={{ color: '#065f46', ...helperTextStyle, fontWeight: '700', marginBottom: 4 }}>
               Level Kognitif
             </Text>
             <TextInput
@@ -2426,6 +2463,7 @@ export default function TeacherExamEditorScreen() {
                 backgroundColor: '#fff',
                 minHeight: 54,
                 color: '#0f172a',
+                ...inputTextStyle,
               }}
             />
           </View>
@@ -2448,12 +2486,12 @@ export default function TeacherExamEditorScreen() {
                   }}
                 >
                   <Text style={{ color: '#1e3a8a', fontWeight: '700', marginBottom: 6 }}>Pilihan Ganda Grid</Text>
-                  <Text style={{ color: '#475569', fontSize: 12, marginBottom: 10 }}>
+                  <Text style={{ color: '#475569', ...bodyTextStyle, marginBottom: 10 }}>
                     Struktur grid ini dinamis. Untuk bentuk tabel seperti contoh Benar/Salah, isi Kolom Data misalnya
                     Besaran, Satuan, dan Alat Ukur; lalu biarkan Kolom Jawaban berisi Benar dan Salah.
                   </Text>
 
-                  <Text style={{ color: '#1e3a8a', fontSize: 11, fontWeight: '700', marginBottom: 6 }}>Kolom Data</Text>
+                  <Text style={{ color: '#1e3a8a', ...helperTextStyle, fontWeight: '700', marginBottom: 6 }}>Kolom Data</Text>
                   {promptColumns.map((column, columnIndex) => (
                     <View key={column.id} style={{ flexDirection: 'row', alignItems: 'center', marginBottom: 6 }}>
                       <View
@@ -2469,7 +2507,7 @@ export default function TeacherExamEditorScreen() {
                           marginRight: 6,
                         }}
                       >
-                        <Text style={{ color: '#1d4ed8', fontWeight: '700', fontSize: 11 }}>{columnIndex + 1}</Text>
+                        <Text style={{ color: '#1d4ed8', fontWeight: '700', ...helperTextStyle }}>{columnIndex + 1}</Text>
                       </View>
                       <TextInput
                         value={String(column.label || '')}
@@ -2509,6 +2547,7 @@ export default function TeacherExamEditorScreen() {
                           paddingHorizontal: 10,
                           paddingVertical: 9,
                           backgroundColor: '#fff',
+                          ...inputTextStyle,
                         }}
                       />
                       <Pressable
@@ -2543,7 +2582,7 @@ export default function TeacherExamEditorScreen() {
                           backgroundColor: '#fff1f2',
                         }}
                       >
-                        <Text style={{ color: '#b91c1c', fontWeight: '700', fontSize: 12 }}>Hapus</Text>
+                        <Text style={{ color: '#b91c1c', fontWeight: '700', ...bodyTextStyle }}>Hapus</Text>
                       </Pressable>
                     </View>
                   ))}
@@ -2576,10 +2615,10 @@ export default function TeacherExamEditorScreen() {
                       alignSelf: 'flex-start',
                     }}
                   >
-                    <Text style={{ color: '#1d4ed8', fontWeight: '700', fontSize: 12 }}>Tambah Kolom Data</Text>
+                    <Text style={{ color: '#1d4ed8', fontWeight: '700', ...bodyTextStyle }}>Tambah Kolom Data</Text>
                   </Pressable>
 
-                  <Text style={{ color: '#1e3a8a', fontSize: 11, fontWeight: '700', marginBottom: 6 }}>Kolom Jawaban</Text>
+                  <Text style={{ color: '#1e3a8a', ...helperTextStyle, fontWeight: '700', marginBottom: 6 }}>Kolom Jawaban</Text>
                   {answerColumns.map((column, columnIndex) => (
                     <View key={column.id} style={{ flexDirection: 'row', alignItems: 'center', marginBottom: 6 }}>
                       <View
@@ -2595,7 +2634,7 @@ export default function TeacherExamEditorScreen() {
                           marginRight: 6,
                         }}
                       >
-                        <Text style={{ color: '#1d4ed8', fontWeight: '700', fontSize: 11 }}>{columnIndex + 1}</Text>
+                        <Text style={{ color: '#1d4ed8', fontWeight: '700', ...helperTextStyle }}>{columnIndex + 1}</Text>
                       </View>
                       <TextInput
                         value={String(column.content || '')}
@@ -2623,6 +2662,7 @@ export default function TeacherExamEditorScreen() {
                           paddingHorizontal: 10,
                           paddingVertical: 9,
                           backgroundColor: '#fff',
+                          ...inputTextStyle,
                         }}
                       />
                       <Pressable
@@ -2658,7 +2698,7 @@ export default function TeacherExamEditorScreen() {
                           backgroundColor: '#fff1f2',
                         }}
                       >
-                        <Text style={{ color: '#b91c1c', fontWeight: '700', fontSize: 12 }}>Hapus</Text>
+                        <Text style={{ color: '#b91c1c', fontWeight: '700', ...bodyTextStyle }}>Hapus</Text>
                       </Pressable>
                     </View>
                   ))}
@@ -2692,20 +2732,20 @@ export default function TeacherExamEditorScreen() {
                       alignSelf: 'flex-start',
                     }}
                   >
-                    <Text style={{ color: '#1d4ed8', fontWeight: '700', fontSize: 12 }}>Tambah Kolom Jawaban</Text>
+                    <Text style={{ color: '#1d4ed8', fontWeight: '700', ...bodyTextStyle }}>Tambah Kolom Jawaban</Text>
                   </Pressable>
 
-                  <Text style={{ color: '#1e3a8a', fontSize: 11, fontWeight: '700', marginBottom: 6 }}>Baris Grid</Text>
+                  <Text style={{ color: '#1e3a8a', ...helperTextStyle, fontWeight: '700', marginBottom: 6 }}>Baris Grid</Text>
                   {rows.map((row, rowIndex) => (
                     <View key={row.id} style={{ borderWidth: 1, borderColor: '#bfdbfe', borderRadius: 10, padding: 10, backgroundColor: '#fff', marginBottom: 8 }}>
-                      <Text style={{ color: '#1e3a8a', fontWeight: '700', fontSize: 12, marginBottom: 6 }}>
+                      <Text style={{ color: '#1e3a8a', fontWeight: '700', ...bodyTextStyle, marginBottom: 6 }}>
                         Baris {rowIndex + 1}
                       </Text>
                       {promptColumns.map((column, promptColumnIndex) => {
                         const currentCell = (Array.isArray(row.cells) ? row.cells : []).find((cell) => cell.columnId === column.id);
                         return (
                           <View key={`${row.id}-${column.id}`} style={{ marginBottom: 8 }}>
-                            <Text style={{ color: '#64748b', fontSize: 11, fontWeight: '700', marginBottom: 4 }}>
+                            <Text style={{ color: '#64748b', ...helperTextStyle, fontWeight: '700', marginBottom: 4 }}>
                               {String(column.label || '').trim() || `Kolom ${promptColumnIndex + 1}`}
                             </Text>
                             <TextInput
@@ -2760,12 +2800,13 @@ export default function TeacherExamEditorScreen() {
                                 paddingVertical: 9,
                                 backgroundColor: '#fff',
                                 minHeight: 56,
+                                ...inputTextStyle,
                               }}
                             />
                           </View>
                         );
                       })}
-                      <Text style={{ color: '#64748b', fontSize: 11, fontWeight: '700', marginBottom: 4 }}>
+                      <Text style={{ color: '#64748b', ...helperTextStyle, fontWeight: '700', marginBottom: 4 }}>
                         Ringkasan Baris
                       </Text>
                       <View
@@ -2779,7 +2820,7 @@ export default function TeacherExamEditorScreen() {
                           marginBottom: 8,
                         }}
                       >
-                        <Text style={{ color: '#0f172a', fontSize: 12 }}>{buildMatrixRowDisplayText(row, promptColumns)}</Text>
+                        <Text style={{ color: '#0f172a', ...bodyTextStyle }}>{buildMatrixRowDisplayText(row, promptColumns)}</Text>
                       </View>
                       <MobileSelectField
                         label="Kunci Jawaban Baris Ini"
@@ -2825,7 +2866,7 @@ export default function TeacherExamEditorScreen() {
                           alignSelf: 'flex-start',
                         }}
                       >
-                        <Text style={{ color: '#b91c1c', fontWeight: '700', fontSize: 12 }}>Hapus Baris</Text>
+                        <Text style={{ color: '#b91c1c', fontWeight: '700', ...bodyTextStyle }}>Hapus Baris</Text>
                       </Pressable>
                     </View>
                   ))}
@@ -2861,7 +2902,7 @@ export default function TeacherExamEditorScreen() {
                       alignSelf: 'flex-start',
                     }}
                   >
-                    <Text style={{ color: '#1d4ed8', fontWeight: '700', fontSize: 12 }}>Tambah Baris Grid</Text>
+                    <Text style={{ color: '#1d4ed8', fontWeight: '700', ...bodyTextStyle }}>Tambah Baris Grid</Text>
                   </Pressable>
                 </View>
               );
@@ -2895,6 +2936,7 @@ export default function TeacherExamEditorScreen() {
                         paddingHorizontal: 10,
                         paddingVertical: 9,
                         backgroundColor: question.type === 'TRUE_FALSE' ? '#f8fafc' : '#fff',
+                        ...inputTextStyle,
                       }}
                     />
                   </View>
@@ -2960,7 +3002,7 @@ export default function TeacherExamEditorScreen() {
                       backgroundColor: '#eff6ff',
                     }}
                   >
-                    <Text style={{ color: '#1d4ed8', fontWeight: '700', fontSize: 12 }}>Tambah Opsi</Text>
+                    <Text style={{ color: '#1d4ed8', fontWeight: '700', ...bodyTextStyle }}>Tambah Opsi</Text>
                   </Pressable>
                   <Pressable
                     onPress={() => {
@@ -2984,7 +3026,7 @@ export default function TeacherExamEditorScreen() {
                       backgroundColor: '#fff1f2',
                     }}
                   >
-                    <Text style={{ color: '#b91c1c', fontWeight: '700', fontSize: 12 }}>Hapus Opsi</Text>
+                    <Text style={{ color: '#b91c1c', fontWeight: '700', ...bodyTextStyle }}>Hapus Opsi</Text>
                   </Pressable>
                 </View>
               ) : null}
@@ -3021,7 +3063,7 @@ export default function TeacherExamEditorScreen() {
           marginBottom: 10,
         }}
       >
-        <Text style={{ color: '#fff', fontWeight: '700' }}>
+        <Text style={{ color: '#fff', fontWeight: '700', ...bodyTextStyle }}>
           {saveMutation.isPending ? 'Menyimpan...' : isEditMode ? 'Simpan Perubahan' : 'Buat Packet Ujian'}
         </Text>
       </Pressable>
@@ -3037,7 +3079,7 @@ export default function TeacherExamEditorScreen() {
           alignItems: 'center',
         }}
       >
-        <Text style={{ color: '#fff', fontWeight: '700' }}>Kembali ke Program Ujian</Text>
+        <Text style={{ color: '#fff', fontWeight: '700', ...bodyTextStyle }}>Kembali ke Program Ujian</Text>
       </Pressable>
     </ScrollView>
   );
