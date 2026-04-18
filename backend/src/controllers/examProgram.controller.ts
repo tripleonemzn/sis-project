@@ -2,6 +2,12 @@ import { Request, Response } from 'express';
 import { ExamType, GradeComponentType, GradeEntryMode, ReportComponentSlot, Semester } from '@prisma/client';
 import prisma from '../utils/prisma';
 import { ApiError, ApiResponse, asyncHandler } from '../utils/api';
+import {
+  defaultExamStudentResultPublishMode,
+  normalizeExamStudentResultPublishAt,
+  normalizeExamStudentResultPublishMode,
+  type ExamStudentResultPublishMode,
+} from '../utils/examProgramResultRelease';
 
 type ExamFinanceClearanceMode =
   | 'IGNORE'
@@ -32,6 +38,8 @@ type ExamProgramDefinition = {
   targetClassLevels: string[];
   allowedSubjectIds: number[];
   allowedAuthorIds: number[];
+  studentResultPublishMode?: ExamStudentResultPublishMode;
+  studentResultPublishAt?: Date | null;
   financeClearanceMode?: ExamFinanceClearanceMode;
   financeMinOutstandingAmount?: number;
   financeMinOverdueInvoices?: number;
@@ -60,10 +68,14 @@ type NormalizedExamProgramPayload = {
   targetClassLevels: string[];
   allowedSubjectIds: number[];
   allowedAuthorIds: number[];
+  studentResultPublishMode: ExamStudentResultPublishMode;
+  studentResultPublishAt: Date | null;
   financeClearanceMode: ExamFinanceClearanceMode;
   financeMinOutstandingAmount: number;
   financeMinOverdueInvoices: number;
   financeClearanceNotes: string | null;
+  studentResultPublishModeProvided: boolean;
+  studentResultPublishAtProvided: boolean;
   financeClearanceModeProvided: boolean;
   financeMinOutstandingAmountProvided: boolean;
   financeMinOverdueInvoicesProvided: boolean;
@@ -92,6 +104,8 @@ type ExamProgramRow = {
   targetClassLevels: string[];
   allowedSubjectIds: number[];
   allowedAuthorIds: number[];
+  studentResultPublishMode: string | null;
+  studentResultPublishAt: Date | null;
   financeClearanceMode: string | null;
   financeMinOutstandingAmount: number | null;
   financeMinOverdueInvoices: number | null;
@@ -1141,6 +1155,18 @@ function rowToProgram(row: ExamProgramRow): ExamProgramDefinition {
     defaults?.financeMinOverdueInvoices ?? DEFAULT_EXAM_FINANCE_MIN_OVERDUE_INVOICES,
   );
   const financeClearanceNotes = row.financeClearanceNotes || defaults?.financeClearanceNotes || null;
+  const studentResultPublishMode = normalizeExamStudentResultPublishMode(
+    row.studentResultPublishMode,
+    defaults?.studentResultPublishMode ||
+      defaultExamStudentResultPublishMode({
+        programCode: row.code,
+        baseTypeCode,
+      }),
+  );
+  const studentResultPublishAt =
+    row.studentResultPublishAt ||
+    defaults?.studentResultPublishAt ||
+    null;
 
   return {
     code: row.code,
@@ -1163,6 +1189,8 @@ function rowToProgram(row: ExamProgramRow): ExamProgramDefinition {
     targetClassLevels: normalizeClassLevels(row.targetClassLevels, defaults?.targetClassLevels || []),
     allowedSubjectIds: normalizeIdArray(row.allowedSubjectIds, defaults?.allowedSubjectIds || []),
     allowedAuthorIds: normalizeIdArray(row.allowedAuthorIds, defaults?.allowedAuthorIds || []),
+    studentResultPublishMode,
+    studentResultPublishAt,
     financeClearanceMode,
     financeMinOutstandingAmount,
     financeMinOverdueInvoices,
@@ -1210,6 +1238,8 @@ async function fetchProgramRows(academicYearId: number) {
       targetClassLevels: true,
       allowedSubjectIds: true,
       allowedAuthorIds: true,
+      studentResultPublishMode: true,
+      studentResultPublishAt: true,
       financeClearanceMode: true,
       financeMinOutstandingAmount: true,
       financeMinOverdueInvoices: true,
@@ -1282,6 +1312,8 @@ function normalizeProgramPayload(rawPrograms: unknown[]): NormalizedExamProgramP
     const hasTargetClassLevels = Object.prototype.hasOwnProperty.call(item, 'targetClassLevels');
     const hasAllowedSubjectIds = Object.prototype.hasOwnProperty.call(item, 'allowedSubjectIds');
     const hasAllowedAuthorIds = Object.prototype.hasOwnProperty.call(item, 'allowedAuthorIds');
+    const hasStudentResultPublishMode = Object.prototype.hasOwnProperty.call(item, 'studentResultPublishMode');
+    const hasStudentResultPublishAt = Object.prototype.hasOwnProperty.call(item, 'studentResultPublishAt');
     const hasFinanceClearanceMode = Object.prototype.hasOwnProperty.call(item, 'financeClearanceMode');
     const hasFinanceMinOutstandingAmount = Object.prototype.hasOwnProperty.call(item, 'financeMinOutstandingAmount');
     const hasFinanceMinOverdueInvoices = Object.prototype.hasOwnProperty.call(item, 'financeMinOverdueInvoices');
@@ -1303,6 +1335,23 @@ function normalizeProgramPayload(rawPrograms: unknown[]): NormalizedExamProgramP
       item.allowedAuthorIds,
       hasAllowedAuthorIds ? [] : defaults?.allowedAuthorIds || [],
     );
+    const studentResultPublishMode = normalizeExamStudentResultPublishMode(
+      item.studentResultPublishMode,
+      defaults?.studentResultPublishMode ||
+        defaultExamStudentResultPublishMode({
+          programCode: code,
+          baseTypeCode,
+        }),
+    );
+    const studentResultPublishAt =
+      studentResultPublishMode === 'SCHEDULED'
+        ? normalizeExamStudentResultPublishAt(
+            item.studentResultPublishAt,
+          )
+        : null;
+    if (studentResultPublishMode === 'SCHEDULED' && !studentResultPublishAt) {
+      throw new ApiError(400, `Tanggal publikasi siswa wajib diisi untuk program ${code}.`);
+    }
     const financeClearanceMode = normalizeExamFinanceClearanceMode(
       item.financeClearanceMode,
       defaults?.financeClearanceMode || DEFAULT_EXAM_FINANCE_CLEARANCE_MODE,
@@ -1339,10 +1388,14 @@ function normalizeProgramPayload(rawPrograms: unknown[]): NormalizedExamProgramP
       targetClassLevels,
       allowedSubjectIds,
       allowedAuthorIds,
+      studentResultPublishMode,
+      studentResultPublishAt,
       financeClearanceMode,
       financeMinOutstandingAmount,
       financeMinOverdueInvoices,
       financeClearanceNotes,
+      studentResultPublishModeProvided: hasStudentResultPublishMode,
+      studentResultPublishAtProvided: hasStudentResultPublishAt,
       financeClearanceModeProvided: hasFinanceClearanceMode,
       financeMinOutstandingAmountProvided: hasFinanceMinOutstandingAmount,
       financeMinOverdueInvoicesProvided: hasFinanceMinOverdueInvoices,
@@ -1582,6 +1635,8 @@ export const upsertExamPrograms = asyncHandler(async (req: Request, res: Respons
         gradeComponentType: true,
         gradeComponentTypeCode: true,
         gradeEntryModeCode: true,
+        studentResultPublishMode: true,
+        studentResultPublishAt: true,
         financeClearanceMode: true,
         financeMinOutstandingAmount: true,
         financeMinOverdueInvoices: true,
@@ -1612,6 +1667,20 @@ export const upsertExamPrograms = asyncHandler(async (req: Request, res: Respons
               matchedRow.financeClearanceMode,
               item.financeClearanceMode,
             );
+        const resolvedStudentResultPublishMode = item.studentResultPublishModeProvided
+          ? item.studentResultPublishMode
+          : normalizeExamStudentResultPublishMode(
+              matchedRow.studentResultPublishMode,
+              item.studentResultPublishMode,
+            );
+        const resolvedStudentResultPublishAt = resolvedStudentResultPublishMode === 'SCHEDULED'
+          ? item.studentResultPublishAtProvided
+            ? item.studentResultPublishAt
+            : matchedRow.studentResultPublishAt || item.studentResultPublishAt
+          : null;
+        if (resolvedStudentResultPublishMode === 'SCHEDULED' && !resolvedStudentResultPublishAt) {
+          throw new ApiError(400, `Tanggal publikasi siswa wajib diisi untuk program ${item.code}.`);
+        }
         const resolvedFinanceMinOutstandingAmount = item.financeMinOutstandingAmountProvided
           ? item.financeMinOutstandingAmount
           : normalizeFinanceThresholdAmount(
@@ -1651,6 +1720,8 @@ export const upsertExamPrograms = asyncHandler(async (req: Request, res: Respons
             targetClassLevels: item.targetClassLevels,
             allowedSubjectIds: item.allowedSubjectIds,
             allowedAuthorIds: item.allowedAuthorIds,
+            studentResultPublishMode: resolvedStudentResultPublishMode,
+            studentResultPublishAt: resolvedStudentResultPublishAt,
             financeClearanceMode: resolvedFinanceClearanceMode,
             financeMinOutstandingAmount: resolvedFinanceMinOutstandingAmount,
             financeMinOverdueInvoices: resolvedFinanceMinOverdueInvoices,
@@ -1672,6 +1743,8 @@ export const upsertExamPrograms = asyncHandler(async (req: Request, res: Respons
           gradeComponentType: item.gradeComponentType,
           gradeComponentTypeCode: item.gradeComponentTypeCode,
           gradeEntryModeCode: item.gradeEntryModeCode,
+          studentResultPublishMode: resolvedStudentResultPublishMode,
+          studentResultPublishAt: resolvedStudentResultPublishAt,
           financeClearanceMode: resolvedFinanceClearanceMode,
           financeMinOutstandingAmount: resolvedFinanceMinOutstandingAmount,
           financeMinOverdueInvoices: resolvedFinanceMinOverdueInvoices,
@@ -1703,6 +1776,8 @@ export const upsertExamPrograms = asyncHandler(async (req: Request, res: Respons
             targetClassLevels: item.targetClassLevels,
             allowedSubjectIds: item.allowedSubjectIds,
             allowedAuthorIds: item.allowedAuthorIds,
+            studentResultPublishMode: item.studentResultPublishMode,
+            studentResultPublishAt: item.studentResultPublishAt,
             financeClearanceMode: item.financeClearanceMode,
             financeMinOutstandingAmount: item.financeMinOutstandingAmount,
             financeMinOverdueInvoices: item.financeMinOverdueInvoices,
@@ -1716,6 +1791,8 @@ export const upsertExamPrograms = asyncHandler(async (req: Request, res: Respons
             gradeComponentType: true,
             gradeComponentTypeCode: true,
             gradeEntryModeCode: true,
+            studentResultPublishMode: true,
+            studentResultPublishAt: true,
             financeClearanceMode: true,
             financeMinOutstandingAmount: true,
             financeMinOverdueInvoices: true,

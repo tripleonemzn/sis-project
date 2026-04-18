@@ -7,6 +7,7 @@ export type ExamProgramGradeComponentType = string;
 export type ExamProgramGradeEntryMode = string;
 export type ExamProgramReportSlot = string;
 export type ExamFinanceClearanceMode = string;
+export type ExamStudentResultPublishMode = 'DIRECT' | 'SCHEDULED' | 'REPORT_DATE';
 
 export interface ExamGradeComponent {
     id?: number;
@@ -46,6 +47,8 @@ export interface ExamProgram {
     targetClassLevels?: string[];
     allowedSubjectIds?: number[];
     allowedAuthorIds?: number[];
+    studentResultPublishMode?: ExamStudentResultPublishMode;
+    studentResultPublishAt?: string | null;
     financeClearanceMode?: ExamFinanceClearanceMode;
     financeMinOutstandingAmount?: number;
     financeMinOverdueInvoices?: number;
@@ -707,6 +710,8 @@ export const examService = {
             targetClassLevels?: string[];
             allowedSubjectIds?: number[];
             allowedAuthorIds?: number[];
+            studentResultPublishMode?: ExamStudentResultPublishMode;
+            studentResultPublishAt?: string | null;
             financeClearanceMode?: ExamFinanceClearanceMode;
             financeMinOutstandingAmount?: number;
             financeMinOverdueInvoices?: number;

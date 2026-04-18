@@ -27,6 +27,11 @@ import {
   normalizeReligionKey,
   resolveCompetencyThresholdBucket,
 } from '../utils/competencyThresholds'
+import {
+  defaultExamStudentResultPublishMode,
+  resolveStudentExamProgramResultRelease,
+  type StudentProgramResultReleaseState,
+} from '../utils/examProgramResultRelease'
 
 const DEFAULT_REPORT_SLOT_CODE = 'NONE'
 
@@ -56,6 +61,7 @@ type StudentOverviewComponentRow = {
   entryMode: string
   includeInFinalScore: boolean
   displayOrder: number
+  release: StudentProgramResultReleaseState
 }
 
 type StudentSemesterReportStatusCode = 'NOT_READY' | 'PARTIAL' | 'READY'
@@ -1434,6 +1440,111 @@ function resolveStudentSemesterReportRelease(params: {
   }
 }
 
+function buildExamComponentRuleMapFromRows(
+  rows: Array<{
+    code: string
+    type: GradeComponentType
+    typeCode?: string | null
+    reportSlot: ReportComponentSlot
+    reportSlotCode?: string | null
+    includeInFinalScore: boolean
+  }>,
+): Map<string, ExamComponentRule> {
+  const map = new Map<string, ExamComponentRule>()
+  rows.forEach((row) => {
+    const normalizedCode = normalizeComponentCode(row.code)
+    if (!normalizedCode) return
+    map.set(normalizedCode, {
+      code: normalizedCode,
+      componentType: row.type,
+      reportSlot: row.reportSlot,
+      reportSlotCode: normalizeReportSlotCode(row.reportSlotCode || row.reportSlot || row.code),
+      includeInFinalScore: Boolean(row.includeInFinalScore),
+    })
+  })
+  return map
+}
+
+function buildStudentProgramReleaseLookup(params: {
+  programs: Array<{
+    code: string
+    baseType: ExamType
+    baseTypeCode?: string | null
+    gradeComponentCode?: string | null
+    fixedSemester?: Semester | null
+    studentResultPublishMode?: string | null
+    studentResultPublishAt?: Date | null
+  }>
+  componentRuleMap: Map<string, ExamComponentRule>
+  reportDate?: { date?: Date | null } | null
+  now?: Date
+}): {
+  byProgramCode: Map<string, StudentProgramResultReleaseState>
+  bySlotCode: Map<string, StudentProgramResultReleaseState>
+} {
+  const byProgramCode = new Map<string, StudentProgramResultReleaseState>()
+  const bySlotCode = new Map<string, StudentProgramResultReleaseState>()
+
+  params.programs.forEach((program) => {
+    const normalizedProgramCode = normalizeComponentCode(program.code)
+    if (!normalizedProgramCode) return
+
+    const normalizedComponentCode = normalizeComponentCode(program.gradeComponentCode)
+    const configuredSlotCode = normalizedComponentCode
+      ? params.componentRuleMap.get(normalizedComponentCode)?.reportSlotCode
+      : undefined
+    const fallbackSlotCode = resolveReportSlotCodeByExamContext(
+      program.baseTypeCode || program.baseType,
+      program.fixedSemester || null,
+    )
+    const resolvedSlotCode = normalizeReportSlotCode(configuredSlotCode || fallbackSlotCode)
+    if (!resolvedSlotCode || resolvedSlotCode === DEFAULT_REPORT_SLOT_CODE) return
+
+    const release = resolveStudentExamProgramResultRelease({
+      mode: program.studentResultPublishMode,
+      publishAt: program.studentResultPublishAt || null,
+      reportDate: params.reportDate,
+      programCode: normalizedProgramCode,
+      baseTypeCode: program.baseTypeCode || program.baseType,
+      now: params.now,
+    })
+
+    byProgramCode.set(normalizedProgramCode, release)
+    if (!bySlotCode.has(resolvedSlotCode) || normalizedProgramCode === resolvedSlotCode) {
+      bySlotCode.set(resolvedSlotCode, release)
+    }
+  })
+
+  return { byProgramCode, bySlotCode }
+}
+
+function resolveStudentOverviewComponentRelease(params: {
+  component: {
+    code: string
+    reportSlotCode: string
+  }
+  releaseByProgramCode: Map<string, StudentProgramResultReleaseState>
+  releaseBySlotCode: Map<string, StudentProgramResultReleaseState>
+  reportDate?: { date?: Date | null } | null
+  now?: Date
+}): StudentProgramResultReleaseState {
+  const release =
+    params.releaseByProgramCode.get(params.component.reportSlotCode) ||
+    params.releaseByProgramCode.get(params.component.code) ||
+    params.releaseBySlotCode.get(params.component.reportSlotCode)
+
+  if (release) return release
+
+  return resolveStudentExamProgramResultRelease({
+    mode: defaultExamStudentResultPublishMode({
+      programCode: params.component.reportSlotCode || params.component.code,
+    }),
+    reportDate: params.reportDate,
+    programCode: params.component.reportSlotCode || params.component.code,
+    now: params.now,
+  })
+}
+
 function normalizeNullableScore(raw: unknown): number | null {
   if (raw === null || raw === undefined || raw === '') return null
   const parsed = Number(raw)
@@ -1491,6 +1602,10 @@ function buildStudentOverviewComponents(params: {
   semester: Semester
   classLevel: string
   hasUsScores: boolean
+  releaseByProgramCode: Map<string, StudentProgramResultReleaseState>
+  releaseBySlotCode: Map<string, StudentProgramResultReleaseState>
+  reportDate?: { date?: Date | null } | null
+  now?: Date
 }): StudentOverviewComponentRow[] {
   const normalizedLevel = normalizeClassLevelTokenForScope(params.classLevel)
 
@@ -1508,6 +1623,16 @@ function buildStudentOverviewComponents(params: {
         entryMode: normalizeComponentCode(component.entryModeCode || component.entryMode || GradeEntryMode.SINGLE_SCORE),
         includeInFinalScore: component.includeInFinalScore,
         displayOrder: Number(component.displayOrder || 0),
+        release: resolveStudentOverviewComponentRelease({
+          component: {
+            code: normalizeComponentCode(component.code || reportSlotCode || component.typeCode || component.type),
+            reportSlotCode,
+          },
+          releaseByProgramCode: params.releaseByProgramCode,
+          releaseBySlotCode: params.releaseBySlotCode,
+          reportDate: params.reportDate,
+          now: params.now,
+        }),
       }
     })
     .filter((component) => {
@@ -3118,7 +3243,7 @@ export const getStudentGradeOverview = async (req: Request, res: Response) => {
             orderBy: [{ id: 'desc' }],
           })
 
-    const [teacherAssignments, reportGrades, activeSemesterReportGrades, studentGrades, examGradeComponents, reportDate, attendanceStats, homeroomNote] = await Promise.all([
+    const [teacherAssignments, reportGrades, activeSemesterReportGrades, studentGrades, examGradeComponents, examPrograms, reportDate, attendanceStats, homeroomNote] = await Promise.all([
       prisma.teacherAssignment.findMany({
         where: {
           academicYearId: activeYear.id,
@@ -3195,6 +3320,23 @@ export const getStudentGradeOverview = async (req: Request, res: Response) => {
           entryModeCode: true,
           includeInFinalScore: true,
           displayOrder: true,
+        },
+        orderBy: [{ displayOrder: 'asc' }, { code: 'asc' }],
+      }),
+      prisma.examProgramConfig.findMany({
+        where: {
+          academicYearId: activeYear.id,
+          isActive: true,
+          showOnStudentMenu: true,
+        },
+        select: {
+          code: true,
+          baseType: true,
+          baseTypeCode: true,
+          gradeComponentCode: true,
+          fixedSemester: true,
+          studentResultPublishMode: true,
+          studentResultPublishAt: true,
         },
         orderBy: [{ displayOrder: 'asc' }, { code: 'asc' }],
       }),
@@ -3280,6 +3422,13 @@ export const getStudentGradeOverview = async (req: Request, res: Response) => {
         (row.usScore !== null && row.usScore !== undefined),
     )
 
+    const overviewComponentRuleMap = buildExamComponentRuleMapFromRows(examGradeComponents)
+    const studentProgramReleaseLookup = buildStudentProgramReleaseLookup({
+      programs: examPrograms,
+      componentRuleMap: overviewComponentRuleMap,
+      reportDate,
+    })
+
     const componentCatalog = buildStudentOverviewComponents({
       components: examGradeComponents.map((row) => ({
         code: row.code,
@@ -3296,6 +3445,9 @@ export const getStudentGradeOverview = async (req: Request, res: Response) => {
       semester,
       classLevel: student.studentClass.level,
       hasUsScores,
+      releaseByProgramCode: studentProgramReleaseLookup.byProgramCode,
+      releaseBySlotCode: studentProgramReleaseLookup.bySlotCode,
+      reportDate,
     })
 
     const assignmentBySubjectId = new Map<number, (typeof teacherAssignments)[number]>()
@@ -3457,6 +3609,12 @@ export const getStudentGradeOverview = async (req: Request, res: Response) => {
             }
           }
 
+          if (!component.release.canViewDetails) {
+            score = null
+            source = 'NONE'
+            available = false
+          }
+
           return {
             code: component.code,
             label: component.label,
@@ -3465,8 +3623,9 @@ export const getStudentGradeOverview = async (req: Request, res: Response) => {
             entryMode: component.entryMode,
             includeInFinalScore: component.includeInFinalScore,
             displayOrder: component.displayOrder,
+            release: component.release,
             score,
-            series: formativeSeries,
+            series: component.release.canViewDetails ? formativeSeries : [],
             status: available ? 'AVAILABLE' : 'PENDING',
             source,
           }
@@ -3504,7 +3663,7 @@ export const getStudentGradeOverview = async (req: Request, res: Response) => {
           finalScore,
           predicate,
           description,
-          status: hasGradeEvidence ? 'AVAILABLE' : 'PENDING',
+          status: availableCount > 0 ? 'AVAILABLE' : 'PENDING',
           componentSummary: {
             totalCount: components.length,
             availableCount,
@@ -3512,11 +3671,11 @@ export const getStudentGradeOverview = async (req: Request, res: Response) => {
           },
           components,
           visibility: {
-            hasOperationalAssignment,
-            hasReportSnapshot,
-            hasGradeEvidence,
-            shouldShowToStudent,
-          },
+          hasOperationalAssignment,
+          hasReportSnapshot,
+          hasGradeEvidence,
+          shouldShowToStudent,
+        },
         }
       })
       .filter((row): row is NonNullable<typeof row> => row !== null)
@@ -3526,34 +3685,16 @@ export const getStudentGradeOverview = async (req: Request, res: Response) => {
       .sort((a, b) => a.subject.name.localeCompare(b.subject.name, 'id-ID'))
 
     const reportRelease = resolveStudentSemesterReportRelease({ reportDate })
-
-    const subjectRows = visibleSubjectRows.map(({ visibility, ...row }) => {
-      if (reportRelease.canViewDetails) {
-        return row
-      }
-
-      const lockedComponents = row.components.map((component) => ({
-        ...component,
-        score: null,
-        series: [],
-        status: 'PENDING' as const,
-        source: 'NONE' as const,
-      }))
-
-      return {
-        ...row,
-        finalScore: null,
-        predicate: null,
-        description: null,
-        status: 'PENDING' as const,
-        componentSummary: {
-          totalCount: lockedComponents.length,
-          availableCount: 0,
-          pendingCount: lockedComponents.length,
-        },
-        components: lockedComponents,
-      }
-    })
+    const subjectRows = visibleSubjectRows.map(({ visibility, ...row }) =>
+      reportRelease.canViewDetails
+        ? row
+        : {
+            ...row,
+            finalScore: null,
+            predicate: null,
+            description: null,
+          },
+    )
 
     const totalAvailableComponents = subjectRows.reduce(
       (sum, row) => sum + row.componentSummary.availableCount,

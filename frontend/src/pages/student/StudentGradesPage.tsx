@@ -224,6 +224,7 @@ export default function StudentGradesPage() {
             code: component.reportSlotCode,
             label: component.label,
             shortLabel: component.reportSlotCode,
+            release: component.release,
           },
         ]),
       ).values(),
@@ -261,8 +262,13 @@ export default function StudentGradesPage() {
       averageScore: calculateAverage(scores),
     };
   }, [activeProgramSubjects]);
-  const isProgramReleaseLocked = Boolean(reportCard && !reportCard.release.canViewDetails);
-  const programReleaseDateLabel = reportCard?.reportDate ? formatDateLabel(reportCard.reportDate.date) : 'Tanggal rapor belum diatur';
+  const activeProgramRelease = activeProgram?.release || null;
+  const isProgramReleaseLocked = Boolean(activeProgramRelease && !activeProgramRelease.canViewDetails);
+  const programReleaseDateLabel = activeProgramRelease?.effectiveDate
+    ? formatDateLabel(activeProgramRelease.effectiveDate)
+    : activeProgramRelease?.mode === 'REPORT_DATE'
+      ? 'Tanggal rapor belum diatur'
+      : 'Tanggal publikasi belum diatur';
 
   useEffect(() => {
     if (!programTabs.length) {
@@ -358,11 +364,11 @@ export default function StudentGradesPage() {
                 <div className="rounded-3xl border border-amber-100 bg-amber-50/80 p-5">
                   <div className="inline-flex items-center gap-2 rounded-full bg-white/80 px-3 py-1.5 text-sm font-semibold text-amber-700">
                     <CalendarDays className="h-4 w-4" />
-                    Nilai program menunggu rilis rapor
+                    Nilai program menunggu publikasi
                   </div>
                   <p className="mt-3 text-sm leading-6 text-slate-700">
-                    Nilai {activeProgram?.code || 'program ujian'} untuk siswa disembunyikan sampai tanggal pembagian rapor tiba.
-                    Rilis saat ini mengikuti {programReleaseDateLabel}. {reportCard?.release.description}
+                    Nilai {activeProgram?.code || 'program ujian'} untuk siswa belum dibuka.
+                    Rilis saat ini mengikuti {programReleaseDateLabel}. {activeProgramRelease?.description}
                   </p>
                 </div>
               ) : null}
@@ -404,14 +410,14 @@ export default function StudentGradesPage() {
                         <td className="px-4 py-3 font-medium text-slate-900">Mapel Tersedia</td>
                         <td className="px-4 py-3 text-slate-900">{activeProgramSummary.availableSubjects}</td>
                         <td className="px-4 py-3 text-slate-600">
-                          {isProgramReleaseLocked ? 'Akan dibuka setelah tanggal pembagian rapor.' : 'Nilai program sudah tersedia.'}
+                          {isProgramReleaseLocked ? 'Akan dibuka sesuai policy publikasi program ini.' : 'Nilai program sudah tersedia.'}
                         </td>
                       </tr>
                       <tr>
                         <td className="px-4 py-3 font-medium text-slate-900">Mapel Menunggu</td>
                         <td className="px-4 py-3 text-slate-900">{activeProgramSummary.pendingSubjects}</td>
                         <td className="px-4 py-3 text-slate-600">
-                          {isProgramReleaseLocked ? 'Masih menunggu rilis nilai ke siswa.' : 'Masih menunggu input atau sinkronisasi nilai.'}
+                          {isProgramReleaseLocked ? 'Masih menunggu publikasi nilai ke siswa.' : 'Masih menunggu input atau sinkronisasi nilai.'}
                         </td>
                       </tr>
                       <tr>
@@ -452,7 +458,7 @@ export default function StudentGradesPage() {
                       {activeProgramSubjects.map(({ subject, component }) => {
                         const isAvailable = component.status === 'AVAILABLE';
                         const statusLabel = isProgramReleaseLocked
-                          ? 'Menunggu rilis'
+                          ? 'Menunggu publikasi'
                           : isAvailable
                             ? 'Tersedia'
                             : 'Menunggu';
@@ -513,7 +519,9 @@ export default function StudentGradesPage() {
                   <FileText className="mx-auto h-12 w-12 text-slate-300" />
                   <h2 className="mt-4 text-lg font-semibold text-slate-900">Belum ada data nilai program</h2>
                   <p className="mt-2 text-sm text-slate-500">
-                    Nilai {activeProgram?.code || 'program ini'} untuk semester berjalan belum tersedia.
+                    {isProgramReleaseLocked
+                      ? `Nilai ${activeProgram?.code || 'program ini'} akan tampil setelah policy publikasi program terpenuhi.`
+                      : `Nilai ${activeProgram?.code || 'program ini'} untuk semester berjalan belum tersedia.`}
                   </p>
                 </div>
               )}

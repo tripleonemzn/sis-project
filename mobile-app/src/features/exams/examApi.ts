@@ -259,6 +259,7 @@ export type ExamProgramGradeComponentType = string;
 export type ExamProgramGradeEntryMode = string;
 export type ExamProgramReportSlot = string;
 export type ExamFinanceClearanceMode = string;
+export type ExamStudentResultPublishMode = 'DIRECT' | 'SCHEDULED' | 'REPORT_DATE';
 
 export type ExamGradeComponentItem = {
   id?: number;
@@ -298,6 +299,8 @@ export type ExamProgramItem = {
   targetClassLevels?: string[];
   allowedSubjectIds?: number[];
   allowedAuthorIds?: number[];
+  studentResultPublishMode?: ExamStudentResultPublishMode;
+  studentResultPublishAt?: string | null;
   financeClearanceMode?: ExamFinanceClearanceMode;
   financeMinOutstandingAmount?: number;
   financeMinOverdueInvoices?: number;
@@ -449,6 +452,8 @@ export const examApi = {
       targetClassLevels?: string[];
       allowedSubjectIds?: number[];
       allowedAuthorIds?: number[];
+      studentResultPublishMode?: ExamStudentResultPublishMode;
+      studentResultPublishAt?: string | null;
       financeClearanceMode?: ExamFinanceClearanceMode;
       financeMinOutstandingAmount?: number;
       financeMinOverdueInvoices?: number;

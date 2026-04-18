@@ -15,6 +15,7 @@ import {
   type ExamProgramGradeEntryMode,
   type ExamProgramGradeComponentType,
   type ExamProgramReportSlot,
+  type ExamStudentResultPublishMode,
 } from '../../../services/exam.service';
 
 type ProgramFormRow = {
@@ -40,6 +41,8 @@ type ProgramFormRow = {
   targetClassLevels: string[];
   allowedSubjectIds: number[];
   allowedAuthorIds: number[];
+  studentResultPublishMode: ExamStudentResultPublishMode;
+  studentResultPublishAt: string;
   financeClearanceMode: ExamFinanceClearanceMode;
   financeMinOutstandingAmount: number;
   financeMinOverdueInvoices: number;
@@ -77,6 +80,8 @@ type AddProgramDraft = {
   targetClassLevels: string[];
   allowedSubjectIds: number[];
   allowedAuthorIds: number[];
+  studentResultPublishMode: ExamStudentResultPublishMode;
+  studentResultPublishAt: string;
   financeClearanceMode: ExamFinanceClearanceMode;
   financeMinOutstandingAmount: number;
   financeMinOverdueInvoices: number;
@@ -143,6 +148,29 @@ const FINANCE_CLEARANCE_MODE_OPTIONS: Array<{ value: ExamFinanceClearanceMode; l
   { value: 'IGNORE', label: 'Abaikan Finance', hint: 'Program ujian tidak memakai clearance finance.' },
 ];
 const DEFAULT_FINANCE_CLEARANCE_MODE: ExamFinanceClearanceMode = 'BLOCK_ANY_OUTSTANDING';
+const DEFAULT_STUDENT_RESULT_PUBLISH_MODE: ExamStudentResultPublishMode = 'DIRECT';
+
+const STUDENT_RESULT_PUBLISH_MODE_OPTIONS: Array<{
+  value: ExamStudentResultPublishMode;
+  label: string;
+  hint: string;
+}> = [
+  {
+    value: 'DIRECT',
+    label: 'Langsung',
+    hint: 'Nilai program langsung tampil ke siswa setelah sinkronisasi selesai.',
+  },
+  {
+    value: 'SCHEDULED',
+    label: 'Tanggal Tertentu',
+    hint: 'Nilai program dibuka pada titimangsa yang Anda atur di program ini.',
+  },
+  {
+    value: 'REPORT_DATE',
+    label: 'Ikuti Tanggal Rapor Semester',
+    hint: 'Nilai program baru tampil saat tanggal rapor semester tiba.',
+  },
+];
 
 function normalizeAcademicClassLevel(raw: unknown): string {
   const value = String(raw || '')
@@ -190,6 +218,45 @@ function normalizeFinanceClearanceMode(raw: unknown): ExamFinanceClearanceMode {
   return FINANCE_CLEARANCE_MODE_OPTIONS.some((option) => option.value === normalized)
     ? normalized
     : DEFAULT_FINANCE_CLEARANCE_MODE;
+}
+
+function normalizeStudentResultPublishMode(raw: unknown): ExamStudentResultPublishMode {
+  const normalized = normalizeExamProgramCode(raw) as ExamStudentResultPublishMode;
+  return STUDENT_RESULT_PUBLISH_MODE_OPTIONS.some((option) => option.value === normalized)
+    ? normalized
+    : DEFAULT_STUDENT_RESULT_PUBLISH_MODE;
+}
+
+function normalizeDateInputValue(raw: unknown): string {
+  if (typeof raw === 'string') {
+    const trimmed = raw.trim();
+    if (/^\d{4}-\d{2}-\d{2}$/.test(trimmed)) return trimmed;
+    const parsed = new Date(trimmed);
+    if (!Number.isNaN(parsed.getTime())) return parsed.toISOString().slice(0, 10);
+    return '';
+  }
+  if (raw instanceof Date && !Number.isNaN(raw.getTime())) {
+    return raw.toISOString().slice(0, 10);
+  }
+  return '';
+}
+
+function shouldShowStudentResultPublishDate(mode: ExamStudentResultPublishMode) {
+  return mode === 'SCHEDULED';
+}
+
+function getStudentResultPublishSummary(row: {
+  studentResultPublishMode: ExamStudentResultPublishMode;
+  studentResultPublishAt: string;
+}) {
+  const mode = normalizeStudentResultPublishMode(row.studentResultPublishMode);
+  const option = STUDENT_RESULT_PUBLISH_MODE_OPTIONS.find((item) => item.value === mode);
+  if (mode === 'SCHEDULED') {
+    return row.studentResultPublishAt
+      ? `${option?.label || mode} • ${row.studentResultPublishAt}`
+      : `${option?.label || mode} • tanggal belum diatur`;
+  }
+  return option?.label || mode;
 }
 
 function normalizeFinanceAmount(raw: unknown): number {
@@ -515,6 +582,8 @@ function normalizeRows(programs: ExamProgram[]): ProgramFormRow[] {
         targetClassLevels: normalizeClassLevels(program.targetClassLevels),
         allowedSubjectIds: normalizeNumericIds(program.allowedSubjectIds),
         allowedAuthorIds: normalizeNumericIds(program.allowedAuthorIds),
+        studentResultPublishMode: normalizeStudentResultPublishMode(program.studentResultPublishMode),
+        studentResultPublishAt: normalizeDateInputValue(program.studentResultPublishAt),
         financeClearanceMode: normalizeFinanceClearanceMode(program.financeClearanceMode),
         financeMinOutstandingAmount: normalizeFinanceAmount(program.financeMinOutstandingAmount),
         financeMinOverdueInvoices: normalizeFinanceOverdueCount(program.financeMinOverdueInvoices),
@@ -563,6 +632,8 @@ function createNewRow(currentRows: ProgramFormRow[], componentRows: GradeCompone
     targetClassLevels: [],
     allowedSubjectIds: [],
     allowedAuthorIds: [],
+    studentResultPublishMode: DEFAULT_STUDENT_RESULT_PUBLISH_MODE,
+    studentResultPublishAt: '',
     financeClearanceMode: DEFAULT_FINANCE_CLEARANCE_MODE,
     financeMinOutstandingAmount: 0,
     financeMinOverdueInvoices: 1,
@@ -604,6 +675,8 @@ export default function ExamProgramManagementPage() {
     targetClassLevels: [],
     allowedSubjectIds: [],
     allowedAuthorIds: [],
+    studentResultPublishMode: DEFAULT_STUDENT_RESULT_PUBLISH_MODE,
+    studentResultPublishAt: '',
     financeClearanceMode: DEFAULT_FINANCE_CLEARANCE_MODE,
     financeMinOutstandingAmount: 0,
     financeMinOverdueInvoices: 1,
@@ -697,6 +770,8 @@ export default function ExamProgramManagementPage() {
       targetClassLevels: [],
       allowedSubjectIds: [],
       allowedAuthorIds: [],
+      studentResultPublishMode: DEFAULT_STUDENT_RESULT_PUBLISH_MODE,
+      studentResultPublishAt: '',
       financeClearanceMode: DEFAULT_FINANCE_CLEARANCE_MODE,
       financeMinOutstandingAmount: 0,
       financeMinOverdueInvoices: 1,
@@ -728,6 +803,8 @@ export default function ExamProgramManagementPage() {
         targetClassLevels: normalizeClassLevels(target.targetClassLevels),
         allowedSubjectIds: normalizeNumericIds(target.allowedSubjectIds),
         allowedAuthorIds: normalizeNumericIds(target.allowedAuthorIds),
+        studentResultPublishMode: normalizeStudentResultPublishMode(target.studentResultPublishMode),
+        studentResultPublishAt: normalizeDateInputValue(target.studentResultPublishAt),
         financeClearanceMode: normalizeFinanceClearanceMode(target.financeClearanceMode),
         financeMinOutstandingAmount: normalizeFinanceAmount(target.financeMinOutstandingAmount),
         financeMinOverdueInvoices: normalizeFinanceOverdueCount(target.financeMinOverdueInvoices),
@@ -1047,6 +1124,8 @@ export default function ExamProgramManagementPage() {
           targetClassLevels: normalizeClassLevels(row.targetClassLevels),
           allowedSubjectIds: normalizeNumericIds(row.allowedSubjectIds),
           allowedAuthorIds: [],
+          studentResultPublishMode: normalizeStudentResultPublishMode(row.studentResultPublishMode),
+          studentResultPublishAt: normalizeDateInputValue(row.studentResultPublishAt),
           financeClearanceMode: normalizeFinanceClearanceMode(row.financeClearanceMode),
           financeMinOutstandingAmount: normalizeFinanceAmount(row.financeMinOutstandingAmount),
           financeMinOverdueInvoices: normalizeFinanceOverdueCount(row.financeMinOverdueInvoices),
@@ -1084,6 +1163,10 @@ export default function ExamProgramManagementPage() {
           toast.error(`Kode program duplikat: ${row.code}`);
           return false;
         }
+        if (row.studentResultPublishMode === 'SCHEDULED' && !row.studentResultPublishAt) {
+          toast.error(`Tanggal publikasi siswa untuk program ${row.code} wajib diisi.`);
+          return false;
+        }
         dedupe.add(row.code);
       }
 
@@ -1113,6 +1196,8 @@ export default function ExamProgramManagementPage() {
             targetClassLevels: row.targetClassLevels,
             allowedSubjectIds: row.allowedSubjectIds,
             allowedAuthorIds: [],
+            studentResultPublishMode: row.studentResultPublishMode,
+            studentResultPublishAt: row.studentResultPublishAt || null,
             financeClearanceMode: row.financeClearanceMode,
             financeMinOutstandingAmount: row.financeMinOutstandingAmount,
             financeMinOverdueInvoices: row.financeMinOverdueInvoices,
@@ -1194,11 +1279,18 @@ export default function ExamProgramManagementPage() {
       targetClassLevels: normalizeClassLevels(programDraft.targetClassLevels),
       allowedSubjectIds: normalizeNumericIds(programDraft.allowedSubjectIds),
       allowedAuthorIds: [],
+      studentResultPublishMode: normalizeStudentResultPublishMode(programDraft.studentResultPublishMode),
+      studentResultPublishAt: normalizeDateInputValue(programDraft.studentResultPublishAt),
       financeClearanceMode: normalizeFinanceClearanceMode(programDraft.financeClearanceMode),
       financeMinOutstandingAmount: normalizeFinanceAmount(programDraft.financeMinOutstandingAmount),
       financeMinOverdueInvoices: normalizeFinanceOverdueCount(programDraft.financeMinOverdueInvoices),
       financeClearanceNotes: String(programDraft.financeClearanceNotes || '').trim(),
     };
+
+    if (patch.studentResultPublishMode === 'SCHEDULED' && !patch.studentResultPublishAt) {
+      toast.error('Tanggal publikasi siswa wajib diisi jika mode publikasi memakai tanggal tertentu.');
+      return;
+    }
 
     const nextRows = editingProgramRowId
       ? sortRows(rows.map((row) => (row.rowId === editingProgramRowId ? { ...row, ...patch } : row)))
@@ -1587,6 +1679,7 @@ export default function ExamProgramManagementPage() {
                     <td className="px-3 py-2">
                       <p className="font-semibold text-gray-900">{row.label || '-'}</p>
                       <p className="text-gray-500">Kode: {row.code || '-'}</p>
+                      <p className="text-gray-500">Publikasi siswa: {getStudentResultPublishSummary(row)}</p>
                     </td>
                     <td className="px-3 py-2">
                       <p className="font-medium text-gray-800">{row.gradeComponentLabel || '-'}</p>
@@ -1818,6 +1911,55 @@ export default function ExamProgramManagementPage() {
                     </div>
                   )}
                 </div>
+              </div>
+              <div className="md:col-span-2 xl:col-span-4 rounded-lg border border-amber-200 bg-amber-50 p-3">
+                <p className="text-xs font-medium text-amber-900">Publikasi Hasil ke Siswa</p>
+                <p className="text-[11px] text-amber-800">
+                  Atur kapan nilai program ini boleh terbaca di menu Nilai Saya siswa.
+                </p>
+                <div className="mt-2 grid grid-cols-1 gap-2 md:grid-cols-3">
+                  {STUDENT_RESULT_PUBLISH_MODE_OPTIONS.map((option) => {
+                    const active = programDraft.studentResultPublishMode === option.value;
+                    return (
+                      <button
+                        key={option.value}
+                        type="button"
+                        onClick={() =>
+                          setProgramDraft((prev) => ({
+                            ...prev,
+                            studentResultPublishMode: option.value,
+                            studentResultPublishAt:
+                              option.value === 'SCHEDULED' ? prev.studentResultPublishAt : '',
+                          }))
+                        }
+                        className={`rounded-lg border px-3 py-2 text-left ${
+                          active
+                            ? 'border-amber-300 bg-white shadow-sm'
+                            : 'border-amber-100 bg-white/70 hover:border-amber-200'
+                        }`}
+                      >
+                        <p className="text-xs font-semibold text-gray-900">{option.label}</p>
+                        <p className="mt-1 text-[11px] text-gray-600">{option.hint}</p>
+                      </button>
+                    );
+                  })}
+                </div>
+                {shouldShowStudentResultPublishDate(programDraft.studentResultPublishMode) ? (
+                  <label className="mt-3 block space-y-1">
+                    <span className="text-xs font-medium text-gray-600">Tanggal Publikasi Siswa</span>
+                    <input
+                      type="date"
+                      value={programDraft.studentResultPublishAt}
+                      onChange={(event) =>
+                        setProgramDraft((prev) => ({
+                          ...prev,
+                          studentResultPublishAt: normalizeDateInputValue(event.target.value),
+                        }))
+                      }
+                      className="w-full rounded-lg border border-gray-300 px-3 py-2 text-sm focus:outline-none focus:ring-1 focus:ring-blue-500"
+                    />
+                  </label>
+                ) : null}
               </div>
               <div className="md:col-span-2 xl:col-span-4 rounded-lg border border-amber-200 bg-amber-50 p-3">
                 <p className="text-xs font-medium text-amber-900">Policy Clearance Finance</p>

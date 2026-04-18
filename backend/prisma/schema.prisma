@@ -417,6 +417,8 @@ model ExamProgramConfig {
   targetClassLevels           String[]           @default([])
   allowedSubjectIds           Int[]              @default([])
   allowedAuthorIds            Int[]              @default([])
+  studentResultPublishMode    String             @default("DIRECT")
+  studentResultPublishAt      DateTime?
   financeClearanceMode        String             @default("BLOCK_ANY_OUTSTANDING")
   financeMinOutstandingAmount Float              @default(0)
   financeMinOverdueInvoices   Int                @default(1)

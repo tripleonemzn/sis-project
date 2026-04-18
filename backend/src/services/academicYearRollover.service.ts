@@ -277,6 +277,8 @@ type LoadedRolloverContext = {
     targetClassLevels: string[];
     allowedSubjectIds: number[];
     allowedAuthorIds: number[];
+    studentResultPublishMode: string;
+    studentResultPublishAt: Date | null;
     financeClearanceMode: string;
     financeMinOutstandingAmount: number;
     financeMinOverdueInvoices: number;
@@ -305,6 +307,8 @@ type LoadedRolloverContext = {
     targetClassLevels: string[];
     allowedSubjectIds: number[];
     allowedAuthorIds: number[];
+    studentResultPublishMode: string;
+    studentResultPublishAt: Date | null;
     financeClearanceMode: string;
     financeMinOutstandingAmount: number;
     financeMinOverdueInvoices: number;
@@ -1889,6 +1893,8 @@ async function loadAcademicYearRolloverContext(
           targetClassLevels: true,
           allowedSubjectIds: true,
           allowedAuthorIds: true,
+          studentResultPublishMode: true,
+          studentResultPublishAt: true,
           financeClearanceMode: true,
           financeMinOutstandingAmount: true,
           financeMinOverdueInvoices: true,
@@ -1921,6 +1927,8 @@ async function loadAcademicYearRolloverContext(
           targetClassLevels: true,
           allowedSubjectIds: true,
           allowedAuthorIds: true,
+          studentResultPublishMode: true,
+          studentResultPublishAt: true,
           financeClearanceMode: true,
           financeMinOutstandingAmount: true,
           financeMinOverdueInvoices: true,
@@ -2595,6 +2603,8 @@ export async function applyAcademicYearRollover(params: {
               targetClassLevels: sourceProgram.targetClassLevels,
               allowedSubjectIds: sourceProgram.allowedSubjectIds,
               allowedAuthorIds: sourceProgram.allowedAuthorIds,
+              studentResultPublishMode: sourceProgram.studentResultPublishMode,
+              studentResultPublishAt: sourceProgram.studentResultPublishAt,
               financeClearanceMode: sourceProgram.financeClearanceMode,
               financeMinOutstandingAmount: sourceProgram.financeMinOutstandingAmount,
               financeMinOverdueInvoices: sourceProgram.financeMinOverdueInvoices,

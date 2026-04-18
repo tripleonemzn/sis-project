@@ -32,6 +32,7 @@ import {
   ExamProgramGradeEntryMode,
   ExamProgramItem,
   ExamProgramReportSlot,
+  ExamStudentResultPublishMode,
 } from '../../../src/features/exams/examApi';
 import {
   ExamDisplayType,
@@ -82,6 +83,8 @@ type ExamProgramDraft = {
   targetClassLevels: string[];
   allowedSubjectIds: number[];
   allowedAuthorIds: number[];
+  studentResultPublishMode: ExamStudentResultPublishMode;
+  studentResultPublishAt: string;
   financeClearanceMode: ExamFinanceClearanceMode;
   financeMinOutstandingAmount: number;
   financeMinOverdueInvoices: number;
@@ -136,6 +139,16 @@ const PROGRAM_FIXED_SEMESTER_OPTIONS = [
   { key: 'EVEN', label: 'Genap', value: 'EVEN' },
 ] as const;
 const DEFAULT_FINANCE_CLEARANCE_MODE: ExamFinanceClearanceMode = 'BLOCK_ANY_OUTSTANDING';
+const DEFAULT_STUDENT_RESULT_PUBLISH_MODE: ExamStudentResultPublishMode = 'DIRECT';
+const STUDENT_RESULT_PUBLISH_MODE_OPTIONS: Array<{
+  value: ExamStudentResultPublishMode;
+  label: string;
+  hint: string;
+}> = [
+  { value: 'DIRECT', label: 'Langsung', hint: 'Nilai langsung tampil ke siswa setelah sinkronisasi selesai.' },
+  { value: 'SCHEDULED', label: 'Tanggal Tertentu', hint: 'Nilai dibuka pada titimangsa yang Anda atur di program ini.' },
+  { value: 'REPORT_DATE', label: 'Ikuti Tanggal Rapor Semester', hint: 'Nilai dibuka saat tanggal rapor semester tiba.' },
+];
 const FINANCE_CLEARANCE_MODE_OPTIONS: Array<{
   value: ExamFinanceClearanceMode;
   label: string;
@@ -175,6 +188,45 @@ function normalizeFinanceClearanceMode(raw: unknown): ExamFinanceClearanceMode {
   return FINANCE_CLEARANCE_MODE_OPTIONS.some((option) => option.value === normalized)
     ? normalized
     : DEFAULT_FINANCE_CLEARANCE_MODE;
+}
+
+function normalizeStudentResultPublishMode(raw: unknown): ExamStudentResultPublishMode {
+  const normalized = normalizeProgramCode(raw) as ExamStudentResultPublishMode;
+  return STUDENT_RESULT_PUBLISH_MODE_OPTIONS.some((option) => option.value === normalized)
+    ? normalized
+    : DEFAULT_STUDENT_RESULT_PUBLISH_MODE;
+}
+
+function normalizeDateInputValue(raw: unknown): string {
+  if (typeof raw === 'string') {
+    const trimmed = raw.trim();
+    if (/^\d{4}-\d{2}-\d{2}$/.test(trimmed)) return trimmed;
+    const parsed = new Date(trimmed);
+    if (!Number.isNaN(parsed.getTime())) return parsed.toISOString().slice(0, 10);
+    return '';
+  }
+  if (raw instanceof Date && !Number.isNaN(raw.getTime())) {
+    return raw.toISOString().slice(0, 10);
+  }
+  return '';
+}
+
+function shouldShowStudentResultPublishDate(mode: ExamStudentResultPublishMode) {
+  return mode === 'SCHEDULED';
+}
+
+function getStudentResultPublishSummary(row: {
+  studentResultPublishMode: ExamStudentResultPublishMode;
+  studentResultPublishAt: string;
+}) {
+  const mode = normalizeStudentResultPublishMode(row.studentResultPublishMode);
+  const option = STUDENT_RESULT_PUBLISH_MODE_OPTIONS.find((item) => item.value === mode);
+  if (mode === 'SCHEDULED') {
+    return row.studentResultPublishAt
+      ? `${option?.label || mode} • ${row.studentResultPublishAt}`
+      : `${option?.label || mode} • tanggal belum diatur`;
+  }
+  return option?.label || mode;
 }
 
 function normalizeFinanceAmount(raw: unknown) {
@@ -680,6 +732,8 @@ function normalizeProgramDrafts(programs: ExamProgramItem[]): ExamProgramDraft[]
         targetClassLevels: normalizeClassLevelScope(item.targetClassLevels),
         allowedSubjectIds: normalizeNumericIds(item.allowedSubjectIds),
         allowedAuthorIds: normalizeNumericIds(item.allowedAuthorIds),
+        studentResultPublishMode: normalizeStudentResultPublishMode(item.studentResultPublishMode),
+        studentResultPublishAt: normalizeDateInputValue(item.studentResultPublishAt),
         financeClearanceMode: normalizeFinanceClearanceMode(item.financeClearanceMode),
         financeMinOutstandingAmount: normalizeFinanceAmount(item.financeMinOutstandingAmount),
         financeMinOverdueInvoices: normalizeFinanceOverdueCount(item.financeMinOverdueInvoices),
@@ -715,6 +769,8 @@ function snapshotProgramDrafts(rows: ExamProgramDraft[]) {
       targetClassLevels: normalizeClassLevelScope(row.targetClassLevels),
       allowedSubjectIds: normalizeNumericIds(row.allowedSubjectIds),
       allowedAuthorIds: normalizeNumericIds(row.allowedAuthorIds),
+      studentResultPublishMode: normalizeStudentResultPublishMode(row.studentResultPublishMode),
+      studentResultPublishAt: normalizeDateInputValue(row.studentResultPublishAt),
       financeClearanceMode: normalizeFinanceClearanceMode(row.financeClearanceMode),
       financeMinOutstandingAmount: normalizeFinanceAmount(row.financeMinOutstandingAmount),
       financeMinOverdueInvoices: normalizeFinanceOverdueCount(row.financeMinOverdueInvoices),
@@ -817,6 +873,8 @@ function createNewProgramDraft(
     targetClassLevels: [],
     allowedSubjectIds: [],
     allowedAuthorIds: [],
+    studentResultPublishMode: DEFAULT_STUDENT_RESULT_PUBLISH_MODE,
+    studentResultPublishAt: '',
     financeClearanceMode: DEFAULT_FINANCE_CLEARANCE_MODE,
     financeMinOutstandingAmount: 0,
     financeMinOverdueInvoices: 1,
@@ -1253,6 +1311,8 @@ export default function TeacherWakakurExamsScreen() {
           targetClassLevels: normalizeClassLevelScope(row.targetClassLevels),
           allowedSubjectIds: normalizeNumericIds(row.allowedSubjectIds),
           allowedAuthorIds: normalizeNumericIds(row.allowedAuthorIds),
+          studentResultPublishMode: normalizeStudentResultPublishMode(row.studentResultPublishMode),
+          studentResultPublishAt: normalizeDateInputValue(row.studentResultPublishAt) || null,
           financeClearanceMode: normalizeFinanceClearanceMode(row.financeClearanceMode),
           financeMinOutstandingAmount: normalizeFinanceAmount(row.financeMinOutstandingAmount),
           financeMinOverdueInvoices: normalizeFinanceOverdueCount(row.financeMinOverdueInvoices),
@@ -2495,6 +2555,15 @@ export default function TeacherWakakurExamsScreen() {
       Alert.alert('Validasi', 'Komponen nilai belum terdaftar di Master Komponen Nilai.');
       return;
     }
+    const hasMissingScheduledPublishDate = programDrafts.some(
+      (item) =>
+        normalizeStudentResultPublishMode(item.studentResultPublishMode) === 'SCHEDULED' &&
+        !normalizeDateInputValue(item.studentResultPublishAt),
+    );
+    if (hasMissingScheduledPublishDate) {
+      Alert.alert('Validasi', 'Tanggal publikasi siswa wajib diisi jika mode publikasi memakai tanggal tertentu.');
+      return;
+    }
 
     updateExamProgramsMutation.mutate();
   };
@@ -3577,6 +3646,74 @@ export default function TeacherWakakurExamsScreen() {
                         </Pressable>
                       );
                     })}
+                </View>
+
+                <Text style={{ color: '#64748b', ...helperTextStyle, marginBottom: 4 }}>Publikasi Hasil ke Siswa</Text>
+                <View style={{ gap: 8, marginBottom: 8 }}>
+                  <View style={{ flexDirection: 'row', flexWrap: 'wrap', gap: 8 }}>
+                    {STUDENT_RESULT_PUBLISH_MODE_OPTIONS.map((option) => {
+                      const active = program.studentResultPublishMode === option.value;
+                      return (
+                        <Pressable
+                          key={`${program.rowId}-publish-${option.value}`}
+                          onPress={() =>
+                            updateProgramDraft(program.rowId, {
+                              studentResultPublishMode: option.value,
+                              studentResultPublishAt:
+                                option.value === 'SCHEDULED' ? program.studentResultPublishAt : '',
+                            })
+                          }
+                          style={{
+                            borderWidth: 1,
+                            borderColor: active ? '#f59e0b' : '#d5e1f5',
+                            backgroundColor: active ? '#fffbeb' : '#fff',
+                            borderRadius: 12,
+                            paddingVertical: 7,
+                            paddingHorizontal: 10,
+                          }}
+                        >
+                          <Text style={{ color: active ? '#92400e' : BRAND_COLORS.textMuted, fontWeight: '600', ...helperTextStyle }}>
+                            {option.label}
+                          </Text>
+                        </Pressable>
+                      )
+                    })}
+                  </View>
+                  <Text style={{ color: '#92400e', ...helperTextStyle }}>
+                    {
+                      STUDENT_RESULT_PUBLISH_MODE_OPTIONS.find(
+                        (option) => option.value === normalizeStudentResultPublishMode(program.studentResultPublishMode),
+                      )?.hint
+                    }
+                  </Text>
+                  {shouldShowStudentResultPublishDate(program.studentResultPublishMode) ? (
+                    <View>
+                      <Text style={{ color: '#64748b', ...helperTextStyle, marginBottom: 4 }}>Tanggal Publikasi Siswa</Text>
+                      <TextInput
+                        value={program.studentResultPublishAt}
+                        onChangeText={(value) =>
+                          updateProgramDraft(program.rowId, {
+                            studentResultPublishAt: normalizeDateInputValue(value),
+                          })
+                        }
+                        placeholder="YYYY-MM-DD"
+                        placeholderTextColor="#94a3b8"
+                        style={{
+                          borderWidth: 1,
+                          borderColor: '#d5e1f5',
+                          borderRadius: 9,
+                          backgroundColor: '#fff',
+                          paddingHorizontal: 10,
+                          paddingVertical: 8,
+                          color: BRAND_COLORS.textDark,
+                          ...inputTextStyle,
+                        }}
+                      />
+                    </View>
+                  ) : null}
+                  <Text style={{ color: '#64748b', ...helperTextStyle }}>
+                    Ringkasan: {getStudentResultPublishSummary(program)}
+                  </Text>
                 </View>
 
                 <Text style={{ color: '#64748b', ...helperTextStyle, marginBottom: 4 }}>Policy Clearance Finance</Text>

@@ -6,6 +6,17 @@ export type StudentGradeOverviewComponent = {
   entryMode: string;
   includeInFinalScore: boolean;
   displayOrder: number;
+  release: {
+    mode: 'DIRECT' | 'SCHEDULED' | 'REPORT_DATE';
+    modeLabel: string;
+    code: 'NOT_SCHEDULED' | 'SCHEDULED' | 'OPEN';
+    label: string;
+    tone: 'red' | 'amber' | 'green';
+    description: string;
+    canViewDetails: boolean;
+    effectiveDate: string | null;
+    source: 'DIRECT' | 'PROGRAM_DATE' | 'REPORT_DATE';
+  };
 };
 
 export type StudentGradeOverviewSubjectComponent = StudentGradeOverviewComponent & {
