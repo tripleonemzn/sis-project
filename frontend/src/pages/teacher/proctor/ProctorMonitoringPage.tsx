@@ -477,7 +477,7 @@ const ProctorMonitoringPage: React.FC = () => {
       </div>
 
       {isExamInfoModalOpen ? (
-        <div className="fixed inset-0 z-[90] flex items-center justify-center bg-slate-950/45 px-4 py-6 backdrop-blur-sm">
+        <div className="fixed inset-0 z-[90] flex items-center justify-center bg-slate-900/18 px-4 py-6 backdrop-blur-[1px]">
           <div className="flex max-h-[88vh] w-full max-w-2xl flex-col overflow-hidden rounded-2xl border border-slate-200 bg-white shadow-2xl">
             <div className="flex items-start justify-between gap-4 border-b border-slate-200 px-5 py-4">
               <div>
@@ -548,7 +548,7 @@ const ProctorMonitoringPage: React.FC = () => {
       ) : null}
 
       {isReportModalOpen ? (
-        <div className="fixed inset-0 z-[90] flex items-center justify-center bg-slate-950/45 px-4 py-6 backdrop-blur-sm">
+        <div className="fixed inset-0 z-[90] flex items-center justify-center bg-slate-900/18 px-4 py-6 backdrop-blur-[1px]">
           <div className="flex max-h-[90vh] w-full max-w-4xl flex-col overflow-hidden rounded-2xl border border-slate-200 bg-white shadow-2xl">
             <div className="flex items-start justify-between gap-4 border-b border-slate-200 px-5 py-4">
               <div>

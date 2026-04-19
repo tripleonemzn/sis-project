@@ -655,7 +655,7 @@ export default function TeacherProctoringDetailScreen() {
         <View
           style={{
             flex: 1,
-            backgroundColor: 'rgba(15, 23, 42, 0.45)',
+            backgroundColor: 'rgba(15, 23, 42, 0.18)',
             justifyContent: 'center',
             paddingHorizontal: 16,
             paddingVertical: 24,
@@ -802,7 +802,7 @@ export default function TeacherProctoringDetailScreen() {
         <View
           style={{
             flex: 1,
-            backgroundColor: 'rgba(15, 23, 42, 0.45)',
+            backgroundColor: 'rgba(15, 23, 42, 0.18)',
             justifyContent: 'center',
             paddingHorizontal: 16,
             paddingVertical: 24,
