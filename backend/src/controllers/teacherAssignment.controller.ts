@@ -331,7 +331,7 @@ export const updateCompetencyThresholds = asyncHandler(async (req: Request, res:
           const description = deriveThresholdDescription(normalizedThresholds, predicate, {
             religionKey: religionByStudentId.get(Number(reportGrade.studentId)) || null,
             preferReligion: useReligionThresholds,
-            allowGeneralFallback: !useReligionThresholds,
+            allowGeneralFallback: true,
           });
 
           return prisma.reportGrade.update({
