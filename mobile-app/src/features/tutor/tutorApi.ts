@@ -32,6 +32,13 @@ export type TutorMember = {
   studentId: number;
   ekskulId: number;
   academicYearId: number;
+  achievements?: Array<{
+    id: number;
+    name: string;
+    rank?: string | null;
+    level?: string | null;
+    year: number;
+  }>;
   student?: {
     id: number;
     name: string;
@@ -107,6 +114,18 @@ export const tutorApi = {
     programCode?: string;
   }) {
     const response = await apiClient.post<ApiEnvelope<TutorMember>>('/tutor/grades', payload);
+    return response.data?.data;
+  },
+  async createAchievement(payload: {
+    ekskulId: number;
+    academicYearId: number;
+    studentId: number;
+    name: string;
+    rank: string;
+    level: string;
+    year: number;
+  }) {
+    const response = await apiClient.post<ApiEnvelope<{ id: number }>>('/tutor/achievements', payload);
     return response.data?.data;
   },
   async getInventoryOverview(academicYearId?: number) {

@@ -1330,7 +1330,11 @@ export class ReportService {
       where: { role: 'PRINCIPAL' }
     });
 
-    // Fetch Achievements (Prestasi) from StudentBehavior (POSITIVE)
+    const achievementYear = academicYearObj
+      ? parseInt(String(academicYearObj.name || '').split('/')[0], 10)
+      : new Date().getFullYear();
+
+    // Fetch Achievements (Prestasi) from StudentBehavior (POSITIVE) and StudentAchievement
     const behaviors = await prisma.studentBehavior.findMany({
       where: {
         studentId,
@@ -1339,10 +1343,46 @@ export class ReportService {
       }
     });
 
-    const achievements = behaviors.map(b => ({
-      name: b.description,
-      description: b.category || '-'
-    }));
+    const studentAchievements = await prisma.studentAchievement.findMany({
+      where: {
+        studentId,
+        year: achievementYear,
+      },
+      orderBy: [{ year: 'desc' }, { id: 'desc' }],
+    });
+
+    const achievements = [
+      ...studentAchievements.map((item) => ({
+        name: item.name,
+        description:
+          [
+            item.rank ? `Juara ${item.rank}` : null,
+            item.level ? `Tingkat ${item.level}` : null,
+            item.year ? `(${item.year})` : null,
+          ]
+            .filter(Boolean)
+            .join(' • ') || '-',
+        rank: item.rank,
+        level: item.level,
+        year: item.year,
+      })),
+      ...behaviors.map((b) => ({
+        name: b.description,
+        description: b.category || '-',
+      })),
+    ].filter((item, index, rows) => {
+      const key = `${String(item.name || '').trim().toLowerCase()}::${String(item.description || '')
+        .trim()
+        .toLowerCase()}`;
+      return rows.findIndex((candidate) => {
+        const candidateKey = `${String(candidate.name || '').trim().toLowerCase()}::${String(
+          candidate.description || '',
+        )
+          .trim()
+          .toLowerCase()}`;
+        return candidateKey === key;
+      }) === index;
+    });
 
     // Fetch Attendance
     let dateFilter = {};

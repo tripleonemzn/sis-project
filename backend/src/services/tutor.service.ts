@@ -206,6 +206,12 @@ function normalizeComparableName(value: unknown): string {
     .trim();
 }
 
+function resolveAcademicYearStartYear(academicYearName?: string | null): number {
+  const matchedYear = String(academicYearName || '').match(/^(\d{4})/);
+  if (matchedYear) return Number(matchedYear[1]);
+  return new Date().getFullYear();
+}
+
 async function notifyHomeroomExtracurricularGradeUpdated(params: {
   enrollmentId: number;
   academicYearId: number;
@@ -277,6 +283,63 @@ async function notifyHomeroomExtracurricularGradeUpdated(params: {
         semester: params.semester || null,
         reportType: params.reportType || null,
         programCode: params.programCode || null,
+        route: '/teacher/wali-kelas/students',
+      },
+    },
+  });
+}
+
+async function notifyHomeroomExtracurricularAchievementUpdated(params: {
+  enrollmentId: number;
+  academicYearId: number;
+  achievementName: string;
+}) {
+  const enrollment = await prisma.ekstrakurikulerEnrollment.findUnique({
+    where: { id: params.enrollmentId },
+    select: {
+      id: true,
+      student: {
+        select: {
+          id: true,
+          name: true,
+          studentClass: {
+            select: {
+              id: true,
+              name: true,
+              teacherId: true,
+            },
+          },
+        },
+      },
+      ekskul: {
+        select: {
+          id: true,
+          name: true,
+        },
+      },
+    },
+  });
+
+  if (!enrollment?.student.studentClass?.teacherId) return;
+
+  const title = 'Prestasi Ekstrakurikuler Ditambahkan';
+  const message = `Pembina menambahkan prestasi ${enrollment.student.name} pada ${enrollment.ekskul.name}: ${params.achievementName}.`;
+
+  await createInAppNotification({
+    data: {
+      userId: enrollment.student.studentClass.teacherId,
+      title,
+      message,
+      type: 'EXTRACURRICULAR_ACHIEVEMENT_UPDATED',
+      data: {
+        module: 'EXTRACURRICULAR',
+        enrollmentId: enrollment.id,
+        studentId: enrollment.student.id,
+        classId: enrollment.student.studentClass.id,
+        className: enrollment.student.studentClass.name,
+        ekskulId: enrollment.ekskul.id,
+        ekskulName: enrollment.ekskul.name,
+        academicYearId: params.academicYearId,
         route: '/teacher/wali-kelas/students',
       },
     },
@@ -589,6 +652,11 @@ export class TutorService {
    */
   async getMembers(tutorId: number, ekskulId: number, academicYearId: number) {
     await this.ensureActiveAssignment(tutorId, ekskulId, academicYearId);
+    const academicYear = await prisma.academicYear.findUnique({
+      where: { id: academicYearId },
+      select: { name: true },
+    });
+    const achievementYear = resolveAcademicYearStartYear(academicYear?.name);
 
     // Fetch enrollments
     const enrollments = await prisma.ekstrakurikulerEnrollment.findMany({
@@ -608,6 +676,19 @@ export class TutorService {
                 name: true,
               },
             },
+            achievements: {
+              where: {
+                year: achievementYear,
+              },
+              select: {
+                id: true,
+                name: true,
+                level: true,
+                year: true,
+                rank: true,
+              },
+              orderBy: [{ year: 'desc' }, { id: 'desc' }],
+            },
           },
         },
       },
@@ -618,7 +699,100 @@ export class TutorService {
       },
     });
 
-    return enrollments;
+    return enrollments.map((enrollment) => ({
+      ...enrollment,
+      achievements: enrollment.student?.achievements || [],
+      student: enrollment.student
+        ? {
+            id: enrollment.student.id,
+            name: enrollment.student.name,
+            nis: enrollment.student.nis,
+            nisn: enrollment.student.nisn,
+            studentClass: enrollment.student.studentClass,
+          }
+        : null,
+    }));
+  }
+
+  async createAchievement(
+    tutorId: number,
+    payload: {
+      ekskulId: number;
+      academicYearId: number;
+      studentId: number;
+      name: string;
+      rank?: string;
+      level?: string;
+      year: number;
+    },
+  ) {
+    await this.ensureActiveAssignment(tutorId, payload.ekskulId, payload.academicYearId);
+
+    const enrollment = await prisma.ekstrakurikulerEnrollment.findFirst({
+      where: {
+        ekskulId: payload.ekskulId,
+        academicYearId: payload.academicYearId,
+        studentId: payload.studentId,
+      },
+      select: {
+        id: true,
+      },
+    });
+
+    if (!enrollment) {
+      throw new ApiError(404, 'Siswa bukan anggota aktif pada ekstrakurikuler ini.');
+    }
+
+    const name = String(payload.name || '').trim();
+    const rank = String(payload.rank || '').trim();
+    const level = String(payload.level || '').trim();
+    const year = Number(payload.year || 0);
+
+    if (!name) {
+      throw new ApiError(400, 'Nama prestasi wajib diisi.');
+    }
+    if (!rank) {
+      throw new ApiError(400, 'Peringkat/juara wajib diisi.');
+    }
+    if (!level) {
+      throw new ApiError(400, 'Tingkat prestasi wajib diisi.');
+    }
+    if (!Number.isInteger(year) || year < 2000 || year > new Date().getFullYear() + 1) {
+      throw new ApiError(400, 'Tahun prestasi tidak valid.');
+    }
+
+    const duplicate = await prisma.studentAchievement.findFirst({
+      where: {
+        studentId: payload.studentId,
+        name,
+        rank,
+        level,
+        year,
+      },
+      select: { id: true },
+    });
+
+    if (duplicate) {
+      throw new ApiError(409, 'Prestasi yang sama sudah pernah ditambahkan.');
+    }
+
+    const created = await prisma.studentAchievement.create({
+      data: {
+        studentId: payload.studentId,
+        name,
+        rank,
+        level,
+        year,
+      },
+    });
+
+    await notifyHomeroomExtracurricularAchievementUpdated({
+      enrollmentId: enrollment.id,
+      academicYearId: payload.academicYearId,
+      achievementName: name,
+    });
+
+    return created;
   }
 
   async getAttendanceOverview(

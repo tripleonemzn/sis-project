@@ -4,6 +4,8 @@ import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { Pressable, RefreshControl, ScrollView, Text, TextInput, View } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { AppLoadingScreen } from '../../../src/components/AppLoadingScreen';
+import MobileDetailModal from '../../../src/components/MobileDetailModal';
+import { MobileMenuTabBar } from '../../../src/components/MobileMenuTabBar';
 import { QueryStateView } from '../../../src/components/QueryStateView';
 import { useAuth } from '../../../src/features/auth/AuthProvider';
 import { adminApi } from '../../../src/features/admin/adminApi';
@@ -19,6 +21,7 @@ import { BRAND_COLORS } from '../../../src/config/brand';
 import { notifyApiError, notifySuccess } from '../../../src/lib/ui/feedback';
 
 type SemesterType = 'ODD' | 'EVEN';
+type TutorTabKey = 'GRADE' | 'ACHIEVEMENT';
 
 function normalizeProgramCode(raw: unknown): string {
   return String(raw || '')
@@ -97,6 +100,15 @@ export default function TutorMembersScreen() {
   const [semesterState, setSemesterState] = useState<SemesterType>('ODD');
   const [gradeMap, setGradeMap] = useState<Record<number, string>>({});
   const [descriptionMap, setDescriptionMap] = useState<Record<number, string>>({});
+  const [activeTab, setActiveTab] = useState<TutorTabKey>('GRADE');
+  const [isAchievementModalOpen, setIsAchievementModalOpen] = useState(false);
+  const [selectedAchievementMemberId, setSelectedAchievementMemberId] = useState<number | null>(null);
+  const [achievementForm, setAchievementForm] = useState({
+    name: '',
+    rank: '',
+    level: '',
+    year: new Date().getFullYear(),
+  });
 
   const activeYearQuery = useQuery({
     queryKey: ['mobile-tutor-members-active-year'],
@@ -245,6 +257,40 @@ export default function TutorMembersScreen() {
       notifyApiError(error, 'Gagal menyimpan nilai ekskul.');
     },
   });
+  const createAchievementMutation = useMutation({
+    mutationFn: async (payload: { studentId: number; name: string; rank: string; level: string; year: number }) => {
+      return tutorApi.createAchievement({
+        ekskulId: Number(selectedAssignment?.ekskulId),
+        academicYearId: Number(selectedAssignment?.academicYearId),
+        studentId: payload.studentId,
+        name: payload.name,
+        rank: payload.rank,
+        level: payload.level,
+        year: payload.year,
+      });
+    },
+    onSuccess: async () => {
+      notifySuccess('Prestasi anggota ekskul berhasil ditambahkan.');
+      setIsAchievementModalOpen(false);
+      setSelectedAchievementMemberId(null);
+      setAchievementForm({
+        name: '',
+        rank: '',
+        level: '',
+        year: new Date().getFullYear(),
+      });
+      await queryClient.invalidateQueries({
+        queryKey: [
+          'mobile-tutor-members-list',
+          selectedAssignment?.ekskulId,
+          selectedAssignment?.academicYearId,
+        ],
+      });
+    },
+    onError: (error) => {
+      notifyApiError(error, 'Gagal menambahkan prestasi anggota ekskul.');
+    },
+  });
 
   const members = useMemo(() => membersQuery.data || [], [membersQuery.data]);
   const filteredMembers = useMemo(() => {
@@ -260,6 +306,17 @@ export default function TutorMembersScreen() {
       return haystacks.some((value) => value.toLowerCase().includes(q));
     });
   }, [members, search]);
+  const selectedAchievementMember = useMemo(
+    () => members.find((item) => item.id === selectedAchievementMemberId) || null,
+    [members, selectedAchievementMemberId],
+  );
+  const tutorTabItems = useMemo(
+    () => [
+      { key: 'GRADE', label: 'Anggota & Nilai', iconName: 'award' as const },
+      { key: 'ACHIEVEMENT', label: 'Prestasi', iconName: 'star' as const },
+    ],
+    [],
+  );
 
   if (isLoading) return <AppLoadingScreen message="Memuat anggota & nilai..." />;
   if (!isAuthenticated) return <Redirect href="/welcome" />;
@@ -290,7 +347,7 @@ export default function TutorMembersScreen() {
     >
       <Text style={{ fontSize: scaleWithAppTextScale(20), fontWeight: '700', color: BRAND_COLORS.textDark, marginBottom: 6 }}>Anggota & Nilai</Text>
       <Text style={{ color: BRAND_COLORS.textMuted, marginBottom: 12 }}>
-        Input nilai ekstrakurikuler sesuai Program Ujian aktif dan semester.
+        Input nilai dan prestasi ekstrakurikuler sesuai program ujian aktif dan tahun ajaran berjalan.
       </Text>
 
       <View
@@ -457,6 +514,45 @@ export default function TutorMembersScreen() {
         />
       </View>
 
+      <View
+        style={{
+          backgroundColor: '#eff6ff',
+          borderWidth: 1,
+          borderColor: '#bfdbfe',
+          borderRadius: 12,
+          paddingHorizontal: 12,
+          paddingVertical: 12,
+          marginBottom: 12,
+        }}
+      >
+        <Text style={{ color: BRAND_COLORS.navy, fontWeight: '700', marginBottom: 4 }}>
+          Prestasi Pembina Terhubung ke Rapor
+        </Text>
+        <Text style={{ color: '#1e40af', fontSize: scaleWithAppTextScale(12) }}>
+          Prestasi yang Anda input dari halaman ini akan otomatis tampil di rapor wali kelas pada tahun ajaran berjalan.
+        </Text>
+      </View>
+
+      <View
+        style={{
+          backgroundColor: '#fff',
+          borderWidth: 1,
+          borderColor: '#dbe7fb',
+          borderRadius: 12,
+          padding: 8,
+          marginBottom: 12,
+        }}
+      >
+        <MobileMenuTabBar
+          items={tutorTabItems}
+          activeKey={activeTab}
+          onChange={(key) => setActiveTab(key as TutorTabKey)}
+          minTabWidth={128}
+          maxTabWidth={168}
+          compact
+        />
+      </View>
+
       {membersQuery.isLoading ? <QueryStateView type="loading" message="Mengambil data anggota ekskul..." /> : null}
       {membersQuery.isError ? (
         <QueryStateView type="error" message="Gagal memuat data anggota ekskul." onRetry={() => membersQuery.refetch()} />
@@ -485,82 +581,152 @@ export default function TutorMembersScreen() {
                 <Text style={{ color: BRAND_COLORS.textMuted, fontSize: scaleWithAppTextScale(12), marginTop: 2 }}>
                   {item.student?.studentClass?.name || '-'} • NIS: {item.student?.nis || '-'}
                 </Text>
+                {activeTab === 'GRADE' ? (
+                  <>
+                    <TextInput
+                      value={currentGrade}
+                      onChangeText={(value) =>
+                        setGradeMap((prev) => ({
+                          ...prev,
+                          [item.id]: value,
+                        }))
+                      }
+                      placeholder="Nilai (contoh: A / 90)"
+                      placeholderTextColor="#95a3be"
+                      style={{
+                        marginTop: 10,
+                        borderWidth: 1,
+                        borderColor: '#d6e2f7',
+                        borderRadius: 10,
+                        paddingHorizontal: 12,
+                        paddingVertical: 10,
+                        color: BRAND_COLORS.textDark,
+                        backgroundColor: '#fff',
+                      }}
+                    />
 
-                <TextInput
-                  value={currentGrade}
-                  onChangeText={(value) =>
-                    setGradeMap((prev) => ({
-                      ...prev,
-                      [item.id]: value,
-                    }))
-                  }
-                  placeholder="Nilai (contoh: A / 90)"
-                  placeholderTextColor="#95a3be"
-                  style={{
-                    marginTop: 10,
-                    borderWidth: 1,
-                    borderColor: '#d6e2f7',
-                    borderRadius: 10,
-                    paddingHorizontal: 12,
-                    paddingVertical: 10,
-                    color: BRAND_COLORS.textDark,
-                    backgroundColor: '#fff',
-                  }}
-                />
+                    <TextInput
+                      value={currentDescription}
+                      onChangeText={(value) =>
+                        setDescriptionMap((prev) => ({
+                          ...prev,
+                          [item.id]: value,
+                        }))
+                      }
+                      placeholder="Deskripsi nilai"
+                      placeholderTextColor="#95a3be"
+                      multiline
+                      style={{
+                        marginTop: 8,
+                        borderWidth: 1,
+                        borderColor: '#d6e2f7',
+                        borderRadius: 10,
+                        paddingHorizontal: 12,
+                        paddingVertical: 10,
+                        minHeight: 80,
+                        textAlignVertical: 'top',
+                        color: BRAND_COLORS.textDark,
+                        backgroundColor: '#fff',
+                      }}
+                    />
 
-                <TextInput
-                  value={currentDescription}
-                  onChangeText={(value) =>
-                    setDescriptionMap((prev) => ({
-                      ...prev,
-                      [item.id]: value,
-                    }))
-                  }
-                  placeholder="Deskripsi nilai"
-                  placeholderTextColor="#95a3be"
-                  multiline
-                  style={{
-                    marginTop: 8,
-                    borderWidth: 1,
-                    borderColor: '#d6e2f7',
-                    borderRadius: 10,
-                    paddingHorizontal: 12,
-                    paddingVertical: 10,
-                    minHeight: 80,
-                    textAlignVertical: 'top',
-                    color: BRAND_COLORS.textDark,
-                    backgroundColor: '#fff',
-                  }}
-                />
+                    <Pressable
+                      disabled={
+                        saveMutation.isPending ||
+                        !selectedReportProgram ||
+                        !String(currentGrade || '').trim()
+                      }
+                      onPress={() =>
+                        saveMutation.mutate({
+                          enrollmentId: item.id,
+                          grade: String(currentGrade || '').trim(),
+                          description: String(currentDescription || '').trim(),
+                        })
+                      }
+                      style={{
+                        marginTop: 10,
+                        backgroundColor:
+                          saveMutation.isPending || !selectedReportProgram || !String(currentGrade || '').trim()
+                            ? '#93c5fd'
+                            : BRAND_COLORS.blue,
+                        borderRadius: 10,
+                        alignItems: 'center',
+                        paddingVertical: 10,
+                      }}
+                    >
+                      <Text style={{ color: '#fff', fontWeight: '700' }}>
+                        {saveMutation.isPending ? 'Menyimpan...' : 'Simpan Nilai'}
+                      </Text>
+                    </Pressable>
+                  </>
+                ) : (
+                  <View style={{ marginTop: 10 }}>
+                    <Text style={{ color: BRAND_COLORS.textDark, fontWeight: '700', marginBottom: 8 }}>
+                      Prestasi Tahun Berjalan
+                    </Text>
+                    {item.achievements && item.achievements.length > 0 ? (
+                      item.achievements.map((achievement) => (
+                        <View
+                          key={achievement.id}
+                          style={{
+                            borderWidth: 1,
+                            borderColor: '#bfdbfe',
+                            backgroundColor: '#eff6ff',
+                            borderRadius: 10,
+                            paddingHorizontal: 12,
+                            paddingVertical: 10,
+                            marginBottom: 8,
+                          }}
+                        >
+                          <Text style={{ color: '#1e3a8a', fontWeight: '700' }}>{achievement.name}</Text>
+                          <Text style={{ color: '#1d4ed8', fontSize: scaleWithAppTextScale(12), marginTop: 3 }}>
+                            Juara {achievement.rank || '-'} • Tingkat {achievement.level || '-'} • {achievement.year}
+                          </Text>
+                        </View>
+                      ))
+                    ) : (
+                      <View
+                        style={{
+                          borderWidth: 1,
+                          borderColor: '#cbd5e1',
+                          borderStyle: 'dashed',
+                          borderRadius: 10,
+                          backgroundColor: '#fff',
+                          paddingHorizontal: 12,
+                          paddingVertical: 12,
+                        }}
+                      >
+                        <Text style={{ color: BRAND_COLORS.textMuted }}>
+                          Belum ada prestasi yang tercatat untuk anggota ini.
+                        </Text>
+                      </View>
+                    )}
 
-                <Pressable
-                  disabled={
-                    saveMutation.isPending ||
-                    !selectedReportProgram ||
-                    !String(currentGrade || '').trim()
-                  }
-                  onPress={() =>
-                    saveMutation.mutate({
-                      enrollmentId: item.id,
-                      grade: String(currentGrade || '').trim(),
-                      description: String(currentDescription || '').trim(),
-                    })
-                  }
-                  style={{
-                    marginTop: 10,
-                    backgroundColor:
-                      saveMutation.isPending || !selectedReportProgram || !String(currentGrade || '').trim()
-                        ? '#93c5fd'
-                        : BRAND_COLORS.blue,
-                    borderRadius: 10,
-                    alignItems: 'center',
-                    paddingVertical: 10,
-                  }}
-                >
-                  <Text style={{ color: '#fff', fontWeight: '700' }}>
-                    {saveMutation.isPending ? 'Menyimpan...' : 'Simpan Nilai'}
-                  </Text>
-                </Pressable>
+                    <Pressable
+                      onPress={() => {
+                        setSelectedAchievementMemberId(item.id);
+                        setAchievementForm({
+                          name: '',
+                          rank: '',
+                          level: '',
+                          year: new Date().getFullYear(),
+                        });
+                        setIsAchievementModalOpen(true);
+                      }}
+                      style={{
+                        marginTop: 10,
+                        borderRadius: 10,
+                        borderWidth: 1,
+                        borderColor: '#bfdbfe',
+                        backgroundColor: '#fff',
+                        alignItems: 'center',
+                        paddingVertical: 10,
+                      }}
+                    >
+                      <Text style={{ color: BRAND_COLORS.blue, fontWeight: '700' }}>Tambah Prestasi</Text>
+                    </Pressable>
+                  </View>
+                )}
               </View>
             );
           })
@@ -594,6 +760,141 @@ export default function TutorMembersScreen() {
       >
         <Text style={{ color: '#fff', fontWeight: '700' }}>Kembali ke Home</Text>
       </Pressable>
+
+      <MobileDetailModal
+        visible={isAchievementModalOpen}
+        title="Tambah Prestasi Anggota"
+        subtitle={`Prestasi akan langsung terhubung ke rapor wali kelas untuk ${selectedAchievementMember?.student?.name || 'anggota terpilih'}.`}
+        iconName="star"
+        accentColor={BRAND_COLORS.blue}
+        onClose={() => {
+          setIsAchievementModalOpen(false);
+          setSelectedAchievementMemberId(null);
+        }}
+      >
+        <View style={{ gap: 12 }}>
+          <View>
+            <Text style={{ color: BRAND_COLORS.textDark, fontWeight: '700', marginBottom: 6 }}>Nama Prestasi / Kejuaraan</Text>
+            <TextInput
+              value={achievementForm.name}
+              onChangeText={(value) => setAchievementForm((prev) => ({ ...prev, name: value }))}
+              placeholder="Contoh: Kejuaraan Pencak Silat Kota Bekasi"
+              placeholderTextColor="#95a3be"
+              style={{
+                borderWidth: 1,
+                borderColor: '#d6e2f7',
+                borderRadius: 10,
+                paddingHorizontal: 12,
+                paddingVertical: 10,
+                color: BRAND_COLORS.textDark,
+                backgroundColor: '#fff',
+              }}
+            />
+          </View>
+
+          <View style={{ flexDirection: 'row', marginHorizontal: -4 }}>
+            <View style={{ flex: 1, paddingHorizontal: 4 }}>
+              <Text style={{ color: BRAND_COLORS.textDark, fontWeight: '700', marginBottom: 6 }}>Juara</Text>
+              <TextInput
+                value={achievementForm.rank}
+                onChangeText={(value) => setAchievementForm((prev) => ({ ...prev, rank: value }))}
+                placeholder="1 / 2 / 3"
+                placeholderTextColor="#95a3be"
+                style={{
+                  borderWidth: 1,
+                  borderColor: '#d6e2f7',
+                  borderRadius: 10,
+                  paddingHorizontal: 12,
+                  paddingVertical: 10,
+                  color: BRAND_COLORS.textDark,
+                  backgroundColor: '#fff',
+                }}
+              />
+            </View>
+            <View style={{ flex: 1, paddingHorizontal: 4 }}>
+              <Text style={{ color: BRAND_COLORS.textDark, fontWeight: '700', marginBottom: 6 }}>Tingkat</Text>
+              <TextInput
+                value={achievementForm.level}
+                onChangeText={(value) => setAchievementForm((prev) => ({ ...prev, level: value }))}
+                placeholder="Kota / Provinsi"
+                placeholderTextColor="#95a3be"
+                style={{
+                  borderWidth: 1,
+                  borderColor: '#d6e2f7',
+                  borderRadius: 10,
+                  paddingHorizontal: 12,
+                  paddingVertical: 10,
+                  color: BRAND_COLORS.textDark,
+                  backgroundColor: '#fff',
+                }}
+              />
+            </View>
+          </View>
+
+          <View>
+            <Text style={{ color: BRAND_COLORS.textDark, fontWeight: '700', marginBottom: 6 }}>Tahun</Text>
+            <TextInput
+              value={String(achievementForm.year || '')}
+              onChangeText={(value) =>
+                setAchievementForm((prev) => ({
+                  ...prev,
+                  year: Number(value.replace(/[^0-9]/g, '') || new Date().getFullYear()),
+                }))
+              }
+              placeholder="2026"
+              keyboardType="number-pad"
+              placeholderTextColor="#95a3be"
+              style={{
+                borderWidth: 1,
+                borderColor: '#d6e2f7',
+                borderRadius: 10,
+                paddingHorizontal: 12,
+                paddingVertical: 10,
+                color: BRAND_COLORS.textDark,
+                backgroundColor: '#fff',
+              }}
+            />
+          </View>
+
+          <Pressable
+            disabled={
+              createAchievementMutation.isPending ||
+              !selectedAchievementMember ||
+              !achievementForm.name.trim() ||
+              !achievementForm.rank.trim() ||
+              !achievementForm.level.trim()
+            }
+            onPress={() => {
+              if (!selectedAchievementMember) return;
+              createAchievementMutation.mutate({
+                studentId: selectedAchievementMember.studentId,
+                name: achievementForm.name.trim(),
+                rank: achievementForm.rank.trim(),
+                level: achievementForm.level.trim(),
+                year: Number(achievementForm.year || new Date().getFullYear()),
+              });
+            }}
+            style={{
+              marginTop: 4,
+              borderRadius: 12,
+              alignItems: 'center',
+              paddingVertical: 12,
+              backgroundColor:
+                createAchievementMutation.isPending ||
+                !selectedAchievementMember ||
+                !achievementForm.name.trim() ||
+                !achievementForm.rank.trim() ||
+                !achievementForm.level.trim()
+                  ? '#93c5fd'
+                  : BRAND_COLORS.blue,
+            }}
+          >
+            <Text style={{ color: '#fff', fontWeight: '700' }}>
+              {createAchievementMutation.isPending ? 'Menyimpan...' : 'Simpan Prestasi'}
+            </Text>
+          </Pressable>
+        </View>
+      </MobileDetailModal>
     </ScrollView>
   );
 }

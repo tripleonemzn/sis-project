@@ -2,6 +2,7 @@ import { Router } from 'express';
 import { authMiddleware } from '../middleware/auth';
 import { roleMiddleware } from '../middleware/role';
 import {
+  createTutorAchievement,
   createTutorInventoryItem,
   getTutorAttendanceOverview,
   getTutorAssignments,
@@ -27,6 +28,7 @@ router.put('/grade-templates', saveTutorGradeTemplates);
 router.get('/attendance', getTutorAttendanceOverview);
 router.put('/attendance/config', saveTutorAttendanceConfig);
 router.put('/attendance/records', saveTutorAttendanceRecords);
+router.post('/achievements', createTutorAchievement);
 router.get('/inventory-overview', getTutorInventoryOverview);
 router.post('/inventory-items', createTutorInventoryItem);
 

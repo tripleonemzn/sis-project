@@ -26,6 +26,14 @@ export type TutorAssignmentSummary = {
   } | null;
 };
 
+export type TutorStudentAchievement = {
+  id: number;
+  name: string;
+  rank?: string | null;
+  level?: string | null;
+  year: number;
+};
+
 export const tutorService = {
   getAssignments: async (academicYearId?: number) => {
     const params = academicYearId ? { academicYearId } : {};
@@ -37,6 +45,19 @@ export const tutorService = {
     const response = await api.get('/tutor/members', { 
       params: { ekskulId, academicYearId } 
     });
+    return response.data;
+  },
+
+  createAchievement: async (data: {
+    ekskulId: number;
+    academicYearId: number;
+    studentId: number;
+    name: string;
+    rank: string;
+    level: string;
+    year: number;
+  }) => {
+    const response = await api.post('/tutor/achievements', data);
     return response.data;
   },
 

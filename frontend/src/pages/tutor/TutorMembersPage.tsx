@@ -1,13 +1,14 @@
-import { useEffect, useMemo, useState } from 'react';
+import { type FormEvent, useEffect, useMemo, useState } from 'react';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import {
   tutorService,
   type ExtracurricularGradeTemplate,
   type ExtracurricularAttendanceStatus,
+  type TutorStudentAchievement,
   type TutorAssignmentSummary,
 } from '../../services/tutor.service';
 import { examService, type ExamProgram } from '../../services/exam.service';
-import { Trophy, Save, Loader2, Filter, ClipboardCheck } from 'lucide-react';
+import { Trophy, Save, Loader2, Filter, ClipboardCheck, Plus, X } from 'lucide-react';
 import toast from 'react-hot-toast';
 import { useSearchParams } from 'react-router-dom';
 import {
@@ -56,6 +57,7 @@ interface Enrollment {
   ekskulId: number;
   studentId: number;
   academicYearId: number;
+  achievements?: TutorStudentAchievement[];
   grade: string | null;
   description: string | null;
   gradeSbtsOdd: string | null;
@@ -196,6 +198,15 @@ export const TutorMembersPage = () => {
   const [selectedAssignmentIdState, setSelectedAssignmentIdState] = useState<number | null>(null);
   const [attendanceSessionsPerWeekDraft, setAttendanceSessionsPerWeekDraft] = useState(1);
   const [attendanceEdits, setAttendanceEdits] = useState<Record<number, Record<number, ExtracurricularAttendanceStatus | ''>>>({});
+  const [isAchievementModalOpen, setIsAchievementModalOpen] = useState(false);
+  const [selectedStudentForAchievement, setSelectedStudentForAchievement] = useState<Enrollment | null>(null);
+  const [achievementForm, setAchievementForm] = useState({
+    name: '',
+    rank: '',
+    level: '',
+    year: new Date().getFullYear(),
+  });
+  const canManageAchievements = selectedScope !== 'osis';
   const { data: activeAcademicYear, isLoading: isLoadingActiveAcademicYear } = useActiveAcademicYear();
   const selectedAcademicYearId = Number(activeAcademicYear?.id || activeAcademicYear?.academicYearId || 0) || null;
 
@@ -537,6 +548,34 @@ export const TutorMembersPage = () => {
       toast.error('Gagal menyimpan absensi');
     },
   });
+  const { mutateAsync: createAchievement, isPending: isCreatingAchievement } = useMutation({
+    mutationFn: (payload: { studentId: number; name: string; rank: string; level: string; year: number }) =>
+      tutorService.createAchievement({
+        ekskulId: selectedEkskulId,
+        academicYearId: selectedAcademicYearId!,
+        studentId: payload.studentId,
+        name: payload.name,
+        rank: payload.rank,
+        level: payload.level,
+        year: payload.year,
+      }),
+    onSuccess: () => {
+      toast.success('Prestasi anggota ekskul berhasil ditambahkan');
+      queryClient.invalidateQueries({ queryKey: ['tutor-members', selectedEkskulId, selectedAcademicYearId] });
+      setIsAchievementModalOpen(false);
+      setSelectedStudentForAchievement(null);
+      setAchievementForm({
+        name: '',
+        rank: '',
+        level: '',
+        year: new Date().getFullYear(),
+      });
+    },
+    onError: (error: any) => {
+      const message = String(error?.response?.data?.message || '').trim();
+      toast.error(message || 'Gagal menambahkan prestasi anggota ekskul');
+    },
+  });
 
   const localValueContextKey = useMemo(
     () =>
@@ -685,6 +724,28 @@ export const TutorMembersPage = () => {
   };
 
   const currentEkskulName = selectedAssignment?.ekskul?.name || (selectedScope === 'osis' ? 'OSIS' : 'Ekstrakurikuler');
+  const openAchievementModal = (member: Enrollment) => {
+    setSelectedStudentForAchievement(member);
+    setAchievementForm({
+      name: '',
+      rank: '',
+      level: '',
+      year: new Date().getFullYear(),
+    });
+    setIsAchievementModalOpen(true);
+  };
+
+  const submitAchievement = async (event: FormEvent<HTMLFormElement>) => {
+    event.preventDefault();
+    if (!selectedStudentForAchievement) return;
+    await createAchievement({
+      studentId: selectedStudentForAchievement.studentId,
+      name: achievementForm.name.trim(),
+      rank: achievementForm.rank.trim(),
+      level: achievementForm.level.trim(),
+      year: Number(achievementForm.year || new Date().getFullYear()),
+    });
+  };
   const attendanceSessionIndexes = useMemo(
     () =>
       Array.from(
@@ -702,7 +763,7 @@ export const TutorMembersPage = () => {
             {selectedScope === 'osis' ? 'Anggota OSIS' : 'Anggota Ekstrakurikuler'}
           </h1>
           <p className="text-gray-600">
-            {selectedScope === 'osis' ? 'Kelola anggota dan nilai OSIS' : 'Kelola nilai dan anggota'}
+            {selectedScope === 'osis' ? 'Kelola anggota dan nilai OSIS' : 'Kelola nilai, anggota, dan prestasi'}
           </p>
         </div>
 
@@ -816,6 +877,10 @@ export const TutorMembersPage = () => {
         {activeTab === 'GRADE' ? (
           <>
             <div className="px-6 py-4 border-b border-gray-100 bg-gray-50/60">
+              <div className="mb-3 rounded-xl border border-blue-200 bg-blue-50 px-4 py-3 text-sm text-blue-700">
+                Prestasi yang diinput pembina ekskul akan otomatis tampil di rapor wali kelas pada
+                tahun ajaran berjalan.
+              </div>
               <div className="flex flex-col lg:flex-row lg:items-center lg:justify-between gap-3 mb-3">
                 <div>
                   <h3 className="text-sm font-semibold text-gray-800">Template Deskripsi Predikat</h3>
@@ -894,6 +959,9 @@ export const TutorMembersPage = () => {
                     <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Nama</th>
                     <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Kelas</th>
                     <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">NIS</th>
+                    {canManageAchievements ? (
+                      <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Prestasi</th>
+                    ) : null}
                     <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Nilai</th>
                     <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Deskripsi Nilai</th>
                     <th className="px-6 py-3 text-right text-xs font-medium text-gray-500 uppercase tracking-wider">Aksi</th>
@@ -902,13 +970,13 @@ export const TutorMembersPage = () => {
                 <tbody className="divide-y divide-gray-100">
                   {isLoading ? (
                     <tr>
-                      <td colSpan={6} className="px-6 py-6 text-center text-gray-500">
+                      <td colSpan={canManageAchievements ? 7 : 6} className="px-6 py-6 text-center text-gray-500">
                         <Loader2 className="inline mr-2 animate-spin" /> Loading...
                       </td>
                     </tr>
                   ) : members.length === 0 ? (
                     <tr>
-                      <td colSpan={6} className="px-6 py-6 text-center text-gray-500">Belum ada anggota</td>
+                      <td colSpan={canManageAchievements ? 7 : 6} className="px-6 py-6 text-center text-gray-500">Belum ada anggota</td>
                     </tr>
                   ) : (
                     members.map((en) => {
@@ -922,6 +990,36 @@ export const TutorMembersPage = () => {
                           </td>
                           <td className="px-6 py-4 text-gray-700">{en.student.studentClass?.name || '-'}</td>
                           <td className="px-6 py-4 text-gray-700">{en.student.nis || '-'}</td>
+                          {canManageAchievements ? (
+                            <td className="px-6 py-4 min-w-[280px]">
+                              <div className="space-y-2">
+                                {en.achievements && en.achievements.length > 0 ? (
+                                  en.achievements.map((achievement) => (
+                                    <div
+                                      key={achievement.id}
+                                      className="rounded-lg border border-blue-100 bg-blue-50 px-3 py-2"
+                                    >
+                                      <div className="text-sm font-medium text-blue-900">{achievement.name}</div>
+                                      <div className="text-xs text-blue-700">
+                                        Juara {achievement.rank || '-'} • Tingkat {achievement.level || '-'} •{' '}
+                                        {achievement.year}
+                                      </div>
+                                    </div>
+                                  ))
+                                ) : (
+                                  <div className="text-sm italic text-gray-400">Belum ada prestasi.</div>
+                                )}
+                                <button
+                                  type="button"
+                                  onClick={() => openAchievementModal(en)}
+                                  className="inline-flex items-center gap-1 rounded-lg border border-blue-200 bg-white px-3 py-2 text-xs font-semibold text-blue-700 hover:bg-blue-50"
+                                >
+                                  <Plus className="w-4 h-4" />
+                                  Tambah Prestasi
+                                </button>
+                              </div>
+                            </td>
+                          ) : null}
                           <td className="px-6 py-4">
                             <select
                               value={lv.grade}
@@ -1090,6 +1188,110 @@ export const TutorMembersPage = () => {
           </>
         )}
       </div>
+
+      {isAchievementModalOpen ? (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-slate-900/20 px-4 py-8">
+          <div className="w-full max-w-lg rounded-2xl border border-slate-200 bg-white shadow-xl">
+            <div className="flex items-start justify-between gap-4 border-b border-slate-200 px-5 py-4">
+              <div>
+                <div className="text-lg font-semibold text-slate-900">Tambah Prestasi Anggota</div>
+                <div className="mt-1 text-sm text-slate-500">
+                  Prestasi ini akan otomatis muncul di rapor wali kelas untuk{' '}
+                  <span className="font-medium text-slate-700">
+                    {selectedStudentForAchievement?.student?.name || '-'}
+                  </span>
+                  .
+                </div>
+              </div>
+              <button
+                type="button"
+                onClick={() => {
+                  setIsAchievementModalOpen(false);
+                  setSelectedStudentForAchievement(null);
+                }}
+                className="rounded-xl border border-slate-200 bg-slate-50 p-2 text-slate-500 hover:bg-slate-100"
+                aria-label="Tutup popup prestasi"
+              >
+                <X className="h-4 w-4" />
+              </button>
+            </div>
+            <form onSubmit={submitAchievement} className="space-y-4 px-5 py-5">
+              <div>
+                <label className="mb-1 block text-sm font-medium text-slate-700">Nama Prestasi / Kejuaraan</label>
+                <input
+                  type="text"
+                  value={achievementForm.name}
+                  onChange={(e) => setAchievementForm((prev) => ({ ...prev, name: e.target.value }))}
+                  className="w-full rounded-xl border border-slate-300 px-3 py-2.5 text-sm focus:border-blue-500 focus:ring-blue-500"
+                  placeholder="Contoh: Kejuaraan Pencak Silat Kota Bekasi"
+                  required
+                />
+              </div>
+              <div className="grid grid-cols-1 gap-4 md:grid-cols-3">
+                <div>
+                  <label className="mb-1 block text-sm font-medium text-slate-700">Juara</label>
+                  <input
+                    type="text"
+                    value={achievementForm.rank}
+                    onChange={(e) => setAchievementForm((prev) => ({ ...prev, rank: e.target.value }))}
+                    className="w-full rounded-xl border border-slate-300 px-3 py-2.5 text-sm focus:border-blue-500 focus:ring-blue-500"
+                    placeholder="1 / 2 / 3"
+                    required
+                  />
+                </div>
+                <div>
+                  <label className="mb-1 block text-sm font-medium text-slate-700">Tingkat</label>
+                  <input
+                    type="text"
+                    value={achievementForm.level}
+                    onChange={(e) => setAchievementForm((prev) => ({ ...prev, level: e.target.value }))}
+                    className="w-full rounded-xl border border-slate-300 px-3 py-2.5 text-sm focus:border-blue-500 focus:ring-blue-500"
+                    placeholder="Kota / Provinsi"
+                    required
+                  />
+                </div>
+                <div>
+                  <label className="mb-1 block text-sm font-medium text-slate-700">Tahun</label>
+                  <input
+                    type="number"
+                    min={2000}
+                    max={new Date().getFullYear() + 1}
+                    value={achievementForm.year}
+                    onChange={(e) =>
+                      setAchievementForm((prev) => ({
+                        ...prev,
+                        year: Number(e.target.value || new Date().getFullYear()),
+                      }))
+                    }
+                    className="w-full rounded-xl border border-slate-300 px-3 py-2.5 text-sm focus:border-blue-500 focus:ring-blue-500"
+                    required
+                  />
+                </div>
+              </div>
+              <div className="flex flex-wrap justify-end gap-2 border-t border-slate-200 pt-4">
+                <button
+                  type="button"
+                  onClick={() => {
+                    setIsAchievementModalOpen(false);
+                    setSelectedStudentForAchievement(null);
+                  }}
+                  className="rounded-xl border border-slate-300 px-4 py-2 text-sm font-semibold text-slate-700 hover:bg-slate-50"
+                >
+                  Batal
+                </button>
+                <button
+                  type="submit"
+                  disabled={isCreatingAchievement}
+                  className="inline-flex items-center gap-2 rounded-xl bg-blue-600 px-4 py-2 text-sm font-semibold text-white hover:bg-blue-700 disabled:cursor-not-allowed disabled:opacity-60"
+                >
+                  {isCreatingAchievement ? <Loader2 className="h-4 w-4 animate-spin" /> : <Plus className="h-4 w-4" />}
+                  Simpan Prestasi
+                </button>
+              </div>
+            </form>
+          </div>
+        </div>
+      ) : null}
     </div>
   );
 };

@@ -123,6 +123,16 @@ const createTutorInventoryItemSchema = z.object({
   majorDamageQty: z.coerce.number().int().min(0).optional().default(0),
 });
 
+const createTutorAchievementSchema = z.object({
+  ekskulId: z.coerce.number().int(),
+  academicYearId: z.coerce.number().int(),
+  studentId: z.coerce.number().int(),
+  name: z.string().min(1, 'Nama prestasi wajib diisi'),
+  rank: z.string().min(1, 'Peringkat/juara wajib diisi'),
+  level: z.string().min(1, 'Tingkat prestasi wajib diisi'),
+  year: z.coerce.number().int(),
+});
+
 export const inputTutorGrade = asyncHandler(async (req: AuthRequest, res: Response) => {
   const { enrollmentId, grade, description, semester, reportType, programCode } = inputGradeSchema.parse(req.body);
   const tutorId = req.user!.id;
@@ -215,4 +225,13 @@ export const createTutorInventoryItem = asyncHandler(async (req: AuthRequest, re
   const item = await tutorService.createInventoryItem(tutorId, payload);
 
   res.status(201).json(new ApiResponse(201, item, 'Item inventaris ekskul berhasil ditambahkan'));
+});
+
+export const createTutorAchievement = asyncHandler(async (req: AuthRequest, res: Response) => {
+  const payload = createTutorAchievementSchema.parse(req.body);
+  const tutorId = req.user!.id;
+
+  const achievement = await tutorService.createAchievement(tutorId, payload);
+
+  res.status(201).json(new ApiResponse(201, achievement, 'Prestasi anggota ekskul berhasil ditambahkan'));
 });

@@ -377,8 +377,8 @@ export const HomeroomExtracurricularsPage = ({
     <div className="space-y-4">
       <div className="bg-blue-50 border border-blue-200 rounded-lg p-4 text-sm text-blue-700">
         Nilai dan deskripsi ekskul maupun OSIS diinput oleh pembina masing-masing, lalu otomatis
-        tampil di tab wali kelas ini. Wali kelas hanya menambahkan prestasi dan catatan bila
-        diperlukan.
+        tampil di tab wali kelas ini. Prestasi dapat ditambahkan oleh pembina ekskul dari modul
+        pembina atau oleh wali kelas bila diperlukan.
       </div>
       <div className="bg-white rounded-lg border border-gray-200 shadow-sm overflow-hidden">
         <div className="overflow-x-auto">
