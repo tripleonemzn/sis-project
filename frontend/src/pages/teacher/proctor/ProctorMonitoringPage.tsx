@@ -98,6 +98,7 @@ const ProctorMonitoringPage: React.FC = () => {
   const [submittingReport, setSubmittingReport] = useState(false);
   const [reportSubmitted, setReportSubmitted] = useState(false);
   const [isReportModalOpen, setIsReportModalOpen] = useState(false);
+  const [isExamInfoModalOpen, setIsExamInfoModalOpen] = useState(false);
 
   const detailQuery = useQuery({
     queryKey: ['teacher-proctor-monitoring', scheduleId || 'unknown'],
@@ -127,13 +128,13 @@ const ProctorMonitoringPage: React.FC = () => {
   const students = detailQuery.data?.students || [];
 
   useEffect(() => {
-    if (!isReportModalOpen) return;
+    if (!isReportModalOpen && !isExamInfoModalOpen) return;
     const previousOverflow = document.body.style.overflow;
     document.body.style.overflow = 'hidden';
     return () => {
       document.body.style.overflow = previousOverflow;
     };
-  }, [isReportModalOpen]);
+  }, [isExamInfoModalOpen, isReportModalOpen]);
 
   const handleRefresh = async () => {
     setRefreshing(true);
@@ -320,7 +321,27 @@ const ProctorMonitoringPage: React.FC = () => {
               <p className="text-sm text-gray-600 mt-1">{orderedClassNames.join(' • ')}</p>
             </div>
           </div>
-          <div className="flex items-center space-x-2">
+          <div className="flex flex-wrap items-center justify-end gap-2">
+            <button
+              type="button"
+              onClick={() => setIsExamInfoModalOpen(true)}
+              className="inline-flex items-center rounded-md border border-sky-200 bg-sky-50 px-4 py-2 text-sm font-medium text-sky-700 hover:bg-sky-100 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-sky-500"
+            >
+              <BookOpen className="mr-2 h-4 w-4" />
+              Informasi Ujian
+            </button>
+            <button
+              type="button"
+              onClick={() => setIsReportModalOpen(true)}
+              className={`inline-flex items-center rounded-md border px-4 py-2 text-sm font-medium focus:outline-none focus:ring-2 focus:ring-offset-2 ${
+                reportSubmitted
+                  ? 'border-emerald-200 bg-emerald-50 text-emerald-700 hover:bg-emerald-100 focus:ring-emerald-500'
+                  : 'border-indigo-200 bg-indigo-50 text-indigo-700 hover:bg-indigo-100 focus:ring-indigo-500'
+              }`}
+            >
+              <FileText className="mr-2 h-4 w-4" />
+              {reportSubmitted ? 'Lihat Berita Acara' : 'Buka Berita Acara'}
+            </button>
             <button 
               onClick={handleRefresh} 
               disabled={refreshing}
@@ -350,187 +371,181 @@ const ProctorMonitoringPage: React.FC = () => {
         </div>
       )}
 
-      <div className="grid grid-cols-1 xl:grid-cols-[2fr,1fr] gap-5">
-        <div className="space-y-5">
-          <div className="bg-white shadow rounded-lg overflow-hidden">
-            <div className="px-6 py-4 border-b border-gray-200">
-              <div className="flex flex-col gap-2 md:flex-row md:items-center md:justify-between">
-                <h3 className="text-lg font-medium text-gray-900">Status Peserta Ujian</h3>
-                <div className="flex flex-wrap items-center gap-2">
-                  <span className="px-3 py-1 rounded-full bg-slate-100 text-slate-700 text-xs font-semibold">
-                    Seharusnya: {expectedCount}
-                  </span>
-                  <span className="px-3 py-1 rounded-full bg-emerald-100 text-emerald-700 text-xs font-semibold">
-                    Hadir: {presentCount}
-                  </span>
-                  <span className="px-3 py-1 rounded-full bg-rose-100 text-rose-700 text-xs font-semibold">
-                    Tidak hadir: {absentCount}
-                  </span>
-                  <span className="px-3 py-1 rounded-full bg-amber-100 text-amber-700 text-xs font-semibold">
-                    Diblokir: {blockedCount}
-                  </span>
-                </div>
+      <div className="space-y-5">
+        <div className="bg-white shadow rounded-lg overflow-hidden">
+          <div className="px-6 py-4 border-b border-gray-200">
+            <div className="flex flex-col gap-2 md:flex-row md:items-center md:justify-between">
+              <h3 className="text-lg font-medium text-gray-900">Status Peserta Ujian</h3>
+              <div className="flex flex-wrap items-center gap-2">
+                <span className="px-3 py-1 rounded-full bg-slate-100 text-slate-700 text-xs font-semibold">
+                  Seharusnya: {expectedCount}
+                </span>
+                <span className="px-3 py-1 rounded-full bg-emerald-100 text-emerald-700 text-xs font-semibold">
+                  Hadir: {presentCount}
+                </span>
+                <span className="px-3 py-1 rounded-full bg-rose-100 text-rose-700 text-xs font-semibold">
+                  Tidak hadir: {absentCount}
+                </span>
+                <span className="px-3 py-1 rounded-full bg-amber-100 text-amber-700 text-xs font-semibold">
+                  Diblokir: {blockedCount}
+                </span>
               </div>
             </div>
-            <div className="p-0">
-              <div className="overflow-x-auto">
-                <table className="min-w-full divide-y divide-gray-200">
-                  <thead>
-                    <tr>
-                      <th className="px-6 py-3 bg-gray-50 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Nama Siswa</th>
-                      <th className="px-6 py-3 bg-gray-50 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Kelas</th>
-                      <th className="px-6 py-3 bg-gray-50 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Status</th>
-                      <th className="px-6 py-3 bg-gray-50 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Waktu Mulai</th>
-                      <th className="px-6 py-3 bg-gray-50 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Waktu Selesai</th>
+          </div>
+          <div className="p-0">
+            <div className="overflow-x-auto">
+              <table className="min-w-full divide-y divide-gray-200">
+                <thead>
+                  <tr>
+                    <th className="px-6 py-3 bg-gray-50 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Nama Siswa</th>
+                    <th className="px-6 py-3 bg-gray-50 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Kelas</th>
+                    <th className="px-6 py-3 bg-gray-50 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Status</th>
+                    <th className="px-6 py-3 bg-gray-50 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Waktu Mulai</th>
+                    <th className="px-6 py-3 bg-gray-50 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Waktu Selesai</th>
+                  </tr>
+                </thead>
+                <tbody className="bg-white divide-y divide-gray-200">
+                  {orderedStudents.map((student) => (
+                    <tr key={student.id}>
+                      <td className="px-6 py-4 whitespace-nowrap">
+                        <div className="text-sm font-medium text-gray-900">{student.name}</div>
+                        <div className="text-xs text-gray-500 mt-0.5">{student.nis || '-'}</div>
+                      </td>
+                      <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-500">
+                        {student.className || '-'}
+                      </td>
+                      <td className="px-6 py-4 whitespace-nowrap">
+                        {student.restriction?.isBlocked ? (
+                          <div className="space-y-1 max-w-xs">
+                            <span className="px-2 inline-flex text-xs leading-5 font-semibold rounded-full bg-amber-100 text-amber-800">
+                              {student.restriction.statusLabel || 'Diblokir'}
+                            </span>
+                            <div className="text-xs text-amber-800 leading-5 whitespace-normal">
+                              {student.restriction.reason || 'Akses ujian ditutup.'}
+                            </div>
+                            <div className="text-[11px] text-gray-500">
+                              Status sesi: {student.status === 'NOT_STARTED' ? 'Belum Mulai' : student.status === 'IN_PROGRESS' ? 'Sedang Mengerjakan' : student.status === 'COMPLETED' ? 'Selesai' : 'Waktu Habis'}
+                            </div>
+                          </div>
+                        ) : student.status === 'NOT_STARTED' ? (
+                          <span className="px-2 inline-flex text-xs leading-5 font-semibold rounded-full bg-gray-100 text-gray-800">
+                            Belum Mulai
+                          </span>
+                        ) : null}
+                        {!student.restriction?.isBlocked && student.status === 'IN_PROGRESS' && (
+                          <div className="space-y-1">
+                            <span className="px-2 inline-flex text-xs leading-5 font-semibold rounded-full bg-blue-100 text-blue-800">
+                              Sedang Mengerjakan
+                            </span>
+                            <div className="text-xs text-blue-700">
+                              {student.answeredCount || 0} dari {student.totalQuestions || 0} soal
+                            </div>
+                            <div className="text-[11px] text-blue-600">
+                              Soal aktif: {student.monitoring?.currentQuestionNumber || ((student.monitoring?.currentQuestionIndex || 0) + 1)}
+                            </div>
+                          </div>
+                        )}
+                        {!student.restriction?.isBlocked && student.status === 'COMPLETED' && (
+                          <span className="px-2 inline-flex text-xs leading-5 font-semibold rounded-full bg-green-100 text-green-800">
+                            Selesai
+                          </span>
+                        )}
+                        {!student.restriction?.isBlocked && student.status === 'TIMEOUT' && (
+                          <span className="px-2 inline-flex text-xs leading-5 font-semibold rounded-full bg-red-100 text-red-800">
+                            Waktu Habis
+                          </span>
+                        )}
+                        {!!student.monitoring && (
+                          <div className="text-[11px] text-gray-500 mt-1">
+                            Pelanggaran: {student.monitoring.totalViolations || 0} (tab: {student.monitoring.tabSwitchCount || 0}, fullscreen: {student.monitoring.fullscreenExitCount || 0}, app: {student.monitoring.appSwitchCount || 0})
+                          </div>
+                        )}
+                      </td>
+                      <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-500">
+                        {student.startTime ? new Date(student.startTime).toLocaleTimeString('id-ID') : '-'}
+                      </td>
+                      <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-500">
+                        {student.submitTime ? new Date(student.submitTime).toLocaleTimeString('id-ID') : '-'}
+                      </td>
                     </tr>
-                  </thead>
-                  <tbody className="bg-white divide-y divide-gray-200">
-                    {orderedStudents.map((student) => (
-                      <tr key={student.id}>
-                        <td className="px-6 py-4 whitespace-nowrap">
-                          <div className="text-sm font-medium text-gray-900">{student.name}</div>
-                          <div className="text-xs text-gray-500 mt-0.5">{student.nis || '-'}</div>
-                        </td>
-                        <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-500">
-                          {student.className || '-'}
-                        </td>
-                        <td className="px-6 py-4 whitespace-nowrap">
-                          {student.restriction?.isBlocked ? (
-                            <div className="space-y-1 max-w-xs">
-                              <span className="px-2 inline-flex text-xs leading-5 font-semibold rounded-full bg-amber-100 text-amber-800">
-                                {student.restriction.statusLabel || 'Diblokir'}
-                              </span>
-                              <div className="text-xs text-amber-800 leading-5 whitespace-normal">
-                                {student.restriction.reason || 'Akses ujian ditutup.'}
-                              </div>
-                              <div className="text-[11px] text-gray-500">
-                                Status sesi: {student.status === 'NOT_STARTED' ? 'Belum Mulai' : student.status === 'IN_PROGRESS' ? 'Sedang Mengerjakan' : student.status === 'COMPLETED' ? 'Selesai' : 'Waktu Habis'}
-                              </div>
-                            </div>
-                          ) : student.status === 'NOT_STARTED' ? (
-                            <span className="px-2 inline-flex text-xs leading-5 font-semibold rounded-full bg-gray-100 text-gray-800">
-                              Belum Mulai
-                            </span>
-                          ) : null}
-                          {!student.restriction?.isBlocked && student.status === 'IN_PROGRESS' && (
-                            <div className="space-y-1">
-                              <span className="px-2 inline-flex text-xs leading-5 font-semibold rounded-full bg-blue-100 text-blue-800">
-                                Sedang Mengerjakan
-                              </span>
-                              <div className="text-xs text-blue-700">
-                                {student.answeredCount || 0} dari {student.totalQuestions || 0} soal
-                              </div>
-                              <div className="text-[11px] text-blue-600">
-                                Soal aktif: {student.monitoring?.currentQuestionNumber || ((student.monitoring?.currentQuestionIndex || 0) + 1)}
-                              </div>
-                            </div>
-                          )}
-                          {!student.restriction?.isBlocked && student.status === 'COMPLETED' && (
-                            <span className="px-2 inline-flex text-xs leading-5 font-semibold rounded-full bg-green-100 text-green-800">
-                              Selesai
-                            </span>
-                          )}
-                          {!student.restriction?.isBlocked && student.status === 'TIMEOUT' && (
-                            <span className="px-2 inline-flex text-xs leading-5 font-semibold rounded-full bg-red-100 text-red-800">
-                              Waktu Habis
-                            </span>
-                          )}
-                          {!!student.monitoring && (
-                            <div className="text-[11px] text-gray-500 mt-1">
-                              Pelanggaran: {student.monitoring.totalViolations || 0} (tab: {student.monitoring.tabSwitchCount || 0}, fullscreen: {student.monitoring.fullscreenExitCount || 0}, app: {student.monitoring.appSwitchCount || 0})
-                            </div>
-                          )}
-                        </td>
-                        <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-500">
-                          {student.startTime ? new Date(student.startTime).toLocaleTimeString('id-ID') : '-'}
-                        </td>
-                        <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-500">
-                          {student.submitTime ? new Date(student.submitTime).toLocaleTimeString('id-ID') : '-'}
-                        </td>
-                      </tr>
-                    ))}
-                  </tbody>
-                </table>
-              </div>
-            </div>
-          </div>
-        </div>
-
-        <div className="space-y-6">
-          <div className="bg-white shadow rounded-lg overflow-hidden">
-            <div className="px-6 py-4 border-b border-gray-200">
-              <h3 className="text-lg font-medium text-gray-900">Informasi Ujian</h3>
-            </div>
-            <div className="p-6 space-y-4">
-              <div>
-                <label className="text-sm text-gray-500">Mata Pelajaran</label>
-                <div className="mt-1 flex items-center gap-2 text-gray-900 font-medium">
-                  <BookOpen className="h-4 w-4 text-gray-400" />
-                  <span>{subjectName}</span>
-                </div>
-              </div>
-              <div>
-                <label className="text-sm text-gray-500">Guru Pengampu</label>
-                <div className="mt-1 flex items-start gap-2 text-gray-900">
-                  <UserCircle2 className="h-4 w-4 text-gray-400 mt-0.5" />
-                  <span className="font-medium">{teacherNames.join(', ')}</span>
-                </div>
-              </div>
-              <div>
-                <label className="text-sm text-gray-500">Waktu</label>
-                <div className="flex items-center mt-1">
-                  <Clock className="h-4 w-4 mr-2 text-gray-400" />
-                  <span>{new Date(schedule.startTime).toLocaleTimeString('id-ID', { hour: '2-digit', minute: '2-digit' })} - {new Date(schedule.endTime).toLocaleTimeString('id-ID', { hour: '2-digit', minute: '2-digit' })}</span>
-                </div>
-              </div>
-              <div>
-                <label className="text-sm text-gray-500">Ruangan</label>
-                <div className="mt-1 flex items-center gap-2 font-medium text-gray-900">
-                  <MapPin className="h-4 w-4 text-gray-400" />
-                  <span>{schedule.room || 'Belum ditentukan'}</span>
-                </div>
-              </div>
-            </div>
-          </div>
-
-          <div className="bg-white shadow rounded-lg overflow-hidden">
-            <div className="px-6 py-4 border-b border-gray-200">
-              <h3 className="text-lg font-medium text-gray-900">Berita Acara</h3>
-            </div>
-            <div className="p-6 space-y-4">
-              <div className="rounded-xl border border-slate-200 bg-slate-50 p-4">
-                <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
-                  <div>
-                    <div className="text-sm font-semibold text-slate-900">
-                      {reportSubmitted ? 'Berita acara sudah dikirim' : 'Siapkan berita acara sebelum dikirim'}
-                    </div>
-                    <div className="mt-1 text-xs leading-5 text-slate-600">
-                      {reportSubmitted
-                        ? 'Setelah terkirim, berita acara menjadi arsip dan catatan pengawas bersifat read-only dari sisi pengawas.'
-                        : 'Buka panel berita acara untuk meninjau preview dokumen, mengisi catatan pengawas, lalu kirim ke Kurikulum.'}
-                    </div>
-                    {latestReport?.documentNumber ? (
-                      <div className="mt-2 text-xs font-medium text-slate-500">No. Dokumen: {latestReport.documentNumber}</div>
-                    ) : null}
-                  </div>
-                  <button
-                    type="button"
-                    onClick={() => setIsReportModalOpen(true)}
-                    className={`inline-flex items-center justify-center rounded-lg border px-4 py-2 text-sm font-semibold ${
-                      reportSubmitted
-                        ? 'border-emerald-200 bg-emerald-50 text-emerald-700 hover:bg-emerald-100'
-                        : 'border-indigo-200 bg-indigo-50 text-indigo-700 hover:bg-indigo-100'
-                    }`}
-                  >
-                    <FileText className="mr-2 h-4 w-4" />
-                    {reportSubmitted ? 'Lihat Berita Acara' : 'Buka Berita Acara'}
-                  </button>
-                </div>
-              </div>
+                  ))}
+                </tbody>
+              </table>
             </div>
           </div>
         </div>
       </div>
+
+      {isExamInfoModalOpen ? (
+        <div className="fixed inset-0 z-[90] flex items-center justify-center bg-slate-950/45 px-4 py-6 backdrop-blur-sm">
+          <div className="flex max-h-[88vh] w-full max-w-2xl flex-col overflow-hidden rounded-2xl border border-slate-200 bg-white shadow-2xl">
+            <div className="flex items-start justify-between gap-4 border-b border-slate-200 px-5 py-4">
+              <div>
+                <h4 className="text-base font-semibold text-slate-900">Informasi Ujian</h4>
+                <p className="mt-1 text-sm text-slate-600">
+                  Ringkasan jadwal dan konteks ujian yang sedang dipantau pengawas.
+                </p>
+              </div>
+              <button
+                type="button"
+                onClick={() => setIsExamInfoModalOpen(false)}
+                className="inline-flex h-9 w-9 items-center justify-center rounded-full border border-slate-200 text-slate-500 hover:bg-slate-50 hover:text-slate-700"
+                aria-label="Tutup informasi ujian"
+              >
+                <X className="h-4 w-4" />
+              </button>
+            </div>
+            <div className="overflow-y-auto px-5 py-5">
+              <div className="rounded-2xl border border-sky-200 bg-sky-50/80 p-5">
+                <div className="text-xs font-semibold uppercase tracking-[0.2em] text-sky-700">Pantau Ujian</div>
+                <div className="mt-2 text-xl font-semibold text-slate-900">{title}</div>
+                <div className="mt-1 text-sm text-slate-600">{orderedClassNames.join(' • ')}</div>
+              </div>
+              <div className="mt-5 grid gap-4 sm:grid-cols-2">
+                <div className="rounded-xl border border-slate-200 bg-white p-4">
+                  <div className="text-xs font-semibold uppercase tracking-[0.18em] text-slate-500">Mata Pelajaran</div>
+                  <div className="mt-2 flex items-center gap-2 text-sm font-semibold text-slate-900">
+                    <BookOpen className="h-4 w-4 text-slate-400" />
+                    <span>{subjectName}</span>
+                  </div>
+                </div>
+                <div className="rounded-xl border border-slate-200 bg-white p-4">
+                  <div className="text-xs font-semibold uppercase tracking-[0.18em] text-slate-500">Guru Pengampu</div>
+                  <div className="mt-2 flex items-start gap-2 text-sm font-semibold text-slate-900">
+                    <UserCircle2 className="h-4 w-4 text-slate-400 mt-0.5" />
+                    <span>{teacherNames.join(', ')}</span>
+                  </div>
+                </div>
+                <div className="rounded-xl border border-slate-200 bg-white p-4">
+                  <div className="text-xs font-semibold uppercase tracking-[0.18em] text-slate-500">Waktu Pelaksanaan</div>
+                  <div className="mt-2 flex items-center gap-2 text-sm font-semibold text-slate-900">
+                    <Clock className="h-4 w-4 text-slate-400" />
+                    <span>
+                      {new Date(schedule.startTime).toLocaleTimeString('id-ID', { hour: '2-digit', minute: '2-digit' })} -{' '}
+                      {new Date(schedule.endTime).toLocaleTimeString('id-ID', { hour: '2-digit', minute: '2-digit' })}
+                    </span>
+                  </div>
+                </div>
+                <div className="rounded-xl border border-slate-200 bg-white p-4">
+                  <div className="text-xs font-semibold uppercase tracking-[0.18em] text-slate-500">Ruangan</div>
+                  <div className="mt-2 flex items-center gap-2 text-sm font-semibold text-slate-900">
+                    <MapPin className="h-4 w-4 text-slate-400" />
+                    <span>{schedule.room || 'Belum ditentukan'}</span>
+                  </div>
+                </div>
+                <div className="rounded-xl border border-slate-200 bg-white p-4">
+                  <div className="text-xs font-semibold uppercase tracking-[0.18em] text-slate-500">Token Ujian</div>
+                  <div className="mt-2 text-sm font-semibold text-slate-900">{schedule.token || '-'}</div>
+                </div>
+                <div className="rounded-xl border border-slate-200 bg-white p-4">
+                  <div className="text-xs font-semibold uppercase tracking-[0.18em] text-slate-500">Monitoring Kelas</div>
+                  <div className="mt-2 text-sm font-semibold text-slate-900">{orderedClassNames.length} kelas</div>
+                </div>
+              </div>
+            </div>
+          </div>
+        </div>
+      ) : null}
 
       {isReportModalOpen ? (
         <div className="fixed inset-0 z-[90] flex items-center justify-center bg-slate-950/45 px-4 py-6 backdrop-blur-sm">

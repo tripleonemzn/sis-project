@@ -115,6 +115,7 @@ export default function TeacherProctoringDetailScreen() {
 
   const [notes, setNotes] = useState('');
   const [isReportModalOpen, setIsReportModalOpen] = useState(false);
+  const [isExamInfoModalOpen, setIsExamInfoModalOpen] = useState(false);
 
   const detailQuery = useQuery({
     queryKey: ['mobile-proctoring-detail', parsedScheduleId],
@@ -160,6 +161,15 @@ export default function TeacherProctoringDetailScreen() {
       notifyApiError(error, 'Gagal mengirim berita acara.');
     },
   });
+
+  const handleRefresh = async () => {
+    try {
+      await detailQuery.refetch();
+      notifySuccess('Data monitoring berhasil diperbarui.');
+    } catch (error) {
+      notifyApiError(error, 'Gagal memuat ulang data monitoring.');
+    }
+  };
 
   const students = detailQuery.data?.students || [];
   const latestReport = useMemo(() => {
@@ -328,6 +338,82 @@ export default function TeacherProctoringDetailScreen() {
         </View>
       </View>
 
+      <View
+        style={{
+          flexDirection: 'row',
+          flexWrap: 'wrap',
+          gap: 8,
+          marginBottom: 10,
+        }}
+      >
+        <Pressable
+          onPress={() => setIsExamInfoModalOpen(true)}
+          style={{
+            borderWidth: 1,
+            borderColor: '#bae6fd',
+            backgroundColor: '#f0f9ff',
+            borderRadius: 10,
+            paddingHorizontal: 12,
+            paddingVertical: 10,
+            flexDirection: 'row',
+            alignItems: 'center',
+            gap: 8,
+          }}
+        >
+          <Feather name="book-open" size={16} color="#0369a1" />
+          <Text style={{ color: '#0369a1', fontWeight: '700', fontSize: scaleFont(12), lineHeight: scaleLineHeight(18) }}>
+            Informasi Ujian
+          </Text>
+        </Pressable>
+        <Pressable
+          onPress={() => setIsReportModalOpen(true)}
+          style={{
+            borderWidth: 1,
+            borderColor: reportSubmitted ? '#a7f3d0' : '#bfdbfe',
+            backgroundColor: reportSubmitted ? '#ecfdf5' : '#eff6ff',
+            borderRadius: 10,
+            paddingHorizontal: 12,
+            paddingVertical: 10,
+            flexDirection: 'row',
+            alignItems: 'center',
+            gap: 8,
+          }}
+        >
+          <Feather name="file-text" size={16} color={reportSubmitted ? '#047857' : '#1d4ed8'} />
+          <Text
+            style={{
+              color: reportSubmitted ? '#047857' : '#1d4ed8',
+              fontWeight: '700',
+              fontSize: scaleFont(12),
+              lineHeight: scaleLineHeight(18),
+            }}
+          >
+            {reportSubmitted ? 'Lihat Berita Acara' : 'Buka Berita Acara'}
+          </Text>
+        </Pressable>
+        <Pressable
+          onPress={() => {
+            void handleRefresh();
+          }}
+          style={{
+            borderWidth: 1,
+            borderColor: '#cbd5e1',
+            backgroundColor: '#fff',
+            borderRadius: 10,
+            paddingHorizontal: 12,
+            paddingVertical: 10,
+            flexDirection: 'row',
+            alignItems: 'center',
+            gap: 8,
+          }}
+        >
+          <Feather name="refresh-cw" size={16} color="#475569" />
+          <Text style={{ color: '#334155', fontWeight: '700', fontSize: scaleFont(12), lineHeight: scaleLineHeight(18) }}>
+            Refresh Data
+          </Text>
+        </Pressable>
+      </View>
+
       {detailQuery.isLoading ? <QueryStateView type="loading" message="Memuat detail jadwal..." /> : null}
       {detailQuery.isError ? (
         <QueryStateView
@@ -361,35 +447,6 @@ export default function TeacherProctoringDetailScreen() {
               </Text>
             </View>
           ) : null}
-
-          <View
-            style={{
-              backgroundColor: '#1e3a8a',
-              borderRadius: 12,
-              padding: 12,
-              marginBottom: 10,
-            }}
-            >
-              <Text style={{ color: '#bfdbfe', fontSize: scaleFont(12), lineHeight: scaleLineHeight(18) }}>Jadwal Ujian</Text>
-              <Text style={{ color: '#fff', fontSize: scaleFont(18), lineHeight: scaleLineHeight(24), fontWeight: '700', marginTop: 3 }}>
-                {detailQuery.data.schedule.displayTitle || detailQuery.data.schedule.packet?.title || 'Paket Tidak Ditemukan'}
-              </Text>
-              <Text style={{ color: '#dbeafe', fontSize: scaleFont(12), lineHeight: scaleLineHeight(18), marginTop: 3 }}>
-                {detailQuery.data.schedule.packet?.subject?.name || '-'} • {orderedClassNames.join(' • ') || '-'}
-              </Text>
-              <Text style={{ color: '#dbeafe', fontSize: scaleFont(12), lineHeight: scaleLineHeight(18), marginTop: 3 }}>
-                {formatDateTime(detailQuery.data.schedule.startTime)} - {formatTime(detailQuery.data.schedule.endTime)}
-              </Text>
-              <Text style={{ color: '#dbeafe', fontSize: scaleFont(12), lineHeight: scaleLineHeight(18), marginTop: 3 }}>
-                Ruangan: {detailQuery.data.schedule.room || 'Belum ditentukan'} • Token:{' '}
-                {detailQuery.data.schedule.token || '-'}
-              </Text>
-              {detailQuery.data.schedule.teacherNames?.length ? (
-                <Text style={{ color: '#dbeafe', fontSize: scaleFont(12), lineHeight: scaleLineHeight(18), marginTop: 3 }}>
-                  Guru Pengampu: {detailQuery.data.schedule.teacherNames.join(', ')}
-                </Text>
-              ) : null}
-            </View>
 
           <View style={{ flexDirection: 'row', flexWrap: 'wrap', marginHorizontal: -4, marginBottom: 10 }}>
             <View style={{ width: '50%', paddingHorizontal: 4, marginBottom: 8 }}>
@@ -586,60 +643,155 @@ export default function TeacherProctoringDetailScreen() {
             )}
           </View>
 
-          <View
-            style={{
-              backgroundColor: '#fff',
-              borderWidth: 1,
-              borderColor: '#dbe7fb',
-              borderRadius: 12,
-              padding: 12,
-              marginBottom: 10,
-            }}
-          >
-            <Text style={{ color: BRAND_COLORS.textDark, fontWeight: '700', marginBottom: 8 }}>Berita Acara</Text>
-            <View
-              style={{
-                borderWidth: 1,
-                borderColor: '#cbd5e1',
-                borderRadius: 12,
-                padding: 12,
-                backgroundColor: '#f8fafc',
-                marginBottom: 8,
-              }}
-            >
-              <Text style={{ color: BRAND_COLORS.textDark, fontWeight: '700' }}>
-                {reportSubmitted ? 'Berita acara sudah dikirim' : 'Siapkan berita acara sebelum dikirim'}
-              </Text>
-              <Text style={{ color: '#64748b', fontSize: scaleFont(12), marginTop: 4, lineHeight: scaleLineHeight(18) }}>
-                {reportSubmitted
-                  ? 'Setelah terkirim, berita acara menjadi arsip dan catatan pengawas bersifat read-only dari sisi pengawas.'
-                  : 'Buka panel berita acara untuk meninjau preview dokumen, mengisi catatan pengawas, lalu kirim ke Kurikulum.'}
-              </Text>
-              {latestReport?.documentNumber ? (
-                <Text style={{ color: '#64748b', fontSize: scaleFont(12), lineHeight: scaleLineHeight(18), marginTop: 4 }}>
-                  No. Dokumen: {latestReport.documentNumber}
-                </Text>
-              ) : null}
-            </View>
-            <Pressable
-              onPress={() => setIsReportModalOpen(true)}
-              style={{
-                borderWidth: 1,
-                borderColor: reportSubmitted ? '#a7f3d0' : '#bfdbfe',
-                backgroundColor: reportSubmitted ? '#ecfdf5' : '#eff6ff',
-                borderRadius: 10,
-                paddingVertical: 11,
-                alignItems: 'center',
-                marginBottom: 8,
-              }}
-            >
-              <Text style={{ color: reportSubmitted ? '#047857' : '#1d4ed8', fontWeight: '700' }}>
-                {reportSubmitted ? 'Lihat Berita Acara' : 'Buka Berita Acara'}
-              </Text>
-            </Pressable>
-          </View>
         </>
       ) : null}
+
+      <Modal
+        visible={isExamInfoModalOpen}
+        animationType="slide"
+        transparent
+        onRequestClose={() => setIsExamInfoModalOpen(false)}
+      >
+        <View
+          style={{
+            flex: 1,
+            backgroundColor: 'rgba(15, 23, 42, 0.45)',
+            justifyContent: 'center',
+            paddingHorizontal: 16,
+            paddingVertical: 24,
+          }}
+        >
+          <View
+            style={{
+              maxHeight: '88%',
+              borderRadius: 18,
+              backgroundColor: '#fff',
+              overflow: 'hidden',
+              borderWidth: 1,
+              borderColor: '#e2e8f0',
+            }}
+          >
+            <View
+              style={{
+                flexDirection: 'row',
+                justifyContent: 'space-between',
+                alignItems: 'flex-start',
+                gap: 12,
+                paddingHorizontal: 16,
+                paddingVertical: 14,
+                borderBottomWidth: 1,
+                borderBottomColor: '#e2e8f0',
+              }}
+            >
+              <View style={{ flex: 1 }}>
+                <Text style={{ color: BRAND_COLORS.textDark, fontWeight: '700', fontSize: scaleFont(16), lineHeight: scaleLineHeight(22) }}>
+                  Informasi Ujian
+                </Text>
+                <Text style={{ color: '#64748b', fontSize: scaleFont(12), marginTop: 4, lineHeight: scaleLineHeight(18) }}>
+                  Ringkasan jadwal dan konteks ujian yang sedang dipantau pengawas.
+                </Text>
+              </View>
+              <Pressable
+                onPress={() => setIsExamInfoModalOpen(false)}
+                style={{
+                  width: 36,
+                  height: 36,
+                  borderRadius: 999,
+                  borderWidth: 1,
+                  borderColor: '#e2e8f0',
+                  alignItems: 'center',
+                  justifyContent: 'center',
+                }}
+              >
+                <Feather name="x" size={18} color="#64748b" />
+              </Pressable>
+            </View>
+
+            <ScrollView
+              style={{ backgroundColor: '#fff' }}
+              contentContainerStyle={{ padding: 16, gap: 12 }}
+              showsVerticalScrollIndicator={false}
+            >
+              <View
+                style={{
+                  borderWidth: 1,
+                  borderColor: '#bae6fd',
+                  backgroundColor: '#f0f9ff',
+                  borderRadius: 14,
+                  padding: 14,
+                }}
+              >
+                <Text style={{ color: '#0369a1', fontSize: scaleFont(11), lineHeight: scaleLineHeight(16), fontWeight: '700', letterSpacing: 0.8 }}>
+                  PANTAU UJIAN
+                </Text>
+                <Text style={{ color: BRAND_COLORS.textDark, fontSize: scaleFont(18), lineHeight: scaleLineHeight(24), fontWeight: '700', marginTop: 6 }}>
+                  {detailQuery.data?.schedule?.displayTitle || detailQuery.data?.schedule?.packet?.title || 'Paket Tidak Ditemukan'}
+                </Text>
+                <Text style={{ color: '#475569', fontSize: scaleFont(12), lineHeight: scaleLineHeight(18), marginTop: 4 }}>
+                  {orderedClassNames.join(' • ') || '-'}
+                </Text>
+              </View>
+
+              <View
+                style={{
+                  borderWidth: 1,
+                  borderColor: '#e2e8f0',
+                  borderRadius: 12,
+                  padding: 12,
+                  backgroundColor: '#fff',
+                  gap: 10,
+                }}
+              >
+                <View style={{ flexDirection: 'row', alignItems: 'center', gap: 8 }}>
+                  <Feather name="book-open" size={16} color="#94a3b8" />
+                  <View style={{ flex: 1 }}>
+                    <Text style={{ color: '#64748b', fontSize: scaleFont(11), lineHeight: scaleLineHeight(16), fontWeight: '700' }}>Mata Pelajaran</Text>
+                    <Text style={{ color: BRAND_COLORS.textDark, fontSize: scaleFont(13), lineHeight: scaleLineHeight(20), fontWeight: '700', marginTop: 2 }}>
+                      {detailQuery.data?.schedule?.subjectName || detailQuery.data?.schedule?.packet?.subject?.name || '-'}
+                    </Text>
+                  </View>
+                </View>
+                <View style={{ flexDirection: 'row', alignItems: 'flex-start', gap: 8 }}>
+                  <Feather name="user" size={16} color="#94a3b8" style={{ marginTop: 2 }} />
+                  <View style={{ flex: 1 }}>
+                    <Text style={{ color: '#64748b', fontSize: scaleFont(11), lineHeight: scaleLineHeight(16), fontWeight: '700' }}>Guru Pengampu</Text>
+                    <Text style={{ color: BRAND_COLORS.textDark, fontSize: scaleFont(13), lineHeight: scaleLineHeight(20), fontWeight: '700', marginTop: 2 }}>
+                      {detailQuery.data?.schedule?.teacherNames?.join(', ') || '-'}
+                    </Text>
+                  </View>
+                </View>
+                <View style={{ flexDirection: 'row', alignItems: 'center', gap: 8 }}>
+                  <Feather name="clock" size={16} color="#94a3b8" />
+                  <View style={{ flex: 1 }}>
+                    <Text style={{ color: '#64748b', fontSize: scaleFont(11), lineHeight: scaleLineHeight(16), fontWeight: '700' }}>Waktu Pelaksanaan</Text>
+                    <Text style={{ color: BRAND_COLORS.textDark, fontSize: scaleFont(13), lineHeight: scaleLineHeight(20), fontWeight: '700', marginTop: 2 }}>
+                      {formatDateTime(detailQuery.data?.schedule?.startTime)} - {formatTime(detailQuery.data?.schedule?.endTime)}
+                    </Text>
+                  </View>
+                </View>
+                <View style={{ flexDirection: 'row', alignItems: 'center', gap: 8 }}>
+                  <Feather name="map-pin" size={16} color="#94a3b8" />
+                  <View style={{ flex: 1 }}>
+                    <Text style={{ color: '#64748b', fontSize: scaleFont(11), lineHeight: scaleLineHeight(16), fontWeight: '700' }}>Ruangan</Text>
+                    <Text style={{ color: BRAND_COLORS.textDark, fontSize: scaleFont(13), lineHeight: scaleLineHeight(20), fontWeight: '700', marginTop: 2 }}>
+                      {detailQuery.data?.schedule?.room || 'Belum ditentukan'}
+                    </Text>
+                  </View>
+                </View>
+                <View style={{ flexDirection: 'row', alignItems: 'center', gap: 8 }}>
+                  <Feather name="hash" size={16} color="#94a3b8" />
+                  <View style={{ flex: 1 }}>
+                    <Text style={{ color: '#64748b', fontSize: scaleFont(11), lineHeight: scaleLineHeight(16), fontWeight: '700' }}>Token Ujian</Text>
+                    <Text style={{ color: BRAND_COLORS.textDark, fontSize: scaleFont(13), lineHeight: scaleLineHeight(20), fontWeight: '700', marginTop: 2 }}>
+                      {detailQuery.data?.schedule?.token || '-'}
+                    </Text>
+                  </View>
+                </View>
+              </View>
+            </ScrollView>
+          </View>
+        </View>
+      </Modal>
 
       <Modal
         visible={isReportModalOpen}
