@@ -50,6 +50,13 @@ export type ProctorStudentRow = {
     currentQuestionId?: string | null;
     lastSyncAt?: string | null;
   };
+  restriction?: {
+    isBlocked: boolean;
+    reason?: string | null;
+    manualBlocked?: boolean;
+    autoBlocked?: boolean;
+    statusLabel?: string | null;
+  };
 };
 
 export type ProctorScheduleDetail = {

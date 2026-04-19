@@ -1,6 +1,6 @@
 import { randomUUID } from 'crypto';
 import { Request, Response } from 'express';
-import { AdditionalDuty, ExamSessionStatus, Prisma, Semester } from '@prisma/client';
+import { AdditionalDuty, ExamSessionStatus, Prisma, Semester, StudentStatus } from '@prisma/client';
 import QRCode from 'qrcode';
 import prisma from '../utils/prisma';
 import { ApiError, asyncHandler, ApiResponse } from '../utils/api';
@@ -8,6 +8,7 @@ import { broadcastDomainEvent } from '../realtime/realtimeGateway';
 import {
     listHistoricalStudentsByIdsForAcademicYear,
     listHistoricalStudentsForClass,
+    type HistoricalStudentSnapshot,
 } from '../utils/studentAcademicHistory';
 import { createManyInAppNotifications } from '../services/mobilePushNotification.service';
 import {
@@ -15,6 +16,11 @@ import {
     hasCurriculumExamManagementDuty,
 } from '../utils/examManagementAccess';
 import { listExamSittingRoomSlots, type ExamSittingRoomSlotRow } from '../services/examSittingRoomSlot.service';
+import {
+    buildExamEligibilitySnapshot,
+    normalizeExamProgramCode,
+    type ExamEligibilityStatus,
+} from '../services/examEligibility.service';
 
 const SCHOOL_NAME = 'SMKS Karya Guna Bhakti 2';
 const SCHOOL_LOGO_PATH = '/logo-kgb2.png';
@@ -251,6 +257,101 @@ function normalizeMultilineText(value: unknown): string | null {
         .filter(Boolean)
         .join('\n');
     return normalized || null;
+}
+
+const PROCTOR_ELIGIBILITY_CACHE_TTL_MS = 15_000;
+const PROCTOR_ELIGIBILITY_CACHE_MAX_ENTRIES = 120;
+const proctorEligibilityCache = new Map<
+    string,
+    {
+        expiresAt: number;
+        payload: Map<number, ExamEligibilityStatus>;
+    }
+>();
+const proctorEligibilityCacheInflight = new Map<string, Promise<Map<number, ExamEligibilityStatus>>>();
+
+function buildProctorEligibilityCacheKey(params: {
+    academicYearId: number;
+    semester: Semester;
+    programCode: string;
+    studentIds: number[];
+}): string {
+    return [
+        params.academicYearId,
+        params.semester,
+        params.programCode,
+        params.studentIds
+            .slice()
+            .sort((left, right) => left - right)
+            .join(','),
+    ].join(':');
+}
+
+function getCachedProctorEligibilitySnapshot(key: string): Map<number, ExamEligibilityStatus> | null {
+    const cached = proctorEligibilityCache.get(key);
+    if (!cached) return null;
+    if (cached.expiresAt <= Date.now()) {
+        proctorEligibilityCache.delete(key);
+        return null;
+    }
+    return cached.payload;
+}
+
+function setCachedProctorEligibilitySnapshot(key: string, payload: Map<number, ExamEligibilityStatus>) {
+    proctorEligibilityCache.set(key, {
+        expiresAt: Date.now() + PROCTOR_ELIGIBILITY_CACHE_TTL_MS,
+        payload,
+    });
+
+    if (proctorEligibilityCache.size <= PROCTOR_ELIGIBILITY_CACHE_MAX_ENTRIES) return;
+
+    const oldestKey = proctorEligibilityCache.keys().next().value;
+    if (oldestKey) {
+        proctorEligibilityCache.delete(oldestKey);
+    }
+}
+
+async function getOrCreateProctorEligibilitySnapshot(params: {
+    academicYearId: number;
+    semester: Semester;
+    programCode: string;
+    students: Parameters<typeof buildExamEligibilitySnapshot>[0]['students'];
+}) {
+    const studentIds = params.students
+        .map((student) => Number(student.id))
+        .filter((studentId) => Number.isFinite(studentId) && studentId > 0);
+    if (studentIds.length === 0) return new Map<number, ExamEligibilityStatus>();
+
+    const key = buildProctorEligibilityCacheKey({
+        academicYearId: params.academicYearId,
+        semester: params.semester,
+        programCode: params.programCode,
+        studentIds,
+    });
+    const cached = getCachedProctorEligibilitySnapshot(key);
+    if (cached) return cached;
+
+    const inflight = proctorEligibilityCacheInflight.get(key);
+    if (inflight) {
+        return inflight;
+    }
+
+    const runner = buildExamEligibilitySnapshot({
+        academicYearId: params.academicYearId,
+        semester: params.semester,
+        programCode: params.programCode,
+        students: params.students,
+    })
+        .then((payload) => {
+            setCachedProctorEligibilitySnapshot(key, payload);
+            return payload;
+        })
+        .finally(() => {
+            proctorEligibilityCacheInflight.delete(key);
+        });
+
+    proctorEligibilityCacheInflight.set(key, runner);
+    return runner;
 }
 
 function composeProctorReportNotes(notes: unknown, incident: unknown): string | null {
@@ -664,6 +765,43 @@ type ProctorHistoricalStudentRow = {
     classId: number | null;
     className: string | null;
 };
+
+function mapProctorStudentsToEligibilitySnapshots(
+    rows: ProctorHistoricalStudentRow[],
+    academicYearId: number,
+): HistoricalStudentSnapshot[] {
+    return rows
+        .filter(
+            (row) =>
+                Number.isFinite(Number(row.id)) &&
+                Number(row.id) > 0 &&
+                Number.isFinite(Number(row.classId)) &&
+                Number(row.classId) > 0,
+        )
+        .map(
+            (row) =>
+                ({
+                    id: Number(row.id),
+                    name: String(row.name || '-'),
+                    nis: row.nis ? String(row.nis) : null,
+                    nisn: null,
+                    gender: null,
+                    studentStatus: StudentStatus.ACTIVE,
+                    guardianName: null,
+                    fatherName: null,
+                    motherName: null,
+                    academicMembershipStatus: null,
+                    studentClass: {
+                        id: Number(row.classId),
+                        name: String(row.className || '-'),
+                        level: null,
+                        academicYearId,
+                        major: null,
+                        teacher: null,
+                    } as unknown as HistoricalStudentSnapshot['studentClass'],
+                }) as HistoricalStudentSnapshot,
+        );
+}
 
 function buildProctorHistoricalStudentRowFromCurrentStudent(student: {
     id: number;
@@ -1953,7 +2091,16 @@ export const getProctoringDetail = asyncHandler(async (req: Request, res: Respon
             id: scheduleIdNumber,
         },
         include: {
-            packet: { select: { title: true, subject: { select: { name: true } }, authorId: true, subjectId: true, academicYearId: true } },
+            packet: {
+                select: {
+                    title: true,
+                    subject: { select: { name: true } },
+                    authorId: true,
+                    subjectId: true,
+                    academicYearId: true,
+                    programCode: true,
+                },
+            },
             subject: { select: { id: true, name: true } },
             academicYear: { select: { name: true } },
             class: { select: { id: true, name: true } },
@@ -2103,6 +2250,23 @@ export const getProctoringDetail = asyncHandler(async (req: Request, res: Respon
     const monitoredStudentIds = students
         .map((row) => Number(row.id))
         .filter((studentId) => Number.isFinite(studentId) && studentId > 0);
+    const resolvedProgramCode = normalizeExamProgramCode(schedule.packet?.programCode || effectiveExamType);
+    const eligibilityStudents =
+        resolvedAcademicYearId && students.length > 0
+            ? mapProctorStudentsToEligibilitySnapshots(students, resolvedAcademicYearId)
+            : [];
+    const eligibilitySnapshot =
+        resolvedAcademicYearId &&
+        schedule.semester &&
+        resolvedProgramCode &&
+        eligibilityStudents.length > 0
+            ? await getOrCreateProctorEligibilitySnapshot({
+                  academicYearId: resolvedAcademicYearId,
+                  semester: schedule.semester,
+                  programCode: resolvedProgramCode,
+                  students: eligibilityStudents,
+              })
+            : new Map<number, ExamEligibilityStatus>();
     const monitoredClassIdsFromRoom = Array.from(
         new Set(
             students
@@ -2239,6 +2403,7 @@ export const getProctoringDetail = asyncHandler(async (req: Request, res: Respon
 
     const studentList = students.map((s: any) => {
         const session = bestSessionByStudent.get(s.id);
+        const eligibility = eligibilitySnapshot.get(Number(s.id)) || null;
         const normalizedStatus = normalizeProctorSessionStatus(
             session?.status,
             session?.startTime,
@@ -2265,6 +2430,22 @@ export const getProctoringDetail = asyncHandler(async (req: Request, res: Respon
             answeredCount,
             totalQuestions,
             monitoring: progressSession ? parseMonitoringSummary(progressSession.answers) : parseMonitoringSummary(null),
+            restriction: {
+                isBlocked: Boolean(eligibility && !eligibility.isEligible),
+                reason: String(eligibility?.reason || '').trim() || null,
+                manualBlocked: Boolean(eligibility?.manualBlocked),
+                autoBlocked: Boolean(eligibility?.autoBlocked),
+                statusLabel:
+                    eligibility && !eligibility.isEligible
+                        ? eligibility.manualBlocked && eligibility.autoBlocked
+                            ? 'Diblokir Manual + Otomatis'
+                            : eligibility.manualBlocked
+                                ? 'Diblokir Manual'
+                                : eligibility.autoBlocked
+                                    ? 'Diblokir Otomatis'
+                                    : 'Diblokir'
+                        : null,
+            },
         };
     });
     const attendancePresentCount = studentList.filter(

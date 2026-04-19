@@ -27,6 +27,13 @@ interface StudentData {
   status: 'NOT_STARTED' | 'IN_PROGRESS' | 'COMPLETED' | 'TIMEOUT';
   startTime: string | null;
   submitTime: string | null;
+  restriction?: {
+    isBlocked: boolean;
+    reason?: string | null;
+    manualBlocked?: boolean;
+    autoBlocked?: boolean;
+    statusLabel?: string | null;
+  };
 }
 
 interface ExamSchedule {
@@ -273,7 +280,10 @@ const ProctorMonitoringPage: React.FC = () => {
     0,
     (Number(schedule.attendanceSummary?.absentParticipants) || expectedCount - presentCount),
   );
-  const notStartedCount = orderedStudents.filter((student) => student.status === 'NOT_STARTED').length;
+  const blockedCount = orderedStudents.filter((student) => Boolean(student.restriction?.isBlocked)).length;
+  const waitingStartCount = orderedStudents.filter(
+    (student) => student.status === 'NOT_STARTED' && !student.restriction?.isBlocked,
+  ).length;
   const previewDate = new Date(schedule.startTime);
   const previewWeekday = Number.isNaN(previewDate.getTime())
     ? '-'
@@ -323,7 +333,7 @@ const ProctorMonitoringPage: React.FC = () => {
         </div>
       </div>
 
-      {(serverTimeDriftMinutes !== null || (isScheduleRunning && notStartedCount > 0)) && (
+      {(serverTimeDriftMinutes !== null || (isScheduleRunning && waitingStartCount > 0)) && (
         <div className="bg-amber-50 border border-amber-200 rounded-lg px-4 py-3">
           <p className="text-sm font-semibold text-amber-800">Peringatan Sinkronisasi Waktu</p>
           {serverTimeDriftMinutes !== null ? (
@@ -356,6 +366,9 @@ const ProctorMonitoringPage: React.FC = () => {
                   <span className="px-3 py-1 rounded-full bg-rose-100 text-rose-700 text-xs font-semibold">
                     Tidak hadir: {absentCount}
                   </span>
+                  <span className="px-3 py-1 rounded-full bg-amber-100 text-amber-700 text-xs font-semibold">
+                    Diblokir: {blockedCount}
+                  </span>
                 </div>
               </div>
             </div>
@@ -382,12 +395,24 @@ const ProctorMonitoringPage: React.FC = () => {
                           {student.className || '-'}
                         </td>
                         <td className="px-6 py-4 whitespace-nowrap">
-                          {student.status === 'NOT_STARTED' && (
+                          {student.restriction?.isBlocked ? (
+                            <div className="space-y-1 max-w-xs">
+                              <span className="px-2 inline-flex text-xs leading-5 font-semibold rounded-full bg-amber-100 text-amber-800">
+                                {student.restriction.statusLabel || 'Diblokir'}
+                              </span>
+                              <div className="text-xs text-amber-800 leading-5 whitespace-normal">
+                                {student.restriction.reason || 'Akses ujian ditutup.'}
+                              </div>
+                              <div className="text-[11px] text-gray-500">
+                                Status sesi: {student.status === 'NOT_STARTED' ? 'Belum Mulai' : student.status === 'IN_PROGRESS' ? 'Sedang Mengerjakan' : student.status === 'COMPLETED' ? 'Selesai' : 'Waktu Habis'}
+                              </div>
+                            </div>
+                          ) : student.status === 'NOT_STARTED' ? (
                             <span className="px-2 inline-flex text-xs leading-5 font-semibold rounded-full bg-gray-100 text-gray-800">
                               Belum Mulai
                             </span>
-                          )}
-                          {student.status === 'IN_PROGRESS' && (
+                          ) : null}
+                          {!student.restriction?.isBlocked && student.status === 'IN_PROGRESS' && (
                             <div className="space-y-1">
                               <span className="px-2 inline-flex text-xs leading-5 font-semibold rounded-full bg-blue-100 text-blue-800">
                                 Sedang Mengerjakan
@@ -400,12 +425,12 @@ const ProctorMonitoringPage: React.FC = () => {
                               </div>
                             </div>
                           )}
-                          {student.status === 'COMPLETED' && (
+                          {!student.restriction?.isBlocked && student.status === 'COMPLETED' && (
                             <span className="px-2 inline-flex text-xs leading-5 font-semibold rounded-full bg-green-100 text-green-800">
                               Selesai
                             </span>
                           )}
-                          {student.status === 'TIMEOUT' && (
+                          {!student.restriction?.isBlocked && student.status === 'TIMEOUT' && (
                             <span className="px-2 inline-flex text-xs leading-5 font-semibold rounded-full bg-red-100 text-red-800">
                               Waktu Habis
                             </span>

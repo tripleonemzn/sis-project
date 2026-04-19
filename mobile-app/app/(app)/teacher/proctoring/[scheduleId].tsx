@@ -193,6 +193,10 @@ export default function TeacherProctoringDetailScreen() {
   const inProgressCount = orderedStudents.filter((item) => item.status === 'IN_PROGRESS').length;
   const completedCount = orderedStudents.filter((item) => item.status === 'COMPLETED').length;
   const notStartedCount = orderedStudents.filter((item) => item.status === 'NOT_STARTED').length;
+  const blockedCount = orderedStudents.filter((item) => Boolean(item.restriction?.isBlocked)).length;
+  const waitingStartCount = orderedStudents.filter(
+    (item) => item.status === 'NOT_STARTED' && !item.restriction?.isBlocked,
+  ).length;
   const totalViolations = orderedStudents.reduce((acc, item) => acc + Number(item.monitoring?.totalViolations || 0), 0);
   const studentsWithViolations = orderedStudents.filter((item) => Number(item.monitoring?.totalViolations || 0) > 0).length;
 
@@ -337,7 +341,7 @@ export default function TeacherProctoringDetailScreen() {
 
       {!detailQuery.isLoading && !detailQuery.isError && detailQuery.data ? (
         <>
-          {(serverTimeDriftMinutes !== null || (isScheduleRunning && notStartedCount > 0)) ? (
+          {(serverTimeDriftMinutes !== null || (isScheduleRunning && waitingStartCount > 0)) ? (
             <View
               style={{
                 backgroundColor: '#fef3c7',
@@ -442,6 +446,7 @@ export default function TeacherProctoringDetailScreen() {
             <Text style={{ color: '#0f766e', fontWeight: '700' }}>Hadir {presentParticipants}</Text>
             <Text style={{ color: '#b91c1c', fontWeight: '700' }}>Tidak hadir {absentParticipants}</Text>
             <Text style={{ color: '#475569' }}>Belum mulai {Math.max(0, notStartedCount)}</Text>
+            <Text style={{ color: '#92400e', fontWeight: '700' }}>Diblokir {blockedCount}</Text>
           </View>
 
           <View
@@ -459,6 +464,7 @@ export default function TeacherProctoringDetailScreen() {
               orderedStudents.map((student) => {
                 const style = statusStyle(student.status);
                 const totalStudentViolations = Number(student.monitoring?.totalViolations || 0);
+                const restrictionBlocked = Boolean(student.restriction?.isBlocked);
                 return (
                   <View
                     key={student.id}
@@ -483,15 +489,15 @@ export default function TeacherProctoringDetailScreen() {
                       <View
                         style={{
                           borderWidth: 1,
-                          borderColor: style.border,
-                          backgroundColor: style.bg,
+                          borderColor: restrictionBlocked ? '#fcd34d' : style.border,
+                          backgroundColor: restrictionBlocked ? '#fef3c7' : style.bg,
                           borderRadius: 999,
                           paddingHorizontal: 8,
                           paddingVertical: 3,
                         }}
                       >
-                        <Text style={{ color: style.text, fontWeight: '700', fontSize: scaleFont(11) }}>
-                          {statusLabel(student.status)}
+                        <Text style={{ color: restrictionBlocked ? '#92400e' : style.text, fontWeight: '700', fontSize: scaleFont(11) }}>
+                          {restrictionBlocked ? student.restriction?.statusLabel || 'Diblokir' : statusLabel(student.status)}
                         </Text>
                       </View>
                     </View>
@@ -499,7 +505,27 @@ export default function TeacherProctoringDetailScreen() {
                       Mulai: {formatTime(student.startTime)} • Selesai: {formatTime(student.submitTime)} • Nilai:{' '}
                       {student.score ?? '-'}
                     </Text>
-                    {student.status === 'IN_PROGRESS' || totalStudentViolations > 0 || student.answeredCount || student.monitoring ? (
+                    {restrictionBlocked ? (
+                      <View
+                        style={{
+                          marginTop: 8,
+                          borderWidth: 1,
+                          borderColor: '#fcd34d',
+                          backgroundColor: '#fffbeb',
+                          borderRadius: 10,
+                          paddingHorizontal: 10,
+                          paddingVertical: 8,
+                          gap: 4,
+                        }}
+                      >
+                        <Text style={{ color: '#92400e', fontSize: scaleFont(12), lineHeight: scaleLineHeight(18), fontWeight: '700' }}>
+                          {student.restriction?.statusLabel || 'Diblokir'}
+                        </Text>
+                        <Text style={{ color: '#92400e', fontSize: scaleFont(12), lineHeight: scaleLineHeight(18) }}>
+                          {student.restriction?.reason || 'Akses ujian ditutup.'}
+                        </Text>
+                      </View>
+                    ) : student.status === 'IN_PROGRESS' || totalStudentViolations > 0 || student.answeredCount || student.monitoring ? (
                       <View
                         style={{
                           marginTop: 8,
