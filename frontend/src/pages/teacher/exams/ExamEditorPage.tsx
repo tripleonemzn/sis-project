@@ -2853,7 +2853,7 @@ export const ExamEditorPage = () => {
                         <span className="text-slate-500"> • {selectedPacketSemester === 'ODD' ? 'Ganjil' : 'Genap'}</span>
                         <span className="text-slate-500"> • Soal terisi: {completedQuestionCount}/{questions.length}</span>
                     </div>
-                    <div className="flex items-center gap-2">
+                    <div className="flex flex-wrap items-center justify-end gap-2">
                         {!isPacketInfoComplete && (
                             <span className="rounded-full border border-amber-200 bg-amber-50 px-2.5 py-1 text-xs font-medium text-amber-700">
                                 Lengkapi informasi ujian
@@ -2866,26 +2866,42 @@ export const ExamEditorPage = () => {
                         >
                             Informasi Ujian
                         </button>
+                        {supportsQuestionSupport && activeQuestion ? (
+                            <button
+                                type="button"
+                                onClick={() => setIsQuestionSupportModalOpen(true)}
+                                className="inline-flex items-center gap-2 rounded-lg border border-emerald-200 bg-emerald-50 px-3 py-1.5 text-sm font-medium text-emerald-700 transition-colors hover:bg-emerald-100"
+                            >
+                                <span>Kisi-kisi & Kartu Soal</span>
+                                <span className={`rounded-full px-2.5 py-0.5 text-[11px] font-semibold ${activeQuestionSupportMeta.badgeClassName}`}>
+                                    {activeQuestionSupportMeta.label}
+                                </span>
+                            </button>
+                        ) : null}
+                        <button
+                            type="button"
+                            onClick={() => setIsStudentPreviewOpen(true)}
+                            className="inline-flex items-center gap-2 rounded-lg border border-blue-200 bg-blue-50 px-3 py-1.5 text-sm font-medium text-blue-700 transition-colors hover:bg-blue-100"
+                        >
+                            <Eye className="h-4 w-4" />
+                            Preview Sebagai Siswa
+                        </button>
                     </div>
                 </div>
-            </div>
 
-            {/* MAIN CONTENT AREA - FULL WIDTH */}
-            <div className="space-y-6">
-                {!isPacketInfoComplete && (
-                    <div className="bg-white rounded-xl border border-amber-200 px-4 py-3 text-sm text-amber-700">
-                        Lengkapi popup <span className="font-semibold">Informasi Ujian</span> sebelum final simpan paket.
-                    </div>
-                )}
-                {/* QUESTION LIST BAR (Horizontal) */}
-                <div className="bg-white rounded-xl shadow-sm border border-gray-200 p-4">
-                    <div className="flex items-center justify-between mb-2">
-                        <h3 className="font-medium text-gray-700 text-sm flex items-center gap-2">
-                            <LayoutGrid className="w-4 h-4" />
-                            Daftar Soal
-                        </h3>
-                        <div className="flex gap-2">
-                            <button 
+                <div className="px-6 py-4 border-t border-gray-100 bg-white/95">
+                    <div className="flex flex-wrap items-start justify-between gap-3">
+                        <div>
+                            <h3 className="font-medium text-gray-700 text-sm flex items-center gap-2">
+                                <LayoutGrid className="w-4 h-4" />
+                                Daftar Soal
+                            </h3>
+                            <p className="mt-1 text-xs text-slate-500">
+                                Navigasi nomor soal tetap melekat di header agar perpindahan butir lebih cepat saat editor discroll.
+                            </p>
+                        </div>
+                        <div className="flex flex-wrap items-center gap-2">
+                            <button
                                 onClick={() => setIsQuestionBankOpen(true)}
                                 className="px-4 py-2 bg-white border border-blue-200 text-blue-600 rounded-lg hover:bg-blue-50 transition-colors text-sm font-medium flex items-center gap-2 shadow-sm"
                                 title="Ambil dari Bank Soal"
@@ -2893,7 +2909,7 @@ export const ExamEditorPage = () => {
                                 <BookCopy className="w-4 h-4" />
                                 Ambil dari Bank Soal
                             </button>
-                            <button 
+                            <button
                                 onClick={addQuestion}
                                 className="px-4 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700 transition-colors text-sm font-medium flex items-center gap-2 shadow-sm"
                                 title="Tambah Soal"
@@ -2903,8 +2919,8 @@ export const ExamEditorPage = () => {
                             </button>
                         </div>
                     </div>
-                    
-                    <div className="flex gap-2 overflow-x-auto pb-2 custom-scrollbar">
+
+                    <div className="mt-3 flex gap-2 overflow-x-auto pb-2 custom-scrollbar">
                         {questions.map((q, idx) => {
                             const isActive = activeQuestionId === q.id;
                             const hasContent = Boolean(normalizeEditorText(q.content));
@@ -2922,15 +2938,13 @@ export const ExamEditorPage = () => {
                                         `}
                                     >
                                         {idx + 1}
-                                        {/* Status Indicator Dot */}
                                         <span className={`absolute -top-1 -right-1 w-2 h-2 rounded-full border-2 border-white ${hasContent ? 'bg-green-500' : 'bg-gray-300'}`}></span>
                                     </button>
-                                    
                                 </div>
                             );
                         })}
-                        
-                        <button 
+
+                        <button
                             onClick={addQuestion}
                             className="flex-shrink-0 w-8 h-8 rounded-lg border border-dashed border-gray-300 flex items-center justify-center text-gray-400 hover:text-blue-600 hover:border-blue-400 transition-colors bg-gray-50"
                             title="Tambah Soal Baru"
@@ -2939,7 +2953,15 @@ export const ExamEditorPage = () => {
                         </button>
                     </div>
                 </div>
+            </div>
 
+            {/* MAIN CONTENT AREA - FULL WIDTH */}
+            <div className="space-y-6">
+                {!isPacketInfoComplete && (
+                    <div className="bg-white rounded-xl border border-amber-200 px-4 py-3 text-sm text-amber-700">
+                        Lengkapi popup <span className="font-semibold">Informasi Ujian</span> sebelum final simpan paket.
+                    </div>
+                )}
                 {activeQuestion ? (
                     <div className="exam-editor-modal bg-white rounded-xl shadow-sm border border-gray-200 overflow-hidden">
                         {/* Question Type & Settings Toolbar */}
@@ -3170,32 +3192,6 @@ export const ExamEditorPage = () => {
                                                 </div>
                                             </div>
 
-                                            {supportsQuestionSupport ? (
-                                                <button
-                                                    type="button"
-                                                    onClick={() => setIsQuestionSupportModalOpen(true)}
-                                                    className={`inline-flex items-center gap-2 rounded-lg border px-3 py-2 text-sm font-normal transition-colors ${
-                                                        activeQuestion
-                                                            ? activeQuestionSupportMeta.buttonClassName
-                                                            : 'border-gray-200 bg-white text-gray-700 hover:bg-gray-50'
-                                                    }`}
-                                                >
-                                                    <span>Kisi-kisi & Kartu Soal</span>
-                                                    {activeQuestion ? (
-                                                        <span className={`rounded-full px-2.5 py-0.5 text-[11px] font-semibold ${activeQuestionSupportMeta.badgeClassName}`}>
-                                                            {activeQuestionSupportMeta.label}
-                                                        </span>
-                                                    ) : null}
-                                                </button>
-                                            ) : null}
-                                            <button
-                                                type="button"
-                                                onClick={() => setIsStudentPreviewOpen(true)}
-                                                className="inline-flex items-center gap-2 rounded-lg border border-blue-200 bg-blue-50 px-3 py-2 text-sm font-normal text-blue-700 transition-colors hover:bg-blue-100"
-                                            >
-                                                <Eye className="h-4 w-4" />
-                                                Preview Sebagai Siswa
-                                            </button>
                                         </div>
                                     </div>
 
