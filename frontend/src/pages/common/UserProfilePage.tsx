@@ -506,8 +506,8 @@ const getProfileCopy = (role: UserFormRole) => {
       subtitle:
         'Guru, kepala sekolah, staff, tutor, dan penguji eksternal memakai struktur profil yang sama agar data inti, alamat, dan penugasan tetap konsisten di seluruh workspace.',
       saveLabel: 'Simpan Profil PTK',
-      readinessTitle: 'Prioritas Data Inti',
-      readinessHelper: 'Fokus pada identitas, alamat, dan data penugasan yang saat ini sudah dipakai lintas modul sekolah.',
+      readinessTitle: 'Kelengkapan Profil PTK',
+      readinessHelper: 'Persentase hanya akan 100% jika seluruh isian profil PTK yang tampil pada halaman ini sudah lengkap.',
       summaryTitle: 'Ringkasan Peran',
     };
   }
@@ -518,8 +518,8 @@ const getProfileCopy = (role: UserFormRole) => {
       subtitle:
         'Lengkapi biodata siswa, kontak aktif, alamat, dan keluarga inti agar administrasi sekolah serta kebutuhan data siswa tetap rapi.',
       saveLabel: 'Simpan Profil Siswa',
-      readinessTitle: 'Prioritas Data Siswa',
-      readinessHelper: 'Data inti siswa difokuskan pada identitas, alamat, dan keluarga yang dipakai operasional sekolah.',
+      readinessTitle: 'Kelengkapan Profil Siswa',
+      readinessHelper: 'Persentase hanya akan 100% jika seluruh isian profil siswa yang tampil pada halaman ini sudah lengkap.',
       summaryTitle: 'Ringkasan Akademik',
     };
   }
@@ -530,8 +530,8 @@ const getProfileCopy = (role: UserFormRole) => {
       subtitle:
         'Halaman ini dibuat ringkas untuk akun, biodata dasar, foto, dan dokumen PPDB. Formulir pendaftaran detail tetap dikelola dari menu Formulir PPDB.',
       saveLabel: 'Simpan Profil Calon Siswa',
-      readinessTitle: 'Kesiapan Profil PPDB',
-      readinessHelper: 'Pastikan biodata dasar dan dokumen pendukung lengkap sebelum formulir PPDB dikirim untuk review.',
+      readinessTitle: 'Kelengkapan Profil PPDB',
+      readinessHelper: 'Persentase hanya akan 100% jika biodata inti dan dokumen PPDB yang tampil pada halaman ini sudah lengkap.',
       summaryTitle: 'Ringkasan Pendaftaran',
     };
   }
@@ -542,8 +542,8 @@ const getProfileCopy = (role: UserFormRole) => {
       subtitle:
         'Kelola identitas akun keluarga, kontak aktif, dan alamat yang dipakai saat menghubungkan serta memantau data anak.',
       saveLabel: 'Simpan Profil Wali',
-      readinessTitle: 'Kesiapan Profil Wali',
-      readinessHelper: 'Kontak aktif dan alamat yang rapi membantu komunikasi sekolah dengan keluarga.',
+      readinessTitle: 'Kelengkapan Profil Wali',
+      readinessHelper: 'Persentase hanya akan 100% jika seluruh isian profil wali yang tampil pada halaman ini sudah lengkap.',
       summaryTitle: 'Ringkasan Keluarga',
     };
   }
@@ -553,7 +553,7 @@ const getProfileCopy = (role: UserFormRole) => {
     subtitle: 'Kelola informasi akun dan profil utama Anda.',
     saveLabel: 'Simpan Perubahan',
     readinessTitle: 'Kelengkapan Profil',
-    readinessHelper: 'Lengkapi data inti agar akun lebih mudah dipakai di seluruh modul.',
+    readinessHelper: 'Persentase hanya akan 100% jika seluruh isian profil yang tampil pada halaman ini sudah lengkap.',
     summaryTitle: 'Ringkasan Akun',
   };
 };
@@ -596,6 +596,19 @@ const stripEmptyStrings = <T extends Record<string, unknown>>(obj: T) => {
     }
   }
   return out as T;
+};
+
+const isProfileFieldFilled = (value: unknown) => {
+  if (Array.isArray(value)) {
+    return value.length > 0;
+  }
+  if (typeof value === 'number') {
+    return Number.isFinite(value);
+  }
+  if (typeof value === 'boolean') {
+    return value;
+  }
+  return String(value ?? '').trim().length > 0;
 };
 
 const getCandidateAcceptedFormats = (category: string) => {
@@ -710,33 +723,15 @@ export const UserProfilePage = () => {
   });
 
   const selectedChildNisns = watch('childNisns') || [];
-  const watchedName = watch('name');
+  const watchedAllProfileValues = watch();
   const watchedEmail = watch('email');
   const watchedPhone = watch('phone');
   const watchedAddress = watch('address');
-  const watchedNis = watch('nis');
   const watchedNisn = watch('nisn');
-  const watchedNik = watch('nik');
-  const watchedFamilyCardNumber = watch('familyCardNumber');
-  const watchedGender = watch('gender');
-  const watchedCitizenship = watch('citizenship');
-  const watchedMaritalStatus = watch('maritalStatus');
-  const watchedBirthPlace = watch('birthPlace');
-  const watchedBirthDate = watch('birthDate');
-  const watchedMotherName = watch('motherName');
-  const watchedMotherNik = watch('motherNik');
   const watchedPtkType = watch('ptkType');
   const watchedEmployeeStatus = watch('employeeStatus');
   const watchedInstitution = watch('institution');
   const watchedStaffPosition = watch('staffPosition');
-  const watchedReligion = watch('religion');
-  const watchedDistanceToSchool = watch('distanceToSchool');
-  const watchedFamilyStatus = watch('familyStatus');
-  const watchedLivingWith = watch('livingWith');
-  const watchedTransportationMode = watch('transportationMode');
-  const watchedTravelTimeToSchool = watch('travelTimeToSchool');
-  const watchedProvince = watch('province');
-  const watchedCityRegency = watch('cityRegency');
   const watchedDocuments = (watch('documents') || []) as SupportingDocumentRecord[];
   const employeeRoleOptions = useMemo(() => getEmployeeRoleOptions(fixedRole), [fixedRole]);
   const ptkTypeSelectValue = useMemo(() => {
@@ -775,79 +770,128 @@ export const UserProfilePage = () => {
       : [];
 
   const completeness = useMemo(() => {
+    const commonPersonalFields = [
+      { label: 'Nama lengkap', value: watchedAllProfileValues.name },
+      { label: 'Jenis kelamin', value: watchedAllProfileValues.gender },
+      { label: 'Tempat lahir', value: watchedAllProfileValues.birthPlace },
+      { label: 'Tanggal lahir', value: watchedAllProfileValues.birthDate },
+    ];
+
+    const commonContactFields = [
+      { label: 'Email', value: watchedAllProfileValues.email },
+      { label: 'No. HP / WA', value: watchedAllProfileValues.phone },
+      { label: 'Alamat jalan', value: watchedAllProfileValues.address },
+    ];
+
+    const addressDetailFields = [
+      { label: 'RT', value: watchedAllProfileValues.rt },
+      { label: 'RW', value: watchedAllProfileValues.rw },
+      { label: 'Dusun', value: watchedAllProfileValues.dusun },
+      { label: 'Provinsi', value: watchedAllProfileValues.province },
+      { label: 'Kabupaten / Kota', value: watchedAllProfileValues.cityRegency },
+      { label: 'Desa / Kelurahan', value: watchedAllProfileValues.village },
+      { label: 'Kecamatan', value: watchedAllProfileValues.subdistrict },
+      { label: 'Kode Pos', value: watchedAllProfileValues.postalCode },
+    ];
+
+    const addressCodeFields = [
+      { label: 'Kode provinsi', value: watchedAllProfileValues.provinceCode },
+      { label: 'Kode kabupaten / kota', value: watchedAllProfileValues.cityRegencyCode },
+      { label: 'Kode kecamatan', value: watchedAllProfileValues.subdistrictCode },
+      { label: 'Kode desa / kelurahan', value: watchedAllProfileValues.villageCode },
+    ];
+
     let fieldsToCheck: Array<{ label: string; value: unknown }> = [];
 
     if (isEmployeeProfile) {
       fieldsToCheck = [
-        { label: 'Nama lengkap', value: watchedName },
-        { label: 'NIK', value: watchedNik },
-        { label: 'Nomor KK', value: watchedFamilyCardNumber },
-        { label: 'Jenis kelamin', value: watchedGender },
-        { label: 'Kewarganegaraan', value: watchedCitizenship },
-        { label: 'Status perkawinan', value: watchedMaritalStatus },
-        { label: 'Tempat lahir', value: watchedBirthPlace },
-        { label: 'Tanggal lahir', value: watchedBirthDate },
-        { label: 'Agama', value: watchedReligion },
-        { label: 'Nama ibu kandung', value: watchedMotherName },
+        ...commonPersonalFields,
+        { label: 'NIP', value: watchedAllProfileValues.nip },
+        { label: 'NIK', value: watchedAllProfileValues.nik },
+        { label: 'NUPTK', value: watchedAllProfileValues.nuptk },
+        { label: 'Nomor KK', value: watchedAllProfileValues.familyCardNumber },
+        { label: 'Kewarganegaraan', value: watchedAllProfileValues.citizenship },
+        { label: 'Status perkawinan', value: watchedAllProfileValues.maritalStatus },
+        { label: 'Agama', value: watchedAllProfileValues.religion },
+        { label: 'Nama ibu kandung', value: watchedAllProfileValues.motherName },
+        ...commonContactFields,
+        ...addressDetailFields,
+        ...addressCodeFields,
         { label: 'Riwayat pendidikan', value: educationSummary.highestEducation },
         { label: 'Jenis PTK / peran', value: normalizedEmployeeRoleValue },
         { label: 'Status kepegawaian', value: normalizedEmployeeStatusValue },
-        { label: 'Kontak aktif', value: watchedPhone || watchedEmail },
-        { label: 'Provinsi', value: watchedProvince },
-        { label: 'Kabupaten / Kota', value: watchedCityRegency },
-        { label: 'Alamat', value: watchedAddress },
+        { label: 'SK pengangkatan', value: watchedAllProfileValues.appointmentDecree },
+        { label: 'TMT pengangkatan', value: watchedAllProfileValues.appointmentDate },
+        { label: 'Instansi / lembaga pengangkat', value: watchedAllProfileValues.institution },
+        { label: 'SK penugasan', value: watchedAllProfileValues.assignmentDecree },
+        { label: 'TMT penugasan', value: watchedAllProfileValues.assignmentDate },
       ];
     } else if (isStudentProfile) {
       fieldsToCheck = [
-        { label: 'Nama lengkap', value: watchedName },
-        { label: 'NIS', value: watchedNis },
-        { label: 'NISN', value: watchedNisn },
-        { label: 'Nomor KK', value: watchedFamilyCardNumber },
-        { label: 'Jenis kelamin', value: watchedGender },
-        { label: 'Tempat lahir', value: watchedBirthPlace },
-        { label: 'Tanggal lahir', value: watchedBirthDate },
-        { label: 'Nama ibu kandung', value: watchedMotherName },
-        { label: 'NIK ibu kandung', value: watchedMotherNik },
-        { label: 'Agama', value: watchedReligion },
-        { label: 'Riwayat pendidikan', value: educationSummary.highestEducation },
-        { label: 'Status dalam keluarga', value: watchedFamilyStatus },
-        { label: 'Jenis tinggal', value: watchedLivingWith },
-        { label: 'Alat transportasi', value: watchedTransportationMode },
-        { label: 'Jarak ke sekolah', value: watchedDistanceToSchool },
-        { label: 'Waktu tempuh ke sekolah', value: watchedTravelTimeToSchool },
+        { label: 'Nama lengkap', value: watchedAllProfileValues.name },
+        { label: 'NIS', value: watchedAllProfileValues.nis },
+        { label: 'NISN', value: watchedAllProfileValues.nisn },
         { label: 'Kelas aktif', value: user?.studentClass?.name },
-        { label: 'Provinsi', value: watchedProvince },
-        { label: 'Kabupaten / Kota', value: watchedCityRegency },
-        { label: 'Alamat', value: watchedAddress },
+        { label: 'NIK', value: watchedAllProfileValues.nik },
+        { label: 'Nomor KK', value: watchedAllProfileValues.familyCardNumber },
+        ...commonPersonalFields.slice(1),
+        { label: 'Agama', value: watchedAllProfileValues.religion },
+        { label: 'Status dalam keluarga', value: watchedAllProfileValues.familyStatus },
+        { label: 'Anak ke-', value: watchedAllProfileValues.childNumber },
+        { label: 'Jenis tinggal', value: watchedAllProfileValues.livingWith },
+        { label: 'Jumlah saudara', value: watchedAllProfileValues.siblingsCount },
+        { label: 'Alat transportasi', value: watchedAllProfileValues.transportationMode },
+        { label: 'Jarak ke sekolah', value: watchedAllProfileValues.distanceToSchool },
+        { label: 'Waktu tempuh ke sekolah', value: watchedAllProfileValues.travelTimeToSchool },
+        { label: 'Nomor KIP', value: watchedAllProfileValues.kipNumber },
+        { label: 'Nomor PKH', value: watchedAllProfileValues.pkhNumber },
+        { label: 'Nomor KKS', value: watchedAllProfileValues.kksNumber },
+        ...commonContactFields,
+        ...addressDetailFields,
+        ...addressCodeFields,
+        { label: 'Riwayat pendidikan', value: educationSummary.highestEducation },
+        { label: 'Nama ayah', value: watchedAllProfileValues.fatherName },
+        { label: 'NIK ayah', value: watchedAllProfileValues.fatherNik },
+        { label: 'Pendidikan ayah', value: watchedAllProfileValues.fatherEducation },
+        { label: 'Pekerjaan ayah', value: watchedAllProfileValues.fatherOccupation },
+        { label: 'Penghasilan ayah', value: watchedAllProfileValues.fatherIncome },
+        { label: 'Nama ibu', value: watchedAllProfileValues.motherName },
+        { label: 'NIK ibu', value: watchedAllProfileValues.motherNik },
+        { label: 'Pendidikan ibu', value: watchedAllProfileValues.motherEducation },
+        { label: 'Pekerjaan ibu', value: watchedAllProfileValues.motherOccupation },
+        { label: 'Penghasilan ibu', value: watchedAllProfileValues.motherIncome },
+        { label: 'Nama wali', value: watchedAllProfileValues.guardianName },
+        { label: 'Pendidikan wali', value: watchedAllProfileValues.guardianEducation },
+        { label: 'Pekerjaan wali', value: watchedAllProfileValues.guardianOccupation },
+        { label: 'No. HP wali', value: watchedAllProfileValues.guardianPhone },
       ];
     } else if (isCandidateProfile) {
       fieldsToCheck = [
-        { label: 'Nama lengkap', value: watchedName },
-        { label: 'NISN', value: watchedNisn },
-        { label: 'Tempat lahir', value: watchedBirthPlace },
-        { label: 'Tanggal lahir', value: watchedBirthDate },
-        { label: 'Kontak aktif', value: watchedPhone || watchedEmail },
-        { label: 'Alamat', value: watchedAddress },
+        ...commonPersonalFields,
+        { label: 'NISN', value: watchedAllProfileValues.nisn },
+        { label: 'Agama', value: watchedAllProfileValues.religion },
+        ...commonContactFields,
         { label: 'Riwayat pendidikan', value: educationSummary.highestEducation },
-        { label: 'Dokumen PPDB', value: watchedDocuments.length > 0 ? watchedDocuments.length : null },
+        { label: 'Dokumen PPDB', value: watchedDocuments.length },
       ];
     } else if (isParentProfile) {
       fieldsToCheck = [
-        { label: 'Nama lengkap', value: watchedName },
-        { label: 'Kontak aktif', value: watchedPhone || watchedEmail },
-        { label: 'Alamat', value: watchedAddress },
+        ...commonPersonalFields,
+        ...commonContactFields,
+        ...addressDetailFields,
         { label: 'Riwayat pendidikan', value: educationSummary.highestEducation },
+        { label: 'Anak terhubung', value: selectedChildNisns.length },
       ];
     } else {
       fieldsToCheck = [
-        { label: 'Nama lengkap', value: watchedName },
-        { label: 'Kontak aktif', value: watchedPhone || watchedEmail },
+        ...commonPersonalFields,
+        ...commonContactFields,
         { label: 'Riwayat pendidikan', value: educationSummary.highestEducation },
       ];
     }
 
     const missing = fieldsToCheck
-      .filter((item) => String(item.value || '').trim().length === 0)
+      .filter((item) => !isProfileFieldFilled(item.value))
       .map((item) => item.label);
     const total = fieldsToCheck.length;
     const completed = total - missing.length;
@@ -859,38 +903,17 @@ export const UserProfilePage = () => {
       percent: total > 0 ? Math.round((completed / total) * 100) : 0,
     };
   }, [
+    educationSummary.highestEducation,
     isCandidateProfile,
     isEmployeeProfile,
     isParentProfile,
     isStudentProfile,
-    user?.studentClass?.name,
-    watchedAddress,
-    watchedBirthDate,
-    watchedBirthPlace,
-    watchedCitizenship,
-    watchedCityRegency,
-    watchedDistanceToSchool,
-    watchedDocuments.length,
-    watchedEmail,
-    educationSummary.highestEducation,
-    watchedFamilyStatus,
-    watchedFamilyCardNumber,
-    watchedGender,
-    watchedLivingWith,
-    watchedMotherName,
-    watchedMotherNik,
-    watchedMaritalStatus,
-    watchedName,
-    watchedNik,
-    watchedNis,
-    watchedNisn,
-    watchedPhone,
-    watchedProvince,
-    watchedReligion,
     normalizedEmployeeRoleValue,
     normalizedEmployeeStatusValue,
-    watchedTransportationMode,
-    watchedTravelTimeToSchool,
+    selectedChildNisns.length,
+    user?.studentClass?.name,
+    watchedAllProfileValues,
+    watchedDocuments.length,
   ]);
 
   const summaryLines = useMemo(() => {

@@ -96,6 +96,7 @@ type EditableProfileForm = {
   guardianPhone: string;
   rt: string;
   rw: string;
+  dusun: string;
   province: string;
   provinceCode: string;
   cityRegency: string;
@@ -182,6 +183,7 @@ const emptyForm: EditableProfileForm = {
   guardianPhone: '',
   rt: '',
   rw: '',
+  dusun: '',
   province: '',
   provinceCode: '',
   cityRegency: '',
@@ -330,6 +332,19 @@ function normalizeStructuredFieldValue(value?: string | null) {
   return cleaned;
 }
 
+function isProfileFieldFilled(value: unknown) {
+  if (Array.isArray(value)) {
+    return value.length > 0;
+  }
+  if (typeof value === 'number') {
+    return Number.isFinite(value);
+  }
+  if (typeof value === 'boolean') {
+    return value;
+  }
+  return String(value ?? '').trim().length > 0;
+}
+
 function getStructuredChoiceValue(
   value: string | null | undefined,
   options: readonly string[] | readonly { value: string; label: string }[],
@@ -454,8 +469,8 @@ function getProfileCopy(role?: string | null) {
       subtitle:
         'Guru, kepala sekolah, staff, tutor, dan penguji eksternal memakai struktur profil yang sama agar data inti, alamat, dan penugasan tetap konsisten di seluruh workspace.',
       saveLabel: 'Simpan Profil PTK',
-      readinessTitle: 'Prioritas Data Inti',
-      readinessHelper: 'Fokus pada identitas, alamat, dan data penugasan yang saat ini sudah dipakai lintas modul sekolah.',
+      readinessTitle: 'Kelengkapan Profil PTK',
+      readinessHelper: 'Persentase hanya akan 100% jika seluruh isian profil PTK yang tampil pada halaman ini sudah lengkap.',
       summaryTitle: 'Ringkasan Peran',
     };
   }
@@ -466,8 +481,8 @@ function getProfileCopy(role?: string | null) {
       subtitle:
         'Lengkapi biodata siswa, kontak aktif, alamat, dan keluarga inti agar administrasi sekolah serta kebutuhan data siswa tetap rapi.',
       saveLabel: 'Simpan Profil Siswa',
-      readinessTitle: 'Prioritas Data Siswa',
-      readinessHelper: 'Data inti siswa difokuskan pada identitas, alamat, dan keluarga yang dipakai operasional sekolah.',
+      readinessTitle: 'Kelengkapan Profil Siswa',
+      readinessHelper: 'Persentase hanya akan 100% jika seluruh isian profil siswa yang tampil pada halaman ini sudah lengkap.',
       summaryTitle: 'Ringkasan Akademik',
     };
   }
@@ -478,8 +493,8 @@ function getProfileCopy(role?: string | null) {
       subtitle:
         'Halaman ini dibuat ringkas untuk akun, biodata dasar, foto, dan dokumen PPDB. Formulir pendaftaran detail tetap dikelola dari menu Formulir PPDB.',
       saveLabel: 'Simpan Profil Calon Siswa',
-      readinessTitle: 'Kesiapan Profil PPDB',
-      readinessHelper: 'Pastikan biodata dasar dan dokumen pendukung lengkap sebelum formulir PPDB dikirim untuk review.',
+      readinessTitle: 'Kelengkapan Profil PPDB',
+      readinessHelper: 'Persentase hanya akan 100% jika biodata inti dan dokumen PPDB yang tampil pada halaman ini sudah lengkap.',
       summaryTitle: 'Ringkasan Pendaftaran',
     };
   }
@@ -490,8 +505,8 @@ function getProfileCopy(role?: string | null) {
       subtitle:
         'Kelola identitas akun keluarga, kontak aktif, dan alamat yang dipakai saat menghubungkan serta memantau data anak.',
       saveLabel: 'Simpan Profil Wali',
-      readinessTitle: 'Kesiapan Profil Wali',
-      readinessHelper: 'Kontak aktif dan alamat yang rapi membantu komunikasi sekolah dengan keluarga.',
+      readinessTitle: 'Kelengkapan Profil Wali',
+      readinessHelper: 'Persentase hanya akan 100% jika seluruh isian profil wali yang tampil pada halaman ini sudah lengkap.',
       summaryTitle: 'Ringkasan Keluarga',
     };
   }
@@ -501,7 +516,7 @@ function getProfileCopy(role?: string | null) {
     subtitle: 'Kelola informasi akun dan profil utama Anda.',
     saveLabel: 'Simpan Perubahan',
     readinessTitle: 'Kelengkapan Profil',
-    readinessHelper: 'Lengkapi data inti agar akun lebih mudah dipakai di seluruh modul.',
+    readinessHelper: 'Persentase hanya akan 100% jika seluruh isian profil yang tampil pada halaman ini sudah lengkap.',
     summaryTitle: 'Ringkasan Akun',
   };
 }
@@ -609,6 +624,7 @@ function buildForm(profile: AuthUser | null): EditableProfileForm {
     guardianPhone: toText(profile?.guardianPhone),
     rt: toText(profile?.rt),
     rw: toText(profile?.rw),
+    dusun: toText(profile?.dusun),
     province: toText(profile?.province),
     provinceCode: toText(profile?.provinceCode),
     cityRegency: toText(profile?.cityRegency),
@@ -893,84 +909,128 @@ export default function ProfileScreen() {
       return { total: 0, completed: 0, missing: [] as string[], percent: 0 };
     }
 
+    const commonPersonalFields = [
+      { label: 'Nama lengkap', value: isStudent ? profile.name : form.name || profile.name },
+      { label: 'Jenis kelamin', value: form.gender },
+      { label: 'Tempat lahir', value: form.birthPlace },
+      { label: 'Tanggal lahir', value: form.birthDate },
+    ];
+
+    const commonContactFields = [
+      { label: 'Email', value: form.email },
+      { label: 'No. HP / WA', value: form.phone },
+      { label: 'Alamat jalan', value: form.address },
+    ];
+
+    const addressDetailFields = [
+      { label: 'RT', value: form.rt },
+      { label: 'RW', value: form.rw },
+      { label: 'Dusun', value: form.dusun },
+      { label: 'Provinsi', value: form.province },
+      { label: 'Kabupaten / Kota', value: form.cityRegency },
+      { label: 'Desa / Kelurahan', value: form.village },
+      { label: 'Kecamatan', value: form.subdistrict },
+      { label: 'Kode Pos', value: form.postalCode },
+    ];
+
+    const addressCodeFields = [
+      { label: 'Kode provinsi', value: form.provinceCode },
+      { label: 'Kode kabupaten / kota', value: form.cityRegencyCode },
+      { label: 'Kode kecamatan', value: form.subdistrictCode },
+      { label: 'Kode desa / kelurahan', value: form.villageCode },
+    ];
+
     let fieldsToCheck: Array<{ label: string; value: unknown }> = [];
 
     if (isEmployee) {
       fieldsToCheck = [
-        { label: 'Nama lengkap', value: form.name || profile.name },
+        ...commonPersonalFields,
+        { label: 'NIP', value: form.nip },
         { label: 'NIK', value: form.nik },
+        { label: 'NUPTK', value: form.nuptk },
         { label: 'Nomor KK', value: form.familyCardNumber },
-        { label: 'Jenis kelamin', value: form.gender },
         { label: 'Kewarganegaraan', value: form.citizenship },
         { label: 'Status perkawinan', value: form.maritalStatus },
-        { label: 'Tempat lahir', value: form.birthPlace },
-        { label: 'Tanggal lahir', value: form.birthDate },
         { label: 'Agama', value: form.religion },
         { label: 'Nama ibu kandung', value: form.motherName },
+        ...commonContactFields,
+        ...addressDetailFields,
+        ...addressCodeFields,
         { label: 'Riwayat pendidikan', value: educationSummary.highestEducation },
         { label: 'Jenis PTK / peran', value: isStaff ? form.staffPosition || form.ptkType : form.ptkType },
         { label: 'Status kepegawaian', value: form.employeeStatus },
-        { label: 'Kontak aktif', value: form.phone || form.email },
-        { label: 'Provinsi', value: form.province },
-        { label: 'Kabupaten / Kota', value: form.cityRegency },
-        { label: 'Alamat', value: form.address },
+        { label: 'SK pengangkatan', value: form.appointmentDecree },
+        { label: 'TMT pengangkatan', value: form.appointmentDate },
+        { label: 'Instansi / lembaga pengangkat', value: form.institution },
+        { label: 'SK penugasan', value: form.assignmentDecree },
+        { label: 'TMT penugasan', value: form.assignmentDate },
       ];
     } else if (isStudent) {
       fieldsToCheck = [
         { label: 'Nama lengkap', value: profile.name },
         { label: 'NIS', value: profile.nis },
         { label: 'NISN', value: profile.nisn },
+        { label: 'Kelas aktif', value: profile.studentClass?.name },
+        { label: 'NIK', value: form.nik },
         { label: 'Nomor KK', value: form.familyCardNumber },
-        { label: 'Jenis kelamin', value: form.gender },
-        { label: 'Tempat lahir', value: form.birthPlace },
-        { label: 'Tanggal lahir', value: form.birthDate },
-        { label: 'Nama ibu kandung', value: form.motherName },
-        { label: 'NIK ibu kandung', value: form.motherNik },
+        ...commonPersonalFields.slice(1),
         { label: 'Agama', value: form.religion },
-        { label: 'Riwayat pendidikan', value: educationSummary.highestEducation },
         { label: 'Status dalam keluarga', value: form.familyStatus },
+        { label: 'Anak ke-', value: form.childNumber },
         { label: 'Jenis tinggal', value: form.livingWith },
+        { label: 'Jumlah saudara', value: form.siblingsCount },
         { label: 'Alat transportasi', value: form.transportationMode },
         { label: 'Jarak ke sekolah', value: form.distanceToSchool },
         { label: 'Waktu tempuh ke sekolah', value: form.travelTimeToSchool },
-        { label: 'Kelas aktif', value: profile.studentClass?.name },
-        { label: 'Provinsi', value: form.province },
-        { label: 'Kabupaten / Kota', value: form.cityRegency },
-        { label: 'Alamat', value: form.address },
+        { label: 'Nomor KIP', value: form.kipNumber },
+        { label: 'Nomor PKH', value: form.pkhNumber },
+        { label: 'Nomor KKS', value: form.kksNumber },
+        ...commonContactFields,
+        ...addressDetailFields,
+        ...addressCodeFields,
+        { label: 'Riwayat pendidikan', value: educationSummary.highestEducation },
+        { label: 'Nama ayah', value: form.fatherName },
+        { label: 'NIK ayah', value: form.fatherNik },
+        { label: 'Pendidikan ayah', value: form.fatherEducation },
+        { label: 'Pekerjaan ayah', value: form.fatherOccupation },
+        { label: 'Penghasilan ayah', value: form.fatherIncome },
+        { label: 'Nama ibu', value: form.motherName },
+        { label: 'NIK ibu', value: form.motherNik },
+        { label: 'Pendidikan ibu', value: form.motherEducation },
+        { label: 'Pekerjaan ibu', value: form.motherOccupation },
+        { label: 'Penghasilan ibu', value: form.motherIncome },
+        { label: 'Nama wali', value: form.guardianName },
+        { label: 'Pendidikan wali', value: form.guardianEducation },
+        { label: 'Pekerjaan wali', value: form.guardianOccupation },
+        { label: 'No. HP wali', value: form.guardianPhone },
       ];
     } else if (isCandidate) {
       fieldsToCheck = [
-        { label: 'Nama lengkap', value: form.name || profile.name },
+        ...commonPersonalFields,
         { label: 'NISN', value: profile.nisn },
-        { label: 'Tempat lahir', value: form.birthPlace },
-        { label: 'Tanggal lahir', value: form.birthDate },
         { label: 'Agama', value: form.religion },
-        { label: 'Kontak aktif', value: form.phone || form.email },
-        { label: 'Alamat', value: form.address },
+        ...commonContactFields,
         { label: 'Riwayat pendidikan', value: educationSummary.highestEducation },
-        { label: 'Dokumen PPDB', value: (profile.documents || []).length > 0 ? 'Ada' : '' },
+        { label: 'Dokumen PPDB', value: supportingDocuments.length },
       ];
     } else if (isParent) {
       fieldsToCheck = [
-        { label: 'Nama lengkap', value: form.name || profile.name },
-        { label: 'Kontak aktif', value: form.phone || form.email },
-        { label: 'Provinsi', value: form.province },
-        { label: 'Kabupaten / Kota', value: form.cityRegency },
-        { label: 'Alamat', value: form.address },
+        ...commonPersonalFields,
+        ...commonContactFields,
+        ...addressDetailFields,
         { label: 'Riwayat pendidikan', value: educationSummary.highestEducation },
-        { label: 'Anak terhubung', value: (profile.children || []).length > 0 ? 'Ada' : '' },
+        { label: 'Anak terhubung', value: (profile.children || []).length },
       ];
     } else {
       fieldsToCheck = [
-        { label: 'Nama lengkap', value: form.name || profile.name },
-        { label: 'Kontak aktif', value: form.phone || form.email },
-        { label: 'Alamat', value: form.address },
+        ...commonPersonalFields,
+        ...commonContactFields,
         { label: 'Riwayat pendidikan', value: educationSummary.highestEducation },
       ];
     }
 
     const missing = fieldsToCheck
-      .filter((item) => String(item.value || '').trim().length === 0)
+      .filter((item) => !isProfileFieldFilled(item.value))
       .map((item) => item.label);
     const total = fieldsToCheck.length;
     const completed = total - missing.length;
@@ -981,7 +1041,7 @@ export default function ProfileScreen() {
       missing,
       percent: total > 0 ? Math.round((completed / total) * 100) : 0,
     };
-  }, [educationSummary.highestEducation, form, isCandidate, isEmployee, isParent, isStaff, isStudent, profile]);
+  }, [educationSummary.highestEducation, form, isCandidate, isEmployee, isParent, isStaff, isStudent, profile, supportingDocuments.length]);
 
   const summaryLines = useMemo(() => {
     if (!profile) {
@@ -1099,7 +1159,7 @@ export default function ProfileScreen() {
         id: 'readiness' as const,
         iconName: 'pie-chart',
         title: profileCopy.readinessTitle,
-        subtitle: `${completeness.percent}% data inti sudah terisi`,
+        subtitle: `${completeness.percent}% profil sudah terisi`,
         accentColor: '#0f766e',
       },
       {
@@ -1220,6 +1280,7 @@ export default function ProfileScreen() {
         guardianPhone: toNullable(form.guardianPhone),
         rt: toNullable(form.rt),
         rw: toNullable(form.rw),
+        dusun: toNullable(form.dusun),
         province: toNullable(form.province),
         provinceCode: toNullable(form.provinceCode),
         cityRegency: toNullable(form.cityRegency),
@@ -2348,18 +2409,24 @@ export default function ProfileScreen() {
                       onChangeText={(value) => setForm((prev) => ({ ...prev, rt: value }))}
                     />
                   </View>
-                  <View style={{ flex: 1, paddingHorizontal: 4 }}>
-                    <FormField
-                      label="RW"
-                      value={form.rw}
-                      onChangeText={(value) => setForm((prev) => ({ ...prev, rw: value }))}
-                    />
-                  </View>
+                <View style={{ flex: 1, paddingHorizontal: 4 }}>
+                  <FormField
+                    label="RW"
+                    value={form.rw}
+                    onChangeText={(value) => setForm((prev) => ({ ...prev, rw: value }))}
+                  />
                 </View>
+              </View>
 
-                <FormField
-                  label="Provinsi"
-                  value={form.province}
+              <FormField
+                label="Dusun"
+                value={form.dusun}
+                onChangeText={(value) => setForm((prev) => ({ ...prev, dusun: value }))}
+              />
+
+              <FormField
+                label="Provinsi"
+                value={form.province}
                   onChangeText={(value) => setForm((prev) => ({ ...prev, province: value }))}
                 />
                 <FormField

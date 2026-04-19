@@ -361,6 +361,15 @@ function setMeCache(key: string, payload: unknown) {
   });
 }
 
+export function clearMeCacheForUser(userId: number) {
+  const normalizedUserId = Number(userId || 0);
+  if (!Number.isFinite(normalizedUserId) || normalizedUserId <= 0) {
+    return;
+  }
+  meResponseCache.delete(buildMeCacheKey(normalizedUserId, false));
+  meResponseCache.delete(buildMeCacheKey(normalizedUserId, true));
+}
+
 const activeTutorAssignmentsInclude = {
   ekskulTutorAssignments: {
     where: {

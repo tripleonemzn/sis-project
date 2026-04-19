@@ -13,6 +13,8 @@ import { getNisnValidationMessage, normalizeNisnInput } from '../utils/nisn';
 import { resolveHistoricalStudentScope } from '../utils/studentAcademicHistory';
 import { ensureAcademicYearArchiveReadAccess } from '../utils/academicYearArchiveAccess';
 import { resolveStandardSchoolDocumentHeaderSnapshot } from '../utils/standardSchoolDocumentHeader';
+import { clearMeCacheForUser } from './auth.controller';
+import { resyncStudentReligionReportDescriptions } from './grade.controller';
 import {
   deriveEducationSummary,
   educationHistoriesSchema,
@@ -1538,6 +1540,8 @@ export const updateUser = asyncHandler(async (req: Request, res: Response) => {
     hashedPassword = await bcrypt.hash(body.password, 10);
   }
 
+  const previousReligion = String(user.religion || '').trim().toUpperCase();
+
   const updatedUser = await prisma.$transaction(async (tx) => {
     const roleAfterUpdate = body.role ?? user.role;
     const normalizedEducationHistories =
@@ -1709,6 +1713,20 @@ export const updateUser = asyncHandler(async (req: Request, res: Response) => {
   }
 
   clearUserListCache();
+  clearMeCacheForUser(updatedUser.id);
+
+  const nextReligion = String(updatedUser.religion || '').trim().toUpperCase();
+  const shouldResyncReligionDescriptions =
+    updatedUser.role === Role.STUDENT &&
+    previousReligion !== nextReligion;
+
+  if (shouldResyncReligionDescriptions) {
+    try {
+      await resyncStudentReligionReportDescriptions(updatedUser.id);
+    } catch (error) {
+      console.warn('[PROFILE] gagal sinkron deskripsi mapel agama setelah update profil', error);
+    }
+  }
 
   res.status(200).json(new ApiResponse(200, userWithoutPassword, 'Pengguna berhasil diperbarui'));
 });

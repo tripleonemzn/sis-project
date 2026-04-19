@@ -326,7 +326,7 @@ async function resolveReportCompetencyDescription(params: {
   return deriveThresholdDescription(thresholds, predicate, {
     religionKey,
     preferReligion: useReligionThresholds,
-    allowGeneralFallback: !useReligionThresholds,
+    allowGeneralFallback: true,
   })
 }
 
@@ -2848,6 +2848,55 @@ const syncReportGradeSafely = async (
       error: error instanceof Error ? error.message : 'Sinkronisasi report grade gagal',
     };
   }
+};
+
+export const resyncStudentReligionReportDescriptions = async (studentId: number) => {
+  const normalizedStudentId = Number(studentId || 0);
+  if (!Number.isFinite(normalizedStudentId) || normalizedStudentId <= 0) {
+    return { scanned: 0, updated: 0 };
+  }
+
+  const rows = await prisma.reportGrade.findMany({
+    where: {
+      studentId: normalizedStudentId,
+    },
+    include: {
+      subject: {
+        select: {
+          name: true,
+          code: true,
+        },
+      },
+    },
+  });
+
+  const targetRows = rows.filter((row) => isReligionCompetencySubject(row.subject));
+  let updated = 0;
+
+  await runWithConcurrencyLimit(targetRows, 5, async (row) => {
+    const nextDescription = await resolveReportCompetencyDescription({
+      studentId: row.studentId,
+      subjectId: row.subjectId,
+      academicYearId: row.academicYearId,
+      semester: row.semester,
+      finalScore: row.finalScore,
+      predicate: row.predicate,
+    });
+
+    if (String(nextDescription || '') === String(row.description || '')) {
+      return;
+    }
+
+    await prisma.reportGrade.update({
+      where: { id: row.id },
+      data: {
+        description: nextDescription,
+      },
+    });
+    updated += 1;
+  });
+
+  return { scanned: targetRows.length, updated };
 };
 
 // ============================================
