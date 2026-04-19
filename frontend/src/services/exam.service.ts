@@ -9,6 +9,13 @@ export type ExamProgramReportSlot = string;
 export type ExamFinanceClearanceMode = string;
 export type ExamStudentResultPublishMode = 'DIRECT' | 'SCHEDULED' | 'REPORT_DATE';
 
+export interface ExamProgramReportDate {
+    semester: 'ODD' | 'EVEN';
+    reportType: string;
+    place: string;
+    date: string | null;
+}
+
 export interface ExamGradeComponent {
     id?: number;
     code: string;
@@ -653,6 +660,18 @@ export const examService = {
             };
         };
     },
+    getReportDates: async (params?: { academicYearId?: number }) => {
+        const response = await api.get('/exams/report-dates', { params });
+        return response.data as {
+            statusCode: number;
+            success: boolean;
+            message: string;
+            data: {
+                academicYearId: number;
+                reportDates: ExamProgramReportDate[];
+            };
+        };
+    },
     getProgramSessions: async (params: {
         academicYearId: number;
         programCode?: string;
@@ -726,6 +745,26 @@ export const examService = {
             data: {
                 academicYearId: number;
                 programs: ExamProgram[];
+            };
+        };
+    },
+    updateReportDates: async (payload: {
+        academicYearId?: number;
+        reportDates: Array<{
+            semester: 'ODD' | 'EVEN';
+            reportType: string;
+            place?: string | null;
+            date?: string | null;
+        }>;
+    }) => {
+        const response = await api.put('/exams/report-dates', payload);
+        return response.data as {
+            statusCode: number;
+            success: boolean;
+            message: string;
+            data: {
+                academicYearId: number;
+                reportDates: ExamProgramReportDate[];
             };
         };
     },

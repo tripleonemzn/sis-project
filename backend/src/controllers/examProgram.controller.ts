@@ -112,6 +112,21 @@ type ExamProgramRow = {
   financeClearanceNotes: string | null;
 };
 
+type ExamProgramReportDateDefinition = {
+  semester: Semester;
+  reportType: ExamType;
+  place: string;
+  date: Date | null;
+};
+
+type ExamProgramReportDateRow = {
+  id: number;
+  semester: Semester;
+  reportType: ExamType;
+  place: string;
+  date: Date;
+};
+
 type ExamGradeComponentDefinition = {
   code: string;
   label: string;
@@ -614,6 +629,10 @@ function normalizeProgramCodeSeed(raw: unknown): string {
     .replace(/^_+|_+$/g, '');
 }
 
+function buildReportDateKey(semester: Semester, reportType: ExamType): string {
+  return `${semester}:${reportType}`;
+}
+
 function normalizeProgramCode(rawCode: unknown, rawLabel?: unknown): string {
   const fromCode = normalizeProgramCodeSeed(rawCode);
   if (fromCode) {
@@ -775,6 +794,10 @@ function normalizeOptionalText(raw: unknown, maxLength: number): string | null {
   return value.slice(0, maxLength);
 }
 
+function normalizeReportDatePlace(raw: unknown, fallback = 'Bekasi'): string {
+  return normalizeText(raw, fallback, 120);
+}
+
 function toBoolean(raw: unknown, fallback: boolean): boolean {
   if (raw === undefined || raw === null) return fallback;
   return Boolean(raw);
@@ -806,6 +829,45 @@ function normalizeFinanceThresholdAmount(raw: unknown, fallback = DEFAULT_EXAM_F
   const parsed = Number(raw);
   if (!Number.isFinite(parsed)) return Math.max(0, fallback);
   return Math.max(0, Number(parsed.toFixed(2)));
+}
+
+function mapReportDateTypeFromCode(
+  code: string,
+  semester: Semester,
+  fallback: ExamType = semester === Semester.EVEN ? ExamType.SAT : ExamType.SAS,
+): ExamType {
+  const normalized = normalizeProgramCodeSeed(code);
+  if (!normalized) return fallback;
+  return mapExamTypeFromCode(normalized, inferExamTypeFromAlias(normalized) || fallback, semester);
+}
+
+function normalizeReportDatePayload(rawItems: unknown[]): ExamProgramReportDateDefinition[] {
+  const deduped = new Map<string, ExamProgramReportDateDefinition>();
+  rawItems.forEach((rawItem) => {
+    const item = (rawItem || {}) as Record<string, unknown>;
+    const semester = normalizeSemesterValue(item.semester);
+    if (!semester) {
+      throw new ApiError(400, 'Semester tanggal rapor wajib diisi.');
+    }
+    const reportTypeCode = normalizeProgramCodeSeed(item.reportTypeCode ?? item.reportType);
+    if (!reportTypeCode) {
+      throw new ApiError(400, 'Jenis rapor wajib diisi.');
+    }
+    const reportType = mapReportDateTypeFromCode(reportTypeCode, semester);
+    const date = normalizeExamStudentResultPublishAt(item.date);
+    const place = normalizeReportDatePlace(item.place, 'Bekasi');
+    deduped.set(buildReportDateKey(semester, reportType), {
+      semester,
+      reportType,
+      place,
+      date,
+    });
+  });
+  return Array.from(deduped.values()).sort((a, b) => {
+    const semesterOrder = a.semester.localeCompare(b.semester);
+    if (semesterOrder !== 0) return semesterOrder;
+    return a.reportType.localeCompare(b.reportType);
+  });
 }
 
 function normalizeFinanceOverdueInvoiceCount(
@@ -1250,6 +1312,29 @@ async function fetchProgramRows(academicYearId: number) {
   return rows;
 }
 
+async function fetchReportDateRows(academicYearId: number): Promise<ExamProgramReportDateRow[]> {
+  return prisma.reportDate.findMany({
+    where: { academicYearId },
+    select: {
+      id: true,
+      semester: true,
+      reportType: true,
+      place: true,
+      date: true,
+    },
+    orderBy: [{ semester: 'asc' }, { reportType: 'asc' }],
+  });
+}
+
+function mapReportDates(rows: ExamProgramReportDateRow[]): ExamProgramReportDateDefinition[] {
+  return rows.map((row) => ({
+    semester: row.semester,
+    reportType: row.reportType,
+    place: row.place,
+    date: row.date,
+  }));
+}
+
 function normalizeProgramPayload(rawPrograms: unknown[]): NormalizedExamProgramPayload[] {
   const defaultsByCode = getDefaultsByCode();
   return rawPrograms.map((rawItem: unknown, index: number) => {
@@ -1517,6 +1602,29 @@ export const getExamPrograms = asyncHandler(async (req: Request, res: Response) 
   res.setHeader('Cache-Control', 'private, max-age=15');
 
   return res.status(200).json(new ApiResponse(200, payload, 'Konfigurasi program ujian berhasil dimuat.'));
+});
+
+export const getExamReportDates = asyncHandler(async (req: Request, res: Response) => {
+  const authUser = (req as any).user as { id: number; role: string } | undefined;
+  if (!authUser?.id || !authUser?.role) {
+    throw new ApiError(401, 'Tidak memiliki otorisasi.');
+  }
+
+  await assertCanManageProgramConfig(authUser);
+
+  const academicYearId = await resolveAcademicYearId(req.query.academicYearId);
+  const rows = await fetchReportDateRows(academicYearId);
+
+  return res.status(200).json(
+    new ApiResponse(
+      200,
+      {
+        academicYearId,
+        reportDates: mapReportDates(rows),
+      },
+      'Master tanggal rapor berhasil dimuat.',
+    ),
+  );
 });
 
 export const upsertExamPrograms = asyncHandler(async (req: Request, res: Response) => {
@@ -1878,6 +1986,69 @@ export const upsertExamPrograms = asyncHandler(async (req: Request, res: Respons
         programs: mapPrograms(rows),
       },
       'Konfigurasi program ujian berhasil diperbarui.',
+    ),
+  );
+});
+
+export const upsertExamReportDates = asyncHandler(async (req: Request, res: Response) => {
+  const authUser = (req as any).user as { id: number; role: string } | undefined;
+  if (!authUser?.id || !authUser?.role) {
+    throw new ApiError(401, 'Tidak memiliki otorisasi.');
+  }
+
+  await assertCanManageProgramConfig(authUser);
+
+  const academicYearId = await resolveAcademicYearId(req.body?.academicYearId);
+  const rawReportDates = Array.isArray(req.body?.reportDates) ? req.body.reportDates : [];
+  const payloadRows = normalizeReportDatePayload(rawReportDates);
+
+  await prisma.$transaction(async (tx) => {
+    for (const item of payloadRows) {
+      if (!item.date) {
+        await tx.reportDate.deleteMany({
+          where: {
+            academicYearId,
+            semester: item.semester,
+            reportType: item.reportType,
+          },
+        });
+        continue;
+      }
+
+      await tx.reportDate.upsert({
+        where: {
+          academicYearId_semester_reportType: {
+            academicYearId,
+            semester: item.semester,
+            reportType: item.reportType,
+          },
+        },
+        update: {
+          date: item.date,
+          place: item.place,
+        },
+        create: {
+          academicYearId,
+          semester: item.semester,
+          reportType: item.reportType,
+          date: item.date,
+          place: item.place,
+        },
+      });
+    }
+  });
+
+  const rows = await fetchReportDateRows(academicYearId);
+  invalidateExamProgramsCache(academicYearId);
+
+  return res.status(200).json(
+    new ApiResponse(
+      200,
+      {
+        academicYearId,
+        reportDates: mapReportDates(rows),
+      },
+      'Master tanggal rapor berhasil diperbarui.',
     ),
   );
 });

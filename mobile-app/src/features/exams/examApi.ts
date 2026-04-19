@@ -260,6 +260,12 @@ export type ExamProgramGradeEntryMode = string;
 export type ExamProgramReportSlot = string;
 export type ExamFinanceClearanceMode = string;
 export type ExamStudentResultPublishMode = 'DIRECT' | 'SCHEDULED' | 'REPORT_DATE';
+export type ExamProgramReportDateItem = {
+  semester: 'ODD' | 'EVEN';
+  reportType: string;
+  place: string;
+  date: string | null;
+};
 
 export type ExamGradeComponentItem = {
   id?: number;
@@ -349,6 +355,16 @@ type ExamProgramsResponse = {
     academicYearId: number;
     roleContext: 'teacher' | 'student' | 'candidate' | 'applicant' | 'all';
     programs: ExamProgramItem[];
+  };
+};
+
+type ExamProgramReportDatesResponse = {
+  statusCode: number;
+  success: boolean;
+  message: string;
+  data: {
+    academicYearId: number;
+    reportDates: ExamProgramReportDateItem[];
   };
 };
 
@@ -461,6 +477,26 @@ export const examApi = {
     }>;
   }) {
     const response = await apiClient.put<ExamProgramsUpdateResponse>('/exams/programs', payload);
+    return response.data.data;
+  },
+  async getExamReportDates(params?: { academicYearId?: number }) {
+    const response = await apiClient.get<ExamProgramReportDatesResponse>('/exams/report-dates', {
+      params: {
+        academicYearId: params?.academicYearId,
+      },
+    });
+    return response.data.data;
+  },
+  async updateExamReportDates(payload: {
+    academicYearId?: number;
+    reportDates: Array<{
+      semester: 'ODD' | 'EVEN';
+      reportType: string;
+      place?: string | null;
+      date?: string | null;
+    }>;
+  }) {
+    const response = await apiClient.put<ExamProgramReportDatesResponse>('/exams/report-dates', payload);
     return response.data.data;
   },
   async getStudentAvailableExams() {

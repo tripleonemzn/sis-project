@@ -35,8 +35,10 @@ import {
 } from '../controllers/exam.controller';
 import {
     getExamGradeComponents,
+    getExamReportDates,
     getExamPrograms,
     upsertExamGradeComponents,
+    upsertExamReportDates,
     upsertExamPrograms,
 } from '../controllers/examProgram.controller';
 
@@ -49,6 +51,8 @@ router.use(authMiddleware);
 
 router.get('/programs', getExamPrograms);
 router.put('/programs', roleMiddleware(['TEACHER', 'ADMIN']), upsertExamPrograms);
+router.get('/report-dates', roleMiddleware(['TEACHER', 'ADMIN']), getExamReportDates);
+router.put('/report-dates', roleMiddleware(['TEACHER', 'ADMIN']), upsertExamReportDates);
 router.get('/components', getExamGradeComponents);
 router.put('/components', roleMiddleware(['TEACHER', 'ADMIN']), upsertExamGradeComponents);
 

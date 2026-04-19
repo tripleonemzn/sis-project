@@ -14,6 +14,7 @@ import {
   type ExamProgramBaseType,
   type ExamProgramGradeEntryMode,
   type ExamProgramGradeComponentType,
+  type ExamProgramReportDate,
   type ExamProgramReportSlot,
   type ExamStudentResultPublishMode,
 } from '../../../services/exam.service';
@@ -99,6 +100,16 @@ type AddComponentDraft = {
   isActive: boolean;
 };
 
+type ProgramReportDateFormRow = {
+  key: string;
+  semester: 'ODD' | 'EVEN';
+  reportType: string;
+  programCodes: string[];
+  programLabels: string[];
+  date: string;
+  place: string;
+};
+
 type SubjectAssignmentRow = {
   subjectId: number;
   subjectName: string;
@@ -149,6 +160,8 @@ const FINANCE_CLEARANCE_MODE_OPTIONS: Array<{ value: ExamFinanceClearanceMode; l
 ];
 const DEFAULT_FINANCE_CLEARANCE_MODE: ExamFinanceClearanceMode = 'BLOCK_ANY_OUTSTANDING';
 const DEFAULT_STUDENT_RESULT_PUBLISH_MODE: ExamStudentResultPublishMode = 'DIRECT';
+const DEFAULT_REPORT_DATE_PLACE = 'Bekasi';
+const REPORT_DATE_SEMESTERS: Array<'ODD' | 'EVEN'> = ['ODD', 'EVEN'];
 
 const STUDENT_RESULT_PUBLISH_MODE_OPTIONS: Array<{
   value: ExamStudentResultPublishMode;
@@ -168,7 +181,7 @@ const STUDENT_RESULT_PUBLISH_MODE_OPTIONS: Array<{
   {
     value: 'REPORT_DATE',
     label: 'Ikuti Tanggal Rapor Semester',
-    hint: 'Nilai program baru tampil saat tanggal rapor semester tiba.',
+    hint: 'Nilai program baru tampil saat tanggal rapor semester tiba. Atur tanggalnya di Master Tanggal Rapor.',
   },
 ];
 
@@ -257,6 +270,98 @@ function getStudentResultPublishSummary(row: {
       : `${option?.label || mode} • tanggal belum diatur`;
   }
   return option?.label || mode;
+}
+
+function normalizeReportDateType(raw: unknown, semester: 'ODD' | 'EVEN'): string {
+  const normalized = normalizeExamProgramCode(raw);
+  if (normalized === 'FINAL') return semester === 'EVEN' ? 'SAT' : 'SAS';
+  if (normalized === 'MIDTERM') return 'SBTS';
+  if (normalized === 'FORMATIVE') return 'FORMATIF';
+  if (normalized === 'US_TEORI') return 'US_THEORY';
+  if (normalized === 'US_PRAKTEK') return 'US_PRACTICE';
+  return normalized;
+}
+
+function formatSemesterLabel(semester: 'ODD' | 'EVEN') {
+  return semester === 'ODD' ? 'Ganjil' : 'Genap';
+}
+
+function formatReportTypeLabel(reportType: string) {
+  const normalized = normalizeExamProgramCode(reportType);
+  if (normalized === 'FORMATIF') return 'Formatif';
+  if (normalized === 'SBTS') return 'SBTS';
+  if (normalized === 'SAS') return 'SAS';
+  if (normalized === 'SAT') return 'SAT';
+  if (normalized === 'US_THEORY') return 'US Teori';
+  if (normalized === 'US_PRACTICE') return 'US Praktik';
+  return normalized || '-';
+}
+
+function buildProgramReportDateRows(
+  programs: ProgramFormRow[],
+  reportDates: ExamProgramReportDate[],
+): ProgramReportDateFormRow[] {
+  const existingByKey = new Map(
+    (reportDates || []).map((row) => [`${row.semester}:${normalizeReportDateType(row.reportType, row.semester)}`, row]),
+  );
+  const rows = new Map<string, ProgramReportDateFormRow>();
+
+  programs
+    .filter((program) => normalizeStudentResultPublishMode(program.studentResultPublishMode) === 'REPORT_DATE')
+    .forEach((program) => {
+      const semesters = program.fixedSemester ? [program.fixedSemester] : REPORT_DATE_SEMESTERS;
+      semesters.forEach((semester) => {
+        const reportType = normalizeReportDateType(program.baseTypeCode || program.baseType || program.code, semester);
+        if (!reportType) return;
+        const key = `${semester}:${reportType}`;
+        const existing = rows.get(key);
+        const persisted = existingByKey.get(key);
+        if (existing) {
+          if (!existing.programCodes.includes(program.code)) existing.programCodes.push(program.code);
+          if (!existing.programLabels.includes(program.label || program.code)) existing.programLabels.push(program.label || program.code);
+          return;
+        }
+        rows.set(key, {
+          key,
+          semester,
+          reportType,
+          programCodes: [program.code],
+          programLabels: [program.label || program.code],
+          date: normalizeDateInputValue(persisted?.date),
+          place: String(persisted?.place || DEFAULT_REPORT_DATE_PLACE).trim() || DEFAULT_REPORT_DATE_PLACE,
+        });
+      });
+    });
+
+  return Array.from(rows.values()).sort((a, b) => {
+    const semesterOrder =
+      (a.semester === 'ODD' ? 0 : 1) - (b.semester === 'ODD' ? 0 : 1);
+    if (semesterOrder !== 0) return semesterOrder;
+    return a.reportType.localeCompare(b.reportType);
+  });
+}
+
+function snapshotProgramReportDateRows(rows: ProgramReportDateFormRow[]) {
+  return JSON.stringify(
+    rows.map((row) => ({
+      key: row.key,
+      semester: row.semester,
+      reportType: normalizeReportDateType(row.reportType, row.semester),
+      programCodes: [...row.programCodes].sort((a, b) => a.localeCompare(b)),
+      programLabels: [...row.programLabels].sort((a, b) => a.localeCompare(b)),
+      date: normalizeDateInputValue(row.date),
+      place: String(row.place || '').trim(),
+    })),
+  );
+}
+
+function mapProgramReportDateRowsToPayload(rows: ProgramReportDateFormRow[]): ExamProgramReportDate[] {
+  return rows.map((row) => ({
+    semester: row.semester,
+    reportType: normalizeReportDateType(row.reportType, row.semester),
+    place: String(row.place || '').trim() || DEFAULT_REPORT_DATE_PLACE,
+    date: normalizeDateInputValue(row.date) || null,
+  }));
 }
 
 function normalizeFinanceAmount(raw: unknown): number {
@@ -647,12 +752,15 @@ export default function ExamProgramManagementPage() {
   const [searchParams, setSearchParams] = useSearchParams();
   const [academicYearId, setAcademicYearId] = useState<number | null>(null);
   const [rows, setRows] = useState<ProgramFormRow[]>([]);
+  const [reportDateRows, setReportDateRows] = useState<ProgramReportDateFormRow[]>([]);
+  const [reportDateBaseline, setReportDateBaseline] = useState<string>('[]');
   const [componentRows, setComponentRows] = useState<GradeComponentFormRow[]>([]);
   const [editingComponentRowId, setEditingComponentRowId] = useState<string | null>(null);
   const [endpointUnavailable, setEndpointUnavailable] = useState<boolean>(false);
   const [componentsEndpointUnavailable, setComponentsEndpointUnavailable] = useState<boolean>(false);
   const [loading, setLoading] = useState<boolean>(true);
   const [saving, setSaving] = useState<boolean>(false);
+  const [savingReportDates, setSavingReportDates] = useState<boolean>(false);
   const [savingComponents, setSavingComponents] = useState<boolean>(false);
   const [error, setError] = useState<string>('');
   const [isAddProgramModalOpen, setIsAddProgramModalOpen] = useState<boolean>(false);
@@ -736,6 +844,10 @@ export default function ExamProgramManagementPage() {
       }))
       .sort((a, b) => a.name.localeCompare(b.name));
   }, [selectedAcademicLevels, subjectAssignmentRows]);
+  const reportDateDirty = useMemo(
+    () => snapshotProgramReportDateRows(reportDateRows) !== reportDateBaseline,
+    [reportDateBaseline, reportDateRows],
+  );
 
   const setActiveTab = useCallback(
     (next: 'PROGRAM' | 'COMPONENT') => {
@@ -913,6 +1025,8 @@ export default function ExamProgramManagementPage() {
       } catch (endpointError: unknown) {
         if (Number(getErrorStatus(endpointError)) === 404) {
           nextRows = fallbackRows();
+          setReportDateRows([]);
+          setReportDateBaseline(snapshotProgramReportDateRows([]));
           setEndpointUnavailable(true);
         } else {
           throw endpointError;
@@ -920,6 +1034,20 @@ export default function ExamProgramManagementPage() {
       }
       setRows(nextRows);
       setEditingComponentRowId(null);
+
+      try {
+        const reportDatesRes = await examService.getReportDates({
+          academicYearId: Number(activeYear.id),
+        });
+        const nextReportDateRows = buildProgramReportDateRows(nextRows, reportDatesRes?.data?.reportDates || []);
+        setReportDateRows(nextReportDateRows);
+        setReportDateBaseline(snapshotProgramReportDateRows(nextReportDateRows));
+      } catch (reportDateError) {
+        console.error('Gagal memuat master tanggal rapor', reportDateError);
+        const nextReportDateRows = buildProgramReportDateRows(nextRows, []);
+        setReportDateRows(nextReportDateRows);
+        setReportDateBaseline(snapshotProgramReportDateRows(nextReportDateRows));
+      }
 
       try {
         const componentsRes = await examService.getGradeComponents({
@@ -1207,6 +1335,9 @@ export default function ExamProgramManagementPage() {
 
         const nextRows = normalizeRows(response?.data?.programs || []);
         setRows(nextRows);
+        const rebuiltReportDateRows = buildProgramReportDateRows(nextRows, mapProgramReportDateRowsToPayload(reportDateRows));
+        setReportDateRows(rebuiltReportDateRows);
+        setReportDateBaseline(snapshotProgramReportDateRows(rebuiltReportDateRows));
         await Promise.all([
           queryClient.invalidateQueries({ queryKey: ['sidebar-exam-programs'] }),
           queryClient.invalidateQueries({ queryKey: ['teacher-exam-programs'] }),
@@ -1221,7 +1352,46 @@ export default function ExamProgramManagementPage() {
         setSaving(false);
       }
     },
-    [academicYearId, componentRows, endpointUnavailable, queryClient],
+    [academicYearId, componentRows, endpointUnavailable, queryClient, reportDateRows],
+  );
+
+  const persistReportDateRows = useCallback(
+    async (rowsToPersist: ProgramReportDateFormRow[], successMessage: string): Promise<boolean> => {
+      if (!academicYearId) {
+        toast.error('Tahun ajaran aktif tidak ditemukan.');
+        return false;
+      }
+
+      if (endpointUnavailable) {
+        toast.error('Endpoint program ujian belum tersedia di backend. Jalankan update backend terlebih dahulu.');
+        return false;
+      }
+
+      setSavingReportDates(true);
+      try {
+        const response = await examService.updateReportDates({
+          academicYearId,
+          reportDates: rowsToPersist.map((row) => ({
+            semester: row.semester,
+            reportType: normalizeReportDateType(row.reportType, row.semester),
+            place: String(row.place || '').trim() || DEFAULT_REPORT_DATE_PLACE,
+            date: normalizeDateInputValue(row.date) || null,
+          })),
+        });
+        const nextRows = buildProgramReportDateRows(rows, response?.data?.reportDates || []);
+        setReportDateRows(nextRows);
+        setReportDateBaseline(snapshotProgramReportDateRows(nextRows));
+        toast.success(successMessage);
+        return true;
+      } catch (err: unknown) {
+        const message = getErrorMessage(err, 'Gagal menyimpan master tanggal rapor.');
+        toast.error(message);
+        return false;
+      } finally {
+        setSavingReportDates(false);
+      }
+    },
+    [academicYearId, endpointUnavailable, rows],
   );
 
   const submitAddProgram = useCallback(async () => {
@@ -1746,6 +1916,103 @@ export default function ExamProgramManagementPage() {
             </table>
           </div>
         )}
+
+        <div className="rounded-xl border border-amber-200 bg-amber-50 p-4 space-y-3">
+          <div className="flex flex-col gap-2 sm:flex-row sm:items-center sm:justify-between">
+            <div>
+              <h4 className="text-sm font-semibold text-amber-950">Master Tanggal Rapor</h4>
+              <p className="text-xs text-amber-900">
+                Bagian ini dipakai oleh program yang memilih policy <span className="font-semibold">Ikuti Tanggal Rapor Semester</span>.
+              </p>
+            </div>
+            <button
+              type="button"
+              onClick={() => void persistReportDateRows(reportDateRows, 'Master tanggal rapor berhasil diperbarui.')}
+              disabled={!reportDateDirty || savingReportDates}
+              className={`inline-flex items-center justify-center gap-2 rounded-lg px-3 py-2 text-sm font-medium text-white ${
+                !reportDateDirty || savingReportDates ? 'bg-slate-400' : 'bg-amber-600 hover:bg-amber-700'
+              }`}
+            >
+              <Save className="w-4 h-4" />
+              {savingReportDates ? 'Menyimpan...' : 'Simpan Tanggal Rapor'}
+            </button>
+          </div>
+
+          {reportDateRows.length === 0 ? (
+            <div className="rounded-lg border border-dashed border-amber-300 bg-white/80 px-4 py-4 text-sm text-amber-900">
+              Belum ada program yang memakai policy <span className="font-semibold">Ikuti Tanggal Rapor Semester</span>.
+            </div>
+          ) : (
+            <div className="overflow-x-auto rounded-lg border border-amber-200 bg-white">
+              <table className="w-full table-fixed text-xs">
+                <thead className="bg-amber-50 text-left uppercase tracking-wide text-amber-800">
+                  <tr>
+                    <th className="px-3 py-2 w-[28%]">Program Terkait</th>
+                    <th className="px-3 py-2 w-[12%]">Semester</th>
+                    <th className="px-3 py-2 w-[14%]">Jenis</th>
+                    <th className="px-3 py-2 w-[18%]">Tanggal</th>
+                    <th className="px-3 py-2 w-[18%]">Tempat</th>
+                    <th className="px-3 py-2 w-[10%]">Status</th>
+                  </tr>
+                </thead>
+                <tbody className="divide-y divide-amber-100">
+                  {reportDateRows.map((row) => (
+                    <tr key={row.key} className="align-top">
+                      <td className="px-3 py-2">
+                        <p className="font-semibold text-slate-900">{row.programLabels.join(', ')}</p>
+                        <p className="text-slate-500">Kode: {row.programCodes.join(', ')}</p>
+                      </td>
+                      <td className="px-3 py-2 text-slate-700">{formatSemesterLabel(row.semester)}</td>
+                      <td className="px-3 py-2 text-slate-700">{formatReportTypeLabel(row.reportType)}</td>
+                      <td className="px-3 py-2">
+                        <input
+                          type="date"
+                          value={row.date}
+                          onChange={(event) =>
+                            setReportDateRows((currentRows) =>
+                              currentRows.map((item) =>
+                                item.key === row.key
+                                  ? { ...item, date: normalizeDateInputValue(event.target.value) }
+                                  : item,
+                              ),
+                            )
+                          }
+                          className="w-full rounded-lg border border-amber-200 px-3 py-2 text-sm focus:outline-none focus:ring-1 focus:ring-amber-500"
+                        />
+                      </td>
+                      <td className="px-3 py-2">
+                        <input
+                          type="text"
+                          value={row.place}
+                          onChange={(event) =>
+                            setReportDateRows((currentRows) =>
+                              currentRows.map((item) =>
+                                item.key === row.key
+                                  ? { ...item, place: String(event.target.value || '').slice(0, 120) }
+                                  : item,
+                              ),
+                            )
+                          }
+                          placeholder={DEFAULT_REPORT_DATE_PLACE}
+                          className="w-full rounded-lg border border-amber-200 px-3 py-2 text-sm focus:outline-none focus:ring-1 focus:ring-amber-500"
+                        />
+                      </td>
+                      <td className="px-3 py-2">
+                        <span
+                          className={`inline-flex rounded-full px-2 py-0.5 text-[11px] font-medium ${
+                            row.date ? 'bg-emerald-50 text-emerald-700' : 'bg-red-50 text-red-700'
+                          }`}
+                        >
+                          {row.date ? 'Siap' : 'Belum diatur'}
+                        </span>
+                      </td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            </div>
+          )}
+        </div>
       </div>
 
       {isAddProgramModalOpen ? (

@@ -30,6 +30,7 @@ import {
   ExamProgramCode,
   ExamProgramGradeComponentType,
   ExamProgramGradeEntryMode,
+  ExamProgramReportDateItem,
   ExamProgramItem,
   ExamProgramReportSlot,
   ExamStudentResultPublishMode,
@@ -92,6 +93,15 @@ type ExamProgramDraft = {
   source: 'default' | 'custom' | 'new';
   isCodeLocked: boolean;
 };
+type ProgramReportDateDraft = {
+  key: string;
+  semester: 'ODD' | 'EVEN';
+  reportType: string;
+  programCodes: string[];
+  programLabels: string[];
+  date: string;
+  place: string;
+};
 type GradeComponentDraft = {
   rowId: string;
   componentId?: number;
@@ -140,6 +150,8 @@ const PROGRAM_FIXED_SEMESTER_OPTIONS = [
 ] as const;
 const DEFAULT_FINANCE_CLEARANCE_MODE: ExamFinanceClearanceMode = 'BLOCK_ANY_OUTSTANDING';
 const DEFAULT_STUDENT_RESULT_PUBLISH_MODE: ExamStudentResultPublishMode = 'DIRECT';
+const DEFAULT_REPORT_DATE_PLACE = 'Bekasi';
+const REPORT_DATE_SEMESTERS: Array<'ODD' | 'EVEN'> = ['ODD', 'EVEN'];
 const STUDENT_RESULT_PUBLISH_MODE_OPTIONS: Array<{
   value: ExamStudentResultPublishMode;
   label: string;
@@ -147,7 +159,11 @@ const STUDENT_RESULT_PUBLISH_MODE_OPTIONS: Array<{
 }> = [
   { value: 'DIRECT', label: 'Langsung', hint: 'Nilai langsung tampil ke siswa setelah sinkronisasi selesai.' },
   { value: 'SCHEDULED', label: 'Tanggal Tertentu', hint: 'Nilai dibuka pada titimangsa yang Anda atur di program ini.' },
-  { value: 'REPORT_DATE', label: 'Ikuti Tanggal Rapor Semester', hint: 'Nilai dibuka saat tanggal rapor semester tiba.' },
+  {
+    value: 'REPORT_DATE',
+    label: 'Ikuti Tanggal Rapor Semester',
+    hint: 'Nilai dibuka saat tanggal rapor semester tiba. Atur tanggalnya di Master Tanggal Rapor.',
+  },
 ];
 const FINANCE_CLEARANCE_MODE_OPTIONS: Array<{
   value: ExamFinanceClearanceMode;
@@ -227,6 +243,98 @@ function getStudentResultPublishSummary(row: {
       : `${option?.label || mode} • tanggal belum diatur`;
   }
   return option?.label || mode;
+}
+
+function normalizeReportDateType(raw: unknown, semester: 'ODD' | 'EVEN'): string {
+  const normalized = normalizeProgramCode(raw);
+  if (normalized === 'FINAL') return semester === 'EVEN' ? 'SAT' : 'SAS';
+  if (normalized === 'MIDTERM') return 'SBTS';
+  if (normalized === 'FORMATIVE') return 'FORMATIF';
+  if (normalized === 'US_TEORI') return 'US_THEORY';
+  if (normalized === 'US_PRAKTEK') return 'US_PRACTICE';
+  return normalized;
+}
+
+function formatSemesterLabel(semester: 'ODD' | 'EVEN') {
+  return semester === 'ODD' ? 'Ganjil' : 'Genap';
+}
+
+function formatReportTypeLabel(reportType: string) {
+  const normalized = normalizeProgramCode(reportType);
+  if (normalized === 'FORMATIF') return 'Formatif';
+  if (normalized === 'SBTS') return 'SBTS';
+  if (normalized === 'SAS') return 'SAS';
+  if (normalized === 'SAT') return 'SAT';
+  if (normalized === 'US_THEORY') return 'US Teori';
+  if (normalized === 'US_PRACTICE') return 'US Praktik';
+  return normalized || '-';
+}
+
+function buildProgramReportDateDrafts(
+  programs: ExamProgramDraft[],
+  reportDates: ExamProgramReportDateItem[],
+): ProgramReportDateDraft[] {
+  const existingByKey = new Map(
+    (reportDates || []).map((row) => [`${row.semester}:${normalizeReportDateType(row.reportType, row.semester)}`, row]),
+  );
+  const rows = new Map<string, ProgramReportDateDraft>();
+
+  programs
+    .filter((program) => normalizeStudentResultPublishMode(program.studentResultPublishMode) === 'REPORT_DATE')
+    .forEach((program) => {
+      const semesters = program.fixedSemester ? [program.fixedSemester] : REPORT_DATE_SEMESTERS;
+      semesters.forEach((semester) => {
+        const reportType = normalizeReportDateType(program.baseTypeCode || program.baseType || program.code, semester);
+        if (!reportType) return;
+        const key = `${semester}:${reportType}`;
+        const existing = rows.get(key);
+        const persisted = existingByKey.get(key);
+        if (existing) {
+          if (!existing.programCodes.includes(program.code)) existing.programCodes.push(program.code);
+          if (!existing.programLabels.includes(program.label || program.code)) existing.programLabels.push(program.label || program.code);
+          return;
+        }
+        rows.set(key, {
+          key,
+          semester,
+          reportType,
+          programCodes: [program.code],
+          programLabels: [program.label || program.code],
+          date: normalizeDateInputValue(persisted?.date),
+          place: String(persisted?.place || DEFAULT_REPORT_DATE_PLACE).trim() || DEFAULT_REPORT_DATE_PLACE,
+        });
+      });
+    });
+
+  return Array.from(rows.values()).sort((a, b) => {
+    const semesterOrder =
+      (a.semester === 'ODD' ? 0 : 1) - (b.semester === 'ODD' ? 0 : 1);
+    if (semesterOrder !== 0) return semesterOrder;
+    return a.reportType.localeCompare(b.reportType);
+  });
+}
+
+function snapshotProgramReportDateDrafts(rows: ProgramReportDateDraft[]) {
+  return JSON.stringify(
+    rows.map((row) => ({
+      key: row.key,
+      semester: row.semester,
+      reportType: normalizeReportDateType(row.reportType, row.semester),
+      programCodes: [...row.programCodes].sort((a, b) => a.localeCompare(b)),
+      programLabels: [...row.programLabels].sort((a, b) => a.localeCompare(b)),
+      date: normalizeDateInputValue(row.date),
+      place: String(row.place || '').trim(),
+    })),
+  );
+}
+
+function mapProgramReportDateDraftsToPayload(rows: ProgramReportDateDraft[]): ExamProgramReportDateItem[] {
+  return rows.map((row) => ({
+    semester: row.semester,
+    reportType: normalizeReportDateType(row.reportType, row.semester),
+    place: String(row.place || '').trim() || DEFAULT_REPORT_DATE_PLACE,
+    date: normalizeDateInputValue(row.date) || null,
+  }));
 }
 
 function normalizeFinanceAmount(raw: unknown) {
@@ -988,6 +1096,8 @@ export default function TeacherWakakurExamsScreen() {
   const [teacherSearch, setTeacherSearch] = useState('');
   const [programDrafts, setProgramDrafts] = useState<ExamProgramDraft[]>([]);
   const [programBaseline, setProgramBaseline] = useState<string>('[]');
+  const [reportDateDrafts, setReportDateDrafts] = useState<ProgramReportDateDraft[]>([]);
+  const [reportDateBaseline, setReportDateBaseline] = useState<string>('[]');
   const [componentDrafts, setComponentDrafts] = useState<GradeComponentDraft[]>([]);
   const [componentBaseline, setComponentBaseline] = useState<string>('[]');
   const [codeEditBackup, setCodeEditBackup] = useState<Record<string, string>>({});
@@ -1032,6 +1142,16 @@ export default function TeacherWakakurExamsScreen() {
         academicYearId: activeYearQuery.data?.id,
         roleContext: 'all',
         includeInactive: true,
+      }),
+  });
+
+  const examReportDatesQuery = useQuery({
+    queryKey: ['mobile-wakakur-exam-report-dates', activeYearQuery.data?.id],
+    enabled: isAuthenticated && !!isAllowed && Boolean(activeYearQuery.data?.id),
+    staleTime: 5 * 60 * 1000,
+    queryFn: () =>
+      examApi.getExamReportDates({
+        academicYearId: activeYearQuery.data?.id,
       }),
   });
 
@@ -1353,9 +1473,13 @@ export default function TeacherWakakurExamsScreen() {
       const nextDrafts = normalizeProgramDrafts(result.programs || []);
       setProgramDrafts(nextDrafts);
       setProgramBaseline(snapshotProgramDrafts(nextDrafts));
+      const rebuiltReportDateRows = buildProgramReportDateDrafts(nextDrafts, mapProgramReportDateDraftsToPayload(reportDateDrafts));
+      setReportDateDrafts(rebuiltReportDateRows);
+      setReportDateBaseline(snapshotProgramReportDateDrafts(rebuiltReportDateRows));
       await Promise.all([
         queryClient.invalidateQueries({ queryKey: ['mobile-wakakur-exam-program-config'] }),
         queryClient.invalidateQueries({ queryKey: ['mobile-wakakur-exam-programs'] }),
+        queryClient.invalidateQueries({ queryKey: ['mobile-wakakur-exam-report-dates'] }),
         queryClient.invalidateQueries({ queryKey: ['mobile-home-exam-programs'] }),
         queryClient.invalidateQueries({ queryKey: ['mobile-teacher-exam-programs'] }),
         queryClient.invalidateQueries({ queryKey: ['mobile-student-exam-programs'] }),
@@ -1365,6 +1489,34 @@ export default function TeacherWakakurExamsScreen() {
     onError: (error: unknown) => {
       const apiError = error as { response?: { data?: { message?: string } }; message?: string };
       const msg = apiError?.response?.data?.message || apiError?.message || 'Gagal menyimpan program ujian.';
+      Alert.alert('Gagal', msg);
+    },
+  });
+
+  const updateExamReportDatesMutation = useMutation({
+    mutationFn: async () =>
+      examApi.updateExamReportDates({
+        academicYearId: activeYearQuery.data?.id,
+        reportDates: reportDateDrafts.map((row) => ({
+          semester: row.semester,
+          reportType: normalizeReportDateType(row.reportType, row.semester),
+          place: String(row.place || '').trim() || DEFAULT_REPORT_DATE_PLACE,
+          date: normalizeDateInputValue(row.date) || null,
+        })),
+      }),
+    onSuccess: async (result) => {
+      const nextRows = buildProgramReportDateDrafts(programDrafts, result.reportDates || []);
+      setReportDateDrafts(nextRows);
+      setReportDateBaseline(snapshotProgramReportDateDrafts(nextRows));
+      await Promise.all([
+        queryClient.invalidateQueries({ queryKey: ['mobile-wakakur-exam-report-dates'] }),
+        queryClient.invalidateQueries({ queryKey: ['mobile-student-grade-overview'] }),
+      ]);
+      Alert.alert('Sukses', 'Master tanggal rapor berhasil diperbarui.');
+    },
+    onError: (error: unknown) => {
+      const apiError = error as { response?: { data?: { message?: string } }; message?: string };
+      const msg = apiError?.response?.data?.message || apiError?.message || 'Gagal menyimpan master tanggal rapor.';
       Alert.alert('Gagal', msg);
     },
   });
@@ -1429,6 +1581,17 @@ export default function TeacherWakakurExamsScreen() {
     }, 0);
     return () => clearTimeout(timerId);
   }, [examProgramConfigQuery.data]);
+
+  useEffect(() => {
+    if (!examProgramConfigQuery.data?.programs) return;
+    const nextDrafts = normalizeProgramDrafts(examProgramConfigQuery.data.programs);
+    const nextRows = buildProgramReportDateDrafts(nextDrafts, examReportDatesQuery.data?.reportDates || []);
+    const timerId = setTimeout(() => {
+      setReportDateDrafts(nextRows);
+      setReportDateBaseline(snapshotProgramReportDateDrafts(nextRows));
+    }, 0);
+    return () => clearTimeout(timerId);
+  }, [examProgramConfigQuery.data, examReportDatesQuery.data]);
 
   useEffect(() => {
     const rows = examGradeComponentsQuery.data?.components || [];
@@ -2232,6 +2395,10 @@ export default function TeacherWakakurExamsScreen() {
   const programDirty = useMemo(
     () => snapshotProgramDrafts(programDrafts) !== programBaseline,
     [programBaseline, programDrafts],
+  );
+  const reportDateDirty = useMemo(
+    () => snapshotProgramReportDateDrafts(reportDateDrafts) !== reportDateBaseline,
+    [reportDateBaseline, reportDateDrafts],
   );
   const componentDirty = useMemo(
     () => snapshotComponentDrafts(componentDrafts) !== componentBaseline,
@@ -3973,6 +4140,161 @@ export default function TeacherWakakurExamsScreen() {
               <Text style={{ color: BRAND_COLORS.textMuted }}>Belum ada program ujian.</Text>
             </View>
           )}
+
+          <View
+            style={{
+              backgroundColor: '#fffbeb',
+              borderWidth: 1,
+              borderColor: '#fde68a',
+              borderRadius: 12,
+              padding: 12,
+              marginBottom: 10,
+            }}
+          >
+            <Text style={{ color: '#92400e', fontWeight: '800', marginBottom: 4, ...sectionTitleTextStyle }}>
+              Master Tanggal Rapor
+            </Text>
+            <Text style={{ color: '#92400e', marginBottom: 10, ...bodyTextStyle }}>
+              Dipakai oleh program yang memilih policy Ikuti Tanggal Rapor Semester.
+            </Text>
+
+            {examReportDatesQuery.isLoading ? (
+              <QueryStateView type="loading" message="Memuat master tanggal rapor..." />
+            ) : null}
+            {examReportDatesQuery.isError ? (
+              <QueryStateView
+                type="error"
+                message="Gagal memuat master tanggal rapor."
+                onRetry={() => examReportDatesQuery.refetch()}
+              />
+            ) : null}
+
+            {!examReportDatesQuery.isLoading && !examReportDatesQuery.isError ? (
+              reportDateDrafts.length > 0 ? (
+                <>
+                  {reportDateDrafts.map((row) => (
+                    <View
+                      key={row.key}
+                      style={{
+                        borderWidth: 1,
+                        borderColor: '#fde68a',
+                        backgroundColor: '#fff',
+                        borderRadius: 10,
+                        padding: 12,
+                        marginBottom: 10,
+                      }}
+                    >
+                      <Text style={{ color: BRAND_COLORS.textDark, fontWeight: '700', ...itemTitleTextStyle }}>
+                        {row.programLabels.join(', ')}
+                      </Text>
+                      <Text style={{ color: BRAND_COLORS.textMuted, marginTop: 2, ...helperTextStyle }}>
+                        {formatReportTypeLabel(row.reportType)} • Semester {formatSemesterLabel(row.semester)} • Kode {row.programCodes.join(', ')}
+                      </Text>
+
+                      <View style={{ flexDirection: 'row', gap: 8, marginTop: 10 }}>
+                        <View style={{ flex: 1 }}>
+                          <Text style={{ color: '#64748b', marginBottom: 4, ...helperTextStyle }}>Tanggal Rapor</Text>
+                          <TextInput
+                            value={row.date}
+                            onChangeText={(value) =>
+                              setReportDateDrafts((currentRows) =>
+                                currentRows.map((item) =>
+                                  item.key === row.key
+                                    ? { ...item, date: normalizeDateInputValue(value) }
+                                    : item,
+                                ),
+                              )
+                            }
+                            placeholder="YYYY-MM-DD"
+                            placeholderTextColor="#94a3b8"
+                            style={{
+                              borderWidth: 1,
+                              borderColor: '#d5e1f5',
+                              borderRadius: 9,
+                              backgroundColor: '#fff',
+                              paddingHorizontal: 10,
+                              paddingVertical: 8,
+                              color: BRAND_COLORS.textDark,
+                              ...inputTextStyle,
+                            }}
+                          />
+                        </View>
+                        <View style={{ flex: 1 }}>
+                          <Text style={{ color: '#64748b', marginBottom: 4, ...helperTextStyle }}>Tempat</Text>
+                          <TextInput
+                            value={row.place}
+                            onChangeText={(value) =>
+                              setReportDateDrafts((currentRows) =>
+                                currentRows.map((item) =>
+                                  item.key === row.key
+                                    ? { ...item, place: value.slice(0, 120) }
+                                    : item,
+                                ),
+                              )
+                            }
+                            placeholder={DEFAULT_REPORT_DATE_PLACE}
+                            placeholderTextColor="#94a3b8"
+                            style={{
+                              borderWidth: 1,
+                              borderColor: '#d5e1f5',
+                              borderRadius: 9,
+                              backgroundColor: '#fff',
+                              paddingHorizontal: 10,
+                              paddingVertical: 8,
+                              color: BRAND_COLORS.textDark,
+                              ...inputTextStyle,
+                            }}
+                          />
+                        </View>
+                      </View>
+
+                      <Text
+                        style={{
+                          color: row.date ? '#166534' : '#b91c1c',
+                          marginTop: 8,
+                          fontWeight: '700',
+                          ...helperTextStyle,
+                        }}
+                      >
+                        {row.date ? 'Status: Siap dipakai' : 'Status: Belum diatur'}
+                      </Text>
+                    </View>
+                  ))}
+
+                  <Pressable
+                    onPress={() => updateExamReportDatesMutation.mutate()}
+                    disabled={!reportDateDirty || updateExamReportDatesMutation.isPending}
+                    style={{
+                      borderRadius: 10,
+                      paddingVertical: 10,
+                      alignItems: 'center',
+                      backgroundColor:
+                        !reportDateDirty || updateExamReportDatesMutation.isPending ? '#94a3b8' : '#d97706',
+                    }}
+                  >
+                    <Text style={{ color: '#fff', fontWeight: '700' }}>
+                      {updateExamReportDatesMutation.isPending ? 'Menyimpan...' : 'Simpan Tanggal Rapor'}
+                    </Text>
+                  </Pressable>
+                </>
+              ) : (
+                <View
+                  style={{
+                    borderWidth: 1,
+                    borderColor: '#fcd34d',
+                    borderStyle: 'dashed',
+                    borderRadius: 10,
+                    padding: 14,
+                    backgroundColor: '#fff',
+                  }}
+                >
+                  <Text style={{ color: '#92400e', ...bodyTextStyle }}>
+                    Belum ada program yang memakai policy Ikuti Tanggal Rapor Semester.
+                  </Text>
+                </View>
+              )
+            ) : null}
+          </View>
         </>
       ) : (
         <>
