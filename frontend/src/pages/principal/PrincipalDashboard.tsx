@@ -68,6 +68,8 @@ import type { User } from '../../types/auth';
 import { DashboardWelcomeCard } from '../../components/common/DashboardWelcomeCard';
 import HomeroomBookPanel from '../../components/homeroom/HomeroomBookPanel';
 import { computeVisibleRefetchInterval } from '../../lib/query/liveQuery';
+import { examService, type ExamProgram } from '../../services/exam.service';
+import ExamProgramFilterBar from '../../components/teacher/exams/ExamProgramFilterBar';
 
 type StatTone = 'blue' | 'orange' | 'red' | 'teal';
 
@@ -5383,8 +5385,7 @@ const mergePrincipalReportNotes = (notes?: string | null, incident?: string | nu
   [String(notes || '').trim(), String(incident || '').trim()].filter(Boolean).join(' ');
 
 const PrincipalExamReportsPage = () => {
-  const [examTypeFilter, setExamTypeFilter] = useState<string>('ALL');
-  const [selectedDate, setSelectedDate] = useState('');
+  const [activeProgramCode, setActiveProgramCode] = useState<string>('');
   const [absentModalRow, setAbsentModalRow] = useState<PrincipalProctorReportRow | null>(null);
   const [expandedDayKey, setExpandedDayKey] = useState<string | null>(null);
   const [expandedTimeGroupKey, setExpandedTimeGroupKey] = useState<string | null>(null);
@@ -5397,15 +5398,54 @@ const PrincipalExamReportsPage = () => {
 
   const activeAcademicYearId = activeYearData?.data?.id;
 
-  const reportsQuery = useQuery({
-    queryKey: ['principal-exam-proctor-reports', activeAcademicYearId, examTypeFilter, selectedDate],
+  const programsQuery = useQuery({
+    queryKey: ['principal-exam-report-programs', activeAcademicYearId],
     enabled: Boolean(activeAcademicYearId),
+    queryFn: async () => {
+      const response = await examService.getPrograms({
+        academicYearId: activeAcademicYearId,
+        roleContext: 'teacher',
+      });
+      return Array.isArray(response.data?.programs) ? (response.data.programs as ExamProgram[]) : [];
+    },
+    staleTime: 1000 * 60 * 5,
+  });
+
+  const visiblePrograms = useMemo(
+    () =>
+      (programsQuery.data || [])
+        .filter((program) => Boolean(program?.isActive) && Boolean(program?.showOnTeacherMenu))
+        .sort(
+          (a, b) =>
+            Number(a.order || 0) - Number(b.order || 0) ||
+            String(a.code || '').localeCompare(String(b.code || '')),
+        ),
+    [programsQuery.data],
+  );
+
+  const activeProgram = useMemo(
+    () => visiblePrograms.find((program) => program.code === activeProgramCode) || null,
+    [visiblePrograms, activeProgramCode],
+  );
+
+  useEffect(() => {
+    if (visiblePrograms.length === 0) {
+      if (activeProgramCode) setActiveProgramCode('');
+      return;
+    }
+    if (!visiblePrograms.some((program) => program.code === activeProgramCode)) {
+      setActiveProgramCode(visiblePrograms[0].code);
+    }
+  }, [activeProgramCode, visiblePrograms]);
+
+  const reportsQuery = useQuery({
+    queryKey: ['principal-exam-proctor-reports', activeAcademicYearId, activeProgramCode],
+    enabled: Boolean(activeAcademicYearId) && Boolean(activeProgramCode),
     queryFn: async () => {
       const response = await api.get('/proctoring/reports', {
         params: {
           academicYearId: activeAcademicYearId,
-          examType: examTypeFilter !== 'ALL' ? examTypeFilter : undefined,
-          date: selectedDate || undefined,
+          examType: activeProgramCode,
         },
       });
       const payload = response?.data?.data || {};
@@ -5423,15 +5463,6 @@ const PrincipalExamReportsPage = () => {
   });
 
   const rows = reportsQuery.data?.rows || [];
-
-  const examTypeOptions = useMemo(() => {
-    const options = new Set<string>();
-    rows.forEach((row) => {
-      const examType = String(row.examType || '').trim().toUpperCase();
-      if (examType) options.add(examType);
-    });
-    return Array.from(options.values()).sort((a, b) => a.localeCompare(b));
-  }, [rows]);
 
   const groupedReportDays = useMemo<PrincipalGroupedReportDay[]>(() => {
     const dayMap = new Map<
@@ -5547,60 +5578,34 @@ const PrincipalExamReportsPage = () => {
       <div>
         <h2 className="text-2xl font-bold text-gray-900">Monitoring Berita Acara Ujian</h2>
         <p className="mt-1 text-sm text-gray-500">
-          Pantau berita acara pengawas ruang secara real-time dengan grouping per hari dan per jam ke.
+          Pantau berita acara pengawas untuk program {activeProgram?.shortLabel || activeProgram?.label || activeProgramCode || '-'} dengan grouping per hari dan per jam ke.
         </p>
       </div>
 
-      <div className="bg-white rounded-xl shadow-sm border border-gray-100 p-4 flex flex-col md:flex-row gap-3 md:items-center md:justify-between">
-        <div className="flex flex-wrap gap-3 items-center">
-          <div className="flex items-center gap-2">
-            <Filter className="w-4 h-4 text-gray-400" />
-            <select
-              value={examTypeFilter}
-              onChange={(e) => setExamTypeFilter(e.target.value)}
-              className="border border-gray-300 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500/60"
-            >
-              <option value="ALL">Semua Jenis Ujian</option>
-              {examTypeOptions.map((option) => (
-                <option key={option} value={option}>
-                  {option}
-                </option>
-              ))}
-            </select>
-          </div>
-          <div className="flex items-center gap-2">
-            <Calendar className="w-4 h-4 text-gray-400" />
-            <input
-              type="date"
-              value={selectedDate}
-              onChange={(e) => setSelectedDate(e.target.value)}
-              className="border border-gray-300 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500/60"
-            />
-          </div>
-        </div>
-        <button
-          type="button"
-          onClick={() => reportsQuery.refetch()}
-          className="px-3 py-2 rounded-lg border border-gray-300 text-sm text-gray-700 hover:bg-gray-50"
-        >
-          Muat Ulang
-        </button>
-      </div>
-
-      <div className="rounded-xl border border-blue-100 bg-blue-50/60 px-4 py-3 text-sm text-blue-900">
-        Rekap utama dipindahkan ke header jam agar angka kehadiran dan laporan ruang lebih mudah dibaca sesuai pelaksanaan slot ujian.
+      <div className="bg-white rounded-xl shadow-sm border border-gray-100 p-4">
+        <ExamProgramFilterBar
+          programs={visiblePrograms}
+          activeProgramCode={activeProgramCode}
+          onProgramChange={setActiveProgramCode}
+          showSemester={false}
+          emptyMessage="Belum ada program ujian aktif pada tahun ajaran ini."
+        />
       </div>
 
       <div className="bg-white rounded-xl shadow-sm border border-gray-100 overflow-hidden">
-        {reportsQuery.isLoading ? (
+        {programsQuery.isLoading || reportsQuery.isLoading ? (
           <div className="py-10 flex items-center justify-center">
             <Loader2 className="w-6 h-6 animate-spin text-blue-600" />
           </div>
-        ) : reportsQuery.isError ? (
+        ) : programsQuery.isError || reportsQuery.isError ? (
           <div className="py-10 text-center text-sm text-red-600">Gagal memuat berita acara pengawas.</div>
+        ) : visiblePrograms.length === 0 ? (
+          <div className="py-10 text-center text-sm text-gray-500">
+            Belum ada program ujian aktif yang bisa dimonitor.
+          </div>
         ) : groupedReportDays.length === 0 ? (
           <div className="py-10 text-center text-sm text-gray-500">
-            Belum ada berita acara pada filter saat ini.
+            Belum ada berita acara untuk program {activeProgram?.shortLabel || activeProgram?.label || activeProgramCode || '-'}.
           </div>
         ) : (
           <div className="space-y-4 px-4 py-4">

@@ -1235,6 +1235,19 @@ export default function TeacherGradesScreen() {
       {!assignmentsQuery.isLoading && !assignmentsQuery.isError ? (
         assignments.length > 0 ? (
           <>
+            <MobileSelectField
+              label="Semester"
+              value={semester}
+              options={semesterOptions}
+              onChange={(next) => {
+                if (next !== 'ODD' && next !== 'EVEN') return;
+                setSemester(next);
+                setSelectedAssignmentId(null);
+                setSelectedComponentId(null);
+              }}
+              placeholder="Pilih semester"
+            />
+
             <View
               style={{
                 backgroundColor: '#fff',
@@ -1263,19 +1276,6 @@ export default function TeacherGradesScreen() {
                 </Text>
               ) : null}
             </View>
-
-            <MobileSelectField
-              label="Semester"
-              value={semester}
-              options={semesterOptions}
-              onChange={(next) => {
-                if (next !== 'ODD' && next !== 'EVEN') return;
-                setSemester(next);
-                setSelectedAssignmentId(null);
-                setSelectedComponentId(null);
-              }}
-              placeholder="Pilih semester"
-            />
 
             <View
               style={{

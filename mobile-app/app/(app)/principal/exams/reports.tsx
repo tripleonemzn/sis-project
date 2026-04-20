@@ -1,22 +1,19 @@
 import { useEffect, useMemo, useState } from 'react';
 import { Redirect } from 'expo-router';
 import { useQuery } from '@tanstack/react-query';
-import { Pressable, RefreshControl, ScrollView, Text, TextInput, View } from 'react-native';
+import { Pressable, RefreshControl, ScrollView, Text, View } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { AppLoadingScreen } from '../../../../src/components/AppLoadingScreen';
-import { MobileSelectField } from '../../../../src/components/MobileSelectField';
+import MobileMenuTabBar from '../../../../src/components/MobileMenuTabBar';
 import { QueryStateView } from '../../../../src/components/QueryStateView';
 import { BRAND_COLORS } from '../../../../src/config/brand';
 import { academicYearApi } from '../../../../src/features/academicYear/academicYearApi';
 import { useAuth } from '../../../../src/features/auth/AuthProvider';
+import { examApi, type ExamProgramItem } from '../../../../src/features/exams/examApi';
 import { principalApi } from '../../../../src/features/principal/principalApi';
 import { PrincipalProctorReportRow } from '../../../../src/features/principal/types';
 import { getStandardPagePadding } from '../../../../src/lib/ui/pageLayout';
 import { scaleWithAppTextScale } from '../../../../src/theme/AppTextScaleProvider';
-
-function todayInput() {
-  return new Date().toISOString().slice(0, 10);
-}
 
 function formatTime(value?: string | null) {
   if (!value) return '-';
@@ -105,8 +102,7 @@ export default function PrincipalExamReportsScreen() {
   const insets = useSafeAreaInsets();
   const { isAuthenticated, isLoading, user } = useAuth();
   const pagePadding = getStandardPagePadding(insets, { bottom: 120 });
-  const [selectedDate, setSelectedDate] = useState(todayInput());
-  const [examTypeFilter, setExamTypeFilter] = useState('ALL');
+  const [activeProgramCode, setActiveProgramCode] = useState('');
   const [expandedDayKey, setExpandedDayKey] = useState<string | null>(null);
   const [expandedTimeGroupKey, setExpandedTimeGroupKey] = useState<string | null>(null);
   const [expandedRowKey, setExpandedRowKey] = useState<string | null>(null);
@@ -124,31 +120,52 @@ export default function PrincipalExamReportsScreen() {
     staleTime: 5 * 60 * 1000,
   });
 
+  const programsQuery = useQuery({
+    queryKey: ['mobile-principal-exam-report-programs', activeYearQuery.data?.id || 'none'],
+    enabled: isAuthenticated && user?.role === 'PRINCIPAL' && !!activeYearQuery.data?.id,
+    queryFn: () =>
+      examApi.getExamPrograms({
+        academicYearId: activeYearQuery.data?.id,
+        roleContext: 'teacher',
+      }),
+    staleTime: 5 * 60 * 1000,
+  });
+
+  const visiblePrograms = useMemo(
+    () =>
+      (programsQuery.data?.programs || [])
+        .filter((program: ExamProgramItem) => program.isActive && program.showOnTeacherMenu)
+        .sort((a: ExamProgramItem, b: ExamProgramItem) => a.order - b.order || a.code.localeCompare(b.code)),
+    [programsQuery.data?.programs],
+  );
+
+  const activeProgram = useMemo(
+    () => visiblePrograms.find((program) => program.code === activeProgramCode) || null,
+    [visiblePrograms, activeProgramCode],
+  );
+
+  useEffect(() => {
+    if (visiblePrograms.length === 0) {
+      if (activeProgramCode) setActiveProgramCode('');
+      return;
+    }
+    if (!visiblePrograms.some((program) => program.code === activeProgramCode)) {
+      setActiveProgramCode(visiblePrograms[0].code);
+    }
+  }, [activeProgramCode, visiblePrograms]);
+
   const reportsQuery = useQuery({
-    queryKey: ['mobile-principal-exam-reports', user?.id, activeYearQuery.data?.id || 'none', selectedDate, examTypeFilter],
-    enabled: isAuthenticated && user?.role === 'PRINCIPAL',
+    queryKey: ['mobile-principal-exam-reports', user?.id, activeYearQuery.data?.id || 'none', activeProgramCode],
+    enabled: isAuthenticated && user?.role === 'PRINCIPAL' && !!activeProgramCode,
     queryFn: () =>
       principalApi.getProctorReports({
         academicYearId: activeYearQuery.data?.id,
-        date: selectedDate || undefined,
-        examType: examTypeFilter !== 'ALL' ? examTypeFilter : undefined,
+        examType: activeProgramCode,
       }),
     staleTime: 60 * 1000,
   });
 
   const rows = useMemo(() => reportsQuery.data?.rows || [], [reportsQuery.data?.rows]);
-  const examTypes = useMemo(() => {
-    const options = new Set<string>();
-    rows.forEach((row) => {
-      const normalized = String(row.examType || '').trim().toUpperCase();
-      if (normalized) options.add(normalized);
-    });
-    return Array.from(options).sort((a, b) => a.localeCompare(b));
-  }, [rows]);
-  const examTypeOptions = useMemo(
-    () => [{ value: 'ALL', label: 'Semua Jenis Ujian' }, ...examTypes.map((item) => ({ value: item, label: item }))],
-    [examTypes],
-  );
   const groupedReportDays = useMemo<PrincipalReportDayGroup[]>(() => {
     const grouped = new Map<
       string,
@@ -272,9 +289,10 @@ export default function PrincipalExamReportsScreen() {
       contentContainerStyle={pagePadding}
       refreshControl={
         <RefreshControl
-          refreshing={activeYearQuery.isFetching || reportsQuery.isFetching}
+          refreshing={activeYearQuery.isFetching || programsQuery.isFetching || reportsQuery.isFetching}
           onRefresh={() => {
             void activeYearQuery.refetch();
+            void programsQuery.refetch();
             void reportsQuery.refetch();
           }}
         />
@@ -284,7 +302,7 @@ export default function PrincipalExamReportsScreen() {
         Berita Acara Ujian
       </Text>
       <Text style={{ color: BRAND_COLORS.textMuted, marginBottom: 12 }}>
-        Monitoring ruang aktif, kehadiran peserta, dan catatan pengawas ruang secara real-time.
+        Monitoring berita acara pengawas untuk program {activeProgram?.shortLabel || activeProgram?.label || activeProgramCode || '-'}.
       </Text>
 
       <View
@@ -297,55 +315,38 @@ export default function PrincipalExamReportsScreen() {
           marginBottom: 12,
         }}
       >
-        <Text style={{ color: BRAND_COLORS.textDark, fontWeight: '700', marginBottom: 6 }}>Filter Tanggal</Text>
-        <TextInput
-          value={selectedDate}
-          onChangeText={setSelectedDate}
-          placeholder="YYYY-MM-DD"
-          autoCapitalize="none"
-          autoCorrect={false}
-          style={{
-            borderWidth: 1,
-            borderColor: '#cbd5e1',
-            borderRadius: 10,
-            paddingHorizontal: 12,
-            paddingVertical: 10,
-            color: BRAND_COLORS.textDark,
-            backgroundColor: '#fff',
-            marginBottom: 8,
-          }}
-        />
-        <Text style={{ color: BRAND_COLORS.textDark, fontWeight: '700', marginBottom: 8 }}>Jenis Ujian</Text>
-        <MobileSelectField
-          label="Jenis Ujian"
-          value={examTypeFilter}
-          options={examTypeOptions}
-          onChange={(next) => setExamTypeFilter(next || 'ALL')}
-          placeholder="Pilih jenis ujian"
+        <MobileMenuTabBar
+          items={visiblePrograms.map((program) => ({
+            key: program.code,
+            label: program.shortLabel || program.label || program.code,
+          }))}
+          activeKey={activeProgramCode}
+          onChange={(next) => setActiveProgramCode(next)}
+          compact
+          tabVariant="plain"
         />
       </View>
 
-      {reportsQuery.isLoading ? <QueryStateView type="loading" message="Memuat berita acara pengawas..." /> : null}
-      {reportsQuery.isError ? (
+      {programsQuery.isLoading || reportsQuery.isLoading ? <QueryStateView type="loading" message="Memuat berita acara pengawas..." /> : null}
+      {programsQuery.isError || reportsQuery.isError ? (
         <QueryStateView type="error" message="Gagal memuat berita acara pengawas." onRetry={() => reportsQuery.refetch()} />
       ) : null}
 
-      <View
-        style={{
-          backgroundColor: '#fff',
-          borderWidth: 1,
-          borderColor: '#dbe7fb',
-          borderRadius: 12,
-          padding: 12,
-          marginBottom: 12,
-        }}
-      >
-        <Text style={{ color: BRAND_COLORS.textMuted, fontSize: scaleWithAppTextScale(12) }}>
-          Ringkasan utama dipindahkan ke header jam agar kehadiran dan laporan ruang lebih mudah dibaca per pelaksanaan slot ujian.
-        </Text>
-      </View>
-
-      {groupedReportDays.length > 0 ? (
+      {visiblePrograms.length === 0 && !programsQuery.isLoading && !programsQuery.isError ? (
+        <View
+          style={{
+            borderWidth: 1,
+            borderStyle: 'dashed',
+            borderColor: '#cbd5e1',
+            borderRadius: 10,
+            padding: 14,
+            backgroundColor: '#fff',
+            marginBottom: 12,
+          }}
+        >
+          <Text style={{ color: BRAND_COLORS.textMuted }}>Belum ada program ujian aktif yang bisa dimonitor.</Text>
+        </View>
+      ) : groupedReportDays.length > 0 ? (
         groupedReportDays.map((day) => (
           <View
             key={day.dateKey}
@@ -541,7 +542,7 @@ export default function PrincipalExamReportsScreen() {
             ) : null}
           </View>
         ))
-      ) : !reportsQuery.isLoading && !reportsQuery.isError ? (
+      ) : !programsQuery.isLoading && !programsQuery.isError && !reportsQuery.isLoading && !reportsQuery.isError ? (
         <View
           style={{
             borderWidth: 1,
@@ -552,7 +553,9 @@ export default function PrincipalExamReportsScreen() {
             backgroundColor: '#fff',
           }}
         >
-          <Text style={{ color: BRAND_COLORS.textMuted }}>Belum ada berita acara pada filter saat ini.</Text>
+          <Text style={{ color: BRAND_COLORS.textMuted }}>
+            Belum ada berita acara untuk program {activeProgram?.shortLabel || activeProgram?.label || activeProgramCode || '-'}.
+          </Text>
         </View>
       ) : null}
     </ScrollView>
