@@ -468,6 +468,7 @@ const ExamProctorManagementPage = () => {
   const [expandedSlots, setExpandedSlots] = useState<string[]>([]);
   const [isReportExpanded, setIsReportExpanded] = useState(false);
   const [expandedReportDayKey, setExpandedReportDayKey] = useState<string | null>(null);
+  const [expandedReportTimeGroupKey, setExpandedReportTimeGroupKey] = useState<string | null>(null);
   const [absentModalRow, setAbsentModalRow] = useState<ProctorReportRow | null>(null);
 
   const visiblePrograms = useMemo(
@@ -979,10 +980,18 @@ const ExamProctorManagementPage = () => {
   useEffect(() => {
     if (!isReportExpanded || groupedReportDays.length === 0) {
       setExpandedReportDayKey(null);
+      setExpandedReportTimeGroupKey(null);
       return;
     }
     const validDayKeys = new Set(groupedReportDays.map((day) => day.dateKey));
     setExpandedReportDayKey((previous) => (previous && validDayKeys.has(previous) ? previous : null));
+    setExpandedReportTimeGroupKey((previous) => {
+      if (!previous) return null;
+      const exists = groupedReportDays.some((day) =>
+        day.timeGroups.some((timeGroup) => `${day.dateKey}::${timeGroup.timeKey}` === previous),
+      );
+      return exists ? previous : null;
+    });
   }, [groupedReportDays, isReportExpanded]);
 
   // --- Handlers ---
@@ -1622,7 +1631,15 @@ const ExamProctorManagementPage = () => {
                 <div className="space-y-4 px-4 py-4">
                   {day.timeGroups.map((timeGroup) => (
                     <div key={`${day.dateKey}-${timeGroup.timeKey}`} className="overflow-hidden rounded-2xl border border-gray-200 bg-white">
-                      <div className="flex flex-wrap items-center justify-between gap-3 border-b border-gray-200 bg-slate-50 px-5 py-3">
+                      <button
+                        type="button"
+                        onClick={() =>
+                          setExpandedReportTimeGroupKey((previous) =>
+                            previous === `${day.dateKey}::${timeGroup.timeKey}` ? null : `${day.dateKey}::${timeGroup.timeKey}`,
+                          )
+                        }
+                        className="flex w-full flex-wrap items-center justify-between gap-3 border-b border-gray-200 bg-slate-50 px-5 py-3 text-left"
+                      >
                         <div>
                           <div className="text-sm font-semibold text-slate-900">
                             {formatSafeTime(timeGroup.startTime)} - {formatSafeTime(timeGroup.endTime)} WIB
@@ -1632,115 +1649,122 @@ const ExamProctorManagementPage = () => {
                             {timeGroup.sessionLabel ? `Sesi ${timeGroup.sessionLabel}` : 'Tanpa sesi'} • {timeGroup.rows.length} laporan ruang
                           </div>
                         </div>
-                        <div className="text-xs text-slate-500">
+                        <span className="inline-flex items-center gap-2 text-xs font-medium text-blue-700">
                           {new Set(timeGroup.rows.map((row) => String(row.room || '').trim()).filter(Boolean)).size} ruang
-                        </div>
-                      </div>
-                      <div className="overflow-x-auto">
-                        <table className="w-full text-left">
-                          <thead className="bg-white border-b border-gray-200">
-                            <tr>
-                              <th className="px-6 py-3 text-xs font-semibold text-gray-500 uppercase tracking-wider">Ruang</th>
-                              <th className="px-6 py-3 text-xs font-semibold text-gray-500 uppercase tracking-wider">Mapel</th>
-                              <th className="px-6 py-3 text-xs font-semibold text-gray-500 uppercase tracking-wider">Kelas di Ruangan</th>
-                              <th className="px-6 py-3 text-xs font-semibold text-gray-500 uppercase tracking-wider">Peserta</th>
-                              <th className="px-6 py-3 text-xs font-semibold text-gray-500 uppercase tracking-wider">Pengawas</th>
-                              <th className="px-6 py-3 text-xs font-semibold text-gray-500 uppercase tracking-wider">Catatan</th>
-                              <th className="px-6 py-3 text-xs font-semibold text-gray-500 uppercase tracking-wider">Dokumen</th>
-                            </tr>
-                          </thead>
-                          <tbody className="divide-y divide-gray-100 bg-white">
-                            {timeGroup.rows.map((row, index) => (
-                              <tr key={`${day.dateKey}-${timeGroup.timeKey}-${row.room || 'tanpa-ruang'}-${index}`}>
-                                <td className="px-6 py-4 align-top">
-                                  <div className="font-medium text-gray-900">{row.room || 'Belum ditentukan'}</div>
-                                  <div className="text-xs text-gray-500 mt-1">{row.examType || '-'}</div>
-                                </td>
-                                <td className="px-6 py-4 align-top">
-                                  <div className="font-medium text-gray-900">{row.subjectName || 'Mata Pelajaran'}</div>
-                                  <div className="text-xs text-gray-500 mt-1">{row.sessionLabel || 'Tanpa sesi'}</div>
-                                </td>
-                                <td className="px-6 py-4 align-top">
-                                  <div className="flex flex-wrap gap-2">
-                                    {row.classNames.map((className) => (
-                                      <span
-                                        key={`${row.room || 'ruang'}-${className}`}
-                                        className="inline-flex items-center gap-1 rounded-full bg-blue-50 px-2.5 py-1 text-xs text-blue-700 border border-blue-100"
-                                      >
-                                        <Users size={12} />
-                                        {className}
-                                      </span>
-                                    ))}
-                                  </div>
-                                </td>
-                                <td className="px-6 py-4 align-top text-sm text-gray-700">
-                                  <div>Seharusnya: <span className="font-semibold">{row.expectedParticipants}</span></div>
-                                  <div className="text-emerald-700">Hadir: <span className="font-semibold">{row.presentParticipants}</span></div>
-                                  {row.absentParticipants > 0 && Array.isArray(row.absentStudents) && row.absentStudents.length > 0 ? (
-                                    <button
-                                      type="button"
-                                      onClick={() => setAbsentModalRow(row)}
-                                      className="text-rose-700 hover:text-rose-800 hover:underline focus:outline-none focus:ring-2 focus:ring-rose-400/50 rounded-sm"
-                                    >
-                                      Tidak hadir: <span className="font-semibold">{row.absentParticipants}</span>
-                                    </button>
-                                  ) : (
-                                    <div className="text-rose-700">
-                                      Tidak hadir: <span className="font-semibold">{row.absentParticipants}</span>
-                                    </div>
-                                  )}
-                                </td>
-                                <td className="px-6 py-4 align-top text-sm text-gray-700">
-                                  {row.report?.proctor?.name ? (
-                                    <>
-                                      <div className="font-medium text-gray-900">{row.report.proctor.name}</div>
-                                      <div className="text-xs text-gray-500 mt-1">
-                                        Dikirim {formatSafeDateTime(row.report.signedAt)}
-                                      </div>
-                                    </>
-                                  ) : (
-                                    <span className="text-xs text-gray-500">Belum ada laporan</span>
-                                  )}
-                                </td>
-                                <td className="px-6 py-4 align-top text-sm text-gray-700 max-w-[320px]">
-                                  <div className="line-clamp-4 whitespace-pre-wrap leading-6">
-                                    {mergeProctorReportNotes(row.report?.notes, row.report?.incident) || '-'}
-                                  </div>
-                                </td>
-                                <td className="px-6 py-4 align-top text-sm text-gray-700">
-                                  {row.report ? (
-                                    <div className="flex min-w-[220px] flex-col gap-2">
-                                      <div className="text-xs text-gray-500">
-                                        BA: {row.report.documentNumber || 'Nomor dokumen dibuat saat preview dibuka.'}
-                                      </div>
-                                      <div className="flex flex-wrap gap-2">
-                                        <button
-                                          type="button"
-                                          onClick={() => openDocumentPreview(`/print/proctor-report/${row.report?.id}`)}
-                                          className="inline-flex items-center rounded-lg border border-blue-200 bg-blue-50 px-3 py-2 text-xs font-semibold text-blue-700 hover:bg-blue-100"
-                                        >
-                                          <FileText size={13} className="mr-1.5" />
-                                          Lihat & Print BA
-                                        </button>
-                                        <button
-                                          type="button"
-                                          onClick={() => openDocumentPreview(`/print/proctor-attendance/${row.report?.id}`)}
-                                          className="inline-flex items-center rounded-lg border border-amber-200 bg-amber-50 px-3 py-2 text-xs font-semibold text-amber-700 hover:bg-amber-100"
-                                        >
-                                          <FileText size={13} className="mr-1.5" />
-                                          Lihat & Print Daftar Hadir
-                                        </button>
-                                      </div>
-                                    </div>
-                                  ) : (
-                                    <span className="text-xs text-gray-500">Belum ada dokumen</span>
-                                  )}
-                                </td>
+                          {expandedReportTimeGroupKey === `${day.dateKey}::${timeGroup.timeKey}` ? (
+                            <ChevronDown size={15} />
+                          ) : (
+                            <ChevronRight size={15} />
+                          )}
+                        </span>
+                      </button>
+                      {expandedReportTimeGroupKey === `${day.dateKey}::${timeGroup.timeKey}` ? (
+                        <div className="overflow-x-auto">
+                          <table className="w-full text-left">
+                            <thead className="bg-white border-b border-gray-200">
+                              <tr>
+                                <th className="px-6 py-3 text-xs font-semibold text-gray-500 uppercase tracking-wider">Ruang</th>
+                                <th className="px-6 py-3 text-xs font-semibold text-gray-500 uppercase tracking-wider">Mapel</th>
+                                <th className="px-6 py-3 text-xs font-semibold text-gray-500 uppercase tracking-wider">Kelas di Ruangan</th>
+                                <th className="px-6 py-3 text-xs font-semibold text-gray-500 uppercase tracking-wider">Peserta</th>
+                                <th className="px-6 py-3 text-xs font-semibold text-gray-500 uppercase tracking-wider">Pengawas</th>
+                                <th className="px-6 py-3 text-xs font-semibold text-gray-500 uppercase tracking-wider">Catatan</th>
+                                <th className="px-6 py-3 text-xs font-semibold text-gray-500 uppercase tracking-wider">Dokumen</th>
                               </tr>
-                            ))}
-                          </tbody>
-                        </table>
-                      </div>
+                            </thead>
+                            <tbody className="divide-y divide-gray-100 bg-white">
+                              {timeGroup.rows.map((row, index) => (
+                                <tr key={`${day.dateKey}-${timeGroup.timeKey}-${row.room || 'tanpa-ruang'}-${index}`}>
+                                  <td className="px-6 py-4 align-top">
+                                    <div className="font-medium text-gray-900">{row.room || 'Belum ditentukan'}</div>
+                                    <div className="text-xs text-gray-500 mt-1">{row.examType || '-'}</div>
+                                  </td>
+                                  <td className="px-6 py-4 align-top">
+                                    <div className="font-medium text-gray-900">{row.subjectName || 'Mata Pelajaran'}</div>
+                                    <div className="text-xs text-gray-500 mt-1">{row.sessionLabel || 'Tanpa sesi'}</div>
+                                  </td>
+                                  <td className="px-6 py-4 align-top">
+                                    <div className="flex flex-wrap gap-2">
+                                      {row.classNames.map((className) => (
+                                        <span
+                                          key={`${row.room || 'ruang'}-${className}`}
+                                          className="inline-flex items-center gap-1 rounded-full bg-blue-50 px-2.5 py-1 text-xs text-blue-700 border border-blue-100"
+                                        >
+                                          <Users size={12} />
+                                          {className}
+                                        </span>
+                                      ))}
+                                    </div>
+                                  </td>
+                                  <td className="px-6 py-4 align-top text-sm text-gray-700">
+                                    <div>Seharusnya: <span className="font-semibold">{row.expectedParticipants}</span></div>
+                                    <div className="text-emerald-700">Hadir: <span className="font-semibold">{row.presentParticipants}</span></div>
+                                    {row.absentParticipants > 0 && Array.isArray(row.absentStudents) && row.absentStudents.length > 0 ? (
+                                      <button
+                                        type="button"
+                                        onClick={() => setAbsentModalRow(row)}
+                                        className="text-rose-700 hover:text-rose-800 hover:underline focus:outline-none focus:ring-2 focus:ring-rose-400/50 rounded-sm"
+                                      >
+                                        Tidak hadir: <span className="font-semibold">{row.absentParticipants}</span>
+                                      </button>
+                                    ) : (
+                                      <div className="text-rose-700">
+                                        Tidak hadir: <span className="font-semibold">{row.absentParticipants}</span>
+                                      </div>
+                                    )}
+                                  </td>
+                                  <td className="px-6 py-4 align-top text-sm text-gray-700">
+                                    {row.report?.proctor?.name ? (
+                                      <>
+                                        <div className="font-medium text-gray-900">{row.report.proctor.name}</div>
+                                        <div className="text-xs text-gray-500 mt-1">
+                                          Dikirim {formatSafeDateTime(row.report.signedAt)}
+                                        </div>
+                                      </>
+                                    ) : (
+                                      <span className="text-xs text-gray-500">Belum ada laporan</span>
+                                    )}
+                                  </td>
+                                  <td className="px-6 py-4 align-top text-sm text-gray-700 max-w-[320px]">
+                                    <div className="line-clamp-4 whitespace-pre-wrap leading-6">
+                                      {mergeProctorReportNotes(row.report?.notes, row.report?.incident) || '-'}
+                                    </div>
+                                  </td>
+                                  <td className="px-6 py-4 align-top text-sm text-gray-700">
+                                    {row.report ? (
+                                      <div className="flex min-w-[220px] flex-col gap-2">
+                                        <div className="text-xs text-gray-500">
+                                          BA: {row.report.documentNumber || 'Nomor dokumen dibuat saat preview dibuka.'}
+                                        </div>
+                                        <div className="flex flex-wrap gap-2">
+                                          <button
+                                            type="button"
+                                            onClick={() => openDocumentPreview(`/print/proctor-report/${row.report?.id}`)}
+                                            className="inline-flex items-center rounded-lg border border-blue-200 bg-blue-50 px-3 py-2 text-xs font-semibold text-blue-700 hover:bg-blue-100"
+                                          >
+                                            <FileText size={13} className="mr-1.5" />
+                                            Lihat & Print BA
+                                          </button>
+                                          <button
+                                            type="button"
+                                            onClick={() => openDocumentPreview(`/print/proctor-attendance/${row.report?.id}`)}
+                                            className="inline-flex items-center rounded-lg border border-amber-200 bg-amber-50 px-3 py-2 text-xs font-semibold text-amber-700 hover:bg-amber-100"
+                                          >
+                                            <FileText size={13} className="mr-1.5" />
+                                            Lihat & Print Daftar Hadir
+                                          </button>
+                                        </div>
+                                      </div>
+                                    ) : (
+                                      <span className="text-xs text-gray-500">Belum ada dokumen</span>
+                                    )}
+                                  </td>
+                                </tr>
+                              ))}
+                            </tbody>
+                          </table>
+                        </div>
+                      ) : null}
                     </div>
                   ))}
                 </div>

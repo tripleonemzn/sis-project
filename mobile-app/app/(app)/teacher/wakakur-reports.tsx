@@ -299,8 +299,8 @@ export default function TeacherWakakurReportsScreen() {
       return;
     }
     const currentExists = groupedProctorTimeGroups.some((group) => group.timeKey === expandedProctorTimeGroupKey);
-    if (!currentExists) {
-      setExpandedProctorTimeGroupKey(groupedProctorTimeGroups[0]?.timeKey || null);
+    if (!currentExists && expandedProctorTimeGroupKey !== null) {
+      setExpandedProctorTimeGroupKey(null);
     }
   }, [groupedProctorTimeGroups, expandedProctorTimeGroupKey]);
 
