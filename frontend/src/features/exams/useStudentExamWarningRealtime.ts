@@ -25,6 +25,15 @@ export type StudentExamWarningRealtimePayload = {
   category: string | null;
 };
 
+export type StudentExamTerminationRealtimePayload = {
+  id: number;
+  title: string;
+  message: string;
+  terminatedAt: string;
+  proctorName: string | null;
+  category: string | null;
+};
+
 function buildRealtimeWsUrl(token: string) {
   const protocol = typeof window !== 'undefined' && window.location.protocol === 'https:' ? 'wss:' : 'ws:';
   const url = new URL(`${protocol}//${window.location.host}/api/realtime/ws`);
@@ -60,17 +69,40 @@ function parseWarningPayload(scope: Record<string, ScopeValue> | undefined): Stu
   };
 }
 
+function parseTerminationPayload(
+  scope: Record<string, ScopeValue> | undefined,
+): StudentExamTerminationRealtimePayload | null {
+  const id = Number(scope?.terminationNotificationId || 0);
+  const title = String(scope?.terminationTitle || 'Sesi Ujian Diakhiri Pengawas').trim();
+  const message = String(scope?.terminationMessage || '').trim();
+  if (!Number.isFinite(id) || id <= 0 || !message) return null;
+  return {
+    id,
+    title,
+    message,
+    terminatedAt: String(scope?.terminationAt || new Date().toISOString()),
+    proctorName: String(scope?.proctorName || '').trim() || null,
+    category: String(scope?.terminationCategory || '').trim() || null,
+  };
+}
+
 export function useStudentExamWarningRealtime(params: {
   enabled: boolean;
   scheduleId: number | null;
   studentId: number | null;
   onWarning: (payload: StudentExamWarningRealtimePayload) => void;
+  onTermination?: (payload: StudentExamTerminationRealtimePayload) => void;
 }) {
   const onWarningRef = useRef(params.onWarning);
+  const onTerminationRef = useRef(params.onTermination);
 
   useEffect(() => {
     onWarningRef.current = params.onWarning;
   }, [params.onWarning]);
+
+  useEffect(() => {
+    onTerminationRef.current = params.onTermination;
+  }, [params.onTermination]);
 
   useEffect(() => {
     if (!params.enabled || !params.scheduleId || !params.studentId || typeof window === 'undefined') return;
@@ -123,12 +155,20 @@ export function useStudentExamWarningRealtime(params: {
           payload = null;
         }
         if (!payload || payload.type !== 'DOMAIN_EVENT' || payload.domain !== 'PROCTORING') return;
-        if (String(payload.scope?.mode || '').trim().toUpperCase() !== 'EXAM_WARNING') return;
         if (!scopeIncludesNumber(payload.scope, 'scheduleIds', params.scheduleId!)) return;
         if (!scopeIncludesNumber(payload.scope, 'studentIds', params.studentId!)) return;
-        const warningPayload = parseWarningPayload(payload.scope);
-        if (!warningPayload) return;
-        onWarningRef.current(warningPayload);
+        const mode = String(payload.scope?.mode || '').trim().toUpperCase();
+        if (mode === 'EXAM_WARNING') {
+          const warningPayload = parseWarningPayload(payload.scope);
+          if (!warningPayload) return;
+          onWarningRef.current(warningPayload);
+          return;
+        }
+        if (mode === 'EXAM_TERMINATED') {
+          const terminationPayload = parseTerminationPayload(payload.scope);
+          if (!terminationPayload) return;
+          onTerminationRef.current?.(terminationPayload);
+        }
       };
 
       socket.onerror = () => {

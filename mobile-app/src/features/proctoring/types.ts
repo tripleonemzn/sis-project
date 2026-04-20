@@ -57,6 +57,12 @@ export type ProctorStudentRow = {
     warnedAt?: string | null;
     warnedByName?: string | null;
   } | null;
+  proctorTermination?: {
+    latestTitle?: string | null;
+    latestMessage?: string | null;
+    terminatedAt?: string | null;
+    terminatedByName?: string | null;
+  } | null;
   restriction?: {
     isBlocked: boolean;
     reason?: string | null;
@@ -142,6 +148,24 @@ export type ProctorWarningResponse = {
   title: string;
   message: string;
   warnedAt: string;
+  proctorName?: string | null;
+  category?: string | null;
+};
+
+export type ProctorEndSessionPayload = {
+  studentId: number;
+  message: string;
+  category?: string | null;
+};
+
+export type ProctorEndSessionResponse = {
+  id: number;
+  studentId: number;
+  scheduleId: number;
+  sessionId: number;
+  title: string;
+  message: string;
+  terminatedAt: string;
   proctorName?: string | null;
   category?: string | null;
 };

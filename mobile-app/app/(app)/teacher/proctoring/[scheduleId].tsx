@@ -120,6 +120,11 @@ export default function TeacherProctoringDetailScreen() {
   const [warningMessage, setWarningMessage] = useState(
     'Mohon tenang dan fokus pada ujian. Jika mengulangi pelanggaran, pengawas dapat mengambil tindakan lanjutan.',
   );
+  const [endSessionTarget, setEndSessionTarget] = useState<ProctorStudentRow | null>(null);
+  const [endSessionMessage, setEndSessionMessage] = useState(
+    'Sesi ujian diakhiri oleh pengawas karena peserta tidak mematuhi tata tertib ruang ujian.',
+  );
+  const [endingSession, setEndingSession] = useState(false);
 
   const detailQuery = useQuery({
     queryKey: ['mobile-proctoring-detail', parsedScheduleId],
@@ -193,6 +198,30 @@ export default function TeacherProctoringDetailScreen() {
       await detailQuery.refetch();
     } catch (error) {
       notifyApiError(error, 'Gagal mengirim peringatan ke peserta.');
+    }
+  };
+
+  const handleEndStudentSession = async () => {
+    if (!parsedScheduleId || !endSessionTarget) return;
+    const normalizedMessage = endSessionMessage.trim();
+    if (normalizedMessage.length < 8) {
+      notifyApiError(new Error('Alasan pengakhiran sesi wajib diisi dengan jelas.'), 'Alasan pengakhiran sesi wajib diisi dengan jelas.');
+      return;
+    }
+
+    try {
+      setEndingSession(true);
+      await proctoringApi.endStudentSession(parsedScheduleId, {
+        studentId: endSessionTarget.id,
+        message: normalizedMessage,
+      });
+      notifySuccess(`Sesi ${endSessionTarget.name} berhasil diakhiri.`);
+      setEndSessionTarget(null);
+      await detailQuery.refetch();
+    } catch (error) {
+      notifyApiError(error, 'Gagal mengakhiri sesi peserta.');
+    } finally {
+      setEndingSession(false);
     }
   };
 
@@ -298,6 +327,8 @@ export default function TeacherProctoringDetailScreen() {
     : null;
   const canWarnStudent = (student: ProctorStudentRow) =>
     !student.restriction?.isBlocked && student.status !== 'COMPLETED' && student.status !== 'TIMEOUT';
+  const canEndStudentSession = (student: ProctorStudentRow) =>
+    !student.restriction?.isBlocked && student.status === 'IN_PROGRESS';
   const formatWarningTime = (value?: string | null) => {
     const date = new Date(String(value || ''));
     if (Number.isNaN(date.getTime())) return '-';
@@ -308,6 +339,7 @@ export default function TeacherProctoringDetailScreen() {
       minute: '2-digit',
     });
   };
+  const formatTerminationTime = (value?: string | null) => formatWarningTime(value);
 
   if (isLoading) return <AppLoadingScreen message="Memuat monitoring ujian..." />;
   if (!isAuthenticated) return <Redirect href="/welcome" />;
@@ -591,7 +623,11 @@ export default function TeacherProctoringDetailScreen() {
                         }}
                       >
                         <Text style={{ color: restrictionBlocked ? '#92400e' : style.text, fontWeight: '700', fontSize: scaleFont(11) }}>
-                          {restrictionBlocked ? student.restriction?.statusLabel || 'Diblokir' : statusLabel(student.status)}
+                          {restrictionBlocked
+                            ? student.restriction?.statusLabel || 'Diblokir'
+                            : student.status === 'TIMEOUT' && student.proctorTermination
+                              ? 'Diakhiri Pengawas'
+                              : statusLabel(student.status)}
                         </Text>
                       </View>
                     </View>
@@ -689,28 +725,80 @@ export default function TeacherProctoringDetailScreen() {
                         ) : null}
                       </View>
                     ) : null}
-                    {canWarnStudent(student) ? (
-                      <Pressable
-                        onPress={() => {
-                          setWarningTarget(student);
-                          setWarningMessage(
-                            'Mohon tenang dan fokus pada ujian. Jika mengulangi pelanggaran, pengawas dapat mengambil tindakan lanjutan.',
-                          );
-                        }}
+                    {student.proctorTermination ? (
+                      <View
                         style={{
                           marginTop: 8,
                           borderWidth: 1,
-                          borderColor: '#fcd34d',
-                          backgroundColor: '#fffbeb',
+                          borderColor: '#fda4af',
+                          backgroundColor: '#fff1f2',
                           borderRadius: 10,
-                          paddingVertical: 10,
-                          alignItems: 'center',
+                          paddingHorizontal: 10,
+                          paddingVertical: 8,
+                          gap: 4,
                         }}
                       >
-                        <Text style={{ color: '#92400e', fontWeight: '700', fontSize: scaleFont(12), lineHeight: scaleLineHeight(18) }}>
-                          Beri Peringatan
+                        <Text style={{ color: '#be123c', fontSize: scaleFont(12), lineHeight: scaleLineHeight(18), fontWeight: '700' }}>
+                          Sesi Diakhiri Pengawas
                         </Text>
-                      </Pressable>
+                        <Text style={{ color: '#be123c', fontSize: scaleFont(11), lineHeight: scaleLineHeight(16) }}>
+                          {student.proctorTermination.terminatedByName ? `${student.proctorTermination.terminatedByName} • ` : ''}
+                          {formatTerminationTime(student.proctorTermination.terminatedAt)}
+                        </Text>
+                        {student.proctorTermination.latestMessage ? (
+                          <Text style={{ color: '#9f1239', fontSize: scaleFont(11), lineHeight: scaleLineHeight(16) }}>
+                            {student.proctorTermination.latestMessage}
+                          </Text>
+                        ) : null}
+                      </View>
+                    ) : null}
+                    {canWarnStudent(student) || canEndStudentSession(student) ? (
+                      <View style={{ marginTop: 8, gap: 8 }}>
+                        {canWarnStudent(student) ? (
+                          <Pressable
+                            onPress={() => {
+                              setWarningTarget(student);
+                              setWarningMessage(
+                                'Mohon tenang dan fokus pada ujian. Jika mengulangi pelanggaran, pengawas dapat mengambil tindakan lanjutan.',
+                              );
+                            }}
+                            style={{
+                              borderWidth: 1,
+                              borderColor: '#fcd34d',
+                              backgroundColor: '#fffbeb',
+                              borderRadius: 10,
+                              paddingVertical: 10,
+                              alignItems: 'center',
+                            }}
+                          >
+                            <Text style={{ color: '#92400e', fontWeight: '700', fontSize: scaleFont(12), lineHeight: scaleLineHeight(18) }}>
+                              Beri Peringatan
+                            </Text>
+                          </Pressable>
+                        ) : null}
+                        {canEndStudentSession(student) ? (
+                          <Pressable
+                            onPress={() => {
+                              setEndSessionTarget(student);
+                              setEndSessionMessage(
+                                'Sesi ujian diakhiri oleh pengawas karena peserta tidak mematuhi tata tertib ruang ujian.',
+                              );
+                            }}
+                            style={{
+                              borderWidth: 1,
+                              borderColor: '#fda4af',
+                              backgroundColor: '#fff1f2',
+                              borderRadius: 10,
+                              paddingVertical: 10,
+                              alignItems: 'center',
+                            }}
+                          >
+                            <Text style={{ color: '#be123c', fontWeight: '700', fontSize: scaleFont(12), lineHeight: scaleLineHeight(18) }}>
+                              Akhiri Sesi
+                            </Text>
+                          </Pressable>
+                        ) : null}
+                      </View>
                     ) : null}
                   </View>
                 );
@@ -885,6 +973,167 @@ export default function TeacherProctoringDetailScreen() {
               >
                 <Text style={{ color: '#fff', fontWeight: '700', fontSize: scaleFont(12), lineHeight: scaleLineHeight(18) }}>
                   Kirim Peringatan
+                </Text>
+              </Pressable>
+            </View>
+          </View>
+        </View>
+      </Modal>
+
+      <Modal
+        visible={Boolean(endSessionTarget)}
+        animationType="slide"
+        transparent
+        onRequestClose={() => setEndSessionTarget(null)}
+      >
+        <View
+          style={{
+            flex: 1,
+            backgroundColor: 'rgba(15, 23, 42, 0.18)',
+            justifyContent: 'center',
+            paddingHorizontal: 16,
+            paddingVertical: 24,
+          }}
+        >
+          <View
+            style={{
+              maxHeight: '88%',
+              borderRadius: 18,
+              backgroundColor: '#fff',
+              overflow: 'hidden',
+              borderWidth: 1,
+              borderColor: '#e2e8f0',
+            }}
+          >
+            <View
+              style={{
+                flexDirection: 'row',
+                justifyContent: 'space-between',
+                alignItems: 'flex-start',
+                gap: 12,
+                paddingHorizontal: 16,
+                paddingVertical: 14,
+                borderBottomWidth: 1,
+                borderBottomColor: '#e2e8f0',
+              }}
+            >
+              <View style={{ flex: 1 }}>
+                <Text style={{ color: BRAND_COLORS.textDark, fontWeight: '700', fontSize: scaleFont(16), lineHeight: scaleLineHeight(22) }}>
+                  Akhiri Sesi Peserta
+                </Text>
+                <Text style={{ color: '#64748b', fontSize: scaleFont(12), marginTop: 4, lineHeight: scaleLineHeight(18) }}>
+                  Siswa tidak akan bisa melanjutkan ujian setelah aksi ini dikirim.
+                </Text>
+              </View>
+              <Pressable
+                onPress={() => setEndSessionTarget(null)}
+                style={{
+                  width: 36,
+                  height: 36,
+                  borderRadius: 999,
+                  borderWidth: 1,
+                  borderColor: '#e2e8f0',
+                  alignItems: 'center',
+                  justifyContent: 'center',
+                }}
+              >
+                <Feather name="x" size={18} color="#64748b" />
+              </Pressable>
+            </View>
+
+            <ScrollView
+              style={{ backgroundColor: '#fff' }}
+              contentContainerStyle={{ padding: 16, gap: 12 }}
+              showsVerticalScrollIndicator={false}
+            >
+              <View
+                style={{
+                  borderWidth: 1,
+                  borderColor: '#fda4af',
+                  backgroundColor: '#fff1f2',
+                  borderRadius: 12,
+                  padding: 12,
+                }}
+              >
+                <Text style={{ color: '#be123c', fontWeight: '700', fontSize: scaleFont(14), lineHeight: scaleLineHeight(20) }}>
+                  {endSessionTarget?.name || '-'}
+                </Text>
+                <Text style={{ color: '#be123c', fontSize: scaleFont(12), lineHeight: scaleLineHeight(18), marginTop: 4 }}>
+                  {endSessionTarget?.className || '-'} • {endSessionTarget?.nis || '-'}
+                </Text>
+              </View>
+
+              <View>
+                <Text style={{ color: '#334155', fontWeight: '700', fontSize: scaleFont(12), lineHeight: scaleLineHeight(18) }}>
+                  Alasan Pengakhiran Sesi
+                </Text>
+                <TextInput
+                  value={endSessionMessage}
+                  onChangeText={setEndSessionMessage}
+                  multiline
+                  textAlignVertical="top"
+                  placeholder="Tulis alasan resmi pengakhiran sesi peserta..."
+                  style={{
+                    marginTop: 8,
+                    minHeight: 160,
+                    borderWidth: 1,
+                    borderColor: '#cbd5e1',
+                    borderRadius: 12,
+                    paddingHorizontal: 12,
+                    paddingVertical: 12,
+                    backgroundColor: '#fff',
+                    fontSize: scaleFont(13),
+                    lineHeight: scaleLineHeight(20),
+                    color: '#0f172a',
+                  }}
+                />
+                <Text style={{ color: '#64748b', fontSize: scaleFont(11), lineHeight: scaleLineHeight(16), marginTop: 8 }}>
+                  Gunakan alasan yang jelas dan faktual, misalnya pelanggaran tata tertib berulang, mengganggu peserta lain, atau tidak mematuhi instruksi pengawas.
+                </Text>
+              </View>
+            </ScrollView>
+
+            <View
+              style={{
+                borderTopWidth: 1,
+                borderTopColor: '#e2e8f0',
+                paddingHorizontal: 16,
+                paddingVertical: 14,
+                flexDirection: 'row',
+                justifyContent: 'flex-end',
+                gap: 10,
+              }}
+            >
+              <Pressable
+                onPress={() => setEndSessionTarget(null)}
+                style={{
+                  borderWidth: 1,
+                  borderColor: '#cbd5e1',
+                  borderRadius: 10,
+                  paddingHorizontal: 14,
+                  paddingVertical: 10,
+                  backgroundColor: '#fff',
+                }}
+              >
+                <Text style={{ color: '#475569', fontWeight: '700', fontSize: scaleFont(12), lineHeight: scaleLineHeight(18) }}>
+                  Batal
+                </Text>
+              </Pressable>
+              <Pressable
+                onPress={() => {
+                  void handleEndStudentSession();
+                }}
+                disabled={endingSession}
+                style={{
+                  borderRadius: 10,
+                  paddingHorizontal: 14,
+                  paddingVertical: 10,
+                  backgroundColor: '#e11d48',
+                  opacity: endingSession ? 0.65 : 1,
+                }}
+              >
+                <Text style={{ color: '#fff', fontWeight: '700', fontSize: scaleFont(12), lineHeight: scaleLineHeight(18) }}>
+                  {endingSession ? 'Memproses...' : 'Akhiri Sesi'}
                 </Text>
               </Pressable>
             </View>

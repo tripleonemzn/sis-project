@@ -31,6 +31,7 @@ import { ExamQuestion, ExamQuestionOption, ExamQuestionType } from '../../../../
 import { useStudentExamStartQuery } from '../../../../src/features/exams/useStudentExamStartQuery';
 import {
   useStudentExamWarningRealtime,
+  type MobileStudentExamTerminationRealtimePayload,
   type MobileStudentExamWarningRealtimePayload,
 } from '../../../../src/features/exams/useStudentExamWarningRealtime';
 import { ENV } from '../../../../src/config/env';
@@ -84,6 +85,17 @@ type ProctorWarningSignal = {
   room?: string | null;
 };
 
+type ProctorTerminationSignal = {
+  id: number;
+  title: string;
+  message: string;
+  terminatedAt: string;
+  proctorId?: number | null;
+  proctorName?: string | null;
+  category?: string | null;
+  room?: string | null;
+};
+
 function extractPersistedMonitoring(rawAnswers: Record<string, unknown>): MonitoringStats | null {
   const source = rawAnswers.__monitoring;
   if (!source || typeof source !== 'object' || Array.isArray(source)) return null;
@@ -126,6 +138,24 @@ function normalizeProctorWarning(raw: unknown): ProctorWarningSignal | null {
   };
 }
 
+function normalizeProctorTermination(raw: unknown): ProctorTerminationSignal | null {
+  if (!raw || typeof raw !== 'object' || Array.isArray(raw)) return null;
+  const source = raw as Record<string, unknown>;
+  const id = Number(source.id || 0);
+  const message = String(source.message || '').trim();
+  if (!Number.isFinite(id) || id <= 0 || !message) return null;
+  return {
+    id,
+    title: String(source.title || 'Sesi Ujian Diakhiri Pengawas').trim() || 'Sesi Ujian Diakhiri Pengawas',
+    message,
+    terminatedAt: String(source.terminatedAt || new Date().toISOString()),
+    proctorId: Number.isFinite(Number(source.proctorId)) ? Number(source.proctorId) : null,
+    proctorName: String(source.proctorName || '').trim() || null,
+    category: String(source.category || '').trim() || null,
+    room: String(source.room || '').trim() || null,
+  };
+}
+
 function formatWarningDateTime(value?: string | null): string {
   const date = new Date(String(value || ''));
   if (Number.isNaN(date.getTime())) return '-';
@@ -135,6 +165,10 @@ function formatWarningDateTime(value?: string | null): string {
   const hour = String(date.getHours()).padStart(2, '0');
   const minute = String(date.getMinutes()).padStart(2, '0');
   return `${day} ${month} ${hour}:${minute}`;
+}
+
+function formatTerminationDateTime(value?: string | null): string {
+  return formatWarningDateTime(value);
 }
 
 function normalizeQuestionType(question: ExamQuestion): ExamQuestionType {
@@ -469,6 +503,8 @@ export default function StudentExamTakeScreen() {
   const [previewImageSrc, setPreviewImageSrc] = useState<string | null>(null);
   const [activeProctorWarning, setActiveProctorWarning] = useState<ProctorWarningSignal | null>(null);
   const [showProctorWarningModal, setShowProctorWarningModal] = useState(false);
+  const [activeProctorTermination, setActiveProctorTermination] = useState<ProctorTerminationSignal | null>(null);
+  const [showProctorTerminationModal, setShowProctorTerminationModal] = useState(false);
   const answersRef = useRef<Record<string, unknown>>({});
   const autoSubmitGuardRef = useRef(false);
   const autoSubmitFailedRef = useRef(false);
@@ -481,6 +517,7 @@ export default function StudentExamTakeScreen() {
   const lastAndroidOverlayViolationAtRef = useRef(0);
   const androidOverlayBlurredRef = useRef(false);
   const latestHandledProctorWarningIdRef = useRef(0);
+  const latestHandledProctorTerminationIdRef = useRef(0);
   const violationSubmitGuardRef = useRef(false);
   const progressSyncTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const progressHeartbeatTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null);
@@ -540,11 +577,37 @@ export default function StudentExamTakeScreen() {
     [],
   );
 
+  const handleIncomingProctorTermination = useCallback(
+    (termination: ProctorTerminationSignal | MobileStudentExamTerminationRealtimePayload) => {
+      const normalizedTermination = normalizeProctorTermination(termination);
+      if (!normalizedTermination) return;
+      if (normalizedTermination.id === latestHandledProctorTerminationIdRef.current) return;
+      latestHandledProctorTerminationIdRef.current = normalizedTermination.id;
+      setActiveProctorTermination(normalizedTermination);
+      setShowProctorTerminationModal(true);
+      setShowProctorWarningModal(false);
+      setIsFinished(true);
+      Alert.alert(
+        normalizedTermination.title,
+        normalizedTermination.message,
+        [
+          {
+            text: 'Kembali ke Daftar Ujian',
+            onPress: () => router.replace('/exams'),
+          },
+        ],
+        { cancelable: false },
+      );
+    },
+    [router],
+  );
+
   useStudentExamWarningRealtime({
     enabled: Boolean(isAuthenticated && scheduleId && user?.id && !isFinished),
     scheduleId,
     studentId: Number.isFinite(Number(user?.id)) ? Number(user?.id) : null,
     onWarning: handleIncomingProctorWarning,
+    onTermination: handleIncomingProctorTermination,
     onAppActiveSync: () => {
       if (isFinished || !hasAcknowledgedStart) return;
       void startQuery.refetch();
@@ -794,6 +857,7 @@ export default function StudentExamTakeScreen() {
         isFinalSubmit,
       });
       const savedStatus = String(savedSession?.status || '').toUpperCase();
+      const terminationSignal = normalizeProctorTermination(savedSession?.proctorTermination);
       if (!isFinalSubmit) {
         lastProgressSyncAtRef.current = Date.now();
         lastSyncedFingerprintRef.current = syncFingerprint;
@@ -802,12 +866,20 @@ export default function StudentExamTakeScreen() {
       if (!isFinalSubmit && savedStatus === 'TIMEOUT') {
         setAutosaveState('saved');
         setIsFinished(true);
-        Alert.alert('Ujian Ditutup', 'Sesi ujian ditutup otomatis karena pelanggaran berulang.', [
+        if (terminationSignal) {
+          setActiveProctorTermination(terminationSignal);
+          setShowProctorTerminationModal(true);
+        }
+        Alert.alert(
+          terminationSignal?.title || 'Ujian Ditutup',
+          terminationSignal?.message || 'Sesi ujian ditutup otomatis karena pelanggaran berulang.',
+          [
           {
             text: 'OK',
             onPress: () => router.replace('/exams'),
           },
-        ]);
+          ],
+        );
         return true;
       }
       if (!isFinalSubmit) {
@@ -1271,13 +1343,17 @@ export default function StudentExamTakeScreen() {
   if (startQuery.isLoading) return <AppLoadingScreen message="Menyiapkan sesi ujian..." />;
 
   if (startQuery.isError || !startQuery.data) {
+    const errorMessage =
+      (startQuery.error as { response?: { data?: { message?: string } }; message?: string } | null)?.response?.data?.message ||
+      (startQuery.error as { message?: string } | null)?.message ||
+      `Gagal memulai sesi ${examTakeLabel.toLowerCase()}.`;
     return (
       <ScrollView style={{ flex: 1, backgroundColor: '#f8fafc' }} contentContainerStyle={pageContentPadding}>
         <Stack.Screen options={{ headerShown: false, gestureEnabled: false }} />
         <Text style={{ fontSize: scaleFont(20), fontWeight: '700', marginBottom: 8 }}>{`Mengerjakan ${examTakeLabel}`}</Text>
         <QueryStateView
           type="error"
-          message={`Gagal memulai sesi ${examTakeLabel.toLowerCase()}.`}
+          message={errorMessage}
           onRetry={() => startQuery.refetch()}
         />
         <Pressable
@@ -1511,6 +1587,48 @@ export default function StudentExamTakeScreen() {
             }}
           >
             <Text style={{ color: '#9f1239', fontSize: scaleFont(12), lineHeight: scaleLineHeight(18), fontWeight: '700' }}>{lastViolationMessage}</Text>
+          </View>
+        ) : null}
+        {activeProctorTermination ? (
+          <View
+            style={{
+              marginTop: 10,
+              borderWidth: 1,
+              borderColor: '#fda4af',
+              backgroundColor: '#fff1f2',
+              borderRadius: 10,
+              paddingHorizontal: 10,
+              paddingVertical: 9,
+              gap: 4,
+            }}
+          >
+            <Text style={{ color: '#be123c', fontSize: scaleFont(12), lineHeight: scaleLineHeight(18), fontWeight: '700' }}>
+              {activeProctorTermination.title}
+            </Text>
+            <Text style={{ color: '#9f1239', fontSize: scaleFont(12), lineHeight: scaleLineHeight(18) }}>
+              {activeProctorTermination.message}
+            </Text>
+            <Text style={{ color: '#881337', fontSize: scaleFont(11), lineHeight: scaleLineHeight(16) }}>
+              {activeProctorTermination.proctorName ? `${activeProctorTermination.proctorName} • ` : ''}
+              {formatTerminationDateTime(activeProctorTermination.terminatedAt)}
+            </Text>
+            <Pressable
+              onPress={() => setShowProctorTerminationModal(true)}
+              style={{
+                alignSelf: 'flex-start',
+                marginTop: 4,
+                borderWidth: 1,
+                borderColor: '#fda4af',
+                backgroundColor: '#ffffff',
+                borderRadius: 999,
+                paddingHorizontal: 10,
+                paddingVertical: 6,
+              }}
+            >
+              <Text style={{ color: '#be123c', fontSize: scaleFont(11), lineHeight: scaleLineHeight(16), fontWeight: '700' }}>
+                Lihat Detail
+              </Text>
+            </Pressable>
           </View>
         ) : null}
         {activeProctorWarning ? (
@@ -2023,6 +2141,113 @@ export default function StudentExamTakeScreen() {
           {isFinalSubmitting ? 'Mengumpulkan...' : isFinished ? 'Sudah Dikumpulkan' : 'Kumpulkan Ujian'}
         </Text>
       </Pressable>
+
+      <Modal
+        visible={showProctorTerminationModal && Boolean(activeProctorTermination)}
+        animationType="fade"
+        transparent
+        onRequestClose={() => setShowProctorTerminationModal(false)}
+      >
+        <View
+          style={{
+            flex: 1,
+            backgroundColor: 'rgba(15, 23, 42, 0.18)',
+            justifyContent: 'center',
+            paddingHorizontal: 20,
+            paddingVertical: 24,
+          }}
+        >
+          <View
+            style={{
+              borderRadius: 18,
+              backgroundColor: '#fff',
+              borderWidth: 1,
+              borderColor: '#fda4af',
+              overflow: 'hidden',
+            }}
+          >
+            <View
+              style={{
+                paddingHorizontal: 16,
+                paddingVertical: 14,
+                borderBottomWidth: 1,
+                borderBottomColor: '#fecdd3',
+                flexDirection: 'row',
+                justifyContent: 'space-between',
+                gap: 12,
+              }}
+            >
+              <View style={{ flex: 1 }}>
+                <Text style={{ color: '#be123c', fontWeight: '800', fontSize: scaleFont(16), lineHeight: scaleLineHeight(22) }}>
+                  {activeProctorTermination?.title || 'Sesi Ujian Diakhiri Pengawas'}
+                </Text>
+                <Text style={{ color: '#9f1239', fontSize: scaleFont(12), lineHeight: scaleLineHeight(18), marginTop: 4 }}>
+                  {activeProctorTermination?.proctorName
+                    ? `Dari ${activeProctorTermination.proctorName}`
+                    : 'Keputusan resmi dari pengawas ruang'}
+                </Text>
+              </View>
+              <Pressable
+                onPress={() => setShowProctorTerminationModal(false)}
+                style={{
+                  width: 34,
+                  height: 34,
+                  borderRadius: 999,
+                  borderWidth: 1,
+                  borderColor: '#fecdd3',
+                  alignItems: 'center',
+                  justifyContent: 'center',
+                }}
+              >
+                <Feather name="x" size={18} color="#be123c" />
+              </Pressable>
+            </View>
+            <View style={{ paddingHorizontal: 16, paddingVertical: 16 }}>
+              <View
+                style={{
+                  borderWidth: 1,
+                  borderColor: '#fecdd3',
+                  backgroundColor: '#fff1f2',
+                  borderRadius: 12,
+                  paddingHorizontal: 12,
+                  paddingVertical: 12,
+                }}
+              >
+                <Text style={{ color: '#9f1239', fontSize: scaleFont(13), lineHeight: scaleLineHeight(21) }}>
+                  {activeProctorTermination?.message || '-'}
+                </Text>
+              </View>
+              <Text style={{ color: '#881337', fontSize: scaleFont(11), lineHeight: scaleLineHeight(16), marginTop: 10 }}>
+                {formatTerminationDateTime(activeProctorTermination?.terminatedAt)}
+              </Text>
+            </View>
+            <View
+              style={{
+                paddingHorizontal: 16,
+                paddingBottom: 16,
+                alignItems: 'flex-end',
+              }}
+            >
+              <Pressable
+                onPress={() => {
+                  setShowProctorTerminationModal(false);
+                  router.replace('/exams');
+                }}
+                style={{
+                  borderRadius: 10,
+                  backgroundColor: '#e11d48',
+                  paddingHorizontal: 14,
+                  paddingVertical: 10,
+                }}
+              >
+                <Text style={{ color: '#fff', fontWeight: '700', fontSize: scaleFont(12), lineHeight: scaleLineHeight(18) }}>
+                  Kembali ke Daftar Ujian
+                </Text>
+              </Pressable>
+            </View>
+          </View>
+        </View>
+      </Modal>
 
       <Modal
         visible={showProctorWarningModal && Boolean(activeProctorWarning)}

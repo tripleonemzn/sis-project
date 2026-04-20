@@ -1,5 +1,7 @@
 import { apiClient } from '../../lib/api/client';
 import {
+  ProctorEndSessionPayload,
+  ProctorEndSessionResponse,
   ProctorReportPayload,
   ProctorScheduleDetail,
   ProctorScheduleSummary,
@@ -42,6 +44,14 @@ export const proctoringApi = {
   async sendWarning(scheduleId: number, payload: ProctorWarningPayload) {
     const response = await apiClient.post<ApiEnvelope<ProctorWarningResponse>>(
       `/proctoring/schedules/${scheduleId}/warnings`,
+      payload,
+    );
+    return response.data?.data;
+  },
+
+  async endStudentSession(scheduleId: number, payload: ProctorEndSessionPayload) {
+    const response = await apiClient.post<ApiEnvelope<ProctorEndSessionResponse>>(
+      `/proctoring/schedules/${scheduleId}/end-session`,
       payload,
     );
     return response.data?.data;

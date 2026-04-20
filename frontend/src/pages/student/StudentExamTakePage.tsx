@@ -18,6 +18,7 @@ import {
 } from 'lucide-react'
 import { QuestionMediaImage } from '../../components/common/QuestionMediaImage'
 import {
+  type StudentExamTerminationRealtimePayload,
   useStudentExamWarningRealtime,
   type StudentExamWarningRealtimePayload,
 } from '../../features/exams/useStudentExamWarningRealtime'
@@ -50,6 +51,17 @@ type ProctorWarningSignal = {
   title: string
   message: string
   warnedAt: string
+  proctorId?: number | null
+  proctorName?: string | null
+  category?: string | null
+  room?: string | null
+}
+
+type ProctorTerminationSignal = {
+  id: number
+  title: string
+  message: string
+  terminatedAt: string
   proctorId?: number | null
   proctorName?: string | null
   category?: string | null
@@ -349,6 +361,24 @@ function normalizeProctorWarning(raw: unknown): ProctorWarningSignal | null {
   }
 }
 
+function normalizeProctorTermination(raw: unknown): ProctorTerminationSignal | null {
+  if (!raw || typeof raw !== 'object' || Array.isArray(raw)) return null
+  const source = raw as Record<string, unknown>
+  const id = Number(source.id || 0)
+  const message = String(source.message || '').trim()
+  if (!Number.isFinite(id) || id <= 0 || !message) return null
+  return {
+    id,
+    title: String(source.title || 'Sesi Ujian Diakhiri Pengawas').trim() || 'Sesi Ujian Diakhiri Pengawas',
+    message,
+    terminatedAt: String(source.terminatedAt || new Date().toISOString()),
+    proctorId: Number.isFinite(Number(source.proctorId)) ? Number(source.proctorId) : null,
+    proctorName: String(source.proctorName || '').trim() || null,
+    category: String(source.category || '').trim() || null,
+    room: String(source.room || '').trim() || null,
+  }
+}
+
 function formatWarningDateTime(value?: string | null) {
   const date = new Date(String(value || ''))
   if (Number.isNaN(date.getTime())) return '-'
@@ -358,6 +388,10 @@ function formatWarningDateTime(value?: string | null) {
     hour: '2-digit',
     minute: '2-digit',
   })
+}
+
+function formatTerminationDateTime(value?: string | null) {
+  return formatWarningDateTime(value)
 }
 
 function extractMonitoringStats(rawAnswers: Record<string, unknown>): Partial<MonitoringStats> | null {
@@ -437,6 +471,8 @@ export default function StudentExamTakePage() {
   const [previewImageZoom, setPreviewImageZoom] = useState(1)
   const [activeProctorWarning, setActiveProctorWarning] = useState<ProctorWarningSignal | null>(null)
   const [showProctorWarningModal, setShowProctorWarningModal] = useState(false)
+  const [activeProctorTermination, setActiveProctorTermination] = useState<ProctorTerminationSignal | null>(null)
+  const [showProctorTerminationModal, setShowProctorTerminationModal] = useState(false)
   
   // Submission
   const [submitting, setSubmitting] = useState(false)
@@ -454,6 +490,7 @@ export default function StudentExamTakePage() {
   const hasDirtyProgressRef = useRef(false)
   const lastSyncedFingerprintRef = useRef('')
   const lastProgressSyncAtRef = useRef(0)
+  const latestHandledProctorTerminationIdRef = useRef(0)
   const monitoringStatsRef = useRef<MonitoringStats>({
     totalViolations: 0,
     tabSwitchCount: 0,
@@ -498,11 +535,27 @@ export default function StudentExamTakePage() {
     })
   }, [])
 
+  const handleIncomingProctorTermination = useCallback((termination: ProctorTerminationSignal | StudentExamTerminationRealtimePayload) => {
+    const normalizedTermination = normalizeProctorTermination(termination)
+    if (!normalizedTermination) return
+    if (normalizedTermination.id === latestHandledProctorTerminationIdRef.current) return
+    latestHandledProctorTerminationIdRef.current = normalizedTermination.id
+    setActiveProctorTermination(normalizedTermination)
+    setShowProctorTerminationModal(true)
+    setShowProctorWarningModal(false)
+    setSubmitting(true)
+    toast.error(normalizedTermination.title, {
+      duration: 6000,
+      icon: '⛔',
+    })
+  }, [])
+
   useStudentExamWarningRealtime({
     enabled: Boolean(id && user?.id && !submitting),
     scheduleId: Number.isFinite(Number(id)) ? Number(id) : null,
     studentId: Number.isFinite(Number(user?.id)) ? Number(user?.id) : null,
     onWarning: handleIncomingProctorWarning,
+    onTermination: handleIncomingProctorTermination,
   })
 
   // Keep ref in sync so async callbacks can read latest value
@@ -803,12 +856,18 @@ export default function StudentExamTakePage() {
       }
 
       try {
-        await api.post(`/exams/${id}/answers`, {
+        const response = await api.post(`/exams/${id}/answers`, {
           student_id: user.id,
           answers: formattedAnswers,
           finish: false,
           is_final_submit: false,
         })
+        const savedStatus = String(response.data?.data?.status || '').toUpperCase()
+        const proctorTermination = normalizeProctorTermination(response.data?.data?.proctorTermination)
+        if (savedStatus === 'TIMEOUT' && proctorTermination) {
+          handleIncomingProctorTermination(proctorTermination)
+          return
+        }
         lastProgressSyncAtRef.current = Date.now()
         lastSyncedFingerprintRef.current = syncFingerprint
         hasDirtyProgressRef.current = false
@@ -821,7 +880,7 @@ export default function StudentExamTakePage() {
         hasDirtyProgressRef.current = true
       }
     },
-    [id, user, exam, submitting, buildFormattedAnswers, buildSyncFingerprint],
+    [id, user, exam, submitting, buildFormattedAnswers, buildSyncFingerprint, handleIncomingProctorTermination],
   )
 
   const queueProgressSync = useCallback(
@@ -1717,6 +1776,11 @@ export default function StudentExamTakePage() {
       )
 
       if (response.data.success) {
+        const proctorTermination = normalizeProctorTermination(response.data?.data?.proctorTermination)
+        if (String(response.data?.data?.status || '').toUpperCase() === 'TIMEOUT' && proctorTermination) {
+          handleIncomingProctorTermination(proctorTermination)
+          return
+        }
         cleanupLockdown({ preserveFullscreen: true })
         await ensureExitFullscreen()
         await new Promise((resolve) => setTimeout(resolve, 120))
@@ -2018,6 +2082,27 @@ export default function StudentExamTakePage() {
               <p className="-mt-2 mb-6 text-xs text-slate-500">
                 Gunakan tombol refresh bila guru mengubah soal. Refresh data ini tidak dihitung pelanggaran.
               </p>
+              {activeProctorTermination ? (
+                <div className="mb-6 rounded-xl border border-rose-200 bg-rose-50 px-4 py-3 text-sm text-rose-900">
+                  <div className="flex flex-wrap items-start justify-between gap-3">
+                    <div>
+                      <p className="font-semibold">{activeProctorTermination.title}</p>
+                      <p className="mt-1 leading-6">{activeProctorTermination.message}</p>
+                      <p className="mt-2 text-xs text-rose-700">
+                        {activeProctorTermination.proctorName ? `Dari ${activeProctorTermination.proctorName} • ` : ''}
+                        {formatTerminationDateTime(activeProctorTermination.terminatedAt)}
+                      </p>
+                    </div>
+                    <button
+                      type="button"
+                      onClick={() => setShowProctorTerminationModal(true)}
+                      className="rounded-lg border border-rose-300 bg-white px-3 py-2 text-xs font-semibold text-rose-800 hover:bg-rose-100"
+                    >
+                      Lihat Detail
+                    </button>
+                  </div>
+                </div>
+              ) : null}
               {activeProctorWarning ? (
                 <div className="mb-6 rounded-xl border border-amber-200 bg-amber-50 px-4 py-3 text-sm text-amber-900">
                   <div className="flex flex-wrap items-start justify-between gap-3">
@@ -2358,6 +2443,51 @@ export default function StudentExamTakePage() {
                 className="rounded-xl bg-amber-600 px-4 py-2 text-sm font-semibold text-white hover:bg-amber-700"
               >
                 Saya Mengerti
+              </button>
+            </div>
+          </div>
+        </div>
+      ) : null}
+
+      {showProctorTerminationModal && activeProctorTermination ? (
+        <div className="fixed inset-0 z-[106] flex items-center justify-center bg-slate-900/18 px-4 py-6 backdrop-blur-[1px]">
+          <div className="w-full max-w-lg rounded-2xl border border-rose-200 bg-white shadow-2xl">
+            <div className="flex items-start justify-between gap-4 border-b border-rose-100 px-6 py-5">
+              <div>
+                <div className="inline-flex items-center gap-2 rounded-full border border-rose-200 bg-rose-50 px-3 py-1 text-[11px] font-semibold uppercase tracking-wide text-rose-800">
+                  <AlertTriangle className="h-3.5 w-3.5" />
+                  Sesi Diakhiri Pengawas
+                </div>
+                <h3 className="mt-3 text-lg font-bold text-slate-900">{activeProctorTermination.title}</h3>
+                <p className="mt-1 text-sm text-slate-600">
+                  {activeProctorTermination.proctorName
+                    ? `Dari ${activeProctorTermination.proctorName}`
+                    : 'Keputusan resmi dari pengawas ruang'}
+                </p>
+              </div>
+            </div>
+            <div className="px-6 py-5">
+              <div className="rounded-xl border border-rose-100 bg-rose-50 px-4 py-4 text-sm leading-6 text-rose-950">
+                {activeProctorTermination.message}
+              </div>
+              <div className="mt-4 text-xs text-slate-500">
+                {formatTerminationDateTime(activeProctorTermination.terminatedAt)}
+              </div>
+            </div>
+            <div className="flex justify-end border-t border-slate-200 px-6 py-4">
+              <button
+                type="button"
+                onClick={async () => {
+                  setShowProctorTerminationModal(false)
+                  cleanupLockdown({ preserveFullscreen: true })
+                  await ensureExitFullscreen()
+                  await new Promise((resolve) => setTimeout(resolve, 120))
+                  await ensureExitFullscreen()
+                  navigate(baseExamRoute, { replace: true })
+                }}
+                className="rounded-xl bg-rose-600 px-4 py-2 text-sm font-semibold text-white hover:bg-rose-700"
+              >
+                Kembali ke Daftar Ujian
               </button>
             </div>
           </div>

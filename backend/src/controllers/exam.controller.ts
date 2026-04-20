@@ -26,7 +26,9 @@ import {
 import { createInAppNotification } from '../services/mobilePushNotification.service';
 import { assertCurriculumExamManagerAccess } from '../utils/examManagementAccess';
 import {
+    EXAM_PROCTOR_TERMINATION_NOTIFICATION_TYPE,
     EXAM_PROCTOR_WARNING_NOTIFICATION_TYPE,
+    parseExamProctorTerminationSignal,
     parseExamProctorWarningSignal,
 } from '../utils/examProctorWarning';
 import {
@@ -2879,6 +2881,138 @@ async function findLatestExamProctorWarning(params: {
     }
 
     return null;
+}
+
+async function findLatestExamProctorTermination(params: {
+    studentId: number;
+    scheduleId: number;
+}): Promise<{
+    id: number;
+    title: string;
+    message: string;
+    terminatedAt: string;
+    proctorId: number | null;
+    proctorName: string | null;
+    category: string | null;
+    room: string | null;
+} | null> {
+    const studentId = Number(params.studentId);
+    const scheduleId = Number(params.scheduleId);
+    if (!Number.isFinite(studentId) || studentId <= 0 || !Number.isFinite(scheduleId) || scheduleId <= 0) {
+        return null;
+    }
+
+    const notifications = await prisma.notification.findMany({
+        where: {
+            userId: studentId,
+            type: EXAM_PROCTOR_TERMINATION_NOTIFICATION_TYPE,
+        },
+        select: {
+            id: true,
+            userId: true,
+            title: true,
+            message: true,
+            createdAt: true,
+            data: true,
+        },
+        orderBy: [{ createdAt: 'desc' }, { id: 'desc' }],
+        take: 12,
+    });
+
+    for (const notification of notifications) {
+        const parsed = parseExamProctorTerminationSignal(notification);
+        if (!parsed || parsed.scheduleId !== scheduleId) continue;
+        return {
+            id: parsed.id,
+            title: parsed.title,
+            message: parsed.message,
+            terminatedAt: parsed.terminatedAt,
+            proctorId: parsed.proctorId,
+            proctorName: parsed.proctorName,
+            category: parsed.category,
+            room: parsed.room,
+        };
+    }
+
+    return null;
+}
+
+async function listLatestExamProctorTerminationsByScheduleIds(params: {
+    studentId: number;
+    scheduleIds: number[];
+}): Promise<Map<number, {
+    id: number;
+    title: string;
+    message: string;
+    terminatedAt: string;
+    proctorId: number | null;
+    proctorName: string | null;
+    category: string | null;
+    room: string | null;
+}>> {
+    const studentId = Number(params.studentId);
+    const scheduleIds = Array.from(
+        new Set(
+            (Array.isArray(params.scheduleIds) ? params.scheduleIds : [])
+                .map((value) => Number(value))
+                .filter((value) => Number.isFinite(value) && value > 0),
+        ),
+    );
+
+    if (!Number.isFinite(studentId) || studentId <= 0 || scheduleIds.length === 0) {
+        return new Map();
+    }
+
+    const notifications = await prisma.notification.findMany({
+        where: {
+            userId: studentId,
+            type: EXAM_PROCTOR_TERMINATION_NOTIFICATION_TYPE,
+        },
+        select: {
+            id: true,
+            userId: true,
+            title: true,
+            message: true,
+            createdAt: true,
+            data: true,
+        },
+        orderBy: [{ createdAt: 'desc' }, { id: 'desc' }],
+        take: Math.min(Math.max(scheduleIds.length * 4, 24), 200),
+    });
+
+    const targetScheduleIds = new Set(scheduleIds);
+    const result = new Map<number, {
+        id: number;
+        title: string;
+        message: string;
+        terminatedAt: string;
+        proctorId: number | null;
+        proctorName: string | null;
+        category: string | null;
+        room: string | null;
+    }>();
+
+    for (const notification of notifications) {
+        const parsed = parseExamProctorTerminationSignal(notification);
+        if (!parsed || !targetScheduleIds.has(parsed.scheduleId) || result.has(parsed.scheduleId)) {
+            continue;
+        }
+        result.set(parsed.scheduleId, {
+            id: parsed.id,
+            title: parsed.title,
+            message: parsed.message,
+            terminatedAt: parsed.terminatedAt,
+            proctorId: parsed.proctorId,
+            proctorName: parsed.proctorName,
+            category: parsed.category,
+            room: parsed.room,
+        });
+        if (result.size >= targetScheduleIds.size) {
+            break;
+        }
+    }
+
+    return result;
 }
 
 function sanitizeQuestionSetMeta(rawQuestionSet: unknown): SessionQuestionSetMeta | null {
@@ -10428,6 +10562,13 @@ export const getAvailableExams = asyncHandler(async (req: Request, res: Response
     const automaticRestrictionByTargetMap = new Map<string, Map<number, AutomaticExamRestrictionInfo>>(
         automaticRestrictionMaps as Array<[string, Map<number, AutomaticExamRestrictionInfo>]>,
     );
+    const proctorTerminationByScheduleId =
+        accessRole === 'STUDENT'
+            ? await listLatestExamProctorTerminationsByScheduleIds({
+                  studentId,
+                  scheduleIds: schedulesWithPacketForExamUser.map((schedule) => Number(schedule.id)),
+              })
+            : new Map();
 
     // Check restrictions
     const examsWithStatus = schedulesWithPacketForExamUser.map((schedule) => {
@@ -10550,6 +10691,8 @@ export const getAvailableExams = asyncHandler(async (req: Request, res: Response
                     : now < schedule.startTime
                         ? 'UPCOMING'
                         : 'OPEN';
+        const proctorTermination =
+            accessRole === 'STUDENT' ? proctorTerminationByScheduleId.get(Number(schedule.id)) || null : null;
 
         const packet = schedule.packet
             ? (() => {
@@ -10610,6 +10753,7 @@ export const getAvailableExams = asyncHandler(async (req: Request, res: Response
             notReadyReason,
             financeClearance,
             academicClearance,
+            proctorTermination,
             makeupAvailable: makeupContext.availableNow,
             makeupMode: makeupContext.mode,
             makeupScheduled: makeupContext.scheduled,
@@ -10840,6 +10984,19 @@ async function buildStartExamPayload(params: {
             });
         }
         if (effectiveSessionStatus === 'COMPLETED' || effectiveSessionStatus === 'TIMEOUT') {
+            if (effectiveSessionStatus === 'TIMEOUT') {
+                const latestProctorTermination = await findLatestExamProctorTermination({
+                    studentId,
+                    scheduleId: schedule.id,
+                });
+                if (latestProctorTermination) {
+                    throw new ApiError(
+                        403,
+                        latestProctorTermination.message ||
+                            'Sesi ujian Anda telah diakhiri oleh pengawas ruang.',
+                    );
+                }
+            }
             throw new ApiError(400, 'Anda sudah mengerjakan ujian ini.');
         }
     }
@@ -10887,6 +11044,19 @@ async function buildStartExamPayload(params: {
             now,
         });
         if (session.status === 'COMPLETED' || session.status === 'TIMEOUT') {
+            if (session.status === 'TIMEOUT') {
+                const latestProctorTermination = await findLatestExamProctorTermination({
+                    studentId,
+                    scheduleId: schedule.id,
+                });
+                if (latestProctorTermination) {
+                    throw new ApiError(
+                        403,
+                        latestProctorTermination.message ||
+                            'Sesi ujian Anda telah diakhiri oleh pengawas ruang.',
+                    );
+                }
+            }
             throw new ApiError(400, 'Anda sudah mengerjakan ujian ini.');
         }
     }
@@ -11862,6 +12032,10 @@ export const submitAnswers = asyncHandler(async (req: Request, res: Response) =>
     );
 
     if (effectiveSessionStatus === 'TIMEOUT') {
+        const latestProctorTermination = await findLatestExamProctorTermination({
+            studentId,
+            scheduleId,
+        });
         if (String(session.status || '').toUpperCase() !== 'TIMEOUT' || !session.submitTime || !session.endTime) {
             const timeoutAt = resolveSessionClosureTimestamp(sessionDeadline, now);
             const timedOutSession = await prisma.studentExamSession.update({
@@ -11874,12 +12048,37 @@ export const submitAnswers = asyncHandler(async (req: Request, res: Response) =>
             });
             invalidateSessionDetailCacheBySession(session.id);
             availableExamsCache.delete(studentId);
-            return res.json(new ApiResponse(200, timedOutSession, 'Session already finished'));
+            return res.json(
+                new ApiResponse(
+                    200,
+                    {
+                        ...timedOutSession,
+                        proctorTermination: latestProctorTermination,
+                    },
+                    'Session already finished',
+                ),
+            );
         }
     }
 
     if (effectiveSessionStatus === 'COMPLETED' || session.status === 'COMPLETED' || Boolean(session.submitTime)) {
-        return res.json(new ApiResponse(200, session, 'Session already finished'));
+        const latestProctorTermination =
+            String(session.status || '').toUpperCase() === 'TIMEOUT'
+                ? await findLatestExamProctorTermination({
+                      studentId,
+                      scheduleId,
+                  })
+                : null;
+        return res.json(
+            new ApiResponse(
+                200,
+                {
+                    ...session,
+                    proctorTermination: latestProctorTermination,
+                },
+                'Session already finished',
+            ),
+        );
     }
 
     const previousAnswers = sanitizeAnswersForStorage(session.answers);

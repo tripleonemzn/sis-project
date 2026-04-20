@@ -1348,9 +1348,11 @@ export default function StudentExamsScreen() {
                         const status = resolveStudentExamRuntimeStatus(item);
                         const style = statusStyle(status);
                         const isReady = item.isReady !== false;
-                        const statusChip = isReady
-                          ? style
-                          : { bg: '#fffbeb', border: '#fcd34d', text: '#d97706', label: 'Soal Belum Siap' };
+                        const statusChip = item.proctorTermination
+                          ? { bg: '#fff1f2', border: '#fda4af', text: '#be123c', label: 'Diakhiri Pengawas' }
+                          : isReady
+                            ? style
+                            : { bg: '#fffbeb', border: '#fcd34d', text: '#d97706', label: 'Soal Belum Siap' };
                         const resolvedSubject = resolveSubjectLabel(item);
                         const subjectName = resolvedSubject.name;
                         const subjectCode = resolvedSubject.code;
@@ -1486,7 +1488,34 @@ export default function StudentExamsScreen() {
                                 ) : null}
                               </View>
                             ) : null}
-                            {!item.isBlocked && item.financeClearance?.warningOnly && item.financeClearance.hasOutstanding ? (
+                            {!item.isBlocked && item.proctorTermination ? (
+                              <View
+                                style={{
+                                  backgroundColor: '#fff1f2',
+                                  borderWidth: 1,
+                                  borderColor: '#fda4af',
+                                  borderRadius: 8,
+                                  padding: 8,
+                                  marginBottom: 8,
+                                }}
+                              >
+                                <Text style={{ color: '#be123c', fontSize: scaleFont(11), fontWeight: '700' }}>
+                                  {item.proctorTermination.title || 'Sesi Diakhiri Pengawas'}
+                                </Text>
+                                <Text style={{ color: '#be123c', fontSize: scaleFont(11), lineHeight: scaleLineHeight(17), marginTop: 4 }}>
+                                  {item.proctorTermination.message || 'Sesi ujian Anda telah diakhiri oleh pengawas ruang.'}
+                                </Text>
+                                <Text style={{ color: '#9f1239', fontSize: scaleFont(11), lineHeight: scaleLineHeight(17), marginTop: 4 }}>
+                                  {item.proctorTermination.proctorName
+                                    ? `Oleh ${item.proctorTermination.proctorName}`
+                                    : 'Oleh pengawas ruang'}
+                                  {item.proctorTermination.terminatedAt
+                                    ? ` • ${formatDateTime(item.proctorTermination.terminatedAt)}`
+                                    : ''}
+                                </Text>
+                              </View>
+                            ) : null}
+                            {!item.isBlocked && !item.proctorTermination && item.financeClearance?.warningOnly && item.financeClearance.hasOutstanding ? (
                               <View
                                 style={{
                                   marginBottom: 8,
@@ -1509,7 +1538,7 @@ export default function StudentExamsScreen() {
                                 </Text>
                               </View>
                             ) : null}
-                            {!item.isBlocked && item.academicClearance?.warningOnly ? (
+                            {!item.isBlocked && !item.proctorTermination && item.academicClearance?.warningOnly ? (
                               <View
                                 style={{
                                   marginBottom: 8,
@@ -1556,6 +1585,13 @@ export default function StudentExamsScreen() {
                             ) : null}
                             <Pressable
                               onPress={async () => {
+                                if (item.proctorTermination) {
+                                  Alert.alert(
+                                    'Sesi Diakhiri Pengawas',
+                                    item.proctorTermination.message || 'Sesi ujian ini telah diakhiri oleh pengawas ruang.',
+                                  );
+                                  return;
+                                }
                                 if ((status === 'OPEN' || status === 'MAKEUP') && !item.isBlocked && isReady) {
                                   setSelectedExam(item);
                                   return;
@@ -1590,14 +1626,21 @@ export default function StudentExamsScreen() {
                                 );
                               }}
                               style={{
-                                backgroundColor: (status === 'OPEN' || status === 'MAKEUP') && !item.isBlocked && isReady ? '#1d4ed8' : '#cbd5e1',
+                                backgroundColor:
+                                  item.proctorTermination
+                                    ? '#fda4af'
+                                    : (status === 'OPEN' || status === 'MAKEUP') && !item.isBlocked && isReady
+                                      ? '#1d4ed8'
+                                      : '#cbd5e1',
                                 borderRadius: 8,
                                 paddingVertical: 9,
                                 alignItems: 'center',
                               }}
                             >
                               <Text style={{ color: '#fff', fontWeight: '700' }}>
-                                {(status === 'OPEN' || status === 'MAKEUP') && !item.isBlocked && isReady
+                                {item.proctorTermination
+                                  ? 'Sesi Diakhiri'
+                                  : (status === 'OPEN' || status === 'MAKEUP') && !item.isBlocked && isReady
                                   ? isApplicantMode
                                     ? status === 'MAKEUP'
                                       ? 'Mulai Tes Susulan'
@@ -1608,7 +1651,7 @@ export default function StudentExamsScreen() {
                                   : !isReady
                                     ? 'Menunggu Soal'
                                     : isApplicantMode
-                                      ? 'Detail Tes BKK'
+                                    ? 'Detail Tes BKK'
                                       : 'Detail Ujian'}
                               </Text>
                             </Pressable>

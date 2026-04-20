@@ -101,6 +101,16 @@ type ExamAvailabilityPayload = {
   makeupReason?: string | null
   isReady?: boolean
   notReadyReason?: string | null
+  proctorTermination?: {
+    id?: number
+    title?: string
+    message?: string
+    terminatedAt?: string
+    proctorId?: number | null
+    proctorName?: string | null
+    category?: string | null
+    room?: string | null
+  } | null
   jobVacancy?: {
     id?: string | number
     title?: string
@@ -257,6 +267,16 @@ interface Exam {
   blockReason?: string
   manualBlocked?: boolean
   autoBlocked?: boolean
+  proctorTermination?: {
+    id?: number
+    title?: string
+    message?: string
+    terminatedAt?: string
+    proctorId?: number | null
+    proctorName?: string | null
+    category?: string | null
+    room?: string | null
+  } | null
   academicClearance?: {
     blocksExam: boolean
     warningOnly?: boolean
@@ -635,6 +655,18 @@ export default function StudentExamsPage() {
           blockReason: item.blockReason,
           manualBlocked: item.manualBlocked,
           autoBlocked: item.autoBlocked,
+          proctorTermination: item.proctorTermination
+            ? {
+                id: item.proctorTermination.id,
+                title: item.proctorTermination.title,
+                message: item.proctorTermination.message,
+                terminatedAt: item.proctorTermination.terminatedAt,
+                proctorId: item.proctorTermination.proctorId ?? null,
+                proctorName: item.proctorTermination.proctorName ?? null,
+                category: item.proctorTermination.category ?? null,
+                room: item.proctorTermination.room ?? null,
+              }
+            : null,
           academicClearance: item.academicClearance || null,
           financeClearance: item.financeClearance || null,
           makeupAvailable: Boolean(item.makeupAvailable),
@@ -944,6 +976,15 @@ export default function StudentExamsPage() {
         <span className="px-2 py-1 bg-amber-100 text-amber-800 text-xs font-medium rounded inline-flex items-center gap-1">
           <AlertCircle className="w-3 h-3" />
           Soal Belum Siap
+        </span>
+      )
+    }
+
+    if (exam.proctorTermination) {
+      return (
+        <span className="px-2 py-1 bg-rose-100 text-rose-700 text-xs font-medium rounded inline-flex items-center gap-1 border border-rose-200">
+          <XCircle className="w-3 h-3" />
+          Diakhiri Pengawas
         </span>
       )
     }
@@ -1268,6 +1309,27 @@ export default function StudentExamsPage() {
                 </div>
               ) : null}
             </div>
+          ) : exam.proctorTermination ? (
+            <div className="flex flex-col items-center">
+              <div className="w-full max-w-[240px] rounded-lg border border-rose-200 bg-rose-50 px-3 py-2 text-left text-[11px] text-rose-800">
+                <div className="font-semibold">{exam.proctorTermination.title || 'Sesi Diakhiri Pengawas'}</div>
+                <div className="mt-1">
+                  {exam.proctorTermination.message || 'Sesi ujian Anda telah diakhiri oleh pengawas ruang.'}
+                </div>
+                <div className="mt-1 text-[11px] text-rose-700">
+                  {exam.proctorTermination.proctorName
+                    ? `Oleh ${exam.proctorTermination.proctorName}`
+                    : 'Oleh pengawas ruang'}
+                  {exam.proctorTermination.terminatedAt
+                    ? ` • ${formatDateShort(exam.proctorTermination.terminatedAt)}`
+                    : ''}
+                </div>
+              </div>
+              <span className="mt-2 inline-flex items-center gap-1 px-3 py-2 bg-rose-100 text-rose-700 text-sm font-medium rounded">
+                <XCircle className="w-4 h-4" />
+                <span>Sesi Diakhiri</span>
+              </span>
+            </div>
           ) : exam.isReady === false ? (
             <div className="flex flex-col items-center">
               <span className="inline-flex items-center gap-1 px-3 py-2 bg-amber-100 text-amber-700 text-sm font-medium rounded mb-1">
@@ -1294,7 +1356,7 @@ export default function StudentExamsPage() {
           ) : (
             <span className="text-sm text-gray-400">-</span>
           )}
-          {!exam.isBlocked && exam.financeClearance?.warningOnly && exam.financeClearance.hasOutstanding ? (
+          {!exam.isBlocked && !exam.proctorTermination && exam.financeClearance?.warningOnly && exam.financeClearance.hasOutstanding ? (
             <div className="mt-2 rounded-lg border border-amber-200 bg-amber-50 px-3 py-2 text-left text-[11px] text-amber-800">
               <div className="font-semibold">Info finance</div>
               <div>Outstanding: {formatExamCurrency(exam.financeClearance.outstandingAmount)}</div>
@@ -1307,7 +1369,7 @@ export default function StudentExamsPage() {
               </div>
             </div>
           ) : null}
-          {!exam.isBlocked && exam.academicClearance?.warningOnly ? (
+          {!exam.isBlocked && !exam.proctorTermination && exam.academicClearance?.warningOnly ? (
             <div
               className={`mt-2 rounded-lg border px-3 py-2 text-left text-[11px] ${
                 exam.academicClearance.hasBelowKkm

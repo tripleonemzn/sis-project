@@ -141,6 +141,16 @@ export type StudentExamSession = {
   status: string;
   score?: number | null;
   answers?: Record<string, unknown> | null;
+  proctorTermination?: {
+    id: number;
+    title: string;
+    message: string;
+    terminatedAt: string;
+    proctorId?: number | null;
+    proctorName?: string | null;
+    category?: string | null;
+    room?: string | null;
+  } | null;
 };
 
 export type StudentExamStartPayload = {
@@ -176,6 +186,16 @@ export type StudentExamItem = {
   blockReason?: string;
   manualBlocked?: boolean;
   autoBlocked?: boolean;
+  proctorTermination?: {
+    id: number;
+    title: string;
+    message: string;
+    terminatedAt: string;
+    proctorId?: number | null;
+    proctorName?: string | null;
+    category?: string | null;
+    room?: string | null;
+  } | null;
   academicClearance?: {
     blocksExam: boolean;
     warningOnly?: boolean;

@@ -6,9 +6,13 @@ import prisma from '../utils/prisma';
 import { ApiError, asyncHandler, ApiResponse } from '../utils/api';
 import { broadcastDomainEvent } from '../realtime/realtimeGateway';
 import {
+    buildExamProctorTerminationNotificationData,
     buildExamProctorWarningNotificationData,
+    EXAM_PROCTOR_TERMINATION_NOTIFICATION_TYPE,
     EXAM_PROCTOR_WARNING_NOTIFICATION_TYPE,
+    matchesExamProctorTerminationSchedule,
     matchesExamProctorWarningSchedule,
+    parseExamProctorTerminationSignal,
     parseExamProctorWarningSignal,
 } from '../utils/examProctorWarning';
 import {
@@ -921,6 +925,10 @@ type ProctorStudentWarningSummary = {
     latestWarning: ReturnType<typeof parseExamProctorWarningSignal>;
 };
 
+type ProctorStudentTerminationSummary = {
+    latestTermination: ReturnType<typeof parseExamProctorTerminationSignal>;
+};
+
 function toStartOfLocalDay(dateLike: Date | null | undefined): Date | null {
     if (!(dateLike instanceof Date) || Number.isNaN(dateLike.getTime())) return null;
     const localDate = new Date(dateLike);
@@ -985,6 +993,61 @@ async function listProctorWarningSummaryByStudent(params: {
         summaryMap.set(studentId, {
             count: existing.count + 1,
             latestWarning: existing.latestWarning || parsed,
+        });
+    });
+
+    return summaryMap;
+}
+
+async function listProctorTerminationSummaryByStudent(params: {
+    studentIds: number[];
+    scheduleIds: number[];
+    createdAtGte?: Date | null;
+}): Promise<Map<number, ProctorStudentTerminationSummary>> {
+    const normalizedStudentIds = Array.from(
+        new Set(
+            (params.studentIds || [])
+                .map((item) => Number(item))
+                .filter((item) => Number.isFinite(item) && item > 0),
+        ),
+    );
+    const normalizedScheduleIds = Array.from(
+        new Set(
+            (params.scheduleIds || [])
+                .map((item) => Number(item))
+                .filter((item) => Number.isFinite(item) && item > 0),
+        ),
+    );
+    if (normalizedStudentIds.length === 0 || normalizedScheduleIds.length === 0) {
+        return new Map<number, ProctorStudentTerminationSummary>();
+    }
+
+    const rows = await prisma.notification.findMany({
+        where: {
+            userId: { in: normalizedStudentIds },
+            type: EXAM_PROCTOR_TERMINATION_NOTIFICATION_TYPE,
+            ...(params.createdAtGte ? { createdAt: { gte: params.createdAtGte } } : {}),
+        },
+        select: {
+            id: true,
+            userId: true,
+            title: true,
+            message: true,
+            createdAt: true,
+            data: true,
+        },
+        orderBy: [{ createdAt: 'desc' }, { id: 'desc' }],
+    });
+
+    const summaryMap = new Map<number, ProctorStudentTerminationSummary>();
+    rows.forEach((row) => {
+        if (!matchesExamProctorTerminationSchedule(row, normalizedScheduleIds)) return;
+        const parsed = parseExamProctorTerminationSignal(row);
+        if (!parsed) return;
+        const studentId = Number(row.userId);
+        if (summaryMap.has(studentId)) return;
+        summaryMap.set(studentId, {
+            latestTermination: parsed,
         });
     });
 
@@ -2593,11 +2656,17 @@ export const getProctoringDetail = asyncHandler(async (req: Request, res: Respon
         scheduleIds: monitoredScheduleIds,
         createdAtGte: toStartOfLocalDay(scope.baseSchedule?.startTime || schedule.startTime),
     });
+    const terminationSummaryByStudent = await listProctorTerminationSummaryByStudent({
+        studentIds: students.map((student) => Number(student.id)),
+        scheduleIds: monitoredScheduleIds,
+        createdAtGte: toStartOfLocalDay(scope.baseSchedule?.startTime || schedule.startTime),
+    });
 
     const studentList = students.map((s: any) => {
         const session = bestSessionByStudent.get(s.id);
         const eligibility = eligibilitySnapshot.get(Number(s.id)) || null;
         const warningSummary = warningSummaryByStudent.get(Number(s.id)) || null;
+        const terminationSummary = terminationSummaryByStudent.get(Number(s.id)) || null;
         const normalizedStatus = normalizeProctorSessionStatus(
             session?.status,
             session?.startTime,
@@ -2631,6 +2700,14 @@ export const getProctoringDetail = asyncHandler(async (req: Request, res: Respon
                       latestMessage: warningSummary.latestWarning?.message || null,
                       warnedAt: warningSummary.latestWarning?.warnedAt || null,
                       warnedByName: warningSummary.latestWarning?.proctorName || null,
+                  }
+                : null,
+            proctorTermination: terminationSummary
+                ? {
+                      latestTitle: terminationSummary.latestTermination?.title || 'Sesi Ujian Diakhiri Pengawas',
+                      latestMessage: terminationSummary.latestTermination?.message || null,
+                      terminatedAt: terminationSummary.latestTermination?.terminatedAt || null,
+                      terminatedByName: terminationSummary.latestTermination?.proctorName || null,
                   }
                 : null,
             restriction: {
@@ -2855,6 +2932,161 @@ export const sendProctorWarning = asyncHandler(async (req: Request, res: Respons
                 category: normalizedCategory,
             },
             'Peringatan berhasil dikirim ke peserta ujian.',
+        ),
+    );
+});
+
+export const endProctorStudentSession = asyncHandler(async (req: Request, res: Response) => {
+    const parsedScheduleId = Number.parseInt(String(req.params.scheduleId || ''), 10);
+    if (!Number.isInteger(parsedScheduleId) || parsedScheduleId <= 0) {
+        throw new ApiError(400, 'ID jadwal ujian tidak valid');
+    }
+
+    const targetStudentId = Number(req.body?.studentId || 0);
+    if (!Number.isFinite(targetStudentId) || targetStudentId <= 0) {
+        throw new ApiError(400, 'Peserta ujian tidak valid');
+    }
+
+    const normalizedMessage = String(req.body?.message || '').trim();
+    if (normalizedMessage.length < 8) {
+        throw new ApiError(400, 'Alasan pengakhiran sesi wajib diisi dengan jelas.');
+    }
+    const normalizedCategory = normalizeOptionalText(req.body?.category) || 'AKHIRI_SESI';
+
+    const user = (req as any).user;
+    const scope = await resolveRoomScopeSchedules(parsedScheduleId, Number(user?.id) || null);
+    const isAdmin = String(user?.role || '').toUpperCase() === 'ADMIN';
+    const effectiveProctorId = Number(scope.baseSchedule?.proctorId || 0) || null;
+
+    if (!scope.baseSchedule || scope.monitoredScheduleIds.length === 0) {
+        throw new ApiError(404, 'Data ruang ujian tidak ditemukan');
+    }
+    if (!isAdmin && effectiveProctorId !== Number(user?.id)) {
+        throw new ApiError(403, 'Hanya pengawas ruang atau admin yang dapat mengakhiri sesi peserta.');
+    }
+
+    const [senderProfile, targetStudentProfile, activeScopedSession] = await Promise.all([
+        prisma.user.findUnique({
+            where: { id: Number(user?.id) || 0 },
+            select: {
+                id: true,
+                name: true,
+            },
+        }),
+        listHistoricalProctorStudentsByIds([targetStudentId], scope.baseSchedule.academicYearId).then((rows) => rows[0] || null),
+        prisma.studentExamSession.findFirst({
+            where: {
+                studentId: targetStudentId,
+                scheduleId: {
+                    in: scope.monitoredScheduleIds,
+                },
+                status: 'IN_PROGRESS',
+                submitTime: null,
+            },
+            select: {
+                id: true,
+                studentId: true,
+                scheduleId: true,
+                status: true,
+                submitTime: true,
+                startTime: true,
+                answers: true,
+            },
+            orderBy: [{ updatedAt: 'desc' }, { id: 'desc' }],
+        }),
+    ]);
+
+    if (!targetStudentProfile) {
+        throw new ApiError(404, 'Data peserta ujian tidak ditemukan');
+    }
+
+    const studentInScope =
+        (Number.isFinite(Number(targetStudentProfile.classId)) &&
+            Number(targetStudentProfile.classId) > 0 &&
+            scope.monitoredClassIds.includes(Number(targetStudentProfile.classId))) ||
+        Boolean(activeScopedSession);
+    if (!studentInScope) {
+        throw new ApiError(403, 'Peserta tersebut tidak termasuk roster pengawasan pada jadwal ini.');
+    }
+
+    if (!activeScopedSession) {
+        throw new ApiError(400, 'Peserta belum memiliki sesi aktif yang bisa diakhiri.');
+    }
+
+    const senderName = String(senderProfile?.name || '').trim() || 'Pengawas ruang';
+    const closedAt = new Date();
+
+    const [updatedSession, notification] = await prisma.$transaction(async (tx) => {
+        const updated = await tx.studentExamSession.update({
+            where: { id: activeScopedSession.id },
+            data: {
+                status: 'TIMEOUT',
+                submitTime: closedAt,
+                endTime: closedAt,
+            },
+            select: {
+                id: true,
+                studentId: true,
+                scheduleId: true,
+                status: true,
+                submitTime: true,
+                endTime: true,
+            },
+        });
+
+        const createdNotification = await tx.notification.create({
+            data: {
+                userId: targetStudentId,
+                title: 'Sesi Ujian Diakhiri Pengawas',
+                message: normalizedMessage,
+                isRead: true,
+                type: EXAM_PROCTOR_TERMINATION_NOTIFICATION_TYPE,
+                data: buildExamProctorTerminationNotificationData({
+                    scheduleId: Number(activeScopedSession.scheduleId),
+                    studentId: targetStudentId,
+                    proctorId: Number(senderProfile?.id || 0) || null,
+                    proctorName: senderName,
+                    room: scope.baseSchedule?.room || null,
+                    category: normalizedCategory,
+                    sourceScheduleId: parsedScheduleId,
+                }),
+            },
+        });
+
+        return [updated, createdNotification] as const;
+    });
+
+    broadcastDomainEvent({
+        domain: 'PROCTORING',
+        action: 'UPDATED',
+        scope: {
+            mode: 'EXAM_TERMINATED',
+            scheduleIds: [Number(updatedSession.scheduleId)],
+            studentIds: [targetStudentId],
+            terminationNotificationId: Number(notification.id),
+            terminationTitle: String(notification.title || 'Sesi Ujian Diakhiri Pengawas'),
+            terminationMessage: String(notification.message || normalizedMessage),
+            terminationAt: notification.createdAt.toISOString(),
+            terminationCategory: normalizedCategory,
+            proctorName: senderName,
+        },
+    });
+
+    res.json(
+        new ApiResponse(
+            200,
+            {
+                id: notification.id,
+                studentId: targetStudentId,
+                scheduleId: Number(updatedSession.scheduleId),
+                sessionId: Number(updatedSession.id),
+                title: notification.title,
+                message: notification.message,
+                terminatedAt: notification.createdAt.toISOString(),
+                proctorName: senderName,
+                category: normalizedCategory,
+            },
+            'Sesi peserta berhasil diakhiri oleh pengawas.',
         ),
     );
 });

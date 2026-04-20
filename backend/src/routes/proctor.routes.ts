@@ -2,6 +2,7 @@ import { Router } from 'express';
 import {
   getProctorSchedules,
   getProctoringDetail,
+  endProctorStudentSession,
   submitBeritaAcara,
   sendProctorWarning,
   getProctoringReports,
@@ -18,6 +19,7 @@ router.use(authMiddleware);
 router.get('/schedules', roleMiddleware(['TEACHER', 'ADMIN']), getProctorSchedules);
 router.get('/schedules/:scheduleId', roleMiddleware(['TEACHER', 'ADMIN']), getProctoringDetail);
 router.post('/schedules/:scheduleId/warnings', roleMiddleware(['TEACHER', 'ADMIN']), sendProctorWarning);
+router.post('/schedules/:scheduleId/end-session', roleMiddleware(['TEACHER', 'ADMIN']), endProctorStudentSession);
 router.post('/schedules/:scheduleId/report', roleMiddleware(['TEACHER', 'ADMIN']), submitBeritaAcara);
 router.get('/reports/:reportId/document', roleMiddleware(['TEACHER', 'ADMIN', 'PRINCIPAL']), getProctoringReportDocument);
 router.get('/reports/:reportId/attendance-document', roleMiddleware(['TEACHER', 'ADMIN', 'PRINCIPAL']), getProctoringAttendanceDocument);
