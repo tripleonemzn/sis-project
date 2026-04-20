@@ -2724,6 +2724,49 @@ function resolveEffectiveSessionStatus(
     return normalized || 'NOT_STARTED';
 }
 
+function resolveExamSessionDeadline(params: {
+    sessionStartTime?: unknown;
+    effectiveEndTime?: Date | null;
+    packetDurationMinutes?: unknown;
+}): Date | null {
+    const effectiveEndTime =
+        params.effectiveEndTime instanceof Date && !Number.isNaN(params.effectiveEndTime.getTime())
+            ? params.effectiveEndTime
+            : null;
+    const durationMinutes = Number(params.packetDurationMinutes || 0);
+    const sessionStartMs = new Date(String(params.sessionStartTime || '')).getTime();
+    const durationDeadline =
+        Number.isFinite(durationMinutes) &&
+        durationMinutes > 0 &&
+        Number.isFinite(sessionStartMs) &&
+        sessionStartMs > 0
+            ? new Date(sessionStartMs + durationMinutes * 60_000)
+            : null;
+
+    if (effectiveEndTime && durationDeadline) {
+        return new Date(Math.min(effectiveEndTime.getTime(), durationDeadline.getTime()));
+    }
+    return durationDeadline || effectiveEndTime;
+}
+
+function resolveSessionClosureTimestamp(deadline: Date | null, fallbackNow: Date): Date {
+    return deadline && Number.isFinite(deadline.getTime()) ? deadline : fallbackNow;
+}
+
+function resolveEffectiveSessionStatusWithDeadline(
+    status: unknown,
+    answers: unknown,
+    submitTime: unknown,
+    deadline: Date | null,
+    now: Date,
+): 'COMPLETED' | 'TIMEOUT' | 'IN_PROGRESS' | 'NOT_STARTED' | string {
+    const normalized = resolveEffectiveSessionStatus(status, answers, submitTime);
+    if ((normalized === 'IN_PROGRESS' || normalized === 'NOT_STARTED') && deadline && now.getTime() > deadline.getTime()) {
+        return 'TIMEOUT';
+    }
+    return normalized;
+}
+
 function getSessionPriority(sessionLike: { status?: unknown; answers?: unknown; submitTime?: unknown } | unknown): number {
     const normalized =
         sessionLike && typeof sessionLike === 'object'
@@ -10392,14 +10435,33 @@ export const getAvailableExams = asyncHandler(async (req: Request, res: Response
         }
 
         const session = pickBestSession(schedule.sessions);
-        const normalizedSessionStatus = resolveEffectiveSessionStatus(
+        const manualMakeupAccess = (Array.isArray(schedule.makeupAccesses) ? schedule.makeupAccesses : [])[0] || null;
+        const normalizedSessionStatus = resolveEffectiveSessionStatusWithDeadline(
             session?.status,
             session?.answers,
             session?.submitTime,
+            session
+                ? resolveExamSessionDeadline({
+                      sessionStartTime: session.startTime,
+                      effectiveEndTime: manualMakeupAccess?.endTime || schedule.endTime,
+                      packetDurationMinutes: schedule.packet?.duration,
+                  })
+                : null,
+            now,
         );
         const hasSessionAttempt = Array.isArray(schedule.sessions)
             ? schedule.sessions.some((row) => {
-                  const rowStatus = resolveEffectiveSessionStatus(row?.status, row?.answers, row?.submitTime);
+                  const rowStatus = resolveEffectiveSessionStatusWithDeadline(
+                      row?.status,
+                      row?.answers,
+                      row?.submitTime,
+                      resolveExamSessionDeadline({
+                          sessionStartTime: row?.startTime,
+                          effectiveEndTime: manualMakeupAccess?.endTime || schedule.endTime,
+                          packetDurationMinutes: schedule.packet?.duration,
+                      }),
+                      now,
+                  );
                   return (
                       Boolean(row?.startTime) ||
                       rowStatus === 'IN_PROGRESS' ||
@@ -10408,7 +10470,6 @@ export const getAvailableExams = asyncHandler(async (req: Request, res: Response
                   );
               })
             : false;
-        const manualMakeupAccess = (Array.isArray(schedule.makeupAccesses) ? schedule.makeupAccesses : [])[0] || null;
         const makeupContext = resolveExamMakeupContext({
             now,
             hasSessionAttempt,
@@ -10660,31 +10721,6 @@ async function buildStartExamPayload(params: {
         throw new ApiError(400, 'Exam has not started yet');
     }
 
-    // Create or get session (race-safe for concurrent start requests).
-    let session = await findStudentExamSessionSummary(schedule.id, studentId);
-
-    if (session) {
-        const effectiveSessionStatus = resolveEffectiveSessionStatus(session.status, session.answers, session.submitTime);
-        if (effectiveSessionStatus === 'TIMEOUT' && String(session.status || '').toUpperCase() !== 'TIMEOUT') {
-            session = await prisma.studentExamSession.update({
-                where: { id: session.id },
-                data: {
-                    status: 'TIMEOUT',
-                    submitTime: session.submitTime || new Date(),
-                    endTime: session.endTime || new Date(),
-                },
-                select: studentExamSessionSelect,
-            });
-        }
-        if (effectiveSessionStatus === 'COMPLETED' || effectiveSessionStatus === 'TIMEOUT') {
-            throw new ApiError(400, 'Anda sudah mengerjakan ujian ini.');
-        }
-    }
-
-    const resumeInProgressSession =
-        Boolean(session) &&
-        String(session?.status || '').toUpperCase() === 'IN_PROGRESS' &&
-        !session?.submitTime;
     const manualMakeupAccess =
         accessRole === 'STUDENT'
             ? await prisma.examScheduleMakeupAccess.findUnique({
@@ -10703,6 +10739,59 @@ async function buildStartExamPayload(params: {
                   },
               })
             : null;
+
+    // Create or get session (race-safe for concurrent start requests).
+    let session = await findStudentExamSessionSummary(schedule.id, studentId);
+
+    if (session) {
+        const sessionDeadline = resolveExamSessionDeadline({
+            sessionStartTime: session.startTime,
+            effectiveEndTime: manualMakeupAccess?.endTime || schedule.endTime,
+            packetDurationMinutes: schedule.packet.duration,
+        });
+        const effectiveSessionStatus = resolveEffectiveSessionStatusWithDeadline(
+            session.status,
+            session.answers,
+            session.submitTime,
+            sessionDeadline,
+            now,
+        );
+        if (
+            effectiveSessionStatus === 'TIMEOUT' &&
+            (String(session.status || '').toUpperCase() !== 'TIMEOUT' || !session.submitTime || !session.endTime)
+        ) {
+            const timeoutAt = resolveSessionClosureTimestamp(sessionDeadline, now);
+            session = await prisma.studentExamSession.update({
+                where: { id: session.id },
+                data: {
+                    status: 'TIMEOUT',
+                    submitTime: session.submitTime || timeoutAt,
+                    endTime: session.endTime || timeoutAt,
+                },
+                select: studentExamSessionSelect,
+            });
+        }
+        if (effectiveSessionStatus === 'COMPLETED' || effectiveSessionStatus === 'TIMEOUT') {
+            throw new ApiError(400, 'Anda sudah mengerjakan ujian ini.');
+        }
+    }
+
+    const resumeInProgressSession =
+        Boolean(session) &&
+        resolveEffectiveSessionStatusWithDeadline(
+            session?.status,
+            session?.answers,
+            session?.submitTime,
+            session
+                ? resolveExamSessionDeadline({
+                      sessionStartTime: session.startTime,
+                      effectiveEndTime: manualMakeupAccess?.endTime || schedule.endTime,
+                      packetDurationMinutes: schedule.packet.duration,
+                  })
+                : null,
+            now,
+        ) === 'IN_PROGRESS' &&
+        !session?.submitTime;
     const makeupContext = resolveExamMakeupContext({
         now,
         hasSessionAttempt: Boolean(session),
@@ -11654,15 +11743,68 @@ export const submitAnswers = asyncHandler(async (req: Request, res: Response) =>
             id: true,
             studentId: true,
             scheduleId: true,
+            startTime: true,
+            endTime: true,
             status: true,
             answers: true,
             submitTime: true,
+            schedule: {
+                select: {
+                    endTime: true,
+                    makeupAccesses: {
+                        where: {
+                            studentId,
+                            isActive: true,
+                        },
+                        select: {
+                            endTime: true,
+                        },
+                    },
+                    packet: {
+                        select: {
+                            duration: true,
+                        },
+                    },
+                },
+            },
         },
     });
 
     if (!session) throw new ApiError(404, 'Session not found');
 
-    if (session.status === 'COMPLETED' || session.status === 'TIMEOUT' || Boolean(session.submitTime)) {
+    const now = new Date();
+    const submitMakeupAccess = (Array.isArray(session.schedule?.makeupAccesses) ? session.schedule.makeupAccesses : [])[0] || null;
+    const sessionDeadline = resolveExamSessionDeadline({
+        sessionStartTime: session.startTime,
+        effectiveEndTime: submitMakeupAccess?.endTime || session.schedule?.endTime || null,
+        packetDurationMinutes: session.schedule?.packet?.duration,
+    });
+    const effectiveSessionStatus = resolveEffectiveSessionStatusWithDeadline(
+        session.status,
+        session.answers,
+        session.submitTime,
+        sessionDeadline,
+        now,
+    );
+
+    if (effectiveSessionStatus === 'TIMEOUT') {
+        if (String(session.status || '').toUpperCase() !== 'TIMEOUT' || !session.submitTime || !session.endTime) {
+            const timeoutAt = resolveSessionClosureTimestamp(sessionDeadline, now);
+            const timedOutSession = await prisma.studentExamSession.update({
+                where: { id: session.id },
+                data: {
+                    status: 'TIMEOUT',
+                    submitTime: session.submitTime || timeoutAt,
+                    endTime: session.endTime || timeoutAt,
+                },
+            });
+            invalidateSessionDetailCacheBySession(session.id);
+            availableExamsCache.delete(studentId);
+            return res.json(new ApiResponse(200, timedOutSession, 'Session already finished'));
+        }
+    }
+
+    if (effectiveSessionStatus === 'COMPLETED' || session.status === 'COMPLETED' || Boolean(session.submitTime)) {
         return res.json(new ApiResponse(200, session, 'Session already finished'));
     }
 
@@ -11675,13 +11817,14 @@ export const submitAnswers = asyncHandler(async (req: Request, res: Response) =>
         ...(previousQuestionSet ? { __questionSet: previousQuestionSet } : {}),
     });
     const incomingMonitoring = extractMonitoringSummaryFromAnswers(normalizedIncomingAnswers);
-    const shouldForceTimeout = incomingMonitoring.totalViolations >= 4;
+    const shouldTimeoutByDeadline = Boolean(sessionDeadline && now.getTime() > sessionDeadline.getTime());
+    const shouldForceTimeout = incomingMonitoring.totalViolations >= 4 || shouldTimeoutByDeadline;
     const shouldCloseSession = isFinished || shouldForceTimeout;
 
     if (!isFinished) {
         const unchangedPayload =
             stableSerializeJson(normalizedIncomingAnswers) === stableSerializeJson(previousAnswers);
-        if (session.status === 'IN_PROGRESS' && unchangedPayload) {
+        if (session.status === 'IN_PROGRESS' && unchangedPayload && !shouldTimeoutByDeadline) {
             return res.json(new ApiResponse(200, session, 'Answers already up-to-date'));
         }
     }
@@ -11749,13 +11892,19 @@ export const submitAnswers = asyncHandler(async (req: Request, res: Response) =>
         }
     }
 
+    const closedAt = shouldCloseSession
+        ? shouldTimeoutByDeadline
+            ? resolveSessionClosureTimestamp(sessionDeadline, now)
+            : new Date()
+        : null;
+
     const updatedSession = await prisma.studentExamSession.update({
         where: { id: session.id },
         data: {
             answers: normalizedIncomingAnswers as Prisma.InputJsonValue,
             status: shouldForceTimeout ? 'TIMEOUT' : shouldCloseSession ? 'COMPLETED' : 'IN_PROGRESS',
-            submitTime: shouldCloseSession ? new Date() : undefined,
-            endTime: shouldCloseSession ? new Date() : undefined,
+            submitTime: shouldCloseSession ? closedAt : undefined,
+            endTime: shouldCloseSession ? closedAt : undefined,
         }
     });
 

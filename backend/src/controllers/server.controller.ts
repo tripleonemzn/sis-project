@@ -83,6 +83,7 @@ const toMaybeString = (value: unknown): string => String(value ?? '').trim();
 const buildOnlineUsersResponse = async (snapshot: RealtimePresenceSnapshot): Promise<OnlineUsersResponse> => {
   const userIds = snapshot.users.map((item) => item.userId);
   const nowMs = Date.now();
+  const now = new Date();
   const identities = new Map<number, OnlineUserIdentity | null>();
   const missingUserIds: number[] = [];
 
@@ -135,11 +136,21 @@ const buildOnlineUsersResponse = async (snapshot: RealtimePresenceSnapshot): Pro
     prisma.studentExamSession.count({
       where: {
         status: ExamSessionStatus.IN_PROGRESS,
+        schedule: {
+          endTime: {
+            gte: now,
+          },
+        },
       },
     }),
     prisma.studentExamSession.findMany({
       where: {
         status: ExamSessionStatus.IN_PROGRESS,
+        schedule: {
+          endTime: {
+            gte: now,
+          },
+        },
       },
       distinct: ['studentId'],
       select: {
