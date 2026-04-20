@@ -170,6 +170,37 @@ function SummaryMetric({
   );
 }
 
+function CompactStatChip({
+  label,
+  value,
+  bg,
+  border,
+  text,
+}: {
+  label: string;
+  value: string;
+  bg: string;
+  border: string;
+  text: string;
+}) {
+  return (
+    <View
+      style={{
+        borderWidth: 1,
+        borderColor: border,
+        backgroundColor: bg,
+        borderRadius: 999,
+        paddingHorizontal: 10,
+        paddingVertical: 5,
+      }}
+    >
+      <Text style={{ color: text, fontSize: scaleWithAppTextScale(11), fontWeight: '700' }}>
+        {label} {value}
+      </Text>
+    </View>
+  );
+}
+
 function StudentPreviewCard({ row }: { row: FinalLedgerPreviewRow }) {
   return (
     <View
@@ -680,11 +711,9 @@ export default function TeacherWakakurReportsScreen() {
               <QueryStateView type="error" message="Gagal memuat ringkasan berita acara." onRetry={() => proctorSummaryQuery.refetch()} />
             ) : (
               <>
-                <View style={{ flexDirection: 'row', flexWrap: 'wrap', gap: 8, marginBottom: 10 }}>
-                  <Text style={{ color: '#64748b', fontSize: scaleWithAppTextScale(12) }}>
-                    Rekap utama sekarang dipindah ke header per hari agar angka kehadiran lebih mudah dibaca per slot pelaksanaan.
-                  </Text>
-                </View>
+                <Text style={{ color: '#64748b', fontSize: scaleWithAppTextScale(12), marginBottom: 10 }}>
+                  Rekap utama sekarang dipindah ke header jam agar kehadiran lebih mudah dibaca per pelaksanaan slot ujian.
+                </Text>
 
                 {groupedProctorDays.length === 0 ? (
                   <Text style={{ color: BRAND_COLORS.textMuted }}>
@@ -726,12 +755,6 @@ export default function TeacherWakakurReportsScreen() {
                           <Text style={{ color: '#64748b', fontSize: scaleWithAppTextScale(12), marginTop: 3 }}>
                             {day.timeGroups.length} kelompok jam • {day.roomCount} ruang aktif • {day.reportedRowCount}/{day.rowCount} laporan masuk
                           </Text>
-                          <View style={{ flexDirection: 'row', flexWrap: 'wrap', gap: 8, marginTop: 10 }}>
-                            <SummaryMetric label="Laporan" value={formatNumber(day.rowCount)} bg="#f8fafc" border="#cbd5e1" text="#475569" />
-                            <SummaryMetric label="Peserta" value={formatNumber(day.totalExpected)} bg="#f8fafc" border="#cbd5e1" text="#475569" />
-                            <SummaryMetric label="Hadir" value={formatNumber(day.totalPresent)} bg="#ecfdf5" border="#a7f3d0" text="#047857" />
-                            <SummaryMetric label="Tidak Hadir" value={formatNumber(day.totalAbsent)} bg="#fee2e2" border="#fca5a5" text="#b91c1c" />
-                          </View>
                         </View>
                         <Feather
                           name={expandedProctorDayKey === day.dateKey ? 'chevron-down' : 'chevron-right'}
@@ -741,53 +764,77 @@ export default function TeacherWakakurReportsScreen() {
                       </Pressable>
                       {expandedProctorDayKey === day.dateKey ? (
                         <View style={{ padding: 12, gap: 10 }}>
-                          {day.timeGroups.map((group) => (
-                            <View
-                              key={`${day.dateKey}-${group.timeKey}`}
-                              style={{
-                                borderWidth: 1,
-                                borderColor: '#e2e8f0',
-                                borderRadius: 12,
-                                backgroundColor: '#fff',
-                                overflow: 'hidden',
-                              }}
-                            >
-                              <Pressable
-                                onPress={() => {
-                                  setExpandedProctorTimeGroupKey((previous) =>
-                                    previous === `${day.dateKey}::${group.timeKey}` ? null : `${day.dateKey}::${group.timeKey}`,
-                                  );
-                                }}
+                          {day.timeGroups.map((group) => {
+                            const roomCount = new Set(
+                              group.rows.map((row) => String(row.room || '').trim()).filter(Boolean),
+                            ).size;
+                            const expectedCount = group.rows.reduce(
+                              (sum, row) => sum + Number(row.expectedParticipants || 0),
+                              0,
+                            );
+                            const presentCount = group.rows.reduce(
+                              (sum, row) => sum + Number(row.presentParticipants || 0),
+                              0,
+                            );
+                            const absentCount = group.rows.reduce(
+                              (sum, row) => sum + Number(row.absentParticipants || 0),
+                              0,
+                            );
+                            const reportedCount = group.rows.filter((row) => Boolean(row.report)).length;
+
+                            return (
+                              <View
+                                key={`${day.dateKey}-${group.timeKey}`}
                                 style={{
-                                  paddingHorizontal: 12,
-                                  paddingVertical: 12,
-                                  borderBottomWidth: 1,
-                                  borderBottomColor: '#e2e8f0',
-                                  backgroundColor: '#f8fafc',
-                                  flexDirection: 'row',
-                                  alignItems: 'center',
-                                  justifyContent: 'space-between',
-                                  gap: 12,
+                                  borderWidth: 1,
+                                  borderColor: '#e2e8f0',
+                                  borderRadius: 12,
+                                  backgroundColor: '#fff',
+                                  overflow: 'hidden',
                                 }}
                               >
-                                <View style={{ flex: 1 }}>
-                                  <Text style={{ color: BRAND_COLORS.textDark, fontWeight: '700', fontSize: scaleWithAppTextScale(14) }}>
-                                    {formatSafeTime(group.startTime)} - {formatSafeTime(group.endTime)} WIB
-                                    {group.periodNumber ? ` • Jam Ke-${group.periodNumber}` : ''}
-                                  </Text>
-                                  <Text style={{ color: '#64748b', fontSize: scaleWithAppTextScale(12), marginTop: 3 }}>
-                                    {group.sessionLabel ? `Sesi ${group.sessionLabel}` : 'Tanpa sesi'} • {group.rows.length} laporan ruang
-                                  </Text>
-                                </View>
-                                <Feather
-                                  name={expandedProctorTimeGroupKey === `${day.dateKey}::${group.timeKey}` ? 'chevron-down' : 'chevron-right'}
-                                  size={18}
-                                  color="#2563eb"
-                                />
-                              </Pressable>
-                              {expandedProctorTimeGroupKey === `${day.dateKey}::${group.timeKey}` ? (
-                                <View style={{ padding: 12, gap: 10 }}>
-                                  {group.rows.map((row, index) => (
+                                <Pressable
+                                  onPress={() => {
+                                    setExpandedProctorTimeGroupKey((previous) =>
+                                      previous === `${day.dateKey}::${group.timeKey}` ? null : `${day.dateKey}::${group.timeKey}`,
+                                    );
+                                  }}
+                                  style={{
+                                    paddingHorizontal: 12,
+                                    paddingVertical: 12,
+                                    borderBottomWidth: 1,
+                                    borderBottomColor: '#e2e8f0',
+                                    backgroundColor: '#f8fafc',
+                                    flexDirection: 'row',
+                                    alignItems: 'center',
+                                    justifyContent: 'space-between',
+                                    gap: 12,
+                                  }}
+                                >
+                                  <View style={{ flex: 1 }}>
+                                    <Text style={{ color: BRAND_COLORS.textDark, fontWeight: '700', fontSize: scaleWithAppTextScale(14) }}>
+                                      {formatSafeTime(group.startTime)} - {formatSafeTime(group.endTime)} WIB
+                                      {group.periodNumber ? ` • Jam Ke-${group.periodNumber}` : ''}
+                                    </Text>
+                                    <Text style={{ color: '#64748b', fontSize: scaleWithAppTextScale(12), marginTop: 3 }}>
+                                      {group.sessionLabel ? `Sesi ${group.sessionLabel}` : 'Tanpa sesi'} • {reportedCount}/{group.rows.length} laporan masuk
+                                    </Text>
+                                    <View style={{ flexDirection: 'row', flexWrap: 'wrap', gap: 6, marginTop: 8 }}>
+                                      <CompactStatChip label="Ruang" value={formatNumber(roomCount)} bg="#ffffff" border="#cbd5e1" text="#475569" />
+                                      <CompactStatChip label="Peserta" value={formatNumber(expectedCount)} bg="#ffffff" border="#cbd5e1" text="#475569" />
+                                      <CompactStatChip label="Hadir" value={formatNumber(presentCount)} bg="#ecfdf5" border="#a7f3d0" text="#047857" />
+                                      <CompactStatChip label="Tidak Hadir" value={formatNumber(absentCount)} bg="#fee2e2" border="#fca5a5" text="#b91c1c" />
+                                    </View>
+                                  </View>
+                                  <Feather
+                                    name={expandedProctorTimeGroupKey === `${day.dateKey}::${group.timeKey}` ? 'chevron-down' : 'chevron-right'}
+                                    size={18}
+                                    color="#2563eb"
+                                  />
+                                </Pressable>
+                                {expandedProctorTimeGroupKey === `${day.dateKey}::${group.timeKey}` ? (
+                                  <View style={{ padding: 12, gap: 10 }}>
+                                    {group.rows.map((row, index) => (
                                     <View
                                       key={`${group.timeKey}-${row.room || 'ruang'}-${index}`}
                                       style={{
@@ -921,11 +968,12 @@ export default function TeacherWakakurReportsScreen() {
                                         </Text>
                                       )}
                                     </View>
-                                  ))}
-                                </View>
-                              ) : null}
-                            </View>
-                          ))}
+                                    ))}
+                                  </View>
+                                ) : null}
+                              </View>
+                            );
+                          })}
                         </View>
                       ) : null}
                     </View>

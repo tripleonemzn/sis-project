@@ -44,7 +44,7 @@ function getSafeDateKey(value?: string | null) {
   return date.toISOString().slice(0, 10);
 }
 
-function InlineMetric({
+function CompactStatChip({
   label,
   value,
   bg,
@@ -60,18 +60,17 @@ function InlineMetric({
   return (
     <View
       style={{
-        flex: 1,
-        minWidth: 128,
         borderWidth: 1,
         borderColor: border,
         backgroundColor: bg,
-        borderRadius: 10,
+        borderRadius: 999,
         paddingHorizontal: 10,
-        paddingVertical: 9,
+        paddingVertical: 5,
       }}
     >
-      <Text style={{ color: text, fontSize: scaleWithAppTextScale(11), fontWeight: '700' }}>{label}</Text>
-      <Text style={{ color: BRAND_COLORS.textDark, fontSize: scaleWithAppTextScale(18), fontWeight: '800', marginTop: 4 }}>{value}</Text>
+      <Text style={{ color: text, fontSize: scaleWithAppTextScale(11), fontWeight: '700' }}>
+        {label} {value}
+      </Text>
     </View>
   );
 }
@@ -337,7 +336,7 @@ export default function PrincipalExamReportsScreen() {
         }}
       >
         <Text style={{ color: BRAND_COLORS.textMuted, fontSize: scaleWithAppTextScale(12) }}>
-          Ringkasan utama dipindahkan ke header per hari agar kehadiran dan laporan ruang lebih mudah dibaca per pelaksanaan ujian.
+          Ringkasan utama dipindahkan ke header jam agar kehadiran dan laporan ruang lebih mudah dibaca per pelaksanaan slot ujian.
         </Text>
       </View>
 
@@ -364,7 +363,7 @@ export default function PrincipalExamReportsScreen() {
                 gap: 10,
               }}
             >
-              <View style={{ flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', gap: 12 }}>
+                <View style={{ flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', gap: 12 }}>
                 <View style={{ flex: 1 }}>
                   <Text style={{ color: BRAND_COLORS.textDark, fontWeight: '700', fontSize: scaleWithAppTextScale(15) }}>
                     {day.dateLabel}
@@ -375,53 +374,71 @@ export default function PrincipalExamReportsScreen() {
                 </View>
                 <Text style={{ color: '#2563eb', fontWeight: '700' }}>{expandedDayKey === day.dateKey ? 'Tutup Hari' : 'Buka Hari'}</Text>
               </View>
-              <View style={{ flexDirection: 'row', flexWrap: 'wrap', gap: 8 }}>
-                <InlineMetric label="Laporan" value={String(day.rowCount)} bg="#f8fafc" border="#cbd5e1" text="#475569" />
-                <InlineMetric label="Peserta" value={String(day.totalExpected)} bg="#f8fafc" border="#cbd5e1" text="#475569" />
-                <InlineMetric label="Hadir" value={String(day.totalPresent)} bg="#ecfdf5" border="#a7f3d0" text="#047857" />
-                <InlineMetric label="Tidak Hadir" value={String(day.totalAbsent)} bg="#fff1f2" border="#fecdd3" text="#be123c" />
-              </View>
             </Pressable>
 
             {expandedDayKey === day.dateKey ? (
               <View style={{ padding: 12, gap: 10 }}>
-                {day.timeGroups.map((group) => (
-                  <View
-                    key={`${day.dateKey}-${group.timeKey}`}
-                    style={{
-                      borderWidth: 1,
-                      borderColor: '#dbe2ea',
-                      borderRadius: 12,
-                      overflow: 'hidden',
-                      backgroundColor: '#fff',
-                    }}
-                  >
-                    <Pressable
-                      onPress={() =>
-                        setExpandedTimeGroupKey((previous) =>
-                          previous === `${day.dateKey}::${group.timeKey}` ? null : `${day.dateKey}::${group.timeKey}`,
-                        )
-                      }
+                {day.timeGroups.map((group) => {
+                  const roomCount = new Set(
+                    group.rows.map((row) => String(row.room || '').trim()).filter(Boolean),
+                  ).size;
+                  const expectedCount = group.rows.reduce(
+                    (sum, row) => sum + Number(row.expectedParticipants || 0),
+                    0,
+                  );
+                  const presentCount = group.rows.reduce(
+                    (sum, row) => sum + Number(row.presentParticipants || 0),
+                    0,
+                  );
+                  const absentCount = group.rows.reduce(
+                    (sum, row) => sum + Number(row.absentParticipants || 0),
+                    0,
+                  );
+                  const reportedCount = group.rows.filter((row) => Boolean(row.report)).length;
+
+                  return (
+                    <View
+                      key={`${day.dateKey}-${group.timeKey}`}
                       style={{
-                        paddingHorizontal: 12,
-                        paddingVertical: 12,
-                        borderBottomWidth: 1,
-                        borderBottomColor: '#e2e8f0',
-                        backgroundColor: '#f8fafc',
+                        borderWidth: 1,
+                        borderColor: '#dbe2ea',
+                        borderRadius: 12,
+                        overflow: 'hidden',
+                        backgroundColor: '#fff',
                       }}
                     >
-                      <Text style={{ color: BRAND_COLORS.textDark, fontWeight: '700', fontSize: scaleWithAppTextScale(14) }}>
-                        {formatTime(group.startTime)} - {formatTime(group.endTime)} WIB
-                        {group.periodNumber ? ` • Jam Ke-${group.periodNumber}` : ''}
-                      </Text>
-                      <Text style={{ color: BRAND_COLORS.textMuted, fontSize: scaleWithAppTextScale(12), marginTop: 3 }}>
-                        {group.sessionLabel ? `Sesi ${group.sessionLabel}` : 'Tanpa sesi'} • {group.rows.length} laporan ruang
-                      </Text>
-                    </Pressable>
+                      <Pressable
+                        onPress={() =>
+                          setExpandedTimeGroupKey((previous) =>
+                            previous === `${day.dateKey}::${group.timeKey}` ? null : `${day.dateKey}::${group.timeKey}`,
+                          )
+                        }
+                        style={{
+                          paddingHorizontal: 12,
+                          paddingVertical: 12,
+                          borderBottomWidth: 1,
+                          borderBottomColor: '#e2e8f0',
+                          backgroundColor: '#f8fafc',
+                        }}
+                      >
+                        <Text style={{ color: BRAND_COLORS.textDark, fontWeight: '700', fontSize: scaleWithAppTextScale(14) }}>
+                          {formatTime(group.startTime)} - {formatTime(group.endTime)} WIB
+                          {group.periodNumber ? ` • Jam Ke-${group.periodNumber}` : ''}
+                        </Text>
+                        <Text style={{ color: BRAND_COLORS.textMuted, fontSize: scaleWithAppTextScale(12), marginTop: 3 }}>
+                          {group.sessionLabel ? `Sesi ${group.sessionLabel}` : 'Tanpa sesi'} • {reportedCount}/{group.rows.length} laporan masuk
+                        </Text>
+                        <View style={{ flexDirection: 'row', flexWrap: 'wrap', gap: 6, marginTop: 8 }}>
+                          <CompactStatChip label="Ruang" value={String(roomCount)} bg="#ffffff" border="#cbd5e1" text="#475569" />
+                          <CompactStatChip label="Peserta" value={String(expectedCount)} bg="#ffffff" border="#cbd5e1" text="#475569" />
+                          <CompactStatChip label="Hadir" value={String(presentCount)} bg="#ecfdf5" border="#a7f3d0" text="#047857" />
+                          <CompactStatChip label="Tidak Hadir" value={String(absentCount)} bg="#fff1f2" border="#fecdd3" text="#be123c" />
+                        </View>
+                      </Pressable>
 
-                    {expandedTimeGroupKey === `${day.dateKey}::${group.timeKey}` ? (
-                      <View style={{ padding: 12, gap: 10 }}>
-                        {group.rows.map((row, index) => {
+                      {expandedTimeGroupKey === `${day.dateKey}::${group.timeKey}` ? (
+                        <View style={{ padding: 12, gap: 10 }}>
+                          {group.rows.map((row, index) => {
                           const key = `${day.dateKey}-${group.timeKey}-${row.room || '-'}-${index}`;
                           const expanded = expandedRowKey === key;
                           return (
@@ -499,10 +516,11 @@ export default function PrincipalExamReportsScreen() {
                             </View>
                           );
                         })}
-                      </View>
-                    ) : null}
-                  </View>
-                ))}
+                        </View>
+                      ) : null}
+                    </View>
+                  );
+                })}
               </View>
             ) : null}
           </View>

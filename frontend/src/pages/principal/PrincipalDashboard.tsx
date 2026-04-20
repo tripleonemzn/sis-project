@@ -5588,7 +5588,7 @@ const PrincipalExamReportsPage = () => {
       </div>
 
       <div className="rounded-xl border border-blue-100 bg-blue-50/60 px-4 py-3 text-sm text-blue-900">
-        Rekap utama dipindahkan ke header per hari agar angka kehadiran dan laporan ruang lebih mudah dibaca sesuai pelaksanaan ujian.
+        Rekap utama dipindahkan ke header jam agar angka kehadiran dan laporan ruang lebih mudah dibaca sesuai pelaksanaan slot ujian.
       </div>
 
       <div className="bg-white rounded-xl shadow-sm border border-gray-100 overflow-hidden">
@@ -5616,24 +5616,6 @@ const PrincipalExamReportsPage = () => {
                     <div className="mt-1 text-xs text-gray-500">
                       {day.timeGroups.length} kelompok jam • {day.roomCount} ruang aktif • {day.reportedRowCount}/{day.rowCount} laporan masuk
                     </div>
-                    <div className="mt-3 grid grid-cols-2 md:grid-cols-4 gap-2">
-                      <div className="rounded-xl border border-slate-200 bg-white px-3 py-2">
-                        <div className="text-[11px] font-semibold uppercase tracking-[0.18em] text-slate-500">Laporan Ruang</div>
-                        <div className="mt-1 text-lg font-semibold text-slate-900">{day.rowCount}</div>
-                      </div>
-                      <div className="rounded-xl border border-slate-200 bg-white px-3 py-2">
-                        <div className="text-[11px] font-semibold uppercase tracking-[0.18em] text-slate-500">Peserta</div>
-                        <div className="mt-1 text-lg font-semibold text-slate-900">{day.totalExpected}</div>
-                      </div>
-                      <div className="rounded-xl border border-emerald-200 bg-emerald-50 px-3 py-2">
-                        <div className="text-[11px] font-semibold uppercase tracking-[0.18em] text-emerald-700">Hadir</div>
-                        <div className="mt-1 text-lg font-semibold text-emerald-800">{day.totalPresent}</div>
-                      </div>
-                      <div className="rounded-xl border border-rose-200 bg-rose-50 px-3 py-2">
-                        <div className="text-[11px] font-semibold uppercase tracking-[0.18em] text-rose-700">Tidak Hadir</div>
-                        <div className="mt-1 text-lg font-semibold text-rose-800">{day.totalAbsent}</div>
-                      </div>
-                    </div>
                   </div>
                   <span className="inline-flex items-center gap-2 text-sm font-medium text-blue-700">
                     {expandedDayKey === day.dateKey ? 'Tutup Hari' : 'Buka Hari'}
@@ -5643,38 +5625,69 @@ const PrincipalExamReportsPage = () => {
 
                 {expandedDayKey === day.dateKey ? (
                   <div className="space-y-4 px-4 py-4">
-                    {day.timeGroups.map((timeGroup) => (
-                      <div key={`${day.dateKey}-${timeGroup.timeKey}`} className="overflow-hidden rounded-2xl border border-gray-200 bg-white">
-                        <button
-                          type="button"
-                          onClick={() =>
-                            setExpandedTimeGroupKey((previous) =>
-                              previous === `${day.dateKey}::${timeGroup.timeKey}` ? null : `${day.dateKey}::${timeGroup.timeKey}`,
-                            )
-                          }
-                          className="flex w-full flex-wrap items-center justify-between gap-3 border-b border-gray-200 bg-slate-50 px-5 py-3 text-left"
-                        >
-                          <div>
-                            <div className="text-sm font-semibold text-slate-900">
-                              {formatPrincipalTime(timeGroup.startTime)} - {formatPrincipalTime(timeGroup.endTime)} WIB
-                              {timeGroup.periodNumber ? ` • Jam Ke-${timeGroup.periodNumber}` : ''}
-                            </div>
-                            <div className="mt-1 text-xs text-slate-500">
-                              {timeGroup.sessionLabel ? `Sesi ${timeGroup.sessionLabel}` : 'Tanpa sesi'} • {timeGroup.rows.length} laporan ruang
-                            </div>
-                          </div>
-                          <span className="inline-flex items-center gap-2 text-xs font-medium text-blue-700">
-                            {new Set(timeGroup.rows.map((row) => String(row.room || '').trim()).filter(Boolean)).size} ruang
-                            {expandedTimeGroupKey === `${day.dateKey}::${timeGroup.timeKey}` ? (
-                              <ChevronDown size={15} />
-                            ) : (
-                              <ChevronRight size={15} />
-                            )}
-                          </span>
-                        </button>
+                    {day.timeGroups.map((timeGroup) => {
+                      const roomCount = new Set(
+                        timeGroup.rows.map((row) => String(row.room || '').trim()).filter(Boolean),
+                      ).size;
+                      const expectedCount = timeGroup.rows.reduce(
+                        (sum, row) => sum + Number(row.expectedParticipants || 0),
+                        0,
+                      );
+                      const presentCount = timeGroup.rows.reduce(
+                        (sum, row) => sum + Number(row.presentParticipants || 0),
+                        0,
+                      );
+                      const absentCount = timeGroup.rows.reduce(
+                        (sum, row) => sum + Number(row.absentParticipants || 0),
+                        0,
+                      );
+                      const reportedCount = timeGroup.rows.filter((row) => Boolean(row.report)).length;
 
-                        {expandedTimeGroupKey === `${day.dateKey}::${timeGroup.timeKey}` ? (
-                          <div className="overflow-x-auto">
+                      return (
+                        <div key={`${day.dateKey}-${timeGroup.timeKey}`} className="overflow-hidden rounded-2xl border border-gray-200 bg-white">
+                          <button
+                            type="button"
+                            onClick={() =>
+                              setExpandedTimeGroupKey((previous) =>
+                                previous === `${day.dateKey}::${timeGroup.timeKey}` ? null : `${day.dateKey}::${timeGroup.timeKey}`,
+                              )
+                            }
+                            className="flex w-full flex-wrap items-center justify-between gap-3 border-b border-gray-200 bg-slate-50 px-5 py-3 text-left"
+                          >
+                            <div className="flex-1 min-w-[260px]">
+                              <div className="text-sm font-semibold text-slate-900">
+                                {formatPrincipalTime(timeGroup.startTime)} - {formatPrincipalTime(timeGroup.endTime)} WIB
+                                {timeGroup.periodNumber ? ` • Jam Ke-${timeGroup.periodNumber}` : ''}
+                              </div>
+                              <div className="mt-1 text-xs text-slate-500">
+                                {timeGroup.sessionLabel ? `Sesi ${timeGroup.sessionLabel}` : 'Tanpa sesi'} • {reportedCount}/{timeGroup.rows.length} laporan masuk
+                              </div>
+                              <div className="mt-2 flex flex-wrap gap-2">
+                                <span className="inline-flex items-center rounded-full border border-slate-200 bg-white px-2.5 py-1 text-[11px] font-semibold text-slate-700">
+                                  Ruang {roomCount}
+                                </span>
+                                <span className="inline-flex items-center rounded-full border border-slate-200 bg-white px-2.5 py-1 text-[11px] font-semibold text-slate-700">
+                                  Peserta {expectedCount}
+                                </span>
+                                <span className="inline-flex items-center rounded-full border border-emerald-200 bg-emerald-50 px-2.5 py-1 text-[11px] font-semibold text-emerald-700">
+                                  Hadir {presentCount}
+                                </span>
+                                <span className="inline-flex items-center rounded-full border border-rose-200 bg-rose-50 px-2.5 py-1 text-[11px] font-semibold text-rose-700">
+                                  Tidak Hadir {absentCount}
+                                </span>
+                              </div>
+                            </div>
+                            <span className="inline-flex items-center gap-2 text-xs font-medium text-blue-700">
+                              {expandedTimeGroupKey === `${day.dateKey}::${timeGroup.timeKey}` ? (
+                                <ChevronDown size={15} />
+                              ) : (
+                                <ChevronRight size={15} />
+                              )}
+                            </span>
+                          </button>
+
+                          {expandedTimeGroupKey === `${day.dateKey}::${timeGroup.timeKey}` ? (
+                            <div className="overflow-x-auto">
                             <table className="min-w-full divide-y divide-gray-200">
                               <thead className="bg-white">
                                 <tr>
@@ -5729,10 +5742,11 @@ const PrincipalExamReportsPage = () => {
                                 ))}
                               </tbody>
                             </table>
-                          </div>
-                        ) : null}
-                      </div>
-                    ))}
+                            </div>
+                          ) : null}
+                        </div>
+                      );
+                    })}
                   </div>
                 ) : null}
               </div>
