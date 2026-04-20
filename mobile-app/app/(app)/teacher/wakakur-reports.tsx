@@ -1,6 +1,6 @@
 import { Feather } from '@expo/vector-icons';
 import { Redirect, useRouter } from 'expo-router';
-import { useMemo, useState } from 'react';
+import { useEffect, useMemo, useState } from 'react';
 import { useQuery } from '@tanstack/react-query';
 import { scaleWithAppTextScale } from '../../../src/theme/AppTextScaleProvider';
 import {
@@ -161,6 +161,7 @@ export default function TeacherWakakurReportsScreen() {
   const [selectedSemester, setSelectedSemester] = useState<SemesterChoice>('ALL');
   const [selectedClassId, setSelectedClassId] = useState<number | 'ALL'>('ALL');
   const [reportDate] = useState<string>(todayIso());
+  const [expandedProctorTimeGroupKey, setExpandedProctorTimeGroupKey] = useState<string | null>(null);
 
   const isAllowed = user?.role === 'TEACHER' && hasCurriculumDuty(user?.additionalDuties);
 
@@ -291,6 +292,17 @@ export default function TeacherWakakurReportsScreen() {
         return Number(left.periodNumber || 0) - Number(right.periodNumber || 0);
       });
   }, [proctorSummaryQuery.data?.rows]);
+
+  useEffect(() => {
+    if (groupedProctorTimeGroups.length === 0) {
+      if (expandedProctorTimeGroupKey !== null) setExpandedProctorTimeGroupKey(null);
+      return;
+    }
+    const currentExists = groupedProctorTimeGroups.some((group) => group.timeKey === expandedProctorTimeGroupKey);
+    if (!currentExists) {
+      setExpandedProctorTimeGroupKey(groupedProctorTimeGroups[0]?.timeKey || null);
+    }
+  }, [groupedProctorTimeGroups, expandedProctorTimeGroupKey]);
 
   const classOptions = useMemo(
     () => (classesQuery.data || []).slice().sort((a, b) => (a.name || '').localeCompare(b.name || '', 'id')),
@@ -617,120 +629,136 @@ export default function TeacherWakakurReportsScreen() {
                         marginBottom: 10,
                       }}
                     >
-                      <View
+                      <Pressable
+                        onPress={() => {
+                          setExpandedProctorTimeGroupKey((previous) => (previous === group.timeKey ? null : group.timeKey));
+                        }}
                         style={{
                           paddingHorizontal: 12,
                           paddingVertical: 12,
                           borderBottomWidth: 1,
                           borderBottomColor: '#e2e8f0',
                           backgroundColor: '#f8fafc',
+                          flexDirection: 'row',
+                          alignItems: 'center',
+                          justifyContent: 'space-between',
+                          gap: 12,
                         }}
                       >
-                        <Text style={{ color: BRAND_COLORS.textDark, fontWeight: '700', fontSize: scaleWithAppTextScale(14) }}>
-                          {formatSafeTime(group.startTime)} - {formatSafeTime(group.endTime)} WIB
-                          {group.periodNumber ? ` • Jam Ke-${group.periodNumber}` : ''}
-                        </Text>
-                        <Text style={{ color: '#64748b', fontSize: scaleWithAppTextScale(12), marginTop: 3 }}>
-                          {group.sessionLabel ? `Sesi ${group.sessionLabel}` : 'Tanpa sesi'} • {group.rows.length} ruang
-                        </Text>
-                      </View>
-                      <View style={{ padding: 12, gap: 10 }}>
-                        {group.rows.map((row, index) => (
-                          <View
-                            key={`${group.timeKey}-${row.room || 'ruang'}-${index}`}
-                            style={{
-                              borderWidth: 1,
-                              borderColor: '#e2e8f0',
-                              borderRadius: 12,
-                              padding: 12,
-                              backgroundColor: '#fff',
-                            }}
-                          >
-                            <Text style={{ color: BRAND_COLORS.textDark, fontWeight: '700' }}>
-                              {row.room || 'Belum ditentukan'}
-                            </Text>
-                            <Text style={{ color: '#64748b', fontSize: scaleWithAppTextScale(12), marginTop: 2 }}>
-                              {(row.subjectName || 'Mata Pelajaran')} • {row.classNames.join(', ') || 'Belum ada rombel'}
-                            </Text>
-                            <Text style={{ color: '#64748b', fontSize: scaleWithAppTextScale(12), marginTop: 2 }}>
-                              {row.examType || '-'}
-                            </Text>
-                            <View style={{ flexDirection: 'row', flexWrap: 'wrap', gap: 8, marginTop: 10 }}>
-                              <SummaryMetric label="Seharusnya" value={formatNumber(Number(row.expectedParticipants || 0))} bg="#f8fafc" border="#cbd5e1" text="#475569" />
-                              <SummaryMetric label="Hadir" value={formatNumber(row.presentParticipants || 0)} bg="#ecfdf5" border="#a7f3d0" text="#047857" />
-                              <SummaryMetric label="Tidak Hadir" value={formatNumber(row.absentParticipants || 0)} bg="#fee2e2" border="#fca5a5" text="#b91c1c" />
-                            </View>
-                            {row.report ? (
-                              <View style={{ marginTop: 10 }}>
-                                <Text style={{ color: '#64748b', fontSize: scaleWithAppTextScale(12) }}>
-                                  BA: {row.report.documentNumber || 'Nomor dokumen dibuat saat preview dibuka.'}
-                                </Text>
-                                <Text style={{ color: '#64748b', fontSize: scaleWithAppTextScale(12), marginTop: 2 }}>
-                                  Pengawas: {row.report.proctor?.name || '-'}
-                                </Text>
-                                <View style={{ flexDirection: 'row', flexWrap: 'wrap', gap: 8, marginTop: 10 }}>
-                                  <Pressable
-                                    onPress={() => {
-                                      void openExternalUrl(`${getWebBaseUrl()}/print/proctor-report/${row.report?.id}`);
-                                    }}
-                                    style={{
-                                      flex: 1,
-                                      minWidth: 140,
-                                      borderWidth: 1,
-                                      borderColor: '#bfdbfe',
-                                      borderRadius: 10,
-                                      paddingVertical: 10,
-                                      alignItems: 'center',
-                                      backgroundColor: '#eff6ff',
-                                    }}
-                                  >
-                                    <Text style={{ color: '#1d4ed8', fontWeight: '700' }}>Lihat & Print BA</Text>
-                                  </Pressable>
-                                  <Pressable
-                                    onPress={() => {
-                                      void openExternalUrl(`${getWebBaseUrl()}/print/proctor-attendance/${row.report?.id}`);
-                                    }}
-                                    style={{
-                                      flex: 1,
-                                      minWidth: 160,
-                                      borderWidth: 1,
-                                      borderColor: '#fde68a',
-                                      borderRadius: 10,
-                                      paddingVertical: 10,
-                                      alignItems: 'center',
-                                      backgroundColor: '#fffbeb',
-                                    }}
-                                  >
-                                    <Text style={{ color: '#b45309', fontWeight: '700' }}>Lihat & Print Daftar Hadir</Text>
-                                  </Pressable>
-                                  {row.report.verificationUrl ? (
+                        <View style={{ flex: 1 }}>
+                          <Text style={{ color: BRAND_COLORS.textDark, fontWeight: '700', fontSize: scaleWithAppTextScale(14) }}>
+                            {formatSafeTime(group.startTime)} - {formatSafeTime(group.endTime)} WIB
+                            {group.periodNumber ? ` • Jam Ke-${group.periodNumber}` : ''}
+                          </Text>
+                          <Text style={{ color: '#64748b', fontSize: scaleWithAppTextScale(12), marginTop: 3 }}>
+                            {group.sessionLabel ? `Sesi ${group.sessionLabel}` : 'Tanpa sesi'} • {group.rows.length} ruang
+                          </Text>
+                        </View>
+                        <Feather
+                          name={expandedProctorTimeGroupKey === group.timeKey ? 'chevron-down' : 'chevron-right'}
+                          size={18}
+                          color="#2563eb"
+                        />
+                      </Pressable>
+                      {expandedProctorTimeGroupKey === group.timeKey ? (
+                        <View style={{ padding: 12, gap: 10 }}>
+                          {group.rows.map((row, index) => (
+                            <View
+                              key={`${group.timeKey}-${row.room || 'ruang'}-${index}`}
+                              style={{
+                                borderWidth: 1,
+                                borderColor: '#e2e8f0',
+                                borderRadius: 12,
+                                padding: 12,
+                                backgroundColor: '#fff',
+                              }}
+                            >
+                              <Text style={{ color: BRAND_COLORS.textDark, fontWeight: '700' }}>
+                                {row.room || 'Belum ditentukan'}
+                              </Text>
+                              <Text style={{ color: '#64748b', fontSize: scaleWithAppTextScale(12), marginTop: 2 }}>
+                                {(row.subjectName || 'Mata Pelajaran')} • {row.classNames.join(', ') || 'Belum ada rombel'}
+                              </Text>
+                              <Text style={{ color: '#64748b', fontSize: scaleWithAppTextScale(12), marginTop: 2 }}>
+                                {row.examType || '-'}
+                              </Text>
+                              <View style={{ flexDirection: 'row', flexWrap: 'wrap', gap: 8, marginTop: 10 }}>
+                                <SummaryMetric label="Seharusnya" value={formatNumber(Number(row.expectedParticipants || 0))} bg="#f8fafc" border="#cbd5e1" text="#475569" />
+                                <SummaryMetric label="Hadir" value={formatNumber(row.presentParticipants || 0)} bg="#ecfdf5" border="#a7f3d0" text="#047857" />
+                                <SummaryMetric label="Tidak Hadir" value={formatNumber(row.absentParticipants || 0)} bg="#fee2e2" border="#fca5a5" text="#b91c1c" />
+                              </View>
+                              {row.report ? (
+                                <View style={{ marginTop: 10 }}>
+                                  <Text style={{ color: '#64748b', fontSize: scaleWithAppTextScale(12) }}>
+                                    BA: {row.report.documentNumber || 'Nomor dokumen dibuat saat preview dibuka.'}
+                                  </Text>
+                                  <Text style={{ color: '#64748b', fontSize: scaleWithAppTextScale(12), marginTop: 2 }}>
+                                    Pengawas: {row.report.proctor?.name || '-'}
+                                  </Text>
+                                  <View style={{ flexDirection: 'row', flexWrap: 'wrap', gap: 8, marginTop: 10 }}>
                                     <Pressable
                                       onPress={() => {
-                                        void openExternalUrl(row.report?.verificationUrl || '');
+                                        void openExternalUrl(`${getWebBaseUrl()}/print/proctor-report/${row.report?.id}`);
                                       }}
                                       style={{
-                                        width: '100%',
+                                        flex: 1,
+                                        minWidth: 140,
                                         borderWidth: 1,
-                                        borderColor: '#cbd5e1',
+                                        borderColor: '#bfdbfe',
                                         borderRadius: 10,
                                         paddingVertical: 10,
                                         alignItems: 'center',
-                                        backgroundColor: '#fff',
+                                        backgroundColor: '#eff6ff',
                                       }}
                                     >
-                                      <Text style={{ color: '#475569', fontWeight: '700' }}>Verifikasi Dokumen</Text>
+                                      <Text style={{ color: '#1d4ed8', fontWeight: '700' }}>Lihat & Print BA</Text>
                                     </Pressable>
-                                  ) : null}
+                                    <Pressable
+                                      onPress={() => {
+                                        void openExternalUrl(`${getWebBaseUrl()}/print/proctor-attendance/${row.report?.id}`);
+                                      }}
+                                      style={{
+                                        flex: 1,
+                                        minWidth: 160,
+                                        borderWidth: 1,
+                                        borderColor: '#fde68a',
+                                        borderRadius: 10,
+                                        paddingVertical: 10,
+                                        alignItems: 'center',
+                                        backgroundColor: '#fffbeb',
+                                      }}
+                                    >
+                                      <Text style={{ color: '#b45309', fontWeight: '700' }}>Lihat & Print Daftar Hadir</Text>
+                                    </Pressable>
+                                    {row.report.verificationUrl ? (
+                                      <Pressable
+                                        onPress={() => {
+                                          void openExternalUrl(row.report?.verificationUrl || '');
+                                        }}
+                                        style={{
+                                          width: '100%',
+                                          borderWidth: 1,
+                                          borderColor: '#cbd5e1',
+                                          borderRadius: 10,
+                                          paddingVertical: 10,
+                                          alignItems: 'center',
+                                          backgroundColor: '#fff',
+                                        }}
+                                      >
+                                        <Text style={{ color: '#475569', fontWeight: '700' }}>Verifikasi Dokumen</Text>
+                                      </Pressable>
+                                    ) : null}
+                                  </View>
                                 </View>
-                              </View>
-                            ) : (
-                              <Text style={{ color: '#64748b', fontSize: scaleWithAppTextScale(12), marginTop: 10 }}>
-                                Belum ada dokumen pengawas.
-                              </Text>
-                            )}
-                          </View>
-                        ))}
-                      </View>
+                              ) : (
+                                <Text style={{ color: '#64748b', fontSize: scaleWithAppTextScale(12), marginTop: 10 }}>
+                                  Belum ada dokumen pengawas.
+                                </Text>
+                              )}
+                            </View>
+                          ))}
+                        </View>
+                      ) : null}
                     </View>
                   ))
                 )}

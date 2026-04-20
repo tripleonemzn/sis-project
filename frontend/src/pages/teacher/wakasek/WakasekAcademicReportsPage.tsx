@@ -1,6 +1,6 @@
 import { useEffect, useMemo, useState } from 'react';
 import { useQuery } from '@tanstack/react-query';
-import { Calendar, Download, FileSpreadsheet, Loader2, RefreshCcw, Users } from 'lucide-react';
+import { Calendar, ChevronDown, ChevronRight, Download, FileSpreadsheet, Loader2, RefreshCcw, Users } from 'lucide-react';
 import { Link } from 'react-router-dom';
 import { academicYearService } from '../../../services/academicYear.service';
 import { reportService, type FinalLedgerPreviewResult } from '../../../services/report.service';
@@ -117,6 +117,7 @@ export default function WakasekAcademicReportsPage() {
   const [selectedSemester, setSelectedSemester] = useState<SemesterChoice>('ALL');
   const [reportDate, setReportDate] = useState<string>(todayIso());
   const [isExporting, setIsExporting] = useState(false);
+  const [expandedProctorTimeGroupKey, setExpandedProctorTimeGroupKey] = useState<string | null>(null);
 
   const filterQuery = useQuery({
     queryKey: ['wakasek-academic-reports-filters'],
@@ -257,6 +258,17 @@ export default function WakasekAcademicReportsPage() {
         return Number(left.periodNumber || 0) - Number(right.periodNumber || 0);
       });
   }, [proctorSummaryQuery.data?.rows]);
+
+  useEffect(() => {
+    if (groupedProctorTimeGroups.length === 0) {
+      setExpandedProctorTimeGroupKey(null);
+      return;
+    }
+    const currentExists = groupedProctorTimeGroups.some((group) => group.timeKey === expandedProctorTimeGroupKey);
+    if (!currentExists) {
+      setExpandedProctorTimeGroupKey(groupedProctorTimeGroups[0]?.timeKey || null);
+    }
+  }, [groupedProctorTimeGroups, expandedProctorTimeGroupKey]);
 
   useEffect(() => {
     if (!filterQuery.data?.classes?.length) {
@@ -559,7 +571,13 @@ export default function WakasekAcademicReportsPage() {
                         <div className="space-y-4">
                           {groupedProctorTimeGroups.map((group) => (
                             <div key={group.timeKey} className="overflow-hidden rounded-xl border border-gray-200 bg-white">
-                              <div className="flex flex-wrap items-center justify-between gap-3 border-b border-gray-200 bg-slate-50 px-4 py-3">
+                              <button
+                                type="button"
+                                onClick={() =>
+                                  setExpandedProctorTimeGroupKey((previous) => (previous === group.timeKey ? null : group.timeKey))
+                                }
+                                className="flex w-full flex-wrap items-center justify-between gap-3 border-b border-gray-200 bg-slate-50 px-4 py-3 text-left"
+                              >
                                 <div>
                                   <div className="text-sm font-semibold text-slate-900">
                                     {formatSafeTime(group.startTime)} - {formatSafeTime(group.endTime)} WIB
@@ -569,76 +587,79 @@ export default function WakasekAcademicReportsPage() {
                                     {group.sessionLabel ? `Sesi ${group.sessionLabel}` : 'Tanpa sesi'} • {group.rows.length} ruang
                                   </div>
                                 </div>
-                                <div className="text-xs text-slate-500">
+                                <span className="inline-flex items-center gap-2 text-xs font-medium text-blue-700">
                                   {new Set(group.rows.map((row) => String(row.room || '').trim()).filter(Boolean)).size} ruang
-                                </div>
-                              </div>
-                              <div className="divide-y divide-gray-100">
-                                {group.rows.map((row, index) => (
-                                  <div
-                                    key={`${group.timeKey}-${row.room || 'ruang'}-${index}`}
-                                    className="grid gap-3 px-4 py-4 md:grid-cols-[1.1fr_1.2fr_0.8fr_1fr]"
-                                  >
-                                    <div>
-                                      <div className="font-medium text-gray-900">{row.room || 'Belum ditentukan'}</div>
-                                      <div className="mt-1 text-xs text-gray-500">{row.examType || '-'}</div>
-                                    </div>
-                                    <div>
-                                      <div className="font-medium text-gray-900">{row.subjectName || 'Mata Pelajaran'}</div>
-                                      <div className="mt-1 text-xs text-gray-500">
-                                        {row.classNames.join(', ') || 'Belum ada rombel'}
+                                  {expandedProctorTimeGroupKey === group.timeKey ? <ChevronDown size={15} /> : <ChevronRight size={15} />}
+                                </span>
+                              </button>
+                              {expandedProctorTimeGroupKey === group.timeKey ? (
+                                <div className="divide-y divide-gray-100">
+                                  {group.rows.map((row, index) => (
+                                    <div
+                                      key={`${group.timeKey}-${row.room || 'ruang'}-${index}`}
+                                      className="grid gap-3 px-4 py-4 md:grid-cols-[1.1fr_1.2fr_0.8fr_1fr]"
+                                    >
+                                      <div>
+                                        <div className="font-medium text-gray-900">{row.room || 'Belum ditentukan'}</div>
+                                        <div className="mt-1 text-xs text-gray-500">{row.examType || '-'}</div>
                                       </div>
-                                    </div>
-                                    <div className="text-sm text-gray-700">
-                                      <div>Seharusnya: <span className="font-semibold">{Number(row.expectedParticipants || 0)}</span></div>
-                                      <div className="text-emerald-700">Hadir: <span className="font-semibold">{row.presentParticipants}</span></div>
-                                      <div className="text-rose-700">Tidak hadir: <span className="font-semibold">{row.absentParticipants}</span></div>
-                                    </div>
-                                    <div className="space-y-2">
-                                      {row.report ? (
-                                        <>
-                                          <div className="text-xs text-gray-500">
-                                            BA: {row.report.documentNumber || 'Nomor dokumen dibuat saat preview dibuka.'}
-                                          </div>
-                                          <div className="text-xs text-gray-500">
-                                            Pengawas: {row.report.proctor?.name || '-'}
-                                          </div>
-                                          <div className="flex flex-wrap gap-2">
-                                            <a
-                                              href={`/print/proctor-report/${row.report.id}`}
-                                              target="_blank"
-                                              rel="noreferrer"
-                                              className="inline-flex items-center rounded-lg border border-blue-200 bg-blue-50 px-3 py-1.5 text-xs font-semibold text-blue-700 hover:bg-blue-100"
-                                            >
-                                              Lihat BA
-                                            </a>
-                                            <a
-                                              href={`/print/proctor-attendance/${row.report.id}`}
-                                              target="_blank"
-                                              rel="noreferrer"
-                                              className="inline-flex items-center rounded-lg border border-amber-200 bg-amber-50 px-3 py-1.5 text-xs font-semibold text-amber-700 hover:bg-amber-100"
-                                            >
-                                              Daftar Hadir
-                                            </a>
-                                            {row.report.verificationUrl ? (
+                                      <div>
+                                        <div className="font-medium text-gray-900">{row.subjectName || 'Mata Pelajaran'}</div>
+                                        <div className="mt-1 text-xs text-gray-500">
+                                          {row.classNames.join(', ') || 'Belum ada rombel'}
+                                        </div>
+                                      </div>
+                                      <div className="text-sm text-gray-700">
+                                        <div>Seharusnya: <span className="font-semibold">{Number(row.expectedParticipants || 0)}</span></div>
+                                        <div className="text-emerald-700">Hadir: <span className="font-semibold">{row.presentParticipants}</span></div>
+                                        <div className="text-rose-700">Tidak hadir: <span className="font-semibold">{row.absentParticipants}</span></div>
+                                      </div>
+                                      <div className="space-y-2">
+                                        {row.report ? (
+                                          <>
+                                            <div className="text-xs text-gray-500">
+                                              BA: {row.report.documentNumber || 'Nomor dokumen dibuat saat preview dibuka.'}
+                                            </div>
+                                            <div className="text-xs text-gray-500">
+                                              Pengawas: {row.report.proctor?.name || '-'}
+                                            </div>
+                                            <div className="flex flex-wrap gap-2">
                                               <a
-                                                href={row.report.verificationUrl}
+                                                href={`/print/proctor-report/${row.report.id}`}
                                                 target="_blank"
                                                 rel="noreferrer"
-                                                className="inline-flex items-center rounded-lg border border-slate-200 bg-white px-3 py-1.5 text-xs font-semibold text-slate-700 hover:bg-slate-50"
+                                                className="inline-flex items-center rounded-lg border border-blue-200 bg-blue-50 px-3 py-1.5 text-xs font-semibold text-blue-700 hover:bg-blue-100"
                                               >
-                                                Verifikasi
+                                                Lihat BA
                                               </a>
-                                            ) : null}
-                                          </div>
-                                        </>
-                                      ) : (
-                                        <div className="text-xs text-gray-500">Belum ada dokumen pengawas.</div>
-                                      )}
+                                              <a
+                                                href={`/print/proctor-attendance/${row.report.id}`}
+                                                target="_blank"
+                                                rel="noreferrer"
+                                                className="inline-flex items-center rounded-lg border border-amber-200 bg-amber-50 px-3 py-1.5 text-xs font-semibold text-amber-700 hover:bg-amber-100"
+                                              >
+                                                Daftar Hadir
+                                              </a>
+                                              {row.report.verificationUrl ? (
+                                                <a
+                                                  href={row.report.verificationUrl}
+                                                  target="_blank"
+                                                  rel="noreferrer"
+                                                  className="inline-flex items-center rounded-lg border border-slate-200 bg-white px-3 py-1.5 text-xs font-semibold text-slate-700 hover:bg-slate-50"
+                                                >
+                                                  Verifikasi
+                                                </a>
+                                              ) : null}
+                                            </div>
+                                          </>
+                                        ) : (
+                                          <div className="text-xs text-gray-500">Belum ada dokumen pengawas.</div>
+                                        )}
+                                      </div>
                                     </div>
-                                  </div>
-                                ))}
-                              </div>
+                                  ))}
+                                </div>
+                              ) : null}
                             </div>
                           ))}
                         </div>
