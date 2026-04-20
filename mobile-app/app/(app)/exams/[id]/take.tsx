@@ -431,6 +431,8 @@ export default function StudentExamTakeScreen() {
   const backAttemptRef = useRef(0);
   const lastViolationFingerprintRef = useRef<{ key: string; at: number } | null>(null);
   const lastAppFocusViolationAtRef = useRef(0);
+  const lastAndroidOverlayViolationAtRef = useRef(0);
+  const androidOverlayBlurredRef = useRef(false);
   const violationSubmitGuardRef = useRef(false);
   const progressSyncTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const progressHeartbeatTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null);
@@ -983,6 +985,32 @@ export default function StudentExamTakeScreen() {
   }, [hasAcknowledgedStart, isExamReady, isFinished, recordViolation, saveProgress]);
 
   useEffect(() => {
+    if (Platform.OS !== 'android' || !isExamReady || isFinished || !hasAcknowledgedStart) return;
+
+    const blurSubscription = AppState.addEventListener('blur', () => {
+      if (androidOverlayBlurredRef.current) return;
+      androidOverlayBlurredRef.current = true;
+
+      const now = Date.now();
+      if (now - lastAndroidOverlayViolationAtRef.current < APP_FOCUS_VIOLATION_THROTTLE_MS) return;
+      lastAndroidOverlayViolationAtRef.current = now;
+
+      recordViolation('Aplikasi mengambang / panel sistem menutupi layar ujian');
+      void saveProgress(false, { force: true });
+    });
+
+    const focusSubscription = AppState.addEventListener('focus', () => {
+      androidOverlayBlurredRef.current = false;
+    });
+
+    return () => {
+      blurSubscription.remove();
+      focusSubscription.remove();
+      androidOverlayBlurredRef.current = false;
+    };
+  }, [hasAcknowledgedStart, isExamReady, isFinished, recordViolation, saveProgress]);
+
+  useEffect(() => {
     if (!isExamReady || isFinished || !hasAcknowledgedStart) return;
 
     const subscription = BackHandler.addEventListener('hardwareBackPress', () => {
@@ -1251,7 +1279,9 @@ export default function StudentExamTakeScreen() {
           {[
             'Pastikan koneksi internet stabil sebelum mulai.',
             'Jangan menekan tombol kembali, Home, membuka recent apps, atau panel notifikasi.',
+            'Jangan gunakan aplikasi mengambang / floating app / split screen di atas layar ujian.',
             'Perpindahan aplikasi akan dihitung sebagai pelanggaran.',
+            'Aplikasi mengambang atau panel sistem yang menutupi ujian akan dihitung sebagai pelanggaran.',
             'Tombol kembali / slide back akan diberi 2x peringatan, percobaan ke-3 baru dihitung 1 pelanggaran.',
             'Pelanggaran ke-4 akan mengumpulkan ujian secara otomatis.',
             'Bar status disembunyikan selama ujian untuk meminimalkan akses notifikasi.',
