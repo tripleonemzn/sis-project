@@ -6370,29 +6370,62 @@ function isAnsweredForQuestion(question: Record<string, unknown>, rawAnswer: unk
         const rows = resolveQuestionMatrixRows(question);
         if (rows.length === 0) return false;
         const answerMap = normalizeMatrixAnswerMap(rawAnswer);
-        return rows.every((row) => Boolean(answerMap[String(row.id || '').trim()]));
+        return rows.some((row) => Boolean(answerMap[String(row.id || '').trim()]));
     }
     return normalizeSelectedOptionIds(rawAnswer).length > 0;
 }
 
-function evaluateQuestionCorrectness(question: Record<string, unknown>, rawAnswer: unknown): boolean | null {
+function clampQuestionScoreFraction(value: number): number {
+    if (!Number.isFinite(value)) return 0;
+    if (value <= 0) return 0;
+    if (value >= 1) return 1;
+    return value;
+}
+
+function evaluateQuestionScoreFraction(question: Record<string, unknown>, rawAnswer: unknown): number | null {
     const type = normalizeQuestionTypeForAnalysis(question);
     if (type === 'ESSAY') return null;
+
     if (type === 'MATRIX_SINGLE_CHOICE') {
         const correctAnswerMap = getCorrectMatrixAnswerMap(question);
         const requiredRowIds = Object.keys(correctAnswerMap);
         if (requiredRowIds.length === 0) return null;
+
         const answerMap = normalizeMatrixAnswerMap(rawAnswer);
-        if (!requiredRowIds.every((rowId) => Boolean(answerMap[rowId]))) {
+        const answeredRowIds = requiredRowIds.filter((rowId) => Boolean(answerMap[rowId]));
+        if (answeredRowIds.length === 0) {
             return null;
         }
-        return requiredRowIds.every((rowId) => answerMap[rowId] === correctAnswerMap[rowId]);
+
+        const correctRowCount = requiredRowIds.reduce((count, rowId) => {
+            return count + (answerMap[rowId] === correctAnswerMap[rowId] ? 1 : 0);
+        }, 0);
+
+        return clampQuestionScoreFraction(correctRowCount / requiredRowIds.length);
     }
-    const correctOptionIds = getCorrectOptionIds(question);
+
+    const correctOptionIds = Array.from(new Set(getCorrectOptionIds(question)));
     if (correctOptionIds.length === 0) return null;
-    const selectedOptionIds = normalizeSelectedOptionIds(rawAnswer);
+
+    const selectedOptionIds = Array.from(new Set(normalizeSelectedOptionIds(rawAnswer)));
     if (selectedOptionIds.length === 0) return null;
-    return setEquals(selectedOptionIds, correctOptionIds);
+
+    if (type === 'COMPLEX_MULTIPLE_CHOICE') {
+        const correctOptionIdSet = new Set(correctOptionIds);
+        const selectedCorrectCount = selectedOptionIds.filter((optionId) => correctOptionIdSet.has(optionId)).length;
+        const selectedWrongCount = selectedOptionIds.filter((optionId) => !correctOptionIdSet.has(optionId)).length;
+        return clampQuestionScoreFraction(
+            (selectedCorrectCount - selectedWrongCount) / correctOptionIds.length,
+        );
+    }
+
+    return setEquals(selectedOptionIds, correctOptionIds) ? 1 : 0;
+}
+
+function evaluateQuestionCorrectness(question: Record<string, unknown>, rawAnswer: unknown): boolean | null {
+    const scoreFraction = evaluateQuestionScoreFraction(question, rawAnswer);
+    if (scoreFraction === null) return null;
+    return scoreFraction >= 1;
 }
 
 function parseStatusFilter(raw: unknown): 'IN_PROGRESS' | 'COMPLETED' | 'TIMEOUT' | null {
@@ -6551,8 +6584,6 @@ async function buildPacketItemAnalysis(
 
     const sessionPointRows = sessions.map((session) => {
         const answersMap = parseSessionAnswers(session.answers);
-        let totalObjectivePoints = 0;
-        let earnedObjectivePoints = 0;
 
         questionAccumulators.forEach((item) => {
             const rawAnswer = answersMap[item.questionId];
@@ -6576,23 +6607,20 @@ async function buildPacketItemAnalysis(
                 return;
             }
 
-            totalObjectivePoints += item.scoreWeight;
-
             const isCorrect = evaluateQuestionCorrectness(item.question, rawAnswer) === true;
             item.correctnessBySessionId.set(session.id, isCorrect);
             if (isCorrect) {
                 item.correctCount += 1;
-                earnedObjectivePoints += item.scoreWeight;
             } else if (answered) {
                 item.incorrectCount += 1;
             }
         });
 
         const derivedScore =
-            totalObjectivePoints > 0
-                ? Number(((earnedObjectivePoints / totalObjectivePoints) * 100).toFixed(2))
-                : typeof session.score === 'number'
-                  ? Number(session.score.toFixed(2))
+            typeof session.score === 'number'
+                ? Number(session.score.toFixed(2))
+                : questionAccumulators.length > 0
+                  ? Number(calculateScore(questionAccumulators.map((item) => item.question), answersMap).toFixed(2))
                   : 0;
 
         return {
@@ -6844,8 +6872,8 @@ async function buildPacketSubmissions(
         const canShowScore = status === 'COMPLETED' || status === 'TIMEOUT';
         let score: number | null =
             canShowScore && typeof session.score === 'number' ? Number(session.score.toFixed(2)) : null;
-        if (score === null && objectiveQuestionCount > 0 && canShowScore) {
-            score = Number(((objectiveCorrect / objectiveQuestionCount) * 100).toFixed(2));
+        if (score === null && totalQuestions > 0 && canShowScore) {
+            score = Number(calculateScore(packetQuestions, answersMap).toFixed(2));
         }
 
         return {
@@ -11331,8 +11359,9 @@ const calculateScore = (questions: any[], answers: any): number => {
 
         const questionId = String(q?.id || '').trim();
         const rawAnswer = questionId ? answers?.[questionId] : undefined;
-        if (evaluateQuestionCorrectness(q as Record<string, unknown>, rawAnswer) === true) {
-            totalScore += points;
+        const scoreFraction = evaluateQuestionScoreFraction(q as Record<string, unknown>, rawAnswer);
+        if (scoreFraction !== null && scoreFraction > 0) {
+            totalScore += points * scoreFraction;
         }
     });
 

@@ -12,6 +12,7 @@
     "images:optimize:questions": "node -r ts-node/register src/scripts/optimize_question_images.ts",
     "videos:optimize:questions": "node -r ts-node/register src/scripts/optimize_question_videos.ts",
     "scores:backfill": "node -r ts-node/register src/scripts/backfill_score_entries.ts",
+    "exam:scores:resync-partial-credit": "node -r ts-node/register src/scripts/resync_exam_partial_credit_scores.ts",
     "finance:refund-backfill-academic-year": "node -r ts-node/register src/scripts/backfill_finance_refund_academic_year.ts",
     "promotion:audit": "node -r ts-node/register src/scripts/audit_academic_promotion.ts",
     "promotion:export-snapshot": "node -r ts-node/register src/scripts/export_academic_promotion_snapshot.ts",
