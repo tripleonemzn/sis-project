@@ -17,6 +17,10 @@ import {
   WifiOff,
 } from 'lucide-react'
 import { QuestionMediaImage } from '../../components/common/QuestionMediaImage'
+import {
+  useStudentExamWarningRealtime,
+  type StudentExamWarningRealtimePayload,
+} from '../../features/exams/useStudentExamWarningRealtime'
 import { enhanceQuestionHtml } from '../../utils/questionMedia'
 
 type StudentExamAnswerValue =
@@ -39,6 +43,17 @@ type MonitoringStats = {
   currentQuestionNumber: number
   currentQuestionId: string | null
   lastSyncAt: string | null
+}
+
+type ProctorWarningSignal = {
+  id: number
+  title: string
+  message: string
+  warnedAt: string
+  proctorId?: number | null
+  proctorName?: string | null
+  category?: string | null
+  room?: string | null
 }
 
 type FullscreenElement = HTMLElement & {
@@ -316,6 +331,35 @@ function parseExamSessionAnswers(raw: unknown): Record<string, unknown> {
   return {}
 }
 
+function normalizeProctorWarning(raw: unknown): ProctorWarningSignal | null {
+  if (!raw || typeof raw !== 'object' || Array.isArray(raw)) return null
+  const source = raw as Record<string, unknown>
+  const id = Number(source.id || 0)
+  const message = String(source.message || '').trim()
+  if (!Number.isFinite(id) || id <= 0 || !message) return null
+  return {
+    id,
+    title: String(source.title || 'Peringatan Pengawas Ujian').trim() || 'Peringatan Pengawas Ujian',
+    message,
+    warnedAt: String(source.warnedAt || new Date().toISOString()),
+    proctorId: Number.isFinite(Number(source.proctorId)) ? Number(source.proctorId) : null,
+    proctorName: String(source.proctorName || '').trim() || null,
+    category: String(source.category || '').trim() || null,
+    room: String(source.room || '').trim() || null,
+  }
+}
+
+function formatWarningDateTime(value?: string | null) {
+  const date = new Date(String(value || ''))
+  if (Number.isNaN(date.getTime())) return '-'
+  return date.toLocaleString('id-ID', {
+    day: '2-digit',
+    month: 'short',
+    hour: '2-digit',
+    minute: '2-digit',
+  })
+}
+
 function extractMonitoringStats(rawAnswers: Record<string, unknown>): Partial<MonitoringStats> | null {
   const monitoring = rawAnswers.__monitoring
   if (!monitoring || typeof monitoring !== 'object' || Array.isArray(monitoring)) {
@@ -391,6 +435,8 @@ export default function StudentExamTakePage() {
   const [lastViolationType, setLastViolationType] = useState('')
   const [previewImageSrc, setPreviewImageSrc] = useState<string | null>(null)
   const [previewImageZoom, setPreviewImageZoom] = useState(1)
+  const [activeProctorWarning, setActiveProctorWarning] = useState<ProctorWarningSignal | null>(null)
+  const [showProctorWarningModal, setShowProctorWarningModal] = useState(false)
   
   // Submission
   const [submitting, setSubmitting] = useState(false)
@@ -427,6 +473,7 @@ export default function StudentExamTakePage() {
   const wakeLockRef = useRef<WakeLockSentinelLike | null>(null)
   const lastFocusLossObservedRef = useRef(false)
   const translationWarningShownRef = useRef(false)
+  const latestHandledProctorWarningIdRef = useRef(0)
   
   // Get current user
   const { user: contextUser } = useOutletContext<{ user: Record<string, unknown> }>() || {};
@@ -437,6 +484,26 @@ export default function StudentExamTakePage() {
     staleTime: 1000 * 60 * 5,
   })
   const user = contextUser || authData?.data
+
+  const handleIncomingProctorWarning = useCallback((warning: ProctorWarningSignal | StudentExamWarningRealtimePayload) => {
+    const normalizedWarning = normalizeProctorWarning(warning)
+    if (!normalizedWarning) return
+    if (normalizedWarning.id === latestHandledProctorWarningIdRef.current) return
+    latestHandledProctorWarningIdRef.current = normalizedWarning.id
+    setActiveProctorWarning(normalizedWarning)
+    setShowProctorWarningModal(true)
+    toast.error(normalizedWarning.title, {
+      duration: 5000,
+      icon: '⚠️',
+    })
+  }, [])
+
+  useStudentExamWarningRealtime({
+    enabled: Boolean(id && user?.id && !submitting),
+    scheduleId: Number.isFinite(Number(id)) ? Number(id) : null,
+    studentId: Number.isFinite(Number(user?.id)) ? Number(user?.id) : null,
+    onWarning: handleIncomingProctorWarning,
+  })
 
   // Keep ref in sync so async callbacks can read latest value
   useEffect(() => {
@@ -909,6 +976,13 @@ export default function StudentExamTakePage() {
 
       if (response.data.success) {
         const examData = response.data.data
+        const initialProctorWarning = normalizeProctorWarning((examData as { proctorWarning?: unknown }).proctorWarning)
+        if (initialProctorWarning) {
+          setActiveProctorWarning(initialProctorWarning)
+          if (initialProctorWarning.id !== latestHandledProctorWarningIdRef.current) {
+            handleIncomingProctorWarning(initialProctorWarning)
+          }
+        }
         
         // Check if exam is already completed/submitted
 	        if (examData.session && (examData.session.status === 'COMPLETED' || examData.session.status === 'GRADED')) {
@@ -1944,6 +2018,27 @@ export default function StudentExamTakePage() {
               <p className="-mt-2 mb-6 text-xs text-slate-500">
                 Gunakan tombol refresh bila guru mengubah soal. Refresh data ini tidak dihitung pelanggaran.
               </p>
+              {activeProctorWarning ? (
+                <div className="mb-6 rounded-xl border border-amber-200 bg-amber-50 px-4 py-3 text-sm text-amber-900">
+                  <div className="flex flex-wrap items-start justify-between gap-3">
+                    <div>
+                      <p className="font-semibold">{activeProctorWarning.title}</p>
+                      <p className="mt-1 leading-6">{activeProctorWarning.message}</p>
+                      <p className="mt-2 text-xs text-amber-700">
+                        {activeProctorWarning.proctorName ? `Dari ${activeProctorWarning.proctorName} • ` : ''}
+                        {formatWarningDateTime(activeProctorWarning.warnedAt)}
+                      </p>
+                    </div>
+                    <button
+                      type="button"
+                      onClick={() => setShowProctorWarningModal(true)}
+                      className="rounded-lg border border-amber-300 bg-white px-3 py-2 text-xs font-semibold text-amber-800 hover:bg-amber-100"
+                    >
+                      Lihat Peringatan
+                    </button>
+                  </div>
+                </div>
+              ) : null}
 
               {/* Media (Top - Default) */}
               {(!currentQuestion.question_media_position || currentQuestion.question_media_position === 'top') && mediaSection}
@@ -2218,6 +2313,56 @@ export default function StudentExamTakePage() {
           </div>
         </div>
       )}
+
+      {showProctorWarningModal && activeProctorWarning ? (
+        <div
+          className="fixed inset-0 z-[105] flex items-center justify-center bg-slate-900/18 px-4 py-6 backdrop-blur-[1px]"
+          onClick={() => setShowProctorWarningModal(false)}
+        >
+          <div
+            className="w-full max-w-lg rounded-2xl border border-amber-200 bg-white shadow-2xl"
+            onClick={(event) => event.stopPropagation()}
+          >
+            <div className="flex items-start justify-between gap-4 border-b border-amber-100 px-6 py-5">
+              <div>
+                <div className="inline-flex items-center gap-2 rounded-full border border-amber-200 bg-amber-50 px-3 py-1 text-[11px] font-semibold uppercase tracking-wide text-amber-800">
+                  <AlertTriangle className="h-3.5 w-3.5" />
+                  Peringatan Pengawas
+                </div>
+                <h3 className="mt-3 text-lg font-bold text-slate-900">{activeProctorWarning.title}</h3>
+                <p className="mt-1 text-sm text-slate-600">
+                  {activeProctorWarning.proctorName ? `Dari ${activeProctorWarning.proctorName}` : 'Pesan resmi dari pengawas ruang'}
+                </p>
+              </div>
+              <button
+                type="button"
+                onClick={() => setShowProctorWarningModal(false)}
+                className="rounded-full border border-slate-200 p-2 text-slate-500 hover:bg-slate-50 hover:text-slate-700"
+              >
+                <span className="sr-only">Tutup peringatan</span>
+                ×
+              </button>
+            </div>
+            <div className="px-6 py-5">
+              <div className="rounded-xl border border-amber-100 bg-amber-50 px-4 py-4 text-sm leading-6 text-amber-950">
+                {activeProctorWarning.message}
+              </div>
+              <div className="mt-4 text-xs text-slate-500">
+                {formatWarningDateTime(activeProctorWarning.warnedAt)}
+              </div>
+            </div>
+            <div className="flex justify-end border-t border-slate-200 px-6 py-4">
+              <button
+                type="button"
+                onClick={() => setShowProctorWarningModal(false)}
+                className="rounded-xl bg-amber-600 px-4 py-2 text-sm font-semibold text-white hover:bg-amber-700"
+              >
+                Saya Mengerti
+              </button>
+            </div>
+          </div>
+        </div>
+      ) : null}
 
       {/* Submit Confirmation Modal */}
       {showSubmitConfirm && (

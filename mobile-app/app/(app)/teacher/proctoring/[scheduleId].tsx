@@ -10,7 +10,7 @@ import { QueryStateView } from '../../../../src/components/QueryStateView';
 import { BRAND_COLORS } from '../../../../src/config/brand';
 import { useAuth } from '../../../../src/features/auth/AuthProvider';
 import { proctoringApi } from '../../../../src/features/proctoring/proctoringApi';
-import { ProctorScheduleStatus } from '../../../../src/features/proctoring/types';
+import { ProctorScheduleStatus, ProctorStudentRow } from '../../../../src/features/proctoring/types';
 import { useIsScreenActive } from '../../../../src/hooks/useIsScreenActive';
 import { getStandardPagePadding } from '../../../../src/lib/ui/pageLayout';
 import { notifyApiError, notifySuccess } from '../../../../src/lib/ui/feedback';
@@ -116,6 +116,10 @@ export default function TeacherProctoringDetailScreen() {
   const [notes, setNotes] = useState('');
   const [isReportModalOpen, setIsReportModalOpen] = useState(false);
   const [isExamInfoModalOpen, setIsExamInfoModalOpen] = useState(false);
+  const [warningTarget, setWarningTarget] = useState<ProctorStudentRow | null>(null);
+  const [warningMessage, setWarningMessage] = useState(
+    'Mohon tenang dan fokus pada ujian. Jika mengulangi pelanggaran, pengawas dapat mengambil tindakan lanjutan.',
+  );
 
   const detailQuery = useQuery({
     queryKey: ['mobile-proctoring-detail', parsedScheduleId],
@@ -168,6 +172,27 @@ export default function TeacherProctoringDetailScreen() {
       notifySuccess('Data monitoring berhasil diperbarui.');
     } catch (error) {
       notifyApiError(error, 'Gagal memuat ulang data monitoring.');
+    }
+  };
+
+  const handleSendWarning = async () => {
+    if (!parsedScheduleId || !warningTarget) return;
+    const normalizedMessage = warningMessage.trim();
+    if (normalizedMessage.length < 8) {
+      notifyApiError(new Error('Pesan peringatan wajib diisi dengan jelas.'), 'Pesan peringatan wajib diisi dengan jelas.');
+      return;
+    }
+
+    try {
+      await proctoringApi.sendWarning(parsedScheduleId, {
+        studentId: warningTarget.id,
+        message: normalizedMessage,
+      });
+      notifySuccess(`Peringatan berhasil dikirim ke ${warningTarget.name}.`);
+      setWarningTarget(null);
+      await detailQuery.refetch();
+    } catch (error) {
+      notifyApiError(error, 'Gagal mengirim peringatan ke peserta.');
     }
   };
 
@@ -271,6 +296,18 @@ export default function TeacherProctoringDetailScreen() {
         return driftMs >= 2 * 60 * 1000 ? Math.round(driftMs / 60000) : null;
       })()
     : null;
+  const canWarnStudent = (student: ProctorStudentRow) =>
+    !student.restriction?.isBlocked && student.status !== 'COMPLETED' && student.status !== 'TIMEOUT';
+  const formatWarningTime = (value?: string | null) => {
+    const date = new Date(String(value || ''));
+    if (Number.isNaN(date.getTime())) return '-';
+    return date.toLocaleString('id-ID', {
+      day: '2-digit',
+      month: 'short',
+      hour: '2-digit',
+      minute: '2-digit',
+    });
+  };
 
   if (isLoading) return <AppLoadingScreen message="Memuat monitoring ujian..." />;
   if (!isAuthenticated) return <Redirect href="/welcome" />;
@@ -625,6 +662,56 @@ export default function TeacherProctoringDetailScreen() {
                         ) : null}
                       </View>
                     ) : null}
+                    {student.proctorWarning ? (
+                      <View
+                        style={{
+                          marginTop: 8,
+                          borderWidth: 1,
+                          borderColor: '#fcd34d',
+                          backgroundColor: '#fffbeb',
+                          borderRadius: 10,
+                          paddingHorizontal: 10,
+                          paddingVertical: 8,
+                          gap: 4,
+                        }}
+                      >
+                        <Text style={{ color: '#92400e', fontSize: scaleFont(12), lineHeight: scaleLineHeight(18), fontWeight: '700' }}>
+                          Peringatan {student.proctorWarning.count}x
+                        </Text>
+                        <Text style={{ color: '#92400e', fontSize: scaleFont(11), lineHeight: scaleLineHeight(16) }}>
+                          {student.proctorWarning.warnedByName ? `${student.proctorWarning.warnedByName} • ` : ''}
+                          {formatWarningTime(student.proctorWarning.warnedAt)}
+                        </Text>
+                        {student.proctorWarning.latestMessage ? (
+                          <Text style={{ color: '#78350f', fontSize: scaleFont(11), lineHeight: scaleLineHeight(16) }}>
+                            {student.proctorWarning.latestMessage}
+                          </Text>
+                        ) : null}
+                      </View>
+                    ) : null}
+                    {canWarnStudent(student) ? (
+                      <Pressable
+                        onPress={() => {
+                          setWarningTarget(student);
+                          setWarningMessage(
+                            'Mohon tenang dan fokus pada ujian. Jika mengulangi pelanggaran, pengawas dapat mengambil tindakan lanjutan.',
+                          );
+                        }}
+                        style={{
+                          marginTop: 8,
+                          borderWidth: 1,
+                          borderColor: '#fcd34d',
+                          backgroundColor: '#fffbeb',
+                          borderRadius: 10,
+                          paddingVertical: 10,
+                          alignItems: 'center',
+                        }}
+                      >
+                        <Text style={{ color: '#92400e', fontWeight: '700', fontSize: scaleFont(12), lineHeight: scaleLineHeight(18) }}>
+                          Beri Peringatan
+                        </Text>
+                      </Pressable>
+                    ) : null}
                   </View>
                 );
               })
@@ -645,6 +732,165 @@ export default function TeacherProctoringDetailScreen() {
 
         </>
       ) : null}
+
+      <Modal
+        visible={Boolean(warningTarget)}
+        animationType="slide"
+        transparent
+        onRequestClose={() => setWarningTarget(null)}
+      >
+        <View
+          style={{
+            flex: 1,
+            backgroundColor: 'rgba(15, 23, 42, 0.18)',
+            justifyContent: 'center',
+            paddingHorizontal: 16,
+            paddingVertical: 24,
+          }}
+        >
+          <View
+            style={{
+              maxHeight: '88%',
+              borderRadius: 18,
+              backgroundColor: '#fff',
+              overflow: 'hidden',
+              borderWidth: 1,
+              borderColor: '#e2e8f0',
+            }}
+          >
+            <View
+              style={{
+                flexDirection: 'row',
+                justifyContent: 'space-between',
+                alignItems: 'flex-start',
+                gap: 12,
+                paddingHorizontal: 16,
+                paddingVertical: 14,
+                borderBottomWidth: 1,
+                borderBottomColor: '#e2e8f0',
+              }}
+            >
+              <View style={{ flex: 1 }}>
+                <Text style={{ color: BRAND_COLORS.textDark, fontWeight: '700', fontSize: scaleFont(16), lineHeight: scaleLineHeight(22) }}>
+                  Beri Peringatan Peserta
+                </Text>
+                <Text style={{ color: '#64748b', fontSize: scaleFont(12), marginTop: 4, lineHeight: scaleLineHeight(18) }}>
+                  Pesan ini akan tampil realtime di halaman ujian {warningTarget?.name || 'peserta'}.
+                </Text>
+              </View>
+              <Pressable
+                onPress={() => setWarningTarget(null)}
+                style={{
+                  width: 36,
+                  height: 36,
+                  borderRadius: 999,
+                  borderWidth: 1,
+                  borderColor: '#e2e8f0',
+                  alignItems: 'center',
+                  justifyContent: 'center',
+                }}
+              >
+                <Feather name="x" size={18} color="#64748b" />
+              </Pressable>
+            </View>
+
+            <ScrollView
+              style={{ backgroundColor: '#fff' }}
+              contentContainerStyle={{ padding: 16, gap: 12 }}
+              showsVerticalScrollIndicator={false}
+            >
+              <View
+                style={{
+                  borderWidth: 1,
+                  borderColor: '#fcd34d',
+                  backgroundColor: '#fffbeb',
+                  borderRadius: 12,
+                  padding: 12,
+                }}
+              >
+                <Text style={{ color: '#92400e', fontWeight: '700', fontSize: scaleFont(14), lineHeight: scaleLineHeight(20) }}>
+                  {warningTarget?.name || '-'}
+                </Text>
+                <Text style={{ color: '#92400e', fontSize: scaleFont(12), lineHeight: scaleLineHeight(18), marginTop: 4 }}>
+                  {warningTarget?.className || '-'} • {warningTarget?.nis || '-'}
+                </Text>
+              </View>
+
+              <View>
+                <Text style={{ color: '#334155', fontWeight: '700', fontSize: scaleFont(12), lineHeight: scaleLineHeight(18) }}>
+                  Pesan Peringatan
+                </Text>
+                <TextInput
+                  value={warningMessage}
+                  onChangeText={setWarningMessage}
+                  multiline
+                  textAlignVertical="top"
+                  placeholder="Tulis pesan peringatan untuk peserta ujian..."
+                  style={{
+                    marginTop: 8,
+                    minHeight: 160,
+                    borderWidth: 1,
+                    borderColor: '#cbd5e1',
+                    borderRadius: 12,
+                    paddingHorizontal: 12,
+                    paddingVertical: 12,
+                    backgroundColor: '#fff',
+                    fontSize: scaleFont(13),
+                    lineHeight: scaleLineHeight(20),
+                    color: '#0f172a',
+                  }}
+                />
+                <Text style={{ color: '#64748b', fontSize: scaleFont(11), lineHeight: scaleLineHeight(16), marginTop: 8 }}>
+                  Gunakan pesan singkat, jelas, dan operasional. Contoh: tenang, fokus, jangan berbicara, atau hentikan pelanggaran yang terdeteksi.
+                </Text>
+              </View>
+            </ScrollView>
+
+            <View
+              style={{
+                borderTopWidth: 1,
+                borderTopColor: '#e2e8f0',
+                paddingHorizontal: 16,
+                paddingVertical: 14,
+                flexDirection: 'row',
+                justifyContent: 'flex-end',
+                gap: 10,
+              }}
+            >
+              <Pressable
+                onPress={() => setWarningTarget(null)}
+                style={{
+                  borderWidth: 1,
+                  borderColor: '#cbd5e1',
+                  borderRadius: 10,
+                  paddingHorizontal: 14,
+                  paddingVertical: 10,
+                  backgroundColor: '#fff',
+                }}
+              >
+                <Text style={{ color: '#475569', fontWeight: '700', fontSize: scaleFont(12), lineHeight: scaleLineHeight(18) }}>
+                  Batal
+                </Text>
+              </Pressable>
+              <Pressable
+                onPress={() => {
+                  void handleSendWarning();
+                }}
+                style={{
+                  borderRadius: 10,
+                  paddingHorizontal: 14,
+                  paddingVertical: 10,
+                  backgroundColor: '#d97706',
+                }}
+              >
+                <Text style={{ color: '#fff', fontWeight: '700', fontSize: scaleFont(12), lineHeight: scaleLineHeight(18) }}>
+                  Kirim Peringatan
+                </Text>
+              </Pressable>
+            </View>
+          </View>
+        </View>
+      </Modal>
 
       <Modal
         visible={isExamInfoModalOpen}

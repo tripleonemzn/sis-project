@@ -24,6 +24,13 @@ interface StudentData {
     currentQuestionId?: string | null;
     lastSyncAt?: string | null;
   };
+  proctorWarning?: {
+    count: number;
+    latestTitle?: string | null;
+    latestMessage?: string | null;
+    warnedAt?: string | null;
+    warnedByName?: string | null;
+  } | null;
   status: 'NOT_STARTED' | 'IN_PROGRESS' | 'COMPLETED' | 'TIMEOUT';
   startTime: string | null;
   submitTime: string | null;
@@ -113,6 +120,11 @@ const ProctorMonitoringPage: React.FC = () => {
   const [submittingReport, setSubmittingReport] = useState(false);
   const [isReportModalOpen, setIsReportModalOpen] = useState(false);
   const [isExamInfoModalOpen, setIsExamInfoModalOpen] = useState(false);
+  const [warningTarget, setWarningTarget] = useState<StudentData | null>(null);
+  const [warningMessage, setWarningMessage] = useState(
+    'Mohon tenang dan fokus pada ujian. Jika mengulangi pelanggaran, pengawas dapat mengambil tindakan lanjutan.',
+  );
+  const [sendingWarning, setSendingWarning] = useState(false);
 
   const detailQuery = useQuery({
     queryKey: ['teacher-proctor-monitoring', scheduleId || 'unknown'],
@@ -142,13 +154,13 @@ const ProctorMonitoringPage: React.FC = () => {
   const students = detailQuery.data?.students || [];
 
   useEffect(() => {
-    if (!isReportModalOpen && !isExamInfoModalOpen) return;
+    if (!isReportModalOpen && !isExamInfoModalOpen && !warningTarget) return;
     const previousOverflow = document.body.style.overflow;
     document.body.style.overflow = 'hidden';
     return () => {
       document.body.style.overflow = previousOverflow;
     };
-  }, [isExamInfoModalOpen, isReportModalOpen]);
+  }, [isExamInfoModalOpen, isReportModalOpen, warningTarget]);
 
   const handleRefresh = async () => {
     setRefreshing(true);
@@ -159,6 +171,31 @@ const ProctorMonitoringPage: React.FC = () => {
       toast.error('Gagal memuat data ujian');
     } finally {
       setRefreshing(false);
+    }
+  };
+
+  const handleSendWarning = async () => {
+    if (!warningTarget) return;
+    const normalizedMessage = warningMessage.trim();
+    if (normalizedMessage.length < 8) {
+      toast.error('Pesan peringatan wajib diisi dengan jelas.');
+      return;
+    }
+
+    setSendingWarning(true);
+    try {
+      await api.post(`/proctoring/schedules/${scheduleId}/warnings`, {
+        studentId: warningTarget.id,
+        message: normalizedMessage,
+      });
+      toast.success(`Peringatan berhasil dikirim ke ${warningTarget.name}.`);
+      setWarningTarget(null);
+      await detailQuery.refetch();
+    } catch (error) {
+      console.error('Error sending proctor warning:', error);
+      toast.error('Gagal mengirim peringatan ke peserta.');
+    } finally {
+      setSendingWarning(false);
     }
   };
 
@@ -228,6 +265,20 @@ const ProctorMonitoringPage: React.FC = () => {
   if (detailQuery.isLoading) return <div className="p-6">Loading...</div>;
   if (detailQuery.isError) return <div className="p-6">Gagal memuat data monitoring ujian</div>;
   if (!schedule) return <div className="p-6">Jadwal tidak ditemukan</div>;
+
+  const canWarnStudent = (student: StudentData) =>
+    !student.restriction?.isBlocked && student.status !== 'COMPLETED' && student.status !== 'TIMEOUT';
+
+  const formatWarningTime = (value?: string | null) => {
+    const date = new Date(String(value || ''));
+    if (Number.isNaN(date.getTime())) return '-';
+    return date.toLocaleString('id-ID', {
+      day: '2-digit',
+      month: 'short',
+      hour: '2-digit',
+      minute: '2-digit',
+    });
+  };
 
   const romanLevelRank = (level: string): number => {
     const value = String(level || '').toUpperCase();
@@ -414,6 +465,7 @@ const ProctorMonitoringPage: React.FC = () => {
                     <th className="px-6 py-3 bg-gray-50 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Status</th>
                     <th className="px-6 py-3 bg-gray-50 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Waktu Mulai</th>
                     <th className="px-6 py-3 bg-gray-50 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Waktu Selesai</th>
+                    <th className="px-6 py-3 bg-gray-50 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Aksi</th>
                   </tr>
                 </thead>
                 <tbody className="bg-white divide-y divide-gray-200">
@@ -472,12 +524,44 @@ const ProctorMonitoringPage: React.FC = () => {
                             Pelanggaran: {student.monitoring.totalViolations || 0} (tab: {student.monitoring.tabSwitchCount || 0}, fullscreen: {student.monitoring.fullscreenExitCount || 0}, app: {student.monitoring.appSwitchCount || 0})
                           </div>
                         )}
+                        {student.proctorWarning ? (
+                          <div className="mt-2 rounded-lg border border-amber-200 bg-amber-50 px-3 py-2 text-[11px] text-amber-900 max-w-xs">
+                            <div className="font-semibold">Peringatan {student.proctorWarning.count}x</div>
+                            <div className="mt-1 text-amber-800">
+                              {student.proctorWarning.warnedByName ? `${student.proctorWarning.warnedByName} • ` : ''}
+                              {formatWarningTime(student.proctorWarning.warnedAt)}
+                            </div>
+                            {student.proctorWarning.latestMessage ? (
+                              <div className="mt-1 text-amber-900 whitespace-normal leading-5">
+                                {student.proctorWarning.latestMessage}
+                              </div>
+                            ) : null}
+                          </div>
+                        ) : null}
                       </td>
                       <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-500">
                         {student.startTime ? new Date(student.startTime).toLocaleTimeString('id-ID') : '-'}
                       </td>
                       <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-500">
                         {student.submitTime ? new Date(student.submitTime).toLocaleTimeString('id-ID') : '-'}
+                      </td>
+                      <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-500">
+                        {canWarnStudent(student) ? (
+                          <button
+                            type="button"
+                            onClick={() => {
+                              setWarningTarget(student);
+                              setWarningMessage(
+                                'Mohon tenang dan fokus pada ujian. Jika mengulangi pelanggaran, pengawas dapat mengambil tindakan lanjutan.',
+                              );
+                            }}
+                            className="inline-flex items-center rounded-lg border border-amber-200 bg-amber-50 px-3 py-2 text-xs font-semibold text-amber-800 hover:bg-amber-100"
+                          >
+                            Beri Peringatan
+                          </button>
+                        ) : (
+                          <span className="text-xs text-gray-400">-</span>
+                        )}
                       </td>
                     </tr>
                   ))}
@@ -487,6 +571,64 @@ const ProctorMonitoringPage: React.FC = () => {
           </div>
         </div>
       </div>
+
+      {warningTarget ? (
+        <div className="fixed inset-0 z-[95] flex items-center justify-center bg-slate-900/18 px-4 py-6 backdrop-blur-[1px]">
+          <div className="flex max-h-[88vh] w-full max-w-xl flex-col overflow-hidden rounded-2xl border border-slate-200 bg-white shadow-2xl">
+            <div className="flex items-start justify-between gap-4 border-b border-slate-200 px-5 py-4">
+              <div>
+                <h4 className="text-base font-semibold text-slate-900">Beri Peringatan Peserta</h4>
+                <p className="mt-1 text-sm text-slate-600">
+                  Pesan ini akan tampil realtime di halaman ujian <span className="font-semibold">{warningTarget.name}</span>.
+                </p>
+              </div>
+              <button
+                type="button"
+                onClick={() => setWarningTarget(null)}
+                className="inline-flex h-9 w-9 items-center justify-center rounded-full border border-slate-200 text-slate-500 hover:bg-slate-50 hover:text-slate-700"
+                aria-label="Tutup modal peringatan"
+              >
+                <X className="h-4 w-4" />
+              </button>
+            </div>
+            <div className="overflow-y-auto px-5 py-5">
+              <div className="rounded-xl border border-amber-200 bg-amber-50 px-4 py-3 text-sm text-amber-900">
+                <div className="font-semibold">{warningTarget.name}</div>
+                <div className="mt-1 text-amber-800">
+                  {warningTarget.className || '-'} • {warningTarget.nis || '-'}
+                </div>
+              </div>
+              <label className="mt-5 block text-sm font-semibold text-slate-700">Pesan Peringatan</label>
+              <textarea
+                value={warningMessage}
+                onChange={(event) => setWarningMessage(event.target.value)}
+                className="mt-2 min-h-[160px] w-full rounded-2xl border border-slate-200 px-4 py-3 text-sm text-slate-800 shadow-sm focus:border-amber-400 focus:outline-none focus:ring-2 focus:ring-amber-200"
+                placeholder="Tulis pesan peringatan untuk peserta ujian..."
+              />
+              <p className="mt-2 text-xs text-slate-500">
+                Gunakan pesan singkat, jelas, dan operasional. Contoh: tenang, fokus, jangan berbicara, atau hentikan pelanggaran yang terdeteksi.
+              </p>
+            </div>
+            <div className="flex items-center justify-end gap-3 border-t border-slate-200 px-5 py-4">
+              <button
+                type="button"
+                onClick={() => setWarningTarget(null)}
+                className="rounded-xl border border-slate-200 px-4 py-2 text-sm font-semibold text-slate-600 hover:bg-slate-50"
+              >
+                Batal
+              </button>
+              <button
+                type="button"
+                onClick={handleSendWarning}
+                disabled={sendingWarning}
+                className="rounded-xl bg-amber-600 px-4 py-2 text-sm font-semibold text-white hover:bg-amber-700 disabled:cursor-not-allowed disabled:opacity-60"
+              >
+                {sendingWarning ? 'Mengirim...' : 'Kirim Peringatan'}
+              </button>
+            </div>
+          </div>
+        </div>
+      ) : null}
 
       {isExamInfoModalOpen ? (
         <div className="fixed inset-0 z-[90] flex items-center justify-center bg-slate-900/18 px-4 py-6 backdrop-blur-[1px]">

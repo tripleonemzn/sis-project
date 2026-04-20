@@ -3,6 +3,7 @@ import {
   getProctorSchedules,
   getProctoringDetail,
   submitBeritaAcara,
+  sendProctorWarning,
   getProctoringReports,
   getProctoringReportDocument,
   getProctoringAttendanceDocument,
@@ -16,6 +17,7 @@ router.use(authMiddleware);
 
 router.get('/schedules', roleMiddleware(['TEACHER', 'ADMIN']), getProctorSchedules);
 router.get('/schedules/:scheduleId', roleMiddleware(['TEACHER', 'ADMIN']), getProctoringDetail);
+router.post('/schedules/:scheduleId/warnings', roleMiddleware(['TEACHER', 'ADMIN']), sendProctorWarning);
 router.post('/schedules/:scheduleId/report', roleMiddleware(['TEACHER', 'ADMIN']), submitBeritaAcara);
 router.get('/reports/:reportId/document', roleMiddleware(['TEACHER', 'ADMIN', 'PRINCIPAL']), getProctoringReportDocument);
 router.get('/reports/:reportId/attendance-document', roleMiddleware(['TEACHER', 'ADMIN', 'PRINCIPAL']), getProctoringAttendanceDocument);

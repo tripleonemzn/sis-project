@@ -3,6 +3,8 @@ import {
   ProctorReportPayload,
   ProctorScheduleDetail,
   ProctorScheduleSummary,
+  ProctorWarningPayload,
+  ProctorWarningResponse,
 } from './types';
 
 type ApiEnvelope<T> = {
@@ -32,6 +34,14 @@ export const proctoringApi = {
   async submitReport(scheduleId: number, payload: ProctorReportPayload) {
     const response = await apiClient.post<ApiEnvelope<unknown>>(
       `/proctoring/schedules/${scheduleId}/report`,
+      payload,
+    );
+    return response.data?.data;
+  },
+
+  async sendWarning(scheduleId: number, payload: ProctorWarningPayload) {
+    const response = await apiClient.post<ApiEnvelope<ProctorWarningResponse>>(
+      `/proctoring/schedules/${scheduleId}/warnings`,
       payload,
     );
     return response.data?.data;

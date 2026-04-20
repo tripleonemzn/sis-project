@@ -6,11 +6,17 @@ import prisma from '../utils/prisma';
 import { ApiError, asyncHandler, ApiResponse } from '../utils/api';
 import { broadcastDomainEvent } from '../realtime/realtimeGateway';
 import {
+    buildExamProctorWarningNotificationData,
+    EXAM_PROCTOR_WARNING_NOTIFICATION_TYPE,
+    matchesExamProctorWarningSchedule,
+    parseExamProctorWarningSignal,
+} from '../utils/examProctorWarning';
+import {
     listHistoricalStudentsByIdsForAcademicYear,
     listHistoricalStudentsForClass,
     type HistoricalStudentSnapshot,
 } from '../utils/studentAcademicHistory';
-import { createManyInAppNotifications } from '../services/mobilePushNotification.service';
+import { createInAppNotification, createManyInAppNotifications } from '../services/mobilePushNotification.service';
 import {
     getExamRequesterProfile,
     hasCurriculumExamManagementDuty,
@@ -908,6 +914,81 @@ function collectHistoricalClassNames(rows: Array<{ className: string | null }>):
     return Array.from(new Set(rows.map((row) => String(row.className || '').trim()).filter(Boolean))).sort((a, b) =>
         a.localeCompare(b, 'id', { numeric: true, sensitivity: 'base' }),
     );
+}
+
+type ProctorStudentWarningSummary = {
+    count: number;
+    latestWarning: ReturnType<typeof parseExamProctorWarningSignal>;
+};
+
+function toStartOfLocalDay(dateLike: Date | null | undefined): Date | null {
+    if (!(dateLike instanceof Date) || Number.isNaN(dateLike.getTime())) return null;
+    const localDate = new Date(dateLike);
+    localDate.setHours(0, 0, 0, 0);
+    return localDate;
+}
+
+async function listProctorWarningSummaryByStudent(params: {
+    studentIds: number[];
+    scheduleIds: number[];
+    createdAtGte?: Date | null;
+}): Promise<Map<number, ProctorStudentWarningSummary>> {
+    const normalizedStudentIds = Array.from(
+        new Set(
+            (params.studentIds || [])
+                .map((item) => Number(item))
+                .filter((item) => Number.isFinite(item) && item > 0),
+        ),
+    );
+    const normalizedScheduleIds = Array.from(
+        new Set(
+            (params.scheduleIds || [])
+                .map((item) => Number(item))
+                .filter((item) => Number.isFinite(item) && item > 0),
+        ),
+    );
+    if (normalizedStudentIds.length === 0 || normalizedScheduleIds.length === 0) {
+        return new Map<number, ProctorStudentWarningSummary>();
+    }
+
+    const rows = await prisma.notification.findMany({
+        where: {
+            userId: { in: normalizedStudentIds },
+            type: EXAM_PROCTOR_WARNING_NOTIFICATION_TYPE,
+            ...(params.createdAtGte ? { createdAt: { gte: params.createdAtGte } } : {}),
+        },
+        select: {
+            id: true,
+            userId: true,
+            title: true,
+            message: true,
+            createdAt: true,
+            data: true,
+        },
+        orderBy: [{ createdAt: 'desc' }, { id: 'desc' }],
+    });
+
+    const summaryMap = new Map<number, ProctorStudentWarningSummary>();
+    rows.forEach((row) => {
+        if (!matchesExamProctorWarningSchedule(row, normalizedScheduleIds)) return;
+        const parsed = parseExamProctorWarningSignal(row);
+        if (!parsed) return;
+        const studentId = Number(row.userId);
+        const existing = summaryMap.get(studentId);
+        if (!existing) {
+            summaryMap.set(studentId, {
+                count: 1,
+                latestWarning: parsed,
+            });
+            return;
+        }
+        summaryMap.set(studentId, {
+            count: existing.count + 1,
+            latestWarning: existing.latestWarning || parsed,
+        });
+    });
+
+    return summaryMap;
 }
 
 async function listHistoricalProctorStudentsByIds(
@@ -2507,9 +2588,16 @@ export const getProctoringDetail = asyncHandler(async (req: Request, res: Respon
         }
     });
 
+    const warningSummaryByStudent = await listProctorWarningSummaryByStudent({
+        studentIds: students.map((student) => Number(student.id)),
+        scheduleIds: monitoredScheduleIds,
+        createdAtGte: toStartOfLocalDay(scope.baseSchedule?.startTime || schedule.startTime),
+    });
+
     const studentList = students.map((s: any) => {
         const session = bestSessionByStudent.get(s.id);
         const eligibility = eligibilitySnapshot.get(Number(s.id)) || null;
+        const warningSummary = warningSummaryByStudent.get(Number(s.id)) || null;
         const normalizedStatus = normalizeProctorSessionStatus(
             session?.status,
             session?.startTime,
@@ -2536,6 +2624,15 @@ export const getProctoringDetail = asyncHandler(async (req: Request, res: Respon
             answeredCount,
             totalQuestions,
             monitoring: progressSession ? parseMonitoringSummary(progressSession.answers) : parseMonitoringSummary(null),
+            proctorWarning: warningSummary
+                ? {
+                      count: warningSummary.count,
+                      latestTitle: warningSummary.latestWarning?.title || 'Peringatan Pengawas',
+                      latestMessage: warningSummary.latestWarning?.message || null,
+                      warnedAt: warningSummary.latestWarning?.warnedAt || null,
+                      warnedByName: warningSummary.latestWarning?.proctorName || null,
+                  }
+                : null,
             restriction: {
                 isBlocked: Boolean(eligibility && !eligibility.isEligible),
                 reason: String(eligibility?.reason || '').trim() || null,
@@ -2627,6 +2724,139 @@ export const getProctoringDetail = asyncHandler(async (req: Request, res: Respon
         currentUserProctoringReport,
         latestProctoringReport,
     }));
+});
+
+export const sendProctorWarning = asyncHandler(async (req: Request, res: Response) => {
+    const parsedScheduleId = Number.parseInt(String(req.params.scheduleId || ''), 10);
+    if (!Number.isInteger(parsedScheduleId) || parsedScheduleId <= 0) {
+        throw new ApiError(400, 'ID jadwal ujian tidak valid');
+    }
+
+    const targetStudentId = Number(req.body?.studentId || 0);
+    if (!Number.isFinite(targetStudentId) || targetStudentId <= 0) {
+        throw new ApiError(400, 'Peserta ujian tidak valid');
+    }
+
+    const normalizedMessage = String(req.body?.message || '').trim();
+    if (normalizedMessage.length < 8) {
+        throw new ApiError(400, 'Pesan peringatan wajib diisi dengan jelas.');
+    }
+    const normalizedCategory = normalizeOptionalText(req.body?.category) || 'PERINGATAN';
+
+    const user = (req as any).user;
+    const scope = await resolveRoomScopeSchedules(parsedScheduleId, Number(user?.id) || null);
+    const isAdmin = String(user?.role || '').toUpperCase() === 'ADMIN';
+    const effectiveProctorId = Number(scope.baseSchedule?.proctorId || 0) || null;
+
+    if (!scope.baseSchedule || scope.monitoredScheduleIds.length === 0) {
+        throw new ApiError(404, 'Data ruang ujian tidak ditemukan');
+    }
+    if (!isAdmin && effectiveProctorId !== Number(user?.id)) {
+        throw new ApiError(403, 'Hanya pengawas ruang atau admin yang dapat mengirim peringatan peserta.');
+    }
+
+    const [senderProfile, targetStudentProfile, activeScopedSession] = await Promise.all([
+        prisma.user.findUnique({
+            where: { id: Number(user?.id) || 0 },
+            select: {
+                id: true,
+                name: true,
+            },
+        }),
+        listHistoricalProctorStudentsByIds([targetStudentId], scope.baseSchedule.academicYearId).then((rows) => rows[0] || null),
+        prisma.studentExamSession.findFirst({
+            where: {
+                studentId: targetStudentId,
+                scheduleId: {
+                    in: scope.monitoredScheduleIds,
+                },
+            },
+            select: {
+                scheduleId: true,
+            },
+            orderBy: [{ updatedAt: 'desc' }, { id: 'desc' }],
+        }),
+    ]);
+
+    if (!targetStudentProfile) {
+        throw new ApiError(404, 'Data peserta ujian tidak ditemukan');
+    }
+
+    const studentInScope =
+        (Number.isFinite(Number(targetStudentProfile.classId)) &&
+            Number(targetStudentProfile.classId) > 0 &&
+            scope.monitoredClassIds.includes(Number(targetStudentProfile.classId))) ||
+        Boolean(activeScopedSession);
+    if (!studentInScope) {
+        throw new ApiError(403, 'Peserta tersebut tidak termasuk roster pengawasan pada jadwal ini.');
+    }
+
+    const matchedScheduleByClass =
+        scope.monitoredSchedules.find(
+            (item) =>
+                Number.isFinite(Number(item.classId)) &&
+                Number(item.classId) > 0 &&
+                Number(item.classId) === Number(targetStudentProfile.classId),
+        ) || null;
+    const targetScheduleId = Number(activeScopedSession?.scheduleId || matchedScheduleByClass?.id || scope.baseSchedule.id);
+    const senderName = String(senderProfile?.name || '').trim() || 'Pengawas ruang';
+
+    const notification = await createInAppNotification(
+        {
+            data: {
+                userId: targetStudentId,
+                title: 'Peringatan Pengawas Ujian',
+                message: normalizedMessage,
+                isRead: true,
+                type: EXAM_PROCTOR_WARNING_NOTIFICATION_TYPE,
+                data: buildExamProctorWarningNotificationData({
+                    scheduleId: targetScheduleId,
+                    studentId: targetStudentId,
+                    proctorId: Number(senderProfile?.id || 0) || null,
+                    proctorName: senderName,
+                    room: scope.baseSchedule.room || null,
+                    category: normalizedCategory,
+                    sourceScheduleId: parsedScheduleId,
+                }),
+            },
+        },
+        {
+            skipPush: true,
+        },
+    );
+
+    broadcastDomainEvent({
+        domain: 'PROCTORING',
+        action: 'UPDATED',
+        scope: {
+            mode: 'EXAM_WARNING',
+            scheduleIds: [targetScheduleId],
+            studentIds: [targetStudentId],
+            warningNotificationId: Number(notification.id),
+            warningTitle: String(notification.title || 'Peringatan Pengawas Ujian'),
+            warningMessage: String(notification.message || normalizedMessage),
+            warningAt: notification.createdAt.toISOString(),
+            warningCategory: normalizedCategory,
+            proctorName: senderName,
+        },
+    });
+
+    res.json(
+        new ApiResponse(
+            201,
+            {
+                id: notification.id,
+                studentId: targetStudentId,
+                scheduleId: targetScheduleId,
+                title: notification.title,
+                message: notification.message,
+                warnedAt: notification.createdAt.toISOString(),
+                proctorName: senderName,
+                category: normalizedCategory,
+            },
+            'Peringatan berhasil dikirim ke peserta ujian.',
+        ),
+    );
 });
 
 // Submit Berita Acara

@@ -145,6 +145,16 @@ export type StudentExamSession = {
 
 export type StudentExamStartPayload = {
   session: StudentExamSession;
+  proctorWarning?: {
+    id: number;
+    title: string;
+    message: string;
+    warnedAt: string;
+    proctorId?: number | null;
+    proctorName?: string | null;
+    category?: string | null;
+    room?: string | null;
+  } | null;
   packet: StudentExamPacket;
 };
 

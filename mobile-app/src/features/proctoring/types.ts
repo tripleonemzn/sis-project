@@ -50,6 +50,13 @@ export type ProctorStudentRow = {
     currentQuestionId?: string | null;
     lastSyncAt?: string | null;
   };
+  proctorWarning?: {
+    count: number;
+    latestTitle?: string | null;
+    latestMessage?: string | null;
+    warnedAt?: string | null;
+    warnedByName?: string | null;
+  } | null;
   restriction?: {
     isBlocked: boolean;
     reason?: string | null;
@@ -120,4 +127,21 @@ export type ProctorReportPayload = {
   incident?: string;
   studentCountPresent: number;
   studentCountAbsent: number;
+};
+
+export type ProctorWarningPayload = {
+  studentId: number;
+  message: string;
+  category?: string | null;
+};
+
+export type ProctorWarningResponse = {
+  id: number;
+  studentId: number;
+  scheduleId: number;
+  title: string;
+  message: string;
+  warnedAt: string;
+  proctorName?: string | null;
+  category?: string | null;
 };

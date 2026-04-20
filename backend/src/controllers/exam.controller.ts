@@ -26,6 +26,10 @@ import {
 import { createInAppNotification } from '../services/mobilePushNotification.service';
 import { assertCurriculumExamManagerAccess } from '../utils/examManagementAccess';
 import {
+    EXAM_PROCTOR_WARNING_NOTIFICATION_TYPE,
+    parseExamProctorWarningSignal,
+} from '../utils/examProctorWarning';
+import {
     evaluateExamAcademicEligibility,
     resolveExamAcademicEligibilityPolicy,
 } from '../utils/examAcademicPolicy';
@@ -2821,6 +2825,60 @@ function sanitizeAnswersForStorage(rawAnswers: unknown): Record<string, unknown>
     }
 
     return sanitized;
+}
+
+async function findLatestExamProctorWarning(params: {
+    studentId: number;
+    scheduleId: number;
+}): Promise<{
+    id: number;
+    title: string;
+    message: string;
+    warnedAt: string;
+    proctorId: number | null;
+    proctorName: string | null;
+    category: string | null;
+    room: string | null;
+} | null> {
+    const studentId = Number(params.studentId);
+    const scheduleId = Number(params.scheduleId);
+    if (!Number.isFinite(studentId) || studentId <= 0 || !Number.isFinite(scheduleId) || scheduleId <= 0) {
+        return null;
+    }
+
+    const notifications = await prisma.notification.findMany({
+        where: {
+            userId: studentId,
+            type: EXAM_PROCTOR_WARNING_NOTIFICATION_TYPE,
+        },
+        select: {
+            id: true,
+            userId: true,
+            title: true,
+            message: true,
+            createdAt: true,
+            data: true,
+        },
+        orderBy: [{ createdAt: 'desc' }, { id: 'desc' }],
+        take: 12,
+    });
+
+    for (const notification of notifications) {
+        const parsed = parseExamProctorWarningSignal(notification);
+        if (!parsed || parsed.scheduleId !== scheduleId) continue;
+        return {
+            id: parsed.id,
+            title: parsed.title,
+            message: parsed.message,
+            warnedAt: parsed.warnedAt,
+            proctorId: parsed.proctorId,
+            proctorName: parsed.proctorName,
+            category: parsed.category,
+            room: parsed.room,
+        };
+    }
+
+    return null;
 }
 
 function sanitizeQuestionSetMeta(rawQuestionSet: unknown): SessionQuestionSetMeta | null {
@@ -10582,6 +10640,16 @@ async function buildStartExamPayload(params: {
     loadTestBypassSecret?: string | null;
 }): Promise<{
     session: StudentExamSessionSummary;
+    proctorWarning: {
+        id: number;
+        title: string;
+        message: string;
+        warnedAt: string;
+        proctorId: number | null;
+        proctorName: string | null;
+        category: string | null;
+        room: string | null;
+    } | null;
     packet: StartExamSchedulePayload['packet'] & {
         totalQuestionPoolCount: number;
         publishedQuestionCount: number | null;
@@ -10881,10 +10949,16 @@ async function buildStartExamPayload(params: {
         });
     }
 
+    const latestProctorWarning = await findLatestExamProctorWarning({
+        studentId,
+        scheduleId: schedule.id,
+    });
+
     availableExamsCache.delete(studentId);
 
     return {
         session,
+        proctorWarning: latestProctorWarning,
         packet: {
             ...schedule.packet,
             totalQuestionPoolCount: packetQuestions.length,

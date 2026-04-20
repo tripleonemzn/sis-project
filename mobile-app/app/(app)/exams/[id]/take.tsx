@@ -10,6 +10,7 @@ import {
   AppStateStatus,
   BackHandler,
   Image,
+  Modal,
   Platform,
   Pressable,
   ScrollView,
@@ -28,6 +29,10 @@ import { useAuth } from '../../../../src/features/auth/AuthProvider';
 import { examApi } from '../../../../src/features/exams/examApi';
 import { ExamQuestion, ExamQuestionOption, ExamQuestionType } from '../../../../src/features/exams/types';
 import { useStudentExamStartQuery } from '../../../../src/features/exams/useStudentExamStartQuery';
+import {
+  useStudentExamWarningRealtime,
+  type MobileStudentExamWarningRealtimePayload,
+} from '../../../../src/features/exams/useStudentExamWarningRealtime';
 import { ENV } from '../../../../src/config/env';
 import { getStandardPagePadding } from '../../../../src/lib/ui/pageLayout';
 import { useAppTextScale } from '../../../../src/theme/AppTextScaleProvider';
@@ -68,6 +73,17 @@ type MonitoringStats = {
   lastSyncAt: string | null;
 };
 
+type ProctorWarningSignal = {
+  id: number;
+  title: string;
+  message: string;
+  warnedAt: string;
+  proctorId?: number | null;
+  proctorName?: string | null;
+  category?: string | null;
+  room?: string | null;
+};
+
 function extractPersistedMonitoring(rawAnswers: Record<string, unknown>): MonitoringStats | null {
   const source = rawAnswers.__monitoring;
   if (!source || typeof source !== 'object' || Array.isArray(source)) return null;
@@ -90,6 +106,35 @@ function extractPersistedMonitoring(rawAnswers: Record<string, unknown>): Monito
     currentQuestionId: stats.currentQuestionId ? String(stats.currentQuestionId) : null,
     lastSyncAt: stats.lastSyncAt ? String(stats.lastSyncAt) : null,
   };
+}
+
+function normalizeProctorWarning(raw: unknown): ProctorWarningSignal | null {
+  if (!raw || typeof raw !== 'object' || Array.isArray(raw)) return null;
+  const source = raw as Record<string, unknown>;
+  const id = Number(source.id || 0);
+  const message = String(source.message || '').trim();
+  if (!Number.isFinite(id) || id <= 0 || !message) return null;
+  return {
+    id,
+    title: String(source.title || 'Peringatan Pengawas Ujian').trim() || 'Peringatan Pengawas Ujian',
+    message,
+    warnedAt: String(source.warnedAt || new Date().toISOString()),
+    proctorId: Number.isFinite(Number(source.proctorId)) ? Number(source.proctorId) : null,
+    proctorName: String(source.proctorName || '').trim() || null,
+    category: String(source.category || '').trim() || null,
+    room: String(source.room || '').trim() || null,
+  };
+}
+
+function formatWarningDateTime(value?: string | null): string {
+  const date = new Date(String(value || ''));
+  if (Number.isNaN(date.getTime())) return '-';
+  const months = ['Jan', 'Feb', 'Mar', 'Apr', 'Mei', 'Jun', 'Jul', 'Agu', 'Sep', 'Okt', 'Nov', 'Des'];
+  const day = String(date.getDate()).padStart(2, '0');
+  const month = months[date.getMonth()] || '';
+  const hour = String(date.getHours()).padStart(2, '0');
+  const minute = String(date.getMinutes()).padStart(2, '0');
+  return `${day} ${month} ${hour}:${minute}`;
 }
 
 function normalizeQuestionType(question: ExamQuestion): ExamQuestionType {
@@ -422,6 +467,8 @@ export default function StudentExamTakeScreen() {
   const [violations, setViolations] = useState(0);
   const [lastViolationMessage, setLastViolationMessage] = useState<string | null>(null);
   const [previewImageSrc, setPreviewImageSrc] = useState<string | null>(null);
+  const [activeProctorWarning, setActiveProctorWarning] = useState<ProctorWarningSignal | null>(null);
+  const [showProctorWarningModal, setShowProctorWarningModal] = useState(false);
   const answersRef = useRef<Record<string, unknown>>({});
   const autoSubmitGuardRef = useRef(false);
   const autoSubmitFailedRef = useRef(false);
@@ -433,6 +480,7 @@ export default function StudentExamTakeScreen() {
   const lastAppFocusViolationAtRef = useRef(0);
   const lastAndroidOverlayViolationAtRef = useRef(0);
   const androidOverlayBlurredRef = useRef(false);
+  const latestHandledProctorWarningIdRef = useRef(0);
   const violationSubmitGuardRef = useRef(false);
   const progressSyncTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const progressHeartbeatTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null);
@@ -468,6 +516,49 @@ export default function StudentExamTakeScreen() {
     () => extractPersistedMonitoring(persistedAnswers),
     [persistedAnswers],
   );
+
+  const handleIncomingProctorWarning = useCallback(
+    (warning: ProctorWarningSignal | MobileStudentExamWarningRealtimePayload) => {
+      const normalizedWarning = normalizeProctorWarning(warning);
+      if (!normalizedWarning) return;
+      if (normalizedWarning.id === latestHandledProctorWarningIdRef.current) return;
+      latestHandledProctorWarningIdRef.current = normalizedWarning.id;
+      setActiveProctorWarning(normalizedWarning);
+      setShowProctorWarningModal(true);
+      Alert.alert(
+        normalizedWarning.title,
+        normalizedWarning.message,
+        [
+          {
+            text: 'Saya Mengerti',
+            onPress: () => setShowProctorWarningModal(true),
+          },
+        ],
+        { cancelable: false },
+      );
+    },
+    [],
+  );
+
+  useStudentExamWarningRealtime({
+    enabled: Boolean(isAuthenticated && scheduleId && user?.id && !isFinished),
+    scheduleId,
+    studentId: Number.isFinite(Number(user?.id)) ? Number(user?.id) : null,
+    onWarning: handleIncomingProctorWarning,
+    onAppActiveSync: () => {
+      if (isFinished || !hasAcknowledgedStart) return;
+      void startQuery.refetch();
+    },
+  });
+
+  useEffect(() => {
+    const initialWarning = normalizeProctorWarning(startQuery.data?.proctorWarning);
+    if (!initialWarning) return;
+    setActiveProctorWarning(initialWarning);
+    if (initialWarning.id !== latestHandledProctorWarningIdRef.current) {
+      handleIncomingProctorWarning(initialWarning);
+    }
+  }, [handleIncomingProctorWarning, startQuery.data?.proctorWarning]);
   const remainingSeconds = useMemo(() => {
     if (!startQuery.data) return 0;
     const durationMinutes =
@@ -1422,6 +1513,48 @@ export default function StudentExamTakeScreen() {
             <Text style={{ color: '#9f1239', fontSize: scaleFont(12), lineHeight: scaleLineHeight(18), fontWeight: '700' }}>{lastViolationMessage}</Text>
           </View>
         ) : null}
+        {activeProctorWarning ? (
+          <View
+            style={{
+              marginTop: 10,
+              borderWidth: 1,
+              borderColor: '#fcd34d',
+              backgroundColor: '#fffbeb',
+              borderRadius: 10,
+              paddingHorizontal: 10,
+              paddingVertical: 9,
+              gap: 4,
+            }}
+          >
+            <Text style={{ color: '#92400e', fontSize: scaleFont(12), lineHeight: scaleLineHeight(18), fontWeight: '700' }}>
+              {activeProctorWarning.title}
+            </Text>
+            <Text style={{ color: '#92400e', fontSize: scaleFont(12), lineHeight: scaleLineHeight(18) }}>
+              {activeProctorWarning.message}
+            </Text>
+            <Text style={{ color: '#78350f', fontSize: scaleFont(11), lineHeight: scaleLineHeight(16) }}>
+              {activeProctorWarning.proctorName ? `${activeProctorWarning.proctorName} • ` : ''}
+              {formatWarningDateTime(activeProctorWarning.warnedAt)}
+            </Text>
+            <Pressable
+              onPress={() => setShowProctorWarningModal(true)}
+              style={{
+                alignSelf: 'flex-start',
+                marginTop: 4,
+                borderWidth: 1,
+                borderColor: '#fcd34d',
+                backgroundColor: '#ffffff',
+                borderRadius: 999,
+                paddingHorizontal: 10,
+                paddingVertical: 6,
+              }}
+            >
+              <Text style={{ color: '#92400e', fontSize: scaleFont(11), lineHeight: scaleLineHeight(16), fontWeight: '700' }}>
+                Lihat Peringatan
+              </Text>
+            </Pressable>
+          </View>
+        ) : null}
       </View>
 
       <View
@@ -1890,6 +2023,110 @@ export default function StudentExamTakeScreen() {
           {isFinalSubmitting ? 'Mengumpulkan...' : isFinished ? 'Sudah Dikumpulkan' : 'Kumpulkan Ujian'}
         </Text>
       </Pressable>
+
+      <Modal
+        visible={showProctorWarningModal && Boolean(activeProctorWarning)}
+        animationType="fade"
+        transparent
+        onRequestClose={() => setShowProctorWarningModal(false)}
+      >
+        <View
+          style={{
+            flex: 1,
+            backgroundColor: 'rgba(15, 23, 42, 0.18)',
+            justifyContent: 'center',
+            paddingHorizontal: 20,
+            paddingVertical: 24,
+          }}
+        >
+          <View
+            style={{
+              borderRadius: 18,
+              backgroundColor: '#fff',
+              borderWidth: 1,
+              borderColor: '#fcd34d',
+              overflow: 'hidden',
+            }}
+          >
+            <View
+              style={{
+                paddingHorizontal: 16,
+                paddingVertical: 14,
+                borderBottomWidth: 1,
+                borderBottomColor: '#fde68a',
+                flexDirection: 'row',
+                justifyContent: 'space-between',
+                gap: 12,
+              }}
+            >
+              <View style={{ flex: 1 }}>
+                <Text style={{ color: '#92400e', fontWeight: '800', fontSize: scaleFont(16), lineHeight: scaleLineHeight(22) }}>
+                  {activeProctorWarning?.title || 'Peringatan Pengawas Ujian'}
+                </Text>
+                <Text style={{ color: '#78350f', fontSize: scaleFont(12), lineHeight: scaleLineHeight(18), marginTop: 4 }}>
+                  {activeProctorWarning?.proctorName
+                    ? `Dari ${activeProctorWarning.proctorName}`
+                    : 'Pesan resmi dari pengawas ruang'}
+                </Text>
+              </View>
+              <Pressable
+                onPress={() => setShowProctorWarningModal(false)}
+                style={{
+                  width: 34,
+                  height: 34,
+                  borderRadius: 999,
+                  borderWidth: 1,
+                  borderColor: '#fde68a',
+                  alignItems: 'center',
+                  justifyContent: 'center',
+                }}
+              >
+                <Feather name="x" size={18} color="#92400e" />
+              </Pressable>
+            </View>
+            <View style={{ paddingHorizontal: 16, paddingVertical: 16 }}>
+              <View
+                style={{
+                  borderWidth: 1,
+                  borderColor: '#fde68a',
+                  backgroundColor: '#fffbeb',
+                  borderRadius: 12,
+                  paddingHorizontal: 12,
+                  paddingVertical: 12,
+                }}
+              >
+                <Text style={{ color: '#92400e', fontSize: scaleFont(13), lineHeight: scaleLineHeight(21) }}>
+                  {activeProctorWarning?.message || '-'}
+                </Text>
+              </View>
+              <Text style={{ color: '#78350f', fontSize: scaleFont(11), lineHeight: scaleLineHeight(16), marginTop: 10 }}>
+                {formatWarningDateTime(activeProctorWarning?.warnedAt)}
+              </Text>
+            </View>
+            <View
+              style={{
+                paddingHorizontal: 16,
+                paddingBottom: 16,
+                alignItems: 'flex-end',
+              }}
+            >
+              <Pressable
+                onPress={() => setShowProctorWarningModal(false)}
+                style={{
+                  borderRadius: 10,
+                  backgroundColor: '#d97706',
+                  paddingHorizontal: 14,
+                  paddingVertical: 10,
+                }}
+              >
+                <Text style={{ color: '#fff', fontWeight: '700', fontSize: scaleFont(12), lineHeight: scaleLineHeight(18) }}>
+                  Saya Mengerti
+                </Text>
+              </Pressable>
+            </View>
+          </View>
+        </View>
+      </Modal>
 
       <ExamImagePreviewModal
         visible={Boolean(previewImageSrc)}
