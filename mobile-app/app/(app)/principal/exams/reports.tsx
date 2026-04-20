@@ -63,13 +63,18 @@ function CompactStatChip({
         borderWidth: 1,
         borderColor: border,
         backgroundColor: bg,
-        borderRadius: 999,
-        paddingHorizontal: 13,
-        paddingVertical: 6,
+        borderRadius: 10,
+        minWidth: 78,
+        paddingHorizontal: 10,
+        paddingVertical: 7,
+        alignItems: 'center',
       }}
     >
-      <Text style={{ color: text, fontSize: scaleWithAppTextScale(13), fontWeight: '700' }}>
-        {label} {value}
+      <Text style={{ color: text, fontSize: scaleWithAppTextScale(10), fontWeight: '700' }}>
+        {label}
+      </Text>
+      <Text style={{ color: text, fontSize: scaleWithAppTextScale(12), fontWeight: '800', marginTop: 2 }}>
+        {value}
       </Text>
     </View>
   );
@@ -434,7 +439,7 @@ export default function PrincipalExamReportsScreen() {
                             {group.sessionLabel ? `Sesi ${group.sessionLabel}` : 'Tanpa sesi'} • {reportedCount}/{group.rows.length} laporan masuk
                           </Text>
                         </View>
-                        <View style={{ maxWidth: '46%', alignItems: 'flex-end', gap: 8 }}>
+                        <View style={{ maxWidth: '48%', alignItems: 'flex-end', gap: 8 }}>
                           <View style={{ flexDirection: 'row', flexWrap: 'wrap', gap: 6, justifyContent: 'flex-end' }}>
                             <CompactStatChip label="Ruang" value={String(roomCount)} bg="#ffffff" border="#cbd5e1" text="#475569" />
                             <CompactStatChip label="Peserta" value={String(expectedCount)} bg="#ffffff" border="#cbd5e1" text="#475569" />

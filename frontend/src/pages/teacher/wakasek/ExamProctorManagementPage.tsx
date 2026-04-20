@@ -1700,22 +1700,27 @@ const ExamProctorManagementPage = () => {
                               {timeGroup.sessionLabel ? `Sesi ${timeGroup.sessionLabel}` : 'Tanpa sesi'} • {reportedCount}/{timeGroup.rows.length} laporan masuk
                             </div>
                           </div>
-                          <div className="flex items-start gap-3">
-                            <div className="flex max-w-[420px] flex-wrap justify-end gap-2 pt-0.5">
-                              <span className="inline-flex items-center rounded-full border border-slate-200 bg-white px-4 py-1.5 text-[13px] font-semibold text-slate-700">
-                                Ruang {roomCount}
-                              </span>
-                              <span className="inline-flex items-center rounded-full border border-slate-200 bg-white px-4 py-1.5 text-[13px] font-semibold text-slate-700">
-                                Peserta {expectedCount}
-                              </span>
-                              <span className="inline-flex items-center rounded-full border border-emerald-200 bg-emerald-50 px-4 py-1.5 text-[13px] font-semibold text-emerald-700">
-                                Hadir {presentCount}
-                              </span>
-                              <span className="inline-flex items-center rounded-full border border-rose-200 bg-rose-50 px-4 py-1.5 text-[13px] font-semibold text-rose-700">
-                                Tidak Hadir {absentCount}
-                              </span>
+                          <div className="flex items-center gap-3">
+                            <div className="grid min-w-[360px] grid-cols-4 gap-2">
+                              <div className="rounded-lg border border-slate-200 bg-white px-3 py-2 text-center">
+                                <div className="text-[10px] font-semibold uppercase tracking-wide text-slate-500">Ruang</div>
+                                <div className="mt-0.5 text-sm font-semibold text-slate-800">{roomCount}</div>
+                              </div>
+                              <div className="rounded-lg border border-slate-200 bg-white px-3 py-2 text-center">
+                                <div className="text-[10px] font-semibold uppercase tracking-wide text-slate-500">Peserta</div>
+                                <div className="mt-0.5 text-sm font-semibold text-slate-800">{expectedCount}</div>
+                              </div>
+                              <div className="rounded-lg border border-emerald-200 bg-emerald-50 px-3 py-2 text-center">
+                                <div className="text-[10px] font-semibold uppercase tracking-wide text-emerald-700">Hadir</div>
+                                <div className="mt-0.5 text-sm font-semibold text-emerald-800">{presentCount}</div>
+                              </div>
+                              <div className="rounded-lg border border-rose-200 bg-rose-50 px-3 py-2 text-center">
+                                <div className="text-[10px] font-semibold uppercase tracking-wide text-rose-700">Tidak Hadir</div>
+                                <div className="mt-0.5 text-sm font-semibold text-rose-800">{absentCount}</div>
+                              </div>
                             </div>
-                            <span className="inline-flex items-center pt-1 text-xs font-medium text-blue-700">
+                            <span className="inline-flex min-w-[86px] items-center justify-end gap-1 text-xs font-medium text-blue-700">
+                              {expandedReportTimeGroupKey === `${day.dateKey}::${timeGroup.timeKey}` ? 'Tutup Jam' : 'Buka Jam'}
                               {expandedReportTimeGroupKey === `${day.dateKey}::${timeGroup.timeKey}` ? (
                                 <ChevronDown size={15} />
                               ) : (
