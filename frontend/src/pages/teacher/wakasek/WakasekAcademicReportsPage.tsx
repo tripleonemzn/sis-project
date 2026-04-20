@@ -40,6 +40,12 @@ type ProctorReportRow = {
     signedAt?: string | null;
     documentNumber?: string | null;
     verificationUrl?: string | null;
+    auditTrail?: {
+      warningCount: number;
+      warnedStudents: number;
+      terminatedStudents: number;
+      latestActionAt?: string | null;
+    } | null;
     proctor?: {
       name?: string | null;
     } | null;
@@ -89,6 +95,21 @@ const formatSafeTime = (value: string | null | undefined) => {
     hour12: false,
     timeZone: 'Asia/Jakarta',
   }).replace(':', '.');
+};
+
+const formatAuditTrailDateTime = (value: string | null | undefined) => {
+  if (!value) return '-';
+  const parsed = new Date(value);
+  if (Number.isNaN(parsed.getTime())) return '-';
+  return parsed.toLocaleString('id-ID', {
+    day: '2-digit',
+    month: '2-digit',
+    year: 'numeric',
+    hour: '2-digit',
+    minute: '2-digit',
+    hour12: false,
+    timeZone: 'Asia/Jakarta',
+  });
 };
 
 const parseClassList = (payload: unknown): Class[] => {
@@ -623,6 +644,29 @@ export default function WakasekAcademicReportsPage() {
                                             <div className="text-xs text-gray-500">
                                               Pengawas: {row.report.proctor?.name || '-'}
                                             </div>
+                                            {row.report.auditTrail ? (
+                                              <div className="rounded-xl border border-slate-200 bg-slate-50 px-3 py-2">
+                                                <div className="text-[11px] font-semibold uppercase tracking-[0.18em] text-slate-500">
+                                                  Ringkasan Disiplin
+                                                </div>
+                                                <div className="mt-2 flex flex-wrap gap-2">
+                                                  <span className="inline-flex items-center rounded-full border border-amber-200 bg-amber-50 px-2.5 py-1 text-[11px] font-semibold text-amber-700">
+                                                    Peringatan {row.report.auditTrail.warningCount}x
+                                                  </span>
+                                                  <span className="inline-flex items-center rounded-full border border-sky-200 bg-sky-50 px-2.5 py-1 text-[11px] font-semibold text-sky-700">
+                                                    Peserta diperingatkan {row.report.auditTrail.warnedStudents}
+                                                  </span>
+                                                  <span className="inline-flex items-center rounded-full border border-rose-200 bg-rose-50 px-2.5 py-1 text-[11px] font-semibold text-rose-700">
+                                                    Sesi diakhiri {row.report.auditTrail.terminatedStudents}
+                                                  </span>
+                                                </div>
+                                                {row.report.auditTrail.latestActionAt ? (
+                                                  <div className="mt-2 text-[11px] text-slate-500">
+                                                    Aksi terakhir: {formatAuditTrailDateTime(row.report.auditTrail.latestActionAt)}
+                                                  </div>
+                                                ) : null}
+                                              </div>
+                                            ) : null}
                                             <div className="flex flex-wrap gap-2">
                                               <a
                                                 href={`/print/proctor-report/${row.report.id}`}

@@ -34,6 +34,12 @@ type ProctorReportDocumentSnapshot = {
     absentParticipants: number;
     presentParticipants: number;
   };
+  auditTrail: {
+    warningCount: number;
+    warnedStudents: number;
+    terminatedStudents: number;
+    latestActionAt: string | null;
+  } | null;
   notes: string | null;
   incident: string | null;
   submittedAt: string;
@@ -118,6 +124,22 @@ function buildProctorReportPrintHtml(params: {
     snapshot.submittedAt,
   )} pukul ${formatTimeOnly(snapshot.submittedAt)}.`;
   const executionSlotValue = buildExecutionSlotValue(snapshot.schedule);
+  const auditTrailHtml = snapshot.auditTrail
+    ? `
+      <div class="audit-card">
+        <div class="audit-title">Ringkasan Disiplin Pengawas</div>
+        <div class="audit-chips">
+          <span class="audit-chip warning">Peringatan ${snapshot.auditTrail.warningCount}x</span>
+          <span class="audit-chip warned">Peserta diperingatkan ${snapshot.auditTrail.warnedStudents}</span>
+          <span class="audit-chip terminated">Sesi diakhiri ${snapshot.auditTrail.terminatedStudents}</span>
+        </div>
+        ${
+          snapshot.auditTrail.latestActionAt
+            ? `<div class="audit-meta">Aksi terakhir: ${escapeHtml(formatDateOnly(snapshot.auditTrail.latestActionAt))} pukul ${escapeHtml(formatTimeOnly(snapshot.auditTrail.latestActionAt))}</div>`
+            : ''
+        }
+      </div>`
+    : '';
 
   return `<!DOCTYPE html>
   <html>
@@ -190,6 +212,55 @@ function buildProctorReportPrintHtml(params: {
           margin-top: 18px;
           font-weight: 700;
           font-size: ${contentFontSize};
+        }
+        .audit-card {
+          margin-top: 16px;
+          border: 1px solid #cbd5e1;
+          border-radius: 14px;
+          background: #f8fafc;
+          padding: 12px 14px;
+        }
+        .audit-title {
+          font-size: ${noteFontSize};
+          font-weight: 700;
+          letter-spacing: 0.14em;
+          text-transform: uppercase;
+          color: #64748b;
+        }
+        .audit-chips {
+          margin-top: 10px;
+          display: flex;
+          flex-wrap: wrap;
+          gap: 6px;
+        }
+        .audit-chip {
+          display: inline-flex;
+          align-items: center;
+          border-radius: 999px;
+          padding: 4px 10px;
+          font-size: ${noteFontSize};
+          font-weight: 700;
+          border: 1px solid #cbd5e1;
+        }
+        .audit-chip.warning {
+          border-color: #fde68a;
+          background: #fffbeb;
+          color: #b45309;
+        }
+        .audit-chip.warned {
+          border-color: #bae6fd;
+          background: #f0f9ff;
+          color: #0369a1;
+        }
+        .audit-chip.terminated {
+          border-color: #fecdd3;
+          background: #fff1f2;
+          color: #be123c;
+        }
+        .audit-meta {
+          margin-top: 8px;
+          font-size: ${noteFontSize};
+          color: #64748b;
         }
         .note-text {
           margin-top: 8px;
@@ -294,6 +365,8 @@ function buildProctorReportPrintHtml(params: {
             <div class="count-row"><div>Jumlah Peserta yang tidak hadir</div><div>:</div><div>${snapshot.counts.absentParticipants}</div></div>
             <div class="count-row"><div>Jumlah Peserta yang hadir</div><div>:</div><div>${snapshot.counts.presentParticipants}</div></div>
           </div>
+
+          ${auditTrailHtml}
 
           <div class="note-title">Catatan Pengawas selama Ujian berlangsung.</div>
           <div class="note-text">${noteHtml}</div>
@@ -516,6 +589,30 @@ export default function ProctorReportPrint() {
               <div>{snapshot.counts.presentParticipants}</div>
             </div>
           </div>
+
+          {snapshot.auditTrail ? (
+            <div className="mt-4 rounded-[14px] border border-slate-300 bg-slate-50 px-4 py-3">
+              <div className="text-slate-500 uppercase font-semibold tracking-[0.14em]" style={{ fontSize: noteFontSize }}>
+                Ringkasan Disiplin Pengawas
+              </div>
+              <div className="mt-2 flex flex-wrap gap-2">
+                <span className="inline-flex items-center rounded-full border border-amber-200 bg-amber-50 px-2.5 py-1 font-semibold text-amber-700" style={{ fontSize: noteFontSize }}>
+                  Peringatan {snapshot.auditTrail.warningCount}x
+                </span>
+                <span className="inline-flex items-center rounded-full border border-sky-200 bg-sky-50 px-2.5 py-1 font-semibold text-sky-700" style={{ fontSize: noteFontSize }}>
+                  Peserta diperingatkan {snapshot.auditTrail.warnedStudents}
+                </span>
+                <span className="inline-flex items-center rounded-full border border-rose-200 bg-rose-50 px-2.5 py-1 font-semibold text-rose-700" style={{ fontSize: noteFontSize }}>
+                  Sesi diakhiri {snapshot.auditTrail.terminatedStudents}
+                </span>
+              </div>
+              {snapshot.auditTrail.latestActionAt ? (
+                <div className="mt-2 text-slate-500" style={{ fontSize: noteFontSize }}>
+                  Aksi terakhir: {formatDateOnly(snapshot.auditTrail.latestActionAt)} pukul {formatTimeOnly(snapshot.auditTrail.latestActionAt)}
+                </div>
+              ) : null}
+            </div>
+          ) : null}
 
           <div className="mt-[18px]">
             <div className="font-semibold text-slate-900" style={{ fontSize: contentFontSize }}>Catatan Pengawas selama Ujian berlangsung.</div>

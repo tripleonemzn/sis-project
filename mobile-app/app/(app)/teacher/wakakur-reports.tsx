@@ -95,6 +95,21 @@ function formatSafeTime(value: string | null | undefined) {
     .replace(':', '.');
 }
 
+function formatAuditTrailDateTime(value: string | null | undefined) {
+  if (!value) return '-';
+  const parsed = new Date(value);
+  if (Number.isNaN(parsed.getTime())) return '-';
+  return parsed.toLocaleString('id-ID', {
+    day: '2-digit',
+    month: '2-digit',
+    year: 'numeric',
+    hour: '2-digit',
+    minute: '2-digit',
+    hour12: false,
+    timeZone: 'Asia/Jakarta',
+  });
+}
+
 function SummaryMetric({
   label,
   value,
@@ -695,6 +710,46 @@ export default function TeacherWakakurReportsScreen() {
                                   <Text style={{ color: '#64748b', fontSize: scaleWithAppTextScale(12), marginTop: 2 }}>
                                     Pengawas: {row.report.proctor?.name || '-'}
                                   </Text>
+                                  {row.report.auditTrail ? (
+                                    <View
+                                      style={{
+                                        marginTop: 10,
+                                        borderWidth: 1,
+                                        borderColor: '#e2e8f0',
+                                        backgroundColor: '#f8fafc',
+                                        borderRadius: 10,
+                                        paddingHorizontal: 10,
+                                        paddingVertical: 10,
+                                        gap: 8,
+                                      }}
+                                    >
+                                      <Text style={{ color: '#64748b', fontSize: scaleWithAppTextScale(11), fontWeight: '700' }}>
+                                        RINGKASAN DISIPLIN
+                                      </Text>
+                                      <View style={{ flexDirection: 'row', flexWrap: 'wrap', gap: 8 }}>
+                                        <View style={{ borderWidth: 1, borderColor: '#fde68a', backgroundColor: '#fffbeb', borderRadius: 999, paddingHorizontal: 10, paddingVertical: 4 }}>
+                                          <Text style={{ color: '#b45309', fontSize: scaleWithAppTextScale(11), fontWeight: '700' }}>
+                                            Peringatan {row.report.auditTrail.warningCount}x
+                                          </Text>
+                                        </View>
+                                        <View style={{ borderWidth: 1, borderColor: '#bae6fd', backgroundColor: '#f0f9ff', borderRadius: 999, paddingHorizontal: 10, paddingVertical: 4 }}>
+                                          <Text style={{ color: '#0369a1', fontSize: scaleWithAppTextScale(11), fontWeight: '700' }}>
+                                            Peserta diperingatkan {row.report.auditTrail.warnedStudents}
+                                          </Text>
+                                        </View>
+                                        <View style={{ borderWidth: 1, borderColor: '#fecdd3', backgroundColor: '#fff1f2', borderRadius: 999, paddingHorizontal: 10, paddingVertical: 4 }}>
+                                          <Text style={{ color: '#be123c', fontSize: scaleWithAppTextScale(11), fontWeight: '700' }}>
+                                            Sesi diakhiri {row.report.auditTrail.terminatedStudents}
+                                          </Text>
+                                        </View>
+                                      </View>
+                                      {row.report.auditTrail.latestActionAt ? (
+                                        <Text style={{ color: '#64748b', fontSize: scaleWithAppTextScale(11) }}>
+                                          Aksi terakhir: {formatAuditTrailDateTime(row.report.auditTrail.latestActionAt)}
+                                        </Text>
+                                      ) : null}
+                                    </View>
+                                  ) : null}
                                   <View style={{ flexDirection: 'row', flexWrap: 'wrap', gap: 8, marginTop: 10 }}>
                                     <Pressable
                                       onPress={() => {

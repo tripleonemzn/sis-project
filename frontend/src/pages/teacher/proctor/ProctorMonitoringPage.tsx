@@ -389,6 +389,35 @@ const ProctorMonitoringPage: React.FC = () => {
   const waitingStartCount = orderedStudents.filter(
     (student) => student.status === 'NOT_STARTED' && !student.restriction?.isBlocked,
   ).length;
+  const proctorAuditSummary = orderedStudents.reduce(
+    (summary, student) => {
+      if (student.proctorWarning?.count) {
+        summary.warningCount += Number(student.proctorWarning.count || 0);
+        summary.warnedStudents += 1;
+        const warnedAtMs = new Date(String(student.proctorWarning.warnedAt || '')).getTime();
+        if (Number.isFinite(warnedAtMs) && warnedAtMs >= summary.latestActionTimeMs) {
+          summary.latestActionTimeMs = warnedAtMs;
+          summary.latestActionAt = student.proctorWarning.warnedAt || null;
+        }
+      }
+      if (student.proctorTermination?.terminatedAt) {
+        summary.terminatedStudents += 1;
+        const terminatedAtMs = new Date(String(student.proctorTermination.terminatedAt || '')).getTime();
+        if (Number.isFinite(terminatedAtMs) && terminatedAtMs >= summary.latestActionTimeMs) {
+          summary.latestActionTimeMs = terminatedAtMs;
+          summary.latestActionAt = student.proctorTermination.terminatedAt || null;
+        }
+      }
+      return summary;
+    },
+    {
+      warningCount: 0,
+      warnedStudents: 0,
+      terminatedStudents: 0,
+      latestActionAt: null as string | null,
+      latestActionTimeMs: 0,
+    },
+  );
   const previewDate = new Date(schedule.startTime);
   const previewWeekday = Number.isNaN(previewDate.getTime())
     ? '-'
@@ -932,6 +961,29 @@ const ProctorMonitoringPage: React.FC = () => {
                     <div>{presentCount}</div>
                   </div>
                 </div>
+                {proctorAuditSummary.warningCount > 0 || proctorAuditSummary.terminatedStudents > 0 ? (
+                  <div className="mt-5 rounded-xl border border-slate-200 bg-slate-50 px-4 py-4">
+                    <div className="text-[11px] font-semibold uppercase tracking-[0.18em] text-slate-500">
+                      Ringkasan Disiplin Pengawas
+                    </div>
+                    <div className="mt-3 flex flex-wrap gap-2">
+                      <span className="inline-flex items-center rounded-full border border-amber-200 bg-amber-50 px-2.5 py-1 text-[11px] font-semibold text-amber-700">
+                        Peringatan {proctorAuditSummary.warningCount}x
+                      </span>
+                      <span className="inline-flex items-center rounded-full border border-sky-200 bg-sky-50 px-2.5 py-1 text-[11px] font-semibold text-sky-700">
+                        Peserta diperingatkan {proctorAuditSummary.warnedStudents}
+                      </span>
+                      <span className="inline-flex items-center rounded-full border border-rose-200 bg-rose-50 px-2.5 py-1 text-[11px] font-semibold text-rose-700">
+                        Sesi diakhiri {proctorAuditSummary.terminatedStudents}
+                      </span>
+                    </div>
+                    {proctorAuditSummary.latestActionAt ? (
+                      <div className="mt-2 text-[11px] text-slate-500">
+                        Aksi terakhir: {formatTerminationTime(proctorAuditSummary.latestActionAt)}
+                      </div>
+                    ) : null}
+                  </div>
+                ) : null}
                 <div className="mt-6">
                   <label className="block text-[13px] font-medium text-slate-900">Catatan Pengawas selama Ujian berlangsung</label>
                   <textarea

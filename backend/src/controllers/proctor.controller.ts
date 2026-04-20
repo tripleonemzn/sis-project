@@ -492,6 +492,12 @@ type ProctorReportDocumentSnapshot = {
         absentParticipants: number;
         presentParticipants: number;
     };
+    auditTrail: {
+        warningCount: number;
+        warnedStudents: number;
+        terminatedStudents: number;
+        latestActionAt: string | null;
+    } | null;
     notes: string | null;
     incident: string | null;
     submittedAt: string;
@@ -929,6 +935,16 @@ type ProctorStudentTerminationSummary = {
     latestTermination: ReturnType<typeof parseExamProctorTerminationSignal>;
 };
 
+type ParsedProctorWarningSignal = NonNullable<ReturnType<typeof parseExamProctorWarningSignal>>;
+type ParsedProctorTerminationSignal = NonNullable<ReturnType<typeof parseExamProctorTerminationSignal>>;
+
+type ProctorAuditTrailSummary = {
+    warningCount: number;
+    warnedStudents: number;
+    terminatedStudents: number;
+    latestActionAt: string | null;
+};
+
 function toStartOfLocalDay(dateLike: Date | null | undefined): Date | null {
     if (!(dateLike instanceof Date) || Number.isNaN(dateLike.getTime())) return null;
     const localDate = new Date(dateLike);
@@ -1052,6 +1068,139 @@ async function listProctorTerminationSummaryByStudent(params: {
     });
 
     return summaryMap;
+}
+
+function summarizeProctorAuditTrailFromSignals(params: {
+    studentIds: Iterable<number>;
+    scheduleIds: number[];
+    warnings: ParsedProctorWarningSignal[];
+    terminations: ParsedProctorTerminationSignal[];
+}): ProctorAuditTrailSummary | null {
+    const normalizedStudentIds = new Set<number>();
+    for (const studentId of params.studentIds) {
+        const parsed = Number(studentId);
+        if (Number.isFinite(parsed) && parsed > 0) {
+            normalizedStudentIds.add(parsed);
+        }
+    }
+    const normalizedScheduleIds = new Set<number>(
+        (params.scheduleIds || [])
+            .map((item) => Number(item))
+            .filter((item) => Number.isFinite(item) && item > 0),
+    );
+    if (normalizedStudentIds.size === 0 || normalizedScheduleIds.size === 0) {
+        return null;
+    }
+
+    let warningCount = 0;
+    const warnedStudents = new Set<number>();
+    const terminatedStudents = new Set<number>();
+    let latestActionTimeMs = 0;
+    let latestActionAt: string | null = null;
+
+    params.warnings.forEach((signal) => {
+        const studentId = Number(signal.studentId || 0);
+        const scheduleId = Number(signal.scheduleId || 0);
+        if (!normalizedStudentIds.has(studentId) || !normalizedScheduleIds.has(scheduleId)) return;
+        warningCount += 1;
+        warnedStudents.add(studentId);
+        const warnedAtMs = new Date(signal.warnedAt).getTime();
+        if (Number.isFinite(warnedAtMs) && warnedAtMs >= latestActionTimeMs) {
+            latestActionTimeMs = warnedAtMs;
+            latestActionAt = signal.warnedAt;
+        }
+    });
+
+    params.terminations.forEach((signal) => {
+        const studentId = Number(signal.studentId || 0);
+        const scheduleId = Number(signal.scheduleId || 0);
+        if (!normalizedStudentIds.has(studentId) || !normalizedScheduleIds.has(scheduleId)) return;
+        terminatedStudents.add(studentId);
+        const terminatedAtMs = new Date(signal.terminatedAt).getTime();
+        if (Number.isFinite(terminatedAtMs) && terminatedAtMs >= latestActionTimeMs) {
+            latestActionTimeMs = terminatedAtMs;
+            latestActionAt = signal.terminatedAt;
+        }
+    });
+
+    if (warningCount <= 0 && warnedStudents.size === 0 && terminatedStudents.size === 0) {
+        return null;
+    }
+
+    return {
+        warningCount,
+        warnedStudents: warnedStudents.size,
+        terminatedStudents: terminatedStudents.size,
+        latestActionAt,
+    };
+}
+
+async function resolveProctorAuditTrailSummary(params: {
+    studentIds: number[];
+    scheduleIds: number[];
+    createdAtGte?: Date | null;
+}): Promise<ProctorAuditTrailSummary | null> {
+    const normalizedStudentIds = Array.from(
+        new Set(
+            (params.studentIds || [])
+                .map((item) => Number(item))
+                .filter((item) => Number.isFinite(item) && item > 0),
+        ),
+    );
+    const normalizedScheduleIds = Array.from(
+        new Set(
+            (params.scheduleIds || [])
+                .map((item) => Number(item))
+                .filter((item) => Number.isFinite(item) && item > 0),
+        ),
+    );
+    if (normalizedStudentIds.length === 0 || normalizedScheduleIds.length === 0) {
+        return null;
+    }
+
+    const notificationRows = await prisma.notification.findMany({
+        where: {
+            userId: { in: normalizedStudentIds },
+            type: { in: [EXAM_PROCTOR_WARNING_NOTIFICATION_TYPE, EXAM_PROCTOR_TERMINATION_NOTIFICATION_TYPE] },
+            ...(params.createdAtGte ? { createdAt: { gte: params.createdAtGte } } : {}),
+        },
+        select: {
+            id: true,
+            userId: true,
+            type: true,
+            title: true,
+            message: true,
+            createdAt: true,
+            data: true,
+        },
+        orderBy: [{ createdAt: 'desc' }, { id: 'desc' }],
+    });
+
+    const warnings: ParsedProctorWarningSignal[] = [];
+    const terminations: ParsedProctorTerminationSignal[] = [];
+
+    notificationRows.forEach((row) => {
+        if (row.type === EXAM_PROCTOR_WARNING_NOTIFICATION_TYPE) {
+            const parsed = parseExamProctorWarningSignal(row);
+            if (parsed && normalizedScheduleIds.includes(Number(parsed.scheduleId))) {
+                warnings.push(parsed);
+            }
+            return;
+        }
+        if (row.type === EXAM_PROCTOR_TERMINATION_NOTIFICATION_TYPE) {
+            const parsed = parseExamProctorTerminationSignal(row);
+            if (parsed && normalizedScheduleIds.includes(Number(parsed.scheduleId))) {
+                terminations.push(parsed);
+            }
+        }
+    });
+
+    return summarizeProctorAuditTrailFromSignals({
+        studentIds: normalizedStudentIds,
+        scheduleIds: normalizedScheduleIds,
+        warnings,
+        terminations,
+    });
 }
 
 async function listHistoricalProctorStudentsByIds(
@@ -1861,6 +2010,7 @@ function buildProctorReportSnapshot(params: {
     expectedParticipants: number;
     absentParticipants: number;
     presentParticipants: number;
+    auditTrail?: ProctorAuditTrailSummary | null;
     notes: string | null;
     incident: string | null;
     signedAt: Date;
@@ -1907,6 +2057,7 @@ function buildProctorReportSnapshot(params: {
             absentParticipants: Math.max(0, Number(params.absentParticipants || 0)),
             presentParticipants: Math.max(0, Number(params.presentParticipants || 0)),
         },
+        auditTrail: params.auditTrail || null,
         notes: composeProctorReportNotes(params.notes, params.incident),
         incident: null,
         submittedAt: params.signedAt.toISOString(),
@@ -2033,6 +2184,7 @@ async function hydrateProctorReportArtifacts(
         expectedParticipants?: number;
         presentParticipants?: number;
         absentParticipants?: number;
+        auditTrail?: ProctorAuditTrailSummary | null;
     },
 ) {
     const existingSnapshot =
@@ -2073,6 +2225,10 @@ async function hydrateProctorReportArtifacts(
         Number.isFinite(Number(params.absentParticipants))
             ? Number(params.absentParticipants)
             : Number(existingSnapshot?.counts?.absentParticipants || 0) || Number(params.report.studentCountAbsent || 0);
+    const resolvedAuditTrail =
+        params.auditTrail === undefined
+            ? existingSnapshot?.auditTrail || null
+            : params.auditTrail || null;
 
     const documentNumber =
         normalizeOptionalText(params.report.documentNumber) ||
@@ -2121,6 +2277,7 @@ async function hydrateProctorReportArtifacts(
         expectedParticipants,
         absentParticipants,
         presentParticipants,
+        auditTrail: resolvedAuditTrail,
         notes: params.report.notes,
         incident: params.report.incident,
         signedAt: params.report.signedAt,
@@ -3279,6 +3436,11 @@ export const submitBeritaAcara = asyncHandler(async (req: Request, res: Response
 
     const monitoredClassNames =
         sittingParticipantClassNames.length > 0 ? sittingParticipantClassNames : scope.monitoredClassNames;
+    const proctorAuditTrail = await resolveProctorAuditTrailSummary({
+        studentIds: expectedStudentIdList,
+        scheduleIds: scope.monitoredScheduleIds,
+        createdAtGte: toStartOfLocalDay(scope.baseSchedule.startTime),
+    });
 
     const normalizedNotes = String(notes || '').trim();
     const normalizedIncident = String(incident || '').trim();
@@ -3359,6 +3521,7 @@ export const submitBeritaAcara = asyncHandler(async (req: Request, res: Response
         expectedParticipants: expectedCount,
         presentParticipants: presentCount,
         absentParticipants: absentCount,
+        auditTrail: proctorAuditTrail,
     });
 
     const curriculumReceivers = await prisma.user.findMany({
@@ -3530,13 +3693,22 @@ export const getProctoringReportDocument = asyncHandler(async (req: Request, res
         throw new ApiError(403, 'Anda tidak memiliki akses ke dokumen berita acara ini.');
     }
 
-    const realtimeMetrics = await resolveRealtimeProctorReportMetrics(report.scheduleId, report.proctorId);
+    const [realtimeRoster, reportScope] = await Promise.all([
+        resolveRealtimeProctorAttendanceRoster(report.scheduleId, report.proctorId),
+        resolveRoomScopeSchedules(report.scheduleId, report.proctorId),
+    ]);
     const artifactBundle = await hydrateProctorReportArtifacts(req, {
         report,
-        classNames: realtimeMetrics.classNames,
-        expectedParticipants: realtimeMetrics.expectedParticipants,
-        presentParticipants: realtimeMetrics.presentParticipants,
-        absentParticipants: realtimeMetrics.absentParticipants,
+        classNames: realtimeRoster.classNames,
+        expectedParticipants: realtimeRoster.expectedParticipants,
+        presentParticipants: realtimeRoster.presentParticipants,
+        absentParticipants: realtimeRoster.absentParticipants,
+        auditTrail: await resolveProctorAuditTrailSummary({
+            studentIds: realtimeRoster.participants.map((participant) => Number(participant.id)),
+            scheduleIds:
+                reportScope.monitoredScheduleIds.length > 0 ? reportScope.monitoredScheduleIds : [report.scheduleId],
+            createdAtGte: toStartOfLocalDay(report.schedule.startTime),
+        }),
     });
     const verificationQrDataUrl = await QRCode.toDataURL(artifactBundle.snapshot.verification.verificationUrl, {
         width: 128,
@@ -3640,13 +3812,22 @@ export const getProctoringAttendanceDocument = asyncHandler(async (req: Request,
         throw new ApiError(403, 'Anda tidak memiliki akses ke daftar hadir ini.');
     }
 
-    const realtimeRoster = await resolveRealtimeProctorAttendanceRoster(report.scheduleId, report.proctorId);
+    const [realtimeRoster, reportScope] = await Promise.all([
+        resolveRealtimeProctorAttendanceRoster(report.scheduleId, report.proctorId),
+        resolveRoomScopeSchedules(report.scheduleId, report.proctorId),
+    ]);
     const artifactBundle = await hydrateProctorReportArtifacts(req, {
         report,
         classNames: realtimeRoster.classNames,
         expectedParticipants: realtimeRoster.expectedParticipants,
         presentParticipants: realtimeRoster.presentParticipants,
         absentParticipants: realtimeRoster.absentParticipants,
+        auditTrail: await resolveProctorAuditTrailSummary({
+            studentIds: realtimeRoster.participants.map((participant) => Number(participant.id)),
+            scheduleIds:
+                reportScope.monitoredScheduleIds.length > 0 ? reportScope.monitoredScheduleIds : [report.scheduleId],
+            createdAtGte: toStartOfLocalDay(report.schedule.startTime),
+        }),
     });
     const attendanceDocumentNumber = buildProctorAttendanceDocumentNumber({
         reportId: report.id,
@@ -3778,13 +3959,22 @@ export const verifyPublicProctorReport = asyncHandler(async (req: Request, res: 
         throw new ApiError(404, 'Dokumen berita acara tidak ditemukan.');
     }
 
-    const realtimeMetrics = await resolveRealtimeProctorReportMetrics(report.scheduleId, report.proctorId);
+    const [realtimeRoster, reportScope] = await Promise.all([
+        resolveRealtimeProctorAttendanceRoster(report.scheduleId, report.proctorId),
+        resolveRoomScopeSchedules(report.scheduleId, report.proctorId),
+    ]);
     const artifactBundle = await hydrateProctorReportArtifacts(req, {
         report,
-        classNames: realtimeMetrics.classNames,
-        expectedParticipants: realtimeMetrics.expectedParticipants,
-        presentParticipants: realtimeMetrics.presentParticipants,
-        absentParticipants: realtimeMetrics.absentParticipants,
+        classNames: realtimeRoster.classNames,
+        expectedParticipants: realtimeRoster.expectedParticipants,
+        presentParticipants: realtimeRoster.presentParticipants,
+        absentParticipants: realtimeRoster.absentParticipants,
+        auditTrail: await resolveProctorAuditTrailSummary({
+            studentIds: realtimeRoster.participants.map((participant) => Number(participant.id)),
+            scheduleIds:
+                reportScope.monitoredScheduleIds.length > 0 ? reportScope.monitoredScheduleIds : [report.scheduleId],
+            createdAtGte: toStartOfLocalDay(report.schedule.startTime),
+        }),
     });
     const attendanceDocumentNumber = buildProctorAttendanceDocumentNumber({
         reportId: report.id,
@@ -3800,9 +3990,9 @@ export const verifyPublicProctorReport = asyncHandler(async (req: Request, res: 
             attendanceDocument: {
                 documentNumber: attendanceDocumentNumber,
                 counts: {
-                    expectedParticipants: realtimeMetrics.expectedParticipants,
-                    presentParticipants: realtimeMetrics.presentParticipants,
-                    absentParticipants: realtimeMetrics.absentParticipants,
+                    expectedParticipants: realtimeRoster.expectedParticipants,
+                    presentParticipants: realtimeRoster.presentParticipants,
+                    absentParticipants: realtimeRoster.absentParticipants,
                 },
             },
             verifiedAt: new Date().toISOString(),
@@ -3972,6 +4162,53 @@ export const getProctoringReports = asyncHandler(async (req: Request, res: Respo
             },
         ]),
     );
+    const earliestReportSlotStart =
+        reportSlots.length > 0
+            ? reportSlots.reduce<Date | null>((earliest, slot) => {
+                  const slotStart = slot?.startTime ? new Date(slot.startTime) : null;
+                  if (!slotStart || Number.isNaN(slotStart.getTime())) return earliest;
+                  if (!earliest || slotStart.getTime() < earliest.getTime()) return slotStart;
+                  return earliest;
+              }, null)
+            : null;
+    const reportAuditTrailStart = toStartOfLocalDay(earliestReportSlotStart);
+    const auditNotificationRows =
+        allSlotStudentIds.length > 0 && allScheduleIds.length > 0
+            ? await prisma.notification.findMany({
+                  where: {
+                      userId: { in: allSlotStudentIds },
+                      type: { in: [EXAM_PROCTOR_WARNING_NOTIFICATION_TYPE, EXAM_PROCTOR_TERMINATION_NOTIFICATION_TYPE] },
+                      ...(reportAuditTrailStart ? { createdAt: { gte: reportAuditTrailStart } } : {}),
+                  },
+                  select: {
+                      id: true,
+                      userId: true,
+                      type: true,
+                      title: true,
+                      message: true,
+                      createdAt: true,
+                      data: true,
+                  },
+                  orderBy: [{ createdAt: 'desc' }, { id: 'desc' }],
+              })
+            : [];
+    const auditWarningSignals: ParsedProctorWarningSignal[] = [];
+    const auditTerminationSignals: ParsedProctorTerminationSignal[] = [];
+    auditNotificationRows.forEach((row) => {
+        if (row.type === EXAM_PROCTOR_WARNING_NOTIFICATION_TYPE) {
+            const parsed = parseExamProctorWarningSignal(row);
+            if (parsed && allScheduleIds.includes(Number(parsed.scheduleId))) {
+                auditWarningSignals.push(parsed);
+            }
+            return;
+        }
+        if (row.type === EXAM_PROCTOR_TERMINATION_NOTIFICATION_TYPE) {
+            const parsed = parseExamProctorTerminationSignal(row);
+            if (parsed && allScheduleIds.includes(Number(parsed.scheduleId))) {
+                auditTerminationSignals.push(parsed);
+            }
+        }
+    });
 
     const sessionStudentIdsBySchedule = new Map<number, Set<number>>();
     sessionRows.forEach((row) => {
@@ -4099,6 +4336,29 @@ export const getProctoringReports = asyncHandler(async (req: Request, res: Respo
                         }
                         return true;
                     }) || null;
+                const latestReportSnapshot =
+                    latestReport?.documentSnapshot &&
+                    typeof latestReport.documentSnapshot === 'object' &&
+                    !Array.isArray(latestReport.documentSnapshot)
+                        ? (latestReport.documentSnapshot as Record<string, any>)
+                        : null;
+                const fallbackAuditTrail = summarizeProctorAuditTrailFromSignals({
+                    studentIds: expectedStudentIds,
+                    scheduleIds: slot.scheduleIds,
+                    warnings: auditWarningSignals,
+                    terminations: auditTerminationSignals,
+                });
+                const reportAuditTrail =
+                    latestReportSnapshot?.auditTrail &&
+                    typeof latestReportSnapshot.auditTrail === 'object' &&
+                    !Array.isArray(latestReportSnapshot.auditTrail)
+                        ? {
+                              warningCount: Math.max(0, Number((latestReportSnapshot.auditTrail as Record<string, any>).warningCount || 0)),
+                              warnedStudents: Math.max(0, Number((latestReportSnapshot.auditTrail as Record<string, any>).warnedStudents || 0)),
+                              terminatedStudents: Math.max(0, Number((latestReportSnapshot.auditTrail as Record<string, any>).terminatedStudents || 0)),
+                              latestActionAt: normalizeOptionalText((latestReportSnapshot.auditTrail as Record<string, any>).latestActionAt),
+                          }
+                        : fallbackAuditTrail;
 
                 const expectedParticipants = expectedStudentIds.size || Number(slot.participantCount || 0);
                 const presentParticipants = presentSet.size;
@@ -4134,6 +4394,7 @@ export const getProctoringReports = asyncHandler(async (req: Request, res: Respo
                               verificationUrl: latestReport.verificationToken
                                   ? `${resolvePublicAppBaseUrl(req)}/verify/proctor-report/${latestReport.verificationToken}`
                                   : null,
+                              auditTrail: reportAuditTrail,
                               proctor: latestReport.proctor
                                   ? {
                                         id: latestReport.proctor.id,

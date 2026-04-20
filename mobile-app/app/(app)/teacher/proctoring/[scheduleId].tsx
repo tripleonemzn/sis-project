@@ -259,6 +259,35 @@ export default function TeacherProctoringDetailScreen() {
   ).length;
   const totalViolations = orderedStudents.reduce((acc, item) => acc + Number(item.monitoring?.totalViolations || 0), 0);
   const studentsWithViolations = orderedStudents.filter((item) => Number(item.monitoring?.totalViolations || 0) > 0).length;
+  const proctorAuditSummary = orderedStudents.reduce(
+    (summary, student) => {
+      if (student.proctorWarning?.count) {
+        summary.warningCount += Number(student.proctorWarning.count || 0);
+        summary.warnedStudents += 1;
+        const warnedAtMs = new Date(String(student.proctorWarning.warnedAt || '')).getTime();
+        if (Number.isFinite(warnedAtMs) && warnedAtMs >= summary.latestActionTimeMs) {
+          summary.latestActionTimeMs = warnedAtMs;
+          summary.latestActionAt = student.proctorWarning.warnedAt || null;
+        }
+      }
+      if (student.proctorTermination?.terminatedAt) {
+        summary.terminatedStudents += 1;
+        const terminatedAtMs = new Date(String(student.proctorTermination.terminatedAt || '')).getTime();
+        if (Number.isFinite(terminatedAtMs) && terminatedAtMs >= summary.latestActionTimeMs) {
+          summary.latestActionTimeMs = terminatedAtMs;
+          summary.latestActionAt = student.proctorTermination.terminatedAt || null;
+        }
+      }
+      return summary;
+    },
+    {
+      warningCount: 0,
+      warnedStudents: 0,
+      terminatedStudents: 0,
+      latestActionAt: null as string | null,
+      latestActionTimeMs: 0,
+    },
+  );
 
   useEffect(() => {
     if (!reportSubmitted) return;
@@ -1443,6 +1472,46 @@ export default function TeacherProctoringDetailScreen() {
                   <Text style={{ color: '#0f172a', fontSize: scaleFont(12), lineHeight: scaleLineHeight(18) }}>Jumlah Peserta yang tidak hadir: {absentParticipants}</Text>
                   <Text style={{ color: '#0f172a', fontSize: scaleFont(12), lineHeight: scaleLineHeight(18) }}>Jumlah Peserta yang hadir: {presentParticipants}</Text>
                 </View>
+                {proctorAuditSummary.warningCount > 0 || proctorAuditSummary.terminatedStudents > 0 ? (
+                  <View
+                    style={{
+                      marginTop: 12,
+                      borderWidth: 1,
+                      borderColor: '#e2e8f0',
+                      backgroundColor: '#f8fafc',
+                      borderRadius: 12,
+                      paddingHorizontal: 12,
+                      paddingVertical: 12,
+                      gap: 8,
+                    }}
+                  >
+                    <Text style={{ color: '#64748b', fontSize: scaleFont(11), lineHeight: scaleLineHeight(16), fontWeight: '700' }}>
+                      RINGKASAN DISIPLIN PENGAWAS
+                    </Text>
+                    <View style={{ flexDirection: 'row', flexWrap: 'wrap', gap: 8 }}>
+                      <View style={{ borderWidth: 1, borderColor: '#fde68a', backgroundColor: '#fffbeb', borderRadius: 999, paddingHorizontal: 10, paddingVertical: 4 }}>
+                        <Text style={{ color: '#b45309', fontSize: scaleFont(11), fontWeight: '700' }}>
+                          Peringatan {proctorAuditSummary.warningCount}x
+                        </Text>
+                      </View>
+                      <View style={{ borderWidth: 1, borderColor: '#bae6fd', backgroundColor: '#f0f9ff', borderRadius: 999, paddingHorizontal: 10, paddingVertical: 4 }}>
+                        <Text style={{ color: '#0369a1', fontSize: scaleFont(11), fontWeight: '700' }}>
+                          Peserta diperingatkan {proctorAuditSummary.warnedStudents}
+                        </Text>
+                      </View>
+                      <View style={{ borderWidth: 1, borderColor: '#fecdd3', backgroundColor: '#fff1f2', borderRadius: 999, paddingHorizontal: 10, paddingVertical: 4 }}>
+                        <Text style={{ color: '#be123c', fontSize: scaleFont(11), fontWeight: '700' }}>
+                          Sesi diakhiri {proctorAuditSummary.terminatedStudents}
+                        </Text>
+                      </View>
+                    </View>
+                    {proctorAuditSummary.latestActionAt ? (
+                      <Text style={{ color: '#64748b', fontSize: scaleFont(11), lineHeight: scaleLineHeight(16) }}>
+                        Aksi terakhir: {formatTerminationTime(proctorAuditSummary.latestActionAt)}
+                      </Text>
+                    ) : null}
+                  </View>
+                ) : null}
                 <Text style={{ color: '#0f172a', fontSize: scaleFont(12), lineHeight: scaleLineHeight(18), marginTop: 12, fontWeight: '700' }}>
                   Catatan Pengawas selama Ujian berlangsung.
                 </Text>

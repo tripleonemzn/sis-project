@@ -113,6 +113,12 @@ export type PrincipalProctorReportRow = {
     incident: string | null;
     documentNumber?: string | null;
     verificationUrl?: string | null;
+    auditTrail?: {
+      warningCount: number;
+      warnedStudents: number;
+      terminatedStudents: number;
+      latestActionAt?: string | null;
+    } | null;
     proctor: {
       id: number;
       name: string;
