@@ -90,7 +90,9 @@ export type PrincipalProctorReportRow = {
   startTime: string;
   endTime: string;
   sessionLabel: string | null;
+  periodNumber?: number | null;
   examType: string | null;
+  subjectName?: string | null;
   classNames: string[];
   expectedParticipants: number;
   presentParticipants: number;

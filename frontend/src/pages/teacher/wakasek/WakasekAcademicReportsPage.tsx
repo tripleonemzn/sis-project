@@ -27,10 +27,23 @@ type ProctorReportRow = {
   room: string | null;
   startTime: string;
   endTime: string;
+  periodNumber?: number | null;
   sessionLabel?: string | null;
+  examType?: string | null;
+  subjectName?: string | null;
   classNames: string[];
+  expectedParticipants?: number;
   absentParticipants: number;
   presentParticipants: number;
+  report?: {
+    id: number;
+    signedAt?: string | null;
+    documentNumber?: string | null;
+    verificationUrl?: string | null;
+    proctor?: {
+      name?: string | null;
+    } | null;
+  } | null;
 };
 
 type SemesterChoice = 'ALL' | 'ODD' | 'EVEN';
@@ -51,6 +64,32 @@ const formatScore = (value: number | null | undefined) => {
 };
 
 const todayIso = () => new Date().toISOString().slice(0, 10);
+
+const formatSafeDate = (value: string) => {
+  const parsed = new Date(value);
+  if (Number.isNaN(parsed.getTime())) return value;
+  return parsed.toLocaleDateString('id-ID', {
+    weekday: 'long',
+    day: '2-digit',
+    month: 'long',
+    year: 'numeric',
+  });
+};
+
+const formatSafeTime = (value: string | null | undefined) => {
+  if (!value) return '--.--';
+  const parsed = new Date(value);
+  if (Number.isNaN(parsed.getTime())) {
+    const fallback = String(value).match(/(\d{2}:\d{2})/);
+    return fallback ? fallback[1].replace(':', '.') : String(value);
+  }
+  return parsed.toLocaleTimeString('id-ID', {
+    hour: '2-digit',
+    minute: '2-digit',
+    hour12: false,
+    timeZone: 'Asia/Jakarta',
+  }).replace(':', '.');
+};
 
 const parseClassList = (payload: unknown): Class[] => {
   if (!payload || typeof payload !== 'object') return [];
@@ -163,19 +202,61 @@ export default function WakasekAcademicReportsPage() {
       const rows = Array.isArray(payload.rows) ? (payload.rows as ProctorReportRow[]) : [];
       const summary = (payload.summary || {
         totalRooms: rows.length,
-        totalExpected: rows.reduce((sum, row) => sum + Number(row.presentParticipants || 0) + Number(row.absentParticipants || 0), 0),
+        totalExpected: rows.reduce((sum, row) => sum + Number(row.expectedParticipants || 0), 0),
         totalPresent: rows.reduce((sum, row) => sum + Number(row.presentParticipants || 0), 0),
         totalAbsent: rows.reduce((sum, row) => sum + Number(row.absentParticipants || 0), 0),
-        reportedRooms: 0,
+        reportedRooms: rows.filter((row) => Boolean(row.report)).length,
       }) as ProctorReportSummary;
-      const topAbsentRows = [...rows]
-        .filter((row) => Number(row.absentParticipants || 0) > 0)
-        .sort((a, b) => Number(b.absentParticipants || 0) - Number(a.absentParticipants || 0))
-        .slice(0, 6);
-      return { summary, topAbsentRows };
+      return { summary, rows };
     },
     ...liveQueryOptions,
   });
+
+  const groupedProctorTimeGroups = useMemo(() => {
+    const rows = proctorSummaryQuery.data?.rows || [];
+    const grouped = new Map<
+      string,
+      {
+        timeKey: string;
+        startTime: string;
+        endTime: string;
+        periodNumber: number | null;
+        sessionLabel: string | null;
+        rows: ProctorReportRow[];
+      }
+    >();
+
+    rows.forEach((row) => {
+      const periodNumber = Number.isFinite(Number(row.periodNumber)) ? Number(row.periodNumber) : null;
+      const sessionLabel = typeof row.sessionLabel === 'string' && row.sessionLabel.trim() ? row.sessionLabel.trim() : null;
+      const timeKey = [row.startTime, row.endTime, periodNumber ?? '', sessionLabel ?? ''].join('|');
+      if (!grouped.has(timeKey)) {
+        grouped.set(timeKey, {
+          timeKey,
+          startTime: row.startTime,
+          endTime: row.endTime,
+          periodNumber,
+          sessionLabel,
+          rows: [],
+        });
+      }
+      grouped.get(timeKey)?.rows.push(row);
+    });
+
+    return Array.from(grouped.values())
+      .map((group) => ({
+        ...group,
+        rows: [...group.rows].sort((left, right) =>
+          String(left.room || '').localeCompare(String(right.room || ''), 'id', { sensitivity: 'base' }),
+        ),
+      }))
+      .sort((left, right) => {
+        const leftTime = new Date(left.startTime).getTime();
+        const rightTime = new Date(right.startTime).getTime();
+        if (leftTime !== rightTime) return leftTime - rightTime;
+        return Number(left.periodNumber || 0) - Number(right.periodNumber || 0);
+      });
+  }, [proctorSummaryQuery.data?.rows]);
 
   useEffect(() => {
     if (!filterQuery.data?.classes?.length) {
@@ -465,28 +546,102 @@ export default function WakasekAcademicReportsPage() {
                         Tidak hadir: <span className="font-semibold">{proctorSummaryQuery.data.summary.totalAbsent}</span>
                       </div>
                     </div>
-                    <div className="max-h-[220px] overflow-auto">
-                      {proctorSummaryQuery.data.topAbsentRows.length === 0 ? (
-                        <div className="px-4 py-8 text-sm text-gray-500 text-center">Tidak ada ruang dengan siswa tidak hadir.</div>
+                    <div className="border-t border-gray-100 bg-slate-50/60 px-4 py-3">
+                      <div className="text-xs font-semibold uppercase tracking-wide text-slate-500">Grouping Hari & Jam</div>
+                      <div className="mt-1 text-sm text-slate-700">
+                        {formatSafeDate(reportDate)} • {groupedProctorTimeGroups.length} kelompok jam
+                      </div>
+                    </div>
+                    <div className="max-h-[520px] overflow-auto px-4 py-4">
+                      {groupedProctorTimeGroups.length === 0 ? (
+                        <div className="py-8 text-sm text-gray-500 text-center">Belum ada berita acara pada tanggal ini.</div>
                       ) : (
-                        <table className="min-w-full text-sm">
-                          <thead className="bg-gray-50 text-xs text-gray-500 uppercase">
-                            <tr>
-                              <th className="px-4 py-2 text-left">Ruang</th>
-                              <th className="px-4 py-2 text-left">Sesi</th>
-                              <th className="px-4 py-2 text-right">Tidak Hadir</th>
-                            </tr>
-                          </thead>
-                          <tbody className="divide-y divide-gray-100">
-                            {proctorSummaryQuery.data.topAbsentRows.map((row, index) => (
-                              <tr key={`top-absent-${index}-${row.room || 'ruang'}`}>
-                                <td className="px-4 py-2 text-gray-800">{row.room || 'Belum ditentukan'}</td>
-                                <td className="px-4 py-2 text-gray-600">{row.sessionLabel || '-'}</td>
-                                <td className="px-4 py-2 text-right font-semibold text-rose-700">{row.absentParticipants}</td>
-                              </tr>
-                            ))}
-                          </tbody>
-                        </table>
+                        <div className="space-y-4">
+                          {groupedProctorTimeGroups.map((group) => (
+                            <div key={group.timeKey} className="overflow-hidden rounded-xl border border-gray-200 bg-white">
+                              <div className="flex flex-wrap items-center justify-between gap-3 border-b border-gray-200 bg-slate-50 px-4 py-3">
+                                <div>
+                                  <div className="text-sm font-semibold text-slate-900">
+                                    {formatSafeTime(group.startTime)} - {formatSafeTime(group.endTime)} WIB
+                                    {group.periodNumber ? ` • Jam Ke-${group.periodNumber}` : ''}
+                                  </div>
+                                  <div className="mt-1 text-xs text-slate-500">
+                                    {group.sessionLabel ? `Sesi ${group.sessionLabel}` : 'Tanpa sesi'} • {group.rows.length} ruang
+                                  </div>
+                                </div>
+                                <div className="text-xs text-slate-500">
+                                  {new Set(group.rows.map((row) => String(row.room || '').trim()).filter(Boolean)).size} ruang
+                                </div>
+                              </div>
+                              <div className="divide-y divide-gray-100">
+                                {group.rows.map((row, index) => (
+                                  <div
+                                    key={`${group.timeKey}-${row.room || 'ruang'}-${index}`}
+                                    className="grid gap-3 px-4 py-4 md:grid-cols-[1.1fr_1.2fr_0.8fr_1fr]"
+                                  >
+                                    <div>
+                                      <div className="font-medium text-gray-900">{row.room || 'Belum ditentukan'}</div>
+                                      <div className="mt-1 text-xs text-gray-500">{row.examType || '-'}</div>
+                                    </div>
+                                    <div>
+                                      <div className="font-medium text-gray-900">{row.subjectName || 'Mata Pelajaran'}</div>
+                                      <div className="mt-1 text-xs text-gray-500">
+                                        {row.classNames.join(', ') || 'Belum ada rombel'}
+                                      </div>
+                                    </div>
+                                    <div className="text-sm text-gray-700">
+                                      <div>Seharusnya: <span className="font-semibold">{Number(row.expectedParticipants || 0)}</span></div>
+                                      <div className="text-emerald-700">Hadir: <span className="font-semibold">{row.presentParticipants}</span></div>
+                                      <div className="text-rose-700">Tidak hadir: <span className="font-semibold">{row.absentParticipants}</span></div>
+                                    </div>
+                                    <div className="space-y-2">
+                                      {row.report ? (
+                                        <>
+                                          <div className="text-xs text-gray-500">
+                                            BA: {row.report.documentNumber || 'Nomor dokumen dibuat saat preview dibuka.'}
+                                          </div>
+                                          <div className="text-xs text-gray-500">
+                                            Pengawas: {row.report.proctor?.name || '-'}
+                                          </div>
+                                          <div className="flex flex-wrap gap-2">
+                                            <a
+                                              href={`/print/proctor-report/${row.report.id}`}
+                                              target="_blank"
+                                              rel="noreferrer"
+                                              className="inline-flex items-center rounded-lg border border-blue-200 bg-blue-50 px-3 py-1.5 text-xs font-semibold text-blue-700 hover:bg-blue-100"
+                                            >
+                                              Lihat BA
+                                            </a>
+                                            <a
+                                              href={`/print/proctor-attendance/${row.report.id}`}
+                                              target="_blank"
+                                              rel="noreferrer"
+                                              className="inline-flex items-center rounded-lg border border-amber-200 bg-amber-50 px-3 py-1.5 text-xs font-semibold text-amber-700 hover:bg-amber-100"
+                                            >
+                                              Daftar Hadir
+                                            </a>
+                                            {row.report.verificationUrl ? (
+                                              <a
+                                                href={row.report.verificationUrl}
+                                                target="_blank"
+                                                rel="noreferrer"
+                                                className="inline-flex items-center rounded-lg border border-slate-200 bg-white px-3 py-1.5 text-xs font-semibold text-slate-700 hover:bg-slate-50"
+                                              >
+                                                Verifikasi
+                                              </a>
+                                            ) : null}
+                                          </div>
+                                        </>
+                                      ) : (
+                                        <div className="text-xs text-gray-500">Belum ada dokumen pengawas.</div>
+                                      )}
+                                    </div>
+                                  </div>
+                                ))}
+                              </div>
+                            </div>
+                          ))}
+                        </div>
                       )}
                     </div>
                   </>
@@ -499,4 +654,3 @@ export default function WakasekAcademicReportsPage() {
     </div>
   );
 }
-
