@@ -64,11 +64,11 @@ function CompactStatChip({
         borderColor: border,
         backgroundColor: bg,
         borderRadius: 999,
-        paddingHorizontal: 10,
-        paddingVertical: 5,
+        paddingHorizontal: 12,
+        paddingVertical: 6,
       }}
     >
-      <Text style={{ color: text, fontSize: scaleWithAppTextScale(11), fontWeight: '700' }}>
+      <Text style={{ color: text, fontSize: scaleWithAppTextScale(12), fontWeight: '700' }}>
         {label} {value}
       </Text>
     </View>
@@ -419,20 +419,31 @@ export default function PrincipalExamReportsScreen() {
                           borderBottomWidth: 1,
                           borderBottomColor: '#e2e8f0',
                           backgroundColor: '#f8fafc',
+                          flexDirection: 'row',
+                          alignItems: 'flex-start',
+                          justifyContent: 'space-between',
+                          gap: 12,
                         }}
                       >
-                        <Text style={{ color: BRAND_COLORS.textDark, fontWeight: '700', fontSize: scaleWithAppTextScale(14) }}>
-                          {formatTime(group.startTime)} - {formatTime(group.endTime)} WIB
-                          {group.periodNumber ? ` • Jam Ke-${group.periodNumber}` : ''}
-                        </Text>
-                        <Text style={{ color: BRAND_COLORS.textMuted, fontSize: scaleWithAppTextScale(12), marginTop: 3 }}>
-                          {group.sessionLabel ? `Sesi ${group.sessionLabel}` : 'Tanpa sesi'} • {reportedCount}/{group.rows.length} laporan masuk
-                        </Text>
-                        <View style={{ flexDirection: 'row', flexWrap: 'wrap', gap: 6, marginTop: 8 }}>
-                          <CompactStatChip label="Ruang" value={String(roomCount)} bg="#ffffff" border="#cbd5e1" text="#475569" />
-                          <CompactStatChip label="Peserta" value={String(expectedCount)} bg="#ffffff" border="#cbd5e1" text="#475569" />
-                          <CompactStatChip label="Hadir" value={String(presentCount)} bg="#ecfdf5" border="#a7f3d0" text="#047857" />
-                          <CompactStatChip label="Tidak Hadir" value={String(absentCount)} bg="#fff1f2" border="#fecdd3" text="#be123c" />
+                        <View style={{ flex: 1 }}>
+                          <Text style={{ color: BRAND_COLORS.textDark, fontWeight: '700', fontSize: scaleWithAppTextScale(14) }}>
+                            {formatTime(group.startTime)} - {formatTime(group.endTime)} WIB
+                            {group.periodNumber ? ` • Jam Ke-${group.periodNumber}` : ''}
+                          </Text>
+                          <Text style={{ color: BRAND_COLORS.textMuted, fontSize: scaleWithAppTextScale(12), marginTop: 3 }}>
+                            {group.sessionLabel ? `Sesi ${group.sessionLabel}` : 'Tanpa sesi'} • {reportedCount}/{group.rows.length} laporan masuk
+                          </Text>
+                        </View>
+                        <View style={{ maxWidth: '46%', alignItems: 'flex-end', gap: 8 }}>
+                          <View style={{ flexDirection: 'row', flexWrap: 'wrap', gap: 6, justifyContent: 'flex-end' }}>
+                            <CompactStatChip label="Ruang" value={String(roomCount)} bg="#ffffff" border="#cbd5e1" text="#475569" />
+                            <CompactStatChip label="Peserta" value={String(expectedCount)} bg="#ffffff" border="#cbd5e1" text="#475569" />
+                            <CompactStatChip label="Hadir" value={String(presentCount)} bg="#ecfdf5" border="#a7f3d0" text="#047857" />
+                            <CompactStatChip label="Tidak Hadir" value={String(absentCount)} bg="#fff1f2" border="#fecdd3" text="#be123c" />
+                          </View>
+                          <Text style={{ color: '#2563eb', fontWeight: '700' }}>
+                            {expandedTimeGroupKey === `${day.dateKey}::${group.timeKey}` ? 'Tutup Jam' : 'Buka Jam'}
+                          </Text>
                         </View>
                       </Pressable>
 

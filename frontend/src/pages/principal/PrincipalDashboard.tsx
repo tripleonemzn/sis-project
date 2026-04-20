@@ -5652,7 +5652,7 @@ const PrincipalExamReportsPage = () => {
                                 previous === `${day.dateKey}::${timeGroup.timeKey}` ? null : `${day.dateKey}::${timeGroup.timeKey}`,
                               )
                             }
-                            className="flex w-full flex-wrap items-center justify-between gap-3 border-b border-gray-200 bg-slate-50 px-5 py-3 text-left"
+                            className="grid w-full grid-cols-[minmax(0,1fr)_auto] items-start gap-3 border-b border-gray-200 bg-slate-50 px-5 py-3 text-left"
                           >
                             <div className="flex-1 min-w-[260px]">
                               <div className="text-sm font-semibold text-slate-900">
@@ -5662,28 +5662,30 @@ const PrincipalExamReportsPage = () => {
                               <div className="mt-1 text-xs text-slate-500">
                                 {timeGroup.sessionLabel ? `Sesi ${timeGroup.sessionLabel}` : 'Tanpa sesi'} • {reportedCount}/{timeGroup.rows.length} laporan masuk
                               </div>
-                              <div className="mt-2 flex flex-wrap gap-2">
-                                <span className="inline-flex items-center rounded-full border border-slate-200 bg-white px-2.5 py-1 text-[11px] font-semibold text-slate-700">
+                            </div>
+                            <div className="flex items-start gap-3">
+                              <div className="flex max-w-[420px] flex-wrap justify-end gap-2 pt-0.5">
+                                <span className="inline-flex items-center rounded-full border border-slate-200 bg-white px-3.5 py-1.5 text-xs font-semibold text-slate-700">
                                   Ruang {roomCount}
                                 </span>
-                                <span className="inline-flex items-center rounded-full border border-slate-200 bg-white px-2.5 py-1 text-[11px] font-semibold text-slate-700">
+                                <span className="inline-flex items-center rounded-full border border-slate-200 bg-white px-3.5 py-1.5 text-xs font-semibold text-slate-700">
                                   Peserta {expectedCount}
                                 </span>
-                                <span className="inline-flex items-center rounded-full border border-emerald-200 bg-emerald-50 px-2.5 py-1 text-[11px] font-semibold text-emerald-700">
+                                <span className="inline-flex items-center rounded-full border border-emerald-200 bg-emerald-50 px-3.5 py-1.5 text-xs font-semibold text-emerald-700">
                                   Hadir {presentCount}
                                 </span>
-                                <span className="inline-flex items-center rounded-full border border-rose-200 bg-rose-50 px-2.5 py-1 text-[11px] font-semibold text-rose-700">
+                                <span className="inline-flex items-center rounded-full border border-rose-200 bg-rose-50 px-3.5 py-1.5 text-xs font-semibold text-rose-700">
                                   Tidak Hadir {absentCount}
                                 </span>
                               </div>
+                              <span className="inline-flex items-center pt-1 text-xs font-medium text-blue-700">
+                                {expandedTimeGroupKey === `${day.dateKey}::${timeGroup.timeKey}` ? (
+                                  <ChevronDown size={15} />
+                                ) : (
+                                  <ChevronRight size={15} />
+                                )}
+                              </span>
                             </div>
-                            <span className="inline-flex items-center gap-2 text-xs font-medium text-blue-700">
-                              {expandedTimeGroupKey === `${day.dateKey}::${timeGroup.timeKey}` ? (
-                                <ChevronDown size={15} />
-                              ) : (
-                                <ChevronRight size={15} />
-                              )}
-                            </span>
                           </button>
 
                           {expandedTimeGroupKey === `${day.dateKey}::${timeGroup.timeKey}` ? (

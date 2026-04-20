@@ -190,11 +190,11 @@ function CompactStatChip({
         borderColor: border,
         backgroundColor: bg,
         borderRadius: 999,
-        paddingHorizontal: 10,
-        paddingVertical: 5,
+        paddingHorizontal: 12,
+        paddingVertical: 6,
       }}
     >
-      <Text style={{ color: text, fontSize: scaleWithAppTextScale(11), fontWeight: '700' }}>
+      <Text style={{ color: text, fontSize: scaleWithAppTextScale(12), fontWeight: '700' }}>
         {label} {value}
       </Text>
     </View>
@@ -736,19 +736,19 @@ export default function TeacherWakakurReportsScreen() {
                         onPress={() => {
                           setExpandedProctorDayKey((previous) => (previous === day.dateKey ? null : day.dateKey));
                         }}
-                        style={{
-                          paddingHorizontal: 12,
-                          paddingVertical: 12,
-                          borderBottomWidth: 1,
-                          borderBottomColor: '#e2e8f0',
-                          backgroundColor: '#f8fafc',
-                          flexDirection: 'row',
-                          alignItems: 'center',
-                          justifyContent: 'space-between',
-                          gap: 12,
-                        }}
-                      >
-                        <View style={{ flex: 1 }}>
+                                style={{
+                                  paddingHorizontal: 12,
+                                  paddingVertical: 12,
+                                  borderBottomWidth: 1,
+                                  borderBottomColor: '#e2e8f0',
+                                  backgroundColor: '#f8fafc',
+                                  flexDirection: 'row',
+                                  alignItems: 'flex-start',
+                                  justifyContent: 'space-between',
+                                  gap: 12,
+                                }}
+                              >
+                                <View style={{ flex: 1 }}>
                           <Text style={{ color: BRAND_COLORS.textDark, fontWeight: '700', fontSize: scaleWithAppTextScale(14) }}>
                             {day.dateLabel}
                           </Text>
@@ -819,18 +819,20 @@ export default function TeacherWakakurReportsScreen() {
                                     <Text style={{ color: '#64748b', fontSize: scaleWithAppTextScale(12), marginTop: 3 }}>
                                       {group.sessionLabel ? `Sesi ${group.sessionLabel}` : 'Tanpa sesi'} • {reportedCount}/{group.rows.length} laporan masuk
                                     </Text>
-                                    <View style={{ flexDirection: 'row', flexWrap: 'wrap', gap: 6, marginTop: 8 }}>
+                                  </View>
+                                  <View style={{ maxWidth: '46%', alignItems: 'flex-end', gap: 8 }}>
+                                    <View style={{ flexDirection: 'row', flexWrap: 'wrap', gap: 6, justifyContent: 'flex-end' }}>
                                       <CompactStatChip label="Ruang" value={formatNumber(roomCount)} bg="#ffffff" border="#cbd5e1" text="#475569" />
                                       <CompactStatChip label="Peserta" value={formatNumber(expectedCount)} bg="#ffffff" border="#cbd5e1" text="#475569" />
                                       <CompactStatChip label="Hadir" value={formatNumber(presentCount)} bg="#ecfdf5" border="#a7f3d0" text="#047857" />
                                       <CompactStatChip label="Tidak Hadir" value={formatNumber(absentCount)} bg="#fee2e2" border="#fca5a5" text="#b91c1c" />
                                     </View>
+                                    <Feather
+                                      name={expandedProctorTimeGroupKey === `${day.dateKey}::${group.timeKey}` ? 'chevron-down' : 'chevron-right'}
+                                      size={18}
+                                      color="#2563eb"
+                                    />
                                   </View>
-                                  <Feather
-                                    name={expandedProctorTimeGroupKey === `${day.dateKey}::${group.timeKey}` ? 'chevron-down' : 'chevron-right'}
-                                    size={18}
-                                    color="#2563eb"
-                                  />
                                 </Pressable>
                                 {expandedProctorTimeGroupKey === `${day.dateKey}::${group.timeKey}` ? (
                                   <View style={{ padding: 12, gap: 10 }}>
