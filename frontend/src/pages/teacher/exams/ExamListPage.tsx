@@ -7,7 +7,6 @@ import {
     FileQuestion, 
     Clock, 
     Calendar, 
-    Edit, 
     BookOpen,
     BarChart3,
     Users,
@@ -931,7 +930,7 @@ export const ExamListPage = () => {
                                         Jadwal program ini dibuat oleh {CURRICULUM_EXAM_MANAGER_LABEL}.
                                     </p>
                                 ) : null}
-                                <div className="flex items-center justify-end gap-1">
+                                <div className="flex items-center justify-end">
                                     <button 
                                         onClick={() =>
                                             navigate(`/teacher/exams/${packet.id}/edit`, {
@@ -942,10 +941,10 @@ export const ExamListPage = () => {
                                                 },
                                             })
                                         }
-                                        className="p-1.5 text-gray-500 hover:text-blue-600 hover:bg-blue-50 rounded-lg border border-transparent hover:border-blue-100 transition-all"
-                                        title="Edit Soal"
+                                        className="px-3 py-2 bg-blue-50 text-blue-700 text-xs font-bold rounded-lg hover:bg-blue-600 hover:text-white transition-all flex items-center justify-center border border-blue-100"
+                                        title="Kelola Butir Soal"
                                     >
-                                        <Edit className="w-3 h-3" />
+                                        Kelola Butir Soal
                                     </button>
                                 </div>
                             </div>
