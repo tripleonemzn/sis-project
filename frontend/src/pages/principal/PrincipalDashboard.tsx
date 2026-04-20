@@ -5665,18 +5665,18 @@ const PrincipalExamReportsPage = () => {
                             </div>
                             <div className="flex items-start gap-3">
                               <div className="flex max-w-[420px] flex-wrap justify-end gap-2 pt-0.5">
-                                <span className="inline-flex items-center rounded-full border border-slate-200 bg-white px-3.5 py-1.5 text-xs font-semibold text-slate-700">
-                                  Ruang {roomCount}
-                                </span>
-                                <span className="inline-flex items-center rounded-full border border-slate-200 bg-white px-3.5 py-1.5 text-xs font-semibold text-slate-700">
-                                  Peserta {expectedCount}
-                                </span>
-                                <span className="inline-flex items-center rounded-full border border-emerald-200 bg-emerald-50 px-3.5 py-1.5 text-xs font-semibold text-emerald-700">
-                                  Hadir {presentCount}
-                                </span>
-                                <span className="inline-flex items-center rounded-full border border-rose-200 bg-rose-50 px-3.5 py-1.5 text-xs font-semibold text-rose-700">
-                                  Tidak Hadir {absentCount}
-                                </span>
+                              <span className="inline-flex items-center rounded-full border border-slate-200 bg-white px-4 py-1.5 text-[13px] font-semibold text-slate-700">
+                                Ruang {roomCount}
+                              </span>
+                              <span className="inline-flex items-center rounded-full border border-slate-200 bg-white px-4 py-1.5 text-[13px] font-semibold text-slate-700">
+                                Peserta {expectedCount}
+                              </span>
+                              <span className="inline-flex items-center rounded-full border border-emerald-200 bg-emerald-50 px-4 py-1.5 text-[13px] font-semibold text-emerald-700">
+                                Hadir {presentCount}
+                              </span>
+                              <span className="inline-flex items-center rounded-full border border-rose-200 bg-rose-50 px-4 py-1.5 text-[13px] font-semibold text-rose-700">
+                                Tidak Hadir {absentCount}
+                              </span>
                               </div>
                               <span className="inline-flex items-center pt-1 text-xs font-medium text-blue-700">
                                 {expandedTimeGroupKey === `${day.dateKey}::${timeGroup.timeKey}` ? (

@@ -64,11 +64,11 @@ function CompactStatChip({
         borderColor: border,
         backgroundColor: bg,
         borderRadius: 999,
-        paddingHorizontal: 12,
+        paddingHorizontal: 13,
         paddingVertical: 6,
       }}
     >
-      <Text style={{ color: text, fontSize: scaleWithAppTextScale(12), fontWeight: '700' }}>
+      <Text style={{ color: text, fontSize: scaleWithAppTextScale(13), fontWeight: '700' }}>
         {label} {value}
       </Text>
     </View>
