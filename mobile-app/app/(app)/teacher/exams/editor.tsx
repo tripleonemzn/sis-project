@@ -760,6 +760,7 @@ export default function TeacherExamEditorScreen() {
   const [activeSection, setActiveSection] = useState<EditorSection>('INFO');
   const [renderedSection, setRenderedSection] = useState<EditorSection>('INFO');
   const [sectionTransitioning, setSectionTransitioning] = useState(false);
+  const [activeQuestionId, setActiveQuestionId] = useState<string | null>(null);
   const syncedRequestedSectionRef = useRef<EditorSection | null>(null);
   const sectionTransitionTaskRef = useRef<ReturnType<typeof InteractionManager.runAfterInteractions> | null>(null);
   const requestedQuestionId = useMemo(() => {
@@ -946,6 +947,27 @@ export default function TeacherExamEditorScreen() {
   }, [activeSection]);
 
   useEffect(() => {
+    if (questions.length === 0) {
+      if (activeQuestionId !== null) {
+        setActiveQuestionId(null);
+      }
+      return;
+    }
+
+    const requestedQuestion = requestedQuestionId
+      ? questions.find((question) => String(question.id || '') === requestedQuestionId)
+      : null;
+    if (requestedQuestion && requestedQuestion.id !== activeQuestionId) {
+      setActiveQuestionId(requestedQuestion.id);
+      return;
+    }
+
+    if (!activeQuestionId || !questions.some((question) => question.id === activeQuestionId)) {
+      setActiveQuestionId(questions[0].id);
+    }
+  }, [questions, requestedQuestionId, activeQuestionId]);
+
+  useEffect(() => {
     if (lockedSemester && semester !== lockedSemester) {
       const timerId = setTimeout(() => setSemester(lockedSemester), 0);
       return () => clearTimeout(timerId);
@@ -960,6 +982,11 @@ export default function TeacherExamEditorScreen() {
   });
   const currentPacketDetail = packetDetailQuery.data || null;
   const isCurriculumManagedPacket = Boolean(currentPacketDetail?.isCurriculumManaged);
+  const selectedQuestionIndex = useMemo(
+    () => questions.findIndex((question) => question.id === activeQuestionId),
+    [questions, activeQuestionId],
+  );
+  const selectedQuestion = selectedQuestionIndex >= 0 ? questions[selectedQuestionIndex] : null;
   const supportsQuestionSupport = isCurriculumManagedPacket;
   const curriculumScheduledClassNames = useMemo(() => {
     const classNames = (currentPacketDetail?.schedules || [])
@@ -1974,7 +2001,52 @@ export default function TeacherExamEditorScreen() {
       {renderedSection === 'QUESTIONS' && !sectionTransitioning ? (
         <>
       <Text style={{ color: '#0f172a', fontWeight: '700', marginBottom: 8 }}>Daftar Soal</Text>
-      {questions.map((question, index) => {
+      <View
+        style={{
+          borderWidth: 1,
+          borderColor: '#dbeafe',
+          backgroundColor: '#f8fbff',
+          borderRadius: 10,
+          padding: 10,
+          marginBottom: 10,
+        }}
+      >
+        <Text style={{ color: '#1e3a8a', fontWeight: '700', marginBottom: 6 }}>Navigator Butir Soal</Text>
+        <Text style={{ color: '#475569', ...bodyTextStyle, marginBottom: 8 }}>
+          Pilih nomor soal yang ingin diedit. Mobile hanya membuka satu editor soal aktif agar scroll lebih ringan.
+        </Text>
+        <View style={{ flexDirection: 'row', flexWrap: 'wrap', marginHorizontal: -3 }}>
+          {questions.map((question, index) => {
+            const active = question.id === activeQuestionId;
+            return (
+              <View key={`question-tab-${question.id}`} style={{ paddingHorizontal: 3, marginBottom: 6 }}>
+                <Pressable
+                  onPress={() => setActiveQuestionId(question.id)}
+                  style={{
+                    minWidth: 42,
+                    borderWidth: 1,
+                    borderColor: active ? '#2563eb' : '#cbd5e1',
+                    backgroundColor: active ? '#eff6ff' : '#fff',
+                    borderRadius: 10,
+                    paddingHorizontal: 12,
+                    paddingVertical: 8,
+                    alignItems: 'center',
+                  }}
+                >
+                  <Text style={{ color: active ? '#1d4ed8' : '#334155', fontWeight: '700', ...bodyTextStyle }}>
+                    {index + 1}
+                  </Text>
+                </Pressable>
+              </View>
+            );
+          })}
+        </View>
+      </View>
+
+      {selectedQuestion ? (
+        (() => {
+        const question = selectedQuestion;
+        const index = selectedQuestionIndex;
         const isRequestedQuestion = requestedQuestionId === String(question.id || '');
         const derivedQuestionCard = buildDerivedQuestionCard(question);
         return (
@@ -2008,7 +2080,15 @@ export default function TeacherExamEditorScreen() {
                   Alert.alert('Info', 'Minimal harus ada 1 soal.');
                   return;
                 }
-                setQuestions((prev) => prev.filter((item) => item.id !== question.id));
+                let nextActiveQuestionId: string | null = null;
+                setQuestions((prev) => {
+                  const currentIndex = prev.findIndex((item) => item.id === question.id);
+                  const remaining = prev.filter((item) => item.id !== question.id);
+                  nextActiveQuestionId =
+                    remaining[Math.min(Math.max(currentIndex, 0), Math.max(remaining.length - 1, 0))]?.id || null;
+                  return remaining;
+                });
+                setActiveQuestionId(nextActiveQuestionId);
               }}
             >
               <Text style={{ color: '#b91c1c', fontWeight: '700', ...bodyTextStyle }}>Hapus</Text>
@@ -3121,10 +3201,33 @@ export default function TeacherExamEditorScreen() {
           ) : null}
         </View>
         );
-      })}
+      })()
+      ) : null}
+
+      {!selectedQuestion ? (
+        <View
+          style={{
+            borderWidth: 1,
+            borderColor: '#cbd5e1',
+            borderStyle: 'dashed',
+            borderRadius: 10,
+            backgroundColor: '#fff',
+            padding: 14,
+            marginBottom: 10,
+          }}
+        >
+          <Text style={{ color: '#475569', ...bodyTextStyle }}>
+            Pilih atau tambahkan butir soal untuk mulai mengedit isi ujian.
+          </Text>
+        </View>
+      ) : null}
 
       <Pressable
-        onPress={() => setQuestions((prev) => [...prev, createQuestion()])}
+        onPress={() => {
+          const nextQuestion = createQuestion();
+          setQuestions((prev) => [...prev, nextQuestion]);
+          setActiveQuestionId(nextQuestion.id);
+        }}
         style={{
           borderWidth: 1,
           borderColor: '#1d4ed8',
