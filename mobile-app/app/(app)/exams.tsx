@@ -899,10 +899,10 @@ export default function StudentExamsScreen() {
                           maxWidth: 292,
                           flexDirection: 'row',
                           alignItems: 'flex-start',
-                          gap: 8,
+                          gap: 10,
                         }}
                       >
-                        <View style={{ flex: 1, gap: 3 }}>
+                        <View style={{ flex: 1, minWidth: 0, gap: 3 }}>
                           {[
                             ['Nama Siswa', card.payload.student.name],
                             ['Kelas', card.payload.student.className || '-'],
@@ -912,8 +912,8 @@ export default function StudentExamsScreen() {
                             ['Sesi', primaryEntry?.sessionLabel || '-'],
                           ].map(([label, value]) => (
                             <View key={label} style={{ flexDirection: 'row', alignItems: 'flex-start' }}>
-                              <Text style={{ width: 54, color: '#334155', fontSize: scaleFont(9, { max: 10.5 }), lineHeight: scaleLineHeight(12, { max: 13.5 }) }}>{label}</Text>
-                              <Text style={{ width: 8, color: '#334155', fontSize: scaleFont(9, { max: 10.5 }), lineHeight: scaleLineHeight(12, { max: 13.5 }) }}>:</Text>
+                              <Text style={{ width: 50, color: '#334155', fontSize: scaleFont(9, { max: 10.5 }), lineHeight: scaleLineHeight(12, { max: 13.5 }) }}>{label}</Text>
+                              <Text style={{ width: 6, color: '#334155', fontSize: scaleFont(9, { max: 10.5 }), lineHeight: scaleLineHeight(12, { max: 13.5 }) }}>:</Text>
                               <Text
                                 style={{
                                   flex: 1,
@@ -929,11 +929,11 @@ export default function StudentExamsScreen() {
                           ))}
                         </View>
 
-                        <View style={{ width: 98, alignItems: 'center' }}>
-                          <Text style={{ color: '#334155', fontSize: scaleFont(8.5, { max: 10 }), textAlign: 'center', lineHeight: scaleLineHeight(11, { max: 12.5 }) }}>
+                        <View style={{ width: 112, alignItems: 'center', flexShrink: 0 }}>
+                          <Text style={{ width: '100%', color: '#334155', fontSize: scaleFont(8.5, { max: 10 }), textAlign: 'center', lineHeight: scaleLineHeight(11, { max: 12.5 }) }}>
                             {card.payload.issue?.signLabel || `Bekasi, ${formatDateOnly(card.payload.issue?.date || card.generatedAt)}`}
                           </Text>
-                          <Text style={{ color: '#334155', fontSize: scaleFont(8.5, { max: 10 }), textAlign: 'center', marginTop: 2, lineHeight: scaleLineHeight(11, { max: 12.5 }) }}>
+                          <Text style={{ width: '100%', color: '#334155', fontSize: scaleFont(8.5, { max: 10 }), textAlign: 'center', marginTop: 2, lineHeight: scaleLineHeight(11, { max: 12.5 }) }}>
                             {card.payload.legality.principalTitle || 'Kepala Sekolah'}
                           </Text>
                           {card.payload.legality.principalBarcodeDataUrl ? (
@@ -952,14 +952,18 @@ export default function StudentExamsScreen() {
                             />
                           ) : null}
                           <Text
+                            numberOfLines={1}
+                            adjustsFontSizeToFit
+                            minimumFontScale={0.72}
                             style={{
                               color: '#0f172a',
                               fontWeight: '700',
                               marginTop: 5,
-                              fontSize: scaleFont(8, { max: 9.5 }),
-                              lineHeight: scaleLineHeight(10, { max: 11.5 }),
+                              fontSize: scaleFont(7.6, { max: 9.2 }),
+                              lineHeight: scaleLineHeight(9.5, { max: 11 }),
                               textAlign: 'center',
                               width: '100%',
+                              paddingHorizontal: 2,
                             }}
                           >
                             {card.payload.legality.principalName}
