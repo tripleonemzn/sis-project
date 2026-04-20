@@ -1,3 +1,4 @@
+import { Feather } from '@expo/vector-icons';
 import { useMutation } from '@tanstack/react-query';
 import { Redirect, Stack, useLocalSearchParams, useRouter } from 'expo-router';
 import { activateKeepAwakeAsync, deactivateKeepAwake } from 'expo-keep-awake';
@@ -351,6 +352,36 @@ function resolveTakeExamSubject(packet: {
   };
 }
 
+function resolveRestoredQuestionIndex(params: {
+  questions: Array<{ id?: string | null }>;
+  rawSessionAnswers: unknown;
+  fallbackIndex: number;
+}) {
+  const totalQuestions = params.questions.length;
+  if (totalQuestions <= 0) return 0;
+
+  const persistedAnswers = parseAnswers(params.rawSessionAnswers);
+  const persistedMonitoring = extractPersistedMonitoring(persistedAnswers);
+  const preferredQuestionId = String(persistedMonitoring?.currentQuestionId || '').trim();
+  if (preferredQuestionId) {
+    const matchedIndex = params.questions.findIndex(
+      (question) => String(question?.id || '').trim() === preferredQuestionId,
+    );
+    if (matchedIndex >= 0) return matchedIndex;
+  }
+
+  const persistedIndex = Number(persistedMonitoring?.currentQuestionIndex);
+  if (Number.isFinite(persistedIndex) && persistedIndex >= 0) {
+    return Math.min(Math.max(0, persistedIndex), totalQuestions - 1);
+  }
+
+  if (Number.isFinite(params.fallbackIndex) && params.fallbackIndex >= 0) {
+    return Math.min(Math.max(0, params.fallbackIndex), totalQuestions - 1);
+  }
+
+  return 0;
+}
+
 export default function StudentExamTakeScreen() {
   const router = useRouter();
   const insets = useSafeAreaInsets();
@@ -386,6 +417,7 @@ export default function StudentExamTakeScreen() {
   const [lastSavedAt, setLastSavedAt] = useState<string | null>(null);
   const [isFinalSubmitting, setIsFinalSubmitting] = useState(false);
   const [isFinished, setIsFinished] = useState(false);
+  const [isRefreshingExam, setIsRefreshingExam] = useState(false);
   const [hasAcknowledgedStart, setHasAcknowledgedStart] = useState(hasReadyFlag);
   const [violations, setViolations] = useState(0);
   const [lastViolationMessage, setLastViolationMessage] = useState<string | null>(null);
@@ -544,6 +576,17 @@ export default function StudentExamTakeScreen() {
   useEffect(() => {
     answersRef.current = effectiveAnswers;
   }, [effectiveAnswers]);
+
+  useEffect(() => {
+    if (questions.length === 0) return;
+    setCurrentIndex((prev) =>
+      resolveRestoredQuestionIndex({
+        questions,
+        rawSessionAnswers: startQuery.data?.session?.answers,
+        fallbackIndex: prev,
+      }),
+    );
+  }, [questions, startQuery.data?.session?.answers]);
 
   useEffect(() => {
     return () => {
@@ -995,6 +1038,38 @@ export default function StudentExamTakeScreen() {
     );
   };
 
+  const handleRefreshExam = useCallback(async () => {
+    if (
+      !hasAcknowledgedStart ||
+      !isExamReady ||
+      isFinished ||
+      isFinalSubmitting ||
+      isRefreshingExam
+    ) {
+      return;
+    }
+
+    setIsRefreshingExam(true);
+    try {
+      await saveProgress(false, { force: true });
+      const refreshResult = await startQuery.refetch();
+      if (refreshResult.error) {
+        const refreshError = refreshResult.error as { message?: string };
+        Alert.alert('Refresh Gagal', refreshError.message || 'Data ujian belum berhasil diperbarui.');
+      }
+    } finally {
+      setIsRefreshingExam(false);
+    }
+  }, [
+    hasAcknowledgedStart,
+    isExamReady,
+    isFinished,
+    isFinalSubmitting,
+    isRefreshingExam,
+    saveProgress,
+    startQuery,
+  ]);
+
   const currentQuestion = questions[currentIndex];
   const currentType = currentQuestion ? normalizeQuestionType(currentQuestion) : 'MULTIPLE_CHOICE';
   const currentOptions = currentQuestion?.options || [];
@@ -1181,6 +1256,7 @@ export default function StudentExamTakeScreen() {
             'Pelanggaran ke-4 akan mengumpulkan ujian secara otomatis.',
             'Bar status disembunyikan selama ujian untuk meminimalkan akses notifikasi.',
             'Gambar pada soal dapat diketuk untuk diperbesar tanpa keluar dari ujian.',
+            'Jika guru meminta sinkron ulang soal, gunakan tombol Refresh Data di layar ujian. Refresh ini tidak dihitung pelanggaran.',
           ].map((rule) => (
             <Text key={rule} style={{ color: '#92400e', fontSize: scaleFont(13), lineHeight: scaleLineHeight(21), marginBottom: 4 }}>
               • {rule}
@@ -1264,6 +1340,43 @@ export default function StudentExamTakeScreen() {
                 ? 'gagal, akan dicoba lagi'
                 : '-'}
         </Text>
+        <View style={{ flexDirection: 'row', flexWrap: 'wrap', alignItems: 'center', gap: 8, marginTop: 10 }}>
+          <Pressable
+            onPress={handleRefreshExam}
+            disabled={isRefreshingExam || isFinalSubmitting}
+            style={{
+              flexDirection: 'row',
+              alignItems: 'center',
+              gap: 8,
+              borderWidth: 1,
+              borderColor: '#bfdbfe',
+              backgroundColor: '#eff6ff',
+              borderRadius: 999,
+              paddingHorizontal: 12,
+              paddingVertical: 8,
+              opacity: isRefreshingExam || isFinalSubmitting ? 0.65 : 1,
+            }}
+          >
+            <Feather
+              name={isRefreshingExam ? 'loader' : 'refresh-cw'}
+              size={14}
+              color="#1d4ed8"
+            />
+            <Text style={{ color: '#1d4ed8', fontSize: scaleFont(12), fontWeight: '700' }}>
+              {isRefreshingExam ? 'Menyegarkan...' : 'Refresh Data'}
+            </Text>
+          </Pressable>
+          <Text
+            style={{
+              color: '#475569',
+              fontSize: scaleFont(11),
+              lineHeight: scaleLineHeight(17),
+              flexShrink: 1,
+            }}
+          >
+            Gunakan tombol ini bila guru mengubah soal. Refresh data tidak dihitung pelanggaran.
+          </Text>
+        </View>
         {lastViolationMessage ? (
           <View
             style={{

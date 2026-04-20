@@ -299,6 +299,61 @@ function getNetworkStatusBadge(): NetworkStatusBadge {
   return { quality: 'stabil', label: 'Stabil' }
 }
 
+function parseExamSessionAnswers(raw: unknown): Record<string, unknown> {
+  if (raw && typeof raw === 'object' && !Array.isArray(raw)) {
+    return raw as Record<string, unknown>
+  }
+  if (typeof raw === 'string') {
+    try {
+      const parsed = JSON.parse(raw)
+      if (parsed && typeof parsed === 'object' && !Array.isArray(parsed)) {
+        return parsed as Record<string, unknown>
+      }
+    } catch {
+      return {}
+    }
+  }
+  return {}
+}
+
+function extractMonitoringStats(rawAnswers: Record<string, unknown>): Partial<MonitoringStats> | null {
+  const monitoring = rawAnswers.__monitoring
+  if (!monitoring || typeof monitoring !== 'object' || Array.isArray(monitoring)) {
+    return null
+  }
+  return monitoring as Partial<MonitoringStats>
+}
+
+function resolveRestoredQuestionIndex(params: {
+  questions: Array<{ id?: string | number | null }>
+  rawSessionAnswers: unknown
+  fallbackIndex: number
+}): number {
+  const totalQuestions = params.questions.length
+  if (totalQuestions <= 0) return 0
+
+  const persistedAnswers = parseExamSessionAnswers(params.rawSessionAnswers)
+  const persistedMonitoring = extractMonitoringStats(persistedAnswers)
+  const preferredQuestionId = String(persistedMonitoring?.currentQuestionId || '').trim()
+  if (preferredQuestionId) {
+    const matchedIndex = params.questions.findIndex(
+      (question) => String(question?.id || '').trim() === preferredQuestionId,
+    )
+    if (matchedIndex >= 0) return matchedIndex
+  }
+
+  const persistedIndex = Number(persistedMonitoring?.currentQuestionIndex)
+  if (Number.isFinite(persistedIndex) && persistedIndex >= 0) {
+    return Math.min(Math.max(0, persistedIndex), totalQuestions - 1)
+  }
+
+  if (Number.isFinite(params.fallbackIndex) && params.fallbackIndex >= 0) {
+    return Math.min(Math.max(0, params.fallbackIndex), totalQuestions - 1)
+  }
+
+  return 0
+}
+
 function resolveExamTakeBaseRoute(pathname: string): '/student/exams' | '/candidate/exams' | '/public/exams' {
   if (pathname.startsWith('/candidate')) return '/candidate/exams'
   if (pathname.startsWith('/public')) return '/public/exams'
@@ -870,6 +925,7 @@ export default function StudentExamTakePage() {
 
         // Handle wrapper structure from backend (session + packet)
         const packet = examData.packet || examData
+        let restoredQuestionIndex = currentQuestionIndex
         const existingSessionAnswers = (examData.session?.answers && typeof examData.session.answers === 'object')
           ? { ...(examData.session.answers as Record<string, unknown>) }
           : null;
@@ -920,6 +976,9 @@ export default function StudentExamTakePage() {
             }
             monitoringStatsRef.current = mergedStats
             setViolations(mergedStats.totalViolations)
+            restoredQuestionIndex = Number.isFinite(mergedStats.currentQuestionIndex)
+              ? mergedStats.currentQuestionIndex
+              : restoredQuestionIndex
           }
           delete existingSessionAnswers.__monitoring;
           setAnswers(existingSessionAnswers as StudentExamAnswers);
@@ -969,6 +1028,12 @@ export default function StudentExamTakePage() {
           packet.questions = []
         }
 
+        restoredQuestionIndex = resolveRestoredQuestionIndex({
+          questions: Array.isArray(packet.questions) ? packet.questions : [],
+          rawSessionAnswers: examData.session?.answers,
+          fallbackIndex: restoredQuestionIndex,
+        })
+
         // Validate duration
         if (!packet.duration || packet.duration <= 0) {
           console.warn('Invalid duration, defaulting to 60 mins');
@@ -976,6 +1041,7 @@ export default function StudentExamTakePage() {
         }
 
         setExam(packet)
+        setCurrentQuestionIndex(restoredQuestionIndex)
         
         // Calculate remaining time based on session start time
         if (examData.session && examData.session.startTime) {
@@ -1847,7 +1913,7 @@ export default function StudentExamTakePage() {
           <div className="flex-1 min-w-0">
             <div className="bg-white rounded-xl shadow-sm border border-gray-200 p-8 min-h-[60vh]">
               <div className="flex flex-wrap items-center justify-between gap-3 mb-6">
-                <div className="flex flex-wrap items-center gap-2">
+              <div className="flex flex-wrap items-center gap-2">
                   <button
                     type="button"
                     onClick={handleRefreshExam}
@@ -1875,6 +1941,9 @@ export default function StudentExamTakePage() {
                   Soal No. {currentQuestionIndex + 1}
                 </span>
               </div>
+              <p className="-mt-2 mb-6 text-xs text-slate-500">
+                Gunakan tombol refresh bila guru mengubah soal. Refresh data ini tidak dihitung pelanggaran.
+              </p>
 
               {/* Media (Top - Default) */}
               {(!currentQuestion.question_media_position || currentQuestion.question_media_position === 'top') && mediaSection}
