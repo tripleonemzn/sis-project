@@ -1054,6 +1054,10 @@ const ServerAreaPage: React.FC = () => {
     const visiblePlatformItems = platformItems.filter((item) => item.count > 0);
     const userItems = onlineUsers.users || [];
     const examActivity = onlineUsers.examActivity;
+    const studentRealtimePresence =
+      roleItems.find((item) => String(item.role || '').trim().toUpperCase() === 'STUDENT')?.count || 0;
+    const androidRealtimePresence =
+      visiblePlatformItems.find((item) => String(item.platform || '').trim().toUpperCase() === 'ANDROID')?.count || 0;
 
     return (
       <div className="space-y-6">
@@ -1137,10 +1141,16 @@ const ServerAreaPage: React.FC = () => {
         <div className="bg-white rounded-xl border border-gray-200 p-4">
           <div className="flex items-center justify-between mb-3">
             <div>
-              <p className="text-xs font-semibold text-gray-500 tracking-wide uppercase">Breakdown Platform</p>
-              <p className="text-sm font-medium text-gray-900 mt-0.5">User unik aktif per platform</p>
+              <p className="text-xs font-semibold text-gray-500 tracking-wide uppercase">Breakdown Platform Realtime</p>
+              <p className="text-sm font-medium text-gray-900 mt-0.5">Hanya menghitung presence realtime, bukan peserta ujian aktif</p>
             </div>
           </div>
+
+          {examActivity.activeParticipants > 0 ? (
+            <div className="mb-3 rounded-xl border border-amber-200 bg-amber-50 px-4 py-3 text-xs text-amber-800">
+              Breakdown platform di bawah hanya membaca user yang membuka realtime global. Android realtime saat ini: <span className="font-semibold">{androidRealtimePresence.toLocaleString('id-ID')}</span>, sedangkan peserta ujian yang belum masuk presence saat ini: <span className="font-semibold">{examActivity.participantsOutsideRealtime.toLocaleString('id-ID')}</span>.
+            </div>
+          ) : null}
 
           {visiblePlatformItems.length > 0 ? (
             <div className="grid grid-cols-1 md:grid-cols-3 gap-3">
@@ -1155,7 +1165,7 @@ const ServerAreaPage: React.FC = () => {
                   </div>
                   <div className="text-right">
                     <p className="text-2xl font-bold text-blue-700">{item.count.toLocaleString('id-ID')}</p>
-                    <p className="text-[11px] text-gray-500">user</p>
+                    <p className="text-[11px] text-gray-500">presence</p>
                   </div>
                 </div>
               ))}
@@ -1170,10 +1180,16 @@ const ServerAreaPage: React.FC = () => {
         <div className="bg-white rounded-xl border border-gray-200 p-4">
           <div className="flex items-center justify-between mb-3">
             <div>
-              <p className="text-xs font-semibold text-gray-500 tracking-wide uppercase">Sebaran Role</p>
-              <p className="text-sm font-medium text-gray-900 mt-0.5">User aktif berdasarkan role</p>
+              <p className="text-xs font-semibold text-gray-500 tracking-wide uppercase">Sebaran Role Realtime</p>
+              <p className="text-sm font-medium text-gray-900 mt-0.5">Bukan jumlah peserta ujian aktif per role</p>
             </div>
           </div>
+
+          {examActivity.activeParticipants > 0 ? (
+            <div className="mb-3 rounded-xl border border-sky-200 bg-sky-50 px-4 py-3 text-xs text-sky-800">
+              Saat ujian berlangsung, role `Siswa` di bawah hanya menunjukkan presence realtime. Siswa realtime saat ini: <span className="font-semibold">{studentRealtimePresence.toLocaleString('id-ID')}</span>, sedangkan peserta aktif yang belum masuk presence: <span className="font-semibold">{examActivity.participantsOutsideRealtime.toLocaleString('id-ID')}</span>.
+            </div>
+          ) : null}
 
           {roleItems.length > 0 ? (
             <div className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-3 gap-3">
@@ -1188,7 +1204,7 @@ const ServerAreaPage: React.FC = () => {
                   </div>
                   <div className="text-right">
                     <p className="text-2xl font-bold text-blue-700">{item.count.toLocaleString('id-ID')}</p>
-                    <p className="text-[11px] text-gray-500">online</p>
+                    <p className="text-[11px] text-gray-500">presence</p>
                   </div>
                 </div>
               ))}

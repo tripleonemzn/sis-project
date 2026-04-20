@@ -738,11 +738,22 @@ async function resolveSlotScopeForSchedule(params: {
         ),
     );
     const scopedCandidates = scheduleScopedCandidates.length > 0 ? scheduleScopedCandidates : candidateSlots;
-    const preferredProctorCandidates =
+    const preferredScopedCandidates =
         Number.isFinite(Number(params.preferredProctorId)) && Number(params.preferredProctorId) > 0
             ? scopedCandidates.filter((slot) => Number(slot.proctorId) === Number(params.preferredProctorId))
             : [];
-    const prioritizedCandidates = preferredProctorCandidates.length > 0 ? preferredProctorCandidates : scopedCandidates;
+    const preferredGlobalCandidates =
+        preferredScopedCandidates.length === 0 &&
+        Number.isFinite(Number(params.preferredProctorId)) &&
+        Number(params.preferredProctorId) > 0
+            ? candidateSlots.filter((slot) => Number(slot.proctorId) === Number(params.preferredProctorId))
+            : [];
+    const prioritizedCandidates =
+        preferredScopedCandidates.length > 0
+            ? preferredScopedCandidates
+            : preferredGlobalCandidates.length > 0
+                ? preferredGlobalCandidates
+                : scopedCandidates;
 
     return prioritizedCandidates
         .slice()
@@ -1339,14 +1350,17 @@ function normalizeProctorSessionStatus(
     return 'NOT_STARTED';
 }
 
-async function resolveRealtimeProctorAttendanceRoster(scheduleId: number): Promise<{
+async function resolveRealtimeProctorAttendanceRoster(
+    scheduleId: number,
+    preferredProctorId?: number | null,
+): Promise<{
     classNames: string[];
     expectedParticipants: number;
     presentParticipants: number;
     absentParticipants: number;
     participants: ProctorAttendanceParticipantSnapshot[];
 }> {
-    const scope = await resolveRoomScopeSchedules(scheduleId);
+    const scope = await resolveRoomScopeSchedules(scheduleId, preferredProctorId ?? null);
     if (!scope.baseSchedule || scope.monitoredScheduleIds.length === 0) {
         return {
             classNames: [],
@@ -1595,13 +1609,16 @@ async function resolveRealtimeProctorAttendanceRoster(scheduleId: number): Promi
     };
 }
 
-async function resolveRealtimeProctorReportMetrics(scheduleId: number): Promise<{
+async function resolveRealtimeProctorReportMetrics(
+    scheduleId: number,
+    preferredProctorId?: number | null,
+): Promise<{
     classNames: string[];
     expectedParticipants: number;
     presentParticipants: number;
     absentParticipants: number;
 }> {
-    const roster = await resolveRealtimeProctorAttendanceRoster(scheduleId);
+    const roster = await resolveRealtimeProctorAttendanceRoster(scheduleId, preferredProctorId ?? null);
     return {
         classNames: roster.classNames,
         expectedParticipants: roster.expectedParticipants,
@@ -1879,16 +1896,24 @@ async function hydrateProctorReportArtifacts(
             ? (params.report.documentSnapshot as unknown as ProctorReportDocumentSnapshot)
             : null;
 
+    const resolvedScope = await resolveRoomScopeSchedules(
+        params.report.scheduleId,
+        params.report.proctor?.id || params.report.proctorId,
+    );
+    const resolvedBaseSchedule = resolvedScope.baseSchedule || params.report.schedule;
+
     let resolvedClassNames =
         Array.isArray(params.classNames) && params.classNames.length > 0
             ? params.classNames
-            : existingSnapshot?.schedule?.classNames || [];
+            : resolvedScope.monitoredClassNames.length > 0
+                ? resolvedScope.monitoredClassNames
+                : existingSnapshot?.schedule?.classNames || [];
     if (resolvedClassNames.length === 0) {
-        const scope = await resolveRoomScopeSchedules(params.report.scheduleId);
-        resolvedClassNames =
-            scope.monitoredClassNames.length > 0
-                ? scope.monitoredClassNames
-                : (params.report.schedule.class?.name ? [params.report.schedule.class.name] : []);
+        resolvedClassNames = resolvedBaseSchedule.class?.name
+            ? [resolvedBaseSchedule.class.name]
+            : params.report.schedule.class?.name
+                ? [params.report.schedule.class.name]
+                : [];
     }
 
     const expectedParticipants =
@@ -1925,11 +1950,11 @@ async function hydrateProctorReportArtifacts(
     const examLabel = await resolveExamProgramLabel(params.report.schedule.academicYearId, params.report.schedule.examType);
     const documentHeader = await resolveStandardSchoolDocumentHeaderSnapshot();
     const executionOrder = await resolveScheduleExecutionOrder({
-        academicYearId: params.report.schedule.academicYearId,
-        examType: params.report.schedule.examType,
-        executionDate: params.report.schedule.startTime,
-        startTime: params.report.schedule.startTime,
-        endTime: params.report.schedule.endTime,
+        academicYearId: resolvedBaseSchedule.academicYearId,
+        examType: resolvedBaseSchedule.examType,
+        executionDate: resolvedBaseSchedule.startTime,
+        startTime: resolvedBaseSchedule.startTime,
+        endTime: resolvedBaseSchedule.endTime,
     });
     const subjectName =
         normalizeOptionalText(params.report.schedule.packet?.subject?.name) ||
@@ -1943,12 +1968,12 @@ async function hydrateProctorReportArtifacts(
         academicYearName,
         examLabel,
         subjectName,
-        roomName: params.report.schedule.room || 'Belum ditentukan',
+        roomName: resolvedBaseSchedule.room || 'Belum ditentukan',
         executionOrder,
-        sessionLabel: params.report.schedule.sessionLabel,
+        sessionLabel: resolvedBaseSchedule.sessionLabel,
         classNames: resolvedClassNames,
-        startTime: params.report.schedule.startTime,
-        endTime: params.report.schedule.endTime,
+        startTime: resolvedBaseSchedule.startTime,
+        endTime: resolvedBaseSchedule.endTime,
         expectedParticipants,
         absentParticipants,
         presentParticipants,
@@ -1981,6 +2006,14 @@ async function hydrateProctorReportArtifacts(
         documentNumber,
         verificationToken,
         snapshot: nextSnapshot,
+        resolvedSchedule: {
+            roomName: resolvedBaseSchedule.room || null,
+            startTime: resolvedBaseSchedule.startTime,
+            endTime: resolvedBaseSchedule.endTime,
+            sessionLabel: resolvedBaseSchedule.sessionLabel || null,
+            classNames: resolvedClassNames,
+            executionOrder,
+        },
     };
 }
 
@@ -2093,7 +2126,7 @@ export const getProctorSchedules = asyncHandler(async (req: Request, res: Respon
             if (!roomScopeRosterCache.has(scopeKey)) {
                 roomScopeRosterCache.set(
                     scopeKey,
-                    resolveRealtimeProctorAttendanceRoster(schedule.id).then((roster) => ({
+                    resolveRealtimeProctorAttendanceRoster(schedule.id, schedule.proctorId ?? null).then((roster) => ({
                         participantCount: Number(roster.expectedParticipants || 0),
                         classNames: Array.isArray(roster.classNames) ? roster.classNames : [],
                     })),
@@ -3035,7 +3068,7 @@ export const getProctoringReportDocument = asyncHandler(async (req: Request, res
         throw new ApiError(403, 'Anda tidak memiliki akses ke dokumen berita acara ini.');
     }
 
-    const realtimeMetrics = await resolveRealtimeProctorReportMetrics(report.scheduleId);
+    const realtimeMetrics = await resolveRealtimeProctorReportMetrics(report.scheduleId, report.proctorId);
     const artifactBundle = await hydrateProctorReportArtifacts(req, {
         report,
         classNames: realtimeMetrics.classNames,
@@ -3145,7 +3178,7 @@ export const getProctoringAttendanceDocument = asyncHandler(async (req: Request,
         throw new ApiError(403, 'Anda tidak memiliki akses ke daftar hadir ini.');
     }
 
-    const realtimeRoster = await resolveRealtimeProctorAttendanceRoster(report.scheduleId);
+    const realtimeRoster = await resolveRealtimeProctorAttendanceRoster(report.scheduleId, report.proctorId);
     const artifactBundle = await hydrateProctorReportArtifacts(req, {
         report,
         classNames: realtimeRoster.classNames,
@@ -3166,12 +3199,25 @@ export const getProctoringAttendanceDocument = asyncHandler(async (req: Request,
         academicYearName: artifactBundle.snapshot.academicYearName,
         examLabel: artifactBundle.snapshot.examLabel,
         subjectName: artifactBundle.snapshot.schedule.subjectName,
-        roomName: report.schedule.room || 'Belum ditentukan',
-        executionOrder: artifactBundle.snapshot.schedule.executionOrder,
-        sessionLabel: report.schedule.sessionLabel,
-        classNames: realtimeRoster.classNames,
-        startTime: report.schedule.startTime,
-        endTime: report.schedule.endTime,
+        roomName:
+            artifactBundle.resolvedSchedule.roomName ||
+            artifactBundle.snapshot.schedule.roomName ||
+            report.schedule.room ||
+            'Belum ditentukan',
+        executionOrder:
+            Number.isFinite(Number(artifactBundle.resolvedSchedule.executionOrder)) &&
+            Number(artifactBundle.resolvedSchedule.executionOrder) > 0
+                ? Number(artifactBundle.resolvedSchedule.executionOrder)
+                : artifactBundle.snapshot.schedule.executionOrder,
+        sessionLabel: artifactBundle.resolvedSchedule.sessionLabel || artifactBundle.snapshot.schedule.sessionLabel || report.schedule.sessionLabel,
+        classNames:
+            realtimeRoster.classNames.length > 0
+                ? realtimeRoster.classNames
+                : artifactBundle.resolvedSchedule.classNames.length > 0
+                    ? artifactBundle.resolvedSchedule.classNames
+                    : artifactBundle.snapshot.schedule.classNames,
+        startTime: artifactBundle.resolvedSchedule.startTime || report.schedule.startTime,
+        endTime: artifactBundle.resolvedSchedule.endTime || report.schedule.endTime,
         expectedParticipants: realtimeRoster.expectedParticipants,
         presentParticipants: realtimeRoster.presentParticipants,
         absentParticipants: realtimeRoster.absentParticipants,
@@ -3270,7 +3316,7 @@ export const verifyPublicProctorReport = asyncHandler(async (req: Request, res: 
         throw new ApiError(404, 'Dokumen berita acara tidak ditemukan.');
     }
 
-    const realtimeMetrics = await resolveRealtimeProctorReportMetrics(report.scheduleId);
+    const realtimeMetrics = await resolveRealtimeProctorReportMetrics(report.scheduleId, report.proctorId);
     const artifactBundle = await hydrateProctorReportArtifacts(req, {
         report,
         classNames: realtimeMetrics.classNames,
@@ -3576,6 +3622,11 @@ export const getProctoringReports = asyncHandler(async (req: Request, res: Respo
                 const latestReport =
                     reportCandidates.find((report) => {
                         if (!(slot.scheduleIds || []).includes(Number(report.scheduleId))) return false;
+                        const slotProctorId = Number(slot.proctorId || 0);
+                        const reportProctorId = Number(report.proctorId || 0);
+                        if (slotProctorId > 0 && reportProctorId > 0) {
+                            return slotProctorId === reportProctorId;
+                        }
                         const snapshot = report.documentSnapshot && typeof report.documentSnapshot === 'object' && !Array.isArray(report.documentSnapshot)
                             ? (report.documentSnapshot as Record<string, any>)
                             : null;
@@ -3583,9 +3634,6 @@ export const getProctoringReports = asyncHandler(async (req: Request, res: Respo
                         const slotRoom = String(slot.roomName || '').trim().toLowerCase();
                         if (snapshotRoom && slotRoom && snapshotRoom === slotRoom) {
                             return true;
-                        }
-                        if (Number.isFinite(Number(slot.proctorId)) && Number(slot.proctorId) > 0) {
-                            return Number(report.proctorId) === Number(slot.proctorId);
                         }
                         return true;
                     }) || null;

@@ -1070,6 +1070,10 @@ export default function AdminServerAreaScreen() {
     const platformItems = (onlineUsers?.byPlatform || []).filter((item) => item.count > 0);
     const userItems = onlineUsers?.users || [];
     const examActivity = onlineUsers.examActivity;
+    const studentRealtimePresence =
+      roleItems.find((item) => String(item.role || '').trim().toUpperCase() === 'STUDENT')?.count || 0;
+    const androidRealtimePresence =
+      platformItems.find((item) => String(item.platform || '').trim().toUpperCase() === 'ANDROID')?.count || 0;
 
     return (
       <View style={{ gap: 12 }}>
@@ -1187,8 +1191,28 @@ export default function AdminServerAreaScreen() {
           }}
         >
           <Text style={{ fontSize: scaleWithAppTextScale(13), fontWeight: '600', color: '#111827', marginBottom: 8 }}>
-            Breakdown Platform
+            Breakdown Platform Realtime
           </Text>
+          <Text style={{ fontSize: scaleWithAppTextScale(12), color: '#6b7280', marginBottom: 8 }}>
+            Hanya menghitung presence realtime, bukan peserta ujian aktif.
+          </Text>
+          {examActivity.activeParticipants > 0 ? (
+            <View
+              style={{
+                borderRadius: 10,
+                borderWidth: 1,
+                borderColor: '#fde68a',
+                backgroundColor: '#fffbeb',
+                paddingHorizontal: 12,
+                paddingVertical: 10,
+                marginBottom: 8,
+              }}
+            >
+              <Text style={{ fontSize: scaleWithAppTextScale(12), color: '#92400e', lineHeight: scaleLineHeightWithAppTextScale(18) }}>
+                Breakdown platform di bawah hanya membaca user yang membuka realtime global. Android realtime saat ini: {String(androidRealtimePresence || 0)}, sedangkan peserta ujian yang belum masuk presence saat ini: {String(examActivity.participantsOutsideRealtime || 0)}.
+              </Text>
+            </View>
+          ) : null}
           {platformItems.length > 0 ? (
             <View style={{ gap: 8 }}>
               {platformItems.map((item) => (
@@ -1225,6 +1249,7 @@ export default function AdminServerAreaScreen() {
                     }}
                   >
                     <Text style={{ fontSize: scaleWithAppTextScale(13), fontWeight: '700', color: '#2563eb' }}>{item.count}</Text>
+                    <Text style={{ fontSize: scaleWithAppTextScale(10), color: '#64748b', marginTop: 2 }}>presence</Text>
                   </View>
                 </View>
               ))}
@@ -1244,8 +1269,28 @@ export default function AdminServerAreaScreen() {
           }}
         >
           <Text style={{ fontSize: scaleWithAppTextScale(13), fontWeight: '600', color: '#111827', marginBottom: 8 }}>
-            Sebaran Role
+            Sebaran Role Realtime
           </Text>
+          <Text style={{ fontSize: scaleWithAppTextScale(12), color: '#6b7280', marginBottom: 8 }}>
+            Bukan jumlah peserta ujian aktif per role.
+          </Text>
+          {examActivity.activeParticipants > 0 ? (
+            <View
+              style={{
+                borderRadius: 10,
+                borderWidth: 1,
+                borderColor: '#bae6fd',
+                backgroundColor: '#f0f9ff',
+                paddingHorizontal: 12,
+                paddingVertical: 10,
+                marginBottom: 8,
+              }}
+            >
+              <Text style={{ fontSize: scaleWithAppTextScale(12), color: '#075985', lineHeight: scaleLineHeightWithAppTextScale(18) }}>
+                Saat ujian berlangsung, role `Siswa` di bawah hanya menunjukkan presence realtime. Siswa realtime saat ini: {String(studentRealtimePresence || 0)}, sedangkan peserta aktif yang belum masuk presence: {String(examActivity.participantsOutsideRealtime || 0)}.
+              </Text>
+            </View>
+          ) : null}
           {roleItems.length > 0 ? (
             <View style={{ gap: 8 }}>
               {roleItems.map((item) => (
@@ -1282,6 +1327,7 @@ export default function AdminServerAreaScreen() {
                     }}
                   >
                     <Text style={{ fontSize: scaleWithAppTextScale(13), fontWeight: '700', color: '#2563eb' }}>{item.count}</Text>
+                    <Text style={{ fontSize: scaleWithAppTextScale(10), color: '#64748b', marginTop: 2 }}>presence</Text>
                   </View>
                 </View>
               ))}
