@@ -59,6 +59,20 @@ export type ProctorStudentRow = {
   };
 };
 
+export type ProctorReportSummary = {
+  id: number;
+  proctorId: number;
+  signedAt?: string;
+  updatedAt?: string;
+  notes?: string | null;
+  incident?: string | null;
+  documentNumber?: string | null;
+  proctor?: {
+    id: number;
+    name: string;
+  } | null;
+};
+
 export type ProctorScheduleDetail = {
   schedule: {
     id: number;
@@ -90,19 +104,15 @@ export type ProctorScheduleDetail = {
       id: number;
       name: string;
     } | null;
-    proctoringReports?: Array<{
-      id: number;
-      signedAt?: string;
-      updatedAt?: string;
-      notes?: string | null;
-      incident?: string | null;
-      documentNumber?: string | null;
-    }>;
+    proctoringReports?: ProctorReportSummary[];
   };
   students: ProctorStudentRow[];
   isProctor?: boolean;
   isAuthor?: boolean;
   isSubjectTeacher?: boolean;
+  canSubmitReport?: boolean;
+  currentUserProctoringReport?: ProctorReportSummary | null;
+  latestProctoringReport?: ProctorReportSummary | null;
 };
 
 export type ProctorReportPayload = {

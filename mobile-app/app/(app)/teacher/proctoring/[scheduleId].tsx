@@ -172,16 +172,12 @@ export default function TeacherProctoringDetailScreen() {
   };
 
   const students = detailQuery.data?.students || [];
-  const latestReport = useMemo(() => {
-    const reports = detailQuery.data?.schedule?.proctoringReports || [];
-    if (!Array.isArray(reports) || reports.length === 0) return null;
-    return [...reports].sort((a, b) => {
-      const aTime = new Date(String(a.updatedAt || a.signedAt || 0)).getTime();
-      const bTime = new Date(String(b.updatedAt || b.signedAt || 0)).getTime();
-      return bTime - aTime;
-    })[0] || null;
-  }, [detailQuery.data?.schedule?.proctoringReports]);
-  const reportSubmitted = Boolean(latestReport?.id);
+  const currentUserReport = detailQuery.data?.currentUserProctoringReport || null;
+  const latestReport = detailQuery.data?.latestProctoringReport || null;
+  const reportSubmitted = Boolean(currentUserReport?.id);
+  const reportSubmittedByAnotherUser = Boolean(latestReport?.id && !reportSubmitted);
+  const latestReporterName = String(latestReport?.proctor?.name || '').trim() || 'pengawas lain';
+  const canSubmitReport = Boolean(detailQuery.data?.canSubmitReport);
   const orderedClassNames = useMemo(() => {
     const sourceClassNames =
       detailQuery.data?.schedule?.classNames?.length
@@ -211,9 +207,9 @@ export default function TeacherProctoringDetailScreen() {
   const studentsWithViolations = orderedStudents.filter((item) => Number(item.monitoring?.totalViolations || 0) > 0).length;
 
   useEffect(() => {
-    if (!latestReport?.id) return;
-    setNotes(mergeProctorReportNotes(latestReport.notes, latestReport.incident));
-  }, [latestReport?.id, latestReport?.notes, latestReport?.incident]);
+    if (!reportSubmitted) return;
+    setNotes(mergeProctorReportNotes(currentUserReport?.notes, currentUserReport?.incident));
+  }, [currentUserReport?.id, currentUserReport?.incident, currentUserReport?.notes, reportSubmitted]);
 
   const previewExamHeading = normalizeExamHeading(
     detailQuery.data?.schedule?.examLabel ||
@@ -369,8 +365,8 @@ export default function TeacherProctoringDetailScreen() {
           onPress={() => setIsReportModalOpen(true)}
           style={{
             borderWidth: 1,
-            borderColor: reportSubmitted ? '#a7f3d0' : '#bfdbfe',
-            backgroundColor: reportSubmitted ? '#ecfdf5' : '#eff6ff',
+            borderColor: reportSubmitted ? '#a7f3d0' : reportSubmittedByAnotherUser ? '#fcd34d' : '#bfdbfe',
+            backgroundColor: reportSubmitted ? '#ecfdf5' : reportSubmittedByAnotherUser ? '#fffbeb' : '#eff6ff',
             borderRadius: 10,
             paddingHorizontal: 12,
             paddingVertical: 10,
@@ -379,16 +375,20 @@ export default function TeacherProctoringDetailScreen() {
             gap: 8,
           }}
         >
-          <Feather name="file-text" size={16} color={reportSubmitted ? '#047857' : '#1d4ed8'} />
+          <Feather
+            name="file-text"
+            size={16}
+            color={reportSubmitted ? '#047857' : reportSubmittedByAnotherUser ? '#92400e' : '#1d4ed8'}
+          />
           <Text
             style={{
-              color: reportSubmitted ? '#047857' : '#1d4ed8',
+              color: reportSubmitted ? '#047857' : reportSubmittedByAnotherUser ? '#92400e' : '#1d4ed8',
               fontWeight: '700',
               fontSize: scaleFont(12),
               lineHeight: scaleLineHeight(18),
             }}
           >
-            {reportSubmitted ? 'Lihat Berita Acara' : 'Buka Berita Acara'}
+            {reportSubmitted ? 'Lihat Berita Acara Saya' : reportSubmittedByAnotherUser ? 'Tinjau Berita Acara' : 'Buka Berita Acara'}
           </Text>
         </Pressable>
         <Pressable
@@ -836,8 +836,10 @@ export default function TeacherProctoringDetailScreen() {
                 </Text>
                 <Text style={{ color: '#64748b', fontSize: scaleFont(12), marginTop: 4, lineHeight: scaleLineHeight(18) }}>
                   {reportSubmitted
-                    ? 'Berita acara ini sudah dikirim ke Kurikulum dan tampil sebagai arsip pengawas.'
-                    : 'Tinjau isi dokumen resmi sebelum dikirim ke Kurikulum.'}
+                    ? 'Berita acara akun ini sudah dikirim ke Kurikulum dan tampil sebagai arsip pengawas.'
+                    : reportSubmittedByAnotherUser
+                      ? `Sudah ada berita acara yang dikirim oleh ${latestReporterName}. Akun ini belum mengirim berita acara.`
+                      : 'Tinjau isi dokumen resmi sebelum dikirim ke Kurikulum.'}
                 </Text>
               </View>
               <Pressable
@@ -865,15 +867,21 @@ export default function TeacherProctoringDetailScreen() {
                 style={{
                   alignSelf: 'flex-start',
                   borderWidth: 1,
-                  borderColor: reportSubmitted ? '#a7f3d0' : '#cbd5e1',
+                  borderColor: reportSubmitted ? '#a7f3d0' : reportSubmittedByAnotherUser ? '#fcd34d' : '#cbd5e1',
                   borderRadius: 999,
                   paddingHorizontal: 10,
                   paddingVertical: 4,
-                  backgroundColor: reportSubmitted ? '#ecfdf5' : '#fff',
+                  backgroundColor: reportSubmitted ? '#ecfdf5' : reportSubmittedByAnotherUser ? '#fffbeb' : '#fff',
                 }}
               >
-                <Text style={{ color: reportSubmitted ? '#047857' : '#475569', fontSize: scaleFont(11), fontWeight: '700' }}>
-                  {reportSubmitted ? 'ARSIP' : 'DRAFT'}
+                <Text
+                  style={{
+                    color: reportSubmitted ? '#047857' : reportSubmittedByAnotherUser ? '#92400e' : '#475569',
+                    fontSize: scaleFont(11),
+                    fontWeight: '700',
+                  }}
+                >
+                  {reportSubmitted ? 'ARSIP SAYA' : reportSubmittedByAnotherUser ? 'ADA ARSIP' : 'DRAFT'}
                 </Text>
               </View>
 
@@ -887,9 +895,24 @@ export default function TeacherProctoringDetailScreen() {
                     padding: 10,
                   }}
                 >
-                  <Text style={{ color: '#047857', fontWeight: '700' }}>Berita acara sudah terkirim ke Kurikulum.</Text>
+                  <Text style={{ color: '#047857', fontWeight: '700' }}>Berita acara akun ini sudah terkirim ke Kurikulum.</Text>
                   <Text style={{ color: '#047857', fontSize: scaleFont(12), lineHeight: scaleLineHeight(18), marginTop: 4 }}>
                     Dokumen resmi diverifikasi dan dicetak dari sisi Wakasek Kurikulum / sekretaris.
+                  </Text>
+                </View>
+              ) : reportSubmittedByAnotherUser ? (
+                <View
+                  style={{
+                    borderWidth: 1,
+                    borderColor: '#fcd34d',
+                    backgroundColor: '#fffbeb',
+                    borderRadius: 10,
+                    padding: 10,
+                  }}
+                >
+                  <Text style={{ color: '#92400e', fontWeight: '700' }}>Sudah ada berita acara lain pada jadwal ini.</Text>
+                  <Text style={{ color: '#92400e', fontSize: scaleFont(12), lineHeight: scaleLineHeight(18), marginTop: 4 }}>
+                    Dokumen terakhir tercatat dikirim oleh {latestReporterName}. Status akun ini tetap draft sampai benar-benar mengirim berita acara sendiri.
                   </Text>
                 </View>
               ) : null}
@@ -934,25 +957,30 @@ export default function TeacherProctoringDetailScreen() {
                   placeholder="Catatan Pengawas selama Ujian berlangsung"
                   style={{
                     borderWidth: 1,
-                    borderColor: reportSubmitted ? '#e2e8f0' : '#cbd5e1',
+                    borderColor: reportSubmitted || !canSubmitReport ? '#e2e8f0' : '#cbd5e1',
                     borderRadius: 14,
                     paddingHorizontal: 14,
                     paddingVertical: 14,
                     minHeight: 128,
                     textAlignVertical: 'top',
                     marginTop: 8,
-                    color: reportSubmitted ? '#64748b' : '#0f172a',
-                    backgroundColor: reportSubmitted ? '#f8fafc' : '#fff',
+                    color: reportSubmitted || !canSubmitReport ? '#64748b' : '#0f172a',
+                    backgroundColor: reportSubmitted || !canSubmitReport ? '#f8fafc' : '#fff',
                     lineHeight: scaleLineHeight(20),
                     fontSize: scaleFont(12),
                   }}
                   placeholderTextColor="#94a3b8"
                   multiline
-                  editable={!reportSubmitted && isScheduleStarted}
+                  editable={!reportSubmitted && isScheduleStarted && canSubmitReport}
                 />
                 {!reportSubmitted && !isScheduleStarted ? (
                   <Text style={{ color: '#b45309', fontSize: scaleFont(12), lineHeight: scaleLineHeight(18), marginTop: 8 }}>
                     Berita acara baru bisa diisi setelah waktu ujian mulai sesuai jadwal pelaksanaan.
+                  </Text>
+                ) : null}
+                {!reportSubmitted && !canSubmitReport ? (
+                  <Text style={{ color: '#64748b', fontSize: scaleFont(12), lineHeight: scaleLineHeight(18), marginTop: 8 }}>
+                    Akun ini hanya dapat memantau. Pengiriman berita acara dibatasi untuk pengawas ruang atau admin.
                   </Text>
                 ) : null}
                 {reportSubmitted ? (
@@ -967,6 +995,10 @@ export default function TeacherProctoringDetailScreen() {
 
               <Pressable
                 onPress={() => {
+                  if (!canSubmitReport) {
+                    Alert.alert('Akses Terbatas', 'Hanya pengawas ruang atau admin yang dapat mengirim berita acara dari akun ini.');
+                    return;
+                  }
                   if (!isScheduleStarted) {
                     Alert.alert('Belum Pelaksanaan Ujian', 'Berita acara baru bisa dikirim setelah ujian dimulai sesuai jadwal pelaksanaan.');
                     return;
@@ -982,19 +1014,21 @@ export default function TeacherProctoringDetailScreen() {
                   ]);
                 }}
                 style={{
-                  backgroundColor: reportSubmitted ? '#059669' : !isScheduleStarted ? '#f59e0b' : BRAND_COLORS.blue,
+                  backgroundColor: reportSubmitted ? '#059669' : !canSubmitReport ? '#64748b' : !isScheduleStarted ? '#f59e0b' : BRAND_COLORS.blue,
                   borderRadius: 10,
                   paddingVertical: 12,
                   alignItems: 'center',
-                  opacity: submitMutation.isPending || reportSubmitted ? 0.6 : 1,
+                  opacity: submitMutation.isPending || reportSubmitted || !canSubmitReport ? 0.6 : 1,
                 }}
-                disabled={submitMutation.isPending || reportSubmitted}
+                disabled={submitMutation.isPending || reportSubmitted || !canSubmitReport}
               >
                 <Text style={{ color: '#fff', fontWeight: '700' }}>
                   {submitMutation.isPending
                     ? 'Menyimpan...'
                     : reportSubmitted
-                      ? 'Terkirim ke Kurikulum'
+                      ? 'Terkirim oleh Akun Ini'
+                      : !canSubmitReport
+                        ? 'Khusus Pengawas / Admin'
                       : !isScheduleStarted
                         ? 'Menunggu Waktu Ujian'
                         : 'Kirim ke Kurikulum'}

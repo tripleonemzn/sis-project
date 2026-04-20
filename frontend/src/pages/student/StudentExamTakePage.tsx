@@ -65,6 +65,17 @@ type BrowserNetworkInformation = {
   removeEventListener?: (type: 'change', listener: () => void) => void
 }
 
+type WakeLockSentinelLike = {
+  release: () => Promise<void> | void
+  addEventListener?: (type: 'release', listener: () => void) => void
+}
+
+type WakeLockNavigator = Navigator & {
+  wakeLock?: {
+    request?: (type: 'screen') => Promise<WakeLockSentinelLike>
+  }
+}
+
 type NetworkQuality = 'stabil' | 'sedang' | 'lambat' | 'offline'
 
 type NetworkStatusBadge = {
@@ -357,6 +368,7 @@ export default function StudentExamTakePage() {
   const lastWindowBlurAtRef = useRef(0)
   const blurViolationTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null)
   const focusMonitorIntervalRef = useRef<ReturnType<typeof setInterval> | null>(null)
+  const wakeLockRef = useRef<WakeLockSentinelLike | null>(null)
   const lastFocusLossObservedRef = useRef(false)
   const translationWarningShownRef = useRef(false)
   
@@ -378,6 +390,34 @@ export default function StudentExamTakePage() {
   useEffect(() => {
     answersRef.current = answers
   }, [answers])
+
+  const releaseWakeLock = useCallback(async () => {
+    const wakeLock = wakeLockRef.current
+    wakeLockRef.current = null
+    if (!wakeLock) return
+    try {
+      await wakeLock.release()
+    } catch {
+      // Ignore best-effort release failures; browser may already release it automatically.
+    }
+  }, [])
+
+  const requestWakeLock = useCallback(async () => {
+    if (typeof document === 'undefined' || document.visibilityState !== 'visible') return
+    const wakeLockNavigator = navigator as WakeLockNavigator
+    if (!wakeLockNavigator.wakeLock?.request || wakeLockRef.current) return
+    try {
+      const wakeLock = await wakeLockNavigator.wakeLock.request('screen')
+      wakeLockRef.current = wakeLock
+      wakeLock.addEventListener?.('release', () => {
+        if (wakeLockRef.current === wakeLock) {
+          wakeLockRef.current = null
+        }
+      })
+    } catch {
+      // Ignore wake-lock acquisition failures; exam flow must continue normally.
+    }
+  }, [])
 
   // Fetch exam data once per exam+student key
   useEffect(() => {
@@ -486,6 +526,37 @@ export default function StudentExamTakePage() {
       document.removeEventListener('mozfullscreenchange', checkFullscreen)
     }
   }, [])
+
+  useEffect(() => {
+    const shouldKeepScreenAwake = Boolean(
+      exam &&
+      exam.questions &&
+      exam.questions.length > 0 &&
+      examStartTime &&
+      !submitting,
+    )
+
+    if (!shouldKeepScreenAwake) {
+      void releaseWakeLock()
+      return
+    }
+
+    const syncWakeLock = () => {
+      if (document.visibilityState === 'visible') {
+        void requestWakeLock()
+        return
+      }
+      void releaseWakeLock()
+    }
+
+    syncWakeLock()
+    document.addEventListener('visibilitychange', syncWakeLock)
+
+    return () => {
+      document.removeEventListener('visibilitychange', syncWakeLock)
+      void releaseWakeLock()
+    }
+  }, [exam, examStartTime, releaseWakeLock, requestWakeLock, submitting])
 
   useEffect(() => {
     const updateNetworkStatus = () => {

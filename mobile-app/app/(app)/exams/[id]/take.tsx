@@ -1,5 +1,6 @@
 import { useMutation } from '@tanstack/react-query';
 import { Redirect, Stack, useLocalSearchParams, useRouter } from 'expo-router';
+import { activateKeepAwakeAsync, deactivateKeepAwake } from 'expo-keep-awake';
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import {
   Alert,
@@ -290,6 +291,7 @@ const FAST_PROGRESS_SYNC_DELAY_MS = 850;
 const APP_FOCUS_VIOLATION_THROTTLE_MS = 5000;
 const HEARTBEAT_PROGRESS_SYNC_MIN_MS = 17000;
 const HEARTBEAT_PROGRESS_SYNC_MAX_MS = 25000;
+const EXAM_KEEP_AWAKE_TAG = 'student-exam-take-screen';
 
 function getHeartbeatProgressSyncDelayMs() {
   const spread = HEARTBEAT_PROGRESS_SYNC_MAX_MS - HEARTBEAT_PROGRESS_SYNC_MIN_MS;
@@ -598,6 +600,35 @@ export default function StudentExamTakeScreen() {
       NativeStatusBar.setHidden(false, 'none');
     };
   }, [hasAcknowledgedStart, isFinished]);
+
+  useEffect(() => {
+    const shouldKeepScreenAwake = hasAcknowledgedStart && isExamReady && !isFinished;
+
+    if (!shouldKeepScreenAwake) {
+      try {
+        deactivateKeepAwake(EXAM_KEEP_AWAKE_TAG);
+      } catch {
+        // Ignore best-effort cleanup when keep-awake has not been acquired.
+      }
+      return;
+    }
+
+    let released = false;
+
+    void activateKeepAwakeAsync(EXAM_KEEP_AWAKE_TAG).catch(() => {
+      // Ignore keep-awake acquisition failures; exam flow must continue normally.
+    });
+
+    return () => {
+      if (released) return;
+      released = true;
+      try {
+        deactivateKeepAwake(EXAM_KEEP_AWAKE_TAG);
+      } catch {
+        // Ignore best-effort cleanup when keep-awake has already been released.
+      }
+    };
+  }, [hasAcknowledgedStart, isExamReady, isFinished]);
 
   const saveProgress = useCallback(async (
     isFinalSubmit: boolean,

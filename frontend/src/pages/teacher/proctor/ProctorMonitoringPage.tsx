@@ -1,4 +1,4 @@
-import React, { useState, useEffect, useMemo } from 'react';
+import React, { useState, useEffect } from 'react';
 import { useQuery } from '@tanstack/react-query';
 import { useParams, useNavigate } from 'react-router-dom';
 import { ArrowLeft, RefreshCw, Save, Clock, BookOpen, UserCircle2, MapPin, FileText, X } from 'lucide-react';
@@ -36,6 +36,20 @@ interface StudentData {
   };
 }
 
+interface ProctorReportSummary {
+  id: number;
+  proctorId: number;
+  signedAt?: string;
+  updatedAt?: string;
+  notes?: string | null;
+  incident?: string | null;
+  documentNumber?: string | null;
+  proctor?: {
+    id: number;
+    name: string;
+  } | null;
+}
+
 interface ExamSchedule {
   id: number;
   startTime: string;
@@ -61,18 +75,19 @@ interface ExamSchedule {
     subject: { name: string };
     duration: number;
   } | null;
-  proctoringReports?: Array<{
-    id: number;
-    signedAt?: string;
-    updatedAt?: string;
-    notes?: string | null;
-    incident?: string | null;
-    documentNumber?: string | null;
-  }>;
+  proctoringReports?: ProctorReportSummary[];
   class: {
     id: number;
     name: string;
   } | null;
+}
+
+interface ProctorDetailResponse {
+  schedule: ExamSchedule;
+  students: StudentData[];
+  canSubmitReport?: boolean;
+  currentUserProctoringReport?: ProctorReportSummary | null;
+  latestProctoringReport?: ProctorReportSummary | null;
 }
 
 function mergeProctorReportNotes(notes?: string | null, incident?: string | null) {
@@ -96,7 +111,6 @@ const ProctorMonitoringPage: React.FC = () => {
   // Berita Acara State
   const [notes, setNotes] = useState('');
   const [submittingReport, setSubmittingReport] = useState(false);
-  const [reportSubmitted, setReportSubmitted] = useState(false);
   const [isReportModalOpen, setIsReportModalOpen] = useState(false);
   const [isExamInfoModalOpen, setIsExamInfoModalOpen] = useState(false);
 
@@ -105,7 +119,7 @@ const ProctorMonitoringPage: React.FC = () => {
     enabled: Boolean(scheduleId),
     queryFn: async () => {
       const res = await api.get(`/proctoring/schedules/${scheduleId}`);
-      return res.data.data as { schedule: ExamSchedule; students: StudentData[] };
+      return res.data.data as ProctorDetailResponse;
     },
     staleTime: 10_000,
     refetchOnWindowFocus: false,
@@ -149,6 +163,10 @@ const ProctorMonitoringPage: React.FC = () => {
   };
 
   const handleSubmitReport = async () => {
+    if (!detailQuery.data?.canSubmitReport) {
+      toast.error('Hanya pengawas ruang atau admin yang dapat mengirim berita acara dari akun ini.');
+      return;
+    }
     const referenceNowMs = schedule?.serverNow ? new Date(schedule.serverNow).getTime() : Date.now();
     const scheduleStartMs = schedule?.startTime ? new Date(schedule.startTime).getTime() : NaN;
     if (Number.isFinite(scheduleStartMs) && referenceNowMs < scheduleStartMs) {
@@ -173,7 +191,6 @@ const ProctorMonitoringPage: React.FC = () => {
         studentCountPresent: presentCount,
         studentCountAbsent: absentCount
       });
-      setReportSubmitted(true);
       toast.success('Berita acara berhasil dikirim ke Kurikulum');
       await detailQuery.refetch();
     } catch (error) {
@@ -184,26 +201,19 @@ const ProctorMonitoringPage: React.FC = () => {
     }
   };
 
-  const latestReport = useMemo(() => {
-    const reportRows = Array.isArray(schedule?.proctoringReports)
-      ? [...schedule.proctoringReports]
-      : [];
-    return reportRows
-      .sort((a, b) => {
-        const aTime = new Date(String(a.updatedAt || a.signedAt || 0)).getTime();
-        const bTime = new Date(String(b.updatedAt || b.signedAt || 0)).getTime();
-        return bTime - aTime;
-      })[0] || null;
-  }, [schedule?.proctoringReports]);
+  const currentUserReport = detailQuery.data?.currentUserProctoringReport || null;
+  const latestReport = detailQuery.data?.latestProctoringReport || null;
+  const reportSubmitted = Boolean(currentUserReport?.id);
+  const reportSubmittedByAnotherUser = Boolean(latestReport?.id && !reportSubmitted);
+  const latestReporterName = String(latestReport?.proctor?.name || '').trim() || 'pengawas lain';
+  const canSubmitReport = Boolean(detailQuery.data?.canSubmitReport);
 
   useEffect(() => {
-    const hasExistingReport = Boolean(latestReport?.id);
-    setReportSubmitted(hasExistingReport);
-    if (!hasExistingReport) return;
+    if (!reportSubmitted) return;
     if (!isReportModalOpen) {
-      setNotes((current) => (current.trim() ? current : mergeProctorReportNotes(latestReport?.notes, latestReport?.incident)));
+      setNotes((current) => (current.trim() ? current : mergeProctorReportNotes(currentUserReport?.notes, currentUserReport?.incident)));
     }
-  }, [isReportModalOpen, latestReport?.id, latestReport?.incident, latestReport?.notes]);
+  }, [currentUserReport?.id, currentUserReport?.incident, currentUserReport?.notes, isReportModalOpen, reportSubmitted]);
 
   useEffect(() => {
     const serverNowMs = schedule?.serverNow ? new Date(schedule.serverNow).getTime() : NaN;
@@ -336,11 +346,13 @@ const ProctorMonitoringPage: React.FC = () => {
               className={`inline-flex items-center rounded-md border px-4 py-2 text-sm font-medium focus:outline-none focus:ring-2 focus:ring-offset-2 ${
                 reportSubmitted
                   ? 'border-emerald-200 bg-emerald-50 text-emerald-700 hover:bg-emerald-100 focus:ring-emerald-500'
-                  : 'border-indigo-200 bg-indigo-50 text-indigo-700 hover:bg-indigo-100 focus:ring-indigo-500'
+                  : reportSubmittedByAnotherUser
+                    ? 'border-amber-200 bg-amber-50 text-amber-700 hover:bg-amber-100 focus:ring-amber-500'
+                    : 'border-indigo-200 bg-indigo-50 text-indigo-700 hover:bg-indigo-100 focus:ring-indigo-500'
               }`}
             >
               <FileText className="mr-2 h-4 w-4" />
-              {reportSubmitted ? 'Lihat Berita Acara' : 'Buka Berita Acara'}
+              {reportSubmitted ? 'Lihat Berita Acara Saya' : reportSubmittedByAnotherUser ? 'Tinjau Berita Acara' : 'Buka Berita Acara'}
             </button>
             <button 
               onClick={handleRefresh} 
@@ -555,17 +567,21 @@ const ProctorMonitoringPage: React.FC = () => {
                 <h4 className="text-base font-semibold text-slate-900">Pratinjau Berita Acara</h4>
                 <p className="mt-1 text-sm text-slate-600">
                   {reportSubmitted
-                    ? 'Berita acara ini sudah dikirim ke Kurikulum dan tampil sebagai arsip pengawas.'
-                    : 'Tinjau isi dokumen resmi sebelum dikirim ke Kurikulum.'}
+                    ? 'Berita acara akun ini sudah dikirim ke Kurikulum dan tampil sebagai arsip pengawas.'
+                    : reportSubmittedByAnotherUser
+                      ? `Sudah ada berita acara yang dikirim oleh ${latestReporterName}. Akun ini belum mengirim berita acara.`
+                      : 'Tinjau isi dokumen resmi sebelum dikirim ke Kurikulum.'}
                 </p>
               </div>
               <div className="flex items-center gap-3">
                 <div className={`rounded-full border px-3 py-1 text-[11px] font-semibold uppercase tracking-wide ${
                   reportSubmitted
                     ? 'border-emerald-200 bg-emerald-50 text-emerald-700'
-                    : 'border-slate-200 bg-white text-slate-600'
+                    : reportSubmittedByAnotherUser
+                      ? 'border-amber-200 bg-amber-50 text-amber-700'
+                      : 'border-slate-200 bg-white text-slate-600'
                 }`}>
-                  {reportSubmitted ? 'Arsip' : 'Draft'}
+                  {reportSubmitted ? 'Arsip Saya' : reportSubmittedByAnotherUser ? 'Ada Arsip' : 'Draft'}
                 </div>
                 <button
                   type="button"
@@ -581,15 +597,31 @@ const ProctorMonitoringPage: React.FC = () => {
             <div className="overflow-y-auto px-5 py-5">
               {reportSubmitted ? (
                 <div className="rounded-lg border border-emerald-200 bg-emerald-50 px-3 py-3 text-sm text-emerald-800">
-                  <div className="font-semibold">Berita acara sudah terkirim ke Kurikulum.</div>
+                  <div className="font-semibold">Berita acara akun ini sudah terkirim ke Kurikulum.</div>
                   <div className="mt-1">Cetak dan distribusi dokumen resmi menjadi tanggung jawab Wakasek Kurikulum / sekretaris.</div>
+                  {currentUserReport?.id ? (
+                    <button
+                      type="button"
+                      onClick={() => window.open(`/print/proctor-report/${currentUserReport.id}`, '_blank', 'noopener')}
+                      className="mt-3 inline-flex items-center rounded-lg border border-emerald-300 bg-white px-3 py-2 text-xs font-semibold text-emerald-700 hover:bg-emerald-100"
+                    >
+                      Lihat Dokumen Resmi
+                    </button>
+                  ) : null}
+                </div>
+              ) : reportSubmittedByAnotherUser ? (
+                <div className="rounded-lg border border-amber-200 bg-amber-50 px-3 py-3 text-sm text-amber-800">
+                  <div className="font-semibold">Sudah ada berita acara lain pada jadwal ini.</div>
+                  <div className="mt-1">
+                    Dokumen terakhir tercatat dikirim oleh <span className="font-semibold">{latestReporterName}</span>. Status akun ini tetap draft sampai benar-benar mengirim berita acara sendiri.
+                  </div>
                   {latestReport?.id ? (
                     <button
                       type="button"
                       onClick={() => window.open(`/print/proctor-report/${latestReport.id}`, '_blank', 'noopener')}
-                      className="mt-3 inline-flex items-center rounded-lg border border-emerald-300 bg-white px-3 py-2 text-xs font-semibold text-emerald-700 hover:bg-emerald-100"
+                      className="mt-3 inline-flex items-center rounded-lg border border-amber-300 bg-white px-3 py-2 text-xs font-semibold text-amber-700 hover:bg-amber-100"
                     >
-                      Lihat Dokumen Resmi
+                      Lihat Dokumen Terbaru
                     </button>
                   ) : null}
                 </div>
@@ -628,7 +660,7 @@ const ProctorMonitoringPage: React.FC = () => {
                   <label className="block text-[13px] font-medium text-slate-900">Catatan Pengawas selama Ujian berlangsung</label>
                   <textarea
                     className={`mt-2 block w-full rounded-xl border px-4 py-4 text-[13px] leading-7 shadow-sm ${
-                      reportSubmitted || !isScheduleStarted
+                      reportSubmitted || !isScheduleStarted || !canSubmitReport
                         ? 'border-slate-200 bg-slate-100 text-slate-600'
                         : 'border-gray-300 bg-white text-slate-900 focus:border-indigo-500 focus:ring-indigo-500'
                     }`}
@@ -636,11 +668,16 @@ const ProctorMonitoringPage: React.FC = () => {
                     placeholder="Contoh: Ujian berjalan lancar, seluruh siswa hadir, tidak ada kendala perangkat..."
                     value={notes}
                     onChange={(e) => setNotes(e.target.value)}
-                    readOnly={reportSubmitted || !isScheduleStarted}
+                    readOnly={reportSubmitted || !isScheduleStarted || !canSubmitReport}
                   />
                   {!reportSubmitted && !isScheduleStarted ? (
                     <p className="mt-2 text-xs text-amber-700">
                       Berita acara baru bisa diisi setelah waktu ujian mulai sesuai jadwal pelaksanaan.
+                    </p>
+                  ) : null}
+                  {!reportSubmitted && !canSubmitReport ? (
+                    <p className="mt-2 text-xs text-slate-500">
+                      Akun ini hanya dapat memantau. Pengiriman berita acara dibatasi untuk pengawas ruang atau admin.
                     </p>
                   ) : null}
                   {reportSubmitted ? (
@@ -657,18 +694,22 @@ const ProctorMonitoringPage: React.FC = () => {
                 className={`w-full flex justify-center items-center px-4 py-2 border border-transparent rounded-md shadow-sm text-sm font-medium text-white focus:outline-none focus:ring-2 focus:ring-offset-2 disabled:opacity-50 ${
                   reportSubmitted
                     ? 'bg-emerald-600 hover:bg-emerald-700 focus:ring-emerald-500'
+                    : !canSubmitReport
+                      ? 'bg-slate-500 hover:bg-slate-600 focus:ring-slate-500'
                     : !isScheduleStarted
                       ? 'bg-amber-500 hover:bg-amber-600 focus:ring-amber-500'
                       : 'bg-indigo-600 hover:bg-indigo-700 focus:ring-indigo-500'
                 }`}
                 onClick={handleSubmitReport}
-                disabled={submittingReport || reportSubmitted}
+                disabled={submittingReport || reportSubmitted || !canSubmitReport}
               >
                 <Save className="h-4 w-4 mr-2" />
                 {submittingReport
                   ? 'Menyimpan...'
                   : reportSubmitted
-                    ? 'Terkirim ke Kurikulum'
+                    ? 'Terkirim oleh Akun Ini'
+                    : !canSubmitReport
+                      ? 'Khusus Pengawas / Admin'
                     : !isScheduleStarted
                       ? 'Menunggu Waktu Ujian'
                       : 'Kirim ke Kurikulum'}

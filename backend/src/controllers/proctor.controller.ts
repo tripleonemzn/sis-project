@@ -2105,7 +2105,24 @@ export const getProctoringDetail = asyncHandler(async (req: Request, res: Respon
             academicYear: { select: { name: true } },
             class: { select: { id: true, name: true } },
             proctor: { select: { id: true, name: true } },
-            proctoringReports: true
+            proctoringReports: {
+                orderBy: [{ updatedAt: 'desc' }, { id: 'desc' }],
+                select: {
+                    id: true,
+                    proctorId: true,
+                    signedAt: true,
+                    updatedAt: true,
+                    notes: true,
+                    incident: true,
+                    documentNumber: true,
+                    proctor: {
+                        select: {
+                            id: true,
+                            name: true,
+                        },
+                    },
+                },
+            },
         }
     });
 
@@ -2478,6 +2495,15 @@ export const getProctoringDetail = asyncHandler(async (req: Request, res: Respon
     const subjectName = schedule.packet?.subject?.name || schedule.subject?.name || '-';
     const displayTitle = schedule.packet?.title || `Ujian ${subjectName}`;
     const examLabel = await resolveExamProgramLabel(resolvedAcademicYearId, schedule.examType);
+    const currentUserId = Number(user?.id) || 0;
+    const latestProctoringReport =
+        Array.isArray(schedule.proctoringReports) && schedule.proctoringReports.length > 0
+            ? schedule.proctoringReports[0]
+            : null;
+    const currentUserProctoringReport =
+        Array.isArray(schedule.proctoringReports) && currentUserId > 0
+            ? schedule.proctoringReports.find((report) => Number(report.proctorId) === currentUserId) || null
+            : null;
 
     res.json(new ApiResponse(200, {
         schedule: {
@@ -2507,7 +2533,10 @@ export const getProctoringDetail = asyncHandler(async (req: Request, res: Respon
         students: studentList,
         isProctor,
         isAuthor,
-        isSubjectTeacher
+        isSubjectTeacher,
+        canSubmitReport: Boolean(isAdmin || isProctor),
+        currentUserProctoringReport,
+        latestProctoringReport,
     }));
 });
 
