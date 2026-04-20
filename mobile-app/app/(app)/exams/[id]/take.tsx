@@ -20,8 +20,8 @@ import {
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { WebView } from 'react-native-webview';
 import { AppLoadingScreen } from '../../../../src/components/AppLoadingScreen';
+import ExamImagePreviewModal from '../../../../src/components/ExamImagePreviewModal';
 import ExamHtmlContent from '../../../../src/components/ExamHtmlContent';
-import MobileDetailModal from '../../../../src/components/MobileDetailModal';
 import { QueryStateView } from '../../../../src/components/QueryStateView';
 import { useAuth } from '../../../../src/features/auth/AuthProvider';
 import { examApi } from '../../../../src/features/exams/examApi';
@@ -1358,6 +1358,19 @@ export default function StudentExamTakeScreen() {
             renderMode="native"
             textAlign="justify"
           />
+          {currentQuestion.question_image_url || currentQuestion.image_url ? (
+            <Text
+              style={{
+                color: '#2563eb',
+                fontSize: scaleFont(11),
+                lineHeight: scaleLineHeight(17),
+                fontWeight: '700',
+                marginTop: 6,
+              }}
+            >
+              Ketuk gambar soal untuk memperbesar.
+            </Text>
+          ) : null}
         </View>
 
         {currentInlineVideoUrl ? (
@@ -1735,32 +1748,12 @@ export default function StudentExamTakeScreen() {
         </Text>
       </Pressable>
 
-      <MobileDetailModal
+      <ExamImagePreviewModal
         visible={Boolean(previewImageSrc)}
-        title="Preview Gambar Soal"
-        subtitle="Gambar dibuka di dalam ujian tanpa keluar dari sesi."
-        iconName="image"
-        accentColor="#2563eb"
+        imageUri={previewImageSrc}
+        subtitle="Perbesar gambar soal tanpa keluar dari sesi ujian, lalu geser untuk melihat detail lain."
         onClose={() => setPreviewImageSrc(null)}
-      >
-        {previewImageSrc ? (
-          <View
-            style={{
-              borderWidth: 1,
-              borderColor: '#dbe7fb',
-              borderRadius: 16,
-              backgroundColor: '#f8fbff',
-              padding: 12,
-            }}
-          >
-            <Image
-              source={{ uri: previewImageSrc }}
-              resizeMode="contain"
-              style={{ width: '100%', height: 320, borderRadius: 12, backgroundColor: '#fff' }}
-            />
-          </View>
-        ) : null}
-      </MobileDetailModal>
+      />
       </ScrollView>
     </>
   );

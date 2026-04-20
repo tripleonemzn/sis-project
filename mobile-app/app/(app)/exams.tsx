@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useRef, useState } from 'react';
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { Feather } from '@expo/vector-icons';
 import { Redirect, useLocalSearchParams, useRouter } from 'expo-router';
 import { useQuery } from '@tanstack/react-query';
@@ -326,6 +326,17 @@ export default function StudentExamsScreen() {
         : 'Jadwal Ujian';
 
   const examTypeLabel = (type: string) => resolveExamTypeLabel(type, examTypeLabels);
+  const isRefreshingExamData =
+    (examsQuery.isFetching && !examsQuery.isLoading) ||
+    (!isCandidateMode && !isApplicantMode && studentExamCardsQuery.isFetching && !studentExamCardsQuery.isLoading) ||
+    (!isCandidateMode && !isApplicantMode && studentExamPlacementsQuery.isFetching && !studentExamPlacementsQuery.isLoading);
+  const handleRefreshExamData = useCallback(() => {
+    void examsQuery.refetch();
+    if (!isCandidateMode && !isApplicantMode) {
+      void studentExamCardsQuery.refetch();
+      void studentExamPlacementsQuery.refetch();
+    }
+  }, [examsQuery, isApplicantMode, isCandidateMode, studentExamCardsQuery, studentExamPlacementsQuery]);
   useEffect(() => {
     const becameActive = isScreenActive && !screenBecameActiveRef.current;
     screenBecameActiveRef.current = isScreenActive;
@@ -580,20 +591,8 @@ export default function StudentExamsScreen() {
       contentContainerStyle={pageContentPadding}
       refreshControl={
         <RefreshControl
-          refreshing={
-            (examsQuery.isFetching && !examsQuery.isLoading) ||
-            (!isCandidateMode &&
-              !isApplicantMode &&
-              studentExamCardsQuery.isFetching &&
-              !studentExamCardsQuery.isLoading)
-          }
-          onRefresh={() => {
-            void examsQuery.refetch();
-            if (!isCandidateMode && !isApplicantMode) {
-              void studentExamCardsQuery.refetch();
-              void studentExamPlacementsQuery.refetch();
-            }
-          }}
+          refreshing={isRefreshingExamData}
+          onRefresh={handleRefreshExamData}
         />
       }
     >
@@ -619,24 +618,50 @@ export default function StudentExamsScreen() {
                   ? `Lihat jadwal ${lockedProgramLabel.toLowerCase()} yang tersedia untuk kelas Anda.`
                   : 'Lihat jadwal ujian yang tersedia untuk kelas Anda.'}
           </Text>
+          <Text style={{ color: '#2563eb', fontSize: scaleFont(11), lineHeight: scaleLineHeight(17), fontWeight: '700', marginTop: 6 }}>
+            Tarik ke bawah atau tekan Refresh Data untuk memuat ulang jadwal ujian.
+          </Text>
         </View>
-        <Animated.View style={{ opacity: warningBlink }}>
+        <View style={{ alignItems: 'flex-end', gap: 10 }}>
           <Pressable
-            onPress={() => setShowRulesModal(true)}
+            onPress={handleRefreshExamData}
+            disabled={isRefreshingExamData}
             style={{
-              width: 42,
-              height: 42,
-              borderRadius: 21,
-              borderWidth: 1,
-              borderColor: '#fde68a',
-              backgroundColor: '#fef3c7',
+              flexDirection: 'row',
               alignItems: 'center',
-              justifyContent: 'center',
+              gap: 6,
+              borderWidth: 1,
+              borderColor: '#bfdbfe',
+              backgroundColor: '#eff6ff',
+              borderRadius: 999,
+              paddingHorizontal: 12,
+              paddingVertical: 8,
+              opacity: isRefreshingExamData ? 0.7 : 1,
             }}
           >
-            <Feather name="alert-circle" size={20} color="#ca8a04" />
+            <Feather name="refresh-cw" size={14} color="#1d4ed8" />
+            <Text style={{ color: '#1d4ed8', fontSize: scaleFont(12), fontWeight: '700' }}>
+              {isRefreshingExamData ? 'Memuat...' : 'Refresh Data'}
+            </Text>
           </Pressable>
-        </Animated.View>
+          <Animated.View style={{ opacity: warningBlink }}>
+            <Pressable
+              onPress={() => setShowRulesModal(true)}
+              style={{
+                width: 42,
+                height: 42,
+                borderRadius: 21,
+                borderWidth: 1,
+                borderColor: '#fde68a',
+                backgroundColor: '#fef3c7',
+                alignItems: 'center',
+                justifyContent: 'center',
+              }}
+            >
+              <Feather name="alert-circle" size={20} color="#ca8a04" />
+            </Pressable>
+          </Animated.View>
+        </View>
       </View>
 
       {applicantVerificationLocked ? (

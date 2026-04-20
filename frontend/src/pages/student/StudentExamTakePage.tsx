@@ -335,6 +335,7 @@ export default function StudentExamTakePage() {
   const [showViolationWarning, setShowViolationWarning] = useState(false)
   const [lastViolationType, setLastViolationType] = useState('')
   const [previewImageSrc, setPreviewImageSrc] = useState<string | null>(null)
+  const [previewImageZoom, setPreviewImageZoom] = useState(1)
   
   // Submission
   const [submitting, setSubmitting] = useState(false)
@@ -1783,6 +1784,10 @@ export default function StudentExamTakePage() {
     </>
   );
 
+  useEffect(() => {
+    setPreviewImageZoom(1)
+  }, [previewImageSrc])
+
   return (
     <div className="min-h-screen bg-gray-50 notranslate" translate="no">
       {/* Top Bar - Fixed */}
@@ -2196,11 +2201,57 @@ export default function StudentExamTakePage() {
             >
               ✕
             </button>
-            <img
-              src={previewImageSrc}
-              alt="Preview soal"
-              className="max-h-[88vh] max-w-full object-contain rounded-xl border border-white/15 bg-white"
-            />
+            <div className="w-full overflow-hidden rounded-2xl border border-white/15 bg-white/95 shadow-2xl">
+              <div className="flex flex-wrap items-center justify-between gap-3 border-b border-slate-200 px-4 py-3">
+                <div>
+                  <div className="text-sm font-semibold text-slate-900">Preview Gambar Soal</div>
+                  <div className="text-xs text-slate-500">Perbesar gambar lalu geser jika ingin melihat detail lain.</div>
+                </div>
+                <div className="flex flex-wrap items-center gap-2">
+                  <button
+                    type="button"
+                    onClick={() => setPreviewImageZoom((current) => Math.max(1, Number((current - 0.25).toFixed(2))))}
+                    disabled={previewImageZoom <= 1}
+                    className="inline-flex items-center rounded-full border border-blue-200 bg-blue-50 px-3 py-1 text-xs font-semibold text-blue-700 disabled:cursor-not-allowed disabled:opacity-60"
+                  >
+                    Perkecil
+                  </button>
+                  <div className="inline-flex items-center rounded-full border border-slate-200 bg-slate-50 px-3 py-1 text-xs font-semibold text-slate-700">
+                    Zoom {Math.round(previewImageZoom * 100)}%
+                  </div>
+                  <button
+                    type="button"
+                    onClick={() => setPreviewImageZoom((current) => Math.min(3, Number((current + 0.25).toFixed(2))))}
+                    disabled={previewImageZoom >= 3}
+                    className="inline-flex items-center rounded-full border border-blue-200 bg-blue-50 px-3 py-1 text-xs font-semibold text-blue-700 disabled:cursor-not-allowed disabled:opacity-60"
+                  >
+                    Perbesar
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => setPreviewImageZoom(1)}
+                    className="inline-flex items-center rounded-full border border-slate-200 bg-white px-3 py-1 text-xs font-semibold text-slate-700"
+                  >
+                    Reset
+                  </button>
+                </div>
+              </div>
+              <div className="max-h-[80vh] overflow-auto bg-slate-100 p-4">
+                <div className="flex min-h-[60vh] min-w-full items-center justify-center">
+                  <img
+                    src={previewImageSrc}
+                    alt="Preview soal"
+                    className="rounded-xl border border-slate-200 bg-white"
+                    style={{
+                      maxWidth: '100%',
+                      height: 'auto',
+                      transform: `scale(${previewImageZoom})`,
+                      transformOrigin: 'center center',
+                    }}
+                  />
+                </div>
+              </div>
+            </div>
           </div>
         </div>
       )}

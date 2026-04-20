@@ -678,6 +678,31 @@ function compareClassName(left: string | null | undefined, right: string | null 
     });
 }
 
+function hasSlotScheduleClassCoverage(
+    slot: Pick<ExamSittingRoomSlotRow, 'classIds' | 'classNames' | 'roomName'>,
+    schedule: Pick<ProctorRoomScheduleScope, 'classId' | 'class' | 'room'>,
+) {
+    const normalizedScheduleRoom = String(schedule.room || '').trim().toLowerCase();
+    const normalizedSlotRoom = String(slot.roomName || '').trim().toLowerCase();
+    if (normalizedScheduleRoom && normalizedSlotRoom && normalizedScheduleRoom === normalizedSlotRoom) {
+        return true;
+    }
+
+    const normalizedClassId = Number(schedule.classId);
+    if (Number.isFinite(normalizedClassId) && normalizedClassId > 0 && Array.isArray(slot.classIds)) {
+        if (slot.classIds.includes(normalizedClassId)) {
+            return true;
+        }
+    }
+
+    const normalizedClassName = String(schedule.class?.name || '').trim().toLowerCase();
+    if (normalizedClassName && Array.isArray(slot.classNames)) {
+        return slot.classNames.some((className) => String(className || '').trim().toLowerCase() === normalizedClassName);
+    }
+
+    return false;
+}
+
 async function resolveSlotScopeForSchedule(params: {
     scheduleId: number;
     academicYearId: number | null;
@@ -702,7 +727,24 @@ async function resolveSlotScopeForSchedule(params: {
     const candidateSlots = slotResponse.slots.filter((slot) => slot.scheduleIds.includes(params.scheduleId));
     if (candidateSlots.length === 0) return null;
 
-    return candidateSlots
+    const scheduleScopedCandidates = candidateSlots.filter((slot) =>
+        hasSlotScheduleClassCoverage(
+            slot,
+            {
+                classId: params.classId ?? null,
+                class: null,
+                room: params.roomName ?? null,
+            },
+        ),
+    );
+    const scopedCandidates = scheduleScopedCandidates.length > 0 ? scheduleScopedCandidates : candidateSlots;
+    const preferredProctorCandidates =
+        Number.isFinite(Number(params.preferredProctorId)) && Number(params.preferredProctorId) > 0
+            ? scopedCandidates.filter((slot) => Number(slot.proctorId) === Number(params.preferredProctorId))
+            : [];
+    const prioritizedCandidates = preferredProctorCandidates.length > 0 ? preferredProctorCandidates : scopedCandidates;
+
+    return prioritizedCandidates
         .slice()
         .sort((a, b) => {
             const scoreFor = (slot: ExamSittingRoomSlotRow) => {
@@ -1986,7 +2028,7 @@ export const getProctorSchedules = asyncHandler(async (req: Request, res: Respon
                 select: { name: true }
             },
             class: {
-                select: { name: true }
+                select: { id: true, name: true }
             },
             academicYear: {
                 select: { name: true }
@@ -1996,17 +2038,6 @@ export const getProctorSchedules = asyncHandler(async (req: Request, res: Respon
             }
         },
         orderBy: { startTime: 'asc' }
-    });
-
-    const slotByScheduleId = new Map<number, ExamSittingRoomSlotRow>();
-    assignedSlots.forEach((slot) => {
-        (slot.scheduleIds || []).forEach((scheduleId) => {
-            const normalizedScheduleId = Number(scheduleId);
-            if (!Number.isFinite(normalizedScheduleId) || normalizedScheduleId <= 0) return;
-            if (!slotByScheduleId.has(normalizedScheduleId)) {
-                slotByScheduleId.set(normalizedScheduleId, slot);
-            }
-        });
     });
 
     const roomScopeRosterCache = new Map<string, Promise<{
@@ -2029,7 +2060,16 @@ export const getProctorSchedules = asyncHandler(async (req: Request, res: Respon
 
     const enrichedSchedules = await Promise.all(
         schedules.map(async (schedule) => {
-            const assignedSlot = slotByScheduleId.get(schedule.id) || null;
+            const assignedSlot =
+                assignedSlots.find(
+                    (slot) =>
+                        (slot.scheduleIds || []).includes(schedule.id) &&
+                        hasSlotScheduleClassCoverage(slot, {
+                            classId: schedule.class?.id ?? null,
+                            class: schedule.class || null,
+                            room: schedule.room,
+                        }),
+                ) || null;
             if (assignedSlot) {
                 return {
                     ...schedule,
@@ -2072,7 +2112,23 @@ export const getProctorSchedules = asyncHandler(async (req: Request, res: Respon
         }),
     );
 
-    res.json(new ApiResponse(200, enrichedSchedules));
+    const visibleSchedules =
+        mode === 'author' || assignedSlots.length === 0
+            ? enrichedSchedules
+            : enrichedSchedules.filter((schedule) => {
+                  if (Number(schedule.proctorId || 0) === Number(user.id)) return true;
+                  return assignedSlots.some(
+                      (slot) =>
+                          (slot.scheduleIds || []).includes(schedule.id) &&
+                          hasSlotScheduleClassCoverage(slot, {
+                              classId: schedule.class?.id ?? null,
+                              class: schedule.class || null,
+                              room: schedule.room,
+                          }),
+                  );
+              });
+
+    res.json(new ApiResponse(200, visibleSchedules));
 });
 
 // Get details for a specific exam room (Proctor View)
@@ -2612,6 +2668,7 @@ export const submitBeritaAcara = asyncHandler(async (req: Request, res: Response
     if (!scope.baseSchedule || scope.monitoredScheduleIds.length === 0) {
         throw new ApiError(404, 'Data ruang ujian tidak ditemukan');
     }
+    const resolvedBaseSchedule = scope.baseSchedule;
     const sittingExamTypeCandidates = resolveExamTypeCandidates(scope.baseSchedule.examType);
 
     const [roomStudents, roomSittings] = await Promise.all([
@@ -2828,12 +2885,12 @@ export const submitBeritaAcara = asyncHandler(async (req: Request, res: Response
             data: curriculumReceivers.map((receiver) => ({
                 userId: receiver.id,
                 title: 'Berita Acara Pengawas Baru',
-                message: `Berita acara ruang ${schedule.room || '-'} telah dikirim ke kurikulum untuk slot ${new Date(schedule.startTime).toLocaleTimeString('id-ID', { hour: '2-digit', minute: '2-digit' })} - ${new Date(schedule.endTime).toLocaleTimeString('id-ID', { hour: '2-digit', minute: '2-digit' })}.`,
+                message: `Berita acara ruang ${resolvedBaseSchedule.room || schedule.room || '-'} telah dikirim ke kurikulum untuk slot ${new Date(resolvedBaseSchedule.startTime || schedule.startTime).toLocaleTimeString('id-ID', { hour: '2-digit', minute: '2-digit' })} - ${new Date(resolvedBaseSchedule.endTime || schedule.endTime).toLocaleTimeString('id-ID', { hour: '2-digit', minute: '2-digit' })}.`,
                 type: 'EXAM_PROCTOR_REPORT',
                 data: {
                     scheduleId: parsedScheduleId,
                     reportId: savedReport.id,
-                    room: schedule.room,
+                    room: resolvedBaseSchedule.room || schedule.room,
                     classNames: monitoredClassNames,
                     expectedCount,
                     presentCount,
@@ -2878,7 +2935,7 @@ export const submitBeritaAcara = asyncHandler(async (req: Request, res: Response
                 documentNumber: artifactBundle.documentNumber,
                 verificationUrl: artifactBundle.snapshot.verification.verificationUrl,
                 summary: {
-                    room: schedule.room,
+                    room: resolvedBaseSchedule.room || schedule.room,
                     classNames: monitoredClassNames,
                     expectedParticipants: expectedCount,
                     presentParticipants: presentCount,
