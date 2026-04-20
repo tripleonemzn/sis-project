@@ -1,11 +1,10 @@
-import { useMemo, useState } from 'react';
+import { useEffect, useMemo, useState } from 'react';
 import { Redirect } from 'expo-router';
 import { useQuery } from '@tanstack/react-query';
 import { Pressable, RefreshControl, ScrollView, Text, TextInput, View } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { AppLoadingScreen } from '../../../../src/components/AppLoadingScreen';
 import { MobileSelectField } from '../../../../src/components/MobileSelectField';
-import { MobileSummaryCard } from '../../../../src/components/MobileSummaryCard';
 import { QueryStateView } from '../../../../src/components/QueryStateView';
 import { BRAND_COLORS } from '../../../../src/config/brand';
 import { academicYearApi } from '../../../../src/features/academicYear/academicYearApi';
@@ -19,17 +18,6 @@ function todayInput() {
   return new Date().toISOString().slice(0, 10);
 }
 
-function formatDate(value?: string | null) {
-  if (!value) return '-';
-  const date = new Date(value);
-  if (Number.isNaN(date.getTime())) return '-';
-  return date.toLocaleDateString('id-ID', {
-    day: '2-digit',
-    month: 'short',
-    year: 'numeric',
-  });
-}
-
 function formatTime(value?: string | null) {
   if (!value) return '-';
   const date = new Date(value);
@@ -37,12 +25,86 @@ function formatTime(value?: string | null) {
   return date.toLocaleTimeString('id-ID', { hour: '2-digit', minute: '2-digit' });
 }
 
+function formatDayLabel(value?: string | null) {
+  if (!value) return '-';
+  const date = new Date(value);
+  if (Number.isNaN(date.getTime())) return '-';
+  return date.toLocaleDateString('id-ID', {
+    weekday: 'long',
+    day: '2-digit',
+    month: 'long',
+    year: 'numeric',
+  });
+}
+
+function getSafeDateKey(value?: string | null) {
+  if (!value) return '__no_date__';
+  const date = new Date(value);
+  if (Number.isNaN(date.getTime())) return '__no_date__';
+  return date.toISOString().slice(0, 10);
+}
+
+function InlineMetric({
+  label,
+  value,
+  bg,
+  border,
+  text,
+}: {
+  label: string;
+  value: string;
+  bg: string;
+  border: string;
+  text: string;
+}) {
+  return (
+    <View
+      style={{
+        flex: 1,
+        minWidth: 128,
+        borderWidth: 1,
+        borderColor: border,
+        backgroundColor: bg,
+        borderRadius: 10,
+        paddingHorizontal: 10,
+        paddingVertical: 9,
+      }}
+    >
+      <Text style={{ color: text, fontSize: scaleWithAppTextScale(11), fontWeight: '700' }}>{label}</Text>
+      <Text style={{ color: BRAND_COLORS.textDark, fontSize: scaleWithAppTextScale(18), fontWeight: '800', marginTop: 4 }}>{value}</Text>
+    </View>
+  );
+}
+
+type PrincipalReportTimeGroup = {
+  timeKey: string;
+  startTime: string;
+  endTime: string;
+  periodNumber: number | null;
+  sessionLabel: string | null;
+  rows: PrincipalProctorReportRow[];
+};
+
+type PrincipalReportDayGroup = {
+  dateKey: string;
+  dateLabel: string;
+  timeGroups: PrincipalReportTimeGroup[];
+  roomCount: number;
+  rowCount: number;
+  reportedRowCount: number;
+  totalExpected: number;
+  totalPresent: number;
+  totalAbsent: number;
+};
+
 export default function PrincipalExamReportsScreen() {
   const insets = useSafeAreaInsets();
   const { isAuthenticated, isLoading, user } = useAuth();
   const pagePadding = getStandardPagePadding(insets, { bottom: 120 });
   const [selectedDate, setSelectedDate] = useState(todayInput());
   const [examTypeFilter, setExamTypeFilter] = useState('ALL');
+  const [expandedDayKey, setExpandedDayKey] = useState<string | null>(null);
+  const [expandedTimeGroupKey, setExpandedTimeGroupKey] = useState<string | null>(null);
   const [expandedRowKey, setExpandedRowKey] = useState<string | null>(null);
 
   const activeYearQuery = useQuery({
@@ -71,13 +133,6 @@ export default function PrincipalExamReportsScreen() {
   });
 
   const rows = useMemo(() => reportsQuery.data?.rows || [], [reportsQuery.data?.rows]);
-  const summary = reportsQuery.data?.summary || {
-    totalRooms: 0,
-    totalExpected: 0,
-    totalPresent: 0,
-    totalAbsent: 0,
-    reportedRooms: 0,
-  };
   const examTypes = useMemo(() => {
     const options = new Set<string>();
     rows.forEach((row) => {
@@ -90,6 +145,110 @@ export default function PrincipalExamReportsScreen() {
     () => [{ value: 'ALL', label: 'Semua Jenis Ujian' }, ...examTypes.map((item) => ({ value: item, label: item }))],
     [examTypes],
   );
+  const groupedReportDays = useMemo<PrincipalReportDayGroup[]>(() => {
+    const grouped = new Map<
+      string,
+      {
+        dateKey: string;
+        dateLabel: string;
+        timeGroups: Map<
+          string,
+          {
+            timeKey: string;
+            startTime: string;
+            endTime: string;
+            periodNumber: number | null;
+            sessionLabel: string | null;
+            rows: PrincipalProctorReportRow[];
+          }
+        >;
+      }
+    >();
+
+    rows.forEach((row) => {
+      const dateKey = getSafeDateKey(row.startTime || row.endTime);
+      if (!grouped.has(dateKey)) {
+        grouped.set(dateKey, {
+          dateKey,
+          dateLabel: formatDayLabel(row.startTime || row.endTime),
+          timeGroups: new Map(),
+        });
+      }
+      const dayGroup = grouped.get(dateKey)!;
+      const periodNumber = Number.isFinite(Number(row.periodNumber)) ? Number(row.periodNumber) : null;
+      const sessionLabel = typeof row.sessionLabel === 'string' && row.sessionLabel.trim() ? row.sessionLabel.trim() : null;
+      const timeKey = [row.startTime, row.endTime, periodNumber ?? '', sessionLabel ?? ''].join('|');
+      if (!dayGroup.timeGroups.has(timeKey)) {
+        dayGroup.timeGroups.set(timeKey, {
+          timeKey,
+          startTime: row.startTime,
+          endTime: row.endTime,
+          periodNumber,
+          sessionLabel,
+          rows: [],
+        });
+      }
+      dayGroup.timeGroups.get(timeKey)?.rows.push(row);
+    });
+
+    return Array.from(grouped.values())
+      .sort((left, right) => left.dateKey.localeCompare(right.dateKey))
+      .map((day) => {
+        const timeGroups = Array.from(day.timeGroups.values())
+          .map((group) => ({
+            ...group,
+            rows: [...group.rows].sort((left, right) =>
+              String(left.room || '').localeCompare(String(right.room || ''), 'id', { sensitivity: 'base' }),
+            ),
+          }))
+          .sort((left, right) => {
+            const leftTime = new Date(left.startTime).getTime();
+            const rightTime = new Date(right.startTime).getTime();
+            if (leftTime !== rightTime) return leftTime - rightTime;
+            return Number(left.periodNumber || 0) - Number(right.periodNumber || 0);
+          });
+        return {
+          dateKey: day.dateKey,
+          dateLabel: day.dateLabel,
+          timeGroups,
+          roomCount: new Set(
+            timeGroups.flatMap((group) => group.rows.map((row) => String(row.room || '').trim()).filter(Boolean)),
+          ).size,
+          rowCount: timeGroups.reduce((sum, group) => sum + group.rows.length, 0),
+          reportedRowCount: timeGroups.reduce((sum, group) => sum + group.rows.filter((row) => Boolean(row.report)).length, 0),
+          totalExpected: timeGroups.reduce(
+            (sum, group) => sum + group.rows.reduce((inner, row) => inner + Number(row.expectedParticipants || 0), 0),
+            0,
+          ),
+          totalPresent: timeGroups.reduce(
+            (sum, group) => sum + group.rows.reduce((inner, row) => inner + Number(row.presentParticipants || 0), 0),
+            0,
+          ),
+          totalAbsent: timeGroups.reduce(
+            (sum, group) => sum + group.rows.reduce((inner, row) => inner + Number(row.absentParticipants || 0), 0),
+            0,
+          ),
+        };
+      });
+  }, [rows]);
+
+  useEffect(() => {
+    if (groupedReportDays.length === 0) {
+      if (expandedDayKey !== null) setExpandedDayKey(null);
+      if (expandedTimeGroupKey !== null) setExpandedTimeGroupKey(null);
+      return;
+    }
+    const validDayKeys = new Set(groupedReportDays.map((day) => day.dateKey));
+    if (expandedDayKey && !validDayKeys.has(expandedDayKey)) {
+      setExpandedDayKey(null);
+    }
+    const timeKeyExists = groupedReportDays.some((day) =>
+      day.timeGroups.some((group) => `${day.dateKey}::${group.timeKey}` === expandedTimeGroupKey),
+    );
+    if (!timeKeyExists && expandedTimeGroupKey !== null) {
+      setExpandedTimeGroupKey(null);
+    }
+  }, [expandedDayKey, expandedTimeGroupKey, groupedReportDays]);
 
   if (isLoading) return <AppLoadingScreen message="Memuat berita acara ujian..." />;
   if (!isAuthenticated) return <Redirect href="/welcome" />;
@@ -167,127 +326,187 @@ export default function PrincipalExamReportsScreen() {
         <QueryStateView type="error" message="Gagal memuat berita acara pengawas." onRetry={() => reportsQuery.refetch()} />
       ) : null}
 
-      <View style={{ flexDirection: 'row', flexWrap: 'wrap', marginHorizontal: -4, marginBottom: 12 }}>
-        <View style={{ width: '50%', paddingHorizontal: 4, marginBottom: 8 }}>
-          <MobileSummaryCard
-            title="Ruang Aktif"
-            value={String(summary.totalRooms)}
-            subtitle="Total ruang pada filter"
-            iconName="home"
-            accentColor="#2563eb"
-          />
-        </View>
-        <View style={{ width: '50%', paddingHorizontal: 4, marginBottom: 8 }}>
-          <MobileSummaryCard
-            title="Sudah Melapor"
-            value={String(summary.reportedRooms)}
-            subtitle="Ruang yang sudah submit"
-            iconName="check-circle"
-            accentColor="#16a34a"
-          />
-        </View>
-        <View style={{ width: '50%', paddingHorizontal: 4, marginBottom: 8 }}>
-          <MobileSummaryCard
-            title="Peserta Hadir"
-            value={String(summary.totalPresent)}
-            subtitle="Peserta tercatat hadir"
-            iconName="users"
-            accentColor="#0f766e"
-          />
-        </View>
-        <View style={{ width: '50%', paddingHorizontal: 4, marginBottom: 8 }}>
-          <MobileSummaryCard
-            title="Tidak Hadir"
-            value={String(summary.totalAbsent)}
-            subtitle="Perlu validasi lanjutan"
-            iconName="alert-circle"
-            accentColor="#dc2626"
-          />
-        </View>
+      <View
+        style={{
+          backgroundColor: '#fff',
+          borderWidth: 1,
+          borderColor: '#dbe7fb',
+          borderRadius: 12,
+          padding: 12,
+          marginBottom: 12,
+        }}
+      >
+        <Text style={{ color: BRAND_COLORS.textMuted, fontSize: scaleWithAppTextScale(12) }}>
+          Ringkasan utama dipindahkan ke header per hari agar kehadiran dan laporan ruang lebih mudah dibaca per pelaksanaan ujian.
+        </Text>
       </View>
 
-      {rows.length > 0 ? (
-        rows.map((row: PrincipalProctorReportRow, index) => {
-          const key = `${row.room || '-'}-${row.startTime}-${index}`;
-          const expanded = expandedRowKey === key;
-          return (
-            <View
-              key={key}
+      {groupedReportDays.length > 0 ? (
+        groupedReportDays.map((day) => (
+          <View
+            key={day.dateKey}
+            style={{
+              backgroundColor: '#fff',
+              borderWidth: 1,
+              borderColor: '#dbe7fb',
+              borderRadius: 12,
+              overflow: 'hidden',
+              marginBottom: 12,
+            }}
+          >
+            <Pressable
+              onPress={() => setExpandedDayKey((previous) => (previous === day.dateKey ? null : day.dateKey))}
               style={{
-                backgroundColor: '#fff',
-                borderWidth: 1,
-                borderColor: '#dbe7fb',
-                borderRadius: 12,
                 padding: 12,
-                marginBottom: 10,
+                borderBottomWidth: 1,
+                borderBottomColor: '#e2e8f0',
+                backgroundColor: '#f8fafc',
+                gap: 10,
               }}
             >
-              <Text style={{ color: BRAND_COLORS.textDark, fontWeight: '700' }}>{row.room || 'Ruang belum ditentukan'}</Text>
-              <Text style={{ color: BRAND_COLORS.textMuted, fontSize: scaleWithAppTextScale(12), marginTop: 4 }}>
-                {formatDate(row.startTime)} • {formatTime(row.startTime)} - {formatTime(row.endTime)}
-                {row.sessionLabel ? ` • ${row.sessionLabel}` : ''}
-                {row.examType ? ` • ${row.examType}` : ''}
-              </Text>
-              <Text style={{ color: BRAND_COLORS.textMuted, fontSize: scaleWithAppTextScale(12), marginTop: 4 }}>
-                Kelas: {row.classNames.length > 0 ? row.classNames.join(', ') : '-'}
-              </Text>
-              <Text style={{ color: BRAND_COLORS.textDark, fontWeight: '700', marginTop: 8 }}>
-                Hadir {row.presentParticipants}/{row.totalParticipants} • Tidak hadir {row.absentParticipants}
-              </Text>
-              <Text style={{ color: BRAND_COLORS.textMuted, fontSize: scaleWithAppTextScale(12), marginTop: 4 }}>
-                Pengawas: {row.report?.proctor?.name || 'Belum submit'}
-              </Text>
-              <Text style={{ color: BRAND_COLORS.textMuted, fontSize: scaleWithAppTextScale(12), marginTop: 4 }}>
-                Catatan: {row.report?.notes || row.report?.incident || '-'}
-              </Text>
-
-              {Array.isArray(row.absentStudents) && row.absentStudents.length > 0 ? (
-                <Pressable
-                  onPress={() => setExpandedRowKey(expanded ? null : key)}
-                  style={{
-                    marginTop: 10,
-                    borderWidth: 1,
-                    borderColor: '#fecaca',
-                    borderRadius: 10,
-                    paddingVertical: 10,
-                    alignItems: 'center',
-                    backgroundColor: '#fff1f2',
-                  }}
-                >
-                  <Text style={{ color: '#be123c', fontWeight: '700' }}>
-                    {expanded ? 'Sembunyikan Daftar Tidak Hadir' : `Lihat ${row.absentStudents.length} Siswa Tidak Hadir`}
+              <View style={{ flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', gap: 12 }}>
+                <View style={{ flex: 1 }}>
+                  <Text style={{ color: BRAND_COLORS.textDark, fontWeight: '700', fontSize: scaleWithAppTextScale(15) }}>
+                    {day.dateLabel}
                   </Text>
-                </Pressable>
-              ) : null}
+                  <Text style={{ color: BRAND_COLORS.textMuted, fontSize: scaleWithAppTextScale(12), marginTop: 3 }}>
+                    {day.timeGroups.length} kelompok jam • {day.roomCount} ruang aktif • {day.reportedRowCount}/{day.rowCount} laporan masuk
+                  </Text>
+                </View>
+                <Text style={{ color: '#2563eb', fontWeight: '700' }}>{expandedDayKey === day.dateKey ? 'Tutup Hari' : 'Buka Hari'}</Text>
+              </View>
+              <View style={{ flexDirection: 'row', flexWrap: 'wrap', gap: 8 }}>
+                <InlineMetric label="Laporan" value={String(day.rowCount)} bg="#f8fafc" border="#cbd5e1" text="#475569" />
+                <InlineMetric label="Peserta" value={String(day.totalExpected)} bg="#f8fafc" border="#cbd5e1" text="#475569" />
+                <InlineMetric label="Hadir" value={String(day.totalPresent)} bg="#ecfdf5" border="#a7f3d0" text="#047857" />
+                <InlineMetric label="Tidak Hadir" value={String(day.totalAbsent)} bg="#fff1f2" border="#fecdd3" text="#be123c" />
+              </View>
+            </Pressable>
 
-              {expanded && Array.isArray(row.absentStudents) ? (
-                <View style={{ marginTop: 10 }}>
-                  {row.absentStudents.map((student, studentIndex) => (
-                    <View
-                      key={`${student.id}-${studentIndex}`}
+            {expandedDayKey === day.dateKey ? (
+              <View style={{ padding: 12, gap: 10 }}>
+                {day.timeGroups.map((group) => (
+                  <View
+                    key={`${day.dateKey}-${group.timeKey}`}
+                    style={{
+                      borderWidth: 1,
+                      borderColor: '#dbe2ea',
+                      borderRadius: 12,
+                      overflow: 'hidden',
+                      backgroundColor: '#fff',
+                    }}
+                  >
+                    <Pressable
+                      onPress={() =>
+                        setExpandedTimeGroupKey((previous) =>
+                          previous === `${day.dateKey}::${group.timeKey}` ? null : `${day.dateKey}::${group.timeKey}`,
+                        )
+                      }
                       style={{
-                        borderWidth: 1,
-                        borderColor: '#fecaca',
-                        borderRadius: 10,
-                        padding: 10,
-                        marginBottom: 8,
-                        backgroundColor: '#fff',
+                        paddingHorizontal: 12,
+                        paddingVertical: 12,
+                        borderBottomWidth: 1,
+                        borderBottomColor: '#e2e8f0',
+                        backgroundColor: '#f8fafc',
                       }}
                     >
-                      <Text style={{ color: BRAND_COLORS.textDark, fontWeight: '700' }}>{student.name}</Text>
+                      <Text style={{ color: BRAND_COLORS.textDark, fontWeight: '700', fontSize: scaleWithAppTextScale(14) }}>
+                        {formatTime(group.startTime)} - {formatTime(group.endTime)} WIB
+                        {group.periodNumber ? ` • Jam Ke-${group.periodNumber}` : ''}
+                      </Text>
                       <Text style={{ color: BRAND_COLORS.textMuted, fontSize: scaleWithAppTextScale(12), marginTop: 3 }}>
-                        {student.className || '-'} • {student.nis || '-'}
+                        {group.sessionLabel ? `Sesi ${group.sessionLabel}` : 'Tanpa sesi'} • {group.rows.length} laporan ruang
                       </Text>
-                      <Text style={{ color: '#be123c', fontSize: scaleWithAppTextScale(12), marginTop: 4 }}>
-                        {student.absentReason || 'Tanpa keterangan'}
-                      </Text>
-                    </View>
-                  ))}
-                </View>
-              ) : null}
-            </View>
-          );
-        })
+                    </Pressable>
+
+                    {expandedTimeGroupKey === `${day.dateKey}::${group.timeKey}` ? (
+                      <View style={{ padding: 12, gap: 10 }}>
+                        {group.rows.map((row, index) => {
+                          const key = `${day.dateKey}-${group.timeKey}-${row.room || '-'}-${index}`;
+                          const expanded = expandedRowKey === key;
+                          return (
+                            <View
+                              key={key}
+                              style={{
+                                borderWidth: 1,
+                                borderColor: '#e2e8f0',
+                                borderRadius: 12,
+                                padding: 12,
+                                backgroundColor: '#fff',
+                              }}
+                            >
+                              <Text style={{ color: BRAND_COLORS.textDark, fontWeight: '700' }}>{row.room || 'Ruang belum ditentukan'}</Text>
+                              <Text style={{ color: BRAND_COLORS.textMuted, fontSize: scaleWithAppTextScale(12), marginTop: 4 }}>
+                                {row.subjectName || 'Mata Pelajaran'} • {row.classNames.length > 0 ? row.classNames.join(', ') : '-'}
+                              </Text>
+                              <Text style={{ color: BRAND_COLORS.textMuted, fontSize: scaleWithAppTextScale(12), marginTop: 4 }}>
+                                {row.examType || '-'} {row.sessionLabel ? `• ${row.sessionLabel}` : ''}
+                              </Text>
+                              <Text style={{ color: BRAND_COLORS.textDark, fontWeight: '700', marginTop: 8 }}>
+                                Hadir {row.presentParticipants}/{row.totalParticipants} • Tidak hadir {row.absentParticipants}
+                              </Text>
+                              <Text style={{ color: BRAND_COLORS.textMuted, fontSize: scaleWithAppTextScale(12), marginTop: 4 }}>
+                                Pengawas: {row.report?.proctor?.name || 'Belum submit'}
+                              </Text>
+                              <Text style={{ color: BRAND_COLORS.textMuted, fontSize: scaleWithAppTextScale(12), marginTop: 4 }}>
+                                Catatan: {row.report?.notes || row.report?.incident || '-'}
+                              </Text>
+
+                              {Array.isArray(row.absentStudents) && row.absentStudents.length > 0 ? (
+                                <Pressable
+                                  onPress={() => setExpandedRowKey(expanded ? null : key)}
+                                  style={{
+                                    marginTop: 10,
+                                    borderWidth: 1,
+                                    borderColor: '#fecaca',
+                                    borderRadius: 10,
+                                    paddingVertical: 10,
+                                    alignItems: 'center',
+                                    backgroundColor: '#fff1f2',
+                                  }}
+                                >
+                                  <Text style={{ color: '#be123c', fontWeight: '700' }}>
+                                    {expanded ? 'Sembunyikan Daftar Tidak Hadir' : `Lihat ${row.absentStudents.length} Siswa Tidak Hadir`}
+                                  </Text>
+                                </Pressable>
+                              ) : null}
+
+                              {expanded && Array.isArray(row.absentStudents) ? (
+                                <View style={{ marginTop: 10 }}>
+                                  {row.absentStudents.map((student, studentIndex) => (
+                                    <View
+                                      key={`${student.id}-${studentIndex}`}
+                                      style={{
+                                        borderWidth: 1,
+                                        borderColor: '#fecaca',
+                                        borderRadius: 10,
+                                        padding: 10,
+                                        marginBottom: 8,
+                                        backgroundColor: '#fff',
+                                      }}
+                                    >
+                                      <Text style={{ color: BRAND_COLORS.textDark, fontWeight: '700' }}>{student.name}</Text>
+                                      <Text style={{ color: BRAND_COLORS.textMuted, fontSize: scaleWithAppTextScale(12), marginTop: 3 }}>
+                                        {student.className || '-'} • {student.nis || '-'}
+                                      </Text>
+                                      <Text style={{ color: '#be123c', fontSize: scaleWithAppTextScale(12), marginTop: 4 }}>
+                                        {student.absentReason || 'Tanpa keterangan'}
+                                      </Text>
+                                    </View>
+                                  ))}
+                                </View>
+                              ) : null}
+                            </View>
+                          );
+                        })}
+                      </View>
+                    ) : null}
+                  </View>
+                ))}
+              </View>
+            ) : null}
+          </View>
+        ))
       ) : !reportsQuery.isLoading && !reportsQuery.isError ? (
         <View
           style={{

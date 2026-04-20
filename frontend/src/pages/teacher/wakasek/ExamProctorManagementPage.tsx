@@ -179,6 +179,10 @@ type GroupedProctorReportDay = {
   dateLabel: string;
   roomCount: number;
   rowCount: number;
+  reportedRowCount: number;
+  totalExpected: number;
+  totalPresent: number;
+  totalAbsent: number;
   timeGroups: GroupedProctorReportTimeGroup[];
 };
 
@@ -980,6 +984,22 @@ const ExamProctorManagementPage = () => {
             });
           }),
         rowCount: Array.from(day.timeGroups.values()).reduce((total, group) => total + group.rows.length, 0),
+        reportedRowCount: Array.from(day.timeGroups.values()).reduce(
+          (total, group) => total + group.rows.filter((row) => Boolean(row.report)).length,
+          0,
+        ),
+        totalExpected: Array.from(day.timeGroups.values()).reduce(
+          (total, group) => total + group.rows.reduce((sum, row) => sum + Number(row.expectedParticipants || 0), 0),
+          0,
+        ),
+        totalPresent: Array.from(day.timeGroups.values()).reduce(
+          (total, group) => total + group.rows.reduce((sum, row) => sum + Number(row.presentParticipants || 0), 0),
+          0,
+        ),
+        totalAbsent: Array.from(day.timeGroups.values()).reduce(
+          (total, group) => total + group.rows.reduce((sum, row) => sum + Number(row.absentParticipants || 0), 0),
+          0,
+        ),
         roomCount: new Set(
           Array.from(day.timeGroups.values()).flatMap((group) =>
             group.rows.map((row) => String(row.room || '').trim()).filter(Boolean),
@@ -1591,24 +1611,26 @@ const ExamProctorManagementPage = () => {
 
         {isReportExpanded ? (
           <>
-        <div className="grid grid-cols-1 md:grid-cols-4 gap-3 px-6 py-4 bg-gray-50 border-b border-gray-200">
-          <div className="rounded-lg border border-gray-200 bg-white px-3 py-2">
-            <p className="text-[11px] uppercase tracking-wide text-gray-500">Total Ruang</p>
-            <p className="text-lg font-semibold text-gray-900">{proctorReportSummary.totalRooms}</p>
+        {reportMode === 'archive' ? (
+          <div className="grid grid-cols-1 md:grid-cols-4 gap-3 px-6 py-4 bg-gray-50 border-b border-gray-200">
+            <div className="rounded-lg border border-gray-200 bg-white px-3 py-2">
+              <p className="text-[11px] uppercase tracking-wide text-gray-500">Laporan Ruang</p>
+              <p className="text-lg font-semibold text-gray-900">{proctorReportSummary.totalRooms}</p>
+            </div>
+            <div className="rounded-lg border border-gray-200 bg-white px-3 py-2">
+              <p className="text-[11px] uppercase tracking-wide text-gray-500">Peserta Seharusnya</p>
+              <p className="text-lg font-semibold text-gray-900">{proctorReportSummary.totalExpected}</p>
+            </div>
+            <div className="rounded-lg border border-emerald-200 bg-emerald-50 px-3 py-2">
+              <p className="text-[11px] uppercase tracking-wide text-emerald-700">Hadir</p>
+              <p className="text-lg font-semibold text-emerald-800">{proctorReportSummary.totalPresent}</p>
+            </div>
+            <div className="rounded-lg border border-rose-200 bg-rose-50 px-3 py-2">
+              <p className="text-[11px] uppercase tracking-wide text-rose-700">Tidak Hadir</p>
+              <p className="text-lg font-semibold text-rose-800">{proctorReportSummary.totalAbsent}</p>
+            </div>
           </div>
-          <div className="rounded-lg border border-gray-200 bg-white px-3 py-2">
-            <p className="text-[11px] uppercase tracking-wide text-gray-500">Peserta Seharusnya</p>
-            <p className="text-lg font-semibold text-gray-900">{proctorReportSummary.totalExpected}</p>
-          </div>
-          <div className="rounded-lg border border-emerald-200 bg-emerald-50 px-3 py-2">
-            <p className="text-[11px] uppercase tracking-wide text-emerald-700">Hadir</p>
-            <p className="text-lg font-semibold text-emerald-800">{proctorReportSummary.totalPresent}</p>
-          </div>
-          <div className="rounded-lg border border-rose-200 bg-rose-50 px-3 py-2">
-            <p className="text-[11px] uppercase tracking-wide text-rose-700">Tidak Hadir</p>
-            <p className="text-lg font-semibold text-rose-800">{proctorReportSummary.totalAbsent}</p>
-          </div>
-        </div>
+        ) : null}
 
         {reportsLoading ? (
           <div className="px-6 py-12 text-center text-sm text-gray-500">
@@ -1627,10 +1649,28 @@ const ExamProctorManagementPage = () => {
                   onClick={() => setExpandedReportDayKey((previous) => (previous === day.dateKey ? null : day.dateKey))}
                   className="flex w-full flex-wrap items-center justify-between gap-3 border-b border-gray-200 bg-gray-50 px-5 py-4 text-left"
                 >
-                    <div>
+                    <div className="flex-1 min-w-[260px]">
                       <div className="text-base font-semibold text-gray-900">{day.dateLabel}</div>
                       <div className="mt-1 text-xs text-gray-500">
-                      {day.timeGroups.length} kelompok jam • {day.rowCount} laporan ruang • {day.roomCount} ruang aktif
+                        {day.timeGroups.length} kelompok jam • {day.roomCount} ruang aktif • {day.reportedRowCount}/{day.rowCount} laporan masuk
+                      </div>
+                      <div className="mt-3 grid grid-cols-2 md:grid-cols-4 gap-2">
+                        <div className="rounded-xl border border-slate-200 bg-white px-3 py-2">
+                          <div className="text-[11px] font-semibold uppercase tracking-[0.18em] text-slate-500">Laporan Ruang</div>
+                          <div className="mt-1 text-lg font-semibold text-slate-900">{day.rowCount}</div>
+                        </div>
+                        <div className="rounded-xl border border-slate-200 bg-white px-3 py-2">
+                          <div className="text-[11px] font-semibold uppercase tracking-[0.18em] text-slate-500">Peserta</div>
+                          <div className="mt-1 text-lg font-semibold text-slate-900">{day.totalExpected}</div>
+                        </div>
+                        <div className="rounded-xl border border-emerald-200 bg-emerald-50 px-3 py-2">
+                          <div className="text-[11px] font-semibold uppercase tracking-[0.18em] text-emerald-700">Hadir</div>
+                          <div className="mt-1 text-lg font-semibold text-emerald-800">{day.totalPresent}</div>
+                        </div>
+                        <div className="rounded-xl border border-rose-200 bg-rose-50 px-3 py-2">
+                          <div className="text-[11px] font-semibold uppercase tracking-[0.18em] text-rose-700">Tidak Hadir</div>
+                          <div className="mt-1 text-lg font-semibold text-rose-800">{day.totalAbsent}</div>
+                        </div>
                       </div>
                     </div>
                   <span className="inline-flex items-center gap-2 text-sm font-medium text-blue-700">

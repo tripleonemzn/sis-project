@@ -1,4 +1,4 @@
-import React, { useState, useMemo } from 'react';
+import React, { useEffect, useState, useMemo } from 'react';
 import { Navigate, Route, Routes, useLocation, Link, useNavigate, useOutletContext } from 'react-router-dom';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { createPortal } from 'react-dom';
@@ -49,6 +49,8 @@ import {
   Gauge,
   Clock3,
   BookOpenText,
+  ChevronDown,
+  ChevronRight,
 } from 'lucide-react';
 import toast from 'react-hot-toast';
 import api from '../../services/api';
@@ -197,7 +199,9 @@ interface PrincipalProctorReportRow {
   startTime: string;
   endTime: string;
   sessionLabel: string | null;
+  periodNumber?: number | null;
   examType: string | null;
+  subjectName?: string | null;
   classNames: string[];
   expectedParticipants: number;
   presentParticipants: number;
@@ -5320,10 +5324,70 @@ const PrincipalFinancePage = () => {
   );
 };
 
+type PrincipalGroupedReportTimeGroup = {
+  timeKey: string;
+  startTime: string;
+  endTime: string;
+  periodNumber: number | null;
+  sessionLabel: string | null;
+  rows: PrincipalProctorReportRow[];
+};
+
+type PrincipalGroupedReportDay = {
+  dateKey: string;
+  dateLabel: string;
+  timeGroups: PrincipalGroupedReportTimeGroup[];
+  roomCount: number;
+  rowCount: number;
+  reportedRowCount: number;
+  totalExpected: number;
+  totalPresent: number;
+  totalAbsent: number;
+};
+
+const parsePrincipalSafeDate = (value?: string | null) => {
+  if (!value) return null;
+  const date = new Date(value);
+  return Number.isNaN(date.getTime()) ? null : date;
+};
+
+const getPrincipalDateKey = (value?: string | null) => {
+  const date = parsePrincipalSafeDate(value);
+  return date ? date.toISOString().slice(0, 10) : '__no_date__';
+};
+
+const formatPrincipalDayLabel = (value?: string | null) => {
+  const date = parsePrincipalSafeDate(value);
+  return date
+    ? date.toLocaleDateString('id-ID', {
+        weekday: 'long',
+        day: '2-digit',
+        month: 'long',
+        year: 'numeric',
+      })
+    : 'Tanggal belum diatur';
+};
+
+const formatPrincipalTime = (value?: string | null) => {
+  const date = parsePrincipalSafeDate(value);
+  return date
+    ? date.toLocaleTimeString('id-ID', {
+        hour: '2-digit',
+        minute: '2-digit',
+        hour12: false,
+      })
+    : '--:--';
+};
+
+const mergePrincipalReportNotes = (notes?: string | null, incident?: string | null) =>
+  [String(notes || '').trim(), String(incident || '').trim()].filter(Boolean).join(' ');
+
 const PrincipalExamReportsPage = () => {
   const [examTypeFilter, setExamTypeFilter] = useState<string>('ALL');
   const [selectedDate, setSelectedDate] = useState('');
   const [absentModalRow, setAbsentModalRow] = useState<PrincipalProctorReportRow | null>(null);
+  const [expandedDayKey, setExpandedDayKey] = useState<string | null>(null);
+  const [expandedTimeGroupKey, setExpandedTimeGroupKey] = useState<string | null>(null);
 
   const { data: activeYearData } = useQuery({
     queryKey: ['principal-active-academic-year', 'exam-reports'],
@@ -5359,13 +5423,6 @@ const PrincipalExamReportsPage = () => {
   });
 
   const rows = reportsQuery.data?.rows || [];
-  const summary = reportsQuery.data?.summary || {
-    totalRooms: 0,
-    totalExpected: 0,
-    totalPresent: 0,
-    totalAbsent: 0,
-    reportedRooms: 0,
-  };
 
   const examTypeOptions = useMemo(() => {
     const options = new Set<string>();
@@ -5376,12 +5433,121 @@ const PrincipalExamReportsPage = () => {
     return Array.from(options.values()).sort((a, b) => a.localeCompare(b));
   }, [rows]);
 
+  const groupedReportDays = useMemo<PrincipalGroupedReportDay[]>(() => {
+    const dayMap = new Map<
+      string,
+      {
+        dateKey: string;
+        dateLabel: string;
+        timeGroups: Map<
+          string,
+          {
+            timeKey: string;
+            startTime: string;
+            endTime: string;
+            periodNumber: number | null;
+            sessionLabel: string | null;
+            rows: PrincipalProctorReportRow[];
+          }
+        >;
+      }
+    >();
+
+    rows.forEach((row) => {
+      const dateKey = getPrincipalDateKey(row.startTime || row.endTime);
+      if (!dayMap.has(dateKey)) {
+        dayMap.set(dateKey, {
+          dateKey,
+          dateLabel: formatPrincipalDayLabel(row.startTime || row.endTime),
+          timeGroups: new Map(),
+        });
+      }
+      const dayGroup = dayMap.get(dateKey)!;
+      const periodNumber =
+        Number.isFinite(Number(row.periodNumber)) && Number(row.periodNumber) > 0 ? Number(row.periodNumber) : null;
+      const sessionLabel = String(row.sessionLabel || '').trim() || null;
+      const timeKey = [row.startTime || '', row.endTime || '', periodNumber || 0, sessionLabel || '__no_session__'].join('|');
+      if (!dayGroup.timeGroups.has(timeKey)) {
+        dayGroup.timeGroups.set(timeKey, {
+          timeKey,
+          startTime: row.startTime,
+          endTime: row.endTime,
+          periodNumber,
+          sessionLabel,
+          rows: [],
+        });
+      }
+      dayGroup.timeGroups.get(timeKey)!.rows.push(row);
+    });
+
+    return Array.from(dayMap.values())
+      .sort((a, b) => a.dateKey.localeCompare(b.dateKey))
+      .map((day) => {
+        const timeGroups = Array.from(day.timeGroups.values())
+          .map((timeGroup) => ({
+            ...timeGroup,
+            rows: timeGroup.rows.slice().sort((left, right) =>
+              String(left.room || '').localeCompare(String(right.room || ''), 'id', {
+                numeric: true,
+                sensitivity: 'base',
+              }),
+            ),
+          }))
+          .sort((left, right) => {
+            const leftTime = (parsePrincipalSafeDate(left.startTime)?.getTime() ?? Number.MAX_SAFE_INTEGER);
+            const rightTime = (parsePrincipalSafeDate(right.startTime)?.getTime() ?? Number.MAX_SAFE_INTEGER);
+            if (leftTime !== rightTime) return leftTime - rightTime;
+            return Number(left.periodNumber || Number.MAX_SAFE_INTEGER) - Number(right.periodNumber || Number.MAX_SAFE_INTEGER);
+          });
+
+        return {
+          dateKey: day.dateKey,
+          dateLabel: day.dateLabel,
+          timeGroups,
+          roomCount: new Set(
+            timeGroups.flatMap((group) => group.rows.map((row) => String(row.room || '').trim()).filter(Boolean)),
+          ).size,
+          rowCount: timeGroups.reduce((sum, group) => sum + group.rows.length, 0),
+          reportedRowCount: timeGroups.reduce((sum, group) => sum + group.rows.filter((row) => Boolean(row.report)).length, 0),
+          totalExpected: timeGroups.reduce(
+            (sum, group) => sum + group.rows.reduce((inner, row) => inner + Number(row.expectedParticipants || 0), 0),
+            0,
+          ),
+          totalPresent: timeGroups.reduce(
+            (sum, group) => sum + group.rows.reduce((inner, row) => inner + Number(row.presentParticipants || 0), 0),
+            0,
+          ),
+          totalAbsent: timeGroups.reduce(
+            (sum, group) => sum + group.rows.reduce((inner, row) => inner + Number(row.absentParticipants || 0), 0),
+            0,
+          ),
+        };
+      });
+  }, [rows]);
+
+  useEffect(() => {
+    if (groupedReportDays.length === 0) {
+      setExpandedDayKey(null);
+      setExpandedTimeGroupKey(null);
+      return;
+    }
+    const validDayKeys = new Set(groupedReportDays.map((day) => day.dateKey));
+    setExpandedDayKey((previous) => (previous && validDayKeys.has(previous) ? previous : null));
+    setExpandedTimeGroupKey((previous) => {
+      if (!previous) return null;
+      const exists = groupedReportDays.some((day) =>
+        day.timeGroups.some((timeGroup) => `${day.dateKey}::${timeGroup.timeKey}` === previous),
+      );
+      return exists ? previous : null;
+    });
+  }, [groupedReportDays]);
+
   return (
     <div className="space-y-6">
       <div>
         <h2 className="text-2xl font-bold text-gray-900">Monitoring Berita Acara Ujian</h2>
         <p className="mt-1 text-sm text-gray-500">
-          Pantau berita acara pengawas ruang secara real-time sebagai bahan monitoring Kepala Sekolah.
+          Pantau berita acara pengawas ruang secara real-time dengan grouping per hari dan per jam ke.
         </p>
       </div>
 
@@ -5421,23 +5587,8 @@ const PrincipalExamReportsPage = () => {
         </button>
       </div>
 
-      <div className="grid grid-cols-1 md:grid-cols-4 gap-4">
-        <div className="rounded-xl border border-blue-100 bg-gradient-to-br from-blue-50 to-sky-100/85 p-4">
-          <p className="text-xs text-blue-700/80 font-medium">Ruang Aktif</p>
-          <p className="text-2xl font-bold text-blue-900">{summary.totalRooms}</p>
-        </div>
-        <div className="rounded-xl border border-emerald-100 bg-gradient-to-br from-emerald-50 to-teal-100/85 p-4">
-          <p className="text-xs text-emerald-700/80 font-medium">Sudah Melapor</p>
-          <p className="text-2xl font-bold text-emerald-900">{summary.reportedRooms}</p>
-        </div>
-        <div className="rounded-xl border border-slate-100 bg-gradient-to-br from-slate-50 to-gray-100/90 p-4">
-          <p className="text-xs text-slate-600 font-medium">Peserta Hadir</p>
-          <p className="text-2xl font-bold text-slate-900">{summary.totalPresent}</p>
-        </div>
-        <div className="rounded-xl border border-rose-100 bg-gradient-to-br from-rose-50 to-red-100/85 p-4">
-          <p className="text-xs text-rose-700/80 font-medium">Peserta Tidak Hadir</p>
-          <p className="text-2xl font-bold text-rose-900">{summary.totalAbsent}</p>
-        </div>
+      <div className="rounded-xl border border-blue-100 bg-blue-50/60 px-4 py-3 text-sm text-blue-900">
+        Rekap utama dipindahkan ke header per hari agar angka kehadiran dan laporan ruang lebih mudah dibaca sesuai pelaksanaan ujian.
       </div>
 
       <div className="bg-white rounded-xl shadow-sm border border-gray-100 overflow-hidden">
@@ -5447,75 +5598,145 @@ const PrincipalExamReportsPage = () => {
           </div>
         ) : reportsQuery.isError ? (
           <div className="py-10 text-center text-sm text-red-600">Gagal memuat berita acara pengawas.</div>
-        ) : rows.length === 0 ? (
+        ) : groupedReportDays.length === 0 ? (
           <div className="py-10 text-center text-sm text-gray-500">
             Belum ada berita acara pada filter saat ini.
           </div>
         ) : (
-          <div className="overflow-x-auto">
-            <table className="min-w-full divide-y divide-gray-200">
-              <thead className="bg-gray-50">
-                <tr>
-                  <th className="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Waktu</th>
-                  <th className="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Ruang</th>
-                  <th className="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Kelas</th>
-                  <th className="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Kehadiran</th>
-                  <th className="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Pengawas</th>
-                  <th className="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Catatan</th>
-                </tr>
-              </thead>
-              <tbody className="bg-white divide-y divide-gray-200">
-                {rows.map((row, index) => (
-                  <tr key={`${row.room || '-'}-${row.startTime}-${index}`}>
-                    <td className="px-4 py-3 text-sm text-gray-700">
-                      <div className="font-medium text-gray-900">
-                        {new Date(row.startTime).toLocaleTimeString('id-ID', { hour: '2-digit', minute: '2-digit' })}
-                        {' - '}
-                        {new Date(row.endTime).toLocaleTimeString('id-ID', { hour: '2-digit', minute: '2-digit' })}
+          <div className="space-y-4 px-4 py-4">
+            {groupedReportDays.map((day) => (
+              <div key={day.dateKey} className="overflow-hidden rounded-2xl border border-gray-200 bg-white">
+                <button
+                  type="button"
+                  onClick={() => setExpandedDayKey((previous) => (previous === day.dateKey ? null : day.dateKey))}
+                  className="flex w-full flex-wrap items-center justify-between gap-3 border-b border-gray-200 bg-gray-50 px-5 py-4 text-left"
+                >
+                  <div className="flex-1 min-w-[260px]">
+                    <div className="text-base font-semibold text-gray-900">{day.dateLabel}</div>
+                    <div className="mt-1 text-xs text-gray-500">
+                      {day.timeGroups.length} kelompok jam • {day.roomCount} ruang aktif • {day.reportedRowCount}/{day.rowCount} laporan masuk
+                    </div>
+                    <div className="mt-3 grid grid-cols-2 md:grid-cols-4 gap-2">
+                      <div className="rounded-xl border border-slate-200 bg-white px-3 py-2">
+                        <div className="text-[11px] font-semibold uppercase tracking-[0.18em] text-slate-500">Laporan Ruang</div>
+                        <div className="mt-1 text-lg font-semibold text-slate-900">{day.rowCount}</div>
                       </div>
-                      <div className="text-xs text-gray-500">
-                        {new Date(row.startTime).toLocaleDateString('id-ID', {
-                          weekday: 'short',
-                          day: '2-digit',
-                          month: 'short',
-                          year: 'numeric',
-                        })}
-                        {row.sessionLabel ? ` • ${row.sessionLabel}` : ''}
-                        {row.examType ? ` • ${row.examType}` : ''}
+                      <div className="rounded-xl border border-slate-200 bg-white px-3 py-2">
+                        <div className="text-[11px] font-semibold uppercase tracking-[0.18em] text-slate-500">Peserta</div>
+                        <div className="mt-1 text-lg font-semibold text-slate-900">{day.totalExpected}</div>
                       </div>
-                    </td>
-                    <td className="px-4 py-3 text-sm font-medium text-gray-900">{row.room || '-'}</td>
-                    <td className="px-4 py-3 text-sm text-gray-700">
-                      {row.classNames.length > 0 ? row.classNames.join(', ') : '-'}
-                    </td>
-                    <td className="px-4 py-3 text-sm text-gray-700">
-                      <div className="font-medium">{row.presentParticipants}/{row.totalParticipants}</div>
-                      {row.absentParticipants > 0 && Array.isArray(row.absentStudents) && row.absentStudents.length > 0 ? (
+                      <div className="rounded-xl border border-emerald-200 bg-emerald-50 px-3 py-2">
+                        <div className="text-[11px] font-semibold uppercase tracking-[0.18em] text-emerald-700">Hadir</div>
+                        <div className="mt-1 text-lg font-semibold text-emerald-800">{day.totalPresent}</div>
+                      </div>
+                      <div className="rounded-xl border border-rose-200 bg-rose-50 px-3 py-2">
+                        <div className="text-[11px] font-semibold uppercase tracking-[0.18em] text-rose-700">Tidak Hadir</div>
+                        <div className="mt-1 text-lg font-semibold text-rose-800">{day.totalAbsent}</div>
+                      </div>
+                    </div>
+                  </div>
+                  <span className="inline-flex items-center gap-2 text-sm font-medium text-blue-700">
+                    {expandedDayKey === day.dateKey ? 'Tutup Hari' : 'Buka Hari'}
+                    {expandedDayKey === day.dateKey ? <ChevronDown size={16} /> : <ChevronRight size={16} />}
+                  </span>
+                </button>
+
+                {expandedDayKey === day.dateKey ? (
+                  <div className="space-y-4 px-4 py-4">
+                    {day.timeGroups.map((timeGroup) => (
+                      <div key={`${day.dateKey}-${timeGroup.timeKey}`} className="overflow-hidden rounded-2xl border border-gray-200 bg-white">
                         <button
                           type="button"
-                          onClick={() => setAbsentModalRow(row)}
-                          className="text-xs text-rose-700 hover:text-rose-800 hover:underline focus:outline-none focus:ring-2 focus:ring-rose-300/60 rounded-sm mt-1"
+                          onClick={() =>
+                            setExpandedTimeGroupKey((previous) =>
+                              previous === `${day.dateKey}::${timeGroup.timeKey}` ? null : `${day.dateKey}::${timeGroup.timeKey}`,
+                            )
+                          }
+                          className="flex w-full flex-wrap items-center justify-between gap-3 border-b border-gray-200 bg-slate-50 px-5 py-3 text-left"
                         >
-                          Tidak hadir: <span className="font-semibold">{row.absentParticipants}</span>
+                          <div>
+                            <div className="text-sm font-semibold text-slate-900">
+                              {formatPrincipalTime(timeGroup.startTime)} - {formatPrincipalTime(timeGroup.endTime)} WIB
+                              {timeGroup.periodNumber ? ` • Jam Ke-${timeGroup.periodNumber}` : ''}
+                            </div>
+                            <div className="mt-1 text-xs text-slate-500">
+                              {timeGroup.sessionLabel ? `Sesi ${timeGroup.sessionLabel}` : 'Tanpa sesi'} • {timeGroup.rows.length} laporan ruang
+                            </div>
+                          </div>
+                          <span className="inline-flex items-center gap-2 text-xs font-medium text-blue-700">
+                            {new Set(timeGroup.rows.map((row) => String(row.room || '').trim()).filter(Boolean)).size} ruang
+                            {expandedTimeGroupKey === `${day.dateKey}::${timeGroup.timeKey}` ? (
+                              <ChevronDown size={15} />
+                            ) : (
+                              <ChevronRight size={15} />
+                            )}
+                          </span>
                         </button>
-                      ) : (
-                        <div className="text-xs text-gray-500 mt-1">
-                          Tidak hadir: <span className="font-semibold">{row.absentParticipants}</span>
-                        </div>
-                      )}
-                    </td>
-                    <td className="px-4 py-3 text-sm text-gray-700">
-                      {row.report?.proctor?.name || <span className="text-amber-700">Belum submit</span>}
-                    </td>
-                    <td className="px-4 py-3 text-sm text-gray-700">
-                      <div className="max-w-md whitespace-pre-wrap">
-                        {row.report?.notes || row.report?.incident || '-'}
+
+                        {expandedTimeGroupKey === `${day.dateKey}::${timeGroup.timeKey}` ? (
+                          <div className="overflow-x-auto">
+                            <table className="min-w-full divide-y divide-gray-200">
+                              <thead className="bg-white">
+                                <tr>
+                                  <th className="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Ruang</th>
+                                  <th className="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Mapel</th>
+                                  <th className="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Kelas</th>
+                                  <th className="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Kehadiran</th>
+                                  <th className="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Pengawas</th>
+                                  <th className="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Catatan</th>
+                                </tr>
+                              </thead>
+                              <tbody className="bg-white divide-y divide-gray-200">
+                                {timeGroup.rows.map((row, index) => (
+                                  <tr key={`${day.dateKey}-${timeGroup.timeKey}-${row.room || '-'}-${index}`}>
+                                    <td className="px-4 py-3 text-sm text-gray-700">
+                                      <div className="font-medium text-gray-900">{row.room || '-'}</div>
+                                      <div className="mt-1 text-xs text-gray-500">{row.examType || '-'}</div>
+                                    </td>
+                                    <td className="px-4 py-3 text-sm text-gray-700">
+                                      <div className="font-medium text-gray-900">{row.subjectName || 'Mata Pelajaran'}</div>
+                                      <div className="mt-1 text-xs text-gray-500">{row.sessionLabel || 'Tanpa sesi'}</div>
+                                    </td>
+                                    <td className="px-4 py-3 text-sm text-gray-700">
+                                      {row.classNames.length > 0 ? row.classNames.join(', ') : '-'}
+                                    </td>
+                                    <td className="px-4 py-3 text-sm text-gray-700">
+                                      <div>Seharusnya: <span className="font-semibold">{row.expectedParticipants}</span></div>
+                                      <div className="text-emerald-700">Hadir: <span className="font-semibold">{row.presentParticipants}</span></div>
+                                      {row.absentParticipants > 0 && Array.isArray(row.absentStudents) && row.absentStudents.length > 0 ? (
+                                        <button
+                                          type="button"
+                                          onClick={() => setAbsentModalRow(row)}
+                                          className="mt-1 text-rose-700 hover:text-rose-800 hover:underline focus:outline-none focus:ring-2 focus:ring-rose-300/60 rounded-sm"
+                                        >
+                                          Tidak hadir: <span className="font-semibold">{row.absentParticipants}</span>
+                                        </button>
+                                      ) : (
+                                        <div className="text-rose-700">
+                                          Tidak hadir: <span className="font-semibold">{row.absentParticipants}</span>
+                                        </div>
+                                      )}
+                                    </td>
+                                    <td className="px-4 py-3 text-sm text-gray-700">
+                                      {row.report?.proctor?.name || <span className="text-amber-700">Belum submit</span>}
+                                    </td>
+                                    <td className="px-4 py-3 text-sm text-gray-700">
+                                      <div className="max-w-md whitespace-pre-wrap">
+                                        {mergePrincipalReportNotes(row.report?.notes, row.report?.incident) || '-'}
+                                      </div>
+                                    </td>
+                                  </tr>
+                                ))}
+                              </tbody>
+                            </table>
+                          </div>
+                        ) : null}
                       </div>
-                    </td>
-                  </tr>
-                ))}
-              </tbody>
-            </table>
+                    ))}
+                  </div>
+                ) : null}
+              </div>
+            ))}
           </div>
         )}
       </div>
@@ -5534,9 +5755,7 @@ const PrincipalExamReportsPage = () => {
                 <div>
                   <h3 className="text-lg font-semibold text-gray-900">Daftar Siswa Tidak Hadir</h3>
                   <p className="text-xs text-gray-500 mt-1">
-                    {absentModalRow.room || 'Belum ditentukan'} •{' '}
-                    {new Date(absentModalRow.startTime).toLocaleTimeString('id-ID', { hour: '2-digit', minute: '2-digit' })} -{' '}
-                    {new Date(absentModalRow.endTime).toLocaleTimeString('id-ID', { hour: '2-digit', minute: '2-digit' })} WIB
+                    {absentModalRow.room || 'Belum ditentukan'} • {formatPrincipalTime(absentModalRow.startTime)} - {formatPrincipalTime(absentModalRow.endTime)} WIB
                     {absentModalRow.sessionLabel ? ` • ${absentModalRow.sessionLabel}` : ''}
                   </p>
                 </div>
