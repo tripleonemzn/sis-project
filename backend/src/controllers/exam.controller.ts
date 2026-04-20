@@ -3015,6 +3015,24 @@ async function listLatestExamProctorTerminationsByScheduleIds(params: {
     return result;
 }
 
+function buildExamProctorTerminationErrors(termination: {
+    id: number;
+    title: string;
+    message: string;
+    terminatedAt: string;
+    proctorId: number | null;
+    proctorName: string | null;
+    category: string | null;
+    room: string | null;
+}): Array<Record<string, unknown>> {
+    return [
+        {
+            code: 'PROCTOR_TERMINATED',
+            termination,
+        },
+    ];
+}
+
 function sanitizeQuestionSetMeta(rawQuestionSet: unknown): SessionQuestionSetMeta | null {
     if (!rawQuestionSet || typeof rawQuestionSet !== 'object' || Array.isArray(rawQuestionSet)) {
         return null;
@@ -10994,6 +11012,7 @@ async function buildStartExamPayload(params: {
                         403,
                         latestProctorTermination.message ||
                             'Sesi ujian Anda telah diakhiri oleh pengawas ruang.',
+                        buildExamProctorTerminationErrors(latestProctorTermination),
                     );
                 }
             }
@@ -11054,6 +11073,7 @@ async function buildStartExamPayload(params: {
                         403,
                         latestProctorTermination.message ||
                             'Sesi ujian Anda telah diakhiri oleh pengawas ruang.',
+                        buildExamProctorTerminationErrors(latestProctorTermination),
                     );
                 }
             }

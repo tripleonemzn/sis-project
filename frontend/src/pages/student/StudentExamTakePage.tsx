@@ -379,6 +379,21 @@ function normalizeProctorTermination(raw: unknown): ProctorTerminationSignal | n
   }
 }
 
+function extractProctorTerminationFromApiError(raw: unknown): ProctorTerminationSignal | null {
+  if (!raw || typeof raw !== 'object') return null
+  const response = (raw as { response?: { data?: { errors?: unknown } } }).response
+  const errors = response?.data?.errors
+  if (!Array.isArray(errors)) return null
+  for (const item of errors) {
+    if (!item || typeof item !== 'object' || Array.isArray(item)) continue
+    const source = item as Record<string, unknown>
+    if (String(source.code || '').trim().toUpperCase() !== 'PROCTOR_TERMINATED') continue
+    const parsed = normalizeProctorTermination(source.termination)
+    if (parsed) return parsed
+  }
+  return null
+}
+
 function formatWarningDateTime(value?: string | null) {
   const date = new Date(String(value || ''))
   if (Number.isNaN(date.getTime())) return '-'
@@ -1194,6 +1209,11 @@ export default function StudentExamTakePage() {
     } catch (error: unknown) {
       const apiError = error as { response?: { data?: { message?: string } } }
       console.error('❌ Error fetching exam:', apiError.response?.data || error)
+      const proctorTermination = extractProctorTerminationFromApiError(error)
+      if (proctorTermination) {
+        handleIncomingProctorTermination(proctorTermination)
+        return
+      }
       const errorMessage = apiError.response?.data?.message || 'Gagal memuat ujian'
       if (isBackgroundRefresh) {
         toast.error(errorMessage)
@@ -1883,6 +1903,43 @@ export default function StudentExamTakePage() {
   }
 
   if (!exam) {
+    if (activeProctorTermination) {
+      return (
+        <div className="min-h-screen bg-gray-900 flex items-center justify-center p-4">
+          <div className="w-full max-w-xl rounded-2xl border border-rose-200 bg-white shadow-2xl">
+            <div className="border-b border-rose-100 px-6 py-5">
+              <div className="inline-flex items-center gap-2 rounded-full border border-rose-200 bg-rose-50 px-3 py-1 text-[11px] font-semibold uppercase tracking-wide text-rose-800">
+                <AlertTriangle className="h-3.5 w-3.5" />
+                Sesi Diakhiri Pengawas
+              </div>
+              <h2 className="mt-3 text-xl font-bold text-slate-900">{activeProctorTermination.title}</h2>
+              <p className="mt-2 text-sm text-slate-600">
+                {activeProctorTermination.proctorName
+                  ? `Dari ${activeProctorTermination.proctorName}`
+                  : 'Keputusan resmi dari pengawas ruang'}
+              </p>
+            </div>
+            <div className="px-6 py-5">
+              <div className="rounded-xl border border-rose-100 bg-rose-50 px-4 py-4 text-sm leading-6 text-rose-950">
+                {activeProctorTermination.message}
+              </div>
+              <div className="mt-4 text-xs text-slate-500">
+                {formatTerminationDateTime(activeProctorTermination.terminatedAt)}
+              </div>
+            </div>
+            <div className="flex justify-end border-t border-slate-200 px-6 py-4">
+              <button
+                type="button"
+                onClick={() => navigate(baseExamRoute, { replace: true })}
+                className="rounded-xl bg-rose-600 px-4 py-2 text-sm font-semibold text-white hover:bg-rose-700"
+              >
+                Kembali ke Daftar Ujian
+              </button>
+            </div>
+          </div>
+        </div>
+      )
+    }
     return (
       <div className="min-h-screen bg-gray-900 flex items-center justify-center">
         <div className="text-white text-xl">{examTakeLabel} tidak ditemukan</div>

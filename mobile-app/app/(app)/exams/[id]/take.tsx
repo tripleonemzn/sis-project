@@ -156,6 +156,21 @@ function normalizeProctorTermination(raw: unknown): ProctorTerminationSignal | n
   };
 }
 
+function extractProctorTerminationFromApiError(raw: unknown): ProctorTerminationSignal | null {
+  if (!raw || typeof raw !== 'object') return null;
+  const response = (raw as { response?: { data?: { errors?: unknown } } }).response;
+  const errors = response?.data?.errors;
+  if (!Array.isArray(errors)) return null;
+  for (const item of errors) {
+    if (!item || typeof item !== 'object' || Array.isArray(item)) continue;
+    const source = item as Record<string, unknown>;
+    if (String(source.code || '').trim().toUpperCase() !== 'PROCTOR_TERMINATED') continue;
+    const parsed = normalizeProctorTermination(source.termination);
+    if (parsed) return parsed;
+  }
+  return null;
+}
+
 function formatWarningDateTime(value?: string | null): string {
   const date = new Date(String(value || ''));
   if (Number.isNaN(date.getTime())) return '-';
@@ -610,7 +625,13 @@ export default function StudentExamTakeScreen() {
     onTermination: handleIncomingProctorTermination,
     onAppActiveSync: () => {
       if (isFinished || !hasAcknowledgedStart) return;
-      void startQuery.refetch();
+      void startQuery.refetch().then((refreshResult) => {
+        if (!refreshResult.error) return;
+        const proctorTermination = extractProctorTerminationFromApiError(refreshResult.error);
+        if (proctorTermination) {
+          handleIncomingProctorTermination(proctorTermination);
+        }
+      });
     },
   });
 
@@ -1245,6 +1266,11 @@ export default function StudentExamTakeScreen() {
       await saveProgress(false, { force: true });
       const refreshResult = await startQuery.refetch();
       if (refreshResult.error) {
+        const proctorTermination = extractProctorTerminationFromApiError(refreshResult.error);
+        if (proctorTermination) {
+          handleIncomingProctorTermination(proctorTermination);
+          return;
+        }
         const refreshError = refreshResult.error as { message?: string };
         Alert.alert('Refresh Gagal', refreshError.message || 'Data ujian belum berhasil diperbarui.');
       }
@@ -1343,10 +1369,53 @@ export default function StudentExamTakeScreen() {
   if (startQuery.isLoading) return <AppLoadingScreen message="Menyiapkan sesi ujian..." />;
 
   if (startQuery.isError || !startQuery.data) {
+    const startQueryTermination = extractProctorTerminationFromApiError(startQuery.error);
     const errorMessage =
       (startQuery.error as { response?: { data?: { message?: string } }; message?: string } | null)?.response?.data?.message ||
       (startQuery.error as { message?: string } | null)?.message ||
       `Gagal memulai sesi ${examTakeLabel.toLowerCase()}.`;
+    if (startQueryTermination) {
+      return (
+        <ScrollView style={{ flex: 1, backgroundColor: '#f8fafc' }} contentContainerStyle={pageContentPadding}>
+          <Stack.Screen options={{ headerShown: false, gestureEnabled: false }} />
+          <Text style={{ fontSize: scaleFont(20), fontWeight: '700', marginBottom: 8 }}>{`Mengerjakan ${examTakeLabel}`}</Text>
+          <View
+            style={{
+              borderWidth: 1,
+              borderColor: '#fda4af',
+              backgroundColor: '#fff1f2',
+              borderRadius: 12,
+              padding: 14,
+            }}
+          >
+            <Text style={{ color: '#be123c', fontSize: scaleFont(14), fontWeight: '800' }}>
+              {startQueryTermination.title || 'Sesi Diakhiri Pengawas'}
+            </Text>
+            <Text style={{ color: '#9f1239', fontSize: scaleFont(12), lineHeight: scaleLineHeight(18), marginTop: 8 }}>
+              {startQueryTermination.message}
+            </Text>
+            <Text style={{ color: '#881337', fontSize: scaleFont(11), lineHeight: scaleLineHeight(16), marginTop: 10 }}>
+              {startQueryTermination.proctorName
+                ? `Dari ${startQueryTermination.proctorName} • `
+                : ''}
+              {formatTerminationDateTime(startQueryTermination.terminatedAt)}
+            </Text>
+          </View>
+          <Pressable
+            onPress={() => router.replace('/exams')}
+            style={{
+              marginTop: 12,
+              backgroundColor: '#e11d48',
+              borderRadius: 8,
+              paddingVertical: 10,
+              alignItems: 'center',
+            }}
+          >
+            <Text style={{ color: '#fff', fontWeight: '700' }}>Kembali ke Daftar Tes</Text>
+          </Pressable>
+        </ScrollView>
+      );
+    }
     return (
       <ScrollView style={{ flex: 1, backgroundColor: '#f8fafc' }} contentContainerStyle={pageContentPadding}>
         <Stack.Screen options={{ headerShown: false, gestureEnabled: false }} />
