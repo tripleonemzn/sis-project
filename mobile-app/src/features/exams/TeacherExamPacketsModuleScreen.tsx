@@ -746,7 +746,7 @@ export function TeacherExamPacketsModuleScreen({
                         }}
                       >
                         <Text style={{ color: '#fff', fontWeight: '700', fontSize: scaleFont(12), lineHeight: scaleLineHeight(18) }}>
-                          Edit Paket
+                          Kelola Butir Soal
                         </Text>
                       </Pressable>
                     </View>

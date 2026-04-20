@@ -1,11 +1,10 @@
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { Redirect, useLocalSearchParams, useRouter } from 'expo-router';
 import AsyncStorage from '@react-native-async-storage/async-storage';
-import { useEffect, useMemo, useRef, useState } from 'react';
-import { Alert, Pressable, RefreshControl, ScrollView, Text, TextInput, View } from 'react-native';
+import { startTransition, useEffect, useMemo, useRef, useState } from 'react';
+import { Alert, InteractionManager, Pressable, RefreshControl, ScrollView, Text, TextInput, View } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { AppLoadingScreen } from '../../../../src/components/AppLoadingScreen';
-import MobileMenuTabBar from '../../../../src/components/MobileMenuTabBar';
 import { MobileSelectField } from '../../../../src/components/MobileSelectField';
 import { QueryStateView } from '../../../../src/components/QueryStateView';
 import { useAuth } from '../../../../src/features/auth/AuthProvider';
@@ -759,7 +758,10 @@ export default function TeacherExamEditorScreen() {
   const [reviewReplySubmittingQuestionId, setReviewReplySubmittingQuestionId] = useState<string | null>(null);
   const [hydratedPacket, setHydratedPacket] = useState(false);
   const [activeSection, setActiveSection] = useState<EditorSection>('INFO');
+  const [renderedSection, setRenderedSection] = useState<EditorSection>('INFO');
+  const [sectionTransitioning, setSectionTransitioning] = useState(false);
   const syncedRequestedSectionRef = useRef<EditorSection | null>(null);
+  const sectionTransitionTaskRef = useRef<ReturnType<typeof InteractionManager.runAfterInteractions> | null>(null);
   const requestedQuestionId = useMemo(() => {
     const rawQuestionId = Array.isArray(params.questionId) ? params.questionId[0] : params.questionId;
     const normalized = String(rawQuestionId || '').trim();
@@ -912,6 +914,36 @@ export default function TeacherExamEditorScreen() {
     syncedRequestedSectionRef.current = requestedSection;
     setActiveSection(requestedSection);
   }, [requestedSection]);
+
+  useEffect(() => {
+    sectionTransitionTaskRef.current?.cancel();
+    sectionTransitionTaskRef.current = null;
+
+    if (activeSection === 'QUESTIONS') {
+      setSectionTransitioning(true);
+      sectionTransitionTaskRef.current = InteractionManager.runAfterInteractions(() => {
+        startTransition(() => {
+          setRenderedSection('QUESTIONS');
+          setSectionTransitioning(false);
+          sectionTransitionTaskRef.current = null;
+        });
+      });
+      return () => {
+        sectionTransitionTaskRef.current?.cancel();
+        sectionTransitionTaskRef.current = null;
+      };
+    }
+
+    startTransition(() => {
+      setRenderedSection('INFO');
+      setSectionTransitioning(false);
+    });
+
+    return () => {
+      sectionTransitionTaskRef.current?.cancel();
+      sectionTransitionTaskRef.current = null;
+    };
+  }, [activeSection]);
 
   useEffect(() => {
     if (lockedSemester && semester !== lockedSemester) {
@@ -1485,18 +1517,58 @@ export default function TeacherExamEditorScreen() {
         Susun metadata ujian dan soal secara sederhana dari mobile.
       </Text>
 
-      <MobileMenuTabBar
-        items={[
-          { key: 'INFO', label: 'Informasi Ujian', iconName: 'file-text' },
-          { key: 'QUESTIONS', label: 'Kelola Soal', iconName: 'clipboard' },
-        ]}
-        activeKey={activeSection}
-        onChange={(next) => setActiveSection((next as EditorSection) || 'INFO')}
-        layout="fill"
-        tabVariant="card"
-        compact={false}
-        style={{ marginBottom: 10 }}
-      />
+      <View style={{ flexDirection: 'row', marginHorizontal: -4, marginBottom: 10 }}>
+        {[
+          {
+            key: 'INFO' as const,
+            title: 'Informasi Ujian',
+            caption: 'Metadata ujian',
+          },
+          {
+            key: 'QUESTIONS' as const,
+            title: 'Kelola Butir Soal',
+            caption: 'Soal & opsi jawaban',
+          },
+        ].map((section) => {
+          const active = activeSection === section.key;
+          return (
+            <View key={section.key} style={{ flex: 1, paddingHorizontal: 4 }}>
+              <Pressable
+                onPress={() => {
+                  startTransition(() => setActiveSection(section.key));
+                }}
+                style={{
+                  borderWidth: 1,
+                  borderColor: active ? '#2563eb' : '#dbeafe',
+                  backgroundColor: active ? '#eff6ff' : '#ffffff',
+                  borderRadius: 12,
+                  paddingHorizontal: 12,
+                  paddingVertical: 11,
+                }}
+              >
+                <Text
+                  style={{
+                    color: active ? '#1d4ed8' : '#0f172a',
+                    fontWeight: '700',
+                    ...bodyTextStyle,
+                  }}
+                >
+                  {section.title}
+                </Text>
+                <Text
+                  style={{
+                    color: active ? '#1d4ed8' : '#64748b',
+                    marginTop: 2,
+                    ...inputTextStyle,
+                  }}
+                >
+                  {section.caption}
+                </Text>
+              </Pressable>
+            </View>
+          );
+        })}
+      </View>
 
       {activeSection === 'INFO' ? (
         <View
@@ -1536,7 +1608,7 @@ export default function TeacherExamEditorScreen() {
         </View>
       )}
 
-      {activeSection === 'INFO' ? (
+      {renderedSection === 'INFO' ? (
         <>
       {isCurriculumManagedPacket ? (
         <View
@@ -1881,7 +1953,25 @@ export default function TeacherExamEditorScreen() {
         </>
       ) : null}
 
-      {activeSection === 'QUESTIONS' ? (
+      {activeSection === 'QUESTIONS' && sectionTransitioning ? (
+        <View
+          style={{
+            borderWidth: 1,
+            borderColor: '#dbeafe',
+            backgroundColor: '#ffffff',
+            borderRadius: 12,
+            padding: 14,
+            marginBottom: 10,
+          }}
+        >
+          <Text style={{ color: '#1e3a8a', fontWeight: '700', marginBottom: 4 }}>Membuka Butir Soal</Text>
+          <Text style={{ color: '#475569', ...bodyTextStyle }}>
+            Editor sedang menyiapkan daftar soal agar perpindahan tab tetap lebih ringan di perangkat mobile.
+          </Text>
+        </View>
+      ) : null}
+
+      {renderedSection === 'QUESTIONS' && !sectionTransitioning ? (
         <>
       <Text style={{ color: '#0f172a', fontWeight: '700', marginBottom: 8 }}>Daftar Soal</Text>
       {questions.map((question, index) => {

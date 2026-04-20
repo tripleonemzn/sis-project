@@ -70,6 +70,7 @@ import HomeroomBookPanel from '../../components/homeroom/HomeroomBookPanel';
 import { computeVisibleRefetchInterval } from '../../lib/query/liveQuery';
 import { examService, type ExamProgram } from '../../services/exam.service';
 import ExamProgramFilterBar from '../../components/teacher/exams/ExamProgramFilterBar';
+import { isNonScheduledExamProgram } from '../../lib/examProgramMenu';
 
 type StatTone = 'blue' | 'orange' | 'red' | 'teal';
 
@@ -5414,7 +5415,12 @@ const PrincipalExamReportsPage = () => {
   const visiblePrograms = useMemo(
     () =>
       (programsQuery.data || [])
-        .filter((program) => Boolean(program?.isActive) && Boolean(program?.showOnTeacherMenu))
+        .filter(
+          (program) =>
+            Boolean(program?.isActive) &&
+            Boolean(program?.showOnTeacherMenu) &&
+            !isNonScheduledExamProgram(program),
+        )
         .sort(
           (a, b) =>
             Number(a.order || 0) - Number(b.order || 0) ||

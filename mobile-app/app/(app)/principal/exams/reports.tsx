@@ -41,6 +41,26 @@ function getSafeDateKey(value?: string | null) {
   return date.toISOString().slice(0, 10);
 }
 
+function normalizeProgramToken(raw?: string | null) {
+  return String(raw || '')
+    .trim()
+    .toUpperCase()
+    .replace(/QUIZ/g, 'FORMATIF')
+    .replace(/[^A-Z0-9]+/g, '');
+}
+
+function isNonScheduledExamProgram(program: ExamProgramItem) {
+  const codeToken = normalizeProgramToken(program?.code);
+  if (codeToken === 'FORMATIF' || codeToken === 'UH' || codeToken === 'ULANGANHARIAN') return true;
+
+  const labelToken = normalizeProgramToken(program?.label);
+  const shortLabelToken = normalizeProgramToken(program?.shortLabel);
+  const tokens = [codeToken, labelToken, shortLabelToken].filter(Boolean);
+  return tokens.some(
+    (token) => token === 'FORMATIF' || token === 'UH' || token === 'ULANGANHARIAN' || token.includes('FORMATIF') || token.includes('ULANGANHARIAN'),
+  );
+}
+
 function CompactStatChip({
   label,
   value,
@@ -134,7 +154,10 @@ export default function PrincipalExamReportsScreen() {
   const visiblePrograms = useMemo(
     () =>
       (programsQuery.data?.programs || [])
-        .filter((program: ExamProgramItem) => program.isActive && program.showOnTeacherMenu)
+        .filter(
+          (program: ExamProgramItem) =>
+            program.isActive && program.showOnTeacherMenu && !isNonScheduledExamProgram(program),
+        )
         .sort((a: ExamProgramItem, b: ExamProgramItem) => a.order - b.order || a.code.localeCompare(b.code)),
     [programsQuery.data?.programs],
   );

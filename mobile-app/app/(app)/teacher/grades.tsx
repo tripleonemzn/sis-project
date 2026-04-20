@@ -578,6 +578,7 @@ export default function TeacherGradesScreen() {
   const [selectedReligionKey, setSelectedReligionKey] = useState<string>('');
 
   const selectedAssignment = assignments.find((item) => item.id === selectedAssignmentId) || null;
+  const hasSelectionReady = Boolean(selectedAssignmentId && selectedAssignment && semester);
   const isReligionSubject = isReligionCompetencySubject(selectedAssignment?.subject);
   const assignmentOptions = useMemo(
     () =>
@@ -597,8 +598,8 @@ export default function TeacherGradesScreen() {
 
   const assignmentDetailQuery = useQuery({
     queryKey: ['mobile-grade-assignment-detail', user?.id, selectedAssignmentId, semester],
-    enabled: isAuthenticated && user?.role === 'TEACHER' && !!selectedAssignmentId,
-    queryFn: () => teacherAssignmentApi.getById(selectedAssignmentId!, semester || undefined),
+    enabled: isAuthenticated && user?.role === 'TEACHER' && !!selectedAssignmentId && !!semester,
+    queryFn: () => teacherAssignmentApi.getById(selectedAssignmentId!, semester as Semester),
   });
 
   const componentsQuery = useQuery({
@@ -1212,12 +1213,15 @@ export default function TeacherGradesScreen() {
               reportGradesQuery.isFetching
             }
             onRefresh={async () => {
-              await Promise.all([
-                assignmentsQuery.refetch(),
-                assignmentDetailQuery.refetch(),
-                gradesQuery.refetch(),
-                reportGradesQuery.refetch(),
-              ]);
+              const refetches: Array<Promise<unknown>> = [assignmentsQuery.refetch()];
+              if (hasSelectionReady) {
+                refetches.push(
+                  assignmentDetailQuery.refetch(),
+                  gradesQuery.refetch(),
+                  reportGradesQuery.refetch(),
+                );
+              }
+              await Promise.all(refetches);
             }}
           />
         }
@@ -1331,10 +1335,12 @@ export default function TeacherGradesScreen() {
               }}
             />
 
-            {assignmentDetailQuery.isLoading || componentsQuery.isLoading || gradesQuery.isLoading || reportGradesQuery.isLoading ? (
+            {hasSelectionReady &&
+            (assignmentDetailQuery.isLoading || componentsQuery.isLoading || gradesQuery.isLoading || reportGradesQuery.isLoading) ? (
               <QueryStateView type="loading" message="Memuat siswa dan komponen nilai..." />
             ) : null}
-            {assignmentDetailQuery.isError || componentsQuery.isError || gradesQuery.isError || reportGradesQuery.isError ? (
+            {hasSelectionReady &&
+            (assignmentDetailQuery.isError || componentsQuery.isError || gradesQuery.isError || reportGradesQuery.isError) ? (
               <QueryStateView
                 type="error"
                 message="Gagal memuat data input nilai."
@@ -1347,7 +1353,27 @@ export default function TeacherGradesScreen() {
               />
             ) : null}
 
-            {!assignmentDetailQuery.isLoading && !componentsQuery.isLoading && !gradesQuery.isLoading && !reportGradesQuery.isLoading ? (
+            {!hasSelectionReady ? (
+              <View
+                style={{
+                  borderWidth: 1,
+                  borderColor: '#cbd5e1',
+                  borderStyle: 'dashed',
+                  backgroundColor: '#fff',
+                  borderRadius: 12,
+                  padding: 14,
+                  marginBottom: 10,
+                }}
+              >
+                <Text style={{ color: '#0f172a', fontWeight: '700', marginBottom: 4 }}>Lanjutkan Pemilihan Input</Text>
+                <Text style={{ color: '#64748b', fontSize: scaleFont(12), lineHeight: scaleLineHeight(18) }}>
+                  Pilih semester, lalu tentukan kelas & mapel untuk memuat siswa dan komponen nilai.
+                </Text>
+              </View>
+            ) : !assignmentDetailQuery.isLoading &&
+              !componentsQuery.isLoading &&
+              !gradesQuery.isLoading &&
+              !reportGradesQuery.isLoading ? (
               <>
                 <View
                   style={{
