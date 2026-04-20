@@ -4,7 +4,7 @@ import axios from 'axios';
 import os from 'os';
 import { exec } from 'child_process';
 import { promisify } from 'util';
-import { Role } from '@prisma/client';
+import { ExamSessionStatus, Role } from '@prisma/client';
 import { ApiError, ApiResponse, asyncHandler } from '../utils/api';
 import { AuthRequest } from '../middleware/auth';
 import prisma from '../utils/prisma';
@@ -67,6 +67,12 @@ type OnlineUserDetail = {
 };
 
 type OnlineUsersResponse = Omit<RealtimePresenceSnapshot, 'users'> & {
+  examActivity: {
+    activeParticipants: number;
+    activeSessions: number;
+    participantsOutsideRealtime: number;
+    sampledAt: string;
+  };
   users: OnlineUserDetail[];
 };
 
@@ -125,6 +131,28 @@ const buildOnlineUsersResponse = async (snapshot: RealtimePresenceSnapshot): Pro
     });
   }
 
+  const [activeSessionCount, activeParticipantRows] = await Promise.all([
+    prisma.studentExamSession.count({
+      where: {
+        status: ExamSessionStatus.IN_PROGRESS,
+      },
+    }),
+    prisma.studentExamSession.findMany({
+      where: {
+        status: ExamSessionStatus.IN_PROGRESS,
+      },
+      distinct: ['studentId'],
+      select: {
+        studentId: true,
+      },
+    }),
+  ]);
+  const activeParticipantIds = activeParticipantRows
+    .map((row) => Number(row.studentId))
+    .filter((studentId) => Number.isFinite(studentId) && studentId > 0);
+  const realtimeUserIds = new Set(userIds);
+  const participantsOutsideRealtime = activeParticipantIds.filter((studentId) => !realtimeUserIds.has(studentId)).length;
+
   return {
     totalUsers: snapshot.totalUsers,
     totalConnections: snapshot.totalConnections,
@@ -132,6 +160,12 @@ const buildOnlineUsersResponse = async (snapshot: RealtimePresenceSnapshot): Pro
     byPlatform: snapshot.byPlatform,
     sampledAt: snapshot.sampledAt,
     graceWindowSeconds: snapshot.graceWindowSeconds,
+    examActivity: {
+      activeParticipants: activeParticipantIds.length,
+      activeSessions: activeSessionCount,
+      participantsOutsideRealtime,
+      sampledAt: snapshot.sampledAt,
+    },
     users: snapshot.users.map((item) => {
       const identity = identities.get(item.userId);
       return {

@@ -147,6 +147,12 @@ export type OnlineUsersResponse = {
   totalConnections: number;
   sampledAt: string;
   graceWindowSeconds: number;
+  examActivity: {
+    activeParticipants: number;
+    activeSessions: number;
+    participantsOutsideRealtime: number;
+    sampledAt: string;
+  };
   byRole: {
     role: string;
     count: number;

@@ -156,6 +156,12 @@ type OnlineUsersResponse = {
   totalConnections: number;
   sampledAt: string;
   graceWindowSeconds: number;
+  examActivity: {
+    activeParticipants: number;
+    activeSessions: number;
+    participantsOutsideRealtime: number;
+    sampledAt: string;
+  };
   byRole: {
     role: string;
     count: number;
@@ -1047,19 +1053,20 @@ const ServerAreaPage: React.FC = () => {
     const platformItems = onlineUsers.byPlatform || [];
     const visiblePlatformItems = platformItems.filter((item) => item.count > 0);
     const userItems = onlineUsers.users || [];
+    const examActivity = onlineUsers.examActivity;
 
     return (
       <div className="space-y-6">
-        <div className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-3 gap-4">
+        <div className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-4 gap-4">
           <div className="bg-white rounded-xl border border-gray-200 p-4">
             <div className="flex items-center justify-between mb-2">
-              <p className="text-xs font-semibold text-gray-500 tracking-wide uppercase">User Online</p>
+              <p className="text-xs font-semibold text-gray-500 tracking-wide uppercase">Presence Realtime</p>
               <span className="inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium bg-emerald-50 text-emerald-700">
                 Realtime
               </span>
             </div>
             <p className="text-3xl font-bold text-gray-900">{onlineUsers.totalUsers.toLocaleString('id-ID')}</p>
-            <p className="mt-1 text-xs text-gray-500">Jumlah user unik yang sedang aktif di web, Android, atau iOS.</p>
+            <p className="mt-1 text-xs text-gray-500">User unik yang sedang membuka koneksi realtime aplikasi saat ini.</p>
           </div>
 
           <div className="bg-white rounded-xl border border-gray-200 p-4">
@@ -1075,15 +1082,55 @@ const ServerAreaPage: React.FC = () => {
 
           <div className="bg-white rounded-xl border border-gray-200 p-4">
             <div className="flex items-center justify-between mb-2">
-              <p className="text-xs font-semibold text-gray-500 tracking-wide uppercase">Waktu Snapshot</p>
-              <Activity size={18} className="text-teal-600" />
+              <p className="text-xs font-semibold text-gray-500 tracking-wide uppercase">Peserta Ujian Aktif</p>
+              <Users size={18} className="text-indigo-600" />
             </div>
-            <p className="text-base font-semibold text-gray-900">
-              {new Date(onlineUsers.sampledAt).toLocaleTimeString('id-ID')}
+            <p className="text-3xl font-bold text-gray-900">
+              {examActivity.activeParticipants.toLocaleString('id-ID')}
+            </p>
+            <p className="mt-1 text-xs text-gray-500">Dihitung dari siswa unik dengan sesi ujian `IN_PROGRESS` di backend.</p>
+          </div>
+
+          <div className="bg-white rounded-xl border border-gray-200 p-4">
+            <div className="flex items-center justify-between mb-2">
+              <p className="text-xs font-semibold text-gray-500 tracking-wide uppercase">Belum Masuk Presence</p>
+              <Activity size={18} className="text-amber-600" />
+            </div>
+            <p className="text-3xl font-bold text-gray-900">
+              {examActivity.participantsOutsideRealtime.toLocaleString('id-ID')}
             </p>
             <p className="mt-1 text-xs text-gray-500">
-              Realtime dengan grace window {onlineUsers.graceWindowSeconds} detik agar tidak flicker saat reconnect singkat.
+              Peserta ujian aktif yang tidak terlihat di realtime, biasanya karena siswa mobile tidak membuka socket global.
             </p>
+          </div>
+        </div>
+
+        <div className="bg-white rounded-xl border border-gray-200 p-4">
+          <div className="flex items-center justify-between mb-3">
+            <div>
+              <p className="text-xs font-semibold text-gray-500 tracking-wide uppercase">Snapshot Monitoring</p>
+              <p className="text-sm font-medium text-gray-900 mt-0.5">Waktu ambil realtime dan sesi ujian</p>
+            </div>
+          </div>
+          <div className="grid grid-cols-1 md:grid-cols-3 gap-3">
+            <div className="rounded-xl border border-gray-100 px-4 py-3 bg-gray-50/70">
+              <p className="text-sm font-semibold text-gray-900">Snapshot Realtime</p>
+              <p className="text-[11px] text-gray-500 mt-1">
+                {new Date(onlineUsers.sampledAt).toLocaleTimeString('id-ID')} • Grace {onlineUsers.graceWindowSeconds} detik
+              </p>
+            </div>
+            <div className="rounded-xl border border-gray-100 px-4 py-3 bg-gray-50/70">
+              <p className="text-sm font-semibold text-gray-900">Snapshot Ujian</p>
+              <p className="text-[11px] text-gray-500 mt-1">
+                {new Date(examActivity.sampledAt).toLocaleTimeString('id-ID')} • {examActivity.activeSessions.toLocaleString('id-ID')} sesi aktif
+              </p>
+            </div>
+            <div className="rounded-xl border border-gray-100 px-4 py-3 bg-gray-50/70">
+              <p className="text-sm font-semibold text-gray-900">Gap Monitoring</p>
+              <p className="text-[11px] text-gray-500 mt-1">
+                Selisih ini membantu membaca siswa mobile yang sedang ujian tetapi tidak memakai presence realtime global.
+              </p>
+            </div>
           </div>
         </div>
 
@@ -1207,9 +1254,10 @@ const ServerAreaPage: React.FC = () => {
           <div className="space-y-1">
             <p className="font-semibold text-sm">Catatan</p>
             <ul className="list-disc list-inside space-y-0.5">
-              <li>Total user online dihitung unik per user, meski user yang sama aktif di beberapa device sekaligus.</li>
-              <li>Breakdown platform menunjukkan user tersebut aktif di mana saja: Web, Android, atau iOS.</li>
-              <li>Grace window singkat dipakai agar user tidak langsung hilang saat reconnect kecil atau pindah jaringan.</li>
+              <li>Presence realtime menghitung user yang sedang membuka koneksi websocket aplikasi.</li>
+              <li>Peserta ujian aktif dihitung langsung dari sesi ujian `IN_PROGRESS`, jadi lebih akurat untuk memantau siswa yang sedang mengerjakan ujian.</li>
+              <li>Selisih `Belum Masuk Presence` biasanya datang dari siswa mobile yang memang tidak membuka realtime global.</li>
+              <li>Grace window singkat dipakai agar presence realtime tidak langsung hilang saat reconnect kecil atau pindah jaringan.</li>
             </ul>
           </div>
         </div>

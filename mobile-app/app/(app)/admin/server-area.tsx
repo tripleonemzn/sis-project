@@ -1069,6 +1069,7 @@ export default function AdminServerAreaScreen() {
     const roleItems = onlineUsers?.byRole || [];
     const platformItems = (onlineUsers?.byPlatform || []).filter((item) => item.count > 0);
     const userItems = onlineUsers?.users || [];
+    const examActivity = onlineUsers.examActivity;
 
     return (
       <View style={{ gap: 12 }}>
@@ -1084,12 +1085,12 @@ export default function AdminServerAreaScreen() {
               padding: 14,
             }}
           >
-            <Text style={{ fontSize: scaleWithAppTextScale(12), color: '#6b7280', marginBottom: 4 }}>User Online</Text>
+            <Text style={{ fontSize: scaleWithAppTextScale(12), color: '#6b7280', marginBottom: 4 }}>Presence Realtime</Text>
             <Text style={{ fontSize: scaleWithAppTextScale(20), fontWeight: '700', color: '#111827' }}>
               {String(onlineUsers.totalUsers || 0)}
             </Text>
             <Text style={{ fontSize: scaleWithAppTextScale(12), color: '#6b7280', marginTop: 4 }}>
-              User unik yang sedang aktif di web, Android, atau iOS.
+              User unik yang sedang membuka koneksi realtime aplikasi.
             </Text>
           </View>
 
@@ -1112,6 +1113,46 @@ export default function AdminServerAreaScreen() {
               Koneksi realtime yang masih tersambung sekarang.
             </Text>
           </View>
+
+          <View
+            style={{
+              flex: 1,
+              minWidth: 150,
+              borderRadius: 12,
+              backgroundColor: '#ffffff',
+              borderWidth: 1,
+              borderColor: '#e5e7eb',
+              padding: 14,
+            }}
+          >
+            <Text style={{ fontSize: scaleWithAppTextScale(12), color: '#6b7280', marginBottom: 4 }}>Peserta Ujian Aktif</Text>
+            <Text style={{ fontSize: scaleWithAppTextScale(20), fontWeight: '700', color: '#111827' }}>
+              {String(examActivity.activeParticipants || 0)}
+            </Text>
+            <Text style={{ fontSize: scaleWithAppTextScale(12), color: '#6b7280', marginTop: 4 }}>
+              Siswa unik dengan sesi ujian `IN_PROGRESS` di backend.
+            </Text>
+          </View>
+
+          <View
+            style={{
+              flex: 1,
+              minWidth: 150,
+              borderRadius: 12,
+              backgroundColor: '#ffffff',
+              borderWidth: 1,
+              borderColor: '#e5e7eb',
+              padding: 14,
+            }}
+          >
+            <Text style={{ fontSize: scaleWithAppTextScale(12), color: '#6b7280', marginBottom: 4 }}>Belum Masuk Presence</Text>
+            <Text style={{ fontSize: scaleWithAppTextScale(20), fontWeight: '700', color: '#111827' }}>
+              {String(examActivity.participantsOutsideRealtime || 0)}
+            </Text>
+            <Text style={{ fontSize: scaleWithAppTextScale(12), color: '#6b7280', marginTop: 4 }}>
+              Peserta ujian aktif yang tidak terlihat di realtime global.
+            </Text>
+          </View>
         </View>
 
         <View
@@ -1123,12 +1164,17 @@ export default function AdminServerAreaScreen() {
             padding: 14,
           }}
         >
-          <Text style={{ fontSize: scaleWithAppTextScale(13), fontWeight: '600', color: '#111827', marginBottom: 4 }}>
-            Snapshot Realtime
+          <Text style={{ fontSize: scaleWithAppTextScale(13), fontWeight: '600', color: '#111827', marginBottom: 8 }}>
+            Snapshot Monitoring
           </Text>
-          <Text style={{ fontSize: scaleWithAppTextScale(12), color: '#6b7280' }}>
-            Diambil {formatDateTime(onlineUsers.sampledAt)} • Grace {onlineUsers.graceWindowSeconds} detik
-          </Text>
+          <View style={{ gap: 6 }}>
+            <Text style={{ fontSize: scaleWithAppTextScale(12), color: '#6b7280' }}>
+              Realtime: {formatDateTime(onlineUsers.sampledAt)} • Grace {onlineUsers.graceWindowSeconds} detik
+            </Text>
+            <Text style={{ fontSize: scaleWithAppTextScale(12), color: '#6b7280' }}>
+              Ujian: {formatDateTime(examActivity.sampledAt)} • {String(examActivity.activeSessions || 0)} sesi aktif
+            </Text>
+          </View>
         </View>
 
         <View
@@ -1339,11 +1385,12 @@ export default function AdminServerAreaScreen() {
         >
           <Text style={{ fontSize: scaleWithAppTextScale(13), fontWeight: '600', color: '#1d4ed8', marginBottom: 6 }}>Catatan</Text>
           <Text style={{ fontSize: scaleWithAppTextScale(12), color: '#1e3a8a', lineHeight: scaleLineHeightWithAppTextScale(18) }}>
-            Total user online dihitung unik per user, walau user yang sama aktif di beberapa platform sekaligus.
-            Breakdown platform menunjukkan user tersebut aktif di mana saja: Web, Android, atau iOS.
+            Presence realtime menghitung user yang sedang membuka koneksi websocket aplikasi.
+            Peserta ujian aktif dihitung langsung dari sesi ujian `IN_PROGRESS`, sehingga lebih akurat untuk memantau siswa yang sedang mengerjakan ujian.
           </Text>
           <Text style={{ fontSize: scaleWithAppTextScale(12), color: '#1e3a8a', lineHeight: scaleLineHeightWithAppTextScale(18) }}>
-            Grace window singkat dipakai agar user tidak langsung hilang saat reconnect kecil atau pindah jaringan.
+            Selisih `Belum Masuk Presence` biasanya datang dari siswa mobile yang memang tidak membuka realtime global.
+            Grace window singkat dipakai agar presence realtime tidak langsung hilang saat reconnect kecil atau pindah jaringan.
           </Text>
         </View>
       </View>
