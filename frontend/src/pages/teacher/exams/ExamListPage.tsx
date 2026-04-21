@@ -930,7 +930,7 @@ export const ExamListPage = () => {
                                         Jadwal program ini dibuat oleh {CURRICULUM_EXAM_MANAGER_LABEL}.
                                     </p>
                                 ) : null}
-                                <div className="flex items-center justify-end">
+                                <div className="flex items-center justify-center">
                                     <button 
                                         onClick={() =>
                                             navigate(`/teacher/exams/${packet.id}/edit`, {
@@ -941,10 +941,10 @@ export const ExamListPage = () => {
                                                 },
                                             })
                                         }
-                                        className="px-3 py-2 bg-blue-50 text-blue-700 text-xs font-bold rounded-lg hover:bg-blue-600 hover:text-white transition-all flex items-center justify-center border border-blue-100"
-                                        title="Kelola Butir Soal"
+                                        className="inline-flex min-h-10 w-full max-w-[260px] items-center justify-center rounded-lg border border-blue-100 bg-blue-50 px-3 py-2 text-center text-xs font-bold text-blue-700 transition-all hover:bg-blue-600 hover:text-white"
+                                        title="Edit Informasi Ujian & Butir Soal"
                                     >
-                                        Kelola Butir Soal
+                                        Edit Informasi Ujian &amp; Butir Soal
                                     </button>
                                 </div>
                             </div>

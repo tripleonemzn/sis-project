@@ -2,7 +2,7 @@ import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { Redirect, useLocalSearchParams, useRouter } from 'expo-router';
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import { startTransition, useEffect, useMemo, useRef, useState } from 'react';
-import { Alert, InteractionManager, Pressable, RefreshControl, ScrollView, Text, TextInput, View } from 'react-native';
+import { Alert, Animated, InteractionManager, Pressable, RefreshControl, ScrollView, Text, TextInput, View } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { AppLoadingScreen } from '../../../../src/components/AppLoadingScreen';
 import { MobileSelectField } from '../../../../src/components/MobileSelectField';
@@ -66,6 +66,11 @@ type QuestionDraft = {
   };
 };
 
+type FieldHistoryState = {
+  past: string[];
+  future: string[];
+};
+
 type EditorSection = 'INFO' | 'QUESTIONS';
 
 const CURRICULUM_EXAM_MANAGER_LABEL = 'Wakasek Kurikulum / Sekretaris Kurikulum';
@@ -73,6 +78,43 @@ const MOBILE_EXAM_EDITOR_DRAFT_STORAGE_PREFIX = 'mobile_exam_editor_draft:';
 
 function createId(prefix: string) {
   return `${prefix}-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`;
+}
+
+function ReviewAttentionBadge() {
+  const opacity = useRef(new Animated.Value(0.65)).current;
+
+  useEffect(() => {
+    const animation = Animated.loop(
+      Animated.sequence([
+        Animated.timing(opacity, {
+          toValue: 1,
+          duration: 850,
+          useNativeDriver: true,
+        }),
+        Animated.timing(opacity, {
+          toValue: 0.58,
+          duration: 850,
+          useNativeDriver: true,
+        }),
+      ]),
+    );
+    animation.start();
+    return () => {
+      animation.stop();
+    };
+  }, [opacity]);
+
+  return (
+    <Animated.View
+      style={{
+        width: 10,
+        height: 10,
+        borderRadius: 999,
+        backgroundColor: '#f59e0b',
+        opacity,
+      }}
+    />
+  );
 }
 
 function createChoiceOptions() {
@@ -756,11 +798,17 @@ export default function TeacherExamEditorScreen() {
   const [questions, setQuestions] = useState<QuestionDraft[]>([createQuestion()]);
   const [reviewReplyDrafts, setReviewReplyDrafts] = useState<Record<string, string>>({});
   const [reviewReplySubmittingQuestionId, setReviewReplySubmittingQuestionId] = useState<string | null>(null);
+  const [expandedReviewNotes, setExpandedReviewNotes] = useState<Record<string, boolean>>({});
   const [hydratedPacket, setHydratedPacket] = useState(false);
   const [activeSection, setActiveSection] = useState<EditorSection>('INFO');
   const [renderedSection, setRenderedSection] = useState<EditorSection>('INFO');
   const [sectionTransitioning, setSectionTransitioning] = useState(false);
   const [activeQuestionId, setActiveQuestionId] = useState<string | null>(null);
+  const textFieldHistoryRef = useRef<Record<string, FieldHistoryState>>({});
+  const [, setTextHistoryVersion] = useState(0);
+  const saveBehaviorRef = useRef<{ stayOnPage: boolean; successMessage?: string }>({
+    stayOnPage: false,
+  });
   const syncedRequestedSectionRef = useRef<EditorSection | null>(null);
   const sectionTransitionTaskRef = useRef<ReturnType<typeof InteractionManager.runAfterInteractions> | null>(null);
   const requestedQuestionId = useMemo(() => {
@@ -1345,6 +1393,103 @@ export default function TeacherExamEditorScreen() {
     }
   };
 
+  const getFieldHistoryKey = (scope: 'question' | 'option', questionId: string, fieldId?: string) =>
+    `${scope}:${questionId}:${fieldId || 'content'}`;
+
+  const registerTextFieldHistoryChange = (historyKey: string, currentValue: string, nextValue: string) => {
+    if (currentValue === nextValue) return;
+    const currentEntry = textFieldHistoryRef.current[historyKey] || { past: [], future: [] };
+    const nextPast = [...currentEntry.past];
+    if (nextPast[nextPast.length - 1] !== currentValue) {
+      nextPast.push(currentValue);
+    }
+    if (nextPast.length > 60) {
+      nextPast.splice(0, nextPast.length - 60);
+    }
+    textFieldHistoryRef.current[historyKey] = {
+      past: nextPast,
+      future: [],
+    };
+    setTextHistoryVersion((value) => value + 1);
+  };
+
+  const canUndoTextField = (historyKey: string) =>
+    Boolean((textFieldHistoryRef.current[historyKey]?.past.length || 0) > 0);
+  const canRedoTextField = (historyKey: string) =>
+    Boolean((textFieldHistoryRef.current[historyKey]?.future.length || 0) > 0);
+
+  const applyQuestionContentValue = (questionId: string, nextValue: string) => {
+    setQuestions((prev) =>
+      prev.map((item) => (item.id === questionId ? { ...item, content: nextValue } : item)),
+    );
+  };
+
+  const applyOptionContentValue = (questionId: string, optionId: string, nextValue: string) => {
+    setQuestions((prev) =>
+      prev.map((item) => {
+        if (item.id !== questionId) return item;
+        return {
+          ...item,
+          options: item.options.map((candidate) =>
+            candidate.id === optionId ? { ...candidate, content: nextValue } : candidate,
+          ),
+        };
+      }),
+    );
+  };
+
+  const undoQuestionContent = (questionId: string, currentValue: string) => {
+    const historyKey = getFieldHistoryKey('question', questionId);
+    const currentEntry = textFieldHistoryRef.current[historyKey];
+    if (!currentEntry?.past.length) return;
+    const nextValue = currentEntry.past[currentEntry.past.length - 1] || '';
+    textFieldHistoryRef.current[historyKey] = {
+      past: currentEntry.past.slice(0, -1),
+      future: [currentValue, ...currentEntry.future].slice(0, 60),
+    };
+    applyQuestionContentValue(questionId, nextValue);
+    setTextHistoryVersion((value) => value + 1);
+  };
+
+  const redoQuestionContent = (questionId: string, currentValue: string) => {
+    const historyKey = getFieldHistoryKey('question', questionId);
+    const currentEntry = textFieldHistoryRef.current[historyKey];
+    if (!currentEntry?.future.length) return;
+    const nextValue = currentEntry.future[0] || '';
+    textFieldHistoryRef.current[historyKey] = {
+      past: [...currentEntry.past, currentValue].slice(-60),
+      future: currentEntry.future.slice(1),
+    };
+    applyQuestionContentValue(questionId, nextValue);
+    setTextHistoryVersion((value) => value + 1);
+  };
+
+  const undoOptionContent = (questionId: string, optionId: string, currentValue: string) => {
+    const historyKey = getFieldHistoryKey('option', questionId, optionId);
+    const currentEntry = textFieldHistoryRef.current[historyKey];
+    if (!currentEntry?.past.length) return;
+    const nextValue = currentEntry.past[currentEntry.past.length - 1] || '';
+    textFieldHistoryRef.current[historyKey] = {
+      past: currentEntry.past.slice(0, -1),
+      future: [currentValue, ...currentEntry.future].slice(0, 60),
+    };
+    applyOptionContentValue(questionId, optionId, nextValue);
+    setTextHistoryVersion((value) => value + 1);
+  };
+
+  const redoOptionContent = (questionId: string, optionId: string, currentValue: string) => {
+    const historyKey = getFieldHistoryKey('option', questionId, optionId);
+    const currentEntry = textFieldHistoryRef.current[historyKey];
+    if (!currentEntry?.future.length) return;
+    const nextValue = currentEntry.future[0] || '';
+    textFieldHistoryRef.current[historyKey] = {
+      past: [...currentEntry.past, currentValue].slice(-60),
+      future: currentEntry.future.slice(1),
+    };
+    applyOptionContentValue(questionId, optionId, nextValue);
+    setTextHistoryVersion((value) => value + 1);
+  };
+
   const saveMutation = useMutation({
     mutationFn: async () => {
       if (isCurriculumManagedPacket && !currentPacketDetail) {
@@ -1460,7 +1605,7 @@ export default function TeacherExamEditorScreen() {
       }
       return examApi.createTeacherPacket(payload);
     },
-    onSuccess: async () => {
+    onSuccess: async (result) => {
       await queryClient.invalidateQueries({ queryKey: ['mobile-teacher-exam-packets'] });
       if (packetId) {
         await queryClient.invalidateQueries({ queryKey: ['mobile-teacher-exam-packet-detail', packetId] });
@@ -1478,6 +1623,24 @@ export default function TeacherExamEditorScreen() {
           // Ignore remote draft clear failures after successful save.
         });
       }
+      const { stayOnPage, successMessage } = saveBehaviorRef.current;
+      saveBehaviorRef.current = { stayOnPage: false };
+
+      if (stayOnPage) {
+        const nextPacketId = Number(result?.id || packetId || 0);
+        if (!isEditMode && nextPacketId > 0) {
+          router.replace(
+            `/teacher/exams/editor?packetId=${nextPacketId}&section=QUESTIONS&questionId=${encodeURIComponent(
+              String(activeQuestionId || ''),
+            )}` as never,
+          );
+          Alert.alert('Sukses', successMessage || 'Kisi-kisi & kartu soal berhasil disimpan.');
+          return;
+        }
+        Alert.alert('Sukses', successMessage || 'Kisi-kisi & kartu soal berhasil disimpan.');
+        return;
+      }
+
       Alert.alert('Sukses', isEditMode ? 'Packet ujian berhasil diperbarui.' : 'Packet ujian berhasil dibuat.', [
         {
           text: 'OK',
@@ -1486,11 +1649,20 @@ export default function TeacherExamEditorScreen() {
       ]);
     },
     onError: (error: unknown) => {
+      saveBehaviorRef.current = { stayOnPage: false };
       const apiError = error as { response?: { data?: { message?: string } }; message?: string };
       const message = apiError?.response?.data?.message || apiError?.message || 'Gagal menyimpan packet ujian.';
       Alert.alert('Gagal', message);
     },
   });
+
+  const handlePacketSave = (options?: { stayOnPage?: boolean; successMessage?: string }) => {
+    saveBehaviorRef.current = {
+      stayOnPage: Boolean(options?.stayOnPage),
+      successMessage: options?.successMessage,
+    };
+    saveMutation.mutate();
+  };
 
   if (isLoading) return <AppLoadingScreen message="Memuat editor ujian..." />;
   if (!isAuthenticated) return <Redirect href="/welcome" />;
@@ -2048,6 +2220,7 @@ export default function TeacherExamEditorScreen() {
         const question = selectedQuestion;
         const index = selectedQuestionIndex;
         const isRequestedQuestion = requestedQuestionId === String(question.id || '');
+        const isReviewExpanded = Boolean(expandedReviewNotes[question.id]);
         const derivedQuestionCard = buildDerivedQuestionCard(question);
         return (
         <View
@@ -2106,89 +2279,131 @@ export default function TeacherExamEditorScreen() {
                 marginBottom: 10,
               }}
             >
-              <Text style={{ color: '#92400e', fontWeight: '700', ...bodyTextStyle, marginBottom: 4 }}>
-                Catatan Review Kurikulum
-              </Text>
-              {(question.reviewFeedback.reviewer?.name || question.reviewFeedback.reviewedAt) ? (
-                <Text style={{ color: '#a16207', ...helperTextStyle, marginBottom: 6 }}>
-                  {question.reviewFeedback.reviewer?.name
-                    ? `Oleh ${question.reviewFeedback.reviewer.name}`
-                    : 'Catatan tersimpan'}
-                  {question.reviewFeedback.reviewedAt ? ` • ${question.reviewFeedback.reviewedAt}` : ''}
-                </Text>
-              ) : null}
-              {question.reviewFeedback.questionComment ? (
-                <Text style={{ color: '#78350f', ...bodyTextStyle, marginBottom: 4 }}>
-                  Soal: {question.reviewFeedback.questionComment}
-                </Text>
-              ) : null}
-              {question.reviewFeedback.blueprintComment ? (
-                <Text style={{ color: '#78350f', ...bodyTextStyle, marginBottom: 4 }}>
-                  Kisi-kisi: {question.reviewFeedback.blueprintComment}
-                </Text>
-              ) : null}
-              {question.reviewFeedback.questionCardComment ? (
-                <Text style={{ color: '#78350f', ...bodyTextStyle, marginBottom: 4 }}>
-                  Kartu soal: {question.reviewFeedback.questionCardComment}
-                </Text>
-              ) : null}
-              {question.reviewFeedback.teacherResponse ? (
-                <View
-                  style={{
-                    borderWidth: 1,
-                    borderColor: '#bfdbfe',
-                    backgroundColor: '#eff6ff',
-                    borderRadius: 10,
-                    padding: 10,
-                    marginTop: 8,
-                  }}
-                >
-                  <Text style={{ color: '#1d4ed8', fontWeight: '700', ...bodyTextStyle, marginBottom: 4 }}>
-                    Balasan Guru
-                  </Text>
-                  <Text style={{ color: '#334155', ...bodyTextStyle }}>{question.reviewFeedback.teacherResponse}</Text>
-                </View>
-              ) : null}
-              <TextInput
-                value={String(reviewReplyDrafts[question.id] || '')}
-                onChangeText={(value) =>
-                  setReviewReplyDrafts((current) => ({
+              <Pressable
+                onPress={() =>
+                  setExpandedReviewNotes((current) => ({
                     ...current,
-                    [question.id]: value,
+                    [question.id]: !current[question.id],
                   }))
                 }
-                placeholder="Balas catatan ke kurikulum setelah perbaikan selesai."
-                multiline
-                textAlignVertical="top"
-                style={{
-                  borderWidth: 1,
-                  borderColor: '#fcd34d',
-                  backgroundColor: '#fff',
-                  borderRadius: 10,
-                  paddingHorizontal: 12,
-                  paddingVertical: 10,
-                  minHeight: 88,
-                  marginTop: 10,
-                  ...inputTextStyle,
-                }}
-              />
-              <Pressable
-                onPress={() => void submitReviewReply(question)}
-                disabled={reviewReplySubmittingQuestionId === question.id}
-                style={{
-                  backgroundColor: reviewReplySubmittingQuestionId === question.id ? '#fcd34d' : '#d97706',
-                  borderRadius: 10,
-                  paddingVertical: 10,
-                  alignItems: 'center',
-                  marginTop: 10,
-                }}
+                style={{ flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', gap: 10 }}
               >
-                <Text style={{ color: '#fff', fontWeight: '700', ...bodyTextStyle }}>
-                  {reviewReplySubmittingQuestionId === question.id
-                    ? 'Mengirim Balasan...'
-                    : 'Kirim Balasan ke Kurikulum'}
+                <View style={{ flexDirection: 'row', alignItems: 'center', flex: 1 }}>
+                  {isReviewExpanded ? (
+                    <View
+                      style={{
+                        width: 10,
+                        height: 10,
+                        borderRadius: 999,
+                        backgroundColor: '#f59e0b',
+                        marginRight: 10,
+                      }}
+                    />
+                  ) : (
+                    <View style={{ marginRight: 10 }}>
+                      <ReviewAttentionBadge />
+                    </View>
+                  )}
+                  <View style={{ flex: 1 }}>
+                    <Text style={{ color: '#92400e', fontWeight: '700', ...bodyTextStyle }}>
+                      Catatan Review Kurikulum
+                    </Text>
+                    <Text style={{ color: '#a16207', ...helperTextStyle, marginTop: 2 }}>
+                      {isReviewExpanded
+                        ? 'Ketuk lagi untuk menutup detail review.'
+                        : 'Ketuk untuk melihat detail review dan balasan guru.'}
+                    </Text>
+                  </View>
+                </View>
+                <Text style={{ color: '#a16207', fontWeight: '700', ...helperTextStyle }}>
+                  {isReviewExpanded ? 'Tutup' : 'Buka'}
                 </Text>
               </Pressable>
+
+              {isReviewExpanded ? (
+                <>
+                  {(question.reviewFeedback.reviewer?.name || question.reviewFeedback.reviewedAt) ? (
+                    <Text style={{ color: '#a16207', ...helperTextStyle, marginTop: 8, marginBottom: 6 }}>
+                      {question.reviewFeedback.reviewer?.name
+                        ? `Oleh ${question.reviewFeedback.reviewer.name}`
+                        : 'Catatan tersimpan'}
+                      {question.reviewFeedback.reviewedAt ? ` • ${question.reviewFeedback.reviewedAt}` : ''}
+                    </Text>
+                  ) : null}
+                  {question.reviewFeedback.questionComment ? (
+                    <Text style={{ color: '#78350f', ...bodyTextStyle, marginBottom: 4 }}>
+                      Soal: {question.reviewFeedback.questionComment}
+                    </Text>
+                  ) : null}
+                  {question.reviewFeedback.blueprintComment ? (
+                    <Text style={{ color: '#78350f', ...bodyTextStyle, marginBottom: 4 }}>
+                      Kisi-kisi: {question.reviewFeedback.blueprintComment}
+                    </Text>
+                  ) : null}
+                  {question.reviewFeedback.questionCardComment ? (
+                    <Text style={{ color: '#78350f', ...bodyTextStyle, marginBottom: 4 }}>
+                      Kartu soal: {question.reviewFeedback.questionCardComment}
+                    </Text>
+                  ) : null}
+                  {question.reviewFeedback.teacherResponse ? (
+                    <View
+                      style={{
+                        borderWidth: 1,
+                        borderColor: '#bfdbfe',
+                        backgroundColor: '#eff6ff',
+                        borderRadius: 10,
+                        padding: 10,
+                        marginTop: 8,
+                      }}
+                    >
+                      <Text style={{ color: '#1d4ed8', fontWeight: '700', ...bodyTextStyle, marginBottom: 4 }}>
+                        Balasan Guru
+                      </Text>
+                      <Text style={{ color: '#334155', ...bodyTextStyle }}>{question.reviewFeedback.teacherResponse}</Text>
+                    </View>
+                  ) : null}
+                  <TextInput
+                    value={String(reviewReplyDrafts[question.id] || '')}
+                    onChangeText={(value) =>
+                      setReviewReplyDrafts((current) => ({
+                        ...current,
+                        [question.id]: value,
+                      }))
+                    }
+                    placeholder="Balas catatan ke kurikulum setelah perbaikan selesai."
+                    multiline
+                    textAlignVertical="top"
+                    style={{
+                      borderWidth: 1,
+                      borderColor: '#fcd34d',
+                      backgroundColor: '#fff',
+                      borderRadius: 10,
+                      paddingHorizontal: 12,
+                      paddingVertical: 10,
+                      minHeight: 88,
+                      marginTop: 10,
+                      ...inputTextStyle,
+                    }}
+                  />
+                  <Pressable
+                    onPress={() => void submitReviewReply(question)}
+                    disabled={reviewReplySubmittingQuestionId === question.id}
+                    style={{
+                      backgroundColor: reviewReplySubmittingQuestionId === question.id ? '#fcd34d' : '#d97706',
+                      borderRadius: 10,
+                      paddingVertical: 10,
+                      alignItems: 'center',
+                      marginTop: 10,
+                    }}
+                  >
+                    <Text style={{ color: '#fff', fontWeight: '700', ...bodyTextStyle }}>
+                      {reviewReplySubmittingQuestionId === question.id
+                        ? 'Mengirim Balasan...'
+                        : 'Kirim Balasan ke Kurikulum'}
+                    </Text>
+                  </Pressable>
+                </>
+              ) : null}
             </View>
           ) : null}
 
@@ -2282,12 +2497,48 @@ export default function TeacherExamEditorScreen() {
             )}
           </View>
 
+          <View style={{ flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', marginBottom: 6 }}>
+            <Text style={{ color: '#64748b', fontWeight: '700', ...helperTextStyle }}>Editor Soal</Text>
+            <View style={{ flexDirection: 'row' }}>
+              <Pressable
+                onPress={() => undoQuestionContent(question.id, question.content)}
+                disabled={!canUndoTextField(getFieldHistoryKey('question', question.id))}
+                style={{
+                  borderWidth: 1,
+                  borderColor: '#cbd5e1',
+                  borderRadius: 8,
+                  paddingHorizontal: 10,
+                  paddingVertical: 6,
+                  backgroundColor: '#fff',
+                  marginRight: 6,
+                  opacity: canUndoTextField(getFieldHistoryKey('question', question.id)) ? 1 : 0.4,
+                }}
+              >
+                <Text style={{ color: '#475569', fontWeight: '700', ...helperTextStyle }}>Undo</Text>
+              </Pressable>
+              <Pressable
+                onPress={() => redoQuestionContent(question.id, question.content)}
+                disabled={!canRedoTextField(getFieldHistoryKey('question', question.id))}
+                style={{
+                  borderWidth: 1,
+                  borderColor: '#cbd5e1',
+                  borderRadius: 8,
+                  paddingHorizontal: 10,
+                  paddingVertical: 6,
+                  backgroundColor: '#fff',
+                  opacity: canRedoTextField(getFieldHistoryKey('question', question.id)) ? 1 : 0.4,
+                }}
+              >
+                <Text style={{ color: '#475569', fontWeight: '700', ...helperTextStyle }}>Redo</Text>
+              </Pressable>
+            </View>
+          </View>
+
           <TextInput
             value={question.content}
             onChangeText={(value) => {
-              setQuestions((prev) =>
-                prev.map((item) => (item.id === question.id ? { ...item, content: value } : item)),
-              );
+              registerTextFieldHistoryChange(getFieldHistoryKey('question', question.id), question.content, value);
+              applyQuestionContentValue(question.id, value);
             }}
             placeholder="Tulis isi soal"
             multiline
@@ -2634,6 +2885,27 @@ export default function TeacherExamEditorScreen() {
               }}
             />
           </View>
+          <Pressable
+            onPress={() =>
+              handlePacketSave({
+                stayOnPage: true,
+                successMessage: 'Kisi-kisi & kartu soal berhasil disimpan.',
+              })
+            }
+            disabled={saveMutation.isPending}
+            style={{
+              backgroundColor: '#1d4ed8',
+              borderRadius: 10,
+              paddingVertical: 11,
+              alignItems: 'center',
+              marginBottom: 10,
+              opacity: saveMutation.isPending ? 0.5 : 1,
+            }}
+          >
+            <Text style={{ color: '#fff', fontWeight: '700', ...bodyTextStyle }}>
+              {saveMutation.isPending ? 'Menyimpan...' : 'Simpan Kisi-kisi & Kartu Soal'}
+            </Text>
+          </Pressable>
             </>
           ) : null}
 
@@ -3076,23 +3348,55 @@ export default function TeacherExamEditorScreen() {
             })()
           ) : question.type !== 'ESSAY' ? (
             <View>
-              {question.options.map((option) => (
-                <View key={option.id} style={{ flexDirection: 'row', marginBottom: 6 }}>
+              {question.options.map((option, optionIndex) => {
+                const optionHistoryKey = getFieldHistoryKey('option', question.id, option.id);
+                return (
+                <View key={option.id} style={{ marginBottom: 8 }}>
+                  <View style={{ flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', marginBottom: 4 }}>
+                    <Text style={{ color: '#64748b', fontWeight: '700', ...helperTextStyle }}>
+                      Pilihan {getQuestionOptionLabel(optionIndex)}
+                    </Text>
+                    <View style={{ flexDirection: 'row' }}>
+                      <Pressable
+                        onPress={() => undoOptionContent(question.id, option.id, option.content)}
+                        disabled={!canUndoTextField(optionHistoryKey)}
+                        style={{
+                          borderWidth: 1,
+                          borderColor: '#cbd5e1',
+                          borderRadius: 8,
+                          paddingHorizontal: 10,
+                          paddingVertical: 6,
+                          backgroundColor: '#fff',
+                          marginRight: 6,
+                          opacity: canUndoTextField(optionHistoryKey) ? 1 : 0.4,
+                        }}
+                      >
+                        <Text style={{ color: '#475569', fontWeight: '700', ...helperTextStyle }}>Undo</Text>
+                      </Pressable>
+                      <Pressable
+                        onPress={() => redoOptionContent(question.id, option.id, option.content)}
+                        disabled={!canRedoTextField(optionHistoryKey)}
+                        style={{
+                          borderWidth: 1,
+                          borderColor: '#cbd5e1',
+                          borderRadius: 8,
+                          paddingHorizontal: 10,
+                          paddingVertical: 6,
+                          backgroundColor: '#fff',
+                          opacity: canRedoTextField(optionHistoryKey) ? 1 : 0.4,
+                        }}
+                      >
+                        <Text style={{ color: '#475569', fontWeight: '700', ...helperTextStyle }}>Redo</Text>
+                      </Pressable>
+                    </View>
+                  </View>
+                  <View style={{ flexDirection: 'row' }}>
                   <View style={{ flex: 1, marginRight: 6 }}>
                     <TextInput
                       value={option.content}
                       onChangeText={(value) => {
-                        setQuestions((prev) =>
-                          prev.map((item) => {
-                            if (item.id !== question.id) return item;
-                            return {
-                              ...item,
-                              options: item.options.map((candidate) =>
-                                candidate.id === option.id ? { ...candidate, content: value } : candidate,
-                              ),
-                            };
-                          }),
-                        );
+                        registerTextFieldHistoryChange(optionHistoryKey, option.content, value);
+                        applyOptionContentValue(question.id, option.id, value);
                       }}
                       placeholder="Isi opsi jawaban"
                       editable={question.type !== 'TRUE_FALSE'}
@@ -3137,13 +3441,14 @@ export default function TeacherExamEditorScreen() {
                       paddingHorizontal: 10,
                       justifyContent: 'center',
                     }}
-                  >
-                    <Text style={{ color: option.isCorrect ? '#166534' : '#334155', fontWeight: '700' }}>
-                      Benar
-                    </Text>
-                  </Pressable>
+                    >
+                      <Text style={{ color: option.isCorrect ? '#166534' : '#334155', fontWeight: '700' }}>
+                        Benar
+                      </Text>
+                    </Pressable>
+                  </View>
                 </View>
-              ))}
+              )})}
 
               {question.type !== 'TRUE_FALSE' ? (
                 <View style={{ flexDirection: 'row', marginTop: 2 }}>
@@ -3242,7 +3547,7 @@ export default function TeacherExamEditorScreen() {
       </Pressable>
 
       <Pressable
-        onPress={() => saveMutation.mutate()}
+        onPress={() => handlePacketSave()}
         disabled={saveMutation.isPending}
         style={{
           backgroundColor: '#16a34a',

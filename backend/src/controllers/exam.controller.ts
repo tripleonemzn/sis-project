@@ -5735,18 +5735,31 @@ async function saveQuestionsToBankWithDedup(params: {
                 .filter((content) => content.length > 0),
         ),
     );
+    const sourceSignatures = Array.from(new Set(dedupedPayload.map((item) => item.signature).filter(Boolean)));
+
+    const existingLookupFilters: Prisma.QuestionWhereInput[] = [];
+    if (sourceContents.length > 0) {
+        existingLookupFilters.push({ content: { in: sourceContents } });
+    }
+    if (sourceSignatures.length > 0) {
+        existingLookupFilters.push(
+            ...sourceSignatures.map((signature) => ({
+                metadata: { path: ['bankSignature'], equals: signature },
+            })),
+        );
+    }
 
     const existingCandidates =
-        sourceContents.length > 0
+        existingLookupFilters.length > 0
             ? await prisma.question.findMany({
                   where: {
-                      content: { in: sourceContents },
                       bank: {
                           subjectId: params.subjectId,
                           academicYearId: params.academicYearId,
                           semester: params.semester,
                           authorId: params.authorId,
                       },
+                      OR: existingLookupFilters,
                   },
                   select: {
                       type: true,

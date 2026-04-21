@@ -734,22 +734,32 @@ export function TeacherExamPacketsModuleScreen({
                   <Text style={{ color: '#64748b', fontSize: scaleFont(11), lineHeight: scaleLineHeight(16), marginBottom: 8 }}>
                     Dibuat: {formatDate(item.createdAt)}
                   </Text>
-                  <View style={{ flexDirection: 'row', marginHorizontal: -4 }}>
-                    <View style={{ flex: 1, paddingHorizontal: 4 }}>
-                      <Pressable
-                        onPress={() => router.push(`/teacher/exams/editor?packetId=${item.id}` as never)}
+                  <View style={{ marginBottom: 8 }}>
+                    <Pressable
+                      onPress={() => router.push(`/teacher/exams/editor?packetId=${item.id}` as never)}
+                      style={{
+                        backgroundColor: '#1d4ed8',
+                        borderRadius: 10,
+                        paddingVertical: 10,
+                        paddingHorizontal: 12,
+                        alignItems: 'center',
+                        justifyContent: 'center',
+                      }}
+                    >
+                      <Text
                         style={{
-                          backgroundColor: '#1d4ed8',
-                          borderRadius: 8,
-                          paddingVertical: 8,
-                          alignItems: 'center',
+                          color: '#fff',
+                          fontWeight: '700',
+                          fontSize: scaleFont(12),
+                          lineHeight: scaleLineHeight(18),
+                          textAlign: 'center',
                         }}
                       >
-                        <Text style={{ color: '#fff', fontWeight: '700', fontSize: scaleFont(12), lineHeight: scaleLineHeight(18) }}>
-                          Kelola Butir Soal
-                        </Text>
-                      </Pressable>
-                    </View>
+                        Edit Informasi Ujian & Butir Soal
+                      </Text>
+                    </Pressable>
+                  </View>
+                  <View style={{ flexDirection: 'row', marginHorizontal: -4 }}>
                     <View style={{ flex: 1, paddingHorizontal: 4 }}>
                       <Pressable
                         onPress={() =>
@@ -774,7 +784,7 @@ export function TeacherExamPacketsModuleScreen({
                   </View>
                   <View style={{ marginTop: 8 }}>
                     <View style={{ flexDirection: 'row', marginHorizontal: -4 }}>
-                      <View style={{ flex: 1, paddingHorizontal: 4 }}>
+                    <View style={{ flex: 1, paddingHorizontal: 4 }}>
                         <Pressable
                           onPress={() =>
                             router.push(

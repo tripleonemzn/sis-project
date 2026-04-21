@@ -16,7 +16,11 @@ import {
     X,
     FileVideo,
     BookCopy,
-    Trash2
+    Trash2,
+    Undo2,
+    Redo2,
+    ChevronDown,
+    ChevronRight,
 } from 'lucide-react';
 import ReactQuill from 'react-quill-new';
 import 'react-quill-new/dist/quill.snow.css';
@@ -82,6 +86,11 @@ interface ImportedQuestion extends Question {
         imageUrl?: string;
     }[];
 }
+
+type TextFieldHistoryState = {
+    past: string[];
+    future: string[];
+};
 
 function createDefaultBlueprint(): QuestionBlueprint {
     return {
@@ -436,6 +445,11 @@ const modules = {
     ['link', 'formula'],
     ['clean']
   ],
+  history: {
+    delay: 350,
+    maxStack: 100,
+    userOnly: true,
+  },
   keyboard: {
     bindings: {
       shiftEnter: {
@@ -1075,6 +1089,9 @@ export const ExamEditorPage = () => {
     const [isInfoModalOpen, setIsInfoModalOpen] = useState(false);
     const [reviewReplyDraft, setReviewReplyDraft] = useState('');
     const [reviewReplySubmitting, setReviewReplySubmitting] = useState(false);
+    const [expandedReviewNotes, setExpandedReviewNotes] = useState<Record<string, boolean>>({});
+    const optionTextHistoryRef = useRef<Record<string, TextFieldHistoryState>>({});
+    const [, setOptionHistoryVersion] = useState(0);
     
     // Media Upload State
     // Removed mediaTarget state as we use direct targetId passing
@@ -2242,7 +2259,14 @@ export const ExamEditorPage = () => {
         }
     };
 
-    const onSubmit = async (data: PacketForm) => {
+    const persistPacket = async (
+        data: PacketForm,
+        options?: {
+            stayOnPage?: boolean;
+            successMessage?: string;
+        },
+    ) => {
+        const stayOnPage = Boolean(options?.stayOnPage);
         if (!activeAcademicYear) {
             toast.error('Tahun ajaran aktif tidak ditemukan');
             return;
@@ -2421,13 +2445,21 @@ export const ExamEditorPage = () => {
             }
             setLoading(true);
             isSubmittingRef.current = true; // Block draft saving
-            
+
+            const response = isEditMode
+                ? await examService.updatePacket(parseInt(id!), payload)
+                : await examService.createPacket(payload);
+            const savedPacketId = Number(
+                (response as { data?: { id?: number }; id?: number } | undefined)?.data?.id ||
+                    (response as { id?: number } | undefined)?.id ||
+                    id ||
+                    0,
+            );
+
             if (isEditMode) {
-                await examService.updatePacket(parseInt(id!), payload);
-                toast.success('Paket ujian berhasil diperbarui');
+                toast.success(options?.successMessage || 'Paket ujian berhasil diperbarui');
             } else {
-                await examService.createPacket(payload);
-                toast.success('Paket ujian berhasil dibuat');
+                toast.success(options?.successMessage || 'Paket ujian berhasil dibuat');
                 // Clear draft only on successful create
                 if (userId) {
                     clearLocalExamDraft(userId);
@@ -2438,21 +2470,43 @@ export const ExamEditorPage = () => {
                         preferences: nextPreferences
                     });
                 }
-                
-                // Invalidate queries to update lists
-                queryClient.invalidateQueries({ queryKey: ['exam-packets'] });
-                queryClient.invalidateQueries({ queryKey: ['bank-questions'] });
             }
+
+            await queryClient.invalidateQueries({ queryKey: ['exam-packets'] });
+            await queryClient.invalidateQueries({ queryKey: ['bank-questions'] });
+
+            if (stayOnPage) {
+                if (!isEditMode && savedPacketId > 0) {
+                    navigate(`/teacher/exams/${savedPacketId}/edit`, {
+                        replace: true,
+                        state: {
+                            type: effectiveType,
+                            programCode: payload.programCode,
+                            programLabel: presetProgramLabel || effectiveProgram?.label || effectiveProgram?.code || effectiveType,
+                            fixedSemester: effectiveFixedSemester,
+                        },
+                    });
+                }
+                return;
+            }
+
             navigate(-1);
         } catch (error: unknown) {
             console.error('Error saving packet:', error);
-            isSubmittingRef.current = false; // Unblock on error
             const err = error as { response?: { data?: { message?: string } } };
             toast.error(err.response?.data?.message || 'Gagal menyimpan paket ujian');
         } finally {
+            isSubmittingRef.current = false;
             setLoading(false);
         }
     };
+    const handlePrimarySave = handleSubmit((data) => persistPacket(data));
+    const handleQuestionSupportSave = handleSubmit((data) =>
+        persistPacket(data, {
+            stayOnPage: true,
+            successMessage: 'Kisi-kisi & kartu soal berhasil disimpan.',
+        }),
+    );
 
     const activeQuestion = questions.find(q => q.id === activeQuestionId);
     const activeQuestionBlueprint = activeQuestion
@@ -2496,6 +2550,93 @@ export const ExamEditorPage = () => {
         activeQuestionReviewFeedback?.blueprintComment ||
         activeQuestionReviewFeedback?.questionCardComment,
     );
+    const activeQuestionReviewExpanded = Boolean(activeQuestion?.id && expandedReviewNotes[activeQuestion.id]);
+
+    const toggleActiveQuestionReview = () => {
+        if (!activeQuestion?.id) return;
+        setExpandedReviewNotes((current) => ({
+            ...current,
+            [activeQuestion.id]: !current[activeQuestion.id],
+        }));
+    };
+
+    const getOptionHistoryKey = (questionId: string, optionId: string) => `question:${questionId}:option:${optionId}`;
+
+    const registerOptionTextHistoryChange = (historyKey: string, currentValue: string, nextValue: string) => {
+        if (currentValue === nextValue) return;
+        const currentEntry = optionTextHistoryRef.current[historyKey] || { past: [], future: [] };
+        const nextPast = [...currentEntry.past];
+        if (nextPast[nextPast.length - 1] !== currentValue) {
+            nextPast.push(currentValue);
+        }
+        if (nextPast.length > 60) {
+            nextPast.splice(0, nextPast.length - 60);
+        }
+        optionTextHistoryRef.current[historyKey] = {
+            past: nextPast,
+            future: [],
+        };
+        setOptionHistoryVersion((value) => value + 1);
+    };
+
+    const canUndoOptionText = (historyKey: string) =>
+        Boolean((optionTextHistoryRef.current[historyKey]?.past.length || 0) > 0);
+    const canRedoOptionText = (historyKey: string) =>
+        Boolean((optionTextHistoryRef.current[historyKey]?.future.length || 0) > 0);
+
+    const applyOptionEditorValue = (optionId: string, nextValue: string) => {
+        if (!activeQuestion?.options) return;
+        const newOptions = activeQuestion.options.map((candidate) =>
+            candidate.id === optionId
+                ? { ...candidate, content: normalizeOptionStorageText(nextValue) }
+                : candidate,
+        );
+        updateQuestion(activeQuestion.id, { options: newOptions });
+    };
+
+    const undoOptionText = (optionId: string) => {
+        if (!activeQuestion?.options) return;
+        const option = activeQuestion.options.find((candidate) => candidate.id === optionId);
+        if (!option) return;
+        const historyKey = getOptionHistoryKey(activeQuestion.id, optionId);
+        const currentEntry = optionTextHistoryRef.current[historyKey];
+        if (!currentEntry?.past.length) return;
+        const currentValue = normalizeOptionEditorText(option.content);
+        const nextValue = currentEntry.past[currentEntry.past.length - 1] || '';
+        optionTextHistoryRef.current[historyKey] = {
+            past: currentEntry.past.slice(0, -1),
+            future: [currentValue, ...currentEntry.future].slice(0, 60),
+        };
+        applyOptionEditorValue(optionId, nextValue);
+        setOptionHistoryVersion((value) => value + 1);
+    };
+
+    const redoOptionText = (optionId: string) => {
+        if (!activeQuestion?.options) return;
+        const option = activeQuestion.options.find((candidate) => candidate.id === optionId);
+        if (!option) return;
+        const historyKey = getOptionHistoryKey(activeQuestion.id, optionId);
+        const currentEntry = optionTextHistoryRef.current[historyKey];
+        if (!currentEntry?.future.length) return;
+        const currentValue = normalizeOptionEditorText(option.content);
+        const nextValue = currentEntry.future[0] || '';
+        optionTextHistoryRef.current[historyKey] = {
+            past: [...currentEntry.past, currentValue].slice(-60),
+            future: currentEntry.future.slice(1),
+        };
+        applyOptionEditorValue(optionId, nextValue);
+        setOptionHistoryVersion((value) => value + 1);
+    };
+
+    const handleQuestionEditorUndo = () => {
+        const editor = quillEditorRef.current?.getEditor?.();
+        editor?.history?.undo();
+    };
+
+    const handleQuestionEditorRedo = () => {
+        const editor = quillEditorRef.current?.getEditor?.();
+        editor?.history?.redo();
+    };
 
     const submitReviewReply = async () => {
         const packetId = Number(id || loadedPacket?.id || 0);
@@ -2836,7 +2977,7 @@ export const ExamEditorPage = () => {
                         </div>
 
                         <button 
-                            onClick={handleSubmit(onSubmit)}
+                            onClick={handlePrimarySave}
                             disabled={loading}
                             className="flex items-center gap-2 bg-blue-600 text-white px-6 py-2 rounded-lg hover:bg-blue-700 disabled:opacity-50 transition-colors font-medium shadow-sm"
                         >
@@ -3059,82 +3200,136 @@ export const ExamEditorPage = () => {
 
                                         {hasActiveReviewFeedback ? (
                                             <div className="rounded-2xl border border-amber-200 bg-amber-50 px-4 py-3 text-sm text-amber-900">
-                                                <div className="flex flex-wrap items-center justify-between gap-2">
-                                                    <div className="font-semibold">Catatan Review Kurikulum</div>
-                                                    {activeQuestionReviewFeedback?.reviewer?.name || activeQuestionReviewFeedback?.reviewedAt ? (
-                                                        <div className="text-[11px] text-amber-700">
-                                                            {activeQuestionReviewFeedback?.reviewer?.name
-                                                                ? `Oleh ${activeQuestionReviewFeedback.reviewer.name}`
-                                                                : 'Catatan tersimpan'}
-                                                            {activeQuestionReviewFeedback?.reviewedAt
-                                                                ? ` • ${activeQuestionReviewFeedback.reviewedAt}`
-                                                                : ''}
+                                                <button
+                                                    type="button"
+                                                    onClick={toggleActiveQuestionReview}
+                                                    className="flex w-full items-center justify-between gap-3 text-left"
+                                                >
+                                                    <div className="flex min-w-0 items-center gap-3">
+                                                        <span
+                                                            className={`inline-flex h-2.5 w-2.5 flex-shrink-0 rounded-full bg-amber-500 ${
+                                                                activeQuestionReviewExpanded ? '' : 'exam-review-attention-pulse'
+                                                            }`}
+                                                        />
+                                                        <div className="min-w-0">
+                                                            <div className="font-semibold">Catatan Review Kurikulum</div>
+                                                            <div className="text-[11px] text-amber-700">
+                                                                {activeQuestionReviewExpanded
+                                                                    ? 'Klik untuk menutup detail review.'
+                                                                    : 'Klik untuk membuka detail review dan balasan guru.'}
+                                                            </div>
                                                         </div>
-                                                    ) : null}
-                                                </div>
-                                                <div className="mt-3 space-y-2 text-xs leading-5 text-amber-900">
-                                                    {activeQuestionReviewFeedback?.questionComment ? (
-                                                        <div>
-                                                            <span className="font-semibold">Soal:</span> {activeQuestionReviewFeedback.questionComment}
-                                                        </div>
-                                                    ) : null}
-                                                    {activeQuestionReviewFeedback?.blueprintComment ? (
-                                                        <div>
-                                                            <span className="font-semibold">Kisi-kisi:</span> {activeQuestionReviewFeedback.blueprintComment}
-                                                        </div>
-                                                    ) : null}
-                                                    {activeQuestionReviewFeedback?.questionCardComment ? (
-                                                        <div>
-                                                            <span className="font-semibold">Kartu soal:</span> {activeQuestionReviewFeedback.questionCardComment}
-                                                        </div>
-                                                    ) : null}
-                                                </div>
-                                                {activeQuestionReviewFeedback?.teacherResponse ? (
-                                                    <div className="mt-3 rounded-2xl border border-blue-200 bg-white/80 px-4 py-3 text-xs text-slate-700">
-                                                        <div className="flex flex-wrap items-center justify-between gap-2">
-                                                            <div className="font-semibold text-blue-700">Balasan Guru</div>
-                                                            {activeQuestionReviewFeedback?.teacherResponder?.name || activeQuestionReviewFeedback?.teacherRespondedAt ? (
-                                                                <div className="text-[11px] text-slate-500">
-                                                                    {activeQuestionReviewFeedback?.teacherResponder?.name
-                                                                        ? `Oleh ${activeQuestionReviewFeedback.teacherResponder.name}`
-                                                                        : 'Balasan tersimpan'}
-                                                                    {activeQuestionReviewFeedback?.teacherRespondedAt
-                                                                        ? ` • ${activeQuestionReviewFeedback.teacherRespondedAt}`
-                                                                        : ''}
+                                                    </div>
+                                                    <div className="flex items-center gap-2 text-[11px] text-amber-700">
+                                                        {activeQuestionReviewFeedback?.reviewer?.name || activeQuestionReviewFeedback?.reviewedAt ? (
+                                                            <span className="truncate">
+                                                                {activeQuestionReviewFeedback?.reviewer?.name
+                                                                    ? `Oleh ${activeQuestionReviewFeedback.reviewer.name}`
+                                                                    : 'Catatan tersimpan'}
+                                                                {activeQuestionReviewFeedback?.reviewedAt
+                                                                    ? ` • ${activeQuestionReviewFeedback.reviewedAt}`
+                                                                    : ''}
+                                                            </span>
+                                                        ) : null}
+                                                        {activeQuestionReviewExpanded ? (
+                                                            <ChevronDown className="h-4 w-4 flex-shrink-0" />
+                                                        ) : (
+                                                            <ChevronRight className="h-4 w-4 flex-shrink-0" />
+                                                        )}
+                                                    </div>
+                                                </button>
+
+                                                {activeQuestionReviewExpanded ? (
+                                                    <>
+                                                        <div className="mt-3 space-y-2 text-xs leading-5 text-amber-900">
+                                                            {activeQuestionReviewFeedback?.questionComment ? (
+                                                                <div>
+                                                                    <span className="font-semibold">Soal:</span> {activeQuestionReviewFeedback.questionComment}
+                                                                </div>
+                                                            ) : null}
+                                                            {activeQuestionReviewFeedback?.blueprintComment ? (
+                                                                <div>
+                                                                    <span className="font-semibold">Kisi-kisi:</span> {activeQuestionReviewFeedback.blueprintComment}
+                                                                </div>
+                                                            ) : null}
+                                                            {activeQuestionReviewFeedback?.questionCardComment ? (
+                                                                <div>
+                                                                    <span className="font-semibold">Kartu soal:</span> {activeQuestionReviewFeedback.questionCardComment}
                                                                 </div>
                                                             ) : null}
                                                         </div>
-                                                        <p className="mt-2 leading-5">{activeQuestionReviewFeedback.teacherResponse}</p>
-                                                    </div>
+                                                        {activeQuestionReviewFeedback?.teacherResponse ? (
+                                                            <div className="mt-3 rounded-2xl border border-blue-200 bg-white/80 px-4 py-3 text-xs text-slate-700">
+                                                                <div className="flex flex-wrap items-center justify-between gap-2">
+                                                                    <div className="font-semibold text-blue-700">Balasan Guru</div>
+                                                                    {activeQuestionReviewFeedback?.teacherResponder?.name || activeQuestionReviewFeedback?.teacherRespondedAt ? (
+                                                                        <div className="text-[11px] text-slate-500">
+                                                                            {activeQuestionReviewFeedback?.teacherResponder?.name
+                                                                                ? `Oleh ${activeQuestionReviewFeedback.teacherResponder.name}`
+                                                                                : 'Balasan tersimpan'}
+                                                                            {activeQuestionReviewFeedback?.teacherRespondedAt
+                                                                                ? ` • ${activeQuestionReviewFeedback.teacherRespondedAt}`
+                                                                                : ''}
+                                                                        </div>
+                                                                    ) : null}
+                                                                </div>
+                                                                <p className="mt-2 leading-5">{activeQuestionReviewFeedback.teacherResponse}</p>
+                                                            </div>
+                                                        ) : null}
+                                                        <div className="mt-3 rounded-2xl border border-amber-200 bg-white/80 px-4 py-3">
+                                                            <label className="mb-2 block text-[11px] font-semibold uppercase tracking-wide text-amber-700">
+                                                                Balas Catatan ke Kurikulum
+                                                            </label>
+                                                            <textarea
+                                                                value={reviewReplyDraft}
+                                                                onChange={(event) => setReviewReplyDraft(event.target.value)}
+                                                                rows={3}
+                                                                className="w-full rounded-2xl border border-amber-200 bg-white px-4 py-3 text-sm text-slate-800 focus:border-amber-500 focus:outline-none"
+                                                                placeholder="Jelaskan perbaikan yang sudah dilakukan agar kurikulum bisa meninjau ulang."
+                                                            />
+                                                            <div className="mt-3 flex justify-end">
+                                                                <button
+                                                                    type="button"
+                                                                    onClick={() => void submitReviewReply()}
+                                                                    disabled={reviewReplySubmitting}
+                                                                    className="inline-flex items-center rounded-2xl bg-amber-600 px-4 py-2 text-xs font-semibold text-white hover:bg-amber-700 disabled:cursor-not-allowed disabled:bg-amber-300"
+                                                                >
+                                                                    {reviewReplySubmitting ? 'Mengirim Balasan...' : 'Kirim Balasan ke Kurikulum'}
+                                                                </button>
+                                                            </div>
+                                                        </div>
+                                                    </>
                                                 ) : null}
-                                                <div className="mt-3 rounded-2xl border border-amber-200 bg-white/80 px-4 py-3">
-                                                    <label className="mb-2 block text-[11px] font-semibold uppercase tracking-wide text-amber-700">
-                                                        Balas Catatan ke Kurikulum
-                                                    </label>
-                                                    <textarea
-                                                        value={reviewReplyDraft}
-                                                        onChange={(event) => setReviewReplyDraft(event.target.value)}
-                                                        rows={3}
-                                                        className="w-full rounded-2xl border border-amber-200 bg-white px-4 py-3 text-sm text-slate-800 focus:border-amber-500 focus:outline-none"
-                                                        placeholder="Jelaskan perbaikan yang sudah dilakukan agar kurikulum bisa meninjau ulang."
-                                                    />
-                                                    <div className="mt-3 flex justify-end">
-                                                        <button
-                                                            type="button"
-                                                            onClick={() => void submitReviewReply()}
-                                                            disabled={reviewReplySubmitting}
-                                                            className="inline-flex items-center rounded-2xl bg-amber-600 px-4 py-2 text-xs font-semibold text-white hover:bg-amber-700 disabled:cursor-not-allowed disabled:bg-amber-300"
-                                                        >
-                                                            {reviewReplySubmitting ? 'Mengirim Balasan...' : 'Kirim Balasan ke Kurikulum'}
-                                                        </button>
-                                                    </div>
-                                                </div>
                                             </div>
                                         ) : null}
 
                                         {(!activeQuestion.question_media_position || activeQuestion.question_media_position === 'top') && renderMediaPreview(activeQuestion)}
 
-                                        <div className="rounded-xl overflow-hidden border border-gray-200 focus-within:border-blue-500 transition-colors shadow-sm">
+                                        <div className="flex flex-wrap items-center justify-between gap-2 rounded-t-xl border border-b-0 border-gray-200 bg-slate-50 px-3 py-2">
+                                            <span className="text-xs font-semibold uppercase tracking-wide text-slate-500">
+                                                Editor Soal
+                                            </span>
+                                            <div className="flex items-center gap-2">
+                                                <button
+                                                    type="button"
+                                                    onClick={handleQuestionEditorUndo}
+                                                    className="inline-flex items-center gap-1 rounded-lg border border-slate-200 bg-white px-2.5 py-1.5 text-xs font-medium text-slate-600 hover:bg-slate-100"
+                                                >
+                                                    <Undo2 className="h-3.5 w-3.5" />
+                                                    Undo
+                                                </button>
+                                                <button
+                                                    type="button"
+                                                    onClick={handleQuestionEditorRedo}
+                                                    className="inline-flex items-center gap-1 rounded-lg border border-slate-200 bg-white px-2.5 py-1.5 text-xs font-medium text-slate-600 hover:bg-slate-100"
+                                                >
+                                                    <Redo2 className="h-3.5 w-3.5" />
+                                                    Redo
+                                                </button>
+                                            </div>
+                                        </div>
+
+                                        <div className="rounded-b-xl overflow-hidden border border-gray-200 focus-within:border-blue-500 transition-colors shadow-sm">
                                             <ReactQuill
                                                 ref={quillEditorRef}
                                                 key={activeQuestion.id}
@@ -3560,7 +3755,9 @@ export const ExamEditorPage = () => {
 
                                     {activeQuestion.type !== 'ESSAY' && activeQuestion.type !== 'MATRIX_SINGLE_CHOICE' && (
                                         <div className="mt-4 space-y-3">
-                                            {activeQuestion.options?.map((option, idx) => (
+                                            {activeQuestion.options?.map((option, idx) => {
+                                                const optionHistoryKey = getOptionHistoryKey(activeQuestion.id, option.id);
+                                                return (
                                                 <div key={option.id} className="flex gap-2 items-start group">
                                                     <button
                                                         onClick={() => {
@@ -3586,7 +3783,31 @@ export const ExamEditorPage = () => {
                                                     </button>
 
                                                     <div className="flex-1 relative group/input">
-                                                        <label htmlFor={`option-content-${option.id}`} className="sr-only">Pilihan {String.fromCharCode(65 + idx)}</label>
+                                                        <div className="mb-1 flex items-center justify-between gap-2">
+                                                            <label htmlFor={`option-content-${option.id}`} className="text-[11px] font-semibold uppercase tracking-wide text-slate-500">
+                                                                Pilihan {String.fromCharCode(65 + idx)}
+                                                            </label>
+                                                            <div className="flex items-center gap-2">
+                                                                <button
+                                                                    type="button"
+                                                                    onClick={() => undoOptionText(option.id)}
+                                                                    disabled={!canUndoOptionText(optionHistoryKey)}
+                                                                    className="inline-flex items-center gap-1 rounded-lg border border-slate-200 bg-white px-2 py-1 text-[11px] font-medium text-slate-600 hover:bg-slate-100 disabled:cursor-not-allowed disabled:opacity-40"
+                                                                >
+                                                                    <Undo2 className="h-3 w-3" />
+                                                                    Undo
+                                                                </button>
+                                                                <button
+                                                                    type="button"
+                                                                    onClick={() => redoOptionText(option.id)}
+                                                                    disabled={!canRedoOptionText(optionHistoryKey)}
+                                                                    className="inline-flex items-center gap-1 rounded-lg border border-slate-200 bg-white px-2 py-1 text-[11px] font-medium text-slate-600 hover:bg-slate-100 disabled:cursor-not-allowed disabled:opacity-40"
+                                                                >
+                                                                    <Redo2 className="h-3 w-3" />
+                                                                    Redo
+                                                                </button>
+                                                            </div>
+                                                        </div>
                                                         <textarea
                                                             id={`option-content-${option.id}`}
                                                             name={`option_content_${option.id}`}
@@ -3615,8 +3836,10 @@ export const ExamEditorPage = () => {
                                                                 const start = textarea.selectionStart ?? textarea.value.length;
                                                                 const end = textarea.selectionEnd ?? start;
                                                                 const nextValue = `${textarea.value.slice(0, start)}${plainText}${textarea.value.slice(end)}`;
+                                                                const currentValue = normalizeOptionEditorText(option.content);
 
                                                                 if (!activeQuestion.options) return;
+                                                                registerOptionTextHistoryChange(optionHistoryKey, currentValue, nextValue);
                                                                 const newOptions = activeQuestion.options.map(o =>
                                                                     o.id === option.id
                                                                         ? { ...o, content: normalizeOptionStorageText(nextValue) }
@@ -3629,6 +3852,8 @@ export const ExamEditorPage = () => {
                                                             }}
                                                             onChange={(e) => {
                                                                 if (!activeQuestion.options) return;
+                                                                const currentValue = normalizeOptionEditorText(option.content);
+                                                                registerOptionTextHistoryChange(optionHistoryKey, currentValue, e.target.value);
                                                                 const newOptions = activeQuestion.options.map(o =>
                                                                     o.id === option.id
                                                                         ? { ...o, content: normalizeOptionStorageText(e.target.value) }
@@ -3668,7 +3893,7 @@ export const ExamEditorPage = () => {
                                                         />
                                                     </label>
                                                 </div>
-                                            ))}
+                                            )})}
                                         </div>
                                     )}
                                 </div>
@@ -4120,6 +4345,29 @@ export const ExamEditorPage = () => {
                                         </div>
                                     ) : null}
                                 </div>
+                            </div>
+                        </div>
+                        <div className="flex items-center justify-between gap-3 border-t border-slate-200 px-6 py-4">
+                            <p className="text-xs text-slate-500">
+                                Simpan dari sini untuk memastikan kisi-kisi dan kartu soal tidak hilang saat Anda kembali ke daftar paket.
+                            </p>
+                            <div className="flex items-center gap-2">
+                                <button
+                                    type="button"
+                                    onClick={() => setIsQuestionSupportModalOpen(false)}
+                                    className="rounded-lg border border-slate-300 bg-white px-4 py-2 text-sm font-medium text-slate-700 hover:bg-slate-100"
+                                >
+                                    Tutup
+                                </button>
+                                <button
+                                    type="button"
+                                    onClick={handleQuestionSupportSave}
+                                    disabled={loading}
+                                    className="inline-flex items-center gap-2 rounded-lg bg-blue-600 px-4 py-2 text-sm font-medium text-white hover:bg-blue-700 disabled:cursor-not-allowed disabled:opacity-50"
+                                >
+                                    <Save className="h-4 w-4" />
+                                    {loading ? 'Menyimpan...' : 'Simpan Kisi-kisi & Kartu Soal'}
+                                </button>
                             </div>
                         </div>
                     </div>
