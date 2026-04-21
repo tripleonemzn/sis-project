@@ -58,13 +58,6 @@ function formatDateTime(value: string | null | undefined) {
   });
 }
 
-function formatDisplayedScore(value: number | null | undefined) {
-  if (value === null || value === undefined) return '-';
-  const parsed = Number(value);
-  if (!Number.isFinite(parsed)) return '-';
-  return String(Math.round(parsed));
-}
-
 function mergeProctorReportNotes(notes?: string | null, incident?: string | null) {
   return [String(notes || '').trim(), String(incident || '').trim()].filter(Boolean).join('\n\n');
 }
@@ -668,8 +661,7 @@ export default function TeacherProctoringDetailScreen() {
                       </View>
                     </View>
                     <Text style={{ color: '#334155', fontSize: scaleFont(12), lineHeight: scaleLineHeight(18), marginTop: 6 }}>
-                      Mulai: {formatTime(student.startTime)} • Selesai: {formatTime(student.submitTime)} • Nilai:{' '}
-                      {formatDisplayedScore(student.score)}
+                      Mulai: {formatTime(student.startTime)} • Selesai: {formatTime(student.submitTime)}
                     </Text>
                     {restrictionBlocked ? (
                       <View

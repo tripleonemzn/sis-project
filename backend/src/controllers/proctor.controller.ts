@@ -2973,7 +2973,7 @@ export const getProctoringDetail = asyncHandler(async (req: Request, res: Respon
             status: normalizedStatus,
             startTime: session?.startTime,
             submitTime: session?.submitTime,
-            score: session?.score,
+            score: null,
             answeredCount,
             totalQuestions,
             monitoring: progressSession ? parseMonitoringSummary(progressSession.answers) : parseMonitoringSummary(null),
