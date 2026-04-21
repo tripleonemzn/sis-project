@@ -6,6 +6,7 @@ import { ApiError, ApiResponse, asyncHandler } from '../utils/api';
 import { generateToken } from '../middleware/auth';
 import { z } from 'zod';
 import { getNisnValidationMessage, normalizeNisnInput } from '../utils/nisn';
+import { mergeParentRegistrationRequest } from '../utils/publicRegistration';
 import { sendWebmailMessage } from '../services/webmailMailbox.service';
 import { activateCandidateAsOfficialStudent } from '../services/candidateStudentActivation.service';
 import {
@@ -302,6 +303,7 @@ async function createPublicUserAccount(params: {
   role: 'PARENT' | 'UMUM';
   phone?: string;
   email?: string;
+  preferences?: any;
 }) {
   await ensureUsernameAvailable(params.username);
 
@@ -315,10 +317,15 @@ async function createPublicUserAccount(params: {
       role: params.role,
       phone: normalizeOptionalText(params.phone),
       email: normalizeOptionalText(params.email),
+      preferences: params.preferences,
       verificationMethod: VerificationMethod.NONE,
       verificationStatus: VerificationStatus.PENDING,
     },
   });
+}
+
+function normalizeDateOnly(date: Date) {
+  return date.toISOString().slice(0, 10);
 }
 
 const getConfiguredDemoUsernames = () => {
@@ -726,10 +733,11 @@ export const resetForgotPassword = asyncHandler(async (req: Request, res: Respon
 const calonSiswaRegisterSchema = z.object({
   name: z.string().min(1, 'Nama wajib diisi').optional(),
   nisn: nisnSchema,
+  desiredMajorId: z.coerce.number().int().positive('Jurusan tujuan wajib dipilih'),
   phone: optionalPhoneSchema,
   email: optionalEmailSchema,
-  password: z.string().min(6),
-  confirmPassword: z.string().min(6),
+  password: z.string().min(8, 'Password minimal 8 karakter'),
+  confirmPassword: z.string().min(8, 'Konfirmasi password minimal 8 karakter'),
 }).refine((data) => data.password === data.confirmPassword, {
   message: 'Konfirmasi password tidak cocok',
   path: ['confirmPassword'],
@@ -737,6 +745,14 @@ const calonSiswaRegisterSchema = z.object({
 
 export const registerCalonSiswa = asyncHandler(async (req: Request, res: Response) => {
   const body = calonSiswaRegisterSchema.parse(req.body);
+
+  const major = await prisma.major.findUnique({
+    where: { id: body.desiredMajorId },
+    select: { id: true },
+  });
+  if (!major) {
+    throw new ApiError(404, 'Jurusan tujuan tidak ditemukan');
+  }
 
   const existingByNisn = await prisma.user.findFirst({
     where: { OR: [{ username: body.nisn }, { nisn: body.nisn }] },
@@ -767,6 +783,7 @@ export const registerCalonSiswa = asyncHandler(async (req: Request, res: Respons
       data: {
         userId: createdUser.id,
         registrationNumber: buildCandidateRegistrationNumber(createdUser.id, createdUser.createdAt),
+        desiredMajorId: body.desiredMajorId,
         status: CandidateAdmissionStatus.DRAFT,
       },
     });
@@ -781,8 +798,8 @@ export const registerCalonSiswa = asyncHandler(async (req: Request, res: Respons
 // Register Umum (Pelamar kerja) using username and password
 const umumRegisterSchema = z.object({
   username: z.string().min(3),
-  password: z.string().min(6),
-  confirmPassword: z.string().min(6),
+  password: z.string().min(8, 'Password minimal 8 karakter'),
+  confirmPassword: z.string().min(8, 'Konfirmasi password minimal 8 karakter'),
   name: z.string().min(1).optional(),
   phone: optionalPhoneSchema,
   email: optionalEmailSchema,
@@ -809,11 +826,15 @@ export const registerUmum = asyncHandler(async (req: Request, res: Response) => 
 
 const parentRegisterSchema = z.object({
   username: z.string().min(3),
-  password: z.string().min(6),
-  confirmPassword: z.string().min(6),
+  password: z.string().min(8, 'Password minimal 8 karakter'),
+  confirmPassword: z.string().min(8, 'Konfirmasi password minimal 8 karakter'),
   name: z.string().min(1, 'Nama wajib diisi'),
   phone: z.string().min(8, 'Nomor HP minimal 8 digit'),
   email: optionalEmailSchema,
+  childNisn: nisnSchema,
+  childBirthDate: z
+    .string()
+    .regex(/^\d{4}-\d{2}-\d{2}$/, 'Tanggal lahir anak wajib memakai format YYYY-MM-DD'),
 }).refine((data) => data.password === data.confirmPassword, {
   message: 'Konfirmasi password tidak cocok',
   path: ['confirmPassword'],
@@ -822,6 +843,41 @@ const parentRegisterSchema = z.object({
 export const registerParent = asyncHandler(async (req: Request, res: Response) => {
   const body = parentRegisterSchema.parse(req.body);
 
+  const child = await prisma.user.findFirst({
+    where: {
+      role: Role.STUDENT,
+      nisn: body.childNisn,
+    },
+    select: {
+      id: true,
+      name: true,
+      birthDate: true,
+      studentClass: {
+        select: {
+          name: true,
+          major: {
+            select: {
+              code: true,
+              name: true,
+            },
+          },
+        },
+      },
+    },
+  });
+
+  if (!child) {
+    throw new ApiError(404, 'Data siswa dengan NISN tersebut tidak ditemukan');
+  }
+
+  if (!child.birthDate) {
+    throw new ApiError(400, 'Tanggal lahir siswa belum tersedia di sistem. Hubungi admin sekolah.');
+  }
+
+  if (normalizeDateOnly(child.birthDate) !== body.childBirthDate) {
+    throw new ApiError(400, 'NISN dan tanggal lahir anak tidak cocok');
+  }
+
   const user = await createPublicUserAccount({
     username: body.username,
     password: body.password,
@@ -829,16 +885,35 @@ export const registerParent = asyncHandler(async (req: Request, res: Response) =
     role: Role.PARENT,
     phone: body.phone,
     email: body.email,
+    preferences: mergeParentRegistrationRequest(null, {
+      childId: child.id,
+      childNisn: body.childNisn,
+      childName: child.name,
+      childBirthDate: body.childBirthDate,
+      childClassName: child.studentClass?.name || null,
+      childMajorCode: child.studentClass?.major?.code || null,
+      childMajorName: child.studentClass?.major?.name || null,
+      requestedAt: new Date().toISOString(),
+      verifiedByChildBirthDate: true,
+      linkState: 'PENDING_APPROVAL',
+      linkedAt: null,
+    }),
   });
 
   const { password, ...userWithoutPassword } = user;
-  res.status(201).json(new ApiResponse(201, userWithoutPassword, 'Akun orang tua berhasil dibuat. Silakan login untuk mulai menghubungkan data anak.'));
+  res.status(201).json(
+    new ApiResponse(
+      201,
+      userWithoutPassword,
+      'Akun orang tua berhasil dibuat. Setelah admin menyetujui akun, data anak pertama akan langsung terhubung.',
+    ),
+  );
 });
 
 const bkkRegisterSchema = z.object({
   username: z.string().min(3),
-  password: z.string().min(6),
-  confirmPassword: z.string().min(6),
+  password: z.string().min(8, 'Password minimal 8 karakter'),
+  confirmPassword: z.string().min(8, 'Konfirmasi password minimal 8 karakter'),
   name: z.string().min(1, 'Nama wajib diisi'),
   phone: z.string().min(8, 'Nomor HP minimal 8 digit'),
   email: optionalEmailSchema,

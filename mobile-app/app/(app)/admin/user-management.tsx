@@ -105,6 +105,76 @@ const GENDER_LABELS: Record<GenderValue, string> = {
   FEMALE: 'Perempuan',
 };
 
+type ParentRegistrationRequest = {
+  childId: number;
+  childNisn: string;
+  childName: string;
+  childBirthDate: string;
+  childClassName?: string | null;
+  childMajorCode?: string | null;
+  childMajorName?: string | null;
+  requestedAt: string;
+};
+
+function readParentRegistrationRequest(preferences?: Record<string, unknown> | null): ParentRegistrationRequest | null {
+  const raw = preferences?.parentRegistrationRequest;
+  if (!raw || typeof raw !== 'object' || Array.isArray(raw)) {
+    return null;
+  }
+
+  const candidate = raw as Record<string, unknown>;
+  const childId = Number(candidate.childId);
+  const childNisn = String(candidate.childNisn || '').trim();
+  const childName = String(candidate.childName || '').trim();
+  const childBirthDate = String(candidate.childBirthDate || '').trim();
+  const requestedAt = String(candidate.requestedAt || '').trim();
+
+  if (!Number.isInteger(childId) || childId <= 0 || !childNisn || !childName || !childBirthDate || !requestedAt) {
+    return null;
+  }
+
+  return {
+    childId,
+    childNisn,
+    childName,
+    childBirthDate,
+    childClassName: typeof candidate.childClassName === 'string' ? candidate.childClassName : null,
+    childMajorCode: typeof candidate.childMajorCode === 'string' ? candidate.childMajorCode : null,
+    childMajorName: typeof candidate.childMajorName === 'string' ? candidate.childMajorName : null,
+    requestedAt,
+  };
+}
+
+function getRegistrationContextLines(user: AdminUser): string[] {
+  if (user.role === 'PARENT') {
+    const request = readParentRegistrationRequest(user.preferences);
+    if (!request) {
+      return ['Belum ada konteks anak pertama yang tersimpan.'];
+    }
+
+    const classText = request.childClassName
+      ? `${request.childClassName}${request.childMajorCode ? ` • ${request.childMajorCode}` : request.childMajorName ? ` • ${request.childMajorName}` : ''}`
+      : 'Belum terpetakan';
+
+    return [
+      `Anak diajukan: ${request.childName}`,
+      `NISN: ${request.childNisn}`,
+      `Kelas: ${classText}`,
+      `Tanggal lahir terverifikasi: ${request.childBirthDate}`,
+    ];
+  }
+
+  if (user.role === 'CALON_SISWA') {
+    return [
+      `NISN: ${user.nisn || '-'}`,
+      `Jurusan tujuan: ${user.candidateAdmission?.desiredMajor ? `${user.candidateAdmission.desiredMajor.code} - ${user.candidateAdmission.desiredMajor.name}` : 'belum dipilih'}`,
+      `Status draft PPDB: ${user.candidateAdmission?.status || 'DRAFT'}`,
+    ];
+  }
+
+  return [`Kontak: ${user.phone || '-'}`, `Email: ${user.email || '-'}`];
+}
+
 type RoleFilterValue = (typeof ROLE_OPTIONS)[number];
 type VerificationFilterValue = (typeof VERIFICATION_OPTIONS)[number];
 type StudentStatusValue = (typeof STUDENT_STATUS_OPTIONS)[number];
@@ -304,6 +374,7 @@ function UserCard({
   isDeleting: boolean;
 }) {
   const isPending = item.verificationStatus === 'PENDING';
+  const registrationContextLines = getRegistrationContextLines(item);
 
   return (
     <View
@@ -323,10 +394,19 @@ function UserCard({
           <Text style={{ color: BRAND_COLORS.textMuted, fontSize: scaleWithAppTextScale(12), marginTop: 6 }}>
             Role: {item.role} | Verifikasi: {item.verificationStatus || '-'}
           </Text>
-          <Text style={{ color: BRAND_COLORS.textMuted, fontSize: scaleWithAppTextScale(12) }}>
-            Kelas: {item.studentClass?.name || '-'} {item.studentClass?.major?.code ? `(${item.studentClass.major.code})` : ''}
-          </Text>
-          {item.nisn ? <Text style={{ color: BRAND_COLORS.textMuted, fontSize: scaleWithAppTextScale(12) }}>NISN: {item.nisn}</Text> : null}
+          {registrationContextLines.map((line) => (
+            <Text key={`${item.id}-${line}`} style={{ color: BRAND_COLORS.textMuted, fontSize: scaleWithAppTextScale(12), marginTop: 2 }}>
+              {line}
+            </Text>
+          ))}
+          {item.role === 'STUDENT' ? (
+            <Text style={{ color: BRAND_COLORS.textMuted, fontSize: scaleWithAppTextScale(12), marginTop: 2 }}>
+              Kelas: {item.studentClass?.name || '-'} {item.studentClass?.major?.code ? `(${item.studentClass.major.code})` : ''}
+            </Text>
+          ) : null}
+          {item.role === 'STUDENT' && item.nisn ? (
+            <Text style={{ color: BRAND_COLORS.textMuted, fontSize: scaleWithAppTextScale(12) }}>NISN: {item.nisn}</Text>
+          ) : null}
           {item.nip ? <Text style={{ color: BRAND_COLORS.textMuted, fontSize: scaleWithAppTextScale(12) }}>NIP: {item.nip}</Text> : null}
         </View>
       </View>

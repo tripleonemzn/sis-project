@@ -1,8 +1,8 @@
 import { useState } from 'react';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { userService } from '../../../services/user.service';
-import type { User } from '../../../types/auth';
-import { Search, Loader2, ShieldCheck, CheckCircle2 } from 'lucide-react';
+import type { ParentRegistrationRequest, User } from '../../../types/auth';
+import { Search, Loader2, ShieldCheck, CheckCircle2, XCircle } from 'lucide-react';
 import toast from 'react-hot-toast';
 
 const getErrorMessage = (error: unknown) => {
@@ -36,6 +36,94 @@ const ROLE_OPTIONS: { value: 'ALL' | User['role']; label: string }[] = [
   { value: 'PRINCIPAL', label: 'Kepala Sekolah' },
   { value: 'ADMIN', label: 'Admin' },
 ];
+
+const ROLE_LABELS: Record<User['role'], string> = {
+  ADMIN: 'Admin',
+  TEACHER: 'Guru',
+  STUDENT: 'Siswa',
+  PRINCIPAL: 'Kepala Sekolah',
+  STAFF: 'Staff',
+  PARENT: 'Orang Tua',
+  CALON_SISWA: 'Calon Siswa',
+  UMUM: 'Pelamar BKK',
+  EXAMINER: 'Penguji Eksternal',
+  EXTRACURRICULAR_TUTOR: 'Tutor Ekskul',
+};
+
+function readParentRegistrationRequest(user: User): ParentRegistrationRequest | null {
+  const raw = user.preferences?.parentRegistrationRequest;
+  if (!raw || typeof raw !== 'object' || Array.isArray(raw)) {
+    return null;
+  }
+
+  const candidate = raw as Record<string, unknown>;
+  const childId = Number(candidate.childId);
+  const childNisn = String(candidate.childNisn || '').trim();
+  const childName = String(candidate.childName || '').trim();
+  const childBirthDate = String(candidate.childBirthDate || '').trim();
+  const requestedAt = String(candidate.requestedAt || '').trim();
+
+  if (!Number.isInteger(childId) || childId <= 0 || !childNisn || !childName || !childBirthDate || !requestedAt) {
+    return null;
+  }
+
+  return {
+    childId,
+    childNisn,
+    childName,
+    childBirthDate,
+    childClassName: typeof candidate.childClassName === 'string' ? candidate.childClassName : null,
+    childMajorCode: typeof candidate.childMajorCode === 'string' ? candidate.childMajorCode : null,
+    childMajorName: typeof candidate.childMajorName === 'string' ? candidate.childMajorName : null,
+    requestedAt,
+    verifiedByChildBirthDate: Boolean(candidate.verifiedByChildBirthDate),
+    linkState:
+      candidate.linkState === 'PENDING_APPROVAL' || candidate.linkState === 'LINKED' || candidate.linkState === 'NEEDS_REVIEW'
+        ? candidate.linkState
+        : undefined,
+    linkedAt: typeof candidate.linkedAt === 'string' ? candidate.linkedAt : null,
+  };
+}
+
+function getRegistrationContextLines(user: User): string[] {
+  if (user.role === 'PARENT') {
+    const request = readParentRegistrationRequest(user);
+    if (!request) {
+      return ['Belum ada konteks anak pertama yang tersimpan.'];
+    }
+
+    const classLine = request.childClassName
+      ? `Kelas: ${request.childClassName}${request.childMajorCode ? ` • ${request.childMajorCode}` : request.childMajorName ? ` • ${request.childMajorName}` : ''}`
+      : 'Kelas: belum terpetakan';
+
+    return [
+      `Anak diajukan: ${request.childName}`,
+      `NISN: ${request.childNisn}`,
+      classLine,
+      `Tanggal lahir terverifikasi: ${request.childBirthDate}`,
+    ];
+  }
+
+  if (user.role === 'CALON_SISWA') {
+    return [
+      `NISN: ${user.nisn || '-'}`,
+      `Jurusan tujuan: ${user.candidateAdmission?.desiredMajor ? `${user.candidateAdmission.desiredMajor.code} - ${user.candidateAdmission.desiredMajor.name}` : 'belum dipilih'}`,
+      `Status draft PPDB: ${user.candidateAdmission?.status || 'DRAFT'}`,
+    ];
+  }
+
+  if (user.role === 'UMUM') {
+    return [
+      `Kontak: ${user.phone || '-'}`,
+      `Email: ${user.email || '-'}`,
+    ];
+  }
+
+  return [
+    `Kontak: ${user.phone || '-'}`,
+    `Email: ${user.email || '-'}`,
+  ];
+}
 
 export const UserVerificationPage = () => {
   const [search, setSearch] = useState('');
@@ -86,6 +174,19 @@ export const UserVerificationPage = () => {
     },
     onSuccess: () => {
       toast.success('User berhasil diverifikasi');
+      queryClient.invalidateQueries({ queryKey: ['users', 'verification'] });
+    },
+    onError: (error: unknown) => {
+      toast.error(getErrorMessage(error));
+    },
+  });
+
+  const rejectMutation = useMutation({
+    mutationFn: async (userId: number) => {
+      return userService.update(userId, { verificationStatus: 'REJECTED' });
+    },
+    onSuccess: () => {
+      toast.success('Akun berhasil ditolak');
       queryClient.invalidateQueries({ queryKey: ['users', 'verification'] });
     },
     onError: (error: unknown) => {
@@ -230,16 +331,17 @@ export const UserVerificationPage = () => {
               <tr>
                 <th className="px-6 py-3">USERNAME</th>
                 <th className="px-6 py-3">NAMA</th>
+                <th className="px-6 py-3">KONTEKS PENDAFTARAN</th>
                 <th className="px-6 py-3 whitespace-nowrap">TANGGAL REQUEST</th>
                 <th className="px-6 py-3">ROLE</th>
                 <th className="px-6 py-3">STATUS</th>
-                <th className="px-6 py-3 w-40 text-center">AKSI</th>
+                <th className="px-6 py-3 w-56 text-center">AKSI</th>
               </tr>
             </thead>
             <tbody className="divide-y divide-gray-100">
               {pageItems.length === 0 ? (
                 <tr>
-                  <td colSpan={5} className="px-6 py-10 text-center text-gray-500">
+                  <td colSpan={7} className="px-6 py-10 text-center text-gray-500">
                     Belum ada akun dengan status PENDING yang perlu diverifikasi.
                   </td>
                 </tr>
@@ -250,6 +352,15 @@ export const UserVerificationPage = () => {
                     <td className="px-6 py-3">
                       <div className="font-medium text-gray-900 group-hover:text-blue-700">
                         {user.name}
+                      </div>
+                    </td>
+                    <td className="px-6 py-3">
+                      <div className="space-y-1">
+                        {getRegistrationContextLines(user).map((line) => (
+                          <div key={`${user.id}-${line}`} className="text-xs leading-5 text-slate-600">
+                            {line}
+                          </div>
+                        ))}
                       </div>
                     </td>
                     <td className="px-6 py-3 whitespace-nowrap text-gray-600">
@@ -275,7 +386,7 @@ export const UserVerificationPage = () => {
                                     : 'bg-gray-50 text-gray-700 border-gray-200'
                         }`}
                       >
-                        {user.role}
+                        {ROLE_LABELS[user.role]}
                       </span>
                     </td>
                     <td className="px-6 py-3">
@@ -284,19 +395,38 @@ export const UserVerificationPage = () => {
                       </span>
                     </td>
                     <td className="px-6 py-3 text-center">
-                      <button
-                        type="button"
-                        onClick={() => verifyMutation.mutate(user.id)}
-                        disabled={verifyMutation.isPending}
-                        className="inline-flex items-center justify-center gap-2 px-3 py-2 rounded-lg bg-green-600 text-white text-xs font-semibold hover:bg-green-700 disabled:opacity-60 disabled:cursor-not-allowed"
-                      >
-                        {verifyMutation.isPending ? (
-                          <Loader2 className="w-4 h-4 animate-spin" />
-                        ) : (
-                          <CheckCircle2 className="w-4 h-4" />
-                        )}
-                        <span>Verifikasi</span>
-                      </button>
+                      <div className="flex items-center justify-center gap-2">
+                        <button
+                          type="button"
+                          onClick={() => verifyMutation.mutate(user.id)}
+                          disabled={verifyMutation.isPending || rejectMutation.isPending}
+                          className="inline-flex items-center justify-center gap-2 px-3 py-2 rounded-lg bg-green-600 text-white text-xs font-semibold hover:bg-green-700 disabled:opacity-60 disabled:cursor-not-allowed"
+                        >
+                          {verifyMutation.isPending && verifyMutation.variables === user.id ? (
+                            <Loader2 className="w-4 h-4 animate-spin" />
+                          ) : (
+                            <CheckCircle2 className="w-4 h-4" />
+                          )}
+                          <span>Verifikasi</span>
+                        </button>
+                        <button
+                          type="button"
+                          onClick={() => {
+                            const confirmed = window.confirm(`Tolak akun ${user.name}?`);
+                            if (!confirmed) return;
+                            rejectMutation.mutate(user.id);
+                          }}
+                          disabled={verifyMutation.isPending || rejectMutation.isPending}
+                          className="inline-flex items-center justify-center gap-2 px-3 py-2 rounded-lg bg-rose-600 text-white text-xs font-semibold hover:bg-rose-700 disabled:opacity-60 disabled:cursor-not-allowed"
+                        >
+                          {rejectMutation.isPending && rejectMutation.variables === user.id ? (
+                            <Loader2 className="w-4 h-4 animate-spin" />
+                          ) : (
+                            <XCircle className="w-4 h-4" />
+                          )}
+                          <span>Tolak</span>
+                        </button>
+                      </div>
                     </td>
                   </tr>
                 ))

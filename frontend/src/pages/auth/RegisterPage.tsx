@@ -1,22 +1,26 @@
 import { useState, type InputHTMLAttributes, type ReactNode } from 'react';
 import { isAxiosError } from 'axios';
 import { Link, useNavigate, useParams } from 'react-router-dom';
-import { useForm, type RegisterOptions, type UseFormRegister } from 'react-hook-form';
+import { useQuery } from '@tanstack/react-query';
+import { Controller, useForm, type RegisterOptions, type UseFormRegister } from 'react-hook-form';
 import { z } from 'zod';
 import { zodResolver } from '@hookform/resolvers/zod';
 import {
   ArrowLeft,
   Briefcase,
+  CalendarDays,
   GraduationCap,
   HeartHandshake,
   IdCard,
   KeyRound,
   Mail,
   Phone,
+  School,
   User,
 } from 'lucide-react';
 import toast from 'react-hot-toast';
 import { authService } from '../../services/auth.service';
+import { majorService, type Major } from '../../services/major.service';
 import { getNisnValidationMessage, normalizeNisnInput } from '../../utils/nisn';
 
 type RegisterMode = 'candidate' | 'parent' | 'bkk';
@@ -36,30 +40,30 @@ const REGISTER_MODE_CONFIG: Record<
 > = {
   candidate: {
     title: 'Daftar Calon Siswa',
-    subtitle: 'Buat akun PPDB untuk memantau proses pendaftaran dan tahap tes berikutnya.',
+    subtitle: 'Buat akun PPDB, pilih jurusan tujuan sejak awal, lalu pantau proses pendaftaran dan tahap tes berikutnya.',
     submitLabel: 'Buat Akun Calon Siswa',
     accentClass: 'from-[#163f92] via-[#2a64b6] to-[#1b9b93]',
     buttonClass: 'bg-[#2d5daa] hover:bg-[#244f91]',
     iconClass: 'bg-sky-100 text-sky-700 ring-sky-200',
     eyebrow: 'PPDB Terpadu',
     highlights: [
-      'Form diarahkan khusus untuk proses calon siswa baru.',
+      'Pilih jurusan tujuan dari data kompetensi keahlian yang aktif di sistem.',
       'Akun siap dipakai memantau tahapan PPDB dan tes seleksi.',
       'Pengumuman hasil dan surat seleksi tampil dari akun yang sama.',
     ],
   },
   parent: {
     title: 'Daftar Orang Tua',
-    subtitle: 'Buat satu akun untuk menghubungkan dan memantau data lebih dari satu anak.',
+    subtitle: 'Buat satu akun orang tua dengan mengaitkan anak pertama memakai NISN dan tanggal lahir.',
     submitLabel: 'Buat Akun Orang Tua',
     accentClass: 'from-[#0f5b63] via-[#177f7c] to-[#22a27a]',
     buttonClass: 'bg-[#1f7b76] hover:bg-[#186762]',
     iconClass: 'bg-emerald-100 text-emerald-700 ring-emerald-200',
     eyebrow: 'Akun Keluarga',
     highlights: [
-      'Satu akun bisa dipakai untuk lebih dari satu anak.',
-      'Relasi anak dapat dihubungkan sendiri setelah login.',
-      'Akses orang tua dibuat terpisah dari jalur PPDB dan BKK.',
+      'Anak pertama diverifikasi dari awal memakai NISN dan tanggal lahir.',
+      'Setelah akun aktif, anak berikutnya bisa ditambahkan dari akun yang sama.',
+      'Approval admin menampilkan konteks anak, kelas, dan jurusan secara jelas.',
     ],
   },
   bkk: {
@@ -94,16 +98,16 @@ const REGISTER_HUB_OPTIONS: Array<{
     icon: <GraduationCap className="h-6 w-6" />,
     accentClass: 'from-sky-300/45 via-cyan-200/18 to-transparent',
     iconClass: 'bg-sky-100 text-sky-700 ring-sky-200',
-    tagline: 'Jalur PPDB dan tes seleksi',
+    tagline: 'PPDB dengan jurusan tujuan',
   },
   {
     mode: 'parent',
     title: 'Orang Tua',
-    description: 'Untuk satu akun keluarga yang bisa menghubungkan dan memantau lebih dari satu anak.',
+    description: 'Untuk satu akun keluarga yang dimulai dari NISN dan tanggal lahir anak pertama.',
     icon: <HeartHandshake className="h-6 w-6" />,
     accentClass: 'from-emerald-300/40 via-teal-200/18 to-transparent',
     iconClass: 'bg-emerald-100 text-emerald-700 ring-emerald-200',
-    tagline: 'Satu akun untuk beberapa anak',
+    tagline: 'Akun keluarga berbasis data anak',
   },
   {
     mode: 'bkk',
@@ -140,8 +144,44 @@ const candidateSchema = z
       ),
     phone: z.string().min(8, 'Nomor HP minimal 8 digit'),
     email: optionalEmailSchema,
-    password: z.string().min(6, 'Password minimal 6 karakter'),
-    confirmPassword: z.string().min(6, 'Konfirmasi password minimal 6 karakter'),
+    desiredMajorId: z
+      .string()
+      .min(1, 'Jurusan tujuan wajib dipilih')
+      .transform((value) => Number(value))
+      .pipe(z.number().int().positive('Jurusan tujuan wajib dipilih')),
+    password: z.string().min(8, 'Password minimal 8 karakter'),
+    confirmPassword: z.string().min(8, 'Konfirmasi password minimal 8 karakter'),
+  })
+  .refine((values) => values.password === values.confirmPassword, {
+    message: 'Konfirmasi password tidak sama',
+    path: ['confirmPassword'],
+  });
+
+const parentSchema = z
+  .object({
+    name: z.string().min(1, 'Nama wajib diisi'),
+    username: z.string().min(3, 'Username minimal 3 karakter'),
+    phone: z.string().min(8, 'Nomor HP minimal 8 digit'),
+    email: optionalEmailSchema,
+    childNisn: z
+      .string()
+      .transform((value) => normalizeNisnInput(value))
+      .pipe(
+        z.string().superRefine((value, ctx) => {
+          const message = getNisnValidationMessage(value);
+          if (message) {
+            ctx.addIssue({
+              code: z.ZodIssueCode.custom,
+              message,
+            });
+          }
+        }),
+      ),
+    childBirthDate: z
+      .string()
+      .regex(/^\d{4}-\d{2}-\d{2}$/, 'Tanggal lahir anak wajib memakai format YYYY-MM-DD'),
+    password: z.string().min(8, 'Password minimal 8 karakter'),
+    confirmPassword: z.string().min(8, 'Konfirmasi password minimal 8 karakter'),
   })
   .refine((values) => values.password === values.confirmPassword, {
     message: 'Konfirmasi password tidak sama',
@@ -154,15 +194,17 @@ const accountSchema = z
     username: z.string().min(3, 'Username minimal 3 karakter'),
     phone: z.string().min(8, 'Nomor HP minimal 8 digit'),
     email: optionalEmailSchema,
-    password: z.string().min(6, 'Password minimal 6 karakter'),
-    confirmPassword: z.string().min(6, 'Konfirmasi password minimal 6 karakter'),
+    password: z.string().min(8, 'Password minimal 8 karakter'),
+    confirmPassword: z.string().min(8, 'Konfirmasi password minimal 8 karakter'),
   })
   .refine((values) => values.password === values.confirmPassword, {
     message: 'Konfirmasi password tidak sama',
     path: ['confirmPassword'],
   });
 
-type CandidateFormValues = z.infer<typeof candidateSchema>;
+type CandidateFormInput = z.input<typeof candidateSchema>;
+type CandidateFormValues = z.output<typeof candidateSchema>;
+type ParentFormValues = z.infer<typeof parentSchema>;
 type AccountFormValues = z.infer<typeof accountSchema>;
 
 function resolveErrorMessage(error: unknown, fallback: string) {
@@ -192,6 +234,7 @@ function FormField({
   registerOptions,
   inputMode,
   maxLength,
+  helperText,
 }: {
   id: string;
   name: string;
@@ -205,6 +248,7 @@ function FormField({
   registerOptions?: RegisterOptions;
   inputMode?: InputHTMLAttributes<HTMLInputElement>['inputMode'];
   maxLength?: number;
+  helperText?: string;
 }) {
   return (
     <div>
@@ -228,6 +272,63 @@ function FormField({
         />
       </div>
       {error ? <p className="mt-1 text-xs text-red-600">{error}</p> : null}
+      {!error && helperText ? <p className="mt-1 text-xs text-slate-500">{helperText}</p> : null}
+    </div>
+  );
+}
+
+function SelectField({
+  id,
+  name,
+  label,
+  value,
+  onChange,
+  options,
+  placeholder,
+  icon,
+  error,
+  disabled,
+  helperText,
+}: {
+  id: string;
+  name: string;
+  label: string;
+  value?: string | number;
+  onChange: (value: string) => void;
+  options: Array<{ value: string; label: string }>;
+  placeholder: string;
+  icon: ReactNode;
+  error?: string;
+  disabled?: boolean;
+  helperText?: string;
+}) {
+  return (
+    <div>
+      <label htmlFor={id} className="mb-1 block text-sm font-medium text-slate-700">
+        {label}
+      </label>
+      <div className="auth-field-shell relative rounded-xl">
+        <span className="pointer-events-none absolute left-3 top-1/2 -translate-y-1/2 text-slate-400">
+          {icon}
+        </span>
+        <select
+          id={id}
+          name={name}
+          value={String(value ?? '')}
+          onChange={(event) => onChange(event.target.value)}
+          disabled={disabled}
+          className="auth-field-input rounded-xl py-3 pl-10 pr-3 disabled:cursor-not-allowed disabled:opacity-70"
+        >
+          <option value="">{placeholder}</option>
+          {options.map((option) => (
+            <option key={option.value} value={option.value}>
+              {option.label}
+            </option>
+          ))}
+        </select>
+      </div>
+      {error ? <p className="mt-1 text-xs text-red-600">{error}</p> : null}
+      {!error && helperText ? <p className="mt-1 text-xs text-slate-500">{helperText}</p> : null}
     </div>
   );
 }
@@ -445,28 +546,47 @@ function RegisterHub() {
 function CandidateRegisterForm() {
   const navigate = useNavigate();
   const [isSubmitting, setIsSubmitting] = useState(false);
+  const majorsQuery = useQuery({
+    queryKey: ['register-candidate-majors'],
+    queryFn: async () => {
+      const response = await majorService.list({ page: 1, limit: 100 });
+      return (response?.data?.majors || []) as Major[];
+    },
+  });
   const {
     register,
     handleSubmit,
+    control,
     formState: { errors },
-  } = useForm<CandidateFormValues>({
+  } = useForm<CandidateFormInput, undefined, CandidateFormValues>({
     resolver: zodResolver(candidateSchema),
     defaultValues: {
       name: '',
       nisn: '',
+      desiredMajorId: '',
       phone: '',
       email: '',
       password: '',
       confirmPassword: '',
     },
   });
+  const majorOptions = (majorsQuery.data || []).map((major) => ({
+    value: String(major.id),
+    label: `${major.code} - ${major.name}`,
+  }));
 
   const onSubmit = async (values: CandidateFormValues) => {
+    if (majorOptions.length === 0) {
+      toast.error('Daftar jurusan belum tersedia. Coba lagi beberapa saat.');
+      return;
+    }
+
     try {
       setIsSubmitting(true);
       const response = await authService.registerCalonSiswa({
         name: values.name.trim(),
         nisn: values.nisn.trim(),
+        desiredMajorId: Number(values.desiredMajorId),
         phone: values.phone.trim(),
         email: normalizeOptionalEmail(values.email),
         password: values.password,
@@ -563,6 +683,31 @@ function CandidateRegisterForm() {
                 },
               }}
             />
+            <Controller
+              control={control}
+              name="desiredMajorId"
+              render={({ field: { onChange, value } }) => (
+                <SelectField
+                  id="candidate-major"
+                  name="desiredMajorId"
+                  label="Jurusan Tujuan"
+                  value={value ?? ''}
+                  onChange={onChange}
+                  options={majorOptions}
+                  placeholder={majorsQuery.isLoading ? 'Memuat daftar jurusan...' : 'Pilih jurusan tujuan'}
+                  icon={<School size={18} />}
+                  error={errors.desiredMajorId?.message}
+                  disabled={majorsQuery.isLoading || majorOptions.length === 0}
+                  helperText={
+                    majorsQuery.isLoading
+                      ? 'Daftar jurusan sedang dimuat dari sistem.'
+                      : majorOptions.length === 0
+                        ? 'Belum ada jurusan yang bisa dipilih saat ini.'
+                        : 'Jurusan ini akan langsung tercatat di draft PPDB Anda.'
+                  }
+                />
+              )}
+            />
             <FormField
               id="candidate-phone"
               name="phone"
@@ -591,7 +736,7 @@ function CandidateRegisterForm() {
               label="Password"
               type="password"
               autoComplete="new-password"
-              placeholder="Minimal 6 karakter"
+              placeholder="Minimal 8 karakter"
               icon={<KeyRound size={18} />}
               error={errors.password?.message}
               register={register}
@@ -622,55 +767,45 @@ function CandidateRegisterForm() {
   );
 }
 
-function AccountRegisterForm({
-  mode,
-}: {
-  mode: 'parent' | 'bkk';
-}) {
+function ParentRegisterForm() {
   const navigate = useNavigate();
   const [isSubmitting, setIsSubmitting] = useState(false);
   const {
     register,
     handleSubmit,
     formState: { errors },
-  } = useForm<AccountFormValues>({
-    resolver: zodResolver(accountSchema),
+  } = useForm<ParentFormValues>({
+    resolver: zodResolver(parentSchema),
     defaultValues: {
       name: '',
       username: '',
       phone: '',
       email: '',
+      childNisn: '',
+      childBirthDate: '',
       password: '',
       confirmPassword: '',
     },
   });
+  const config = REGISTER_MODE_CONFIG.parent;
 
-  const config = REGISTER_MODE_CONFIG[mode];
-
-  const onSubmit = async (values: AccountFormValues) => {
+  const onSubmit = async (values: ParentFormValues) => {
     try {
       setIsSubmitting(true);
-      const payload = {
+      const response = await authService.registerParent({
         name: values.name.trim(),
         username: values.username.trim(),
         phone: values.phone.trim(),
         email: normalizeOptionalEmail(values.email),
+        childNisn: values.childNisn.trim(),
+        childBirthDate: values.childBirthDate,
         password: values.password,
         confirmPassword: values.confirmPassword,
-      };
-      const response =
-        mode === 'parent'
-          ? await authService.registerParent(payload)
-          : await authService.registerBkk(payload);
+      });
       toast.success(response.message || 'Akun berhasil dibuat');
       navigate('/login', { replace: true });
     } catch (error: unknown) {
-      toast.error(
-        resolveErrorMessage(
-          error,
-          mode === 'parent' ? 'Registrasi orang tua gagal.' : 'Registrasi pelamar BKK gagal.',
-        ),
-      );
+      toast.error(resolveErrorMessage(error, 'Registrasi orang tua gagal.'));
     } finally {
       setIsSubmitting(false);
     }
@@ -696,10 +831,7 @@ function AccountRegisterForm({
         </Link>
 
         <div className="mb-1 flex flex-wrap gap-2 sm:hidden">
-          {(mode === 'parent'
-            ? ['Akun Keluarga', 'Banyak Anak', 'Dashboard Orang Tua']
-            : ['BKK', 'Lowongan', 'Lamaran Kerja']
-          ).map((chip) => (
+          {['Akun Keluarga', 'NISN Anak', 'Tanggal Lahir Anak'].map((chip) => (
             <span
               key={chip}
               className="auth-utility-chip rounded-full px-3 py-1 text-[11px] font-semibold uppercase tracking-[0.14em] text-slate-600"
@@ -714,20 +846,14 @@ function AccountRegisterForm({
             Jalur Terpilih
           </p>
           <h2 className="auth-font-display mt-2 text-xl font-semibold text-slate-900">
-            {mode === 'parent' ? 'Form akun orang tua / wali' : 'Form akun pelamar BKK'}
+            Form akun orang tua / wali
           </h2>
           <div className="mt-4 grid auto-rows-fr gap-3 sm:grid-cols-3">
-            {(mode === 'parent'
-              ? [
-                  'Akun keluarga dibuat satu kali lalu dapat menghubungkan beberapa anak.',
-                  'Data login orang tua dipisah dari akun siswa agar akses lebih aman.',
-                  'Setelah masuk, orang tua bisa lanjut menghubungkan anak dari dashboard.',
-                ]
-              : [
-                  'Akun ini dipakai untuk profil pelamar, lowongan, dan proses lamaran.',
-                  'Gunakan username yang mudah diingat untuk akses BKK berikutnya.',
-                  'Lowongan dan status rekrutmen dipantau dari akun yang sama.',
-                ]).map((item) => (
+            {[
+              'Anak pertama diverifikasi dari awal memakai NISN dan tanggal lahir.',
+              'Setelah akun aktif, anak berikutnya bisa ditambahkan dari dashboard orang tua.',
+              'Approval admin akan menampilkan konteks anak, kelas, dan jurusan.',
+            ].map((item) => (
               <div key={item} className="auth-option-card auth-frost-tile h-full min-h-[128px] rounded-2xl px-4 py-3 text-sm leading-6 text-slate-700">
                 {item}
               </div>
@@ -738,7 +864,7 @@ function AccountRegisterForm({
         <form className="auth-reveal-up auth-reveal-up-delay-2 flex flex-1 flex-col justify-between gap-6" onSubmit={handleSubmit(onSubmit)}>
           <div className="grid gap-4 md:grid-cols-2 md:gap-5">
             <FormField
-              id={`${mode}-name`}
+              id="parent-name"
               name="name"
               label="Nama Lengkap"
               autoComplete="name"
@@ -748,7 +874,7 @@ function AccountRegisterForm({
               register={register}
             />
             <FormField
-              id={`${mode}-username`}
+              id="parent-username"
               name="username"
               label="Username"
               autoComplete="username"
@@ -758,7 +884,7 @@ function AccountRegisterForm({
               register={register}
             />
             <FormField
-              id={`${mode}-phone`}
+              id="parent-phone"
               name="phone"
               label="Nomor HP"
               type="tel"
@@ -769,7 +895,7 @@ function AccountRegisterForm({
               register={register}
             />
             <FormField
-              id={`${mode}-email`}
+              id="parent-email"
               name="email"
               label="Email"
               type="email"
@@ -780,18 +906,222 @@ function AccountRegisterForm({
               register={register}
             />
             <FormField
-              id={`${mode}-password`}
+              id="parent-child-nisn"
+              name="childNisn"
+              label="NISN Anak Pertama"
+              autoComplete="off"
+              placeholder="10 digit NISN anak"
+              icon={<School size={18} />}
+              error={errors.childNisn?.message}
+              register={register}
+              inputMode="numeric"
+              maxLength={10}
+              helperText="Gunakan NISN siswa yang sudah terdaftar di sistem sekolah."
+              registerOptions={{
+                setValueAs: (value) => normalizeNisnInput(value),
+                onChange: (event: { target?: { value: string } }) => {
+                  if (event?.target) {
+                    event.target.value = normalizeNisnInput(event.target.value);
+                  }
+                },
+              }}
+            />
+            <FormField
+              id="parent-child-birth-date"
+              name="childBirthDate"
+              label="Tanggal Lahir Anak"
+              type="date"
+              autoComplete="bday"
+              placeholder="YYYY-MM-DD"
+              icon={<CalendarDays size={18} />}
+              error={errors.childBirthDate?.message}
+              register={register}
+              helperText="Harus sama persis dengan tanggal lahir anak yang tersimpan di sistem."
+            />
+            <FormField
+              id="parent-password"
               name="password"
               label="Password"
               type="password"
               autoComplete="new-password"
-              placeholder="Minimal 6 karakter"
+              placeholder="Minimal 8 karakter"
               icon={<KeyRound size={18} />}
               error={errors.password?.message}
               register={register}
             />
             <FormField
-              id={`${mode}-confirm-password`}
+              id="parent-confirm-password"
+              name="confirmPassword"
+              label="Konfirmasi Password"
+              type="password"
+              autoComplete="new-password"
+              placeholder="Ulangi password"
+              icon={<KeyRound size={18} />}
+              error={errors.confirmPassword?.message}
+              register={register}
+            />
+          </div>
+
+          <button
+            type="submit"
+            disabled={isSubmitting}
+            className={`auth-primary-button w-full rounded-xl px-4 py-3 text-sm font-semibold text-white shadow-[0_18px_36px_rgba(15,23,42,0.16)] disabled:cursor-not-allowed disabled:opacity-70 ${config.buttonClass}`}
+          >
+            {isSubmitting ? 'Memproses...' : config.submitLabel}
+          </button>
+        </form>
+      </div>
+    </AuthCanvas>
+  );
+}
+
+function BkkRegisterForm() {
+  const navigate = useNavigate();
+  const [isSubmitting, setIsSubmitting] = useState(false);
+  const {
+    register,
+    handleSubmit,
+    formState: { errors },
+  } = useForm<AccountFormValues>({
+    resolver: zodResolver(accountSchema),
+    defaultValues: {
+      name: '',
+      username: '',
+      phone: '',
+      email: '',
+      password: '',
+      confirmPassword: '',
+    },
+  });
+  const config = REGISTER_MODE_CONFIG.bkk;
+
+  const onSubmit = async (values: AccountFormValues) => {
+    try {
+      setIsSubmitting(true);
+      const response = await authService.registerBkk({
+        name: values.name.trim(),
+        username: values.username.trim(),
+        phone: values.phone.trim(),
+        email: normalizeOptionalEmail(values.email),
+        password: values.password,
+        confirmPassword: values.confirmPassword,
+      });
+      toast.success(response.message || 'Akun berhasil dibuat');
+      navigate('/login', { replace: true });
+    } catch (error: unknown) {
+      toast.error(resolveErrorMessage(error, 'Registrasi pelamar BKK gagal.'));
+    } finally {
+      setIsSubmitting(false);
+    }
+  };
+
+  return (
+    <AuthCanvas
+      title={config.title}
+      subtitle={config.subtitle}
+      accentClass={config.accentClass}
+      eyebrow={config.eyebrow}
+      highlights={config.highlights}
+      showSupportFooter={false}
+      matchFormHeight
+    >
+      <div className="flex h-full flex-col space-y-6">
+        <Link
+          to="/register"
+          className="auth-subtle-link inline-flex items-center gap-2 text-sm font-semibold text-blue-700 hover:text-blue-800"
+        >
+          <ArrowLeft size={16} />
+          Pilih jalur lain
+        </Link>
+
+        <div className="mb-1 flex flex-wrap gap-2 sm:hidden">
+          {['BKK', 'Lowongan', 'Lamaran Kerja'].map((chip) => (
+            <span
+              key={chip}
+              className="auth-utility-chip rounded-full px-3 py-1 text-[11px] font-semibold uppercase tracking-[0.14em] text-slate-600"
+            >
+              {chip}
+            </span>
+          ))}
+        </div>
+
+        <div className="auth-section-card auth-reveal-up auth-reveal-up-delay-1 rounded-[28px] p-5">
+          <p className="auth-kicker text-xs font-semibold uppercase text-slate-600">
+            Jalur Terpilih
+          </p>
+          <h2 className="auth-font-display mt-2 text-xl font-semibold text-slate-900">
+            Form akun pelamar BKK
+          </h2>
+          <div className="mt-4 grid auto-rows-fr gap-3 sm:grid-cols-3">
+            {[
+              'Akun ini dipakai untuk profil pelamar, lowongan, dan proses lamaran.',
+              'Gunakan username yang mudah diingat untuk akses BKK berikutnya.',
+              'Lowongan dan status rekrutmen dipantau dari akun yang sama.',
+            ].map((item) => (
+              <div key={item} className="auth-option-card auth-frost-tile h-full min-h-[128px] rounded-2xl px-4 py-3 text-sm leading-6 text-slate-700">
+                {item}
+              </div>
+            ))}
+          </div>
+        </div>
+
+        <form className="auth-reveal-up auth-reveal-up-delay-2 flex flex-1 flex-col justify-between gap-6" onSubmit={handleSubmit(onSubmit)}>
+          <div className="grid gap-4 md:grid-cols-2 md:gap-5">
+            <FormField
+              id="bkk-name"
+              name="name"
+              label="Nama Lengkap"
+              autoComplete="name"
+              placeholder="Masukkan nama lengkap"
+              icon={<User size={18} />}
+              error={errors.name?.message}
+              register={register}
+            />
+            <FormField
+              id="bkk-username"
+              name="username"
+              label="Username"
+              autoComplete="username"
+              placeholder="Masukkan username"
+              icon={<IdCard size={18} />}
+              error={errors.username?.message}
+              register={register}
+            />
+            <FormField
+              id="bkk-phone"
+              name="phone"
+              label="Nomor HP"
+              type="tel"
+              autoComplete="tel"
+              placeholder="Masukkan nomor HP"
+              icon={<Phone size={18} />}
+              error={errors.phone?.message}
+              register={register}
+            />
+            <FormField
+              id="bkk-email"
+              name="email"
+              label="Email"
+              type="email"
+              autoComplete="email"
+              placeholder="Masukkan email aktif"
+              icon={<Mail size={18} />}
+              error={errors.email?.message}
+              register={register}
+            />
+            <FormField
+              id="bkk-password"
+              name="password"
+              label="Password"
+              type="password"
+              autoComplete="new-password"
+              placeholder="Minimal 8 karakter"
+              icon={<KeyRound size={18} />}
+              error={errors.password?.message}
+              register={register}
+            />
+            <FormField
+              id="bkk-confirm-password"
               name="confirmPassword"
               label="Konfirmasi Password"
               type="password"
@@ -827,8 +1157,12 @@ export const RegisterPage = () => {
     return <CandidateRegisterForm />;
   }
 
-  if (type === 'parent' || type === 'bkk') {
-    return <AccountRegisterForm mode={type} />;
+  if (type === 'parent') {
+    return <ParentRegisterForm />;
+  }
+
+  if (type === 'bkk') {
+    return <BkkRegisterForm />;
   }
 
   return <RegisterHub />;

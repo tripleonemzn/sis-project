@@ -21,6 +21,10 @@ import {
   normalizeEducationHistories,
   resolveProfileEducationTrack,
 } from '../utils/profileEducation';
+import {
+  mergeParentRegistrationRequest,
+  readParentRegistrationRequest,
+} from '../utils/publicRegistration';
 
 const USER_LIST_CACHE_TTL_MS = 60_000;
 const USER_LIST_MAX_LIMIT = 1000;
@@ -749,6 +753,66 @@ function normalizeDateOnly(date: Date) {
   return date.toISOString().slice(0, 10);
 }
 
+async function syncVerifiedParentChildLink(params: {
+  tx: any;
+  parentId: number;
+  preferences: unknown;
+}) {
+  const request = readParentRegistrationRequest(params.preferences as any);
+  if (!request) {
+    return;
+  }
+
+  const child = await params.tx.user.findUnique({
+    where: { id: request.childId },
+    select: {
+      id: true,
+      role: true,
+      birthDate: true,
+    },
+  });
+
+  const canLinkChild =
+    child &&
+    child.role === Role.STUDENT &&
+    child.birthDate &&
+    normalizeDateOnly(child.birthDate) === request.childBirthDate;
+
+  if (canLinkChild) {
+    const existingLink = await params.tx.user.findUnique({
+      where: { id: params.parentId },
+      select: {
+        children: {
+          where: { id: request.childId },
+          select: { id: true },
+        },
+      },
+    });
+
+    if (!existingLink?.children.length) {
+      await params.tx.user.update({
+        where: { id: params.parentId },
+        data: {
+          children: {
+            connect: { id: request.childId },
+          },
+        },
+      });
+    }
+  }
+
+  await params.tx.user.update({
+    where: { id: params.parentId },
+    data: {
+      preferences: mergeParentRegistrationRequest(params.preferences as any, {
+        ...request,
+        linkState: canLinkChild ? 'LINKED' : 'NEEDS_REVIEW',
+        linkedAt: canLinkChild ? new Date().toISOString() : null,
+      }) as any,
+    },
+  });
+}
+
 export const getUsers = asyncHandler(async (req: Request, res: Response) => {
   const { role, verificationStatus, class_id } = req.query;
   const user = (req as any).user;
@@ -930,6 +994,18 @@ export const getUsers = asyncHandler(async (req: Request, res: Response) => {
           name: true,
           username: true,
           nisn: true,
+        },
+      },
+      candidateAdmission: {
+        select: {
+          status: true,
+          desiredMajor: {
+            select: {
+              id: true,
+              name: true,
+              code: true,
+            },
+          },
         },
       },
       photo: true,
@@ -1662,6 +1738,18 @@ export const updateUser = asyncHandler(async (req: Request, res: Response) => {
       });
     }
 
+    if (
+      currentUser?.role === Role.ADMIN &&
+      body.verificationStatus === VerificationStatus.VERIFIED &&
+      roleAfterUpdate === Role.PARENT
+    ) {
+      await syncVerifiedParentChildLink({
+        tx,
+        parentId: Number(id),
+        preferences: updated.preferences,
+      });
+    }
+
     return await tx.user.findUniqueOrThrow({
         where: { id: Number(id) },
         include: {
@@ -1673,6 +1761,18 @@ export const updateUser = asyncHandler(async (req: Request, res: Response) => {
                     username: true,
                     nisn: true,
                 },
+            },
+            candidateAdmission: {
+              select: {
+                status: true,
+                desiredMajor: {
+                  select: {
+                    id: true,
+                    name: true,
+                    code: true,
+                  },
+                },
+              },
             },
         }
     });
@@ -1817,18 +1917,63 @@ export const deleteUser = asyncHandler(async (req: Request, res: Response) => {
 export const verifyUsersBulk = asyncHandler(async (req: Request, res: Response) => {
   const { userIds } = bulkVerifySchema.parse(req.body);
 
-  const result = await prisma.user.updateMany({
+  const pendingUsers = await prisma.user.findMany({
     where: {
       id: { in: userIds },
       verificationStatus: VerificationStatus.PENDING,
     },
-    data: {
-      verificationStatus: VerificationStatus.VERIFIED,
+    select: {
+      id: true,
+      role: true,
+      preferences: true,
     },
   });
 
-  if (result.count > 0) {
+  let updatedCount = 0;
+
+  if (pendingUsers.length > 0) {
+    await prisma.$transaction(async (tx) => {
+      const nonParentIds = pendingUsers.filter((user) => user.role !== Role.PARENT).map((user) => user.id);
+
+      if (nonParentIds.length > 0) {
+        const result = await tx.user.updateMany({
+          where: {
+            id: { in: nonParentIds },
+            verificationStatus: VerificationStatus.PENDING,
+          },
+          data: {
+            verificationStatus: VerificationStatus.VERIFIED,
+          },
+        });
+        updatedCount += result.count;
+      }
+
+      const parentUsers = pendingUsers.filter((user) => user.role === Role.PARENT);
+      for (const parentUser of parentUsers) {
+        const updatedParent = await tx.user.update({
+          where: { id: parentUser.id },
+          data: {
+            verificationStatus: VerificationStatus.VERIFIED,
+          },
+          select: {
+            id: true,
+            preferences: true,
+          },
+        });
+
+        await syncVerifiedParentChildLink({
+          tx,
+          parentId: updatedParent.id,
+          preferences: updatedParent.preferences,
+        });
+        updatedCount += 1;
+      }
+    });
+  }
+
+  if (updatedCount > 0) {
     clearUserListCache();
+    pendingUsers.forEach((user) => clearMeCacheForUser(user.id));
   }
 
   res
@@ -1836,7 +1981,7 @@ export const verifyUsersBulk = asyncHandler(async (req: Request, res: Response) 
     .json(
       new ApiResponse(
         200,
-        { updatedCount: result.count },
+        { updatedCount },
         'Verifikasi massal pengguna berhasil',
       ),
     );

@@ -15,6 +15,7 @@ export type RegisterUmumPayload = {
 export type RegisterCalonSiswaPayload = {
   name: string;
   nisn: string;
+  desiredMajorId: number;
   phone: string;
   email?: string;
   password: string;
@@ -28,6 +29,8 @@ export type RegisterParentPayload = {
   name: string;
   phone: string;
   email?: string;
+  childNisn: string;
+  childBirthDate: string;
 };
 
 export type RegisterBkkPayload = {

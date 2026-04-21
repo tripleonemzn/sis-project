@@ -12,6 +12,20 @@ export type UserRole =
 
 export type ProfileEducationDocumentKind = 'IJAZAH' | 'SKHUN' | 'TRANSKRIP' | 'SERTIFIKAT';
 
+export interface ParentRegistrationRequest {
+  childId: number;
+  childNisn: string;
+  childName: string;
+  childBirthDate: string;
+  childClassName?: string | null;
+  childMajorCode?: string | null;
+  childMajorName?: string | null;
+  requestedAt: string;
+  verifiedByChildBirthDate: boolean;
+  linkState?: 'PENDING_APPROVAL' | 'LINKED' | 'NEEDS_REVIEW';
+  linkedAt?: string | null;
+}
+
 export interface ProfileEducationDocument {
   kind: ProfileEducationDocumentKind;
   label: string;
@@ -143,6 +157,15 @@ export interface User {
     type?: string;
   }[];
 
+  candidateAdmission?: {
+    status?: string | null;
+    desiredMajor?: {
+      id: number;
+      name: string;
+      code: string;
+    } | null;
+  } | null;
+
   children?: {
     id: number;
     name: string;
@@ -249,6 +272,7 @@ export interface AuthResponse {
 export interface RegisterCalonSiswaPayload {
   name: string;
   nisn: string;
+  desiredMajorId: number;
   phone: string;
   email?: string;
   password: string;
@@ -260,6 +284,8 @@ export interface RegisterParentPayload {
   username: string;
   phone: string;
   email?: string;
+  childNisn: string;
+  childBirthDate: string;
   password: string;
   confirmPassword: string;
 }

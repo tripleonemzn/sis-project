@@ -51,6 +51,7 @@ export type AdminUser = {
   photo?: string | null;
   classId?: number | null;
   verificationStatus?: string | null;
+  preferences?: Record<string, unknown> | null;
   studentStatus?: 'ACTIVE' | 'GRADUATED' | 'MOVED' | 'DROPPED_OUT' | null;
   additionalDuties?: string[] | null;
   managedMajorId?: number | null;
@@ -80,6 +81,14 @@ export type AdminUser = {
     username?: string | null;
     nisn?: string | null;
   }>;
+  candidateAdmission?: {
+    status?: string | null;
+    desiredMajor?: {
+      id: number;
+      name: string;
+      code: string;
+    } | null;
+  } | null;
   documents?: Array<{
     id?: number;
     title?: string;

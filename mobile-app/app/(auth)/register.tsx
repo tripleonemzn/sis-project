@@ -1,5 +1,6 @@
 import { useState } from 'react';
 import { Controller, useForm } from 'react-hook-form';
+import { useQuery } from '@tanstack/react-query';
 import { z } from 'zod';
 import { Redirect, useLocalSearchParams, useRouter } from 'expo-router';
 import { Feather } from '@expo/vector-icons';
@@ -13,10 +14,12 @@ import {
 import { useAuth } from '../../src/features/auth/AuthProvider';
 import { AppLoadingScreen } from '../../src/components/AppLoadingScreen';
 import { AuthScaffold } from '../../src/components/AuthScaffold';
+import { MobileSelectField } from '../../src/components/MobileSelectField';
 import { getApiErrorMessage } from '../../src/lib/api/errorMessage';
 import { authService } from '../../src/features/auth/authService';
 import { BRAND_COLORS } from '../../src/config/brand';
 import { getNisnGuidanceText, getNisnValidationMessage, normalizeNisnInput } from '../../src/lib/nisn';
+import { candidateAdmissionApi } from '../../src/features/candidateAdmission/candidateAdmissionApi';
 import { useAppTextScale } from '../../src/theme/AppTextScaleProvider';
 
 type RegisterMode = 'candidate' | 'parent' | 'bkk';
@@ -35,28 +38,28 @@ const REGISTER_MODE_CONFIG: Record<
 > = {
   candidate: {
     title: 'Daftar Calon Siswa',
-    subtitle: 'Buat akun calon siswa baru lalu lanjutkan proses PPDB dan tes dari aplikasi.',
+    subtitle: 'Buat akun calon siswa, pilih jurusan tujuan, lalu lanjutkan proses PPDB dan tes dari aplikasi.',
     submitLabel: 'Buat Akun Calon Siswa',
     accentColor: '#2563eb',
     accentSoftColor: '#dbeafe',
     icon: 'book-open',
     highlights: [
+      'Pilih jurusan tujuan langsung dari data kompetensi keahlian yang aktif.',
       'Akun dipakai untuk form PPDB dan tahap tes seleksi.',
-      'Isi data dasar dulu, detail lain bisa dilengkapi setelah login.',
       'Hasil seleksi dan surat keputusan tampil dari akun ini.',
     ],
   },
   parent: {
     title: 'Daftar Orang Tua',
-    subtitle: 'Buat satu akun untuk memantau dan menghubungkan data lebih dari satu anak.',
+    subtitle: 'Buat satu akun orang tua dengan mengaitkan anak pertama memakai NISN dan tanggal lahir.',
     submitLabel: 'Buat Akun Orang Tua',
     accentColor: '#0f766e',
     accentSoftColor: '#ccfbf1',
     icon: 'users',
     highlights: [
-      'Satu akun bisa dipakai untuk lebih dari satu anak.',
-      'Relasi anak dapat dihubungkan sendiri setelah login.',
-      'Akses orang tua dibuat terpisah dari jalur PPDB dan BKK.',
+      'Anak pertama diverifikasi dari awal memakai NISN dan tanggal lahir.',
+      'Setelah akun aktif, anak berikutnya bisa ditambahkan dari akun yang sama.',
+      'Approval admin menampilkan konteks anak, kelas, dan jurusan secara jelas.',
     ],
   },
   bkk: {
@@ -95,8 +98,40 @@ const candidateSchema = z
       ),
     phone: z.string().min(8, 'Nomor HP minimal 8 digit'),
     email: optionalEmailSchema,
-    password: z.string().min(6, 'Password minimal 6 karakter'),
-    confirmPassword: z.string().min(6, 'Konfirmasi password minimal 6 karakter'),
+    desiredMajorId: z.string().min(1, 'Jurusan tujuan wajib dipilih'),
+    password: z.string().min(8, 'Password minimal 8 karakter'),
+    confirmPassword: z.string().min(8, 'Konfirmasi password minimal 8 karakter'),
+  })
+  .refine((values) => values.password === values.confirmPassword, {
+    message: 'Konfirmasi password tidak sama',
+    path: ['confirmPassword'],
+  });
+
+const parentSchema = z
+  .object({
+    name: z.string().min(1, 'Nama wajib diisi'),
+    username: z.string().min(3, 'Username minimal 3 karakter'),
+    phone: z.string().min(8, 'Nomor HP minimal 8 digit'),
+    email: optionalEmailSchema,
+    childNisn: z
+      .string()
+      .transform((value) => normalizeNisnInput(value))
+      .pipe(
+        z.string().superRefine((value, ctx) => {
+          const message = getNisnValidationMessage(value);
+          if (message) {
+            ctx.addIssue({
+              code: z.ZodIssueCode.custom,
+              message,
+            });
+          }
+        }),
+      ),
+    childBirthDate: z
+      .string()
+      .regex(/^\d{4}-\d{2}-\d{2}$/, 'Tanggal lahir anak wajib memakai format YYYY-MM-DD'),
+    password: z.string().min(8, 'Password minimal 8 karakter'),
+    confirmPassword: z.string().min(8, 'Konfirmasi password minimal 8 karakter'),
   })
   .refine((values) => values.password === values.confirmPassword, {
     message: 'Konfirmasi password tidak sama',
@@ -109,8 +144,8 @@ const accountSchema = z
     username: z.string().min(3, 'Username minimal 3 karakter'),
     phone: z.string().min(8, 'Nomor HP minimal 8 digit'),
     email: optionalEmailSchema,
-    password: z.string().min(6, 'Password minimal 6 karakter'),
-    confirmPassword: z.string().min(6, 'Konfirmasi password minimal 6 karakter'),
+    password: z.string().min(8, 'Password minimal 8 karakter'),
+    confirmPassword: z.string().min(8, 'Konfirmasi password minimal 8 karakter'),
   })
   .refine((values) => values.password === values.confirmPassword, {
     message: 'Konfirmasi password tidak sama',
@@ -118,6 +153,7 @@ const accountSchema = z
   });
 
 type CandidateForm = z.infer<typeof candidateSchema>;
+type ParentForm = z.infer<typeof parentSchema>;
 type AccountForm = z.infer<typeof accountSchema>;
 
 function resolveMode(raw: string | string[] | undefined): RegisterMode | null {
@@ -353,6 +389,10 @@ function CandidateRegisterForm({
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [showPassword, setShowPassword] = useState(false);
   const [showConfirmPassword, setShowConfirmPassword] = useState(false);
+  const majorsQuery = useQuery({
+    queryKey: ['mobile-register-candidate-majors'],
+    queryFn: async () => candidateAdmissionApi.listMajors(100),
+  });
   const {
     control,
     handleSubmit,
@@ -362,6 +402,7 @@ function CandidateRegisterForm({
     defaultValues: {
       name: '',
       nisn: '',
+      desiredMajorId: '',
       phone: '',
       email: '',
       password: '',
@@ -382,11 +423,17 @@ function CandidateRegisterForm({
       return;
     }
 
+    if (!majorsQuery.data?.length) {
+      Alert.alert('Jurusan Belum Tersedia', 'Daftar jurusan belum tersedia. Coba lagi beberapa saat.');
+      return;
+    }
+
     try {
       setIsSubmitting(true);
       const response = await authService.registerCalonSiswa({
         name: parsed.data.name.trim(),
         nisn: parsed.data.nisn.trim(),
+        desiredMajorId: Number(parsed.data.desiredMajorId),
         phone: parsed.data.phone.trim(),
         email: normalizeOptionalText(parsed.data.email),
         password: parsed.data.password,
@@ -435,6 +482,36 @@ function CandidateRegisterForm({
           Pola dummy seperti 0000000000 atau 1234567890 akan ditolak.
         </Text>
       </View>
+
+      <Controller
+        control={control}
+        name="desiredMajorId"
+        render={({ field: { onChange, value } }) => (
+          <MobileSelectField
+            label="Jurusan Tujuan"
+            value={value}
+            options={(majorsQuery.data || []).map((major) => ({
+              value: String(major.id),
+              label: `${major.code} - ${major.name}`,
+            }))}
+            onChange={onChange}
+            placeholder={majorsQuery.isLoading ? 'Memuat daftar jurusan...' : 'Pilih jurusan tujuan'}
+            helperText={
+              majorsQuery.isLoading
+                ? 'Daftar jurusan sedang dimuat dari sistem.'
+                : majorsQuery.data?.length
+                  ? 'Jurusan ini akan langsung tercatat di draft PPDB Anda.'
+                  : 'Belum ada jurusan yang bisa dipilih saat ini.'
+            }
+            disabled={majorsQuery.isLoading || !majorsQuery.data?.length}
+          />
+        )}
+      />
+      {errors.desiredMajorId?.message ? (
+        <Text style={{ color: '#dc2626', marginTop: -4, marginBottom: 8, fontSize: scaleFont(12), lineHeight: scaleLineHeight(18) }}>
+          {errors.desiredMajorId.message}
+        </Text>
+      ) : null}
 
       <Controller
         control={control}
@@ -513,7 +590,7 @@ function CandidateRegisterForm({
             error={errors.password?.message}
             value={value}
             onChangeText={onChange}
-            placeholder="Minimal 6 karakter"
+            placeholder="Minimal 8 karakter"
             autoCapitalize="none"
             secureTextEntry={!showPassword}
             showSecureToggle
@@ -565,12 +642,249 @@ function CandidateRegisterForm({
   );
 }
 
-function AccountRegisterForm({
-  mode,
+function ParentRegisterForm({
   onBack,
   onBackToLogin,
 }: {
-  mode: 'parent' | 'bkk';
+  onBack: () => void;
+  onBackToLogin: () => void;
+}) {
+  const [isSubmitting, setIsSubmitting] = useState(false);
+  const [showPassword, setShowPassword] = useState(false);
+  const [showConfirmPassword, setShowConfirmPassword] = useState(false);
+  const {
+    control,
+    handleSubmit,
+    setError,
+    formState: { errors },
+  } = useForm<ParentForm>({
+    defaultValues: {
+      name: '',
+      username: '',
+      phone: '',
+      email: '',
+      childNisn: '',
+      childBirthDate: '',
+      password: '',
+      confirmPassword: '',
+    },
+  });
+  const config = REGISTER_MODE_CONFIG.parent;
+
+  const onSubmit = async (values: ParentForm) => {
+    const parsed = parentSchema.safeParse(values);
+    if (!parsed.success) {
+      const issues = parsed.error.flatten().fieldErrors;
+      if (issues.name?.[0]) setError('name', { message: issues.name[0] });
+      if (issues.username?.[0]) setError('username', { message: issues.username[0] });
+      if (issues.phone?.[0]) setError('phone', { message: issues.phone[0] });
+      if (issues.email?.[0]) setError('email', { message: issues.email[0] });
+      if (issues.childNisn?.[0]) setError('childNisn', { message: issues.childNisn[0] });
+      if (issues.childBirthDate?.[0]) setError('childBirthDate', { message: issues.childBirthDate[0] });
+      if (issues.password?.[0]) setError('password', { message: issues.password[0] });
+      if (issues.confirmPassword?.[0]) setError('confirmPassword', { message: issues.confirmPassword[0] });
+      return;
+    }
+
+    try {
+      setIsSubmitting(true);
+      const response = await authService.registerParent({
+        name: parsed.data.name.trim(),
+        username: parsed.data.username.trim(),
+        phone: parsed.data.phone.trim(),
+        email: normalizeOptionalText(parsed.data.email),
+        childNisn: parsed.data.childNisn.trim(),
+        childBirthDate: parsed.data.childBirthDate,
+        password: parsed.data.password,
+        confirmPassword: parsed.data.confirmPassword,
+      });
+
+      Alert.alert(
+        'Registrasi Berhasil',
+        response.message || 'Akun berhasil dibuat. Silakan login untuk melanjutkan.',
+        [{ text: 'Tutup', onPress: onBackToLogin }],
+      );
+    } catch (error: unknown) {
+      Alert.alert('Registrasi Gagal', getApiErrorMessage(error, 'Registrasi akun gagal.'));
+    } finally {
+      setIsSubmitting(false);
+    }
+  };
+
+  return (
+    <>
+      <Pressable onPress={onBack} style={{ flexDirection: 'row', alignItems: 'center', marginBottom: 18 }}>
+        <Feather name="arrow-left" size={16} color={config.accentColor} />
+        <Text style={{ color: config.accentColor, fontWeight: '700', marginLeft: 8 }}>Pilih jalur lain</Text>
+      </Pressable>
+
+      <SectionHeading title={config.title} subtitle={config.subtitle} />
+
+      <FeatureCards items={config.highlights} />
+
+      <Controller
+        control={control}
+        name="name"
+        render={({ field: { onChange, value } }) => (
+          <FormField
+            label="Nama Lengkap"
+            icon="user"
+            error={errors.name?.message}
+            value={value}
+            onChangeText={onChange}
+            placeholder="Masukkan nama lengkap"
+            autoCapitalize="words"
+          />
+        )}
+      />
+
+      <Controller
+        control={control}
+        name="username"
+        render={({ field: { onChange, value } }) => (
+          <FormField
+            label="Username"
+            icon="at-sign"
+            error={errors.username?.message}
+            value={value}
+            onChangeText={onChange}
+            placeholder="Masukkan username"
+            autoCapitalize="none"
+          />
+        )}
+      />
+
+      <Controller
+        control={control}
+        name="phone"
+        render={({ field: { onChange, value } }) => (
+          <FormField
+            label="Nomor HP"
+            icon="phone"
+            error={errors.phone?.message}
+            value={value}
+            onChangeText={onChange}
+            placeholder="Masukkan nomor HP aktif"
+            autoCapitalize="none"
+            keyboardType="phone-pad"
+          />
+        )}
+      />
+
+      <Controller
+        control={control}
+        name="email"
+        render={({ field: { onChange, value } }) => (
+          <FormField
+            label="Email"
+            icon="mail"
+            error={errors.email?.message}
+            value={value}
+            onChangeText={onChange}
+            placeholder="Email aktif (opsional)"
+            autoCapitalize="none"
+            keyboardType="email-address"
+          />
+        )}
+      />
+
+      <Controller
+        control={control}
+        name="childNisn"
+        render={({ field: { onChange, value } }) => (
+          <FormField
+            label="NISN Anak Pertama"
+            icon="book-open"
+            error={errors.childNisn?.message}
+            value={value}
+            onChangeText={(nextValue) => onChange(normalizeNisnInput(nextValue))}
+            placeholder="10 digit NISN anak"
+            autoCapitalize="none"
+            keyboardType="number-pad"
+          />
+        )}
+      />
+
+      <Controller
+        control={control}
+        name="childBirthDate"
+        render={({ field: { onChange, value } }) => (
+          <FormField
+            label="Tanggal Lahir Anak"
+            icon="calendar"
+            error={errors.childBirthDate?.message}
+            value={value}
+            onChangeText={onChange}
+            placeholder="YYYY-MM-DD"
+            autoCapitalize="none"
+          />
+        )}
+      />
+
+      <Controller
+        control={control}
+        name="password"
+        render={({ field: { onChange, value } }) => (
+          <FormField
+            label="Password"
+            icon="lock"
+            error={errors.password?.message}
+            value={value}
+            onChangeText={onChange}
+            placeholder="Minimal 8 karakter"
+            autoCapitalize="none"
+            secureTextEntry={!showPassword}
+            showSecureToggle
+            isSecureVisible={showPassword}
+            onToggleSecure={() => setShowPassword((prev) => !prev)}
+          />
+        )}
+      />
+
+      <Controller
+        control={control}
+        name="confirmPassword"
+        render={({ field: { onChange, value } }) => (
+          <FormField
+            label="Konfirmasi Password"
+            icon="shield"
+            error={errors.confirmPassword?.message}
+            value={value}
+            onChangeText={onChange}
+            placeholder="Ulangi password"
+            autoCapitalize="none"
+            secureTextEntry={!showConfirmPassword}
+            showSecureToggle
+            isSecureVisible={showConfirmPassword}
+            onToggleSecure={() => setShowConfirmPassword((prev) => !prev)}
+          />
+        )}
+      />
+
+      <Pressable
+        onPress={handleSubmit(onSubmit)}
+        disabled={isSubmitting}
+        style={{
+          backgroundColor: isSubmitting ? '#fdba74' : config.accentColor,
+          paddingVertical: 12,
+          borderRadius: 999,
+          alignItems: 'center',
+          marginTop: 4,
+          marginBottom: 10,
+        }}
+      >
+        <Text style={{ color: '#fff', fontWeight: '700' }}>{isSubmitting ? 'Memproses...' : config.submitLabel}</Text>
+      </Pressable>
+
+      <BottomAuthLinks onBackToLogin={onBackToLogin} />
+    </>
+  );
+}
+
+function BkkRegisterForm({
+  onBack,
+  onBackToLogin,
+}: {
   onBack: () => void;
   onBackToLogin: () => void;
 }) {
@@ -592,7 +906,7 @@ function AccountRegisterForm({
       confirmPassword: '',
     },
   });
-  const config = REGISTER_MODE_CONFIG[mode];
+  const config = REGISTER_MODE_CONFIG.bkk;
 
   const onSubmit = async (values: AccountForm) => {
     const parsed = accountSchema.safeParse(values);
@@ -609,19 +923,14 @@ function AccountRegisterForm({
 
     try {
       setIsSubmitting(true);
-      const payload = {
+      const response = await authService.registerBkk({
         name: parsed.data.name.trim(),
         username: parsed.data.username.trim(),
         phone: parsed.data.phone.trim(),
         email: normalizeOptionalText(parsed.data.email),
         password: parsed.data.password,
         confirmPassword: parsed.data.confirmPassword,
-      };
-
-      const response =
-        mode === 'parent'
-          ? await authService.registerParent(payload)
-          : await authService.registerBkk(payload);
+      });
 
       Alert.alert(
         'Registrasi Berhasil',
@@ -722,7 +1031,7 @@ function AccountRegisterForm({
             error={errors.password?.message}
             value={value}
             onChangeText={onChange}
-            placeholder="Minimal 6 karakter"
+            placeholder="Minimal 8 karakter"
             autoCapitalize="none"
             secureTextEntry={!showPassword}
             showSecureToggle
@@ -797,8 +1106,10 @@ export default function RegisterScreen() {
     <AuthScaffold>
       {mode === 'candidate' ? (
         <CandidateRegisterForm onBack={backToHub} onBackToLogin={backToLogin} />
-      ) : mode === 'parent' || mode === 'bkk' ? (
-        <AccountRegisterForm mode={mode} onBack={backToHub} onBackToLogin={backToLogin} />
+      ) : mode === 'parent' ? (
+        <ParentRegisterForm onBack={backToHub} onBackToLogin={backToLogin} />
+      ) : mode === 'bkk' ? (
+        <BkkRegisterForm onBack={backToHub} onBackToLogin={backToLogin} />
       ) : (
         <RegisterHub onChooseMode={openMode} onBackToLogin={backToLogin} />
       )}
