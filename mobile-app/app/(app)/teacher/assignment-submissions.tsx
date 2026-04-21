@@ -3,7 +3,9 @@ import { Redirect, useLocalSearchParams, useRouter } from 'expo-router';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import {
   Alert,
+  KeyboardAvoidingView,
   Modal,
+  Platform,
   Pressable,
   RefreshControl,
   ScrollView,
@@ -395,107 +397,120 @@ export default function TeacherAssignmentSubmissionsScreen() {
             paddingHorizontal: 18,
           }}
         >
-          <View
-            style={{
-              backgroundColor: '#fff',
-              borderRadius: 14,
-              borderWidth: 1,
-              borderColor: '#dbeafe',
-              padding: 14,
-            }}
+          <KeyboardAvoidingView
+            behavior={Platform.OS === 'ios' ? 'padding' : 'height'}
+            keyboardVerticalOffset={Platform.OS === 'ios' ? insets.top + 8 : 0}
+            style={{ justifyContent: 'center' }}
           >
-            <Text style={{ color: '#0f172a', fontWeight: '700', fontSize: scaleFont(18), lineHeight: scaleLineHeight(26), marginBottom: 4 }}>
-              Input Nilai
-            </Text>
-            <Text style={{ color: '#334155', fontSize: scaleFont(13), lineHeight: scaleLineHeight(20), marginBottom: 10 }}>
-              {gradingTarget?.student.name || '-'}
-            </Text>
-
-            <Text style={{ color: '#64748b', fontSize: scaleFont(12), lineHeight: scaleLineHeight(18), marginBottom: 4 }}>
-              Nilai (max {gradingTarget?.assignment?.maxScore ?? 100})
-            </Text>
-            <TextInput
-              value={scoreInput}
-              onChangeText={setScoreInput}
-              keyboardType="numeric"
-              placeholder="Contoh: 85"
+            <View
               style={{
-                borderWidth: 1,
-                borderColor: '#cbd5e1',
-                borderRadius: 8,
-                paddingHorizontal: 10,
-                paddingVertical: 9,
-                color: '#0f172a',
                 backgroundColor: '#fff',
-                marginBottom: 10,
-                fontSize: scaleFont(13),
-                lineHeight: scaleLineHeight(20),
-              }}
-            />
-
-            <Text style={{ color: '#64748b', fontSize: scaleFont(12), lineHeight: scaleLineHeight(18), marginBottom: 4 }}>
-              Feedback
-            </Text>
-            <TextInput
-              value={feedbackInput}
-              onChangeText={setFeedbackInput}
-              placeholder="Catatan untuk siswa"
-              multiline
-              numberOfLines={3}
-              textAlignVertical="top"
-              style={{
+                borderRadius: 14,
                 borderWidth: 1,
-                borderColor: '#cbd5e1',
-                borderRadius: 8,
-                paddingHorizontal: 10,
-                paddingVertical: 9,
-                color: '#0f172a',
-                backgroundColor: '#fff',
-                minHeight: 88,
-                fontSize: scaleFont(13),
-                lineHeight: scaleLineHeight(20),
+                borderColor: '#dbeafe',
+                padding: 14,
               }}
-            />
+            >
+              <ScrollView
+                showsVerticalScrollIndicator={false}
+                keyboardShouldPersistTaps="handled"
+                keyboardDismissMode={Platform.OS === 'ios' ? 'interactive' : 'on-drag'}
+                contentContainerStyle={{ paddingBottom: 4 }}
+              >
+                <Text style={{ color: '#0f172a', fontWeight: '700', fontSize: scaleFont(18), lineHeight: scaleLineHeight(26), marginBottom: 4 }}>
+                  Input Nilai
+                </Text>
+                <Text style={{ color: '#334155', fontSize: scaleFont(13), lineHeight: scaleLineHeight(20), marginBottom: 10 }}>
+                  {gradingTarget?.student.name || '-'}
+                </Text>
 
-            <View style={{ flexDirection: 'row', marginHorizontal: -4, marginTop: 12 }}>
-              <View style={{ flex: 1, paddingHorizontal: 4 }}>
-                <Pressable
-                  onPress={() => {
-                    if (gradeMutation.isPending) return;
-                    setGradingTarget(null);
-                  }}
+                <Text style={{ color: '#64748b', fontSize: scaleFont(12), lineHeight: scaleLineHeight(18), marginBottom: 4 }}>
+                  Nilai (max {gradingTarget?.assignment?.maxScore ?? 100})
+                </Text>
+                <TextInput
+                  value={scoreInput}
+                  onChangeText={setScoreInput}
+                  keyboardType="numeric"
+                  placeholder="Contoh: 85"
                   style={{
                     borderWidth: 1,
                     borderColor: '#cbd5e1',
-                    borderRadius: 9,
-                    paddingVertical: 10,
-                    alignItems: 'center',
+                    borderRadius: 8,
+                    paddingHorizontal: 10,
+                    paddingVertical: 9,
+                    color: '#0f172a',
                     backgroundColor: '#fff',
+                    marginBottom: 10,
+                    fontSize: scaleFont(13),
+                    lineHeight: scaleLineHeight(20),
                   }}
-                >
-                  <Text style={{ color: '#334155', fontWeight: '700' }}>Batal</Text>
-                </Pressable>
-              </View>
-              <View style={{ flex: 1, paddingHorizontal: 4 }}>
-                <Pressable
-                  onPress={() => gradeMutation.mutate()}
-                  disabled={gradeMutation.isPending}
+                />
+
+                <Text style={{ color: '#64748b', fontSize: scaleFont(12), lineHeight: scaleLineHeight(18), marginBottom: 4 }}>
+                  Feedback
+                </Text>
+                <TextInput
+                  value={feedbackInput}
+                  onChangeText={setFeedbackInput}
+                  placeholder="Catatan untuk siswa"
+                  multiline
+                  numberOfLines={3}
+                  textAlignVertical="top"
                   style={{
                     borderWidth: 1,
-                    borderColor: '#1d4ed8',
-                    borderRadius: 9,
-                    paddingVertical: 10,
-                    alignItems: 'center',
-                    backgroundColor: gradeMutation.isPending ? '#93c5fd' : '#1d4ed8',
+                    borderColor: '#cbd5e1',
+                    borderRadius: 8,
+                    paddingHorizontal: 10,
+                    paddingVertical: 9,
+                    color: '#0f172a',
+                    backgroundColor: '#fff',
+                    minHeight: 88,
+                    fontSize: scaleFont(13),
+                    lineHeight: scaleLineHeight(20),
                   }}
-                >
-                  <Text style={{ color: '#fff', fontWeight: '700' }}>
-                    {gradeMutation.isPending ? 'Menyimpan...' : 'Simpan Nilai'}
-                  </Text>
-                </Pressable>
-              </View>
+                />
+
+                <View style={{ flexDirection: 'row', marginHorizontal: -4, marginTop: 12 }}>
+                  <View style={{ flex: 1, paddingHorizontal: 4 }}>
+                    <Pressable
+                      onPress={() => {
+                        if (gradeMutation.isPending) return;
+                        setGradingTarget(null);
+                      }}
+                      style={{
+                        borderWidth: 1,
+                        borderColor: '#cbd5e1',
+                        borderRadius: 9,
+                        paddingVertical: 10,
+                        alignItems: 'center',
+                        backgroundColor: '#fff',
+                      }}
+                    >
+                      <Text style={{ color: '#334155', fontWeight: '700' }}>Batal</Text>
+                    </Pressable>
+                  </View>
+                  <View style={{ flex: 1, paddingHorizontal: 4 }}>
+                    <Pressable
+                      onPress={() => gradeMutation.mutate()}
+                      disabled={gradeMutation.isPending}
+                      style={{
+                        borderWidth: 1,
+                        borderColor: '#1d4ed8',
+                        borderRadius: 9,
+                        paddingVertical: 10,
+                        alignItems: 'center',
+                        backgroundColor: gradeMutation.isPending ? '#93c5fd' : '#1d4ed8',
+                      }}
+                    >
+                      <Text style={{ color: '#fff', fontWeight: '700' }}>
+                        {gradeMutation.isPending ? 'Menyimpan...' : 'Simpan Nilai'}
+                      </Text>
+                    </Pressable>
+                  </View>
+                </View>
+              </ScrollView>
             </View>
-          </View>
+          </KeyboardAvoidingView>
         </View>
       </Modal>
     </>

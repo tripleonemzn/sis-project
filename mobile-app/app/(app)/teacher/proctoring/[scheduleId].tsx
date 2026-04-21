@@ -1,7 +1,18 @@
-import { useEffect, useMemo, useState } from 'react';
+import { type ReactNode, useEffect, useMemo, useState } from 'react';
 import { Redirect, useLocalSearchParams, useRouter } from 'expo-router';
 import { useMutation, useQuery } from '@tanstack/react-query';
-import { Alert, Modal, Pressable, RefreshControl, ScrollView, Text, TextInput, View } from 'react-native';
+import {
+  Alert,
+  KeyboardAvoidingView,
+  Modal,
+  Platform,
+  Pressable,
+  RefreshControl,
+  ScrollView,
+  Text,
+  TextInput,
+  View,
+} from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { Feather } from '@expo/vector-icons';
 import { AppLoadingScreen } from '../../../../src/components/AppLoadingScreen';
@@ -103,6 +114,47 @@ function compareClassName(a?: string | null, b?: string | null) {
   return parsedA.original.localeCompare(parsedB.original, 'id');
 }
 
+function MobileOverlayCard({
+  children,
+  keyboardVerticalOffset,
+  maxHeight = '88%',
+}: {
+  children: ReactNode;
+  keyboardVerticalOffset: number;
+  maxHeight?: `${number}%`;
+}) {
+  return (
+    <View
+      style={{
+        flex: 1,
+        backgroundColor: 'rgba(15, 23, 42, 0.18)',
+        justifyContent: 'center',
+        paddingHorizontal: 16,
+        paddingVertical: 24,
+      }}
+    >
+      <KeyboardAvoidingView
+        behavior={Platform.OS === 'ios' ? 'padding' : 'height'}
+        keyboardVerticalOffset={Platform.OS === 'ios' ? keyboardVerticalOffset : 0}
+        style={{ flex: 1, justifyContent: 'center' }}
+      >
+        <View
+          style={{
+            maxHeight,
+            borderRadius: 18,
+            backgroundColor: '#fff',
+            overflow: 'hidden',
+            borderWidth: 1,
+            borderColor: '#e2e8f0',
+          }}
+        >
+          {children}
+        </View>
+      </KeyboardAvoidingView>
+    </View>
+  );
+}
+
 export default function TeacherProctoringDetailScreen() {
   const router = useRouter();
   const insets = useSafeAreaInsets();
@@ -112,6 +164,7 @@ export default function TeacherProctoringDetailScreen() {
   const { isAuthenticated, isLoading, user } = useAuth();
   const pagePadding = getStandardPagePadding(insets, { bottom: 120 });
   const { scaleFont, scaleLineHeight } = useAppTextScale();
+  const modalKeyboardOffset = insets.top + 8;
 
   const [notes, setNotes] = useState('');
   const [isReportModalOpen, setIsReportModalOpen] = useState(false);
@@ -855,25 +908,7 @@ export default function TeacherProctoringDetailScreen() {
         transparent
         onRequestClose={() => setWarningTarget(null)}
       >
-        <View
-          style={{
-            flex: 1,
-            backgroundColor: 'rgba(15, 23, 42, 0.18)',
-            justifyContent: 'center',
-            paddingHorizontal: 16,
-            paddingVertical: 24,
-          }}
-        >
-          <View
-            style={{
-              maxHeight: '88%',
-              borderRadius: 18,
-              backgroundColor: '#fff',
-              overflow: 'hidden',
-              borderWidth: 1,
-              borderColor: '#e2e8f0',
-            }}
-          >
+        <MobileOverlayCard keyboardVerticalOffset={modalKeyboardOffset}>
             <View
               style={{
                 flexDirection: 'row',
@@ -914,6 +949,8 @@ export default function TeacherProctoringDetailScreen() {
               style={{ backgroundColor: '#fff' }}
               contentContainerStyle={{ padding: 16, gap: 12 }}
               showsVerticalScrollIndicator={false}
+              keyboardShouldPersistTaps="handled"
+              keyboardDismissMode={Platform.OS === 'ios' ? 'interactive' : 'on-drag'}
             >
               <View
                 style={{
@@ -1004,8 +1041,7 @@ export default function TeacherProctoringDetailScreen() {
                 </Text>
               </Pressable>
             </View>
-          </View>
-        </View>
+        </MobileOverlayCard>
       </Modal>
 
       <Modal
@@ -1014,25 +1050,7 @@ export default function TeacherProctoringDetailScreen() {
         transparent
         onRequestClose={() => setEndSessionTarget(null)}
       >
-        <View
-          style={{
-            flex: 1,
-            backgroundColor: 'rgba(15, 23, 42, 0.18)',
-            justifyContent: 'center',
-            paddingHorizontal: 16,
-            paddingVertical: 24,
-          }}
-        >
-          <View
-            style={{
-              maxHeight: '88%',
-              borderRadius: 18,
-              backgroundColor: '#fff',
-              overflow: 'hidden',
-              borderWidth: 1,
-              borderColor: '#e2e8f0',
-            }}
-          >
+        <MobileOverlayCard keyboardVerticalOffset={modalKeyboardOffset}>
             <View
               style={{
                 flexDirection: 'row',
@@ -1073,6 +1091,8 @@ export default function TeacherProctoringDetailScreen() {
               style={{ backgroundColor: '#fff' }}
               contentContainerStyle={{ padding: 16, gap: 12 }}
               showsVerticalScrollIndicator={false}
+              keyboardShouldPersistTaps="handled"
+              keyboardDismissMode={Platform.OS === 'ios' ? 'interactive' : 'on-drag'}
             >
               <View
                 style={{
@@ -1165,8 +1185,7 @@ export default function TeacherProctoringDetailScreen() {
                 </Text>
               </Pressable>
             </View>
-          </View>
-        </View>
+        </MobileOverlayCard>
       </Modal>
 
       <Modal
@@ -1175,25 +1194,7 @@ export default function TeacherProctoringDetailScreen() {
         transparent
         onRequestClose={() => setIsExamInfoModalOpen(false)}
       >
-        <View
-          style={{
-            flex: 1,
-            backgroundColor: 'rgba(15, 23, 42, 0.18)',
-            justifyContent: 'center',
-            paddingHorizontal: 16,
-            paddingVertical: 24,
-          }}
-        >
-          <View
-            style={{
-              maxHeight: '88%',
-              borderRadius: 18,
-              backgroundColor: '#fff',
-              overflow: 'hidden',
-              borderWidth: 1,
-              borderColor: '#e2e8f0',
-            }}
-          >
+        <MobileOverlayCard keyboardVerticalOffset={modalKeyboardOffset}>
             <View
               style={{
                 flexDirection: 'row',
@@ -1234,6 +1235,8 @@ export default function TeacherProctoringDetailScreen() {
               style={{ backgroundColor: '#fff' }}
               contentContainerStyle={{ padding: 16, gap: 12 }}
               showsVerticalScrollIndicator={false}
+              keyboardShouldPersistTaps="handled"
+              keyboardDismissMode={Platform.OS === 'ios' ? 'interactive' : 'on-drag'}
             >
               <View
                 style={{
@@ -1312,8 +1315,7 @@ export default function TeacherProctoringDetailScreen() {
                 </View>
               </View>
             </ScrollView>
-          </View>
-        </View>
+        </MobileOverlayCard>
       </Modal>
 
       <Modal
@@ -1322,25 +1324,7 @@ export default function TeacherProctoringDetailScreen() {
         transparent
         onRequestClose={() => setIsReportModalOpen(false)}
       >
-        <View
-          style={{
-            flex: 1,
-            backgroundColor: 'rgba(15, 23, 42, 0.18)',
-            justifyContent: 'center',
-            paddingHorizontal: 16,
-            paddingVertical: 24,
-          }}
-        >
-          <View
-            style={{
-              maxHeight: '92%',
-              borderRadius: 18,
-              backgroundColor: '#fff',
-              overflow: 'hidden',
-              borderWidth: 1,
-              borderColor: '#e2e8f0',
-            }}
-          >
+        <MobileOverlayCard keyboardVerticalOffset={modalKeyboardOffset} maxHeight="92%">
             <View
               style={{
                 flexDirection: 'row',
@@ -1385,6 +1369,8 @@ export default function TeacherProctoringDetailScreen() {
               style={{ backgroundColor: '#fff' }}
               contentContainerStyle={{ padding: 16, gap: 12 }}
               showsVerticalScrollIndicator={false}
+              keyboardShouldPersistTaps="handled"
+              keyboardDismissMode={Platform.OS === 'ios' ? 'interactive' : 'on-drag'}
             >
               <View
                 style={{
@@ -1598,8 +1584,7 @@ export default function TeacherProctoringDetailScreen() {
                 </Text>
               </Pressable>
             </ScrollView>
-          </View>
-        </View>
+        </MobileOverlayCard>
       </Modal>
     </ScrollView>
   );
