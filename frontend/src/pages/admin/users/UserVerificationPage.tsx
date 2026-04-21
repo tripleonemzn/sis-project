@@ -1,7 +1,7 @@
 import { useState } from 'react';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { userService } from '../../../services/user.service';
-import type { ParentRegistrationRequest, User } from '../../../types/auth';
+import type { CandidateRegistrationRequest, ParentRegistrationRequest, User } from '../../../types/auth';
 import { Search, Loader2, ShieldCheck, CheckCircle2, XCircle } from 'lucide-react';
 import toast from 'react-hot-toast';
 
@@ -85,6 +85,35 @@ function readParentRegistrationRequest(user: User): ParentRegistrationRequest | 
   };
 }
 
+function readCandidateRegistrationRequest(user: User): CandidateRegistrationRequest | null {
+  const raw = user.preferences?.candidateRegistrationRequest;
+  if (!raw || typeof raw !== 'object' || Array.isArray(raw)) {
+    return null;
+  }
+
+  const candidate = raw as Record<string, unknown>;
+  const mainMajorId = Number(candidate.mainMajorId);
+  const mainMajorCode = String(candidate.mainMajorCode || '').trim();
+  const mainMajorName = String(candidate.mainMajorName || '').trim();
+  const requestedAt = String(candidate.requestedAt || '').trim();
+
+  if (!Number.isInteger(mainMajorId) || mainMajorId <= 0 || !mainMajorCode || !mainMajorName || !requestedAt) {
+    return null;
+  }
+
+  const optionalMajorId = Number(candidate.optionalMajorId);
+
+  return {
+    mainMajorId,
+    mainMajorCode,
+    mainMajorName,
+    optionalMajorId: Number.isInteger(optionalMajorId) && optionalMajorId > 0 ? optionalMajorId : null,
+    optionalMajorCode: typeof candidate.optionalMajorCode === 'string' ? candidate.optionalMajorCode : null,
+    optionalMajorName: typeof candidate.optionalMajorName === 'string' ? candidate.optionalMajorName : null,
+    requestedAt,
+  };
+}
+
 function getRegistrationContextLines(user: User): string[] {
   if (user.role === 'PARENT') {
     const request = readParentRegistrationRequest(user);
@@ -105,9 +134,11 @@ function getRegistrationContextLines(user: User): string[] {
   }
 
   if (user.role === 'CALON_SISWA') {
+    const request = readCandidateRegistrationRequest(user);
     return [
       `NISN: ${user.nisn || '-'}`,
-      `Jurusan tujuan: ${user.candidateAdmission?.desiredMajor ? `${user.candidateAdmission.desiredMajor.code} - ${user.candidateAdmission.desiredMajor.name}` : 'belum dipilih'}`,
+      `Jurusan utama: ${user.candidateAdmission?.desiredMajor ? `${user.candidateAdmission.desiredMajor.code} - ${user.candidateAdmission.desiredMajor.name}` : request ? `${request.mainMajorCode} - ${request.mainMajorName}` : 'belum dipilih'}`,
+      `Jurusan optional: ${request?.optionalMajorCode && request.optionalMajorName ? `${request.optionalMajorCode} - ${request.optionalMajorName}` : 'tidak diisi'}`,
       `Status draft PPDB: ${user.candidateAdmission?.status || 'DRAFT'}`,
     ];
   }

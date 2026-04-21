@@ -116,6 +116,16 @@ type ParentRegistrationRequest = {
   requestedAt: string;
 };
 
+type CandidateRegistrationRequest = {
+  mainMajorId: number;
+  mainMajorCode: string;
+  mainMajorName: string;
+  optionalMajorId?: number | null;
+  optionalMajorCode?: string | null;
+  optionalMajorName?: string | null;
+  requestedAt: string;
+};
+
 function readParentRegistrationRequest(preferences?: Record<string, unknown> | null): ParentRegistrationRequest | null {
   const raw = preferences?.parentRegistrationRequest;
   if (!raw || typeof raw !== 'object' || Array.isArray(raw)) {
@@ -145,6 +155,35 @@ function readParentRegistrationRequest(preferences?: Record<string, unknown> | n
   };
 }
 
+function readCandidateRegistrationRequest(preferences?: Record<string, unknown> | null): CandidateRegistrationRequest | null {
+  const raw = preferences?.candidateRegistrationRequest;
+  if (!raw || typeof raw !== 'object' || Array.isArray(raw)) {
+    return null;
+  }
+
+  const candidate = raw as Record<string, unknown>;
+  const mainMajorId = Number(candidate.mainMajorId);
+  const mainMajorCode = String(candidate.mainMajorCode || '').trim();
+  const mainMajorName = String(candidate.mainMajorName || '').trim();
+  const requestedAt = String(candidate.requestedAt || '').trim();
+
+  if (!Number.isInteger(mainMajorId) || mainMajorId <= 0 || !mainMajorCode || !mainMajorName || !requestedAt) {
+    return null;
+  }
+
+  const optionalMajorId = Number(candidate.optionalMajorId);
+
+  return {
+    mainMajorId,
+    mainMajorCode,
+    mainMajorName,
+    optionalMajorId: Number.isInteger(optionalMajorId) && optionalMajorId > 0 ? optionalMajorId : null,
+    optionalMajorCode: typeof candidate.optionalMajorCode === 'string' ? candidate.optionalMajorCode : null,
+    optionalMajorName: typeof candidate.optionalMajorName === 'string' ? candidate.optionalMajorName : null,
+    requestedAt,
+  };
+}
+
 function getRegistrationContextLines(user: AdminUser): string[] {
   if (user.role === 'PARENT') {
     const request = readParentRegistrationRequest(user.preferences);
@@ -165,9 +204,11 @@ function getRegistrationContextLines(user: AdminUser): string[] {
   }
 
   if (user.role === 'CALON_SISWA') {
+    const request = readCandidateRegistrationRequest(user.preferences);
     return [
       `NISN: ${user.nisn || '-'}`,
-      `Jurusan tujuan: ${user.candidateAdmission?.desiredMajor ? `${user.candidateAdmission.desiredMajor.code} - ${user.candidateAdmission.desiredMajor.name}` : 'belum dipilih'}`,
+      `Jurusan utama: ${user.candidateAdmission?.desiredMajor ? `${user.candidateAdmission.desiredMajor.code} - ${user.candidateAdmission.desiredMajor.name}` : request ? `${request.mainMajorCode} - ${request.mainMajorName}` : 'belum dipilih'}`,
+      `Jurusan optional: ${request?.optionalMajorCode && request.optionalMajorName ? `${request.optionalMajorCode} - ${request.optionalMajorName}` : 'tidak diisi'}`,
       `Status draft PPDB: ${user.candidateAdmission?.status || 'DRAFT'}`,
     ];
   }

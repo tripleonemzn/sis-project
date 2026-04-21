@@ -6,7 +6,10 @@ import { ApiError, ApiResponse, asyncHandler } from '../utils/api';
 import { generateToken } from '../middleware/auth';
 import { z } from 'zod';
 import { getNisnValidationMessage, normalizeNisnInput } from '../utils/nisn';
-import { mergeParentRegistrationRequest } from '../utils/publicRegistration';
+import {
+  mergeCandidateRegistrationRequest,
+  mergeParentRegistrationRequest,
+} from '../utils/publicRegistration';
 import { sendWebmailMessage } from '../services/webmailMailbox.service';
 import { activateCandidateAsOfficialStudent } from '../services/candidateStudentActivation.service';
 import {
@@ -733,7 +736,14 @@ export const resetForgotPassword = asyncHandler(async (req: Request, res: Respon
 const calonSiswaRegisterSchema = z.object({
   name: z.string().min(1, 'Nama wajib diisi').optional(),
   nisn: nisnSchema,
-  desiredMajorId: z.coerce.number().int().positive('Jurusan tujuan wajib dipilih'),
+  desiredMajorId: z.coerce.number().int().positive('Pilih jurusan utama wajib diisi'),
+  optionalMajorId: z.preprocess(
+    (value) => {
+      const normalized = String(value ?? '').trim();
+      return normalized.length > 0 ? Number(normalized) : undefined;
+    },
+    z.number().int().positive('Jurusan optional tidak valid').optional(),
+  ),
   phone: optionalPhoneSchema,
   email: optionalEmailSchema,
   password: z.string().min(8, 'Password minimal 8 karakter'),
@@ -741,17 +751,30 @@ const calonSiswaRegisterSchema = z.object({
 }).refine((data) => data.password === data.confirmPassword, {
   message: 'Konfirmasi password tidak cocok',
   path: ['confirmPassword'],
+}).refine((data) => !data.optionalMajorId || data.optionalMajorId !== data.desiredMajorId, {
+  message: 'Jurusan optional harus berbeda dari jurusan utama',
+  path: ['optionalMajorId'],
 });
 
 export const registerCalonSiswa = asyncHandler(async (req: Request, res: Response) => {
   const body = calonSiswaRegisterSchema.parse(req.body);
 
-  const major = await prisma.major.findUnique({
+  const mainMajor = await prisma.major.findUnique({
     where: { id: body.desiredMajorId },
-    select: { id: true },
+    select: { id: true, code: true, name: true },
   });
-  if (!major) {
-    throw new ApiError(404, 'Jurusan tujuan tidak ditemukan');
+  if (!mainMajor) {
+    throw new ApiError(404, 'Jurusan utama tidak ditemukan');
+  }
+
+  const optionalMajor = body.optionalMajorId
+    ? await prisma.major.findUnique({
+        where: { id: body.optionalMajorId },
+        select: { id: true, code: true, name: true },
+      })
+    : null;
+  if (body.optionalMajorId && !optionalMajor) {
+    throw new ApiError(404, 'Jurusan optional tidak ditemukan');
   }
 
   const existingByNisn = await prisma.user.findFirst({
@@ -773,6 +796,15 @@ export const registerCalonSiswa = asyncHandler(async (req: Request, res: Respons
         role: Role.CALON_SISWA,
         phone: normalizeOptionalText(body.phone),
         email: normalizeOptionalText(body.email),
+        preferences: mergeCandidateRegistrationRequest(null, {
+          mainMajorId: mainMajor.id,
+          mainMajorCode: mainMajor.code,
+          mainMajorName: mainMajor.name,
+          optionalMajorId: optionalMajor?.id ?? null,
+          optionalMajorCode: optionalMajor?.code ?? null,
+          optionalMajorName: optionalMajor?.name ?? null,
+          requestedAt: new Date().toISOString(),
+        }),
         verificationMethod: VerificationMethod.NONE,
         verificationStatus: VerificationStatus.PENDING,
         studentStatus: undefined,

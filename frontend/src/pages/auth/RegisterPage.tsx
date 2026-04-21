@@ -40,16 +40,16 @@ const REGISTER_MODE_CONFIG: Record<
 > = {
   candidate: {
     title: 'Daftar Calon Siswa',
-    subtitle: 'Buat akun PPDB, pilih jurusan tujuan sejak awal, lalu pantau proses pendaftaran dan tahap tes berikutnya.',
+    subtitle: 'Buat akun PPDB, pilih jurusan utama sejak awal, lalu pantau proses pendaftaran dan tahap tes berikutnya.',
     submitLabel: 'Buat Akun Calon Siswa',
     accentClass: 'from-[#163f92] via-[#2a64b6] to-[#1b9b93]',
     buttonClass: 'bg-[#2d5daa] hover:bg-[#244f91]',
     iconClass: 'bg-sky-100 text-sky-700 ring-sky-200',
     eyebrow: 'PPDB Terpadu',
     highlights: [
-      'Pilih jurusan tujuan dari data kompetensi keahlian yang aktif di sistem.',
+      'Pilih jurusan utama dari data kompetensi keahlian yang aktif di sistem.',
+      'Jurusan optional bisa ditambahkan bila ingin menyiapkan alternatif pilihan.',
       'Akun siap dipakai memantau tahapan PPDB dan tes seleksi.',
-      'Pengumuman hasil dan surat seleksi tampil dari akun yang sama.',
     ],
   },
   parent: {
@@ -98,7 +98,7 @@ const REGISTER_HUB_OPTIONS: Array<{
     icon: <GraduationCap className="h-6 w-6" />,
     accentClass: 'from-sky-300/45 via-cyan-200/18 to-transparent',
     iconClass: 'bg-sky-100 text-sky-700 ring-sky-200',
-    tagline: 'PPDB dengan jurusan tujuan',
+    tagline: 'PPDB dengan jurusan utama',
   },
   {
     mode: 'parent',
@@ -146,15 +146,29 @@ const candidateSchema = z
     email: optionalEmailSchema,
     desiredMajorId: z
       .string()
-      .min(1, 'Jurusan tujuan wajib dipilih')
+      .min(1, 'Pilih jurusan utama wajib diisi')
       .transform((value) => Number(value))
-      .pipe(z.number().int().positive('Jurusan tujuan wajib dipilih')),
+      .pipe(z.number().int().positive('Pilih jurusan utama wajib diisi')),
+    optionalMajorId: z
+      .string()
+      .optional()
+      .transform((value) => {
+        const normalized = String(value || '').trim();
+        return normalized.length > 0 ? Number(normalized) : undefined;
+      })
+      .refine((value) => typeof value === 'undefined' || (Number.isInteger(value) && value > 0), {
+        message: 'Jurusan optional tidak valid',
+      }),
     password: z.string().min(8, 'Password minimal 8 karakter'),
     confirmPassword: z.string().min(8, 'Konfirmasi password minimal 8 karakter'),
   })
   .refine((values) => values.password === values.confirmPassword, {
     message: 'Konfirmasi password tidak sama',
     path: ['confirmPassword'],
+  })
+  .refine((values) => !values.optionalMajorId || values.optionalMajorId !== values.desiredMajorId, {
+    message: 'Jurusan optional harus berbeda dari jurusan utama',
+    path: ['optionalMajorId'],
   });
 
 const parentSchema = z
@@ -564,6 +578,7 @@ function CandidateRegisterForm() {
       name: '',
       nisn: '',
       desiredMajorId: '',
+      optionalMajorId: '',
       phone: '',
       email: '',
       password: '',
@@ -587,6 +602,7 @@ function CandidateRegisterForm() {
         name: values.name.trim(),
         nisn: values.nisn.trim(),
         desiredMajorId: Number(values.desiredMajorId),
+        optionalMajorId: values.optionalMajorId ? Number(values.optionalMajorId) : undefined,
         phone: values.phone.trim(),
         email: normalizeOptionalEmail(values.email),
         password: values.password,
@@ -640,8 +656,8 @@ function CandidateRegisterForm() {
           </h2>
           <div className="mt-4 grid auto-rows-fr gap-3 sm:grid-cols-3">
             {[
-              'Akun dipakai untuk form PPDB dan tahap tes seleksi.',
-              'Isi data dasar dulu, detail lain bisa dilengkapi setelah login.',
+              'Pilih jurusan utama sebagai pilihan utama sejak pembuatan akun.',
+              'Jurusan optional bisa dipakai sebagai alternatif bila dibutuhkan sekolah.',
               'Hasil seleksi dan surat keputusan tampil dari akun ini.',
             ].map((item) => (
               <div key={item} className="auth-option-card auth-frost-tile h-full min-h-[128px] rounded-2xl px-4 py-3 text-sm leading-6 text-slate-700">
@@ -690,21 +706,32 @@ function CandidateRegisterForm() {
                 <SelectField
                   id="candidate-major"
                   name="desiredMajorId"
-                  label="Jurusan Tujuan"
+                  label="Pilih Jurusan Utama"
                   value={value ?? ''}
                   onChange={onChange}
                   options={majorOptions}
-                  placeholder={majorsQuery.isLoading ? 'Memuat daftar jurusan...' : 'Pilih jurusan tujuan'}
+                  placeholder={majorsQuery.isLoading ? 'Memuat daftar jurusan...' : 'Pilih jurusan utama'}
                   icon={<School size={18} />}
                   error={errors.desiredMajorId?.message}
                   disabled={majorsQuery.isLoading || majorOptions.length === 0}
-                  helperText={
-                    majorsQuery.isLoading
-                      ? 'Daftar jurusan sedang dimuat dari sistem.'
-                      : majorOptions.length === 0
-                        ? 'Belum ada jurusan yang bisa dipilih saat ini.'
-                        : 'Jurusan ini akan langsung tercatat di draft PPDB Anda.'
-                  }
+                />
+              )}
+            />
+            <Controller
+              control={control}
+              name="optionalMajorId"
+              render={({ field: { onChange, value } }) => (
+                <SelectField
+                  id="candidate-optional-major"
+                  name="optionalMajorId"
+                  label="Jurusan Optional"
+                  value={value ?? ''}
+                  onChange={onChange}
+                  options={majorOptions}
+                  placeholder={majorsQuery.isLoading ? 'Memuat daftar jurusan...' : 'Pilih jurusan optional'}
+                  icon={<School size={18} />}
+                  error={errors.optionalMajorId?.message}
+                  disabled={majorsQuery.isLoading || majorOptions.length === 0}
                 />
               )}
             />

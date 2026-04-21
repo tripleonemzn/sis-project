@@ -1,6 +1,7 @@
 import type { Prisma } from '@prisma/client';
 
 export const PARENT_REGISTRATION_REQUEST_KEY = 'parentRegistrationRequest';
+export const CANDIDATE_REGISTRATION_REQUEST_KEY = 'candidateRegistrationRequest';
 
 export type ParentRegistrationRequest = {
   childId: number;
@@ -14,6 +15,16 @@ export type ParentRegistrationRequest = {
   verifiedByChildBirthDate: boolean;
   linkState?: 'PENDING_APPROVAL' | 'LINKED' | 'NEEDS_REVIEW';
   linkedAt?: string | null;
+};
+
+export type CandidateRegistrationRequest = {
+  mainMajorId: number;
+  mainMajorCode: string;
+  mainMajorName: string;
+  optionalMajorId?: number | null;
+  optionalMajorCode?: string | null;
+  optionalMajorName?: string | null;
+  requestedAt: string;
 };
 
 function isRecord(value: unknown): value is Record<string, unknown> {
@@ -85,6 +96,59 @@ export function mergeParentRegistrationRequest(
     verifiedByChildBirthDate: request.verifiedByChildBirthDate,
     linkState: request.linkState ?? null,
     linkedAt: request.linkedAt ?? null,
+  };
+
+  return base as Prisma.InputJsonValue;
+}
+
+export function readCandidateRegistrationRequest(
+  preferences: Prisma.JsonValue | null | undefined,
+): CandidateRegistrationRequest | null {
+  if (!isRecord(preferences)) {
+    return null;
+  }
+
+  const raw = preferences[CANDIDATE_REGISTRATION_REQUEST_KEY];
+  if (!isRecord(raw)) {
+    return null;
+  }
+
+  const mainMajorId = Number(raw.mainMajorId);
+  const mainMajorCode = String(raw.mainMajorCode || '').trim();
+  const mainMajorName = String(raw.mainMajorName || '').trim();
+  const requestedAt = String(raw.requestedAt || '').trim();
+
+  if (!Number.isInteger(mainMajorId) || mainMajorId <= 0 || !mainMajorCode || !mainMajorName || !requestedAt) {
+    return null;
+  }
+
+  const optionalMajorId = Number(raw.optionalMajorId);
+
+  return {
+    mainMajorId,
+    mainMajorCode,
+    mainMajorName,
+    optionalMajorId: Number.isInteger(optionalMajorId) && optionalMajorId > 0 ? optionalMajorId : null,
+    optionalMajorCode: normalizeOptionalText(raw.optionalMajorCode),
+    optionalMajorName: normalizeOptionalText(raw.optionalMajorName),
+    requestedAt,
+  };
+}
+
+export function mergeCandidateRegistrationRequest(
+  preferences: Prisma.JsonValue | null | undefined,
+  request: CandidateRegistrationRequest,
+): Prisma.InputJsonValue {
+  const base = isRecord(preferences) ? { ...preferences } : {};
+
+  base[CANDIDATE_REGISTRATION_REQUEST_KEY] = {
+    mainMajorId: request.mainMajorId,
+    mainMajorCode: request.mainMajorCode,
+    mainMajorName: request.mainMajorName,
+    optionalMajorId: request.optionalMajorId ?? null,
+    optionalMajorCode: request.optionalMajorCode ?? null,
+    optionalMajorName: request.optionalMajorName ?? null,
+    requestedAt: request.requestedAt,
   };
 
   return base as Prisma.InputJsonValue;

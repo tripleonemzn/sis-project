@@ -26,6 +26,16 @@ export interface ParentRegistrationRequest {
   linkedAt?: string | null;
 }
 
+export interface CandidateRegistrationRequest {
+  mainMajorId: number;
+  mainMajorCode: string;
+  mainMajorName: string;
+  optionalMajorId?: number | null;
+  optionalMajorCode?: string | null;
+  optionalMajorName?: string | null;
+  requestedAt: string;
+}
+
 export interface ProfileEducationDocument {
   kind: ProfileEducationDocumentKind;
   label: string;
@@ -273,6 +283,7 @@ export interface RegisterCalonSiswaPayload {
   name: string;
   nisn: string;
   desiredMajorId: number;
+  optionalMajorId?: number;
   phone: string;
   email?: string;
   password: string;

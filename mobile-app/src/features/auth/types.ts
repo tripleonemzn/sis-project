@@ -16,6 +16,7 @@ export type RegisterCalonSiswaPayload = {
   name: string;
   nisn: string;
   desiredMajorId: number;
+  optionalMajorId?: number;
   phone: string;
   email?: string;
   password: string;
