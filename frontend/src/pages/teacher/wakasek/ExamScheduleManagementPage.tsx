@@ -540,6 +540,9 @@ const ExamScheduleManagementPage = () => {
     endTime: '',
     reason: '',
   });
+  const [resetSessionTarget, setResetSessionTarget] = useState<ExamScheduleMakeupStudentRow | null>(null);
+  const [resetSessionReason, setResetSessionReason] = useState('');
+  const [resettingSession, setResettingSession] = useState(false);
 
   // Form Data
   const [subjects, setSubjects] = useState<Subject[]>([]);
@@ -1293,12 +1296,18 @@ const ExamScheduleManagementPage = () => {
     });
   };
 
+  const resetSessionForm = () => {
+    setResetSessionTarget(null);
+    setResetSessionReason('');
+  };
+
   const closeMakeupModal = () => {
     setShowMakeupModal(false);
     setSelectedMakeupSchedule(null);
     setMakeupOverview(null);
     setMakeupSearch('');
     resetMakeupForm();
+    resetSessionForm();
   };
 
   const loadMakeupOverview = useCallback(async (scheduleId: number) => {
@@ -1319,6 +1328,7 @@ const ExamScheduleManagementPage = () => {
     setShowMakeupModal(true);
     setMakeupSearch('');
     resetMakeupForm();
+    resetSessionForm();
     await loadMakeupOverview(schedule.id);
   };
 
@@ -1377,6 +1387,43 @@ const ExamScheduleManagementPage = () => {
       toast.error(getErrorMessage(error, 'Gagal mencabut jadwal susulan.'));
     } finally {
       setSavingMakeup(false);
+    }
+  };
+
+  const openResetSessionForm = (row: ExamScheduleMakeupStudentRow) => {
+    if (!row.canResetSession) {
+      toast.error(row.resetSessionBlockedReason || 'Sesi ini belum bisa direset.');
+      return;
+    }
+    setResetSessionTarget(row);
+    setResetSessionReason('');
+  };
+
+  const handleResetSession = async () => {
+    if (!selectedMakeupSchedule || !resetSessionTarget) {
+      toast.error('Pilih siswa yang ingin direset sesinya.');
+      return;
+    }
+
+    const normalizedReason = resetSessionReason.trim();
+    if (!normalizedReason) {
+      toast.error('Alasan reset sesi wajib diisi.');
+      return;
+    }
+
+    setResettingSession(true);
+    try {
+      await examService.resetScheduleSession(selectedMakeupSchedule.id, {
+        studentId: resetSessionTarget.student.id,
+        reason: normalizedReason,
+      });
+      toast.success(`Sesi ${resetSessionTarget.student.name} berhasil direset tanpa menghapus jawaban.`);
+      await loadMakeupOverview(selectedMakeupSchedule.id);
+      resetSessionForm();
+    } catch (error: unknown) {
+      toast.error(getErrorMessage(error, 'Gagal mereset sesi ujian.'));
+    } finally {
+      setResettingSession(false);
     }
   };
 
@@ -2304,6 +2351,66 @@ const ExamScheduleManagementPage = () => {
                 </div>
               ) : null}
 
+              {resetSessionTarget ? (
+                <div className="rounded-xl border border-amber-200 bg-amber-50/80 p-4">
+                  <div className="flex flex-col gap-3 md:flex-row md:items-start md:justify-between">
+                    <div className="space-y-1">
+                      <div className="text-sm font-semibold text-amber-900">Reset Sesi Peserta</div>
+                      <div className="text-sm text-amber-900">{resetSessionTarget.student.name}</div>
+                      <div className="text-xs text-amber-700">
+                        Status: {resetSessionTarget.session?.status || 'Belum mulai'}
+                        {typeof resetSessionTarget.session?.answeredCount === 'number'
+                          ? ` • Jawaban tersimpan ${resetSessionTarget.session.answeredCount}`
+                          : ''}
+                        {typeof resetSessionTarget.session?.totalViolations === 'number'
+                          ? ` • Pelanggaran ${resetSessionTarget.session.totalViolations}`
+                          : ''}
+                        {resetSessionTarget.session?.currentQuestionNumber
+                          ? ` • Soal terakhir ${resetSessionTarget.session.currentQuestionNumber}`
+                          : ''}
+                      </div>
+                      <div className="text-xs text-amber-700">
+                        Reset ini hanya membuka ulang status sesi. Jawaban dan question set siswa tetap dipertahankan.
+                      </div>
+                    </div>
+                    <button
+                      type="button"
+                      onClick={resetSessionForm}
+                      className="self-start rounded-lg border border-amber-300 bg-white px-3 py-1.5 text-xs font-semibold text-amber-800 hover:bg-amber-100"
+                    >
+                      Batal Reset
+                    </button>
+                  </div>
+                  <div className="mt-3">
+                    <label className="block text-sm font-medium text-amber-900 mb-1">Alasan Reset</label>
+                    <input
+                      type="text"
+                      value={resetSessionReason}
+                      onChange={(event) => setResetSessionReason(event.target.value)}
+                      placeholder="Contoh: false violation, kendala teknis device, layar error"
+                      className="w-full rounded-lg border border-amber-200 bg-white px-3 py-2 text-sm text-gray-900 focus:border-amber-500 focus:outline-none"
+                    />
+                  </div>
+                  <div className="mt-3 flex justify-end gap-3">
+                    <button
+                      type="button"
+                      onClick={resetSessionForm}
+                      className="rounded-lg border border-gray-300 px-4 py-2 text-sm font-semibold text-gray-700 hover:bg-white"
+                    >
+                      Tutup
+                    </button>
+                    <button
+                      type="button"
+                      onClick={() => void handleResetSession()}
+                      disabled={resettingSession || loadingMakeup}
+                      className="rounded-lg bg-amber-600 px-4 py-2 text-sm font-semibold text-white hover:bg-amber-700 disabled:cursor-not-allowed disabled:bg-amber-300"
+                    >
+                      {resettingSession ? 'Mereset...' : 'Reset Sesi'}
+                    </button>
+                  </div>
+                </div>
+              ) : null}
+
               <div className="rounded-xl border border-gray-200 bg-white p-4">
                 <h3 className="text-sm font-semibold text-gray-900 mb-3">Atur Jadwal Susulan</h3>
                 <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
@@ -2436,6 +2543,15 @@ const ExamScheduleManagementPage = () => {
                                     <div className="text-xs text-gray-500">
                                       Mulai: {format(new Date(row.session.startTime), 'dd MMM yyyy HH:mm')}
                                     </div>
+                                    <div className="text-xs text-gray-500 mt-1">
+                                      Jawaban: {row.session.answeredCount} • Pelanggaran: {row.session.totalViolations}
+                                      {row.session.currentQuestionNumber
+                                        ? ` • Soal ${row.session.currentQuestionNumber}`
+                                        : ''}
+                                    </div>
+                                    {row.resetSessionBlockedReason ? (
+                                      <div className="text-xs text-amber-700 mt-1">{row.resetSessionBlockedReason}</div>
+                                    ) : null}
                                   </div>
                                 ) : (
                                   <span className="text-gray-500">Belum mulai</span>
@@ -2475,6 +2591,15 @@ const ExamScheduleManagementPage = () => {
                                       className="px-2.5 py-1.5 rounded-lg border border-rose-200 bg-rose-50 text-rose-700 hover:bg-rose-100 text-xs font-semibold"
                                     >
                                       Cabut
+                                    </button>
+                                  ) : null}
+                                  {row.canResetSession ? (
+                                    <button
+                                      type="button"
+                                      onClick={() => openResetSessionForm(row)}
+                                      className="px-2.5 py-1.5 rounded-lg border border-amber-200 bg-amber-50 text-amber-700 hover:bg-amber-100 text-xs font-semibold"
+                                    >
+                                      Reset Sesi
                                     </button>
                                   ) : null}
                                 </div>

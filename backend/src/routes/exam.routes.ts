@@ -32,6 +32,7 @@ import {
     getScheduleMakeupAccess,
     upsertScheduleMakeupAccess,
     revokeScheduleMakeupAccess,
+    resetScheduleExamSession,
 } from '../controllers/exam.controller';
 import {
     getExamGradeComponents,
@@ -94,6 +95,7 @@ router.post('/schedules', roleMiddleware(['TEACHER', 'ADMIN']), createSchedule);
 router.get('/schedules/:id/makeup-access', roleMiddleware(['TEACHER', 'ADMIN']), getScheduleMakeupAccess);
 router.put('/schedules/:id/makeup-access', roleMiddleware(['TEACHER', 'ADMIN']), upsertScheduleMakeupAccess);
 router.delete('/schedules/:id/makeup-access/:studentId', roleMiddleware(['TEACHER', 'ADMIN']), revokeScheduleMakeupAccess);
+router.post('/schedules/:id/reset-session', roleMiddleware(['TEACHER', 'ADMIN']), resetScheduleExamSession);
 router.patch('/schedules/:id', roleMiddleware(['TEACHER', 'ADMIN']), updateSchedule);
 router.delete('/schedules/:id', roleMiddleware(['TEACHER', 'ADMIN']), deleteSchedule);
 

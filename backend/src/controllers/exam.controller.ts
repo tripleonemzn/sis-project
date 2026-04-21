@@ -25,6 +25,7 @@ import {
 } from '../utils/studentAcademicHistory';
 import { createInAppNotification } from '../services/mobilePushNotification.service';
 import { assertCurriculumExamManagerAccess } from '../utils/examManagementAccess';
+import { writeAuditLog } from '../utils/auditLog';
 import {
     EXAM_PROCTOR_TERMINATION_NOTIFICATION_TYPE,
     EXAM_PROCTOR_WARNING_NOTIFICATION_TYPE,
@@ -2712,6 +2713,87 @@ function extractMonitoringSummaryFromAnswers(rawAnswers: unknown): SessionMonito
         appSwitchCount: Number.isFinite(appSwitchCount) ? Math.max(0, appSwitchCount) : 0,
         lastViolationType: monitoring.lastViolationType ? String(monitoring.lastViolationType) : null,
         lastViolationAt: monitoring.lastViolationAt ? String(monitoring.lastViolationAt) : null,
+    };
+}
+
+function countAnsweredItemsFromAnswers(rawAnswers: unknown): number {
+    if (!rawAnswers || typeof rawAnswers !== 'object' || Array.isArray(rawAnswers)) return 0;
+    return Object.keys(rawAnswers as Record<string, unknown>).filter((key) => !key.startsWith('__')).length;
+}
+
+function extractCurrentQuestionNumberFromAnswers(rawAnswers: unknown): number | null {
+    if (!rawAnswers || typeof rawAnswers !== 'object' || Array.isArray(rawAnswers)) return null;
+    const monitoring = sanitizeMonitoringPayload((rawAnswers as Record<string, unknown>).__monitoring);
+    if (!monitoring) return null;
+    const currentQuestionNumber = Number(monitoring.currentQuestionNumber ?? 0);
+    if (Number.isFinite(currentQuestionNumber) && currentQuestionNumber > 0) {
+        return Math.floor(currentQuestionNumber);
+    }
+    const currentQuestionIndex = Number(monitoring.currentQuestionIndex ?? -1);
+    if (Number.isFinite(currentQuestionIndex) && currentQuestionIndex >= 0) {
+        return Math.floor(currentQuestionIndex) + 1;
+    }
+    return null;
+}
+
+function buildResetSessionAnswers(rawAnswers: unknown): Record<string, unknown> {
+    const sanitized = sanitizeAnswersForStorage(rawAnswers);
+    const monitoring = sanitizeMonitoringPayload(sanitized.__monitoring);
+    sanitized.__monitoring = {
+        ...(monitoring || {}),
+        totalViolations: 0,
+        tabSwitchCount: 0,
+        fullscreenExitCount: 0,
+        appSwitchCount: 0,
+        lastViolationType: null,
+        lastViolationAt: null,
+    };
+    return sanitized;
+}
+
+function resolveScheduleSessionResetGuard(params: {
+    session: { status?: unknown; answers?: unknown; submitTime?: unknown } | null;
+    scheduleEndTime: Date;
+    now: Date;
+}): {
+    effectiveStatus: 'COMPLETED' | 'TIMEOUT' | 'IN_PROGRESS' | 'NOT_STARTED' | string;
+    canReset: boolean;
+    blockedReason: string | null;
+} {
+    if (!params.session) {
+        return {
+            effectiveStatus: 'NOT_STARTED',
+            canReset: false,
+            blockedReason: 'Siswa belum memiliki sesi ujian pada jadwal ini.',
+        };
+    }
+
+    const effectiveStatus = resolveEffectiveSessionStatus(
+        params.session.status,
+        params.session.answers,
+        params.session.submitTime,
+    );
+
+    if (params.now.getTime() > params.scheduleEndTime.getTime()) {
+        return {
+            effectiveStatus,
+            canReset: false,
+            blockedReason: 'Jadwal reguler sudah berakhir. Gunakan ujian susulan formal bila perlu.',
+        };
+    }
+
+    if (effectiveStatus === 'COMPLETED') {
+        return {
+            effectiveStatus,
+            canReset: false,
+            blockedReason: 'Sesi yang sudah selesai/submitted tidak dapat dibuka ulang dari reset operasional.',
+        };
+    }
+
+    return {
+        effectiveStatus,
+        canReset: true,
+        blockedReason: null,
     };
 }
 
@@ -9565,6 +9647,7 @@ export const getScheduleMakeupAccess = asyncHandler(async (req: Request, res: Re
                       status: true,
                       score: true,
                       updatedAt: true,
+                      answers: true,
                   },
               })
             : Promise.resolve([]),
@@ -9623,6 +9706,12 @@ export const getScheduleMakeupAccess = asyncHandler(async (req: Request, res: Re
             const access = accessMap.get(student.id) || null;
             const sessionStatus = String(session?.status || '').toUpperCase();
             const hasAttempt = Boolean(session);
+            const sessionMonitoring = session ? extractMonitoringSummaryFromAnswers(session.answers) : null;
+            const sessionResetGuard = resolveScheduleSessionResetGuard({
+                session,
+                scheduleEndTime: schedule.endTime,
+                now,
+            });
             const makeupState = resolveFormalMakeupAccessState(now, access);
             return {
                 student: {
@@ -9639,10 +9728,16 @@ export const getScheduleMakeupAccess = asyncHandler(async (req: Request, res: Re
                           endTime: session.endTime ? session.endTime.toISOString() : null,
                           submitTime: session.submitTime ? session.submitTime.toISOString() : null,
                           score: session.score ?? null,
+                          answeredCount: countAnsweredItemsFromAnswers(session.answers),
+                          totalViolations: sessionMonitoring?.totalViolations || 0,
+                          currentQuestionNumber: extractCurrentQuestionNumberFromAnswers(session.answers),
+                          lastViolationType: sessionMonitoring?.lastViolationType || null,
                       }
                     : null,
                 hasAttempt,
                 canManageMakeup: !hasAttempt,
+                canResetSession: sessionResetGuard.canReset,
+                resetSessionBlockedReason: sessionResetGuard.blockedReason,
                 makeupAccess: access
                     ? {
                           id: access.id,
@@ -9911,6 +10006,208 @@ export const revokeScheduleMakeupAccess = asyncHandler(async (req: Request, res:
     });
 
     res.json(new ApiResponse(200, null, 'Jadwal susulan berhasil dicabut.'));
+});
+
+export const resetScheduleExamSession = asyncHandler(async (req: Request, res: Response) => {
+    const scheduleId = Number(req.params.id);
+    if (!Number.isFinite(scheduleId) || scheduleId <= 0) {
+        throw new ApiError(400, 'id jadwal tidak valid.');
+    }
+
+    const schedule = await loadFormalMakeupManagedSchedule(scheduleId);
+    assertFormalMakeupSupportedSchedule(schedule);
+    const actor = (req as Request & { user?: { id?: number | string } }).user;
+    const curriculumManager = await assertCurriculumExamManagerAccess(Number(actor?.id || 0), { allowAdmin: true });
+    const studentId = Number(req.body?.studentId);
+    if (!Number.isFinite(studentId) || studentId <= 0) {
+        throw new ApiError(400, 'studentId tidak valid.');
+    }
+
+    const reason = String(req.body?.reason || '').trim();
+    if (!reason) {
+        throw new ApiError(400, 'Alasan reset sesi wajib diisi.');
+    }
+
+    const academicYearId = Number(schedule.packet?.academicYearId || schedule.academicYearId || 0);
+    const studentSnapshot = await getHistoricalStudentSnapshotForAcademicYear(studentId, academicYearId);
+    if (!studentSnapshot || Number(studentSnapshot.studentClass?.id || 0) !== Number(schedule.classId || 0)) {
+        throw new ApiError(400, 'Siswa tidak valid untuk kelas pada jadwal ini.');
+    }
+
+    const existingSession = await prisma.studentExamSession.findFirst({
+        where: {
+            scheduleId,
+            studentId,
+        },
+        select: {
+            id: true,
+            scheduleId: true,
+            studentId: true,
+            status: true,
+            startTime: true,
+            endTime: true,
+            submitTime: true,
+            score: true,
+            updatedAt: true,
+            answers: true,
+        },
+    });
+
+    if (!existingSession) {
+        throw new ApiError(404, 'Sesi ujian siswa tidak ditemukan untuk jadwal ini.');
+    }
+
+    const now = new Date();
+    const resetGuard = resolveScheduleSessionResetGuard({
+        session: existingSession,
+        scheduleEndTime: schedule.endTime,
+        now,
+    });
+
+    if (!resetGuard.canReset) {
+        throw new ApiError(400, resetGuard.blockedReason || 'Sesi ujian tidak dapat direset.');
+    }
+
+    const notifications = await prisma.notification.findMany({
+        where: {
+            userId: studentId,
+            type: EXAM_PROCTOR_TERMINATION_NOTIFICATION_TYPE,
+        },
+        select: {
+            id: true,
+            data: true,
+            createdAt: true,
+            title: true,
+            message: true,
+            userId: true,
+        },
+        orderBy: [{ createdAt: 'desc' }, { id: 'desc' }],
+        take: 24,
+    });
+
+    const terminationNotifications = notifications.filter((notification) => {
+        const parsed = parseExamProctorTerminationSignal(notification);
+        return Boolean(parsed && parsed.scheduleId === scheduleId);
+    });
+    const resetAtIso = now.toISOString();
+    const beforeMonitoring = extractMonitoringSummaryFromAnswers(existingSession.answers);
+    const beforeAnsweredCount = countAnsweredItemsFromAnswers(existingSession.answers);
+    const updatedAnswers = buildResetSessionAnswers(existingSession.answers);
+
+    const updatedSession = await prisma.$transaction(async (tx) => {
+        const session = await tx.studentExamSession.update({
+            where: { id: existingSession.id },
+            data: {
+                status: 'IN_PROGRESS',
+                submitTime: null,
+                endTime: null,
+                score: null,
+                answers: updatedAnswers as Prisma.InputJsonValue,
+            },
+            select: {
+                id: true,
+                scheduleId: true,
+                studentId: true,
+                status: true,
+                startTime: true,
+                endTime: true,
+                submitTime: true,
+                score: true,
+                updatedAt: true,
+                answers: true,
+            },
+        });
+
+        for (const notification of terminationNotifications) {
+            const currentData =
+                notification.data && typeof notification.data === 'object' && !Array.isArray(notification.data)
+                    ? (notification.data as Record<string, unknown>)
+                    : {};
+            await tx.notification.update({
+                where: { id: notification.id },
+                data: {
+                    data: {
+                        ...currentData,
+                        resolvedAt: resetAtIso,
+                        resolvedByResetAt: resetAtIso,
+                        resolvedById: curriculumManager.id,
+                        resolvedByName: curriculumManager.name,
+                    },
+                },
+            });
+        }
+
+        return session;
+    });
+
+    invalidateSessionDetailCacheBySession(updatedSession.id);
+    invalidateStartExamScheduleCache(scheduleId);
+    availableExamsCache.delete(studentId);
+    if (schedule.packet?.id) {
+        invalidatePacketItemAnalysisCacheByPacket(schedule.packet.id);
+        invalidatePacketSubmissionsCacheByPacket(schedule.packet.id);
+    }
+
+    await writeAuditLog(
+        curriculumManager.id,
+        curriculumManager.role,
+        curriculumManager.additionalDuties,
+        'RESET_EXAM_SESSION',
+        'studentExamSession',
+        updatedSession.id,
+        {
+            scheduleId,
+            studentId,
+            status: existingSession.status,
+            submitTime: existingSession.submitTime ? existingSession.submitTime.toISOString() : null,
+            endTime: existingSession.endTime ? existingSession.endTime.toISOString() : null,
+            score: existingSession.score ?? null,
+            answeredCount: beforeAnsweredCount,
+            monitoring: beforeMonitoring,
+            resetBlockedReason: resetGuard.blockedReason,
+        },
+        {
+            scheduleId,
+            studentId,
+            status: updatedSession.status,
+            submitTime: updatedSession.submitTime ? updatedSession.submitTime.toISOString() : null,
+            endTime: updatedSession.endTime ? updatedSession.endTime.toISOString() : null,
+            score: updatedSession.score ?? null,
+            answeredCount: countAnsweredItemsFromAnswers(updatedSession.answers),
+            monitoring: extractMonitoringSummaryFromAnswers(updatedSession.answers),
+            resolvedTerminationCount: terminationNotifications.length,
+        },
+        reason,
+    );
+
+    res.json(
+        new ApiResponse(
+            200,
+            {
+                student: {
+                    id: studentSnapshot.id,
+                    name: studentSnapshot.name,
+                    nis: studentSnapshot.nis || null,
+                    nisn: studentSnapshot.nisn || null,
+                },
+                session: {
+                    id: updatedSession.id,
+                    status: updatedSession.status,
+                    startTime: updatedSession.startTime.toISOString(),
+                    endTime: updatedSession.endTime ? updatedSession.endTime.toISOString() : null,
+                    submitTime: updatedSession.submitTime ? updatedSession.submitTime.toISOString() : null,
+                    score: updatedSession.score ?? null,
+                    answeredCount: countAnsweredItemsFromAnswers(updatedSession.answers),
+                    totalViolations: extractMonitoringSummaryFromAnswers(updatedSession.answers).totalViolations,
+                    currentQuestionNumber: extractCurrentQuestionNumberFromAnswers(updatedSession.answers),
+                    lastViolationType: extractMonitoringSummaryFromAnswers(updatedSession.answers).lastViolationType,
+                },
+                resetAt: resetAtIso,
+                reason,
+            },
+            'Sesi ujian berhasil direset tanpa menghapus jawaban siswa.',
+        ),
+    );
 });
 
 // ==========================================

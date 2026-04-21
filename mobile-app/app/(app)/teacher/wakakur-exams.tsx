@@ -1093,6 +1093,9 @@ export default function TeacherWakakurExamsScreen() {
     endTime: '',
     reason: '',
   });
+  const [resetSessionTarget, setResetSessionTarget] = useState<ExamScheduleMakeupStudentRow | null>(null);
+  const [resetSessionReason, setResetSessionReason] = useState('');
+  const [resettingSession, setResettingSession] = useState(false);
   const [teacherSearch, setTeacherSearch] = useState('');
   const [programDrafts, setProgramDrafts] = useState<ExamProgramDraft[]>([]);
   const [programBaseline, setProgramBaseline] = useState<string>('[]');
@@ -2425,12 +2428,18 @@ export default function TeacherWakakurExamsScreen() {
     });
   };
 
+  const resetSessionForm = () => {
+    setResetSessionTarget(null);
+    setResetSessionReason('');
+  };
+
   const closeMakeupModal = () => {
     setMakeupModalVisible(false);
     setSelectedMakeupSchedule(null);
     setMakeupOverview(null);
     setMakeupSearch('');
     resetMakeupForm();
+    resetSessionForm();
   };
 
   const loadScheduleMakeupOverview = async (scheduleId: number) => {
@@ -2453,6 +2462,7 @@ export default function TeacherWakakurExamsScreen() {
     setMakeupModalVisible(true);
     setMakeupSearch('');
     resetMakeupForm();
+    resetSessionForm();
     await loadScheduleMakeupOverview(schedule.id);
   };
 
@@ -2523,6 +2533,44 @@ export default function TeacherWakakurExamsScreen() {
         },
       },
     ]);
+  };
+
+  const openResetSessionForm = (row: ExamScheduleMakeupStudentRow) => {
+    if (!row.canResetSession) {
+      Alert.alert('Belum Bisa Direset', row.resetSessionBlockedReason || 'Sesi ini belum bisa direset.');
+      return;
+    }
+    setResetSessionTarget(row);
+    setResetSessionReason('');
+  };
+
+  const handleResetSession = async () => {
+    if (!selectedMakeupSchedule || !resetSessionTarget) {
+      Alert.alert('Validasi', 'Pilih siswa yang ingin direset sesinya.');
+      return;
+    }
+    const normalizedReason = resetSessionReason.trim();
+    if (!normalizedReason) {
+      Alert.alert('Validasi', 'Alasan reset sesi wajib diisi.');
+      return;
+    }
+
+    setResettingSession(true);
+    try {
+      await examApi.resetTeacherScheduleSession(selectedMakeupSchedule.id, {
+        studentId: resetSessionTarget.student.id,
+        reason: normalizedReason,
+      });
+      await loadScheduleMakeupOverview(selectedMakeupSchedule.id);
+      resetSessionForm();
+      Alert.alert('Sukses', `Sesi ${resetSessionTarget.student.name} berhasil direset tanpa menghapus jawaban.`);
+    } catch (error: unknown) {
+      const apiError = error as { response?: { data?: { message?: string } }; message?: string };
+      const message = apiError?.response?.data?.message || apiError?.message || 'Gagal mereset sesi ujian.';
+      Alert.alert('Gagal', message);
+    } finally {
+      setResettingSession(false);
+    }
   };
 
   const handleDeleteSchedule = (scheduleId: number) => {
@@ -5283,6 +5331,107 @@ export default function TeacherWakakurExamsScreen() {
           </View>
         ) : null}
 
+        {resetSessionTarget ? (
+          <View
+            style={{
+              borderWidth: 1,
+              borderColor: '#fcd34d',
+              backgroundColor: '#fffbeb',
+              borderRadius: 12,
+              padding: 12,
+              marginBottom: 10,
+            }}
+          >
+            <View style={{ flexDirection: 'row', justifyContent: 'space-between', gap: 10 }}>
+              <View style={{ flex: 1 }}>
+                <Text style={{ color: '#92400e', fontWeight: '700', marginBottom: 4 }}>Reset Sesi Peserta</Text>
+                <Text style={{ color: BRAND_COLORS.textDark, fontWeight: '700', ...bodyTextStyle }}>
+                  {resetSessionTarget.student.name}
+                </Text>
+                <Text style={{ color: '#92400e', ...helperTextStyle, marginTop: 4 }}>
+                  Status: {resetSessionTarget.session?.status || 'Belum mulai'}
+                  {typeof resetSessionTarget.session?.answeredCount === 'number'
+                    ? ` • Jawaban ${resetSessionTarget.session.answeredCount}`
+                    : ''}
+                  {typeof resetSessionTarget.session?.totalViolations === 'number'
+                    ? ` • Pelanggaran ${resetSessionTarget.session.totalViolations}`
+                    : ''}
+                  {resetSessionTarget.session?.currentQuestionNumber
+                    ? ` • Soal ${resetSessionTarget.session.currentQuestionNumber}`
+                    : ''}
+                </Text>
+                <Text style={{ color: '#92400e', ...helperTextStyle, marginTop: 4 }}>
+                  Reset ini hanya membuka ulang status sesi. Jawaban dan question set siswa tetap dipertahankan.
+                </Text>
+              </View>
+              <Pressable
+                onPress={resetSessionForm}
+                style={{
+                  alignSelf: 'flex-start',
+                  borderWidth: 1,
+                  borderColor: '#fcd34d',
+                  backgroundColor: '#fff',
+                  borderRadius: 10,
+                  paddingHorizontal: 10,
+                  paddingVertical: 8,
+                }}
+              >
+                <Text style={{ color: '#92400e', fontWeight: '700', ...helperTextStyle }}>Batal</Text>
+              </Pressable>
+            </View>
+
+            <Text style={{ color: '#92400e', ...helperTextStyle, marginTop: 10, marginBottom: 4 }}>Alasan Reset</Text>
+            <TextInput
+              value={resetSessionReason}
+              onChangeText={setResetSessionReason}
+              placeholder="Contoh: false violation, kendala teknis device, layar error"
+              placeholderTextColor="#a16207"
+              style={{
+                borderWidth: 1,
+                borderColor: '#fcd34d',
+                borderRadius: 10,
+                backgroundColor: '#fff',
+                paddingHorizontal: 12,
+                paddingVertical: 10,
+                color: BRAND_COLORS.textDark,
+                ...inputTextStyle,
+              }}
+            />
+
+            <View style={{ flexDirection: 'row', gap: 8, marginTop: 10 }}>
+              <Pressable
+                onPress={resetSessionForm}
+                style={{
+                  flex: 1,
+                  borderWidth: 1,
+                  borderColor: '#d5e1f5',
+                  borderRadius: 10,
+                  backgroundColor: '#fff',
+                  paddingVertical: 10,
+                  alignItems: 'center',
+                }}
+              >
+                <Text style={{ color: BRAND_COLORS.textMuted, fontWeight: '700' }}>Tutup</Text>
+              </Pressable>
+              <Pressable
+                onPress={() => void handleResetSession()}
+                disabled={resettingSession || loadingMakeup}
+                style={{
+                  flex: 1,
+                  borderRadius: 10,
+                  backgroundColor: resettingSession || loadingMakeup ? '#fbbf24' : '#d97706',
+                  paddingVertical: 10,
+                  alignItems: 'center',
+                }}
+              >
+                <Text style={{ color: '#fff', fontWeight: '700' }}>
+                  {resettingSession ? 'Mereset...' : 'Reset Sesi'}
+                </Text>
+              </Pressable>
+            </View>
+          </View>
+        ) : null}
+
         <MobileSelectField
           label="Pilih Siswa"
           value={makeupForm.studentId}
@@ -5483,6 +5632,12 @@ export default function TeacherWakakurExamsScreen() {
                 <Text style={{ color: BRAND_COLORS.textMuted, ...bodyTextStyle }}>
                   Status reguler: {row.session ? row.session.status : 'Belum mulai'}
                 </Text>
+                {row.session ? (
+                  <Text style={{ color: '#64748b', ...bodyTextStyle, marginTop: 4 }}>
+                    Jawaban {row.session.answeredCount} • Pelanggaran {row.session.totalViolations}
+                    {row.session.currentQuestionNumber ? ` • Soal ${row.session.currentQuestionNumber}` : ''}
+                  </Text>
+                ) : null}
                 {row.makeupAccess ? (
                   <Text style={{ color: BRAND_COLORS.textMuted, ...bodyTextStyle, marginTop: 4 }}>
                     Susulan: {formatDateTime(row.makeupAccess.startTime)} - {formatDateTime(row.makeupAccess.endTime)}
@@ -5493,12 +5648,18 @@ export default function TeacherWakakurExamsScreen() {
                     Alasan: {row.makeupAccess.reason}
                   </Text>
                 ) : null}
+                {row.session && row.resetSessionBlockedReason ? (
+                  <Text style={{ color: '#a16207', ...bodyTextStyle, marginTop: 4 }}>
+                    {row.resetSessionBlockedReason}
+                  </Text>
+                ) : null}
 
-                <View style={{ flexDirection: 'row', gap: 8, marginTop: 10 }}>
+                <View style={{ flexDirection: 'row', gap: 8, marginTop: 10, flexWrap: 'wrap' }}>
                   <Pressable
                     onPress={() => fillMakeupForm(row)}
                     style={{
-                      flex: 1,
+                      minWidth: 110,
+                      flexGrow: 1,
                       borderWidth: 1,
                       borderColor: '#bfdbfe',
                       backgroundColor: '#eff6ff',
@@ -5513,7 +5674,8 @@ export default function TeacherWakakurExamsScreen() {
                     <Pressable
                       onPress={() => handleRevokeMakeup(row)}
                       style={{
-                        flex: 1,
+                        minWidth: 110,
+                        flexGrow: 1,
                         borderWidth: 1,
                         borderColor: '#fecaca',
                         backgroundColor: '#fff1f2',
@@ -5523,6 +5685,23 @@ export default function TeacherWakakurExamsScreen() {
                       }}
                     >
                       <Text style={{ color: '#be123c', fontWeight: '700', ...bodyTextStyle }}>Cabut</Text>
+                    </Pressable>
+                  ) : null}
+                  {row.canResetSession ? (
+                    <Pressable
+                      onPress={() => openResetSessionForm(row)}
+                      style={{
+                        minWidth: 110,
+                        flexGrow: 1,
+                        borderWidth: 1,
+                        borderColor: '#fcd34d',
+                        backgroundColor: '#fffbeb',
+                        borderRadius: 10,
+                        paddingVertical: 9,
+                        alignItems: 'center',
+                      }}
+                    >
+                      <Text style={{ color: '#a16207', fontWeight: '700', ...bodyTextStyle }}>Reset Sesi</Text>
                     </Pressable>
                   ) : null}
                 </View>

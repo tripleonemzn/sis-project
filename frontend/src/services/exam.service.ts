@@ -347,10 +347,28 @@ export interface ExamScheduleMakeupStudentRow {
         endTime: string | null;
         submitTime: string | null;
         score: number | null;
+        answeredCount: number;
+        totalViolations: number;
+        currentQuestionNumber: number | null;
+        lastViolationType: string | null;
     } | null;
     hasAttempt: boolean;
     canManageMakeup: boolean;
+    canResetSession: boolean;
+    resetSessionBlockedReason: string | null;
     makeupAccess: ExamScheduleMakeupAccessSummary | null;
+}
+
+export interface ExamScheduleSessionResetSummary {
+    student: {
+        id: number;
+        name: string;
+        nis: string | null;
+        nisn: string | null;
+    };
+    session: NonNullable<ExamScheduleMakeupStudentRow['session']>;
+    resetAt: string;
+    reason: string;
 }
 
 export interface ExamScheduleMakeupOverview {
@@ -967,6 +985,21 @@ export const examService = {
             success: boolean;
             message: string;
             data: null;
+        };
+    },
+    resetScheduleSession: async (
+        id: number,
+        data: {
+            studentId: number;
+            reason: string;
+        },
+    ) => {
+        const response = await api.post(`/exams/schedules/${id}/reset-session`, data);
+        return response.data as {
+            statusCode: number;
+            success: boolean;
+            message: string;
+            data: ExamScheduleSessionResetSummary;
         };
     },
     deleteSchedule: async (id: number) => {

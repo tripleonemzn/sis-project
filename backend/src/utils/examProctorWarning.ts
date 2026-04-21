@@ -53,6 +53,11 @@ function toNullableNumber(value: unknown): number | null {
   return Number.isFinite(parsed) && parsed > 0 ? parsed : null;
 }
 
+function isResolvedSignalData(data: Record<string, unknown> | null): boolean {
+  if (!data) return false;
+  return Boolean(toNullableString(data.resolvedAt) || toNullableString(data.resolvedByResetAt));
+}
+
 export function buildExamProctorWarningNotificationData(params: {
   scheduleId: number;
   studentId: number;
@@ -132,6 +137,7 @@ export function parseExamProctorTerminationSignal(
   const data = toJsonRecord(notification.data);
   const kind = String(data?.kind || '').trim().toUpperCase();
   if (kind !== 'PROCTOR_TERMINATION') return null;
+  if (isResolvedSignalData(data)) return null;
 
   const scheduleId = toNullableNumber(data?.scheduleId);
   if (!scheduleId) return null;

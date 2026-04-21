@@ -399,10 +399,28 @@ export type ExamScheduleMakeupStudentRow = {
     endTime: string | null;
     submitTime: string | null;
     score: number | null;
+    answeredCount: number;
+    totalViolations: number;
+    currentQuestionNumber: number | null;
+    lastViolationType: string | null;
   } | null;
   hasAttempt: boolean;
   canManageMakeup: boolean;
+  canResetSession: boolean;
+  resetSessionBlockedReason: string | null;
   makeupAccess: ExamScheduleMakeupAccessSummary | null;
+};
+
+export type ExamScheduleSessionResetSummary = {
+  student: {
+    id: number;
+    name: string;
+    nis: string | null;
+    nisn: string | null;
+  };
+  session: NonNullable<ExamScheduleMakeupStudentRow['session']>;
+  resetAt: string;
+  reason: string;
 };
 
 export type ExamScheduleMakeupOverview = {

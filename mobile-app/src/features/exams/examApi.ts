@@ -2,6 +2,7 @@ import { apiClient } from '../../lib/api/client';
 import {
   ExamScheduleMakeupAccessSummary,
   ExamScheduleMakeupOverview,
+  ExamScheduleSessionResetSummary,
   ExamProgramSession,
   ExamSittingDetail,
   ExamSittingListItem,
@@ -112,6 +113,13 @@ type TeacherScheduleMakeupMutationResponse = {
   success: boolean;
   message: string;
   data: ExamScheduleMakeupAccessSummary | null;
+};
+
+type TeacherScheduleResetResponse = {
+  statusCode: number;
+  success: boolean;
+  message: string;
+  data: ExamScheduleSessionResetSummary;
 };
 
 type ExamSittingsResponse = {
@@ -697,6 +705,19 @@ export const examApi = {
       data: null;
     }>(`/exams/schedules/${scheduleId}/makeup-access/${studentId}`);
     return response.data;
+  },
+  async resetTeacherScheduleSession(
+    scheduleId: number,
+    payload: {
+      studentId: number;
+      reason: string;
+    },
+  ) {
+    const response = await apiClient.post<TeacherScheduleResetResponse>(
+      `/exams/schedules/${scheduleId}/reset-session`,
+      payload,
+    );
+    return response.data.data;
   },
   async deleteTeacherSchedule(scheduleId: number) {
     const response = await apiClient.delete<TeacherScheduleMutationResponse>(`/exams/schedules/${scheduleId}`);
