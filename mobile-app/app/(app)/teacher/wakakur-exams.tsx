@@ -5293,8 +5293,8 @@ export default function TeacherWakakurExamsScreen() {
 
       <MobileDetailModal
         visible={makeupModalVisible}
-        title="Kelola Ujian Susulan"
-        subtitle={`${CURRICULUM_EXAM_MANAGER_LABEL} mengatur susulan per siswa. Akses susulan hanya aktif jika dijadwalkan dari menu ini.`}
+        title="Kelola Ujian Susulan & Reset Sesi"
+        subtitle={`${CURRICULUM_EXAM_MANAGER_LABEL} mengatur susulan per siswa sekaligus membuka ulang sesi bermasalah tanpa menghapus jawaban existing.`}
         iconName="clock"
         accentColor="#1d4ed8"
         onClose={closeMakeupModal}
@@ -5330,6 +5330,24 @@ export default function TeacherWakakurExamsScreen() {
             </Text>
           </View>
         ) : null}
+
+        <View
+          style={{
+            borderWidth: 1,
+            borderColor: '#cbd5e1',
+            backgroundColor: '#f8fafc',
+            borderRadius: 12,
+            padding: 12,
+            marginBottom: 10,
+          }}
+        >
+          <Text style={{ color: BRAND_COLORS.textDark, fontWeight: '700', marginBottom: 4 }}>Aksi Cepat per Siswa</Text>
+          <Text style={{ color: BRAND_COLORS.textMuted, ...helperTextStyle, lineHeight: 19 }}>
+            <Text style={{ color: '#1d4ed8', fontWeight: '700' }}>Isi Form</Text> untuk menjadwalkan susulan,
+            <Text style={{ color: '#be123c', fontWeight: '700' }}> Cabut</Text> untuk menutup akses susulan,
+            dan <Text style={{ color: '#a16207', fontWeight: '700' }}>Reset Sesi</Text> untuk membuka ulang sesi false violation / kendala teknis tanpa menghapus jawaban siswa.
+          </Text>
+        </View>
 
         {resetSessionTarget ? (
           <View

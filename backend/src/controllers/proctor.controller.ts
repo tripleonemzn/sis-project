@@ -694,6 +694,133 @@ function compareClassName(left: string | null | undefined, right: string | null 
     });
 }
 
+function parseProctorReportSnapshot(rawSnapshot: Prisma.JsonValue | null | undefined): ProctorReportDocumentSnapshot | null {
+    if (!rawSnapshot || typeof rawSnapshot !== 'object' || Array.isArray(rawSnapshot)) return null;
+    return rawSnapshot as unknown as ProctorReportDocumentSnapshot;
+}
+
+function normalizeComparableClassNames(rawClassNames: unknown): string[] {
+    return Array.from(
+        new Set(
+            (Array.isArray(rawClassNames) ? rawClassNames : [])
+                .map((item) => String(item || '').trim())
+                .filter(Boolean),
+        ),
+    ).sort(compareClassName);
+}
+
+function countMatchingClassNames(left: string[], right: string[]): number {
+    if (left.length === 0 || right.length === 0) return 0;
+    const rightSet = new Set(right.map((item) => String(item || '').trim().toLowerCase()).filter(Boolean));
+    return left.reduce((total, item) => {
+        const normalized = String(item || '').trim().toLowerCase();
+        if (!normalized) return total;
+        return total + (rightSet.has(normalized) ? 1 : 0);
+    }, 0);
+}
+
+type ProctorReportScopeMatcher = {
+    roomName?: string | null;
+    classNames?: string[];
+    subjectName?: string | null;
+    scheduleIds?: number[];
+    proctorId?: number | null;
+    periodNumber?: number | null;
+};
+
+type ProctorReportCandidateMatcher = {
+    id: number;
+    scheduleId: number;
+    proctorId: number;
+    signedAt?: Date;
+    updatedAt?: Date;
+    documentSnapshot?: Prisma.JsonValue | null;
+};
+
+function buildProctorReportMatchScore(
+    candidate: ProctorReportCandidateMatcher,
+    scope: ProctorReportScopeMatcher,
+): number {
+    const normalizedScopeRoom = String(scope.roomName || '').trim().toLowerCase();
+    const normalizedScopeSubject = String(scope.subjectName || '').trim().toLowerCase();
+    const normalizedScopeClassNames = normalizeComparableClassNames(scope.classNames || []);
+    const normalizedScheduleIds = Array.from(
+        new Set(
+            (scope.scheduleIds || [])
+                .map((item) => Number(item))
+                .filter((item) => Number.isFinite(item) && item > 0),
+        ),
+    );
+
+    const snapshot = parseProctorReportSnapshot(candidate.documentSnapshot || null);
+    const normalizedSnapshotRoom = String(snapshot?.schedule?.roomName || '').trim().toLowerCase();
+    const normalizedSnapshotSubject = String(snapshot?.schedule?.subjectName || '').trim().toLowerCase();
+    const normalizedSnapshotClassNames = normalizeComparableClassNames(snapshot?.schedule?.classNames || []);
+    const slotProctorId = Number(scope.proctorId || 0);
+    const reportProctorId = Number(candidate.proctorId || 0);
+    const scheduleMatched = normalizedScheduleIds.includes(Number(candidate.scheduleId));
+    const exactRoomMatch = Boolean(normalizedScopeRoom && normalizedSnapshotRoom && normalizedScopeRoom === normalizedSnapshotRoom);
+    const exactSubjectMatch = Boolean(
+        normalizedScopeSubject && normalizedSnapshotSubject && normalizedScopeSubject === normalizedSnapshotSubject,
+    );
+    const classOverlapCount = countMatchingClassNames(normalizedSnapshotClassNames, normalizedScopeClassNames);
+    const exactClassMatch =
+        normalizedScopeClassNames.length > 0 &&
+        normalizedSnapshotClassNames.length > 0 &&
+        classOverlapCount === normalizedScopeClassNames.length &&
+        normalizedScopeClassNames.length === normalizedSnapshotClassNames.length;
+    const exactProctorMatch = slotProctorId > 0 && reportProctorId > 0 && slotProctorId === reportProctorId;
+    const executionOrder =
+        Number.isFinite(Number(snapshot?.schedule?.executionOrder)) && Number(snapshot?.schedule?.executionOrder) > 0
+            ? Number(snapshot?.schedule?.executionOrder)
+            : null;
+    const exactExecutionOrder =
+        Number.isFinite(Number(scope.periodNumber)) &&
+        Number(scope.periodNumber) > 0 &&
+        executionOrder !== null &&
+        Number(scope.periodNumber) === executionOrder;
+
+    const hasStrongScopeMatch =
+        exactRoomMatch ||
+        (exactProctorMatch && (classOverlapCount > 0 || exactSubjectMatch || scheduleMatched)) ||
+        (scheduleMatched && classOverlapCount > 0 && exactSubjectMatch);
+    if (!hasStrongScopeMatch) {
+        return -1;
+    }
+
+    let score = 0;
+    if (scheduleMatched) score += 30;
+    if (exactRoomMatch) score += 500;
+    if (exactProctorMatch) score += 140;
+    if (classOverlapCount > 0) score += 80 + classOverlapCount * 12;
+    if (exactClassMatch) score += 110;
+    if (exactSubjectMatch) score += 45;
+    if (exactExecutionOrder) score += 20;
+    if (snapshot) score += 5;
+    return score;
+}
+
+function pickBestScopedProctorReport<T extends ProctorReportCandidateMatcher>(
+    candidates: T[],
+    scope: ProctorReportScopeMatcher,
+): T | null {
+    return [...candidates]
+        .map((candidate) => ({
+            candidate,
+            score: buildProctorReportMatchScore(candidate, scope),
+        }))
+        .filter((item) => item.score >= 0)
+        .sort((left, right) => {
+            const scoreDiff = right.score - left.score;
+            if (scoreDiff !== 0) return scoreDiff;
+            const updatedDiff =
+                new Date(right.candidate.updatedAt || right.candidate.signedAt || 0).getTime() -
+                new Date(left.candidate.updatedAt || left.candidate.signedAt || 0).getTime();
+            if (updatedDiff !== 0) return updatedDiff;
+            return Number(right.candidate.id || 0) - Number(left.candidate.id || 0);
+        })[0]?.candidate || null;
+}
+
 function hasSlotScheduleClassCoverage(
     slot: Pick<ExamSittingRoomSlotRow, 'classIds' | 'classNames' | 'roomName'>,
     schedule: Pick<ProctorRoomScheduleScope, 'classId' | 'class' | 'room'>,
@@ -3445,18 +3572,36 @@ export const submitBeritaAcara = asyncHandler(async (req: Request, res: Response
     const normalizedNotes = String(notes || '').trim();
     const normalizedIncident = String(incident || '').trim();
 
-    const existingReport = await prisma.examProctoringReport.findFirst({
+    const existingReportCandidates = await prisma.examProctoringReport.findMany({
         where: {
-            scheduleId: parsedScheduleId,
+            scheduleId: { in: scope.monitoredScheduleIds },
             proctorId: Number(user.id),
         },
         orderBy: [{ updatedAt: 'desc' }, { id: 'desc' }],
         select: {
             id: true,
+            scheduleId: true,
+            proctorId: true,
+            signedAt: true,
+            updatedAt: true,
             documentNumber: true,
             verificationToken: true,
             documentSnapshot: true,
         },
+    });
+    const existingReport = pickBestScopedProctorReport(existingReportCandidates, {
+        roomName: resolvedBaseSchedule.room || schedule.room || null,
+        classNames: monitoredClassNames,
+        subjectName: schedule.packet?.subject?.name || schedule.subject?.name || null,
+        scheduleIds: scope.monitoredScheduleIds,
+        proctorId: Number(user.id),
+        periodNumber: await resolveScheduleExecutionOrder({
+            academicYearId: resolvedBaseSchedule.academicYearId,
+            examType: resolvedBaseSchedule.examType,
+            executionDate: resolvedBaseSchedule.startTime,
+            startTime: resolvedBaseSchedule.startTime,
+            endTime: resolvedBaseSchedule.endTime,
+        }),
     });
 
     const savedReport = existingReport
@@ -4099,6 +4244,7 @@ export const getProctoringReports = asyncHandler(async (req: Request, res: Respo
                       id: true,
                       scheduleId: true,
                       proctorId: true,
+                      updatedAt: true,
                       signedAt: true,
                       notes: true,
                       incident: true,
@@ -4318,24 +4464,17 @@ export const getProctoringReports = asyncHandler(async (req: Request, res: Respo
                         return String(a.name || '').localeCompare(String(b.name || ''), 'id');
                     });
 
-                const latestReport =
-                    reportCandidates.find((report) => {
-                        if (!(slot.scheduleIds || []).includes(Number(report.scheduleId))) return false;
-                        const slotProctorId = Number(slot.proctorId || 0);
-                        const reportProctorId = Number(report.proctorId || 0);
-                        if (slotProctorId > 0 && reportProctorId > 0) {
-                            return slotProctorId === reportProctorId;
-                        }
-                        const snapshot = report.documentSnapshot && typeof report.documentSnapshot === 'object' && !Array.isArray(report.documentSnapshot)
-                            ? (report.documentSnapshot as Record<string, any>)
-                            : null;
-                        const snapshotRoom = String(snapshot?.schedule?.roomName || '').trim().toLowerCase();
-                        const slotRoom = String(slot.roomName || '').trim().toLowerCase();
-                        if (snapshotRoom && slotRoom && snapshotRoom === slotRoom) {
-                            return true;
-                        }
-                        return true;
-                    }) || null;
+                const latestReport = pickBestScopedProctorReport(reportCandidates, {
+                    roomName: slot.roomName || null,
+                    classNames: Array.from(new Set(slot.classNames || [])).sort(compareClassName),
+                    subjectName: slot.subjectName || null,
+                    scheduleIds: Array.from(new Set(slot.scheduleIds || [])),
+                    proctorId: Number(slot.proctorId || 0) || null,
+                    periodNumber:
+                        Number.isFinite(Number(slot.periodNumber)) && Number(slot.periodNumber) > 0
+                            ? Number(slot.periodNumber)
+                            : null,
+                });
                 const latestReportSnapshot =
                     latestReport?.documentSnapshot &&
                     typeof latestReport.documentSnapshot === 'object' &&

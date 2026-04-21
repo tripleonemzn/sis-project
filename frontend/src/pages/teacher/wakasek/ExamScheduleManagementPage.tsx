@@ -2299,9 +2299,9 @@ const ExamScheduleManagementPage = () => {
           <div className="bg-white rounded-xl shadow-xl w-full max-w-5xl max-h-[92vh] overflow-y-auto">
             <div className="p-6 border-b border-gray-100 flex justify-between items-center">
               <div>
-                <h2 className="text-xl font-bold text-gray-900">Kelola Ujian Susulan</h2>
+                <h2 className="text-xl font-bold text-gray-900">Kelola Ujian Susulan & Reset Sesi</h2>
                 <p className="text-sm text-gray-500 mt-1">
-                  {CURRICULUM_EXAM_MANAGER_LABEL} mengatur susulan per siswa. Akses susulan hanya aktif jika dijadwalkan dari menu ini.
+                  {CURRICULUM_EXAM_MANAGER_LABEL} mengatur susulan per siswa sekaligus membuka ulang sesi yang bermasalah tanpa menghapus jawaban existing.
                 </p>
               </div>
               <button onClick={closeMakeupModal} className="text-gray-400 hover:text-gray-600">
@@ -2350,6 +2350,15 @@ const ExamScheduleManagementPage = () => {
                   </p>
                 </div>
               ) : null}
+
+              <div className="rounded-xl border border-slate-200 bg-slate-50/80 p-4">
+                <div className="text-sm font-semibold text-slate-900">Aksi Cepat per Siswa</div>
+                <div className="mt-2 text-xs leading-6 text-slate-600">
+                  <span className="font-semibold text-blue-700">Isi Form</span> untuk menjadwalkan susulan,
+                  <span className="font-semibold text-rose-700"> Cabut</span> untuk menutup akses susulan,
+                  dan <span className="font-semibold text-amber-700">Reset Sesi</span> untuk membuka ulang sesi yang false violation / kendala teknis tanpa menghapus jawaban siswa.
+                </div>
+              </div>
 
               {resetSessionTarget ? (
                 <div className="rounded-xl border border-amber-200 bg-amber-50/80 p-4">
