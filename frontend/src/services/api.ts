@@ -29,11 +29,17 @@ function normalizeBackoffKey(url: unknown): string {
   return String(url || '').split('?')[0] || '';
 }
 
+function shouldSkipReadBackoff(url: unknown): boolean {
+  const key = normalizeBackoffKey(url);
+  if (!key) return false;
+  return /^\/?exams\/available(?:\/)?$/.test(key) || /^\/?exams\/\d+\/start(?:\/)?$/.test(key);
+}
+
 // Request interceptor untuk inject token
 api.interceptors.request.use(
   (config) => {
     const method = String(config.method || 'get').toUpperCase();
-    if (method === 'GET') {
+    if (method === 'GET' && !shouldSkipReadBackoff(config.url)) {
       const key = normalizeBackoffKey(config.url);
       if (key) {
         const until = readEndpointBackoffUntil.get(key) || 0;
@@ -66,7 +72,7 @@ api.interceptors.response.use(
   (error) => {
     if (error.response && error.response.status === 503) {
       const method = String(error.config?.method || 'get').toUpperCase();
-      if (method === 'GET') {
+      if (method === 'GET' && !shouldSkipReadBackoff(error.config?.url)) {
         const key = normalizeBackoffKey(error.config?.url);
         if (key) {
           readEndpointBackoffUntil.set(key, Date.now() + BACKOFF_WINDOW_MS);

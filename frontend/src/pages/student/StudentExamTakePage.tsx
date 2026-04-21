@@ -493,6 +493,7 @@ export default function StudentExamTakePage() {
   const [submitting, setSubmitting] = useState(false)
   const [showSubmitConfirm, setShowSubmitConfirm] = useState(false)
   const [isRefreshingExam, setIsRefreshingExam] = useState(false)
+  const [loadErrorMessage, setLoadErrorMessage] = useState<string | null>(null)
   const timerIntervalRef = useRef<ReturnType<typeof setInterval> | null>(null)
   const violationTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null)
   const progressSyncTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null)
@@ -1032,6 +1033,7 @@ export default function StudentExamTakePage() {
     try {
       if (!isBackgroundRefresh) {
         setLoading(true)
+        setLoadErrorMessage(null)
       }
       if (!user) return
 
@@ -1049,6 +1051,7 @@ export default function StudentExamTakePage() {
       )
 
       if (response.data.success) {
+        setLoadErrorMessage(null)
         const examData = response.data.data
         const initialProctorWarning = normalizeProctorWarning((examData as { proctorWarning?: unknown }).proctorWarning)
         if (initialProctorWarning) {
@@ -1067,8 +1070,8 @@ export default function StudentExamTakePage() {
 	             // Ignore sessionStorage failures during redirect.
 	           }
 	           const returnRoute = sessionStorage.getItem('last_exam_route') || baseExamRoute
-	           navigate(returnRoute, { replace: true })
-	           return
+           navigate(returnRoute, { replace: true })
+           return
         }
 
         // Handle wrapper structure from backend (session + packet)
@@ -1205,12 +1208,16 @@ export default function StudentExamTakePage() {
            setTimeRemaining(packet.duration * 60) // Fallback
            endTimeRef.current = Date.now() + (packet.duration * 60 * 1000);
          }
+      } else if (!isBackgroundRefresh) {
+        setExam(null)
+        setLoadErrorMessage('Data ujian tidak tersedia saat ini. Silakan coba lagi.')
       }
     } catch (error: unknown) {
       const apiError = error as { response?: { data?: { message?: string } } }
       console.error('❌ Error fetching exam:', apiError.response?.data || error)
       const proctorTermination = extractProctorTerminationFromApiError(error)
       if (proctorTermination) {
+        setLoadErrorMessage(null)
         handleIncomingProctorTermination(proctorTermination)
         return
       }
@@ -1220,8 +1227,8 @@ export default function StudentExamTakePage() {
         return
       }
       fetchedExamKeyRef.current = null
-      toast.error(errorMessage)
-      navigate(baseExamRoute)
+      setExam(null)
+      setLoadErrorMessage(errorMessage)
     } finally {
       if (!isBackgroundRefresh) {
         setLoading(false)
@@ -1932,6 +1939,48 @@ export default function StudentExamTakePage() {
                 type="button"
                 onClick={() => navigate(baseExamRoute, { replace: true })}
                 className="rounded-xl bg-rose-600 px-4 py-2 text-sm font-semibold text-white hover:bg-rose-700"
+              >
+                Kembali ke Daftar Ujian
+              </button>
+            </div>
+          </div>
+        </div>
+      )
+    }
+    if (loadErrorMessage) {
+      return (
+        <div className="min-h-screen bg-gray-900 flex items-center justify-center p-4">
+          <div className="w-full max-w-xl rounded-2xl border border-slate-200 bg-white shadow-2xl">
+            <div className="border-b border-slate-100 px-6 py-5">
+              <div className="inline-flex items-center gap-2 rounded-full border border-amber-200 bg-amber-50 px-3 py-1 text-[11px] font-semibold uppercase tracking-wide text-amber-800">
+                <AlertTriangle className="h-3.5 w-3.5" />
+                Ujian Web Belum Bisa Dibuka
+              </div>
+              <h2 className="mt-3 text-xl font-bold text-slate-900">Gagal memuat {examTakeLabel.toLowerCase()}</h2>
+              <p className="mt-2 text-sm text-slate-600">
+                Halaman tetap kami tahan di sini supaya Anda bisa coba ulang tanpa dilempar balik otomatis.
+              </p>
+            </div>
+            <div className="px-6 py-5">
+              <div className="rounded-xl border border-amber-100 bg-amber-50 px-4 py-4 text-sm leading-6 text-amber-950">
+                {loadErrorMessage}
+              </div>
+            </div>
+            <div className="flex flex-wrap justify-end gap-3 border-t border-slate-200 px-6 py-4">
+              <button
+                type="button"
+                onClick={() => {
+                  fetchedExamKeyRef.current = null
+                  void fetchExam()
+                }}
+                className="rounded-xl bg-blue-600 px-4 py-2 text-sm font-semibold text-white hover:bg-blue-700"
+              >
+                Coba Muat Lagi
+              </button>
+              <button
+                type="button"
+                onClick={() => navigate(baseExamRoute, { replace: true })}
+                className="rounded-xl border border-slate-300 px-4 py-2 text-sm font-semibold text-slate-700 hover:bg-slate-50"
               >
                 Kembali ke Daftar Ujian
               </button>
