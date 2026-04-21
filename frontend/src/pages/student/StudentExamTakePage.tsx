@@ -1272,7 +1272,6 @@ export default function StudentExamTakePage() {
     // Detect window blur (switching to other apps)
     window.addEventListener('blur', handleWindowBlur)
     window.addEventListener('focus', handleWindowFocus)
-    window.addEventListener('focusout', handleWindowBlur)
     
     // Prevent copy/paste
     document.addEventListener('copy', preventCopyPaste)
@@ -1315,7 +1314,6 @@ export default function StudentExamTakePage() {
     window.removeEventListener('beforeunload', handleBeforeUnload)
     window.removeEventListener('blur', handleWindowBlur)
     window.removeEventListener('focus', handleWindowFocus)
-    window.removeEventListener('focusout', handleWindowBlur)
     document.removeEventListener('copy', preventCopyPaste)
     document.removeEventListener('paste', preventCopyPaste)
     document.removeEventListener('cut', preventCopyPaste)
@@ -1857,6 +1855,9 @@ export default function StudentExamTakePage() {
     })
     return mapped
   }, [currentQuestion?.options])
+  useEffect(() => {
+    setPreviewImageZoom(1)
+  }, [previewImageSrc])
 
   // Fullscreen Gate - MUST enter fullscreen before starting exam
   if (requiresFullscreen && !isFullscreen) {
@@ -2093,10 +2094,6 @@ export default function StudentExamTakePage() {
       )}
     </>
   );
-
-  useEffect(() => {
-    setPreviewImageZoom(1)
-  }, [previewImageSrc])
 
   return (
     <div className="min-h-screen bg-gray-50 notranslate" translate="no">
