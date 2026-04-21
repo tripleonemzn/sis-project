@@ -384,6 +384,7 @@ const MIN_PROGRESS_SYNC_GAP_MS = 5000;
 const DEFAULT_PROGRESS_SYNC_DELAY_MS = 1400;
 const FAST_PROGRESS_SYNC_DELAY_MS = 850;
 const APP_FOCUS_VIOLATION_THROTTLE_MS = 5000;
+const ANDROID_APP_FOCUS_CONFIRM_MS = 3000;
 const HEARTBEAT_PROGRESS_SYNC_MIN_MS = 17000;
 const HEARTBEAT_PROGRESS_SYNC_MAX_MS = 25000;
 const EXAM_KEEP_AWAKE_TAG = 'student-exam-take-screen';
@@ -529,6 +530,7 @@ export default function StudentExamTakeScreen() {
   const backAttemptRef = useRef(0);
   const lastViolationFingerprintRef = useRef<{ key: string; at: number } | null>(null);
   const lastAppFocusViolationAtRef = useRef(0);
+  const appFocusViolationTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const latestHandledProctorWarningIdRef = useRef(0);
   const latestHandledProctorTerminationIdRef = useRef(0);
   const violationSubmitGuardRef = useRef(false);
@@ -1099,6 +1101,26 @@ export default function StudentExamTakeScreen() {
     );
   }, [hasAcknowledgedStart, isExamReady, isFinished, queueProgressSync, triggerViolationAutoSubmit]);
 
+  const clearPendingAppFocusViolation = useCallback(() => {
+    if (appFocusViolationTimeoutRef.current) {
+      clearTimeout(appFocusViolationTimeoutRef.current);
+      appFocusViolationTimeoutRef.current = null;
+    }
+  }, []);
+
+  const commitAppFocusViolation = useCallback((nextAppState: AppStateStatus) => {
+    const now = Date.now();
+    if (now - lastAppFocusViolationAtRef.current < APP_FOCUS_VIOLATION_THROTTLE_MS) return;
+    lastAppFocusViolationAtRef.current = now;
+
+    const violationType =
+      nextAppState === 'background'
+        ? 'Berpindah aplikasi / tekan Home'
+        : 'Membuka panel notifikasi / recent apps / keluar fokus ujian';
+    recordViolation(violationType);
+    void saveProgress(false, { force: true });
+  }, [recordViolation, saveProgress]);
+
   const handleBackAttempt = useCallback(() => {
     if (!hasAcknowledgedStart || !isExamReady || isFinished) return true;
 
@@ -1146,25 +1168,38 @@ export default function StudentExamTakeScreen() {
     const subscription = AppState.addEventListener('change', (nextAppState) => {
       const previousState = appStateRef.current;
       appStateRef.current = nextAppState;
-      if (previousState !== 'active' || nextAppState === 'active') return;
-      if (Platform.OS === 'android' && nextAppState === 'inactive') return;
+      if (nextAppState === 'active') {
+        clearPendingAppFocusViolation();
+        return;
+      }
+      if (previousState !== 'active') return;
+      if (Platform.OS === 'android') {
+        if (nextAppState === 'inactive') return;
+        clearPendingAppFocusViolation();
+        // Some Android ROMs briefly report a heads-up notification/ad overlay as background.
+        // Count a violation only when the exam truly stays out of focus for a short moment.
+        appFocusViolationTimeoutRef.current = setTimeout(() => {
+          appFocusViolationTimeoutRef.current = null;
+          if (appStateRef.current === 'active') return;
+          commitAppFocusViolation(appStateRef.current);
+        }, ANDROID_APP_FOCUS_CONFIRM_MS);
+        return;
+      }
 
-      const now = Date.now();
-      if (now - lastAppFocusViolationAtRef.current < APP_FOCUS_VIOLATION_THROTTLE_MS) return;
-      lastAppFocusViolationAtRef.current = now;
-
-      const violationType =
-        nextAppState === 'background'
-          ? 'Berpindah aplikasi / tekan Home'
-          : 'Membuka panel notifikasi / recent apps / keluar fokus ujian';
-      recordViolation(violationType);
-      void saveProgress(false, { force: true });
+      commitAppFocusViolation(nextAppState);
     });
 
     return () => {
+      clearPendingAppFocusViolation();
       subscription.remove();
     };
-  }, [hasAcknowledgedStart, isExamReady, isFinished, recordViolation, saveProgress]);
+  }, [
+    clearPendingAppFocusViolation,
+    commitAppFocusViolation,
+    hasAcknowledgedStart,
+    isExamReady,
+    isFinished,
+  ]);
 
   useEffect(() => {
     if (!isExamReady || isFinished || !hasAcknowledgedStart) return;
