@@ -2896,14 +2896,16 @@ export default function TeacherExamEditorScreen() {
             style={{
               backgroundColor: '#1d4ed8',
               borderRadius: 10,
-              paddingVertical: 11,
+              paddingHorizontal: 14,
+              paddingVertical: 9,
               alignItems: 'center',
               marginBottom: 10,
+              alignSelf: 'flex-end',
               opacity: saveMutation.isPending ? 0.5 : 1,
             }}
           >
             <Text style={{ color: '#fff', fontWeight: '700', ...bodyTextStyle }}>
-              {saveMutation.isPending ? 'Menyimpan...' : 'Simpan Kisi-kisi & Kartu Soal'}
+              {saveMutation.isPending ? 'Menyimpan...' : 'Simpan'}
             </Text>
           </Pressable>
             </>
