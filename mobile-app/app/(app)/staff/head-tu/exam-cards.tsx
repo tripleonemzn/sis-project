@@ -1,5 +1,5 @@
-import { StaffHeadTuExamCardsScreen } from '../../../../src/features/staff/StaffHeadTuExamCardsScreen';
+import { Redirect } from 'expo-router';
 
 export default function StaffHeadTuExamCardsRoute() {
-  return <StaffHeadTuExamCardsScreen />;
+  return <Redirect href="/home" />;
 }

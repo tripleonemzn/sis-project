@@ -35,6 +35,13 @@ type StatusFilter =
   | 'BLOCKED_FINANCE'
   | 'REVIEW_REQUIRED';
 
+type ExamCardScreenMode = 'HEAD_TU' | 'CURRICULUM';
+
+type StaffHeadTuExamCardsScreenProps = {
+  mode?: ExamCardScreenMode;
+  embedded?: boolean;
+};
+
 function formatDateTime(value?: string | null) {
   if (!value) return '-';
   const date = new Date(value);
@@ -344,6 +351,11 @@ function buildExamCardsHtml(cards: ExamGeneratedCardPayload[]) {
     </html>`;
 }
 
+function hasCurriculumExamDuty(duties?: string[] | null) {
+  const normalized = (duties || []).map((item) => String(item || '').trim().toUpperCase());
+  return normalized.includes('WAKASEK_KURIKULUM') || normalized.includes('SEKRETARIS_KURIKULUM');
+}
+
 function matchesSearch(keyword: string, values: Array<string | null | undefined>) {
   if (!keyword) return true;
   return values.some((value) => String(value || '').toLowerCase().includes(keyword));
@@ -489,13 +501,23 @@ function EmptyState({ message }: { message: string }) {
   );
 }
 
-export function StaffHeadTuExamCardsScreen() {
+export function StaffHeadTuExamCardsScreen({
+  mode = 'HEAD_TU',
+  embedded = false,
+}: StaffHeadTuExamCardsScreenProps = {}) {
   const insets = useSafeAreaInsets();
   const router = useRouter();
   const queryClient = useQueryClient();
   const { isAuthenticated, isLoading, user } = useAuth();
   const pagePadding = getStandardPagePadding(insets, { bottom: 120 });
   const division = resolveStaffDivision(user);
+  const isHeadTuMode = mode === 'HEAD_TU';
+  const isAllowed = isHeadTuMode
+    ? user?.role === 'STAFF' && division === 'HEAD_TU'
+    : user?.role === 'TEACHER' && hasCurriculumExamDuty(user?.additionalDuties);
+  const headerDescription = isHeadTuMode
+    ? 'Generate kartu ujian digital untuk siswa yang layak ikut ujian, lalu buka pratinjau dokumen resminya dari Kepala TU.'
+    : 'Generate kartu ujian digital untuk siswa yang layak ikut ujian, lalu buka pratinjau dokumen resminya dari Wakasek Kurikulum / Sekretaris Kurikulum.';
   const [activeProgramCode, setActiveProgramCode] = useState('');
   const [search, setSearch] = useState('');
   const [classFilter, setClassFilter] = useState('ALL');
@@ -505,7 +527,7 @@ export function StaffHeadTuExamCardsScreen() {
 
   const activeYearQuery = useQuery({
     queryKey: ['mobile-head-tu-exam-cards-active-year'],
-    enabled: isAuthenticated && user?.role === 'STAFF' && division === 'HEAD_TU',
+    enabled: isAuthenticated && Boolean(isAllowed),
     staleTime: 5 * 60 * 1000,
     queryFn: async () => {
       try {
@@ -519,11 +541,7 @@ export function StaffHeadTuExamCardsScreen() {
 
   const programsQuery = useQuery({
     queryKey: ['mobile-head-tu-exam-cards-programs', selectedAcademicYearId || 'none'],
-    enabled:
-      isAuthenticated &&
-      user?.role === 'STAFF' &&
-      division === 'HEAD_TU' &&
-      Boolean(selectedAcademicYearId),
+    enabled: isAuthenticated && Boolean(isAllowed) && Boolean(selectedAcademicYearId),
     staleTime: 5 * 60 * 1000,
     queryFn: () =>
       examApi.getExamPrograms({
@@ -553,12 +571,7 @@ export function StaffHeadTuExamCardsScreen() {
 
   const overviewQuery = useQuery({
     queryKey: ['mobile-head-tu-exam-cards-overview', selectedAcademicYearId || 'none', activeProgramCode || 'none'],
-    enabled:
-      isAuthenticated &&
-      user?.role === 'STAFF' &&
-      division === 'HEAD_TU' &&
-      Boolean(selectedAcademicYearId) &&
-      Boolean(activeProgramCode),
+    enabled: isAuthenticated && Boolean(isAllowed) && Boolean(selectedAcademicYearId) && Boolean(activeProgramCode),
     staleTime: 60_000,
     queryFn: () =>
       examCardApi.getOverview({
@@ -642,32 +655,14 @@ export function StaffHeadTuExamCardsScreen() {
   };
 
   if (isLoading) return <AppLoadingScreen message="Memuat kartu ujian..." />;
-  if (!isAuthenticated) return <Redirect href="/welcome" />;
-  if (!user) return <Redirect href="/welcome" />;
-  if (user.role !== 'STAFF' || division !== 'HEAD_TU') return <Redirect href="/home" />;
+  if (!isAuthenticated || !user) return embedded ? null : <Redirect href="/welcome" />;
+  if (!isAllowed) return embedded ? null : <Redirect href="/home" />;
 
-  return (
-    <ScrollView
-      style={{ flex: 1, backgroundColor: '#f8fafc' }}
-      contentContainerStyle={pagePadding}
-      refreshControl={
-        <RefreshControl
-          refreshing={
-            activeYearQuery.isFetching ||
-            programsQuery.isFetching ||
-            overviewQuery.isFetching ||
-            generateMutation.isPending
-          }
-          onRefresh={() => void onRefresh()}
-          tintColor={BRAND_COLORS.blue}
-        />
-      }
-    >
+  const body = (
+    <>
       <View style={{ marginBottom: 16 }}>
         <Text style={{ fontSize: scaleWithAppTextScale(20), fontWeight: '800', color: BRAND_COLORS.textDark }}>Kartu Ujian</Text>
-        <Text style={{ marginTop: 6, color: BRAND_COLORS.textMuted }}>
-          Generate kartu ujian digital untuk siswa yang layak ikut ujian, lalu buka pratinjau dokumen resminya dari Kepala TU.
-        </Text>
+        <Text style={{ marginTop: 6, color: BRAND_COLORS.textMuted }}>{headerDescription}</Text>
       </View>
 
       {!activeYearQuery.isLoading && !activeYearQuery.isError && !selectedAcademicYearId ? (
@@ -1101,6 +1096,31 @@ export function StaffHeadTuExamCardsScreen() {
           </View>
         )}
       </SectionCard>
+    </>
+  );
+
+  if (embedded) {
+    return <View>{body}</View>;
+  }
+
+  return (
+    <ScrollView
+      style={{ flex: 1, backgroundColor: '#f8fafc' }}
+      contentContainerStyle={pagePadding}
+      refreshControl={
+        <RefreshControl
+          refreshing={
+            activeYearQuery.isFetching ||
+            programsQuery.isFetching ||
+            overviewQuery.isFetching ||
+            generateMutation.isPending
+          }
+          onRefresh={() => void onRefresh()}
+          tintColor={BRAND_COLORS.blue}
+        />
+      }
+    >
+      {body}
     </ScrollView>
   );
 }

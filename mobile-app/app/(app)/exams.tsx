@@ -700,7 +700,7 @@ export default function StudentExamsScreen() {
             <View style={{ flex: 1 }}>
               <Text style={{ color: '#0f172a', fontSize: scaleFont(18), fontWeight: '700' }}>Kartu Ujian Digital</Text>
               <Text style={{ color: '#64748b', marginTop: 4, fontSize: scaleFont(13), lineHeight: scaleLineHeight(20) }}>
-                Kartu ujian akan muncul di sini setelah dipublikasikan oleh Kepala TU.
+                Kartu ujian akan muncul di sini setelah dipublikasikan oleh Wakasek Kurikulum / Sekretaris Kurikulum.
               </Text>
             </View>
             <View

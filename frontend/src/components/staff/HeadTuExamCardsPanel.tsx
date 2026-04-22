@@ -514,7 +514,13 @@ function resolveStatusTone(code: ExamCardOverviewRow['status']['code']) {
   }
 }
 
-export function HeadTuExamCardsPanel() {
+type ExamCardsPanelOwner = 'HEAD_TU' | 'CURRICULUM';
+
+type HeadTuExamCardsPanelProps = {
+  ownerMode?: ExamCardsPanelOwner;
+};
+
+export function HeadTuExamCardsPanel({ ownerMode = 'HEAD_TU' }: HeadTuExamCardsPanelProps) {
   const queryClient = useQueryClient();
   const [activeProgramCode, setActiveProgramCode] = useState('');
   const [selectedSemester, setSelectedSemester] = useState<ExamCardSemester>('ODD');
@@ -707,13 +713,16 @@ export function HeadTuExamCardsPanel() {
     );
   }
 
+  const ownerDescription =
+    ownerMode === 'CURRICULUM'
+      ? 'Generate kartu ujian digital untuk siswa yang layak mengikuti ujian, lalu cetak dokumen resminya dari Wakasek Kurikulum / Sekretaris Kurikulum.'
+      : 'Generate kartu ujian digital untuk siswa yang layak mengikuti ujian, lalu cetak dokumen resminya dari Kepala TU.';
+
   return (
     <div className="space-y-6">
       <div>
         <h2 className="text-2xl font-bold text-gray-900">Kartu Ujian</h2>
-        <p className="mt-1 text-sm text-gray-500">
-          Generate kartu ujian digital untuk siswa yang layak mengikuti ujian, lalu cetak dokumen resminya dari Kepala TU.
-        </p>
+        <p className="mt-1 text-sm text-gray-500">{ownerDescription}</p>
       </div>
 
       <div className="rounded-xl border border-gray-100 bg-white p-4 shadow-sm">

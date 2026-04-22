@@ -1446,7 +1446,7 @@ export default function StudentExamsPage() {
               <div>
                 <h2 className="text-lg font-semibold text-gray-900">Kartu Ujian Digital</h2>
                 <p className="mt-1 text-sm text-gray-500">
-                  Kartu ujian akan muncul di sini setelah dipublikasikan oleh Kepala TU.
+                  Kartu ujian akan muncul di sini setelah dipublikasikan oleh Wakasek Kurikulum / Sekretaris Kurikulum.
                 </p>
               </div>
               <div className="flex items-center gap-3 self-start md:self-auto">

@@ -5,7 +5,8 @@ import ExamSittingManagementPage from './ExamSittingManagementPage';
 import ExamProctorManagementPage from './ExamProctorManagementPage';
 import ExamProgramManagementPage from './ExamProgramManagementPage';
 import ExamRoomLayoutManagementPage from './ExamRoomLayoutManagementPage';
-import { Calendar, FolderCog, LayoutPanelTop, School, UserCheck } from 'lucide-react';
+import { Calendar, ClipboardList, FolderCog, LayoutPanelTop, School, UserCheck } from 'lucide-react';
+import { HeadTuExamCardsPanel } from '../../../components/staff/HeadTuExamCardsPanel';
 
 export default function ExamManagementHubPage() {
   const [searchParams, setSearchParams] = useSearchParams();
@@ -23,13 +24,14 @@ export default function ExamManagementHubPage() {
     { id: 'ruang', label: 'Ruang Ujian', icon: School },
     { id: 'mengawas', label: 'Jadwal Mengawas', icon: UserCheck },
     { id: 'denah', label: 'Generate Denah Ruang', icon: LayoutPanelTop },
+    { id: 'kartu', label: 'Kartu Ujian', icon: ClipboardList },
   ]), []);
 
   return (
     <div className="space-y-6 w-full pb-20">
       <div>
         <h1 className="text-2xl font-bold text-gray-900">Kelola Ujian</h1>
-        <p className="text-gray-500">Pengelolaan Jadwal, Ruang, Mengawas, dan Program Ujian dalam satu halaman.</p>
+        <p className="text-gray-500">Pengelolaan Jadwal, Ruang, Mengawas, Kartu Ujian, dan Program Ujian dalam satu halaman.</p>
       </div>
 
       <div className="bg-white rounded-xl border border-gray-200 shadow-sm p-4">
@@ -65,6 +67,8 @@ export default function ExamManagementHubPage() {
             <ExamRoomLayoutManagementPage />
           ) : active === 'mengawas' ? (
             <ExamProctorManagementPage />
+          ) : active === 'kartu' ? (
+            <HeadTuExamCardsPanel ownerMode="CURRICULUM" />
           ) : (
             <ExamProgramManagementPage />
           )}

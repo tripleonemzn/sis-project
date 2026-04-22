@@ -1334,11 +1334,6 @@ const STAFF_EXTRA_MENU_ITEMS: Record<string, RoleMenuItem> = {
     label: 'Surat-Menyurat',
     route: '/staff/head-tu/letters',
   },
-  'staff-head-tu-exam-cards': {
-    key: 'staff-head-tu-exam-cards',
-    label: 'Kartu Ujian',
-    route: '/staff/head-tu/exam-cards',
-  },
 };
 
 function buildGroupedMenu(role: string, items: RoleMenuItem[]): RoleMenuGroup[] {
@@ -1412,7 +1407,6 @@ function buildStaffRoleMenu(user: AuthUser) {
           'staff-head-tu-teachers',
           'staff-head-tu-permissions',
           'staff-head-tu-letters',
-          'staff-head-tu-exam-cards',
         ]
       : division === 'ADMINISTRATION'
         ? ['staff-students', 'staff-administration-teachers', 'staff-administration-permissions']
@@ -1455,7 +1449,6 @@ function buildStaffGroups(user: AuthUser, menus: RoleMenuItem[]) {
       'staff-head-tu-administration',
       'staff-head-tu-finance',
       'staff-head-tu-letters',
-      'staff-head-tu-exam-cards',
     ]);
     pushGroup(groups, 'layanan-tu', 'LAYANAN TU', [
       'staff-head-tu-students',

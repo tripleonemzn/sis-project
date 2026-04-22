@@ -1,5 +1,5 @@
 import { useEffect, useMemo, useState } from 'react';
-import { Link, useLocation } from 'react-router-dom';
+import { Link, Navigate, useLocation } from 'react-router-dom';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import {
   ClipboardList,
@@ -36,7 +36,6 @@ import {
   type FinanceReportSnapshot,
   type FinanceWriteOffRequest,
 } from '../../services/staffFinance.service';
-import api from '../../services/api';
 import type { User } from '../../types/auth';
 import {
   CandidateAdmissionStatusBadge,
@@ -47,7 +46,6 @@ import {
 } from '../public/candidateShared';
 import { getStaffDivisionLabel, resolveStaffDivision } from '../../utils/staffRole';
 import { DashboardWelcomeCard } from '../../components/common/DashboardWelcomeCard';
-import { HeadTuExamCardsPanel } from '../../components/staff/HeadTuExamCardsPanel';
 import { computeVisibleRefetchInterval } from '../../lib/query/liveQuery';
 
 function matchesSearch(term: string, values: Array<string | number | null | undefined>) {
@@ -232,53 +230,6 @@ type PermissionRow = StudentPermission & {
 
 type StaffUser = User & {
   roleLabel?: string;
-};
-
-type ExamSittingListRow = {
-  id: number;
-  roomName: string;
-  examType?: string | null;
-  startTime?: string | null;
-  endTime?: string | null;
-  sessionLabel?: string | null;
-  programSession?: {
-    label?: string | null;
-  } | null;
-};
-
-type ExamSittingDetailRow = ExamSittingListRow & {
-  students?: Array<{
-    student?: {
-      id: number;
-      name: string;
-      username?: string | null;
-      nis?: string | null;
-      nisn?: string | null;
-      studentClass?: {
-        name?: string | null;
-      } | null;
-    } | null;
-  }>;
-};
-
-type ExamCardEntry = {
-  sittingId: number;
-  examType: string;
-  roomName: string;
-  startTime: string | null;
-  endTime: string | null;
-  sessionLabel: string | null;
-};
-
-type ExamCardRow = {
-  studentId: number;
-  studentName: string;
-  username: string;
-  nis: string | null;
-  nisn: string | null;
-  className: string;
-  examCount: number;
-  entries: ExamCardEntry[];
 };
 
 type CandidateLetterFormState = {
@@ -667,35 +618,6 @@ const HeadTuWorkspace = () => {
     refetchOnWindowFocus: false,
   });
 
-  const examCardsQuery = useQuery({
-    queryKey: ['head-tu-exam-cards', activeYear?.id || 'none'],
-    enabled: Boolean(activeYear?.id) && isDashboardPage,
-    staleTime: 60_000,
-    refetchOnWindowFocus: false,
-    queryFn: async () => {
-      const listResponse = await api.get('/exam-sittings', {
-        params: {
-          academicYearId: activeYear?.id,
-        },
-      });
-
-      const listData = Array.isArray(listResponse.data?.data)
-        ? listResponse.data.data
-        : Array.isArray(listResponse.data)
-          ? listResponse.data
-          : [];
-
-      const details = await Promise.all(
-        (listData as ExamSittingListRow[]).map(async (row) => {
-          const detailResponse = await api.get(`/exam-sittings/${row.id}`);
-          return (detailResponse.data?.data || detailResponse.data) as ExamSittingDetailRow;
-        }),
-      );
-
-      return details;
-    },
-  });
-
   const currentUser = meQuery.data?.data as User | undefined;
   const students = useMemo<User[]>(() => studentsQuery.data?.data || [], [studentsQuery.data?.data]);
   const teachers = useMemo<User[]>(() => teachersQuery.data?.data || [], [teachersQuery.data?.data]);
@@ -725,7 +647,6 @@ const HeadTuWorkspace = () => {
   const financeClosingPeriodReopenSummary = financeClosingPeriodReopenRequestsQuery.data?.summary;
   const pendingHeadTuClosingPeriodReopens = financeClosingPeriodReopenApprovalsQuery.data?.requests || [];
   const officeSummary = officeSummaryQuery.data;
-  const examCardDetails = examCardsQuery.data || [];
   const officeLetters = officeLettersQuery.data?.letters || [];
   const candidateDecisionLettersPayload = useMemo(
     () => extractCandidateAdmissionListPayload(candidateDecisionLettersQuery.data),
@@ -809,48 +730,6 @@ const HeadTuWorkspace = () => {
       ),
     [permissions, normalizedPermissionSearch],
   );
-
-  const examCardRows = useMemo<ExamCardRow[]>(() => {
-    const grouped = new Map<number, ExamCardRow>();
-
-    examCardDetails.forEach((sitting) => {
-      const resolvedSessionLabel = String(sitting.programSession?.label || sitting.sessionLabel || '').trim() || null;
-      const resolvedExamType = String(sitting.examType || '').trim() || 'UJIAN';
-
-      (sitting.students || []).forEach((row) => {
-        const student = row.student;
-        if (!student?.id) return;
-
-        if (!grouped.has(student.id)) {
-          grouped.set(student.id, {
-            studentId: student.id,
-            studentName: student.name,
-            username: student.username || '-',
-            nis: student.nis || null,
-            nisn: student.nisn || null,
-            className: student.studentClass?.name || '-',
-            examCount: 0,
-            entries: [],
-          });
-        }
-
-        const current = grouped.get(student.id)!;
-        current.entries.push({
-          sittingId: sitting.id,
-          examType: resolvedExamType,
-          roomName: sitting.roomName || '-',
-          startTime: sitting.startTime || null,
-          endTime: sitting.endTime || null,
-          sessionLabel: resolvedSessionLabel,
-        });
-        current.examCount = current.entries.length;
-      });
-    });
-
-    return Array.from(grouped.values()).sort((a, b) =>
-      a.studentName.localeCompare(b.studentName, 'id-ID', { sensitivity: 'base' }),
-    );
-  }, [examCardDetails]);
 
   useEffect(() => {
     if (!isLettersPage) return;
@@ -1889,7 +1768,7 @@ const HeadTuWorkspace = () => {
   }
 
   if (isExamCardsPage) {
-    return <HeadTuExamCardsPanel />;
+    return <Navigate to="/staff/head-tu" replace />;
   }
 
   if (isFinancePage) {
@@ -3308,13 +3187,6 @@ const HeadTuWorkspace = () => {
             <p className="mt-1 text-xs text-slate-800/70">{officeSummary?.totalLetters?.toLocaleString('id-ID') || 0} arsip surat aktif</p>
           </div>
         </Link>
-        <Link to="/staff/head-tu/exam-cards" className="block rounded-xl focus:outline-none focus-visible:ring-2 focus-visible:ring-rose-500">
-          <div className="rounded-xl border border-rose-100 bg-gradient-to-br from-rose-50 to-pink-100/80 shadow-sm p-4 hover:shadow-md transition-shadow">
-            <p className="text-xs uppercase tracking-wider text-rose-700/80">Kartu Ujian</p>
-            <p className="mt-2 text-2xl font-bold text-rose-900">{examCardRows.length.toLocaleString('id-ID')}</p>
-            <p className="mt-1 text-xs text-rose-800/70">Siswa dengan kartu ujian</p>
-          </div>
-        </Link>
       </div>
 
       <div className="grid grid-cols-1 xl:grid-cols-2 gap-6">
@@ -3347,9 +3219,6 @@ const HeadTuWorkspace = () => {
           <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
             <Link to="/staff/head-tu/letters" className="inline-flex items-center justify-center rounded-lg border border-slate-200 bg-white px-4 py-3 text-sm font-semibold text-slate-700 hover:bg-slate-50">
               <FileText className="w-4 h-4 mr-2" /> Surat-Menyurat
-            </Link>
-            <Link to="/staff/head-tu/exam-cards" className="inline-flex items-center justify-center rounded-lg border border-rose-200 bg-white px-4 py-3 text-sm font-semibold text-rose-700 hover:bg-rose-50">
-              <ClipboardList className="w-4 h-4 mr-2" /> Kartu Ujian
             </Link>
             <Link to="/staff/head-tu/finance" className="inline-flex items-center justify-center rounded-lg border border-violet-200 bg-white px-4 py-3 text-sm font-semibold text-violet-700 hover:bg-violet-50">
               <CreditCard className="w-4 h-4 mr-2" /> Monitoring Keuangan

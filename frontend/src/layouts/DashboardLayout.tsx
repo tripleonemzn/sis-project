@@ -1161,7 +1161,6 @@ const buildSidebarCrumbLookup = (roleSegment: string, user: User | null): Record
       'head-tu/teachers': { label: 'Data Guru & Staff', group: 'LAYANAN TU' },
       'head-tu/permissions': { label: 'Perizinan Siswa', group: 'LAYANAN TU' },
       'head-tu/letters': { label: 'Surat-Menyurat', group: 'LAYANAN TU' },
-      'head-tu/exam-cards': { label: 'Kartu Ujian', group: 'LAYANAN TU' },
       payments: { label: 'Ringkasan Keuangan', group: 'KEUANGAN' },
       students: { label: 'Data Siswa', group: 'KEUANGAN' },
       admin: { label: 'Realisasi Anggaran', group: 'KEUANGAN' },

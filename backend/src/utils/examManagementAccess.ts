@@ -22,10 +22,6 @@ export function hasCurriculumExamManagementDuty(duties?: string[] | null) {
   return normalizedDuties.includes('WAKASEK_KURIKULUM') || normalizedDuties.includes('SEKRETARIS_KURIKULUM');
 }
 
-function isHeadTuProfile(profile?: { role?: string | null; ptkType?: string | null } | null) {
-  return profile?.role === 'STAFF' && ['KEPALA_TU', 'KEPALA_TATA_USAHA'].includes(normalizeCode(profile?.ptkType));
-}
-
 export async function getExamRequesterProfile(userId: number): Promise<ExamRequesterProfile> {
   const profile = await prisma.user.findUnique({
     where: { id: userId },
@@ -70,21 +66,4 @@ export async function assertCurriculumExamManagerAccess(
   }
 
   throw new ApiError(403, 'Akses hanya untuk Wakasek Kurikulum atau Sekretaris Kurikulum.');
-}
-
-export async function assertHeadTuExamCardAccess(
-  userId: number,
-  options: { allowAdmin?: boolean } = {},
-) {
-  const profile = await getExamRequesterProfile(userId);
-
-  if (profile.role === 'ADMIN' && options.allowAdmin) {
-    return profile;
-  }
-
-  if (isHeadTuProfile(profile)) {
-    return profile;
-  }
-
-  throw new ApiError(403, 'Akses hanya untuk Kepala TU.');
 }

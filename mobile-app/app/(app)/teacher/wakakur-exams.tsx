@@ -20,6 +20,7 @@ import { MobileSummaryCard } from '../../../src/components/MobileSummaryCard';
 import { QueryStateView } from '../../../src/components/QueryStateView';
 import { BRAND_COLORS } from '../../../src/config/brand';
 import { useAuth } from '../../../src/features/auth/AuthProvider';
+import { StaffHeadTuExamCardsScreen } from '../../../src/features/staff/StaffHeadTuExamCardsScreen';
 import { academicYearApi } from '../../../src/features/academicYear/academicYearApi';
 import { AdminClass, AdminSubject, AdminUser, adminApi } from '../../../src/features/admin/adminApi';
 import {
@@ -48,7 +49,7 @@ import {
 import { getStandardPagePadding } from '../../../src/lib/ui/pageLayout';
 import { useAppTextScale } from '../../../src/theme/AppTextScaleProvider';
 
-type ExamHubSection = 'JADWAL' | 'RUANG' | 'DENAH' | 'MENGAWAS' | 'PROGRAM';
+type ExamHubSection = 'JADWAL' | 'RUANG' | 'DENAH' | 'MENGAWAS' | 'PROGRAM' | 'KARTU';
 type ExamTypeFilter = 'ALL' | ExamDisplayType;
 type ExamSummaryId =
   | 'schedules'
@@ -1018,6 +1019,7 @@ const EXAM_SECTION_ITEMS: Array<{ key: ExamHubSection; label: string; iconName: 
   { key: 'RUANG', label: 'Ruang Ujian', iconName: 'home' },
   { key: 'MENGAWAS', label: 'Jadwal Mengawas', iconName: 'user-check' },
   { key: 'DENAH', label: 'Generate Denah Ruang', iconName: 'grid' },
+  { key: 'KARTU', label: 'Kartu Ujian', iconName: 'clipboard' },
 ];
 const CURRICULUM_EXAM_MANAGER_LABEL = 'Wakasek Kurikulum / Sekretaris Kurikulum';
 
@@ -1107,6 +1109,7 @@ export default function TeacherWakakurExamsScreen() {
   const [programSubjectSearch, setProgramSubjectSearch] = useState<Record<string, string>>({});
   const [programAuthorSearch, setProgramAuthorSearch] = useState<Record<string, string>>({});
   const isProgramSection = section === 'PROGRAM';
+  const isCardSection = section === 'KARTU';
   const openExamSessionCrud = () => {
     router.push('/admin/academic?section=exam-sessions' as never);
   };
@@ -2909,7 +2912,7 @@ export default function TeacherWakakurExamsScreen() {
       </View>
 
       <Text style={{ color: BRAND_COLORS.textMuted, ...paragraphTextStyle, marginBottom: 10 }}>
-        Pengelolaan jadwal ujian, ruang ujian, generate denah ruang, jadwal mengawas, dan program ujian.
+        Pengelolaan jadwal ujian, ruang ujian, generate denah ruang, jadwal mengawas, kartu ujian, dan program ujian.
       </Text>
 
       <MobileMenuTabBar
@@ -2922,7 +2925,7 @@ export default function TeacherWakakurExamsScreen() {
         maxTabWidth={108}
       />
 
-      {!isProgramSection ? (
+      {!isProgramSection && !isCardSection ? (
         <>
           <View style={{ flexDirection: 'row', flexWrap: 'wrap', justifyContent: 'space-between', marginBottom: 12 }}>
             {summaryCards.map((item) => (
@@ -4344,6 +4347,8 @@ export default function TeacherWakakurExamsScreen() {
             ) : null}
           </View>
         </>
+      ) : isCardSection ? (
+        <StaffHeadTuExamCardsScreen mode="CURRICULUM" embedded />
       ) : (
         <>
           {schedulesQuery.isLoading ? <QueryStateView type="loading" message="Memuat data ujian..." /> : null}

@@ -1078,7 +1078,6 @@ export const getMenuItems = (
             { label: 'Data Guru & Staff', path: '/staff/head-tu/teachers', icon: Users },
             { label: 'Perizinan Siswa', path: '/staff/head-tu/permissions', icon: FileText },
             { label: 'Surat-Menyurat', path: '/staff/head-tu/letters', icon: FileText },
-            { label: 'Kartu Ujian', path: '/staff/head-tu/exam-cards', icon: ClipboardList },
           ],
         },
         { label: 'Profil', path: '/staff/profile', icon: UserIcon },

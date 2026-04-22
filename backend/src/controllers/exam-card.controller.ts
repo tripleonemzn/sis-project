@@ -6,7 +6,7 @@ import QRCode from 'qrcode';
 import { z } from 'zod';
 import prisma from '../utils/prisma';
 import { ApiError, ApiResponse, asyncHandler } from '../utils/api';
-import { assertHeadTuExamCardAccess } from '../utils/examManagementAccess';
+import { assertCurriculumExamManagerAccess } from '../utils/examManagementAccess';
 import { resolvePublicAppBaseUrl } from '../utils/publicAppBaseUrl';
 import {
   buildExamEligibilitySnapshot,
@@ -1145,7 +1145,7 @@ export const getHeadTuExamCardOverview = asyncHandler(async (req: Request, res: 
     throw new ApiError(401, 'Tidak memiliki otorisasi.');
   }
 
-  await assertHeadTuExamCardAccess(Number(user.id), { allowAdmin: true });
+  await assertCurriculumExamManagerAccess(Number(user.id), { allowAdmin: true });
   const query = overviewQuerySchema.parse(req.query);
   const payload = await buildExamCardOverview(query);
 
@@ -1158,7 +1158,7 @@ export const generateExamCards = asyncHandler(async (req: Request, res: Response
     throw new ApiError(401, 'Tidak memiliki otorisasi.');
   }
 
-  const requester = await assertHeadTuExamCardAccess(Number(user.id), { allowAdmin: true });
+  const requester = await assertCurriculumExamManagerAccess(Number(user.id), { allowAdmin: true });
   const body = generateCardsSchema.parse(req.body);
   const overview = await buildExamCardOverview(body);
   const principal = await prisma.user.findFirst({
