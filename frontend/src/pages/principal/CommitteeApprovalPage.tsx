@@ -1,18 +1,202 @@
 import { useMemo, useState } from 'react';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
-import { CheckCircle2, Loader2, MessageSquareText, ShieldCheck, Users, XCircle } from 'lucide-react';
+import { CheckCircle2, Loader2, MessageSquareText, ShieldCheck, Users, X, XCircle } from 'lucide-react';
 import toast from 'react-hot-toast';
-import { committeeService } from '../../services/committee.service';
+import {
+  committeeService,
+  type CommitteeEventSummary,
+  type CommitteeFeatureCode,
+} from '../../services/committee.service';
 import {
   COMMITTEE_STATUS_LABELS,
   formatCommitteeDateTime,
-  formatCommitteeMemberMeta,
   getCommitteeStatusTone,
 } from '../../features/committee/committeeUi';
+
+const COMMITTEE_FEATURE_LABELS: Record<CommitteeFeatureCode, string> = {
+  EXAM_PROGRAM: 'Program Ujian',
+  EXAM_SCHEDULE: 'Jadwal Ujian',
+  EXAM_ROOMS: 'Ruang Ujian',
+  EXAM_PROCTOR: 'Jadwal Mengawas',
+  EXAM_LAYOUT: 'Generate Denah Ruang',
+  EXAM_CARD: 'Kartu Ujian',
+};
+
+function CommitteeReviewModal({
+  item,
+  feedback,
+  onFeedbackChange,
+  approvingApprove,
+  approvingReject,
+  onApprove,
+  onReject,
+  onClose,
+}: {
+  item: CommitteeEventSummary;
+  feedback: string;
+  onFeedbackChange: (value: string) => void;
+  approvingApprove: boolean;
+  approvingReject: boolean;
+  onApprove: () => void;
+  onReject: () => void;
+  onClose: () => void;
+}) {
+  return (
+    <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/30 p-4">
+      <div className="flex max-h-[80vh] w-full max-w-6xl flex-col overflow-hidden rounded-xl bg-white shadow-xl">
+        <div className="flex items-center justify-between gap-4 border-b border-gray-100 bg-white px-6 py-5">
+          <div>
+            <h2 className="text-section-title font-semibold text-gray-900">Review Usulan Panitia</h2>
+            <p className="mt-1 text-body text-gray-500">
+              {item.title} • {item.code}
+            </p>
+          </div>
+          <button
+            type="button"
+            onClick={onClose}
+            className="rounded-lg p-2 text-gray-500 transition hover:bg-gray-100 hover:text-gray-700"
+            aria-label="Tutup popup review kepanitiaan"
+          >
+            <X className="h-5 w-5" />
+          </button>
+        </div>
+
+        <div className="flex-1 overflow-y-auto px-6 py-6">
+          <div className="grid gap-4 md:grid-cols-3">
+            <div className="rounded-2xl border border-slate-200 bg-slate-50 px-4 py-4">
+              <div className="text-xs uppercase tracking-wide text-slate-500">Pengusul</div>
+              <div className="mt-2 text-sm font-semibold text-slate-900">{item.requestedBy.name}</div>
+              <div className="mt-1 text-xs text-slate-500">{item.requestedBy.username}</div>
+            </div>
+            <div className="rounded-2xl border border-slate-200 bg-slate-50 px-4 py-4">
+              <div className="text-xs uppercase tracking-wide text-slate-500">Program Ujian</div>
+              <div className="mt-2 text-sm font-semibold text-slate-900">
+                {item.programLabel || item.programCode || 'Tanpa program ujian khusus'}
+              </div>
+            </div>
+            <div className="rounded-2xl border border-slate-200 bg-slate-50 px-4 py-4">
+              <div className="text-xs uppercase tracking-wide text-slate-500">Ringkasan</div>
+              <div className="mt-2 text-sm font-semibold text-slate-900">
+                {item.counts.members} anggota • {item.counts.grantedFeatures} fitur workspace unik
+              </div>
+              <div className="mt-1 text-xs text-slate-500">Diajukan {formatCommitteeDateTime(item.updatedAt)}</div>
+            </div>
+          </div>
+
+          {item.description ? (
+            <section className="mt-6 rounded-2xl border border-slate-200 bg-white p-5">
+              <h3 className="text-sm font-semibold text-slate-900">Deskripsi / Catatan Pengajuan</h3>
+              <p className="mt-3 text-sm leading-6 text-slate-600">{item.description}</p>
+            </section>
+          ) : null}
+
+          <section className="mt-6 rounded-2xl border border-slate-200 bg-white p-5">
+            <div className="flex items-center gap-2 text-sm font-semibold text-slate-900">
+              <Users className="h-4 w-4 text-slate-500" />
+              Preview Susunan Panitia
+            </div>
+            <p className="mt-1 text-xs leading-5 text-slate-500">
+              Preview menampilkan hingga 5 anggota pertama agar review tetap ringkas.
+            </p>
+
+            {item.membersPreview.length === 0 ? (
+              <div className="mt-4 rounded-xl border border-amber-200 bg-amber-50 px-4 py-3 text-sm text-amber-800">
+                Draft ini belum memiliki anggota panitia. Sebaiknya dikembalikan agar pengusul melengkapi susunan panitia
+                terlebih dahulu.
+              </div>
+            ) : (
+              <div className="mt-4 overflow-hidden rounded-2xl border border-slate-200">
+                <div className="overflow-x-auto">
+                  <table className="min-w-full divide-y divide-slate-200 text-sm">
+                    <thead className="bg-slate-50 text-left text-xs uppercase tracking-wide text-slate-500">
+                      <tr>
+                        <th className="px-4 py-3 font-semibold">Anggota</th>
+                        <th className="px-4 py-3 font-semibold">Jenis</th>
+                        <th className="px-4 py-3 font-semibold">Peran</th>
+                        <th className="px-4 py-3 font-semibold">Usulan Feature</th>
+                      </tr>
+                    </thead>
+                    <tbody className="divide-y divide-slate-100 bg-white">
+                      {item.membersPreview.map((member) => (
+                        <tr key={`principal-committee-member-${item.id}-${member.id}`} className="align-top">
+                          <td className="px-4 py-4">
+                            <div className="font-semibold text-slate-900">{member.memberLabel}</div>
+                            <div className="mt-1 text-xs text-slate-500">{member.memberDetail || '-'}</div>
+                          </td>
+                          <td className="px-4 py-4 text-slate-600">{member.memberTypeLabel}</td>
+                          <td className="px-4 py-4 text-slate-700">{member.assignmentRole}</td>
+                          <td className="px-4 py-4">
+                            {member.featureCodes.length === 0 ? (
+                              <span className="rounded-full border border-slate-200 bg-slate-50 px-3 py-1 text-xs font-medium text-slate-500">
+                                Tanpa usulan feature
+                              </span>
+                            ) : (
+                              <div className="flex flex-wrap gap-2">
+                                {member.featureCodes.map((featureCode) => (
+                                  <span
+                                    key={`principal-committee-feature-${item.id}-${member.id}-${featureCode}`}
+                                    className="rounded-full border border-emerald-200 bg-emerald-50 px-3 py-1 text-xs font-semibold text-emerald-700"
+                                  >
+                                    {COMMITTEE_FEATURE_LABELS[featureCode]}
+                                  </span>
+                                ))}
+                              </div>
+                            )}
+                          </td>
+                        </tr>
+                      ))}
+                    </tbody>
+                  </table>
+                </div>
+              </div>
+            )}
+          </section>
+
+          <section className="mt-6 rounded-2xl border border-slate-200 bg-white p-5">
+            <label htmlFor={`committee-feedback-${item.id}`} className="mb-1 block text-sm font-medium text-slate-700">
+              Catatan Kepala Sekolah
+            </label>
+            <textarea
+              id={`committee-feedback-${item.id}`}
+              name={`committee-feedback-${item.id}`}
+              rows={4}
+              value={feedback}
+              onChange={(event) => onFeedbackChange(event.target.value)}
+              className="w-full rounded-xl border border-slate-300 bg-white px-3 py-2.5 text-sm leading-6 focus:border-blue-500 focus:outline-none"
+              placeholder="Tambahkan catatan approval atau alasan revisi bila diperlukan."
+            />
+          </section>
+        </div>
+
+        <div className="flex flex-wrap justify-end gap-3 border-t border-gray-100 bg-gray-50 px-6 py-4">
+          <button
+            type="button"
+            onClick={onReject}
+            disabled={approvingApprove || approvingReject}
+            className="inline-flex items-center gap-2 rounded-xl border border-rose-300 bg-white px-4 py-2.5 text-sm font-semibold text-rose-700 hover:bg-rose-50 disabled:cursor-not-allowed disabled:border-rose-200 disabled:text-rose-300"
+          >
+            {approvingReject ? <Loader2 className="h-4 w-4 animate-spin" /> : <XCircle className="h-4 w-4" />}
+            Tolak / Kembalikan
+          </button>
+          <button
+            type="button"
+            onClick={onApprove}
+            disabled={approvingApprove || approvingReject}
+            className="inline-flex items-center gap-2 rounded-xl bg-emerald-600 px-4 py-2.5 text-sm font-semibold text-white hover:bg-emerald-700 disabled:cursor-not-allowed disabled:bg-emerald-300"
+          >
+            {approvingApprove ? <Loader2 className="h-4 w-4 animate-spin" /> : <CheckCircle2 className="h-4 w-4" />}
+            Setujui & Teruskan ke TU
+          </button>
+        </div>
+      </div>
+    </div>
+  );
+}
 
 export default function CommitteeApprovalPage() {
   const queryClient = useQueryClient();
   const [feedbackById, setFeedbackById] = useState<Record<number, string>>({});
+  const [selectedReviewId, setSelectedReviewId] = useState<number | null>(null);
 
   const queueQuery = useQuery({
     queryKey: ['principal-committee-approvals'],
@@ -34,6 +218,7 @@ export default function CommitteeApprovalPage() {
         ...current,
         [payload.id]: '',
       }));
+      setSelectedReviewId((current) => (current === payload.id ? null : current));
     },
     onError: (error: unknown) => {
       const apiError = error as { response?: { data?: { message?: string } } };
@@ -42,6 +227,10 @@ export default function CommitteeApprovalPage() {
   });
 
   const items = queueQuery.data?.data?.items || [];
+  const selectedItem = useMemo(
+    () => items.find((item) => item.id === selectedReviewId) || null,
+    [items, selectedReviewId],
+  );
   const stats = useMemo(
     () => ({
       total: items.length,
@@ -84,11 +273,11 @@ export default function CommitteeApprovalPage() {
         <div className="flex items-center justify-between gap-3">
           <div>
             <h2 className="text-lg font-semibold text-slate-900">Daftar Menunggu Persetujuan</h2>
-            <p className="mt-1 text-sm text-slate-500">Approval hanya memproses kegiatan pada tahun ajaran aktif.</p>
+            <p className="mt-1 text-sm text-slate-500">Queue review dirapikan dalam tabel agar lebih cepat dipindai.</p>
           </div>
         </div>
 
-        <div className="mt-5 space-y-4">
+        <div className="mt-5">
           {queueQuery.isLoading ? (
             <div className="flex min-h-[220px] items-center justify-center">
               <Loader2 className="h-6 w-6 animate-spin text-blue-600" />
@@ -98,118 +287,60 @@ export default function CommitteeApprovalPage() {
               Tidak ada pengajuan kepanitiaan yang menunggu review.
             </div>
           ) : (
-            items.map((item) => {
-              const feedback = feedbackById[item.id] || '';
-              const approvingThis = decisionMutation.isPending && decisionMutation.variables?.id === item.id;
-
-              return (
-                <article key={`principal-committee-${item.id}`} className="rounded-2xl border border-slate-200 bg-slate-50/70 p-5">
-                  <div className="flex flex-wrap items-start justify-between gap-3">
-                    <div>
-                      <div className="flex flex-wrap items-center gap-2">
-                        <h3 className="text-lg font-semibold text-slate-900">{item.title}</h3>
-                        <span className={`inline-flex rounded-full px-3 py-1 text-xs font-semibold ${getCommitteeStatusTone(item.status)}`}>
-                          {COMMITTEE_STATUS_LABELS[item.status]}
-                        </span>
-                      </div>
-                      <p className="mt-1 text-sm text-slate-500">
-                        {item.code} • {item.programLabel || item.programCode || 'Tanpa program ujian khusus'}
-                      </p>
-                    </div>
-                    <div className="text-right text-xs text-slate-500">
-                      <div>Diajukan {formatCommitteeDateTime(item.updatedAt)}</div>
-                      <div>Pengusul: {item.requestedBy.name}</div>
-                    </div>
-                  </div>
-
-                  {item.description ? <p className="mt-4 text-sm leading-6 text-slate-600">{item.description}</p> : null}
-
-                  <div className="mt-4 grid gap-3 md:grid-cols-3">
-                    <div className="rounded-xl border border-white bg-white px-4 py-3">
-                      <div className="text-xs uppercase tracking-wide text-slate-500">Anggota Saat Ini</div>
-                      <div className="mt-1 text-lg font-bold text-slate-900">{item.counts.members}</div>
-                    </div>
-                    <div className="rounded-xl border border-white bg-white px-4 py-3">
-                      <div className="text-xs uppercase tracking-wide text-slate-500">Usulan Feature Grant</div>
-                      <div className="mt-1 text-lg font-bold text-slate-900">{item.counts.grantedFeatures}</div>
-                    </div>
-                    <div className="rounded-xl border border-white bg-white px-4 py-3">
-                      <div className="text-xs uppercase tracking-wide text-slate-500">Pengusul</div>
-                      <div className="mt-1 text-sm font-semibold text-slate-900">{item.requestedBy.name}</div>
-                    </div>
-                  </div>
-
-                  <div className="mt-4 rounded-xl border border-slate-200 bg-white px-4 py-4">
-                    <div className="flex items-center gap-2 text-sm font-semibold text-slate-900">
-                      <Users className="h-4 w-4 text-slate-500" />
-                      Preview Susunan Panitia
-                    </div>
-                    {item.membersPreview.length === 0 ? (
-                      <div className="mt-3 text-sm text-amber-700">
-                        Draft ini belum memiliki anggota panitia. Sebaiknya dikembalikan agar pengusul melengkapi susunan panitia
-                        terlebih dahulu.
-                      </div>
-                    ) : (
-                      <div className="mt-3 grid gap-2 md:grid-cols-2 xl:grid-cols-3">
-                        {item.membersPreview.map((member) => (
-                          <div
-                            key={`principal-committee-member-${item.id}-${member.id}`}
-                            className="rounded-xl border border-slate-200 bg-slate-50 px-3 py-3"
-                          >
-                            <div className="text-sm font-semibold text-slate-900">{member.memberLabel}</div>
-                            <div className="mt-1 text-xs text-slate-500">
-                              {formatCommitteeMemberMeta(member.memberTypeLabel, member.memberDetail)}
-                            </div>
-                            <div className="mt-2 text-xs font-medium text-slate-700">{member.assignmentRole}</div>
+            <div className="overflow-hidden rounded-2xl border border-slate-200">
+              <div className="overflow-x-auto">
+                <table className="min-w-full divide-y divide-slate-200 text-sm">
+                  <thead className="bg-slate-50 text-left text-xs uppercase tracking-wide text-slate-500">
+                    <tr>
+                      <th className="px-4 py-3 font-semibold">Kegiatan</th>
+                      <th className="px-4 py-3 font-semibold">Program</th>
+                      <th className="px-4 py-3 font-semibold">Pengusul</th>
+                      <th className="px-4 py-3 font-semibold">Anggota</th>
+                      <th className="px-4 py-3 font-semibold">Fitur Unik</th>
+                      <th className="px-4 py-3 font-semibold">Diajukan</th>
+                      <th className="px-4 py-3 font-semibold">Status</th>
+                      <th className="px-4 py-3 text-right font-semibold">Aksi</th>
+                    </tr>
+                  </thead>
+                  <tbody className="divide-y divide-slate-100 bg-white">
+                    {items.map((item) => (
+                      <tr key={`principal-committee-${item.id}`} className="align-top">
+                        <td className="px-4 py-4">
+                          <div className="font-semibold text-slate-900">{item.title}</div>
+                          <div className="mt-1 text-xs text-slate-500">{item.code}</div>
+                        </td>
+                        <td className="px-4 py-4 text-slate-600">
+                          {item.programLabel || item.programCode || 'Tanpa program khusus'}
+                        </td>
+                        <td className="px-4 py-4">
+                          <div className="font-medium text-slate-900">{item.requestedBy.name}</div>
+                          <div className="mt-1 text-xs text-slate-500">{item.requestedBy.username}</div>
+                        </td>
+                        <td className="px-4 py-4 text-slate-700">{item.counts.members}</td>
+                        <td className="px-4 py-4 text-slate-700">{item.counts.grantedFeatures}</td>
+                        <td className="px-4 py-4 text-slate-600">{formatCommitteeDateTime(item.updatedAt)}</td>
+                        <td className="px-4 py-4">
+                          <span className={`inline-flex rounded-full px-3 py-1 text-xs font-semibold ${getCommitteeStatusTone(item.status)}`}>
+                            {COMMITTEE_STATUS_LABELS[item.status]}
+                          </span>
+                        </td>
+                        <td className="px-4 py-4">
+                          <div className="flex justify-end">
+                            <button
+                              type="button"
+                              onClick={() => setSelectedReviewId(item.id)}
+                              className="inline-flex items-center gap-2 rounded-lg border border-slate-300 bg-white px-3 py-2 text-xs font-semibold text-slate-700 hover:bg-slate-50"
+                            >
+                              Review
+                            </button>
                           </div>
-                        ))}
-                      </div>
-                    )}
-                  </div>
-
-                  <div className="mt-4">
-                    <label htmlFor={`committee-feedback-${item.id}`} className="mb-1 block text-sm font-medium text-slate-700">
-                      Catatan Kepala Sekolah
-                    </label>
-                    <textarea
-                      id={`committee-feedback-${item.id}`}
-                      name={`committee-feedback-${item.id}`}
-                      rows={4}
-                      value={feedback}
-                      onChange={(event) =>
-                        setFeedbackById((current) => ({
-                          ...current,
-                          [item.id]: event.target.value,
-                        }))
-                      }
-                      className="w-full rounded-xl border border-slate-300 bg-white px-3 py-2.5 text-sm leading-6 focus:border-blue-500 focus:outline-none"
-                      placeholder="Tambahkan catatan approval atau alasan revisi bila diperlukan."
-                    />
-                  </div>
-
-                  <div className="mt-5 flex flex-wrap gap-3">
-                    <button
-                      type="button"
-                      onClick={() => decisionMutation.mutate({ id: item.id, approved: true })}
-                      disabled={approvingThis}
-                      className="inline-flex items-center gap-2 rounded-xl bg-emerald-600 px-4 py-2.5 text-sm font-semibold text-white hover:bg-emerald-700 disabled:cursor-not-allowed disabled:bg-emerald-300"
-                    >
-                      {approvingThis ? <Loader2 className="h-4 w-4 animate-spin" /> : <CheckCircle2 className="h-4 w-4" />}
-                      Setujui & Teruskan ke TU
-                    </button>
-                    <button
-                      type="button"
-                      onClick={() => decisionMutation.mutate({ id: item.id, approved: false })}
-                      disabled={approvingThis}
-                      className="inline-flex items-center gap-2 rounded-xl border border-rose-300 bg-white px-4 py-2.5 text-sm font-semibold text-rose-700 hover:bg-rose-50 disabled:cursor-not-allowed disabled:border-rose-200 disabled:text-rose-300"
-                    >
-                      <XCircle className="h-4 w-4" />
-                      Tolak / Kembalikan
-                    </button>
-                  </div>
-                </article>
-              );
-            })
+                        </td>
+                      </tr>
+                    ))}
+                  </tbody>
+                </table>
+              </div>
+            </div>
           )}
         </div>
       </div>
@@ -231,6 +362,32 @@ export default function CommitteeApprovalPage() {
           </div>
         </div>
       </div>
+
+      {selectedItem ? (
+        <CommitteeReviewModal
+          item={selectedItem}
+          feedback={feedbackById[selectedItem.id] || ''}
+          onFeedbackChange={(value) =>
+            setFeedbackById((current) => ({
+              ...current,
+              [selectedItem.id]: value,
+            }))
+          }
+          approvingApprove={
+            decisionMutation.isPending &&
+            decisionMutation.variables?.id === selectedItem.id &&
+            Boolean(decisionMutation.variables?.approved)
+          }
+          approvingReject={
+            decisionMutation.isPending &&
+            decisionMutation.variables?.id === selectedItem.id &&
+            decisionMutation.variables?.approved === false
+          }
+          onApprove={() => decisionMutation.mutate({ id: selectedItem.id, approved: true })}
+          onReject={() => decisionMutation.mutate({ id: selectedItem.id, approved: false })}
+          onClose={() => setSelectedReviewId(null)}
+        />
+      ) : null}
     </div>
   );
 }

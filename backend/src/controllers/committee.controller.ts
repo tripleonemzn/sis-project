@@ -466,6 +466,16 @@ function mapCommitteeAssignmentForResponse(assignment: CommitteeAssignmentWithDe
   };
 }
 
+function countGrantedFeatureDefinitions(assignments: CommitteeAssignmentWithDetail[]) {
+  const uniqueFeatureCodes = new Set<CommitteeFeatureCode>();
+  assignments.forEach((assignment) => {
+    assignment.featureGrants.forEach((feature) => {
+      uniqueFeatureCodes.add(feature.featureCode);
+    });
+  });
+  return uniqueFeatureCodes.size;
+}
+
 function mapCommitteeEventSummary(
   event: CommitteeEventWithDetail,
   actorId: number,
@@ -503,7 +513,7 @@ function mapCommitteeEventSummary(
     },
     counts: {
       members: activeAssignments.length,
-      grantedFeatures: activeAssignments.reduce((total, assignment) => total + assignment.featureGrants.length, 0),
+      grantedFeatures: countGrantedFeatureDefinitions(activeAssignments),
     },
     isRequester: event.requestedById === actorId,
     isAssigned: Boolean(myAssignment),

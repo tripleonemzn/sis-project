@@ -5,6 +5,7 @@ import {
   Briefcase,
   ClipboardList,
   Loader2,
+  Pencil,
   PlusCircle,
   Save,
   Send,
@@ -206,7 +207,7 @@ function EventCard({
           <div className="mt-1 text-lg font-bold text-slate-900">{event.counts.members}</div>
         </div>
         <div className="rounded-xl border border-slate-200 bg-slate-50 px-4 py-3">
-          <div className="text-xs uppercase tracking-wide text-slate-500">Usulan Feature Grant</div>
+          <div className="text-xs uppercase tracking-wide text-slate-500">Fitur Workspace Unik</div>
           <div className="mt-1 text-lg font-bold text-slate-900">{event.counts.grantedFeatures}</div>
         </div>
         <div className="rounded-xl border border-slate-200 bg-slate-50 px-4 py-3">
@@ -614,74 +615,86 @@ function CommitteeAssignmentModal({
                     </div>
                     <div className="text-right text-xs text-slate-500">
                       <div>{detail.counts.members} anggota</div>
-                      <div>{detail.counts.grantedFeatures} usulan fitur</div>
+                      <div>{detail.counts.grantedFeatures} fitur workspace unik</div>
                     </div>
                   </div>
 
-                  <div className="mt-5 space-y-3">
+                  <div className="mt-5">
                     {detail.assignments.length === 0 ? (
                       <div className="rounded-xl border border-dashed border-slate-300 px-4 py-6 text-sm text-slate-500">
                         Belum ada anggota panitia pada draft ini.
                       </div>
                     ) : (
-                      detail.assignments.map((assignment) => (
-                        <article
-                          key={`committee-assignment-${event.id}-${assignment.id}`}
-                          className="rounded-2xl border border-slate-200 bg-slate-50/70 p-4"
-                        >
-                          <div className="flex flex-wrap items-start justify-between gap-3">
-                            <div>
-                              <div className="text-sm font-semibold text-slate-900">{assignment.memberLabel}</div>
-                              <div className="mt-1 text-xs text-slate-500">
-                                {formatCommitteeMemberMeta(assignment.memberTypeLabel, assignment.memberDetail)}
-                              </div>
-                              <div className="mt-2 text-sm text-slate-700">{assignment.assignmentRole}</div>
-                            </div>
-                            <div className="flex flex-wrap gap-2">
-                              <button
-                                type="button"
-                                onClick={() => onStartEdit(assignment)}
-                                className="inline-flex items-center gap-2 rounded-lg border border-slate-300 bg-white px-3 py-2 text-xs font-semibold text-slate-700 hover:bg-slate-50"
-                              >
-                                <Save className="h-3.5 w-3.5" />
-                                Edit
-                              </button>
-                              <button
-                                type="button"
-                                onClick={() => onDelete(assignment.id)}
-                                disabled={deleting}
-                                className="inline-flex items-center gap-2 rounded-lg border border-rose-300 bg-white px-3 py-2 text-xs font-semibold text-rose-700 hover:bg-rose-50 disabled:cursor-not-allowed disabled:border-rose-200 disabled:text-rose-300"
-                              >
-                                <Trash2 className="h-3.5 w-3.5" />
-                                Hapus
-                              </button>
-                            </div>
-                          </div>
-
-                          {assignment.notes ? (
-                            <div className="mt-3 rounded-xl border border-white bg-white px-3 py-2 text-sm text-slate-600">
-                              {assignment.notes}
-                            </div>
-                          ) : null}
-
-                          <div className="mt-3 flex flex-wrap gap-2">
-                            {assignment.featureGrants.length === 0 ? (
-                              <span className="rounded-full border border-slate-200 bg-white px-3 py-1 text-xs font-medium text-slate-500">
-                                Tanpa usulan feature workspace
-                              </span>
-                            ) : (
-                              assignment.featureGrants.map((feature) => (
-                                <span
-                                  key={`committee-feature-grant-${event.id}-${assignment.id}-${feature.id}`}
-                                  className="rounded-full border border-emerald-200 bg-emerald-50 px-3 py-1 text-xs font-semibold text-emerald-700"
-                                >
-                                  {feature.label}
-                                </span>
-                              ))
-                            )}
-                          </div>
-                        </article>
-                      ))
+                      <div className="overflow-hidden rounded-2xl border border-slate-200">
+                        <div className="overflow-x-auto">
+                          <table className="min-w-full divide-y divide-slate-200 text-sm">
+                            <thead className="bg-slate-50 text-left text-xs uppercase tracking-wide text-slate-500">
+                              <tr>
+                                <th className="px-4 py-3 font-semibold">Anggota</th>
+                                <th className="px-4 py-3 font-semibold">Peran</th>
+                                <th className="px-4 py-3 font-semibold">Catatan</th>
+                                <th className="px-4 py-3 font-semibold">Usulan Feature</th>
+                                <th className="px-4 py-3 text-right font-semibold">Aksi</th>
+                              </tr>
+                            </thead>
+                            <tbody className="divide-y divide-slate-100 bg-white">
+                              {detail.assignments.map((assignment) => (
+                                <tr key={`committee-assignment-${event.id}-${assignment.id}`} className="align-top">
+                                  <td className="px-4 py-4">
+                                    <div className="font-semibold text-slate-900">{assignment.memberLabel}</div>
+                                    <div className="mt-1 text-xs text-slate-500">
+                                      {formatCommitteeMemberMeta(assignment.memberTypeLabel, assignment.memberDetail)}
+                                    </div>
+                                  </td>
+                                  <td className="px-4 py-4 text-slate-700">{assignment.assignmentRole}</td>
+                                  <td className="px-4 py-4 text-slate-600">{assignment.notes || '-'}</td>
+                                  <td className="px-4 py-4">
+                                    {assignment.featureGrants.length === 0 ? (
+                                      <span className="rounded-full border border-slate-200 bg-slate-50 px-3 py-1 text-xs font-medium text-slate-500">
+                                        Tanpa usulan feature workspace
+                                      </span>
+                                    ) : (
+                                      <div className="flex flex-wrap gap-2">
+                                        {assignment.featureGrants.map((feature) => (
+                                          <span
+                                            key={`committee-feature-grant-${event.id}-${assignment.id}-${feature.id}`}
+                                            className="rounded-full border border-emerald-200 bg-emerald-50 px-3 py-1 text-xs font-semibold text-emerald-700"
+                                          >
+                                            {feature.label}
+                                          </span>
+                                        ))}
+                                      </div>
+                                    )}
+                                  </td>
+                                  <td className="px-4 py-4">
+                                    <div className="flex justify-end gap-2">
+                                      <button
+                                        type="button"
+                                        onClick={() => onStartEdit(assignment)}
+                                        className="inline-flex h-9 w-9 items-center justify-center rounded-lg border border-slate-300 bg-white text-slate-700 hover:bg-slate-50"
+                                        aria-label="Edit anggota panitia"
+                                        title="Edit anggota"
+                                      >
+                                        <Pencil className="h-4 w-4" />
+                                      </button>
+                                      <button
+                                        type="button"
+                                        onClick={() => onDelete(assignment.id)}
+                                        disabled={deleting}
+                                        className="inline-flex h-9 w-9 items-center justify-center rounded-lg border border-rose-300 bg-white text-rose-700 hover:bg-rose-50 disabled:cursor-not-allowed disabled:border-rose-200 disabled:text-rose-300"
+                                        aria-label="Hapus anggota panitia"
+                                        title="Hapus anggota"
+                                      >
+                                        <Trash2 className="h-4 w-4" />
+                                      </button>
+                                    </div>
+                                  </td>
+                                </tr>
+                              ))}
+                            </tbody>
+                          </table>
+                        </div>
+                      </div>
                     )}
                   </div>
                 </div>

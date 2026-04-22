@@ -6,6 +6,7 @@ import {
   ClipboardList,
   FileBadge2,
   Loader2,
+  Pencil,
   PlusCircle,
   Save,
   Trash2,
@@ -764,19 +765,21 @@ export default function CommitteeHeadTuPage() {
                               <button
                                 type="button"
                                 onClick={() => handleStartEditAssignment(assignment)}
-                                className="inline-flex items-center gap-2 rounded-lg border border-slate-300 bg-white px-3 py-2 text-xs font-semibold text-slate-700 hover:bg-slate-50"
+                                className="inline-flex h-9 w-9 items-center justify-center rounded-lg border border-slate-300 bg-white text-slate-700 hover:bg-slate-50"
+                                aria-label="Edit anggota panitia"
+                                title="Edit anggota"
                               >
-                                <Save className="h-3.5 w-3.5" />
-                                Edit
+                                <Pencil className="h-4 w-4" />
                               </button>
                               <button
                                 type="button"
                                 onClick={() => handleDeleteAssignment(assignment.id)}
                                 disabled={deleteAssignmentMutation.isPending}
-                                className="inline-flex items-center gap-2 rounded-lg border border-rose-300 bg-white px-3 py-2 text-xs font-semibold text-rose-700 hover:bg-rose-50 disabled:cursor-not-allowed disabled:border-rose-200 disabled:text-rose-300"
+                                className="inline-flex h-9 w-9 items-center justify-center rounded-lg border border-rose-300 bg-white text-rose-700 hover:bg-rose-50 disabled:cursor-not-allowed disabled:border-rose-200 disabled:text-rose-300"
+                                aria-label="Hapus anggota panitia"
+                                title="Hapus anggota"
                               >
-                                <Trash2 className="h-3.5 w-3.5" />
-                                Hapus
+                                <Trash2 className="h-4 w-4" />
                               </button>
                             </div>
                           </div>
