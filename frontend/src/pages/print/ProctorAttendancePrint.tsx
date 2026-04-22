@@ -3,11 +3,7 @@ import { useQuery } from '@tanstack/react-query';
 import { useNavigate, useParams } from 'react-router-dom';
 import { ArrowLeft, Printer, RefreshCw } from 'lucide-react';
 import api from '../../services/api';
-import {
-  buildStandardSchoolDocumentHeaderHtml,
-  StandardSchoolDocumentHeader,
-  type StandardSchoolDocumentHeaderSnapshot,
-} from './shared/StandardSchoolDocumentHeader';
+import { type StandardSchoolDocumentHeaderSnapshot } from './shared/StandardSchoolDocumentHeader';
 
 type ProctorAttendanceDocumentSnapshot = {
   documentHeader: StandardSchoolDocumentHeaderSnapshot;
@@ -213,7 +209,7 @@ function buildProctorAttendancePrintHtml(params: {
           box-sizing: border-box;
         }
         .document-body {
-          padding: 0 0 24mm;
+          padding: 0 0 18mm;
           box-sizing: border-box;
         }
         .header-line {
@@ -240,10 +236,10 @@ function buildProctorAttendancePrintHtml(params: {
         }
         .detail-grid {
           --detail-label-width: ${layout.detailLabelWidth};
-          margin-top: 18px;
+          margin-top: 14px;
           display: grid;
           grid-template-columns: 1fr 1fr;
-          gap: 7px 24px;
+          gap: 6px 20px;
           font-size: ${contentFontSize};
           line-height: 1.2;
         }
@@ -256,7 +252,7 @@ function buildProctorAttendancePrintHtml(params: {
           grid-template-columns: var(--detail-label-width) 12px 1fr;
         }
         .count-cards {
-          margin-top: 16px;
+          margin-top: 12px;
           display: grid;
           grid-template-columns: repeat(3, minmax(0, 1fr));
           gap: 8px;
@@ -291,7 +287,7 @@ function buildProctorAttendancePrintHtml(params: {
         }
         table {
           width: 100%;
-          margin-top: 16px;
+          margin-top: 12px;
           border-collapse: collapse;
           font-size: ${tableFontSize};
           table-layout: auto;
@@ -327,7 +323,7 @@ function buildProctorAttendancePrintHtml(params: {
           word-break: break-word;
         }
         .closing-section {
-          margin-top: 16px;
+          margin-top: 12px;
           break-inside: avoid;
           page-break-inside: avoid;
         }
@@ -344,13 +340,13 @@ function buildProctorAttendancePrintHtml(params: {
           font-size: ${contentFontSize};
         }
         .qr-wrap {
-          margin-top: 8px;
+          margin-top: 6px;
           display: flex;
           justify-content: center;
         }
         .qr {
-          width: 96px;
-          height: 96px;
+          width: 84px;
+          height: 84px;
           object-fit: contain;
           border: 1px solid #cbd5e1;
           border-radius: 12px;
@@ -358,7 +354,7 @@ function buildProctorAttendancePrintHtml(params: {
           padding: 8px;
         }
         .signature-name-wrap {
-          margin-top: 8px;
+          margin-top: 6px;
           display: inline-block;
           max-width: 100%;
         }
@@ -397,17 +393,15 @@ function buildProctorAttendancePrintHtml(params: {
     </head>
     <body>
       <div class="sheet">
-        ${buildStandardSchoolDocumentHeaderHtml(snapshot.documentHeader)}
         <div class="document-body">
           <div class="meta-row">
             <div class="meta-text">No. Dokumen: ${escapeHtml(snapshot.documentNumber)}</div>
             <div class="meta-text meta-verify">Diverifikasi melalui QR internal SIS KGB2</div>
           </div>
 
-          <div style="margin-top:10px;text-align:center;">
+          <div style="margin-top:6px;text-align:center;">
             <div class="header-line">${escapeHtml(snapshot.title)}</div>
             <div class="header-line">${escapeHtml(formatExamHeadingLabel(snapshot.examLabel))}</div>
-            <div class="header-line">${escapeHtml(snapshot.schoolName)}</div>
             <div class="header-line">Tahun Ajaran ${escapeHtml(snapshot.academicYearName)}</div>
           </div>
 
@@ -591,7 +585,7 @@ export default function ProctorAttendancePrint() {
             page-break-inside: avoid !important;
           }
           .proctor-attendance-document-body {
-            padding-bottom: 24mm !important;
+            padding-bottom: 18mm !important;
           }
           .proctor-attendance-verify-block {
             position: fixed !important;
@@ -625,14 +619,12 @@ export default function ProctorAttendancePrint() {
       <div
         className="proctor-attendance-shell mx-auto w-full max-w-[1080px] rounded-2xl border border-slate-200 bg-white shadow-sm"
         style={{
-          padding: '1cm',
+          padding: '0.85cm',
           fontSize: contentFontSize,
           boxSizing: 'border-box',
         }}
         data-proctor-attendance-ready="true"
       >
-        <StandardSchoolDocumentHeader header={snapshot.documentHeader} />
-
         <div className="proctor-attendance-document-body" style={{ padding: '0', boxSizing: 'border-box' }}>
           <div className="mt-0.5 flex flex-wrap items-start justify-between gap-4 text-slate-600 italic" style={{ fontSize: noteFontSize }}>
             <div style={{ fontSize: noteFontSize }}>
@@ -643,20 +635,17 @@ export default function ProctorAttendancePrint() {
             </div>
           </div>
 
-          <div className="mt-2.5 text-center">
+          <div className="mt-1.5 text-center">
             <div className="font-semibold tracking-wide text-slate-900" style={{ fontSize: headerFontSize, lineHeight: 1.24 }}>{snapshot.title}</div>
             <div className="mt-1 font-semibold uppercase tracking-wide text-slate-900" style={{ fontSize: headerFontSize, lineHeight: 1.24 }}>
               {formatExamHeadingLabel(snapshot.examLabel)}
-            </div>
-            <div className="mt-1 font-semibold uppercase tracking-wide text-slate-900" style={{ fontSize: headerFontSize, lineHeight: 1.24 }}>
-              {snapshot.schoolName}
             </div>
             <div className="mt-1 font-semibold uppercase tracking-wide text-slate-900" style={{ fontSize: headerFontSize, lineHeight: 1.24 }}>
               Tahun Ajaran {snapshot.academicYearName}
             </div>
           </div>
 
-          <div className="mt-5 grid grid-cols-2 gap-x-6 gap-y-2 text-slate-900" style={{ fontSize: contentFontSize, lineHeight: 1.2 }}>
+          <div className="mt-4 grid grid-cols-2 gap-x-5 gap-y-1.5 text-slate-900" style={{ fontSize: contentFontSize, lineHeight: 1.2 }}>
             <div className="grid gap-1">
               <div className="grid grid-cols-[var(--detail-label-width)_12px_1fr]" style={{ ['--detail-label-width' as string]: layout.detailLabelWidth }}>
                 <div>Mata Pelajaran</div>
@@ -695,7 +684,7 @@ export default function ProctorAttendancePrint() {
             </div>
           </div>
 
-          <div className="mt-4.5 grid grid-cols-3 gap-2">
+          <div className="mt-3.5 grid grid-cols-3 gap-2">
             <div className="rounded-[10px] border border-slate-300 bg-slate-50 px-3 py-2 text-slate-900">
               <div className="uppercase tracking-wide text-slate-500" style={{ fontSize: noteFontSize, lineHeight: 1.1, fontWeight: 700 }}>Peserta Seharusnya</div>
               <div className="mt-1 font-semibold" style={{ fontSize: contentFontSize, lineHeight: 1.1 }}>{snapshot.counts.expectedParticipants}</div>
@@ -710,7 +699,7 @@ export default function ProctorAttendancePrint() {
             </div>
           </div>
 
-          <div className="mt-4.5 overflow-hidden rounded-xl border border-slate-300">
+          <div className="mt-3.5 overflow-hidden rounded-xl border border-slate-300">
             <table className="proctor-attendance-table min-w-full border-collapse text-slate-900" style={{ fontSize: tableFontSize, tableLayout: 'auto' }}>
               <colgroup>
                 <col style={{ width: '5ch' }} />
@@ -763,18 +752,18 @@ export default function ProctorAttendancePrint() {
             </table>
           </div>
 
-          <div className="proctor-attendance-closing-section mt-4">
+          <div className="proctor-attendance-closing-section mt-3">
             <div className="flex justify-end">
               <div className="w-full max-w-[300px] text-center text-slate-900" style={{ fontSize: contentFontSize }}>
                 <div className="font-medium" style={{ fontSize: contentFontSize }}>Pengawas,</div>
-                <div className="mt-2 flex justify-center">
+                <div className="mt-1.5 flex justify-center">
                   <img
                     src={verificationQrDataUrl}
                     alt="QR Verifikasi Daftar Hadir"
-                    className="proctor-attendance-print-image h-24 w-24 rounded-xl border border-slate-200 bg-white p-2 object-contain"
+                    className="proctor-attendance-print-image h-[84px] w-[84px] rounded-xl border border-slate-200 bg-white p-2 object-contain"
                   />
                 </div>
-                <div className="mt-2 inline-block max-w-full">
+                <div className="mt-1.5 inline-block max-w-full">
                   <div className="font-semibold" style={{ fontSize: contentFontSize }}>{snapshot.proctor.name}</div>
                   <div className="mt-0.5 border-t border-slate-400" />
                 </div>
