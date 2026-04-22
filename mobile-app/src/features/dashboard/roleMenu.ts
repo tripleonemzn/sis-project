@@ -1671,7 +1671,6 @@ function buildTeacherGroups(
       'teacher-exam-bank',
     ]),
   );
-  pushGroup('committee', 'KEPANITIAAN', pickMenus(byKey, ['teacher-committee-events']));
 
   if (isHomeroomTeacher(user)) {
     pushGroup(
@@ -1871,6 +1870,7 @@ function buildTeacherGroups(
     ]);
   }
 
+  pushGroup('committee', 'KEPANITIAAN', pickMenus(byKey, ['teacher-committee-events']));
   pushGroup('settings', 'PENGATURAN', pickMenus(byKey, ['teacher-profile', 'teacher-accessibility']));
 
   return groups;

@@ -461,6 +461,13 @@ export const getMenuItems = (
       };
     });
 
+    const committeeMenuItem: MenuItem = {
+      label: 'KEPANITIAAN',
+      path: '/teacher/committees-group',
+      icon: Briefcase,
+      children: [{ label: 'Kegiatan Panitia', path: '/teacher/committees', icon: Briefcase }],
+    };
+
     const items: MenuItem[] = [
       { label: 'Dashboard', path: '/teacher', icon: LayoutDashboard },
       { label: 'Email', path: '/email', icon: Mail },
@@ -501,15 +508,6 @@ export const getMenuItems = (
           { label: 'Bank Soal', path: '/teacher/exams/bank', icon: Database },
         ]
       },
-      {
-        label: 'KEPANITIAAN',
-        path: '/teacher/committees-group',
-        icon: Briefcase,
-        children: [
-          { label: 'Kegiatan Panitia', path: '/teacher/committees', icon: Briefcase },
-        ],
-      },
-
     ];
 
     // Menu Khusus Wali Kelas
@@ -788,6 +786,8 @@ export const getMenuItems = (
     if (extracurricularAdvisorMenus.length > 0) {
       items.push(...extracurricularAdvisorMenus);
     }
+
+    items.push(committeeMenuItem);
 
     items.push({
       label: 'PENGATURAN',
