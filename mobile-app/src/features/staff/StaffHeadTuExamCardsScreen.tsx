@@ -31,9 +31,11 @@ type StatusFilter =
   | 'PUBLISHED'
   | 'READY'
   | 'WARNING_ACADEMIC'
+  | 'BLOCKED_MANUAL'
   | 'BLOCKED_KKM'
   | 'BLOCKED_FINANCE'
-  | 'REVIEW_REQUIRED';
+  | 'REVIEW_REQUIRED'
+  | 'REVIEW_SYNC';
 
 type ExamCardScreenMode = 'HEAD_TU' | 'CURRICULUM';
 
@@ -83,7 +85,13 @@ function normalizeProgramToken(value: unknown) {
   return String(value || '')
     .trim()
     .toUpperCase()
+    .replace(/QUIZ/g, 'FORMATIF')
     .replace(/[^A-Z0-9]+/g, '');
+}
+
+function isAcademicWarningOnlyProgram(value: unknown) {
+  const normalized = normalizeProgramToken(value);
+  return normalized === 'SBTS' || normalized === 'MIDTERM' || normalized === 'SUMATIFBERSAMATENGAHSEMESTER';
 }
 
 function getProgramTabIconName(programCode: string): ComponentProps<typeof Feather>['name'] {
@@ -374,8 +382,12 @@ function matchesStatusFilter(filter: StatusFilter, row: ExamCardOverviewRow) {
   if (filter === 'PUBLISHED') return row.status.category === 'PUBLISHED';
   if (filter === 'READY') return row.status.category === 'READY';
   if (filter === 'WARNING_ACADEMIC') return Boolean(row.eligibility.academicClearance.warningOnly);
+  if (filter === 'BLOCKED_MANUAL') return row.status.code === 'REVIEW_MANUAL_BLOCK';
   if (filter === 'BLOCKED_KKM') return row.status.category === 'BLOCKED_KKM';
   if (filter === 'BLOCKED_FINANCE') return row.status.category === 'BLOCKED_FINANCE';
+  if (filter === 'REVIEW_SYNC') {
+    return ['REVIEW_PLACEMENT_SYNC', 'REVIEW_STALE_CARD', 'REVIEW_DATA_SYNC'].includes(row.status.code);
+  }
   return row.status.category === 'REVIEW_REQUIRED';
 }
 
@@ -580,6 +592,23 @@ export function StaffHeadTuExamCardsScreen({
       }),
   });
 
+  const isAcademicWarningOnlyContext = useMemo(
+    () => isAcademicWarningOnlyProgram(overviewQuery.data?.program.code || activeProgramCode),
+    [activeProgramCode, overviewQuery.data?.program.code],
+  );
+
+  useEffect(() => {
+    if (isAcademicWarningOnlyContext) {
+      if (statusFilter === 'BLOCKED_KKM' || statusFilter === 'REVIEW_REQUIRED') {
+        setStatusFilter('ALL');
+      }
+      return;
+    }
+    if (statusFilter === 'BLOCKED_MANUAL' || statusFilter === 'REVIEW_SYNC') {
+      setStatusFilter('ALL');
+    }
+  }, [isAcademicWarningOnlyContext, statusFilter]);
+
   const generateMutation = useMutation({
     mutationFn: () =>
       examCardApi.generate({
@@ -635,6 +664,11 @@ export function StaffHeadTuExamCardsScreen({
         .filter((payload): payload is ExamGeneratedCardPayload => Boolean(payload)),
     [filteredRows],
   );
+
+  const reviewSyncRequired =
+    (overviewQuery.data?.summary.statusCounts.needsPlacementSync || 0) +
+    (overviewQuery.data?.summary.statusCounts.staleCard || 0) +
+    (overviewQuery.data?.summary.statusCounts.needsDataSync || 0);
 
   const openPreview = (cards: ExamGeneratedCardPayload[], title: string) => {
     if (!cards.length) return;
@@ -709,17 +743,31 @@ export function StaffHeadTuExamCardsScreen({
         <SummaryCard
           title="Warning Akademik"
           value={String(overviewQuery.data?.summary.statusCounts.warningAcademic || 0)}
-          subtitle="Boleh ikut SBTS, tetapi warning akademik tetap ditandai"
+          subtitle={
+            isAcademicWarningOnlyContext
+              ? 'Untuk SBTS, nilai di bawah KKM atau belum lengkap tetap jadi warning, bukan blocker'
+              : 'Warning akademik tetap ditampilkan untuk monitoring kelayakan siswa'
+          }
           iconName="alert-circle"
           accentColor="#b91c1c"
         />
-        <SummaryCard
-          title="Blocked KKM"
-          value={String(overviewQuery.data?.summary.statusCounts.blockedKkm || 0)}
-          subtitle="Tidak bisa dapat kartu karena nilai masih di bawah KKM"
-          iconName="alert-triangle"
-          accentColor="#c2410c"
-        />
+        {isAcademicWarningOnlyContext ? (
+          <SummaryCard
+            title="Blocked Manual"
+            value={String(overviewQuery.data?.summary.statusCounts.blockedManual || 0)}
+            subtitle="Siswa diblokir manual oleh operator atau wali kelas dan perlu tindak lanjut manual"
+            iconName="slash"
+            accentColor="#6d28d9"
+          />
+        ) : (
+          <SummaryCard
+            title="Blocked KKM"
+            value={String(overviewQuery.data?.summary.statusCounts.blockedKkm || 0)}
+            subtitle="Tidak bisa dapat kartu karena nilai masih di bawah KKM"
+            iconName="alert-triangle"
+            accentColor="#c2410c"
+          />
+        )}
         <SummaryCard
           title="Blocked Finance"
           value={String(overviewQuery.data?.summary.statusCounts.blockedFinance || 0)}
@@ -728,11 +776,21 @@ export function StaffHeadTuExamCardsScreen({
           accentColor="#c2410c"
         />
         <SummaryCard
-          title="Perlu Review Data"
-          value={String(overviewQuery.data?.summary.statusCounts.reviewRequired || 0)}
-          subtitle={`Manual ${overviewQuery.data?.summary.statusCounts.blockedManual || 0} • penempatan ${
-            overviewQuery.data?.summary.statusCounts.needsPlacementSync || 0
-          } • stale ${overviewQuery.data?.summary.statusCounts.staleCard || 0}`}
+          title={isAcademicWarningOnlyContext ? 'Review Sinkronisasi' : 'Perlu Review Data'}
+          value={String(
+            isAcademicWarningOnlyContext
+              ? reviewSyncRequired
+              : overviewQuery.data?.summary.statusCounts.reviewRequired || 0,
+          )}
+          subtitle={
+            isAcademicWarningOnlyContext
+              ? `Penempatan ${overviewQuery.data?.summary.statusCounts.needsPlacementSync || 0} • stale ${
+                  overviewQuery.data?.summary.statusCounts.staleCard || 0
+                } • data lain ${overviewQuery.data?.summary.statusCounts.needsDataSync || 0}`
+              : `Manual ${overviewQuery.data?.summary.statusCounts.blockedManual || 0} • penempatan ${
+                  overviewQuery.data?.summary.statusCounts.needsPlacementSync || 0
+                } • stale ${overviewQuery.data?.summary.statusCounts.staleCard || 0}`
+          }
           iconName="shield"
           accentColor="#475569"
         />
@@ -826,15 +884,27 @@ export function StaffHeadTuExamCardsScreen({
         <MobileSelectField
           label="Filter Status"
           value={statusFilter}
-          options={[
-            { value: 'ALL', label: 'Semua Status' },
-            { value: 'PUBLISHED', label: 'Sudah Dipublikasikan' },
-            { value: 'READY', label: 'Siap Digenerate' },
-            { value: 'WARNING_ACADEMIC', label: 'Warning Akademik' },
-            { value: 'BLOCKED_KKM', label: 'Blocked KKM' },
-            { value: 'BLOCKED_FINANCE', label: 'Blocked Finance' },
-            { value: 'REVIEW_REQUIRED', label: 'Perlu Review Data' },
-          ]}
+          options={
+            isAcademicWarningOnlyContext
+              ? [
+                  { value: 'ALL', label: 'Semua Status' },
+                  { value: 'PUBLISHED', label: 'Sudah Dipublikasikan' },
+                  { value: 'READY', label: 'Siap Digenerate' },
+                  { value: 'WARNING_ACADEMIC', label: 'Warning Akademik' },
+                  { value: 'BLOCKED_MANUAL', label: 'Blocked Manual' },
+                  { value: 'BLOCKED_FINANCE', label: 'Blocked Finance' },
+                  { value: 'REVIEW_SYNC', label: 'Review Sinkronisasi' },
+                ]
+              : [
+                  { value: 'ALL', label: 'Semua Status' },
+                  { value: 'PUBLISHED', label: 'Sudah Dipublikasikan' },
+                  { value: 'READY', label: 'Siap Digenerate' },
+                  { value: 'WARNING_ACADEMIC', label: 'Warning Akademik' },
+                  { value: 'BLOCKED_KKM', label: 'Blocked KKM' },
+                  { value: 'BLOCKED_FINANCE', label: 'Blocked Finance' },
+                  { value: 'REVIEW_REQUIRED', label: 'Perlu Review Data' },
+                ]
+          }
           onChange={(value) => setStatusFilter(value as StatusFilter)}
           placeholder="Pilih status"
         />

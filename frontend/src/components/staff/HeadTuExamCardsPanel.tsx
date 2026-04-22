@@ -31,9 +31,11 @@ type StatusFilter =
   | 'PUBLISHED'
   | 'READY'
   | 'WARNING_ACADEMIC'
+  | 'BLOCKED_MANUAL'
   | 'BLOCKED_KKM'
   | 'BLOCKED_FINANCE'
-  | 'REVIEW_REQUIRED';
+  | 'REVIEW_REQUIRED'
+  | 'REVIEW_SYNC';
 
 function formatDateTime(value?: string | null) {
   if (!value) return '-';
@@ -82,6 +84,25 @@ function formatDateInputValue(value: Date) {
   const month = String(value.getMonth() + 1).padStart(2, '0');
   const day = String(value.getDate()).padStart(2, '0');
   return `${year}-${month}-${day}`;
+}
+
+function normalizeProgramToken(value: unknown) {
+  return String(value || '')
+    .trim()
+    .toUpperCase()
+    .replace(/QUIZ/g, 'FORMATIF')
+    .replace(/[^A-Z0-9]+/g, '_')
+    .replace(/_+/g, '_')
+    .replace(/^_+|_+$/g, '');
+}
+
+function isAcademicWarningOnlyProgram(value: unknown) {
+  const normalized = normalizeProgramToken(value);
+  return (
+    normalized === 'SBTS' ||
+    normalized === 'MIDTERM' ||
+    normalized === 'SUMATIF_BERSAMA_TENGAH_SEMESTER'
+  );
 }
 
 function printHtmlDocument(title: string, htmlDocument: string) {
@@ -453,8 +474,12 @@ function matchesStatusFilter(filter: StatusFilter, row: ExamCardOverviewRow) {
   if (filter === 'PUBLISHED') return row.status.category === 'PUBLISHED';
   if (filter === 'READY') return row.status.category === 'READY';
   if (filter === 'WARNING_ACADEMIC') return Boolean(row.eligibility.academicClearance.warningOnly);
+  if (filter === 'BLOCKED_MANUAL') return row.status.code === 'REVIEW_MANUAL_BLOCK';
   if (filter === 'BLOCKED_KKM') return row.status.category === 'BLOCKED_KKM';
   if (filter === 'BLOCKED_FINANCE') return row.status.category === 'BLOCKED_FINANCE';
+  if (filter === 'REVIEW_SYNC') {
+    return ['REVIEW_PLACEMENT_SYNC', 'REVIEW_STALE_CARD', 'REVIEW_DATA_SYNC'].includes(row.status.code);
+  }
   return row.status.category === 'REVIEW_REQUIRED';
 }
 
@@ -605,6 +630,23 @@ export function HeadTuExamCardsPanel({ ownerMode = 'HEAD_TU' }: HeadTuExamCardsP
     },
   });
 
+  const isAcademicWarningOnlyContext = useMemo(
+    () => isAcademicWarningOnlyProgram(overviewQuery.data?.program.code || activeProgram?.code || activeProgramCode),
+    [activeProgram?.code, activeProgramCode, overviewQuery.data?.program.code],
+  );
+
+  useEffect(() => {
+    if (isAcademicWarningOnlyContext) {
+      if (statusFilter === 'BLOCKED_KKM' || statusFilter === 'REVIEW_REQUIRED') {
+        setStatusFilter('ALL');
+      }
+      return;
+    }
+    if (statusFilter === 'BLOCKED_MANUAL' || statusFilter === 'REVIEW_SYNC') {
+      setStatusFilter('ALL');
+    }
+  }, [isAcademicWarningOnlyContext, statusFilter]);
+
   const generateMutation = useMutation({
     mutationFn: () =>
       examCardService.generate({
@@ -649,8 +691,133 @@ export function HeadTuExamCardsPanel({ ownerMode = 'HEAD_TU' }: HeadTuExamCardsP
       needsPlacementSync: overviewQuery.data?.summary.statusCounts.needsPlacementSync || 0,
       staleCard: overviewQuery.data?.summary.statusCounts.staleCard || 0,
       needsDataSync: overviewQuery.data?.summary.statusCounts.needsDataSync || 0,
+      reviewSyncRequired:
+        (overviewQuery.data?.summary.statusCounts.needsPlacementSync || 0) +
+        (overviewQuery.data?.summary.statusCounts.staleCard || 0) +
+        (overviewQuery.data?.summary.statusCounts.needsDataSync || 0),
     }),
     [overviewQuery.data?.summary],
+  );
+
+  const summaryCardItems = useMemo(
+    () => [
+      {
+        key: 'totalStudents',
+        title: 'Peserta Program Ujian',
+        value: summaryCards.totalStudents,
+        description: 'Total siswa yang benar-benar masuk jadwal aktif program ujian ini.',
+        cardClassName: 'rounded-xl border border-blue-100 bg-blue-50 p-4',
+        titleClassName: 'text-xs font-semibold uppercase tracking-wide text-blue-700',
+        valueClassName: 'mt-2 text-2xl font-bold text-blue-900',
+        descriptionClassName: 'mt-1 text-xs text-blue-800/80',
+      },
+      {
+        key: 'publishedActive',
+        title: 'Sudah Dipublikasikan',
+        value: summaryCards.publishedActive,
+        description: 'Kartu digital aktif sudah terbit dan tampil di akun siswa.',
+        cardClassName: 'rounded-xl border border-rose-100 bg-rose-50 p-4',
+        titleClassName: 'text-xs font-semibold uppercase tracking-wide text-rose-700',
+        valueClassName: 'mt-2 text-2xl font-bold text-rose-900',
+        descriptionClassName: 'mt-1 text-xs text-rose-800/80',
+      },
+      {
+        key: 'readyToGenerate',
+        title: 'Siap Digenerate',
+        value: summaryCards.readyToGenerate,
+        description: 'Sudah eligible dan tinggal dipublikasikan lewat generate kartu.',
+        cardClassName: 'rounded-xl border border-emerald-100 bg-emerald-50 p-4',
+        titleClassName: 'text-xs font-semibold uppercase tracking-wide text-emerald-700',
+        valueClassName: 'mt-2 text-2xl font-bold text-emerald-900',
+        descriptionClassName: 'mt-1 text-xs text-emerald-800/80',
+      },
+      {
+        key: 'warningAcademic',
+        title: 'Warning Akademik',
+        value: summaryCards.warningAcademic,
+        description: isAcademicWarningOnlyContext
+          ? 'Untuk SBTS, nilai di bawah KKM atau nilai belum lengkap tetap ditandai sebagai warning, bukan blocker.'
+          : 'Warning akademik tetap ditampilkan untuk monitoring kelayakan siswa.',
+        cardClassName: 'rounded-xl border border-red-100 bg-red-50 p-4',
+        titleClassName: 'text-xs font-semibold uppercase tracking-wide text-red-700',
+        valueClassName: 'mt-2 text-2xl font-bold text-red-900',
+        descriptionClassName: 'mt-1 text-xs text-red-800/80',
+      },
+      isAcademicWarningOnlyContext
+        ? {
+            key: 'blockedManual',
+            title: 'Blocked Manual',
+            value: summaryCards.blockedManual,
+            description: 'Siswa diblokir manual oleh operator atau wali kelas dan perlu tindak lanjut manual.',
+            cardClassName: 'rounded-xl border border-violet-100 bg-violet-50 p-4',
+            titleClassName: 'text-xs font-semibold uppercase tracking-wide text-violet-700',
+            valueClassName: 'mt-2 text-2xl font-bold text-violet-900',
+            descriptionClassName: 'mt-1 text-xs text-violet-800/80',
+          }
+        : {
+            key: 'blockedKkm',
+            title: 'Blocked KKM',
+            value: summaryCards.blockedKkm,
+            description: 'Tidak bisa dapat kartu karena masih ada nilai di bawah KKM.',
+            cardClassName: 'rounded-xl border border-amber-100 bg-amber-50 p-4',
+            titleClassName: 'text-xs font-semibold uppercase tracking-wide text-amber-700',
+            valueClassName: 'mt-2 text-2xl font-bold text-amber-900',
+            descriptionClassName: 'mt-1 text-xs text-amber-800/80',
+          },
+      {
+        key: 'blockedFinance',
+        title: 'Blocked Finance',
+        value: summaryCards.blockedFinance,
+        description: 'Tidak bisa dapat kartu karena clearance finance masih memblokir ujian.',
+        cardClassName: 'rounded-xl border border-orange-100 bg-orange-50 p-4',
+        titleClassName: 'text-xs font-semibold uppercase tracking-wide text-orange-700',
+        valueClassName: 'mt-2 text-2xl font-bold text-orange-900',
+        descriptionClassName: 'mt-1 text-xs text-orange-800/80',
+      },
+      isAcademicWarningOnlyContext
+        ? {
+            key: 'reviewSyncRequired',
+            title: 'Review Sinkronisasi',
+            value: summaryCards.reviewSyncRequired,
+            description: `Penempatan ${summaryCards.needsPlacementSync} • kartu stale ${summaryCards.staleCard} • data lain ${summaryCards.needsDataSync}`,
+            cardClassName: 'rounded-xl border border-slate-200 bg-slate-50 p-4',
+            titleClassName: 'text-xs font-semibold uppercase tracking-wide text-slate-700',
+            valueClassName: 'mt-2 text-2xl font-bold text-slate-900',
+            descriptionClassName: 'mt-1 text-xs text-slate-700/80',
+          }
+        : {
+            key: 'reviewRequired',
+            title: 'Perlu Review Data',
+            value: summaryCards.reviewRequired,
+            description: `Manual ${summaryCards.blockedManual} • penempatan ${summaryCards.needsPlacementSync} • kartu stale ${summaryCards.staleCard} • data lain ${summaryCards.needsDataSync}`,
+            cardClassName: 'rounded-xl border border-slate-200 bg-slate-50 p-4',
+            titleClassName: 'text-xs font-semibold uppercase tracking-wide text-slate-700',
+            valueClassName: 'mt-2 text-2xl font-bold text-slate-900',
+            descriptionClassName: 'mt-1 text-xs text-slate-700/80',
+          },
+    ],
+    [isAcademicWarningOnlyContext, summaryCards],
+  );
+
+  const statusFilterOptions = useMemo(
+    () => [
+      { value: 'ALL', label: 'Semua Status' },
+      { value: 'PUBLISHED', label: 'Sudah Dipublikasikan' },
+      { value: 'READY', label: 'Siap Digenerate' },
+      { value: 'WARNING_ACADEMIC', label: 'Warning Akademik' },
+      ...(isAcademicWarningOnlyContext
+        ? [
+            { value: 'BLOCKED_MANUAL', label: 'Blocked Manual' },
+            { value: 'BLOCKED_FINANCE', label: 'Blocked Finance' },
+            { value: 'REVIEW_SYNC', label: 'Review Sinkronisasi' },
+          ]
+        : [
+            { value: 'BLOCKED_KKM', label: 'Blocked KKM' },
+            { value: 'BLOCKED_FINANCE', label: 'Blocked Finance' },
+            { value: 'REVIEW_REQUIRED', label: 'Perlu Review Data' },
+          ]),
+    ],
+    [isAcademicWarningOnlyContext],
   );
 
   const filteredRows = useMemo(() => {
@@ -830,43 +997,13 @@ export function HeadTuExamCardsPanel({ ownerMode = 'HEAD_TU' }: HeadTuExamCardsP
       </div>
 
       <div className="grid gap-4 md:grid-cols-2 xl:grid-cols-3">
-        <div className="rounded-xl border border-blue-100 bg-blue-50 p-4">
-          <div className="text-xs font-semibold uppercase tracking-wide text-blue-700">Peserta Program Ujian</div>
-          <div className="mt-2 text-2xl font-bold text-blue-900">{summaryCards.totalStudents}</div>
-          <div className="mt-1 text-xs text-blue-800/80">Total siswa yang benar-benar masuk jadwal aktif program ujian ini.</div>
-        </div>
-        <div className="rounded-xl border border-rose-100 bg-rose-50 p-4">
-          <div className="text-xs font-semibold uppercase tracking-wide text-rose-700">Sudah Dipublikasikan</div>
-          <div className="mt-2 text-2xl font-bold text-rose-900">{summaryCards.publishedActive}</div>
-          <div className="mt-1 text-xs text-rose-800/80">Kartu digital aktif sudah terbit dan tampil di akun siswa.</div>
-        </div>
-        <div className="rounded-xl border border-emerald-100 bg-emerald-50 p-4">
-          <div className="text-xs font-semibold uppercase tracking-wide text-emerald-700">Siap Digenerate</div>
-          <div className="mt-2 text-2xl font-bold text-emerald-900">{summaryCards.readyToGenerate}</div>
-          <div className="mt-1 text-xs text-emerald-800/80">Sudah eligible dan tinggal dipublikasikan lewat generate kartu.</div>
-        </div>
-        <div className="rounded-xl border border-red-100 bg-red-50 p-4">
-          <div className="text-xs font-semibold uppercase tracking-wide text-red-700">Warning Akademik</div>
-          <div className="mt-2 text-2xl font-bold text-red-900">{summaryCards.warningAcademic}</div>
-          <div className="mt-1 text-xs text-red-800/80">Boleh ikut SBTS, tetapi nilai di bawah KKM atau nilainya belum lengkap tetap ditandai.</div>
-        </div>
-        <div className="rounded-xl border border-amber-100 bg-amber-50 p-4">
-          <div className="text-xs font-semibold uppercase tracking-wide text-amber-700">Blocked KKM</div>
-          <div className="mt-2 text-2xl font-bold text-amber-900">{summaryCards.blockedKkm}</div>
-          <div className="mt-1 text-xs text-amber-800/80">Tidak bisa dapat kartu karena masih ada nilai di bawah KKM.</div>
-        </div>
-        <div className="rounded-xl border border-orange-100 bg-orange-50 p-4">
-          <div className="text-xs font-semibold uppercase tracking-wide text-orange-700">Blocked Finance</div>
-          <div className="mt-2 text-2xl font-bold text-orange-900">{summaryCards.blockedFinance}</div>
-          <div className="mt-1 text-xs text-orange-800/80">Tidak bisa dapat kartu karena clearance finance masih memblokir ujian.</div>
-        </div>
-        <div className="rounded-xl border border-slate-200 bg-slate-50 p-4">
-          <div className="text-xs font-semibold uppercase tracking-wide text-slate-700">Perlu Review Data</div>
-          <div className="mt-2 text-2xl font-bold text-slate-900">{summaryCards.reviewRequired}</div>
-          <div className="mt-1 text-xs text-slate-700/80">
-            Manual {summaryCards.blockedManual} • penempatan {summaryCards.needsPlacementSync} • kartu stale {summaryCards.staleCard} • data lain {summaryCards.needsDataSync}
+        {summaryCardItems.map((card) => (
+          <div key={card.key} className={card.cardClassName}>
+            <div className={card.titleClassName}>{card.title}</div>
+            <div className={card.valueClassName}>{card.value}</div>
+            <div className={card.descriptionClassName}>{card.description}</div>
           </div>
-        </div>
+        ))}
       </div>
 
       <div className="rounded-xl border border-gray-100 bg-white p-4 shadow-sm">
@@ -899,13 +1036,11 @@ export function HeadTuExamCardsPanel({ ownerMode = 'HEAD_TU' }: HeadTuExamCardsP
               onChange={(event) => setStatusFilter(event.target.value as StatusFilter)}
               className="w-full rounded-lg border border-gray-300 px-3 py-2 text-sm focus:border-blue-500 focus:outline-none lg:max-w-xs"
             >
-              <option value="ALL">Semua Status</option>
-              <option value="PUBLISHED">Sudah Dipublikasikan</option>
-              <option value="READY">Siap Digenerate</option>
-              <option value="WARNING_ACADEMIC">Warning Akademik</option>
-              <option value="BLOCKED_KKM">Blocked KKM</option>
-              <option value="BLOCKED_FINANCE">Blocked Finance</option>
-              <option value="REVIEW_REQUIRED">Perlu Review Data</option>
+              {statusFilterOptions.map((option) => (
+                <option key={option.value} value={option.value}>
+                  {option.label}
+                </option>
+              ))}
             </select>
           </div>
           <div className="text-sm text-gray-500">

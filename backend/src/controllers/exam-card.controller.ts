@@ -203,8 +203,9 @@ function deriveExamCardOverviewStatus(params: {
   hasActiveCard: boolean;
 }) {
   const hasOperationalEntry = params.entries.length > 0;
-  const hasBelowKkm = Boolean(params.eligibility.automatic.flags.belowKkm);
-  const hasFinanceBlock = Boolean(params.eligibility.automatic.flags.financeBlocked);
+  const academicBlocked = Boolean(params.eligibility.academicClearance.blocksExam);
+  const hasBelowKkm = Boolean(params.eligibility.academicClearance.hasBelowKkm);
+  const hasFinanceBlock = Boolean(params.eligibility.financeClearance.blocksExam);
   const hasAcademicWarning = Boolean(params.eligibility.academicClearance.warningOnly);
   const academicWarningReason = params.eligibility.academicClearance.reason || 'Masih ada warning akademik pada SBTS.';
 
@@ -237,12 +238,12 @@ function deriveExamCardOverviewStatus(params: {
     } satisfies ExamCardOverviewStatus;
   }
 
-  if (hasBelowKkm) {
+  if (academicBlocked && hasBelowKkm) {
     return {
       code: 'BLOCKED_KKM',
       category: 'BLOCKED_KKM',
       label: 'Blocked KKM',
-      detail: params.eligibility.reason || 'Masih ada nilai di bawah KKM.',
+      detail: params.eligibility.academicClearance.reason || params.eligibility.reason || 'Masih ada nilai di bawah KKM.',
     } satisfies ExamCardOverviewStatus;
   }
 
