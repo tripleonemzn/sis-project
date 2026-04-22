@@ -400,6 +400,33 @@ function getDatePieces(value: Date | null | undefined): {
     };
 }
 
+function parseOptionalDateTime(value: unknown): Date | null {
+    if (value instanceof Date) {
+        return Number.isNaN(value.getTime()) ? null : value;
+    }
+    if (typeof value === 'string' || typeof value === 'number') {
+        const parsed = new Date(value);
+        return Number.isNaN(parsed.getTime()) ? null : parsed;
+    }
+    return null;
+}
+
+function buildJakartaDateKey(value: Date | string | number | null | undefined): string | null {
+    const parsed = parseOptionalDateTime(value);
+    if (!parsed) return null;
+    const parts = new Intl.DateTimeFormat('en-GB', {
+        year: 'numeric',
+        month: '2-digit',
+        day: '2-digit',
+        timeZone: 'Asia/Jakarta',
+    }).formatToParts(parsed);
+    const year = parts.find((part) => part.type === 'year')?.value || '';
+    const month = parts.find((part) => part.type === 'month')?.value || '';
+    const day = parts.find((part) => part.type === 'day')?.value || '';
+    if (!year || !month || !day) return null;
+    return `${year}-${month}-${day}`;
+}
+
 function sanitizeDocumentToken(value: unknown, fallback: string): string {
     const normalized = String(value || '')
         .trim()
@@ -452,10 +479,13 @@ type ProctorReportDocumentSnapshot = {
         executionOrder: number | null;
         sessionLabel: string | null;
         classNames: string[];
+        executionDateKey?: string | null;
         startTimeLabel: string;
         endTimeLabel: string;
         executionDateLabel: string;
         executionYear: string;
+        startTimeIso?: string | null;
+        endTimeIso?: string | null;
     };
     narrative: string;
     counts: {
@@ -528,10 +558,13 @@ type ProctorAttendanceDocumentSnapshot = {
         executionOrder: number | null;
         sessionLabel: string | null;
         classNames: string[];
+        executionDateKey?: string | null;
         startTimeLabel: string;
         endTimeLabel: string;
         executionDateLabel: string;
         executionYear: string;
+        startTimeIso?: string | null;
+        endTimeIso?: string | null;
     };
     counts: {
         expectedParticipants: number;
@@ -697,6 +730,10 @@ type ProctorReportScopeMatcher = {
     scheduleIds?: number[];
     proctorId?: number | null;
     periodNumber?: number | null;
+    startTime?: Date | string | null;
+    endTime?: Date | string | null;
+    sessionId?: number | null;
+    sessionLabel?: string | null;
 };
 
 type ProctorReportCandidateMatcher = {
@@ -706,6 +743,12 @@ type ProctorReportCandidateMatcher = {
     signedAt?: Date;
     updatedAt?: Date;
     documentSnapshot?: Prisma.JsonValue | null;
+    schedule?: {
+        startTime?: Date;
+        endTime?: Date;
+        sessionId?: number | null;
+        sessionLabel?: string | null;
+    } | null;
 };
 
 function buildProctorReportMatchScore(
@@ -727,6 +770,28 @@ function buildProctorReportMatchScore(
     const normalizedSnapshotRoom = String(snapshot?.schedule?.roomName || '').trim().toLowerCase();
     const normalizedSnapshotSubject = String(snapshot?.schedule?.subjectName || '').trim().toLowerCase();
     const normalizedSnapshotClassNames = normalizeComparableClassNames(snapshot?.schedule?.classNames || []);
+    const scopeStartTime = parseOptionalDateTime(scope.startTime);
+    const scopeEndTime = parseOptionalDateTime(scope.endTime);
+    const scopeDateKey = buildJakartaDateKey(scopeStartTime);
+    const scopeDateLabel = normalizeOptionalText(scopeStartTime ? formatDateLabel(scopeStartTime) : null)?.toLowerCase() || null;
+    const scopeStartLabel = normalizeOptionalText(scopeStartTime ? formatTimeLabel(scopeStartTime) : null) || null;
+    const scopeEndLabel = normalizeOptionalText(scopeEndTime ? formatTimeLabel(scopeEndTime) : null) || null;
+    const snapshotStartTime = parseOptionalDateTime(snapshot?.schedule?.startTimeIso || null);
+    const snapshotEndTime = parseOptionalDateTime(snapshot?.schedule?.endTimeIso || null);
+    const snapshotDateKey =
+        normalizeOptionalText(snapshot?.schedule?.executionDateKey) ||
+        buildJakartaDateKey(snapshotStartTime) ||
+        null;
+    const snapshotDateLabel = normalizeOptionalText(snapshot?.schedule?.executionDateLabel)?.toLowerCase() || null;
+    const snapshotStartLabel = normalizeOptionalText(snapshot?.schedule?.startTimeLabel) || null;
+    const snapshotEndLabel = normalizeOptionalText(snapshot?.schedule?.endTimeLabel) || null;
+    const candidateScheduleStartTime = parseOptionalDateTime(candidate.schedule?.startTime || null);
+    const candidateScheduleEndTime = parseOptionalDateTime(candidate.schedule?.endTime || null);
+    const candidateSessionId =
+        Number.isFinite(Number(candidate.schedule?.sessionId)) && Number(candidate.schedule?.sessionId) > 0
+            ? Number(candidate.schedule?.sessionId)
+            : null;
+    const candidateSessionLabel = candidate.schedule?.sessionLabel ?? snapshot?.schedule?.sessionLabel ?? null;
     const slotProctorId = Number(scope.proctorId || 0);
     const reportProctorId = Number(candidate.proctorId || 0);
     const scheduleMatched = normalizedScheduleIds.includes(Number(candidate.scheduleId));
@@ -750,23 +815,49 @@ function buildProctorReportMatchScore(
         Number(scope.periodNumber) > 0 &&
         executionOrder !== null &&
         Number(scope.periodNumber) === executionOrder;
+    const exactScheduleWindowMatch =
+        Boolean(scopeStartTime && scopeEndTime && candidateScheduleStartTime && candidateScheduleEndTime) &&
+        isSameSlotTime(scopeStartTime, scopeEndTime, candidateScheduleStartTime, candidateScheduleEndTime);
+    const exactSnapshotWindowMatch =
+        Boolean(scopeStartLabel && scopeEndLabel) &&
+        (
+            (scopeDateKey && snapshotDateKey
+                ? scopeDateKey === snapshotDateKey
+                : Boolean(scopeDateLabel && snapshotDateLabel && scopeDateLabel === snapshotDateLabel))
+        ) &&
+        scopeStartLabel === snapshotStartLabel &&
+        scopeEndLabel === snapshotEndLabel;
+    const scopeHasSessionScope =
+        (Number.isFinite(Number(scope.sessionId)) && Number(scope.sessionId) > 0) || Boolean(normalizeSessionLabel(scope.sessionLabel));
+    const sessionMatched =
+        !scopeHasSessionScope ||
+        isSameSessionScope({
+            leftSessionId: scope.sessionId ?? null,
+            leftSessionLabel: scope.sessionLabel ?? null,
+            rightSessionId: candidateSessionId,
+            rightSessionLabel: candidateSessionLabel,
+        });
+    const hasTemporalAlignment = scheduleMatched || exactScheduleWindowMatch || exactSnapshotWindowMatch;
 
     const hasStrongScopeMatch =
         exactRoomMatch ||
         (exactProctorMatch && (classOverlapCount > 0 || exactSubjectMatch || scheduleMatched)) ||
         (scheduleMatched && classOverlapCount > 0 && exactSubjectMatch);
-    if (!hasStrongScopeMatch) {
+    if (!hasStrongScopeMatch || !hasTemporalAlignment || !sessionMatched) {
         return -1;
     }
 
     let score = 0;
     if (scheduleMatched) score += 30;
+    if (exactScheduleWindowMatch) score += 260;
+    if (exactSnapshotWindowMatch) score += 240;
     if (exactRoomMatch) score += 500;
     if (exactProctorMatch) score += 140;
     if (classOverlapCount > 0) score += 80 + classOverlapCount * 12;
     if (exactClassMatch) score += 110;
     if (exactSubjectMatch) score += 45;
     if (exactExecutionOrder) score += 20;
+    if (sessionMatched) score += 20;
     if (snapshot) score += 5;
     return score;
 }
@@ -2137,10 +2228,13 @@ function buildProctorReportSnapshot(params: {
             classNames: Array.from(
                 new Set((params.classNames || []).map((item) => String(item || '').trim()).filter(Boolean)),
             ),
+            executionDateKey: buildJakartaDateKey(params.startTime),
             startTimeLabel: formatTimeLabel(params.startTime),
             endTimeLabel: formatTimeLabel(params.endTime),
             executionDateLabel: executionPieces.fullDateLabel,
             executionYear: executionPieces.year,
+            startTimeIso: params.startTime.toISOString(),
+            endTimeIso: params.endTime.toISOString(),
         },
         narrative: buildProctorReportNarrative({
             executionDate: params.startTime,
@@ -2219,10 +2313,13 @@ function buildProctorAttendanceDocumentSnapshot(params: {
             classNames: Array.from(
                 new Set((params.classNames || []).map((item) => String(item || '').trim()).filter(Boolean)),
             ),
+            executionDateKey: buildJakartaDateKey(params.startTime),
             startTimeLabel: formatTimeLabel(params.startTime),
             endTimeLabel: formatTimeLabel(params.endTime),
             executionDateLabel: executionPieces.fullDateLabel,
             executionYear: executionPieces.year,
+            startTimeIso: params.startTime.toISOString(),
+            endTimeIso: params.endTime.toISOString(),
         },
         counts: {
             expectedParticipants: Math.max(0, Number(params.expectedParticipants || 0)),
@@ -3558,6 +3655,14 @@ export const submitBeritaAcara = asyncHandler(async (req: Request, res: Response
             documentNumber: true,
             verificationToken: true,
             documentSnapshot: true,
+            schedule: {
+                select: {
+                    startTime: true,
+                    endTime: true,
+                    sessionId: true,
+                    sessionLabel: true,
+                },
+            },
         },
     });
     const existingReport = pickBestScopedProctorReport(existingReportCandidates, {
@@ -3566,6 +3671,10 @@ export const submitBeritaAcara = asyncHandler(async (req: Request, res: Response
         subjectName: schedule.packet?.subject?.name || schedule.subject?.name || null,
         scheduleIds: scope.monitoredScheduleIds,
         proctorId: Number(user.id),
+        startTime: resolvedBaseSchedule.startTime,
+        endTime: resolvedBaseSchedule.endTime,
+        sessionId: resolvedBaseSchedule.sessionId ?? null,
+        sessionLabel: resolvedBaseSchedule.sessionLabel ?? null,
         periodNumber: await resolveScheduleExecutionOrder({
             academicYearId: resolvedBaseSchedule.academicYearId,
             examType: resolvedBaseSchedule.examType,
@@ -4224,6 +4333,14 @@ export const getProctoringReports = asyncHandler(async (req: Request, res: Respo
                       documentNumber: true,
                       verificationToken: true,
                       documentSnapshot: true,
+                      schedule: {
+                          select: {
+                              startTime: true,
+                              endTime: true,
+                              sessionId: true,
+                              sessionLabel: true,
+                          },
+                      },
                       proctor: {
                           select: {
                               id: true,
@@ -4441,6 +4558,10 @@ export const getProctoringReports = asyncHandler(async (req: Request, res: Respo
                     subjectName: slot.subjectName || null,
                     scheduleIds: Array.from(new Set(slot.scheduleIds || [])),
                     proctorId: Number(slot.proctorId || 0) || null,
+                    startTime: slot.startTime,
+                    endTime: slot.endTime,
+                    sessionId: slot.sessionId ?? null,
+                    sessionLabel: slot.sessionLabel ?? null,
                     periodNumber:
                         Number.isFinite(Number(slot.periodNumber)) && Number(slot.periodNumber) > 0
                             ? Number(slot.periodNumber)
