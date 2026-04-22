@@ -514,7 +514,12 @@ function appendCommitteeMenuGroups(
 
   if (dynamicItems.length === 0) return groups;
 
-  const preferredHostLabels = new Set(['WAKASEK KURIKULUM', 'SEKRETARIS KURIKULUM']);
+  const preferredHostLabels = new Set([
+    'WAKASEK KURIKULUM',
+    'WAKASEK KESISWAAN',
+    'WAKASEK SARPRAS',
+    'WAKASEK HUMAS',
+  ]);
   const hostIndex = groups.findIndex((group) => preferredHostLabels.has(String(group.label || '').toUpperCase()));
   const fallbackIndex = groups.findIndex((group) => String(group.label || '').toUpperCase() === 'UJIAN');
   const targetIndex = hostIndex >= 0 ? hostIndex : fallbackIndex;

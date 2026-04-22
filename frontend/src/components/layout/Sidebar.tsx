@@ -290,7 +290,12 @@ function buildCommitteeSidebarMenuItems(groups: CommitteeSidebarGroup[]): MenuIt
 function attachTeacherCommitteeItems(baseItems: MenuItem[], committeeItems: MenuItem[]): MenuItem[] {
   if (committeeItems.length === 0) return baseItems;
 
-  const preferredGroups = ['WAKASEK KURIKULUM', 'SEKRETARIS KURIKULUM'];
+  const preferredGroups = [
+    'WAKASEK KURIKULUM',
+    'WAKASEK KESISWAAN',
+    'WAKASEK SARPRAS',
+    'WAKASEK HUMAS',
+  ];
   const hostIndex = baseItems.findIndex((item) => preferredGroups.includes(String(item.label || '').toUpperCase()));
   const fallbackIndex = baseItems.findIndex((item) => String(item.label || '').toUpperCase() === 'UJIAN');
   const targetIndex = hostIndex >= 0 ? hostIndex : fallbackIndex;
@@ -633,6 +638,11 @@ export const getMenuItems = (
             path: '/teacher/wakasek/work-program-approvals',
             icon: ClipboardList,
           });
+          children.push({
+            label: 'Kepanitiaan',
+            path: '/teacher/committees',
+            icon: Briefcase,
+          });
         }
 
         // Lalu menu Wakasek lainnya
@@ -640,7 +650,6 @@ export const getMenuItems = (
           { label: 'Kelola Kurikulum', path: '/teacher/wakasek/curriculum', icon: Layers },
           { label: 'Program Perangkat Ajar', path: '/teacher/wakasek/teaching-resource-programs', icon: BookOpen },
           { label: 'Kelola Ujian', path: '/teacher/wakasek/exams', icon: FileQuestion },
-          { label: 'Kegiatan Panitia', path: '/teacher/committees', icon: Briefcase },
           { label: 'Leger Nilai Akhir', path: '/teacher/wakasek/final-ledger', icon: Calculator },
           { label: 'Monitoring Kinerja', path: '/teacher/wakasek/performance', icon: BarChart3 },
           { label: 'Laporan Akademik', path: '/teacher/wakasek/reports', icon: FileText },
@@ -652,11 +661,18 @@ export const getMenuItems = (
         children = [
           ...createGenericItems(duty),
           ...(!isSecretary
-            ? [{
-                label: 'Persetujuan Program Kerja',
-                path: '/teacher/wakasek/work-program-approvals',
-                icon: ClipboardList,
-              } satisfies MenuItem]
+            ? [
+                {
+                  label: 'Persetujuan Program Kerja',
+                  path: '/teacher/wakasek/work-program-approvals',
+                  icon: ClipboardList,
+                } satisfies MenuItem,
+                {
+                  label: 'Kepanitiaan',
+                  path: '/teacher/committees',
+                  icon: Briefcase,
+                } satisfies MenuItem,
+              ]
             : []),
           { label: 'Kelola Kesiswaan', path: '/teacher/wakasek/students', icon: GraduationCap },
           { label: 'Pemilihan OSIS', path: '/teacher/wakasek/student-election', icon: Trophy },
@@ -670,6 +686,13 @@ export const getMenuItems = (
 
         children = [
           ...createGenericItems(duty),
+          ...(!isSecretary
+            ? [{
+                label: 'Kepanitiaan',
+                path: '/teacher/committees',
+                icon: Briefcase,
+              } satisfies MenuItem]
+            : []),
           { label: 'Aset Sekolah', path: '/teacher/sarpras/inventory', icon: Database },
           { label: 'Persetujuan Anggaran', path: '/teacher/sarpras/budgets', icon: Wallet },
           { label: 'Laporan', path: '/teacher/sarpras/reports', icon: FileText }
@@ -680,6 +703,13 @@ export const getMenuItems = (
 
         children = [
           ...createGenericItems(duty),
+          ...(!isSecretary
+            ? [{
+                label: 'Kepanitiaan',
+                path: '/teacher/committees',
+                icon: Briefcase,
+              } satisfies MenuItem]
+            : []),
           { label: 'Pengaturan PKL', path: '/teacher/humas/settings', icon: Settings },
           { label: 'Persetujuan PKL', path: '/teacher/internship/approval', icon: Check },
           { label: 'Nilai PKL', path: '/teacher/wakasek/internship-components', icon: Percent },

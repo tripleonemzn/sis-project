@@ -94,7 +94,9 @@ const normalizeDutyCode = (raw: unknown): string => {
 const resolveTeacherCommitteeBreadcrumbGroup = (user: User | null): string => {
   const duties = Array.isArray(user?.additionalDuties) ? user.additionalDuties.map(normalizeDutyCode) : [];
   if (duties.includes('WAKASEK_KURIKULUM')) return 'WAKASEK KURIKULUM';
-  if (duties.includes('SEKRETARIS_KURIKULUM')) return 'SEKRETARIS KURIKULUM';
+  if (duties.includes('WAKASEK_KESISWAAN')) return 'WAKASEK KESISWAAN';
+  if (duties.includes('WAKASEK_SARPRAS')) return 'WAKASEK SARPRAS';
+  if (duties.includes('WAKASEK_HUMAS')) return 'WAKASEK HUMAS';
   return 'UJIAN';
 };
 
@@ -449,7 +451,7 @@ const resolveTeacherCommitteeBreadcrumbGroup = (user: User | null): string => {
       'wakasek/performance': { label: 'Monitoring Kinerja', group: 'WAKASEK KURIKULUM' },
       'wakasek/work-program-approvals': { label: 'Persetujuan Program Kerja', group: 'WAKASEK KURIKULUM' },
       'wakasek/reports': { label: 'Laporan Akademik', group: 'WAKASEK KURIKULUM' },
-      committees: { label: 'Kegiatan Panitia', group: teacherCommitteeGroup },
+      committees: { label: 'Kepanitiaan', group: teacherCommitteeGroup },
       
       // WAKASEK KESISWAAN
       'wakasek/student-performance': { label: 'Monitoring Kinerja', group: 'WAKASEK KESISWAAN' },

@@ -18,6 +18,13 @@ export type CommitteeFeatureDefinition = {
   section: 'program' | 'jadwal' | 'ruang' | 'mengawas' | 'denah' | 'kartu';
 };
 
+const REQUESTER_WAKASEK_DUTIES = new Set([
+  'WAKASEK_KURIKULUM',
+  'WAKASEK_KESISWAAN',
+  'WAKASEK_SARPRAS',
+  'WAKASEK_HUMAS',
+]);
+
 function normalizeCode(value?: string | null) {
   return String(value || '')
     .trim()
@@ -81,10 +88,13 @@ export async function assertCommitteeRequesterAccess(
   if (profile.role === 'ADMIN' && options.allowAdmin) {
     return profile;
   }
-  if (profile.role === 'TEACHER') {
+  if (
+    profile.role === 'TEACHER' &&
+    profile.additionalDuties.some((duty) => REQUESTER_WAKASEK_DUTIES.has(duty))
+  ) {
     return profile;
   }
-  throw new ApiError(403, 'Akses pengajuan kepanitiaan hanya untuk guru.');
+  throw new ApiError(403, 'Akses pengajuan kepanitiaan hanya untuk Wakasek.');
 }
 
 export async function assertPrincipalCommitteeAccess(
@@ -203,4 +213,3 @@ export function buildCommitteeFeatureWebPath(params: {
 export function isCommitteeEditableByRequester(status: CommitteeEventStatus) {
   return status === CommitteeEventStatus.DRAFT || status === CommitteeEventStatus.DITOLAK_KEPSEK;
 }
-

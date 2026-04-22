@@ -66,7 +66,7 @@ export default function CommitteeExamWorkspacePage() {
               className="mt-4 inline-flex items-center gap-2 rounded-lg border border-slate-300 px-4 py-2 text-sm font-semibold text-slate-700 hover:bg-slate-50"
             >
               <Briefcase className="h-4 w-4" />
-              Kembali ke Kegiatan Panitia
+              Kembali ke Kepanitiaan
             </Link>
           </div>
         </div>
@@ -89,7 +89,7 @@ export default function CommitteeExamWorkspacePage() {
               className="mt-4 inline-flex items-center gap-2 rounded-lg border border-slate-300 px-4 py-2 text-sm font-semibold text-slate-700 hover:bg-slate-50"
             >
               <Briefcase className="h-4 w-4" />
-              Kembali ke Kegiatan Panitia
+              Kembali ke Kepanitiaan
             </Link>
           </div>
         </div>

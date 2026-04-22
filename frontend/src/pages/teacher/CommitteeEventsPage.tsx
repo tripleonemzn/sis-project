@@ -85,7 +85,14 @@ const DEFAULT_ASSIGNMENT_MEMBER_TYPES = [
   },
 ] as const;
 
-const CURRICULUM_COMMITTEE_DUTIES = new Set(['WAKASEK_KURIKULUM', 'SEKRETARIS_KURIKULUM']);
+const WAKASEK_REQUESTER_DUTIES = new Set([
+  'WAKASEK_KURIKULUM',
+  'WAKASEK_KESISWAAN',
+  'WAKASEK_SARPRAS',
+  'WAKASEK_HUMAS',
+]);
+
+const CURRICULUM_COMMITTEE_DUTIES = new Set(['WAKASEK_KURIKULUM']);
 
 function createEmptyFormState(): CommitteeFormState {
   return {
@@ -157,6 +164,10 @@ function getInternalMemberFieldCopy(memberKind: CommitteeAssignmentMemberKindCod
 
 function hasCurriculumCommitteeDuty(additionalDuties?: string[] | null) {
   return (additionalDuties || []).some((duty) => CURRICULUM_COMMITTEE_DUTIES.has(String(duty || '').trim().toUpperCase()));
+}
+
+function hasCommitteeRequesterDuty(additionalDuties?: string[] | null) {
+  return (additionalDuties || []).some((duty) => WAKASEK_REQUESTER_DUTIES.has(String(duty || '').trim().toUpperCase()));
 }
 
 function EventCard({
@@ -769,6 +780,10 @@ export default function CommitteeEventsPage() {
     () => hasCurriculumCommitteeDuty(meQuery.data?.data?.additionalDuties || []),
     [meQuery.data?.data?.additionalDuties],
   );
+  const canCreateCommittee = useMemo(
+    () => hasCommitteeRequesterDuty(meQuery.data?.data?.additionalDuties || []),
+    [meQuery.data?.data?.additionalDuties],
+  );
 
   const examProgramsQuery = useQuery({
     queryKey: ['committee-exam-programs', activeAcademicYear?.id || 'none'],
@@ -1019,14 +1034,16 @@ export default function CommitteeEventsPage() {
               Popup draft menyimpan data inti kegiatan, lalu susunan panitia dikelola melalui popup khusus dari card draft yang dipilih.
             </p>
           </div>
-          <button
-            type="button"
-            onClick={openNewDraftModal}
-            className="inline-flex items-center gap-2 rounded-xl border border-slate-300 bg-white px-4 py-2 text-sm font-semibold text-slate-700 hover:bg-slate-50"
-          >
-            <PlusCircle className="h-4 w-4" />
-            Draft Baru
-          </button>
+          {canCreateCommittee ? (
+            <button
+              type="button"
+              onClick={openNewDraftModal}
+              className="inline-flex items-center gap-2 rounded-xl border border-slate-300 bg-white px-4 py-2 text-sm font-semibold text-slate-700 hover:bg-slate-50"
+            >
+              <PlusCircle className="h-4 w-4" />
+              Draft Baru
+            </button>
+          ) : null}
         </div>
       </div>
 
@@ -1202,7 +1219,7 @@ export default function CommitteeEventsPage() {
                 {canPickExamProgram ? (
                   <div>
                     <label htmlFor="committeeProgram" className="mb-1 block text-sm font-medium text-slate-700">
-                      Program Ujian Terkait <span className="text-slate-400">(Opsional)</span>
+                        Program Ujian Terkait <span className="text-slate-400">(Opsional)</span>
                     </label>
                     <select
                       id="committeeProgram"
@@ -1219,7 +1236,7 @@ export default function CommitteeEventsPage() {
                       ))}
                     </select>
                     <p className="mt-2 text-xs leading-5 text-slate-500">
-                      Field ini hanya tampil untuk Wakasek/Sekretaris Kurikulum agar konteks kepanitiaan ujian tidak membingungkan role lain.
+                      Field ini hanya tampil untuk Wakasek Kurikulum agar konteks kepanitiaan ujian tidak membingungkan role lain.
                     </p>
                   </div>
                 ) : null}

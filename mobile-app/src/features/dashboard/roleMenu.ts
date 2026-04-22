@@ -365,7 +365,7 @@ const ROLE_MENUS: Record<string, RoleMenuItem[]> = {
     },
     {
       key: 'teacher-committee-events',
-      label: 'Kegiatan Panitia',
+      label: 'Kepanitiaan',
       webPath: '/teacher/committees',
     },
     {
@@ -848,6 +848,15 @@ function hasAnyPrimaryDuty(user: AuthUser) {
   return owned.some((item) => item.length > 0 && !item.startsWith('SEKRETARIS_'));
 }
 
+function hasCommitteeRequesterDuty(user: AuthUser) {
+  return hasDuty(user, [
+    'WAKASEK_KURIKULUM',
+    'WAKASEK_KESISWAAN',
+    'WAKASEK_SARPRAS',
+    'WAKASEK_HUMAS',
+  ]);
+}
+
 function isHomeroomTeacher(user: AuthUser) {
   return (user.teacherClasses?.length || 0) > 0 || hasDuty(user, ['WALI_KELAS']);
 }
@@ -938,7 +947,7 @@ function shouldShowMenuItem(user: AuthUser, item: RoleMenuItem, options?: RoleMe
     }
 
     if (item.key === 'teacher-committee-events') {
-      return hasDuty(user, ['WAKASEK_KURIKULUM', 'SEKRETARIS_KURIKULUM']);
+      return hasCommitteeRequesterDuty(user);
     }
 
     if (item.key.startsWith('teacher-extracurricular-')) {
@@ -1726,12 +1735,13 @@ function buildTeacherGroups(
       if (!isSecretary) {
         const approvalWp = pickMenu(byKey, 'teacher-wakakur-approvals-work-program');
         if (approvalWp) items.push(approvalWp);
+        const committeeMenu = pickMenu(byKey, 'teacher-committee-events');
+        if (committeeMenu) items.push(committeeMenu);
       }
       items.push(
         ...pickMenus(byKey, [
           'teacher-wakakur-curriculum',
           'teacher-wakakur-exams',
-          'teacher-committee-events',
           'teacher-wakakur-performance',
           'teacher-wakakur-approvals',
           'teacher-wakakur-reports',
@@ -1743,6 +1753,8 @@ function buildTeacherGroups(
       if (!isSecretary) {
         const approvalWp = pickMenu(byKey, 'teacher-wakasis-approvals-work-program');
         if (approvalWp) items.push(approvalWp);
+        const committeeMenu = pickMenu(byKey, 'teacher-committee-events');
+        if (committeeMenu) items.push(committeeMenu);
       }
       items.push(
         ...pickMenus(byKey, [
@@ -1755,12 +1767,20 @@ function buildTeacherGroups(
     } else if (baseRole === 'WAKASEK_SARPRAS') {
       label = isSecretary ? 'SEKRETARIS SARPRAS' : 'WAKASEK SARPRAS';
       addGenericWorkProgram();
+      if (!isSecretary) {
+        const committeeMenu = pickMenu(byKey, 'teacher-committee-events');
+        if (committeeMenu) items.push(committeeMenu);
+      }
       items.push(
         ...pickMenus(byKey, ['teacher-sarpras-inventory', 'teacher-sarpras-budgets', 'teacher-sarpras-reports']),
       );
     } else if (baseRole === 'WAKASEK_HUMAS') {
       label = isSecretary ? 'SEKRETARIS HUMAS' : 'WAKASEK HUMAS';
       addGenericWorkProgram();
+      if (!isSecretary) {
+        const committeeMenu = pickMenu(byKey, 'teacher-committee-events');
+        if (committeeMenu) items.push(committeeMenu);
+      }
       items.push(
         ...pickMenus(byKey, [
           'teacher-humas-settings',
