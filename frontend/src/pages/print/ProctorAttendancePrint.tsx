@@ -173,10 +173,10 @@ function buildProctorAttendancePrintHtml(params: {
   verificationQrDataUrl: string;
 }) {
   const { snapshot, verificationQrDataUrl } = params;
-  const headerFontSize = '10.5pt';
-  const contentFontSize = '9.5pt';
-  const tableFontSize = '8.75pt';
-  const noteFontSize = '6.75pt';
+  const headerFontSize = '10pt';
+  const contentFontSize = '9.1pt';
+  const tableFontSize = '8.45pt';
+  const noteFontSize = '6.5pt';
   const layout = buildAttendancePrintLayout(snapshot);
   const signatureNote = `Ditandatangani dan dikirim ke Kurikulum secara digital oleh pengawas ruang pada ${formatDateOnly(
     snapshot.submittedAt,
@@ -214,10 +214,26 @@ function buildProctorAttendancePrintHtml(params: {
         }
         .header-line {
           font-size: ${headerFontSize};
-          line-height: 1.24;
+          line-height: 1.18;
           font-weight: 700;
           text-transform: uppercase;
           letter-spacing: 0.02em;
+        }
+        .heading-group {
+          margin-top: 6px;
+          display: flex;
+          justify-content: center;
+          align-items: center;
+          gap: 1.5cm;
+        }
+        .heading-logo {
+          width: 56px;
+          height: 56px;
+          object-fit: contain;
+          flex-shrink: 0;
+        }
+        .heading-copy {
+          text-align: center;
         }
         .meta-row {
           margin-top: 2px;
@@ -332,7 +348,7 @@ function buildProctorAttendancePrintHtml(params: {
           justify-content: flex-end;
         }
         .signature-box {
-          width: 300px;
+          width: 290px;
           text-align: center;
           font-size: ${contentFontSize};
         }
@@ -345,8 +361,8 @@ function buildProctorAttendancePrintHtml(params: {
           justify-content: center;
         }
         .qr {
-          width: 84px;
-          height: 84px;
+          width: 80px;
+          height: 80px;
           object-fit: contain;
           border: 1px solid #cbd5e1;
           border-radius: 12px;
@@ -399,10 +415,13 @@ function buildProctorAttendancePrintHtml(params: {
             <div class="meta-text meta-verify">Diverifikasi melalui QR internal SIS KGB2</div>
           </div>
 
-          <div style="margin-top:6px;text-align:center;">
-            <div class="header-line">${escapeHtml(snapshot.title)}</div>
-            <div class="header-line">${escapeHtml(formatExamHeadingLabel(snapshot.examLabel))}</div>
-            <div class="header-line">Tahun Ajaran ${escapeHtml(snapshot.academicYearName)}</div>
+          <div class="heading-group">
+            <img src="${escapeHtml(snapshot.schoolLogoPath)}" alt="Logo KGB2" class="heading-logo" />
+            <div class="heading-copy">
+              <div class="header-line">${escapeHtml(snapshot.title)}</div>
+              <div class="header-line">${escapeHtml(formatExamHeadingLabel(snapshot.examLabel))}</div>
+              <div class="header-line">Tahun Ajaran ${escapeHtml(snapshot.academicYearName)}</div>
+            </div>
           </div>
 
           <div class="detail-grid">
@@ -486,10 +505,10 @@ export default function ProctorAttendancePrint() {
   const navigate = useNavigate();
   const { reportId } = useParams<{ reportId: string }>();
   const parsedReportId = Number(reportId || 0);
-  const headerFontSize = '10.5pt';
-  const contentFontSize = '9.5pt';
-  const tableFontSize = '8.75pt';
-  const noteFontSize = '6.75pt';
+  const headerFontSize = '10pt';
+  const contentFontSize = '9.1pt';
+  const tableFontSize = '8.45pt';
+  const noteFontSize = '6.5pt';
   const printIframeRef = useRef<HTMLIFrameElement>(null);
 
   const documentQuery = useQuery({
@@ -635,13 +654,20 @@ export default function ProctorAttendancePrint() {
             </div>
           </div>
 
-          <div className="mt-1.5 text-center">
-            <div className="font-semibold tracking-wide text-slate-900" style={{ fontSize: headerFontSize, lineHeight: 1.24 }}>{snapshot.title}</div>
-            <div className="mt-1 font-semibold uppercase tracking-wide text-slate-900" style={{ fontSize: headerFontSize, lineHeight: 1.24 }}>
-              {formatExamHeadingLabel(snapshot.examLabel)}
-            </div>
-            <div className="mt-1 font-semibold uppercase tracking-wide text-slate-900" style={{ fontSize: headerFontSize, lineHeight: 1.24 }}>
-              Tahun Ajaran {snapshot.academicYearName}
+          <div className="mt-1.5 flex items-center justify-center" style={{ gap: '1.5cm' }}>
+            <img
+              src={snapshot.schoolLogoPath}
+              alt="Logo KGB2"
+              className="h-14 w-14 object-contain"
+            />
+            <div className="text-center">
+              <div className="font-semibold tracking-wide text-slate-900" style={{ fontSize: headerFontSize, lineHeight: 1.18 }}>{snapshot.title}</div>
+              <div className="mt-1 font-semibold uppercase tracking-wide text-slate-900" style={{ fontSize: headerFontSize, lineHeight: 1.18 }}>
+                {formatExamHeadingLabel(snapshot.examLabel)}
+              </div>
+              <div className="mt-1 font-semibold uppercase tracking-wide text-slate-900" style={{ fontSize: headerFontSize, lineHeight: 1.18 }}>
+                Tahun Ajaran {snapshot.academicYearName}
+              </div>
             </div>
           </div>
 
@@ -760,7 +786,7 @@ export default function ProctorAttendancePrint() {
                   <img
                     src={verificationQrDataUrl}
                     alt="QR Verifikasi Daftar Hadir"
-                    className="proctor-attendance-print-image h-[84px] w-[84px] rounded-xl border border-slate-200 bg-white p-2 object-contain"
+                    className="proctor-attendance-print-image h-20 w-20 rounded-xl border border-slate-200 bg-white p-2 object-contain"
                   />
                 </div>
                 <div className="mt-1.5 inline-block max-w-full">
