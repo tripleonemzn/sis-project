@@ -746,7 +746,7 @@ const ROLE_MENUS: Record<string, RoleMenuItem[]> = {
     { key: 'principal-email', label: 'Email', route: '/email' },
     {
       key: 'principal-monitoring',
-      label: 'Monitoring',
+      label: 'Operasional Harian',
       route: '/principal/monitoring/operations',
     },
     {
@@ -937,6 +937,10 @@ function shouldShowMenuItem(user: AuthUser, item: RoleMenuItem, options?: RoleMe
       return hasAnyPrimaryDuty(user);
     }
 
+    if (item.key === 'teacher-committee-events') {
+      return hasDuty(user, ['WAKASEK_KURIKULUM', 'SEKRETARIS_KURIKULUM']);
+    }
+
     if (item.key.startsWith('teacher-extracurricular-')) {
       return Boolean(options?.hasExtracurricularAdvisorAssignments);
     }
@@ -1100,11 +1104,6 @@ const ROLE_MENU_GROUPS: Record<string, GroupDefinition[]> = {
       ],
     },
     {
-      key: 'committee',
-      label: 'KEPANITIAAN',
-      menuKeys: ['teacher-committee-events'],
-    },
-    {
       key: 'homeroom',
       label: 'WALI KELAS',
       menuKeys: [
@@ -1147,6 +1146,7 @@ const ROLE_MENU_GROUPS: Record<string, GroupDefinition[]> = {
         'teacher-wakakur-approvals-work-program',
         'teacher-wakakur-curriculum',
         'teacher-wakakur-exams',
+        'teacher-committee-events',
         'teacher-wakakur-performance',
         'teacher-wakakur-approvals',
         'teacher-wakakur-reports',
@@ -1254,9 +1254,13 @@ const ROLE_MENU_GROUPS: Record<string, GroupDefinition[]> = {
   ],
   PRINCIPAL: [
     { key: 'dashboard', label: 'Dashboard', menuKeys: ['principal-dashboard', 'principal-email'] },
+    {
+      key: 'monitoring',
+      label: 'MONITORING',
+      menuKeys: ['principal-monitoring', 'principal-committee-approvals'],
+    },
     { key: 'academic', label: 'AKADEMIK', menuKeys: ['principal-reports', 'principal-attendance'] },
     { key: 'finance', label: 'KEUANGAN', menuKeys: ['principal-finance-requests'] },
-    { key: 'committee', label: 'KEPANITIAAN', menuKeys: ['principal-committee-approvals'] },
     { key: 'students', label: 'KESISWAAN', menuKeys: ['principal-students'] },
     { key: 'teachers', label: 'SDM GURU', menuKeys: ['principal-teachers'] },
     { key: 'settings', label: 'PENGATURAN', menuKeys: ['principal-profile', 'principal-accessibility'] },
@@ -1479,8 +1483,8 @@ function buildStaffGroups(user: AuthUser, menus: RoleMenuItem[]) {
       'staff-head-tu-students',
       'staff-head-tu-teachers',
       'staff-head-tu-permissions',
+      'staff-head-tu-committees',
     ]);
-    pushGroup(groups, 'committee', 'KEPANITIAAN', ['staff-head-tu-committees']);
     pushGroup(groups, 'settings', 'PENGATURAN', ['staff-profile', 'staff-accessibility']);
     return groups;
   }
@@ -1536,11 +1540,10 @@ function buildPrincipalGroups(menus: RoleMenuItem[]) {
   };
 
   pushGroup('dashboard', 'Dashboard', ['principal-dashboard', 'principal-email']);
-  pushGroup('monitoring', 'MONITORING', ['principal-monitoring']);
+  pushGroup('monitoring', 'MONITORING', ['principal-monitoring', 'principal-committee-approvals']);
   pushGroup('academic', 'AKADEMIK', ['principal-reports', 'principal-attendance']);
   pushGroup('exams', 'UJIAN', ['principal-exam-reports']);
   pushGroup('finance', 'KEUANGAN', ['principal-finance-requests']);
-  pushGroup('committee', 'KEPANITIAAN', ['principal-committee-approvals']);
   pushGroup('students', 'KESISWAAN', ['principal-students', 'principal-osis-monitoring']);
   pushGroup('teachers', 'SDM GURU', ['principal-teachers']);
   pushGroup('settings', 'PENGATURAN', ['principal-profile', 'principal-accessibility']);
@@ -1728,6 +1731,7 @@ function buildTeacherGroups(
         ...pickMenus(byKey, [
           'teacher-wakakur-curriculum',
           'teacher-wakakur-exams',
+          'teacher-committee-events',
           'teacher-wakakur-performance',
           'teacher-wakakur-approvals',
           'teacher-wakakur-reports',
@@ -1870,7 +1874,6 @@ function buildTeacherGroups(
     ]);
   }
 
-  pushGroup('committee', 'KEPANITIAAN', pickMenus(byKey, ['teacher-committee-events']));
   pushGroup('settings', 'PENGATURAN', pickMenus(byKey, ['teacher-profile', 'teacher-accessibility']));
 
   return groups;

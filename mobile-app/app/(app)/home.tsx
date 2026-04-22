@@ -474,6 +474,25 @@ function buildCommitteeWebModuleRoute(key: string, webPath: string, label: strin
   return `/web-module/${encodeURIComponent(key)}?${params.toString()}`;
 }
 
+const COMMITTEE_FEATURE_PRIORITY = [
+  'EXAM_PROGRAM',
+  'EXAM_SCHEDULE',
+  'EXAM_ROOMS',
+  'EXAM_PROCTOR',
+  'EXAM_LAYOUT',
+  'EXAM_CARD',
+] as const;
+
+function getPreferredCommitteeMenuTarget(group: CommitteeSidebarGroup) {
+  if (!Array.isArray(group.items) || group.items.length === 0) return null;
+
+  const preferredItem = COMMITTEE_FEATURE_PRIORITY
+    .map((featureCode) => group.items.find((item) => item.featureCode === featureCode))
+    .find(Boolean);
+
+  return preferredItem || group.items[0] || null;
+}
+
 function appendCommitteeMenuGroups(
   groups: RoleMenuGroup[],
   role: string,
@@ -481,31 +500,39 @@ function appendCommitteeMenuGroups(
 ): RoleMenuGroup[] {
   if (role !== 'TEACHER' || committeeGroups.length === 0) return groups;
 
-  const dynamicGroups: RoleMenuGroup[] = committeeGroups
-    .filter((group) => Array.isArray(group.items) && group.items.length > 0)
-    .map((group) => ({
-      key: `committee-${group.eventId}`,
-      label: group.label,
-      items: group.items.map((item) => ({
-        key: item.key,
-        label: item.label,
-        route: buildCommitteeWebModuleRoute(item.key, item.webPath, item.label),
-        webPath: item.webPath,
-      })),
-    }));
+  const dynamicItems = committeeGroups.reduce<RoleMenuItem[]>((acc, group) => {
+      const preferredItem = getPreferredCommitteeMenuTarget(group);
+      if (!preferredItem) return acc;
+      acc.push({
+        key: preferredItem.key,
+        label: group.label,
+        route: buildCommitteeWebModuleRoute(preferredItem.key, preferredItem.webPath, group.label),
+        webPath: preferredItem.webPath,
+      });
+      return acc;
+    }, []);
 
-  if (dynamicGroups.length === 0) return groups;
+  if (dynamicItems.length === 0) return groups;
 
-  const settingsIndex = groups.findIndex((group) => String(group.label || '').toUpperCase() === 'PENGATURAN');
-  if (settingsIndex < 0) {
-    return [...groups, ...dynamicGroups];
-  }
+  const preferredHostLabels = new Set(['WAKASEK KURIKULUM', 'SEKRETARIS KURIKULUM']);
+  const hostIndex = groups.findIndex((group) => preferredHostLabels.has(String(group.label || '').toUpperCase()));
+  const fallbackIndex = groups.findIndex((group) => String(group.label || '').toUpperCase() === 'UJIAN');
+  const targetIndex = hostIndex >= 0 ? hostIndex : fallbackIndex;
 
-  return [
-    ...groups.slice(0, settingsIndex),
-    ...dynamicGroups,
-    ...groups.slice(settingsIndex),
-  ];
+  if (targetIndex < 0) return groups;
+
+  return groups.map((group, index) => {
+    if (index !== targetIndex) return group;
+
+    const existingKeys = new Set(group.items.map((item) => item.key));
+    return {
+      ...group,
+      items: [
+        ...group.items,
+        ...dynamicItems.filter((item) => !existingKeys.has(item.key)),
+      ],
+    };
+  });
 }
 
 const getStatIcon = (item: DashboardStatItem, linkedMenu?: RoleMenuItem): FeatherIconName => {

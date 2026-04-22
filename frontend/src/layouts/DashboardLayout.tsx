@@ -84,6 +84,20 @@ const buildSidebarCrumbLookup = (roleSegment: string, user: User | null): Record
   return lookup;
 };
 
+const normalizeDutyCode = (raw: unknown): string => {
+  return String(raw || '')
+    .trim()
+    .toUpperCase()
+    .replace(/[\s-]+/g, '_');
+};
+
+const resolveTeacherCommitteeBreadcrumbGroup = (user: User | null): string => {
+  const duties = Array.isArray(user?.additionalDuties) ? user.additionalDuties.map(normalizeDutyCode) : [];
+  if (duties.includes('WAKASEK_KURIKULUM')) return 'WAKASEK KURIKULUM';
+  if (duties.includes('SEKRETARIS_KURIKULUM')) return 'SEKRETARIS KURIKULUM';
+  return 'UJIAN';
+};
+
 // Helper untuk breadcrumbs map
   const getBreadcrumbs = (
     location: { pathname: string; search: string; state?: unknown }, 
@@ -354,6 +368,7 @@ const buildSidebarCrumbLookup = (roleSegment: string, user: User | null): Record
   }
 
   if (role === 'teacher') {
+    const teacherCommitteeGroup = resolveTeacherCommitteeBreadcrumbGroup(user);
     const mapping: Record<
       string,
       {
@@ -434,7 +449,7 @@ const buildSidebarCrumbLookup = (roleSegment: string, user: User | null): Record
       'wakasek/performance': { label: 'Monitoring Kinerja', group: 'WAKASEK KURIKULUM' },
       'wakasek/work-program-approvals': { label: 'Persetujuan Program Kerja', group: 'WAKASEK KURIKULUM' },
       'wakasek/reports': { label: 'Laporan Akademik', group: 'WAKASEK KURIKULUM' },
-      committees: { label: 'Kegiatan Panitia', group: 'KEPANITIAAN' },
+      committees: { label: 'Kegiatan Panitia', group: teacherCommitteeGroup },
       
       // WAKASEK KESISWAAN
       'wakasek/student-performance': { label: 'Monitoring Kinerja', group: 'WAKASEK KESISWAAN' },
@@ -723,7 +738,7 @@ const buildSidebarCrumbLookup = (roleSegment: string, user: User | null): Record
         denah: 'Generate Denah Ruang',
         kartu: 'Kartu Ujian',
       };
-      breadcrumbs.push({ label: 'KEPANITIAAN', path: null });
+      breadcrumbs.push({ label: teacherCommitteeGroup, path: null });
       breadcrumbs.push({
         label: committeeLabel,
         path: `/${role}/committee-events/${segments[1]}/exams?committeeLabel=${encodeURIComponent(committeeLabel)}`,
@@ -1128,7 +1143,7 @@ const buildSidebarCrumbLookup = (roleSegment: string, user: User | null): Record
       'monitoring/operations': { label: 'Operasional Harian', group: 'MONITORING' },
       'monitoring/bpbk': { label: 'Ringkasan BP/BK', group: 'MONITORING' },
       'work-program-approvals': { label: 'Persetujuan Program Kerja', group: 'MONITORING' },
-      'committee-approvals': { label: 'Persetujuan Panitia', group: 'KEPANITIAAN' },
+      'committee-approvals': { label: 'Persetujuan Panitia', group: 'MONITORING' },
       'academic/reports': { label: 'Rapor & Ranking' },
       'academic/attendance': { label: 'Rekap Absensi' },
       'finance/requests': { label: 'Pengajuan Anggaran' },
@@ -1185,7 +1200,7 @@ const buildSidebarCrumbLookup = (roleSegment: string, user: User | null): Record
       'head-tu/teachers': { label: 'Data Guru & Staff', group: 'LAYANAN TU' },
       'head-tu/permissions': { label: 'Perizinan Siswa', group: 'LAYANAN TU' },
       'head-tu/letters': { label: 'Surat-Menyurat', group: 'LAYANAN TU' },
-      'head-tu/committees': { label: 'SK Kepanitiaan', group: 'KEPANITIAAN' },
+      'head-tu/committees': { label: 'SK Kepanitiaan', group: 'LAYANAN TU' },
       payments: { label: 'Ringkasan Keuangan', group: 'KEUANGAN' },
       students: { label: 'Data Siswa', group: 'KEUANGAN' },
       admin: { label: 'Realisasi Anggaran', group: 'KEUANGAN' },

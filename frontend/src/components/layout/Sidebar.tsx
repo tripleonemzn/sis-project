@@ -51,7 +51,6 @@ import { authService } from '../../services/auth.service';
 import { internshipService } from '../../services/internship.service';
 import {
   committeeService,
-  type CommitteeFeatureCode,
   type CommitteeSidebarGroup,
 } from '../../services/committee.service';
 import {
@@ -257,26 +256,62 @@ function mergeTutorAssignments(
   return Array.from(merged.values());
 }
 
-function getCommitteeFeatureIcon(featureCode: CommitteeFeatureCode): React.ElementType {
-  if (featureCode === 'EXAM_PROGRAM') return Layers;
-  if (featureCode === 'EXAM_SCHEDULE') return Calendar;
-  if (featureCode === 'EXAM_ROOMS') return School;
-  if (featureCode === 'EXAM_PROCTOR') return UserCheck;
-  if (featureCode === 'EXAM_LAYOUT') return Building2;
-  return ClipboardList;
+const COMMITTEE_FEATURE_PRIORITY = [
+  'EXAM_PROGRAM',
+  'EXAM_SCHEDULE',
+  'EXAM_ROOMS',
+  'EXAM_PROCTOR',
+  'EXAM_LAYOUT',
+  'EXAM_CARD',
+] as const;
+
+function getPreferredCommitteeWorkspacePath(group: CommitteeSidebarGroup): string {
+  if (!Array.isArray(group.items) || group.items.length === 0) {
+    return `/teacher/committee-events/${group.eventId}/exams`;
+  }
+
+  const preferredItem = COMMITTEE_FEATURE_PRIORITY
+    .map((featureCode) => group.items.find((item) => item.featureCode === featureCode))
+    .find(Boolean);
+
+  return preferredItem?.webPath || group.items[0]?.webPath || `/teacher/committee-events/${group.eventId}/exams`;
 }
 
 function buildCommitteeSidebarMenuItems(groups: CommitteeSidebarGroup[]): MenuItem[] {
-  return groups.map((group) => ({
-    label: group.label,
-    path: `/teacher/committee-events/${group.eventId}/exams`,
-    icon: Briefcase,
-    children: group.items.map((item) => ({
-      label: item.label,
-      path: item.webPath,
-      icon: getCommitteeFeatureIcon(item.featureCode),
-    })),
-  }));
+  return groups
+    .filter((group) => Array.isArray(group.items) && group.items.length > 0)
+    .map((group) => ({
+      label: group.label,
+      path: getPreferredCommitteeWorkspacePath(group),
+      icon: Briefcase,
+    }));
+}
+
+function attachTeacherCommitteeItems(baseItems: MenuItem[], committeeItems: MenuItem[]): MenuItem[] {
+  if (committeeItems.length === 0) return baseItems;
+
+  const preferredGroups = ['WAKASEK KURIKULUM', 'SEKRETARIS KURIKULUM'];
+  const hostIndex = baseItems.findIndex((item) => preferredGroups.includes(String(item.label || '').toUpperCase()));
+  const fallbackIndex = baseItems.findIndex((item) => String(item.label || '').toUpperCase() === 'UJIAN');
+  const targetIndex = hostIndex >= 0 ? hostIndex : fallbackIndex;
+
+  if (targetIndex < 0) return baseItems;
+
+  return baseItems.map((item, index) => {
+    if (index !== targetIndex) return item;
+
+    const existingChildren = Array.isArray(item.children) ? item.children : [];
+    const existingPaths = new Set(existingChildren.map((child) => child.path));
+    const nextChildren = [
+      ...existingChildren,
+      ...committeeItems.filter((child) => !existingPaths.has(child.path)),
+    ];
+
+    return {
+      ...item,
+      children: nextChildren,
+    };
+  });
 }
 
 function isMidtermComponent(code: string): boolean {
@@ -461,13 +496,6 @@ export const getMenuItems = (
       };
     });
 
-    const committeeMenuItem: MenuItem = {
-      label: 'KEPANITIAAN',
-      path: '/teacher/committees-group',
-      icon: Briefcase,
-      children: [{ label: 'Kegiatan Panitia', path: '/teacher/committees', icon: Briefcase }],
-    };
-
     const items: MenuItem[] = [
       { label: 'Dashboard', path: '/teacher', icon: LayoutDashboard },
       { label: 'Email', path: '/email', icon: Mail },
@@ -612,6 +640,7 @@ export const getMenuItems = (
           { label: 'Kelola Kurikulum', path: '/teacher/wakasek/curriculum', icon: Layers },
           { label: 'Program Perangkat Ajar', path: '/teacher/wakasek/teaching-resource-programs', icon: BookOpen },
           { label: 'Kelola Ujian', path: '/teacher/wakasek/exams', icon: FileQuestion },
+          { label: 'Kegiatan Panitia', path: '/teacher/committees', icon: Briefcase },
           { label: 'Leger Nilai Akhir', path: '/teacher/wakasek/final-ledger', icon: Calculator },
           { label: 'Monitoring Kinerja', path: '/teacher/wakasek/performance', icon: BarChart3 },
           { label: 'Laporan Akademik', path: '/teacher/wakasek/reports', icon: FileText },
@@ -786,8 +815,6 @@ export const getMenuItems = (
     if (extracurricularAdvisorMenus.length > 0) {
       items.push(...extracurricularAdvisorMenus);
     }
-
-    items.push(committeeMenuItem);
 
     items.push({
       label: 'PENGATURAN',
@@ -991,7 +1018,15 @@ export const getMenuItems = (
     const items: MenuItem[] = [
       { label: 'Dashboard', path: '/principal', icon: LayoutDashboard },
       { label: 'Email', path: '/email', icon: Mail },
-      { label: 'MONITORING', path: '/principal/monitoring/operations', icon: Activity },
+      {
+        label: 'MONITORING',
+        path: '/principal/monitoring-group',
+        icon: Activity,
+        children: [
+          { label: 'Operasional Harian', path: '/principal/monitoring/operations', icon: Activity },
+          { label: 'Persetujuan Panitia', path: '/principal/committee-approvals', icon: ShieldAlert },
+        ],
+      },
       {
         label: 'AKADEMIK',
         path: '/principal/academic',
@@ -1030,14 +1065,6 @@ export const getMenuItems = (
         icon: Users,
         children: [
           { label: 'Data Guru', path: '/principal/teachers', icon: Users },
-        ],
-      },
-      {
-        label: 'KEPANITIAAN',
-        path: '/principal/committees-group',
-        icon: Briefcase,
-        children: [
-          { label: 'Persetujuan Panitia', path: '/principal/committee-approvals', icon: ShieldAlert },
         ],
       },
       { label: 'Profil', path: '/principal/profile', icon: UserIcon },
@@ -1121,13 +1148,6 @@ export const getMenuItems = (
             { label: 'Data Guru & Staff', path: '/staff/head-tu/teachers', icon: Users },
             { label: 'Perizinan Siswa', path: '/staff/head-tu/permissions', icon: FileText },
             { label: 'Surat-Menyurat', path: '/staff/head-tu/letters', icon: FileText },
-          ],
-        },
-        {
-          label: 'KEPANITIAAN',
-          path: '/staff/head-tu/committees-group',
-          icon: Briefcase,
-          children: [
             { label: 'SK Kepanitiaan', path: '/staff/head-tu/committees', icon: ShieldAlert },
           ],
         },
@@ -1384,15 +1404,7 @@ export const Sidebar = ({ user }: SidebarProps) => {
       if (user.role !== 'TEACHER' || committeeSidebarItems.length === 0) {
         return baseItems;
       }
-      const settingsIndex = baseItems.findIndex((item) => item.label === 'PENGATURAN');
-      if (settingsIndex < 0) {
-        return [...baseItems, ...committeeSidebarItems];
-      }
-      return [
-        ...baseItems.slice(0, settingsIndex),
-        ...committeeSidebarItems,
-        ...baseItems.slice(settingsIndex),
-      ];
+      return attachTeacherCommitteeItems(baseItems, committeeSidebarItems);
     },
     [
       user,
