@@ -1,4 +1,4 @@
-import jwt from 'jsonwebtoken';
+import jwt, { type SignOptions } from 'jsonwebtoken';
 import { Request, Response, NextFunction } from 'express';
 import { ApiError } from '../utils/api';
 
@@ -6,14 +6,36 @@ export interface JwtPayload {
   id: number;
   role: string;
   isDemo?: boolean;
+  sessionId?: string;
   tokenType?: string;
   scheduleId?: number;
   source?: string;
 }
 
-export const generateToken = (payload: JwtPayload): string => {
+function parsePositiveInt(raw: unknown, fallbackValue: number): number {
+  const parsed = Number.parseInt(String(raw ?? '').trim(), 10);
+  return Number.isFinite(parsed) && parsed > 0 ? parsed : fallbackValue;
+}
+
+function clamp(value: number, min: number, max: number): number {
+  if (value < min) return min;
+  if (value > max) return max;
+  return value;
+}
+
+const DEFAULT_AUTH_ACCESS_TOKEN_TTL_SECONDS = 60 * 60;
+const ACCESS_TOKEN_TTL_SECONDS = clamp(
+  parsePositiveInt(process.env.AUTH_ACCESS_TOKEN_TTL_SECONDS, DEFAULT_AUTH_ACCESS_TOKEN_TTL_SECONDS),
+  60 * 5,
+  60 * 60 * 24,
+);
+
+export const generateToken = (
+  payload: JwtPayload,
+  options?: { expiresIn?: SignOptions['expiresIn'] },
+): string => {
   return jwt.sign(payload, process.env.JWT_SECRET || 'secret', {
-    expiresIn: '1d',
+    expiresIn: options?.expiresIn ?? ACCESS_TOKEN_TTL_SECONDS,
   });
 };
 

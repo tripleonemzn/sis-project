@@ -14,6 +14,7 @@ import {
   RegisterUmumResponse,
 } from './types';
 import { offlineCache } from '../../lib/storage/offlineCache';
+import { webmailSessionStorage } from '../../lib/storage/webmailSessionStorage';
 
 const ME_CACHE_TTL_MS = 60_000;
 let meCache: { token: string; user: LoginResponse['data']['user']; cachedAt: number } | null = null;
@@ -46,8 +47,9 @@ export const authService = {
     const force = Boolean(options?.force);
     const allowStaleOnError = Boolean(options?.allowStaleOnError);
     const token = await tokenStorage.getAccessToken();
+    const refreshToken = await tokenStorage.getRefreshToken();
 
-    if (!token) {
+    if (!token && !refreshToken) {
       clearMeCache();
       throw new Error('Token tidak ditemukan.');
     }
@@ -64,7 +66,9 @@ export const authService = {
       .get<MeResponse>('/auth/me')
       .then((response) => {
         const user = response.data.data;
-        meCache = { token, user, cachedAt: Date.now() };
+        const resolvedToken =
+          String(response.headers?.['x-sis-access-token'] || '').trim() || (token ? String(token).trim() : '');
+        meCache = { token: resolvedToken, user, cachedAt: Date.now() };
         return user;
       })
       .catch((error) => {
@@ -97,7 +101,14 @@ export const authService = {
   },
   async logout() {
     clearMeCache();
+    const refreshToken = await tokenStorage.getRefreshToken();
+    try {
+      await apiClient.post('/auth/logout', refreshToken ? { refreshToken } : {});
+    } catch {
+      // Ignore revoke failures and clear local session defensively.
+    }
     await tokenStorage.clearAll();
+    await webmailSessionStorage.clearAll();
     await offlineCache.clearAllMobileCaches();
   },
   clearMeCache,

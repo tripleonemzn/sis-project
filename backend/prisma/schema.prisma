@@ -111,6 +111,7 @@ model User {
   materials                                          Material[]
   notifications                                      Notification[]
   mobilePushDevices                                  MobilePushDevice[]
+  authSessions                                       AuthSession[]
   auditLogs                                          AuditLog[]
   p5Assessments                                      P5Assessment[]
   payments                                           Payment[]
@@ -231,6 +232,31 @@ model User {
   jobApplicationAssessments                          JobApplicationAssessment[]          @relation("JobApplicationAssessments")
 
   @@map("users")
+}
+
+model AuthSession {
+  id                     String    @id @db.Uuid
+  userId                 Int       @map("user_id")
+  refreshTokenHash       String    @map("refresh_token_hash")
+  refreshTokenExpiresAt  DateTime  @map("refresh_token_expires_at")
+  absoluteExpiresAt      DateTime  @map("absolute_expires_at")
+  lastSeenAt             DateTime  @default(now()) @map("last_seen_at")
+  revokedAt              DateTime? @map("revoked_at")
+  revokeReason           String?   @map("revoke_reason")
+  clientPlatform         String?   @map("client_platform")
+  userAgent              String?   @map("user_agent")
+  ipAddress              String?   @map("ip_address")
+  webmailAuthenticatedAt DateTime? @map("webmail_authenticated_at")
+  webmailMailboxIdentity String?   @map("webmail_mailbox_identity")
+  webmailMode            String?   @map("webmail_mode")
+  createdAt              DateTime  @default(now()) @map("created_at")
+  updatedAt              DateTime  @updatedAt @map("updated_at")
+
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@index([userId, revokedAt], map: "auth_sessions_user_revoked_idx")
+  @@index([refreshTokenHash], map: "auth_sessions_refresh_hash_idx")
+  @@map("auth_sessions")
 }
 
 model StudentBehavior {

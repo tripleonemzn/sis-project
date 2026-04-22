@@ -629,8 +629,6 @@ export default function MobileEmailScreen() {
 
     if (!config.mailSessionAuthenticated) {
       void webmailSessionStorage.clearAccessToken();
-      void webmailSessionStorage.clearBridgeCredentials();
-      setBridgeCredentials(null);
       return;
     }
 

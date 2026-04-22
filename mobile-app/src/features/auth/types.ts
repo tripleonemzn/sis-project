@@ -201,6 +201,16 @@ export type MeResponse = {
   data: AuthUser;
 };
 
+export type RefreshSessionResponse = {
+  statusCode: number;
+  success: boolean;
+  message: string;
+  data: {
+    token: string;
+    refreshToken?: string;
+  };
+};
+
 export type RegisterUmumResponse = {
   statusCode: number;
   success: boolean;

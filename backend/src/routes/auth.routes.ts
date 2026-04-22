@@ -1,6 +1,8 @@
 import { Router } from 'express';
 import {
   login,
+  logout,
+  refreshSession,
   register,
   getMe,
   registerCalonSiswa,
@@ -19,6 +21,8 @@ import { roleMiddleware } from '../middleware/role';
 const router = Router();
 
 router.post('/login', login);
+router.post('/refresh', refreshSession);
+router.post('/logout', logout);
 router.post('/register', authMiddleware, register); // Only authenticated users (admins) should register new users ideally
 router.post('/register-calon-siswa', registerCalonSiswa);
 router.post('/register-parent', registerParent);

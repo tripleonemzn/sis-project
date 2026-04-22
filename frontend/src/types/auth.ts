@@ -274,6 +274,17 @@ export interface AuthResponse {
   data: {
     user: User;
     token: string;
+    refreshToken?: string;
+  };
+  message: string;
+  success: boolean;
+}
+
+export interface AuthRefreshResponse {
+  statusCode: number;
+  data: {
+    token: string;
+    refreshToken?: string;
   };
   message: string;
   success: boolean;

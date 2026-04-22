@@ -52,6 +52,7 @@ backup_*.sql
 !backend/prisma/migrations/20260402001500_add_profile_education_histories/migration.sql
 !backend/prisma/migrations/20260402043000_add_mobile_push_update_context/migration.sql
 !backend/prisma/migrations/20260405113000_add_homeroom_book_entries/migration.sql
+!backend/prisma/migrations/20260422153000_add_auth_sessions/migration.sql
 temp_repo/
 uploads/
 frontend/public/foto_kegiatan/

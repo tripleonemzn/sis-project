@@ -1691,8 +1691,8 @@ export const Sidebar = ({ user }: SidebarProps) => {
         </div>
         
         <button 
-          onClick={() => {
-            authService.logout();
+          onClick={async () => {
+            await authService.logout();
             window.location.href = '/login';
           }}
           className="w-full flex items-center justify-center gap-2 px-4 py-2 text-xs font-semibold text-red-600 bg-red-50 hover:bg-red-100 rounded-lg transition-colors"

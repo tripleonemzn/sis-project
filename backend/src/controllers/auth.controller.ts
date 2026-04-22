@@ -4,7 +4,7 @@ import crypto from 'crypto';
 import prisma from '../utils/prisma';
 import { ApiError, ApiResponse, asyncHandler } from '../utils/api';
 import { resolvePublicAppBaseUrl } from '../utils/publicAppBaseUrl';
-import { generateToken } from '../middleware/auth';
+import { verifyToken } from '../middleware/auth';
 import { z } from 'zod';
 import { getNisnValidationMessage, normalizeNisnInput } from '../utils/nisn';
 import {
@@ -19,6 +19,13 @@ import {
   VerificationStatus,
   VerificationMethod,
 } from '@prisma/client';
+import {
+  issueAuthSession,
+  revokeAllAuthSessionsForUser,
+  revokeAuthSessionById,
+  revokeAuthSessionByRefreshToken,
+  rotateAuthSession,
+} from '../services/authSession.service';
 
 const registerSchema = z.object({
   username: z.string().min(3),
@@ -38,6 +45,9 @@ const PASSWORD_RESET_REQUEST_COOLDOWN_MS = 60 * 1000;
 const PASSWORD_RESET_SUCCESS_MESSAGE =
   'Jika data akun cocok, link reset password sudah dikirim ke email terdaftar. Periksa inbox atau folder spam.';
 const passwordResetRequestCooldown = new Map<string, number>();
+const REFRESH_COOKIE_NAME = 'sis_refresh_token';
+const ACCESS_TOKEN_HEADER = 'X-SIS-Access-Token';
+const REFRESH_TOKEN_HEADER = 'X-SIS-Refresh-Token';
 
 function getFirstHeaderValue(value: string | string[] | undefined): string {
   const rawValue = Array.isArray(value) ? value[0] : value;
@@ -359,6 +369,97 @@ export function clearMeCacheForUser(userId: number) {
   meResponseCache.delete(buildMeCacheKey(normalizedUserId, true));
 }
 
+function shouldUseSecureCookies(req: Request): boolean {
+  const forwardedProto = getFirstHeaderValue(req.headers['x-forwarded-proto']).toLowerCase();
+  if (forwardedProto === 'https') return true;
+  return String(process.env.NODE_ENV || '').trim().toLowerCase() === 'production';
+}
+
+function setRefreshTokenCookie(req: Request, res: Response, refreshToken: string, expiresAt: Date) {
+  res.cookie(REFRESH_COOKIE_NAME, refreshToken, {
+    httpOnly: true,
+    sameSite: 'lax',
+    secure: shouldUseSecureCookies(req),
+    expires: expiresAt,
+    path: '/api/auth',
+  });
+}
+
+function clearRefreshTokenCookie(req: Request, res: Response) {
+  res.cookie(REFRESH_COOKIE_NAME, '', {
+    httpOnly: true,
+    sameSite: 'lax',
+    secure: shouldUseSecureCookies(req),
+    expires: new Date(0),
+    path: '/api/auth',
+  });
+}
+
+function readCookie(req: Request, name: string): string | null {
+  const rawCookieHeader = String(req.headers.cookie || '').trim();
+  if (!rawCookieHeader) return null;
+
+  const parts = rawCookieHeader.split(';');
+  for (const part of parts) {
+    const separatorIndex = part.indexOf('=');
+    if (separatorIndex <= 0) continue;
+    const key = part.slice(0, separatorIndex).trim();
+    if (key !== name) continue;
+    const value = part.slice(separatorIndex + 1).trim();
+    if (!value) return null;
+    try {
+      return decodeURIComponent(value);
+    } catch {
+      return value;
+    }
+  }
+
+  return null;
+}
+
+function shouldReturnRefreshTokenInBody(req: Request): boolean {
+  return String(req.header('x-client-platform') || '')
+    .trim()
+    .toLowerCase() === 'mobile';
+}
+
+function attachIssuedAuthSessionToResponse(
+  req: Request,
+  res: Response,
+  session: {
+    accessToken: string;
+    refreshToken: string;
+    refreshTokenExpiresAt: Date;
+  },
+) {
+  res.setHeader(ACCESS_TOKEN_HEADER, session.accessToken);
+  setRefreshTokenCookie(req, res, session.refreshToken, session.refreshTokenExpiresAt);
+  if (shouldReturnRefreshTokenInBody(req)) {
+    res.setHeader(REFRESH_TOKEN_HEADER, session.refreshToken);
+  }
+}
+
+function resolveRefreshTokenFromRequest(req: Request): string | null {
+  const bodyRefreshToken = String(req.body?.refreshToken || '').trim();
+  if (bodyRefreshToken) return bodyRefreshToken;
+  return readCookie(req, REFRESH_COOKIE_NAME);
+}
+
+function resolveRequestSessionIdFromBearerToken(req: Request): string | null {
+  const authHeader = String(req.headers.authorization || '').trim();
+  if (!authHeader.startsWith('Bearer ')) return null;
+
+  const token = authHeader.slice('Bearer '.length).trim();
+  if (!token) return null;
+
+  try {
+    const decoded = verifyToken(token);
+    return String(decoded.sessionId || '').trim() || null;
+  } catch {
+    return null;
+  }
+}
+
 const activeTutorAssignmentsInclude = {
   ekskulTutorAssignments: {
     where: {
@@ -465,17 +566,59 @@ export const login = asyncHandler(async (req: Request, res: Response) => {
   }
 
   const isDemo = isDemoAccount(user.username);
-  const token = generateToken({ id: user.id, role: user.role, isDemo });
+  const issuedSession = await issueAuthSession({
+    request: req,
+    user: {
+      id: user.id,
+      role: user.role,
+      username: user.username,
+      verificationStatus: user.verificationStatus,
+    },
+    isDemo,
+  });
+  attachIssuedAuthSessionToResponse(req, res, issuedSession);
 
   const { password: _, ...userWithoutPassword } = user;
   const responseUser = { ...userWithoutPassword, isDemo };
+  const responseData: {
+    user: typeof responseUser;
+    token: string;
+    refreshToken?: string;
+  } = {
+    user: responseUser,
+    token: issuedSession.accessToken,
+  };
+  if (shouldReturnRefreshTokenInBody(req)) {
+    responseData.refreshToken = issuedSession.refreshToken;
+  }
 
   res.status(200).json(
-    new ApiResponse(200, { user: responseUser, token }, 'Login berhasil')
+    new ApiResponse(200, responseData, 'Login berhasil')
   );
 });
 
 export const getMe = asyncHandler(async (req: any, res: Response) => {
+  if (!req.user?.sessionId) {
+    const currentUser = await prisma.user.findUnique({
+      where: { id: req.user.id },
+      select: {
+        id: true,
+        role: true,
+        username: true,
+        verificationStatus: true,
+      },
+    });
+    if (currentUser) {
+      const bootstrapSession = await issueAuthSession({
+        request: req,
+        user: currentUser,
+        isDemo: Boolean(req.user?.isDemo),
+      });
+      attachIssuedAuthSessionToResponse(req, res, bootstrapSession);
+      req.user.sessionId = bootstrapSession.sessionId;
+    }
+  }
+
   const requestIsDemo = Boolean(req.user?.isDemo);
   const cacheKey = buildMeCacheKey(req.user.id, requestIsDemo);
   const cachedPayload = getMeCache(cacheKey);
@@ -540,6 +683,46 @@ export const getMe = asyncHandler(async (req: any, res: Response) => {
   res.setHeader('Cache-Control', 'private, max-age=5');
 
   res.status(200).json(new ApiResponse(200, responseUser, 'Profil pengguna berhasil diambil'));
+});
+
+export const refreshSession = asyncHandler(async (req: Request, res: Response) => {
+  const refreshToken = resolveRefreshTokenFromRequest(req);
+  if (!refreshToken) {
+    clearRefreshTokenCookie(req, res);
+    throw new ApiError(401, 'Sesi login tidak valid.');
+  }
+
+  const rotatedSession = await rotateAuthSession({
+    request: req,
+    refreshToken,
+  });
+  attachIssuedAuthSessionToResponse(req, res, rotatedSession);
+
+  const responseData: {
+    token: string;
+    refreshToken?: string;
+  } = {
+    token: rotatedSession.accessToken,
+  };
+  if (shouldReturnRefreshTokenInBody(req)) {
+    responseData.refreshToken = rotatedSession.refreshToken;
+  }
+
+  res.status(200).json(new ApiResponse(200, responseData, 'Sesi login berhasil diperbarui.'));
+});
+
+export const logout = asyncHandler(async (req: Request, res: Response) => {
+  const refreshToken = resolveRefreshTokenFromRequest(req);
+  const sessionIdFromAccessToken = resolveRequestSessionIdFromBearerToken(req);
+
+  if (refreshToken) {
+    await revokeAuthSessionByRefreshToken(refreshToken, 'manual_logout');
+  } else if (sessionIdFromAccessToken) {
+    await revokeAuthSessionById(sessionIdFromAccessToken, 'manual_logout');
+  }
+
+  clearRefreshTokenCookie(req, res);
+  res.status(200).json(new ApiResponse(200, null, 'Logout berhasil.'));
 });
 
 const forgotPasswordRequestSchema = z.object({
@@ -705,6 +888,8 @@ export const resetForgotPassword = asyncHandler(async (req: Request, res: Respon
       verificationExpires: null,
     },
   });
+  await revokeAllAuthSessionsForUser(user.id, 'password_reset');
+  clearRefreshTokenCookie(req, res);
 
   res.status(200).json(
     new ApiResponse(200, null, 'Password berhasil diperbarui. Silakan login kembali.'),
