@@ -1,4 +1,4 @@
-import { CommitteeEventStatus, CommitteeFeatureCode, Prisma } from '@prisma/client';
+import { CommitteeAssignmentMemberType, CommitteeEventStatus, CommitteeFeatureCode, Prisma } from '@prisma/client';
 import { Request, Response } from 'express';
 import { z } from 'zod';
 import prisma from '../utils/prisma';
@@ -80,11 +80,51 @@ const updateCommitteeLifecycleSchema = z.object({
   status: z.enum(['SELESAI', 'ARSIP']),
 });
 
+const COMMITTEE_ASSIGNMENT_MEMBER_TYPE_DEFINITIONS = [
+  {
+    code: 'TEACHER',
+    label: 'Guru',
+    memberType: CommitteeAssignmentMemberType.INTERNAL_USER,
+    featureGrantEligible: true,
+  },
+  {
+    code: 'STAFF',
+    label: 'Staff TU',
+    memberType: CommitteeAssignmentMemberType.INTERNAL_USER,
+    featureGrantEligible: false,
+  },
+  {
+    code: 'EXTERNAL',
+    label: 'Pembina Eksternal',
+    memberType: CommitteeAssignmentMemberType.EXTERNAL_MEMBER,
+    featureGrantEligible: false,
+  },
+] as const;
+
 const upsertCommitteeAssignmentSchema = z.object({
-  userId: z.coerce.number().int().positive(),
+  memberType: z.nativeEnum(CommitteeAssignmentMemberType).default(CommitteeAssignmentMemberType.INTERNAL_USER),
+  userId: z.coerce.number().int().positive().optional().nullable(),
+  externalName: z.string().trim().optional().nullable(),
+  externalInstitution: z.string().trim().optional().nullable(),
   assignmentRole: z.string().trim().min(1, 'Peran anggota wajib diisi'),
   notes: z.string().trim().optional().nullable(),
   featureCodes: z.array(z.nativeEnum(CommitteeFeatureCode)).default([]),
+}).superRefine((value, ctx) => {
+  if (value.memberType === CommitteeAssignmentMemberType.INTERNAL_USER && !value.userId) {
+    ctx.addIssue({
+      code: z.ZodIssueCode.custom,
+      path: ['userId'],
+      message: 'Pilih akun internal untuk anggota panitia.',
+    });
+  }
+
+  if (value.memberType === CommitteeAssignmentMemberType.EXTERNAL_MEMBER && !String(value.externalName || '').trim()) {
+    ctx.addIssue({
+      code: z.ZodIssueCode.custom,
+      path: ['externalName'],
+      message: 'Nama anggota eksternal wajib diisi.',
+    });
+  }
 });
 
 const committeeEventDetailInclude = {
@@ -130,14 +170,15 @@ const committeeEventDetailInclude = {
         assignmentRole: 'asc' as const,
       },
       {
-        user: {
-          name: 'asc' as const,
-        },
+        createdAt: 'asc' as const,
       },
     ],
     select: {
       id: true,
+      memberType: true,
       userId: true,
+      externalName: true,
+      externalInstitution: true,
       assignmentRole: true,
       notes: true,
       isActive: true,
@@ -149,6 +190,7 @@ const committeeEventDetailInclude = {
           name: true,
           username: true,
           role: true,
+          ptkType: true,
         },
       },
       featureGrants: {
@@ -168,6 +210,8 @@ const committeeEventDetailInclude = {
 type CommitteeEventWithDetail = Prisma.CommitteeEventGetPayload<{
   include: typeof committeeEventDetailInclude;
 }>;
+
+type CommitteeAssignmentWithDetail = CommitteeEventWithDetail['assignments'][number];
 
 async function getProgramLabelMap(academicYearId: number) {
   const rows = await prisma.examProgramConfig.findMany({
@@ -266,7 +310,14 @@ function assertCommitteeRequestEditAccess(
   }
 }
 
-function assertCommitteeAssignmentManageAccess(
+function canRequesterManageCommitteeAssignments(
+  profile: Awaited<ReturnType<typeof getCommitteeActorProfile>>,
+  event: CommitteeEventWithDetail,
+) {
+  return profile.id === event.requestedById && isCommitteeEditableByRequester(event.status);
+}
+
+function canHeadTuManageCommitteeAssignments(
   profile: Awaited<ReturnType<typeof getCommitteeActorProfile>>,
   event: CommitteeEventWithDetail,
 ) {
@@ -276,13 +327,29 @@ function assertCommitteeAssignmentManageAccess(
     CommitteeEventStatus.SELESAI,
     CommitteeEventStatus.ARSIP,
   ]);
+
+  return isHeadTuStaffProfile(profile) && manageableStatuses.has(event.status);
+}
+
+function assertCommitteeAssignmentManageAccess(
+  profile: Awaited<ReturnType<typeof getCommitteeActorProfile>>,
+  event: CommitteeEventWithDetail,
+) {
   if (profile.role === 'ADMIN') return;
-  if (!isHeadTuStaffProfile(profile)) {
-    throw new ApiError(403, 'Pengelolaan anggota panitia hanya untuk Kepala TU.');
+
+  if (canRequesterManageCommitteeAssignments(profile, event)) {
+    return;
   }
-  if (!manageableStatuses.has(event.status)) {
-    throw new ApiError(400, 'Anggota panitia baru dapat dikelola setelah persetujuan Kepala Sekolah.');
+
+  if (canHeadTuManageCommitteeAssignments(profile, event)) {
+    return;
   }
+
+  if (profile.id === event.requestedById) {
+    throw new ApiError(400, 'Rancangan panitia hanya dapat diubah saat status masih draft atau revisi.');
+  }
+
+  throw new ApiError(403, 'Pengelolaan anggota panitia hanya untuk pengusul draft atau Kepala TU sesuai tahap workflow.');
 }
 
 function assertCurrentAssignmentVisibility(event: CommitteeEventWithDetail, userId: number) {
@@ -293,7 +360,35 @@ function assertCurrentAssignmentVisibility(event: CommitteeEventWithDetail, user
   return assignment;
 }
 
-async function ensureCommitteeMemberIsTeacher(userId: number) {
+function normalizeCommitteeMemberTypeLabel(assignment: CommitteeAssignmentWithDetail) {
+  if (assignment.memberType === CommitteeAssignmentMemberType.EXTERNAL_MEMBER) {
+    return 'Pembina Eksternal';
+  }
+  if (assignment.user?.role === 'STAFF') {
+    return 'Staff TU';
+  }
+  return 'Guru';
+}
+
+function buildCommitteeMemberDetail(assignment: CommitteeAssignmentWithDetail) {
+  if (assignment.memberType === CommitteeAssignmentMemberType.EXTERNAL_MEMBER) {
+    return String(assignment.externalInstitution || '').trim() || null;
+  }
+  if (!assignment.user) return null;
+  if (assignment.user.role === 'STAFF') {
+    return String(assignment.user.ptkType || assignment.user.username || '').trim() || null;
+  }
+  return String(assignment.user.username || '').trim() || null;
+}
+
+function buildCommitteeMemberLabel(assignment: CommitteeAssignmentWithDetail) {
+  if (assignment.memberType === CommitteeAssignmentMemberType.EXTERNAL_MEMBER) {
+    return String(assignment.externalName || '').trim() || 'Anggota Eksternal';
+  }
+  return assignment.user?.name || 'Anggota Internal';
+}
+
+async function getCommitteeEligibleInternalMember(userId: number) {
   const member = await prisma.user.findUnique({
     where: { id: userId },
     select: {
@@ -301,6 +396,7 @@ async function ensureCommitteeMemberIsTeacher(userId: number) {
       role: true,
       name: true,
       username: true,
+      ptkType: true,
     },
   });
 
@@ -308,18 +404,57 @@ async function ensureCommitteeMemberIsTeacher(userId: number) {
     throw new ApiError(404, 'Anggota panitia tidak ditemukan.');
   }
 
-  if (member.role !== 'TEACHER') {
-    throw new ApiError(400, 'Anggota panitia saat ini dibatasi untuk akun guru.');
+  if (!['TEACHER', 'STAFF'].includes(member.role)) {
+    throw new ApiError(400, 'Anggota panitia hanya dapat dipilih dari guru atau staff TU.');
   }
 
   return member;
 }
 
-function assertFeatureGrantCompatibility(event: CommitteeEventWithDetail, featureCodes: CommitteeFeatureCode[]) {
+function assertFeatureGrantCompatibility(
+  event: CommitteeEventWithDetail,
+  featureCodes: CommitteeFeatureCode[],
+  options: {
+    memberType: CommitteeAssignmentMemberType;
+    internalMemberRole?: string | null;
+  },
+) {
   if (featureCodes.length === 0) return;
   if (!normalizeProgramCode(event.programCode)) {
     throw new ApiError(400, 'Feature grant berbasis ujian memerlukan Program Ujian terkait pada kegiatan ini.');
   }
+  if (options.memberType !== CommitteeAssignmentMemberType.INTERNAL_USER || options.internalMemberRole !== 'TEACHER') {
+    throw new ApiError(400, 'Feature grant workspace saat ini hanya dapat diberikan kepada akun guru internal.');
+  }
+}
+
+function mapCommitteeAssignmentForResponse(assignment: CommitteeAssignmentWithDetail) {
+  return {
+    id: assignment.id,
+    memberType: assignment.memberType,
+    userId: assignment.userId,
+    externalName: assignment.externalName,
+    externalInstitution: assignment.externalInstitution,
+    memberLabel: buildCommitteeMemberLabel(assignment),
+    memberTypeLabel: normalizeCommitteeMemberTypeLabel(assignment),
+    memberDetail: buildCommitteeMemberDetail(assignment),
+    workspaceEligible: Boolean(
+      assignment.memberType === CommitteeAssignmentMemberType.INTERNAL_USER && assignment.user?.role === 'TEACHER',
+    ),
+    assignmentRole: assignment.assignmentRole,
+    notes: assignment.notes,
+    isActive: assignment.isActive,
+    createdAt: assignment.createdAt,
+    updatedAt: assignment.updatedAt,
+    user: assignment.user,
+    featureGrants: assignment.featureGrants.map((feature) => ({
+      id: feature.id,
+      featureCode: feature.featureCode,
+      label:
+        COMMITTEE_FEATURE_DEFINITIONS.find((definition) => definition.code === feature.featureCode)?.label ||
+        feature.featureCode,
+    })),
+  };
 }
 
 function mapCommitteeEventSummary(
@@ -366,6 +501,7 @@ function mapCommitteeEventSummary(
     myAssignment: myAssignment
       ? {
           id: myAssignment.id,
+          memberType: myAssignment.memberType,
           assignmentRole: myAssignment.assignmentRole,
           notes: myAssignment.notes,
           featureCodes: myAssignment.featureGrants.map((feature) => feature.featureCode),
@@ -373,8 +509,11 @@ function mapCommitteeEventSummary(
       : null,
     membersPreview: activeAssignments.slice(0, 5).map((assignment) => ({
       id: assignment.id,
+      memberType: assignment.memberType,
+      memberLabel: buildCommitteeMemberLabel(assignment),
+      memberTypeLabel: normalizeCommitteeMemberTypeLabel(assignment),
+      memberDetail: buildCommitteeMemberDetail(assignment),
       assignmentRole: assignment.assignmentRole,
-      user: assignment.user,
       featureCodes: assignment.featureGrants.map((feature) => feature.featureCode),
     })),
   };
@@ -382,42 +521,23 @@ function mapCommitteeEventSummary(
 
 function mapCommitteeEventDetail(
   event: CommitteeEventWithDetail,
-  actorId: number,
+  actor: Awaited<ReturnType<typeof getCommitteeActorProfile>>,
   programLabelMap: Map<string, string>,
 ) {
-  const manageableStatuses = new Set<CommitteeEventStatus>([
-    CommitteeEventStatus.MENUNGGU_SK_TU,
-    CommitteeEventStatus.AKTIF,
-    CommitteeEventStatus.SELESAI,
-    CommitteeEventStatus.ARSIP,
-  ]);
-  const summary = mapCommitteeEventSummary(event, actorId, programLabelMap);
+  const summary = mapCommitteeEventSummary(event, actor.id, programLabelMap);
 
   return {
     ...summary,
-    assignments: event.assignments.map((assignment) => ({
-      id: assignment.id,
-      userId: assignment.userId,
-      assignmentRole: assignment.assignmentRole,
-      notes: assignment.notes,
-      isActive: assignment.isActive,
-      createdAt: assignment.createdAt,
-      updatedAt: assignment.updatedAt,
-      user: assignment.user,
-      featureGrants: assignment.featureGrants.map((feature) => ({
-        id: feature.id,
-        featureCode: feature.featureCode,
-        label:
-          COMMITTEE_FEATURE_DEFINITIONS.find((definition) => definition.code === feature.featureCode)?.label ||
-          feature.featureCode,
-      })),
-    })),
+    assignments: event.assignments.map((assignment) => mapCommitteeAssignmentForResponse(assignment)),
     availableFeatures: COMMITTEE_FEATURE_DEFINITIONS,
     access: {
-      canEditRequest: event.requestedById === actorId && isCommitteeEditableByRequester(event.status),
+      canEditRequest: event.requestedById === actor.id && isCommitteeEditableByRequester(event.status),
       canPrincipalReview: event.status === CommitteeEventStatus.MENUNGGU_PERSETUJUAN_KEPSEK,
       canIssueSk: event.status === CommitteeEventStatus.MENUNGGU_SK_TU,
-      canManageAssignments: manageableStatuses.has(event.status),
+      canManageAssignments:
+        actor.role === 'ADMIN' ||
+        canRequesterManageCommitteeAssignments(actor, event) ||
+        canHeadTuManageCommitteeAssignments(actor, event),
     },
   };
 }
@@ -428,6 +548,7 @@ export const getCommitteeMeta = asyncHandler(async (_req: Request, res: Response
       200,
       {
         featureDefinitions: COMMITTEE_FEATURE_DEFINITIONS,
+        assignmentMemberTypes: COMMITTEE_ASSIGNMENT_MEMBER_TYPE_DEFINITIONS,
       },
       'Meta kepanitiaan berhasil diambil',
     ),
@@ -547,7 +668,7 @@ export const getCommitteeEventDetail = asyncHandler(async (req: Request, res: Re
     new ApiResponse(
       200,
       {
-        item: mapCommitteeEventDetail(event, actor.id, programLabelMap),
+        item: mapCommitteeEventDetail(event, actor, programLabelMap),
       },
       'Detail kegiatan kepanitiaan berhasil diambil',
     ),
@@ -601,7 +722,7 @@ export const createCommitteeEvent = asyncHandler(async (req: Request, res: Respo
     new ApiResponse(
       201,
       {
-        item: mapCommitteeEventDetail(created, actor.id, programLabelMap),
+        item: mapCommitteeEventDetail(created, actor, programLabelMap),
       },
       'Pengajuan kegiatan kepanitiaan berhasil dibuat sebagai draft',
     ),
@@ -633,6 +754,17 @@ export const updateCommitteeEvent = asyncHandler(async (req: Request, res: Respo
             code: normalizeProgramCode(event.programCode),
           }
         : null;
+
+  if (
+    body.programCode !== undefined &&
+    !program?.code &&
+    event.assignments.some((assignment) => assignment.featureGrants.length > 0)
+  ) {
+    throw new ApiError(
+      400,
+      'Hapus dulu usulan feature workspace pada susunan panitia jika ingin melepas Program Ujian terkait.',
+    );
+  }
 
   if (normalizedCode !== event.code) {
     const existing = await prisma.committeeEvent.findUnique({
@@ -672,7 +804,7 @@ export const updateCommitteeEvent = asyncHandler(async (req: Request, res: Respo
     new ApiResponse(
       200,
       {
-        item: mapCommitteeEventDetail(updated, actor.id, programLabelMap),
+        item: mapCommitteeEventDetail(updated, actor, programLabelMap),
       },
       'Pengajuan kegiatan kepanitiaan berhasil diperbarui',
     ),
@@ -686,6 +818,10 @@ export const submitCommitteeEvent = asyncHandler(async (req: Request, res: Respo
   const event = await getCommitteeEventByIdOrThrow(params.id);
 
   assertCommitteeRequestEditAccess(actor, event);
+
+  if (event.assignments.length === 0) {
+    throw new ApiError(400, 'Tambahkan minimal satu anggota panitia sebelum draft diajukan ke Kepala Sekolah.');
+  }
 
   const submitted = await prisma.committeeEvent.update({
     where: { id: event.id },
@@ -710,7 +846,7 @@ export const submitCommitteeEvent = asyncHandler(async (req: Request, res: Respo
     new ApiResponse(
       200,
       {
-        item: mapCommitteeEventDetail(submitted, actor.id, programLabelMap),
+        item: mapCommitteeEventDetail(submitted, actor, programLabelMap),
       },
       'Pengajuan kepanitiaan berhasil diteruskan ke Kepala Sekolah',
     ),
@@ -744,7 +880,7 @@ export const reviewCommitteeEventAsPrincipal = asyncHandler(async (req: Request,
     new ApiResponse(
       200,
       {
-        item: mapCommitteeEventDetail(updated, actor.id, programLabelMap),
+        item: mapCommitteeEventDetail(updated, actor, programLabelMap),
       },
       body.approved
         ? 'Pengajuan kepanitiaan diteruskan ke Kepala TU untuk penerbitan SK'
@@ -786,7 +922,7 @@ export const issueCommitteeSk = asyncHandler(async (req: Request, res: Response)
     new ApiResponse(
       200,
       {
-        item: mapCommitteeEventDetail(updated, actor.id, programLabelMap),
+        item: mapCommitteeEventDetail(updated, actor, programLabelMap),
       },
       'SK kepanitiaan berhasil diterbitkan dan kegiatan dinyatakan aktif',
     ),
@@ -831,7 +967,7 @@ export const updateCommitteeLifecycle = asyncHandler(async (req: Request, res: R
     new ApiResponse(
       200,
       {
-        item: mapCommitteeEventDetail(updated, actor.id, programLabelMap),
+        item: mapCommitteeEventDetail(updated, actor, programLabelMap),
       },
       nextStatus === CommitteeEventStatus.SELESAI
         ? 'Kegiatan kepanitiaan ditandai selesai'
@@ -848,28 +984,45 @@ export const createCommitteeAssignment = asyncHandler(async (req: Request, res: 
   const uniqueFeatureCodes = Array.from(new Set(body.featureCodes));
 
   assertCommitteeAssignmentManageAccess(actor, event);
-  assertFeatureGrantCompatibility(event, uniqueFeatureCodes);
-  await ensureCommitteeMemberIsTeacher(body.userId);
-
-  const existingAssignment = await prisma.committeeAssignment.findUnique({
-    where: {
-      committeeEventId_userId: {
-        committeeEventId: event.id,
-        userId: body.userId,
-      },
-    },
-    select: { id: true },
+  const internalMember =
+    body.memberType === CommitteeAssignmentMemberType.INTERNAL_USER
+      ? await getCommitteeEligibleInternalMember(body.userId as number)
+      : null;
+  assertFeatureGrantCompatibility(event, uniqueFeatureCodes, {
+    memberType: body.memberType,
+    internalMemberRole: internalMember?.role || null,
   });
 
-  if (existingAssignment) {
-    throw new ApiError(409, 'Guru tersebut sudah terdaftar sebagai anggota panitia pada kegiatan ini.');
+  if (body.memberType === CommitteeAssignmentMemberType.INTERNAL_USER) {
+    const existingAssignment = await prisma.committeeAssignment.findUnique({
+      where: {
+        committeeEventId_userId: {
+          committeeEventId: event.id,
+          userId: internalMember!.id,
+        },
+      },
+      select: { id: true },
+    });
+
+    if (existingAssignment) {
+      throw new ApiError(409, 'Akun internal tersebut sudah terdaftar sebagai anggota panitia pada kegiatan ini.');
+    }
   }
 
   await prisma.$transaction(async (tx) => {
     const assignment = await tx.committeeAssignment.create({
       data: {
         committeeEventId: event.id,
-        userId: body.userId,
+        memberType: body.memberType,
+        userId: internalMember?.id || null,
+        externalName:
+          body.memberType === CommitteeAssignmentMemberType.EXTERNAL_MEMBER
+            ? body.externalName?.trim() || null
+            : null,
+        externalInstitution:
+          body.memberType === CommitteeAssignmentMemberType.EXTERNAL_MEMBER
+            ? body.externalInstitution?.trim() || null
+            : null,
         assignmentRole: body.assignmentRole.trim(),
         notes: body.notes?.trim() || null,
         createdById: actor.id,
@@ -894,7 +1047,7 @@ export const createCommitteeAssignment = asyncHandler(async (req: Request, res: 
     new ApiResponse(
       201,
       {
-        item: mapCommitteeEventDetail(refreshed, actor.id, programLabelMap),
+        item: mapCommitteeEventDetail(refreshed, actor, programLabelMap),
       },
       'Anggota panitia berhasil ditambahkan',
     ),
@@ -909,26 +1062,34 @@ export const updateCommitteeAssignment = asyncHandler(async (req: Request, res: 
   const uniqueFeatureCodes = Array.from(new Set(body.featureCodes));
 
   assertCommitteeAssignmentManageAccess(actor, event);
-  assertFeatureGrantCompatibility(event, uniqueFeatureCodes);
-  await ensureCommitteeMemberIsTeacher(body.userId);
+  const internalMember =
+    body.memberType === CommitteeAssignmentMemberType.INTERNAL_USER
+      ? await getCommitteeEligibleInternalMember(body.userId as number)
+      : null;
+  assertFeatureGrantCompatibility(event, uniqueFeatureCodes, {
+    memberType: body.memberType,
+    internalMemberRole: internalMember?.role || null,
+  });
 
   const currentAssignment = event.assignments.find((assignment) => assignment.id === params.assignmentId);
   if (!currentAssignment) {
     throw new ApiError(404, 'Assignment panitia tidak ditemukan.');
   }
 
-  const duplicateAssignment = await prisma.committeeAssignment.findUnique({
-    where: {
-      committeeEventId_userId: {
-        committeeEventId: event.id,
-        userId: body.userId,
+  if (body.memberType === CommitteeAssignmentMemberType.INTERNAL_USER) {
+    const duplicateAssignment = await prisma.committeeAssignment.findUnique({
+      where: {
+        committeeEventId_userId: {
+          committeeEventId: event.id,
+          userId: internalMember!.id,
+        },
       },
-    },
-    select: { id: true },
-  });
+      select: { id: true },
+    });
 
-  if (duplicateAssignment && duplicateAssignment.id !== currentAssignment.id) {
-    throw new ApiError(409, 'Guru tersebut sudah memiliki assignment lain pada kegiatan ini.');
+    if (duplicateAssignment && duplicateAssignment.id !== currentAssignment.id) {
+      throw new ApiError(409, 'Akun internal tersebut sudah memiliki assignment lain pada kegiatan ini.');
+    }
   }
 
   await prisma.$transaction(async (tx) => {
@@ -937,7 +1098,16 @@ export const updateCommitteeAssignment = asyncHandler(async (req: Request, res: 
         id: currentAssignment.id,
       },
       data: {
-        userId: body.userId,
+        memberType: body.memberType,
+        userId: internalMember?.id || null,
+        externalName:
+          body.memberType === CommitteeAssignmentMemberType.EXTERNAL_MEMBER
+            ? body.externalName?.trim() || null
+            : null,
+        externalInstitution:
+          body.memberType === CommitteeAssignmentMemberType.EXTERNAL_MEMBER
+            ? body.externalInstitution?.trim() || null
+            : null,
         assignmentRole: body.assignmentRole.trim(),
         notes: body.notes?.trim() || null,
         createdById: actor.id,
@@ -967,7 +1137,7 @@ export const updateCommitteeAssignment = asyncHandler(async (req: Request, res: 
     new ApiResponse(
       200,
       {
-        item: mapCommitteeEventDetail(refreshed, actor.id, programLabelMap),
+        item: mapCommitteeEventDetail(refreshed, actor, programLabelMap),
       },
       'Assignment panitia berhasil diperbarui',
     ),
@@ -999,7 +1169,7 @@ export const deleteCommitteeAssignment = asyncHandler(async (req: Request, res: 
     new ApiResponse(
       200,
       {
-        item: mapCommitteeEventDetail(refreshed, actor.id, programLabelMap),
+        item: mapCommitteeEventDetail(refreshed, actor, programLabelMap),
       },
       'Assignment panitia berhasil dihapus',
     ),

@@ -727,7 +727,10 @@ model CommitteeEvent {
 model CommitteeAssignment {
   id               Int                     @id @default(autoincrement())
   committeeEventId Int
-  userId           Int
+  memberType       CommitteeAssignmentMemberType @default(INTERNAL_USER)
+  userId           Int?
+  externalName     String?
+  externalInstitution String?
   assignmentRole   String
   notes            String?
   isActive         Boolean                 @default(true)
@@ -735,12 +738,13 @@ model CommitteeAssignment {
   createdAt        DateTime                @default(now())
   updatedAt        DateTime                @updatedAt
   committeeEvent   CommitteeEvent          @relation(fields: [committeeEventId], references: [id], onDelete: Cascade)
-  user             User                    @relation("CommitteeAssignmentUser", fields: [userId], references: [id], onDelete: Cascade)
+  user             User?                   @relation("CommitteeAssignmentUser", fields: [userId], references: [id], onDelete: Cascade)
   createdBy        User                    @relation("CommitteeAssignmentCreator", fields: [createdById], references: [id], onDelete: Restrict)
   featureGrants    CommitteeFeatureGrant[]
 
   @@unique([committeeEventId, userId])
   @@index([userId, isActive])
+  @@index([memberType])
   @@map("committee_assignments")
 }
 
@@ -3156,6 +3160,11 @@ enum CommitteeEventStatus {
   AKTIF
   SELESAI
   ARSIP
+}
+
+enum CommitteeAssignmentMemberType {
+  INTERNAL_USER
+  EXTERNAL_MEMBER
 }
 
 enum CommitteeFeatureCode {

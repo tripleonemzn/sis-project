@@ -62,3 +62,7 @@ export function humanizeRequesterDuty(value?: string | null) {
   return normalized.replace(/_/g, ' ');
 }
 
+export function formatCommitteeMemberMeta(memberTypeLabel?: string | null, memberDetail?: string | null) {
+  const parts = [memberTypeLabel, memberDetail].filter((value) => Boolean(String(value || '').trim()));
+  return parts.join(' • ');
+}

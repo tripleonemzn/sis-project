@@ -1,13 +1,13 @@
 import { useMemo, useState } from 'react';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
-import { CheckCircle2, Loader2, MessageSquareText, ShieldCheck, XCircle } from 'lucide-react';
+import { CheckCircle2, Loader2, MessageSquareText, ShieldCheck, Users, XCircle } from 'lucide-react';
 import toast from 'react-hot-toast';
 import { committeeService } from '../../services/committee.service';
 import {
   COMMITTEE_STATUS_LABELS,
   formatCommitteeDateTime,
+  formatCommitteeMemberMeta,
   getCommitteeStatusTone,
-  humanizeRequesterDuty,
 } from '../../features/committee/committeeUi';
 
 export default function CommitteeApprovalPage() {
@@ -27,8 +27,9 @@ export default function CommitteeApprovalPage() {
         feedback: feedbackById[payload.id] || null,
       }),
     onSuccess: (_, payload) => {
-      toast.success(payload.approved ? 'Pengajuan diteruskan ke Kepala TU.' : 'Pengajuan ditolak dengan catatan.');
+      toast.success(payload.approved ? 'Pengajuan diteruskan ke Kepala TU.' : 'Pengajuan dikembalikan dengan catatan.');
       queryClient.invalidateQueries({ queryKey: ['principal-committee-approvals'] });
+      queryClient.invalidateQueries({ queryKey: ['committee-teacher-events'] });
       setFeedbackById((current) => ({
         ...current,
         [payload.id]: '',
@@ -45,7 +46,7 @@ export default function CommitteeApprovalPage() {
     () => ({
       total: items.length,
       examScoped: items.filter((item) => Boolean(item.programCode)).length,
-      dutyScoped: items.filter((item) => Boolean(item.requesterDutyCode)).length,
+      readyRoster: items.filter((item) => item.counts.members > 0).length,
     }),
     [items],
   );
@@ -59,8 +60,8 @@ export default function CommitteeApprovalPage() {
         </div>
         <h1 className="mt-3 text-2xl font-bold text-slate-900">Review Pengajuan Kepanitiaan</h1>
         <p className="mt-2 max-w-3xl text-sm leading-6 text-slate-600">
-          Verifikasi usulan panitia kegiatan dari guru/duty pada tahun ajaran aktif, lalu teruskan ke Kepala TU jika layak
-          diterbitkan SK.
+          Tinjau konteks kegiatan dan susunan panitia yang diusulkan. Setelah disetujui, draft akan diteruskan ke Kepala TU
+          untuk finalisasi SK dan aktivasi fitur.
         </p>
       </div>
 
@@ -74,8 +75,8 @@ export default function CommitteeApprovalPage() {
           <div className="mt-2 text-3xl font-bold text-sky-900">{stats.examScoped}</div>
         </div>
         <div className="rounded-2xl border border-emerald-200 bg-emerald-50 p-5 shadow-sm">
-          <div className="text-sm text-emerald-700">Diajukan via Duty</div>
-          <div className="mt-2 text-3xl font-bold text-emerald-900">{stats.dutyScoped}</div>
+          <div className="text-sm text-emerald-700">Sudah Ada Susunan Panitia</div>
+          <div className="mt-2 text-3xl font-bold text-emerald-900">{stats.readyRoster}</div>
         </div>
       </div>
 
@@ -117,7 +118,7 @@ export default function CommitteeApprovalPage() {
                     </div>
                     <div className="text-right text-xs text-slate-500">
                       <div>Diajukan {formatCommitteeDateTime(item.updatedAt)}</div>
-                      <div>{item.requestedBy.name} • {humanizeRequesterDuty(item.requesterDutyCode)}</div>
+                      <div>Pengusul: {item.requestedBy.name}</div>
                     </div>
                   </div>
 
@@ -129,13 +130,41 @@ export default function CommitteeApprovalPage() {
                       <div className="mt-1 text-lg font-bold text-slate-900">{item.counts.members}</div>
                     </div>
                     <div className="rounded-xl border border-white bg-white px-4 py-3">
-                      <div className="text-xs uppercase tracking-wide text-slate-500">Feature Grant</div>
+                      <div className="text-xs uppercase tracking-wide text-slate-500">Usulan Feature Grant</div>
                       <div className="mt-1 text-lg font-bold text-slate-900">{item.counts.grantedFeatures}</div>
                     </div>
                     <div className="rounded-xl border border-white bg-white px-4 py-3">
                       <div className="text-xs uppercase tracking-wide text-slate-500">Pengusul</div>
                       <div className="mt-1 text-sm font-semibold text-slate-900">{item.requestedBy.name}</div>
                     </div>
+                  </div>
+
+                  <div className="mt-4 rounded-xl border border-slate-200 bg-white px-4 py-4">
+                    <div className="flex items-center gap-2 text-sm font-semibold text-slate-900">
+                      <Users className="h-4 w-4 text-slate-500" />
+                      Preview Susunan Panitia
+                    </div>
+                    {item.membersPreview.length === 0 ? (
+                      <div className="mt-3 text-sm text-amber-700">
+                        Draft ini belum memiliki anggota panitia. Sebaiknya dikembalikan agar pengusul melengkapi susunan panitia
+                        terlebih dahulu.
+                      </div>
+                    ) : (
+                      <div className="mt-3 grid gap-2 md:grid-cols-2 xl:grid-cols-3">
+                        {item.membersPreview.map((member) => (
+                          <div
+                            key={`principal-committee-member-${item.id}-${member.id}`}
+                            className="rounded-xl border border-slate-200 bg-slate-50 px-3 py-3"
+                          >
+                            <div className="text-sm font-semibold text-slate-900">{member.memberLabel}</div>
+                            <div className="mt-1 text-xs text-slate-500">
+                              {formatCommitteeMemberMeta(member.memberTypeLabel, member.memberDetail)}
+                            </div>
+                            <div className="mt-2 text-xs font-medium text-slate-700">{member.assignmentRole}</div>
+                          </div>
+                        ))}
+                      </div>
+                    )}
                   </div>
 
                   <div className="mt-4">
@@ -195,7 +224,7 @@ export default function CommitteeApprovalPage() {
             Pastikan konteks kegiatan jelas dan memang operasional pada tahun ajaran aktif.
           </div>
           <div className="rounded-xl border border-slate-200 bg-slate-50 px-4 py-3 text-sm text-slate-600">
-            Jika disetujui, kegiatan akan berpindah ke tahap penerbitan SK oleh Kepala TU.
+            Review bukan hanya judul kegiatan, tetapi juga kelengkapan susunan panitia yang diusulkan.
           </div>
           <div className="rounded-xl border border-slate-200 bg-slate-50 px-4 py-3 text-sm text-slate-600">
             Jika perlu revisi, tulis catatan spesifik agar pengusul bisa memperbaiki draft tanpa ambigu.

@@ -17,6 +17,9 @@ export type CommitteeFeatureCode =
   | 'EXAM_LAYOUT'
   | 'EXAM_CARD';
 
+export type CommitteeAssignmentMemberType = 'INTERNAL_USER' | 'EXTERNAL_MEMBER';
+export type CommitteeAssignmentMemberKindCode = 'TEACHER' | 'STAFF' | 'EXTERNAL';
+
 export interface CommitteeFeatureDefinition {
   code: CommitteeFeatureCode;
   label: string;
@@ -24,8 +27,16 @@ export interface CommitteeFeatureDefinition {
   section: 'program' | 'jadwal' | 'ruang' | 'mengawas' | 'denah' | 'kartu';
 }
 
+export interface CommitteeAssignmentMemberTypeDefinition {
+  code: CommitteeAssignmentMemberKindCode;
+  label: string;
+  memberType: CommitteeAssignmentMemberType;
+  featureGrantEligible: boolean;
+}
+
 export interface CommitteeAssignmentSummary {
   id: number;
+  memberType: CommitteeAssignmentMemberType;
   assignmentRole: string;
   notes?: string | null;
   featureCodes: CommitteeFeatureCode[];
@@ -87,13 +98,11 @@ export interface CommitteeEventSummary {
   myAssignment?: CommitteeAssignmentSummary | null;
   membersPreview: Array<{
     id: number;
+    memberType: CommitteeAssignmentMemberType;
+    memberLabel: string;
+    memberTypeLabel: string;
+    memberDetail?: string | null;
     assignmentRole: string;
-    user: {
-      id: number;
-      name: string;
-      username: string;
-      role: string;
-    };
     featureCodes: CommitteeFeatureCode[];
   }>;
 }
@@ -101,18 +110,26 @@ export interface CommitteeEventSummary {
 export interface CommitteeEventDetail extends CommitteeEventSummary {
   assignments: Array<{
     id: number;
-    userId: number;
+    memberType: CommitteeAssignmentMemberType;
+    userId?: number | null;
+    externalName?: string | null;
+    externalInstitution?: string | null;
+    memberLabel: string;
+    memberTypeLabel: string;
+    memberDetail?: string | null;
+    workspaceEligible: boolean;
     assignmentRole: string;
     notes?: string | null;
     isActive: boolean;
     createdAt: string;
     updatedAt: string;
-    user: {
+    user?: {
       id: number;
       name: string;
       username: string;
       role: string;
-    };
+      ptkType?: string | null;
+    } | null;
     featureGrants: Array<{
       id: number;
       featureCode: CommitteeFeatureCode;
@@ -158,7 +175,12 @@ export interface CommitteeWorkspacePayload {
 export const committeeService = {
   getMeta: async () => {
     const response = await api.get('/committees/meta');
-    return response.data as { data: { featureDefinitions: CommitteeFeatureDefinition[] } };
+    return response.data as {
+      data: {
+        featureDefinitions: CommitteeFeatureDefinition[];
+        assignmentMemberTypes: CommitteeAssignmentMemberTypeDefinition[];
+      };
+    };
   },
   list: async (params?: {
     scope?: 'MINE' | 'REQUESTS' | 'ASSIGNMENTS' | 'PENDING_PRINCIPAL' | 'HEAD_TU';
@@ -187,7 +209,6 @@ export const committeeService = {
     code: string;
     title: string;
     description?: string | null;
-    requesterDutyCode?: string | null;
     programCode?: string | null;
   }) => {
     const response = await api.post('/committees', payload);
@@ -199,7 +220,6 @@ export const committeeService = {
       code: string;
       title: string;
       description?: string | null;
-      requesterDutyCode?: string | null;
       programCode?: string | null;
     }>,
   ) => {
@@ -228,7 +248,10 @@ export const committeeService = {
   createAssignment: async (
     id: number,
     payload: {
-      userId: number;
+      memberType: CommitteeAssignmentMemberType;
+      userId?: number | null;
+      externalName?: string | null;
+      externalInstitution?: string | null;
       assignmentRole: string;
       notes?: string | null;
       featureCodes?: CommitteeFeatureCode[];
@@ -241,7 +264,10 @@ export const committeeService = {
     id: number,
     assignmentId: number,
     payload: {
-      userId: number;
+      memberType: CommitteeAssignmentMemberType;
+      userId?: number | null;
+      externalName?: string | null;
+      externalInstitution?: string | null;
       assignmentRole: string;
       notes?: string | null;
       featureCodes?: CommitteeFeatureCode[];
