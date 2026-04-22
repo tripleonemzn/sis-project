@@ -61,6 +61,12 @@ function toMediaUrl(url?: string | null) {
   return normalized.startsWith('/') ? `${base}${normalized}` : `${base}/${normalized}`;
 }
 
+function shouldRenderRichHtml(value?: string | null) {
+  const normalized = String(value || '').trim();
+  if (!normalized) return false;
+  return /<(strong|b|em|i|u|span|p|div|ol|ul|li|sub|sup|table|tr|td|th|img|br)\b/i.test(normalized);
+}
+
 type MonitoringStats = {
   totalViolations: number;
   tabSwitchCount: number;
@@ -1814,7 +1820,7 @@ export default function StudentExamTakeScreen() {
         </Text>
         <View style={{ marginBottom: 12 }}>
           <ExamHtmlContent
-            html={currentQuestion.question_text || currentQuestion.content || null}
+            html={currentQuestion.content || currentQuestion.question_text || null}
             imageUrl={currentQuestion.question_image_url || currentQuestion.image_url}
             videoUrl={currentQuestion.question_video_url || currentQuestion.video_url}
             videoType={currentQuestion.question_video_type || null}
@@ -1823,7 +1829,7 @@ export default function StudentExamTakeScreen() {
             backgroundColor="transparent"
             onImagePress={(src) => setPreviewImageSrc(src)}
             showInlineVideo={false}
-            renderMode="native"
+            renderMode={shouldRenderRichHtml(currentQuestion.content || currentQuestion.question_text) ? 'webview' : 'native'}
             textAlign="justify"
           />
           {currentQuestion.question_image_url || currentQuestion.image_url ? (
@@ -2096,10 +2102,10 @@ export default function StudentExamTakeScreen() {
                     </View>
                     <View style={{ flex: 1 }}>
                       <ExamHtmlContent
-                        html={option.option_text || option.content || null}
+                        html={option.content || option.option_text || null}
                         minHeight={20}
                         backgroundColor="transparent"
-                        renderMode="native"
+                        renderMode={shouldRenderRichHtml(option.content || option.option_text) ? 'webview' : 'native'}
                       />
                       {option.option_image_url || option.image_url ? (
                         <View style={{ marginTop: 8 }}>

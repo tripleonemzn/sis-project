@@ -1835,10 +1835,10 @@ export default function StudentExamTakePage() {
   const currentMatrixRows = normalizeMatrixRows(currentQuestion)
   const currentQuestionHtml = useMemo(
     () =>
-      enhanceQuestionHtml(currentQuestion?.question_text || currentQuestion?.content || '', {
+      enhanceQuestionHtml(currentQuestion?.content || currentQuestion?.question_text || '', {
         useQuestionImageThumbnail: true,
       }),
-    [currentQuestion?.question_text, currentQuestion?.content],
+    [currentQuestion?.content, currentQuestion?.question_text],
   )
   const optionHtmlById = useMemo(() => {
     const mapped = new Map<string, string>()
@@ -1848,7 +1848,7 @@ export default function StudentExamTakePage() {
       if (!optionId) return
       mapped.set(
         optionId,
-        enhanceQuestionHtml(option.option_text || option.content || '', {
+        enhanceQuestionHtml(option.content || option.option_text || '', {
           useQuestionImageThumbnail: true,
         }),
       )
