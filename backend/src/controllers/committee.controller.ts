@@ -3,6 +3,7 @@ import { Request, Response } from 'express';
 import { z } from 'zod';
 import prisma from '../utils/prisma';
 import { ApiError, ApiResponse, asyncHandler } from '../utils/api';
+import { createManyInAppNotifications } from '../services/mobilePushNotification.service';
 import {
   assertCommitteeRequesterAccess,
   assertHeadTuCommitteeAccess,
@@ -219,6 +220,22 @@ type CommitteeEventWithDetail = Prisma.CommitteeEventGetPayload<{
 
 type CommitteeAssignmentWithDetail = CommitteeEventWithDetail['assignments'][number];
 
+type CommitteeNotificationRecipient = {
+  userId: number;
+  role: string;
+  ptkType: string | null;
+  assignment?: CommitteeAssignmentWithDetail | null;
+};
+
+const COMMITTEE_NOTIFICATION_FEATURE_PRIORITY: CommitteeFeatureCode[] = [
+  CommitteeFeatureCode.EXAM_PROGRAM,
+  CommitteeFeatureCode.EXAM_SCHEDULE,
+  CommitteeFeatureCode.EXAM_ROOMS,
+  CommitteeFeatureCode.EXAM_PROCTOR,
+  CommitteeFeatureCode.EXAM_LAYOUT,
+  CommitteeFeatureCode.EXAM_CARD,
+];
+
 async function getProgramLabelMap(academicYearId: number) {
   const rows = await prisma.examProgramConfig.findMany({
     where: {
@@ -291,6 +308,277 @@ async function getCommitteeEventByIdOrThrow(id: number) {
   }
 
   return event;
+}
+
+function dedupeCommitteeNotificationRecipients(rows: CommitteeNotificationRecipient[]) {
+  const recipientMap = new Map<number, CommitteeNotificationRecipient>();
+  rows.forEach((row) => {
+    if (!Number.isFinite(Number(row.userId)) || Number(row.userId) <= 0) return;
+    const existing = recipientMap.get(Number(row.userId));
+    if (!existing || (!existing.assignment && row.assignment)) {
+      recipientMap.set(Number(row.userId), row);
+    }
+  });
+  return Array.from(recipientMap.values());
+}
+
+async function listCommitteePrincipalNotificationRecipients() {
+  const principals = await prisma.user.findMany({
+    where: {
+      role: 'PRINCIPAL',
+    },
+    select: {
+      id: true,
+      role: true,
+      ptkType: true,
+    },
+  });
+
+  return dedupeCommitteeNotificationRecipients(
+    principals.map((principal) => ({
+      userId: principal.id,
+      role: principal.role,
+      ptkType: principal.ptkType || null,
+    })),
+  );
+}
+
+async function listCommitteeHeadTuNotificationRecipients() {
+  const staffs = await prisma.user.findMany({
+    where: {
+      role: 'STAFF',
+    },
+    select: {
+      id: true,
+      role: true,
+      ptkType: true,
+    },
+  });
+
+  return dedupeCommitteeNotificationRecipients(
+    staffs
+      .filter((staff) =>
+        isHeadTuStaffProfile({
+          role: staff.role,
+          ptkType: staff.ptkType || null,
+        }),
+      )
+      .map((staff) => ({
+        userId: staff.id,
+        role: staff.role,
+        ptkType: staff.ptkType || null,
+      })),
+  );
+}
+
+function resolveCommitteeNotificationRoute(
+  event: CommitteeEventWithDetail,
+  recipient: CommitteeNotificationRecipient,
+) {
+  if (recipient.role === 'PRINCIPAL') {
+    return '/principal/committee-approvals';
+  }
+
+  if (
+    isHeadTuStaffProfile({
+      role: recipient.role,
+      ptkType: recipient.ptkType || null,
+    })
+  ) {
+    return '/staff/head-tu/committees';
+  }
+
+  if (recipient.role === 'TEACHER') {
+    const committeeLabel = buildCommitteeGroupLabel(event.title);
+    const preferredFeatureCode = COMMITTEE_NOTIFICATION_FEATURE_PRIORITY.find((featureCode) =>
+      recipient.assignment?.featureGrants.some((grant) => grant.featureCode === featureCode),
+    );
+
+    if (preferredFeatureCode) {
+      return buildCommitteeFeatureWebPath({
+        eventId: event.id,
+        featureCode: preferredFeatureCode,
+        committeeLabel,
+      });
+    }
+
+    return '/teacher/committees';
+  }
+
+  return '/notifications';
+}
+
+function buildCommitteeNotificationRows(params: {
+  recipients: CommitteeNotificationRecipient[];
+  event: CommitteeEventWithDetail;
+  actor: Awaited<ReturnType<typeof getCommitteeActorProfile>>;
+  title: string;
+  message: string;
+  type: string;
+  extraData?: Record<string, unknown>;
+}) {
+  const recipients = dedupeCommitteeNotificationRecipients(params.recipients);
+  return recipients.map((recipient) => ({
+    userId: recipient.userId,
+    title: params.title,
+    message: params.message,
+    type: params.type,
+    data: {
+      module: 'COMMITTEE',
+      route: resolveCommitteeNotificationRoute(params.event, recipient),
+      committeeEventId: params.event.id,
+      committeeCode: params.event.code,
+      committeeTitle: params.event.title,
+      status: params.event.status,
+      actorId: params.actor.id,
+      actorName: params.actor.name,
+      actorRole: params.actor.role,
+      ...(params.extraData || {}),
+    },
+  })) satisfies Prisma.NotificationCreateManyInput[];
+}
+
+async function safeCreateCommitteeNotifications(rows: Prisma.NotificationCreateManyInput[]) {
+  if (rows.length === 0) return;
+
+  try {
+    await createManyInAppNotifications({
+      data: rows,
+    });
+  } catch (error) {
+    const message = error instanceof Error ? error.message : 'unknown error';
+    console.warn(`[committee] gagal membuat notifikasi workflow: ${message}`);
+  }
+}
+
+async function notifyCommitteeSubmitted(
+  event: CommitteeEventWithDetail,
+  actor: Awaited<ReturnType<typeof getCommitteeActorProfile>>,
+) {
+  const principals = await listCommitteePrincipalNotificationRecipients();
+  await safeCreateCommitteeNotifications(
+    buildCommitteeNotificationRows({
+      recipients: principals,
+      event,
+      actor,
+      title: 'Pengajuan Kepanitiaan Baru',
+      message: `${actor.name} mengajukan ${event.title} dan menunggu review Kepala Sekolah.`,
+      type: 'COMMITTEE_SUBMISSION',
+    }),
+  );
+}
+
+async function notifyCommitteePrincipalDecision(params: {
+  event: CommitteeEventWithDetail;
+  actor: Awaited<ReturnType<typeof getCommitteeActorProfile>>;
+  approved: boolean;
+  feedback?: string | null;
+}) {
+  const requesterAssignment = params.event.assignments.find(
+    (assignment) => assignment.userId === params.event.requestedById && assignment.isActive,
+  );
+  const requesterRecipients = dedupeCommitteeNotificationRecipients([
+    {
+      userId: params.event.requestedById,
+      role: params.event.requestedBy.role,
+      ptkType: null,
+      assignment: requesterAssignment || null,
+    },
+  ]);
+
+  if (params.approved) {
+    const headTuRecipients = await listCommitteeHeadTuNotificationRecipients();
+    await safeCreateCommitteeNotifications(
+      buildCommitteeNotificationRows({
+        recipients: headTuRecipients,
+        event: params.event,
+        actor: params.actor,
+        title: 'Pengajuan Kepanitiaan Menunggu SK',
+        message: `${params.event.title} telah disetujui Kepala Sekolah dan menunggu penerbitan SK Kepala TU.`,
+        type: 'COMMITTEE_APPROVED',
+      }),
+    );
+
+    await safeCreateCommitteeNotifications(
+      buildCommitteeNotificationRows({
+        recipients: requesterRecipients,
+        event: params.event,
+        actor: params.actor,
+        title: 'Pengajuan Kepanitiaan Disetujui',
+        message: `${params.event.title} telah disetujui Kepala Sekolah dan diteruskan ke Kepala TU untuk penerbitan SK.`,
+        type: 'COMMITTEE_APPROVED',
+      }),
+    );
+    return;
+  }
+
+  const feedbackSuffix = String(params.feedback || '').trim();
+  await safeCreateCommitteeNotifications(
+    buildCommitteeNotificationRows({
+      recipients: requesterRecipients,
+      event: params.event,
+      actor: params.actor,
+      title: 'Pengajuan Kepanitiaan Perlu Revisi',
+      message: feedbackSuffix
+        ? `${params.event.title} dikembalikan oleh Kepala Sekolah. Catatan: ${feedbackSuffix}`
+        : `${params.event.title} dikembalikan oleh Kepala Sekolah untuk ditinjau ulang.`,
+      type: 'COMMITTEE_REJECTED',
+      extraData: feedbackSuffix
+        ? {
+            principalFeedback: feedbackSuffix,
+          }
+        : undefined,
+    }),
+  );
+}
+
+async function notifyCommitteeSkIssued(
+  event: CommitteeEventWithDetail,
+  actor: Awaited<ReturnType<typeof getCommitteeActorProfile>>,
+) {
+  const requesterAssignment = event.assignments.find(
+    (assignment) => assignment.userId === event.requestedById && assignment.isActive,
+  );
+  const internalRecipients = event.assignments
+    .filter(
+      (assignment) =>
+        assignment.isActive &&
+        assignment.memberType === CommitteeAssignmentMemberType.INTERNAL_USER &&
+        Number.isFinite(Number(assignment.userId)) &&
+        Number(assignment.userId) > 0 &&
+        assignment.user,
+    )
+    .map((assignment) => ({
+      userId: Number(assignment.userId),
+      role: assignment.user?.role || 'TEACHER',
+      ptkType: assignment.user?.ptkType || null,
+      assignment,
+    }));
+
+  const recipients = dedupeCommitteeNotificationRecipients([
+    ...internalRecipients,
+    {
+      userId: event.requestedById,
+      role: event.requestedBy.role,
+      ptkType: null,
+      assignment: requesterAssignment || null,
+    },
+  ]);
+
+  await safeCreateCommitteeNotifications(
+    buildCommitteeNotificationRows({
+      recipients,
+      event,
+      actor,
+      title: 'SK Kepanitiaan Terbit',
+      message: `${event.title} sudah aktif. Silakan lanjut bekerja sesuai assignment panitia Anda.`,
+      type: 'COMMITTEE_SK_ISSUED',
+      extraData: {
+        skNumber: event.skNumber,
+        skIssuedAt: event.skIssuedAt?.toISOString() || null,
+      },
+    }),
+  );
 }
 
 function canReadCommitteeEvent(profile: Awaited<ReturnType<typeof getCommitteeActorProfile>>, event: CommitteeEventWithDetail) {
@@ -859,6 +1147,8 @@ export const submitCommitteeEvent = asyncHandler(async (req: Request, res: Respo
     include: committeeEventDetailInclude,
   });
 
+  await notifyCommitteeSubmitted(submitted, actor);
+
   const programLabelMap = await getProgramLabelMap(submitted.academicYearId);
 
   res.status(200).json(
@@ -891,6 +1181,13 @@ export const reviewCommitteeEventAsPrincipal = asyncHandler(async (req: Request,
       principalFeedback: body.feedback?.trim() || null,
     },
     include: committeeEventDetailInclude,
+  });
+
+  await notifyCommitteePrincipalDecision({
+    event: updated,
+    actor,
+    approved: body.approved,
+    feedback: body.feedback,
   });
 
   const programLabelMap = await getProgramLabelMap(updated.academicYearId);
@@ -934,6 +1231,8 @@ export const issueCommitteeSk = asyncHandler(async (req: Request, res: Response)
     },
     include: committeeEventDetailInclude,
   });
+
+  await notifyCommitteeSkIssued(updated, actor);
 
   const programLabelMap = await getProgramLabelMap(updated.academicYearId);
 

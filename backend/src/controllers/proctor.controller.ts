@@ -1,6 +1,14 @@
 import { randomUUID } from 'crypto';
 import { Request, Response } from 'express';
-import { AdditionalDuty, ExamSessionStatus, Prisma, Semester, StudentStatus } from '@prisma/client';
+import {
+    AdditionalDuty,
+    CommitteeEventStatus,
+    CommitteeFeatureCode,
+    ExamSessionStatus,
+    Prisma,
+    Semester,
+    StudentStatus,
+} from '@prisma/client';
 import QRCode from 'qrcode';
 import prisma from '../utils/prisma';
 import { ApiError, asyncHandler, ApiResponse } from '../utils/api';
@@ -4134,6 +4142,81 @@ export const submitBeritaAcara = asyncHandler(async (req: Request, res: Response
     );
 });
 
+type ProctorArtifactAccessScope = {
+    scheduleId: number;
+    proctorId: number | null;
+    schedule: {
+        examType: string | null;
+        academicYearId: number | null;
+        packet?: {
+            programCode?: string | null;
+        } | null;
+    };
+};
+
+function resolveProctorArtifactProgramCode(report: ProctorArtifactAccessScope) {
+    return normalizeExamProgramCode(report.schedule.packet?.programCode || report.schedule.examType || '');
+}
+
+async function hasCommitteeExamProctorArtifactAccess(
+    requesterId: number,
+    report: ProctorArtifactAccessScope,
+): Promise<boolean> {
+    const academicYearId = Number(report.schedule.academicYearId || 0);
+    if (!Number.isFinite(academicYearId) || academicYearId <= 0) {
+        return false;
+    }
+
+    const programCode = resolveProctorArtifactProgramCode(report);
+    if (!programCode) {
+        return false;
+    }
+
+    const assignment = await prisma.committeeAssignment.findFirst({
+        where: {
+            userId: requesterId,
+            isActive: true,
+            featureGrants: {
+                some: {
+                    featureCode: CommitteeFeatureCode.EXAM_PROCTOR,
+                },
+            },
+            committeeEvent: {
+                status: CommitteeEventStatus.AKTIF,
+                academicYearId,
+                programCode,
+            },
+        },
+        select: {
+            id: true,
+        },
+    });
+
+    return Boolean(assignment);
+}
+
+async function canRequesterAccessProctorArtifactDocument(
+    requester: Awaited<ReturnType<typeof getExamRequesterProfile>>,
+    report: ProctorArtifactAccessScope,
+) {
+    if (requester.role === 'ADMIN' || requester.role === 'PRINCIPAL') {
+        return true;
+    }
+
+    if (requester.role !== 'TEACHER') {
+        return false;
+    }
+
+    if (
+        Number(requester.id) === Number(report.proctorId) ||
+        hasCurriculumExamManagementDuty(requester.additionalDuties)
+    ) {
+        return true;
+    }
+
+    return hasCommitteeExamProctorArtifactAccess(Number(requester.id), report);
+}
+
 export const getProctoringReportDocument = asyncHandler(async (req: Request, res: Response) => {
     const parsedReportId = Number.parseInt(String(req.params.reportId || ''), 10);
     if (!Number.isInteger(parsedReportId) || parsedReportId <= 0) {
@@ -4190,6 +4273,7 @@ export const getProctoringReportDocument = asyncHandler(async (req: Request, res
                     },
                     packet: {
                         select: {
+                            programCode: true,
                             title: true,
                             subject: {
                                 select: {
@@ -4213,10 +4297,7 @@ export const getProctoringReportDocument = asyncHandler(async (req: Request, res
         throw new ApiError(404, 'Berita acara tidak ditemukan');
     }
 
-    const canAccessTeacher =
-        requester.role === 'TEACHER' &&
-        (Number(requester.id) === Number(report.proctorId) || hasCurriculumExamManagementDuty(requester.additionalDuties));
-    const canAccess = requester.role === 'ADMIN' || requester.role === 'PRINCIPAL' || canAccessTeacher;
+    const canAccess = await canRequesterAccessProctorArtifactDocument(requester, report);
     if (!canAccess) {
         throw new ApiError(403, 'Anda tidak memiliki akses ke dokumen berita acara ini.');
     }
@@ -4309,6 +4390,7 @@ export const getProctoringAttendanceDocument = asyncHandler(async (req: Request,
                     },
                     packet: {
                         select: {
+                            programCode: true,
                             title: true,
                             subject: {
                                 select: {
@@ -4332,10 +4414,7 @@ export const getProctoringAttendanceDocument = asyncHandler(async (req: Request,
         throw new ApiError(404, 'Daftar hadir tidak ditemukan');
     }
 
-    const canAccessTeacher =
-        requester.role === 'TEACHER' &&
-        (Number(requester.id) === Number(report.proctorId) || hasCurriculumExamManagementDuty(requester.additionalDuties));
-    const canAccess = requester.role === 'ADMIN' || requester.role === 'PRINCIPAL' || canAccessTeacher;
+    const canAccess = await canRequesterAccessProctorArtifactDocument(requester, report);
     if (!canAccess) {
         throw new ApiError(403, 'Anda tidak memiliki akses ke daftar hadir ini.');
     }
