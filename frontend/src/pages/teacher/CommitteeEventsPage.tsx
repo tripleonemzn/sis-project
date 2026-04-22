@@ -53,6 +53,9 @@ type AssignmentFormState = {
   featureCodes: CommitteeFeatureCode[];
 };
 
+type CommitteeListResponse = Awaited<ReturnType<typeof committeeService.list>>;
+type CommitteeDetailResponse = Awaited<ReturnType<typeof committeeService.getDetail>>;
+
 const DEFAULT_ASSIGNMENT_MEMBER_TYPES = [
   {
     code: 'TEACHER',
@@ -116,20 +119,22 @@ function buildWorkspacePath(event: CommitteeEventSummary) {
 function deriveAssignmentMemberKind(
   assignment: CommitteeEventDetail['assignments'][number],
 ): CommitteeAssignmentMemberKindCode {
-  if (assignment.memberType === 'EXTERNAL_MEMBER') {
-    return 'EXTERNAL';
-  }
+  if (assignment.memberType === 'EXTERNAL_MEMBER') return 'EXTERNAL';
   return assignment.user?.role === 'STAFF' ? 'STAFF' : 'TEACHER';
 }
 
 function EventCard({
   event,
+  managing,
   onEdit,
+  onManage,
   onSubmit,
   submitting,
 }: {
   event: CommitteeEventSummary;
+  managing: boolean;
   onEdit: (event: CommitteeEventSummary) => void;
+  onManage: (event: CommitteeEventSummary) => void;
   onSubmit: (eventId: number) => void;
   submitting: boolean;
 }) {
@@ -210,14 +215,28 @@ function EventCard({
 
       <div className="mt-5 flex flex-wrap gap-3">
         {canEdit ? (
-          <button
-            type="button"
-            onClick={() => onEdit(event)}
-            className="inline-flex items-center gap-2 rounded-lg border border-slate-300 px-4 py-2 text-sm font-semibold text-slate-700 hover:bg-slate-50"
-          >
-            <Save className="h-4 w-4" />
-            Edit Draft
-          </button>
+          <>
+            <button
+              type="button"
+              onClick={() => onEdit(event)}
+              className="inline-flex items-center gap-2 rounded-lg border border-slate-300 px-4 py-2 text-sm font-semibold text-slate-700 hover:bg-slate-50"
+            >
+              <Save className="h-4 w-4" />
+              Edit Draft
+            </button>
+            <button
+              type="button"
+              onClick={() => onManage(event)}
+              className={`inline-flex items-center gap-2 rounded-lg px-4 py-2 text-sm font-semibold ${
+                managing
+                  ? 'border border-blue-300 bg-blue-50 text-blue-700'
+                  : 'border border-slate-300 text-slate-700 hover:bg-slate-50'
+              }`}
+            >
+              <Users className="h-4 w-4" />
+              {managing ? 'Tutup Susunan Panitia' : 'Kelola Susunan Panitia'}
+            </button>
+          </>
         ) : null}
         {canSubmit ? (
           <button
@@ -244,12 +263,389 @@ function EventCard({
   );
 }
 
+function CommitteeAssignmentPanel({
+  event,
+  detail,
+  loading,
+  assignmentForm,
+  setAssignmentForm,
+  memberTypes,
+  featureDefinitions,
+  teachers,
+  staffs,
+  saving,
+  deleting,
+  onSave,
+  onDelete,
+  onStartEdit,
+}: {
+  event: CommitteeEventSummary;
+  detail: CommitteeEventDetail | null;
+  loading: boolean;
+  assignmentForm: AssignmentFormState;
+  setAssignmentForm: React.Dispatch<React.SetStateAction<AssignmentFormState>>;
+  memberTypes: typeof DEFAULT_ASSIGNMENT_MEMBER_TYPES | Array<{
+    code: CommitteeAssignmentMemberKindCode;
+    label: string;
+    memberType: CommitteeAssignmentMemberType;
+    featureGrantEligible: boolean;
+  }>;
+  featureDefinitions: CommitteeEventDetail['availableFeatures'];
+  teachers: Array<{ id: number; name: string }>;
+  staffs: Array<{ id: number; name: string }>;
+  saving: boolean;
+  deleting: boolean;
+  onSave: () => void;
+  onDelete: (assignmentId: number) => void;
+  onStartEdit: (assignment: CommitteeEventDetail['assignments'][number]) => void;
+}) {
+  const activeMemberType = memberTypes.find((item) => item.code === assignmentForm.memberKind) || memberTypes[0];
+  const isInternalMember = activeMemberType.memberType === 'INTERNAL_USER';
+  const internalMemberOptions = assignmentForm.memberKind === 'STAFF' ? staffs : teachers;
+  const supportsWorkspaceGrant = assignmentForm.memberKind === 'TEACHER';
+  const canSaveAssignment =
+    Boolean(detail?.access.canManageAssignments) &&
+    Boolean(assignmentForm.assignmentRole.trim()) &&
+    (isInternalMember ? Boolean(assignmentForm.userId) : Boolean(assignmentForm.externalName.trim()));
+
+  return (
+    <div className="mt-4 rounded-2xl border border-blue-200 bg-blue-50/50 p-5">
+      <div className="flex flex-wrap items-start justify-between gap-3">
+        <div>
+          <h3 className="text-sm font-semibold text-slate-900">Kelola Susunan Panitia</h3>
+          <p className="mt-1 text-xs leading-5 text-slate-500">
+            Pengaturan anggota dipindahkan langsung ke card draft agar setelah popup disimpan, pengusul bisa lanjut bekerja dari sini.
+          </p>
+        </div>
+        <div className="text-right text-xs text-slate-500">
+          <div>{event.title}</div>
+          <div>{event.code}</div>
+        </div>
+      </div>
+
+      {loading ? (
+        <div className="mt-6 flex min-h-[220px] items-center justify-center">
+          <Loader2 className="h-6 w-6 animate-spin text-blue-600" />
+        </div>
+      ) : !detail ? (
+        <div className="mt-5 rounded-xl border border-dashed border-slate-300 bg-white px-4 py-6 text-sm text-slate-500">
+          Detail draft tidak berhasil dimuat. Tutup lalu buka lagi panel susunan panitia ini.
+        </div>
+      ) : (
+        <div className="mt-5 grid gap-6 xl:grid-cols-[0.95fr,1.2fr]">
+          <section className="space-y-5">
+            <div className="rounded-2xl border border-slate-200 bg-white p-5">
+              <div className="flex items-center justify-between gap-3">
+                <div>
+                  <h4 className="text-sm font-semibold text-slate-900">Form Anggota Panitia</h4>
+                  <p className="mt-1 text-xs leading-5 text-slate-500">
+                    Tambah atau ubah anggota lintas guru, staff TU, atau pembina eksternal dari draft ini.
+                  </p>
+                </div>
+                <span className={`inline-flex rounded-full px-3 py-1 text-xs font-semibold ${getCommitteeStatusTone(detail.status)}`}>
+                  {COMMITTEE_STATUS_LABELS[detail.status]}
+                </span>
+              </div>
+
+              <div className="mt-5 space-y-4">
+                <div>
+                  <label htmlFor={`committee-member-kind-${event.id}`} className="mb-1 block text-sm font-medium text-slate-700">
+                    Jenis Anggota
+                  </label>
+                  <select
+                    id={`committee-member-kind-${event.id}`}
+                    name={`committee-member-kind-${event.id}`}
+                    value={assignmentForm.memberKind}
+                    onChange={(currentEvent) =>
+                      setAssignmentForm((current) => ({
+                        ...current,
+                        memberKind: currentEvent.target.value as CommitteeAssignmentMemberKindCode,
+                        userId: '',
+                        externalName: '',
+                        externalInstitution: '',
+                        featureCodes: currentEvent.target.value === 'TEACHER' ? current.featureCodes : [],
+                      }))
+                    }
+                    className="w-full rounded-xl border border-slate-300 bg-white px-3 py-2.5 text-sm focus:border-blue-500 focus:outline-none"
+                  >
+                    {memberTypes.map((item) => (
+                      <option key={`${event.id}-${item.code}`} value={item.code}>
+                        {item.label}
+                      </option>
+                    ))}
+                  </select>
+                </div>
+
+                {isInternalMember ? (
+                  <div>
+                    <label htmlFor={`committee-member-user-${event.id}`} className="mb-1 block text-sm font-medium text-slate-700">
+                      {assignmentForm.memberKind === 'STAFF' ? 'Staff TU' : 'Guru'}
+                    </label>
+                    <select
+                      id={`committee-member-user-${event.id}`}
+                      name={`committee-member-user-${event.id}`}
+                      value={assignmentForm.userId}
+                      onChange={(currentEvent) =>
+                        setAssignmentForm((current) => ({ ...current, userId: currentEvent.target.value }))
+                      }
+                      className="w-full rounded-xl border border-slate-300 bg-white px-3 py-2.5 text-sm focus:border-blue-500 focus:outline-none"
+                    >
+                      <option value="">{assignmentForm.memberKind === 'STAFF' ? 'Pilih staff TU' : 'Pilih guru'}</option>
+                      {internalMemberOptions.map((member) => (
+                        <option key={`${event.id}-${member.id}`} value={member.id}>
+                          {member.name}
+                        </option>
+                      ))}
+                    </select>
+                  </div>
+                ) : (
+                  <>
+                    <div>
+                      <label htmlFor={`committee-external-name-${event.id}`} className="mb-1 block text-sm font-medium text-slate-700">
+                        Nama Pembina Eksternal
+                      </label>
+                      <input
+                        id={`committee-external-name-${event.id}`}
+                        name={`committee-external-name-${event.id}`}
+                        autoComplete="off"
+                        value={assignmentForm.externalName}
+                        onChange={(currentEvent) =>
+                          setAssignmentForm((current) => ({ ...current, externalName: currentEvent.target.value }))
+                        }
+                        className="w-full rounded-xl border border-slate-300 px-3 py-2.5 text-sm focus:border-blue-500 focus:outline-none"
+                        placeholder="Nama lengkap anggota eksternal"
+                      />
+                    </div>
+                    <div>
+                      <label
+                        htmlFor={`committee-external-institution-${event.id}`}
+                        className="mb-1 block text-sm font-medium text-slate-700"
+                      >
+                        Instansi / Asal <span className="text-slate-400">(Opsional)</span>
+                      </label>
+                      <input
+                        id={`committee-external-institution-${event.id}`}
+                        name={`committee-external-institution-${event.id}`}
+                        autoComplete="off"
+                        value={assignmentForm.externalInstitution}
+                        onChange={(currentEvent) =>
+                          setAssignmentForm((current) => ({ ...current, externalInstitution: currentEvent.target.value }))
+                        }
+                        className="w-full rounded-xl border border-slate-300 px-3 py-2.5 text-sm focus:border-blue-500 focus:outline-none"
+                        placeholder="Instansi atau asal pembina eksternal"
+                      />
+                    </div>
+                  </>
+                )}
+
+                <div className="grid gap-4 md:grid-cols-2">
+                  <div>
+                    <label htmlFor={`committee-member-role-${event.id}`} className="mb-1 block text-sm font-medium text-slate-700">
+                      Peran dalam Panitia
+                    </label>
+                    <input
+                      id={`committee-member-role-${event.id}`}
+                      name={`committee-member-role-${event.id}`}
+                      autoComplete="off"
+                      value={assignmentForm.assignmentRole}
+                      onChange={(currentEvent) =>
+                        setAssignmentForm((current) => ({ ...current, assignmentRole: currentEvent.target.value }))
+                      }
+                      className="w-full rounded-xl border border-slate-300 px-3 py-2.5 text-sm focus:border-blue-500 focus:outline-none"
+                      placeholder="Contoh: Ketua, Sekretaris, Anggota Ruang"
+                    />
+                  </div>
+                  <div>
+                    <label htmlFor={`committee-member-notes-${event.id}`} className="mb-1 block text-sm font-medium text-slate-700">
+                      Catatan Tugas <span className="text-slate-400">(Opsional)</span>
+                    </label>
+                    <input
+                      id={`committee-member-notes-${event.id}`}
+                      name={`committee-member-notes-${event.id}`}
+                      autoComplete="off"
+                      value={assignmentForm.notes}
+                      onChange={(currentEvent) =>
+                        setAssignmentForm((current) => ({ ...current, notes: currentEvent.target.value }))
+                      }
+                      className="w-full rounded-xl border border-slate-300 px-3 py-2.5 text-sm focus:border-blue-500 focus:outline-none"
+                      placeholder="Catatan singkat tanggung jawab anggota"
+                    />
+                  </div>
+                </div>
+              </div>
+
+              <div className="mt-4 rounded-2xl border border-slate-200 bg-slate-50/70 p-4">
+                <div className="text-sm font-semibold text-slate-900">Usulan Feature Workspace</div>
+                <p className="mt-1 text-xs leading-5 text-slate-500">
+                  Statistik dan preview akan langsung ikut berubah dari hasil simpan ini, tanpa polling tambahan ke server.
+                </p>
+
+                {supportsWorkspaceGrant ? (
+                  detail.programCode ? (
+                    <div className="mt-4 grid gap-2">
+                      {featureDefinitions.map((feature) => {
+                        const checked = assignmentForm.featureCodes.includes(feature.code);
+                        return (
+                          <label
+                            key={`${event.id}-${feature.code}`}
+                            htmlFor={`committee-feature-${event.id}-${feature.code}`}
+                            className="flex cursor-pointer items-start gap-3 rounded-xl border border-slate-200 bg-white px-3 py-3 hover:border-slate-300"
+                          >
+                            <input
+                              id={`committee-feature-${event.id}-${feature.code}`}
+                              name={`committee-feature-${event.id}-${feature.code}`}
+                              type="checkbox"
+                              checked={checked}
+                              onChange={(currentEvent) =>
+                                setAssignmentForm((current) => ({
+                                  ...current,
+                                  featureCodes: currentEvent.target.checked
+                                    ? [...current.featureCodes, feature.code]
+                                    : current.featureCodes.filter((item) => item !== feature.code),
+                                }))
+                              }
+                              className="mt-1 h-4 w-4 rounded border-slate-300 text-blue-600 focus:ring-blue-500"
+                            />
+                            <div>
+                              <div className="text-sm font-semibold text-slate-900">{feature.label}</div>
+                              <div className="text-xs leading-5 text-slate-500">{feature.description}</div>
+                            </div>
+                          </label>
+                        );
+                      })}
+                    </div>
+                  ) : (
+                    <div className="mt-4 rounded-xl border border-amber-200 bg-amber-50 px-4 py-3 text-sm text-amber-800">
+                      Pilih <span className="font-semibold">Program Ujian Terkait</span> pada draft ini jika kegiatan memang
+                      membutuhkan workspace ujian.
+                    </div>
+                  )
+                ) : (
+                  <div className="mt-4 rounded-xl border border-slate-200 bg-white px-4 py-3 text-sm text-slate-600">
+                    Workspace ujian saat ini hanya bisa diusulkan untuk akun guru internal. Staff TU dan pembina eksternal tetap
+                    bisa dicatat sebagai anggota panitia tanpa menu workspace.
+                  </div>
+                )}
+              </div>
+
+              <div className="mt-5 flex flex-wrap gap-3">
+                <button
+                  type="button"
+                  onClick={onSave}
+                  disabled={!canSaveAssignment || saving}
+                  className="inline-flex items-center gap-2 rounded-xl bg-blue-600 px-4 py-2.5 text-sm font-semibold text-white hover:bg-blue-700 disabled:cursor-not-allowed disabled:bg-blue-300"
+                >
+                  {saving ? <Loader2 className="h-4 w-4 animate-spin" /> : <Save className="h-4 w-4" />}
+                  {assignmentForm.assignmentId ? 'Perbarui Anggota' : 'Tambah Anggota'}
+                </button>
+                <button
+                  type="button"
+                  onClick={() => setAssignmentForm(createEmptyAssignmentForm())}
+                  className="inline-flex items-center gap-2 rounded-xl border border-slate-300 bg-white px-4 py-2.5 text-sm font-semibold text-slate-700 hover:bg-slate-50"
+                >
+                  <PlusCircle className="h-4 w-4" />
+                  Reset Form
+                </button>
+              </div>
+            </div>
+          </section>
+
+          <section className="space-y-5">
+            <div className="rounded-2xl border border-slate-200 bg-white p-5">
+              <div className="flex items-center justify-between gap-3">
+                <div>
+                  <h4 className="text-sm font-semibold text-slate-900">Anggota Saat Ini</h4>
+                  <p className="mt-1 text-xs leading-5 text-slate-500">
+                    Setiap simpan anggota langsung memperbarui preview card dan statistik di halaman ini.
+                  </p>
+                </div>
+                <div className="text-right text-xs text-slate-500">
+                  <div>{detail.counts.members} anggota</div>
+                  <div>{detail.counts.grantedFeatures} usulan fitur</div>
+                </div>
+              </div>
+
+              <div className="mt-5 space-y-3">
+                {detail.assignments.length === 0 ? (
+                  <div className="rounded-xl border border-dashed border-slate-300 px-4 py-6 text-sm text-slate-500">
+                    Belum ada anggota panitia pada draft ini.
+                  </div>
+                ) : (
+                  detail.assignments.map((assignment) => (
+                    <article
+                      key={`committee-assignment-${event.id}-${assignment.id}`}
+                      className="rounded-2xl border border-slate-200 bg-slate-50/70 p-4"
+                    >
+                      <div className="flex flex-wrap items-start justify-between gap-3">
+                        <div>
+                          <div className="text-sm font-semibold text-slate-900">{assignment.memberLabel}</div>
+                          <div className="mt-1 text-xs text-slate-500">
+                            {formatCommitteeMemberMeta(assignment.memberTypeLabel, assignment.memberDetail)}
+                          </div>
+                          <div className="mt-2 text-sm text-slate-700">{assignment.assignmentRole}</div>
+                        </div>
+                        <div className="flex flex-wrap gap-2">
+                          <button
+                            type="button"
+                            onClick={() => onStartEdit(assignment)}
+                            className="inline-flex items-center gap-2 rounded-lg border border-slate-300 bg-white px-3 py-2 text-xs font-semibold text-slate-700 hover:bg-slate-50"
+                          >
+                            <Save className="h-3.5 w-3.5" />
+                            Edit
+                          </button>
+                          <button
+                            type="button"
+                            onClick={() => onDelete(assignment.id)}
+                            disabled={deleting}
+                            className="inline-flex items-center gap-2 rounded-lg border border-rose-300 bg-white px-3 py-2 text-xs font-semibold text-rose-700 hover:bg-rose-50 disabled:cursor-not-allowed disabled:border-rose-200 disabled:text-rose-300"
+                          >
+                            <Trash2 className="h-3.5 w-3.5" />
+                            Hapus
+                          </button>
+                        </div>
+                      </div>
+
+                      {assignment.notes ? (
+                        <div className="mt-3 rounded-xl border border-white bg-white px-3 py-2 text-sm text-slate-600">
+                          {assignment.notes}
+                        </div>
+                      ) : null}
+
+                      <div className="mt-3 flex flex-wrap gap-2">
+                        {assignment.featureGrants.length === 0 ? (
+                          <span className="rounded-full border border-slate-200 bg-white px-3 py-1 text-xs font-medium text-slate-500">
+                            Tanpa usulan feature workspace
+                          </span>
+                        ) : (
+                          assignment.featureGrants.map((feature) => (
+                            <span
+                              key={`committee-feature-grant-${event.id}-${assignment.id}-${feature.id}`}
+                              className="rounded-full border border-emerald-200 bg-emerald-50 px-3 py-1 text-xs font-semibold text-emerald-700"
+                            >
+                              {feature.label}
+                            </span>
+                          ))
+                        )}
+                      </div>
+                    </article>
+                  ))
+                )}
+              </div>
+            </div>
+          </section>
+        </div>
+      )}
+    </div>
+  );
+}
+
 export default function CommitteeEventsPage() {
   const queryClient = useQueryClient();
   const { data: activeAcademicYear } = useActiveAcademicYear();
   const [form, setForm] = useState<CommitteeFormState>(() => createEmptyFormState());
   const [assignmentForm, setAssignmentForm] = useState<AssignmentFormState>(() => createEmptyAssignmentForm());
   const [isFormOpen, setIsFormOpen] = useState(false);
+  const [managingEventId, setManagingEventId] = useState<number | null>(null);
 
   const committeeQuery = useQuery({
     queryKey: ['committee-teacher-events'],
@@ -260,14 +656,14 @@ export default function CommitteeEventsPage() {
   const committeeMetaQuery = useQuery({
     queryKey: ['committee-teacher-meta'],
     queryFn: committeeService.getMeta,
-    enabled: isFormOpen,
+    enabled: Boolean(managingEventId),
     staleTime: 5 * 60 * 1000,
   });
 
-  const eventDetailQuery = useQuery({
-    queryKey: ['committee-teacher-detail', form.eventId],
-    queryFn: () => committeeService.getDetail(form.eventId as number),
-    enabled: Boolean(isFormOpen && form.eventId),
+  const managingDetailQuery = useQuery({
+    queryKey: ['committee-teacher-detail', managingEventId],
+    queryFn: () => committeeService.getDetail(managingEventId as number),
+    enabled: Boolean(managingEventId),
     staleTime: 30_000,
   });
 
@@ -281,39 +677,115 @@ export default function CommitteeEventsPage() {
   const teacherQuery = useQuery({
     queryKey: ['committee-teacher-member-options'],
     queryFn: () => userService.getUsers({ role: 'TEACHER', limit: 10000 }),
-    enabled: isFormOpen,
+    enabled: Boolean(managingEventId),
     staleTime: 5 * 60 * 1000,
   });
 
   const staffQuery = useQuery({
     queryKey: ['committee-staff-member-options'],
     queryFn: () => userService.getUsers({ role: 'STAFF', limit: 10000 }),
-    enabled: isFormOpen,
+    enabled: Boolean(managingEventId),
     staleTime: 5 * 60 * 1000,
   });
 
+  const events = committeeQuery.data?.data?.items || [];
+  const requestedEvents = events.filter((event) => event.isRequester);
+  const assignedActiveEvents = events.filter(
+    (event) => event.isAssigned && event.status === 'AKTIF' && event.myAssignment?.featureCodes?.length,
+  );
+  const managedEvent = requestedEvents.find((event) => event.id === managingEventId) || null;
+  const managingDetail = managingDetailQuery.data?.data?.item || null;
   const assignmentMemberTypes =
     committeeMetaQuery.data?.data?.assignmentMemberTypes || DEFAULT_ASSIGNMENT_MEMBER_TYPES;
   const featureDefinitions = committeeMetaQuery.data?.data?.featureDefinitions || [];
-  const detail = eventDetailQuery.data?.data?.item || null;
   const teachers = teacherQuery.data?.data || [];
   const staffs = staffQuery.data?.data || [];
 
-  const assignmentMemberType = useMemo(
-    () => assignmentMemberTypes.find((item) => item.code === assignmentForm.memberKind) || assignmentMemberTypes[0],
-    [assignmentForm.memberKind, assignmentMemberTypes],
+  const examPrograms = useMemo(
+    () => (examProgramsQuery.data?.data?.programs || []).filter((program) => program.isActive),
+    [examProgramsQuery.data?.data?.programs],
   );
 
-  const internalMemberOptions = useMemo(() => {
-    if (assignmentForm.memberKind === 'STAFF') {
-      return staffs;
-    }
-    return teachers;
-  }, [assignmentForm.memberKind, staffs, teachers]);
+  const stats = {
+    requested: requestedEvents.length,
+    pending:
+      requestedEvents.filter((event) => event.status === 'MENUNGGU_PERSETUJUAN_KEPSEK' || event.status === 'MENUNGGU_SK_TU')
+        .length,
+    activeAssignments: assignedActiveEvents.length,
+    rejected: requestedEvents.filter((event) => event.status === 'DITOLAK_KEPSEK').length,
+  };
 
-  const examPrograms = useMemo(() => {
-    return (examProgramsQuery.data?.data?.programs || []).filter((program) => program.isActive);
-  }, [examProgramsQuery.data?.data?.programs]);
+  const patchCommitteeCaches = (item: CommitteeEventDetail, options?: { prepend?: boolean }) => {
+    queryClient.setQueryData<CommitteeListResponse | undefined>(['committee-teacher-events'], (current) => {
+      if (!current?.data) return current;
+      const existingItems = current.data.items || [];
+      const index = existingItems.findIndex((event) => event.id === item.id);
+      const nextItems = [...existingItems];
+      if (index >= 0) {
+        nextItems[index] = item;
+      } else if (options?.prepend) {
+        nextItems.unshift(item);
+      } else {
+        nextItems.push(item);
+      }
+      return {
+        ...current,
+        data: {
+          ...current.data,
+          items: nextItems,
+        },
+      };
+    });
+
+    queryClient.setQueryData<CommitteeDetailResponse>(
+      ['committee-teacher-detail', item.id],
+      () =>
+        ({
+          data: {
+            item,
+          },
+        }) as CommitteeDetailResponse,
+    );
+  };
+
+  const openNewDraftModal = () => {
+    setForm(createEmptyFormState());
+    setIsFormOpen(true);
+  };
+
+  const closeDraftModal = () => {
+    setIsFormOpen(false);
+    setForm(createEmptyFormState());
+  };
+
+  const handleEdit = (event: CommitteeEventSummary) => {
+    setForm({
+      eventId: event.id,
+      title: event.title,
+      code: event.code,
+      programCode: event.programCode || '',
+      description: event.description || '',
+    });
+    setIsFormOpen(true);
+  };
+
+  const handleOpenManage = (event: CommitteeEventSummary) => {
+    setAssignmentForm(createEmptyAssignmentForm());
+    setManagingEventId((current) => (current === event.id ? null : event.id));
+  };
+
+  const handleStartEditAssignment = (assignment: CommitteeEventDetail['assignments'][number]) => {
+    setAssignmentForm({
+      assignmentId: assignment.id,
+      memberKind: deriveAssignmentMemberKind(assignment),
+      userId: assignment.userId ? String(assignment.userId) : '',
+      externalName: assignment.externalName || '',
+      externalInstitution: assignment.externalInstitution || '',
+      assignmentRole: assignment.assignmentRole,
+      notes: assignment.notes || '',
+      featureCodes: assignment.featureGrants.map((feature) => feature.featureCode),
+    });
+  };
 
   const saveMutation = useMutation({
     mutationFn: async (payload: {
@@ -330,17 +802,16 @@ export default function CommitteeEventsPage() {
     },
     onSuccess: (response, variables) => {
       const saved = response.data.item;
-      toast.success(variables.eventId ? 'Draft kepanitiaan diperbarui.' : 'Draft kepanitiaan dibuat. Lanjutkan dengan menyusun panitia.');
-      setForm({
-        eventId: saved.id,
-        title: saved.title,
-        code: saved.code,
-        programCode: saved.programCode || '',
-        description: saved.description || '',
-      });
-      queryClient.invalidateQueries({ queryKey: ['committee-teacher-events'] });
-      queryClient.invalidateQueries({ queryKey: ['committee-teacher-detail', saved.id] });
-      queryClient.invalidateQueries({ queryKey: ['committee-sidebar'] });
+      patchCommitteeCaches(saved, { prepend: !variables.eventId });
+      setIsFormOpen(false);
+      setForm(createEmptyFormState());
+      setAssignmentForm(createEmptyAssignmentForm());
+      setManagingEventId(saved.id);
+      toast.success(
+        variables.eventId
+          ? 'Draft kepanitiaan diperbarui. Lanjutkan pengaturan anggota dari card draft.'
+          : 'Draft kepanitiaan dibuat. Lanjutkan pengaturan anggota dari card draft.',
+      );
     },
     onError: (error: unknown) => {
       const apiError = error as { response?: { data?: { message?: string } } };
@@ -351,17 +822,12 @@ export default function CommitteeEventsPage() {
   const submitMutation = useMutation({
     mutationFn: (eventId: number) => committeeService.submit(eventId),
     onSuccess: (response, eventId) => {
-      toast.success('Pengajuan kepanitiaan diteruskan ke Kepala Sekolah.');
-      queryClient.invalidateQueries({ queryKey: ['committee-teacher-events'] });
-      queryClient.invalidateQueries({ queryKey: ['committee-teacher-detail', eventId] });
-      if (form.eventId === eventId) {
-        setIsFormOpen(false);
-        setForm(createEmptyFormState());
+      patchCommitteeCaches(response.data.item);
+      if (managingEventId === eventId) {
+        setManagingEventId(null);
         setAssignmentForm(createEmptyAssignmentForm());
       }
-      if (response.data.item.status !== 'DRAFT') {
-        queryClient.invalidateQueries({ queryKey: ['committee-sidebar'] });
-      }
+      toast.success('Pengajuan kepanitiaan diteruskan ke Kepala Sekolah.');
     },
     onError: (error: unknown) => {
       const apiError = error as { response?: { data?: { message?: string } } };
@@ -371,29 +837,31 @@ export default function CommitteeEventsPage() {
 
   const assignmentMutation = useMutation({
     mutationFn: () => {
+      const activeMemberType =
+        assignmentMemberTypes.find((item) => item.code === assignmentForm.memberKind) || assignmentMemberTypes[0];
       const payload = {
-        memberType: assignmentMemberType.memberType as CommitteeAssignmentMemberType,
-        userId: assignmentMemberType.memberType === 'INTERNAL_USER' ? Number(assignmentForm.userId) : null,
-        externalName: assignmentMemberType.memberType === 'EXTERNAL_MEMBER' ? assignmentForm.externalName.trim() : null,
+        memberType: activeMemberType.memberType as CommitteeAssignmentMemberType,
+        userId: activeMemberType.memberType === 'INTERNAL_USER' ? Number(assignmentForm.userId) : null,
+        externalName: activeMemberType.memberType === 'EXTERNAL_MEMBER' ? assignmentForm.externalName.trim() : null,
         externalInstitution:
-          assignmentMemberType.memberType === 'EXTERNAL_MEMBER' ? assignmentForm.externalInstitution.trim() || null : null,
+          activeMemberType.memberType === 'EXTERNAL_MEMBER' ? assignmentForm.externalInstitution.trim() || null : null,
         assignmentRole: assignmentForm.assignmentRole.trim(),
         notes: assignmentForm.notes.trim() || null,
-        featureCodes: assignmentMemberType.code === 'TEACHER' ? assignmentForm.featureCodes : [],
+        featureCodes: assignmentForm.memberKind === 'TEACHER' ? assignmentForm.featureCodes : [],
       };
 
       if (assignmentForm.assignmentId) {
-        return committeeService.updateAssignment(form.eventId as number, assignmentForm.assignmentId, payload);
+        return committeeService.updateAssignment(managingEventId as number, assignmentForm.assignmentId, payload);
       }
 
-      return committeeService.createAssignment(form.eventId as number, payload);
+      return committeeService.createAssignment(managingEventId as number, payload);
     },
-    onSuccess: () => {
-      toast.success(assignmentForm.assignmentId ? 'Rancangan anggota panitia diperbarui.' : 'Anggota panitia ditambahkan ke draft.');
+    onSuccess: (response) => {
+      patchCommitteeCaches(response.data.item);
       setAssignmentForm(createEmptyAssignmentForm());
-      queryClient.invalidateQueries({ queryKey: ['committee-teacher-events'] });
-      queryClient.invalidateQueries({ queryKey: ['committee-teacher-detail', form.eventId] });
-      queryClient.invalidateQueries({ queryKey: ['committee-sidebar'] });
+      toast.success(
+        assignmentForm.assignmentId ? 'Rancangan anggota panitia diperbarui.' : 'Anggota panitia ditambahkan ke draft.',
+      );
     },
     onError: (error: unknown) => {
       const apiError = error as { response?: { data?: { message?: string } } };
@@ -402,46 +870,17 @@ export default function CommitteeEventsPage() {
   });
 
   const deleteAssignmentMutation = useMutation({
-    mutationFn: (assignmentId: number) => committeeService.deleteAssignment(form.eventId as number, assignmentId),
-    onSuccess: () => {
-      toast.success('Anggota panitia dihapus dari draft.');
+    mutationFn: (assignmentId: number) => committeeService.deleteAssignment(managingEventId as number, assignmentId),
+    onSuccess: (response) => {
+      patchCommitteeCaches(response.data.item);
       setAssignmentForm(createEmptyAssignmentForm());
-      queryClient.invalidateQueries({ queryKey: ['committee-teacher-events'] });
-      queryClient.invalidateQueries({ queryKey: ['committee-teacher-detail', form.eventId] });
-      queryClient.invalidateQueries({ queryKey: ['committee-sidebar'] });
+      toast.success('Anggota panitia dihapus dari draft.');
     },
     onError: (error: unknown) => {
       const apiError = error as { response?: { data?: { message?: string } } };
       toast.error(apiError?.response?.data?.message || 'Gagal menghapus anggota panitia');
     },
   });
-
-  const events = committeeQuery.data?.data?.items || [];
-  const requestedEvents = events.filter((event) => event.isRequester);
-  const assignedActiveEvents = events.filter(
-    (event) => event.isAssigned && event.status === 'AKTIF' && event.myAssignment?.featureCodes?.length,
-  );
-
-  const stats = {
-    requested: requestedEvents.length,
-    pending:
-      requestedEvents.filter((event) => event.status === 'MENUNGGU_PERSETUJUAN_KEPSEK' || event.status === 'MENUNGGU_SK_TU')
-        .length,
-    activeAssignments: assignedActiveEvents.length,
-    rejected: requestedEvents.filter((event) => event.status === 'DITOLAK_KEPSEK').length,
-  };
-
-  const openNewDraftModal = () => {
-    setForm(createEmptyFormState());
-    setAssignmentForm(createEmptyAssignmentForm());
-    setIsFormOpen(true);
-  };
-
-  const closeDraftModal = () => {
-    setIsFormOpen(false);
-    setForm(createEmptyFormState());
-    setAssignmentForm(createEmptyAssignmentForm());
-  };
 
   const handleSaveDraft = () => {
     saveMutation.mutate({
@@ -453,45 +892,10 @@ export default function CommitteeEventsPage() {
     });
   };
 
-  const handleEdit = (event: CommitteeEventSummary) => {
-    setForm({
-      eventId: event.id,
-      title: event.title,
-      code: event.code,
-      programCode: event.programCode || '',
-      description: event.description || '',
-    });
-    setAssignmentForm(createEmptyAssignmentForm());
-    setIsFormOpen(true);
-  };
-
-  const handleStartEditAssignment = (assignment: CommitteeEventDetail['assignments'][number]) => {
-    setAssignmentForm({
-      assignmentId: assignment.id,
-      memberKind: deriveAssignmentMemberKind(assignment),
-      userId: assignment.userId ? String(assignment.userId) : '',
-      externalName: assignment.externalName || '',
-      externalInstitution: assignment.externalInstitution || '',
-      assignmentRole: assignment.assignmentRole,
-      notes: assignment.notes || '',
-      featureCodes: assignment.featureGrants.map((feature) => feature.featureCode),
-    });
-  };
-
   const handleDeleteAssignment = (assignmentId: number) => {
     if (!window.confirm('Hapus anggota panitia ini dari draft?')) return;
     deleteAssignmentMutation.mutate(assignmentId);
   };
-
-  const isAssignmentInternal = assignmentMemberType.memberType === 'INTERNAL_USER';
-  const supportsWorkspaceGrant = assignmentMemberType.code === 'TEACHER';
-  const canSaveAssignment =
-    Boolean(form.eventId) &&
-    Boolean(assignmentForm.assignmentRole.trim()) &&
-    (isAssignmentInternal ? Boolean(assignmentForm.userId) : Boolean(assignmentForm.externalName.trim()));
-  const canSubmitCurrentDraft = Boolean(detail?.access.canEditRequest) && (detail?.counts.members || 0) > 0;
-
-  const isLoading = committeeQuery.isLoading;
 
   return (
     <div className="space-y-6 pb-16">
@@ -504,8 +908,8 @@ export default function CommitteeEventsPage() {
             </div>
             <h1 className="mt-3 text-2xl font-bold text-slate-900">Pengajuan Panitia dan Penugasan Event</h1>
             <p className="mt-2 max-w-3xl text-sm leading-6 text-slate-600">
-              Susun draft kepanitiaan, tentukan anggota lintas guru, staff TU, atau pembina eksternal, lalu ajukan untuk review
-              Kepala Sekolah. Feature workspace yang diusulkan tetap baru aktif setelah approval dan SK terbit.
+              Popup draft sekarang hanya untuk menyimpan data inti kegiatan. Setelah tersimpan, susunan panitia dilanjutkan
+              langsung dari card draft agar alurnya lebih cepat dan jelas.
             </p>
           </div>
           <button
@@ -575,13 +979,15 @@ export default function CommitteeEventsPage() {
           <div className="flex items-center justify-between gap-3">
             <div>
               <h2 className="text-lg font-semibold text-slate-900">Pengajuan Saya</h2>
-              <p className="mt-1 text-sm text-slate-500">Pantau draft, revisi, approval, dan penerbitan SK panitia.</p>
+              <p className="mt-1 text-sm text-slate-500">
+                Statistik dan preview susunan panitia pada card ini akan ikut berubah langsung setelah Anda menambah atau menghapus anggota.
+              </p>
             </div>
             <ClipboardList className="h-5 w-5 text-slate-400" />
           </div>
 
           <div className="mt-5 space-y-4">
-            {isLoading ? (
+            {committeeQuery.isLoading ? (
               <div className="flex min-h-[180px] items-center justify-center">
                 <Loader2 className="h-6 w-6 animate-spin text-blue-600" />
               </div>
@@ -591,13 +997,34 @@ export default function CommitteeEventsPage() {
               </div>
             ) : (
               requestedEvents.map((event) => (
-                <EventCard
-                  key={`committee-request-${event.id}`}
-                  event={event}
-                  onEdit={handleEdit}
-                  onSubmit={(eventId) => submitMutation.mutate(eventId)}
-                  submitting={submitMutation.isPending && submitMutation.variables === event.id}
-                />
+                <div key={`committee-request-wrap-${event.id}`}>
+                  <EventCard
+                    event={event}
+                    managing={managingEventId === event.id}
+                    onEdit={handleEdit}
+                    onManage={handleOpenManage}
+                    onSubmit={(eventId) => submitMutation.mutate(eventId)}
+                    submitting={submitMutation.isPending && submitMutation.variables === event.id}
+                  />
+                  {managingEventId === event.id ? (
+                    <CommitteeAssignmentPanel
+                      event={event}
+                      detail={managedEvent?.id === event.id ? managingDetail : null}
+                      loading={managingDetailQuery.isLoading}
+                      assignmentForm={assignmentForm}
+                      setAssignmentForm={setAssignmentForm}
+                      memberTypes={assignmentMemberTypes}
+                      featureDefinitions={featureDefinitions}
+                      teachers={teachers}
+                      staffs={staffs}
+                      saving={assignmentMutation.isPending}
+                      deleting={deleteAssignmentMutation.isPending}
+                      onSave={() => assignmentMutation.mutate()}
+                      onDelete={handleDeleteAssignment}
+                      onStartEdit={handleStartEditAssignment}
+                    />
+                  ) : null}
+                </div>
               ))
             )}
           </div>
@@ -611,16 +1038,16 @@ export default function CommitteeEventsPage() {
         </div>
         <div className="mt-4 grid gap-3 md:grid-cols-3">
           <div className="rounded-xl border border-slate-200 bg-slate-50 px-4 py-3 text-sm text-slate-600">
-            <div className="font-semibold text-slate-900">1. Pengusul</div>
-            <div className="mt-1">Simpan draft, susun panitia lintas peran, lalu ajukan saat rancangan sudah siap.</div>
+            <div className="font-semibold text-slate-900">1. Simpan Draft</div>
+            <div className="mt-1">Popup menyimpan data inti kegiatan lalu langsung menutup otomatis.</div>
           </div>
           <div className="rounded-xl border border-slate-200 bg-slate-50 px-4 py-3 text-sm text-slate-600">
-            <div className="font-semibold text-slate-900">2. Kepala Sekolah</div>
-            <div className="mt-1">Menilai konteks kegiatan dan susunan panitia sebelum diteruskan ke Kepala TU.</div>
+            <div className="font-semibold text-slate-900">2. Kelola Panitia</div>
+            <div className="mt-1">Susunan anggota dilanjutkan langsung dari card draft yang tadi tersimpan.</div>
           </div>
           <div className="rounded-xl border border-slate-200 bg-slate-50 px-4 py-3 text-sm text-slate-600">
-            <div className="font-semibold text-slate-900">3. Kepala TU</div>
-            <div className="mt-1">Menerbitkan SK. Usulan feature workspace baru aktif sesudah tahap ini selesai.</div>
+            <div className="font-semibold text-slate-900">3. Ajukan</div>
+            <div className="mt-1">Setelah susunan panitia siap, draft baru diajukan ke Kepala Sekolah.</div>
           </div>
         </div>
       </div>
@@ -628,8 +1055,8 @@ export default function CommitteeEventsPage() {
       {isFormOpen ? (
         <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/30 p-4" onClick={closeDraftModal}>
           <div
-            className="flex max-h-[82vh] w-full max-w-5xl flex-col overflow-hidden rounded-2xl bg-white shadow-xl"
-            onClick={(event) => event.stopPropagation()}
+            className="flex max-h-[82vh] w-full max-w-2xl flex-col overflow-hidden rounded-2xl bg-white shadow-xl"
+            onClick={(currentEvent) => currentEvent.stopPropagation()}
           >
             <div className="flex items-start justify-between gap-4 border-b border-slate-100 bg-white px-6 py-5">
               <div>
@@ -637,7 +1064,7 @@ export default function CommitteeEventsPage() {
                   {form.eventId ? 'Perbarui Draft Kepanitiaan' : 'Buat Draft Kepanitiaan'}
                 </h2>
                 <p className="mt-1 text-sm text-slate-500">
-                  Simpan draft lebih dulu, lalu lanjutkan menyusun panitia dan usulan fitur pada tahun ajaran aktif.
+                  Simpan draft dasar dulu. Setelah itu popup akan menutup dan Anda bisa langsung mengatur anggota dari card draft.
                 </p>
               </div>
               <button
@@ -651,433 +1078,88 @@ export default function CommitteeEventsPage() {
             </div>
 
             <div className="flex-1 overflow-y-auto px-6 py-6">
-              <div className="grid gap-6 xl:grid-cols-[0.95fr,1.2fr]">
-                <section className="space-y-5">
-                  <div className="rounded-2xl border border-slate-200 bg-slate-50/70 p-5">
-                    <div className="flex items-center justify-between gap-3">
-                      <div>
-                        <h3 className="text-sm font-semibold text-slate-900">Data Draft</h3>
-                        <p className="mt-1 text-xs leading-5 text-slate-500">
-                          Isi konteks kegiatan. Program ujian hanya perlu dipilih jika panitia ini memang akan memakai workspace
-                          ujian.
-                        </p>
-                      </div>
-                      {detail ? (
-                        <span className={`inline-flex rounded-full px-3 py-1 text-xs font-semibold ${getCommitteeStatusTone(detail.status)}`}>
-                          {COMMITTEE_STATUS_LABELS[detail.status]}
-                        </span>
-                      ) : null}
-                    </div>
+              <div className="space-y-4">
+                <div>
+                  <label htmlFor="committeeTitle" className="mb-1 block text-sm font-medium text-slate-700">
+                    Nama Kegiatan
+                  </label>
+                  <input
+                    id="committeeTitle"
+                    name="committeeTitle"
+                    autoComplete="off"
+                    value={form.title}
+                    onChange={(currentEvent) => setForm((current) => ({ ...current, title: currentEvent.target.value }))}
+                    className="w-full rounded-xl border border-slate-300 px-3 py-2.5 text-sm focus:border-blue-500 focus:outline-none"
+                    placeholder="Contoh: SBTS Semester Genap"
+                  />
+                </div>
 
-                    <div className="mt-5 space-y-4">
-                      <div>
-                        <label htmlFor="committeeTitle" className="mb-1 block text-sm font-medium text-slate-700">
-                          Nama Kegiatan
-                        </label>
-                        <input
-                          id="committeeTitle"
-                          name="committeeTitle"
-                          autoComplete="off"
-                          value={form.title}
-                          onChange={(event) => setForm((current) => ({ ...current, title: event.target.value }))}
-                          className="w-full rounded-xl border border-slate-300 px-3 py-2.5 text-sm focus:border-blue-500 focus:outline-none"
-                          placeholder="Contoh: SBTS Semester Genap"
-                        />
-                      </div>
+                <div>
+                  <label htmlFor="committeeCode" className="mb-1 block text-sm font-medium text-slate-700">
+                    Kode Kegiatan
+                  </label>
+                  <input
+                    id="committeeCode"
+                    name="committeeCode"
+                    autoComplete="off"
+                    value={form.code}
+                    onChange={(currentEvent) =>
+                      setForm((current) => ({ ...current, code: currentEvent.target.value.toUpperCase() }))
+                    }
+                    className="w-full rounded-xl border border-slate-300 px-3 py-2.5 text-sm uppercase focus:border-blue-500 focus:outline-none"
+                    placeholder="Contoh: SBTS_GENAP"
+                  />
+                </div>
 
-                      <div>
-                        <label htmlFor="committeeCode" className="mb-1 block text-sm font-medium text-slate-700">
-                          Kode Kegiatan
-                        </label>
-                        <input
-                          id="committeeCode"
-                          name="committeeCode"
-                          autoComplete="off"
-                          value={form.code}
-                          onChange={(event) => setForm((current) => ({ ...current, code: event.target.value.toUpperCase() }))}
-                          className="w-full rounded-xl border border-slate-300 px-3 py-2.5 text-sm uppercase focus:border-blue-500 focus:outline-none"
-                          placeholder="Contoh: SBTS_GENAP"
-                        />
-                      </div>
+                <div>
+                  <label htmlFor="committeeProgram" className="mb-1 block text-sm font-medium text-slate-700">
+                    Program Ujian Terkait <span className="text-slate-400">(Opsional)</span>
+                  </label>
+                  <select
+                    id="committeeProgram"
+                    name="committeeProgram"
+                    value={form.programCode}
+                    onChange={(currentEvent) => setForm((current) => ({ ...current, programCode: currentEvent.target.value }))}
+                    className="w-full rounded-xl border border-slate-300 bg-white px-3 py-2.5 text-sm focus:border-blue-500 focus:outline-none"
+                  >
+                    <option value="">Tanpa program khusus</option>
+                    {examPrograms.map((program) => (
+                      <option key={program.code} value={program.code}>
+                        {program.label}
+                      </option>
+                    ))}
+                  </select>
+                  <p className="mt-2 text-xs leading-5 text-slate-500">
+                    Isi hanya jika kegiatan ini membutuhkan workspace ujian seperti program, jadwal, ruang, mengawas, denah, atau kartu ujian.
+                  </p>
+                </div>
 
-                      <div>
-                        <label htmlFor="committeeProgram" className="mb-1 block text-sm font-medium text-slate-700">
-                          Program Ujian Terkait <span className="text-slate-400">(Opsional)</span>
-                        </label>
-                        <select
-                          id="committeeProgram"
-                          name="committeeProgram"
-                          value={form.programCode}
-                          onChange={(event) => setForm((current) => ({ ...current, programCode: event.target.value }))}
-                          className="w-full rounded-xl border border-slate-300 bg-white px-3 py-2.5 text-sm focus:border-blue-500 focus:outline-none"
-                        >
-                          <option value="">Tanpa program khusus</option>
-                          {examPrograms.map((program) => (
-                            <option key={program.code} value={program.code}>
-                              {program.label}
-                            </option>
-                          ))}
-                        </select>
-                        <p className="mt-2 text-xs leading-5 text-slate-500">
-                          Isi hanya jika kegiatan ini membutuhkan workspace ujian seperti program, jadwal, ruang, mengawas, denah,
-                          atau kartu ujian.
-                        </p>
-                      </div>
-
-                      <div>
-                        <label htmlFor="committeeDescription" className="mb-1 block text-sm font-medium text-slate-700">
-                          Deskripsi / Catatan
-                        </label>
-                        <textarea
-                          id="committeeDescription"
-                          name="committeeDescription"
-                          rows={5}
-                          value={form.description}
-                          onChange={(event) => setForm((current) => ({ ...current, description: event.target.value }))}
-                          className="w-full rounded-xl border border-slate-300 px-3 py-2.5 text-sm leading-6 focus:border-blue-500 focus:outline-none"
-                          placeholder="Tuliskan konteks kegiatan, kebutuhan panitia, atau catatan untuk review."
-                        />
-                      </div>
-                    </div>
-                  </div>
-
-                  <div className="rounded-2xl border border-slate-200 bg-white p-5">
-                    <div className="flex items-center gap-2 text-slate-900">
-                      <ShieldCheck className="h-5 w-5 text-sky-600" />
-                      <h3 className="text-sm font-semibold">Tahap Aktivasi Fitur</h3>
-                    </div>
-                    <p className="mt-3 text-sm leading-6 text-slate-600">
-                      Anda sudah boleh mengusulkan fitur workspace sejak draft. Namun akses nyata ke menu panitia baru aktif
-                      setelah pengajuan disetujui Kepala Sekolah dan SK diterbitkan oleh Kepala TU.
-                    </p>
-                    {detail ? (
-                      <div className="mt-4 rounded-xl border border-slate-200 bg-slate-50 px-4 py-3 text-xs text-slate-500">
-                        Draft ini saat ini memiliki {detail.counts.members} anggota dan {detail.counts.grantedFeatures} usulan
-                        feature grant.
-                      </div>
-                    ) : null}
-                  </div>
-                </section>
-
-                <section className="space-y-5">
-                  <div className="rounded-2xl border border-slate-200 bg-white p-5 shadow-sm">
-                    <div className="flex items-center justify-between gap-3">
-                      <div>
-                        <h3 className="text-sm font-semibold text-slate-900">Susunan Panitia Draft</h3>
-                        <p className="mt-1 text-xs leading-5 text-slate-500">
-                          Pilih anggota panitia lintas guru, staff TU, atau pembina eksternal. Pengusul tidak perlu memilih
-                          “ajukan sebagai” lagi.
-                        </p>
-                      </div>
-                      <Users className="h-5 w-5 text-slate-400" />
-                    </div>
-
-                    {!form.eventId ? (
-                      <div className="mt-5 rounded-xl border border-dashed border-slate-300 bg-slate-50 px-4 py-6 text-sm text-slate-500">
-                        Simpan draft terlebih dahulu agar susunan panitia bisa mulai ditambahkan.
-                      </div>
-                    ) : eventDetailQuery.isLoading ? (
-                      <div className="mt-5 flex min-h-[240px] items-center justify-center">
-                        <Loader2 className="h-6 w-6 animate-spin text-blue-600" />
-                      </div>
-                    ) : detail ? (
-                      <>
-                        <div className="mt-5 grid gap-4 md:grid-cols-2">
-                          <div>
-                            <label htmlFor="committeeMemberKind" className="mb-1 block text-sm font-medium text-slate-700">
-                              Jenis Anggota
-                            </label>
-                            <select
-                              id="committeeMemberKind"
-                              name="committeeMemberKind"
-                              value={assignmentForm.memberKind}
-                              onChange={(event) =>
-                                setAssignmentForm((current) => ({
-                                  ...current,
-                                  memberKind: event.target.value as CommitteeAssignmentMemberKindCode,
-                                  userId: '',
-                                  externalName: '',
-                                  externalInstitution: '',
-                                  featureCodes: event.target.value === 'TEACHER' ? current.featureCodes : [],
-                                }))
-                              }
-                              className="w-full rounded-xl border border-slate-300 bg-white px-3 py-2.5 text-sm focus:border-blue-500 focus:outline-none"
-                            >
-                              {assignmentMemberTypes.map((item) => (
-                                <option key={item.code} value={item.code}>
-                                  {item.label}
-                                </option>
-                              ))}
-                            </select>
-                          </div>
-
-                          {isAssignmentInternal ? (
-                            <div>
-                              <label htmlFor="committeeMemberUser" className="mb-1 block text-sm font-medium text-slate-700">
-                                {assignmentForm.memberKind === 'STAFF' ? 'Staff TU' : 'Guru'}
-                              </label>
-                              <select
-                                id="committeeMemberUser"
-                                name="committeeMemberUser"
-                                value={assignmentForm.userId}
-                                onChange={(event) => setAssignmentForm((current) => ({ ...current, userId: event.target.value }))}
-                                className="w-full rounded-xl border border-slate-300 bg-white px-3 py-2.5 text-sm focus:border-blue-500 focus:outline-none"
-                              >
-                                <option value="">
-                                  {assignmentForm.memberKind === 'STAFF' ? 'Pilih staff TU' : 'Pilih guru'}
-                                </option>
-                                {internalMemberOptions.map((member) => (
-                                  <option key={member.id} value={member.id}>
-                                    {member.name}
-                                  </option>
-                                ))}
-                              </select>
-                            </div>
-                          ) : (
-                            <div>
-                              <label htmlFor="committeeExternalName" className="mb-1 block text-sm font-medium text-slate-700">
-                                Nama Pembina Eksternal
-                              </label>
-                              <input
-                                id="committeeExternalName"
-                                name="committeeExternalName"
-                                autoComplete="off"
-                                value={assignmentForm.externalName}
-                                onChange={(event) =>
-                                  setAssignmentForm((current) => ({ ...current, externalName: event.target.value }))
-                                }
-                                className="w-full rounded-xl border border-slate-300 px-3 py-2.5 text-sm focus:border-blue-500 focus:outline-none"
-                                placeholder="Nama lengkap anggota eksternal"
-                              />
-                            </div>
-                          )}
-                        </div>
-
-                        {!isAssignmentInternal ? (
-                          <div className="mt-4">
-                            <label htmlFor="committeeExternalInstitution" className="mb-1 block text-sm font-medium text-slate-700">
-                              Instansi / Asal <span className="text-slate-400">(Opsional)</span>
-                            </label>
-                            <input
-                              id="committeeExternalInstitution"
-                              name="committeeExternalInstitution"
-                              autoComplete="off"
-                              value={assignmentForm.externalInstitution}
-                              onChange={(event) =>
-                                setAssignmentForm((current) => ({ ...current, externalInstitution: event.target.value }))
-                              }
-                              className="w-full rounded-xl border border-slate-300 px-3 py-2.5 text-sm focus:border-blue-500 focus:outline-none"
-                              placeholder="Misalnya: Pembina industri, orang tua, narasumber mitra"
-                            />
-                          </div>
-                        ) : null}
-
-                        <div className="mt-4 grid gap-4 md:grid-cols-2">
-                          <div>
-                            <label htmlFor="committeeMemberRole" className="mb-1 block text-sm font-medium text-slate-700">
-                              Peran dalam Panitia
-                            </label>
-                            <input
-                              id="committeeMemberRole"
-                              name="committeeMemberRole"
-                              autoComplete="off"
-                              value={assignmentForm.assignmentRole}
-                              onChange={(event) =>
-                                setAssignmentForm((current) => ({ ...current, assignmentRole: event.target.value }))
-                              }
-                              className="w-full rounded-xl border border-slate-300 px-3 py-2.5 text-sm focus:border-blue-500 focus:outline-none"
-                              placeholder="Contoh: Ketua, Sekretaris, Anggota Ruang"
-                            />
-                          </div>
-                          <div>
-                            <label htmlFor="committeeMemberNotes" className="mb-1 block text-sm font-medium text-slate-700">
-                              Catatan Tugas <span className="text-slate-400">(Opsional)</span>
-                            </label>
-                            <input
-                              id="committeeMemberNotes"
-                              name="committeeMemberNotes"
-                              autoComplete="off"
-                              value={assignmentForm.notes}
-                              onChange={(event) => setAssignmentForm((current) => ({ ...current, notes: event.target.value }))}
-                              className="w-full rounded-xl border border-slate-300 px-3 py-2.5 text-sm focus:border-blue-500 focus:outline-none"
-                              placeholder="Catatan singkat tanggung jawab anggota"
-                            />
-                          </div>
-                        </div>
-
-                        <div className="mt-4 rounded-2xl border border-slate-200 bg-slate-50/70 p-4">
-                          <div className="text-sm font-semibold text-slate-900">Usulan Feature Workspace</div>
-                          <p className="mt-1 text-xs leading-5 text-slate-500">
-                            Usulan ini baru benar-benar aktif setelah approval dan SK selesai.
-                          </p>
-
-                          {supportsWorkspaceGrant ? (
-                            detail.programCode ? (
-                              <div className="mt-4 grid gap-2">
-                                {featureDefinitions.map((feature) => {
-                                  const checked = assignmentForm.featureCodes.includes(feature.code);
-                                  return (
-                                    <label
-                                      key={feature.code}
-                                      htmlFor={`committee-feature-${feature.code}`}
-                                      className="flex cursor-pointer items-start gap-3 rounded-xl border border-slate-200 bg-white px-3 py-3 hover:border-slate-300"
-                                    >
-                                      <input
-                                        id={`committee-feature-${feature.code}`}
-                                        name={`committee-feature-${feature.code}`}
-                                        type="checkbox"
-                                        checked={checked}
-                                        onChange={(event) =>
-                                          setAssignmentForm((current) => ({
-                                            ...current,
-                                            featureCodes: event.target.checked
-                                              ? [...current.featureCodes, feature.code]
-                                              : current.featureCodes.filter((item) => item !== feature.code),
-                                          }))
-                                        }
-                                        className="mt-1 h-4 w-4 rounded border-slate-300 text-blue-600 focus:ring-blue-500"
-                                      />
-                                      <div>
-                                        <div className="text-sm font-semibold text-slate-900">{feature.label}</div>
-                                        <div className="text-xs leading-5 text-slate-500">{feature.description}</div>
-                                      </div>
-                                    </label>
-                                  );
-                                })}
-                              </div>
-                            ) : (
-                              <div className="mt-4 rounded-xl border border-amber-200 bg-amber-50 px-4 py-3 text-sm text-amber-800">
-                                Pilih <span className="font-semibold">Program Ujian Terkait</span> pada draft jika kegiatan ini
-                                memang membutuhkan workspace ujian.
-                              </div>
-                            )
-                          ) : (
-                            <div className="mt-4 rounded-xl border border-slate-200 bg-white px-4 py-3 text-sm text-slate-600">
-                              Workspace ujian saat ini hanya bisa diusulkan untuk akun guru internal. Staff TU dan pembina
-                              eksternal tetap bisa dicatat sebagai anggota panitia tanpa menu workspace.
-                            </div>
-                          )}
-                        </div>
-
-                        <div className="mt-5 flex flex-wrap gap-3">
-                          <button
-                            type="button"
-                            onClick={() => assignmentMutation.mutate()}
-                            disabled={!canSaveAssignment || assignmentMutation.isPending}
-                            className="inline-flex items-center gap-2 rounded-xl bg-blue-600 px-4 py-2.5 text-sm font-semibold text-white hover:bg-blue-700 disabled:cursor-not-allowed disabled:bg-blue-300"
-                          >
-                            {assignmentMutation.isPending ? <Loader2 className="h-4 w-4 animate-spin" /> : <Save className="h-4 w-4" />}
-                            {assignmentForm.assignmentId ? 'Perbarui Anggota' : 'Tambah Anggota'}
-                          </button>
-                          <button
-                            type="button"
-                            onClick={() => setAssignmentForm(createEmptyAssignmentForm())}
-                            className="inline-flex items-center gap-2 rounded-xl border border-slate-300 bg-white px-4 py-2.5 text-sm font-semibold text-slate-700 hover:bg-slate-50"
-                          >
-                            <PlusCircle className="h-4 w-4" />
-                            Reset Form
-                          </button>
-                        </div>
-
-                        <div className="mt-6 space-y-3">
-                          {detail.assignments.length === 0 ? (
-                            <div className="rounded-xl border border-dashed border-slate-300 px-4 py-6 text-sm text-slate-500">
-                              Belum ada anggota panitia pada draft ini.
-                            </div>
-                          ) : (
-                            detail.assignments.map((assignment) => (
-                              <article
-                                key={`committee-assignment-${assignment.id}`}
-                                className="rounded-2xl border border-slate-200 bg-slate-50/70 p-4"
-                              >
-                                <div className="flex flex-wrap items-start justify-between gap-3">
-                                  <div>
-                                    <div className="text-sm font-semibold text-slate-900">{assignment.memberLabel}</div>
-                                    <div className="mt-1 text-xs text-slate-500">
-                                      {formatCommitteeMemberMeta(assignment.memberTypeLabel, assignment.memberDetail)}
-                                    </div>
-                                    <div className="mt-2 text-sm text-slate-700">{assignment.assignmentRole}</div>
-                                  </div>
-                                  <div className="flex flex-wrap gap-2">
-                                    <button
-                                      type="button"
-                                      onClick={() => handleStartEditAssignment(assignment)}
-                                      className="inline-flex items-center gap-2 rounded-lg border border-slate-300 bg-white px-3 py-2 text-xs font-semibold text-slate-700 hover:bg-slate-50"
-                                    >
-                                      <Save className="h-3.5 w-3.5" />
-                                      Edit
-                                    </button>
-                                    <button
-                                      type="button"
-                                      onClick={() => handleDeleteAssignment(assignment.id)}
-                                      disabled={deleteAssignmentMutation.isPending}
-                                      className="inline-flex items-center gap-2 rounded-lg border border-rose-300 bg-white px-3 py-2 text-xs font-semibold text-rose-700 hover:bg-rose-50 disabled:cursor-not-allowed disabled:border-rose-200 disabled:text-rose-300"
-                                    >
-                                      <Trash2 className="h-3.5 w-3.5" />
-                                      Hapus
-                                    </button>
-                                  </div>
-                                </div>
-
-                                {assignment.notes ? (
-                                  <div className="mt-3 rounded-xl border border-white bg-white px-3 py-2 text-sm text-slate-600">
-                                    {assignment.notes}
-                                  </div>
-                                ) : null}
-
-                                <div className="mt-3 flex flex-wrap gap-2">
-                                  {assignment.featureGrants.length === 0 ? (
-                                    <span className="rounded-full border border-slate-200 bg-white px-3 py-1 text-xs font-medium text-slate-500">
-                                      Tanpa usulan feature workspace
-                                    </span>
-                                  ) : (
-                                    assignment.featureGrants.map((feature) => (
-                                      <span
-                                        key={`committee-feature-grant-${assignment.id}-${feature.id}`}
-                                        className="rounded-full border border-emerald-200 bg-emerald-50 px-3 py-1 text-xs font-semibold text-emerald-700"
-                                      >
-                                        {feature.label}
-                                      </span>
-                                    ))
-                                  )}
-                                </div>
-                              </article>
-                            ))
-                          )}
-                        </div>
-                      </>
-                    ) : (
-                      <div className="mt-5 rounded-xl border border-dashed border-rose-300 bg-rose-50 px-4 py-6 text-sm text-rose-700">
-                        Detail draft tidak berhasil dimuat. Tutup popup lalu buka ulang draft ini.
-                      </div>
-                    )}
-                  </div>
-                </section>
+                <div>
+                  <label htmlFor="committeeDescription" className="mb-1 block text-sm font-medium text-slate-700">
+                    Deskripsi / Catatan
+                  </label>
+                  <textarea
+                    id="committeeDescription"
+                    name="committeeDescription"
+                    rows={5}
+                    value={form.description}
+                    onChange={(currentEvent) =>
+                      setForm((current) => ({ ...current, description: currentEvent.target.value }))
+                    }
+                    className="w-full rounded-xl border border-slate-300 px-3 py-2.5 text-sm leading-6 focus:border-blue-500 focus:outline-none"
+                    placeholder="Tuliskan konteks kegiatan, kebutuhan panitia, atau catatan untuk review."
+                  />
+                </div>
               </div>
             </div>
 
             <div className="flex flex-wrap justify-end gap-3 border-t border-slate-100 bg-slate-50 px-6 py-4">
-              {form.eventId ? (
-                <button
-                  type="button"
-                  onClick={() => submitMutation.mutate(form.eventId as number)}
-                  disabled={!canSubmitCurrentDraft || submitMutation.isPending}
-                  className="inline-flex items-center gap-2 rounded-xl border border-emerald-300 bg-white px-4 py-2.5 text-sm font-semibold text-emerald-700 hover:bg-emerald-50 disabled:cursor-not-allowed disabled:border-emerald-200 disabled:text-emerald-300"
-                >
-                  {submitMutation.isPending && submitMutation.variables === form.eventId ? (
-                    <Loader2 className="h-4 w-4 animate-spin" />
-                  ) : (
-                    <Send className="h-4 w-4" />
-                  )}
-                  Ajukan ke Kepsek
-                </button>
-              ) : null}
               <button
                 type="button"
                 onClick={closeDraftModal}
                 className="rounded-xl border border-slate-300 bg-white px-4 py-2.5 text-sm font-semibold text-slate-700 hover:bg-slate-50"
               >
-                Tutup
+                Batal
               </button>
               <button
                 type="button"
