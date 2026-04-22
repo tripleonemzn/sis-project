@@ -1008,6 +1008,7 @@ async function resolveSlotScopeForSchedule(params: {
     subjectId?: number | null;
     classId?: number | null;
     preferredProctorId?: number | null;
+    slotKey?: string | null;
 }) {
     if (!Number.isFinite(Number(params.academicYearId)) || Number(params.academicYearId) <= 0 || !params.date) {
         return null;
@@ -1021,6 +1022,13 @@ async function resolveSlotScopeForSchedule(params: {
     });
     const candidateSlots = slotResponse.slots.filter((slot) => slot.scheduleIds.includes(params.scheduleId));
     if (candidateSlots.length === 0) return null;
+    const normalizedSlotKey = String(params.slotKey || '').trim();
+    if (normalizedSlotKey) {
+        const matchedSlot = candidateSlots.find((slot) => String(slot.key || '').trim() === normalizedSlotKey);
+        if (matchedSlot) {
+            return matchedSlot;
+        }
+    }
 
     const scheduleScopedCandidates = candidateSlots.filter((slot) =>
         hasSlotScheduleClassCoverage(
@@ -1580,7 +1588,13 @@ async function listHistoricalProctorStudentsForClasses(
     );
 }
 
-async function resolveRoomScopeSchedules(baseScheduleId: number, preferredProctorId?: number | null): Promise<{
+async function resolveRoomScopeSchedules(
+    baseScheduleId: number,
+    preferredProctorId?: number | null,
+    options?: {
+        slotKey?: string | null;
+    },
+): Promise<{
     baseSchedule: ProctorRoomScheduleScope | null;
     monitoredSchedules: ProctorRoomScheduleScope[];
     monitoredScheduleIds: number[];
@@ -1634,6 +1648,7 @@ async function resolveRoomScopeSchedules(baseScheduleId: number, preferredProcto
         subjectId: baseSchedule.subjectId,
         classId: baseSchedule.classId,
         preferredProctorId: preferredProctorId ?? baseSchedule.proctorId ?? null,
+        slotKey: options?.slotKey ?? null,
     });
 
     if (slotContext) {
@@ -2641,7 +2656,7 @@ export const getProctorSchedules = asyncHandler(async (req: Request, res: Respon
         where,
         include: {
             packet: {
-                select: { title: true, subject: { select: { name: true } }, duration: true, type: true }
+                select: { title: true, subject: { select: { name: true } }, duration: true, type: true, authorId: true }
             },
             subject: {
                 select: { name: true }
@@ -2658,6 +2673,192 @@ export const getProctorSchedules = asyncHandler(async (req: Request, res: Respon
         },
         orderBy: { startTime: 'asc' }
     });
+
+    if (mode === 'author') {
+        const authoredScheduleIds = Array.from(
+            new Set(
+                schedules
+                    .map((schedule) => Number(schedule.id))
+                    .filter((scheduleId) => Number.isFinite(scheduleId) && scheduleId > 0),
+            ),
+        );
+        const authoredScheduleIdSet = new Set(authoredScheduleIds);
+        const slotCoverageScheduleIds = new Set<number>();
+        const scheduleGroups = new Map<
+            string,
+            {
+                academicYearId: number;
+                examType: string | null;
+                semester: Semester | null;
+                date: Date;
+                schedules: typeof schedules;
+            }
+        >();
+
+        schedules.forEach((schedule) => {
+            const academicYearId = Number(schedule.academicYearId || 0);
+            const dateKey = buildJakartaDateKey(schedule.startTime);
+            if (!academicYearId || !dateKey || !schedule.startTime) return;
+            const groupKey = [
+                academicYearId,
+                String(schedule.examType || '').trim().toUpperCase(),
+                String(schedule.semester || '').trim().toUpperCase(),
+                dateKey,
+            ].join('::');
+            if (!scheduleGroups.has(groupKey)) {
+                scheduleGroups.set(groupKey, {
+                    academicYearId,
+                    examType: schedule.examType || null,
+                    semester: schedule.semester || null,
+                    date: schedule.startTime,
+                    schedules: [],
+                });
+            }
+            scheduleGroups.get(groupKey)!.schedules.push(schedule);
+        });
+
+        const slotRows = (
+            await Promise.all(
+                Array.from(scheduleGroups.values()).map(async (group) => {
+                    const slotResponse = await listExamSittingRoomSlots({
+                        academicYearId: group.academicYearId,
+                        examType: group.examType || undefined,
+                        semester: group.semester || null,
+                        date: group.date,
+                    });
+                    return slotResponse.slots
+                        .filter((slot) =>
+                            Array.isArray(slot.scheduleIds) &&
+                            slot.scheduleIds.some((scheduleId) => authoredScheduleIdSet.has(Number(scheduleId))),
+                        )
+                        .map((slot) => {
+                            (slot.scheduleIds || []).forEach((scheduleId) => {
+                                const normalizedScheduleId = Number(scheduleId);
+                                if (authoredScheduleIdSet.has(normalizedScheduleId)) {
+                                    slotCoverageScheduleIds.add(normalizedScheduleId);
+                                }
+                            });
+                            const matchingSchedules = group.schedules.filter((schedule) =>
+                                (slot.scheduleIds || []).includes(schedule.id),
+                            );
+                            const matchingByClass = matchingSchedules.filter((schedule) => {
+                                const classId = Number(schedule.class?.id || 0);
+                                if (classId > 0 && Array.isArray(slot.classIds) && slot.classIds.includes(classId)) {
+                                    return true;
+                                }
+                                const className = String(schedule.class?.name || '').trim().toLowerCase();
+                                return (
+                                    Boolean(className) &&
+                                    Array.isArray(slot.classNames) &&
+                                    slot.classNames.some(
+                                        (candidateClassName) =>
+                                            String(candidateClassName || '').trim().toLowerCase() === className,
+                                    )
+                                );
+                            });
+                            const representativeSchedule =
+                                matchingByClass[0] ||
+                                matchingSchedules[0] ||
+                                group.schedules[0] ||
+                                null;
+                            if (!representativeSchedule) {
+                                return null;
+                            }
+
+                            const resolvedClassNames =
+                                Array.isArray(slot.classNames) && slot.classNames.length > 0
+                                    ? Array.from(new Set(slot.classNames.filter(Boolean))).sort(compareClassName)
+                                    : representativeSchedule.class?.name
+                                      ? [representativeSchedule.class.name]
+                                      : [];
+
+                            return {
+                                ...representativeSchedule,
+                                room: slot.roomName || representativeSchedule.room,
+                                startTime: slot.startTime || representativeSchedule.startTime,
+                                endTime: slot.endTime || representativeSchedule.endTime,
+                                periodNumber:
+                                    Number.isFinite(Number(slot.periodNumber)) && Number(slot.periodNumber) > 0
+                                        ? Number(slot.periodNumber)
+                                        : representativeSchedule.periodNumber,
+                                sessionId:
+                                    Number.isFinite(Number(slot.sessionId)) && Number(slot.sessionId) > 0
+                                        ? Number(slot.sessionId)
+                                        : representativeSchedule.sessionId,
+                                sessionLabel: slot.sessionLabel || representativeSchedule.sessionLabel,
+                                proctorId:
+                                    Number.isFinite(Number(slot.proctorId)) && Number(slot.proctorId) > 0
+                                        ? Number(slot.proctorId)
+                                        : representativeSchedule.proctorId,
+                                participantCount: Number(slot.participantCount || 0),
+                                classNames: resolvedClassNames,
+                                subjectName:
+                                    slot.subjectName ||
+                                    representativeSchedule.packet?.subject?.name ||
+                                    representativeSchedule.subject?.name ||
+                                    null,
+                                slotKey: slot.key,
+                            };
+                        })
+                        .filter(Boolean);
+                }),
+            )
+        ).flat();
+
+        const roomScopeRosterCache = new Map<string, Promise<{
+            participantCount: number;
+            classNames: string[];
+        }>>();
+        const buildScopeKey = (schedule: (typeof schedules)[number]) =>
+            [
+                String(schedule.room || '').trim().toLowerCase(),
+                schedule.startTime?.toISOString?.() || '',
+                schedule.endTime?.toISOString?.() || '',
+                Number(schedule.sessionId || 0) || 0,
+                String(schedule.sessionLabel || '').trim().toLowerCase(),
+                String(schedule.examType || '').trim().toUpperCase(),
+                Number(schedule.academicYearId || 0) || 0,
+                Number(schedule.subjectId || 0) || 0,
+                Number(schedule.proctorId || 0) || 0,
+            ].join('::');
+        const unmatchedSchedules = schedules.filter((schedule) => !slotCoverageScheduleIds.has(Number(schedule.id)));
+        const fallbackRows = await Promise.all(
+            unmatchedSchedules.map(async (schedule) => {
+                const scopeKey = buildScopeKey(schedule);
+                if (!roomScopeRosterCache.has(scopeKey)) {
+                    roomScopeRosterCache.set(
+                        scopeKey,
+                        resolveRealtimeProctorAttendanceRoster(schedule.id, schedule.proctorId ?? null).then((roster) => ({
+                            participantCount: Number(roster.expectedParticipants || 0),
+                            classNames: Array.isArray(roster.classNames) ? roster.classNames : [],
+                        })),
+                    );
+                }
+                const roster = await roomScopeRosterCache.get(scopeKey)!;
+                return {
+                    ...schedule,
+                    participantCount: roster.participantCount,
+                    classNames:
+                        roster.classNames.length > 0
+                            ? roster.classNames
+                            : (schedule.class?.name ? [schedule.class.name] : []),
+                };
+            }),
+        );
+
+        const visibleAuthorSchedules = [...slotRows, ...fallbackRows]
+            .filter(Boolean) as Array<(typeof fallbackRows)[number]>;
+        visibleAuthorSchedules.sort((a, b) => {
+            const timeDiff = new Date(a.startTime).getTime() - new Date(b.startTime).getTime();
+            if (timeDiff !== 0) return timeDiff;
+            const periodDiff = Number(a.periodNumber || 0) - Number(b.periodNumber || 0);
+            if (periodDiff !== 0) return periodDiff;
+            return compareRoomNameNatural(String(a.room || ''), String(b.room || ''));
+        });
+
+        res.json(new ApiResponse(200, visibleAuthorSchedules));
+        return;
+    }
 
     const roomScopeRosterCache = new Map<string, Promise<{
         participantCount: number;
@@ -2754,6 +2955,7 @@ export const getProctorSchedules = asyncHandler(async (req: Request, res: Respon
 export const getProctoringDetail = asyncHandler(async (req: Request, res: Response) => {
     const { scheduleId } = req.params;
     const user = (req as any).user;
+    const slotKey = String(req.query?.slotKey || '').trim() || null;
     const scheduleIdNumber = Number.parseInt(scheduleId, 10);
 
     if (!Number.isInteger(scheduleIdNumber) || scheduleIdNumber <= 0) {
@@ -2802,7 +3004,9 @@ export const getProctoringDetail = asyncHandler(async (req: Request, res: Respon
     });
 
     if (!schedule) throw new ApiError(404, 'Jadwal tidak ditemukan');
-    const scope = await resolveRoomScopeSchedules(scheduleIdNumber, Number(user?.id) || null);
+    const scope = await resolveRoomScopeSchedules(scheduleIdNumber, Number(user?.id) || null, {
+        slotKey,
+    });
     const effectiveProctorId = Number(scope.baseSchedule?.proctorId || schedule.proctorId || 0) || null;
 
     // Access Control Logic
@@ -3247,6 +3451,7 @@ export const getProctoringDetail = asyncHandler(async (req: Request, res: Respon
 
 export const sendProctorWarning = asyncHandler(async (req: Request, res: Response) => {
     const parsedScheduleId = Number.parseInt(String(req.params.scheduleId || ''), 10);
+    const slotKey = String(req.query?.slotKey || '').trim() || null;
     if (!Number.isInteger(parsedScheduleId) || parsedScheduleId <= 0) {
         throw new ApiError(400, 'ID jadwal ujian tidak valid');
     }
@@ -3263,7 +3468,9 @@ export const sendProctorWarning = asyncHandler(async (req: Request, res: Respons
     const normalizedCategory = normalizeOptionalText(req.body?.category) || 'PERINGATAN';
 
     const user = (req as any).user;
-    const scope = await resolveRoomScopeSchedules(parsedScheduleId, Number(user?.id) || null);
+    const scope = await resolveRoomScopeSchedules(parsedScheduleId, Number(user?.id) || null, {
+        slotKey,
+    });
     const isAdmin = String(user?.role || '').toUpperCase() === 'ADMIN';
     const effectiveProctorId = Number(scope.baseSchedule?.proctorId || 0) || null;
 
@@ -3380,6 +3587,7 @@ export const sendProctorWarning = asyncHandler(async (req: Request, res: Respons
 
 export const endProctorStudentSession = asyncHandler(async (req: Request, res: Response) => {
     const parsedScheduleId = Number.parseInt(String(req.params.scheduleId || ''), 10);
+    const slotKey = String(req.query?.slotKey || '').trim() || null;
     if (!Number.isInteger(parsedScheduleId) || parsedScheduleId <= 0) {
         throw new ApiError(400, 'ID jadwal ujian tidak valid');
     }
@@ -3396,7 +3604,9 @@ export const endProctorStudentSession = asyncHandler(async (req: Request, res: R
     const normalizedCategory = normalizeOptionalText(req.body?.category) || 'AKHIRI_SESI';
 
     const user = (req as any).user;
-    const scope = await resolveRoomScopeSchedules(parsedScheduleId, Number(user?.id) || null);
+    const scope = await resolveRoomScopeSchedules(parsedScheduleId, Number(user?.id) || null, {
+        slotKey,
+    });
     const isAdmin = String(user?.role || '').toUpperCase() === 'ADMIN';
     const effectiveProctorId = Number(scope.baseSchedule?.proctorId || 0) || null;
 
@@ -3536,6 +3746,7 @@ export const endProctorStudentSession = asyncHandler(async (req: Request, res: R
 // Submit Berita Acara
 export const submitBeritaAcara = asyncHandler(async (req: Request, res: Response) => {
     const { scheduleId } = req.params;
+    const slotKey = String(req.query?.slotKey || '').trim() || null;
     const parsedScheduleId = Number.parseInt(String(scheduleId), 10);
     if (!Number.isInteger(parsedScheduleId) || parsedScheduleId <= 0) {
         throw new ApiError(400, 'ID jadwal ujian tidak valid');
@@ -3595,7 +3806,9 @@ export const submitBeritaAcara = asyncHandler(async (req: Request, res: Response
         throw new ApiError(409, 'Berita acara baru bisa dikirim setelah ujian dimulai sesuai jadwal pelaksanaan.');
     }
 
-    const scope = await resolveRoomScopeSchedules(parsedScheduleId, Number(user?.id) || null);
+    const scope = await resolveRoomScopeSchedules(parsedScheduleId, Number(user?.id) || null, {
+        slotKey,
+    });
     const isAdmin = String(user?.role || '').toUpperCase() === 'ADMIN';
     const effectiveProctorId = Number(scope.baseSchedule?.proctorId || schedule.proctorId || 0) || null;
     if (!isAdmin && Number(effectiveProctorId) !== Number(user?.id)) {

@@ -2,6 +2,7 @@ export type ProctorScheduleStatus = 'NOT_STARTED' | 'IN_PROGRESS' | 'COMPLETED' 
 
 export type ProctorScheduleSummary = {
   id: number;
+  slotKey?: string | null;
   startTime: string;
   endTime: string;
   periodNumber?: number | null;

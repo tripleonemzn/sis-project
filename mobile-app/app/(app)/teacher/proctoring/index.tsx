@@ -20,6 +20,7 @@ type TimeFilter = 'TODAY' | 'UPCOMING' | 'HISTORY';
 type ModeFilter = 'PROCTOR' | 'AUTHOR';
 type ProctorRoomGroup = {
   key: string;
+  slotKey: string | null;
   dateKey: string;
   dateLabel: string;
   roomName: string;
@@ -56,6 +57,7 @@ function groupSchedulesForDisplay(sourceSchedules: ProctorScheduleSummary[]): Pr
     if (!map.has(key)) {
       map.set(key, {
         key,
+        slotKey: schedule.slotKey || null,
         dateKey,
         dateLabel: formatDayLabel(schedule.startTime),
         roomName,
@@ -72,6 +74,9 @@ function groupSchedulesForDisplay(sourceSchedules: ProctorScheduleSummary[]): Pr
     }
 
     const group = map.get(key)!;
+    if (!group.slotKey && schedule.slotKey) {
+      group.slotKey = schedule.slotKey;
+    }
     const resolvedClassNames =
       Array.isArray(schedule.classNames) && schedule.classNames.length > 0
         ? schedule.classNames
@@ -577,7 +582,13 @@ export default function TeacherProctoringScheduleScreen() {
                     <Pressable
                       onPress={() => {
                         if (!primaryScheduleId) return;
-                        router.push(`/teacher/proctoring/${primaryScheduleId}` as never);
+                        router.push({
+                          pathname: '/teacher/proctoring/[scheduleId]',
+                          params: {
+                            scheduleId: String(primaryScheduleId),
+                            ...(group.slotKey ? { slotKey: group.slotKey } : {}),
+                          },
+                        } as never);
                       }}
                       style={{
                         marginTop: 10,

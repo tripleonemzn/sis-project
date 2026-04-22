@@ -25,7 +25,7 @@ export type StudentGradeRow = {
   academicYearId: number;
   componentId: number;
   semester: 'ODD' | 'EVEN';
-  score: number;
+  score: number | null;
   nf1?: number | null;
   nf2?: number | null;
   nf3?: number | null;
@@ -33,6 +33,7 @@ export type StudentGradeRow = {
   nf5?: number | null;
   nf6?: number | null;
   formativeSeries?: number[] | null;
+  formativeSlotCount?: number | null;
   kkm?: number;
   student: {
     id: number;
@@ -169,6 +170,7 @@ export const teacherGradeApi = {
       nf5?: number | null;
       nf6?: number | null;
       formative_series?: number[] | null;
+      formative_slot_count?: number | null;
       description?: string;
     }>;
   }) {

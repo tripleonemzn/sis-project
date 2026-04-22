@@ -82,6 +82,11 @@ type StudentScoreEntryFindManyDelegate = {
   findMany: (args: unknown) => Promise<unknown[]>
 }
 
+type StudentScoreEntryWriteDelegate = {
+  upsert: (args: unknown) => Promise<unknown>
+  deleteMany: (args: unknown) => Promise<unknown>
+}
+
 type AuthUserLike = {
   id?: number | string
   role?: string | null
@@ -143,6 +148,18 @@ function emitGradeRealtimeRefresh(params: {
 function getStudentScoreEntryDelegate(): StudentScoreEntryFindManyDelegate | null {
   const delegate = (prisma as unknown as { studentScoreEntry?: StudentScoreEntryFindManyDelegate }).studentScoreEntry
   if (!delegate || typeof delegate.findMany !== 'function') {
+    return null
+  }
+  return delegate
+}
+
+function getStudentScoreEntryWriteDelegate(): StudentScoreEntryWriteDelegate | null {
+  const delegate = (prisma as unknown as { studentScoreEntry?: StudentScoreEntryWriteDelegate }).studentScoreEntry
+  if (
+    !delegate ||
+    typeof delegate.upsert !== 'function' ||
+    typeof delegate.deleteMany !== 'function'
+  ) {
     return null
   }
   return delegate
@@ -1124,6 +1141,121 @@ function buildStudentGradeCompositeKey(row: {
     return ''
   }
   return `${studentId}:${subjectId}:${academicYearId}:${componentId}:${semester}`
+}
+
+const FORMATIVE_SLOT_COUNT_SOURCE_PREFIX = 'formativeSlotCount:'
+
+function normalizeFormativeSlotCount(raw: unknown, fallback = 0): number {
+  const parsed = Number(raw)
+  if (!Number.isFinite(parsed) || parsed < 0) {
+    return Math.max(0, Math.floor(Number(fallback) || 0))
+  }
+  return Math.max(0, Math.floor(parsed))
+}
+
+function buildFormativeSlotCountSourceKey(row: {
+  studentId: unknown
+  subjectId: unknown
+  academicYearId: unknown
+  componentId: unknown
+  semester: unknown
+}): string {
+  const compositeKey = buildStudentGradeCompositeKey(row)
+  return compositeKey ? `${FORMATIVE_SLOT_COUNT_SOURCE_PREFIX}${compositeKey}` : ''
+}
+
+function parseFormativeSlotCountMetadata(
+  metadata: unknown,
+): { componentId: number; slotCount: number } | null {
+  if (!metadata || typeof metadata !== 'object' || Array.isArray(metadata)) return null
+  const componentId = Number((metadata as Record<string, unknown>).componentId)
+  const slotCount = normalizeFormativeSlotCount((metadata as Record<string, unknown>).slotCount)
+  if (!Number.isFinite(componentId) || componentId <= 0) return null
+  return {
+    componentId,
+    slotCount,
+  }
+}
+
+async function syncFormativeSlotCountMetadata(params: {
+  studentId: number
+  subjectId: number
+  academicYearId: number
+  componentId: number
+  semester: Semester
+  slotCount: number
+  componentCode?: string | null
+  componentType?: GradeComponentType | null
+  componentTypeCode?: string | null
+}) {
+  const delegate = getStudentScoreEntryWriteDelegate()
+  if (!delegate) return
+
+  const sourceKey = buildFormativeSlotCountSourceKey({
+    studentId: params.studentId,
+    subjectId: params.subjectId,
+    academicYearId: params.academicYearId,
+    componentId: params.componentId,
+    semester: params.semester,
+  })
+  if (!sourceKey) return
+
+  const normalizedSlotCount = normalizeFormativeSlotCount(params.slotCount)
+  if (normalizedSlotCount <= 0) {
+    await delegate.deleteMany({
+      where: {
+        sourceKey,
+      },
+    })
+    return
+  }
+
+  const normalizedComponentCode =
+    normalizeComponentCode(params.componentCode) ||
+    normalizeComponentCode(params.componentTypeCode) ||
+    'FORMATIF'
+
+  await delegate.upsert({
+    where: { sourceKey },
+    update: {
+      score: 0,
+      rawScore: 0,
+      maxScore: 0,
+      componentCode: normalizedComponentCode,
+      componentType: params.componentType || GradeComponentType.FORMATIVE,
+      componentTypeCode: params.componentTypeCode || normalizedComponentCode,
+      reportSlot: ReportComponentSlot.NONE,
+      reportSlotCode: DEFAULT_REPORT_SLOT_CODE,
+      metadata: {
+        source: 'student_grade',
+        kind: 'FORMATIVE_SLOT_COUNT',
+        componentId: params.componentId,
+        slotCount: normalizedSlotCount,
+      },
+    },
+    create: {
+      studentId: params.studentId,
+      subjectId: params.subjectId,
+      academicYearId: params.academicYearId,
+      semester: params.semester,
+      componentCode: normalizedComponentCode,
+      componentType: params.componentType || GradeComponentType.FORMATIVE,
+      componentTypeCode: params.componentTypeCode || normalizedComponentCode,
+      reportSlot: ReportComponentSlot.NONE,
+      reportSlotCode: DEFAULT_REPORT_SLOT_CODE,
+      score: 0,
+      rawScore: 0,
+      maxScore: 0,
+      sourceType: 'MANUAL_GRADE',
+      sourceKey,
+      metadata: {
+        source: 'student_grade',
+        kind: 'FORMATIVE_SLOT_COUNT',
+        componentId: params.componentId,
+        slotCount: normalizedSlotCount,
+      },
+    },
+  })
 }
 
 async function cleanupStudentGradeDuplicates(gradeIds: number[]) {
@@ -3126,6 +3258,212 @@ export const getStudentGrades = async (req: Request, res: Response) => {
       return Number(a.id) - Number(b.id)
     }) as any[]
 
+    const formativeSlotCountByComposite = new Map<
+      string,
+      {
+        studentId: number
+        subjectId: number
+        academicYearId: number
+        componentId: number
+        semester: Semester
+        slotCount: number
+      }
+    >()
+    const studentScoreEntryDelegate = getStudentScoreEntryDelegate()
+    const formativeSlotCountEntries =
+      studentScoreEntryDelegate && parsedSubjectId && resolvedAcademicYearId && semester
+        ? ((await studentScoreEntryDelegate.findMany({
+            where: {
+              sourceType: 'MANUAL_GRADE',
+              sourceKey: {
+                startsWith: FORMATIVE_SLOT_COUNT_SOURCE_PREFIX,
+              },
+              subjectId: parsedSubjectId,
+              academicYearId: resolvedAcademicYearId,
+              semester: semester as Semester,
+              ...(where.studentId ? { studentId: where.studentId } : {}),
+            },
+            select: {
+              studentId: true,
+              subjectId: true,
+              academicYearId: true,
+              semester: true,
+              metadata: true,
+            },
+          })) as Array<{
+            studentId: number
+            subjectId: number
+            academicYearId: number
+            semester: Semester
+            metadata?: unknown
+          }>)
+        : []
+
+    for (const entry of formativeSlotCountEntries) {
+      const parsedMetadata = parseFormativeSlotCountMetadata(entry.metadata)
+      if (!parsedMetadata || parsedMetadata.slotCount <= 0) continue
+      const compositeKey = buildStudentGradeCompositeKey({
+        studentId: entry.studentId,
+        subjectId: entry.subjectId,
+        academicYearId: entry.academicYearId,
+        componentId: parsedMetadata.componentId,
+        semester: entry.semester,
+      })
+      if (!compositeKey) continue
+      formativeSlotCountByComposite.set(compositeKey, {
+        studentId: Number(entry.studentId),
+        subjectId: Number(entry.subjectId),
+        academicYearId: Number(entry.academicYearId),
+        componentId: Number(parsedMetadata.componentId),
+        semester: entry.semester,
+        slotCount: parsedMetadata.slotCount,
+      })
+    }
+
+    const existingCompositeKeys = new Set<string>(
+      formattedGradesWithSeries
+        .map((row) =>
+          buildStudentGradeCompositeKey({
+            studentId: row.studentId,
+            subjectId: row.subjectId,
+            academicYearId: row.academicYearId,
+            componentId: row.componentId,
+            semester: row.semester,
+          }),
+        )
+        .filter(Boolean),
+    )
+
+    const missingFormativeSlotRows = Array.from(formativeSlotCountByComposite.values()).filter(
+      (row) => row.slotCount > 0 && !existingCompositeKeys.has(buildStudentGradeCompositeKey(row)),
+    )
+
+    if (missingFormativeSlotRows.length > 0) {
+      const missingStudentIds = uniqPositiveNumbers(missingFormativeSlotRows.map((row) => row.studentId))
+      const missingComponentIds = uniqPositiveNumbers(missingFormativeSlotRows.map((row) => row.componentId))
+      const fallbackStudentRows = await prisma.user.findMany({
+        where: {
+          id: {
+            in: missingStudentIds,
+          },
+        },
+        select: {
+          id: true,
+          name: true,
+          nisn: true,
+          nis: true,
+          classId: true,
+          studentClass: {
+            select: {
+              academicYearId: true,
+            },
+          },
+        },
+      })
+      const fallbackComponentRows = await prisma.gradeComponent.findMany({
+        where: {
+          id: {
+            in: missingComponentIds,
+          },
+        },
+        select: {
+          id: true,
+          code: true,
+          name: true,
+          type: true,
+          typeCode: true,
+          weight: true,
+        },
+      })
+      const fallbackStudentSnapshotMap = await buildHistoricalStudentSnapshotMap(
+        missingFormativeSlotRows.map((row) => ({
+          studentId: row.studentId,
+          academicYearId: row.academicYearId,
+        })),
+      )
+      const fallbackStudentMap = new Map(
+        fallbackStudentRows.map((row) => {
+          const historicalClassId = resolveHistoricalStudentClassId({
+            snapshotMap: fallbackStudentSnapshotMap,
+            studentId: Number(row.id),
+            academicYearId: resolvedAcademicYearId || Number(parsedAcademicYearId || 0),
+            fallbackClassId: row.classId,
+            fallbackClassAcademicYearId: row.studentClass?.academicYearId,
+          })
+          return [
+            Number(row.id),
+            {
+              id: row.id,
+              name: row.name,
+              nisn: row.nisn,
+              nis: row.nis,
+              classId: historicalClassId,
+            },
+          ]
+        }),
+      )
+      const fallbackComponentMap = new Map(fallbackComponentRows.map((row) => [Number(row.id), row]))
+      const fallbackSubject = gradesWithKkm[0]?.subject || (
+        parsedSubjectId
+          ? await prisma.subject.findUnique({
+              where: { id: parsedSubjectId },
+              select: {
+                id: true,
+                code: true,
+                name: true,
+              },
+            })
+          : null
+      )
+      const fallbackAcademicYear = gradesWithKkm[0]?.academicYear || (
+        resolvedAcademicYearId
+          ? await prisma.academicYear.findUnique({
+              where: { id: resolvedAcademicYearId },
+              select: {
+                id: true,
+                name: true,
+              },
+            })
+          : null
+      )
+
+      missingFormativeSlotRows.forEach((row, index) => {
+        const student = fallbackStudentMap.get(Number(row.studentId))
+        const component = fallbackComponentMap.get(Number(row.componentId))
+        if (!student || !component) return
+        formattedGradesWithSeries.push({
+          id: -1 * (index + 1),
+          studentId: Number(row.studentId),
+          subjectId: Number(row.subjectId),
+          academicYearId: Number(row.academicYearId),
+          componentId: Number(row.componentId),
+          semester: row.semester,
+          score: null,
+          nf1: null,
+          nf2: null,
+          nf3: null,
+          nf4: null,
+          nf5: null,
+          nf6: null,
+          formativeSeries: [],
+          formativeSlotCount: row.slotCount,
+          kkm: 75,
+          student,
+          subject: fallbackSubject,
+          component,
+          academicYear: fallbackAcademicYear,
+        })
+      })
+
+      formattedGradesWithSeries.sort((a, b) => {
+        const studentCompare = String(a.student?.name || '').localeCompare(String(b.student?.name || ''))
+        if (studentCompare !== 0) return studentCompare
+        const componentTypeCompare = String(a.component?.type || '').localeCompare(String(b.component?.type || ''))
+        if (componentTypeCompare !== 0) return componentTypeCompare
+        return Number(a.id) - Number(b.id)
+      })
+    }
+
     if (formattedGradesWithSeries.length > 0) {
       const gradeIdSet = new Set<number>(formattedGradesWithSeries.map((row) => Number(row.id)).filter((id) => Number.isFinite(id)))
       const studentIds = Array.from(
@@ -3187,7 +3525,6 @@ export const getStudentGrades = async (req: Request, res: Response) => {
       }
 
       if (studentIds.length > 0 && subjectIds.length > 0 && academicYearIds.length > 0 && semesters.length > 0) {
-        const studentScoreEntryDelegate = getStudentScoreEntryDelegate()
         const scoreEntries = studentScoreEntryDelegate
           ? ((await studentScoreEntryDelegate.findMany({
               where: {
@@ -3258,23 +3595,53 @@ export const getStudentGrades = async (req: Request, res: Response) => {
           const nfRows = (seriesMap.get(Number(row.id)) || []).sort((a, b) => a.order - b.order)
           if (nfRows.length > 0) {
             row.formativeSeries = sanitizeLegacyFormativeSeries(nfRows.map((item) => item.value))
-            continue
+          } else {
+            const fallbackScore = scoreFallbackMap.get(Number(row.id))
+            if (fallbackScore !== undefined) {
+              row.formativeSeries = [fallbackScore]
+            } else {
+              const legacySeries = sanitizeLegacyFormativeSeries(
+                [row.nf1, row.nf2, row.nf3, row.nf4, row.nf5, row.nf6],
+                row.score,
+              )
+              if (legacySeries.length > 0) {
+                row.formativeSeries = legacySeries
+              }
+            }
           }
-          const fallbackScore = scoreFallbackMap.get(Number(row.id))
-          if (fallbackScore !== undefined) {
-            row.formativeSeries = [fallbackScore]
-            continue
-          }
-          const legacySeries = sanitizeLegacyFormativeSeries(
-            [row.nf1, row.nf2, row.nf3, row.nf4, row.nf5, row.nf6],
-            row.score,
+          const compositeKey = buildStudentGradeCompositeKey({
+            studentId: row.studentId,
+            subjectId: row.subjectId,
+            academicYearId: row.academicYearId,
+            componentId: row.componentId,
+            semester: row.semester,
+          })
+          const savedSlotCount = formativeSlotCountByComposite.get(compositeKey)?.slotCount || 0
+          row.formativeSlotCount = Math.max(
+            savedSlotCount,
+            Array.isArray(row.formativeSeries) ? row.formativeSeries.length : 0,
           )
-          if (legacySeries.length > 0) {
-            row.formativeSeries = legacySeries
-          }
         }
       }
     }
+
+    formattedGradesWithSeries.forEach((row) => {
+      const compositeKey = buildStudentGradeCompositeKey({
+        studentId: row.studentId,
+        subjectId: row.subjectId,
+        academicYearId: row.academicYearId,
+        componentId: row.componentId,
+        semester: row.semester,
+      })
+      const savedSlotCount = formativeSlotCountByComposite.get(compositeKey)?.slotCount || 0
+      if (savedSlotCount > 0) {
+        row.formativeSlotCount = Math.max(
+          Number(row.formativeSlotCount || 0),
+          savedSlotCount,
+          Array.isArray(row.formativeSeries) ? row.formativeSeries.length : 0,
+        )
+      }
+    })
 
     return ApiResponseHelper.success(res, formattedGradesWithSeries, 'Student grades retrieved successfully')
   } catch (error) {
@@ -3981,6 +4348,7 @@ export const createOrUpdateStudentGrade = async (req: Request, res: Response) =>
       score,
       nf1, nf2, nf3, nf4, nf5, nf6,
       formative_series,
+      formative_slot_count,
     } = req.body
     const user = (req as any).user as AuthUserLike
 
@@ -4038,6 +4406,12 @@ export const createOrUpdateStudentGrade = async (req: Request, res: Response) =>
       normalizedSeries,
       parsedScore,
     })
+    const effectiveFormativeSlotCount = isFormativeComponent
+      ? Math.max(
+          normalizeFormativeSlotCount(formative_slot_count, normalizedSeries.values.length),
+          effectiveFormativeSeries.seriesValues.length,
+        )
+      : 0
 
     if (isFormativeComponent && effectiveFormativeSeries.provided) {
       const seriesValues = effectiveFormativeSeries.seriesValues
@@ -4077,6 +4451,19 @@ export const createOrUpdateStudentGrade = async (req: Request, res: Response) =>
     if (shouldDeleteGrade) {
       if (existingGrades.length > 0) {
         await cleanupStudentGradeDuplicates(existingGrades.map((row) => row.id))
+      }
+      if (isFormativeComponent) {
+        await syncFormativeSlotCountMetadata({
+          studentId: Number(student_id),
+          subjectId: Number(subject_id),
+          academicYearId: Number(academic_year_id),
+          componentId: Number(grade_component_id),
+          semester: semester as Semester,
+          slotCount: effectiveFormativeSlotCount,
+          componentCode: component.code,
+          componentType: component.type,
+          componentTypeCode: component.code,
+        })
       }
       const reportSync = await syncReportGradeSafely(
         Number(student_id),
@@ -4190,6 +4577,17 @@ export const createOrUpdateStudentGrade = async (req: Request, res: Response) =>
       await syncScoreEntriesFromStudentGrade(grade.id)
       if (isFormativeComponent) {
         await syncAdditionalNfSeriesEntriesFromStudentGrade(grade.id, additionalSeriesScores)
+        await syncFormativeSlotCountMetadata({
+          studentId: Number(student_id),
+          subjectId: Number(subject_id),
+          academicYearId: Number(academic_year_id),
+          componentId: Number(grade_component_id),
+          semester: semester as Semester,
+          slotCount: effectiveFormativeSlotCount,
+          componentCode: component.code,
+          componentType: component.type,
+          componentTypeCode: component.code,
+        })
       }
       if (duplicateGrades.length > 0) {
         await cleanupStudentGradeDuplicates(duplicateGrades.map((row) => row.id))
@@ -4379,6 +4777,7 @@ export const bulkCreateOrUpdateStudentGrades = async (req: Request, res: Respons
           score,
           nf1, nf2, nf3, nf4, nf5, nf6,
           formative_series,
+          formative_slot_count,
         } = gradeData
 
         // Track for sync
@@ -4436,6 +4835,12 @@ export const bulkCreateOrUpdateStudentGrades = async (req: Request, res: Respons
           normalizedSeries,
           parsedScore,
         })
+        const effectiveFormativeSlotCount = isFormativeComponent
+          ? Math.max(
+              normalizeFormativeSlotCount(formative_slot_count, normalizedSeries.values.length),
+              effectiveFormativeSeries.seriesValues.length,
+            )
+          : 0
 
         if (isFormativeComponent && effectiveFormativeSeries.provided) {
           const seriesValues = effectiveFormativeSeries.seriesValues
@@ -4472,6 +4877,19 @@ export const bulkCreateOrUpdateStudentGrades = async (req: Request, res: Respons
         if (shouldDeleteGrade) {
           if (existingGrades.length > 0) {
             await cleanupStudentGradeDuplicates(existingGrades.map((row) => row.id))
+          }
+          if (isFormativeComponent) {
+            await syncFormativeSlotCountMetadata({
+              studentId: Number(student_id),
+              subjectId: Number(subject_id),
+              academicYearId: Number(academic_year_id),
+              componentId: Number(grade_component_id),
+              semester: semester as Semester,
+              slotCount: effectiveFormativeSlotCount,
+              componentCode: componentConfig.code,
+              componentType: componentConfig.type,
+              componentTypeCode: componentConfig.code,
+            })
           }
           const reportSync = await syncReportGradeSafely(
             Number(student_id),
@@ -4538,6 +4956,17 @@ export const bulkCreateOrUpdateStudentGrades = async (req: Request, res: Respons
           await syncScoreEntriesFromStudentGrade(savedGradeId)
           if (isFormativeComponent) {
             await syncAdditionalNfSeriesEntriesFromStudentGrade(savedGradeId, additionalSeriesScores)
+            await syncFormativeSlotCountMetadata({
+              studentId: Number(student_id),
+              subjectId: Number(subject_id),
+              academicYearId: Number(academic_year_id),
+              componentId: Number(grade_component_id),
+              semester: semester as Semester,
+              slotCount: effectiveFormativeSlotCount,
+              componentCode: componentConfig.code,
+              componentType: componentConfig.type,
+              componentTypeCode: componentConfig.code,
+            })
           }
           if (duplicateGrades.length > 0) {
             await cleanupStudentGradeDuplicates(duplicateGrades.map((row) => row.id))

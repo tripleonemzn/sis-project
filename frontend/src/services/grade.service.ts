@@ -61,6 +61,7 @@ export interface InputGradePayload {
     nf5?: number | null;
     nf6?: number | null;
     formative_series?: number[] | null;
+    formative_slot_count?: number | null;
     description?: string;
   }[];
 }

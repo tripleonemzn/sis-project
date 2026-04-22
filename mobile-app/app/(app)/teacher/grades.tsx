@@ -103,23 +103,6 @@ function calculatePredicate(score: number, kkm: number) {
   return 'D';
 }
 
-function parseFormativeSeriesInput(raw: string): { values: number[]; invalid: boolean } {
-  const cleaned = String(raw || '').trim();
-  if (!cleaned) return { values: [], invalid: false };
-  const tokens = cleaned
-    .split(/[\n,;]+/)
-    .map((item) => item.trim())
-    .filter(Boolean);
-  const values: number[] = [];
-  for (const token of tokens) {
-    const parsed = Number(token.replace(',', '.'));
-    if (!Number.isFinite(parsed)) return { values: [], invalid: true };
-    if (parsed < 0 || parsed > 100) return { values: [], invalid: true };
-    values.push(parsed);
-  }
-  return { values, invalid: false };
-}
-
 function normalizeLegacySeriesValues(rawValues: unknown[]) {
   return rawValues
     .filter((item) => item !== null && item !== undefined && item !== '')
@@ -202,6 +185,29 @@ function formatSeriesValues(values: number[]) {
   return values
     .map((value) => (Number.isInteger(value) ? String(value) : value.toFixed(2)))
     .join(', ');
+}
+
+function parseFormativeSlotDrafts(drafts: string[]): { values: number[]; invalid: boolean } {
+  if (!Array.isArray(drafts) || drafts.length === 0) return { values: [], invalid: false };
+  const values: number[] = [];
+  for (const rawDraft of drafts) {
+    const cleaned = String(rawDraft || '').trim();
+    if (!cleaned) continue;
+    const parsed = Number(cleaned.replace(',', '.'));
+    if (!Number.isFinite(parsed)) return { values: [], invalid: true };
+    if (parsed < 0 || parsed > 100) return { values: [], invalid: true };
+    values.push(parsed);
+  }
+  return { values, invalid: false };
+}
+
+function buildFormativeSlotDrafts(values: number[], slotCount = 0): string[] {
+  const filledDrafts = Array.isArray(values)
+    ? values.map((value) => (Number.isInteger(value) ? String(value) : value.toFixed(2)))
+    : [];
+  const normalizedSlotCount = Math.max(0, Number(slotCount || 0));
+  const totalSlots = Math.max(normalizedSlotCount, filledDrafts.length);
+  return [...filledDrafts, ...Array.from({ length: Math.max(0, totalSlots - filledDrafts.length) }, () => '')];
 }
 
 function normalizeSlotCode(raw: unknown): string {
@@ -571,8 +577,8 @@ export default function TeacherGradesScreen() {
   const [semester, setSemester] = useState<SemesterOption>('');
   const [searchQuery, setSearchQuery] = useState('');
   const [scoreDraft, setScoreDraft] = useState<Record<string, string>>({});
-  const [formativeSeriesDraft, setFormativeSeriesDraft] = useState<Record<string, string>>({});
-  const [formativePendingSlots, setFormativePendingSlots] = useState<Record<string, number>>({});
+  const [, setFormativeSeriesDraft] = useState<Record<string, string>>({});
+  const [formativeSlotDrafts, setFormativeSlotDrafts] = useState<Record<string, string[]>>({});
   const [showCompetencyModal, setShowCompetencyModal] = useState(false);
   const [competencySettings, setCompetencySettings] = useState<CompetencySettings>(emptyCompetencySettings());
   const [selectedReligionKey, setSelectedReligionKey] = useState<string>('');
@@ -775,6 +781,7 @@ export default function TeacherGradesScreen() {
     const timerId = setTimeout(() => {
       const nextScoreDraft: Record<string, string> = {};
       const nextSeriesDraft: Record<string, string> = {};
+      const nextSlotDrafts: Record<string, string[]> = {};
       for (const item of gradesQuery.data || []) {
         const series = Array.isArray(item.formativeSeries)
           ? item.formativeSeries
@@ -782,17 +789,22 @@ export default function TeacherGradesScreen() {
               [item.nf1, item.nf2, item.nf3, item.nf4, item.nf5, item.nf6],
               item.score ?? null,
             );
+        const slotCount = Math.max(0, Number(item.formativeSlotCount || 0));
         const seriesAverage = averageValues(series);
         nextScoreDraft[`${item.studentId}:${item.componentId}`] = String(
           seriesAverage !== null ? seriesAverage : (item.score ?? ''),
         );
+        const slotDrafts = buildFormativeSlotDrafts(series, Math.max(slotCount, series.length));
+        if (slotDrafts.length > 0) {
+          nextSlotDrafts[`${item.studentId}:${item.componentId}`] = slotDrafts;
+        }
         if (series.length > 0) {
           nextSeriesDraft[`${item.studentId}:${item.componentId}`] = series.join(', ');
         }
       }
       setScoreDraft(nextScoreDraft);
       setFormativeSeriesDraft(nextSeriesDraft);
-      setFormativePendingSlots({});
+      setFormativeSlotDrafts(nextSlotDrafts);
     }, 0);
     return () => clearTimeout(timerId);
   }, [selectedAssignmentId, semester, gradesQuery.data]);
@@ -819,6 +831,7 @@ export default function TeacherGradesScreen() {
         nf5?: number | null;
         nf6?: number | null;
         formative_series?: number[] | null;
+        formative_slot_count?: number | null;
         description?: string;
       }> = [];
 
@@ -832,16 +845,12 @@ export default function TeacherGradesScreen() {
         }
 
         if (resolveComponentEntryMode(component) === 'NF_SERIES') {
-          const seriesKey = `${student.id}:${component.id}`;
-          const parsedSeries = parseFormativeSeriesInput(formativeSeriesDraft[seriesKey] || '');
+          const slotDrafts = getFormativeSlotDrafts(student.id, component.id);
+          const parsedSeries = parseFormativeSlotDrafts(slotDrafts);
           if (parsedSeries.invalid) {
-            throw new Error(`Deret nilai formatif ${student.name} harus berupa angka 0-100.`);
+            throw new Error(`Setiap kotak nilai formatif ${student.name} harus berupa angka 0-100.`);
           }
-          let formativeScore = parsedScore.value;
-          if (parsedSeries.values.length > 0) {
-            formativeScore =
-              parsedSeries.values.reduce((acc, value) => acc + value, 0) / parsedSeries.values.length;
-          }
+          let formativeScore = averageValues(parsedSeries.values);
 
           if (formativeScore === null && parsedSeries.values.length === 0) {
             payload.push({
@@ -852,6 +861,7 @@ export default function TeacherGradesScreen() {
               semester: activeSemester,
               score: null,
               formative_series: [],
+              formative_slot_count: slotDrafts.length,
             });
             continue;
           }
@@ -867,6 +877,7 @@ export default function TeacherGradesScreen() {
             semester: activeSemester,
             score: formativeScore,
             formative_series: parsedSeries.values,
+            formative_slot_count: slotDrafts.length,
           });
           continue;
         }
@@ -1054,8 +1065,8 @@ export default function TeacherGradesScreen() {
       const scoreRaw = scoreDraft[`${student.id}:${selectedComponent.id}`];
       const hasScore = scoreRaw !== undefined && scoreRaw.trim() !== '';
       if (isFormatifComponent) {
-        const seriesValue = formativeSeriesDraft[`${student.id}:${selectedComponent.id}`] || '';
-        const parsedSeries = parseFormativeSeriesInput(seriesValue);
+        const slotDrafts = formativeSlotDrafts[`${student.id}:${selectedComponent.id}`] || [];
+        const parsedSeries = parseFormativeSlotDrafts(slotDrafts);
         if (hasScore || (!parsedSeries.invalid && parsedSeries.values.length > 0)) filled += 1;
       } else if (hasScore) {
         filled += 1;
@@ -1076,28 +1087,35 @@ export default function TeacherGradesScreen() {
     }));
   };
 
-  const getFormativeSeriesValues = (studentId: number, componentId: number) => {
+  const getFormativeSlotDrafts = (studentId: number, componentId: number) => {
     const key = `${studentId}:${componentId}`;
-    const parsed = parseFormativeSeriesInput(formativeSeriesDraft[key] || '');
-    if (parsed.invalid) return [];
-    return parsed.values;
+    return Array.isArray(formativeSlotDrafts[key]) ? formativeSlotDrafts[key] : [];
   };
 
-  const getFormativeDisplayValues = (studentId: number, componentId: number): Array<number | null> => {
-    const key = `${studentId}:${componentId}`;
-    const current = getFormativeSeriesValues(studentId, componentId);
-    const pending = Math.max(0, Number(formativePendingSlots[key] || 0));
-    const display = [...current, ...Array.from({ length: pending }, () => null)];
-    return display.length > 0 ? display : [null];
+  const getVisibleFormativeSlotDrafts = (studentId: number, componentId: number): string[] => {
+    const current = getFormativeSlotDrafts(studentId, componentId);
+    return current.length > 0 ? current : [''];
   };
 
-  const applyFormativeSeriesValues = (studentId: number, componentId: number, values: number[]) => {
+  const syncFormativeSlotDrafts = (studentId: number, componentId: number, drafts: string[]) => {
     const key = `${studentId}:${componentId}`;
-    const sanitized = values
-      .map((item) => Number(item))
-      .filter((item) => Number.isFinite(item) && item >= 0 && item <= 100);
-    const formatted = formatSeriesValues(sanitized);
-    const avg = averageValues(sanitized);
+    const normalizedDrafts = Array.isArray(drafts) ? drafts.map((item) => String(item ?? '')) : [];
+    const parsed = parseFormativeSlotDrafts(normalizedDrafts);
+    if (parsed.invalid) return false;
+    const formatted = formatSeriesValues(parsed.values);
+    const avg = averageValues(parsed.values);
+    setFormativeSlotDrafts((prev) => {
+      if (normalizedDrafts.length === 0) {
+        if (!(key in prev)) return prev;
+        const next = { ...prev };
+        delete next[key];
+        return next;
+      }
+      return {
+        ...prev,
+        [key]: normalizedDrafts,
+      };
+    });
     setFormativeSeriesDraft((prev) => ({
       ...prev,
       [key]: formatted,
@@ -1106,72 +1124,43 @@ export default function TeacherGradesScreen() {
       ...prev,
       [key]: avg === null ? '' : toFixedOrInt(avg),
     }));
+    return true;
   };
 
   const onFormativeValueChange = (studentId: number, componentId: number, index: number, rawValue: string) => {
-    const key = `${studentId}:${componentId}`;
-    const current = getFormativeSeriesValues(studentId, componentId);
-    const pending = Math.max(0, Number(formativePendingSlots[key] || 0));
+    const current = getFormativeSlotDrafts(studentId, componentId);
+    const nextDrafts = current.length > 0 ? [...current] : [''];
     if (rawValue.trim() === '') {
-      if (index < current.length) {
-        applyFormativeSeriesValues(
-          studentId,
-          componentId,
-          current.filter((_, currentIndex) => currentIndex !== index),
-        );
-      } else if (pending > 0) {
-        setFormativePendingSlots((prev) => ({
-          ...prev,
-          [key]: Math.max(0, pending - 1),
-        }));
-      }
+      if (index >= nextDrafts.length) return;
+      nextDrafts[index] = '';
+      syncFormativeSlotDrafts(studentId, componentId, nextDrafts);
       return;
     }
-    const parsed = Number(rawValue.replace(',', '.'));
+    const normalizedRawValue = rawValue.replace(',', '.');
+    const parsed = Number(normalizedRawValue);
     if (!Number.isFinite(parsed) || parsed < 0 || parsed > 100) return;
-    if (index < current.length) {
-      const next = [...current];
-      next[index] = parsed;
-      applyFormativeSeriesValues(studentId, componentId, next);
-      return;
-    }
-    applyFormativeSeriesValues(studentId, componentId, [...current, parsed]);
-    if (pending > 0) {
-      setFormativePendingSlots((prev) => ({
-        ...prev,
-        [key]: Math.max(0, pending - 1),
-      }));
-    }
+    nextDrafts[index] = normalizedRawValue;
+    syncFormativeSlotDrafts(studentId, componentId, nextDrafts);
   };
 
   const onFormativeValueRemove = (studentId: number, componentId: number, index: number) => {
-    const key = `${studentId}:${componentId}`;
-    const current = getFormativeSeriesValues(studentId, componentId);
-    const pending = Math.max(0, Number(formativePendingSlots[key] || 0));
-    if (index >= current.length) {
-      if (pending > 0) {
-        setFormativePendingSlots((prev) => ({
-          ...prev,
-          [key]: Math.max(0, pending - 1),
-        }));
-      }
-      return;
-    }
-    const currentValue = current[index];
+    const current = getFormativeSlotDrafts(studentId, componentId);
+    if (index >= current.length) return;
+    const currentValue = String(current[index] || '').trim();
     const applyRemove = () => {
-      applyFormativeSeriesValues(
+      syncFormativeSlotDrafts(
         studentId,
         componentId,
         current.filter((_, currentIndex) => currentIndex !== index),
       );
     };
-    if (currentValue === undefined || currentValue === null) {
+    if (!currentValue) {
       applyRemove();
       return;
     }
     Alert.alert(
       'Hapus Entri Nilai',
-      `Nilai ${toFixedOrInt(currentValue)} akan dihapus dari entri formatif.`,
+      `Nilai ${currentValue} akan dihapus dari entri formatif.`,
       [
         { text: 'Batal', style: 'cancel' },
         { text: 'Hapus', style: 'destructive', onPress: applyRemove },
@@ -1180,11 +1169,9 @@ export default function TeacherGradesScreen() {
   };
 
   const onFormativeValueAdd = (studentId: number, componentId: number) => {
-    const key = `${studentId}:${componentId}`;
-    setFormativePendingSlots((prev) => ({
-      ...prev,
-      [key]: Math.max(0, Number(prev[key] || 0)) + 1,
-    }));
+    const current = getFormativeSlotDrafts(studentId, componentId);
+    const nextDrafts = current.length > 0 ? [...current, ''] : ['', ''];
+    syncFormativeSlotDrafts(studentId, componentId, nextDrafts);
   };
 
   if (isLoading) return <AppLoadingScreen message="Memuat input nilai..." />;
@@ -1445,8 +1432,9 @@ export default function TeacherGradesScreen() {
                   <View>
                     {filteredStudents.map((student) => {
                       const seriesKey = `${student.id}:${selectedComponent.id}`;
-                      const seriesValue = formativeSeriesDraft[seriesKey] ?? '';
-                      const parsedSeries = parseFormativeSeriesInput(seriesValue);
+                      const formativeDrafts = getFormativeSlotDrafts(student.id, selectedComponent.id);
+                      const visibleFormativeDrafts = getVisibleFormativeSlotDrafts(student.id, selectedComponent.id);
+                      const parsedSeries = parseFormativeSlotDrafts(formativeDrafts);
                       const draftAverage =
                         !parsedSeries.invalid && parsedSeries.values.length > 0
                           ? averageValues(parsedSeries.values)
@@ -1509,10 +1497,10 @@ export default function TeacherGradesScreen() {
                                       Butir nilai formatif (dinamis)
                                     </Text>
                                     <View style={{ flexDirection: 'row', flexWrap: 'wrap', marginHorizontal: -3, marginBottom: 6 }}>
-                                      {getFormativeDisplayValues(student.id, selectedComponent.id).map((value, valueIndex) => (
+                                      {visibleFormativeDrafts.map((value, valueIndex) => (
                                         <View key={`${seriesKey}-${valueIndex}`} style={{ position: 'relative', paddingHorizontal: 3, marginBottom: 6 }}>
                                           <TextInput
-                                            value={value === null ? '' : toFixedOrInt(value)}
+                                            value={value}
                                             onChangeText={(nextValue) =>
                                               onFormativeValueChange(student.id, selectedComponent.id, valueIndex, nextValue)
                                             }
@@ -1575,8 +1563,8 @@ export default function TeacherGradesScreen() {
                                       }}
                                     >
                                       {parsedSeries.invalid
-                                        ? 'Format salah. Gunakan angka 0-100 dipisahkan koma.'
-                                        : `${getFormativeDisplayValues(student.id, selectedComponent.id).length} kotak entri dinamis`}
+                                        ? 'Format salah. Gunakan angka 0-100 pada tiap kotak.'
+                                        : `${visibleFormativeDrafts.length} kotak entri dinamis`}
                                     </Text>
                                   </View>
                                 );

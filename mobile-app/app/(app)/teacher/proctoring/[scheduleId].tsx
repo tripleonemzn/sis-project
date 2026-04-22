@@ -159,8 +159,12 @@ export default function TeacherProctoringDetailScreen() {
   const router = useRouter();
   const insets = useSafeAreaInsets();
   const isScreenActive = useIsScreenActive();
-  const { scheduleId } = useLocalSearchParams<{ scheduleId?: string | string[] }>();
+  const { scheduleId, slotKey } = useLocalSearchParams<{ scheduleId?: string | string[]; slotKey?: string | string[] }>();
   const parsedScheduleId = useMemo(() => parseScheduleId(scheduleId), [scheduleId]);
+  const resolvedSlotKey = useMemo(() => {
+    const value = Array.isArray(slotKey) ? slotKey[0] : slotKey;
+    return value ? String(value) : null;
+  }, [slotKey]);
   const { isAuthenticated, isLoading, user } = useAuth();
   const pagePadding = getStandardPagePadding(insets, { bottom: 120 });
   const { scaleFont, scaleLineHeight } = useAppTextScale();
@@ -180,9 +184,12 @@ export default function TeacherProctoringDetailScreen() {
   const [endingSession, setEndingSession] = useState(false);
 
   const detailQuery = useQuery({
-    queryKey: ['mobile-proctoring-detail', parsedScheduleId],
+    queryKey: ['mobile-proctoring-detail', parsedScheduleId, resolvedSlotKey],
     enabled: isAuthenticated && user?.role === 'TEACHER' && !!parsedScheduleId,
-    queryFn: async () => proctoringApi.getScheduleDetail(Number(parsedScheduleId)),
+    queryFn: async () =>
+      proctoringApi.getScheduleDetail(Number(parsedScheduleId), {
+        slotKey: resolvedSlotKey,
+      }),
     refetchInterval: (query) => {
       if (!isScreenActive) return false;
       const nextSchedule = (query.state.data as { schedule?: { startTime?: string | null; endTime?: string | null; serverNow?: string | null } } | undefined)?.schedule;
@@ -208,12 +215,18 @@ export default function TeacherProctoringDetailScreen() {
         0,
         (Number(detailQuery.data?.schedule?.attendanceSummary?.expectedParticipants) || students.length) - presentCount,
       );
-      await proctoringApi.submitReport(parsedScheduleId, {
-        notes: notes.trim(),
-        incident: '',
-        studentCountPresent: presentCount,
-        studentCountAbsent: absentCount,
-      });
+      await proctoringApi.submitReport(
+        parsedScheduleId,
+        {
+          notes: notes.trim(),
+          incident: '',
+          studentCountPresent: presentCount,
+          studentCountAbsent: absentCount,
+        },
+        {
+          slotKey: resolvedSlotKey,
+        },
+      );
     },
     onSuccess: async () => {
       notifySuccess('Berita acara berhasil dikirim ke Kurikulum.');
@@ -242,10 +255,16 @@ export default function TeacherProctoringDetailScreen() {
     }
 
     try {
-      await proctoringApi.sendWarning(parsedScheduleId, {
-        studentId: warningTarget.id,
-        message: normalizedMessage,
-      });
+      await proctoringApi.sendWarning(
+        parsedScheduleId,
+        {
+          studentId: warningTarget.id,
+          message: normalizedMessage,
+        },
+        {
+          slotKey: resolvedSlotKey,
+        },
+      );
       notifySuccess(`Peringatan berhasil dikirim ke ${warningTarget.name}.`);
       setWarningTarget(null);
       await detailQuery.refetch();
@@ -264,10 +283,16 @@ export default function TeacherProctoringDetailScreen() {
 
     try {
       setEndingSession(true);
-      await proctoringApi.endStudentSession(parsedScheduleId, {
-        studentId: endSessionTarget.id,
-        message: normalizedMessage,
-      });
+      await proctoringApi.endStudentSession(
+        parsedScheduleId,
+        {
+          studentId: endSessionTarget.id,
+          message: normalizedMessage,
+        },
+        {
+          slotKey: resolvedSlotKey,
+        },
+      );
       notifySuccess(`Sesi ${endSessionTarget.name} berhasil diakhiri.`);
       setEndSessionTarget(null);
       await detailQuery.refetch();

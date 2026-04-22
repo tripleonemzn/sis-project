@@ -1,6 +1,6 @@
 import React, { useState, useEffect } from 'react';
 import { useQuery } from '@tanstack/react-query';
-import { useParams, useNavigate } from 'react-router-dom';
+import { useParams, useNavigate, useSearchParams } from 'react-router-dom';
 import { ArrowLeft, RefreshCw, Save, Clock, BookOpen, UserCircle2, MapPin, FileText, X } from 'lucide-react';
 import api from '../../../services/api';
 import { toast } from 'react-hot-toast';
@@ -118,6 +118,8 @@ const IDLE_MONITORING_INTERVAL_MS = 30000;
 const ProctorMonitoringPage: React.FC = () => {
   const { id: scheduleId } = useParams<{ id: string }>();
   const navigate = useNavigate();
+  const [searchParams] = useSearchParams();
+  const slotKey = String(searchParams.get('slotKey') || '').trim() || null;
   const [refreshing, setRefreshing] = useState(false);
   const [serverTimeDriftMinutes, setServerTimeDriftMinutes] = useState<number | null>(null);
 
@@ -138,10 +140,14 @@ const ProctorMonitoringPage: React.FC = () => {
   const [endingSession, setEndingSession] = useState(false);
 
   const detailQuery = useQuery({
-    queryKey: ['teacher-proctor-monitoring', scheduleId || 'unknown'],
+    queryKey: ['teacher-proctor-monitoring', scheduleId || 'unknown', slotKey],
     enabled: Boolean(scheduleId),
     queryFn: async () => {
-      const res = await api.get(`/proctoring/schedules/${scheduleId}`);
+      const res = await api.get(`/proctoring/schedules/${scheduleId}`, {
+        params: {
+          slotKey: slotKey || undefined,
+        },
+      });
       return res.data.data as ProctorDetailResponse;
     },
     staleTime: 10_000,
@@ -195,10 +201,18 @@ const ProctorMonitoringPage: React.FC = () => {
 
     setSendingWarning(true);
     try {
-      await api.post(`/proctoring/schedules/${scheduleId}/warnings`, {
-        studentId: warningTarget.id,
-        message: normalizedMessage,
-      });
+      await api.post(
+        `/proctoring/schedules/${scheduleId}/warnings`,
+        {
+          studentId: warningTarget.id,
+          message: normalizedMessage,
+        },
+        {
+          params: {
+            slotKey: slotKey || undefined,
+          },
+        },
+      );
       toast.success(`Peringatan berhasil dikirim ke ${warningTarget.name}.`);
       setWarningTarget(null);
       await detailQuery.refetch();
@@ -223,10 +237,18 @@ const ProctorMonitoringPage: React.FC = () => {
 
     setEndingSession(true);
     try {
-      await api.post(`/proctoring/schedules/${scheduleId}/end-session`, {
-        studentId: endSessionTarget.id,
-        message: normalizedMessage,
-      });
+      await api.post(
+        `/proctoring/schedules/${scheduleId}/end-session`,
+        {
+          studentId: endSessionTarget.id,
+          message: normalizedMessage,
+        },
+        {
+          params: {
+            slotKey: slotKey || undefined,
+          },
+        },
+      );
       toast.success(`Sesi ${endSessionTarget.name} berhasil diakhiri.`);
       setEndSessionTarget(null);
       await detailQuery.refetch();
@@ -261,12 +283,20 @@ const ProctorMonitoringPage: React.FC = () => {
         (Number(schedule?.attendanceSummary?.expectedParticipants) || students.length) - presentCount,
       );
 
-      await api.post(`/proctoring/schedules/${scheduleId}/report`, {
-        notes,
-        incident: '',
-        studentCountPresent: presentCount,
-        studentCountAbsent: absentCount
-      });
+      await api.post(
+        `/proctoring/schedules/${scheduleId}/report`,
+        {
+          notes,
+          incident: '',
+          studentCountPresent: presentCount,
+          studentCountAbsent: absentCount,
+        },
+        {
+          params: {
+            slotKey: slotKey || undefined,
+          },
+        },
+      );
       toast.success('Berita acara berhasil dikirim ke Kurikulum');
       await detailQuery.refetch();
     } catch (error) {

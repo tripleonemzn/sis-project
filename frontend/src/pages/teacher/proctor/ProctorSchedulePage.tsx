@@ -7,9 +7,11 @@ import api from '../../../services/api';
 import { liveQueryOptions } from '../../../lib/query/liveQuery';
 
 type TimeFilter = 'today' | 'upcoming' | 'history';
+type ModeFilter = 'proctor' | 'author';
 
 interface ExamSchedule {
   id: number;
+  slotKey?: string | null;
   startTime: string;
   endTime: string;
   periodNumber?: number | null;
@@ -37,6 +39,7 @@ interface ExamSchedule {
 
 interface ProctorRoomGroup {
   key: string;
+  slotKey: string | null;
   dateKey: string;
   dateLabel: string;
   roomName: string;
@@ -155,6 +158,7 @@ function groupSchedulesForDisplay(sourceSchedules: ExamSchedule[]): ProctorRoomG
     if (!map.has(key)) {
       map.set(key, {
         key,
+        slotKey: schedule.slotKey || null,
         dateKey,
         dateLabel: formatDayLabel(schedule.startTime),
         roomName,
@@ -171,6 +175,9 @@ function groupSchedulesForDisplay(sourceSchedules: ExamSchedule[]): ProctorRoomG
     }
 
     const group = map.get(key)!;
+    if (!group.slotKey && schedule.slotKey) {
+      group.slotKey = schedule.slotKey;
+    }
     const resolvedClassNames =
       Array.isArray(schedule.classNames) && schedule.classNames.length > 0
         ? schedule.classNames
@@ -202,7 +209,9 @@ const ProctorSchedulePage: React.FC = () => {
   const [searchParams, setSearchParams] = useSearchParams();
   const [expandedDayKey, setExpandedDayKey] = useState<string | null>(null);
   const filterParam = searchParams.get('tab');
+  const modeParam = String(searchParams.get('mode') || '').trim().toLowerCase();
   const filter: TimeFilter = filterParam === 'upcoming' || filterParam === 'history' ? filterParam : 'today';
+  const mode: ModeFilter = modeParam === 'author' ? 'author' : 'proctor';
 
   const setFilter = (nextFilter: TimeFilter) => {
     const nextParams = new URLSearchParams(searchParams);
@@ -210,10 +219,20 @@ const ProctorSchedulePage: React.FC = () => {
     setSearchParams(nextParams, { replace: true });
   };
 
+  const setMode = (nextMode: ModeFilter) => {
+    const nextParams = new URLSearchParams(searchParams);
+    nextParams.set('mode', nextMode);
+    setSearchParams(nextParams, { replace: true });
+  };
+
   const scheduleQuery = useQuery({
-    queryKey: ['teacher-proctor-schedules'],
+    queryKey: ['teacher-proctor-schedules', mode],
     queryFn: async () => {
-      const res = await api.get('/proctoring/schedules');
+      const res = await api.get('/proctoring/schedules', {
+        params: {
+          mode,
+        },
+      });
       return Array.isArray(res.data?.data) ? (res.data.data as ExamSchedule[]) : [];
     },
     ...liveQueryOptions,
@@ -316,6 +335,31 @@ const ProctorSchedulePage: React.FC = () => {
         <div className="px-6 py-5">
           <h1 className="text-2xl font-bold text-gray-900">Jadwal Mengawas & Monitoring</h1>
           <p className="mt-1 text-body text-gray-600">Pantau pelaksanaan ujian yang ditugaskan kepada Anda dengan breakdown per hari.</p>
+          <div className="mt-4">
+            <div className="mb-2 text-xs font-semibold uppercase tracking-[0.16em] text-slate-500">Mode Akses</div>
+            <div className="inline-flex rounded-2xl border border-slate-200 bg-slate-50 p-1">
+              {[
+                { key: 'proctor' as const, label: 'Sebagai Pengawas' },
+                { key: 'author' as const, label: 'Sebagai Penulis' },
+              ].map((option) => {
+                const active = mode === option.key;
+                return (
+                  <button
+                    key={option.key}
+                    type="button"
+                    onClick={() => setMode(option.key)}
+                    className={`rounded-xl px-4 py-2 text-sm font-semibold transition-colors ${
+                      active
+                        ? 'bg-white text-blue-700 shadow-sm'
+                        : 'text-slate-600 hover:text-slate-900'
+                    }`}
+                  >
+                    {option.label}
+                  </button>
+                );
+              })}
+            </div>
+          </div>
           <div className="mt-4 flex flex-wrap items-center gap-3 text-sm text-gray-500">
             <span className="inline-flex items-center gap-2 rounded-full border border-blue-100 bg-blue-50 px-3 py-1.5 text-blue-700">
               <Calendar className="h-4 w-4" />
@@ -459,7 +503,11 @@ const ProctorSchedulePage: React.FC = () => {
                                   toast.error('ID jadwal ujian tidak valid');
                                   return;
                                 }
-                                navigate(`/teacher/proctoring/${primaryScheduleId}`);
+                                navigate(
+                                  group.slotKey
+                                    ? `/teacher/proctoring/${primaryScheduleId}?slotKey=${encodeURIComponent(group.slotKey)}`
+                                    : `/teacher/proctoring/${primaryScheduleId}`,
+                                );
                               }}
                               className="inline-flex items-center justify-center gap-2 rounded-xl bg-blue-600 px-4 py-2.5 text-sm font-semibold text-white transition-colors hover:bg-blue-700 focus:outline-none focus:ring-2 focus:ring-blue-500 focus:ring-offset-2"
                             >
