@@ -51,6 +51,7 @@ import teachingResourceProgramRoutes from './teachingResourceProgram.routes';
 import officeRoutes from './office.routes';
 import osisRoutes from './osis.routes';
 import homeroomBookRoutes from './homeroomBook.routes';
+import committeeRoutes from './committee.routes';
 
 const router = Router();
 
@@ -106,5 +107,6 @@ router.use('/teaching-resources', teachingResourceProgramRoutes);
 router.use('/office', officeRoutes);
 router.use('/osis', osisRoutes);
 router.use('/homeroom-book', homeroomBookRoutes);
+router.use('/committees', committeeRoutes);
 
 export default router;

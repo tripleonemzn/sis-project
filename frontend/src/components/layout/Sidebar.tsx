@@ -50,6 +50,11 @@ import { useQuery } from '@tanstack/react-query';
 import { authService } from '../../services/auth.service';
 import { internshipService } from '../../services/internship.service';
 import {
+  committeeService,
+  type CommitteeFeatureCode,
+  type CommitteeSidebarGroup,
+} from '../../services/committee.service';
+import {
   examService,
   examProgramCodeToSlug,
   normalizeExamProgramCode,
@@ -250,6 +255,28 @@ function mergeTutorAssignments(
   });
 
   return Array.from(merged.values());
+}
+
+function getCommitteeFeatureIcon(featureCode: CommitteeFeatureCode): React.ElementType {
+  if (featureCode === 'EXAM_PROGRAM') return Layers;
+  if (featureCode === 'EXAM_SCHEDULE') return Calendar;
+  if (featureCode === 'EXAM_ROOMS') return School;
+  if (featureCode === 'EXAM_PROCTOR') return UserCheck;
+  if (featureCode === 'EXAM_LAYOUT') return Building2;
+  return ClipboardList;
+}
+
+function buildCommitteeSidebarMenuItems(groups: CommitteeSidebarGroup[]): MenuItem[] {
+  return groups.map((group) => ({
+    label: group.label,
+    path: `/teacher/committee-events/${group.eventId}/exams`,
+    icon: Briefcase,
+    children: group.items.map((item) => ({
+      label: item.label,
+      path: item.webPath,
+      icon: getCommitteeFeatureIcon(item.featureCode),
+    })),
+  }));
 }
 
 function isMidtermComponent(code: string): boolean {
@@ -473,6 +500,14 @@ export const getMenuItems = (
           })),
           { label: 'Bank Soal', path: '/teacher/exams/bank', icon: Database },
         ]
+      },
+      {
+        label: 'KEPANITIAAN',
+        path: '/teacher/committees-group',
+        icon: Briefcase,
+        children: [
+          { label: 'Kegiatan Panitia', path: '/teacher/committees', icon: Briefcase },
+        ],
       },
 
     ];
@@ -997,6 +1032,14 @@ export const getMenuItems = (
           { label: 'Data Guru', path: '/principal/teachers', icon: Users },
         ],
       },
+      {
+        label: 'KEPANITIAAN',
+        path: '/principal/committees-group',
+        icon: Briefcase,
+        children: [
+          { label: 'Persetujuan Panitia', path: '/principal/committee-approvals', icon: ShieldAlert },
+        ],
+      },
       { label: 'Profil', path: '/principal/profile', icon: UserIcon },
     ];
 
@@ -1078,6 +1121,14 @@ export const getMenuItems = (
             { label: 'Data Guru & Staff', path: '/staff/head-tu/teachers', icon: Users },
             { label: 'Perizinan Siswa', path: '/staff/head-tu/permissions', icon: FileText },
             { label: 'Surat-Menyurat', path: '/staff/head-tu/letters', icon: FileText },
+          ],
+        },
+        {
+          label: 'KEPANITIAAN',
+          path: '/staff/head-tu/committees-group',
+          icon: Briefcase,
+          children: [
+            { label: 'SK Kepanitiaan', path: '/staff/head-tu/committees', icon: ShieldAlert },
           ],
         },
         { label: 'Profil', path: '/staff/profile', icon: UserIcon },
@@ -1304,10 +1355,23 @@ export const Sidebar = ({ user }: SidebarProps) => {
     [tutorAssignmentsData, user.ekskulTutorAssignments],
   );
   const hasActiveOsisElection = Boolean(activeOsisElectionData?.data);
+  const committeeSidebarQuery = useQuery({
+    queryKey: ['committee-sidebar', user.id],
+    enabled: user.role === 'TEACHER',
+    staleTime: 60_000,
+    refetchOnMount: false,
+    refetchOnWindowFocus: false,
+    refetchOnReconnect: false,
+    queryFn: () => committeeService.getMySidebar(),
+  });
+  const committeeSidebarItems = useMemo<MenuItem[]>(
+    () => buildCommitteeSidebarMenuItems(committeeSidebarQuery.data?.data?.groups || []),
+    [committeeSidebarQuery.data?.data?.groups],
+  );
 
   const items = useMemo(
-    () =>
-      getMenuItems(
+    () => {
+      const baseItems = getMenuItems(
         user,
         hasPendingDefense,
         pklEligibleGrades,
@@ -1316,7 +1380,20 @@ export const Sidebar = ({ user }: SidebarProps) => {
         assignedInventoryRooms,
         tutorAssignments,
         hasActiveOsisElection,
-      ),
+      );
+      if (user.role !== 'TEACHER' || committeeSidebarItems.length === 0) {
+        return baseItems;
+      }
+      const settingsIndex = baseItems.findIndex((item) => item.label === 'PENGATURAN');
+      if (settingsIndex < 0) {
+        return [...baseItems, ...committeeSidebarItems];
+      }
+      return [
+        ...baseItems.slice(0, settingsIndex),
+        ...committeeSidebarItems,
+        ...baseItems.slice(settingsIndex),
+      ];
+    },
     [
       user,
       hasPendingDefense,
@@ -1326,6 +1403,7 @@ export const Sidebar = ({ user }: SidebarProps) => {
       assignedInventoryRooms,
       tutorAssignments,
       hasActiveOsisElection,
+      committeeSidebarItems,
     ],
   );
   const getMenuPathMatchScore = useCallback((itemPath: string) => {

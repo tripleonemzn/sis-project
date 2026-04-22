@@ -32,6 +32,8 @@ const SubjectPage = lazy(() => import("./pages/admin/master/SubjectPage").then(m
 const SubjectCategoryPage = lazy(() => import("./pages/admin/master/SubjectCategoryPage").then(m => ({ default: m.SubjectCategoryPage })));
 const ClassPage = lazy(() => import("./pages/admin/master/ClassPage").then(m => ({ default: m.ClassPage })));
 const TeacherDashboard = lazy(() => import("./pages/teacher/TeacherDashboard").then(m => ({ default: m.TeacherDashboard })));
+const CommitteeEventsPage = lazy(() => import("./pages/teacher/CommitteeEventsPage"));
+const CommitteeExamWorkspacePage = lazy(() => import("./pages/teacher/CommitteeExamWorkspacePage"));
 const TeacherSchedulePage = lazy(() => import("./pages/teacher/TeacherSchedulePage").then(m => ({ default: m.TeacherSchedulePage })));
 const WorkProgramPage = lazy(() => import("./pages/teacher/WorkProgramPage").then(m => ({ default: m.WorkProgramPage })));
 const MyClassesPage = lazy(() => import("./pages/teacher/MyClassesPage").then(m => ({ default: m.MyClassesPage })));
@@ -391,6 +393,8 @@ function App() {
             <Route index element={<TeacherDashboard />} />
             <Route path="schedule" element={<TeacherSchedulePage />} />
             <Route path="work-programs" element={<WorkProgramPage />} />
+            <Route path="committees" element={<CommitteeEventsPage />} />
+            <Route path="committee-events/:eventId/exams" element={<CommitteeExamWorkspacePage />} />
 
             <Route path="classes" element={<MyClassesPage />} />
             <Route path="classes/:classId/students" element={<TeacherClassStudentsPage />} />

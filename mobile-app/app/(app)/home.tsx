@@ -70,6 +70,7 @@ import {
   getExtracurricularTutorAssignments,
 } from '../../src/features/tutor/tutorAccess';
 import { osisApi } from '../../src/features/osis/osisApi';
+import { committeeApi, type CommitteeSidebarGroup } from '../../src/features/committee/committeeApi';
 import { useAppTheme } from '../../src/theme/AppThemeProvider';
 import { useAppTextScale } from '../../src/theme/AppTextScaleProvider';
 
@@ -432,6 +433,7 @@ const getMenuIcon = (menu: RoleMenuItem): FeatherIconName => {
   if (menu.key.includes('user')) return 'users';
   if (menu.key.includes('students')) return 'users';
   if (menu.key.includes('work-program')) return 'briefcase';
+  if (menu.key.includes('committee') || menu.label.toLowerCase().includes('panitia')) return 'briefcase';
   if (menu.key.includes('inventory')) return 'archive';
   if (menu.key.includes('payment') || menu.key.includes('finance')) return 'credit-card';
   if (menu.key.includes('approval')) return 'clipboard';
@@ -446,6 +448,7 @@ const getGroupIcon = (group: RoleMenuGroup): FeatherIconName => {
   const onlyEmailMenus = group.items.every((item) => item.key.toLowerCase().includes('email') || item.key.toLowerCase().includes('mail'));
   if (onlyEmailMenus) return 'mail';
   if (key.includes('dashboard')) return 'home';
+  if (key.includes('committee') || key.includes('panitia')) return 'briefcase';
   if (key.includes('academic')) return 'book-open';
   if (key.includes('exams') || key.includes('cbt')) return 'file-text';
   if (key.includes('ppdb') || key.includes('bkk')) return 'briefcase';
@@ -463,6 +466,47 @@ const getGroupIcon = (group: RoleMenuGroup): FeatherIconName => {
   if (key.includes('extracurricular')) return 'award';
   return 'grid';
 };
+
+function buildCommitteeWebModuleRoute(key: string, webPath: string, label: string) {
+  const params = new URLSearchParams();
+  params.set('path', webPath);
+  params.set('label', label);
+  return `/web-module/${encodeURIComponent(key)}?${params.toString()}`;
+}
+
+function appendCommitteeMenuGroups(
+  groups: RoleMenuGroup[],
+  role: string,
+  committeeGroups: CommitteeSidebarGroup[],
+): RoleMenuGroup[] {
+  if (role !== 'TEACHER' || committeeGroups.length === 0) return groups;
+
+  const dynamicGroups: RoleMenuGroup[] = committeeGroups
+    .filter((group) => Array.isArray(group.items) && group.items.length > 0)
+    .map((group) => ({
+      key: `committee-${group.eventId}`,
+      label: group.label,
+      items: group.items.map((item) => ({
+        key: item.key,
+        label: item.label,
+        route: buildCommitteeWebModuleRoute(item.key, item.webPath, item.label),
+        webPath: item.webPath,
+      })),
+    }));
+
+  if (dynamicGroups.length === 0) return groups;
+
+  const settingsIndex = groups.findIndex((group) => String(group.label || '').toUpperCase() === 'PENGATURAN');
+  if (settingsIndex < 0) {
+    return [...groups, ...dynamicGroups];
+  }
+
+  return [
+    ...groups.slice(0, settingsIndex),
+    ...dynamicGroups,
+    ...groups.slice(settingsIndex),
+  ];
+}
 
 const getStatIcon = (item: DashboardStatItem, linkedMenu?: RoleMenuItem): FeatherIconName => {
   if (item.icon) return item.icon;
@@ -973,6 +1017,14 @@ export default function HomeScreen() {
         roleContext: 'teacher',
       }),
   });
+  const committeeSidebarQuery = useQuery({
+    queryKey: ['mobile-home-committee-sidebar', profile.id],
+    enabled: isAuthenticated && profile.role === 'TEACHER',
+    staleTime: 60_000,
+    refetchOnMount: false,
+    refetchOnReconnect: false,
+    queryFn: () => committeeApi.getMySidebar(),
+  });
 
   const tutorAssignmentsQuery = useQuery({
     queryKey: ['mobile-home-tutor-assignments', profile.id, activeAcademicYearQuery.data?.id],
@@ -1097,7 +1149,11 @@ export default function HomeScreen() {
         teachingResourceProgramsQuery.isSuccess,
       );
 
-      return groupsWithTeachingResourcePrograms.filter((group) => group.items.length > 0);
+      return appendCommitteeMenuGroups(
+        groupsWithTeachingResourcePrograms,
+        profile.role,
+        committeeSidebarQuery.data?.groups || [],
+      ).filter((group) => group.items.length > 0);
     },
     [
       profile,
@@ -1113,6 +1169,7 @@ export default function HomeScreen() {
       examProgramsQuery.isSuccess,
       teachingResourceProgramsQuery.data?.programs,
       teachingResourceProgramsQuery.isSuccess,
+      committeeSidebarQuery.data?.groups,
     ],
   );
   const adminStatsQuery = useQuery({

@@ -87,6 +87,7 @@ const STRICT_WEB_PARITY_KEYS = new Set<string>([
   'teacher-wakakur-performance',
   'teacher-wakakur-approvals',
   'teacher-wakakur-reports',
+  'teacher-committee-events',
   'teacher-wakasis-students',
   'teacher-wakasis-performance',
   'teacher-wakasis-approvals',
@@ -109,10 +110,12 @@ const STRICT_WEB_PARITY_KEYS = new Set<string>([
   'teacher-bk-permissions',
   'teacher-bk-counselings',
   'principal-dashboard',
+  'principal-committee-approvals',
   'principal-reports',
   'principal-attendance',
   'principal-finance-requests',
   'staff-payments',
+  'staff-head-tu-committees',
   'staff-students',
   'child-progress',
   'parent-finance',
@@ -359,6 +362,11 @@ const ROLE_MENUS: Record<string, RoleMenuItem[]> = {
       key: 'teacher-exam-bank',
       label: 'Bank Soal',
       route: '/teacher/exams-bank',
+    },
+    {
+      key: 'teacher-committee-events',
+      label: 'Kegiatan Panitia',
+      webPath: '/teacher/committees',
     },
     {
       key: 'teacher-homeroom-attendance',
@@ -761,6 +769,11 @@ const ROLE_MENUS: Record<string, RoleMenuItem[]> = {
       label: 'Pengajuan Anggaran',
       route: '/principal/finance/requests',
     },
+    {
+      key: 'principal-committee-approvals',
+      label: 'Persetujuan Panitia',
+      webPath: '/principal/committee-approvals',
+    },
     { key: 'principal-students', label: 'Data Siswa', route: '/principal/students' },
     {
       key: 'principal-osis-monitoring',
@@ -1087,6 +1100,11 @@ const ROLE_MENU_GROUPS: Record<string, GroupDefinition[]> = {
       ],
     },
     {
+      key: 'committee',
+      label: 'KEPANITIAAN',
+      menuKeys: ['teacher-committee-events'],
+    },
+    {
       key: 'homeroom',
       label: 'WALI KELAS',
       menuKeys: [
@@ -1238,6 +1256,7 @@ const ROLE_MENU_GROUPS: Record<string, GroupDefinition[]> = {
     { key: 'dashboard', label: 'Dashboard', menuKeys: ['principal-dashboard', 'principal-email'] },
     { key: 'academic', label: 'AKADEMIK', menuKeys: ['principal-reports', 'principal-attendance'] },
     { key: 'finance', label: 'KEUANGAN', menuKeys: ['principal-finance-requests'] },
+    { key: 'committee', label: 'KEPANITIAAN', menuKeys: ['principal-committee-approvals'] },
     { key: 'students', label: 'KESISWAAN', menuKeys: ['principal-students'] },
     { key: 'teachers', label: 'SDM GURU', menuKeys: ['principal-teachers'] },
     { key: 'settings', label: 'PENGATURAN', menuKeys: ['principal-profile', 'principal-accessibility'] },
@@ -1334,6 +1353,11 @@ const STAFF_EXTRA_MENU_ITEMS: Record<string, RoleMenuItem> = {
     label: 'Surat-Menyurat',
     route: '/staff/head-tu/letters',
   },
+  'staff-head-tu-committees': {
+    key: 'staff-head-tu-committees',
+    label: 'SK Kepanitiaan',
+    webPath: '/staff/head-tu/committees',
+  },
 };
 
 function buildGroupedMenu(role: string, items: RoleMenuItem[]): RoleMenuGroup[] {
@@ -1407,6 +1431,7 @@ function buildStaffRoleMenu(user: AuthUser) {
           'staff-head-tu-teachers',
           'staff-head-tu-permissions',
           'staff-head-tu-letters',
+          'staff-head-tu-committees',
         ]
       : division === 'ADMINISTRATION'
         ? ['staff-students', 'staff-administration-teachers', 'staff-administration-permissions']
@@ -1455,6 +1480,7 @@ function buildStaffGroups(user: AuthUser, menus: RoleMenuItem[]) {
       'staff-head-tu-teachers',
       'staff-head-tu-permissions',
     ]);
+    pushGroup(groups, 'committee', 'KEPANITIAAN', ['staff-head-tu-committees']);
     pushGroup(groups, 'settings', 'PENGATURAN', ['staff-profile', 'staff-accessibility']);
     return groups;
   }
@@ -1514,6 +1540,7 @@ function buildPrincipalGroups(menus: RoleMenuItem[]) {
   pushGroup('academic', 'AKADEMIK', ['principal-reports', 'principal-attendance']);
   pushGroup('exams', 'UJIAN', ['principal-exam-reports']);
   pushGroup('finance', 'KEUANGAN', ['principal-finance-requests']);
+  pushGroup('committee', 'KEPANITIAAN', ['principal-committee-approvals']);
   pushGroup('students', 'KESISWAAN', ['principal-students', 'principal-osis-monitoring']);
   pushGroup('teachers', 'SDM GURU', ['principal-teachers']);
   pushGroup('settings', 'PENGATURAN', ['principal-profile', 'principal-accessibility']);
@@ -1644,6 +1671,7 @@ function buildTeacherGroups(
       'teacher-exam-bank',
     ]),
   );
+  pushGroup('committee', 'KEPANITIAAN', pickMenus(byKey, ['teacher-committee-events']));
 
   if (isHomeroomTeacher(user)) {
     pushGroup(

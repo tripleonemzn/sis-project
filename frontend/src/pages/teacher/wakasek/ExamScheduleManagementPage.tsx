@@ -489,9 +489,14 @@ const normalizeReviewQuestions = (rawQuestions: unknown): ReviewableQuestion[] =
   });
 };
 
-const ExamScheduleManagementPage = () => {
+type ExamScheduleManagementPageProps = {
+  forcedProgramCode?: string | null;
+};
+
+const ExamScheduleManagementPage = ({ forcedProgramCode }: ExamScheduleManagementPageProps) => {
   const [searchParams, setSearchParams] = useSearchParams();
   const programParamKey = 'jadwalProgram';
+  const normalizedForcedProgramCode = String(forcedProgramCode || '').trim().toUpperCase();
   const requestedReviewPacketId = useMemo(
     () => Number(searchParams.get('reviewPacketId') || 0),
     [searchParams],
@@ -572,13 +577,18 @@ const ExamScheduleManagementPage = () => {
   const visiblePrograms = useMemo(
     () =>
       [...examPrograms]
-        .filter((program) => Boolean(program?.isActive) && !isNonScheduledExamProgram(program))
+        .filter(
+          (program) =>
+            Boolean(program?.isActive) &&
+            !isNonScheduledExamProgram(program) &&
+            (!normalizedForcedProgramCode || String(program.code || '').trim().toUpperCase() === normalizedForcedProgramCode),
+        )
         .sort(
           (a, b) =>
             Number(a.order || 0) - Number(b.order || 0) ||
             String(a.label || '').localeCompare(String(b.label || '')),
         ),
-    [examPrograms],
+    [examPrograms, normalizedForcedProgramCode],
   );
 
   const activeProgram = useMemo(
@@ -784,21 +794,25 @@ const ExamScheduleManagementPage = () => {
       });
       const programs = response?.data?.programs || [];
       const scheduledPrograms = programs.filter((program) => !isNonScheduledExamProgram(program));
-      const resolvedRequestedCode = resolveProgramCodeFromParam(scheduledPrograms, requestedProgramCode);
+      const scopedPrograms = normalizedForcedProgramCode
+        ? scheduledPrograms.filter((program) => String(program.code || '').trim().toUpperCase() === normalizedForcedProgramCode)
+        : scheduledPrograms;
+      const resolvedRequestedCode =
+        normalizedForcedProgramCode || resolveProgramCodeFromParam(scopedPrograms, requestedProgramCode);
       setExamPrograms(programs);
       setActiveProgramCode((prev) =>
-        scheduledPrograms.some((program) => program.code === resolvedRequestedCode)
+        scopedPrograms.some((program) => program.code === resolvedRequestedCode)
           ? resolvedRequestedCode
-          : scheduledPrograms.some((program) => program.code === prev)
+          : scopedPrograms.some((program) => program.code === prev)
             ? prev
-            : (scheduledPrograms[0]?.code || ''),
+            : (scopedPrograms[0]?.code || ''),
       );
     } catch (error) {
       console.error('Error fetching exam programs:', error);
       setExamPrograms([]);
       setActiveProgramCode('');
     }
-  }, [selectedAcademicYear, requestedProgramCode]);
+  }, [normalizedForcedProgramCode, selectedAcademicYear, requestedProgramCode]);
 
   const fetchSchedules = useCallback(async () => {
     if (!selectedAcademicYear || !activeProgramCode) {

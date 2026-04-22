@@ -193,9 +193,9 @@ model User {
   grantedExamMakeupAccesses                          ExamScheduleMakeupAccess[]          @relation("ExamMakeupGrantedBy")
   revokedExamMakeupAccesses                          ExamScheduleMakeupAccess[]          @relation("ExamMakeupRevokedBy")
   studentPermissions                                 StudentPermission[]                 @relation("StudentPermissions")
-  homeroomBookEntries                                HomeroomBookEntry[]                @relation("HomeroomBookStudent")
-  createdHomeroomBookEntries                         HomeroomBookEntry[]                @relation("HomeroomBookCreatedBy")
-  updatedHomeroomBookEntries                         HomeroomBookEntry[]                @relation("HomeroomBookUpdatedBy")
+  homeroomBookEntries                                HomeroomBookEntry[]                 @relation("HomeroomBookStudent")
+  createdHomeroomBookEntries                         HomeroomBookEntry[]                 @relation("HomeroomBookCreatedBy")
+  updatedHomeroomBookEntries                         HomeroomBookEntry[]                 @relation("HomeroomBookUpdatedBy")
   academicMemberships                                StudentAcademicMembership[]
   promotionRunsCreated                               PromotionRun[]                      @relation("PromotionRunCreatedBy")
   promotionRunItems                                  PromotionRunItem[]                  @relation("PromotionRunStudent")
@@ -206,6 +206,11 @@ model User {
   libraryBookLoansBorrowed                           LibraryBookLoan[]                   @relation("LibraryLoanBorrower")
   officeLettersCreated                               OfficeLetter[]                      @relation("OfficeLetterCreator")
   officeLettersRecipient                             OfficeLetter[]                      @relation("OfficeLetterRecipient")
+  requestedCommitteeEvents                           CommitteeEvent[]                    @relation("CommitteeRequestedBy")
+  principalCommitteeDecisions                        CommitteeEvent[]                    @relation("CommitteePrincipalDecisionBy")
+  issuedCommitteeSkEvents                            CommitteeEvent[]                    @relation("CommitteeSkIssuedBy")
+  committeeAssignments                               CommitteeAssignment[]               @relation("CommitteeAssignmentUser")
+  createdCommitteeAssignments                        CommitteeAssignment[]               @relation("CommitteeAssignmentCreator")
   managedInventoryRooms                              Room[]                              @relation("ManagedInventoryRooms")
   createdOsisElectionPeriods                         OsisElectionPeriod[]                @relation("OsisElectionCreator")
   osisElectionCandidacies                            OsisElectionCandidate[]             @relation("OsisElectionCandidateStudent")
@@ -287,23 +292,23 @@ model StudentExamProgramRestriction {
 }
 
 model ExamScheduleMakeupAccess {
-  id          Int       @id @default(autoincrement())
+  id          Int          @id @default(autoincrement())
   scheduleId  Int
   studentId   Int
   startTime   DateTime
   endTime     DateTime
   reason      String?
-  isActive    Boolean   @default(true)
+  isActive    Boolean      @default(true)
   grantedById Int
-  grantedAt   DateTime  @default(now())
+  grantedAt   DateTime     @default(now())
   revokedById Int?
   revokedAt   DateTime?
-  createdAt   DateTime  @default(now())
-  updatedAt   DateTime  @updatedAt
+  createdAt   DateTime     @default(now())
+  updatedAt   DateTime     @updatedAt
   schedule    ExamSchedule @relation(fields: [scheduleId], references: [id], onDelete: Cascade)
-  student     User      @relation("ExamMakeupStudent", fields: [studentId], references: [id], onDelete: Cascade)
-  grantedBy   User      @relation("ExamMakeupGrantedBy", fields: [grantedById], references: [id], onDelete: Restrict)
-  revokedBy   User?     @relation("ExamMakeupRevokedBy", fields: [revokedById], references: [id], onDelete: SetNull)
+  student     User         @relation("ExamMakeupStudent", fields: [studentId], references: [id], onDelete: Cascade)
+  grantedBy   User         @relation("ExamMakeupGrantedBy", fields: [grantedById], references: [id], onDelete: Restrict)
+  revokedBy   User?        @relation("ExamMakeupRevokedBy", fields: [revokedById], references: [id], onDelete: SetNull)
 
   @@unique([scheduleId, studentId])
   @@index([scheduleId, isActive, startTime])
@@ -385,6 +390,7 @@ model AcademicYear {
   teachingResourceEntries        TeachingResourceEntry[]
   bpbkCounselings                BpBkCounseling[]
   officeLetters                  OfficeLetter[]
+  committeeEvents                CommitteeEvent[]
   sourcePromotionMappings        PromotionClassMapping[]          @relation("PromotionSourceAcademicYear")
   targetPromotionMappings        PromotionClassMapping[]          @relation("PromotionTargetAcademicYear")
   sourcePromotionRuns            PromotionRun[]                   @relation("PromotionSourceRuns")
@@ -581,16 +587,16 @@ model HomeroomBookEntry {
 }
 
 model HomeroomBookAttachment {
-  id           Int               @id @default(autoincrement())
-  entryId       Int
-  fileUrl       String
-  fileName      String
-  originalName  String
-  mimeType      String
-  fileSize      Int
-  createdAt     DateTime          @default(now())
+  id           Int      @id @default(autoincrement())
+  entryId      Int
+  fileUrl      String
+  fileName     String
+  originalName String
+  mimeType     String
+  fileSize     Int
+  createdAt    DateTime @default(now())
 
-  entry         HomeroomBookEntry @relation(fields: [entryId], references: [id], onDelete: Cascade)
+  entry HomeroomBookEntry @relation(fields: [entryId], references: [id], onDelete: Cascade)
 
   @@index([entryId, createdAt])
   @@map("homeroom_book_attachments")
@@ -657,6 +663,72 @@ model AcademicEvent {
   academicYear   AcademicYear      @relation(fields: [academicYearId], references: [id])
 
   @@map("academic_events")
+}
+
+model CommitteeEvent {
+  id                    Int                   @id @default(autoincrement())
+  academicYearId        Int
+  code                  String
+  title                 String
+  description           String?
+  requesterDutyCode     String?
+  programCode           String?
+  requestedById         Int
+  status                CommitteeEventStatus  @default(DRAFT)
+  principalDecisionById Int?
+  principalDecisionAt   DateTime?
+  principalFeedback     String?
+  skNumber              String?
+  skIssuedAt            DateTime?
+  skIssuedById          Int?
+  skNotes               String?
+  startedAt             DateTime?
+  endedAt               DateTime?
+  createdAt             DateTime              @default(now())
+  updatedAt             DateTime              @updatedAt
+  academicYear          AcademicYear          @relation(fields: [academicYearId], references: [id], onDelete: Cascade)
+  requestedBy           User                  @relation("CommitteeRequestedBy", fields: [requestedById], references: [id], onDelete: Restrict)
+  principalDecisionBy   User?                 @relation("CommitteePrincipalDecisionBy", fields: [principalDecisionById], references: [id], onDelete: SetNull)
+  skIssuedBy            User?                 @relation("CommitteeSkIssuedBy", fields: [skIssuedById], references: [id], onDelete: SetNull)
+  assignments           CommitteeAssignment[]
+
+  @@unique([academicYearId, code])
+  @@index([academicYearId, status])
+  @@index([requestedById, status])
+  @@map("committee_events")
+}
+
+model CommitteeAssignment {
+  id               Int                     @id @default(autoincrement())
+  committeeEventId Int
+  userId           Int
+  assignmentRole   String
+  notes            String?
+  isActive         Boolean                 @default(true)
+  createdById      Int
+  createdAt        DateTime                @default(now())
+  updatedAt        DateTime                @updatedAt
+  committeeEvent   CommitteeEvent          @relation(fields: [committeeEventId], references: [id], onDelete: Cascade)
+  user             User                    @relation("CommitteeAssignmentUser", fields: [userId], references: [id], onDelete: Cascade)
+  createdBy        User                    @relation("CommitteeAssignmentCreator", fields: [createdById], references: [id], onDelete: Restrict)
+  featureGrants    CommitteeFeatureGrant[]
+
+  @@unique([committeeEventId, userId])
+  @@index([userId, isActive])
+  @@map("committee_assignments")
+}
+
+model CommitteeFeatureGrant {
+  id           Int                  @id @default(autoincrement())
+  assignmentId Int
+  featureCode  CommitteeFeatureCode
+  createdAt    DateTime             @default(now())
+  updatedAt    DateTime             @updatedAt
+  assignment   CommitteeAssignment  @relation(fields: [assignmentId], references: [id], onDelete: Cascade)
+
+  @@unique([assignmentId, featureCode])
+  @@index([featureCode])
+  @@map("committee_feature_grants")
 }
 
 model Major {
@@ -2320,7 +2392,7 @@ model ExamPacket {
 }
 
 model ExamSchedule {
-  id                Int                    @id @default(autoincrement())
+  id                Int                        @id @default(autoincrement())
   classId           Int?
   jobVacancyId      Int?
   subjectId         Int?
@@ -2332,21 +2404,21 @@ model ExamSchedule {
   proctorId         Int?
   academicYearId    Int?
   token             String?
-  createdAt         DateTime               @default(now())
-  updatedAt         DateTime               @updatedAt
-  isActive          Boolean                @default(true)
+  createdAt         DateTime                   @default(now())
+  updatedAt         DateTime                   @updatedAt
+  isActive          Boolean                    @default(true)
   packetId          Int?
-  semester          Semester               @default(ODD)
+  semester          Semester                   @default(ODD)
   room              String?
   examType          String?
   proctoringReports ExamProctoringReport[]
-  academicYear      AcademicYear?          @relation(fields: [academicYearId], references: [id])
-  class             Class?                 @relation(fields: [classId], references: [id])
-  packet            ExamPacket?            @relation(fields: [packetId], references: [id])
-  proctor           User?                  @relation("ExamProctor", fields: [proctorId], references: [id])
-  programSession    ExamProgramSession?    @relation("ExamProgramSessionSchedules", fields: [sessionId], references: [id], onDelete: SetNull)
-  jobVacancy        JobVacancy?            @relation(fields: [jobVacancyId], references: [id], onDelete: Cascade)
-  subject           Subject?               @relation(fields: [subjectId], references: [id])
+  academicYear      AcademicYear?              @relation(fields: [academicYearId], references: [id])
+  class             Class?                     @relation(fields: [classId], references: [id])
+  packet            ExamPacket?                @relation(fields: [packetId], references: [id])
+  proctor           User?                      @relation("ExamProctor", fields: [proctorId], references: [id])
+  programSession    ExamProgramSession?        @relation("ExamProgramSessionSchedules", fields: [sessionId], references: [id], onDelete: SetNull)
+  jobVacancy        JobVacancy?                @relation(fields: [jobVacancyId], references: [id], onDelete: Cascade)
+  subject           Subject?                   @relation(fields: [subjectId], references: [id])
   sessions          StudentExamSession[]
   makeupAccesses    ExamScheduleMakeupAccess[]
 
@@ -2421,22 +2493,22 @@ model Notification {
 }
 
 model OsisElectionPeriod {
-  id              Int                     @id @default(autoincrement())
-  academicYearId  Int
-  title           String
-  description     String?
-  startAt         DateTime
-  endAt           DateTime
-  status          OsisElectionStatus      @default(DRAFT)
-  allowQuickCount Boolean                 @default(true)
-  createdById     Int
-  createdAt       DateTime                @default(now())
-  updatedAt       DateTime                @updatedAt
-  academicYear    AcademicYear            @relation(fields: [academicYearId], references: [id], onDelete: Cascade)
-  createdBy       User                    @relation("OsisElectionCreator", fields: [createdById], references: [id], onDelete: Cascade)
-  candidates      OsisElectionCandidate[]
-  managementPeriods OsisManagementPeriod[] @relation("OsisManagementPeriodElection")
-  votes           OsisElectionVote[]
+  id                Int                     @id @default(autoincrement())
+  academicYearId    Int
+  title             String
+  description       String?
+  startAt           DateTime
+  endAt             DateTime
+  status            OsisElectionStatus      @default(DRAFT)
+  allowQuickCount   Boolean                 @default(true)
+  createdById       Int
+  createdAt         DateTime                @default(now())
+  updatedAt         DateTime                @updatedAt
+  academicYear      AcademicYear            @relation(fields: [academicYearId], references: [id], onDelete: Cascade)
+  createdBy         User                    @relation("OsisElectionCreator", fields: [createdById], references: [id], onDelete: Cascade)
+  candidates        OsisElectionCandidate[]
+  managementPeriods OsisManagementPeriod[]  @relation("OsisManagementPeriodElection")
+  votes             OsisElectionVote[]
 
   @@index([academicYearId, status])
   @@map("osis_election_periods")
@@ -2479,7 +2551,7 @@ model OsisElectionVote {
 }
 
 model OsisManagementPeriod {
-  id               Int                     @id @default(autoincrement())
+  id               Int                  @id @default(autoincrement())
   academicYearId   Int
   electionPeriodId Int?
   title            String
@@ -2489,13 +2561,13 @@ model OsisManagementPeriod {
   transitionLabel  String?
   transitionAt     DateTime?
   transitionNotes  String?
-  status           OsisManagementStatus    @default(DRAFT)
+  status           OsisManagementStatus @default(DRAFT)
   createdById      Int
-  createdAt        DateTime                @default(now())
-  updatedAt        DateTime                @updatedAt
-  academicYear     AcademicYear            @relation(fields: [academicYearId], references: [id], onDelete: Cascade)
-  electionPeriod   OsisElectionPeriod?     @relation("OsisManagementPeriodElection", fields: [electionPeriodId], references: [id], onDelete: SetNull)
-  createdBy        User                    @relation("OsisManagementPeriodCreator", fields: [createdById], references: [id], onDelete: Cascade)
+  createdAt        DateTime             @default(now())
+  updatedAt        DateTime             @updatedAt
+  academicYear     AcademicYear         @relation(fields: [academicYearId], references: [id], onDelete: Cascade)
+  electionPeriod   OsisElectionPeriod?  @relation("OsisManagementPeriodElection", fields: [electionPeriodId], references: [id], onDelete: SetNull)
+  createdBy        User                 @relation("OsisManagementPeriodCreator", fields: [createdById], references: [id], onDelete: Cascade)
   divisions        OsisDivision[]
   positions        OsisPosition[]
   memberships      OsisMembership[]
@@ -2630,20 +2702,20 @@ model OsisAssessment {
 }
 
 model MobilePushDevice {
-  id            Int            @id @default(autoincrement())
-  userId        Int
-  expoPushToken String         @unique
-  platform      MobilePlatform @default(UNKNOWN)
-  deviceId      String?
-  deviceName    String?
-  appVersion    String?
-  updateChannel String?
+  id             Int            @id @default(autoincrement())
+  userId         Int
+  expoPushToken  String         @unique
+  platform       MobilePlatform @default(UNKNOWN)
+  deviceId       String?
+  deviceName     String?
+  appVersion     String?
+  updateChannel  String?
   runtimeVersion String?
-  isEnabled     Boolean        @default(true)
-  lastSeenAt    DateTime       @default(now())
-  createdAt     DateTime       @default(now())
-  updatedAt     DateTime       @updatedAt
-  user          User           @relation(fields: [userId], references: [id], onDelete: Cascade)
+  isEnabled      Boolean        @default(true)
+  lastSeenAt     DateTime       @default(now())
+  createdAt      DateTime       @default(now())
+  updatedAt      DateTime       @updatedAt
+  user           User           @relation(fields: [userId], references: [id], onDelete: Cascade)
 
   @@index([userId, isEnabled])
   @@index([platform, isEnabled, updateChannel, runtimeVersion])
@@ -2732,32 +2804,32 @@ enum ExamSittingLayoutCellType {
 
 model ExamSittingLayout {
   id            Int                     @id @default(autoincrement())
-  sittingId      Int                    @unique
-  rows           Int                    @default(1)
-  columns        Int                    @default(1)
-  notes          String?
-  generatedAt    DateTime?
-  generatedById  Int?
-  createdAt      DateTime               @default(now())
-  updatedAt      DateTime               @updatedAt
-  sitting        ExamSitting            @relation(fields: [sittingId], references: [id], onDelete: Cascade)
-  cells          ExamSittingLayoutCell[]
+  sittingId     Int                     @unique
+  rows          Int                     @default(1)
+  columns       Int                     @default(1)
+  notes         String?
+  generatedAt   DateTime?
+  generatedById Int?
+  createdAt     DateTime                @default(now())
+  updatedAt     DateTime                @updatedAt
+  sitting       ExamSitting             @relation(fields: [sittingId], references: [id], onDelete: Cascade)
+  cells         ExamSittingLayoutCell[]
 
   @@map("exam_sitting_layouts")
 }
 
 model ExamSittingLayoutCell {
   id          Int                       @id @default(autoincrement())
-  layoutId     Int
-  rowIndex     Int
-  columnIndex  Int
-  cellType     ExamSittingLayoutCellType @default(SEAT)
-  seatLabel    String?
-  studentId    Int?
-  notes        String?
-  createdAt    DateTime                  @default(now())
-  updatedAt    DateTime                  @updatedAt
-  layout       ExamSittingLayout         @relation(fields: [layoutId], references: [id], onDelete: Cascade)
+  layoutId    Int
+  rowIndex    Int
+  columnIndex Int
+  cellType    ExamSittingLayoutCellType @default(SEAT)
+  seatLabel   String?
+  studentId   Int?
+  notes       String?
+  createdAt   DateTime                  @default(now())
+  updatedAt   DateTime                  @updatedAt
+  layout      ExamSittingLayout         @relation(fields: [layoutId], references: [id], onDelete: Cascade)
 
   @@unique([layoutId, rowIndex, columnIndex])
   @@unique([layoutId, studentId])
@@ -2771,8 +2843,8 @@ enum ExamGeneratedCardStatus {
 }
 
 model ExamGeneratedCard {
-  id                       Int                     @id @default(autoincrement())
-  academicYearId           Int
+  id                      Int                     @id @default(autoincrement())
+  academicYearId          Int
   programCode             String
   semester                Semester
   studentId               Int
@@ -3048,6 +3120,25 @@ enum AdditionalDuty {
   SEKRETARIS_SARPRAS
   SEKRETARIS_HUMAS
   IT_CENTER
+}
+
+enum CommitteeEventStatus {
+  DRAFT
+  MENUNGGU_PERSETUJUAN_KEPSEK
+  DITOLAK_KEPSEK
+  MENUNGGU_SK_TU
+  AKTIF
+  SELESAI
+  ARSIP
+}
+
+enum CommitteeFeatureCode {
+  EXAM_PROGRAM
+  EXAM_SCHEDULE
+  EXAM_ROOMS
+  EXAM_PROCTOR
+  EXAM_LAYOUT
+  EXAM_CARD
 }
 
 enum CurriculumType {
@@ -3491,24 +3582,24 @@ model CandidateAdmission {
 }
 
 model JobApplicantProfile {
-  id                Int      @id @default(autoincrement())
-  userId            Int      @unique
-  headline          String?
-  phone             String?
-  email             String?
-  address           String?
-  educationLevel    String?
-  graduationYear    Int?
-  schoolName        String?
-  major             String?
+  id                 Int      @id @default(autoincrement())
+  userId             Int      @unique
+  headline           String?
+  phone              String?
+  email              String?
+  address            String?
+  educationLevel     String?
+  graduationYear     Int?
+  schoolName         String?
+  major              String?
   educationHistories Json?
-  skills            String?  @db.Text
-  experienceSummary String?  @db.Text
-  cvUrl             String?
-  portfolioUrl      String?
-  linkedinUrl       String?
-  createdAt         DateTime @default(now())
-  updatedAt         DateTime @updatedAt
+  skills             String?  @db.Text
+  experienceSummary  String?  @db.Text
+  cvUrl              String?
+  portfolioUrl       String?
+  linkedinUrl        String?
+  createdAt          DateTime @default(now())
+  updatedAt          DateTime @updatedAt
 
   user         User             @relation(fields: [userId], references: [id], onDelete: Cascade)
   applications JobApplication[]

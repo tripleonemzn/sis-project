@@ -4,6 +4,7 @@ import { authService } from '../../services/auth.service';
 import StaffAdministrationWorkspace from './StaffAdministrationWorkspace';
 import StaffFinanceWorkspace from './StaffFinanceWorkspace';
 import HeadTuWorkspace from './HeadTuWorkspace';
+import CommitteeHeadTuPage from './CommitteeHeadTuPage';
 import InventoryHubPage from '../teacher/wakasek/sarpras/InventoryHubPage';
 import { InventoryDetailPage } from '../teacher/wakasek/sarpras/InventoryDetailPage';
 import StudentOsisElectionPage from '../student/StudentOsisElectionPage';
@@ -39,6 +40,10 @@ export const StaffDashboard = () => {
 
   if (location.pathname.startsWith('/staff/profile')) {
     return <UserProfilePage />;
+  }
+
+  if (location.pathname.startsWith('/staff/head-tu/committees')) {
+    return <CommitteeHeadTuPage />;
   }
 
   if (isLoading && !currentUser) {

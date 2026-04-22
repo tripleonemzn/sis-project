@@ -398,9 +398,14 @@ function applyPlacementPlansToDraft(params: {
   };
 }
 
-export default function ExamRoomLayoutManagementPage() {
+type ExamRoomLayoutManagementPageProps = {
+  forcedProgramCode?: string | null;
+};
+
+export default function ExamRoomLayoutManagementPage({ forcedProgramCode }: ExamRoomLayoutManagementPageProps) {
   const { data: activeAcademicYear, isLoading: loadingActiveAcademicYear } = useActiveAcademicYear();
   const selectedAcademicYear = activeAcademicYear?.id ? String(activeAcademicYear.id) : '';
+  const normalizedForcedProgramCode = String(forcedProgramCode || '').trim().toUpperCase();
   const [programs, setPrograms] = useState<ExamProgram[]>([]);
   const [activeProgramCode, setActiveProgramCode] = useState('');
   const [sittings, setSittings] = useState<SittingRow[]>([]);
@@ -426,9 +431,14 @@ export default function ExamRoomLayoutManagementPage() {
   const visiblePrograms = useMemo(
     () =>
       programs
-        .filter((program) => Boolean(program.isActive) && !isNonScheduledExamProgram(program))
+        .filter(
+          (program) =>
+            Boolean(program.isActive) &&
+            !isNonScheduledExamProgram(program) &&
+            (!normalizedForcedProgramCode || String(program.code || '').trim().toUpperCase() === normalizedForcedProgramCode),
+        )
         .sort((a, b) => a.order - b.order || a.label.localeCompare(b.label, 'id-ID')),
-    [programs],
+    [normalizedForcedProgramCode, programs],
   );
 
   const selectedSitting = useMemo(
@@ -522,11 +532,16 @@ export default function ExamRoomLayoutManagementPage() {
       });
       const nextPrograms = response.data?.programs || [];
       const scheduledPrograms = nextPrograms.filter((program) => !isNonScheduledExamProgram(program));
+      const scopedPrograms = normalizedForcedProgramCode
+        ? scheduledPrograms.filter((program) => String(program.code || '').trim().toUpperCase() === normalizedForcedProgramCode)
+        : scheduledPrograms;
       setPrograms(nextPrograms);
       setActiveProgramCode((previous) =>
-        scheduledPrograms.some((program) => program.code === previous)
-          ? previous
-          : scheduledPrograms[0]?.code || '',
+        scopedPrograms.some((program) => program.code === normalizedForcedProgramCode)
+          ? normalizedForcedProgramCode
+          : scopedPrograms.some((program) => program.code === previous)
+            ? previous
+            : scopedPrograms[0]?.code || '',
       );
     } catch (error) {
       console.error(error);
@@ -534,7 +549,7 @@ export default function ExamRoomLayoutManagementPage() {
       setActiveProgramCode('');
       toast.error('Gagal memuat program ujian.');
     }
-  }, [selectedAcademicYear]);
+  }, [normalizedForcedProgramCode, selectedAcademicYear]);
 
   const fetchSittings = useCallback(async () => {
     if (!selectedAcademicYear || !activeProgramCode) {

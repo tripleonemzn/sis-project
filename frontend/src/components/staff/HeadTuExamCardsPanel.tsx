@@ -543,10 +543,15 @@ type ExamCardsPanelOwner = 'HEAD_TU' | 'CURRICULUM';
 
 type HeadTuExamCardsPanelProps = {
   ownerMode?: ExamCardsPanelOwner;
+  forcedProgramCode?: string | null;
 };
 
-export function HeadTuExamCardsPanel({ ownerMode = 'HEAD_TU' }: HeadTuExamCardsPanelProps) {
+export function HeadTuExamCardsPanel({
+  ownerMode = 'HEAD_TU',
+  forcedProgramCode,
+}: HeadTuExamCardsPanelProps) {
   const queryClient = useQueryClient();
+  const normalizedForcedProgramCode = String(forcedProgramCode || '').trim().toUpperCase();
   const [activeProgramCode, setActiveProgramCode] = useState('');
   const [selectedSemester, setSelectedSemester] = useState<ExamCardSemester>('ODD');
   const [search, setSearch] = useState('');
@@ -575,9 +580,14 @@ export function HeadTuExamCardsPanel({ ownerMode = 'HEAD_TU' }: HeadTuExamCardsP
   const visiblePrograms = useMemo(
     () =>
       (programsQuery.data?.data?.programs || [])
-        .filter((program: ExamProgram) => Boolean(program.isActive) && !isNonScheduledExamProgram(program))
+        .filter(
+          (program: ExamProgram) =>
+            Boolean(program.isActive) &&
+            !isNonScheduledExamProgram(program) &&
+            (!normalizedForcedProgramCode || String(program.code || '').trim().toUpperCase() === normalizedForcedProgramCode),
+        )
         .sort((a: ExamProgram, b: ExamProgram) => a.order - b.order || a.label.localeCompare(b.label, 'id-ID')),
-    [programsQuery.data?.data?.programs],
+    [normalizedForcedProgramCode, programsQuery.data?.data?.programs],
   );
 
   const activeProgram = useMemo(
@@ -596,9 +606,13 @@ export function HeadTuExamCardsPanel({ ownerMode = 'HEAD_TU' }: HeadTuExamCardsP
       return;
     }
     setActiveProgramCode((current) =>
-      visiblePrograms.some((program) => program.code === current) ? current : visiblePrograms[0].code,
+      visiblePrograms.some((program) => program.code === normalizedForcedProgramCode)
+        ? normalizedForcedProgramCode
+        : visiblePrograms.some((program) => program.code === current)
+          ? current
+          : visiblePrograms[0].code,
     );
-  }, [visiblePrograms]);
+  }, [normalizedForcedProgramCode, visiblePrograms]);
 
   useEffect(() => {
     if (activeProgram?.fixedSemester) {
