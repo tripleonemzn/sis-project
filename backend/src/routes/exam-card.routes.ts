@@ -12,7 +12,7 @@ const router = Router();
 router.use(authMiddleware);
 
 router.get('/my', roleMiddleware(['STUDENT']), listMyGeneratedExamCards);
-router.get('/', roleMiddleware(['STAFF', 'ADMIN']), getHeadTuExamCardOverview);
-router.post('/generate', roleMiddleware(['STAFF', 'ADMIN']), generateExamCards);
+router.get('/', roleMiddleware(['TEACHER', 'ADMIN']), getHeadTuExamCardOverview);
+router.post('/generate', roleMiddleware(['TEACHER', 'ADMIN']), generateExamCards);
 
 export default router;
