@@ -3,6 +3,7 @@ import bcrypt from 'bcryptjs';
 import crypto from 'crypto';
 import prisma from '../utils/prisma';
 import { ApiError, ApiResponse, asyncHandler } from '../utils/api';
+import { resolvePublicAppBaseUrl } from '../utils/publicAppBaseUrl';
 import { generateToken } from '../middleware/auth';
 import { z } from 'zod';
 import { getNisnValidationMessage, normalizeNisnInput } from '../utils/nisn';
@@ -37,6 +38,14 @@ const PASSWORD_RESET_REQUEST_COOLDOWN_MS = 60 * 1000;
 const PASSWORD_RESET_SUCCESS_MESSAGE =
   'Jika data akun cocok, link reset password sudah dikirim ke email terdaftar. Periksa inbox atau folder spam.';
 const passwordResetRequestCooldown = new Map<string, number>();
+
+function getFirstHeaderValue(value: string | string[] | undefined): string {
+  const rawValue = Array.isArray(value) ? value[0] : value;
+  return String(rawValue || '')
+    .split(',')
+    .map((item) => item.trim())
+    .find((item) => item.length > 0) || '';
+}
 
 const optionalEmailSchema = z
   .string()
@@ -125,36 +134,6 @@ function escapeHtml(value: string): string {
     .replace(/>/g, '&gt;')
     .replace(/"/g, '&quot;')
     .replace(/'/g, '&#39;');
-}
-
-function getFirstHeaderValue(value: string | string[] | undefined): string {
-  const rawValue = Array.isArray(value) ? value[0] : value;
-  return String(rawValue || '')
-    .split(',')
-    .map((item) => item.trim())
-    .find((item) => item.length > 0) || '';
-}
-
-function resolvePublicAppBaseUrl(req: Request): string {
-  const configuredBaseUrl = String(
-    process.env.APP_BASE_URL || process.env.PUBLIC_APP_URL || process.env.FRONTEND_BASE_URL || '',
-  ).trim();
-
-  if (configuredBaseUrl) {
-    const normalized =
-      /^https?:\/\//i.test(configuredBaseUrl) ? configuredBaseUrl : `https://${configuredBaseUrl}`;
-    return normalized.replace(/\/+$/, '');
-  }
-
-  const forwardedProto = getFirstHeaderValue(req.headers['x-forwarded-proto']);
-  const forwardedHost = getFirstHeaderValue(req.headers['x-forwarded-host']);
-  const host = forwardedHost || getFirstHeaderValue(req.headers.host);
-  if (host) {
-    const protocol = forwardedProto || req.protocol || 'https';
-    return `${protocol}://${host}`.replace(/\/+$/, '');
-  }
-
-  return 'https://siskgb2.id';
 }
 
 function resolvePasswordResetSenderMailbox(): string {

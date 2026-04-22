@@ -31,6 +31,7 @@ import {
     normalizeExamProgramCode,
     type ExamEligibilityStatus,
 } from '../services/examEligibility.service';
+import { resolvePublicAppBaseUrl } from '../utils/publicAppBaseUrl';
 
 const SCHOOL_NAME = 'SMKS Karya Guna Bhakti 2';
 const SCHOOL_LOGO_PATH = '/logo-kgb2.png';
@@ -223,36 +224,6 @@ function parseDateOnly(value: unknown): Date | null {
     if (!/^\d{4}-\d{2}-\d{2}$/.test(raw)) return null;
     const parsed = new Date(`${raw}T00:00:00.000Z`);
     return Number.isNaN(parsed.getTime()) ? null : parsed;
-}
-
-function getFirstHeaderValue(value: string | string[] | undefined): string {
-    const rawValue = Array.isArray(value) ? value[0] : value;
-    return String(rawValue || '')
-        .split(',')
-        .map((item) => item.trim())
-        .find((item) => item.length > 0) || '';
-}
-
-function resolvePublicAppBaseUrl(req: Request): string {
-    const configuredBaseUrl = String(
-        process.env.APP_BASE_URL || process.env.PUBLIC_APP_URL || process.env.FRONTEND_BASE_URL || '',
-    ).trim();
-
-    if (configuredBaseUrl) {
-        const normalized =
-            /^https?:\/\//i.test(configuredBaseUrl) ? configuredBaseUrl : `https://${configuredBaseUrl}`;
-        return normalized.replace(/\/+$/, '');
-    }
-
-    const forwardedProto = getFirstHeaderValue(req.headers['x-forwarded-proto']);
-    const forwardedHost = getFirstHeaderValue(req.headers['x-forwarded-host']);
-    const host = forwardedHost || getFirstHeaderValue(req.headers.host);
-    if (host) {
-        const protocol = forwardedProto || req.protocol || 'https';
-        return `${protocol}://${host}`.replace(/\/+$/, '');
-    }
-
-    return 'https://siskgb2.id';
 }
 
 function normalizeOptionalText(value: unknown): string | null {

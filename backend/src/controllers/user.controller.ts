@@ -13,6 +13,7 @@ import { getNisnValidationMessage, normalizeNisnInput } from '../utils/nisn';
 import { resolveHistoricalStudentScope } from '../utils/studentAcademicHistory';
 import { ensureAcademicYearArchiveReadAccess } from '../utils/academicYearArchiveAccess';
 import { resolveStandardSchoolDocumentHeaderSnapshot } from '../utils/standardSchoolDocumentHeader';
+import { resolvePublicAppBaseUrl } from '../utils/publicAppBaseUrl';
 import { clearMeCacheForUser } from './auth.controller';
 import { resyncStudentReligionReportDescriptions } from './grade.controller';
 import {
@@ -369,35 +370,6 @@ function buildProfilePrintFingerprint(user: any) {
   };
 
   return createHash('sha256').update(JSON.stringify(normalized)).digest('hex');
-}
-
-function getFirstProfileHeaderValue(value: string | string[] | undefined) {
-  const rawValue = Array.isArray(value) ? value[0] : value;
-  return String(rawValue || '')
-    .split(',')
-    .map((item) => item.trim())
-    .find((item) => item.length > 0) || '';
-}
-
-function resolveProfilePrintPublicBaseUrl(req: Request): string {
-  const configuredBaseUrl = String(
-    process.env.APP_BASE_URL || process.env.PUBLIC_APP_URL || process.env.FRONTEND_BASE_URL || '',
-  ).trim();
-
-  if (configuredBaseUrl) {
-    const normalized = /^https?:\/\//i.test(configuredBaseUrl) ? configuredBaseUrl : `https://${configuredBaseUrl}`;
-    return normalized.replace(/\/+$/, '');
-  }
-
-  const forwardedProto = getFirstProfileHeaderValue(req.headers['x-forwarded-proto']);
-  const forwardedHost = getFirstProfileHeaderValue(req.headers['x-forwarded-host']);
-  const host = forwardedHost || getFirstProfileHeaderValue(req.headers.host);
-  if (host) {
-    const protocol = forwardedProto || req.protocol || 'https';
-    return `${protocol}://${host}`.replace(/\/+$/, '');
-  }
-
-  return 'https://siskgb2.id';
 }
 
 type ProfilePrintVerificationTokenPayload = {
@@ -1128,7 +1100,7 @@ export const getMyProfilePrintSummary = asyncHandler(async (req: Request, res: R
     generatedAtMs: new Date(generatedAt).getTime(),
   });
   const verificationUrl = buildProfilePrintVerificationUrl(
-    resolveProfilePrintPublicBaseUrl(req),
+    resolvePublicAppBaseUrl(req),
     verificationToken,
   );
   const verificationQrDataUrl = await buildProfilePrintVerificationQrDataUrl(verificationUrl);
