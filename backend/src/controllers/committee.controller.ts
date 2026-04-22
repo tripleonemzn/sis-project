@@ -94,6 +94,12 @@ const COMMITTEE_ASSIGNMENT_MEMBER_TYPE_DEFINITIONS = [
     featureGrantEligible: false,
   },
   {
+    code: 'PRINCIPAL',
+    label: 'Kepala Sekolah',
+    memberType: CommitteeAssignmentMemberType.INTERNAL_USER,
+    featureGrantEligible: false,
+  },
+  {
     code: 'EXTERNAL',
     label: 'Pembina Eksternal',
     memberType: CommitteeAssignmentMemberType.EXTERNAL_MEMBER,
@@ -364,6 +370,9 @@ function normalizeCommitteeMemberTypeLabel(assignment: CommitteeAssignmentWithDe
   if (assignment.memberType === CommitteeAssignmentMemberType.EXTERNAL_MEMBER) {
     return 'Pembina Eksternal';
   }
+  if (assignment.user?.role === 'PRINCIPAL') {
+    return 'Kepala Sekolah';
+  }
   if (assignment.user?.role === 'STAFF') {
     return 'Staff TU';
   }
@@ -404,8 +413,8 @@ async function getCommitteeEligibleInternalMember(userId: number) {
     throw new ApiError(404, 'Anggota panitia tidak ditemukan.');
   }
 
-  if (!['TEACHER', 'STAFF'].includes(member.role)) {
-    throw new ApiError(400, 'Anggota panitia hanya dapat dipilih dari guru atau staff TU.');
+  if (!['TEACHER', 'STAFF', 'PRINCIPAL'].includes(member.role)) {
+    throw new ApiError(400, 'Anggota panitia hanya dapat dipilih dari guru, kepala sekolah, atau staff TU.');
   }
 
   return member;

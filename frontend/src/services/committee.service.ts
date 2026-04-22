@@ -18,7 +18,7 @@ export type CommitteeFeatureCode =
   | 'EXAM_CARD';
 
 export type CommitteeAssignmentMemberType = 'INTERNAL_USER' | 'EXTERNAL_MEMBER';
-export type CommitteeAssignmentMemberKindCode = 'TEACHER' | 'STAFF' | 'EXTERNAL';
+export type CommitteeAssignmentMemberKindCode = 'TEACHER' | 'STAFF' | 'PRINCIPAL' | 'EXTERNAL';
 
 export interface CommitteeFeatureDefinition {
   code: CommitteeFeatureCode;

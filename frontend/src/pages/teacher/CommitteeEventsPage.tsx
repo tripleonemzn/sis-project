@@ -71,6 +71,12 @@ const DEFAULT_ASSIGNMENT_MEMBER_TYPES = [
     featureGrantEligible: false,
   },
   {
+    code: 'PRINCIPAL',
+    label: 'Kepala Sekolah',
+    memberType: 'INTERNAL_USER',
+    featureGrantEligible: false,
+  },
+  {
     code: 'EXTERNAL',
     label: 'Pembina Eksternal',
     memberType: 'EXTERNAL_MEMBER',
@@ -123,7 +129,29 @@ function deriveAssignmentMemberKind(
   assignment: CommitteeEventDetail['assignments'][number],
 ): CommitteeAssignmentMemberKindCode {
   if (assignment.memberType === 'EXTERNAL_MEMBER') return 'EXTERNAL';
+  if (assignment.user?.role === 'PRINCIPAL') return 'PRINCIPAL';
   return assignment.user?.role === 'STAFF' ? 'STAFF' : 'TEACHER';
+}
+
+function getInternalMemberFieldCopy(memberKind: CommitteeAssignmentMemberKindCode) {
+  if (memberKind === 'STAFF') {
+    return {
+      label: 'Staff TU',
+      placeholder: 'Pilih staff TU',
+    };
+  }
+
+  if (memberKind === 'PRINCIPAL') {
+    return {
+      label: 'Kepala Sekolah',
+      placeholder: 'Pilih kepala sekolah',
+    };
+  }
+
+  return {
+    label: 'Guru',
+    placeholder: 'Pilih guru',
+  };
 }
 
 function hasCurriculumCommitteeDuty(additionalDuties?: string[] | null) {
@@ -280,6 +308,7 @@ function CommitteeAssignmentModal({
   featureDefinitions,
   teachers,
   staffs,
+  principals,
   saving,
   deleting,
   onSave,
@@ -301,6 +330,7 @@ function CommitteeAssignmentModal({
   featureDefinitions: CommitteeEventDetail['availableFeatures'];
   teachers: Array<{ id: number; name: string }>;
   staffs: Array<{ id: number; name: string }>;
+  principals: Array<{ id: number; name: string }>;
   saving: boolean;
   deleting: boolean;
   onSave: () => void;
@@ -310,7 +340,13 @@ function CommitteeAssignmentModal({
 }) {
   const activeMemberType = memberTypes.find((item) => item.code === assignmentForm.memberKind) || memberTypes[0];
   const isInternalMember = activeMemberType.memberType === 'INTERNAL_USER';
-  const internalMemberOptions = assignmentForm.memberKind === 'STAFF' ? staffs : teachers;
+  const internalMemberOptions =
+    assignmentForm.memberKind === 'STAFF'
+      ? staffs
+      : assignmentForm.memberKind === 'PRINCIPAL'
+        ? principals
+        : teachers;
+  const internalMemberFieldCopy = getInternalMemberFieldCopy(assignmentForm.memberKind);
   const supportsWorkspaceGrant = assignmentForm.memberKind === 'TEACHER';
   const canSaveAssignment =
     Boolean(detail?.access.canManageAssignments) &&
@@ -397,7 +433,7 @@ function CommitteeAssignmentModal({
                     {isInternalMember ? (
                       <div>
                         <label htmlFor={`committee-member-user-${event.id}`} className="mb-1 block text-sm font-medium text-slate-700">
-                          {assignmentForm.memberKind === 'STAFF' ? 'Staff TU' : 'Guru'}
+                          {internalMemberFieldCopy.label}
                         </label>
                         <select
                           id={`committee-member-user-${event.id}`}
@@ -408,7 +444,7 @@ function CommitteeAssignmentModal({
                           }
                           className="w-full rounded-xl border border-slate-300 bg-white px-3 py-2.5 text-sm focus:border-blue-500 focus:outline-none"
                         >
-                          <option value="">{assignmentForm.memberKind === 'STAFF' ? 'Pilih staff TU' : 'Pilih guru'}</option>
+                          <option value="">{internalMemberFieldCopy.placeholder}</option>
                           {internalMemberOptions.map((member) => (
                             <option key={`${event.id}-${member.id}`} value={member.id}>
                               {member.name}
@@ -539,8 +575,8 @@ function CommitteeAssignmentModal({
                       )
                     ) : (
                       <div className="mt-4 rounded-xl border border-slate-200 bg-white px-4 py-3 text-sm text-slate-600">
-                        Workspace ujian saat ini hanya bisa diusulkan untuk akun guru internal. Staff TU dan pembina eksternal tetap
-                        bisa dicatat sebagai anggota panitia tanpa menu workspace.
+                        Workspace ujian saat ini hanya bisa diusulkan untuk akun guru internal. Kepala Sekolah, Staff TU, dan
+                        pembina eksternal tetap bisa dicatat sebagai anggota panitia tanpa menu workspace.
                       </div>
                     )}
                   </div>
@@ -728,6 +764,13 @@ export default function CommitteeEventsPage() {
     staleTime: 5 * 60 * 1000,
   });
 
+  const principalQuery = useQuery({
+    queryKey: ['committee-principal-member-options'],
+    queryFn: () => userService.getUsers({ role: 'PRINCIPAL', limit: 100 }),
+    enabled: Boolean(managingEventId),
+    staleTime: 5 * 60 * 1000,
+  });
+
   const events = committeeQuery.data?.data?.items || [];
   const requestedEvents = events.filter((event) => event.isRequester);
   const assignedActiveEvents = events.filter(
@@ -740,6 +783,7 @@ export default function CommitteeEventsPage() {
   const featureDefinitions = committeeMetaQuery.data?.data?.featureDefinitions || [];
   const teachers = teacherQuery.data?.data || [];
   const staffs = staffQuery.data?.data || [];
+  const principals = principalQuery.data?.data || [];
   const examPrograms = useMemo(
     () => (examProgramsQuery.data?.data?.programs || []).filter((program) => program.isActive),
     [examProgramsQuery.data?.data?.programs],
@@ -1205,6 +1249,7 @@ export default function CommitteeEventsPage() {
           featureDefinitions={featureDefinitions}
           teachers={teachers}
           staffs={staffs}
+          principals={principals}
           saving={assignmentMutation.isPending}
           deleting={deleteAssignmentMutation.isPending}
           onSave={() => assignmentMutation.mutate()}

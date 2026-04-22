@@ -59,6 +59,12 @@ const DEFAULT_ASSIGNMENT_MEMBER_TYPES = [
     featureGrantEligible: false,
   },
   {
+    code: 'PRINCIPAL',
+    label: 'Kepala Sekolah',
+    memberType: 'INTERNAL_USER',
+    featureGrantEligible: false,
+  },
+  {
     code: 'EXTERNAL',
     label: 'Pembina Eksternal',
     memberType: 'EXTERNAL_MEMBER',
@@ -89,7 +95,31 @@ function deriveAssignmentMemberKind(
   if (assignment.memberType === 'EXTERNAL_MEMBER') {
     return 'EXTERNAL';
   }
+  if (assignment.user?.role === 'PRINCIPAL') {
+    return 'PRINCIPAL';
+  }
   return assignment.user?.role === 'STAFF' ? 'STAFF' : 'TEACHER';
+}
+
+function getInternalMemberFieldCopy(memberKind: CommitteeAssignmentMemberKindCode) {
+  if (memberKind === 'STAFF') {
+    return {
+      label: 'Staff TU',
+      placeholder: 'Pilih staff TU',
+    };
+  }
+
+  if (memberKind === 'PRINCIPAL') {
+    return {
+      label: 'Kepala Sekolah',
+      placeholder: 'Pilih kepala sekolah',
+    };
+  }
+
+  return {
+    label: 'Guru',
+    placeholder: 'Pilih guru',
+  };
 }
 
 function QueueCard({
@@ -149,12 +179,20 @@ export default function CommitteeHeadTuPage() {
     staleTime: 5 * 60 * 1000,
   });
 
+  const principalQuery = useQuery({
+    queryKey: ['head-tu-committee-principals'],
+    queryFn: () => userService.getUsers({ role: 'PRINCIPAL', limit: 100 }),
+    enabled: Boolean(selectedEventId),
+    staleTime: 5 * 60 * 1000,
+  });
+
   const items = listQuery.data?.data?.items || [];
   const detail = detailQuery.data?.data?.item || null;
   const featureDefinitions = metaQuery.data?.data?.featureDefinitions || [];
   const assignmentMemberTypes = metaQuery.data?.data?.assignmentMemberTypes || DEFAULT_ASSIGNMENT_MEMBER_TYPES;
   const teachers = teacherQuery.data?.data || [];
   const staffs = staffQuery.data?.data || [];
+  const principals = principalQuery.data?.data || [];
 
   const activeMemberType = useMemo(
     () => assignmentMemberTypes.find((item) => item.code === assignmentForm.memberKind) || assignmentMemberTypes[0],
@@ -165,8 +203,16 @@ export default function CommitteeHeadTuPage() {
     if (assignmentForm.memberKind === 'STAFF') {
       return staffs;
     }
+    if (assignmentForm.memberKind === 'PRINCIPAL') {
+      return principals;
+    }
     return teachers;
-  }, [assignmentForm.memberKind, staffs, teachers]);
+  }, [assignmentForm.memberKind, principals, staffs, teachers]);
+
+  const internalMemberFieldCopy = useMemo(
+    () => getInternalMemberFieldCopy(assignmentForm.memberKind),
+    [assignmentForm.memberKind],
+  );
 
   useEffect(() => {
     if (selectedEventId && items.some((item) => item.id === selectedEventId)) return;
@@ -537,7 +583,7 @@ export default function CommitteeHeadTuPage() {
                       {activeMemberType.memberType === 'INTERNAL_USER' ? (
                         <div>
                           <label htmlFor="committeeMemberUser" className="mb-1 block text-sm font-medium text-slate-700">
-                            {assignmentForm.memberKind === 'STAFF' ? 'Staff TU' : 'Guru'}
+                            {internalMemberFieldCopy.label}
                           </label>
                           <select
                             id="committeeMemberUser"
@@ -546,7 +592,7 @@ export default function CommitteeHeadTuPage() {
                             onChange={(event) => setAssignmentForm((current) => ({ ...current, userId: event.target.value }))}
                             className="w-full rounded-xl border border-slate-300 px-3 py-2.5 text-sm focus:border-blue-500 focus:outline-none"
                           >
-                            <option value="">{assignmentForm.memberKind === 'STAFF' ? 'Pilih staff TU' : 'Pilih guru'}</option>
+                            <option value="">{internalMemberFieldCopy.placeholder}</option>
                             {internalMemberOptions.map((member) => (
                               <option key={member.id} value={member.id}>
                                 {member.name}
@@ -626,7 +672,8 @@ export default function CommitteeHeadTuPage() {
                     <div className="rounded-2xl border border-slate-200 bg-slate-50/70 p-4">
                       <div className="text-sm font-semibold text-slate-900">Feature Grant Workspace</div>
                       <p className="mt-1 text-xs leading-5 text-slate-500">
-                        Hanya guru internal yang bisa menerima menu workspace. Anggota lain tetap tercatat sebagai bagian panitia.
+                        Hanya guru internal yang bisa menerima menu workspace. Kepala Sekolah, Staff TU, dan anggota eksternal
+                        tetap tercatat sebagai bagian panitia tanpa menu workspace.
                       </p>
 
                       {assignmentForm.memberKind !== 'TEACHER' ? (
