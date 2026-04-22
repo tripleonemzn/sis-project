@@ -222,16 +222,30 @@ function EventCard({
         {event.membersPreview.length === 0 ? (
           <div className="mt-2 text-sm text-slate-500">Draft ini belum memiliki anggota panitia.</div>
         ) : (
-          <div className="mt-3 grid gap-2 md:grid-cols-2">
-            {event.membersPreview.map((member) => (
-              <div key={`committee-member-preview-${member.id}`} className="rounded-xl border border-white bg-white px-3 py-3">
-                <div className="text-sm font-semibold text-slate-900">{member.memberLabel}</div>
-                <div className="mt-1 text-xs text-slate-500">
-                  {formatCommitteeMemberMeta(member.memberTypeLabel, member.memberDetail) || member.assignmentRole}
-                </div>
-                <div className="mt-2 text-xs font-medium text-slate-600">{member.assignmentRole}</div>
-              </div>
-            ))}
+          <div className="mt-3 overflow-hidden rounded-2xl border border-slate-200 bg-white">
+            <div className="overflow-x-auto">
+              <table className="min-w-full divide-y divide-slate-200 text-sm">
+                <thead className="bg-slate-50 text-left text-xs uppercase tracking-wide text-slate-500">
+                  <tr>
+                    <th className="px-4 py-3 font-semibold">Anggota</th>
+                    <th className="px-4 py-3 font-semibold">Jenis</th>
+                    <th className="px-4 py-3 font-semibold">Peran</th>
+                  </tr>
+                </thead>
+                <tbody className="divide-y divide-slate-100">
+                  {event.membersPreview.map((member) => (
+                    <tr key={`committee-member-preview-${member.id}`} className="align-top">
+                      <td className="px-4 py-4">
+                        <div className="font-semibold text-slate-900">{member.memberLabel}</div>
+                        <div className="mt-1 text-xs text-slate-500">{member.memberDetail || '-'}</div>
+                      </td>
+                      <td className="px-4 py-4 text-slate-600">{member.memberTypeLabel}</td>
+                      <td className="px-4 py-4 text-slate-700">{member.assignmentRole}</td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            </div>
           </div>
         )}
       </div>
