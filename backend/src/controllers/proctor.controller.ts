@@ -928,10 +928,11 @@ function buildProctorReportMatchScore(
         });
     const hasTemporalAlignment = scheduleMatched || exactScheduleWindowMatch || exactSnapshotWindowMatch;
 
+    // Room/proctor is the only stable anchor when one class schedule is split into multiple seating rooms.
+    // Relying on scheduleId + class overlap alone can make one submitted report leak into sibling rooms.
     const hasStrongScopeMatch =
         exactRoomMatch ||
-        (exactProctorMatch && (classOverlapCount > 0 || exactSubjectMatch || scheduleMatched)) ||
-        (scheduleMatched && classOverlapCount > 0 && exactSubjectMatch);
+        (exactProctorMatch && (classOverlapCount > 0 || exactSubjectMatch || scheduleMatched));
     if (!hasStrongScopeMatch || !hasTemporalAlignment || !sessionMatched) {
         return -1;
     }
