@@ -1734,39 +1734,39 @@ export const TeacherGradesPage = () => {
       {/* Table */}
 	      {selectedAcademicYear && selectedAssignment && selectedComponent && (
           <div className="bg-white rounded-xl shadow-sm border border-gray-100 p-6">
-              <div className="overflow-x-auto">
-                  <table className="w-full border-collapse">
+              <div className="relative overflow-x-auto">
+                  <table className="w-full min-w-max border-separate border-spacing-0">
                       <thead>
                           <tr className="bg-gray-50 border-b border-gray-200">
-                              <th className="sticky top-0 z-20 bg-gray-50 px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">No</th>
-                              <th className="sticky top-0 z-20 bg-gray-50 px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">NISN</th>
-                              <th className="sticky top-0 z-20 bg-gray-50 px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Nama Siswa</th>
+                              <th className="sticky top-24 z-20 border-b border-gray-200 bg-gray-50 px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">No</th>
+                              <th className="sticky top-24 z-20 border-b border-gray-200 bg-gray-50 px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">NISN</th>
+                              <th className="sticky top-24 z-20 border-b border-gray-200 bg-gray-50 px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Nama Siswa</th>
                               
                               {isFormatifComponent ? (
                                   <>
-                                      <th className="sticky top-0 z-20 bg-gray-50 px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Entri Formatif (Dinamis)</th>
-                                      <th className="sticky top-0 z-20 bg-blue-50 px-6 py-3 text-center text-xs font-medium text-gray-500 uppercase tracking-wider">x̄ Referensi {midtermComponentLabel}</th>
-                                      <th className="sticky top-0 z-20 bg-green-50 px-6 py-3 text-center text-xs font-medium text-gray-500 uppercase tracking-wider">x̄ Referensi {finalComponentLabel}</th>
+                                      <th className="sticky top-24 z-20 border-b border-gray-200 bg-gray-50 px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Entri Formatif (Dinamis)</th>
+                                      <th className="sticky top-24 z-20 border-b border-gray-200 bg-blue-50 px-6 py-3 text-center text-xs font-medium text-gray-500 uppercase tracking-wider">x̄ Referensi {midtermComponentLabel}</th>
+                                      <th className="sticky top-24 z-20 border-b border-gray-200 bg-green-50 px-6 py-3 text-center text-xs font-medium text-gray-500 uppercase tracking-wider">x̄ Referensi {finalComponentLabel}</th>
                                   </>
                               ) : isMidtermComponent ? (
                                   <>
-                                      <th className="sticky top-0 z-20 bg-blue-50 px-6 py-3 text-center text-xs font-medium text-gray-500 uppercase tracking-wider">x̄ Referensi {formativeComponentLabel}</th>
-                                      <th className="sticky top-0 z-20 bg-gray-50 px-6 py-3 text-center text-xs font-medium text-gray-500 uppercase tracking-wider">Nilai {midtermComponentLabel}</th>
-                                      <th className="sticky top-0 z-20 bg-yellow-50 px-6 py-3 text-center text-xs font-medium text-gray-500 uppercase tracking-wider">Nilai Rapor {midtermComponentLabel}</th>
+                                      <th className="sticky top-24 z-20 border-b border-gray-200 bg-blue-50 px-6 py-3 text-center text-xs font-medium text-gray-500 uppercase tracking-wider">x̄ Referensi {formativeComponentLabel}</th>
+                                      <th className="sticky top-24 z-20 border-b border-gray-200 bg-gray-50 px-6 py-3 text-center text-xs font-medium text-gray-500 uppercase tracking-wider">Nilai {midtermComponentLabel}</th>
+                                      <th className="sticky top-24 z-20 border-b border-gray-200 bg-yellow-50 px-6 py-3 text-center text-xs font-medium text-gray-500 uppercase tracking-wider">Nilai Rapor {midtermComponentLabel}</th>
                                   </>
                               ) : isFinalComponent ? (
                                   <>
-                                      <th className="sticky top-0 z-20 bg-blue-50 px-6 py-3 text-center text-xs font-medium text-gray-500 uppercase tracking-wider">x̄ Referensi {formativeComponentLabel}</th>
-                                      <th className="sticky top-0 z-20 bg-gray-50 px-6 py-3 text-center text-xs font-medium text-gray-500 uppercase tracking-wider">Nilai {midtermComponentLabel}</th>
-                                      <th className="sticky top-0 z-20 bg-gray-50 px-6 py-3 text-center text-xs font-medium text-gray-500 uppercase tracking-wider">Nilai {finalComponentLabel}</th>
-                                      <th className="sticky top-0 z-20 bg-yellow-50 px-6 py-3 text-center text-xs font-medium text-gray-500 uppercase tracking-wider">Nilai Rapor {finalComponentLabel}</th>
-                                      <th className="sticky top-0 z-20 bg-gray-50 px-6 py-3 text-center text-xs font-medium text-gray-500 uppercase tracking-wider">Capaian Kompetensi</th>
+                                      <th className="sticky top-24 z-20 border-b border-gray-200 bg-blue-50 px-6 py-3 text-center text-xs font-medium text-gray-500 uppercase tracking-wider">x̄ Referensi {formativeComponentLabel}</th>
+                                      <th className="sticky top-24 z-20 border-b border-gray-200 bg-gray-50 px-6 py-3 text-center text-xs font-medium text-gray-500 uppercase tracking-wider">Nilai {midtermComponentLabel}</th>
+                                      <th className="sticky top-24 z-20 border-b border-gray-200 bg-gray-50 px-6 py-3 text-center text-xs font-medium text-gray-500 uppercase tracking-wider">Nilai {finalComponentLabel}</th>
+                                      <th className="sticky top-24 z-20 border-b border-gray-200 bg-yellow-50 px-6 py-3 text-center text-xs font-medium text-gray-500 uppercase tracking-wider">Nilai Rapor {finalComponentLabel}</th>
+                                      <th className="sticky top-24 z-20 border-b border-gray-200 bg-gray-50 px-6 py-3 text-center text-xs font-medium text-gray-500 uppercase tracking-wider">Capaian Kompetensi</th>
                                   </>
                               ) : (
-                                  <th className="sticky top-0 z-20 bg-gray-50 px-6 py-3 text-center text-xs font-medium text-gray-500 uppercase tracking-wider">Nilai</th>
+                                  <th className="sticky top-24 z-20 border-b border-gray-200 bg-gray-50 px-6 py-3 text-center text-xs font-medium text-gray-500 uppercase tracking-wider">Nilai</th>
                               )}
                               
-                              <th className="sticky top-0 z-20 bg-gray-50 px-6 py-3 text-center text-xs font-medium text-gray-500 uppercase tracking-wider">Status</th>
+                              <th className="sticky top-24 z-20 border-b border-gray-200 bg-gray-50 px-6 py-3 text-center text-xs font-medium text-gray-500 uppercase tracking-wider">Status</th>
                           </tr>
                       </thead>
                       <tbody className="bg-white divide-y divide-gray-200">
