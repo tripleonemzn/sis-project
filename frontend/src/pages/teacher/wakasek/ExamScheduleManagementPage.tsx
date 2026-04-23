@@ -31,6 +31,7 @@ import {
 } from '../../../lib/examQuestionSupportStatus';
 import { enhanceQuestionHtml } from '../../../utils/questionMedia';
 import { ExamStudentPreviewSurface, type ExamStudentPreviewQuestion } from '../../../components/teacher/exams/ExamStudentPreviewSurface';
+import { ExamPacketMediaAuditGuard } from '../../../components/teacher/exams/ExamPacketMediaAuditGuard';
 import ExamProgramFilterBar from '../../../components/teacher/exams/ExamProgramFilterBar';
 
 interface Subject {
@@ -2095,6 +2096,11 @@ const ExamScheduleManagementPage = ({ forcedProgramCode }: ExamScheduleManagemen
                   </div>
                 </div>
               </div>
+
+              <ExamPacketMediaAuditGuard
+                audit={reviewPacket?.mediaAudit}
+                contextLabel="paket terjadwal ini"
+              />
 
               {reviewLoading ? (
                 <div className="rounded-3xl border border-dashed border-slate-300 bg-slate-50 px-6 py-16 text-center text-sm text-slate-500">

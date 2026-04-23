@@ -44,6 +44,7 @@ import { teacherAssignmentService } from '../../../services/teacherAssignment.se
 import type { TeacherAssignment } from '../../../services/teacherAssignment.service';
 import api from '../../../services/api';
 import { QuestionBankModal } from '../../../components/teacher/exams/QuestionBankModal';
+import { ExamPacketMediaAuditGuard } from '../../../components/teacher/exams/ExamPacketMediaAuditGuard';
 import { ExamStudentPreviewSurface, type ExamStudentPreviewQuestion } from '../../../components/teacher/exams/ExamStudentPreviewSurface';
 import { ConfirmationModal } from '../../../components/common/ConfirmationModal';
 import type { UserWrite } from '../../../types/auth';
@@ -2449,12 +2450,25 @@ export const ExamEditorPage = () => {
             const response = isEditMode
                 ? await examService.updatePacket(parseInt(id!), payload)
                 : await examService.createPacket(payload);
+            const savedPacket = (response as { data?: ExamPacket } | undefined)?.data;
             const savedPacketId = Number(
                 (response as { data?: { id?: number }; id?: number } | undefined)?.data?.id ||
                     (response as { id?: number } | undefined)?.id ||
                     id ||
                     0,
             );
+            const savedMediaAudit = savedPacket?.mediaAudit;
+
+            if (savedMediaAudit) {
+                setLoadedPacket((current) =>
+                    current
+                        ? {
+                              ...current,
+                              mediaAudit: savedMediaAudit,
+                          }
+                        : current,
+                );
+            }
 
             if (isEditMode) {
                 toast.success(options?.successMessage || 'Paket ujian berhasil diperbarui');
@@ -2470,6 +2484,19 @@ export const ExamEditorPage = () => {
                         preferences: nextPreferences
                     });
                 }
+            }
+
+            if (savedMediaAudit?.missingOriginalCount) {
+                toast.error(
+                    `Audit media menemukan ${savedMediaAudit.missingOriginalCount} file gambar hilang. Rapikan paket ini sebelum dipakai siswa.`,
+                );
+            } else if (savedMediaAudit?.missingThumbnailCount) {
+                toast(
+                    `Audit media menemukan ${savedMediaAudit.missingThumbnailCount} thumbnail yang belum siap. Siswa tetap aman, tetapi media sebaiknya dirapikan.`,
+                    {
+                        icon: '⚠️',
+                    },
+                );
             }
 
             await queryClient.invalidateQueries({ queryKey: ['exam-packets'] });
@@ -3103,6 +3130,10 @@ export const ExamEditorPage = () => {
                         Lengkapi popup <span className="font-semibold">Informasi Ujian</span> sebelum final simpan paket.
                     </div>
                 )}
+                <ExamPacketMediaAuditGuard
+                    audit={loadedPacket?.mediaAudit}
+                    contextLabel="paket soal ini"
+                />
                 {activeQuestion ? (
                     <div className="exam-editor-modal bg-white rounded-xl shadow-sm border border-gray-200 overflow-hidden">
                         {/* Question Type & Settings Toolbar */}

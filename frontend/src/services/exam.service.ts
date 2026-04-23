@@ -209,6 +209,26 @@ export interface Question {
     } | null;
 }
 
+export interface ExamPacketMediaAuditIssue {
+    questionId: string;
+    questionNumber: number;
+    locationLabel: string;
+    sourceUrl: string;
+    missingOriginal: boolean;
+    missingThumbnail: boolean;
+}
+
+export interface ExamPacketMediaAudit {
+    status: 'OK' | 'WARNING' | 'BLOCKED';
+    checkedAt: string;
+    scannedQuestionCount: number;
+    referencedMediaCount: number;
+    issueCount: number;
+    missingOriginalCount: number;
+    missingThumbnailCount: number;
+    issues: ExamPacketMediaAuditIssue[];
+}
+
 export interface ExamPacket {
     id: number;
     title: string;
@@ -245,6 +265,7 @@ export interface ExamPacket {
         } | null;
     }>;
     questions?: Question[];
+    mediaAudit?: ExamPacketMediaAudit | null;
     _count?: {
         schedules: number;
     };

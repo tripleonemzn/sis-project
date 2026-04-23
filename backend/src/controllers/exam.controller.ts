@@ -27,6 +27,10 @@ import { createInAppNotification } from '../services/mobilePushNotification.serv
 import { assertCurriculumExamManagerAccess } from '../utils/examManagementAccess';
 import { writeAuditLog } from '../utils/auditLog';
 import {
+    auditExamPacketMedia,
+    invalidateExamPacketMediaAuditCache,
+} from '../utils/examPacketMediaAudit';
+import {
     EXAM_PROCTOR_TERMINATION_NOTIFICATION_TYPE,
     EXAM_PROCTOR_WARNING_NOTIFICATION_TYPE,
     parseExamProctorTerminationSignal,
@@ -7496,6 +7500,10 @@ export const getPacketById = asyncHandler(async (req: Request, res: Response) =>
     }
     const effectiveSubjectMap = await resolveEffectivePacketSubjectsForPackets([packet]);
     const effectiveSubject = effectiveSubjectMap.get(packet.id) || toPacketDisplaySubject(packet.subject) || packet.subject;
+    const mediaAudit = await auditExamPacketMedia({
+        packetId: packet.id,
+        questions: normalizeQuestionsPayload(packet.questions) || [],
+    });
     res.json(
         new ApiResponse(200, {
             ...packet,
@@ -7503,6 +7511,7 @@ export const getPacketById = asyncHandler(async (req: Request, res: Response) =>
             isCurriculumManaged: isCurriculumManagedPacketDescription(packet.description),
             subjectId: effectiveSubject?.id ?? packet.subjectId,
             subject: effectiveSubject,
+            mediaAudit,
         }),
     );
 });
@@ -7901,7 +7910,12 @@ export const createPacket = asyncHandler(async (req: Request, res: Response) => 
         }
     }
 
-    res.json(new ApiResponse(201, packet, 'Exam packet created successfully'));
+    const mediaAudit = await auditExamPacketMedia({
+        packetId: packet.id,
+        questions: normalizedQuestions || normalizeQuestionsPayload(packet.questions) || [],
+    });
+
+    res.json(new ApiResponse(201, { ...packet, mediaAudit }, 'Exam packet created successfully'));
 });
 
 export const updatePacket = asyncHandler(async (req: Request, res: Response) => {
@@ -8009,6 +8023,8 @@ export const updatePacket = asyncHandler(async (req: Request, res: Response) => 
         });
     }
 
+    invalidateExamPacketMediaAuditCache(packetId);
+
     const packet = await prisma.examPacket.update({
         where: { id: packetId },
         data: {
@@ -8027,6 +8043,11 @@ export const updatePacket = asyncHandler(async (req: Request, res: Response) => 
                 : normalizedPublishedQuestionCount,
             questions: normalizedQuestions || questions
         }
+    });
+
+    const mediaAudit = await auditExamPacketMedia({
+        packetId,
+        questions: normalizedQuestions || normalizeQuestionsPayload(packet.questions) || [],
     });
 
     const consolidation = await consolidateSessionSiblingSchedulesForPacket(packetId);
@@ -8065,7 +8086,7 @@ export const updatePacket = asyncHandler(async (req: Request, res: Response) => 
     invalidateStartExamScheduleCacheByPacket(packetId);
     invalidatePacketItemAnalysisCacheByPacket(packetId);
     invalidatePacketSubmissionsCacheByPacket(packetId);
-    res.json(new ApiResponse(200, packet, 'Exam packet updated successfully'));
+    res.json(new ApiResponse(200, { ...packet, mediaAudit }, 'Exam packet updated successfully'));
 });
 
 export const deletePacket = asyncHandler(async (req: Request, res: Response) => {
