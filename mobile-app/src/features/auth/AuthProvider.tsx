@@ -52,8 +52,11 @@ export function AuthProvider({ children }: PropsWithChildren) {
         maxAgeMs: CACHE_TTL_MS,
         maxEntriesPerPrefix: CACHE_MAX_SNAPSHOTS_PER_FEATURE,
       });
-      const token = await tokenStorage.getAccessToken();
-      if (!token) {
+      const [token, refreshToken] = await Promise.all([
+        tokenStorage.getAccessToken(),
+        tokenStorage.getRefreshToken(),
+      ]);
+      if (!token && !refreshToken) {
         setUser(null);
         return;
       }

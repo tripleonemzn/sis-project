@@ -80,8 +80,11 @@ async function requestSessionRefresh(): Promise<RefreshResult> {
   }
 
   refreshInFlight = (async () => {
-    const refreshToken = await tokenStorage.getRefreshToken();
-    if (!refreshToken) {
+    const [refreshToken, accessToken] = await Promise.all([
+      tokenStorage.getRefreshToken(),
+      tokenStorage.getAccessToken(),
+    ]);
+    if (!refreshToken && !accessToken) {
       return {
         accessToken: null,
         terminal: true,
@@ -89,19 +92,24 @@ async function requestSessionRefresh(): Promise<RefreshResult> {
     }
 
     try {
-      const response = await refreshClient.post<RefreshSessionResponse>('/auth/refresh', {
-        refreshToken,
+      const refreshResponse = await refreshClient.post<RefreshSessionResponse>('/auth/refresh', {
+        ...(refreshToken ? { refreshToken } : {}),
+        ...(accessToken ? { accessTokenFallback: accessToken } : {}),
       });
-      const accessToken = String(response.data?.data?.token || response.headers?.[ACCESS_TOKEN_HEADER] || '').trim();
-      const nextRefreshToken = String(response.data?.data?.refreshToken || response.headers?.[REFRESH_TOKEN_HEADER] || '').trim();
+      const nextAccessToken = String(
+        refreshResponse.data?.data?.token || refreshResponse.headers?.[ACCESS_TOKEN_HEADER] || '',
+      ).trim();
+      const nextRefreshToken = String(
+        refreshResponse.data?.data?.refreshToken || refreshResponse.headers?.[REFRESH_TOKEN_HEADER] || '',
+      ).trim();
 
       await persistTokens({
-        accessToken,
+        accessToken: nextAccessToken,
         refreshToken: nextRefreshToken || refreshToken,
       });
 
       return {
-        accessToken: accessToken || null,
+        accessToken: nextAccessToken || null,
         terminal: false,
       };
     } catch (error) {

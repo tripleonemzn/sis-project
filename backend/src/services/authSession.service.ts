@@ -1,4 +1,5 @@
 import crypto from 'crypto';
+import jwt from 'jsonwebtoken';
 import { Request } from 'express';
 import { Role, VerificationStatus } from '@prisma/client';
 import prisma from '../utils/prisma';
@@ -22,6 +23,7 @@ const MIN_REFRESH_TOKEN_TTL_SECONDS = 60 * 60;
 const MAX_REFRESH_TOKEN_TTL_SECONDS = 60 * 60 * 24 * 90;
 const MIN_ABSOLUTE_SESSION_TTL_SECONDS = 60 * 60 * 24;
 const MAX_ABSOLUTE_SESSION_TTL_SECONDS = 60 * 60 * 24 * 365;
+const LEGACY_ACCESS_TOKEN_RESTORE_GRACE_SECONDS = 60 * 60 * 48;
 const MAX_CLIENT_PLATFORM_LENGTH = 32;
 const MAX_USER_AGENT_LENGTH = 255;
 const MAX_IP_ADDRESS_LENGTH = 128;
@@ -166,6 +168,30 @@ function issueAccessToken(user: SessionUser, options?: { isDemo?: boolean; sessi
   });
 }
 
+function decodeAccessTokenIgnoringExpiration(accessToken: string): {
+  id?: number;
+  role?: Role | string;
+  isDemo?: boolean;
+  sessionId?: string;
+  tokenType?: string;
+  exp?: number;
+} {
+  try {
+    return jwt.verify(accessToken, process.env.JWT_SECRET || 'secret', {
+      ignoreExpiration: true,
+    }) as {
+      id?: number;
+      role?: Role | string;
+      isDemo?: boolean;
+      sessionId?: string;
+      tokenType?: string;
+      exp?: number;
+    };
+  } catch {
+    throw new ApiError(401, 'Sesi login tidak valid.');
+  }
+}
+
 export async function issueAuthSession(params: {
   request: Request;
   user: SessionUser;
@@ -276,6 +302,67 @@ export async function rotateAuthSession(params: {
     refreshToken,
     refreshTokenExpiresAt,
     absoluteExpiresAt: session.absoluteExpiresAt,
+    user,
+  };
+}
+
+export async function restoreAuthSessionFromLegacyAccessToken(params: {
+  request: Request;
+  accessToken: string;
+}): Promise<IssuedAuthSession & { user: SessionUser }> {
+  const normalizedAccessToken = String(params.accessToken || '').trim();
+  if (!normalizedAccessToken) {
+    throw new ApiError(401, 'Sesi login tidak valid.');
+  }
+
+  const decoded = decodeAccessTokenIgnoringExpiration(normalizedAccessToken);
+  if (String(decoded.tokenType || '').trim() === 'exam-browser-session') {
+    throw new ApiError(401, 'Sesi login tidak valid.');
+  }
+
+  const legacySessionId = String(decoded.sessionId || '').trim();
+  if (legacySessionId) {
+    throw new ApiError(401, 'Sesi login tidak valid.');
+  }
+
+  const userId = Number(decoded.id || 0);
+  if (!Number.isFinite(userId) || userId <= 0) {
+    throw new ApiError(401, 'Sesi login tidak valid.');
+  }
+
+  const expSeconds = Number(decoded.exp || 0);
+  if (!Number.isFinite(expSeconds) || expSeconds <= 0) {
+    throw new ApiError(401, 'Sesi login tidak valid.');
+  }
+
+  const now = Date.now();
+  const expiryMs = expSeconds * 1000;
+  if (expiryMs + LEGACY_ACCESS_TOKEN_RESTORE_GRACE_SECONDS * 1000 <= now) {
+    throw new ApiError(401, 'Sesi login sudah berakhir.');
+  }
+
+  const user = await prisma.user.findUnique({
+    where: { id: userId },
+    select: {
+      id: true,
+      role: true,
+      username: true,
+      verificationStatus: true,
+    },
+  });
+  ensureUserCanUseSession(user);
+  if (!user) {
+    throw new ApiError(401, 'Sesi login tidak valid.');
+  }
+
+  const restoredSession = await issueAuthSession({
+    request: params.request,
+    user,
+    isDemo: Boolean(decoded.isDemo),
+  });
+
+  return {
+    ...restoredSession,
     user,
   };
 }

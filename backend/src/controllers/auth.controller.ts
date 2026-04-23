@@ -21,6 +21,7 @@ import {
 } from '@prisma/client';
 import {
   issueAuthSession,
+  restoreAuthSessionFromLegacyAccessToken,
   revokeAllAuthSessionsForUser,
   revokeAuthSessionById,
   revokeAuthSessionByRefreshToken,
@@ -687,25 +688,46 @@ export const getMe = asyncHandler(async (req: any, res: Response) => {
 
 export const refreshSession = asyncHandler(async (req: Request, res: Response) => {
   const refreshToken = resolveRefreshTokenFromRequest(req);
-  if (!refreshToken) {
+  const accessTokenFallback = String(req.body?.accessTokenFallback || '').trim();
+  let nextSession:
+    | Awaited<ReturnType<typeof rotateAuthSession>>
+    | Awaited<ReturnType<typeof restoreAuthSessionFromLegacyAccessToken>>;
+
+  if (refreshToken) {
+    try {
+      nextSession = await rotateAuthSession({
+        request: req,
+        refreshToken,
+      });
+    } catch (error) {
+      if (!accessTokenFallback) {
+        throw error;
+      }
+      nextSession = await restoreAuthSessionFromLegacyAccessToken({
+        request: req,
+        accessToken: accessTokenFallback,
+      });
+    }
+  } else if (accessTokenFallback) {
+    nextSession = await restoreAuthSessionFromLegacyAccessToken({
+      request: req,
+      accessToken: accessTokenFallback,
+    });
+  } else {
     clearRefreshTokenCookie(req, res);
     throw new ApiError(401, 'Sesi login tidak valid.');
   }
 
-  const rotatedSession = await rotateAuthSession({
-    request: req,
-    refreshToken,
-  });
-  attachIssuedAuthSessionToResponse(req, res, rotatedSession);
+  attachIssuedAuthSessionToResponse(req, res, nextSession);
 
   const responseData: {
     token: string;
     refreshToken?: string;
   } = {
-    token: rotatedSession.accessToken,
+    token: nextSession.accessToken,
   };
   if (shouldReturnRefreshTokenInBody(req)) {
-    responseData.refreshToken = rotatedSession.refreshToken;
+    responseData.refreshToken = nextSession.refreshToken;
   }
 
   res.status(200).json(new ApiResponse(200, responseData, 'Sesi login berhasil diperbarui.'));
