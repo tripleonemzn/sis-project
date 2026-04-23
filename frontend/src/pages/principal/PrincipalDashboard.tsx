@@ -5258,6 +5258,7 @@ const mergePrincipalReportNotes = (notes?: string | null, incident?: string | nu
 
 const PrincipalExamReportsPage = () => {
   const [activeProgramCode, setActiveProgramCode] = useState<string>('');
+  const [selectedSemester, setSelectedSemester] = useState<'ODD' | 'EVEN'>('ODD');
   const [absentModalRow, setAbsentModalRow] = useState<PrincipalProctorReportRow | null>(null);
   const [expandedDayKey, setExpandedDayKey] = useState<string | null>(null);
   const [expandedTimeGroupKey, setExpandedTimeGroupKey] = useState<string | null>(null);
@@ -5304,6 +5305,10 @@ const PrincipalExamReportsPage = () => {
     () => visiblePrograms.find((program) => program.code === activeProgramCode) || null,
     [visiblePrograms, activeProgramCode],
   );
+  const effectiveSemester =
+    activeProgram?.fixedSemester ||
+    selectedSemester ||
+    (activeYearData?.data?.semester === 'EVEN' ? 'EVEN' : 'ODD');
 
   useEffect(() => {
     if (visiblePrograms.length === 0) {
@@ -5315,14 +5320,25 @@ const PrincipalExamReportsPage = () => {
     }
   }, [activeProgramCode, visiblePrograms]);
 
+  useEffect(() => {
+    if (activeProgram?.fixedSemester) {
+      setSelectedSemester(activeProgram.fixedSemester);
+      return;
+    }
+    if (activeYearData?.data?.semester === 'ODD' || activeYearData?.data?.semester === 'EVEN') {
+      setSelectedSemester(activeYearData.data.semester);
+    }
+  }, [activeProgram?.fixedSemester, activeYearData?.data?.semester]);
+
   const reportsQuery = useQuery({
-    queryKey: ['principal-exam-proctor-reports', activeAcademicYearId, activeProgramCode],
+    queryKey: ['principal-exam-proctor-reports', activeAcademicYearId, activeProgramCode, effectiveSemester],
     enabled: Boolean(activeAcademicYearId) && Boolean(activeProgramCode),
     queryFn: async () => {
       const response = await api.get('/proctoring/reports', {
         params: {
           academicYearId: activeAcademicYearId,
           examType: activeProgramCode,
+          semester: effectiveSemester,
         },
       });
       const payload = response?.data?.data || {};
@@ -5464,7 +5480,10 @@ const PrincipalExamReportsPage = () => {
           programs={visiblePrograms}
           activeProgramCode={activeProgramCode}
           onProgramChange={setActiveProgramCode}
-          showSemester={false}
+          showSemester={Boolean(activeProgramCode)}
+          semesterValue={effectiveSemester}
+          onSemesterChange={setSelectedSemester}
+          semesterDisabled={Boolean(activeProgram?.fixedSemester)}
           emptyMessage="Belum ada program ujian aktif pada tahun ajaran ini."
         />
       </div>

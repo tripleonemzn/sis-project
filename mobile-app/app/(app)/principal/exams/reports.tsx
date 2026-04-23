@@ -5,6 +5,7 @@ import { Pressable, RefreshControl, ScrollView, Text, View } from 'react-native'
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { AppLoadingScreen } from '../../../../src/components/AppLoadingScreen';
 import MobileMenuTabBar from '../../../../src/components/MobileMenuTabBar';
+import { MobileSelectField } from '../../../../src/components/MobileSelectField';
 import { QueryStateView } from '../../../../src/components/QueryStateView';
 import { BRAND_COLORS } from '../../../../src/config/brand';
 import { academicYearApi } from '../../../../src/features/academicYear/academicYearApi';
@@ -118,11 +119,17 @@ type PrincipalReportDayGroup = {
   totalAbsent: number;
 };
 
+const SEMESTER_OPTIONS = [
+  { label: 'Ganjil', value: 'ODD' },
+  { label: 'Genap', value: 'EVEN' },
+] as const;
+
 export default function PrincipalExamReportsScreen() {
   const insets = useSafeAreaInsets();
   const { isAuthenticated, isLoading, user } = useAuth();
   const pagePadding = getStandardPagePadding(insets, { bottom: 120 });
   const [activeProgramCode, setActiveProgramCode] = useState('');
+  const [selectedSemester, setSelectedSemester] = useState<'ODD' | 'EVEN'>('ODD');
   const [expandedDayKey, setExpandedDayKey] = useState<string | null>(null);
   const [expandedTimeGroupKey, setExpandedTimeGroupKey] = useState<string | null>(null);
   const [expandedRowKey, setExpandedRowKey] = useState<string | null>(null);
@@ -166,6 +173,10 @@ export default function PrincipalExamReportsScreen() {
     () => visiblePrograms.find((program) => program.code === activeProgramCode) || null,
     [visiblePrograms, activeProgramCode],
   );
+  const effectiveSemester =
+    activeProgram?.fixedSemester ||
+    selectedSemester ||
+    (activeYearQuery.data?.semester === 'EVEN' ? 'EVEN' : 'ODD');
 
   useEffect(() => {
     if (visiblePrograms.length === 0) {
@@ -177,13 +188,30 @@ export default function PrincipalExamReportsScreen() {
     }
   }, [activeProgramCode, visiblePrograms]);
 
+  useEffect(() => {
+    if (activeProgram?.fixedSemester) {
+      setSelectedSemester(activeProgram.fixedSemester);
+      return;
+    }
+    if (activeYearQuery.data?.semester === 'ODD' || activeYearQuery.data?.semester === 'EVEN') {
+      setSelectedSemester(activeYearQuery.data.semester);
+    }
+  }, [activeProgram?.fixedSemester, activeYearQuery.data?.semester]);
+
   const reportsQuery = useQuery({
-    queryKey: ['mobile-principal-exam-reports', user?.id, activeYearQuery.data?.id || 'none', activeProgramCode],
+    queryKey: [
+      'mobile-principal-exam-reports',
+      user?.id,
+      activeYearQuery.data?.id || 'none',
+      activeProgramCode,
+      effectiveSemester,
+    ],
     enabled: isAuthenticated && user?.role === 'PRINCIPAL' && !!activeProgramCode,
     queryFn: () =>
       principalApi.getProctorReports({
         academicYearId: activeYearQuery.data?.id,
         examType: activeProgramCode,
+        semester: effectiveSemester,
       }),
     staleTime: 60 * 1000,
   });
@@ -348,6 +376,17 @@ export default function PrincipalExamReportsScreen() {
           compact
           tabVariant="plain"
         />
+        {activeProgramCode ? (
+          <View style={{ marginTop: 12 }}>
+            <MobileSelectField
+              label="Semester"
+              value={effectiveSemester}
+              options={[...SEMESTER_OPTIONS]}
+              onChange={(value) => setSelectedSemester((value as 'ODD' | 'EVEN') || 'ODD')}
+              disabled={Boolean(activeProgram?.fixedSemester)}
+            />
+          </View>
+        ) : null}
       </View>
 
       {programsQuery.isLoading || reportsQuery.isLoading ? <QueryStateView type="loading" message="Memuat berita acara pengawas..." /> : null}

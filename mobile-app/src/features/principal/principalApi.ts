@@ -58,12 +58,14 @@ export const principalApi = {
   async getProctorReports(params?: {
     academicYearId?: number;
     examType?: string;
+    semester?: 'ODD' | 'EVEN';
     date?: string;
   }) {
     const response = await apiClient.get<ApiResponse<PrincipalProctorReportsResponse>>('/proctoring/reports', {
       params: {
         academicYearId: params?.academicYearId,
         examType: params?.examType,
+        semester: params?.semester,
         date: params?.date,
       },
     });
