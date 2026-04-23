@@ -9,7 +9,7 @@ type ApiEnvelope<T> = {
 };
 
 export const attendanceRecapApi = {
-  async getDailyRecap(params: { classId: number; academicYearId?: number; semester?: 'ODD' | 'EVEN' }) {
+  async getDailyRecap(params: { classId: number; academicYearId?: number; semester?: 'ALL' | 'ODD' | 'EVEN' }) {
     const response = await apiClient.get<ApiEnvelope<AttendanceRecapPayload>>('/attendances/daily/recap', {
       params: {
         classId: params.classId,

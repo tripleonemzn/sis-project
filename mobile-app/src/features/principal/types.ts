@@ -34,6 +34,60 @@ export type PrincipalAcademicOverview = {
   majors: PrincipalMajorSummary[];
 };
 
+export type PrincipalBehaviorSummaryClass = {
+  classId: number;
+  className: string;
+  major: {
+    id: number;
+    name: string;
+    code: string;
+  } | null;
+  positiveCount: number;
+  negativeCount: number;
+};
+
+export type PrincipalBehaviorSummaryMajor = {
+  majorId: number;
+  name: string;
+  code: string;
+  positiveCount: number;
+  negativeCount: number;
+};
+
+export type PrincipalBehaviorSummaryItem = {
+  id: number;
+  date: string;
+  type: 'POSITIVE' | 'NEGATIVE';
+  category?: string | null;
+  description: string;
+  point: number;
+  student: {
+    id: number;
+    name: string;
+    nis: string | null;
+    nisn: string | null;
+  };
+  class: {
+    id: number;
+    name: string;
+  } | null;
+  major: {
+    id: number;
+    name: string;
+    code: string;
+  } | null;
+};
+
+export type PrincipalBehaviorSummary = {
+  academicYear: {
+    id: number;
+    name: string;
+  };
+  summaryByClass: PrincipalBehaviorSummaryClass[];
+  summaryByMajor: PrincipalBehaviorSummaryMajor[];
+  latestBehaviors: PrincipalBehaviorSummaryItem[];
+};
+
 export type PrincipalStudentByMajorStat = {
   majorId: number;
   name: string;

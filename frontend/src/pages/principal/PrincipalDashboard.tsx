@@ -57,7 +57,6 @@ import api from '../../services/api';
 import InventoryHubPage from '../teacher/wakasek/sarpras/InventoryHubPage';
 import { InventoryDetailPage } from '../teacher/wakasek/sarpras/InventoryDetailPage';
 import { userService } from '../../services/user.service';
-import { teacherAssignmentService, type TeacherAssignment } from '../../services/teacherAssignment.service';
 import { AttendanceRecapPage } from '../admin/academic/AttendanceRecapPage';
 import { ReportCardsPage } from '../admin/academic/ReportCardsPage';
 import { UserProfilePage } from '../common/UserProfilePage';
@@ -707,26 +706,9 @@ const PrincipalHomePage = () => {
       const semesterParam =
         academicSemesterFilter === 'ALL' ? undefined : academicSemesterFilter;
 
-      const [
-        studentsRes,
-        teachersRes,
-        budgetsRes,
-        teacherAssignmentsRes,
-        academicOverviewRes,
-        behaviorSummaryRes,
-      ] = await Promise.all([
-        userService.getUsers({ role: 'STUDENT', limit: 10000 }),
-        userService.getUsers({ role: 'TEACHER', limit: 10000 }),
-        budgetRequestService.list({
-          academicYearId: activeYear?.id,
-          view: 'approver',
-        }),
-        teacherAssignmentService.list({
-          academicYearId: activeYear?.id,
-          limit: 1000,
-        }),
+      const [summaryRes, behaviorSummaryRes] = await Promise.all([
         api
-          .get('/reports/principal-overview', {
+          .get('/reports/principal-dashboard-summary', {
             params: {
               academicYearId: activeYear?.id,
               semester: semesterParam,
@@ -744,110 +726,27 @@ const PrincipalHomePage = () => {
           .catch(() => null),
       ]);
 
-      const studentsList = studentsRes.data || [];
-      const teachersList = teachersRes.data || [];
-
-      const rawBudgets =
-        (budgetsRes as { data?: BudgetRequest[] } | null)?.data ||
-        (budgetsRes as BudgetRequest[] | null) ||
-        [];
-      const budgets: BudgetRequest[] = rawBudgets || [];
-
-      const pendingBudgets = budgets.filter((b) => b.status === 'PENDING');
-      const totalPendingBudgetAmount = pendingBudgets.reduce(
-        (sum, b) => sum + b.totalAmount,
-        0,
-      );
-
-      const totalPresentToday = 0;
-      const totalAbsentToday = 0;
-
-      const assignmentsPayload = teacherAssignmentsRes as
-        | {
-            data?: {
-              assignments?: TeacherAssignment[];
-              data?: {
-                assignments?: TeacherAssignment[];
-              };
-            };
-            assignments?: TeacherAssignment[];
-          }
-        | null;
-      const assignmentsList: TeacherAssignment[] =
-        assignmentsPayload?.data?.assignments ||
-        assignmentsPayload?.assignments ||
-        assignmentsPayload?.data?.data?.assignments ||
-        [];
-
-      const studentByMajorMap = new Map<
-        number,
-        {
-          majorId: number;
-          name: string;
-          code: string;
-          totalStudents: number;
-          classIds: Set<number>;
-        }
-      >();
-
-      for (const student of studentsList) {
-        const studentClass = (student as StudentWithClass).studentClass;
-        const major = studentClass?.major;
-        const classId = studentClass?.id;
-        if (!major || !classId) continue;
-
-        const key = major.id;
-        if (!studentByMajorMap.has(key)) {
-          studentByMajorMap.set(key, {
-            majorId: major.id,
-            name: major.name,
-            code: major.code,
-            totalStudents: 0,
-            classIds: new Set<number>(),
-          });
-        }
-
-        const entry = studentByMajorMap.get(key)!;
-        entry.totalStudents += 1;
-        entry.classIds.add(classId);
-      }
-
-      const studentByMajor: StudentByMajorStat[] = Array.from(studentByMajorMap.values())
-        .map((entry) => ({
-          majorId: entry.majorId,
-          name: entry.name,
-          code: entry.code,
-          totalStudents: entry.totalStudents,
-          totalClasses: entry.classIds.size,
-        }))
-        .sort((a, b) => b.totalStudents - a.totalStudents);
-      
-      const totalAssignments = assignmentsList.length;
-      const uniqueTeacherIds = new Set<number>();
-      assignmentsList.forEach((a) => {
-        if (a.teacherId) {
-          uniqueTeacherIds.add(a.teacherId);
-        }
-      });
-
-      const teacherAssignmentSummary: TeacherAssignmentSummary | null = {
-        totalAssignments,
-        totalTeachersWithAssignments: uniqueTeacherIds.size,
-      };
+      const summaryData = (summaryRes || null) as {
+        totals?: PrincipalOverviewTotals;
+        activeAcademicYear?: { id: number; name: string } | null;
+        studentByMajor?: StudentByMajorStat[];
+        teacherAssignmentSummary?: TeacherAssignmentSummary | null;
+        academicOverview?: PrincipalAcademicOverview | null;
+      } | null;
 
       return {
-        totals: {
-          students: studentsList.length,
-          teachers: teachersList.length,
-          pendingBudgetRequests: pendingBudgets.length,
-          totalPendingBudgetAmount,
-          totalPresentToday,
-          totalAbsentToday,
+        totals: summaryData?.totals || {
+          students: 0,
+          teachers: 0,
+          pendingBudgetRequests: 0,
+          totalPendingBudgetAmount: 0,
+          totalPresentToday: 0,
+          totalAbsentToday: 0,
         },
-        activeAcademicYear: activeYear,
-        studentByMajor,
-        teacherAssignmentSummary,
-        academicOverview: (academicOverviewRes || null) as PrincipalAcademicOverview | null,
+        activeAcademicYear: summaryData?.activeAcademicYear || activeYear,
+        studentByMajor: summaryData?.studentByMajor || [],
+        teacherAssignmentSummary: summaryData?.teacherAssignmentSummary || null,
+        academicOverview: (summaryData?.academicOverview || null) as PrincipalAcademicOverview | null,
         behaviorSummary: (behaviorSummaryRes || null) as PrincipalBehaviorSummary | null,
       };
     },
@@ -3341,7 +3240,6 @@ const PrincipalFinancePage = () => {
 
   const activeYear = academicYears.find((y) => y.isActive) || academicYears[0];
 
-  const [selectedYearId, setSelectedYearId] = useState<number | 'all'>('all');
   const [statusFilter, setStatusFilter] = useState<'ALL' | 'PENDING' | 'APPROVED' | 'REJECTED'>(
     'ALL',
   );
@@ -3350,10 +3248,7 @@ const PrincipalFinancePage = () => {
   const [selectedForReject, setSelectedForReject] = useState<BudgetRequest | null>(null);
   const [rejectionReason, setRejectionReason] = useState('');
 
-  const effectiveYearId = useMemo(
-    () => (selectedYearId === 'all' ? undefined : selectedYearId || activeYear?.id),
-    [selectedYearId, activeYear],
-  );
+  const effectiveYearId = activeYear?.id;
 
   const { data: budgetsData, isLoading } = useQuery({
     queryKey: ['budget-requests', 'principal', effectiveYearId],
@@ -3676,31 +3571,6 @@ const PrincipalFinancePage = () => {
             </select>
           </div>
 
-          <div className="flex items-center gap-2">
-            <span className="text-xs font-medium text-gray-500 uppercase tracking-wider">
-              Tahun Ajaran
-            </span>
-            <select
-              value={selectedYearId === 'all' ? 'all' : String(selectedYearId || activeYear?.id || '')}
-              onChange={(e) => {
-                const value = e.target.value;
-                if (value === 'all') {
-                  setSelectedYearId('all');
-                } else {
-                  setSelectedYearId(Number(value));
-                }
-              }}
-              className="border border-gray-300 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500/60"
-            >
-              <option value="all">Semua</option>
-              {academicYears.map((year) => (
-                <option key={year.id} value={year.id}>
-                  {year.name}
-                  {year.isActive ? ' (Aktif)' : ''}
-                </option>
-              ))}
-            </select>
-          </div>
         </div>
 
         <div className="flex flex-col items-end">

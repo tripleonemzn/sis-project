@@ -1273,7 +1273,7 @@ const ROLE_MENU_GROUPS: Record<string, GroupDefinition[]> = {
     { key: 'finance', label: 'KEUANGAN', menuKeys: ['principal-finance-requests'] },
     { key: 'students', label: 'KESISWAAN', menuKeys: ['principal-students'] },
     { key: 'teachers', label: 'SDM GURU', menuKeys: ['principal-teachers'] },
-    { key: 'settings', label: 'PENGATURAN', menuKeys: ['principal-profile', 'principal-accessibility'] },
+    { key: 'settings', label: 'PENGATURAN', menuKeys: ['principal-profile'] },
   ],
   STAFF: [
     { key: 'dashboard', label: 'Dashboard', menuKeys: ['staff-dashboard', 'staff-email'] },

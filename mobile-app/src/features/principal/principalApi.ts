@@ -1,6 +1,7 @@
 import { apiClient } from '../../lib/api/client';
 import {
   PrincipalAcademicOverview,
+  PrincipalBehaviorSummary,
   PrincipalBpBkSummaryResponse,
   PrincipalBudgetRequest,
   PrincipalDashboardSummary,
@@ -35,6 +36,14 @@ export const principalApi = {
         },
       },
     );
+    return response.data.data;
+  },
+  async getBehaviorSummary(params?: { academicYearId?: number }) {
+    const response = await apiClient.get<ApiResponse<PrincipalBehaviorSummary>>('/behaviors/principal-summary', {
+      params: {
+        academicYearId: params?.academicYearId,
+      },
+    });
     return response.data.data;
   },
   async listBudgetApprovals(params?: { academicYearId?: number }) {

@@ -72,10 +72,18 @@ export const ReportCardsPage = () => {
       academicYearData?.data?.academicYears || academicYearData?.academicYears || [],
     [academicYearData],
   );
+  const activeAcademicYear = useMemo(
+    () => academicYears.find((ay) => ay.isActive) || academicYears[0],
+    [academicYears],
+  );
 
   const effectiveAcademicYearId = useMemo<number | ''>(() => {
     if (!academicYears.length) {
       return '';
+    }
+
+    if (isPrincipalRoute) {
+      return activeAcademicYear?.id ?? '';
     }
 
     if (selectedAcademicYearId) {
@@ -85,13 +93,8 @@ export const ReportCardsPage = () => {
       }
     }
 
-    const active = academicYears.find((ay) => ay.isActive);
-    if (active) {
-      return active.id;
-    }
-
-    return academicYears[0]?.id ?? '';
-  }, [academicYears, selectedAcademicYearId]);
+    return activeAcademicYear?.id ?? '';
+  }, [academicYears, activeAcademicYear, isPrincipalRoute, selectedAcademicYearId]);
 
   const { data: classData, isLoading: isLoadingClasses } = useQuery({
     queryKey: ['classes', 'for-report-cards', effectiveAcademicYearId],
@@ -211,7 +214,7 @@ export const ReportCardsPage = () => {
   const handleRefresh = async () => {
     if (viewMode === 'REPORT' && !isPrincipalRoute) {
       if (!canLoadReport) {
-        toast.error('Pilih tahun ajaran dan kelas terlebih dahulu');
+        toast.error('Pilih kelas terlebih dahulu');
         return;
       }
 
@@ -228,7 +231,7 @@ export const ReportCardsPage = () => {
 
     if (!canLoadRanking) {
       if (!effectiveAcademicYearId || !effectiveClassId) {
-        toast.error('Pilih tahun ajaran dan kelas terlebih dahulu');
+        toast.error(isPrincipalRoute ? 'Pilih kelas terlebih dahulu' : 'Pilih tahun ajaran dan kelas terlebih dahulu');
       } else if (!semester) {
         toast.error('Pilih semester terlebih dahulu');
       }
@@ -347,32 +350,34 @@ export const ReportCardsPage = () => {
       </div>
 
       <div className="bg-white rounded-xl shadow-md border-0 p-6 space-y-4">
-        <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
-          <div>
-            <label
-              htmlFor="report-academic-year"
-              className="block text-sm font-medium text-gray-700 mb-1"
-            >
-              Tahun Ajaran
-            </label>
-            <select
-              id="report-academic-year"
-              name="report-academic-year"
-              value={effectiveAcademicYearId}
-              onChange={(e) =>
-                setSelectedAcademicYearId(e.target.value ? Number(e.target.value) : '')
-              }
-              className="block w-full rounded-lg border border-gray-300 px-3 py-2 text-sm text-gray-900 focus:outline-none focus:ring-1 focus:ring-blue-500 focus:border-blue-500"
-            >
-              <option value="">Pilih Tahun Ajaran</option>
-              {academicYears.map((ay) => (
-                <option key={ay.id} value={ay.id}>
-                  {ay.name}
-                  {ay.isActive ? ' (Aktif)' : ''}
-                </option>
-              ))}
-            </select>
-          </div>
+        <div className={`grid grid-cols-1 ${isPrincipalRoute ? 'md:grid-cols-2' : 'md:grid-cols-3'} gap-4`}>
+          {!isPrincipalRoute && (
+            <div>
+              <label
+                htmlFor="report-academic-year"
+                className="block text-sm font-medium text-gray-700 mb-1"
+              >
+                Tahun Ajaran
+              </label>
+              <select
+                id="report-academic-year"
+                name="report-academic-year"
+                value={effectiveAcademicYearId}
+                onChange={(e) =>
+                  setSelectedAcademicYearId(e.target.value ? Number(e.target.value) : '')
+                }
+                className="block w-full rounded-lg border border-gray-300 px-3 py-2 text-sm text-gray-900 focus:outline-none focus:ring-1 focus:ring-blue-500 focus:border-blue-500"
+              >
+                <option value="">Pilih Tahun Ajaran</option>
+                {academicYears.map((ay) => (
+                  <option key={ay.id} value={ay.id}>
+                    {ay.name}
+                    {ay.isActive ? ' (Aktif)' : ''}
+                  </option>
+                ))}
+              </select>
+            </div>
+          )}
           <div>
             <label
               htmlFor="report-class"
@@ -398,7 +403,7 @@ export const ReportCardsPage = () => {
               ))}
             </select>
           </div>
-          <div className="flex flex-col justify-between">
+          <div className={`flex flex-col justify-between ${isPrincipalRoute ? 'md:col-span-1' : ''}`}>
             {viewMode === 'RANKING' && (
               <div className="mb-3">
                 <label
@@ -447,7 +452,9 @@ export const ReportCardsPage = () => {
                 </div>
               ) : (
                 <p className="text-gray-500">
-                  Pilih tahun ajaran dan kelas lalu klik Terapkan Filter.
+                  {isPrincipalRoute
+                    ? 'Pilih kelas lalu klik Terapkan Filter.'
+                    : 'Pilih tahun ajaran dan kelas lalu klik Terapkan Filter.'}
                 </p>
               )}
             </div>
@@ -675,8 +682,9 @@ export const ReportCardsPage = () => {
           <div className="bg-white rounded-xl shadow-sm border border-gray-100 overflow-x-auto">
             {!rankingData ? (
               <div className="px-6 py-12 text-center text-gray-500 text-sm">
-                Pilih tahun ajaran, kelas, dan semester lalu klik Terapkan Filter untuk melihat
-                peringkat.
+                {isPrincipalRoute
+                  ? 'Pilih kelas dan semester lalu klik Terapkan Filter untuk melihat peringkat.'
+                  : 'Pilih tahun ajaran, kelas, dan semester lalu klik Terapkan Filter untuk melihat peringkat.'}
               </div>
             ) : !rankings.length ? (
               <div className="px-6 py-12 text-center text-gray-500 text-sm">

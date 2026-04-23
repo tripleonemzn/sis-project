@@ -1,4 +1,5 @@
 import { useState, useMemo } from 'react';
+import { useLocation } from 'react-router-dom';
 import { useQuery } from '@tanstack/react-query';
 import { classService, type Class } from '../../../services/class.service';
 import { academicYearService, type AcademicYear } from '../../../services/academicYear.service';
@@ -40,6 +41,8 @@ const SEMESTERS: SemesterOption[] = [
 ];
 
 export const AttendanceRecapPage = () => {
+  const location = useLocation();
+  const isPrincipalRoute = location.pathname.startsWith('/principal');
   const [selectedAcademicYearId, setSelectedAcademicYearId] = useState<number | ''>('');
   const [selectedClassId, setSelectedClassId] = useState<number | ''>('');
   const [semester, setSemester] = useState<SemesterFilter>('ALL');
@@ -54,10 +57,18 @@ export const AttendanceRecapPage = () => {
       academicYearData?.data?.academicYears || academicYearData?.academicYears || [],
     [academicYearData],
   );
+  const activeAcademicYear = useMemo(
+    () => academicYears.find((ay) => ay.isActive) || academicYears[0],
+    [academicYears],
+  );
 
   const effectiveAcademicYearId = useMemo<number | ''>(() => {
     if (!academicYears.length) {
       return '';
+    }
+
+    if (isPrincipalRoute) {
+      return activeAcademicYear?.id ?? '';
     }
 
     if (selectedAcademicYearId) {
@@ -67,13 +78,8 @@ export const AttendanceRecapPage = () => {
       }
     }
 
-    const active = academicYears.find((ay) => ay.isActive);
-    if (active) {
-      return active.id;
-    }
-
-    return academicYears[0]?.id ?? '';
-  }, [academicYears, selectedAcademicYearId]);
+    return activeAcademicYear?.id ?? '';
+  }, [academicYears, activeAcademicYear, isPrincipalRoute, selectedAcademicYearId]);
 
   const { data: classData, isLoading: isLoadingClasses } = useQuery({
     queryKey: ['classes', 'for-attendance', effectiveAcademicYearId],
@@ -211,7 +217,7 @@ export const AttendanceRecapPage = () => {
 
   const handleRefresh = async () => {
     if (!canLoadRecap) {
-      toast.error('Pilih tahun ajaran dan kelas terlebih dahulu');
+      toast.error(isPrincipalRoute ? 'Pilih kelas terlebih dahulu' : 'Pilih tahun ajaran dan kelas terlebih dahulu');
       return;
     }
     try {
@@ -248,33 +254,35 @@ export const AttendanceRecapPage = () => {
       </div>
 
       <div className="bg-white rounded-xl shadow-md border-0 p-6 space-y-4">
-        <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
-          <div>
-            <label
-              htmlFor="attendance-academic-year"
-              className="block text-sm font-medium text-gray-700 mb-1"
-            >
-              Tahun Ajaran
-            </label>
-            <select
-              id="attendance-academic-year"
-              name="attendance-academic-year"
-              value={effectiveAcademicYearId}
-              onChange={(e) =>
-                setSelectedAcademicYearId(
-                  e.target.value ? Number(e.target.value) : '',
-                )
-              }
-              className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent"
-            >
-              <option value="">Pilih Tahun Ajaran</option>
-              {academicYears.map((ay) => (
-                <option key={ay.id} value={ay.id}>
-                  {ay.name}
-                </option>
-              ))}
-            </select>
-          </div>
+        <div className={`grid grid-cols-1 ${isPrincipalRoute ? 'md:grid-cols-2' : 'md:grid-cols-3'} gap-4`}>
+          {!isPrincipalRoute && (
+            <div>
+              <label
+                htmlFor="attendance-academic-year"
+                className="block text-sm font-medium text-gray-700 mb-1"
+              >
+                Tahun Ajaran
+              </label>
+              <select
+                id="attendance-academic-year"
+                name="attendance-academic-year"
+                value={effectiveAcademicYearId}
+                onChange={(e) =>
+                  setSelectedAcademicYearId(
+                    e.target.value ? Number(e.target.value) : '',
+                  )
+                }
+                className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent"
+              >
+                <option value="">Pilih Tahun Ajaran</option>
+                {academicYears.map((ay) => (
+                  <option key={ay.id} value={ay.id}>
+                    {ay.name}
+                  </option>
+                ))}
+              </select>
+            </div>
+          )}
 
           <div>
             <label
@@ -338,13 +346,17 @@ export const AttendanceRecapPage = () => {
                 <span className="font-semibold text-gray-700">
                   {selectedClass.name}
                 </span>{' '}
-                pada tahun ajaran{' '}
-                <span className="font-semibold text-gray-700">
-                  {selectedYear.name}
-                </span>
+                {!isPrincipalRoute ? (
+                  <>
+                    pada tahun ajaran{' '}
+                    <span className="font-semibold text-gray-700">
+                      {selectedYear.name}
+                    </span>
+                  </>
+                ) : null}
               </span>
             ) : (
-              <span>Pilih tahun ajaran dan kelas untuk melihat rekap.</span>
+              <span>{isPrincipalRoute ? 'Pilih kelas untuk melihat rekap.' : 'Pilih tahun ajaran dan kelas untuk melihat rekap.'}</span>
             )}
           </div>
           {recapResponse?.data?.meta && (

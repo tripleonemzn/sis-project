@@ -19,7 +19,7 @@ export type AttendanceRecapRow = {
 export type AttendanceRecapMeta = {
   classId: number;
   academicYearId: number;
-  semester?: 'ODD' | 'EVEN' | null;
+  semester?: 'ALL' | 'ODD' | 'EVEN' | null;
   dateRange?: {
     start: string;
     end: string;

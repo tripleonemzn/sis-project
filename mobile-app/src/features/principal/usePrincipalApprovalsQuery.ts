@@ -30,7 +30,6 @@ export function usePrincipalApprovalsQuery({ enabled, user }: Params) {
     queryKey: ['mobile-principal-approvals', user?.id],
     enabled: enabled && !!user && isPrincipal,
     queryFn: async (): Promise<PrincipalApprovalsQueryData> => {
-      const cacheKey = `mobile_cache_principal_approvals_${user!.id}`;
       try {
         let activeYear: { id: number; name: string; isActive: boolean } | null = null;
         try {
@@ -38,6 +37,7 @@ export function usePrincipalApprovalsQuery({ enabled, user }: Params) {
         } catch {
           activeYear = null;
         }
+        const cacheKey = `mobile_cache_principal_approvals_${user!.id}_${activeYear?.id || 0}`;
 
         const approvals = await principalApi.listBudgetApprovals({
           academicYearId: activeYear?.id,
@@ -51,6 +51,14 @@ export function usePrincipalApprovalsQuery({ enabled, user }: Params) {
         );
         return { ...payload, fromCache: false, cachedAt: cache.updatedAt };
       } catch (error) {
+        let activeYearId = 0;
+        try {
+          const activeYear = await academicYearApi.getActive({ allowStaleOnError: true });
+          activeYearId = activeYear?.id || 0;
+        } catch {
+          activeYearId = 0;
+        }
+        const cacheKey = `mobile_cache_principal_approvals_${user!.id}_${activeYearId}`;
         const cache = await offlineCache.get<{ activeYear: { id: number; name: string; isActive: boolean } | null; approvals: PrincipalBudgetRequest[] }>(
           cacheKey,
           { maxAgeMs: CACHE_TTL_MS },

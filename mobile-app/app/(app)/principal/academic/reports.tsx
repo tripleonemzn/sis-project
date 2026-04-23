@@ -1,52 +1,126 @@
 import { useMemo, useState } from 'react';
 import { Redirect } from 'expo-router';
-import { RefreshControl, ScrollView, Text, View } from 'react-native';
+import { useQuery } from '@tanstack/react-query';
+import { Pressable, RefreshControl, ScrollView, Text, View } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { AppLoadingScreen } from '../../../../src/components/AppLoadingScreen';
 import { MobileSelectField } from '../../../../src/components/MobileSelectField';
-import { OfflineCacheNotice } from '../../../../src/components/OfflineCacheNotice';
+import { MobileSummaryCard } from '../../../../src/components/MobileSummaryCard';
 import { QueryStateView } from '../../../../src/components/QueryStateView';
 import { BRAND_COLORS } from '../../../../src/config/brand';
+import { academicYearApi } from '../../../../src/features/academicYear/academicYearApi';
+import { adminApi } from '../../../../src/features/admin/adminApi';
 import { useAuth } from '../../../../src/features/auth/AuthProvider';
-import { usePrincipalOverviewQuery } from '../../../../src/features/principal/usePrincipalOverviewQuery';
 import { getStandardPagePadding } from '../../../../src/lib/ui/pageLayout';
 import { scaleWithAppTextScale } from '../../../../src/theme/AppTextScaleProvider';
 
-function defaultSemesterByDate(): 'ODD' | 'EVEN' {
-  const month = new Date().getMonth() + 1;
-  return month >= 7 ? 'ODD' : 'EVEN';
+type SemesterOption = 'ODD' | 'EVEN' | '';
+
+function formatScore(value?: number | null) {
+  if (typeof value !== 'number' || !Number.isFinite(value)) return '-';
+  return value.toFixed(2);
 }
 
 export default function PrincipalAcademicReportsScreen() {
   const insets = useSafeAreaInsets();
   const { isAuthenticated, isLoading, user } = useAuth();
-  const [semester, setSemester] = useState<'ODD' | 'EVEN'>(defaultSemesterByDate());
   const pagePadding = getStandardPagePadding(insets, { bottom: 120 });
-  const overviewQuery = usePrincipalOverviewQuery({ enabled: isAuthenticated, user, semester });
-  const semesterOptions = useMemo(
-    () => [
-      { value: 'ODD', label: 'Semester Ganjil' },
-      { value: 'EVEN', label: 'Semester Genap' },
-    ],
-    [],
+  const [selectedClassId, setSelectedClassId] = useState<number | null>(null);
+  const [semester, setSemester] = useState<SemesterOption>('');
+  const [appliedFilters, setAppliedFilters] = useState<{ classId: number | null; semester: SemesterOption }>({
+    classId: null,
+    semester: '',
+  });
+
+  const activeYearQuery = useQuery({
+    queryKey: ['mobile-principal-report-cards-active-year'],
+    enabled: isAuthenticated && user?.role === 'PRINCIPAL',
+    queryFn: async () => {
+      try {
+        return await academicYearApi.getActive();
+      } catch {
+        return null;
+      }
+    },
+  });
+
+  const classesQuery = useQuery({
+    queryKey: ['mobile-principal-report-cards-classes', activeYearQuery.data?.id],
+    enabled: isAuthenticated && user?.role === 'PRINCIPAL' && !!activeYearQuery.data?.id,
+    queryFn: async () => {
+      const result = await adminApi.listClasses({
+        page: 1,
+        limit: 300,
+        academicYearId: activeYearQuery.data?.id,
+      });
+      return result.items;
+    },
+  });
+
+  const classOptions = useMemo(
+    () =>
+      (classesQuery.data || []).map((classItem) => ({
+        value: String(classItem.id),
+        label: classItem.major?.code ? `${classItem.name} (${classItem.major.code})` : classItem.name,
+      })),
+    [classesQuery.data],
   );
 
-  const overview = overviewQuery.data?.overview;
-  const dashboard = overviewQuery.data?.summary;
-  const majors = useMemo(() => overview?.majors || [], [overview?.majors]);
-  const topStudents = useMemo(() => overview?.topStudents || [], [overview?.topStudents]);
-  const academicSummary = useMemo(() => {
-    const totalStudents = majors.reduce((sum, item) => sum + Number(item.totalStudents || 0), 0);
-    const weightedScore = majors.reduce(
-      (sum, item) => sum + Number(item.averageScore || 0) * Number(item.totalStudents || 0),
-      0,
-    );
-    return {
-      totalStudents,
-      totalMajors: majors.length,
-      schoolAverage: totalStudents > 0 ? weightedScore / totalStudents : 0,
-    };
-  }, [majors]);
+  const rankingQuery = useQuery({
+    queryKey: [
+      'mobile-principal-report-cards-rankings',
+      user?.id,
+      activeYearQuery.data?.id,
+      appliedFilters.classId,
+      appliedFilters.semester,
+    ],
+    enabled:
+      isAuthenticated
+      && user?.role === 'PRINCIPAL'
+      && !!activeYearQuery.data?.id
+      && !!appliedFilters.classId
+      && !!appliedFilters.semester,
+    queryFn: async () =>
+      adminApi.getClassRankings({
+        classId: Number(appliedFilters.classId),
+        academicYearId: activeYearQuery.data?.id,
+        semester: appliedFilters.semester as 'ODD' | 'EVEN',
+      }),
+  });
+
+  const selectedClass = useMemo(
+    () => (classesQuery.data || []).find((item) => item.id === selectedClassId) || null,
+    [classesQuery.data, selectedClassId],
+  );
+  const appliedClass = useMemo(
+    () => (classesQuery.data || []).find((item) => item.id === appliedFilters.classId) || null,
+    [classesQuery.data, appliedFilters.classId],
+  );
+  const rankings = useMemo(
+    () =>
+      [...(rankingQuery.data?.rankings || [])].sort((a, b) => {
+        const rankA = typeof a.rank === 'number' ? a.rank : Number.MAX_SAFE_INTEGER;
+        const rankB = typeof b.rank === 'number' ? b.rank : Number.MAX_SAFE_INTEGER;
+        return rankA - rankB;
+      }),
+    [rankingQuery.data?.rankings],
+  );
+  const totalStudents = rankings.length;
+  const topStudent = rankings[0] || null;
+  const classAverage = useMemo(() => {
+    if (!rankings.length) return null;
+    const scores = rankings
+      .map((row) => (typeof row.averageScore === 'number' ? row.averageScore : null))
+      .filter((value): value is number => value !== null);
+    if (!scores.length) return null;
+    return scores.reduce((sum, value) => sum + value, 0) / scores.length;
+  }, [rankings]);
+
+  const handleApplyFilters = () => {
+    if (!selectedClassId) return;
+    if (!semester) return;
+    setAppliedFilters({ classId: selectedClassId, semester });
+  };
 
   if (isLoading) return <AppLoadingScreen message="Memuat rapor & ranking..." />;
   if (!isAuthenticated) return <Redirect href="/welcome" />;
@@ -66,8 +140,14 @@ export default function PrincipalAcademicReportsScreen() {
       contentContainerStyle={pagePadding}
       refreshControl={
         <RefreshControl
-          refreshing={overviewQuery.isFetching && !overviewQuery.isLoading}
-          onRefresh={() => overviewQuery.refetch()}
+          refreshing={activeYearQuery.isFetching || classesQuery.isFetching || rankingQuery.isFetching}
+          onRefresh={() => {
+            void activeYearQuery.refetch();
+            void classesQuery.refetch();
+            if (appliedFilters.classId && appliedFilters.semester) {
+              void rankingQuery.refetch();
+            }
+          }}
         />
       }
     >
@@ -75,7 +155,7 @@ export default function PrincipalAcademicReportsScreen() {
         Rapor & Ranking
       </Text>
       <Text style={{ color: BRAND_COLORS.textMuted, marginBottom: 12 }}>
-        Ringkasan ranking sekolah, rata-rata nilai, dan distribusi hasil belajar per kompetensi keahlian.
+        Ringkasan peringkat siswa per kelas berdasarkan nilai rapor.
       </Text>
 
       <View
@@ -88,217 +168,199 @@ export default function PrincipalAcademicReportsScreen() {
           marginBottom: 12,
         }}
       >
-        <Text style={{ color: BRAND_COLORS.textDark, fontWeight: '700', marginBottom: 8 }}>Semester</Text>
+        <MobileSelectField
+          label="Kelas"
+          value={selectedClassId ? String(selectedClassId) : ''}
+          options={classOptions}
+          onChange={(next) => setSelectedClassId(next ? Number(next) : null)}
+          placeholder={classesQuery.isLoading ? 'Memuat kelas...' : 'Pilih kelas'}
+          disabled={classesQuery.isLoading || !classOptions.length}
+        />
+        <View style={{ height: 12 }} />
         <MobileSelectField
           label="Semester"
           value={semester}
-          options={semesterOptions}
-          onChange={(next) => setSemester((next as 'ODD' | 'EVEN') || defaultSemesterByDate())}
+          options={[
+            { value: 'ODD', label: 'Semester Ganjil' },
+            { value: 'EVEN', label: 'Semester Genap' },
+          ]}
+          onChange={(next) => setSemester((next as SemesterOption) || '')}
           placeholder="Pilih semester"
         />
+        <Text style={{ color: BRAND_COLORS.textMuted, fontSize: scaleWithAppTextScale(12), marginTop: 8 }}>
+          Kepala sekolah melihat peringkat per semester, bukan leger detail.
+        </Text>
+        <Pressable
+          onPress={handleApplyFilters}
+          disabled={!selectedClassId || !semester || rankingQuery.isFetching}
+          style={{
+            marginTop: 12,
+            backgroundColor: !selectedClassId || !semester || rankingQuery.isFetching ? '#93c5fd' : BRAND_COLORS.blue,
+            borderRadius: 10,
+            paddingVertical: 12,
+            alignItems: 'center',
+          }}
+        >
+          <Text style={{ color: '#fff', fontWeight: '700' }}>Terapkan Filter</Text>
+        </Pressable>
       </View>
 
-      {overviewQuery.isLoading ? <QueryStateView type="loading" message="Mengambil data rapor..." /> : null}
-      {overviewQuery.isError ? (
-        <QueryStateView type="error" message="Gagal memuat rapor & ranking." onRetry={() => overviewQuery.refetch()} />
+      {selectedClass ? (
+        <View
+          style={{
+            backgroundColor: '#fff',
+            borderWidth: 1,
+            borderColor: '#dbe7fb',
+            borderRadius: 12,
+            padding: 12,
+            marginBottom: 12,
+          }}
+        >
+          <Text style={{ color: BRAND_COLORS.textDark, fontWeight: '700', fontSize: scaleWithAppTextScale(16) }}>
+            {selectedClass.name}
+          </Text>
+          <Text style={{ color: BRAND_COLORS.textMuted, marginTop: 2 }}>
+            {selectedClass.major?.name || '-'} • Wali Kelas: {selectedClass.teacher?.name || '-'}
+          </Text>
+        </View>
       ) : null}
-      {overviewQuery.data?.fromCache ? <OfflineCacheNotice cachedAt={overviewQuery.data.cachedAt} /> : null}
 
-      {!overviewQuery.isLoading && !overviewQuery.isError ? (
-        <>
-          <View style={{ flexDirection: 'row', flexWrap: 'wrap', marginHorizontal: -4, marginBottom: 12 }}>
-            <View style={{ width: '50%', paddingHorizontal: 4, marginBottom: 8 }}>
-              <View
-                style={{
-                  backgroundColor: '#fff',
-                  borderWidth: 1,
-                  borderColor: '#dbe7fb',
-                  borderRadius: 10,
-                  padding: 10,
-                }}
-              >
-                <Text style={{ color: '#64748b', fontSize: scaleWithAppTextScale(11), marginBottom: 3 }}>Rata-rata Sekolah</Text>
-                <Text style={{ color: BRAND_COLORS.textDark, fontWeight: '700', fontSize: scaleWithAppTextScale(18) }}>
-                  {academicSummary.schoolAverage.toFixed(2)}
-                </Text>
-              </View>
-            </View>
-            <View style={{ width: '50%', paddingHorizontal: 4, marginBottom: 8 }}>
-              <View
-                style={{
-                  backgroundColor: '#fff',
-                  borderWidth: 1,
-                  borderColor: '#dbe7fb',
-                  borderRadius: 10,
-                  padding: 10,
-                }}
-              >
-                <Text style={{ color: '#64748b', fontSize: scaleWithAppTextScale(11), marginBottom: 3 }}>Siswa Aktif Sistem</Text>
-                <Text style={{ color: BRAND_COLORS.textDark, fontWeight: '700', fontSize: scaleWithAppTextScale(18) }}>
-                  {dashboard?.totals.students || 0}
-                </Text>
-              </View>
-            </View>
-            <View style={{ width: '50%', paddingHorizontal: 4, marginBottom: 8 }}>
-              <View
-                style={{
-                  backgroundColor: '#fff',
-                  borderWidth: 1,
-                  borderColor: '#dbe7fb',
-                  borderRadius: 10,
-                  padding: 10,
-                }}
-              >
-                <Text style={{ color: '#64748b', fontSize: scaleWithAppTextScale(11), marginBottom: 3 }}>Siswa dengan Data Nilai</Text>
-                <Text style={{ color: BRAND_COLORS.textDark, fontWeight: '700', fontSize: scaleWithAppTextScale(18) }}>
-                  {academicSummary.totalStudents}
-                </Text>
-              </View>
-            </View>
-            <View style={{ width: '50%', paddingHorizontal: 4, marginBottom: 8 }}>
-              <View
-                style={{
-                  backgroundColor: '#fff',
-                  borderWidth: 1,
-                  borderColor: '#dbe7fb',
-                  borderRadius: 10,
-                  padding: 10,
-                }}
-              >
-                <Text style={{ color: '#64748b', fontSize: scaleWithAppTextScale(11), marginBottom: 3 }}>Kompetensi Keahlian</Text>
-                <Text style={{ color: BRAND_COLORS.textDark, fontWeight: '700', fontSize: scaleWithAppTextScale(18) }}>
-                  {academicSummary.totalMajors}
-                </Text>
-              </View>
-            </View>
-          </View>
+      {classesQuery.isLoading ? <QueryStateView type="loading" message="Memuat daftar kelas..." /> : null}
+      {classesQuery.isError ? (
+        <QueryStateView type="error" message="Gagal memuat daftar kelas." onRetry={() => classesQuery.refetch()} />
+      ) : null}
 
-          <View style={{ marginBottom: 12 }}>
-            <Text style={{ color: BRAND_COLORS.textDark, fontWeight: '700', marginBottom: 8 }}>
-              Top 3 Siswa Sekolah
-            </Text>
-            {topStudents.length > 0 ? (
-              topStudents.map((student, index) => (
+      {!classesQuery.isLoading && !classesQuery.isError && !classOptions.length ? (
+        <View
+          style={{
+            backgroundColor: '#fff',
+            borderWidth: 1,
+            borderStyle: 'dashed',
+            borderColor: '#cbd5e1',
+            borderRadius: 12,
+            padding: 18,
+            marginBottom: 12,
+          }}
+        >
+          <Text style={{ color: BRAND_COLORS.textMuted }}>Tidak ada kelas pada tahun ajaran aktif.</Text>
+        </View>
+      ) : null}
+
+      {rankingQuery.isLoading ? <QueryStateView type="loading" message="Mengambil peringkat kelas..." /> : null}
+      {rankingQuery.isError ? (
+        <QueryStateView type="error" message="Gagal memuat ranking kelas." onRetry={() => rankingQuery.refetch()} />
+      ) : null}
+
+      {!rankingQuery.isLoading && !rankingQuery.isError ? (
+        appliedFilters.classId && appliedFilters.semester ? (
+          <>
+            {rankings.length > 0 ? (
+              <>
+                <View style={{ flexDirection: 'row', flexWrap: 'wrap', marginHorizontal: -4, marginBottom: 12 }}>
+                  <View style={{ width: '33.33%', paddingHorizontal: 4, marginBottom: 8 }}>
+                    <MobileSummaryCard
+                      title="Siswa Berperingkat"
+                      value={String(totalStudents)}
+                      subtitle={appliedClass?.name || 'Kelas aktif'}
+                      iconName="users"
+                      accentColor="#2563eb"
+                    />
+                  </View>
+                  <View style={{ width: '33.33%', paddingHorizontal: 4, marginBottom: 8 }}>
+                    <MobileSummaryCard
+                      title="Rata-rata Kelas"
+                      value={formatScore(classAverage)}
+                      subtitle={appliedFilters.semester === 'ODD' ? 'Semester Ganjil' : 'Semester Genap'}
+                      iconName="bar-chart-2"
+                      accentColor="#059669"
+                    />
+                  </View>
+                  <View style={{ width: '33.33%', paddingHorizontal: 4, marginBottom: 8 }}>
+                    <MobileSummaryCard
+                      title="Peringkat 1"
+                      value={topStudent?.student?.name || '-'}
+                      subtitle={topStudent ? `Rata-rata ${formatScore(topStudent.averageScore)}` : 'Belum tersedia'}
+                      iconName="award"
+                      accentColor="#d97706"
+                    />
+                  </View>
+                </View>
+
                 <View
-                  key={student.studentId}
                   style={{
                     backgroundColor: '#fff',
                     borderWidth: 1,
                     borderColor: '#dbe7fb',
-                    borderRadius: 10,
+                    borderRadius: 12,
                     padding: 12,
-                    marginBottom: 8,
                   }}
                 >
-                  <Text style={{ color: BRAND_COLORS.textDark, fontWeight: '700' }}>
-                    #{index + 1} {student.name}
-                  </Text>
-                  <Text style={{ color: BRAND_COLORS.textMuted, fontSize: scaleWithAppTextScale(12), marginTop: 3 }}>
-                    {student.class?.name || '-'} • {student.major?.code || student.major?.name || '-'}
-                  </Text>
-                  <Text style={{ color: BRAND_COLORS.navy, fontWeight: '700', marginTop: 4 }}>
-                    Rata-rata {Number(student.averageScore || 0).toFixed(2)}
-                  </Text>
+                  {rankings.map((row, index) => (
+                    <View
+                      key={row.student?.id || `principal-ranking-${index}`}
+                      style={{
+                        borderWidth: 1,
+                        borderColor: '#e2e8f0',
+                        borderRadius: 10,
+                        padding: 12,
+                        marginBottom: index === rankings.length - 1 ? 0 : 8,
+                        backgroundColor: row.rank === 1 ? '#fffbeb' : '#f8fafc',
+                      }}
+                    >
+                      <View style={{ flexDirection: 'row', justifyContent: 'space-between', gap: 12 }}>
+                        <View style={{ flex: 1 }}>
+                          <Text style={{ color: BRAND_COLORS.textDark, fontWeight: '700' }}>
+                            #{row.rank || index + 1} {row.student?.name || '-'}
+                          </Text>
+                          <Text style={{ color: BRAND_COLORS.textMuted, marginTop: 2 }}>
+                            {row.student?.nisn || row.student?.nis || '-'}
+                          </Text>
+                        </View>
+                        <View style={{ alignItems: 'flex-end' }}>
+                          <Text style={{ color: '#475569', fontSize: scaleWithAppTextScale(12) }}>Jumlah Nilai</Text>
+                          <Text style={{ color: BRAND_COLORS.textDark, fontWeight: '700' }}>{formatScore(row.totalScore)}</Text>
+                          <Text style={{ color: '#1d4ed8', fontWeight: '700', marginTop: 4 }}>
+                            Rata-rata {formatScore(row.averageScore)}
+                          </Text>
+                        </View>
+                      </View>
+                    </View>
+                  ))}
                 </View>
-              ))
+              </>
             ) : (
               <View
                 style={{
+                  backgroundColor: '#fff',
                   borderWidth: 1,
                   borderStyle: 'dashed',
                   borderColor: '#cbd5e1',
-                  borderRadius: 10,
-                  padding: 14,
-                  backgroundColor: '#fff',
+                  borderRadius: 12,
+                  padding: 18,
                 }}
               >
-                <Text style={{ color: BRAND_COLORS.textMuted }}>Belum ada ranking siswa untuk semester ini.</Text>
+                <Text style={{ color: BRAND_COLORS.textMuted }}>
+                  Belum ada data peringkat untuk filter ini.
+                </Text>
               </View>
             )}
-          </View>
-
-          <View style={{ marginBottom: 12 }}>
-            <Text style={{ color: BRAND_COLORS.textDark, fontWeight: '700', marginBottom: 8 }}>
-              Statistik Siswa per Kompetensi Keahlian
+          </>
+        ) : (
+          <View
+            style={{
+              backgroundColor: '#fff',
+              borderWidth: 1,
+              borderStyle: 'dashed',
+              borderColor: '#cbd5e1',
+              borderRadius: 12,
+              padding: 18,
+            }}
+          >
+            <Text style={{ color: BRAND_COLORS.textMuted }}>
+              Pilih kelas dan semester lalu klik Terapkan Filter untuk melihat peringkat.
             </Text>
-            {(dashboard?.studentByMajor || []).length > 0 ? (
-              (dashboard?.studentByMajor || []).map((major) => (
-                <View
-                  key={major.majorId}
-                  style={{
-                    backgroundColor: '#fff',
-                    borderWidth: 1,
-                    borderColor: '#dbe7fb',
-                    borderRadius: 10,
-                    padding: 12,
-                    marginBottom: 8,
-                  }}
-                >
-                  <Text style={{ color: BRAND_COLORS.textDark, fontWeight: '700' }}>
-                    {major.name} {major.code ? `(${major.code})` : ''}
-                  </Text>
-                  <Text style={{ color: BRAND_COLORS.textMuted, fontSize: scaleWithAppTextScale(12), marginTop: 4 }}>
-                    Siswa {major.totalStudents} • Kelas {major.totalClasses}
-                  </Text>
-                </View>
-              ))
-            ) : (
-              <View
-                style={{
-                  borderWidth: 1,
-                  borderStyle: 'dashed',
-                  borderColor: '#cbd5e1',
-                  borderRadius: 10,
-                  padding: 14,
-                  backgroundColor: '#fff',
-                }}
-              >
-                <Text style={{ color: BRAND_COLORS.textMuted }}>Belum ada data distribusi siswa per jurusan.</Text>
-              </View>
-            )}
           </View>
-
-          <View style={{ marginBottom: 10 }}>
-            <Text style={{ color: BRAND_COLORS.textDark, fontWeight: '700', marginBottom: 8 }}>
-              Rata-rata Nilai per Jurusan
-            </Text>
-            {majors.length > 0 ? (
-              majors.map((major) => (
-                <View
-                  key={major.majorId}
-                  style={{
-                    backgroundColor: '#fff',
-                    borderWidth: 1,
-                    borderColor: '#dbe7fb',
-                    borderRadius: 10,
-                    padding: 12,
-                    marginBottom: 8,
-                  }}
-                >
-                  <Text style={{ color: BRAND_COLORS.textDark, fontWeight: '700' }}>
-                    {major.name} {major.code ? `(${major.code})` : ''}
-                  </Text>
-                  <Text style={{ color: BRAND_COLORS.textMuted, fontSize: scaleWithAppTextScale(12), marginTop: 4 }}>
-                    Total siswa {major.totalStudents} • Rata-rata {Number(major.averageScore || 0).toFixed(2)}
-                  </Text>
-                </View>
-              ))
-            ) : (
-              <View
-                style={{
-                  borderWidth: 1,
-                  borderStyle: 'dashed',
-                  borderColor: '#cbd5e1',
-                  borderRadius: 10,
-                  padding: 14,
-                  backgroundColor: '#fff',
-                }}
-              >
-                <Text style={{ color: BRAND_COLORS.textMuted }}>Belum ada data nilai per jurusan.</Text>
-              </View>
-            )}
-          </View>
-        </>
+        )
       ) : null}
     </ScrollView>
   );

@@ -7,6 +7,7 @@ import { MobileSelectField } from '../../../src/components/MobileSelectField';
 import { QueryStateView } from '../../../src/components/QueryStateView';
 import { OfflineCacheNotice } from '../../../src/components/OfflineCacheNotice';
 import { useAuth } from '../../../src/features/auth/AuthProvider';
+import { getGroupedRoleMenu } from '../../../src/features/dashboard/roleMenu';
 import { usePrincipalOverviewQuery } from '../../../src/features/principal/usePrincipalOverviewQuery';
 import { getStandardPagePadding } from '../../../src/lib/ui/pageLayout';
 import { BRAND_COLORS } from '../../../src/config/brand';
@@ -22,6 +23,8 @@ export default function PrincipalOverviewScreen() {
   const insets = useSafeAreaInsets();
   const { isAuthenticated, isLoading, user } = useAuth();
   const [semester, setSemester] = useState<'ODD' | 'EVEN'>(defaultSemesterByDate());
+  const [behaviorMajorFilter, setBehaviorMajorFilter] = useState<number | 'ALL'>('ALL');
+  const [behaviorTypeFilter, setBehaviorTypeFilter] = useState<'ALL' | 'POSITIVE' | 'NEGATIVE'>('ALL');
   const overviewQuery = usePrincipalOverviewQuery({ enabled: isAuthenticated, user, semester });
   const pagePadding = getStandardPagePadding(insets, { bottom: 120 });
   const semesterOptions = useMemo(
@@ -34,9 +37,27 @@ export default function PrincipalOverviewScreen() {
 
   const dashboard = overviewQuery.data?.summary;
   const overview = overviewQuery.data?.overview;
+  const behaviorSummary = overviewQuery.data?.behaviorSummary;
   const topStudents = overview?.topStudents || [];
   const majors = useMemo(() => overview?.majors || [], [overview?.majors]);
   const studentByMajor = useMemo(() => dashboard?.studentByMajor || [], [dashboard?.studentByMajor]);
+  const teacherAssignmentSummary = dashboard?.teacherAssignmentSummary || null;
+  const quickMenuItems = useMemo(
+    () =>
+      getGroupedRoleMenu(user, { managedInventoryRooms: user?.managedInventoryRooms })
+        .flatMap((group) => group.items.map((item) => ({ ...item, groupLabel: group.label })))
+        .filter(
+          (item) =>
+            ![
+              'principal-dashboard',
+              'principal-email',
+              'principal-profile',
+              'principal-accessibility',
+            ].includes(item.key),
+        )
+        .slice(0, 6),
+    [user],
+  );
 
   const academicSummary = useMemo(() => {
     const totalStudents = majors.reduce((sum, item) => sum + Number(item.totalStudents || 0), 0);
@@ -65,6 +86,21 @@ export default function PrincipalOverviewScreen() {
       percentage: total > 0 ? Math.round((present / total) * 100) : 0,
     };
   }, [dashboard?.totals.totalAbsentToday, dashboard?.totals.totalPresentToday]);
+
+  const filteredBehaviorSummaryByMajor = useMemo(() => {
+    if (!behaviorSummary) return [];
+    if (behaviorMajorFilter === 'ALL') return behaviorSummary.summaryByMajor;
+    return behaviorSummary.summaryByMajor.filter((item) => item.majorId === behaviorMajorFilter);
+  }, [behaviorSummary, behaviorMajorFilter]);
+
+  const filteredLatestBehaviors = useMemo(() => {
+    if (!behaviorSummary) return [];
+    return behaviorSummary.latestBehaviors.filter((item) => {
+      const matchMajor = behaviorMajorFilter === 'ALL' || item.major?.id === behaviorMajorFilter;
+      const matchType = behaviorTypeFilter === 'ALL' || item.type === behaviorTypeFilter;
+      return matchMajor && matchType;
+    });
+  }, [behaviorSummary, behaviorMajorFilter, behaviorTypeFilter]);
 
   if (isLoading) return <AppLoadingScreen message="Memuat dashboard kepala sekolah..." />;
   if (!isAuthenticated) return <Redirect href="/welcome" />;
@@ -101,22 +137,16 @@ export default function PrincipalOverviewScreen() {
         />
       }
     >
-      <Text style={{ fontSize: scaleWithAppTextScale(20), fontWeight: '700', marginBottom: 6, color: BRAND_COLORS.textDark }}>Dashboard Kepala Sekolah</Text>
+      <Text style={{ fontSize: scaleWithAppTextScale(20), fontWeight: '700', marginBottom: 6, color: BRAND_COLORS.textDark }}>
+        Dashboard Kepala Sekolah
+      </Text>
       <Text style={{ color: BRAND_COLORS.textMuted, marginBottom: 12 }}>
         Ringkasan akademik, keuangan, dan SDM kepala sekolah.
       </Text>
 
       <View style={{ flexDirection: 'row', flexWrap: 'wrap', marginHorizontal: -4, marginBottom: 12 }}>
         <View style={{ width: '50%', paddingHorizontal: 4, marginBottom: 8 }}>
-          <View
-            style={{
-              backgroundColor: '#fff',
-              borderWidth: 1,
-              borderColor: '#dbe7fb',
-              borderRadius: 10,
-              padding: 10,
-            }}
-          >
+          <View style={{ backgroundColor: '#fff', borderWidth: 1, borderColor: '#dbe7fb', borderRadius: 10, padding: 10 }}>
             <Text style={{ color: '#64748b', fontSize: scaleWithAppTextScale(11), marginBottom: 3 }}>Siswa Aktif</Text>
             <Text style={{ color: BRAND_COLORS.textDark, fontWeight: '700', fontSize: scaleWithAppTextScale(18) }}>
               {dashboard?.totals.students || 0}
@@ -124,31 +154,15 @@ export default function PrincipalOverviewScreen() {
           </View>
         </View>
         <View style={{ width: '50%', paddingHorizontal: 4, marginBottom: 8 }}>
-          <View
-            style={{
-              backgroundColor: '#fff',
-              borderWidth: 1,
-              borderColor: '#dbe7fb',
-              borderRadius: 10,
-              padding: 10,
-            }}
-          >
-            <Text style={{ color: '#64748b', fontSize: scaleWithAppTextScale(11), marginBottom: 3 }}>Guru & Staff</Text>
+          <View style={{ backgroundColor: '#fff', borderWidth: 1, borderColor: '#dbe7fb', borderRadius: 10, padding: 10 }}>
+            <Text style={{ color: '#64748b', fontSize: scaleWithAppTextScale(11), marginBottom: 3 }}>Guru</Text>
             <Text style={{ color: BRAND_COLORS.textDark, fontWeight: '700', fontSize: scaleWithAppTextScale(18) }}>
               {dashboard?.totals.teachers || 0}
             </Text>
           </View>
         </View>
         <View style={{ width: '50%', paddingHorizontal: 4, marginBottom: 8 }}>
-          <View
-            style={{
-              backgroundColor: '#fff',
-              borderWidth: 1,
-              borderColor: '#dbe7fb',
-              borderRadius: 10,
-              padding: 10,
-            }}
-          >
+          <View style={{ backgroundColor: '#fff', borderWidth: 1, borderColor: '#dbe7fb', borderRadius: 10, padding: 10 }}>
             <Text style={{ color: '#64748b', fontSize: scaleWithAppTextScale(11), marginBottom: 3 }}>Pengajuan Pending</Text>
             <Text style={{ color: BRAND_COLORS.textDark, fontWeight: '700', fontSize: scaleWithAppTextScale(18) }}>
               {dashboard?.totals.pendingBudgetRequests || 0}
@@ -159,15 +173,7 @@ export default function PrincipalOverviewScreen() {
           </View>
         </View>
         <View style={{ width: '50%', paddingHorizontal: 4, marginBottom: 8 }}>
-          <View
-            style={{
-              backgroundColor: '#fff',
-              borderWidth: 1,
-              borderColor: '#dbe7fb',
-              borderRadius: 10,
-              padding: 10,
-            }}
-          >
+          <View style={{ backgroundColor: '#fff', borderWidth: 1, borderColor: '#dbe7fb', borderRadius: 10, padding: 10 }}>
             <Text style={{ color: '#64748b', fontSize: scaleWithAppTextScale(11), marginBottom: 3 }}>Kompetensi Keahlian</Text>
             <Text style={{ color: BRAND_COLORS.textDark, fontWeight: '700', fontSize: scaleWithAppTextScale(18) }}>
               {studentByMajor.length}
@@ -175,29 +181,13 @@ export default function PrincipalOverviewScreen() {
           </View>
         </View>
         <View style={{ width: '50%', paddingHorizontal: 4, marginBottom: 8 }}>
-          <View
-            style={{
-              backgroundColor: '#fff',
-              borderWidth: 1,
-              borderColor: '#dbe7fb',
-              borderRadius: 10,
-              padding: 10,
-            }}
-          >
+          <View style={{ backgroundColor: '#fff', borderWidth: 1, borderColor: '#dbe7fb', borderRadius: 10, padding: 10 }}>
             <Text style={{ color: '#64748b', fontSize: scaleWithAppTextScale(11), marginBottom: 3 }}>Kelas Aktif</Text>
             <Text style={{ color: BRAND_COLORS.textDark, fontWeight: '700', fontSize: scaleWithAppTextScale(18) }}>{totalClasses}</Text>
           </View>
         </View>
         <View style={{ width: '100%', paddingHorizontal: 4, marginBottom: 8 }}>
-          <View
-            style={{
-              backgroundColor: '#fff',
-              borderWidth: 1,
-              borderColor: '#dbe7fb',
-              borderRadius: 10,
-              padding: 10,
-            }}
-          >
+          <View style={{ backgroundColor: '#fff', borderWidth: 1, borderColor: '#dbe7fb', borderRadius: 10, padding: 10 }}>
             <Text style={{ color: '#64748b', fontSize: scaleWithAppTextScale(11), marginBottom: 3 }}>Kehadiran Hari Ini</Text>
             <Text style={{ color: BRAND_COLORS.textDark, fontWeight: '700', fontSize: scaleWithAppTextScale(18) }}>
               {attendanceSummary.percentage}%
@@ -240,6 +230,66 @@ export default function PrincipalOverviewScreen() {
 
       {!overviewQuery.isLoading && !overviewQuery.isError ? (
         <>
+          <View
+            style={{
+              backgroundColor: '#fff',
+              borderWidth: 1,
+              borderColor: '#dbe7fb',
+              borderRadius: 12,
+              padding: 12,
+              marginBottom: 12,
+            }}
+          >
+            <Text style={{ color: BRAND_COLORS.textDark, fontWeight: '700', marginBottom: 8 }}>Ringkasan Assignment Guru</Text>
+            {teacherAssignmentSummary ? (
+              <View style={{ flexDirection: 'row', flexWrap: 'wrap', marginHorizontal: -4 }}>
+                <View style={{ width: '50%', paddingHorizontal: 4, marginBottom: 8 }}>
+                  <View style={{ backgroundColor: '#eef2ff', borderRadius: 10, padding: 10 }}>
+                    <Text style={{ color: '#4338ca', fontSize: scaleWithAppTextScale(11), marginBottom: 3 }}>Total Assignment</Text>
+                    <Text style={{ color: '#312e81', fontWeight: '700', fontSize: scaleWithAppTextScale(18) }}>
+                      {teacherAssignmentSummary.totalAssignments}
+                    </Text>
+                  </View>
+                </View>
+                <View style={{ width: '50%', paddingHorizontal: 4, marginBottom: 8 }}>
+                  <View style={{ backgroundColor: '#ecfdf5', borderRadius: 10, padding: 10 }}>
+                    <Text style={{ color: '#047857', fontSize: scaleWithAppTextScale(11), marginBottom: 3 }}>Guru Dengan Assignment</Text>
+                    <Text style={{ color: '#065f46', fontWeight: '700', fontSize: scaleWithAppTextScale(18) }}>
+                      {teacherAssignmentSummary.totalTeachersWithAssignments}
+                    </Text>
+                  </View>
+                </View>
+              </View>
+            ) : (
+              <Text style={{ color: BRAND_COLORS.textMuted }}>Ringkasan assignment guru belum tersedia.</Text>
+            )}
+          </View>
+
+          {quickMenuItems.length > 0 ? (
+            <View style={{ marginBottom: 12 }}>
+              <Text style={{ color: BRAND_COLORS.textDark, fontWeight: '700', marginBottom: 8 }}>Menu Cepat</Text>
+              <View style={{ flexDirection: 'row', flexWrap: 'wrap', marginHorizontal: -4 }}>
+                {quickMenuItems.map((item) => (
+                  <View key={item.key} style={{ width: '50%', paddingHorizontal: 4, marginBottom: 8 }}>
+                    <Pressable
+                      onPress={() => item.route && router.push(item.route as never)}
+                      style={{
+                        backgroundColor: '#fff',
+                        borderWidth: 1,
+                        borderColor: '#dbe7fb',
+                        borderRadius: 12,
+                        padding: 12,
+                      }}
+                    >
+                      <Text style={{ color: '#64748b', fontSize: scaleWithAppTextScale(11), marginBottom: 3 }}>{item.groupLabel}</Text>
+                      <Text style={{ color: BRAND_COLORS.textDark, fontWeight: '700' }}>{item.label}</Text>
+                    </Pressable>
+                  </View>
+                ))}
+              </View>
+            </View>
+          ) : null}
+
           <View style={{ marginBottom: 12 }}>
             <Text style={{ color: BRAND_COLORS.textDark, fontWeight: '700', marginBottom: 8 }}>
               Statistik Siswa per Kompetensi Keahlian
@@ -283,15 +333,7 @@ export default function PrincipalOverviewScreen() {
 
           <View style={{ flexDirection: 'row', flexWrap: 'wrap', marginHorizontal: -4, marginBottom: 12 }}>
             <View style={{ width: '50%', paddingHorizontal: 4, marginBottom: 8 }}>
-              <View
-                style={{
-                  backgroundColor: '#fff',
-                  borderWidth: 1,
-                  borderColor: '#dbe7fb',
-                  borderRadius: 10,
-                  padding: 10,
-                }}
-              >
+              <View style={{ backgroundColor: '#fff', borderWidth: 1, borderColor: '#dbe7fb', borderRadius: 10, padding: 10 }}>
                 <Text style={{ color: '#64748b', fontSize: scaleWithAppTextScale(11), marginBottom: 3 }}>Rata-rata Sekolah</Text>
                 <Text style={{ color: BRAND_COLORS.textDark, fontWeight: '700', fontSize: scaleWithAppTextScale(18) }}>
                   {academicSummary.schoolAverage.toFixed(2)}
@@ -299,32 +341,16 @@ export default function PrincipalOverviewScreen() {
               </View>
             </View>
             <View style={{ width: '50%', paddingHorizontal: 4, marginBottom: 8 }}>
-              <View
-                style={{
-                  backgroundColor: '#fff',
-                  borderWidth: 1,
-                  borderColor: '#dbe7fb',
-                  borderRadius: 10,
-                  padding: 10,
-                }}
-              >
-                <Text style={{ color: '#64748b', fontSize: scaleWithAppTextScale(11), marginBottom: 3 }}>Jurusan dengan Nilai</Text>
+              <View style={{ backgroundColor: '#fff', borderWidth: 1, borderColor: '#dbe7fb', borderRadius: 10, padding: 10 }}>
+                <Text style={{ color: '#64748b', fontSize: scaleWithAppTextScale(11), marginBottom: 3 }}>Jurusan Dengan Nilai</Text>
                 <Text style={{ color: BRAND_COLORS.textDark, fontWeight: '700', fontSize: scaleWithAppTextScale(18) }}>
                   {academicSummary.totalMajors}
                 </Text>
               </View>
             </View>
             <View style={{ width: '100%', paddingHorizontal: 4, marginBottom: 8 }}>
-              <View
-                style={{
-                  backgroundColor: '#fff',
-                  borderWidth: 1,
-                  borderColor: '#dbe7fb',
-                  borderRadius: 10,
-                  padding: 10,
-                }}
-              >
-                <Text style={{ color: '#64748b', fontSize: scaleWithAppTextScale(11), marginBottom: 3 }}>Siswa dengan Data Nilai</Text>
+              <View style={{ backgroundColor: '#fff', borderWidth: 1, borderColor: '#dbe7fb', borderRadius: 10, padding: 10 }}>
+                <Text style={{ color: '#64748b', fontSize: scaleWithAppTextScale(11), marginBottom: 3 }}>Siswa Dengan Data Nilai</Text>
                 <Text style={{ color: BRAND_COLORS.textDark, fontWeight: '700', fontSize: scaleWithAppTextScale(18) }}>
                   {academicSummary.totalStudents}
                 </Text>
@@ -333,7 +359,7 @@ export default function PrincipalOverviewScreen() {
           </View>
 
           <View style={{ marginBottom: 12 }}>
-            <Text style={{ color: BRAND_COLORS.textDark, fontWeight: '700', marginBottom: 8 }}>Top 3 Siswa</Text>
+            <Text style={{ color: BRAND_COLORS.textDark, fontWeight: '700', marginBottom: 8 }}>Top 3 Siswa Sekolah</Text>
             {topStudents.length > 0 ? (
               topStudents.map((student, index) => (
                 <View
@@ -374,8 +400,8 @@ export default function PrincipalOverviewScreen() {
             )}
           </View>
 
-          <View style={{ marginBottom: 10 }}>
-            <Text style={{ color: BRAND_COLORS.textDark, fontWeight: '700', marginBottom: 8 }}>Rata-rata per Jurusan</Text>
+          <View style={{ marginBottom: 12 }}>
+            <Text style={{ color: BRAND_COLORS.textDark, fontWeight: '700', marginBottom: 8 }}>Rata-rata Nilai per Jurusan</Text>
             {majors.length > 0 ? (
               majors.map((major) => (
                 <View
@@ -409,6 +435,128 @@ export default function PrincipalOverviewScreen() {
                 }}
               >
                 <Text style={{ color: BRAND_COLORS.textMuted }}>Belum ada data jurusan untuk filter ini.</Text>
+              </View>
+            )}
+          </View>
+
+          <View
+            style={{
+              backgroundColor: '#fff',
+              borderWidth: 1,
+              borderColor: '#dbe7fb',
+              borderRadius: 12,
+              padding: 12,
+              marginBottom: 12,
+            }}
+          >
+            <Text style={{ color: BRAND_COLORS.textDark, fontWeight: '700', marginBottom: 8 }}>Ringkasan Perilaku</Text>
+            <MobileSelectField
+              label="Jurusan"
+              value={behaviorMajorFilter === 'ALL' ? 'ALL' : String(behaviorMajorFilter)}
+              options={[
+                { value: 'ALL', label: 'Semua Jurusan' },
+                ...((behaviorSummary?.summaryByMajor || []).map((item) => ({
+                  value: String(item.majorId),
+                  label: `${item.code} - ${item.name}`,
+                }))),
+              ]}
+              onChange={(next) => setBehaviorMajorFilter(next === 'ALL' || !next ? 'ALL' : Number(next))}
+              placeholder="Pilih jurusan"
+            />
+            <View style={{ height: 12 }} />
+            <MobileSelectField
+              label="Jenis Catatan"
+              value={behaviorTypeFilter}
+              options={[
+                { value: 'ALL', label: 'Semua Catatan' },
+                { value: 'POSITIVE', label: 'Catatan Positif' },
+                { value: 'NEGATIVE', label: 'Catatan Negatif' },
+              ]}
+              onChange={(next) => setBehaviorTypeFilter((next as 'ALL' | 'POSITIVE' | 'NEGATIVE') || 'ALL')}
+              placeholder="Pilih jenis"
+            />
+          </View>
+
+          <View style={{ marginBottom: 12 }}>
+            {filteredBehaviorSummaryByMajor.length > 0 ? (
+              filteredBehaviorSummaryByMajor.map((item) => (
+                <View
+                  key={item.majorId}
+                  style={{
+                    backgroundColor: '#fff',
+                    borderWidth: 1,
+                    borderColor: '#dbe7fb',
+                    borderRadius: 10,
+                    padding: 10,
+                    marginBottom: 8,
+                  }}
+                >
+                  <Text style={{ color: BRAND_COLORS.textDark, fontWeight: '700' }}>
+                    {item.code} - {item.name}
+                  </Text>
+                  <Text style={{ color: '#047857', marginTop: 4 }}>Positif: {item.positiveCount}</Text>
+                  <Text style={{ color: '#b91c1c', marginTop: 2 }}>Negatif: {item.negativeCount}</Text>
+                </View>
+              ))
+            ) : (
+              <View
+                style={{
+                  borderWidth: 1,
+                  borderColor: '#cbd5e1',
+                  borderStyle: 'dashed',
+                  borderRadius: 10,
+                  padding: 14,
+                  backgroundColor: '#fff',
+                }}
+              >
+                <Text style={{ color: BRAND_COLORS.textMuted }}>Belum ada ringkasan perilaku untuk filter ini.</Text>
+              </View>
+            )}
+          </View>
+
+          <View style={{ marginBottom: 12 }}>
+            <Text style={{ color: BRAND_COLORS.textDark, fontWeight: '700', marginBottom: 8 }}>Catatan Perilaku Terbaru</Text>
+            {filteredLatestBehaviors.length > 0 ? (
+              filteredLatestBehaviors.slice(0, 6).map((item) => (
+                <View
+                  key={item.id}
+                  style={{
+                    backgroundColor: '#fff',
+                    borderWidth: 1,
+                    borderColor: '#dbe7fb',
+                    borderRadius: 10,
+                    padding: 10,
+                    marginBottom: 8,
+                  }}
+                >
+                  <Text style={{ color: BRAND_COLORS.textDark, fontWeight: '700' }}>{item.student.name}</Text>
+                  <Text style={{ color: BRAND_COLORS.textMuted, marginTop: 2 }}>
+                    {item.class?.name || '-'} • {item.major?.code || item.major?.name || '-'}
+                  </Text>
+                  <Text
+                    style={{
+                      color: item.type === 'POSITIVE' ? '#047857' : '#b91c1c',
+                      fontWeight: '700',
+                      marginTop: 6,
+                    }}
+                  >
+                    {item.type === 'POSITIVE' ? 'Positif' : 'Negatif'}
+                  </Text>
+                  <Text style={{ color: '#475569', marginTop: 3 }}>{item.description}</Text>
+                </View>
+              ))
+            ) : (
+              <View
+                style={{
+                  borderWidth: 1,
+                  borderColor: '#cbd5e1',
+                  borderStyle: 'dashed',
+                  borderRadius: 10,
+                  padding: 14,
+                  backgroundColor: '#fff',
+                }}
+              >
+                <Text style={{ color: BRAND_COLORS.textMuted }}>Belum ada catatan perilaku untuk filter ini.</Text>
               </View>
             )}
           </View>

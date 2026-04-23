@@ -314,6 +314,16 @@ function getSearchPlaceholder(section: SarprasSection) {
   return 'Cari ringkasan aset sekolah';
 }
 
+type TeacherSarprasInventoryScreenProps = {
+  routeDefaults?: {
+    scope?: InventoryScope;
+    managedOnly?: boolean;
+    roomId?: number | null;
+    title?: string;
+    subtitle?: string;
+  };
+};
+
 function RoomCard({
   room,
   selected,
@@ -559,7 +569,7 @@ function InventoryCard({
   );
 }
 
-export default function TeacherSarprasInventoryScreen() {
+export function TeacherSarprasInventoryScreen({ routeDefaults }: TeacherSarprasInventoryScreenProps = {}) {
   const router = useRouter();
   const params = useLocalSearchParams<{
     scope?: string | string[];
@@ -573,20 +583,25 @@ export default function TeacherSarprasInventoryScreen() {
   const { isAuthenticated, isLoading, user } = useAuth();
   const pagePadding = getStandardPagePadding(insets, { bottom: 120 });
   const { scaleFont, scaleLineHeight } = useAppTextScale();
-  const inventoryScope = parseScope(params.scope);
-  const managedOnly = parseBooleanParam(params.managedOnly);
+  const routeScope = routeDefaults?.scope ? String(routeDefaults.scope) : undefined;
+  const inventoryScope = parseScope((params.scope ?? routeScope) as string | string[] | null | undefined);
+  const managedOnly = parseBooleanParam(params.managedOnly) || Boolean(routeDefaults?.managedOnly);
   const requestedRoomId = useMemo(() => {
     const raw = Array.isArray(params.roomId) ? params.roomId[0] : params.roomId;
     const parsed = Number.parseInt(String(raw || '').trim(), 10);
-    return Number.isFinite(parsed) && parsed > 0 ? parsed : null;
-  }, [params.roomId]);
+    if (Number.isFinite(parsed) && parsed > 0) return parsed;
+    const fallbackRoomId = Number(routeDefaults?.roomId || 0);
+    return Number.isFinite(fallbackRoomId) && fallbackRoomId > 0 ? fallbackRoomId : null;
+  }, [params.roomId, routeDefaults?.roomId]);
   const titleOverride = useMemo(
-    () => String(Array.isArray(params.title) ? params.title[0] : params.title || '').trim(),
-    [params.title],
+    () =>
+      String(Array.isArray(params.title) ? params.title[0] : params.title || routeDefaults?.title || '').trim(),
+    [params.title, routeDefaults?.title],
   );
   const subtitleOverride = useMemo(
-    () => String(Array.isArray(params.subtitle) ? params.subtitle[0] : params.subtitle || '').trim(),
-    [params.subtitle],
+    () =>
+      String(Array.isArray(params.subtitle) ? params.subtitle[0] : params.subtitle || routeDefaults?.subtitle || '').trim(),
+    [params.subtitle, routeDefaults?.subtitle],
   );
   const pageTitle = titleOverride
     || (inventoryScope === 'LAB'
@@ -2997,3 +3012,5 @@ export default function TeacherSarprasInventoryScreen() {
     </ScrollView>
   );
 }
+
+export default TeacherSarprasInventoryScreen;
