@@ -1,4 +1,4 @@
-import { useState, useEffect, useMemo, useRef, type UIEvent, type WheelEvent } from 'react';
+import { useState, useEffect, useMemo, useRef, type WheelEvent } from 'react';
 import { Save, Loader2, X } from 'lucide-react';
 import { toast } from 'react-hot-toast';
 import { gradeService } from '../../services/grade.service';
@@ -34,14 +34,6 @@ interface StudentReportGrade {
   slotScores?: Record<string, number | null> | null;
   description?: string | null;
 }
-
-type GradeTableColumn = {
-  key: string;
-  label: string;
-  width: string;
-  align?: 'left' | 'center';
-  headerBgClass?: string;
-};
 
 type ApiGradeRow = {
   id?: number | string;
@@ -693,7 +685,6 @@ export const TeacherGradesPage = () => {
   const studentsRequestRef = useRef(0);
   const existingGradesRequestRef = useRef(0);
   const assignmentsRequestRef = useRef(0);
-  const frozenHeaderScrollRef = useRef<HTMLDivElement | null>(null);
   
   const selectedAcademicYearNum = Number(selectedAcademicYear);
   const assignmentOptions = useMemo(() => {
@@ -1611,118 +1602,50 @@ export const TeacherGradesPage = () => {
     return <span className="inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium bg-red-100 text-red-800">Belum Tuntas</span>;
   };
 
-  const showGradeTable = Boolean(selectedAcademicYear && selectedAssignment && selectedComponent);
-  const gradeTableColumns = useMemo<GradeTableColumn[]>(() => {
-    const baseColumns: GradeTableColumn[] = [
-      { key: 'no', label: 'No', width: '72px' },
-      { key: 'nisn', label: 'NISN', width: '124px' },
-      { key: 'name', label: 'Nama Siswa', width: '250px' },
-    ];
-
-    if (isFormatifComponent) {
-      return [
-        ...baseColumns,
-        { key: 'formative-entry', label: 'Entri Formatif (Dinamis)', width: '320px' },
-        { key: 'midterm-ref', label: `x̄ Referensi ${midtermComponentLabel}`, width: '280px', align: 'center', headerBgClass: 'bg-blue-50' },
-        { key: 'final-ref', label: `x̄ Referensi ${finalComponentLabel}`, width: '280px', align: 'center', headerBgClass: 'bg-green-50' },
-        { key: 'status', label: 'Status', width: '120px', align: 'center' },
-      ];
-    }
-
-    if (isMidtermComponent) {
-      return [
-        ...baseColumns,
-        { key: 'formative-ref', label: `x̄ Referensi ${formativeComponentLabel}`, width: '260px', align: 'center', headerBgClass: 'bg-blue-50' },
-        { key: 'midterm-score', label: `Nilai ${midtermComponentLabel}`, width: '180px', align: 'center' },
-        { key: 'midterm-report', label: `Nilai Rapor ${midtermComponentLabel}`, width: '260px', align: 'center', headerBgClass: 'bg-yellow-50' },
-        { key: 'status', label: 'Status', width: '120px', align: 'center' },
-      ];
-    }
-
-    if (isFinalComponent) {
-      return [
-        ...baseColumns,
-        { key: 'formative-ref', label: `x̄ Referensi ${formativeComponentLabel}`, width: '220px', align: 'center', headerBgClass: 'bg-blue-50' },
-        { key: 'midterm-score', label: `Nilai ${midtermComponentLabel}`, width: '180px', align: 'center' },
-        { key: 'final-score', label: `Nilai ${finalComponentLabel}`, width: '180px', align: 'center' },
-        { key: 'final-report', label: `Nilai Rapor ${finalComponentLabel}`, width: '220px', align: 'center', headerBgClass: 'bg-yellow-50' },
-        { key: 'competency', label: 'Capaian Kompetensi', width: '360px' },
-        { key: 'status', label: 'Status', width: '120px', align: 'center' },
-      ];
-    }
-
-    return [
-      ...baseColumns,
-      { key: 'score', label: 'Nilai', width: '180px', align: 'center' },
-      { key: 'status', label: 'Status', width: '120px', align: 'center' },
-    ];
-  }, [
-    finalComponentLabel,
-    formativeComponentLabel,
-    isFinalComponent,
-    isFormatifComponent,
-    isMidtermComponent,
-    midtermComponentLabel,
-  ]);
-  const gradeTableWidth = useMemo(() => {
-    const totalWidth = gradeTableColumns.reduce((sum, column) => {
-      const parsed = Number.parseInt(column.width, 10);
-      return sum + (Number.isFinite(parsed) ? parsed : 0);
-    }, 0);
-    return `${Math.max(totalWidth, 960)}px`;
-  }, [gradeTableColumns]);
-
-  const handleGradeTableBodyScroll = (event: UIEvent<HTMLDivElement>) => {
-    if (!frozenHeaderScrollRef.current) return;
-    frozenHeaderScrollRef.current.scrollLeft = event.currentTarget.scrollLeft;
-  };
-
   return (
-      <div className="space-y-6 pb-6">
-      <div className="sticky top-0 z-30 bg-[var(--app-bg)] pb-4">
-        <div className="space-y-6">
-          <div className="flex justify-between items-center">
-            <div>
-              <h1 className="text-2xl font-bold text-gray-800">Input Nilai Siswa</h1>
-              <p className="text-gray-600">Input nilai per komponen untuk siswa</p>
-            </div>
+      <div className="space-y-6">
+      <div className="flex justify-between items-center">
+        <div>
+          <h1 className="text-2xl font-bold text-gray-800">Input Nilai Siswa</h1>
+          <p className="text-gray-600">Input nilai per komponen untuk siswa</p>
+        </div>
+      </div>
+
+      {/* Description Box */}
+      <div className="rounded-lg border border-blue-200 bg-blue-50 px-3 py-2 text-xs text-blue-800">
+        <span className="font-semibold">Informasi Penilaian:</span> {getDescription()}
+      </div>
+
+      {selectedComponentObj ? (
+        <div className="bg-white rounded-xl shadow-sm border border-gray-100 p-3">
+          <div className="flex flex-wrap items-center gap-2 text-xs">
+            <span className="inline-flex items-center rounded-full border border-gray-200 bg-gray-50 px-2.5 py-1 text-gray-700">
+              <span className="mr-1 text-gray-500">Komponen:</span>
+              <span className="font-semibold">{resolveReadableComponentLabel(selectedComponentObj, '-')}</span>
+            </span>
+            <span className="inline-flex items-center rounded-full border border-gray-200 bg-gray-50 px-2.5 py-1 text-gray-700">
+              <span className="mr-1 text-gray-500">Mode:</span>
+              <span className="font-semibold">{selectedComponentInputModeLabel}</span>
+            </span>
+            <span className="inline-flex items-center rounded-full border border-gray-200 bg-gray-50 px-2.5 py-1 text-gray-700">
+              <span className="mr-1 text-gray-500">Slot:</span>
+              <span className="font-semibold">{selectedComponentReportSlotLabel}</span>
+            </span>
+            <span className="inline-flex items-center rounded-full border border-gray-200 bg-gray-50 px-2.5 py-1 text-gray-700">
+              <span className="mr-1 text-gray-500">Masuk Nilai Akhir:</span>
+              <span className="font-semibold">{selectedComponentObj.includeInFinalScore ? 'Ya' : 'Tidak'}</span>
+            </span>
           </div>
+          <p className="mt-2 text-xs text-blue-700">
+            {selectedComponentFlowLabel}: {selectedComponentFormulaHint}
+          </p>
+        </div>
+      ) : null}
 
-          {/* Description Box */}
-          <div className="rounded-lg border border-blue-200 bg-blue-50 px-3 py-2 text-xs text-blue-800">
-            <span className="font-semibold">Informasi Penilaian:</span> {getDescription()}
-          </div>
-
-          {selectedComponentObj ? (
-            <div className="bg-white rounded-xl shadow-sm border border-gray-100 p-3">
-              <div className="flex flex-wrap items-center gap-2 text-xs">
-                <span className="inline-flex items-center rounded-full border border-gray-200 bg-gray-50 px-2.5 py-1 text-gray-700">
-                  <span className="mr-1 text-gray-500">Komponen:</span>
-                  <span className="font-semibold">{resolveReadableComponentLabel(selectedComponentObj, '-')}</span>
-                </span>
-                <span className="inline-flex items-center rounded-full border border-gray-200 bg-gray-50 px-2.5 py-1 text-gray-700">
-                  <span className="mr-1 text-gray-500">Mode:</span>
-                  <span className="font-semibold">{selectedComponentInputModeLabel}</span>
-                </span>
-                <span className="inline-flex items-center rounded-full border border-gray-200 bg-gray-50 px-2.5 py-1 text-gray-700">
-                  <span className="mr-1 text-gray-500">Slot:</span>
-                  <span className="font-semibold">{selectedComponentReportSlotLabel}</span>
-                </span>
-                <span className="inline-flex items-center rounded-full border border-gray-200 bg-gray-50 px-2.5 py-1 text-gray-700">
-                  <span className="mr-1 text-gray-500">Masuk Nilai Akhir:</span>
-                  <span className="font-semibold">{selectedComponentObj.includeInFinalScore ? 'Ya' : 'Tidak'}</span>
-                </span>
-              </div>
-              <p className="mt-2 text-xs text-blue-700">
-                {selectedComponentFlowLabel}: {selectedComponentFormulaHint}
-              </p>
-            </div>
-          ) : null}
-
-          {/* Filters */}
-          <div className="bg-white rounded-xl shadow-sm border border-gray-100 p-6">
-            <h2 className="text-lg font-semibold text-gray-900 mb-4">Filter Data</h2>
-            <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-5 gap-4">
+      {/* Filters */}
+      <div className="bg-white rounded-xl shadow-sm border border-gray-100 p-6">
+        <h2 className="text-lg font-semibold text-gray-900 mb-4">Filter Data</h2>
+        <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-5 gap-4">
             <div>
                 <label htmlFor="semester" className="block text-sm font-medium text-gray-700 mb-2">Semester</label>
                 <select 
@@ -1805,50 +1728,50 @@ export const TeacherGradesPage = () => {
                         )}
                     </div>
             </div>
-            </div>
-          </div>
-
-          {showGradeTable && (
-            <div className="bg-white rounded-xl shadow-sm border border-gray-100 p-6">
-              <div ref={frozenHeaderScrollRef} className="overflow-hidden">
-                <table className="table-fixed border-separate border-spacing-0" style={{ width: gradeTableWidth, minWidth: gradeTableWidth }}>
-                  <colgroup>
-                    {gradeTableColumns.map((column) => (
-                      <col key={column.key} style={{ width: column.width }} />
-                    ))}
-                  </colgroup>
-                  <thead>
-                    <tr className="bg-gray-50 border-b border-gray-200">
-                      {gradeTableColumns.map((column) => (
-                        <th
-                          key={column.key}
-                          className={`border-b border-gray-200 px-6 py-3 text-xs font-medium uppercase tracking-wider text-gray-500 ${column.align === 'center' ? 'text-center' : 'text-left'} ${column.headerBgClass || 'bg-gray-50'}`}
-                        >
-                          {column.label}
-                        </th>
-                      ))}
-                    </tr>
-                  </thead>
-                </table>
-              </div>
-            </div>
-          )}
         </div>
       </div>
 
       {/* Table */}
-	      {showGradeTable && (
-          <div className="bg-white rounded-xl shadow-sm border border-gray-100 p-6 pt-0">
-              <div className="overflow-x-auto" onScroll={handleGradeTableBodyScroll}>
-                  <table className="table-fixed border-separate border-spacing-0" style={{ width: gradeTableWidth, minWidth: gradeTableWidth }}>
-                      <colgroup>
-                        {gradeTableColumns.map((column) => (
-                          <col key={column.key} style={{ width: column.width }} />
-                        ))}
-                      </colgroup>
+	      {selectedAcademicYear && selectedAssignment && selectedComponent && (
+          <div className="bg-white rounded-xl shadow-sm border border-gray-100 p-6">
+              <div className="overflow-x-auto">
+                  <table className="w-full border-collapse">
+                      <thead>
+                          <tr className="bg-gray-50 border-b border-gray-200">
+                              <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">No</th>
+                              <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">NISN</th>
+                              <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Nama Siswa</th>
+                              
+                              {isFormatifComponent ? (
+                                  <>
+                                      <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Entri Formatif (Dinamis)</th>
+                                      <th className="px-6 py-3 text-center text-xs font-medium text-gray-500 uppercase tracking-wider bg-blue-50">x̄ Referensi {midtermComponentLabel}</th>
+                                      <th className="px-6 py-3 text-center text-xs font-medium text-gray-500 uppercase tracking-wider bg-green-50">x̄ Referensi {finalComponentLabel}</th>
+                                  </>
+                              ) : isMidtermComponent ? (
+                                  <>
+                                      <th className="px-6 py-3 text-center text-xs font-medium text-gray-500 uppercase tracking-wider bg-blue-50">x̄ Referensi {formativeComponentLabel}</th>
+                                      <th className="px-6 py-3 text-center text-xs font-medium text-gray-500 uppercase tracking-wider">Nilai {midtermComponentLabel}</th>
+                                      <th className="px-6 py-3 text-center text-xs font-medium text-gray-500 uppercase tracking-wider bg-yellow-50">Nilai Rapor {midtermComponentLabel}</th>
+                                  </>
+                              ) : isFinalComponent ? (
+                                  <>
+                                      <th className="px-6 py-3 text-center text-xs font-medium text-gray-500 uppercase tracking-wider bg-blue-50">x̄ Referensi {formativeComponentLabel}</th>
+                                      <th className="px-6 py-3 text-center text-xs font-medium text-gray-500 uppercase tracking-wider bg-gray-50">Nilai {midtermComponentLabel}</th>
+                                      <th className="px-6 py-3 text-center text-xs font-medium text-gray-500 uppercase tracking-wider">Nilai {finalComponentLabel}</th>
+                                      <th className="px-6 py-3 text-center text-xs font-medium text-gray-500 uppercase tracking-wider bg-yellow-50">Nilai Rapor {finalComponentLabel}</th>
+                                      <th className="px-6 py-3 text-center text-xs font-medium text-gray-500 uppercase tracking-wider">Capaian Kompetensi</th>
+                                  </>
+                              ) : (
+                                  <th className="px-6 py-3 text-center text-xs font-medium text-gray-500 uppercase tracking-wider">Nilai</th>
+                              )}
+                              
+                              <th className="px-6 py-3 text-center text-xs font-medium text-gray-500 uppercase tracking-wider">Status</th>
+                          </tr>
+                      </thead>
                       <tbody className="bg-white divide-y divide-gray-200">
                           {loading ? (
-                              <tr><td colSpan={gradeTableColumns.length} className="text-center py-8">Memuat...</td></tr>
+                              <tr><td colSpan={12} className="text-center py-8">Memuat...</td></tr>
                           ) : students.length > 0 ? (
 	                              students.map((student, idx) => {
                                   const grade = grades.find(g => g.student_id === student.id);
@@ -2075,7 +1998,7 @@ export const TeacherGradesPage = () => {
                                   );
                               })
                           ) : (
-                              <tr><td colSpan={gradeTableColumns.length} className="text-center py-8">Tidak ada siswa</td></tr>
+                              <tr><td colSpan={12} className="text-center py-8">Tidak ada siswa</td></tr>
                           )}
                       </tbody>
                   </table>
