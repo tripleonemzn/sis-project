@@ -249,23 +249,17 @@ export async function rotateAuthSession(params: {
 
   const incomingHash = hashRefreshSecret(parsedToken.secret);
   if (!secureHashEquals(incomingHash, session.refreshTokenHash)) {
-    await prisma.authSession.update({
-      where: { id: session.id },
-      data: {
-        revokedAt: now,
-        revokeReason: 'refresh_token_mismatch',
-      },
-    });
     throw new ApiError(401, 'Sesi login tidak valid.');
   }
 
-  const { refreshToken, refreshTokenHash } = buildRefreshToken(session.id);
+  // Jangan rotasi refresh token per refresh agar sesi mobile tidak mudah rusak
+  // saat request refresh dobel / retry jaringan datang berdekatan.
+  const refreshToken = String(params.refreshToken || '').trim();
   const refreshTokenExpiresAt = buildRefreshExpiry(now, session.absoluteExpiresAt);
 
   await prisma.authSession.update({
     where: { id: session.id },
     data: {
-      refreshTokenHash,
       refreshTokenExpiresAt,
       lastSeenAt: now,
       clientPlatform: resolveClientPlatform(params.request),
