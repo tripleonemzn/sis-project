@@ -1,4 +1,4 @@
-import { useState, useEffect, useMemo, useRef, type WheelEvent } from 'react';
+import { useState, useEffect, useMemo, useRef, type UIEvent, type WheelEvent } from 'react';
 import { Save, Loader2, X } from 'lucide-react';
 import { toast } from 'react-hot-toast';
 import { gradeService } from '../../services/grade.service';
@@ -693,6 +693,7 @@ export const TeacherGradesPage = () => {
   const studentsRequestRef = useRef(0);
   const existingGradesRequestRef = useRef(0);
   const assignmentsRequestRef = useRef(0);
+  const frozenHeaderScrollRef = useRef<HTMLDivElement | null>(null);
   
   const selectedAcademicYearNum = Number(selectedAcademicYear);
   const assignmentOptions = useMemo(() => {
@@ -1663,6 +1664,18 @@ export const TeacherGradesPage = () => {
     isMidtermComponent,
     midtermComponentLabel,
   ]);
+  const gradeTableWidth = useMemo(() => {
+    const totalWidth = gradeTableColumns.reduce((sum, column) => {
+      const parsed = Number.parseInt(column.width, 10);
+      return sum + (Number.isFinite(parsed) ? parsed : 0);
+    }, 0);
+    return `${Math.max(totalWidth, 960)}px`;
+  }, [gradeTableColumns]);
+
+  const handleGradeTableBodyScroll = (event: UIEvent<HTMLDivElement>) => {
+    if (!frozenHeaderScrollRef.current) return;
+    frozenHeaderScrollRef.current.scrollLeft = event.currentTarget.scrollLeft;
+  };
 
   return (
       <div className="space-y-6 pb-6">
@@ -1797,8 +1810,8 @@ export const TeacherGradesPage = () => {
 
           {showGradeTable && (
             <div className="bg-white rounded-xl shadow-sm border border-gray-100 p-6">
-              <div className="overflow-x-auto">
-                <table className="w-full min-w-max table-fixed border-separate border-spacing-0">
+              <div ref={frozenHeaderScrollRef} className="overflow-hidden">
+                <table className="table-fixed border-separate border-spacing-0" style={{ width: gradeTableWidth, minWidth: gradeTableWidth }}>
                   <colgroup>
                     {gradeTableColumns.map((column) => (
                       <col key={column.key} style={{ width: column.width }} />
@@ -1826,8 +1839,8 @@ export const TeacherGradesPage = () => {
       {/* Table */}
 	      {showGradeTable && (
           <div className="bg-white rounded-xl shadow-sm border border-gray-100 p-6 pt-0">
-              <div className="overflow-x-auto">
-                  <table className="w-full min-w-max table-fixed border-separate border-spacing-0">
+              <div className="overflow-x-auto" onScroll={handleGradeTableBodyScroll}>
+                  <table className="table-fixed border-separate border-spacing-0" style={{ width: gradeTableWidth, minWidth: gradeTableWidth }}>
                       <colgroup>
                         {gradeTableColumns.map((column) => (
                           <col key={column.key} style={{ width: column.width }} />
