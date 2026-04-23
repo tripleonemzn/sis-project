@@ -583,9 +583,9 @@ export default function PrincipalApprovalsScreen() {
         />
       }
     >
-      <Text style={{ fontSize: scaleWithAppTextScale(20), fontWeight: '700', marginBottom: 6, color: BRAND_COLORS.textDark }}>Persetujuan Anggaran</Text>
+      <Text style={{ fontSize: scaleWithAppTextScale(20), fontWeight: '700', marginBottom: 6, color: BRAND_COLORS.textDark }}>Laporan Pengajuan Anggaran</Text>
       <Text style={{ color: BRAND_COLORS.textMuted, marginBottom: 12 }}>
-        Verifikasi pengajuan anggaran dari unit kerja sekolah.
+        Tinjau dan putuskan pengajuan anggaran yang diajukan oleh Wakasek dan unit lain.
       </Text>
 
       <View

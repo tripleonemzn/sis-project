@@ -5,6 +5,7 @@ import { Pressable, RefreshControl, ScrollView, Text, TextInput, View } from 're
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { AppLoadingScreen } from '../../../src/components/AppLoadingScreen';
 import { MobileMenuTabBar } from '../../../src/components/MobileMenuTabBar';
+import { MobileSelectField } from '../../../src/components/MobileSelectField';
 import { QueryStateView } from '../../../src/components/QueryStateView';
 import { academicYearApi } from '../../../src/features/academicYear/academicYearApi';
 import { useAuth } from '../../../src/features/auth/AuthProvider';
@@ -49,8 +50,20 @@ export default function PrincipalStudentsScreen() {
         map.set(String(item.studentClass.id), item.studentClass.name);
       }
     }
-    return Array.from(map.entries()).map(([id, name]) => ({ id, name }));
+    return Array.from(map.entries())
+      .map(([id, name]) => ({ id, name }))
+      .sort((a, b) => a.name.localeCompare(b.name, 'id-ID'));
   }, [students]);
+  const classFilterOptions = useMemo(
+    () => [
+      { value: 'ALL', label: 'Semua Kelas' },
+      ...classOptions.map((option) => ({
+        value: option.id,
+        label: option.name,
+      })),
+    ],
+    [classOptions],
+  );
 
   const filteredStudents = useMemo(() => {
     const q = search.trim().toLowerCase();
@@ -150,48 +163,13 @@ export default function PrincipalStudentsScreen() {
             }}
           />
 
-          <View style={{ flexDirection: 'row', flexWrap: 'wrap', marginHorizontal: -4, marginBottom: 8 }}>
-            <View style={{ width: '50%', paddingHorizontal: 4, marginBottom: 8 }}>
-              <Pressable
-                onPress={() => setClassFilter('ALL')}
-                style={{
-                  borderWidth: 1,
-                  borderColor: classFilter === 'ALL' ? BRAND_COLORS.blue : '#d6e2f7',
-                  backgroundColor: classFilter === 'ALL' ? '#e9f1ff' : '#fff',
-                  borderRadius: 10,
-                  paddingVertical: 8,
-                  alignItems: 'center',
-                }}
-              >
-                <Text style={{ color: classFilter === 'ALL' ? BRAND_COLORS.navy : BRAND_COLORS.textMuted, fontWeight: '700' }}>
-                  Semua Kelas
-                </Text>
-              </Pressable>
-            </View>
-
-            {classOptions.slice(0, 7).map((option) => (
-              <View key={option.id} style={{ width: '50%', paddingHorizontal: 4, marginBottom: 8 }}>
-                <Pressable
-                  onPress={() => setClassFilter(option.id)}
-                  style={{
-                    borderWidth: 1,
-                    borderColor: classFilter === option.id ? BRAND_COLORS.blue : '#d6e2f7',
-                    backgroundColor: classFilter === option.id ? '#e9f1ff' : '#fff',
-                    borderRadius: 10,
-                    paddingVertical: 8,
-                    alignItems: 'center',
-                  }}
-                >
-                  <Text
-                    numberOfLines={1}
-                    style={{ color: classFilter === option.id ? BRAND_COLORS.navy : BRAND_COLORS.textMuted, fontWeight: '700' }}
-                  >
-                    {option.name}
-                  </Text>
-                </Pressable>
-              </View>
-            ))}
-          </View>
+          <MobileSelectField
+            label="Kelas"
+            value={classFilter}
+            options={classFilterOptions}
+            onChange={(next) => setClassFilter(next || 'ALL')}
+            placeholder="Pilih kelas"
+          />
 
           <Text style={{ color: BRAND_COLORS.textMuted, fontSize: scaleWithAppTextScale(12) }}>
             Total siswa terfilter: <Text style={{ color: BRAND_COLORS.textDark, fontWeight: '700' }}>{filteredStudents.length}</Text>

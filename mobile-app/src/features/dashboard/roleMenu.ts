@@ -772,6 +772,7 @@ const ROLE_MENUS: Record<string, RoleMenuItem[]> = {
     {
       key: 'principal-committee-approvals',
       label: 'Persetujuan Panitia',
+      route: '/principal/committee-approvals',
       webPath: '/principal/committee-approvals',
     },
     { key: 'principal-students', label: 'Data Siswa', route: '/principal/students' },

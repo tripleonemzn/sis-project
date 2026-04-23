@@ -1,8 +1,9 @@
 import { useMemo, useState } from 'react';
 import { Redirect } from 'expo-router';
-import { Pressable, RefreshControl, ScrollView, Text, View } from 'react-native';
+import { RefreshControl, ScrollView, Text, View } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { AppLoadingScreen } from '../../../../src/components/AppLoadingScreen';
+import { MobileSelectField } from '../../../../src/components/MobileSelectField';
 import { OfflineCacheNotice } from '../../../../src/components/OfflineCacheNotice';
 import { QueryStateView } from '../../../../src/components/QueryStateView';
 import { BRAND_COLORS } from '../../../../src/config/brand';
@@ -22,6 +23,13 @@ export default function PrincipalAcademicReportsScreen() {
   const [semester, setSemester] = useState<'ODD' | 'EVEN'>(defaultSemesterByDate());
   const pagePadding = getStandardPagePadding(insets, { bottom: 120 });
   const overviewQuery = usePrincipalOverviewQuery({ enabled: isAuthenticated, user, semester });
+  const semesterOptions = useMemo(
+    () => [
+      { value: 'ODD', label: 'Semester Ganjil' },
+      { value: 'EVEN', label: 'Semester Genap' },
+    ],
+    [],
+  );
 
   const overview = overviewQuery.data?.overview;
   const dashboard = overviewQuery.data?.summary;
@@ -81,40 +89,13 @@ export default function PrincipalAcademicReportsScreen() {
         }}
       >
         <Text style={{ color: BRAND_COLORS.textDark, fontWeight: '700', marginBottom: 8 }}>Semester</Text>
-        <View style={{ flexDirection: 'row', gap: 8 }}>
-          <Pressable
-            onPress={() => setSemester('ODD')}
-            style={{
-              flex: 1,
-              borderWidth: 1,
-              borderColor: semester === 'ODD' ? BRAND_COLORS.blue : '#d5e1f5',
-              backgroundColor: semester === 'ODD' ? '#e9f1ff' : '#fff',
-              borderRadius: 9,
-              alignItems: 'center',
-              paddingVertical: 10,
-            }}
-          >
-            <Text style={{ color: semester === 'ODD' ? BRAND_COLORS.navy : BRAND_COLORS.textMuted, fontWeight: '700' }}>
-              Ganjil
-            </Text>
-          </Pressable>
-          <Pressable
-            onPress={() => setSemester('EVEN')}
-            style={{
-              flex: 1,
-              borderWidth: 1,
-              borderColor: semester === 'EVEN' ? BRAND_COLORS.blue : '#d5e1f5',
-              backgroundColor: semester === 'EVEN' ? '#e9f1ff' : '#fff',
-              borderRadius: 9,
-              alignItems: 'center',
-              paddingVertical: 10,
-            }}
-          >
-            <Text style={{ color: semester === 'EVEN' ? BRAND_COLORS.navy : BRAND_COLORS.textMuted, fontWeight: '700' }}>
-              Genap
-            </Text>
-          </Pressable>
-        </View>
+        <MobileSelectField
+          label="Semester"
+          value={semester}
+          options={semesterOptions}
+          onChange={(next) => setSemester((next as 'ODD' | 'EVEN') || defaultSemesterByDate())}
+          placeholder="Pilih semester"
+        />
       </View>
 
       {overviewQuery.isLoading ? <QueryStateView type="loading" message="Mengambil data rapor..." /> : null}

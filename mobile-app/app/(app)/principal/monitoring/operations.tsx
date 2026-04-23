@@ -11,6 +11,7 @@ import { academicYearApi } from '../../../../src/features/academicYear/academicY
 import { teachingResourceProgramApi } from '../../../../src/features/learningResources/teachingResourceProgramApi';
 import { principalApi } from '../../../../src/features/principal/principalApi';
 import { staffAdministrationApi } from '../../../../src/features/staff/staffAdministrationApi';
+import { workProgramApi } from '../../../../src/features/workPrograms/workProgramApi';
 import { getStandardPagePadding } from '../../../../src/lib/ui/pageLayout';
 import { scaleWithAppTextScale } from '../../../../src/theme/AppTextScaleProvider';
 
@@ -102,9 +103,10 @@ export default function PrincipalMonitoringOperationsScreen() {
     enabled: isAuthenticated && user?.role === 'PRINCIPAL',
     queryFn: async () => {
       const academicYearId = activeYearQuery.data?.id;
-      const [budgetsResult, proctorResult, bpbkResult, teachingResult, officeResult, administrationResult] =
+      const [budgetsResult, workProgramsResult, proctorResult, bpbkResult, teachingResult, officeResult, administrationResult] =
         await Promise.allSettled([
           principalApi.listBudgetApprovals({ academicYearId }),
+          workProgramApi.listPendingApprovals(),
           principalApi.getProctorReports({ academicYearId, date: reportDate }),
           principalApi.getBpBkSummary({ academicYearId }),
           teachingResourceProgramApi.getEntriesSummary({ academicYearId }),
@@ -114,6 +116,14 @@ export default function PrincipalMonitoringOperationsScreen() {
 
       const budgets = budgetsResult.status === 'fulfilled' ? budgetsResult.value : [];
       const pendingBudgets = budgets.filter((item) => item.status === 'PENDING');
+      const pendingWorkPrograms =
+        workProgramsResult.status === 'fulfilled'
+          ? workProgramsResult.value.filter((item) => {
+              if (String(item.approvalStatus || '').toUpperCase() !== 'PENDING') return false;
+              if (!academicYearId) return true;
+              return Number(item.academicYear?.id || 0) === Number(academicYearId);
+            })
+          : [];
       const proctor =
         proctorResult.status === 'fulfilled'
           ? proctorResult.value
@@ -191,6 +201,8 @@ export default function PrincipalMonitoringOperationsScreen() {
         budgets: pendingBudgets,
         pendingBudgetAmount: pendingBudgets.reduce((sum, item) => sum + Number(item.totalAmount || 0), 0),
         overdueBudgetCount: pendingBudgets.filter((item) => daysSince(item.createdAt) > 2).length,
+        pendingWorkPrograms,
+        overdueWorkProgramCount: pendingWorkPrograms.filter((item) => daysSince(item.createdAt) > 5).length,
         proctor,
         bpbk,
         teaching,
@@ -211,6 +223,14 @@ export default function PrincipalMonitoringOperationsScreen() {
             title: `${monitoring.budgets.length} pengajuan anggaran menunggu keputusan`,
             subtitle: `Total Rp ${Math.trunc(monitoring.pendingBudgetAmount).toLocaleString('id-ID')}`,
             route: '/principal/finance/requests',
+          }
+        : null,
+      monitoring.pendingWorkPrograms.length > 0
+        ? {
+            key: 'work-program',
+            title: `${monitoring.pendingWorkPrograms.length} program kerja menunggu persetujuan`,
+            subtitle: `${monitoring.overdueWorkProgramCount} melewati SLA 5 hari`,
+            route: '/principal/work-program-approvals',
           }
         : null,
       monitoring.proctor.summary.totalAbsent > 0 || monitoring.proctor.summary.totalRooms > monitoring.proctor.summary.reportedRooms
@@ -277,7 +297,7 @@ export default function PrincipalMonitoringOperationsScreen() {
       }
     >
       <Text style={{ fontSize: scaleWithAppTextScale(20), fontWeight: '700', color: BRAND_COLORS.textDark, marginBottom: 6 }}>
-        Monitoring
+        Operasional Harian
       </Text>
       <Text style={{ color: BRAND_COLORS.textMuted, marginBottom: 12 }}>
         Pusat monitoring operasional kepala sekolah untuk approval, ujian, BP/BK, perangkat ajar, dan layanan TU.
@@ -330,6 +350,15 @@ export default function PrincipalMonitoringOperationsScreen() {
                 subtitle={`${monitoring.overdueBudgetCount} melewati SLA 2 hari`}
                 accent="#bfdbfe"
                 onPress={() => router.push('/principal/finance/requests')}
+              />
+            </View>
+            <View style={{ width: '50%', paddingHorizontal: 4, marginBottom: 8 }}>
+              <MonitoringCard
+                title="Program Kerja Pending"
+                value={monitoring.pendingWorkPrograms.length}
+                subtitle={`${monitoring.overdueWorkProgramCount} melewati SLA 5 hari`}
+                accent="#fde68a"
+                onPress={() => router.push('/principal/work-program-approvals')}
               />
             </View>
             <View style={{ width: '50%', paddingHorizontal: 4, marginBottom: 8 }}>

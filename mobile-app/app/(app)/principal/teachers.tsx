@@ -4,6 +4,7 @@ import { useQuery } from '@tanstack/react-query';
 import { Pressable, RefreshControl, ScrollView, Text, TextInput, View } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { AppLoadingScreen } from '../../../src/components/AppLoadingScreen';
+import { MobileSelectField } from '../../../src/components/MobileSelectField';
 import { QueryStateView } from '../../../src/components/QueryStateView';
 import { useAuth } from '../../../src/features/auth/AuthProvider';
 import { adminApi } from '../../../src/features/admin/adminApi';
@@ -40,8 +41,20 @@ export default function PrincipalTeachersScreen() {
         map.set(normalized, normalized.replace(/_/g, ' '));
       }
     }
-    return Array.from(map.entries()).map(([id, label]) => ({ id, label }));
+    return Array.from(map.entries())
+      .map(([id, label]) => ({ id, label }))
+      .sort((a, b) => a.label.localeCompare(b.label, 'id-ID'));
   }, [teachers]);
+  const dutyFilterOptions = useMemo(
+    () => [
+      { value: 'ALL', label: 'Semua Duty' },
+      ...dutyOptions.map((option) => ({
+        value: option.id,
+        label: option.label,
+      })),
+    ],
+    [dutyOptions],
+  );
 
   const filteredTeachers = useMemo(() => {
     const q = search.trim().toLowerCase();
@@ -109,48 +122,13 @@ export default function PrincipalTeachersScreen() {
           }}
         />
 
-        <View style={{ flexDirection: 'row', flexWrap: 'wrap', marginHorizontal: -4, marginBottom: 8 }}>
-          <View style={{ width: '50%', paddingHorizontal: 4, marginBottom: 8 }}>
-            <Pressable
-              onPress={() => setDutyFilter('ALL')}
-              style={{
-                borderWidth: 1,
-                borderColor: dutyFilter === 'ALL' ? BRAND_COLORS.blue : '#d6e2f7',
-                backgroundColor: dutyFilter === 'ALL' ? '#e9f1ff' : '#fff',
-                borderRadius: 10,
-                paddingVertical: 8,
-                alignItems: 'center',
-              }}
-            >
-              <Text style={{ color: dutyFilter === 'ALL' ? BRAND_COLORS.navy : BRAND_COLORS.textMuted, fontWeight: '700' }}>
-                Semua Jabatan
-              </Text>
-            </Pressable>
-          </View>
-
-          {dutyOptions.slice(0, 7).map((option) => (
-            <View key={option.id} style={{ width: '50%', paddingHorizontal: 4, marginBottom: 8 }}>
-              <Pressable
-                onPress={() => setDutyFilter(option.id)}
-                style={{
-                  borderWidth: 1,
-                  borderColor: dutyFilter === option.id ? BRAND_COLORS.blue : '#d6e2f7',
-                  backgroundColor: dutyFilter === option.id ? '#e9f1ff' : '#fff',
-                  borderRadius: 10,
-                  paddingVertical: 8,
-                  alignItems: 'center',
-                }}
-              >
-                <Text
-                  numberOfLines={1}
-                  style={{ color: dutyFilter === option.id ? BRAND_COLORS.navy : BRAND_COLORS.textMuted, fontWeight: '700' }}
-                >
-                  {option.label}
-                </Text>
-              </Pressable>
-            </View>
-          ))}
-        </View>
+        <MobileSelectField
+          label="Duty"
+          value={dutyFilter}
+          options={dutyFilterOptions}
+          onChange={(next) => setDutyFilter(next || 'ALL')}
+          placeholder="Pilih duty"
+        />
 
         <Text style={{ color: BRAND_COLORS.textMuted, fontSize: scaleWithAppTextScale(12) }}>
           Total guru terfilter: <Text style={{ color: BRAND_COLORS.textDark, fontWeight: '700' }}>{filteredTeachers.length}</Text>

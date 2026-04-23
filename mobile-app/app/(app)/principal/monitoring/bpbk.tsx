@@ -4,6 +4,7 @@ import { useQuery } from '@tanstack/react-query';
 import { Pressable, RefreshControl, ScrollView, Text, TextInput, View } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { AppLoadingScreen } from '../../../../src/components/AppLoadingScreen';
+import { MobileSelectField } from '../../../../src/components/MobileSelectField';
 import { QueryStateView } from '../../../../src/components/QueryStateView';
 import { BRAND_COLORS } from '../../../../src/config/brand';
 import { academicYearApi } from '../../../../src/features/academicYear/academicYearApi';
@@ -18,6 +19,14 @@ export default function PrincipalBpBkMonitoringScreen() {
   const pagePadding = getStandardPagePadding(insets, { bottom: 120 });
   const [search, setSearch] = useState('');
   const [statusFilter, setStatusFilter] = useState<'ALL' | 'OPEN' | 'IN_PROGRESS'>('ALL');
+  const statusFilterOptions = useMemo(
+    () => [
+      { value: 'ALL', label: 'Semua Status Konseling' },
+      { value: 'OPEN', label: 'OPEN' },
+      { value: 'IN_PROGRESS', label: 'IN PROGRESS' },
+    ],
+    [],
+  );
 
   const activeYearQuery = useQuery({
     queryKey: ['mobile-principal-bpbk-active-year'],
@@ -117,29 +126,13 @@ export default function PrincipalBpBkMonitoringScreen() {
             marginBottom: 8,
           }}
         />
-        <View style={{ flexDirection: 'row', flexWrap: 'wrap', gap: 8 }}>
-          {(['ALL', 'OPEN', 'IN_PROGRESS'] as const).map((item) => {
-            const active = statusFilter === item;
-            return (
-              <Pressable
-                key={item}
-                onPress={() => setStatusFilter(item)}
-                style={{
-                  borderWidth: 1,
-                  borderColor: active ? BRAND_COLORS.blue : '#d5e1f5',
-                  backgroundColor: active ? '#e9f1ff' : '#fff',
-                  borderRadius: 999,
-                  paddingHorizontal: 12,
-                  paddingVertical: 8,
-                }}
-              >
-                <Text style={{ color: active ? BRAND_COLORS.navy : BRAND_COLORS.textMuted, fontWeight: '700', fontSize: scaleWithAppTextScale(12) }}>
-                  {item === 'ALL' ? 'Semua Status' : item}
-                </Text>
-              </Pressable>
-            );
-          })}
-        </View>
+        <MobileSelectField
+          label="Status Konseling"
+          value={statusFilter}
+          options={statusFilterOptions}
+          onChange={(next) => setStatusFilter((next as 'ALL' | 'OPEN' | 'IN_PROGRESS') || 'ALL')}
+          placeholder="Pilih status konseling"
+        />
       </View>
 
       {summaryQuery.isLoading ? <QueryStateView type="loading" message="Memuat ringkasan BP/BK..." /> : null}
