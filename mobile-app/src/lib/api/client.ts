@@ -68,10 +68,6 @@ async function consumeAuthHeaders(headers: Record<string, unknown> | undefined) 
   });
 }
 
-async function clearTerminalSession() {
-  await Promise.all([tokenStorage.clearAll(), webmailSessionStorage.clearAll()]);
-}
-
 let refreshInFlight: Promise<RefreshResult> | null = null;
 
 async function requestSessionRefresh(): Promise<RefreshResult> {
@@ -115,9 +111,6 @@ async function requestSessionRefresh(): Promise<RefreshResult> {
     } catch (error) {
       const status = Number((error as { response?: { status?: number } })?.response?.status || 0);
       const terminal = status === 401 || status === 403 || status === 400;
-      if (terminal) {
-        await clearTerminalSession();
-      }
       return {
         accessToken: null,
         terminal,

@@ -36,6 +36,7 @@ export function AuthProvider({ children }: PropsWithChildren) {
   const pushSyncInFlightRef = useRef<Promise<void> | null>(null);
   const pushSyncFollowUpTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const lastPushSyncStartedAtRef = useRef(0);
+  const unauthorizedRecoveryRef = useRef<Promise<void> | null>(null);
 
   const clearPendingPushSyncFollowUp = useCallback(() => {
     if (!pushSyncFollowUpTimerRef.current) return;
@@ -69,7 +70,16 @@ export function AuthProvider({ children }: PropsWithChildren) {
         const status = error.response?.status;
         const data = error.response?.data as { message?: string } | undefined;
         if (status === 401 || status === 403) {
-          await tokenStorage.clearAll();
+          const recoveredUser = await authService.recoverSessionAfterUnauthorized();
+          if (recoveredUser) {
+            setUser(recoveredUser);
+            setRestoreError(null);
+            await authEventLogger.log(
+              'SESSION_RESTORED',
+              `Sesi dipulihkan ulang untuk user ${recoveredUser.username} setelah status ${status}.`,
+            );
+            return;
+          }
         }
         setRestoreError(data?.message || 'Gagal memulihkan sesi. Silakan login ulang.');
         await authEventLogger.log(
@@ -92,8 +102,32 @@ export function AuthProvider({ children }: PropsWithChildren) {
 
   useEffect(() => {
     authSession.setUnauthorizedHandler(async () => {
-      setUser(null);
-      setRestoreError('Sesi berakhir. Silakan login kembali.');
+      if (unauthorizedRecoveryRef.current) {
+        await unauthorizedRecoveryRef.current;
+        return;
+      }
+
+      unauthorizedRecoveryRef.current = (async () => {
+        const recoveredUser = await authService.recoverSessionAfterUnauthorized();
+        if (recoveredUser) {
+          setUser(recoveredUser);
+          setRestoreError(null);
+          await authEventLogger.log(
+            'SESSION_RESTORED',
+            `Sesi dipulihkan ulang untuk user ${recoveredUser.username} setelah deteksi unauthorized.`,
+          );
+          return;
+        }
+
+        setUser(null);
+        setRestoreError('Sesi berakhir. Silakan login kembali.');
+      })();
+
+      try {
+        await unauthorizedRecoveryRef.current;
+      } finally {
+        unauthorizedRecoveryRef.current = null;
+      }
     });
 
     return () => {

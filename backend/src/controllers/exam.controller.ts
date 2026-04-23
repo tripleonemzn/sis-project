@@ -7503,6 +7503,7 @@ export const getPacketById = asyncHandler(async (req: Request, res: Response) =>
     const mediaAudit = await auditExamPacketMedia({
         packetId: packet.id,
         questions: normalizeQuestionsPayload(packet.questions) || [],
+        bypassCache: true,
     });
     res.json(
         new ApiResponse(200, {

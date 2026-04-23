@@ -195,11 +195,12 @@ export function invalidateExamPacketMediaAuditCache(packetId?: number) {
 export async function auditExamPacketMedia(params: {
     packetId?: number | null;
     questions?: AuditQuestionLike[] | null;
+    bypassCache?: boolean;
 }): Promise<ExamPacketMediaAudit> {
     const packetId = Number(params.packetId || 0);
     const now = Date.now();
 
-    if (packetId > 0) {
+    if (!params.bypassCache && packetId > 0) {
         const cached = mediaAuditCache.get(packetId);
         if (cached && cached.expiresAt > now) {
             return cloneAudit(cached.value);
@@ -207,6 +208,8 @@ export async function auditExamPacketMedia(params: {
         if (cached) {
             mediaAuditCache.delete(packetId);
         }
+    } else if (params.bypassCache && packetId > 0) {
+        mediaAuditCache.delete(packetId);
     }
 
     const questions = Array.isArray(params.questions) ? params.questions : [];

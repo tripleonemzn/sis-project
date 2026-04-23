@@ -1,4 +1,5 @@
 import { apiClient } from '../../lib/api/client';
+import { ENV } from '../../config/env';
 import { tokenStorage } from '../../lib/storage/tokenStorage';
 import {
   LoginPayload,
@@ -17,6 +18,8 @@ import { offlineCache } from '../../lib/storage/offlineCache';
 import { webmailSessionStorage } from '../../lib/storage/webmailSessionStorage';
 
 const ME_CACHE_TTL_MS = 60_000;
+const ACCESS_TOKEN_HEADER = 'x-sis-access-token';
+const REFRESH_TOKEN_HEADER = 'x-sis-refresh-token';
 let meCache: { token: string; user: LoginResponse['data']['user']; cachedAt: number } | null = null;
 let meInFlight: Promise<LoginResponse['data']['user']> | null = null;
 
@@ -24,6 +27,63 @@ const clearMeCache = () => {
   meCache = null;
   meInFlight = null;
 };
+
+async function persistTokensFromHeaders(headers: Headers) {
+  const nextAccessToken = String(headers.get(ACCESS_TOKEN_HEADER) || '').trim();
+  const nextRefreshToken = String(headers.get(REFRESH_TOKEN_HEADER) || '').trim();
+
+  if (nextAccessToken) {
+    await tokenStorage.setAccessToken(nextAccessToken);
+  }
+  if (nextRefreshToken) {
+    await tokenStorage.setRefreshToken(nextRefreshToken);
+  }
+}
+
+function resolveApiUrl(pathname: string) {
+  return `${ENV.API_BASE_URL.replace(/\/+$/, '')}${pathname.startsWith('/') ? pathname : `/${pathname}`}`;
+}
+
+async function verifySessionDirect() {
+  const accessToken = String((await tokenStorage.getAccessToken()) || '').trim();
+  const refreshToken = String((await tokenStorage.getRefreshToken()) || '').trim();
+
+  if (!accessToken && !refreshToken) {
+    return null;
+  }
+
+  const response = await fetch(resolveApiUrl('/auth/me'), {
+    method: 'GET',
+    headers: {
+      ...(accessToken ? { Authorization: `Bearer ${accessToken}` } : {}),
+      'X-Client-Platform': 'mobile',
+    },
+  });
+
+  await persistTokensFromHeaders(response.headers);
+
+  if (response.status === 401 || response.status === 403) {
+    return null;
+  }
+
+  if (!response.ok) {
+    throw new Error(`Verifikasi sesi gagal (${response.status}).`);
+  }
+
+  const payload = (await response.json().catch(() => null)) as MeResponse | null;
+  const user = payload?.data;
+  if (!user) {
+    throw new Error('Profil pengguna tidak ditemukan saat verifikasi sesi.');
+  }
+
+  const resolvedToken = String(response.headers.get(ACCESS_TOKEN_HEADER) || '').trim() || accessToken;
+  meCache = {
+    token: resolvedToken,
+    user,
+    cachedAt: Date.now(),
+  };
+  return user;
+}
 
 export const authService = {
   async login(payload: LoginPayload) {
@@ -110,6 +170,21 @@ export const authService = {
     await tokenStorage.clearAll();
     await webmailSessionStorage.clearAll();
     await offlineCache.clearAllMobileCaches();
+  },
+  async recoverSessionAfterUnauthorized() {
+    try {
+      const user = await verifySessionDirect();
+      if (user) {
+        return user;
+      }
+    } catch {
+      // Abaikan error verifikasi langsung non-terminal, lalu jatuhkan ke cleanup defensif di bawah.
+    }
+
+    clearMeCache();
+    await tokenStorage.clearAll();
+    await webmailSessionStorage.clearAll();
+    return null;
   },
   clearMeCache,
 };
