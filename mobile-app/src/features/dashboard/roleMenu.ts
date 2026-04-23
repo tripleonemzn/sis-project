@@ -1332,6 +1332,11 @@ const STAFF_EXTRA_MENU_ITEMS: Record<string, RoleMenuItem> = {
     label: 'Perizinan Siswa',
     route: '/staff/admin?focus=permissions',
   },
+  'staff-administration-presence': {
+    key: 'staff-administration-presence',
+    label: 'Presensi Harian',
+    route: '/staff/daily-presence',
+  },
   'staff-head-tu-dashboard': {
     key: 'staff-head-tu-dashboard',
     label: 'Dashboard',
@@ -1448,7 +1453,7 @@ function buildStaffRoleMenu(user: AuthUser) {
           'staff-head-tu-committees',
         ]
       : division === 'ADMINISTRATION'
-        ? ['staff-students', 'staff-administration-teachers', 'staff-administration-permissions']
+        ? ['staff-students', 'staff-administration-teachers', 'staff-administration-permissions', 'staff-administration-presence']
         : ['staff-payments', 'staff-students', 'staff-admin'];
 
   return [...baseKeys, ...roleKeys]
@@ -1504,6 +1509,7 @@ function buildStaffGroups(user: AuthUser, menus: RoleMenuItem[]) {
       'staff-students',
       'staff-administration-teachers',
       'staff-administration-permissions',
+      'staff-administration-presence',
     ]);
     pushGroup(groups, 'settings', 'PENGATURAN', ['staff-profile', 'staff-accessibility']);
     return groups;

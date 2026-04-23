@@ -2,6 +2,8 @@ import { apiClient } from '../../lib/api/client';
 import {
   DailyAttendanceEntry,
   DailyLateSummaryPayload,
+  DailyPresenceOverview,
+  DailyPresenceStudentState,
   StudentAttendanceHistory,
   TeacherSubjectAttendance,
   TeacherSubjectAttendanceRecord,
@@ -39,6 +41,20 @@ type MutationResponse = {
   success: boolean;
   message: string;
   data: unknown;
+};
+
+type DailyPresenceOverviewResponse = {
+  statusCode: number;
+  success: boolean;
+  message: string;
+  data: DailyPresenceOverview;
+};
+
+type DailyPresenceStudentResponse = {
+  statusCode: number;
+  success: boolean;
+  message: string;
+  data: DailyPresenceStudentState;
 };
 
 export const attendanceApi = {
@@ -88,6 +104,27 @@ export const attendanceApi = {
   },
   async getLateSummaryByClass(params: { classId: number; academicYearId?: number }) {
     const response = await apiClient.get<DailyLateSummaryResponse>('/attendances/daily/late-summary', { params });
+    return response.data?.data;
+  },
+  async getDailyPresenceOverview(params?: { date?: string; limit?: number }) {
+    const response = await apiClient.get<DailyPresenceOverviewResponse>('/attendances/daily-presence/overview', {
+      params,
+    });
+    return response.data?.data;
+  },
+  async getStudentDailyPresence(params: { studentId: number; date?: string }) {
+    const response = await apiClient.get<DailyPresenceStudentResponse>('/attendances/daily-presence/student', {
+      params,
+    });
+    return response.data?.data;
+  },
+  async saveAssistedDailyPresence(payload: {
+    studentId: number;
+    checkpoint: 'CHECK_IN' | 'CHECK_OUT';
+    reason: string;
+    gateLabel?: string | null;
+  }) {
+    const response = await apiClient.post<DailyPresenceStudentResponse>('/attendances/daily-presence/assisted', payload);
     return response.data?.data;
   },
 };

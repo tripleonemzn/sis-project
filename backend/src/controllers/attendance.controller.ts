@@ -9,6 +9,15 @@ import {
   ensureAcademicYearArchiveWriteAccess,
 } from '../utils/academicYearArchiveAccess';
 
+function formatAttendanceTime(value?: Date | null) {
+  if (!value) return null;
+  return value.toLocaleTimeString('id-ID', {
+    timeZone: 'Asia/Jakarta',
+    hour: '2-digit',
+    minute: '2-digit',
+  });
+}
+
 const saveSubjectAttendanceSchema = z.object({
   date: z.string().transform((str) => new Date(str)),
   classId: z.number().int(),
@@ -641,7 +650,25 @@ export const getStudentAttendanceHistory = asyncHandler(async (req: Request, res
     orderBy: {
       date: 'desc',
     },
+    select: {
+      id: true,
+      date: true,
+      status: true,
+      note: true,
+      checkInTime: true,
+      checkOutTime: true,
+    },
   });
 
-  res.status(200).json(new ApiResponse(200, attendances, 'Data presensi berhasil diambil'));
+  const result = attendances.map((attendance) => ({
+    id: attendance.id,
+    date: attendance.date,
+    status: attendance.status,
+    note: attendance.note,
+    notes: attendance.note,
+    checkInTime: formatAttendanceTime(attendance.checkInTime),
+    checkOutTime: formatAttendanceTime(attendance.checkOutTime),
+  }));
+
+  res.status(200).json(new ApiResponse(200, result, 'Data presensi berhasil diambil'));
 });

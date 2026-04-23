@@ -5,6 +5,7 @@ import StaffAdministrationWorkspace from './StaffAdministrationWorkspace';
 import StaffFinanceWorkspace from './StaffFinanceWorkspace';
 import HeadTuWorkspace from './HeadTuWorkspace';
 import CommitteeHeadTuPage from './CommitteeHeadTuPage';
+import StaffDailyPresencePage from './StaffDailyPresencePage';
 import InventoryHubPage from '../teacher/wakasek/sarpras/InventoryHubPage';
 import { InventoryDetailPage } from '../teacher/wakasek/sarpras/InventoryDetailPage';
 import StudentOsisElectionPage from '../student/StudentOsisElectionPage';
@@ -63,6 +64,10 @@ export const StaffDashboard = () => {
   }
 
   const staffDivision = resolveStaffDivision(currentUser);
+
+  if (staffDivision === 'ADMINISTRATION' && location.pathname.startsWith('/staff/administration/presence')) {
+    return <StaffDailyPresencePage />;
+  }
 
   if (staffDivision === 'ADMINISTRATION') {
     return <StaffAdministrationWorkspace />;

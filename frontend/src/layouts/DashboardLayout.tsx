@@ -1195,6 +1195,7 @@ const resolveTeacherCommitteeBreadcrumbGroup = (user: User | null): string => {
       'administration/students': { label: 'Administrasi Siswa', group: 'ADMINISTRASI' },
       'administration/teachers': { label: 'Administrasi Guru', group: 'ADMINISTRASI' },
       'administration/permissions': { label: 'Perizinan Siswa', group: 'ADMINISTRASI' },
+      'administration/presence': { label: 'Presensi Harian', group: 'ADMINISTRASI' },
       'head-tu': { label: 'Operasional TU', group: 'MONITORING TU' },
       'head-tu/administration': { label: 'Operasional TU', group: 'MONITORING TU' },
       'head-tu/finance': { label: 'Monitoring Keuangan', group: 'MONITORING TU' },

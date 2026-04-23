@@ -8,6 +8,11 @@ import {
   getDailyAttendance,
   getStudentAttendanceHistory,
 } from '../controllers/attendance.controller';
+import {
+  getDailyPresenceOverview,
+  getStudentDailyPresence,
+  saveAssistedDailyPresence,
+} from '../controllers/dailyPresence.controller';
 import { authMiddleware } from '../middleware/auth';
 import { roleMiddleware } from '../middleware/role';
 
@@ -21,6 +26,11 @@ router.post('/daily', roleMiddleware(['ADMIN', 'TEACHER', 'PRINCIPAL', 'STUDENT'
 
 // Student History (Accessible by Student)
 router.get('/student-history', roleMiddleware(['STUDENT', 'PARENT']), getStudentAttendanceHistory);
+
+// Daily presence operations (Assisted by Administration)
+router.get('/daily-presence/overview', roleMiddleware(['ADMIN', 'STAFF']), getDailyPresenceOverview);
+router.get('/daily-presence/student', roleMiddleware(['ADMIN', 'STAFF']), getStudentDailyPresence);
+router.post('/daily-presence/assisted', roleMiddleware(['ADMIN', 'STAFF']), saveAssistedDailyPresence);
 
 // Routes restricted to Staff/Teachers
 router.use(roleMiddleware(['ADMIN', 'TEACHER', 'PRINCIPAL']));

@@ -100,6 +100,9 @@ model User {
   teachingResourceEntriesAuthored                    TeachingResourceEntry[]             @relation("TeachingResourceEntryAuthor")
   teachingResourceEntriesReviewed                    TeachingResourceEntry[]             @relation("TeachingResourceEntryReviewer")
   dailyAttendances                                   DailyAttendance[]
+  dailyPresenceCheckIns                              DailyAttendance[]                   @relation("DailyAttendanceCheckInActor")
+  dailyPresenceCheckOuts                             DailyAttendance[]                   @relation("DailyAttendanceCheckOutActor")
+  recordedDailyPresenceEvents                        DailyPresenceEvent[]                @relation("DailyPresenceEventActor")
   ekskulEnrollments                                  EkstrakurikulerEnrollment[]
   examAnswers                                        ExamAnswer[]
   createdExamPackets                                 ExamPacket[]                        @relation("ExamAuthor")
@@ -230,6 +233,7 @@ model User {
   jobApplicantProfile                                JobApplicantProfile?
   jobApplications                                    JobApplication[]                    @relation("JobApplications")
   jobApplicationAssessments                          JobApplicationAssessment[]          @relation("JobApplicationAssessments")
+  dailyPresenceEvents                                DailyPresenceEvent[]
 
   @@map("users")
 }
@@ -422,6 +426,7 @@ model AcademicYear {
   sourcePromotionRuns            PromotionRun[]                   @relation("PromotionSourceRuns")
   targetPromotionRuns            PromotionRun[]                   @relation("PromotionTargetRuns")
   academicMemberships            StudentAcademicMembership[]
+  dailyPresenceEvents            DailyPresenceEvent[]
 
   @@map("academic_years")
 }
@@ -725,22 +730,22 @@ model CommitteeEvent {
 }
 
 model CommitteeAssignment {
-  id               Int                     @id @default(autoincrement())
-  committeeEventId Int
-  memberType       CommitteeAssignmentMemberType @default(INTERNAL_USER)
-  userId           Int?
-  externalName     String?
+  id                  Int                           @id @default(autoincrement())
+  committeeEventId    Int
+  memberType          CommitteeAssignmentMemberType @default(INTERNAL_USER)
+  userId              Int?
+  externalName        String?
   externalInstitution String?
-  assignmentRole   String
-  notes            String?
-  isActive         Boolean                 @default(true)
-  createdById      Int
-  createdAt        DateTime                @default(now())
-  updatedAt        DateTime                @updatedAt
-  committeeEvent   CommitteeEvent          @relation(fields: [committeeEventId], references: [id], onDelete: Cascade)
-  user             User?                   @relation("CommitteeAssignmentUser", fields: [userId], references: [id], onDelete: Cascade)
-  createdBy        User                    @relation("CommitteeAssignmentCreator", fields: [createdById], references: [id], onDelete: Restrict)
-  featureGrants    CommitteeFeatureGrant[]
+  assignmentRole      String
+  notes               String?
+  isActive            Boolean                       @default(true)
+  createdById         Int
+  createdAt           DateTime                      @default(now())
+  updatedAt           DateTime                      @updatedAt
+  committeeEvent      CommitteeEvent                @relation(fields: [committeeEventId], references: [id], onDelete: Cascade)
+  user                User?                         @relation("CommitteeAssignmentUser", fields: [userId], references: [id], onDelete: Cascade)
+  createdBy           User                          @relation("CommitteeAssignmentCreator", fields: [createdById], references: [id], onDelete: Restrict)
+  featureGrants       CommitteeFeatureGrant[]
 
   @@unique([committeeEventId, userId])
   @@index([userId, isActive])
@@ -809,6 +814,7 @@ model Class {
   targetPromotionMappings PromotionClassMapping[]     @relation("PromotionTargetClass")
   sourcePromotionRunItems PromotionRunItem[]          @relation("PromotionSourceRunClass")
   targetPromotionRunItems PromotionRunItem[]          @relation("PromotionTargetRunClass")
+  dailyPresenceEvents     DailyPresenceEvent[]
 
   @@map("classes")
 }
@@ -1169,18 +1175,60 @@ model AttendanceRecord {
 }
 
 model DailyAttendance {
-  id             Int              @id @default(autoincrement())
-  date           DateTime
-  studentId      Int
-  classId        Int
-  academicYearId Int
-  status         AttendanceStatus
-  note           String?
-  academicYear   AcademicYear     @relation(fields: [academicYearId], references: [id])
-  class          Class            @relation(fields: [classId], references: [id])
-  student        User             @relation(fields: [studentId], references: [id])
+  id              Int                         @id @default(autoincrement())
+  date            DateTime
+  studentId       Int
+  classId         Int
+  academicYearId  Int
+  status          AttendanceStatus
+  note            String?
+  checkInTime     DateTime?
+  checkOutTime    DateTime?
+  checkInSource   DailyPresenceCaptureSource?
+  checkOutSource  DailyPresenceCaptureSource?
+  checkInReason   String?
+  checkOutReason  String?
+  checkInActorId  Int?
+  checkOutActorId Int?
+  createdAt       DateTime                    @default(now())
+  updatedAt       DateTime                    @updatedAt
+  academicYear    AcademicYear                @relation(fields: [academicYearId], references: [id])
+  class           Class                       @relation(fields: [classId], references: [id])
+  student         User                        @relation(fields: [studentId], references: [id])
+  checkInActor    User?                       @relation("DailyAttendanceCheckInActor", fields: [checkInActorId], references: [id])
+  checkOutActor   User?                       @relation("DailyAttendanceCheckOutActor", fields: [checkOutActorId], references: [id])
+  presenceEvents  DailyPresenceEvent[]
 
+  @@index([studentId, date])
+  @@index([classId, academicYearId, date])
   @@map("daily_attendances")
+}
+
+model DailyPresenceEvent {
+  id                Int                        @id @default(autoincrement())
+  dailyAttendanceId Int?
+  studentId         Int
+  classId           Int
+  academicYearId    Int
+  date              DateTime
+  eventType         DailyPresenceEventType
+  source            DailyPresenceCaptureSource
+  recordedAt        DateTime                   @default(now())
+  reason            String?
+  latitude          Float?
+  longitude         Float?
+  gateLabel         String?
+  actorId           Int?
+  academicYear      AcademicYear               @relation(fields: [academicYearId], references: [id])
+  class             Class                      @relation(fields: [classId], references: [id])
+  student           User                       @relation(fields: [studentId], references: [id])
+  actor             User?                      @relation("DailyPresenceEventActor", fields: [actorId], references: [id])
+  dailyAttendance   DailyAttendance?           @relation(fields: [dailyAttendanceId], references: [id], onDelete: SetNull)
+
+  @@index([academicYearId, date, recordedAt])
+  @@index([studentId, date, recordedAt])
+  @@index([source, recordedAt])
+  @@map("daily_presence_events")
 }
 
 model GradeComponent {
@@ -3271,6 +3319,18 @@ enum AttendanceStatus {
   SICK
   PERMISSION
   LATE
+}
+
+enum DailyPresenceEventType {
+  CHECK_IN
+  CHECK_OUT
+}
+
+enum DailyPresenceCaptureSource {
+  SELF_SCAN
+  ASSISTED_SCAN
+  MANUAL_ADJUSTMENT
+  LEGACY_DAILY
 }
 
 enum GradeComponentType {

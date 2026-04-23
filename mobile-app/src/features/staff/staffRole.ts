@@ -66,7 +66,7 @@ export function getStaffPreferredMenuKeys(user?: StaffProfile | null) {
     return ['staff-head-tu-administration', 'staff-head-tu-students', 'staff-head-tu-letters'];
   }
   if (division === 'ADMINISTRATION') {
-    return ['staff-students', 'staff-administration-teachers', 'staff-administration-permissions'];
+    return ['staff-students', 'staff-administration-teachers', 'staff-administration-permissions', 'staff-administration-presence'];
   }
   return ['staff-payments', 'staff-students', 'staff-admin'];
 }
