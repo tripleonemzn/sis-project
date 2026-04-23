@@ -2,7 +2,7 @@ import fs from 'fs/promises';
 import path from 'path';
 import sharp from 'sharp';
 
-const SUPPORTED_EXTENSIONS = new Set(['.jpg', '.jpeg', '.png', '.webp', '.gif']);
+const SUPPORTED_EXTENSIONS = new Set(['.jpg', '.jpeg', '.jfif', '.png', '.webp', '.gif']);
 const DEFAULT_MAX_DIMENSION = 1400;
 const DEFAULT_THUMB_MAX_DIMENSION = 960;
 const DEFAULT_JPEG_QUALITY = 72;

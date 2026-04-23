@@ -1836,7 +1836,9 @@ export default function StudentExamTakePage() {
   const currentQuestionHtml = useMemo(
     () =>
       enhanceQuestionHtml(currentQuestion?.content || currentQuestion?.question_text || '', {
-        useQuestionImageThumbnail: true,
+        // Jangan paksa thumbnail untuk gambar yang tertanam di HTML soal.
+        // Jika file thumbnail belum ada, gambar asli tetap harus tampil di layar ujian siswa.
+        useQuestionImageThumbnail: false,
       }),
     [currentQuestion?.content, currentQuestion?.question_text],
   )
@@ -1849,7 +1851,7 @@ export default function StudentExamTakePage() {
       mapped.set(
         optionId,
         enhanceQuestionHtml(option.content || option.option_text || '', {
-          useQuestionImageThumbnail: true,
+          useQuestionImageThumbnail: false,
         }),
       )
     })
