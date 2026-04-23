@@ -1,9 +1,10 @@
-import { useMemo, useState } from 'react';
+import { useMemo, useState, type ReactNode } from 'react';
 import { Redirect, useRouter } from 'expo-router';
 import { useQuery } from '@tanstack/react-query';
 import { Pressable, RefreshControl, ScrollView, Text, TextInput, View } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { AppLoadingScreen } from '../../../../src/components/AppLoadingScreen';
+import { MobileSummaryCard } from '../../../../src/components/MobileSummaryCard';
 import { QueryStateView } from '../../../../src/components/QueryStateView';
 import { BRAND_COLORS } from '../../../../src/config/brand';
 import { useAuth } from '../../../../src/features/auth/AuthProvider';
@@ -44,33 +45,225 @@ function countTeachingStatus(
   return rows?.find((item) => item.status === status)?.total || 0;
 }
 
-function MonitoringCard({
+function formatPermissionTypeLabel(value?: string | null) {
+  const normalized = String(value || '').trim().toUpperCase();
+  if (normalized === 'SICK') return 'Sakit';
+  if (normalized === 'PERMISSION') return 'Izin';
+  return normalized ? normalized.replace(/_/g, ' ') : 'Lainnya';
+}
+
+function getTeachingStatusTone(status?: string | null) {
+  const normalized = String(status || '').trim().toUpperCase();
+  if (normalized === 'APPROVED') {
+    return {
+      borderColor: '#a7f3d0',
+      backgroundColor: '#ecfdf5',
+      textColor: '#047857',
+    };
+  }
+  if (normalized === 'REJECTED') {
+    return {
+      borderColor: '#fecdd3',
+      backgroundColor: '#fff1f2',
+      textColor: '#be123c',
+    };
+  }
+  if (normalized === 'SUBMITTED') {
+    return {
+      borderColor: '#fde68a',
+      backgroundColor: '#fffbeb',
+      textColor: '#b45309',
+    };
+  }
+  return {
+    borderColor: '#cbd5e1',
+    backgroundColor: '#f8fafc',
+    textColor: '#475569',
+  };
+}
+
+function SectionCard({
   title,
+  description,
+  rightLabel,
+  children,
+}: {
+  title: string;
+  description?: string;
+  rightLabel?: string;
+  children: ReactNode;
+}) {
+  return (
+    <View
+      style={{
+        backgroundColor: '#fff',
+        borderWidth: 1,
+        borderColor: '#dbe7fb',
+        borderRadius: 16,
+        overflow: 'hidden',
+        marginBottom: 12,
+      }}
+    >
+      <View
+        style={{
+          paddingHorizontal: 14,
+          paddingVertical: 12,
+          borderBottomWidth: 1,
+          borderBottomColor: '#e2e8f0',
+          backgroundColor: '#f8fafc',
+          gap: 8,
+        }}
+      >
+        <View style={{ flexDirection: 'row', alignItems: 'flex-start', justifyContent: 'space-between', gap: 12 }}>
+          <View style={{ flex: 1 }}>
+            <Text style={{ color: BRAND_COLORS.textDark, fontWeight: '700', fontSize: scaleWithAppTextScale(15) }}>
+              {title}
+            </Text>
+            {description ? (
+              <Text
+                style={{
+                  color: BRAND_COLORS.textMuted,
+                  fontSize: scaleWithAppTextScale(12),
+                  marginTop: 4,
+                  lineHeight: scaleWithAppTextScale(18),
+                }}
+              >
+                {description}
+              </Text>
+            ) : null}
+          </View>
+          {rightLabel ? (
+            <View
+              style={{
+                borderWidth: 1,
+                borderColor: '#dbe7fb',
+                backgroundColor: '#fff',
+                borderRadius: 999,
+                paddingHorizontal: 10,
+                paddingVertical: 6,
+              }}
+            >
+              <Text style={{ color: '#475569', fontSize: scaleWithAppTextScale(11), fontWeight: '600' }}>
+                {rightLabel}
+              </Text>
+            </View>
+          ) : null}
+        </View>
+      </View>
+      <View style={{ padding: 14 }}>{children}</View>
+    </View>
+  );
+}
+
+function MiniStatCard({
+  label,
   value,
+  helper,
+  borderColor,
+  backgroundColor,
+  textColor,
+}: {
+  label: string;
+  value: string | number;
+  helper?: string;
+  borderColor: string;
+  backgroundColor: string;
+  textColor: string;
+}) {
+  return (
+    <View
+      style={{
+        borderWidth: 1,
+        borderColor,
+        backgroundColor,
+        borderRadius: 12,
+        paddingHorizontal: 12,
+        paddingVertical: 10,
+      }}
+    >
+      <Text style={{ color: textColor, fontSize: scaleWithAppTextScale(10), fontWeight: '700' }}>{label}</Text>
+      <Text style={{ color: textColor, fontSize: scaleWithAppTextScale(19), fontWeight: '800', marginTop: 6 }}>
+        {value}
+      </Text>
+      {helper ? (
+        <Text style={{ color: textColor, opacity: 0.88, fontSize: scaleWithAppTextScale(11), marginTop: 4 }}>
+          {helper}
+        </Text>
+      ) : null}
+    </View>
+  );
+}
+
+function ListRowCard({
+  title,
   subtitle,
-  accent,
+  detail,
+  badge,
+  badgeTone,
+  footer,
   onPress,
 }: {
   title: string;
-  value: string | number;
-  subtitle: string;
-  accent: string;
+  subtitle?: string;
+  detail?: string;
+  badge?: string;
+  badgeTone?: { borderColor: string; backgroundColor: string; textColor: string };
+  footer?: string;
   onPress?: () => void;
 }) {
   const content = (
     <View
       style={{
-        backgroundColor: '#fff',
         borderWidth: 1,
-        borderColor: accent,
+        borderColor: '#dbe7fb',
         borderRadius: 12,
-        padding: 12,
-        minHeight: 112,
+        backgroundColor: '#fff',
+        paddingHorizontal: 12,
+        paddingVertical: 12,
       }}
     >
-      <Text style={{ color: '#64748b', fontSize: scaleWithAppTextScale(11) }}>{title}</Text>
-      <Text style={{ color: BRAND_COLORS.textDark, fontWeight: '700', fontSize: scaleWithAppTextScale(20), marginTop: 6 }}>{value}</Text>
-      <Text style={{ color: BRAND_COLORS.textMuted, fontSize: scaleWithAppTextScale(12), marginTop: 4 }}>{subtitle}</Text>
+      <View style={{ flexDirection: 'row', alignItems: 'flex-start', justifyContent: 'space-between', gap: 12 }}>
+        <View style={{ flex: 1 }}>
+          <Text style={{ color: BRAND_COLORS.textDark, fontWeight: '700', fontSize: scaleWithAppTextScale(14) }}>
+            {title}
+          </Text>
+          {subtitle ? (
+            <Text style={{ color: BRAND_COLORS.textMuted, fontSize: scaleWithAppTextScale(12), marginTop: 4 }}>
+              {subtitle}
+            </Text>
+          ) : null}
+        </View>
+        {badge ? (
+          <View
+            style={{
+              borderWidth: 1,
+              borderColor: badgeTone?.borderColor || '#dbe7fb',
+              backgroundColor: badgeTone?.backgroundColor || '#f8fafc',
+              borderRadius: 999,
+              paddingHorizontal: 10,
+              paddingVertical: 6,
+            }}
+          >
+            <Text
+              style={{
+                color: badgeTone?.textColor || '#475569',
+                fontSize: scaleWithAppTextScale(10),
+                fontWeight: '700',
+              }}
+            >
+              {badge}
+            </Text>
+          </View>
+        ) : null}
+      </View>
+      {detail ? (
+        <Text style={{ color: '#475569', fontSize: scaleWithAppTextScale(12), marginTop: 8, lineHeight: scaleWithAppTextScale(18) }}>
+          {detail}
+        </Text>
+      ) : null}
+      {footer ? (
+        <Text style={{ color: '#94a3b8', fontSize: scaleWithAppTextScale(11), marginTop: 8 }}>{footer}</Text>
+      ) : null}
     </View>
   );
 
@@ -270,6 +463,77 @@ export default function PrincipalMonitoringOperationsScreen() {
     return actions as Array<{ key: string; title: string; subtitle: string; route: string }>;
   }, [monitoring]);
 
+  const summaryCards = useMemo(() => {
+    if (!monitoring) return [];
+    return [
+      {
+        key: 'budget',
+        title: 'Pengajuan Anggaran Pending',
+        value: String(monitoring.budgets.length),
+        subtitle: `Rp ${Math.trunc(monitoring.pendingBudgetAmount).toLocaleString('id-ID')}`,
+        iconName: 'credit-card' as const,
+        accentColor: '#2563eb',
+        onPress: () => router.push('/principal/finance/requests' as never),
+      },
+      {
+        key: 'work-program',
+        title: 'Program Kerja Pending',
+        value: String(monitoring.pendingWorkPrograms.length),
+        subtitle: `${monitoring.overdueWorkProgramCount} melewati SLA 5 hari`,
+        iconName: 'clipboard' as const,
+        accentColor: '#d97706',
+        onPress: () => router.push('/principal/work-program-approvals' as never),
+      },
+      {
+        key: 'rooms',
+        title: 'Ruang Belum Melapor',
+        value: String(Math.max(0, monitoring.proctor.summary.totalRooms - monitoring.proctor.summary.reportedRooms)),
+        subtitle: `${monitoring.proctor.summary.totalAbsent} peserta tidak hadir`,
+        iconName: 'alert-triangle' as const,
+        accentColor: '#dc2626',
+        onPress: () => router.push('/principal/exams/reports' as never),
+      },
+      {
+        key: 'bpbk',
+        title: 'Kasus BP/BK Risiko Tinggi',
+        value: String(monitoring.bpbk.summary.highRiskStudents),
+        subtitle: `${monitoring.bpbk.summary.overdueCounselings} konseling overdue`,
+        iconName: 'shield' as const,
+        accentColor: '#7c3aed',
+        onPress: () => router.push('/principal/monitoring/bpbk' as never),
+      },
+      {
+        key: 'teaching',
+        title: 'Perangkat Ajar Pending Review',
+        value: String(countTeachingStatus(monitoring.teaching.byStatus, 'SUBMITTED')),
+        subtitle: `${countTeachingStatus(monitoring.teaching.byStatus, 'APPROVED')} disetujui`,
+        iconName: 'book-open' as const,
+        accentColor: '#0284c7',
+        onPress: () => router.push('/principal/academic/reports' as never),
+      },
+      {
+        key: 'office',
+        title: 'Surat TU Bulan Ini',
+        value: String(monitoring.office.monthlyLetters),
+        subtitle: `${monitoring.office.totalLetters} arsip surat`,
+        iconName: 'file-text' as const,
+        accentColor: '#475569',
+      },
+      {
+        key: 'administration',
+        title: 'Administrasi Belum Lengkap',
+        value: String(
+          monitoring.administration.overview.studentsPriorityCount +
+            monitoring.administration.overview.teachersPriorityCount,
+        ),
+        subtitle: `${monitoring.administration.overview.pendingPermissions} izin pending`,
+        iconName: 'check-square' as const,
+        accentColor: '#16a34a',
+        onPress: () => router.push('/principal/students' as never),
+      },
+    ];
+  }, [monitoring, router]);
+
   if (isLoading) return <AppLoadingScreen message="Memuat monitoring principal..." />;
   if (!isAuthenticated) return <Redirect href="/welcome" />;
 
@@ -308,31 +572,138 @@ export default function PrincipalMonitoringOperationsScreen() {
           backgroundColor: '#fff',
           borderWidth: 1,
           borderColor: '#dbe7fb',
-          borderRadius: 12,
+          borderRadius: 16,
           padding: 12,
           marginBottom: 12,
         }}
       >
-        <Text style={{ color: BRAND_COLORS.textDark, fontWeight: '700', marginBottom: 6 }}>Tanggal Monitoring Ujian</Text>
-        <TextInput
-          value={reportDate}
-          onChangeText={setReportDate}
-          placeholder="YYYY-MM-DD"
-          autoCapitalize="none"
-          autoCorrect={false}
+        <View
           style={{
             borderWidth: 1,
-            borderColor: '#cbd5e1',
-            borderRadius: 10,
-            paddingHorizontal: 12,
-            paddingVertical: 10,
-            color: BRAND_COLORS.textDark,
-            backgroundColor: '#fff',
+            borderColor: '#bfdbfe',
+            backgroundColor: '#eff6ff',
+            borderRadius: 14,
+            padding: 14,
           }}
-        />
-        <Text style={{ color: BRAND_COLORS.textMuted, fontSize: scaleWithAppTextScale(11), marginTop: 6 }}>
-          Gunakan format tanggal `YYYY-MM-DD` agar ringkasan berita acara ujian sesuai hari yang dipilih.
-        </Text>
+        >
+          <Text style={{ color: '#1d4ed8', fontSize: scaleWithAppTextScale(11), fontWeight: '700' }}>
+            Monitoring Harian Principal
+          </Text>
+          <Text
+            style={{
+              color: BRAND_COLORS.textDark,
+              fontSize: scaleWithAppTextScale(16),
+              fontWeight: '700',
+              marginTop: 6,
+              lineHeight: scaleWithAppTextScale(22),
+            }}
+          >
+            Satu layar untuk backlog keputusan, risiko ujian, dan ritme layanan TU.
+          </Text>
+          <Text
+            style={{
+              color: '#475569',
+              fontSize: scaleWithAppTextScale(12),
+              marginTop: 6,
+              lineHeight: scaleWithAppTextScale(18),
+            }}
+          >
+            Prioritas harian disusun ulang agar lebih cepat dipindai tanpa perlu lompat antar modul.
+          </Text>
+
+          {monitoring ? (
+            <View style={{ flexDirection: 'row', flexWrap: 'wrap', marginHorizontal: -4, marginTop: 12 }}>
+              <View style={{ width: '50%', paddingHorizontal: 4, marginBottom: 8 }}>
+                <MiniStatCard
+                  label="Keputusan Pending"
+                  value={monitoring.budgets.length + monitoring.pendingWorkPrograms.length}
+                  helper={`${monitoring.budgets.length} anggaran • ${monitoring.pendingWorkPrograms.length} program`}
+                  borderColor="#bfdbfe"
+                  backgroundColor="#ffffff"
+                  textColor="#1d4ed8"
+                />
+              </View>
+              <View style={{ width: '50%', paddingHorizontal: 4, marginBottom: 8 }}>
+                <MiniStatCard
+                  label="Risiko Ujian"
+                  value={
+                    Math.max(0, monitoring.proctor.summary.totalRooms - monitoring.proctor.summary.reportedRooms) +
+                    monitoring.proctor.summary.totalAbsent
+                  }
+                  helper={`${Math.max(0, monitoring.proctor.summary.totalRooms - monitoring.proctor.summary.reportedRooms)} ruang • ${monitoring.proctor.summary.totalAbsent} absen`}
+                  borderColor="#fecaca"
+                  backgroundColor="#fff1f2"
+                  textColor="#be123c"
+                />
+              </View>
+              <View style={{ width: '50%', paddingHorizontal: 4 }}>
+                <MiniStatCard
+                  label="Perangkat Review"
+                  value={countTeachingStatus(monitoring.teaching.byStatus, 'SUBMITTED')}
+                  helper={`${countTeachingStatus(monitoring.teaching.byStatus, 'APPROVED')} disetujui`}
+                  borderColor="#bae6fd"
+                  backgroundColor="#f0f9ff"
+                  textColor="#0369a1"
+                />
+              </View>
+              <View style={{ width: '50%', paddingHorizontal: 4 }}>
+                <MiniStatCard
+                  label="Izin TU Pending"
+                  value={monitoring.administration.overview.pendingPermissions}
+                  helper={`${monitoring.administration.overview.studentsPriorityCount + monitoring.administration.overview.teachersPriorityCount} data prioritas`}
+                  borderColor="#bbf7d0"
+                  backgroundColor="#f0fdf4"
+                  textColor="#15803d"
+                />
+              </View>
+            </View>
+          ) : null}
+        </View>
+
+        <View style={{ marginTop: 12 }}>
+          <Text style={{ color: BRAND_COLORS.textDark, fontWeight: '700', marginBottom: 6 }}>
+            Tanggal Monitoring Ujian
+          </Text>
+          <TextInput
+            value={reportDate}
+            onChangeText={setReportDate}
+            placeholder="YYYY-MM-DD"
+            autoCapitalize="none"
+            autoCorrect={false}
+            style={{
+              borderWidth: 1,
+              borderColor: '#cbd5e1',
+              borderRadius: 12,
+              paddingHorizontal: 12,
+              paddingVertical: 12,
+              color: BRAND_COLORS.textDark,
+              backgroundColor: '#fff',
+            }}
+          />
+          <Text style={{ color: BRAND_COLORS.textMuted, fontSize: scaleWithAppTextScale(11), marginTop: 6 }}>
+            Gunakan format `YYYY-MM-DD` agar ringkasan berita acara ujian sesuai hari yang dipilih.
+          </Text>
+          <Pressable
+            onPress={() => {
+              void activeYearQuery.refetch();
+              void monitoringQuery.refetch();
+            }}
+            style={{
+              marginTop: 10,
+              borderWidth: 1,
+              borderColor: '#cbd5e1',
+              borderRadius: 12,
+              backgroundColor: '#fff',
+              paddingVertical: 11,
+              alignItems: 'center',
+              justifyContent: 'center',
+            }}
+          >
+            <Text style={{ color: '#334155', fontWeight: '700', fontSize: scaleWithAppTextScale(12) }}>
+              Muat Ulang Monitoring
+            </Text>
+          </Pressable>
+        </View>
       </View>
 
       {monitoringQuery.isLoading ? <QueryStateView type="loading" message="Menyusun monitoring operasional..." /> : null}
@@ -342,234 +713,530 @@ export default function PrincipalMonitoringOperationsScreen() {
 
       {monitoring ? (
         <>
-          <View style={{ flexDirection: 'row', flexWrap: 'wrap', marginHorizontal: -4, marginBottom: 12 }}>
-            <View style={{ width: '50%', paddingHorizontal: 4, marginBottom: 8 }}>
-              <MonitoringCard
-                title="Pengajuan Anggaran"
-                value={monitoring.budgets.length}
-                subtitle={`${monitoring.overdueBudgetCount} melewati SLA 2 hari`}
-                accent="#bfdbfe"
-                onPress={() => router.push('/principal/finance/requests')}
-              />
-            </View>
-            <View style={{ width: '50%', paddingHorizontal: 4, marginBottom: 8 }}>
-              <MonitoringCard
-                title="Program Kerja Pending"
-                value={monitoring.pendingWorkPrograms.length}
-                subtitle={`${monitoring.overdueWorkProgramCount} melewati SLA 5 hari`}
-                accent="#fde68a"
-                onPress={() => router.push('/principal/work-program-approvals')}
-              />
-            </View>
-            <View style={{ width: '50%', paddingHorizontal: 4, marginBottom: 8 }}>
-              <MonitoringCard
-                title="Ruang Belum Melapor"
-                value={Math.max(0, monitoring.proctor.summary.totalRooms - monitoring.proctor.summary.reportedRooms)}
-                subtitle={`${monitoring.proctor.summary.totalAbsent} peserta tidak hadir`}
-                accent="#fecaca"
-                onPress={() => router.push('/principal/exams/reports')}
-              />
-            </View>
-            <View style={{ width: '50%', paddingHorizontal: 4, marginBottom: 8 }}>
-              <MonitoringCard
-                title="Risiko Tinggi BP/BK"
-                value={monitoring.bpbk.summary.highRiskStudents}
-                subtitle={`${monitoring.bpbk.summary.overdueCounselings} konseling overdue`}
-                accent="#ddd6fe"
-                onPress={() => router.push('/principal/monitoring/bpbk')}
-              />
-            </View>
-            <View style={{ width: '50%', paddingHorizontal: 4, marginBottom: 8 }}>
-              <MonitoringCard
-                title="Perangkat Ajar Pending Review"
-                value={countTeachingStatus(monitoring.teaching.byStatus, 'SUBMITTED')}
-                subtitle={`${countTeachingStatus(monitoring.teaching.byStatus, 'APPROVED')} disetujui`}
-                accent="#bae6fd"
-                onPress={() => router.push('/principal/academic/reports')}
-              />
-            </View>
-            <View style={{ width: '50%', paddingHorizontal: 4, marginBottom: 8 }}>
-              <MonitoringCard
-                title="Surat TU Bulan Ini"
-                value={monitoring.office.monthlyLetters}
-                subtitle={`${monitoring.office.totalLetters} arsip surat tercatat`}
-                accent="#d5e1f5"
-              />
-            </View>
-            <View style={{ width: '50%', paddingHorizontal: 4, marginBottom: 8 }}>
-              <MonitoringCard
-                title="Administrasi Prioritas"
-                value={
-                  monitoring.administration.overview.studentsPriorityCount +
-                  monitoring.administration.overview.teachersPriorityCount
-                }
-                subtitle={`${monitoring.administration.overview.pendingPermissions} izin masih pending`}
-                accent="#bbf7d0"
-              />
-            </View>
+          <View style={{ flexDirection: 'row', flexWrap: 'wrap', marginHorizontal: -6, marginBottom: 12 }}>
+            {summaryCards.map((card) => (
+              <View key={card.key} style={{ width: '50%', paddingHorizontal: 6, marginBottom: 12 }}>
+                <MobileSummaryCard
+                  title={card.title}
+                  value={card.value}
+                  subtitle={card.subtitle}
+                  iconName={card.iconName}
+                  accentColor={card.accentColor}
+                  onPress={card.onPress}
+                />
+              </View>
+            ))}
           </View>
 
-          <View
-            style={{
-              backgroundColor: '#fff',
-              borderWidth: 1,
-              borderColor: '#dbe7fb',
-              borderRadius: 12,
-              padding: 12,
-              marginBottom: 12,
-            }}
+          <SectionCard
+            title="Panel Prioritas Tindakan"
+            description="Antrian keputusan dan tindak lanjut yang perlu dibuka lebih dulu."
+            rightLabel={`${quickActions.length} aktif`}
           >
-            <Text style={{ color: BRAND_COLORS.textDark, fontWeight: '700', marginBottom: 8 }}>
-              Panel Prioritas Tindakan
-            </Text>
             {quickActions.length > 0 ? (
-              quickActions.map((item) => (
-                <Pressable
-                  key={item.key}
-                  onPress={() => router.push(item.route as never)}
-                  style={{
-                    borderWidth: 1,
-                    borderColor: '#dbe7fb',
-                    borderRadius: 10,
-                    padding: 12,
-                    marginBottom: 8,
-                    backgroundColor: '#f8fbff',
-                  }}
-                >
-                  <Text style={{ color: BRAND_COLORS.textDark, fontWeight: '700' }}>{item.title}</Text>
-                  <Text style={{ color: BRAND_COLORS.textMuted, fontSize: scaleWithAppTextScale(12), marginTop: 4 }}>{item.subtitle}</Text>
-                </Pressable>
-              ))
-            ) : (
-              <Text style={{ color: BRAND_COLORS.textMuted }}>Belum ada backlog kritis pada filter monitoring saat ini.</Text>
-            )}
-          </View>
-
-          <View style={{ marginBottom: 12 }}>
-            <Text style={{ color: BRAND_COLORS.textDark, fontWeight: '700', marginBottom: 8 }}>
-              Siswa Risiko Tinggi BP/BK
-            </Text>
-            {monitoring.bpbk.highRiskStudents.length > 0 ? (
-              monitoring.bpbk.highRiskStudents.slice(0, 5).map((row) => (
-                <View
-                  key={row.studentId}
-                  style={{
-                    backgroundColor: '#fff',
-                    borderWidth: 1,
-                    borderColor: '#e9d5ff',
-                    borderRadius: 10,
-                    padding: 12,
-                    marginBottom: 8,
-                  }}
-                >
-                  <Text style={{ color: BRAND_COLORS.textDark, fontWeight: '700' }}>{row.studentName}</Text>
-                  <Text style={{ color: BRAND_COLORS.textMuted, fontSize: scaleWithAppTextScale(12), marginTop: 3 }}>
-                    {row.className || '-'} • {row.nis || row.nisn || '-'}
-                  </Text>
-                  <Text style={{ color: '#7c3aed', fontSize: scaleWithAppTextScale(12), marginTop: 4 }}>
-                    {row.negativeCaseCount} kasus negatif • {row.totalNegativePoint} poin
-                  </Text>
-                </View>
-              ))
+              <View style={{ gap: 10 }}>
+                {quickActions.map((item) => (
+                  <ListRowCard
+                    key={item.key}
+                    title={item.title}
+                    subtitle={item.subtitle}
+                    detail="Buka modul terkait untuk menindaklanjuti item ini."
+                    badge="Tindak Lanjut"
+                    badgeTone={{
+                      borderColor: '#bfdbfe',
+                      backgroundColor: '#eff6ff',
+                      textColor: '#1d4ed8',
+                    }}
+                    onPress={() => router.push(item.route as never)}
+                  />
+                ))}
+              </View>
             ) : (
               <View
                 style={{
                   borderWidth: 1,
                   borderStyle: 'dashed',
-                  borderColor: '#cbd5e1',
-                  borderRadius: 10,
+                  borderColor: '#bbf7d0',
+                  backgroundColor: '#f0fdf4',
+                  borderRadius: 12,
                   padding: 14,
-                  backgroundColor: '#fff',
                 }}
               >
-                <Text style={{ color: BRAND_COLORS.textMuted }}>Tidak ada siswa risiko tinggi pada tahun ajaran aktif.</Text>
+                <Text style={{ color: '#166534', fontSize: scaleWithAppTextScale(12) }}>
+                  Belum ada backlog kritis pada filter monitoring saat ini.
+                </Text>
               </View>
             )}
-          </View>
+          </SectionCard>
 
-          <View style={{ marginBottom: 12 }}>
-            <Text style={{ color: BRAND_COLORS.textDark, fontWeight: '700', marginBottom: 8 }}>
-              Dokumen Perangkat Ajar Terbaru
-            </Text>
+          <SectionCard
+            title="Approval Backlog"
+            description="Ringkas backlog anggaran dan program kerja yang masih menunggu keputusan."
+          >
+            <View style={{ gap: 12 }}>
+              <View
+                style={{
+                  borderWidth: 1,
+                  borderColor: '#dbe7fb',
+                  borderRadius: 14,
+                  backgroundColor: '#f8fafc',
+                  padding: 12,
+                }}
+              >
+                <Text style={{ color: BRAND_COLORS.textDark, fontWeight: '700', marginBottom: 8 }}>
+                  Pengajuan Anggaran
+                </Text>
+                {monitoring.budgets.length > 0 ? (
+                  <View style={{ gap: 8 }}>
+                    {monitoring.budgets.slice(0, 3).map((budget) => (
+                      <ListRowCard
+                        key={budget.id}
+                        title={budget.title}
+                        subtitle={budget.requester?.name || '-'}
+                        detail={`Rp ${Math.trunc(Number(budget.totalAmount || 0)).toLocaleString('id-ID')}`}
+                        footer={`Umur antrian ${daysSince(budget.createdAt)} hari`}
+                      />
+                    ))}
+                  </View>
+                ) : (
+                  <Text style={{ color: BRAND_COLORS.textMuted, fontSize: scaleWithAppTextScale(12) }}>
+                    Tidak ada pengajuan pending.
+                  </Text>
+                )}
+              </View>
+
+              <View
+                style={{
+                  borderWidth: 1,
+                  borderColor: '#dbe7fb',
+                  borderRadius: 14,
+                  backgroundColor: '#f8fafc',
+                  padding: 12,
+                }}
+              >
+                <Text style={{ color: BRAND_COLORS.textDark, fontWeight: '700', marginBottom: 8 }}>
+                  Program Kerja
+                </Text>
+                {monitoring.pendingWorkPrograms.length > 0 ? (
+                  <View style={{ gap: 8 }}>
+                    {monitoring.pendingWorkPrograms.slice(0, 3).map((program) => (
+                      <ListRowCard
+                        key={program.id}
+                        title={program.title}
+                        subtitle={String(program.additionalDuty || '-').replace(/_/g, ' ')}
+                        detail={program.academicYear?.name || '-'}
+                        footer={`Umur antrian ${daysSince(program.createdAt)} hari`}
+                      />
+                    ))}
+                  </View>
+                ) : (
+                  <Text style={{ color: BRAND_COLORS.textMuted, fontSize: scaleWithAppTextScale(12) }}>
+                    Tidak ada program kerja pending.
+                  </Text>
+                )}
+              </View>
+            </View>
+          </SectionCard>
+
+          <SectionCard
+            title="Spotlight BP/BK"
+            description="Sorotan siswa berisiko tinggi dan tindak lanjut konseling yang terlambat."
+            rightLabel={`${monitoring.bpbk.summary.openCounselings} aktif`}
+          >
+            <View style={{ flexDirection: 'row', flexWrap: 'wrap', marginHorizontal: -4, marginBottom: 12 }}>
+              <View style={{ width: '33.3333%', paddingHorizontal: 4 }}>
+                <MiniStatCard
+                  label="Risiko Tinggi"
+                  value={monitoring.bpbk.summary.highRiskStudents}
+                  borderColor="#ddd6fe"
+                  backgroundColor="#f5f3ff"
+                  textColor="#7c3aed"
+                />
+              </View>
+              <View style={{ width: '33.3333%', paddingHorizontal: 4 }}>
+                <MiniStatCard
+                  label="Overdue"
+                  value={monitoring.bpbk.summary.overdueCounselings}
+                  borderColor="#fecaca"
+                  backgroundColor="#fff1f2"
+                  textColor="#be123c"
+                />
+              </View>
+              <View style={{ width: '33.3333%', paddingHorizontal: 4 }}>
+                <MiniStatCard
+                  label="Kasus Aktif"
+                  value={monitoring.bpbk.summary.openCounselings}
+                  borderColor="#cbd5e1"
+                  backgroundColor="#f8fafc"
+                  textColor="#475569"
+                />
+              </View>
+            </View>
+
+            <View style={{ gap: 10 }}>
+              {monitoring.bpbk.highRiskStudents.slice(0, 3).map((row) => (
+                <ListRowCard
+                  key={`risk-${row.studentId}`}
+                  title={row.studentName}
+                  subtitle={`${row.className || '-'} • ${row.nis || row.nisn || '-'}`}
+                  detail={`${row.negativeCaseCount} kasus negatif • ${row.totalNegativePoint} poin`}
+                  badge="Risiko Tinggi"
+                  badgeTone={{
+                    borderColor: '#ddd6fe',
+                    backgroundColor: '#f5f3ff',
+                    textColor: '#7c3aed',
+                  }}
+                />
+              ))}
+              {monitoring.bpbk.overdueCounselings.slice(0, 2).map((row) => (
+                <ListRowCard
+                  key={`overdue-${row.id}`}
+                  title={row.student.name}
+                  subtitle={`${row.student.className || '-'} • ${formatDate(row.sessionDate)}`}
+                  detail={row.issueSummary}
+                  footer={`Konselor: ${row.counselor?.name || '-'}`}
+                  badge="Overdue"
+                  badgeTone={{
+                    borderColor: '#fecaca',
+                    backgroundColor: '#fff1f2',
+                    textColor: '#be123c',
+                  }}
+                />
+              ))}
+              {monitoring.bpbk.highRiskStudents.length === 0 && monitoring.bpbk.overdueCounselings.length === 0 ? (
+                <View
+                  style={{
+                    borderWidth: 1,
+                    borderStyle: 'dashed',
+                    borderColor: '#cbd5e1',
+                    borderRadius: 12,
+                    padding: 14,
+                    backgroundColor: '#fff',
+                  }}
+                >
+                  <Text style={{ color: BRAND_COLORS.textMuted, fontSize: scaleWithAppTextScale(12) }}>
+                    Tidak ada siswa risiko tinggi atau konseling overdue pada filter aktif.
+                  </Text>
+                </View>
+              ) : null}
+            </View>
+          </SectionCard>
+
+          <SectionCard
+            title="Perangkat Ajar Terbaru"
+            description="Ringkas status review dokumen pembelajaran dan item terbaru yang masuk."
+          >
+            <View style={{ flexDirection: 'row', flexWrap: 'wrap', marginHorizontal: -4, marginBottom: 12 }}>
+              <View style={{ width: '50%', paddingHorizontal: 4, marginBottom: 8 }}>
+                <MiniStatCard
+                  label="Menunggu Review"
+                  value={countTeachingStatus(monitoring.teaching.byStatus, 'SUBMITTED')}
+                  borderColor="#fde68a"
+                  backgroundColor="#fffbeb"
+                  textColor="#b45309"
+                />
+              </View>
+              <View style={{ width: '50%', paddingHorizontal: 4, marginBottom: 8 }}>
+                <MiniStatCard
+                  label="Disetujui"
+                  value={countTeachingStatus(monitoring.teaching.byStatus, 'APPROVED')}
+                  borderColor="#a7f3d0"
+                  backgroundColor="#ecfdf5"
+                  textColor="#047857"
+                />
+              </View>
+              <View style={{ width: '50%', paddingHorizontal: 4 }}>
+                <MiniStatCard
+                  label="Perlu Revisi"
+                  value={countTeachingStatus(monitoring.teaching.byStatus, 'REJECTED')}
+                  borderColor="#fecdd3"
+                  backgroundColor="#fff1f2"
+                  textColor="#be123c"
+                />
+              </View>
+              <View style={{ width: '50%', paddingHorizontal: 4 }}>
+                <MiniStatCard
+                  label="Draft"
+                  value={countTeachingStatus(monitoring.teaching.byStatus, 'DRAFT')}
+                  borderColor="#cbd5e1"
+                  backgroundColor="#f8fafc"
+                  textColor="#475569"
+                />
+              </View>
+            </View>
+
             {monitoring.teaching.latest.length > 0 ? (
-              monitoring.teaching.latest.slice(0, 5).map((entry) => (
-                <View
-                  key={entry.id}
-                  style={{
-                    backgroundColor: '#fff',
-                    borderWidth: 1,
-                    borderColor: '#dbe7fb',
-                    borderRadius: 10,
-                    padding: 12,
-                    marginBottom: 8,
-                  }}
-                >
-                  <Text style={{ color: BRAND_COLORS.textDark, fontWeight: '700' }}>{entry.title}</Text>
-                  <Text style={{ color: BRAND_COLORS.textMuted, fontSize: scaleWithAppTextScale(12), marginTop: 3 }}>
-                    {entry.teacher?.name || '-'} • {entry.programCode}
-                  </Text>
-                  <Text style={{ color: '#1d4ed8', fontSize: scaleWithAppTextScale(12), marginTop: 4 }}>{entry.status}</Text>
-                </View>
-              ))
+              <View style={{ gap: 10 }}>
+                {monitoring.teaching.latest.slice(0, 5).map((entry) => {
+                  const tone = getTeachingStatusTone(entry.status);
+                  return (
+                    <ListRowCard
+                      key={entry.id}
+                      title={entry.title}
+                      subtitle={`${entry.teacher?.name || '-'} • ${entry.programCode || '-'}`}
+                      badge={String(entry.status || 'DRAFT').replace(/_/g, ' ')}
+                      badgeTone={tone}
+                    />
+                  );
+                })}
+              </View>
             ) : (
               <View
                 style={{
                   borderWidth: 1,
                   borderStyle: 'dashed',
                   borderColor: '#cbd5e1',
-                  borderRadius: 10,
+                  borderRadius: 12,
                   padding: 14,
                   backgroundColor: '#fff',
                 }}
               >
-                <Text style={{ color: BRAND_COLORS.textMuted }}>Belum ada perangkat ajar terbaru untuk dimonitor.</Text>
+                <Text style={{ color: BRAND_COLORS.textMuted, fontSize: scaleWithAppTextScale(12) }}>
+                  Belum ada perangkat ajar terbaru untuk dimonitor.
+                </Text>
               </View>
             )}
-          </View>
+          </SectionCard>
 
-          <View style={{ marginBottom: 10 }}>
-            <Text style={{ color: BRAND_COLORS.textDark, fontWeight: '700', marginBottom: 8 }}>
-              Arsip Surat TU Terbaru
-            </Text>
+          <SectionCard
+            title="Ringkasan Surat Tata Usaha"
+            description="Pantau ritme surat bulanan, distribusi tipe surat, dan arsip terbaru."
+            rightLabel={`${monitoring.office.totalLetters} arsip`}
+          >
+            <View style={{ flexDirection: 'row', flexWrap: 'wrap', marginHorizontal: -4, marginBottom: 12 }}>
+              <View style={{ width: '50%', paddingHorizontal: 4 }}>
+                <MiniStatCard
+                  label="Surat Bulan Ini"
+                  value={monitoring.office.monthlyLetters}
+                  borderColor="#cbd5e1"
+                  backgroundColor="#f8fafc"
+                  textColor="#475569"
+                />
+              </View>
+              <View style={{ width: '50%', paddingHorizontal: 4 }}>
+                <MiniStatCard
+                  label="Jenis Surat Aktif"
+                  value={monitoring.office.byType.length}
+                  borderColor="#bfdbfe"
+                  backgroundColor="#eff6ff"
+                  textColor="#1d4ed8"
+                />
+              </View>
+            </View>
+
+            <View style={{ flexDirection: 'row', flexWrap: 'wrap', gap: 8, marginBottom: 12 }}>
+              {monitoring.office.byType.length === 0 ? (
+                <Text style={{ color: BRAND_COLORS.textMuted, fontSize: scaleWithAppTextScale(12) }}>
+                  Belum ada surat tercatat.
+                </Text>
+              ) : (
+                monitoring.office.byType.map((row) => (
+                  <View
+                    key={row.type}
+                    style={{
+                      borderWidth: 1,
+                      borderColor: '#dbe7fb',
+                      backgroundColor: '#f8fafc',
+                      borderRadius: 999,
+                      paddingHorizontal: 10,
+                      paddingVertical: 7,
+                    }}
+                  >
+                    <Text style={{ color: '#334155', fontSize: scaleWithAppTextScale(11), fontWeight: '600' }}>
+                      {row.type.replace(/_/g, ' ')} • {row._count._all}
+                    </Text>
+                  </View>
+                ))
+              )}
+            </View>
+
             {monitoring.office.latest.length > 0 ? (
-              monitoring.office.latest.slice(0, 5).map((letter) => (
-                <View
-                  key={letter.id}
-                  style={{
-                    backgroundColor: '#fff',
-                    borderWidth: 1,
-                    borderColor: '#dbe7fb',
-                    borderRadius: 10,
-                    padding: 12,
-                    marginBottom: 8,
-                  }}
-                >
-                  <Text style={{ color: BRAND_COLORS.textDark, fontWeight: '700' }}>
-                    {letter.title || letter.recipientName}
-                  </Text>
-                  <Text style={{ color: BRAND_COLORS.textMuted, fontSize: scaleWithAppTextScale(12), marginTop: 3 }}>
-                    {letter.letterNumber} • {letter.type}
-                  </Text>
-                  <Text style={{ color: BRAND_COLORS.textMuted, fontSize: scaleWithAppTextScale(12), marginTop: 2 }}>
-                    Penerima: {letter.recipientName} • {formatDate(letter.createdAt)}
-                  </Text>
-                </View>
-              ))
+              <View style={{ gap: 10 }}>
+                {monitoring.office.latest.slice(0, 4).map((letter) => (
+                  <ListRowCard
+                    key={letter.id}
+                    title={letter.title || letter.recipientName}
+                    subtitle={`${letter.letterNumber} • ${letter.type.replace(/_/g, ' ')}`}
+                    detail={`Penerima: ${letter.recipientName}`}
+                    footer={formatDate(letter.createdAt)}
+                  />
+                ))}
+              </View>
             ) : (
               <View
                 style={{
                   borderWidth: 1,
                   borderStyle: 'dashed',
                   borderColor: '#cbd5e1',
-                  borderRadius: 10,
+                  borderRadius: 12,
                   padding: 14,
                   backgroundColor: '#fff',
                 }}
               >
-                <Text style={{ color: BRAND_COLORS.textMuted }}>Belum ada arsip surat yang tercatat pada periode ini.</Text>
+                <Text style={{ color: BRAND_COLORS.textMuted, fontSize: scaleWithAppTextScale(12) }}>
+                  Belum ada arsip surat yang tercatat pada periode ini.
+                </Text>
               </View>
             )}
-          </View>
+          </SectionCard>
+
+          <SectionCard
+            title="Monitoring Administrasi TU"
+            description="Kelengkapan data prioritas dan izin administratif yang masih tertahan."
+            rightLabel={`${monitoring.administration.overview.pendingPermissions} izin pending`}
+          >
+            <View style={{ flexDirection: 'row', flexWrap: 'wrap', marginHorizontal: -4, marginBottom: 12 }}>
+              <View style={{ width: '50%', paddingHorizontal: 4, marginBottom: 8 }}>
+                <MiniStatCard
+                  label="Siswa Prioritas"
+                  value={monitoring.administration.overview.studentsPriorityCount}
+                  helper={`${monitoring.administration.overview.studentCompletenessRate}% lengkap`}
+                  borderColor="#fde68a"
+                  backgroundColor="#fffbeb"
+                  textColor="#b45309"
+                />
+              </View>
+              <View style={{ width: '50%', paddingHorizontal: 4, marginBottom: 8 }}>
+                <MiniStatCard
+                  label="Guru/Staff Prioritas"
+                  value={monitoring.administration.overview.teachersPriorityCount}
+                  helper={`${monitoring.administration.overview.teacherCompletenessRate}% lengkap`}
+                  borderColor="#bfdbfe"
+                  backgroundColor="#eff6ff"
+                  textColor="#1d4ed8"
+                />
+              </View>
+              <View style={{ width: '50%', paddingHorizontal: 4 }}>
+                <MiniStatCard
+                  label="Verifikasi Siswa"
+                  value={monitoring.administration.overview.pendingStudentVerification}
+                  borderColor="#fecdd3"
+                  backgroundColor="#fff1f2"
+                  textColor="#be123c"
+                />
+              </View>
+              <View style={{ width: '50%', paddingHorizontal: 4 }}>
+                <MiniStatCard
+                  label="Verifikasi Guru"
+                  value={monitoring.administration.overview.pendingTeacherVerification}
+                  borderColor="#bbf7d0"
+                  backgroundColor="#f0fdf4"
+                  textColor="#15803d"
+                />
+              </View>
+            </View>
+
+            <View style={{ gap: 12 }}>
+              <View
+                style={{
+                  borderWidth: 1,
+                  borderColor: '#dbe7fb',
+                  borderRadius: 14,
+                  backgroundColor: '#f8fafc',
+                  padding: 12,
+                }}
+              >
+                <Text style={{ color: BRAND_COLORS.textDark, fontWeight: '700', marginBottom: 8 }}>
+                  Siswa Prioritas Dilengkapi
+                </Text>
+                {monitoring.administration.studentPriorityQueue.length > 0 ? (
+                  <View style={{ gap: 8 }}>
+                    {monitoring.administration.studentPriorityQueue.slice(0, 3).map((row) => (
+                      <ListRowCard
+                        key={row.id}
+                        title={row.name}
+                        subtitle={`${row.className || '-'} • ${row.username}`}
+                        detail={`Kurang: ${row.missingFields.slice(0, 3).join(', ') || 'Perlu review manual'}`}
+                        badge={row.label}
+                        badgeTone={{
+                          borderColor: '#fde68a',
+                          backgroundColor: '#fffbeb',
+                          textColor: '#b45309',
+                        }}
+                      />
+                    ))}
+                  </View>
+                ) : (
+                  <Text style={{ color: BRAND_COLORS.textMuted, fontSize: scaleWithAppTextScale(12) }}>
+                    Semua data siswa utama terlihat stabil.
+                  </Text>
+                )}
+              </View>
+
+              <View
+                style={{
+                  borderWidth: 1,
+                  borderColor: '#dbe7fb',
+                  borderRadius: 14,
+                  backgroundColor: '#f8fafc',
+                  padding: 12,
+                }}
+              >
+                <Text style={{ color: BRAND_COLORS.textDark, fontWeight: '700', marginBottom: 8 }}>
+                  Guru/Staff Prioritas Dilengkapi
+                </Text>
+                {monitoring.administration.teacherPriorityQueue.length > 0 ? (
+                  <View style={{ gap: 8 }}>
+                    {monitoring.administration.teacherPriorityQueue.slice(0, 3).map((row) => (
+                      <ListRowCard
+                        key={row.id}
+                        title={row.name}
+                        subtitle={`${String(row.ptkType || 'PTK').replace(/_/g, ' ')} • ${row.username}`}
+                        detail={`Kurang: ${row.missingFields.slice(0, 3).join(', ') || 'Perlu review manual'}`}
+                        badge={row.label}
+                        badgeTone={{
+                          borderColor: '#bfdbfe',
+                          backgroundColor: '#eff6ff',
+                          textColor: '#1d4ed8',
+                        }}
+                      />
+                    ))}
+                  </View>
+                ) : (
+                  <Text style={{ color: BRAND_COLORS.textMuted, fontSize: scaleWithAppTextScale(12) }}>
+                    Semua data guru/staff utama terlihat stabil.
+                  </Text>
+                )}
+              </View>
+
+              <View
+                style={{
+                  borderWidth: 1,
+                  borderColor: '#dbe7fb',
+                  borderRadius: 14,
+                  backgroundColor: '#f8fafc',
+                  padding: 12,
+                }}
+              >
+                <Text style={{ color: BRAND_COLORS.textDark, fontWeight: '700', marginBottom: 8 }}>
+                  Perizinan Menunggu Tindak Lanjut
+                </Text>
+                {monitoring.administration.permissionQueue.length > 0 ? (
+                  <View style={{ gap: 8 }}>
+                    {monitoring.administration.permissionQueue.slice(0, 3).map((row) => (
+                      <ListRowCard
+                        key={row.id}
+                        title={row.studentName}
+                        subtitle={`${row.className || '-'} • ${formatPermissionTypeLabel(row.type)}`}
+                        detail={row.reason || 'Belum ada alasan terisi.'}
+                        footer={`${formatDate(row.startDate)} - ${formatDate(row.endDate)} • ${row.ageDays} hari`}
+                        badge={row.agingLabel}
+                        badgeTone={{
+                          borderColor: '#fecdd3',
+                          backgroundColor: '#fff1f2',
+                          textColor: '#be123c',
+                        }}
+                      />
+                    ))}
+                  </View>
+                ) : (
+                  <Text style={{ color: BRAND_COLORS.textMuted, fontSize: scaleWithAppTextScale(12) }}>
+                    Tidak ada perizinan yang masih pending.
+                  </Text>
+                )}
+              </View>
+            </View>
+          </SectionCard>
         </>
       ) : null}
     </ScrollView>

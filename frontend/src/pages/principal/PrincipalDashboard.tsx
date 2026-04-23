@@ -46,7 +46,6 @@ import {
   ThumbsDown,
   X,
   AlertTriangle,
-  Gauge,
   Clock3,
   BookOpenText,
   ChevronDown,
@@ -509,6 +508,194 @@ const PrincipalStatCard = ({
 
   return content;
 };
+
+type PrincipalMonitoringCardTone = 'blue' | 'amber' | 'rose' | 'slate' | 'violet' | 'cyan' | 'emerald';
+
+function formatPrincipalPermissionTypeLabel(value?: string | null) {
+  const normalized = String(value || '').trim().toUpperCase();
+  if (normalized === 'SICK') return 'Sakit';
+  if (normalized === 'PERMISSION') return 'Izin';
+  return normalized ? normalized.replace(/_/g, ' ') : 'Lainnya';
+}
+
+function getPrincipalMonitoringCardTone(tone: PrincipalMonitoringCardTone) {
+  switch (tone) {
+    case 'blue':
+      return {
+        card: 'border-blue-200 bg-gradient-to-br from-blue-50 via-white to-sky-100/80',
+        iconWrap: 'bg-blue-600/10 text-blue-700',
+        eyebrow: 'text-blue-700/75',
+        detail: 'text-blue-900/70',
+      };
+    case 'amber':
+      return {
+        card: 'border-amber-200 bg-gradient-to-br from-amber-50 via-white to-orange-100/80',
+        iconWrap: 'bg-amber-600/10 text-amber-700',
+        eyebrow: 'text-amber-700/80',
+        detail: 'text-amber-900/70',
+      };
+    case 'rose':
+      return {
+        card: 'border-rose-200 bg-gradient-to-br from-rose-50 via-white to-red-100/80',
+        iconWrap: 'bg-rose-600/10 text-rose-700',
+        eyebrow: 'text-rose-700/80',
+        detail: 'text-rose-900/70',
+      };
+    case 'violet':
+      return {
+        card: 'border-violet-200 bg-gradient-to-br from-violet-50 via-white to-indigo-100/80',
+        iconWrap: 'bg-violet-600/10 text-violet-700',
+        eyebrow: 'text-violet-700/80',
+        detail: 'text-violet-900/70',
+      };
+    case 'cyan':
+      return {
+        card: 'border-cyan-200 bg-gradient-to-br from-cyan-50 via-white to-sky-100/80',
+        iconWrap: 'bg-cyan-600/10 text-cyan-700',
+        eyebrow: 'text-cyan-700/80',
+        detail: 'text-cyan-900/70',
+      };
+    case 'emerald':
+      return {
+        card: 'border-emerald-200 bg-gradient-to-br from-emerald-50 via-white to-teal-100/80',
+        iconWrap: 'bg-emerald-600/10 text-emerald-700',
+        eyebrow: 'text-emerald-700/80',
+        detail: 'text-emerald-900/70',
+      };
+    case 'slate':
+    default:
+      return {
+        card: 'border-slate-200 bg-gradient-to-br from-slate-50 via-white to-gray-100/90',
+        iconWrap: 'bg-slate-900/5 text-slate-700',
+        eyebrow: 'text-slate-600',
+        detail: 'text-slate-700/80',
+      };
+  }
+}
+
+function getPrincipalQuickActionTone(severity: PrincipalQuickActionSeverity) {
+  if (severity === 'HIGH') {
+    return {
+      badge: 'bg-rose-50 text-rose-700 border border-rose-200',
+      card: 'border-rose-200 bg-rose-50/70',
+    };
+  }
+  if (severity === 'MEDIUM') {
+    return {
+      badge: 'bg-amber-50 text-amber-700 border border-amber-200',
+      card: 'border-amber-200 bg-amber-50/70',
+    };
+  }
+  return {
+    badge: 'bg-slate-50 text-slate-700 border border-slate-200',
+    card: 'border-slate-200 bg-slate-50/70',
+  };
+}
+
+function getPrincipalRiskBadgeTone(level: PrincipalOperationalRiskLevel) {
+  if (level === 'HIGH') {
+    return 'bg-rose-50 text-rose-700 border border-rose-200';
+  }
+  if (level === 'MEDIUM') {
+    return 'bg-amber-50 text-amber-700 border border-amber-200';
+  }
+  return 'bg-emerald-50 text-emerald-700 border border-emerald-200';
+}
+
+function getPrincipalTeachingStatusTone(status?: TeachingResourceEntryStatus | null) {
+  const normalized = String(status || '').trim().toUpperCase();
+  if (normalized === 'APPROVED') {
+    return 'bg-emerald-50 text-emerald-700 border border-emerald-200';
+  }
+  if (normalized === 'REJECTED') {
+    return 'bg-rose-50 text-rose-700 border border-rose-200';
+  }
+  if (normalized === 'SUBMITTED') {
+    return 'bg-amber-50 text-amber-700 border border-amber-200';
+  }
+  return 'bg-slate-50 text-slate-700 border border-slate-200';
+}
+
+function PrincipalMonitoringSection({
+  id,
+  eyebrow,
+  title,
+  description,
+  action,
+  children,
+}: {
+  id?: string;
+  eyebrow?: string;
+  title: string;
+  description?: string;
+  action?: React.ReactNode;
+  children: React.ReactNode;
+}) {
+  return (
+    <section
+      id={id}
+      className="overflow-hidden rounded-[24px] border border-slate-200 bg-white shadow-sm"
+    >
+      <div className="border-b border-slate-100 bg-slate-50/80 px-4 py-4 md:px-5">
+        {eyebrow ? (
+          <p className="text-[11px] font-semibold uppercase tracking-[0.18em] text-slate-500">
+            {eyebrow}
+          </p>
+        ) : null}
+        <div className="mt-1 flex flex-col gap-3 md:flex-row md:items-start md:justify-between">
+          <div className="min-w-0">
+            <h3 className="text-base font-semibold text-slate-950">{title}</h3>
+            {description ? (
+              <p className="mt-1 text-sm leading-6 text-slate-600">{description}</p>
+            ) : null}
+          </div>
+          {action ? <div className="shrink-0">{action}</div> : null}
+        </div>
+      </div>
+      <div className="p-4 md:p-5">{children}</div>
+    </section>
+  );
+}
+
+function PrincipalMonitoringSummaryCard({
+  id,
+  title,
+  value,
+  detail,
+  tone,
+  icon: Icon,
+  to,
+}: {
+  id?: string;
+  title: string;
+  value: string | number;
+  detail: string;
+  tone: PrincipalMonitoringCardTone;
+  icon: React.ElementType;
+  to: string;
+}) {
+  const toneClasses = getPrincipalMonitoringCardTone(tone);
+
+  return (
+    <Link
+      id={id}
+      to={to}
+      className={`group relative overflow-hidden rounded-[22px] border p-4 shadow-sm transition-all duration-200 hover:-translate-y-0.5 hover:shadow-md ${toneClasses.card}`}
+    >
+      <div className="flex items-start justify-between gap-3">
+        <div className={`inline-flex h-11 w-11 items-center justify-center rounded-2xl ${toneClasses.iconWrap}`}>
+          <Icon className="h-5 w-5" />
+        </div>
+        <ArrowUpRight className="h-4 w-4 text-slate-400 transition-transform group-hover:-translate-y-0.5 group-hover:translate-x-0.5" />
+      </div>
+      <p className={`mt-4 text-[11px] font-semibold uppercase tracking-[0.18em] ${toneClasses.eyebrow}`}>
+        {title}
+      </p>
+      <p className="mt-2 text-3xl font-bold tracking-tight text-slate-950">{value}</p>
+      <p className={`mt-2 text-sm leading-6 ${toneClasses.detail}`}>{detail}</p>
+    </Link>
+  );
+}
 
 function normalizeDuty(value?: string | null) {
   return String(value || '').trim().toUpperCase();
@@ -2406,31 +2593,94 @@ const PrincipalOperationalMonitoringPage = () => {
     navigate(item.actionPath);
   };
 
+  const summaryCards = useMemo(() => {
+    if (!data) return [];
+
+    return [
+      {
+        key: 'budget',
+        title: 'Pengajuan Anggaran Pending',
+        value: data.pendingBudgetCount,
+        detail: `Rp ${Math.trunc(data.pendingBudgetAmount).toLocaleString('id-ID')}`,
+        to: '/principal/finance/requests',
+        icon: Wallet,
+        tone: 'blue' as const,
+      },
+      {
+        key: 'work-program',
+        title: 'Program Kerja Pending',
+        value: data.pendingWorkProgramCount,
+        detail: `${data.overdueWorkProgramCount} melewati SLA 5 hari`,
+        to: '/principal/work-program-approvals',
+        icon: ClipboardList,
+        tone: 'amber' as const,
+      },
+      {
+        key: 'exam-room',
+        title: 'Ruang Belum Melapor',
+        value: data.unreportedRooms,
+        detail: `Dari ${data.reportSummary.totalRooms} ruang aktif`,
+        to: '/principal/exams/reports',
+        icon: School,
+        tone: 'rose' as const,
+      },
+      {
+        key: 'exam-absent',
+        title: 'Siswa Tidak Hadir Ujian',
+        value: data.absentParticipants,
+        detail: `${data.reportSummary.totalPresent} hadir tercatat`,
+        to: '/principal/exams/reports',
+        icon: Users,
+        tone: 'slate' as const,
+      },
+      {
+        key: 'bpbk',
+        title: 'Kasus BP/BK Risiko Tinggi',
+        value: data.bpbkSummary.highRiskStudents,
+        detail: `${data.bpbkSummary.overdueCounselings} overdue • ${data.bpbkSummary.openCounselings} kasus aktif`,
+        to: '/principal/monitoring/bpbk',
+        icon: AlertTriangle,
+        tone: 'violet' as const,
+      },
+      {
+        key: 'teaching',
+        title: 'Perangkat Ajar Pending Review',
+        value: data.teachingResourceSummary.submitted,
+        detail: `${data.teachingResourceSummary.approved} disetujui • ${data.teachingResourceSummary.rejected} revisi`,
+        to: '/principal/monitoring/operations#teaching-resource',
+        icon: BookOpenText,
+        tone: 'cyan' as const,
+      },
+      {
+        key: 'office',
+        title: 'Surat TU Bulan Ini',
+        value: data.officeSummary.monthlyLetters,
+        detail: `${data.officeSummary.totalLetters} arsip surat tercatat`,
+        to: '/principal/monitoring/operations#office-tu',
+        icon: Clock3,
+        tone: 'slate' as const,
+      },
+      {
+        key: 'administration',
+        title: 'Administrasi Belum Lengkap',
+        value: data.administrationSummary.incompleteStudents + data.administrationSummary.incompleteTeachers,
+        detail: `${data.administrationSummary.pendingPermissions} izin pending • ${
+          data.administrationSummary.administrationStaffCount + data.administrationSummary.financeStaffCount
+        } staff TU`,
+        to: '/principal/monitoring/operations#administration-tu',
+        icon: Users,
+        tone: 'emerald' as const,
+      },
+    ];
+  }, [data]);
+
   return (
     <div className="space-y-6">
-      <div className="flex flex-col gap-3 md:flex-row md:items-center md:justify-between">
-        <div>
-          <h2 className="text-2xl font-bold text-gray-900">Pusat Monitoring Operasional</h2>
-          <p className="mt-1 text-sm text-gray-500">
-            SLA persetujuan, risiko ujian, dan backlog keputusan Kepala Sekolah dalam satu layar.
-          </p>
-        </div>
-        <div className="flex items-center gap-2">
-          <Calendar className="w-4 h-4 text-gray-400" />
-          <input
-            type="date"
-            value={reportDate}
-            onChange={(event) => setReportDate(event.target.value)}
-            className="border border-gray-300 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500/60"
-          />
-          <button
-            type="button"
-            onClick={() => refetch()}
-            className="px-3 py-2 rounded-lg border border-gray-300 text-sm text-gray-700 hover:bg-gray-50"
-          >
-            Muat Ulang
-          </button>
-        </div>
+      <div>
+        <h2 className="text-2xl font-bold text-gray-900">Pusat Monitoring Operasional</h2>
+        <p className="mt-1 text-sm text-gray-500">
+          SLA persetujuan, risiko ujian, dan backlog keputusan Kepala Sekolah dalam satu layar.
+        </p>
       </div>
 
       {isLoading ? (
@@ -2443,101 +2693,163 @@ const PrincipalOperationalMonitoringPage = () => {
         </div>
       ) : (
         <>
-          <div className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-7 gap-4">
-            <Link
-              to="/principal/finance/requests"
-              className="rounded-xl border border-blue-100 bg-gradient-to-br from-blue-50 to-sky-100/85 p-4 shadow-sm hover:shadow-md transition-shadow"
-            >
-              <p className="text-xs font-medium text-blue-700/80">Pengajuan Anggaran Pending</p>
-              <p className="text-2xl font-bold text-blue-900 mt-1">{data.pendingBudgetCount}</p>
-              <p className="text-xs text-blue-700/80 mt-1">
-                Rp {Math.trunc(data.pendingBudgetAmount).toLocaleString('id-ID')}
-              </p>
-            </Link>
-            <Link
-              to="/principal/work-program-approvals"
-              className="rounded-xl border border-amber-100 bg-gradient-to-br from-amber-50 to-orange-100/85 p-4 shadow-sm hover:shadow-md transition-shadow"
-            >
-              <p className="text-xs font-medium text-amber-700/80">Program Kerja Pending</p>
-              <p className="text-2xl font-bold text-amber-900 mt-1">{data.pendingWorkProgramCount}</p>
-              <p className="text-xs text-amber-700/80 mt-1">
-                {data.overdueWorkProgramCount} melewati SLA 5 hari
-              </p>
-            </Link>
-            <Link
-              to="/principal/exams/reports"
-              className="rounded-xl border border-rose-100 bg-gradient-to-br from-rose-50 to-red-100/85 p-4 shadow-sm hover:shadow-md transition-shadow"
-            >
-              <p className="text-xs font-medium text-rose-700/80">Ruang Belum Melapor</p>
-              <p className="text-2xl font-bold text-rose-900 mt-1">{data.unreportedRooms}</p>
-              <p className="text-xs text-rose-700/80 mt-1">
-                dari {data.reportSummary.totalRooms} ruang aktif
-              </p>
-            </Link>
-            <Link
-              to="/principal/exams/reports"
-              className="rounded-xl border border-slate-100 bg-gradient-to-br from-slate-50 to-gray-100/90 p-4 shadow-sm hover:shadow-md transition-shadow"
-            >
-              <p className="text-xs font-medium text-slate-700">Siswa Tidak Hadir Ujian</p>
-              <p className="text-2xl font-bold text-slate-900 mt-1">{data.absentParticipants}</p>
-              <p className="text-xs text-slate-600 mt-1">{data.reportSummary.totalPresent} hadir tercatat</p>
-            </Link>
-            <Link
-              to="/principal/monitoring/bpbk"
-              className="rounded-xl border border-violet-100 bg-gradient-to-br from-violet-50 to-indigo-100/85 p-4 shadow-sm hover:shadow-md transition-shadow"
-            >
-              <p className="text-xs font-medium text-violet-700/80">Kasus BP/BK Risiko Tinggi</p>
-              <p className="text-2xl font-bold text-violet-900 mt-1">{data.bpbkSummary.highRiskStudents}</p>
-              <p className="text-xs text-violet-700/80 mt-1">
-                {data.bpbkSummary.overdueCounselings} overdue • {data.bpbkSummary.openCounselings} kasus aktif
-              </p>
-            </Link>
-            <Link
-              id="teaching-resource"
-              to="/principal/monitoring/operations#teaching-resource"
-              className="rounded-xl border border-cyan-100 bg-gradient-to-br from-cyan-50 to-sky-100/85 p-4 shadow-sm hover:shadow-md transition-shadow"
-            >
-              <p className="text-xs font-medium text-cyan-700/80">Perangkat Ajar Pending Review</p>
-              <p className="text-2xl font-bold text-cyan-900 mt-1">{data.teachingResourceSummary.submitted}</p>
-              <p className="text-xs text-cyan-700/80 mt-1">
-                {data.teachingResourceSummary.approved} disetujui • {data.teachingResourceSummary.rejected} revisi
-              </p>
-            </Link>
-            <Link
-              id="office-tu"
-              to="/principal/monitoring/operations#office-tu"
-              className="rounded-xl border border-slate-100 bg-gradient-to-br from-slate-50 to-gray-100/90 p-4 shadow-sm hover:shadow-md transition-shadow"
-            >
-              <p className="text-xs font-medium text-slate-700">Surat TU Bulan Ini</p>
-              <p className="text-2xl font-bold text-slate-900 mt-1">{data.officeSummary.monthlyLetters}</p>
-              <p className="text-xs text-slate-600 mt-1">{data.officeSummary.totalLetters} arsip surat tercatat</p>
-            </Link>
-            <Link
-              id="administration-tu-card"
-              to="/principal/monitoring/operations#administration-tu"
-              className="rounded-xl border border-emerald-100 bg-gradient-to-br from-emerald-50 to-teal-100/85 p-4 shadow-sm hover:shadow-md transition-shadow"
-            >
-              <p className="text-xs font-medium text-emerald-700/80">Administrasi Belum Lengkap</p>
-              <p className="text-2xl font-bold text-emerald-900 mt-1">
-                {data.administrationSummary.incompleteStudents + data.administrationSummary.incompleteTeachers}
-              </p>
-              <p className="text-xs text-emerald-700/80 mt-1">
-                {data.administrationSummary.pendingPermissions} izin pending •{' '}
-                {data.administrationSummary.administrationStaffCount + data.administrationSummary.financeStaffCount} staff TU
-              </p>
-            </Link>
+          <div className="overflow-hidden rounded-[28px] border border-slate-200 bg-white shadow-sm">
+            <div className="grid gap-4 p-5 lg:grid-cols-[1.18fr_0.82fr] lg:p-6">
+              <div className="relative overflow-hidden rounded-[24px] border border-blue-100 bg-gradient-to-br from-slate-50 via-white to-blue-50 px-5 py-5">
+                <div className="absolute -right-16 -top-16 h-40 w-40 rounded-full bg-blue-200/40 blur-3xl" />
+                <div className="absolute bottom-0 left-0 h-28 w-28 rounded-full bg-emerald-200/30 blur-3xl" />
+                <div className="relative">
+                  <span className="inline-flex rounded-full border border-slate-200 bg-white/90 px-3 py-1 text-[11px] font-semibold uppercase tracking-[0.18em] text-slate-600 shadow-sm">
+                    Monitoring Harian Principal
+                  </span>
+                  <h3 className="mt-4 text-3xl font-bold tracking-tight text-slate-950">
+                    Layar kerja yang lebih ringkas untuk keputusan harian.
+                  </h3>
+                  <p className="mt-2 max-w-2xl text-sm leading-6 text-slate-600">
+                    Fokuskan perhatian ke approval yang menumpuk, risiko ujian, dokumen perangkat ajar,
+                    dan layanan TU tanpa harus memindai panel yang tersebar.
+                  </p>
+
+                  <div className="mt-5 grid gap-3 sm:grid-cols-3">
+                    <div className="rounded-2xl border border-slate-200 bg-white/90 px-4 py-3 shadow-sm">
+                      <p className="text-[11px] font-semibold uppercase tracking-[0.16em] text-slate-500">
+                        Keputusan Pending
+                      </p>
+                      <p className="mt-2 text-2xl font-bold text-slate-950">
+                        {data.pendingBudgetCount + data.pendingWorkProgramCount}
+                      </p>
+                      <p className="mt-1 text-xs text-slate-600">
+                        {data.pendingBudgetCount} anggaran • {data.pendingWorkProgramCount} program kerja
+                      </p>
+                    </div>
+                    <div className="rounded-2xl border border-slate-200 bg-white/90 px-4 py-3 shadow-sm">
+                      <p className="text-[11px] font-semibold uppercase tracking-[0.16em] text-slate-500">
+                        Risiko Ujian
+                      </p>
+                      <p className="mt-2 text-2xl font-bold text-slate-950">
+                        {data.unreportedRooms + data.absentParticipants}
+                      </p>
+                      <p className="mt-1 text-xs text-slate-600">
+                        {data.unreportedRooms} ruang belum melapor • {data.absentParticipants} siswa absen
+                      </p>
+                    </div>
+                    <div className="rounded-2xl border border-slate-200 bg-white/90 px-4 py-3 shadow-sm">
+                      <p className="text-[11px] font-semibold uppercase tracking-[0.16em] text-slate-500">
+                        Layanan TU Perlu Pantau
+                      </p>
+                      <p className="mt-2 text-2xl font-bold text-slate-950">
+                        {data.administrationSummary.pendingPermissions +
+                          data.administrationSummary.incompleteStudents +
+                          data.administrationSummary.incompleteTeachers}
+                      </p>
+                      <p className="mt-1 text-xs text-slate-600">
+                        {data.administrationSummary.pendingPermissions} izin pending • data prioritas belum lengkap
+                      </p>
+                    </div>
+                  </div>
+                </div>
+              </div>
+
+              <div className="rounded-[24px] border border-slate-200 bg-slate-50 p-4 md:p-5">
+                <p className="text-[11px] font-semibold uppercase tracking-[0.18em] text-slate-500">
+                  Kontrol Monitoring
+                </p>
+                <div className="mt-3">
+                  <label className="text-sm font-semibold text-slate-950">Tanggal berita acara ujian</label>
+                  <p className="mt-1 text-xs leading-5 text-slate-500">
+                    Filter ini hanya mengubah ringkasan ujian pada panel operasional hari yang dipilih.
+                  </p>
+                  <div className="mt-3 flex flex-col gap-2 sm:flex-row">
+                    <div className="relative flex-1">
+                      <Calendar className="pointer-events-none absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-slate-400" />
+                      <input
+                        type="date"
+                        value={reportDate}
+                        onChange={(event) => setReportDate(event.target.value)}
+                        className="w-full rounded-2xl border border-slate-300 bg-white px-10 py-3 text-sm text-slate-900 shadow-sm focus:outline-none focus:ring-2 focus:ring-blue-500/60"
+                      />
+                    </div>
+                    <button
+                      type="button"
+                      onClick={() => refetch()}
+                      className="inline-flex items-center justify-center rounded-2xl border border-slate-300 bg-white px-4 py-3 text-sm font-medium text-slate-700 shadow-sm transition hover:bg-slate-50"
+                    >
+                      Muat Ulang Data
+                    </button>
+                  </div>
+                </div>
+
+                <div className="mt-4 grid gap-3 sm:grid-cols-2">
+                  <div className="rounded-2xl border border-rose-100 bg-rose-50 px-4 py-3">
+                    <p className="text-[11px] font-semibold uppercase tracking-[0.16em] text-rose-700/80">
+                      SLA Terlewati
+                    </p>
+                    <p className="mt-2 text-xl font-bold text-rose-900">
+                      {data.overdueBudgetCount +
+                        data.overdueWorkProgramCount +
+                        data.bpbkSummary.overdueCounselings}
+                    </p>
+                    <p className="mt-1 text-xs text-rose-800/80">Approval dan konseling yang sudah lewat batas aman.</p>
+                  </div>
+                  <div className="rounded-2xl border border-cyan-100 bg-cyan-50 px-4 py-3">
+                    <p className="text-[11px] font-semibold uppercase tracking-[0.16em] text-cyan-700/80">
+                      Dokumen Menunggu Review
+                    </p>
+                    <p className="mt-2 text-xl font-bold text-cyan-900">
+                      {data.teachingResourceSummary.submitted}
+                    </p>
+                    <p className="mt-1 text-xs text-cyan-800/80">Perangkat ajar belum selesai diputuskan.</p>
+                  </div>
+                  <div className="rounded-2xl border border-violet-100 bg-violet-50 px-4 py-3">
+                    <p className="text-[11px] font-semibold uppercase tracking-[0.16em] text-violet-700/80">
+                      Kasus Aktif BP/BK
+                    </p>
+                    <p className="mt-2 text-xl font-bold text-violet-900">
+                      {data.bpbkSummary.openCounselings}
+                    </p>
+                    <p className="mt-1 text-xs text-violet-800/80">Perlu dipantau bersama guru BK dan wali kelas.</p>
+                  </div>
+                  <div className="rounded-2xl border border-emerald-100 bg-emerald-50 px-4 py-3">
+                    <p className="text-[11px] font-semibold uppercase tracking-[0.16em] text-emerald-700/80">
+                      Izin Administrasi Pending
+                    </p>
+                    <p className="mt-2 text-xl font-bold text-emerald-900">
+                      {data.administrationSummary.pendingPermissions}
+                    </p>
+                    <p className="mt-1 text-xs text-emerald-800/80">Antrian layanan TU yang masih butuh tindak lanjut.</p>
+                  </div>
+                </div>
+              </div>
+            </div>
           </div>
 
-          <div className="bg-white rounded-xl border border-gray-100 shadow-sm p-4 md:p-5 space-y-3">
-            <div className="flex items-center justify-between">
-              <div className="flex items-center gap-2">
-                <Gauge className="w-4 h-4 text-gray-500" />
-                <h3 className="text-sm font-semibold text-gray-900">Panel Prioritas Tindakan 1 Klik</h3>
-              </div>
-              <span className="text-xs text-gray-500">Eksekusi cepat keputusan principal</span>
-            </div>
+          <div className="grid gap-4 md:grid-cols-2 xl:grid-cols-4">
+            {summaryCards.map((card) => (
+              <PrincipalMonitoringSummaryCard
+                key={card.key}
+                id={card.key === 'administration' ? 'administration-tu-card' : undefined}
+                title={card.title}
+                value={card.value}
+                detail={card.detail}
+                to={card.to}
+                icon={card.icon}
+                tone={card.tone}
+              />
+            ))}
+          </div>
 
-            <div className="flex flex-wrap items-center gap-2">
+          <div className="grid gap-4 xl:grid-cols-[1.05fr_0.95fr]">
+            <PrincipalMonitoringSection
+              eyebrow="Aksi Cepat"
+              title="Panel Prioritas Tindakan"
+              description="Saring antrian keputusan yang paling mendesak lalu eksekusi langsung dari panel ini."
+              action={
+                <span className="inline-flex rounded-full border border-slate-200 bg-white px-3 py-1 text-xs font-medium text-slate-600">
+                  {quickActions.length} antrian aktif
+                </span>
+              }
+            >
+              <div className="flex flex-wrap items-center gap-2">
                 {([
                   { key: 'ALL' as const, label: 'Semua' },
                   { key: 'BUDGET' as const, label: 'Anggaran' },
@@ -2546,362 +2858,536 @@ const PrincipalOperationalMonitoringPage = () => {
                   { key: 'BP_BK' as const, label: 'BP/BK' },
                   { key: 'TEACHING_RESOURCE' as const, label: 'Perangkat Ajar' },
                 ] as const).map((filterItem) => {
-                const active = quickActionFilter === filterItem.key;
-                const count = quickActionStats[filterItem.key];
-                return (
-                  <button
-                    key={filterItem.key}
-                    type="button"
-                    onClick={() => setQuickActionFilter(filterItem.key)}
-                    className={`inline-flex items-center gap-1 rounded-full border px-3 py-1 text-xs font-medium transition ${
-                      active
-                        ? 'border-blue-200 bg-blue-50 text-blue-700'
-                        : 'border-gray-200 bg-white text-gray-600 hover:bg-gray-50'
-                    }`}
-                  >
-                    <Filter className="h-3 w-3" />
-                    <span>{filterItem.label}</span>
-                    <span className="rounded-full bg-gray-100 px-1.5 py-0.5 text-[11px] text-gray-600">{count}</span>
-                  </button>
-                );
-              })}
-            </div>
-
-            {filteredQuickActions.length === 0 ? (
-              <div className="rounded-lg border border-emerald-200 bg-emerald-50 px-3 py-2 text-xs text-emerald-800">
-                {quickActions.length === 0
-                  ? 'Tidak ada antrian prioritas untuk ditindaklanjuti.'
-                  : 'Tidak ada antrian pada kategori filter yang dipilih.'}
-              </div>
-            ) : (
-              <div className="space-y-2">
-                {filteredQuickActions.map((item) => {
-                  const severityClasses =
-                    item.severity === 'HIGH'
-                      ? 'border-rose-200 bg-rose-50'
-                      : item.severity === 'MEDIUM'
-                      ? 'border-amber-200 bg-amber-50'
-                      : 'border-slate-200 bg-slate-50';
+                  const active = quickActionFilter === filterItem.key;
+                  const count = quickActionStats[filterItem.key];
                   return (
-                    <div
-                      key={item.key}
-                      className={`rounded-lg border px-3 py-2 flex flex-col gap-2 md:flex-row md:items-center md:justify-between ${severityClasses}`}
+                    <button
+                      key={filterItem.key}
+                      type="button"
+                      onClick={() => setQuickActionFilter(filterItem.key)}
+                      className={`inline-flex items-center gap-2 rounded-full border px-3 py-1.5 text-xs font-medium transition ${
+                        active
+                          ? 'border-blue-200 bg-blue-50 text-blue-700'
+                          : 'border-slate-200 bg-white text-slate-600 hover:bg-slate-50'
+                      }`}
                     >
-                      <div className="min-w-0">
-                        <p className="text-sm font-semibold text-gray-900">{item.title}</p>
-                        <p className="text-xs text-gray-600">{item.detail}</p>
-                        <p className="text-[11px] text-gray-500 mt-0.5">Umur antrian: {item.ageDays} hari</p>
-                      </div>
-                      <div className="flex items-center gap-2">
-                        <button
-                          type="button"
-                          onClick={() => handleOpenQuickAction(item)}
-                          className="inline-flex items-center gap-1 px-2.5 py-1.5 rounded-md border border-gray-300 bg-white text-xs text-gray-700 hover:bg-gray-50"
-                        >
-                          {item.actionLabel}
-                        </button>
-                        {item.type === 'BUDGET' || item.type === 'WORK_PROGRAM' ? (
-                          <>
-                            <button
-                              type="button"
-                              onClick={() => handleQuickApprove(item)}
-                              disabled={quickBudgetMutation.isPending || quickWorkProgramMutation.isPending}
-                              className="inline-flex items-center gap-1 px-2.5 py-1.5 rounded-md bg-emerald-600 text-white text-xs hover:bg-emerald-700 disabled:opacity-50"
-                            >
-                              <CheckCircle2 className="w-3.5 h-3.5" />
-                              Setujui
-                            </button>
-                            <button
-                              type="button"
-                              onClick={() => handleQuickReject(item)}
-                              disabled={quickBudgetMutation.isPending || quickWorkProgramMutation.isPending}
-                              className="inline-flex items-center gap-1 px-2.5 py-1.5 rounded-md bg-rose-600 text-white text-xs hover:bg-rose-700 disabled:opacity-50"
-                            >
-                              <XCircle className="w-3.5 h-3.5" />
-                              Tolak
-                            </button>
-                          </>
-                        ) : null}
-                      </div>
-                    </div>
+                      <Filter className="h-3 w-3" />
+                      <span>{filterItem.label}</span>
+                      <span className="rounded-full bg-slate-100 px-1.5 py-0.5 text-[11px] text-slate-600">
+                        {count}
+                      </span>
+                    </button>
                   );
                 })}
               </div>
-            )}
-          </div>
 
-          <div className="bg-white rounded-xl border border-gray-100 shadow-sm p-4 md:p-5 space-y-3">
-            <div className="flex items-center gap-2">
-              <Gauge className="w-4 h-4 text-gray-500" />
-              <h3 className="text-sm font-semibold text-gray-900">Risiko Harian & Prioritas Tindakan</h3>
-            </div>
-            <div className="space-y-2">
-              {data.risks.map((risk) => (
-                <div
-                  key={risk.id}
-                  className={`rounded-lg border px-3 py-2 flex flex-col gap-2 md:flex-row md:items-center md:justify-between ${getRiskTone(risk.level)}`}
-                >
-                  <div className="min-w-0">
-                    <p className="text-sm font-semibold">{risk.title}</p>
-                    <p className="text-xs opacity-90">{risk.detail}</p>
+              <div className="mt-4 space-y-3">
+                {filteredQuickActions.length === 0 ? (
+                  <div className="rounded-2xl border border-emerald-200 bg-emerald-50 px-4 py-3 text-sm text-emerald-800">
+                    {quickActions.length === 0
+                      ? 'Tidak ada antrian prioritas untuk ditindaklanjuti.'
+                      : 'Tidak ada antrian pada kategori filter yang dipilih.'}
                   </div>
-                  {risk.actionPath ? (
-                    <Link
-                      to={risk.actionPath}
-                      className="inline-flex items-center gap-1 text-xs font-medium px-2.5 py-1.5 rounded-md bg-white/70 hover:bg-white"
-                    >
-                      <AlertTriangle className="w-3 h-3" />
-                      {risk.actionLabel || 'Tindak Lanjut'}
-                    </Link>
-                  ) : null}
+                ) : (
+                  filteredQuickActions.map((item) => {
+                    const tone = getPrincipalQuickActionTone(item.severity);
+                    return (
+                      <div
+                        key={item.key}
+                        className={`rounded-2xl border px-4 py-4 shadow-sm ${tone.card}`}
+                      >
+                        <div className="flex flex-col gap-3 lg:flex-row lg:items-start lg:justify-between">
+                          <div className="min-w-0">
+                            <div className="flex flex-wrap items-center gap-2">
+                              <span className={`inline-flex rounded-full px-2.5 py-1 text-[11px] font-semibold ${tone.badge}`}>
+                                {item.severity}
+                              </span>
+                              <span className="text-[11px] font-medium uppercase tracking-[0.16em] text-slate-500">
+                                {item.type.replace(/_/g, ' ')}
+                              </span>
+                              <span className="text-[11px] text-slate-400">Umur antrian {item.ageDays} hari</span>
+                            </div>
+                            <p className="mt-3 text-sm font-semibold text-slate-950">{item.title}</p>
+                            <p className="mt-1 text-sm leading-6 text-slate-600">{item.detail}</p>
+                          </div>
+                          <div className="flex flex-wrap items-center gap-2">
+                            <button
+                              type="button"
+                              onClick={() => handleOpenQuickAction(item)}
+                              className="inline-flex items-center gap-1 rounded-xl border border-slate-300 bg-white px-3 py-2 text-xs font-medium text-slate-700 shadow-sm hover:bg-slate-50"
+                            >
+                              {item.actionLabel}
+                            </button>
+                            {item.type === 'BUDGET' || item.type === 'WORK_PROGRAM' ? (
+                              <>
+                                <button
+                                  type="button"
+                                  onClick={() => handleQuickApprove(item)}
+                                  disabled={quickBudgetMutation.isPending || quickWorkProgramMutation.isPending}
+                                  className="inline-flex items-center gap-1 rounded-xl bg-emerald-600 px-3 py-2 text-xs font-semibold text-white shadow-sm hover:bg-emerald-700 disabled:opacity-50"
+                                >
+                                  <CheckCircle2 className="h-3.5 w-3.5" />
+                                  Setujui
+                                </button>
+                                <button
+                                  type="button"
+                                  onClick={() => handleQuickReject(item)}
+                                  disabled={quickBudgetMutation.isPending || quickWorkProgramMutation.isPending}
+                                  className="inline-flex items-center gap-1 rounded-xl bg-rose-600 px-3 py-2 text-xs font-semibold text-white shadow-sm hover:bg-rose-700 disabled:opacity-50"
+                                >
+                                  <XCircle className="h-3.5 w-3.5" />
+                                  Tolak
+                                </button>
+                              </>
+                            ) : null}
+                          </div>
+                        </div>
+                      </div>
+                    );
+                  })
+                )}
+              </div>
+            </PrincipalMonitoringSection>
+
+            <PrincipalMonitoringSection
+              eyebrow="Radar Risiko"
+              title="Risiko Harian & Prioritas"
+              description="Tandai hambatan operasional yang perlu dibuka lebih dulu sebelum mengganggu ritme sekolah."
+            >
+              <div className="space-y-3">
+                {data.risks.map((risk) => (
+                  <div
+                    key={risk.id}
+                    className={`rounded-2xl border px-4 py-4 shadow-sm ${getRiskTone(risk.level)}`}
+                  >
+                    <div className="flex flex-col gap-3 lg:flex-row lg:items-start lg:justify-between">
+                      <div className="min-w-0">
+                        <div className="flex flex-wrap items-center gap-2">
+                          <span className={`inline-flex rounded-full px-2.5 py-1 text-[11px] font-semibold ${getPrincipalRiskBadgeTone(risk.level)}`}>
+                            {risk.level}
+                          </span>
+                        </div>
+                        <p className="mt-3 text-sm font-semibold">{risk.title}</p>
+                        <p className="mt-1 text-sm leading-6 opacity-90">{risk.detail}</p>
+                      </div>
+                      {risk.actionPath ? (
+                        <Link
+                          to={risk.actionPath}
+                          className="inline-flex items-center gap-1 rounded-xl bg-white/80 px-3 py-2 text-xs font-semibold shadow-sm transition hover:bg-white"
+                        >
+                          <AlertTriangle className="h-3.5 w-3.5" />
+                          {risk.actionLabel || 'Tindak Lanjut'}
+                        </Link>
+                      ) : null}
+                    </div>
+                  </div>
+                ))}
+              </div>
+            </PrincipalMonitoringSection>
+          </div>
+
+          <div className="grid gap-4 xl:grid-cols-2">
+            <PrincipalMonitoringSection
+              eyebrow="Approval Backlog"
+              title="Pengajuan Anggaran Pending"
+              description="Daftar pengajuan yang masih menunggu keputusan Kepala Sekolah."
+              action={
+                <Link
+                  to="/principal/finance/requests"
+                  className="inline-flex items-center gap-1 rounded-full border border-slate-200 bg-white px-3 py-1 text-xs font-medium text-blue-600"
+                >
+                  Lihat Semua
+                </Link>
+              }
+            >
+              {data.pendingBudgets.length === 0 ? (
+                <div className="rounded-2xl border border-dashed border-slate-300 bg-slate-50 px-4 py-8 text-center text-sm text-slate-500">
+                  Tidak ada pengajuan pending.
                 </div>
-              ))}
-            </div>
-          </div>
+              ) : (
+                <div className="space-y-3">
+                  {data.pendingBudgets.map((budget) => (
+                    <div key={budget.id} className="rounded-2xl border border-slate-200 bg-slate-50/80 px-4 py-4 shadow-sm">
+                      <div className="flex flex-col gap-3 sm:flex-row sm:items-start sm:justify-between">
+                        <div className="min-w-0">
+                          <p className="text-sm font-semibold text-slate-950">{budget.title}</p>
+                          <p className="mt-1 text-xs text-slate-500">{budget.requester?.name || '-'}</p>
+                        </div>
+                        <span className="inline-flex rounded-full border border-slate-200 bg-white px-2.5 py-1 text-[11px] font-medium text-slate-600">
+                          {daysSince(budget.createdAt)} hari
+                        </span>
+                      </div>
+                      <div className="mt-3 flex flex-wrap gap-2">
+                        <span className="inline-flex rounded-full border border-blue-200 bg-blue-50 px-2.5 py-1 text-[11px] font-semibold text-blue-700">
+                          Rp {Math.trunc(Number(budget.totalAmount || 0)).toLocaleString('id-ID')}
+                        </span>
+                        <span className="inline-flex rounded-full border border-slate-200 bg-white px-2.5 py-1 text-[11px] text-slate-600">
+                          {String(budget.additionalDuty || '-').replace(/_/g, ' ')}
+                        </span>
+                      </div>
+                    </div>
+                  ))}
+                </div>
+              )}
+            </PrincipalMonitoringSection>
 
-          <div className="grid grid-cols-1 xl:grid-cols-2 gap-4">
-            <div className="bg-white rounded-xl border border-gray-100 shadow-sm overflow-hidden">
-              <div className="px-4 py-3 border-b border-gray-100 flex items-center justify-between">
-                <h3 className="text-sm font-semibold text-gray-900">Backlog Pengajuan Anggaran</h3>
-                <Link to="/principal/finance/requests" className="text-xs text-blue-600 hover:underline">
+            <PrincipalMonitoringSection
+              eyebrow="Approval Backlog"
+              title="Program Kerja Pending"
+              description="Backlog program kerja yang menunggu keputusan lanjutan."
+              action={
+                <Link
+                  to="/principal/work-program-approvals"
+                  className="inline-flex items-center gap-1 rounded-full border border-slate-200 bg-white px-3 py-1 text-xs font-medium text-blue-600"
+                >
                   Lihat Semua
                 </Link>
-              </div>
-              <div className="max-h-[360px] overflow-auto">
-                {data.pendingBudgets.length === 0 ? (
-                  <div className="px-4 py-8 text-sm text-gray-500 text-center">Tidak ada pengajuan pending.</div>
-                ) : (
-                  <table className="min-w-full text-sm">
-                    <thead className="bg-gray-50 text-xs text-gray-500 uppercase">
-                      <tr>
-                        <th className="px-4 py-2 text-left">Judul</th>
-                        <th className="px-4 py-2 text-left">Nominal</th>
-                        <th className="px-4 py-2 text-left">Umur</th>
-                      </tr>
-                    </thead>
-                    <tbody className="divide-y divide-gray-100">
-                      {data.pendingBudgets.map((budget) => (
-                        <tr key={budget.id}>
-                          <td className="px-4 py-2">
-                            <div className="font-medium text-gray-900">{budget.title}</div>
-                            <div className="text-xs text-gray-500">{budget.requester?.name || '-'}</div>
-                          </td>
-                          <td className="px-4 py-2 text-gray-700">
-                            Rp {Math.trunc(Number(budget.totalAmount || 0)).toLocaleString('id-ID')}
-                          </td>
-                          <td className="px-4 py-2 text-gray-700">{daysSince(budget.createdAt)} hari</td>
-                        </tr>
-                      ))}
-                    </tbody>
-                  </table>
-                )}
-              </div>
-            </div>
-
-            <div className="bg-white rounded-xl border border-gray-100 shadow-sm overflow-hidden">
-              <div className="px-4 py-3 border-b border-gray-100 flex items-center justify-between">
-                <h3 className="text-sm font-semibold text-gray-900">Backlog Program Kerja</h3>
-                <Link to="/principal/work-program-approvals" className="text-xs text-blue-600 hover:underline">
-                  Lihat Semua
-                </Link>
-              </div>
-              <div className="max-h-[360px] overflow-auto">
-                {data.pendingWorkPrograms.length === 0 ? (
-                  <div className="px-4 py-8 text-sm text-gray-500 text-center">Tidak ada program kerja pending.</div>
-                ) : (
-                  <table className="min-w-full text-sm">
-                    <thead className="bg-gray-50 text-xs text-gray-500 uppercase">
-                      <tr>
-                        <th className="px-4 py-2 text-left">Program</th>
-                        <th className="px-4 py-2 text-left">Duty</th>
-                        <th className="px-4 py-2 text-left">Umur</th>
-                      </tr>
-                    </thead>
-                    <tbody className="divide-y divide-gray-100">
-                      {data.pendingWorkPrograms.map((program) => (
-                        <tr key={program.id}>
-                          <td className="px-4 py-2">
-                            <div className="font-medium text-gray-900">{program.title}</div>
-                            <div className="text-xs text-gray-500">{program.academicYear?.name || '-'}</div>
-                          </td>
-                          <td className="px-4 py-2 text-gray-700">{String(program.additionalDuty || '-').replace(/_/g, ' ')}</td>
-                          <td className="px-4 py-2 text-gray-700 inline-flex items-center gap-1">
-                            <Clock3 className="w-3 h-3 text-gray-400" />
-                            {daysSince(program.createdAt)} hari
-                          </td>
-                        </tr>
-                      ))}
-                    </tbody>
-                  </table>
-                )}
-              </div>
-            </div>
+              }
+            >
+              {data.pendingWorkPrograms.length === 0 ? (
+                <div className="rounded-2xl border border-dashed border-slate-300 bg-slate-50 px-4 py-8 text-center text-sm text-slate-500">
+                  Tidak ada program kerja pending.
+                </div>
+              ) : (
+                <div className="space-y-3">
+                  {data.pendingWorkPrograms.map((program) => (
+                    <div key={program.id} className="rounded-2xl border border-slate-200 bg-slate-50/80 px-4 py-4 shadow-sm">
+                      <div className="flex flex-col gap-3 sm:flex-row sm:items-start sm:justify-between">
+                        <div className="min-w-0">
+                          <p className="text-sm font-semibold text-slate-950">{program.title}</p>
+                          <p className="mt-1 text-xs text-slate-500">{program.academicYear?.name || '-'}</p>
+                        </div>
+                        <span className="inline-flex rounded-full border border-slate-200 bg-white px-2.5 py-1 text-[11px] font-medium text-slate-600">
+                          {daysSince(program.createdAt)} hari
+                        </span>
+                      </div>
+                      <div className="mt-3 flex flex-wrap gap-2">
+                        <span className="inline-flex rounded-full border border-amber-200 bg-amber-50 px-2.5 py-1 text-[11px] font-semibold text-amber-700">
+                          {String(program.additionalDuty || '-').replace(/_/g, ' ')}
+                        </span>
+                        <span className="inline-flex rounded-full border border-slate-200 bg-white px-2.5 py-1 text-[11px] text-slate-600">
+                          SLA 5 hari
+                        </span>
+                      </div>
+                    </div>
+                  ))}
+                </div>
+              )}
+            </PrincipalMonitoringSection>
           </div>
 
-          <div id="office-tu" className="bg-white rounded-xl border border-gray-100 shadow-sm overflow-hidden">
-            <div className="px-4 py-3 border-b border-gray-100 flex items-center justify-between">
-              <h3 className="text-sm font-semibold text-gray-900">Ringkasan Surat Tata Usaha</h3>
-              <span className="text-xs text-gray-500">
-                {data.officeSummary.byType.length} tipe • {data.officeSummary.totalLetters} total arsip
-              </span>
-            </div>
-            <div className="grid grid-cols-1 lg:grid-cols-3 gap-4 p-4">
-              <div className="rounded-lg border border-slate-100 bg-slate-50 p-4">
-                <p className="text-xs uppercase tracking-wider text-slate-600">Surat Bulan Ini</p>
-                <p className="mt-2 text-2xl font-bold text-slate-900">{data.officeSummary.monthlyLetters}</p>
-                <p className="mt-1 text-xs text-slate-600">Aktivitas surat yang diterbitkan TU bulan berjalan.</p>
+          <div className="grid gap-4 xl:grid-cols-[1.02fr_0.98fr]">
+            <PrincipalMonitoringSection
+              id="teaching-resource"
+              eyebrow="Dokumen Ajar"
+              title="Perangkat Ajar Terbaru"
+              description="Ringkas status dokumen pembelajaran yang paling perlu dipantau pada hari ini."
+            >
+              <div className="grid gap-3 sm:grid-cols-2 xl:grid-cols-4">
+                <div className="rounded-2xl border border-slate-200 bg-slate-50 px-4 py-3">
+                  <p className="text-[11px] font-semibold uppercase tracking-[0.16em] text-slate-500">Total</p>
+                  <p className="mt-2 text-xl font-bold text-slate-950">{data.teachingResourceSummary.total}</p>
+                </div>
+                <div className="rounded-2xl border border-amber-100 bg-amber-50 px-4 py-3">
+                  <p className="text-[11px] font-semibold uppercase tracking-[0.16em] text-amber-700/80">Menunggu Review</p>
+                  <p className="mt-2 text-xl font-bold text-amber-900">{data.teachingResourceSummary.submitted}</p>
+                </div>
+                <div className="rounded-2xl border border-emerald-100 bg-emerald-50 px-4 py-3">
+                  <p className="text-[11px] font-semibold uppercase tracking-[0.16em] text-emerald-700/80">Disetujui</p>
+                  <p className="mt-2 text-xl font-bold text-emerald-900">{data.teachingResourceSummary.approved}</p>
+                </div>
+                <div className="rounded-2xl border border-rose-100 bg-rose-50 px-4 py-3">
+                  <p className="text-[11px] font-semibold uppercase tracking-[0.16em] text-rose-700/80">Perlu Revisi</p>
+                  <p className="mt-2 text-xl font-bold text-rose-900">{data.teachingResourceSummary.rejected}</p>
+                </div>
               </div>
-              <div className="rounded-lg border border-blue-100 bg-blue-50 p-4">
-                <p className="text-xs uppercase tracking-wider text-blue-600">Jenis Surat Aktif</p>
-                <div className="mt-2 space-y-2 text-sm text-blue-900">
+
+              <div className="mt-4 space-y-3">
+                {data.teachingResourceSummary.latest.length === 0 ? (
+                  <div className="rounded-2xl border border-dashed border-slate-300 bg-slate-50 px-4 py-8 text-center text-sm text-slate-500">
+                    Belum ada perangkat ajar terbaru untuk dimonitor.
+                  </div>
+                ) : (
+                  data.teachingResourceSummary.latest.slice(0, 5).map((entry) => (
+                    <div key={entry.id} className="rounded-2xl border border-slate-200 bg-slate-50/80 px-4 py-4 shadow-sm">
+                      <div className="flex flex-col gap-3 sm:flex-row sm:items-start sm:justify-between">
+                        <div className="min-w-0">
+                          <p className="text-sm font-semibold text-slate-950">{entry.title}</p>
+                          <p className="mt-1 text-xs text-slate-500">
+                            {entry.teacher?.name || '-'} • {entry.programCode || '-'}
+                          </p>
+                        </div>
+                        <span className={`inline-flex rounded-full px-2.5 py-1 text-[11px] font-semibold ${getPrincipalTeachingStatusTone(entry.status)}`}>
+                          {String(entry.status || 'DRAFT').replace(/_/g, ' ')}
+                        </span>
+                      </div>
+                    </div>
+                  ))
+                )}
+              </div>
+            </PrincipalMonitoringSection>
+
+            <PrincipalMonitoringSection
+              eyebrow="Spotlight BP/BK"
+              title="Siswa Risiko Tinggi & Konseling Overdue"
+              description="Sorot siswa dan tindak lanjut BK yang paling berpengaruh ke stabilitas harian sekolah."
+            >
+              <div className="grid gap-3 sm:grid-cols-3">
+                <div className="rounded-2xl border border-violet-100 bg-violet-50 px-4 py-3">
+                  <p className="text-[11px] font-semibold uppercase tracking-[0.16em] text-violet-700/80">Siswa Risiko Tinggi</p>
+                  <p className="mt-2 text-xl font-bold text-violet-900">{data.bpbkSummary.highRiskStudents}</p>
+                </div>
+                <div className="rounded-2xl border border-rose-100 bg-rose-50 px-4 py-3">
+                  <p className="text-[11px] font-semibold uppercase tracking-[0.16em] text-rose-700/80">Overdue</p>
+                  <p className="mt-2 text-xl font-bold text-rose-900">{data.bpbkSummary.overdueCounselings}</p>
+                </div>
+                <div className="rounded-2xl border border-slate-200 bg-slate-50 px-4 py-3">
+                  <p className="text-[11px] font-semibold uppercase tracking-[0.16em] text-slate-500">Kasus Aktif</p>
+                  <p className="mt-2 text-xl font-bold text-slate-950">{data.bpbkSummary.openCounselings}</p>
+                </div>
+              </div>
+
+              <div className="mt-4 grid gap-4 lg:grid-cols-2">
+                <div className="rounded-2xl border border-violet-100 bg-violet-50/50 p-4">
+                  <div className="flex items-center justify-between gap-3">
+                    <h4 className="text-sm font-semibold text-violet-950">Siswa Risiko Tinggi</h4>
+                    <Link to="/principal/monitoring/bpbk" className="text-xs font-medium text-violet-700 hover:underline">
+                      Buka BP/BK
+                    </Link>
+                  </div>
+                  <div className="mt-3 space-y-3">
+                    {data.bpbkHighRiskStudents.length === 0 ? (
+                      <div className="rounded-2xl border border-dashed border-violet-200 bg-white px-4 py-6 text-sm text-violet-800/70">
+                        Tidak ada siswa risiko tinggi pada filter aktif.
+                      </div>
+                    ) : (
+                      data.bpbkHighRiskStudents.slice(0, 4).map((row) => (
+                        <div key={row.studentId} className="rounded-2xl border border-violet-100 bg-white px-4 py-3 shadow-sm">
+                          <p className="text-sm font-semibold text-slate-950">{row.studentName}</p>
+                          <p className="mt-1 text-xs text-slate-500">
+                            {row.className || '-'} • {row.nis || row.nisn || '-'}
+                          </p>
+                          <p className="mt-2 text-xs font-medium text-violet-700">
+                            {row.negativeCaseCount} kasus negatif • {row.totalNegativePoint} poin
+                          </p>
+                        </div>
+                      ))
+                    )}
+                  </div>
+                </div>
+
+                <div className="rounded-2xl border border-rose-100 bg-rose-50/50 p-4">
+                  <div className="flex items-center justify-between gap-3">
+                    <h4 className="text-sm font-semibold text-rose-950">Konseling Overdue</h4>
+                    <Link to="/principal/monitoring/bpbk" className="text-xs font-medium text-rose-700 hover:underline">
+                      Tindak Lanjut
+                    </Link>
+                  </div>
+                  <div className="mt-3 space-y-3">
+                    {data.bpbkOverdueCounselings.length === 0 ? (
+                      <div className="rounded-2xl border border-dashed border-rose-200 bg-white px-4 py-6 text-sm text-rose-800/70">
+                        Tidak ada konseling overdue pada filter aktif.
+                      </div>
+                    ) : (
+                      data.bpbkOverdueCounselings.slice(0, 4).map((row) => (
+                        <div key={row.id} className="rounded-2xl border border-rose-100 bg-white px-4 py-3 shadow-sm">
+                          <p className="text-sm font-semibold text-slate-950">{row.student.name}</p>
+                          <p className="mt-1 text-xs text-slate-500">
+                            {row.student.className || '-'} • {formatFinanceDate(row.sessionDate)}
+                          </p>
+                          <p className="mt-2 text-xs text-rose-700">{row.issueSummary}</p>
+                          <p className="mt-1 text-[11px] text-slate-400">
+                            Konselor: {row.counselor?.name || '-'}
+                          </p>
+                        </div>
+                      ))
+                    )}
+                  </div>
+                </div>
+              </div>
+            </PrincipalMonitoringSection>
+          </div>
+
+          <div className="grid gap-4 xl:grid-cols-[0.9fr_1.1fr]">
+            <PrincipalMonitoringSection
+              id="office-tu"
+              eyebrow="Layanan TU"
+              title="Ringkasan Surat Tata Usaha"
+              description="Lihat ritme surat bulanan, distribusi tipe surat, dan arsip terbaru yang masuk."
+            >
+              <div className="grid gap-3 sm:grid-cols-2">
+                <div className="rounded-2xl border border-slate-200 bg-slate-50 px-4 py-3">
+                  <p className="text-[11px] font-semibold uppercase tracking-[0.16em] text-slate-500">Surat Bulan Ini</p>
+                  <p className="mt-2 text-xl font-bold text-slate-950">{data.officeSummary.monthlyLetters}</p>
+                  <p className="mt-1 text-xs text-slate-600">Aktivitas surat yang diterbitkan TU bulan berjalan.</p>
+                </div>
+                <div className="rounded-2xl border border-blue-100 bg-blue-50 px-4 py-3">
+                  <p className="text-[11px] font-semibold uppercase tracking-[0.16em] text-blue-700/80">Total Arsip</p>
+                  <p className="mt-2 text-xl font-bold text-blue-900">{data.officeSummary.totalLetters}</p>
+                  <p className="mt-1 text-xs text-blue-800/80">{data.officeSummary.byType.length} tipe surat aktif.</p>
+                </div>
+              </div>
+
+              <div className="mt-4 rounded-2xl border border-slate-200 bg-slate-50/80 p-4">
+                <div className="flex items-center justify-between gap-3">
+                  <h4 className="text-sm font-semibold text-slate-950">Distribusi Jenis Surat</h4>
+                  <span className="text-xs text-slate-500">{data.officeSummary.byType.length} tipe</span>
+                </div>
+                <div className="mt-3 flex flex-wrap gap-2">
                   {data.officeSummary.byType.length === 0 ? (
-                    <p className="text-blue-700/80">Belum ada surat tercatat.</p>
+                    <span className="text-sm text-slate-500">Belum ada surat tercatat.</span>
                   ) : (
                     data.officeSummary.byType.map((row) => (
-                      <div key={row.type} className="flex items-center justify-between">
+                      <span
+                        key={row.type}
+                        className="inline-flex items-center gap-2 rounded-full border border-slate-200 bg-white px-3 py-1.5 text-xs font-medium text-slate-700"
+                      >
                         <span>{row.type.replace(/_/g, ' ')}</span>
-                        <span className="font-semibold">{row._count._all}</span>
-                      </div>
-                    ))
-                  )}
-                </div>
-              </div>
-              <div className="rounded-lg border border-emerald-100 bg-emerald-50 p-4">
-                <p className="text-xs uppercase tracking-wider text-emerald-600">Surat Terbaru</p>
-                <div className="mt-2 space-y-2 text-sm text-emerald-900">
-                  {data.officeSummary.latest.length === 0 ? (
-                    <p className="text-emerald-700/80">Belum ada surat terbaru.</p>
-                  ) : (
-                    data.officeSummary.latest.slice(0, 4).map((letter) => (
-                      <div key={letter.id} className="rounded-md border border-emerald-100 bg-white/70 px-3 py-2">
-                        <p className="font-semibold">{letter.letterNumber}</p>
-                        <p className="text-xs text-emerald-800">{letter.recipientName}</p>
-                        <p className="text-[11px] text-emerald-700/80">{letter.purpose || letter.type.replace(/_/g, ' ')}</p>
-                      </div>
-                    ))
-                  )}
-                </div>
-              </div>
-            </div>
-          </div>
-
-          <div id="administration-tu" className="bg-white rounded-xl border border-gray-100 shadow-sm overflow-hidden">
-            <div className="px-4 py-3 border-b border-gray-100 flex items-center justify-between">
-              <div>
-                <h3 className="text-sm font-semibold text-gray-900">Monitoring Administrasi TU</h3>
-                <p className="text-xs text-gray-500">
-                  Pantau kelengkapan data siswa, guru/staff, dan antrian perizinan administratif.
-                </p>
-              </div>
-              <span className="text-xs text-gray-500">
-                {data.administrationSummary.administrationStaffCount} staff administrasi •{' '}
-                {data.administrationSummary.financeStaffCount} staff keuangan
-              </span>
-            </div>
-
-            <div className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-4 gap-4 p-4 border-b border-gray-100">
-              <div className="rounded-lg border border-amber-100 bg-amber-50 p-4">
-                <p className="text-xs uppercase tracking-wider text-amber-700">Siswa Belum Lengkap</p>
-                <p className="mt-2 text-2xl font-bold text-amber-900">{data.administrationSummary.incompleteStudents}</p>
-                <p className="mt-1 text-xs text-amber-700/80">
-                  Kelengkapan siswa {data.administrationSummary.studentCompletenessRate}%
-                </p>
-              </div>
-              <div className="rounded-lg border border-blue-100 bg-blue-50 p-4">
-                <p className="text-xs uppercase tracking-wider text-blue-700">Guru/Staff Belum Lengkap</p>
-                <p className="mt-2 text-2xl font-bold text-blue-900">{data.administrationSummary.incompleteTeachers}</p>
-                <p className="mt-1 text-xs text-blue-700/80">
-                  Kelengkapan guru/staff {data.administrationSummary.teacherCompletenessRate}%
-                </p>
-              </div>
-              <div className="rounded-lg border border-rose-100 bg-rose-50 p-4">
-                <p className="text-xs uppercase tracking-wider text-rose-700">Perizinan Pending</p>
-                <p className="mt-2 text-2xl font-bold text-rose-900">{data.administrationSummary.pendingPermissions}</p>
-                <p className="mt-1 text-xs text-rose-700/80">Perlu sinkronisasi dengan wali kelas dan TU</p>
-              </div>
-              <div className="rounded-lg border border-emerald-100 bg-emerald-50 p-4">
-                <p className="text-xs uppercase tracking-wider text-emerald-700">Total SDM TU</p>
-                <p className="mt-2 text-2xl font-bold text-emerald-900">
-                  {data.administrationSummary.administrationStaffCount + data.administrationSummary.financeStaffCount}
-                </p>
-                <p className="mt-1 text-xs text-emerald-700/80">
-                  Admin {data.administrationSummary.administrationStaffCount} • Keuangan {data.administrationSummary.financeStaffCount}
-                </p>
-              </div>
-            </div>
-
-            <div className="grid grid-cols-1 xl:grid-cols-3 gap-4 p-4">
-              <div className="rounded-lg border border-amber-100 bg-white overflow-hidden">
-                <div className="px-4 py-3 border-b border-amber-100 bg-amber-50/70">
-                  <h4 className="text-sm font-semibold text-amber-900">Siswa Prioritas Dilengkapi</h4>
-                </div>
-                <div className="divide-y divide-gray-100">
-                  {data.administrationIncompleteStudents.length === 0 ? (
-                    <div className="px-4 py-6 text-sm text-gray-500 text-center">Semua data siswa sudah lengkap.</div>
-                  ) : (
-                    data.administrationIncompleteStudents.map((row) => (
-                      <div key={row.id} className="px-4 py-3">
-                        <p className="text-sm font-semibold text-gray-900">{row.name}</p>
-                        <p className="text-xs text-gray-500">
-                          {row.nis || '-'} • {row.className || 'Tanpa kelas'}
-                        </p>
-                        <p className="mt-1 text-xs text-amber-700">
-                          Kurang: {row.missing.join(', ')}
-                        </p>
-                      </div>
+                        <span className="rounded-full bg-slate-100 px-1.5 py-0.5 text-[11px] text-slate-600">
+                          {row._count._all}
+                        </span>
+                      </span>
                     ))
                   )}
                 </div>
               </div>
 
-              <div className="rounded-lg border border-blue-100 bg-white overflow-hidden">
-                <div className="px-4 py-3 border-b border-blue-100 bg-blue-50/70">
-                  <h4 className="text-sm font-semibold text-blue-900">Guru/Staff Prioritas Dilengkapi</h4>
-                </div>
-                <div className="divide-y divide-gray-100">
-                  {data.administrationIncompleteTeachers.length === 0 ? (
-                    <div className="px-4 py-6 text-sm text-gray-500 text-center">Semua data guru/staff sudah lengkap.</div>
-                  ) : (
-                    data.administrationIncompleteTeachers.map((row) => (
-                      <div key={row.id} className="px-4 py-3">
-                        <p className="text-sm font-semibold text-gray-900">{row.name}</p>
-                        <p className="text-xs text-gray-500">
-                          {row.username} • {String(row.ptkType || 'PTK').replace(/_/g, ' ')}
-                        </p>
-                        <p className="mt-1 text-xs text-blue-700">
-                          Kurang: {row.missing.join(', ')}
-                        </p>
+              <div className="mt-4 space-y-3">
+                {data.officeSummary.latest.length === 0 ? (
+                  <div className="rounded-2xl border border-dashed border-slate-300 bg-slate-50 px-4 py-8 text-center text-sm text-slate-500">
+                    Belum ada surat terbaru.
+                  </div>
+                ) : (
+                  data.officeSummary.latest.slice(0, 4).map((letter) => (
+                    <div key={letter.id} className="rounded-2xl border border-slate-200 bg-slate-50/80 px-4 py-4 shadow-sm">
+                      <div className="flex flex-col gap-3 sm:flex-row sm:items-start sm:justify-between">
+                        <div className="min-w-0">
+                          <p className="text-sm font-semibold text-slate-950">{letter.letterNumber}</p>
+                          <p className="mt-1 text-xs text-slate-500">{letter.recipientName}</p>
+                          <p className="mt-2 text-xs text-slate-700">
+                            {letter.purpose || letter.type.replace(/_/g, ' ')}
+                          </p>
+                        </div>
+                        <span className="inline-flex rounded-full border border-slate-200 bg-white px-2.5 py-1 text-[11px] font-medium text-slate-600">
+                          {formatFinanceDate(letter.createdAt)}
+                        </span>
                       </div>
-                    ))
-                  )}
+                    </div>
+                  ))
+                )}
+              </div>
+            </PrincipalMonitoringSection>
+
+            <PrincipalMonitoringSection
+              id="administration-tu"
+              eyebrow="Administrasi TU"
+              title="Kelengkapan Data & Antrian Izin"
+              description="Pantau prioritas data siswa, guru/staff, dan layanan administrasi yang masih tertahan."
+              action={
+                <span className="inline-flex rounded-full border border-slate-200 bg-white px-3 py-1 text-xs font-medium text-slate-600">
+                  {data.administrationSummary.administrationStaffCount} admin • {data.administrationSummary.financeStaffCount} keuangan
+                </span>
+              }
+            >
+              <div className="grid gap-3 sm:grid-cols-2 xl:grid-cols-4">
+                <div className="rounded-2xl border border-amber-100 bg-amber-50 px-4 py-3">
+                  <p className="text-[11px] font-semibold uppercase tracking-[0.16em] text-amber-700/80">Siswa Belum Lengkap</p>
+                  <p className="mt-2 text-xl font-bold text-amber-900">{data.administrationSummary.incompleteStudents}</p>
+                  <p className="mt-1 text-xs text-amber-800/80">
+                    Kelengkapan siswa {data.administrationSummary.studentCompletenessRate}%
+                  </p>
+                </div>
+                <div className="rounded-2xl border border-blue-100 bg-blue-50 px-4 py-3">
+                  <p className="text-[11px] font-semibold uppercase tracking-[0.16em] text-blue-700/80">Guru/Staff Belum Lengkap</p>
+                  <p className="mt-2 text-xl font-bold text-blue-900">{data.administrationSummary.incompleteTeachers}</p>
+                  <p className="mt-1 text-xs text-blue-800/80">
+                    Kelengkapan guru/staff {data.administrationSummary.teacherCompletenessRate}%
+                  </p>
+                </div>
+                <div className="rounded-2xl border border-rose-100 bg-rose-50 px-4 py-3">
+                  <p className="text-[11px] font-semibold uppercase tracking-[0.16em] text-rose-700/80">Perizinan Pending</p>
+                  <p className="mt-2 text-xl font-bold text-rose-900">{data.administrationSummary.pendingPermissions}</p>
+                  <p className="mt-1 text-xs text-rose-800/80">Perlu sinkronisasi dengan wali kelas dan TU.</p>
+                </div>
+                <div className="rounded-2xl border border-emerald-100 bg-emerald-50 px-4 py-3">
+                  <p className="text-[11px] font-semibold uppercase tracking-[0.16em] text-emerald-700/80">Total SDM TU</p>
+                  <p className="mt-2 text-xl font-bold text-emerald-900">
+                    {data.administrationSummary.administrationStaffCount + data.administrationSummary.financeStaffCount}
+                  </p>
+                  <p className="mt-1 text-xs text-emerald-800/80">
+                    Admin {data.administrationSummary.administrationStaffCount} • Keuangan {data.administrationSummary.financeStaffCount}
+                  </p>
                 </div>
               </div>
 
-              <div className="rounded-lg border border-rose-100 bg-white overflow-hidden">
-                <div className="px-4 py-3 border-b border-rose-100 bg-rose-50/70">
-                  <h4 className="text-sm font-semibold text-rose-900">Perizinan Menunggu Tindak Lanjut</h4>
-                </div>
-                <div className="divide-y divide-gray-100">
-                  {data.administrationPendingPermissions.length === 0 ? (
-                    <div className="px-4 py-6 text-sm text-gray-500 text-center">Tidak ada perizinan yang pending.</div>
-                  ) : (
-                    data.administrationPendingPermissions.map((row) => (
-                      <div key={row.id} className="px-4 py-3">
-                        <p className="text-sm font-semibold text-gray-900">{row.studentName}</p>
-                        <p className="text-xs text-gray-500">
-                          {row.type === 'SICK' ? 'Sakit' : row.type === 'PERMISSION' ? 'Izin' : 'Lainnya'} •{' '}
-                          {new Date(row.startDate).toLocaleDateString('id-ID')} -{' '}
-                          {new Date(row.endDate).toLocaleDateString('id-ID')}
-                        </p>
-                        <p className="mt-1 text-xs text-rose-700">
-                          {row.reason || 'Belum ada alasan terisi.'}
-                        </p>
+              <div className="mt-4 grid gap-4 xl:grid-cols-3">
+                <div className="rounded-2xl border border-amber-100 bg-amber-50/50 p-4">
+                  <h4 className="text-sm font-semibold text-amber-950">Siswa Prioritas Dilengkapi</h4>
+                  <div className="mt-3 space-y-3">
+                    {data.administrationIncompleteStudents.length === 0 ? (
+                      <div className="rounded-2xl border border-dashed border-amber-200 bg-white px-4 py-6 text-sm text-amber-800/70">
+                        Semua data siswa sudah lengkap.
                       </div>
-                    ))
-                  )}
+                    ) : (
+                      data.administrationIncompleteStudents.map((row) => (
+                        <div key={row.id} className="rounded-2xl border border-amber-100 bg-white px-4 py-3 shadow-sm">
+                          <p className="text-sm font-semibold text-slate-950">{row.name}</p>
+                          <p className="mt-1 text-xs text-slate-500">
+                            {row.nis || '-'} • {row.className || 'Tanpa kelas'}
+                          </p>
+                          <p className="mt-2 text-xs text-amber-700">Kurang: {row.missing.join(', ')}</p>
+                        </div>
+                      ))
+                    )}
+                  </div>
+                </div>
+
+                <div className="rounded-2xl border border-blue-100 bg-blue-50/50 p-4">
+                  <h4 className="text-sm font-semibold text-blue-950">Guru/Staff Prioritas Dilengkapi</h4>
+                  <div className="mt-3 space-y-3">
+                    {data.administrationIncompleteTeachers.length === 0 ? (
+                      <div className="rounded-2xl border border-dashed border-blue-200 bg-white px-4 py-6 text-sm text-blue-800/70">
+                        Semua data guru/staff sudah lengkap.
+                      </div>
+                    ) : (
+                      data.administrationIncompleteTeachers.map((row) => (
+                        <div key={row.id} className="rounded-2xl border border-blue-100 bg-white px-4 py-3 shadow-sm">
+                          <p className="text-sm font-semibold text-slate-950">{row.name}</p>
+                          <p className="mt-1 text-xs text-slate-500">
+                            {row.username} • {String(row.ptkType || 'PTK').replace(/_/g, ' ')}
+                          </p>
+                          <p className="mt-2 text-xs text-blue-700">Kurang: {row.missing.join(', ')}</p>
+                        </div>
+                      ))
+                    )}
+                  </div>
+                </div>
+
+                <div className="rounded-2xl border border-rose-100 bg-rose-50/50 p-4">
+                  <h4 className="text-sm font-semibold text-rose-950">Perizinan Menunggu Tindak Lanjut</h4>
+                  <div className="mt-3 space-y-3">
+                    {data.administrationPendingPermissions.length === 0 ? (
+                      <div className="rounded-2xl border border-dashed border-rose-200 bg-white px-4 py-6 text-sm text-rose-800/70">
+                        Tidak ada perizinan yang pending.
+                      </div>
+                    ) : (
+                      data.administrationPendingPermissions.map((row) => (
+                        <div key={row.id} className="rounded-2xl border border-rose-100 bg-white px-4 py-3 shadow-sm">
+                          <p className="text-sm font-semibold text-slate-950">{row.studentName}</p>
+                          <p className="mt-1 text-xs text-slate-500">
+                            {formatPrincipalPermissionTypeLabel(row.type)} • {formatFinanceDate(row.startDate)} -{' '}
+                            {formatFinanceDate(row.endDate)}
+                          </p>
+                          <p className="mt-2 text-xs text-rose-700">
+                            {row.reason || 'Belum ada alasan terisi.'}
+                          </p>
+                        </div>
+                      ))
+                    )}
+                  </div>
                 </div>
               </div>
-            </div>
+            </PrincipalMonitoringSection>
           </div>
         </>
       )}
