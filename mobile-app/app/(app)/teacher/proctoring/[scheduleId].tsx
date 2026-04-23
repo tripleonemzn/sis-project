@@ -1,8 +1,9 @@
-import { type ReactNode, useEffect, useMemo, useState } from 'react';
+import { type ReactNode, useEffect, useMemo, useRef, useState } from 'react';
 import { Redirect, useLocalSearchParams, useRouter } from 'expo-router';
 import { useMutation, useQuery } from '@tanstack/react-query';
 import {
   Alert,
+  Keyboard,
   KeyboardAvoidingView,
   Modal,
   Platform,
@@ -134,7 +135,7 @@ function MobileOverlayCard({
       }}
     >
       <KeyboardAvoidingView
-        behavior={Platform.OS === 'ios' ? 'padding' : 'height'}
+        behavior="padding"
         keyboardVerticalOffset={Platform.OS === 'ios' ? keyboardVerticalOffset : 0}
         style={{ flex: 1, justifyContent: 'center' }}
       >
@@ -169,6 +170,7 @@ export default function TeacherProctoringDetailScreen() {
   const pagePadding = getStandardPagePadding(insets, { bottom: 120 });
   const { scaleFont, scaleLineHeight } = useAppTextScale();
   const modalKeyboardOffset = insets.top + 8;
+  const reportScrollRef = useRef<ScrollView | null>(null);
 
   const [notes, setNotes] = useState('');
   const [isReportModalOpen, setIsReportModalOpen] = useState(false);
@@ -178,6 +180,32 @@ export default function TeacherProctoringDetailScreen() {
     'Mohon tenang dan fokus pada ujian. Jika mengulangi pelanggaran, pengawas dapat mengambil tindakan lanjutan.',
   );
   const [endSessionTarget, setEndSessionTarget] = useState<ProctorStudentRow | null>(null);
+  const [keyboardHeight, setKeyboardHeight] = useState(0);
+
+  useEffect(() => {
+    const showEvent = Platform.OS === 'ios' ? 'keyboardWillShow' : 'keyboardDidShow';
+    const hideEvent = Platform.OS === 'ios' ? 'keyboardWillHide' : 'keyboardDidHide';
+
+    const showSub = Keyboard.addListener(showEvent, (event) => {
+      setKeyboardHeight(event.endCoordinates?.height || 0);
+    });
+    const hideSub = Keyboard.addListener(hideEvent, () => {
+      setKeyboardHeight(0);
+    });
+
+    return () => {
+      showSub.remove();
+      hideSub.remove();
+    };
+  }, []);
+
+  useEffect(() => {
+    if (!isReportModalOpen || keyboardHeight <= 0) return;
+    const timerId = setTimeout(() => {
+      reportScrollRef.current?.scrollToEnd({ animated: true });
+    }, 90);
+    return () => clearTimeout(timerId);
+  }, [isReportModalOpen, keyboardHeight]);
   const [endSessionMessage, setEndSessionMessage] = useState(
     'Sesi ujian diakhiri oleh pengawas karena peserta tidak mematuhi tata tertib ruang ujian.',
   );
@@ -971,8 +999,9 @@ export default function TeacherProctoringDetailScreen() {
             </View>
 
             <ScrollView
+              ref={reportScrollRef}
               style={{ backgroundColor: '#fff' }}
-              contentContainerStyle={{ padding: 16, gap: 12 }}
+              contentContainerStyle={{ padding: 16, gap: 12, paddingBottom: Math.max(24, keyboardHeight + 32) }}
               showsVerticalScrollIndicator={false}
               keyboardShouldPersistTaps="handled"
               keyboardDismissMode={Platform.OS === 'ios' ? 'interactive' : 'on-drag'}
@@ -1528,6 +1557,11 @@ export default function TeacherProctoringDetailScreen() {
                 <TextInput
                   value={notes}
                   onChangeText={setNotes}
+                  onFocus={() => {
+                    setTimeout(() => {
+                      reportScrollRef.current?.scrollToEnd({ animated: true });
+                    }, 120);
+                  }}
                   placeholder="Catatan Pengawas selama Ujian berlangsung"
                   style={{
                     borderWidth: 1,

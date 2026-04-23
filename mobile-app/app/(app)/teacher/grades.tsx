@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useState } from 'react';
+import { useEffect, useMemo, useRef, useState } from 'react';
 import { Redirect, useRouter } from 'expo-router';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { Alert, Modal, Pressable, RefreshControl, ScrollView, Text, TextInput, View } from 'react-native';
@@ -79,6 +79,13 @@ function parseScore(raw?: string) {
 function toFixedOrInt(value: number) {
   if (Number.isInteger(value)) return String(value);
   return value.toFixed(2);
+}
+
+function formatScoreDisplay(value: number | null | undefined) {
+  if (value === null || value === undefined) return '-';
+  const parsed = Number(value);
+  if (!Number.isFinite(parsed)) return '-';
+  return parsed.toFixed(2);
 }
 
 function normalizeFinalRoundedScore(raw: number | null | undefined) {
@@ -565,6 +572,7 @@ export default function TeacherGradesScreen() {
   const insets = useSafeAreaInsets();
   const queryClient = useQueryClient();
   const { isAuthenticated, isLoading, user } = useAuth();
+  const scrollViewRef = useRef<ScrollView | null>(null);
   const pageContentPadding = getStandardPagePadding(insets);
   const { scaleFont, scaleLineHeight } = useAppTextScale();
   const assignmentsQuery = useTeacherAssignmentsQuery({ enabled: isAuthenticated, user });
@@ -744,6 +752,12 @@ export default function TeacherGradesScreen() {
   }, [filteredComponents, selectedComponentId]);
 
   useEffect(() => {
+    requestAnimationFrame(() => {
+      scrollViewRef.current?.scrollTo({ y: 0, animated: false });
+    });
+  }, [selectedAssignmentId, semester]);
+
+  useEffect(() => {
     const timerId = setTimeout(() => {
     if (!selectedAssignmentId) {
       setCompetencySettings(emptyCompetencySettings());
@@ -791,15 +805,18 @@ export default function TeacherGradesScreen() {
             );
         const slotCount = Math.max(0, Number(item.formativeSlotCount || 0));
         const seriesAverage = averageValues(series);
-        nextScoreDraft[`${item.studentId}:${item.componentId}`] = String(
-          seriesAverage !== null ? seriesAverage : (item.score ?? ''),
-        );
+        nextScoreDraft[`${item.studentId}:${item.componentId}`] =
+          seriesAverage !== null
+            ? toFixedOrInt(seriesAverage)
+            : item.score === null || item.score === undefined
+              ? ''
+              : toFixedOrInt(Number(item.score));
         const slotDrafts = buildFormativeSlotDrafts(series, Math.max(slotCount, series.length));
         if (slotDrafts.length > 0) {
           nextSlotDrafts[`${item.studentId}:${item.componentId}`] = slotDrafts;
         }
         if (series.length > 0) {
-          nextSeriesDraft[`${item.studentId}:${item.componentId}`] = series.join(', ');
+          nextSeriesDraft[`${item.studentId}:${item.componentId}`] = formatSeriesValues(series);
         }
       }
       setScoreDraft(nextScoreDraft);
@@ -1189,6 +1206,7 @@ export default function TeacherGradesScreen() {
   return (
     <>
       <ScrollView
+        ref={scrollViewRef}
         style={{ flex: 1, backgroundColor: '#f8fafc' }}
         contentContainerStyle={pageContentPadding}
         refreshControl={
@@ -1585,7 +1603,7 @@ export default function TeacherGradesScreen() {
                                     <Text style={{ color: '#1d4ed8', fontWeight: '700' }}>
                                       {previewMidtermReference === null || previewMidtermReference === undefined
                                         ? '-'
-                                        : toFixedOrInt(previewMidtermReference)}
+                                        : formatScoreDisplay(previewMidtermReference)}
                                     </Text>
                                   </View>
                                 </View>
@@ -1605,7 +1623,7 @@ export default function TeacherGradesScreen() {
                                   <Text style={{ color: '#166534', fontWeight: '700' }}>
                                     {previewFinalReference === null || previewFinalReference === undefined
                                       ? '-'
-                                      : toFixedOrInt(previewFinalReference)}
+                                      : formatScoreDisplay(previewFinalReference)}
                                   </Text>
                                 </View>
                               </View>
@@ -1653,7 +1671,7 @@ export default function TeacherGradesScreen() {
                                         { score: sbtsScore, weight: selectedComponent.weight },
                                       ]);
                                       if (weightedScore === null) return '-';
-                                      return `${toFixedOrInt(weightedScore)} (otomatis saat simpan)`;
+                                      return `${formatScoreDisplay(weightedScore)} (otomatis saat simpan)`;
                                     })()}
                                   </Text>
                                 </View>
@@ -1702,7 +1720,7 @@ export default function TeacherGradesScreen() {
                                           ? `Deskripsi agama ${formatReligionLabel(religionKey)} belum diatur di + Deskripsi`
                                           : 'Agama siswa belum terisi di profile'
                                         : 'Deskripsi belum diatur di + Deskripsi';
-                                      return `Predikat ${predicate} • ${backendDescription || fallbackDescription || emptyDescriptionMessage} • Nilai ${Number(effectiveFinal).toFixed(2)}`;
+                                      return `Predikat ${predicate} • ${backendDescription || fallbackDescription || emptyDescriptionMessage} • Nilai ${formatScoreDisplay(effectiveFinal)}`;
                                     })()}
                                   </Text>
                                 </View>

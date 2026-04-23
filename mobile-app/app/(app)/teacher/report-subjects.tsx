@@ -25,7 +25,9 @@ type Semester = 'ODD' | 'EVEN';
 
 function roundScore(value: number | null) {
   if (value === null || value === undefined) return '-';
-  return String(Math.round(value));
+  const parsed = Number(value);
+  if (!Number.isFinite(parsed)) return '-';
+  return parsed.toFixed(2);
 }
 
 function formatFinalScore(value: number | null) {

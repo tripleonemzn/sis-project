@@ -73,10 +73,11 @@ function clampScore(value: number): number {
 
 function normalizeScore(rawScore: number, maxScore?: number | null): number {
   if (!Number.isFinite(rawScore)) return 0
+  const rounded = (value: number) => Number(clampScore(value).toFixed(2))
   if (Number.isFinite(Number(maxScore)) && Number(maxScore) > 0) {
-    return clampScore((rawScore / Number(maxScore)) * 100)
+    return rounded((rawScore / Number(maxScore)) * 100)
   }
-  return clampScore(rawScore)
+  return rounded(rawScore)
 }
 
 function defaultReportSlotByComponentType(type?: GradeComponentType | null): ReportComponentSlot {

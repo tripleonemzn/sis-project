@@ -25,6 +25,13 @@ type RankingStudentRow = {
   };
 };
 
+const formatScoreDisplay = (value: number | null | undefined) => {
+  if (value === null || value === undefined) return '-';
+  const parsed = Number(value);
+  if (!Number.isFinite(parsed)) return '-';
+  return parsed.toFixed(2);
+};
+
 export const HomeroomRankingPage = ({ classId, academicYearId, semester }: HomeroomRankingPageProps) => {
   const [titimangsa, setTitimangsa] = useState<Date>(new Date());
   const [isPrinting, setIsPrinting] = useState(false);
@@ -127,8 +134,8 @@ export const HomeroomRankingPage = ({ classId, academicYearId, semester }: Homer
                                     {student.student.nisn || student.student.nis || '-'}
                                 </td>
                                 <td className="px-6 py-4 font-medium text-gray-900">{student.student.name}</td>
-                                <td className="px-6 py-4 text-center font-medium">{student.totalScore}</td>
-                                <td className="px-6 py-4 text-center font-medium">{student.averageScore}</td>
+                                <td className="px-6 py-4 text-center font-medium">{formatScoreDisplay(student.totalScore)}</td>
+                                <td className="px-6 py-4 text-center font-medium">{formatScoreDisplay(student.averageScore)}</td>
                                 <td className="px-6 py-4 text-center">
                                     <span className={`inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium ${badgeClass}`}>
                                         {student.rank <= 3 && <Trophy className="w-3 h-3 mr-1" />}

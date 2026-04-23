@@ -44,6 +44,13 @@ const normalizeRankingResponse = (payload: unknown): ClassRankingResponse | null
   };
 };
 
+const formatScoreDisplay = (value: number | null | undefined) => {
+  if (value === null || value === undefined) return '-';
+  const parsed = Number(value);
+  if (!Number.isFinite(parsed)) return '-';
+  return parsed.toFixed(2);
+};
+
 export const ReportCardsPage = () => {
   const location = useLocation();
   const isPrincipalRoute = location.pathname.startsWith('/principal');
@@ -584,7 +591,7 @@ export const ReportCardsPage = () => {
                                     : 'text-red-600 font-semibold'
                                 }
                               >
-                                {score}
+                                {formatScoreDisplay(score)}
                               </span>
                             )}
                             {predicate && (
@@ -596,7 +603,7 @@ export const ReportCardsPage = () => {
                         );
                       })}
                       <td className="px-6 py-3 text-center text-gray-900 font-semibold">
-                        {row.summary?.averageScore ?? '-'}
+                        {formatScoreDisplay(row.summary?.averageScore)}
                       </td>
                       <td className="px-6 py-3 text-center text-xs text-gray-700">
                         {row.summary?.failedCount === 0 && (row.summary?.passedCount || 0) > 0 ? (
@@ -642,7 +649,7 @@ export const ReportCardsPage = () => {
                 <div>
                   <p className="text-xs text-gray-500 font-medium">Rata-rata Kelas (Ranking)</p>
                   <p className="text-2xl font-bold text-gray-900">
-                    {classAverageFromRanking ?? '-'}
+                    {formatScoreDisplay(classAverageFromRanking)}
                   </p>
                 </div>
               </div>
@@ -657,7 +664,7 @@ export const ReportCardsPage = () => {
                   </p>
                   {typeof topStudent?.averageScore === 'number' && (
                     <p className="text-xs text-gray-500 mt-0.5">
-                      Rata-rata {topStudent.averageScore}
+                      Rata-rata {formatScoreDisplay(topStudent.averageScore)}
                     </p>
                   )}
                 </div>
@@ -698,10 +705,10 @@ export const ReportCardsPage = () => {
                         {row.student?.name ?? '-'}
                       </td>
                       <td className="px-6 py-3 text-center text-gray-900 font-semibold">
-                        {row.totalScore ?? '-'}
+                        {formatScoreDisplay(row.totalScore)}
                       </td>
                       <td className="px-6 py-3 text-center text-gray-900 font-semibold">
-                        {row.averageScore ?? '-'}
+                        {formatScoreDisplay(row.averageScore)}
                       </td>
                       <td className="px-6 py-3 text-center text-gray-900 font-semibold">
                         {row.rank ? `Peringkat ${row.rank}` : '-'}

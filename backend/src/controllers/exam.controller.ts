@@ -11360,8 +11360,20 @@ async function buildStartExamPayload(params: {
                 },
                 select: studentExamSessionSelect,
             });
+            enqueueExamPostSubmitTask({
+                sessionId: session.id,
+                studentId,
+                accessRole,
+            });
         }
         if (effectiveSessionStatus === 'COMPLETED' || effectiveSessionStatus === 'TIMEOUT') {
+            if (session.submitTime && session.score === null) {
+                enqueueExamPostSubmitTask({
+                    sessionId: session.id,
+                    studentId,
+                    accessRole,
+                });
+            }
             if (effectiveSessionStatus === 'TIMEOUT') {
                 const latestProctorTermination = await findLatestExamProctorTermination({
                     studentId,
@@ -12212,9 +12224,9 @@ async function processExamPostSubmitTask(task: ExamPostSubmitTask) {
     });
     const resolvedScore =
         typeof session.score === 'number'
-            ? session.score
+            ? Number(session.score.toFixed(2))
             : packetQuestions.length > 0
-              ? calculateScore(scoringQuestions, normalizedAnswers)
+              ? Number(calculateScore(scoringQuestions, normalizedAnswers).toFixed(2))
               : undefined;
 
     if (typeof resolvedScore === 'number' && session.score !== resolvedScore) {
@@ -12343,6 +12355,72 @@ function enqueueExamPostSubmitTask(
     scheduleExamPostSubmitDrain(resolveExamPostSubmitDrainDelayMs());
 }
 
+export async function backfillClosedExamSessionsWithoutScore(params?: {
+    sessionIds?: number[];
+    limit?: number;
+}): Promise<{
+    found: number;
+    repaired: number;
+    failed: Array<{ sessionId: number; error: string }>;
+}> {
+    const resolvedSessionIds = Array.isArray(params?.sessionIds)
+        ? params.sessionIds
+              .map((value) => Number(value))
+              .filter((value) => Number.isFinite(value) && value > 0)
+        : [];
+    const limit = Number.isFinite(Number(params?.limit)) ? Math.max(1, Number(params?.limit)) : 500;
+
+    const unresolvedSessions = await prisma.studentExamSession.findMany({
+        where: {
+            submitTime: { not: null },
+            status: { in: ['COMPLETED', 'TIMEOUT'] },
+            ...(resolvedSessionIds.length > 0 ? {} : { score: null }),
+            ...(resolvedSessionIds.length > 0 ? { id: { in: resolvedSessionIds } } : {}),
+            schedule: {
+                packetId: { not: null },
+            },
+        },
+        select: {
+            id: true,
+            studentId: true,
+            schedule: {
+                select: {
+                    jobVacancyId: true,
+                },
+            },
+        },
+        orderBy: { id: 'asc' },
+        take: limit,
+    });
+
+    const failed: Array<{ sessionId: number; error: string }> = [];
+    let repaired = 0;
+
+    for (const session of unresolvedSessions) {
+        try {
+            await processExamPostSubmitTask({
+                sessionId: session.id,
+                studentId: session.studentId,
+                accessRole: Number(session.schedule?.jobVacancyId || 0) > 0 ? 'UMUM' : 'STUDENT',
+                attempt: 0,
+                enqueuedAt: Date.now(),
+            });
+            repaired += 1;
+        } catch (error) {
+            failed.push({
+                sessionId: session.id,
+                error: error instanceof Error ? error.message : 'Unknown error',
+            });
+        }
+    }
+
+    return {
+        found: unresolvedSessions.length,
+        repaired,
+        failed,
+    };
+}
+
 export const submitAnswers = asyncHandler(async (req: Request, res: Response) => {
     const { id } = req.params; // scheduleId
     const { answers, finish, is_final_submit, force_submit } = req.body;
@@ -12373,6 +12451,7 @@ export const submitAnswers = asyncHandler(async (req: Request, res: Response) =>
             status: true,
             answers: true,
             submitTime: true,
+            score: true,
             schedule: {
                 select: {
                     endTime: true,
@@ -12427,6 +12506,11 @@ export const submitAnswers = asyncHandler(async (req: Request, res: Response) =>
                     endTime: session.endTime || timeoutAt,
                 },
             });
+            enqueueExamPostSubmitTask({
+                sessionId: session.id,
+                studentId,
+                accessRole,
+            });
             invalidateSessionDetailCacheBySession(session.id);
             availableExamsCache.delete(studentId);
             return res.json(
@@ -12443,6 +12527,13 @@ export const submitAnswers = asyncHandler(async (req: Request, res: Response) =>
     }
 
     if (effectiveSessionStatus === 'COMPLETED' || session.status === 'COMPLETED' || Boolean(session.submitTime)) {
+        if (session.submitTime && session.score === null) {
+            enqueueExamPostSubmitTask({
+                sessionId: session.id,
+                studentId,
+                accessRole,
+            });
+        }
         const latestProctorTermination =
             String(session.status || '').toUpperCase() === 'TIMEOUT'
                 ? await findLatestExamProctorTermination({

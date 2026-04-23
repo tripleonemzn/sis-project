@@ -384,17 +384,17 @@ export const TeacherSubjectReportPage = () => {
                       </td>
                       <td className="px-6 py-4 text-center text-gray-600">
                         {readRowSlotScore(grade, primarySlots.formative, grade.formatifScore) !== null
-                          ? Math.round(Number(readRowSlotScore(grade, primarySlots.formative, grade.formatifScore)))
+                          ? formatFinalScore(readRowSlotScore(grade, primarySlots.formative, grade.formatifScore))
                           : '-'}
                       </td>
                       <td className="px-6 py-4 text-center text-gray-600">
                         {readRowSlotScore(grade, primarySlots.midterm, grade.sbtsScore) !== null
-                          ? Math.round(Number(readRowSlotScore(grade, primarySlots.midterm, grade.sbtsScore)))
+                          ? formatFinalScore(readRowSlotScore(grade, primarySlots.midterm, grade.sbtsScore))
                           : '-'}
                       </td>
                       <td className="px-6 py-4 text-center text-gray-600">
                         {readRowSlotScore(grade, primarySlots.final, grade.sasScore) !== null
-                          ? Math.round(Number(readRowSlotScore(grade, primarySlots.final, grade.sasScore)))
+                          ? formatFinalScore(readRowSlotScore(grade, primarySlots.final, grade.sasScore))
                           : '-'}
                       </td>
                       <td className="px-6 py-4 text-center font-bold text-blue-600 bg-blue-50/30">

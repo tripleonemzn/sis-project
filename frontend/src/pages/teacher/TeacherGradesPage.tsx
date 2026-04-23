@@ -251,6 +251,13 @@ const formatSeriesValues = (values: number[]) =>
     .map((value) => (Number.isInteger(value) ? String(value) : value.toFixed(2)))
     .join(', ');
 
+const formatScoreDisplay = (value: number | null | undefined): string => {
+  if (value === null || value === undefined) return '-';
+  const parsed = Number(value);
+  if (!Number.isFinite(parsed)) return '-';
+  return parsed.toFixed(2);
+};
+
 const parseFormativeSlotDrafts = (drafts: string[]): { values: number[]; invalid: boolean } => {
   if (!Array.isArray(drafts) || drafts.length === 0) return { values: [], invalid: false };
   const values: number[] = [];
@@ -1247,7 +1254,7 @@ export const TeacherGradesPage = () => {
         let formativeSeriesInput = '';
         if (dynamicSeries.length > 0) {
           resolvedSeriesValues = isLegacyZeroPaddedSeries(dynamicSeries) ? [] : dynamicSeries;
-          formativeSeriesInput = isLegacyZeroPaddedSeries(dynamicSeries) ? '' : dynamicSeries.join(', ');
+          formativeSeriesInput = isLegacyZeroPaddedSeries(dynamicSeries) ? '' : formatSeriesValues(dynamicSeries);
         } else {
           const legacyValues = sanitizeLegacySeriesForDisplay([
             formatifData?.nf1,
@@ -1266,7 +1273,7 @@ export const TeacherGradesPage = () => {
           const legacySeries = legacyValues;
           if (!isLegacyZeroPaddedSeries(legacySeries) && legacySeries.length > 0) {
             resolvedSeriesValues = legacySeries;
-            formativeSeriesInput = legacySeries.join(', ');
+            formativeSeriesInput = formatSeriesValues(legacySeries);
           }
         }
 
@@ -1283,7 +1290,7 @@ export const TeacherGradesPage = () => {
         const existingScore =
           existing?.score === null || existing?.score === undefined || existing?.score === ''
             ? ''
-            : String(existing.score);
+            : Number(existing.score).toFixed(2);
 
         return {
           student_id: student.id,
@@ -1731,35 +1738,35 @@ export const TeacherGradesPage = () => {
                   <table className="w-full border-collapse">
                       <thead>
                           <tr className="bg-gray-50 border-b border-gray-200">
-                              <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">No</th>
-                              <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">NISN</th>
-                              <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Nama Siswa</th>
+                              <th className="sticky top-0 z-20 bg-gray-50 px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">No</th>
+                              <th className="sticky top-0 z-20 bg-gray-50 px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">NISN</th>
+                              <th className="sticky top-0 z-20 bg-gray-50 px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Nama Siswa</th>
                               
                               {isFormatifComponent ? (
                                   <>
-                                      <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Entri Formatif (Dinamis)</th>
-                                      <th className="px-6 py-3 text-center text-xs font-medium text-gray-500 uppercase tracking-wider bg-blue-50">x̄ Referensi {midtermComponentLabel}</th>
-                                      <th className="px-6 py-3 text-center text-xs font-medium text-gray-500 uppercase tracking-wider bg-green-50">x̄ Referensi {finalComponentLabel}</th>
+                                      <th className="sticky top-0 z-20 bg-gray-50 px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Entri Formatif (Dinamis)</th>
+                                      <th className="sticky top-0 z-20 bg-blue-50 px-6 py-3 text-center text-xs font-medium text-gray-500 uppercase tracking-wider">x̄ Referensi {midtermComponentLabel}</th>
+                                      <th className="sticky top-0 z-20 bg-green-50 px-6 py-3 text-center text-xs font-medium text-gray-500 uppercase tracking-wider">x̄ Referensi {finalComponentLabel}</th>
                                   </>
                               ) : isMidtermComponent ? (
                                   <>
-                                      <th className="px-6 py-3 text-center text-xs font-medium text-gray-500 uppercase tracking-wider bg-blue-50">x̄ Referensi {formativeComponentLabel}</th>
-                                      <th className="px-6 py-3 text-center text-xs font-medium text-gray-500 uppercase tracking-wider">Nilai {midtermComponentLabel}</th>
-                                      <th className="px-6 py-3 text-center text-xs font-medium text-gray-500 uppercase tracking-wider bg-yellow-50">Nilai Rapor {midtermComponentLabel}</th>
+                                      <th className="sticky top-0 z-20 bg-blue-50 px-6 py-3 text-center text-xs font-medium text-gray-500 uppercase tracking-wider">x̄ Referensi {formativeComponentLabel}</th>
+                                      <th className="sticky top-0 z-20 bg-gray-50 px-6 py-3 text-center text-xs font-medium text-gray-500 uppercase tracking-wider">Nilai {midtermComponentLabel}</th>
+                                      <th className="sticky top-0 z-20 bg-yellow-50 px-6 py-3 text-center text-xs font-medium text-gray-500 uppercase tracking-wider">Nilai Rapor {midtermComponentLabel}</th>
                                   </>
                               ) : isFinalComponent ? (
                                   <>
-                                      <th className="px-6 py-3 text-center text-xs font-medium text-gray-500 uppercase tracking-wider bg-blue-50">x̄ Referensi {formativeComponentLabel}</th>
-                                      <th className="px-6 py-3 text-center text-xs font-medium text-gray-500 uppercase tracking-wider bg-gray-50">Nilai {midtermComponentLabel}</th>
-                                      <th className="px-6 py-3 text-center text-xs font-medium text-gray-500 uppercase tracking-wider">Nilai {finalComponentLabel}</th>
-                                      <th className="px-6 py-3 text-center text-xs font-medium text-gray-500 uppercase tracking-wider bg-yellow-50">Nilai Rapor {finalComponentLabel}</th>
-                                      <th className="px-6 py-3 text-center text-xs font-medium text-gray-500 uppercase tracking-wider">Capaian Kompetensi</th>
+                                      <th className="sticky top-0 z-20 bg-blue-50 px-6 py-3 text-center text-xs font-medium text-gray-500 uppercase tracking-wider">x̄ Referensi {formativeComponentLabel}</th>
+                                      <th className="sticky top-0 z-20 bg-gray-50 px-6 py-3 text-center text-xs font-medium text-gray-500 uppercase tracking-wider">Nilai {midtermComponentLabel}</th>
+                                      <th className="sticky top-0 z-20 bg-gray-50 px-6 py-3 text-center text-xs font-medium text-gray-500 uppercase tracking-wider">Nilai {finalComponentLabel}</th>
+                                      <th className="sticky top-0 z-20 bg-yellow-50 px-6 py-3 text-center text-xs font-medium text-gray-500 uppercase tracking-wider">Nilai Rapor {finalComponentLabel}</th>
+                                      <th className="sticky top-0 z-20 bg-gray-50 px-6 py-3 text-center text-xs font-medium text-gray-500 uppercase tracking-wider">Capaian Kompetensi</th>
                                   </>
                               ) : (
-                                  <th className="px-6 py-3 text-center text-xs font-medium text-gray-500 uppercase tracking-wider">Nilai</th>
+                                  <th className="sticky top-0 z-20 bg-gray-50 px-6 py-3 text-center text-xs font-medium text-gray-500 uppercase tracking-wider">Nilai</th>
                               )}
                               
-                              <th className="px-6 py-3 text-center text-xs font-medium text-gray-500 uppercase tracking-wider">Status</th>
+                              <th className="sticky top-0 z-20 bg-gray-50 px-6 py-3 text-center text-xs font-medium text-gray-500 uppercase tracking-wider">Status</th>
                           </tr>
                       </thead>
                       <tbody className="bg-white divide-y divide-gray-200">
@@ -1817,7 +1824,7 @@ export const TeacherGradesPage = () => {
 	                                  const previewFinalReference = draftFormativeAverage ?? backendFinalFormativeReference;
 	                                  const displayFormative =
 	                                    previewFormative !== null && previewFormative !== undefined
-	                                      ? previewFormative.toFixed(2)
+	                                      ? formatScoreDisplay(previewFormative)
 	                                      : '-';
 	                                  const previewSbtsFinal = (() => {
 	                                    if (!isMidtermComponent) return backendFinal;
@@ -1917,12 +1924,12 @@ export const TeacherGradesPage = () => {
 		                                                  </td>
                                                   <td className={`px-6 py-4 whitespace-nowrap text-center text-sm font-medium ${(backendFormative ?? 0) < kkm && backendFormative !== null ? 'text-red-600 font-bold' : 'text-gray-900'} bg-blue-50`}>
                                                       {previewMidtermReference !== null && previewMidtermReference !== undefined
-                                                        ? previewMidtermReference.toFixed(2)
+                                                        ? formatScoreDisplay(previewMidtermReference)
                                                         : '-'}
                                                   </td>
                                                   <td className={`px-6 py-4 whitespace-nowrap text-center text-sm font-medium ${(backendFormative ?? 0) < kkm && backendFormative !== null ? 'text-red-600 font-bold' : 'text-gray-900'} bg-green-50`}>
                                                       {previewFinalReference !== null && previewFinalReference !== undefined
-                                                        ? previewFinalReference.toFixed(2)
+                                                        ? formatScoreDisplay(previewFinalReference)
                                                         : '-'}
                                                   </td>
                                               </>
@@ -1941,13 +1948,13 @@ export const TeacherGradesPage = () => {
                                                       />
                                                   </td>
 	                                                  <td className={`px-6 py-4 whitespace-nowrap text-center text-sm font-bold ${(previewSbtsFinal ?? 0) < kkm && previewSbtsFinal !== null ? 'text-red-600' : 'text-gray-900'} bg-yellow-50`}>
-	                                                      {previewSbtsFinal !== null && previewSbtsFinal !== undefined ? previewSbtsFinal.toFixed(2) : '-'}
+	                                                      {previewSbtsFinal !== null && previewSbtsFinal !== undefined ? formatScoreDisplay(previewSbtsFinal) : '-'}
 	                                                  </td>
                                               </>
                                           ) : isFinalComponent ? (
                                               <>
                                                   <td className={`px-6 py-4 whitespace-nowrap text-center text-sm ${(backendFormative ?? 0) < kkm && backendFormative !== null ? 'text-red-600 font-bold' : 'text-gray-500'} bg-blue-50`}>{displayFormative}</td>
-	                                                  <td className="px-6 py-4 whitespace-nowrap text-center text-sm text-gray-500 bg-gray-50">{backendSbts !== null && backendSbts !== undefined ? backendSbts.toFixed(2) : '-'}</td>
+	                                                  <td className="px-6 py-4 whitespace-nowrap text-center text-sm text-gray-500 bg-gray-50">{backendSbts !== null && backendSbts !== undefined ? formatScoreDisplay(backendSbts) : '-'}</td>
                                                   <td className="px-6 py-4 whitespace-nowrap text-center">
                                                       <input 
                                                           type="number" 
@@ -1960,7 +1967,7 @@ export const TeacherGradesPage = () => {
                                                       />
                                                   </td>
 	                                                  <td className={`px-6 py-4 whitespace-nowrap text-center text-sm font-bold ${(previewSasFinal ?? 0) < kkm && previewSasFinal !== null ? 'text-red-600' : 'text-gray-900'} bg-yellow-50`}>
-	                                                      {previewSasFinal !== null && previewSasFinal !== undefined ? previewSasFinal.toFixed(2) : '-'}
+	                                                      {previewSasFinal !== null && previewSasFinal !== undefined ? formatScoreDisplay(previewSasFinal) : '-'}
 	                                                  </td>
                                                   <td className="px-6 py-4">
                                                       <div className="w-full min-w-[300px] rounded-lg border border-blue-100 bg-blue-50 px-3 py-2 text-left text-sm text-slate-700">

@@ -22,6 +22,13 @@ interface RankingPrintDocumentProps {
   titimangsa: Date;
 }
 
+const formatScoreDisplay = (value: number | null | undefined) => {
+  if (value === null || value === undefined) return '-';
+  const parsed = Number(value);
+  if (!Number.isFinite(parsed)) return '-';
+  return parsed.toFixed(2);
+};
+
 export const RankingPrintDocument: React.FC<RankingPrintDocumentProps> = ({
   className,
   academicYear,
@@ -125,8 +132,8 @@ export const RankingPrintDocument: React.FC<RankingPrintDocumentProps> = ({
                 <td>{index + 1}</td>
                 <td>{student.student.nisn || student.student.nis || '-'}</td>
                 <td className="text-left font-medium">{student.student.name}</td>
-                <td>{student.totalScore}</td>
-                <td>{student.averageScore}</td>
+                <td>{formatScoreDisplay(student.totalScore)}</td>
+                <td>{formatScoreDisplay(student.averageScore)}</td>
                 <td className="font-medium">{rankLabel}</td>
               </tr>
             );
