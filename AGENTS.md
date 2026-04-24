@@ -165,6 +165,10 @@ Dokumen ini adalah policy kerja default untuk setiap sesi baru yang mengerjakan 
    - Untuk pekerjaan panjang, lebih baik kerja per batch yang jelas daripada terlalu sering bolak-balik revisi kecil.
    - Update ke user boleh ringkas, tetapi tetap harus informatif.
    - Hindari penjelasan panjang yang tidak menambah nilai praktis bagi user.
+   - Setiap `room chat`/thread baru harus dianggap sebagai konteks kerja yang **mandiri**. Jangan otomatis menarik, merangkum, atau melanjutkan topik dari room/thread/chat lain hanya karena ada riwayat recent chat yang tersedia.
+   - Jika user di room baru hanya meminta `baca AGENTS.md` atau instruksi kerja umum sejenis, cukup baca policy lalu kerjakan task di room aktif. **Jangan** melakukan audit history room lain kecuali user meminta eksplisit.
+   - Konteks dari room/chat lain hanya boleh diambil jika user secara jelas meminta, misalnya dengan arahan seperti `lanjutkan dari room X`, `ambil recent chat room Y`, `tarik konteks dari thread sebelumnya`, atau permintaan eksplisit lain yang maknanya setara.
+   - Jika ada dugaan task saat ini berhubungan dengan room lama tetapi user tidak meminta penarikan konteks, default yang aman adalah **tidak** membuka history room lain dan cukup bekerja dari instruksi room aktif.
 
 15. **Tahun ajaran aktif adalah source of truth operasional**
    - Untuk semua halaman `operasional`, `pembelajaran`, `approval`, `input`, `monitoring aktif`, dan workflow harian, konteks tahun ajaran wajib mengikuti `tahun ajaran aktif` yang tampil di header aplikasi.
