@@ -147,6 +147,7 @@ export interface DailyPresenceStudentState {
   student: {
     id: number;
     name: string;
+    photo?: string | null;
     nis?: string | null;
     nisn?: string | null;
     class?: {
@@ -167,6 +168,71 @@ export interface DailyPresenceStudentState {
     checkOutReason?: string | null;
   };
   recentEvents: DailyPresenceEventItem[];
+}
+
+export interface DailyPresenceSelfScanSession {
+  sessionId: string;
+  checkpoint: DailyPresenceEventType;
+  gateLabel?: string | null;
+  date: string;
+  challengeWindowSeconds: number;
+  challengeWindowExpiresAt: string;
+  sessionExpiresAt: string;
+}
+
+export interface DailyPresenceSelfScanManagerSession extends DailyPresenceSelfScanSession {
+  actor: {
+    id: number;
+    name: string;
+  };
+  challengeSecret: string;
+  challengeCode: string;
+}
+
+export interface DailyPresenceSelfScanPass {
+  date: string;
+  academicYear: {
+    id: number;
+    name: string;
+  };
+  student: {
+    id: number;
+    name: string;
+    photo?: string | null;
+    nis?: string | null;
+    nisn?: string | null;
+    class?: {
+      id: number;
+      name: string;
+    } | null;
+  };
+  session: DailyPresenceSelfScanSession;
+  checkpoint: DailyPresenceEventType;
+  qrToken: string;
+  qrCodeDataUrl: string;
+  qrExpiresAt: string;
+}
+
+export interface DailyPresenceSelfScanPreview {
+  date: string;
+  academicYear: {
+    id: number;
+    name: string;
+  };
+  checkpoint: DailyPresenceEventType;
+  gateLabel?: string | null;
+  student: {
+    id: number;
+    name: string;
+    photo?: string | null;
+    nis?: string | null;
+    nisn?: string | null;
+    class: {
+      id: number;
+      name: string;
+    };
+  };
+  alreadyRecorded: boolean;
 }
 
 export const attendanceService = {
@@ -255,6 +321,72 @@ export const attendanceService = {
     const response = await api.get<{ data: DailyPresenceStudentState }>('/attendances/daily-presence/student', {
       params,
     });
+    return response.data.data;
+  },
+
+  getActiveSelfScanSession: async (params: { checkpoint: DailyPresenceEventType }) => {
+    const response = await api.get<{
+      data: {
+        academicYear: {
+          id: number;
+          name: string;
+        };
+        session: DailyPresenceSelfScanSession | DailyPresenceSelfScanManagerSession | null;
+      };
+    }>('/attendances/daily-presence/self-scan/session', {
+      params,
+    });
+    return response.data.data.session || null;
+  },
+
+  getActiveManagerSelfScanSession: async (params: { checkpoint: DailyPresenceEventType }) => {
+    const response = await api.get<{
+      data: {
+        academicYear: {
+          id: number;
+          name: string;
+        };
+        session: DailyPresenceSelfScanManagerSession | null;
+      };
+    }>('/attendances/daily-presence/self-scan/session', {
+      params,
+    });
+    return response.data.data.session || null;
+  },
+
+  startSelfScanSession: async (payload: {
+    checkpoint: DailyPresenceEventType;
+    gateLabel?: string | null;
+  }) => {
+    const response = await api.post<{
+      data: {
+        academicYear: {
+          id: number;
+          name: string;
+        };
+        session: DailyPresenceSelfScanManagerSession;
+      };
+    }>('/attendances/daily-presence/self-scan/session', payload);
+    return response.data.data.session;
+  },
+
+  closeSelfScanSession: async (payload: { checkpoint: DailyPresenceEventType }) => {
+    await api.post('/attendances/daily-presence/self-scan/session/close', payload);
+  },
+
+  previewSelfScanPass: async (payload: { qrToken: string }) => {
+    const response = await api.post<{ data: DailyPresenceSelfScanPreview }>(
+      '/attendances/daily-presence/self-scan/preview',
+      payload,
+    );
+    return response.data.data;
+  },
+
+  confirmSelfScanPass: async (payload: { qrToken: string }) => {
+    const response = await api.post<{ data: DailyPresenceStudentState }>(
+      '/attendances/daily-presence/self-scan/confirm',
+      payload,
+    );
     return response.data.data;
   },
 

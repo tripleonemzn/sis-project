@@ -19,6 +19,7 @@
     "jwt-decode": "^4.0.0",
     "katex": "^0.16.27",
     "lucide-react": "^0.562.0",
+    "qr-scanner": "^1.4.2",
     "react": "^19.2.0",
     "react-dom": "^19.2.0",
     "react-easy-crop": "^5.5.6",
