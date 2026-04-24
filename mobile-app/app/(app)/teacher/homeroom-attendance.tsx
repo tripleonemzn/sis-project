@@ -256,7 +256,17 @@ export default function TeacherHomeroomAttendanceScreen() {
   );
 
   const dailyStats = useMemo(() => {
-    const result = { present: 0, sick: 0, permission: 0, absent: 0, late: 0, total: filteredDailyRows.length };
+    const result = {
+      present: 0,
+      sick: 0,
+      permission: 0,
+      absent: 0,
+      late: 0,
+      checkedIn: 0,
+      checkedOut: 0,
+      openPresence: 0,
+      total: filteredDailyRows.length,
+    };
     for (const row of filteredDailyRows) {
       const status = draft[row.student.id]?.status || row.status || 'PRESENT';
       if (status === 'PRESENT') result.present += 1;
@@ -264,6 +274,9 @@ export default function TeacherHomeroomAttendanceScreen() {
       if (status === 'PERMISSION') result.permission += 1;
       if (status === 'ABSENT') result.absent += 1;
       if (status === 'LATE') result.late += 1;
+      if (row.checkInTime) result.checkedIn += 1;
+      if (row.checkOutTime) result.checkedOut += 1;
+      if (row.checkInTime && !row.checkOutTime) result.openPresence += 1;
     }
     return result;
   }, [filteredDailyRows, draft]);
@@ -617,6 +630,18 @@ export default function TeacherHomeroomAttendanceScreen() {
             ))}
           </View>
 
+          <Text
+            style={{
+              color: '#475569',
+              fontSize: scaleFont(12),
+              lineHeight: scaleLineHeight(18),
+              marginBottom: 12,
+            }}
+          >
+            Jam datang tercatat: {dailyStats.checkedIn} • Jam pulang tercatat: {dailyStats.checkedOut} • Belum pulang:{' '}
+            {dailyStats.openPresence}
+          </Text>
+
           {dailyQuery.isLoading ? <QueryStateView type="loading" message="Mengambil presensi harian..." /> : null}
           {dailyQuery.isError ? (
             <QueryStateView type="error" message="Gagal memuat presensi harian." onRetry={() => dailyQuery.refetch()} />
@@ -706,6 +731,9 @@ export default function TeacherHomeroomAttendanceScreen() {
                             </Text>
                             <Text style={{ color: '#64748b', fontSize: scaleFont(11), lineHeight: scaleLineHeight(16) }} numberOfLines={1}>
                               NIS: {row.student.nis || '-'} • NISN: {row.student.nisn || '-'}
+                            </Text>
+                            <Text style={{ color: '#475569', fontSize: scaleFont(11), lineHeight: scaleLineHeight(16) }} numberOfLines={1}>
+                              Masuk: {row.checkInTime || '-'} • Pulang: {row.checkOutTime || '-'}
                             </Text>
                           </View>
                         </View>

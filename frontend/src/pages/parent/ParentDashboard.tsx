@@ -260,6 +260,8 @@ interface ParentAttendanceRecord {
   date: string;
   status: ParentAttendanceStatus;
   note?: string | null;
+  checkInTime?: string | null;
+  checkOutTime?: string | null;
 }
 
 interface ParentReportCard {
@@ -1987,6 +1989,8 @@ const ParentAttendancePage = () => {
                 <tr>
                   <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Tanggal</th>
                   <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Status</th>
+                  <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Waktu Masuk</th>
+                  <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Waktu Pulang</th>
                   <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Catatan</th>
                 </tr>
               </thead>
@@ -1999,6 +2003,8 @@ const ParentAttendancePage = () => {
                         {ATTENDANCE_STATUS_LABELS[item.status]}
                       </span>
                     </td>
+                    <td className="px-6 py-4 text-sm text-gray-700">{item.checkInTime || '-'}</td>
+                    <td className="px-6 py-4 text-sm text-gray-700">{item.checkOutTime || '-'}</td>
                     <td className="px-6 py-4 text-sm text-gray-600">{item.note || '-'}</td>
                   </tr>
                 ))}

@@ -273,7 +273,10 @@ export const HomeroomAttendancePage = () => {
       sick: 0,
       permission: 0,
       absent: 0,
-      late: 0
+      late: 0,
+      checkedIn: 0,
+      checkedOut: 0,
+      openPresence: 0,
     };
 
     dailyLogData.data.forEach((item: DailyLogItem) => {
@@ -285,6 +288,10 @@ export const HomeroomAttendancePage = () => {
         case 'ABSENT': stats.absent++; break;
         case 'LATE': stats.late++; break;
       }
+
+      if (item.checkInTime) stats.checkedIn++;
+      if (item.checkOutTime) stats.checkedOut++;
+      if (item.checkInTime && !item.checkOutTime) stats.openPresence++;
     });
 
     return stats;
@@ -511,6 +518,21 @@ export const HomeroomAttendancePage = () => {
                   <div className="w-2 h-2 rounded-full bg-red-500"></div>
                   <span>Alpha: <span className="font-semibold text-gray-900">{dailyStats.absent}</span></span>
                 </div>
+                <div className="w-px h-3 bg-gray-300 hidden sm:block"></div>
+                <div className="flex items-center gap-1.5 whitespace-nowrap" title="Jam datang tercatat">
+                  <Clock className="w-3.5 h-3.5 text-blue-500" />
+                  <span>Masuk: <span className="font-semibold text-gray-900">{dailyStats.checkedIn}</span></span>
+                </div>
+                <div className="w-px h-3 bg-gray-300 hidden sm:block"></div>
+                <div className="flex items-center gap-1.5 whitespace-nowrap" title="Jam pulang tercatat">
+                  <Clock className="w-3.5 h-3.5 text-emerald-500" />
+                  <span>Pulang: <span className="font-semibold text-gray-900">{dailyStats.checkedOut}</span></span>
+                </div>
+                <div className="w-px h-3 bg-gray-300 hidden sm:block"></div>
+                <div className="flex items-center gap-1.5 whitespace-nowrap" title="Sudah masuk tetapi belum tercatat pulang">
+                  <Clock className="w-3.5 h-3.5 text-amber-500" />
+                  <span>Belum Pulang: <span className="font-semibold text-gray-900">{dailyStats.openPresence}</span></span>
+                </div>
               </div>
             )}
           </div>
@@ -557,6 +579,12 @@ export const HomeroomAttendancePage = () => {
                     </th>
                     <th scope="col" className="px-6 py-3 text-center text-xs font-medium text-gray-500 uppercase tracking-wider">
                       Status
+                    </th>
+                    <th scope="col" className="px-6 py-3 text-center text-xs font-medium text-gray-500 uppercase tracking-wider">
+                      Jam Datang
+                    </th>
+                    <th scope="col" className="px-6 py-3 text-center text-xs font-medium text-gray-500 uppercase tracking-wider">
+                      Jam Pulang
                     </th>
                     <th scope="col" className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
                       Keterangan
@@ -616,6 +644,12 @@ export const HomeroomAttendancePage = () => {
                           </>
                         )}
                       </td>
+                      <td className="px-6 py-4 whitespace-nowrap text-center text-sm font-medium text-gray-700">
+                        {item.checkInTime || '-'}
+                      </td>
+                      <td className="px-6 py-4 whitespace-nowrap text-center text-sm font-medium text-gray-700">
+                        {item.checkOutTime || '-'}
+                      </td>
                       <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-500 italic">
                         {isEditing ? (
                           <input
@@ -633,7 +667,7 @@ export const HomeroomAttendancePage = () => {
                   ))}
                   {paginatedData.length === 0 && (
                     <tr>
-                      <td colSpan={5} className="px-6 py-12 text-center text-gray-500">
+                      <td colSpan={7} className="px-6 py-12 text-center text-gray-500">
                         <FileText className="mx-auto h-12 w-12 text-gray-300 mb-3" />
                         <p>{search ? 'Siswa tidak ditemukan' : 'Tidak ada data siswa.'}</p>
                       </td>

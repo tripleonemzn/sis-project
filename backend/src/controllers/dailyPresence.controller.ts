@@ -1,9 +1,10 @@
-import { DailyPresenceCaptureSource, DailyPresenceEventType } from '@prisma/client';
+import { DailyPresenceCaptureSource, DailyPresenceEventType, Prisma } from '@prisma/client';
 import { Request, Response } from 'express';
 import { z } from 'zod';
 import prisma from '../utils/prisma';
 import { ApiError, ApiResponse, asyncHandler } from '../utils/api';
 import { broadcastDomainEvent } from '../realtime/realtimeGateway';
+import { createManyInAppNotifications } from '../services/mobilePushNotification.service';
 
 function normalizeCode(value?: string | null) {
   return String(value || '')
@@ -176,6 +177,69 @@ async function getOperationalStudentOrThrow(studentId: number, activeAcademicYea
   }
 
   return student;
+}
+
+async function safeNotifyParentDailyPresence(params: {
+  studentId: number;
+  studentName: string;
+  classId: number;
+  checkpoint: 'CHECK_IN' | 'CHECK_OUT';
+  recordedAt: Date | null;
+  dateKey: string;
+}) {
+  if (!params.recordedAt) return;
+
+  const studentLink = await prisma.user.findUnique({
+    where: { id: params.studentId },
+    select: {
+      parents: {
+        select: {
+          id: true,
+        },
+      },
+    },
+  });
+
+  const parentIds = Array.from(
+    new Set(
+      (studentLink?.parents || [])
+        .map((parent) => Number(parent.id))
+        .filter((parentId) => Number.isInteger(parentId) && parentId > 0),
+    ),
+  );
+
+  if (parentIds.length === 0) return;
+
+  const timeLabel = formatTime(params.recordedAt) || '-';
+  const route = `/parent/attendance?childId=${params.studentId}`;
+  const message =
+    params.checkpoint === 'CHECK_IN'
+      ? `${params.studentName} tercatat masuk pukul ${timeLabel}.`
+      : `${params.studentName} tercatat pulang pukul ${timeLabel}.`;
+
+  const rows: Prisma.NotificationCreateManyInput[] = parentIds.map((parentId) => ({
+    userId: parentId,
+    title: 'Absensi Harian Anak',
+    message,
+    type: 'ATTENDANCE_DAILY_PRESENCE',
+    data: {
+      route,
+      module: 'ATTENDANCE',
+      attendanceMode: 'DAILY_PRESENCE',
+      studentId: params.studentId,
+      classId: params.classId,
+      date: params.dateKey,
+      checkpoint: params.checkpoint,
+      recordedTime: timeLabel,
+    },
+  }));
+
+  try {
+    await createManyInAppNotifications({ data: rows });
+  } catch (error) {
+    const message = error instanceof Error ? error.message : 'unknown error';
+    console.warn(`[daily-presence] gagal mengirim notifikasi orang tua: ${message}`);
+  }
 }
 
 export const getDailyPresenceOverview = asyncHandler(async (req: Request, res: Response) => {
@@ -389,7 +453,7 @@ export const saveAssistedDailyPresence = asyncHandler(async (req: Request, res: 
   const student = await getOperationalStudentOrThrow(studentId, activeAcademicYear.id);
   const now = new Date();
 
-  const attendance = await prisma.$transaction(async (tx) => {
+  const attendanceResult = await prisma.$transaction(async (tx) => {
     const existing = await tx.dailyAttendance.findFirst({
       where: {
         studentId: student.id,
@@ -402,6 +466,8 @@ export const saveAssistedDailyPresence = asyncHandler(async (req: Request, res: 
 
     const nextStatus =
       existing?.status === 'PRESENT' || existing?.status === 'LATE' ? existing.status : 'PRESENT';
+    const shouldNotifyParent =
+      checkpoint === 'CHECK_IN' ? !existing?.checkInTime : !existing?.checkOutTime;
 
     const data =
       checkpoint === 'CHECK_IN'
@@ -492,7 +558,10 @@ export const saveAssistedDailyPresence = asyncHandler(async (req: Request, res: 
       },
     });
 
-    return upserted;
+    return {
+      attendance: upserted,
+      shouldNotifyParent,
+    };
   });
 
   broadcastDomainEvent({
@@ -506,6 +575,21 @@ export const saveAssistedDailyPresence = asyncHandler(async (req: Request, res: 
       dates: [dateKey],
     },
   });
+
+  if (attendanceResult.shouldNotifyParent) {
+    const recordedAt =
+      checkpoint === 'CHECK_IN'
+        ? attendanceResult.attendance.checkInTime
+        : attendanceResult.attendance.checkOutTime;
+    await safeNotifyParentDailyPresence({
+      studentId: student.id,
+      studentName: student.name,
+      classId: student.studentClass!.id,
+      checkpoint,
+      recordedAt,
+      dateKey,
+    });
+  }
 
   res.status(200).json(
     new ApiResponse(
@@ -523,7 +607,7 @@ export const saveAssistedDailyPresence = asyncHandler(async (req: Request, res: 
             name: student.studentClass!.name,
           },
         },
-        presence: buildPresencePayload(attendance),
+        presence: buildPresencePayload(attendanceResult.attendance),
       },
       checkpoint === 'CHECK_IN'
         ? 'Absen masuk berhasil dibantu oleh petugas.'

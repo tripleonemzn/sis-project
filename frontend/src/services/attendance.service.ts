@@ -77,6 +77,8 @@ export interface DailyAttendanceStudent {
   };
   status: AttendanceStatus | null;
   note: string | null;
+  checkInTime?: string | null;
+  checkOutTime?: string | null;
 }
 
 export interface StudentAttendanceHistory {

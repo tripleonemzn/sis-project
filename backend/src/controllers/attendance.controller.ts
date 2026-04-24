@@ -121,6 +121,7 @@ export const getDailyAttendance = asyncHandler(async (req: Request, res: Respons
   const { date, classId, academicYearId } = getDailyAttendanceSchema.parse(req.query);
   const targetDate = new Date(date);
   const user = (req as any).user;
+  const canViewPresenceTime = user?.role !== 'STUDENT';
 
   await ensureAcademicYearArchiveReadAccess({
     actorId: Number(user?.id || 0),
@@ -146,6 +147,8 @@ export const getDailyAttendance = asyncHandler(async (req: Request, res: Respons
       studentId: true,
       status: true,
       note: true,
+      checkInTime: true,
+      checkOutTime: true,
     },
   });
 
@@ -161,6 +164,8 @@ export const getDailyAttendance = asyncHandler(async (req: Request, res: Respons
       },
       status: record?.status || null,
       note: record?.note || null,
+      checkInTime: canViewPresenceTime ? formatAttendanceTime(record?.checkInTime) : null,
+      checkOutTime: canViewPresenceTime ? formatAttendanceTime(record?.checkOutTime) : null,
     };
   });
 

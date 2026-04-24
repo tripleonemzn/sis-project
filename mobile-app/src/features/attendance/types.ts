@@ -116,6 +116,8 @@ export type DailyAttendanceEntry = {
   student: DailyAttendanceStudent;
   status: TeacherAttendanceStatus | null;
   note?: string | null;
+  checkInTime?: string | null;
+  checkOutTime?: string | null;
 };
 
 export type DailyLateSummaryRow = {
