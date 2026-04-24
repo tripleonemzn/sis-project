@@ -78,6 +78,13 @@ type StudentReportPayload = {
   };
 };
 
+type ReportDatePayload = {
+  date?: string;
+  place?: string;
+  rawDate?: string | null;
+  reportType?: string;
+};
+
 export const HomeroomReportSbtsPage = ({
   classId,
   academicYearId,
@@ -87,12 +94,29 @@ export const HomeroomReportSbtsPage = ({
   reportLabel,
 }: HomeroomReportSbtsPageProps) => {
   const [searchQuery, setSearchQuery] = useState('');
-  const [printPlace, setPrintPlace] = useState('Bekasi');
+  const [printPlace, setPrintPlace] = useState('');
   const [printDate, setPrintDate] = useState('');
   const [printSchoolAddress, setPrintSchoolAddress] = useState('Jl. Anggrek 1, Duren Jaya Bekasi Timur');
   const printIframeRef = useRef<HTMLIFrameElement>(null);
   const resolvedReportType = String(reportType || '').toUpperCase();
   const resolvedReportLabel = String(reportLabel || resolvedReportType || 'Rapor');
+
+  const { data: reportDateConfig } = useQuery({
+    queryKey: ['homeroom-report-date', academicYearId, semester, programCode || '', resolvedReportType],
+    queryFn: async () => {
+      const response = await api.get('/reports/date', {
+        params: {
+          ...(academicYearId ? { academicYearId } : {}),
+          semester,
+          ...(programCode ? { programCode } : {}),
+          ...(!programCode && resolvedReportType ? { type: resolvedReportType } : {}),
+        },
+      });
+      return response.data.data as ReportDatePayload;
+    },
+    enabled: Boolean(academicYearId && semester && (programCode || resolvedReportType)),
+    staleTime: 60 * 1000,
+  });
 
   const { data: classData, isLoading } = useQuery({
     queryKey: ['class-students', classId],
@@ -160,9 +184,10 @@ export const HomeroomReportSbtsPage = ({
       return normalized || 'SBTS';
     };
     const col2HeaderLabel = `NILAI ${normalizeSbtsHeaderCode(col2Label)}`;
-    const resolvedPrintPlace = String(printPlace || data.footer.place || '').trim() || 'Bekasi';
+    const resolvedPrintPlace =
+      String(printPlace || data.footer.place || reportDateConfig?.place || '').trim() || 'Bekasi';
     const resolvedPrintDate =
-      String(printDate || data.footer.date || '').trim() || 'Tanggal rapor belum diatur';
+      String(printDate || data.footer.date || reportDateConfig?.date || '').trim() || 'Tanggal rapor belum diatur';
 
     const parseNumeric = (value: string | number | null | undefined): number | null => {
       if (value === null || value === undefined || value === '') return null;
@@ -541,7 +566,7 @@ export const HomeroomReportSbtsPage = ({
                 <label className="text-xs uppercase font-bold text-gray-500 whitespace-nowrap">Tempat</label>
                 <input 
                     type="text" 
-                    value={printPlace}
+                    value={printPlace || reportDateConfig?.place || 'Bekasi'}
                     onChange={(e) => setPrintPlace(e.target.value)}
                     className="px-2 py-1.5 text-sm border border-gray-300 rounded-lg w-32 focus:outline-none focus:ring-2 focus:ring-blue-500"
                     placeholder="Bekasi"
@@ -551,7 +576,7 @@ export const HomeroomReportSbtsPage = ({
                 <label className="text-xs uppercase font-bold text-gray-500 whitespace-nowrap">Tanggal</label>
                 <input 
                     type="text" 
-                    value={printDate}
+                    value={printDate || reportDateConfig?.date || ''}
                     onChange={(e) => setPrintDate(e.target.value)}
                     className="px-2 py-1.5 text-sm border border-gray-300 rounded-lg w-40 focus:outline-none focus:ring-2 focus:ring-blue-500"
                     placeholder="Mengikuti tanggal rapor"

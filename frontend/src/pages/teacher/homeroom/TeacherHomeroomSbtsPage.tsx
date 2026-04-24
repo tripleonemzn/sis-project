@@ -29,6 +29,15 @@ function normalizeComponentType(raw: unknown): string {
   return String(raw || '').trim().toUpperCase();
 }
 
+function resolveActiveSemester(activeYear: unknown): SemesterType {
+  const year = activeYear as { semester?: string; name?: string } | null | undefined;
+  const semester = String(year?.semester || '').trim().toUpperCase();
+  if (semester === 'ODD' || semester === 'EVEN') return semester;
+
+  const name = String(year?.name || '').toUpperCase();
+  return name.includes('GENAP') ? 'EVEN' : 'ODD';
+}
+
 interface TeacherHomeroomSbtsPageProps {
   programCode?: string;
   programBaseType?: string;
@@ -122,11 +131,7 @@ export const TeacherHomeroomSbtsPage = ({
   const activeAcademicYearId = Number(
     (activeAcademicYear as { id?: number } | null | undefined)?.id || 0,
   ) || undefined;
-  const derivedSemester: SemesterType = String((activeAcademicYear as { name?: string } | undefined)?.name || '')
-    .toUpperCase()
-    .includes('GENAP')
-    ? 'EVEN'
-    : 'ODD';
+  const derivedSemester = resolveActiveSemester(activeAcademicYear);
   const semester = semesterOverride ?? derivedSemester;
 
   // 3. Get Homeroom Class Summary (Filtered by Active Year)
