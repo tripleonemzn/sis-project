@@ -176,6 +176,13 @@ export type HomeroomStudentReportData = {
       permission: number;
       absent: number;
     };
+    presenceSummary?: {
+      checkInRecorded: number;
+      checkOutRecorded: number;
+      openPresence: number;
+      averageCheckInTime: string | null;
+      averageCheckOutTime: string | null;
+    };
     homeroomNote?: string;
   };
   footer: {

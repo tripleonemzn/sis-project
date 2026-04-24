@@ -929,6 +929,24 @@ export default function GradesScreen() {
                 </View>
                 <View style={{ width: '50%', paddingHorizontal: 6, marginBottom: 12 }}>
                   <MobileSummaryCard
+                    title="Datang Tercatat"
+                    value={String(overview.reportCard.presenceSummary.checkInRecorded)}
+                    subtitle={`Rerata ${overview.reportCard.presenceSummary.averageCheckInTime || '-'} • ${overview.reportCard.presenceSummary.openPresence} belum pulang`}
+                    iconName="clock"
+                    accentColor="#2563eb"
+                  />
+                </View>
+                <View style={{ width: '50%', paddingHorizontal: 6, marginBottom: 12 }}>
+                  <MobileSummaryCard
+                    title="Pulang Tercatat"
+                    value={String(overview.reportCard.presenceSummary.checkOutRecorded)}
+                    subtitle={`Rerata ${overview.reportCard.presenceSummary.averageCheckOutTime || '-'}`}
+                    iconName="clock"
+                    accentColor={overview.reportCard.presenceSummary.openPresence > 0 ? '#b45309' : '#16a34a'}
+                  />
+                </View>
+                <View style={{ width: '50%', paddingHorizontal: 6, marginBottom: 12 }}>
+                  <MobileSummaryCard
                     title="Mapel Menunggu"
                     value={String(overview.reportCard.summary.missingSubjects)}
                     subtitle="Masih belum lengkap"

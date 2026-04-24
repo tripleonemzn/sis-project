@@ -56,6 +56,13 @@ type StudentReportPayload = {
       absent?: number;
       a?: number;
     };
+    presenceSummary?: {
+      checkInRecorded?: number;
+      checkOutRecorded?: number;
+      openPresence?: number;
+      averageCheckInTime?: string | null;
+      averageCheckOutTime?: string | null;
+    };
     homeroomNote?: string;
   };
   footer: {
@@ -209,6 +216,12 @@ export const HomeroomReportPage2 = ({
     const sick = att.sick ?? att.s ?? 0;
     const permission = att.permission ?? att.i ?? 0;
     const absent = att.absent ?? att.a ?? 0;
+    const presenceSummary = data.body.presenceSummary || {};
+    const checkInRecorded = presenceSummary.checkInRecorded ?? 0;
+    const checkOutRecorded = presenceSummary.checkOutRecorded ?? 0;
+    const openPresence = presenceSummary.openPresence ?? 0;
+    const averageCheckInTime = presenceSummary.averageCheckInTime || '-';
+    const averageCheckOutTime = presenceSummary.averageCheckOutTime || '-';
 
     const html = `
       <!DOCTYPE html>
@@ -326,6 +339,26 @@ export const HomeroomReportPage2 = ({
           <tr>
             <td>Tanpa Keterangan</td>
             <td>: ${absent} hari</td>
+          </tr>
+          <tr>
+            <td>Datang Tercatat</td>
+            <td>: ${checkInRecorded} hari</td>
+          </tr>
+          <tr>
+            <td>Pulang Tercatat</td>
+            <td>: ${checkOutRecorded} hari</td>
+          </tr>
+          <tr>
+            <td>Belum Tercatat Pulang</td>
+            <td>: ${openPresence} hari</td>
+          </tr>
+          <tr>
+            <td>Rerata Datang</td>
+            <td>: ${averageCheckInTime}</td>
+          </tr>
+          <tr>
+            <td>Rerata Pulang</td>
+            <td>: ${averageCheckOutTime}</td>
           </tr>
         </table>
 

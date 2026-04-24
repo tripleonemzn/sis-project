@@ -10,6 +10,7 @@ import {
   computeNormalizedWeightedAverage,
   normalizeRoundedFinalScore,
 } from '../utils/gradeWeights';
+import { summarizeDailyPresenceRows } from '../utils/dailyPresenceSummary';
 
 const normalizeLedgerCode = (raw: unknown): string =>
   String(raw || '')
@@ -1400,29 +1401,41 @@ export class ReportService {
         }
     }
 
-    const attendanceStats = await prisma.dailyAttendance.groupBy({
-      by: ['status'],
-      where: {
-        studentId,
-        academicYearId,
-        date: dateFilter
-      },
-      _count: { status: true }
-    });
+    const [attendanceStats, dailyPresenceRows, homeroomNote] = await Promise.all([
+      prisma.dailyAttendance.groupBy({
+        by: ['status'],
+        where: {
+          studentId,
+          academicYearId,
+          date: dateFilter
+        },
+        _count: { status: true }
+      }),
+      prisma.dailyAttendance.findMany({
+        where: {
+          studentId,
+          academicYearId,
+          date: dateFilter,
+        },
+        select: {
+          checkInTime: true,
+          checkOutTime: true,
+        },
+      }),
+      prisma.reportNote.findFirst({
+        where: {
+          studentId,
+          academicYearId,
+          semester,
+          type: 'CATATAN_WALI_KELAS'
+        }
+      }),
+    ]);
 
     const attSick = attendanceStats.find(a => a.status === 'SICK')?._count.status || 0;
     const attPerm = attendanceStats.find(a => a.status === 'PERMISSION')?._count.status || 0;
     const attAbsent = attendanceStats.find(a => a.status === 'ABSENT')?._count.status || 0;
-
-    // Fetch Homeroom Note
-    const homeroomNote = await prisma.reportNote.findFirst({
-        where: {
-            studentId,
-            academicYearId,
-            semester,
-            type: 'CATATAN_WALI_KELAS'
-        }
-    });
+    const presenceSummary = summarizeDailyPresenceRows(dailyPresenceRows);
 
     // Determine Fase based on class name
     let fase = '-';
@@ -1448,6 +1461,7 @@ export class ReportService {
         organizations,
         achievements,
         attendance: { sick: attSick, permission: attPerm, absent: attAbsent },
+        presenceSummary,
         homeroomNote: homeroomNote?.note || '',
         meta: {
           reportType: normalizedReportType,

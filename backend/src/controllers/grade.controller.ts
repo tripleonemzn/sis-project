@@ -32,6 +32,7 @@ import {
   resolveStudentExamProgramResultRelease,
   type StudentProgramResultReleaseState,
 } from '../utils/examProgramResultRelease'
+import { summarizeDailyPresenceRows } from '../utils/dailyPresenceSummary'
 
 const DEFAULT_REPORT_SLOT_CODE = 'NONE'
 
@@ -3726,7 +3727,7 @@ export const getStudentGradeOverview = async (req: Request, res: Response) => {
             orderBy: [{ id: 'desc' }],
           })
 
-    const [teacherAssignments, reportGrades, activeSemesterReportGrades, studentGrades, examGradeComponents, examPrograms, reportDateRows, attendanceStats, homeroomNote] = await Promise.all([
+    const [teacherAssignments, reportGrades, activeSemesterReportGrades, studentGrades, examGradeComponents, examPrograms, reportDateRows, attendanceStats, dailyPresenceRows, homeroomNote] = await Promise.all([
       prisma.teacherAssignment.findMany({
         where: {
           academicYearId: activeYear.id,
@@ -3847,6 +3848,20 @@ export const getStudentGradeOverview = async (req: Request, res: Response) => {
         },
         _count: {
           status: true,
+        },
+      }),
+      prisma.dailyAttendance.findMany({
+        where: {
+          studentId,
+          academicYearId: activeYear.id,
+          date: {
+            gte: reportSemesterRange.start,
+            lte: reportSemesterRange.end,
+          },
+        },
+        select: {
+          checkInTime: true,
+          checkOutTime: true,
         },
       }),
       prisma.reportNote.findFirst({
@@ -4256,6 +4271,7 @@ export const getStudentGradeOverview = async (req: Request, res: Response) => {
       izin: attendanceStats.find((row) => row.status === 'PERMISSION')?._count.status || 0,
       alpha: attendanceStats.find((row) => row.status === 'ABSENT')?._count.status || 0,
     }
+    const presenceSummary = summarizeDailyPresenceRows(dailyPresenceRows)
 
     return ApiResponseHelper.success(
       res,
@@ -4324,6 +4340,7 @@ export const getStudentGradeOverview = async (req: Request, res: Response) => {
                 : null,
           },
           attendance: attendanceSummary,
+          presenceSummary,
           homeroomNote: reportRelease.canViewDetails ? String(homeroomNote?.note || '').trim() || null : null,
           subjects: reportCardSubjects,
         },

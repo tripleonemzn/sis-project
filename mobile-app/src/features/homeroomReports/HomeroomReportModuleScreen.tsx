@@ -912,6 +912,25 @@ export function HomeroomReportModuleScreen({
                     />
                   </View>
                 </View>
+
+                {studentReportQuery.data.body?.presenceSummary ? (
+                  <View style={{ flexDirection: 'row', marginHorizontal: -4, marginTop: 8 }}>
+                    <View style={{ flex: 1, paddingHorizontal: 4 }}>
+                      <SummaryCard
+                        title="Datang Tercatat"
+                        value={formatNumber(studentReportQuery.data.body.presenceSummary.checkInRecorded)}
+                        subtitle={`Rerata ${safeText(studentReportQuery.data.body.presenceSummary.averageCheckInTime || '-')}`}
+                      />
+                    </View>
+                    <View style={{ flex: 1, paddingHorizontal: 4 }}>
+                      <SummaryCard
+                        title="Pulang Tercatat"
+                        value={formatNumber(studentReportQuery.data.body.presenceSummary.checkOutRecorded)}
+                        subtitle={`${formatNumber(studentReportQuery.data.body.presenceSummary.openPresence)} belum pulang`}
+                      />
+                    </View>
+                  </View>
+                ) : null}
               </View>
             ) : null}
 

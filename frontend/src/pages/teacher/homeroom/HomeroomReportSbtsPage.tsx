@@ -68,6 +68,13 @@ type StudentReportPayload = {
       absent?: number;
       a?: number;
     };
+    presenceSummary?: {
+      checkInRecorded?: number;
+      checkOutRecorded?: number;
+      openPresence?: number;
+      averageCheckInTime?: string | null;
+      averageCheckOutTime?: string | null;
+    };
   };
   footer: {
     date?: string;
@@ -350,6 +357,12 @@ export const HomeroomReportSbtsPage = ({
     const sick = att.sick ?? att.s ?? 0;
     const permission = att.permission ?? att.i ?? 0;
     const absent = att.absent ?? att.a ?? 0;
+    const presenceSummary = data.body.presenceSummary || {};
+    const checkInRecorded = presenceSummary.checkInRecorded ?? 0;
+    const checkOutRecorded = presenceSummary.checkOutRecorded ?? 0;
+    const openPresence = presenceSummary.openPresence ?? 0;
+    const averageCheckInTime = presenceSummary.averageCheckInTime || '-';
+    const averageCheckOutTime = presenceSummary.averageCheckOutTime || '-';
     const homeroomNoteHtml = escapeHtml(data.body.homeroomNote || '-').replace(/\n/g, '<br>');
 
     const html = `
@@ -457,6 +470,26 @@ export const HomeroomReportSbtsPage = ({
               <tr>
                 <td>Tanpa Keterangan</td>
                 <td class="attendance-value-cell">: ${absent} hari</td>
+              </tr>
+              <tr>
+                <td>Datang Tercatat</td>
+                <td class="attendance-value-cell">: ${checkInRecorded} hari</td>
+              </tr>
+              <tr>
+                <td>Pulang Tercatat</td>
+                <td class="attendance-value-cell">: ${checkOutRecorded} hari</td>
+              </tr>
+              <tr>
+                <td>Belum Tercatat Pulang</td>
+                <td class="attendance-value-cell">: ${openPresence} hari</td>
+              </tr>
+              <tr>
+                <td>Rerata Datang</td>
+                <td class="attendance-value-cell">: ${averageCheckInTime}</td>
+              </tr>
+              <tr>
+                <td>Rerata Pulang</td>
+                <td class="attendance-value-cell">: ${averageCheckOutTime}</td>
               </tr>
             </table>
           </div>

@@ -100,6 +100,13 @@ export type StudentSemesterReportData = {
     izin: number;
     alpha: number;
   };
+  presenceSummary: {
+    checkInRecorded: number;
+    checkOutRecorded: number;
+    openPresence: number;
+    averageCheckInTime: string | null;
+    averageCheckOutTime: string | null;
+  };
   homeroomNote: string | null;
   subjects: StudentSemesterReportSubjectRow[];
 };
