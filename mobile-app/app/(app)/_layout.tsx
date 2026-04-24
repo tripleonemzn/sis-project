@@ -8,6 +8,7 @@ import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { Feather } from '@expo/vector-icons';
 import { BRAND_COLORS } from '../../src/config/brand';
 import { notifyApiError, notifySuccess } from '../../src/lib/ui/feedback';
+import { useDeviceOrientationPolicy } from '../../src/lib/ui/useDeviceOrientationPolicy';
 import { useUnreadNotificationsQuery } from '../../src/features/notifications/useUnreadNotificationsQuery';
 import { useAppTextScale } from '../../src/theme/AppTextScaleProvider';
 
@@ -17,6 +18,7 @@ export default function AppProtectedLayout() {
     isAuthenticated &&
     !['STUDENT', 'CALON_SISWA', 'UMUM'].includes(String(user?.role || '').trim().toUpperCase());
   useMobileRealtimeSync(shouldEnableRealtime);
+  useDeviceOrientationPolicy();
   const insets = useSafeAreaInsets();
   const { scaleFont, scaleLineHeight, fontSizes } = useAppTextScale();
   const router = useRouter();

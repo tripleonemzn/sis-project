@@ -1,10 +1,23 @@
 import { DailyPresenceCaptureSource, DailyPresenceEventType, Prisma } from '@prisma/client';
 import { Request, Response } from 'express';
+import QRCode from 'qrcode';
 import { z } from 'zod';
 import prisma from '../utils/prisma';
 import { ApiError, ApiResponse, asyncHandler } from '../utils/api';
 import { broadcastDomainEvent } from '../realtime/realtimeGateway';
 import { createManyInAppNotifications } from '../services/mobilePushNotification.service';
+import {
+  DAILY_PRESENCE_SELF_SCAN_QR_TOKEN_TTL_SECONDS,
+  buildDailyPresenceSelfScanQrToken,
+  buildDailyPresenceSelfScanSessionManagerPayload,
+  buildDailyPresenceSelfScanSessionPublicPayload,
+  closeActiveDailyPresenceSelfScanSession,
+  consumeDailyPresenceSelfScanQrToken,
+  createActiveDailyPresenceSelfScanSession,
+  getActiveDailyPresenceSelfScanSession,
+  verifyDailyPresenceChallengeCode,
+  verifyDailyPresenceSelfScanQrToken,
+} from '../utils/dailyPresenceSelfScan';
 
 function normalizeCode(value?: string | null) {
   return String(value || '')
@@ -104,6 +117,20 @@ const saveAssistedDailyPresenceSchema = z.object({
   gateLabel: z.string().trim().max(100).optional().nullable(),
 });
 
+const selfScanSessionSchema = z.object({
+  checkpoint: z.enum(['CHECK_IN', 'CHECK_OUT']),
+  gateLabel: z.string().trim().max(100).optional().nullable(),
+});
+
+const selfScanPassSchema = z.object({
+  checkpoint: z.enum(['CHECK_IN', 'CHECK_OUT']),
+  challengeCode: z.string().trim().min(4).max(16),
+});
+
+const selfScanPreviewSchema = z.object({
+  qrToken: z.string().trim().min(16),
+});
+
 function buildPresencePayload(
   attendance: {
     id: number;
@@ -153,6 +180,7 @@ async function getOperationalStudentOrThrow(studentId: number, activeAcademicYea
     select: {
       id: true,
       name: true,
+      photo: true,
       nis: true,
       nisn: true,
       role: true,
@@ -177,6 +205,94 @@ async function getOperationalStudentOrThrow(studentId: number, activeAcademicYea
   }
 
   return student;
+}
+
+async function buildStudentDailyPresenceStatePayload(params: {
+  studentId: number;
+  activeAcademicYear: {
+    id: number;
+    name: string;
+  };
+  dateKey: string;
+}) {
+  const targetDate = toDateOnly(params.dateKey);
+  const student = await getOperationalStudentOrThrow(params.studentId, params.activeAcademicYear.id);
+
+  const [attendance, recentEvents] = await Promise.all([
+    prisma.dailyAttendance.findFirst({
+      where: {
+        studentId: student.id,
+        classId: student.studentClass!.id,
+        academicYearId: params.activeAcademicYear.id,
+        date: targetDate,
+      },
+      orderBy: { id: 'desc' },
+      select: {
+        id: true,
+        date: true,
+        status: true,
+        note: true,
+        checkInTime: true,
+        checkOutTime: true,
+        checkInSource: true,
+        checkOutSource: true,
+        checkInReason: true,
+        checkOutReason: true,
+      },
+    }),
+    prisma.dailyPresenceEvent.findMany({
+      where: {
+        studentId: student.id,
+        academicYearId: params.activeAcademicYear.id,
+        date: targetDate,
+      },
+      orderBy: { recordedAt: 'desc' },
+      take: 6,
+      select: {
+        id: true,
+        eventType: true,
+        source: true,
+        reason: true,
+        gateLabel: true,
+        recordedAt: true,
+        actor: {
+          select: {
+            id: true,
+            name: true,
+          },
+        },
+      },
+    }),
+  ]);
+
+  return {
+    date: params.dateKey,
+    academicYear: params.activeAcademicYear,
+    student: {
+      id: student.id,
+      name: student.name,
+      photo: student.photo || null,
+      nis: student.nis,
+      nisn: student.nisn,
+      class: student.studentClass
+        ? {
+            id: student.studentClass.id,
+            name: student.studentClass.name,
+          }
+        : null,
+    },
+    presence: buildPresencePayload(attendance),
+    recentEvents: recentEvents.map((event) => ({
+      id: event.id,
+      eventType: event.eventType,
+      source: event.source,
+      reason: event.reason,
+      gateLabel: event.gateLabel,
+      recordedAt: event.recordedAt.toISOString(),
+      recordedTime: formatTime(event.recordedAt),
+      actor: event.actor,
+    })),
+  };
 }
 
 async function safeNotifyParentDailyPresence(params: {
@@ -357,55 +473,180 @@ export const getStudentDailyPresence = asyncHandler(async (req: Request, res: Re
 
   const activeAcademicYear = await getActiveAcademicYearOrThrow();
   const dateKey = date || getJakartaDateKey();
-  const targetDate = toDateOnly(dateKey);
-  const student = await getOperationalStudentOrThrow(studentId, activeAcademicYear.id);
+  const payload = await buildStudentDailyPresenceStatePayload({
+    studentId,
+    activeAcademicYear,
+    dateKey,
+  });
 
-  const [attendance, recentEvents] = await Promise.all([
-    prisma.dailyAttendance.findFirst({
-      where: {
-        studentId: student.id,
-        classId: student.studentClass!.id,
-        academicYearId: activeAcademicYear.id,
-        date: targetDate,
+  res.status(200).json(
+    new ApiResponse(
+      200,
+      payload,
+      'Status presensi siswa berhasil diambil',
+    ),
+  );
+});
+
+export const getOwnDailyPresence = asyncHandler(async (req: Request, res: Response) => {
+  const user = (req as any).user;
+  if (String(user?.role || '').trim().toUpperCase() !== 'STUDENT') {
+    throw new ApiError(403, 'Fitur ini khusus untuk siswa.');
+  }
+
+  const activeAcademicYear = await getActiveAcademicYearOrThrow();
+  const date = z.object({ date: z.string().optional() }).parse(req.query).date;
+  const dateKey = date || getJakartaDateKey();
+  const payload = await buildStudentDailyPresenceStatePayload({
+    studentId: Number(user?.id || 0),
+    activeAcademicYear,
+    dateKey,
+  });
+
+  res.status(200).json(new ApiResponse(200, payload, 'Status presensi pribadi berhasil diambil'));
+});
+
+export const getActiveSelfScanSession = asyncHandler(async (req: Request, res: Response) => {
+  const user = (req as any).user;
+  const { checkpoint } = selfScanSessionSchema.parse(req.query);
+  const normalizedRole = String(user?.role || '').trim().toUpperCase();
+  const isStudent = normalizedRole === 'STUDENT';
+  if (normalizedRole === 'STUDENT') {
+    if (!user?.id) {
+      throw new ApiError(401, 'Sesi siswa tidak valid.');
+    }
+  } else {
+    await getPresenceManagerProfile(Number(user?.id || 0));
+  }
+
+  const activeAcademicYear = await getActiveAcademicYearOrThrow();
+  const dateKey = getJakartaDateKey();
+  const session = await getActiveDailyPresenceSelfScanSession(checkpoint);
+
+  const data =
+    session && session.academicYearId === activeAcademicYear.id && session.dateKey === dateKey
+      ? isStudent
+        ? buildDailyPresenceSelfScanSessionPublicPayload(session)
+        : buildDailyPresenceSelfScanSessionManagerPayload(session)
+      : null;
+
+  res.status(200).json(
+    new ApiResponse(
+      200,
+      {
+        academicYear: activeAcademicYear,
+        session: data,
       },
-      orderBy: { id: 'desc' },
-      select: {
-        id: true,
-        date: true,
-        status: true,
-        note: true,
-        checkInTime: true,
-        checkOutTime: true,
-        checkInSource: true,
-        checkOutSource: true,
-        checkInReason: true,
-        checkOutReason: true,
+      data ? 'Sesi scan mandiri aktif berhasil diambil' : 'Belum ada sesi scan mandiri yang aktif',
+    ),
+  );
+});
+
+export const startSelfScanSession = asyncHandler(async (req: Request, res: Response) => {
+  const user = (req as any).user;
+  const actor = await getPresenceManagerProfile(Number(user?.id || 0));
+  const { checkpoint, gateLabel } = selfScanSessionSchema.parse(req.body);
+  const activeAcademicYear = await getActiveAcademicYearOrThrow();
+  const dateKey = getJakartaDateKey();
+
+  const session = await createActiveDailyPresenceSelfScanSession({
+    checkpoint,
+    gateLabel,
+    actorId: actor.id,
+    actorName: actor.name,
+    academicYearId: activeAcademicYear.id,
+    dateKey,
+  });
+
+  res.status(200).json(
+    new ApiResponse(
+      200,
+      {
+        academicYear: activeAcademicYear,
+        session: buildDailyPresenceSelfScanSessionManagerPayload(session),
       },
-    }),
-    prisma.dailyPresenceEvent.findMany({
-      where: {
-        studentId: student.id,
-        academicYearId: activeAcademicYear.id,
-        date: targetDate,
+      checkpoint === 'CHECK_IN'
+        ? 'Sesi scan mandiri masuk berhasil dibuka.'
+        : 'Sesi scan mandiri pulang berhasil dibuka.',
+    ),
+  );
+});
+
+export const closeSelfScanSession = asyncHandler(async (req: Request, res: Response) => {
+  const user = (req as any).user;
+  await getPresenceManagerProfile(Number(user?.id || 0));
+  const { checkpoint } = selfScanSessionSchema.parse(req.body);
+  await closeActiveDailyPresenceSelfScanSession(checkpoint);
+
+  res.status(200).json(
+    new ApiResponse(
+      200,
+      {
+        checkpoint,
       },
-      orderBy: { recordedAt: 'desc' },
-      take: 6,
-      select: {
-        id: true,
-        eventType: true,
-        source: true,
-        reason: true,
-        gateLabel: true,
-        recordedAt: true,
-        actor: {
-          select: {
-            id: true,
-            name: true,
-          },
-        },
-      },
-    }),
-  ]);
+      checkpoint === 'CHECK_IN'
+        ? 'Sesi scan mandiri masuk berhasil ditutup.'
+        : 'Sesi scan mandiri pulang berhasil ditutup.',
+    ),
+  );
+});
+
+export const createSelfScanPass = asyncHandler(async (req: Request, res: Response) => {
+  const user = (req as any).user;
+  if (String(user?.role || '').trim().toUpperCase() !== 'STUDENT') {
+    throw new ApiError(403, 'QR scan mandiri hanya dapat dibuat oleh siswa.');
+  }
+
+  const { checkpoint, challengeCode } = selfScanPassSchema.parse(req.body);
+  const activeAcademicYear = await getActiveAcademicYearOrThrow();
+  const dateKey = getJakartaDateKey();
+  const session = await getActiveDailyPresenceSelfScanSession(checkpoint);
+
+  if (!session || session.academicYearId !== activeAcademicYear.id || session.dateKey !== dateKey) {
+    throw new ApiError(400, 'Petugas belum membuka sesi scan untuk checkpoint ini.');
+  }
+
+  if (!verifyDailyPresenceChallengeCode(session, challengeCode, new Date())) {
+    throw new ApiError(400, 'Kode challenge tidak cocok atau sudah kadaluarsa.');
+  }
+
+  const student = await getOperationalStudentOrThrow(Number(user?.id || 0), activeAcademicYear.id);
+  const existingAttendance = await prisma.dailyAttendance.findFirst({
+    where: {
+      studentId: student.id,
+      classId: student.studentClass!.id,
+      academicYearId: activeAcademicYear.id,
+      date: toDateOnly(dateKey),
+    },
+    orderBy: { id: 'desc' },
+    select: {
+      id: true,
+      checkInTime: true,
+      checkOutTime: true,
+    },
+  });
+
+  if (checkpoint === 'CHECK_IN' && existingAttendance?.checkInTime) {
+    throw new ApiError(400, 'Absen masuk hari ini sudah tercatat.');
+  }
+  if (checkpoint === 'CHECK_OUT' && existingAttendance?.checkOutTime) {
+    throw new ApiError(400, 'Absen pulang hari ini sudah tercatat.');
+  }
+
+  const qrToken = buildDailyPresenceSelfScanQrToken({
+    session,
+    studentId: student.id,
+    classId: student.studentClass!.id,
+  });
+  const qrCodeDataUrl = await QRCode.toDataURL(qrToken, {
+    errorCorrectionLevel: 'M',
+    margin: 1,
+    width: 320,
+    color: {
+      dark: '#0f172a',
+      light: '#ffffff',
+    },
+  });
 
   res.status(200).json(
     new ApiResponse(
@@ -416,28 +657,289 @@ export const getStudentDailyPresence = asyncHandler(async (req: Request, res: Re
         student: {
           id: student.id,
           name: student.name,
+          photo: student.photo || null,
           nis: student.nis,
           nisn: student.nisn,
-          class: student.studentClass
-            ? {
-                id: student.studentClass.id,
-                name: student.studentClass.name,
-              }
-            : null,
+          class: {
+            id: student.studentClass!.id,
+            name: student.studentClass!.name,
+          },
         },
-        presence: buildPresencePayload(attendance),
-        recentEvents: recentEvents.map((event) => ({
-          id: event.id,
-          eventType: event.eventType,
-          source: event.source,
-          reason: event.reason,
-          gateLabel: event.gateLabel,
-          recordedAt: event.recordedAt.toISOString(),
-          recordedTime: formatTime(event.recordedAt),
-          actor: event.actor,
-        })),
+        session: buildDailyPresenceSelfScanSessionPublicPayload(session),
+        checkpoint,
+        qrToken,
+        qrCodeDataUrl,
+        qrExpiresAt: new Date(Date.now() + DAILY_PRESENCE_SELF_SCAN_QR_TOKEN_TTL_SECONDS * 1000).toISOString(),
       },
-      'Status presensi siswa berhasil diambil',
+      checkpoint === 'CHECK_IN'
+        ? 'QR absen masuk berhasil dibuat.'
+        : 'QR absen pulang berhasil dibuat.',
+    ),
+  );
+});
+
+export const previewSelfScanPass = asyncHandler(async (req: Request, res: Response) => {
+  const user = (req as any).user;
+  await getPresenceManagerProfile(Number(user?.id || 0));
+  const { qrToken } = selfScanPreviewSchema.parse(req.body);
+  const decoded = verifyDailyPresenceSelfScanQrToken(qrToken);
+  const activeAcademicYear = await getActiveAcademicYearOrThrow();
+  const session = await getActiveDailyPresenceSelfScanSession(decoded.checkpoint);
+  const dateKey = getJakartaDateKey();
+
+  if (
+    !session ||
+    session.sessionId !== decoded.sessionId ||
+    session.academicYearId !== activeAcademicYear.id ||
+    session.dateKey !== dateKey
+  ) {
+    throw new ApiError(400, 'Sesi scan mandiri sudah tidak aktif.');
+  }
+
+  const student = await getOperationalStudentOrThrow(decoded.studentId, activeAcademicYear.id);
+  if (student.studentClass!.id !== decoded.classId) {
+    throw new ApiError(400, 'Data kelas siswa pada QR tidak cocok.');
+  }
+
+  const existingAttendance = await prisma.dailyAttendance.findFirst({
+    where: {
+      studentId: student.id,
+      classId: student.studentClass!.id,
+      academicYearId: activeAcademicYear.id,
+      date: toDateOnly(dateKey),
+    },
+    orderBy: { id: 'desc' },
+    select: {
+      id: true,
+      checkInTime: true,
+      checkOutTime: true,
+    },
+  });
+
+  const alreadyRecorded =
+    decoded.checkpoint === 'CHECK_IN'
+      ? Boolean(existingAttendance?.checkInTime)
+      : Boolean(existingAttendance?.checkOutTime);
+
+  res.status(200).json(
+    new ApiResponse(
+      200,
+      {
+        date: dateKey,
+        academicYear: activeAcademicYear,
+        checkpoint: decoded.checkpoint,
+        gateLabel: session.gateLabel,
+        student: {
+          id: student.id,
+          name: student.name,
+          photo: student.photo || null,
+          nis: student.nis,
+          nisn: student.nisn,
+          class: {
+            id: student.studentClass!.id,
+            name: student.studentClass!.name,
+          },
+        },
+        alreadyRecorded,
+      },
+      'QR presensi berhasil dipindai. Silakan verifikasi identitas siswa.',
+    ),
+  );
+});
+
+export const confirmSelfScanPass = asyncHandler(async (req: Request, res: Response) => {
+  const user = (req as any).user;
+  const actor = await getPresenceManagerProfile(Number(user?.id || 0));
+  const { qrToken } = selfScanPreviewSchema.parse(req.body);
+  const decoded = verifyDailyPresenceSelfScanQrToken(qrToken);
+  const activeAcademicYear = await getActiveAcademicYearOrThrow();
+  const session = await getActiveDailyPresenceSelfScanSession(decoded.checkpoint);
+  const dateKey = getJakartaDateKey();
+  const targetDate = toDateOnly(dateKey);
+
+  if (
+    !session ||
+    session.sessionId !== decoded.sessionId ||
+    session.academicYearId !== activeAcademicYear.id ||
+    session.dateKey !== dateKey
+  ) {
+    throw new ApiError(400, 'Sesi scan mandiri sudah tidak aktif.');
+  }
+
+  if (!(await consumeDailyPresenceSelfScanQrToken(qrToken))) {
+    throw new ApiError(400, 'QR ini sudah pernah dipakai. Minta siswa buat QR baru.');
+  }
+
+  const student = await getOperationalStudentOrThrow(decoded.studentId, activeAcademicYear.id);
+  if (student.studentClass!.id !== decoded.classId) {
+    throw new ApiError(400, 'Data kelas siswa pada QR tidak cocok.');
+  }
+
+  const now = new Date();
+  const attendanceResult = await prisma.$transaction(async (tx) => {
+    const existing = await tx.dailyAttendance.findFirst({
+      where: {
+        studentId: student.id,
+        classId: student.studentClass!.id,
+        academicYearId: activeAcademicYear.id,
+        date: targetDate,
+      },
+      orderBy: { id: 'desc' },
+    });
+
+    if (decoded.checkpoint === 'CHECK_IN' && existing?.checkInTime) {
+      throw new ApiError(400, 'Absen masuk hari ini sudah tercatat.');
+    }
+    if (decoded.checkpoint === 'CHECK_OUT' && existing?.checkOutTime) {
+      throw new ApiError(400, 'Absen pulang hari ini sudah tercatat.');
+    }
+
+    const nextStatus =
+      existing?.status === 'PRESENT' || existing?.status === 'LATE' ? existing.status : 'PRESENT';
+    const shouldNotifyParent =
+      decoded.checkpoint === 'CHECK_IN' ? !existing?.checkInTime : !existing?.checkOutTime;
+    const upserted = existing
+      ? await tx.dailyAttendance.update({
+          where: { id: existing.id },
+          data:
+            decoded.checkpoint === 'CHECK_IN'
+              ? {
+                  status: nextStatus,
+                  checkInTime: now,
+                  checkInSource: DailyPresenceCaptureSource.SELF_SCAN,
+                  checkInReason: `Self scan ${session.gateLabel ? `(${session.gateLabel})` : 'mobile'}`,
+                  checkInActorId: actor.id,
+                }
+              : {
+                  status: nextStatus,
+                  checkOutTime: now,
+                  checkOutSource: DailyPresenceCaptureSource.SELF_SCAN,
+                  checkOutReason: `Self scan ${session.gateLabel ? `(${session.gateLabel})` : 'mobile'}`,
+                  checkOutActorId: actor.id,
+                },
+          select: {
+            id: true,
+            date: true,
+            status: true,
+            note: true,
+            checkInTime: true,
+            checkOutTime: true,
+            checkInSource: true,
+            checkOutSource: true,
+            checkInReason: true,
+            checkOutReason: true,
+          },
+        })
+      : await tx.dailyAttendance.create({
+          data: {
+            date: targetDate,
+            studentId: student.id,
+            classId: student.studentClass!.id,
+            academicYearId: activeAcademicYear.id,
+            status: nextStatus,
+            note: null,
+            ...(decoded.checkpoint === 'CHECK_IN'
+              ? {
+                  checkInTime: now,
+                  checkInSource: DailyPresenceCaptureSource.SELF_SCAN,
+                  checkInReason: `Self scan ${session.gateLabel ? `(${session.gateLabel})` : 'mobile'}`,
+                  checkInActorId: actor.id,
+                }
+              : {
+                  checkOutTime: now,
+                  checkOutSource: DailyPresenceCaptureSource.SELF_SCAN,
+                  checkOutReason: `Self scan ${session.gateLabel ? `(${session.gateLabel})` : 'mobile'}`,
+                  checkOutActorId: actor.id,
+                }),
+          },
+          select: {
+            id: true,
+            date: true,
+            status: true,
+            note: true,
+            checkInTime: true,
+            checkOutTime: true,
+            checkInSource: true,
+            checkOutSource: true,
+            checkInReason: true,
+            checkOutReason: true,
+          },
+        });
+
+    await tx.dailyPresenceEvent.create({
+      data: {
+        dailyAttendanceId: upserted.id,
+        studentId: student.id,
+        classId: student.studentClass!.id,
+        academicYearId: activeAcademicYear.id,
+        date: targetDate,
+        eventType:
+          decoded.checkpoint === 'CHECK_IN'
+            ? DailyPresenceEventType.CHECK_IN
+            : DailyPresenceEventType.CHECK_OUT,
+        source: DailyPresenceCaptureSource.SELF_SCAN,
+        reason: `Self scan terverifikasi petugas${session.gateLabel ? ` di ${session.gateLabel}` : ''}`,
+        gateLabel: session.gateLabel || null,
+        actorId: actor.id,
+        recordedAt: now,
+      },
+    });
+
+    return {
+      attendance: upserted,
+      shouldNotifyParent,
+    };
+  });
+
+  broadcastDomainEvent({
+    domain: 'ATTENDANCE',
+    action: 'UPDATED',
+    scope: {
+      attendanceMode: 'DAILY_PRESENCE',
+      academicYearIds: [activeAcademicYear.id],
+      classIds: [student.studentClass!.id],
+      studentIds: [student.id],
+      dates: [dateKey],
+    },
+  });
+
+  if (attendanceResult.shouldNotifyParent) {
+    const recordedAt =
+      decoded.checkpoint === 'CHECK_IN'
+        ? attendanceResult.attendance.checkInTime
+        : attendanceResult.attendance.checkOutTime;
+    await safeNotifyParentDailyPresence({
+      studentId: student.id,
+      studentName: student.name,
+      classId: student.studentClass!.id,
+      checkpoint: decoded.checkpoint,
+      recordedAt,
+      dateKey,
+    });
+  }
+
+  res.status(200).json(
+    new ApiResponse(
+      200,
+      {
+        date: dateKey,
+        academicYear: activeAcademicYear,
+        student: {
+          id: student.id,
+          name: student.name,
+          photo: student.photo || null,
+          nis: student.nis,
+          nisn: student.nisn,
+          class: {
+            id: student.studentClass!.id,
+            name: student.studentClass!.name,
+          },
+        },
+        presence: buildPresencePayload(attendanceResult.attendance),
+      },
+      decoded.checkpoint === 'CHECK_IN'
+        ? 'Absen masuk scan mandiri berhasil diverifikasi.'
+        : 'Absen pulang scan mandiri berhasil diverifikasi.',
     ),
   );
 });

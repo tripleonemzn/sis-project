@@ -9,9 +9,16 @@ import {
   getStudentAttendanceHistory,
 } from '../controllers/attendance.controller';
 import {
+  closeSelfScanSession,
+  confirmSelfScanPass,
+  createSelfScanPass,
+  getActiveSelfScanSession,
   getDailyPresenceOverview,
+  getOwnDailyPresence,
   getStudentDailyPresence,
   saveAssistedDailyPresence,
+  previewSelfScanPass,
+  startSelfScanSession,
 } from '../controllers/dailyPresence.controller';
 import { authMiddleware } from '../middleware/auth';
 import { roleMiddleware } from '../middleware/role';
@@ -31,6 +38,13 @@ router.get('/student-history', roleMiddleware(['STUDENT', 'PARENT']), getStudent
 router.get('/daily-presence/overview', roleMiddleware(['ADMIN', 'STAFF']), getDailyPresenceOverview);
 router.get('/daily-presence/student', roleMiddleware(['ADMIN', 'STAFF']), getStudentDailyPresence);
 router.post('/daily-presence/assisted', roleMiddleware(['ADMIN', 'STAFF']), saveAssistedDailyPresence);
+router.get('/daily-presence/me', roleMiddleware(['STUDENT']), getOwnDailyPresence);
+router.get('/daily-presence/self-scan/session', roleMiddleware(['ADMIN', 'STAFF', 'STUDENT']), getActiveSelfScanSession);
+router.post('/daily-presence/self-scan/session', roleMiddleware(['ADMIN', 'STAFF']), startSelfScanSession);
+router.post('/daily-presence/self-scan/session/close', roleMiddleware(['ADMIN', 'STAFF']), closeSelfScanSession);
+router.post('/daily-presence/self-scan/pass', roleMiddleware(['STUDENT']), createSelfScanPass);
+router.post('/daily-presence/self-scan/preview', roleMiddleware(['ADMIN', 'STAFF']), previewSelfScanPass);
+router.post('/daily-presence/self-scan/confirm', roleMiddleware(['ADMIN', 'STAFF']), confirmSelfScanPass);
 
 // Routes restricted to Staff/Teachers
 router.use(roleMiddleware(['ADMIN', 'TEACHER', 'PRINCIPAL']));

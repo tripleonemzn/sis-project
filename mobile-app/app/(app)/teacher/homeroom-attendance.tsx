@@ -22,6 +22,10 @@ import { attendanceRecapApi } from '../../../src/features/attendanceRecap/attend
 import { AttendanceRecapRow } from '../../../src/features/attendanceRecap/types';
 import { getStandardPagePadding } from '../../../src/lib/ui/pageLayout';
 import { notifyApiError, notifySuccess } from '../../../src/lib/ui/feedback';
+import {
+  buildResponsivePageContentStyle,
+  useResponsiveLayout,
+} from '../../../src/lib/ui/useResponsiveLayout';
 import { useAppTextScale } from '../../../src/theme/AppTextScaleProvider';
 
 type TabKey = 'DAILY' | 'RECAP' | 'LATE';
@@ -86,9 +90,11 @@ function matchesStudentQuery(
 export default function TeacherHomeroomAttendanceScreen() {
   const router = useRouter();
   const insets = useSafeAreaInsets();
+  const layout = useResponsiveLayout();
   const queryClient = useQueryClient();
   const { isAuthenticated, isLoading, user } = useAuth();
-  const pagePadding = getStandardPagePadding(insets, { bottom: 120 });
+  const pagePadding = getStandardPagePadding(insets, { horizontal: layout.pageHorizontal, bottom: 120 });
+  const pageContentStyle = buildResponsivePageContentStyle(pagePadding, layout);
   const { scaleFont, scaleLineHeight } = useAppTextScale();
 
   const [tab, setTab] = useState<TabKey>('DAILY');
@@ -347,7 +353,7 @@ export default function TeacherHomeroomAttendanceScreen() {
 
   if (user?.role !== 'TEACHER') {
     return (
-      <ScrollView style={{ flex: 1, backgroundColor: '#f8fafc' }} contentContainerStyle={pagePadding}>
+      <ScrollView style={{ flex: 1, backgroundColor: '#f8fafc' }} contentContainerStyle={pageContentStyle}>
         <Text style={{ fontSize: scaleFont(20), lineHeight: scaleLineHeight(28), fontWeight: '700', marginBottom: 8 }}>Rekap Presensi</Text>
         <QueryStateView type="error" message="Halaman ini khusus untuk role guru." />
         <Pressable
@@ -369,7 +375,7 @@ export default function TeacherHomeroomAttendanceScreen() {
   return (
     <ScrollView
       style={{ flex: 1, backgroundColor: '#f8fafc' }}
-      contentContainerStyle={pagePadding}
+      contentContainerStyle={pageContentStyle}
       refreshControl={
         <RefreshControl
           refreshing={
@@ -487,6 +493,7 @@ export default function TeacherHomeroomAttendanceScreen() {
           ]}
           activeKey={tab}
           onChange={(next) => setTab(next as TabKey)}
+          layout={layout.prefersSplitPane ? 'fill' : 'scroll'}
           minTabWidth={86}
           maxTabWidth={104}
           compact

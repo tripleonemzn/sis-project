@@ -17,6 +17,10 @@ import {
 import { attendanceApi } from '../../../src/features/attendance/attendanceApi';
 import { TeacherAttendanceStatus } from '../../../src/features/attendance/types';
 import { getStandardPagePadding } from '../../../src/lib/ui/pageLayout';
+import {
+  buildResponsivePageContentStyle,
+  useResponsiveLayout,
+} from '../../../src/lib/ui/useResponsiveLayout';
 import { useAppTextScale } from '../../../src/theme/AppTextScaleProvider';
 
 type StatusConfig = {
@@ -56,11 +60,13 @@ function formatLongDate(date: Date) {
 export default function TeacherAttendanceScreen() {
   const router = useRouter();
   const insets = useSafeAreaInsets();
+  const layout = useResponsiveLayout();
   const queryClient = useQueryClient();
   const params = useLocalSearchParams<{ assignmentId?: string }>();
   const initialAssignmentId = params.assignmentId ? Number(params.assignmentId) : null;
   const { isAuthenticated, isLoading, user } = useAuth();
-  const pageContentPadding = getStandardPagePadding(insets);
+  const pageContentPadding = getStandardPagePadding(insets, { horizontal: layout.pageHorizontal });
+  const pageContentStyle = buildResponsivePageContentStyle(pageContentPadding, layout);
   const { scaleFont, scaleLineHeight } = useAppTextScale();
   const assignmentsQuery = useTeacherAssignmentsQuery({ enabled: isAuthenticated, user });
   const [selectedAssignmentId, setSelectedAssignmentId] = useState<number | null>(
@@ -201,7 +207,7 @@ export default function TeacherAttendanceScreen() {
 
   if (user?.role !== 'TEACHER') {
     return (
-      <ScrollView style={{ flex: 1, backgroundColor: '#f8fafc' }} contentContainerStyle={pageContentPadding}>
+      <ScrollView style={{ flex: 1, backgroundColor: '#f8fafc' }} contentContainerStyle={pageContentStyle}>
         <Text style={{ fontSize: scaleFont(20), lineHeight: scaleLineHeight(28), fontWeight: '700', marginBottom: 8 }}>Presensi Siswa</Text>
         <QueryStateView type="error" message="Halaman ini khusus untuk role guru." />
         <Pressable
@@ -223,7 +229,7 @@ export default function TeacherAttendanceScreen() {
   return (
     <ScrollView
       style={{ flex: 1, backgroundColor: '#f8fafc' }}
-      contentContainerStyle={pageContentPadding}
+      contentContainerStyle={pageContentStyle}
       refreshControl={
         <RefreshControl
           refreshing={
@@ -250,88 +256,92 @@ export default function TeacherAttendanceScreen() {
       {!assignmentsQuery.isLoading && !assignmentsQuery.isError ? (
         assignments.length > 0 ? (
           <>
-            <View
-              style={{
-                backgroundColor: '#fff',
-                borderWidth: 1,
-                borderColor: '#e2e8f0',
-                borderRadius: 10,
-                padding: 12,
-                marginBottom: 12,
-              }}
-            >
-              <Text style={{ color: '#0f172a', fontWeight: '700', marginBottom: 8 }}>Pilih Kelas & Mapel</Text>
-              <MobileSelectField
-                value={effectiveSelectedAssignmentId ? String(effectiveSelectedAssignmentId) : ''}
-                options={assignmentOptions}
-                onChange={(next) => {
-                  setSelectedAssignmentId(next ? Number(next) : null);
-                  setDraftOverrides({});
+            <View style={{ flexDirection: layout.prefersSplitPane ? 'row' : 'column', gap: 12 }}>
+              <View
+                style={{
+                  flex: 1,
+                  backgroundColor: '#fff',
+                  borderWidth: 1,
+                  borderColor: '#e2e8f0',
+                  borderRadius: 10,
+                  padding: 12,
+                  marginBottom: 12,
                 }}
-                placeholder="Pilih kelas & mapel"
-              />
-            </View>
+              >
+                <Text style={{ color: '#0f172a', fontWeight: '700', marginBottom: 8 }}>Pilih Kelas & Mapel</Text>
+                <MobileSelectField
+                  value={effectiveSelectedAssignmentId ? String(effectiveSelectedAssignmentId) : ''}
+                  options={assignmentOptions}
+                  onChange={(next) => {
+                    setSelectedAssignmentId(next ? Number(next) : null);
+                    setDraftOverrides({});
+                  }}
+                  placeholder="Pilih kelas & mapel"
+                />
+              </View>
 
-            <View
-              style={{
-                backgroundColor: '#fff',
-                borderWidth: 1,
-                borderColor: '#e2e8f0',
-                borderRadius: 10,
-                padding: 12,
-                marginBottom: 12,
-              }}
-            >
-              <Text style={{ color: '#0f172a', fontWeight: '700', marginBottom: 8 }}>Tanggal Presensi</Text>
-              <Text style={{ color: '#334155', marginBottom: 8 }}>{formatLongDate(selectedDate)}</Text>
-              <View style={{ flexDirection: 'row', marginHorizontal: -4 }}>
-                <View style={{ flex: 1, paddingHorizontal: 4 }}>
-                  <Pressable
-                    onPress={() => shiftDate(-1)}
-                    style={{
-                      borderWidth: 1,
-                      borderColor: '#cbd5e1',
-                      borderRadius: 8,
-                      paddingVertical: 9,
-                      alignItems: 'center',
-                      backgroundColor: '#fff',
-                    }}
-                  >
-                    <Text style={{ color: '#334155', fontWeight: '600' }}>-1 Hari</Text>
-                  </Pressable>
-                </View>
-                <View style={{ flex: 1, paddingHorizontal: 4 }}>
-                  <Pressable
-                    onPress={() => {
-                      setDraftOverrides({});
-                      setSelectedDate(new Date());
-                    }}
-                    style={{
-                      borderWidth: 1,
-                      borderColor: '#bfdbfe',
-                      borderRadius: 8,
-                      paddingVertical: 9,
-                      alignItems: 'center',
-                      backgroundColor: '#eff6ff',
-                    }}
-                  >
-                    <Text style={{ color: '#1d4ed8', fontWeight: '700' }}>Hari Ini</Text>
-                  </Pressable>
-                </View>
-                <View style={{ flex: 1, paddingHorizontal: 4 }}>
-                  <Pressable
-                    onPress={() => shiftDate(1)}
-                    style={{
-                      borderWidth: 1,
-                      borderColor: '#cbd5e1',
-                      borderRadius: 8,
-                      paddingVertical: 9,
-                      alignItems: 'center',
-                      backgroundColor: '#fff',
-                    }}
-                  >
-                    <Text style={{ color: '#334155', fontWeight: '600' }}>+1 Hari</Text>
-                  </Pressable>
+              <View
+                style={{
+                  flex: 1,
+                  backgroundColor: '#fff',
+                  borderWidth: 1,
+                  borderColor: '#e2e8f0',
+                  borderRadius: 10,
+                  padding: 12,
+                  marginBottom: 12,
+                }}
+              >
+                <Text style={{ color: '#0f172a', fontWeight: '700', marginBottom: 8 }}>Tanggal Presensi</Text>
+                <Text style={{ color: '#334155', marginBottom: 8 }}>{formatLongDate(selectedDate)}</Text>
+                <View style={{ flexDirection: 'row', marginHorizontal: -4 }}>
+                  <View style={{ flex: 1, paddingHorizontal: 4 }}>
+                    <Pressable
+                      onPress={() => shiftDate(-1)}
+                      style={{
+                        borderWidth: 1,
+                        borderColor: '#cbd5e1',
+                        borderRadius: 8,
+                        paddingVertical: 9,
+                        alignItems: 'center',
+                        backgroundColor: '#fff',
+                      }}
+                    >
+                      <Text style={{ color: '#334155', fontWeight: '600' }}>-1 Hari</Text>
+                    </Pressable>
+                  </View>
+                  <View style={{ flex: 1, paddingHorizontal: 4 }}>
+                    <Pressable
+                      onPress={() => {
+                        setDraftOverrides({});
+                        setSelectedDate(new Date());
+                      }}
+                      style={{
+                        borderWidth: 1,
+                        borderColor: '#bfdbfe',
+                        borderRadius: 8,
+                        paddingVertical: 9,
+                        alignItems: 'center',
+                        backgroundColor: '#eff6ff',
+                      }}
+                    >
+                      <Text style={{ color: '#1d4ed8', fontWeight: '700' }}>Hari Ini</Text>
+                    </Pressable>
+                  </View>
+                  <View style={{ flex: 1, paddingHorizontal: 4 }}>
+                    <Pressable
+                      onPress={() => shiftDate(1)}
+                      style={{
+                        borderWidth: 1,
+                        borderColor: '#cbd5e1',
+                        borderRadius: 8,
+                        paddingVertical: 9,
+                        alignItems: 'center',
+                        backgroundColor: '#fff',
+                      }}
+                    >
+                      <Text style={{ color: '#334155', fontWeight: '600' }}>+1 Hari</Text>
+                    </Pressable>
+                  </View>
                 </View>
               </View>
             </View>

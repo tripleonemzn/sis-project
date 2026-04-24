@@ -2,6 +2,10 @@ import { apiClient } from '../../lib/api/client';
 import {
   DailyAttendanceEntry,
   DailyLateSummaryPayload,
+  DailyPresenceSelfScanManagerSession,
+  DailyPresenceSelfScanPass,
+  DailyPresenceSelfScanPreview,
+  DailyPresenceSelfScanSession,
   DailyPresenceOverview,
   DailyPresenceStudentState,
   StudentAttendanceHistory,
@@ -55,6 +59,46 @@ type DailyPresenceStudentResponse = {
   success: boolean;
   message: string;
   data: DailyPresenceStudentState;
+};
+
+type DailyPresenceSelfScanSessionEnvelope = {
+  statusCode: number;
+  success: boolean;
+  message: string;
+  data: {
+    academicYear: {
+      id: number;
+      name: string;
+    };
+    session: DailyPresenceSelfScanSession | DailyPresenceSelfScanManagerSession | null;
+  };
+};
+
+type DailyPresenceSelfScanManagerEnvelope = {
+  statusCode: number;
+  success: boolean;
+  message: string;
+  data: {
+    academicYear: {
+      id: number;
+      name: string;
+    };
+    session: DailyPresenceSelfScanManagerSession;
+  };
+};
+
+type DailyPresenceSelfScanPassEnvelope = {
+  statusCode: number;
+  success: boolean;
+  message: string;
+  data: DailyPresenceSelfScanPass;
+};
+
+type DailyPresenceSelfScanPreviewEnvelope = {
+  statusCode: number;
+  success: boolean;
+  message: string;
+  data: DailyPresenceSelfScanPreview;
 };
 
 export const attendanceApi = {
@@ -118,6 +162,12 @@ export const attendanceApi = {
     });
     return response.data?.data;
   },
+  async getOwnDailyPresence(params?: { date?: string }) {
+    const response = await apiClient.get<DailyPresenceStudentResponse>('/attendances/daily-presence/me', {
+      params,
+    });
+    return response.data?.data;
+  },
   async saveAssistedDailyPresence(payload: {
     studentId: number;
     checkpoint: 'CHECK_IN' | 'CHECK_OUT';
@@ -125,6 +175,61 @@ export const attendanceApi = {
     gateLabel?: string | null;
   }) {
     const response = await apiClient.post<DailyPresenceStudentResponse>('/attendances/daily-presence/assisted', payload);
+    return response.data?.data;
+  },
+  async getActiveSelfScanSession(params: { checkpoint: 'CHECK_IN' | 'CHECK_OUT' }) {
+    const response = await apiClient.get<DailyPresenceSelfScanSessionEnvelope>(
+      '/attendances/daily-presence/self-scan/session',
+      {
+        params,
+      },
+    );
+    return response.data?.data?.session || null;
+  },
+  async getActiveManagerSelfScanSession(params: { checkpoint: 'CHECK_IN' | 'CHECK_OUT' }) {
+    const response = await apiClient.get<DailyPresenceSelfScanManagerEnvelope>(
+      '/attendances/daily-presence/self-scan/session',
+      {
+        params,
+      },
+    );
+    return response.data?.data?.session || null;
+  },
+  async startSelfScanSession(payload: {
+    checkpoint: 'CHECK_IN' | 'CHECK_OUT';
+    gateLabel?: string | null;
+  }) {
+    const response = await apiClient.post<DailyPresenceSelfScanManagerEnvelope>(
+      '/attendances/daily-presence/self-scan/session',
+      payload,
+    );
+    return response.data?.data?.session;
+  },
+  async closeSelfScanSession(payload: { checkpoint: 'CHECK_IN' | 'CHECK_OUT' }) {
+    await apiClient.post('/attendances/daily-presence/self-scan/session/close', payload);
+  },
+  async createSelfScanPass(payload: {
+    checkpoint: 'CHECK_IN' | 'CHECK_OUT';
+    challengeCode: string;
+  }) {
+    const response = await apiClient.post<DailyPresenceSelfScanPassEnvelope>(
+      '/attendances/daily-presence/self-scan/pass',
+      payload,
+    );
+    return response.data?.data;
+  },
+  async previewSelfScanPass(payload: { qrToken: string }) {
+    const response = await apiClient.post<DailyPresenceSelfScanPreviewEnvelope>(
+      '/attendances/daily-presence/self-scan/preview',
+      payload,
+    );
+    return response.data?.data;
+  },
+  async confirmSelfScanPass(payload: { qrToken: string }) {
+    const response = await apiClient.post<DailyPresenceStudentResponse>(
+      '/attendances/daily-presence/self-scan/confirm',
+      payload,
+    );
     return response.data?.data;
   },
 };

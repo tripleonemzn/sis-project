@@ -66,6 +66,7 @@ export type DailyPresenceStudentState = {
   student: {
     id: number;
     name: string;
+    photo?: string | null;
     nis?: string | null;
     nisn?: string | null;
     class?: {
@@ -86,6 +87,71 @@ export type DailyPresenceStudentState = {
     checkOutReason?: string | null;
   };
   recentEvents: DailyPresenceEventItem[];
+};
+
+export type DailyPresenceSelfScanSession = {
+  sessionId: string;
+  checkpoint: DailyPresenceEventType;
+  gateLabel?: string | null;
+  date: string;
+  challengeWindowSeconds: number;
+  challengeWindowExpiresAt: string;
+  sessionExpiresAt: string;
+};
+
+export type DailyPresenceSelfScanManagerSession = DailyPresenceSelfScanSession & {
+  actor: {
+    id: number;
+    name: string;
+  };
+  challengeSecret: string;
+  challengeCode: string;
+};
+
+export type DailyPresenceSelfScanPass = {
+  date: string;
+  academicYear: {
+    id: number;
+    name: string;
+  };
+  student: {
+    id: number;
+    name: string;
+    photo?: string | null;
+    nis?: string | null;
+    nisn?: string | null;
+    class?: {
+      id: number;
+      name: string;
+    } | null;
+  };
+  session: DailyPresenceSelfScanSession;
+  checkpoint: DailyPresenceEventType;
+  qrToken: string;
+  qrCodeDataUrl: string;
+  qrExpiresAt: string;
+};
+
+export type DailyPresenceSelfScanPreview = {
+  date: string;
+  academicYear: {
+    id: number;
+    name: string;
+  };
+  checkpoint: DailyPresenceEventType;
+  gateLabel?: string | null;
+  student: {
+    id: number;
+    name: string;
+    photo?: string | null;
+    nis?: string | null;
+    nisn?: string | null;
+    class: {
+      id: number;
+      name: string;
+    };
+  };
+  alreadyRecorded: boolean;
 };
 
 export type TeacherAttendanceStatus = 'PRESENT' | 'ABSENT' | 'SICK' | 'PERMISSION' | 'LATE';

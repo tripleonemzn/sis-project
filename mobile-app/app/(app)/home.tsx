@@ -50,6 +50,10 @@ import { ENV } from '../../src/config/env';
 import { apiClient } from '../../src/lib/api/client';
 import { getStandardPagePadding } from '../../src/lib/ui/pageLayout';
 import { notifyApiError, notifySuccess } from '../../src/lib/ui/feedback';
+import {
+  buildResponsivePageContentStyle,
+  useResponsiveLayout,
+} from '../../src/lib/ui/useResponsiveLayout';
 import type { AuthUser } from '../../src/features/auth/types';
 import { useUnreadNotificationsQuery } from '../../src/features/notifications/useUnreadNotificationsQuery';
 import { useIsScreenActive } from '../../src/hooks/useIsScreenActive';
@@ -884,6 +888,7 @@ const FALLBACK_PROFILE: AuthUser = {
 export default function HomeScreen() {
   const router = useRouter();
   const insets = useSafeAreaInsets();
+  const layout = useResponsiveLayout();
   const { user, isAuthenticated, isLoading, logout } = useAuth();
   const { colors, mode } = useAppTheme();
   const { scaleFont, scaleLineHeight, fontSizes, typography } = useAppTextScale();
@@ -942,7 +947,12 @@ export default function HomeScreen() {
   const footerSystemInset = Platform.OS === 'android' ? Math.max(insets.bottom, 10) : insets.bottom;
   const footerBottomOffset = footerBaseOffset + footerSystemInset;
   const footerReservedSpace = footerBottomOffset + 100;
-  const homeContentPadding = getStandardPagePadding(insets, { horizontal: 18, bottom: footerReservedSpace });
+  const homeContentPadding = getStandardPagePadding(insets, {
+    horizontal: Math.max(18, layout.pageHorizontal),
+    bottom: footerReservedSpace,
+  });
+  const homeContentStyle = buildResponsivePageContentStyle(homeContentPadding, layout);
+  const quickMenuWidth = (layout.isTablet ? '25%' : '33.3333%') as `${number}%`;
   const teacherAssignmentsQuery = useTeacherAssignmentsQuery({ enabled: isAuthenticated, user: profile });
   const activeAcademicYearQuery = useQuery({
     queryKey: ['mobile-home-active-academic-year', profile.id],
@@ -2341,7 +2351,7 @@ export default function HomeScreen() {
       <ScrollView
         style={{ flex: 1 }}
         contentContainerStyle={{
-          ...homeContentPadding,
+          ...homeContentStyle,
           flexGrow: 1,
         }}
         refreshControl={<RefreshControl refreshing={isRefreshing} onRefresh={() => void handleRefresh()} />}
@@ -2939,7 +2949,7 @@ export default function HomeScreen() {
                 const tone = resolveMenuTone(getMenuIconTone(menu.key), isDarkModeActive ? 'dark' : 'light');
                 const isOpeningThisMenu = openingMenuKey === menu.key;
                 return (
-                  <View key={menu.key} style={{ width: '33.3333%', paddingHorizontal: 4, marginBottom: 10 }}>
+                  <View key={menu.key} style={{ width: quickMenuWidth, paddingHorizontal: 4, marginBottom: 10 }}>
                     <Pressable
                       disabled={isMenuTransitioning}
                       onPress={() => {
