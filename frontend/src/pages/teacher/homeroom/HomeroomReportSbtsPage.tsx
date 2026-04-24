@@ -529,7 +529,7 @@ export const HomeroomReportSbtsPage = ({
             placeholder="Cari siswa..."
             value={searchQuery}
             onChange={(e) => setSearchQuery(e.target.value)}
-            className="w-full pl-9 pr-4 py-2 text-sm border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500"
+            className="h-10 w-full pl-9 pr-4 text-sm border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500"
           />
         </div>
         <div className="flex flex-wrap gap-4">
@@ -545,14 +545,14 @@ export const HomeroomReportSbtsPage = ({
                   savePrintSchoolAddress();
                 }
               }}
-              className="px-2 py-1.5 text-sm border border-gray-300 rounded-lg w-64 focus:outline-none focus:ring-2 focus:ring-blue-500"
+              className="h-10 w-64 px-3 text-sm border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500"
               placeholder="Alamat Sekolah"
             />
             <button
               type="button"
               onClick={savePrintSchoolAddress}
               disabled={!hasUnsavedChanges}
-              className={`inline-flex items-center gap-2 px-3 py-1.5 rounded-lg text-xs font-medium transition-colors ${
+              className={`inline-flex h-10 items-center gap-2 px-4 rounded-lg text-sm font-medium transition-colors ${
                 hasUnsavedChanges
                   ? 'bg-blue-600 text-white hover:bg-blue-700'
                   : 'bg-gray-100 text-gray-400 cursor-not-allowed'
