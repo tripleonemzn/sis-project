@@ -58,6 +58,14 @@ type StudentReportPayload = {
     };
     extracurriculars: ReportRow[];
     organizations?: ReportRow[];
+    attendance?: {
+      sick?: number;
+      s?: number;
+      permission?: number;
+      i?: number;
+      absent?: number;
+      a?: number;
+    };
   };
   footer: {
     date?: string;
@@ -129,6 +137,21 @@ export const HomeroomReportSbtsPage = ({
     const meta = data?.body?.meta || {};
     const col1Label = String(meta.col1Label || 'Komponen 1');
     const col2Label = String(meta.col2Label || resolvedReportLabel || 'Komponen 2');
+    const normalizeSbtsHeaderCode = (value: unknown): string => {
+      const normalized = String(value || '').trim().toUpperCase();
+      const compact = normalized.replace(/[^A-Z0-9]+/g, '');
+      if (
+        compact.includes('SBTS') ||
+        compact.includes('MIDTERM') ||
+        compact.includes('SUMATIFBERSAMATENGAHSEMESTER') ||
+        compact.includes('SUMATIFTENGAHSEMESTER') ||
+        ['PTS', 'UTS'].includes(compact)
+      ) {
+        return 'SBTS';
+      }
+      return normalized || 'SBTS';
+    };
+    const col2HeaderLabel = `NILAI ${normalizeSbtsHeaderCode(col2Label)}`;
     const resolvedPrintPlace = String(printPlace || data.footer.place || '').trim() || 'Bekasi';
     const resolvedPrintDate =
       String(printDate || data.footer.date || '').trim() || 'Tanggal rapor belum diatur';
@@ -256,7 +279,7 @@ export const HomeroomReportSbtsPage = ({
 
       return `
         <div style="margin-top: 15px;">
-          <div style="font-weight: bold; margin-bottom: 5px;">D. EKSTRAKURIKULER</div>
+          <div style="font-weight: bold; margin-bottom: 5px;">E. EKSTRAKURIKULER</div>
           <table class="content-table">
             <thead>
               <tr>
@@ -291,7 +314,7 @@ export const HomeroomReportSbtsPage = ({
 
       return `
         <div style="margin-top: 15px;">
-          <div style="font-weight: bold; margin-bottom: 5px;">E. ORGANISASI SISWA (OSIS)</div>
+          <div style="font-weight: bold; margin-bottom: 5px;">F. ORGANISASI SISWA (OSIS)</div>
           <table class="content-table">
             <thead>
               <tr>
@@ -309,6 +332,11 @@ export const HomeroomReportSbtsPage = ({
       `;
     };
 
+    const att = data.body.attendance || {};
+    const sick = att.sick ?? att.s ?? 0;
+    const permission = att.permission ?? att.i ?? 0;
+    const absent = att.absent ?? att.a ?? 0;
+
     const html = `
       <!DOCTYPE html>
       <html>
@@ -322,14 +350,16 @@ export const HomeroomReportSbtsPage = ({
           .header-school { font-weight: bold; font-size: 14px; margin: 2px 0; }
           .header-year { font-weight: bold; font-size: 12px; }
           
-          .info-table { width: 100%; margin-bottom: 15px; font-size: 12px; }
-          .info-table td { padding: 2px; vertical-align: top; }
+          .info-table { width: 100%; margin-bottom: 10px; font-size: 12px; border-collapse: collapse; line-height: 1; }
+          .info-table td { padding: 0 2px; vertical-align: top; line-height: 1; }
           
           .content-table { width: 100%; border-collapse: collapse; margin-bottom: 20px; font-size: 12px; }
           .content-table th, .content-table td { border: 1px solid black; padding: 4px; }
           .content-table th { text-align: center; background-color: #f0f0f0; font-weight: bold; vertical-align: middle; }
           .ket-header, .ket-cell { white-space: nowrap; width: 1%; }
           .empty-component-cell { text-align: center; color: #64748b; font-style: italic; white-space: nowrap; }
+          .attendance-table { width: 60%; border-collapse: collapse; margin-bottom: 15px; font-size: 12px; }
+          .attendance-table td { border: 1px solid black; padding: 4px; }
           
           .center { text-align: center; }
           .align-middle { vertical-align: middle; }
@@ -373,7 +403,7 @@ export const HomeroomReportSbtsPage = ({
               <th rowspan="2" width="49%">MATA PELAJARAN</th>
               <th rowspan="2" width="5%">KKTP</th>
               <th colspan="2">${col1Label.toUpperCase()}</th>
-              <th colspan="2">${col2Label.toUpperCase()}</th>
+              <th colspan="2">${col2HeaderLabel}</th>
               <th rowspan="2" class="ket-header">STATUS</th>
             </tr>
             <tr>
@@ -390,9 +420,26 @@ export const HomeroomReportSbtsPage = ({
           </tbody>
         </table>
 
+        <div style="margin-top: 15px;">
+          <div style="font-weight: bold; margin-bottom: 5px;">D. KETIDAKHADIRAN</div>
+          <table class="attendance-table">
+            <tr>
+              <td width="40%">Sakit</td>
+              <td>: ${sick} hari</td>
+            </tr>
+            <tr>
+              <td>Izin</td>
+              <td>: ${permission} hari</td>
+            </tr>
+            <tr>
+              <td>Tanpa Keterangan</td>
+              <td>: ${absent} hari</td>
+            </tr>
+          </table>
+        </div>
+
         ${renderExtracurriculars(data.body.extracurriculars)}
         ${renderOrganizations(data.body.organizations || [])}
-
 
         <div class="footer">
           <div class="signature-row">
