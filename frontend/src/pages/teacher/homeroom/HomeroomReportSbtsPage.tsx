@@ -350,8 +350,8 @@ export const HomeroomReportSbtsPage = ({
           .header-school { font-weight: bold; font-size: 14px; margin: 2px 0; }
           .header-year { font-weight: bold; font-size: 12px; }
           
-          .info-table { width: 100%; margin-bottom: 10px; font-size: 12px; border-collapse: collapse; line-height: 1; }
-          .info-table td { padding: 0 2px; vertical-align: top; line-height: 1; }
+          .info-table { width: 100%; margin-bottom: 12px; font-size: 12px; border-collapse: collapse; line-height: 1.16; }
+          .info-table td { padding: 1px 2px; vertical-align: top; line-height: 1.16; }
           
           .content-table { width: 100%; border-collapse: collapse; margin-bottom: 20px; font-size: 12px; }
           .content-table th, .content-table td { border: 1px solid black; padding: 4px; }
