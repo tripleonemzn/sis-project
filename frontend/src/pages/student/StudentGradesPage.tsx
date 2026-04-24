@@ -606,20 +606,6 @@ export default function StudentGradesPage() {
                     />
                     <SummaryCard
                       icon={<Clock3 className="h-5 w-5" />}
-                      label="Datang Tercatat"
-                      value={String(reportCard.presenceSummary.checkInRecorded)}
-                      subtitle={`Rerata ${reportCard.presenceSummary.averageCheckInTime || '-'} • ${reportCard.presenceSummary.openPresence} belum pulang`}
-                      tone="blue"
-                    />
-                    <SummaryCard
-                      icon={<Clock3 className="h-5 w-5" />}
-                      label="Pulang Tercatat"
-                      value={String(reportCard.presenceSummary.checkOutRecorded)}
-                      subtitle={`Rerata ${reportCard.presenceSummary.averageCheckOutTime || '-'}`}
-                      tone={reportCard.presenceSummary.openPresence > 0 ? 'amber' : 'green'}
-                    />
-                    <SummaryCard
-                      icon={<Clock3 className="h-5 w-5" />}
                       label="Mapel Menunggu"
                       value={String(reportCard.summary.missingSubjects)}
                       tone={reportCard.summary.missingSubjects > 0 ? 'amber' : 'green'}
