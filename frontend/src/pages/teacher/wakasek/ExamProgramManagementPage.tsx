@@ -162,6 +162,7 @@ const DEFAULT_FINANCE_CLEARANCE_MODE: ExamFinanceClearanceMode = 'BLOCK_ANY_OUTS
 const DEFAULT_STUDENT_RESULT_PUBLISH_MODE: ExamStudentResultPublishMode = 'DIRECT';
 const DEFAULT_REPORT_DATE_PLACE = 'Bekasi';
 const REPORT_DATE_SEMESTERS: Array<'ODD' | 'EVEN'> = ['ODD', 'EVEN'];
+const REPORT_CARD_DATE_TYPES = new Set(['SBTS', 'SAS', 'SAT']);
 
 const STUDENT_RESULT_PUBLISH_MODE_OPTIONS: Array<{
   value: ExamStudentResultPublishMode;
@@ -275,8 +276,18 @@ function getStudentResultPublishSummary(row: {
 function normalizeReportDateType(raw: unknown, semester: 'ODD' | 'EVEN'): string {
   const normalized = normalizeExamProgramCode(raw);
   if (normalized === 'FINAL') return semester === 'EVEN' ? 'SAT' : 'SAS';
-  if (normalized === 'MIDTERM') return 'SBTS';
+  if (
+    normalized === 'MIDTERM' ||
+    normalized === 'PTS' ||
+    normalized === 'UTS' ||
+    normalized.includes('MIDTERM') ||
+    normalized.includes('TENGAH_SEMESTER')
+  ) {
+    return 'SBTS';
+  }
   if (normalized === 'FORMATIVE') return 'FORMATIF';
+  if (normalized === 'PAS' || normalized === 'PSAS' || normalized === 'FINAL_ODD') return 'SAS';
+  if (normalized === 'PAT' || normalized === 'PSAT' || normalized === 'FINAL_EVEN') return 'SAT';
   if (normalized === 'US_TEORI') return 'US_THEORY';
   if (normalized === 'US_PRAKTEK') return 'US_PRACTICE';
   return normalized;
@@ -297,21 +308,57 @@ function formatReportTypeLabel(reportType: string) {
   return normalized || '-';
 }
 
+function buildComponentLookup(components: GradeComponentFormRow[] = []) {
+  const lookup = new Map<string, GradeComponentFormRow>();
+  components.forEach((component) => {
+    const code = normalizeComponentCode(component.code);
+    if (code) lookup.set(code, component);
+  });
+  return lookup;
+}
+
+function resolveProgramReportDateType(
+  program: ProgramFormRow,
+  semester: 'ODD' | 'EVEN',
+  componentLookup: Map<string, GradeComponentFormRow>,
+): string {
+  const componentCode = normalizeComponentCode(program.gradeComponentCode);
+  const component = componentCode ? componentLookup.get(componentCode) : undefined;
+  const candidates = [
+    program.code,
+    program.baseTypeCode,
+    program.baseType,
+    program.gradeComponentTypeCode,
+    program.gradeComponentType,
+    program.gradeComponentCode,
+    component?.reportSlotCode,
+    component?.reportSlot,
+  ];
+
+  for (const candidate of candidates) {
+    const reportType = normalizeReportDateType(candidate, semester);
+    if (REPORT_CARD_DATE_TYPES.has(reportType)) return reportType;
+  }
+
+  return '';
+}
+
 function buildProgramReportDateRows(
   programs: ProgramFormRow[],
   reportDates: ExamProgramReportDate[],
+  components: GradeComponentFormRow[] = [],
 ): ProgramReportDateFormRow[] {
   const existingByKey = new Map(
     (reportDates || []).map((row) => [`${row.semester}:${normalizeReportDateType(row.reportType, row.semester)}`, row]),
   );
   const rows = new Map<string, ProgramReportDateFormRow>();
+  const componentLookup = buildComponentLookup(components);
 
   programs
-    .filter((program) => normalizeStudentResultPublishMode(program.studentResultPublishMode) === 'REPORT_DATE')
     .forEach((program) => {
       const semesters = program.fixedSemester ? [program.fixedSemester] : REPORT_DATE_SEMESTERS;
       semesters.forEach((semester) => {
-        const reportType = normalizeReportDateType(program.baseTypeCode || program.baseType || program.code, semester);
+        const reportType = resolveProgramReportDateType(program, semester, componentLookup);
         if (!reportType) return;
         const key = `${semester}:${reportType}`;
         const existing = rows.get(key);
@@ -1035,36 +1082,41 @@ export default function ExamProgramManagementPage() {
       setRows(nextRows);
       setEditingComponentRowId(null);
 
-      try {
-        const reportDatesRes = await examService.getReportDates({
-          academicYearId: Number(activeYear.id),
-        });
-        const nextReportDateRows = buildProgramReportDateRows(nextRows, reportDatesRes?.data?.reportDates || []);
-        setReportDateRows(nextReportDateRows);
-        setReportDateBaseline(snapshotProgramReportDateRows(nextReportDateRows));
-      } catch (reportDateError) {
-        console.error('Gagal memuat master tanggal rapor', reportDateError);
-        const nextReportDateRows = buildProgramReportDateRows(nextRows, []);
-        setReportDateRows(nextReportDateRows);
-        setReportDateBaseline(snapshotProgramReportDateRows(nextReportDateRows));
-      }
-
+      let nextComponents: GradeComponentFormRow[] = [];
       try {
         const componentsRes = await examService.getGradeComponents({
           academicYearId: Number(activeYear.id),
           includeInactive: true,
         });
-        const nextComponents = normalizeComponentRows(componentsRes?.data?.components || []);
+        nextComponents = normalizeComponentRows(componentsRes?.data?.components || []);
         setComponentRows(nextComponents);
         setComponentsEndpointUnavailable(false);
       } catch (componentError: unknown) {
         if (Number(getErrorStatus(componentError)) === 404) {
-          const fallbackComponents = fallbackComponentRowsFromPrograms(nextRows);
-          setComponentRows(fallbackComponents);
+          nextComponents = fallbackComponentRowsFromPrograms(nextRows);
+          setComponentRows(nextComponents);
           setComponentsEndpointUnavailable(true);
         } else {
           throw componentError;
         }
+      }
+
+      try {
+        const reportDatesRes = await examService.getReportDates({
+          academicYearId: Number(activeYear.id),
+        });
+        const nextReportDateRows = buildProgramReportDateRows(
+          nextRows,
+          reportDatesRes?.data?.reportDates || [],
+          nextComponents,
+        );
+        setReportDateRows(nextReportDateRows);
+        setReportDateBaseline(snapshotProgramReportDateRows(nextReportDateRows));
+      } catch (reportDateError) {
+        console.error('Gagal memuat master tanggal rapor', reportDateError);
+        const nextReportDateRows = buildProgramReportDateRows(nextRows, [], nextComponents);
+        setReportDateRows(nextReportDateRows);
+        setReportDateBaseline(snapshotProgramReportDateRows(nextReportDateRows));
       }
     } catch (err: unknown) {
       const message = getErrorMessage(err, 'Gagal memuat konfigurasi program ujian.');
@@ -1335,7 +1387,11 @@ export default function ExamProgramManagementPage() {
 
         const nextRows = normalizeRows(response?.data?.programs || []);
         setRows(nextRows);
-        const rebuiltReportDateRows = buildProgramReportDateRows(nextRows, mapProgramReportDateRowsToPayload(reportDateRows));
+        const rebuiltReportDateRows = buildProgramReportDateRows(
+          nextRows,
+          mapProgramReportDateRowsToPayload(reportDateRows),
+          componentRows,
+        );
         setReportDateRows(rebuiltReportDateRows);
         setReportDateBaseline(snapshotProgramReportDateRows(rebuiltReportDateRows));
         await Promise.all([
@@ -1378,7 +1434,7 @@ export default function ExamProgramManagementPage() {
             date: normalizeDateInputValue(row.date) || null,
           })),
         });
-        const nextRows = buildProgramReportDateRows(rows, response?.data?.reportDates || []);
+        const nextRows = buildProgramReportDateRows(rows, response?.data?.reportDates || [], componentRows);
         setReportDateRows(nextRows);
         setReportDateBaseline(snapshotProgramReportDateRows(nextRows));
         toast.success(successMessage);
@@ -1922,7 +1978,7 @@ export default function ExamProgramManagementPage() {
             <div>
               <h4 className="text-sm font-semibold text-amber-950">Master Tanggal Rapor</h4>
               <p className="text-xs text-amber-900">
-                Bagian ini dipakai oleh program yang memilih policy <span className="font-semibold">Ikuti Tanggal Rapor Semester</span>.
+                Atur tanggal dan tempat dokumen rapor untuk SBTS, SAS, dan SAT. Jadwal ini terpisah dari publikasi nilai siswa.
               </p>
             </div>
             <button
@@ -1940,7 +1996,7 @@ export default function ExamProgramManagementPage() {
 
           {reportDateRows.length === 0 ? (
             <div className="rounded-lg border border-dashed border-amber-300 bg-white/80 px-4 py-4 text-sm text-amber-900">
-              Belum ada program yang memakai policy <span className="font-semibold">Ikuti Tanggal Rapor Semester</span>.
+              Belum ada program rapor SBTS/SAS/SAT di konfigurasi program ujian.
             </div>
           ) : (
             <div className="overflow-x-auto rounded-lg border border-amber-200 bg-white">
