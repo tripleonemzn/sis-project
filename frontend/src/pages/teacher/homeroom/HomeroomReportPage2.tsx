@@ -1,6 +1,6 @@
 import { useState, useRef } from 'react';
 import { useQuery } from '@tanstack/react-query';
-import { Loader2, Printer, Search } from 'lucide-react';
+import { Loader2, Printer, Save, Search } from 'lucide-react';
 import { classService } from '../../../services/class.service';
 import api from '../../../services/api';
 import { usePersistentSchoolPrintAddress } from './usePersistentSchoolPrintAddress';
@@ -78,7 +78,13 @@ export const HomeroomReportPage2 = ({
   reportLabel,
 }: HomeroomReportPage2Props) => {
   const [searchQuery, setSearchQuery] = useState('');
-  const { printSchoolAddress, setPrintSchoolAddress } = usePersistentSchoolPrintAddress();
+  const {
+    printSchoolAddress,
+    setPrintSchoolAddress,
+    savePrintSchoolAddress,
+    hasUnsavedChanges,
+    defaultSchoolPrintAddress,
+  } = usePersistentSchoolPrintAddress();
   const printIframeRef = useRef<HTMLIFrameElement>(null);
   const resolvedReportType = String(reportType || '').toUpperCase();
   const resolvedReportLabel = String(reportLabel || resolvedReportType || 'Rapor');
@@ -121,6 +127,7 @@ export const HomeroomReportPage2 = ({
       return;
     }
     const printDoc = iframe.contentWindow.document;
+    const resolvedSchoolAddress = String(printSchoolAddress || '').trim() || defaultSchoolPrintAddress;
     const resolvedPrintPlace = String(data.footer.place || '').trim() || 'Bekasi';
     const resolvedPrintDate =
       String(data.footer.date || '').trim() || 'Tanggal rapor belum diatur';
@@ -245,7 +252,7 @@ export const HomeroomReportPage2 = ({
             <td width="15%">Fase</td><td width="2%">:</td><td width="21%">${data.header.fase}</td>
           </tr>
           <tr>
-            <td>Alamat</td><td>:</td><td>${printSchoolAddress}</td>
+            <td>Alamat</td><td>:</td><td>${resolvedSchoolAddress}</td>
             <td>Kelas</td><td>:</td><td>${data.header.class}</td>
           </tr>
           <tr>
@@ -423,9 +430,28 @@ export const HomeroomReportPage2 = ({
               type="text"
               value={printSchoolAddress}
               onChange={(e) => setPrintSchoolAddress(e.target.value)}
+              onKeyDown={(e) => {
+                if (e.key === 'Enter' && hasUnsavedChanges) {
+                  e.preventDefault();
+                  savePrintSchoolAddress();
+                }
+              }}
               className="px-2 py-1.5 text-sm border border-gray-300 rounded-lg w-64 focus:outline-none focus:ring-2 focus:ring-blue-500"
               placeholder="Alamat Sekolah"
             />
+            <button
+              type="button"
+              onClick={savePrintSchoolAddress}
+              disabled={!hasUnsavedChanges}
+              className={`inline-flex items-center gap-2 px-3 py-1.5 rounded-lg text-xs font-medium transition-colors ${
+                hasUnsavedChanges
+                  ? 'bg-blue-600 text-white hover:bg-blue-700'
+                  : 'bg-gray-100 text-gray-400 cursor-not-allowed'
+              }`}
+            >
+              <Save className="w-3.5 h-3.5" />
+              Simpan
+            </button>
           </div>
         </div>
         <div className="text-sm text-gray-500 whitespace-nowrap">
