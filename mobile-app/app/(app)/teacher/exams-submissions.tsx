@@ -45,14 +45,14 @@ function formatPercent(value: number): string {
 function statusLabel(value: string): string {
   if (value === 'COMPLETED') return 'Selesai';
   if (value === 'IN_PROGRESS') return 'Berlangsung';
-  if (value === 'TIMEOUT') return 'Timeout';
+  if (value === 'TIMEOUT') return 'Terkumpul Otomatis';
   return value;
 }
 
 function statusStyle(value: string): { bg: string; border: string; text: string } {
   if (value === 'COMPLETED') return { bg: '#dcfce7', border: '#86efac', text: '#166534' };
   if (value === 'IN_PROGRESS') return { bg: '#fef3c7', border: '#fcd34d', text: '#92400e' };
-  if (value === 'TIMEOUT') return { bg: '#fee2e2', border: '#fecaca', text: '#991b1b' };
+  if (value === 'TIMEOUT') return { bg: '#e0f2fe', border: '#7dd3fc', text: '#0369a1' };
   return { bg: '#f1f5f9', border: '#cbd5e1', text: '#334155' };
 }
 
@@ -141,7 +141,7 @@ export default function TeacherExamSubmissionsScreen() {
           { value: 'ALL', label: 'Semua' },
           { value: 'IN_PROGRESS', label: 'Berlangsung' },
           { value: 'COMPLETED', label: 'Selesai' },
-          { value: 'TIMEOUT', label: 'Timeout' },
+          { value: 'TIMEOUT', label: 'Terkumpul Otomatis' },
         ] as Array<{ value: SessionStatusFilter; label: string }>).map((item) => {
           const active = statusFilter === item.value;
           return (
@@ -181,7 +181,7 @@ export default function TeacherExamSubmissionsScreen() {
             {[
               { label: 'Sesi', value: String(submissionsQuery.data.summary.sessionCount), color: '#1d4ed8' },
               { label: 'Peserta', value: String(submissionsQuery.data.summary.participantCount), color: '#0f766e' },
-              { label: 'Selesai', value: String(submissionsQuery.data.summary.submittedCount), color: '#15803d' },
+              { label: 'Selesai/Otomatis', value: String(submissionsQuery.data.summary.submittedCount), color: '#15803d' },
               {
                 label: 'Rata-rata',
                 value:

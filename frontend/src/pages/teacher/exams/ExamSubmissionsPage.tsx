@@ -28,14 +28,14 @@ function formatPercent(value: number | null | undefined): string {
 function statusLabel(value: string): string {
   if (value === 'COMPLETED') return 'Selesai';
   if (value === 'IN_PROGRESS') return 'Berlangsung';
-  if (value === 'TIMEOUT') return 'Timeout';
+  if (value === 'TIMEOUT') return 'Terkumpul Otomatis';
   return value;
 }
 
 function statusClass(value: string): string {
   if (value === 'COMPLETED') return 'bg-emerald-100 text-emerald-700 border-emerald-200';
   if (value === 'IN_PROGRESS') return 'bg-amber-100 text-amber-700 border-amber-200';
-  if (value === 'TIMEOUT') return 'bg-rose-100 text-rose-700 border-rose-200';
+  if (value === 'TIMEOUT') return 'bg-sky-100 text-sky-700 border-sky-200';
   return 'bg-slate-100 text-slate-700 border-slate-200';
 }
 
@@ -138,7 +138,7 @@ export const ExamSubmissionsPage = () => {
             <option value="">Semua Status</option>
             <option value="IN_PROGRESS">Berlangsung</option>
             <option value="COMPLETED">Selesai</option>
-            <option value="TIMEOUT">Timeout</option>
+            <option value="TIMEOUT">Terkumpul Otomatis</option>
           </select>
           <button
             onClick={() => submissionsQuery.refetch()}
@@ -161,7 +161,7 @@ export const ExamSubmissionsPage = () => {
             <p className="text-2xl font-bold text-blue-700">{summary.participantCount}</p>
           </div>
           <div className="bg-white border border-gray-200 rounded-xl p-4">
-            <p className="text-xs text-gray-500">Selesai/Timeout</p>
+            <p className="text-xs text-gray-500">Selesai/Otomatis</p>
             <p className="text-2xl font-bold text-emerald-700">{summary.submittedCount}</p>
           </div>
           <div className="bg-white border border-gray-200 rounded-xl p-4">

@@ -1001,27 +1001,35 @@ export default function StudentExamTakeScreen() {
       if (type === 'COMPLEX_MULTIPLE_CHOICE') {
         setAnswers((prev) => {
           const existing = Array.isArray(prev[questionId]) ? [...(prev[questionId] as string[])] : [];
+          const nextAnswers = existing.includes(optionId)
+            ? {
+                ...prev,
+                [questionId]: existing.filter((value) => value !== optionId),
+              }
+            : {
+                ...prev,
+                [questionId]: [...existing, optionId],
+              };
+          queueProgressSync(DEFAULT_PROGRESS_SYNC_DELAY_MS);
           if (existing.includes(optionId)) {
-            return {
-              ...prev,
-              [questionId]: existing.filter((value) => value !== optionId),
-            };
+            return nextAnswers;
           }
-          return {
-            ...prev,
-            [questionId]: [...existing, optionId],
-          };
+          return nextAnswers;
         });
         markProgressDirty();
         return;
       }
-      setAnswers((prev) => ({
-        ...prev,
-        [questionId]: optionId,
-      }));
+      setAnswers((prev) => {
+        const nextAnswers = {
+          ...prev,
+          [questionId]: optionId,
+        };
+        queueProgressSync(DEFAULT_PROGRESS_SYNC_DELAY_MS);
+        return nextAnswers;
+      });
       markProgressDirty();
     },
-    [markProgressDirty],
+    [markProgressDirty, queueProgressSync],
   );
 
   const setMatrixAnswerValue = useCallback((questionId: string, rowId: string, columnId: string) => {
@@ -1030,16 +1038,18 @@ export default function StudentExamTakeScreen() {
         prev[questionId] && typeof prev[questionId] === 'object' && !Array.isArray(prev[questionId])
           ? { ...(prev[questionId] as Record<string, unknown>) }
           : {};
-      return {
+      const nextAnswers = {
         ...prev,
         [questionId]: {
           ...currentValue,
           [rowId]: columnId,
         },
       };
+      queueProgressSync(DEFAULT_PROGRESS_SYNC_DELAY_MS);
+      return nextAnswers;
     });
     markProgressDirty();
-  }, [markProgressDirty]);
+  }, [markProgressDirty, queueProgressSync]);
 
   const triggerViolationAutoSubmit = useCallback((reason: string) => {
     if (violationSubmitGuardRef.current || isFinished || autoSubmitGuardRef.current) return;
@@ -1894,10 +1904,14 @@ export default function StudentExamTakeScreen() {
         <TextInput
           value={typeof effectiveAnswers[currentQuestion.id] === 'string' ? (effectiveAnswers[currentQuestion.id] as string) : ''}
             onChangeText={(value) => {
-              setAnswers((prev) => ({
-                ...prev,
-                [currentQuestion.id]: value,
-              }));
+              setAnswers((prev) => {
+                const nextAnswers = {
+                  ...prev,
+                  [currentQuestion.id]: value,
+                };
+                queueProgressSync(DEFAULT_PROGRESS_SYNC_DELAY_MS);
+                return nextAnswers;
+              });
               markProgressDirty();
             }}
             multiline

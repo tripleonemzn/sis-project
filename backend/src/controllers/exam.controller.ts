@@ -12557,9 +12557,21 @@ export const submitAnswers = asyncHandler(async (req: Request, res: Response) =>
     const previousQuestionSet = sanitizeQuestionSetMeta(
         (previousAnswers as Record<string, unknown>).__questionSet,
     );
+    const previousMonitoring =
+        (previousAnswers as Record<string, unknown>).__monitoring &&
+        typeof (previousAnswers as Record<string, unknown>).__monitoring === 'object'
+            ? ((previousAnswers as Record<string, unknown>).__monitoring as Record<string, unknown>)
+            : null;
+    const incomingAnswerPayload =
+        answers && typeof answers === 'object' && !Array.isArray(answers)
+            ? (answers as Record<string, unknown>)
+            : {};
+    const hasIncomingMonitoring =
+        incomingAnswerPayload.__monitoring && typeof incomingAnswerPayload.__monitoring === 'object';
     const normalizedIncomingAnswers = sanitizeAnswersForStorage({
-        ...(answers && typeof answers === 'object' ? (answers as Record<string, unknown>) : {}),
+        ...incomingAnswerPayload,
         ...(previousQuestionSet ? { __questionSet: previousQuestionSet } : {}),
+        ...(!hasIncomingMonitoring && previousMonitoring ? { __monitoring: previousMonitoring } : {}),
     });
     const incomingMonitoring = extractMonitoringSummaryFromAnswers(normalizedIncomingAnswers);
     const shouldTimeoutByDeadline = Boolean(sessionDeadline && now.getTime() > sessionDeadline.getTime());

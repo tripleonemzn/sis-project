@@ -38,7 +38,7 @@ function formatPercent(value: number): string {
 function statusLabel(value: string): string {
   if (value === 'COMPLETED') return 'Selesai';
   if (value === 'IN_PROGRESS') return 'Berlangsung';
-  if (value === 'TIMEOUT') return 'Timeout';
+  if (value === 'TIMEOUT') return 'Terkumpul Otomatis';
   return value;
 }
 
