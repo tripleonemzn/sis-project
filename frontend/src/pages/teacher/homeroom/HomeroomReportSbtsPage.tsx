@@ -58,6 +58,7 @@ type StudentReportPayload = {
     };
     extracurriculars: ReportRow[];
     organizations?: ReportRow[];
+    homeroomNote?: string;
     attendance?: {
       sick?: number;
       s?: number;
@@ -137,6 +138,13 @@ export const HomeroomReportSbtsPage = ({
     const meta = data?.body?.meta || {};
     const col1Label = String(meta.col1Label || 'Komponen 1');
     const col2Label = String(meta.col2Label || resolvedReportLabel || 'Komponen 2');
+    const escapeHtml = (value: unknown): string =>
+      String(value ?? '')
+        .replace(/&/g, '&amp;')
+        .replace(/</g, '&lt;')
+        .replace(/>/g, '&gt;')
+        .replace(/"/g, '&quot;')
+        .replace(/'/g, '&#39;');
     const normalizeSbtsHeaderCode = (value: unknown): string => {
       const normalized = String(value || '').trim().toUpperCase();
       const compact = normalized.replace(/[^A-Z0-9]+/g, '');
@@ -279,7 +287,7 @@ export const HomeroomReportSbtsPage = ({
 
       return `
         <div style="margin-top: 15px;">
-          <div style="font-weight: bold; margin-bottom: 5px;">E. EKSTRAKURIKULER</div>
+          <div style="font-weight: bold; margin-bottom: 5px;">F. EKSTRAKURIKULER</div>
           <table class="content-table">
             <thead>
               <tr>
@@ -314,7 +322,7 @@ export const HomeroomReportSbtsPage = ({
 
       return `
         <div style="margin-top: 15px;">
-          <div style="font-weight: bold; margin-bottom: 5px;">F. ORGANISASI SISWA (OSIS)</div>
+          <div style="font-weight: bold; margin-bottom: 5px;">G. ORGANISASI SISWA (OSIS)</div>
           <table class="content-table">
             <thead>
               <tr>
@@ -336,6 +344,7 @@ export const HomeroomReportSbtsPage = ({
     const sick = att.sick ?? att.s ?? 0;
     const permission = att.permission ?? att.i ?? 0;
     const absent = att.absent ?? att.a ?? 0;
+    const homeroomNoteHtml = escapeHtml(data.body.homeroomNote || '-').replace(/\n/g, '<br>');
 
     const html = `
       <!DOCTYPE html>
@@ -358,8 +367,15 @@ export const HomeroomReportSbtsPage = ({
           .content-table th { text-align: center; background-color: #f0f0f0; font-weight: bold; vertical-align: middle; }
           .ket-header, .ket-cell { white-space: nowrap; width: 1%; }
           .empty-component-cell { text-align: center; color: #64748b; font-style: italic; white-space: nowrap; }
-          .attendance-table { width: 60%; border-collapse: collapse; margin-bottom: 15px; font-size: 12px; }
-          .attendance-table td { border: 1px solid black; padding: 4px; }
+          .attendance-note-row { display: flex; align-items: stretch; gap: 16px; margin: 15px 0; page-break-inside: avoid; }
+          .report-side-section { display: flex; flex-direction: column; min-width: 0; }
+          .attendance-section { flex: 0 0 auto; }
+          .note-section { flex: 1 1 auto; }
+          .side-section-title { font-weight: bold; margin-bottom: 5px; }
+          .attendance-table { width: auto; border-collapse: collapse; margin: 0; font-size: 12px; table-layout: auto; }
+          .attendance-table td { border: 1px solid black; padding: 4px 8px; white-space: nowrap; }
+          .attendance-value-cell { min-width: 58px; }
+          .note-box { border: 1px solid black; box-sizing: border-box; flex: 1 1 auto; min-height: 0; padding: 4px 8px; line-height: 1.35; white-space: normal; word-break: break-word; }
           
           .center { text-align: center; }
           .align-middle { vertical-align: middle; }
@@ -420,22 +436,28 @@ export const HomeroomReportSbtsPage = ({
           </tbody>
         </table>
 
-        <div style="margin-top: 15px;">
-          <div style="font-weight: bold; margin-bottom: 5px;">D. KETIDAKHADIRAN</div>
-          <table class="attendance-table">
-            <tr>
-              <td width="40%">Sakit</td>
-              <td>: ${sick} hari</td>
-            </tr>
-            <tr>
-              <td>Izin</td>
-              <td>: ${permission} hari</td>
-            </tr>
-            <tr>
-              <td>Tanpa Keterangan</td>
-              <td>: ${absent} hari</td>
-            </tr>
-          </table>
+        <div class="attendance-note-row">
+          <div class="report-side-section attendance-section">
+            <div class="side-section-title">D. KETIDAKHADIRAN</div>
+            <table class="attendance-table">
+              <tr>
+                <td>Sakit</td>
+                <td class="attendance-value-cell">: ${sick} hari</td>
+              </tr>
+              <tr>
+                <td>Izin</td>
+                <td class="attendance-value-cell">: ${permission} hari</td>
+              </tr>
+              <tr>
+                <td>Tanpa Keterangan</td>
+                <td class="attendance-value-cell">: ${absent} hari</td>
+              </tr>
+            </table>
+          </div>
+          <div class="report-side-section note-section">
+            <div class="side-section-title">E. CATATAN WALI KELAS</div>
+            <div class="note-box">${homeroomNoteHtml}</div>
+          </div>
         </div>
 
         ${renderExtracurriculars(data.body.extracurriculars)}
