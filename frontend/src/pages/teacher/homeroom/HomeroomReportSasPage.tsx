@@ -3,6 +3,7 @@ import { useQuery } from '@tanstack/react-query';
 import { Loader2, Printer, Search } from 'lucide-react';
 import { classService } from '../../../services/class.service';
 import api from '../../../services/api';
+import { usePersistentSchoolPrintAddress } from './usePersistentSchoolPrintAddress';
 
 interface HomeroomReportSasPageProps {
   classId: number;
@@ -75,9 +76,7 @@ export const HomeroomReportSasPage = ({
   reportLabel,
 }: HomeroomReportSasPageProps) => {
   const [searchQuery, setSearchQuery] = useState('');
-  const [printPlace, setPrintPlace] = useState('Bekasi');
-  const [printDate, setPrintDate] = useState('');
-  const [printSchoolAddress, setPrintSchoolAddress] = useState('Jl. Anggrek 1, Duren Jaya Bekasi Timur');
+  const { printSchoolAddress, setPrintSchoolAddress } = usePersistentSchoolPrintAddress();
   const printIframeRef = useRef<HTMLIFrameElement>(null);
   const resolvedReportType = String(reportType || '').toUpperCase();
   const resolvedReportLabel = String(reportLabel || resolvedReportType || 'Rapor');
@@ -355,36 +354,16 @@ export const HomeroomReportSasPage = ({
           />
         </div>
         <div className="flex flex-wrap gap-4">
-            <div className="flex items-center gap-2">
-                <label className="text-xs uppercase font-bold text-gray-500 whitespace-nowrap">Alamat</label>
-                <input 
-                    type="text" 
-                    value={printSchoolAddress}
-                    onChange={(e) => setPrintSchoolAddress(e.target.value)}
-                    className="px-2 py-1.5 text-sm border border-gray-300 rounded-lg w-64 focus:outline-none focus:ring-2 focus:ring-blue-500"
-                    placeholder="Alamat Sekolah"
-                />
-            </div>
-            <div className="flex items-center gap-2">
-                <label className="text-xs uppercase font-bold text-gray-500 whitespace-nowrap">Tempat</label>
-                <input 
-                    type="text" 
-                    value={printPlace}
-                    onChange={(e) => setPrintPlace(e.target.value)}
-                    className="px-2 py-1.5 text-sm border border-gray-300 rounded-lg w-32 focus:outline-none focus:ring-2 focus:ring-blue-500"
-                    placeholder="Bekasi"
-                />
-            </div>
-            <div className="flex items-center gap-2">
-                <label className="text-xs uppercase font-bold text-gray-500 whitespace-nowrap">Tanggal</label>
-                <input 
-                    type="text" 
-                    value={printDate}
-                    onChange={(e) => setPrintDate(e.target.value)}
-                    className="px-2 py-1.5 text-sm border border-gray-300 rounded-lg w-40 focus:outline-none focus:ring-2 focus:ring-blue-500"
-                    placeholder="Mengikuti tanggal rapor"
-                />
-            </div>
+          <div className="flex items-center gap-2">
+            <label className="text-xs uppercase font-bold text-gray-500 whitespace-nowrap">Alamat</label>
+            <input
+              type="text"
+              value={printSchoolAddress}
+              onChange={(e) => setPrintSchoolAddress(e.target.value)}
+              className="px-2 py-1.5 text-sm border border-gray-300 rounded-lg w-64 focus:outline-none focus:ring-2 focus:ring-blue-500"
+              placeholder="Alamat Sekolah"
+            />
+          </div>
         </div>
         <div className="text-sm text-gray-500 whitespace-nowrap">
           Total: {filteredStudents.length} Siswa

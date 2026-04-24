@@ -3,7 +3,6 @@ import { authMiddleware } from '../middleware/auth';
 import { roleMiddleware } from '../middleware/role';
 import {
   getClassReportSummary,
-  getReportDate,
   getStudentReport,
   getClassLedger,
   getClassExtracurricularReport,
@@ -57,7 +56,6 @@ router.post(
 
 // Teacher (Homeroom) & Admin routes
 router.get('/rankings', roleMiddleware(['ADMIN', 'TEACHER', 'PRINCIPAL']), getClassRankings);
-router.get('/date', roleMiddleware(['ADMIN', 'TEACHER']), getReportDate);
 router.get('/student', roleMiddleware(['ADMIN', 'TEACHER']), getStudentReport);
 router.get('/student/sbts', roleMiddleware(['ADMIN', 'TEACHER']), getStudentReport);
 router.get('/ledger', roleMiddleware(['ADMIN', 'TEACHER']), getClassLedger);

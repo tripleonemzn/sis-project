@@ -2074,60 +2074,6 @@ export const getStudentReport = asyncHandler(async (req: Request, res: Response)
 
 export const getStudentSbtsReport = getStudentReport;
 
-export const getReportDate = asyncHandler(async (req: Request, res: Response) => {
-  const querySchema = z.object({
-    academicYearId: z.coerce.number().int().optional(),
-    semester: z.nativeEnum(Semester),
-    type: z.string().optional(),
-    programCode: z.string().optional(),
-  });
-
-  const { academicYearId, semester, type, programCode } = querySchema.parse(req.query);
-  const effectiveAcademicYearId = await resolveReadableReportAcademicYearId({
-    user: (req as any).user,
-    academicYearId,
-  });
-
-  const context = await resolveReportTypeContext({
-    academicYearId: effectiveAcademicYearId,
-    semester,
-    reportType: type,
-    programCode,
-  });
-
-  const reportDate = await prisma.reportDate.findUnique({
-    where: {
-      academicYearId_semester_reportType: {
-        academicYearId: effectiveAcademicYearId,
-        semester,
-        reportType: context.reportType,
-      },
-    },
-  });
-
-  res.status(200).json(
-    new ApiResponse(
-      200,
-      {
-        academicYearId: effectiveAcademicYearId,
-        semester,
-        reportType: context.reportType,
-        programCode: context.programCode,
-        place: reportDate?.place || 'Bekasi',
-        date: reportDate?.date
-          ? new Date(reportDate.date).toLocaleDateString('id-ID', {
-              day: 'numeric',
-              month: 'long',
-              year: 'numeric',
-            })
-          : '',
-        rawDate: reportDate?.date ? reportDate.date.toISOString() : null,
-      },
-      'Tanggal rapor berhasil diambil',
-    ),
-  );
-});
-
 export const getClassLedger = asyncHandler(async (req: Request, res: Response) => {
   const querySchema = z.object({
     classId: z.coerce.number().int(),
