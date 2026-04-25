@@ -12,8 +12,9 @@ import {
 } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { usePreventScreenCapture } from 'expo-screen-capture';
-import { CameraView, type BarcodeScanningResult, useCameraPermissions } from 'expo-camera';
+import { type BarcodeScanningResult, useCameraPermissions } from 'expo-camera';
 import { AppLoadingScreen } from '../../src/components/AppLoadingScreen';
+import { CameraQrScanModal } from '../../src/components/CameraQrScanModal';
 import { MobileMenuTabBar } from '../../src/components/MobileMenuTabBar';
 import { QueryStateView } from '../../src/components/QueryStateView';
 import { OfflineCacheNotice } from '../../src/components/OfflineCacheNotice';
@@ -279,6 +280,20 @@ function MonitorQrScannerCard({
 }) {
   const { colors } = useAppTheme();
   const { scaleFont, scaleLineHeight, fontSizes } = useAppTextScale();
+  const [scannerOpen, setScannerOpen] = useState(false);
+
+  useEffect(() => {
+    if (!permissionGranted) setScannerOpen(false);
+  }, [permissionGranted]);
+
+  useEffect(() => {
+    if (pending || result) setScannerOpen(false);
+  }, [pending, result]);
+
+  const handleScanned = (scanResult: BarcodeScanningResult) => {
+    setScannerOpen(false);
+    onScanned(scanResult);
+  };
 
   return (
     <View
@@ -332,48 +347,45 @@ function MonitorQrScannerCard({
       ) : (
         <View
           style={{
-            height: 320,
-            borderRadius: 18,
-            overflow: 'hidden',
-            backgroundColor: '#0f172a',
-            position: 'relative',
+            borderWidth: 1,
+            borderColor: '#bfdbfe',
+            borderRadius: 16,
+            padding: 14,
+            backgroundColor: '#eff6ff',
           }}
         >
-          <CameraView
-            style={{ flex: 1 }}
-            facing="back"
-            barcodeScannerSettings={{ barcodeTypes: ['qr'] }}
-            onBarcodeScanned={enabled ? onScanned : undefined}
-          />
-          <View
-            pointerEvents="none"
+          <Text style={{ color: colors.text, fontWeight: '700', marginBottom: 6 }}>
+            Kamera siap untuk scan
+          </Text>
+          <Text style={{ color: colors.textMuted, fontSize: fontSizes.body, lineHeight: scaleLineHeight(20), marginBottom: 12 }}>
+            Buka scanner layar penuh agar preview kamera lebih stabil di Android, lalu arahkan ke QR monitor TU.
+          </Text>
+          <Pressable
+            onPress={() => setScannerOpen(true)}
+            disabled={!enabled}
             style={{
-              position: 'absolute',
-              top: 0,
-              right: 0,
-              bottom: 0,
-              left: 0,
+              backgroundColor: enabled ? colors.primary : '#93c5fd',
+              borderRadius: 12,
+              paddingVertical: 12,
               alignItems: 'center',
-              justifyContent: 'center',
             }}
           >
-            <View
-              style={{
-                width: 220,
-                height: 220,
-                borderRadius: 24,
-                borderWidth: 3,
-                borderColor: '#f8fafc',
-                backgroundColor: 'transparent',
-              }}
-            />
-            <Text style={{ marginTop: 16, color: '#f8fafc', fontWeight: '700', fontSize: fontSizes.body }}>
-              Arahkan QR monitor ke area ini
+            <Text style={{ color: '#fff', fontWeight: '700' }}>
+              {pending ? 'Mencatat presensi...' : 'Buka Kamera Scan'}
             </Text>
-            <Text style={{ marginTop: 6, color: '#cbd5e1', fontSize: fontSizes.bodyCompact }}>
-              {pending ? 'Mencatat presensi...' : 'QR monitor akan berganti otomatis.'}
-            </Text>
-          </View>
+          </Pressable>
+          <CameraQrScanModal
+            visible={scannerOpen && permissionGranted}
+            enabled={enabled}
+            busy={pending}
+            title="Scan QR Monitor TU"
+            description="Arahkan kamera ke QR yang tampil di monitor Tata Usaha."
+            guideLabel="Posisikan QR di tengah layar"
+            helperText="QR monitor akan terbaca otomatis saat kamera fokus."
+            busyText="Mencatat presensi..."
+            onClose={() => setScannerOpen(false)}
+            onScanned={handleScanned}
+          />
         </View>
       )}
 

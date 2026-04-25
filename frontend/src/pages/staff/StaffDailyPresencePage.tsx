@@ -400,8 +400,8 @@ function SharedQrMonitorPanel({
         </div>
       ) : (
         <>
-          <div className="mt-5 grid gap-4 xl:grid-cols-[minmax(0,360px),1fr]">
-            <div className="rounded-3xl border border-slate-200 bg-slate-50 p-4">
+          <div className="mt-5 grid gap-4 xl:grid-cols-[360px_minmax(0,1fr)]">
+            <div className="mx-auto w-full max-w-[360px] rounded-3xl border border-slate-200 bg-slate-50 p-4 xl:mx-0">
               <div className="flex aspect-square items-center justify-center rounded-2xl bg-white p-4 shadow-inner">
                 <img
                   src={session.monitor.qrCodeDataUrl}

@@ -12,7 +12,8 @@ import {
   View,
 } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
-import { CameraView, type BarcodeScanningResult, useCameraPermissions } from 'expo-camera';
+import { type BarcodeScanningResult, useCameraPermissions } from 'expo-camera';
+import { CameraQrScanModal } from '../../../src/components/CameraQrScanModal';
 import { Feather } from '@expo/vector-icons';
 import { AppLoadingScreen } from '../../../src/components/AppLoadingScreen';
 import MobileSelectField from '../../../src/components/MobileSelectField';
@@ -567,6 +568,20 @@ function ScannerPanel({
 }) {
   const { colors } = useAppTheme();
   const { scaleFont, scaleLineHeight, fontSizes } = useAppTextScale();
+  const [scannerOpen, setScannerOpen] = useState(false);
+
+  useEffect(() => {
+    if (!permissionGranted) setScannerOpen(false);
+  }, [permissionGranted]);
+
+  useEffect(() => {
+    if (previewLoading || previewState) setScannerOpen(false);
+  }, [previewLoading, previewState]);
+
+  const handleScanned = (result: BarcodeScanningResult) => {
+    setScannerOpen(false);
+    onScanned(result);
+  };
 
   return (
     <View
@@ -622,52 +637,45 @@ function ScannerPanel({
       ) : (
         <View
           style={{
-            height: 320,
-            borderRadius: 18,
-            overflow: 'hidden',
-            backgroundColor: '#0f172a',
-            position: 'relative',
+            borderWidth: 1,
+            borderColor: '#bfdbfe',
+            borderRadius: 16,
+            padding: 14,
+            backgroundColor: '#eff6ff',
           }}
         >
-          <CameraView
-            style={{ flex: 1 }}
-            facing="back"
-            barcodeScannerSettings={{ barcodeTypes: ['qr'] }}
-            onBarcodeScanned={enabled ? onScanned : undefined}
-          />
-          <View
-            pointerEvents="none"
+          <Text style={{ color: colors.text, fontWeight: '700', marginBottom: 6 }}>
+            Kamera siap untuk scan
+          </Text>
+          <Text style={{ color: colors.textMuted, fontSize: fontSizes.body, lineHeight: scaleLineHeight(20), marginBottom: 12 }}>
+            Buka scanner layar penuh agar preview kamera lebih stabil di Android, lalu arahkan ke QR siswa.
+          </Text>
+          <Pressable
+            onPress={() => setScannerOpen(true)}
+            disabled={!enabled}
             style={{
-              position: 'absolute',
-              top: 0,
-              right: 0,
-              bottom: 0,
-              left: 0,
+              backgroundColor: enabled ? '#2563eb' : '#93c5fd',
+              borderRadius: 12,
+              paddingVertical: 12,
               alignItems: 'center',
-              justifyContent: 'center',
             }}
           >
-            <View
-              style={{
-                width: 220,
-                height: 220,
-                borderRadius: 24,
-                borderWidth: 3,
-                borderColor: '#f8fafc',
-                backgroundColor: 'transparent',
-              }}
-            />
-            <Text style={{ marginTop: 16, color: '#f8fafc', fontWeight: '700', fontSize: fontSizes.body }}>
-              Arahkan QR siswa ke area ini
+            <Text style={{ color: '#fff', fontWeight: '700' }}>
+              {previewLoading ? 'Memverifikasi QR...' : 'Buka Kamera Scan'}
             </Text>
-            <Text style={{ marginTop: 6, color: '#cbd5e1', fontSize: fontSizes.bodyCompact }}>
-              {previewLoading
-                ? 'Memverifikasi QR...'
-                : previewState
-                  ? 'Hasil scan siap dikonfirmasi.'
-                  : 'QR hanya berlaku singkat dan satu kali pakai.'}
-            </Text>
-          </View>
+          </Pressable>
+          <CameraQrScanModal
+            visible={scannerOpen && permissionGranted}
+            enabled={enabled}
+            busy={previewLoading}
+            title="Scanner Petugas"
+            description="Arahkan kamera ke QR siswa, lalu cek identitas sebelum konfirmasi."
+            guideLabel="Posisikan QR siswa di tengah layar"
+            helperText={previewState ? 'Hasil scan siap dikonfirmasi.' : 'QR hanya berlaku singkat dan satu kali pakai.'}
+            busyText="Memverifikasi QR..."
+            onClose={() => setScannerOpen(false)}
+            onScanned={handleScanned}
+          />
         </View>
       )}
     </View>
