@@ -217,6 +217,7 @@ export default function AttendanceScreen() {
   const [checkpoint, setCheckpoint] = useState<Checkpoint>('CHECK_IN');
   const [challengeCode, setChallengeCode] = useState('');
   const [currentPass, setCurrentPass] = useState<DailyPresenceSelfScanPass | null>(null);
+  const [, setTicker] = useState(Date.now());
   const pageContentPadding = getStandardPagePadding(insets, { horizontal: layout.pageHorizontal });
   const pageContentStyle = buildResponsivePageContentStyle(pageContentPadding, layout);
   const { month, year } = toMonthYear(cursorDate);
@@ -260,6 +261,7 @@ export default function AttendanceScreen() {
   useEffect(() => {
     if (!currentPass) return;
     const timer = setInterval(() => {
+      setTicker(Date.now());
       if (new Date(currentPass.qrExpiresAt).getTime() <= Date.now()) {
         setCurrentPass(null);
       }

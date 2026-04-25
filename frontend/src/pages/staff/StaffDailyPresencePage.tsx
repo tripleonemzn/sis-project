@@ -692,10 +692,6 @@ export default function StaffDailyPresencePage() {
             Muat Ulang Data
           </button>
         </div>
-        <div className="mt-4 rounded-xl border border-blue-100 bg-blue-50 px-4 py-3 text-sm text-blue-700">
-          Tahun ajaran operasional mengikuti header aktif. Web batch ini menyamakan alur staff administrasi dengan mobile:
-          buka sesi scan mandiri, verifikasi QR siswa, lalu tetap sediakan bantuan petugas bila perangkat siswa bermasalah.
-        </div>
       </div>
 
       <section className="grid gap-4 md:grid-cols-4">
@@ -709,7 +705,7 @@ export default function StaffDailyPresencePage() {
             <div className="rounded-2xl border border-slate-200 bg-white p-5 shadow-sm">
               <p className="text-xs font-semibold uppercase tracking-[0.24em] text-slate-500">Tanggal Operasional</p>
               <p className="mt-3 text-lg font-semibold text-slate-900">{formatTodayLabel(overviewQuery.data?.date)}</p>
-              <p className="mt-2 text-sm text-slate-500">{overviewQuery.data?.academicYear.name || '-'}</p>
+              <p className="mt-2 text-sm text-slate-500">Hari operasional presensi.</p>
             </div>
             <div className="rounded-2xl border border-emerald-200 bg-emerald-50 p-5 shadow-sm">
               <p className="text-xs font-semibold uppercase tracking-[0.24em] text-emerald-700">Sudah Masuk</p>

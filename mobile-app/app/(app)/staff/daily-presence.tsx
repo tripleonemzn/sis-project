@@ -723,7 +723,7 @@ export default function StaffDailyPresenceScreen() {
             {
               title: 'Tanggal Operasional',
               value: formatTodayLabel(overviewQuery.data?.date),
-              subtitle: overviewQuery.data?.academicYear.name || '-',
+              subtitle: 'Hari operasional presensi.',
               iconName: 'calendar',
               accentColor: '#334155',
             },
@@ -1039,10 +1039,10 @@ export default function StaffDailyPresenceScreen() {
             }}
           >
             <Text style={{ fontSize: scaleFont(18), lineHeight: scaleLineHeight(24), fontWeight: '700', color: colors.text }}>
-              Bantu Presensi Manual
+              Bantu Petugas
             </Text>
             <Text style={{ color: colors.textMuted, fontSize: fontSizes.body, lineHeight: scaleLineHeight(20), marginTop: 4 }}>
-              Gunakan saat siswa mengalami kendala perangkat dan scan mandiri tidak bisa dipakai.
+              Pilih siswa yang membutuhkan bantuan absen masuk atau pulang hari ini.
             </Text>
 
             <View style={{ marginTop: 14 }}>

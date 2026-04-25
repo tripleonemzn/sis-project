@@ -5,14 +5,26 @@ Setiap room baru yang diminta `baca AGENTS.md` atau `lanjutkan` wajib membaca fi
 
 ## Status Saat Ini
 
-- Last updated: 2026-04-25 12:00 WIB
-- Current status: Tidak ada task aktif yang sedang berjalan saat file ini dibuat.
+- Last updated: 2026-04-25 15:16 WIB
+- Current status: Batch perapihan presensi harian self-scan selesai.
 - Last completed repo work:
-  - Commit: `bcb677a1f2cb064583c60627c5e2835d1b5a604a`
-  - Title: `fix(attendance): align daily presence self-scan parity`
-  - Summary: Penyelarasan parity fitur daily presence self-scan antara backend, web, dan mobile.
-- Worktree expectation: clean
-- Publish/live status: belum diaudit dari file ini; cek workflow deploy/publish terkait jika task berikutnya menyentuh UI/runtime live.
+  - Commit: cek commit terbaru dengan `git log -1 --stat --decorate`
+  - Title: `fix(attendance): tighten daily presence self-scan parity`
+  - Summary: Merapikan parity UI presensi harian self-scan dengan countdown QR mobile siswa yang ikut berdetak, istilah mobile staff `Bantu Petugas`, dan penghapusan teks tahun ajaran aktif yang redundan di workspace staff.
+- Worktree expectation: clean setelah commit dan push batch ini.
+- Publish/live status: belum dipublish OTA/deploy live dari batch ini; source siap setelah commit/push dan verifikasi lolos.
+
+## Verifikasi Batch Terakhir
+
+- `cd backend && npm run build`
+- `cd frontend && npm run build`
+- `cd mobile-app && npm run typecheck`
+- `cd mobile-app && npm run audit:parity:check`
+
+## Langkah Aman Berikutnya
+
+- Jika user meminta tester langsung mencoba hasil UI ini, jalankan workflow publish/deploy existing untuk web/mobile sesuai channel yang dipakai.
+- Jika lanjut audit presensi, fokus berikutnya adalah uji manual flow end-to-end: staff buka sesi, siswa buat QR, staff scan/confirm, lalu cek realtime update di web dan mobile.
 
 ## Template Update Wajib Saat Ada Pekerjaan Baru
 
