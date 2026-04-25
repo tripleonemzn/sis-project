@@ -608,15 +608,23 @@ function AvatarCircle({
 }
 
 const ROLE_PRIMARY_ACTION_KEYS: Record<string, string[]> = {
-  STUDENT: ['student-schedule', 'student-learning', 'student-grade-history'],
-  TEACHER: ['teaching-schedule'],
+  STUDENT: ['student-attendance-history', 'student-schedule', 'student-learning'],
+  TEACHER: ['teacher-own-presence', 'teaching-schedule', 'attendance-teacher'],
   ADMIN: ['admin-user-student', 'admin-candidate-admissions', 'admin-bkk-applications'],
-  PRINCIPAL: ['principal-attendance', 'principal-finance-requests', 'principal-reports'],
+  PRINCIPAL: ['principal-own-presence', 'principal-attendance', 'principal-finance-requests'],
   PARENT: ['child-progress', 'parent-finance', 'child-attendance'],
   EXAMINER: ['assessment', 'examiner-schemes'],
-  EXTRACURRICULAR_TUTOR: ['tutor-members'],
+  EXTRACURRICULAR_TUTOR: ['tutor-own-presence', 'tutor-members', 'tutor-work-program'],
   CALON_SISWA: ['candidate-dashboard', 'candidate-application', 'candidate-exams'],
   UMUM: ['public-vacancies', 'public-applications', 'public-exams'],
+};
+
+const OWN_DAILY_PRESENCE_MENU_KEYS: Partial<Record<AuthUser['role'], string>> = {
+  STUDENT: 'student-attendance-history',
+  TEACHER: 'teacher-own-presence',
+  STAFF: 'staff-own-presence',
+  PRINCIPAL: 'principal-own-presence',
+  EXTRACURRICULAR_TUTOR: 'tutor-own-presence',
 };
 
 function getRolePrimaryActionKeys(
@@ -2308,6 +2316,9 @@ export default function HomeScreen() {
 
   const teachingScheduleMenu = menuItemByKey.get('teaching-schedule');
   const studentScheduleMenu = menuItemByKey.get('student-schedule');
+  const ownDailyPresenceMenu = OWN_DAILY_PRESENCE_MENU_KEYS[profile.role]
+    ? menuItemByKey.get(OWN_DAILY_PRESENCE_MENU_KEYS[profile.role]!)
+    : undefined;
 
   return (
     <View style={{ flex: 1, backgroundColor: colors.background }}>
@@ -2390,6 +2401,55 @@ export default function HomeScreen() {
         <Text style={{ color: colors.textMuted, fontSize: scaleFont(14), lineHeight: scaleLineHeight(22), marginTop: 2, marginBottom: 12 }}>
           {homeSubtitle}
         </Text>
+
+        {ownDailyPresenceMenu ? (
+          <Pressable
+            disabled={isMenuTransitioning}
+            onPress={() => {
+              void handleMenuPress(ownDailyPresenceMenu);
+            }}
+            style={({ pressed }) => ({
+              borderRadius: 16,
+              borderWidth: 1,
+              borderColor: isDarkModeActive ? 'rgba(125, 211, 252, 0.28)' : '#bae6fd',
+              backgroundColor: isDarkModeActive ? 'rgba(14, 116, 144, 0.22)' : '#f0f9ff',
+              padding: 14,
+              marginBottom: 12,
+              flexDirection: 'row',
+              alignItems: 'center',
+              opacity: pressed || openingMenuKey === ownDailyPresenceMenu.key ? 0.84 : 1,
+            })}
+          >
+            <View
+              style={{
+                width: 48,
+                height: 48,
+                borderRadius: 999,
+                backgroundColor: isDarkModeActive ? 'rgba(125, 211, 252, 0.18)' : '#e0f2fe',
+                borderWidth: 1,
+                borderColor: isDarkModeActive ? 'rgba(125, 211, 252, 0.28)' : '#bae6fd',
+                alignItems: 'center',
+                justifyContent: 'center',
+                marginRight: 12,
+              }}
+            >
+              {openingMenuKey === ownDailyPresenceMenu.key ? (
+                <ActivityIndicator size="small" color={isDarkModeActive ? '#7dd3fc' : '#0369a1'} />
+              ) : (
+                <Feather name="camera" size={20} color={isDarkModeActive ? '#7dd3fc' : '#0369a1'} />
+              )}
+            </View>
+            <View style={{ flex: 1 }}>
+              <Text style={{ color: colors.text, fontWeight: '800', fontSize: scaleFont(15), lineHeight: scaleLineHeight(20) }}>
+                {openingMenuKey === ownDailyPresenceMenu.key ? 'Membuka Scan Presensi...' : 'Scan Presensi'}
+              </Text>
+              <Text style={{ color: colors.textMuted, fontSize: scaleFont(12), lineHeight: scaleLineHeight(18), marginTop: 2 }}>
+                QR Monitor TU
+              </Text>
+            </View>
+            <Feather name="chevron-right" size={20} color={colors.textMuted} />
+          </Pressable>
+        ) : null}
 
         {profile.role === 'TEACHER' ? (
           <View

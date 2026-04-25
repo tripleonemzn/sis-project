@@ -63,12 +63,12 @@ export function getStaffSectionTitle(user?: StaffProfile | null) {
 export function getStaffPreferredMenuKeys(user?: StaffProfile | null) {
   const division = resolveStaffDivision(user);
   if (division === 'HEAD_TU') {
-    return ['staff-head-tu-administration', 'staff-head-tu-students', 'staff-head-tu-letters'];
+    return ['staff-own-presence', 'staff-head-tu-administration', 'staff-head-tu-students'];
   }
   if (division === 'ADMINISTRATION') {
-    return ['staff-students', 'staff-administration-teachers', 'staff-administration-permissions', 'staff-administration-presence'];
+    return ['staff-own-presence', 'staff-students', 'staff-administration-presence'];
   }
-  return ['staff-payments', 'staff-students', 'staff-admin'];
+  return ['staff-own-presence', 'staff-payments', 'staff-students'];
 }
 
 export function getStaffStudentsSubtitle(user?: StaffProfile | null) {

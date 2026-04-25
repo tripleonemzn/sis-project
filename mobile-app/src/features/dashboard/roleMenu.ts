@@ -253,7 +253,7 @@ const ROLE_MENUS: Record<string, RoleMenuItem[]> = {
     { key: 'student-learning', label: 'Materi & Tugas', route: '/learning' },
     {
       key: 'student-attendance-history',
-      label: 'Riwayat Kehadiran',
+      label: 'Presensi Saya',
       route: '/attendance',
     },
     { key: 'student-permissions', label: 'Perizinan', route: '/permissions' },
