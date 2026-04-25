@@ -5,25 +5,23 @@ Setiap room baru yang diminta `baca AGENTS.md` atau `lanjutkan` wajib membaca fi
 
 ## Status Saat Ini
 
-- Last updated: 2026-04-25 15:16 WIB
-- Current status: Batch perapihan presensi harian self-scan selesai.
+- Last updated: 2026-04-25 15:20 WIB
+- Current status: Policy kerja diperbarui agar perubahan web/mobile default langsung deploy/publish live untuk ujicoba, kecuali user eksplisit meminta jangan deploy/publish dulu.
 - Last completed repo work:
   - Commit: cek commit terbaru dengan `git log -1 --stat --decorate`
-  - Title: `fix(attendance): tighten daily presence self-scan parity`
-  - Summary: Merapikan parity UI presensi harian self-scan dengan countdown QR mobile siswa yang ikut berdetak, istilah mobile staff `Bantu Petugas`, dan penghapusan teks tahun ajaran aktif yang redundan di workspace staff.
+  - Title: `docs(policy): default to live web and mobile publish`
+  - Summary: Memperjelas `AGENTS.md` bahwa deploy web dan publish OTA mobile adalah default penyelesaian task UI setelah verifikasi lolos.
 - Worktree expectation: clean setelah commit dan push batch ini.
-- Publish/live status: belum dipublish OTA/deploy live dari batch ini; source siap setelah commit/push dan verifikasi lolos.
+- Publish/live status: perubahan policy dokumen saja; tidak membutuhkan deploy web atau OTA mobile.
 
 ## Verifikasi Batch Terakhir
 
-- `cd backend && npm run build`
-- `cd frontend && npm run build`
-- `cd mobile-app && npm run typecheck`
-- `cd mobile-app && npm run audit:parity:check`
+- Review diff `AGENTS.md` dan `docs/CODEX_CONTINUITY.md`
+- Tidak ada build/typecheck yang diperlukan karena perubahan hanya policy dokumentasi.
 
 ## Langkah Aman Berikutnya
 
-- Jika user meminta tester langsung mencoba hasil UI ini, jalankan workflow publish/deploy existing untuk web/mobile sesuai channel yang dipakai.
+- Untuk task web/mobile berikutnya, jalankan verifikasi minimum lalu deploy web dan/atau publish OTA mobile secara default, kecuali user eksplisit meminta publish ditahan.
 - Jika lanjut audit presensi, fokus berikutnya adalah uji manual flow end-to-end: staff buka sesi, siswa buat QR, staff scan/confirm, lalu cek realtime update di web dan mobile.
 
 ## Template Update Wajib Saat Ada Pekerjaan Baru

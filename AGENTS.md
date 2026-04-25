@@ -92,17 +92,18 @@ Dokumen ini adalah policy kerja default untuk setiap sesi baru yang mengerjakan 
 
 8. **UI/frontend harus selalu up to date untuk ujicoba**
    - Jika perubahan menyentuh web/mobile UI yang dipakai tester, hasilnya harus dirilis sesuai workflow existing project.
-   - Jika user meminta hasil langsung bisa diuji, deploy/publish sesuai workflow existing project adalah bagian wajib dari penyelesaian task dan tidak boleh ditunda ke langkah terpisah, kecuali user meminta eksplisit untuk belum dipublish.
+   - Default setiap pekerjaan yang mengubah web atau mobile adalah **langsung deploy/publish live untuk ujicoba** setelah verifikasi minimum lolos, agar tester bisa langsung mencoba hasil terbaru.
+   - Deploy web dan publish OTA mobile adalah bagian wajib dari penyelesaian task jika area yang berubah menyentuh platform tersebut, kecuali user secara eksplisit memberi instruksi seperti `jangan deploy dulu`, `jangan publish dulu`, `source code saja`, atau instruksi lain yang maknanya setara.
+   - Jangan menutup task UI dengan status source code sudah berubah tetapi hasil belum tersedia untuk tester di web/mobile yang terdampak, kecuali ada instruksi eksplisit untuk menahan publish atau ada blocker teknis yang wajib dilaporkan jujur.
    - Jika ada pengembangan menu, sub-menu, tab, atau fitur baru yang muncul di navigasi user, pastikan breadcrumb juga ikut disesuaikan agar konteks halaman tetap jelas dan konsisten.
    - Jangan menambah fitur/menu baru dengan breadcrumb yang tertinggal, salah label, atau tidak mengenali tab aktif.
    - Untuk mobile tester:
      - jalankan verifikasi dasar
-     - publish OTA ke channel yang dipakai tester jika task memang harus langsung diuji
+     - publish OTA ke channel yang dipakai tester secara default setelah perubahan mobile lolos verifikasi
      - untuk notifikasi update OTA yang user-facing, gunakan copy baku yang konsisten dan wajib memuat kalimat `Silakan perbarui untuk menikmati fitur terbaru.`
      - jangan mengubah judul/pesan notifikasi update OTA per publish, per channel, atau per script kecuali user meminta eksplisit
    - Untuk web:
-     - pastikan perubahan frontend benar-benar ikut ter-deploy/ter-update sesuai alur existing project jika user meminta langsung live untuk ujicoba
-   - Jangan menutup task UI dengan kondisi source code berubah tetapi tester belum bisa mencoba hasilnya, kecuali user memang meminta belum dipublish.
+     - deploy/update frontend sesuai workflow existing project secara default setelah perubahan web lolos verifikasi
 
 ## Checklist Verifikasi Minimum
 
@@ -240,7 +241,7 @@ Dokumen ini adalah policy kerja default untuk setiap sesi baru yang mengerjakan 
 18. **Penutupan pekerjaan minimal harus memuat**
    - apa yang dikerjakan
    - verifikasi yang dijalankan
-   - status publish/live bila ada
+   - status publish/live web dan/atau OTA mobile untuk platform yang terdampak
    - progress % bila pekerjaan masih bertahap
    - konfirmasi bahwa worktree sudah clean
    - konfirmasi bahwa commit task sudah dipush ke `origin/main`
