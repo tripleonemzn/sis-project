@@ -2,6 +2,7 @@ import { apiClient } from '../../lib/api/client';
 import {
   DailyAttendanceEntry,
   DailyLateSummaryPayload,
+  DailyPresenceMonitorScanResult,
   DailyPresenceOperationalStudent,
   DailyPresencePolicy,
   DailyPresencePolicyPayload,
@@ -116,6 +117,13 @@ type DailyPresenceSelfScanPreviewEnvelope = {
   success: boolean;
   message: string;
   data: DailyPresenceSelfScanPreview;
+};
+
+type DailyPresenceMonitorScanEnvelope = {
+  statusCode: number;
+  success: boolean;
+  message: string;
+  data: DailyPresenceMonitorScanResult;
 };
 
 export const attendanceApi = {
@@ -267,6 +275,13 @@ export const attendanceApi = {
   async confirmSelfScanPass(payload: { qrToken: string }) {
     const response = await apiClient.post<DailyPresenceStudentResponse>(
       '/attendances/daily-presence/self-scan/confirm',
+      payload,
+    );
+    return response.data?.data;
+  },
+  async confirmSelfScanMonitorPass(payload: { qrToken: string }) {
+    const response = await apiClient.post<DailyPresenceMonitorScanEnvelope>(
+      '/attendances/daily-presence/self-scan/monitor/confirm',
       payload,
     );
     return response.data?.data;

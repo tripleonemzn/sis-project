@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useState } from 'react';
+import { useEffect, useMemo, useRef, useState } from 'react';
 import { Redirect, useRouter } from 'expo-router';
 import { useMutation, useQuery } from '@tanstack/react-query';
 import {
@@ -12,6 +12,7 @@ import {
 } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { usePreventScreenCapture } from 'expo-screen-capture';
+import { CameraView, type BarcodeScanningResult, useCameraPermissions } from 'expo-camera';
 import { AppLoadingScreen } from '../../src/components/AppLoadingScreen';
 import { MobileMenuTabBar } from '../../src/components/MobileMenuTabBar';
 import { QueryStateView } from '../../src/components/QueryStateView';
@@ -19,6 +20,7 @@ import { OfflineCacheNotice } from '../../src/components/OfflineCacheNotice';
 import { useAuth } from '../../src/features/auth/AuthProvider';
 import { attendanceApi } from '../../src/features/attendance/attendanceApi';
 import {
+  DailyPresenceMonitorScanResult,
   DailyPresenceSelfScanPass,
   StudentAttendanceHistory,
   StudentAttendanceStatus,
@@ -29,7 +31,7 @@ import {
 } from '../../src/features/attendance/selfScanUtils';
 import { useStudentAttendanceQuery } from '../../src/features/attendance/useStudentAttendanceQuery';
 import { resolvePublicAssetUrl } from '../../src/lib/media/resolvePublicAssetUrl';
-import { notifyApiError } from '../../src/lib/ui/feedback';
+import { notifyApiError, notifySuccess } from '../../src/lib/ui/feedback';
 import { getStandardPagePadding } from '../../src/lib/ui/pageLayout';
 import {
   buildResponsivePageContentStyle,
@@ -205,22 +207,188 @@ function ProtectedQrCard({ pass }: { pass: DailyPresenceSelfScanPass }) {
   );
 }
 
+function MonitorQrScannerCard({
+  enabled,
+  permissionGranted,
+  permissionDenied,
+  onRequestPermission,
+  onScanned,
+  result,
+  pending,
+  onResetResult,
+}: {
+  enabled: boolean;
+  permissionGranted: boolean;
+  permissionDenied: boolean;
+  onRequestPermission: () => void;
+  onScanned: (result: BarcodeScanningResult) => void;
+  result: DailyPresenceMonitorScanResult | null;
+  pending: boolean;
+  onResetResult: () => void;
+}) {
+  const { colors } = useAppTheme();
+  const { scaleFont, scaleLineHeight, fontSizes } = useAppTextScale();
+
+  return (
+    <View
+      style={{
+        borderWidth: 1,
+        borderColor: '#c7d7f7',
+        borderRadius: 18,
+        backgroundColor: '#fff',
+        padding: 14,
+        marginBottom: 14,
+      }}
+    >
+      <Text style={{ fontSize: scaleFont(18), lineHeight: scaleLineHeight(24), fontWeight: '700', color: colors.text }}>
+        Scan QR Monitor TU
+      </Text>
+      <Text style={{ color: colors.textMuted, fontSize: fontSizes.body, lineHeight: scaleLineHeight(20), marginTop: 4, marginBottom: 12 }}>
+        Arahkan kamera ke QR yang tampil di monitor Tata Usaha. Sistem otomatis menentukan absen masuk atau pulang dari QR yang dipindai.
+      </Text>
+
+      {!permissionGranted ? (
+        <View
+          style={{
+            borderWidth: 1,
+            borderColor: '#cbd5e1',
+            borderStyle: 'dashed',
+            borderRadius: 14,
+            padding: 16,
+            backgroundColor: '#f8fafc',
+          }}
+        >
+          <Text style={{ color: colors.text, fontWeight: '700', marginBottom: 6 }}>Izin kamera belum aktif</Text>
+          <Text style={{ color: colors.textMuted, fontSize: fontSizes.body, lineHeight: scaleLineHeight(20), marginBottom: 12 }}>
+            {permissionDenied
+              ? 'Aktifkan izin kamera agar Anda bisa scan QR monitor presensi.'
+              : 'Berikan izin kamera untuk mulai scan QR monitor presensi.'}
+          </Text>
+          <Pressable
+            onPress={onRequestPermission}
+            style={{
+              backgroundColor: colors.primary,
+              borderRadius: 12,
+              paddingVertical: 12,
+              alignItems: 'center',
+            }}
+          >
+            <Text style={{ color: '#fff', fontWeight: '700' }}>
+              {permissionDenied ? 'Minta Izin Kamera Lagi' : 'Aktifkan Kamera'}
+            </Text>
+          </Pressable>
+        </View>
+      ) : (
+        <View
+          style={{
+            height: 320,
+            borderRadius: 18,
+            overflow: 'hidden',
+            backgroundColor: '#0f172a',
+            position: 'relative',
+          }}
+        >
+          <CameraView
+            style={{ flex: 1 }}
+            facing="back"
+            barcodeScannerSettings={{ barcodeTypes: ['qr'] }}
+            onBarcodeScanned={enabled ? onScanned : undefined}
+          />
+          <View
+            pointerEvents="none"
+            style={{
+              position: 'absolute',
+              top: 0,
+              right: 0,
+              bottom: 0,
+              left: 0,
+              alignItems: 'center',
+              justifyContent: 'center',
+            }}
+          >
+            <View
+              style={{
+                width: 220,
+                height: 220,
+                borderRadius: 24,
+                borderWidth: 3,
+                borderColor: '#f8fafc',
+                backgroundColor: 'transparent',
+              }}
+            />
+            <Text style={{ marginTop: 16, color: '#f8fafc', fontWeight: '700', fontSize: fontSizes.body }}>
+              Arahkan QR monitor ke area ini
+            </Text>
+            <Text style={{ marginTop: 6, color: '#cbd5e1', fontSize: fontSizes.bodyCompact }}>
+              {pending ? 'Mencatat presensi...' : 'QR monitor akan berganti otomatis.'}
+            </Text>
+          </View>
+        </View>
+      )}
+
+      {result ? (
+        <View
+          style={{
+            marginTop: 12,
+            borderWidth: 1,
+            borderColor: result.checkpoint === 'CHECK_IN' ? '#bbf7d0' : '#bae6fd',
+            backgroundColor: result.checkpoint === 'CHECK_IN' ? '#f0fdf4' : '#f0f9ff',
+            borderRadius: 14,
+            padding: 12,
+          }}
+        >
+          <Text style={{ color: colors.text, fontWeight: '700', marginBottom: 4 }}>
+            {getDailyPresenceCheckpointLabel(result.checkpoint)} berhasil tercatat
+          </Text>
+          <Text style={{ color: colors.textMuted, fontSize: fontSizes.bodyCompact, lineHeight: scaleLineHeight(18) }}>
+            Jam {result.recordedTime || '-'}
+            {result.gateLabel ? ` • ${result.gateLabel}` : ''}
+            {result.lateMinutes && result.lateMinutes > 0 ? ` • terlambat ${result.lateMinutes} menit` : ''}
+          </Text>
+          <Pressable
+            onPress={onResetResult}
+            style={{
+              marginTop: 10,
+              borderWidth: 1,
+              borderColor: '#cbd5e1',
+              borderRadius: 10,
+              paddingVertical: 9,
+              alignItems: 'center',
+              backgroundColor: '#fff',
+            }}
+          >
+            <Text style={{ color: colors.text, fontWeight: '700', fontSize: fontSizes.label }}>
+              Scan Lagi
+            </Text>
+          </Pressable>
+        </View>
+      ) : null}
+    </View>
+  );
+}
+
 export default function AttendanceScreen() {
   const router = useRouter();
   const insets = useSafeAreaInsets();
   const layout = useResponsiveLayout();
   const { colors } = useAppTheme();
   const { isAuthenticated, isLoading, user } = useAuth();
+  const [cameraPermission, requestCameraPermission] = useCameraPermissions();
   const { scaleFont, scaleLineHeight, fontSizes } = useAppTextScale();
   const [tab, setTab] = useState<AttendanceTabKey>('SCAN');
   const [cursorDate, setCursorDate] = useState(() => new Date());
   const [checkpoint, setCheckpoint] = useState<Checkpoint>('CHECK_IN');
   const [challengeCode, setChallengeCode] = useState('');
   const [currentPass, setCurrentPass] = useState<DailyPresenceSelfScanPass | null>(null);
+  const [monitorScanResult, setMonitorScanResult] = useState<DailyPresenceMonitorScanResult | null>(null);
+  const [pendingMonitorToken, setPendingMonitorToken] = useState('');
   const [, setTicker] = useState(Date.now());
+  const lastMonitorScanRef = useRef<{ token: string; at: number }>({ token: '', at: 0 });
   const pageContentPadding = getStandardPagePadding(insets, { horizontal: layout.pageHorizontal });
   const pageContentStyle = buildResponsivePageContentStyle(pageContentPadding, layout);
   const { month, year } = toMonthYear(cursorDate);
+  const cameraGranted = Boolean(cameraPermission?.granted);
+  const cameraDenied = cameraPermission?.status === 'denied';
 
   const attendanceQuery = useStudentAttendanceQuery({
     enabled: isAuthenticated,
@@ -258,6 +426,28 @@ export default function AttendanceScreen() {
     },
   });
 
+  const monitorScanMutation = useMutation({
+    mutationFn: (payload: { qrToken: string }) => attendanceApi.confirmSelfScanMonitorPass(payload),
+    onSuccess: async (result) => {
+      setMonitorScanResult(result);
+      setPendingMonitorToken('');
+      setCurrentPass(null);
+      notifySuccess(
+        result.checkpoint === 'CHECK_IN'
+          ? 'Absen masuk berhasil dari QR monitor.'
+          : 'Absen pulang berhasil dari QR monitor.',
+      );
+      await Promise.all([
+        todayPresenceQuery.refetch(),
+        attendanceQuery.refetch(),
+      ]);
+    },
+    onError: (error) => {
+      setPendingMonitorToken('');
+      notifyApiError(error, 'Gagal memproses QR monitor presensi.');
+    },
+  });
+
   useEffect(() => {
     if (!currentPass) return;
     const timer = setInterval(() => {
@@ -292,6 +482,12 @@ export default function AttendanceScreen() {
     Boolean(activeSessionQuery.data?.sessionId) &&
     challengeCode.replace(/\D+/g, '').length === 6 &&
     !createPassMutation.isPending;
+  const monitorScannerEnabled =
+    tab === 'SCAN' &&
+    cameraGranted &&
+    !monitorScanMutation.isPending &&
+    !pendingMonitorToken &&
+    !monitorScanResult;
 
   if (isLoading) return <AppLoadingScreen message="Memuat absensi..." />;
   if (!isAuthenticated) return <Redirect href="/welcome" />;
@@ -331,6 +527,18 @@ export default function AttendanceScreen() {
     ]);
   };
 
+  const handleMonitorQrScanned = (result: BarcodeScanningResult) => {
+    const qrToken = String(result?.data || '').trim();
+    const now = Date.now();
+    const lastScan = lastMonitorScanRef.current;
+    if (!qrToken || pendingMonitorToken || monitorScanMutation.isPending) return;
+    if (lastScan.token === qrToken && now - lastScan.at < 4000) return;
+    lastMonitorScanRef.current = { token: qrToken, at: now };
+    setPendingMonitorToken(qrToken);
+    setMonitorScanResult(null);
+    monitorScanMutation.mutate({ qrToken });
+  };
+
   const todayPresence = todayPresenceQuery.data?.presence || null;
 
   return (
@@ -342,7 +550,8 @@ export default function AttendanceScreen() {
           refreshing={
             attendanceQuery.isFetching ||
             todayPresenceQuery.isFetching ||
-            (activeSessionQuery.isFetching && tab === 'SCAN')
+            (activeSessionQuery.isFetching && tab === 'SCAN') ||
+            monitorScanMutation.isPending
           }
           onRefresh={handleRefresh}
         />
@@ -352,7 +561,7 @@ export default function AttendanceScreen() {
         Absensi Saya
       </Text>
       <Text style={{ color: colors.textMuted, fontSize: fontSizes.body, lineHeight: scaleLineHeight(20), marginBottom: 12 }}>
-        QR presensi harian untuk scan mandiri dan riwayat kehadiran bulanan.
+        Scan QR monitor Tata Usaha untuk presensi harian dan pantau riwayat kehadiran bulanan.
       </Text>
 
       <MobileMenuTabBar
@@ -369,21 +578,16 @@ export default function AttendanceScreen() {
 
       {tab === 'SCAN' ? (
         <>
-          <View
-            style={{
-              borderWidth: 1,
-              borderColor: '#dbeafe',
-              backgroundColor: '#eff6ff',
-              borderRadius: 14,
-              paddingHorizontal: 14,
-              paddingVertical: 12,
-              marginBottom: 14,
-            }}
-          >
-            <Text style={{ color: '#1d4ed8', fontSize: fontSizes.body, lineHeight: scaleLineHeight(20) }}>
-              Siswa membuat QR sekali pakai setelah memasukkan challenge dari petugas. QR berlaku singkat dan tidak untuk dibagikan.
-            </Text>
-          </View>
+          <MonitorQrScannerCard
+            enabled={monitorScannerEnabled}
+            permissionGranted={cameraGranted}
+            permissionDenied={cameraDenied}
+            onRequestPermission={requestCameraPermission}
+            onScanned={handleMonitorQrScanned}
+            result={monitorScanResult}
+            pending={monitorScanMutation.isPending}
+            onResetResult={() => setMonitorScanResult(null)}
+          />
 
           <View
             style={{
@@ -446,7 +650,7 @@ export default function AttendanceScreen() {
               }}
             >
               <Text style={{ color: colors.text, fontWeight: '700', marginBottom: 4 }}>
-                Sesi {getDailyPresenceCheckpointLabel(checkpoint)} Sedang Dibuka
+                Cadangan: QR Siswa untuk Petugas
               </Text>
               <Text style={{ color: colors.textMuted, fontSize: fontSizes.body, lineHeight: scaleLineHeight(20), marginBottom: 12 }}>
                 {activeSessionQuery.data.gateLabel
@@ -460,7 +664,7 @@ export default function AttendanceScreen() {
               </Text>
 
               <Text style={{ color: colors.textMuted, fontSize: fontSizes.caption, marginBottom: 6 }}>
-                Masukkan challenge 6 digit yang tampil di layar petugas
+                Jika kamera siswa bermasalah, masukkan challenge 6 digit agar petugas bisa memindai QR dari HP siswa.
               </Text>
               <TextInput
                 value={challengeCode}

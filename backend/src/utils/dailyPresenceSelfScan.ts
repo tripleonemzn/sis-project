@@ -360,6 +360,19 @@ export function verifyDailyPresenceSelfScanQrToken(token: string): DailyPresence
   }
 }
 
+export function verifyDailyPresenceSelfScanMonitorQrToken(token: string): DailyPresenceSelfScanMonitorQrTokenPayload {
+  try {
+    const decoded = jwt.verify(String(token || '').trim(), JWT_SIGNING_SECRET) as DailyPresenceSelfScanMonitorQrTokenPayload;
+    if (decoded?.tokenType !== 'daily-presence-self-scan-monitor') {
+      throw new ApiError(400, 'Format QR monitor presensi tidak valid.');
+    }
+    return decoded;
+  } catch (error) {
+    if (error instanceof ApiError) throw error;
+    throw new ApiError(400, 'QR monitor presensi sudah tidak berlaku atau formatnya tidak valid.');
+  }
+}
+
 export async function consumeDailyPresenceSelfScanQrToken(rawToken: string) {
   await cleanupConsumedQrTokens();
   const now = Date.now();

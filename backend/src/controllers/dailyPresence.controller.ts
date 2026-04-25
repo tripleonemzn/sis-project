@@ -17,6 +17,7 @@ import {
   createActiveDailyPresenceSelfScanSession,
   getActiveDailyPresenceSelfScanSession,
   verifyDailyPresenceChallengeCode,
+  verifyDailyPresenceSelfScanMonitorQrToken,
   verifyDailyPresenceSelfScanQrToken,
 } from '../utils/dailyPresenceSelfScan';
 
@@ -83,6 +84,18 @@ function getJakartaDateKey(date = new Date()) {
   });
   return formatter.format(date);
 }
+
+const jakartaWeekdayFormatter = new Intl.DateTimeFormat('en-US', {
+  timeZone: 'Asia/Jakarta',
+  weekday: 'long',
+});
+
+const jakartaMinuteFormatter = new Intl.DateTimeFormat('en-GB', {
+  timeZone: 'Asia/Jakarta',
+  hour: '2-digit',
+  minute: '2-digit',
+  hourCycle: 'h23',
+});
 
 function toDateOnly(dateKey: string) {
   return new Date(dateKey);
@@ -198,6 +211,10 @@ const selfScanPreviewSchema = z.object({
   qrToken: z.string().trim().min(16),
 });
 
+const selfScanMonitorConfirmSchema = z.object({
+  qrToken: z.string().trim().min(16),
+});
+
 function buildPresencePayload(
   attendance: {
     id: number;
@@ -246,6 +263,26 @@ function toMinuteOfDay(value: string) {
     .split(':')
     .map((part) => Number(part));
   return hour * 60 + minute;
+}
+
+function getJakartaMinuteOfDay(date = new Date()) {
+  const parts = jakartaMinuteFormatter.formatToParts(date);
+  const hour = Number(parts.find((part) => part.type === 'hour')?.value || 0);
+  const minute = Number(parts.find((part) => part.type === 'minute')?.value || 0);
+  return hour * 60 + minute;
+}
+
+function getJakartaPolicyDayKey(date = new Date()): DailyPresencePolicyDayKey | null {
+  const weekday = jakartaWeekdayFormatter.format(date);
+  const map: Record<string, DailyPresencePolicyDayKey> = {
+    Monday: 'MONDAY',
+    Tuesday: 'TUESDAY',
+    Wednesday: 'WEDNESDAY',
+    Thursday: 'THURSDAY',
+    Friday: 'FRIDAY',
+    Saturday: 'SATURDAY',
+  };
+  return map[weekday] || null;
 }
 
 function getDefaultDailyPresencePolicyDay(day: DailyPresencePolicyDayKey) {
@@ -335,6 +372,61 @@ async function getStoredDailyPresencePolicy(activeAcademicYearId: number) {
     policy: normalizeDailyPresencePolicy(configObject.dailyPresencePolicy),
     source: timeConfig ? 'SAVED' : 'DEFAULT',
     updatedAt: timeConfig?.updatedAt?.toISOString() || null,
+  } as const;
+}
+
+function resolveMonitorScanTimingDecision(params: {
+  checkpoint: 'CHECK_IN' | 'CHECK_OUT';
+  policy: ReturnType<typeof normalizeDailyPresencePolicy>;
+  now?: Date;
+}) {
+  const now = params.now instanceof Date ? params.now : new Date();
+  const dayKey = getJakartaPolicyDayKey(now);
+  if (!dayKey) {
+    throw new ApiError(400, 'Presensi harian belum aktif untuk hari ini.');
+  }
+
+  const dayPolicy = params.policy.days[dayKey];
+  if (!dayPolicy?.enabled) {
+    throw new ApiError(400, 'Presensi harian hari ini sedang nonaktif.');
+  }
+
+  const currentMinute = getJakartaMinuteOfDay(now);
+  if (params.checkpoint === 'CHECK_IN') {
+    const openAt = toMinuteOfDay(dayPolicy.checkIn.openAt);
+    const onTimeUntil = toMinuteOfDay(dayPolicy.checkIn.onTimeUntil);
+    const closeAt = toMinuteOfDay(dayPolicy.checkIn.closeAt);
+    if (currentMinute < openAt) {
+      throw new ApiError(400, `QR masuk baru dapat dipakai mulai pukul ${dayPolicy.checkIn.openAt} WIB.`);
+    }
+    if (currentMinute > closeAt) {
+      throw new ApiError(400, `QR masuk sudah ditutup pukul ${dayPolicy.checkIn.closeAt} WIB.`);
+    }
+
+    const lateMinutes = Math.max(0, currentMinute - onTimeUntil);
+    return {
+      status: lateMinutes > 0 ? 'LATE' : 'PRESENT',
+      lateMinutes,
+      note:
+        lateMinutes > 0
+          ? `Terlambat ${lateMinutes} menit dari batas tepat waktu ${dayPolicy.checkIn.onTimeUntil} WIB.`
+          : null,
+    } as const;
+  }
+
+  const validFrom = toMinuteOfDay(dayPolicy.checkOut.validFrom);
+  const closeAt = toMinuteOfDay(dayPolicy.checkOut.closeAt);
+  if (currentMinute < validFrom) {
+    throw new ApiError(400, `Absen pulang baru valid mulai pukul ${dayPolicy.checkOut.validFrom} WIB.`);
+  }
+  if (currentMinute > closeAt) {
+    throw new ApiError(400, `QR pulang sudah ditutup pukul ${dayPolicy.checkOut.closeAt} WIB.`);
+  }
+
+  return {
+    status: 'PRESENT',
+    lateMinutes: 0,
+    note: null,
   } as const;
 }
 
@@ -977,6 +1069,13 @@ export const createSelfScanPass = asyncHandler(async (req: Request, res: Respons
     throw new ApiError(400, 'Kode challenge tidak cocok atau sudah kadaluarsa.');
   }
 
+  const { policy } = await getStoredDailyPresencePolicy(activeAcademicYear.id);
+  resolveMonitorScanTimingDecision({
+    checkpoint,
+    policy,
+    now: new Date(),
+  });
+
   const student = await getOperationalStudentOrThrow(Number(user?.id || 0), activeAcademicYear.id);
   const existingAttendance = await prisma.dailyAttendance.findFirst({
     where: {
@@ -1143,6 +1242,13 @@ export const confirmSelfScanPass = asyncHandler(async (req: Request, res: Respon
   }
 
   const now = new Date();
+  const { policy } = await getStoredDailyPresencePolicy(activeAcademicYear.id);
+  const timingDecision = resolveMonitorScanTimingDecision({
+    checkpoint: decoded.checkpoint,
+    policy,
+    now,
+  });
+
   const attendanceResult = await prisma.$transaction(async (tx) => {
     const existing = await tx.dailyAttendance.findFirst({
       where: {
@@ -1157,12 +1263,23 @@ export const confirmSelfScanPass = asyncHandler(async (req: Request, res: Respon
     if (decoded.checkpoint === 'CHECK_IN' && existing?.checkInTime) {
       throw new ApiError(400, 'Absen masuk hari ini sudah tercatat.');
     }
+    if (decoded.checkpoint === 'CHECK_OUT' && !existing?.checkInTime) {
+      throw new ApiError(400, 'Absen masuk belum tercatat. Minta bantuan petugas jika perlu koreksi.');
+    }
     if (decoded.checkpoint === 'CHECK_OUT' && existing?.checkOutTime) {
       throw new ApiError(400, 'Absen pulang hari ini sudah tercatat.');
     }
 
     const nextStatus =
-      existing?.status === 'PRESENT' || existing?.status === 'LATE' ? existing.status : 'PRESENT';
+      decoded.checkpoint === 'CHECK_IN'
+        ? timingDecision.status
+        : existing?.status === 'PRESENT' || existing?.status === 'LATE'
+          ? existing.status
+          : 'PRESENT';
+    const nextNote =
+      decoded.checkpoint === 'CHECK_IN'
+        ? timingDecision.note || existing?.note || null
+        : existing?.note || null;
     const shouldNotifyParent =
       decoded.checkpoint === 'CHECK_IN' ? !existing?.checkInTime : !existing?.checkOutTime;
     const upserted = existing
@@ -1172,6 +1289,7 @@ export const confirmSelfScanPass = asyncHandler(async (req: Request, res: Respon
             decoded.checkpoint === 'CHECK_IN'
               ? {
                   status: nextStatus,
+                  note: nextNote,
                   checkInTime: now,
                   checkInSource: DailyPresenceCaptureSource.SELF_SCAN,
                   checkInReason: `Self scan ${session.gateLabel ? `(${session.gateLabel})` : 'mobile'}`,
@@ -1179,6 +1297,7 @@ export const confirmSelfScanPass = asyncHandler(async (req: Request, res: Respon
                 }
               : {
                   status: nextStatus,
+                  note: nextNote,
                   checkOutTime: now,
                   checkOutSource: DailyPresenceCaptureSource.SELF_SCAN,
                   checkOutReason: `Self scan ${session.gateLabel ? `(${session.gateLabel})` : 'mobile'}`,
@@ -1204,20 +1323,11 @@ export const confirmSelfScanPass = asyncHandler(async (req: Request, res: Respon
             classId: student.studentClass!.id,
             academicYearId: activeAcademicYear.id,
             status: nextStatus,
-            note: null,
-            ...(decoded.checkpoint === 'CHECK_IN'
-              ? {
-                  checkInTime: now,
-                  checkInSource: DailyPresenceCaptureSource.SELF_SCAN,
-                  checkInReason: `Self scan ${session.gateLabel ? `(${session.gateLabel})` : 'mobile'}`,
-                  checkInActorId: actor.id,
-                }
-              : {
-                  checkOutTime: now,
-                  checkOutSource: DailyPresenceCaptureSource.SELF_SCAN,
-                  checkOutReason: `Self scan ${session.gateLabel ? `(${session.gateLabel})` : 'mobile'}`,
-                  checkOutActorId: actor.id,
-                }),
+            note: nextNote,
+            checkInTime: now,
+            checkInSource: DailyPresenceCaptureSource.SELF_SCAN,
+            checkInReason: `Self scan ${session.gateLabel ? `(${session.gateLabel})` : 'mobile'}`,
+            checkInActorId: actor.id,
           },
           select: {
             id: true,
@@ -1245,7 +1355,9 @@ export const confirmSelfScanPass = asyncHandler(async (req: Request, res: Respon
             ? DailyPresenceEventType.CHECK_IN
             : DailyPresenceEventType.CHECK_OUT,
         source: DailyPresenceCaptureSource.SELF_SCAN,
-        reason: `Self scan terverifikasi petugas${session.gateLabel ? ` di ${session.gateLabel}` : ''}`,
+        reason: timingDecision.note
+          ? `Self scan terverifikasi petugas${session.gateLabel ? ` di ${session.gateLabel}` : ''}. ${timingDecision.note}`
+          : `Self scan terverifikasi petugas${session.gateLabel ? ` di ${session.gateLabel}` : ''}`,
         gateLabel: session.gateLabel || null,
         actorId: actor.id,
         recordedAt: now,
@@ -1307,6 +1419,211 @@ export const confirmSelfScanPass = asyncHandler(async (req: Request, res: Respon
       decoded.checkpoint === 'CHECK_IN'
         ? 'Absen masuk scan mandiri berhasil diverifikasi.'
         : 'Absen pulang scan mandiri berhasil diverifikasi.',
+    ),
+  );
+});
+
+export const confirmSelfScanMonitorPass = asyncHandler(async (req: Request, res: Response) => {
+  const user = (req as any).user;
+  if (String(user?.role || '').trim().toUpperCase() !== 'STUDENT') {
+    throw new ApiError(403, 'Scan QR monitor presensi pada batch ini baru tersedia untuk siswa.');
+  }
+
+  const { qrToken } = selfScanMonitorConfirmSchema.parse(req.body);
+  const decoded = verifyDailyPresenceSelfScanMonitorQrToken(qrToken);
+  const activeAcademicYear = await getActiveAcademicYearOrThrow();
+  const session = await getActiveDailyPresenceSelfScanSession(decoded.checkpoint);
+  const dateKey = getJakartaDateKey();
+  const targetDate = toDateOnly(dateKey);
+  const now = new Date();
+
+  if (
+    !session ||
+    session.sessionId !== decoded.sessionId ||
+    session.academicYearId !== activeAcademicYear.id ||
+    session.academicYearId !== decoded.academicYearId ||
+    session.dateKey !== dateKey ||
+    decoded.dateKey !== dateKey
+  ) {
+    throw new ApiError(400, 'Sesi monitor QR sudah tidak aktif.');
+  }
+
+  if (!verifyDailyPresenceChallengeCode(session, decoded.challengeCode, now)) {
+    throw new ApiError(400, 'QR monitor presensi sudah berganti. Silakan scan QR terbaru di layar TU.');
+  }
+
+  const student = await getOperationalStudentOrThrow(Number(user?.id || 0), activeAcademicYear.id);
+  const { policy } = await getStoredDailyPresencePolicy(activeAcademicYear.id);
+  const timingDecision = resolveMonitorScanTimingDecision({
+    checkpoint: decoded.checkpoint,
+    policy,
+    now,
+  });
+
+  const attendanceResult = await prisma.$transaction(async (tx) => {
+    const existing = await tx.dailyAttendance.findFirst({
+      where: {
+        studentId: student.id,
+        classId: student.studentClass!.id,
+        academicYearId: activeAcademicYear.id,
+        date: targetDate,
+      },
+      orderBy: { id: 'desc' },
+    });
+
+    if (decoded.checkpoint === 'CHECK_IN' && existing?.checkInTime) {
+      throw new ApiError(400, 'Absen masuk hari ini sudah tercatat.');
+    }
+    if (decoded.checkpoint === 'CHECK_OUT' && !existing?.checkInTime) {
+      throw new ApiError(400, 'Absen masuk belum tercatat. Minta bantuan petugas jika perlu koreksi.');
+    }
+    if (decoded.checkpoint === 'CHECK_OUT' && existing?.checkOutTime) {
+      throw new ApiError(400, 'Absen pulang hari ini sudah tercatat.');
+    }
+
+    const isCheckIn = decoded.checkpoint === 'CHECK_IN';
+    const nextStatus = isCheckIn
+      ? timingDecision.status
+      : existing?.status === 'PRESENT' || existing?.status === 'LATE'
+        ? existing.status
+        : 'PRESENT';
+    const nextNote = isCheckIn ? timingDecision.note || existing?.note || null : existing?.note || null;
+    const reason = `Scan QR monitor${session.gateLabel ? ` di ${session.gateLabel}` : ''}`;
+    const shouldNotifyParent = isCheckIn ? !existing?.checkInTime : !existing?.checkOutTime;
+
+    const upserted = existing
+      ? await tx.dailyAttendance.update({
+          where: { id: existing.id },
+          data: isCheckIn
+            ? {
+                status: nextStatus,
+                note: nextNote,
+                checkInTime: now,
+                checkInSource: DailyPresenceCaptureSource.SELF_SCAN,
+                checkInReason: reason,
+                checkInActorId: session.actorId,
+              }
+            : {
+                status: nextStatus,
+                note: nextNote,
+                checkOutTime: now,
+                checkOutSource: DailyPresenceCaptureSource.SELF_SCAN,
+                checkOutReason: reason,
+                checkOutActorId: session.actorId,
+              },
+          select: {
+            id: true,
+            date: true,
+            status: true,
+            note: true,
+            checkInTime: true,
+            checkOutTime: true,
+            checkInSource: true,
+            checkOutSource: true,
+            checkInReason: true,
+            checkOutReason: true,
+          },
+        })
+      : await tx.dailyAttendance.create({
+          data: {
+            date: targetDate,
+            studentId: student.id,
+            classId: student.studentClass!.id,
+            academicYearId: activeAcademicYear.id,
+            status: timingDecision.status,
+            note: timingDecision.note,
+            checkInTime: now,
+            checkInSource: DailyPresenceCaptureSource.SELF_SCAN,
+            checkInReason: reason,
+            checkInActorId: session.actorId,
+          },
+          select: {
+            id: true,
+            date: true,
+            status: true,
+            note: true,
+            checkInTime: true,
+            checkOutTime: true,
+            checkInSource: true,
+            checkOutSource: true,
+            checkInReason: true,
+            checkOutReason: true,
+          },
+        });
+
+    await tx.dailyPresenceEvent.create({
+      data: {
+        dailyAttendanceId: upserted.id,
+        studentId: student.id,
+        classId: student.studentClass!.id,
+        academicYearId: activeAcademicYear.id,
+        date: targetDate,
+        eventType:
+          decoded.checkpoint === 'CHECK_IN'
+            ? DailyPresenceEventType.CHECK_IN
+            : DailyPresenceEventType.CHECK_OUT,
+        source: DailyPresenceCaptureSource.SELF_SCAN,
+        reason: timingDecision.note ? `${reason}. ${timingDecision.note}` : reason,
+        gateLabel: session.gateLabel || null,
+        actorId: session.actorId,
+        recordedAt: now,
+      },
+    });
+
+    return {
+      attendance: upserted,
+      shouldNotifyParent,
+    };
+  });
+
+  broadcastDomainEvent({
+    domain: 'ATTENDANCE',
+    action: 'UPDATED',
+    scope: {
+      attendanceMode: 'DAILY_PRESENCE',
+      academicYearIds: [activeAcademicYear.id],
+      classIds: [student.studentClass!.id],
+      studentIds: [student.id],
+      dates: [dateKey],
+      checkpoint: decoded.checkpoint,
+    },
+  });
+
+  if (attendanceResult.shouldNotifyParent) {
+    const recordedAt =
+      decoded.checkpoint === 'CHECK_IN'
+        ? attendanceResult.attendance.checkInTime
+        : attendanceResult.attendance.checkOutTime;
+    await safeNotifyParentDailyPresence({
+      studentId: student.id,
+      studentName: student.name,
+      classId: student.studentClass!.id,
+      checkpoint: decoded.checkpoint,
+      recordedAt,
+      dateKey,
+    });
+  }
+
+  const state = await buildStudentDailyPresenceStatePayload({
+    studentId: student.id,
+    activeAcademicYear,
+    dateKey,
+  });
+
+  res.status(200).json(
+    new ApiResponse(
+      200,
+      {
+        ...state,
+        checkpoint: decoded.checkpoint,
+        gateLabel: session.gateLabel || null,
+        recordedAt: now.toISOString(),
+        recordedTime: formatTime(now),
+        lateMinutes: decoded.checkpoint === 'CHECK_IN' ? timingDecision.lateMinutes : 0,
+      },
+      decoded.checkpoint === 'CHECK_IN'
+        ? 'Absen masuk berhasil dari scan QR monitor.'
+        : 'Absen pulang berhasil dari scan QR monitor.',
     ),
   );
 });

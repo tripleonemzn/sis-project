@@ -131,6 +131,14 @@ export type DailyPresenceStudentState = {
   recentEvents: DailyPresenceEventItem[];
 };
 
+export type DailyPresenceMonitorScanResult = DailyPresenceStudentState & {
+  checkpoint: DailyPresenceEventType;
+  gateLabel?: string | null;
+  recordedAt: string;
+  recordedTime?: string | null;
+  lateMinutes?: number | null;
+};
+
 export type DailyPresenceSelfScanSession = {
   sessionId: string;
   checkpoint: DailyPresenceEventType;
