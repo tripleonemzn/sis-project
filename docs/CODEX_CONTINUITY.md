@@ -5,14 +5,14 @@ Setiap room baru yang diminta `baca AGENTS.md` atau `lanjutkan` wajib membaca fi
 
 ## Status Saat Ini
 
-- Last updated: 2026-04-25 17:26 WIB
-- Current status: Batch 5 Presensi Harian Terpadu selesai. Rekap operasional TU sekarang menggabungkan siswa + non-siswa, riwayat pribadi non-siswa sudah tersedia di mobile `Absensi Saya`, dan bantuan manual Sabtu guru duty/non-siswa sudah lewat jalur petugas TU.
+- Last updated: 2026-04-25 17:37 WIB
+- Current status: Batch 5 Presensi Harian Terpadu selesai, lalu hotfix visibilitas mobile presensi sudah dipublish. Rekap operasional TU menggabungkan siswa + non-siswa, riwayat pribadi non-siswa tersedia di mobile `Absensi Saya`, bantuan manual Sabtu guru duty/non-siswa lewat petugas TU, dan dashboard mobile sekarang menampilkan akses langsung `Scan Presensi`.
 - Last completed repo work:
-  - Commit: `77ba398d096d76b2fd72d11310254cd73eef0c55`
-  - Title: `feat(attendance): complete daily presence batch 5`
-  - Summary: Menambahkan overview/recent events gabungan student + user di backend, endpoint peserta non-siswa untuk workspace TU, assisted manual presence untuk `daily_user_presences`, riwayat `me/history` non-siswa, parity web/mobile pada layar `Presensi Harian` staff, parity realtime query key, dan tab `Riwayat` mobile non-siswa.
-- Worktree expectation: clean setelah commit docs continuity dan push akhir batch ini.
-- Publish/live status: backend reload sehat, frontend web sudah dideploy live, `https://siskgb2.id/` merespons `200`, OTA Android `pilot-live` berhasil publish, update group `2a411896-363f-4aa4-bd47-1b89c0e3fa3e`.
+  - Commit: `eaf30237ae3c98718bbaecc4febd0b28af7a3c43`
+  - Title: `fix(mobile): surface daily presence scanner on dashboard`
+  - Summary: Menambahkan kartu/tombol `Scan Presensi` langsung di dashboard mobile untuk role presensi pribadi, mengganti label siswa dari `Riwayat Kehadiran` menjadi `Presensi Saya`, dan memprioritaskan `staff-own-presence` di aksi cepat staff.
+- Worktree expectation: clean setelah commit docs continuity dan push akhir hotfix ini.
+- Publish/live status: backend dan web tetap mengikuti kondisi sehat batch 5; hotfix mobile sudah OTA Android `pilot-live`, update group `5477e83f-9b1f-40bc-81fc-8b63ca75ec24`.
 - Progress presensi terpadu: 100%. Batch konfigurasi TU, monitor QR bersama, scan siswa, scan multi-role mobile, rekap gabungan TU, riwayat non-siswa, dan assisted manual Sabtu duty sudah selesai.
 
 ## Verifikasi Batch Terakhir
@@ -30,7 +30,8 @@ Setiap room baru yang diminta `baca AGENTS.md` atau `lanjutkan` wajib membaca fi
   - `cd mobile-app && npm run typecheck`
   - `cd mobile-app && npm run audit:parity:check`
   - `cd mobile-app && npm run update:pilot-live:auto`
-  - EAS update: Android `pilot-live`, update group `2a411896-363f-4aa4-bd47-1b89c0e3fa3e`, commit `77ba398d096d76b2fd72d11310254cd73eef0c55`.
+  - EAS update batch 5: Android `pilot-live`, update group `2a411896-363f-4aa4-bd47-1b89c0e3fa3e`, commit `77ba398d096d76b2fd72d11310254cd73eef0c55`.
+  - EAS update hotfix scan mobile: Android `pilot-live`, update group `5477e83f-9b1f-40bc-81fc-8b63ca75ec24`, commit `eaf30237ae3c98718bbaecc4febd0b28af7a3c43`.
   - Push notify update: recipients `3`, sent `3`, failed `0`, stale `0`.
 - Hygiene:
   - `git diff --check`
