@@ -3,6 +3,7 @@ import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import {
   CheckCircle2,
   ClipboardCheck,
+  Settings2,
   Loader2,
   LogIn,
   LogOut,
@@ -19,6 +20,8 @@ import {
   type DailyPresenceEventItem,
   type DailyPresenceEventType,
   type DailyPresenceOperationalStudent,
+  type DailyPresencePolicy,
+  type DailyPresencePolicyDayKey,
   type DailyPresenceSelfScanManagerSession,
   type DailyPresenceSelfScanPreview,
 } from '../../services/attendance.service';
@@ -32,7 +35,18 @@ import {
 } from '../../utils/dailyPresenceSelfScan';
 import { resolveStaffDivision } from '../../utils/staffRole';
 
-type StaffTabKey = 'SCAN' | 'ASSISTED' | 'HISTORY';
+type StaffTabKey = 'SCAN' | 'ASSISTED' | 'HISTORY' | 'CONFIG';
+
+const DAY_LABELS: Record<DailyPresencePolicyDayKey, string> = {
+  MONDAY: 'Senin',
+  TUESDAY: 'Selasa',
+  WEDNESDAY: 'Rabu',
+  THURSDAY: 'Kamis',
+  FRIDAY: 'Jumat',
+  SATURDAY: 'Sabtu',
+};
+
+const DAY_KEYS = Object.keys(DAY_LABELS) as DailyPresencePolicyDayKey[];
 
 type PresenceModalState = {
   checkpoint: DailyPresenceEventType;
@@ -437,6 +451,7 @@ export default function StaffDailyPresencePage() {
   const [sessionGateDraft, setSessionGateDraft] = useState('');
   const [scannedPass, setScannedPass] = useState<ScannedPassState>(null);
   const [pendingScannedToken, setPendingScannedToken] = useState('');
+  const [policyDraft, setPolicyDraft] = useState<DailyPresencePolicy | null>(null);
 
   const meQuery = useQuery({
     queryKey: ['staff-daily-presence-me'],
@@ -452,6 +467,13 @@ export default function StaffDailyPresencePage() {
     queryKey: ['staff-daily-presence-overview'],
     enabled: canAccess,
     queryFn: () => attendanceService.getDailyPresenceOverview({ limit: 20 }),
+    staleTime: 60 * 1000,
+  });
+
+  const policyQuery = useQuery({
+    queryKey: ['staff-daily-presence-policy'],
+    enabled: canAccess,
+    queryFn: () => attendanceService.getDailyPresencePolicy(),
     staleTime: 60 * 1000,
   });
 
@@ -566,6 +588,18 @@ export default function StaffDailyPresencePage() {
     },
   });
 
+  const savePolicyMutation = useMutation({
+    mutationFn: (policy: DailyPresencePolicy) => attendanceService.saveDailyPresencePolicy(policy),
+    onSuccess: (result) => {
+      toast.success('Konfigurasi jam presensi berhasil disimpan.');
+      setPolicyDraft(result.policy);
+      void queryClient.invalidateQueries({ queryKey: ['staff-daily-presence-policy'] });
+    },
+    onError: (error: any) => {
+      toast.error(error?.response?.data?.message || 'Gagal menyimpan konfigurasi jam presensi.');
+    },
+  });
+
   const selectedStudentOption = useMemo<DailyPresenceOperationalStudent | null>(() => {
     if (!selectedStudentId || !selectedStudentQuery.data?.student) return null;
     const student = selectedStudentQuery.data.student;
@@ -626,8 +660,32 @@ export default function StaffDailyPresencePage() {
     setSessionGateDraft('');
   }, [activeManagerSession?.sessionId, activeManagerSession?.gateLabel]);
 
+  useEffect(() => {
+    if (!policyQuery.data?.policy) return;
+    setPolicyDraft(policyQuery.data.policy);
+  }, [policyQuery.data?.policy]);
+
+  const updatePolicyDay = (
+    day: DailyPresencePolicyDayKey,
+    updater: (current: DailyPresencePolicy['days'][DailyPresencePolicyDayKey]) => DailyPresencePolicy['days'][DailyPresencePolicyDayKey],
+  ) => {
+    setPolicyDraft((current) => {
+      if (!current) return current;
+      return {
+        ...current,
+        days: {
+          ...current.days,
+          [day]: updater(current.days[day]),
+        },
+      };
+    });
+  };
+
   const handleRefresh = async () => {
     await overviewQuery.refetch();
+    if (activeTab === 'CONFIG') {
+      await policyQuery.refetch();
+    }
     if (activeTab === 'SCAN') {
       await managerSessionQuery.refetch();
     }
@@ -682,6 +740,7 @@ export default function StaffDailyPresencePage() {
             <RefreshCcw
               className={`h-4 w-4 ${
                 overviewQuery.isFetching ||
+                policyQuery.isFetching ||
                 managerSessionQuery.isFetching ||
                 studentsQuery.isFetching ||
                 selectedStudentQuery.isFetching
@@ -740,6 +799,7 @@ export default function StaffDailyPresencePage() {
             { key: 'SCAN' as const, label: 'Scan Mandiri', icon: ScanLine },
             { key: 'ASSISTED' as const, label: 'Bantu Petugas', icon: ShieldCheck },
             { key: 'HISTORY' as const, label: 'Riwayat', icon: ClipboardCheck },
+            { key: 'CONFIG' as const, label: 'Konfigurasi Jam', icon: Settings2 },
           ].map((tab) => {
             const Icon = tab.icon;
             const active = activeTab === tab.key;
@@ -998,6 +1058,157 @@ export default function StaffDailyPresencePage() {
           <div className="mt-5">
             <PresenceHistoryTable events={recentEvents} emptyText="Belum ada riwayat presensi untuk hari ini." />
           </div>
+        </section>
+      ) : null}
+
+      {activeTab === 'CONFIG' ? (
+        <section className="rounded-2xl border border-slate-200 bg-white p-6 shadow-sm">
+          <div className="flex flex-wrap items-start justify-between gap-4">
+            <div>
+              <h2 className="text-lg font-semibold text-slate-900">Konfigurasi Jam Presensi</h2>
+              <p className="mt-1 text-sm text-slate-500">
+                Atur window QR bersama untuk masuk dan pulang. Guru dengan jadwal mengajar khusus tetap bisa memakai aturan lanjutan pada batch berikutnya.
+              </p>
+            </div>
+            <button
+              type="button"
+              disabled={!policyDraft || savePolicyMutation.isPending}
+              onClick={() => {
+                if (!policyDraft) return;
+                savePolicyMutation.mutate(policyDraft);
+              }}
+              className="inline-flex items-center gap-2 rounded-xl bg-blue-600 px-4 py-2.5 text-sm font-semibold text-white transition hover:bg-blue-700 disabled:cursor-not-allowed disabled:bg-blue-300"
+            >
+              {savePolicyMutation.isPending ? <Loader2 className="h-4 w-4 animate-spin" /> : <Settings2 className="h-4 w-4" />}
+              Simpan Konfigurasi
+            </button>
+          </div>
+
+          {policyQuery.isLoading && !policyDraft ? (
+            <div className="mt-6 flex items-center rounded-xl border border-slate-200 bg-slate-50 px-4 py-5 text-sm text-slate-500">
+              <Loader2 className="mr-2 h-4 w-4 animate-spin" />
+              Memuat konfigurasi jam presensi...
+            </div>
+          ) : policyQuery.isError ? (
+            <div className="mt-6 rounded-xl border border-rose-100 bg-rose-50 px-4 py-4 text-sm text-rose-700">
+              Konfigurasi jam presensi tidak berhasil dimuat.
+            </div>
+          ) : policyDraft ? (
+            <div className="mt-6 space-y-5">
+              <div className="grid gap-4 md:grid-cols-[1fr,220px]">
+                <div className="rounded-xl border border-blue-100 bg-blue-50 px-4 py-3 text-sm text-blue-700">
+                  QR bersama nanti memakai refresh token dinamis dari konfigurasi ini. Satu QR dipakai siswa, guru, dan staff; backend yang menentukan status tepat waktu atau terlambat.
+                </div>
+                <label className="block rounded-xl border border-slate-200 bg-slate-50 px-4 py-3 text-sm">
+                  <span className="block font-medium text-slate-700">Refresh QR (detik)</span>
+                  <input
+                    type="number"
+                    min={10}
+                    max={120}
+                    value={policyDraft.qrRefreshSeconds}
+                    onChange={(event) => {
+                      const nextValue = Number(event.target.value || 30);
+                      setPolicyDraft((current) =>
+                        current
+                          ? {
+                              ...current,
+                              qrRefreshSeconds: Math.max(10, Math.min(120, nextValue)),
+                            }
+                          : current,
+                      );
+                    }}
+                    className="mt-2 w-full rounded-lg border border-slate-300 bg-white px-3 py-2 outline-none focus:border-blue-500"
+                  />
+                </label>
+              </div>
+
+              <div className="overflow-x-auto rounded-xl border border-slate-200">
+                <table className="min-w-[980px] w-full text-left text-sm">
+                  <thead className="bg-slate-50 text-xs font-semibold uppercase tracking-[0.14em] text-slate-500">
+                    <tr>
+                      <th className="px-4 py-3">Hari</th>
+                      <th className="px-4 py-3">Aktif</th>
+                      <th className="px-4 py-3">QR Masuk Mulai</th>
+                      <th className="px-4 py-3">Batas Tepat Waktu</th>
+                      <th className="px-4 py-3">QR Masuk Tutup</th>
+                      <th className="px-4 py-3">QR Pulang Mulai</th>
+                      <th className="px-4 py-3">Pulang Valid</th>
+                      <th className="px-4 py-3">QR Pulang Tutup</th>
+                      <th className="px-4 py-3">Sabtu Guru Duty</th>
+                    </tr>
+                  </thead>
+                  <tbody className="divide-y divide-slate-100">
+                    {DAY_KEYS.map((day) => {
+                      const config = policyDraft.days[day];
+                      return (
+                        <tr key={day} className="bg-white">
+                          <td className="px-4 py-3 font-semibold text-slate-900">{DAY_LABELS[day]}</td>
+                          <td className="px-4 py-3">
+                            <input
+                              type="checkbox"
+                              checked={config.enabled}
+                              onChange={(event) =>
+                                updatePolicyDay(day, (current) => ({
+                                  ...current,
+                                  enabled: event.target.checked,
+                                }))
+                              }
+                              className="h-4 w-4 rounded border-slate-300 text-blue-600 focus:ring-blue-500"
+                            />
+                          </td>
+                          {[
+                            ['checkIn', 'openAt'],
+                            ['checkIn', 'onTimeUntil'],
+                            ['checkIn', 'closeAt'],
+                            ['checkOut', 'openAt'],
+                            ['checkOut', 'validFrom'],
+                            ['checkOut', 'closeAt'],
+                          ].map(([section, field]) => (
+                            <td key={`${day}-${section}-${field}`} className="px-4 py-3">
+                              <input
+                                type="time"
+                                value={(config as any)[section][field]}
+                                onChange={(event) =>
+                                  updatePolicyDay(day, (current) => ({
+                                    ...current,
+                                    [section]: {
+                                      ...(current as any)[section],
+                                      [field]: event.target.value,
+                                    },
+                                  }))
+                                }
+                                className="w-28 rounded-lg border border-slate-300 bg-white px-3 py-2 outline-none focus:border-blue-500"
+                              />
+                            </td>
+                          ))}
+                          <td className="px-4 py-3">
+                            {day === 'SATURDAY' ? (
+                              <select
+                                value={config.teacherDutySaturdayMode || 'MANUAL'}
+                                onChange={(event) =>
+                                  updatePolicyDay(day, (current) => ({
+                                    ...current,
+                                    teacherDutySaturdayMode: event.target.value as 'DISABLED' | 'MANUAL' | 'QR',
+                                  }))
+                                }
+                                className="w-32 rounded-lg border border-slate-300 bg-white px-3 py-2 outline-none focus:border-blue-500"
+                              >
+                                <option value="DISABLED">Nonaktif</option>
+                                <option value="MANUAL">Manual</option>
+                                <option value="QR">QR</option>
+                              </select>
+                            ) : (
+                              <span className="text-slate-400">-</span>
+                            )}
+                          </td>
+                        </tr>
+                      );
+                    })}
+                  </tbody>
+                </table>
+              </div>
+            </div>
+          ) : null}
         </section>
       ) : null}
 

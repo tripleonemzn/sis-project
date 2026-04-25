@@ -115,6 +115,67 @@ const getDailyPresenceStudentsSchema = z.object({
   limit: z.coerce.number().int().min(1).max(100).optional(),
 });
 
+const dayOfWeekValues = ['MONDAY', 'TUESDAY', 'WEDNESDAY', 'THURSDAY', 'FRIDAY', 'SATURDAY'] as const;
+type DailyPresencePolicyDayKey = (typeof dayOfWeekValues)[number];
+
+const timeStringSchema = z
+  .string()
+  .trim()
+  .regex(/^([01]\d|2[0-3]):[0-5]\d$/, 'Format jam harus HH:mm.');
+
+const dailyPresencePolicyWindowSchema = z.object({
+  openAt: timeStringSchema,
+  closeAt: timeStringSchema,
+});
+
+const dailyPresencePolicyDaySchema = z
+  .object({
+    enabled: z.boolean(),
+    checkIn: dailyPresencePolicyWindowSchema.extend({
+      onTimeUntil: timeStringSchema,
+    }),
+    checkOut: dailyPresencePolicyWindowSchema.extend({
+      validFrom: timeStringSchema,
+    }),
+    teacherDutySaturdayMode: z.enum(['DISABLED', 'MANUAL', 'QR']).optional(),
+    notes: z.string().trim().max(300).optional().nullable(),
+  })
+  .superRefine((day, ctx) => {
+    const checkInOpen = toMinuteOfDay(day.checkIn.openAt);
+    const checkInOnTime = toMinuteOfDay(day.checkIn.onTimeUntil);
+    const checkInClose = toMinuteOfDay(day.checkIn.closeAt);
+    const checkOutOpen = toMinuteOfDay(day.checkOut.openAt);
+    const checkOutValid = toMinuteOfDay(day.checkOut.validFrom);
+    const checkOutClose = toMinuteOfDay(day.checkOut.closeAt);
+
+    if (checkInOpen > checkInOnTime || checkInOnTime > checkInClose) {
+      ctx.addIssue({
+        code: z.ZodIssueCode.custom,
+        path: ['checkIn'],
+        message: 'Urutan jam masuk harus mulai <= tepat waktu <= tutup.',
+      });
+    }
+
+    if (checkOutOpen > checkOutValid || checkOutValid > checkOutClose) {
+      ctx.addIssue({
+        code: z.ZodIssueCode.custom,
+        path: ['checkOut'],
+        message: 'Urutan jam pulang harus mulai <= valid pulang <= tutup.',
+      });
+    }
+  });
+
+const dailyPresencePolicySchema = z.object({
+  version: z.literal(1).optional(),
+  timezone: z.literal('Asia/Jakarta').optional(),
+  qrRefreshSeconds: z.coerce.number().int().min(10).max(120).optional(),
+  days: z.record(z.enum(dayOfWeekValues), dailyPresencePolicyDaySchema),
+});
+
+const saveDailyPresencePolicySchema = z.object({
+  policy: dailyPresencePolicySchema,
+});
+
 const saveAssistedDailyPresenceSchema = z.object({
   studentId: z.number().int(),
   checkpoint: z.enum(['CHECK_IN', 'CHECK_OUT']),
@@ -177,6 +238,85 @@ function buildPresencePayload(
     checkInReason: attendance.checkInReason,
     checkOutReason: attendance.checkOutReason,
   };
+}
+
+function toMinuteOfDay(value: string) {
+  const [hour, minute] = String(value || '00:00')
+    .split(':')
+    .map((part) => Number(part));
+  return hour * 60 + minute;
+}
+
+function getDefaultDailyPresencePolicyDay(day: DailyPresencePolicyDayKey) {
+  const isSaturday = day === 'SATURDAY';
+  const isFriday = day === 'FRIDAY';
+  return {
+    enabled: !isSaturday,
+    checkIn: {
+      openAt: '06:00',
+      onTimeUntil: '06:40',
+      closeAt: '11:00',
+    },
+    checkOut: {
+      openAt: isFriday ? '11:00' : '12:00',
+      validFrom: isFriday ? '11:30' : '15:00',
+      closeAt: isFriday ? '17:00' : '18:00',
+    },
+    teacherDutySaturdayMode: isSaturday ? 'MANUAL' : 'QR',
+    notes: isSaturday ? 'Sabtu default nonaktif untuk siswa/staff; guru dengan duty dapat diproses manual.' : null,
+  };
+}
+
+function buildDefaultDailyPresencePolicy() {
+  return {
+    version: 1,
+    timezone: 'Asia/Jakarta',
+    qrRefreshSeconds: 30,
+    days: dayOfWeekValues.reduce(
+      (acc, day) => {
+        acc[day] = getDefaultDailyPresencePolicyDay(day);
+        return acc;
+      },
+      {} as Record<DailyPresencePolicyDayKey, ReturnType<typeof getDefaultDailyPresencePolicyDay>>,
+    ),
+  };
+}
+
+function normalizeDailyPresencePolicy(rawPolicy: unknown) {
+  const defaultPolicy = buildDefaultDailyPresencePolicy();
+  const candidate = rawPolicy && typeof rawPolicy === 'object' ? (rawPolicy as any) : {};
+  const candidateDays = candidate.days && typeof candidate.days === 'object' ? candidate.days : {};
+  const merged = {
+    version: 1,
+    timezone: 'Asia/Jakarta',
+    qrRefreshSeconds: Number(candidate.qrRefreshSeconds || defaultPolicy.qrRefreshSeconds),
+    days: dayOfWeekValues.reduce(
+      (acc, day) => {
+        const defaultDay = defaultPolicy.days[day];
+        const candidateDay = candidateDays[day] && typeof candidateDays[day] === 'object' ? candidateDays[day] : {};
+        acc[day] = {
+          ...defaultDay,
+          ...candidateDay,
+          checkIn: {
+            ...defaultDay.checkIn,
+            ...(candidateDay.checkIn && typeof candidateDay.checkIn === 'object' ? candidateDay.checkIn : {}),
+          },
+          checkOut: {
+            ...defaultDay.checkOut,
+            ...(candidateDay.checkOut && typeof candidateDay.checkOut === 'object' ? candidateDay.checkOut : {}),
+          },
+        };
+        return acc;
+      },
+      {} as Record<DailyPresencePolicyDayKey, ReturnType<typeof getDefaultDailyPresencePolicyDay>>,
+    ),
+  };
+
+  return dailyPresencePolicySchema.parse(merged);
+}
+
+function getJsonObject(value: unknown): Record<string, unknown> {
+  return value && typeof value === 'object' && !Array.isArray(value) ? { ...(value as Record<string, unknown>) } : {};
 }
 
 async function getOperationalStudentOrThrow(studentId: number, activeAcademicYearId: number) {
@@ -575,6 +715,95 @@ export const getDailyPresenceStudents = asyncHandler(async (req: Request, res: R
       normalizedQuery
         ? 'Daftar siswa operasional berhasil difilter'
         : 'Daftar siswa operasional berhasil diambil',
+    ),
+  );
+});
+
+export const getDailyPresencePolicy = asyncHandler(async (req: Request, res: Response) => {
+  const user = (req as any).user;
+  await getPresenceManagerProfile(Number(user?.id || 0));
+  const activeAcademicYear = await getActiveAcademicYearOrThrow();
+  const timeConfig = await prisma.scheduleTimeConfig.findUnique({
+    where: { academicYearId: activeAcademicYear.id },
+    select: {
+      id: true,
+      academicYearId: true,
+      config: true,
+      createdAt: true,
+      updatedAt: true,
+    },
+  });
+  const configObject = getJsonObject(timeConfig?.config);
+  const policy = normalizeDailyPresencePolicy(configObject.dailyPresencePolicy);
+
+  res.status(200).json(
+    new ApiResponse(
+      200,
+      {
+        academicYear: activeAcademicYear,
+        policy,
+        source: timeConfig ? 'SAVED' : 'DEFAULT',
+        updatedAt: timeConfig?.updatedAt?.toISOString() || null,
+      },
+      'Konfigurasi jam presensi harian berhasil diambil',
+    ),
+  );
+});
+
+export const saveDailyPresencePolicy = asyncHandler(async (req: Request, res: Response) => {
+  const user = (req as any).user;
+  await getPresenceManagerProfile(Number(user?.id || 0));
+  const { policy } = saveDailyPresencePolicySchema.parse(req.body);
+  const activeAcademicYear = await getActiveAcademicYearOrThrow();
+  const existing = await prisma.scheduleTimeConfig.findUnique({
+    where: { academicYearId: activeAcademicYear.id },
+    select: { config: true },
+  });
+  const configObject = getJsonObject(existing?.config);
+  const normalizedPolicy = normalizeDailyPresencePolicy(policy);
+
+  const saved = await prisma.scheduleTimeConfig.upsert({
+    where: { academicYearId: activeAcademicYear.id },
+    update: {
+      config: {
+        ...configObject,
+        dailyPresencePolicy: normalizedPolicy,
+      } as Prisma.InputJsonValue,
+    },
+    create: {
+      academicYearId: activeAcademicYear.id,
+      config: {
+        ...configObject,
+        dailyPresencePolicy: normalizedPolicy,
+      } as Prisma.InputJsonValue,
+    },
+    select: {
+      id: true,
+      academicYearId: true,
+      updatedAt: true,
+    },
+  });
+
+  broadcastDomainEvent({
+    domain: 'ATTENDANCE',
+    action: 'UPDATED',
+    scope: {
+      attendanceMode: 'DAILY_PRESENCE',
+      academicYearIds: [activeAcademicYear.id],
+      policy: 'DAILY_PRESENCE',
+    },
+  });
+
+  res.status(200).json(
+    new ApiResponse(
+      200,
+      {
+        id: saved.id,
+        academicYear: activeAcademicYear,
+        policy: normalizedPolicy,
+        updatedAt: saved.updatedAt.toISOString(),
+      },
+      'Konfigurasi jam presensi harian berhasil disimpan',
     ),
   );
 });

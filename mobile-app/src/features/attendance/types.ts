@@ -18,6 +18,48 @@ export type DailyPresenceCaptureSource =
 
 export type DailyPresenceEventType = 'CHECK_IN' | 'CHECK_OUT';
 
+export type DailyPresencePolicyDayKey =
+  | 'MONDAY'
+  | 'TUESDAY'
+  | 'WEDNESDAY'
+  | 'THURSDAY'
+  | 'FRIDAY'
+  | 'SATURDAY';
+
+export type DailyPresencePolicyWindow = {
+  openAt: string;
+  closeAt: string;
+};
+
+export type DailyPresencePolicyDay = {
+  enabled: boolean;
+  checkIn: DailyPresencePolicyWindow & {
+    onTimeUntil: string;
+  };
+  checkOut: DailyPresencePolicyWindow & {
+    validFrom: string;
+  };
+  teacherDutySaturdayMode?: 'DISABLED' | 'MANUAL' | 'QR';
+  notes?: string | null;
+};
+
+export type DailyPresencePolicy = {
+  version: 1;
+  timezone: 'Asia/Jakarta';
+  qrRefreshSeconds: number;
+  days: Record<DailyPresencePolicyDayKey, DailyPresencePolicyDay>;
+};
+
+export type DailyPresencePolicyPayload = {
+  academicYear: {
+    id: number;
+    name: string;
+  };
+  policy: DailyPresencePolicy;
+  source?: 'SAVED' | 'DEFAULT';
+  updatedAt?: string | null;
+};
+
 export type DailyPresenceEventItem = {
   id: number;
   eventType: DailyPresenceEventType;

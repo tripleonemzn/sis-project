@@ -33,6 +33,7 @@ const ATTENDANCE_QUERY_PREFIXES = [
   'student-daily-presence-me',
   'student-self-scan-session',
   'staff-daily-presence-overview',
+  'staff-daily-presence-policy',
   'staff-daily-presence-self-scan-session',
   'staff-daily-presence-student',
 ];

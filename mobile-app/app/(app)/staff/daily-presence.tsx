@@ -24,6 +24,8 @@ import { attendanceApi } from '../../../src/features/attendance/attendanceApi';
 import type {
   DailyPresenceEventType,
   DailyPresenceOperationalStudent,
+  DailyPresencePolicy,
+  DailyPresencePolicyDayKey,
   DailyPresenceSelfScanManagerSession,
   DailyPresenceSelfScanPreview,
 } from '../../../src/features/attendance/types';
@@ -45,7 +47,18 @@ import {
 import { useAppTheme } from '../../../src/theme/AppThemeProvider';
 import { useAppTextScale } from '../../../src/theme/AppTextScaleProvider';
 
-type StaffTabKey = 'SCAN' | 'ASSISTED' | 'HISTORY';
+type StaffTabKey = 'SCAN' | 'ASSISTED' | 'HISTORY' | 'CONFIG';
+
+const DAY_LABELS: Record<DailyPresencePolicyDayKey, string> = {
+  MONDAY: 'Senin',
+  TUESDAY: 'Selasa',
+  WEDNESDAY: 'Rabu',
+  THURSDAY: 'Kamis',
+  FRIDAY: 'Jumat',
+  SATURDAY: 'Sabtu',
+};
+
+const DAY_KEYS = Object.keys(DAY_LABELS) as DailyPresencePolicyDayKey[];
 
 type PresenceModalState = {
   checkpoint: DailyPresenceEventType;
@@ -450,6 +463,8 @@ export default function StaffDailyPresenceScreen() {
   const [sessionGateDraft, setSessionGateDraft] = useState('');
   const [scannedPass, setScannedPass] = useState<ScannedPassState>(null);
   const [pendingScannedToken, setPendingScannedToken] = useState('');
+  const [policyDraft, setPolicyDraft] = useState<DailyPresencePolicy | null>(null);
+  const [selectedPolicyDay, setSelectedPolicyDay] = useState<DailyPresencePolicyDayKey>('MONDAY');
 
   const canAccess = resolveStaffDivision(user) === 'ADMINISTRATION';
   const cameraGranted = Boolean(cameraPermission?.granted);
@@ -460,6 +475,13 @@ export default function StaffDailyPresenceScreen() {
     queryKey: ['mobile-staff-daily-presence-overview'],
     enabled: isAuthenticated && canAccess,
     queryFn: () => attendanceApi.getDailyPresenceOverview({ limit: 20 }),
+    staleTime: 60 * 1000,
+  });
+
+  const policyQuery = useQuery({
+    queryKey: ['mobile-staff-daily-presence-policy'],
+    enabled: isAuthenticated && canAccess,
+    queryFn: () => attendanceApi.getDailyPresencePolicy(),
     staleTime: 60 * 1000,
   });
 
@@ -574,6 +596,18 @@ export default function StaffDailyPresenceScreen() {
     },
   });
 
+  const savePolicyMutation = useMutation({
+    mutationFn: (policy: DailyPresencePolicy) => attendanceApi.saveDailyPresencePolicy(policy),
+    onSuccess: (result) => {
+      notifySuccess('Konfigurasi jam presensi berhasil disimpan.');
+      setPolicyDraft(result.policy);
+      void queryClient.invalidateQueries({ queryKey: ['mobile-staff-daily-presence-policy'] });
+    },
+    onError: (error) => {
+      notifyApiError(error, 'Gagal menyimpan konfigurasi jam presensi.');
+    },
+  });
+
   const selectedStudentOption = useMemo<DailyPresenceOperationalStudent | null>(() => {
     if (!selectedStudentId || !selectedStudentQuery.data?.student) return null;
     const student = selectedStudentQuery.data.student;
@@ -639,8 +673,32 @@ export default function StaffDailyPresenceScreen() {
     }
   }, [tab]);
 
+  useEffect(() => {
+    if (!policyQuery.data?.policy) return;
+    setPolicyDraft(policyQuery.data.policy);
+  }, [policyQuery.data?.policy]);
+
+  const updatePolicyDay = (
+    day: DailyPresencePolicyDayKey,
+    updater: (current: DailyPresencePolicy['days'][DailyPresencePolicyDayKey]) => DailyPresencePolicy['days'][DailyPresencePolicyDayKey],
+  ) => {
+    setPolicyDraft((current) => {
+      if (!current) return current;
+      return {
+        ...current,
+        days: {
+          ...current.days,
+          [day]: updater(current.days[day]),
+        },
+      };
+    });
+  };
+
   const handleRefresh = () => {
     void overviewQuery.refetch();
+    if (tab === 'CONFIG') {
+      void policyQuery.refetch();
+    }
     if (tab === 'SCAN') {
       void managerSessionQuery.refetch();
     }
@@ -687,6 +745,7 @@ export default function StaffDailyPresenceScreen() {
           <RefreshControl
             refreshing={
               overviewQuery.isFetching ||
+              policyQuery.isFetching ||
               managerSessionQuery.isFetching ||
               studentsQuery.isFetching ||
               selectedStudentQuery.isFetching
@@ -766,6 +825,7 @@ export default function StaffDailyPresenceScreen() {
             { key: 'SCAN', label: 'Scan Mandiri', iconName: 'camera' },
             { key: 'ASSISTED', label: 'Bantu Petugas', iconName: 'tool' },
             { key: 'HISTORY', label: 'Riwayat', iconName: 'list' },
+            { key: 'CONFIG', label: 'Konfigurasi Jam', iconName: 'settings' },
           ]}
           activeKey={tab}
           onChange={(nextKey) => setTab(nextKey as StaffTabKey)}
@@ -1315,6 +1375,232 @@ export default function StaffDailyPresenceScreen() {
                 ))}
               </View>
             )}
+          </View>
+        ) : null}
+
+        {tab === 'CONFIG' ? (
+          <View
+            style={{
+              backgroundColor: colors.surface,
+              borderWidth: 1,
+              borderColor: colors.border,
+              borderRadius: 16,
+              padding: 14,
+              marginBottom: 14,
+            }}
+          >
+            <Text style={{ fontSize: scaleFont(18), lineHeight: scaleLineHeight(24), fontWeight: '700', color: colors.text }}>
+              Konfigurasi Jam Presensi
+            </Text>
+            <Text style={{ color: colors.textMuted, fontSize: fontSizes.body, lineHeight: scaleLineHeight(20), marginTop: 4 }}>
+              Atur window QR bersama untuk masuk dan pulang dari Tata Usaha.
+            </Text>
+
+            {policyQuery.isLoading && !policyDraft ? (
+              <View style={{ marginTop: 14 }}>
+                <QueryStateView type="loading" message="Memuat konfigurasi jam presensi..." />
+              </View>
+            ) : policyQuery.isError ? (
+              <View style={{ marginTop: 14 }}>
+                <QueryStateView
+                  type="error"
+                  message="Konfigurasi jam presensi tidak berhasil dimuat."
+                  onRetry={() => policyQuery.refetch()}
+                />
+              </View>
+            ) : policyDraft ? (
+              <View style={{ marginTop: 14 }}>
+                <View
+                  style={{
+                    borderWidth: 1,
+                    borderColor: '#dbeafe',
+                    backgroundColor: '#eff6ff',
+                    borderRadius: 12,
+                    paddingHorizontal: 12,
+                    paddingVertical: 10,
+                    marginBottom: 14,
+                  }}
+                >
+                  <Text style={{ color: '#1d4ed8', fontSize: fontSizes.body, lineHeight: scaleLineHeight(20) }}>
+                    QR bersama nanti dipakai siswa, guru, dan staff. Sistem menghitung status berdasarkan role dan konfigurasi ini.
+                  </Text>
+                </View>
+
+                <MobileSelectField
+                  label="Hari"
+                  value={selectedPolicyDay}
+                  options={DAY_KEYS.map((day) => ({
+                    value: day,
+                    label: DAY_LABELS[day],
+                  }))}
+                  onChange={(value) => setSelectedPolicyDay(value as DailyPresencePolicyDayKey)}
+                  placeholder="Pilih hari"
+                />
+
+                {(() => {
+                  const dayConfig = policyDraft.days[selectedPolicyDay];
+                  const timeRows = [
+                    { section: 'checkIn', field: 'openAt', label: 'QR Masuk Mulai' },
+                    { section: 'checkIn', field: 'onTimeUntil', label: 'Batas Tepat Waktu' },
+                    { section: 'checkIn', field: 'closeAt', label: 'QR Masuk Tutup' },
+                    { section: 'checkOut', field: 'openAt', label: 'QR Pulang Mulai' },
+                    { section: 'checkOut', field: 'validFrom', label: 'Pulang Valid' },
+                    { section: 'checkOut', field: 'closeAt', label: 'QR Pulang Tutup' },
+                  ];
+
+                  return (
+                    <View style={{ marginTop: 14 }}>
+                      <Pressable
+                        onPress={() =>
+                          updatePolicyDay(selectedPolicyDay, (current) => ({
+                            ...current,
+                            enabled: !current.enabled,
+                          }))
+                        }
+                        style={{
+                          borderWidth: 1,
+                          borderColor: dayConfig.enabled ? '#bbf7d0' : colors.borderSoft,
+                          backgroundColor: dayConfig.enabled ? '#f0fdf4' : colors.surfaceMuted,
+                          borderRadius: 12,
+                          paddingHorizontal: 12,
+                          paddingVertical: 11,
+                          marginBottom: 12,
+                          flexDirection: 'row',
+                          alignItems: 'center',
+                          justifyContent: 'space-between',
+                        }}
+                      >
+                        <Text style={{ color: dayConfig.enabled ? '#166534' : colors.textMuted, fontWeight: '700' }}>
+                          {dayConfig.enabled ? 'Hari aktif untuk QR presensi' : 'Hari nonaktif'}
+                        </Text>
+                        <Feather name={dayConfig.enabled ? 'check-circle' : 'circle'} size={18} color={dayConfig.enabled ? '#16a34a' : colors.textMuted} />
+                      </Pressable>
+
+                      <View style={{ flexDirection: layout.prefersSplitPane ? 'row' : 'column', flexWrap: 'wrap', gap: 10 }}>
+                        {timeRows.map((row) => (
+                          <View
+                            key={`${row.section}-${row.field}`}
+                            style={{
+                              width: layout.prefersSplitPane ? '48%' : '100%',
+                              borderWidth: 1,
+                              borderColor: colors.borderSoft,
+                              borderRadius: 12,
+                              padding: 12,
+                              backgroundColor: colors.surface,
+                            }}
+                          >
+                            <Text style={{ color: colors.textMuted, fontSize: fontSizes.caption, marginBottom: 6 }}>{row.label}</Text>
+                            <TextInput
+                              value={(dayConfig as any)[row.section][row.field]}
+                              onChangeText={(value) =>
+                                updatePolicyDay(selectedPolicyDay, (current) => ({
+                                  ...current,
+                                  [row.section]: {
+                                    ...(current as any)[row.section],
+                                    [row.field]: value,
+                                  },
+                                }))
+                              }
+                              placeholder="HH:mm"
+                              placeholderTextColor={colors.textSoft}
+                              style={{
+                                borderWidth: 1,
+                                borderColor: colors.borderSoft,
+                                borderRadius: 10,
+                                paddingHorizontal: 12,
+                                paddingVertical: 10,
+                                color: colors.text,
+                                fontWeight: '700',
+                                backgroundColor: colors.surface,
+                              }}
+                            />
+                          </View>
+                        ))}
+                      </View>
+
+                      {selectedPolicyDay === 'SATURDAY' ? (
+                        <View style={{ marginTop: 12 }}>
+                          <MobileSelectField
+                            label="Sabtu Guru Duty"
+                            value={dayConfig.teacherDutySaturdayMode || 'MANUAL'}
+                            options={[
+                              { value: 'DISABLED', label: 'Nonaktif' },
+                              { value: 'MANUAL', label: 'Manual' },
+                              { value: 'QR', label: 'QR' },
+                            ]}
+                            onChange={(value) =>
+                              updatePolicyDay(selectedPolicyDay, (current) => ({
+                                ...current,
+                                teacherDutySaturdayMode: value as 'DISABLED' | 'MANUAL' | 'QR',
+                              }))
+                            }
+                            placeholder="Pilih mode Sabtu"
+                          />
+                        </View>
+                      ) : null}
+
+                      <View
+                        style={{
+                          borderWidth: 1,
+                          borderColor: colors.borderSoft,
+                          borderRadius: 12,
+                          padding: 12,
+                          marginTop: 12,
+                          backgroundColor: colors.surfaceMuted,
+                        }}
+                      >
+                        <Text style={{ color: colors.textMuted, fontSize: fontSizes.caption, marginBottom: 6 }}>
+                          Refresh QR dinamis (detik)
+                        </Text>
+                        <TextInput
+                          value={String(policyDraft.qrRefreshSeconds)}
+                          onChangeText={(value) => {
+                            const parsed = Number(value.replace(/\D+/g, '') || 30);
+                            setPolicyDraft((current) =>
+                              current
+                                ? {
+                                    ...current,
+                                    qrRefreshSeconds: Math.max(10, Math.min(120, parsed)),
+                                  }
+                                : current,
+                            );
+                          }}
+                          keyboardType="number-pad"
+                          style={{
+                            borderWidth: 1,
+                            borderColor: colors.borderSoft,
+                            borderRadius: 10,
+                            paddingHorizontal: 12,
+                            paddingVertical: 10,
+                            color: colors.text,
+                            backgroundColor: colors.surface,
+                          }}
+                        />
+                      </View>
+
+                      <Pressable
+                        disabled={savePolicyMutation.isPending}
+                        onPress={() => savePolicyMutation.mutate(policyDraft)}
+                        style={{
+                          marginTop: 14,
+                          backgroundColor: savePolicyMutation.isPending ? '#93c5fd' : '#2563eb',
+                          borderRadius: 12,
+                          paddingVertical: 12,
+                          alignItems: 'center',
+                          flexDirection: 'row',
+                          justifyContent: 'center',
+                        }}
+                      >
+                        {savePolicyMutation.isPending ? <Feather name="loader" size={16} color="#fff" /> : <Feather name="save" size={16} color="#fff" />}
+                        <Text style={{ color: '#fff', fontWeight: '700', marginLeft: 8 }}>
+                          {savePolicyMutation.isPending ? 'Menyimpan...' : 'Simpan Konfigurasi'}
+                        </Text>
+                      </Pressable>
+                    </View>
+                  );
+                })()}
+              </View>
+            ) : null}
           </View>
         ) : null}
       </ScrollView>

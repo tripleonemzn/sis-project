@@ -99,6 +99,48 @@ export type DailyPresenceCaptureSource =
 
 export type DailyPresenceEventType = 'CHECK_IN' | 'CHECK_OUT';
 
+export type DailyPresencePolicyDayKey =
+  | 'MONDAY'
+  | 'TUESDAY'
+  | 'WEDNESDAY'
+  | 'THURSDAY'
+  | 'FRIDAY'
+  | 'SATURDAY';
+
+export type DailyPresencePolicyWindow = {
+  openAt: string;
+  closeAt: string;
+};
+
+export type DailyPresencePolicyDay = {
+  enabled: boolean;
+  checkIn: DailyPresencePolicyWindow & {
+    onTimeUntil: string;
+  };
+  checkOut: DailyPresencePolicyWindow & {
+    validFrom: string;
+  };
+  teacherDutySaturdayMode?: 'DISABLED' | 'MANUAL' | 'QR';
+  notes?: string | null;
+};
+
+export type DailyPresencePolicy = {
+  version: 1;
+  timezone: 'Asia/Jakarta';
+  qrRefreshSeconds: number;
+  days: Record<DailyPresencePolicyDayKey, DailyPresencePolicyDay>;
+};
+
+export type DailyPresencePolicyPayload = {
+  academicYear: {
+    id: number;
+    name: string;
+  };
+  policy: DailyPresencePolicy;
+  source?: 'SAVED' | 'DEFAULT';
+  updatedAt?: string | null;
+};
+
 export interface DailyPresenceEventItem {
   id: number;
   eventType: DailyPresenceEventType;
@@ -333,6 +375,18 @@ export const attendanceService = {
   getDailyPresenceOverview: async (params?: { date?: string; limit?: number }) => {
     const response = await api.get<{ data: DailyPresenceOverview }>('/attendances/daily-presence/overview', {
       params,
+    });
+    return response.data.data;
+  },
+
+  getDailyPresencePolicy: async () => {
+    const response = await api.get<{ data: DailyPresencePolicyPayload }>('/attendances/daily-presence/policy');
+    return response.data.data;
+  },
+
+  saveDailyPresencePolicy: async (policy: DailyPresencePolicy) => {
+    const response = await api.put<{ data: DailyPresencePolicyPayload }>('/attendances/daily-presence/policy', {
+      policy,
     });
     return response.data.data;
   },

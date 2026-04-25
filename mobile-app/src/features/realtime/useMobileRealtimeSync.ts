@@ -105,6 +105,7 @@ const ATTENDANCE_QUERY_PREFIXES = [
   'mobile-admin-academic-late-summary',
   'mobile-wakakur-reports-attendance',
   'mobile-staff-daily-presence-overview',
+  'mobile-staff-daily-presence-policy',
   'mobile-staff-daily-presence-self-scan-session',
   'mobile-staff-daily-presence-student',
 ];

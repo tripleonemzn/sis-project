@@ -14,9 +14,11 @@ import {
   createSelfScanPass,
   getActiveSelfScanSession,
   getDailyPresenceOverview,
+  getDailyPresencePolicy,
   getDailyPresenceStudents,
   getOwnDailyPresence,
   getStudentDailyPresence,
+  saveDailyPresencePolicy,
   saveAssistedDailyPresence,
   previewSelfScanPass,
   startSelfScanSession,
@@ -37,6 +39,8 @@ router.get('/student-history', roleMiddleware(['STUDENT', 'PARENT']), getStudent
 
 // Daily presence operations (Assisted by Administration)
 router.get('/daily-presence/overview', roleMiddleware(['ADMIN', 'STAFF']), getDailyPresenceOverview);
+router.get('/daily-presence/policy', roleMiddleware(['ADMIN', 'STAFF']), getDailyPresencePolicy);
+router.put('/daily-presence/policy', roleMiddleware(['ADMIN', 'STAFF']), saveDailyPresencePolicy);
 router.get('/daily-presence/students', roleMiddleware(['ADMIN', 'STAFF']), getDailyPresenceStudents);
 router.get('/daily-presence/student', roleMiddleware(['ADMIN', 'STAFF']), getStudentDailyPresence);
 router.post('/daily-presence/assisted', roleMiddleware(['ADMIN', 'STAFF']), saveAssistedDailyPresence);

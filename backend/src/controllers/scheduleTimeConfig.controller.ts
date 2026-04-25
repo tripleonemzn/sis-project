@@ -1,5 +1,10 @@
+import { Prisma } from '@prisma/client';
 import { Request, Response, NextFunction } from 'express';
 import prisma from '../utils/prisma';
+
+function getJsonObject(value: unknown): Record<string, unknown> {
+  return value && typeof value === 'object' && !Array.isArray(value) ? { ...(value as Record<string, unknown>) } : {};
+}
 
 export const getScheduleTimeConfig = async (req: Request, res: Response, next: NextFunction) => {
   try {
@@ -57,16 +62,30 @@ export const upsertScheduleTimeConfig = async (req: Request, res: Response, next
       });
     }
 
+    const existing = await prisma.scheduleTimeConfig.findUnique({
+      where: {
+        academicYearId: Number(academicYearId),
+      },
+      select: {
+        config: true,
+      },
+    });
+
+    const mergedConfig = {
+      ...getJsonObject(existing?.config),
+      ...getJsonObject(config),
+    } as Prisma.InputJsonValue;
+
     const result = await prisma.scheduleTimeConfig.upsert({
       where: {
         academicYearId: Number(academicYearId),
       },
       update: {
-        config,
+        config: mergedConfig,
       },
       create: {
         academicYearId: Number(academicYearId),
-        config,
+        config: getJsonObject(config) as Prisma.InputJsonValue,
       },
     });
 

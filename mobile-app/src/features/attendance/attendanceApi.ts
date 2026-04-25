@@ -3,6 +3,8 @@ import {
   DailyAttendanceEntry,
   DailyLateSummaryPayload,
   DailyPresenceOperationalStudent,
+  DailyPresencePolicy,
+  DailyPresencePolicyPayload,
   DailyPresenceSelfScanManagerSession,
   DailyPresenceSelfScanPass,
   DailyPresenceSelfScanPreview,
@@ -60,6 +62,13 @@ type DailyPresenceOverviewResponse = {
   success: boolean;
   message: string;
   data: DailyPresenceOverview;
+};
+
+type DailyPresencePolicyResponse = {
+  statusCode: number;
+  success: boolean;
+  message: string;
+  data: DailyPresencePolicyPayload;
 };
 
 type DailyPresenceStudentResponse = {
@@ -161,6 +170,16 @@ export const attendanceApi = {
   async getDailyPresenceOverview(params?: { date?: string; limit?: number }) {
     const response = await apiClient.get<DailyPresenceOverviewResponse>('/attendances/daily-presence/overview', {
       params,
+    });
+    return response.data?.data;
+  },
+  async getDailyPresencePolicy() {
+    const response = await apiClient.get<DailyPresencePolicyResponse>('/attendances/daily-presence/policy');
+    return response.data?.data;
+  },
+  async saveDailyPresencePolicy(policy: DailyPresencePolicy) {
+    const response = await apiClient.put<DailyPresencePolicyResponse>('/attendances/daily-presence/policy', {
+      policy,
     });
     return response.data?.data;
   },
