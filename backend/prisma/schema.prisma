@@ -103,6 +103,11 @@ model User {
   dailyPresenceCheckIns                              DailyAttendance[]                   @relation("DailyAttendanceCheckInActor")
   dailyPresenceCheckOuts                             DailyAttendance[]                   @relation("DailyAttendanceCheckOutActor")
   recordedDailyPresenceEvents                        DailyPresenceEvent[]                @relation("DailyPresenceEventActor")
+  dailyUserPresences                                 DailyUserPresence[]                 @relation("DailyUserPresenceUser")
+  dailyUserPresenceCheckIns                          DailyUserPresence[]                 @relation("DailyUserPresenceCheckInActor")
+  dailyUserPresenceCheckOuts                         DailyUserPresence[]                 @relation("DailyUserPresenceCheckOutActor")
+  dailyUserPresenceEvents                            DailyUserPresenceEvent[]            @relation("DailyUserPresenceEventUser")
+  recordedDailyUserPresenceEvents                    DailyUserPresenceEvent[]            @relation("DailyUserPresenceEventActor")
   ekskulEnrollments                                  EkstrakurikulerEnrollment[]
   examAnswers                                        ExamAnswer[]
   createdExamPackets                                 ExamPacket[]                        @relation("ExamAuthor")
@@ -427,6 +432,8 @@ model AcademicYear {
   targetPromotionRuns            PromotionRun[]                   @relation("PromotionTargetRuns")
   academicMemberships            StudentAcademicMembership[]
   dailyPresenceEvents            DailyPresenceEvent[]
+  dailyUserPresences             DailyUserPresence[]
+  dailyUserPresenceEvents        DailyUserPresenceEvent[]
 
   @@map("academic_years")
 }
@@ -1229,6 +1236,66 @@ model DailyPresenceEvent {
   @@index([studentId, date, recordedAt])
   @@index([source, recordedAt])
   @@map("daily_presence_events")
+}
+
+model DailyUserPresence {
+  id                   Int                         @id @default(autoincrement())
+  date                 DateTime
+  userId               Int
+  academicYearId       Int
+  role                 Role
+  ptkType              String?
+  status               AttendanceStatus
+  note                 String?
+  checkInTime          DateTime?
+  checkOutTime         DateTime?
+  checkInSource        DailyPresenceCaptureSource?
+  checkOutSource       DailyPresenceCaptureSource?
+  checkInReason        String?
+  checkOutReason       String?
+  checkInActorId       Int?
+  checkOutActorId      Int?
+  checkInLateMinutes   Int                         @default(0)
+  checkOutEarlyMinutes Int                         @default(0)
+  scheduleBasis        Json?
+  createdAt            DateTime                    @default(now())
+  updatedAt            DateTime                    @updatedAt
+  user                 User                        @relation("DailyUserPresenceUser", fields: [userId], references: [id])
+  academicYear         AcademicYear                @relation(fields: [academicYearId], references: [id])
+  checkInActor         User?                       @relation("DailyUserPresenceCheckInActor", fields: [checkInActorId], references: [id], onDelete: SetNull)
+  checkOutActor        User?                       @relation("DailyUserPresenceCheckOutActor", fields: [checkOutActorId], references: [id], onDelete: SetNull)
+  events               DailyUserPresenceEvent[]
+
+  @@unique([userId, academicYearId, date])
+  @@index([academicYearId, date, role])
+  @@index([userId, date])
+  @@map("daily_user_presences")
+}
+
+model DailyUserPresenceEvent {
+  id                  Int                        @id @default(autoincrement())
+  dailyUserPresenceId Int?
+  userId              Int
+  academicYearId      Int
+  role                Role
+  date                DateTime
+  eventType           DailyPresenceEventType
+  source              DailyPresenceCaptureSource
+  recordedAt          DateTime                   @default(now())
+  reason              String?
+  gateLabel           String?
+  actorId             Int?
+  lateMinutes         Int                        @default(0)
+  scheduleBasis       Json?
+  presence            DailyUserPresence?         @relation(fields: [dailyUserPresenceId], references: [id], onDelete: SetNull)
+  user                User                       @relation("DailyUserPresenceEventUser", fields: [userId], references: [id])
+  academicYear        AcademicYear               @relation(fields: [academicYearId], references: [id])
+  actor               User?                      @relation("DailyUserPresenceEventActor", fields: [actorId], references: [id], onDelete: SetNull)
+
+  @@index([academicYearId, date, recordedAt])
+  @@index([userId, date, recordedAt])
+  @@index([role, recordedAt])
+  @@map("daily_user_presence_events")
 }
 
 model GradeComponent {

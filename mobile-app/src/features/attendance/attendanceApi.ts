@@ -4,6 +4,7 @@ import {
   DailyLateSummaryPayload,
   DailyPresenceMonitorScanResult,
   DailyPresenceOperationalStudent,
+  DailyPresenceOwnState,
   DailyPresencePolicy,
   DailyPresencePolicyPayload,
   DailyPresenceSelfScanManagerSession,
@@ -77,6 +78,13 @@ type DailyPresenceStudentResponse = {
   success: boolean;
   message: string;
   data: DailyPresenceStudentState;
+};
+
+type DailyPresenceOwnResponse = {
+  statusCode: number;
+  success: boolean;
+  message: string;
+  data: DailyPresenceOwnState;
 };
 
 type DailyPresenceSelfScanSessionEnvelope = {
@@ -210,7 +218,7 @@ export const attendanceApi = {
     return response.data?.data;
   },
   async getOwnDailyPresence(params?: { date?: string }) {
-    const response = await apiClient.get<DailyPresenceStudentResponse>('/attendances/daily-presence/me', {
+    const response = await apiClient.get<DailyPresenceOwnResponse>('/attendances/daily-presence/me', {
       params,
     });
     return response.data?.data;

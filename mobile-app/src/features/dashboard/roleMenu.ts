@@ -295,6 +295,7 @@ const ROLE_MENUS: Record<string, RoleMenuItem[]> = {
   TEACHER: [
     { key: 'teacher-dashboard', label: 'Dashboard', route: '/home' },
     { key: 'teacher-email', label: 'Email', route: '/email' },
+    { key: 'teacher-own-presence', label: 'Presensi Saya', route: '/attendance' },
     { key: 'teaching-schedule', label: 'Jadwal Mengajar', route: '/schedule' },
     { key: 'teacher-classes', label: 'Kelas & Mapel', route: '/teacher/classes' },
     {
@@ -744,6 +745,7 @@ const ROLE_MENUS: Record<string, RoleMenuItem[]> = {
       route: '/principal',
     },
     { key: 'principal-email', label: 'Email', route: '/email' },
+    { key: 'principal-own-presence', label: 'Presensi Saya', route: '/attendance' },
     {
       key: 'principal-monitoring',
       label: 'Operasional Harian',
@@ -788,6 +790,7 @@ const ROLE_MENUS: Record<string, RoleMenuItem[]> = {
   STAFF: [
     { key: 'staff-dashboard', label: 'Dashboard', route: '/home' },
     { key: 'staff-email', label: 'Email', route: '/email' },
+    { key: 'staff-own-presence', label: 'Presensi Saya', route: '/attendance' },
     { key: 'staff-payments', label: 'Ringkasan Keuangan', route: '/staff/payments' },
     { key: 'staff-students', label: 'Data Siswa', route: '/staff/students' },
     { key: 'staff-admin', label: 'Administrasi', route: '/staff/admin' },
@@ -822,6 +825,7 @@ const ROLE_MENUS: Record<string, RoleMenuItem[]> = {
   EXTRACURRICULAR_TUTOR: [
     { key: 'tutor-dashboard', label: 'Dashboard', route: '/tutor/dashboard' },
     { key: 'tutor-email', label: 'Email', route: '/email' },
+    { key: 'tutor-own-presence', label: 'Presensi Saya', route: '/attendance' },
     { key: 'tutor-work-program', label: 'Program Kerja', route: '/tutor/work-program?duty=PEMBINA_EKSKUL' },
     { key: 'tutor-members', label: 'Anggota & Nilai', route: '/tutor/members' },
     { key: 'tutor-inventory', label: 'Kelola Inventaris', route: '/tutor/inventory' },
@@ -1078,7 +1082,7 @@ const ROLE_MENU_GROUPS: Record<string, GroupDefinition[]> = {
     { key: 'settings', label: 'PENGATURAN', menuKeys: ['student-profile-web', 'student-accessibility'] },
   ],
   TEACHER: [
-    { key: 'dashboard', label: 'Dashboard', menuKeys: ['teacher-dashboard', 'teacher-email'] },
+    { key: 'dashboard', label: 'Dashboard', menuKeys: ['teacher-dashboard', 'teacher-email', 'teacher-own-presence'] },
     {
       key: 'academic',
       label: 'AKADEMIK',
@@ -1263,7 +1267,7 @@ const ROLE_MENU_GROUPS: Record<string, GroupDefinition[]> = {
     },
   ],
   PRINCIPAL: [
-    { key: 'dashboard', label: 'Dashboard', menuKeys: ['principal-dashboard', 'principal-email'] },
+    { key: 'dashboard', label: 'Dashboard', menuKeys: ['principal-dashboard', 'principal-email', 'principal-own-presence'] },
     {
       key: 'monitoring',
       label: 'MONITORING',
@@ -1276,7 +1280,7 @@ const ROLE_MENU_GROUPS: Record<string, GroupDefinition[]> = {
     { key: 'settings', label: 'PENGATURAN', menuKeys: ['principal-profile'] },
   ],
   STAFF: [
-    { key: 'dashboard', label: 'Dashboard', menuKeys: ['staff-dashboard', 'staff-email'] },
+    { key: 'dashboard', label: 'Dashboard', menuKeys: ['staff-dashboard', 'staff-email', 'staff-own-presence'] },
     { key: 'payments', label: 'KEUANGAN', menuKeys: ['staff-payments', 'staff-students', 'staff-admin'] },
     { key: 'settings', label: 'PENGATURAN', menuKeys: ['staff-profile', 'staff-accessibility'] },
   ],
@@ -1294,7 +1298,7 @@ const ROLE_MENU_GROUPS: Record<string, GroupDefinition[]> = {
     { key: 'settings', label: 'PENGATURAN', menuKeys: ['examiner-profile', 'examiner-accessibility'] },
   ],
   EXTRACURRICULAR_TUTOR: [
-    { key: 'dashboard', label: 'Dashboard', menuKeys: ['tutor-dashboard', 'tutor-email'] },
+    { key: 'dashboard', label: 'Dashboard', menuKeys: ['tutor-dashboard', 'tutor-email', 'tutor-own-presence'] },
     { key: 'work-program', label: 'Program Kerja', menuKeys: ['tutor-work-program'] },
     { key: 'members', label: 'Anggota & Nilai', menuKeys: ['tutor-members'] },
     { key: 'inventory', label: 'Kelola Inventaris', menuKeys: ['tutor-inventory'] },
@@ -1440,7 +1444,7 @@ function getStaffMenuItemByKey(key: string) {
 
 function buildStaffRoleMenu(user: AuthUser) {
   const division = resolveStaffDivision(user);
-  const baseKeys = ['staff-dashboard', 'staff-email', 'staff-profile', 'staff-accessibility'];
+  const baseKeys = ['staff-dashboard', 'staff-email', 'staff-own-presence', 'staff-profile', 'staff-accessibility'];
   const roleKeys =
     division === 'HEAD_TU'
       ? [
@@ -1486,7 +1490,7 @@ function buildStaffGroups(user: AuthUser, menus: RoleMenuItem[]) {
   const groups: RoleMenuGroup[] = [];
   const division = resolveStaffDivision(user);
 
-  pushGroup(groups, 'dashboard', 'Dashboard', ['staff-dashboard', 'staff-email']);
+  pushGroup(groups, 'dashboard', 'Dashboard', ['staff-dashboard', 'staff-email', 'staff-own-presence']);
 
   if (division === 'HEAD_TU') {
     pushGroup(groups, 'monitoring-tu', 'MONITORING TU', [
@@ -1555,7 +1559,7 @@ function buildPrincipalGroups(menus: RoleMenuItem[]) {
     }
   };
 
-  pushGroup('dashboard', 'Dashboard', ['principal-dashboard', 'principal-email']);
+  pushGroup('dashboard', 'Dashboard', ['principal-dashboard', 'principal-email', 'principal-own-presence']);
   pushGroup('monitoring', 'MONITORING', ['principal-monitoring', 'principal-committee-approvals']);
   pushGroup('academic', 'AKADEMIK', ['principal-reports', 'principal-attendance']);
   pushGroup('exams', 'UJIAN', ['principal-exam-reports']);
@@ -1655,7 +1659,7 @@ function buildTeacherGroups(
     };
   };
 
-  pushGroup('dashboard', 'Dashboard', pickMenus(byKey, ['teacher-dashboard', 'teacher-email']));
+  pushGroup('dashboard', 'Dashboard', pickMenus(byKey, ['teacher-dashboard', 'teacher-email', 'teacher-own-presence']));
   pushGroup(
     'academic',
     'AKADEMIK',
@@ -1917,7 +1921,7 @@ function buildTutorGroups(menus: RoleMenuItem[], options?: RoleMenuBuildOptions)
     groups.push({ key, label, items });
   };
 
-  pushGroup('dashboard', 'Dashboard', pickMenus(byKey, ['tutor-dashboard', 'tutor-email']));
+  pushGroup('dashboard', 'Dashboard', pickMenus(byKey, ['tutor-dashboard', 'tutor-email', 'tutor-own-presence']));
 
   extracurricularAssignments.forEach((assignment) => {
     const linkedRoom = linkedAdvisorInventory.roomByAssignmentId.get(assignment.id) || null;

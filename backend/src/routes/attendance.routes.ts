@@ -45,12 +45,20 @@ router.put('/daily-presence/policy', roleMiddleware(['ADMIN', 'STAFF']), saveDai
 router.get('/daily-presence/students', roleMiddleware(['ADMIN', 'STAFF']), getDailyPresenceStudents);
 router.get('/daily-presence/student', roleMiddleware(['ADMIN', 'STAFF']), getStudentDailyPresence);
 router.post('/daily-presence/assisted', roleMiddleware(['ADMIN', 'STAFF']), saveAssistedDailyPresence);
-router.get('/daily-presence/me', roleMiddleware(['STUDENT']), getOwnDailyPresence);
+router.get(
+  '/daily-presence/me',
+  roleMiddleware(['STUDENT', 'TEACHER', 'STAFF', 'PRINCIPAL', 'EXTRACURRICULAR_TUTOR']),
+  getOwnDailyPresence,
+);
 router.get('/daily-presence/self-scan/session', roleMiddleware(['ADMIN', 'STAFF', 'STUDENT']), getActiveSelfScanSession);
 router.post('/daily-presence/self-scan/session', roleMiddleware(['ADMIN', 'STAFF']), startSelfScanSession);
 router.post('/daily-presence/self-scan/session/close', roleMiddleware(['ADMIN', 'STAFF']), closeSelfScanSession);
 router.post('/daily-presence/self-scan/pass', roleMiddleware(['STUDENT']), createSelfScanPass);
-router.post('/daily-presence/self-scan/monitor/confirm', roleMiddleware(['STUDENT']), confirmSelfScanMonitorPass);
+router.post(
+  '/daily-presence/self-scan/monitor/confirm',
+  roleMiddleware(['STUDENT', 'TEACHER', 'STAFF', 'PRINCIPAL', 'EXTRACURRICULAR_TUTOR']),
+  confirmSelfScanMonitorPass,
+);
 router.post('/daily-presence/self-scan/preview', roleMiddleware(['ADMIN', 'STAFF']), previewSelfScanPass);
 router.post('/daily-presence/self-scan/confirm', roleMiddleware(['ADMIN', 'STAFF']), confirmSelfScanPass);
 

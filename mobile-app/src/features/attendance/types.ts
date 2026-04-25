@@ -131,7 +131,37 @@ export type DailyPresenceStudentState = {
   recentEvents: DailyPresenceEventItem[];
 };
 
-export type DailyPresenceMonitorScanResult = DailyPresenceStudentState & {
+export type DailyPresenceUserState = {
+  date: string;
+  academicYear: {
+    id: number;
+    name: string;
+  };
+  participant: {
+    id: number;
+    name: string;
+    username?: string | null;
+    photo?: string | null;
+    nip?: string | null;
+    role: 'TEACHER' | 'STAFF' | 'PRINCIPAL' | 'EXTRACURRICULAR_TUTOR';
+    ptkType?: string | null;
+    additionalDuties?: string[];
+  };
+  presence: DailyPresenceStudentState['presence'] & {
+    checkInLateMinutes?: number | null;
+    checkOutEarlyMinutes?: number | null;
+    scheduleBasis?: unknown;
+  };
+  recentEvents: Array<
+    DailyPresenceEventItem & {
+      lateMinutes?: number | null;
+    }
+  >;
+};
+
+export type DailyPresenceOwnState = DailyPresenceStudentState | DailyPresenceUserState;
+
+export type DailyPresenceMonitorScanResult = DailyPresenceOwnState & {
   checkpoint: DailyPresenceEventType;
   gateLabel?: string | null;
   recordedAt: string;

@@ -43,6 +43,14 @@ import { useAppTheme } from '../../src/theme/AppThemeProvider';
 type AttendanceTabKey = 'SCAN' | 'HISTORY';
 type Checkpoint = 'CHECK_IN' | 'CHECK_OUT';
 
+const DAILY_PRESENCE_SCAN_ROLES = new Set([
+  'STUDENT',
+  'TEACHER',
+  'STAFF',
+  'PRINCIPAL',
+  'EXTRACURRICULAR_TUTOR',
+]);
+
 const STATUS_LABELS: Record<StudentAttendanceStatus, string> = {
   PRESENT: 'Hadir',
   SICK: 'Sakit',
@@ -389,24 +397,27 @@ export default function AttendanceScreen() {
   const { month, year } = toMonthYear(cursorDate);
   const cameraGranted = Boolean(cameraPermission?.granted);
   const cameraDenied = cameraPermission?.status === 'denied';
+  const userRole = String(user?.role || '').trim().toUpperCase();
+  const isStudent = userRole === 'STUDENT';
+  const canUseDailyPresence = DAILY_PRESENCE_SCAN_ROLES.has(userRole);
 
   const attendanceQuery = useStudentAttendanceQuery({
-    enabled: isAuthenticated,
+    enabled: isAuthenticated && isStudent,
     user,
     month,
     year,
   });
 
   const todayPresenceQuery = useQuery({
-    queryKey: ['mobile-student-daily-presence-me'],
-    enabled: isAuthenticated && user?.role === 'STUDENT',
+    queryKey: ['mobile-daily-presence-me', user?.id, userRole],
+    enabled: isAuthenticated && canUseDailyPresence,
     queryFn: () => attendanceApi.getOwnDailyPresence(),
     staleTime: 20 * 1000,
   });
 
   const activeSessionQuery = useQuery({
     queryKey: ['mobile-student-self-scan-session', checkpoint],
-    enabled: isAuthenticated && user?.role === 'STUDENT' && tab === 'SCAN',
+    enabled: isAuthenticated && isStudent && tab === 'SCAN',
     queryFn: () => attendanceApi.getActiveSelfScanSession({ checkpoint }),
     staleTime: 20 * 1000,
   });
@@ -439,7 +450,7 @@ export default function AttendanceScreen() {
       );
       await Promise.all([
         todayPresenceQuery.refetch(),
-        attendanceQuery.refetch(),
+        ...(isStudent ? [attendanceQuery.refetch()] : []),
       ]);
     },
     onError: (error) => {
@@ -464,6 +475,12 @@ export default function AttendanceScreen() {
     setChallengeCode('');
   }, [checkpoint]);
 
+  useEffect(() => {
+    if (!isStudent && tab === 'HISTORY') {
+      setTab('SCAN');
+    }
+  }, [isStudent, tab]);
+
   const records = useMemo(() => attendanceQuery.data?.records || [], [attendanceQuery.data?.records]);
   const stats = useMemo(() => {
     const result = { present: 0, sick: 0, permission: 0, absent: 0, late: 0 };
@@ -484,21 +501,28 @@ export default function AttendanceScreen() {
     !createPassMutation.isPending;
   const monitorScannerEnabled =
     tab === 'SCAN' &&
+    canUseDailyPresence &&
     cameraGranted &&
     !monitorScanMutation.isPending &&
     !pendingMonitorToken &&
     !monitorScanResult;
+  const attendanceTabs = isStudent
+    ? [
+        { key: 'SCAN', label: 'Scan Presensi', iconName: 'shield' as const },
+        { key: 'HISTORY', label: 'Riwayat', iconName: 'calendar' as const },
+      ]
+    : [{ key: 'SCAN', label: 'Scan Presensi', iconName: 'shield' as const }];
 
   if (isLoading) return <AppLoadingScreen message="Memuat absensi..." />;
   if (!isAuthenticated) return <Redirect href="/welcome" />;
 
-  if (user?.role !== 'STUDENT') {
+  if (!canUseDailyPresence) {
     return (
       <ScrollView style={{ flex: 1, backgroundColor: colors.background }} contentContainerStyle={pageContentStyle}>
         <Text style={{ fontSize: scaleFont(20), lineHeight: scaleLineHeight(28), fontWeight: '700', marginBottom: 8, color: colors.text }}>
-          Absensi
+          Absensi Saya
         </Text>
-        <QueryStateView type="error" message="Fitur absensi mobile saat ini tersedia untuk role siswa." />
+        <QueryStateView type="error" message="Fitur Absensi Saya belum tersedia untuk role akun ini." />
         <Pressable
           onPress={() => router.replace('/home')}
           style={{
@@ -521,9 +545,8 @@ export default function AttendanceScreen() {
 
   const handleRefresh = () => {
     void Promise.all([
-      attendanceQuery.refetch(),
       todayPresenceQuery.refetch(),
-      activeSessionQuery.refetch(),
+      ...(isStudent ? [attendanceQuery.refetch(), activeSessionQuery.refetch()] : []),
     ]);
   };
 
@@ -561,14 +584,13 @@ export default function AttendanceScreen() {
         Absensi Saya
       </Text>
       <Text style={{ color: colors.textMuted, fontSize: fontSizes.body, lineHeight: scaleLineHeight(20), marginBottom: 12 }}>
-        Scan QR monitor Tata Usaha untuk presensi harian dan pantau riwayat kehadiran bulanan.
+        {isStudent
+          ? 'Scan QR monitor Tata Usaha untuk presensi harian dan pantau riwayat kehadiran bulanan.'
+          : 'Scan QR monitor Tata Usaha untuk mencatat presensi harian sesuai jadwal operasional Anda.'}
       </Text>
 
       <MobileMenuTabBar
-        items={[
-          { key: 'SCAN', label: 'Scan Presensi', iconName: 'shield' },
-          { key: 'HISTORY', label: 'Riwayat', iconName: 'calendar' },
-        ]}
+        items={attendanceTabs}
         activeKey={tab}
         onChange={(nextKey) => setTab(nextKey as AttendanceTabKey)}
         layout={layout.prefersSplitPane ? 'fill' : 'scroll'}
@@ -618,27 +640,29 @@ export default function AttendanceScreen() {
             </View>
           </View>
 
-          <MobileMenuTabBar
-            items={[
-              { key: 'CHECK_IN', label: 'Absen Masuk', iconName: 'log-in' },
-              { key: 'CHECK_OUT', label: 'Absen Pulang', iconName: 'log-out' },
-            ]}
-            activeKey={checkpoint}
-            onChange={(nextKey) => setCheckpoint(nextKey as Checkpoint)}
-            layout={layout.prefersSplitPane ? 'fill' : 'scroll'}
-            compact={false}
-            style={{ marginBottom: 14 }}
-          />
+          {isStudent ? (
+            <>
+              <MobileMenuTabBar
+                items={[
+                  { key: 'CHECK_IN', label: 'Absen Masuk', iconName: 'log-in' },
+                  { key: 'CHECK_OUT', label: 'Absen Pulang', iconName: 'log-out' },
+                ]}
+                activeKey={checkpoint}
+                onChange={(nextKey) => setCheckpoint(nextKey as Checkpoint)}
+                layout={layout.prefersSplitPane ? 'fill' : 'scroll'}
+                compact={false}
+                style={{ marginBottom: 14 }}
+              />
 
-          {activeSessionQuery.isLoading ? (
-            <QueryStateView type="loading" message="Memeriksa sesi scan petugas..." />
-          ) : activeSessionQuery.isError ? (
-            <QueryStateView
-              type="error"
-              message="Gagal memeriksa sesi scan petugas."
-              onRetry={() => activeSessionQuery.refetch()}
-            />
-          ) : activeSessionQuery.data ? (
+              {activeSessionQuery.isLoading ? (
+                <QueryStateView type="loading" message="Memeriksa sesi scan petugas..." />
+              ) : activeSessionQuery.isError ? (
+                <QueryStateView
+                  type="error"
+                  message="Gagal memeriksa sesi scan petugas."
+                  onRetry={() => activeSessionQuery.refetch()}
+                />
+              ) : activeSessionQuery.data ? (
             <View
               style={{
                 borderWidth: 1,
@@ -725,6 +749,26 @@ export default function AttendanceScreen() {
               </Text>
               <Text style={{ color: colors.textMuted, fontSize: fontSizes.body, lineHeight: scaleLineHeight(20) }}>
                 Minta petugas administrasi membuka sesi {getDailyPresenceCheckpointLabel(checkpoint).toLowerCase()} di perangkat mereka, lalu tarik ulang halaman ini.
+              </Text>
+            </View>
+              )}
+            </>
+          ) : (
+            <View
+              style={{
+                borderWidth: 1,
+                borderColor: '#dbeafe',
+                borderRadius: 16,
+                padding: 14,
+                backgroundColor: '#eff6ff',
+                marginBottom: 14,
+              }}
+            >
+              <Text style={{ fontWeight: '700', marginBottom: 4, color: colors.text }}>
+                Gunakan QR monitor Tata Usaha
+              </Text>
+              <Text style={{ color: colors.textMuted, fontSize: fontSizes.body, lineHeight: scaleLineHeight(20) }}>
+                Sistem otomatis membaca mode masuk atau pulang dari QR yang sedang aktif di monitor. QR cadangan dari HP siswa tidak diperlukan untuk akun ini.
               </Text>
             </View>
           )}
