@@ -96,6 +96,8 @@ const ATTENDANCE_QUERY_PREFIXES = [
   'mobile-teacher-subject-attendance',
   'mobile-student-attendance',
   'mobile-student-daily-presence-me',
+  'mobile-daily-presence-me',
+  'mobile-daily-presence-history',
   'mobile-student-self-scan-session',
   'mobile-student-class-attendance',
   'mobile-homeroom-daily',
@@ -108,6 +110,8 @@ const ATTENDANCE_QUERY_PREFIXES = [
   'mobile-staff-daily-presence-policy',
   'mobile-staff-daily-presence-self-scan-session',
   'mobile-staff-daily-presence-student',
+  'mobile-staff-daily-presence-participants',
+  'mobile-staff-daily-presence-participant',
 ];
 const PROCTORING_QUERY_PREFIXES = [
   'mobile-proctoring-schedules',

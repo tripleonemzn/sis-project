@@ -31,11 +31,14 @@ const ATTENDANCE_QUERY_PREFIXES = [
   'student-daily-attendance',
   'student-attendance-history',
   'student-daily-presence-me',
+  'student-daily-presence-history',
   'student-self-scan-session',
   'staff-daily-presence-overview',
   'staff-daily-presence-policy',
   'staff-daily-presence-self-scan-session',
   'staff-daily-presence-student',
+  'staff-daily-presence-participants',
+  'staff-daily-presence-participant',
 ];
 const PROCTORING_QUERY_PREFIXES = [
   'teacher-proctor-schedules',

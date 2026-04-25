@@ -3,6 +3,7 @@ import {
   DailyAttendanceEntry,
   DailyLateSummaryPayload,
   DailyPresenceMonitorScanResult,
+  DailyPresenceOperationalParticipant,
   DailyPresenceOperationalStudent,
   DailyPresenceOwnState,
   DailyPresencePolicy,
@@ -211,6 +212,18 @@ export const attendanceApi = {
     );
     return response.data?.data || [];
   },
+  async getDailyPresenceParticipants(params?: { query?: string; limit?: number }) {
+    const response = await apiClient.get<ApiListResponse<DailyPresenceOperationalParticipant>>(
+      '/attendances/daily-presence/participants',
+      {
+        params: {
+          q: params?.query,
+          limit: params?.limit,
+        },
+      },
+    );
+    return response.data?.data || [];
+  },
   async getStudentDailyPresence(params: { studentId: number; date?: string }) {
     const response = await apiClient.get<DailyPresenceStudentResponse>('/attendances/daily-presence/student', {
       params,
@@ -223,6 +236,18 @@ export const attendanceApi = {
     });
     return response.data?.data;
   },
+  async getParticipantDailyPresence(params: { userId: number; date?: string }) {
+    const response = await apiClient.get<DailyPresenceOwnResponse>('/attendances/daily-presence/participant', {
+      params,
+    });
+    return response.data?.data;
+  },
+  async getOwnDailyPresenceHistory(params?: { month?: number; year?: number }) {
+    const response = await apiClient.get<AttendanceHistoryResponse>('/attendances/daily-presence/me/history', {
+      params,
+    });
+    return response.data?.data || [];
+  },
   async saveAssistedDailyPresence(payload: {
     studentId: number;
     checkpoint: 'CHECK_IN' | 'CHECK_OUT';
@@ -230,6 +255,15 @@ export const attendanceApi = {
     gateLabel?: string | null;
   }) {
     const response = await apiClient.post<DailyPresenceStudentResponse>('/attendances/daily-presence/assisted', payload);
+    return response.data?.data;
+  },
+  async saveAssistedUserDailyPresence(payload: {
+    userId: number;
+    checkpoint: 'CHECK_IN' | 'CHECK_OUT';
+    reason: string;
+    gateLabel?: string | null;
+  }) {
+    const response = await apiClient.post<DailyPresenceOwnResponse>('/attendances/daily-presence/assisted-user', payload);
     return response.data?.data;
   },
   async getActiveSelfScanSession(params: { checkpoint: 'CHECK_IN' | 'CHECK_OUT' }) {

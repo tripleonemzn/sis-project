@@ -149,11 +149,20 @@ export interface DailyPresenceEventItem {
   gateLabel?: string | null;
   recordedAt: string;
   recordedTime?: string | null;
+  lateMinutes?: number | null;
   student?: {
     id: number;
     name: string;
     nis?: string | null;
     nisn?: string | null;
+  };
+  participant?: {
+    id: number;
+    name: string;
+    username?: string | null;
+    nip?: string | null;
+    role: 'TEACHER' | 'STAFF' | 'PRINCIPAL' | 'EXTRACURRICULAR_TUTOR';
+    ptkType?: string | null;
   };
   class?: {
     id: number;
@@ -176,6 +185,14 @@ export interface DailyPresenceOverview {
     checkOutCount: number;
     openDayCount: number;
     assistedEventCount: number;
+    studentCheckInCount: number;
+    studentCheckOutCount: number;
+    studentOpenDayCount: number;
+    assistedStudentEventCount: number;
+    userCheckInCount: number;
+    userCheckOutCount: number;
+    userOpenDayCount: number;
+    assistedUserEventCount: number;
   };
   recentEvents: DailyPresenceEventItem[];
 }
@@ -210,6 +227,42 @@ export interface DailyPresenceStudentState {
     checkOutReason?: string | null;
   };
   recentEvents: DailyPresenceEventItem[];
+}
+
+export interface DailyPresenceUserState {
+  date: string;
+  academicYear: {
+    id: number;
+    name: string;
+  };
+  participant: {
+    id: number;
+    name: string;
+    username?: string | null;
+    photo?: string | null;
+    nip?: string | null;
+    role: 'TEACHER' | 'STAFF' | 'PRINCIPAL' | 'EXTRACURRICULAR_TUTOR';
+    ptkType?: string | null;
+    additionalDuties?: string[];
+  };
+  presence: DailyPresenceStudentState['presence'] & {
+    checkInLateMinutes?: number | null;
+    checkOutEarlyMinutes?: number | null;
+    scheduleBasis?: unknown;
+  };
+  recentEvents: DailyPresenceEventItem[];
+}
+
+export type DailyPresenceOwnState = DailyPresenceStudentState | DailyPresenceUserState;
+
+export interface DailyPresenceOwnHistoryItem {
+  id: number;
+  date: string;
+  status: AttendanceStatus | 'ALPHA';
+  note?: string | null;
+  notes?: string | null;
+  checkInTime?: string | null;
+  checkOutTime?: string | null;
 }
 
 export interface DailyPresenceSelfScanSession {
@@ -305,6 +358,17 @@ export interface DailyPresenceOperationalStudent {
       code?: string | null;
     } | null;
   } | null;
+}
+
+export interface DailyPresenceOperationalParticipant {
+  id: number;
+  username?: string | null;
+  name: string;
+  photo?: string | null;
+  nip?: string | null;
+  role: 'TEACHER' | 'STAFF' | 'PRINCIPAL' | 'EXTRACURRICULAR_TUTOR';
+  ptkType?: string | null;
+  additionalDuties?: string[];
 }
 
 export const attendanceService = {
@@ -411,6 +475,19 @@ export const attendanceService = {
     return response.data.data;
   },
 
+  getDailyPresenceParticipants: async (params?: { query?: string; limit?: number }) => {
+    const response = await api.get<{ data: DailyPresenceOperationalParticipant[] }>(
+      '/attendances/daily-presence/participants',
+      {
+        params: {
+          q: params?.query,
+          limit: params?.limit,
+        },
+      },
+    );
+    return response.data.data;
+  },
+
   getStudentDailyPresence: async (params: { studentId: number; date?: string }) => {
     const response = await api.get<{ data: DailyPresenceStudentState }>('/attendances/daily-presence/student', {
       params,
@@ -418,8 +495,22 @@ export const attendanceService = {
     return response.data.data;
   },
 
+  getParticipantDailyPresence: async (params: { userId: number; date?: string }) => {
+    const response = await api.get<{ data: DailyPresenceUserState }>('/attendances/daily-presence/participant', {
+      params,
+    });
+    return response.data.data;
+  },
+
   getOwnDailyPresence: async (params?: { date?: string }) => {
-    const response = await api.get<{ data: DailyPresenceStudentState }>('/attendances/daily-presence/me', {
+    const response = await api.get<{ data: DailyPresenceOwnState }>('/attendances/daily-presence/me', {
+      params,
+    });
+    return response.data.data;
+  },
+
+  getOwnDailyPresenceHistory: async (params?: { month?: number; year?: number }) => {
+    const response = await api.get<{ data: DailyPresenceOwnHistoryItem[] }>('/attendances/daily-presence/me/history', {
       params,
     });
     return response.data.data;
@@ -510,5 +601,15 @@ export const attendanceService = {
   }) => {
     const response = await api.post<{ data: DailyPresenceStudentState }>('/attendances/daily-presence/assisted', payload);
     return response.data.data;
-  }
+  },
+
+  saveAssistedUserDailyPresence: async (payload: {
+    userId: number;
+    checkpoint: DailyPresenceEventType;
+    reason: string;
+    gateLabel?: string | null;
+  }) => {
+    const response = await api.post<{ data: DailyPresenceUserState }>('/attendances/daily-presence/assisted-user', payload);
+    return response.data.data;
+  },
 };

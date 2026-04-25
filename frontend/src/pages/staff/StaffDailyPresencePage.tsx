@@ -20,11 +20,13 @@ import {
   attendanceService,
   type DailyPresenceEventItem,
   type DailyPresenceEventType,
+  type DailyPresenceOperationalParticipant,
   type DailyPresenceOperationalStudent,
   type DailyPresencePolicy,
   type DailyPresencePolicyDayKey,
   type DailyPresenceSelfScanManagerSession,
   type DailyPresenceSelfScanPreview,
+  type DailyPresenceUserState,
 } from '../../services/attendance.service';
 import { authService } from '../../services/auth.service';
 import {
@@ -37,6 +39,7 @@ import {
 import { resolveStaffDivision } from '../../utils/staffRole';
 
 type StaffTabKey = 'SCAN' | 'MONITOR' | 'ASSISTED' | 'HISTORY' | 'CONFIG';
+type AssistedTargetKey = 'STUDENT' | 'PARTICIPANT';
 
 const DAY_LABELS: Record<DailyPresencePolicyDayKey, string> = {
   MONDAY: 'Senin',
@@ -51,6 +54,7 @@ const DAY_KEYS = Object.keys(DAY_LABELS) as DailyPresencePolicyDayKey[];
 
 type PresenceModalState = {
   checkpoint: DailyPresenceEventType;
+  target: AssistedTargetKey;
 } | null;
 
 type ScannedPassState = {
@@ -94,6 +98,32 @@ function getCheckpointCopy(checkpoint: DailyPresenceEventType) {
 
 function getEventTypeLabel(value: DailyPresenceEventType) {
   return value === 'CHECK_IN' ? 'Masuk' : 'Pulang';
+}
+
+function getParticipantRoleLabel(role?: string | null) {
+  if (role === 'TEACHER') return 'Guru';
+  if (role === 'STAFF') return 'Staff';
+  if (role === 'PRINCIPAL') return 'Kepala Sekolah';
+  if (role === 'EXTRACURRICULAR_TUTOR') return 'Pembina Ekskul';
+  return '-';
+}
+
+function getEventPersonName(event: DailyPresenceEventItem) {
+  return event.student?.name || event.participant?.name || '-';
+}
+
+function getEventSecondaryLabel(event: DailyPresenceEventItem) {
+  if (event.student) {
+    const idLabel = event.student.nisn || event.student.nis || '-';
+    return `${event.class?.name || '-'} • ${idLabel}`;
+  }
+  if (event.participant) {
+    const idLabel = event.participant.nip || event.participant.username || '-';
+    const roleLabel = getParticipantRoleLabel(event.participant.role);
+    const ptkType = event.participant.ptkType ? ` • ${event.participant.ptkType}` : '';
+    return `${roleLabel} • ${idLabel}${ptkType}`;
+  }
+  return '-';
 }
 
 function getSourceLabel(value?: string | null) {
@@ -145,8 +175,8 @@ function PresenceHistoryTable({
         <thead className="bg-slate-50">
           <tr>
             <th className="px-3 py-3 text-left font-semibold text-slate-600">Waktu</th>
-            <th className="px-3 py-3 text-left font-semibold text-slate-600">Siswa</th>
-            <th className="px-3 py-3 text-left font-semibold text-slate-600">Kelas</th>
+            <th className="px-3 py-3 text-left font-semibold text-slate-600">Peserta</th>
+            <th className="px-3 py-3 text-left font-semibold text-slate-600">Detail</th>
             <th className="px-3 py-3 text-left font-semibold text-slate-600">Aksi</th>
             <th className="px-3 py-3 text-left font-semibold text-slate-600">Sumber</th>
             <th className="px-3 py-3 text-left font-semibold text-slate-600">Alasan</th>
@@ -165,17 +195,22 @@ function PresenceHistoryTable({
               <tr key={event.id} className="bg-white">
                 <td className="px-3 py-3 text-slate-700">{event.recordedTime || formatTimeLabel(event.recordedAt)}</td>
                 <td className="px-3 py-3 text-slate-700">
-                  <div className="font-medium text-slate-900">{event.student?.name || '-'}</div>
-                  <div className="text-xs text-slate-500">{event.student?.nisn || event.student?.nis || '-'}</div>
+                  <div className="font-medium text-slate-900">{getEventPersonName(event)}</div>
+                  <div className="text-xs text-slate-500">
+                    {event.student ? 'Siswa' : event.participant ? getParticipantRoleLabel(event.participant.role) : '-'}
+                  </div>
                 </td>
-                <td className="px-3 py-3 text-slate-700">{event.class?.name || '-'}</td>
+                <td className="px-3 py-3 text-slate-700">{getEventSecondaryLabel(event)}</td>
                 <td className="px-3 py-3 text-slate-700">{getEventTypeLabel(event.eventType)}</td>
                 <td className="px-3 py-3 text-slate-700">
                   <span className={`inline-flex rounded-full border px-2.5 py-1 text-xs font-semibold ${getSourceTone(event.source)}`}>
                     {getSourceLabel(event.source)}
                   </span>
                 </td>
-                <td className="px-3 py-3 text-slate-600">{event.reason || '-'}</td>
+                <td className="px-3 py-3 text-slate-600">
+                  {event.reason || '-'}
+                  {event.lateMinutes && event.lateMinutes > 0 ? ` • Telat ${event.lateMinutes} menit` : ''}
+                </td>
                 <td className="px-3 py-3 text-slate-600">{event.actor?.name || '-'}</td>
               </tr>
             ))
@@ -528,16 +563,17 @@ function ScanPreviewPanel({
             events.slice(0, 6).map((event) => (
               <div key={event.id} className="rounded-xl border border-slate-200 bg-slate-50 px-4 py-3">
                 <div className="flex flex-wrap items-center justify-between gap-2">
-                  <p className="font-semibold text-slate-900">{event.student?.name || '-'}</p>
+                  <p className="font-semibold text-slate-900">{getEventPersonName(event)}</p>
                   <span className={`inline-flex rounded-full border px-2.5 py-1 text-xs font-semibold ${getSourceTone(event.source)}`}>
                     {getSourceLabel(event.source)}
                   </span>
                 </div>
                 <p className="mt-1 text-sm text-slate-600">
-                  {event.class?.name || '-'} • {getEventTypeLabel(event.eventType)} • {event.recordedTime || formatTimeLabel(event.recordedAt)}
+                  {getEventSecondaryLabel(event)} • {getEventTypeLabel(event.eventType)} • {event.recordedTime || formatTimeLabel(event.recordedAt)}
                 </p>
                 <p className="mt-2 text-xs text-slate-500">
                   {event.reason || 'Belum ada alasan tambahan.'}
+                  {event.lateMinutes && event.lateMinutes > 0 ? ` • Telat ${event.lateMinutes} menit` : ''}
                 </p>
               </div>
             ))
@@ -551,8 +587,11 @@ function ScanPreviewPanel({
 export default function StaffDailyPresencePage() {
   const queryClient = useQueryClient();
   const [activeTab, setActiveTab] = useState<StaffTabKey>('SCAN');
+  const [assistedTarget, setAssistedTarget] = useState<AssistedTargetKey>('STUDENT');
   const [selectedStudentId, setSelectedStudentId] = useState<string>('');
   const [studentSearch, setStudentSearch] = useState('');
+  const [selectedParticipantId, setSelectedParticipantId] = useState<string>('');
+  const [participantSearch, setParticipantSearch] = useState('');
   const [modalState, setModalState] = useState<PresenceModalState>(null);
   const [reason, setReason] = useState('');
   const [gateLabel, setGateLabel] = useState('');
@@ -571,6 +610,7 @@ export default function StaffDailyPresencePage() {
   const currentUser = meQuery.data?.data;
   const canAccess = resolveStaffDivision(currentUser) === 'ADMINISTRATION';
   const deferredStudentSearch = useDeferredValue(studentSearch.trim());
+  const deferredParticipantSearch = useDeferredValue(participantSearch.trim());
 
   const overviewQuery = useQuery({
     queryKey: ['staff-daily-presence-overview'],
@@ -603,7 +643,7 @@ export default function StaffDailyPresencePage() {
 
   const studentsQuery = useQuery({
     queryKey: ['staff-daily-presence-students', deferredStudentSearch],
-    enabled: canAccess && activeTab === 'ASSISTED',
+    enabled: canAccess && activeTab === 'ASSISTED' && assistedTarget === 'STUDENT',
     queryFn: () =>
       attendanceService.getDailyPresenceStudents({
         query: deferredStudentSearch || undefined,
@@ -614,8 +654,27 @@ export default function StaffDailyPresencePage() {
 
   const selectedStudentQuery = useQuery({
     queryKey: ['staff-daily-presence-student', selectedStudentId],
-    enabled: canAccess && activeTab === 'ASSISTED' && Boolean(selectedStudentId),
+    enabled: canAccess && activeTab === 'ASSISTED' && assistedTarget === 'STUDENT' && Boolean(selectedStudentId),
     queryFn: () => attendanceService.getStudentDailyPresence({ studentId: Number(selectedStudentId) }),
+    staleTime: 30 * 1000,
+  });
+
+  const participantsQuery = useQuery({
+    queryKey: ['staff-daily-presence-participants', deferredParticipantSearch],
+    enabled: canAccess && activeTab === 'ASSISTED' && assistedTarget === 'PARTICIPANT',
+    queryFn: () =>
+      attendanceService.getDailyPresenceParticipants({
+        query: deferredParticipantSearch || undefined,
+        limit: 100,
+      }),
+    staleTime: 60 * 1000,
+  });
+
+  const selectedParticipantQuery = useQuery({
+    queryKey: ['staff-daily-presence-participant', selectedParticipantId],
+    enabled:
+      canAccess && activeTab === 'ASSISTED' && assistedTarget === 'PARTICIPANT' && Boolean(selectedParticipantId),
+    queryFn: () => attendanceService.getParticipantDailyPresence({ userId: Number(selectedParticipantId) }),
     staleTime: 30 * 1000,
   });
 
@@ -705,6 +764,30 @@ export default function StaffDailyPresencePage() {
     },
   });
 
+  const saveParticipantMutation = useMutation({
+    mutationFn: (payload: {
+      userId: number;
+      checkpoint: DailyPresenceEventType;
+      reason: string;
+      gateLabel?: string | null;
+    }) => attendanceService.saveAssistedUserDailyPresence(payload),
+    onSuccess: (_, variables) => {
+      toast.success(
+        variables.checkpoint === 'CHECK_IN'
+          ? 'Absen masuk peserta non-siswa berhasil dibantu petugas.'
+          : 'Absen pulang peserta non-siswa berhasil dibantu petugas.',
+      );
+      setModalState(null);
+      setReason('');
+      setGateLabel('');
+      void queryClient.invalidateQueries({ queryKey: ['staff-daily-presence-overview'] });
+      void queryClient.invalidateQueries({ queryKey: ['staff-daily-presence-participant', selectedParticipantId] });
+    },
+    onError: (error: any) => {
+      toast.error(error?.response?.data?.message || 'Gagal menyimpan presensi peserta non-siswa.');
+    },
+  });
+
   const savePolicyMutation = useMutation({
     mutationFn: (policy: DailyPresencePolicy) => attendanceService.saveDailyPresencePolicy(policy),
     onSuccess: (result) => {
@@ -753,8 +836,53 @@ export default function StaffDailyPresencePage() {
     [selectedStudentId, selectedStudentOption, studentOptions],
   );
 
+  const selectedParticipantOption = useMemo<DailyPresenceOperationalParticipant | null>(() => {
+    const selected = participantsQuery.data?.find((item) => String(item.id) === String(selectedParticipantId)) || null;
+    if (selected) return selected;
+    const participant = (selectedParticipantQuery.data as DailyPresenceUserState | undefined)?.participant;
+    if (!participant) return null;
+    return {
+      id: participant.id,
+      username: participant.username || null,
+      name: participant.name,
+      photo: participant.photo || null,
+      nip: participant.nip || null,
+      role: participant.role,
+      ptkType: participant.ptkType || null,
+      additionalDuties: participant.additionalDuties || [],
+    };
+  }, [participantsQuery.data, selectedParticipantId, selectedParticipantQuery.data]);
+
+  const participantOptions = useMemo(() => {
+    const options = new Map<string, DailyPresenceOperationalParticipant>();
+    if (selectedParticipantOption) {
+      options.set(String(selectedParticipantOption.id), selectedParticipantOption);
+    }
+    for (const participant of participantsQuery.data || []) {
+      options.set(String(participant.id), participant);
+    }
+    return Array.from(options.values());
+  }, [participantsQuery.data, selectedParticipantOption]);
+
+  const selectedParticipant = useMemo(
+    () =>
+      participantOptions.find((item) => String(item.id) === String(selectedParticipantId)) ||
+      selectedParticipantOption ||
+      null,
+    [participantOptions, selectedParticipantId, selectedParticipantOption],
+  );
+
   const modalCopy = modalState ? getCheckpointCopy(modalState.checkpoint) : null;
-  const canSubmitModal = Boolean(selectedStudentId) && reason.trim().length >= 3 && !saveMutation.isPending;
+  const modalBusy = saveMutation.isPending || saveParticipantMutation.isPending;
+  const modalParticipantLabel =
+    modalState?.target === 'PARTICIPANT'
+      ? `${selectedParticipant?.name || '-'} • ${getParticipantRoleLabel(selectedParticipant?.role)}`
+      : `${selectedStudent?.name || '-'} • ${selectedStudent?.studentClass?.name || '-'}`;
+  const canSubmitModal =
+    reason.trim().length >= 3 &&
+    (modalState?.target === 'PARTICIPANT'
+      ? Boolean(selectedParticipantId) && !saveParticipantMutation.isPending
+      : Boolean(selectedStudentId) && !saveMutation.isPending);
   const recentEvents = overviewQuery.data?.recentEvents || [];
   const activeManagerSession = managerSessionQuery.data || null;
   const scanBusy =
@@ -782,6 +910,12 @@ export default function StaffDailyPresencePage() {
     setPolicyDraft(policyQuery.data.policy);
   }, [policyQuery.data?.policy]);
 
+  useEffect(() => {
+    setReason('');
+    setGateLabel('');
+    setModalState(null);
+  }, [assistedTarget]);
+
   const updatePolicyDay = (
     day: DailyPresencePolicyDayKey,
     updater: (current: DailyPresencePolicy['days'][DailyPresencePolicyDayKey]) => DailyPresencePolicy['days'][DailyPresencePolicyDayKey],
@@ -807,9 +941,16 @@ export default function StaffDailyPresencePage() {
       await managerSessionQuery.refetch();
     }
     if (activeTab === 'ASSISTED') {
-      await studentsQuery.refetch();
-      if (selectedStudentId) {
-        await selectedStudentQuery.refetch();
+      if (assistedTarget === 'STUDENT') {
+        await studentsQuery.refetch();
+        if (selectedStudentId) {
+          await selectedStudentQuery.refetch();
+        }
+      } else {
+        await participantsQuery.refetch();
+        if (selectedParticipantId) {
+          await selectedParticipantQuery.refetch();
+        }
       }
     }
   };
@@ -860,7 +1001,9 @@ export default function StaffDailyPresencePage() {
                 policyQuery.isFetching ||
                 managerSessionQuery.isFetching ||
                 studentsQuery.isFetching ||
-                selectedStudentQuery.isFetching
+                selectedStudentQuery.isFetching ||
+                participantsQuery.isFetching ||
+                selectedParticipantQuery.isFetching
                   ? 'animate-spin'
                   : ''
               }`}
@@ -884,18 +1027,24 @@ export default function StaffDailyPresencePage() {
               <p className="mt-2 text-sm text-slate-500">Hari operasional presensi.</p>
             </div>
             <div className="rounded-2xl border border-emerald-200 bg-emerald-50 p-5 shadow-sm">
-              <p className="text-xs font-semibold uppercase tracking-[0.24em] text-emerald-700">Sudah Masuk</p>
+              <p className="text-xs font-semibold uppercase tracking-[0.24em] text-emerald-700">Masuk Tercatat</p>
               <p className="mt-3 text-3xl font-bold text-emerald-900">
                 {overviewQuery.data?.summary.checkInCount?.toLocaleString('id-ID') || '0'}
               </p>
-              <p className="mt-2 text-sm text-emerald-700">Siswa sudah punya jam masuk hari ini.</p>
+              <p className="mt-2 text-sm text-emerald-700">
+                Siswa {overviewQuery.data?.summary.studentCheckInCount?.toLocaleString('id-ID') || '0'} • Non-siswa{' '}
+                {overviewQuery.data?.summary.userCheckInCount?.toLocaleString('id-ID') || '0'}
+              </p>
             </div>
             <div className="rounded-2xl border border-sky-200 bg-sky-50 p-5 shadow-sm">
-              <p className="text-xs font-semibold uppercase tracking-[0.24em] text-sky-700">Sudah Pulang</p>
+              <p className="text-xs font-semibold uppercase tracking-[0.24em] text-sky-700">Pulang Tercatat</p>
               <p className="mt-3 text-3xl font-bold text-sky-900">
                 {overviewQuery.data?.summary.checkOutCount?.toLocaleString('id-ID') || '0'}
               </p>
-              <p className="mt-2 text-sm text-sky-700">Siswa sudah punya jam pulang hari ini.</p>
+              <p className="mt-2 text-sm text-sky-700">
+                Siswa {overviewQuery.data?.summary.studentCheckOutCount?.toLocaleString('id-ID') || '0'} • Non-siswa{' '}
+                {overviewQuery.data?.summary.userCheckOutCount?.toLocaleString('id-ID') || '0'}
+              </p>
             </div>
             <div className="rounded-2xl border border-amber-200 bg-amber-50 p-5 shadow-sm">
               <p className="text-xs font-semibold uppercase tracking-[0.24em] text-amber-700">Bantuan Petugas</p>
@@ -903,7 +1052,8 @@ export default function StaffDailyPresencePage() {
                 {overviewQuery.data?.summary.assistedEventCount?.toLocaleString('id-ID') || '0'}
               </p>
               <p className="mt-2 text-sm text-amber-700">
-                {overviewQuery.data?.summary.openDayCount?.toLocaleString('id-ID') || '0'} siswa belum punya jam pulang.
+                Pending pulang: siswa {overviewQuery.data?.summary.studentOpenDayCount?.toLocaleString('id-ID') || '0'} • non-siswa{' '}
+                {overviewQuery.data?.summary.userOpenDayCount?.toLocaleString('id-ID') || '0'}
               </p>
             </div>
           </>
@@ -1036,9 +1186,9 @@ export default function StaffDailyPresencePage() {
           <section className="rounded-2xl border border-slate-200 bg-white p-6 shadow-sm">
             <div className="flex items-start justify-between gap-3">
               <div>
-                <h2 className="text-lg font-semibold text-slate-900">Cari Siswa</h2>
+                <h2 className="text-lg font-semibold text-slate-900">Bantu Petugas</h2>
                 <p className="mt-1 text-sm text-slate-500">
-                  Pilih siswa yang membutuhkan bantuan absen masuk atau pulang hari ini.
+                  Pilih siswa atau peserta non-siswa yang membutuhkan bantuan presensi hari ini.
                 </p>
               </div>
               <div className="rounded-xl border border-slate-200 bg-slate-50 p-2 text-slate-500">
@@ -1046,125 +1196,282 @@ export default function StaffDailyPresencePage() {
               </div>
             </div>
 
-            <div className="mt-5 space-y-4">
-              <div>
-                <label htmlFor="daily-presence-search" className="mb-1 block text-sm font-medium text-slate-700">
-                  Cari siswa
-                </label>
-                <input
-                  id="daily-presence-search"
-                  value={studentSearch}
-                  onChange={(event) => setStudentSearch(event.target.value)}
-                  placeholder="Ketik nama, username, NIS, NISN, atau kelas"
-                  className="w-full rounded-xl border border-slate-300 px-3 py-2.5 text-sm outline-none transition focus:border-blue-500"
-                />
-              </div>
-
-              <div>
-                <label htmlFor="daily-presence-student" className="mb-1 block text-sm font-medium text-slate-700">
-                  Siswa terpilih
-                </label>
-                <select
-                  id="daily-presence-student"
-                  value={selectedStudentId}
-                  onChange={(event) => setSelectedStudentId(event.target.value)}
-                  className="w-full rounded-xl border border-slate-300 bg-white px-3 py-2.5 text-sm outline-none transition focus:border-blue-500"
-                >
-                  <option value="">Pilih siswa</option>
-                  {studentOptions.map((student) => (
-                    <option key={student.id} value={student.id}>
-                      {student.name} • {student.studentClass?.name || '-'} • {student.nisn || student.username}
-                    </option>
-                  ))}
-                </select>
-                <p className="mt-2 text-xs text-slate-500">
-                  {deferredStudentSearch
-                    ? `Menampilkan hasil pencarian hingga 100 siswa untuk kata kunci "${deferredStudentSearch}".`
-                    : 'Menampilkan daftar awal hingga 100 siswa. Gunakan kolom cari untuk mempersempit hasil.'}
-                </p>
+            <div className="mt-5 rounded-2xl border border-slate-200 bg-slate-50 p-2">
+              <div className="flex flex-wrap gap-2">
+                {[
+                  { key: 'STUDENT' as const, label: 'Siswa' },
+                  { key: 'PARTICIPANT' as const, label: 'Non-Siswa' },
+                ].map((item) => {
+                  const active = assistedTarget === item.key;
+                  return (
+                    <button
+                      key={item.key}
+                      type="button"
+                      onClick={() => setAssistedTarget(item.key)}
+                      className={`inline-flex items-center rounded-xl px-4 py-2.5 text-sm font-semibold transition ${
+                        active
+                          ? 'bg-blue-600 text-white shadow-sm'
+                          : 'border border-slate-200 bg-white text-slate-600 hover:bg-slate-50'
+                      }`}
+                    >
+                      {item.label}
+                    </button>
+                  );
+                })}
               </div>
             </div>
 
-            <div className="mt-6 rounded-2xl border border-dashed border-slate-300 bg-slate-50 p-4">
-              {!selectedStudentId ? (
-                <p className="text-sm text-slate-500">Pilih siswa terlebih dahulu untuk melihat status presensi hari ini.</p>
-              ) : selectedStudentQuery.isLoading ? (
-                <div className="flex items-center text-sm text-slate-500">
-                  <Loader2 className="mr-2 h-4 w-4 animate-spin" />
-                  Memuat status presensi siswa...
-                </div>
-              ) : selectedStudentQuery.isError ? (
-                <p className="text-sm text-rose-600">Status presensi siswa tidak berhasil dimuat.</p>
-              ) : (
-                <div className="space-y-4">
+            {assistedTarget === 'STUDENT' ? (
+              <>
+                <div className="mt-5 space-y-4">
                   <div>
-                    <p className="text-sm font-semibold text-slate-900">{selectedStudentQuery.data?.student.name}</p>
-                    <p className="mt-1 text-xs text-slate-500">
-                      {selectedStudentQuery.data?.student.class?.name || '-'} • NIS/NISN:{' '}
-                      {selectedStudentQuery.data?.student.nis || selectedStudentQuery.data?.student.nisn || '-'}
-                    </p>
+                    <label htmlFor="daily-presence-search" className="mb-1 block text-sm font-medium text-slate-700">
+                      Cari siswa
+                    </label>
+                    <input
+                      id="daily-presence-search"
+                      value={studentSearch}
+                      onChange={(event) => setStudentSearch(event.target.value)}
+                      placeholder="Ketik nama, username, NIS, NISN, atau kelas"
+                      className="w-full rounded-xl border border-slate-300 px-3 py-2.5 text-sm outline-none transition focus:border-blue-500"
+                    />
                   </div>
 
-                  <div className="grid gap-3 sm:grid-cols-2">
-                    <div className="rounded-xl border border-emerald-200 bg-emerald-50 px-4 py-3">
-                      <p className="text-xs font-semibold uppercase tracking-[0.2em] text-emerald-700">Jam Masuk</p>
-                      <p className="mt-2 text-lg font-semibold text-emerald-900">
-                        {selectedStudentQuery.data?.presence.checkInTime || '-'}
-                      </p>
-                      <p className="mt-1 text-xs text-emerald-700">
-                        {getSourceLabel(selectedStudentQuery.data?.presence.checkInSource)}
-                      </p>
-                    </div>
-                    <div className="rounded-xl border border-sky-200 bg-sky-50 px-4 py-3">
-                      <p className="text-xs font-semibold uppercase tracking-[0.2em] text-sky-700">Jam Pulang</p>
-                      <p className="mt-2 text-lg font-semibold text-sky-900">
-                        {selectedStudentQuery.data?.presence.checkOutTime || '-'}
-                      </p>
-                      <p className="mt-1 text-xs text-sky-700">
-                        {getSourceLabel(selectedStudentQuery.data?.presence.checkOutSource)}
-                      </p>
-                    </div>
-                  </div>
-
-                  <div className="rounded-xl border border-slate-200 bg-white px-4 py-3">
-                    <p className="text-sm font-medium text-slate-700">Status harian</p>
-                    <p className="mt-2 text-sm text-slate-600">
-                      {selectedStudentQuery.data?.presence.status || 'Belum tercatat'}
-                    </p>
+                  <div>
+                    <label htmlFor="daily-presence-student" className="mb-1 block text-sm font-medium text-slate-700">
+                      Siswa terpilih
+                    </label>
+                    <select
+                      id="daily-presence-student"
+                      value={selectedStudentId}
+                      onChange={(event) => setSelectedStudentId(event.target.value)}
+                      className="w-full rounded-xl border border-slate-300 bg-white px-3 py-2.5 text-sm outline-none transition focus:border-blue-500"
+                    >
+                      <option value="">Pilih siswa</option>
+                      {studentOptions.map((student) => (
+                        <option key={student.id} value={student.id}>
+                          {student.name} • {student.studentClass?.name || '-'} • {student.nisn || student.username}
+                        </option>
+                      ))}
+                    </select>
                     <p className="mt-2 text-xs text-slate-500">
-                      Catatan harian: {selectedStudentQuery.data?.presence.note || '-'}
+                      {deferredStudentSearch
+                        ? `Menampilkan hasil pencarian hingga 100 siswa untuk kata kunci "${deferredStudentSearch}".`
+                        : 'Menampilkan daftar awal hingga 100 siswa. Gunakan kolom cari untuk mempersempit hasil.'}
                     </p>
-                  </div>
-
-                  <div className="grid gap-3 sm:grid-cols-2">
-                    <button
-                      type="button"
-                      onClick={() => {
-                        setReason('');
-                        setGateLabel('');
-                        setModalState({ checkpoint: 'CHECK_IN' });
-                      }}
-                      className="inline-flex items-center justify-center gap-2 rounded-xl bg-emerald-600 px-4 py-3 text-sm font-semibold text-white transition hover:bg-emerald-700"
-                    >
-                      <LogIn className="h-4 w-4" />
-                      Bantu Absen Masuk
-                    </button>
-                    <button
-                      type="button"
-                      onClick={() => {
-                        setReason('');
-                        setGateLabel('');
-                        setModalState({ checkpoint: 'CHECK_OUT' });
-                      }}
-                      className="inline-flex items-center justify-center gap-2 rounded-xl bg-sky-600 px-4 py-3 text-sm font-semibold text-white transition hover:bg-sky-700"
-                    >
-                      <LogOut className="h-4 w-4" />
-                      Bantu Absen Pulang
-                    </button>
                   </div>
                 </div>
-              )}
-            </div>
+
+                <div className="mt-6 rounded-2xl border border-dashed border-slate-300 bg-slate-50 p-4">
+                  {!selectedStudentId ? (
+                    <p className="text-sm text-slate-500">Pilih siswa terlebih dahulu untuk melihat status presensi hari ini.</p>
+                  ) : selectedStudentQuery.isLoading ? (
+                    <div className="flex items-center text-sm text-slate-500">
+                      <Loader2 className="mr-2 h-4 w-4 animate-spin" />
+                      Memuat status presensi siswa...
+                    </div>
+                  ) : selectedStudentQuery.isError ? (
+                    <p className="text-sm text-rose-600">Status presensi siswa tidak berhasil dimuat.</p>
+                  ) : (
+                    <div className="space-y-4">
+                      <div>
+                        <p className="text-sm font-semibold text-slate-900">{selectedStudentQuery.data?.student.name}</p>
+                        <p className="mt-1 text-xs text-slate-500">
+                          {selectedStudentQuery.data?.student.class?.name || '-'} • NIS/NISN:{' '}
+                          {selectedStudentQuery.data?.student.nis || selectedStudentQuery.data?.student.nisn || '-'}
+                        </p>
+                      </div>
+
+                      <div className="grid gap-3 sm:grid-cols-2">
+                        <div className="rounded-xl border border-emerald-200 bg-emerald-50 px-4 py-3">
+                          <p className="text-xs font-semibold uppercase tracking-[0.2em] text-emerald-700">Jam Masuk</p>
+                          <p className="mt-2 text-lg font-semibold text-emerald-900">
+                            {selectedStudentQuery.data?.presence.checkInTime || '-'}
+                          </p>
+                          <p className="mt-1 text-xs text-emerald-700">
+                            {getSourceLabel(selectedStudentQuery.data?.presence.checkInSource)}
+                          </p>
+                        </div>
+                        <div className="rounded-xl border border-sky-200 bg-sky-50 px-4 py-3">
+                          <p className="text-xs font-semibold uppercase tracking-[0.2em] text-sky-700">Jam Pulang</p>
+                          <p className="mt-2 text-lg font-semibold text-sky-900">
+                            {selectedStudentQuery.data?.presence.checkOutTime || '-'}
+                          </p>
+                          <p className="mt-1 text-xs text-sky-700">
+                            {getSourceLabel(selectedStudentQuery.data?.presence.checkOutSource)}
+                          </p>
+                        </div>
+                      </div>
+
+                      <div className="rounded-xl border border-slate-200 bg-white px-4 py-3">
+                        <p className="text-sm font-medium text-slate-700">Status harian</p>
+                        <p className="mt-2 text-sm text-slate-600">
+                          {selectedStudentQuery.data?.presence.status || 'Belum tercatat'}
+                        </p>
+                        <p className="mt-2 text-xs text-slate-500">
+                          Catatan harian: {selectedStudentQuery.data?.presence.note || '-'}
+                        </p>
+                      </div>
+
+                      <div className="grid gap-3 sm:grid-cols-2">
+                        <button
+                          type="button"
+                          onClick={() => {
+                            setReason('');
+                            setGateLabel('');
+                            setModalState({ checkpoint: 'CHECK_IN', target: 'STUDENT' });
+                          }}
+                          className="inline-flex items-center justify-center gap-2 rounded-xl bg-emerald-600 px-4 py-3 text-sm font-semibold text-white transition hover:bg-emerald-700"
+                        >
+                          <LogIn className="h-4 w-4" />
+                          Bantu Absen Masuk
+                        </button>
+                        <button
+                          type="button"
+                          onClick={() => {
+                            setReason('');
+                            setGateLabel('');
+                            setModalState({ checkpoint: 'CHECK_OUT', target: 'STUDENT' });
+                          }}
+                          className="inline-flex items-center justify-center gap-2 rounded-xl bg-sky-600 px-4 py-3 text-sm font-semibold text-white transition hover:bg-sky-700"
+                        >
+                          <LogOut className="h-4 w-4" />
+                          Bantu Absen Pulang
+                        </button>
+                      </div>
+                    </div>
+                  )}
+                </div>
+              </>
+            ) : (
+              <>
+                <div className="mt-5 space-y-4">
+                  <div>
+                    <label htmlFor="daily-presence-participant-search" className="mb-1 block text-sm font-medium text-slate-700">
+                      Cari peserta non-siswa
+                    </label>
+                    <input
+                      id="daily-presence-participant-search"
+                      value={participantSearch}
+                      onChange={(event) => setParticipantSearch(event.target.value)}
+                      placeholder="Ketik nama, username, NIP, jabatan, atau PTK"
+                      className="w-full rounded-xl border border-slate-300 px-3 py-2.5 text-sm outline-none transition focus:border-blue-500"
+                    />
+                  </div>
+
+                  <div>
+                    <label htmlFor="daily-presence-participant" className="mb-1 block text-sm font-medium text-slate-700">
+                      Peserta terpilih
+                    </label>
+                    <select
+                      id="daily-presence-participant"
+                      value={selectedParticipantId}
+                      onChange={(event) => setSelectedParticipantId(event.target.value)}
+                      className="w-full rounded-xl border border-slate-300 bg-white px-3 py-2.5 text-sm outline-none transition focus:border-blue-500"
+                    >
+                      <option value="">Pilih peserta</option>
+                      {participantOptions.map((participant) => (
+                        <option key={participant.id} value={participant.id}>
+                          {participant.name} • {getParticipantRoleLabel(participant.role)} •{' '}
+                          {participant.nip || participant.username || '-'}
+                        </option>
+                      ))}
+                    </select>
+                    <p className="mt-2 text-xs text-slate-500">
+                      {deferredParticipantSearch
+                        ? `Menampilkan hasil pencarian hingga 100 peserta untuk kata kunci "${deferredParticipantSearch}".`
+                        : 'Menampilkan daftar operasional non-siswa hingga 100 data. Gunakan kolom cari untuk mempersempit hasil.'}
+                    </p>
+                  </div>
+                </div>
+
+                <div className="mt-6 rounded-2xl border border-dashed border-slate-300 bg-slate-50 p-4">
+                  {!selectedParticipantId ? (
+                    <p className="text-sm text-slate-500">Pilih peserta non-siswa terlebih dahulu untuk melihat status presensi hari ini.</p>
+                  ) : selectedParticipantQuery.isLoading ? (
+                    <div className="flex items-center text-sm text-slate-500">
+                      <Loader2 className="mr-2 h-4 w-4 animate-spin" />
+                      Memuat status presensi peserta non-siswa...
+                    </div>
+                  ) : selectedParticipantQuery.isError ? (
+                    <p className="text-sm text-rose-600">Status presensi peserta non-siswa tidak berhasil dimuat.</p>
+                  ) : 'participant' in (selectedParticipantQuery.data || {}) ? (
+                    <div className="space-y-4">
+                      <div>
+                        <p className="text-sm font-semibold text-slate-900">{selectedParticipantQuery.data?.participant.name}</p>
+                        <p className="mt-1 text-xs text-slate-500">
+                          {getParticipantRoleLabel(selectedParticipantQuery.data?.participant.role)} •{' '}
+                          {selectedParticipantQuery.data?.participant.nip || selectedParticipantQuery.data?.participant.username || '-'}
+                          {selectedParticipantQuery.data?.participant.ptkType ? ` • ${selectedParticipantQuery.data?.participant.ptkType}` : ''}
+                        </p>
+                      </div>
+
+                      <div className="grid gap-3 sm:grid-cols-2">
+                        <div className="rounded-xl border border-emerald-200 bg-emerald-50 px-4 py-3">
+                          <p className="text-xs font-semibold uppercase tracking-[0.2em] text-emerald-700">Jam Masuk</p>
+                          <p className="mt-2 text-lg font-semibold text-emerald-900">
+                            {selectedParticipantQuery.data?.presence.checkInTime || '-'}
+                          </p>
+                          <p className="mt-1 text-xs text-emerald-700">
+                            {getSourceLabel(selectedParticipantQuery.data?.presence.checkInSource)}
+                          </p>
+                        </div>
+                        <div className="rounded-xl border border-sky-200 bg-sky-50 px-4 py-3">
+                          <p className="text-xs font-semibold uppercase tracking-[0.2em] text-sky-700">Jam Pulang</p>
+                          <p className="mt-2 text-lg font-semibold text-sky-900">
+                            {selectedParticipantQuery.data?.presence.checkOutTime || '-'}
+                          </p>
+                          <p className="mt-1 text-xs text-sky-700">
+                            {getSourceLabel(selectedParticipantQuery.data?.presence.checkOutSource)}
+                          </p>
+                        </div>
+                      </div>
+
+                      <div className="rounded-xl border border-slate-200 bg-white px-4 py-3">
+                        <p className="text-sm font-medium text-slate-700">Status harian</p>
+                        <p className="mt-2 text-sm text-slate-600">
+                          {selectedParticipantQuery.data?.presence.status || 'Belum tercatat'}
+                        </p>
+                        <p className="mt-2 text-xs text-slate-500">
+                          Catatan harian: {selectedParticipantQuery.data?.presence.note || '-'}
+                        </p>
+                        <p className="mt-2 text-xs text-slate-500">
+                          Telat masuk: {selectedParticipantQuery.data?.presence.checkInLateMinutes || 0} menit • Pulang terlalu cepat:{' '}
+                          {selectedParticipantQuery.data?.presence.checkOutEarlyMinutes || 0} menit
+                        </p>
+                      </div>
+
+                      <div className="grid gap-3 sm:grid-cols-2">
+                        <button
+                          type="button"
+                          onClick={() => {
+                            setReason('');
+                            setGateLabel('');
+                            setModalState({ checkpoint: 'CHECK_IN', target: 'PARTICIPANT' });
+                          }}
+                          className="inline-flex items-center justify-center gap-2 rounded-xl bg-emerald-600 px-4 py-3 text-sm font-semibold text-white transition hover:bg-emerald-700"
+                        >
+                          <LogIn className="h-4 w-4" />
+                          Bantu Absen Masuk
+                        </button>
+                        <button
+                          type="button"
+                          onClick={() => {
+                            setReason('');
+                            setGateLabel('');
+                            setModalState({ checkpoint: 'CHECK_OUT', target: 'PARTICIPANT' });
+                          }}
+                          className="inline-flex items-center justify-center gap-2 rounded-xl bg-sky-600 px-4 py-3 text-sm font-semibold text-white transition hover:bg-sky-700"
+                        >
+                          <LogOut className="h-4 w-4" />
+                          Bantu Absen Pulang
+                        </button>
+                      </div>
+                    </div>
+                  ) : null}
+                </div>
+              </>
+            )}
           </section>
 
           <section className="rounded-2xl border border-slate-200 bg-white p-6 shadow-sm">
@@ -1362,14 +1669,12 @@ export default function StaffDailyPresencePage() {
             <div className="flex items-start justify-between gap-4 border-b border-slate-100 px-6 py-5">
               <div>
                 <h2 className="text-lg font-semibold text-slate-900">{modalCopy.title}</h2>
-                <p className="mt-1 text-sm text-slate-500">
-                  {selectedStudent?.name || '-'} • {selectedStudent?.studentClass?.name || '-'}
-                </p>
+                <p className="mt-1 text-sm text-slate-500">{modalParticipantLabel}</p>
               </div>
               <button
                 type="button"
                 onClick={() => {
-                  if (saveMutation.isPending) return;
+                  if (modalBusy) return;
                   setModalState(null);
                 }}
                 className="rounded-xl p-2 text-slate-500 transition hover:bg-slate-100 hover:text-slate-700"
@@ -1418,7 +1723,7 @@ export default function StaffDailyPresencePage() {
               <button
                 type="button"
                 onClick={() => {
-                  if (saveMutation.isPending) return;
+                  if (modalBusy) return;
                   setModalState(null);
                 }}
                 className="rounded-xl border border-slate-300 px-4 py-2.5 text-sm font-semibold text-slate-700 transition hover:bg-slate-50"
@@ -1429,7 +1734,18 @@ export default function StaffDailyPresencePage() {
                 type="button"
                 disabled={!canSubmitModal}
                 onClick={() => {
-                  if (!selectedStudentId || !modalState) return;
+                  if (!modalState) return;
+                  if (modalState.target === 'PARTICIPANT') {
+                    if (!selectedParticipantId) return;
+                    saveParticipantMutation.mutate({
+                      userId: Number(selectedParticipantId),
+                      checkpoint: modalState.checkpoint,
+                      reason: reason.trim(),
+                      gateLabel: gateLabel.trim() || null,
+                    });
+                    return;
+                  }
+                  if (!selectedStudentId) return;
                   saveMutation.mutate({
                     studentId: Number(selectedStudentId),
                     checkpoint: modalState.checkpoint,
@@ -1439,7 +1755,7 @@ export default function StaffDailyPresencePage() {
                 }}
                 className="inline-flex items-center gap-2 rounded-xl bg-blue-600 px-4 py-2.5 text-sm font-semibold text-white transition hover:bg-blue-700 disabled:cursor-not-allowed disabled:opacity-60"
               >
-                {saveMutation.isPending ? <Loader2 className="h-4 w-4 animate-spin" /> : null}
+                {modalBusy ? <Loader2 className="h-4 w-4 animate-spin" /> : null}
                 {modalCopy.submit}
               </button>
             </div>

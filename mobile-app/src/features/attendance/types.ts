@@ -68,11 +68,20 @@ export type DailyPresenceEventItem = {
   gateLabel?: string | null;
   recordedAt: string;
   recordedTime?: string | null;
+  lateMinutes?: number | null;
   student?: {
     id: number;
     name: string;
     nis?: string | null;
     nisn?: string | null;
+  };
+  participant?: {
+    id: number;
+    name: string;
+    username?: string | null;
+    nip?: string | null;
+    role: 'TEACHER' | 'STAFF' | 'PRINCIPAL' | 'EXTRACURRICULAR_TUTOR';
+    ptkType?: string | null;
   };
   class?: {
     id: number;
@@ -95,6 +104,14 @@ export type DailyPresenceOverview = {
     checkOutCount: number;
     openDayCount: number;
     assistedEventCount: number;
+    studentCheckInCount: number;
+    studentCheckOutCount: number;
+    studentOpenDayCount: number;
+    assistedStudentEventCount: number;
+    userCheckInCount: number;
+    userCheckOutCount: number;
+    userOpenDayCount: number;
+    assistedUserEventCount: number;
   };
   recentEvents: DailyPresenceEventItem[];
 };
@@ -263,6 +280,17 @@ export type DailyPresenceOperationalStudent = {
       code?: string | null;
     } | null;
   } | null;
+};
+
+export type DailyPresenceOperationalParticipant = {
+  id: number;
+  username?: string | null;
+  name: string;
+  photo?: string | null;
+  nip?: string | null;
+  role: 'TEACHER' | 'STAFF' | 'PRINCIPAL' | 'EXTRACURRICULAR_TUTOR';
+  ptkType?: string | null;
+  additionalDuties?: string[];
 };
 
 export type TeacherAttendanceStatus = 'PRESENT' | 'ABSENT' | 'SICK' | 'PERMISSION' | 'LATE';

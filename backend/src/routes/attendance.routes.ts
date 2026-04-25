@@ -15,12 +15,16 @@ import {
   createSelfScanPass,
   getActiveSelfScanSession,
   getDailyPresenceOverview,
+  getDailyPresenceParticipant,
+  getDailyPresenceParticipants,
   getDailyPresencePolicy,
   getDailyPresenceStudents,
   getOwnDailyPresence,
+  getOwnDailyPresenceHistory,
   getStudentDailyPresence,
   saveDailyPresencePolicy,
   saveAssistedDailyPresence,
+  saveAssistedUserDailyPresence,
   previewSelfScanPass,
   startSelfScanSession,
 } from '../controllers/dailyPresence.controller';
@@ -43,12 +47,20 @@ router.get('/daily-presence/overview', roleMiddleware(['ADMIN', 'STAFF']), getDa
 router.get('/daily-presence/policy', roleMiddleware(['ADMIN', 'STAFF']), getDailyPresencePolicy);
 router.put('/daily-presence/policy', roleMiddleware(['ADMIN', 'STAFF']), saveDailyPresencePolicy);
 router.get('/daily-presence/students', roleMiddleware(['ADMIN', 'STAFF']), getDailyPresenceStudents);
+router.get('/daily-presence/participants', roleMiddleware(['ADMIN', 'STAFF']), getDailyPresenceParticipants);
 router.get('/daily-presence/student', roleMiddleware(['ADMIN', 'STAFF']), getStudentDailyPresence);
+router.get('/daily-presence/participant', roleMiddleware(['ADMIN', 'STAFF']), getDailyPresenceParticipant);
 router.post('/daily-presence/assisted', roleMiddleware(['ADMIN', 'STAFF']), saveAssistedDailyPresence);
+router.post('/daily-presence/assisted-user', roleMiddleware(['ADMIN', 'STAFF']), saveAssistedUserDailyPresence);
 router.get(
   '/daily-presence/me',
   roleMiddleware(['STUDENT', 'TEACHER', 'STAFF', 'PRINCIPAL', 'EXTRACURRICULAR_TUTOR']),
   getOwnDailyPresence,
+);
+router.get(
+  '/daily-presence/me/history',
+  roleMiddleware(['STUDENT', 'TEACHER', 'STAFF', 'PRINCIPAL', 'EXTRACURRICULAR_TUTOR']),
+  getOwnDailyPresenceHistory,
 );
 router.get('/daily-presence/self-scan/session', roleMiddleware(['ADMIN', 'STAFF', 'STUDENT']), getActiveSelfScanSession);
 router.post('/daily-presence/self-scan/session', roleMiddleware(['ADMIN', 'STAFF']), startSelfScanSession);

@@ -21,6 +21,7 @@ import { useAuth } from '../../src/features/auth/AuthProvider';
 import { attendanceApi } from '../../src/features/attendance/attendanceApi';
 import {
   DailyPresenceMonitorScanResult,
+  DailyPresenceOwnState,
   DailyPresenceSelfScanPass,
   StudentAttendanceHistory,
   StudentAttendanceStatus,
@@ -103,6 +104,48 @@ function AttendanceCard({ item }: { item: StudentAttendanceHistory }) {
         })}
       </Text>
       <Text style={{ color, fontWeight: '700', marginBottom: 4 }}>{STATUS_LABELS[status] || status}</Text>
+      <Text style={{ fontSize: scaleFont(12), lineHeight: scaleLineHeight(18), color: colors.textMuted, marginBottom: 3 }}>
+        Masuk: {item.checkInTime || '-'} | Pulang: {item.checkOutTime || '-'}
+      </Text>
+      <Text style={{ fontSize: scaleFont(12), lineHeight: scaleLineHeight(18), color: colors.textMuted }}>
+        Catatan: {note}
+      </Text>
+    </View>
+  );
+}
+
+function getDailyPresenceSourceLabel(value?: string | null) {
+  if (value === 'SELF_SCAN') return 'Scan Mandiri';
+  if (value === 'ASSISTED_SCAN') return 'Bantuan Petugas';
+  if (value === 'MANUAL_ADJUSTMENT') return 'Koreksi Manual';
+  if (value === 'LEGACY_DAILY') return 'Manual Lama';
+  return '-';
+}
+
+function OwnDailyPresenceHistoryCard({ item }: { item: StudentAttendanceHistory }) {
+  const { colors } = useAppTheme();
+  const { scaleFont, scaleLineHeight } = useAppTextScale();
+  const note = item.note || item.notes || '-';
+
+  return (
+    <View
+      style={{
+        borderWidth: 1,
+        borderColor: '#e2e8f0',
+        borderRadius: 14,
+        padding: 14,
+        backgroundColor: '#fff',
+        marginBottom: 10,
+      }}
+    >
+      <Text style={{ fontWeight: '700', color: colors.text, marginBottom: 4 }}>
+        {new Date(item.date).toLocaleDateString('id-ID', {
+          weekday: 'long',
+          day: 'numeric',
+          month: 'long',
+          year: 'numeric',
+        })}
+      </Text>
       <Text style={{ fontSize: scaleFont(12), lineHeight: scaleLineHeight(18), color: colors.textMuted, marginBottom: 3 }}>
         Masuk: {item.checkInTime || '-'} | Pulang: {item.checkOutTime || '-'}
       </Text>
@@ -415,6 +458,13 @@ export default function AttendanceScreen() {
     staleTime: 20 * 1000,
   });
 
+  const ownHistoryQuery = useQuery({
+    queryKey: ['mobile-daily-presence-history', user?.id, month, year],
+    enabled: isAuthenticated && canUseDailyPresence && !isStudent,
+    queryFn: () => attendanceApi.getOwnDailyPresenceHistory({ month, year }),
+    staleTime: 60 * 1000,
+  });
+
   const activeSessionQuery = useQuery({
     queryKey: ['mobile-student-self-scan-session', checkpoint],
     enabled: isAuthenticated && isStudent && tab === 'SCAN',
@@ -475,12 +525,6 @@ export default function AttendanceScreen() {
     setChallengeCode('');
   }, [checkpoint]);
 
-  useEffect(() => {
-    if (!isStudent && tab === 'HISTORY') {
-      setTab('SCAN');
-    }
-  }, [isStudent, tab]);
-
   const records = useMemo(() => attendanceQuery.data?.records || [], [attendanceQuery.data?.records]);
   const stats = useMemo(() => {
     const result = { present: 0, sick: 0, permission: 0, absent: 0, late: 0 };
@@ -511,7 +555,10 @@ export default function AttendanceScreen() {
         { key: 'SCAN', label: 'Scan Presensi', iconName: 'shield' as const },
         { key: 'HISTORY', label: 'Riwayat', iconName: 'calendar' as const },
       ]
-    : [{ key: 'SCAN', label: 'Scan Presensi', iconName: 'shield' as const }];
+    : [
+        { key: 'SCAN', label: 'Scan Presensi', iconName: 'shield' as const },
+        { key: 'HISTORY', label: 'Riwayat', iconName: 'calendar' as const },
+      ];
 
   if (isLoading) return <AppLoadingScreen message="Memuat absensi..." />;
   if (!isAuthenticated) return <Redirect href="/welcome" />;
@@ -546,6 +593,7 @@ export default function AttendanceScreen() {
   const handleRefresh = () => {
     void Promise.all([
       todayPresenceQuery.refetch(),
+      ...(!isStudent ? [ownHistoryQuery.refetch()] : []),
       ...(isStudent ? [attendanceQuery.refetch(), activeSessionQuery.refetch()] : []),
     ]);
   };
@@ -563,6 +611,9 @@ export default function AttendanceScreen() {
   };
 
   const todayPresence = todayPresenceQuery.data?.presence || null;
+  const ownState = todayPresenceQuery.data as DailyPresenceOwnState | undefined;
+  const ownParticipant = ownState && 'participant' in ownState ? ownState.participant : null;
+  const ownHistoryRecords = ownHistoryQuery.data || [];
 
   return (
     <ScrollView
@@ -586,7 +637,7 @@ export default function AttendanceScreen() {
       <Text style={{ color: colors.textMuted, fontSize: fontSizes.body, lineHeight: scaleLineHeight(20), marginBottom: 12 }}>
         {isStudent
           ? 'Scan QR monitor Tata Usaha untuk presensi harian dan pantau riwayat kehadiran bulanan.'
-          : 'Scan QR monitor Tata Usaha untuk mencatat presensi harian sesuai jadwal operasional Anda.'}
+          : 'Scan QR monitor Tata Usaha untuk presensi harian dan pantau riwayat presensi bulanan Anda.'}
       </Text>
 
       <MobileMenuTabBar
@@ -622,19 +673,24 @@ export default function AttendanceScreen() {
             }}
           >
             <Text style={{ color: colors.text, fontWeight: '700', marginBottom: 10 }}>Status Hari Ini</Text>
+            {ownParticipant ? (
+              <Text style={{ color: colors.textMuted, fontSize: fontSizes.bodyCompact, marginBottom: 10 }}>
+                {ownParticipant.name} • {ownParticipant.nip || ownParticipant.username || '-'}
+              </Text>
+            ) : null}
             <View style={{ flexDirection: layout.prefersSplitPane ? 'row' : 'column', gap: 10 }}>
               <View style={{ flex: 1, borderWidth: 1, borderColor: '#e2e8f0', borderRadius: 12, padding: 12, backgroundColor: '#f8fafc' }}>
                 <Text style={{ color: colors.textMuted, fontSize: fontSizes.caption, marginBottom: 4 }}>Masuk</Text>
                 <Text style={{ color: '#15803d', fontWeight: '700', fontSize: scaleFont(17) }}>{todayPresence?.checkInTime || '-'}</Text>
                 <Text style={{ color: colors.textMuted, fontSize: fontSizes.bodyCompact, marginTop: 4 }}>
-                  Sumber: {todayPresence?.checkInSource === 'SELF_SCAN' ? 'Scan Mandiri' : todayPresence?.checkInSource === 'ASSISTED_SCAN' ? 'Bantuan Petugas' : '-'}
+                  Sumber: {getDailyPresenceSourceLabel(todayPresence?.checkInSource)}
                 </Text>
               </View>
               <View style={{ flex: 1, borderWidth: 1, borderColor: '#e2e8f0', borderRadius: 12, padding: 12, backgroundColor: '#f8fafc' }}>
                 <Text style={{ color: colors.textMuted, fontSize: fontSizes.caption, marginBottom: 4 }}>Pulang</Text>
                 <Text style={{ color: '#0369a1', fontWeight: '700', fontSize: scaleFont(17) }}>{todayPresence?.checkOutTime || '-'}</Text>
                 <Text style={{ color: colors.textMuted, fontSize: fontSizes.bodyCompact, marginTop: 4 }}>
-                  Sumber: {todayPresence?.checkOutSource === 'SELF_SCAN' ? 'Scan Mandiri' : todayPresence?.checkOutSource === 'ASSISTED_SCAN' ? 'Bantuan Petugas' : '-'}
+                  Sumber: {getDailyPresenceSourceLabel(todayPresence?.checkOutSource)}
                 </Text>
               </View>
             </View>
@@ -810,70 +866,111 @@ export default function AttendanceScreen() {
             {cursorDate.toLocaleDateString('id-ID', { month: 'long', year: 'numeric' })}
           </Text>
 
-          <View style={{ flexDirection: 'row', flexWrap: 'wrap', marginHorizontal: -4, marginBottom: 12 }}>
-            {[
-              { label: 'Hadir', value: stats.present },
-              { label: 'Sakit', value: stats.sick },
-              { label: 'Izin', value: stats.permission },
-              { label: 'Alpha', value: stats.absent },
-              { label: 'Telat', value: stats.late },
-            ].map((item) => (
-              <View key={item.label} style={{ width: summaryCardWidth, paddingHorizontal: 4, marginBottom: 8 }}>
-                <View
-                  style={{
-                    backgroundColor: '#fff',
-                    borderWidth: 1,
-                    borderColor: '#e2e8f0',
-                    borderRadius: 12,
-                    paddingVertical: 10,
-                    alignItems: 'center',
-                  }}
-                >
-                  <Text style={{ fontSize: scaleFont(11), lineHeight: scaleLineHeight(16), color: colors.textMuted, marginBottom: 2 }}>
-                    {item.label}
-                  </Text>
-                  <Text style={{ fontWeight: '700', color: colors.text }}>{item.value}</Text>
-                </View>
-              </View>
-            ))}
-          </View>
-
-          {attendanceQuery.isLoading ? <QueryStateView type="loading" message="Mengambil riwayat absensi..." /> : null}
-          {attendanceQuery.isError ? (
-            <QueryStateView
-              type="error"
-              message="Gagal memuat riwayat absensi."
-              onRetry={() => attendanceQuery.refetch()}
-            />
-          ) : null}
-
-          {attendanceQuery.data?.fromCache ? <OfflineCacheNotice cachedAt={attendanceQuery.data.cachedAt} /> : null}
-
-          {!attendanceQuery.isLoading && !attendanceQuery.isError ? (
-            records.length > 0 ? (
-              <View>
-                {records.map((item) => (
-                  <AttendanceCard key={item.id} item={item} />
+          {isStudent ? (
+            <>
+              <View style={{ flexDirection: 'row', flexWrap: 'wrap', marginHorizontal: -4, marginBottom: 12 }}>
+                {[
+                  { label: 'Hadir', value: stats.present },
+                  { label: 'Sakit', value: stats.sick },
+                  { label: 'Izin', value: stats.permission },
+                  { label: 'Alpha', value: stats.absent },
+                  { label: 'Telat', value: stats.late },
+                ].map((item) => (
+                  <View key={item.label} style={{ width: summaryCardWidth, paddingHorizontal: 4, marginBottom: 8 }}>
+                    <View
+                      style={{
+                        backgroundColor: '#fff',
+                        borderWidth: 1,
+                        borderColor: '#e2e8f0',
+                        borderRadius: 12,
+                        paddingVertical: 10,
+                        alignItems: 'center',
+                      }}
+                    >
+                      <Text style={{ fontSize: scaleFont(11), lineHeight: scaleLineHeight(16), color: colors.textMuted, marginBottom: 2 }}>
+                        {item.label}
+                      </Text>
+                      <Text style={{ fontWeight: '700', color: colors.text }}>{item.value}</Text>
+                    </View>
+                  </View>
                 ))}
               </View>
-            ) : (
-              <View
-                style={{
-                  borderWidth: 1,
-                  borderColor: '#cbd5e1',
-                  borderStyle: 'dashed',
-                  borderRadius: 10,
-                  padding: 16,
-                  backgroundColor: '#fff',
-                }}
-              >
-                <Text style={{ fontWeight: '700', marginBottom: 4, color: colors.text }}>Belum ada data absensi</Text>
-                <Text style={{ color: colors.textMuted, fontSize: fontSizes.body, lineHeight: scaleLineHeight(20) }}>
-                  Tidak ditemukan riwayat kehadiran untuk periode ini.
-                </Text>
-              </View>
-            )
-          ) : null}
+
+              {attendanceQuery.isLoading ? <QueryStateView type="loading" message="Mengambil riwayat absensi..." /> : null}
+              {attendanceQuery.isError ? (
+                <QueryStateView
+                  type="error"
+                  message="Gagal memuat riwayat absensi."
+                  onRetry={() => attendanceQuery.refetch()}
+                />
+              ) : null}
+
+              {attendanceQuery.data?.fromCache ? <OfflineCacheNotice cachedAt={attendanceQuery.data.cachedAt} /> : null}
+
+              {!attendanceQuery.isLoading && !attendanceQuery.isError ? (
+                records.length > 0 ? (
+                  <View>
+                    {records.map((item) => (
+                      <AttendanceCard key={item.id} item={item} />
+                    ))}
+                  </View>
+                ) : (
+                  <View
+                    style={{
+                      borderWidth: 1,
+                      borderColor: '#cbd5e1',
+                      borderStyle: 'dashed',
+                      borderRadius: 10,
+                      padding: 16,
+                      backgroundColor: '#fff',
+                    }}
+                  >
+                    <Text style={{ fontWeight: '700', marginBottom: 4, color: colors.text }}>Belum ada data absensi</Text>
+                    <Text style={{ color: colors.textMuted, fontSize: fontSizes.body, lineHeight: scaleLineHeight(20) }}>
+                      Tidak ditemukan riwayat kehadiran untuk periode ini.
+                    </Text>
+                  </View>
+                )
+              ) : null}
+            </>
+          ) : (
+            <>
+              {ownHistoryQuery.isLoading ? <QueryStateView type="loading" message="Mengambil riwayat presensi..." /> : null}
+              {ownHistoryQuery.isError ? (
+                <QueryStateView
+                  type="error"
+                  message="Gagal memuat riwayat presensi."
+                  onRetry={() => ownHistoryQuery.refetch()}
+                />
+              ) : null}
+
+              {!ownHistoryQuery.isLoading && !ownHistoryQuery.isError ? (
+                ownHistoryRecords.length > 0 ? (
+                  <View>
+                    {ownHistoryRecords.map((item) => (
+                      <OwnDailyPresenceHistoryCard key={item.id} item={item} />
+                    ))}
+                  </View>
+                ) : (
+                  <View
+                    style={{
+                      borderWidth: 1,
+                      borderColor: '#cbd5e1',
+                      borderStyle: 'dashed',
+                      borderRadius: 10,
+                      padding: 16,
+                      backgroundColor: '#fff',
+                    }}
+                  >
+                    <Text style={{ fontWeight: '700', marginBottom: 4, color: colors.text }}>Belum ada riwayat presensi</Text>
+                    <Text style={{ color: colors.textMuted, fontSize: fontSizes.body, lineHeight: scaleLineHeight(20) }}>
+                      Tidak ditemukan riwayat presensi untuk periode ini.
+                    </Text>
+                  </View>
+                )
+              ) : null}
+            </>
+          )}
         </>
       )}
 

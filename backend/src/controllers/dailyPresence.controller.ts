@@ -129,6 +129,21 @@ const getDailyPresenceStudentsSchema = z.object({
   limit: z.coerce.number().int().min(1).max(100).optional(),
 });
 
+const getDailyPresenceParticipantsSchema = z.object({
+  q: z.string().trim().max(100).optional(),
+  limit: z.coerce.number().int().min(1).max(100).optional(),
+});
+
+const getDailyPresenceParticipantSchema = z.object({
+  userId: z.coerce.number().int(),
+  date: z.string().optional(),
+});
+
+const getOwnDailyPresenceHistorySchema = z.object({
+  month: z.coerce.number().int().min(1).max(12).optional(),
+  year: z.coerce.number().int().min(2020).max(2100).optional(),
+});
+
 const dayOfWeekValues = ['MONDAY', 'TUESDAY', 'WEDNESDAY', 'THURSDAY', 'FRIDAY', 'SATURDAY'] as const;
 type DailyPresencePolicyDayKey = (typeof dayOfWeekValues)[number];
 type DailyPresenceCheckpoint = 'CHECK_IN' | 'CHECK_OUT';
@@ -274,6 +289,13 @@ const saveDailyPresencePolicySchema = z.object({
 
 const saveAssistedDailyPresenceSchema = z.object({
   studentId: z.number().int(),
+  checkpoint: z.enum(['CHECK_IN', 'CHECK_OUT']),
+  reason: z.string().trim().min(3).max(500),
+  gateLabel: z.string().trim().max(100).optional().nullable(),
+});
+
+const saveAssistedUserDailyPresenceSchema = z.object({
+  userId: z.number().int(),
   checkpoint: z.enum(['CHECK_IN', 'CHECK_OUT']),
   reason: z.string().trim().min(3).max(500),
   gateLabel: z.string().trim().max(100).optional().nullable(),
@@ -489,6 +511,99 @@ function normalizeDailyPresencePolicy(rawPolicy: unknown) {
 
 function getJsonObject(value: unknown): Record<string, unknown> {
   return value && typeof value === 'object' && !Array.isArray(value) ? { ...(value as Record<string, unknown>) } : {};
+}
+
+function getMonthDateRange(params: { month?: number; year?: number }) {
+  const now = new Date();
+  const month = params.month || now.getMonth() + 1;
+  const year = params.year || now.getFullYear();
+  const start = new Date(Date.UTC(year, month - 1, 1));
+  const end = new Date(Date.UTC(year, month, 1));
+  return { month, year, start, end };
+}
+
+function mapStudentPresenceEventItem(
+  event: {
+    id: number;
+    eventType: DailyPresenceEventType;
+    source: DailyPresenceCaptureSource;
+    reason: string | null;
+    gateLabel: string | null;
+    recordedAt: Date;
+    student?: {
+      id: number;
+      name: string;
+      nis: string | null;
+      nisn: string | null;
+    } | null;
+    class?: {
+      id: number;
+      name: string;
+    } | null;
+    actor?: {
+      id: number;
+      name: string;
+    } | null;
+  },
+) {
+  return {
+    id: event.id,
+    eventType: event.eventType,
+    source: event.source,
+    reason: event.reason,
+    gateLabel: event.gateLabel,
+    recordedAt: event.recordedAt.toISOString(),
+    recordedTime: formatTime(event.recordedAt),
+    student: event.student || undefined,
+    class: event.class || undefined,
+    actor: event.actor || null,
+  };
+}
+
+function mapUserPresenceEventItem(
+  event: {
+    id: number;
+    eventType: DailyPresenceEventType;
+    source: DailyPresenceCaptureSource;
+    reason: string | null;
+    gateLabel: string | null;
+    recordedAt: Date;
+    lateMinutes?: number | null;
+    user?: {
+      id: number;
+      name: string;
+      username: string | null;
+      nip: string | null;
+      role: Role;
+      ptkType: string | null;
+    } | null;
+    actor?: {
+      id: number;
+      name: string;
+    } | null;
+  },
+) {
+  return {
+    id: event.id,
+    eventType: event.eventType,
+    source: event.source,
+    reason: event.reason,
+    gateLabel: event.gateLabel,
+    recordedAt: event.recordedAt.toISOString(),
+    recordedTime: formatTime(event.recordedAt),
+    lateMinutes: event.lateMinutes || 0,
+    participant: event.user
+      ? {
+          id: event.user.id,
+          name: event.user.name,
+          username: event.user.username || null,
+          nip: event.user.nip || null,
+          role: event.user.role,
+          ptkType: event.user.ptkType || null,
+        }
+      : undefined,
+    actor: event.actor || null,
+  };
 }
 
 function minuteToClock(value: number) {
@@ -839,6 +954,7 @@ async function resolveUserMonitorScanTimingDecision(params: {
   checkpoint: DailyPresenceCheckpoint;
   policy: ReturnType<typeof normalizeDailyPresencePolicy>;
   activeAcademicYearId: number;
+  captureMode?: 'QR' | 'MANUAL';
   now?: Date;
 }) {
   const now = params.now instanceof Date ? params.now : new Date();
@@ -881,7 +997,9 @@ async function resolveUserMonitorScanTimingDecision(params: {
     if (!dayPolicy.enabled) {
       if (dayKey === 'SATURDAY' && (teachingBasis.hasSchedule || hasDuty)) {
         if (saturdayMode === 'MANUAL') {
-          throw new ApiError(400, 'Presensi Sabtu untuk guru duty menggunakan mekanisme manual dari petugas.');
+          if ((params.captureMode || 'QR') === 'QR') {
+            throw new ApiError(400, 'Presensi Sabtu untuk guru duty menggunakan mekanisme manual dari petugas.');
+          }
         }
         if (saturdayMode === 'DISABLED') {
           throw new ApiError(400, 'Presensi Sabtu untuk guru duty sedang dinonaktifkan.');
@@ -1134,6 +1252,49 @@ async function getDailyPresenceUserOrThrow(userId: number) {
   return user;
 }
 
+function buildOperationalParticipantWhereClause(params: {
+  activeAcademicYearId: number;
+  normalizedQuery?: string;
+}) {
+  const normalizedRoleQuery = params.normalizedQuery ? normalizeCode(params.normalizedQuery) : '';
+  const matchedRoles = Array.from(USER_DAILY_PRESENCE_ROLES).filter((role) => normalizeCode(role) === normalizedRoleQuery);
+  const baseRoleScope: Prisma.UserWhereInput = {
+    OR: [
+      { role: Role.TEACHER },
+      { role: Role.STAFF },
+      { role: Role.PRINCIPAL },
+      {
+        role: Role.EXTRACURRICULAR_TUTOR,
+        ekskulTutorAssignments: {
+          some: {
+            academicYearId: params.activeAcademicYearId,
+            isActive: true,
+          },
+        },
+      },
+    ],
+  };
+
+  if (!params.normalizedQuery) {
+    return baseRoleScope;
+  }
+
+  return {
+    AND: [
+      baseRoleScope,
+      {
+        OR: [
+          { name: { contains: params.normalizedQuery, mode: 'insensitive' } },
+          { username: { contains: params.normalizedQuery, mode: 'insensitive' } },
+          { nip: { contains: params.normalizedQuery, mode: 'insensitive' } },
+          { ptkType: { contains: params.normalizedQuery, mode: 'insensitive' } },
+          ...(matchedRoles.length ? [{ role: { in: matchedRoles } }] : []),
+        ],
+      },
+    ],
+  } satisfies Prisma.UserWhereInput;
+}
+
 async function buildUserDailyPresenceStatePayload(params: {
   userId: number;
   activeAcademicYear: {
@@ -1297,7 +1458,18 @@ export const getDailyPresenceOverview = asyncHandler(async (req: Request, res: R
   const targetDate = toDateOnly(dateKey);
   const take = limit ?? 12;
 
-  const [checkInCount, checkOutCount, openDayCount, assistedEventCount, recentEvents] = await Promise.all([
+  const [
+    studentCheckInCount,
+    studentCheckOutCount,
+    studentOpenDayCount,
+    assistedStudentEventCount,
+    userCheckInCount,
+    userCheckOutCount,
+    userOpenDayCount,
+    assistedUserEventCount,
+    studentEvents,
+    userEvents,
+  ] = await Promise.all([
     prisma.dailyAttendance.count({
       where: {
         academicYearId: activeAcademicYear.id,
@@ -1321,6 +1493,35 @@ export const getDailyPresenceOverview = asyncHandler(async (req: Request, res: R
       },
     }),
     prisma.dailyPresenceEvent.count({
+      where: {
+        academicYearId: activeAcademicYear.id,
+        date: targetDate,
+        source: DailyPresenceCaptureSource.ASSISTED_SCAN,
+      },
+    }),
+    prisma.dailyUserPresence.count({
+      where: {
+        academicYearId: activeAcademicYear.id,
+        date: targetDate,
+        checkInTime: { not: null },
+      },
+    }),
+    prisma.dailyUserPresence.count({
+      where: {
+        academicYearId: activeAcademicYear.id,
+        date: targetDate,
+        checkOutTime: { not: null },
+      },
+    }),
+    prisma.dailyUserPresence.count({
+      where: {
+        academicYearId: activeAcademicYear.id,
+        date: targetDate,
+        checkInTime: { not: null },
+        checkOutTime: null,
+      },
+    }),
+    prisma.dailyUserPresenceEvent.count({
       where: {
         academicYearId: activeAcademicYear.id,
         date: targetDate,
@@ -1363,7 +1564,48 @@ export const getDailyPresenceOverview = asyncHandler(async (req: Request, res: R
         },
       },
     }),
+    prisma.dailyUserPresenceEvent.findMany({
+      where: {
+        academicYearId: activeAcademicYear.id,
+        date: targetDate,
+      },
+      orderBy: { recordedAt: 'desc' },
+      take,
+      select: {
+        id: true,
+        eventType: true,
+        source: true,
+        reason: true,
+        gateLabel: true,
+        recordedAt: true,
+        lateMinutes: true,
+        user: {
+          select: {
+            id: true,
+            name: true,
+            username: true,
+            nip: true,
+            role: true,
+            ptkType: true,
+          },
+        },
+        actor: {
+          select: {
+            id: true,
+            name: true,
+          },
+        },
+      },
+    }),
   ]);
+
+  const recentEvents = [...studentEvents.map(mapStudentPresenceEventItem), ...userEvents.map(mapUserPresenceEventItem)]
+    .sort((left, right) => new Date(right.recordedAt).getTime() - new Date(left.recordedAt).getTime())
+    .slice(0, take);
+  const checkInCount = studentCheckInCount + userCheckInCount;
+  const checkOutCount = studentCheckOutCount + userCheckOutCount;
+  const openDayCount = studentOpenDayCount + userOpenDayCount;
+  const assistedEventCount = assistedStudentEventCount + assistedUserEventCount;
 
   res.status(200).json(
     new ApiResponse(
@@ -1376,19 +1618,16 @@ export const getDailyPresenceOverview = asyncHandler(async (req: Request, res: R
           checkOutCount,
           openDayCount,
           assistedEventCount,
+          studentCheckInCount,
+          studentCheckOutCount,
+          studentOpenDayCount,
+          assistedStudentEventCount,
+          userCheckInCount,
+          userCheckOutCount,
+          userOpenDayCount,
+          assistedUserEventCount,
         },
-        recentEvents: recentEvents.map((event) => ({
-          id: event.id,
-          eventType: event.eventType,
-          source: event.source,
-          reason: event.reason,
-          gateLabel: event.gateLabel,
-          recordedAt: event.recordedAt.toISOString(),
-          recordedTime: formatTime(event.recordedAt),
-          student: event.student,
-          class: event.class,
-          actor: event.actor,
-        })),
+        recentEvents,
       },
       'Ringkasan presensi harian berhasil diambil',
     ),
@@ -1437,6 +1676,71 @@ export const getOwnDailyPresence = asyncHandler(async (req: Request, res: Respon
         });
 
   res.status(200).json(new ApiResponse(200, payload, 'Status presensi pribadi berhasil diambil'));
+});
+
+export const getOwnDailyPresenceHistory = asyncHandler(async (req: Request, res: Response) => {
+  const user = (req as any).user;
+  const activeAcademicYear = await getActiveAcademicYearOrThrow();
+  const normalizedRole = String(user?.role || '').trim().toUpperCase();
+  const { month, year } = getOwnDailyPresenceHistorySchema.parse(req.query);
+  const { start, end } = getMonthDateRange({ month, year });
+
+  const data =
+    normalizedRole === 'STUDENT'
+      ? await prisma.dailyAttendance.findMany({
+          where: {
+            studentId: Number(user?.id || 0),
+            academicYearId: activeAcademicYear.id,
+            date: {
+              gte: start,
+              lt: end,
+            },
+          },
+          orderBy: [{ date: 'desc' }, { id: 'desc' }],
+          select: {
+            id: true,
+            date: true,
+            status: true,
+            note: true,
+            checkInTime: true,
+            checkOutTime: true,
+          },
+        })
+      : await prisma.dailyUserPresence.findMany({
+          where: {
+            userId: Number(user?.id || 0),
+            academicYearId: activeAcademicYear.id,
+            date: {
+              gte: start,
+              lt: end,
+            },
+          },
+          orderBy: [{ date: 'desc' }, { id: 'desc' }],
+          select: {
+            id: true,
+            date: true,
+            status: true,
+            note: true,
+            checkInTime: true,
+            checkOutTime: true,
+          },
+        });
+
+  res.status(200).json(
+    new ApiResponse(
+      200,
+      data.map((item) => ({
+        id: item.id,
+        date: formatDate(item.date),
+        status: item.status,
+        note: item.note || null,
+        notes: item.note || null,
+        checkInTime: formatTime(item.checkInTime),
+        checkOutTime: formatTime(item.checkOutTime),
+      })),
+      'Riwayat presensi pribadi berhasil diambil',
+    ),
+  );
 });
 
 export const getDailyPresenceStudents = asyncHandler(async (req: Request, res: Response) => {
@@ -1503,6 +1807,65 @@ export const getDailyPresenceStudents = asyncHandler(async (req: Request, res: R
       normalizedQuery
         ? 'Daftar siswa operasional berhasil difilter'
         : 'Daftar siswa operasional berhasil diambil',
+    ),
+  );
+});
+
+export const getDailyPresenceParticipants = asyncHandler(async (req: Request, res: Response) => {
+  const user = (req as any).user;
+  await getPresenceManagerProfile(Number(user?.id || 0));
+  const { q, limit } = getDailyPresenceParticipantsSchema.parse(req.query);
+  const activeAcademicYear = await getActiveAcademicYearOrThrow();
+  const normalizedQuery = String(q || '').trim();
+
+  const participants = await prisma.user.findMany({
+    where: buildOperationalParticipantWhereClause({
+      activeAcademicYearId: activeAcademicYear.id,
+      normalizedQuery: normalizedQuery || undefined,
+    }),
+    orderBy: [{ name: 'asc' }, { id: 'asc' }],
+    take: limit ?? 100,
+    select: {
+      id: true,
+      username: true,
+      name: true,
+      photo: true,
+      nip: true,
+      role: true,
+      ptkType: true,
+      additionalDuties: true,
+    },
+  });
+
+  res.status(200).json(
+    new ApiResponse(
+      200,
+      participants,
+      normalizedQuery
+        ? 'Daftar peserta non-siswa berhasil difilter'
+        : 'Daftar peserta non-siswa berhasil diambil',
+    ),
+  );
+});
+
+export const getDailyPresenceParticipant = asyncHandler(async (req: Request, res: Response) => {
+  const user = (req as any).user;
+  await getPresenceManagerProfile(Number(user?.id || 0));
+  const { userId, date } = getDailyPresenceParticipantSchema.parse(req.query);
+
+  const activeAcademicYear = await getActiveAcademicYearOrThrow();
+  const dateKey = date || getJakartaDateKey();
+  const payload = await buildUserDailyPresenceStatePayload({
+    userId,
+    activeAcademicYear,
+    dateKey,
+  });
+
+  res.status(200).json(
+    new ApiResponse(
+      200,
+      payload,
+      'Status presensi peserta non-siswa berhasil diambil',
     ),
   );
 });
@@ -2599,6 +2962,159 @@ export const saveAssistedDailyPresence = asyncHandler(async (req: Request, res: 
       checkpoint === 'CHECK_IN'
         ? 'Absen masuk berhasil dibantu oleh petugas.'
         : 'Absen pulang berhasil dibantu oleh petugas.',
+    ),
+  );
+});
+
+export const saveAssistedUserDailyPresence = asyncHandler(async (req: Request, res: Response) => {
+  const user = (req as any).user;
+  const actor = await getPresenceManagerProfile(Number(user?.id || 0));
+  const { userId, checkpoint, reason, gateLabel } = saveAssistedUserDailyPresenceSchema.parse(req.body);
+
+  const activeAcademicYear = await getActiveAcademicYearOrThrow();
+  const dateKey = getJakartaDateKey();
+  const targetDate = toDateOnly(dateKey);
+  const participant = await getDailyPresenceUserOrThrow(userId);
+  const now = new Date();
+  const { policy } = await getStoredDailyPresencePolicy(activeAcademicYear.id);
+  const timingDecision = await resolveUserMonitorScanTimingDecision({
+    participant,
+    checkpoint,
+    policy,
+    activeAcademicYearId: activeAcademicYear.id,
+    captureMode: 'MANUAL',
+    now,
+  });
+  const isCheckIn = checkpoint === 'CHECK_IN';
+
+  await prisma.$transaction(async (tx) => {
+    const existing = await tx.dailyUserPresence.findUnique({
+      where: {
+        userId_academicYearId_date: {
+          userId: participant.id,
+          academicYearId: activeAcademicYear.id,
+          date: targetDate,
+        },
+      },
+    });
+
+    if (isCheckIn && existing?.checkInTime) {
+      throw new ApiError(400, 'Absen masuk hari ini sudah tercatat.');
+    }
+    if (!isCheckIn && !existing?.checkInTime) {
+      throw new ApiError(400, 'Absen masuk belum tercatat. Simpan masuk manual lebih dulu jika memang perlu koreksi.');
+    }
+    if (!isCheckIn && existing?.checkOutTime) {
+      throw new ApiError(400, 'Absen pulang hari ini sudah tercatat.');
+    }
+
+    const nextStatus = isCheckIn
+      ? timingDecision.status
+      : existing?.status === 'PRESENT' || existing?.status === 'LATE'
+        ? existing.status
+        : 'PRESENT';
+    const nextNote = isCheckIn ? timingDecision.note || existing?.note || null : existing?.note || null;
+    const scheduleBasis = timingDecision.scheduleBasis;
+
+    const upserted = existing
+      ? await tx.dailyUserPresence.update({
+          where: { id: existing.id },
+          data: isCheckIn
+            ? {
+                status: nextStatus,
+                note: nextNote,
+                role: participant.role,
+                ptkType: participant.ptkType || null,
+                checkInTime: now,
+                checkInSource: DailyPresenceCaptureSource.ASSISTED_SCAN,
+                checkInReason: reason,
+                checkInActorId: actor.id,
+                checkInLateMinutes: timingDecision.lateMinutes,
+                scheduleBasis,
+              }
+            : {
+                status: nextStatus,
+                note: nextNote,
+                role: participant.role,
+                ptkType: participant.ptkType || null,
+                checkOutTime: now,
+                checkOutSource: DailyPresenceCaptureSource.ASSISTED_SCAN,
+                checkOutReason: reason,
+                checkOutActorId: actor.id,
+                checkOutEarlyMinutes: timingDecision.earlyMinutes,
+                scheduleBasis,
+              },
+        })
+      : await tx.dailyUserPresence.create({
+          data: {
+            date: targetDate,
+            userId: participant.id,
+            academicYearId: activeAcademicYear.id,
+            role: participant.role,
+            ptkType: participant.ptkType || null,
+            status: timingDecision.status,
+            note: timingDecision.note,
+            checkInTime: now,
+            checkInSource: DailyPresenceCaptureSource.ASSISTED_SCAN,
+            checkInReason: reason,
+            checkInActorId: actor.id,
+            checkInLateMinutes: timingDecision.lateMinutes,
+            scheduleBasis,
+          },
+        });
+
+    await tx.dailyUserPresenceEvent.create({
+      data: {
+        dailyUserPresenceId: upserted.id,
+        userId: participant.id,
+        academicYearId: activeAcademicYear.id,
+        role: participant.role,
+        date: targetDate,
+        eventType: isCheckIn ? DailyPresenceEventType.CHECK_IN : DailyPresenceEventType.CHECK_OUT,
+        source: DailyPresenceCaptureSource.ASSISTED_SCAN,
+        reason,
+        gateLabel: gateLabel || null,
+        actorId: actor.id,
+        recordedAt: now,
+        lateMinutes: isCheckIn ? timingDecision.lateMinutes : 0,
+        scheduleBasis,
+      },
+    });
+  });
+
+  broadcastDomainEvent({
+    domain: 'ATTENDANCE',
+    action: 'UPDATED',
+    scope: {
+      attendanceMode: 'DAILY_USER_PRESENCE',
+      academicYearIds: [activeAcademicYear.id],
+      userIds: [participant.id],
+      roles: [participant.role],
+      dates: [dateKey],
+      checkpoint,
+    },
+  });
+
+  const state = await buildUserDailyPresenceStatePayload({
+    userId: participant.id,
+    activeAcademicYear,
+    dateKey,
+  });
+
+  res.status(200).json(
+    new ApiResponse(
+      200,
+      {
+        ...state,
+        checkpoint,
+        gateLabel: gateLabel || null,
+        recordedAt: now.toISOString(),
+        recordedTime: formatTime(now),
+        lateMinutes: isCheckIn ? timingDecision.lateMinutes : 0,
+      },
+      checkpoint === 'CHECK_IN'
+        ? 'Absen masuk peserta non-siswa berhasil dibantu oleh petugas.'
+        : 'Absen pulang peserta non-siswa berhasil dibantu oleh petugas.',
     ),
   );
 });

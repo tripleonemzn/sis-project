@@ -22,12 +22,15 @@ import { QueryStateView } from '../../../src/components/QueryStateView';
 import { useAuth } from '../../../src/features/auth/AuthProvider';
 import { attendanceApi } from '../../../src/features/attendance/attendanceApi';
 import type {
+  DailyPresenceEventItem,
   DailyPresenceEventType,
+  DailyPresenceOperationalParticipant,
   DailyPresenceOperationalStudent,
   DailyPresencePolicy,
   DailyPresencePolicyDayKey,
   DailyPresenceSelfScanManagerSession,
   DailyPresenceSelfScanPreview,
+  DailyPresenceUserState,
 } from '../../../src/features/attendance/types';
 import {
   buildDailyPresenceChallengeCode,
@@ -48,6 +51,7 @@ import { useAppTheme } from '../../../src/theme/AppThemeProvider';
 import { useAppTextScale } from '../../../src/theme/AppTextScaleProvider';
 
 type StaffTabKey = 'SCAN' | 'MONITOR' | 'ASSISTED' | 'HISTORY' | 'CONFIG';
+type AssistedTargetKey = 'STUDENT' | 'PARTICIPANT';
 
 const DAY_LABELS: Record<DailyPresencePolicyDayKey, string> = {
   MONDAY: 'Senin',
@@ -62,6 +66,7 @@ const DAY_KEYS = Object.keys(DAY_LABELS) as DailyPresencePolicyDayKey[];
 
 type PresenceModalState = {
   checkpoint: DailyPresenceEventType;
+  target: AssistedTargetKey;
 } | null;
 
 type ScannedPassState = {
@@ -93,6 +98,32 @@ function getSourceLabel(value?: string | null) {
 
 function getEventTypeLabel(value: DailyPresenceEventType) {
   return value === 'CHECK_IN' ? 'Masuk' : 'Pulang';
+}
+
+function getParticipantRoleLabel(role?: string | null) {
+  if (role === 'TEACHER') return 'Guru';
+  if (role === 'STAFF') return 'Staff';
+  if (role === 'PRINCIPAL') return 'Kepala Sekolah';
+  if (role === 'EXTRACURRICULAR_TUTOR') return 'Pembina Ekskul';
+  return '-';
+}
+
+function getEventPersonName(event: DailyPresenceEventItem) {
+  return event.student?.name || event.participant?.name || '-';
+}
+
+function getEventSecondaryLabel(event: DailyPresenceEventItem) {
+  if (event.student) {
+    const idLabel = event.student.nisn || event.student.nis || '-';
+    return `${event.class?.name || '-'} • ${idLabel}`;
+  }
+  if (event.participant) {
+    const idLabel = event.participant.nip || event.participant.username || '-';
+    const roleLabel = getParticipantRoleLabel(event.participant.role);
+    const ptkType = event.participant.ptkType ? ` • ${event.participant.ptkType}` : '';
+    return `${roleLabel} • ${idLabel}${ptkType}`;
+  }
+  return '-';
 }
 
 function formatTodayLabel(dateKey?: string | null) {
@@ -657,8 +688,11 @@ export default function StaffDailyPresenceScreen() {
   });
   const pageContentStyle = buildResponsivePageContentStyle(pagePadding, layout);
   const [tab, setTab] = useState<StaffTabKey>('SCAN');
+  const [assistedTarget, setAssistedTarget] = useState<AssistedTargetKey>('STUDENT');
   const [studentSearch, setStudentSearch] = useState('');
   const [selectedStudentId, setSelectedStudentId] = useState('');
+  const [participantSearch, setParticipantSearch] = useState('');
+  const [selectedParticipantId, setSelectedParticipantId] = useState('');
   const [modalState, setModalState] = useState<PresenceModalState>(null);
   const [reason, setReason] = useState('');
   const [gateLabel, setGateLabel] = useState('');
@@ -673,6 +707,7 @@ export default function StaffDailyPresenceScreen() {
   const cameraGranted = Boolean(cameraPermission?.granted);
   const cameraDenied = cameraPermission?.status === 'denied';
   const deferredStudentSearch = useDeferredValue(studentSearch.trim());
+  const deferredParticipantSearch = useDeferredValue(participantSearch.trim());
 
   const overviewQuery = useQuery({
     queryKey: ['mobile-staff-daily-presence-overview'],
@@ -705,7 +740,7 @@ export default function StaffDailyPresenceScreen() {
 
   const studentsQuery = useQuery({
     queryKey: ['mobile-staff-daily-presence-students', deferredStudentSearch],
-    enabled: isAuthenticated && canAccess && tab === 'ASSISTED',
+    enabled: isAuthenticated && canAccess && tab === 'ASSISTED' && assistedTarget === 'STUDENT',
     queryFn: () =>
       attendanceApi.getDailyPresenceStudents({
         query: deferredStudentSearch || undefined,
@@ -716,8 +751,31 @@ export default function StaffDailyPresenceScreen() {
 
   const selectedStudentQuery = useQuery({
     queryKey: ['mobile-staff-daily-presence-student', selectedStudentId],
-    enabled: isAuthenticated && canAccess && tab === 'ASSISTED' && Boolean(selectedStudentId),
+    enabled: isAuthenticated && canAccess && tab === 'ASSISTED' && assistedTarget === 'STUDENT' && Boolean(selectedStudentId),
     queryFn: () => attendanceApi.getStudentDailyPresence({ studentId: Number(selectedStudentId) }),
+    staleTime: 30 * 1000,
+  });
+
+  const participantsQuery = useQuery({
+    queryKey: ['mobile-staff-daily-presence-participants', deferredParticipantSearch],
+    enabled: isAuthenticated && canAccess && tab === 'ASSISTED' && assistedTarget === 'PARTICIPANT',
+    queryFn: () =>
+      attendanceApi.getDailyPresenceParticipants({
+        query: deferredParticipantSearch || undefined,
+        limit: 100,
+      }),
+    staleTime: 60 * 1000,
+  });
+
+  const selectedParticipantQuery = useQuery({
+    queryKey: ['mobile-staff-daily-presence-participant', selectedParticipantId],
+    enabled:
+      isAuthenticated &&
+      canAccess &&
+      tab === 'ASSISTED' &&
+      assistedTarget === 'PARTICIPANT' &&
+      Boolean(selectedParticipantId),
+    queryFn: () => attendanceApi.getParticipantDailyPresence({ userId: Number(selectedParticipantId) }),
     staleTime: 30 * 1000,
   });
 
@@ -807,6 +865,30 @@ export default function StaffDailyPresenceScreen() {
     },
   });
 
+  const saveParticipantMutation = useMutation({
+    mutationFn: (payload: {
+      userId: number;
+      checkpoint: DailyPresenceEventType;
+      reason: string;
+      gateLabel?: string | null;
+    }) => attendanceApi.saveAssistedUserDailyPresence(payload),
+    onSuccess: (_, variables) => {
+      notifySuccess(
+        variables.checkpoint === 'CHECK_IN'
+          ? 'Absen masuk peserta non-siswa berhasil dibantu petugas.'
+          : 'Absen pulang peserta non-siswa berhasil dibantu petugas.',
+      );
+      setModalState(null);
+      setReason('');
+      setGateLabel('');
+      void queryClient.invalidateQueries({ queryKey: ['mobile-staff-daily-presence-overview'] });
+      void queryClient.invalidateQueries({ queryKey: ['mobile-staff-daily-presence-participant', selectedParticipantId] });
+    },
+    onError: (error) => {
+      notifyApiError(error, 'Gagal menyimpan presensi peserta non-siswa.');
+    },
+  });
+
   const savePolicyMutation = useMutation({
     mutationFn: (policy: DailyPresencePolicy) => attendanceApi.saveDailyPresencePolicy(policy),
     onSuccess: (result) => {
@@ -855,8 +937,53 @@ export default function StaffDailyPresenceScreen() {
     [selectedStudentId, selectedStudentOption, studentOptions],
   );
 
+  const selectedParticipantOption = useMemo<DailyPresenceOperationalParticipant | null>(() => {
+    const selected = participantsQuery.data?.find((item) => String(item.id) === String(selectedParticipantId)) || null;
+    if (selected) return selected;
+    const participant = (selectedParticipantQuery.data as DailyPresenceUserState | undefined)?.participant;
+    if (!participant) return null;
+    return {
+      id: participant.id,
+      username: participant.username || null,
+      name: participant.name,
+      photo: participant.photo || null,
+      nip: participant.nip || null,
+      role: participant.role,
+      ptkType: participant.ptkType || null,
+      additionalDuties: participant.additionalDuties || [],
+    };
+  }, [participantsQuery.data, selectedParticipantId, selectedParticipantQuery.data]);
+
+  const participantOptions = useMemo(() => {
+    const options = new Map<string, DailyPresenceOperationalParticipant>();
+    if (selectedParticipantOption) {
+      options.set(String(selectedParticipantOption.id), selectedParticipantOption);
+    }
+    for (const participant of participantsQuery.data || []) {
+      options.set(String(participant.id), participant);
+    }
+    return Array.from(options.values());
+  }, [participantsQuery.data, selectedParticipantOption]);
+
+  const selectedParticipant = useMemo(
+    () =>
+      participantOptions.find((item) => String(item.id) === String(selectedParticipantId)) ||
+      selectedParticipantOption ||
+      null,
+    [participantOptions, selectedParticipantId, selectedParticipantOption],
+  );
+
   const modalCopy = modalState ? getCheckpointCopy(modalState.checkpoint) : null;
-  const canSubmitModal = Boolean(selectedStudentId) && reason.trim().length >= 3 && !saveMutation.isPending;
+  const modalBusy = saveMutation.isPending || saveParticipantMutation.isPending;
+  const modalParticipantLabel =
+    modalState?.target === 'PARTICIPANT'
+      ? `${selectedParticipant?.name || '-'} • ${getParticipantRoleLabel(selectedParticipant?.role)}`
+      : `${selectedStudent?.name || '-'} • ${selectedStudent?.studentClass?.name || '-'}`;
+  const canSubmitModal =
+    reason.trim().length >= 3 &&
+    (modalState?.target === 'PARTICIPANT'
+      ? Boolean(selectedParticipantId) && !saveParticipantMutation.isPending
+      : Boolean(selectedStudentId) && !saveMutation.isPending);
   const summaryCardWidth = `${100 / layout.summaryColumns}%` as `${number}%`;
   const recentEvents = overviewQuery.data?.recentEvents || [];
   const activeManagerSession = managerSessionQuery.data || null;
@@ -889,6 +1016,12 @@ export default function StaffDailyPresenceScreen() {
     setPolicyDraft(policyQuery.data.policy);
   }, [policyQuery.data?.policy]);
 
+  useEffect(() => {
+    setReason('');
+    setGateLabel('');
+    setModalState(null);
+  }, [assistedTarget]);
+
   const updatePolicyDay = (
     day: DailyPresencePolicyDayKey,
     updater: (current: DailyPresencePolicy['days'][DailyPresencePolicyDayKey]) => DailyPresencePolicy['days'][DailyPresencePolicyDayKey],
@@ -914,9 +1047,16 @@ export default function StaffDailyPresenceScreen() {
       void managerSessionQuery.refetch();
     }
     if (tab === 'ASSISTED') {
-      void studentsQuery.refetch();
-      if (selectedStudentId) {
-        void selectedStudentQuery.refetch();
+      if (assistedTarget === 'STUDENT') {
+        void studentsQuery.refetch();
+        if (selectedStudentId) {
+          void selectedStudentQuery.refetch();
+        }
+      } else {
+        void participantsQuery.refetch();
+        if (selectedParticipantId) {
+          void selectedParticipantQuery.refetch();
+        }
       }
     }
   };
@@ -959,7 +1099,9 @@ export default function StaffDailyPresenceScreen() {
               policyQuery.isFetching ||
               managerSessionQuery.isFetching ||
               studentsQuery.isFetching ||
-              selectedStudentQuery.isFetching
+              selectedStudentQuery.isFetching ||
+              participantsQuery.isFetching ||
+              selectedParticipantQuery.isFetching
             }
             onRefresh={handleRefresh}
           />
@@ -1000,21 +1142,21 @@ export default function StaffDailyPresenceScreen() {
             {
               title: 'Sudah Masuk',
               value: String(overviewQuery.data?.summary.checkInCount || 0),
-              subtitle: 'Siswa sudah punya jam masuk hari ini.',
+              subtitle: `Siswa ${overviewQuery.data?.summary.studentCheckInCount || 0} • Non-siswa ${overviewQuery.data?.summary.userCheckInCount || 0}`,
               iconName: 'log-in',
               accentColor: '#15803d',
             },
             {
               title: 'Sudah Pulang',
               value: String(overviewQuery.data?.summary.checkOutCount || 0),
-              subtitle: 'Siswa sudah punya jam pulang hari ini.',
+              subtitle: `Siswa ${overviewQuery.data?.summary.studentCheckOutCount || 0} • Non-siswa ${overviewQuery.data?.summary.userCheckOutCount || 0}`,
               iconName: 'log-out',
               accentColor: '#0369a1',
             },
             {
               title: 'Bantuan Petugas',
               value: String(overviewQuery.data?.summary.assistedEventCount || 0),
-              subtitle: `${overviewQuery.data?.summary.openDayCount || 0} siswa belum punya jam pulang.`,
+              subtitle: `Pending pulang: siswa ${overviewQuery.data?.summary.studentOpenDayCount || 0} • non-siswa ${overviewQuery.data?.summary.userOpenDayCount || 0}`,
               iconName: 'shield',
               accentColor: '#b45309',
             },
@@ -1281,14 +1423,18 @@ export default function StaffDailyPresenceScreen() {
                           >
                             <View style={{ flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center' }}>
                               <Text style={{ color: colors.text, fontWeight: '700', flex: 1, paddingRight: 10 }}>
-                                {event.student?.name || '-'}
+                                {getEventPersonName(event)}
                               </Text>
                               <Text style={{ color: colors.textMuted, fontSize: fontSizes.caption }}>
                                 {event.recordedTime || '-'}
                               </Text>
                             </View>
                             <Text style={{ color: colors.textMuted, fontSize: fontSizes.caption, marginTop: 4 }}>
-                              {getEventTypeLabel(event.eventType)} • {getSourceLabel(event.source)}
+                              {getEventSecondaryLabel(event)} • {getEventTypeLabel(event.eventType)} • {getSourceLabel(event.source)}
+                            </Text>
+                            <Text style={{ color: colors.textMuted, fontSize: fontSizes.caption, marginTop: 4 }}>
+                              {event.reason || 'Belum ada alasan tambahan.'}
+                              {event.lateMinutes && event.lateMinutes > 0 ? ` • Telat ${event.lateMinutes} menit` : ''}
                             </Text>
                           </View>
                         ))}
@@ -1349,46 +1495,20 @@ export default function StaffDailyPresenceScreen() {
               Bantu Petugas
             </Text>
             <Text style={{ color: colors.textMuted, fontSize: fontSizes.body, lineHeight: scaleLineHeight(20), marginTop: 4 }}>
-              Pilih siswa yang membutuhkan bantuan absen masuk atau pulang hari ini.
+              Pilih siswa atau peserta non-siswa yang membutuhkan bantuan presensi hari ini.
             </Text>
 
-            <View style={{ marginTop: 14 }}>
-              <Text style={{ color: colors.textMuted, fontSize: fontSizes.label, marginBottom: 6 }}>Cari siswa</Text>
-              <TextInput
-                value={studentSearch}
-                onChangeText={setStudentSearch}
-                placeholder="Nama, username, NIS, NISN, atau kelas"
-                placeholderTextColor={colors.textSoft}
-                style={{
-                  borderWidth: 1,
-                  borderColor: colors.borderSoft,
-                  backgroundColor: colors.surface,
-                  borderRadius: 12,
-                  paddingHorizontal: 12,
-                  paddingVertical: 11,
-                  color: colors.text,
-                  fontSize: fontSizes.bodyCompact,
-                }}
-              />
-            </View>
-
-            <View style={{ marginTop: 14 }}>
-              <MobileSelectField
-                label="Siswa terpilih"
-                value={selectedStudentId}
-                options={studentOptions.map((student) => ({
-                  value: String(student.id),
-                  label: `${student.name} • ${student.studentClass?.name || '-'} • ${student.nisn || student.username}`,
-                }))}
-                onChange={setSelectedStudentId}
-                placeholder="Pilih siswa"
-                helperText={
-                  deferredStudentSearch
-                    ? `Menampilkan hasil pencarian hingga 100 siswa untuk kata kunci "${deferredStudentSearch}".`
-                    : 'Menampilkan daftar awal hingga 100 siswa. Gunakan kolom cari untuk mempersempit hasil.'
-                }
-              />
-            </View>
+            <MobileMenuTabBar
+              items={[
+                { key: 'STUDENT', label: 'Siswa', iconName: 'users' },
+                { key: 'PARTICIPANT', label: 'Non-Siswa', iconName: 'briefcase' },
+              ]}
+              activeKey={assistedTarget}
+              onChange={(nextKey) => setAssistedTarget(nextKey as AssistedTargetKey)}
+              layout={layout.prefersSplitPane ? 'fill' : 'scroll'}
+              compact={false}
+              style={{ marginTop: 14 }}
+            />
 
             <View
               style={{
@@ -1401,129 +1521,371 @@ export default function StaffDailyPresenceScreen() {
                 backgroundColor: colors.surfaceMuted,
               }}
             >
-              {!selectedStudentId ? (
-                <Text style={{ color: colors.textMuted, fontSize: fontSizes.body, lineHeight: scaleLineHeight(20) }}>
-                  Pilih siswa terlebih dahulu untuk melihat status presensi hari ini.
-                </Text>
-              ) : selectedStudentQuery.isLoading ? (
-                <QueryStateView type="loading" message="Memuat status presensi siswa..." />
-              ) : selectedStudentQuery.isError ? (
-                <QueryStateView
-                  type="error"
-                  message="Status presensi siswa tidak berhasil dimuat."
-                  onRetry={() => selectedStudentQuery.refetch()}
-                />
-              ) : (
-                <View>
-                  <View style={{ flexDirection: 'row', alignItems: 'center', marginBottom: 12 }}>
-                    <InitialAvatar
-                      name={selectedStudentQuery.data?.student.name || selectedStudent?.name || '-'}
-                      photo={selectedStudentQuery.data?.student.photo}
+              {assistedTarget === 'STUDENT' ? (
+                <>
+                  <View>
+                    <Text style={{ color: colors.textMuted, fontSize: fontSizes.label, marginBottom: 6 }}>Cari siswa</Text>
+                    <TextInput
+                      value={studentSearch}
+                      onChangeText={setStudentSearch}
+                      placeholder="Nama, username, NIS, NISN, atau kelas"
+                      placeholderTextColor={colors.textSoft}
+                      style={{
+                        borderWidth: 1,
+                        borderColor: colors.borderSoft,
+                        backgroundColor: colors.surface,
+                        borderRadius: 12,
+                        paddingHorizontal: 12,
+                        paddingVertical: 11,
+                        color: colors.text,
+                        fontSize: fontSizes.bodyCompact,
+                      }}
                     />
-                    <View style={{ flex: 1, marginLeft: 12 }}>
-                      <Text style={{ fontWeight: '700', color: colors.text, fontSize: fontSizes.bodyCompact }}>
-                        {selectedStudentQuery.data?.student.name}
-                      </Text>
-                      <Text style={{ color: colors.textMuted, fontSize: fontSizes.caption, lineHeight: scaleLineHeight(18), marginTop: 4 }}>
-                        {selectedStudentQuery.data?.student.class?.name || '-'} • NISN: {selectedStudentQuery.data?.student.nisn || '-'}
-                      </Text>
-                    </View>
                   </View>
 
-                  <View style={{ flexDirection: layout.prefersSplitPane ? 'row' : 'column', gap: 8, marginBottom: 12 }}>
-                    <View
-                      style={{
-                        flex: 1,
-                        borderWidth: 1,
-                        borderColor: '#86efac',
-                        backgroundColor: '#f0fdf4',
-                        borderRadius: 12,
-                        padding: 12,
-                      }}
-                    >
-                      <Text style={{ color: '#15803d', fontSize: fontSizes.caption, fontWeight: '700' }}>Jam Masuk</Text>
-                      <Text style={{ color: '#14532d', fontSize: scaleFont(18), fontWeight: '700', marginTop: 6 }}>
-                        {selectedStudentQuery.data?.presence.checkInTime || '-'}
-                      </Text>
-                      <Text style={{ color: '#15803d', fontSize: fontSizes.caption, marginTop: 4 }}>
-                        {getSourceLabel(selectedStudentQuery.data?.presence.checkInSource)}
-                      </Text>
-                    </View>
-                    <View
-                      style={{
-                        flex: 1,
-                        borderWidth: 1,
-                        borderColor: '#7dd3fc',
-                        backgroundColor: '#f0f9ff',
-                        borderRadius: 12,
-                        padding: 12,
-                      }}
-                    >
-                      <Text style={{ color: '#0369a1', fontSize: fontSizes.caption, fontWeight: '700' }}>Jam Pulang</Text>
-                      <Text style={{ color: '#0c4a6e', fontSize: scaleFont(18), fontWeight: '700', marginTop: 6 }}>
-                        {selectedStudentQuery.data?.presence.checkOutTime || '-'}
-                      </Text>
-                      <Text style={{ color: '#0369a1', fontSize: fontSizes.caption, marginTop: 4 }}>
-                        {getSourceLabel(selectedStudentQuery.data?.presence.checkOutSource)}
-                      </Text>
-                    </View>
+                  <View style={{ marginTop: 14 }}>
+                    <MobileSelectField
+                      label="Siswa terpilih"
+                      value={selectedStudentId}
+                      options={studentOptions.map((student) => ({
+                        value: String(student.id),
+                        label: `${student.name} • ${student.studentClass?.name || '-'} • ${student.nisn || student.username}`,
+                      }))}
+                      onChange={setSelectedStudentId}
+                      placeholder="Pilih siswa"
+                      helperText={
+                        deferredStudentSearch
+                          ? `Menampilkan hasil pencarian hingga 100 siswa untuk kata kunci "${deferredStudentSearch}".`
+                          : 'Menampilkan daftar awal hingga 100 siswa. Gunakan kolom cari untuk mempersempit hasil.'
+                      }
+                    />
                   </View>
 
                   <View
                     style={{
+                      marginTop: 12,
                       borderWidth: 1,
                       borderColor: colors.borderSoft,
-                      backgroundColor: colors.surface,
-                      borderRadius: 12,
+                      borderStyle: 'dashed',
+                      borderRadius: 14,
                       padding: 12,
+                      backgroundColor: colors.surface,
                     }}
                   >
-                    <Text style={{ color: colors.text, fontWeight: '700', fontSize: fontSizes.label }}>Status harian</Text>
-                    <Text style={{ color: colors.textMuted, fontSize: fontSizes.body, marginTop: 6 }}>
-                      {selectedStudentQuery.data?.presence.status || 'Belum tercatat'}
-                    </Text>
-                    <Text style={{ color: colors.textMuted, fontSize: fontSizes.caption, lineHeight: scaleLineHeight(18), marginTop: 6 }}>
-                      Catatan harian: {selectedStudentQuery.data?.presence.note || '-'}
-                    </Text>
+                    {!selectedStudentId ? (
+                      <Text style={{ color: colors.textMuted, fontSize: fontSizes.body, lineHeight: scaleLineHeight(20) }}>
+                        Pilih siswa terlebih dahulu untuk melihat status presensi hari ini.
+                      </Text>
+                    ) : selectedStudentQuery.isLoading ? (
+                      <QueryStateView type="loading" message="Memuat status presensi siswa..." />
+                    ) : selectedStudentQuery.isError ? (
+                      <QueryStateView
+                        type="error"
+                        message="Status presensi siswa tidak berhasil dimuat."
+                        onRetry={() => selectedStudentQuery.refetch()}
+                      />
+                    ) : (
+                      <View>
+                        <View style={{ flexDirection: 'row', alignItems: 'center', marginBottom: 12 }}>
+                          <InitialAvatar
+                            name={selectedStudentQuery.data?.student.name || selectedStudent?.name || '-'}
+                            photo={selectedStudentQuery.data?.student.photo}
+                          />
+                          <View style={{ flex: 1, marginLeft: 12 }}>
+                            <Text style={{ fontWeight: '700', color: colors.text, fontSize: fontSizes.bodyCompact }}>
+                              {selectedStudentQuery.data?.student.name}
+                            </Text>
+                            <Text style={{ color: colors.textMuted, fontSize: fontSizes.caption, lineHeight: scaleLineHeight(18), marginTop: 4 }}>
+                              {selectedStudentQuery.data?.student.class?.name || '-'} • NIS/NISN:{' '}
+                              {selectedStudentQuery.data?.student.nis || selectedStudentQuery.data?.student.nisn || '-'}
+                            </Text>
+                          </View>
+                        </View>
+
+                        <View style={{ flexDirection: layout.prefersSplitPane ? 'row' : 'column', gap: 8, marginBottom: 12 }}>
+                          <View
+                            style={{
+                              flex: 1,
+                              borderWidth: 1,
+                              borderColor: '#86efac',
+                              backgroundColor: '#f0fdf4',
+                              borderRadius: 12,
+                              padding: 12,
+                            }}
+                          >
+                            <Text style={{ color: '#15803d', fontSize: fontSizes.caption, fontWeight: '700' }}>Jam Masuk</Text>
+                            <Text style={{ color: '#14532d', fontSize: scaleFont(18), fontWeight: '700', marginTop: 6 }}>
+                              {selectedStudentQuery.data?.presence.checkInTime || '-'}
+                            </Text>
+                            <Text style={{ color: '#15803d', fontSize: fontSizes.caption, marginTop: 4 }}>
+                              {getSourceLabel(selectedStudentQuery.data?.presence.checkInSource)}
+                            </Text>
+                          </View>
+                          <View
+                            style={{
+                              flex: 1,
+                              borderWidth: 1,
+                              borderColor: '#7dd3fc',
+                              backgroundColor: '#f0f9ff',
+                              borderRadius: 12,
+                              padding: 12,
+                            }}
+                          >
+                            <Text style={{ color: '#0369a1', fontSize: fontSizes.caption, fontWeight: '700' }}>Jam Pulang</Text>
+                            <Text style={{ color: '#0c4a6e', fontSize: scaleFont(18), fontWeight: '700', marginTop: 6 }}>
+                              {selectedStudentQuery.data?.presence.checkOutTime || '-'}
+                            </Text>
+                            <Text style={{ color: '#0369a1', fontSize: fontSizes.caption, marginTop: 4 }}>
+                              {getSourceLabel(selectedStudentQuery.data?.presence.checkOutSource)}
+                            </Text>
+                          </View>
+                        </View>
+
+                        <View
+                          style={{
+                            borderWidth: 1,
+                            borderColor: colors.borderSoft,
+                            backgroundColor: colors.surface,
+                            borderRadius: 12,
+                            padding: 12,
+                          }}
+                        >
+                          <Text style={{ color: colors.text, fontWeight: '700', fontSize: fontSizes.label }}>Status harian</Text>
+                          <Text style={{ color: colors.textMuted, fontSize: fontSizes.body, marginTop: 6 }}>
+                            {selectedStudentQuery.data?.presence.status || 'Belum tercatat'}
+                          </Text>
+                          <Text style={{ color: colors.textMuted, fontSize: fontSizes.caption, lineHeight: scaleLineHeight(18), marginTop: 6 }}>
+                            Catatan harian: {selectedStudentQuery.data?.presence.note || '-'}
+                          </Text>
+                        </View>
+
+                        <View style={{ flexDirection: 'row', gap: 8, marginTop: 12 }}>
+                          <Pressable
+                            onPress={() => {
+                              setReason('');
+                              setGateLabel('');
+                              setModalState({ checkpoint: 'CHECK_IN', target: 'STUDENT' });
+                            }}
+                            style={{
+                              flex: 1,
+                              backgroundColor: '#15803d',
+                              borderRadius: 12,
+                              paddingVertical: 12,
+                              alignItems: 'center',
+                              justifyContent: 'center',
+                            }}
+                          >
+                            <Text style={{ color: '#fff', fontWeight: '700' }}>Bantu Absen Masuk</Text>
+                          </Pressable>
+                          <Pressable
+                            onPress={() => {
+                              setReason('');
+                              setGateLabel('');
+                              setModalState({ checkpoint: 'CHECK_OUT', target: 'STUDENT' });
+                            }}
+                            style={{
+                              flex: 1,
+                              backgroundColor: '#0369a1',
+                              borderRadius: 12,
+                              paddingVertical: 12,
+                              alignItems: 'center',
+                              justifyContent: 'center',
+                            }}
+                          >
+                            <Text style={{ color: '#fff', fontWeight: '700' }}>Bantu Absen Pulang</Text>
+                          </Pressable>
+                        </View>
+                      </View>
+                    )}
+                  </View>
+                </>
+              ) : (
+                <>
+                  <View>
+                    <Text style={{ color: colors.textMuted, fontSize: fontSizes.label, marginBottom: 6 }}>Cari peserta non-siswa</Text>
+                    <TextInput
+                      value={participantSearch}
+                      onChangeText={setParticipantSearch}
+                      placeholder="Nama, username, NIP, role, atau PTK"
+                      placeholderTextColor={colors.textSoft}
+                      style={{
+                        borderWidth: 1,
+                        borderColor: colors.borderSoft,
+                        backgroundColor: colors.surface,
+                        borderRadius: 12,
+                        paddingHorizontal: 12,
+                        paddingVertical: 11,
+                        color: colors.text,
+                        fontSize: fontSizes.bodyCompact,
+                      }}
+                    />
                   </View>
 
-                  <View style={{ flexDirection: 'row', gap: 8, marginTop: 12 }}>
-                    <Pressable
-                      onPress={() => {
-                        setReason('');
-                        setGateLabel('');
-                        setModalState({ checkpoint: 'CHECK_IN' });
-                      }}
-                      style={{
-                        flex: 1,
-                        backgroundColor: '#15803d',
-                        borderRadius: 12,
-                        paddingVertical: 12,
-                        alignItems: 'center',
-                        justifyContent: 'center',
-                      }}
-                    >
-                      <Text style={{ color: '#fff', fontWeight: '700' }}>Bantu Absen Masuk</Text>
-                    </Pressable>
-                    <Pressable
-                      onPress={() => {
-                        setReason('');
-                        setGateLabel('');
-                        setModalState({ checkpoint: 'CHECK_OUT' });
-                      }}
-                      style={{
-                        flex: 1,
-                        backgroundColor: '#0369a1',
-                        borderRadius: 12,
-                        paddingVertical: 12,
-                        alignItems: 'center',
-                        justifyContent: 'center',
-                      }}
-                    >
-                      <Text style={{ color: '#fff', fontWeight: '700' }}>Bantu Absen Pulang</Text>
-                    </Pressable>
+                  <View style={{ marginTop: 14 }}>
+                    <MobileSelectField
+                      label="Peserta terpilih"
+                      value={selectedParticipantId}
+                      options={participantOptions.map((participant) => ({
+                        value: String(participant.id),
+                        label: `${participant.name} • ${getParticipantRoleLabel(participant.role)} • ${participant.nip || participant.username || '-'}`,
+                      }))}
+                      onChange={setSelectedParticipantId}
+                      placeholder="Pilih peserta non-siswa"
+                      helperText={
+                        deferredParticipantSearch
+                          ? `Menampilkan hasil pencarian hingga 100 peserta untuk kata kunci "${deferredParticipantSearch}".`
+                          : 'Menampilkan daftar awal hingga 100 peserta non-siswa. Gunakan kolom cari untuk mempersempit hasil.'
+                      }
+                    />
                   </View>
-                </View>
+
+                  <View
+                    style={{
+                      marginTop: 12,
+                      borderWidth: 1,
+                      borderColor: colors.borderSoft,
+                      borderStyle: 'dashed',
+                      borderRadius: 14,
+                      padding: 12,
+                      backgroundColor: colors.surface,
+                    }}
+                  >
+                    {!selectedParticipantId ? (
+                      <Text style={{ color: colors.textMuted, fontSize: fontSizes.body, lineHeight: scaleLineHeight(20) }}>
+                        Pilih peserta non-siswa terlebih dahulu untuk melihat status presensi hari ini.
+                      </Text>
+                    ) : selectedParticipantQuery.isLoading ? (
+                      <QueryStateView type="loading" message="Memuat status presensi peserta non-siswa..." />
+                    ) : selectedParticipantQuery.isError ? (
+                      <QueryStateView
+                        type="error"
+                        message="Status presensi peserta non-siswa tidak berhasil dimuat."
+                        onRetry={() => selectedParticipantQuery.refetch()}
+                      />
+                    ) : 'participant' in (selectedParticipantQuery.data || {}) ? (
+                      (() => {
+                        const participantState = selectedParticipantQuery.data as DailyPresenceUserState;
+                        return (
+                      <View>
+                        <View style={{ flexDirection: 'row', alignItems: 'center', marginBottom: 12 }}>
+                          <InitialAvatar
+                            name={participantState.participant.name || selectedParticipant?.name || '-'}
+                            photo={participantState.participant.photo}
+                          />
+                          <View style={{ flex: 1, marginLeft: 12 }}>
+                            <Text style={{ fontWeight: '700', color: colors.text, fontSize: fontSizes.bodyCompact }}>
+                              {participantState.participant.name}
+                            </Text>
+                            <Text style={{ color: colors.textMuted, fontSize: fontSizes.caption, lineHeight: scaleLineHeight(18), marginTop: 4 }}>
+                              {getParticipantRoleLabel(participantState.participant.role)} • {participantState.participant.nip || participantState.participant.username || '-'}
+                              {participantState.participant.ptkType ? ` • ${participantState.participant.ptkType}` : ''}
+                            </Text>
+                          </View>
+                        </View>
+
+                        <View style={{ flexDirection: layout.prefersSplitPane ? 'row' : 'column', gap: 8, marginBottom: 12 }}>
+                          <View
+                            style={{
+                              flex: 1,
+                              borderWidth: 1,
+                              borderColor: '#86efac',
+                              backgroundColor: '#f0fdf4',
+                              borderRadius: 12,
+                              padding: 12,
+                            }}
+                          >
+                            <Text style={{ color: '#15803d', fontSize: fontSizes.caption, fontWeight: '700' }}>Jam Masuk</Text>
+                            <Text style={{ color: '#14532d', fontSize: scaleFont(18), fontWeight: '700', marginTop: 6 }}>
+                              {participantState.presence.checkInTime || '-'}
+                            </Text>
+                            <Text style={{ color: '#15803d', fontSize: fontSizes.caption, marginTop: 4 }}>
+                              {getSourceLabel(participantState.presence.checkInSource)}
+                            </Text>
+                          </View>
+                          <View
+                            style={{
+                              flex: 1,
+                              borderWidth: 1,
+                              borderColor: '#7dd3fc',
+                              backgroundColor: '#f0f9ff',
+                              borderRadius: 12,
+                              padding: 12,
+                            }}
+                          >
+                            <Text style={{ color: '#0369a1', fontSize: fontSizes.caption, fontWeight: '700' }}>Jam Pulang</Text>
+                            <Text style={{ color: '#0c4a6e', fontSize: scaleFont(18), fontWeight: '700', marginTop: 6 }}>
+                              {participantState.presence.checkOutTime || '-'}
+                            </Text>
+                            <Text style={{ color: '#0369a1', fontSize: fontSizes.caption, marginTop: 4 }}>
+                              {getSourceLabel(participantState.presence.checkOutSource)}
+                            </Text>
+                          </View>
+                        </View>
+
+                        <View
+                          style={{
+                            borderWidth: 1,
+                            borderColor: colors.borderSoft,
+                            backgroundColor: colors.surface,
+                            borderRadius: 12,
+                            padding: 12,
+                          }}
+                        >
+                          <Text style={{ color: colors.text, fontWeight: '700', fontSize: fontSizes.label }}>Status harian</Text>
+                          <Text style={{ color: colors.textMuted, fontSize: fontSizes.body, marginTop: 6 }}>
+                            {participantState.presence.status || 'Belum tercatat'}
+                          </Text>
+                          <Text style={{ color: colors.textMuted, fontSize: fontSizes.caption, lineHeight: scaleLineHeight(18), marginTop: 6 }}>
+                            Catatan harian: {participantState.presence.note || '-'}
+                          </Text>
+                          <Text style={{ color: colors.textMuted, fontSize: fontSizes.caption, lineHeight: scaleLineHeight(18), marginTop: 6 }}>
+                            Telat masuk: {participantState.presence.checkInLateMinutes || 0} menit • Pulang terlalu cepat:{' '}
+                            {participantState.presence.checkOutEarlyMinutes || 0} menit
+                          </Text>
+                        </View>
+
+                        <View style={{ flexDirection: 'row', gap: 8, marginTop: 12 }}>
+                          <Pressable
+                            onPress={() => {
+                              setReason('');
+                              setGateLabel('');
+                              setModalState({ checkpoint: 'CHECK_IN', target: 'PARTICIPANT' });
+                            }}
+                            style={{
+                              flex: 1,
+                              backgroundColor: '#15803d',
+                              borderRadius: 12,
+                              paddingVertical: 12,
+                              alignItems: 'center',
+                              justifyContent: 'center',
+                            }}
+                          >
+                            <Text style={{ color: '#fff', fontWeight: '700' }}>Bantu Absen Masuk</Text>
+                          </Pressable>
+                          <Pressable
+                            onPress={() => {
+                              setReason('');
+                              setGateLabel('');
+                              setModalState({ checkpoint: 'CHECK_OUT', target: 'PARTICIPANT' });
+                            }}
+                            style={{
+                              flex: 1,
+                              backgroundColor: '#0369a1',
+                              borderRadius: 12,
+                              paddingVertical: 12,
+                              alignItems: 'center',
+                              justifyContent: 'center',
+                            }}
+                          >
+                            <Text style={{ color: '#fff', fontWeight: '700' }}>Bantu Absen Pulang</Text>
+                          </Pressable>
+                        </View>
+                      </View>
+                        );
+                      })()
+                    ) : null}
+                  </View>
+                </>
               )}
             </View>
           </View>
@@ -1585,7 +1947,7 @@ export default function StaffDailyPresenceScreen() {
                   >
                     <View style={{ flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between' }}>
                       <Text style={{ color: colors.text, fontWeight: '700', fontSize: fontSizes.label, flex: 1, paddingRight: 10 }}>
-                        {event.student?.name || '-'}
+                        {getEventPersonName(event)}
                       </Text>
                       <View
                         style={{
@@ -1607,13 +1969,14 @@ export default function StaffDailyPresenceScreen() {
                       </View>
                     </View>
                     <Text style={{ color: colors.textMuted, fontSize: fontSizes.caption, marginTop: 4 }}>
-                      {event.class?.name || '-'} • {event.student?.nisn || event.student?.nis || '-'}
+                      {getEventSecondaryLabel(event)}
                     </Text>
                     <Text style={{ color: colors.textMuted, fontSize: fontSizes.caption, marginTop: 6 }}>
                       {event.recordedTime || '-'} • {getSourceLabel(event.source)}
                     </Text>
                     <Text style={{ color: colors.text, fontSize: fontSizes.body, lineHeight: scaleLineHeight(20), marginTop: 8 }}>
                       {event.reason || '-'}
+                      {event.lateMinutes && event.lateMinutes > 0 ? ` • Telat ${event.lateMinutes} menit` : ''}
                     </Text>
                     <Text style={{ color: colors.textMuted, fontSize: fontSizes.caption, marginTop: 6 }}>
                       Petugas: {event.actor?.name || '-'}
@@ -1888,12 +2251,12 @@ export default function StaffDailyPresenceScreen() {
                   {modalCopy?.title}
                 </Text>
                 <Text style={{ color: colors.textMuted, fontSize: fontSizes.caption, marginTop: 4 }}>
-                  {selectedStudent?.name || '-'} • {selectedStudent?.studentClass?.name || '-'}
+                  {modalParticipantLabel}
                 </Text>
               </View>
               <Pressable
                 onPress={() => {
-                  if (saveMutation.isPending) return;
+                  if (modalBusy) return;
                   setModalState(null);
                 }}
                 style={{ padding: 4 }}
@@ -1973,7 +2336,7 @@ export default function StaffDailyPresenceScreen() {
             >
               <Pressable
                 onPress={() => {
-                  if (saveMutation.isPending) return;
+                  if (modalBusy) return;
                   setModalState(null);
                 }}
                 style={{
@@ -1990,7 +2353,18 @@ export default function StaffDailyPresenceScreen() {
               <Pressable
                 disabled={!canSubmitModal}
                 onPress={() => {
-                  if (!modalState || !selectedStudentId) return;
+                  if (!modalState) return;
+                  if (modalState.target === 'PARTICIPANT') {
+                    if (!selectedParticipantId) return;
+                    saveParticipantMutation.mutate({
+                      userId: Number(selectedParticipantId),
+                      checkpoint: modalState.checkpoint,
+                      reason: reason.trim(),
+                      gateLabel: gateLabel.trim() || null,
+                    });
+                    return;
+                  }
+                  if (!selectedStudentId) return;
                   saveMutation.mutate({
                     studentId: Number(selectedStudentId),
                     checkpoint: modalState.checkpoint,
@@ -2007,8 +2381,8 @@ export default function StaffDailyPresenceScreen() {
                   alignItems: 'center',
                 }}
               >
-                {saveMutation.isPending ? <Feather name="loader" size={16} color="#fff" /> : null}
-                <Text style={{ color: '#fff', fontWeight: '700', marginLeft: saveMutation.isPending ? 8 : 0 }}>
+                {modalBusy ? <Feather name="loader" size={16} color="#fff" /> : null}
+                <Text style={{ color: '#fff', fontWeight: '700', marginLeft: modalBusy ? 8 : 0 }}>
                   {modalCopy?.submit}
                 </Text>
               </Pressable>
