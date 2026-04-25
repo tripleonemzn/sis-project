@@ -244,3 +244,36 @@ Dokumen ini adalah policy kerja default untuk setiap sesi baru yang mengerjakan 
    - progress % bila pekerjaan masih bertahap
    - konfirmasi bahwa worktree sudah clean
    - konfirmasi bahwa commit task sudah dipush ke `origin/main`
+
+19. **Kontinuitas antar room chat wajib berbasis repo, bukan ingatan chat**
+   - Jika user di room chat baru meminta `baca AGENTS.md`, `lanjut`, `teruskan`, atau instruksi sejenis, jangan mengandalkan memory dari room lain.
+   - Untuk bootstrap konteks room baru, wajib lakukan urutan aman berikut:
+     - baca `AGENTS.md`
+     - baca `docs/CODEX_CONTINUITY.md`
+     - cek `git status --short`
+     - cek commit terbaru yang relevan, minimal `git log -1 --stat --decorate`
+   - Setelah itu, laporkan ringkas kepada user:
+     - progres terakhir yang tercatat
+     - task aktif yang belum selesai
+     - status worktree
+     - langkah aman berikutnya untuk melanjutkan
+   - Jika `docs/CODEX_CONTINUITY.md` belum diperbarui atau tertinggal dari kondisi repo, gunakan repo sebagai source of truth utama lalu perbarui file kontinuitas tersebut pada batch kerja berikutnya.
+   - Jangan menarik history room/chat lain kecuali user meminta eksplisit. Kontinuitas lintas room harus diselesaikan lewat artefak repo yang bisa dibaca ulang secara deterministik.
+
+20. **Jika pekerjaan terpotong, wajib tinggalkan handoff yang bisa dilanjutkan room baru**
+   - Jika pekerjaan panjang, multi-batch, berisiko kena limit token, atau harus berhenti sebelum final close-out, wajib perbarui `docs/CODEX_CONTINUITY.md` sebelum sesi berakhir jika secara teknis masih memungkinkan.
+   - File kontinuitas minimal harus memuat:
+     - objective/task aktif
+     - batch/wave terakhir yang selesai
+     - progress persentase yang jujur
+     - file/area yang sudah disentuh
+     - verifikasi yang sudah dijalankan
+     - publish/live status
+     - sisa pekerjaan
+     - blocker/residual risk jika ada
+     - langkah berikutnya yang paling aman
+     - timestamp update terakhir
+     - commit hash terkait jika sudah ada
+   - Jika sesi terhenti saat worktree masih kotor, isi handoff harus menjelaskan dengan jujur perubahan yang belum selesai dan apa yang harus dicek lebih dulu sebelum melanjutkan.
+   - Jika satu batch sudah benar-benar selesai, dorong penyelesaian sampai commit/push sesuai policy agar room baru tidak bergantung pada worktree kotor.
+   - `docs/CODEX_CONTINUITY.md` adalah source of truth progres operasional antar-room; setiap room baru wajib membacanya sebelum menyimpulkan status terakhir project.
