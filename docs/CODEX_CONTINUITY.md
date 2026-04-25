@@ -5,25 +5,25 @@ Setiap room baru yang diminta `baca AGENTS.md` atau `lanjutkan` wajib membaca fi
 
 ## Status Saat Ini
 
-- Last updated: 2026-04-25 16:04 WIB
-- Current status: Batch 1 Presensi Harian Terpadu selesai, source terbaru sudah dideploy ke web live dan OTA mobile `pilot-live`.
+- Last updated: 2026-04-25 16:27 WIB
+- Current status: Batch 2 Presensi Harian Terpadu selesai. Monitor QR bersama untuk staff administrasi sudah live di web dan OTA mobile `pilot-live`.
 - Last completed repo work:
-  - Commit: `624ce83b286bf054bc5e822e7e9a7c681a52a997`
-  - Title: `feat(attendance): add daily presence time policy config`
-  - Summary: Menambahkan konfigurasi jam presensi harian dari TU untuk web/mobile, endpoint policy presensi aktif, realtime cache scoped, dan guard agar konfigurasi jam pelajaran Wakakur tidak menimpa policy presensi.
+  - Commit: `6833ccda811b457d77dff514749a43f5534bad06`
+  - Title: `feat(attendance): add shared daily presence qr monitor`
+  - Summary: Menambahkan payload monitor QR bersama pada session scan mandiri, tab `Monitor QR` di web/mobile staff administrasi, auto-refresh ringan saat monitor aktif, dan tetap menjaga flow scan petugas lama tetap aman.
 - Worktree expectation: clean setelah commit dan push batch ini.
-- Publish/live status: web live aktif; OTA Android `pilot-live` berhasil publish, update group `01cf19ed-137a-4ecf-936a-af8ffabe7626`.
-- Progress presensi terpadu: 35%. Fondasi konfigurasi TU selesai; QR monitor bersama, scan user mobile, pencatatan multi-role guru/staff, dan aturan guru berbasis jadwal mengajar masih batch berikutnya.
+- Publish/live status: backend reload sehat, web live aktif, OTA Android `pilot-live` berhasil publish, update group `1e178bf8-171d-4bda-8056-f9a9946ead17`.
+- Progress presensi terpadu: 55%. Fondasi konfigurasi TU dan monitor QR bersama sudah selesai; scan user mobile, pencatatan multi-role guru/staff, dan aturan guru berbasis jadwal mengajar masih batch berikutnya.
 
 ## Verifikasi Batch Terakhir
 
 - Web deploy:
-  - Jalur aman yang dipakai: `cd backend && npm run build`, PM2 reload `sis-backend`, `cd frontend && npm run deploy`.
+  - Jalur aman yang dipakai: `cd backend && npm run build`, `cd frontend && npm run build`, PM2 reload `sis-backend`, `cd backend && npm run service:health`, `cd frontend && npm run deploy`.
   - Health: backend `200`, backend API `200`, `https://siskgb2.id/` `200`, PM2 `sis-backend` online.
 - Mobile OTA:
   - `cd mobile-app && npm run update:pilot-live:auto`
   - Safety gate mobile lolos: typecheck dan parity audit.
-  - EAS update: Android `pilot-live`, update group `01cf19ed-137a-4ecf-936a-af8ffabe7626`.
+  - EAS update: Android `pilot-live`, update group `1e178bf8-171d-4bda-8056-f9a9946ead17`.
   - Push notify update: recipients `3`, sent `3`, failed `0`, stale `0`.
   - Copy notifikasi OTA mengikuti script existing dan memuat `Silakan perbarui untuk menikmati fitur terbaru.`
 - Verifikasi code:
@@ -36,7 +36,7 @@ Setiap room baru yang diminta `baca AGENTS.md` atau `lanjutkan` wajib membaca fi
 
 - Untuk task web/mobile berikutnya, jalankan verifikasi minimum lalu deploy web dan/atau publish OTA mobile secara default, kecuali user eksplisit meminta publish ditahan.
 - Jangan paksa `prisma db push --accept-data-loss` tanpa arahan eksplisit dan audit schema, karena deploy web sebelumnya menunjukkan warning drop tabel `exam_sitting_slot_proctors`.
-- Jika lanjut presensi terpadu, batch berikutnya adalah QR monitor TU otomatis dan scan dari mobile user; pastikan desain persistence multi-role aman dulu karena tabel existing `daily_attendances` dan `daily_presence_events` masih student-centric.
+- Jika lanjut presensi terpadu, batch berikutnya adalah scan dari mobile user terhadap QR monitor bersama, lalu desain persistence multi-role guru/staff yang aman karena tabel existing `daily_attendances` dan `daily_presence_events` masih student-centric.
 - Pertahankan source of truth tahun ajaran aktif: endpoint policy presensi memakai tahun ajaran aktif dan tidak menambahkan selector tahun ajaran di layar operasional.
 
 ## Template Update Wajib Saat Ada Pekerjaan Baru
