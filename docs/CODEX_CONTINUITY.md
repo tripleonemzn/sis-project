@@ -5,42 +5,42 @@ Setiap room baru yang diminta `baca AGENTS.md` atau `lanjutkan` wajib membaca fi
 
 ## Status Saat Ini
 
-- Last updated: 2026-04-25 16:59 WIB
-- Current status: Batch 4 Presensi Harian Terpadu selesai. QR monitor TU yang sama sekarang bisa dipakai siswa, guru, staff, kepsek, dan pembina ekskul eksternal dari mobile `Absensi Saya`.
+- Last updated: 2026-04-25 17:26 WIB
+- Current status: Batch 5 Presensi Harian Terpadu selesai. Rekap operasional TU sekarang menggabungkan siswa + non-siswa, riwayat pribadi non-siswa sudah tersedia di mobile `Absensi Saya`, dan bantuan manual Sabtu guru duty/non-siswa sudah lewat jalur petugas TU.
 - Last completed repo work:
-  - Commit: `18255791d70e8bc4fb06ad596d0e13840161c83e`
-  - Title: `feat(attendance): support staff teacher monitor presence`
-  - Summary: Menambahkan tabel `daily_user_presences` dan `daily_user_presence_events`, jalur backend scan QR monitor untuk guru/staff/kepsek/pembina eksternal, aturan guru berbasis jadwal mengajar dan duty, aturan staff/kepsek berbasis konfigurasi TU, pengecualian pembina eksternal berbasis assignment ekskul aktif, serta menu mobile `Presensi Saya` untuk role non-siswa.
-- Worktree expectation: clean setelah commit dan push batch ini.
-- Publish/live status: migration deploy berhasil, backend reload sehat, web live tetap `200`, OTA Android `pilot-live` berhasil publish, update group `090c5a54-ec52-420b-b107-73a598fa0551`.
-- Progress presensi terpadu: 85%. Konfigurasi TU, monitor QR bersama, scan siswa, dan scan multi-role mobile sudah selesai; rekap/monitoring TU untuk data non-siswa, riwayat presensi non-siswa yang lebih lengkap, dan mekanisme manual Sabtu guru duty masih batch berikutnya.
+  - Commit: `77ba398d096d76b2fd72d11310254cd73eef0c55`
+  - Title: `feat(attendance): complete daily presence batch 5`
+  - Summary: Menambahkan overview/recent events gabungan student + user di backend, endpoint peserta non-siswa untuk workspace TU, assisted manual presence untuk `daily_user_presences`, riwayat `me/history` non-siswa, parity web/mobile pada layar `Presensi Harian` staff, parity realtime query key, dan tab `Riwayat` mobile non-siswa.
+- Worktree expectation: clean setelah commit docs continuity dan push akhir batch ini.
+- Publish/live status: backend reload sehat, frontend web sudah dideploy live, `https://siskgb2.id/` merespons `200`, OTA Android `pilot-live` berhasil publish, update group `2a411896-363f-4aa4-bd47-1b89c0e3fa3e`.
+- Progress presensi terpadu: 100%. Batch konfigurasi TU, monitor QR bersama, scan siswa, scan multi-role mobile, rekap gabungan TU, riwayat non-siswa, dan assisted manual Sabtu duty sudah selesai.
 
 ## Verifikasi Batch Terakhir
 
-- Web deploy:
-  - Jalur aman yang dipakai: `cd backend && npx prisma migrate deploy`, `cd backend && npx prisma generate`, `cd backend && npm run build`, PM2 reload `sis-backend`, `cd backend && npm run service:health`.
-  - Tidak ada perubahan frontend web pada batch 4; web live dicek tetap `200`.
-  - Health: backend `200`, backend API `200`, `https://siskgb2.id/` `200`, PM2 `sis-backend` online.
-  - `cd backend && npx prisma migrate status` menunjukkan database schema up to date dengan 62 migrations.
-- Mobile OTA:
-  - `cd mobile-app && npm run update:pilot-live:auto`
-  - Safety gate mobile lolos: typecheck dan parity audit.
-  - EAS update: Android `pilot-live`, update group `090c5a54-ec52-420b-b107-73a598fa0551`, commit `18255791d70e8bc4fb06ad596d0e13840161c83e`.
-  - Push notify update: recipients `3`, sent `3`, failed `0`, stale `0`.
-  - Copy notifikasi OTA mengikuti script existing dan memuat `Silakan perbarui untuk menikmati fitur terbaru.`
-- Verifikasi code:
+- Backend/runtime:
   - `cd backend && npm run build`
+  - `cd backend && npm run service:restart`
+  - `cd backend && npm run service:health`
+  - Health: backend `200`, backend API `200`, PM2 `sis-backend` online setelah reload.
+- Frontend web:
+  - `cd frontend && npm run build`
+  - `cd frontend && npm run deploy`
+  - Live check: `https://siskgb2.id/` `200`.
+- Mobile:
   - `cd mobile-app && npm run typecheck`
   - `cd mobile-app && npm run audit:parity:check`
+  - `cd mobile-app && npm run update:pilot-live:auto`
+  - EAS update: Android `pilot-live`, update group `2a411896-363f-4aa4-bd47-1b89c0e3fa3e`, commit `77ba398d096d76b2fd72d11310254cd73eef0c55`.
+  - Push notify update: recipients `3`, sent `3`, failed `0`, stale `0`.
+- Hygiene:
   - `git diff --check`
 
 ## Langkah Aman Berikutnya
 
-- Untuk task web/mobile berikutnya, jalankan verifikasi minimum lalu deploy web dan/atau publish OTA mobile secara default, kecuali user eksplisit meminta publish ditahan.
-- Jangan paksa `prisma db push --accept-data-loss` tanpa arahan eksplisit dan audit schema, karena deploy web sebelumnya menunjukkan warning drop tabel `exam_sitting_slot_proctors`.
-- Jika lanjut presensi terpadu, batch berikutnya sebaiknya fokus pada visibility operasional TU: gabungkan event siswa dan non-siswa di monitor/rekap, tambahkan riwayat pribadi non-siswa yang layak, dan buat mekanisme manual Sabtu guru duty sesuai konfigurasi TU.
-- Jangan simpan presensi guru/staff ke tabel student-centric. Gunakan `daily_user_presences` dan `daily_user_presence_events` untuk role non-siswa.
-- Pertahankan source of truth tahun ajaran aktif: endpoint policy presensi memakai tahun ajaran aktif dan tidak menambahkan selector tahun ajaran di layar operasional.
+- Jika ada perubahan lanjutan di domain presensi, pertahankan pemisahan tabel student-centric vs non-student (`daily_attendances` vs `daily_user_presences`) dan jangan campur persistence-nya.
+- Pertahankan source of truth tahun ajaran aktif: endpoint operasional presensi tetap mengikuti academic year aktif tanpa selector tambahan di UI.
+- Jika nanti diminta enhancement lanjutan, area aman berikutnya adalah quality-of-life kecil seperti filter riwayat TU, export rekap, atau audit badge, bukan perubahan besar di kontrak runtime.
+- Untuk task web/mobile berikutnya, tetap jalankan verifikasi minimum lalu deploy/publish sesuai policy repo kecuali user minta ditahan.
 
 ## Template Update Wajib Saat Ada Pekerjaan Baru
 
