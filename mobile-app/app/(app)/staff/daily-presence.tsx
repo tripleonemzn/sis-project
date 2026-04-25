@@ -47,7 +47,7 @@ import {
 import { useAppTheme } from '../../../src/theme/AppThemeProvider';
 import { useAppTextScale } from '../../../src/theme/AppTextScaleProvider';
 
-type StaffTabKey = 'SCAN' | 'ASSISTED' | 'HISTORY' | 'CONFIG';
+type StaffTabKey = 'SCAN' | 'MONITOR' | 'ASSISTED' | 'HISTORY' | 'CONFIG';
 
 const DAY_LABELS: Record<DailyPresencePolicyDayKey, string> = {
   MONDAY: 'Senin',
@@ -314,6 +314,209 @@ function SelfScanSessionCard({
   );
 }
 
+function SharedQrMonitorPanel({
+  checkpoint,
+  session,
+  loading,
+  onRefresh,
+}: {
+  checkpoint: DailyPresenceEventType;
+  session: DailyPresenceSelfScanManagerSession | null;
+  loading: boolean;
+  onRefresh: () => void;
+}) {
+  const { colors } = useAppTheme();
+  const { scaleFont, scaleLineHeight, fontSizes } = useAppTextScale();
+  const [ticker, setTicker] = useState(Date.now());
+
+  useEffect(() => {
+    if (!session?.monitor) return;
+    const timer = setInterval(() => setTicker(Date.now()), 1000);
+    return () => clearInterval(timer);
+  }, [session?.monitor?.generatedAt, session?.monitor?.qrExpiresAt]);
+
+  const liveChallengeCode = useMemo(() => {
+    if (!session) return '';
+    return buildDailyPresenceChallengeCode(
+      session.challengeSecret,
+      getDailyPresenceChallengeWindowIndex(new Date(ticker), session.challengeWindowSeconds),
+    );
+  }, [session, ticker]);
+
+  return (
+    <View
+      style={{
+        backgroundColor: colors.surface,
+        borderWidth: 1,
+        borderColor: colors.border,
+        borderRadius: 16,
+        padding: 14,
+        marginBottom: 14,
+      }}
+    >
+      <View
+        style={{
+          flexDirection: 'row',
+          justifyContent: 'space-between',
+          alignItems: 'flex-start',
+          gap: 12,
+        }}
+      >
+        <View style={{ flex: 1 }}>
+          <Text style={{ fontSize: scaleFont(18), lineHeight: scaleLineHeight(24), fontWeight: '700', color: colors.text }}>
+            Monitor QR Bersama
+          </Text>
+          <Text style={{ color: colors.textMuted, fontSize: fontSizes.body, lineHeight: scaleLineHeight(20), marginTop: 4 }}>
+            Tampilkan QR ini di monitor atau TV. QR diperbarui otomatis sesuai konfigurasi presensi aktif.
+          </Text>
+        </View>
+        <Pressable
+          onPress={onRefresh}
+          style={{
+            borderWidth: 1,
+            borderColor: colors.borderSoft,
+            borderRadius: 12,
+            paddingHorizontal: 12,
+            paddingVertical: 10,
+            backgroundColor: colors.surface,
+          }}
+        >
+          <Text style={{ color: colors.text, fontWeight: '700' }}>{loading ? 'Memuat...' : 'Muat Ulang'}</Text>
+        </Pressable>
+      </View>
+
+      {!session ? (
+        <View
+          style={{
+            marginTop: 14,
+            borderWidth: 1,
+            borderColor: colors.borderSoft,
+            borderStyle: 'dashed',
+            borderRadius: 14,
+            padding: 14,
+            backgroundColor: colors.surfaceMuted,
+          }}
+        >
+          <Text style={{ color: colors.textMuted, fontSize: fontSizes.body, lineHeight: scaleLineHeight(20) }}>
+            Belum ada sesi aktif untuk monitor QR {getDailyPresenceCheckpointLabel(checkpoint).toLowerCase()}. Buka sesi lebih dulu.
+          </Text>
+        </View>
+      ) : !session.monitor ? (
+        <View
+          style={{
+            marginTop: 14,
+            borderWidth: 1,
+            borderColor: '#fed7aa',
+            backgroundColor: '#fff7ed',
+            borderRadius: 14,
+            padding: 14,
+          }}
+        >
+          <Text style={{ color: '#c2410c', fontSize: fontSizes.body, lineHeight: scaleLineHeight(20) }}>
+            QR monitor belum siap dimuat. Gunakan tombol muat ulang untuk mengambil QR terbaru.
+          </Text>
+        </View>
+      ) : (
+        <>
+          <View
+            style={{
+              marginTop: 14,
+              borderWidth: 1,
+              borderColor: colors.borderSoft,
+              borderRadius: 20,
+              backgroundColor: colors.surfaceMuted,
+              padding: 12,
+            }}
+          >
+            <View
+              style={{
+                aspectRatio: 1,
+                borderRadius: 16,
+                backgroundColor: '#ffffff',
+                overflow: 'hidden',
+                alignItems: 'center',
+                justifyContent: 'center',
+                padding: 10,
+              }}
+            >
+              <Image
+                source={{ uri: session.monitor.qrCodeDataUrl }}
+                style={{ width: '100%', height: '100%' }}
+                resizeMode="contain"
+              />
+            </View>
+            <Text
+              style={{
+                color: colors.text,
+                fontWeight: '700',
+                textAlign: 'center',
+                marginTop: 10,
+              }}
+            >
+              QR aktif {formatCountdownLabel(session.monitor.qrExpiresAt)}
+            </Text>
+            <Text style={{ color: colors.textMuted, fontSize: fontSizes.caption, textAlign: 'center', marginTop: 4 }}>
+              Refresh tiap {session.monitor.refreshSeconds} detik.
+            </Text>
+          </View>
+
+          <View
+            style={{
+              marginTop: 12,
+              borderWidth: 1,
+              borderColor: '#bfdbfe',
+              backgroundColor: '#eff6ff',
+              borderRadius: 14,
+              padding: 14,
+            }}
+          >
+            <Text style={{ color: '#1d4ed8', fontSize: fontSizes.caption, fontWeight: '700', marginBottom: 6 }}>
+              Checkpoint Aktif
+            </Text>
+            <Text style={{ color: '#0f172a', fontWeight: '800', fontSize: scaleFont(22), lineHeight: scaleLineHeight(28) }}>
+              Absen {getDailyPresenceCheckpointLabel(checkpoint)}
+            </Text>
+            <Text style={{ color: colors.textMuted, fontSize: fontSizes.bodyCompact, marginTop: 8 }}>
+              {session.gateLabel ? `Gate ${session.gateLabel}. ` : 'Gate belum diisi. '}
+              Sesi berakhir {new Date(session.sessionExpiresAt).toLocaleTimeString('id-ID', { hour: '2-digit', minute: '2-digit' })}.
+            </Text>
+          </View>
+
+          <View
+            style={{
+              marginTop: 12,
+              borderWidth: 1,
+              borderColor: colors.borderSoft,
+              borderRadius: 14,
+              backgroundColor: colors.surfaceMuted,
+              padding: 14,
+            }}
+          >
+            <Text style={{ color: colors.text, fontWeight: '700', fontSize: fontSizes.label }}>
+              Kode Challenge Saat Ini
+            </Text>
+            <Text
+              style={{
+                color: colors.text,
+                fontWeight: '800',
+                fontSize: scaleFont(26),
+                lineHeight: scaleLineHeight(32),
+                letterSpacing: 5,
+                marginTop: 8,
+              }}
+            >
+              {liveChallengeCode}
+            </Text>
+            <Text style={{ color: colors.textMuted, fontSize: fontSizes.bodyCompact, marginTop: 6 }}>
+              Kode berganti otomatis {formatCountdownLabel(session.challengeWindowExpiresAt)}.
+            </Text>
+          </View>
+        </>
+      )}
+    </View>
+  );
+}
+
 function ScannerPanel({
   enabled,
   permissionGranted,
@@ -487,9 +690,17 @@ export default function StaffDailyPresenceScreen() {
 
   const managerSessionQuery = useQuery({
     queryKey: ['mobile-staff-daily-presence-self-scan-session', scanCheckpoint],
-    enabled: isAuthenticated && canAccess && tab === 'SCAN',
+    enabled: isAuthenticated && canAccess && (tab === 'SCAN' || tab === 'MONITOR'),
     queryFn: () => attendanceApi.getActiveManagerSelfScanSession({ checkpoint: scanCheckpoint }),
     staleTime: 20 * 1000,
+    refetchInterval: (query) => {
+      if (!(isAuthenticated && canAccess && tab === 'MONITOR')) return false;
+      const session = query.state.data as DailyPresenceSelfScanManagerSession | null | undefined;
+      const refreshSeconds = session?.monitor?.refreshSeconds;
+      if (!refreshSeconds) return 15000;
+      return Math.max(5000, Math.min(15000, Math.floor((refreshSeconds * 1000) / 2)));
+    },
+    refetchIntervalInBackground: true,
   });
 
   const studentsQuery = useQuery({
@@ -699,7 +910,7 @@ export default function StaffDailyPresenceScreen() {
     if (tab === 'CONFIG') {
       void policyQuery.refetch();
     }
-    if (tab === 'SCAN') {
+    if (tab === 'SCAN' || tab === 'MONITOR') {
       void managerSessionQuery.refetch();
     }
     if (tab === 'ASSISTED') {
@@ -758,7 +969,7 @@ export default function StaffDailyPresenceScreen() {
           Presensi Harian
         </Text>
         <Text style={{ color: colors.textMuted, fontSize: fontSizes.body, lineHeight: scaleLineHeight(20), marginBottom: 12 }}>
-          QR scan mandiri untuk siswa, bantuan petugas saat ada kendala perangkat, dan audit harian dalam satu alur.
+          Monitor QR bersama, verifikasi scan mandiri, bantuan petugas, dan audit harian dalam satu alur.
         </Text>
 
         <View
@@ -823,6 +1034,7 @@ export default function StaffDailyPresenceScreen() {
         <MobileMenuTabBar
           items={[
             { key: 'SCAN', label: 'Scan Mandiri', iconName: 'camera' },
+            { key: 'MONITOR', label: 'Monitor QR', iconName: 'monitor' },
             { key: 'ASSISTED', label: 'Bantu Petugas', iconName: 'tool' },
             { key: 'HISTORY', label: 'Riwayat', iconName: 'list' },
             { key: 'CONFIG', label: 'Konfigurasi Jam', iconName: 'settings' },
@@ -834,7 +1046,7 @@ export default function StaffDailyPresenceScreen() {
           style={{ marginBottom: 14 }}
         />
 
-        {tab === 'SCAN' ? (
+        {tab === 'SCAN' || tab === 'MONITOR' ? (
           <>
             <MobileMenuTabBar
               items={[
@@ -848,242 +1060,277 @@ export default function StaffDailyPresenceScreen() {
               style={{ marginBottom: 14 }}
             />
 
-            <View style={{ flexDirection: layout.prefersSplitPane ? 'row' : 'column', gap: 14, marginBottom: 14 }}>
-              <View style={{ flex: layout.prefersSplitPane ? 1.08 : undefined }}>
-                {managerSessionQuery.isLoading ? (
-                  <QueryStateView type="loading" message="Memeriksa sesi scan mandiri..." />
-                ) : managerSessionQuery.isError ? (
-                  <QueryStateView
-                    type="error"
-                    message="Sesi scan mandiri tidak berhasil dimuat."
-                    onRetry={() => managerSessionQuery.refetch()}
-                  />
-                ) : (
-                  <>
-                    <SelfScanSessionCard
-                      checkpoint={scanCheckpoint}
-                      session={activeManagerSession}
-                      pending={startSessionMutation.isPending || closeSessionMutation.isPending}
-                      gateDraft={sessionGateDraft}
-                      onGateDraftChange={setSessionGateDraft}
-                      onStart={() => startSessionMutation.mutate()}
-                      onClose={() => closeSessionMutation.mutate()}
+            {tab === 'SCAN' ? (
+              <View style={{ flexDirection: layout.prefersSplitPane ? 'row' : 'column', gap: 14, marginBottom: 14 }}>
+                <View style={{ flex: layout.prefersSplitPane ? 1.08 : undefined }}>
+                  {managerSessionQuery.isLoading ? (
+                    <QueryStateView type="loading" message="Memeriksa sesi scan mandiri..." />
+                  ) : managerSessionQuery.isError ? (
+                    <QueryStateView
+                      type="error"
+                      message="Sesi scan mandiri tidak berhasil dimuat."
+                      onRetry={() => managerSessionQuery.refetch()}
                     />
-                    <ScannerPanel
-                      enabled={scannerEnabled}
-                      permissionGranted={cameraGranted}
-                      permissionDenied={cameraDenied}
-                      onRequestPermission={() => {
-                        void requestCameraPermission();
-                      }}
-                      onScanned={handleBarcodeScanned}
-                      previewState={scannedPass}
-                      previewLoading={previewMutation.isPending}
-                    />
-                  </>
-                )}
-              </View>
-
-              <View style={{ flex: layout.prefersSplitPane ? 0.92 : undefined }}>
-                <View
-                  style={{
-                    backgroundColor: colors.surface,
-                    borderWidth: 1,
-                    borderColor: colors.border,
-                    borderRadius: 16,
-                    padding: 14,
-                    marginBottom: 14,
-                  }}
-                >
-                  <Text style={{ fontSize: scaleFont(18), lineHeight: scaleLineHeight(24), fontWeight: '700', color: colors.text }}>
-                    Verifikasi Hasil Scan
-                  </Text>
-                  <Text style={{ color: colors.textMuted, fontSize: fontSizes.body, lineHeight: scaleLineHeight(20), marginTop: 4, marginBottom: 12 }}>
-                    Cocokkan nama, kelas, dan foto siswa sebelum konfirmasi.
-                  </Text>
-
-                  {!scannedPass ? (
-                    <View
-                      style={{
-                        borderWidth: 1,
-                        borderColor: colors.borderSoft,
-                        borderStyle: 'dashed',
-                        borderRadius: 14,
-                        padding: 14,
-                        backgroundColor: colors.surfaceMuted,
-                      }}
-                    >
-                      <Text style={{ color: colors.textMuted, fontSize: fontSizes.body, lineHeight: scaleLineHeight(20) }}>
-                        Belum ada QR yang dipindai. Setelah scan berhasil, identitas siswa akan muncul di panel ini.
-                      </Text>
-                    </View>
                   ) : (
                     <>
-                      <View
-                        style={{
-                          flexDirection: 'row',
-                          alignItems: 'center',
-                          borderWidth: 1,
-                          borderColor: '#bfdbfe',
-                          backgroundColor: '#eff6ff',
-                          borderRadius: 14,
-                          padding: 12,
-                          marginBottom: 12,
+                      <SelfScanSessionCard
+                        checkpoint={scanCheckpoint}
+                        session={activeManagerSession}
+                        pending={startSessionMutation.isPending || closeSessionMutation.isPending}
+                        gateDraft={sessionGateDraft}
+                        onGateDraftChange={setSessionGateDraft}
+                        onStart={() => startSessionMutation.mutate()}
+                        onClose={() => closeSessionMutation.mutate()}
+                      />
+                      <ScannerPanel
+                        enabled={scannerEnabled}
+                        permissionGranted={cameraGranted}
+                        permissionDenied={cameraDenied}
+                        onRequestPermission={() => {
+                          void requestCameraPermission();
                         }}
-                      >
-                        <InitialAvatar
-                          name={scannedPass.preview.student.name}
-                          photo={scannedPass.preview.student.photo}
-                        />
-                        <View style={{ flex: 1, marginLeft: 12 }}>
-                          <Text style={{ color: colors.text, fontWeight: '700', marginBottom: 2 }}>
-                            {scannedPass.preview.student.name}
-                          </Text>
-                          <Text style={{ color: colors.textMuted, fontSize: fontSizes.bodyCompact }}>
-                            {scannedPass.preview.student.class.name} • {scannedPass.preview.student.nis || scannedPass.preview.student.nisn || '-'}
-                          </Text>
-                          <Text style={{ color: '#1d4ed8', fontSize: fontSizes.caption, marginTop: 3 }}>
-                            {getDailyPresenceCheckpointLabel(scannedPass.preview.checkpoint)}
-                            {scannedPass.preview.gateLabel ? ` • ${scannedPass.preview.gateLabel}` : ''}
-                          </Text>
-                        </View>
-                      </View>
-
-                      <View
-                        style={{
-                          borderWidth: 1,
-                          borderColor: scannedPass.preview.alreadyRecorded ? '#fecaca' : '#bbf7d0',
-                          backgroundColor: scannedPass.preview.alreadyRecorded ? '#fef2f2' : '#f0fdf4',
-                          borderRadius: 12,
-                          padding: 12,
-                          marginBottom: 12,
-                        }}
-                      >
-                        <Text
-                          style={{
-                            color: scannedPass.preview.alreadyRecorded ? '#b91c1c' : '#15803d',
-                            fontWeight: '700',
-                            marginBottom: 4,
-                          }}
-                        >
-                          {scannedPass.preview.alreadyRecorded
-                            ? `${getDailyPresenceCheckpointLabel(scannedPass.preview.checkpoint)} sudah pernah tercatat`
-                            : 'QR siap dikonfirmasi'}
-                        </Text>
-                        <Text
-                          style={{
-                            color: scannedPass.preview.alreadyRecorded ? '#991b1b' : '#166534',
-                            fontSize: fontSizes.body,
-                            lineHeight: scaleLineHeight(20),
-                          }}
-                        >
-                          {scannedPass.preview.alreadyRecorded
-                            ? 'Minta siswa membuat QR baru hanya jika memang status sebelumnya belum sesuai.'
-                            : 'Tekan konfirmasi hanya jika identitas siswa yang muncul sudah benar.'}
-                        </Text>
-                      </View>
-
-                      <View style={{ flexDirection: 'row', gap: 8 }}>
-                        <Pressable
-                          onPress={() => {
-                            setScannedPass(null);
-                            setPendingScannedToken('');
-                          }}
-                          style={{
-                            flex: 1,
-                            paddingVertical: 12,
-                            borderRadius: 12,
-                            borderWidth: 1,
-                            borderColor: colors.borderSoft,
-                            backgroundColor: colors.surface,
-                            alignItems: 'center',
-                          }}
-                        >
-                          <Text style={{ color: colors.text, fontWeight: '700' }}>Reset Hasil Scan</Text>
-                        </Pressable>
-                        <Pressable
-                          onPress={() => confirmMutation.mutate({ qrToken: scannedPass.qrToken })}
-                          disabled={confirmMutation.isPending || scannedPass.preview.alreadyRecorded}
-                          style={{
-                            flex: 1,
-                            paddingVertical: 12,
-                            borderRadius: 12,
-                            backgroundColor:
-                              confirmMutation.isPending || scannedPass.preview.alreadyRecorded ? '#93c5fd' : '#2563eb',
-                            alignItems: 'center',
-                          }}
-                        >
-                          <Text style={{ color: '#fff', fontWeight: '700' }}>
-                            {confirmMutation.isPending ? 'Mengonfirmasi...' : 'Konfirmasi Scan'}
-                          </Text>
-                        </Pressable>
-                      </View>
+                        onScanned={handleBarcodeScanned}
+                        previewState={scannedPass}
+                        previewLoading={previewMutation.isPending}
+                      />
                     </>
                   )}
                 </View>
 
-                <View
-                  style={{
-                    backgroundColor: colors.surface,
-                    borderWidth: 1,
-                    borderColor: colors.border,
-                    borderRadius: 16,
-                    padding: 14,
-                  }}
-                >
-                  <Text style={{ fontSize: scaleFont(18), lineHeight: scaleLineHeight(24), fontWeight: '700', color: colors.text }}>
-                    Aktivitas Terbaru
-                  </Text>
-                  <Text style={{ color: colors.textMuted, fontSize: fontSizes.body, lineHeight: scaleLineHeight(20), marginTop: 4 }}>
-                    Ringkas untuk petugas agar tetap bisa mengawasi antrean.
-                  </Text>
-                  {!recentEvents.length ? (
-                    <View
-                      style={{
-                        marginTop: 12,
-                        borderWidth: 1,
-                        borderColor: colors.borderSoft,
-                        borderStyle: 'dashed',
-                        borderRadius: 12,
-                        padding: 12,
-                        backgroundColor: colors.surfaceMuted,
-                      }}
-                    >
-                      <Text style={{ color: colors.textMuted, fontSize: fontSizes.body }}>
-                        Belum ada log presensi hari ini.
-                      </Text>
-                    </View>
-                  ) : (
-                    <View style={{ marginTop: 12, gap: 10 }}>
-                      {recentEvents.slice(0, 5).map((event) => (
+                <View style={{ flex: layout.prefersSplitPane ? 0.92 : undefined }}>
+                  <View
+                    style={{
+                      backgroundColor: colors.surface,
+                      borderWidth: 1,
+                      borderColor: colors.border,
+                      borderRadius: 16,
+                      padding: 14,
+                      marginBottom: 14,
+                    }}
+                  >
+                    <Text style={{ fontSize: scaleFont(18), lineHeight: scaleLineHeight(24), fontWeight: '700', color: colors.text }}>
+                      Verifikasi Hasil Scan
+                    </Text>
+                    <Text style={{ color: colors.textMuted, fontSize: fontSizes.body, lineHeight: scaleLineHeight(20), marginTop: 4, marginBottom: 12 }}>
+                      Cocokkan nama, kelas, dan foto siswa sebelum konfirmasi.
+                    </Text>
+
+                    {!scannedPass ? (
+                      <View
+                        style={{
+                          borderWidth: 1,
+                          borderColor: colors.borderSoft,
+                          borderStyle: 'dashed',
+                          borderRadius: 14,
+                          padding: 14,
+                          backgroundColor: colors.surfaceMuted,
+                        }}
+                      >
+                        <Text style={{ color: colors.textMuted, fontSize: fontSizes.body, lineHeight: scaleLineHeight(20) }}>
+                          Belum ada QR yang dipindai. Setelah scan berhasil, identitas siswa akan muncul di panel ini.
+                        </Text>
+                      </View>
+                    ) : (
+                      <>
                         <View
-                          key={event.id}
                           style={{
+                            flexDirection: 'row',
+                            alignItems: 'center',
                             borderWidth: 1,
-                            borderColor: colors.borderSoft,
-                            borderRadius: 12,
+                            borderColor: '#bfdbfe',
+                            backgroundColor: '#eff6ff',
+                            borderRadius: 14,
                             padding: 12,
-                            backgroundColor: colors.surface,
+                            marginBottom: 12,
                           }}
                         >
-                          <View style={{ flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center' }}>
-                            <Text style={{ color: colors.text, fontWeight: '700', flex: 1, paddingRight: 10 }}>
-                              {event.student?.name || '-'}
+                          <InitialAvatar
+                            name={scannedPass.preview.student.name}
+                            photo={scannedPass.preview.student.photo}
+                          />
+                          <View style={{ flex: 1, marginLeft: 12 }}>
+                            <Text style={{ color: colors.text, fontWeight: '700', marginBottom: 2 }}>
+                              {scannedPass.preview.student.name}
                             </Text>
-                            <Text style={{ color: colors.textMuted, fontSize: fontSizes.caption }}>
-                              {event.recordedTime || '-'}
+                            <Text style={{ color: colors.textMuted, fontSize: fontSizes.bodyCompact }}>
+                              {scannedPass.preview.student.class.name} • {scannedPass.preview.student.nis || scannedPass.preview.student.nisn || '-'}
+                            </Text>
+                            <Text style={{ color: '#1d4ed8', fontSize: fontSizes.caption, marginTop: 3 }}>
+                              {getDailyPresenceCheckpointLabel(scannedPass.preview.checkpoint)}
+                              {scannedPass.preview.gateLabel ? ` • ${scannedPass.preview.gateLabel}` : ''}
                             </Text>
                           </View>
-                          <Text style={{ color: colors.textMuted, fontSize: fontSizes.caption, marginTop: 4 }}>
-                            {getEventTypeLabel(event.eventType)} • {getSourceLabel(event.source)}
+                        </View>
+
+                        <View
+                          style={{
+                            borderWidth: 1,
+                            borderColor: scannedPass.preview.alreadyRecorded ? '#fecaca' : '#bbf7d0',
+                            backgroundColor: scannedPass.preview.alreadyRecorded ? '#fef2f2' : '#f0fdf4',
+                            borderRadius: 12,
+                            padding: 12,
+                            marginBottom: 12,
+                          }}
+                        >
+                          <Text
+                            style={{
+                              color: scannedPass.preview.alreadyRecorded ? '#b91c1c' : '#15803d',
+                              fontWeight: '700',
+                              marginBottom: 4,
+                            }}
+                          >
+                            {scannedPass.preview.alreadyRecorded
+                              ? `${getDailyPresenceCheckpointLabel(scannedPass.preview.checkpoint)} sudah pernah tercatat`
+                              : 'QR siap dikonfirmasi'}
+                          </Text>
+                          <Text
+                            style={{
+                              color: scannedPass.preview.alreadyRecorded ? '#991b1b' : '#166534',
+                              fontSize: fontSizes.body,
+                              lineHeight: scaleLineHeight(20),
+                            }}
+                          >
+                            {scannedPass.preview.alreadyRecorded
+                              ? 'Minta siswa membuat QR baru hanya jika memang status sebelumnya belum sesuai.'
+                              : 'Tekan konfirmasi hanya jika identitas siswa yang muncul sudah benar.'}
                           </Text>
                         </View>
-                      ))}
-                    </View>
-                  )}
+
+                        <View style={{ flexDirection: 'row', gap: 8 }}>
+                          <Pressable
+                            onPress={() => {
+                              setScannedPass(null);
+                              setPendingScannedToken('');
+                            }}
+                            style={{
+                              flex: 1,
+                              paddingVertical: 12,
+                              borderRadius: 12,
+                              borderWidth: 1,
+                              borderColor: colors.borderSoft,
+                              backgroundColor: colors.surface,
+                              alignItems: 'center',
+                            }}
+                          >
+                            <Text style={{ color: colors.text, fontWeight: '700' }}>Reset Hasil Scan</Text>
+                          </Pressable>
+                          <Pressable
+                            onPress={() => confirmMutation.mutate({ qrToken: scannedPass.qrToken })}
+                            disabled={confirmMutation.isPending || scannedPass.preview.alreadyRecorded}
+                            style={{
+                              flex: 1,
+                              paddingVertical: 12,
+                              borderRadius: 12,
+                              backgroundColor:
+                                confirmMutation.isPending || scannedPass.preview.alreadyRecorded ? '#93c5fd' : '#2563eb',
+                              alignItems: 'center',
+                            }}
+                          >
+                            <Text style={{ color: '#fff', fontWeight: '700' }}>
+                              {confirmMutation.isPending ? 'Mengonfirmasi...' : 'Konfirmasi Scan'}
+                            </Text>
+                          </Pressable>
+                        </View>
+                      </>
+                    )}
+                  </View>
+
+                  <View
+                    style={{
+                      backgroundColor: colors.surface,
+                      borderWidth: 1,
+                      borderColor: colors.border,
+                      borderRadius: 16,
+                      padding: 14,
+                    }}
+                  >
+                    <Text style={{ fontSize: scaleFont(18), lineHeight: scaleLineHeight(24), fontWeight: '700', color: colors.text }}>
+                      Aktivitas Terbaru
+                    </Text>
+                    <Text style={{ color: colors.textMuted, fontSize: fontSizes.body, lineHeight: scaleLineHeight(20), marginTop: 4 }}>
+                      Ringkas untuk petugas agar tetap bisa mengawasi antrean.
+                    </Text>
+                    {!recentEvents.length ? (
+                      <View
+                        style={{
+                          marginTop: 12,
+                          borderWidth: 1,
+                          borderColor: colors.borderSoft,
+                          borderStyle: 'dashed',
+                          borderRadius: 12,
+                          padding: 12,
+                          backgroundColor: colors.surfaceMuted,
+                        }}
+                      >
+                        <Text style={{ color: colors.textMuted, fontSize: fontSizes.body }}>
+                          Belum ada log presensi hari ini.
+                        </Text>
+                      </View>
+                    ) : (
+                      <View style={{ marginTop: 12, gap: 10 }}>
+                        {recentEvents.slice(0, 5).map((event) => (
+                          <View
+                            key={event.id}
+                            style={{
+                              borderWidth: 1,
+                              borderColor: colors.borderSoft,
+                              borderRadius: 12,
+                              padding: 12,
+                              backgroundColor: colors.surface,
+                            }}
+                          >
+                            <View style={{ flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center' }}>
+                              <Text style={{ color: colors.text, fontWeight: '700', flex: 1, paddingRight: 10 }}>
+                                {event.student?.name || '-'}
+                              </Text>
+                              <Text style={{ color: colors.textMuted, fontSize: fontSizes.caption }}>
+                                {event.recordedTime || '-'}
+                              </Text>
+                            </View>
+                            <Text style={{ color: colors.textMuted, fontSize: fontSizes.caption, marginTop: 4 }}>
+                              {getEventTypeLabel(event.eventType)} • {getSourceLabel(event.source)}
+                            </Text>
+                          </View>
+                        ))}
+                      </View>
+                    )}
+                  </View>
                 </View>
               </View>
-            </View>
+            ) : managerSessionQuery.isLoading ? (
+              <QueryStateView type="loading" message="Memeriksa sesi monitor QR..." />
+            ) : managerSessionQuery.isError ? (
+              <QueryStateView
+                type="error"
+                message="Monitor QR tidak berhasil dimuat."
+                onRetry={() => managerSessionQuery.refetch()}
+              />
+            ) : (
+              <View style={{ flexDirection: layout.prefersSplitPane ? 'row' : 'column', gap: 14, marginBottom: 14 }}>
+                <View style={{ flex: layout.prefersSplitPane ? 0.92 : undefined }}>
+                  <SelfScanSessionCard
+                    checkpoint={scanCheckpoint}
+                    session={activeManagerSession}
+                    pending={startSessionMutation.isPending || closeSessionMutation.isPending}
+                    gateDraft={sessionGateDraft}
+                    onGateDraftChange={setSessionGateDraft}
+                    onStart={() => startSessionMutation.mutate()}
+                    onClose={() => closeSessionMutation.mutate()}
+                  />
+                </View>
+
+                <View style={{ flex: layout.prefersSplitPane ? 1.08 : undefined }}>
+                  <SharedQrMonitorPanel
+                    checkpoint={scanCheckpoint}
+                    session={activeManagerSession}
+                    loading={managerSessionQuery.isFetching}
+                    onRefresh={() => {
+                      void managerSessionQuery.refetch();
+                    }}
+                  />
+                </View>
+              </View>
+            )}
           </>
         ) : null}
 

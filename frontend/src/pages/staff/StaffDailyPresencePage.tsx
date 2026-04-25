@@ -3,6 +3,7 @@ import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import {
   CheckCircle2,
   ClipboardCheck,
+  QrCode,
   Settings2,
   Loader2,
   LogIn,
@@ -35,7 +36,7 @@ import {
 } from '../../utils/dailyPresenceSelfScan';
 import { resolveStaffDivision } from '../../utils/staffRole';
 
-type StaffTabKey = 'SCAN' | 'ASSISTED' | 'HISTORY' | 'CONFIG';
+type StaffTabKey = 'SCAN' | 'MONITOR' | 'ASSISTED' | 'HISTORY' | 'CONFIG';
 
 const DAY_LABELS: Record<DailyPresencePolicyDayKey, string> = {
   MONDAY: 'Senin',
@@ -308,6 +309,114 @@ function SelfScanSessionCard({
   );
 }
 
+function SharedQrMonitorPanel({
+  checkpoint,
+  session,
+  loading,
+  onRefresh,
+}: {
+  checkpoint: DailyPresenceEventType;
+  session: DailyPresenceSelfScanManagerSession | null;
+  loading: boolean;
+  onRefresh: () => void;
+}) {
+  const [ticker, setTicker] = useState(Date.now());
+
+  useEffect(() => {
+    if (!session?.monitor) return undefined;
+    const timer = window.setInterval(() => setTicker(Date.now()), 1000);
+    return () => window.clearInterval(timer);
+  }, [session?.monitor?.generatedAt, session?.monitor?.qrExpiresAt]);
+
+  const liveChallengeCode = useMemo(() => {
+    if (!session) return '';
+    return buildDailyPresenceChallengeCode(
+      session.challengeSecret,
+      getDailyPresenceChallengeWindowIndex(new Date(ticker), session.challengeWindowSeconds),
+    );
+  }, [session, ticker]);
+
+  return (
+    <div className="rounded-2xl border border-slate-200 bg-white p-5 shadow-sm">
+      <div className="flex items-start justify-between gap-3">
+        <div>
+          <h3 className="text-lg font-semibold text-slate-900">Monitor QR Bersama</h3>
+          <p className="mt-1 text-sm text-slate-500">
+            Tampilkan QR ini di monitor/TV. QR diperbarui otomatis sesuai konfigurasi presensi aktif.
+          </p>
+        </div>
+        <button
+          type="button"
+          onClick={onRefresh}
+          className="inline-flex items-center gap-2 rounded-xl border border-slate-300 bg-white px-3 py-2 text-sm font-semibold text-slate-700 transition hover:bg-slate-50"
+        >
+          <RefreshCcw className={`h-4 w-4 ${loading ? 'animate-spin' : ''}`} />
+          Muat Ulang
+        </button>
+      </div>
+
+      {!session ? (
+        <div className="mt-5 rounded-xl border border-dashed border-slate-300 bg-slate-50 px-4 py-5 text-sm text-slate-500">
+          Belum ada sesi aktif untuk monitor QR {getDailyPresenceCheckpointLabel(checkpoint).toLowerCase()}. Buka sesi lebih dulu.
+        </div>
+      ) : !session.monitor ? (
+        <div className="mt-5 rounded-xl border border-amber-200 bg-amber-50 px-4 py-5 text-sm text-amber-700">
+          QR monitor belum siap dimuat. Gunakan tombol muat ulang untuk mengambil QR terbaru.
+        </div>
+      ) : (
+        <>
+          <div className="mt-5 grid gap-4 xl:grid-cols-[minmax(0,360px),1fr]">
+            <div className="rounded-3xl border border-slate-200 bg-slate-50 p-4">
+              <div className="flex aspect-square items-center justify-center rounded-2xl bg-white p-4 shadow-inner">
+                <img
+                  src={session.monitor.qrCodeDataUrl}
+                  alt={`QR monitor ${getDailyPresenceCheckpointLabel(checkpoint)}`}
+                  className="h-full w-full rounded-2xl object-contain"
+                />
+              </div>
+              <p className="mt-3 text-center text-sm font-semibold text-slate-700">
+                QR aktif {formatCountdownLabel(session.monitor.qrExpiresAt)}
+              </p>
+              <p className="mt-1 text-center text-xs text-slate-500">
+                Refresh tiap {session.monitor.refreshSeconds} detik.
+              </p>
+            </div>
+
+            <div className="space-y-3">
+              <div className="rounded-2xl border border-blue-200 bg-blue-50 p-4">
+                <p className="text-xs font-semibold uppercase tracking-[0.22em] text-blue-700">Checkpoint Aktif</p>
+                <p className="mt-2 text-2xl font-bold text-slate-900">
+                  Absen {getDailyPresenceCheckpointLabel(checkpoint)}
+                </p>
+                <p className="mt-2 text-sm text-slate-600">
+                  {session.gateLabel ? `Gate ${session.gateLabel}. ` : 'Gate belum diisi. '}
+                  Sesi berakhir {formatTimeLabel(session.sessionExpiresAt)}.
+                </p>
+              </div>
+
+              <div className="rounded-2xl border border-slate-200 bg-slate-50 p-4">
+                <p className="text-sm font-semibold text-slate-900">Kode Challenge Saat Ini</p>
+                <p className="mt-2 text-3xl font-extrabold tracking-[0.28em] text-slate-900">{liveChallengeCode}</p>
+                <p className="mt-2 text-sm text-slate-500">
+                  Kode berganti otomatis {formatCountdownLabel(session.challengeWindowExpiresAt)}.
+                </p>
+              </div>
+
+              <div className="rounded-2xl border border-slate-200 bg-slate-50 p-4">
+                <p className="text-sm font-semibold text-slate-900">Petugas Pembuka</p>
+                <p className="mt-1 text-sm text-slate-600">{session.actor.name}</p>
+                <p className="mt-1 text-xs text-slate-500">
+                  Tanggal operasional {formatTodayLabel(session.date)}.
+                </p>
+              </div>
+            </div>
+          </div>
+        </>
+      )}
+    </div>
+  );
+}
+
 function ScanPreviewPanel({
   scannedPass,
   confirmPending,
@@ -479,9 +588,17 @@ export default function StaffDailyPresencePage() {
 
   const managerSessionQuery = useQuery({
     queryKey: ['staff-daily-presence-self-scan-session', scanCheckpoint],
-    enabled: canAccess && activeTab === 'SCAN',
+    enabled: canAccess && (activeTab === 'SCAN' || activeTab === 'MONITOR'),
     queryFn: () => attendanceService.getActiveManagerSelfScanSession({ checkpoint: scanCheckpoint }),
     staleTime: 20 * 1000,
+    refetchInterval: (query) => {
+      if (!(canAccess && activeTab === 'MONITOR')) return false;
+      const session = query.state.data as DailyPresenceSelfScanManagerSession | null | undefined;
+      const refreshSeconds = session?.monitor?.refreshSeconds;
+      if (!refreshSeconds) return 15000;
+      return Math.max(5000, Math.min(15000, Math.floor((refreshSeconds * 1000) / 2)));
+    },
+    refetchIntervalInBackground: true,
   });
 
   const studentsQuery = useQuery({
@@ -686,7 +803,7 @@ export default function StaffDailyPresencePage() {
     if (activeTab === 'CONFIG') {
       await policyQuery.refetch();
     }
-    if (activeTab === 'SCAN') {
+    if (activeTab === 'SCAN' || activeTab === 'MONITOR') {
       await managerSessionQuery.refetch();
     }
     if (activeTab === 'ASSISTED') {
@@ -727,7 +844,7 @@ export default function StaffDailyPresencePage() {
           <div>
             <h1 className="text-2xl font-bold text-slate-900">Presensi Harian</h1>
             <p className="mt-2 text-sm text-slate-600">
-              QR scan mandiri untuk siswa, bantuan petugas saat ada kendala perangkat, dan audit harian dalam satu alur.
+              Monitor QR bersama, verifikasi scan mandiri, bantuan petugas, dan audit harian dalam satu alur.
             </p>
           </div>
           <button
@@ -797,6 +914,7 @@ export default function StaffDailyPresencePage() {
         <div className="flex flex-wrap gap-2">
           {[
             { key: 'SCAN' as const, label: 'Scan Mandiri', icon: ScanLine },
+            { key: 'MONITOR' as const, label: 'Monitor QR', icon: QrCode },
             { key: 'ASSISTED' as const, label: 'Bantu Petugas', icon: ShieldCheck },
             { key: 'HISTORY' as const, label: 'Riwayat', icon: ClipboardCheck },
             { key: 'CONFIG' as const, label: 'Konfigurasi Jam', icon: Settings2 },
@@ -822,7 +940,7 @@ export default function StaffDailyPresencePage() {
         </div>
       </div>
 
-      {activeTab === 'SCAN' ? (
+      {activeTab === 'SCAN' || activeTab === 'MONITOR' ? (
         <>
           <div className="rounded-2xl border border-slate-200 bg-white p-3 shadow-sm">
             <div className="flex flex-wrap gap-2">
@@ -848,8 +966,45 @@ export default function StaffDailyPresencePage() {
             </div>
           </div>
 
-          <div className="grid gap-6 xl:grid-cols-[0.96fr,1.2fr]">
-            <div className="space-y-4">
+          {activeTab === 'SCAN' ? (
+            <div className="grid gap-6 xl:grid-cols-[0.96fr,1.2fr]">
+              <div className="space-y-4">
+                <SelfScanSessionCard
+                  checkpoint={scanCheckpoint}
+                  session={activeManagerSession}
+                  loading={managerSessionQuery.isFetching}
+                  gateDraft={sessionGateDraft}
+                  onGateDraftChange={setSessionGateDraft}
+                  onRefresh={() => {
+                    void managerSessionQuery.refetch();
+                  }}
+                  onStart={() => startSessionMutation.mutate()}
+                  onClose={() => closeSessionMutation.mutate()}
+                  pending={startSessionMutation.isPending || closeSessionMutation.isPending}
+                />
+                <WebQrScannerPanel
+                  enabled={scannerEnabled}
+                  busy={scanBusy}
+                  onDetected={handleDetectedQrToken}
+                />
+              </div>
+
+              <ScanPreviewPanel
+                scannedPass={scannedPass}
+                confirmPending={confirmMutation.isPending}
+                onReset={() => {
+                  setScannedPass(null);
+                  setPendingScannedToken('');
+                }}
+                onConfirm={() => {
+                  if (!scannedPass) return;
+                  confirmMutation.mutate({ qrToken: scannedPass.qrToken });
+                }}
+                events={recentEvents}
+              />
+            </div>
+          ) : (
+            <div className="grid gap-6 xl:grid-cols-[0.96fr,1.2fr]">
               <SelfScanSessionCard
                 checkpoint={scanCheckpoint}
                 session={activeManagerSession}
@@ -863,27 +1018,16 @@ export default function StaffDailyPresencePage() {
                 onClose={() => closeSessionMutation.mutate()}
                 pending={startSessionMutation.isPending || closeSessionMutation.isPending}
               />
-              <WebQrScannerPanel
-                enabled={scannerEnabled}
-                busy={scanBusy}
-                onDetected={handleDetectedQrToken}
+              <SharedQrMonitorPanel
+                checkpoint={scanCheckpoint}
+                session={activeManagerSession}
+                loading={managerSessionQuery.isFetching}
+                onRefresh={() => {
+                  void managerSessionQuery.refetch();
+                }}
               />
             </div>
-
-            <ScanPreviewPanel
-              scannedPass={scannedPass}
-              confirmPending={confirmMutation.isPending}
-              onReset={() => {
-                setScannedPass(null);
-                setPendingScannedToken('');
-              }}
-              onConfirm={() => {
-                if (!scannedPass) return;
-                confirmMutation.mutate({ qrToken: scannedPass.qrToken });
-              }}
-              events={recentEvents}
-            />
-          </div>
+          )}
         </>
       ) : null}
 

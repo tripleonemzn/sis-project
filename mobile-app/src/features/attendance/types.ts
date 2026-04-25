@@ -141,6 +141,15 @@ export type DailyPresenceSelfScanSession = {
   sessionExpiresAt: string;
 };
 
+export type DailyPresenceSelfScanMonitor = {
+  qrToken: string;
+  qrCodeDataUrl: string;
+  qrExpiresAt: string;
+  refreshSeconds: number;
+  challengeCode: string;
+  generatedAt: string;
+};
+
 export type DailyPresenceSelfScanManagerSession = DailyPresenceSelfScanSession & {
   actor: {
     id: number;
@@ -148,6 +157,7 @@ export type DailyPresenceSelfScanManagerSession = DailyPresenceSelfScanSession &
   };
   challengeSecret: string;
   challengeCode: string;
+  monitor?: DailyPresenceSelfScanMonitor | null;
 };
 
 export type DailyPresenceSelfScanPass = {

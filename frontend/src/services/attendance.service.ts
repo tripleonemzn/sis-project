@@ -222,6 +222,15 @@ export interface DailyPresenceSelfScanSession {
   sessionExpiresAt: string;
 }
 
+export interface DailyPresenceSelfScanMonitor {
+  qrToken: string;
+  qrCodeDataUrl: string;
+  qrExpiresAt: string;
+  refreshSeconds: number;
+  challengeCode: string;
+  generatedAt: string;
+}
+
 export interface DailyPresenceSelfScanManagerSession extends DailyPresenceSelfScanSession {
   actor: {
     id: number;
@@ -229,6 +238,7 @@ export interface DailyPresenceSelfScanManagerSession extends DailyPresenceSelfSc
   };
   challengeSecret: string;
   challengeCode: string;
+  monitor?: DailyPresenceSelfScanMonitor | null;
 }
 
 export interface DailyPresenceSelfScanPass {

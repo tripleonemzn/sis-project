@@ -8,6 +8,7 @@ import { broadcastDomainEvent } from '../realtime/realtimeGateway';
 import { createManyInAppNotifications } from '../services/mobilePushNotification.service';
 import {
   DAILY_PRESENCE_SELF_SCAN_QR_TOKEN_TTL_SECONDS,
+  buildDailyPresenceSelfScanMonitorPayload,
   buildDailyPresenceSelfScanQrToken,
   buildDailyPresenceSelfScanSessionManagerPayload,
   buildDailyPresenceSelfScanSessionPublicPayload,
@@ -317,6 +318,44 @@ function normalizeDailyPresencePolicy(rawPolicy: unknown) {
 
 function getJsonObject(value: unknown): Record<string, unknown> {
   return value && typeof value === 'object' && !Array.isArray(value) ? { ...(value as Record<string, unknown>) } : {};
+}
+
+async function getStoredDailyPresencePolicy(activeAcademicYearId: number) {
+  const timeConfig = await prisma.scheduleTimeConfig.findUnique({
+    where: { academicYearId: activeAcademicYearId },
+    select: {
+      id: true,
+      config: true,
+      updatedAt: true,
+    },
+  });
+  const configObject = getJsonObject(timeConfig?.config);
+
+  return {
+    policy: normalizeDailyPresencePolicy(configObject.dailyPresencePolicy),
+    source: timeConfig ? 'SAVED' : 'DEFAULT',
+    updatedAt: timeConfig?.updatedAt?.toISOString() || null,
+  } as const;
+}
+
+async function buildManagerSelfScanSessionPayload(params: {
+  session: Awaited<ReturnType<typeof getActiveDailyPresenceSelfScanSession>>;
+  activeAcademicYearId: number;
+  now?: Date;
+}) {
+  if (!params.session) return null;
+  const now = params.now instanceof Date ? params.now : new Date();
+  const { policy } = await getStoredDailyPresencePolicy(params.activeAcademicYearId);
+  const monitor = await buildDailyPresenceSelfScanMonitorPayload({
+    session: params.session,
+    refreshSeconds: policy.qrRefreshSeconds,
+    now,
+  });
+
+  return buildDailyPresenceSelfScanSessionManagerPayload(params.session, {
+    now,
+    monitor,
+  });
 }
 
 async function getOperationalStudentOrThrow(studentId: number, activeAcademicYearId: number) {
@@ -723,18 +762,7 @@ export const getDailyPresencePolicy = asyncHandler(async (req: Request, res: Res
   const user = (req as any).user;
   await getPresenceManagerProfile(Number(user?.id || 0));
   const activeAcademicYear = await getActiveAcademicYearOrThrow();
-  const timeConfig = await prisma.scheduleTimeConfig.findUnique({
-    where: { academicYearId: activeAcademicYear.id },
-    select: {
-      id: true,
-      academicYearId: true,
-      config: true,
-      createdAt: true,
-      updatedAt: true,
-    },
-  });
-  const configObject = getJsonObject(timeConfig?.config);
-  const policy = normalizeDailyPresencePolicy(configObject.dailyPresencePolicy);
+  const { policy, source, updatedAt } = await getStoredDailyPresencePolicy(activeAcademicYear.id);
 
   res.status(200).json(
     new ApiResponse(
@@ -742,8 +770,8 @@ export const getDailyPresencePolicy = asyncHandler(async (req: Request, res: Res
       {
         academicYear: activeAcademicYear,
         policy,
-        source: timeConfig ? 'SAVED' : 'DEFAULT',
-        updatedAt: timeConfig?.updatedAt?.toISOString() || null,
+        source,
+        updatedAt,
       },
       'Konfigurasi jam presensi harian berhasil diambil',
     ),
@@ -824,12 +852,17 @@ export const getActiveSelfScanSession = asyncHandler(async (req: Request, res: R
   const activeAcademicYear = await getActiveAcademicYearOrThrow();
   const dateKey = getJakartaDateKey();
   const session = await getActiveDailyPresenceSelfScanSession(checkpoint);
+  const now = new Date();
 
   const data =
     session && session.academicYearId === activeAcademicYear.id && session.dateKey === dateKey
       ? isStudent
-        ? buildDailyPresenceSelfScanSessionPublicPayload(session)
-        : buildDailyPresenceSelfScanSessionManagerPayload(session)
+        ? buildDailyPresenceSelfScanSessionPublicPayload(session, now)
+        : await buildManagerSelfScanSessionPayload({
+            session,
+            activeAcademicYearId: activeAcademicYear.id,
+            now,
+          })
       : null;
 
   res.status(200).json(
@@ -859,6 +892,12 @@ export const startSelfScanSession = asyncHandler(async (req: Request, res: Respo
     academicYearId: activeAcademicYear.id,
     dateKey,
   });
+  const now = new Date();
+  const managerPayload = await buildManagerSelfScanSessionPayload({
+    session,
+    activeAcademicYearId: activeAcademicYear.id,
+    now,
+  });
 
   broadcastDomainEvent({
     domain: 'ATTENDANCE',
@@ -877,7 +916,7 @@ export const startSelfScanSession = asyncHandler(async (req: Request, res: Respo
       200,
       {
         academicYear: activeAcademicYear,
-        session: buildDailyPresenceSelfScanSessionManagerPayload(session),
+        session: managerPayload,
       },
       checkpoint === 'CHECK_IN'
         ? 'Sesi scan mandiri masuk berhasil dibuka.'

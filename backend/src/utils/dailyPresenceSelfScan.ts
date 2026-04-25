@@ -2,6 +2,7 @@ import { createHash, randomBytes } from 'crypto';
 import fs from 'fs/promises';
 import path from 'path';
 import jwt from 'jsonwebtoken';
+import QRCode from 'qrcode';
 import { ApiError } from './api';
 
 export type DailyPresenceCheckpoint = 'CHECK_IN' | 'CHECK_OUT';
@@ -29,11 +30,30 @@ type DailyPresenceSelfScanQrTokenPayload = {
   dateKey: string;
 };
 
+type DailyPresenceSelfScanMonitorQrTokenPayload = {
+  tokenType: 'daily-presence-self-scan-monitor';
+  sessionId: string;
+  checkpoint: DailyPresenceCheckpoint;
+  academicYearId: number;
+  dateKey: string;
+  challengeCode: string;
+};
+
+export type DailyPresenceSelfScanMonitorPayload = {
+  qrToken: string;
+  qrCodeDataUrl: string;
+  qrExpiresAt: string;
+  refreshSeconds: number;
+  challengeCode: string;
+  generatedAt: string;
+};
+
 const ACTIVE_SESSION_TTL_MS = 4 * 60 * 60 * 1000;
 const QR_TOKEN_TTL_SECONDS = 12;
 const CHALLENGE_WINDOW_SECONDS = 30;
 const CHALLENGE_ALLOWED_DRIFT_WINDOWS = 1;
 const CONSUMED_QR_TOKEN_CACHE_TTL_MS = 2 * 60 * 1000;
+const MIN_MONITOR_QR_REFRESH_SECONDS = 10;
 const JWT_SIGNING_SECRET = process.env.JWT_SECRET || 'secret';
 const RUNTIME_ROOT = path.resolve(process.cwd(), '.runtime', 'daily-presence-self-scan');
 const ACTIVE_SESSION_DIR = path.join(RUNTIME_ROOT, 'sessions');
@@ -41,6 +61,16 @@ const CONSUMED_QR_TOKEN_DIR = path.join(RUNTIME_ROOT, 'consumed');
 
 export const DAILY_PRESENCE_SELF_SCAN_QR_TOKEN_TTL_SECONDS = QR_TOKEN_TTL_SECONDS;
 export const DAILY_PRESENCE_SELF_SCAN_CHALLENGE_WINDOW_SECONDS = CHALLENGE_WINDOW_SECONDS;
+
+export function normalizeDailyPresenceMonitorRefreshSeconds(value: unknown) {
+  const fallback = CHALLENGE_WINDOW_SECONDS;
+  const numericValue = Number(value);
+  if (!Number.isFinite(numericValue)) return fallback;
+  return Math.max(
+    MIN_MONITOR_QR_REFRESH_SECONDS,
+    Math.min(CHALLENGE_WINDOW_SECONDS, Math.floor(numericValue)),
+  );
+}
 
 function normalizeCheckpoint(value: unknown): DailyPresenceCheckpoint {
   return value === 'CHECK_OUT' ? 'CHECK_OUT' : 'CHECK_IN';
@@ -242,6 +272,60 @@ export async function closeActiveDailyPresenceSelfScanSession(checkpoint: DailyP
   await safeUnlink(getActiveSessionFilePath(checkpoint));
 }
 
+export function buildDailyPresenceSelfScanMonitorQrToken(params: {
+  session: ActiveDailyPresenceSelfScanSession;
+  challengeCode: string;
+  refreshSeconds?: number;
+}) {
+  const refreshSeconds = normalizeDailyPresenceMonitorRefreshSeconds(params.refreshSeconds);
+  const payload: DailyPresenceSelfScanMonitorQrTokenPayload = {
+    tokenType: 'daily-presence-self-scan-monitor',
+    sessionId: params.session.sessionId,
+    checkpoint: params.session.checkpoint,
+    academicYearId: Number(params.session.academicYearId),
+    dateKey: params.session.dateKey,
+    challengeCode: String(params.challengeCode || '').trim(),
+  };
+
+  return jwt.sign(payload, JWT_SIGNING_SECRET, {
+    algorithm: 'HS256',
+    expiresIn: refreshSeconds,
+  });
+}
+
+export async function buildDailyPresenceSelfScanMonitorPayload(params: {
+  session: ActiveDailyPresenceSelfScanSession;
+  refreshSeconds?: number;
+  now?: Date;
+}) {
+  const now = params.now instanceof Date ? params.now : new Date();
+  const refreshSeconds = normalizeDailyPresenceMonitorRefreshSeconds(params.refreshSeconds);
+  const challengeCode = buildDailyPresenceChallengeCode(params.session.challengeSecret, getChallengeWindowIndex(now));
+  const qrToken = buildDailyPresenceSelfScanMonitorQrToken({
+    session: params.session,
+    challengeCode,
+    refreshSeconds,
+  });
+  const qrCodeDataUrl = await QRCode.toDataURL(qrToken, {
+    errorCorrectionLevel: 'M',
+    margin: 1,
+    width: 360,
+    color: {
+      dark: '#0f172a',
+      light: '#ffffff',
+    },
+  });
+
+  return {
+    qrToken,
+    qrCodeDataUrl,
+    qrExpiresAt: new Date(now.getTime() + refreshSeconds * 1000).toISOString(),
+    refreshSeconds,
+    challengeCode,
+    generatedAt: now.toISOString(),
+  } satisfies DailyPresenceSelfScanMonitorPayload;
+}
+
 export function buildDailyPresenceSelfScanQrToken(params: {
   session: ActiveDailyPresenceSelfScanSession;
   studentId: number;
@@ -324,8 +408,15 @@ export async function consumeDailyPresenceSelfScanQrToken(rawToken: string) {
 
 export function buildDailyPresenceSelfScanSessionManagerPayload(
   session: ActiveDailyPresenceSelfScanSession,
-  now = new Date(),
+  nowOrOptions:
+    | Date
+    | {
+        now?: Date;
+        monitor?: DailyPresenceSelfScanMonitorPayload | null;
+      } = new Date(),
 ) {
+  const now = nowOrOptions instanceof Date ? nowOrOptions : nowOrOptions.now instanceof Date ? nowOrOptions.now : new Date();
+  const monitor = nowOrOptions instanceof Date ? null : nowOrOptions.monitor || null;
   const challengeWindowExpiresAt = getChallengeWindowExpiresAt(now);
   const challengeCode = buildDailyPresenceChallengeCode(session.challengeSecret, getChallengeWindowIndex(now));
   return {
@@ -342,6 +433,7 @@ export function buildDailyPresenceSelfScanSessionManagerPayload(
     challengeWindowSeconds: CHALLENGE_WINDOW_SECONDS,
     challengeWindowExpiresAt: challengeWindowExpiresAt.toISOString(),
     sessionExpiresAt: new Date(session.expiresAt).toISOString(),
+    monitor,
   };
 }
 
