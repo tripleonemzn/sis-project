@@ -154,6 +154,27 @@ export type DailyPresenceSelfScanPreview = {
   alreadyRecorded: boolean;
 };
 
+export type DailyPresenceOperationalStudent = {
+  id: number;
+  username: string;
+  name: string;
+  nis?: string | null;
+  nisn?: string | null;
+  photo?: string | null;
+  studentStatus?: string | null;
+  verificationStatus?: string | null;
+  studentClass?: {
+    id: number;
+    name: string;
+    level?: string | null;
+    major?: {
+      id: number;
+      name: string;
+      code?: string | null;
+    } | null;
+  } | null;
+};
+
 export type TeacherAttendanceStatus = 'PRESENT' | 'ABSENT' | 'SICK' | 'PERMISSION' | 'LATE';
 
 export type TeacherSubjectAttendanceRecord = {

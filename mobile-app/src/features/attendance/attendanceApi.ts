@@ -2,6 +2,7 @@ import { apiClient } from '../../lib/api/client';
 import {
   DailyAttendanceEntry,
   DailyLateSummaryPayload,
+  DailyPresenceOperationalStudent,
   DailyPresenceSelfScanManagerSession,
   DailyPresenceSelfScanPass,
   DailyPresenceSelfScanPreview,
@@ -45,6 +46,13 @@ type MutationResponse = {
   success: boolean;
   message: string;
   data: unknown;
+};
+
+type ApiListResponse<T> = {
+  statusCode: number;
+  success: boolean;
+  message: string;
+  data: T[];
 };
 
 type DailyPresenceOverviewResponse = {
@@ -155,6 +163,18 @@ export const attendanceApi = {
       params,
     });
     return response.data?.data;
+  },
+  async getDailyPresenceStudents(params?: { query?: string; limit?: number }) {
+    const response = await apiClient.get<ApiListResponse<DailyPresenceOperationalStudent>>(
+      '/attendances/daily-presence/students',
+      {
+        params: {
+          q: params?.query,
+          limit: params?.limit,
+        },
+      },
+    );
+    return response.data?.data || [];
   },
   async getStudentDailyPresence(params: { studentId: number; date?: string }) {
     const response = await apiClient.get<DailyPresenceStudentResponse>('/attendances/daily-presence/student', {

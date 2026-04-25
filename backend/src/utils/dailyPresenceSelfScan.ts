@@ -197,8 +197,8 @@ export function verifyDailyPresenceChallengeCode(
   if (normalizedChallenge.length !== 6) return false;
 
   const currentWindow = getChallengeWindowIndex(now);
-  for (let offset = 0; offset <= CHALLENGE_ALLOWED_DRIFT_WINDOWS; offset += 1) {
-    const candidate = buildDailyPresenceChallengeCode(session.challengeSecret, currentWindow - offset);
+  for (let offset = -CHALLENGE_ALLOWED_DRIFT_WINDOWS; offset <= CHALLENGE_ALLOWED_DRIFT_WINDOWS; offset += 1) {
+    const candidate = buildDailyPresenceChallengeCode(session.challengeSecret, currentWindow + offset);
     if (candidate === normalizedChallenge) {
       return true;
     }

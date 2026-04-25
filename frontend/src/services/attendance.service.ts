@@ -235,6 +235,26 @@ export interface DailyPresenceSelfScanPreview {
   alreadyRecorded: boolean;
 }
 
+export interface DailyPresenceOperationalStudent {
+  id: number;
+  username: string;
+  name: string;
+  nis?: string | null;
+  nisn?: string | null;
+  photo?: string | null;
+  studentStatus?: string | null;
+  verificationStatus?: string | null;
+  studentClass?: {
+    id: number;
+    name: string;
+    major?: {
+      id: number;
+      name: string;
+      code?: string | null;
+    } | null;
+  } | null;
+}
+
 export const attendanceService = {
   // Get subject attendance by date
   getSubjectAttendance: async (params: {
@@ -317,8 +337,25 @@ export const attendanceService = {
     return response.data.data;
   },
 
+  getDailyPresenceStudents: async (params?: { query?: string; limit?: number }) => {
+    const response = await api.get<{ data: DailyPresenceOperationalStudent[] }>('/attendances/daily-presence/students', {
+      params: {
+        q: params?.query,
+        limit: params?.limit,
+      },
+    });
+    return response.data.data;
+  },
+
   getStudentDailyPresence: async (params: { studentId: number; date?: string }) => {
     const response = await api.get<{ data: DailyPresenceStudentState }>('/attendances/daily-presence/student', {
+      params,
+    });
+    return response.data.data;
+  },
+
+  getOwnDailyPresence: async (params?: { date?: string }) => {
+    const response = await api.get<{ data: DailyPresenceStudentState }>('/attendances/daily-presence/me', {
       params,
     });
     return response.data.data;
@@ -372,6 +409,17 @@ export const attendanceService = {
 
   closeSelfScanSession: async (payload: { checkpoint: DailyPresenceEventType }) => {
     await api.post('/attendances/daily-presence/self-scan/session/close', payload);
+  },
+
+  createSelfScanPass: async (payload: {
+    checkpoint: DailyPresenceEventType;
+    challengeCode: string;
+  }) => {
+    const response = await api.post<{ data: DailyPresenceSelfScanPass }>(
+      '/attendances/daily-presence/self-scan/pass',
+      payload,
+    );
+    return response.data.data;
   },
 
   previewSelfScanPass: async (payload: { qrToken: string }) => {

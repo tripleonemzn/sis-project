@@ -95,6 +95,8 @@ const GRADE_REPORT_QUERY_PREFIXES = [
 const ATTENDANCE_QUERY_PREFIXES = [
   'mobile-teacher-subject-attendance',
   'mobile-student-attendance',
+  'mobile-student-daily-presence-me',
+  'mobile-student-self-scan-session',
   'mobile-student-class-attendance',
   'mobile-homeroom-daily',
   'mobile-homeroom-recap',
@@ -102,6 +104,9 @@ const ATTENDANCE_QUERY_PREFIXES = [
   'mobile-principal-attendance-recap',
   'mobile-admin-academic-late-summary',
   'mobile-wakakur-reports-attendance',
+  'mobile-staff-daily-presence-overview',
+  'mobile-staff-daily-presence-self-scan-session',
+  'mobile-staff-daily-presence-student',
 ];
 const PROCTORING_QUERY_PREFIXES = [
   'mobile-proctoring-schedules',
@@ -223,7 +228,7 @@ const MUTATION_QUERY_TARGETS: Array<{ pattern: RegExp; queryKeyPrefixes: string[
     queryKeyPrefixes: OSIS_QUERY_PREFIXES,
   },
   {
-    pattern: /^\/api\/attendances\/(?:subject|daily)(?:\/|$)/,
+    pattern: /^\/api\/attendances\/(?:subject|daily|daily-presence)(?:\/|$)/,
     queryKeyPrefixes: ATTENDANCE_QUERY_PREFIXES,
   },
   {

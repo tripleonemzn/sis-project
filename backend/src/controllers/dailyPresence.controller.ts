@@ -110,6 +110,11 @@ const getStudentDailyPresenceSchema = z.object({
   date: z.string().optional(),
 });
 
+const getDailyPresenceStudentsSchema = z.object({
+  q: z.string().trim().max(100).optional(),
+  limit: z.coerce.number().int().min(1).max(100).optional(),
+});
+
 const saveAssistedDailyPresenceSchema = z.object({
   studentId: z.number().int(),
   checkpoint: z.enum(['CHECK_IN', 'CHECK_OUT']),
@@ -506,6 +511,74 @@ export const getOwnDailyPresence = asyncHandler(async (req: Request, res: Respon
   res.status(200).json(new ApiResponse(200, payload, 'Status presensi pribadi berhasil diambil'));
 });
 
+export const getDailyPresenceStudents = asyncHandler(async (req: Request, res: Response) => {
+  const user = (req as any).user;
+  await getPresenceManagerProfile(Number(user?.id || 0));
+  const { q, limit } = getDailyPresenceStudentsSchema.parse(req.query);
+  const activeAcademicYear = await getActiveAcademicYearOrThrow();
+  const normalizedQuery = String(q || '').trim();
+
+  const students = await prisma.user.findMany({
+    where: {
+      role: 'STUDENT',
+      studentClass: {
+        academicYearId: activeAcademicYear.id,
+      },
+      ...(normalizedQuery
+        ? {
+            OR: [
+              { name: { contains: normalizedQuery, mode: 'insensitive' } },
+              { username: { contains: normalizedQuery, mode: 'insensitive' } },
+              { nis: { contains: normalizedQuery, mode: 'insensitive' } },
+              { nisn: { contains: normalizedQuery, mode: 'insensitive' } },
+              {
+                studentClass: {
+                  academicYearId: activeAcademicYear.id,
+                  name: { contains: normalizedQuery, mode: 'insensitive' },
+                },
+              },
+            ],
+          }
+        : {}),
+    },
+    orderBy: [{ name: 'asc' }, { id: 'asc' }],
+    take: limit ?? 100,
+    select: {
+      id: true,
+      username: true,
+      name: true,
+      nis: true,
+      nisn: true,
+      photo: true,
+      studentStatus: true,
+      verificationStatus: true,
+      studentClass: {
+        select: {
+          id: true,
+          name: true,
+          major: {
+            select: {
+              id: true,
+              name: true,
+              code: true,
+            },
+          },
+        },
+      },
+    },
+  });
+
+  res.status(200).json(
+    new ApiResponse(
+      200,
+      students,
+      normalizedQuery
+        ? 'Daftar siswa operasional berhasil difilter'
+        : 'Daftar siswa operasional berhasil diambil',
+    ),
+  );
+});
+
 export const getActiveSelfScanSession = asyncHandler(async (req: Request, res: Response) => {
   const user = (req as any).user;
   const { checkpoint } = selfScanSessionSchema.parse(req.query);
@@ -558,6 +631,18 @@ export const startSelfScanSession = asyncHandler(async (req: Request, res: Respo
     dateKey,
   });
 
+  broadcastDomainEvent({
+    domain: 'ATTENDANCE',
+    action: 'UPDATED',
+    scope: {
+      attendanceMode: 'DAILY_PRESENCE',
+      academicYearIds: [activeAcademicYear.id],
+      dates: [dateKey],
+      checkpoint,
+      sessionState: 'OPEN',
+    },
+  });
+
   res.status(200).json(
     new ApiResponse(
       200,
@@ -576,7 +661,21 @@ export const closeSelfScanSession = asyncHandler(async (req: Request, res: Respo
   const user = (req as any).user;
   await getPresenceManagerProfile(Number(user?.id || 0));
   const { checkpoint } = selfScanSessionSchema.parse(req.body);
+  const activeAcademicYear = await getActiveAcademicYearOrThrow();
+  const dateKey = getJakartaDateKey();
   await closeActiveDailyPresenceSelfScanSession(checkpoint);
+
+  broadcastDomainEvent({
+    domain: 'ATTENDANCE',
+    action: 'UPDATED',
+    scope: {
+      attendanceMode: 'DAILY_PRESENCE',
+      academicYearIds: [activeAcademicYear.id],
+      dates: [dateKey],
+      checkpoint,
+      sessionState: 'CLOSED',
+    },
+  });
 
   res.status(200).json(
     new ApiResponse(

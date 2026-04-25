@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useState } from 'react';
+import { useDeferredValue, useEffect, useMemo, useState } from 'react';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import {
   CheckCircle2,
@@ -18,11 +18,11 @@ import {
   attendanceService,
   type DailyPresenceEventItem,
   type DailyPresenceEventType,
+  type DailyPresenceOperationalStudent,
   type DailyPresenceSelfScanManagerSession,
   type DailyPresenceSelfScanPreview,
 } from '../../services/attendance.service';
 import { authService } from '../../services/auth.service';
-import { userService } from '../../services/user.service';
 import {
   buildDailyPresenceChallengeCode,
   formatCountdownLabel,
@@ -446,6 +446,7 @@ export default function StaffDailyPresencePage() {
 
   const currentUser = meQuery.data?.data;
   const canAccess = resolveStaffDivision(currentUser) === 'ADMINISTRATION';
+  const deferredStudentSearch = useDeferredValue(studentSearch.trim());
 
   const overviewQuery = useQuery({
     queryKey: ['staff-daily-presence-overview'],
@@ -462,10 +463,14 @@ export default function StaffDailyPresencePage() {
   });
 
   const studentsQuery = useQuery({
-    queryKey: ['staff-daily-presence-students'],
+    queryKey: ['staff-daily-presence-students', deferredStudentSearch],
     enabled: canAccess && activeTab === 'ASSISTED',
-    queryFn: () => userService.getUsers({ role: 'STUDENT', limit: 10000 }),
-    staleTime: 5 * 60 * 1000,
+    queryFn: () =>
+      attendanceService.getDailyPresenceStudents({
+        query: deferredStudentSearch || undefined,
+        limit: 100,
+      }),
+    staleTime: 60 * 1000,
   });
 
   const selectedStudentQuery = useQuery({
@@ -561,35 +566,40 @@ export default function StaffDailyPresencePage() {
     },
   });
 
-  const students = useMemo(
-    () => (studentsQuery.data?.data || []).filter((item) => item.studentClass),
-    [studentsQuery.data?.data],
-  );
+  const selectedStudentOption = useMemo<DailyPresenceOperationalStudent | null>(() => {
+    if (!selectedStudentId || !selectedStudentQuery.data?.student) return null;
+    const student = selectedStudentQuery.data.student;
+    return {
+      id: student.id,
+      username: '',
+      name: student.name,
+      nis: student.nis,
+      nisn: student.nisn,
+      photo: student.photo,
+      studentClass: student.class
+        ? {
+            id: student.class.id,
+            name: student.class.name,
+          }
+        : null,
+    };
+  }, [selectedStudentId, selectedStudentQuery.data?.student]);
 
-  const filteredStudents = useMemo(() => {
-    const normalized = studentSearch.trim().toLowerCase();
-    const rows = !normalized
-      ? students
-      : students.filter((student) => {
-          const haystack = [
-            student.name,
-            student.username,
-            student.nis,
-            student.nisn,
-            student.studentClass?.name,
-            student.studentClass?.major?.name,
-          ]
-            .filter(Boolean)
-            .join(' ')
-            .toLowerCase();
-          return haystack.includes(normalized);
-        });
-    return rows.slice(0, 200);
-  }, [studentSearch, students]);
+  const studentOptions = useMemo(() => {
+    const options = new Map<string, DailyPresenceOperationalStudent>();
+    if (selectedStudentOption?.studentClass) {
+      options.set(String(selectedStudentOption.id), selectedStudentOption);
+    }
+    for (const student of studentsQuery.data || []) {
+      if (!student.studentClass) continue;
+      options.set(String(student.id), student);
+    }
+    return Array.from(options.values());
+  }, [selectedStudentOption, studentsQuery.data]);
 
   const selectedStudent = useMemo(
-    () => students.find((item) => String(item.id) === String(selectedStudentId)) || null,
-    [selectedStudentId, students],
+    () => studentOptions.find((item) => String(item.id) === String(selectedStudentId)) || selectedStudentOption || null,
+    [selectedStudentId, selectedStudentOption, studentOptions],
   );
 
   const modalCopy = modalState ? getCheckpointCopy(modalState.checkpoint) : null;
@@ -861,14 +871,16 @@ export default function StaffDailyPresencePage() {
                   className="w-full rounded-xl border border-slate-300 bg-white px-3 py-2.5 text-sm outline-none transition focus:border-blue-500"
                 >
                   <option value="">Pilih siswa</option>
-                  {filteredStudents.map((student) => (
+                  {studentOptions.map((student) => (
                     <option key={student.id} value={student.id}>
                       {student.name} • {student.studentClass?.name || '-'} • {student.nisn || student.username}
                     </option>
                   ))}
                 </select>
                 <p className="mt-2 text-xs text-slate-500">
-                  Menampilkan maksimal 200 hasil teratas agar dropdown tetap ringan.
+                  {deferredStudentSearch
+                    ? `Menampilkan hasil pencarian hingga 100 siswa untuk kata kunci "${deferredStudentSearch}".`
+                    : 'Menampilkan daftar awal hingga 100 siswa. Gunakan kolom cari untuk mempersempit hasil.'}
                 </p>
               </div>
             </div>

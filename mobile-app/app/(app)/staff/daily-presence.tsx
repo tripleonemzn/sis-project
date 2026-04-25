@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useState } from 'react';
+import { useDeferredValue, useEffect, useMemo, useState } from 'react';
 import { Redirect } from 'expo-router';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import {
@@ -23,6 +23,7 @@ import { useAuth } from '../../../src/features/auth/AuthProvider';
 import { attendanceApi } from '../../../src/features/attendance/attendanceApi';
 import type {
   DailyPresenceEventType,
+  DailyPresenceOperationalStudent,
   DailyPresenceSelfScanManagerSession,
   DailyPresenceSelfScanPreview,
 } from '../../../src/features/attendance/types';
@@ -33,7 +34,6 @@ import {
   getDailyPresenceChallengeWindowIndex,
   getDailyPresenceCheckpointLabel,
 } from '../../../src/features/attendance/selfScanUtils';
-import { staffApi } from '../../../src/features/staff/staffApi';
 import { resolveStaffDivision } from '../../../src/features/staff/staffRole';
 import { resolvePublicAssetUrl } from '../../../src/lib/media/resolvePublicAssetUrl';
 import { notifyApiError, notifySuccess } from '../../../src/lib/ui/feedback';
@@ -454,6 +454,7 @@ export default function StaffDailyPresenceScreen() {
   const canAccess = resolveStaffDivision(user) === 'ADMINISTRATION';
   const cameraGranted = Boolean(cameraPermission?.granted);
   const cameraDenied = cameraPermission?.status === 'denied';
+  const deferredStudentSearch = useDeferredValue(studentSearch.trim());
 
   const overviewQuery = useQuery({
     queryKey: ['mobile-staff-daily-presence-overview'],
@@ -470,10 +471,14 @@ export default function StaffDailyPresenceScreen() {
   });
 
   const studentsQuery = useQuery({
-    queryKey: ['mobile-staff-daily-presence-students'],
+    queryKey: ['mobile-staff-daily-presence-students', deferredStudentSearch],
     enabled: isAuthenticated && canAccess && tab === 'ASSISTED',
-    queryFn: () => staffApi.listStudents(),
-    staleTime: 5 * 60 * 1000,
+    queryFn: () =>
+      attendanceApi.getDailyPresenceStudents({
+        query: deferredStudentSearch || undefined,
+        limit: 100,
+      }),
+    staleTime: 60 * 1000,
   });
 
   const selectedStudentQuery = useQuery({
@@ -569,35 +574,40 @@ export default function StaffDailyPresenceScreen() {
     },
   });
 
-  const students = useMemo(
-    () => (studentsQuery.data || []).filter((item) => item.studentClass),
-    [studentsQuery.data],
-  );
+  const selectedStudentOption = useMemo<DailyPresenceOperationalStudent | null>(() => {
+    if (!selectedStudentId || !selectedStudentQuery.data?.student) return null;
+    const student = selectedStudentQuery.data.student;
+    return {
+      id: student.id,
+      username: '',
+      name: student.name,
+      nis: student.nis,
+      nisn: student.nisn,
+      photo: student.photo,
+      studentClass: student.class
+        ? {
+            id: student.class.id,
+            name: student.class.name,
+          }
+        : null,
+    };
+  }, [selectedStudentId, selectedStudentQuery.data?.student]);
 
-  const filteredStudents = useMemo(() => {
-    const normalized = studentSearch.trim().toLowerCase();
-    const rows = !normalized
-      ? students
-      : students.filter((student) => {
-          const haystack = [
-            student.name,
-            student.username,
-            student.nis,
-            student.nisn,
-            student.studentClass?.name,
-            student.studentClass?.major?.name,
-          ]
-            .filter(Boolean)
-            .join(' ')
-            .toLowerCase();
-          return haystack.includes(normalized);
-        });
-    return rows.slice(0, 150);
-  }, [studentSearch, students]);
+  const studentOptions = useMemo(() => {
+    const options = new Map<string, DailyPresenceOperationalStudent>();
+    if (selectedStudentOption?.studentClass) {
+      options.set(String(selectedStudentOption.id), selectedStudentOption);
+    }
+    for (const student of studentsQuery.data || []) {
+      if (!student.studentClass) continue;
+      options.set(String(student.id), student);
+    }
+    return Array.from(options.values());
+  }, [selectedStudentOption, studentsQuery.data]);
 
   const selectedStudent = useMemo(
-    () => students.find((item) => String(item.id) === String(selectedStudentId)) || null,
-    [selectedStudentId, students],
+    () => studentOptions.find((item) => String(item.id) === String(selectedStudentId)) || selectedStudentOption || null,
+    [selectedStudentId, selectedStudentOption, studentOptions],
   );
 
   const modalCopy = modalState ? getCheckpointCopy(modalState.checkpoint) : null;
@@ -1059,13 +1069,17 @@ export default function StaffDailyPresenceScreen() {
               <MobileSelectField
                 label="Siswa terpilih"
                 value={selectedStudentId}
-                options={filteredStudents.map((student) => ({
+                options={studentOptions.map((student) => ({
                   value: String(student.id),
                   label: `${student.name} • ${student.studentClass?.name || '-'} • ${student.nisn || student.username}`,
                 }))}
                 onChange={setSelectedStudentId}
                 placeholder="Pilih siswa"
-                helperText="Menampilkan maksimal 150 hasil teratas agar dropdown tetap ringan."
+                helperText={
+                  deferredStudentSearch
+                    ? `Menampilkan hasil pencarian hingga 100 siswa untuk kata kunci "${deferredStudentSearch}".`
+                    : 'Menampilkan daftar awal hingga 100 siswa. Gunakan kolom cari untuk mempersempit hasil.'
+                }
               />
             </View>
 

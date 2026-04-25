@@ -30,6 +30,11 @@ const ATTENDANCE_QUERY_PREFIXES = [
   'subject-attendance',
   'student-daily-attendance',
   'student-attendance-history',
+  'student-daily-presence-me',
+  'student-self-scan-session',
+  'staff-daily-presence-overview',
+  'staff-daily-presence-self-scan-session',
+  'staff-daily-presence-student',
 ];
 const PROCTORING_QUERY_PREFIXES = [
   'teacher-proctor-schedules',
@@ -134,7 +139,7 @@ const MUTATION_QUERY_TARGETS: Array<{ pattern: RegExp; queryKeyPrefixes: string[
     queryKeyPrefixes: NOTIFICATION_QUERY_PREFIXES,
   },
   {
-    pattern: /^\/api\/attendances\/(?:subject|daily)(?:\/|$)/,
+    pattern: /^\/api\/attendances\/(?:subject|daily|daily-presence)(?:\/|$)/,
     queryKeyPrefixes: ATTENDANCE_QUERY_PREFIXES,
   },
   {
