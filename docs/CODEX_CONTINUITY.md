@@ -5,44 +5,53 @@ Setiap room baru yang diminta `baca AGENTS.md` atau `lanjutkan` wajib membaca fi
 
 ## Status Saat Ini
 
-- Last updated: 2026-04-25 17:50 WIB
-- Current status: Batch 5 Presensi Harian Terpadu selesai. Hotfix ujicoba scan juga selesai: QR monitor TU di web sudah tidak membesar memenuhi layar, dan scanner kamera mobile dipindah ke modal layar penuh agar preview Android lebih stabil.
+- Last updated: 2026-04-25 18:49 WIB
+- Current status: Batch 5 Presensi Harian Terpadu dan hotfix QR/scanner tetap selesai. Task aktif baru: audit + dry-run impor absensi historis siswa TKJ (`Jul 2025 - Apr 2026`) dari file Excel di `etc/absensi` ke `daily_attendances` agar bisa terbaca di rapor walas.
 - Last completed repo work:
   - Commit: `16419210dd3dec27194a6928c34f1bc35b5c7e52`
   - Title: `fix(presence): stabilize qr monitor and mobile scanner`
   - Summary: Membatasi layout QR monitor bersama web agar maksimal 360px dan memakai grid valid, serta mengganti scanner mobile embedded menjadi modal kamera layar penuh reusable untuk presensi pribadi dan scanner petugas.
-- Worktree expectation: clean setelah commit docs continuity dan push akhir hotfix ini.
-- Publish/live status: frontend web sudah dideploy live dan `https://siskgb2.id/` merespons `200`; OTA Android `pilot-live` berhasil publish, update group `7a78d7d7-4bfa-4afb-82ab-963241cf2dd9`.
-- Progress presensi terpadu: 100%. Batch konfigurasi TU, monitor QR bersama, scan siswa, scan multi-role mobile, rekap gabungan TU, riwayat non-siswa, dan assisted manual Sabtu duty sudah selesai.
+- Worktree expectation: clean setelah commit/push batch audit importer historis ini.
+- Publish/live status: tidak ada publish baru pada batch ini karena hanya menambah tooling backend audit/importer; publish web dan OTA terakhir tetap sesuai hotfix QR/scanner di atas.
+- Progress presensi terpadu operasional: 100%.
+- Progress impor historis absensi siswa TKJ: 75%.
+  - Selesai: audit workbook, verifikasi aturan blok merah, cek roster DB vs Excel, buat script importer dry-run reusable.
+  - Belum selesai: keputusan overwrite 6 existing row konflik pada `XII TKJ 1` tanggal `2026-02-05`, lalu apply impor final ke database jika disetujui.
 
 ## Verifikasi Batch Terakhir
 
 - Backend/runtime:
   - `cd backend && npm run build`
-  - `cd backend && npm run service:restart`
-  - `cd backend && npm run service:health`
-  - Health: backend `200`, backend API `200`, PM2 `sis-backend` online setelah reload.
-- Frontend web:
-  - `cd frontend && npm run build`
-  - `cd frontend && npm run deploy`
-  - Live check: `https://siskgb2.id/` `200`.
-- Mobile:
-  - `cd mobile-app && npm run typecheck`
-  - `cd mobile-app && npm run audit:parity:check`
-  - `cd mobile-app && npm run update:pilot-live:auto`
-  - EAS update batch 5: Android `pilot-live`, update group `2a411896-363f-4aa4-bd47-1b89c0e3fa3e`, commit `77ba398d096d76b2fd72d11310254cd73eef0c55`.
-  - EAS update hotfix scan mobile: Android `pilot-live`, update group `5477e83f-9b1f-40bc-81fc-8b63ca75ec24`, commit `eaf30237ae3c98718bbaecc4febd0b28af7a3c43`.
-  - EAS update hotfix QR/camera: Android `pilot-live`, update group `7a78d7d7-4bfa-4afb-82ab-963241cf2dd9`, commit `16419210dd3dec27194a6928c34f1bc35b5c7e52`.
-  - Push notify update: recipients `3`, sent `3`, failed `0`, stale `0`.
-- Hygiene:
-  - `git diff --check`
+  - `cd backend && npm run attendance:import:tkj`
+  - Dry-run result utama:
+    - candidate rows `47,628`
+    - create rows `47,595`
+    - compatible existing rows `2` (`LATE` vs Excel `H/PRESENT`, aman dipertahankan)
+    - conflicting existing rows `6` (semua di `XII TKJ 1`, tanggal `2026-02-05`)
+    - unchanged rows `25`
+    - unknown codes `0`
+    - blank active cells `0`
+    - unmatched Excel students `20`
+- Audit workbook:
+  - blok merah terbukti aman di-skip sebagai libur/tidak dihitung
+  - mismatch roster Excel vs DB aktif = `20` siswa, dan semuanya adalah baris yang memang kosong total di workbook
+  - typo kode `I\\` pada `XII TKJ 2 Sep 25 P40` sudah ditangani importer dengan normalisasi kode non-alfabet
+- Publish/runtime:
+  - tidak ada restart service atau publish baru karena batch ini belum mengubah runtime aplikasi
 
 ## Langkah Aman Berikutnya
 
-- Jika ada perubahan lanjutan di domain presensi, pertahankan pemisahan tabel student-centric vs non-student (`daily_attendances` vs `daily_user_presences`) dan jangan campur persistence-nya.
-- Pertahankan source of truth tahun ajaran aktif: endpoint operasional presensi tetap mengikuti academic year aktif tanpa selector tambahan di UI.
-- Jika nanti diminta enhancement lanjutan, area aman berikutnya adalah quality-of-life kecil seperti filter riwayat TU, export rekap, atau audit badge, bukan perubahan besar di kontrak runtime.
-- Untuk task web/mobile berikutnya, tetap jalankan verifikasi minimum lalu deploy/publish sesuai policy repo kecuali user minta ditahan.
+- Jika user menyetujui impor historis:
+  - opsi paling aman adalah `create-only` + pertahankan `2` row `LATE`
+  - jika user ingin hasil 1:1 sesuai Excel, jalankan apply dengan overwrite `6` konflik di `XII TKJ 1` tanggal `2026-02-05`
+- Script yang disiapkan:
+  - `cd backend && npm run attendance:import:tkj` untuk dry-run
+  - `cd backend && npm run attendance:import:tkj -- --apply` untuk create missing rows saja
+  - `cd backend && npm run attendance:import:tkj -- --apply --allow-overwrite` untuk create + overwrite konflik
+- Setelah apply final, wajib:
+  - cek ulang total record per kelas/bulan yang terimpor
+  - verifikasi rapor walas membaca rekap dari `daily_attendances`
+  - update continuity lagi dengan hasil apply final
 
 ## Template Update Wajib Saat Ada Pekerjaan Baru
 

@@ -21,6 +21,7 @@
     "promotion:prepare-target": "node -r ts-node/register src/scripts/prepare_academic_promotion_target.ts",
     "import:students": "node -r ts-node/register src/scripts/import_students_from_input.ts",
     "import:subjects": "node -r ts-node/register src/scripts/import_subjects_from_input.ts",
+    "attendance:import:tkj": "node -r ts-node/register src/scripts/import_tkj_attendance_from_excel.ts",
     "service:status": "pm2 status && systemctl is-active nginx || true",
     "service:health": "curl -s -o /dev/null -w 'Backend:%{http_code}\\n' http://127.0.0.1:3000/ && curl -s -o /dev/null -w 'Backend API:%{http_code}\\n' http://127.0.0.1:3000/api/public/foto-kegiatan || true",
     "service:restart": "pm2 startOrReload ecosystem.config.cjs --only sis-backend --update-env && systemctl reload nginx || true"
