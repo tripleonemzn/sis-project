@@ -5,30 +5,28 @@ Setiap room baru yang diminta `baca AGENTS.md` atau `lanjutkan` wajib membaca fi
 
 ## Status Saat Ini
 
-- Last updated: 2026-04-26 20:18 WIB
-- Current status: Batch 3 penyempurnaan `Program Perangkat Ajar` selesai, sudah live di web, dan OTA mobile tester sudah dipublish. Backend/DB tidak diubah; batch ini menyamakan jalur authoring guru web-mobile agar schema starter dari Wakakur terisi lebih konsisten saat dipakai guru.
+- Last updated: 2026-04-26 20:33 WIB
+- Current status: Batch 4 penyempurnaan `Program Perangkat Ajar` selesai, sudah live di web, dan OTA mobile tester sudah dipublish. Backend/DB tidak diubah; batch ini merapikan kontrol input dan print untuk schema starter berbasis data type (`MONTH`, `WEEK`, `WEEK_GRID`, `NUMBER`, `BOOLEAN`, `SELECT`, `SEMESTER`).
 - Last completed repo work:
-  - Commit: `7139eb6`
-  - Title: `feat(mobile): support dynamic teaching resource schema values`
-  - Companion commit: `c8b75e7` (`feat(curriculum): hydrate teaching resource web editor`)
-  - Summary: Web guru kini menormalisasi/hydrate schema saat editor berubah dan saat save, sedangkan mobile guru kini membaca metadata kolom schema lebih lengkap (`dataType`, `valueSource`, `semanticKey`, `bindingKey`, `readOnly`, `options`) serta mengisi nilai `SYSTEM_*`/`BOUND` secara generik.
+  - Commit: `b0c60ee`
+  - Title: `feat(curriculum): add teaching resource data type controls`
+  - Summary: Web dan mobile guru kini memakai kontrol data-type untuk schema perangkat ajar: dropdown bulan/minggu/semester/select, input angka, toggle boolean, grid minggu `M1-M19`, dan format print web yang lebih rapi untuk `WEEK`/`WEEK_GRID`/angka.
 - Task aktif:
   - Objective: menyederhanakan pengalaman Wakakur saat menambah/mengedit `Program Perangkat Ajar` tanpa mengorbankan fleksibilitas dinamis untuk batch engine berikutnya.
-  - Batch terakhir selesai: Batch 3 kompatibilitas authoring guru web-mobile.
-  - Progress keseluruhan roadmap perangkat ajar dinamis: `50%`.
+  - Batch terakhir selesai: Batch 4 kontrol data-type dan print renderer dasar web/mobile.
+  - Progress keseluruhan roadmap perangkat ajar dinamis: `65%`.
   - Area/file disentuh:
     - `frontend/src/pages/teacher/learning-resources/LearningResourceGenerator.tsx`
     - `mobile-app/src/features/learningResources/TeacherLearningResourceProgramScreen.tsx`
-    - `mobile-app/src/features/learningResources/teachingResourceProgramApi.ts`
   - Ringkasan hasil batch:
-    - web guru meng-hydrate nilai sistem/bound saat section berubah, baris baru ditambah, editor `/new` dibuka, dan saat payload disimpan
-    - editor `/new` web menunggu assignment guru selesai dimuat sebelum auto-fill konteks, sehingga judul/konteks dokumen tidak mudah kosong
-    - mobile guru kini memahami metadata kolom schema yang sama dengan web untuk kebutuhan starter dinamis
-    - mobile guru mengisi `SYSTEM_ACTIVE_YEAR`, `SYSTEM_SEMESTER`, `SYSTEM_SUBJECT`, `SYSTEM_CLASS_LEVEL`, `SYSTEM_CLASS_NAME`, `SYSTEM_SKILL_PROGRAM`, `SYSTEM_TEACHER_NAME`, `SYSTEM_PLACE_DATE`, dan `BOUND` dengan pola generik
-    - kolom mobile yang dikelola sistem/read-only tidak bisa diedit manual, agar konteks operasional tetap mengikuti source of truth
+    - web guru memakai kontrol sesuai `dataType`: dropdown `MONTH`/`WEEK`/`SEMESTER`/`SELECT`, input angka, toggle boolean, dan grid minggu `WEEK_GRID`
+    - mobile guru memakai pola kontrol yang sepadan untuk `MONTH`, `WEEK`, `SEMESTER`, `SELECT`, `NUMBER`, `BOOLEAN`, dan `WEEK_GRID`
+    - `WEEK_GRID` disimpan ringan sebagai daftar minggu terpilih, misalnya `1, 3, 5`, tanpa mengubah kontrak backend
+    - print web kini memformat `WEEK` menjadi `Minggu n`, `WEEK_GRID` menjadi `Minggu 1, 3, 5`, angka dinormalisasi, dan boolean menjadi tanda centang
+    - kolom system-managed/read-only tetap tidak diedit manual pada kontrol baru
     - tidak ada perubahan kontrak backend, migrasi data, polling, realtime, atau query baru
-- Worktree expectation: clean setelah commit/push finalisasi Batch 3.
-- Publish/live status: frontend web sudah live. OTA mobile tester `pilot-live` sudah dipublish dengan update group `37a2ee8b-6356-49c9-a3d7-74bd0340617b`; push notify update berhasil `recipients=3, sent=3`.
+- Worktree expectation: clean setelah commit/push finalisasi Batch 4.
+- Publish/live status: frontend web sudah live. OTA mobile tester `pilot-live` sudah dipublish dengan update group `e73b3c05-da7d-4a85-9bda-ce2108f67d39`; push notify update berhasil `recipients=3, sent=3`.
 - Progress presensi terpadu operasional: 100%.
 - Progress impor historis absensi siswa TKJ: 100%.
   - Selesai: audit workbook, verifikasi aturan blok merah, cek roster DB vs Excel, buat script importer reusable, apply impor final ke database, dan verifikasi pasca-impor.
@@ -142,15 +140,35 @@ Setiap room baru yang diminta `baca AGENTS.md` atau `lanjutkan` wajib membaca fi
     - batch ini tidak menambah endpoint, polling, websocket, query berat, atau invalidate global baru
     - semua perubahan tetap memakai schema/program API existing
     - web/mobile sama-sama mengikuti tahun ajaran aktif dan assignment guru sebagai source of truth konteks dokumen
+- Verifikasi Batch 4 kontrol data-type `Program Perangkat Ajar`:
+  - `cd frontend && npm run build`
+  - `cd mobile-app && npm run typecheck`
+  - `cd mobile-app && npm run audit:parity:check`
+  - `git diff --check`
+  - `cd frontend && npm run deploy`
+  - `curl -I https://siskgb2.id/` merespons `200`
+  - `cd mobile-app && npm run check:ota:testers`
+  - `cd mobile-app && npm run update:testers -- "Penyempurnaan Perangkat Ajar: input bulan, minggu, dan grid minggu kini lebih rapi. Silakan perbarui untuk menikmati fitur terbaru."`
+  - OTA result:
+    - channel `pilot-live`
+    - runtime `0.2.2`
+    - update group `e73b3c05-da7d-4a85-9bda-ce2108f67d39`
+    - Android update ID `019dc9ff-070d-7c06-9cb5-41ff0f222a3f`
+    - commit `b0c60ee5f908fa56f2814c400a1ab69743613cab`
+    - push notify `recipients=3, sent=3, failed=0, stale=0`
+  - sanity check perubahan:
+    - tidak ada endpoint/backend baru
+    - tidak ada penambahan polling/refetch/realtime
+    - perubahan hanya presentation/editor controls dan print formatting pada schema existing
 
 ## Langkah Aman Berikutnya
 
-- Lanjutkan Batch 4 perangkat ajar dengan fokus aman berikut:
-  - uji manual live jalur Wakakur membuat starter `Analisis Bertingkat` dan `Distribusi Waktu`, lalu guru membuat dokumen dari program tersebut di web dan mobile
-  - audit hasil print/renderer web terhadap schema starter, terutama apakah kolom `MONTH`, `WEEK`, `WEEK_GRID`, dan konteks dokumen tampil cukup rapi
+- Lanjutkan Batch 5 perangkat ajar dengan fokus aman berikut:
+  - lakukan uji manual live end-to-end: Wakakur membuat program dari starter `Distribusi Waktu` dan `Matriks Grid`, guru membuat dokumen dari program tersebut di web/mobile, lalu print web dicek visualnya
+  - audit apakah `WEEK_GRID` perlu tampilan print berbentuk matriks visual atau cukup daftar minggu terpilih
   - jika perlu engine type, mulai dari metadata kompatibel tanpa migrasi dan tanpa mengubah program existing
   - jangan menyentuh backend sebelum ada kebutuhan nyata dari uji manual renderer/authoring
-- Jika room baru diminta melanjutkan fitur ini, mulai dari cek live halaman Wakakur `Program Perangkat Ajar`, lalu cek halaman guru web/mobile untuk program hasil starter sebelum menambah kompleksitas engine.
+- Jika room baru diminta melanjutkan fitur ini, mulai dari uji manual live flow Wakakur -> guru -> print, bukan dari perubahan backend.
 - Data historis TKJ + AK/MP sekarang sudah siap dipakai oleh rapor walas karena source `daily_attendances` sudah terisi untuk `Jul 2025 - Apr 2026`.
 - Jika user melanjutkan impor jurusan/tingkat lain, gunakan script yang sama sebagai baseline, lalu audit dulu roster aktif DB vs workbook sebelum apply.
 - Jika user ingin melanjutkan uji SBTS, langkah paling aman sekarang adalah minta user cetak ulang rapor SBTS nyata setelah bugfix decimal/print live, lalu cocokkan angka dan rasa respons print.
