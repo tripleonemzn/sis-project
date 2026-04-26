@@ -1205,6 +1205,19 @@ export const LearningResourceGenerator = ({
     return base;
   }, [entryPayload?.summary?.byStatus]);
 
+  const normalizeSectionsForEditor = (sourceSections: EntrySectionForm[]): EntrySectionForm[] => {
+    const hydratedSections = usesSheetTemplate
+      ? hydrateSheetSections({
+          sections: sourceSections,
+          schemaMap: activeProgramSchemaMap,
+          context: selectedContext,
+          academicYearName,
+          semesterLabel: activeSemesterLabel,
+        })
+      : sourceSections;
+    return ensureDerivedSections(hydratedSections);
+  };
+
   const resetForm = () => {
     setEditingEntry(null);
     setEntryTitle('');
@@ -1212,7 +1225,7 @@ export const LearningResourceGenerator = ({
     setEntryNotes('');
     setEntryTags('');
     setSelectedContextKey('');
-    setSections(ensureDerivedSections(buildDefaultSections(activeProgramMeta)));
+    setSections(normalizeSectionsForEditor(buildDefaultSections(activeProgramMeta)));
   };
 
   const initializeCreate = (openAsModal = true) => {
@@ -1246,7 +1259,7 @@ export const LearningResourceGenerator = ({
           })
         : '',
     );
-    setSections(ensureDerivedSections(hydratedSections));
+    setSections(normalizeSectionsForEditor(hydratedSections));
     setIsEditorOpen(openAsModal);
   };
 
@@ -1263,7 +1276,7 @@ export const LearningResourceGenerator = ({
     setEntryNotes(String((entry.content?.notes as string) || ''));
     setEntryTags((entry.tags || []).join(', '));
     setSelectedContextKey(matchedContext ? String(matchedContext.key) : '');
-    setSections(ensureDerivedSections(parseEntrySections(entry, buildDefaultSections(activeProgramMeta))));
+    setSections(normalizeSectionsForEditor(parseEntrySections(entry, buildDefaultSections(activeProgramMeta))));
     setIsEditorOpen(true);
   };
 
@@ -1277,8 +1290,8 @@ export const LearningResourceGenerator = ({
           section.body.trim() ||
           section.rows.some((row) => Object.values(row.values).some((value) => String(value || '').trim())),
       );
-      if (hasMeaningfulContent) return ensureDerivedSections(prev);
-      return ensureDerivedSections(buildDefaultSections(activeProgramMeta));
+      if (hasMeaningfulContent) return normalizeSectionsForEditor(prev);
+      return normalizeSectionsForEditor(buildDefaultSections(activeProgramMeta));
     });
   }, [activeProgramMeta, editingEntry, isEditorOpen]);
 
@@ -1289,9 +1302,17 @@ export const LearningResourceGenerator = ({
     }
     if (pageEditorInitialized) return;
     if (programConfigQuery.isLoading) return;
+    if (assignmentsQuery.isLoading) return;
     initializeCreate(false);
     setPageEditorInitialized(true);
-  }, [isPageEditor, pageEditorInitialized, programConfigQuery.isLoading, activeProgramMeta, assignmentContextOptions]);
+  }, [
+    isPageEditor,
+    pageEditorInitialized,
+    programConfigQuery.isLoading,
+    assignmentsQuery.isLoading,
+    activeProgramMeta,
+    assignmentContextOptions,
+  ]);
 
   const handleCloseEditor = () => {
     resetForm();
@@ -1315,7 +1336,7 @@ export const LearningResourceGenerator = ({
       if (!academicYearId) {
         throw new Error('Tahun ajaran aktif belum ditemukan.');
       }
-      const normalizedSections = buildPayloadSections(sections);
+      const normalizedSections = buildPayloadSections(normalizeSectionsForEditor(sections));
 
       if (!entryTitle.trim()) {
         throw new Error('Judul dokumen wajib diisi.');
@@ -1366,7 +1387,7 @@ export const LearningResourceGenerator = ({
       if (!editingEntry?.id) {
         throw new Error('Data dokumen tidak valid.');
       }
-      const normalizedSections = buildPayloadSections(sections);
+      const normalizedSections = buildPayloadSections(normalizeSectionsForEditor(sections));
       if (!entryTitle.trim()) {
         throw new Error('Judul dokumen wajib diisi.');
       }
@@ -1518,7 +1539,7 @@ export const LearningResourceGenerator = ({
   };
 
   const setSectionsWithDerived = (updater: (prev: EntrySectionForm[]) => EntrySectionForm[]) => {
-    setSections((prev) => ensureDerivedSections(updater(prev)));
+    setSections((prev) => normalizeSectionsForEditor(updater(prev)));
   };
 
   const updateSectionField = (sectionId: string, field: 'title' | 'body', value: string) => {
