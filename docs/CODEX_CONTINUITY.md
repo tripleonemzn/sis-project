@@ -8,7 +8,7 @@ Setiap room baru yang diminta `baca AGENTS.md` atau `lanjutkan` wajib membaca fi
 - Last updated: 2026-04-27 05:34 WIB
 - Current status: Batch 11 reference picker guru lintas dokumen untuk `Program Perangkat Ajar` sudah diimplementasikan di web dan mobile dengan blast radius kecil. Guru kini bisa memakai field `DOCUMENT_REFERENCE` / `DOCUMENT_SNAPSHOT` sebagai dropdown referensi terintegrasi, sementara backend dan kontrak entry existing tetap dipakai.
 - Last completed repo work:
-  - Commit: pending current batch until final close-out
+  - Commit: `c65443d94e0d4f1e023f560edf74fdc4587afad1`
   - Title: `feat(curriculum): add teacher reference picker for linked teaching resource fields`
   - Summary: editor guru web/mobile kini membaca metadata `sourceType` dan `binding` untuk memuat pilihan referensi dari dokumen guru lain secara scoped per program, konteks assignment, dan semester aktif, tanpa endpoint backend baru.
 - Task aktif:
@@ -36,7 +36,7 @@ Setiap room baru yang diminta `baca AGENTS.md` atau `lanjutkan` wajib membaca fi
     - parser referensi tetap kompatibel dengan entry lama karena memakai fallback schema source program saat `content.sections[].columns` belum lengkap
     - tidak ada endpoint backend baru, tidak ada polling/realtime baru, dan tidak ada invalidation global
 - Worktree expectation: clean setelah commit/push Batch 11.
-- Publish/live status: frontend web sudah deploy live dan `https://siskgb2.id/` merespons `200`. OTA mobile tester perlu dipublish ulang setelah commit/push karena safety gate menolak worktree campuran yang belum di-commit.
+- Publish/live status: frontend web sudah deploy live dan `https://siskgb2.id/` merespons `200`. OTA mobile tester `pilot-live` sudah publish sukses untuk runtime `0.2.2` dengan update group `e956fd99-20ea-4941-9db3-75f6fada4705`.
 - Progress presensi terpadu operasional: 100%.
 - Progress impor historis absensi siswa TKJ: 100%.
   - Selesai: audit workbook, verifikasi aturan blok merah, cek roster DB vs Excel, buat script importer reusable, apply impor final ke database, dan verifikasi pasca-impor.
@@ -246,10 +246,14 @@ Setiap room baru yang diminta `baca AGENTS.md` atau `lanjutkan` wajib membaca fi
   - `cd frontend && npm run deploy`
   - `curl -I https://siskgb2.id/` merespons `200`
   - `cd mobile-app && npm run check:ota:testers`
-  - hasil sementara:
+  - `cd mobile-app && npm run update:testers -- "Penyempurnaan Perangkat Ajar: referensi antar dokumen di sisi guru kini mulai didukung lebih rapi. Silakan perbarui untuk menikmati fitur terbaru."`
+  - hasil final:
     - web live sehat
     - channel `pilot-live` terverifikasi reachable untuk runtime `0.2.2`
-    - publish OTA pertama tertahan safety gate repo karena worktree masih campur perubahan web/mobile yang belum di-commit, sehingga perlu diulang setelah commit/push batch ini
+    - update group `e956fd99-20ea-4941-9db3-75f6fada4705`
+    - Android update ID `019dcbef-7073-7c62-9f66-70f57a6871b7`
+    - commit `c65443d94e0d4f1e023f560edf74fdc4587afad1`
+    - push notify `recipients=3, sent=3, failed=0, stale=0`
   - sanity check perubahan:
     - tidak ada endpoint/backend baru
     - query referensi hanya aktif saat editor terbuka dan hanya untuk program sumber yang benar-benar dipakai schema aktif
