@@ -38,6 +38,34 @@ export type TeachingResourceColumnValueSource =
   | 'SYSTEM_PLACE_DATE'
   | 'BOUND';
 
+export type TeachingResourceSchemaMode = 'LEGACY_SECTIONS' | 'BLOCKS_V1';
+export type TeachingResourceBlockType = 'HEADER' | 'CONTEXT' | 'TABLE' | 'RICH_TEXT' | 'SIGNATURE' | 'NOTE';
+export type TeachingResourceBlockLayout = 'STACK' | 'GRID' | 'TABLE';
+export type TeachingResourceFieldSourceType =
+  | 'MANUAL'
+  | 'SYSTEM'
+  | 'DOCUMENT_REFERENCE'
+  | 'DOCUMENT_SNAPSHOT'
+  | 'DERIVED'
+  | 'STATIC_OPTION';
+export type TeachingResourceFieldSyncMode = 'LIVE_REFERENCE' | 'SNAPSHOT_ON_SELECT' | 'SYSTEM_DYNAMIC';
+export type TeachingResourceReferenceSelectionMode = 'AUTO' | 'PICK_SINGLE' | 'PICK_MULTIPLE';
+
+export type TeachingResourceFieldBinding = {
+  systemKey?: string;
+  sourceProgramCode?: string;
+  sourceDocumentFieldIdentity?: string;
+  sourceFieldIdentity?: string;
+  filterByContext?: boolean;
+  matchBySubject?: boolean;
+  matchByClassLevel?: boolean;
+  matchByMajor?: boolean;
+  matchByActiveSemester?: boolean;
+  selectionMode?: TeachingResourceReferenceSelectionMode;
+  syncMode?: TeachingResourceFieldSyncMode;
+  allowManualOverride?: boolean;
+};
+
 export type TeachingResourceProgramColumnSchema = {
   key: string;
   label: string;
@@ -50,6 +78,13 @@ export type TeachingResourceProgramColumnSchema = {
   required?: boolean;
   readOnly?: boolean;
   options?: string[];
+  fieldId?: string;
+  fieldIdentity?: string;
+  sourceType?: TeachingResourceFieldSourceType;
+  binding?: TeachingResourceFieldBinding;
+  teacherEditMode?: string;
+  exposeAsReference?: boolean;
+  isCoreField?: boolean;
 };
 
 export type TeachingResourceProgramSectionSchema = {
@@ -64,6 +99,9 @@ export type TeachingResourceProgramSectionSchema = {
   sectionTitleEditable?: boolean;
   titlePlaceholder?: string;
   bodyPlaceholder?: string;
+  blockId?: string;
+  blockType?: TeachingResourceBlockType;
+  layout?: TeachingResourceBlockLayout;
 };
 
 export type TeachingResourceProgramSchema = {
@@ -72,6 +110,9 @@ export type TeachingResourceProgramSchema = {
   intro: string;
   titleHint?: string;
   summaryHint?: string;
+  schemaMode?: TeachingResourceSchemaMode;
+  documentTitle?: string;
+  documentShortTitle?: string;
   sections: TeachingResourceProgramSectionSchema[];
 };
 
@@ -98,6 +139,7 @@ export type TeachingResourceEntryItem = {
       schemaKey?: string;
       title?: string;
       body?: string;
+      columns?: Array<Partial<TeachingResourceProgramColumnSchema>>;
       rows?: Array<Record<string, string>>;
     }>;
     references?: string[];

@@ -10,6 +10,8 @@ import {
   type TeachingResourceColumnValueSource,
   type TeachingResourceEntry,
   type TeachingResourceEntryStatus,
+  type TeachingResourceFieldBinding,
+  type TeachingResourceFieldSourceType,
   type TeachingResourceProgram,
   type TeachingResourceProgramSectionSchema,
   type TeachingResourceSignatureDefaults,
@@ -55,6 +57,18 @@ type EntrySectionColumnForm = {
   required?: boolean;
   readOnly?: boolean;
   options?: string[];
+  fieldId?: string;
+  fieldIdentity?: string;
+  sourceType?: TeachingResourceFieldSourceType;
+  binding?: TeachingResourceFieldBinding;
+  teacherEditMode?: string;
+  exposeAsReference?: boolean;
+  isCoreField?: boolean;
+};
+
+type ReferenceOption = {
+  value: string;
+  label: string;
 };
 
 type OutletUser = {
@@ -199,6 +213,14 @@ const ensureArray = <T,>(value: unknown): T[] => {
   return Array.isArray(value) ? (value as T[]) : [];
 };
 
+const normalizeReferenceToken = (value: unknown): string =>
+  String(value || '')
+    .trim()
+    .toLowerCase()
+    .replace(/[^a-z0-9.]+/g, '_')
+    .replace(/_+/g, '_')
+    .replace(/^_+|_+$/g, '');
+
 const sanitizeSectionColumns = (value: unknown): EntrySectionColumnForm[] => {
   if (!Array.isArray(value)) return [];
   const seen = new Set<string>();
@@ -216,6 +238,13 @@ const sanitizeSectionColumns = (value: unknown): EntrySectionColumnForm[] => {
       required?: unknown;
       readOnly?: unknown;
       options?: unknown;
+      fieldId?: unknown;
+      fieldIdentity?: unknown;
+      sourceType?: unknown;
+      binding?: unknown;
+      teacherEditMode?: unknown;
+      exposeAsReference?: unknown;
+      isCoreField?: unknown;
     };
     const key =
       String(column.key || '')
@@ -242,6 +271,18 @@ const sanitizeSectionColumns = (value: unknown): EntrySectionColumnForm[] => {
       options: Array.isArray(column.options)
         ? column.options.map((option) => String(option || '').trim()).filter(Boolean)
         : undefined,
+      fieldId: String(column.fieldId || '').trim() || undefined,
+      fieldIdentity: String(column.fieldIdentity || '').trim() || undefined,
+      sourceType: String(column.sourceType || '').trim().toUpperCase() as TeachingResourceFieldSourceType,
+      binding:
+        column.binding && typeof column.binding === 'object'
+          ? {
+              ...(column.binding as TeachingResourceFieldBinding),
+            }
+          : undefined,
+      teacherEditMode: String(column.teacherEditMode || '').trim() || undefined,
+      exposeAsReference: Boolean(column.exposeAsReference),
+      isCoreField: Boolean(column.isCoreField),
     });
     return acc;
   }, []);
@@ -417,6 +458,44 @@ const toEntryRawSections = (entry: TeachingResourceEntry) => {
     .filter((item): item is NonNullable<typeof item> => Boolean(item));
 };
 
+const toEntryReferenceSections = (entry: TeachingResourceEntry) => {
+  const rawSections = Array.isArray(entry.content?.sections)
+    ? entry.content.sections
+    : entry.content?.sections && typeof entry.content.sections === 'object'
+      ? Object.values(entry.content.sections as Record<string, unknown>)
+      : [];
+  return rawSections
+    .map((section) => {
+      if (!section || typeof section !== 'object') return null;
+      const item = section as {
+        schemaKey?: unknown;
+        title?: unknown;
+        columns?: unknown;
+        rows?: unknown;
+      };
+      const rows = Array.isArray(item.rows)
+        ? item.rows
+            .map((row) => {
+              if (!row || typeof row !== 'object') return null;
+              return Object.entries(row as Record<string, unknown>).reduce<Record<string, string>>((acc, [key, value]) => {
+                const normalizedKey = String(key || '').trim();
+                if (!normalizedKey) return acc;
+                acc[normalizedKey] = String(value ?? '').trim();
+                return acc;
+              }, {});
+            })
+            .filter((row): row is Record<string, string> => Boolean(row))
+        : [];
+      return {
+        schemaKey: String(item.schemaKey || '').trim(),
+        title: String(item.title || '').trim(),
+        columns: sanitizeSectionColumns(item.columns),
+        rows,
+      };
+    })
+    .filter((item): item is NonNullable<typeof item> => Boolean(item));
+};
+
 const extractEntryContextValues = (
   entry: TeachingResourceEntry,
   defaults?: Partial<EntryContextValues>,
@@ -477,6 +556,31 @@ const extractCoveredClasses = (entry: TeachingResourceEntry): string[] => {
     .map((item) => String(item || '').trim())
     .filter(Boolean)
     .sort((left, right) => left.localeCompare(right, 'id', { numeric: true, sensitivity: 'base' }));
+};
+
+const extractReferenceCandidates = (column: Partial<EntrySectionColumnForm> | null | undefined): string[] => {
+  const candidates = new Set<string>();
+  [
+    column?.binding?.sourceFieldIdentity,
+    column?.binding?.sourceDocumentFieldIdentity,
+    column?.fieldIdentity,
+    column?.bindingKey,
+    column?.semanticKey,
+    column?.key,
+  ].forEach((item) => {
+    const token = String(item || '').trim();
+    if (!token) return;
+    const normalized = normalizeReferenceToken(token);
+    if (normalized) candidates.add(normalized);
+    const tail = normalizeReferenceToken(token.split('.').pop());
+    if (tail) candidates.add(tail);
+  });
+  return Array.from(candidates);
+};
+
+const isDocumentReferenceColumn = (column: Partial<EntrySectionColumnForm> | null | undefined): boolean => {
+  const sourceType = String(column?.sourceType || '').trim().toUpperCase();
+  return sourceType === 'DOCUMENT_REFERENCE' || sourceType === 'DOCUMENT_SNAPSHOT';
 };
 
 const resolveEntryContextLabel = (
@@ -602,6 +706,7 @@ const getColumnDataType = (column?: Pick<EntrySectionColumnForm, 'dataType'> | n
     .toUpperCase();
 
 const isSystemManagedColumn = (column: EntrySectionColumnForm): boolean => {
+  if (isDocumentReferenceColumn(column)) return false;
   const valueSource = String(column.valueSource || 'MANUAL').trim().toUpperCase();
   const dataType = getColumnDataType(column);
   return Boolean(column.readOnly) || dataType === 'READONLY_BOUND' || (!!valueSource && valueSource !== 'MANUAL');
@@ -800,7 +905,14 @@ const normalizeSheetToken = (value: unknown): string =>
 
 const extractBindingCandidates = (column: EntrySectionColumnForm): string[] => {
   const candidates = new Set<string>();
-  [column.bindingKey, column.semanticKey, column.key].forEach((item) => {
+  [
+    column.binding?.sourceFieldIdentity,
+    column.binding?.sourceDocumentFieldIdentity,
+    column.fieldIdentity,
+    column.bindingKey,
+    column.semanticKey,
+    column.key,
+  ].forEach((item) => {
     const token = String(item || '').trim();
     if (!token) return;
     const normalized = normalizeSheetToken(token);
@@ -1077,6 +1189,25 @@ export const LearningResourceGenerator = ({
     });
     return map;
   }, [activeProgramSchemaSections]);
+  const programMetaByCode = useMemo(() => {
+    const map = new Map<string, TeachingResourceProgram>();
+    toProgramConfigArray(programConfigQuery.data).forEach((program) => {
+      map.set(normalizeTeachingResourceProgramCode(program.code), program);
+    });
+    return map;
+  }, [programConfigQuery.data]);
+  const referenceSourceProgramCodes = useMemo(() => {
+    const codes = new Set<string>();
+    activeProgramSchemaSections.forEach((section) => {
+      ensureArray<EntrySectionColumnForm>(section.columns).forEach((column) => {
+        if (!isDocumentReferenceColumn(column)) return;
+        const sourceProgramCode = normalizeTeachingResourceProgramCode(column.binding?.sourceProgramCode);
+        if (!sourceProgramCode) return;
+        codes.add(sourceProgramCode);
+      });
+    });
+    return Array.from(codes).sort();
+  }, [activeProgramSchemaSections]);
 
   const ensureDerivedSections = (sourceSections: EntrySectionForm[]): EntrySectionForm[] =>
     applyDerivedSheetSections(sourceSections, activeProgramSchemaMap);
@@ -1216,7 +1347,6 @@ export const LearningResourceGenerator = ({
     () => resolveSemesterLabel(activeAcademicYear?.semester),
     [activeAcademicYear?.semester],
   );
-
   const signatureDefaultsQuery = useQuery({
     queryKey: ['teaching-resource-signature-defaults', academicYearId],
     enabled: Boolean(academicYearId),
@@ -1242,11 +1372,138 @@ export const LearningResourceGenerator = ({
       }),
     staleTime: 10 * 1000,
   });
+  const referenceEntriesQuery = useQuery({
+    queryKey: ['teaching-resource-reference-entries', academicYearId, user?.id || 0, referenceSourceProgramCodes],
+    enabled:
+      Boolean(academicYearId) &&
+      Boolean(user?.id) &&
+      referenceSourceProgramCodes.length > 0 &&
+      (Boolean(isPageEditor) || Boolean(isEditorOpen)),
+    queryFn: async () => {
+      const results = await Promise.all(
+        referenceSourceProgramCodes.map(async (sourceProgramCode) => {
+          const response = await teachingResourceProgramService.getEntries({
+            academicYearId,
+            page: 1,
+            limit: 100,
+            programCode: sourceProgramCode,
+            status: 'ALL',
+            view: 'mine',
+          });
+          return [sourceProgramCode, ensureArray<TeachingResourceEntry>(response.data?.rows)] as const;
+        }),
+      );
+      return new Map<string, TeachingResourceEntry[]>(results);
+    },
+    staleTime: 30 * 1000,
+    refetchOnWindowFocus: false,
+  });
 
   const entryPayload = entryQuery.data?.data;
   const canReview = Boolean(entryPayload?.canReview);
   const rows = ensureArray<TeachingResourceEntry>(entryPayload?.rows);
   const totalPages = Math.max(1, Number(entryPayload?.totalPages || 1));
+  const referenceOptionsByColumnKey = useMemo(() => {
+    const map = new Map<string, ReferenceOption[]>();
+    const referenceEntriesByProgram = referenceEntriesQuery.data || new Map<string, TeachingResourceEntry[]>();
+
+    const matchesContext = (entry: TeachingResourceEntry, binding?: TeachingResourceFieldBinding): boolean => {
+      if (!binding || !selectedContext) return true;
+      const shouldMatchSubject = Boolean(binding.filterByContext) || Boolean(binding.matchBySubject);
+      const shouldMatchClassLevel = Boolean(binding.filterByContext) || Boolean(binding.matchByClassLevel);
+      const shouldMatchMajor = Boolean(binding.filterByContext) || Boolean(binding.matchByMajor);
+      const shouldMatchSemester = Boolean(binding.matchByActiveSemester);
+      const contextSemester = String(activeSemesterLabel || '').trim().toLowerCase();
+      const referenceContext = extractEntryContextValues(entry, {
+        tingkat: String(entry.classLevel || '').trim(),
+      });
+      const entryMajor = String(referenceContext.programKeahlian || '').trim().toLowerCase();
+      const entrySemester = String(referenceContext.semester || '').trim().toLowerCase();
+
+      if (shouldMatchSubject && Number(entry.subjectId || 0) !== Number(selectedContext.subjectId || 0)) return false;
+      if (
+        shouldMatchClassLevel &&
+        normalizeClassLevel(referenceContext.tingkat || entry.classLevel || '') !== normalizeClassLevel(selectedContext.classLevel)
+      ) {
+        return false;
+      }
+      if (shouldMatchMajor && entryMajor && entryMajor !== String(selectedContext.programKeahlian || '').trim().toLowerCase()) {
+        return false;
+      }
+      if (shouldMatchSemester && entrySemester && entrySemester !== contextSemester) {
+        return false;
+      }
+      return true;
+    };
+
+    const extractOptionsFromEntry = (
+      entry: TeachingResourceEntry,
+      sourceProgram: TeachingResourceProgram | undefined,
+      candidates: string[],
+    ): ReferenceOption[] => {
+      const sections = toEntryReferenceSections(entry);
+      const schemaMap = new Map<string, TeachingResourceProgramSectionSchema>();
+      ensureArray<TeachingResourceProgramSectionSchema>(sourceProgram?.schema?.sections).forEach((section) => {
+        schemaMap.set(String(section.key || '').trim(), section);
+      });
+      const options: ReferenceOption[] = [];
+      sections.forEach((section) => {
+        const schema = schemaMap.get(String(section.schemaKey || '').trim());
+        const columns = section.columns.length > 0 ? section.columns : ensureArray<EntrySectionColumnForm>(schema?.columns);
+        section.rows.forEach((row) => {
+          columns.forEach((column) => {
+            const columnCandidates = extractReferenceCandidates(column);
+            if (!columnCandidates.some((candidate) => candidates.includes(candidate))) return;
+            const value = String(row[String(column.key || '').trim()] || '').trim();
+            if (!value) return;
+            const label = entry.title && entry.title.trim() && entry.title.trim() !== value ? `${value} - ${entry.title}` : value;
+            options.push({ value, label });
+          });
+          if (columns.length > 0) return;
+          Object.entries(row).forEach(([key, rawValue]) => {
+            const normalizedKey = normalizeReferenceToken(key);
+            if (!normalizedKey || !candidates.includes(normalizedKey)) return;
+            const value = String(rawValue || '').trim();
+            if (!value) return;
+            const label = entry.title && entry.title.trim() && entry.title.trim() !== value ? `${value} - ${entry.title}` : value;
+            options.push({ value, label });
+          });
+        });
+      });
+      return options;
+    };
+
+    activeProgramSchemaSections.forEach((section) => {
+      ensureArray<EntrySectionColumnForm>(section.columns).forEach((column) => {
+        if (!isDocumentReferenceColumn(column)) return;
+        const sourceProgramCode = normalizeTeachingResourceProgramCode(column.binding?.sourceProgramCode);
+        if (!sourceProgramCode) return;
+        const referenceEntries = referenceEntriesByProgram.get(sourceProgramCode) || [];
+        const sourceProgram = programMetaByCode.get(sourceProgramCode);
+        const candidates = extractReferenceCandidates(column);
+        if (!candidates.length) return;
+        const dedupe = new Set<string>();
+        const options = referenceEntries
+          .filter((entry) => matchesContext(entry, column.binding))
+          .flatMap((entry) => extractOptionsFromEntry(entry, sourceProgram, candidates))
+          .filter((option) => {
+            const token = `${String(option.value || '').trim().toLowerCase()}::${String(option.label || '').trim().toLowerCase()}`;
+            if (!option.value || dedupe.has(token)) return false;
+            dedupe.add(token);
+            return true;
+          });
+        map.set(`${String(section.key || '').trim()}::${String(column.key || '').trim()}`, options);
+      });
+    });
+
+    return map;
+  }, [
+    activeProgramSchemaSections,
+    activeSemesterLabel,
+    programMetaByCode,
+    referenceEntriesQuery.data,
+    selectedContext,
+  ]);
 
   useEffect(() => {
     if (viewMode === 'review' && !canReview) {
@@ -1794,10 +2051,30 @@ export const LearningResourceGenerator = ({
     const value = String(row?.values?.[columnKey] || '');
     const dataType = getColumnDataType(column);
     const readOnly = isSystemManagedColumn(column);
+    const referenceOptions =
+      referenceOptionsByColumnKey.get(`${String(section.schemaKey || '').trim()}::${columnKey}`) || [];
     const inputClassName = `w-full rounded-md border border-gray-300 px-2 py-1.5 text-xs focus:border-blue-500 focus:outline-none ${
       readOnly ? 'bg-gray-50 text-gray-500' : 'bg-white'
     }`;
     const selectClassName = `${inputClassName} ${readOnly ? 'cursor-not-allowed' : ''}`;
+
+    if (isDocumentReferenceColumn(column)) {
+      return (
+        <select
+          value={value}
+          disabled={!row?.id}
+          onChange={(event) => updateSectionRowCell(section.id, row?.id || '', columnKey, event.target.value)}
+          className={selectClassName}
+        >
+          <option value="">{referenceOptions.length > 0 ? 'Pilih Referensi' : 'Belum ada data sumber'}</option>
+          {referenceOptions.map((option) => (
+            <option key={`${columnKey}-${option.value}-${option.label}`} value={option.value}>
+              {option.label}
+            </option>
+          ))}
+        </select>
+      );
+    }
 
     if (isWeekColumnKey(columnKey)) {
       const isChecked = isTruthyMark(value);

@@ -5,38 +5,38 @@ Setiap room baru yang diminta `baca AGENTS.md` atau `lanjutkan` wajib membaca fi
 
 ## Status Saat Ini
 
-- Last updated: 2026-04-26 22:35 WIB
-- Current status: Batch 10 editor Wakakur untuk `Program Perangkat Ajar` sudah mulai memakai fondasi metadata generik baru. User kini bisa menyimpan metadata blok/field/binding dari web `Mode Teknisi`, sementara renderer guru lama tetap aman karena kontrak lama belum diputus.
+- Last updated: 2026-04-27 05:34 WIB
+- Current status: Batch 11 reference picker guru lintas dokumen untuk `Program Perangkat Ajar` sudah diimplementasikan di web dan mobile dengan blast radius kecil. Guru kini bisa memakai field `DOCUMENT_REFERENCE` / `DOCUMENT_SNAPSHOT` sebagai dropdown referensi terintegrasi, sementara backend dan kontrak entry existing tetap dipakai.
 - Last completed repo work:
   - Commit: pending current batch until final close-out
-  - Title: `feat(curriculum): wire teaching resource metadata into management editor`
-  - Summary: halaman Wakakur kini menormalkan schema lama ke format generik di sisi frontend dan menampilkan kontrol teknisi untuk `schemaMode`, judul sistem, print rules, block metadata, teacher rules, field identity, source type, dan binding field.
+  - Title: `feat(curriculum): add teacher reference picker for linked teaching resource fields`
+  - Summary: editor guru web/mobile kini membaca metadata `sourceType` dan `binding` untuk memuat pilihan referensi dari dokumen guru lain secara scoped per program, konteks assignment, dan semester aktif, tanpa endpoint backend baru.
 - Task aktif:
   - Objective: menggeser fondasi fitur `Program Perangkat Ajar` dari schema/template berbasis nama dokumen ke model generik yang netral kebijakan, bisa saling terintegrasi antar-dokumen, dan tetap aman untuk user operasional.
-  - Batch terakhir selesai: Batch 10 editor Wakakur metadata foundation.
+  - Batch terakhir selesai: Batch 11 reference picker guru lintas dokumen.
   - Progress keseluruhan roadmap perangkat ajar dinamis:
     - `100%` untuk rumusan arsitektur generik
-    - `55%` untuk implementasi teknis refactor engine generik
+    - `72%` untuk implementasi teknis refactor engine generik
     - `15%` untuk builder Wakakur generasi baru
-    - `0%` untuk reference picker guru lintas dokumen
+    - `65%` untuk reference picker guru lintas dokumen
   - Area/file disentuh:
-    - `frontend/src/services/teachingResourceProgram.service.ts`
-    - `frontend/src/pages/teacher/wakasek/curriculum/TeachingResourceProgramManagementPage.tsx`
+    - `frontend/src/pages/teacher/learning-resources/LearningResourceGenerator.tsx`
+    - `mobile-app/src/features/learningResources/TeacherLearningResourceProgramScreen.tsx`
+    - `mobile-app/src/features/learningResources/teachingResourceProgramApi.ts`
     - `docs/CODEX_CONTINUITY.md`
   - Ringkasan hasil batch:
-    - frontend service type kini mengenal metadata generik yang sama dengan backend
-    - draft schema existing otomatis dinormalisasi ke model generik dengan helper frontend, jadi data lama tetap bisa diedit tanpa migrasi agresif
-    - `Mode Teknisi` sekarang punya kontrol untuk:
-      - `schemaMode`
-      - `documentTitle` dan `documentShortTitle`
-      - aturan umum guru
-      - aturan print
-      - `blockId`, `blockType`, `layout`, dan `teacherRules` per section
-      - `fieldId`, `fieldIdentity`, `sourceType`, `teacherEditMode`, `binding`, `exposeAsReference`, dan `isCoreField` per kolom
-    - preset lama tetap dipakai sebagai starter, tetapi saat masuk draft kini otomatis diberi metadata fondasi generik
-    - tidak ada perubahan mobile dan tidak ada perubahan backend tambahan pada batch ini
-- Worktree expectation: clean setelah commit/push Batch 10.
-- Publish/live status: frontend web sudah deploy live dan `https://siskgb2.id/` merespons `200`. Backend tetap sehat dari Batch 9. Tidak ada OTA mobile baru.
+    - type mobile kini mengenal metadata generik yang sama dengan backend/frontend (`sourceType`, `binding`, `fieldIdentity`, `schemaMode`, `blockType`, `layout`)
+    - editor guru web dan mobile kini mendeteksi kolom `DOCUMENT_REFERENCE` / `DOCUMENT_SNAPSHOT` dan merender dropdown referensi, bukan input manual biasa
+    - pilihan dropdown diambil memakai API entry existing dengan scope aman:
+      - hanya saat editor terbuka
+      - hanya untuk `sourceProgramCode` yang benar-benar direferensikan schema aktif
+      - hanya view `mine`
+      - limit `100` per program sumber
+    - filter referensi menghormati metadata binding seperti `filterByContext`, `matchBySubject`, `matchByClassLevel`, `matchByMajor`, dan `matchByActiveSemester`
+    - parser referensi tetap kompatibel dengan entry lama karena memakai fallback schema source program saat `content.sections[].columns` belum lengkap
+    - tidak ada endpoint backend baru, tidak ada polling/realtime baru, dan tidak ada invalidation global
+- Worktree expectation: clean setelah commit/push Batch 11.
+- Publish/live status: frontend web sudah deploy live dan `https://siskgb2.id/` merespons `200`. OTA mobile tester perlu dipublish ulang setelah commit/push karena safety gate menolak worktree campuran yang belum di-commit.
 - Progress presensi terpadu operasional: 100%.
 - Progress impor historis absensi siswa TKJ: 100%.
   - Selesai: audit workbook, verifikasi aturan blok merah, cek roster DB vs Excel, buat script importer reusable, apply impor final ke database, dan verifikasi pasca-impor.
@@ -238,6 +238,23 @@ Setiap room baru yang diminta `baca AGENTS.md` atau `lanjutkan` wajib membaca fi
   - `git diff --check`
   - `cd frontend && npm run deploy`
   - `curl -I https://siskgb2.id/` merespons `200`
+- Verifikasi Batch 11 reference picker guru lintas dokumen:
+  - `cd frontend && npm run build`
+  - `cd mobile-app && npm run typecheck`
+  - `cd mobile-app && npm run audit:parity:check`
+  - `git diff --check`
+  - `cd frontend && npm run deploy`
+  - `curl -I https://siskgb2.id/` merespons `200`
+  - `cd mobile-app && npm run check:ota:testers`
+  - hasil sementara:
+    - web live sehat
+    - channel `pilot-live` terverifikasi reachable untuk runtime `0.2.2`
+    - publish OTA pertama tertahan safety gate repo karena worktree masih campur perubahan web/mobile yang belum di-commit, sehingga perlu diulang setelah commit/push batch ini
+  - sanity check perubahan:
+    - tidak ada endpoint/backend baru
+    - query referensi hanya aktif saat editor terbuka dan hanya untuk program sumber yang benar-benar dipakai schema aktif
+    - tidak ada polling/refetch/realtime baru
+    - referensi guru tetap mengikuti tahun ajaran aktif dan konteks assignment aktif
   - sanity check perubahan:
     - perubahan hanya di halaman Wakakur dan type layer frontend
     - tidak ada endpoint baru
