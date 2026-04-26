@@ -518,6 +518,17 @@ const formatMultilineHtml = (value: unknown): string => {
   return safe.replace(/\n/g, '<br />');
 };
 
+const formatCellPrintHtml = (value: unknown, column?: EntrySectionColumnForm): string => {
+  const rawValue = String(value ?? '').trim();
+  if (!rawValue) return '-';
+  const dataType = getColumnDataType(column);
+  if (dataType === 'WEEK_GRID') return escapeHtml(formatWeekGridPrintValue(rawValue));
+  if (dataType === 'WEEK') return escapeHtml(/^\d+$/.test(rawValue) ? `Minggu ${rawValue}` : rawValue);
+  if (dataType === 'BOOLEAN') return isTruthyMark(rawValue) ? MARK_VALUE : '-';
+  if (dataType === 'NUMBER') return escapeHtml(formatNumericValue(parseNumber(rawValue)));
+  return formatMultilineHtml(rawValue);
+};
+
 const resolveSemesterLabel = (semester: unknown): string => {
   const token = String(semester || '').trim().toUpperCase();
   if (!token) return '';
@@ -553,10 +564,66 @@ const isTruthyMark = (value: string): boolean => {
 };
 
 const MARK_VALUE = '✓';
+const MONTH_OPTIONS = [
+  'Januari',
+  'Februari',
+  'Maret',
+  'April',
+  'Mei',
+  'Juni',
+  'Juli',
+  'Agustus',
+  'September',
+  'Oktober',
+  'Nopember',
+  'Desember',
+];
+const WEEK_OPTIONS = Array.from({ length: 19 }, (_, index) => String(index + 1));
+const SEMESTER_OPTIONS = ['Ganjil', 'Genap'];
 
 const isKktpCriteriaColumnKey = (columnKey: string): boolean => {
   const key = String(columnKey || '').trim().toLowerCase();
   return key === 'kurang_memadai' || key === 'memadai';
+};
+
+const getColumnDataType = (column?: Pick<EntrySectionColumnForm, 'dataType'> | null): string =>
+  String(column?.dataType || 'TEXT')
+    .trim()
+    .toUpperCase();
+
+const isSystemManagedColumn = (column: EntrySectionColumnForm): boolean => {
+  const valueSource = String(column.valueSource || 'MANUAL').trim().toUpperCase();
+  const dataType = getColumnDataType(column);
+  return Boolean(column.readOnly) || dataType === 'READONLY_BOUND' || (!!valueSource && valueSource !== 'MANUAL');
+};
+
+const parseWeekGridValue = (value: unknown): string[] => {
+  const seen = new Set<string>();
+  String(value || '')
+    .split(/[,\s;|]+/)
+    .map((token) => token.trim().replace(/^m(inggu)?[-_\s]*/i, ''))
+    .forEach((token) => {
+      const numeric = Number(token);
+      if (!Number.isInteger(numeric) || numeric < 1 || numeric > WEEK_OPTIONS.length) return;
+      seen.add(String(numeric));
+    });
+  return WEEK_OPTIONS.filter((week) => seen.has(week));
+};
+
+const toggleWeekGridValue = (value: unknown, week: string): string => {
+  const selected = new Set(parseWeekGridValue(value));
+  if (selected.has(week)) {
+    selected.delete(week);
+  } else {
+    selected.add(week);
+  }
+  return WEEK_OPTIONS.filter((item) => selected.has(item)).join(', ');
+};
+
+const formatWeekGridPrintValue = (value: unknown): string => {
+  const weeks = parseWeekGridValue(value);
+  if (!weeks.length) return '-';
+  return `Minggu ${weeks.join(', ')}`;
 };
 
 const formatNumericValue = (value: number): string => {
@@ -1498,8 +1565,11 @@ export const LearningResourceGenerator = ({
 
   const isSingleRowSheetForm = (_section: EntrySectionForm): boolean => false;
 
-  const getColumnWidthClass = (columnKey: string, multiline = false): string => {
+  const getColumnWidthClass = (columnKey: string, multiline = false, dataType = 'TEXT'): string => {
     const key = String(columnKey || '').toLowerCase();
+    const normalizedDataType = String(dataType || 'TEXT').toUpperCase();
+    if (normalizedDataType === 'WEEK_GRID') return 'w-[320px] min-w-[300px]';
+    if (['MONTH', 'WEEK', 'SEMESTER', 'NUMBER', 'BOOLEAN'].includes(normalizedDataType)) return 'w-28 min-w-[112px]';
     if (['no', 'bulan', 'semester', 'minggu_ke'].includes(key)) return 'w-24 min-w-[96px]';
     if (
       key.includes('jp') ||
@@ -1660,6 +1730,214 @@ export const LearningResourceGenerator = ({
     );
   };
 
+  const renderWeekGridControl = (
+    section: EntrySectionForm,
+    row: EntrySectionForm['rows'][number] | undefined,
+    columnKey: string,
+    value: string,
+    readOnly: boolean,
+  ) => {
+    const selectedWeeks = new Set(parseWeekGridValue(value));
+    return (
+      <div className="grid grid-cols-5 gap-1">
+        {WEEK_OPTIONS.map((week) => {
+          const active = selectedWeeks.has(week);
+          return (
+            <button
+              key={`${section.id}-${row?.id || 'row'}-${columnKey}-${week}`}
+              type="button"
+              disabled={readOnly || !row?.id}
+              onClick={() =>
+                row?.id ? updateSectionRowCell(section.id, row.id, columnKey, toggleWeekGridValue(value, week)) : null
+              }
+              className={`h-7 rounded border text-[10px] font-semibold transition disabled:cursor-not-allowed disabled:opacity-60 ${
+                active
+                  ? 'border-emerald-400 bg-emerald-50 text-emerald-700'
+                  : 'border-gray-300 bg-white text-gray-500 hover:bg-gray-50'
+              }`}
+            >
+              M{week}
+            </button>
+          );
+        })}
+      </div>
+    );
+  };
+
+  const renderSectionCellControl = (
+    section: EntrySectionForm,
+    row: EntrySectionForm['rows'][number] | undefined,
+    column: EntrySectionColumnForm,
+    dense = false,
+  ) => {
+    const columnKey = String(column.key || '').trim();
+    const value = String(row?.values?.[columnKey] || '');
+    const dataType = getColumnDataType(column);
+    const readOnly = isSystemManagedColumn(column);
+    const inputClassName = `w-full rounded-md border border-gray-300 px-2 py-1.5 text-xs focus:border-blue-500 focus:outline-none ${
+      readOnly ? 'bg-gray-50 text-gray-500' : 'bg-white'
+    }`;
+    const selectClassName = `${inputClassName} ${readOnly ? 'cursor-not-allowed' : ''}`;
+
+    if (isWeekColumnKey(columnKey)) {
+      const isChecked = isTruthyMark(value);
+      return (
+        <button
+          type="button"
+          disabled={readOnly || !row?.id}
+          onClick={() => (row?.id ? toggleSectionRowMark(section.id, row.id, columnKey) : null)}
+          className={`inline-flex h-8 w-full items-center justify-center rounded-md border text-xs font-semibold transition disabled:cursor-not-allowed disabled:opacity-60 ${
+            isChecked
+              ? 'border-emerald-400 bg-emerald-50 text-emerald-700'
+              : 'border-gray-300 bg-white text-gray-500 hover:bg-gray-50'
+          }`}
+        >
+          {isChecked ? MARK_VALUE : '-'}
+        </button>
+      );
+    }
+
+    if (isKktpCriteriaColumnKey(columnKey)) {
+      const isChecked = isTruthyMark(value);
+      return (
+        <button
+          type="button"
+          disabled={readOnly || !row?.id}
+          onClick={() =>
+            row?.id ? toggleKktpCriteria(section.id, row.id, columnKey as 'kurang_memadai' | 'memadai') : null
+          }
+          className={`inline-flex h-8 w-full items-center justify-center rounded-md border text-xs font-semibold transition disabled:cursor-not-allowed disabled:opacity-60 ${
+            isChecked
+              ? 'border-blue-400 bg-blue-50 text-blue-700'
+              : 'border-gray-300 bg-white text-gray-500 hover:bg-gray-50'
+          }`}
+        >
+          {isChecked ? MARK_VALUE : '-'}
+        </button>
+      );
+    }
+
+    if (dataType === 'WEEK_GRID') {
+      return renderWeekGridControl(section, row, columnKey, value, readOnly);
+    }
+
+    if (dataType === 'MONTH') {
+      return (
+        <select
+          value={value}
+          disabled={readOnly}
+          onChange={(event) => updateSectionRowCell(section.id, row?.id || '', columnKey, event.target.value)}
+          className={selectClassName}
+        >
+          <option value="">Pilih Bulan</option>
+          {MONTH_OPTIONS.map((month) => (
+            <option key={month} value={month}>
+              {month}
+            </option>
+          ))}
+        </select>
+      );
+    }
+
+    if (dataType === 'WEEK') {
+      return (
+        <select
+          value={value}
+          disabled={readOnly}
+          onChange={(event) => updateSectionRowCell(section.id, row?.id || '', columnKey, event.target.value)}
+          className={selectClassName}
+        >
+          <option value="">Pilih Minggu</option>
+          {WEEK_OPTIONS.map((week) => (
+            <option key={week} value={week}>
+              Minggu {week}
+            </option>
+          ))}
+        </select>
+      );
+    }
+
+    if (dataType === 'SEMESTER') {
+      return (
+        <select
+          value={value}
+          disabled={readOnly}
+          onChange={(event) => updateSectionRowCell(section.id, row?.id || '', columnKey, event.target.value)}
+          className={selectClassName}
+        >
+          <option value="">Pilih Semester</option>
+          {SEMESTER_OPTIONS.map((semester) => (
+            <option key={semester} value={semester}>
+              {semester}
+            </option>
+          ))}
+        </select>
+      );
+    }
+
+    if (dataType === 'SELECT' && Array.isArray(column.options) && column.options.length > 0) {
+      return (
+        <select
+          value={value}
+          disabled={readOnly}
+          onChange={(event) => updateSectionRowCell(section.id, row?.id || '', columnKey, event.target.value)}
+          className={selectClassName}
+        >
+          <option value="">Pilih</option>
+          {column.options.map((option) => (
+            <option key={option} value={option}>
+              {option}
+            </option>
+          ))}
+        </select>
+      );
+    }
+
+    if (dataType === 'BOOLEAN') {
+      const isChecked = isTruthyMark(value);
+      return (
+        <button
+          type="button"
+          disabled={readOnly || !row?.id}
+          onClick={() => (row?.id ? updateSectionRowCell(section.id, row.id, columnKey, isChecked ? '' : MARK_VALUE) : null)}
+          className={`inline-flex h-8 w-full items-center justify-center rounded-md border text-xs font-semibold transition disabled:cursor-not-allowed disabled:opacity-60 ${
+            isChecked
+              ? 'border-emerald-400 bg-emerald-50 text-emerald-700'
+              : 'border-gray-300 bg-white text-gray-500 hover:bg-gray-50'
+          }`}
+        >
+          {isChecked ? MARK_VALUE : '-'}
+        </button>
+      );
+    }
+
+    if (column.multiline || dataType === 'TEXTAREA') {
+      return (
+        <textarea
+          rows={dense ? 2 : 3}
+          value={value}
+          disabled={readOnly}
+          onChange={(event) => updateSectionRowCell(section.id, row?.id || '', columnKey, event.target.value)}
+          placeholder={column.placeholder || ''}
+          className={`w-full resize-y rounded-md border border-gray-300 px-2 py-1.5 text-xs focus:border-blue-500 focus:outline-none ${
+            readOnly ? 'bg-gray-50 text-gray-500' : 'bg-white'
+          }`}
+        />
+      );
+    }
+
+    return (
+      <input
+        type={dataType === 'NUMBER' ? 'number' : 'text'}
+        value={value}
+        disabled={readOnly}
+        onChange={(event) => updateSectionRowCell(section.id, row?.id || '', columnKey, event.target.value)}
+        placeholder={column.placeholder || ''}
+        className={inputClassName}
+      />
+    );
+  };
+
   const addSectionColumn = (sectionId: string) => {
     setSectionsWithDerived((prev) =>
       prev.map((item) => {
@@ -1801,15 +2079,16 @@ export const LearningResourceGenerator = ({
             .map((column) => ({
               key: String(column.key || '').trim(),
               label: String(column.label || column.key || '').trim(),
+              column,
             }))
             .filter((header) => header.key)
-        : dynamicKeys.map((key) => ({ key, label: key }));
+        : dynamicKeys.map((key) => ({ key, label: key, column: undefined }));
 
     const thead = `<tr>${headers.map((header) => `<th>${escapeHtml(header.label)}</th>`).join('')}</tr>`;
     const tbody = rows
       .map((row) => {
         const cells = headers
-          .map((header) => `<td>${formatMultilineHtml(String(row.values?.[header.key] || '-'))}</td>`)
+          .map((header) => `<td>${formatCellPrintHtml(row.values?.[header.key], header.column)}</td>`)
           .join('');
         return `<tr>${cells}</tr>`;
       })
@@ -2431,79 +2710,12 @@ export const LearningResourceGenerator = ({
                                       const row = section.rows[0];
                                       const columnKey = String(column.key || '').trim();
                                       if (columnKey.toLowerCase() === 'tahun_ajaran') return null;
-                                      const value = String(row?.values?.[column.key] || '');
-                                      const isWeekColumn = isWeekColumnKey(columnKey);
-                                      const isKktpCriteriaColumn = isKktpCriteriaColumnKey(columnKey);
-                                      const isChecked = isTruthyMark(value);
                                       return (
                                         <label key={`${section.id}-${column.key}`} className="space-y-1">
                                           <span className="block text-[11px] font-semibold text-gray-500">
                                             {column.label}
                                           </span>
-                                          {isWeekColumn ? (
-                                            <button
-                                              type="button"
-                                              onClick={() =>
-                                                row?.id ? toggleSectionRowMark(section.id, row.id, columnKey) : null
-                                              }
-                                              className={`inline-flex h-9 w-full items-center justify-center rounded-md border text-xs font-semibold transition ${
-                                                isChecked
-                                                  ? 'border-emerald-400 bg-emerald-50 text-emerald-700'
-                                                  : 'border-gray-300 bg-white text-gray-500 hover:bg-gray-50'
-                                              }`}
-                                            >
-                                              {isChecked ? MARK_VALUE : '-'}
-                                            </button>
-                                          ) : isKktpCriteriaColumn ? (
-                                            <button
-                                              type="button"
-                                              onClick={() =>
-                                                row?.id
-                                                  ? toggleKktpCriteria(
-                                                      section.id,
-                                                      row.id,
-                                                      columnKey as 'kurang_memadai' | 'memadai',
-                                                    )
-                                                  : null
-                                              }
-                                              className={`inline-flex h-9 w-full items-center justify-center rounded-md border text-xs font-semibold transition ${
-                                                isChecked
-                                                  ? 'border-blue-400 bg-blue-50 text-blue-700'
-                                                  : 'border-gray-300 bg-white text-gray-500 hover:bg-gray-50'
-                                              }`}
-                                            >
-                                              {isChecked ? MARK_VALUE : '-'}
-                                            </button>
-                                          ) : column.multiline ? (
-                                            <textarea
-                                              rows={2}
-                                              value={value}
-                                              onChange={(event) =>
-                                                updateSectionRowCell(
-                                                  section.id,
-                                                  row?.id || '',
-                                                  column.key,
-                                                  event.target.value,
-                                                )
-                                              }
-                                              placeholder={column.placeholder || ''}
-                                              className="w-full resize-y rounded-md border border-gray-300 bg-white px-2 py-1.5 text-xs focus:border-blue-500 focus:outline-none"
-                                            />
-                                          ) : (
-                                            <input
-                                              value={value}
-                                              onChange={(event) =>
-                                                updateSectionRowCell(
-                                                  section.id,
-                                                  row?.id || '',
-                                                  column.key,
-                                                  event.target.value,
-                                                )
-                                              }
-                                              placeholder={column.placeholder || ''}
-                                              className="w-full rounded-md border border-gray-300 bg-white px-2 py-1.5 text-xs focus:border-blue-500 focus:outline-none"
-                                            />
-                                          )}
+                                          {renderSectionCellControl(section, row, column, true)}
                                         </label>
                                       );
                                     })}
@@ -2518,7 +2730,7 @@ export const LearningResourceGenerator = ({
                                           {visibleSectionColumns.map((column) => (
                                             <th
                                               key={column.key}
-                                              className={`whitespace-nowrap border-b border-gray-200 px-2 py-1.5 text-left font-semibold text-gray-600 ${getColumnWidthClass(column.key, Boolean(column.multiline))}`}
+                                              className={`whitespace-nowrap border-b border-gray-200 px-2 py-1.5 text-left font-semibold text-gray-600 ${getColumnWidthClass(column.key, Boolean(column.multiline), column.dataType)}`}
                                             >
                                               {column.label}
                                             </th>
@@ -2532,80 +2744,12 @@ export const LearningResourceGenerator = ({
                                         {section.rows.map((row, rowIndex) => (
                                           <tr key={row.id} className="border-b border-gray-100 last:border-b-0">
                                             {visibleSectionColumns.map((column) => (
-                                              (() => {
-                                                const columnKey = String(column.key || '').trim();
-                                                const value = String(row.values[column.key] || '');
-                                                const isWeekColumn = isWeekColumnKey(columnKey);
-                                                const isKktpCriteriaColumn = isKktpCriteriaColumnKey(columnKey);
-                                                const isChecked = isTruthyMark(value);
-                                                return (
-                                                  <td
-                                                    key={`${row.id}-${column.key}`}
-                                                    className={`px-2 py-1.5 align-top ${getColumnWidthClass(column.key, Boolean(column.multiline))}`}
-                                                  >
-                                                    {isWeekColumn ? (
-                                                      <button
-                                                        type="button"
-                                                        onClick={() => toggleSectionRowMark(section.id, row.id, columnKey)}
-                                                        className={`inline-flex h-8 w-full items-center justify-center rounded-md border text-xs font-semibold transition ${
-                                                          isChecked
-                                                            ? 'border-emerald-400 bg-emerald-50 text-emerald-700'
-                                                            : 'border-gray-300 bg-white text-gray-500 hover:bg-gray-50'
-                                                        }`}
-                                                      >
-                                                        {isChecked ? MARK_VALUE : '-'}
-                                                      </button>
-                                                    ) : isKktpCriteriaColumn ? (
-                                                      <button
-                                                        type="button"
-                                                        onClick={() =>
-                                                          toggleKktpCriteria(
-                                                            section.id,
-                                                            row.id,
-                                                            columnKey as 'kurang_memadai' | 'memadai',
-                                                          )
-                                                        }
-                                                        className={`inline-flex h-8 w-full items-center justify-center rounded-md border text-xs font-semibold transition ${
-                                                          isChecked
-                                                            ? 'border-blue-400 bg-blue-50 text-blue-700'
-                                                            : 'border-gray-300 bg-white text-gray-500 hover:bg-gray-50'
-                                                        }`}
-                                                      >
-                                                        {isChecked ? MARK_VALUE : '-'}
-                                                      </button>
-                                                    ) : column.multiline ? (
-                                                      <textarea
-                                                        rows={2}
-                                                        value={value}
-                                                        onChange={(event) =>
-                                                          updateSectionRowCell(
-                                                            section.id,
-                                                            row.id,
-                                                            column.key,
-                                                            event.target.value,
-                                                          )
-                                                        }
-                                                        placeholder={column.placeholder || ''}
-                                                        className="w-full resize-y rounded-md border border-gray-300 px-2 py-1.5 text-xs focus:border-blue-500 focus:outline-none"
-                                                      />
-                                                    ) : (
-                                                      <input
-                                                        value={value}
-                                                        onChange={(event) =>
-                                                          updateSectionRowCell(
-                                                            section.id,
-                                                            row.id,
-                                                            column.key,
-                                                            event.target.value,
-                                                          )
-                                                        }
-                                                        placeholder={column.placeholder || ''}
-                                                        className="w-full rounded-md border border-gray-300 px-2 py-1.5 text-xs focus:border-blue-500 focus:outline-none"
-                                                      />
-                                                    )}
-                                                  </td>
-                                                );
-                                              })()
+                                              <td
+                                                key={`${row.id}-${column.key}`}
+                                                className={`px-2 py-1.5 align-top ${getColumnWidthClass(column.key, Boolean(column.multiline), column.dataType)}`}
+                                              >
+                                                {renderSectionCellControl(section, row, column, true)}
+                                              </td>
                                             ))}
                                             <td className="sticky right-0 bg-white px-2 py-1.5 text-right align-top">
                                               <button

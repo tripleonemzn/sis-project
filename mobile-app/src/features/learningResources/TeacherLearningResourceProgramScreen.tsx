@@ -113,6 +113,24 @@ const STATUS_FILTERS: Array<{ key: StatusFilter; label: string }> = [
   { key: 'REJECTED', label: 'Revisi' },
 ];
 
+const MONTH_OPTIONS = [
+  'Januari',
+  'Februari',
+  'Maret',
+  'April',
+  'Mei',
+  'Juni',
+  'Juli',
+  'Agustus',
+  'September',
+  'Oktober',
+  'Nopember',
+  'Desember',
+].map((month) => ({ value: month, label: month }));
+const WEEK_OPTIONS = Array.from({ length: 19 }, (_, index) => String(index + 1));
+const WEEK_SELECT_OPTIONS = WEEK_OPTIONS.map((week) => ({ value: week, label: `Minggu ${week}` }));
+const SEMESTER_OPTIONS = ['Ganjil', 'Genap'].map((semester) => ({ value: semester, label: semester }));
+
 const PROGRAM_NAVIGATION = [
   { code: 'CP', route: '/teacher/learning-cp', label: 'CP' },
   { code: 'ATP', route: '/teacher/learning-atp', label: 'ATP' },
@@ -283,10 +301,39 @@ function resolveSystemValueForColumn(
   }
 }
 
+function getColumnDataType(column?: Pick<TeachingResourceProgramColumnSchema, 'dataType'> | null): string {
+  return String(column?.dataType || 'TEXT')
+    .trim()
+    .toUpperCase();
+}
+
 function isSystemManagedColumn(column: TeachingResourceProgramColumnSchema): boolean {
   const valueSource = String(column.valueSource || 'MANUAL').trim().toUpperCase();
-  const dataType = String(column.dataType || 'TEXT').trim().toUpperCase();
+  const dataType = getColumnDataType(column);
   return Boolean(column.readOnly) || dataType === 'READONLY_BOUND' || (!!valueSource && valueSource !== 'MANUAL');
+}
+
+function parseWeekGridValue(value: unknown): string[] {
+  const seen = new Set<string>();
+  String(value || '')
+    .split(/[,\s;|]+/)
+    .map((token) => token.trim().replace(/^m(inggu)?[-_\s]*/i, ''))
+    .forEach((token) => {
+      const numeric = Number(token);
+      if (!Number.isInteger(numeric) || numeric < 1 || numeric > WEEK_OPTIONS.length) return;
+      seen.add(String(numeric));
+    });
+  return WEEK_OPTIONS.filter((week) => seen.has(week));
+}
+
+function toggleWeekGridValue(value: unknown, week: string): string {
+  const selected = new Set(parseWeekGridValue(value));
+  if (selected.has(week)) {
+    selected.delete(week);
+  } else {
+    selected.add(week);
+  }
+  return WEEK_OPTIONS.filter((item) => selected.has(item)).join(', ');
 }
 
 function buildAutoSheetTitle(params: {
@@ -1030,6 +1077,157 @@ export function TeacherLearningResourceProgramScreen({
     );
   };
 
+  const renderColumnInput = (
+    section: EntrySectionDraft,
+    row: EntrySectionDraft['rows'][number] | undefined,
+    column: TeachingResourceProgramColumnSchema,
+  ) => {
+    const columnKey = String(column.key || '').trim();
+    const value = String(row?.values?.[columnKey] || '');
+    const dataType = getColumnDataType(column);
+    const readOnly = isSystemManagedColumn(column);
+    const updateValue = (nextValue: string) => {
+      if (!row?.id) return;
+      updateSectionRow(section.id, row.id, columnKey, nextValue);
+    };
+    const inputStyle = [
+      INPUT_BASE_STYLE,
+      column.multiline || dataType === 'TEXTAREA' ? { minHeight: 74 } : null,
+      readOnly ? { backgroundColor: '#f8fafc', color: '#475569' } : null,
+    ];
+
+    if (readOnly) {
+      return (
+        <TextInput
+          value={value}
+          editable={false}
+          placeholder={column.placeholder || ''}
+          placeholderTextColor="#94a3b8"
+          multiline={Boolean(column.multiline) || dataType === 'TEXTAREA'}
+          textAlignVertical={column.multiline || dataType === 'TEXTAREA' ? 'top' : 'center'}
+          style={inputStyle}
+        />
+      );
+    }
+
+    if (dataType === 'MONTH') {
+      return (
+        <MobileSelectField
+          value={value}
+          options={MONTH_OPTIONS}
+          onChange={updateValue}
+          placeholder="Pilih bulan"
+          maxHeight={260}
+        />
+      );
+    }
+
+    if (dataType === 'WEEK') {
+      return (
+        <MobileSelectField
+          value={value}
+          options={WEEK_SELECT_OPTIONS}
+          onChange={updateValue}
+          placeholder="Pilih minggu"
+          maxHeight={260}
+        />
+      );
+    }
+
+    if (dataType === 'SEMESTER') {
+      return (
+        <MobileSelectField
+          value={value}
+          options={SEMESTER_OPTIONS}
+          onChange={updateValue}
+          placeholder="Pilih semester"
+        />
+      );
+    }
+
+    if (dataType === 'SELECT' && Array.isArray(column.options) && column.options.length > 0) {
+      return (
+        <MobileSelectField
+          value={value}
+          options={column.options.map((option) => ({ value: option, label: option }))}
+          onChange={updateValue}
+          placeholder="Pilih"
+          maxHeight={260}
+        />
+      );
+    }
+
+    if (dataType === 'WEEK_GRID') {
+      const selectedWeeks = new Set(parseWeekGridValue(value));
+      return (
+        <View style={{ flexDirection: 'row', flexWrap: 'wrap', marginTop: -4 }}>
+          {WEEK_OPTIONS.map((week) => {
+            const active = selectedWeeks.has(week);
+            return (
+              <Pressable
+                key={`${section.id}-${row?.id || 'row'}-${columnKey}-${week}`}
+                onPress={() => updateValue(toggleWeekGridValue(value, week))}
+                style={{
+                  width: '19%',
+                  borderWidth: 1,
+                  borderColor: active ? '#34d399' : '#cbd5e1',
+                  backgroundColor: active ? '#ecfdf5' : '#fff',
+                  borderRadius: 8,
+                  paddingVertical: 7,
+                  alignItems: 'center',
+                  marginRight: '1%',
+                  marginTop: 5,
+                }}
+              >
+                <Text
+                  style={{
+                    color: active ? '#047857' : '#64748b',
+                    fontSize: scaleWithAppTextScale(11),
+                    fontWeight: '700',
+                  }}
+                >
+                  M{week}
+                </Text>
+              </Pressable>
+            );
+          })}
+        </View>
+      );
+    }
+
+    if (dataType === 'BOOLEAN') {
+      const active = ['1', 'true', 'ya', 'yes', 'v', 'x', '✓'].includes(value.trim().toLowerCase());
+      return (
+        <Pressable
+          onPress={() => updateValue(active ? '' : '✓')}
+          style={{
+            borderWidth: 1,
+            borderColor: active ? '#34d399' : '#cbd5e1',
+            backgroundColor: active ? '#ecfdf5' : '#fff',
+            borderRadius: 10,
+            paddingVertical: 9,
+            alignItems: 'center',
+          }}
+        >
+          <Text style={{ color: active ? '#047857' : '#64748b', fontWeight: '700' }}>{active ? '✓' : '-'}</Text>
+        </Pressable>
+      );
+    }
+
+    return (
+      <TextInput
+        value={value}
+        onChangeText={updateValue}
+        placeholder={column.placeholder || ''}
+        placeholderTextColor="#94a3b8"
+        keyboardType={dataType === 'NUMBER' ? 'numeric' : 'default'}
+        multiline={Boolean(column.multiline) || dataType === 'TEXTAREA'}
+        textAlignVertical={column.multiline || dataType === 'TEXTAREA' ? 'top' : 'center'}
+        style={inputStyle}
+      />
+    );
+  };
+
   const removeSectionRow = (sectionId: string, rowId: string) => {
     setSections((prev) =>
       prev.map((item) => {
@@ -1644,33 +1842,12 @@ export function TeacherLearningResourceProgramScreen({
                           }}
                         >
                           {(resolveSectionSchema(section)?.columns || []).map((column) => {
-                            const readOnly = isSystemManagedColumn(column);
                             return (
                               <View key={`${section.id}-single-${column.key}`} style={{ marginTop: 8 }}>
                                 <Text style={{ color: '#64748b', fontSize: scaleWithAppTextScale(12), marginBottom: 4 }}>
                                   {column.label}
                                 </Text>
-                                <TextInput
-                                  value={String(section.rows[0]?.values?.[column.key] || '')}
-                                  editable={!readOnly}
-                                  onChangeText={(value) =>
-                                    updateSectionRow(
-                                      section.id,
-                                      String(section.rows[0]?.id || ''),
-                                      column.key,
-                                      value,
-                                    )
-                                  }
-                                  placeholder={column.placeholder || ''}
-                                  placeholderTextColor="#94a3b8"
-                                  multiline={Boolean(column.multiline)}
-                                  textAlignVertical={column.multiline ? 'top' : 'center'}
-                                  style={[
-                                    INPUT_BASE_STYLE,
-                                    column.multiline ? { minHeight: 74 } : null,
-                                    readOnly ? { backgroundColor: '#f8fafc', color: '#475569' } : null,
-                                  ]}
-                                />
+                                {renderColumnInput(section, section.rows[0], column)}
                               </View>
                             );
                           })}
@@ -1708,26 +1885,12 @@ export function TeacherLearningResourceProgramScreen({
                                 </Pressable>
                               </View>
                               {(resolveSectionSchema(section)?.columns || []).map((column) => {
-                                const readOnly = isSystemManagedColumn(column);
                                 return (
                                   <View key={`${row.id}-${column.key}`} style={{ marginTop: 8 }}>
                                     <Text style={{ color: '#64748b', fontSize: scaleWithAppTextScale(12), marginBottom: 4 }}>
                                       {column.label}
                                     </Text>
-                                    <TextInput
-                                      value={String(row.values[column.key] || '')}
-                                      editable={!readOnly}
-                                      onChangeText={(value) => updateSectionRow(section.id, row.id, column.key, value)}
-                                      placeholder={column.placeholder || ''}
-                                      placeholderTextColor="#94a3b8"
-                                      multiline={Boolean(column.multiline)}
-                                      textAlignVertical={column.multiline ? 'top' : 'center'}
-                                      style={[
-                                        INPUT_BASE_STYLE,
-                                        column.multiline ? { minHeight: 74 } : null,
-                                        readOnly ? { backgroundColor: '#f8fafc', color: '#475569' } : null,
-                                      ]}
-                                    />
+                                    {renderColumnInput(section, row, column)}
                                   </View>
                                 );
                               })}
