@@ -5,26 +5,30 @@ Setiap room baru yang diminta `baca AGENTS.md` atau `lanjutkan` wajib membaca fi
 
 ## Status Saat Ini
 
-- Last updated: 2026-04-26 15:24 WIB
-- Current status: Batch 2 penyempurnaan `Program Perangkat Ajar` selesai dan sudah live di web. Pondasi backend/perilaku guru/mobile belum diubah; batch ini menambah starter template kompatibel agar Wakakur bisa membuat schema awal dari pola dokumen yang lebih siap pakai.
+- Last updated: 2026-04-26 20:18 WIB
+- Current status: Batch 3 penyempurnaan `Program Perangkat Ajar` selesai, sudah live di web, dan OTA mobile tester sudah dipublish. Backend/DB tidak diubah; batch ini menyamakan jalur authoring guru web-mobile agar schema starter dari Wakakur terisi lebih konsisten saat dipakai guru.
 - Last completed repo work:
-  - Commit: `022cbce`
-  - Title: `feat(curriculum): add teaching resource schema starters`
-  - Summary: Menambah starter template pada modal `Tambah/Edit Program Perangkat Ajar` sisi Wakakur web untuk menghasilkan schema awal yang kompatibel dengan struktur lama, tanpa mengubah kontrak backend, data existing, atau alur guru/mobile.
+  - Commit: `7139eb6`
+  - Title: `feat(mobile): support dynamic teaching resource schema values`
+  - Companion commit: `c8b75e7` (`feat(curriculum): hydrate teaching resource web editor`)
+  - Summary: Web guru kini menormalisasi/hydrate schema saat editor berubah dan saat save, sedangkan mobile guru kini membaca metadata kolom schema lebih lengkap (`dataType`, `valueSource`, `semanticKey`, `bindingKey`, `readOnly`, `options`) serta mengisi nilai `SYSTEM_*`/`BOUND` secara generik.
 - Task aktif:
   - Objective: menyederhanakan pengalaman Wakakur saat menambah/mengedit `Program Perangkat Ajar` tanpa mengorbankan fleksibilitas dinamis untuk batch engine berikutnya.
-  - Batch terakhir selesai: Batch 2 starter template Wakakur web.
-  - Progress keseluruhan roadmap perangkat ajar dinamis: `35%`.
+  - Batch terakhir selesai: Batch 3 kompatibilitas authoring guru web-mobile.
+  - Progress keseluruhan roadmap perangkat ajar dinamis: `50%`.
   - Area/file disentuh:
-    - `frontend/src/pages/teacher/wakasek/curriculum/TeachingResourceProgramManagementPage.tsx`
+    - `frontend/src/pages/teacher/learning-resources/LearningResourceGenerator.tsx`
+    - `mobile-app/src/features/learningResources/TeacherLearningResourceProgramScreen.tsx`
+    - `mobile-app/src/features/learningResources/teachingResourceProgramApi.ts`
   - Ringkasan hasil batch:
-    - kartu `Arah Dokumen & Metadata` kini punya aksi `Terapkan Starter` / `Terapkan Ulang Starter`
-    - starter template menghasilkan schema draft dari code/label program yang sedang diedit, sehingga tetap dinamis dan tidak mengunci ke satu dokumen hardcode
-    - pola starter yang tersedia: `Analisis Bertingkat`, `Distribusi Waktu`, `Matriks Grid`, `Narasi + Tabel`, dan `Kustom Fleksibel`
-    - setiap starter menyertakan konteks dokumen berbasis assignment/tahun ajaran aktif dan blok pengesahan ringan
-    - perubahan hanya menyentuh draft schema di modal sampai Wakakur menekan simpan; tidak ada perubahan kontrak backend, migrasi data, atau perubahan runtime di sisi guru/mobile pada batch ini
-- Worktree expectation: clean setelah commit/push finalisasi batch UI Wakakur ini.
-- Publish/live status: frontend web sudah live untuk batch starter template Wakakur ini. Backend dan OTA mobile tidak terdampak.
+    - web guru meng-hydrate nilai sistem/bound saat section berubah, baris baru ditambah, editor `/new` dibuka, dan saat payload disimpan
+    - editor `/new` web menunggu assignment guru selesai dimuat sebelum auto-fill konteks, sehingga judul/konteks dokumen tidak mudah kosong
+    - mobile guru kini memahami metadata kolom schema yang sama dengan web untuk kebutuhan starter dinamis
+    - mobile guru mengisi `SYSTEM_ACTIVE_YEAR`, `SYSTEM_SEMESTER`, `SYSTEM_SUBJECT`, `SYSTEM_CLASS_LEVEL`, `SYSTEM_CLASS_NAME`, `SYSTEM_SKILL_PROGRAM`, `SYSTEM_TEACHER_NAME`, `SYSTEM_PLACE_DATE`, dan `BOUND` dengan pola generik
+    - kolom mobile yang dikelola sistem/read-only tidak bisa diedit manual, agar konteks operasional tetap mengikuti source of truth
+    - tidak ada perubahan kontrak backend, migrasi data, polling, realtime, atau query baru
+- Worktree expectation: clean setelah commit/push finalisasi Batch 3.
+- Publish/live status: frontend web sudah live. OTA mobile tester `pilot-live` sudah dipublish dengan update group `37a2ee8b-6356-49c9-a3d7-74bd0340617b`; push notify update berhasil `recipients=3, sent=3`.
 - Progress presensi terpadu operasional: 100%.
 - Progress impor historis absensi siswa TKJ: 100%.
   - Selesai: audit workbook, verifikasi aturan blok merah, cek roster DB vs Excel, buat script importer reusable, apply impor final ke database, dan verifikasi pasca-impor.
@@ -118,15 +122,35 @@ Setiap room baru yang diminta `baca AGENTS.md` atau `lanjutkan` wajib membaca fi
     - starter template hanya mengganti schema draft lokal di modal sebelum disimpan oleh Wakakur
     - schema starter tetap memakai struktur `sections` dan `columns` yang sudah ada, sehingga kompatibel dengan editor lama
     - mode lanjutan masih memuat seluruh editor schema detail lama sehingga blast radius perilaku tetap kecil
+- Verifikasi Batch 3 authoring guru web-mobile `Program Perangkat Ajar`:
+  - `cd frontend && npm run build`
+  - `cd mobile-app && npm run typecheck`
+  - `cd mobile-app && npm run audit:parity:check`
+  - `git diff --check`
+  - `cd frontend && npm run deploy`
+  - `curl -I https://siskgb2.id/` merespons `200`
+  - `cd mobile-app && npm run check:ota:testers`
+  - `cd mobile-app && npm run update:testers -- "Penyempurnaan Perangkat Ajar: schema starter kini lebih konsisten di web dan mobile. Silakan perbarui untuk menikmati fitur terbaru."`
+  - OTA result:
+    - channel `pilot-live`
+    - runtime `0.2.2`
+    - update group `37a2ee8b-6356-49c9-a3d7-74bd0340617b`
+    - Android update ID `019dc9f1-2675-7071-898d-180bbe59fb47`
+    - commit `7139eb6c814fffa4d4456793782c78a0753f3329`
+    - push notify `recipients=3, sent=3, failed=0, stale=0`
+  - sanity check perubahan:
+    - batch ini tidak menambah endpoint, polling, websocket, query berat, atau invalidate global baru
+    - semua perubahan tetap memakai schema/program API existing
+    - web/mobile sama-sama mengikuti tahun ajaran aktif dan assignment guru sebagai source of truth konteks dokumen
 
 ## Langkah Aman Berikutnya
 
-- Lanjutkan Batch 3 perangkat ajar dengan fokus aman berikut:
-  - audit tampilan live Wakakur setelah starter template dipakai, terutama apakah schema hasil starter cukup mudah diedit sebelum disimpan
-  - cek renderer/authoring guru terhadap schema hasil starter tanpa mengubah kontrak backend dulu
-  - jika lanjut implementasi engine, mulai dari metadata kompatibel yang tidak merusak program existing, lalu susul renderer/authoring guru secara bertahap
-  - prioritas berikutnya paling sehat adalah validasi jalur `grouped-analysis` dan `time-distribution`, karena dua pola ini paling dekat dengan kebutuhan nyata user untuk analisis capaian, prota, promes, dan sebaran waktu
-- Jika room baru diminta melanjutkan fitur ini, cek dulu tampilan live halaman `Program Perangkat Ajar` dan pastikan aksi starter tidak membingungkan Wakakur sebelum menambah kompleksitas batch berikutnya.
+- Lanjutkan Batch 4 perangkat ajar dengan fokus aman berikut:
+  - uji manual live jalur Wakakur membuat starter `Analisis Bertingkat` dan `Distribusi Waktu`, lalu guru membuat dokumen dari program tersebut di web dan mobile
+  - audit hasil print/renderer web terhadap schema starter, terutama apakah kolom `MONTH`, `WEEK`, `WEEK_GRID`, dan konteks dokumen tampil cukup rapi
+  - jika perlu engine type, mulai dari metadata kompatibel tanpa migrasi dan tanpa mengubah program existing
+  - jangan menyentuh backend sebelum ada kebutuhan nyata dari uji manual renderer/authoring
+- Jika room baru diminta melanjutkan fitur ini, mulai dari cek live halaman Wakakur `Program Perangkat Ajar`, lalu cek halaman guru web/mobile untuk program hasil starter sebelum menambah kompleksitas engine.
 - Data historis TKJ + AK/MP sekarang sudah siap dipakai oleh rapor walas karena source `daily_attendances` sudah terisi untuk `Jul 2025 - Apr 2026`.
 - Jika user melanjutkan impor jurusan/tingkat lain, gunakan script yang sama sebagai baseline, lalu audit dulu roster aktif DB vs workbook sebelum apply.
 - Jika user ingin melanjutkan uji SBTS, langkah paling aman sekarang adalah minta user cetak ulang rapor SBTS nyata setelah bugfix decimal/print live, lalu cocokkan angka dan rasa respons print.
