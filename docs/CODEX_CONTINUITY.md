@@ -5,33 +5,37 @@ Setiap room baru yang diminta `baca AGENTS.md` atau `lanjutkan` wajib membaca fi
 
 ## Status Saat Ini
 
-- Last updated: 2026-04-26 23:20 WIB
-- Current status: blueprint arsitektur lanjutan `Program Perangkat Ajar` sudah dirumuskan di repo untuk mengganti arah `template hardcode per nama dokumen` menjadi `builder dokumen generik berbasis blok + field identity + binding antar-dokumen`. Belum ada implementasi kode baru pada batch ini; web/mobile/live state tetap sama seperti setelah Batch 7.
+- Last updated: 2026-04-26 22:30 WIB
+- Current status: Batch 9 fondasi implementasi backend untuk `Program Perangkat Ajar` sudah selesai secara aman. Mesin existing belum diganti, tetapi schema JSON backend kini sudah menerima metadata generik baru untuk arah `builder dokumen berbasis blok + field identity + binding`. Seluruh data uji lama pada modul ini juga sudah dihapus sesuai instruksi user.
 - Last completed repo work:
-  - Commit: `2c17fb8`
-  - Title: `feat(curriculum): simplify teaching resource program setup`
-  - Summary: Halaman Wakakur `Program Perangkat Ajar` kini menampilkan alur 3 langkah, mengganti default menjadi `Mode Siap Pakai`, menyembunyikan kode/source sheet/hint teknis dari mode sederhana, dan mengubah pilihan template menjadi bahasa operasional yang lebih mudah dipahami.
+  - Commit: pending current batch until final close-out
+  - Title: `feat(curriculum): add dynamic teaching resource schema foundation`
+  - Summary: backend controller kini menormalkan metadata generik baru seperti `schemaMode`, `blockType`, `layout`, `fieldIdentity`, `sourceType`, `binding`, `teacherRules`, dan `printRules` tanpa memutus kontrak renderer lama; script reset data uji juga ditambahkan.
 - Task aktif:
   - Objective: menggeser fondasi fitur `Program Perangkat Ajar` dari schema/template berbasis nama dokumen ke model generik yang netral kebijakan, bisa saling terintegrasi antar-dokumen, dan tetap aman untuk user operasional.
-  - Batch terakhir selesai: Batch 8 rumusan arsitektur/blueprint builder generik.
+  - Batch terakhir selesai: Batch 9 fondasi backend + reset data uji.
   - Progress keseluruhan roadmap perangkat ajar dinamis:
-    - `95%` untuk rollout UX/batch existing yang sudah live
-    - `100%` untuk rumusan arsitektur generik sebagai acuan implementasi berikutnya
-    - `0%` untuk implementasi refactor engine generik karena belum dimulai
+    - `100%` untuk rumusan arsitektur generik
+    - `35%` untuk implementasi teknis refactor engine generik
+    - `0%` untuk builder Wakakur generasi baru dan reference picker guru
   - Area/file disentuh:
-    - `docs/teaching-resource-dynamic-document-blueprint.md`
+    - `backend/src/controllers/teachingResourceProgram.controller.ts`
+    - `backend/src/scripts/reset_teaching_resource_program_data.ts`
+    - `backend/package.json`
     - `docs/CODEX_CONTINUITY.md`
   - Ringkasan hasil batch:
-    - blueprint baru menegaskan bahwa `Program` hanyalah entitas menu, bukan tipe mesin hardcode
-    - mesin yang disarankan adalah `Document Blueprint` generik berbasis `Block`, `Field`, dan `Binding`
-    - integrasi antar-dokumen wajib berbasis `field identity`, bukan `programCode` atau nama menu
-    - source nilai dipisahkan tegas menjadi `MANUAL`, `SYSTEM`, `DOCUMENT_REFERENCE`, `DOCUMENT_SNAPSHOT`, `DERIVED`, dan `STATIC_OPTION`
-    - mode sinkronisasi lintas dokumen dirumuskan sebagai `LIVE_REFERENCE`, `SNAPSHOT_ON_SELECT`, dan `SYSTEM_DYNAMIC`
-    - rule edit guru dipisahkan dari struktur inti agar kolom/baris custom tetap aman tanpa merusak field integrasi
-    - dokumen contoh seperti `Capaian Pembelajaran` dan `Distribusi Tujuan Pembelajaran` dijelaskan sebagai contoh konfigurasi, bukan tipe sistem hardcode
-    - tidak ada perubahan backend, DB, mobile OTA, query, polling, atau realtime pada batch ini
-- Worktree expectation: clean setelah commit/push dokumentasi blueprint.
-- Publish/live status: tidak ada publish baru pada batch dokumentasi ini. Frontend web tetap live dari Batch 7. OTA mobile tester terakhir tetap Batch 6 `pilot-live` update group `2b18eb0e-64fe-4336-b7dd-91bb46adcd7e`.
+    - kontrak schema backend sekarang sudah menerima metadata generik baru tanpa memaksa frontend/mobile berubah dulu
+    - `sections` existing tetap dipakai agar renderer lama tetap hidup, tetapi tiap section kini bisa diperlakukan sebagai block generik
+    - kolom existing sekarang bisa membawa metadata baru seperti `fieldId`, `fieldIdentity`, `sourceType`, `binding`, `teacherEditMode`, `exposeAsReference`, dan `isCoreField`
+    - schema level kini mendukung `schemaMode`, `documentTitle`, `documentShortTitle`, `teacherRules`, dan `printRules`
+    - section level kini mendukung `blockId`, `blockType`, `layout`, `visibilityRules`, dan `teacherRules`
+    - ditambahkan script `npm run teaching-resources:reset` untuk reset data modul ini
+    - data uji yang dihapus dari database:
+      - `3` program config
+      - `5` dokumen guru
+    - kondisi setelah reset: `0` program config dan `0` dokumen guru
+- Worktree expectation: clean setelah commit/push Batch 9.
+- Publish/live status: backend sudah direstart dan health check `200/200`. Tidak ada deploy frontend baru dan tidak ada OTA mobile baru pada batch backend-only ini.
 - Progress presensi terpadu operasional: 100%.
 - Progress impor historis absensi siswa TKJ: 100%.
   - Selesai: audit workbook, verifikasi aturan blok merah, cek roster DB vs Excel, buat script importer reusable, apply impor final ke database, dan verifikasi pasca-impor.
@@ -213,14 +217,30 @@ Setiap room baru yang diminta `baca AGENTS.md` atau `lanjutkan` wajib membaca fi
     - tidak ada endpoint/backend baru
     - tidak ada perubahan mobile
     - tidak ada polling/refetch/realtime baru
+- Verifikasi Batch 9 fondasi backend `Program Perangkat Ajar`:
+  - `cd backend && npm run build`
+  - `git diff --check`
+  - `cd backend && npm run teaching-resources:reset`
+  - `cd backend && npm run service:restart`
+  - `cd backend && npm run service:health`
+  - hasil reset data:
+    - before: `entries 5`, `programs 3`
+    - deleted: `entries 5`, `programs 3`
+    - after: `entries 0`, `programs 0`
+  - sanity check perubahan:
+    - tidak ada migrasi prisma/DB schema baru
+    - tidak ada endpoint baru
+    - tidak ada query/polling/realtime baru
+    - perubahan hanya memperluas validator/schema JSON backend secara backward-compatible
 
 ## Langkah Aman Berikutnya
 
 - Gunakan [docs/teaching-resource-dynamic-document-blueprint.md](/var/www/sis-project/docs/teaching-resource-dynamic-document-blueprint.md) sebagai source of truth sebelum memulai refactor engine.
-- Batch implementasi teraman berikutnya adalah memetakan kontrak existing `program.schema.sections` ke metadata generik tambahan secara non-destruktif, tanpa dulu menghapus schema/program bawaan yang sudah live.
+- Batch implementasi teraman berikutnya adalah mulai mengalirkan metadata generik ini ke web/mobile type layer dan editor Wakakur secara terbatas, tanpa dulu mengganti renderer guru seluruhnya.
 - Jika user meminta lanjut implementasi, mulai dari fondasi paling kecil:
-  - tambah `fieldIdentity`, `sourceType`, `binding config`, dan `teacherRules` secara backward compatible
-  - jangan langsung mengganti seluruh editor Wakakur atau seluruh renderer guru dalam satu batch
+  - hidupkan editor Wakakur untuk menyimpan `fieldIdentity`, `sourceType`, `binding`, dan `teacherRules`
+  - tambah UI reference/source picker yang tetap disembunyikan di mode teknisi
+  - jangan langsung mengganti seluruh renderer guru atau print engine dalam satu batch
 - Jika room baru diminta melanjutkan fitur ini sebelum user uji coba, mulai dari QA manual halaman Wakakur live dan lihat apakah Mode Siap Pakai sudah cukup dipahami.
 - Data historis TKJ + AK/MP sekarang sudah siap dipakai oleh rapor walas karena source `daily_attendances` sudah terisi untuk `Jul 2025 - Apr 2026`.
 - Jika user melanjutkan impor jurusan/tingkat lain, gunakan script yang sama sebagai baseline, lalu audit dulu roster aktif DB vs workbook sebelum apply.

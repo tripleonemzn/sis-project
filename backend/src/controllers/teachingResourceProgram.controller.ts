@@ -65,6 +65,60 @@ type TeachingResourceColumnValueSource =
   | 'SYSTEM_TEACHER_NAME'
   | 'SYSTEM_PLACE_DATE'
   | 'BOUND';
+type TeachingResourceSchemaMode = 'LEGACY_SECTIONS' | 'BLOCKS_V1';
+type TeachingResourceBlockType = 'HEADER' | 'CONTEXT' | 'TABLE' | 'RICH_TEXT' | 'SIGNATURE' | 'NOTE';
+type TeachingResourceBlockLayout = 'STACK' | 'GRID' | 'TABLE';
+type TeachingResourceFieldSourceType =
+  | 'MANUAL'
+  | 'SYSTEM'
+  | 'DOCUMENT_REFERENCE'
+  | 'DOCUMENT_SNAPSHOT'
+  | 'DERIVED'
+  | 'STATIC_OPTION';
+type TeachingResourceFieldSyncMode = 'LIVE_REFERENCE' | 'SNAPSHOT_ON_SELECT' | 'SYSTEM_DYNAMIC';
+type TeachingResourceReferenceSelectionMode = 'AUTO' | 'PICK_SINGLE' | 'PICK_MULTIPLE';
+type TeachingResourceTeacherEditMode = 'SYSTEM_LOCKED' | 'TEACHER_EDITABLE' | 'TEACHER_APPEND_ONLY';
+
+type TeachingResourceVisibilityRules = {
+  roleScopes?: string[];
+  targetClassLevels?: string[];
+  hideWhenEmpty?: boolean;
+};
+
+type TeachingResourceTeacherRules = {
+  allowAddSection?: boolean;
+  allowDeleteSection?: boolean;
+  allowAddRow?: boolean;
+  allowDeleteRow?: boolean;
+  allowReorderRow?: boolean;
+  allowAddCustomColumn?: boolean;
+  allowDeleteCustomColumn?: boolean;
+  allowEditFieldLabel?: boolean;
+  allowEditBinding?: boolean;
+  allowOverrideReadOnlyValue?: boolean;
+};
+
+type TeachingResourcePrintRules = {
+  showInstitutionHeader?: boolean;
+  showDocumentTitle?: boolean;
+  compactTable?: boolean;
+  signatureMode?: 'SYSTEM_DEFAULT' | 'MANUAL';
+};
+
+type TeachingResourceFieldBinding = {
+  systemKey?: string;
+  sourceProgramCode?: string;
+  sourceDocumentFieldIdentity?: string;
+  sourceFieldIdentity?: string;
+  filterByContext?: boolean;
+  matchBySubject?: boolean;
+  matchByClassLevel?: boolean;
+  matchByMajor?: boolean;
+  matchByActiveSemester?: boolean;
+  selectionMode?: TeachingResourceReferenceSelectionMode;
+  syncMode?: TeachingResourceFieldSyncMode;
+  allowManualOverride?: boolean;
+};
 
 type TeachingResourceColumnSchema = {
   key: string;
@@ -78,6 +132,13 @@ type TeachingResourceColumnSchema = {
   required?: boolean;
   readOnly?: boolean;
   options?: string[];
+  fieldId?: string;
+  fieldIdentity?: string;
+  sourceType?: TeachingResourceFieldSourceType;
+  binding?: TeachingResourceFieldBinding;
+  teacherEditMode?: TeachingResourceTeacherEditMode;
+  exposeAsReference?: boolean;
+  isCoreField?: boolean;
 };
 
 type TeachingResourceSectionSchema = {
@@ -92,6 +153,11 @@ type TeachingResourceSectionSchema = {
   sectionTitleEditable?: boolean;
   titlePlaceholder?: string;
   bodyPlaceholder?: string;
+  blockId?: string;
+  blockType?: TeachingResourceBlockType;
+  layout?: TeachingResourceBlockLayout;
+  visibilityRules?: TeachingResourceVisibilityRules;
+  teacherRules?: TeachingResourceTeacherRules;
 };
 
 type TeachingResourceProgramSchema = {
@@ -100,6 +166,11 @@ type TeachingResourceProgramSchema = {
   intro: string;
   titleHint?: string;
   summaryHint?: string;
+  schemaMode?: TeachingResourceSchemaMode;
+  documentTitle?: string;
+  documentShortTitle?: string;
+  teacherRules?: TeachingResourceTeacherRules;
+  printRules?: TeachingResourcePrintRules;
   sections: TeachingResourceSectionSchema[];
 };
 
@@ -149,6 +220,20 @@ const TEACHING_RESOURCE_COLUMN_VALUE_SOURCES = [
   'SYSTEM_PLACE_DATE',
   'BOUND',
 ] as const;
+const TEACHING_RESOURCE_SCHEMA_MODES = ['LEGACY_SECTIONS', 'BLOCKS_V1'] as const;
+const TEACHING_RESOURCE_BLOCK_TYPES = ['HEADER', 'CONTEXT', 'TABLE', 'RICH_TEXT', 'SIGNATURE', 'NOTE'] as const;
+const TEACHING_RESOURCE_BLOCK_LAYOUTS = ['STACK', 'GRID', 'TABLE'] as const;
+const TEACHING_RESOURCE_FIELD_SOURCE_TYPES = [
+  'MANUAL',
+  'SYSTEM',
+  'DOCUMENT_REFERENCE',
+  'DOCUMENT_SNAPSHOT',
+  'DERIVED',
+  'STATIC_OPTION',
+] as const;
+const TEACHING_RESOURCE_FIELD_SYNC_MODES = ['LIVE_REFERENCE', 'SNAPSHOT_ON_SELECT', 'SYSTEM_DYNAMIC'] as const;
+const TEACHING_RESOURCE_REFERENCE_SELECTION_MODES = ['AUTO', 'PICK_SINGLE', 'PICK_MULTIPLE'] as const;
+const TEACHING_RESOURCE_TEACHER_EDIT_MODES = ['SYSTEM_LOCKED', 'TEACHER_EDITABLE', 'TEACHER_APPEND_ONLY'] as const;
 
 const PROSEM_GANJIL_WEEK_COLUMNS: TeachingResourceSectionSchema['columns'] = [
   { key: 'juli_1', label: 'Juli-1' },
@@ -905,6 +990,179 @@ function sanitizeProgramSectionKey(raw: unknown, fallbackKey: string): string {
   return normalized || fallbackKey;
 }
 
+function sanitizeStringList(raw: unknown, options?: { upperCase?: boolean }): string[] {
+  if (!Array.isArray(raw)) return [];
+  const seen = new Set<string>();
+  const result: string[] = [];
+  raw.forEach((value) => {
+    const base = String(value || '').trim();
+    const normalized = options?.upperCase ? base.toUpperCase() : base;
+    if (!normalized) return;
+    const key = options?.upperCase ? normalized : normalized.toLowerCase();
+    if (seen.has(key)) return;
+    seen.add(key);
+    result.push(normalized);
+  });
+  return result;
+}
+
+function inferFieldSourceType(
+  valueSource?: TeachingResourceColumnValueSource,
+  readOnly?: boolean,
+): TeachingResourceFieldSourceType {
+  if (valueSource && valueSource !== 'MANUAL' && valueSource !== 'BOUND') return 'SYSTEM';
+  if (valueSource === 'BOUND') return 'DOCUMENT_SNAPSHOT';
+  if (readOnly) return 'DERIVED';
+  return 'MANUAL';
+}
+
+function inferFieldSyncMode(
+  sourceType?: TeachingResourceFieldSourceType,
+  valueSource?: TeachingResourceColumnValueSource,
+): TeachingResourceFieldSyncMode | undefined {
+  if (sourceType === 'SYSTEM') return 'SYSTEM_DYNAMIC';
+  if (sourceType === 'DOCUMENT_REFERENCE' || sourceType === 'DOCUMENT_SNAPSHOT' || valueSource === 'BOUND') {
+    return 'SNAPSHOT_ON_SELECT';
+  }
+  return undefined;
+}
+
+function inferTeacherEditMode(column: {
+  readOnly?: boolean;
+  valueSource?: TeachingResourceColumnValueSource;
+}): TeachingResourceTeacherEditMode {
+  if (column.readOnly || (column.valueSource && column.valueSource !== 'MANUAL')) return 'SYSTEM_LOCKED';
+  return 'TEACHER_EDITABLE';
+}
+
+function inferBlockType(section: Partial<TeachingResourceSectionSchema>): TeachingResourceBlockType {
+  const key = String(section.key || '')
+    .trim()
+    .toLowerCase();
+  const label = String(section.label || '')
+    .trim()
+    .toLowerCase();
+  if (section.editorType === 'TABLE') return 'TABLE';
+  if (key.startsWith('ttd') || key.includes('pengesahan') || label.includes('pengesahan')) return 'SIGNATURE';
+  if (key.includes('konteks') || label.includes('konteks')) return 'CONTEXT';
+  if (key.includes('header') || label.includes('header')) return 'HEADER';
+  if (key.includes('catatan') || label.includes('catatan')) return 'NOTE';
+  return 'RICH_TEXT';
+}
+
+function inferBlockLayout(section: Partial<TeachingResourceSectionSchema>): TeachingResourceBlockLayout {
+  if (section.editorType === 'TABLE') return 'TABLE';
+  return 'STACK';
+}
+
+function inferFieldIdentity(column: Partial<TeachingResourceColumnSchema>, fallbackKey: string): string {
+  return sanitizeProgramSectionKey(
+    column.fieldIdentity || column.semanticKey || column.bindingKey || column.key,
+    fallbackKey,
+  );
+}
+
+function sanitizeVisibilityRules(raw: unknown): TeachingResourceVisibilityRules | undefined {
+  if (!raw || typeof raw !== 'object') return undefined;
+  const input = raw as TeachingResourceVisibilityRules;
+  const roleScopes = sanitizeStringList(input.roleScopes, { upperCase: true });
+  const targetClassLevels = sanitizeTargetClassLevels(input.targetClassLevels);
+  const hideWhenEmpty = toBoolean(input.hideWhenEmpty, false);
+
+  const value: TeachingResourceVisibilityRules = {};
+  if (roleScopes.length > 0) value.roleScopes = roleScopes;
+  if (targetClassLevels.length > 0) value.targetClassLevels = targetClassLevels;
+  if (hideWhenEmpty) value.hideWhenEmpty = true;
+  return Object.keys(value).length > 0 ? value : undefined;
+}
+
+function sanitizeTeacherRules(raw: unknown): TeachingResourceTeacherRules | undefined {
+  if (!raw || typeof raw !== 'object') return undefined;
+  const input = raw as TeachingResourceTeacherRules;
+  const value: TeachingResourceTeacherRules = {
+    allowAddSection: toBoolean(input.allowAddSection, false) || undefined,
+    allowDeleteSection: toBoolean(input.allowDeleteSection, false) || undefined,
+    allowAddRow: toBoolean(input.allowAddRow, false) || undefined,
+    allowDeleteRow: toBoolean(input.allowDeleteRow, false) || undefined,
+    allowReorderRow: toBoolean(input.allowReorderRow, false) || undefined,
+    allowAddCustomColumn: toBoolean(input.allowAddCustomColumn, false) || undefined,
+    allowDeleteCustomColumn: toBoolean(input.allowDeleteCustomColumn, false) || undefined,
+    allowEditFieldLabel: toBoolean(input.allowEditFieldLabel, false) || undefined,
+    allowEditBinding: toBoolean(input.allowEditBinding, false) || undefined,
+    allowOverrideReadOnlyValue: toBoolean(input.allowOverrideReadOnlyValue, false) || undefined,
+  };
+  return Object.values(value).some((item) => item !== undefined) ? value : undefined;
+}
+
+function sanitizePrintRules(raw: unknown): TeachingResourcePrintRules | undefined {
+  if (!raw || typeof raw !== 'object') return undefined;
+  const input = raw as TeachingResourcePrintRules;
+  const signatureModeRaw = String(input.signatureMode || '')
+    .trim()
+    .toUpperCase();
+  const signatureMode =
+    signatureModeRaw === 'MANUAL' || signatureModeRaw === 'SYSTEM_DEFAULT'
+      ? (signatureModeRaw as TeachingResourcePrintRules['signatureMode'])
+      : undefined;
+  const value: TeachingResourcePrintRules = {
+    showInstitutionHeader: toBoolean(input.showInstitutionHeader, false) || undefined,
+    showDocumentTitle: toBoolean(input.showDocumentTitle, false) || undefined,
+    compactTable: toBoolean(input.compactTable, false) || undefined,
+    signatureMode,
+  };
+  return Object.values(value).some((item) => item !== undefined) ? value : undefined;
+}
+
+function sanitizeFieldBinding(
+  raw: unknown,
+  fallback?: TeachingResourceFieldBinding,
+  sourceType?: TeachingResourceFieldSourceType,
+  valueSource?: TeachingResourceColumnValueSource,
+): TeachingResourceFieldBinding | undefined {
+  const input = raw && typeof raw === 'object' ? (raw as TeachingResourceFieldBinding) : {};
+  const selectionModeRaw = String(input.selectionMode || fallback?.selectionMode || '')
+    .trim()
+    .toUpperCase();
+  const syncModeRaw = String(input.syncMode || fallback?.syncMode || inferFieldSyncMode(sourceType, valueSource) || '')
+    .trim()
+    .toUpperCase();
+  const selectionMode = TEACHING_RESOURCE_REFERENCE_SELECTION_MODES.includes(
+    selectionModeRaw as (typeof TEACHING_RESOURCE_REFERENCE_SELECTION_MODES)[number],
+  )
+    ? (selectionModeRaw as TeachingResourceReferenceSelectionMode)
+    : undefined;
+  const syncMode = TEACHING_RESOURCE_FIELD_SYNC_MODES.includes(
+    syncModeRaw as (typeof TEACHING_RESOURCE_FIELD_SYNC_MODES)[number],
+  )
+    ? (syncModeRaw as TeachingResourceFieldSyncMode)
+    : undefined;
+
+  const value: TeachingResourceFieldBinding = {
+    systemKey: sanitizeProgramSectionKey(input.systemKey, String(fallback?.systemKey || '').trim()) || undefined,
+    sourceProgramCode: normalizeProgramCode(input.sourceProgramCode) || undefined,
+    sourceDocumentFieldIdentity:
+      sanitizeProgramSectionKey(
+        input.sourceDocumentFieldIdentity,
+        String(fallback?.sourceDocumentFieldIdentity || '').trim(),
+      ) || undefined,
+    sourceFieldIdentity:
+      sanitizeProgramSectionKey(input.sourceFieldIdentity, String(fallback?.sourceFieldIdentity || '').trim()) ||
+      undefined,
+    filterByContext: toBoolean(input.filterByContext, Boolean(fallback?.filterByContext)) || undefined,
+    matchBySubject: toBoolean(input.matchBySubject, Boolean(fallback?.matchBySubject)) || undefined,
+    matchByClassLevel: toBoolean(input.matchByClassLevel, Boolean(fallback?.matchByClassLevel)) || undefined,
+    matchByMajor: toBoolean(input.matchByMajor, Boolean(fallback?.matchByMajor)) || undefined,
+    matchByActiveSemester:
+      toBoolean(input.matchByActiveSemester, Boolean(fallback?.matchByActiveSemester)) || undefined,
+    selectionMode,
+    syncMode,
+    allowManualOverride:
+      toBoolean(input.allowManualOverride, Boolean(fallback?.allowManualOverride)) || undefined,
+  };
+
+  return Object.values(value).some((item) => item !== undefined) ? value : undefined;
+}
+
 function cloneProgramSchema(schema: TeachingResourceProgramSchema): TeachingResourceProgramSchema {
   return {
     version: Number(schema.version || 1),
@@ -912,6 +1170,11 @@ function cloneProgramSchema(schema: TeachingResourceProgramSchema): TeachingReso
     intro: String(schema.intro || ''),
     titleHint: schema.titleHint,
     summaryHint: schema.summaryHint,
+    schemaMode: schema.schemaMode,
+    documentTitle: schema.documentTitle,
+    documentShortTitle: schema.documentShortTitle,
+    teacherRules: schema.teacherRules ? { ...schema.teacherRules } : undefined,
+    printRules: schema.printRules ? { ...schema.printRules } : undefined,
     sections: Array.isArray(schema.sections)
       ? schema.sections.map((section, index) => ({
           key: String(section.key || `section_${index + 1}`),
@@ -936,6 +1199,17 @@ function cloneProgramSchema(schema: TeachingResourceProgramSchema): TeachingReso
                   options: Array.isArray(column.options)
                     ? column.options.map((option) => String(option || '').trim()).filter(Boolean)
                     : undefined,
+                  fieldId: column.fieldId ? String(column.fieldId) : undefined,
+                  fieldIdentity: column.fieldIdentity ? String(column.fieldIdentity) : undefined,
+                  sourceType: column.sourceType,
+                  binding: column.binding
+                    ? {
+                        ...column.binding,
+                      }
+                    : undefined,
+                  teacherEditMode: column.teacherEditMode,
+                  exposeAsReference: Boolean(column.exposeAsReference),
+                  isCoreField: Boolean(column.isCoreField),
                 }))
                 .filter((column) => column.key && column.label)
             : undefined,
@@ -953,6 +1227,11 @@ function cloneProgramSchema(schema: TeachingResourceProgramSchema): TeachingReso
           sectionTitleEditable: section.sectionTitleEditable,
           titlePlaceholder: section.titlePlaceholder,
           bodyPlaceholder: section.bodyPlaceholder,
+          blockId: section.blockId,
+          blockType: section.blockType,
+          layout: section.layout,
+          visibilityRules: section.visibilityRules ? { ...section.visibilityRules } : undefined,
+          teacherRules: section.teacherRules ? { ...section.teacherRules } : undefined,
         }))
       : [],
   };
@@ -981,6 +1260,22 @@ function sanitizeProgramSchema(
       requestedEditorType === 'TABLE' || requestedEditorType === 'TEXT'
         ? (requestedEditorType as (typeof TEACHING_RESOURCE_EDITOR_TYPES)[number])
         : fallbackSection?.editorType || 'TEXT';
+    const requestedBlockType = String(row.blockType || fallbackSection?.blockType || inferBlockType(row))
+      .trim()
+      .toUpperCase();
+    const blockType = TEACHING_RESOURCE_BLOCK_TYPES.includes(
+      requestedBlockType as (typeof TEACHING_RESOURCE_BLOCK_TYPES)[number],
+    )
+      ? (requestedBlockType as TeachingResourceBlockType)
+      : inferBlockType({ ...fallbackSection, ...row, editorType });
+    const requestedLayout = String(row.layout || fallbackSection?.layout || inferBlockLayout(row))
+      .trim()
+      .toUpperCase();
+    const layout = TEACHING_RESOURCE_BLOCK_LAYOUTS.includes(
+      requestedLayout as (typeof TEACHING_RESOURCE_BLOCK_LAYOUTS)[number],
+    )
+      ? (requestedLayout as TeachingResourceBlockLayout)
+      : inferBlockLayout({ ...fallbackSection, ...row, editorType });
     const columnsInput = Array.isArray(row.columns) ? row.columns : [];
     const columns =
       editorType === 'TABLE'
@@ -998,6 +1293,13 @@ function sanitizeProgramSchema(
               required?: unknown;
               readOnly?: unknown;
               options?: unknown;
+              fieldId?: unknown;
+              fieldIdentity?: unknown;
+              sourceType?: unknown;
+              binding?: unknown;
+              teacherEditMode?: unknown;
+              exposeAsReference?: unknown;
+              isCoreField?: unknown;
             };
             const fallbackCol = fallbackSection?.columns?.[colIndex];
             const colKey = sanitizeProgramSectionKey(col.key, fallbackCol?.key || `col_${colIndex + 1}`);
@@ -1027,6 +1329,43 @@ function sanitizeProgramSchema(
                 : undefined;
             const semanticKey = sanitizeProgramSectionKey(col.semanticKey, String(fallbackCol?.semanticKey || '').trim());
             const bindingKey = sanitizeProgramSectionKey(col.bindingKey, String(fallbackCol?.bindingKey || '').trim());
+            const fieldId = sanitizeProgramSectionKey(col.fieldId, String(fallbackCol?.fieldId || colKey).trim() || colKey);
+            const fieldIdentity = inferFieldIdentity(
+              {
+                fieldIdentity: String(col.fieldIdentity ?? fallbackCol?.fieldIdentity ?? '').trim() || undefined,
+                key: colKey,
+                semanticKey,
+                bindingKey,
+              },
+              String(fallbackCol?.fieldIdentity || fieldId || colKey).trim() || fieldId || colKey,
+            );
+            const requestedSourceType = String(
+              col.sourceType || fallbackCol?.sourceType || inferFieldSourceType(valueSource, toBoolean(col.readOnly, Boolean(fallbackCol?.readOnly))),
+            )
+              .trim()
+              .toUpperCase();
+            const sourceType = TEACHING_RESOURCE_FIELD_SOURCE_TYPES.includes(
+              requestedSourceType as (typeof TEACHING_RESOURCE_FIELD_SOURCE_TYPES)[number],
+            )
+              ? (requestedSourceType as TeachingResourceFieldSourceType)
+              : inferFieldSourceType(valueSource, toBoolean(col.readOnly, Boolean(fallbackCol?.readOnly)));
+            const requestedTeacherEditMode = String(
+              col.teacherEditMode || fallbackCol?.teacherEditMode || inferTeacherEditMode({
+                readOnly: toBoolean(col.readOnly, Boolean(fallbackCol?.readOnly)),
+                valueSource,
+              }),
+            )
+              .trim()
+              .toUpperCase();
+            const teacherEditMode = TEACHING_RESOURCE_TEACHER_EDIT_MODES.includes(
+              requestedTeacherEditMode as (typeof TEACHING_RESOURCE_TEACHER_EDIT_MODES)[number],
+            )
+              ? (requestedTeacherEditMode as TeachingResourceTeacherEditMode)
+              : inferTeacherEditMode({
+                  readOnly: toBoolean(col.readOnly, Boolean(fallbackCol?.readOnly)),
+                  valueSource,
+                });
+            const binding = sanitizeFieldBinding(col.binding, fallbackCol?.binding, sourceType, valueSource);
 
             colAcc.push({
               key: colKey,
@@ -1040,6 +1379,17 @@ function sanitizeProgramSchema(
               required: toBoolean(col.required, Boolean(fallbackCol?.required)),
               readOnly: toBoolean(col.readOnly, Boolean(fallbackCol?.readOnly)),
               options: options && options.length > 0 ? options : undefined,
+              fieldId,
+              fieldIdentity: fieldIdentity || undefined,
+              sourceType,
+              binding,
+              teacherEditMode,
+              exposeAsReference: toBoolean(col.exposeAsReference, Boolean(fallbackCol?.exposeAsReference)) || undefined,
+              isCoreField:
+                toBoolean(
+                  col.isCoreField,
+                  Boolean(fallbackCol?.isCoreField) || Boolean(valueSource && valueSource !== 'MANUAL') || Boolean(binding),
+                ) || undefined,
             });
             return colAcc;
           }, [])
@@ -1099,10 +1449,24 @@ function sanitizeProgramSchema(
       ),
       titlePlaceholder: String(row.titlePlaceholder || fallbackSection?.titlePlaceholder || '').trim() || undefined,
       bodyPlaceholder: String(row.bodyPlaceholder || fallbackSection?.bodyPlaceholder || '').trim() || undefined,
+      blockId: sanitizeProgramSectionKey(row.blockId, String(fallbackSection?.blockId || key).trim() || key),
+      blockType,
+      layout,
+      visibilityRules: sanitizeVisibilityRules(row.visibilityRules) || fallbackSection?.visibilityRules,
+      teacherRules: sanitizeTeacherRules(row.teacherRules) || fallbackSection?.teacherRules,
     };
     acc.push(sanitizedSection);
     return acc;
   }, []);
+
+  const requestedSchemaMode = String(input.schemaMode || safeFallback.schemaMode || 'BLOCKS_V1')
+    .trim()
+    .toUpperCase();
+  const schemaMode = TEACHING_RESOURCE_SCHEMA_MODES.includes(
+    requestedSchemaMode as (typeof TEACHING_RESOURCE_SCHEMA_MODES)[number],
+  )
+    ? (requestedSchemaMode as TeachingResourceSchemaMode)
+    : 'BLOCKS_V1';
 
   return {
     version: Math.max(1, toNumber(input.version, safeFallback.version || 1)),
@@ -1110,6 +1474,13 @@ function sanitizeProgramSchema(
     intro: String(input.intro || safeFallback.intro || '').trim() || safeFallback.intro,
     titleHint: String(input.titleHint || safeFallback.titleHint || '').trim() || undefined,
     summaryHint: String(input.summaryHint || safeFallback.summaryHint || '').trim() || undefined,
+    schemaMode,
+    documentTitle:
+      String(input.documentTitle || safeFallback.documentTitle || input.titleHint || safeFallback.titleHint || '')
+        .trim() || undefined,
+    documentShortTitle: String(input.documentShortTitle || safeFallback.documentShortTitle || '').trim() || undefined,
+    teacherRules: sanitizeTeacherRules(input.teacherRules) || safeFallback.teacherRules,
+    printRules: sanitizePrintRules(input.printRules) || safeFallback.printRules,
     sections: sanitizedSections.length ? sanitizedSections : safeFallback.sections,
   };
 }
@@ -1192,6 +1563,13 @@ function sanitizeEntryContent(raw: unknown): TeachingResourceEntryContent {
                   required?: boolean;
                   readOnly?: boolean;
                   options?: string[];
+                  fieldId?: string;
+                  fieldIdentity?: string;
+                  sourceType?: TeachingResourceFieldSourceType;
+                  binding?: TeachingResourceFieldBinding;
+                  teacherEditMode?: TeachingResourceTeacherEditMode;
+                  exposeAsReference?: boolean;
+                  isCoreField?: boolean;
                 }>
               >((acc, column) => {
                 if (!column || typeof column !== 'object') return acc;
@@ -1207,6 +1585,13 @@ function sanitizeEntryContent(raw: unknown): TeachingResourceEntryContent {
                   required?: unknown;
                   readOnly?: unknown;
                   options?: unknown;
+                  fieldId?: unknown;
+                  fieldIdentity?: unknown;
+                  sourceType?: unknown;
+                  binding?: unknown;
+                  teacherEditMode?: unknown;
+                  exposeAsReference?: unknown;
+                  isCoreField?: unknown;
                 };
                 const key = String(normalizedColumn.key || '').trim();
                 const label = String(normalizedColumn.label || '').trim();
@@ -1217,6 +1602,35 @@ function sanitizeEntryContent(raw: unknown): TeachingResourceEntryContent {
                 const options = Array.isArray(normalizedColumn.options)
                   ? normalizedColumn.options.map((option) => String(option || '').trim()).filter(Boolean)
                   : undefined;
+                const inferredSourceType = inferFieldSourceType(
+                  TEACHING_RESOURCE_COLUMN_VALUE_SOURCES.includes(
+                    requestedValueSource as (typeof TEACHING_RESOURCE_COLUMN_VALUE_SOURCES)[number],
+                  )
+                    ? (requestedValueSource as TeachingResourceColumnValueSource)
+                    : undefined,
+                  toBoolean(normalizedColumn.readOnly, false),
+                );
+                const sourceTypeRaw = String(normalizedColumn.sourceType || '').trim().toUpperCase();
+                const sourceType = TEACHING_RESOURCE_FIELD_SOURCE_TYPES.includes(
+                  sourceTypeRaw as (typeof TEACHING_RESOURCE_FIELD_SOURCE_TYPES)[number],
+                )
+                  ? (sourceTypeRaw as TeachingResourceFieldSourceType)
+                  : inferredSourceType;
+                const valueSource = TEACHING_RESOURCE_COLUMN_VALUE_SOURCES.includes(
+                  requestedValueSource as (typeof TEACHING_RESOURCE_COLUMN_VALUE_SOURCES)[number],
+                )
+                  ? (requestedValueSource as (typeof TEACHING_RESOURCE_COLUMN_VALUE_SOURCES)[number])
+                  : undefined;
+                const teacherEditModeRaw = String(normalizedColumn.teacherEditMode || '').trim().toUpperCase();
+                const teacherEditMode = TEACHING_RESOURCE_TEACHER_EDIT_MODES.includes(
+                  teacherEditModeRaw as (typeof TEACHING_RESOURCE_TEACHER_EDIT_MODES)[number],
+                )
+                  ? (teacherEditModeRaw as TeachingResourceTeacherEditMode)
+                  : inferTeacherEditMode({
+                      readOnly: toBoolean(normalizedColumn.readOnly, false),
+                      valueSource,
+                    });
+                const binding = sanitizeFieldBinding(normalizedColumn.binding, undefined, sourceType, valueSource);
                 acc.push({
                   key,
                   label,
@@ -1229,14 +1643,29 @@ function sanitizeEntryContent(raw: unknown): TeachingResourceEntryContent {
                     : undefined,
                   semanticKey: String(normalizedColumn.semanticKey || '').trim() || undefined,
                   bindingKey: String(normalizedColumn.bindingKey || '').trim() || undefined,
-                  valueSource: TEACHING_RESOURCE_COLUMN_VALUE_SOURCES.includes(
-                    requestedValueSource as (typeof TEACHING_RESOURCE_COLUMN_VALUE_SOURCES)[number],
-                  )
-                    ? (requestedValueSource as (typeof TEACHING_RESOURCE_COLUMN_VALUE_SOURCES)[number])
-                    : undefined,
+                  valueSource,
                   required: toBoolean(normalizedColumn.required, false) || undefined,
                   readOnly: toBoolean(normalizedColumn.readOnly, false) || undefined,
                   options: options && options.length > 0 ? options : undefined,
+                  fieldId: sanitizeProgramSectionKey(normalizedColumn.fieldId, key) || undefined,
+                  fieldIdentity: inferFieldIdentity(
+                    {
+                      fieldIdentity: String(normalizedColumn.fieldIdentity || '').trim() || undefined,
+                      semanticKey: String(normalizedColumn.semanticKey || '').trim() || undefined,
+                      bindingKey: String(normalizedColumn.bindingKey || '').trim() || undefined,
+                      key,
+                    },
+                    key,
+                  ),
+                  sourceType,
+                  binding,
+                  teacherEditMode,
+                  exposeAsReference: toBoolean(normalizedColumn.exposeAsReference, false) || undefined,
+                  isCoreField:
+                    toBoolean(
+                      normalizedColumn.isCoreField,
+                      Boolean(valueSource && valueSource !== 'MANUAL') || Boolean(binding),
+                    ) || undefined,
                 });
                 return acc;
               }, [])
