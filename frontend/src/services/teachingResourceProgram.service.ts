@@ -93,6 +93,22 @@ export interface TeachingResourceFieldBinding {
   allowManualOverride?: boolean;
 }
 
+export interface TeachingResourceEntryReferenceSelection {
+  sectionSchemaKey?: string;
+  sectionIndex?: number;
+  rowIndex?: number;
+  columnKey: string;
+  selectionToken?: string;
+  sourceProgramCode?: string;
+  sourceEntryId?: number;
+  sourceEntryTitle?: string;
+  sourceFieldKey?: string;
+  sourceFieldIdentity?: string;
+  value: string;
+  label?: string;
+  snapshot?: Record<string, string>;
+}
+
 export interface TeachingResourceProgramColumnSchema {
   key: string;
   label: string;
@@ -174,6 +190,7 @@ export interface TeachingResourceEntry {
       rows?: Array<Record<string, string>>;
     }>;
     references?: string[];
+    referenceSelections?: TeachingResourceEntryReferenceSelection[];
     notes?: string;
     [key: string]: unknown;
   };

@@ -9,6 +9,7 @@ import {
   type TeachingResourceColumnDataType,
   type TeachingResourceColumnValueSource,
   type TeachingResourceEntry,
+  type TeachingResourceEntryReferenceSelection,
   type TeachingResourceEntryStatus,
   type TeachingResourceFieldBinding,
   type TeachingResourceFieldSourceType,
@@ -39,10 +40,13 @@ type EntrySectionForm = {
   title: string;
   body: string;
   columns: EntrySectionColumnForm[];
-  rows: Array<{
-    id: string;
-    values: Record<string, string>;
-  }>;
+  rows: EntrySectionRowForm[];
+};
+
+type EntrySectionRowForm = {
+  id: string;
+  values: Record<string, string>;
+  referenceSelections?: Record<string, TeachingResourceEntryReferenceSelection>;
 };
 
 type EntrySectionColumnForm = {
@@ -67,8 +71,15 @@ type EntrySectionColumnForm = {
 };
 
 type ReferenceOption = {
+  selectValue: string;
   value: string;
   label: string;
+  sourceProgramCode: string;
+  sourceEntryId: number;
+  sourceEntryTitle?: string;
+  sourceFieldKey?: string;
+  sourceFieldIdentity?: string;
+  snapshot: Record<string, string>;
 };
 
 type OutletUser = {
@@ -221,6 +232,50 @@ const normalizeReferenceToken = (value: unknown): string =>
     .replace(/_+/g, '_')
     .replace(/^_+|_+$/g, '');
 
+const sanitizeReferenceSnapshot = (value: unknown): Record<string, string> => {
+  if (!value || typeof value !== 'object') return {};
+  return Object.entries(value as Record<string, unknown>).reduce<Record<string, string>>((acc, [key, rawValue]) => {
+    const normalizedKey = normalizeReferenceToken(key);
+    const resolvedValue = String(rawValue ?? '').trim();
+    if (!normalizedKey || !resolvedValue) return acc;
+    acc[normalizedKey] = resolvedValue;
+    return acc;
+  }, {});
+};
+
+const buildReferenceSelectionStorageKey = (sectionIndex: number, rowIndex: number, columnKey: string): string =>
+  `${sectionIndex}::${rowIndex}::${String(columnKey || '').trim()}`;
+
+const parseEntryReferenceSelections = (entry: TeachingResourceEntry) => {
+  const rawSelections = Array.isArray(entry.content?.referenceSelections) ? entry.content.referenceSelections : [];
+  return rawSelections.reduce<Map<string, TeachingResourceEntryReferenceSelection>>((acc, item) => {
+    if (!item || typeof item !== 'object') return acc;
+    const normalized = item as TeachingResourceEntryReferenceSelection;
+    const columnKey = String(normalized.columnKey || '').trim();
+    const sectionIndex = Number(normalized.sectionIndex);
+    const rowIndex = Number(normalized.rowIndex);
+    if (!columnKey || !Number.isInteger(sectionIndex) || sectionIndex < 0 || !Number.isInteger(rowIndex) || rowIndex < 0) {
+      return acc;
+    }
+    acc.set(buildReferenceSelectionStorageKey(sectionIndex, rowIndex, columnKey), {
+      sectionSchemaKey: String(normalized.sectionSchemaKey || '').trim() || undefined,
+      sectionIndex,
+      rowIndex,
+      columnKey,
+      selectionToken: String(normalized.selectionToken || '').trim() || undefined,
+      sourceProgramCode: String(normalized.sourceProgramCode || '').trim() || undefined,
+      sourceEntryId: Number.isFinite(Number(normalized.sourceEntryId)) ? Number(normalized.sourceEntryId) : undefined,
+      sourceEntryTitle: String(normalized.sourceEntryTitle || '').trim() || undefined,
+      sourceFieldKey: String(normalized.sourceFieldKey || '').trim() || undefined,
+      sourceFieldIdentity: String(normalized.sourceFieldIdentity || '').trim() || undefined,
+      value: String(normalized.value || '').trim(),
+      label: String(normalized.label || '').trim() || undefined,
+      snapshot: sanitizeReferenceSnapshot(normalized.snapshot),
+    });
+    return acc;
+  }, new Map<string, TeachingResourceEntryReferenceSelection>());
+};
+
 const sanitizeSectionColumns = (value: unknown): EntrySectionColumnForm[] => {
   if (!Array.isArray(value)) return [];
   const seen = new Set<string>();
@@ -370,6 +425,7 @@ const parseEntrySections = (
     : entry.content?.sections && typeof entry.content.sections === 'object'
       ? Object.values(entry.content.sections as Record<string, unknown>)
       : [];
+  const referenceSelections = parseEntryReferenceSelections(entry);
   const normalized: EntrySectionForm[] = [];
   rawSections.forEach((section, index) => {
     if (!section || typeof section !== 'object') return;
@@ -385,6 +441,7 @@ const parseEntrySections = (
       defaultSections.find((sectionItem) => String(sectionItem.schemaKey || '').trim() === String(schemaKey || '').trim()) ||
       defaultSections[index];
     const parsedColumns = sanitizeSectionColumns(item.columns);
+    const effectiveColumns = parsedColumns.length > 0 ? parsedColumns : ensureArray<EntrySectionColumnForm>(fallbackSection?.columns);
     const parsedRows = Array.isArray(item.rows)
       ? item.rows
           .map((rawRow, rowIndex) => {
@@ -399,9 +456,22 @@ const parseEntrySections = (
               {},
             );
             if (Object.keys(values).length === 0) return null;
+            const rowReferenceSelections = Object.fromEntries(
+              effectiveColumns
+                .map((column) => {
+                  const columnKey = String(column.key || '').trim();
+                  if (!columnKey) return null;
+                  const selection = referenceSelections.get(
+                    buildReferenceSelectionStorageKey(index, rowIndex, columnKey),
+                  );
+                  return selection ? [columnKey, selection] : null;
+                })
+                .filter((item): item is [string, TeachingResourceEntryReferenceSelection] => Boolean(item)),
+            );
             return {
               id: `row-${entry.id}-${index + 1}-${rowIndex + 1}`,
               values,
+              referenceSelections: Object.keys(rowReferenceSelections).length > 0 ? rowReferenceSelections : undefined,
             };
           })
           .filter((row): row is NonNullable<typeof row> => Boolean(row))
@@ -411,7 +481,7 @@ const parseEntrySections = (
       schemaKey,
       title: String(item.title || '').trim(),
       body: String(item.body || '').trim(),
-      columns: parsedColumns.length > 0 ? parsedColumns : ensureArray<EntrySectionColumnForm>(fallbackSection?.columns),
+      columns: effectiveColumns,
       rows: parsedRows,
     };
     if (isDigitalApprovalOnlySection(parsed.schemaKey, parsed.title)) return;
@@ -581,6 +651,34 @@ const extractReferenceCandidates = (column: Partial<EntrySectionColumnForm> | nu
 const isDocumentReferenceColumn = (column: Partial<EntrySectionColumnForm> | null | undefined): boolean => {
   const sourceType = String(column?.sourceType || '').trim().toUpperCase();
   return sourceType === 'DOCUMENT_REFERENCE' || sourceType === 'DOCUMENT_SNAPSHOT';
+};
+
+const buildReferenceSnapshot = (
+  columns: Array<Partial<EntrySectionColumnForm>>,
+  row: Record<string, string>,
+): Record<string, string> => {
+  const snapshot: Record<string, string> = {};
+  columns.forEach((column) => {
+    const key = String(column.key || '').trim();
+    const value = String(row[key] || '').trim();
+    if (!key || !value) return;
+    const tokens = new Set<string>([
+      normalizeReferenceToken(key),
+      ...extractBindingCandidates(column as EntrySectionColumnForm),
+      ...extractReferenceCandidates(column),
+    ]);
+    tokens.forEach((token) => {
+      if (!token || snapshot[token]) return;
+      snapshot[token] = value;
+    });
+  });
+  Object.entries(row).forEach(([key, rawValue]) => {
+    const normalizedKey = normalizeReferenceToken(key);
+    const value = String(rawValue || '').trim();
+    if (!normalizedKey || !value || snapshot[normalizedKey]) return;
+    snapshot[normalizedKey] = value;
+  });
+  return snapshot;
 };
 
 const resolveEntryContextLabel = (
@@ -1238,6 +1336,45 @@ export const LearningResourceGenerator = ({
       })
       .filter((section) => section.title || section.body || section.rows.length > 0 || Boolean(section.columns?.length));
   };
+  const buildReferenceSelectionPayload = (sourceSections: EntrySectionForm[]) => {
+    const referenceSelections: TeachingResourceEntryReferenceSelection[] = [];
+    const references = new Set<string>();
+
+    sourceSections.forEach((section, sectionIndex) => {
+      section.rows.forEach((row, rowIndex) => {
+        Object.entries(row.referenceSelections || {}).forEach(([columnKey, selection]) => {
+          if (!selection) return;
+          const value = String(selection.value || row.values[columnKey] || '').trim();
+          if (!value) return;
+          const sourceProgramCode = normalizeTeachingResourceProgramCode(selection.sourceProgramCode);
+          const sourceEntryId = Number(selection.sourceEntryId || 0);
+          if (sourceProgramCode && sourceEntryId > 0) {
+            references.add(`${sourceProgramCode}::${sourceEntryId}`);
+          }
+          referenceSelections.push({
+            sectionSchemaKey: String(section.schemaKey || '').trim() || undefined,
+            sectionIndex,
+            rowIndex,
+            columnKey,
+            selectionToken: String(selection.selectionToken || '').trim() || undefined,
+            sourceProgramCode: sourceProgramCode || undefined,
+            sourceEntryId: sourceEntryId > 0 ? sourceEntryId : undefined,
+            sourceEntryTitle: String(selection.sourceEntryTitle || '').trim() || undefined,
+            sourceFieldKey: String(selection.sourceFieldKey || '').trim() || undefined,
+            sourceFieldIdentity: String(selection.sourceFieldIdentity || '').trim() || undefined,
+            value,
+            label: String(selection.label || '').trim() || undefined,
+            snapshot: sanitizeReferenceSnapshot(selection.snapshot),
+          });
+        });
+      });
+    });
+
+    return {
+      references: Array.from(references).sort(),
+      referenceSelections,
+    };
+  };
 
   const meQuery = useQuery({
     queryKey: ['learning-resource-me'],
@@ -1451,13 +1588,24 @@ export const LearningResourceGenerator = ({
         const schema = schemaMap.get(String(section.schemaKey || '').trim());
         const columns = section.columns.length > 0 ? section.columns : ensureArray<EntrySectionColumnForm>(schema?.columns);
         section.rows.forEach((row) => {
+          const snapshot = buildReferenceSnapshot(columns, row);
           columns.forEach((column) => {
             const columnCandidates = extractReferenceCandidates(column);
             if (!columnCandidates.some((candidate) => candidates.includes(candidate))) return;
             const value = String(row[String(column.key || '').trim()] || '').trim();
             if (!value) return;
             const label = entry.title && entry.title.trim() && entry.title.trim() !== value ? `${value} - ${entry.title}` : value;
-            options.push({ value, label });
+            options.push({
+              selectValue: `${entry.id}::${String(column.key || '').trim()}::${value}`,
+              value,
+              label,
+              sourceProgramCode: normalizeTeachingResourceProgramCode(entry.programCode),
+              sourceEntryId: Number(entry.id),
+              sourceEntryTitle: String(entry.title || '').trim() || undefined,
+              sourceFieldKey: String(column.key || '').trim() || undefined,
+              sourceFieldIdentity: String(column.fieldIdentity || '').trim() || undefined,
+              snapshot,
+            });
           });
           if (columns.length > 0) return;
           Object.entries(row).forEach(([key, rawValue]) => {
@@ -1466,7 +1614,17 @@ export const LearningResourceGenerator = ({
             const value = String(rawValue || '').trim();
             if (!value) return;
             const label = entry.title && entry.title.trim() && entry.title.trim() !== value ? `${value} - ${entry.title}` : value;
-            options.push({ value, label });
+            options.push({
+              selectValue: `${entry.id}::${String(key || '').trim()}::${value}`,
+              value,
+              label,
+              sourceProgramCode: normalizeTeachingResourceProgramCode(entry.programCode),
+              sourceEntryId: Number(entry.id),
+              sourceEntryTitle: String(entry.title || '').trim() || undefined,
+              sourceFieldKey: String(key || '').trim() || undefined,
+              sourceFieldIdentity: undefined,
+              snapshot,
+            });
           });
         });
       });
@@ -1487,8 +1645,8 @@ export const LearningResourceGenerator = ({
           .filter((entry) => matchesContext(entry, column.binding))
           .flatMap((entry) => extractOptionsFromEntry(entry, sourceProgram, candidates))
           .filter((option) => {
-            const token = `${String(option.value || '').trim().toLowerCase()}::${String(option.label || '').trim().toLowerCase()}`;
-            if (!option.value || dedupe.has(token)) return false;
+            const token = `${String(option.selectValue || '').trim().toLowerCase()}`;
+            if (!option.value || !token || dedupe.has(token)) return false;
             dedupe.add(token);
             return true;
           });
@@ -1681,6 +1839,7 @@ export const LearningResourceGenerator = ({
         throw new Error('Tahun ajaran aktif belum ditemukan.');
       }
       const normalizedSections = buildPayloadSections(normalizeSectionsForEditor(sections));
+      const referencePayload = buildReferenceSelectionPayload(normalizeSectionsForEditor(sections));
 
       if (!entryTitle.trim()) {
         throw new Error('Judul dokumen wajib diisi.');
@@ -1703,6 +1862,8 @@ export const LearningResourceGenerator = ({
           .filter(Boolean),
         content: {
           sections: normalizedSections,
+          references: referencePayload.references,
+          referenceSelections: referencePayload.referenceSelections,
           notes: entryNotes.trim() || undefined,
           schemaVersion: Number(activeProgramMeta?.schema?.version || 1),
           schemaSourceSheet: String(activeProgramMeta?.schema?.sourceSheet || '').trim() || undefined,
@@ -1732,6 +1893,7 @@ export const LearningResourceGenerator = ({
         throw new Error('Data dokumen tidak valid.');
       }
       const normalizedSections = buildPayloadSections(normalizeSectionsForEditor(sections));
+      const referencePayload = buildReferenceSelectionPayload(normalizeSectionsForEditor(sections));
       if (!entryTitle.trim()) {
         throw new Error('Judul dokumen wajib diisi.');
       }
@@ -1751,6 +1913,8 @@ export const LearningResourceGenerator = ({
           .filter(Boolean),
         content: {
           sections: normalizedSections,
+          references: referencePayload.references,
+          referenceSelections: referencePayload.referenceSelections,
           notes: entryNotes.trim() || undefined,
           schemaVersion: Number(activeProgramMeta?.schema?.version || 1),
           schemaSourceSheet: String(activeProgramMeta?.schema?.sourceSheet || '').trim() || undefined,
@@ -1887,6 +2051,86 @@ export const LearningResourceGenerator = ({
 
   const setSectionsWithDerived = (updater: (prev: EntrySectionForm[]) => EntrySectionForm[]) => {
     setSections((prev) => normalizeSectionsForEditor(updater(prev)));
+  };
+
+  const applyDocumentReferenceSelection = (
+    sectionId: string,
+    rowId: string,
+    sourceColumn: EntrySectionColumnForm,
+    selectionToken: string,
+  ) => {
+    setSectionsWithDerived((prev) =>
+      prev.map((item) => {
+        if (item.id !== sectionId) return item;
+        return {
+          ...item,
+          rows: item.rows.map((row) => {
+            if (row.id !== rowId) return row;
+            const columnKey = String(sourceColumn.key || '').trim();
+            const referenceOptions =
+              referenceOptionsByColumnKey.get(`${String(item.schemaKey || '').trim()}::${columnKey}`) || [];
+            const selectedOption = referenceOptions.find((option) => option.selectValue === selectionToken);
+            const nextValues = {
+              ...row.values,
+              [columnKey]: selectedOption?.value || '',
+            };
+            const nextReferenceSelections = {
+              ...(row.referenceSelections || {}),
+            };
+            if (selectedOption) {
+              nextReferenceSelections[columnKey] = {
+                sectionSchemaKey: String(item.schemaKey || '').trim() || undefined,
+                columnKey,
+                selectionToken: selectedOption.selectValue,
+                sourceProgramCode: selectedOption.sourceProgramCode,
+                sourceEntryId: selectedOption.sourceEntryId,
+                sourceEntryTitle: selectedOption.sourceEntryTitle,
+                sourceFieldKey: selectedOption.sourceFieldKey,
+                sourceFieldIdentity: selectedOption.sourceFieldIdentity,
+                value: selectedOption.value,
+                label: selectedOption.label,
+                snapshot: selectedOption.snapshot,
+              };
+            } else {
+              delete nextReferenceSelections[columnKey];
+            }
+
+            const selectedSourceProgramCode = normalizeTeachingResourceProgramCode(
+              selectedOption?.sourceProgramCode || sourceColumn.binding?.sourceProgramCode,
+            );
+            item.columns.forEach((targetColumn) => {
+              const targetKey = String(targetColumn.key || '').trim();
+              if (!targetKey || targetKey === columnKey) return;
+              const targetSourceType = String(targetColumn.sourceType || '').trim().toUpperCase();
+              if (targetSourceType !== 'DOCUMENT_SNAPSHOT') return;
+              const targetProgramCode = normalizeTeachingResourceProgramCode(targetColumn.binding?.sourceProgramCode);
+              if (selectedSourceProgramCode && targetProgramCode && targetProgramCode !== selectedSourceProgramCode) return;
+              const allowManualOverride = Boolean(targetColumn.binding?.allowManualOverride);
+              if (!selectedOption) {
+                if (!allowManualOverride) {
+                  nextValues[targetKey] = '';
+                }
+                return;
+              }
+              if (allowManualOverride && String(nextValues[targetKey] || '').trim()) return;
+              const candidates = extractBindingCandidates(targetColumn);
+              for (const candidate of candidates) {
+                const resolvedValue = String(selectedOption.snapshot[candidate] || '').trim();
+                if (!resolvedValue) continue;
+                nextValues[targetKey] = resolvedValue;
+                break;
+              }
+            });
+
+            return {
+              ...row,
+              values: nextValues,
+              referenceSelections: Object.keys(nextReferenceSelections).length > 0 ? nextReferenceSelections : undefined,
+            };
+          }),
+        };
+      }),
+    );
   };
 
   const updateSectionField = (sectionId: string, field: 'title' | 'body', value: string) => {
@@ -2051,8 +2295,13 @@ export const LearningResourceGenerator = ({
     const value = String(row?.values?.[columnKey] || '');
     const dataType = getColumnDataType(column);
     const readOnly = isSystemManagedColumn(column);
+    const referenceSelection = row?.referenceSelections?.[columnKey];
     const referenceOptions =
       referenceOptionsByColumnKey.get(`${String(section.schemaKey || '').trim()}::${columnKey}`) || [];
+    const referenceSelectValue =
+      String(referenceSelection?.selectionToken || '').trim() ||
+      referenceOptions.find((option) => option.value === value)?.selectValue ||
+      '';
     const inputClassName = `w-full rounded-md border border-gray-300 px-2 py-1.5 text-xs focus:border-blue-500 focus:outline-none ${
       readOnly ? 'bg-gray-50 text-gray-500' : 'bg-white'
     }`;
@@ -2061,14 +2310,14 @@ export const LearningResourceGenerator = ({
     if (isDocumentReferenceColumn(column)) {
       return (
         <select
-          value={value}
+          value={referenceSelectValue}
           disabled={!row?.id}
-          onChange={(event) => updateSectionRowCell(section.id, row?.id || '', columnKey, event.target.value)}
+          onChange={(event) => applyDocumentReferenceSelection(section.id, row?.id || '', column, event.target.value)}
           className={selectClassName}
         >
           <option value="">{referenceOptions.length > 0 ? 'Pilih Referensi' : 'Belum ada data sumber'}</option>
           {referenceOptions.map((option) => (
-            <option key={`${columnKey}-${option.value}-${option.label}`} value={option.value}>
+            <option key={`${columnKey}-${option.selectValue}`} value={option.selectValue}>
               {option.label}
             </option>
           ))}

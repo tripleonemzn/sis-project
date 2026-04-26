@@ -28,6 +28,7 @@ import { TeacherAssignment } from '../teacherAssignments/types';
 import { filterRegularTeacherAssignments } from '../teacherAssignments/utils';
 import {
   teachingResourceProgramApi,
+  TeachingResourceEntryReferenceSelection,
   TeachingResourceFieldBinding,
   TeachingResourceFieldSourceType,
   TeachingResourceEntryItem,
@@ -50,10 +51,13 @@ type EntrySectionDraft = {
   schemaKey?: string;
   title: string;
   body: string;
-  rows: Array<{
-    id: string;
-    values: Record<string, string>;
-  }>;
+  rows: EntrySectionRowDraft[];
+};
+
+type EntrySectionRowDraft = {
+  id: string;
+  values: Record<string, string>;
+  referenceSelections?: Record<string, TeachingResourceEntryReferenceSelection>;
 };
 
 type TeacherAssignmentContextOption = {
@@ -72,8 +76,15 @@ type TeacherAssignmentContextOption = {
 type StatusFilter = 'ALL' | TeachingResourceEntryStatus;
 
 type ReferenceOption = {
+  selectValue: string;
   value: string;
   label: string;
+  sourceProgramCode: string;
+  sourceEntryId: number;
+  sourceEntryTitle?: string;
+  sourceFieldKey?: string;
+  sourceFieldIdentity?: string;
+  snapshot: Record<string, string>;
 };
 
 const INPUT_BASE_STYLE = {
@@ -317,6 +328,21 @@ function normalizeSheetToken(value: unknown): string {
     .replace(/^_+|_+$/g, '');
 }
 
+function sanitizeReferenceSnapshot(value: unknown): Record<string, string> {
+  if (!value || typeof value !== 'object') return {};
+  return Object.entries(value as Record<string, unknown>).reduce<Record<string, string>>((acc, [key, rawValue]) => {
+    const normalizedKey = normalizeSheetToken(key);
+    const resolvedValue = String(rawValue ?? '').trim();
+    if (!normalizedKey || !resolvedValue) return acc;
+    acc[normalizedKey] = resolvedValue;
+    return acc;
+  }, {});
+}
+
+function buildReferenceSelectionStorageKey(sectionIndex: number, rowIndex: number, columnKey: string): string {
+  return `${sectionIndex}::${rowIndex}::${String(columnKey || '').trim()}`;
+}
+
 function extractBindingCandidates(column: TeachingResourceProgramColumnSchema): string[] {
   const candidates = new Set<string>();
   [
@@ -360,6 +386,34 @@ function extractReferenceCandidates(column: TeachingResourceProgramColumnSchema 
 function isDocumentReferenceColumn(column: TeachingResourceProgramColumnSchema | null | undefined): boolean {
   const sourceType = String(column?.sourceType || '').trim().toUpperCase();
   return sourceType === 'DOCUMENT_REFERENCE' || sourceType === 'DOCUMENT_SNAPSHOT';
+}
+
+function buildReferenceSnapshot(
+  columns: TeachingResourceProgramColumnSchema[],
+  row: Record<string, string>,
+): Record<string, string> {
+  const snapshot: Record<string, string> = {};
+  columns.forEach((column) => {
+    const key = String(column.key || '').trim();
+    const value = String(row[key] || '').trim();
+    if (!key || !value) return;
+    const tokens = new Set<string>([
+      normalizeSheetToken(key),
+      ...extractBindingCandidates(column),
+      ...extractReferenceCandidates(column),
+    ]);
+    tokens.forEach((token) => {
+      if (!token || snapshot[token]) return;
+      snapshot[token] = value;
+    });
+  });
+  Object.entries(row).forEach(([key, rawValue]) => {
+    const normalizedKey = normalizeSheetToken(key);
+    const value = String(rawValue || '').trim();
+    if (!normalizedKey || !value || snapshot[normalizedKey]) return;
+    snapshot[normalizedKey] = value;
+  });
+  return snapshot;
 }
 
 function resolveSystemValueForColumn(
@@ -605,6 +659,34 @@ function normalizeSectionsFromEntry(
   entry: TeachingResourceEntryItem,
   defaultSections: EntrySectionDraft[],
 ): EntrySectionDraft[] {
+  const referenceSelections = (
+    Array.isArray(entry.content?.referenceSelections) ? entry.content.referenceSelections : []
+  ).reduce<Map<string, TeachingResourceEntryReferenceSelection>>((acc, item) => {
+    if (!item || typeof item !== 'object') return acc;
+    const normalized = item as TeachingResourceEntryReferenceSelection;
+    const columnKey = String(normalized.columnKey || '').trim();
+    const sectionIndex = Number(normalized.sectionIndex);
+    const rowIndex = Number(normalized.rowIndex);
+    if (!columnKey || !Number.isInteger(sectionIndex) || sectionIndex < 0 || !Number.isInteger(rowIndex) || rowIndex < 0) {
+      return acc;
+    }
+    acc.set(buildReferenceSelectionStorageKey(sectionIndex, rowIndex, columnKey), {
+      sectionSchemaKey: String(normalized.sectionSchemaKey || '').trim() || undefined,
+      sectionIndex,
+      rowIndex,
+      columnKey,
+      selectionToken: String(normalized.selectionToken || '').trim() || undefined,
+      sourceProgramCode: String(normalized.sourceProgramCode || '').trim() || undefined,
+      sourceEntryId: Number.isFinite(Number(normalized.sourceEntryId)) ? Number(normalized.sourceEntryId) : undefined,
+      sourceEntryTitle: String(normalized.sourceEntryTitle || '').trim() || undefined,
+      sourceFieldKey: String(normalized.sourceFieldKey || '').trim() || undefined,
+      sourceFieldIdentity: String(normalized.sourceFieldIdentity || '').trim() || undefined,
+      value: String(normalized.value || '').trim(),
+      label: String(normalized.label || '').trim() || undefined,
+      snapshot: sanitizeReferenceSnapshot(normalized.snapshot),
+    });
+    return acc;
+  }, new Map<string, TeachingResourceEntryReferenceSelection>());
   const rawSections = ensureArray<{
     schemaKey?: unknown;
     title?: unknown;
@@ -627,9 +709,16 @@ function normalizeSectionsFromEntry(
                 {},
               );
               if (!Object.keys(values).length) return null;
+              const rowReferenceSelections = Object.fromEntries(
+                Array.from(referenceSelections.entries())
+                  .filter(([storageKey]) => storageKey.startsWith(`${index}::${rowIndex}::`))
+                  .map(([, selection]) => [String(selection.columnKey || '').trim(), selection] as const)
+                  .filter(([columnKey]) => Boolean(columnKey)),
+              );
               return {
                 id: `row-${entry.id}-${index + 1}-${rowIndex + 1}`,
                 values,
+                referenceSelections: Object.keys(rowReferenceSelections).length > 0 ? rowReferenceSelections : undefined,
               };
             })
             .filter((row): row is NonNullable<typeof row> => Boolean(row))
@@ -1041,13 +1130,24 @@ export function TeacherLearningResourceProgramScreen({
         const schema = schemaMap.get(String(section.schemaKey || '').trim());
         const columns = section.columns.length > 0 ? section.columns : ensureArray<TeachingResourceProgramColumnSchema>(schema?.columns);
         section.rows.forEach((row) => {
+          const snapshot = buildReferenceSnapshot(columns, row);
           columns.forEach((column) => {
             const columnCandidates = extractReferenceCandidates(column);
             if (!columnCandidates.some((candidate) => candidates.includes(candidate))) return;
             const value = String(row[String(column.key || '').trim()] || '').trim();
             if (!value) return;
             const label = entry.title && entry.title.trim() && entry.title.trim() !== value ? `${value} - ${entry.title}` : value;
-            options.push({ value, label });
+            options.push({
+              selectValue: `${entry.id}::${String(column.key || '').trim()}::${value}`,
+              value,
+              label,
+              sourceProgramCode: normalizeProgramCode(entry.programCode),
+              sourceEntryId: Number(entry.id),
+              sourceEntryTitle: String(entry.title || '').trim() || undefined,
+              sourceFieldKey: String(column.key || '').trim() || undefined,
+              sourceFieldIdentity: String(column.fieldIdentity || '').trim() || undefined,
+              snapshot,
+            });
           });
           if (columns.length > 0) return;
           Object.entries(row).forEach(([key, rawValue]) => {
@@ -1056,7 +1156,17 @@ export function TeacherLearningResourceProgramScreen({
             const value = String(rawValue || '').trim();
             if (!value) return;
             const label = entry.title && entry.title.trim() && entry.title.trim() !== value ? `${value} - ${entry.title}` : value;
-            options.push({ value, label });
+            options.push({
+              selectValue: `${entry.id}::${String(key || '').trim()}::${value}`,
+              value,
+              label,
+              sourceProgramCode: normalizeProgramCode(entry.programCode),
+              sourceEntryId: Number(entry.id),
+              sourceEntryTitle: String(entry.title || '').trim() || undefined,
+              sourceFieldKey: String(key || '').trim() || undefined,
+              sourceFieldIdentity: undefined,
+              snapshot,
+            });
           });
         });
       });
@@ -1077,8 +1187,8 @@ export function TeacherLearningResourceProgramScreen({
           .filter((entry) => matchesContext(entry, column.binding))
           .flatMap((entry) => extractOptionsFromEntry(entry, sourceProgram, candidates))
           .filter((option) => {
-            const token = `${String(option.value || '').trim().toLowerCase()}::${String(option.label || '').trim().toLowerCase()}`;
-            if (!option.value || dedupe.has(token)) return false;
+            const token = String(option.selectValue || '').trim().toLowerCase();
+            if (!option.value || !token || dedupe.has(token)) return false;
             dedupe.add(token);
             return true;
           });
@@ -1094,6 +1204,45 @@ export function TeacherLearningResourceProgramScreen({
     referenceEntriesQuery.data,
     selectedContext,
   ]);
+  const buildReferenceSelectionPayload = (sourceSections: EntrySectionDraft[]) => {
+    const referenceSelections: TeachingResourceEntryReferenceSelection[] = [];
+    const references = new Set<string>();
+
+    sourceSections.forEach((section, sectionIndex) => {
+      section.rows.forEach((row, rowIndex) => {
+        Object.entries(row.referenceSelections || {}).forEach(([columnKey, selection]) => {
+          if (!selection) return;
+          const value = String(selection.value || row.values[columnKey] || '').trim();
+          if (!value) return;
+          const sourceProgramCode = normalizeProgramCode(selection.sourceProgramCode || '');
+          const sourceEntryId = Number(selection.sourceEntryId || 0);
+          if (sourceProgramCode && sourceEntryId > 0) {
+            references.add(`${sourceProgramCode}::${sourceEntryId}`);
+          }
+          referenceSelections.push({
+            sectionSchemaKey: String(section.schemaKey || '').trim() || undefined,
+            sectionIndex,
+            rowIndex,
+            columnKey,
+            selectionToken: String(selection.selectionToken || '').trim() || undefined,
+            sourceProgramCode: sourceProgramCode || undefined,
+            sourceEntryId: sourceEntryId > 0 ? sourceEntryId : undefined,
+            sourceEntryTitle: String(selection.sourceEntryTitle || '').trim() || undefined,
+            sourceFieldKey: String(selection.sourceFieldKey || '').trim() || undefined,
+            sourceFieldIdentity: String(selection.sourceFieldIdentity || '').trim() || undefined,
+            value,
+            label: String(selection.label || '').trim() || undefined,
+            snapshot: sanitizeReferenceSnapshot(selection.snapshot),
+          });
+        });
+      });
+    });
+
+    return {
+      references: Array.from(references).sort(),
+      referenceSelections,
+    };
+  };
 
   const closeEditor = () => {
     setIsEditorOpen(false);
@@ -1173,7 +1322,8 @@ export function TeacherLearningResourceProgramScreen({
       if (!activeYearQuery.data?.id) throw new Error('Tahun ajaran aktif tidak ditemukan.');
       if (!entryTitle.trim()) throw new Error('Judul wajib diisi.');
 
-      const normalizedSections = hydrateSectionsForAssignment(sections)
+      const hydratedSections = hydrateSectionsForAssignment(sections);
+      const normalizedSections = hydratedSections
         .map((item) => {
           const rows = item.rows
             .map((row) => {
@@ -1194,6 +1344,7 @@ export function TeacherLearningResourceProgramScreen({
           };
         })
         .filter((item) => item.title || item.body || item.rows.length > 0);
+      const referencePayload = buildReferenceSelectionPayload(hydratedSections);
 
       if (!normalizedSections.length) {
         throw new Error('Minimal 1 bagian isi dokumen wajib diisi.');
@@ -1213,6 +1364,8 @@ export function TeacherLearningResourceProgramScreen({
           .filter(Boolean),
         content: {
           sections: normalizedSections,
+          references: referencePayload.references,
+          referenceSelections: referencePayload.referenceSelections,
           notes: entryNotes.trim() || undefined,
           schemaVersion: Number(activeProgram?.schema?.version || 1),
           schemaSourceSheet: String(activeProgram?.schema?.sourceSheet || '').trim() || undefined,
@@ -1240,7 +1393,8 @@ export function TeacherLearningResourceProgramScreen({
       if (!editingEntry?.id) throw new Error('Data edit tidak valid.');
       if (!entryTitle.trim()) throw new Error('Judul wajib diisi.');
 
-      const normalizedSections = hydrateSectionsForAssignment(sections)
+      const hydratedSections = hydrateSectionsForAssignment(sections);
+      const normalizedSections = hydratedSections
         .map((item) => {
           const rows = item.rows
             .map((row) => {
@@ -1261,6 +1415,7 @@ export function TeacherLearningResourceProgramScreen({
           };
         })
         .filter((item) => item.title || item.body || item.rows.length > 0);
+      const referencePayload = buildReferenceSelectionPayload(hydratedSections);
 
       if (!normalizedSections.length) {
         throw new Error('Minimal 1 bagian isi dokumen wajib diisi.');
@@ -1278,6 +1433,8 @@ export function TeacherLearningResourceProgramScreen({
           .filter(Boolean),
         content: {
           sections: normalizedSections,
+          references: referencePayload.references,
+          referenceSelections: referencePayload.referenceSelections,
           notes: entryNotes.trim() || undefined,
           schemaVersion: Number(activeProgram?.schema?.version || 1),
           schemaSourceSheet: String(activeProgram?.schema?.sourceSheet || '').trim() || undefined,
@@ -1439,6 +1596,90 @@ export function TeacherLearningResourceProgramScreen({
     );
   };
 
+  const applyDocumentReferenceSelection = (
+    sectionId: string,
+    rowId: string,
+    sourceColumn: TeachingResourceProgramColumnSchema,
+    selectionToken: string,
+  ) => {
+    setSections((prev) =>
+      hydrateSectionsForAssignment(
+        prev.map((item) => {
+          if (item.id !== sectionId) return item;
+          const schema = resolveSectionSchema(item);
+          const columns = ensureArray<TeachingResourceProgramColumnSchema>(schema?.columns);
+          return {
+            ...item,
+            rows: item.rows.map((row) => {
+              if (row.id !== rowId) return row;
+              const columnKey = String(sourceColumn.key || '').trim();
+              const referenceOptions =
+                referenceOptionsByColumnKey.get(`${String(item.schemaKey || '').trim()}::${columnKey}`) || [];
+              const selectedOption = referenceOptions.find((option) => option.selectValue === selectionToken);
+              const nextValues = {
+                ...row.values,
+                [columnKey]: selectedOption?.value || '',
+              };
+              const nextReferenceSelections = {
+                ...(row.referenceSelections || {}),
+              };
+              if (selectedOption) {
+                nextReferenceSelections[columnKey] = {
+                  sectionSchemaKey: String(item.schemaKey || '').trim() || undefined,
+                  columnKey,
+                  selectionToken: selectedOption.selectValue,
+                  sourceProgramCode: selectedOption.sourceProgramCode,
+                  sourceEntryId: selectedOption.sourceEntryId,
+                  sourceEntryTitle: selectedOption.sourceEntryTitle,
+                  sourceFieldKey: selectedOption.sourceFieldKey,
+                  sourceFieldIdentity: selectedOption.sourceFieldIdentity,
+                  value: selectedOption.value,
+                  label: selectedOption.label,
+                  snapshot: selectedOption.snapshot,
+                };
+              } else {
+                delete nextReferenceSelections[columnKey];
+              }
+
+              const selectedSourceProgramCode = normalizeProgramCode(
+                selectedOption?.sourceProgramCode || sourceColumn.binding?.sourceProgramCode || '',
+              );
+              columns.forEach((targetColumn) => {
+                const targetKey = String(targetColumn.key || '').trim();
+                if (!targetKey || targetKey === columnKey) return;
+                const targetSourceType = String(targetColumn.sourceType || '').trim().toUpperCase();
+                if (targetSourceType !== 'DOCUMENT_SNAPSHOT') return;
+                const targetProgramCode = normalizeProgramCode(targetColumn.binding?.sourceProgramCode || '');
+                if (selectedSourceProgramCode && targetProgramCode && targetProgramCode !== selectedSourceProgramCode) return;
+                const allowManualOverride = Boolean(targetColumn.binding?.allowManualOverride);
+                if (!selectedOption) {
+                  if (!allowManualOverride) {
+                    nextValues[targetKey] = '';
+                  }
+                  return;
+                }
+                if (allowManualOverride && String(nextValues[targetKey] || '').trim()) return;
+                const candidates = extractBindingCandidates(targetColumn);
+                for (const candidate of candidates) {
+                  const resolvedValue = String(selectedOption.snapshot[candidate] || '').trim();
+                  if (!resolvedValue) continue;
+                  nextValues[targetKey] = resolvedValue;
+                  break;
+                }
+              });
+
+              return {
+                ...row,
+                values: nextValues,
+                referenceSelections: Object.keys(nextReferenceSelections).length > 0 ? nextReferenceSelections : undefined,
+              };
+            }),
+          };
+        }),
+      ),
+    );
+  };
+
   const renderColumnInput = (
     section: EntrySectionDraft,
     row: EntrySectionDraft['rows'][number] | undefined,
@@ -1448,8 +1689,13 @@ export function TeacherLearningResourceProgramScreen({
     const value = String(row?.values?.[columnKey] || '');
     const dataType = getColumnDataType(column);
     const readOnly = isSystemManagedColumn(column);
+    const referenceSelection = row?.referenceSelections?.[columnKey];
     const referenceOptions =
       referenceOptionsByColumnKey.get(`${String(section.schemaKey || '').trim()}::${columnKey}`) || [];
+    const referenceSelectValue =
+      String(referenceSelection?.selectionToken || '').trim() ||
+      referenceOptions.find((option) => option.value === value)?.selectValue ||
+      '';
     const updateValue = (nextValue: string) => {
       if (!row?.id) return;
       updateSectionRow(section.id, row.id, columnKey, nextValue);
@@ -1477,9 +1723,12 @@ export function TeacherLearningResourceProgramScreen({
     if (isDocumentReferenceColumn(column)) {
       return (
         <MobileSelectField
-          value={value}
-          options={referenceOptions.map((option) => ({ value: option.value, label: option.label }))}
-          onChange={updateValue}
+          value={referenceSelectValue}
+          options={referenceOptions.map((option) => ({ value: option.selectValue, label: option.label }))}
+          onChange={(nextValue) => {
+            if (!row?.id) return;
+            applyDocumentReferenceSelection(section.id, row.id, column, nextValue);
+          }}
           placeholder={referenceOptions.length > 0 ? 'Pilih Referensi' : 'Belum ada data sumber'}
           maxHeight={320}
         />
