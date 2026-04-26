@@ -32,6 +32,8 @@ import {
 import {
   teachingResourceProgramApi,
   TeachingResourceEntryItem,
+  TeachingResourceColumnValueSource,
+  TeachingResourceProgramColumnSchema,
   TeachingResourceProgramItem,
   TeachingResourceProgramSectionSchema,
   TeachingResourceEntryStatus,
@@ -224,6 +226,69 @@ function formatLongDate(value = new Date()): string {
   });
 }
 
+function normalizeSheetToken(value: unknown): string {
+  return String(value || '')
+    .trim()
+    .toLowerCase()
+    .replace(/[^a-z0-9.]+/g, '_')
+    .replace(/_+/g, '_')
+    .replace(/^_+|_+$/g, '');
+}
+
+function extractBindingCandidates(column: TeachingResourceProgramColumnSchema): string[] {
+  const candidates = new Set<string>();
+  [column.bindingKey, column.semanticKey, column.key].forEach((item) => {
+    const token = String(item || '').trim();
+    if (!token) return;
+    const normalized = normalizeSheetToken(token);
+    if (normalized) candidates.add(normalized);
+    const tail = normalizeSheetToken(token.split('.').pop());
+    if (tail) candidates.add(tail);
+  });
+  return Array.from(candidates);
+}
+
+function resolveSystemValueForColumn(
+  column: TeachingResourceProgramColumnSchema,
+  context: {
+    mapel: string;
+    tingkat: string;
+    kelas: string;
+    programKeahlian: string;
+    tahunAjaran: string;
+    semester: string;
+    guruMapel: string;
+    tempatTanggal: string;
+  },
+): string {
+  switch (String(column.valueSource || 'MANUAL').trim().toUpperCase() as TeachingResourceColumnValueSource) {
+    case 'SYSTEM_ACTIVE_YEAR':
+      return context.tahunAjaran;
+    case 'SYSTEM_SEMESTER':
+      return context.semester;
+    case 'SYSTEM_SUBJECT':
+      return context.mapel;
+    case 'SYSTEM_CLASS_LEVEL':
+      return context.tingkat;
+    case 'SYSTEM_CLASS_NAME':
+      return context.kelas;
+    case 'SYSTEM_SKILL_PROGRAM':
+      return context.programKeahlian;
+    case 'SYSTEM_TEACHER_NAME':
+      return context.guruMapel;
+    case 'SYSTEM_PLACE_DATE':
+      return context.tempatTanggal;
+    default:
+      return '';
+  }
+}
+
+function isSystemManagedColumn(column: TeachingResourceProgramColumnSchema): boolean {
+  const valueSource = String(column.valueSource || 'MANUAL').trim().toUpperCase();
+  const dataType = String(column.dataType || 'TEXT').trim().toUpperCase();
+  return Boolean(column.readOnly) || dataType === 'READONLY_BOUND' || (!!valueSource && valueSource !== 'MANUAL');
+}
+
 function buildAutoSheetTitle(params: {
   programLabel: string;
   assignment: TeacherAssignment | null;
@@ -249,6 +314,7 @@ function hydrateSheetSections(params: {
 }): EntrySectionDraft[] {
   const mapel = String(params.assignment?.subject?.name || '').trim();
   const tingkat = normalizeClassLevel(params.assignment?.class?.level);
+  const kelas = String(params.assignment?.class?.name || '').trim();
   const programKeahlian = String(params.assignment?.class?.major?.name || '').trim();
   const tahunAjaran = String(params.academicYearName || '').trim();
   const semester = String(params.semesterLabel || '').trim();
@@ -262,10 +328,10 @@ function hydrateSheetSections(params: {
     }
   };
 
-  return params.sections.map((section) => {
+  const hydratedSections = params.sections.map((section) => {
     const schema = params.schemaMap.get(String(section.schemaKey || '').trim());
     if (!schema || (schema.editorType || 'TEXT') !== 'TABLE') return section;
-    const columns = Array.isArray(schema.columns) ? schema.columns : [];
+    const columns = ensureArray<TeachingResourceProgramColumnSchema>(schema.columns);
     const columnKeys = columns.map((column) => String(column.key || '').trim()).filter(Boolean);
     const rows = (section.rows.length > 0 ? section.rows : createSection(schema, 0).rows).map((row, rowIndex) => {
       const values = {
@@ -281,6 +347,23 @@ function hydrateSheetSections(params: {
       if (columnKeys.includes('pihak_2_jabatan')) setIfBlank(values, 'pihak_2_jabatan', 'Guru Mata Pelajaran');
       if (columnKeys.includes('pihak_2_nama')) setIfBlank(values, 'pihak_2_nama', guruMapel);
       if (columnKeys.includes('tempat_tanggal')) setIfBlank(values, 'tempat_tanggal', tempatTanggal);
+      columns.forEach((column) => {
+        const key = String(column.key || '').trim();
+        if (!key) return;
+        const systemValue = resolveSystemValueForColumn(column, {
+          mapel,
+          tingkat,
+          kelas,
+          programKeahlian,
+          tahunAjaran,
+          semester,
+          guruMapel,
+          tempatTanggal,
+        });
+        if (systemValue) {
+          setIfBlank(values, key, systemValue);
+        }
+      });
       return {
         ...row,
         values,
@@ -291,6 +374,64 @@ function hydrateSheetSections(params: {
       ...section,
       title: section.title || String(schema.label || '').trim(),
       rows,
+    };
+  });
+
+  const semanticValueIndex = new Map<string, string[]>();
+  hydratedSections.forEach((section) => {
+    const schema = params.schemaMap.get(String(section.schemaKey || '').trim());
+    const columns = ensureArray<TeachingResourceProgramColumnSchema>(schema?.columns);
+    section.rows.forEach((row, rowIndex) => {
+      columns.forEach((column) => {
+        const value = String(row.values[String(column.key || '').trim()] || '').trim();
+        if (!value) return;
+        extractBindingCandidates(column).forEach((candidate) => {
+          if (!candidate) return;
+          const current = semanticValueIndex.get(candidate) || [];
+          if (!String(current[rowIndex] || '').trim()) {
+            current[rowIndex] = value;
+            semanticValueIndex.set(candidate, current);
+          } else if (!current.some((item) => String(item || '').trim() === value)) {
+            current.push(value);
+            semanticValueIndex.set(candidate, current);
+          }
+        });
+      });
+    });
+  });
+
+  return hydratedSections.map((section) => {
+    const schema = params.schemaMap.get(String(section.schemaKey || '').trim());
+    const columns = ensureArray<TeachingResourceProgramColumnSchema>(schema?.columns);
+    if (!columns.length) return section;
+    return {
+      ...section,
+      rows: section.rows.map((row, rowIndex) => {
+        const values = {
+          ...row.values,
+        };
+        columns.forEach((column) => {
+          if (String(column.valueSource || 'MANUAL').trim().toUpperCase() !== 'BOUND') return;
+          const key = String(column.key || '').trim();
+          if (!key || String(values[key] || '').trim()) return;
+          const candidates = extractBindingCandidates(column);
+          for (const candidate of candidates) {
+            const candidateValues = semanticValueIndex.get(candidate) || [];
+            const resolvedValue =
+              String(candidateValues[rowIndex] || '').trim() ||
+              candidateValues.find((item) => String(item || '').trim()) ||
+              '';
+            if (resolvedValue) {
+              values[key] = resolvedValue;
+              break;
+            }
+          }
+        });
+        return {
+          ...row,
+          values,
+        };
+      }),
     };
   });
 }
@@ -517,6 +658,20 @@ export function TeacherLearningResourceProgramScreen({
     return map;
   }, [activeProgramSchemaSections]);
 
+  const hydrateSectionsForAssignment = (
+    sourceSections: EntrySectionDraft[],
+    assignment: TeacherAssignment | null = selectedAssignment,
+  ): EntrySectionDraft[] => {
+    if (!usesSheetTemplate) return sourceSections;
+    return hydrateSheetSections({
+      sections: sourceSections,
+      schemaMap: activeProgramSchemaMap,
+      assignment,
+      academicYearName,
+      semesterLabel: activeSemesterLabel,
+    });
+  };
+
   const entriesQuery = useQuery({
     queryKey: [
       'mobile-learning-resource-entries',
@@ -623,7 +778,7 @@ export function TeacherLearningResourceProgramScreen({
       if (!activeYearQuery.data?.id) throw new Error('Tahun ajaran aktif tidak ditemukan.');
       if (!entryTitle.trim()) throw new Error('Judul wajib diisi.');
 
-      const normalizedSections = sections
+      const normalizedSections = hydrateSectionsForAssignment(sections)
         .map((item) => {
           const rows = item.rows
             .map((row) => {
@@ -683,7 +838,7 @@ export function TeacherLearningResourceProgramScreen({
       if (!editingEntry?.id) throw new Error('Data edit tidak valid.');
       if (!entryTitle.trim()) throw new Error('Judul wajib diisi.');
 
-      const normalizedSections = sections
+      const normalizedSections = hydrateSectionsForAssignment(sections)
         .map((item) => {
           const rows = item.rows
             .map((row) => {
@@ -818,10 +973,10 @@ export function TeacherLearningResourceProgramScreen({
         const repeatableCount = prev.filter(
           (item) => String(item.schemaKey || '').trim() === String(repeatableSection.key || '').trim(),
         ).length;
-        return [...prev, createSection(repeatableSection, repeatableCount)];
+        return hydrateSectionsForAssignment([...prev, createSection(repeatableSection, repeatableCount)]);
       }
       if (activeProgramSchemaSections.length > 0) return prev;
-      return [...prev, createSection(undefined, prev.length)];
+      return hydrateSectionsForAssignment([...prev, createSection(undefined, prev.length)]);
     });
   };
 
@@ -831,7 +986,7 @@ export function TeacherLearningResourceProgramScreen({
 
   const addSectionRow = (sectionId: string) => {
     setSections((prev) =>
-      prev.map((item) => {
+      hydrateSectionsForAssignment(prev.map((item) => {
         if (item.id !== sectionId) return item;
         if (!canAddRowForSection(item)) return item;
         const schema = resolveSectionSchema(item);
@@ -849,7 +1004,7 @@ export function TeacherLearningResourceProgramScreen({
           ...item,
           rows: [...item.rows, nextRow],
         };
-      }),
+      })),
     );
   };
 
@@ -1488,27 +1643,37 @@ export function TeacherLearningResourceProgramScreen({
                             padding: 9,
                           }}
                         >
-                          {(resolveSectionSchema(section)?.columns || []).map((column) => (
-                            <View key={`${section.id}-single-${column.key}`} style={{ marginTop: 8 }}>
-                              <Text style={{ color: '#64748b', fontSize: scaleWithAppTextScale(12), marginBottom: 4 }}>{column.label}</Text>
-                              <TextInput
-                                value={String(section.rows[0]?.values?.[column.key] || '')}
-                                onChangeText={(value) =>
-                                  updateSectionRow(
-                                    section.id,
-                                    String(section.rows[0]?.id || ''),
-                                    column.key,
-                                    value,
-                                  )
-                                }
-                                placeholder={column.placeholder || ''}
-                                placeholderTextColor="#94a3b8"
-                                multiline={Boolean(column.multiline)}
-                                textAlignVertical={column.multiline ? 'top' : 'center'}
-                                style={[INPUT_BASE_STYLE, column.multiline ? { minHeight: 74 } : null]}
-                              />
-                            </View>
-                          ))}
+                          {(resolveSectionSchema(section)?.columns || []).map((column) => {
+                            const readOnly = isSystemManagedColumn(column);
+                            return (
+                              <View key={`${section.id}-single-${column.key}`} style={{ marginTop: 8 }}>
+                                <Text style={{ color: '#64748b', fontSize: scaleWithAppTextScale(12), marginBottom: 4 }}>
+                                  {column.label}
+                                </Text>
+                                <TextInput
+                                  value={String(section.rows[0]?.values?.[column.key] || '')}
+                                  editable={!readOnly}
+                                  onChangeText={(value) =>
+                                    updateSectionRow(
+                                      section.id,
+                                      String(section.rows[0]?.id || ''),
+                                      column.key,
+                                      value,
+                                    )
+                                  }
+                                  placeholder={column.placeholder || ''}
+                                  placeholderTextColor="#94a3b8"
+                                  multiline={Boolean(column.multiline)}
+                                  textAlignVertical={column.multiline ? 'top' : 'center'}
+                                  style={[
+                                    INPUT_BASE_STYLE,
+                                    column.multiline ? { minHeight: 74 } : null,
+                                    readOnly ? { backgroundColor: '#f8fafc', color: '#475569' } : null,
+                                  ]}
+                                />
+                              </View>
+                            );
+                          })}
                         </View>
                       ) : (
                         <View style={{ marginTop: 8 }}>
@@ -1542,20 +1707,30 @@ export function TeacherLearningResourceProgramScreen({
                                   <Text style={{ color: '#b91c1c', fontSize: scaleWithAppTextScale(11), fontWeight: '700' }}>Hapus</Text>
                                 </Pressable>
                               </View>
-                              {(resolveSectionSchema(section)?.columns || []).map((column) => (
-                                <View key={`${row.id}-${column.key}`} style={{ marginTop: 8 }}>
-                                  <Text style={{ color: '#64748b', fontSize: scaleWithAppTextScale(12), marginBottom: 4 }}>{column.label}</Text>
-                                  <TextInput
-                                    value={String(row.values[column.key] || '')}
-                                    onChangeText={(value) => updateSectionRow(section.id, row.id, column.key, value)}
-                                    placeholder={column.placeholder || ''}
-                                    placeholderTextColor="#94a3b8"
-                                    multiline={Boolean(column.multiline)}
-                                    textAlignVertical={column.multiline ? 'top' : 'center'}
-                                    style={[INPUT_BASE_STYLE, column.multiline ? { minHeight: 74 } : null]}
-                                  />
-                                </View>
-                              ))}
+                              {(resolveSectionSchema(section)?.columns || []).map((column) => {
+                                const readOnly = isSystemManagedColumn(column);
+                                return (
+                                  <View key={`${row.id}-${column.key}`} style={{ marginTop: 8 }}>
+                                    <Text style={{ color: '#64748b', fontSize: scaleWithAppTextScale(12), marginBottom: 4 }}>
+                                      {column.label}
+                                    </Text>
+                                    <TextInput
+                                      value={String(row.values[column.key] || '')}
+                                      editable={!readOnly}
+                                      onChangeText={(value) => updateSectionRow(section.id, row.id, column.key, value)}
+                                      placeholder={column.placeholder || ''}
+                                      placeholderTextColor="#94a3b8"
+                                      multiline={Boolean(column.multiline)}
+                                      textAlignVertical={column.multiline ? 'top' : 'center'}
+                                      style={[
+                                        INPUT_BASE_STYLE,
+                                        column.multiline ? { minHeight: 74 } : null,
+                                        readOnly ? { backgroundColor: '#f8fafc', color: '#475569' } : null,
+                                      ]}
+                                    />
+                                  </View>
+                                );
+                              })}
                             </View>
                           ))}
                           {canAddRowForSection(section) ? (

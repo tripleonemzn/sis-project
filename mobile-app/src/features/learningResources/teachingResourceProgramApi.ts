@@ -14,6 +14,44 @@ export type TeachingResourceProgramItem = {
   schema?: TeachingResourceProgramSchema;
 };
 
+export type TeachingResourceColumnDataType =
+  | 'TEXT'
+  | 'TEXTAREA'
+  | 'NUMBER'
+  | 'BOOLEAN'
+  | 'SELECT'
+  | 'SEMESTER'
+  | 'MONTH'
+  | 'WEEK'
+  | 'WEEK_GRID'
+  | 'READONLY_BOUND';
+
+export type TeachingResourceColumnValueSource =
+  | 'MANUAL'
+  | 'SYSTEM_ACTIVE_YEAR'
+  | 'SYSTEM_SEMESTER'
+  | 'SYSTEM_SUBJECT'
+  | 'SYSTEM_CLASS_LEVEL'
+  | 'SYSTEM_CLASS_NAME'
+  | 'SYSTEM_SKILL_PROGRAM'
+  | 'SYSTEM_TEACHER_NAME'
+  | 'SYSTEM_PLACE_DATE'
+  | 'BOUND';
+
+export type TeachingResourceProgramColumnSchema = {
+  key: string;
+  label: string;
+  placeholder?: string;
+  multiline?: boolean;
+  dataType?: TeachingResourceColumnDataType;
+  semanticKey?: string;
+  bindingKey?: string;
+  valueSource?: TeachingResourceColumnValueSource;
+  required?: boolean;
+  readOnly?: boolean;
+  options?: string[];
+};
+
 export type TeachingResourceProgramSectionSchema = {
   key: string;
   label: string;
@@ -21,12 +59,7 @@ export type TeachingResourceProgramSectionSchema = {
   repeatable: boolean;
   defaultRows: number;
   editorType?: 'TEXT' | 'TABLE';
-  columns?: Array<{
-    key: string;
-    label: string;
-    placeholder?: string;
-    multiline?: boolean;
-  }>;
+  columns?: TeachingResourceProgramColumnSchema[];
   prefillRows?: Array<Record<string, string>>;
   sectionTitleEditable?: boolean;
   titlePlaceholder?: string;
