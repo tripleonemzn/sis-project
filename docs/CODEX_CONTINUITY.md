@@ -5,14 +5,26 @@ Setiap room baru yang diminta `baca AGENTS.md` atau `lanjutkan` wajib membaca fi
 
 ## Status Saat Ini
 
-- Last updated: 2026-04-26 10:28 WIB
-- Current status: Batch 5 Presensi Harian Terpadu dan impor historis absensi siswa tetap selesai. Pilot legalitas QR wali kelas untuk cetak rapor SBTS tetap live, dan follow-up bugfix SBTS setelah QR juga sudah selesai: angka rapor SBTS kini tampil seragam selalu 2 digit desimal dan alur print tetap memakai mekanisme cepat tanpa delay statis 500ms.
+- Last updated: 2026-04-26 15:16 WIB
+- Current status: Batch 1 penyempurnaan `Program Perangkat Ajar` sedang berjalan aman. Pondasi backend/perilaku guru belum diubah; batch ini hanya merapikan UI web Wakakur agar pengaturan program tidak langsung membuka semua level schema teknis sekaligus.
 - Last completed repo work:
-  - Commit: `5211910`
-  - Title: `fix(report): normalize sbts print scores`
-  - Summary: Menormalisasi tampilan skor kolom SBTS agar maksimal 2 digit desimal di backend/frontend, sekaligus mempercepat alur cetak rapor SBTS dengan menghapus delay statis 500ms dan menunggu aset print secara adaptif.
-- Worktree expectation: clean setelah commit/push finalisasi bugfix SBTS follow-up ini.
-- Publish/live status: backend dan frontend web sudah live untuk pilot QR SBTS serta bugfix follow-up decimal/print. OTA mobile tidak terdampak.
+  - Commit: `ad641d5`
+  - Title: `fix(report): keep sbts print decimals uniform`
+  - Summary: Menjaga tampilan nilai SBTS selalu 2 digit desimal pada cetak rapor web dan memastikan alur print tetap responsif tanpa delay statis.
+- Task aktif:
+  - Objective: menyederhanakan pengalaman Wakakur saat menambah/mengedit `Program Perangkat Ajar` tanpa mengorbankan fleksibilitas dinamis untuk batch engine berikutnya.
+  - Batch terakhir selesai: Batch 1 UI simplification Wakakur web.
+  - Progress keseluruhan roadmap perangkat ajar dinamis: `20%`.
+  - Area/file disentuh:
+    - `frontend/src/pages/teacher/wakasek/curriculum/TeachingResourceProgramManagementPage.tsx`
+  - Ringkasan hasil batch:
+    - modal `Tambah/Edit Program Perangkat Ajar` sekarang dibagi ke `Mode Sederhana` dan `Mode Lanjutan`
+    - mode sederhana menampilkan `Identitas Program`, `Mode Konfigurasi`, `Arah Dokumen & Metadata`, dan `Ringkasan Template Guru`
+    - schema editor detail `section & kolom` tetap utuh, tetapi hanya muncul saat `Mode Lanjutan` dibuka
+    - ada inferensi pola dokumen berbasis struktur schema saat ini (`Analisis Bertingkat`, `Distribusi Waktu`, `Matriks Grid`, `Narasi + Tabel`, `Kustom Fleksibel`) untuk membantu Wakakur memahami arah template tanpa harus membaca key kolom satu-satu
+    - tidak ada perubahan kontrak backend, migrasi data, atau perubahan runtime di sisi guru/mobile pada batch ini
+- Worktree expectation: clean setelah commit/push finalisasi batch UI Wakakur ini.
+- Publish/live status: frontend web sudah live untuk batch UI Wakakur ini. Backend dan OTA mobile tidak terdampak.
 - Progress presensi terpadu operasional: 100%.
 - Progress impor historis absensi siswa TKJ: 100%.
   - Selesai: audit workbook, verifikasi aturan blok merah, cek roster DB vs Excel, buat script importer reusable, apply impor final ke database, dan verifikasi pasca-impor.
@@ -96,9 +108,22 @@ Setiap room baru yang diminta `baca AGENTS.md` atau `lanjutkan` wajib membaca fi
   - verifikasi format tampilan final:
     - renderer print SBTS kini selalu memakai `toFixed(2)` untuk seluruh score yang tercetak
     - contoh target format: `78` menjadi `78.00`
+- Verifikasi batch UI Wakakur `Program Perangkat Ajar`:
+  - `cd frontend && npm run build`
+  - `cd frontend && npm run deploy`
+  - `curl -I https://siskgb2.id/` merespons `200`
+  - sanity check perubahan:
+    - batch ini frontend-only; tidak ada perubahan API payload `teaching-resources/programs`
+    - modal editor tetap menyimpan schema yang sama seperti sebelumnya; perubahan hanya pada cara menampilkan dan membungkus konfigurasi agar lebih mudah dipahami
+    - mode lanjutan masih memuat seluruh editor schema detail lama sehingga blast radius perilaku tetap kecil
 
 ## Langkah Aman Berikutnya
 
+- Lanjutkan Batch 2 perangkat ajar dengan fokus aman berikut:
+  - audit apakah Wakakur membutuhkan `visual preset starter` yang benar-benar mengubah struktur schema lokal, atau cukup membaca `arah dokumen` seperti batch 1
+  - jika lanjut implementasi engine, mulai dari kontrak ringan yang tidak merusak program existing: tambahkan konsep `engine type` secara kompatibel dulu, baru susul renderer/authoring guru
+  - prioritas berikutnya paling sehat adalah `grouped-analysis` dan `time-distribution`, karena dua pola ini paling dekat dengan kebutuhan nyata user untuk analisis capaian, prota, promes, dan sebaran waktu
+- Jika room baru diminta melanjutkan fitur ini, cek dulu tampilan live halaman `Program Perangkat Ajar` dan pastikan mode sederhana sudah terasa lebih mudah dipakai sebelum menambah kompleksitas batch berikutnya.
 - Data historis TKJ + AK/MP sekarang sudah siap dipakai oleh rapor walas karena source `daily_attendances` sudah terisi untuk `Jul 2025 - Apr 2026`.
 - Jika user melanjutkan impor jurusan/tingkat lain, gunakan script yang sama sebagai baseline, lalu audit dulu roster aktif DB vs workbook sebelum apply.
 - Jika user ingin melanjutkan uji SBTS, langkah paling aman sekarang adalah minta user cetak ulang rapor SBTS nyata setelah bugfix decimal/print live, lalu cocokkan angka dan rasa respons print.

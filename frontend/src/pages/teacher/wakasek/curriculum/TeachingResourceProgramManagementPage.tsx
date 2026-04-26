@@ -40,10 +40,64 @@ type CreateProgramDraft = {
   schema: TeachingResourceProgramSchema;
 };
 
+type ProgramEditorMode = 'SIMPLE' | 'ADVANCED';
+type ProgramBlueprintMode = 'GROUPED_ANALYSIS' | 'TIME_DISTRIBUTION' | 'MATRIX_GRID' | 'RICH_MIXED' | 'FREEFORM';
+
 const TARGET_CLASS_OPTIONS = [
   { value: 'X', label: 'X' },
   { value: 'XI', label: 'XI' },
   { value: 'XII', label: 'XII' },
+];
+
+const EDITOR_MODE_OPTIONS: Array<{ value: ProgramEditorMode; label: string; description: string }> = [
+  {
+    value: 'SIMPLE',
+    label: 'Mode Sederhana',
+    description: 'Untuk operasional harian Wakakur: atur identitas, arah dokumen, dan ringkasan template.',
+  },
+  {
+    value: 'ADVANCED',
+    label: 'Mode Lanjutan',
+    description: 'Buka editor schema penuh jika perlu menyusun section, kolom, binding, dan struktur dinamis detail.',
+  },
+];
+
+const BLUEPRINT_MODE_OPTIONS: Array<{
+  value: ProgramBlueprintMode;
+  label: string;
+  description: string;
+  helper: string;
+}> = [
+  {
+    value: 'GROUPED_ANALYSIS',
+    label: 'Analisis Bertingkat',
+    description: 'Cocok untuk satu blok induk yang menaungi beberapa baris detail.',
+    helper: 'Contoh kebutuhan: elemen/capaian di kiri, lalu detail kompetensi atau tujuan di kanan.',
+  },
+  {
+    value: 'TIME_DISTRIBUTION',
+    label: 'Distribusi Waktu',
+    description: 'Cocok untuk dokumen yang fokus ke minggu efektif, bulan, semester, dan alokasi JP.',
+    helper: 'Paling dekat untuk kebutuhan prota, promes, atau sebaran waktu mengajar.',
+  },
+  {
+    value: 'MATRIX_GRID',
+    label: 'Matriks Grid',
+    description: 'Cocok untuk tabel rapat yang orientasinya grid atau matriks lintas periode.',
+    helper: 'Gunakan saat template butuh susunan mendatar dan kolom periode yang padat.',
+  },
+  {
+    value: 'RICH_MIXED',
+    label: 'Narasi + Tabel',
+    description: 'Cocok untuk dokumen campuran paragraf pengantar dan tabel kerja.',
+    helper: 'Pilih arah ini jika template menggabungkan teks naratif dan section tabel.',
+  },
+  {
+    value: 'FREEFORM',
+    label: 'Kustom Fleksibel',
+    description: 'Cocok untuk format yang belum pas dimasukkan ke pola lain.',
+    helper: 'Gunakan mode lanjutan bila struktur dokumen sangat khusus atau sering berubah.',
+  },
 ];
 
 const DEFAULT_CUSTOM_DESCRIPTION = 'Program perangkat ajar tambahan sesuai kebijakan kurikulum.';
@@ -251,6 +305,40 @@ function createDefaultDraft(seed: number): CreateProgramDraft {
   };
 }
 
+function inferBlueprintMode(schema?: TeachingResourceProgramSchema): ProgramBlueprintMode {
+  const sections = Array.isArray(schema?.sections) ? schema?.sections : [];
+  if (sections.length === 0) return 'FREEFORM';
+
+  const tableSections = sections.filter((section) => (section.editorType || 'TABLE') === 'TABLE');
+  const hasTextSection = sections.some((section) => section.editorType === 'TEXT');
+  const allColumns = tableSections.flatMap((section) => section.columns || []);
+  const dataTypes = new Set(allColumns.map((column) => column.dataType || 'TEXT'));
+
+  if (dataTypes.has('WEEK_GRID')) return 'MATRIX_GRID';
+  if (dataTypes.has('MONTH') || dataTypes.has('WEEK') || dataTypes.has('SEMESTER')) return 'TIME_DISTRIBUTION';
+  if (hasTextSection && tableSections.length > 0) return 'RICH_MIXED';
+  if (tableSections.some((section) => section.repeatable) || tableSections.some((section) => (section.columns || []).length >= 5)) {
+    return 'GROUPED_ANALYSIS';
+  }
+  return 'FREEFORM';
+}
+
+function summarizeSchema(schema?: TeachingResourceProgramSchema) {
+  const sections = Array.isArray(schema?.sections) ? schema.sections : [];
+  const tableSections = sections.filter((section) => (section.editorType || 'TABLE') === 'TABLE');
+  const textSections = sections.filter((section) => section.editorType === 'TEXT');
+  const repeatableSections = sections.filter((section) => section.repeatable);
+  const totalColumns = tableSections.reduce((total, section) => total + (section.columns || []).length, 0);
+
+  return {
+    totalSections: sections.length,
+    tableSections: tableSections.length,
+    textSections: textSections.length,
+    repeatableSections: repeatableSections.length,
+    totalColumns,
+  };
+}
+
 export default function TeachingResourceProgramManagementPage() {
   const queryClient = useQueryClient();
   const { data: activeYear, isLoading: isActiveYearLoading } = useActiveAcademicYear();
@@ -261,6 +349,7 @@ export default function TeachingResourceProgramManagementPage() {
   const [isDeleting, setIsDeleting] = useState(false);
   const [isCreateModalOpen, setIsCreateModalOpen] = useState(false);
   const [isGuideModalOpen, setIsGuideModalOpen] = useState(false);
+  const [editorMode, setEditorMode] = useState<ProgramEditorMode>('SIMPLE');
   const [createDraft, setCreateDraft] = useState<CreateProgramDraft>(createDefaultDraft(1));
   const [editingRowId, setEditingRowId] = useState<string | null>(null);
   const [pendingDeleteRow, setPendingDeleteRow] = useState<ProgramFormRow | null>(null);
@@ -305,6 +394,7 @@ export default function TeachingResourceProgramManagementPage() {
     const seed = rows.length + 1;
     setCreateDraft(createDefaultDraft(seed));
     setEditingRowId(null);
+    setEditorMode('SIMPLE');
     setIsCreateModalOpen(true);
   };
 
@@ -320,7 +410,14 @@ export default function TeachingResourceProgramManagementPage() {
       schema: cloneProgramSchema(row.schema, row.code, row.label),
     });
     setEditingRowId(row.rowId);
+    setEditorMode('SIMPLE');
     setIsCreateModalOpen(true);
+  };
+
+  const closeCreateModal = () => {
+    setIsCreateModalOpen(false);
+    setEditingRowId(null);
+    setEditorMode('SIMPLE');
   };
 
   const handleCreateDraftToggleLevel = (level: string) => {
@@ -648,6 +745,9 @@ export default function TeachingResourceProgramManagementPage() {
   };
 
   const isLoading = isActiveYearLoading || (Boolean(selectedAcademicYearId) && programsQuery.isLoading);
+  const draftBlueprintMode = inferBlueprintMode(createDraft.schema);
+  const draftBlueprint = BLUEPRINT_MODE_OPTIONS.find((option) => option.value === draftBlueprintMode) || BLUEPRINT_MODE_OPTIONS[4];
+  const draftSchemaSummary = summarizeSchema(createDraft.schema);
 
   return (
     <div className="space-y-6 w-full pb-28">
@@ -802,22 +902,23 @@ export default function TeachingResourceProgramManagementPage() {
 
       {isCreateModalOpen ? (
         <div className="fixed inset-0 z-[90] flex items-center justify-center bg-slate-900/45 px-4 py-6">
-          <div className="w-full max-w-7xl rounded-2xl bg-white shadow-2xl">
+          <div
+            className={`w-full rounded-2xl bg-white shadow-2xl ${
+              editorMode === 'ADVANCED' ? 'max-w-7xl' : 'max-w-5xl'
+            }`}
+          >
             <div className="flex items-start justify-between gap-3 border-b border-gray-100 px-5 py-4">
               <div>
                 <h2 className="text-lg font-semibold text-gray-900">
                   {editingRowId ? 'Edit Program Perangkat Ajar' : 'Tambah Program Perangkat Ajar'}
                 </h2>
                 <p className="text-sm text-gray-500">
-                  Atur identitas program dan template struktur dokumen. Guru nantinya menerima struktur ini secara baku.
+                  Mulai dari pengaturan ringkas dulu, lalu buka mode lanjutan hanya jika memang perlu menyusun schema detail.
                 </p>
               </div>
               <button
                 type="button"
-                onClick={() => {
-                  setIsCreateModalOpen(false);
-                  setEditingRowId(null);
-                }}
+                onClick={closeCreateModal}
                 className="rounded-lg p-2 text-gray-500 hover:bg-gray-100 hover:text-gray-700"
               >
                 <X size={18} />
@@ -938,18 +1039,97 @@ export default function TeachingResourceProgramManagementPage() {
 
               <div className="rounded-xl border border-gray-200 bg-white p-4">
                 <div className="mb-3">
-                  <h3 className="text-sm font-semibold text-gray-900">Template Dokumen</h3>
+                  <h3 className="text-sm font-semibold text-gray-900">Mode Konfigurasi</h3>
                   <p className="text-xs text-gray-500">
-                    Kurikulum menentukan struktur dokumen di sini. Guru nantinya hanya menerima template aktif ini.
+                    Wakakur bisa mulai dari mode sederhana. Schema mentah tetap tersedia di mode lanjutan tanpa mengurangi fleksibilitas dinamis.
                   </p>
                 </div>
+                <div className="grid grid-cols-1 gap-3 md:grid-cols-2">
+                  {EDITOR_MODE_OPTIONS.map((option) => {
+                    const active = editorMode === option.value;
+                    return (
+                      <button
+                        key={option.value}
+                        type="button"
+                        onClick={() => setEditorMode(option.value)}
+                        className={`rounded-xl border p-4 text-left transition ${
+                          active
+                            ? 'border-blue-300 bg-blue-50 shadow-sm'
+                            : 'border-gray-200 bg-white hover:border-gray-300 hover:bg-gray-50'
+                        }`}
+                      >
+                        <div className="flex items-center justify-between gap-3">
+                          <div className="text-sm font-semibold text-gray-900">{option.label}</div>
+                          <span
+                            className={`inline-flex rounded-full px-2 py-1 text-[11px] font-semibold ${
+                              active ? 'bg-blue-600 text-white' : 'bg-gray-100 text-gray-600'
+                            }`}
+                          >
+                            {active ? 'Aktif' : 'Pilih'}
+                          </span>
+                        </div>
+                        <p className="mt-2 text-xs leading-5 text-gray-600">{option.description}</p>
+                      </button>
+                    );
+                  })}
+                </div>
+              </div>
+
+              <div className="rounded-xl border border-gray-200 bg-white p-4">
+                <div className="mb-3">
+                  <h3 className="text-sm font-semibold text-gray-900">Arah Dokumen & Metadata</h3>
+                  <p className="text-xs text-gray-500">
+                    Bagian ini membantu Wakakur membaca pola template saat ini tanpa harus langsung masuk ke schema kolom.
+                  </p>
+                </div>
+
+                <div className="mb-4 rounded-xl border border-blue-200 bg-blue-50 p-4">
+                  <div className="flex flex-wrap items-start justify-between gap-3">
+                    <div>
+                      <div className="text-sm font-semibold text-blue-900">Pola Dokumen yang Paling Mendekati Template Saat Ini</div>
+                      <p className="mt-1 text-xs leading-5 text-blue-800">{draftBlueprint.description}</p>
+                    </div>
+                    <span className="inline-flex rounded-full bg-white px-3 py-1 text-xs font-semibold text-blue-700">
+                      {draftBlueprint.label}
+                    </span>
+                  </div>
+                  <p className="mt-3 text-xs leading-5 text-blue-800">{draftBlueprint.helper}</p>
+                </div>
+
+                <div className="mb-4 grid grid-cols-1 gap-3 xl:grid-cols-2">
+                  {BLUEPRINT_MODE_OPTIONS.map((option) => {
+                    const active = draftBlueprintMode === option.value;
+                    return (
+                      <div
+                        key={option.value}
+                        className={`rounded-xl border p-3 ${
+                          active ? 'border-blue-300 bg-blue-50' : 'border-gray-200 bg-gray-50'
+                        }`}
+                      >
+                        <div className="flex items-center justify-between gap-3">
+                          <div className="text-sm font-semibold text-gray-900">{option.label}</div>
+                          {active ? (
+                            <span className="inline-flex rounded-full bg-blue-600 px-2 py-1 text-[11px] font-semibold text-white">
+                              Saat Ini
+                            </span>
+                          ) : null}
+                        </div>
+                        <p className="mt-2 text-xs leading-5 text-gray-600">{option.description}</p>
+                        <p className="mt-2 text-xs leading-5 text-gray-500">{option.helper}</p>
+                      </div>
+                    );
+                  })}
+                </div>
+
                 <div className="grid grid-cols-1 gap-4 md:grid-cols-2">
                   <div>
                     <label className="mb-1 block text-sm font-medium text-gray-700">Source Sheet / Kode Template</label>
                     <input
                       type="text"
                       value={createDraft.schema.sourceSheet || ''}
-                      onChange={(event) => handleSchemaMetaChange('sourceSheet', normalizeTeachingResourceProgramCode(event.target.value))}
+                      onChange={(event) =>
+                        handleSchemaMetaChange('sourceSheet', normalizeTeachingResourceProgramCode(event.target.value))
+                      }
                       className="w-full rounded-lg border border-gray-300 px-3 py-2 text-sm uppercase focus:border-blue-500 focus:outline-none"
                       placeholder="CONTOH: PROTA"
                     />
@@ -988,418 +1168,520 @@ export default function TeachingResourceProgramManagementPage() {
               </div>
 
               <div className="rounded-xl border border-gray-200 bg-white p-4">
-                <div className="mb-4 flex flex-wrap items-center justify-between gap-3">
+                <div className="mb-3 flex flex-wrap items-start justify-between gap-3">
                   <div>
-                    <h3 className="text-sm font-semibold text-gray-900">Struktur Section & Kolom</h3>
+                    <h3 className="text-sm font-semibold text-gray-900">Ringkasan Template Guru</h3>
                     <p className="text-xs text-gray-500">
-                      Atur bagian dokumen, tipe editor, dan kolom-kolom yang akan diterima guru.
+                      Wakakur bisa cek bentuk template aktif terlebih dahulu sebelum memutuskan perlu masuk ke editor schema detail atau tidak.
                     </p>
                   </div>
-                  <div className="flex items-center gap-2">
+                  {editorMode === 'SIMPLE' ? (
                     <button
                       type="button"
-                      onClick={() => handleAddSection('TABLE')}
+                      onClick={() => setEditorMode('ADVANCED')}
                       className="inline-flex items-center gap-2 rounded-lg border border-blue-200 bg-blue-50 px-3 py-2 text-xs font-semibold text-blue-700 hover:bg-blue-100"
                     >
-                      <Plus size={14} />
-                      Tambah Section Tabel
+                      Buka Mode Lanjutan
                     </button>
-                    <button
-                      type="button"
-                      onClick={() => handleAddSection('TEXT')}
-                      className="inline-flex items-center gap-2 rounded-lg border border-gray-200 bg-white px-3 py-2 text-xs font-semibold text-gray-700 hover:bg-gray-50"
-                    >
-                      <Plus size={14} />
-                      Tambah Section Teks
-                    </button>
+                  ) : (
+                    <span className="inline-flex rounded-full border border-amber-200 bg-amber-50 px-3 py-1 text-xs font-semibold text-amber-700">
+                      Mode lanjutan aktif
+                    </span>
+                  )}
+                </div>
+
+                <div className="grid grid-cols-2 gap-3 md:grid-cols-5">
+                  <div className="rounded-xl border border-gray-200 bg-gray-50 px-3 py-3">
+                    <div className="text-[11px] font-semibold uppercase tracking-wide text-gray-500">Total Section</div>
+                    <div className="mt-1 text-xl font-bold text-gray-900">{draftSchemaSummary.totalSections}</div>
+                  </div>
+                  <div className="rounded-xl border border-gray-200 bg-gray-50 px-3 py-3">
+                    <div className="text-[11px] font-semibold uppercase tracking-wide text-gray-500">Section Tabel</div>
+                    <div className="mt-1 text-xl font-bold text-gray-900">{draftSchemaSummary.tableSections}</div>
+                  </div>
+                  <div className="rounded-xl border border-gray-200 bg-gray-50 px-3 py-3">
+                    <div className="text-[11px] font-semibold uppercase tracking-wide text-gray-500">Section Teks</div>
+                    <div className="mt-1 text-xl font-bold text-gray-900">{draftSchemaSummary.textSections}</div>
+                  </div>
+                  <div className="rounded-xl border border-gray-200 bg-gray-50 px-3 py-3">
+                    <div className="text-[11px] font-semibold uppercase tracking-wide text-gray-500">Kolom Tabel</div>
+                    <div className="mt-1 text-xl font-bold text-gray-900">{draftSchemaSummary.totalColumns}</div>
+                  </div>
+                  <div className="rounded-xl border border-gray-200 bg-gray-50 px-3 py-3">
+                    <div className="text-[11px] font-semibold uppercase tracking-wide text-gray-500">Section Repeatable</div>
+                    <div className="mt-1 text-xl font-bold text-gray-900">{draftSchemaSummary.repeatableSections}</div>
                   </div>
                 </div>
 
-                <div className="space-y-4">
+                <div className="mt-4 space-y-3">
                   {createDraft.schema.sections.map((section, sectionIndex) => (
-                    <div key={`${section.key}-${sectionIndex}`} className="rounded-xl border border-gray-200 bg-gray-50 p-4">
-                      <div className="mb-3 flex flex-wrap items-start justify-between gap-3">
+                    <div key={`${section.key}-summary-${sectionIndex}`} className="rounded-xl border border-gray-200 bg-gray-50 px-4 py-3">
+                      <div className="flex flex-wrap items-start justify-between gap-3">
                         <div>
                           <div className="text-sm font-semibold text-gray-900">
                             Section {sectionIndex + 1}: {section.label || `Bagian ${sectionIndex + 1}`}
                           </div>
-                          <div className="text-xs text-gray-500">
-                            {section.editorType === 'TABLE' ? 'Tabel kerja dinamis' : 'Blok teks / narasi'}
-                          </div>
+                          <p className="mt-1 text-xs leading-5 text-gray-500">
+                            {section.description || 'Belum ada deskripsi section.'}
+                          </p>
                         </div>
-                        <div className="flex items-center gap-2">
-                          <button
-                            type="button"
-                            onClick={() => handleMoveSection(sectionIndex, -1)}
-                            disabled={sectionIndex === 0}
-                            className="inline-flex h-8 w-8 items-center justify-center rounded-lg border border-gray-200 bg-white text-gray-600 hover:bg-gray-50 disabled:cursor-not-allowed disabled:opacity-40"
-                            title="Naikkan section"
-                          >
-                            <ArrowUp size={14} />
-                          </button>
-                          <button
-                            type="button"
-                            onClick={() => handleMoveSection(sectionIndex, 1)}
-                            disabled={sectionIndex === createDraft.schema.sections.length - 1}
-                            className="inline-flex h-8 w-8 items-center justify-center rounded-lg border border-gray-200 bg-white text-gray-600 hover:bg-gray-50 disabled:cursor-not-allowed disabled:opacity-40"
-                            title="Turunkan section"
-                          >
-                            <ArrowDown size={14} />
-                          </button>
-                          <button
-                            type="button"
-                            onClick={() => handleRemoveSection(sectionIndex)}
-                            disabled={createDraft.schema.sections.length === 1}
-                            className="inline-flex h-8 w-8 items-center justify-center rounded-lg border border-red-200 bg-red-50 text-red-600 hover:bg-red-100 disabled:cursor-not-allowed disabled:opacity-40"
-                            title="Hapus section"
-                          >
-                            <Trash2 size={14} />
-                          </button>
+                        <div className="flex flex-wrap gap-2">
+                          <span className="inline-flex rounded-full border border-gray-200 bg-white px-2 py-1 text-xs text-gray-700">
+                            {section.editorType === 'TEXT' ? 'Teks / Narasi' : 'Table / Grid'}
+                          </span>
+                          <span className="inline-flex rounded-full border border-gray-200 bg-white px-2 py-1 text-xs text-gray-700">
+                            {section.defaultRows || 1} baris awal
+                          </span>
+                          {section.repeatable ? (
+                            <span className="inline-flex rounded-full border border-blue-200 bg-blue-50 px-2 py-1 text-xs text-blue-700">
+                              Repeatable
+                            </span>
+                          ) : null}
                         </div>
-                      </div>
-
-                      <div className="grid grid-cols-1 gap-3 md:grid-cols-2 xl:grid-cols-4">
-                        <div>
-                          <label className="mb-1 block text-xs font-semibold uppercase tracking-wide text-gray-500">Key Section</label>
-                          <input
-                            type="text"
-                            value={section.key}
-                            onChange={(event) =>
-                              handleSectionChange(sectionIndex, 'key', normalizeSchemaKey(event.target.value, `bagian_${sectionIndex + 1}`))
-                            }
-                            className="w-full rounded-lg border border-gray-300 px-3 py-2 text-sm focus:border-blue-500 focus:outline-none"
-                          />
-                        </div>
-                        <div>
-                          <label className="mb-1 block text-xs font-semibold uppercase tracking-wide text-gray-500">Label Section</label>
-                          <input
-                            type="text"
-                            value={section.label}
-                            onChange={(event) => handleSectionChange(sectionIndex, 'label', event.target.value)}
-                            className="w-full rounded-lg border border-gray-300 px-3 py-2 text-sm focus:border-blue-500 focus:outline-none"
-                          />
-                        </div>
-                        <div>
-                          <label className="mb-1 block text-xs font-semibold uppercase tracking-wide text-gray-500">Tipe Editor</label>
-                          <select
-                            value={section.editorType || 'TABLE'}
-                            onChange={(event) =>
-                              handleSectionChange(
-                                sectionIndex,
-                                'editorType',
-                                event.target.value === 'TEXT' ? 'TEXT' : 'TABLE',
-                              )
-                            }
-                            className="w-full rounded-lg border border-gray-300 px-3 py-2 text-sm focus:border-blue-500 focus:outline-none"
-                          >
-                            <option value="TABLE">Table / Grid</option>
-                            <option value="TEXT">Teks / Narasi</option>
-                          </select>
-                        </div>
-                        <div>
-                          <label className="mb-1 block text-xs font-semibold uppercase tracking-wide text-gray-500">Baris Default</label>
-                          <input
-                            type="number"
-                            min={1}
-                            value={section.defaultRows || 1}
-                            onChange={(event) => handleSectionChange(sectionIndex, 'defaultRows', Math.max(1, Number(event.target.value || 1)))}
-                            className="w-full rounded-lg border border-gray-300 px-3 py-2 text-sm focus:border-blue-500 focus:outline-none"
-                          />
-                        </div>
-                        <div className="md:col-span-2 xl:col-span-4">
-                          <label className="mb-1 block text-xs font-semibold uppercase tracking-wide text-gray-500">Deskripsi</label>
-                          <textarea
-                            value={section.description || ''}
-                            onChange={(event) => handleSectionChange(sectionIndex, 'description', event.target.value)}
-                            rows={2}
-                            className="w-full rounded-lg border border-gray-300 px-3 py-2 text-sm focus:border-blue-500 focus:outline-none"
-                            placeholder="Keterangan singkat fungsi section ini"
-                          />
-                        </div>
-                        <label className="inline-flex items-center gap-2 rounded-lg border border-gray-200 bg-white px-3 py-2 text-sm text-gray-700">
-                          <input
-                            type="checkbox"
-                            checked={section.repeatable}
-                            onChange={(event) => handleSectionChange(sectionIndex, 'repeatable', event.target.checked)}
-                            className="h-4 w-4 rounded border-gray-300 text-blue-600 focus:ring-blue-500"
-                          />
-                          Bisa tambah banyak blok/baris
-                        </label>
-                        <label className="inline-flex items-center gap-2 rounded-lg border border-gray-200 bg-white px-3 py-2 text-sm text-gray-700">
-                          <input
-                            type="checkbox"
-                            checked={section.sectionTitleEditable ?? false}
-                            onChange={(event) => handleSectionChange(sectionIndex, 'sectionTitleEditable', event.target.checked)}
-                            className="h-4 w-4 rounded border-gray-300 text-blue-600 focus:ring-blue-500"
-                          />
-                          Judul section bisa diedit guru
-                        </label>
-                        {section.editorType === 'TEXT' ? (
-                          <>
-                            <div className="xl:col-span-2">
-                              <label className="mb-1 block text-xs font-semibold uppercase tracking-wide text-gray-500">Placeholder Judul</label>
-                              <input
-                                type="text"
-                                value={section.titlePlaceholder || ''}
-                                onChange={(event) => handleSectionChange(sectionIndex, 'titlePlaceholder', event.target.value)}
-                                className="w-full rounded-lg border border-gray-300 px-3 py-2 text-sm focus:border-blue-500 focus:outline-none"
-                                placeholder="Judul bagian"
-                              />
-                            </div>
-                            <div className="xl:col-span-2">
-                              <label className="mb-1 block text-xs font-semibold uppercase tracking-wide text-gray-500">Placeholder Isi</label>
-                              <input
-                                type="text"
-                                value={section.bodyPlaceholder || ''}
-                                onChange={(event) => handleSectionChange(sectionIndex, 'bodyPlaceholder', event.target.value)}
-                                className="w-full rounded-lg border border-gray-300 px-3 py-2 text-sm focus:border-blue-500 focus:outline-none"
-                                placeholder="Isi bagian dokumen..."
-                              />
-                            </div>
-                          </>
-                        ) : null}
                       </div>
 
                       {section.editorType === 'TABLE' ? (
-                        <div className="mt-4 rounded-xl border border-gray-200 bg-white p-4">
-                          <div className="mb-3 flex items-center justify-between gap-2">
-                            <div>
-                              <div className="text-sm font-semibold text-gray-900">Kolom Section</div>
-                              <div className="text-xs text-gray-500">
-                                Tentukan label, tipe data, dan binding yang akan diterima guru.
-                              </div>
-                            </div>
-                            <button
-                              type="button"
-                              onClick={() => handleAddColumn(sectionIndex)}
-                              className="inline-flex items-center gap-2 rounded-lg border border-blue-200 bg-blue-50 px-3 py-2 text-xs font-semibold text-blue-700 hover:bg-blue-100"
-                            >
-                              <Plus size={14} />
-                              Tambah Kolom
-                            </button>
-                          </div>
-
-                          <div className="space-y-3">
-                            {(section.columns || []).map((column, columnIndex) => (
-                              <div key={`${section.key}-${column.key}-${columnIndex}`} className="rounded-lg border border-gray-200 bg-gray-50 p-3">
-                                <div className="mb-3 flex flex-wrap items-start justify-between gap-3">
-                                  <div>
-                                    <div className="text-sm font-semibold text-gray-900">
-                                      Kolom {columnIndex + 1}: {column.label || `Kolom ${columnIndex + 1}`}
-                                    </div>
-                                    <div className="text-xs text-gray-500">
-                                      Gunakan semantic key yang sama bila kolom ini harus terhubung dengan program lain.
-                                    </div>
-                                  </div>
-                                  <div className="flex items-center gap-2">
-                                    <button
-                                      type="button"
-                                      onClick={() => handleMoveColumn(sectionIndex, columnIndex, -1)}
-                                      disabled={columnIndex === 0}
-                                      className="inline-flex h-8 w-8 items-center justify-center rounded-lg border border-gray-200 bg-white text-gray-600 hover:bg-gray-50 disabled:cursor-not-allowed disabled:opacity-40"
-                                      title="Naikkan kolom"
-                                    >
-                                      <ArrowUp size={14} />
-                                    </button>
-                                    <button
-                                      type="button"
-                                      onClick={() => handleMoveColumn(sectionIndex, columnIndex, 1)}
-                                      disabled={columnIndex === (section.columns || []).length - 1}
-                                      className="inline-flex h-8 w-8 items-center justify-center rounded-lg border border-gray-200 bg-white text-gray-600 hover:bg-gray-50 disabled:cursor-not-allowed disabled:opacity-40"
-                                      title="Turunkan kolom"
-                                    >
-                                      <ArrowDown size={14} />
-                                    </button>
-                                    <button
-                                      type="button"
-                                      onClick={() => handleRemoveColumn(sectionIndex, columnIndex)}
-                                      disabled={(section.columns || []).length === 1}
-                                      className="inline-flex h-8 w-8 items-center justify-center rounded-lg border border-red-200 bg-red-50 text-red-600 hover:bg-red-100 disabled:cursor-not-allowed disabled:opacity-40"
-                                      title="Hapus kolom"
-                                    >
-                                      <Trash2 size={14} />
-                                    </button>
-                                  </div>
-                                </div>
-
-                                <div className="grid grid-cols-1 gap-3 md:grid-cols-2 xl:grid-cols-4">
-                                  <div>
-                                    <label className="mb-1 block text-xs font-semibold uppercase tracking-wide text-gray-500">Key Kolom</label>
-                                    <input
-                                      type="text"
-                                      value={column.key}
-                                      onChange={(event) =>
-                                        handleColumnChange(
-                                          sectionIndex,
-                                          columnIndex,
-                                          'key',
-                                          normalizeSchemaKey(event.target.value, `kolom_${columnIndex + 1}`),
-                                        )
-                                      }
-                                      className="w-full rounded-lg border border-gray-300 px-3 py-2 text-sm focus:border-blue-500 focus:outline-none"
-                                    />
-                                  </div>
-                                  <div>
-                                    <label className="mb-1 block text-xs font-semibold uppercase tracking-wide text-gray-500">Label Kolom</label>
-                                    <input
-                                      type="text"
-                                      value={column.label}
-                                      onChange={(event) => handleColumnChange(sectionIndex, columnIndex, 'label', event.target.value)}
-                                      className="w-full rounded-lg border border-gray-300 px-3 py-2 text-sm focus:border-blue-500 focus:outline-none"
-                                    />
-                                  </div>
-                                  <div>
-                                    <label className="mb-1 block text-xs font-semibold uppercase tracking-wide text-gray-500">Tipe Data</label>
-                                    <select
-                                      value={column.dataType || 'TEXT'}
-                                      onChange={(event) =>
-                                        handleColumnChange(
-                                          sectionIndex,
-                                          columnIndex,
-                                          'dataType',
-                                          event.target.value as TeachingResourceColumnDataType,
-                                        )
-                                      }
-                                      className="w-full rounded-lg border border-gray-300 px-3 py-2 text-sm focus:border-blue-500 focus:outline-none"
-                                    >
-                                      {COLUMN_DATA_TYPE_OPTIONS.map((option) => (
-                                        <option key={`${section.key}-${column.key}-${option.value}`} value={option.value}>
-                                          {option.label}
-                                        </option>
-                                      ))}
-                                    </select>
-                                  </div>
-                                  <div>
-                                    <label className="mb-1 block text-xs font-semibold uppercase tracking-wide text-gray-500">Sumber Nilai</label>
-                                    <select
-                                      value={column.valueSource || 'MANUAL'}
-                                      onChange={(event) =>
-                                        handleColumnChange(
-                                          sectionIndex,
-                                          columnIndex,
-                                          'valueSource',
-                                          event.target.value as TeachingResourceColumnValueSource,
-                                        )
-                                      }
-                                      className="w-full rounded-lg border border-gray-300 px-3 py-2 text-sm focus:border-blue-500 focus:outline-none"
-                                    >
-                                      {COLUMN_VALUE_SOURCE_OPTIONS.map((option) => (
-                                        <option key={`${section.key}-${column.key}-${option.value}`} value={option.value}>
-                                          {option.label}
-                                        </option>
-                                      ))}
-                                    </select>
-                                  </div>
-                                  <div>
-                                    <label className="mb-1 block text-xs font-semibold uppercase tracking-wide text-gray-500">Semantic Key</label>
-                                    <input
-                                      type="text"
-                                      value={column.semanticKey || ''}
-                                      onChange={(event) =>
-                                        handleColumnChange(
-                                          sectionIndex,
-                                          columnIndex,
-                                          'semanticKey',
-                                          normalizeSchemaKey(event.target.value, ''),
-                                        )
-                                      }
-                                      className="w-full rounded-lg border border-gray-300 px-3 py-2 text-sm focus:border-blue-500 focus:outline-none"
-                                      placeholder="contoh: tujuan_pembelajaran"
-                                    />
-                                  </div>
-                                  <div>
-                                    <label className="mb-1 block text-xs font-semibold uppercase tracking-wide text-gray-500">Binding Key</label>
-                                    <input
-                                      type="text"
-                                      value={column.bindingKey || ''}
-                                      onChange={(event) =>
-                                        handleColumnChange(
-                                          sectionIndex,
-                                          columnIndex,
-                                          'bindingKey',
-                                          normalizeSchemaKey(event.target.value, ''),
-                                        )
-                                      }
-                                      className="w-full rounded-lg border border-gray-300 px-3 py-2 text-sm focus:border-blue-500 focus:outline-none"
-                                      placeholder="contoh: cp.tujuan_pembelajaran"
-                                    />
-                                  </div>
-                                  <div>
-                                    <label className="mb-1 block text-xs font-semibold uppercase tracking-wide text-gray-500">Placeholder</label>
-                                    <input
-                                      type="text"
-                                      value={column.placeholder || ''}
-                                      onChange={(event) => handleColumnChange(sectionIndex, columnIndex, 'placeholder', event.target.value)}
-                                      className="w-full rounded-lg border border-gray-300 px-3 py-2 text-sm focus:border-blue-500 focus:outline-none"
-                                      placeholder="Petunjuk input"
-                                    />
-                                  </div>
-                                  <div>
-                                    <label className="mb-1 block text-xs font-semibold uppercase tracking-wide text-gray-500">Opsi Pilihan</label>
-                                    <input
-                                      type="text"
-                                      value={(column.options || []).join(', ')}
-                                      onChange={(event) =>
-                                        handleColumnChange(
-                                          sectionIndex,
-                                          columnIndex,
-                                          'options',
-                                          event.target.value
-                                            .split(',')
-                                            .map((item) => item.trim())
-                                            .filter(Boolean),
-                                        )
-                                      }
-                                      className="w-full rounded-lg border border-gray-300 px-3 py-2 text-sm focus:border-blue-500 focus:outline-none"
-                                      placeholder="opsi1, opsi2, opsi3"
-                                    />
-                                  </div>
-                                  <label className="inline-flex items-center gap-2 rounded-lg border border-gray-200 bg-white px-3 py-2 text-sm text-gray-700">
-                                    <input
-                                      type="checkbox"
-                                      checked={column.multiline ?? false}
-                                      onChange={(event) => handleColumnChange(sectionIndex, columnIndex, 'multiline', event.target.checked)}
-                                      className="h-4 w-4 rounded border-gray-300 text-blue-600 focus:ring-blue-500"
-                                    />
-                                    Multiline
-                                  </label>
-                                  <label className="inline-flex items-center gap-2 rounded-lg border border-gray-200 bg-white px-3 py-2 text-sm text-gray-700">
-                                    <input
-                                      type="checkbox"
-                                      checked={column.required ?? false}
-                                      onChange={(event) => handleColumnChange(sectionIndex, columnIndex, 'required', event.target.checked)}
-                                      className="h-4 w-4 rounded border-gray-300 text-blue-600 focus:ring-blue-500"
-                                    />
-                                    Wajib isi
-                                  </label>
-                                  <label className="inline-flex items-center gap-2 rounded-lg border border-gray-200 bg-white px-3 py-2 text-sm text-gray-700">
-                                    <input
-                                      type="checkbox"
-                                      checked={column.readOnly ?? false}
-                                      onChange={(event) => handleColumnChange(sectionIndex, columnIndex, 'readOnly', event.target.checked)}
-                                      className="h-4 w-4 rounded border-gray-300 text-blue-600 focus:ring-blue-500"
-                                    />
-                                    Readonly
-                                  </label>
-                                </div>
-                              </div>
-                            ))}
-                          </div>
+                        <div className="mt-3 flex flex-wrap gap-2">
+                          {(section.columns || []).length > 0 ? (
+                            (section.columns || []).map((column, columnIndex) => (
+                              <span
+                                key={`${section.key}-${column.key}-summary-${columnIndex}`}
+                                className="inline-flex rounded-full border border-gray-200 bg-white px-2 py-1 text-xs text-gray-700"
+                              >
+                                {column.label || `Kolom ${columnIndex + 1}`} · {column.dataType || 'TEXT'}
+                              </span>
+                            ))
+                          ) : (
+                            <span className="text-xs text-gray-500">Belum ada kolom tabel.</span>
+                          )}
                         </div>
-                      ) : null}
+                      ) : (
+                        <div className="mt-3 text-xs text-gray-500">
+                          Placeholder judul: {section.titlePlaceholder || '-'} | Placeholder isi: {section.bodyPlaceholder || '-'}
+                        </div>
+                      )}
                     </div>
                   ))}
                 </div>
               </div>
+
+              {editorMode === 'ADVANCED' ? (
+                <div className="rounded-xl border border-gray-200 bg-white p-4">
+                  <div className="mb-4 flex flex-wrap items-center justify-between gap-3">
+                    <div>
+                      <h3 className="text-sm font-semibold text-gray-900">Struktur Section & Kolom</h3>
+                      <p className="text-xs text-gray-500">
+                        Atur bagian dokumen, tipe editor, dan kolom-kolom yang akan diterima guru.
+                      </p>
+                    </div>
+                    <div className="flex items-center gap-2">
+                      <button
+                        type="button"
+                        onClick={() => handleAddSection('TABLE')}
+                        className="inline-flex items-center gap-2 rounded-lg border border-blue-200 bg-blue-50 px-3 py-2 text-xs font-semibold text-blue-700 hover:bg-blue-100"
+                      >
+                        <Plus size={14} />
+                        Tambah Section Tabel
+                      </button>
+                      <button
+                        type="button"
+                        onClick={() => handleAddSection('TEXT')}
+                        className="inline-flex items-center gap-2 rounded-lg border border-gray-200 bg-white px-3 py-2 text-xs font-semibold text-gray-700 hover:bg-gray-50"
+                      >
+                        <Plus size={14} />
+                        Tambah Section Teks
+                      </button>
+                    </div>
+                  </div>
+
+                  <div className="mb-4 rounded-xl border border-amber-200 bg-amber-50 p-4 text-xs leading-5 text-amber-800">
+                    Mode lanjutan dipakai hanya saat Wakakur benar-benar perlu menyusun schema detail seperti key kolom, binding,
+                    semantic key, atau struktur section yang belum bisa diwakili oleh konfigurasi ringkas.
+                  </div>
+
+                  <div className="space-y-4">
+                    {createDraft.schema.sections.map((section, sectionIndex) => (
+                      <div key={`${section.key}-${sectionIndex}`} className="rounded-xl border border-gray-200 bg-gray-50 p-4">
+                        <div className="mb-3 flex flex-wrap items-start justify-between gap-3">
+                          <div>
+                            <div className="text-sm font-semibold text-gray-900">
+                              Section {sectionIndex + 1}: {section.label || `Bagian ${sectionIndex + 1}`}
+                            </div>
+                            <div className="text-xs text-gray-500">
+                              {section.editorType === 'TABLE' ? 'Tabel kerja dinamis' : 'Blok teks / narasi'}
+                            </div>
+                          </div>
+                          <div className="flex items-center gap-2">
+                            <button
+                              type="button"
+                              onClick={() => handleMoveSection(sectionIndex, -1)}
+                              disabled={sectionIndex === 0}
+                              className="inline-flex h-8 w-8 items-center justify-center rounded-lg border border-gray-200 bg-white text-gray-600 hover:bg-gray-50 disabled:cursor-not-allowed disabled:opacity-40"
+                              title="Naikkan section"
+                            >
+                              <ArrowUp size={14} />
+                            </button>
+                            <button
+                              type="button"
+                              onClick={() => handleMoveSection(sectionIndex, 1)}
+                              disabled={sectionIndex === createDraft.schema.sections.length - 1}
+                              className="inline-flex h-8 w-8 items-center justify-center rounded-lg border border-gray-200 bg-white text-gray-600 hover:bg-gray-50 disabled:cursor-not-allowed disabled:opacity-40"
+                              title="Turunkan section"
+                            >
+                              <ArrowDown size={14} />
+                            </button>
+                            <button
+                              type="button"
+                              onClick={() => handleRemoveSection(sectionIndex)}
+                              disabled={createDraft.schema.sections.length === 1}
+                              className="inline-flex h-8 w-8 items-center justify-center rounded-lg border border-red-200 bg-red-50 text-red-600 hover:bg-red-100 disabled:cursor-not-allowed disabled:opacity-40"
+                              title="Hapus section"
+                            >
+                              <Trash2 size={14} />
+                            </button>
+                          </div>
+                        </div>
+
+                        <div className="grid grid-cols-1 gap-3 md:grid-cols-2 xl:grid-cols-4">
+                          <div>
+                            <label className="mb-1 block text-xs font-semibold uppercase tracking-wide text-gray-500">Key Section</label>
+                            <input
+                              type="text"
+                              value={section.key}
+                              onChange={(event) =>
+                                handleSectionChange(sectionIndex, 'key', normalizeSchemaKey(event.target.value, `bagian_${sectionIndex + 1}`))
+                              }
+                              className="w-full rounded-lg border border-gray-300 px-3 py-2 text-sm focus:border-blue-500 focus:outline-none"
+                            />
+                          </div>
+                          <div>
+                            <label className="mb-1 block text-xs font-semibold uppercase tracking-wide text-gray-500">Label Section</label>
+                            <input
+                              type="text"
+                              value={section.label}
+                              onChange={(event) => handleSectionChange(sectionIndex, 'label', event.target.value)}
+                              className="w-full rounded-lg border border-gray-300 px-3 py-2 text-sm focus:border-blue-500 focus:outline-none"
+                            />
+                          </div>
+                          <div>
+                            <label className="mb-1 block text-xs font-semibold uppercase tracking-wide text-gray-500">Tipe Editor</label>
+                            <select
+                              value={section.editorType || 'TABLE'}
+                              onChange={(event) =>
+                                handleSectionChange(
+                                  sectionIndex,
+                                  'editorType',
+                                  event.target.value === 'TEXT' ? 'TEXT' : 'TABLE',
+                                )
+                              }
+                              className="w-full rounded-lg border border-gray-300 px-3 py-2 text-sm focus:border-blue-500 focus:outline-none"
+                            >
+                              <option value="TABLE">Table / Grid</option>
+                              <option value="TEXT">Teks / Narasi</option>
+                            </select>
+                          </div>
+                          <div>
+                            <label className="mb-1 block text-xs font-semibold uppercase tracking-wide text-gray-500">Baris Default</label>
+                            <input
+                              type="number"
+                              min={1}
+                              value={section.defaultRows || 1}
+                              onChange={(event) => handleSectionChange(sectionIndex, 'defaultRows', Math.max(1, Number(event.target.value || 1)))}
+                              className="w-full rounded-lg border border-gray-300 px-3 py-2 text-sm focus:border-blue-500 focus:outline-none"
+                            />
+                          </div>
+                          <div className="md:col-span-2 xl:col-span-4">
+                            <label className="mb-1 block text-xs font-semibold uppercase tracking-wide text-gray-500">Deskripsi</label>
+                            <textarea
+                              value={section.description || ''}
+                              onChange={(event) => handleSectionChange(sectionIndex, 'description', event.target.value)}
+                              rows={2}
+                              className="w-full rounded-lg border border-gray-300 px-3 py-2 text-sm focus:border-blue-500 focus:outline-none"
+                              placeholder="Keterangan singkat fungsi section ini"
+                            />
+                          </div>
+                          <label className="inline-flex items-center gap-2 rounded-lg border border-gray-200 bg-white px-3 py-2 text-sm text-gray-700">
+                            <input
+                              type="checkbox"
+                              checked={section.repeatable}
+                              onChange={(event) => handleSectionChange(sectionIndex, 'repeatable', event.target.checked)}
+                              className="h-4 w-4 rounded border-gray-300 text-blue-600 focus:ring-blue-500"
+                            />
+                            Bisa tambah banyak blok/baris
+                          </label>
+                          <label className="inline-flex items-center gap-2 rounded-lg border border-gray-200 bg-white px-3 py-2 text-sm text-gray-700">
+                            <input
+                              type="checkbox"
+                              checked={section.sectionTitleEditable ?? false}
+                              onChange={(event) => handleSectionChange(sectionIndex, 'sectionTitleEditable', event.target.checked)}
+                              className="h-4 w-4 rounded border-gray-300 text-blue-600 focus:ring-blue-500"
+                            />
+                            Judul section bisa diedit guru
+                          </label>
+                          {section.editorType === 'TEXT' ? (
+                            <>
+                              <div className="xl:col-span-2">
+                                <label className="mb-1 block text-xs font-semibold uppercase tracking-wide text-gray-500">Placeholder Judul</label>
+                                <input
+                                  type="text"
+                                  value={section.titlePlaceholder || ''}
+                                  onChange={(event) => handleSectionChange(sectionIndex, 'titlePlaceholder', event.target.value)}
+                                  className="w-full rounded-lg border border-gray-300 px-3 py-2 text-sm focus:border-blue-500 focus:outline-none"
+                                  placeholder="Judul bagian"
+                                />
+                              </div>
+                              <div className="xl:col-span-2">
+                                <label className="mb-1 block text-xs font-semibold uppercase tracking-wide text-gray-500">Placeholder Isi</label>
+                                <input
+                                  type="text"
+                                  value={section.bodyPlaceholder || ''}
+                                  onChange={(event) => handleSectionChange(sectionIndex, 'bodyPlaceholder', event.target.value)}
+                                  className="w-full rounded-lg border border-gray-300 px-3 py-2 text-sm focus:border-blue-500 focus:outline-none"
+                                  placeholder="Isi bagian dokumen..."
+                                />
+                              </div>
+                            </>
+                          ) : null}
+                        </div>
+
+                        {section.editorType === 'TABLE' ? (
+                          <div className="mt-4 rounded-xl border border-gray-200 bg-white p-4">
+                            <div className="mb-3 flex items-center justify-between gap-2">
+                              <div>
+                                <div className="text-sm font-semibold text-gray-900">Kolom Section</div>
+                                <div className="text-xs text-gray-500">
+                                  Tentukan label, tipe data, dan binding yang akan diterima guru.
+                                </div>
+                              </div>
+                              <button
+                                type="button"
+                                onClick={() => handleAddColumn(sectionIndex)}
+                                className="inline-flex items-center gap-2 rounded-lg border border-blue-200 bg-blue-50 px-3 py-2 text-xs font-semibold text-blue-700 hover:bg-blue-100"
+                              >
+                                <Plus size={14} />
+                                Tambah Kolom
+                              </button>
+                            </div>
+
+                            <div className="space-y-3">
+                              {(section.columns || []).map((column, columnIndex) => (
+                                <div key={`${section.key}-${column.key}-${columnIndex}`} className="rounded-lg border border-gray-200 bg-gray-50 p-3">
+                                  <div className="mb-3 flex flex-wrap items-start justify-between gap-3">
+                                    <div>
+                                      <div className="text-sm font-semibold text-gray-900">
+                                        Kolom {columnIndex + 1}: {column.label || `Kolom ${columnIndex + 1}`}
+                                      </div>
+                                      <div className="text-xs text-gray-500">
+                                        Gunakan semantic key yang sama bila kolom ini harus terhubung dengan program lain.
+                                      </div>
+                                    </div>
+                                    <div className="flex items-center gap-2">
+                                      <button
+                                        type="button"
+                                        onClick={() => handleMoveColumn(sectionIndex, columnIndex, -1)}
+                                        disabled={columnIndex === 0}
+                                        className="inline-flex h-8 w-8 items-center justify-center rounded-lg border border-gray-200 bg-white text-gray-600 hover:bg-gray-50 disabled:cursor-not-allowed disabled:opacity-40"
+                                        title="Naikkan kolom"
+                                      >
+                                        <ArrowUp size={14} />
+                                      </button>
+                                      <button
+                                        type="button"
+                                        onClick={() => handleMoveColumn(sectionIndex, columnIndex, 1)}
+                                        disabled={columnIndex === (section.columns || []).length - 1}
+                                        className="inline-flex h-8 w-8 items-center justify-center rounded-lg border border-gray-200 bg-white text-gray-600 hover:bg-gray-50 disabled:cursor-not-allowed disabled:opacity-40"
+                                        title="Turunkan kolom"
+                                      >
+                                        <ArrowDown size={14} />
+                                      </button>
+                                      <button
+                                        type="button"
+                                        onClick={() => handleRemoveColumn(sectionIndex, columnIndex)}
+                                        disabled={(section.columns || []).length === 1}
+                                        className="inline-flex h-8 w-8 items-center justify-center rounded-lg border border-red-200 bg-red-50 text-red-600 hover:bg-red-100 disabled:cursor-not-allowed disabled:opacity-40"
+                                        title="Hapus kolom"
+                                      >
+                                        <Trash2 size={14} />
+                                      </button>
+                                    </div>
+                                  </div>
+
+                                  <div className="grid grid-cols-1 gap-3 md:grid-cols-2 xl:grid-cols-4">
+                                    <div>
+                                      <label className="mb-1 block text-xs font-semibold uppercase tracking-wide text-gray-500">Key Kolom</label>
+                                      <input
+                                        type="text"
+                                        value={column.key}
+                                        onChange={(event) =>
+                                          handleColumnChange(
+                                            sectionIndex,
+                                            columnIndex,
+                                            'key',
+                                            normalizeSchemaKey(event.target.value, `kolom_${columnIndex + 1}`),
+                                          )
+                                        }
+                                        className="w-full rounded-lg border border-gray-300 px-3 py-2 text-sm focus:border-blue-500 focus:outline-none"
+                                      />
+                                    </div>
+                                    <div>
+                                      <label className="mb-1 block text-xs font-semibold uppercase tracking-wide text-gray-500">Label Kolom</label>
+                                      <input
+                                        type="text"
+                                        value={column.label}
+                                        onChange={(event) => handleColumnChange(sectionIndex, columnIndex, 'label', event.target.value)}
+                                        className="w-full rounded-lg border border-gray-300 px-3 py-2 text-sm focus:border-blue-500 focus:outline-none"
+                                      />
+                                    </div>
+                                    <div>
+                                      <label className="mb-1 block text-xs font-semibold uppercase tracking-wide text-gray-500">Tipe Data</label>
+                                      <select
+                                        value={column.dataType || 'TEXT'}
+                                        onChange={(event) =>
+                                          handleColumnChange(
+                                            sectionIndex,
+                                            columnIndex,
+                                            'dataType',
+                                            event.target.value as TeachingResourceColumnDataType,
+                                          )
+                                        }
+                                        className="w-full rounded-lg border border-gray-300 px-3 py-2 text-sm focus:border-blue-500 focus:outline-none"
+                                      >
+                                        {COLUMN_DATA_TYPE_OPTIONS.map((option) => (
+                                          <option key={`${section.key}-${column.key}-${option.value}`} value={option.value}>
+                                            {option.label}
+                                          </option>
+                                        ))}
+                                      </select>
+                                    </div>
+                                    <div>
+                                      <label className="mb-1 block text-xs font-semibold uppercase tracking-wide text-gray-500">Sumber Nilai</label>
+                                      <select
+                                        value={column.valueSource || 'MANUAL'}
+                                        onChange={(event) =>
+                                          handleColumnChange(
+                                            sectionIndex,
+                                            columnIndex,
+                                            'valueSource',
+                                            event.target.value as TeachingResourceColumnValueSource,
+                                          )
+                                        }
+                                        className="w-full rounded-lg border border-gray-300 px-3 py-2 text-sm focus:border-blue-500 focus:outline-none"
+                                      >
+                                        {COLUMN_VALUE_SOURCE_OPTIONS.map((option) => (
+                                          <option key={`${section.key}-${column.key}-${option.value}`} value={option.value}>
+                                            {option.label}
+                                          </option>
+                                        ))}
+                                      </select>
+                                    </div>
+                                    <div>
+                                      <label className="mb-1 block text-xs font-semibold uppercase tracking-wide text-gray-500">Semantic Key</label>
+                                      <input
+                                        type="text"
+                                        value={column.semanticKey || ''}
+                                        onChange={(event) =>
+                                          handleColumnChange(
+                                            sectionIndex,
+                                            columnIndex,
+                                            'semanticKey',
+                                            normalizeSchemaKey(event.target.value, ''),
+                                          )
+                                        }
+                                        className="w-full rounded-lg border border-gray-300 px-3 py-2 text-sm focus:border-blue-500 focus:outline-none"
+                                        placeholder="contoh: tujuan_pembelajaran"
+                                      />
+                                    </div>
+                                    <div>
+                                      <label className="mb-1 block text-xs font-semibold uppercase tracking-wide text-gray-500">Binding Key</label>
+                                      <input
+                                        type="text"
+                                        value={column.bindingKey || ''}
+                                        onChange={(event) =>
+                                          handleColumnChange(
+                                            sectionIndex,
+                                            columnIndex,
+                                            'bindingKey',
+                                            normalizeSchemaKey(event.target.value, ''),
+                                          )
+                                        }
+                                        className="w-full rounded-lg border border-gray-300 px-3 py-2 text-sm focus:border-blue-500 focus:outline-none"
+                                        placeholder="contoh: cp.tujuan_pembelajaran"
+                                      />
+                                    </div>
+                                    <div>
+                                      <label className="mb-1 block text-xs font-semibold uppercase tracking-wide text-gray-500">Placeholder</label>
+                                      <input
+                                        type="text"
+                                        value={column.placeholder || ''}
+                                        onChange={(event) => handleColumnChange(sectionIndex, columnIndex, 'placeholder', event.target.value)}
+                                        className="w-full rounded-lg border border-gray-300 px-3 py-2 text-sm focus:border-blue-500 focus:outline-none"
+                                        placeholder="Petunjuk input"
+                                      />
+                                    </div>
+                                    <div>
+                                      <label className="mb-1 block text-xs font-semibold uppercase tracking-wide text-gray-500">Opsi Pilihan</label>
+                                      <input
+                                        type="text"
+                                        value={(column.options || []).join(', ')}
+                                        onChange={(event) =>
+                                          handleColumnChange(
+                                            sectionIndex,
+                                            columnIndex,
+                                            'options',
+                                            event.target.value
+                                              .split(',')
+                                              .map((item) => item.trim())
+                                              .filter(Boolean),
+                                          )
+                                        }
+                                        className="w-full rounded-lg border border-gray-300 px-3 py-2 text-sm focus:border-blue-500 focus:outline-none"
+                                        placeholder="opsi1, opsi2, opsi3"
+                                      />
+                                    </div>
+                                    <label className="inline-flex items-center gap-2 rounded-lg border border-gray-200 bg-white px-3 py-2 text-sm text-gray-700">
+                                      <input
+                                        type="checkbox"
+                                        checked={column.multiline ?? false}
+                                        onChange={(event) => handleColumnChange(sectionIndex, columnIndex, 'multiline', event.target.checked)}
+                                        className="h-4 w-4 rounded border-gray-300 text-blue-600 focus:ring-blue-500"
+                                      />
+                                      Multiline
+                                    </label>
+                                    <label className="inline-flex items-center gap-2 rounded-lg border border-gray-200 bg-white px-3 py-2 text-sm text-gray-700">
+                                      <input
+                                        type="checkbox"
+                                        checked={column.required ?? false}
+                                        onChange={(event) => handleColumnChange(sectionIndex, columnIndex, 'required', event.target.checked)}
+                                        className="h-4 w-4 rounded border-gray-300 text-blue-600 focus:ring-blue-500"
+                                      />
+                                      Wajib isi
+                                    </label>
+                                    <label className="inline-flex items-center gap-2 rounded-lg border border-gray-200 bg-white px-3 py-2 text-sm text-gray-700">
+                                      <input
+                                        type="checkbox"
+                                        checked={column.readOnly ?? false}
+                                        onChange={(event) => handleColumnChange(sectionIndex, columnIndex, 'readOnly', event.target.checked)}
+                                        className="h-4 w-4 rounded border-gray-300 text-blue-600 focus:ring-blue-500"
+                                      />
+                                      Readonly
+                                    </label>
+                                  </div>
+                                </div>
+                              ))}
+                            </div>
+                          </div>
+                        ) : null}
+                      </div>
+                    ))}
+                  </div>
+                </div>
+              ) : null}
             </div>
 
             <div className="flex items-center justify-end gap-2 border-t border-gray-100 px-5 py-4">
               <button
                 type="button"
-                onClick={() => {
-                  setIsCreateModalOpen(false);
-                  setEditingRowId(null);
-                }}
+                onClick={closeCreateModal}
                 className="rounded-lg border border-gray-200 bg-white px-4 py-2 text-sm font-medium text-gray-700 hover:bg-gray-50"
               >
                 Batal
