@@ -5,14 +5,14 @@ Setiap room baru yang diminta `baca AGENTS.md` atau `lanjutkan` wajib membaca fi
 
 ## Status Saat Ini
 
-- Last updated: 2026-04-26 09:02 WIB
-- Current status: Batch 5 Presensi Harian Terpadu dan hotfix QR/scanner tetap selesai. Impor historis absensi siswa TKJ serta AK/MP (`Jul 2025 - Apr 2026`) ke `daily_attendances` sudah selesai. Pilot legalitas QR wali kelas untuk cetak rapor SBTS juga sudah selesai, live, dan mengikuti pola verifikasi dokumen production yang sudah ada.
+- Last updated: 2026-04-26 10:21 WIB
+- Current status: Batch 5 Presensi Harian Terpadu dan impor historis absensi siswa tetap selesai. Pilot legalitas QR wali kelas untuk cetak rapor SBTS tetap live, dan follow-up bugfix SBTS setelah QR juga sudah selesai: angka kolom SBTS kembali dibatasi maksimal 2 digit desimal dan alur print dipercepat dengan menghapus delay statis 500ms.
 - Last completed repo work:
   - Commit: `16419210dd3dec27194a6928c34f1bc35b5c7e52`
   - Title: `fix(presence): stabilize qr monitor and mobile scanner`
   - Summary: Membatasi layout QR monitor bersama web agar maksimal 360px dan memakai grid valid, serta mengganti scanner mobile embedded menjadi modal kamera layar penuh reusable untuk presensi pribadi dan scanner petugas.
-- Worktree expectation: clean setelah commit/push finalisasi impor historis ini.
-- Publish/live status: tidak ada publish baru pada batch ini karena hanya menambah tooling backend audit/importer; publish web dan OTA terakhir tetap sesuai hotfix QR/scanner di atas.
+- Worktree expectation: clean setelah commit/push finalisasi bugfix SBTS follow-up ini.
+- Publish/live status: backend dan frontend web sudah live untuk pilot QR SBTS serta bugfix follow-up decimal/print. OTA mobile tidak terdampak.
 - Progress presensi terpadu operasional: 100%.
 - Progress impor historis absensi siswa TKJ: 100%.
   - Selesai: audit workbook, verifikasi aturan blok merah, cek roster DB vs Excel, buat script importer reusable, apply impor final ke database, dan verifikasi pasca-impor.
@@ -72,11 +72,33 @@ Setiap room baru yang diminta `baca AGENTS.md` atau `lanjutkan` wajib membaca fi
     - endpoint rapor siswa `/api/reports/student` sekarang menyisipkan payload `footer.legality` khusus konteks `SBTS`
     - cetak rapor SBTS di web sekarang menampilkan QR verifikasi pada blok tanda tangan wali kelas
     - halaman verifikasi publik baru tersedia di `/verify/report-card/:token`
+- Verifikasi follow-up bugfix SBTS setelah QR:
+  - audit source of truth nilai:
+    - `git log -1 --stat --decorate` pada commit QR menunjukkan perubahan hanya di area legality/verification, tidak menyentuh formula nilai rapor
+    - `cd backend && node -r ./node_modules/ts-node/register ...reportService.getStudentReport(1483, 4, 'ODD', 'SBTS', 'SBTS')...`
+    - hasil sample siswa `Ajeng Rahman` (`X MP 1`) tetap menunjukkan nilai sumber normal: `Bahasa Indonesia SBTS 78`, `Matematika SBTS 78`, `Dasar-dasar Manajemen Perkantoran SBTS 90`
+    - kesimpulan: QR tidak mengubah perhitungan nilai SBTS; issue yang terlihat user bukan berasal dari commit QR
+  - build/runtime:
+    - `cd backend && npm run build`
+    - `cd backend && npm run service:restart`
+    - `cd backend && npm run service:health`
+    - `cd frontend && npm run build`
+    - `cd frontend && npm run deploy`
+    - `curl -I https://siskgb2.id/` merespons `200`
+  - verifikasi angka desimal:
+    - payload SBTS midterm di `report.service.ts` kini menormalisasi `col2Score` dengan `normalizeRoundedFinalScore(...)`
+    - renderer print SBTS di frontend kini memformat semua angka tampilan maksimal 2 digit desimal
+    - scan sample report siswa yang sama menunjukkan tidak ada lagi score dengan desimal lebih dari 2 digit (`excessive: []`)
+  - verifikasi performa print:
+    - service `reportService.getStudentReport(...)` untuk sample siswa terukur sekitar `135ms`
+    - bottleneck frontend sebelumnya berasal dari `setTimeout(..., 500)` sebelum `print()`
+    - alur print sekarang menunggu aset yang benar-benar diperlukan (`fonts/images`) lalu langsung `print()`, tanpa delay statis 500ms
 
 ## Langkah Aman Berikutnya
 
 - Data historis TKJ + AK/MP sekarang sudah siap dipakai oleh rapor walas karena source `daily_attendances` sudah terisi untuk `Jul 2025 - Apr 2026`.
 - Jika user melanjutkan impor jurusan/tingkat lain, gunakan script yang sama sebagai baseline, lalu audit dulu roster aktif DB vs workbook sebelum apply.
+- Jika user ingin melanjutkan uji SBTS, langkah paling aman sekarang adalah minta user cetak ulang rapor SBTS nyata setelah bugfix decimal/print live, lalu cocokkan angka dan rasa respons print.
 - Jika user puas dengan pilot SBTS, langkah lanjutan paling aman adalah memperluas pola QR yang sama ke SAS/SAT/rapor akhir tanpa mengganti kontrak dasar verifikasi publik.
 - Script yang disiapkan:
   - `cd backend && npm run attendance:import:tkj` untuk dry-run

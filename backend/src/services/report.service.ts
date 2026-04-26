@@ -1190,6 +1190,8 @@ export class ReportService {
           fallbackFormative;
         const sbtsScore =
           readSlotOrLegacyScore(slotScores, midtermSlotCode, reportScore?.sbtsScore) ?? 0;
+        const normalizedSbtsScore =
+          sbtsScore > 0 ? normalizeRoundedFinalScore(sbtsScore) ?? sbtsScore : null;
 
         // Fallback calculation if reportGrade is not synced yet (though syncReportGrade should handle it)
         if (!report) {
@@ -1207,8 +1209,8 @@ export class ReportService {
         col1Score = formatifAvg > 0 ? Math.round(formatifAvg) : null;
         col1Predicate = formatifAvg > 0 ? getPredicate(formatifAvg, kkm) : null;
         
-        col2Score = sbtsScore > 0 ? sbtsScore : null;
-        col2Predicate = sbtsScore > 0 ? getPredicate(sbtsScore, kkm) : null;
+        col2Score = normalizedSbtsScore;
+        col2Predicate = normalizedSbtsScore !== null ? getPredicate(normalizedSbtsScore, kkm) : null;
 
         finalScoreVal =
           finalScore > 0

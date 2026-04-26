@@ -194,6 +194,13 @@ export const HomeroomReportSbtsPage = ({
       return Number.isFinite(parsed) ? parsed : null;
     };
 
+    const formatDisplayScore = (value: string | number | null | undefined): string => {
+      const numericValue = parseNumeric(value);
+      if (numericValue === null) return String(value ?? '-');
+      const normalized = Number(numericValue.toFixed(2));
+      return Number.isInteger(normalized) ? String(normalized) : String(normalized);
+    };
+
     const isBelowKkm = (
       value: string | number | null | undefined,
       kkm: string | number | null | undefined,
@@ -253,13 +260,13 @@ export const HomeroomReportSbtsPage = ({
         const statusColor = resolveStatusColor(status);
         const col1Cells = hasCol1Value
           ? `
-          <td class="center align-middle" style="color: ${col1Color}; font-weight: ${col1Color === '#dc2626' ? '700' : '400'};">${item.col1?.score ?? '-'}</td>
+          <td class="center align-middle" style="color: ${col1Color}; font-weight: ${col1Color === '#dc2626' ? '700' : '400'};">${formatDisplayScore(item.col1?.score)}</td>
           <td class="center align-middle" style="color: ${col1Color}; font-weight: ${col1Color === '#dc2626' ? '700' : '400'};">${item.col1?.predicate ?? '-'}</td>
           `
           : `<td colspan="2" class="center align-middle empty-component-cell">Tidak ada Penilaian</td>`;
         const col2Cells = hasCol2Value
           ? `
-          <td class="center align-middle" style="color: ${col2Color}; font-weight: ${col2Color === '#dc2626' ? '700' : '400'};">${item.col2?.score ?? '-'}</td>
+          <td class="center align-middle" style="color: ${col2Color}; font-weight: ${col2Color === '#dc2626' ? '700' : '400'};">${formatDisplayScore(item.col2?.score)}</td>
           <td class="center align-middle" style="color: ${col2Color}; font-weight: ${col2Color === '#dc2626' ? '700' : '400'};">${item.col2?.predicate ?? '-'}</td>
           `
           : `
@@ -555,13 +562,53 @@ export const HomeroomReportSbtsPage = ({
     printDoc.write(html);
     printDoc.close();
 
-    // Wait for content to load/render before printing
-    setTimeout(() => {
-      if (iframe.contentWindow) {
-        iframe.contentWindow.focus();
-        iframe.contentWindow.print();
+    const triggerPrint = () => {
+      if (!iframe.contentWindow) return;
+      iframe.contentWindow.focus();
+      iframe.contentWindow.print();
+    };
+
+    const waitForAssetsAndPrint = () => {
+      const doc = iframe.contentWindow?.document;
+      if (!doc) {
+        triggerPrint();
+        return;
       }
-    }, 500);
+
+      const imageNodes = Array.from(doc.images || []);
+      const imagePromises = imageNodes.map(
+        (image) =>
+          new Promise<void>((resolve) => {
+            if (image.complete) {
+              resolve();
+              return;
+            }
+            image.addEventListener('load', () => resolve(), { once: true });
+            image.addEventListener('error', () => resolve(), { once: true });
+          }),
+      );
+
+      const fontsReady =
+        typeof doc.fonts?.ready?.then === 'function' ? doc.fonts.ready.catch(() => undefined) : Promise.resolve();
+
+      Promise.all([fontsReady, ...imagePromises]).finally(() => {
+        requestAnimationFrame(() => {
+          requestAnimationFrame(() => {
+            triggerPrint();
+          });
+        });
+      });
+    };
+
+    if (iframe.contentWindow.document.readyState === 'complete') {
+      waitForAssetsAndPrint();
+      return;
+    }
+
+    iframe.onload = () => {
+      iframe.onload = null;
+      waitForAssetsAndPrint();
+    };
   };
 
   if (!semester) {
