@@ -8,9 +8,9 @@ Setiap room baru yang diminta `baca AGENTS.md` atau `lanjutkan` wajib membaca fi
 - Last updated: 2026-04-26 15:16 WIB
 - Current status: Batch 1 penyempurnaan `Program Perangkat Ajar` sedang berjalan aman. Pondasi backend/perilaku guru belum diubah; batch ini hanya merapikan UI web Wakakur agar pengaturan program tidak langsung membuka semua level schema teknis sekaligus.
 - Last completed repo work:
-  - Commit: `ad641d5`
-  - Title: `fix(report): keep sbts print decimals uniform`
-  - Summary: Menjaga tampilan nilai SBTS selalu 2 digit desimal pada cetak rapor web dan memastikan alur print tetap responsif tanpa delay statis.
+  - Commit: `a08a113`
+  - Title: `feat(curriculum): simplify teaching resource program editor`
+  - Summary: Menyederhanakan modal `Tambah/Edit Program Perangkat Ajar` di sisi Wakakur web dengan pola `Mode Sederhana` dan `Mode Lanjutan`, menambah pembacaan arah dokumen + ringkasan template, dan tetap menjaga schema editor detail lama sebagai jalur aman lanjutan.
 - Task aktif:
   - Objective: menyederhanakan pengalaman Wakakur saat menambah/mengedit `Program Perangkat Ajar` tanpa mengorbankan fleksibilitas dinamis untuk batch engine berikutnya.
   - Batch terakhir selesai: Batch 1 UI simplification Wakakur web.
