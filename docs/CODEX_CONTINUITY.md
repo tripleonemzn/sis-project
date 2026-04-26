@@ -5,36 +5,32 @@ Setiap room baru yang diminta `baca AGENTS.md` atau `lanjutkan` wajib membaca fi
 
 ## Status Saat Ini
 
-- Last updated: 2026-04-27 05:54 WIB
-- Current status: Batch 12 penyimpanan metadata referensi dan hidrasi field turunan untuk `Program Perangkat Ajar` sudah aktif di web dan mobile. Pilihan referensi guru kini tidak lagi hanya berupa nilai tampilan, tetapi juga menyimpan metadata sumber yang cukup untuk mengisi field `DOCUMENT_SNAPSHOT` terkait pada baris yang sama.
+- Last updated: 2026-04-27 06:12 WIB
+- Current status: Batch 13 penyederhanaan setup integrasi kolom di editor Wakakur sudah aktif di web. Wakakur kini bisa memilih `Peran Operasional Kolom` seperti `Input Biasa`, `Sumber Referensi`, `Pilihan Referensi`, `Field Turunan`, atau `Nilai Sistem`, sehingga metadata teknis inti otomatis diarahkan ke konfigurasi yang lebih masuk akal.
 - Last completed repo work:
-  - Commit: `3288b18d74a88de2e4453e31a3e139cbc9ea5359`
-  - Title: `feat(curriculum): persist linked document selections`
-  - Summary: editor guru web/mobile kini menyimpan `referenceSelections` dan `references` di payload entry, memakai token pilihan yang unik, dan mengisi field `DOCUMENT_SNAPSHOT` dari snapshot row dokumen sumber tanpa endpoint backend baru.
+  - Commit: `c932d45`
+  - Title: `feat(curriculum): simplify wakakur column integration setup`
+  - Summary: editor Wakakur `Mode Teknisi` kini punya selector `Peran Operasional Kolom`, badge status integrasi, helper kontekstual, dan saran kode program sumber agar setup `exposeAsReference`, `DOCUMENT_REFERENCE`, `DOCUMENT_SNAPSHOT`, dan `SYSTEM` lebih mudah dipahami.
 - Task aktif:
   - Objective: menggeser fondasi fitur `Program Perangkat Ajar` dari schema/template berbasis nama dokumen ke model generik yang netral kebijakan, bisa saling terintegrasi antar-dokumen, dan tetap aman untuk user operasional.
-  - Batch terakhir selesai: Batch 12 persistensi referensi dan field turunan.
+  - Batch terakhir selesai: Batch 13 penyederhanaan setup integrasi Wakakur.
   - Progress keseluruhan roadmap perangkat ajar dinamis:
     - `100%` untuk rumusan arsitektur generik
-    - `82%` untuk implementasi teknis refactor engine generik
-    - `15%` untuk builder Wakakur generasi baru
+    - `86%` untuk implementasi teknis refactor engine generik
+    - `32%` untuk builder Wakakur generasi baru
     - `82%` untuk reference picker guru lintas dokumen
   - Area/file disentuh:
-    - `frontend/src/pages/teacher/learning-resources/LearningResourceGenerator.tsx`
-    - `frontend/src/services/teachingResourceProgram.service.ts`
-    - `mobile-app/src/features/learningResources/TeacherLearningResourceProgramScreen.tsx`
-    - `mobile-app/src/features/learningResources/teachingResourceProgramApi.ts`
+    - `frontend/src/pages/teacher/wakasek/curriculum/TeachingResourceProgramManagementPage.tsx`
     - `docs/CODEX_CONTINUITY.md`
   - Ringkasan hasil batch:
-    - type web/mobile kini mengenal `TeachingResourceEntryReferenceSelection` di payload content
-    - setiap dropdown referensi sekarang memakai `selectionToken` unik, sementara nilai yang disimpan ke sel tetap manusiawi untuk tampilan/print
-    - saat guru memilih referensi, metadata sumber disimpan ke `content.referenceSelections` dan `content.references`
-    - snapshot nilai row dari dokumen sumber kini dipakai untuk mengisi kolom sibling bertipe `DOCUMENT_SNAPSHOT` pada baris yang sama
-    - hidrasi snapshot hanya menyasar kolom yang memang terikat ke `sourceProgramCode` yang sama, dan menghormati `allowManualOverride`
-    - parser entry edit web/mobile kini bisa membuka kembali metadata referensi yang sudah tersimpan
-    - tidak ada endpoint backend baru, tidak ada polling/realtime baru, dan tidak ada invalidation global
-- Worktree expectation: clean setelah commit/push Batch 12.
-- Publish/live status: frontend web sudah deploy live dan `https://siskgb2.id/` merespons `200`. OTA mobile tester `pilot-live` sudah publish sukses untuk runtime `0.2.2` dengan update group `63d802bc-4496-418a-a95a-6dc10b7efed5`.
+    - tiap kolom di `Mode Teknisi` kini menampilkan badge peran integrasi dan helper ringkas yang lebih manusiawi
+    - selector `Peran Operasional Kolom` otomatis mengarahkan metadata penting seperti `sourceType`, `valueSource`, `teacherEditMode`, `readOnly`, `exposeAsReference`, dan `syncMode`
+    - input `Binding Program` kini didukung saran kode program existing lewat `datalist`
+    - label sumber program yang terhubung ditampilkan langsung di kartu kolom untuk mengurangi kebingungan
+    - detail teknis lama tetap dipertahankan agar konfigurasi lama/backward-compatible tidak rusak
+    - tidak ada perubahan backend, mobile, polling, realtime, atau endpoint baru
+- Worktree expectation: clean setelah commit/push Batch 13.
+- Publish/live status: frontend web sudah deploy live dan `https://siskgb2.id/` merespons `200`. Tidak ada OTA mobile baru karena batch ini web-only di editor Wakakur.
 - Progress presensi terpadu operasional: 100%.
 - Progress impor historis absensi siswa TKJ: 100%.
   - Selesai: audit workbook, verifikasi aturan blok merah, cek roster DB vs Excel, buat script importer reusable, apply impor final ke database, dan verifikasi pasca-impor.
@@ -278,6 +274,16 @@ Setiap room baru yang diminta `baca AGENTS.md` atau `lanjutkan` wajib membaca fi
     - tidak ada polling/refetch/realtime baru
     - metadata referensi disimpan di payload `content` existing, jadi blast radius backend tetap kecil
     - field turunan hanya diisi untuk kolom `DOCUMENT_SNAPSHOT` pada row yang sama, bukan overwrite global
+- Verifikasi Batch 13 penyederhanaan setup integrasi Wakakur:
+  - `cd frontend && npm run build`
+  - `git diff --check`
+  - `cd frontend && npm run deploy`
+  - `curl -I https://siskgb2.id/` merespons `200`
+  - sanity check perubahan:
+    - web Wakakur only
+    - tidak ada perubahan backend
+    - tidak ada perubahan mobile / OTA baru
+    - kontrol lama tetap ada, jadi konfigurasi teknis existing tetap backward-compatible
   - sanity check perubahan:
     - perubahan hanya di halaman Wakakur dan type layer frontend
     - tidak ada endpoint baru
