@@ -5,38 +5,36 @@ Setiap room baru yang diminta `baca AGENTS.md` atau `lanjutkan` wajib membaca fi
 
 ## Status Saat Ini
 
-- Last updated: 2026-04-27 05:34 WIB
-- Current status: Batch 11 reference picker guru lintas dokumen untuk `Program Perangkat Ajar` sudah diimplementasikan di web dan mobile dengan blast radius kecil. Guru kini bisa memakai field `DOCUMENT_REFERENCE` / `DOCUMENT_SNAPSHOT` sebagai dropdown referensi terintegrasi, sementara backend dan kontrak entry existing tetap dipakai.
+- Last updated: 2026-04-27 05:54 WIB
+- Current status: Batch 12 penyimpanan metadata referensi dan hidrasi field turunan untuk `Program Perangkat Ajar` sudah aktif di web dan mobile. Pilihan referensi guru kini tidak lagi hanya berupa nilai tampilan, tetapi juga menyimpan metadata sumber yang cukup untuk mengisi field `DOCUMENT_SNAPSHOT` terkait pada baris yang sama.
 - Last completed repo work:
-  - Commit: `c65443d94e0d4f1e023f560edf74fdc4587afad1`
-  - Title: `feat(curriculum): add teacher reference picker for linked teaching resource fields`
-  - Summary: editor guru web/mobile kini membaca metadata `sourceType` dan `binding` untuk memuat pilihan referensi dari dokumen guru lain secara scoped per program, konteks assignment, dan semester aktif, tanpa endpoint backend baru.
+  - Commit: `3288b18d74a88de2e4453e31a3e139cbc9ea5359`
+  - Title: `feat(curriculum): persist linked document selections`
+  - Summary: editor guru web/mobile kini menyimpan `referenceSelections` dan `references` di payload entry, memakai token pilihan yang unik, dan mengisi field `DOCUMENT_SNAPSHOT` dari snapshot row dokumen sumber tanpa endpoint backend baru.
 - Task aktif:
   - Objective: menggeser fondasi fitur `Program Perangkat Ajar` dari schema/template berbasis nama dokumen ke model generik yang netral kebijakan, bisa saling terintegrasi antar-dokumen, dan tetap aman untuk user operasional.
-  - Batch terakhir selesai: Batch 11 reference picker guru lintas dokumen.
+  - Batch terakhir selesai: Batch 12 persistensi referensi dan field turunan.
   - Progress keseluruhan roadmap perangkat ajar dinamis:
     - `100%` untuk rumusan arsitektur generik
-    - `72%` untuk implementasi teknis refactor engine generik
+    - `82%` untuk implementasi teknis refactor engine generik
     - `15%` untuk builder Wakakur generasi baru
-    - `65%` untuk reference picker guru lintas dokumen
+    - `82%` untuk reference picker guru lintas dokumen
   - Area/file disentuh:
     - `frontend/src/pages/teacher/learning-resources/LearningResourceGenerator.tsx`
+    - `frontend/src/services/teachingResourceProgram.service.ts`
     - `mobile-app/src/features/learningResources/TeacherLearningResourceProgramScreen.tsx`
     - `mobile-app/src/features/learningResources/teachingResourceProgramApi.ts`
     - `docs/CODEX_CONTINUITY.md`
   - Ringkasan hasil batch:
-    - type mobile kini mengenal metadata generik yang sama dengan backend/frontend (`sourceType`, `binding`, `fieldIdentity`, `schemaMode`, `blockType`, `layout`)
-    - editor guru web dan mobile kini mendeteksi kolom `DOCUMENT_REFERENCE` / `DOCUMENT_SNAPSHOT` dan merender dropdown referensi, bukan input manual biasa
-    - pilihan dropdown diambil memakai API entry existing dengan scope aman:
-      - hanya saat editor terbuka
-      - hanya untuk `sourceProgramCode` yang benar-benar direferensikan schema aktif
-      - hanya view `mine`
-      - limit `100` per program sumber
-    - filter referensi menghormati metadata binding seperti `filterByContext`, `matchBySubject`, `matchByClassLevel`, `matchByMajor`, dan `matchByActiveSemester`
-    - parser referensi tetap kompatibel dengan entry lama karena memakai fallback schema source program saat `content.sections[].columns` belum lengkap
+    - type web/mobile kini mengenal `TeachingResourceEntryReferenceSelection` di payload content
+    - setiap dropdown referensi sekarang memakai `selectionToken` unik, sementara nilai yang disimpan ke sel tetap manusiawi untuk tampilan/print
+    - saat guru memilih referensi, metadata sumber disimpan ke `content.referenceSelections` dan `content.references`
+    - snapshot nilai row dari dokumen sumber kini dipakai untuk mengisi kolom sibling bertipe `DOCUMENT_SNAPSHOT` pada baris yang sama
+    - hidrasi snapshot hanya menyasar kolom yang memang terikat ke `sourceProgramCode` yang sama, dan menghormati `allowManualOverride`
+    - parser entry edit web/mobile kini bisa membuka kembali metadata referensi yang sudah tersimpan
     - tidak ada endpoint backend baru, tidak ada polling/realtime baru, dan tidak ada invalidation global
-- Worktree expectation: clean setelah commit/push Batch 11.
-- Publish/live status: frontend web sudah deploy live dan `https://siskgb2.id/` merespons `200`. OTA mobile tester `pilot-live` sudah publish sukses untuk runtime `0.2.2` dengan update group `e956fd99-20ea-4941-9db3-75f6fada4705`.
+- Worktree expectation: clean setelah commit/push Batch 12.
+- Publish/live status: frontend web sudah deploy live dan `https://siskgb2.id/` merespons `200`. OTA mobile tester `pilot-live` sudah publish sukses untuk runtime `0.2.2` dengan update group `63d802bc-4496-418a-a95a-6dc10b7efed5`.
 - Progress presensi terpadu operasional: 100%.
 - Progress impor historis absensi siswa TKJ: 100%.
   - Selesai: audit workbook, verifikasi aturan blok merah, cek roster DB vs Excel, buat script importer reusable, apply impor final ke database, dan verifikasi pasca-impor.
@@ -259,6 +257,27 @@ Setiap room baru yang diminta `baca AGENTS.md` atau `lanjutkan` wajib membaca fi
     - query referensi hanya aktif saat editor terbuka dan hanya untuk program sumber yang benar-benar dipakai schema aktif
     - tidak ada polling/refetch/realtime baru
     - referensi guru tetap mengikuti tahun ajaran aktif dan konteks assignment aktif
+- Verifikasi Batch 12 persistensi referensi dan field turunan:
+  - `cd frontend && npm run build`
+  - `cd mobile-app && npm run typecheck`
+  - `cd mobile-app && npm run audit:parity:check`
+  - `git diff --check`
+  - `cd frontend && npm run deploy`
+  - `curl -I https://siskgb2.id/` merespons `200`
+  - `cd mobile-app && npm run check:ota:testers`
+  - `cd mobile-app && npm run update:testers -- "Penyempurnaan Perangkat Ajar: pilihan referensi antar dokumen kini tersimpan lebih utuh dan bisa mengisi field turunan. Silakan perbarui untuk menikmati fitur terbaru."`
+  - hasil final:
+    - web live sehat
+    - channel `pilot-live` terverifikasi reachable untuk runtime `0.2.2`
+    - update group `63d802bc-4496-418a-a95a-6dc10b7efed5`
+    - Android update ID `019dcc00-b23b-7c5b-928f-025c7be08f86`
+    - commit `3288b18d74a88de2e4453e31a3e139cbc9ea5359`
+    - push notify `recipients=3, sent=3, failed=0, stale=0`
+  - sanity check perubahan:
+    - tidak ada endpoint/backend baru
+    - tidak ada polling/refetch/realtime baru
+    - metadata referensi disimpan di payload `content` existing, jadi blast radius backend tetap kecil
+    - field turunan hanya diisi untuk kolom `DOCUMENT_SNAPSHOT` pada row yang sama, bukan overwrite global
   - sanity check perubahan:
     - perubahan hanya di halaman Wakakur dan type layer frontend
     - tidak ada endpoint baru
