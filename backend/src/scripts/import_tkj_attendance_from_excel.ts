@@ -593,6 +593,14 @@ async function main() {
   }
 
   const candidateRows = Array.from(candidates.values());
+  const importStartDate = candidateRows.reduce<Date | null>(
+    (currentMin, row) => (currentMin === null || row.date < currentMin ? row.date : currentMin),
+    null,
+  );
+  const existingRangeEndDate = candidateRows.reduce<Date | null>(
+    (currentMax, row) => (currentMax === null || row.date > currentMax ? row.date : currentMax),
+    null,
+  );
   const studentIds = Array.from(new Set(candidateRows.map((row) => row.studentId)));
   const classIds = Array.from(new Set(candidateRows.map((row) => row.classId)));
 
@@ -602,8 +610,8 @@ async function main() {
       studentId: { in: studentIds },
       classId: { in: classIds },
       date: {
-        gte: academicYear.semester1Start,
-        lte: importEndDate,
+        gte: importStartDate ?? academicYear.semester1Start,
+        lte: existingRangeEndDate ?? importEndDate,
       },
     },
     select: {
@@ -669,6 +677,16 @@ async function main() {
     }
 
     if (args.allowOverwrite) {
+      for (const row of compatibleExistingRows) {
+        await prisma.dailyAttendance.update({
+          where: { id: row.existing.id },
+          data: {
+            status: row.next.status,
+            note: null,
+          },
+        });
+      }
+
       for (const row of conflictingExistingRows) {
         await prisma.dailyAttendance.update({
           where: { id: row.existing.id },
@@ -714,6 +732,7 @@ async function main() {
       createRows: createRows.length,
       compatibleExistingRows: compatibleExistingRows.length,
       conflictingExistingRows: conflictingExistingRows.length,
+      overwrittenCompatibleRowsOnApply: args.apply && args.allowOverwrite ? compatibleExistingRows.length : 0,
       skippedConflictingRowsOnApply: args.apply && !args.allowOverwrite ? conflictingExistingRows.length : 0,
       overwrittenConflictingRowsOnApply: args.apply && args.allowOverwrite ? conflictingExistingRows.length : 0,
       unchangedRows,
