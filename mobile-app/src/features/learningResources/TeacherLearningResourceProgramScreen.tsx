@@ -25,10 +25,7 @@ import { academicYearApi } from '../academicYear/academicYearApi';
 import { useAuth } from '../auth/AuthProvider';
 import { useTeacherAssignmentsQuery } from '../teacherAssignments/useTeacherAssignmentsQuery';
 import { TeacherAssignment } from '../teacherAssignments/types';
-import {
-  buildTeacherAssignmentOptionLabel,
-  filterRegularTeacherAssignments,
-} from '../teacherAssignments/utils';
+import { filterRegularTeacherAssignments } from '../teacherAssignments/utils';
 import {
   teachingResourceProgramApi,
   TeachingResourceEntryItem,
@@ -55,6 +52,19 @@ type EntrySectionDraft = {
     id: string;
     values: Record<string, string>;
   }>;
+};
+
+type TeacherAssignmentContextOption = {
+  key: string;
+  subjectId: number;
+  subjectName: string;
+  classLevel: string;
+  className: string;
+  programKeahlian: string;
+  teacherName: string;
+  label: string;
+  coveredClasses: string[];
+  assignmentIds: number[];
 };
 
 type StatusFilter = 'ALL' | TeachingResourceEntryStatus;
@@ -161,8 +171,33 @@ function normalizeClassLevel(raw: unknown): string {
   return value;
 }
 
+function buildAssignmentAggregateClassName(assignment: TeacherAssignment): string {
+  const level = normalizeClassLevel(assignment.class?.level);
+  const majorCode = String(assignment.class?.major?.code || '').trim().toUpperCase();
+  const majorName = String(assignment.class?.major?.name || '').trim();
+  const fallbackClassName = String(assignment.class?.name || '').trim();
+  const suffix =
+    majorCode ||
+    majorName ||
+    fallbackClassName
+      .replace(new RegExp(`^${level}\\s*`, 'i'), '')
+      .replace(/\s+\d+$/, '')
+      .trim();
+  return [level, suffix].filter(Boolean).join(' ').trim() || fallbackClassName;
+}
+
 function ensureArray<T>(value: unknown): T[] {
   return Array.isArray(value) ? (value as T[]) : [];
+}
+
+function extractCoveredClasses(entry: TeachingResourceEntryItem): string[] {
+  const rawClasses = Array.isArray(entry.content?.contextScope?.coveredClasses)
+    ? entry.content.contextScope.coveredClasses
+    : [];
+  return rawClasses
+    .map((item) => String(item || '').trim())
+    .filter(Boolean)
+    .sort((left, right) => left.localeCompare(right, 'id', { numeric: true, sensitivity: 'base' }));
 }
 
 function isDigitalApprovalOnlySection(schemaKey?: string, title?: string): boolean {
@@ -338,14 +373,14 @@ function toggleWeekGridValue(value: unknown, week: string): string {
 
 function buildAutoSheetTitle(params: {
   programLabel: string;
-  assignment: TeacherAssignment | null;
+  context: TeacherAssignmentContextOption | null;
   academicYearName: string;
   semesterLabel: string;
 }): string {
   const parts = [
     String(params.programLabel || '').trim(),
-    String(params.assignment?.subject?.name || '').trim(),
-    String(params.assignment?.class?.name || '').trim(),
+    String(params.context?.subjectName || '').trim(),
+    String(params.context?.className || '').trim(),
     String(params.academicYearName || '').trim(),
     String(params.semesterLabel || '').trim(),
   ].filter(Boolean);
@@ -355,17 +390,17 @@ function buildAutoSheetTitle(params: {
 function hydrateSheetSections(params: {
   sections: EntrySectionDraft[];
   schemaMap: Map<string, TeachingResourceProgramSectionSchema>;
-  assignment: TeacherAssignment | null;
+  context: TeacherAssignmentContextOption | null;
   academicYearName: string;
   semesterLabel: string;
 }): EntrySectionDraft[] {
-  const mapel = String(params.assignment?.subject?.name || '').trim();
-  const tingkat = normalizeClassLevel(params.assignment?.class?.level);
-  const kelas = String(params.assignment?.class?.name || '').trim();
-  const programKeahlian = String(params.assignment?.class?.major?.name || '').trim();
+  const mapel = String(params.context?.subjectName || '').trim();
+  const tingkat = String(params.context?.classLevel || '').trim();
+  const kelas = String(params.context?.className || '').trim();
+  const programKeahlian = String(params.context?.programKeahlian || '').trim();
   const tahunAjaran = String(params.academicYearName || '').trim();
   const semester = String(params.semesterLabel || '').trim();
-  const guruMapel = String(params.assignment?.teacher?.name || '').trim();
+  const guruMapel = String(params.context?.teacherName || '').trim();
   const tempatTanggal = `Bekasi, ${formatLongDate(new Date())}`;
 
   const setIfBlank = (target: Record<string, string>, key: string, value: string) => {
@@ -563,7 +598,7 @@ export function TeacherLearningResourceProgramScreen({
   const { isAuthenticated, isLoading, user } = useAuth();
   const pagePadding = getStandardPagePadding(insets, { bottom: 110 });
 
-  const [selectedAssignmentId, setSelectedAssignmentId] = useState<number | null>(null);
+  const [selectedContextKey, setSelectedContextKey] = useState<string | null>(null);
   const [page, setPage] = useState(1);
   const [statusFilter, setStatusFilter] = useState<StatusFilter>('ALL');
   const [searchInput, setSearchInput] = useState('');
@@ -602,25 +637,86 @@ export function TeacherLearningResourceProgramScreen({
     if (!activeYearQuery.data?.id) return assignments;
     return assignments.filter((item) => Number(item.academicYear.id) === Number(activeYearQuery.data?.id));
   }, [assignments, activeYearQuery.data?.id]);
+  const assignmentContextOptions = useMemo<TeacherAssignmentContextOption[]>(() => {
+    const grouped = new Map<
+      string,
+      Omit<TeacherAssignmentContextOption, 'coveredClasses' | 'assignmentIds'> & {
+        coveredClasses: Set<string>;
+        assignmentIds: number[];
+      }
+    >();
+
+    relevantAssignments.forEach((assignment) => {
+      const subjectId = Number(assignment.subject?.id || assignment.subjectId || 0);
+      const classLevel = normalizeClassLevel(assignment.class?.level);
+      const className = buildAssignmentAggregateClassName(assignment);
+      const programKeahlian = String(assignment.class?.major?.name || '').trim();
+      const teacherName = String(assignment.teacher?.name || '').trim();
+      const groupKey = `${subjectId}::${className}`;
+      const coveredClass = String(assignment.class?.name || '').trim();
+      const existing = grouped.get(groupKey);
+
+      if (existing) {
+        if (coveredClass) existing.coveredClasses.add(coveredClass);
+        existing.assignmentIds.push(Number(assignment.id));
+        return;
+      }
+
+      grouped.set(groupKey, {
+        key: groupKey,
+        subjectId,
+        subjectName: String(assignment.subject?.name || '').trim(),
+        classLevel,
+        className,
+        programKeahlian,
+        teacherName,
+        label: `${String(assignment.subject?.name || '').trim()} - ${className}`,
+        coveredClasses: new Set(coveredClass ? [coveredClass] : []),
+        assignmentIds: [Number(assignment.id)],
+      });
+    });
+
+    return Array.from(grouped.values())
+      .map((item) => ({
+        ...item,
+        coveredClasses: Array.from(item.coveredClasses).sort((left, right) =>
+          left.localeCompare(right, 'id', { numeric: true, sensitivity: 'base' }),
+        ),
+      }))
+      .sort((left, right) => {
+        const subjectCompare = left.subjectName.localeCompare(right.subjectName, 'id', {
+          numeric: true,
+          sensitivity: 'base',
+        });
+        if (subjectCompare !== 0) return subjectCompare;
+        return left.className.localeCompare(right.className, 'id', {
+          numeric: true,
+          sensitivity: 'base',
+        });
+      });
+  }, [relevantAssignments]);
   const assignmentOptions = useMemo(
     () =>
-      relevantAssignments.map((assignment) => ({
-        value: String(assignment.id),
-        label: buildTeacherAssignmentOptionLabel(assignment),
+      assignmentContextOptions.map((context) => ({
+        value: context.key,
+        label:
+          context.coveredClasses.length > 1
+            ? `${context.label} (${context.coveredClasses.length} rombel)`
+            : context.label || 'Konteks mengajar',
       })),
-    [relevantAssignments],
+    [assignmentContextOptions],
   );
 
-  const effectiveSelectedAssignmentId = useMemo(() => {
-    if (!relevantAssignments.length) return null;
-    if (selectedAssignmentId && relevantAssignments.some((item) => item.id === selectedAssignmentId)) {
-      return selectedAssignmentId;
+  const effectiveSelectedContextKey = useMemo(() => {
+    if (!assignmentContextOptions.length) return '';
+    if (selectedContextKey !== null) {
+      return assignmentContextOptions.some((item) => item.key === selectedContextKey) ? selectedContextKey : '';
     }
-    return relevantAssignments[0]?.id || null;
-  }, [relevantAssignments, selectedAssignmentId]);
+    return assignmentContextOptions[0]?.key || '';
+  }, [assignmentContextOptions, selectedContextKey]);
 
-  const selectedAssignment =
-    relevantAssignments.find((item) => item.id === effectiveSelectedAssignmentId) || null;
+  const selectedContext =
+    assignmentContextOptions.find((item) => item.key === effectiveSelectedContextKey) || null;
   const academicYearName = useMemo(() => String(activeYearQuery.data?.name || '').trim(), [activeYearQuery.data?.name]);
   const activeSemesterLabel = useMemo(
     () => resolveSemesterLabel(activeYearQuery.data?.semester),
@@ -707,13 +803,13 @@ export function TeacherLearningResourceProgramScreen({
 
   const hydrateSectionsForAssignment = (
     sourceSections: EntrySectionDraft[],
-    assignment: TeacherAssignment | null = selectedAssignment,
+    context: TeacherAssignmentContextOption | null = selectedContext,
   ): EntrySectionDraft[] => {
     if (!usesSheetTemplate) return sourceSections;
     return hydrateSheetSections({
       sections: sourceSections,
       schemaMap: activeProgramSchemaMap,
-      assignment,
+      context,
       academicYearName,
       semesterLabel: activeSemesterLabel,
     });
@@ -758,17 +854,14 @@ export function TeacherLearningResourceProgramScreen({
   };
 
   const openCreateEditor = () => {
-    const defaultAssignmentId = usesSheetTemplate
-      ? effectiveSelectedAssignmentId || relevantAssignments[0]?.id || null
-      : effectiveSelectedAssignmentId;
-    const assignment =
-      relevantAssignments.find((item) => item.id === defaultAssignmentId) || null;
+    const defaultContextKey = effectiveSelectedContextKey;
+    const context = assignmentContextOptions.find((item) => item.key === defaultContextKey) || null;
     const generatedSections = buildDefaultSections(activeProgramSchemaSections);
     const hydratedSections = usesSheetTemplate
       ? hydrateSheetSections({
           sections: generatedSections,
           schemaMap: activeProgramSchemaMap,
-          assignment,
+          context,
           academicYearName,
           semesterLabel: activeSemesterLabel,
         })
@@ -779,7 +872,7 @@ export function TeacherLearningResourceProgramScreen({
       usesSheetTemplate
         ? buildAutoSheetTitle({
             programLabel: effectiveTitle,
-            assignment,
+            context,
             academicYearName,
             semesterLabel: activeSemesterLabel,
           })
@@ -788,19 +881,24 @@ export function TeacherLearningResourceProgramScreen({
     setEntrySummary('');
     setEntryNotes('');
     setEntryTags('');
-    setSelectedAssignmentId(defaultAssignmentId);
+    setSelectedContextKey(defaultContextKey || '');
     setSections(hydratedSections);
     setIsEditorOpen(true);
   };
 
   const openEditEditor = (entry: TeachingResourceEntryItem) => {
-    const matchedAssignment =
-      relevantAssignments.find(
-        (item) =>
-          Number(item.subject.id) === Number(entry.subjectId || 0) &&
-          String(item.class.name || '').trim().toLowerCase() ===
-            String(entry.className || '').trim().toLowerCase(),
-      ) || null;
+    const coveredClasses = extractCoveredClasses(entry);
+    const matchedContext =
+      assignmentContextOptions.find((context) => {
+        if (Number(context.subjectId) !== Number(entry.subjectId || 0)) return false;
+        const entryClassName = String(entry.className || '').trim().toLowerCase();
+        if (String(context.className || '').trim().toLowerCase() === entryClassName) return true;
+        if (context.coveredClasses.some((item) => item.trim().toLowerCase() === entryClassName)) return true;
+        return (
+          coveredClasses.length > 0 &&
+          coveredClasses.every((item) => context.coveredClasses.includes(item))
+        );
+      }) || null;
 
     setEditingEntry(entry);
     setEntryTitle(String(entry.title || ''));
@@ -808,9 +906,7 @@ export function TeacherLearningResourceProgramScreen({
     setEntryNotes(String(entry.content?.notes || ''));
     setEntryTags((entry.tags || []).join(', '));
     setSections(normalizeSectionsFromEntry(entry, buildDefaultSections(activeProgramSchemaSections)));
-    if (matchedAssignment) {
-      setSelectedAssignmentId(matchedAssignment.id);
-    }
+    setSelectedContextKey(matchedContext ? matchedContext.key : '');
     setIsEditorOpen(true);
   };
 
@@ -856,9 +952,9 @@ export function TeacherLearningResourceProgramScreen({
         programCode: normalizedProgramCode,
         title: entryTitle.trim(),
         summary: entrySummary.trim() || undefined,
-        subjectId: selectedAssignment ? Number(selectedAssignment.subject.id) : undefined,
-        classLevel: selectedAssignment ? normalizeClassLevel(selectedAssignment.class.level) : undefined,
-        className: selectedAssignment ? selectedAssignment.class.name : undefined,
+        subjectId: selectedContext ? Number(selectedContext.subjectId) : undefined,
+        classLevel: selectedContext ? selectedContext.classLevel : undefined,
+        className: selectedContext ? selectedContext.className : undefined,
         tags: entryTags
           .split(',')
           .map((token) => token.trim())
@@ -868,6 +964,13 @@ export function TeacherLearningResourceProgramScreen({
           notes: entryNotes.trim() || undefined,
           schemaVersion: Number(activeProgram?.schema?.version || 1),
           schemaSourceSheet: String(activeProgram?.schema?.sourceSheet || '').trim() || undefined,
+          contextScope: selectedContext
+            ? {
+                assignmentIds: selectedContext.assignmentIds,
+                coveredClasses: selectedContext.coveredClasses,
+                aggregatedClassName: selectedContext.className,
+              }
+            : undefined,
         },
       });
     },
@@ -914,9 +1017,9 @@ export function TeacherLearningResourceProgramScreen({
       return teachingResourceProgramApi.updateEntry(Number(editingEntry.id), {
         title: entryTitle.trim(),
         summary: entrySummary.trim() || '',
-        subjectId: selectedAssignment ? Number(selectedAssignment.subject.id) : null,
-        classLevel: selectedAssignment ? normalizeClassLevel(selectedAssignment.class.level) : null,
-        className: selectedAssignment ? selectedAssignment.class.name : null,
+        subjectId: selectedContext ? Number(selectedContext.subjectId) : Number(editingEntry.subjectId || 0) || null,
+        classLevel: selectedContext ? selectedContext.classLevel : editingEntry.classLevel || null,
+        className: selectedContext ? selectedContext.className : editingEntry.className || null,
         tags: entryTags
           .split(',')
           .map((token) => token.trim())
@@ -926,6 +1029,13 @@ export function TeacherLearningResourceProgramScreen({
           notes: entryNotes.trim() || undefined,
           schemaVersion: Number(activeProgram?.schema?.version || 1),
           schemaSourceSheet: String(activeProgram?.schema?.sourceSheet || '').trim() || undefined,
+          contextScope: selectedContext
+            ? {
+                assignmentIds: selectedContext.assignmentIds,
+                coveredClasses: selectedContext.coveredClasses,
+                aggregatedClassName: selectedContext.className,
+              }
+            : editingEntry.content?.contextScope,
         },
       });
     },
@@ -1251,14 +1361,14 @@ export function TeacherLearningResourceProgramScreen({
     });
   };
 
-  const onSelectAssignment = (assignmentId: number | null) => {
-    setSelectedAssignmentId(assignmentId);
+  const onContextChange = (contextKey: string) => {
+    setSelectedContextKey(contextKey);
     if (!isEditorOpen || Boolean(editingEntry) || !usesSheetTemplate) return;
-    const nextAssignment = relevantAssignments.find((item) => item.id === assignmentId) || null;
+    const nextContext = assignmentContextOptions.find((item) => item.key === contextKey) || null;
     setEntryTitle(
       buildAutoSheetTitle({
         programLabel: effectiveTitle,
-        assignment: nextAssignment,
+        context: nextContext,
         academicYearName,
         semesterLabel: activeSemesterLabel,
       }),
@@ -1267,7 +1377,7 @@ export function TeacherLearningResourceProgramScreen({
       hydrateSheetSections({
         sections: prev,
         schemaMap: activeProgramSchemaMap,
-        assignment: nextAssignment,
+        context: nextContext,
         academicYearName,
         semesterLabel: activeSemesterLabel,
       }),
@@ -1396,12 +1506,17 @@ export function TeacherLearningResourceProgramScreen({
             }}
           >
             <Text style={{ color: BRAND_COLORS.textDark, fontWeight: '700', marginBottom: 8 }}>Konteks Kelas & Mata Pelajaran</Text>
-            {relevantAssignments.length > 0 ? (
+            {assignmentContextOptions.length > 0 ? (
               <MobileSelectField
-                value={effectiveSelectedAssignmentId ? String(effectiveSelectedAssignmentId) : ''}
+                value={effectiveSelectedContextKey}
                 options={assignmentOptions}
-                onChange={(next) => onSelectAssignment(next ? Number(next) : null)}
+                onChange={onContextChange}
                 placeholder="Pilih kelas & mata pelajaran"
+                helperText={
+                  selectedContext?.coveredClasses.length
+                    ? `Cakupan: ${selectedContext.coveredClasses.join(', ')}`
+                    : undefined
+                }
               />
             ) : (
               <Text style={{ color: '#64748b' }}>Belum ada assignment aktif pada tahun ajaran ini.</Text>
@@ -1515,6 +1630,7 @@ export function TeacherLearningResourceProgramScreen({
             <View>
               {rows.map((entry) => {
                 const statusMeta = STATUS_META[entry.status] || STATUS_META.DRAFT;
+                const coveredClasses = extractCoveredClasses(entry);
                 const assignmentLabel = [entry.className, entry.classLevel, entry.subjectId ? `Mapel#${entry.subjectId}` : '']
                   .filter(Boolean)
                   .join(' • ');
@@ -1556,6 +1672,11 @@ export function TeacherLearningResourceProgramScreen({
 
                     <Text style={{ color: '#64748b', fontSize: scaleWithAppTextScale(12), marginTop: 6 }}>Update: {formatDateTime(entry.updatedAt)}</Text>
                     {assignmentLabel ? <Text style={{ color: '#64748b', fontSize: scaleWithAppTextScale(12), marginTop: 2 }}>{assignmentLabel}</Text> : null}
+                    {coveredClasses.length > 0 ? (
+                      <Text style={{ color: '#64748b', fontSize: scaleWithAppTextScale(12), marginTop: 2 }}>
+                        Cakupan: {coveredClasses.length} rombel ({coveredClasses.join(', ')})
+                      </Text>
+                    ) : null}
 
                     <View style={{ flexDirection: 'row', marginTop: 10 }}>
                       <Pressable

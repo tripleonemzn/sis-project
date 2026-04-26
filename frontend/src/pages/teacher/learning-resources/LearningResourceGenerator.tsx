@@ -518,11 +518,21 @@ const formatMultilineHtml = (value: unknown): string => {
   return safe.replace(/\n/g, '<br />');
 };
 
+const formatWeekGridPrintHtml = (value: unknown): string => {
+  const selectedWeeks = new Set(parseWeekGridValue(value));
+  if (selectedWeeks.size === 0) return '-';
+  const cells = WEEK_OPTIONS.map((week) => {
+    const active = selectedWeeks.has(week);
+    return `<span class="week-grid-cell${active ? ' is-active' : ''}">M${escapeHtml(week)}</span>`;
+  }).join('');
+  return `<div class="week-grid-print">${cells}</div><div class="week-grid-summary">${escapeHtml(formatWeekGridPrintValue(value))}</div>`;
+};
+
 const formatCellPrintHtml = (value: unknown, column?: EntrySectionColumnForm): string => {
   const rawValue = String(value ?? '').trim();
   if (!rawValue) return '-';
   const dataType = getColumnDataType(column);
-  if (dataType === 'WEEK_GRID') return escapeHtml(formatWeekGridPrintValue(rawValue));
+  if (dataType === 'WEEK_GRID') return formatWeekGridPrintHtml(rawValue);
   if (dataType === 'WEEK') return escapeHtml(/^\d+$/.test(rawValue) ? `Minggu ${rawValue}` : rawValue);
   if (dataType === 'BOOLEAN') return isTruthyMark(rawValue) ? MARK_VALUE : '-';
   if (dataType === 'NUMBER') return escapeHtml(formatNumericValue(parseNumber(rawValue)));
@@ -631,6 +641,16 @@ const formatNumericValue = (value: number): string => {
   if (Number.isInteger(value)) return String(value);
   return Number(value.toFixed(2)).toString();
 };
+
+const getPrintColumnClassName = (column?: EntrySectionColumnForm): string => {
+  const dataType = getColumnDataType(column);
+  if (dataType === 'WEEK_GRID') return 'print-week-grid-column';
+  if (['NUMBER', 'BOOLEAN', 'WEEK', 'SEMESTER', 'MONTH'].includes(dataType)) return 'print-compact-column';
+  return '';
+};
+
+const renderPrintClassAttribute = (className: string): string =>
+  className ? ` class="${escapeHtml(className)}"` : '';
 
 const parseNumber = (value: unknown): number => {
   const normalized = String(value ?? '')
@@ -2084,11 +2104,19 @@ export const LearningResourceGenerator = ({
             .filter((header) => header.key)
         : dynamicKeys.map((key) => ({ key, label: key, column: undefined }));
 
-    const thead = `<tr>${headers.map((header) => `<th>${escapeHtml(header.label)}</th>`).join('')}</tr>`;
+    const thead = `<tr>${headers
+      .map((header) => {
+        const classAttribute = renderPrintClassAttribute(getPrintColumnClassName(header.column));
+        return `<th${classAttribute}>${escapeHtml(header.label)}</th>`;
+      })
+      .join('')}</tr>`;
     const tbody = rows
       .map((row) => {
         const cells = headers
-          .map((header) => `<td>${formatCellPrintHtml(row.values?.[header.key], header.column)}</td>`)
+          .map((header) => {
+            const classAttribute = renderPrintClassAttribute(getPrintColumnClassName(header.column));
+            return `<td${classAttribute}>${formatCellPrintHtml(row.values?.[header.key], header.column)}</td>`;
+          })
           .join('');
         return `<tr>${cells}</tr>`;
       })
@@ -2149,6 +2177,42 @@ export const LearningResourceGenerator = ({
           table { width: 100%; border-collapse: collapse; font-size: 11px; }
           th, td { border: 1px solid #e2e8f0; padding: 6px 8px; vertical-align: top; text-align: left; }
           th { background: #f8fafc; font-weight: 700; }
+          .print-compact-column {
+            text-align: center;
+            white-space: nowrap;
+          }
+          .print-week-grid-column {
+            min-width: 156px;
+          }
+          .week-grid-print {
+            display: grid;
+            grid-template-columns: repeat(5, minmax(20px, 1fr));
+            gap: 3px;
+            max-width: 168px;
+          }
+          .week-grid-cell {
+            border: 1px solid #cbd5e1;
+            border-radius: 4px;
+            background: #f8fafc;
+            color: #94a3b8;
+            font-size: 8px;
+            font-weight: 600;
+            line-height: 1.1;
+            padding: 2px 0;
+            text-align: center;
+          }
+          .week-grid-cell.is-active {
+            border-color: #10b981;
+            background: #dcfce7;
+            color: #047857;
+            font-weight: 800;
+          }
+          .week-grid-summary {
+            margin-top: 4px;
+            color: #334155;
+            font-size: 9px;
+            line-height: 1.35;
+          }
           .signature-meta {
             margin-top: 18px; font-size: 12px; color: #334155;
           }

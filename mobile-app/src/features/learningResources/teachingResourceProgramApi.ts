@@ -89,6 +89,11 @@ export type TeachingResourceEntryItem = {
   title: string;
   summary?: string | null;
   content: {
+    contextScope?: {
+      assignmentIds?: number[];
+      coveredClasses?: string[];
+      aggregatedClassName?: string;
+    };
     sections?: Array<{
       schemaKey?: string;
       title?: string;
