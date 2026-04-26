@@ -5,27 +5,28 @@ Setiap room baru yang diminta `baca AGENTS.md` atau `lanjutkan` wajib membaca fi
 
 ## Status Saat Ini
 
-- Last updated: 2026-04-26 21:37 WIB
-- Current status: Batch 6 penyempurnaan `Program Perangkat Ajar` selesai dan OTA mobile tester sudah dipublish. Backend/DB tidak diubah; batch ini menyapu mismatch label mobile agar lebih sejajar dengan web pada status, konteks mapel/tingkat, list dokumen, aksi review, dan pagination.
+- Last updated: 2026-04-26 21:52 WIB
+- Current status: Batch 7 penyederhanaan `Kelola Program Perangkat Ajar` selesai dan web sudah live. Backend/DB tidak diubah; batch ini merespons feedback user bahwa fitur terlalu sulit untuk user gaptek dengan membuat mode default lebih siap pakai dan memindahkan istilah teknis ke Mode Teknisi.
 - Last completed repo work:
-  - Commit: `2b0cad1`
-  - Title: `fix(mobile): align teaching resource labels`
-  - Summary: Mobile `Program Perangkat Ajar` kini memakai label status `Semua Status`, `Menunggu Review`, `Disetujui`, `Perlu Revisi`; konteks memakai istilah `Mapel & Tingkat`; list dokumen menampilkan `Mapel & Tingkat` dan cakupan rombel; tombol submit menjadi `Kirim Review`; pagination menjadi `Sebelumnya/Berikutnya`.
+  - Commit: `2c17fb8`
+  - Title: `feat(curriculum): simplify teaching resource program setup`
+  - Summary: Halaman Wakakur `Program Perangkat Ajar` kini menampilkan alur 3 langkah, mengganti default menjadi `Mode Siap Pakai`, menyembunyikan kode/source sheet/hint teknis dari mode sederhana, dan mengubah pilihan template menjadi bahasa operasional yang lebih mudah dipahami.
 - Task aktif:
   - Objective: menyederhanakan pengalaman Wakakur saat menambah/mengedit `Program Perangkat Ajar` tanpa mengorbankan fleksibilitas dinamis untuk batch engine berikutnya.
-  - Batch terakhir selesai: Batch 6 parity copy/label mobile.
-  - Progress keseluruhan roadmap perangkat ajar dinamis: `90%`.
+  - Batch terakhir selesai: Batch 7 simplifikasi UX Wakakur untuk user non-teknis.
+  - Progress keseluruhan roadmap perangkat ajar dinamis: `95%`.
   - Area/file disentuh:
-    - `mobile-app/src/features/learningResources/TeacherLearningResourceProgramScreen.tsx`
+    - `frontend/src/pages/teacher/wakasek/curriculum/TeachingResourceProgramManagementPage.tsx`
   - Ringkasan hasil batch:
-    - status filter mobile mengikuti istilah web: `Semua Status`, `Menunggu Review`, `Disetujui`, `Perlu Revisi`
-    - card konteks mobile memakai `Mapel & Tingkat` dan helper `Berlaku untuk seluruh rombel terkait: ...`
-    - list dokumen mobile tidak lagi menampilkan `Mapel#id`; labelnya resolved dari konteks assignment bila tersedia
-    - tombol submit mobile memakai `Kirim Review`
-    - pagination mobile memakai `Sebelumnya` dan `Berikutnya`
-    - tidak ada perubahan kontrak backend, migrasi data, polling, realtime, atau query baru
-- Worktree expectation: clean setelah commit/push finalisasi Batch 6.
-- Publish/live status: frontend web tetap live dari Batch 5. OTA mobile tester `pilot-live` sudah dipublish dengan update group `2b18eb0e-64fe-4336-b7dd-91bb46adcd7e`; push notify update berhasil `recipients=3, sent=3`.
+    - halaman utama Wakakur kini menampilkan alur aman `1. Buat menu`, `2. Pilih bentuk`, `3. Simpan`
+    - mode default diganti menjadi `Mode Siap Pakai`; mode teknis diganti menjadi `Mode Teknisi`
+    - field `Kode Sistem`, `Source Sheet`, hint judul, intro, dan hint ringkasan hanya tampil di Mode Teknisi
+    - label user-facing diganti lebih sederhana: `Nama Menu`, `Nama Singkat`, `Tampil Untuk Kelas`, `Program bisa dipakai`, `Muncul di menu guru`
+    - pilihan template memakai bahasa operasional seperti `Analisis / Pemetaan`, `Distribusi Waktu`, `Matriks Minggu`, `Narasi + Tabel`, `Format Bebas`
+    - ringkasan template guru memakai istilah non-teknis seperti `Jumlah Bagian`, `Bagian Tabel`, `Kolom Isian`, `Bisa Ditambah`
+    - tidak ada perubahan kontrak backend, migrasi data, polling, realtime, query baru, atau mobile OTA baru pada batch ini
+- Worktree expectation: clean setelah commit/push finalisasi Batch 7.
+- Publish/live status: frontend web sudah live. OTA mobile tester terakhir tetap Batch 6 `pilot-live` update group `2b18eb0e-64fe-4336-b7dd-91bb46adcd7e`.
 - Progress presensi terpadu operasional: 100%.
 - Progress impor historis absensi siswa TKJ: 100%.
   - Selesai: audit workbook, verifikasi aturan blok merah, cek roster DB vs Excel, buat script importer reusable, apply impor final ke database, dan verifikasi pasca-impor.
@@ -197,15 +198,24 @@ Setiap room baru yang diminta `baca AGENTS.md` atau `lanjutkan` wajib membaca fi
     - mobile-only label/copy resolution
     - tidak ada endpoint/backend baru
     - tidak ada polling/refetch/realtime baru
+- Verifikasi Batch 7 simplifikasi UX Wakakur `Kelola Program Perangkat Ajar`:
+  - `cd frontend && npm run build`
+  - `git diff --check`
+  - `cd frontend && npm run deploy`
+  - `curl -I https://siskgb2.id/` merespons `200`
+  - sanity check perubahan:
+    - web Wakakur only
+    - tidak ada endpoint/backend baru
+    - tidak ada perubahan mobile
+    - tidak ada polling/refetch/realtime baru
 
 ## Langkah Aman Berikutnya
 
-- Lanjutkan Batch 7 perangkat ajar dengan fokus aman berikut:
-  - sebelum menambah engine baru, tunggu uji coba user atau lakukan manual QA dengan akun tester bila kredensial tersedia
-  - fokus uji: Wakakur membuat starter `Distribusi Waktu`/`Matriks Grid`, guru membuat dokumen dari web/mobile, lalu print web dicek visualnya
-  - jika perlu engine type, mulai dari metadata kompatibel tanpa migrasi dan tanpa mengubah program existing
+- Lanjutkan Batch 8 hanya jika user masih merasa alur Wakakur sulit:
+  - fokus berikutnya bukan engine, tetapi wizard yang lebih tegas: `Pilih Tujuan Dokumen` -> `Pilih Template` -> `Pratinjau Guru` -> `Simpan`
+  - opsi aman berikutnya adalah menambah preview visual sederhana sebelum simpan, bukan menambah konfigurasi teknis
   - jangan menyentuh backend sebelum ada kebutuhan nyata dari uji manual renderer/authoring
-- Jika room baru diminta melanjutkan fitur ini sebelum user uji coba, mulai dari QA manual yang realistis atau audit UI live read-only sebisa mungkin; jangan membuka scope backend dulu.
+- Jika room baru diminta melanjutkan fitur ini sebelum user uji coba, mulai dari QA manual halaman Wakakur live dan lihat apakah Mode Siap Pakai sudah cukup dipahami.
 - Data historis TKJ + AK/MP sekarang sudah siap dipakai oleh rapor walas karena source `daily_attendances` sudah terisi untuk `Jul 2025 - Apr 2026`.
 - Jika user melanjutkan impor jurusan/tingkat lain, gunakan script yang sama sebagai baseline, lalu audit dulu roster aktif DB vs workbook sebelum apply.
 - Jika user ingin melanjutkan uji SBTS, langkah paling aman sekarang adalah minta user cetak ulang rapor SBTS nyata setelah bugfix decimal/print live, lalu cocokkan angka dan rasa respons print.
