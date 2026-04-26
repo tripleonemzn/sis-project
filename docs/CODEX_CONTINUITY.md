@@ -8,9 +8,9 @@ Setiap room baru yang diminta `baca AGENTS.md` atau `lanjutkan` wajib membaca fi
 - Last updated: 2026-04-26 10:21 WIB
 - Current status: Batch 5 Presensi Harian Terpadu dan impor historis absensi siswa tetap selesai. Pilot legalitas QR wali kelas untuk cetak rapor SBTS tetap live, dan follow-up bugfix SBTS setelah QR juga sudah selesai: angka kolom SBTS kembali dibatasi maksimal 2 digit desimal dan alur print dipercepat dengan menghapus delay statis 500ms.
 - Last completed repo work:
-  - Commit: `16419210dd3dec27194a6928c34f1bc35b5c7e52`
-  - Title: `fix(presence): stabilize qr monitor and mobile scanner`
-  - Summary: Membatasi layout QR monitor bersama web agar maksimal 360px dan memakai grid valid, serta mengganti scanner mobile embedded menjadi modal kamera layar penuh reusable untuk presensi pribadi dan scanner petugas.
+  - Commit: `5211910`
+  - Title: `fix(report): normalize sbts print scores`
+  - Summary: Menormalisasi tampilan skor kolom SBTS agar maksimal 2 digit desimal di backend/frontend, sekaligus mempercepat alur cetak rapor SBTS dengan menghapus delay statis 500ms dan menunggu aset print secara adaptif.
 - Worktree expectation: clean setelah commit/push finalisasi bugfix SBTS follow-up ini.
 - Publish/live status: backend dan frontend web sudah live untuk pilot QR SBTS serta bugfix follow-up decimal/print. OTA mobile tidak terdampak.
 - Progress presensi terpadu operasional: 100%.
