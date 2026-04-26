@@ -5,29 +5,27 @@ Setiap room baru yang diminta `baca AGENTS.md` atau `lanjutkan` wajib membaca fi
 
 ## Status Saat Ini
 
-- Last updated: 2026-04-26 21:32 WIB
-- Current status: Batch 5 penyempurnaan `Program Perangkat Ajar` selesai, sudah live di web, dan OTA mobile tester sudah dipublish. Backend/DB tidak diubah; batch ini menyelaraskan konteks rombel mobile dengan pola agregasi web dan membuat print `WEEK_GRID` lebih visual.
+- Last updated: 2026-04-26 21:37 WIB
+- Current status: Batch 6 penyempurnaan `Program Perangkat Ajar` selesai dan OTA mobile tester sudah dipublish. Backend/DB tidak diubah; batch ini menyapu mismatch label mobile agar lebih sejajar dengan web pada status, konteks mapel/tingkat, list dokumen, aksi review, dan pagination.
 - Last completed repo work:
-  - Commit: `708bf26`
-  - Title: `feat(curriculum): align teaching resource context and print matrix`
-  - Summary: Mobile guru kini memilih konteks mapel/kelas secara agregat seperti web dan menyimpan `contextScope` berisi `assignmentIds`, `coveredClasses`, serta `aggregatedClassName`; print web kini menampilkan `WEEK_GRID` sebagai matriks mini `M1-M19` dengan ringkasan minggu terpilih.
+  - Commit: `2b0cad1`
+  - Title: `fix(mobile): align teaching resource labels`
+  - Summary: Mobile `Program Perangkat Ajar` kini memakai label status `Semua Status`, `Menunggu Review`, `Disetujui`, `Perlu Revisi`; konteks memakai istilah `Mapel & Tingkat`; list dokumen menampilkan `Mapel & Tingkat` dan cakupan rombel; tombol submit menjadi `Kirim Review`; pagination menjadi `Sebelumnya/Berikutnya`.
 - Task aktif:
   - Objective: menyederhanakan pengalaman Wakakur saat menambah/mengedit `Program Perangkat Ajar` tanpa mengorbankan fleksibilitas dinamis untuk batch engine berikutnya.
-  - Batch terakhir selesai: Batch 5 parity konteks mobile dan print matrix web.
-  - Progress keseluruhan roadmap perangkat ajar dinamis: `80%`.
+  - Batch terakhir selesai: Batch 6 parity copy/label mobile.
+  - Progress keseluruhan roadmap perangkat ajar dinamis: `90%`.
   - Area/file disentuh:
-    - `frontend/src/pages/teacher/learning-resources/LearningResourceGenerator.tsx`
     - `mobile-app/src/features/learningResources/TeacherLearningResourceProgramScreen.tsx`
-    - `mobile-app/src/features/learningResources/teachingResourceProgramApi.ts`
   - Ringkasan hasil batch:
-    - mobile guru tidak lagi memakai selector assignment per-rombel untuk perangkat ajar dinamis, tetapi memakai konteks agregat subject + kelas/program seperti web
-    - dokumen mobile baru kini menyimpan `contextScope` agar list/print web bisa membaca cakupan rombel secara konsisten
-    - edit dokumen mobile lama tetap mempertahankan konteks lama jika tidak cocok dengan konteks agregat aktif
-    - print web `WEEK_GRID` kini menampilkan matriks mini `M1-M19` dengan sel aktif dan ringkasan `Minggu ...`
-    - kolom angka/bulan/minggu/semester/boolean pada print web diberi class compact agar alignment lebih rapi
+    - status filter mobile mengikuti istilah web: `Semua Status`, `Menunggu Review`, `Disetujui`, `Perlu Revisi`
+    - card konteks mobile memakai `Mapel & Tingkat` dan helper `Berlaku untuk seluruh rombel terkait: ...`
+    - list dokumen mobile tidak lagi menampilkan `Mapel#id`; labelnya resolved dari konteks assignment bila tersedia
+    - tombol submit mobile memakai `Kirim Review`
+    - pagination mobile memakai `Sebelumnya` dan `Berikutnya`
     - tidak ada perubahan kontrak backend, migrasi data, polling, realtime, atau query baru
-- Worktree expectation: clean setelah commit/push finalisasi Batch 5.
-- Publish/live status: frontend web sudah live. OTA mobile tester `pilot-live` sudah dipublish dengan update group `7fb6bf1d-3c45-40e5-9d6f-2fdfbcb0d57d`; push notify update berhasil `recipients=3, sent=3`.
+- Worktree expectation: clean setelah commit/push finalisasi Batch 6.
+- Publish/live status: frontend web tetap live dari Batch 5. OTA mobile tester `pilot-live` sudah dipublish dengan update group `2b18eb0e-64fe-4336-b7dd-91bb46adcd7e`; push notify update berhasil `recipients=3, sent=3`.
 - Progress presensi terpadu operasional: 100%.
 - Progress impor historis absensi siswa TKJ: 100%.
   - Selesai: audit workbook, verifikasi aturan blok merah, cek roster DB vs Excel, buat script importer reusable, apply impor final ke database, dan verifikasi pasca-impor.
@@ -182,15 +180,32 @@ Setiap room baru yang diminta `baca AGENTS.md` atau `lanjutkan` wajib membaca fi
     - tidak ada polling/refetch/realtime baru
     - mobile hanya menambahkan metadata `contextScope` pada payload content existing
     - print matrix hanya presentation HTML di web print
+- Verifikasi Batch 6 parity copy/label mobile `Program Perangkat Ajar`:
+  - `cd mobile-app && npm run typecheck`
+  - `cd mobile-app && npm run audit:parity:check`
+  - `git diff --check`
+  - `cd mobile-app && npm run check:ota:testers`
+  - `cd mobile-app && npm run update:testers -- "Penyempurnaan Perangkat Ajar: label mobile kini lebih selaras dengan web pada status, konteks mapel, dan aksi review. Silakan perbarui untuk menikmati fitur terbaru."`
+  - OTA result:
+    - channel `pilot-live`
+    - runtime `0.2.2`
+    - update group `2b18eb0e-64fe-4336-b7dd-91bb46adcd7e`
+    - Android update ID `019dca38-fff8-7b4f-b364-0758d9c0b9d6`
+    - commit `2b0cad1a2454b59c8fb6bed6b31816721763709e`
+    - push notify `recipients=3, sent=3, failed=0, stale=0`
+  - sanity check perubahan:
+    - mobile-only label/copy resolution
+    - tidak ada endpoint/backend baru
+    - tidak ada polling/refetch/realtime baru
 
 ## Langkah Aman Berikutnya
 
-- Lanjutkan Batch 6 perangkat ajar dengan fokus aman berikut:
-  - lakukan audit statis/live ringan terhadap starter Wakakur `Distribusi Waktu` dan `Matriks Grid` tanpa membuat perubahan backend
-  - cek apakah masih ada mismatch copy/label web-mobile pada konteks kelas, cakupan rombel, dan preview/list dokumen
+- Lanjutkan Batch 7 perangkat ajar dengan fokus aman berikut:
+  - sebelum menambah engine baru, tunggu uji coba user atau lakukan manual QA dengan akun tester bila kredensial tersedia
+  - fokus uji: Wakakur membuat starter `Distribusi Waktu`/`Matriks Grid`, guru membuat dokumen dari web/mobile, lalu print web dicek visualnya
   - jika perlu engine type, mulai dari metadata kompatibel tanpa migrasi dan tanpa mengubah program existing
   - jangan menyentuh backend sebelum ada kebutuhan nyata dari uji manual renderer/authoring
-- Jika room baru diminta melanjutkan fitur ini sebelum user uji coba, mulai dari audit UI live Wakakur -> guru web/mobile -> print secara read-only sebisa mungkin, bukan dari perubahan backend.
+- Jika room baru diminta melanjutkan fitur ini sebelum user uji coba, mulai dari QA manual yang realistis atau audit UI live read-only sebisa mungkin; jangan membuka scope backend dulu.
 - Data historis TKJ + AK/MP sekarang sudah siap dipakai oleh rapor walas karena source `daily_attendances` sudah terisi untuk `Jul 2025 - Apr 2026`.
 - Jika user melanjutkan impor jurusan/tingkat lain, gunakan script yang sama sebagai baseline, lalu audit dulu roster aktif DB vs workbook sebelum apply.
 - Jika user ingin melanjutkan uji SBTS, langkah paling aman sekarang adalah minta user cetak ulang rapor SBTS nyata setelah bugfix decimal/print live, lalu cocokkan angka dan rasa respons print.
