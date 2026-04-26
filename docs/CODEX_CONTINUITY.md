@@ -5,8 +5,8 @@ Setiap room baru yang diminta `baca AGENTS.md` atau `lanjutkan` wajib membaca fi
 
 ## Status Saat Ini
 
-- Last updated: 2026-04-26 08:12 WIB
-- Current status: Batch 5 Presensi Harian Terpadu dan hotfix QR/scanner tetap selesai. Impor historis absensi siswa TKJ serta AK/MP (`Jul 2025 - Apr 2026`) ke `daily_attendances` sudah selesai dan tervalidasi untuk seluruh siswa yang match ke roster aktif DB.
+- Last updated: 2026-04-26 09:02 WIB
+- Current status: Batch 5 Presensi Harian Terpadu dan hotfix QR/scanner tetap selesai. Impor historis absensi siswa TKJ serta AK/MP (`Jul 2025 - Apr 2026`) ke `daily_attendances` sudah selesai. Pilot legalitas QR wali kelas untuk cetak rapor SBTS juga sudah selesai, live, dan mengikuti pola verifikasi dokumen production yang sudah ada.
 - Last completed repo work:
   - Commit: `16419210dd3dec27194a6928c34f1bc35b5c7e52`
   - Title: `fix(presence): stabilize qr monitor and mobile scanner`
@@ -58,11 +58,26 @@ Setiap room baru yang diminta `baca AGENTS.md` atau `lanjutkan` wajib membaca fi
   - audit per kelas untuk AK/MP menunjukkan total record DB sama dengan candidate row workbook untuk seluruh kelas `X/XI/XII AK 1-2` dan `X/XI/XII MP 1-4` yang tersedia
 - Publish/runtime:
   - tidak ada restart service atau publish baru karena batch ini belum mengubah runtime aplikasi
+- Verifikasi pilot QR rapor SBTS:
+  - backend:
+    - `cd backend && npm run build`
+    - `cd backend && npm run service:restart`
+    - `cd backend && npm run service:health`
+    - sample public verification `GET /api/public/report-cards/verify/:token` berhasil `200`
+  - frontend:
+    - `cd frontend && npm run build`
+    - `cd frontend && npm run deploy`
+    - route publik `https://siskgb2.id/verify/report-card/:token` merespons `200`
+  - implementasi:
+    - endpoint rapor siswa `/api/reports/student` sekarang menyisipkan payload `footer.legality` khusus konteks `SBTS`
+    - cetak rapor SBTS di web sekarang menampilkan QR verifikasi pada blok tanda tangan wali kelas
+    - halaman verifikasi publik baru tersedia di `/verify/report-card/:token`
 
 ## Langkah Aman Berikutnya
 
 - Data historis TKJ + AK/MP sekarang sudah siap dipakai oleh rapor walas karena source `daily_attendances` sudah terisi untuk `Jul 2025 - Apr 2026`.
 - Jika user melanjutkan impor jurusan/tingkat lain, gunakan script yang sama sebagai baseline, lalu audit dulu roster aktif DB vs workbook sebelum apply.
+- Jika user puas dengan pilot SBTS, langkah lanjutan paling aman adalah memperluas pola QR yang sama ke SAS/SAT/rapor akhir tanpa mengganti kontrak dasar verifikasi publik.
 - Script yang disiapkan:
   - `cd backend && npm run attendance:import:tkj` untuk dry-run
   - `cd backend && npm run attendance:import:tkj -- --apply` untuk create missing rows saja

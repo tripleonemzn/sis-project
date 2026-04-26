@@ -79,9 +79,16 @@ type StudentReportPayload = {
   footer: {
     date?: string;
     place?: string;
+    legality?: {
+      verificationToken?: string;
+      verificationUrl?: string;
+      verificationQrDataUrl?: string;
+      verificationNote?: string;
+      footerNote?: string;
+    };
     signatures: {
       parent: { title?: string; name?: string };
-      homeroom: { title?: string; name?: string };
+      homeroom: { title?: string; name?: string; nip?: string | null };
     };
   };
 };
@@ -176,6 +183,10 @@ export const HomeroomReportSbtsPage = ({
     const resolvedPrintPlace = String(data.footer.place || '').trim() || 'Bekasi';
     const resolvedPrintDate =
       String(data.footer.date || '').trim() || 'Tanggal rapor belum diatur';
+    const homeroomVerificationQrDataUrl = String(data.footer.legality?.verificationQrDataUrl || '').trim();
+    const homeroomVerificationNote = String(data.footer.legality?.verificationNote || '').trim();
+    const homeroomFooterNote = String(data.footer.legality?.footerNote || '').trim();
+    const homeroomNip = String(data.footer.signatures.homeroom.nip || '').trim();
 
     const parseNumeric = (value: string | number | null | undefined): number | null => {
       if (value === null || value === undefined || value === '') return null;
@@ -397,6 +408,29 @@ export const HomeroomReportSbtsPage = ({
           .signature-row { display: flex; justify-content: space-between; align-items: flex-start; margin-bottom: 20px; }
           .signature-box { text-align: center; width: 250px; }
           .signature-space { height: 70px; }
+          .signature-box.with-qr .signature-space { height: 10px; }
+          .signature-qr {
+            display: block;
+            width: 86px;
+            height: 86px;
+            object-fit: contain;
+            margin: 0 auto 6px;
+            background: #fff;
+          }
+          .signature-caption {
+            margin-top: 4px;
+            font-size: 10px;
+            color: #475569;
+            line-height: 1.25;
+          }
+          .signature-name { display: inline-block; margin-top: 2px; }
+          .signature-nip { margin-top: 4px; font-size: 11px; }
+          .signature-footer-note {
+            margin-top: 6px;
+            font-size: 10px;
+            color: #047857;
+            line-height: 1.25;
+          }
         </style>
       </head>
       <body>
@@ -485,11 +519,31 @@ export const HomeroomReportSbtsPage = ({
               <u>${data.footer.signatures.parent.name}</u>
             </div>
             
-            <div class="signature-box">
+            <div class="signature-box ${homeroomVerificationQrDataUrl ? 'with-qr' : ''}">
                ${resolvedPrintPlace}, ${resolvedPrintDate}<br>
                ${data.footer.signatures.homeroom.title},
                <div class="signature-space"></div>
-               <u>${data.footer.signatures.homeroom.name}</u>
+               ${
+                 homeroomVerificationQrDataUrl
+                   ? `<img src="${escapeHtml(homeroomVerificationQrDataUrl)}" alt="QR Verifikasi Wali Kelas" class="signature-qr" />`
+                   : ''
+               }
+               <u class="signature-name">${data.footer.signatures.homeroom.name}</u>
+               ${
+                 homeroomNip && homeroomNip !== '-'
+                   ? `<div class="signature-nip">NIP/NUPTK: ${escapeHtml(homeroomNip)}</div>`
+                   : ''
+               }
+               ${
+                 homeroomVerificationNote
+                   ? `<div class="signature-caption">${escapeHtml(homeroomVerificationNote)}</div>`
+                   : ''
+               }
+               ${
+                 homeroomFooterNote
+                   ? `<div class="signature-footer-note">${escapeHtml(homeroomFooterNote)}</div>`
+                   : ''
+               }
             </div>
           </div>
         </div>

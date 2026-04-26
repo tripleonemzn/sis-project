@@ -1494,6 +1494,7 @@ export class ReportService {
           ? new Date(reportDate.date).toLocaleDateString('id-ID', { day: 'numeric', month: 'long', year: 'numeric' })
           : '',
         place: reportDate?.place || 'Bekasi',
+        legality: null,
         signatures: {
           homeroom: {
             title: 'Wali Kelas',
