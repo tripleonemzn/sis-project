@@ -51,6 +51,12 @@ type CreateProgramDraft = {
 
 type ProgramEditorMode = 'SIMPLE' | 'ADVANCED';
 type ProgramBlueprintMode = 'GROUPED_ANALYSIS' | 'TIME_DISTRIBUTION' | 'MATRIX_GRID' | 'RICH_MIXED' | 'FREEFORM';
+type ColumnOperationalRole =
+  | 'MANUAL_FIELD'
+  | 'REFERENCE_SOURCE'
+  | 'REFERENCE_PICKER'
+  | 'SNAPSHOT_TARGET'
+  | 'SYSTEM_FIELD';
 
 const TARGET_CLASS_OPTIONS = [
   { value: 'X', label: 'X' },
@@ -174,6 +180,37 @@ const FIELD_TEACHER_EDIT_MODE_OPTIONS: Array<{ value: TeachingResourceTeacherEdi
   { value: 'TEACHER_EDITABLE', label: 'Guru Boleh Edit' },
   { value: 'TEACHER_APPEND_ONLY', label: 'Guru Tambah Saja' },
 ];
+const COLUMN_OPERATIONAL_ROLE_OPTIONS: Array<{
+  value: ColumnOperationalRole;
+  label: string;
+  description: string;
+}> = [
+  {
+    value: 'MANUAL_FIELD',
+    label: 'Input Biasa',
+    description: 'Guru mengisi kolom ini secara manual tanpa integrasi khusus.',
+  },
+  {
+    value: 'REFERENCE_SOURCE',
+    label: 'Sumber Referensi',
+    description: 'Kolom ini boleh dibaca dokumen lain sebagai sumber pilihan referensi.',
+  },
+  {
+    value: 'REFERENCE_PICKER',
+    label: 'Pilihan Referensi',
+    description: 'Guru memilih data dari dokumen lain lewat dropdown referensi.',
+  },
+  {
+    value: 'SNAPSHOT_TARGET',
+    label: 'Field Turunan',
+    description: 'Nilai kolom ini diisi otomatis dari snapshot dokumen sumber.',
+  },
+  {
+    value: 'SYSTEM_FIELD',
+    label: 'Nilai Sistem',
+    description: 'Kolom ini diisi oleh sistem aktif seperti mapel, semester, atau tahun ajaran.',
+  },
+];
 
 const QUICK_GUIDE_STEPS = [
   'Konfigurasi ini selalu mengikuti tahun ajaran aktif yang tampil di header aplikasi.',
@@ -275,6 +312,106 @@ function inferFieldSyncMode(column: Partial<TeachingResourceProgramColumnSchema>
     return 'SNAPSHOT_ON_SELECT';
   }
   return undefined;
+}
+
+function inferColumnOperationalRole(column: Partial<TeachingResourceProgramColumnSchema>): ColumnOperationalRole {
+  const sourceType = inferFieldSourceType(column);
+  const normalizedValueSource = String(column.valueSource || '').trim().toUpperCase();
+  if (sourceType === 'DOCUMENT_REFERENCE') return 'REFERENCE_PICKER';
+  if (sourceType === 'DOCUMENT_SNAPSHOT' || normalizedValueSource === 'BOUND') return 'SNAPSHOT_TARGET';
+  if (sourceType === 'SYSTEM' || (!!normalizedValueSource && normalizedValueSource !== 'MANUAL' && normalizedValueSource !== 'BOUND')) {
+    return 'SYSTEM_FIELD';
+  }
+  if (column.exposeAsReference) return 'REFERENCE_SOURCE';
+  return 'MANUAL_FIELD';
+}
+
+function getColumnOperationalRoleDescription(role: ColumnOperationalRole): string {
+  return COLUMN_OPERATIONAL_ROLE_OPTIONS.find((option) => option.value === role)?.description || '';
+}
+
+function applyColumnOperationalRole(
+  column: TeachingResourceProgramColumnSchema,
+  role: ColumnOperationalRole,
+): TeachingResourceProgramColumnSchema {
+  const normalizedFieldIdentity = normalizeSchemaKey(
+    column.fieldIdentity || column.semanticKey || column.bindingKey || column.key,
+    normalizeSchemaKey(column.key, 'kolom'),
+  );
+  const baseBinding = {
+    ...(column.binding || {}),
+    selectionMode: column.binding?.selectionMode || 'AUTO',
+    syncMode: column.binding?.syncMode || inferFieldSyncMode(column),
+  };
+
+  switch (role) {
+    case 'REFERENCE_SOURCE':
+      return {
+        ...column,
+        fieldIdentity: normalizedFieldIdentity,
+        sourceType: 'MANUAL',
+        valueSource: 'MANUAL',
+        readOnly: false,
+        exposeAsReference: true,
+        teacherEditMode: 'TEACHER_EDITABLE',
+        binding: {
+          ...baseBinding,
+          syncMode: undefined,
+        },
+      };
+    case 'REFERENCE_PICKER':
+      return {
+        ...column,
+        sourceType: 'DOCUMENT_REFERENCE',
+        valueSource: 'MANUAL',
+        readOnly: false,
+        exposeAsReference: false,
+        teacherEditMode: 'TEACHER_EDITABLE',
+        binding: {
+          ...baseBinding,
+          selectionMode: baseBinding.selectionMode || 'PICK_SINGLE',
+          syncMode: 'SNAPSHOT_ON_SELECT',
+        },
+      };
+    case 'SNAPSHOT_TARGET':
+      return {
+        ...column,
+        sourceType: 'DOCUMENT_SNAPSHOT',
+        valueSource: 'BOUND',
+        readOnly: true,
+        teacherEditMode: 'SYSTEM_LOCKED',
+        binding: {
+          ...baseBinding,
+          syncMode: 'SNAPSHOT_ON_SELECT',
+        },
+      };
+    case 'SYSTEM_FIELD':
+      return {
+        ...column,
+        sourceType: 'SYSTEM',
+        readOnly: true,
+        exposeAsReference: false,
+        teacherEditMode: 'SYSTEM_LOCKED',
+        binding: {
+          ...baseBinding,
+          syncMode: 'SYSTEM_DYNAMIC',
+        },
+      };
+    case 'MANUAL_FIELD':
+    default:
+      return {
+        ...column,
+        sourceType: 'MANUAL',
+        valueSource: 'MANUAL',
+        readOnly: false,
+        exposeAsReference: false,
+        teacherEditMode: 'TEACHER_EDITABLE',
+        binding: {
+          ...baseBinding,
+          syncMode: undefined,
+        },
+      };
+  }
 }
 
 function applySchemaFoundationDefaults(
@@ -1058,6 +1195,26 @@ export default function TeachingResourceProgramManagementPage() {
                       },
                     }
                   : column,
+              ),
+            }
+          : section,
+      ),
+    }));
+  };
+
+  const handleApplyColumnOperationalRole = (
+    sectionIndex: number,
+    columnIndex: number,
+    role: ColumnOperationalRole,
+  ) => {
+    updateDraftSchema((schema) => ({
+      ...schema,
+      sections: schema.sections.map((section, index) =>
+        index === sectionIndex
+          ? {
+              ...section,
+              columns: (section.columns || []).map((column, currentColumnIndex) =>
+                currentColumnIndex === columnIndex ? applyColumnOperationalRole(column, role) : column,
               ),
             }
           : section,
@@ -2238,7 +2395,13 @@ export default function TeachingResourceProgramManagementPage() {
                             </div>
 
                             <div className="space-y-3">
-                              {(section.columns || []).map((column, columnIndex) => (
+                              {(section.columns || []).map((column, columnIndex) => {
+                                const operationalRole = inferColumnOperationalRole(column);
+                                const operationalDescription = getColumnOperationalRoleDescription(operationalRole);
+                                const normalizedSourceProgramCode = normalizeTeachingResourceProgramCode(column.binding?.sourceProgramCode || '');
+                                const sourceProgramLabel =
+                                  rows.find((row) => normalizeTeachingResourceProgramCode(row.code) === normalizedSourceProgramCode)?.label || '';
+                                return (
                                 <div key={`${section.key}-${column.key}-${columnIndex}`} className="rounded-lg border border-gray-200 bg-gray-50 p-3">
                                   <div className="mb-3 flex flex-wrap items-start justify-between gap-3">
                                     <div>
@@ -2247,6 +2410,21 @@ export default function TeachingResourceProgramManagementPage() {
                                       </div>
                                       <div className="text-xs text-gray-500">
                                         Gunakan semantic key yang sama bila kolom ini harus terhubung dengan program lain.
+                                      </div>
+                                      <div className="mt-2 flex flex-wrap gap-2">
+                                        <span className="rounded-full bg-blue-100 px-2 py-1 text-[11px] font-semibold text-blue-700">
+                                          {COLUMN_OPERATIONAL_ROLE_OPTIONS.find((option) => option.value === operationalRole)?.label || 'Input Biasa'}
+                                        </span>
+                                        {column.fieldIdentity ? (
+                                          <span className="rounded-full bg-gray-200 px-2 py-1 text-[11px] font-medium text-gray-700">
+                                            identity: {column.fieldIdentity}
+                                          </span>
+                                        ) : null}
+                                        {normalizedSourceProgramCode ? (
+                                          <span className="rounded-full bg-emerald-100 px-2 py-1 text-[11px] font-medium text-emerald-700">
+                                            sumber: {sourceProgramLabel || normalizedSourceProgramCode}
+                                          </span>
+                                        ) : null}
                                       </div>
                                     </div>
                                     <div className="flex items-center gap-2">
@@ -2277,6 +2455,44 @@ export default function TeachingResourceProgramManagementPage() {
                                       >
                                         <Trash2 size={14} />
                                       </button>
+                                    </div>
+                                  </div>
+
+                                  <div className="mb-4 rounded-xl border border-sky-200 bg-sky-50 p-3">
+                                    <div className="mb-2 text-xs font-semibold uppercase tracking-wide text-sky-800">Peran Operasional Kolom</div>
+                                    <div className="grid grid-cols-1 gap-3 md:grid-cols-2">
+                                      <div>
+                                        <label className="mb-1 block text-xs font-semibold uppercase tracking-wide text-gray-500">Peran Kolom</label>
+                                        <select
+                                          value={operationalRole}
+                                          onChange={(event) =>
+                                            handleApplyColumnOperationalRole(
+                                              sectionIndex,
+                                              columnIndex,
+                                              event.target.value as ColumnOperationalRole,
+                                            )
+                                          }
+                                          className="w-full rounded-lg border border-sky-300 bg-white px-3 py-2 text-sm focus:border-blue-500 focus:outline-none"
+                                        >
+                                          {COLUMN_OPERATIONAL_ROLE_OPTIONS.map((option) => (
+                                            <option key={`${section.key}-${column.key}-role-${option.value}`} value={option.value}>
+                                              {option.label}
+                                            </option>
+                                          ))}
+                                        </select>
+                                      </div>
+                                      <div className="rounded-lg border border-sky-100 bg-white/80 px-3 py-2 text-xs leading-5 text-sky-900">
+                                        {operationalDescription}
+                                        {operationalRole === 'REFERENCE_SOURCE'
+                                          ? ' Pastikan field identity stabil agar dokumen lain mudah menaut.'
+                                          : operationalRole === 'REFERENCE_PICKER'
+                                            ? ' Isi Program Sumber dan Field Sumber agar dropdown guru membaca data yang tepat.'
+                                            : operationalRole === 'SNAPSHOT_TARGET'
+                                              ? ' Kolom ini akan diisi dari snapshot dokumen sumber pada baris yang sama.'
+                                              : operationalRole === 'SYSTEM_FIELD'
+                                                ? ' Lengkapi Sumber Nilai atau System Key agar kolom benar-benar diisi otomatis.'
+                                                : ' Gunakan ini untuk input guru biasa tanpa integrasi khusus.'}
+                                      </div>
                                     </div>
                                   </div>
 
@@ -2491,6 +2707,7 @@ export default function TeachingResourceProgramManagementPage() {
                                       <label className="mb-1 block text-xs font-semibold uppercase tracking-wide text-gray-500">Binding Program</label>
                                       <input
                                         type="text"
+                                        list="teaching-resource-program-code-options"
                                         value={column.binding?.sourceProgramCode || ''}
                                         onChange={(event) =>
                                           handleColumnBindingChange(
@@ -2503,6 +2720,9 @@ export default function TeachingResourceProgramManagementPage() {
                                         className="w-full rounded-lg border border-gray-300 px-3 py-2 text-sm uppercase focus:border-blue-500 focus:outline-none"
                                         placeholder="contoh: CAPAIAN_PEMBELAJARAN"
                                       />
+                                      {sourceProgramLabel ? (
+                                        <div className="mt-1 text-[11px] text-emerald-700">Terhubung ke: {sourceProgramLabel}</div>
+                                      ) : null}
                                     </div>
                                     <div>
                                       <label className="mb-1 block text-xs font-semibold uppercase tracking-wide text-gray-500">Binding Field Identity</label>
@@ -2624,13 +2844,20 @@ export default function TeachingResourceProgramManagementPage() {
                                     </label>
                                   </div>
                                 </div>
-                              ))}
+                              )})}
                             </div>
                           </div>
                         ) : null}
                       </div>
                     ))}
                   </div>
+                  <datalist id="teaching-resource-program-code-options">
+                    {rows.map((row) => (
+                      <option key={`program-code-option-${row.rowId}`} value={normalizeTeachingResourceProgramCode(row.code)}>
+                        {row.label}
+                      </option>
+                    ))}
+                  </datalist>
                 </div>
               ) : null}
             </div>
