@@ -5,12 +5,21 @@ import { useQuery, useQueryClient } from '@tanstack/react-query';
 import {
   normalizeTeachingResourceProgramCode,
   teachingResourceProgramService,
+  type TeachingResourceBlockLayout,
+  type TeachingResourceBlockType,
   type TeachingResourceColumnDataType,
   type TeachingResourceColumnValueSource,
+  type TeachingResourceFieldSourceType,
+  type TeachingResourceFieldSyncMode,
+  type TeachingResourcePrintRules,
   type TeachingResourceProgramColumnSchema,
   type TeachingResourceProgram,
   type TeachingResourceProgramSchema,
   type TeachingResourceProgramSectionSchema,
+  type TeachingResourceReferenceSelectionMode,
+  type TeachingResourceSchemaMode,
+  type TeachingResourceTeacherEditMode,
+  type TeachingResourceTeacherRules,
 } from '../../../../services/teachingResourceProgram.service';
 import { useActiveAcademicYear } from '../../../../hooks/useActiveAcademicYear';
 
@@ -125,6 +134,46 @@ const COLUMN_VALUE_SOURCE_OPTIONS: Array<{ value: TeachingResourceColumnValueSou
   { value: 'SYSTEM_PLACE_DATE', label: 'Tempat dan Tanggal Otomatis' },
   { value: 'BOUND', label: 'Ambil dari Kolom Terikat' },
 ];
+const SCHEMA_MODE_OPTIONS: Array<{ value: TeachingResourceSchemaMode; label: string }> = [
+  { value: 'BLOCKS_V1', label: 'Blocks V1' },
+  { value: 'LEGACY_SECTIONS', label: 'Legacy Sections' },
+];
+const BLOCK_TYPE_OPTIONS: Array<{ value: TeachingResourceBlockType; label: string }> = [
+  { value: 'HEADER', label: 'Header Dokumen' },
+  { value: 'CONTEXT', label: 'Info Konteks' },
+  { value: 'TABLE', label: 'Tabel Utama' },
+  { value: 'RICH_TEXT', label: 'Narasi / Rich Text' },
+  { value: 'SIGNATURE', label: 'Pengesahan / TTD' },
+  { value: 'NOTE', label: 'Catatan' },
+];
+const BLOCK_LAYOUT_OPTIONS: Array<{ value: TeachingResourceBlockLayout; label: string }> = [
+  { value: 'STACK', label: 'Stack' },
+  { value: 'GRID', label: 'Grid' },
+  { value: 'TABLE', label: 'Table' },
+];
+const FIELD_SOURCE_TYPE_OPTIONS: Array<{ value: TeachingResourceFieldSourceType; label: string }> = [
+  { value: 'MANUAL', label: 'Manual' },
+  { value: 'SYSTEM', label: 'System' },
+  { value: 'DOCUMENT_REFERENCE', label: 'Referensi Dokumen' },
+  { value: 'DOCUMENT_SNAPSHOT', label: 'Snapshot Dokumen' },
+  { value: 'DERIVED', label: 'Turunan / Derived' },
+  { value: 'STATIC_OPTION', label: 'Opsi Tetap' },
+];
+const FIELD_SYNC_MODE_OPTIONS: Array<{ value: TeachingResourceFieldSyncMode; label: string }> = [
+  { value: 'SYSTEM_DYNAMIC', label: 'System Dynamic' },
+  { value: 'SNAPSHOT_ON_SELECT', label: 'Snapshot on Select' },
+  { value: 'LIVE_REFERENCE', label: 'Live Reference' },
+];
+const FIELD_SELECTION_MODE_OPTIONS: Array<{ value: TeachingResourceReferenceSelectionMode; label: string }> = [
+  { value: 'AUTO', label: 'Auto' },
+  { value: 'PICK_SINGLE', label: 'Pilih Satu' },
+  { value: 'PICK_MULTIPLE', label: 'Pilih Banyak' },
+];
+const FIELD_TEACHER_EDIT_MODE_OPTIONS: Array<{ value: TeachingResourceTeacherEditMode; label: string }> = [
+  { value: 'SYSTEM_LOCKED', label: 'Dikunci Sistem' },
+  { value: 'TEACHER_EDITABLE', label: 'Guru Boleh Edit' },
+  { value: 'TEACHER_APPEND_ONLY', label: 'Guru Tambah Saja' },
+];
 
 const QUICK_GUIDE_STEPS = [
   'Konfigurasi ini selalu mengikuti tahun ajaran aktif yang tampil di header aplikasi.',
@@ -182,21 +231,175 @@ const ADVANCED_GUIDE_SECTIONS: Array<{ title: string; items: string[] }> = [
   },
 ];
 
-function createEmptyColumn(index = 0): TeachingResourceProgramColumnSchema {
+function inferFieldSourceType(column: Partial<TeachingResourceProgramColumnSchema>): TeachingResourceFieldSourceType {
+  if (column.sourceType) return column.sourceType;
+  if (column.valueSource && column.valueSource !== 'MANUAL' && column.valueSource !== 'BOUND') return 'SYSTEM';
+  if (column.valueSource === 'BOUND') return 'DOCUMENT_SNAPSHOT';
+  if (column.readOnly) return 'DERIVED';
+  return 'MANUAL';
+}
+
+function inferTeacherEditMode(column: Partial<TeachingResourceProgramColumnSchema>): TeachingResourceTeacherEditMode {
+  if (column.teacherEditMode) return column.teacherEditMode;
+  if (column.readOnly || (column.valueSource && column.valueSource !== 'MANUAL')) return 'SYSTEM_LOCKED';
+  return 'TEACHER_EDITABLE';
+}
+
+function inferBlockType(section: Partial<TeachingResourceProgramSectionSchema>): TeachingResourceBlockType {
+  if (section.blockType) return section.blockType;
+  const key = String(section.key || '')
+    .trim()
+    .toLowerCase();
+  const label = String(section.label || '')
+    .trim()
+    .toLowerCase();
+  if (section.editorType === 'TABLE') return 'TABLE';
+  if (key.startsWith('ttd') || key.includes('pengesahan') || label.includes('pengesahan')) return 'SIGNATURE';
+  if (key.includes('konteks') || label.includes('konteks')) return 'CONTEXT';
+  if (key.includes('header') || label.includes('header')) return 'HEADER';
+  if (key.includes('catatan') || label.includes('catatan')) return 'NOTE';
+  return 'RICH_TEXT';
+}
+
+function inferBlockLayout(section: Partial<TeachingResourceProgramSectionSchema>): TeachingResourceBlockLayout {
+  if (section.layout) return section.layout;
+  if (section.editorType === 'TABLE') return 'TABLE';
+  return 'STACK';
+}
+
+function inferFieldSyncMode(column: Partial<TeachingResourceProgramColumnSchema>): TeachingResourceFieldSyncMode | undefined {
+  if (column.binding?.syncMode) return column.binding.syncMode;
+  const sourceType = inferFieldSourceType(column);
+  if (sourceType === 'SYSTEM') return 'SYSTEM_DYNAMIC';
+  if (sourceType === 'DOCUMENT_REFERENCE' || sourceType === 'DOCUMENT_SNAPSHOT' || column.valueSource === 'BOUND') {
+    return 'SNAPSHOT_ON_SELECT';
+  }
+  return undefined;
+}
+
+function applySchemaFoundationDefaults(
+  schema: TeachingResourceProgramSchema | undefined,
+  code: string,
+  label: string,
+): TeachingResourceProgramSchema {
+  const fallback = createDefaultProgramSchema(code || 'CUSTOM_PROGRAM', label || 'Program Custom');
+  const base = schema || fallback;
+  const normalizedDocumentTitle = String(base.documentTitle || base.titleHint || label || code || '').trim();
+  const normalizedDocumentShortTitle = String(base.documentShortTitle || label || code || '').trim();
+
   return {
-    key: `kolom_${index + 1}`,
+    ...base,
+    schemaMode: base.schemaMode || 'BLOCKS_V1',
+    documentTitle: normalizedDocumentTitle || undefined,
+    documentShortTitle: normalizedDocumentShortTitle || undefined,
+    printRules: {
+      showInstitutionHeader: base.printRules?.showInstitutionHeader ?? true,
+      showDocumentTitle: base.printRules?.showDocumentTitle ?? true,
+      compactTable: base.printRules?.compactTable ?? false,
+      signatureMode: base.printRules?.signatureMode || 'SYSTEM_DEFAULT',
+    },
+    teacherRules: {
+      allowAddSection: base.teacherRules?.allowAddSection ?? false,
+      allowDeleteSection: base.teacherRules?.allowDeleteSection ?? false,
+      allowAddRow: base.teacherRules?.allowAddRow ?? true,
+      allowDeleteRow: base.teacherRules?.allowDeleteRow ?? true,
+      allowReorderRow: base.teacherRules?.allowReorderRow ?? true,
+      allowAddCustomColumn: base.teacherRules?.allowAddCustomColumn ?? false,
+      allowDeleteCustomColumn: base.teacherRules?.allowDeleteCustomColumn ?? false,
+      allowEditFieldLabel: base.teacherRules?.allowEditFieldLabel ?? false,
+      allowEditBinding: base.teacherRules?.allowEditBinding ?? false,
+      allowOverrideReadOnlyValue: base.teacherRules?.allowOverrideReadOnlyValue ?? false,
+    },
+    sections: (Array.isArray(base.sections) ? base.sections : []).map((section, sectionIndex) => ({
+      ...section,
+      blockId: section.blockId || section.key || `bagian_${sectionIndex + 1}`,
+      blockType: inferBlockType(section),
+      layout: inferBlockLayout(section),
+      teacherRules: {
+        allowAddSection: section.teacherRules?.allowAddSection ?? false,
+        allowDeleteSection: section.teacherRules?.allowDeleteSection ?? false,
+        allowAddRow: section.teacherRules?.allowAddRow ?? true,
+        allowDeleteRow: section.teacherRules?.allowDeleteRow ?? true,
+        allowReorderRow: section.teacherRules?.allowReorderRow ?? true,
+        allowAddCustomColumn: section.teacherRules?.allowAddCustomColumn ?? false,
+        allowDeleteCustomColumn: section.teacherRules?.allowDeleteCustomColumn ?? false,
+        allowEditFieldLabel: section.teacherRules?.allowEditFieldLabel ?? false,
+        allowEditBinding: section.teacherRules?.allowEditBinding ?? false,
+        allowOverrideReadOnlyValue: section.teacherRules?.allowOverrideReadOnlyValue ?? false,
+      },
+      columns: (section.columns || []).map((column, columnIndex) => {
+        const fieldId = normalizeSchemaKey(column.fieldId || column.key, `field_${columnIndex + 1}`);
+        const fieldIdentity = normalizeSchemaKey(
+          column.fieldIdentity || column.semanticKey || column.bindingKey || column.key,
+          fieldId,
+        );
+        const sourceType = inferFieldSourceType(column);
+        return {
+          ...column,
+          fieldId,
+          fieldIdentity,
+          sourceType,
+          teacherEditMode: inferTeacherEditMode(column),
+          exposeAsReference: column.exposeAsReference ?? Boolean(column.semanticKey || fieldIdentity),
+          isCoreField: column.isCoreField ?? Boolean(column.valueSource && column.valueSource !== 'MANUAL'),
+          binding: {
+            ...column.binding,
+            sourceProgramCode: column.binding?.sourceProgramCode
+              ? normalizeTeachingResourceProgramCode(column.binding.sourceProgramCode)
+              : undefined,
+            sourceDocumentFieldIdentity: column.binding?.sourceDocumentFieldIdentity
+              ? normalizeSchemaKey(column.binding.sourceDocumentFieldIdentity, '')
+              : undefined,
+            sourceFieldIdentity: column.binding?.sourceFieldIdentity
+              ? normalizeSchemaKey(column.binding.sourceFieldIdentity, '')
+              : undefined,
+            systemKey: column.binding?.systemKey ? normalizeSchemaKey(column.binding.systemKey, '') : undefined,
+            selectionMode: column.binding?.selectionMode || 'AUTO',
+            syncMode: column.binding?.syncMode || inferFieldSyncMode(column),
+          },
+        };
+      }),
+    })),
+  };
+}
+
+function updateTeacherRules(
+  rules: TeachingResourceTeacherRules | undefined,
+  key: keyof TeachingResourceTeacherRules,
+  value: boolean,
+): TeachingResourceTeacherRules {
+  return {
+    ...(rules || {}),
+    [key]: value,
+  };
+}
+
+function createEmptyColumn(index = 0): TeachingResourceProgramColumnSchema {
+  const key = `kolom_${index + 1}`;
+  return {
+    key,
     label: `Kolom ${index + 1}`,
     dataType: 'TEXT',
     valueSource: 'MANUAL',
     multiline: false,
     required: false,
     readOnly: false,
+    fieldId: key,
+    fieldIdentity: key,
+    sourceType: 'MANUAL',
+    teacherEditMode: 'TEACHER_EDITABLE',
+    exposeAsReference: false,
+    isCoreField: false,
+    binding: {
+      selectionMode: 'AUTO',
+    },
   };
 }
 
 function createEmptySection(index = 0, editorType: 'TEXT' | 'TABLE' = 'TABLE'): TeachingResourceProgramSectionSchema {
+  const key = `bagian_${index + 1}`;
   return {
-    key: `bagian_${index + 1}`,
+    key,
     label: `Bagian ${index + 1}`,
     description: '',
     repeatable: false,
@@ -207,19 +410,37 @@ function createEmptySection(index = 0, editorType: 'TEXT' | 'TABLE' = 'TABLE'): 
     sectionTitleEditable: editorType !== 'TABLE',
     titlePlaceholder: editorType === 'TEXT' ? 'Judul bagian' : undefined,
     bodyPlaceholder: editorType === 'TEXT' ? 'Isi bagian dokumen...' : undefined,
+    blockId: key,
+    blockType: editorType === 'TABLE' ? 'TABLE' : 'RICH_TEXT',
+    layout: editorType === 'TABLE' ? 'TABLE' : 'STACK',
+    teacherRules: {
+      allowAddRow: true,
+      allowDeleteRow: true,
+      allowReorderRow: true,
+      allowAddCustomColumn: false,
+      allowDeleteCustomColumn: false,
+      allowEditBinding: false,
+    },
   };
 }
 
 function createDefaultProgramSchema(code: string, label: string): TeachingResourceProgramSchema {
   const normalizedCode = normalizeTeachingResourceProgramCode(code || label || 'CUSTOM_PROGRAM');
-  return {
+  return applySchemaFoundationDefaults(
+    {
     version: 1,
+      schemaMode: 'BLOCKS_V1',
     sourceSheet: normalizedCode,
     intro: `Struktur dokumen ${label || normalizedCode} diatur kurikulum dan diisi guru sesuai template aktif.`,
     titleHint: `Dokumen ${label || normalizedCode}`,
     summaryHint: 'Ringkasan singkat dokumen',
+      documentTitle: label || normalizedCode,
+      documentShortTitle: label || normalizedCode,
     sections: [createEmptySection(0, 'TABLE')],
-  };
+    },
+    normalizedCode,
+    label || normalizedCode,
+  );
 }
 
 function createContextSection(): TeachingResourceProgramSectionSchema {
@@ -469,7 +690,11 @@ function normalizeSchemaKey(raw: unknown, fallback: string): string {
 
 function cloneProgramSchema(schema?: TeachingResourceProgramSchema, code = 'CUSTOM_PROGRAM', label = 'Program Custom') {
   const fallback = createDefaultProgramSchema(code, label);
-  return JSON.parse(JSON.stringify(schema || fallback)) as TeachingResourceProgramSchema;
+  return applySchemaFoundationDefaults(
+    JSON.parse(JSON.stringify(schema || fallback)) as TeachingResourceProgramSchema,
+    code,
+    label,
+  );
 }
 
 function toErrorMessage(error: unknown, fallback: string): string {
@@ -512,7 +737,7 @@ function toProgramRows(payload: unknown): ProgramFormRow[] {
       targetClassLevels: Array.isArray(program.targetClassLevels)
         ? program.targetClassLevels.map((level) => String(level || '').trim().toUpperCase()).filter(Boolean)
         : [],
-      schema: program.schema,
+      schema: applySchemaFoundationDefaults(program.schema, program.code, program.label),
       source: program.source || 'custom',
     }))
     .sort((a, b) => Number(a.order || 0) - Number(b.order || 0) || a.label.localeCompare(b.label));
@@ -679,23 +904,43 @@ export default function TeachingResourceProgramManagementPage() {
   const updateDraftSchema = (updater: (schema: TeachingResourceProgramSchema) => TeachingResourceProgramSchema) => {
     setCreateDraft((prev) => ({
       ...prev,
-      schema: updater(cloneProgramSchema(prev.schema, prev.code, prev.label)),
+      schema: applySchemaFoundationDefaults(updater(cloneProgramSchema(prev.schema, prev.code, prev.label)), prev.code, prev.label),
     }));
   };
 
   const handleApplyBlueprintPreset = (mode: ProgramBlueprintMode) => {
     setCreateDraft((prev) => ({
       ...prev,
-      schema: createSchemaPreset(mode, prev.code, prev.label),
+      schema: applySchemaFoundationDefaults(createSchemaPreset(mode, prev.code, prev.label), prev.code, prev.label),
     }));
     const selectedPreset = BLUEPRINT_MODE_OPTIONS.find((option) => option.value === mode);
     toast.success(`Starter ${selectedPreset?.label || 'template'} diterapkan ke draft.`);
   };
 
-  const handleSchemaMetaChange = (field: keyof TeachingResourceProgramSchema, value: string | number) => {
+  const handleSchemaMetaChange = (
+    field: keyof TeachingResourceProgramSchema,
+    value: TeachingResourceProgramSchema[keyof TeachingResourceProgramSchema],
+  ) => {
     updateDraftSchema((schema) => ({
       ...schema,
       [field]: value,
+    }));
+  };
+
+  const handleSchemaPrintRuleChange = (field: keyof TeachingResourcePrintRules, value: boolean | 'SYSTEM_DEFAULT' | 'MANUAL') => {
+    updateDraftSchema((schema) => ({
+      ...schema,
+      printRules: {
+        ...(schema.printRules || {}),
+        [field]: value,
+      },
+    }));
+  };
+
+  const handleSchemaTeacherRuleChange = (field: keyof TeachingResourceTeacherRules, value: boolean) => {
+    updateDraftSchema((schema) => ({
+      ...schema,
+      teacherRules: updateTeacherRules(schema.teacherRules, field, value),
     }));
   };
 
@@ -711,6 +956,24 @@ export default function TeachingResourceProgramManagementPage() {
           ? {
               ...section,
               [field]: value,
+            }
+          : section,
+      ),
+    }));
+  };
+
+  const handleSectionTeacherRuleChange = (
+    sectionIndex: number,
+    field: keyof TeachingResourceTeacherRules,
+    value: boolean,
+  ) => {
+    updateDraftSchema((schema) => ({
+      ...schema,
+      sections: schema.sections.map((section, index) =>
+        index === sectionIndex
+          ? {
+              ...section,
+              teacherRules: updateTeacherRules(section.teacherRules, field, value),
             }
           : section,
       ),
@@ -762,6 +1025,37 @@ export default function TeachingResourceProgramManagementPage() {
                   ? {
                       ...column,
                       [field]: value,
+                    }
+                  : column,
+              ),
+            }
+          : section,
+      ),
+    }));
+  };
+
+  const handleColumnBindingChange = (
+    sectionIndex: number,
+    columnIndex: number,
+    field: NonNullable<TeachingResourceProgramColumnSchema['binding']> extends infer T
+      ? keyof Extract<T, object>
+      : never,
+    value: string | boolean | undefined,
+  ) => {
+    updateDraftSchema((schema) => ({
+      ...schema,
+      sections: schema.sections.map((section, index) =>
+        index === sectionIndex
+          ? {
+              ...section,
+              columns: (section.columns || []).map((column, currentColumnIndex) =>
+                currentColumnIndex === columnIndex
+                  ? {
+                      ...column,
+                      binding: {
+                        ...(column.binding || {}),
+                        [field]: value,
+                      },
                     }
                   : column,
               ),
@@ -1407,6 +1701,20 @@ export default function TeachingResourceProgramManagementPage() {
                 {editorMode === 'ADVANCED' ? (
                 <div className="grid grid-cols-1 gap-4 md:grid-cols-2">
                   <div>
+                    <label className="mb-1 block text-sm font-medium text-gray-700">Mode Schema</label>
+                    <select
+                      value={createDraft.schema.schemaMode || 'BLOCKS_V1'}
+                      onChange={(event) => handleSchemaMetaChange('schemaMode', event.target.value as TeachingResourceSchemaMode)}
+                      className="w-full rounded-lg border border-gray-300 px-3 py-2 text-sm focus:border-blue-500 focus:outline-none"
+                    >
+                      {SCHEMA_MODE_OPTIONS.map((option) => (
+                        <option key={option.value} value={option.value}>
+                          {option.label}
+                        </option>
+                      ))}
+                    </select>
+                  </div>
+                  <div>
                     <label className="mb-1 block text-sm font-medium text-gray-700">Source Sheet / Kode Template</label>
                     <input
                       type="text"
@@ -1416,6 +1724,26 @@ export default function TeachingResourceProgramManagementPage() {
                       }
                       className="w-full rounded-lg border border-gray-300 px-3 py-2 text-sm uppercase focus:border-blue-500 focus:outline-none"
                       placeholder="CONTOH: PROTA"
+                    />
+                  </div>
+                  <div>
+                    <label className="mb-1 block text-sm font-medium text-gray-700">Judul Dokumen Sistem</label>
+                    <input
+                      type="text"
+                      value={createDraft.schema.documentTitle || ''}
+                      onChange={(event) => handleSchemaMetaChange('documentTitle', event.target.value)}
+                      className="w-full rounded-lg border border-gray-300 px-3 py-2 text-sm focus:border-blue-500 focus:outline-none"
+                      placeholder="Contoh: Distribusi Tujuan Pembelajaran"
+                    />
+                  </div>
+                  <div>
+                    <label className="mb-1 block text-sm font-medium text-gray-700">Nama Pendek Dokumen</label>
+                    <input
+                      type="text"
+                      value={createDraft.schema.documentShortTitle || ''}
+                      onChange={(event) => handleSchemaMetaChange('documentShortTitle', event.target.value)}
+                      className="w-full rounded-lg border border-gray-300 px-3 py-2 text-sm focus:border-blue-500 focus:outline-none"
+                      placeholder="Contoh: Distribusi TP"
                     />
                   </div>
                   <div>
@@ -1447,6 +1775,92 @@ export default function TeachingResourceProgramManagementPage() {
                       className="w-full rounded-lg border border-gray-300 px-3 py-2 text-sm focus:border-blue-500 focus:outline-none"
                       placeholder="Ringkasan singkat dokumen"
                     />
+                  </div>
+                  <div className="md:col-span-2 rounded-xl border border-gray-200 bg-gray-50 p-4">
+                    <div className="text-sm font-semibold text-gray-900">Aturan Umum Dokumen</div>
+                    <div className="mt-3 grid grid-cols-1 gap-3 md:grid-cols-2 xl:grid-cols-4">
+                      <label className="inline-flex items-center gap-2 rounded-lg border border-gray-200 bg-white px-3 py-2 text-sm text-gray-700">
+                        <input
+                          type="checkbox"
+                          checked={createDraft.schema.teacherRules?.allowAddRow ?? false}
+                          onChange={(event) => handleSchemaTeacherRuleChange('allowAddRow', event.target.checked)}
+                          className="h-4 w-4 rounded border-gray-300 text-blue-600 focus:ring-blue-500"
+                        />
+                        Guru boleh tambah baris
+                      </label>
+                      <label className="inline-flex items-center gap-2 rounded-lg border border-gray-200 bg-white px-3 py-2 text-sm text-gray-700">
+                        <input
+                          type="checkbox"
+                          checked={createDraft.schema.teacherRules?.allowDeleteRow ?? false}
+                          onChange={(event) => handleSchemaTeacherRuleChange('allowDeleteRow', event.target.checked)}
+                          className="h-4 w-4 rounded border-gray-300 text-blue-600 focus:ring-blue-500"
+                        />
+                        Guru boleh hapus baris
+                      </label>
+                      <label className="inline-flex items-center gap-2 rounded-lg border border-gray-200 bg-white px-3 py-2 text-sm text-gray-700">
+                        <input
+                          type="checkbox"
+                          checked={createDraft.schema.teacherRules?.allowAddCustomColumn ?? false}
+                          onChange={(event) => handleSchemaTeacherRuleChange('allowAddCustomColumn', event.target.checked)}
+                          className="h-4 w-4 rounded border-gray-300 text-blue-600 focus:ring-blue-500"
+                        />
+                        Guru boleh tambah kolom custom
+                      </label>
+                      <label className="inline-flex items-center gap-2 rounded-lg border border-gray-200 bg-white px-3 py-2 text-sm text-gray-700">
+                        <input
+                          type="checkbox"
+                          checked={createDraft.schema.teacherRules?.allowEditBinding ?? false}
+                          onChange={(event) => handleSchemaTeacherRuleChange('allowEditBinding', event.target.checked)}
+                          className="h-4 w-4 rounded border-gray-300 text-blue-600 focus:ring-blue-500"
+                        />
+                        Guru boleh ubah binding
+                      </label>
+                    </div>
+                  </div>
+                  <div className="md:col-span-2 rounded-xl border border-gray-200 bg-gray-50 p-4">
+                    <div className="text-sm font-semibold text-gray-900">Aturan Print</div>
+                    <div className="mt-3 grid grid-cols-1 gap-3 md:grid-cols-2 xl:grid-cols-4">
+                      <label className="inline-flex items-center gap-2 rounded-lg border border-gray-200 bg-white px-3 py-2 text-sm text-gray-700">
+                        <input
+                          type="checkbox"
+                          checked={createDraft.schema.printRules?.showInstitutionHeader ?? false}
+                          onChange={(event) => handleSchemaPrintRuleChange('showInstitutionHeader', event.target.checked)}
+                          className="h-4 w-4 rounded border-gray-300 text-blue-600 focus:ring-blue-500"
+                        />
+                        Pakai header sekolah
+                      </label>
+                      <label className="inline-flex items-center gap-2 rounded-lg border border-gray-200 bg-white px-3 py-2 text-sm text-gray-700">
+                        <input
+                          type="checkbox"
+                          checked={createDraft.schema.printRules?.showDocumentTitle ?? false}
+                          onChange={(event) => handleSchemaPrintRuleChange('showDocumentTitle', event.target.checked)}
+                          className="h-4 w-4 rounded border-gray-300 text-blue-600 focus:ring-blue-500"
+                        />
+                        Tampilkan judul dokumen
+                      </label>
+                      <label className="inline-flex items-center gap-2 rounded-lg border border-gray-200 bg-white px-3 py-2 text-sm text-gray-700">
+                        <input
+                          type="checkbox"
+                          checked={createDraft.schema.printRules?.compactTable ?? false}
+                          onChange={(event) => handleSchemaPrintRuleChange('compactTable', event.target.checked)}
+                          className="h-4 w-4 rounded border-gray-300 text-blue-600 focus:ring-blue-500"
+                        />
+                        Tabel ringkas
+                      </label>
+                      <div>
+                        <label className="mb-1 block text-xs font-semibold uppercase tracking-wide text-gray-500">Mode Tanda Tangan</label>
+                        <select
+                          value={createDraft.schema.printRules?.signatureMode || 'SYSTEM_DEFAULT'}
+                          onChange={(event) =>
+                            handleSchemaPrintRuleChange('signatureMode', event.target.value as 'SYSTEM_DEFAULT' | 'MANUAL')
+                          }
+                          className="w-full rounded-lg border border-gray-300 px-3 py-2 text-sm focus:border-blue-500 focus:outline-none"
+                        >
+                          <option value="SYSTEM_DEFAULT">System Default</option>
+                          <option value="MANUAL">Manual</option>
+                        </select>
+                      </div>
+                    </div>
                   </div>
                 </div>
                 ) : null}
@@ -1629,6 +2043,17 @@ export default function TeachingResourceProgramManagementPage() {
 
                         <div className="grid grid-cols-1 gap-3 md:grid-cols-2 xl:grid-cols-4">
                           <div>
+                            <label className="mb-1 block text-xs font-semibold uppercase tracking-wide text-gray-500">Block ID</label>
+                            <input
+                              type="text"
+                              value={section.blockId || ''}
+                              onChange={(event) =>
+                                handleSectionChange(sectionIndex, 'blockId', normalizeSchemaKey(event.target.value, `bagian_${sectionIndex + 1}`))
+                              }
+                              className="w-full rounded-lg border border-gray-300 px-3 py-2 text-sm focus:border-blue-500 focus:outline-none"
+                            />
+                          </div>
+                          <div>
                             <label className="mb-1 block text-xs font-semibold uppercase tracking-wide text-gray-500">Key Section</label>
                             <input
                               type="text"
@@ -1666,6 +2091,20 @@ export default function TeachingResourceProgramManagementPage() {
                             </select>
                           </div>
                           <div>
+                            <label className="mb-1 block text-xs font-semibold uppercase tracking-wide text-gray-500">Tipe Block</label>
+                            <select
+                              value={section.blockType || inferBlockType(section)}
+                              onChange={(event) => handleSectionChange(sectionIndex, 'blockType', event.target.value as TeachingResourceBlockType)}
+                              className="w-full rounded-lg border border-gray-300 px-3 py-2 text-sm focus:border-blue-500 focus:outline-none"
+                            >
+                              {BLOCK_TYPE_OPTIONS.map((option) => (
+                                <option key={`${section.key}-block-${option.value}`} value={option.value}>
+                                  {option.label}
+                                </option>
+                              ))}
+                            </select>
+                          </div>
+                          <div>
                             <label className="mb-1 block text-xs font-semibold uppercase tracking-wide text-gray-500">Baris Default</label>
                             <input
                               type="number"
@@ -1685,6 +2124,20 @@ export default function TeachingResourceProgramManagementPage() {
                               placeholder="Keterangan singkat fungsi section ini"
                             />
                           </div>
+                          <div>
+                            <label className="mb-1 block text-xs font-semibold uppercase tracking-wide text-gray-500">Layout</label>
+                            <select
+                              value={section.layout || inferBlockLayout(section)}
+                              onChange={(event) => handleSectionChange(sectionIndex, 'layout', event.target.value as TeachingResourceBlockLayout)}
+                              className="w-full rounded-lg border border-gray-300 px-3 py-2 text-sm focus:border-blue-500 focus:outline-none"
+                            >
+                              {BLOCK_LAYOUT_OPTIONS.map((option) => (
+                                <option key={`${section.key}-layout-${option.value}`} value={option.value}>
+                                  {option.label}
+                                </option>
+                              ))}
+                            </select>
+                          </div>
                           <label className="inline-flex items-center gap-2 rounded-lg border border-gray-200 bg-white px-3 py-2 text-sm text-gray-700">
                             <input
                               type="checkbox"
@@ -1702,6 +2155,42 @@ export default function TeachingResourceProgramManagementPage() {
                               className="h-4 w-4 rounded border-gray-300 text-blue-600 focus:ring-blue-500"
                             />
                             Judul section bisa diedit guru
+                          </label>
+                          <label className="inline-flex items-center gap-2 rounded-lg border border-gray-200 bg-white px-3 py-2 text-sm text-gray-700">
+                            <input
+                              type="checkbox"
+                              checked={section.teacherRules?.allowAddRow ?? false}
+                              onChange={(event) => handleSectionTeacherRuleChange(sectionIndex, 'allowAddRow', event.target.checked)}
+                              className="h-4 w-4 rounded border-gray-300 text-blue-600 focus:ring-blue-500"
+                            />
+                            Guru boleh tambah baris
+                          </label>
+                          <label className="inline-flex items-center gap-2 rounded-lg border border-gray-200 bg-white px-3 py-2 text-sm text-gray-700">
+                            <input
+                              type="checkbox"
+                              checked={section.teacherRules?.allowDeleteRow ?? false}
+                              onChange={(event) => handleSectionTeacherRuleChange(sectionIndex, 'allowDeleteRow', event.target.checked)}
+                              className="h-4 w-4 rounded border-gray-300 text-blue-600 focus:ring-blue-500"
+                            />
+                            Guru boleh hapus baris
+                          </label>
+                          <label className="inline-flex items-center gap-2 rounded-lg border border-gray-200 bg-white px-3 py-2 text-sm text-gray-700">
+                            <input
+                              type="checkbox"
+                              checked={section.teacherRules?.allowAddCustomColumn ?? false}
+                              onChange={(event) => handleSectionTeacherRuleChange(sectionIndex, 'allowAddCustomColumn', event.target.checked)}
+                              className="h-4 w-4 rounded border-gray-300 text-blue-600 focus:ring-blue-500"
+                            />
+                            Boleh kolom custom
+                          </label>
+                          <label className="inline-flex items-center gap-2 rounded-lg border border-gray-200 bg-white px-3 py-2 text-sm text-gray-700">
+                            <input
+                              type="checkbox"
+                              checked={section.teacherRules?.allowEditBinding ?? false}
+                              onChange={(event) => handleSectionTeacherRuleChange(sectionIndex, 'allowEditBinding', event.target.checked)}
+                              className="h-4 w-4 rounded border-gray-300 text-blue-600 focus:ring-blue-500"
+                            />
+                            Boleh ubah binding
                           </label>
                           {section.editorType === 'TEXT' ? (
                             <>
@@ -1793,6 +2282,22 @@ export default function TeachingResourceProgramManagementPage() {
 
                                   <div className="grid grid-cols-1 gap-3 md:grid-cols-2 xl:grid-cols-4">
                                     <div>
+                                      <label className="mb-1 block text-xs font-semibold uppercase tracking-wide text-gray-500">Field ID</label>
+                                      <input
+                                        type="text"
+                                        value={column.fieldId || ''}
+                                        onChange={(event) =>
+                                          handleColumnChange(
+                                            sectionIndex,
+                                            columnIndex,
+                                            'fieldId',
+                                            normalizeSchemaKey(event.target.value, `field_${columnIndex + 1}`),
+                                          )
+                                        }
+                                        className="w-full rounded-lg border border-gray-300 px-3 py-2 text-sm focus:border-blue-500 focus:outline-none"
+                                      />
+                                    </div>
+                                    <div>
                                       <label className="mb-1 block text-xs font-semibold uppercase tracking-wide text-gray-500">Key Kolom</label>
                                       <input
                                         type="text"
@@ -1806,6 +2311,23 @@ export default function TeachingResourceProgramManagementPage() {
                                           )
                                         }
                                         className="w-full rounded-lg border border-gray-300 px-3 py-2 text-sm focus:border-blue-500 focus:outline-none"
+                                      />
+                                    </div>
+                                    <div>
+                                      <label className="mb-1 block text-xs font-semibold uppercase tracking-wide text-gray-500">Field Identity</label>
+                                      <input
+                                        type="text"
+                                        value={column.fieldIdentity || ''}
+                                        onChange={(event) =>
+                                          handleColumnChange(
+                                            sectionIndex,
+                                            columnIndex,
+                                            'fieldIdentity',
+                                            normalizeSchemaKey(event.target.value, ''),
+                                          )
+                                        }
+                                        className="w-full rounded-lg border border-gray-300 px-3 py-2 text-sm focus:border-blue-500 focus:outline-none"
+                                        placeholder="contoh: learning_outcome_text"
                                       />
                                     </div>
                                     <div>
@@ -1833,6 +2355,27 @@ export default function TeachingResourceProgramManagementPage() {
                                       >
                                         {COLUMN_DATA_TYPE_OPTIONS.map((option) => (
                                           <option key={`${section.key}-${column.key}-${option.value}`} value={option.value}>
+                                            {option.label}
+                                          </option>
+                                        ))}
+                                      </select>
+                                    </div>
+                                    <div>
+                                      <label className="mb-1 block text-xs font-semibold uppercase tracking-wide text-gray-500">Source Type</label>
+                                      <select
+                                        value={column.sourceType || inferFieldSourceType(column)}
+                                        onChange={(event) =>
+                                          handleColumnChange(
+                                            sectionIndex,
+                                            columnIndex,
+                                            'sourceType',
+                                            event.target.value as TeachingResourceFieldSourceType,
+                                          )
+                                        }
+                                        className="w-full rounded-lg border border-gray-300 px-3 py-2 text-sm focus:border-blue-500 focus:outline-none"
+                                      >
+                                        {FIELD_SOURCE_TYPE_OPTIONS.map((option) => (
+                                          <option key={`${section.key}-${column.key}-source-${option.value}`} value={option.value}>
                                             {option.label}
                                           </option>
                                         ))}
@@ -1894,6 +2437,27 @@ export default function TeachingResourceProgramManagementPage() {
                                       />
                                     </div>
                                     <div>
+                                      <label className="mb-1 block text-xs font-semibold uppercase tracking-wide text-gray-500">Edit Mode Guru</label>
+                                      <select
+                                        value={column.teacherEditMode || inferTeacherEditMode(column)}
+                                        onChange={(event) =>
+                                          handleColumnChange(
+                                            sectionIndex,
+                                            columnIndex,
+                                            'teacherEditMode',
+                                            event.target.value as TeachingResourceTeacherEditMode,
+                                          )
+                                        }
+                                        className="w-full rounded-lg border border-gray-300 px-3 py-2 text-sm focus:border-blue-500 focus:outline-none"
+                                      >
+                                        {FIELD_TEACHER_EDIT_MODE_OPTIONS.map((option) => (
+                                          <option key={`${section.key}-${column.key}-edit-${option.value}`} value={option.value}>
+                                            {option.label}
+                                          </option>
+                                        ))}
+                                      </select>
+                                    </div>
+                                    <div>
                                       <label className="mb-1 block text-xs font-semibold uppercase tracking-wide text-gray-500">Placeholder</label>
                                       <input
                                         type="text"
@@ -1923,6 +2487,96 @@ export default function TeachingResourceProgramManagementPage() {
                                         placeholder="opsi1, opsi2, opsi3"
                                       />
                                     </div>
+                                    <div>
+                                      <label className="mb-1 block text-xs font-semibold uppercase tracking-wide text-gray-500">Binding Program</label>
+                                      <input
+                                        type="text"
+                                        value={column.binding?.sourceProgramCode || ''}
+                                        onChange={(event) =>
+                                          handleColumnBindingChange(
+                                            sectionIndex,
+                                            columnIndex,
+                                            'sourceProgramCode',
+                                            normalizeTeachingResourceProgramCode(event.target.value),
+                                          )
+                                        }
+                                        className="w-full rounded-lg border border-gray-300 px-3 py-2 text-sm uppercase focus:border-blue-500 focus:outline-none"
+                                        placeholder="contoh: CAPAIAN_PEMBELAJARAN"
+                                      />
+                                    </div>
+                                    <div>
+                                      <label className="mb-1 block text-xs font-semibold uppercase tracking-wide text-gray-500">Binding Field Identity</label>
+                                      <input
+                                        type="text"
+                                        value={column.binding?.sourceFieldIdentity || column.binding?.sourceDocumentFieldIdentity || ''}
+                                        onChange={(event) => {
+                                          const nextValue = normalizeSchemaKey(event.target.value, '');
+                                          handleColumnBindingChange(sectionIndex, columnIndex, 'sourceFieldIdentity', nextValue);
+                                          handleColumnBindingChange(sectionIndex, columnIndex, 'sourceDocumentFieldIdentity', nextValue);
+                                        }}
+                                        className="w-full rounded-lg border border-gray-300 px-3 py-2 text-sm focus:border-blue-500 focus:outline-none"
+                                        placeholder="contoh: learning_outcome_text"
+                                      />
+                                    </div>
+                                    <div>
+                                      <label className="mb-1 block text-xs font-semibold uppercase tracking-wide text-gray-500">Binding System Key</label>
+                                      <input
+                                        type="text"
+                                        value={column.binding?.systemKey || ''}
+                                        onChange={(event) =>
+                                          handleColumnBindingChange(
+                                            sectionIndex,
+                                            columnIndex,
+                                            'systemKey',
+                                            normalizeSchemaKey(event.target.value, ''),
+                                          )
+                                        }
+                                        className="w-full rounded-lg border border-gray-300 px-3 py-2 text-sm focus:border-blue-500 focus:outline-none"
+                                        placeholder="contoh: active_semester"
+                                      />
+                                    </div>
+                                    <div>
+                                      <label className="mb-1 block text-xs font-semibold uppercase tracking-wide text-gray-500">Selection Mode</label>
+                                      <select
+                                        value={column.binding?.selectionMode || 'AUTO'}
+                                        onChange={(event) =>
+                                          handleColumnBindingChange(
+                                            sectionIndex,
+                                            columnIndex,
+                                            'selectionMode',
+                                            event.target.value as TeachingResourceReferenceSelectionMode,
+                                          )
+                                        }
+                                        className="w-full rounded-lg border border-gray-300 px-3 py-2 text-sm focus:border-blue-500 focus:outline-none"
+                                      >
+                                        {FIELD_SELECTION_MODE_OPTIONS.map((option) => (
+                                          <option key={`${section.key}-${column.key}-selection-${option.value}`} value={option.value}>
+                                            {option.label}
+                                          </option>
+                                        ))}
+                                      </select>
+                                    </div>
+                                    <div>
+                                      <label className="mb-1 block text-xs font-semibold uppercase tracking-wide text-gray-500">Sync Mode</label>
+                                      <select
+                                        value={column.binding?.syncMode || inferFieldSyncMode(column) || 'SNAPSHOT_ON_SELECT'}
+                                        onChange={(event) =>
+                                          handleColumnBindingChange(
+                                            sectionIndex,
+                                            columnIndex,
+                                            'syncMode',
+                                            event.target.value as TeachingResourceFieldSyncMode,
+                                          )
+                                        }
+                                        className="w-full rounded-lg border border-gray-300 px-3 py-2 text-sm focus:border-blue-500 focus:outline-none"
+                                      >
+                                        {FIELD_SYNC_MODE_OPTIONS.map((option) => (
+                                          <option key={`${section.key}-${column.key}-sync-${option.value}`} value={option.value}>
+                                            {option.label}
+                                          </option>
+                                        ))}
+                                      </select>
+                                    </div>
                                     <label className="inline-flex items-center gap-2 rounded-lg border border-gray-200 bg-white px-3 py-2 text-sm text-gray-700">
                                       <input
                                         type="checkbox"
@@ -1949,6 +2603,24 @@ export default function TeachingResourceProgramManagementPage() {
                                         className="h-4 w-4 rounded border-gray-300 text-blue-600 focus:ring-blue-500"
                                       />
                                       Readonly
+                                    </label>
+                                    <label className="inline-flex items-center gap-2 rounded-lg border border-gray-200 bg-white px-3 py-2 text-sm text-gray-700">
+                                      <input
+                                        type="checkbox"
+                                        checked={column.exposeAsReference ?? false}
+                                        onChange={(event) => handleColumnChange(sectionIndex, columnIndex, 'exposeAsReference', event.target.checked)}
+                                        className="h-4 w-4 rounded border-gray-300 text-blue-600 focus:ring-blue-500"
+                                      />
+                                      Ekspos ke dokumen lain
+                                    </label>
+                                    <label className="inline-flex items-center gap-2 rounded-lg border border-gray-200 bg-white px-3 py-2 text-sm text-gray-700">
+                                      <input
+                                        type="checkbox"
+                                        checked={column.isCoreField ?? false}
+                                        onChange={(event) => handleColumnChange(sectionIndex, columnIndex, 'isCoreField', event.target.checked)}
+                                        className="h-4 w-4 rounded border-gray-300 text-blue-600 focus:ring-blue-500"
+                                      />
+                                      Kolom inti
                                     </label>
                                   </div>
                                 </div>

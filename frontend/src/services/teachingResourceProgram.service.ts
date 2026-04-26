@@ -38,6 +38,61 @@ export type TeachingResourceColumnValueSource =
   | 'SYSTEM_PLACE_DATE'
   | 'BOUND';
 
+export type TeachingResourceSchemaMode = 'LEGACY_SECTIONS' | 'BLOCKS_V1';
+export type TeachingResourceBlockType = 'HEADER' | 'CONTEXT' | 'TABLE' | 'RICH_TEXT' | 'SIGNATURE' | 'NOTE';
+export type TeachingResourceBlockLayout = 'STACK' | 'GRID' | 'TABLE';
+export type TeachingResourceFieldSourceType =
+  | 'MANUAL'
+  | 'SYSTEM'
+  | 'DOCUMENT_REFERENCE'
+  | 'DOCUMENT_SNAPSHOT'
+  | 'DERIVED'
+  | 'STATIC_OPTION';
+export type TeachingResourceFieldSyncMode = 'LIVE_REFERENCE' | 'SNAPSHOT_ON_SELECT' | 'SYSTEM_DYNAMIC';
+export type TeachingResourceReferenceSelectionMode = 'AUTO' | 'PICK_SINGLE' | 'PICK_MULTIPLE';
+export type TeachingResourceTeacherEditMode = 'SYSTEM_LOCKED' | 'TEACHER_EDITABLE' | 'TEACHER_APPEND_ONLY';
+
+export interface TeachingResourceVisibilityRules {
+  roleScopes?: string[];
+  targetClassLevels?: string[];
+  hideWhenEmpty?: boolean;
+}
+
+export interface TeachingResourceTeacherRules {
+  allowAddSection?: boolean;
+  allowDeleteSection?: boolean;
+  allowAddRow?: boolean;
+  allowDeleteRow?: boolean;
+  allowReorderRow?: boolean;
+  allowAddCustomColumn?: boolean;
+  allowDeleteCustomColumn?: boolean;
+  allowEditFieldLabel?: boolean;
+  allowEditBinding?: boolean;
+  allowOverrideReadOnlyValue?: boolean;
+}
+
+export interface TeachingResourcePrintRules {
+  showInstitutionHeader?: boolean;
+  showDocumentTitle?: boolean;
+  compactTable?: boolean;
+  signatureMode?: 'SYSTEM_DEFAULT' | 'MANUAL';
+}
+
+export interface TeachingResourceFieldBinding {
+  systemKey?: string;
+  sourceProgramCode?: string;
+  sourceDocumentFieldIdentity?: string;
+  sourceFieldIdentity?: string;
+  filterByContext?: boolean;
+  matchBySubject?: boolean;
+  matchByClassLevel?: boolean;
+  matchByMajor?: boolean;
+  matchByActiveSemester?: boolean;
+  selectionMode?: TeachingResourceReferenceSelectionMode;
+  syncMode?: TeachingResourceFieldSyncMode;
+  allowManualOverride?: boolean;
+}
+
 export interface TeachingResourceProgramColumnSchema {
   key: string;
   label: string;
@@ -50,6 +105,13 @@ export interface TeachingResourceProgramColumnSchema {
   required?: boolean;
   readOnly?: boolean;
   options?: string[];
+  fieldId?: string;
+  fieldIdentity?: string;
+  sourceType?: TeachingResourceFieldSourceType;
+  binding?: TeachingResourceFieldBinding;
+  teacherEditMode?: TeachingResourceTeacherEditMode;
+  exposeAsReference?: boolean;
+  isCoreField?: boolean;
 }
 
 export interface TeachingResourceProgramSectionSchema {
@@ -64,6 +126,11 @@ export interface TeachingResourceProgramSectionSchema {
   sectionTitleEditable?: boolean;
   titlePlaceholder?: string;
   bodyPlaceholder?: string;
+  blockId?: string;
+  blockType?: TeachingResourceBlockType;
+  layout?: TeachingResourceBlockLayout;
+  visibilityRules?: TeachingResourceVisibilityRules;
+  teacherRules?: TeachingResourceTeacherRules;
 }
 
 export interface TeachingResourceProgramSchema {
@@ -72,6 +139,11 @@ export interface TeachingResourceProgramSchema {
   intro: string;
   titleHint?: string;
   summaryHint?: string;
+  schemaMode?: TeachingResourceSchemaMode;
+  documentTitle?: string;
+  documentShortTitle?: string;
+  teacherRules?: TeachingResourceTeacherRules;
+  printRules?: TeachingResourcePrintRules;
   sections: TeachingResourceProgramSectionSchema[];
 }
 

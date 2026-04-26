@@ -5,37 +5,38 @@ Setiap room baru yang diminta `baca AGENTS.md` atau `lanjutkan` wajib membaca fi
 
 ## Status Saat Ini
 
-- Last updated: 2026-04-26 22:30 WIB
-- Current status: Batch 9 fondasi implementasi backend untuk `Program Perangkat Ajar` sudah selesai secara aman. Mesin existing belum diganti, tetapi schema JSON backend kini sudah menerima metadata generik baru untuk arah `builder dokumen berbasis blok + field identity + binding`. Seluruh data uji lama pada modul ini juga sudah dihapus sesuai instruksi user.
+- Last updated: 2026-04-26 22:35 WIB
+- Current status: Batch 10 editor Wakakur untuk `Program Perangkat Ajar` sudah mulai memakai fondasi metadata generik baru. User kini bisa menyimpan metadata blok/field/binding dari web `Mode Teknisi`, sementara renderer guru lama tetap aman karena kontrak lama belum diputus.
 - Last completed repo work:
   - Commit: pending current batch until final close-out
-  - Title: `feat(curriculum): add dynamic teaching resource schema foundation`
-  - Summary: backend controller kini menormalkan metadata generik baru seperti `schemaMode`, `blockType`, `layout`, `fieldIdentity`, `sourceType`, `binding`, `teacherRules`, dan `printRules` tanpa memutus kontrak renderer lama; script reset data uji juga ditambahkan.
+  - Title: `feat(curriculum): wire teaching resource metadata into management editor`
+  - Summary: halaman Wakakur kini menormalkan schema lama ke format generik di sisi frontend dan menampilkan kontrol teknisi untuk `schemaMode`, judul sistem, print rules, block metadata, teacher rules, field identity, source type, dan binding field.
 - Task aktif:
   - Objective: menggeser fondasi fitur `Program Perangkat Ajar` dari schema/template berbasis nama dokumen ke model generik yang netral kebijakan, bisa saling terintegrasi antar-dokumen, dan tetap aman untuk user operasional.
-  - Batch terakhir selesai: Batch 9 fondasi backend + reset data uji.
+  - Batch terakhir selesai: Batch 10 editor Wakakur metadata foundation.
   - Progress keseluruhan roadmap perangkat ajar dinamis:
     - `100%` untuk rumusan arsitektur generik
-    - `35%` untuk implementasi teknis refactor engine generik
-    - `0%` untuk builder Wakakur generasi baru dan reference picker guru
+    - `55%` untuk implementasi teknis refactor engine generik
+    - `15%` untuk builder Wakakur generasi baru
+    - `0%` untuk reference picker guru lintas dokumen
   - Area/file disentuh:
-    - `backend/src/controllers/teachingResourceProgram.controller.ts`
-    - `backend/src/scripts/reset_teaching_resource_program_data.ts`
-    - `backend/package.json`
+    - `frontend/src/services/teachingResourceProgram.service.ts`
+    - `frontend/src/pages/teacher/wakasek/curriculum/TeachingResourceProgramManagementPage.tsx`
     - `docs/CODEX_CONTINUITY.md`
   - Ringkasan hasil batch:
-    - kontrak schema backend sekarang sudah menerima metadata generik baru tanpa memaksa frontend/mobile berubah dulu
-    - `sections` existing tetap dipakai agar renderer lama tetap hidup, tetapi tiap section kini bisa diperlakukan sebagai block generik
-    - kolom existing sekarang bisa membawa metadata baru seperti `fieldId`, `fieldIdentity`, `sourceType`, `binding`, `teacherEditMode`, `exposeAsReference`, dan `isCoreField`
-    - schema level kini mendukung `schemaMode`, `documentTitle`, `documentShortTitle`, `teacherRules`, dan `printRules`
-    - section level kini mendukung `blockId`, `blockType`, `layout`, `visibilityRules`, dan `teacherRules`
-    - ditambahkan script `npm run teaching-resources:reset` untuk reset data modul ini
-    - data uji yang dihapus dari database:
-      - `3` program config
-      - `5` dokumen guru
-    - kondisi setelah reset: `0` program config dan `0` dokumen guru
-- Worktree expectation: clean setelah commit/push Batch 9.
-- Publish/live status: backend sudah direstart dan health check `200/200`. Tidak ada deploy frontend baru dan tidak ada OTA mobile baru pada batch backend-only ini.
+    - frontend service type kini mengenal metadata generik yang sama dengan backend
+    - draft schema existing otomatis dinormalisasi ke model generik dengan helper frontend, jadi data lama tetap bisa diedit tanpa migrasi agresif
+    - `Mode Teknisi` sekarang punya kontrol untuk:
+      - `schemaMode`
+      - `documentTitle` dan `documentShortTitle`
+      - aturan umum guru
+      - aturan print
+      - `blockId`, `blockType`, `layout`, dan `teacherRules` per section
+      - `fieldId`, `fieldIdentity`, `sourceType`, `teacherEditMode`, `binding`, `exposeAsReference`, dan `isCoreField` per kolom
+    - preset lama tetap dipakai sebagai starter, tetapi saat masuk draft kini otomatis diberi metadata fondasi generik
+    - tidak ada perubahan mobile dan tidak ada perubahan backend tambahan pada batch ini
+- Worktree expectation: clean setelah commit/push Batch 10.
+- Publish/live status: frontend web sudah deploy live dan `https://siskgb2.id/` merespons `200`. Backend tetap sehat dari Batch 9. Tidak ada OTA mobile baru.
 - Progress presensi terpadu operasional: 100%.
 - Progress impor historis absensi siswa TKJ: 100%.
   - Selesai: audit workbook, verifikasi aturan blok merah, cek roster DB vs Excel, buat script importer reusable, apply impor final ke database, dan verifikasi pasca-impor.
@@ -232,14 +233,24 @@ Setiap room baru yang diminta `baca AGENTS.md` atau `lanjutkan` wajib membaca fi
     - tidak ada endpoint baru
     - tidak ada query/polling/realtime baru
     - perubahan hanya memperluas validator/schema JSON backend secara backward-compatible
+- Verifikasi Batch 10 editor Wakakur metadata foundation:
+  - `cd frontend && npm run build`
+  - `git diff --check`
+  - `cd frontend && npm run deploy`
+  - `curl -I https://siskgb2.id/` merespons `200`
+  - sanity check perubahan:
+    - perubahan hanya di halaman Wakakur dan type layer frontend
+    - tidak ada endpoint baru
+    - tidak ada perubahan mobile
+    - tidak ada query/polling/realtime baru
 
 ## Langkah Aman Berikutnya
 
 - Gunakan [docs/teaching-resource-dynamic-document-blueprint.md](/var/www/sis-project/docs/teaching-resource-dynamic-document-blueprint.md) sebagai source of truth sebelum memulai refactor engine.
-- Batch implementasi teraman berikutnya adalah mulai mengalirkan metadata generik ini ke web/mobile type layer dan editor Wakakur secara terbatas, tanpa dulu mengganti renderer guru seluruhnya.
+- Batch implementasi teraman berikutnya adalah mulai memakai metadata `fieldIdentity` dan `binding` itu di sisi guru untuk reference picker scoped, tetapi tetap hanya pada satu alur kecil terlebih dahulu.
 - Jika user meminta lanjut implementasi, mulai dari fondasi paling kecil:
-  - hidupkan editor Wakakur untuk menyimpan `fieldIdentity`, `sourceType`, `binding`, dan `teacherRules`
-  - tambah UI reference/source picker yang tetap disembunyikan di mode teknisi
+  - pilih satu use case referensi paling aman, misalnya field dokumen sumber `learning_outcome_text`
+  - hidupkan reference picker guru hanya untuk `DOCUMENT_REFERENCE` / `DOCUMENT_SNAPSHOT`
   - jangan langsung mengganti seluruh renderer guru atau print engine dalam satu batch
 - Jika room baru diminta melanjutkan fitur ini sebelum user uji coba, mulai dari QA manual halaman Wakakur live dan lihat apakah Mode Siap Pakai sudah cukup dipahami.
 - Data historis TKJ + AK/MP sekarang sudah siap dipakai oleh rapor walas karena source `daily_attendances` sudah terisi untuk `Jul 2025 - Apr 2026`.
