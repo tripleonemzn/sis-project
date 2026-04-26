@@ -116,11 +116,11 @@ const STATUS_META: Record<
 };
 
 const STATUS_FILTERS: Array<{ key: StatusFilter; label: string }> = [
-  { key: 'ALL', label: 'Semua' },
+  { key: 'ALL', label: 'Semua Status' },
   { key: 'DRAFT', label: 'Draft' },
-  { key: 'SUBMITTED', label: 'Submit' },
-  { key: 'APPROVED', label: 'Approved' },
-  { key: 'REJECTED', label: 'Revisi' },
+  { key: 'SUBMITTED', label: 'Menunggu Review' },
+  { key: 'APPROVED', label: 'Disetujui' },
+  { key: 'REJECTED', label: 'Perlu Revisi' },
 ];
 
 const MONTH_OPTIONS = [
@@ -198,6 +198,28 @@ function extractCoveredClasses(entry: TeachingResourceEntryItem): string[] {
     .map((item) => String(item || '').trim())
     .filter(Boolean)
     .sort((left, right) => left.localeCompare(right, 'id', { numeric: true, sensitivity: 'base' }));
+}
+
+function resolveEntryContextLabel(
+  entry: TeachingResourceEntryItem,
+  contexts: TeacherAssignmentContextOption[],
+): string {
+  const coveredClasses = extractCoveredClasses(entry);
+  const entryClassName =
+    String(entry.content?.contextScope?.aggregatedClassName || '').trim() ||
+    String(entry.className || '').trim();
+  const normalizedEntryClassName = entryClassName.toLowerCase();
+  const matchedContext = contexts.find((context) => {
+    if (Number(context.subjectId) !== Number(entry.subjectId || 0)) return false;
+    if (String(context.className || '').trim().toLowerCase() === normalizedEntryClassName) return true;
+    if (context.coveredClasses.some((item) => item.trim().toLowerCase() === normalizedEntryClassName)) return true;
+    return (
+      coveredClasses.length > 0 &&
+      coveredClasses.every((item) => context.coveredClasses.includes(item))
+    );
+  });
+  if (matchedContext) return matchedContext.label;
+  return [entry.classLevel, entryClassName].filter(Boolean).join(' - ');
 }
 
 function isDigitalApprovalOnlySection(schemaKey?: string, title?: string): boolean {
@@ -1505,16 +1527,16 @@ export function TeacherLearningResourceProgramScreen({
               marginBottom: 10,
             }}
           >
-            <Text style={{ color: BRAND_COLORS.textDark, fontWeight: '700', marginBottom: 8 }}>Konteks Kelas & Mata Pelajaran</Text>
+            <Text style={{ color: BRAND_COLORS.textDark, fontWeight: '700', marginBottom: 8 }}>Mapel & Tingkat</Text>
             {assignmentContextOptions.length > 0 ? (
               <MobileSelectField
                 value={effectiveSelectedContextKey}
                 options={assignmentOptions}
                 onChange={onContextChange}
-                placeholder="Pilih kelas & mata pelajaran"
+                placeholder="Pilih mapel & tingkat"
                 helperText={
                   selectedContext?.coveredClasses.length
-                    ? `Cakupan: ${selectedContext.coveredClasses.join(', ')}`
+                    ? `Berlaku untuk seluruh rombel terkait: ${selectedContext.coveredClasses.join(', ')}`
                     : undefined
                 }
               />
@@ -1631,9 +1653,7 @@ export function TeacherLearningResourceProgramScreen({
               {rows.map((entry) => {
                 const statusMeta = STATUS_META[entry.status] || STATUS_META.DRAFT;
                 const coveredClasses = extractCoveredClasses(entry);
-                const assignmentLabel = [entry.className, entry.classLevel, entry.subjectId ? `Mapel#${entry.subjectId}` : '']
-                  .filter(Boolean)
-                  .join(' • ');
+                const contextLabel = resolveEntryContextLabel(entry, assignmentContextOptions);
                 const canEdit = entry.status === 'DRAFT' || entry.status === 'REJECTED';
                 const canSubmit = entry.status === 'DRAFT' || entry.status === 'REJECTED';
 
@@ -1671,7 +1691,11 @@ export function TeacherLearningResourceProgramScreen({
                     </View>
 
                     <Text style={{ color: '#64748b', fontSize: scaleWithAppTextScale(12), marginTop: 6 }}>Update: {formatDateTime(entry.updatedAt)}</Text>
-                    {assignmentLabel ? <Text style={{ color: '#64748b', fontSize: scaleWithAppTextScale(12), marginTop: 2 }}>{assignmentLabel}</Text> : null}
+                    {contextLabel ? (
+                      <Text style={{ color: '#64748b', fontSize: scaleWithAppTextScale(12), marginTop: 2 }}>
+                        Mapel & Tingkat: {contextLabel}
+                      </Text>
+                    ) : null}
                     {coveredClasses.length > 0 ? (
                       <Text style={{ color: '#64748b', fontSize: scaleWithAppTextScale(12), marginTop: 2 }}>
                         Cakupan: {coveredClasses.length} rombel ({coveredClasses.join(', ')})
@@ -1715,7 +1739,7 @@ export function TeacherLearningResourceProgramScreen({
                           opacity: canSubmit ? 1 : 0.65,
                         }}
                       >
-                        <Text style={{ color: canSubmit ? '#166534' : '#94a3b8', fontWeight: '700' }}>Kirim</Text>
+                        <Text style={{ color: canSubmit ? '#166534' : '#94a3b8', fontWeight: '700' }}>Kirim Review</Text>
                       </Pressable>
 
                       <Pressable
@@ -1789,7 +1813,7 @@ export function TeacherLearningResourceProgramScreen({
                   opacity: currentPage <= 1 ? 0.6 : 1,
                 }}
               >
-                <Text style={{ color: '#334155', fontWeight: '600' }}>Prev</Text>
+                <Text style={{ color: '#334155', fontWeight: '600' }}>Sebelumnya</Text>
               </Pressable>
               <Pressable
                 onPress={() => setPage((prev) => Math.min(totalPages, prev + 1))}
@@ -1804,7 +1828,7 @@ export function TeacherLearningResourceProgramScreen({
                   opacity: currentPage >= totalPages ? 0.6 : 1,
                 }}
               >
-                <Text style={{ color: '#334155', fontWeight: '600' }}>Next</Text>
+                <Text style={{ color: '#334155', fontWeight: '600' }}>Berikutnya</Text>
               </Pressable>
             </View>
           </View>
