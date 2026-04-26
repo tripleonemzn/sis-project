@@ -5,8 +5,8 @@ Setiap room baru yang diminta `baca AGENTS.md` atau `lanjutkan` wajib membaca fi
 
 ## Status Saat Ini
 
-- Last updated: 2026-04-26 10:21 WIB
-- Current status: Batch 5 Presensi Harian Terpadu dan impor historis absensi siswa tetap selesai. Pilot legalitas QR wali kelas untuk cetak rapor SBTS tetap live, dan follow-up bugfix SBTS setelah QR juga sudah selesai: angka kolom SBTS kembali dibatasi maksimal 2 digit desimal dan alur print dipercepat dengan menghapus delay statis 500ms.
+- Last updated: 2026-04-26 10:28 WIB
+- Current status: Batch 5 Presensi Harian Terpadu dan impor historis absensi siswa tetap selesai. Pilot legalitas QR wali kelas untuk cetak rapor SBTS tetap live, dan follow-up bugfix SBTS setelah QR juga sudah selesai: angka rapor SBTS kini tampil seragam selalu 2 digit desimal dan alur print tetap memakai mekanisme cepat tanpa delay statis 500ms.
 - Last completed repo work:
   - Commit: `5211910`
   - Title: `fix(report): normalize sbts print scores`
@@ -93,6 +93,9 @@ Setiap room baru yang diminta `baca AGENTS.md` atau `lanjutkan` wajib membaca fi
     - service `reportService.getStudentReport(...)` untuk sample siswa terukur sekitar `135ms`
     - bottleneck frontend sebelumnya berasal dari `setTimeout(..., 500)` sebelum `print()`
     - alur print sekarang menunggu aset yang benar-benar diperlukan (`fonts/images`) lalu langsung `print()`, tanpa delay statis 500ms
+  - verifikasi format tampilan final:
+    - renderer print SBTS kini selalu memakai `toFixed(2)` untuk seluruh score yang tercetak
+    - contoh target format: `78` menjadi `78.00`
 
 ## Langkah Aman Berikutnya
 

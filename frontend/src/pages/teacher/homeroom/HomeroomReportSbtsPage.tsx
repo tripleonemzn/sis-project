@@ -197,8 +197,7 @@ export const HomeroomReportSbtsPage = ({
     const formatDisplayScore = (value: string | number | null | undefined): string => {
       const numericValue = parseNumeric(value);
       if (numericValue === null) return String(value ?? '-');
-      const normalized = Number(numericValue.toFixed(2));
-      return Number.isInteger(normalized) ? String(normalized) : String(normalized);
+      return numericValue.toFixed(2);
     };
 
     const isBelowKkm = (
