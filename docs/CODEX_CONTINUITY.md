@@ -5,8 +5,8 @@ Setiap room baru yang diminta `baca AGENTS.md` atau `lanjutkan` wajib membaca fi
 
 ## Status Saat Ini
 
-- Last updated: 2026-04-26 00:18 WIB
-- Current status: Batch 5 Presensi Harian Terpadu dan hotfix QR/scanner tetap selesai. Impor historis absensi siswa TKJ (`Jul 2025 - Apr 2026`) dari file Excel di `etc/absensi` ke `daily_attendances` sudah selesai dan tervalidasi match dengan data harian workbook untuk siswa yang aktif di DB.
+- Last updated: 2026-04-26 08:12 WIB
+- Current status: Batch 5 Presensi Harian Terpadu dan hotfix QR/scanner tetap selesai. Impor historis absensi siswa TKJ serta AK/MP (`Jul 2025 - Apr 2026`) ke `daily_attendances` sudah selesai dan tervalidasi untuk seluruh siswa yang match ke roster aktif DB.
 - Last completed repo work:
   - Commit: `16419210dd3dec27194a6928c34f1bc35b5c7e52`
   - Title: `fix(presence): stabilize qr monitor and mobile scanner`
@@ -17,6 +17,13 @@ Setiap room baru yang diminta `baca AGENTS.md` atau `lanjutkan` wajib membaca fi
 - Progress impor historis absensi siswa TKJ: 100%.
   - Selesai: audit workbook, verifikasi aturan blok merah, cek roster DB vs Excel, buat script importer reusable, apply impor final ke database, dan verifikasi pasca-impor.
   - Catatan: `20` siswa di workbook yang tidak ada di roster aktif DB tetap tidak diimpor; semuanya memang baris yang kosong total pada data harian.
+- Progress impor historis absensi siswa AK/MP: 100%.
+  - Selesai: audit folder `etc/absensi/AK&MP`, dry-run, apply final, dan verifikasi pasca-impor.
+  - Catatan roster mismatch:
+    - `6` siswa ada di workbook tetapi tidak ada di roster aktif DB, sehingga tidak diimpor: `Fairuz Ghaissani`, `Dania Razaika`, `Desty Kuswanto`, `Niza Nur Irawati`, `Carens Mezaluna`, `Razka Yulia Ayu Priani`
+    - `1` siswa ada di DB tetapi tidak ada di workbook: `Bima Sakti Saputra` (`X MP 1`)
+  - Catatan data harian:
+    - ada `2` blank active cells pada workbook sumber: `Rendi Amanda` (`X MP 1`, `Sep 25`, `V35`) dan `Puspita Dwi Aryani` (`XII AK 1`, `Feb 26`, `P29`)
 
 ## Verifikasi Batch Terakhir
 
@@ -24,7 +31,7 @@ Setiap room baru yang diminta `baca AGENTS.md` atau `lanjutkan` wajib membaca fi
   - `cd backend && npm run build`
   - `cd backend && npm run attendance:import:tkj`
   - `cd backend && npm run attendance:import:tkj -- --apply --allow-overwrite`
-  - Dry-run/final verification result:
+  - Verifikasi TKJ:
     - candidate rows `47,628`
     - apply created `47,595` row baru
     - apply overwrite `8` row existing agar match Excel (`2` late -> present, `6` conflict di `XII TKJ 1` tanggal `2026-02-05`)
@@ -32,23 +39,35 @@ Setiap room baru yang diminta `baca AGENTS.md` atau `lanjutkan` wajib membaca fi
     - unknown codes `0`
     - blank active cells `0`
     - unmatched Excel students `20`
+  - Verifikasi AK/MP:
+    - `cd backend && npm run attendance:import:tkj -- --base-dir "/var/www/sis-project/etc/absensi/AK&MP"`
+    - `cd backend && npm run attendance:import:tkj -- --base-dir "/var/www/sis-project/etc/absensi/AK&MP" --apply --allow-overwrite`
+    - candidate rows `101,245`
+    - apply created `101,245` row baru
+    - post-import dry-run: `createRows 0`, `conflictingExistingRows 0`, `unchangedRows 101,245`
+    - unknown codes `0`
+    - blank active cells `2`
+    - unmatched Excel students `6`
+    - db students missing from workbook `1`
 - Audit workbook:
   - blok merah terbukti aman di-skip sebagai libur/tidak dihitung
   - mismatch roster Excel vs DB aktif = `20` siswa, dan semuanya adalah baris yang memang kosong total di workbook
   - typo kode `I\\` pada `XII TKJ 2 Sep 25 P40` sudah ditangani importer dengan normalisasi kode non-alfabet
 - Verifikasi distribusi data:
   - audit per kelas-per-bulan menunjukkan `expectedByMonth` = `actualByMonth` untuk seluruh `XI/XII TKJ 1-4` pada `Jul 2025 - Apr 2026`
+  - audit per kelas untuk AK/MP menunjukkan total record DB sama dengan candidate row workbook untuk seluruh kelas `X/XI/XII AK 1-2` dan `X/XI/XII MP 1-4` yang tersedia
 - Publish/runtime:
   - tidak ada restart service atau publish baru karena batch ini belum mengubah runtime aplikasi
 
 ## Langkah Aman Berikutnya
 
-- Data historis TKJ sekarang sudah siap dipakai oleh rapor walas karena source `daily_attendances` sudah terisi untuk `Jul 2025 - Apr 2026`.
+- Data historis TKJ + AK/MP sekarang sudah siap dipakai oleh rapor walas karena source `daily_attendances` sudah terisi untuk `Jul 2025 - Apr 2026`.
 - Jika user melanjutkan impor jurusan/tingkat lain, gunakan script yang sama sebagai baseline, lalu audit dulu roster aktif DB vs workbook sebelum apply.
 - Script yang disiapkan:
   - `cd backend && npm run attendance:import:tkj` untuk dry-run
   - `cd backend && npm run attendance:import:tkj -- --apply` untuk create missing rows saja
   - `cd backend && npm run attendance:import:tkj -- --apply --allow-overwrite` untuk create + overwrite agar penuh mengikuti Excel
+  - untuk folder lain: tambah `--base-dir "/path/ke/folder"` saat menjalankan script yang sama
 
 ## Template Update Wajib Saat Ada Pekerjaan Baru
 
