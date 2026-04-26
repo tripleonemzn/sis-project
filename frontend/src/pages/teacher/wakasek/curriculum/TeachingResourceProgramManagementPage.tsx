@@ -129,6 +129,7 @@ const COLUMN_VALUE_SOURCE_OPTIONS: Array<{ value: TeachingResourceColumnValueSou
 const QUICK_GUIDE_STEPS = [
   'Konfigurasi ini selalu mengikuti tahun ajaran aktif yang tampil di header aplikasi.',
   'Tambahkan/Edit program, lalu atur status aktif dan visibilitas menu guru.',
+  'Pilih starter template jika ingin mulai dari pola dokumen yang sudah siap, lalu sesuaikan metadata.',
   'Di dalam template dokumen, susun section dan kolom sesuai kebutuhan kurikulum.',
   'Gunakan semantic key dan binding key jika kolom perlu terintegrasi antar program.',
   'Simpan perubahan agar struktur langsung tersinkron ke menu Perangkat Ajar guru.',
@@ -218,6 +219,241 @@ function createDefaultProgramSchema(code: string, label: string): TeachingResour
     titleHint: `Dokumen ${label || normalizedCode}`,
     summaryHint: 'Ringkasan singkat dokumen',
     sections: [createEmptySection(0, 'TABLE')],
+  };
+}
+
+function createContextSection(): TeachingResourceProgramSectionSchema {
+  return {
+    key: 'konteks_dokumen',
+    label: 'Konteks Dokumen',
+    description: 'Identitas dokumen mengikuti assignment guru dan tahun ajaran aktif.',
+    repeatable: false,
+    defaultRows: 1,
+    editorType: 'TABLE',
+    sectionTitleEditable: false,
+    columns: [
+      {
+        key: 'mata_pelajaran',
+        label: 'Mata Pelajaran',
+        valueSource: 'SYSTEM_SUBJECT',
+        semanticKey: 'mata_pelajaran',
+        placeholder: 'Mapel dari assignment',
+      },
+      {
+        key: 'tingkat',
+        label: 'Tingkat',
+        valueSource: 'SYSTEM_CLASS_LEVEL',
+        semanticKey: 'tingkat',
+        placeholder: 'Tingkat dari assignment',
+      },
+      {
+        key: 'program_keahlian',
+        label: 'Program Keahlian',
+        valueSource: 'SYSTEM_SKILL_PROGRAM',
+        semanticKey: 'program_keahlian',
+        placeholder: 'Program keahlian dari assignment',
+      },
+      {
+        key: 'tahun_ajaran',
+        label: 'Tahun Ajaran',
+        valueSource: 'SYSTEM_ACTIVE_YEAR',
+        semanticKey: 'tahun_ajaran',
+        placeholder: 'Tahun ajaran aktif',
+      },
+    ],
+  };
+}
+
+function createSignatureSection(): TeachingResourceProgramSectionSchema {
+  return {
+    key: 'pengesahan_dokumen',
+    label: 'Pengesahan Dokumen',
+    description: 'Blok pengesahan ringan yang bisa dipakai saat dokumen dicetak.',
+    repeatable: false,
+    defaultRows: 1,
+    editorType: 'TABLE',
+    sectionTitleEditable: false,
+    columns: [
+      { key: 'tempat_tanggal', label: 'Tempat, Tanggal', valueSource: 'SYSTEM_PLACE_DATE' },
+      { key: 'guru_mapel', label: 'Guru Mata Pelajaran', valueSource: 'SYSTEM_TEACHER_NAME' },
+      { key: 'catatan_pengesahan', label: 'Catatan Pengesahan', multiline: true },
+    ],
+  };
+}
+
+function createSchemaPreset(
+  mode: ProgramBlueprintMode,
+  code: string,
+  label: string,
+): TeachingResourceProgramSchema {
+  const normalizedCode = normalizeTeachingResourceProgramCode(code || label || 'CUSTOM_PROGRAM');
+  const displayLabel = label || normalizedCode;
+  const base = {
+    sourceSheet: normalizedCode,
+    titleHint: `${displayLabel} - [Mapel] - [Kelas]`,
+    summaryHint: `Ringkasan ${displayLabel}.`,
+  };
+
+  if (mode === 'GROUPED_ANALYSIS') {
+    return {
+      version: 2,
+      ...base,
+      intro: `${displayLabel} disusun sebagai analisis bertingkat dari konteks utama ke rincian pembelajaran.`,
+      sections: [
+        createContextSection(),
+        {
+          key: 'analisis_bertahap',
+          label: 'Analisis Bertahap',
+          description: 'Gunakan section ini untuk memecah elemen besar menjadi tujuan, materi, aktivitas, dan asesmen.',
+          repeatable: true,
+          defaultRows: 3,
+          editorType: 'TABLE',
+          sectionTitleEditable: true,
+          columns: [
+            { key: 'no', label: 'No', placeholder: '1' },
+            { key: 'elemen', label: 'Elemen / Unit', semanticKey: 'elemen', multiline: true },
+            { key: 'tujuan_pembelajaran', label: 'Tujuan Pembelajaran', semanticKey: 'tujuan_pembelajaran', multiline: true },
+            { key: 'materi_pokok', label: 'Materi Pokok', semanticKey: 'materi_pokok', multiline: true },
+            { key: 'aktivitas_pembelajaran', label: 'Aktivitas Pembelajaran', multiline: true },
+            { key: 'asesmen', label: 'Asesmen', semanticKey: 'asesmen', multiline: true },
+            { key: 'catatan', label: 'Catatan', multiline: true },
+          ],
+        },
+        createSignatureSection(),
+      ],
+    };
+  }
+
+  if (mode === 'TIME_DISTRIBUTION') {
+    return {
+      version: 2,
+      ...base,
+      intro: `${displayLabel} memetakan distribusi waktu pembelajaran per semester, bulan, minggu, dan alokasi JP.`,
+      titleHint: `${displayLabel} - [Mapel] - [Tahun Ajaran]`,
+      summaryHint: 'Ringkasan distribusi waktu dan alokasi JP.',
+      sections: [
+        createContextSection(),
+        {
+          key: 'distribusi_waktu',
+          label: 'Distribusi Waktu',
+          description: 'Susun sebaran TP dan JP berdasarkan semester, bulan, serta minggu pelaksanaan.',
+          repeatable: false,
+          defaultRows: 6,
+          editorType: 'TABLE',
+          sectionTitleEditable: false,
+          columns: [
+            { key: 'semester', label: 'Semester', dataType: 'SEMESTER', valueSource: 'SYSTEM_SEMESTER' },
+            { key: 'bulan', label: 'Bulan', dataType: 'MONTH', semanticKey: 'bulan' },
+            { key: 'minggu_ke', label: 'Minggu Ke-', dataType: 'WEEK', semanticKey: 'minggu_ke' },
+            { key: 'tujuan_pembelajaran', label: 'Tujuan Pembelajaran', semanticKey: 'tujuan_pembelajaran', multiline: true },
+            { key: 'alokasi_jp', label: 'Alokasi JP', dataType: 'NUMBER', semanticKey: 'alokasi_jp' },
+            { key: 'keterangan', label: 'Keterangan', multiline: true },
+          ],
+        },
+        createSignatureSection(),
+      ],
+    };
+  }
+
+  if (mode === 'MATRIX_GRID') {
+    return {
+      version: 2,
+      ...base,
+      intro: `${displayLabel} disusun sebagai matriks ringkas untuk membaca sebaran tujuan pembelajaran terhadap periode pelaksanaan.`,
+      titleHint: `${displayLabel} - Matriks [Mapel]`,
+      summaryHint: 'Ringkasan matriks sebaran pembelajaran.',
+      sections: [
+        createContextSection(),
+        {
+          key: 'matriks_sebaran',
+          label: 'Matriks Sebaran',
+          description: 'Gunakan grid minggu untuk menandai periode pelaksanaan tiap tujuan pembelajaran.',
+          repeatable: false,
+          defaultRows: 5,
+          editorType: 'TABLE',
+          sectionTitleEditable: false,
+          columns: [
+            { key: 'no', label: 'No', placeholder: '1' },
+            { key: 'tujuan_pembelajaran', label: 'Tujuan Pembelajaran', semanticKey: 'tujuan_pembelajaran', multiline: true },
+            { key: 'alokasi_jp', label: 'Alokasi JP', dataType: 'NUMBER', semanticKey: 'alokasi_jp' },
+            { key: 'grid_minggu', label: 'Grid Minggu', dataType: 'WEEK_GRID', semanticKey: 'grid_minggu' },
+            { key: 'keterangan', label: 'Keterangan', multiline: true },
+          ],
+        },
+        createSignatureSection(),
+      ],
+    };
+  }
+
+  if (mode === 'RICH_MIXED') {
+    return {
+      version: 2,
+      ...base,
+      intro: `${displayLabel} menggabungkan narasi pembuka, tabel kerja, dan catatan reflektif.`,
+      sections: [
+        createContextSection(),
+        {
+          key: 'narasi_awal',
+          label: 'Narasi Awal',
+          description: 'Bagian naratif untuk tujuan, rasional, atau gambaran umum dokumen.',
+          repeatable: false,
+          defaultRows: 1,
+          editorType: 'TEXT',
+          sectionTitleEditable: true,
+          titlePlaceholder: 'Judul narasi',
+          bodyPlaceholder: 'Tuliskan narasi pembuka dokumen...',
+        },
+        {
+          key: 'tabel_kerja',
+          label: 'Tabel Kerja',
+          description: 'Tabel inti untuk rincian kegiatan, materi, asesmen, dan tindak lanjut.',
+          repeatable: true,
+          defaultRows: 3,
+          editorType: 'TABLE',
+          sectionTitleEditable: true,
+          columns: [
+            { key: 'no', label: 'No', placeholder: '1' },
+            { key: 'fokus', label: 'Fokus', semanticKey: 'fokus', multiline: true },
+            { key: 'uraian', label: 'Uraian', multiline: true },
+            { key: 'bukti_dukung', label: 'Bukti Dukung', multiline: true },
+            { key: 'tindak_lanjut', label: 'Tindak Lanjut', multiline: true },
+          ],
+        },
+        {
+          key: 'catatan_akhir',
+          label: 'Catatan Akhir',
+          description: 'Ruang catatan tambahan sebelum pengesahan.',
+          repeatable: false,
+          defaultRows: 1,
+          editorType: 'TEXT',
+          sectionTitleEditable: true,
+          titlePlaceholder: 'Catatan akhir',
+          bodyPlaceholder: 'Tuliskan catatan akhir dokumen...',
+        },
+        createSignatureSection(),
+      ],
+    };
+  }
+
+  return {
+    version: 2,
+    ...base,
+    intro: `${displayLabel} memakai struktur fleksibel yang bisa disesuaikan Wakakur dan guru.`,
+    sections: [
+      createContextSection(),
+      {
+        key: 'bagian_fleksibel',
+        label: 'Bagian Fleksibel',
+        description: 'Blok isi bebas untuk format yang belum punya struktur baku.',
+        repeatable: true,
+        defaultRows: 1,
+        editorType: 'TEXT',
+        sectionTitleEditable: true,
+        titlePlaceholder: 'Judul bagian',
+        bodyPlaceholder: 'Isi bagian dokumen...',
+      },
+      createSignatureSection(),
+    ],
   };
 }
 
@@ -441,6 +677,15 @@ export default function TeachingResourceProgramManagementPage() {
       ...prev,
       schema: updater(cloneProgramSchema(prev.schema, prev.code, prev.label)),
     }));
+  };
+
+  const handleApplyBlueprintPreset = (mode: ProgramBlueprintMode) => {
+    setCreateDraft((prev) => ({
+      ...prev,
+      schema: createSchemaPreset(mode, prev.code, prev.label),
+    }));
+    const selectedPreset = BLUEPRINT_MODE_OPTIONS.find((option) => option.value === mode);
+    toast.success(`Starter ${selectedPreset?.label || 'template'} diterapkan ke draft.`);
   };
 
   const handleSchemaMetaChange = (field: keyof TeachingResourceProgramSchema, value: string | number) => {
@@ -1116,6 +1361,18 @@ export default function TeachingResourceProgramManagementPage() {
                         </div>
                         <p className="mt-2 text-xs leading-5 text-gray-600">{option.description}</p>
                         <p className="mt-2 text-xs leading-5 text-gray-500">{option.helper}</p>
+                        <button
+                          type="button"
+                          onClick={() => handleApplyBlueprintPreset(option.value)}
+                          className={`mt-3 inline-flex items-center gap-2 rounded-lg border px-3 py-2 text-xs font-semibold transition ${
+                            active
+                              ? 'border-blue-300 bg-white text-blue-700 hover:bg-blue-100'
+                              : 'border-gray-300 bg-white text-gray-700 hover:border-blue-300 hover:bg-blue-50 hover:text-blue-700'
+                          }`}
+                        >
+                          <Pencil size={13} />
+                          {active ? 'Terapkan Ulang Starter' : 'Terapkan Starter'}
+                        </button>
                       </div>
                     );
                   })}
