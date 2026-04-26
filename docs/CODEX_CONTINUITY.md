@@ -5,28 +5,33 @@ Setiap room baru yang diminta `baca AGENTS.md` atau `lanjutkan` wajib membaca fi
 
 ## Status Saat Ini
 
-- Last updated: 2026-04-26 21:52 WIB
-- Current status: Batch 7 penyederhanaan `Kelola Program Perangkat Ajar` selesai dan web sudah live. Backend/DB tidak diubah; batch ini merespons feedback user bahwa fitur terlalu sulit untuk user gaptek dengan membuat mode default lebih siap pakai dan memindahkan istilah teknis ke Mode Teknisi.
+- Last updated: 2026-04-26 23:20 WIB
+- Current status: blueprint arsitektur lanjutan `Program Perangkat Ajar` sudah dirumuskan di repo untuk mengganti arah `template hardcode per nama dokumen` menjadi `builder dokumen generik berbasis blok + field identity + binding antar-dokumen`. Belum ada implementasi kode baru pada batch ini; web/mobile/live state tetap sama seperti setelah Batch 7.
 - Last completed repo work:
   - Commit: `2c17fb8`
   - Title: `feat(curriculum): simplify teaching resource program setup`
   - Summary: Halaman Wakakur `Program Perangkat Ajar` kini menampilkan alur 3 langkah, mengganti default menjadi `Mode Siap Pakai`, menyembunyikan kode/source sheet/hint teknis dari mode sederhana, dan mengubah pilihan template menjadi bahasa operasional yang lebih mudah dipahami.
 - Task aktif:
-  - Objective: menyederhanakan pengalaman Wakakur saat menambah/mengedit `Program Perangkat Ajar` tanpa mengorbankan fleksibilitas dinamis untuk batch engine berikutnya.
-  - Batch terakhir selesai: Batch 7 simplifikasi UX Wakakur untuk user non-teknis.
-  - Progress keseluruhan roadmap perangkat ajar dinamis: `95%`.
+  - Objective: menggeser fondasi fitur `Program Perangkat Ajar` dari schema/template berbasis nama dokumen ke model generik yang netral kebijakan, bisa saling terintegrasi antar-dokumen, dan tetap aman untuk user operasional.
+  - Batch terakhir selesai: Batch 8 rumusan arsitektur/blueprint builder generik.
+  - Progress keseluruhan roadmap perangkat ajar dinamis:
+    - `95%` untuk rollout UX/batch existing yang sudah live
+    - `100%` untuk rumusan arsitektur generik sebagai acuan implementasi berikutnya
+    - `0%` untuk implementasi refactor engine generik karena belum dimulai
   - Area/file disentuh:
-    - `frontend/src/pages/teacher/wakasek/curriculum/TeachingResourceProgramManagementPage.tsx`
+    - `docs/teaching-resource-dynamic-document-blueprint.md`
+    - `docs/CODEX_CONTINUITY.md`
   - Ringkasan hasil batch:
-    - halaman utama Wakakur kini menampilkan alur aman `1. Buat menu`, `2. Pilih bentuk`, `3. Simpan`
-    - mode default diganti menjadi `Mode Siap Pakai`; mode teknis diganti menjadi `Mode Teknisi`
-    - field `Kode Sistem`, `Source Sheet`, hint judul, intro, dan hint ringkasan hanya tampil di Mode Teknisi
-    - label user-facing diganti lebih sederhana: `Nama Menu`, `Nama Singkat`, `Tampil Untuk Kelas`, `Program bisa dipakai`, `Muncul di menu guru`
-    - pilihan template memakai bahasa operasional seperti `Analisis / Pemetaan`, `Distribusi Waktu`, `Matriks Minggu`, `Narasi + Tabel`, `Format Bebas`
-    - ringkasan template guru memakai istilah non-teknis seperti `Jumlah Bagian`, `Bagian Tabel`, `Kolom Isian`, `Bisa Ditambah`
-    - tidak ada perubahan kontrak backend, migrasi data, polling, realtime, query baru, atau mobile OTA baru pada batch ini
-- Worktree expectation: clean setelah commit/push finalisasi Batch 7.
-- Publish/live status: frontend web sudah live. OTA mobile tester terakhir tetap Batch 6 `pilot-live` update group `2b18eb0e-64fe-4336-b7dd-91bb46adcd7e`.
+    - blueprint baru menegaskan bahwa `Program` hanyalah entitas menu, bukan tipe mesin hardcode
+    - mesin yang disarankan adalah `Document Blueprint` generik berbasis `Block`, `Field`, dan `Binding`
+    - integrasi antar-dokumen wajib berbasis `field identity`, bukan `programCode` atau nama menu
+    - source nilai dipisahkan tegas menjadi `MANUAL`, `SYSTEM`, `DOCUMENT_REFERENCE`, `DOCUMENT_SNAPSHOT`, `DERIVED`, dan `STATIC_OPTION`
+    - mode sinkronisasi lintas dokumen dirumuskan sebagai `LIVE_REFERENCE`, `SNAPSHOT_ON_SELECT`, dan `SYSTEM_DYNAMIC`
+    - rule edit guru dipisahkan dari struktur inti agar kolom/baris custom tetap aman tanpa merusak field integrasi
+    - dokumen contoh seperti `Capaian Pembelajaran` dan `Distribusi Tujuan Pembelajaran` dijelaskan sebagai contoh konfigurasi, bukan tipe sistem hardcode
+    - tidak ada perubahan backend, DB, mobile OTA, query, polling, atau realtime pada batch ini
+- Worktree expectation: clean setelah commit/push dokumentasi blueprint.
+- Publish/live status: tidak ada publish baru pada batch dokumentasi ini. Frontend web tetap live dari Batch 7. OTA mobile tester terakhir tetap Batch 6 `pilot-live` update group `2b18eb0e-64fe-4336-b7dd-91bb46adcd7e`.
 - Progress presensi terpadu operasional: 100%.
 - Progress impor historis absensi siswa TKJ: 100%.
   - Selesai: audit workbook, verifikasi aturan blok merah, cek roster DB vs Excel, buat script importer reusable, apply impor final ke database, dan verifikasi pasca-impor.
@@ -211,10 +216,11 @@ Setiap room baru yang diminta `baca AGENTS.md` atau `lanjutkan` wajib membaca fi
 
 ## Langkah Aman Berikutnya
 
-- Lanjutkan Batch 8 hanya jika user masih merasa alur Wakakur sulit:
-  - fokus berikutnya bukan engine, tetapi wizard yang lebih tegas: `Pilih Tujuan Dokumen` -> `Pilih Template` -> `Pratinjau Guru` -> `Simpan`
-  - opsi aman berikutnya adalah menambah preview visual sederhana sebelum simpan, bukan menambah konfigurasi teknis
-  - jangan menyentuh backend sebelum ada kebutuhan nyata dari uji manual renderer/authoring
+- Gunakan [docs/teaching-resource-dynamic-document-blueprint.md](/var/www/sis-project/docs/teaching-resource-dynamic-document-blueprint.md) sebagai source of truth sebelum memulai refactor engine.
+- Batch implementasi teraman berikutnya adalah memetakan kontrak existing `program.schema.sections` ke metadata generik tambahan secara non-destruktif, tanpa dulu menghapus schema/program bawaan yang sudah live.
+- Jika user meminta lanjut implementasi, mulai dari fondasi paling kecil:
+  - tambah `fieldIdentity`, `sourceType`, `binding config`, dan `teacherRules` secara backward compatible
+  - jangan langsung mengganti seluruh editor Wakakur atau seluruh renderer guru dalam satu batch
 - Jika room baru diminta melanjutkan fitur ini sebelum user uji coba, mulai dari QA manual halaman Wakakur live dan lihat apakah Mode Siap Pakai sudah cukup dipahami.
 - Data historis TKJ + AK/MP sekarang sudah siap dipakai oleh rapor walas karena source `daily_attendances` sudah terisi untuk `Jul 2025 - Apr 2026`.
 - Jika user melanjutkan impor jurusan/tingkat lain, gunakan script yang sama sebagai baseline, lalu audit dulu roster aktif DB vs workbook sebelum apply.
