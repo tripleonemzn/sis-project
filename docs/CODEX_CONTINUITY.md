@@ -5,26 +5,26 @@ Setiap room baru yang diminta `baca AGENTS.md` atau `lanjutkan` wajib membaca fi
 
 ## Status Saat Ini
 
-- Last updated: 2026-04-26 15:16 WIB
-- Current status: Batch 1 penyempurnaan `Program Perangkat Ajar` sedang berjalan aman. Pondasi backend/perilaku guru belum diubah; batch ini hanya merapikan UI web Wakakur agar pengaturan program tidak langsung membuka semua level schema teknis sekaligus.
+- Last updated: 2026-04-26 15:24 WIB
+- Current status: Batch 2 penyempurnaan `Program Perangkat Ajar` selesai dan sudah live di web. Pondasi backend/perilaku guru/mobile belum diubah; batch ini menambah starter template kompatibel agar Wakakur bisa membuat schema awal dari pola dokumen yang lebih siap pakai.
 - Last completed repo work:
-  - Commit: `a08a113`
-  - Title: `feat(curriculum): simplify teaching resource program editor`
-  - Summary: Menyederhanakan modal `Tambah/Edit Program Perangkat Ajar` di sisi Wakakur web dengan pola `Mode Sederhana` dan `Mode Lanjutan`, menambah pembacaan arah dokumen + ringkasan template, dan tetap menjaga schema editor detail lama sebagai jalur aman lanjutan.
+  - Commit: `022cbce`
+  - Title: `feat(curriculum): add teaching resource schema starters`
+  - Summary: Menambah starter template pada modal `Tambah/Edit Program Perangkat Ajar` sisi Wakakur web untuk menghasilkan schema awal yang kompatibel dengan struktur lama, tanpa mengubah kontrak backend, data existing, atau alur guru/mobile.
 - Task aktif:
   - Objective: menyederhanakan pengalaman Wakakur saat menambah/mengedit `Program Perangkat Ajar` tanpa mengorbankan fleksibilitas dinamis untuk batch engine berikutnya.
-  - Batch terakhir selesai: Batch 1 UI simplification Wakakur web.
-  - Progress keseluruhan roadmap perangkat ajar dinamis: `20%`.
+  - Batch terakhir selesai: Batch 2 starter template Wakakur web.
+  - Progress keseluruhan roadmap perangkat ajar dinamis: `35%`.
   - Area/file disentuh:
     - `frontend/src/pages/teacher/wakasek/curriculum/TeachingResourceProgramManagementPage.tsx`
   - Ringkasan hasil batch:
-    - modal `Tambah/Edit Program Perangkat Ajar` sekarang dibagi ke `Mode Sederhana` dan `Mode Lanjutan`
-    - mode sederhana menampilkan `Identitas Program`, `Mode Konfigurasi`, `Arah Dokumen & Metadata`, dan `Ringkasan Template Guru`
-    - schema editor detail `section & kolom` tetap utuh, tetapi hanya muncul saat `Mode Lanjutan` dibuka
-    - ada inferensi pola dokumen berbasis struktur schema saat ini (`Analisis Bertingkat`, `Distribusi Waktu`, `Matriks Grid`, `Narasi + Tabel`, `Kustom Fleksibel`) untuk membantu Wakakur memahami arah template tanpa harus membaca key kolom satu-satu
-    - tidak ada perubahan kontrak backend, migrasi data, atau perubahan runtime di sisi guru/mobile pada batch ini
+    - kartu `Arah Dokumen & Metadata` kini punya aksi `Terapkan Starter` / `Terapkan Ulang Starter`
+    - starter template menghasilkan schema draft dari code/label program yang sedang diedit, sehingga tetap dinamis dan tidak mengunci ke satu dokumen hardcode
+    - pola starter yang tersedia: `Analisis Bertingkat`, `Distribusi Waktu`, `Matriks Grid`, `Narasi + Tabel`, dan `Kustom Fleksibel`
+    - setiap starter menyertakan konteks dokumen berbasis assignment/tahun ajaran aktif dan blok pengesahan ringan
+    - perubahan hanya menyentuh draft schema di modal sampai Wakakur menekan simpan; tidak ada perubahan kontrak backend, migrasi data, atau perubahan runtime di sisi guru/mobile pada batch ini
 - Worktree expectation: clean setelah commit/push finalisasi batch UI Wakakur ini.
-- Publish/live status: frontend web sudah live untuk batch UI Wakakur ini. Backend dan OTA mobile tidak terdampak.
+- Publish/live status: frontend web sudah live untuk batch starter template Wakakur ini. Backend dan OTA mobile tidak terdampak.
 - Progress presensi terpadu operasional: 100%.
 - Progress impor historis absensi siswa TKJ: 100%.
   - Selesai: audit workbook, verifikasi aturan blok merah, cek roster DB vs Excel, buat script importer reusable, apply impor final ke database, dan verifikasi pasca-impor.
@@ -108,22 +108,25 @@ Setiap room baru yang diminta `baca AGENTS.md` atau `lanjutkan` wajib membaca fi
   - verifikasi format tampilan final:
     - renderer print SBTS kini selalu memakai `toFixed(2)` untuk seluruh score yang tercetak
     - contoh target format: `78` menjadi `78.00`
-- Verifikasi batch UI Wakakur `Program Perangkat Ajar`:
+- Verifikasi Batch 2 UI Wakakur `Program Perangkat Ajar`:
   - `cd frontend && npm run build`
+  - `git diff --check`
   - `cd frontend && npm run deploy`
   - `curl -I https://siskgb2.id/` merespons `200`
   - sanity check perubahan:
     - batch ini frontend-only; tidak ada perubahan API payload `teaching-resources/programs`
-    - modal editor tetap menyimpan schema yang sama seperti sebelumnya; perubahan hanya pada cara menampilkan dan membungkus konfigurasi agar lebih mudah dipahami
+    - starter template hanya mengganti schema draft lokal di modal sebelum disimpan oleh Wakakur
+    - schema starter tetap memakai struktur `sections` dan `columns` yang sudah ada, sehingga kompatibel dengan editor lama
     - mode lanjutan masih memuat seluruh editor schema detail lama sehingga blast radius perilaku tetap kecil
 
 ## Langkah Aman Berikutnya
 
-- Lanjutkan Batch 2 perangkat ajar dengan fokus aman berikut:
-  - audit apakah Wakakur membutuhkan `visual preset starter` yang benar-benar mengubah struktur schema lokal, atau cukup membaca `arah dokumen` seperti batch 1
-  - jika lanjut implementasi engine, mulai dari kontrak ringan yang tidak merusak program existing: tambahkan konsep `engine type` secara kompatibel dulu, baru susul renderer/authoring guru
-  - prioritas berikutnya paling sehat adalah `grouped-analysis` dan `time-distribution`, karena dua pola ini paling dekat dengan kebutuhan nyata user untuk analisis capaian, prota, promes, dan sebaran waktu
-- Jika room baru diminta melanjutkan fitur ini, cek dulu tampilan live halaman `Program Perangkat Ajar` dan pastikan mode sederhana sudah terasa lebih mudah dipakai sebelum menambah kompleksitas batch berikutnya.
+- Lanjutkan Batch 3 perangkat ajar dengan fokus aman berikut:
+  - audit tampilan live Wakakur setelah starter template dipakai, terutama apakah schema hasil starter cukup mudah diedit sebelum disimpan
+  - cek renderer/authoring guru terhadap schema hasil starter tanpa mengubah kontrak backend dulu
+  - jika lanjut implementasi engine, mulai dari metadata kompatibel yang tidak merusak program existing, lalu susul renderer/authoring guru secara bertahap
+  - prioritas berikutnya paling sehat adalah validasi jalur `grouped-analysis` dan `time-distribution`, karena dua pola ini paling dekat dengan kebutuhan nyata user untuk analisis capaian, prota, promes, dan sebaran waktu
+- Jika room baru diminta melanjutkan fitur ini, cek dulu tampilan live halaman `Program Perangkat Ajar` dan pastikan aksi starter tidak membingungkan Wakakur sebelum menambah kompleksitas batch berikutnya.
 - Data historis TKJ + AK/MP sekarang sudah siap dipakai oleh rapor walas karena source `daily_attendances` sudah terisi untuk `Jul 2025 - Apr 2026`.
 - Jika user melanjutkan impor jurusan/tingkat lain, gunakan script yang sama sebagai baseline, lalu audit dulu roster aktif DB vs workbook sebelum apply.
 - Jika user ingin melanjutkan uji SBTS, langkah paling aman sekarang adalah minta user cetak ulang rapor SBTS nyata setelah bugfix decimal/print live, lalu cocokkan angka dan rasa respons print.
