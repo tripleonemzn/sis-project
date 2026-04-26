@@ -52,13 +52,13 @@ const TARGET_CLASS_OPTIONS = [
 const EDITOR_MODE_OPTIONS: Array<{ value: ProgramEditorMode; label: string; description: string }> = [
   {
     value: 'SIMPLE',
-    label: 'Mode Sederhana',
-    description: 'Untuk operasional harian Wakakur: atur identitas, arah dokumen, dan ringkasan template.',
+    label: 'Mode Siap Pakai',
+    description: 'Untuk operasional harian: cukup isi nama menu, pilih bentuk dokumen, lalu simpan.',
   },
   {
     value: 'ADVANCED',
-    label: 'Mode Lanjutan',
-    description: 'Buka editor schema penuh jika perlu menyusun section, kolom, binding, dan struktur dinamis detail.',
+    label: 'Mode Teknisi',
+    description: 'Khusus admin/kurikulum yang paham struktur kolom, kode sistem, binding, dan schema detail.',
   },
 ];
 
@@ -70,33 +70,33 @@ const BLUEPRINT_MODE_OPTIONS: Array<{
 }> = [
   {
     value: 'GROUPED_ANALYSIS',
-    label: 'Analisis Bertingkat',
-    description: 'Cocok untuk satu blok induk yang menaungi beberapa baris detail.',
-    helper: 'Contoh kebutuhan: elemen/capaian di kiri, lalu detail kompetensi atau tujuan di kanan.',
+    label: 'Analisis / Pemetaan',
+    description: 'Untuk dokumen yang memetakan elemen, tujuan pembelajaran, materi, aktivitas, dan asesmen.',
+    helper: 'Pilih ini jika guru perlu mengisi tabel analisis pembelajaran yang cukup lengkap.',
   },
   {
     value: 'TIME_DISTRIBUTION',
     label: 'Distribusi Waktu',
-    description: 'Cocok untuk dokumen yang fokus ke minggu efektif, bulan, semester, dan alokasi JP.',
-    helper: 'Paling dekat untuk kebutuhan prota, promes, atau sebaran waktu mengajar.',
+    description: 'Untuk dokumen yang mengatur semester, bulan, minggu, tujuan pembelajaran, dan alokasi JP.',
+    helper: 'Paling cocok untuk Prota, Promes, atau sebaran waktu mengajar.',
   },
   {
     value: 'MATRIX_GRID',
-    label: 'Matriks Grid',
-    description: 'Cocok untuk tabel rapat yang orientasinya grid atau matriks lintas periode.',
-    helper: 'Gunakan saat template butuh susunan mendatar dan kolom periode yang padat.',
+    label: 'Matriks Minggu',
+    description: 'Untuk dokumen yang menandai pelaksanaan pembelajaran pada minggu ke-1 sampai minggu ke-19.',
+    helper: 'Pilih ini jika guru cukup menandai minggu pelaksanaan pada grid.',
   },
   {
     value: 'RICH_MIXED',
     label: 'Narasi + Tabel',
-    description: 'Cocok untuk dokumen campuran paragraf pengantar dan tabel kerja.',
-    helper: 'Pilih arah ini jika template menggabungkan teks naratif dan section tabel.',
+    description: 'Untuk dokumen yang berisi paragraf penjelasan dan tabel kerja.',
+    helper: 'Pilih ini jika guru perlu menulis narasi sekaligus mengisi tabel.',
   },
   {
     value: 'FREEFORM',
-    label: 'Kustom Fleksibel',
-    description: 'Cocok untuk format yang belum pas dimasukkan ke pola lain.',
-    helper: 'Gunakan mode lanjutan bila struktur dokumen sangat khusus atau sering berubah.',
+    label: 'Format Bebas',
+    description: 'Untuk format yang belum cocok dengan pilihan lain.',
+    helper: 'Gunakan jika bentuk dokumen masih eksperimen atau belum punya pola tetap.',
   },
 ];
 
@@ -575,6 +575,10 @@ function summarizeSchema(schema?: TeachingResourceProgramSchema) {
   };
 }
 
+function getColumnDataTypeLabel(dataType?: TeachingResourceColumnDataType) {
+  return COLUMN_DATA_TYPE_OPTIONS.find((option) => option.value === (dataType || 'TEXT'))?.label || 'Teks Singkat';
+}
+
 export default function TeachingResourceProgramManagementPage() {
   const queryClient = useQueryClient();
   const { data: activeYear, isLoading: isActiveYearLoading } = useActiveAcademicYear();
@@ -1016,10 +1020,23 @@ export default function TeachingResourceProgramManagementPage() {
       <div className="rounded-xl border border-gray-200 bg-white p-4 shadow-sm">
         <div className="grid grid-cols-1 gap-4 md:grid-cols-3">
           <div className="md:col-span-2">
+            <div className="text-sm font-semibold text-gray-900">Alur aman untuk Wakakur</div>
+            <div className="mt-3 grid grid-cols-1 gap-3 md:grid-cols-3">
+              {[
+                { title: '1. Buat menu', text: 'Isi nama program dan tentukan kelas yang melihat menu.' },
+                { title: '2. Pilih bentuk', text: 'Gunakan template siap pakai sesuai kebutuhan dokumen.' },
+                { title: '3. Simpan', text: 'Guru langsung mendapat format isian yang lebih rapi.' },
+              ].map((item) => (
+                <div key={item.title} className="rounded-xl border border-gray-200 bg-gray-50 px-3 py-3">
+                  <div className="text-xs font-semibold uppercase tracking-wide text-blue-700">{item.title}</div>
+                  <div className="mt-1 text-xs leading-5 text-gray-600">{item.text}</div>
+                </div>
+              ))}
+            </div>
           </div>
           <div className="md:col-span-1 flex items-end">
             <div className="w-full rounded-lg border border-blue-100 bg-blue-50 px-3 py-2 text-xs text-blue-700">
-              Konfigurasi ini setara konsep Program Ujian: dinamis, per tahun ajaran, dan menjadi sumber menu Perangkat Ajar guru.
+              Default halaman ini sekarang untuk user non-teknis. Pengaturan kode/schema detail tetap ada di <b>Mode Teknisi</b>.
             </div>
           </div>
         </div>
@@ -1158,7 +1175,7 @@ export default function TeachingResourceProgramManagementPage() {
                   {editingRowId ? 'Edit Program Perangkat Ajar' : 'Tambah Program Perangkat Ajar'}
                 </h2>
                 <p className="text-sm text-gray-500">
-                  Mulai dari pengaturan ringkas dulu, lalu buka mode lanjutan hanya jika memang perlu menyusun schema detail.
+                  Gunakan Mode Siap Pakai untuk pekerjaan harian. Mode Teknisi hanya dibuka jika perlu mengubah struktur detail.
                 </p>
               </div>
               <button
@@ -1173,58 +1190,60 @@ export default function TeachingResourceProgramManagementPage() {
             <div className="max-h-[78vh] space-y-6 overflow-y-auto px-5 py-5">
               <div className="rounded-xl border border-gray-200 bg-gray-50 p-4">
                 <div className="mb-3">
-                  <h3 className="text-sm font-semibold text-gray-900">Identitas Program</h3>
-                  <p className="text-xs text-gray-500">Bagian ini mengatur nama program dan visibilitas menu guru.</p>
+                  <h3 className="text-sm font-semibold text-gray-900">Nama Menu Guru</h3>
+                  <p className="text-xs text-gray-500">Bagian ini cukup mengatur nama menu, kelas yang boleh melihat, dan apakah menu aktif.</p>
                 </div>
                 <div className="grid grid-cols-1 gap-4 md:grid-cols-2 xl:grid-cols-4">
+                  {editorMode === 'ADVANCED' ? (
+                    <div>
+                      <label className="mb-1 block text-sm font-medium text-gray-700">Kode Sistem</label>
+                      <input
+                        type="text"
+                        value={createDraft.code}
+                        onChange={(event) =>
+                          setCreateDraft((prev) => {
+                            const nextCode = normalizeTeachingResourceProgramCode(event.target.value);
+                            const currentSourceSheet = prev.schema?.sourceSheet;
+                            return {
+                              ...prev,
+                              code: nextCode,
+                              schema: {
+                                ...cloneProgramSchema(prev.schema, nextCode, prev.label),
+                                sourceSheet:
+                                  !currentSourceSheet || currentSourceSheet === normalizeTeachingResourceProgramCode(prev.code)
+                                    ? nextCode
+                                    : currentSourceSheet,
+                              },
+                            };
+                          })
+                        }
+                        className="w-full rounded-lg border border-gray-300 px-3 py-2 text-sm uppercase focus:border-blue-500 focus:outline-none"
+                        placeholder="CUSTOM_PROGRAM"
+                      />
+                    </div>
+                  ) : null}
                   <div>
-                    <label className="mb-1 block text-sm font-medium text-gray-700">Kode Program</label>
-                    <input
-                      type="text"
-                      value={createDraft.code}
-                      onChange={(event) =>
-                        setCreateDraft((prev) => {
-                          const nextCode = normalizeTeachingResourceProgramCode(event.target.value);
-                          const currentSourceSheet = prev.schema?.sourceSheet;
-                          return {
-                            ...prev,
-                            code: nextCode,
-                            schema: {
-                              ...cloneProgramSchema(prev.schema, nextCode, prev.label),
-                              sourceSheet:
-                                !currentSourceSheet || currentSourceSheet === normalizeTeachingResourceProgramCode(prev.code)
-                                  ? nextCode
-                                  : currentSourceSheet,
-                            },
-                          };
-                        })
-                      }
-                      className="w-full rounded-lg border border-gray-300 px-3 py-2 text-sm uppercase focus:border-blue-500 focus:outline-none"
-                      placeholder="CUSTOM_PROGRAM"
-                    />
-                  </div>
-                  <div>
-                    <label className="mb-1 block text-sm font-medium text-gray-700">Label Program</label>
+                    <label className="mb-1 block text-sm font-medium text-gray-700">Nama Menu</label>
                     <input
                       type="text"
                       value={createDraft.label}
                       onChange={(event) => setCreateDraft((prev) => ({ ...prev, label: event.target.value }))}
                       className="w-full rounded-lg border border-gray-300 px-3 py-2 text-sm focus:border-blue-500 focus:outline-none"
-                      placeholder="Nama program"
+                      placeholder="Contoh: Program Semester"
                     />
                   </div>
                   <div>
-                    <label className="mb-1 block text-sm font-medium text-gray-700">Label Pendek</label>
+                    <label className="mb-1 block text-sm font-medium text-gray-700">Nama Singkat</label>
                     <input
                       type="text"
                       value={createDraft.shortLabel}
                       onChange={(event) => setCreateDraft((prev) => ({ ...prev, shortLabel: event.target.value }))}
                       className="w-full rounded-lg border border-gray-300 px-3 py-2 text-sm focus:border-blue-500 focus:outline-none"
-                      placeholder="Label singkat"
+                      placeholder="Contoh: Promes"
                     />
                   </div>
                   <div>
-                    <label className="mb-1 block text-sm font-medium text-gray-700">Target Kelas</label>
+                    <label className="mb-1 block text-sm font-medium text-gray-700">Tampil Untuk Kelas</label>
                     <div className="flex min-h-[42px] flex-wrap gap-2 rounded-lg border border-gray-200 bg-white px-3 py-2">
                       {TARGET_CLASS_OPTIONS.map((option) => {
                         const checked = createDraft.targetClassLevels.includes(option.value);
@@ -1266,7 +1285,7 @@ export default function TeachingResourceProgramManagementPage() {
                       onChange={(event) => setCreateDraft((prev) => ({ ...prev, isActive: event.target.checked }))}
                       className="h-4 w-4 rounded border-gray-300 text-blue-600 focus:ring-blue-500"
                     />
-                    Program aktif
+                    Program bisa dipakai
                   </label>
                   <label className="inline-flex items-center gap-2 rounded-lg border border-gray-200 bg-white px-3 py-2 text-sm text-gray-700">
                     <input
@@ -1277,7 +1296,7 @@ export default function TeachingResourceProgramManagementPage() {
                       }
                       className="h-4 w-4 rounded border-gray-300 text-blue-600 focus:ring-blue-500"
                     />
-                    Tampilkan di menu guru
+                    Muncul di menu guru
                   </label>
                 </div>
               </div>
@@ -1322,16 +1341,16 @@ export default function TeachingResourceProgramManagementPage() {
 
               <div className="rounded-xl border border-gray-200 bg-white p-4">
                 <div className="mb-3">
-                  <h3 className="text-sm font-semibold text-gray-900">Arah Dokumen & Metadata</h3>
+                  <h3 className="text-sm font-semibold text-gray-900">Pilih Bentuk Dokumen</h3>
                   <p className="text-xs text-gray-500">
-                    Bagian ini membantu Wakakur membaca pola template saat ini tanpa harus langsung masuk ke schema kolom.
+                    Pilih bentuk yang paling dekat. Setelah dipilih, sistem otomatis menyiapkan isian awal untuk guru.
                   </p>
                 </div>
 
                 <div className="mb-4 rounded-xl border border-blue-200 bg-blue-50 p-4">
                   <div className="flex flex-wrap items-start justify-between gap-3">
                     <div>
-                      <div className="text-sm font-semibold text-blue-900">Pola Dokumen yang Paling Mendekati Template Saat Ini</div>
+                      <div className="text-sm font-semibold text-blue-900">Bentuk yang sedang dipakai</div>
                       <p className="mt-1 text-xs leading-5 text-blue-800">{draftBlueprint.description}</p>
                     </div>
                     <span className="inline-flex rounded-full bg-white px-3 py-1 text-xs font-semibold text-blue-700">
@@ -1371,13 +1390,21 @@ export default function TeachingResourceProgramManagementPage() {
                           }`}
                         >
                           <Pencil size={13} />
-                          {active ? 'Terapkan Ulang Starter' : 'Terapkan Starter'}
+                          {active ? 'Gunakan Ulang Template Ini' : 'Gunakan Template Ini'}
                         </button>
                       </div>
                     );
                   })}
                 </div>
 
+                {editorMode === 'SIMPLE' ? (
+                  <div className="rounded-xl border border-emerald-200 bg-emerald-50 px-4 py-3 text-xs leading-5 text-emerald-800">
+                    Di Mode Siap Pakai, guru tetap bisa mengubah judul dan ringkasan saat membuat dokumen. Jika perlu mengatur kode template,
+                    hint judul, atau metadata teknis lain, buka <b>Mode Teknisi</b>.
+                  </div>
+                ) : null}
+
+                {editorMode === 'ADVANCED' ? (
                 <div className="grid grid-cols-1 gap-4 md:grid-cols-2">
                   <div>
                     <label className="mb-1 block text-sm font-medium text-gray-700">Source Sheet / Kode Template</label>
@@ -1422,14 +1449,15 @@ export default function TeachingResourceProgramManagementPage() {
                     />
                   </div>
                 </div>
+                ) : null}
               </div>
 
               <div className="rounded-xl border border-gray-200 bg-white p-4">
                 <div className="mb-3 flex flex-wrap items-start justify-between gap-3">
                   <div>
-                    <h3 className="text-sm font-semibold text-gray-900">Ringkasan Template Guru</h3>
+                    <h3 className="text-sm font-semibold text-gray-900">Yang Akan Dilihat Guru</h3>
                     <p className="text-xs text-gray-500">
-                      Wakakur bisa cek bentuk template aktif terlebih dahulu sebelum memutuskan perlu masuk ke editor schema detail atau tidak.
+                      Ringkasan sederhana agar Wakakur tahu kira-kira bentuk isian guru tanpa membaca kode/schema.
                     </p>
                   </div>
                   {editorMode === 'SIMPLE' ? (
@@ -1438,34 +1466,34 @@ export default function TeachingResourceProgramManagementPage() {
                       onClick={() => setEditorMode('ADVANCED')}
                       className="inline-flex items-center gap-2 rounded-lg border border-blue-200 bg-blue-50 px-3 py-2 text-xs font-semibold text-blue-700 hover:bg-blue-100"
                     >
-                      Buka Mode Lanjutan
+                      Buka Mode Teknisi
                     </button>
                   ) : (
                     <span className="inline-flex rounded-full border border-amber-200 bg-amber-50 px-3 py-1 text-xs font-semibold text-amber-700">
-                      Mode lanjutan aktif
+                      Mode teknisi aktif
                     </span>
                   )}
                 </div>
 
                 <div className="grid grid-cols-2 gap-3 md:grid-cols-5">
                   <div className="rounded-xl border border-gray-200 bg-gray-50 px-3 py-3">
-                    <div className="text-[11px] font-semibold uppercase tracking-wide text-gray-500">Total Section</div>
+                    <div className="text-[11px] font-semibold uppercase tracking-wide text-gray-500">Jumlah Bagian</div>
                     <div className="mt-1 text-xl font-bold text-gray-900">{draftSchemaSummary.totalSections}</div>
                   </div>
                   <div className="rounded-xl border border-gray-200 bg-gray-50 px-3 py-3">
-                    <div className="text-[11px] font-semibold uppercase tracking-wide text-gray-500">Section Tabel</div>
+                    <div className="text-[11px] font-semibold uppercase tracking-wide text-gray-500">Bagian Tabel</div>
                     <div className="mt-1 text-xl font-bold text-gray-900">{draftSchemaSummary.tableSections}</div>
                   </div>
                   <div className="rounded-xl border border-gray-200 bg-gray-50 px-3 py-3">
-                    <div className="text-[11px] font-semibold uppercase tracking-wide text-gray-500">Section Teks</div>
+                    <div className="text-[11px] font-semibold uppercase tracking-wide text-gray-500">Bagian Teks</div>
                     <div className="mt-1 text-xl font-bold text-gray-900">{draftSchemaSummary.textSections}</div>
                   </div>
                   <div className="rounded-xl border border-gray-200 bg-gray-50 px-3 py-3">
-                    <div className="text-[11px] font-semibold uppercase tracking-wide text-gray-500">Kolom Tabel</div>
+                    <div className="text-[11px] font-semibold uppercase tracking-wide text-gray-500">Kolom Isian</div>
                     <div className="mt-1 text-xl font-bold text-gray-900">{draftSchemaSummary.totalColumns}</div>
                   </div>
                   <div className="rounded-xl border border-gray-200 bg-gray-50 px-3 py-3">
-                    <div className="text-[11px] font-semibold uppercase tracking-wide text-gray-500">Section Repeatable</div>
+                    <div className="text-[11px] font-semibold uppercase tracking-wide text-gray-500">Bisa Ditambah</div>
                     <div className="mt-1 text-xl font-bold text-gray-900">{draftSchemaSummary.repeatableSections}</div>
                   </div>
                 </div>
@@ -1476,7 +1504,7 @@ export default function TeachingResourceProgramManagementPage() {
                       <div className="flex flex-wrap items-start justify-between gap-3">
                         <div>
                           <div className="text-sm font-semibold text-gray-900">
-                            Section {sectionIndex + 1}: {section.label || `Bagian ${sectionIndex + 1}`}
+                            Bagian {sectionIndex + 1}: {section.label || `Bagian ${sectionIndex + 1}`}
                           </div>
                           <p className="mt-1 text-xs leading-5 text-gray-500">
                             {section.description || 'Belum ada deskripsi section.'}
@@ -1484,14 +1512,14 @@ export default function TeachingResourceProgramManagementPage() {
                         </div>
                         <div className="flex flex-wrap gap-2">
                           <span className="inline-flex rounded-full border border-gray-200 bg-white px-2 py-1 text-xs text-gray-700">
-                            {section.editorType === 'TEXT' ? 'Teks / Narasi' : 'Table / Grid'}
+                            {section.editorType === 'TEXT' ? 'Teks / Narasi' : 'Tabel Isian'}
                           </span>
                           <span className="inline-flex rounded-full border border-gray-200 bg-white px-2 py-1 text-xs text-gray-700">
                             {section.defaultRows || 1} baris awal
                           </span>
                           {section.repeatable ? (
                             <span className="inline-flex rounded-full border border-blue-200 bg-blue-50 px-2 py-1 text-xs text-blue-700">
-                              Repeatable
+                              Bisa ditambah
                             </span>
                           ) : null}
                         </div>
@@ -1505,7 +1533,7 @@ export default function TeachingResourceProgramManagementPage() {
                                 key={`${section.key}-${column.key}-summary-${columnIndex}`}
                                 className="inline-flex rounded-full border border-gray-200 bg-white px-2 py-1 text-xs text-gray-700"
                               >
-                                {column.label || `Kolom ${columnIndex + 1}`} · {column.dataType || 'TEXT'}
+                                {column.label || `Kolom ${columnIndex + 1}`} · {getColumnDataTypeLabel(column.dataType)}
                               </span>
                             ))
                           ) : (
@@ -1514,7 +1542,7 @@ export default function TeachingResourceProgramManagementPage() {
                         </div>
                       ) : (
                         <div className="mt-3 text-xs text-gray-500">
-                          Placeholder judul: {section.titlePlaceholder || '-'} | Placeholder isi: {section.bodyPlaceholder || '-'}
+                          Petunjuk judul: {section.titlePlaceholder || '-'} | Petunjuk isi: {section.bodyPlaceholder || '-'}
                         </div>
                       )}
                     </div>
@@ -1552,8 +1580,8 @@ export default function TeachingResourceProgramManagementPage() {
                   </div>
 
                   <div className="mb-4 rounded-xl border border-amber-200 bg-amber-50 p-4 text-xs leading-5 text-amber-800">
-                    Mode lanjutan dipakai hanya saat Wakakur benar-benar perlu menyusun schema detail seperti key kolom, binding,
-                    semantic key, atau struktur section yang belum bisa diwakili oleh konfigurasi ringkas.
+                    Mode Teknisi dipakai hanya saat Wakakur benar-benar perlu menyusun struktur detail seperti key kolom, binding,
+                    semantic key, atau bagian dokumen yang belum bisa diwakili oleh Mode Siap Pakai.
                   </div>
 
                   <div className="space-y-4">
