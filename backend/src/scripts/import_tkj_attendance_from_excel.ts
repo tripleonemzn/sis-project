@@ -31,6 +31,7 @@ const MONTH_NAME_MAP: Record<string, number> = {
 type ParsedArgs = {
   apply: boolean;
   allowOverwrite: boolean;
+  pruneMissing: boolean;
   baseDir: string;
   academicYearName: string;
   endMonth: string;
@@ -57,6 +58,7 @@ type ExcelStudentRow = {
   nis: string;
   nisn: string;
   name: string;
+  identityColors: string[];
 };
 
 type MatchResult =
@@ -67,7 +69,7 @@ type MatchResult =
     }
   | {
       matched: false;
-      reason: 'NO_IDENTIFIER' | 'NO_MATCH' | 'AMBIGUOUS_NAME';
+      reason: 'NO_IDENTIFIER' | 'NO_MATCH' | 'AMBIGUOUS_NAME' | 'CONFLICTING_IDENTIFIERS';
     };
 
 type RosterIndexes = {
@@ -107,6 +109,7 @@ type ClassDryRunSummary = {
   unmatchedExcelStudents: string[];
   ambiguousExcelStudents: string[];
   dbStudentsMissingFromExcel: string[];
+  skippedDropoutStudents: Array<{ name: string; nis: string; sheets: string[]; colors: string[] }>;
   blankActiveMonthStudents: string[];
   candidateRows: number;
   blankActiveCells: number;
@@ -123,9 +126,20 @@ type ConflictingExistingRow = {
   sourceSheet: string;
 };
 
+const DROPOUT_IDENTITY_FILL_COLORS = new Set([
+  'FFFFFF00',
+  'FF808080',
+  'FFA6A6A6',
+  'FFBFBFBF',
+  'FFC0C0C0',
+  'FFD9D9D9',
+  'FF7F7F7F',
+]);
+
 function parseArgs(argv: string[]): ParsedArgs {
   let apply = false;
   let allowOverwrite = false;
+  let pruneMissing = false;
   let baseDir = DEFAULT_BASE_DIR;
   let academicYearName = DEFAULT_ACADEMIC_YEAR_NAME;
   let endMonth = DEFAULT_END_MONTH;
@@ -141,6 +155,11 @@ function parseArgs(argv: string[]): ParsedArgs {
 
     if (arg === '--allow-overwrite') {
       allowOverwrite = true;
+      continue;
+    }
+
+    if (arg === '--prune-missing') {
+      pruneMissing = true;
       continue;
     }
 
@@ -166,6 +185,7 @@ function parseArgs(argv: string[]): ParsedArgs {
   return {
     apply,
     allowOverwrite,
+    pruneMissing,
     baseDir,
     academicYearName,
     endMonth,
@@ -174,6 +194,17 @@ function parseArgs(argv: string[]): ParsedArgs {
 
 function normalizeString(value: unknown): string {
   if (value === null || value === undefined) return '';
+  if (typeof value === 'object') {
+    const richText = value as { richText?: Array<{ text?: string }> };
+    if (Array.isArray(richText.richText)) {
+      return richText.richText.map((item) => String(item?.text || '')).join('').trim();
+    }
+
+    const hyperLink = value as { text?: string };
+    if (typeof hyperLink.text === 'string') {
+      return hyperLink.text.trim();
+    }
+  }
   return String(value).trim();
 }
 
@@ -196,10 +227,18 @@ function cellValue(cell: ExcelJS.Cell): unknown {
     | string
     | number
     | Date
-    | { formula?: string; result?: unknown };
+    | { formula?: string; result?: unknown; error?: string };
 
   if (raw && typeof raw === 'object' && 'result' in raw) {
-    return raw.result;
+    const result = raw.result;
+    if (result && typeof result === 'object' && 'error' in result) {
+      return null;
+    }
+    return result ?? null;
+  }
+
+  if (raw && typeof raw === 'object' && ('formula' in raw || 'error' in raw)) {
+    return null;
   }
 
   return raw;
@@ -231,9 +270,37 @@ function compareMonthKey(left: string, right: string): number {
 }
 
 function isRedCell(cell: ExcelJS.Cell): boolean {
-  const fill = cell.fill as { fgColor?: { argb?: string } } | undefined;
-  const argb = fill?.fgColor?.argb || null;
+  const argb = extractCellColor(cell);
   return argb === 'FFFF0000';
+}
+
+function extractCellColor(cell: ExcelJS.Cell): string | null {
+  const fill = cell.fill as { fgColor?: { argb?: string }; bgColor?: { argb?: string } } | undefined;
+  const argb = fill?.fgColor?.argb || fill?.bgColor?.argb || null;
+  return typeof argb === 'string' && argb.trim() ? argb.trim().toUpperCase() : null;
+}
+
+function isGreyColor(argb: string): boolean {
+  const normalized = String(argb || '').trim().toUpperCase();
+  const match = normalized.match(/^FF([0-9A-F]{2})([0-9A-F]{2})([0-9A-F]{2})$/);
+  if (!match) return false;
+  return match[1] === match[2] && match[2] === match[3];
+}
+
+function isDropoutIdentityColor(argb: string): boolean {
+  const normalized = String(argb || '').trim().toUpperCase();
+  if (!normalized) return false;
+  if (DROPOUT_IDENTITY_FILL_COLORS.has(normalized)) return true;
+  return isGreyColor(normalized);
+}
+
+function getIdentityRowColors(row: ExcelJS.Row): string[] {
+  const colors = new Set<string>();
+  for (let column = 1; column <= 6; column += 1) {
+    const color = extractCellColor(row.getCell(column));
+    if (color) colors.add(color);
+  }
+  return Array.from(colors);
 }
 
 function toAttendanceStatus(code: string): AttendanceStatus | null {
@@ -323,23 +390,54 @@ function endOfMonthUtc(year: number, monthIndex: number): Date {
 
 function matchExcelStudent(row: ExcelStudentRow, indexes: RosterIndexes): MatchResult {
   const nis = normalizeIdentifier(row.nis);
-  if (nis) {
-    const match = indexes.byNis.get(nis);
-    if (match) return { matched: true, student: match, strategy: 'NIS' };
-  }
-
   const nisn = normalizeIdentifier(row.nisn);
-  if (nisn) {
-    const match = indexes.byNisn.get(nisn);
-    if (match) return { matched: true, student: match, strategy: 'NISN' };
+  const normalizedName = normalizeName(row.name);
+  const nisMatch = nis ? indexes.byNis.get(nis) || null : null;
+  const nisnMatch = nisn ? indexes.byNisn.get(nisn) || null : null;
+  const byName = normalizedName ? indexes.byName.get(normalizedName) || [] : [];
+  const uniqueNameMatch = byName.length === 1 ? byName[0] : null;
+
+  if (nisMatch && nisnMatch) {
+    if (nisMatch.id === nisnMatch.id) {
+      return { matched: true, student: nisMatch, strategy: 'NIS' };
+    }
+
+    if (uniqueNameMatch?.id === nisMatch.id) {
+      return { matched: true, student: nisMatch, strategy: 'NIS' };
+    }
+
+    if (uniqueNameMatch?.id === nisnMatch.id) {
+      return { matched: true, student: nisnMatch, strategy: 'NISN' };
+    }
+
+    return { matched: false, reason: 'CONFLICTING_IDENTIFIERS' };
   }
 
-  const normalizedName = normalizeName(row.name);
+  if (nisMatch) {
+    return { matched: true, student: nisMatch, strategy: 'NIS' };
+  }
+
+  if (nisnMatch) {
+    if (nis && uniqueNameMatch && uniqueNameMatch.id !== nisnMatch.id) {
+      return { matched: false, reason: 'CONFLICTING_IDENTIFIERS' };
+    }
+    if (nis && uniqueNameMatch?.id === nisnMatch.id) {
+      return { matched: true, student: nisnMatch, strategy: 'NISN' };
+    }
+    if (nis) {
+      return { matched: false, reason: 'CONFLICTING_IDENTIFIERS' };
+    }
+    return { matched: true, student: nisnMatch, strategy: 'NISN' };
+  }
+
+  if (nis || nisn) {
+    return { matched: false, reason: 'NO_MATCH' };
+  }
+
   if (!normalizedName) {
     return { matched: false, reason: 'NO_IDENTIFIER' };
   }
 
-  const byName = indexes.byName.get(normalizedName) || [];
   if (byName.length === 1) {
     return { matched: true, student: byName[0], strategy: 'NAME' };
   }
@@ -356,6 +454,7 @@ async function loadClassRoster(classId: number): Promise<RosterStudent[]> {
     where: {
       role: Role.STUDENT,
       classId,
+      studentStatus: 'ACTIVE',
     },
     select: {
       id: true,
@@ -370,22 +469,37 @@ async function loadClassRoster(classId: number): Promise<RosterStudent[]> {
   });
 }
 
-function parseExcelStudentRows(sheet: ExcelJS.Worksheet): ExcelStudentRow[] {
+function parseExcelStudentRows(sheet: ExcelJS.Worksheet): {
+  rows: ExcelStudentRow[];
+  skippedDropoutRows: ExcelStudentRow[];
+} {
   const rows: ExcelStudentRow[] = [];
+  const skippedDropoutRows: ExcelStudentRow[] = [];
   for (let rowNumber = 9; rowNumber <= sheet.rowCount; rowNumber += 1) {
     const row = sheet.getRow(rowNumber);
     const name = normalizeString(cellValue(row.getCell(4)));
     if (!name) break;
 
-    rows.push({
+    const parsedRow = {
       rowNumber,
       orderNumber: Number(cellValue(row.getCell(1)) || 0) || null,
       nis: normalizeString(cellValue(row.getCell(2))),
       nisn: normalizeString(cellValue(row.getCell(3))),
       name,
-    });
+      identityColors: getIdentityRowColors(row),
+    } satisfies ExcelStudentRow;
+
+    if (parsedRow.identityColors.some((color) => isDropoutIdentityColor(color))) {
+      skippedDropoutRows.push(parsedRow);
+      continue;
+    }
+
+    rows.push(parsedRow);
   }
-  return rows;
+  return {
+    rows,
+    skippedDropoutRows,
+  };
 }
 
 function dateAtUtc(year: number, monthIndex: number, day: number): Date {
@@ -429,7 +543,7 @@ async function main() {
     const workbook = new ExcelJS.Workbook();
     await workbook.xlsx.readFile(path.join(args.baseDir, fileName));
 
-    const referenceSheet = workbook.worksheets.find((sheet) => !sheet.name.startsWith('Rekap'));
+    const referenceSheet = workbook.worksheets.find((sheet) => Boolean(parseSheetMonth(sheet.name)));
     if (!referenceSheet) continue;
 
     const className = normalizeString(cellValue(referenceSheet.getCell('C4'))).toUpperCase();
@@ -465,29 +579,16 @@ async function main() {
     }
     const rosterIndexes = buildRosterIndexes(roster);
 
-    const excelStudentRows = parseExcelStudentRows(referenceSheet);
+    const referenceStudentRows = parseExcelStudentRows(referenceSheet).rows;
     const matchedExcelNames = new Set<string>();
     const matchedStudentIds = new Set<number>();
-    const unmatchedExcelStudents: string[] = [];
-    const ambiguousExcelStudents: string[] = [];
+    const unmatchedExcelStudents = new Set<string>();
+    const ambiguousExcelStudents = new Set<string>();
     const blankActiveMonthStudents = new Set<string>();
+    const skippedDropoutStudents = new Map<string, { name: string; nis: string; sheets: Set<string>; colors: Set<string> }>();
     const unknownCodes: Array<{ sheetName: string; cell: string; rawValue: string; studentName: string }> = [];
     let blankActiveCells = 0;
     let candidateRows = 0;
-
-    const matchCache = new Map<number, MatchResult>();
-    for (const row of excelStudentRows) {
-      const match = matchExcelStudent(row, rosterIndexes);
-      matchCache.set(row.rowNumber, match);
-      if (match.matched) {
-        matchedExcelNames.add(row.name);
-        matchedStudentIds.add(match.student.id);
-      } else if (match.reason === 'AMBIGUOUS_NAME') {
-        ambiguousExcelStudents.push(row.name);
-      } else {
-        unmatchedExcelStudents.push(row.name);
-      }
-    }
 
     const targetSheets = workbook.worksheets
       .map((sheet) => ({ sheet, meta: parseSheetMonth(sheet.name) }))
@@ -509,6 +610,22 @@ async function main() {
         throw new Error(`Kolom rekap harian tidak ditemukan pada ${fileName} > ${sheet.name}.`);
       }
 
+      const { rows: excelStudentRows, skippedDropoutRows } = parseExcelStudentRows(sheet);
+      for (const skippedRow of skippedDropoutRows) {
+        const key = `${normalizeIdentifier(skippedRow.nis)}__${normalizeName(skippedRow.name)}`;
+        const bucket = skippedDropoutStudents.get(key) || {
+          name: skippedRow.name,
+          nis: skippedRow.nis,
+          sheets: new Set<string>(),
+          colors: new Set<string>(),
+        };
+        bucket.sheets.add(sheet.name);
+        skippedRow.identityColors.forEach((color) => {
+          if (isDropoutIdentityColor(color)) bucket.colors.add(color);
+        });
+        skippedDropoutStudents.set(key, bucket);
+      }
+
       const activeColumns: Array<{ column: number; day: number }> = [];
       for (let column = 7; column < summaryStartColumn; column += 1) {
         if (isRedCell(sheet.getRow(7).getCell(column)) || isRedCell(sheet.getRow(8).getCell(column))) continue;
@@ -518,8 +635,17 @@ async function main() {
       }
 
       for (const row of excelStudentRows) {
-        const match = matchCache.get(row.rowNumber);
-        if (!match?.matched) continue;
+        const match = matchExcelStudent(row, rosterIndexes);
+        if (match.matched) {
+          matchedExcelNames.add(row.name);
+          matchedStudentIds.add(match.student.id);
+        } else if (match.reason === 'AMBIGUOUS_NAME') {
+          ambiguousExcelStudents.add(row.name);
+          continue;
+        } else {
+          unmatchedExcelStudents.add(row.name);
+          continue;
+        }
 
         let markedCount = 0;
         for (const activeColumn of activeColumns) {
@@ -578,11 +704,19 @@ async function main() {
       className: dbClass.name,
       fileName,
       dbClassId: dbClass.id,
-      excelRosterCount: excelStudentRows.length,
+      excelRosterCount: referenceStudentRows.length,
       matchedRosterCount: matchedStudentIds.size,
-      unmatchedExcelStudents,
-      ambiguousExcelStudents,
+      unmatchedExcelStudents: Array.from(unmatchedExcelStudents).sort((left, right) => left.localeCompare(right, 'id-ID')),
+      ambiguousExcelStudents: Array.from(ambiguousExcelStudents).sort((left, right) => left.localeCompare(right, 'id-ID')),
       dbStudentsMissingFromExcel,
+      skippedDropoutStudents: Array.from(skippedDropoutStudents.values())
+        .map((item) => ({
+          name: item.name,
+          nis: item.nis,
+          sheets: Array.from(item.sheets).sort((left, right) => left.localeCompare(right, 'id-ID')),
+          colors: Array.from(item.colors).sort(),
+        }))
+        .sort((left, right) => left.name.localeCompare(right.name, 'id-ID')),
       blankActiveMonthStudents: Array.from(blankActiveMonthStudents).sort((left, right) =>
         left.localeCompare(right, 'id-ID'),
       ),
@@ -607,7 +741,6 @@ async function main() {
   const existingRows = await prisma.dailyAttendance.findMany({
     where: {
       academicYearId: academicYear.id,
-      studentId: { in: studentIds },
       classId: { in: classIds },
       date: {
         gte: importStartDate ?? academicYear.semester1Start,
@@ -639,11 +772,17 @@ async function main() {
   const compatibleExistingRows: Array<{ existing: ExistingAttendanceRow; next: CandidateAttendance }> = [];
   const conflictingExistingRows: Array<{ existing: ExistingAttendanceRow; next: CandidateAttendance }> = [];
   let unchangedRows = 0;
+  const candidateKeys = new Set<string>();
 
   for (const candidate of candidateRows) {
-    const existing = existingByKey.get(
-      buildAttendanceKey(candidate.studentId, candidate.classId, candidate.academicYearId, candidate.date.toISOString().slice(0, 10)),
+    const key = buildAttendanceKey(
+      candidate.studentId,
+      candidate.classId,
+      candidate.academicYearId,
+      candidate.date.toISOString().slice(0, 10),
     );
+    candidateKeys.add(key);
+    const existing = existingByKey.get(key);
     if (!existing) {
       createRows.push(candidate);
       continue;
@@ -661,6 +800,11 @@ async function main() {
 
     conflictingExistingRows.push({ existing, next: candidate });
   }
+
+  const staleExistingRows = existingRows.filter((row) => {
+    const key = buildAttendanceKey(row.studentId, row.classId, row.academicYearId, row.date.toISOString().slice(0, 10));
+    return !candidateKeys.has(key);
+  });
 
   if (args.apply) {
     for (const rows of chunk(createRows, 1000)) {
@@ -697,6 +841,18 @@ async function main() {
         });
       }
     }
+
+    if (args.pruneMissing) {
+      for (const rows of chunk(staleExistingRows, 1000)) {
+        await prisma.dailyAttendance.deleteMany({
+          where: {
+            id: {
+              in: rows.map((row) => row.id),
+            },
+          },
+        });
+      }
+    }
   }
 
   const statusCounts = candidateRows.reduce<Record<string, number>>((accumulator, row) => {
@@ -721,6 +877,7 @@ async function main() {
       unmatchedExcelStudents: item.unmatchedExcelStudents,
       ambiguousExcelStudents: item.ambiguousExcelStudents,
       dbStudentsMissingFromExcel: item.dbStudentsMissingFromExcel,
+      skippedDropoutStudents: item.skippedDropoutStudents,
       blankActiveMonthStudents: item.blankActiveMonthStudents,
       candidateRows: item.candidateRows,
       blankActiveCells: item.blankActiveCells,
@@ -732,9 +889,11 @@ async function main() {
       createRows: createRows.length,
       compatibleExistingRows: compatibleExistingRows.length,
       conflictingExistingRows: conflictingExistingRows.length,
+      staleExistingRows: staleExistingRows.length,
       overwrittenCompatibleRowsOnApply: args.apply && args.allowOverwrite ? compatibleExistingRows.length : 0,
       skippedConflictingRowsOnApply: args.apply && !args.allowOverwrite ? conflictingExistingRows.length : 0,
       overwrittenConflictingRowsOnApply: args.apply && args.allowOverwrite ? conflictingExistingRows.length : 0,
+      deletedMissingRowsOnApply: args.apply && args.pruneMissing ? staleExistingRows.length : 0,
       unchangedRows,
       totalUnknownCodes,
       totalBlankActiveCells,
