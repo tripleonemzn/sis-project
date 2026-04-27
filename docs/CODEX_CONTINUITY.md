@@ -616,6 +616,63 @@ Setiap room baru yang diminta `baca AGENTS.md` atau `lanjutkan` wajib membaca fi
 - Commit hash terkait:
   - Pending commit sesi ini.
 
+## Update Terbaru 2026-04-27 17:56 WIB
+
+- Objective/task aktif:
+  - Pindahkan `Publikasi Nilai` ke halaman rapor wali kelas, rapikan proporsi tanda tangan rapor SBTS, lalu perbaiki logika nilai formatif dan highlight ledger agar lebih akurat untuk kontrol wali kelas.
+- Batch/wave terakhir selesai:
+  - Relokasi tab publikasi nilai + penyempurnaan rapor/ledger wali kelas selesai.
+- Progress:
+  - `100%` untuk request ini.
+- Area/file yang disentuh:
+  - `backend/src/services/report.service.ts`
+  - `frontend/src/components/homeroom/HomeroomResultPublicationPanel.tsx`
+  - `frontend/src/pages/teacher/homeroom/HomeroomLedgerPage.tsx`
+  - `frontend/src/pages/teacher/homeroom/HomeroomPermissionsPage.tsx`
+  - `frontend/src/pages/teacher/homeroom/HomeroomReportSbtsPage.tsx`
+  - `frontend/src/pages/teacher/homeroom/TeacherHomeroomFinalPage.tsx`
+  - `frontend/src/pages/teacher/homeroom/TeacherHomeroomSbtsPage.tsx`
+  - `mobile-app/app/(app)/teacher/homeroom-permissions.tsx`
+  - `mobile-app/src/features/homeroomReports/HomeroomReportModuleScreen.tsx`
+- Ringkasan perubahan:
+  - `Publikasi Nilai` tidak lagi muncul sebagai tab di `Persetujuan Izin`; sekarang dipindahkan ke halaman rapor wali kelas per program agar konteks semester/program mengikuti jalur rapor (`SBTS/SAS/SAT`) dan tidak ambigu.
+  - Web dan mobile sama-sama menampilkan tab `Publikasi Nilai` di modul rapor wali kelas, dengan data langsung terkunci ke program aktif halaman tersebut.
+  - Area tanda tangan rapor SBTS dirapikan dengan `signature-mark-area` yang sama untuk orang tua dan wali kelas, sehingga nama tetap lebih sejajar walau wali kelas memakai QR.
+  - Logika nilai formatif dibenahi: jika satu mapel pada satu kelas memang belum punya input formatif sama sekali, rapor dan ledger tetap `Tidak ada Penilaian`; tetapi jika mapel itu sudah punya input formatif kelas, siswa yang kosong otomatis dibaca `0` agar konsisten dengan kontrol wali kelas.
+  - Ledger sekarang membawa nilai `kkm` per mapel dan menandai nilai di bawah KKM dengan warna merah untuk kolom formatif, SBTS, dan nilai akhir yang relevan.
+- Verifikasi yang sudah dijalankan:
+  - `cd backend && npm run build`
+  - `cd backend && npm run service:restart`
+  - `cd backend && npm run service:health`
+  - `cd frontend && npm run build`
+  - `cd frontend && npm run deploy`
+  - `cd mobile-app && npm run typecheck`
+  - `cd mobile-app && npm run audit:parity:check`
+  - `cd mobile-app && npm run check:ota:testers`
+  - `cd mobile-app && npm run update:pilot-live:verified -- "Perpindahan publikasi nilai ke rapor wali kelas, perbaikan rapor SBTS, dan penyempurnaan nilai formatif. Silakan perbarui untuk menikmati fitur terbaru."`
+  - `curl -I https://siskgb2.id/` merespons `200`
+  - `curl -I https://siskgb2.id/teacher/wali-kelas/permissions` merespons `200`
+  - sanity check data nyata:
+    - sample ledger `X AK 1 / Pendidikan Agama dan Budi Pekerti / Abigael Maria Putri Zebua` sekarang menghasilkan `formatif: 0`, `sbts: 4`, `kkm: 80`
+    - sample tanpa input formatif `XI AK 1 / Pendidikan Agama dan Budi Pekerti / Aldo Prasetyo` tetap menghasilkan `ledgerFormative: null`, `reportFormative: null`
+- Publish/live status:
+  - Backend live.
+  - Web live.
+  - OTA Android `pilot-live` sudah publish.
+  - Update group OTA: `6cbf8964-4675-4ca3-bc18-e4b2e45d93c7`
+  - Push notify OTA: `3/3`
+- Sisa pekerjaan:
+  - Tidak ada untuk request ini.
+- Blocker/residual risk:
+  - Tab publikasi nilai lama di halaman `Persetujuan Izin` sengaja hanya disembunyikan dari navigasi, belum dibersihkan total secara kode, agar blast radius batch ini tetap kecil.
+  - Verifikasi layout print SBTS saat ini berbasis CSS render + deploy live; tetap perlu cek manual di browser jika user punya kombinasi printer scaling yang sangat khusus.
+- Langkah aman berikutnya:
+  - Minta user cek halaman rapor wali kelas per program untuk memastikan tab `Publikasi Nilai` sudah terasa lebih natural, lalu cetak satu rapor SBTS dan buka satu ledger untuk mengonfirmasi proporsi tanda tangan serta highlight merah `< KKM`.
+- Last updated:
+  - 2026-04-27 17:56 WIB
+- Commit hash terkait:
+  - Pending commit sesi ini.
+
 ## Template Update Wajib Saat Ada Pekerjaan Baru
 
 - Objective/task aktif:
