@@ -3,6 +3,63 @@
 Dokumen ini adalah source of truth progres kerja antar-room chat untuk project ini.
 Setiap room baru yang diminta `baca AGENTS.md` atau `lanjutkan` wajib membaca file ini setelah membaca `AGENTS.md`, lalu mencocokkan isinya dengan `git status --short` dan commit terbaru.
 
+## Update Terbaru
+
+- Last updated: 2026-04-27 10:20 WIB
+- Current status: logic final gate publikasi nilai oleh wali kelas sudah selesai dan sudah live di backend, web, dan OTA mobile.
+- Objective/task aktif:
+  - Menambahkan wewenang wali kelas sebagai gate terakhir publikasi hasil nilai siswa per program ujian, di atas baseline jadwal rilis Wakakur.
+- Batch terakhir selesai:
+  - `Batch final gate publikasi nilai wali kelas`
+- Progress batch ini:
+  - `100%`
+- Last completed repo work:
+  - Commit: `f7d60a1`
+  - Title: `feat(grades): add homeroom publication gate`
+  - Summary:
+    - backend kini punya helper publikasi nilai wali kelas berbasis `preferences` guru tanpa migrasi schema baru
+    - endpoint baru `/api/grades/homeroom-result-publications` tersedia untuk load/update gate publikasi per kelas wali pada tahun ajaran aktif
+    - release nilai siswa di `student-overview` sekarang mengikuti 2 lapis: baseline Wakakur lalu override wali kelas
+    - rapor semester siswa untuk `SAS/SAT` ikut tertahan jika wali kelas memblokir publikasi program terkait
+    - web dan mobile wali kelas sekarang punya tab `Publikasi Nilai` di layar `Persetujuan Izin`
+- Area/file disentuh:
+  - `backend/src/controllers/grade.controller.ts`
+  - `backend/src/routes/grade.routes.ts`
+  - `backend/src/utils/examProgramResultRelease.ts`
+  - `backend/src/utils/homeroomResultPublication.ts`
+  - `frontend/src/pages/teacher/homeroom/HomeroomPermissionsPage.tsx`
+  - `frontend/src/pages/student/StudentGradesPage.tsx`
+  - `frontend/src/services/grade.service.ts`
+  - `mobile-app/app/(app)/teacher/homeroom-permissions.tsx`
+  - `mobile-app/app/(app)/grades.tsx`
+  - `mobile-app/src/features/grades/gradeApi.ts`
+  - `mobile-app/src/features/grades/types.ts`
+- Verifikasi batch ini:
+  - `cd backend && npm run build`
+  - `cd backend && npm run service:restart`
+  - `cd backend && npm run service:health`
+  - `cd frontend && npm run build`
+  - `cd frontend && npm run deploy`
+  - `curl -I https://siskgb2.id/` -> `200`
+  - `curl -I https://siskgb2.id/teacher/wali-kelas/permissions` -> `200`
+  - `cd mobile-app && npm run typecheck`
+  - `cd mobile-app && npm run audit:parity:check`
+  - `cd mobile-app && npm run check:ota:testers`
+  - `cd mobile-app && npm run update:pilot-live:verified -- "Homeroom final gate publikasi nilai"`
+- Publish/live status:
+  - Backend live dan sehat (`Backend:200`, `Backend API:200`)
+  - Web live
+  - OTA Android `pilot-live` published
+    - update group: `761285fd-e6aa-41ee-8323-8e4b59309111`
+    - android update id: `019dccf0-df1d-7b48-9357-6e5e3290b9f0`
+    - push notify: `recipients=3, sent=3, failed=0, stale=0`
+- Remaining work:
+  - tidak ada blocker teknis pada batch ini
+  - kalau user lanjut, langkah aman berikutnya adalah UAT langsung sebagai wali kelas dan siswa untuk memastikan gate `SBTS/SAS/SAT` sesuai ekspektasi operasional
+- Residual risk:
+  - override wali kelas saat ini disimpan pada `preferences` wali kelas aktif, jadi jika wali kelas kelas aktif berganti, override lama tidak ikut pindah otomatis ke guru baru
+  - behavior ini aman untuk production saat ini karena tidak menambah tabel/migrasi, tetapi perlu dicatat jika nanti user minta histori/pelimpahan gate antar wali kelas
+
 ## Status Saat Ini
 
 - Last updated: 2026-04-27 09:47 WIB
