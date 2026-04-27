@@ -5,34 +5,54 @@ Setiap room baru yang diminta `baca AGENTS.md` atau `lanjutkan` wajib membaca fi
 
 ## Status Saat Ini
 
-- Last updated: 2026-04-27 09:10 WIB
-- Current status: Batch 15 preset cepat tingkat section di editor Wakakur sudah aktif di web. Wakakur kini bisa menambahkan `Bagian Siap Pakai` seperti `Info Konteks Sistem`, `Tabel Sumber Referensi`, `Tabel Pilih Referensi`, `Blok Pengesahan`, dan `Catatan / Narasi` sehingga perakitan struktur dokumen makin operasional dan tidak perlu mulai dari section kosong.
+- Last updated: 2026-04-27 09:47 WIB
+- Current status: audit dan perbaikan sinkronisasi impor historis absensi siswa dari folder `etc/presensi_X_TKJ` sudah selesai. Importer sekarang membaca roster per-sheet bulanan, hanya menghitung siswa `ACTIVE`, lebih ketat saat NIS/NISN bentrok, dan bisa menghapus row DB lama yang tidak lagi punya pasangan valid di Excel. Data `Jul 2025 - Apr 2026` kini sudah match dengan workbook sumber untuk seluruh kelas yang ada di folder tersebut.
 - Last completed repo work:
-  - Commit: `48a65c5`
-  - Title: `feat(curriculum): add wakakur section quick presets`
-  - Summary: editor Wakakur kini punya shortcut untuk menambah section siap pakai yang sudah membawa kombinasi kolom dan preset integrasi umum, termasuk pola dokumen sumber referensi, dokumen turunan berbasis picker, konteks sistem, pengesahan, dan narasi.
+  - Commit: `28a7f28`
+  - Title: `fix(attendance): harden excel importer sync`
+  - Summary: importer absensi Excel kini memakai roster aktif saja, memetakan siswa per-sheet bulan, menahan fallback nama yang berisiko salah tempel, menangani artefak formula workbook dengan aman, dan mendukung `--prune-missing` untuk membersihkan row absensi lama yang salah dari database.
 - Task aktif:
-  - Objective: menggeser fondasi fitur `Program Perangkat Ajar` dari schema/template berbasis nama dokumen ke model generik yang netral kebijakan, bisa saling terintegrasi antar-dokumen, dan tetap aman untuk user operasional.
-  - Batch terakhir selesai: Batch 15 preset cepat section Wakakur.
+  - Objective: tidak ada batch presensi tertunda; sinkronisasi impor historis siswa sudah selesai. Jika user kembali ke roadmap `Program Perangkat Ajar`, konteks produk terakhir tetap berada di batch preset cepat Wakakur.
+  - Batch terakhir selesai: audit + repair impor absensi menyeluruh untuk seluruh workbook pada `etc/presensi_X_TKJ`.
   - Progress keseluruhan roadmap perangkat ajar dinamis:
     - `100%` untuk rumusan arsitektur generik
     - `89%` untuk implementasi teknis refactor engine generik
     - `56%` untuk builder Wakakur generasi baru
     - `82%` untuk reference picker guru lintas dokumen
   - Area/file disentuh:
-    - `frontend/src/pages/teacher/wakasek/curriculum/TeachingResourceProgramManagementPage.tsx`
+    - `backend/src/scripts/import_tkj_attendance_from_excel.ts`
     - `docs/CODEX_CONTINUITY.md`
   - Ringkasan hasil batch:
-    - editor Wakakur kini punya area `Bagian Siap Pakai` untuk menambah section operasional umum tanpa merakit semuanya dari nol
-    - preset `Info Konteks Sistem` menambahkan mapel, tingkat, program keahlian, semester, dan tahun ajaran dari source sistem aktif
-    - preset `Tabel Sumber Referensi` menyiapkan field inti yang bisa diekspos ke dokumen lain
-    - preset `Tabel Pilih Referensi` menyiapkan pola downstream yang menggabungkan picker referensi, field turunan snapshot, dan kolom manual tambahan
-    - preset `Blok Pengesahan` dan `Catatan / Narasi` ikut disediakan agar perakitan section tidak terlalu teknis
-    - detail teknis lama tetap dipertahankan sehingga backward compatibility editor tetap aman
-    - tidak ada perubahan backend, mobile, polling, realtime, atau endpoint baru
-- Worktree expectation: clean setelah commit/push Batch 15.
-- Publish/live status: frontend web sudah deploy live dan `https://siskgb2.id/` merespons `200`. Tidak ada OTA mobile baru karena batch ini web-only di editor Wakakur.
+    - bug root cause lama berhasil ditutup: importer sebelumnya memakai nomor row dari satu sheet referensi untuk semua bulan, sehingga saat urutan siswa berubah per-bulan, data absensi bisa salah tempel ke siswa lain
+    - importer sekarang membaca roster siswa dari setiap sheet bulan secara independen
+    - query roster DB kini difilter ke `studentStatus = ACTIVE`, sehingga siswa `DROPPED_OUT` tidak ikut terhitung
+    - fallback `match by name` kini dipersempit agar row dengan NIS/NISN bentrok atau invalid tidak lagi diarahkan ke siswa aktif yang salah
+    - row DB historis yang lama tetapi tidak punya pasangan valid di candidate Excel kini bisa dihapus otomatis lewat `--prune-missing`
+    - artefak workbook seperti formula footer / `#REF!` tidak lagi terbaca sebagai nama siswa
+-- Worktree expectation: clean setelah commit/push batch perbaikan importer absensi ini.
+- Publish/live status: tidak ada deploy web, OTA mobile, atau restart service baru karena batch ini hanya tooling backend + sinkronisasi data database.
 - Progress presensi terpadu operasional: 100%.
+- Progress audit/perbaikan sinkronisasi impor historis absensi seluruh folder `etc/presensi_X_TKJ`: 100%.
+  - Dry-run koreksi sebelum apply:
+    - candidate rows `170,842`
+    - create rows `150`
+    - conflicting existing rows `220`
+    - stale existing rows `830`
+    - unmatched Excel students `17`
+    - blank active cells `25`
+  - Apply koreksi final:
+    - overwrite `220` row existing agar match Excel
+    - create `150` row yang sebelumnya belum ada
+    - delete `830` row DB lama yang sudah tidak punya pasangan valid di workbook
+  - Verifikasi pasca-apply:
+    - `createRows 0`
+    - `conflictingExistingRows 0`
+    - `staleExistingRows 0`
+    - `unchangedRows 170,842`
+    - `nonActiveAttendanceRowsAcademicYear2025_2026 0`
+  - Residual data yang sengaja tidak diimpor:
+    - `17` entri workbook tetap unmatched karena memang bukan roster aktif final, duplicate row nama, atau siswa yang ditandai keluar/dropout pada workbook
+    - contoh utama: `Fairuz Ghaissani`, `Rama Atma Widjaya`, `Eshal Nabila`, `Humaira Musyaffa'illah`, `Amelia Maulidiah Safitri`, `Dwi Maharanika Putri`, `Naila Kherunisa Inayah Putri`, `Dania Razaika`, `Nur Fazriah`, `Desty Kuswanto`, `Niza Nur Irawati`, `Carens Mezaluna`, `Razka Yulia Ayu Priani`, `Idris Nur Fatahhillah`, `Hamdan Zulfa`, `Arya Yudistira`, `Aina Zahra Suhendar`
 - Progress impor historis absensi siswa TKJ: 100%.
   - Selesai: audit workbook, verifikasi aturan blok merah, cek roster DB vs Excel, buat script importer reusable, apply impor final ke database, dan verifikasi pasca-impor.
   - Catatan: `20` siswa di workbook yang tidak ada di roster aktif DB tetap tidak diimpor; semuanya memang baris yang kosong total pada data harian.
@@ -58,6 +78,31 @@ Setiap room baru yang diminta `baca AGENTS.md` atau `lanjutkan` wajib membaca fi
 
 ## Verifikasi Batch Terakhir
 
+- Perbaikan sinkronisasi impor absensi seluruh folder `etc/presensi_X_TKJ`:
+  - `cd backend && npm run build`
+  - `cd backend && npm run attendance:import:tkj -- --base-dir "/var/www/sis-project/etc/presensi_X_TKJ"`
+  - `cd backend && npm run attendance:import:tkj -- --base-dir "/var/www/sis-project/etc/presensi_X_TKJ" --apply --allow-overwrite --prune-missing`
+  - `cd backend && npm run attendance:import:tkj -- --base-dir "/var/www/sis-project/etc/presensi_X_TKJ"`
+  - `cd backend && node - <<'NODE' ... prisma.dailyAttendance.count({ where: { academicYear: { name: "2025/2026" }, student: { studentStatus: { not: "ACTIVE" } } } }) ... NODE`
+  - hasil inti sebelum apply:
+    - candidate rows `170,842`
+    - create rows `150`
+    - conflicting existing rows `220`
+    - stale existing rows `830`
+    - unchanged rows `170,472`
+    - unmatched Excel students `17`
+    - blank active cells `25`
+  - hasil inti sesudah apply:
+    - create rows `0`
+    - conflicting existing rows `0`
+    - stale existing rows `0`
+    - unchanged rows `170,842`
+    - non-active attendance rows di tahun ajaran `2025/2026` = `0`
+  - temuan audit yang ditutup:
+    - importer lama salah karena mengasumsikan urutan siswa antar-sheet bulanan selalu sama
+    - importer lama masih menghitung siswa nonaktif / dropped out
+    - fallback nama pada row dengan NIS/NISN bermasalah bisa menyebabkan salah tempel
+    - footer formula workbook tertentu bisa terbaca sebagai nama siswa palsu
 - Backend/runtime:
   - `cd backend && npm run build`
   - `cd backend && npm run attendance:import:tkj`
