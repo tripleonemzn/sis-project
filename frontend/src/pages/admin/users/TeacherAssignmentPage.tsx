@@ -557,7 +557,7 @@ export const TeacherAssignmentPage = ({ scope = 'DEFAULT' }: TeacherAssignmentPa
                         <div className="relative" ref={teacherDropdownRef}>
                             <label className="block text-sm font-medium text-gray-700 mb-1">Guru</label>
                             <div
-                                className="w-full px-3 py-2 border border-gray-300 rounded-lg flex items-center justify-between cursor-pointer bg-white"
+                                className="app-searchable-select-trigger"
                                 onClick={() => setIsTeacherDropdownOpen(!isTeacherDropdownOpen)}
                             >
                                 <span className={selectedTeacherId ? 'text-gray-900' : 'text-gray-500'}>
@@ -566,11 +566,11 @@ export const TeacherAssignmentPage = ({ scope = 'DEFAULT' }: TeacherAssignmentPa
                                 <ChevronDown size={16} className="text-gray-400" />
                             </div>
                             {isTeacherDropdownOpen && (
-                                <div className="absolute z-10 w-full mt-1 bg-white border border-gray-200 rounded-lg shadow-lg max-h-60 overflow-y-auto">
-                                    <div className="p-2 sticky top-0 bg-white border-b border-gray-100">
+                                <div className="app-searchable-select-panel absolute z-10 max-h-60 overflow-y-auto">
+                                    <div className="app-searchable-select-search-wrap">
                                         <input
                                             type="text"
-                                            className="w-full px-3 py-1.5 text-sm border border-gray-200 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500/20 focus:border-blue-500"
+                                            className="app-searchable-select-search"
                                             placeholder="Cari guru..."
                                             value={teacherSearch}
                                             onChange={(e) => setTeacherSearch(e.target.value)}
@@ -580,7 +580,7 @@ export const TeacherAssignmentPage = ({ scope = 'DEFAULT' }: TeacherAssignmentPa
                                     {filteredTeachers.map((teacher) => (
                                         <div
                                             key={teacher.id}
-                                            className="px-4 py-2 hover:bg-gray-50 cursor-pointer text-sm"
+                                            className="app-searchable-select-option text-sm"
                                             onClick={() => {
                                                 setValue('teacherId', teacher.id);
                                                 setSelectedTeacherId(teacher.id);
@@ -588,7 +588,7 @@ export const TeacherAssignmentPage = ({ scope = 'DEFAULT' }: TeacherAssignmentPa
                                             }}
                                         >
                                             <div className="font-medium text-gray-900">{teacher.name}</div>
-                                            <div className="text-xs text-gray-500">{teacher.username}</div>
+                                            <div className="app-searchable-select-meta">{teacher.username}</div>
                                         </div>
                                     ))}
                                     {filteredTeachers.length === 0 && (
@@ -604,7 +604,7 @@ export const TeacherAssignmentPage = ({ scope = 'DEFAULT' }: TeacherAssignmentPa
                         <div className="relative" ref={subjectDropdownRef}>
                             <label className="block text-sm font-medium text-gray-700 mb-1">Mata Pelajaran</label>
                             <div
-                                className="w-full px-3 py-2 border border-gray-300 rounded-lg flex items-center justify-between cursor-pointer bg-white"
+                                className="app-searchable-select-trigger"
                                 onClick={() => setIsSubjectDropdownOpen(!isSubjectDropdownOpen)}
                             >
                                 <span className={selectedSubjectId ? 'text-gray-900' : 'text-gray-500'}>
@@ -613,11 +613,11 @@ export const TeacherAssignmentPage = ({ scope = 'DEFAULT' }: TeacherAssignmentPa
                                 <ChevronDown size={16} className="text-gray-400" />
                             </div>
                             {isSubjectDropdownOpen && (
-                                <div className="absolute z-10 w-full mt-1 bg-white border border-gray-200 rounded-lg shadow-lg max-h-60 overflow-y-auto">
-                                    <div className="p-2 sticky top-0 bg-white border-b border-gray-100">
+                                <div className="app-searchable-select-panel absolute z-10 max-h-60 overflow-y-auto">
+                                    <div className="app-searchable-select-search-wrap">
                                         <input
                                             type="text"
-                                            className="w-full px-3 py-1.5 text-sm border border-gray-200 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500/20 focus:border-blue-500"
+                                            className="app-searchable-select-search"
                                             placeholder="Cari mapel..."
                                             value={subjectSearch}
                                             onChange={(e) => setSubjectSearch(e.target.value)}
@@ -627,7 +627,7 @@ export const TeacherAssignmentPage = ({ scope = 'DEFAULT' }: TeacherAssignmentPa
                                     {filteredSubjects.map((subject) => (
                                         <div
                                             key={subject.id}
-                                            className="px-4 py-2 hover:bg-gray-50 cursor-pointer text-sm"
+                                            className="app-searchable-select-option text-sm"
                                             onClick={() => {
                                                 setValue('subjectId', subject.id);
                                                 setSelectedSubjectId(subject.id);
@@ -635,7 +635,7 @@ export const TeacherAssignmentPage = ({ scope = 'DEFAULT' }: TeacherAssignmentPa
                                             }}
                                         >
                                             <div className="font-medium text-gray-900">{subject.name}</div>
-                                            <div className="text-xs text-gray-500">{subject.code}</div>
+                                            <div className="app-searchable-select-meta">{subject.code}</div>
                                         </div>
                                     ))}
                                     {filteredSubjects.length === 0 && (

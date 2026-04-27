@@ -1,4 +1,4 @@
-import { useState } from 'react';
+import { useRef, useState } from 'react';
 import { useQuery } from '@tanstack/react-query';
 import { reportService } from '../../../services/report.service';
 import { Loader2, Printer, Calendar as CalendarIcon, Trophy } from 'lucide-react';
@@ -35,6 +35,7 @@ const formatScoreDisplay = (value: number | null | undefined) => {
 export const HomeroomRankingPage = ({ classId, academicYearId, semester }: HomeroomRankingPageProps) => {
   const [titimangsa, setTitimangsa] = useState<Date>(new Date());
   const [isPrinting, setIsPrinting] = useState(false);
+  const printIframeRef = useRef<HTMLIFrameElement>(null);
   
   const { data, isLoading } = useQuery({
     queryKey: ['class-rankings', classId, academicYearId, semester],
@@ -48,11 +49,11 @@ export const HomeroomRankingPage = ({ classId, academicYearId, semester }: Homer
     if (!data || isPrinting) return;
 
     setIsPrinting(true);
-
-    const printWindow = window.open('', 'homeroom-ranking-print', 'width=1024,height=768');
-    if (!printWindow) {
+    const iframe = printIframeRef.current;
+    const iframeWindow = iframe?.contentWindow;
+    if (!iframe || !iframeWindow) {
       setIsPrinting(false);
-      window.alert('Popup cetak diblokir browser. Izinkan popup lalu coba lagi.');
+      window.alert('Media cetak belum siap. Coba muat ulang halaman lalu ulangi cetak.');
       return;
     }
 
@@ -68,18 +69,55 @@ export const HomeroomRankingPage = ({ classId, academicYearId, semester }: Homer
       />,
     );
 
-    printWindow.document.open();
-    printWindow.document.write(`<!DOCTYPE html><html><head><meta charset="utf-8" /><title>Cetak Peringkat</title></head><body>${html}</body></html>`);
-    printWindow.document.close();
-    printWindow.onafterprint = () => {
-      printWindow.close();
+    const printDoc = iframeWindow.document;
+    printDoc.open();
+    printDoc.write(`<!DOCTYPE html><html><head><meta charset="utf-8" /><title>Cetak Peringkat</title><style>html,body{margin:0;padding:0;background:#fff;color:#000;} body{font-family:ui-sans-serif,system-ui,sans-serif;}</style></head><body>${html}</body></html>`);
+    printDoc.close();
+
+    const triggerPrint = () => {
+      try {
+        iframeWindow.focus();
+        iframeWindow.print();
+      } finally {
+        window.setTimeout(() => setIsPrinting(false), 150);
+      }
     };
 
-    window.setTimeout(() => {
-      printWindow.focus();
-      printWindow.print();
-      setIsPrinting(false);
-    }, 250);
+    const waitForAssetsAndPrint = () => {
+      const doc = iframeWindow.document;
+      const imageNodes = Array.from(doc.images || []);
+      const imagePromises = imageNodes.map(
+        (image) =>
+          new Promise<void>((resolve) => {
+            if (image.complete) {
+              resolve();
+              return;
+            }
+            image.addEventListener('load', () => resolve(), { once: true });
+            image.addEventListener('error', () => resolve(), { once: true });
+          }),
+      );
+      const fontsReady =
+        typeof doc.fonts?.ready?.then === 'function' ? doc.fonts.ready.catch(() => undefined) : Promise.resolve();
+
+      Promise.all([fontsReady, ...imagePromises]).finally(() => {
+        requestAnimationFrame(() => {
+          requestAnimationFrame(() => {
+            triggerPrint();
+          });
+        });
+      });
+    };
+
+    if (iframeWindow.document.readyState === 'complete') {
+      waitForAssetsAndPrint();
+      return;
+    }
+
+    iframe.onload = () => {
+      iframe.onload = null;
+      waitForAssetsAndPrint();
+    };
   };
 
   if (isLoading) {
@@ -173,6 +211,12 @@ export const HomeroomRankingPage = ({ classId, academicYearId, semester }: Homer
             </table>
         </div>
       </div>
+
+      <iframe
+        ref={printIframeRef}
+        title="Cetak Peringkat"
+        className="hidden"
+      />
     </div>
   );
 };

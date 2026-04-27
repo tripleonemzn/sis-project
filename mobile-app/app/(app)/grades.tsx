@@ -482,6 +482,8 @@ export default function GradesScreen() {
   }, [activeProgramSubjects]);
   const activeProgramRelease = activeProgram?.release || null;
   const isProgramReleaseLocked = Boolean(activeProgramRelease && !activeProgramRelease.canViewDetails);
+  const reportCard = overview?.reportCard ?? null;
+  const isReportTabActive = activeTab === 'REPORT';
   const programReleaseDateLabel = activeProgramRelease?.effectiveDate
     ? formatDateLabel(activeProgramRelease.effectiveDate)
     : activeProgramRelease?.mode === 'REPORT_DATE'
@@ -561,17 +563,101 @@ export default function GradesScreen() {
 
       {overview ? (
         <View style={{ marginTop: 16, gap: 14 }}>
-          <MobileMenuTabBar
-            items={[
-              { key: 'PROGRAM', label: 'Nilai Program Ujian', iconName: 'layers' },
-              { key: 'REPORT', label: 'Rapor Semester', iconName: 'file-text' },
-            ]}
-            activeKey={activeTab}
-            onChange={(key) => setActiveTab(key as GradeTabKey)}
-          />
-          <Text style={{ color: colors.textMuted, fontSize: scaleFont(13), lineHeight: scaleLineHeight(20) }}>
-            {activeTab === 'PROGRAM' ? programTabSubtitle : reportTabSubtitle}
-          </Text>
+          {isReportTabActive && reportCard ? (
+            <View style={{ flexDirection: 'row', flexWrap: 'wrap', marginHorizontal: -6 }}>
+              <View style={{ width: '50%', paddingHorizontal: 6, marginBottom: 12 }}>
+                <MobileSummaryCard
+                  title="Mapel Siap"
+                  value={`${reportCard.summary.availableSubjects}/${reportCard.summary.expectedSubjects}`}
+                  subtitle={`Semester ${effectiveReportSemesterLabel.toLowerCase()}`}
+                  iconName="check-circle"
+                  accentColor={
+                    reportCard.status.tone === 'green'
+                      ? '#16a34a'
+                      : reportCard.status.tone === 'amber'
+                        ? '#b45309'
+                        : '#e11d48'
+                  }
+                />
+              </View>
+              <View style={{ width: '50%', paddingHorizontal: 6, marginBottom: 12 }}>
+                <MobileSummaryCard
+                  title="Rata-rata"
+                  value={formatScore(reportCard.summary.averageFinalScore)}
+                  subtitle={`Nilai akhir semester ${effectiveReportSemesterLabel.toLowerCase()}`}
+                  iconName="trending-up"
+                  accentColor="#2563eb"
+                />
+              </View>
+              <View style={{ width: '50%', paddingHorizontal: 6, marginBottom: 12 }}>
+                <MobileSummaryCard
+                  title="Kehadiran"
+                  value={String(reportCard.attendance.hadir)}
+                  subtitle={`${reportCard.attendance.sakit} sakit • ${reportCard.attendance.izin} izin • ${reportCard.attendance.alpha} alpha`}
+                  iconName="user-check"
+                  accentColor="#16a34a"
+                />
+              </View>
+              <View style={{ width: '50%', paddingHorizontal: 6, marginBottom: 12 }}>
+                <MobileSummaryCard
+                  title="Mapel Menunggu"
+                  value={String(reportCard.summary.missingSubjects)}
+                  subtitle="Masih belum lengkap"
+                  iconName="clock"
+                  accentColor={reportCard.summary.missingSubjects > 0 ? '#b45309' : '#16a34a'}
+                />
+              </View>
+            </View>
+          ) : null}
+
+          <View
+            style={{
+              borderWidth: 1,
+              borderColor: colors.border,
+              backgroundColor: colors.surface,
+              borderRadius: 18,
+              paddingHorizontal: 14,
+              paddingVertical: 14,
+              gap: 12,
+            }}
+          >
+            <MobileMenuTabBar
+              items={[
+                { key: 'PROGRAM', label: 'Nilai Program Ujian', iconName: 'layers' },
+                { key: 'REPORT', label: 'Rapor Semester', iconName: 'file-text' },
+              ]}
+              activeKey={activeTab}
+              onChange={(key) => setActiveTab(key as GradeTabKey)}
+            />
+            <Text style={{ color: colors.textMuted, fontSize: scaleFont(13), lineHeight: scaleLineHeight(20) }}>
+              {activeTab === 'PROGRAM' ? programTabSubtitle : reportTabSubtitle}
+            </Text>
+
+            {isReportTabActive && reportCard ? (
+              <View style={{ flexDirection: 'row', alignItems: 'center', gap: 12 }}>
+                <Text
+                  style={{
+                    color: colors.text,
+                    fontWeight: '700',
+                    fontSize: scaleFont(13),
+                    minWidth: 112,
+                  }}
+                >
+                  Semester Rapor
+                </Text>
+                <View style={{ flex: 1 }}>
+                  <MobileSelectField
+                    value={effectiveReportSemester}
+                    options={[
+                      { label: 'Semester Ganjil', value: 'ODD' },
+                      { label: 'Semester Genap', value: 'EVEN' },
+                    ]}
+                    onChange={(value) => setSelectedReportSemester((value as ReportSemesterValue) || '')}
+                  />
+                </View>
+              </View>
+            ) : null}
+          </View>
 
           {activeTab === 'PROGRAM' ? (
             <>
@@ -819,156 +905,7 @@ export default function GradesScreen() {
             </>
           ) : (
             <>
-              <View
-                style={{
-                  borderWidth: 1,
-                  borderColor: colors.border,
-                  backgroundColor: colors.surface,
-                  borderRadius: 18,
-                  paddingHorizontal: 14,
-                  paddingVertical: 14,
-                }}
-              >
-                <Text style={{ color: colors.text, fontSize: scaleFont(18), fontWeight: '800' }}>Semester Rapor</Text>
-                <Text style={{ color: colors.textMuted, marginTop: 6, fontSize: scaleFont(13), lineHeight: scaleLineHeight(20) }}>
-                  Pilihan semester ini hanya mengubah tampilan rapor. Nilai Program Ujian tetap mengikuti semester aktif {overview.meta.semesterLabel}.
-                </Text>
-                <View style={{ marginTop: 12, flexDirection: 'row', alignItems: 'center', gap: 12 }}>
-                  <Text
-                    style={{
-                      color: colors.text,
-                      fontWeight: '700',
-                      fontSize: scaleFont(13),
-                      minWidth: 112,
-                    }}
-                  >
-                    Semester Rapor
-                  </Text>
-                  <View style={{ flex: 1 }}>
-                  <MobileSelectField
-                    value={effectiveReportSemester}
-                    options={[
-                      { label: 'Semester Ganjil', value: 'ODD' },
-                      { label: 'Semester Genap', value: 'EVEN' },
-                    ]}
-                    onChange={(value) => setSelectedReportSemester((value as ReportSemesterValue) || '')}
-                    helperText="Pilihan ini hanya berlaku untuk tab Rapor Semester."
-                  />
-                  </View>
-                </View>
-              </View>
-
-              <View
-                style={{
-                  borderWidth: 1,
-                  borderColor:
-                    overview.reportCard.release.tone === 'green'
-                      ? '#bbf7d0'
-                      : overview.reportCard.release.tone === 'amber'
-                        ? '#fde68a'
-                        : '#fecdd3',
-                  backgroundColor:
-                    overview.reportCard.release.tone === 'green'
-                      ? '#f0fdf4'
-                      : overview.reportCard.release.tone === 'amber'
-                        ? '#fffbeb'
-                        : '#fff1f2',
-                  borderRadius: 18,
-                  paddingHorizontal: 14,
-                  paddingVertical: 14,
-                  gap: 10,
-                }}
-                >
-                  <View
-                    style={{
-                      alignSelf: 'flex-start',
-                    borderRadius: 999,
-                    backgroundColor: colors.surface,
-                    paddingHorizontal: 10,
-                    paddingVertical: 6,
-                  }}
-                  >
-                    <Text style={{ color: colors.text, fontSize: scaleFont(12), fontWeight: '700' }}>
-                      Rilis Semester: {overview.reportCard.release.label}
-                    </Text>
-                  </View>
-                  <Text style={{ color: colors.text, fontSize: scaleFont(13), lineHeight: scaleLineHeight(20) }}>
-                    {overview.reportCard.release.description}
-                  </Text>
-                  <Text style={{ color: colors.textMuted, fontSize: scaleFont(12) }}>
-                    Kesiapan data: {overview.reportCard.status.label}
-                  </Text>
-                  <Text style={{ color: colors.textMuted, fontSize: scaleFont(12), lineHeight: scaleLineHeight(18) }}>
-                    {overview.reportCard.reportDate
-                      ? `${overview.reportCard.reportDate.place} • ${formatDateLabel(overview.reportCard.reportDate.date)} • Semester ${effectiveReportSemesterLabel} • ${overview.reportCard.semesterType}`
-                      : `Tanggal rapor belum diatur • Semester ${effectiveReportSemesterLabel} • ${overview.reportCard.semesterType}`}
-                </Text>
-              </View>
-
-              <View style={{ flexDirection: 'row', flexWrap: 'wrap', marginHorizontal: -6 }}>
-                <View style={{ width: '50%', paddingHorizontal: 6, marginBottom: 12 }}>
-                  <MobileSummaryCard
-                    title="Mapel Siap"
-                    value={`${overview.reportCard.summary.availableSubjects}/${overview.reportCard.summary.expectedSubjects}`}
-                    subtitle={`Kesiapan rapor semester ${effectiveReportSemesterLabel.toLowerCase()}`}
-                    iconName="check-circle"
-                    accentColor={
-                      overview.reportCard.status.tone === 'green'
-                        ? '#16a34a'
-                        : overview.reportCard.status.tone === 'amber'
-                          ? '#b45309'
-                          : '#e11d48'
-                    }
-                  />
-                </View>
-                <View style={{ width: '50%', paddingHorizontal: 6, marginBottom: 12 }}>
-                  <MobileSummaryCard
-                    title="Rata-rata"
-                    value={formatScore(overview.reportCard.summary.averageFinalScore)}
-                    subtitle={`Nilai akhir semester ${effectiveReportSemesterLabel.toLowerCase()}`}
-                    iconName="trending-up"
-                    accentColor="#2563eb"
-                  />
-                </View>
-                <View style={{ width: '50%', paddingHorizontal: 6, marginBottom: 12 }}>
-                  <MobileSummaryCard
-                    title="Kehadiran"
-                    value={String(overview.reportCard.attendance.hadir)}
-                    subtitle={`${overview.reportCard.attendance.sakit} sakit • ${overview.reportCard.attendance.izin} izin • ${overview.reportCard.attendance.alpha} alpha`}
-                    iconName="user-check"
-                    accentColor="#16a34a"
-                  />
-                </View>
-                <View style={{ width: '50%', paddingHorizontal: 6, marginBottom: 12 }}>
-                  <MobileSummaryCard
-                    title="Mapel Menunggu"
-                    value={String(overview.reportCard.summary.missingSubjects)}
-                    subtitle="Masih belum lengkap"
-                    iconName="clock"
-                    accentColor={overview.reportCard.summary.missingSubjects > 0 ? '#b45309' : '#16a34a'}
-                  />
-                </View>
-              </View>
-
-              {!overview.reportCard.release.canViewDetails ? (
-                <View
-                  style={{
-                    borderWidth: 1,
-                    borderColor: '#fde68a',
-                    backgroundColor: '#fffbeb',
-                    borderRadius: 18,
-                    paddingHorizontal: 14,
-                    paddingVertical: 14,
-                  }}
-                >
-                  <Text style={{ color: colors.text, fontSize: scaleFont(18), fontWeight: '800' }}>Detail Rapor Semester Menunggu Rilis</Text>
-                  <Text style={{ color: colors.text, marginTop: 8, fontSize: scaleFont(13), lineHeight: scaleLineHeight(22) }}>
-                    Nama mapel semester {effectiveReportSemesterLabel.toLowerCase()} sudah ditampilkan, tetapi nilai akhir, predikat, dan catatan kompetensi baru akan terbuka setelah tanggal rilis rapor.
-                  </Text>
-                </View>
-              ) : null}
-
-              {overview.reportCard.release.canViewDetails && overview.reportCard.homeroomNote ? (
+              {reportCard?.release.canViewDetails && reportCard.homeroomNote ? (
                 <View
                   style={{
                     borderWidth: 1,
@@ -981,14 +918,14 @@ export default function GradesScreen() {
                 >
                   <Text style={{ color: colors.text, fontSize: scaleFont(18), fontWeight: '800' }}>Catatan Wali Kelas</Text>
                   <Text style={{ color: colors.text, marginTop: 10, fontSize: scaleFont(13), lineHeight: scaleLineHeight(22) }}>
-                    {overview.reportCard.homeroomNote}
+                    {reportCard.homeroomNote}
                   </Text>
                 </View>
               ) : null}
 
-              {overview.reportCard.subjects.length > 0 ? (
+              {reportCard && reportCard.subjects.length > 0 ? (
                 <View style={{ gap: 12 }}>
-                  {overview.reportCard.subjects.map((subject) => (
+                  {reportCard.subjects.map((subject) => (
                     <ReportSubjectCard key={subject.subject.id} item={subject} />
                   ))}
                 </View>

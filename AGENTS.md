@@ -156,8 +156,14 @@ Dokumen ini adalah policy kerja default untuk setiap sesi baru yang mengerjakan 
      - garis bawah/`border-b-2` sebagai indikator aktif
      - tanpa model kartu/pill tebal kecuali user meminta eksplisit
      - tab harus tetap mudah discan secara horizontal dan konsisten antar role
-   - Untuk menu tab horizontal di mobile, gunakan komponen shared yang mengikuti hierarki visual tab web tersebut; jangan membuat gaya tab baru per screen yang maknanya berbeda.
-   - Jika menambah fitur/input/aksi baru pada layar existing, jangan langsung ditempel terbuka di bawah konten utama. Gunakan popup/modal agar layout tetap rapi.
+  - Untuk menu tab horizontal di mobile, gunakan komponen shared yang mengikuti hierarki visual tab web tersebut; jangan membuat gaya tab baru per screen yang maknanya berbeda.
+  - Untuk dropdown/filter di web, gunakan standar berikut:
+    - dropdown dengan opsi sedikit dan sifatnya sederhana seperti `semester`, `status`, `jenis`, `mode`, atau filter pendek lain harus memakai gaya dropdown compact standar seperti filter pada `Persetujuan Izin`
+    - dropdown dengan opsi banyak seperti `guru`, `siswa`, `mapel`, `kelas`, atau data besar lain harus memakai pola searchable dropdown seperti `Tambah Assignment Guru`, lengkap dengan kotak pencarian dan tinggi panel yang dibatasi
+    - jangan memakai native dropdown polos untuk data besar jika pencarian sudah jelas dibutuhkan secara operasional
+    - lebar dropdown harus proporsional dengan isi, tidak terlalu pendek hingga label terpotong tanpa alasan, dan panel opsi tidak boleh terlalu tinggi sampai menabrak layout utama
+  - Untuk dropdown di mobile, tetap gunakan komponen shared seperti `MobileSelectField` dan pertahankan makna yang sama dengan versi web; jangan membuat interpretasi visual baru untuk jenis filter yang sama.
+  - Jika menambah fitur/input/aksi baru pada layar existing, jangan langsung ditempel terbuka di bawah konten utama. Gunakan popup/modal agar layout tetap rapi.
    - Untuk popup/modal, gunakan standar overlay yang tetap memperlihatkan konteks halaman di belakang secara halus; hindari backdrop hitam pekat yang membuat layar belakang “hilang”.
    - Gunakan pola visual popup yang konsisten dengan modal operasional utama project ini, terutama gaya popup seperti pada fitur `Buat Jadwal Ujian`: konten fokus, backdrop ringan, dan context halaman tetap terbaca.
    - Popup tambahan wajib mengikuti standar modal operasional seperti `Lihat Detail Mengajar`: center terhadap area konten, body scroll jika panjang, dan tidak boleh tertutup hanya karena klik area luar; tutup hanya lewat tombol/aksi yang jelas.

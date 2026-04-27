@@ -221,6 +221,7 @@ export default function StudentGradesPage() {
   }, [activeProgramSubjects]);
   const activeProgramRelease = activeProgram?.release || null;
   const isProgramReleaseLocked = Boolean(activeProgramRelease && !activeProgramRelease.canViewDetails);
+  const isReportTabActive = activeTab === 'REPORT';
   const programReleaseDateLabel = activeProgramRelease?.effectiveDate
     ? formatDateLabel(activeProgramRelease.effectiveDate)
     : activeProgramRelease?.mode === 'REPORT_DATE'
@@ -278,22 +279,68 @@ export default function StudentGradesPage() {
 
       {data ? (
         <>
-          <div className="overflow-hidden rounded-3xl border border-slate-200 bg-white">
-            <div className="px-5 pt-5">
-              <UnderlineTabBar
-                items={[
-                  { id: 'PROGRAM', label: 'Nilai Program Ujian', icon: GraduationCap },
-                  { id: 'REPORT', label: 'Rapor Semester', icon: FileText },
-                ]}
-                activeId={activeTab}
-                onChange={(next) => setActiveTab(next as GradeTabKey)}
-                ariaLabel="Tab nilai siswa"
+          {isReportTabActive && reportCard ? (
+            <div className="grid gap-4 md:grid-cols-2 xl:grid-cols-4">
+              <SummaryCard
+                icon={<LayoutList className="h-5 w-5" />}
+                label="Mapel Siap"
+                value={`${reportCard.summary.availableSubjects}/${reportCard.summary.expectedSubjects}`}
+                subtitle={`Semester ${effectiveReportSemesterLabel}`}
+                tone={reportCard.status.tone === 'green' ? 'green' : reportCard.status.tone === 'amber' ? 'amber' : 'red'}
+              />
+              <SummaryCard
+                icon={<TrendingUp className="h-5 w-5" />}
+                label="Rata-rata"
+                value={formatScore(reportCard.summary.averageFinalScore)}
+                tone="blue"
+                subtitle={`Semester ${effectiveReportSemesterLabel}`}
+              />
+              <SummaryCard
+                icon={<UserCheck className="h-5 w-5" />}
+                label="Kehadiran"
+                value={String(reportCard.attendance.hadir)}
+                subtitle={`${reportCard.attendance.sakit} sakit • ${reportCard.attendance.izin} izin • ${reportCard.attendance.alpha} alpha`}
+                tone="green"
+              />
+              <SummaryCard
+                icon={<Clock3 className="h-5 w-5" />}
+                label="Mapel Menunggu"
+                value={String(reportCard.summary.missingSubjects)}
+                tone={reportCard.summary.missingSubjects > 0 ? 'amber' : 'green'}
               />
             </div>
-            <div className="px-5 pb-5 pt-3">
-              <p className="text-sm text-slate-500">
-                {activeTab === 'PROGRAM' ? programTabSubtitle : reportTabSubtitle}
-              </p>
+          ) : null}
+
+          <div className="overflow-hidden rounded-3xl border border-slate-200 bg-white">
+            <div className="flex flex-col gap-4 px-5 py-5 xl:flex-row xl:items-start xl:justify-between">
+              <div className="min-w-0 flex-1">
+                <UnderlineTabBar
+                  items={[
+                    { id: 'PROGRAM', label: 'Nilai Program Ujian', icon: GraduationCap },
+                    { id: 'REPORT', label: 'Rapor Semester', icon: FileText },
+                  ]}
+                  activeId={activeTab}
+                  onChange={(next) => setActiveTab(next as GradeTabKey)}
+                  ariaLabel="Tab nilai siswa"
+                />
+                <p className="mt-3 text-sm text-slate-500">
+                  {activeTab === 'PROGRAM' ? programTabSubtitle : reportTabSubtitle}
+                </p>
+              </div>
+
+              {isReportTabActive && reportCard ? (
+                <label className="flex min-w-[280px] items-center gap-3 text-sm text-slate-600 xl:justify-end">
+                  <span className="shrink-0 font-medium text-slate-700">Semester Rapor</span>
+                  <select
+                    value={effectiveReportSemester}
+                    onChange={(event) => setSelectedReportSemester((event.target.value as ReportSemesterValue) || '')}
+                    className="min-w-0 flex-1 px-4 py-3 text-sm font-medium text-slate-700 outline-none"
+                  >
+                    <option value="ODD">Semester Ganjil</option>
+                    <option value="EVEN">Semester Genap</option>
+                  </select>
+                </label>
+              ) : null}
             </div>
           </div>
 
@@ -492,97 +539,6 @@ export default function StudentGradesPage() {
             <>
               {reportCard ? (
                 <>
-                  <div className="rounded-3xl border border-slate-200 bg-white p-5">
-                    <div className="flex flex-col gap-4 lg:flex-row lg:items-end lg:justify-between">
-                      <div>
-                        <h2 className="text-xl font-bold text-slate-900">Semester Rapor</h2>
-                        <p className="mt-1 text-sm text-slate-500">
-                          Pilihan semester ini hanya mengubah tampilan rapor. Nilai Program Ujian tetap mengikuti semester aktif {data.meta.semesterLabel}.
-                        </p>
-                      </div>
-                      <label className="flex min-w-[280px] items-center gap-3 text-sm text-slate-600">
-                        <span className="shrink-0 font-medium text-slate-700">Semester Rapor</span>
-                        <select
-                          value={effectiveReportSemester}
-                          onChange={(event) => setSelectedReportSemester((event.target.value as ReportSemesterValue) || '')}
-                          className="min-w-0 flex-1 rounded-2xl border border-slate-200 bg-white px-4 py-3 text-sm font-medium text-slate-700 outline-none transition focus:border-blue-400"
-                        >
-                          <option value="ODD">Semester Ganjil</option>
-                          <option value="EVEN">Semester Genap</option>
-                        </select>
-                      </label>
-                    </div>
-                  </div>
-
-                  <div
-                    className={clsx(
-                      'rounded-3xl border p-5',
-                      reportCard.release.tone === 'green' && 'border-emerald-100 bg-emerald-50/80',
-                      reportCard.release.tone === 'amber' && 'border-amber-100 bg-amber-50/80',
-                      reportCard.release.tone === 'red' && 'border-rose-100 bg-rose-50/80',
-                    )}
-                  >
-                    <div className="flex flex-col gap-3 lg:flex-row lg:items-start lg:justify-between">
-                      <div>
-                        <div className="inline-flex items-center gap-2 rounded-full bg-white/80 px-3 py-1.5 text-sm font-semibold text-slate-700">
-                          <CalendarDays className="h-4 w-4" />
-                          Rilis Semester: {reportCard.release.label}
-                        </div>
-                        <p className="mt-3 text-sm text-slate-700">{reportCard.release.description}</p>
-                        <p className="mt-2 text-xs font-medium text-slate-600">
-                          Kesiapan data: {reportCard.status.label}
-                        </p>
-                      </div>
-                      <div className="rounded-2xl border border-white/70 bg-white/70 px-4 py-3 text-sm text-slate-600">
-                        <p className="font-semibold text-slate-900">
-                          {reportCard.reportDate ? formatDateLabel(reportCard.reportDate.date) : 'Tanggal rapor belum diatur'}
-                        </p>
-                        <p className="mt-1">
-                          {reportCard.reportDate?.place || 'Lokasi rapor belum diatur'} • Semester {effectiveReportSemesterLabel} • {reportCard.semesterType}
-                        </p>
-                      </div>
-                    </div>
-                  </div>
-
-                  <div className="grid gap-4 md:grid-cols-2 xl:grid-cols-4">
-                    <SummaryCard
-                      icon={<LayoutList className="h-5 w-5" />}
-                      label="Mapel Siap"
-                      value={`${reportCard.summary.availableSubjects}/${reportCard.summary.expectedSubjects}`}
-                      subtitle={`Semester ${effectiveReportSemesterLabel}`}
-                      tone={reportCard.status.tone === 'green' ? 'green' : reportCard.status.tone === 'amber' ? 'amber' : 'red'}
-                    />
-                    <SummaryCard
-                      icon={<TrendingUp className="h-5 w-5" />}
-                      label="Rata-rata"
-                      value={formatScore(reportCard.summary.averageFinalScore)}
-                      tone="blue"
-                      subtitle={`Semester ${effectiveReportSemesterLabel}`}
-                    />
-                    <SummaryCard
-                      icon={<UserCheck className="h-5 w-5" />}
-                      label="Kehadiran"
-                      value={String(reportCard.attendance.hadir)}
-                      subtitle={`${reportCard.attendance.sakit} sakit • ${reportCard.attendance.izin} izin • ${reportCard.attendance.alpha} alpha`}
-                      tone="green"
-                    />
-                    <SummaryCard
-                      icon={<Clock3 className="h-5 w-5" />}
-                      label="Mapel Menunggu"
-                      value={String(reportCard.summary.missingSubjects)}
-                      tone={reportCard.summary.missingSubjects > 0 ? 'amber' : 'green'}
-                    />
-                  </div>
-
-                  {!reportCard.release.canViewDetails ? (
-                    <div className="rounded-3xl border border-amber-100 bg-amber-50/80 p-5">
-                      <h2 className="text-xl font-bold text-slate-900">Detail Rapor Semester Menunggu Rilis</h2>
-                      <p className="mt-2 text-sm leading-6 text-slate-700">
-                        Nama mapel semester {effectiveReportSemesterLabel.toLowerCase()} sudah ditampilkan agar Anda tahu cakupan rapor yang akan keluar, tetapi nilai akhir, predikat, dan catatan kompetensi baru akan terbuka setelah tanggal rilis rapor.
-                      </p>
-                    </div>
-                  ) : null}
-
                   {reportCard.release.canViewDetails && reportCard.homeroomNote ? (
                     <div className="rounded-3xl border border-slate-200 bg-white p-5">
                       <h2 className="text-xl font-bold text-slate-900">Catatan Wali Kelas</h2>
@@ -595,7 +551,10 @@ export default function StudentGradesPage() {
                       <div className="border-b border-slate-200 px-5 py-5">
                         <h2 className="text-xl font-bold text-slate-900">Daftar Nilai Rapor Semester</h2>
                         <p className="mt-1 text-sm text-slate-500">
-                          {reportCard.subjects.length} mata pelajaran semester {effectiveReportSemesterLabel.toLowerCase()} mengikuti status rilis rapor semester.
+                          {reportCard.subjects.length} mata pelajaran semester {effectiveReportSemesterLabel.toLowerCase()}
+                          {reportCard.release.canViewDetails
+                            ? ' siap dibaca sesuai status rilis rapor semester.'
+                            : ' sudah ditampilkan, tetapi detail nilai akhir baru terbuka setelah rapor semester dirilis.'}
                         </p>
                       </div>
                       <div className="overflow-x-auto">
