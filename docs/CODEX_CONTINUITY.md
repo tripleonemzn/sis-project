@@ -5,47 +5,58 @@ Setiap room baru yang diminta `baca AGENTS.md` atau `lanjutkan` wajib membaca fi
 
 ## Update Terbaru
 
-- Last updated: 2026-04-27 21:54 WIB
-- Current status: refinement lanjutan untuk `Nilai Saya` siswa dan `Cetak Peringkat` wali kelas sudah selesai dan live. `Cetak Peringkat` kini tidak lagi mengandalkan iframe document terpisah, tetapi memakai print portal di window yang sama agar perilakunya lebih dekat ke cetak rapor program.
+- Last updated: 2026-04-27 22:24 WIB
+- Current status: perbaikan lanjutan `Cetak Peringkat` wali kelas dan penyempurnaan semester `Nilai Saya` siswa sudah selesai dan live. `Cetak Peringkat` kini kembali memakai jalur print `iframe` tersembunyi seperti cetak rapor program, sementara `Nilai Program Ujian` sekarang punya semester sendiri yang terpisah dari `Rapor Semester`.
 - Objective/task aktif:
-  - Merapikan struktur `Nilai Saya` siswa, menghilangkan alur popup/new window pada cetak peringkat, serta menetapkan standar dropdown sederhana vs searchable agar konsisten lintas modul.
+  - Menyamakan perilaku `Cetak Peringkat` dengan cetak rapor `SBTS/SAS/SAT`, lalu mengurangi kebingungan semester pada `Nilai Saya` siswa dengan memisahkan semester program ujian vs semester rapor.
 - Batch terakhir selesai:
-  - `Batch refinement Ranking Print current-window + Program Stats`
+  - `Batch ranking iframe print + student overview semester split`
 - Progress batch ini:
   - `100%`
 - Last completed repo work:
   - Commit: `pending current branch push`
-  - Title: `fix(ui): align ranking print with report flow`
+  - Title: `fix(ui): restore iframe ranking print and split student semesters`
   - Summary:
-    - `Cetak Peringkat` wali kelas kini memakai print portal pada window aktif dan `window.print()` langsung, bukan lagi mencetak document iframe terpisah
-    - statistik `Nilai Program Ujian` di halaman `Nilai Saya` siswa kini tampil sebagai summary card di atas seperti `Rapor Semester`
-    - copy penjelasan dua tab `Nilai Program Ujian` vs `Rapor Semester` diperjelas agar user lebih mudah membedakan konteks nilai ujian dan nilai rapor akhir
-    - parity mobile `Nilai Saya` ikut disamakan: statistik program tampil di posisi atas dan ringkasan ganda lama dihapus
+    - `Cetak Peringkat` wali kelas tidak lagi memakai portal print di window aktif yang menyebabkan preview blank; sekarang kembali ke pola `iframe` tersembunyi seperti cetak rapor program
+    - render dokumen ranking sekarang full inline-style HTML di iframe sehingga tampilan print tidak berubah karena ketergantungan CSS app/Tailwind
+    - endpoint `student-overview` kini menerima `program_semester` terpisah dari `report_semester`
+    - `Nilai Saya` web/mobile sekarang default tetap mengikuti semester aktif, tetapi tab `Nilai Program Ujian` punya dropdown `Semester Program` sendiri agar `SBTS/SAS/SAT` bisa dilihat lintas semester
+    - copy penjelasan tab program vs rapor diperjelas lagi agar konteks nilai ujian dan rapor akhir lebih mudah dibedakan
 - Area/file disentuh:
+  - `backend/src/controllers/grade.controller.ts`
+  - `frontend/src/components/teacher/exams/ExamProgramFilterBar.tsx`
   - `frontend/src/pages/student/StudentGradesPage.tsx`
   - `frontend/src/pages/teacher/homeroom/HomeroomRankingPage.tsx`
+  - `frontend/src/services/grade.service.ts`
   - `mobile-app/app/(app)/grades.tsx`
+  - `mobile-app/src/features/grades/gradeApi.ts`
+  - `mobile-app/src/features/grades/useStudentGradesQuery.ts`
   - `docs/CODEX_CONTINUITY.md`
 - Verifikasi batch ini:
   - `git diff --check`
+  - `cd backend && npm run build`
+  - `cd backend && npm run service:restart`
+  - `cd backend && npm run service:health`
   - `cd frontend && npm run build`
   - `cd frontend && npm run deploy`
   - `curl -I https://siskgb2.id/student/grades` -> `200`
   - `curl -I https://siskgb2.id/teacher/wali-kelas/rapor/program/sas` -> `200`
   - `cd mobile-app && npm run typecheck`
   - `cd mobile-app && npm run audit:parity:check`
-  - `cd mobile-app && npm run update:pilot-live:verified -- "Perbaikan cetak peringkat dan penyempurnaan statistik Nilai Saya siswa. Silakan perbarui untuk menikmati fitur terbaru."`
+  - `cd mobile-app && npm run check:ota:testers`
+  - `cd mobile-app && npm run update:pilot-live:verified -- "Perbaikan cetak peringkat dan penyempurnaan semester Nilai Saya. Silakan perbarui untuk menikmati fitur terbaru."`
 - Publish/live status:
+  - Backend live
   - Web live
   - OTA Android `pilot-live` live
-  - OTA update group: `1e54d53d-7b15-457d-9b94-041f43f0ce62`
-  - Android update ID: `019dcf6e-ad9f-77ea-b7be-66befa5ea2b3`
+  - OTA update group: `343fa8df-687b-483b-8e4c-0686d6a0d56f`
+  - Android update ID: `019dcf85-13a9-79bb-aae8-78920a69c858`
   - Push notify OTA: `recipients=3, sent=3, failed=0, stale=0`
 - Remaining work:
   - tidak ada pekerjaan setengah jadi pada batch ini
-  - jika user masih merasa perilaku print preview ranking di browser tertentu belum identik dengan rapor, langkah aman berikutnya adalah uji manual browser-spesifik dan, bila perlu, migrasi ranking ke route print khusus seperti modul cetak dokumen lain
+  - jika user masih menemukan perbedaan visual print ranking di browser tertentu, langkah aman berikutnya adalah audit browser-spesifik terhadap HTML ranking yang sekarang dicetak lewat iframe
 - Residual risk:
-  - perilaku dialog print tetap dipengaruhi browser. Dari sisi code path, ranking sekarang sudah mencetak dari window aktif; namun verifikasi UX final tetap perlu uji manual di browser pengguna karena terminal tidak bisa membuka dialog print secara visual
+  - `Cetak Peringkat` kini sudah mengikuti engine print rapor berbasis iframe, tetapi preview akhir tetap bergantung mesin print browser; verifikasi visual final tetap perlu uji manual di browser pengguna
 
 ## Status Saat Ini
 
