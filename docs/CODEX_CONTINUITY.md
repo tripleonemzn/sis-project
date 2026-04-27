@@ -5,48 +5,51 @@ Setiap room baru yang diminta `baca AGENTS.md` atau `lanjutkan` wajib membaca fi
 
 ## Update Terbaru
 
-- Last updated: 2026-04-27 17:15 WIB
-- Current status: penyempurnaan cetak rapor SBTS dan QR verifikasi sudah selesai dan live. QR rapor kini memakai token pendek pola BA dengan link `/verify/report-card/:token`, dan layout cetak SBTS dipadatkan lagi agar lebih mudah muat satu halaman A4 pada print preview.
+- Last updated: 2026-04-27 21:25 WIB
+- Current status: batch penyederhanaan `Nilai Saya` siswa, penyamaan alur cetak `Peringkat` wali kelas ke model iframe seperti rapor, dan standarisasi dropdown web sudah selesai dan live.
 - Objective/task aktif:
-  - Merapikan hasil cetak SBTS, menstandarkan QR rapor ke pola BA yang ringkas, dan mengevaluasi relokasi menu `Publikasi Nilai` wali kelas ke halaman program rapor.
+  - Merapikan struktur `Nilai Saya` siswa, menghilangkan alur popup/new window pada cetak peringkat, serta menetapkan standar dropdown sederhana vs searchable agar konsisten lintas modul.
 - Batch terakhir selesai:
-  - `Batch refinement rapor SBTS print + QR`
+  - `Batch refinement Nilai Saya + Ranking Print + Dropdown Standardization`
 - Progress batch ini:
   - `100%`
 - Last completed repo work:
-  - Commit: `pending current branch push`
-  - Title: `fix(report): shorten sbts verification token and tighten print layout`
+  - Commit: `7b1f8ec`
+  - Title: `feat(ui): streamline student grades and ranking print`
   - Summary:
-    - token verifikasi rapor SBTS diganti dari payload JWT padat menjadi token pendek UUID-like 36 karakter agar QR lebih ringan dipindai
-    - URL QR rapor distandarkan ke pola BA: `/verify/report-card/:token`
-    - verifikasi publik tetap backward-compatible dengan token lama `/v/rc/:token`
-    - resolver backend kini tetap bisa menemukan program SBTS aktif meski basis konfigurasi program tersimpan sebagai `FORMATIF + MIDTERM`
-    - layout cetak rapor SBTS dipadatkan pada margin, line-height, cell padding, attendance block, dan signature block agar peluang tetap 1 halaman lebih besar
+    - `Cetak Peringkat` wali kelas tidak lagi membuka window baru; sekarang memakai hidden iframe seperti cetak rapor `SBTS/SAS/SAT`
+    - halaman `Nilai Saya` role siswa diringankan dengan memindahkan statistik ke atas, menggabungkan filter `Semester Rapor` ke card tab, dan menghapus card informasi yang redundan
+    - parity mobile `Nilai Saya` ikut dirapikan ke struktur yang sama: statistik dulu, selector semester digabung ke card tab, dan card informasi besar yang tidak esensial dihapus
+    - dropdown native web distandarkan secara sistemik lewat shared CSS ke gaya compact seperti `Persetujuan Izin`
+    - pola dropdown data besar/searchable diformalisasi lewat shared CSS acuan `Tambah Assignment Guru` dan policy baru di `AGENTS.md`
 - Area/file disentuh:
-  - `backend/src/controllers/report.controller.ts`
-  - `frontend/src/pages/teacher/homeroom/HomeroomReportSbtsPage.tsx`
-  - `docs/CODEX_CONTINUITY.md`
+  - `AGENTS.md`
+  - `frontend/src/index.css`
+  - `frontend/src/pages/admin/users/TeacherAssignmentPage.tsx`
+  - `frontend/src/pages/student/StudentGradesPage.tsx`
+  - `frontend/src/pages/teacher/homeroom/HomeroomRankingPage.tsx`
+  - `mobile-app/app/(app)/grades.tsx`
 - Verifikasi batch ini:
-  - `cd backend && npm run build`
-  - `cd backend && npm run service:restart`
-  - `cd backend && npm run service:health`
-  - verifikasi sample token pendek:
-    - sample row: `studentId=956`, `academicYearId=4`, `semester=ODD`
-    - sample token: `000003bc-0004-12a8-12f3-ea8b5b2eb270`
-    - `GET http://127.0.0.1:3000/api/public/report-cards/verify/:token` -> `200`, `valid=true`
+  - `git diff --check`
   - `cd frontend && npm run build`
   - `cd frontend && npm run deploy`
-  - `curl -I https://siskgb2.id/teacher/wali-kelas/rapor/program/SBTS` -> `200`
-  - `curl -I https://siskgb2.id/verify/report-card/000003bc-0004-12a8-12f3-ea8b5b2eb270` -> `200`
+  - `curl -I https://siskgb2.id/student/grades` -> `200`
+  - `curl -I https://siskgb2.id/teacher/wali-kelas/rapor/program/SAT` -> `200`
+  - `cd mobile-app && npm run typecheck`
+  - `cd mobile-app && npm run audit:parity:check`
+  - `cd mobile-app && npm run check:ota:testers`
+  - `cd mobile-app && npm run update:pilot-live:verified -- "Penyempurnaan Nilai Saya siswa, cetak peringkat wali kelas, dan standarisasi dropdown. Silakan perbarui untuk menikmati fitur terbaru."`
 - Publish/live status:
-  - Backend live dan sehat (`Backend:200`, `Backend API:200`)
   - Web live
-  - OTA mobile tidak terdampak pada batch ini
+  - OTA Android `pilot-live` live
+  - OTA update group: `0b2d19e1-714b-4483-9d07-e12a0b6974b6`
+  - Android update ID: `019dcf54-6a7c-74e2-8f8a-f6684e48f8f2`
+  - Push notify OTA: `recipients=3, sent=3, failed=0, stale=0`
 - Remaining work:
-  - belum ada pemindahan UI `Publikasi Nilai`; rekomendasi teknis paling tepat adalah memindahkannya dari `Persetujuan Izin` ke tab per-program pada halaman `WALI KELAS > Rapor Program`, karena konteks program dan semester sudah otomatis lebih jelas di sana
-  - jika user setuju, batch berikutnya yang aman adalah menambahkan tab `Publikasi Nilai` pada `TeacherHomeroomSbtsPage` dan `TeacherHomeroomFinalPage`, lalu mengganti entry lama di `Persetujuan Izin` menjadi redirect/notifikasi transisi
+  - tidak ada pekerjaan setengah jadi pada batch ini
+  - jika nanti user ingin audit lebih dalam untuk dropdown data besar yang masih berupa native select di layar lama, langkah aman berikutnya adalah mengekstrak searchable dropdown shared component web lalu migrasi bertahap layar-layar yang benar-benar butuh pencarian
 - Residual risk:
-  - token pendek rapor tidak menyimpan nama program secara eksplisit; backend mengandalkan hint ringkas + konteks tahun ajaran/semester/tipe laporan untuk menemukan program aktif yang tepat. Untuk konfigurasi saat ini aman, tetapi kalau nanti ada banyak program SBTS aktif yang sangat mirip di semester sama, resolver perlu dinaikkan lagi ke identifier yang lebih kuat
+  - standarisasi dropdown sederhana sudah diterapkan sistemik lewat CSS global, sehingga perubahan visual menjangkau banyak select native sekaligus; build aman, tetapi review visual lanjutan tetap layak dilakukan pada layar lama yang sangat padat filter
 
 ## Status Saat Ini
 
