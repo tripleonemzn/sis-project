@@ -448,6 +448,40 @@ Setiap room baru yang diminta `baca AGENTS.md` atau `lanjutkan` wajib membaca fi
   - `cd backend && npm run attendance:import:tkj -- --apply --allow-overwrite` untuk create + overwrite agar penuh mengikuti Excel
   - untuk folder lain: tambah `--base-dir "/path/ke/folder"` saat menjalankan script yang sama
 
+## Update Terbaru 2026-04-27 14:50 WIB
+
+- Objective/task aktif:
+  - Rapikan UI `Publikasi Nilai` wali kelas agar lebih mudah dibaca.
+- Batch/wave terakhir selesai:
+  - Follow-up UI `Publikasi Nilai` wali kelas selesai.
+- Progress:
+  - `100%` untuk request ini.
+- Area/file yang disentuh:
+  - `frontend/src/pages/teacher/homeroom/HomeroomPermissionsPage.tsx`
+- Ringkasan perubahan:
+  - Tab header halaman `Persetujuan Izin` disamakan ke pola underline seperti `Kelola Ujian` Wakakur.
+  - Konten `Publikasi Nilai` diubah dari card menjadi tabel ringkas per program.
+  - Summary status dipadatkan jadi info strip ringan agar halaman lebih rapi.
+- Verifikasi yang sudah dijalankan:
+  - `cd frontend && npm run build`
+  - `cd frontend && npm run deploy`
+  - `curl -I https://siskgb2.id/teacher/wali-kelas/permissions` merespons `200`
+- Publish/live status:
+  - Web live.
+  - Backend tidak berubah.
+  - Mobile/OTA tidak terdampak.
+- Sisa pekerjaan:
+  - Tidak ada untuk request ini.
+- Blocker/residual risk:
+  - Tidak ada blocker yang terdeteksi.
+  - Perubahan hanya di frontend web, tanpa endpoint/query/polling/realtime baru.
+- Langkah aman berikutnya:
+  - Jika user masih merasa tabel terlalu padat, refinement berikutnya paling aman adalah merapikan urutan kolom atau memindahkan detail sekunder ke tooltip/popover ringan tanpa mengubah logic.
+- Last updated:
+  - 2026-04-27 14:50 WIB
+- Commit hash terkait:
+  - `9a5e8ff` `feat(homeroom): switch result publication to table view`
+
 ## Template Update Wajib Saat Ada Pekerjaan Baru
 
 - Objective/task aktif:
