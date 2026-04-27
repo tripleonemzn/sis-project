@@ -409,14 +409,20 @@ export const HomeroomReportSbtsPage = ({
           .footer { margin-top: 18px; page-break-inside: avoid; }
           .signature-row { display: flex; justify-content: space-between; align-items: flex-start; margin-bottom: 12px; }
           .signature-box { text-align: center; width: 250px; }
-          .signature-space { height: 56px; }
-          .signature-box.with-qr .signature-space { height: 14px; }
+          .signature-mark-area {
+            height: 72px;
+            display: flex;
+            align-items: flex-end;
+            justify-content: center;
+            margin-top: 4px;
+            margin-bottom: 2px;
+          }
           .signature-qr {
             display: block;
             width: 68px;
             height: 68px;
             object-fit: contain;
-            margin: 0 auto 3px;
+            margin: 0 auto 0;
             background: #fff;
           }
           .signature-name { display: inline-block; margin-top: 2px; }
@@ -505,19 +511,20 @@ export const HomeroomReportSbtsPage = ({
             <div class="signature-box">
               Mengetahui,<br>
               ${data.footer.signatures.parent.title},
-              <div class="signature-space"></div>
+              <div class="signature-mark-area"></div>
               <u>${data.footer.signatures.parent.name}</u>
             </div>
             
             <div class="signature-box ${homeroomVerificationQrDataUrl ? 'with-qr' : ''}">
                ${resolvedPrintPlace}, ${resolvedPrintDate}<br>
                ${data.footer.signatures.homeroom.title},
-               <div class="signature-space"></div>
+               <div class="signature-mark-area">
                ${
                  homeroomVerificationQrDataUrl
                    ? `<img src="${escapeHtml(homeroomVerificationQrDataUrl)}" alt="QR Verifikasi Wali Kelas" class="signature-qr" />`
                    : ''
                }
+               </div>
                <u class="signature-name">${data.footer.signatures.homeroom.name}</u>
                ${
                  homeroomNip && homeroomNip !== '-'

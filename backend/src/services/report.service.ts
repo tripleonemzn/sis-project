@@ -237,6 +237,101 @@ const sanitizeLegacyFormativeSeries = (rawValues: unknown[], _storedScore?: unkn
   return values;
 };
 
+type FormativeEvidenceStudentGradeLike = {
+  subjectId?: number | null;
+  score?: number | null;
+  nf1?: number | null;
+  nf2?: number | null;
+  nf3?: number | null;
+  nf4?: number | null;
+  nf5?: number | null;
+  nf6?: number | null;
+};
+
+type FormativeEvidenceReportGradeLike = {
+  subjectId?: number | null;
+  formatifScore?: number | null;
+  slotScores?: unknown;
+};
+
+const hasExplicitNumericEvidence = (values: Array<number | null | undefined>) =>
+  values.some((value) => value !== null && value !== undefined);
+
+const hasFormativeEvidenceInSlotScores = (
+  slotScores: Record<string, number | null>,
+  formativeSlotCode: string,
+) => {
+  const directValue = readSlotOrLegacyScore(slotScores, formativeSlotCode, null);
+  const midtermReferenceValue = readSlotOrLegacyScore(
+    slotScores,
+    buildFormativeReferenceSlotCode(formativeSlotCode, 'MIDTERM'),
+    null,
+  );
+  const finalReferenceValue = readSlotOrLegacyScore(
+    slotScores,
+    buildFormativeReferenceSlotCode(formativeSlotCode, 'FINAL'),
+    null,
+  );
+  const aliasValue = readSlotScoreByMatcher(slotScores, isFormativeAliasCode);
+  return (
+    directValue !== null ||
+    midtermReferenceValue !== null ||
+    finalReferenceValue !== null ||
+    aliasValue !== null
+  );
+};
+
+const buildSubjectFormativeEvidenceMap = (params: {
+  subjectIds: number[];
+  formativeSlotCode: string;
+  studentGrades: FormativeEvidenceStudentGradeLike[];
+  reportGrades: FormativeEvidenceReportGradeLike[];
+}) => {
+  const relevantSubjectIds = new Set(
+    params.subjectIds
+      .map((subjectId) => Number(subjectId))
+      .filter((subjectId) => Number.isFinite(subjectId) && subjectId > 0),
+  );
+  const evidenceMap = new Map<number, boolean>();
+  relevantSubjectIds.forEach((subjectId) => evidenceMap.set(subjectId, false));
+
+  params.studentGrades.forEach((grade) => {
+    const subjectId = Number(grade.subjectId || 0);
+    if (!relevantSubjectIds.has(subjectId)) return;
+    if (
+      hasExplicitNumericEvidence([
+        grade.score,
+        grade.nf1,
+        grade.nf2,
+        grade.nf3,
+        grade.nf4,
+        grade.nf5,
+        grade.nf6,
+      ])
+    ) {
+      evidenceMap.set(subjectId, true);
+    }
+  });
+
+  params.reportGrades.forEach((grade) => {
+    const subjectId = Number(grade.subjectId || 0);
+    if (!relevantSubjectIds.has(subjectId) || evidenceMap.get(subjectId)) return;
+    const slotScores = parseSlotScoreMap(grade.slotScores);
+    if (
+      grade.formatifScore !== null &&
+      grade.formatifScore !== undefined
+    ) {
+      evidenceMap.set(subjectId, true);
+      return;
+    }
+    if (hasFormativeEvidenceInSlotScores(slotScores, params.formativeSlotCode)) {
+      evidenceMap.set(subjectId, true);
+    }
+  });
+
+  return evidenceMap;
+};
+
 const resolveLegacyFinalScore = (
   reportScore: ReportScoreCarrier | null | undefined,
   finalSlotCode: string | null | undefined,
@@ -1037,6 +1132,60 @@ export class ReportService {
         programComponentType: activeProgramComponentType,
       }),
     );
+    const scopedSubjectIds = Array.from(
+      new Set(
+        scopedTeacherAssignments
+          .map((assignment) => Number(assignment.subjectId))
+          .filter((subjectId) => Number.isFinite(subjectId) && subjectId > 0),
+      ),
+    );
+    const classStudentIdsForFormativeEvidence = isMidtermReport
+      ? (await listHistoricalStudentsForClass(classData.id, academicYearId)).map((item) => item.id)
+      : [];
+    const [classFormativeStudentGrades, classFormativeReportGrades] =
+      isMidtermReport && classStudentIdsForFormativeEvidence.length > 0 && scopedSubjectIds.length > 0
+        ? await Promise.all([
+            prisma.studentGrade.findMany({
+              where: {
+                studentId: { in: classStudentIdsForFormativeEvidence },
+                academicYearId,
+                semester,
+                subjectId: { in: scopedSubjectIds },
+              },
+              select: {
+                subjectId: true,
+                score: true,
+                nf1: true,
+                nf2: true,
+                nf3: true,
+                nf4: true,
+                nf5: true,
+                nf6: true,
+              },
+            }),
+            prisma.reportGrade.findMany({
+              where: {
+                studentId: { in: classStudentIdsForFormativeEvidence },
+                academicYearId,
+                semester,
+                subjectId: { in: scopedSubjectIds },
+              },
+              select: {
+                subjectId: true,
+                formatifScore: true,
+                slotScores: true,
+              },
+            }),
+          ])
+        : [[], []];
+    const subjectFormativeEvidence = isMidtermReport
+      ? buildSubjectFormativeEvidenceMap({
+          subjectIds: scopedSubjectIds,
+          formativeSlotCode,
+          studentGrades: classFormativeStudentGrades,
+          reportGrades: classFormativeReportGrades,
+        })
+      : new Map<number, boolean>();
 
     // Fetch non-academic activities
     const nonAcademicReportSlot = resolveNonAcademicReportSlot(semester, {
@@ -1178,7 +1327,7 @@ export class ReportService {
           [grade?.nf1, grade?.nf2, grade?.nf3, grade?.nf4, grade?.nf5, grade?.nf6],
           grade?.score ?? reportScore?.formatifScore ?? null,
         );
-        const fallbackFormative = nfs.length > 0 ? nfs.reduce((a, b) => a + b, 0) / nfs.length : 0;
+        const fallbackFormative = nfs.length > 0 ? nfs.reduce((a, b) => a + b, 0) / nfs.length : null;
         const formativeMidtermReference = readSlotOrLegacyScore(
           slotScores,
           buildFormativeReferenceSlotCode(formativeSlotCode, 'MIDTERM'),
@@ -1188,13 +1337,17 @@ export class ReportService {
           formativeMidtermReference ??
           readSlotOrLegacyScore(slotScores, formativeSlotCode, reportScore?.formatifScore) ??
           fallbackFormative;
+        const hasFormativeInputForSubject = subjectFormativeEvidence.get(subject.id) === true;
+        if (formatifAvg === null && hasFormativeInputForSubject) {
+          formatifAvg = 0;
+        }
         const sbtsScore =
           readSlotOrLegacyScore(slotScores, midtermSlotCode, reportScore?.sbtsScore) ?? 0;
         const normalizedSbtsScore =
           sbtsScore > 0 ? normalizeRoundedFinalScore(sbtsScore) ?? sbtsScore : null;
 
         // Fallback calculation if reportGrade is not synced yet (though syncReportGrade should handle it)
-        if (!report) {
+        if (!report && fallbackFormative !== null) {
             formatifAvg = fallbackFormative;
         }
 
@@ -1206,8 +1359,8 @@ export class ReportService {
             { code: midtermSlotCode, score: sbtsScore },
           ]) ?? 0;
 
-        col1Score = formatifAvg > 0 ? Math.round(formatifAvg) : null;
-        col1Predicate = formatifAvg > 0 ? getPredicate(formatifAvg, kkm) : null;
+        col1Score = formatifAvg !== null ? Math.round(formatifAvg) : null;
+        col1Predicate = formatifAvg !== null ? getPredicate(formatifAvg, kkm) : null;
         
         col2Score = normalizedSbtsScore;
         col2Predicate = normalizedSbtsScore !== null ? getPredicate(normalizedSbtsScore, kkm) : null;
@@ -1714,6 +1867,12 @@ export class ReportService {
         programComponentType: activeProgramComponentType,
       }),
     );
+    const subjectKkmById = new Map<number, number>(
+      scopedTeacherAssignments.map((assignment) => [
+        Number(assignment.subjectId),
+        Number(assignment.kkm || 75),
+      ]),
+    );
     const subjects = scopedTeacherAssignments
       .map((ta) => ta.subject)
       .sort((a, b) => {
@@ -1735,6 +1894,12 @@ export class ReportService {
 
     const hasSlotScoreEvidence = (slotScores: Record<string, number | null>) =>
       Object.values(slotScores).some((value) => value !== null && value !== undefined);
+    const subjectFormativeEvidence = buildSubjectFormativeEvidenceMap({
+      subjectIds: subjects.map((subject) => subject.id),
+      formativeSlotCode,
+      studentGrades,
+      reportGrades,
+    });
 
     // 4. Transform data
     const students = classStudents.map(student => {
@@ -1756,10 +1921,17 @@ export class ReportService {
           buildFormativeReferenceSlotCode(formativeSlotCode, 'FINAL'),
           null,
         );
-        const formatifAvg =
+        const rawFormatifAvg =
           formativeFinalReference ??
           readSlotOrLegacyScore(slotScores, formativeSlotCode, reportScore?.formatifScore) ??
           formativeFallback;
+        const hasFormativeInputForSubject = subjectFormativeEvidence.get(subject.id) === true;
+        const formatifAvg =
+          rawFormatifAvg !== null
+            ? rawFormatifAvg
+            : hasFormativeInputForSubject
+              ? 0
+              : null;
         const midtermScore = readSlotOrLegacyScore(slotScores, midtermSlotCode, reportScore?.sbtsScore);
         const finalComponentScore = readSlotOrLegacyScore(
           slotScores,
@@ -1791,13 +1963,14 @@ export class ReportService {
         const hasEffectiveFinalScore = effectiveFinalScore !== null;
 
         grades[subject.id] = {
+          kkm: subjectKkmById.get(subject.id) ?? 75,
           nf1: sGrade?.nf1 ?? null,
           nf2: sGrade?.nf2 ?? null,
           nf3: sGrade?.nf3 ?? null,
           nf4: sGrade?.nf4 ?? null,
           nf5: sGrade?.nf5 ?? null,
           nf6: sGrade?.nf6 ?? null,
-          formatif: hasAnyEvidence ? formatifAvg : null,
+          formatif: hasAnyEvidence || hasFormativeInputForSubject ? formatifAvg : null,
           sbts: hasAnyEvidence ? midtermScore : null,
           finalComponent: hasAnyEvidence ? finalComponentScore : null,
           finalScore: hasEffectiveFinalScore ? effectiveFinalScore : null,

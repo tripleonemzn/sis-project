@@ -1,8 +1,9 @@
 import { useEffect, useMemo, useState } from 'react';
 import { Redirect, useRouter } from 'expo-router';
-import { useQuery } from '@tanstack/react-query';
+import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { scaleWithAppTextScale } from '../../theme/AppTextScaleProvider';
 import {
+  Alert,
   Pressable,
   RefreshControl,
   ScrollView,
@@ -13,6 +14,7 @@ import {
 import { Feather } from '@expo/vector-icons';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { AppLoadingScreen } from '../../components/AppLoadingScreen';
+import { MobileDetailModal } from '../../components/MobileDetailModal';
 import { MobileMenuTabBar } from '../../components/MobileMenuTabBar';
 import { MobileSelectField } from '../../components/MobileSelectField';
 import { MobileSummaryCard as SummaryCard } from '../../components/MobileSummaryCard';
@@ -21,6 +23,8 @@ import { BRAND_COLORS } from '../../config/brand';
 import { academicYearApi } from '../academicYear/academicYearApi';
 import { adminApi } from '../admin/adminApi';
 import { useAuth } from '../auth/AuthProvider';
+import { gradeApi } from '../grades/gradeApi';
+import type { HomeroomResultPublicationStudentRow } from '../grades/types';
 import { getStandardPagePadding } from '../../lib/ui/pageLayout';
 import { homeroomReportApi } from './homeroomReportApi';
 import { examApi } from '../exams/examApi';
@@ -32,7 +36,7 @@ import {
   HomeroomStudentReportSubjectRow,
 } from './types';
 
-type TabKey = 'RAPOR' | 'LEDGER' | 'EXTRACURRICULAR' | 'RANKING';
+type TabKey = 'RAPOR' | 'LEDGER' | 'EXTRACURRICULAR' | 'RANKING' | 'PUBLICATION';
 type RequestedProgramHint = 'MIDTERM' | 'FINAL_ODD' | 'FINAL_EVEN';
 
 type ModuleConfig = {
@@ -280,6 +284,19 @@ function safeText(value: string | null | undefined, fallback = '-') {
   return normalized.length > 0 ? normalized : fallback;
 }
 
+function formatDateTime(value: string | null | undefined) {
+  if (!value) return '-';
+  const date = new Date(value);
+  if (Number.isNaN(date.getTime())) return '-';
+  return date.toLocaleString('id-ID', {
+    day: '2-digit',
+    month: 'short',
+    year: 'numeric',
+    hour: '2-digit',
+    minute: '2-digit',
+  });
+}
+
 function averageFrom(values: Array<number | null | undefined>) {
   const valid = values.filter((item): item is number => item !== null && item !== undefined && Number.isFinite(item));
   if (!valid.length) return null;
@@ -449,6 +466,7 @@ export function HomeroomReportModuleScreen({
 }: HomeroomReportModuleScreenProps) {
   const router = useRouter();
   const insets = useSafeAreaInsets();
+  const queryClient = useQueryClient();
   const { isAuthenticated, isLoading, user } = useAuth();
   const pagePadding = getStandardPagePadding(insets, { bottom: 120 });
   const requestedProgramHint = toRequestedProgramHint(mode);
@@ -461,19 +479,12 @@ export function HomeroomReportModuleScreen({
     requestedProgramHint === 'FINAL_EVEN' ? 'EVEN' : 'ODD',
   );
   const [search, setSearch] = useState('');
+  const [publicationGuideVisible, setPublicationGuideVisible] = useState(false);
+  const [publicationProgramVisible, setPublicationProgramVisible] = useState(false);
   const semesterOptions = useMemo(
     () => [
       { value: 'ODD', label: 'Semester Ganjil' },
       { value: 'EVEN', label: 'Semester Genap' },
-    ],
-    [],
-  );
-  const reportTabItems = useMemo(
-    () => [
-      { key: 'RAPOR', label: 'Rapor Siswa', iconName: 'file-text' as const },
-      { key: 'LEDGER', label: 'Leger Nilai', iconName: 'layers' as const },
-      { key: 'EXTRACURRICULAR', label: 'Ekstrakurikuler', iconName: 'activity' as const },
-      { key: 'RANKING', label: 'Peringkat', iconName: 'bar-chart-2' as const },
     ],
     [],
   );
@@ -594,6 +605,35 @@ export function HomeroomReportModuleScreen({
   ]);
 
   const isSemesterLockedByProgram = Boolean(fixedSemesterFromProgram);
+  const isFinalProgramView = useMemo(() => {
+    if (isFinalAliasCode(activeProgramComponentType)) return true;
+    if (isFinalAliasCode(activeProgramComponentMode)) return true;
+    return normalizeProgramCode(resolvedMode) === 'FINAL';
+  }, [activeProgramComponentMode, activeProgramComponentType, resolvedMode]);
+
+  const reportTabItems = useMemo(() => {
+    const items: Array<{
+      key: TabKey;
+      label: string;
+      iconName: 'file-text' | 'layers' | 'activity' | 'bar-chart-2' | 'award';
+    }> = [
+      { key: 'LEDGER', label: 'Leger Nilai', iconName: 'layers' },
+      { key: 'EXTRACURRICULAR', label: 'Ekstrakurikuler', iconName: 'activity' },
+    ];
+    if (isFinalProgramView) {
+      items.push({ key: 'RANKING', label: 'Peringkat', iconName: 'bar-chart-2' });
+    }
+    items.push(
+      { key: 'RAPOR', label: 'Rapor Siswa', iconName: 'file-text' },
+      { key: 'PUBLICATION', label: 'Publikasi Nilai', iconName: 'award' },
+    );
+    return items;
+  }, [isFinalProgramView]);
+
+  useEffect(() => {
+    if (reportTabItems.some((item) => item.key === activeTab)) return;
+    setActiveTab(reportTabItems[0]?.key || 'RAPOR');
+  }, [activeTab, reportTabItems]);
 
   useEffect(() => {
     const nextSemester = fixedSemesterFromProgram || moduleConfig.defaultSemester;
@@ -714,6 +754,58 @@ export function HomeroomReportModuleScreen({
       }),
   });
 
+  const publicationQuery = useQuery({
+    queryKey: [
+      'mobile-homeroom-report-publication',
+      user?.id,
+      activeProgramCode,
+      selectedClassId,
+      activeYearQuery.data?.id,
+      semester,
+      search,
+    ],
+    enabled:
+      isAuthenticated &&
+      !!isAllowed &&
+      !!selectedClassId &&
+      !!activeYearQuery.data?.id &&
+      !!activeProgramCode &&
+      activeTab === 'PUBLICATION',
+    queryFn: async () =>
+      gradeApi.getHomeroomResultPublications({
+        classId: Number(selectedClassId),
+        semester,
+        publicationCode: activeProgramCode,
+        page: 1,
+        limit: 250,
+        search: search.trim() || undefined,
+      }),
+  });
+
+  const updatePublicationMutation = useMutation({
+    mutationFn: (payload: {
+      classId: number;
+      studentId: number;
+      publicationCode: string;
+      mode: 'FOLLOW_GLOBAL' | 'BLOCKED';
+    }) => gradeApi.updateHomeroomResultPublication(payload),
+    onSuccess: async (_, payload) => {
+      await queryClient.invalidateQueries({ queryKey: ['mobile-homeroom-report-publication'] });
+      Alert.alert(
+        'Berhasil',
+        payload.mode === 'BLOCKED'
+          ? 'Publikasi nilai berhasil ditahan oleh wali kelas.'
+          : 'Publikasi nilai kembali mengikuti jadwal Wakakur.',
+      );
+    },
+    onError: (error: unknown) => {
+      const normalized = error as { response?: { data?: { message?: string } }; message?: string };
+      const message =
+        normalized.response?.data?.message || normalized.message || 'Gagal memperbarui publikasi nilai.';
+      Alert.alert('Proses Gagal', message);
+    },
+  });
+
   const onRefresh = async () => {
     await Promise.all([
       activeYearQuery.refetch(),
@@ -723,6 +815,37 @@ export function HomeroomReportModuleScreen({
       ledgerQuery.refetch(),
       extracurricularQuery.refetch(),
       rankingQuery.refetch(),
+      publicationQuery.refetch(),
+    ]);
+  };
+
+  const handleToggleResultPublication = (row: HomeroomResultPublicationStudentRow) => {
+    const selectedProgram = publicationQuery.data?.selectedProgram;
+    if (!selectedClassId || !selectedProgram) {
+      Alert.alert('Program Belum Siap', 'Program publikasi nilai belum tersedia.');
+      return;
+    }
+
+    const nextMode = row.homeroomPublication.mode === 'BLOCKED' ? 'FOLLOW_GLOBAL' : 'BLOCKED';
+    const title = nextMode === 'BLOCKED' ? 'Tahan Publikasi Nilai' : 'Ikuti Jadwal Wakakur';
+    const message =
+      nextMode === 'BLOCKED'
+        ? `Tahan hasil nilai ${selectedProgram.shortLabel} untuk ${row.student.name}?`
+        : `Kembalikan hasil nilai ${selectedProgram.shortLabel} untuk ${row.student.name} agar mengikuti jadwal Wakakur?`;
+
+    Alert.alert(title, message, [
+      { text: 'Batal', style: 'cancel' },
+      {
+        text: nextMode === 'BLOCKED' ? 'Tahan' : 'Ikuti Wakakur',
+        style: nextMode === 'BLOCKED' ? 'destructive' : 'default',
+        onPress: () =>
+          updatePublicationMutation.mutate({
+            classId: Number(selectedClassId),
+            studentId: row.student.id,
+            publicationCode: selectedProgram.publicationCode,
+            mode: nextMode,
+          }),
+      },
     ]);
   };
 
@@ -1338,6 +1461,221 @@ export function HomeroomReportModuleScreen({
     );
   };
 
+  const renderPublicationTab = () => {
+    if (publicationQuery.isLoading) {
+      return <QueryStateView type="loading" message="Memuat kontrol publikasi nilai..." />;
+    }
+    if (publicationQuery.isError) {
+      return (
+        <QueryStateView
+          type="error"
+          message="Gagal memuat kontrol publikasi nilai."
+          onRetry={() => publicationQuery.refetch()}
+        />
+      );
+    }
+
+    const publicationData = publicationQuery.data;
+    const selectedProgram = publicationData?.selectedProgram || null;
+    const rows = publicationData?.rows || [];
+    const summary = publicationData?.summary || {
+      totalStudents: 0,
+      blockedStudents: 0,
+      visibleStudents: 0,
+      waitingWakakurStudents: 0,
+    };
+
+    if (!selectedProgram) {
+      return <EmptyState message="Program nilai ini belum punya konfigurasi publikasi siswa." />;
+    }
+
+    return (
+      <View>
+        <View style={{ flexDirection: 'row', marginHorizontal: -4, marginBottom: 12 }}>
+          <View style={{ flex: 1, paddingHorizontal: 4 }}>
+            <SummaryCard title="Total Siswa" value={formatNumber(summary.totalStudents)} subtitle="Sesuai kelas aktif" />
+          </View>
+          <View style={{ flex: 1, paddingHorizontal: 4 }}>
+            <SummaryCard
+              title="Sudah Tampil"
+              value={formatNumber(summary.visibleStudents)}
+              subtitle={`Ditahan ${formatNumber(summary.blockedStudents)} • Menunggu ${formatNumber(summary.waitingWakakurStudents)}`}
+            />
+          </View>
+        </View>
+
+        <View style={{ flexDirection: 'row', justifyContent: 'flex-end', marginBottom: 12 }}>
+          <Pressable
+            onPress={() => setPublicationGuideVisible(true)}
+            style={{
+              width: 44,
+              height: 44,
+              borderRadius: 999,
+              borderWidth: 1,
+              borderColor: '#fde68a',
+              backgroundColor: '#fefce8',
+              alignItems: 'center',
+              justifyContent: 'center',
+              shadowColor: '#a16207',
+              shadowOffset: { width: 0, height: 4 },
+              shadowOpacity: 0.12,
+              shadowRadius: 8,
+              elevation: 2,
+            }}
+          >
+            <Feather name="alert-circle" size={20} color="#ca8a04" />
+          </Pressable>
+          <Pressable
+            onPress={() => setPublicationProgramVisible(true)}
+            style={{
+              marginLeft: 12,
+              width: 44,
+              height: 44,
+              borderRadius: 999,
+              borderWidth: 1,
+              borderColor: '#bfdbfe',
+              backgroundColor: '#eff6ff',
+              alignItems: 'center',
+              justifyContent: 'center',
+              shadowColor: '#2563eb',
+              shadowOffset: { width: 0, height: 4 },
+              shadowOpacity: 0.12,
+              shadowRadius: 8,
+              elevation: 2,
+            }}
+          >
+            <Feather name="calendar" size={20} color="#2563eb" />
+          </Pressable>
+        </View>
+
+        {rows.length > 0 ? (
+          rows.map((row) => {
+            const isBlocked = row.homeroomPublication.mode === 'BLOCKED';
+            const effectiveColors =
+              row.effectiveVisibility.tone === 'green'
+                ? { border: '#86efac', bg: '#dcfce7', text: '#166534' }
+                : row.effectiveVisibility.tone === 'amber'
+                  ? { border: '#fcd34d', bg: '#fffbeb', text: '#92400e' }
+                  : { border: '#fca5a5', bg: '#fee2e2', text: '#991b1b' };
+
+            return (
+              <View
+                key={row.student.id}
+                style={{
+                  borderWidth: 1,
+                  borderColor: '#dbe7fb',
+                  borderRadius: 12,
+                  backgroundColor: '#fff',
+                  padding: 12,
+                  marginBottom: 10,
+                }}
+              >
+                <View
+                  style={{
+                    flexDirection: 'row',
+                    justifyContent: 'space-between',
+                    alignItems: 'flex-start',
+                    gap: 10,
+                    marginBottom: 10,
+                  }}
+                >
+                  <View style={{ flex: 1 }}>
+                    <Text style={{ color: BRAND_COLORS.textDark, fontWeight: '700', fontSize: scaleWithAppTextScale(15), lineHeight: 22 }}>
+                      {row.student.name}
+                    </Text>
+                    <Text style={{ color: '#64748b', marginTop: 4, fontSize: scaleWithAppTextScale(12), lineHeight: 18 }}>
+                      NIS: {row.student.nis || '-'} • NISN: {row.student.nisn || '-'}
+                    </Text>
+                  </View>
+
+                  <Pressable
+                    onPress={() => handleToggleResultPublication(row)}
+                    disabled={updatePublicationMutation.isPending}
+                    style={{
+                      borderRadius: 10,
+                      backgroundColor: isBlocked ? '#16a34a' : '#dc2626',
+                      paddingHorizontal: 12,
+                      paddingVertical: 10,
+                      opacity: updatePublicationMutation.isPending ? 0.7 : 1,
+                    }}
+                  >
+                    <Text style={{ color: '#fff', fontWeight: '700', textAlign: 'center' }}>
+                      {isBlocked ? 'Publikasikan' : 'Tahan Publikasi'}
+                    </Text>
+                  </Pressable>
+                </View>
+
+                <View style={{ gap: 8 }}>
+                  <View
+                    style={{
+                      borderWidth: 1,
+                      borderColor: '#e2e8f0',
+                      backgroundColor: '#f8fafc',
+                      borderRadius: 10,
+                      padding: 10,
+                    }}
+                  >
+                    <Text style={{ color: '#64748b', fontSize: scaleWithAppTextScale(11), fontWeight: '700', marginBottom: 4 }}>
+                      RILIS WAKAKUR
+                    </Text>
+                    <Text style={{ color: BRAND_COLORS.textDark, fontWeight: '700' }}>
+                      {selectedProgram.globalRelease.label || '-'}
+                    </Text>
+                    <Text style={{ color: BRAND_COLORS.textMuted, fontSize: scaleWithAppTextScale(12), lineHeight: 18, marginTop: 4 }}>
+                      {selectedProgram.globalRelease.effectiveDate
+                        ? `Efektif ${formatDateTime(selectedProgram.globalRelease.effectiveDate)}`
+                        : 'Tanpa tanggal khusus'}
+                    </Text>
+                  </View>
+
+                  <View
+                    style={{
+                      borderWidth: 1,
+                      borderColor: '#e2e8f0',
+                      backgroundColor: '#f8fafc',
+                      borderRadius: 10,
+                      padding: 10,
+                    }}
+                  >
+                    <Text style={{ color: '#64748b', fontSize: scaleWithAppTextScale(11), fontWeight: '700', marginBottom: 4 }}>
+                      GATE WALI KELAS
+                    </Text>
+                    <Text style={{ color: BRAND_COLORS.textDark, fontWeight: '700' }}>{row.homeroomPublication.label}</Text>
+                    <Text style={{ color: BRAND_COLORS.textMuted, fontSize: scaleWithAppTextScale(12), lineHeight: 18, marginTop: 4 }}>
+                      {row.homeroomPublication.updatedAt
+                        ? `Diperbarui ${formatDateTime(row.homeroomPublication.updatedAt)}`
+                        : 'Belum ada override manual'}
+                    </Text>
+                  </View>
+
+                  <View
+                    style={{
+                      borderWidth: 1,
+                      borderColor: effectiveColors.border,
+                      backgroundColor: effectiveColors.bg,
+                      borderRadius: 10,
+                      padding: 10,
+                    }}
+                  >
+                    <Text style={{ color: effectiveColors.text, fontSize: scaleWithAppTextScale(11), fontWeight: '700', marginBottom: 4 }}>
+                      STATUS KE SISWA
+                    </Text>
+                    <Text style={{ color: effectiveColors.text, fontWeight: '700' }}>{row.effectiveVisibility.label}</Text>
+                    <Text style={{ color: effectiveColors.text, fontSize: scaleWithAppTextScale(12), lineHeight: 18, marginTop: 4 }}>
+                      {row.effectiveVisibility.description}
+                    </Text>
+                  </View>
+                </View>
+              </View>
+            );
+          })
+        ) : (
+          <EmptyState message="Tidak ada siswa yang ditemukan untuk pencarian ini." />
+        )}
+      </View>
+    );
+  };
+
   if (isLoading) return <AppLoadingScreen message="Memuat modul rapor wali kelas..." />;
   if (!isAuthenticated) return <Redirect href="/welcome" />;
 
@@ -1617,6 +1955,73 @@ export function HomeroomReportModuleScreen({
       {activeTab === 'LEDGER' ? renderLedgerTab() : null}
       {activeTab === 'EXTRACURRICULAR' ? renderExtracurricularTab() : null}
       {activeTab === 'RANKING' ? renderRankingTab() : null}
+      {activeTab === 'PUBLICATION' ? renderPublicationTab() : null}
+
+      <MobileDetailModal
+        visible={publicationGuideVisible}
+        title="Panduan Publikasi Nilai"
+        subtitle="Ikuti jadwal Kurikulum, lalu tahan hanya jika memang perlu per siswa."
+        iconName="alert-circle"
+        accentColor="#ca8a04"
+        onClose={() => setPublicationGuideVisible(false)}
+      >
+        <View style={{ gap: 10 }}>
+          {[
+            'Default publikasi nilai tetap mengikuti jadwal rilis dari Wakakur/Kurikulum.',
+            'Gunakan kontrol ini hanya jika wali kelas perlu menahan hasil nilai siswa tertentu.',
+            'Penahanan bersifat per siswa dan tidak memengaruhi siswa lain di kelas yang sama.',
+          ].map((item) => (
+            <View
+              key={item}
+              style={{
+                borderWidth: 1,
+                borderColor: '#fde68a',
+                borderRadius: 14,
+                paddingHorizontal: 12,
+                paddingVertical: 11,
+                backgroundColor: '#fefce8',
+              }}
+            >
+              <Text style={{ color: '#854d0e', fontSize: scaleWithAppTextScale(12), lineHeight: 18 }}>{item}</Text>
+            </View>
+          ))}
+        </View>
+      </MobileDetailModal>
+
+      <MobileDetailModal
+        visible={publicationProgramVisible && !!publicationQuery.data?.selectedProgram}
+        title={publicationQuery.data?.selectedProgram?.label || 'Jadwal Rilis'}
+        subtitle="Status rilis global dari Wakakur untuk jenis nilai pada tab ini."
+        iconName="calendar"
+        accentColor="#2563eb"
+        onClose={() => setPublicationProgramVisible(false)}
+      >
+        <View
+          style={{
+            borderWidth: 1,
+            borderColor: '#bfdbfe',
+            borderRadius: 14,
+            paddingHorizontal: 12,
+            paddingVertical: 12,
+            backgroundColor: '#eff6ff',
+          }}
+        >
+          <Text style={{ color: '#1d4ed8', fontSize: scaleWithAppTextScale(11), fontWeight: '700', marginBottom: 4 }}>
+            STATUS RILIS
+          </Text>
+          <Text style={{ color: BRAND_COLORS.textDark, fontWeight: '700', fontSize: scaleWithAppTextScale(15) }}>
+            {publicationQuery.data?.selectedProgram?.globalRelease.label || '-'}
+          </Text>
+          <Text style={{ color: '#1e40af', fontSize: scaleWithAppTextScale(12), lineHeight: 18, marginTop: 6 }}>
+            {publicationQuery.data?.selectedProgram?.globalRelease.description || '-'}
+          </Text>
+          <Text style={{ color: '#1d4ed8', fontSize: scaleWithAppTextScale(11), lineHeight: 16, marginTop: 8 }}>
+            {publicationQuery.data?.selectedProgram?.globalRelease.effectiveDate
+              ? `Efektif ${formatDateTime(publicationQuery.data?.selectedProgram?.globalRelease.effectiveDate)}`
+              : 'Tanpa tanggal khusus'}
+          </Text>
+        </View>
+      </MobileDetailModal>
     </ScrollView>
   );
 }

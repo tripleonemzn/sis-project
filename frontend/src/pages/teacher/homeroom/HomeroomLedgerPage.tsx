@@ -13,6 +13,7 @@ interface HomeroomLedgerPageProps {
 }
 
 interface LedgerGrade {
+  kkm?: number | null;
   nf1: number | null;
   nf2: number | null;
   nf3: number | null;
@@ -31,6 +32,22 @@ interface LedgerGrade {
 const isBelowKkmPredicate = (predicate: string | null | undefined) => {
   const normalized = String(predicate || '').trim().toUpperCase();
   return normalized === 'C' || normalized === 'D';
+};
+
+const parseLedgerScore = (value: number | string | null | undefined) => {
+  if (value === null || value === undefined || value === '') return null;
+  const parsed = Number(value);
+  return Number.isFinite(parsed) ? parsed : null;
+};
+
+const isBelowKkmScore = (
+  value: number | string | null | undefined,
+  kkm: number | string | null | undefined,
+) => {
+  const numericValue = parseLedgerScore(value);
+  const numericKkm = parseLedgerScore(kkm);
+  if (numericValue === null || numericKkm === null) return false;
+  return numericValue < numericKkm;
 };
 
 interface LedgerStudent {
@@ -251,6 +268,11 @@ export const HomeroomLedgerPage = ({
                   </td>
                   {ledgerData.subjects.map((subject) => {
                     const grades = student.grades[subject.id];
+                    const gradeKkm = grades?.kkm ?? null;
+                    const formatifBelowKkm = isBelowKkmScore(grades?.formatif, gradeKkm);
+                    const sbtsBelowKkm = isBelowKkmScore(grades?.sbts, gradeKkm);
+                    const finalBelowKkm =
+                      isBelowKkmScore(grades?.finalScore, gradeKkm) || isBelowKkmPredicate(grades?.predicate);
                     
                     let col1Value: React.ReactNode = '-';
                     let col2Value: React.ReactNode = '-';
@@ -287,7 +309,11 @@ export const HomeroomLedgerPage = ({
                       <Fragment key={`${student.id}-${subject.id}`}>
                         <td
                           className={`px-2 py-3 text-center border-r border-gray-200 ${
-                            isFinalView && isBelowKkmPredicate(grades?.predicate)
+                            isFinalView
+                              ? finalBelowKkm
+                                ? 'text-red-600 font-bold'
+                                : 'text-gray-600'
+                              : formatifBelowKkm
                               ? 'text-red-600 font-bold'
                               : 'text-gray-600'
                           }`}
@@ -296,7 +322,7 @@ export const HomeroomLedgerPage = ({
                         </td>
                         <td className={isFinalView 
                           ? "px-2 py-3 text-left border-r border-gray-200 font-medium text-blue-700 bg-blue-50/30 w-[240px] min-w-[240px] max-w-[240px] whitespace-normal break-words"
-                          : "px-2 py-3 text-center border-r border-gray-200 font-medium text-blue-700 bg-blue-50/30"}>
+                          : `px-2 py-3 text-center border-r border-gray-200 font-medium bg-blue-50/30 ${sbtsBelowKkm ? 'text-red-600' : 'text-blue-700'}`}>
                           {col2Value}
                         </td>
                       </Fragment>

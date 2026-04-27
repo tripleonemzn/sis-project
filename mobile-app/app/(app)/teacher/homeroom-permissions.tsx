@@ -717,7 +717,7 @@ export default function TeacherHomeroomPermissionsScreen() {
         Persetujuan Izin
       </Text>
       <Text style={{ color: BRAND_COLORS.textMuted, marginBottom: 12 }}>
-        Kelola perizinan, akses ujian, publikasi nilai, dan Buku Wali Kelas siswa.
+        Kelola perizinan, akses ujian, dan Buku Wali Kelas siswa.
       </Text>
 
       <MobileMenuTabBar
@@ -725,7 +725,6 @@ export default function TeacherHomeroomPermissionsScreen() {
           { key: 'IZIN', label: 'Daftar Izin', iconName: 'file-text' },
           { key: 'AKSES_UJIAN', label: 'Akses Ujian', iconName: 'shield' },
           { key: 'BUKU_WALI_KELAS', label: 'Buku Wali Kelas', iconName: 'book-open' },
-          { key: 'PUBLIKASI_NILAI', label: 'Publikasi Nilai', iconName: 'award' },
         ]}
         activeKey={activeTab}
         onChange={(key) => {

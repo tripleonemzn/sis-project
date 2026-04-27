@@ -15,7 +15,6 @@ import {
   FileText,
   ShieldAlert,
   BookOpenText,
-  GraduationCap,
 } from 'lucide-react';
 import { format } from 'date-fns';
 import { id as idLocale } from 'date-fns/locale';
@@ -114,7 +113,6 @@ export const HomeroomPermissionsPage = () => {
     const prefs = userData?.data?.preferences as Record<string, unknown> | undefined;
     const savedTab = String(prefs?.['homeroom-permissions-active-tab'] || '');
     if (savedTab === 'exam_restrictions') return 'exam_restrictions';
-    if (savedTab === 'result_publication') return 'result_publication';
     if (savedTab === 'homeroom_book') return 'homeroom_book';
     return 'permissions';
   }, [userData?.data?.preferences]);
@@ -481,7 +479,7 @@ export const HomeroomPermissionsPage = () => {
       <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4">
         <div>
           <h1 className="text-2xl font-bold text-gray-900">Persetujuan Izin</h1>
-          <p className="text-gray-500 mt-1">Kelola perizinan, akses ujian, publikasi nilai, dan Buku Wali Kelas siswa</p>
+          <p className="text-gray-500 mt-1">Kelola perizinan, akses ujian, dan Buku Wali Kelas siswa</p>
         </div>
       </div>
 
@@ -526,18 +524,6 @@ export const HomeroomPermissionsPage = () => {
               >
                 <BookOpenText size={16} />
                 <span>Buku Wali Kelas</span>
-              </button>
-              <button
-                type="button"
-                onClick={() => handleTabChange('result_publication')}
-                className={`-mb-px flex items-center gap-2 border-b-2 px-4 py-3 whitespace-nowrap transition-colors text-[13px] ${
-                  activeTab === 'result_publication'
-                    ? 'border-blue-600 text-blue-600 font-medium'
-                    : 'border-transparent text-gray-500 hover:text-gray-700 hover:border-gray-300'
-                }`}
-              >
-                <GraduationCap size={16} />
-                <span>Publikasi Nilai</span>
               </button>
             </div>
 

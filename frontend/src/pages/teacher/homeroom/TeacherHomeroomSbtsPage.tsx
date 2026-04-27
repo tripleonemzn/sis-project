@@ -9,15 +9,17 @@ import {
   FileBarChart,
   Layers,
   Filter,
-  Loader2
+  Loader2,
+  GraduationCap,
 } from 'lucide-react';
 import type { LucideIcon } from 'lucide-react';
 import { classService } from '../../../services/class.service';
 import { HomeroomLedgerPage } from './HomeroomLedgerPage';
 import { HomeroomExtracurricularsPage } from './HomeroomExtracurricularsPage';
 import { HomeroomReportSbtsPage } from './HomeroomReportSbtsPage';
+import { HomeroomResultPublicationPanel } from '../../../components/homeroom/HomeroomResultPublicationPanel';
 
-type HomeroomMidtermTabId = 'report-main' | 'ledger' | 'extracurriculars';
+type HomeroomMidtermTabId = 'report-main' | 'ledger' | 'extracurriculars' | 'publication';
 interface HomeroomMidtermTabConfig {
   id: HomeroomMidtermTabId;
   label: string;
@@ -101,6 +103,7 @@ export const TeacherHomeroomSbtsPage = ({
       { id: 'ledger', label: 'Leger Nilai', icon: FileText },
       { id: 'extracurriculars', label: 'Ekstrakurikuler', icon: Layers },
       { id: 'report-main', label: `Rapor ${resolvedProgramLabel}`, icon: FileBarChart },
+      { id: 'publication', label: 'Publikasi Nilai', icon: GraduationCap },
     ],
     [resolvedProgramLabel],
   );
@@ -253,6 +256,13 @@ export const TeacherHomeroomSbtsPage = ({
                 academicYearId={activeAcademicYearId}
                 semester={semester}
                 reportType={resolvedReportType}
+                programCode={programCode}
+              />
+            )}
+            {effectiveTab === 'publication' && (
+              <HomeroomResultPublicationPanel
+                classId={classSummary.id}
+                semester={semester}
                 programCode={programCode}
               />
             )}
