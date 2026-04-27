@@ -9,6 +9,7 @@ import {
   type TeachingResourceBlockType,
   type TeachingResourceColumnDataType,
   type TeachingResourceColumnValueSource,
+  type TeachingResourceFieldBinding,
   type TeachingResourceFieldSourceType,
   type TeachingResourceFieldSyncMode,
   type TeachingResourcePrintRules,
@@ -57,6 +58,17 @@ type ColumnOperationalRole =
   | 'REFERENCE_PICKER'
   | 'SNAPSHOT_TARGET'
   | 'SYSTEM_FIELD';
+type ColumnQuickPreset =
+  | 'REFERENCE_SOURCE_CORE'
+  | 'REFERENCE_PICKER_CONTEXTUAL'
+  | 'SNAPSHOT_TARGET_CONTEXTUAL'
+  | 'SYSTEM_ACTIVE_YEAR'
+  | 'SYSTEM_ACTIVE_SEMESTER'
+  | 'SYSTEM_SUBJECT'
+  | 'SYSTEM_CLASS_LEVEL'
+  | 'SYSTEM_SKILL_PROGRAM'
+  | 'SYSTEM_TEACHER_NAME'
+  | 'SYSTEM_PLACE_DATE';
 
 const TARGET_CLASS_OPTIONS = [
   { value: 'X', label: 'X' },
@@ -211,6 +223,73 @@ const COLUMN_OPERATIONAL_ROLE_OPTIONS: Array<{
     description: 'Kolom ini diisi oleh sistem aktif seperti mapel, semester, atau tahun ajaran.',
   },
 ];
+const COLUMN_QUICK_PRESET_OPTIONS: Array<{
+  value: ColumnQuickPreset;
+  label: string;
+  description: string;
+  group: 'INTEGRATION' | 'SYSTEM';
+}> = [
+  {
+    value: 'REFERENCE_SOURCE_CORE',
+    label: 'Jadikan Sumber Referensi',
+    description: 'Kolom ini menjadi sumber data yang boleh dibaca dokumen lain.',
+    group: 'INTEGRATION',
+  },
+  {
+    value: 'REFERENCE_PICKER_CONTEXTUAL',
+    label: 'Pilih Referensi Terkait',
+    description: 'Dropdown referensi dengan filter konteks mapel, tingkat, jurusan, dan semester aktif.',
+    group: 'INTEGRATION',
+  },
+  {
+    value: 'SNAPSHOT_TARGET_CONTEXTUAL',
+    label: 'Isi Otomatis dari Referensi',
+    description: 'Kolom turunan yang mengambil snapshot dari dokumen sumber yang dipilih.',
+    group: 'INTEGRATION',
+  },
+  {
+    value: 'SYSTEM_ACTIVE_YEAR',
+    label: 'Tahun Ajaran Aktif',
+    description: 'Nilai sistem yang selalu mengikuti tahun ajaran aktif.',
+    group: 'SYSTEM',
+  },
+  {
+    value: 'SYSTEM_ACTIVE_SEMESTER',
+    label: 'Semester Aktif',
+    description: 'Nilai sistem yang mengikuti semester aktif.',
+    group: 'SYSTEM',
+  },
+  {
+    value: 'SYSTEM_SUBJECT',
+    label: 'Mapel dari Assignment',
+    description: 'Nilai sistem dari mapel assignment guru.',
+    group: 'SYSTEM',
+  },
+  {
+    value: 'SYSTEM_CLASS_LEVEL',
+    label: 'Tingkat dari Assignment',
+    description: 'Nilai sistem dari tingkat kelas assignment guru.',
+    group: 'SYSTEM',
+  },
+  {
+    value: 'SYSTEM_SKILL_PROGRAM',
+    label: 'Program Keahlian',
+    description: 'Nilai sistem dari jurusan/program keahlian assignment guru.',
+    group: 'SYSTEM',
+  },
+  {
+    value: 'SYSTEM_TEACHER_NAME',
+    label: 'Nama Guru Login',
+    description: 'Nilai sistem dari nama guru yang sedang login.',
+    group: 'SYSTEM',
+  },
+  {
+    value: 'SYSTEM_PLACE_DATE',
+    label: 'Tempat dan Tanggal',
+    description: 'Nilai sistem otomatis untuk tempat dan tanggal.',
+    group: 'SYSTEM',
+  },
+];
 
 const QUICK_GUIDE_STEPS = [
   'Konfigurasi ini selalu mengikuti tahun ajaran aktif yang tampil di header aplikasi.',
@@ -330,6 +409,59 @@ function getColumnOperationalRoleDescription(role: ColumnOperationalRole): strin
   return COLUMN_OPERATIONAL_ROLE_OPTIONS.find((option) => option.value === role)?.description || '';
 }
 
+function isGenericSchemaToken(value: unknown): boolean {
+  const normalized = String(value || '').trim().toLowerCase();
+  if (!normalized) return true;
+  return /^(kolom|field)_\d+$/.test(normalized);
+}
+
+function isGenericColumnLabel(value: unknown): boolean {
+  const normalized = String(value || '').trim().toLowerCase();
+  if (!normalized) return true;
+  return /^kolom\s+\d+$/.test(normalized);
+}
+
+function applyColumnDescriptorSuggestion(
+  column: TeachingResourceProgramColumnSchema,
+  descriptor: {
+    key?: string;
+    label?: string;
+    fieldIdentity?: string;
+    semanticKey?: string;
+    placeholder?: string;
+    dataType?: TeachingResourceColumnDataType;
+  },
+): TeachingResourceProgramColumnSchema {
+  const next = { ...column };
+  const nextKey = descriptor.key ? normalizeSchemaKey(descriptor.key, column.key) : next.key;
+  if (descriptor.key && isGenericSchemaToken(next.key)) {
+    next.key = nextKey;
+  }
+  if (descriptor.key && isGenericSchemaToken(next.fieldId)) {
+    next.fieldId = nextKey;
+  }
+  if (descriptor.label && isGenericColumnLabel(next.label)) {
+    next.label = descriptor.label;
+  }
+  if (descriptor.semanticKey && isGenericSchemaToken(next.semanticKey)) {
+    next.semanticKey = normalizeSchemaKey(descriptor.semanticKey, descriptor.semanticKey);
+  }
+  if (descriptor.placeholder && !String(next.placeholder || '').trim()) {
+    next.placeholder = descriptor.placeholder;
+  }
+  if (descriptor.dataType) {
+    next.dataType = descriptor.dataType;
+  }
+  const resolvedFieldIdentity = normalizeSchemaKey(
+    descriptor.fieldIdentity || descriptor.semanticKey || next.fieldIdentity || next.semanticKey || next.key,
+    normalizeSchemaKey(next.key, 'kolom'),
+  );
+  if (isGenericSchemaToken(next.fieldIdentity)) {
+    next.fieldIdentity = resolvedFieldIdentity;
+  }
+  return next;
+}
+
 function applyColumnOperationalRole(
   column: TeachingResourceProgramColumnSchema,
   role: ColumnOperationalRole,
@@ -412,6 +544,227 @@ function applyColumnOperationalRole(
         },
       };
   }
+}
+
+function buildContextualReferenceBinding(
+  binding: TeachingResourceFieldBinding | undefined,
+  fallbackFieldIdentity: string,
+): TeachingResourceFieldBinding {
+  const normalizedFieldIdentity = normalizeSchemaKey(fallbackFieldIdentity, 'referensi_dokumen');
+  return {
+    ...(binding || {}),
+    sourceFieldIdentity: String(binding?.sourceFieldIdentity || '').trim()
+      ? normalizeSchemaKey(binding?.sourceFieldIdentity, normalizedFieldIdentity)
+      : normalizedFieldIdentity,
+    sourceDocumentFieldIdentity: String(binding?.sourceDocumentFieldIdentity || '').trim()
+      ? normalizeSchemaKey(binding?.sourceDocumentFieldIdentity, normalizedFieldIdentity)
+      : normalizedFieldIdentity,
+    filterByContext: true,
+    matchBySubject: true,
+    matchByClassLevel: true,
+    matchByMajor: true,
+    matchByActiveSemester: true,
+    selectionMode: 'PICK_SINGLE',
+    syncMode: 'SNAPSHOT_ON_SELECT',
+    allowManualOverride: false,
+    systemKey: undefined,
+  };
+}
+
+function applySystemColumnPreset(
+  column: TeachingResourceProgramColumnSchema,
+  config: {
+    key: string;
+    label: string;
+    fieldIdentity: string;
+    placeholder: string;
+    dataType: TeachingResourceColumnDataType;
+    valueSource: TeachingResourceColumnValueSource;
+    systemKey: string;
+  },
+): TeachingResourceProgramColumnSchema {
+  const base = applyColumnOperationalRole(column, 'SYSTEM_FIELD');
+  const suggested = applyColumnDescriptorSuggestion(base, {
+    key: config.key,
+    label: config.label,
+    fieldIdentity: config.fieldIdentity,
+    semanticKey: config.fieldIdentity,
+    placeholder: config.placeholder,
+    dataType: config.dataType,
+  });
+  return {
+    ...suggested,
+    valueSource: config.valueSource,
+    readOnly: true,
+    isCoreField: true,
+    binding: {
+      ...(suggested.binding || {}),
+      systemKey: config.systemKey,
+      sourceProgramCode: undefined,
+      sourceFieldIdentity: undefined,
+      sourceDocumentFieldIdentity: undefined,
+      filterByContext: false,
+      matchBySubject: false,
+      matchByClassLevel: false,
+      matchByMajor: false,
+      matchByActiveSemester: false,
+      selectionMode: 'AUTO',
+      syncMode: 'SYSTEM_DYNAMIC',
+      allowManualOverride: false,
+    },
+  };
+}
+
+function applyColumnQuickPreset(
+  column: TeachingResourceProgramColumnSchema,
+  preset: ColumnQuickPreset,
+): TeachingResourceProgramColumnSchema {
+  const normalizedFieldIdentity = normalizeSchemaKey(
+    column.fieldIdentity || column.semanticKey || column.label || column.key,
+    normalizeSchemaKey(column.key, 'kolom'),
+  );
+
+  switch (preset) {
+    case 'REFERENCE_SOURCE_CORE': {
+      const base = applyColumnOperationalRole(column, 'REFERENCE_SOURCE');
+      return {
+        ...applyColumnDescriptorSuggestion(base, {
+          fieldIdentity: normalizedFieldIdentity,
+          semanticKey: normalizedFieldIdentity,
+        }),
+        isCoreField: true,
+        binding: {
+          ...(base.binding || {}),
+          systemKey: undefined,
+          sourceFieldIdentity: undefined,
+          sourceDocumentFieldIdentity: undefined,
+          filterByContext: false,
+          matchBySubject: false,
+          matchByClassLevel: false,
+          matchByMajor: false,
+          matchByActiveSemester: false,
+          allowManualOverride: false,
+          selectionMode: 'AUTO',
+          syncMode: undefined,
+        },
+      };
+    }
+    case 'REFERENCE_PICKER_CONTEXTUAL': {
+      const base = applyColumnOperationalRole(column, 'REFERENCE_PICKER');
+      const suggested = applyColumnDescriptorSuggestion(base, {
+        fieldIdentity: normalizedFieldIdentity,
+        semanticKey: normalizedFieldIdentity,
+        placeholder: 'Pilih data dari dokumen sumber',
+      });
+      return {
+        ...suggested,
+        binding: buildContextualReferenceBinding(
+          suggested.binding,
+          suggested.binding?.sourceFieldIdentity || suggested.fieldIdentity || normalizedFieldIdentity,
+        ),
+      };
+    }
+    case 'SNAPSHOT_TARGET_CONTEXTUAL': {
+      const base = applyColumnOperationalRole(column, 'SNAPSHOT_TARGET');
+      const suggested = applyColumnDescriptorSuggestion(base, {
+        fieldIdentity: normalizedFieldIdentity,
+        semanticKey: normalizedFieldIdentity,
+        placeholder: 'Diisi otomatis dari referensi terpilih',
+      });
+      return {
+        ...suggested,
+        isCoreField: true,
+        binding: buildContextualReferenceBinding(
+          suggested.binding,
+          suggested.binding?.sourceFieldIdentity || suggested.fieldIdentity || normalizedFieldIdentity,
+        ),
+      };
+    }
+    case 'SYSTEM_ACTIVE_YEAR':
+      return applySystemColumnPreset(column, {
+        key: 'tahun_ajaran',
+        label: 'Tahun Ajaran',
+        fieldIdentity: 'tahun_ajaran',
+        placeholder: 'Tahun ajaran aktif',
+        dataType: 'TEXT',
+        valueSource: 'SYSTEM_ACTIVE_YEAR',
+        systemKey: 'active_academic_year',
+      });
+    case 'SYSTEM_ACTIVE_SEMESTER':
+      return applySystemColumnPreset(column, {
+        key: 'semester',
+        label: 'Semester',
+        fieldIdentity: 'semester',
+        placeholder: 'Semester aktif',
+        dataType: 'SEMESTER',
+        valueSource: 'SYSTEM_SEMESTER',
+        systemKey: 'active_semester',
+      });
+    case 'SYSTEM_SUBJECT':
+      return applySystemColumnPreset(column, {
+        key: 'mata_pelajaran',
+        label: 'Mata Pelajaran',
+        fieldIdentity: 'mata_pelajaran',
+        placeholder: 'Mapel dari assignment',
+        dataType: 'TEXT',
+        valueSource: 'SYSTEM_SUBJECT',
+        systemKey: 'subject_name',
+      });
+    case 'SYSTEM_CLASS_LEVEL':
+      return applySystemColumnPreset(column, {
+        key: 'tingkat',
+        label: 'Tingkat',
+        fieldIdentity: 'tingkat',
+        placeholder: 'Tingkat dari assignment',
+        dataType: 'TEXT',
+        valueSource: 'SYSTEM_CLASS_LEVEL',
+        systemKey: 'class_level',
+      });
+    case 'SYSTEM_SKILL_PROGRAM':
+      return applySystemColumnPreset(column, {
+        key: 'program_keahlian',
+        label: 'Program Keahlian',
+        fieldIdentity: 'program_keahlian',
+        placeholder: 'Program keahlian dari assignment',
+        dataType: 'TEXT',
+        valueSource: 'SYSTEM_SKILL_PROGRAM',
+        systemKey: 'skill_program',
+      });
+    case 'SYSTEM_TEACHER_NAME':
+      return applySystemColumnPreset(column, {
+        key: 'guru_mapel',
+        label: 'Guru Mata Pelajaran',
+        fieldIdentity: 'guru_mapel',
+        placeholder: 'Nama guru login',
+        dataType: 'TEXT',
+        valueSource: 'SYSTEM_TEACHER_NAME',
+        systemKey: 'teacher_name',
+      });
+    case 'SYSTEM_PLACE_DATE':
+      return applySystemColumnPreset(column, {
+        key: 'tempat_tanggal',
+        label: 'Tempat, Tanggal',
+        fieldIdentity: 'tempat_tanggal',
+        placeholder: 'Tempat dan tanggal otomatis',
+        dataType: 'TEXT',
+        valueSource: 'SYSTEM_PLACE_DATE',
+        systemKey: 'place_date',
+      });
+    default:
+      return column;
+  }
+}
+
+function getColumnBindingGuardLabels(binding: TeachingResourceFieldBinding | undefined): string[] {
+  const labels: string[] = [];
+  if (!binding) return labels;
+  if (binding.filterByContext) labels.push('konteks');
+  if (binding.matchBySubject) labels.push('mapel');
+  if (binding.matchByClassLevel) labels.push('tingkat');
+  if (binding.matchByMajor) labels.push('jurusan');
+  if (binding.matchByActiveSemester) labels.push('semester');
+  if (binding.allowManualOverride) labels.push('override manual');
+  return labels;
 }
 
 function applySchemaFoundationDefaults(
@@ -1215,6 +1568,26 @@ export default function TeachingResourceProgramManagementPage() {
               ...section,
               columns: (section.columns || []).map((column, currentColumnIndex) =>
                 currentColumnIndex === columnIndex ? applyColumnOperationalRole(column, role) : column,
+              ),
+            }
+          : section,
+      ),
+    }));
+  };
+
+  const handleApplyColumnQuickPreset = (
+    sectionIndex: number,
+    columnIndex: number,
+    preset: ColumnQuickPreset,
+  ) => {
+    updateDraftSchema((schema) => ({
+      ...schema,
+      sections: schema.sections.map((section, index) =>
+        index === sectionIndex
+          ? {
+              ...section,
+              columns: (section.columns || []).map((column, currentColumnIndex) =>
+                currentColumnIndex === columnIndex ? applyColumnQuickPreset(column, preset) : column,
               ),
             }
           : section,
@@ -2401,6 +2774,7 @@ export default function TeachingResourceProgramManagementPage() {
                                 const normalizedSourceProgramCode = normalizeTeachingResourceProgramCode(column.binding?.sourceProgramCode || '');
                                 const sourceProgramLabel =
                                   rows.find((row) => normalizeTeachingResourceProgramCode(row.code) === normalizedSourceProgramCode)?.label || '';
+                                const bindingGuardLabels = getColumnBindingGuardLabels(column.binding);
                                 return (
                                 <div key={`${section.key}-${column.key}-${columnIndex}`} className="rounded-lg border border-gray-200 bg-gray-50 p-3">
                                   <div className="mb-3 flex flex-wrap items-start justify-between gap-3">
@@ -2423,6 +2797,11 @@ export default function TeachingResourceProgramManagementPage() {
                                         {normalizedSourceProgramCode ? (
                                           <span className="rounded-full bg-emerald-100 px-2 py-1 text-[11px] font-medium text-emerald-700">
                                             sumber: {sourceProgramLabel || normalizedSourceProgramCode}
+                                          </span>
+                                        ) : null}
+                                        {bindingGuardLabels.length ? (
+                                          <span className="rounded-full bg-amber-100 px-2 py-1 text-[11px] font-medium text-amber-700">
+                                            filter: {bindingGuardLabels.join(', ')}
                                           </span>
                                         ) : null}
                                       </div>
@@ -2492,6 +2871,46 @@ export default function TeachingResourceProgramManagementPage() {
                                               : operationalRole === 'SYSTEM_FIELD'
                                                 ? ' Lengkapi Sumber Nilai atau System Key agar kolom benar-benar diisi otomatis.'
                                                 : ' Gunakan ini untuk input guru biasa tanpa integrasi khusus.'}
+                                      </div>
+                                    </div>
+                                    <div className="mt-3 rounded-lg border border-sky-100 bg-white/80 px-3 py-3">
+                                      <div className="mb-2 text-xs font-semibold uppercase tracking-wide text-sky-800">Preset Cepat</div>
+                                      <div className="space-y-3">
+                                        <div>
+                                          <div className="mb-2 text-[11px] font-semibold uppercase tracking-wide text-gray-500">Integrasi Dokumen</div>
+                                          <div className="flex flex-wrap gap-2">
+                                            {COLUMN_QUICK_PRESET_OPTIONS.filter((option) => option.group === 'INTEGRATION').map((option) => (
+                                              <button
+                                                key={`${section.key}-${column.key}-quick-${option.value}`}
+                                                type="button"
+                                                onClick={() => handleApplyColumnQuickPreset(sectionIndex, columnIndex, option.value)}
+                                                className="rounded-full border border-blue-200 bg-blue-50 px-3 py-1.5 text-[11px] font-semibold text-blue-700 hover:bg-blue-100"
+                                                title={option.description}
+                                              >
+                                                {option.label}
+                                              </button>
+                                            ))}
+                                          </div>
+                                        </div>
+                                        <div>
+                                          <div className="mb-2 text-[11px] font-semibold uppercase tracking-wide text-gray-500">Nilai Sistem</div>
+                                          <div className="flex flex-wrap gap-2">
+                                            {COLUMN_QUICK_PRESET_OPTIONS.filter((option) => option.group === 'SYSTEM').map((option) => (
+                                              <button
+                                                key={`${section.key}-${column.key}-quick-${option.value}`}
+                                                type="button"
+                                                onClick={() => handleApplyColumnQuickPreset(sectionIndex, columnIndex, option.value)}
+                                                className="rounded-full border border-emerald-200 bg-emerald-50 px-3 py-1.5 text-[11px] font-semibold text-emerald-700 hover:bg-emerald-100"
+                                                title={option.description}
+                                              >
+                                                {option.label}
+                                              </button>
+                                            ))}
+                                          </div>
+                                        </div>
+                                        <div className="text-[11px] leading-5 text-sky-900">
+                                          Gunakan preset ini jika ingin mengisi kombinasi umum secara cepat. Setelah itu, detail seperti Program Sumber atau Field Identity tetap bisa dirapikan manual bila diperlukan.
+                                        </div>
                                       </div>
                                     </div>
                                   </div>
