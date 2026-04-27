@@ -1565,53 +1565,6 @@ export default function TeacherHomeroomPermissionsScreen() {
       </>
       ) : activeTab === 'PUBLIKASI_NILAI' ? (
       <>
-        <View style={{ flexDirection: 'row', flexWrap: 'wrap', marginHorizontal: -4, marginBottom: 12 }}>
-          {[
-            {
-              key: 'total',
-              title: 'Total Siswa',
-              value: `${resultPublicationSummary.totalStudents}`,
-              subtitle: 'Sesuai kelas dan pencarian aktif',
-              iconName: 'users' as const,
-              accentColor: '#2563eb',
-            },
-            {
-              key: 'visible',
-              title: 'Sudah Tampil',
-              value: `${resultPublicationSummary.visibleStudents}`,
-              subtitle: 'Saat ini bisa dibuka siswa',
-              iconName: 'check-circle' as const,
-              accentColor: '#16a34a',
-            },
-            {
-              key: 'blocked',
-              title: 'Ditahan Wali',
-              value: `${resultPublicationSummary.blockedStudents}`,
-              subtitle: 'Ditahan per siswa oleh wali kelas',
-              iconName: 'x-circle' as const,
-              accentColor: '#dc2626',
-            },
-            {
-              key: 'waiting',
-              title: 'Menunggu Wakakur',
-              value: `${resultPublicationSummary.waitingWakakurStudents}`,
-              subtitle: 'Masih ikut jadwal rilis global',
-              iconName: 'clock' as const,
-              accentColor: '#d97706',
-            },
-          ].map((item) => (
-            <View key={item.key} style={{ width: '50%', paddingHorizontal: 4, marginBottom: 8 }}>
-              <MobileSummaryCard
-                title={item.title}
-                value={item.value}
-                subtitle={item.subtitle}
-                iconName={item.iconName}
-                accentColor={item.accentColor}
-              />
-            </View>
-          ))}
-        </View>
-
         <View
           style={{
             borderWidth: 1,
@@ -1718,6 +1671,53 @@ export default function TeacherHomeroomPermissionsScreen() {
             </Text>
           </View>
         ) : null}
+
+        <View style={{ flexDirection: 'row', flexWrap: 'wrap', marginHorizontal: -4, marginBottom: 12 }}>
+          {[
+            {
+              key: 'total',
+              title: 'Total Siswa',
+              value: `${resultPublicationSummary.totalStudents}`,
+              subtitle: 'Sesuai kelas dan pencarian aktif',
+              iconName: 'users' as const,
+              accentColor: '#2563eb',
+            },
+            {
+              key: 'visible',
+              title: 'Sudah Tampil',
+              value: `${resultPublicationSummary.visibleStudents}`,
+              subtitle: 'Saat ini bisa dibuka siswa',
+              iconName: 'check-circle' as const,
+              accentColor: '#16a34a',
+            },
+            {
+              key: 'blocked',
+              title: 'Ditahan Wali',
+              value: `${resultPublicationSummary.blockedStudents}`,
+              subtitle: 'Ditahan per siswa oleh wali kelas',
+              iconName: 'x-circle' as const,
+              accentColor: '#dc2626',
+            },
+            {
+              key: 'waiting',
+              title: 'Menunggu Wakakur',
+              value: `${resultPublicationSummary.waitingWakakurStudents}`,
+              subtitle: 'Masih ikut jadwal rilis global',
+              iconName: 'clock' as const,
+              accentColor: '#d97706',
+            },
+          ].map((item) => (
+            <View key={item.key} style={{ width: '50%', paddingHorizontal: 4, marginBottom: 8 }}>
+              <MobileSummaryCard
+                title={item.title}
+                value={item.value}
+                subtitle={item.subtitle}
+                iconName={item.iconName}
+                accentColor={item.accentColor}
+              />
+            </View>
+          ))}
+        </View>
 
         {resultPublicationsQuery.isLoading ? (
           <QueryStateView type="loading" message="Mengambil kontrol publikasi nilai..." />

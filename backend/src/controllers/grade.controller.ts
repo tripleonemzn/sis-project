@@ -4732,6 +4732,7 @@ export const getHomeroomResultPublications = async (req: Request, res: Response)
         programCode: publicationCode,
         baseTypeCode: program.baseTypeCode || program.baseType,
       })
+      if (globalRelease.mode === 'DIRECT') return
 
       const row = {
         publicationCode,
@@ -4750,7 +4751,9 @@ export const getHomeroomResultPublications = async (req: Request, res: Response)
       }
     })
 
-    const programs = Array.from(publicationRows.values())
+    const programs = Array.from(publicationRows.values()).sort((a, b) =>
+      a.shortLabel.localeCompare(b.shortLabel, 'id-ID'),
+    )
     const selectedProgram =
       (requestedPublicationCode ? programs.find((item) => item.publicationCode === requestedPublicationCode) : null) ||
       programs[0] ||

@@ -481,7 +481,7 @@ export const HomeroomPermissionsPage = () => {
       <div className="bg-white rounded-xl shadow-sm border border-gray-200 overflow-hidden">
         {/* Tabs & Filter Header */}
         <div className="border-b border-gray-200 bg-white px-4 pt-4">
-          <div className="flex flex-col xl:flex-row xl:items-end xl:justify-between gap-4">
+          <div className="flex flex-col xl:flex-row xl:items-end xl:justify-between gap-4 pb-4">
             <div className="flex overflow-x-auto gap-4">
               <button
                 type="button"
@@ -532,10 +532,9 @@ export const HomeroomPermissionsPage = () => {
                 <span>Publikasi Nilai</span>
               </button>
             </div>
-          </div>
 
-          {activeTab === 'exam_restrictions' && (
-            <div className="flex flex-col sm:flex-row items-center gap-4 w-full sm:w-auto justify-end py-4">
+            {activeTab === 'exam_restrictions' ? (
+            <div className="flex flex-col sm:flex-row items-center gap-4 w-full xl:w-auto justify-end">
               <div className="flex items-center gap-2">
                 <span className="text-sm font-medium text-gray-700">Semester</span>
                 <select
@@ -572,10 +571,10 @@ export const HomeroomPermissionsPage = () => {
                 </select>
               </div>
             </div>
-          )}
+            ) : null}
 
-          {activeTab === 'result_publication' && (
-            <div className="flex flex-col sm:flex-row items-center gap-4 w-full sm:w-auto justify-end py-4">
+            {activeTab === 'result_publication' ? (
+            <div className="flex flex-col sm:flex-row items-center gap-4 w-full xl:w-auto justify-end">
               <div className="flex items-center gap-2">
                 <span className="text-sm font-medium text-gray-700">Semester</span>
                 <select
@@ -614,7 +613,8 @@ export const HomeroomPermissionsPage = () => {
                 </select>
               </div>
             </div>
-          )}
+            ) : null}
+          </div>
         </div>
 
         {/* Search & Limit Toolbar */}
