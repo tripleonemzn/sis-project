@@ -5,7 +5,7 @@ Setiap room baru yang diminta `baca AGENTS.md` atau `lanjutkan` wajib membaca fi
 
 ## Status Saat Ini
 
-- Last updated: 2026-04-27 08:56 WIB
+- Last updated: 2026-04-27 09:10 WIB
 - Current status: Batch 15 preset cepat tingkat section di editor Wakakur sudah aktif di web. Wakakur kini bisa menambahkan `Bagian Siap Pakai` seperti `Info Konteks Sistem`, `Tabel Sumber Referensi`, `Tabel Pilih Referensi`, `Blok Pengesahan`, dan `Catatan / Narasi` sehingga perakitan struktur dokumen makin operasional dan tidak perlu mulai dari section kosong.
 - Last completed repo work:
   - Commit: `48a65c5`
@@ -36,6 +36,18 @@ Setiap room baru yang diminta `baca AGENTS.md` atau `lanjutkan` wajib membaca fi
 - Progress impor historis absensi siswa TKJ: 100%.
   - Selesai: audit workbook, verifikasi aturan blok merah, cek roster DB vs Excel, buat script importer reusable, apply impor final ke database, dan verifikasi pasca-impor.
   - Catatan: `20` siswa di workbook yang tidak ada di roster aktif DB tetap tidak diimpor; semuanya memang baris yang kosong total pada data harian.
+- Progress impor historis absensi siswa X TKJ: 100%.
+  - Selesai: audit folder `etc/presensi_X_TKJ`, dry-run, apply final, dan verifikasi pasca-impor.
+  - Total candidate rows: `22,649`
+  - Total created on apply: `22,649`
+  - Post-import verification: `createRows 0`, `conflictingExistingRows 0`, `unchangedRows 22,649`
+  - Catatan roster mismatch:
+    - `2` siswa ada di workbook tetapi tidak ada di roster aktif DB, sehingga tidak diimpor: `Humaira Musyaffa'illah` (`X TKJ 1`) dan `Amelia Maulidiah Safitri` (`X TKJ 2`)
+  - Catatan data harian:
+    - ada `220` blank active cells pada workbook sumber
+    - siswa dengan bulan aktif kosong total yang terdeteksi importer:
+      - `X TKJ 2`: `Siti Rahmawati`, `Thama Putra Pasya`
+      - `X TKJ 4`: `Dwi Maharanika Putri`, `Naila Kherunisa Inayah Putri`
 - Progress impor historis absensi siswa AK/MP: 100%.
   - Selesai: audit folder `etc/absensi/AK&MP`, dry-run, apply final, dan verifikasi pasca-impor.
   - Catatan roster mismatch:
@@ -75,6 +87,7 @@ Setiap room baru yang diminta `baca AGENTS.md` atau `lanjutkan` wajib membaca fi
 - Verifikasi distribusi data:
   - audit per kelas-per-bulan menunjukkan `expectedByMonth` = `actualByMonth` untuk seluruh `XI/XII TKJ 1-4` pada `Jul 2025 - Apr 2026`
   - audit per kelas untuk AK/MP menunjukkan total record DB sama dengan candidate row workbook untuk seluruh kelas `X/XI/XII AK 1-2` dan `X/XI/XII MP 1-4` yang tersedia
+  - audit pasca-impor `X TKJ 1-4` menunjukkan total record DB sama dengan candidate row workbook yang match roster aktif (`unchangedRows 22,649`)
 - Publish/runtime:
   - tidak ada restart service atau publish baru karena batch ini belum mengubah runtime aplikasi
 - Verifikasi pilot QR rapor SBTS:
