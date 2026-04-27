@@ -532,6 +532,49 @@ Setiap room baru yang diminta `baca AGENTS.md` atau `lanjutkan` wajib membaca fi
 - Commit hash terkait:
   - `4cfba27` `fix(grades): scope homeroom publication per student`
 
+## Update Terbaru 2026-04-27 15:27 WIB
+
+- Objective/task aktif:
+  - Rapikan filter `Publikasi Nilai` wali kelas agar posisinya sejajar dengan tab dan hanya menampilkan jenis nilai yang memang dijadwalkan Kurikulum.
+- Batch/wave terakhir selesai:
+  - Refinement UI/filter web-mobile + penyaringan backend jenis nilai selesai.
+- Progress:
+  - `100%` untuk request refinement ini.
+- Area/file yang disentuh:
+  - `backend/src/controllers/grade.controller.ts`
+  - `frontend/src/pages/teacher/homeroom/HomeroomPermissionsPage.tsx`
+  - `mobile-app/app/(app)/teacher/homeroom-permissions.tsx`
+- Ringkasan perubahan:
+  - Filter `Jenis Nilai` di sumber data wali kelas sekarang hanya mengambil program yang punya jadwal rilis global dari Kurikulum; mode `DIRECT` seperti formatif/ulangan harian tidak lagi ikut muncul.
+  - Filter `Semester` dan `Jenis Nilai` di web dipindahkan ke header atas agar sejajar dengan tab aktif.
+  - Urutan mobile dirapikan agar filter tampil lebih dulu sebelum kartu ringkasan, mengikuti alur web.
+- Verifikasi yang sudah dijalankan:
+  - `cd backend && npm run build`
+  - `cd backend && npm run service:restart`
+  - `cd backend && npm run service:health`
+  - `cd frontend && npm run build`
+  - `cd frontend && npm run deploy`
+  - `cd mobile-app && npm run typecheck`
+  - `cd mobile-app && npm run audit:parity:check`
+  - `cd mobile-app && npm run update:pilot-live:verified -- "Filter publikasi nilai dirapikan. Silakan perbarui untuk menikmati fitur terbaru."`
+  - `curl -I https://siskgb2.id/teacher/wali-kelas/permissions` merespons `200`
+- Publish/live status:
+  - Backend live.
+  - Web live.
+  - OTA Android `pilot-live` sudah publish.
+  - Update group OTA: `5188b3d5-81fa-44b4-8572-a89dca1741a7`
+  - Push notify OTA: `3/3`
+- Sisa pekerjaan:
+  - Tidak ada untuk request ini.
+- Blocker/residual risk:
+  - Penyaringan jenis nilai saat ini bergantung pada `globalRelease.mode !== DIRECT`, sehingga jika nanti ada mode rilis baru dari Kurikulum, list publikasi wali kelas perlu ikut diaudit ulang.
+- Langkah aman berikutnya:
+  - Minta user cek halaman `Publikasi Nilai` untuk memastikan filter atas sudah nyaman dan opsi jenis nilai hanya berisi program yang memang dijadwalkan rilis.
+- Last updated:
+  - 2026-04-27 15:27 WIB
+- Commit hash terkait:
+  - Pending commit sesi ini.
+
 ## Template Update Wajib Saat Ada Pekerjaan Baru
 
 - Objective/task aktif:
