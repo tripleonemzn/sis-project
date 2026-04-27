@@ -83,8 +83,6 @@ type StudentReportPayload = {
       verificationToken?: string;
       verificationUrl?: string;
       verificationQrDataUrl?: string;
-      verificationNote?: string;
-      footerNote?: string;
     };
     signatures: {
       parent: { title?: string; name?: string };
@@ -184,8 +182,6 @@ export const HomeroomReportSbtsPage = ({
     const resolvedPrintDate =
       String(data.footer.date || '').trim() || 'Tanggal rapor belum diatur';
     const homeroomVerificationQrDataUrl = String(data.footer.legality?.verificationQrDataUrl || '').trim();
-    const homeroomVerificationNote = String(data.footer.legality?.verificationNote || '').trim();
-    const homeroomFooterNote = String(data.footer.legality?.footerNote || '').trim();
     const homeroomNip = String(data.footer.signatures.homeroom.nip || '').trim();
 
     const parseNumeric = (value: string | number | null | undefined): number | null => {
@@ -414,29 +410,17 @@ export const HomeroomReportSbtsPage = ({
           .signature-row { display: flex; justify-content: space-between; align-items: flex-start; margin-bottom: 20px; }
           .signature-box { text-align: center; width: 250px; }
           .signature-space { height: 70px; }
-          .signature-box.with-qr .signature-space { height: 10px; }
+          .signature-box.with-qr .signature-space { height: 18px; }
           .signature-qr {
             display: block;
-            width: 86px;
-            height: 86px;
+            width: 74px;
+            height: 74px;
             object-fit: contain;
-            margin: 0 auto 6px;
+            margin: 0 auto 4px;
             background: #fff;
-          }
-          .signature-caption {
-            margin-top: 4px;
-            font-size: 10px;
-            color: #475569;
-            line-height: 1.25;
           }
           .signature-name { display: inline-block; margin-top: 2px; }
           .signature-nip { margin-top: 4px; font-size: 11px; }
-          .signature-footer-note {
-            margin-top: 6px;
-            font-size: 10px;
-            color: #047857;
-            line-height: 1.25;
-          }
         </style>
       </head>
       <body>
@@ -538,16 +522,6 @@ export const HomeroomReportSbtsPage = ({
                ${
                  homeroomNip && homeroomNip !== '-'
                    ? `<div class="signature-nip">NIP/NUPTK: ${escapeHtml(homeroomNip)}</div>`
-                   : ''
-               }
-               ${
-                 homeroomVerificationNote
-                   ? `<div class="signature-caption">${escapeHtml(homeroomVerificationNote)}</div>`
-                   : ''
-               }
-               ${
-                 homeroomFooterNote
-                   ? `<div class="signature-footer-note">${escapeHtml(homeroomFooterNote)}</div>`
                    : ''
                }
             </div>

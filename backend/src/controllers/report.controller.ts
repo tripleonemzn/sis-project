@@ -92,13 +92,28 @@ const isUsPracticeSlotCode = (raw: unknown): boolean => {
 const isUsSlotCode = (raw: unknown): boolean => isUsTheorySlotCode(raw) || isUsPracticeSlotCode(raw);
 
 type StudentReportVerificationTokenPayload = {
-  kind: 'REPORT_CARD_SBTS';
   studentId: number;
   academicYearId: number;
   semester: Semester;
   reportType: ExamType;
   reportProgramCode?: string | null;
-  generatedAtMs: number;
+};
+
+type StudentReportVerificationTokenRecord = Partial<StudentReportVerificationTokenPayload> & {
+  kind?: string;
+  k?: string;
+  studentId?: number;
+  s?: number;
+  academicYearId?: number;
+  a?: number;
+  semester?: Semester;
+  m?: string;
+  reportType?: ExamType;
+  t?: string;
+  reportProgramCode?: string | null;
+  p?: string | null;
+  generatedAtMs?: number;
+  g?: number;
 };
 
 type StudentReportVerificationSnapshot = {
@@ -125,10 +140,21 @@ type StudentReportVerificationSnapshot = {
 };
 
 function buildStudentReportVerificationToken(payload: StudentReportVerificationTokenPayload) {
-  return jwt.sign(payload, JWT_SIGNING_SECRET, {
-    subject: `report-card-sbts:${payload.studentId}:${payload.academicYearId}:${payload.semester}:${payload.generatedAtMs}`,
+  const normalizedProgramCode = normalizeProgramCode(payload.reportProgramCode);
+  return jwt.sign(
+    {
+      k: 'RC',
+      s: payload.studentId,
+      a: payload.academicYearId,
+      m: payload.semester === Semester.ODD ? 'O' : 'E',
+      t: payload.reportType,
+      ...(normalizedProgramCode ? { p: normalizedProgramCode } : {}),
+    },
+    JWT_SIGNING_SECRET,
+    {
     noTimestamp: true,
-  });
+    },
+  );
 }
 
 function verifyStudentReportVerificationToken(token: string): StudentReportVerificationTokenPayload {
@@ -137,51 +163,56 @@ function verifyStudentReportVerificationToken(token: string): StudentReportVerif
     throw new ApiError(404, 'Tautan verifikasi rapor SBTS tidak valid.');
   }
 
-  const record = decoded as Partial<StudentReportVerificationTokenPayload>;
-  if (record.kind !== 'REPORT_CARD_SBTS') {
+  const record = decoded as StudentReportVerificationTokenRecord;
+  const kind = String(record.k || record.kind || '').trim().toUpperCase();
+  if (kind !== 'RC' && kind !== 'REPORT_CARD_SBTS') {
     throw new ApiError(404, 'Tautan verifikasi rapor SBTS tidak valid.');
   }
 
-  if (!Number.isFinite(Number(record.studentId)) || Number(record.studentId) <= 0) {
+  const studentId = Number(record.s ?? record.studentId);
+  if (!Number.isFinite(studentId) || studentId <= 0) {
     throw new ApiError(404, 'Tautan verifikasi rapor SBTS tidak valid.');
   }
 
-  if (!Number.isFinite(Number(record.academicYearId)) || Number(record.academicYearId) <= 0) {
+  const academicYearId = Number(record.a ?? record.academicYearId);
+  if (!Number.isFinite(academicYearId) || academicYearId <= 0) {
     throw new ApiError(404, 'Tautan verifikasi rapor SBTS tidak valid.');
   }
 
-  if (!record.semester || !Object.values(Semester).includes(record.semester)) {
+  const semesterToken = String(record.m || '').trim().toUpperCase();
+  const semester =
+    semesterToken === 'O'
+      ? Semester.ODD
+      : semesterToken === 'E'
+        ? Semester.EVEN
+        : record.semester;
+  if (!semester || !Object.values(Semester).includes(semester)) {
     throw new ApiError(404, 'Tautan verifikasi rapor SBTS tidak valid.');
   }
 
-  if (!record.reportType || !Object.values(ExamType).includes(record.reportType)) {
-    throw new ApiError(404, 'Tautan verifikasi rapor SBTS tidak valid.');
-  }
-
-  if (!Number.isFinite(Number(record.generatedAtMs)) || Number(record.generatedAtMs) <= 0) {
+  const reportType = (record.t || record.reportType || ExamType.SBTS) as ExamType;
+  if (!Object.values(ExamType).includes(reportType) || reportType !== ExamType.SBTS) {
     throw new ApiError(404, 'Tautan verifikasi rapor SBTS tidak valid.');
   }
 
   return {
-    kind: 'REPORT_CARD_SBTS',
-    studentId: Number(record.studentId),
-    academicYearId: Number(record.academicYearId),
-    semester: record.semester,
-    reportType: record.reportType,
-    reportProgramCode: typeof record.reportProgramCode === 'string' ? record.reportProgramCode : null,
-    generatedAtMs: Number(record.generatedAtMs),
+    studentId,
+    academicYearId,
+    semester,
+    reportType,
+    reportProgramCode: normalizeProgramCode(record.p ?? record.reportProgramCode) || null,
   };
 }
 
 function buildStudentReportVerificationUrl(baseUrl: string, verificationToken: string) {
-  return `${baseUrl}/verify/report-card/${verificationToken}`;
+  return `${baseUrl}/v/rc/${verificationToken}`;
 }
 
 async function buildStudentReportVerificationQrDataUrl(verificationUrl: string) {
   return QRCode.toDataURL(verificationUrl, {
-    width: 192,
-    margin: 2,
-    errorCorrectionLevel: 'M',
+    width: 176,
+    margin: 1,
+    errorCorrectionLevel: 'L',
     color: {
       dark: '#000000',
       light: '#FFFFFFFF',
@@ -2208,13 +2239,11 @@ export const getStudentReport = asyncHandler(async (req: Request, res: Response)
 
   if (context.reportType === ExamType.SBTS) {
     const verificationToken = buildStudentReportVerificationToken({
-      kind: 'REPORT_CARD_SBTS',
       studentId,
       academicYearId: effectiveAcademicYearId,
       semester,
       reportType: context.reportType,
       reportProgramCode: context.programCode || null,
-      generatedAtMs: Date.now(),
     });
     const verificationUrl = buildStudentReportVerificationUrl(
       resolvePublicAppBaseUrl(req),
@@ -2228,9 +2257,6 @@ export const getStudentReport = asyncHandler(async (req: Request, res: Response)
       verificationToken,
       verificationUrl,
       verificationQrDataUrl,
-      verificationNote:
-        'Keaslian rapor SBTS ini dapat diverifikasi melalui QR code atau tautan verifikasi.',
-      footerNote: 'Dokumen ini sah dan legal secara internal sekolah setelah diverifikasi.',
       snapshot: verificationSnapshot,
     };
   }

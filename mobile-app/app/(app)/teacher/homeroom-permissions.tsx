@@ -35,7 +35,7 @@ import { useAppTextScale } from '../../../src/theme/AppTextScaleProvider';
 
 type StatusFilter = 'ALL' | PermissionStatus;
 type TypeFilter = 'ALL' | PermissionType;
-type HomeroomPermissionTab = 'IZIN' | 'AKSES_UJIAN' | 'PUBLIKASI_NILAI' | 'BUKU_WALI_KELAS';
+type HomeroomPermissionTab = 'IZIN' | 'AKSES_UJIAN' | 'BUKU_WALI_KELAS' | 'PUBLIKASI_NILAI';
 
 const DEFAULT_MANUAL_RESTRICTION_REASON =
   'Masih ada administrasi/tunggakan yang belum diselesaikan. Silakan hubungi wali kelas.';
@@ -150,6 +150,8 @@ export default function TeacherHomeroomPermissionsScreen() {
   const [selectedPublicationCodeOverride, setSelectedPublicationCodeOverride] = useState('');
   const [rejectionNotes, setRejectionNotes] = useState<Record<number, string>>({});
   const [summaryDetailVisible, setSummaryDetailVisible] = useState(false);
+  const [publicationGuideVisible, setPublicationGuideVisible] = useState(false);
+  const [publicationProgramVisible, setPublicationProgramVisible] = useState(false);
   const [restrictionModalVisible, setRestrictionModalVisible] = useState(false);
   const [restrictionTarget, setRestrictionTarget] = useState<ExamRestrictionItem | null>(null);
   const [restrictionReasonDraft, setRestrictionReasonDraft] = useState(DEFAULT_MANUAL_RESTRICTION_REASON);
@@ -722,11 +724,18 @@ export default function TeacherHomeroomPermissionsScreen() {
         items={[
           { key: 'IZIN', label: 'Daftar Izin', iconName: 'file-text' },
           { key: 'AKSES_UJIAN', label: 'Akses Ujian', iconName: 'shield' },
-          { key: 'PUBLIKASI_NILAI', label: 'Publikasi Nilai', iconName: 'award' },
           { key: 'BUKU_WALI_KELAS', label: 'Buku Wali Kelas', iconName: 'book-open' },
+          { key: 'PUBLIKASI_NILAI', label: 'Publikasi Nilai', iconName: 'award' },
         ]}
         activeKey={activeTab}
-        onChange={(key) => setActiveTab(key as HomeroomPermissionTab)}
+        onChange={(key) => {
+          const nextTab = key as HomeroomPermissionTab;
+          setActiveTab(nextTab);
+          if (nextTab !== 'PUBLIKASI_NILAI') {
+            setPublicationGuideVisible(false);
+            setPublicationProgramVisible(false);
+          }
+        }}
         style={{ marginBottom: 12 }}
         contentContainerStyle={{ paddingRight: 8 }}
       />
@@ -1567,24 +1576,6 @@ export default function TeacherHomeroomPermissionsScreen() {
       <>
         <View
           style={{
-            borderWidth: 1,
-            borderColor: '#bfdbfe',
-            backgroundColor: '#eff6ff',
-            borderRadius: 12,
-            padding: 12,
-            marginBottom: 12,
-          }}
-        >
-          <Text style={{ color: '#1d4ed8', fontWeight: '700', fontSize: scaleFont(14), marginBottom: 4 }}>
-            Publikasi Nilai
-          </Text>
-          <Text style={{ color: '#1d4ed8', fontSize: scaleFont(12), lineHeight: scaleLineHeight(18) }}>
-            Default publikasi tetap mengikuti jadwal Wakakur. Gunakan kontrol ini jika wali kelas perlu menahan hasil nilai siswa tertentu agar belum tampil ke akun siswa.
-          </Text>
-        </View>
-
-        <View
-          style={{
             backgroundColor: '#fff',
             borderWidth: 1,
             borderColor: '#dbe7fb',
@@ -1647,30 +1638,58 @@ export default function TeacherHomeroomPermissionsScreen() {
           />
         </View>
 
-        {selectedResultPublicationProgram ? (
-          <View
+        <View
+          style={{
+            flexDirection: 'row',
+            justifyContent: 'flex-end',
+            marginBottom: 12,
+          }}
+        >
+          <Pressable
+            onPress={() => setPublicationGuideVisible(true)}
             style={{
+              width: 44,
+              height: 44,
+              borderRadius: 999,
               borderWidth: 1,
-              borderColor: '#e2e8f0',
-              backgroundColor: '#f8fafc',
-              borderRadius: 12,
-              padding: 12,
-              marginBottom: 12,
+              borderColor: '#fde68a',
+              backgroundColor: '#fefce8',
+              alignItems: 'center',
+              justifyContent: 'center',
+              shadowColor: '#a16207',
+              shadowOffset: { width: 0, height: 4 },
+              shadowOpacity: 0.12,
+              shadowRadius: 8,
+              elevation: 2,
             }}
           >
-            <Text style={{ color: BRAND_COLORS.textDark, fontWeight: '700', fontSize: scaleFont(14) }}>
-              {selectedResultPublicationProgram.label}
-            </Text>
-            <Text style={{ color: BRAND_COLORS.textMuted, fontSize: scaleFont(12), lineHeight: scaleLineHeight(18), marginTop: 4 }}>
-              {selectedResultPublicationProgram.globalRelease.description}
-            </Text>
-            <Text style={{ color: '#64748b', fontSize: scaleFont(11), lineHeight: scaleLineHeight(16), marginTop: 4 }}>
-              {selectedResultPublicationProgram.globalRelease.effectiveDate
-                ? `Efektif ${formatDateTime(selectedResultPublicationProgram.globalRelease.effectiveDate)}`
-                : 'Tanpa tanggal khusus'}
-            </Text>
-          </View>
-        ) : null}
+            <Feather name="alert-circle" size={20} color="#ca8a04" />
+          </Pressable>
+
+          {selectedResultPublicationProgram ? (
+            <Pressable
+              onPress={() => setPublicationProgramVisible(true)}
+              style={{
+                marginLeft: 12,
+                width: 44,
+                height: 44,
+                borderRadius: 999,
+                borderWidth: 1,
+                borderColor: '#bfdbfe',
+                backgroundColor: '#eff6ff',
+                alignItems: 'center',
+                justifyContent: 'center',
+                shadowColor: '#2563eb',
+                shadowOffset: { width: 0, height: 4 },
+                shadowOpacity: 0.12,
+                shadowRadius: 8,
+                elevation: 2,
+              }}
+            >
+              <Feather name="calendar" size={20} color="#2563eb" />
+            </Pressable>
+          ) : null}
+        </View>
 
         <View style={{ flexDirection: 'row', flexWrap: 'wrap', marginHorizontal: -4, marginBottom: 12 }}>
           {[
@@ -1912,6 +1931,99 @@ export default function TeacherHomeroomPermissionsScreen() {
           examPrograms={examProgramsQuery.data || []}
         />
       )}
+
+      <MobileDetailModal
+        visible={publicationGuideVisible}
+        title="Panduan Publikasi Nilai"
+        subtitle="Ikuti jadwal Kurikulum, lalu tahan hanya jika memang perlu per siswa."
+        iconName="alert-circle"
+        accentColor="#ca8a04"
+        onClose={() => setPublicationGuideVisible(false)}
+      >
+        <View style={{ gap: 10 }}>
+          {[
+            'Default publikasi nilai tetap mengikuti jadwal rilis dari Wakakur/Kurikulum.',
+            'Gunakan kontrol ini hanya jika wali kelas perlu menahan hasil nilai siswa tertentu.',
+            'Penahanan bersifat per siswa dan tidak memengaruhi siswa lain di kelas yang sama.',
+          ].map((item) => (
+            <View
+              key={item}
+              style={{
+                borderWidth: 1,
+                borderColor: '#fde68a',
+                borderRadius: 14,
+                paddingHorizontal: 12,
+                paddingVertical: 11,
+                backgroundColor: '#fefce8',
+              }}
+            >
+              <Text style={{ color: '#854d0e', fontSize: scaleFont(12), lineHeight: scaleLineHeight(18) }}>{item}</Text>
+            </View>
+          ))}
+          <View style={{ flexDirection: 'row', flexWrap: 'wrap', marginHorizontal: -4 }}>
+            {[
+              { key: 'total', title: 'Total Siswa', value: `${resultPublicationSummary.totalStudents}`, color: '#2563eb', subtitle: 'Sesuai kelas aktif' },
+              { key: 'visible', title: 'Sudah Tampil', value: `${resultPublicationSummary.visibleStudents}`, color: '#16a34a', subtitle: 'Bisa dibuka siswa' },
+              { key: 'blocked', title: 'Ditahan Wali', value: `${resultPublicationSummary.blockedStudents}`, color: '#dc2626', subtitle: 'Ditahan per siswa' },
+              { key: 'waiting', title: 'Menunggu Wakakur', value: `${resultPublicationSummary.waitingWakakurStudents}`, color: '#d97706', subtitle: 'Belum rilis global' },
+            ].map((item) => (
+              <View key={item.key} style={{ width: '50%', paddingHorizontal: 4, marginBottom: 8 }}>
+                <View
+                  style={{
+                    borderWidth: 1,
+                    borderColor: `${item.color}22`,
+                    borderRadius: 14,
+                    paddingHorizontal: 12,
+                    paddingVertical: 11,
+                    backgroundColor: '#fff',
+                  }}
+                >
+                  <Text style={{ color: item.color, fontSize: scaleFont(11), marginBottom: 4 }}>{item.title}</Text>
+                  <Text style={{ color: BRAND_COLORS.textDark, fontWeight: '700', fontSize: scaleFont(17) }}>{item.value}</Text>
+                  <Text style={{ color: BRAND_COLORS.textMuted, fontSize: scaleFont(11), lineHeight: scaleLineHeight(16), marginTop: 3 }}>
+                    {item.subtitle}
+                  </Text>
+                </View>
+              </View>
+            ))}
+          </View>
+        </View>
+      </MobileDetailModal>
+
+      <MobileDetailModal
+        visible={publicationProgramVisible && !!selectedResultPublicationProgram}
+        title={selectedResultPublicationProgram?.label || 'Jadwal Rilis'}
+        subtitle="Status rilis global dari Wakakur untuk jenis nilai yang sedang dipilih."
+        iconName="calendar"
+        accentColor="#2563eb"
+        onClose={() => setPublicationProgramVisible(false)}
+      >
+        <View
+          style={{
+            borderWidth: 1,
+            borderColor: '#bfdbfe',
+            borderRadius: 14,
+            paddingHorizontal: 12,
+            paddingVertical: 12,
+            backgroundColor: '#eff6ff',
+          }}
+        >
+          <Text style={{ color: '#1d4ed8', fontSize: scaleFont(11), fontWeight: '700', marginBottom: 4 }}>
+            STATUS RILIS
+          </Text>
+          <Text style={{ color: BRAND_COLORS.textDark, fontWeight: '700', fontSize: scaleFont(15) }}>
+            {selectedResultPublicationProgram?.globalRelease.label || '-'}
+          </Text>
+          <Text style={{ color: '#1e40af', fontSize: scaleFont(12), lineHeight: scaleLineHeight(18), marginTop: 6 }}>
+            {selectedResultPublicationProgram?.globalRelease.description || '-'}
+          </Text>
+          <Text style={{ color: '#1d4ed8', fontSize: scaleFont(11), lineHeight: scaleLineHeight(16), marginTop: 8 }}>
+            {selectedResultPublicationProgram?.globalRelease.effectiveDate
+              ? `Efektif ${formatDateTime(selectedResultPublicationProgram.globalRelease.effectiveDate)}`
+              : 'Tanpa tanggal khusus'}
+          </Text>
+        </View>
+      </MobileDetailModal>
 
       <MobileDetailModal
         visible={restrictionModalVisible}

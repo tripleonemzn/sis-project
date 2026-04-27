@@ -161,6 +161,11 @@ Dokumen ini adalah policy kerja default untuk setiap sesi baru yang mengerjakan 
    - Jika isi popup panjang, scroll harus terjadi di body popup, bukan dengan membiarkan popup memanjang melewati header. Jika data sangat banyak, utamakan grouping/collapse yang rapi seperti pola `Jadwal Mengawas` Wakakur agar tetap mudah dibaca.
    - Untuk dokumen cetak/surat yang membutuhkan kop/header institusi, gunakan header surat baku sekolah secara konsisten.
    - Header dokumen harus bersifat dinamis berdasarkan data existing yang relevan, terutama daftar kompetensi keahlian/jurusan; jangan hardcode per dokumen jika datanya sudah bisa dibaca dari source of truth.
+   - Untuk barcode/QR verifikasi dokumen, gunakan standar pola BA/Jadwal Mengawas sebagai default:
+     - tautan verifikasi harus sesingkat dan sesederhana mungkin
+     - token verifikasi harus ringkas dan tidak membuat QR terlalu padat
+     - ukuran QR harus proporsional untuk cetak A4 dan tetap mudah dipindai
+     - hindari menambah teks legalitas panjang di area tanda tangan kecuali user meminta eksplisit
 
 14. **Jaga efisiensi token dan konteks**
    - Untuk pekerjaan panjang, lebih baik kerja per batch yang jelas daripada terlalu sering bolak-balik revisi kecil.

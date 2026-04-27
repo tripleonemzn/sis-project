@@ -10,6 +10,8 @@ import {
   ChevronRight, 
   CheckCircle, 
   XCircle, 
+  AlertCircle,
+  CalendarClock,
   FileText,
   ShieldAlert,
   BookOpenText,
@@ -78,6 +80,8 @@ export const HomeroomPermissionsPage = () => {
   const queryClient = useQueryClient();
   type ActiveTab = 'permissions' | 'exam_restrictions' | 'result_publication' | 'homeroom_book';
   const [activeTabOverride, setActiveTabOverride] = useState<ActiveTab | null>(null);
+  const [showResultPublicationGuide, setShowResultPublicationGuide] = useState(false);
+  const [showResultPublicationProgramInfo, setShowResultPublicationProgramInfo] = useState(false);
 
   // Get Active Academic Year
   // const { data: fetchedActiveYear } = useActiveAcademicYear(); // Assuming useActiveAcademicYear is imported or needed
@@ -121,6 +125,10 @@ export const HomeroomPermissionsPage = () => {
     setActiveTabOverride(tab);
     setPage(1);
     setSearch('');
+    if (tab !== 'result_publication') {
+      setShowResultPublicationGuide(false);
+      setShowResultPublicationProgramInfo(false);
+    }
     if (userId) {
       const currentPrefs = (userData?.data?.preferences || {}) as Record<string, unknown>;
       updateProfileMutation.mutate({
@@ -482,7 +490,7 @@ export const HomeroomPermissionsPage = () => {
         {/* Tabs & Filter Header */}
         <div className="border-b border-gray-200 bg-white px-4 pt-4">
           <div className="flex flex-col xl:flex-row xl:items-end xl:justify-between gap-4 pb-4">
-            <div className="flex overflow-x-auto gap-4">
+            <div className="flex gap-4 overflow-x-auto md:flex-wrap md:overflow-visible [scrollbar-width:none] [&::-webkit-scrollbar]:hidden">
               <button
                 type="button"
                 onClick={() => handleTabChange('permissions')}
@@ -667,36 +675,45 @@ export const HomeroomPermissionsPage = () => {
           </div>
         ) : activeTab === 'result_publication' ? (
           <div className="p-4 space-y-4">
-            <div className="rounded-lg border border-blue-100 bg-blue-50 px-3 py-2 text-[11px] leading-relaxed text-blue-800">
-              <span className="font-semibold">Panduan:</span> default publikasi tetap mengikuti jadwal Wakakur.
-              Gunakan tabel ini jika wali kelas perlu menahan hasil nilai siswa tertentu agar belum tampil ke akun siswa.
-              <div className="mt-2 flex flex-wrap gap-2 text-[11px]">
-                <span className="rounded-full bg-white/80 px-2 py-0.5 text-blue-700">
+            <div className="flex flex-col gap-3 lg:flex-row lg:items-start lg:justify-between">
+              <div className="flex flex-wrap gap-2 text-[11px]">
+                <span className="rounded-full bg-blue-50 px-2.5 py-1 text-blue-700">
                   Total siswa: {resultPublicationSummary.totalStudents}
                 </span>
-                <span className="rounded-full bg-emerald-50 px-2 py-0.5 text-emerald-700">
+                <span className="rounded-full bg-emerald-50 px-2.5 py-1 text-emerald-700">
                   Sudah tampil: {resultPublicationSummary.visibleStudents}
                 </span>
-                <span className="rounded-full bg-rose-50 px-2 py-0.5 text-rose-700">
+                <span className="rounded-full bg-rose-50 px-2.5 py-1 text-rose-700">
                   Ditahan wali: {resultPublicationSummary.blockedStudents}
                 </span>
-                <span className="rounded-full bg-amber-50 px-2 py-0.5 text-amber-700">
+                <span className="rounded-full bg-amber-50 px-2.5 py-1 text-amber-700">
                   Menunggu Wakakur: {resultPublicationSummary.waitingWakakurStudents}
                 </span>
               </div>
-            </div>
 
-            {selectedResultPublicationProgram ? (
-              <div className="rounded-lg border border-slate-200 bg-slate-50 px-4 py-3 text-sm text-slate-700">
-                <p className="font-semibold text-slate-900">{selectedResultPublicationProgram.label}</p>
-                <p className="mt-1">{selectedResultPublicationProgram.globalRelease.description}</p>
-                <p className="mt-1 text-xs text-slate-500">
-                  {selectedResultPublicationProgram.globalRelease.effectiveDate
-                    ? `Efektif ${formatDateTime(selectedResultPublicationProgram.globalRelease.effectiveDate)}`
-                    : 'Tanpa tanggal khusus'}
-                </p>
+              <div className="flex items-center gap-3 lg:justify-end">
+                <button
+                  type="button"
+                  onClick={() => setShowResultPublicationGuide(true)}
+                  className="inline-flex h-11 w-11 items-center justify-center rounded-full border border-yellow-200 bg-yellow-50 text-yellow-600 shadow-sm transition hover:bg-yellow-100 animate-pulse"
+                  aria-label="Lihat panduan publikasi nilai"
+                  title="Panduan publikasi nilai"
+                >
+                  <AlertCircle className="h-5 w-5" />
+                </button>
+                {selectedResultPublicationProgram ? (
+                  <button
+                    type="button"
+                    onClick={() => setShowResultPublicationProgramInfo(true)}
+                    className="inline-flex h-11 w-11 items-center justify-center rounded-full border border-blue-200 bg-blue-50 text-blue-600 shadow-sm transition hover:bg-blue-100 animate-pulse"
+                    aria-label={`Lihat jadwal rilis ${selectedResultPublicationProgram.label}`}
+                    title={`Jadwal rilis ${selectedResultPublicationProgram.label}`}
+                  >
+                    <CalendarClock className="h-5 w-5" />
+                  </button>
+                ) : null}
               </div>
-            ) : null}
+            </div>
 
             {isLoadingResultPublications ? (
               <div className="rounded-lg border border-gray-200">
@@ -800,6 +817,77 @@ export const HomeroomPermissionsPage = () => {
                 </table>
               </div>
             )}
+
+            {showResultPublicationGuide ? (
+              <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/35 px-4">
+                <div className="w-full max-w-lg rounded-2xl border border-yellow-200 bg-white p-6 shadow-xl">
+                  <div className="flex items-start justify-between gap-4">
+                    <div>
+                      <h3 className="text-xl font-bold text-gray-900">Panduan Publikasi Nilai</h3>
+                      <p className="mt-1 text-sm text-gray-500">Ikuti jadwal Kurikulum, lalu tahan hanya jika memang perlu per siswa.</p>
+                    </div>
+                    <button
+                      type="button"
+                      onClick={() => setShowResultPublicationGuide(false)}
+                      className="rounded-lg border border-gray-200 bg-white px-3 py-2 text-sm font-semibold text-gray-600 hover:bg-gray-50"
+                    >
+                      Tutup
+                    </button>
+                  </div>
+                  <ul className="mt-4 space-y-2 text-sm text-gray-700">
+                    <li>Default publikasi nilai tetap mengikuti jadwal rilis dari Wakakur/Kurikulum.</li>
+                    <li>Gunakan tabel ini hanya jika wali kelas perlu menahan hasil nilai siswa tertentu.</li>
+                    <li>Penahanan bersifat per siswa dan tidak memengaruhi siswa lain di kelas yang sama.</li>
+                  </ul>
+                  <div className="mt-4 flex flex-wrap gap-2 text-[11px]">
+                    <span className="rounded-full bg-blue-50 px-2.5 py-1 text-blue-700">
+                      Total siswa: {resultPublicationSummary.totalStudents}
+                    </span>
+                    <span className="rounded-full bg-emerald-50 px-2.5 py-1 text-emerald-700">
+                      Sudah tampil: {resultPublicationSummary.visibleStudents}
+                    </span>
+                    <span className="rounded-full bg-rose-50 px-2.5 py-1 text-rose-700">
+                      Ditahan wali: {resultPublicationSummary.blockedStudents}
+                    </span>
+                    <span className="rounded-full bg-amber-50 px-2.5 py-1 text-amber-700">
+                      Menunggu Wakakur: {resultPublicationSummary.waitingWakakurStudents}
+                    </span>
+                  </div>
+                </div>
+              </div>
+            ) : null}
+
+            {showResultPublicationProgramInfo && selectedResultPublicationProgram ? (
+              <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/35 px-4">
+                <div className="w-full max-w-lg rounded-2xl border border-blue-200 bg-white p-6 shadow-xl">
+                  <div className="flex items-start justify-between gap-4">
+                    <div>
+                      <h3 className="text-xl font-bold text-gray-900">{selectedResultPublicationProgram.label}</h3>
+                      <p className="mt-1 text-sm text-gray-500">Status rilis global dari Wakakur untuk jenis nilai yang sedang dipilih.</p>
+                    </div>
+                    <button
+                      type="button"
+                      onClick={() => setShowResultPublicationProgramInfo(false)}
+                      className="rounded-lg border border-gray-200 bg-white px-3 py-2 text-sm font-semibold text-gray-600 hover:bg-gray-50"
+                    >
+                      Tutup
+                    </button>
+                  </div>
+                  <div className="mt-4 rounded-2xl border border-blue-100 bg-blue-50 p-4 text-sm text-blue-900">
+                    <div className="text-xs font-semibold uppercase tracking-wide text-blue-700">Status Rilis</div>
+                    <div className="mt-1 font-semibold">{selectedResultPublicationProgram.globalRelease.label}</div>
+                    <div className="mt-2 text-sm leading-relaxed text-blue-800">
+                      {selectedResultPublicationProgram.globalRelease.description}
+                    </div>
+                    <div className="mt-3 text-xs text-blue-700">
+                      {selectedResultPublicationProgram.globalRelease.effectiveDate
+                        ? `Efektif ${formatDateTime(selectedResultPublicationProgram.globalRelease.effectiveDate)}`
+                        : 'Tanpa tanggal khusus'}
+                    </div>
+                  </div>
+                </div>
+              </div>
+            ) : null}
           </div>
         ) : (
         <div className="overflow-x-auto">

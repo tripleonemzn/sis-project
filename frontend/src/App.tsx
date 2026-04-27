@@ -250,6 +250,7 @@ function App() {
           <Route path="/verify/proctor-report/:token" element={<ProctorReportVerificationPage />} />
           <Route path="/verify/exam-card/:token" element={<ExamCardVerificationPage />} />
           <Route path="/verify/report-card/:token" element={<StudentReportVerificationPage />} />
+          <Route path="/v/rc/:token" element={<StudentReportVerificationPage />} />
           <Route path="/verify/profile-summary/:token" element={<ProfileSummaryVerificationPage />} />
           <Route path="/v/ps/:token" element={<ProfileSummaryVerificationPage />} />
         

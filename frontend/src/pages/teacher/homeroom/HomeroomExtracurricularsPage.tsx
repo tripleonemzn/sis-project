@@ -431,15 +431,19 @@ export const HomeroomExtracurricularsPage = ({
 
       {/* Achievement Modal */}
       {isAchievementModalOpen && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black bg-opacity-50">
-          <div className="bg-white rounded-lg shadow-lg w-full max-w-md mx-4">
-            <div className="flex justify-between items-center p-4 border-b">
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/35 px-4">
+          <div className="w-full max-w-md overflow-hidden rounded-2xl border border-slate-200 bg-white shadow-xl">
+            <div className="flex justify-between items-center border-b border-slate-200 p-4">
               <h3 className="text-lg font-medium text-gray-900">Tambah Prestasi</h3>
-              <button onClick={closeAchievementModal} className="text-gray-400 hover:text-gray-500">
+              <button
+                onClick={closeAchievementModal}
+                className="rounded-lg border border-gray-200 bg-white px-2.5 py-2 text-gray-500 transition hover:bg-gray-50 hover:text-gray-700"
+                aria-label="Tutup popup prestasi"
+              >
                 <X className="w-5 h-5" />
               </button>
             </div>
-            <form onSubmit={submitAchievement} className="p-4 space-y-4">
+            <form onSubmit={submitAchievement} className="max-h-[calc(100vh-9rem)] overflow-y-auto p-4 space-y-4">
               <div>
                 <label className="block text-sm font-medium text-gray-700 mb-1">Nama Kegiatan/Kejuaraan</label>
                 <input
@@ -491,11 +495,11 @@ export const HomeroomExtracurricularsPage = ({
                   className="w-full rounded-md border-gray-300 shadow-sm focus:border-blue-500 focus:ring-blue-500 sm:text-sm p-2 border"
                 />
               </div>
-              <div className="flex justify-end pt-2">
+              <div className="sticky bottom-0 flex justify-end gap-2 border-t border-slate-100 bg-white pt-4">
                 <button
                   type="button"
                   onClick={closeAchievementModal}
-                  className="mr-2 px-4 py-2 text-sm font-medium text-gray-700 bg-white border border-gray-300 rounded-md hover:bg-gray-50 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-blue-500"
+                  className="px-4 py-2 text-sm font-medium text-gray-700 bg-white border border-gray-300 rounded-md hover:bg-gray-50 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-blue-500"
                 >
                   Batal
                 </button>
