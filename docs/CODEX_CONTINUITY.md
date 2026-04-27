@@ -482,6 +482,56 @@ Setiap room baru yang diminta `baca AGENTS.md` atau `lanjutkan` wajib membaca fi
 - Commit hash terkait:
   - `9a5e8ff` `feat(homeroom): switch result publication to table view`
 
+## Update Terbaru 2026-04-27 15:10 WIB
+
+- Objective/task aktif:
+  - Koreksi logic `Publikasi Nilai` wali kelas agar override benar-benar per siswa, bukan per kelas-program global.
+- Batch/wave terakhir selesai:
+  - Koreksi source of truth backend + parity web/mobile selesai.
+- Progress:
+  - `100%` untuk request koreksi ini.
+- Area/file yang disentuh:
+  - `backend/src/utils/homeroomResultPublication.ts`
+  - `backend/src/controllers/grade.controller.ts`
+  - `frontend/src/services/grade.service.ts`
+  - `frontend/src/pages/teacher/homeroom/HomeroomPermissionsPage.tsx`
+  - `mobile-app/src/features/grades/types.ts`
+  - `mobile-app/src/features/grades/gradeApi.ts`
+  - `mobile-app/app/(app)/teacher/homeroom-permissions.tsx`
+- Ringkasan perubahan:
+  - Override publikasi wali kelas dipindahkan ke scope `kelas + siswa + program`.
+  - Endpoint wali kelas sekarang mengembalikan daftar program untuk filter dan daftar siswa aktif untuk program terpilih.
+  - Web `Publikasi Nilai` sekarang breakdown per siswa dengan filter `Semester` dan `Jenis Nilai`.
+  - Mobile `Publikasi Nilai` disamakan alurnya: filter `Semester` dan `Jenis Nilai`, lalu tindakan tahan/publikasikan per siswa.
+  - Layar siswa dan rapor semester sekarang hanya memblokir jika siswa tersebut memang ditahan wali kelas pada program terkait.
+- Verifikasi yang sudah dijalankan:
+  - `cd backend && npm run build`
+  - `cd backend && npm run service:restart`
+  - `cd backend && npm run service:health`
+  - `cd frontend && npm run build`
+  - `cd frontend && npm run deploy`
+  - `cd mobile-app && npm run typecheck`
+  - `cd mobile-app && npm run audit:parity:check`
+  - `cd mobile-app && npm run check:ota:testers`
+  - `curl -I https://siskgb2.id/teacher/wali-kelas/permissions` merespons `200`
+- Publish/live status:
+  - Backend live.
+  - Web live.
+  - OTA Android `pilot-live` sudah publish.
+  - Update group OTA: `be8166b6-3cca-453d-b7ec-208e23df1277`
+  - Push notify OTA: `3/3`
+- Sisa pekerjaan:
+  - Tidak ada untuk request ini.
+- Blocker/residual risk:
+  - Preferences lama yang sempat tersimpan dalam format blok per kelas-program dibiarkan sebagai data legacy dan sudah tidak dipakai lagi oleh logic baru.
+  - Tidak ada polling/realtime baru; realtime justru dipersempit dari seluruh kelas menjadi hanya siswa yang diubah.
+- Langkah aman berikutnya:
+  - Minta user uji 1 program nilai dari sisi wali kelas lalu cek 2 akun siswa berbeda di kelas yang sama untuk memastikan satu siswa bisa ditahan sementara siswa lain tetap melihat hasilnya.
+- Last updated:
+  - 2026-04-27 15:10 WIB
+- Commit hash terkait:
+  - `4cfba27` `fix(grades): scope homeroom publication per student`
+
 ## Template Update Wajib Saat Ada Pekerjaan Baru
 
 - Objective/task aktif:
