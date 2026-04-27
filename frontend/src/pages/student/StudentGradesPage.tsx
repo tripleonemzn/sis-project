@@ -31,6 +31,7 @@ type StudentGradesOutletContext = {
 };
 
 type GradeTabKey = 'PROGRAM' | 'REPORT';
+type ProgramSemesterValue = '' | 'ODD' | 'EVEN';
 type ReportSemesterValue = '' | 'ODD' | 'EVEN';
 
 function formatScore(value: number | null | undefined) {
@@ -128,6 +129,7 @@ export default function StudentGradesPage() {
   const { user: contextUser } = useOutletContext<StudentGradesOutletContext>() || {};
   const [activeTab, setActiveTab] = useState<GradeTabKey>('PROGRAM');
   const [activeProgramCode, setActiveProgramCode] = useState<string>('');
+  const [selectedProgramSemester, setSelectedProgramSemester] = useState<ProgramSemesterValue>('');
   const [selectedReportSemester, setSelectedReportSemester] = useState<ReportSemesterValue>('');
   const { data: authData } = useQuery({
     queryKey: ['me'],
@@ -138,9 +140,10 @@ export default function StudentGradesPage() {
   const user = contextUser || authData?.data;
 
   const overviewQuery = useQuery<StudentGradeOverviewData>({
-    queryKey: ['student-grade-overview', user?.id, selectedReportSemester || 'ACTIVE'],
+    queryKey: ['student-grade-overview', user?.id, selectedProgramSemester || 'ACTIVE', selectedReportSemester || 'ACTIVE'],
     queryFn: () =>
       gradeService.getStudentOverview({
+        programSemester: selectedProgramSemester || undefined,
         reportSemester: selectedReportSemester || undefined,
       }),
     enabled: Boolean(user?.id) && String(user?.role || '').toUpperCase() === 'STUDENT',
@@ -149,24 +152,22 @@ export default function StudentGradesPage() {
 
   const data = overviewQuery.data;
   const reportCard = data?.reportCard as StudentSemesterReportData | undefined;
+  const effectiveProgramSemester = (selectedProgramSemester || data?.meta.semester || 'ODD') as 'ODD' | 'EVEN';
+  const effectiveProgramSemesterLabel = formatSemesterLabel(effectiveProgramSemester);
   const effectiveReportSemester = (selectedReportSemester || reportCard?.semester || data?.meta.semester || 'ODD') as 'ODD' | 'EVEN';
   const effectiveReportSemesterLabel = formatSemesterLabel(effectiveReportSemester);
   const programTabSubtitle = useMemo(() => {
+    const semesterLabel = effectiveProgramSemesterLabel.toLowerCase();
     if (!data || data.components.length === 0) {
-      return 'Tab ini menampilkan nilai per program ujian aktif seperti SBTS, SAS, atau SAT pada setiap mata pelajaran.';
+      return `Tab ini menampilkan nilai per program ujian untuk semester ${semesterLabel}. Default mengikuti semester aktif, tetapi Anda bisa mengganti semester untuk melihat SBTS, SAS, atau SAT yang relevan.`;
     }
-    const labels = Array.from(
-      new Set(data.components.map((component) => component.reportSlotCode).filter(Boolean)),
-    );
-    if (labels.length === 1) {
-      return `Tab ini menampilkan skor ${labels[0]} per mata pelajaran. Jika sekolah hanya memakai satu program ujian aktif, nilainya akan muncul di sini.`;
-    }
-    return `Tab ini menampilkan skor per program ujian aktif. Pilih ${labels.join(', ')} untuk melihat nilai ujian yang berbeda pada mata pelajaran yang sama.`;
-  }, [data]);
+    const labels = Array.from(new Set(data.components.map((component) => component.reportSlotCode).filter(Boolean)));
+    return `Tab ini menampilkan nilai program ujian semester ${semesterLabel}. Pilih ${labels.join(', ')} untuk melihat skor ujian per mata pelajaran, dan ubah semester jika ingin berpindah konteks SBTS, SAS, atau SAT.`;
+  }, [data, effectiveProgramSemesterLabel]);
   const reportTabSubtitle = useMemo(
     () =>
-      `Tab ini menampilkan hasil akhir rapor semester: nilai akhir per mapel, kehadiran, dan catatan wali kelas. Ini bukan skor satu ujian tertentu, tetapi ringkasan akhir semester ${data?.meta.semesterLabel || '-'}.`,
-    [data?.meta.semesterLabel],
+      `Tab ini menampilkan hasil akhir rapor semester ${effectiveReportSemesterLabel.toLowerCase()}: nilai akhir per mapel, kehadiran, dan catatan wali kelas. Ini bukan skor satu ujian tertentu, tetapi ringkasan akhir semester yang dipublikasikan ke siswa.`,
+    [effectiveReportSemesterLabel],
   );
   const programTabs = useMemo(() => {
     if (!data) return [];
@@ -256,7 +257,7 @@ export default function StudentGradesPage() {
         {data ? (
           <div className="inline-flex items-center gap-2 rounded-full border border-blue-100 bg-blue-50 px-4 py-2 text-sm font-medium text-blue-700">
             <GraduationCap className="h-4 w-4" />
-            Semester {data.meta.semesterLabel}
+            Semester Aktif {data.meta.semesterLabel}
           </div>
         ) : null}
       </div>
@@ -358,6 +359,20 @@ export default function StudentGradesPage() {
                 </p>
               </div>
 
+              {activeTab === 'PROGRAM' ? (
+                <label className="flex min-w-[280px] items-center gap-3 text-sm text-slate-600 xl:justify-end">
+                  <span className="shrink-0 font-medium text-slate-700">Semester Program</span>
+                  <select
+                    value={effectiveProgramSemester}
+                    onChange={(event) => setSelectedProgramSemester((event.target.value as ProgramSemesterValue) || '')}
+                    className="min-w-0 flex-1 px-4 py-3 text-sm font-medium text-slate-700 outline-none"
+                  >
+                    <option value="ODD">Semester Ganjil</option>
+                    <option value="EVEN">Semester Genap</option>
+                  </select>
+                </label>
+              ) : null}
+
               {isReportTabActive && reportCard ? (
                 <label className="flex min-w-[280px] items-center gap-3 text-sm text-slate-600 xl:justify-end">
                   <span className="shrink-0 font-medium text-slate-700">Semester Rapor</span>
@@ -377,15 +392,9 @@ export default function StudentGradesPage() {
           {activeTab === 'PROGRAM' ? (
             <>
               <div className="rounded-3xl border border-slate-200 bg-white p-5">
-                <div className="flex flex-col gap-4 lg:flex-row lg:items-center lg:justify-between">
-                  <div>
-                    <h2 className="text-xl font-bold text-slate-900">Program Ujian Aktif</h2>
-                    <p className="mt-1 text-sm text-slate-500">{programTabSubtitle}</p>
-                  </div>
-                  <div className="inline-flex items-center gap-2 rounded-full border border-slate-200 bg-slate-50 px-4 py-2 text-sm text-slate-600">
-                    <Clock3 className="h-4 w-4" />
-                    Mengikuti semester berjalan
-                  </div>
+                <div>
+                  <h2 className="text-xl font-bold text-slate-900">Program Ujian Aktif</h2>
+                  <p className="mt-1 text-sm text-slate-500">{programTabSubtitle}</p>
                 </div>
 
                 <div className="mt-5">
@@ -393,7 +402,10 @@ export default function StudentGradesPage() {
                     programs={programTabs}
                     activeProgramCode={activeProgram?.code || ''}
                     onProgramChange={setActiveProgramCode}
-                    emptyMessage="Belum ada Program Ujian aktif yang relevan untuk semester berjalan."
+                    showSemester
+                    semesterValue={effectiveProgramSemester}
+                    onSemesterChange={(value) => setSelectedProgramSemester(value)}
+                    emptyMessage={`Belum ada Program Ujian aktif yang relevan untuk semester ${effectiveProgramSemesterLabel.toLowerCase()}.`}
                   />
                 </div>
               </div>
@@ -501,7 +513,7 @@ export default function StudentGradesPage() {
                   <p className="mt-2 text-sm text-slate-500">
                     {isProgramReleaseLocked
                       ? `Nilai ${activeProgram?.code || 'program ini'} akan tampil setelah policy publikasi program terpenuhi.`
-                      : `Nilai ${activeProgram?.code || 'program ini'} untuk semester berjalan belum tersedia.`}
+                      : `Nilai ${activeProgram?.code || 'program ini'} untuk semester ${effectiveProgramSemesterLabel.toLowerCase()} belum tersedia.`}
                   </p>
                 </div>
               )}

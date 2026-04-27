@@ -3895,6 +3895,10 @@ export const getStudentGradeOverview = async (req: Request, res: Response) => {
     }
 
     const semester = resolveCurrentSemesterFromAcademicYear(activeYear)
+    const programSemester =
+      parseStudentReportSemester(req.query.program_semester) ||
+      parseStudentReportSemester(req.query.programSemester) ||
+      semester
     const reportSemester =
       parseStudentReportSemester(req.query.report_semester) ||
       parseStudentReportSemester(req.query.reportSemester) ||
@@ -3924,14 +3928,14 @@ export const getStudentGradeOverview = async (req: Request, res: Response) => {
       },
       orderBy: [{ id: 'desc' }],
     })
-    const activeSemesterReportGradesPromise =
-      reportSemester === semester
+    const programSemesterReportGradesPromise =
+      reportSemester === programSemester
         ? reportGradesPromise
         : prisma.reportGrade.findMany({
             where: {
               studentId,
               academicYearId: activeYear.id,
-              semester,
+              semester: programSemester,
             },
             include: {
               subject: {
@@ -3948,7 +3952,7 @@ export const getStudentGradeOverview = async (req: Request, res: Response) => {
     const [
       teacherAssignments,
       reportGrades,
-      activeSemesterReportGrades,
+      programSemesterReportGrades,
       studentGrades,
       examGradeComponents,
       examPrograms,
@@ -3990,12 +3994,12 @@ export const getStudentGradeOverview = async (req: Request, res: Response) => {
         },
       }),
       reportGradesPromise,
-      activeSemesterReportGradesPromise,
+      programSemesterReportGradesPromise,
       prisma.studentGrade.findMany({
         where: {
           studentId,
           academicYearId: activeYear.id,
-          semester,
+          semester: programSemester,
         },
         include: {
           component: {
@@ -4129,10 +4133,10 @@ export const getStudentGradeOverview = async (req: Request, res: Response) => {
       }
     })
 
-    const activeReportBySubjectId = new Map<number, (typeof activeSemesterReportGrades)[number]>()
-    activeSemesterReportGrades.forEach((row) => {
-      if (!activeReportBySubjectId.has(row.subjectId)) {
-        activeReportBySubjectId.set(row.subjectId, row)
+    const programReportBySubjectId = new Map<number, (typeof programSemesterReportGrades)[number]>()
+    programSemesterReportGrades.forEach((row) => {
+      if (!programReportBySubjectId.has(row.subjectId)) {
+        programReportBySubjectId.set(row.subjectId, row)
       }
     })
 
@@ -4159,7 +4163,7 @@ export const getStudentGradeOverview = async (req: Request, res: Response) => {
       }
     })
 
-    const hasUsScores = activeSemesterReportGrades.some(
+    const hasUsScores = programSemesterReportGrades.some(
       (row) =>
         hasUsSlotInScoreMap(row.slotScores) ||
         (row.usScore !== null && row.usScore !== undefined),
@@ -4179,7 +4183,7 @@ export const getStudentGradeOverview = async (req: Request, res: Response) => {
       programs: examPrograms,
       componentRuleMap: overviewComponentRuleMap,
       reportDateByKey,
-      activeSemester: semester,
+      activeSemester: programSemester,
       blockedPublicationCodes,
     })
 
@@ -4196,7 +4200,7 @@ export const getStudentGradeOverview = async (req: Request, res: Response) => {
         includeInFinalScore: row.includeInFinalScore,
         displayOrder: row.displayOrder,
       })),
-      semester,
+      semester: programSemester,
       classLevel: student.studentClass.level,
       hasUsScores,
       releaseByProgramCode: studentProgramReleaseLookup.byProgramCode,
@@ -4244,7 +4248,7 @@ export const getStudentGradeOverview = async (req: Request, res: Response) => {
         const subject = assignment?.subject || fallbackSubject
         if (!subject) return null
 
-        const report = activeReportBySubjectId.get(subjectId) || null
+        const report = programReportBySubjectId.get(subjectId) || null
         const slotScores = parseSlotScoreMap(report?.slotScores)
         const hasReportSnapshot = hasMeaningfulReportSnapshot(report)
 

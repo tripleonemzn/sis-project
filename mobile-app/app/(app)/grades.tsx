@@ -21,6 +21,7 @@ import { useAppTheme } from '../../src/theme/AppThemeProvider';
 import { useAppTextScale } from '../../src/theme/AppTextScaleProvider';
 
 type GradeTabKey = 'PROGRAM' | 'REPORT';
+type ProgramSemesterValue = '' | 'ODD' | 'EVEN';
 type ReportSemesterValue = '' | 'ODD' | 'EVEN';
 
 function formatScore(value: number | null | undefined) {
@@ -140,10 +141,11 @@ function ProgramSubjectCard(props: {
   item: StudentGradeOverviewSubjectRow;
   component: StudentGradeOverviewSubjectComponent;
   releaseLocked: boolean;
+  programSemesterLabel: string;
 }) {
   const { colors } = useAppTheme();
   const { scaleFont, scaleLineHeight } = useAppTextScale();
-  const { item, component, releaseLocked } = props;
+  const { item, component, releaseLocked, programSemesterLabel } = props;
   const available = !releaseLocked && component.status === 'AVAILABLE';
 
   return (
@@ -274,8 +276,8 @@ function ProgramSubjectCard(props: {
             {releaseLocked
               ? `Nilai ${component.reportSlotCode} untuk mapel ini akan dibuka ke siswa sesuai policy publikasi program.`
               : available
-              ? `Nilai ${component.reportSlotCode} untuk mapel ini sudah tersedia dan mengikuti semester berjalan.`
-              : `Nilai ${component.reportSlotCode} untuk mapel ini belum tersedia. Data akan tampil setelah guru menyelesaikan input nilai program terkait.`}
+              ? `Nilai ${component.reportSlotCode} untuk mapel ini sudah tersedia untuk semester ${programSemesterLabel.toLowerCase()}.`
+              : `Nilai ${component.reportSlotCode} untuk mapel ini belum tersedia pada semester ${programSemesterLabel.toLowerCase()}. Data akan tampil setelah guru menyelesaikan input nilai program terkait.`}
           </Text>
         </View>
       </View>
@@ -396,14 +398,22 @@ export default function GradesScreen() {
   const { isAuthenticated, isLoading, user } = useAuth();
   const [activeTab, setActiveTab] = useState<GradeTabKey>('PROGRAM');
   const [activeProgramCode, setActiveProgramCode] = useState<string>('');
+  const [selectedProgramSemester, setSelectedProgramSemester] = useState<ProgramSemesterValue>('');
   const [selectedReportSemester, setSelectedReportSemester] = useState<ReportSemesterValue>('');
   const gradesQuery = useStudentGradesQuery({
     enabled: isAuthenticated,
     user,
+    programSemester: selectedProgramSemester,
     reportSemester: selectedReportSemester,
   });
   const pageContentPadding = getStandardPagePadding(insets);
   const overview = gradesQuery.data?.overview;
+  const effectiveProgramSemester = (
+    selectedProgramSemester ||
+    overview?.meta.semester ||
+    'ODD'
+  ) as 'ODD' | 'EVEN';
+  const effectiveProgramSemesterLabel = formatSemesterLabel(effectiveProgramSemester);
   const effectiveReportSemester = (
     selectedReportSemester ||
     overview?.reportCard.semester ||
@@ -412,21 +422,17 @@ export default function GradesScreen() {
   ) as 'ODD' | 'EVEN';
   const effectiveReportSemesterLabel = formatSemesterLabel(effectiveReportSemester);
   const programTabSubtitle = useMemo(() => {
+    const semesterLabel = effectiveProgramSemesterLabel.toLowerCase();
     if (!overview || overview.components.length === 0) {
-      return 'Tab ini menampilkan nilai per program ujian aktif seperti SBTS, SAS, atau SAT pada setiap mata pelajaran.';
+      return `Tab ini menampilkan nilai per program ujian untuk semester ${semesterLabel}. Default mengikuti semester aktif, tetapi Anda bisa mengganti semester untuk melihat SBTS, SAS, atau SAT yang relevan.`;
     }
-    const labels = Array.from(
-      new Set(overview.components.map((component) => component.reportSlotCode).filter(Boolean)),
-    );
-    if (labels.length === 1) {
-      return `Tab ini menampilkan skor ${labels[0]} per mata pelajaran. Jika sekolah hanya memakai satu program ujian aktif, nilainya akan muncul di sini.`;
-    }
-    return `Tab ini menampilkan skor per program ujian aktif. Pilih ${labels.join(', ')} untuk melihat nilai ujian yang berbeda pada mata pelajaran yang sama.`;
-  }, [overview]);
+    const labels = Array.from(new Set(overview.components.map((component) => component.reportSlotCode).filter(Boolean)));
+    return `Tab ini menampilkan nilai program ujian semester ${semesterLabel}. Pilih ${labels.join(', ')} untuk melihat skor ujian per mata pelajaran, dan ubah semester jika ingin berpindah konteks SBTS, SAS, atau SAT.`;
+  }, [overview, effectiveProgramSemesterLabel]);
   const reportTabSubtitle = useMemo(
     () =>
-      `Tab ini menampilkan hasil akhir rapor semester: nilai akhir per mapel, kehadiran, dan catatan wali kelas. Ini bukan skor satu ujian tertentu, tetapi ringkasan akhir semester ${overview?.meta.semesterLabel || '-'}.`,
-    [overview?.meta.semesterLabel],
+      `Tab ini menampilkan hasil akhir rapor semester ${effectiveReportSemesterLabel.toLowerCase()}: nilai akhir per mapel, kehadiran, dan catatan wali kelas. Ini bukan skor satu ujian tertentu, tetapi ringkasan akhir semester yang dipublikasikan ke siswa.`,
+    [effectiveReportSemesterLabel],
   );
 
   const programTabs = useMemo(() => {
@@ -545,7 +551,7 @@ export default function GradesScreen() {
         >
           <Feather name="award" size={14} color="#1d4ed8" />
           <Text style={{ color: '#1d4ed8', fontWeight: '700', fontSize: scaleFont(12) }}>
-            Semester {overview.meta.semesterLabel}
+            Semester Aktif {overview.meta.semesterLabel}
           </Text>
         </View>
       ) : null}
@@ -670,6 +676,31 @@ export default function GradesScreen() {
               {activeTab === 'PROGRAM' ? programTabSubtitle : reportTabSubtitle}
             </Text>
 
+            {activeTab === 'PROGRAM' ? (
+              <View style={{ flexDirection: 'row', alignItems: 'center', gap: 12 }}>
+                <Text
+                  style={{
+                    color: colors.text,
+                    fontWeight: '700',
+                    fontSize: scaleFont(13),
+                    minWidth: 112,
+                  }}
+                >
+                  Semester Program
+                </Text>
+                <View style={{ flex: 1 }}>
+                  <MobileSelectField
+                    value={effectiveProgramSemester}
+                    options={[
+                      { label: 'Semester Ganjil', value: 'ODD' },
+                      { label: 'Semester Genap', value: 'EVEN' },
+                    ]}
+                    onChange={(value) => setSelectedProgramSemester((value as ProgramSemesterValue) || '')}
+                  />
+                </View>
+              </View>
+            ) : null}
+
             {isReportTabActive && reportCard ? (
               <View style={{ flexDirection: 'row', alignItems: 'center', gap: 12 }}>
                 <Text
@@ -720,21 +751,6 @@ export default function GradesScreen() {
                   activeKey={activeProgram?.key || ''}
                   onChange={setActiveProgramCode}
                 />
-                <View
-                  style={{
-                    alignSelf: 'flex-start',
-                    borderWidth: 1,
-                    borderColor: colors.border,
-                    backgroundColor: colors.surfaceMuted,
-                    borderRadius: 999,
-                    paddingHorizontal: 10,
-                    paddingVertical: 6,
-                  }}
-                >
-                  <Text style={{ color: colors.textMuted, fontSize: scaleFont(12), fontWeight: '600' }}>
-                    Mengikuti semester berjalan
-                  </Text>
-                </View>
               </View>
 
               {isProgramReleaseLocked ? (
@@ -796,6 +812,7 @@ export default function GradesScreen() {
                       item={subject}
                       component={component}
                       releaseLocked={isProgramReleaseLocked}
+                      programSemesterLabel={effectiveProgramSemesterLabel}
                     />
                   ))}
                 </View>
@@ -819,7 +836,7 @@ export default function GradesScreen() {
                   <Text style={{ color: colors.textMuted, textAlign: 'center', marginTop: 6, fontSize: scaleFont(13), lineHeight: scaleLineHeight(20) }}>
                     {isProgramReleaseLocked
                       ? `Nilai ${activeProgram?.key || 'program ini'} akan tampil setelah policy publikasi program terpenuhi.`
-                      : `Nilai ${activeProgram?.key || 'program ini'} untuk semester berjalan belum tersedia.`}
+                      : `Nilai ${activeProgram?.key || 'program ini'} untuk semester ${effectiveProgramSemesterLabel.toLowerCase()} belum tersedia.`}
                   </Text>
                 </View>
               )}
