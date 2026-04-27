@@ -1,10 +1,11 @@
-import { useRef, useState } from 'react';
+import { useEffect, useMemo, useRef, useState } from 'react';
 import { useQuery } from '@tanstack/react-query';
 import { reportService } from '../../../services/report.service';
 import { Loader2, Printer, Calendar as CalendarIcon, Trophy } from 'lucide-react';
 import { RankingPrintDocument } from '../../../components/reports/RankingPrintDocument';
 import { format } from 'date-fns';
-import { renderToStaticMarkup } from 'react-dom/server';
+import { createPortal } from 'react-dom';
+import PrintLayout from '../../print/PrintLayout';
 
 interface HomeroomRankingPageProps {
   classId: number;
@@ -35,7 +36,7 @@ const formatScoreDisplay = (value: number | null | undefined) => {
 export const HomeroomRankingPage = ({ classId, academicYearId, semester }: HomeroomRankingPageProps) => {
   const [titimangsa, setTitimangsa] = useState<Date>(new Date());
   const [isPrinting, setIsPrinting] = useState(false);
-  const printIframeRef = useRef<HTMLIFrameElement>(null);
+  const previousTitleRef = useRef<string>('');
   
   const { data, isLoading } = useQuery({
     queryKey: ['class-rankings', classId, academicYearId, semester],
@@ -45,79 +46,53 @@ export const HomeroomRankingPage = ({ classId, academicYearId, semester }: Homer
     refetchOnMount: false,
   });
 
-  const handlePrint = () => {
-    if (!data || isPrinting) return;
+  const printPayload = useMemo(() => {
+    if (!data || !isPrinting) return null;
+    return {
+      className: data.className,
+      academicYear: data.academicYear,
+      semester: data.semester,
+      rankings: data.rankings,
+      principalName: data.principalName,
+      homeroomTeacherName: data.homeroomTeacher?.name || '-',
+      titimangsa,
+    };
+  }, [data, isPrinting, titimangsa]);
 
-    setIsPrinting(true);
-    const iframe = printIframeRef.current;
-    const iframeWindow = iframe?.contentWindow;
-    if (!iframe || !iframeWindow) {
+  useEffect(() => {
+    if (!printPayload) return;
+
+    previousTitleRef.current = document.title;
+    const timeoutId = window.setTimeout(() => {
+      requestAnimationFrame(() => {
+        requestAnimationFrame(() => {
+          window.print();
+        });
+      });
+    }, 80);
+
+    return () => {
+      window.clearTimeout(timeoutId);
+    };
+  }, [printPayload]);
+
+  useEffect(() => {
+    const handleAfterPrint = () => {
       setIsPrinting(false);
-      window.alert('Media cetak belum siap. Coba muat ulang halaman lalu ulangi cetak.');
-      return;
-    }
-
-    const html = renderToStaticMarkup(
-      <RankingPrintDocument
-        className={data.className}
-        academicYear={data.academicYear}
-        semester={data.semester}
-        rankings={data.rankings}
-        principalName={data.principalName}
-        homeroomTeacherName={data.homeroomTeacher?.name || '-'}
-        titimangsa={titimangsa}
-      />,
-    );
-
-    const printDoc = iframeWindow.document;
-    printDoc.open();
-    printDoc.write(`<!DOCTYPE html><html><head><meta charset="utf-8" /><title>Cetak Peringkat</title><style>html,body{margin:0;padding:0;background:#fff;color:#000;} body{font-family:ui-sans-serif,system-ui,sans-serif;}</style></head><body>${html}</body></html>`);
-    printDoc.close();
-
-    const triggerPrint = () => {
-      try {
-        iframeWindow.focus();
-        iframeWindow.print();
-      } finally {
-        window.setTimeout(() => setIsPrinting(false), 150);
+      if (previousTitleRef.current) {
+        document.title = previousTitleRef.current;
       }
     };
 
-    const waitForAssetsAndPrint = () => {
-      const doc = iframeWindow.document;
-      const imageNodes = Array.from(doc.images || []);
-      const imagePromises = imageNodes.map(
-        (image) =>
-          new Promise<void>((resolve) => {
-            if (image.complete) {
-              resolve();
-              return;
-            }
-            image.addEventListener('load', () => resolve(), { once: true });
-            image.addEventListener('error', () => resolve(), { once: true });
-          }),
-      );
-      const fontsReady =
-        typeof doc.fonts?.ready?.then === 'function' ? doc.fonts.ready.catch(() => undefined) : Promise.resolve();
-
-      Promise.all([fontsReady, ...imagePromises]).finally(() => {
-        requestAnimationFrame(() => {
-          requestAnimationFrame(() => {
-            triggerPrint();
-          });
-        });
-      });
+    window.addEventListener('afterprint', handleAfterPrint);
+    return () => {
+      window.removeEventListener('afterprint', handleAfterPrint);
     };
+  }, []);
 
-    if (iframeWindow.document.readyState === 'complete') {
-      waitForAssetsAndPrint();
-      return;
-    }
-
-    iframe.onload = () => {
-      iframe.onload = null;
-      waitForAssetsAndPrint();
-    };
+  const handlePrint = () => {
+    if (!data || isPrinting) return;
+    setIsPrinting(true);
   };
 
   if (isLoading) {
@@ -211,12 +186,38 @@ export const HomeroomRankingPage = ({ classId, academicYearId, semester }: Homer
             </table>
         </div>
       </div>
-
-      <iframe
-        ref={printIframeRef}
-        title="Cetak Peringkat"
-        className="hidden"
-      />
+      {printPayload
+        ? createPortal(
+            <>
+              <style>{`
+                @media screen {
+                  .ranking-print-portal {
+                    display: none !important;
+                  }
+                }
+                @media print {
+                  .ranking-print-portal {
+                    display: block !important;
+                  }
+                }
+              `}</style>
+              <div className="ranking-print-portal">
+                <PrintLayout title="Cetak Peringkat">
+                  <RankingPrintDocument
+                    className={printPayload.className}
+                    academicYear={printPayload.academicYear}
+                    semester={printPayload.semester}
+                    rankings={printPayload.rankings}
+                    principalName={printPayload.principalName}
+                    homeroomTeacherName={printPayload.homeroomTeacherName}
+                    titimangsa={printPayload.titimangsa}
+                  />
+                </PrintLayout>
+              </div>
+            </>,
+            document.body,
+          )
+        : null}
     </div>
   );
 };

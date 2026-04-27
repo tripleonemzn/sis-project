@@ -413,22 +413,19 @@ export default function GradesScreen() {
   const effectiveReportSemesterLabel = formatSemesterLabel(effectiveReportSemester);
   const programTabSubtitle = useMemo(() => {
     if (!overview || overview.components.length === 0) {
-      return 'Lihat komponen nilai program ujian aktif per mata pelajaran.'
+      return 'Tab ini menampilkan nilai per program ujian aktif seperti SBTS, SAS, atau SAT pada setiap mata pelajaran.';
     }
     const labels = Array.from(
       new Set(overview.components.map((component) => component.reportSlotCode).filter(Boolean)),
-    )
+    );
     if (labels.length === 1) {
-      return `Pilih tab ${labels[0]} untuk melihat nilai per program ujian.`
+      return `Tab ini menampilkan skor ${labels[0]} per mata pelajaran. Jika sekolah hanya memakai satu program ujian aktif, nilainya akan muncul di sini.`;
     }
-    if (labels.length === 2) {
-      return `Pilih tab ${labels[0]} atau ${labels[1]} untuk melihat nilai per program ujian.`
-    }
-    return `Pilih tab ${labels.slice(0, -1).join(', ')}, dan ${labels[labels.length - 1]} untuk melihat nilai per program ujian.`
+    return `Tab ini menampilkan skor per program ujian aktif. Pilih ${labels.join(', ')} untuk melihat nilai ujian yang berbeda pada mata pelajaran yang sama.`;
   }, [overview]);
   const reportTabSubtitle = useMemo(
     () =>
-      `Pilih semester rapor untuk melihat ringkasan nilai akhir, kehadiran, dan catatan wali kelas. Nilai Program Ujian tetap mengikuti semester aktif (${overview?.meta.semesterLabel || '-'}).`,
+      `Tab ini menampilkan hasil akhir rapor semester: nilai akhir per mapel, kehadiran, dan catatan wali kelas. Ini bukan skor satu ujian tertentu, tetapi ringkasan akhir semester ${overview?.meta.semesterLabel || '-'}.`,
     [overview?.meta.semesterLabel],
   );
 
@@ -563,6 +560,46 @@ export default function GradesScreen() {
 
       {overview ? (
         <View style={{ marginTop: 16, gap: 14 }}>
+          {activeTab === 'PROGRAM' ? (
+            <View style={{ flexDirection: 'row', flexWrap: 'wrap', marginHorizontal: -6 }}>
+              <View style={{ width: '50%', paddingHorizontal: 6, marginBottom: 12 }}>
+                <MobileSummaryCard
+                  title="Total Mapel"
+                  value={String(activeProgramSummary.totalSubjects)}
+                  subtitle={activeProgram ? `${activeProgram.fullLabel} • ${activeProgram.key}` : 'Mapel program aktif'}
+                  iconName="book-open"
+                />
+              </View>
+              <View style={{ width: '50%', paddingHorizontal: 6, marginBottom: 12 }}>
+                <MobileSummaryCard
+                  title="Mapel Tersedia"
+                  value={String(activeProgramSummary.availableSubjects)}
+                  subtitle={isProgramReleaseLocked ? 'Menunggu publikasi program' : 'Nilai program sudah tampil'}
+                  iconName="check-circle"
+                  accentColor={isProgramReleaseLocked ? '#b45309' : '#16a34a'}
+                />
+              </View>
+              <View style={{ width: '50%', paddingHorizontal: 6, marginBottom: 12 }}>
+                <MobileSummaryCard
+                  title="Mapel Menunggu"
+                  value={String(activeProgramSummary.pendingSubjects)}
+                  subtitle={isProgramReleaseLocked ? 'Masih tertahan policy publikasi' : 'Masih menunggu input nilai'}
+                  iconName="clock"
+                  accentColor={activeProgramSummary.pendingSubjects > 0 ? '#b45309' : '#16a34a'}
+                />
+              </View>
+              <View style={{ width: '50%', paddingHorizontal: 6, marginBottom: 12 }}>
+                <MobileSummaryCard
+                  title={activeProgram ? `Rata-rata ${activeProgram.key}` : 'Rata-rata'}
+                  value={formatScore(activeProgramSummary.averageScore)}
+                  subtitle="Dihitung dari nilai program yang sudah tersedia"
+                  iconName="trending-up"
+                  accentColor="#2563eb"
+                />
+              </View>
+            </View>
+          ) : null}
+
           {isReportTabActive && reportCard ? (
             <View style={{ flexDirection: 'row', flexWrap: 'wrap', marginHorizontal: -6 }}>
               <View style={{ width: '50%', paddingHorizontal: 6, marginBottom: 12 }}>
@@ -732,122 +769,6 @@ export default function GradesScreen() {
                     </Text>
                   </View>
               ) : null}
-
-              <View style={{ flexDirection: 'row', flexWrap: 'wrap', marginHorizontal: -6 }}>
-                <View style={{ width: '50%', paddingHorizontal: 6, marginBottom: 12 }}>
-                  <MobileSummaryCard
-                    title="Total Mapel"
-                    value={String(activeProgramSummary.totalSubjects)}
-                    subtitle={activeProgram ? `${activeProgram.fullLabel} • ${activeProgram.key}` : 'Mapel program aktif'}
-                    iconName="book-open"
-                  />
-                </View>
-                <View style={{ width: '50%', paddingHorizontal: 6, marginBottom: 12 }}>
-                  <MobileSummaryCard
-                    title="Mapel Tersedia"
-                    value={String(activeProgramSummary.availableSubjects)}
-                    subtitle={isProgramReleaseLocked ? 'Akan dibuka sesuai policy publikasi program' : 'Nilai program sudah tersedia'}
-                    iconName="check-circle"
-                    accentColor="#16a34a"
-                  />
-                </View>
-                <View style={{ width: '50%', paddingHorizontal: 6, marginBottom: 12 }}>
-                  <MobileSummaryCard
-                    title="Mapel Menunggu"
-                    value={String(activeProgramSummary.pendingSubjects)}
-                    subtitle={isProgramReleaseLocked ? 'Masih menunggu publikasi nilai ke siswa' : 'Masih menunggu input nilai'}
-                    iconName="clock"
-                    accentColor={activeProgramSummary.pendingSubjects > 0 ? '#b45309' : '#16a34a'}
-                  />
-                </View>
-                <View style={{ width: '50%', paddingHorizontal: 6, marginBottom: 12 }}>
-                  <MobileSummaryCard
-                    title={activeProgram ? `Rata-rata ${activeProgram.key}` : 'Rata-rata Program'}
-                    value={formatScore(activeProgramSummary.averageScore)}
-                    subtitle="Dihitung dari nilai program yang tersedia"
-                    iconName="trending-up"
-                    accentColor="#b45309"
-                  />
-                </View>
-              </View>
-
-              <View
-                style={{
-                  borderWidth: 1,
-                  borderColor: colors.border,
-                  backgroundColor: colors.surface,
-                  borderRadius: 18,
-                  paddingHorizontal: 14,
-                  paddingVertical: 14,
-                  gap: 12,
-                }}
-              >
-                <Text style={{ color: colors.text, fontSize: scaleFont(18), fontWeight: '800' }}>
-                  Ringkasan {activeProgram?.fullLabel || 'Program Ujian'}
-                </Text>
-                <Text style={{ color: colors.textMuted, fontSize: scaleFont(13), lineHeight: scaleLineHeight(20) }}>
-                  Menampilkan kesiapan nilai {activeProgram?.key || 'program aktif'} untuk setiap mata pelajaran pada semester berjalan.
-                </Text>
-                <View style={{ gap: 10 }}>
-                  <View
-                    style={{
-                      borderWidth: 1,
-                      borderColor: colors.border,
-                      backgroundColor: colors.surfaceMuted,
-                      borderRadius: 14,
-                      paddingHorizontal: 12,
-                      paddingVertical: 12,
-                      gap: 6,
-                    }}
-                  >
-                    <Text style={{ color: colors.text, fontWeight: '700', fontSize: scaleFont(13) }}>Mapel Sudah Tersedia</Text>
-                    <Text style={{ color: colors.text, fontWeight: '800', fontSize: scaleFont(20) }}>
-                      {activeProgramSummary.availableSubjects}
-                    </Text>
-                    <Text style={{ color: colors.textMuted, fontSize: scaleFont(12), lineHeight: scaleLineHeight(18) }}>
-                      Mapel yang sudah memiliki nilai {activeProgram?.key || 'program ini'}.
-                    </Text>
-                  </View>
-                  <View
-                    style={{
-                      borderWidth: 1,
-                      borderColor: colors.border,
-                      backgroundColor: colors.surfaceMuted,
-                      borderRadius: 14,
-                      paddingHorizontal: 12,
-                      paddingVertical: 12,
-                      gap: 6,
-                    }}
-                  >
-                    <Text style={{ color: colors.text, fontWeight: '700', fontSize: scaleFont(13) }}>Mapel Masih Menunggu</Text>
-                    <Text style={{ color: colors.text, fontWeight: '800', fontSize: scaleFont(20) }}>
-                      {activeProgramSummary.pendingSubjects}
-                    </Text>
-                    <Text style={{ color: colors.textMuted, fontSize: scaleFont(12), lineHeight: scaleLineHeight(18) }}>
-                      Mapel yang belum memiliki nilai {activeProgram?.key || 'program ini'}.
-                    </Text>
-                  </View>
-                  <View
-                    style={{
-                      borderWidth: 1,
-                      borderColor: colors.border,
-                      backgroundColor: colors.surfaceMuted,
-                      borderRadius: 14,
-                      paddingHorizontal: 12,
-                      paddingVertical: 12,
-                      gap: 6,
-                    }}
-                  >
-                    <Text style={{ color: colors.text, fontWeight: '700', fontSize: scaleFont(13) }}>Cakupan Program</Text>
-                    <Text style={{ color: colors.text, fontWeight: '800', fontSize: scaleFont(20) }}>
-                      {activeProgramSummary.totalSubjects}
-                    </Text>
-                    <Text style={{ color: colors.textMuted, fontSize: scaleFont(12), lineHeight: scaleLineHeight(18) }}>
-                      Total mata pelajaran aktif yang mengikuti program ini pada semester berjalan.
-                    </Text>
-                  </View>
-                </View>
-              </View>
 
               <View
                 style={{

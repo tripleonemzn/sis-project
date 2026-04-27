@@ -5,51 +5,47 @@ Setiap room baru yang diminta `baca AGENTS.md` atau `lanjutkan` wajib membaca fi
 
 ## Update Terbaru
 
-- Last updated: 2026-04-27 21:25 WIB
-- Current status: batch penyederhanaan `Nilai Saya` siswa, penyamaan alur cetak `Peringkat` wali kelas ke model iframe seperti rapor, dan standarisasi dropdown web sudah selesai dan live.
+- Last updated: 2026-04-27 21:54 WIB
+- Current status: refinement lanjutan untuk `Nilai Saya` siswa dan `Cetak Peringkat` wali kelas sudah selesai dan live. `Cetak Peringkat` kini tidak lagi mengandalkan iframe document terpisah, tetapi memakai print portal di window yang sama agar perilakunya lebih dekat ke cetak rapor program.
 - Objective/task aktif:
   - Merapikan struktur `Nilai Saya` siswa, menghilangkan alur popup/new window pada cetak peringkat, serta menetapkan standar dropdown sederhana vs searchable agar konsisten lintas modul.
 - Batch terakhir selesai:
-  - `Batch refinement Nilai Saya + Ranking Print + Dropdown Standardization`
+  - `Batch refinement Ranking Print current-window + Program Stats`
 - Progress batch ini:
   - `100%`
 - Last completed repo work:
-  - Commit: `7b1f8ec`
-  - Title: `feat(ui): streamline student grades and ranking print`
+  - Commit: `pending current branch push`
+  - Title: `fix(ui): align ranking print with report flow`
   - Summary:
-    - `Cetak Peringkat` wali kelas tidak lagi membuka window baru; sekarang memakai hidden iframe seperti cetak rapor `SBTS/SAS/SAT`
-    - halaman `Nilai Saya` role siswa diringankan dengan memindahkan statistik ke atas, menggabungkan filter `Semester Rapor` ke card tab, dan menghapus card informasi yang redundan
-    - parity mobile `Nilai Saya` ikut dirapikan ke struktur yang sama: statistik dulu, selector semester digabung ke card tab, dan card informasi besar yang tidak esensial dihapus
-    - dropdown native web distandarkan secara sistemik lewat shared CSS ke gaya compact seperti `Persetujuan Izin`
-    - pola dropdown data besar/searchable diformalisasi lewat shared CSS acuan `Tambah Assignment Guru` dan policy baru di `AGENTS.md`
+    - `Cetak Peringkat` wali kelas kini memakai print portal pada window aktif dan `window.print()` langsung, bukan lagi mencetak document iframe terpisah
+    - statistik `Nilai Program Ujian` di halaman `Nilai Saya` siswa kini tampil sebagai summary card di atas seperti `Rapor Semester`
+    - copy penjelasan dua tab `Nilai Program Ujian` vs `Rapor Semester` diperjelas agar user lebih mudah membedakan konteks nilai ujian dan nilai rapor akhir
+    - parity mobile `Nilai Saya` ikut disamakan: statistik program tampil di posisi atas dan ringkasan ganda lama dihapus
 - Area/file disentuh:
-  - `AGENTS.md`
-  - `frontend/src/index.css`
-  - `frontend/src/pages/admin/users/TeacherAssignmentPage.tsx`
   - `frontend/src/pages/student/StudentGradesPage.tsx`
   - `frontend/src/pages/teacher/homeroom/HomeroomRankingPage.tsx`
   - `mobile-app/app/(app)/grades.tsx`
+  - `docs/CODEX_CONTINUITY.md`
 - Verifikasi batch ini:
   - `git diff --check`
   - `cd frontend && npm run build`
   - `cd frontend && npm run deploy`
   - `curl -I https://siskgb2.id/student/grades` -> `200`
-  - `curl -I https://siskgb2.id/teacher/wali-kelas/rapor/program/SAT` -> `200`
+  - `curl -I https://siskgb2.id/teacher/wali-kelas/rapor/program/sas` -> `200`
   - `cd mobile-app && npm run typecheck`
   - `cd mobile-app && npm run audit:parity:check`
-  - `cd mobile-app && npm run check:ota:testers`
-  - `cd mobile-app && npm run update:pilot-live:verified -- "Penyempurnaan Nilai Saya siswa, cetak peringkat wali kelas, dan standarisasi dropdown. Silakan perbarui untuk menikmati fitur terbaru."`
+  - `cd mobile-app && npm run update:pilot-live:verified -- "Perbaikan cetak peringkat dan penyempurnaan statistik Nilai Saya siswa. Silakan perbarui untuk menikmati fitur terbaru."`
 - Publish/live status:
   - Web live
   - OTA Android `pilot-live` live
-  - OTA update group: `0b2d19e1-714b-4483-9d07-e12a0b6974b6`
-  - Android update ID: `019dcf54-6a7c-74e2-8f8a-f6684e48f8f2`
+  - OTA update group: `1e54d53d-7b15-457d-9b94-041f43f0ce62`
+  - Android update ID: `019dcf6e-ad9f-77ea-b7be-66befa5ea2b3`
   - Push notify OTA: `recipients=3, sent=3, failed=0, stale=0`
 - Remaining work:
   - tidak ada pekerjaan setengah jadi pada batch ini
-  - jika nanti user ingin audit lebih dalam untuk dropdown data besar yang masih berupa native select di layar lama, langkah aman berikutnya adalah mengekstrak searchable dropdown shared component web lalu migrasi bertahap layar-layar yang benar-benar butuh pencarian
+  - jika user masih merasa perilaku print preview ranking di browser tertentu belum identik dengan rapor, langkah aman berikutnya adalah uji manual browser-spesifik dan, bila perlu, migrasi ranking ke route print khusus seperti modul cetak dokumen lain
 - Residual risk:
-  - standarisasi dropdown sederhana sudah diterapkan sistemik lewat CSS global, sehingga perubahan visual menjangkau banyak select native sekaligus; build aman, tetapi review visual lanjutan tetap layak dilakukan pada layar lama yang sangat padat filter
+  - perilaku dialog print tetap dipengaruhi browser. Dari sisi code path, ranking sekarang sudah mencetak dari window aktif; namun verifikasi UX final tetap perlu uji manual di browser pengguna karena terminal tidak bisa membuka dialog print secara visual
 
 ## Status Saat Ini
 

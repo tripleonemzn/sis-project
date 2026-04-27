@@ -153,22 +153,19 @@ export default function StudentGradesPage() {
   const effectiveReportSemesterLabel = formatSemesterLabel(effectiveReportSemester);
   const programTabSubtitle = useMemo(() => {
     if (!data || data.components.length === 0) {
-      return 'Lihat komponen nilai program ujian aktif per mata pelajaran.'
+      return 'Tab ini menampilkan nilai per program ujian aktif seperti SBTS, SAS, atau SAT pada setiap mata pelajaran.';
     }
     const labels = Array.from(
       new Set(data.components.map((component) => component.reportSlotCode).filter(Boolean)),
-    )
+    );
     if (labels.length === 1) {
-      return `Pilih tab ${labels[0]} untuk melihat nilai per program ujian.`
+      return `Tab ini menampilkan skor ${labels[0]} per mata pelajaran. Jika sekolah hanya memakai satu program ujian aktif, nilainya akan muncul di sini.`;
     }
-    if (labels.length === 2) {
-      return `Pilih tab ${labels[0]} atau ${labels[1]} untuk melihat nilai per program ujian.`
-    }
-    return `Pilih tab ${labels.slice(0, -1).join(', ')}, dan ${labels[labels.length - 1]} untuk melihat nilai per program ujian.`
+    return `Tab ini menampilkan skor per program ujian aktif. Pilih ${labels.join(', ')} untuk melihat nilai ujian yang berbeda pada mata pelajaran yang sama.`;
   }, [data]);
   const reportTabSubtitle = useMemo(
     () =>
-      `Pilih semester rapor untuk melihat ringkasan nilai akhir, kehadiran, dan catatan wali kelas. Nilai Program Ujian tetap mengikuti semester aktif (${data?.meta.semesterLabel || '-' }).`,
+      `Tab ini menampilkan hasil akhir rapor semester: nilai akhir per mapel, kehadiran, dan catatan wali kelas. Ini bukan skor satu ujian tertentu, tetapi ringkasan akhir semester ${data?.meta.semesterLabel || '-'}.`,
     [data?.meta.semesterLabel],
   );
   const programTabs = useMemo(() => {
@@ -279,6 +276,39 @@ export default function StudentGradesPage() {
 
       {data ? (
         <>
+          {activeTab === 'PROGRAM' ? (
+            <div className="grid gap-4 md:grid-cols-2 xl:grid-cols-4">
+              <SummaryCard
+                icon={<LayoutList className="h-5 w-5" />}
+                label="Total Mapel"
+                value={String(activeProgramSummary.totalSubjects)}
+                subtitle={activeProgram ? `${activeProgram.shortLabel} • ${activeProgram.label}` : 'Mapel program aktif'}
+                tone="blue"
+              />
+              <SummaryCard
+                icon={<GraduationCap className="h-5 w-5" />}
+                label="Mapel Tersedia"
+                value={String(activeProgramSummary.availableSubjects)}
+                subtitle={isProgramReleaseLocked ? 'Menunggu publikasi program' : 'Nilai program sudah tampil'}
+                tone={isProgramReleaseLocked ? 'amber' : 'green'}
+              />
+              <SummaryCard
+                icon={<TrendingUp className="h-5 w-5" />}
+                label={activeProgram ? `Rata-rata ${activeProgram.shortLabel}` : 'Rata-rata'}
+                value={formatScore(activeProgramSummary.averageScore)}
+                subtitle="Dihitung dari nilai program yang sudah tersedia"
+                tone="blue"
+              />
+              <SummaryCard
+                icon={<Clock3 className="h-5 w-5" />}
+                label="Mapel Menunggu"
+                value={String(activeProgramSummary.pendingSubjects)}
+                subtitle={isProgramReleaseLocked ? 'Masih tertahan policy publikasi' : 'Masih menunggu input/sinkron nilai'}
+                tone={activeProgramSummary.pendingSubjects > 0 ? 'amber' : 'green'}
+              />
+            </div>
+          ) : null}
+
           {isReportTabActive && reportCard ? (
             <div className="grid gap-4 md:grid-cols-2 xl:grid-cols-4">
               <SummaryCard
@@ -381,65 +411,6 @@ export default function StudentGradesPage() {
                   </p>
                 </div>
               ) : null}
-
-              <div className="overflow-hidden rounded-3xl border border-slate-200 bg-white">
-                <div className="flex flex-col gap-4 border-b border-slate-200 px-5 py-5 lg:flex-row lg:items-center lg:justify-between">
-                  <div>
-                    <h2 className="text-xl font-bold text-slate-900">
-                      Ringkasan {activeProgram?.label || 'Program Ujian'}
-                    </h2>
-                    <p className="mt-1 text-sm text-slate-500">
-                      Tampilan ringkas nilai {activeProgram?.code || 'program aktif'} per mata pelajaran dengan format tabel.
-                    </p>
-                  </div>
-                  <div className="inline-flex items-center gap-2 rounded-full border border-blue-100 bg-blue-50 px-4 py-2 text-sm font-medium text-blue-700">
-                    <GraduationCap className="h-4 w-4" />
-                    {activeProgram?.code || 'Program aktif'}
-                  </div>
-                </div>
-
-                <div className="overflow-x-auto">
-                  <table className="min-w-full text-sm">
-                    <thead className="bg-slate-50 text-slate-600">
-                      <tr>
-                        <th className="px-4 py-3 text-left font-semibold">Ringkasan</th>
-                        <th className="px-4 py-3 text-left font-semibold">Nilai</th>
-                        <th className="px-4 py-3 text-left font-semibold">Keterangan</th>
-                      </tr>
-                    </thead>
-                    <tbody className="divide-y divide-slate-200 bg-white">
-                      <tr>
-                        <td className="px-4 py-3 font-medium text-slate-900">Total Mapel</td>
-                        <td className="px-4 py-3 text-slate-900">{activeProgramSummary.totalSubjects}</td>
-                        <td className="px-4 py-3 text-slate-600">
-                          {activeProgram ? `${activeProgram.label} • ${activeProgram.code}` : 'Mapel program aktif'}
-                        </td>
-                      </tr>
-                      <tr>
-                        <td className="px-4 py-3 font-medium text-slate-900">Mapel Tersedia</td>
-                        <td className="px-4 py-3 text-slate-900">{activeProgramSummary.availableSubjects}</td>
-                        <td className="px-4 py-3 text-slate-600">
-                          {isProgramReleaseLocked ? 'Akan dibuka sesuai policy publikasi program ini.' : 'Nilai program sudah tersedia.'}
-                        </td>
-                      </tr>
-                      <tr>
-                        <td className="px-4 py-3 font-medium text-slate-900">Mapel Menunggu</td>
-                        <td className="px-4 py-3 text-slate-900">{activeProgramSummary.pendingSubjects}</td>
-                        <td className="px-4 py-3 text-slate-600">
-                          {isProgramReleaseLocked ? 'Masih menunggu publikasi nilai ke siswa.' : 'Masih menunggu input atau sinkronisasi nilai.'}
-                        </td>
-                      </tr>
-                      <tr>
-                        <td className="px-4 py-3 font-medium text-slate-900">
-                          {activeProgram ? `Rata-rata ${activeProgram.code}` : 'Rata-rata Program'}
-                        </td>
-                        <td className="px-4 py-3 text-slate-900">{formatScore(activeProgramSummary.averageScore)}</td>
-                        <td className="px-4 py-3 text-slate-600">Mengikuti standar font dan kepadatan tabel nilai.</td>
-                      </tr>
-                    </tbody>
-                  </table>
-                </div>
-              </div>
 
               <div className="overflow-hidden rounded-3xl border border-slate-200 bg-white">
                 <div className="border-b border-slate-200 px-5 py-5">
