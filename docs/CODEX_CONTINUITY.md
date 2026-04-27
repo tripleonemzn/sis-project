@@ -673,6 +673,65 @@ Setiap room baru yang diminta `baca AGENTS.md` atau `lanjutkan` wajib membaca fi
 - Commit hash terkait:
   - Pending commit sesi ini.
 
+## Update Terbaru 2026-04-27 18:21 WIB
+
+- Objective/task aktif:
+  - Rapikan urutan tab `Publikasi Nilai`, perbaiki print `Cetak Peringkat`, seragamkan UI `Nilai Saya` siswa, lalu standarkan gaya tab lintas modul mengikuti pola `Kelola Ujian` Wakakur.
+- Batch/wave terakhir selesai:
+  - Refinement tab lintas modul + perbaikan print ranking + refresh UI nilai siswa selesai.
+- Progress:
+  - `100%` untuk request ini.
+- Area/file yang disentuh:
+  - `AGENTS.md`
+  - `frontend/src/components/navigation/UnderlineTabBar.tsx`
+  - `frontend/src/pages/student/StudentGradesPage.tsx`
+  - `frontend/src/pages/teacher/homeroom/TeacherHomeroomFinalPage.tsx`
+  - `frontend/src/pages/teacher/homeroom/TeacherHomeroomSbtsPage.tsx`
+  - `frontend/src/pages/teacher/homeroom/HomeroomRankingPage.tsx`
+  - `frontend/src/pages/teacher/MaterialsAndAssignmentsPage.tsx`
+  - `frontend/src/pages/teacher/TeacherBpBkPage.tsx`
+  - `frontend/src/pages/teacher/WorkProgramPage.tsx`
+  - `frontend/src/pages/teacher/homeroom/HomeroomAttendancePage.tsx`
+  - `frontend/src/pages/teacher/homeroom/HomeroomBehaviorPage.tsx`
+  - `frontend/src/pages/teacher/humas/IndustryPartnersPage.tsx`
+  - `frontend/src/pages/teacher/internship/TeacherInternshipGuidance.tsx`
+  - `frontend/src/pages/teacher/wakasek/InternshipComponentPage.tsx`
+  - `mobile-app/src/components/MobileMenuTab.tsx`
+  - `mobile-app/app/(app)/grades.tsx`
+- Ringkasan perubahan:
+  - Tab `Publikasi Nilai` pada rapor `SAS/SAT` dipindah ke posisi paling akhir, setelah tab rapor lain yang masih relevan.
+  - `Cetak Peringkat` tidak lagi mengandalkan iframe portal kosong; sekarang merender dokumen statis ke window print baru agar tidak muncul halaman putih saat tombol ditekan.
+  - `Nilai Saya` siswa di web sekarang memakai tab underline standar, selector `Semester Rapor` lebih hemat ruang, dan daftar mapel rapor semester ditampilkan dalam tabel seperti daftar nilai program ujian.
+  - Mobile `Nilai Saya` ikut dirapikan: label `Semester Rapor` diposisikan sejajar dengan dropdown dan shared tab mobile sekarang memakai gaya underline yang lebih dekat dengan `Kelola Ujian`.
+  - Audit tab web menemukan outlier utama pada modul guru/homeroom/humas/PKL/work program/BP-BK; gaya tab horizontal pada modul-modul itu sudah disamakan ke pola underline standar.
+  - `AGENTS.md` diperbarui agar tab horizontal web/mobile ke depan wajib mengikuti standar visual `Kelola Ujian` Wakakur.
+- Verifikasi yang sudah dijalankan:
+  - `cd frontend && npm run build`
+  - `cd frontend && npm run deploy`
+  - `cd mobile-app && npm run typecheck`
+  - `cd mobile-app && npm run audit:parity:check`
+  - `cd mobile-app && npm run check:ota:testers`
+  - `cd mobile-app && npm run update:pilot-live:verified -- "Perapian tab menu lintas modul, perbaikan cetak peringkat, dan penyempurnaan Nilai Saya siswa. Silakan perbarui untuk menikmati fitur terbaru."`
+  - `curl -I https://siskgb2.id/student/grades` merespons `200`
+  - `curl -I https://siskgb2.id/teacher/wali-kelas/rapor/program/SAT` merespons `200`
+  - `curl -I https://siskgb2.id/teacher/wali-kelas/permissions` merespons `200`
+- Publish/live status:
+  - Web live.
+  - OTA Android `pilot-live` sudah publish.
+  - Update group OTA: `4d3ca7a3-8b57-4b01-b5cb-1e3fc434ccf0`
+  - Push notify OTA: `3/3`
+- Sisa pekerjaan:
+  - Tidak ada untuk request ini.
+- Blocker/residual risk:
+  - `Cetak Peringkat` sekarang stabil, tetapi tetap bergantung pada izin popup/print bawaan browser; jika popup diblokir, user harus mengizinkannya sekali.
+  - Standardisasi tab saat ini fokus pada pola tab horizontal lintas modul; panel navigasi vertikal seperti sidebar submodule tidak diubah karena memang bukan pola tab yang sama.
+- Langkah aman berikutnya:
+  - Minta user cek `Nilai Saya` siswa, `Rapor SAS/SAT`, dan satu tombol `Cetak Peringkat` untuk memastikan alur baru sudah terasa lebih natural di pemakaian nyata.
+- Last updated:
+  - 2026-04-27 18:21 WIB
+- Commit hash terkait:
+  - Pending commit sesi ini.
+
 ## Template Update Wajib Saat Ada Pekerjaan Baru
 
 - Objective/task aktif:
