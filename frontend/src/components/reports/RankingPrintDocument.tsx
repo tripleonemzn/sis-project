@@ -103,7 +103,7 @@ export const RankingPrintDocument: React.FC<RankingPrintDocumentProps> = ({
       <div className="text-center mb-4 uppercase font-bold leading-tight print-header">
         <h1 className="text-base">DAFTAR PERINGKAT</h1>
         <h2 className="text-sm">KELAS {className}</h2>
-        <h3 className="text-sm">TAHUN PELAJARAN {academicYear} - SEMESTER {semester === 'ODD' ? 'GANJIL' : 'GENAP'}</h3>
+        <h3 className="text-sm">TAHUN AJARAN {academicYear} - SEMESTER {semester === 'ODD' ? 'GANJIL' : 'GENAP'}</h3>
       </div>
 
       <table className="w-full mb-8">

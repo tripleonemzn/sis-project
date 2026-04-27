@@ -170,7 +170,7 @@ export const HomeroomRankingPage = ({ classId, academicYearId, semester }: Homer
             <div class="header">
               <div class="title">DAFTAR PERINGKAT</div>
               <div class="subtitle">KELAS ${escapeHtml(data.className)}</div>
-              <div class="subtitle">TAHUN PELAJARAN ${escapeHtml(data.academicYear)} - SEMESTER ${semesterLabel}</div>
+              <div class="subtitle">TAHUN AJARAN ${escapeHtml(data.academicYear)} - SEMESTER ${semesterLabel}</div>
             </div>
 
             <table>

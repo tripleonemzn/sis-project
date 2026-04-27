@@ -402,9 +402,6 @@ export default function StudentGradesPage() {
                     programs={programTabs}
                     activeProgramCode={activeProgram?.code || ''}
                     onProgramChange={setActiveProgramCode}
-                    showSemester
-                    semesterValue={effectiveProgramSemester}
-                    onSemesterChange={(value) => setSelectedProgramSemester(value)}
                     emptyMessage={`Belum ada Program Ujian aktif yang relevan untuk semester ${effectiveProgramSemesterLabel.toLowerCase()}.`}
                   />
                 </div>
