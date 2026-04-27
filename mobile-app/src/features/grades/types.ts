@@ -9,13 +9,13 @@ export type StudentGradeOverviewComponent = {
   release: {
     mode: 'DIRECT' | 'SCHEDULED' | 'REPORT_DATE';
     modeLabel: string;
-    code: 'NOT_SCHEDULED' | 'SCHEDULED' | 'OPEN';
+    code: 'NOT_SCHEDULED' | 'SCHEDULED' | 'OPEN' | 'HOMEROOM_BLOCKED';
     label: string;
     tone: 'red' | 'amber' | 'green';
     description: string;
     canViewDetails: boolean;
     effectiveDate: string | null;
-    source: 'DIRECT' | 'PROGRAM_DATE' | 'REPORT_DATE';
+    source: 'DIRECT' | 'PROGRAM_DATE' | 'REPORT_DATE' | 'HOMEROOM';
   };
 };
 
@@ -76,11 +76,13 @@ export type StudentSemesterReportData = {
     reportType: string;
   } | null;
   release: {
-    code: 'NOT_SCHEDULED' | 'SCHEDULED' | 'OPEN';
+    code: 'NOT_SCHEDULED' | 'SCHEDULED' | 'OPEN' | 'HOMEROOM_BLOCKED';
     label: string;
     tone: 'red' | 'amber' | 'green';
     description: string;
     canViewDetails: boolean;
+    source: 'REPORT_DATE' | 'HOMEROOM';
+    effectiveDate: string | null;
   };
   status: {
     code: 'NOT_READY' | 'PARTIAL' | 'READY';
@@ -144,4 +146,43 @@ export type StudentGradeOverviewData = {
   components: StudentGradeOverviewComponent[];
   subjects: StudentGradeOverviewSubjectRow[];
   reportCard: StudentSemesterReportData;
+};
+
+export type HomeroomResultPublicationProgram = {
+  publicationCode: string;
+  label: string;
+  shortLabel: string;
+  baseTypeCode: string;
+  fixedSemester: 'ODD' | 'EVEN' | null;
+  globalRelease: StudentGradeOverviewComponent['release'];
+  homeroomPublication: {
+    mode: 'FOLLOW_GLOBAL' | 'BLOCKED';
+    label: string;
+    description: string;
+    updatedAt: string | null;
+  };
+  effectiveVisibility: {
+    canViewDetails: boolean;
+    label: string;
+    tone: 'red' | 'amber' | 'green';
+    description: string;
+  };
+};
+
+export type HomeroomResultPublicationsData = {
+  academicYear: {
+    id: number;
+    name: string;
+  };
+  class: {
+    id: number;
+    name: string;
+    level: string;
+    major: {
+      id: number;
+      name: string;
+      code: string;
+    } | null;
+  };
+  programs: HomeroomResultPublicationProgram[];
 };

@@ -16,6 +16,18 @@ router.get(
   asyncHandler(gradeController.getGradeComponents)
 );
 
+router.get(
+  '/homeroom-result-publications',
+  roleMiddleware(['TEACHER']),
+  asyncHandler(gradeController.getHomeroomResultPublications)
+);
+
+router.put(
+  '/homeroom-result-publications',
+  roleMiddleware(['TEACHER']),
+  asyncHandler(gradeController.updateHomeroomResultPublication)
+);
+
 // STUDENT GRADES (Input Nilai per Komponen)
 router.get(
   '/student-overview',

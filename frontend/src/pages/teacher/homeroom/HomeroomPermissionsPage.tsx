@@ -13,6 +13,7 @@ import {
   FileText,
   ShieldAlert,
   BookOpenText,
+  GraduationCap,
 } from 'lucide-react';
 import { format } from 'date-fns';
 import { id as idLocale } from 'date-fns/locale';
@@ -23,6 +24,7 @@ import { permissionService, PermissionStatus, type StudentPermission } from '../
 import { academicYearService } from '../../../services/academicYear.service';
 import { authService } from '../../../services/auth.service';
 import { examService, type ExamRestriction } from '../../../services/exam.service';
+import { gradeService, type HomeroomResultPublicationProgram } from '../../../services/grade.service';
 import { liveQueryOptions } from '../../../lib/query/liveQuery';
 import HomeroomBookPanel from '../../../components/homeroom/HomeroomBookPanel';
 
@@ -54,6 +56,13 @@ const formatCurrency = (amount: number) =>
     maximumFractionDigits: 0,
   }).format(amount || 0);
 
+const formatDateTime = (value: string | Date | null | undefined) => {
+  if (!value) return '-';
+  const parsed = value instanceof Date ? value : new Date(value);
+  if (Number.isNaN(parsed.getTime())) return '-';
+  return format(parsed, 'dd MMM yyyy HH:mm', { locale: idLocale });
+};
+
 export const HomeroomPermissionsPage = () => {
   const { user: contextUser } = useOutletContext<{ user: User; activeYear: unknown }>() || {};
 
@@ -67,7 +76,7 @@ export const HomeroomPermissionsPage = () => {
   const user = contextUser || authData?.data;
   const userId = user?.id;
   const queryClient = useQueryClient();
-  type ActiveTab = 'permissions' | 'exam_restrictions' | 'homeroom_book';
+  type ActiveTab = 'permissions' | 'exam_restrictions' | 'result_publication' | 'homeroom_book';
   const [activeTabOverride, setActiveTabOverride] = useState<ActiveTab | null>(null);
 
   // Get Active Academic Year
@@ -101,6 +110,7 @@ export const HomeroomPermissionsPage = () => {
     const prefs = userData?.data?.preferences as Record<string, unknown> | undefined;
     const savedTab = String(prefs?.['homeroom-permissions-active-tab'] || '');
     if (savedTab === 'exam_restrictions') return 'exam_restrictions';
+    if (savedTab === 'result_publication') return 'result_publication';
     if (savedTab === 'homeroom_book') return 'homeroom_book';
     return 'permissions';
   }, [userData?.data?.preferences]);
@@ -249,6 +259,20 @@ export const HomeroomPermissionsPage = () => {
     ...liveQueryOptions,
   });
 
+  const {
+    data: resultPublicationResponse,
+    isLoading: isLoadingResultPublications,
+    isError: isResultPublicationsError,
+    refetch: refetchResultPublications,
+  } = useQuery({
+    queryKey: ['homeroom-result-publications', homeroomClass?.id, activeAcademicYear?.id],
+    queryFn: async () => {
+      if (!homeroomClass?.id) return null;
+      return gradeService.getHomeroomResultPublications({ classId: homeroomClass.id });
+    },
+    enabled: !!homeroomClass?.id && !!activeAcademicYear?.id && activeTab === 'result_publication',
+  });
+
   // Mutations
   const updateStatusMutation = useMutation({
     mutationFn: ({ id, status, note }: { id: number, status: PermissionStatus, note?: string }) => 
@@ -267,6 +291,16 @@ export const HomeroomPermissionsPage = () => {
       toast.success('Akses ujian berhasil diperbarui');
     },
     onError: () => toast.error('Gagal memperbarui akses ujian')
+  });
+
+  const updateResultPublicationMutation = useMutation({
+    mutationFn: (payload: { classId: number; publicationCode: string; mode: 'FOLLOW_GLOBAL' | 'BLOCKED' }) =>
+      gradeService.updateHomeroomResultPublication(payload),
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ['homeroom-result-publications'] });
+      toast.success('Publikasi nilai berhasil diperbarui');
+    },
+    onError: () => toast.error('Gagal memperbarui publikasi nilai'),
   });
 
   // Handlers
@@ -341,6 +375,53 @@ export const HomeroomPermissionsPage = () => {
 
   // Removed unused handleReasonChange function
 
+  const resultPublicationPrograms = useMemo(() => {
+    const rows = resultPublicationResponse?.programs || [];
+    return rows.filter((program) => {
+      const fixedSemester = program.fixedSemester as 'ODD' | 'EVEN' | null;
+      if (selectedSemester && fixedSemester && fixedSemester !== selectedSemester) return false;
+      return true;
+    });
+  }, [resultPublicationResponse?.programs, selectedSemester]);
+
+  const resultPublicationSummary = useMemo(() => {
+    const total = resultPublicationPrograms.length;
+    const blocked = resultPublicationPrograms.filter((program) => program.homeroomPublication.mode === 'BLOCKED').length;
+    const visible = resultPublicationPrograms.filter((program) => program.effectiveVisibility.canViewDetails).length;
+    const waitingWakakur = resultPublicationPrograms.filter(
+      (program) =>
+        program.homeroomPublication.mode === 'FOLLOW_GLOBAL' && !program.globalRelease.canViewDetails,
+    ).length;
+
+    return {
+      total,
+      blocked,
+      visible,
+      waitingWakakur,
+    };
+  }, [resultPublicationPrograms]);
+
+  const handleToggleResultPublication = (program: HomeroomResultPublicationProgram) => {
+    if (!homeroomClass?.id) {
+      toast.error('Kelas wali belum ditemukan.');
+      return;
+    }
+
+    const nextMode = program.homeroomPublication.mode === 'BLOCKED' ? 'FOLLOW_GLOBAL' : 'BLOCKED';
+    const message =
+      nextMode === 'BLOCKED'
+        ? `Tahan publikasi nilai ${program.shortLabel} untuk siswa di kelas ${homeroomClass.name}?`
+        : `Kembalikan publikasi nilai ${program.shortLabel} agar mengikuti jadwal Wakakur?`;
+
+    if (!window.confirm(message)) return;
+
+    updateResultPublicationMutation.mutate({
+      classId: homeroomClass.id,
+      publicationCode: program.publicationCode,
+      mode: nextMode,
+    });
+  };
+
 
   // Derived Data for Pagination
   const permissions = permissionsResponse?.permissions || [];
@@ -359,7 +440,7 @@ export const HomeroomPermissionsPage = () => {
       <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4">
         <div>
           <h1 className="text-2xl font-bold text-gray-900">Persetujuan Izin</h1>
-          <p className="text-gray-500 mt-1">Kelola perizinan, akses ujian, dan Buku Wali Kelas siswa</p>
+          <p className="text-gray-500 mt-1">Kelola perizinan, akses ujian, publikasi nilai, dan Buku Wali Kelas siswa</p>
         </div>
       </div>
 
@@ -408,6 +489,19 @@ export const HomeroomPermissionsPage = () => {
                   <span>Buku Wali Kelas</span>
                 </div>
               </button>
+              <button
+                onClick={() => handleTabChange('result_publication')}
+                className={`px-4 py-2 text-sm font-medium rounded-md transition-colors ${
+                  activeTab === 'result_publication'
+                    ? 'bg-blue-50 text-blue-700'
+                    : 'text-gray-600 hover:text-gray-900 hover:bg-gray-50'
+                }`}
+              >
+                <div className="flex items-center gap-2">
+                  <GraduationCap size={16} />
+                  <span>Publikasi Nilai</span>
+                </div>
+              </button>
             </div>
           </div>
 
@@ -450,10 +544,30 @@ export const HomeroomPermissionsPage = () => {
               </div>
             </div>
           )}
+
+          {activeTab === 'result_publication' && (
+            <div className="flex flex-col sm:flex-row items-center gap-4 w-full sm:w-auto justify-end">
+              <div className="flex items-center gap-2">
+                <span className="text-sm font-medium text-gray-700">Semester</span>
+                <select
+                  value={selectedSemester}
+                  onChange={(e) => {
+                    setSelectedSemesterOverride(e.target.value as 'ODD' | 'EVEN' | '');
+                    setPage(1);
+                  }}
+                  className="pl-3 pr-8 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500 appearance-none bg-white text-sm"
+                >
+                  <option value="" disabled>Pilih Semester</option>
+                  <option value="ODD">Ganjil</option>
+                  <option value="EVEN">Genap</option>
+                </select>
+              </div>
+            </div>
+          )}
         </div>
 
         {/* Search & Limit Toolbar */}
-        {activeTab !== 'homeroom_book' ? (
+        {activeTab !== 'homeroom_book' && activeTab !== 'result_publication' ? (
         <div className="p-4 border-b border-gray-200 bg-white flex flex-col sm:flex-row gap-4 justify-between items-center">
           <div className="relative w-full sm:w-72">
             <div className="absolute inset-y-0 left-0 pl-3 flex items-center pointer-events-none">
@@ -499,6 +613,149 @@ export const HomeroomPermissionsPage = () => {
               classId={homeroomClass?.id}
               examPrograms={examPrograms}
             />
+          </div>
+        ) : activeTab === 'result_publication' ? (
+          <div className="p-4 space-y-4">
+            <div className="rounded-xl border border-blue-200 bg-blue-50 px-4 py-3 text-sm text-blue-900">
+              Default publikasi tetap mengikuti jadwal Wakakur. Gunakan kontrol ini jika wali kelas perlu menahan hasil nilai program tertentu agar belum tampil ke akun siswa.
+            </div>
+
+            <div className="grid gap-4 md:grid-cols-2 xl:grid-cols-4">
+              {[
+                {
+                  key: 'total',
+                  title: 'Program Semester',
+                  value: String(resultPublicationSummary.total),
+                  subtitle: selectedSemester === 'EVEN' ? 'Program semester genap' : 'Program semester ganjil',
+                  tone: 'border-blue-200 bg-blue-50 text-blue-700',
+                },
+                {
+                  key: 'visible',
+                  title: 'Sudah Tampil',
+                  value: String(resultPublicationSummary.visible),
+                  subtitle: 'Saat ini bisa dibuka siswa',
+                  tone: 'border-emerald-200 bg-emerald-50 text-emerald-700',
+                },
+                {
+                  key: 'blocked',
+                  title: 'Ditahan Wali',
+                  value: String(resultPublicationSummary.blocked),
+                  subtitle: 'Ditahan manual wali kelas',
+                  tone: 'border-rose-200 bg-rose-50 text-rose-700',
+                },
+                {
+                  key: 'waiting',
+                  title: 'Menunggu Wakakur',
+                  value: String(resultPublicationSummary.waitingWakakur),
+                  subtitle: 'Masih ikut jadwal rilis global',
+                  tone: 'border-amber-200 bg-amber-50 text-amber-700',
+                },
+              ].map((item) => (
+                <div key={item.key} className={`rounded-xl border p-4 ${item.tone}`}>
+                  <p className="text-xs font-semibold uppercase tracking-[0.16em]">{item.title}</p>
+                  <p className="mt-2 text-2xl font-bold">{item.value}</p>
+                  <p className="mt-2 text-xs">{item.subtitle}</p>
+                </div>
+              ))}
+            </div>
+
+            {isLoadingResultPublications ? (
+              <div className="rounded-xl border border-gray-200 bg-white px-4 py-10 text-center text-gray-500">
+                Memuat kontrol publikasi nilai...
+              </div>
+            ) : isResultPublicationsError ? (
+              <div className="rounded-xl border border-rose-200 bg-rose-50 px-4 py-10 text-center text-rose-700">
+                <p className="font-medium">Gagal memuat kontrol publikasi nilai.</p>
+                <button
+                  type="button"
+                  onClick={() => refetchResultPublications()}
+                  className="mt-3 inline-flex rounded-lg bg-white px-3 py-2 text-sm font-semibold text-rose-700"
+                >
+                  Coba Lagi
+                </button>
+              </div>
+            ) : resultPublicationPrograms.length === 0 ? (
+              <div className="rounded-xl border border-dashed border-gray-300 bg-white px-4 py-10 text-center text-gray-500">
+                Tidak ada program ujian siswa yang relevan untuk semester ini.
+              </div>
+            ) : (
+              <div className="grid gap-4 lg:grid-cols-2">
+                {resultPublicationPrograms.map((program) => {
+                  const isBlocked = program.homeroomPublication.mode === 'BLOCKED';
+                  const effectiveTone =
+                    program.effectiveVisibility.tone === 'green'
+                      ? 'border-emerald-200 bg-emerald-50 text-emerald-700'
+                      : program.effectiveVisibility.tone === 'amber'
+                        ? 'border-amber-200 bg-amber-50 text-amber-700'
+                        : 'border-rose-200 bg-rose-50 text-rose-700';
+
+                  return (
+                    <div key={program.publicationCode} className="rounded-2xl border border-gray-200 bg-white p-5 shadow-sm">
+                      <div className="flex flex-col gap-4 sm:flex-row sm:items-start sm:justify-between">
+                        <div>
+                          <div className="inline-flex items-center gap-2 rounded-full border border-gray-200 bg-gray-50 px-3 py-1 text-xs font-semibold text-gray-600">
+                            <span>{program.publicationCode}</span>
+                            <span>•</span>
+                            <span>
+                              {program.fixedSemester === 'EVEN'
+                                ? 'Semester Genap'
+                                : program.fixedSemester === 'ODD'
+                                  ? 'Semester Ganjil'
+                                  : 'Semua Semester'}
+                            </span>
+                          </div>
+                          <h3 className="mt-3 text-lg font-semibold text-gray-900">{program.label}</h3>
+                          <p className="mt-1 text-sm text-gray-500">{program.globalRelease.description}</p>
+                        </div>
+                        <button
+                          type="button"
+                          onClick={() => handleToggleResultPublication(program)}
+                          disabled={updateResultPublicationMutation.isPending}
+                          className={`inline-flex items-center justify-center rounded-xl px-4 py-2 text-sm font-semibold transition ${
+                            isBlocked
+                              ? 'bg-emerald-600 text-white hover:bg-emerald-700'
+                              : 'bg-rose-600 text-white hover:bg-rose-700'
+                          } disabled:cursor-not-allowed disabled:opacity-60`}
+                        >
+                          {isBlocked ? 'Ikuti Jadwal Wakakur' : 'Tahan Publikasi'}
+                        </button>
+                      </div>
+
+                      <div className="mt-4 grid gap-3 sm:grid-cols-3">
+                        <div className="rounded-xl border border-gray-200 bg-gray-50 p-3">
+                          <p className="text-xs font-semibold uppercase tracking-[0.14em] text-gray-500">Rilis Wakakur</p>
+                          <p className="mt-2 text-sm font-semibold text-gray-900">{program.globalRelease.label}</p>
+                          <p className="mt-1 text-xs text-gray-500">
+                            {program.globalRelease.effectiveDate
+                              ? `Efektif ${formatDateTime(program.globalRelease.effectiveDate)}`
+                              : 'Tanpa tanggal khusus'}
+                          </p>
+                        </div>
+                        <div className="rounded-xl border border-gray-200 bg-gray-50 p-3">
+                          <p className="text-xs font-semibold uppercase tracking-[0.14em] text-gray-500">Gate Wali Kelas</p>
+                          <p className="mt-2 text-sm font-semibold text-gray-900">{program.homeroomPublication.label}</p>
+                          <p className="mt-1 text-xs text-gray-500">
+                            {program.homeroomPublication.updatedAt
+                              ? `Diperbarui ${formatDateTime(program.homeroomPublication.updatedAt)}`
+                              : 'Belum ada override manual'}
+                          </p>
+                        </div>
+                        <div className={`rounded-xl border p-3 ${effectiveTone}`}>
+                          <p className="text-xs font-semibold uppercase tracking-[0.14em]">Status ke Siswa</p>
+                          <p className="mt-2 text-sm font-semibold">{program.effectiveVisibility.label}</p>
+                          <p className="mt-1 text-xs">{program.effectiveVisibility.description}</p>
+                        </div>
+                      </div>
+
+                      <div className="mt-4 rounded-xl border border-slate-200 bg-slate-50 px-4 py-3 text-sm text-slate-700">
+                        <p className="font-medium text-slate-900">Kebijakan aktif</p>
+                        <p className="mt-1">{program.homeroomPublication.description}</p>
+                      </div>
+                    </div>
+                  );
+                })}
+              </div>
+            )}
           </div>
         ) : (
         <div className="overflow-x-auto">
@@ -815,7 +1072,7 @@ export const HomeroomPermissionsPage = () => {
         )}
 
         {/* Pagination Footer */}
-        {activeTab !== 'homeroom_book' ? (
+        {activeTab !== 'homeroom_book' && activeTab !== 'result_publication' ? (
         <div className="px-6 py-4 border-t border-gray-100 flex items-center justify-between bg-gray-50/50">
           <div className="text-sm text-gray-500">
             Menampilkan{' '}

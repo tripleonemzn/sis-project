@@ -1,6 +1,6 @@
 export type ExamStudentResultPublishMode = 'DIRECT' | 'SCHEDULED' | 'REPORT_DATE'
 
-export type StudentProgramResultReleaseCode = 'NOT_SCHEDULED' | 'SCHEDULED' | 'OPEN'
+export type StudentProgramResultReleaseCode = 'NOT_SCHEDULED' | 'SCHEDULED' | 'OPEN' | 'HOMEROOM_BLOCKED'
 
 export type StudentProgramResultReleaseState = {
   mode: ExamStudentResultPublishMode
@@ -11,7 +11,7 @@ export type StudentProgramResultReleaseState = {
   description: string
   canViewDetails: boolean
   effectiveDate: Date | null
-  source: 'DIRECT' | 'PROGRAM_DATE' | 'REPORT_DATE'
+  source: 'DIRECT' | 'PROGRAM_DATE' | 'REPORT_DATE' | 'HOMEROOM'
 }
 
 const VALID_EXAM_STUDENT_RESULT_PUBLISH_MODES = new Set<ExamStudentResultPublishMode>([

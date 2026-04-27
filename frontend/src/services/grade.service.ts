@@ -77,13 +77,13 @@ export interface StudentGradeOverviewComponent {
   release: {
     mode: 'DIRECT' | 'SCHEDULED' | 'REPORT_DATE';
     modeLabel: string;
-    code: 'NOT_SCHEDULED' | 'SCHEDULED' | 'OPEN';
+    code: 'NOT_SCHEDULED' | 'SCHEDULED' | 'OPEN' | 'HOMEROOM_BLOCKED';
     label: string;
     tone: 'red' | 'amber' | 'green';
     description: string;
     canViewDetails: boolean;
     effectiveDate: string | null;
-    source: 'DIRECT' | 'PROGRAM_DATE' | 'REPORT_DATE';
+    source: 'DIRECT' | 'PROGRAM_DATE' | 'REPORT_DATE' | 'HOMEROOM';
   };
 }
 
@@ -144,11 +144,13 @@ export interface StudentSemesterReportData {
     reportType: string;
   } | null;
   release: {
-    code: 'NOT_SCHEDULED' | 'SCHEDULED' | 'OPEN';
+    code: 'NOT_SCHEDULED' | 'SCHEDULED' | 'OPEN' | 'HOMEROOM_BLOCKED';
     label: string;
     tone: 'red' | 'amber' | 'green';
     description: string;
     canViewDetails: boolean;
+    source: 'REPORT_DATE' | 'HOMEROOM';
+    effectiveDate: string | null;
   };
   status: {
     code: 'NOT_READY' | 'PARTIAL' | 'READY';
@@ -212,6 +214,45 @@ export interface StudentGradeOverviewData {
   components: StudentGradeOverviewComponent[];
   subjects: StudentGradeOverviewSubjectRow[];
   reportCard: StudentSemesterReportData;
+}
+
+export interface HomeroomResultPublicationProgram {
+  publicationCode: string;
+  label: string;
+  shortLabel: string;
+  baseTypeCode: string;
+  fixedSemester: 'ODD' | 'EVEN' | null;
+  globalRelease: StudentGradeOverviewComponent['release'];
+  homeroomPublication: {
+    mode: 'FOLLOW_GLOBAL' | 'BLOCKED';
+    label: string;
+    description: string;
+    updatedAt: string | null;
+  };
+  effectiveVisibility: {
+    canViewDetails: boolean;
+    label: string;
+    tone: 'red' | 'amber' | 'green';
+    description: string;
+  };
+}
+
+export interface HomeroomResultPublicationsData {
+  academicYear: {
+    id: number;
+    name: string;
+  };
+  class: {
+    id: number;
+    name: string;
+    level: string;
+    major: {
+      id: number;
+      name: string;
+      code: string;
+    } | null;
+  };
+  programs: HomeroomResultPublicationProgram[];
 }
 
 export const gradeService = {
@@ -311,5 +352,26 @@ export const gradeService = {
       throw new Error('Data nilai siswa tidak tersedia.');
     }
     return response.data.data as StudentGradeOverviewData;
-  }
+  },
+
+  getHomeroomResultPublications: async (params: { classId: number }): Promise<HomeroomResultPublicationsData> => {
+    const response = await api.get('/grades/homeroom-result-publications', {
+      params: {
+        classId: params.classId,
+      },
+    });
+    if (!response.data?.data) {
+      throw new Error('Data kontrol publikasi nilai wali kelas tidak tersedia.');
+    }
+    return response.data.data as HomeroomResultPublicationsData;
+  },
+
+  updateHomeroomResultPublication: async (payload: {
+    classId: number;
+    publicationCode: string;
+    mode: 'FOLLOW_GLOBAL' | 'BLOCKED';
+  }) => {
+    const response = await api.put('/grades/homeroom-result-publications', payload);
+    return response.data;
+  },
 };

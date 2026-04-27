@@ -367,8 +367,9 @@ export default function StudentGradesPage() {
                     Nilai program menunggu publikasi
                   </div>
                   <p className="mt-3 text-sm leading-6 text-slate-700">
-                    Nilai {activeProgram?.code || 'program ujian'} untuk siswa belum dibuka.
-                    Rilis saat ini mengikuti {programReleaseDateLabel}. {activeProgramRelease?.description}
+                    {activeProgramRelease?.source === 'HOMEROOM'
+                      ? `Nilai ${activeProgram?.code || 'program ujian'} masih ditahan wali kelas. ${activeProgramRelease?.description}`
+                      : `Nilai ${activeProgram?.code || 'program ujian'} untuk siswa belum dibuka. Rilis saat ini mengikuti ${programReleaseDateLabel}. ${activeProgramRelease?.description}`}
                   </p>
                 </div>
               ) : null}

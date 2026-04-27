@@ -625,8 +625,8 @@ export default function GradesScreen() {
                     paddingVertical: 14,
                     gap: 8,
                   }}
-                >
-                  <View
+                  >
+                    <View
                     style={{
                       alignSelf: 'flex-start',
                       borderRadius: 999,
@@ -634,16 +634,17 @@ export default function GradesScreen() {
                       paddingHorizontal: 10,
                       paddingVertical: 6,
                     }}
-                  >
-                    <Text style={{ color: '#b45309', fontSize: scaleFont(12), fontWeight: '700' }}>
-                      Nilai program menunggu publikasi
+                    >
+                      <Text style={{ color: '#b45309', fontSize: scaleFont(12), fontWeight: '700' }}>
+                        Nilai program menunggu publikasi
+                      </Text>
+                    </View>
+                    <Text style={{ color: colors.text, fontSize: scaleFont(13), lineHeight: scaleLineHeight(20) }}>
+                      {activeProgramRelease?.source === 'HOMEROOM'
+                        ? `Nilai ${activeProgram?.key || 'program ujian'} masih ditahan wali kelas. ${activeProgramRelease?.description}`
+                        : `Nilai ${activeProgram?.key || 'program ujian'} belum dibuka untuk siswa. Rilis saat ini mengikuti ${programReleaseDateLabel}. ${activeProgramRelease?.description}`}
                     </Text>
                   </View>
-                  <Text style={{ color: colors.text, fontSize: scaleFont(13), lineHeight: scaleLineHeight(20) }}>
-                    Nilai {activeProgram?.key || 'program ujian'} belum dibuka untuk siswa.
-                    Rilis saat ini mengikuti {programReleaseDateLabel}. {activeProgramRelease?.description}
-                  </Text>
-                </View>
               ) : null}
 
               <View style={{ flexDirection: 'row', flexWrap: 'wrap', marginHorizontal: -6 }}>

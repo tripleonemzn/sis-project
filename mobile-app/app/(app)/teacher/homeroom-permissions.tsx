@@ -24,6 +24,8 @@ import { useAuth } from '../../../src/features/auth/AuthProvider';
 import { academicYearApi } from '../../../src/features/academicYear/academicYearApi';
 import { adminApi } from '../../../src/features/admin/adminApi';
 import { examApi, type ExamRestrictionItem } from '../../../src/features/exams/examApi';
+import { gradeApi } from '../../../src/features/grades/gradeApi';
+import type { HomeroomResultPublicationProgram } from '../../../src/features/grades/types';
 import HomeroomBookMobilePanel from '../../../src/features/homeroomBook/HomeroomBookMobilePanel';
 import { permissionApi } from '../../../src/features/permissions/permissionApi';
 import { PermissionStatus, PermissionType, StudentPermission } from '../../../src/features/permissions/types';
@@ -33,7 +35,7 @@ import { useAppTextScale } from '../../../src/theme/AppTextScaleProvider';
 
 type StatusFilter = 'ALL' | PermissionStatus;
 type TypeFilter = 'ALL' | PermissionType;
-type HomeroomPermissionTab = 'IZIN' | 'AKSES_UJIAN' | 'BUKU_WALI_KELAS';
+type HomeroomPermissionTab = 'IZIN' | 'AKSES_UJIAN' | 'PUBLIKASI_NILAI' | 'BUKU_WALI_KELAS';
 
 const DEFAULT_MANUAL_RESTRICTION_REASON =
   'Masih ada administrasi/tunggakan yang belum diselesaikan. Silakan hubungi wali kelas.';
@@ -65,6 +67,19 @@ function formatDate(value: string) {
     day: '2-digit',
     month: 'short',
     year: 'numeric',
+  });
+}
+
+function formatDateTime(value: string | null | undefined) {
+  if (!value) return '-';
+  const date = new Date(value);
+  if (Number.isNaN(date.getTime())) return '-';
+  return date.toLocaleString('id-ID', {
+    day: '2-digit',
+    month: 'short',
+    year: 'numeric',
+    hour: '2-digit',
+    minute: '2-digit',
   });
 }
 
@@ -303,6 +318,24 @@ export default function TeacherHomeroomPermissionsScreen() {
       }),
   });
 
+  const resultPublicationsQuery = useQuery({
+    queryKey: [
+      'mobile-homeroom-result-publications',
+      effectiveSelectedClassId,
+      activeYearQuery.data?.id,
+    ],
+    enabled:
+      isAuthenticated &&
+      !!isAllowed &&
+      !!effectiveSelectedClassId &&
+      !!activeYearQuery.data?.id &&
+      activeTab === 'PUBLIKASI_NILAI',
+    queryFn: async () =>
+      gradeApi.getHomeroomResultPublications({
+        classId: Number(effectiveSelectedClassId),
+      }),
+  });
+
   const decisionMutation = useMutation({
     mutationFn: (payload: { id: number; status: PermissionStatus; approvalNote?: string }) =>
       permissionApi.updateStatus(payload),
@@ -347,6 +380,29 @@ export default function TeacherHomeroomPermissionsScreen() {
     },
   });
 
+  const updateResultPublicationMutation = useMutation({
+    mutationFn: (payload: {
+      classId: number;
+      publicationCode: string;
+      mode: 'FOLLOW_GLOBAL' | 'BLOCKED';
+    }) => gradeApi.updateHomeroomResultPublication(payload),
+    onSuccess: async (_, payload) => {
+      await queryClient.invalidateQueries({ queryKey: ['mobile-homeroom-result-publications'] });
+      Alert.alert(
+        'Berhasil',
+        payload.mode === 'BLOCKED'
+          ? 'Publikasi nilai berhasil ditahan oleh wali kelas.'
+          : 'Publikasi nilai kembali mengikuti jadwal Wakakur.',
+      );
+    },
+    onError: (error: unknown) => {
+      const normalized = error as { response?: { data?: { message?: string } }; message?: string };
+      const message =
+        normalized.response?.data?.message || normalized.message || 'Gagal memperbarui publikasi nilai.';
+      Alert.alert('Proses Gagal', message);
+    },
+  });
+
   const permissions = useMemo(
     () => permissionsQuery.data?.permissions || [],
     [permissionsQuery.data?.permissions],
@@ -354,6 +410,15 @@ export default function TeacherHomeroomPermissionsScreen() {
   const restrictions = useMemo(
     () => restrictionsQuery.data?.restrictions || [],
     [restrictionsQuery.data?.restrictions],
+  );
+  const resultPublicationPrograms = useMemo(
+    () =>
+      (resultPublicationsQuery.data?.programs || []).filter((program) => {
+        const fixedSemester = program.fixedSemester as 'ODD' | 'EVEN' | null;
+        if (selectedSemester && fixedSemester && fixedSemester !== selectedSemester) return false;
+        return true;
+      }),
+    [resultPublicationsQuery.data?.programs, selectedSemester],
   );
   const selectedClass = classItems.find((item) => item.id === effectiveSelectedClassId) || null;
 
@@ -393,6 +458,23 @@ export default function TeacherHomeroomPermissionsScreen() {
     }
     return result;
   }, [restrictions]);
+
+  const resultPublicationSummary = useMemo(() => {
+    const result = {
+      total: resultPublicationPrograms.length,
+      blocked: 0,
+      visible: 0,
+      waitingWakakur: 0,
+    };
+    for (const item of resultPublicationPrograms) {
+      if (item.homeroomPublication.mode === 'BLOCKED') result.blocked += 1;
+      if (item.effectiveVisibility.canViewDetails) result.visible += 1;
+      if (item.homeroomPublication.mode === 'FOLLOW_GLOBAL' && !item.globalRelease.canViewDetails) {
+        result.waitingWakakur += 1;
+      }
+    }
+    return result;
+  }, [resultPublicationPrograms]);
 
   const openAttachment = async (item: StudentPermission) => {
     const url = resolveFileUrl(item.fileUrl);
@@ -505,6 +587,34 @@ export default function TeacherHomeroomPermissionsScreen() {
     });
   };
 
+  const handleToggleResultPublication = (program: HomeroomResultPublicationProgram) => {
+    if (!effectiveSelectedClassId || !selectedClass) {
+      Alert.alert('Kelas Tidak Ditemukan', 'Pilih kelas wali terlebih dahulu.');
+      return;
+    }
+
+    const nextMode = program.homeroomPublication.mode === 'BLOCKED' ? 'FOLLOW_GLOBAL' : 'BLOCKED';
+    const title = nextMode === 'BLOCKED' ? 'Tahan Publikasi Nilai' : 'Ikuti Jadwal Wakakur';
+    const message =
+      nextMode === 'BLOCKED'
+        ? `Tahan hasil nilai ${program.shortLabel} untuk siswa di kelas ${selectedClass.name}?`
+        : `Kembalikan hasil nilai ${program.shortLabel} agar mengikuti jadwal Wakakur?`;
+
+    Alert.alert(title, message, [
+      { text: 'Batal', style: 'cancel' },
+      {
+        text: nextMode === 'BLOCKED' ? 'Tahan' : 'Ikuti Wakakur',
+        style: nextMode === 'BLOCKED' ? 'destructive' : 'default',
+        onPress: () =>
+          updateResultPublicationMutation.mutate({
+            classId: Number(effectiveSelectedClassId),
+            publicationCode: program.publicationCode,
+            mode: nextMode,
+          }),
+      },
+    ]);
+  };
+
   if (isLoading) return <AppLoadingScreen message="Memuat persetujuan izin..." />;
   if (!isAuthenticated) return <Redirect href="/welcome" />;
 
@@ -566,6 +676,7 @@ export default function TeacherHomeroomPermissionsScreen() {
             classesQuery.isFetching ||
             (activeTab === 'IZIN' && permissionsQuery.isFetching) ||
             (activeTab === 'AKSES_UJIAN' && restrictionsQuery.isFetching) ||
+            (activeTab === 'PUBLIKASI_NILAI' && resultPublicationsQuery.isFetching) ||
             ((activeTab === 'AKSES_UJIAN' || activeTab === 'BUKU_WALI_KELAS') && examProgramsQuery.isFetching)
           }
           onRefresh={() => {
@@ -580,6 +691,10 @@ export default function TeacherHomeroomPermissionsScreen() {
               void examProgramsQuery.refetch();
               return;
             }
+            if (activeTab === 'PUBLIKASI_NILAI') {
+              void resultPublicationsQuery.refetch();
+              return;
+            }
             void examProgramsQuery.refetch();
           }}
         />
@@ -589,13 +704,14 @@ export default function TeacherHomeroomPermissionsScreen() {
         Persetujuan Izin
       </Text>
       <Text style={{ color: BRAND_COLORS.textMuted, marginBottom: 12 }}>
-        Kelola perizinan, akses ujian, dan Buku Wali Kelas siswa.
+        Kelola perizinan, akses ujian, publikasi nilai, dan Buku Wali Kelas siswa.
       </Text>
 
       <MobileMenuTabBar
         items={[
           { key: 'IZIN', label: 'Daftar Izin', iconName: 'file-text' },
           { key: 'AKSES_UJIAN', label: 'Akses Ujian', iconName: 'shield' },
+          { key: 'PUBLIKASI_NILAI', label: 'Publikasi Nilai', iconName: 'award' },
           { key: 'BUKU_WALI_KELAS', label: 'Buku Wali Kelas', iconName: 'book-open' },
         ]}
         activeKey={activeTab}
@@ -1434,6 +1550,283 @@ export default function TeacherHomeroomPermissionsScreen() {
               )
             ) : null}
           </>
+        ) : null}
+      </>
+      ) : activeTab === 'PUBLIKASI_NILAI' ? (
+      <>
+        <View style={{ flexDirection: 'row', flexWrap: 'wrap', marginHorizontal: -4, marginBottom: 12 }}>
+          {[
+            {
+              key: 'total',
+              title: 'Program Semester',
+              value: `${resultPublicationSummary.total}`,
+              subtitle: selectedSemester === 'EVEN' ? 'Program semester genap' : 'Program semester ganjil',
+              iconName: 'layers' as const,
+              accentColor: '#2563eb',
+            },
+            {
+              key: 'visible',
+              title: 'Sudah Tampil',
+              value: `${resultPublicationSummary.visible}`,
+              subtitle: 'Saat ini bisa dibuka siswa',
+              iconName: 'check-circle' as const,
+              accentColor: '#16a34a',
+            },
+            {
+              key: 'blocked',
+              title: 'Ditahan Wali',
+              value: `${resultPublicationSummary.blocked}`,
+              subtitle: 'Ditahan manual wali kelas',
+              iconName: 'x-circle' as const,
+              accentColor: '#dc2626',
+            },
+            {
+              key: 'waiting',
+              title: 'Menunggu Wakakur',
+              value: `${resultPublicationSummary.waitingWakakur}`,
+              subtitle: 'Masih ikut jadwal rilis global',
+              iconName: 'clock' as const,
+              accentColor: '#d97706',
+            },
+          ].map((item) => (
+            <View key={item.key} style={{ width: '50%', paddingHorizontal: 4, marginBottom: 8 }}>
+              <MobileSummaryCard
+                title={item.title}
+                value={item.value}
+                subtitle={item.subtitle}
+                iconName={item.iconName}
+                accentColor={item.accentColor}
+              />
+            </View>
+          ))}
+        </View>
+
+        <View
+          style={{
+            borderWidth: 1,
+            borderColor: '#bfdbfe',
+            backgroundColor: '#eff6ff',
+            borderRadius: 12,
+            padding: 12,
+            marginBottom: 12,
+          }}
+        >
+          <Text style={{ color: '#1d4ed8', fontWeight: '700', fontSize: scaleFont(14), marginBottom: 4 }}>
+            Publikasi Nilai
+          </Text>
+          <Text style={{ color: '#1d4ed8', fontSize: scaleFont(12), lineHeight: scaleLineHeight(18) }}>
+            Default publikasi tetap mengikuti jadwal Wakakur. Gunakan kontrol ini jika wali kelas perlu menahan hasil nilai program tertentu agar belum tampil ke akun siswa.
+          </Text>
+        </View>
+
+        <View
+          style={{
+            backgroundColor: '#fff',
+            borderWidth: 1,
+            borderColor: '#dbe7fb',
+            borderRadius: 12,
+            padding: 12,
+            marginBottom: 12,
+          }}
+        >
+          <MobileSelectField
+            label="Semester"
+            value={selectedSemester}
+            options={[
+              { value: 'ODD', label: 'Ganjil' },
+              { value: 'EVEN', label: 'Genap' },
+            ]}
+            onChange={(next) => setSelectedSemesterOverride((next as 'ODD' | 'EVEN' | '') || '')}
+            placeholder="Pilih semester"
+            helperText="Program yang tampil akan mengikuti semester yang dipilih."
+          />
+        </View>
+
+        {resultPublicationsQuery.isLoading ? (
+          <QueryStateView type="loading" message="Mengambil kontrol publikasi nilai..." />
+        ) : null}
+        {resultPublicationsQuery.isError ? (
+          <QueryStateView
+            type="error"
+            message="Gagal memuat kontrol publikasi nilai."
+            onRetry={() => resultPublicationsQuery.refetch()}
+          />
+        ) : null}
+
+        {!resultPublicationsQuery.isLoading && !resultPublicationsQuery.isError ? (
+          resultPublicationPrograms.length > 0 ? (
+            <View style={{ gap: 12 }}>
+              {resultPublicationPrograms.map((program) => {
+                const isBlocked = program.homeroomPublication.mode === 'BLOCKED';
+                const effectiveColors =
+                  program.effectiveVisibility.tone === 'green'
+                    ? { border: '#86efac', bg: '#dcfce7', text: '#166534' }
+                    : program.effectiveVisibility.tone === 'amber'
+                      ? { border: '#fcd34d', bg: '#fffbeb', text: '#92400e' }
+                      : { border: '#fca5a5', bg: '#fee2e2', text: '#991b1b' };
+
+                return (
+                  <View
+                    key={program.publicationCode}
+                    style={{
+                      borderWidth: 1,
+                      borderColor: '#dbe7fb',
+                      borderRadius: 12,
+                      backgroundColor: '#fff',
+                      padding: 12,
+                      marginBottom: 10,
+                    }}
+                  >
+                    <View
+                      style={{
+                        flexDirection: 'row',
+                        justifyContent: 'space-between',
+                        alignItems: 'flex-start',
+                        gap: 10,
+                        marginBottom: 10,
+                      }}
+                    >
+                      <View style={{ flex: 1 }}>
+                        <View
+                          style={{
+                            alignSelf: 'flex-start',
+                            borderRadius: 999,
+                            borderWidth: 1,
+                            borderColor: '#e2e8f0',
+                            backgroundColor: '#f8fafc',
+                            paddingHorizontal: 10,
+                            paddingVertical: 4,
+                            marginBottom: 8,
+                          }}
+                        >
+                          <Text style={{ color: '#475569', fontSize: scaleFont(11), fontWeight: '700' }}>
+                            {program.publicationCode} •{' '}
+                            {program.fixedSemester === 'EVEN'
+                              ? 'Semester Genap'
+                              : program.fixedSemester === 'ODD'
+                                ? 'Semester Ganjil'
+                                : 'Semua Semester'}
+                          </Text>
+                        </View>
+                        <Text style={{ color: BRAND_COLORS.textDark, fontWeight: '700', fontSize: scaleFont(15), lineHeight: scaleLineHeight(22) }}>
+                          {program.label}
+                        </Text>
+                        <Text style={{ color: '#64748b', marginTop: 4, fontSize: scaleFont(12), lineHeight: scaleLineHeight(18) }}>
+                          {program.globalRelease.description}
+                        </Text>
+                      </View>
+
+                      <Pressable
+                        onPress={() => handleToggleResultPublication(program)}
+                        disabled={updateResultPublicationMutation.isPending}
+                        style={{
+                          borderRadius: 10,
+                          backgroundColor: isBlocked ? '#16a34a' : '#dc2626',
+                          paddingHorizontal: 12,
+                          paddingVertical: 10,
+                          opacity: updateResultPublicationMutation.isPending ? 0.7 : 1,
+                        }}
+                      >
+                        <Text style={{ color: '#fff', fontWeight: '700', textAlign: 'center' }}>
+                          {isBlocked ? 'Ikuti Wakakur' : 'Tahan Publikasi'}
+                        </Text>
+                      </Pressable>
+                    </View>
+
+                    <View style={{ gap: 8 }}>
+                      <View
+                        style={{
+                          borderWidth: 1,
+                          borderColor: '#e2e8f0',
+                          backgroundColor: '#f8fafc',
+                          borderRadius: 10,
+                          padding: 10,
+                        }}
+                      >
+                        <Text style={{ color: '#64748b', fontSize: scaleFont(11), fontWeight: '700', marginBottom: 4 }}>
+                          RILIS WAKAKUR
+                        </Text>
+                        <Text style={{ color: BRAND_COLORS.textDark, fontWeight: '700' }}>{program.globalRelease.label}</Text>
+                        <Text style={{ color: BRAND_COLORS.textMuted, fontSize: scaleFont(12), lineHeight: scaleLineHeight(18), marginTop: 4 }}>
+                          {program.globalRelease.effectiveDate
+                            ? `Efektif ${formatDateTime(program.globalRelease.effectiveDate)}`
+                            : 'Tanpa tanggal khusus'}
+                        </Text>
+                      </View>
+
+                      <View
+                        style={{
+                          borderWidth: 1,
+                          borderColor: '#e2e8f0',
+                          backgroundColor: '#f8fafc',
+                          borderRadius: 10,
+                          padding: 10,
+                        }}
+                      >
+                        <Text style={{ color: '#64748b', fontSize: scaleFont(11), fontWeight: '700', marginBottom: 4 }}>
+                          GATE WALI KELAS
+                        </Text>
+                        <Text style={{ color: BRAND_COLORS.textDark, fontWeight: '700' }}>{program.homeroomPublication.label}</Text>
+                        <Text style={{ color: BRAND_COLORS.textMuted, fontSize: scaleFont(12), lineHeight: scaleLineHeight(18), marginTop: 4 }}>
+                          {program.homeroomPublication.updatedAt
+                            ? `Diperbarui ${formatDateTime(program.homeroomPublication.updatedAt)}`
+                            : 'Belum ada override manual'}
+                        </Text>
+                      </View>
+
+                      <View
+                        style={{
+                          borderWidth: 1,
+                          borderColor: effectiveColors.border,
+                          backgroundColor: effectiveColors.bg,
+                          borderRadius: 10,
+                          padding: 10,
+                        }}
+                      >
+                        <Text style={{ color: effectiveColors.text, fontSize: scaleFont(11), fontWeight: '700', marginBottom: 4 }}>
+                          STATUS KE SISWA
+                        </Text>
+                        <Text style={{ color: effectiveColors.text, fontWeight: '700' }}>{program.effectiveVisibility.label}</Text>
+                        <Text style={{ color: effectiveColors.text, fontSize: scaleFont(12), lineHeight: scaleLineHeight(18), marginTop: 4 }}>
+                          {program.effectiveVisibility.description}
+                        </Text>
+                      </View>
+
+                      <View
+                        style={{
+                          borderWidth: 1,
+                          borderColor: '#e2e8f0',
+                          backgroundColor: '#f8fafc',
+                          borderRadius: 10,
+                          padding: 10,
+                        }}
+                      >
+                        <Text style={{ color: '#0f172a', fontWeight: '700', marginBottom: 4 }}>Kebijakan Aktif</Text>
+                        <Text style={{ color: '#475569', fontSize: scaleFont(12), lineHeight: scaleLineHeight(18) }}>
+                          {program.homeroomPublication.description}
+                        </Text>
+                      </View>
+                    </View>
+                  </View>
+                );
+              })}
+            </View>
+          ) : (
+            <View
+              style={{
+                borderWidth: 1,
+                borderColor: '#cbd5e1',
+                borderStyle: 'dashed',
+                borderRadius: 10,
+                padding: 16,
+                backgroundColor: '#fff',
+              }}
+            >
+              <Text style={{ color: BRAND_COLORS.textMuted }}>
+                Tidak ada program ujian siswa yang relevan untuk semester ini.
+              </Text>
+            </View>
+          )
         ) : null}
       </>
       ) : (

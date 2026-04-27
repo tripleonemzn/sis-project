@@ -32,6 +32,12 @@ import {
   resolveStudentExamProgramResultRelease,
   type StudentProgramResultReleaseState,
 } from '../utils/examProgramResultRelease'
+import {
+  listBlockedHomeroomResultPublicationCodes,
+  readHomeroomResultPublication,
+  writeHomeroomResultPublication,
+  type HomeroomResultPublicationMode,
+} from '../utils/homeroomResultPublication'
 import { summarizeDailyPresenceRows } from '../utils/dailyPresenceSummary'
 
 const DEFAULT_REPORT_SLOT_CODE = 'NONE'
@@ -77,7 +83,24 @@ type StudentOverviewComponentRow = {
 }
 
 type StudentSemesterReportStatusCode = 'NOT_READY' | 'PARTIAL' | 'READY'
-type StudentSemesterReportReleaseCode = 'NOT_SCHEDULED' | 'SCHEDULED' | 'OPEN'
+type StudentSemesterReportReleaseCode = 'NOT_SCHEDULED' | 'SCHEDULED' | 'OPEN' | 'HOMEROOM_BLOCKED'
+
+type StudentSemesterReportReleaseState = {
+  code: StudentSemesterReportReleaseCode
+  label: string
+  tone: 'red' | 'amber' | 'green'
+  description: string
+  canViewDetails: boolean
+  source: 'REPORT_DATE' | 'HOMEROOM'
+  effectiveDate: Date | null
+}
+
+type HomeroomPublicationEffectiveVisibility = {
+  canViewDetails: boolean
+  label: string
+  tone: 'red' | 'amber' | 'green'
+  description: string
+}
 
 type StudentScoreEntryFindManyDelegate = {
   findMany: (args: unknown) => Promise<unknown[]>
@@ -1543,13 +1566,7 @@ function buildLocalDateKey(value: Date) {
 function resolveStudentSemesterReportRelease(params: {
   reportDate?: { date?: Date | null } | null
   now?: Date
-}): {
-  code: StudentSemesterReportReleaseCode
-  label: string
-  tone: 'red' | 'amber' | 'green'
-  description: string
-  canViewDetails: boolean
-} {
+}): StudentSemesterReportReleaseState {
   const reportDateValue = params.reportDate?.date ? new Date(params.reportDate.date) : null
   if (!reportDateValue || Number.isNaN(reportDateValue.getTime())) {
     return {
@@ -1558,6 +1575,8 @@ function resolveStudentSemesterReportRelease(params: {
       tone: 'red',
       description: 'Tanggal rapor semester belum diatur, jadi detail rapor belum bisa dibuka.',
       canViewDetails: false,
+      source: 'REPORT_DATE',
+      effectiveDate: null,
     }
   }
 
@@ -1572,6 +1591,8 @@ function resolveStudentSemesterReportRelease(params: {
       tone: 'amber',
       description: 'Rapor semester sudah dijadwalkan, tetapi belum memasuki tanggal rilis.',
       canViewDetails: false,
+      source: 'REPORT_DATE',
+      effectiveDate: reportDateValue,
     }
   }
 
@@ -1581,7 +1602,188 @@ function resolveStudentSemesterReportRelease(params: {
     tone: 'green',
     description: 'Rapor semester sudah dirilis dan detail nilainya bisa dilihat.',
     canViewDetails: true,
+    source: 'REPORT_DATE',
+    effectiveDate: reportDateValue,
   }
+}
+
+function applyHomeroomProgramResultReleaseGate(params: {
+  release: StudentProgramResultReleaseState
+  blockedByHomeroom: boolean
+}): StudentProgramResultReleaseState {
+  if (!params.blockedByHomeroom) {
+    return params.release
+  }
+
+  return {
+    ...params.release,
+    code: 'HOMEROOM_BLOCKED',
+    label: 'Ditahan wali kelas',
+    tone: 'red',
+    description: 'Wali kelas belum membuka hasil nilai program ini ke akun siswa.',
+    canViewDetails: false,
+    source: 'HOMEROOM',
+  }
+}
+
+function applyHomeroomSemesterReportReleaseGate(params: {
+  release: StudentSemesterReportReleaseState
+  blockedByHomeroom: boolean
+}): StudentSemesterReportReleaseState {
+  if (!params.blockedByHomeroom) {
+    return params.release
+  }
+
+  return {
+    ...params.release,
+    code: 'HOMEROOM_BLOCKED',
+    label: 'Ditahan wali kelas',
+    tone: 'red',
+    description: 'Wali kelas belum membuka hasil rapor semester ini ke akun siswa.',
+    canViewDetails: false,
+    source: 'HOMEROOM',
+  }
+}
+
+function resolveHomeroomPublicationModeLabel(mode: HomeroomResultPublicationMode): string {
+  return mode === 'BLOCKED' ? 'Ditahan wali kelas' : 'Mengikuti Wakakur'
+}
+
+function resolveHomeroomPublicationModeDescription(mode: HomeroomResultPublicationMode): string {
+  if (mode === 'BLOCKED') {
+    return 'Wali kelas menahan publikasi nilai program ini sampai dibuka kembali.'
+  }
+  return 'Publikasi nilai mengikuti jadwal rilis Wakakur untuk program ini.'
+}
+
+function resolveHomeroomPublicationEffectiveVisibility(params: {
+  globalRelease: StudentProgramResultReleaseState
+  publicationMode: HomeroomResultPublicationMode
+}): HomeroomPublicationEffectiveVisibility {
+  if (params.publicationMode === 'BLOCKED') {
+    return {
+      canViewDetails: false,
+      label: 'Ditahan wali kelas',
+      tone: 'red',
+      description: 'Nilai belum tampil ke siswa karena wali kelas menahan publikasi program ini.',
+    }
+  }
+
+  if (params.globalRelease.canViewDetails) {
+    return {
+      canViewDetails: true,
+      label: 'Tampil ke siswa',
+      tone: 'green',
+      description: 'Nilai program ini sudah bisa dilihat siswa.',
+    }
+  }
+
+  if (params.globalRelease.code === 'SCHEDULED') {
+    return {
+      canViewDetails: false,
+      label: 'Menunggu Wakakur',
+      tone: 'amber',
+      description: 'Nilai akan tampil mengikuti jadwal rilis Wakakur yang sudah diatur.',
+    }
+  }
+
+  return {
+    canViewDetails: false,
+    label: 'Belum bisa tampil',
+    tone: 'red',
+    description: 'Nilai belum bisa tampil karena jadwal rilis Wakakur untuk program ini belum siap.',
+  }
+}
+
+async function resolveActiveAcademicYearForHomeroomPublication() {
+  const activeYear = await prisma.academicYear.findFirst({
+    where: { isActive: true },
+    select: {
+      id: true,
+      name: true,
+      semester1Start: true,
+      semester1End: true,
+      semester2Start: true,
+      semester2End: true,
+    },
+  })
+
+  if (!activeYear) {
+    throw new ApiError(404, 'Tahun ajaran aktif tidak ditemukan.')
+  }
+
+  return activeYear
+}
+
+async function resolveHomeroomPublicationAccess(params: {
+  user: AuthUserLike | null | undefined
+  classId: number
+}) {
+  const userId = Number(params.user?.id || 0)
+  if (String(params.user?.role || '').toUpperCase() !== 'TEACHER' || !Number.isFinite(userId) || userId <= 0) {
+    throw new ApiError(403, 'Fitur ini hanya tersedia untuk wali kelas.')
+  }
+
+  const activeYear = await resolveActiveAcademicYearForHomeroomPublication()
+  const homeroomClass = await prisma.class.findFirst({
+    where: {
+      id: params.classId,
+      academicYearId: activeYear.id,
+      teacherId: userId,
+    },
+    select: {
+      id: true,
+      name: true,
+      level: true,
+      major: {
+        select: {
+          id: true,
+          name: true,
+          code: true,
+        },
+      },
+      teacher: {
+        select: {
+          id: true,
+          name: true,
+          preferences: true,
+        },
+      },
+    },
+  })
+
+  if (!homeroomClass) {
+    throw new ApiError(403, 'Anda tidak terdaftar sebagai wali kelas aktif untuk kelas ini.')
+  }
+
+  return {
+    activeYear,
+    homeroomClass,
+    userId,
+  }
+}
+
+function resolveStudentPublicationCodeForProgram(params: {
+  program: {
+    code: string
+    baseType: ExamType
+    baseTypeCode?: string | null
+    gradeComponentCode?: string | null
+    fixedSemester?: Semester | null
+  }
+  componentRuleMap: Map<string, ExamComponentRule>
+}): string {
+  const normalizedProgramCode = normalizeComponentCode(params.program.code)
+  const normalizedComponentCode = normalizeComponentCode(params.program.gradeComponentCode)
+  const configuredSlotCode = normalizedComponentCode
+    ? params.componentRuleMap.get(normalizedComponentCode)?.reportSlotCode
+    : undefined
+  const fallbackSlotCode = resolveReportSlotCodeByExamContext(
+    params.program.baseTypeCode || params.program.baseType,
+    params.program.fixedSemester || null,
+  )
+  const resolvedSlotCode = normalizeReportSlotCode(configuredSlotCode || fallbackSlotCode || normalizedProgramCode)
+  return resolvedSlotCode || normalizedProgramCode
 }
 
 function buildExamComponentRuleMapFromRows(
@@ -1622,6 +1824,7 @@ function buildStudentProgramReleaseLookup(params: {
   componentRuleMap: Map<string, ExamComponentRule>
   reportDateByKey: Map<string, StudentReleaseReportDateRow>
   activeSemester: Semester
+  blockedPublicationCodes?: Set<string>
   now?: Date
 }): {
   byProgramCode: Map<string, StudentProgramResultReleaseState>
@@ -1655,13 +1858,18 @@ function buildStudentProgramReleaseLookup(params: {
         ? params.reportDateByKey.get(buildStudentReleaseReportDateKey(resolvedSemester, resolvedReportType)) || null
         : null
 
-    const release = resolveStudentExamProgramResultRelease({
-      mode: program.studentResultPublishMode,
-      publishAt: program.studentResultPublishAt || null,
-      reportDate,
-      programCode: normalizedProgramCode,
-      baseTypeCode: program.baseTypeCode || program.baseType,
-      now: params.now,
+    const release = applyHomeroomProgramResultReleaseGate({
+      release: resolveStudentExamProgramResultRelease({
+        mode: program.studentResultPublishMode,
+        publishAt: program.studentResultPublishAt || null,
+        reportDate,
+        programCode: normalizedProgramCode,
+        baseTypeCode: program.baseTypeCode || program.baseType,
+        now: params.now,
+      }),
+      blockedByHomeroom:
+        Boolean(params.blockedPublicationCodes?.has(resolvedSlotCode)) ||
+        Boolean(params.blockedPublicationCodes?.has(normalizedProgramCode)),
     })
 
     byProgramCode.set(normalizedProgramCode, release)
@@ -1682,6 +1890,7 @@ function resolveStudentOverviewComponentRelease(params: {
   releaseBySlotCode: Map<string, StudentProgramResultReleaseState>
   reportDateByKey: Map<string, StudentReleaseReportDateRow>
   activeSemester: Semester
+  blockedPublicationCodes?: Set<string>
   now?: Date
 }): StudentProgramResultReleaseState {
   const release =
@@ -1691,17 +1900,24 @@ function resolveStudentOverviewComponentRelease(params: {
 
   if (release) return release
 
-  return resolveStudentExamProgramResultRelease({
-    mode: defaultExamStudentResultPublishMode({
+  const publicationCode = normalizeReportSlotCode(params.component.reportSlotCode || params.component.code)
+
+  return applyHomeroomProgramResultReleaseGate({
+    release: resolveStudentExamProgramResultRelease({
+      mode: defaultExamStudentResultPublishMode({
+        programCode: params.component.reportSlotCode || params.component.code,
+      }),
+      reportDate: resolveReportDateForStudentRelease(
+        params.component.reportSlotCode || params.component.code,
+        params.activeSemester,
+        params.reportDateByKey,
+      ),
       programCode: params.component.reportSlotCode || params.component.code,
+      now: params.now,
     }),
-    reportDate: resolveReportDateForStudentRelease(
-      params.component.reportSlotCode || params.component.code,
-      params.activeSemester,
-      params.reportDateByKey,
-    ),
-    programCode: params.component.reportSlotCode || params.component.code,
-    now: params.now,
+    blockedByHomeroom:
+      Boolean(params.blockedPublicationCodes?.has(publicationCode)) ||
+      Boolean(params.blockedPublicationCodes?.has(normalizeComponentCode(params.component.code))),
   })
 }
 
@@ -1804,6 +2020,7 @@ function buildStudentOverviewComponents(params: {
   releaseByProgramCode: Map<string, StudentProgramResultReleaseState>
   releaseBySlotCode: Map<string, StudentProgramResultReleaseState>
   reportDateByKey: Map<string, StudentReleaseReportDateRow>
+  blockedPublicationCodes?: Set<string>
   now?: Date
 }): StudentOverviewComponentRow[] {
   const normalizedLevel = normalizeClassLevelTokenForScope(params.classLevel)
@@ -1831,6 +2048,7 @@ function buildStudentOverviewComponents(params: {
           releaseBySlotCode: params.releaseBySlotCode,
           reportDateByKey: params.reportDateByKey,
           activeSemester: params.semester,
+          blockedPublicationCodes: params.blockedPublicationCodes,
           now: params.now,
         }),
       }
@@ -3727,7 +3945,19 @@ export const getStudentGradeOverview = async (req: Request, res: Response) => {
             orderBy: [{ id: 'desc' }],
           })
 
-    const [teacherAssignments, reportGrades, activeSemesterReportGrades, studentGrades, examGradeComponents, examPrograms, reportDateRows, attendanceStats, dailyPresenceRows, homeroomNote] = await Promise.all([
+    const [
+      teacherAssignments,
+      reportGrades,
+      activeSemesterReportGrades,
+      studentGrades,
+      examGradeComponents,
+      examPrograms,
+      reportDateRows,
+      homeroomPublicationClass,
+      attendanceStats,
+      dailyPresenceRows,
+      homeroomNote,
+    ] = await Promise.all([
       prisma.teacherAssignment.findMany({
         where: {
           academicYearId: activeYear.id,
@@ -3836,6 +4066,21 @@ export const getStudentGradeOverview = async (req: Request, res: Response) => {
         },
         orderBy: [{ semester: 'asc' }, { reportType: 'asc' }],
       }),
+      prisma.class.findUnique({
+        where: {
+          id: student.studentClass.id,
+        },
+        select: {
+          id: true,
+          teacher: {
+            select: {
+              id: true,
+              name: true,
+              preferences: true,
+            },
+          },
+        },
+      }),
       prisma.dailyAttendance.groupBy({
         by: ['status'],
         where: {
@@ -3924,11 +4169,17 @@ export const getStudentGradeOverview = async (req: Request, res: Response) => {
     const reportDate =
       reportDateByKey.get(buildStudentReleaseReportDateKey(reportSemester, reportCardType)) || null
     const overviewComponentRuleMap = buildExamComponentRuleMapFromRows(examGradeComponents)
+    const blockedPublicationCodes = listBlockedHomeroomResultPublicationCodes({
+      preferences: homeroomPublicationClass?.teacher?.preferences,
+      academicYearId: activeYear.id,
+      classId: student.studentClass.id,
+    })
     const studentProgramReleaseLookup = buildStudentProgramReleaseLookup({
       programs: examPrograms,
       componentRuleMap: overviewComponentRuleMap,
       reportDateByKey,
       activeSemester: semester,
+      blockedPublicationCodes,
     })
 
     const componentCatalog = buildStudentOverviewComponents({
@@ -3950,6 +4201,7 @@ export const getStudentGradeOverview = async (req: Request, res: Response) => {
       releaseByProgramCode: studentProgramReleaseLookup.byProgramCode,
       releaseBySlotCode: studentProgramReleaseLookup.bySlotCode,
       reportDateByKey,
+      blockedPublicationCodes,
     })
 
     const assignmentBySubjectId = new Map<number, (typeof teacherAssignments)[number]>()
@@ -4186,7 +4438,10 @@ export const getStudentGradeOverview = async (req: Request, res: Response) => {
       .filter((row) => row.visibility.shouldShowToStudent)
       .sort((a, b) => a.subject.name.localeCompare(b.subject.name, 'id-ID'))
 
-    const reportRelease = resolveStudentSemesterReportRelease({ reportDate })
+    const reportRelease = applyHomeroomSemesterReportReleaseGate({
+      release: resolveStudentSemesterReportRelease({ reportDate }),
+      blockedByHomeroom: blockedPublicationCodes.has(normalizeComponentCode(reportCardType)),
+    })
     const subjectRows = visibleSubjectRows.map(({ visibility, ...row }) =>
       reportRelease.canViewDetails
         ? row
@@ -4351,6 +4606,267 @@ export const getStudentGradeOverview = async (req: Request, res: Response) => {
     console.error('Get student grade overview error:', error)
     if (error instanceof ApiError) throw error
     throw new ApiError(500, 'Failed to retrieve student grade overview')
+  }
+}
+
+export const getHomeroomResultPublications = async (req: Request, res: Response) => {
+  try {
+    const user = (req as any).user as AuthUserLike
+    const classId = Number(req.query.class_id || req.query.classId || 0)
+
+    if (!Number.isFinite(classId) || classId <= 0) {
+      throw new ApiError(400, 'classId wajib diisi.')
+    }
+
+    const { activeYear, homeroomClass } = await resolveHomeroomPublicationAccess({ user, classId })
+    const activeSemester = resolveCurrentSemesterFromAcademicYear(activeYear)
+
+    const [examGradeComponents, examPrograms, reportDateRows] = await Promise.all([
+      prisma.examGradeComponent.findMany({
+        where: {
+          academicYearId: activeYear.id,
+          isActive: true,
+        },
+        select: {
+          code: true,
+          type: true,
+          typeCode: true,
+          reportSlot: true,
+          reportSlotCode: true,
+          includeInFinalScore: true,
+        },
+      }),
+      prisma.examProgramConfig.findMany({
+        where: {
+          academicYearId: activeYear.id,
+          isActive: true,
+          showOnStudentMenu: true,
+        },
+        select: {
+          code: true,
+          displayLabel: true,
+          shortLabel: true,
+          displayOrder: true,
+          baseType: true,
+          baseTypeCode: true,
+          gradeComponentCode: true,
+          fixedSemester: true,
+          studentResultPublishMode: true,
+          studentResultPublishAt: true,
+        },
+        orderBy: [{ displayOrder: 'asc' }, { code: 'asc' }],
+      }),
+      prisma.reportDate.findMany({
+        where: {
+          academicYearId: activeYear.id,
+        },
+        select: {
+          semester: true,
+          place: true,
+          date: true,
+          reportType: true,
+        },
+        orderBy: [{ semester: 'asc' }, { reportType: 'asc' }],
+      }),
+    ])
+
+    const componentRuleMap = buildExamComponentRuleMapFromRows(examGradeComponents)
+    const reportDateByKey = buildStudentReleaseReportDateLookup(reportDateRows)
+    const publicationRows = new Map<
+      string,
+      {
+        publicationCode: string
+        label: string
+        shortLabel: string
+        baseTypeCode: string
+        fixedSemester: Semester | null
+        globalRelease: StudentProgramResultReleaseState
+        homeroomPublication: {
+          mode: HomeroomResultPublicationMode
+          label: string
+          description: string
+          updatedAt: Date | null
+        }
+        effectiveVisibility: HomeroomPublicationEffectiveVisibility
+      }
+    >()
+
+    examPrograms.forEach((program) => {
+      const publicationCode = resolveStudentPublicationCodeForProgram({
+        program: {
+          code: program.code,
+          baseType: program.baseType,
+          baseTypeCode: program.baseTypeCode,
+          gradeComponentCode: program.gradeComponentCode,
+          fixedSemester: program.fixedSemester,
+        },
+        componentRuleMap,
+      })
+      if (!publicationCode || publicationCode === DEFAULT_REPORT_SLOT_CODE) return
+
+      const resolvedSemester = program.fixedSemester || activeSemester
+      const resolvedReportType = resolveExamTypeForStudentRelease(
+        program.baseTypeCode || program.baseType,
+        resolvedSemester,
+        program.baseType,
+      )
+      const reportDate =
+        resolvedReportType
+          ? reportDateByKey.get(buildStudentReleaseReportDateKey(resolvedSemester, resolvedReportType)) || null
+          : null
+      const globalRelease = resolveStudentExamProgramResultRelease({
+        mode: program.studentResultPublishMode,
+        publishAt: program.studentResultPublishAt || null,
+        reportDate,
+        programCode: publicationCode,
+        baseTypeCode: program.baseTypeCode || program.baseType,
+      })
+      const homeroomPublication = readHomeroomResultPublication({
+        preferences: homeroomClass.teacher?.preferences,
+        academicYearId: activeYear.id,
+        classId: homeroomClass.id,
+        publicationCode,
+      })
+
+      const row = {
+        publicationCode,
+        label:
+          String(program.displayLabel || program.shortLabel || publicationCode).trim() || publicationCode,
+        shortLabel:
+          String(program.shortLabel || program.displayLabel || publicationCode).trim() || publicationCode,
+        baseTypeCode: normalizeComponentCode(program.baseTypeCode || program.baseType),
+        fixedSemester: program.fixedSemester || null,
+        globalRelease,
+        homeroomPublication: {
+          mode: homeroomPublication.mode,
+          label: resolveHomeroomPublicationModeLabel(homeroomPublication.mode),
+          description: resolveHomeroomPublicationModeDescription(homeroomPublication.mode),
+          updatedAt: homeroomPublication.updatedAt,
+        },
+        effectiveVisibility: resolveHomeroomPublicationEffectiveVisibility({
+          globalRelease,
+          publicationMode: homeroomPublication.mode,
+        }),
+      }
+
+      const existing = publicationRows.get(publicationCode)
+      if (!existing || normalizeComponentCode(program.code) === publicationCode) {
+        publicationRows.set(publicationCode, row)
+      }
+    })
+
+    return ApiResponseHelper.success(
+      res,
+      {
+        academicYear: {
+          id: activeYear.id,
+          name: activeYear.name,
+        },
+        class: {
+          id: homeroomClass.id,
+          name: homeroomClass.name,
+          level: homeroomClass.level,
+          major: homeroomClass.major,
+        },
+        programs: Array.from(publicationRows.values()).sort((a, b) =>
+          a.shortLabel.localeCompare(b.shortLabel, 'id-ID'),
+        ),
+      },
+      'Kontrol publikasi nilai wali kelas berhasil dimuat',
+    )
+  } catch (error) {
+    console.error('Get homeroom result publications error:', error)
+    if (error instanceof ApiError) throw error
+    throw new ApiError(500, 'Gagal memuat kontrol publikasi nilai wali kelas')
+  }
+}
+
+export const updateHomeroomResultPublication = async (req: Request, res: Response) => {
+  try {
+    const user = (req as any).user as AuthUserLike
+    const classId = Number(req.body?.classId || req.body?.class_id || 0)
+    const publicationCode = normalizeComponentCode(req.body?.publicationCode || req.body?.programCode || '')
+    const normalizedMode = String(req.body?.mode || '')
+      .trim()
+      .toUpperCase()
+
+    if (!Number.isFinite(classId) || classId <= 0) {
+      throw new ApiError(400, 'classId wajib diisi.')
+    }
+    if (!publicationCode) {
+      throw new ApiError(400, 'publicationCode wajib diisi.')
+    }
+    if (normalizedMode !== 'FOLLOW_GLOBAL' && normalizedMode !== 'BLOCKED') {
+      throw new ApiError(400, 'mode tidak valid.')
+    }
+
+    const { activeYear, homeroomClass, userId } = await resolveHomeroomPublicationAccess({ user, classId })
+    if (!homeroomClass.teacher?.id) {
+      throw new ApiError(404, 'Data wali kelas tidak ditemukan.')
+    }
+
+    const nextPreferences = writeHomeroomResultPublication({
+      preferences: homeroomClass.teacher.preferences,
+      academicYearId: activeYear.id,
+      classId: homeroomClass.id,
+      publicationCode,
+      mode: normalizedMode as HomeroomResultPublicationMode,
+      actorUserId: userId,
+    })
+
+    const updatedTeacher = await prisma.user.update({
+      where: {
+        id: homeroomClass.teacher.id,
+      },
+      data: {
+        preferences: nextPreferences as Prisma.InputJsonValue,
+      },
+      select: {
+        preferences: true,
+      },
+    })
+
+    const updatedPublication = readHomeroomResultPublication({
+      preferences: updatedTeacher.preferences,
+      academicYearId: activeYear.id,
+      classId: homeroomClass.id,
+      publicationCode,
+    })
+
+    const affectedStudents = await prisma.user.findMany({
+      where: {
+        role: 'STUDENT',
+        classId: homeroomClass.id,
+      },
+      select: {
+        id: true,
+      },
+    })
+
+    emitGradeRealtimeRefresh({
+      studentIds: affectedStudents.map((row) => row.id),
+      academicYearIds: [activeYear.id],
+      includeReports: true,
+    })
+
+    return ApiResponseHelper.success(
+      res,
+      {
+        classId: homeroomClass.id,
+        publicationCode,
+        homeroomPublication: {
+          mode: updatedPublication.mode,
+          label: resolveHomeroomPublicationModeLabel(updatedPublication.mode),
+          description: resolveHomeroomPublicationModeDescription(updatedPublication.mode),
+          updatedAt: updatedPublication.updatedAt,
+        },
+      },
+      'Kontrol publikasi nilai berhasil diperbarui',
+    )
+  } catch (error) {
+    console.error('Update homeroom result publication error:', error)
+    if (error instanceof ApiError) throw error
+    throw new ApiError(500, 'Gagal memperbarui kontrol publikasi nilai')
   }
 }
 
@@ -5890,6 +6406,33 @@ export const getStudentReportCard = async (req: Request, res: Response) => {
       studentClass:
         historicalStudentClass ||
         (currentStudentClassAcademicYearId === Number(academic_year_id) ? student.studentClass : null),
+    }
+
+    if (user.role === 'STUDENT') {
+      const publicationClassId = Number(resolvedStudent.studentClass?.id || resolvedStudent.classId || 0)
+      if (publicationClassId > 0) {
+        const publicationClass = await prisma.class.findUnique({
+          where: {
+            id: publicationClassId,
+          },
+          select: {
+            teacher: {
+              select: {
+                preferences: true,
+              },
+            },
+          },
+        })
+        const blockedCodes = listBlockedHomeroomResultPublicationCodes({
+          preferences: publicationClass?.teacher?.preferences,
+          academicYearId: Number(academic_year_id),
+          classId: publicationClassId,
+        })
+
+        if (blockedCodes.has(normalizeComponentCode(normalizedSemester === Semester.ODD ? ExamType.SAS : ExamType.SAT))) {
+          throw new ApiError(403, 'Wali kelas belum membuka hasil rapor semester ini ke akun siswa.')
+        }
+      }
     }
 
     // Get report grades
