@@ -25,7 +25,7 @@ import { academicYearApi } from '../../../src/features/academicYear/academicYear
 import { adminApi } from '../../../src/features/admin/adminApi';
 import { examApi, type ExamRestrictionItem } from '../../../src/features/exams/examApi';
 import { gradeApi } from '../../../src/features/grades/gradeApi';
-import type { HomeroomResultPublicationProgram } from '../../../src/features/grades/types';
+import type { HomeroomResultPublicationStudentRow } from '../../../src/features/grades/types';
 import HomeroomBookMobilePanel from '../../../src/features/homeroomBook/HomeroomBookMobilePanel';
 import { permissionApi } from '../../../src/features/permissions/permissionApi';
 import { PermissionStatus, PermissionType, StudentPermission } from '../../../src/features/permissions/types';
@@ -147,6 +147,7 @@ export default function TeacherHomeroomPermissionsScreen() {
   const [selectedClassId, setSelectedClassId] = useState<number | null>(null);
   const [selectedSemesterOverride, setSelectedSemesterOverride] = useState<'ODD' | 'EVEN' | ''>('');
   const [selectedExamTypeOverride, setSelectedExamTypeOverride] = useState('');
+  const [selectedPublicationCodeOverride, setSelectedPublicationCodeOverride] = useState('');
   const [rejectionNotes, setRejectionNotes] = useState<Record<number, string>>({});
   const [summaryDetailVisible, setSummaryDetailVisible] = useState(false);
   const [restrictionModalVisible, setRestrictionModalVisible] = useState(false);
@@ -323,6 +324,9 @@ export default function TeacherHomeroomPermissionsScreen() {
       'mobile-homeroom-result-publications',
       effectiveSelectedClassId,
       activeYearQuery.data?.id,
+      selectedSemester,
+      selectedPublicationCodeOverride,
+      search,
     ],
     enabled:
       isAuthenticated &&
@@ -333,6 +337,11 @@ export default function TeacherHomeroomPermissionsScreen() {
     queryFn: async () =>
       gradeApi.getHomeroomResultPublications({
         classId: Number(effectiveSelectedClassId),
+        semester: selectedSemester || undefined,
+        publicationCode: selectedPublicationCodeOverride || undefined,
+        page: 1,
+        limit: 250,
+        search: search.trim() || undefined,
       }),
   });
 
@@ -383,6 +392,7 @@ export default function TeacherHomeroomPermissionsScreen() {
   const updateResultPublicationMutation = useMutation({
     mutationFn: (payload: {
       classId: number;
+      studentId: number;
       publicationCode: string;
       mode: 'FOLLOW_GLOBAL' | 'BLOCKED';
     }) => gradeApi.updateHomeroomResultPublication(payload),
@@ -412,14 +422,20 @@ export default function TeacherHomeroomPermissionsScreen() {
     [restrictionsQuery.data?.restrictions],
   );
   const resultPublicationPrograms = useMemo(
-    () =>
-      (resultPublicationsQuery.data?.programs || []).filter((program) => {
-        const fixedSemester = program.fixedSemester as 'ODD' | 'EVEN' | null;
-        if (selectedSemester && fixedSemester && fixedSemester !== selectedSemester) return false;
-        return true;
-      }),
-    [resultPublicationsQuery.data?.programs, selectedSemester],
+    () => resultPublicationsQuery.data?.programs || [],
+    [resultPublicationsQuery.data?.programs],
   );
+  const selectedResultPublicationProgram = resultPublicationsQuery.data?.selectedProgram || null;
+  const resultPublicationRows = resultPublicationsQuery.data?.rows || [];
+  const selectedResultPublicationCode = useMemo(() => {
+    if (
+      selectedPublicationCodeOverride &&
+      resultPublicationPrograms.some((program) => program.publicationCode === selectedPublicationCodeOverride)
+    ) {
+      return selectedPublicationCodeOverride;
+    }
+    return selectedResultPublicationProgram?.publicationCode || '';
+  }, [resultPublicationPrograms, selectedPublicationCodeOverride, selectedResultPublicationProgram?.publicationCode]);
   const selectedClass = classItems.find((item) => item.id === effectiveSelectedClassId) || null;
 
   const summary = useMemo(() => {
@@ -460,21 +476,15 @@ export default function TeacherHomeroomPermissionsScreen() {
   }, [restrictions]);
 
   const resultPublicationSummary = useMemo(() => {
-    const result = {
-      total: resultPublicationPrograms.length,
-      blocked: 0,
-      visible: 0,
-      waitingWakakur: 0,
-    };
-    for (const item of resultPublicationPrograms) {
-      if (item.homeroomPublication.mode === 'BLOCKED') result.blocked += 1;
-      if (item.effectiveVisibility.canViewDetails) result.visible += 1;
-      if (item.homeroomPublication.mode === 'FOLLOW_GLOBAL' && !item.globalRelease.canViewDetails) {
-        result.waitingWakakur += 1;
+    return (
+      resultPublicationsQuery.data?.summary || {
+        totalStudents: 0,
+        blockedStudents: 0,
+        visibleStudents: 0,
+        waitingWakakurStudents: 0,
       }
-    }
-    return result;
-  }, [resultPublicationPrograms]);
+    );
+  }, [resultPublicationsQuery.data?.summary]);
 
   const openAttachment = async (item: StudentPermission) => {
     const url = resolveFileUrl(item.fileUrl);
@@ -587,18 +597,18 @@ export default function TeacherHomeroomPermissionsScreen() {
     });
   };
 
-  const handleToggleResultPublication = (program: HomeroomResultPublicationProgram) => {
-    if (!effectiveSelectedClassId || !selectedClass) {
+  const handleToggleResultPublication = (row: HomeroomResultPublicationStudentRow) => {
+    if (!effectiveSelectedClassId || !selectedClass || !selectedResultPublicationProgram) {
       Alert.alert('Kelas Tidak Ditemukan', 'Pilih kelas wali terlebih dahulu.');
       return;
     }
 
-    const nextMode = program.homeroomPublication.mode === 'BLOCKED' ? 'FOLLOW_GLOBAL' : 'BLOCKED';
+    const nextMode = row.homeroomPublication.mode === 'BLOCKED' ? 'FOLLOW_GLOBAL' : 'BLOCKED';
     const title = nextMode === 'BLOCKED' ? 'Tahan Publikasi Nilai' : 'Ikuti Jadwal Wakakur';
     const message =
       nextMode === 'BLOCKED'
-        ? `Tahan hasil nilai ${program.shortLabel} untuk siswa di kelas ${selectedClass.name}?`
-        : `Kembalikan hasil nilai ${program.shortLabel} agar mengikuti jadwal Wakakur?`;
+        ? `Tahan hasil nilai ${selectedResultPublicationProgram.shortLabel} untuk ${row.student.name}?`
+        : `Kembalikan hasil nilai ${selectedResultPublicationProgram.shortLabel} untuk ${row.student.name} agar mengikuti jadwal Wakakur?`;
 
     Alert.alert(title, message, [
       { text: 'Batal', style: 'cancel' },
@@ -608,7 +618,8 @@ export default function TeacherHomeroomPermissionsScreen() {
         onPress: () =>
           updateResultPublicationMutation.mutate({
             classId: Number(effectiveSelectedClassId),
-            publicationCode: program.publicationCode,
+            studentId: row.student.id,
+            publicationCode: selectedResultPublicationProgram.publicationCode,
             mode: nextMode,
           }),
       },
@@ -1558,16 +1569,16 @@ export default function TeacherHomeroomPermissionsScreen() {
           {[
             {
               key: 'total',
-              title: 'Program Semester',
-              value: `${resultPublicationSummary.total}`,
-              subtitle: selectedSemester === 'EVEN' ? 'Program semester genap' : 'Program semester ganjil',
-              iconName: 'layers' as const,
+              title: 'Total Siswa',
+              value: `${resultPublicationSummary.totalStudents}`,
+              subtitle: 'Sesuai kelas dan pencarian aktif',
+              iconName: 'users' as const,
               accentColor: '#2563eb',
             },
             {
               key: 'visible',
               title: 'Sudah Tampil',
-              value: `${resultPublicationSummary.visible}`,
+              value: `${resultPublicationSummary.visibleStudents}`,
               subtitle: 'Saat ini bisa dibuka siswa',
               iconName: 'check-circle' as const,
               accentColor: '#16a34a',
@@ -1575,15 +1586,15 @@ export default function TeacherHomeroomPermissionsScreen() {
             {
               key: 'blocked',
               title: 'Ditahan Wali',
-              value: `${resultPublicationSummary.blocked}`,
-              subtitle: 'Ditahan manual wali kelas',
+              value: `${resultPublicationSummary.blockedStudents}`,
+              subtitle: 'Ditahan per siswa oleh wali kelas',
               iconName: 'x-circle' as const,
               accentColor: '#dc2626',
             },
             {
               key: 'waiting',
               title: 'Menunggu Wakakur',
-              value: `${resultPublicationSummary.waitingWakakur}`,
+              value: `${resultPublicationSummary.waitingWakakurStudents}`,
               subtitle: 'Masih ikut jadwal rilis global',
               iconName: 'clock' as const,
               accentColor: '#d97706',
@@ -1615,7 +1626,7 @@ export default function TeacherHomeroomPermissionsScreen() {
             Publikasi Nilai
           </Text>
           <Text style={{ color: '#1d4ed8', fontSize: scaleFont(12), lineHeight: scaleLineHeight(18) }}>
-            Default publikasi tetap mengikuti jadwal Wakakur. Gunakan kontrol ini jika wali kelas perlu menahan hasil nilai program tertentu agar belum tampil ke akun siswa.
+            Default publikasi tetap mengikuti jadwal Wakakur. Gunakan kontrol ini jika wali kelas perlu menahan hasil nilai siswa tertentu agar belum tampil ke akun siswa.
           </Text>
         </View>
 
@@ -1636,11 +1647,77 @@ export default function TeacherHomeroomPermissionsScreen() {
               { value: 'ODD', label: 'Ganjil' },
               { value: 'EVEN', label: 'Genap' },
             ]}
-            onChange={(next) => setSelectedSemesterOverride((next as 'ODD' | 'EVEN' | '') || '')}
+            onChange={(next) => {
+              setSelectedSemesterOverride((next as 'ODD' | 'EVEN' | '') || '');
+              setSelectedPublicationCodeOverride('');
+            }}
             placeholder="Pilih semester"
             helperText="Program yang tampil akan mengikuti semester yang dipilih."
           />
+          <MobileSelectField
+            label="Jenis Nilai"
+            value={selectedResultPublicationCode}
+            options={resultPublicationPrograms.map((program) => ({
+              value: program.publicationCode,
+              label: program.label,
+            }))}
+            onChange={(next) => setSelectedPublicationCodeOverride(next || '')}
+            placeholder="Pilih jenis nilai"
+            helperText="Satu jenis nilai ditampilkan dengan breakdown per siswa."
+          />
         </View>
+
+        <View
+          style={{
+            flexDirection: 'row',
+            alignItems: 'center',
+            borderWidth: 1,
+            borderColor: '#d5e0f5',
+            borderRadius: 10,
+            paddingHorizontal: 10,
+            backgroundColor: '#fff',
+            marginBottom: 10,
+          }}
+        >
+          <Feather name="search" size={16} color={BRAND_COLORS.textMuted} />
+          <TextInput
+            value={search}
+            onChangeText={setSearch}
+            placeholder="Cari siswa / NIS / NISN"
+            placeholderTextColor="#8ea0bf"
+            style={{
+              flex: 1,
+              paddingVertical: 11,
+              paddingHorizontal: 9,
+              color: BRAND_COLORS.textDark,
+            }}
+          />
+        </View>
+
+        {selectedResultPublicationProgram ? (
+          <View
+            style={{
+              borderWidth: 1,
+              borderColor: '#e2e8f0',
+              backgroundColor: '#f8fafc',
+              borderRadius: 12,
+              padding: 12,
+              marginBottom: 12,
+            }}
+          >
+            <Text style={{ color: BRAND_COLORS.textDark, fontWeight: '700', fontSize: scaleFont(14) }}>
+              {selectedResultPublicationProgram.label}
+            </Text>
+            <Text style={{ color: BRAND_COLORS.textMuted, fontSize: scaleFont(12), lineHeight: scaleLineHeight(18), marginTop: 4 }}>
+              {selectedResultPublicationProgram.globalRelease.description}
+            </Text>
+            <Text style={{ color: '#64748b', fontSize: scaleFont(11), lineHeight: scaleLineHeight(16), marginTop: 4 }}>
+              {selectedResultPublicationProgram.globalRelease.effectiveDate
+                ? `Efektif ${formatDateTime(selectedResultPublicationProgram.globalRelease.effectiveDate)}`
+                : 'Tanpa tanggal khusus'}
+            </Text>
+          </View>
+        ) : null}
 
         {resultPublicationsQuery.isLoading ? (
           <QueryStateView type="loading" message="Mengambil kontrol publikasi nilai..." />
@@ -1656,18 +1733,19 @@ export default function TeacherHomeroomPermissionsScreen() {
         {!resultPublicationsQuery.isLoading && !resultPublicationsQuery.isError ? (
           resultPublicationPrograms.length > 0 ? (
             <View style={{ gap: 12 }}>
-              {resultPublicationPrograms.map((program) => {
-                const isBlocked = program.homeroomPublication.mode === 'BLOCKED';
+              {resultPublicationRows.length > 0 ? (
+                resultPublicationRows.map((row) => {
+                const isBlocked = row.homeroomPublication.mode === 'BLOCKED';
                 const effectiveColors =
-                  program.effectiveVisibility.tone === 'green'
+                  row.effectiveVisibility.tone === 'green'
                     ? { border: '#86efac', bg: '#dcfce7', text: '#166534' }
-                    : program.effectiveVisibility.tone === 'amber'
+                    : row.effectiveVisibility.tone === 'amber'
                       ? { border: '#fcd34d', bg: '#fffbeb', text: '#92400e' }
                       : { border: '#fca5a5', bg: '#fee2e2', text: '#991b1b' };
 
                 return (
                   <View
-                    key={program.publicationCode}
+                    key={row.student.id}
                     style={{
                       borderWidth: 1,
                       borderColor: '#dbe7fb',
@@ -1687,37 +1765,16 @@ export default function TeacherHomeroomPermissionsScreen() {
                       }}
                     >
                       <View style={{ flex: 1 }}>
-                        <View
-                          style={{
-                            alignSelf: 'flex-start',
-                            borderRadius: 999,
-                            borderWidth: 1,
-                            borderColor: '#e2e8f0',
-                            backgroundColor: '#f8fafc',
-                            paddingHorizontal: 10,
-                            paddingVertical: 4,
-                            marginBottom: 8,
-                          }}
-                        >
-                          <Text style={{ color: '#475569', fontSize: scaleFont(11), fontWeight: '700' }}>
-                            {program.publicationCode} •{' '}
-                            {program.fixedSemester === 'EVEN'
-                              ? 'Semester Genap'
-                              : program.fixedSemester === 'ODD'
-                                ? 'Semester Ganjil'
-                                : 'Semua Semester'}
-                          </Text>
-                        </View>
                         <Text style={{ color: BRAND_COLORS.textDark, fontWeight: '700', fontSize: scaleFont(15), lineHeight: scaleLineHeight(22) }}>
-                          {program.label}
+                          {row.student.name}
                         </Text>
                         <Text style={{ color: '#64748b', marginTop: 4, fontSize: scaleFont(12), lineHeight: scaleLineHeight(18) }}>
-                          {program.globalRelease.description}
+                          NIS: {row.student.nis || '-'} • NISN: {row.student.nisn || '-'}
                         </Text>
                       </View>
 
                       <Pressable
-                        onPress={() => handleToggleResultPublication(program)}
+                        onPress={() => handleToggleResultPublication(row)}
                         disabled={updateResultPublicationMutation.isPending}
                         style={{
                           borderRadius: 10,
@@ -1728,7 +1785,7 @@ export default function TeacherHomeroomPermissionsScreen() {
                         }}
                       >
                         <Text style={{ color: '#fff', fontWeight: '700', textAlign: 'center' }}>
-                          {isBlocked ? 'Ikuti Wakakur' : 'Tahan Publikasi'}
+                          {isBlocked ? 'Publikasikan' : 'Tahan Publikasi'}
                         </Text>
                       </Pressable>
                     </View>
@@ -1746,10 +1803,12 @@ export default function TeacherHomeroomPermissionsScreen() {
                         <Text style={{ color: '#64748b', fontSize: scaleFont(11), fontWeight: '700', marginBottom: 4 }}>
                           RILIS WAKAKUR
                         </Text>
-                        <Text style={{ color: BRAND_COLORS.textDark, fontWeight: '700' }}>{program.globalRelease.label}</Text>
+                        <Text style={{ color: BRAND_COLORS.textDark, fontWeight: '700' }}>
+                          {selectedResultPublicationProgram?.globalRelease.label || '-'}
+                        </Text>
                         <Text style={{ color: BRAND_COLORS.textMuted, fontSize: scaleFont(12), lineHeight: scaleLineHeight(18), marginTop: 4 }}>
-                          {program.globalRelease.effectiveDate
-                            ? `Efektif ${formatDateTime(program.globalRelease.effectiveDate)}`
+                          {selectedResultPublicationProgram?.globalRelease.effectiveDate
+                            ? `Efektif ${formatDateTime(selectedResultPublicationProgram.globalRelease.effectiveDate)}`
                             : 'Tanpa tanggal khusus'}
                         </Text>
                       </View>
@@ -1766,10 +1825,10 @@ export default function TeacherHomeroomPermissionsScreen() {
                         <Text style={{ color: '#64748b', fontSize: scaleFont(11), fontWeight: '700', marginBottom: 4 }}>
                           GATE WALI KELAS
                         </Text>
-                        <Text style={{ color: BRAND_COLORS.textDark, fontWeight: '700' }}>{program.homeroomPublication.label}</Text>
+                        <Text style={{ color: BRAND_COLORS.textDark, fontWeight: '700' }}>{row.homeroomPublication.label}</Text>
                         <Text style={{ color: BRAND_COLORS.textMuted, fontSize: scaleFont(12), lineHeight: scaleLineHeight(18), marginTop: 4 }}>
-                          {program.homeroomPublication.updatedAt
-                            ? `Diperbarui ${formatDateTime(program.homeroomPublication.updatedAt)}`
+                          {row.homeroomPublication.updatedAt
+                            ? `Diperbarui ${formatDateTime(row.homeroomPublication.updatedAt)}`
                             : 'Belum ada override manual'}
                         </Text>
                       </View>
@@ -1786,9 +1845,9 @@ export default function TeacherHomeroomPermissionsScreen() {
                         <Text style={{ color: effectiveColors.text, fontSize: scaleFont(11), fontWeight: '700', marginBottom: 4 }}>
                           STATUS KE SISWA
                         </Text>
-                        <Text style={{ color: effectiveColors.text, fontWeight: '700' }}>{program.effectiveVisibility.label}</Text>
+                        <Text style={{ color: effectiveColors.text, fontWeight: '700' }}>{row.effectiveVisibility.label}</Text>
                         <Text style={{ color: effectiveColors.text, fontSize: scaleFont(12), lineHeight: scaleLineHeight(18), marginTop: 4 }}>
-                          {program.effectiveVisibility.description}
+                          {row.effectiveVisibility.description}
                         </Text>
                       </View>
 
@@ -1803,13 +1862,29 @@ export default function TeacherHomeroomPermissionsScreen() {
                       >
                         <Text style={{ color: '#0f172a', fontWeight: '700', marginBottom: 4 }}>Kebijakan Aktif</Text>
                         <Text style={{ color: '#475569', fontSize: scaleFont(12), lineHeight: scaleLineHeight(18) }}>
-                          {program.homeroomPublication.description}
+                          {row.homeroomPublication.description}
                         </Text>
                       </View>
                     </View>
                   </View>
                 );
-              })}
+              })
+              ) : (
+                <View
+                  style={{
+                    borderWidth: 1,
+                    borderColor: '#cbd5e1',
+                    borderStyle: 'dashed',
+                    borderRadius: 10,
+                    padding: 16,
+                    backgroundColor: '#fff',
+                  }}
+                >
+                  <Text style={{ color: BRAND_COLORS.textMuted }}>
+                    Tidak ada siswa yang ditemukan untuk filter ini.
+                  </Text>
+                </View>
+              )}
             </View>
           ) : (
             <View
@@ -1823,7 +1898,7 @@ export default function TeacherHomeroomPermissionsScreen() {
               }}
             >
               <Text style={{ color: BRAND_COLORS.textMuted }}>
-                Tidak ada program ujian siswa yang relevan untuk semester ini.
+                Tidak ada program nilai siswa yang relevan untuk semester ini.
               </Text>
             </View>
           )

@@ -43,10 +43,27 @@ function getPublicationClassBucket(params: {
   return classBucket
 }
 
+function getPublicationStudentBucket(params: {
+  preferences: unknown
+  academicYearId: number
+  classId: number
+  studentId: number
+}): Record<string, unknown> | null {
+  if (!Number.isFinite(params.studentId) || params.studentId <= 0) return null
+  const classBucket = getPublicationClassBucket(params)
+  if (!isRecord(classBucket)) return null
+  const studentsBucket = classBucket['students']
+  if (!isRecord(studentsBucket)) return null
+  const studentBucket = studentsBucket[String(params.studentId)]
+  if (!isRecord(studentBucket)) return null
+  return studentBucket
+}
+
 export function readHomeroomResultPublication(params: {
   preferences: unknown
   academicYearId: number
   classId: number
+  studentId: number
   publicationCode: unknown
 }): HomeroomResultPublicationState {
   const normalizedPublicationCode = normalizeHomeroomResultPublicationCode(params.publicationCode)
@@ -58,8 +75,8 @@ export function readHomeroomResultPublication(params: {
     }
   }
 
-  const classBucket = getPublicationClassBucket(params)
-  const rawEntry = classBucket?.[normalizedPublicationCode]
+  const studentBucket = getPublicationStudentBucket(params)
+  const rawEntry = studentBucket?.[normalizedPublicationCode]
   if (!isRecord(rawEntry) || rawEntry.blocked !== true) {
     return {
       mode: 'FOLLOW_GLOBAL',
@@ -80,12 +97,13 @@ export function listBlockedHomeroomResultPublicationCodes(params: {
   preferences: unknown
   academicYearId: number
   classId: number
+  studentId: number
 }): Set<string> {
   const blockedCodes = new Set<string>()
-  const classBucket = getPublicationClassBucket(params)
-  if (!classBucket) return blockedCodes
+  const studentBucket = getPublicationStudentBucket(params)
+  if (!studentBucket) return blockedCodes
 
-  Object.entries(classBucket).forEach(([publicationCode, rawEntry]) => {
+  Object.entries(studentBucket).forEach(([publicationCode, rawEntry]) => {
     if (!isRecord(rawEntry) || rawEntry.blocked !== true) return
     const normalizedPublicationCode = normalizeHomeroomResultPublicationCode(publicationCode)
     if (normalizedPublicationCode) {
@@ -100,6 +118,7 @@ export function writeHomeroomResultPublication(params: {
   preferences: unknown
   academicYearId: number
   classId: number
+  studentId: number
   publicationCode: unknown
   mode: HomeroomResultPublicationMode
   actorUserId?: number | null
@@ -108,7 +127,7 @@ export function writeHomeroomResultPublication(params: {
   const normalizedPublicationCode = normalizeHomeroomResultPublicationCode(params.publicationCode)
   const nextPreferences = isRecord(params.preferences) ? { ...params.preferences } : {}
 
-  if (!normalizedPublicationCode) {
+  if (!normalizedPublicationCode || !Number.isFinite(params.studentId) || params.studentId <= 0) {
     return nextPreferences
   }
 
@@ -118,13 +137,20 @@ export function writeHomeroomResultPublication(params: {
 
   const yearKey = String(params.academicYearId)
   const classKey = String(params.classId)
+  const studentKey = String(params.studentId)
   const yearBucket = isRecord(root[yearKey]) ? { ...(root[yearKey] as Record<string, unknown>) } : {}
   const classBucket = isRecord(yearBucket[classKey])
     ? { ...(yearBucket[classKey] as Record<string, unknown>) }
     : {}
+  const studentsBucket = isRecord(classBucket['students'])
+    ? { ...(classBucket['students'] as Record<string, unknown>) }
+    : {}
+  const studentBucket = isRecord(studentsBucket[studentKey])
+    ? { ...(studentsBucket[studentKey] as Record<string, unknown>) }
+    : {}
 
   if (params.mode === 'BLOCKED') {
-    classBucket[normalizedPublicationCode] = {
+    studentBucket[normalizedPublicationCode] = {
       blocked: true,
       updatedAt: (params.now || new Date()).toISOString(),
       updatedBy:
@@ -133,7 +159,19 @@ export function writeHomeroomResultPublication(params: {
           : null,
     }
   } else {
-    delete classBucket[normalizedPublicationCode]
+    delete studentBucket[normalizedPublicationCode]
+  }
+
+  if (Object.keys(studentBucket).length > 0) {
+    studentsBucket[studentKey] = studentBucket
+  } else {
+    delete studentsBucket[studentKey]
+  }
+
+  if (Object.keys(studentsBucket).length > 0) {
+    classBucket['students'] = studentsBucket
+  } else {
+    delete classBucket['students']
   }
 
   if (Object.keys(classBucket).length > 0) {

@@ -216,13 +216,29 @@ export interface StudentGradeOverviewData {
   reportCard: StudentSemesterReportData;
 }
 
-export interface HomeroomResultPublicationProgram {
+export interface HomeroomResultPublicationProgramOption {
   publicationCode: string;
   label: string;
   shortLabel: string;
   baseTypeCode: string;
   fixedSemester: 'ODD' | 'EVEN' | null;
   globalRelease: StudentGradeOverviewComponent['release'];
+  homeroomPublication: {
+    mode: 'FOLLOW_GLOBAL' | 'BLOCKED';
+    label: string;
+    description: string;
+    updatedAt: string | null;
+  };
+}
+
+export interface HomeroomResultPublicationStudentRow {
+  student: {
+    id: number;
+    name: string;
+    nis?: string | null;
+    nisn?: string | null;
+    photo?: string | null;
+  };
   homeroomPublication: {
     mode: 'FOLLOW_GLOBAL' | 'BLOCKED';
     label: string;
@@ -252,7 +268,21 @@ export interface HomeroomResultPublicationsData {
       code: string;
     } | null;
   };
-  programs: HomeroomResultPublicationProgram[];
+  programs: HomeroomResultPublicationProgramOption[];
+  selectedProgram: HomeroomResultPublicationProgramOption | null;
+  summary: {
+    totalStudents: number;
+    blockedStudents: number;
+    visibleStudents: number;
+    waitingWakakurStudents: number;
+  };
+  rows: HomeroomResultPublicationStudentRow[];
+  meta: {
+    total: number;
+    page: number;
+    limit: number;
+    totalPages: number;
+  };
 }
 
 export const gradeService = {
@@ -354,10 +384,22 @@ export const gradeService = {
     return response.data.data as StudentGradeOverviewData;
   },
 
-  getHomeroomResultPublications: async (params: { classId: number }): Promise<HomeroomResultPublicationsData> => {
+  getHomeroomResultPublications: async (params: {
+    classId: number;
+    semester?: 'ODD' | 'EVEN';
+    publicationCode?: string;
+    page?: number;
+    limit?: number;
+    search?: string;
+  }): Promise<HomeroomResultPublicationsData> => {
     const response = await api.get('/grades/homeroom-result-publications', {
       params: {
         classId: params.classId,
+        semester: params.semester,
+        publicationCode: params.publicationCode,
+        page: params.page,
+        limit: params.limit,
+        search: params.search,
       },
     });
     if (!response.data?.data) {
@@ -368,6 +410,7 @@ export const gradeService = {
 
   updateHomeroomResultPublication: async (payload: {
     classId: number;
+    studentId: number;
     publicationCode: string;
     mode: 'FOLLOW_GLOBAL' | 'BLOCKED';
   }) => {

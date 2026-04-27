@@ -27,10 +27,22 @@ export const gradeApi = {
     }
     return response.data.data;
   },
-  async getHomeroomResultPublications(params: { classId: number }): Promise<HomeroomResultPublicationsData> {
+  async getHomeroomResultPublications(params: {
+    classId: number;
+    semester?: 'ODD' | 'EVEN';
+    publicationCode?: string;
+    page?: number;
+    limit?: number;
+    search?: string;
+  }): Promise<HomeroomResultPublicationsData> {
     const response = await apiClient.get<HomeroomResultPublicationsResponse>('/grades/homeroom-result-publications', {
       params: {
         classId: params.classId,
+        semester: params.semester,
+        publicationCode: params.publicationCode,
+        page: params.page,
+        limit: params.limit,
+        search: params.search,
       },
     });
     if (!response.data?.data) {
@@ -40,6 +52,7 @@ export const gradeApi = {
   },
   async updateHomeroomResultPublication(payload: {
     classId: number;
+    studentId: number;
     publicationCode: string;
     mode: 'FOLLOW_GLOBAL' | 'BLOCKED';
   }) {

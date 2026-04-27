@@ -148,13 +148,29 @@ export type StudentGradeOverviewData = {
   reportCard: StudentSemesterReportData;
 };
 
-export type HomeroomResultPublicationProgram = {
+export type HomeroomResultPublicationProgramOption = {
   publicationCode: string;
   label: string;
   shortLabel: string;
   baseTypeCode: string;
   fixedSemester: 'ODD' | 'EVEN' | null;
   globalRelease: StudentGradeOverviewComponent['release'];
+  homeroomPublication: {
+    mode: 'FOLLOW_GLOBAL' | 'BLOCKED';
+    label: string;
+    description: string;
+    updatedAt: string | null;
+  };
+};
+
+export type HomeroomResultPublicationStudentRow = {
+  student: {
+    id: number;
+    name: string;
+    nis?: string | null;
+    nisn?: string | null;
+    photo?: string | null;
+  };
   homeroomPublication: {
     mode: 'FOLLOW_GLOBAL' | 'BLOCKED';
     label: string;
@@ -184,5 +200,19 @@ export type HomeroomResultPublicationsData = {
       code: string;
     } | null;
   };
-  programs: HomeroomResultPublicationProgram[];
+  programs: HomeroomResultPublicationProgramOption[];
+  selectedProgram: HomeroomResultPublicationProgramOption | null;
+  summary: {
+    totalStudents: number;
+    blockedStudents: number;
+    visibleStudents: number;
+    waitingWakakurStudents: number;
+  };
+  rows: HomeroomResultPublicationStudentRow[];
+  meta: {
+    total: number;
+    page: number;
+    limit: number;
+    totalPages: number;
+  };
 };
