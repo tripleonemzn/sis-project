@@ -366,13 +366,14 @@ export const HomeroomAttendancePage = () => {
         {/* Tabs & Filter Header */}
         <div className="border-b border-gray-200 bg-gray-50 p-4 flex flex-col xl:flex-row xl:items-center justify-between gap-4">
           <div className="flex flex-col sm:flex-row gap-4 items-start sm:items-center">
-            <div className="flex space-x-1 bg-white p-1 rounded-lg border border-gray-200">
+            <div className="border-b border-gray-200">
+              <div className="flex overflow-x-auto gap-4 pb-1 scrollbar-hide">
               <button
                 onClick={() => handleTabChange('daily_log')}
-                className={`px-4 py-2 text-sm font-medium rounded-md transition-colors ${
+                className={`inline-flex items-center px-4 py-3 border-b-2 whitespace-nowrap text-sm transition-colors ${
                   activeTab === 'daily_log'
-                    ? 'bg-blue-50 text-blue-700'
-                    : 'text-gray-600 hover:text-gray-900 hover:bg-gray-50'
+                    ? 'border-blue-600 text-blue-600 font-medium'
+                    : 'border-transparent text-gray-500 hover:text-gray-700 hover:border-gray-300'
                 }`}
               >
                 <div className="flex items-center gap-2">
@@ -382,10 +383,10 @@ export const HomeroomAttendancePage = () => {
               </button>
               <button
                 onClick={() => handleTabChange('recap')}
-                className={`px-4 py-2 text-sm font-medium rounded-md transition-colors ${
+                className={`inline-flex items-center px-4 py-3 border-b-2 whitespace-nowrap text-sm transition-colors ${
                   activeTab === 'recap'
-                    ? 'bg-blue-50 text-blue-700'
-                    : 'text-gray-600 hover:text-gray-900 hover:bg-gray-50'
+                    ? 'border-blue-600 text-blue-600 font-medium'
+                    : 'border-transparent text-gray-500 hover:text-gray-700 hover:border-gray-300'
                 }`}
               >
                 <div className="flex items-center gap-2">
@@ -395,10 +396,10 @@ export const HomeroomAttendancePage = () => {
               </button>
               <button
                 onClick={() => handleTabChange('late')}
-                className={`px-4 py-2 text-sm font-medium rounded-md transition-colors ${
+                className={`inline-flex items-center px-4 py-3 border-b-2 whitespace-nowrap text-sm transition-colors ${
                   activeTab === 'late'
-                    ? 'bg-blue-50 text-blue-700'
-                    : 'text-gray-600 hover:text-gray-900 hover:bg-gray-50'
+                    ? 'border-blue-600 text-blue-600 font-medium'
+                    : 'border-transparent text-gray-500 hover:text-gray-700 hover:border-gray-300'
                 }`}
               >
                 <div className="flex items-center gap-2">
@@ -406,6 +407,7 @@ export const HomeroomAttendancePage = () => {
                   <span>Keterlambatan</span>
                 </div>
               </button>
+            </div>
             </div>
           </div>
 

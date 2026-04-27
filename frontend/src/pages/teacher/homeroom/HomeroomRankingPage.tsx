@@ -1,10 +1,10 @@
-import { useState, useRef } from 'react';
+import { useState } from 'react';
 import { useQuery } from '@tanstack/react-query';
 import { reportService } from '../../../services/report.service';
 import { Loader2, Printer, Calendar as CalendarIcon, Trophy } from 'lucide-react';
 import { RankingPrintDocument } from '../../../components/reports/RankingPrintDocument';
 import { format } from 'date-fns';
-import { createPortal } from 'react-dom';
+import { renderToStaticMarkup } from 'react-dom/server';
 
 interface HomeroomRankingPageProps {
   classId: number;
@@ -35,8 +35,6 @@ const formatScoreDisplay = (value: number | null | undefined) => {
 export const HomeroomRankingPage = ({ classId, academicYearId, semester }: HomeroomRankingPageProps) => {
   const [titimangsa, setTitimangsa] = useState<Date>(new Date());
   const [isPrinting, setIsPrinting] = useState(false);
-  const printFrameRef = useRef<HTMLIFrameElement>(null);
-  const [iframeBody, setIframeBody] = useState<HTMLElement | null>(null);
   
   const { data, isLoading } = useQuery({
     queryKey: ['class-rankings', classId, academicYearId, semester],
@@ -47,15 +45,41 @@ export const HomeroomRankingPage = ({ classId, academicYearId, semester }: Homer
   });
 
   const handlePrint = () => {
-    if (!printFrameRef.current?.contentWindow) return;
-    
+    if (!data || isPrinting) return;
+
     setIsPrinting(true);
-    
-    // Allow time for render
-    setTimeout(() => {
-        printFrameRef.current?.contentWindow?.print();
-        setIsPrinting(false);
-    }, 500);
+
+    const printWindow = window.open('', 'homeroom-ranking-print', 'width=1024,height=768');
+    if (!printWindow) {
+      setIsPrinting(false);
+      window.alert('Popup cetak diblokir browser. Izinkan popup lalu coba lagi.');
+      return;
+    }
+
+    const html = renderToStaticMarkup(
+      <RankingPrintDocument
+        className={data.className}
+        academicYear={data.academicYear}
+        semester={data.semester}
+        rankings={data.rankings}
+        principalName={data.principalName}
+        homeroomTeacherName={data.homeroomTeacher?.name || '-'}
+        titimangsa={titimangsa}
+      />,
+    );
+
+    printWindow.document.open();
+    printWindow.document.write(`<!DOCTYPE html><html><head><meta charset="utf-8" /><title>Cetak Peringkat</title></head><body>${html}</body></html>`);
+    printWindow.document.close();
+    printWindow.onafterprint = () => {
+      printWindow.close();
+    };
+
+    window.setTimeout(() => {
+      printWindow.focus();
+      printWindow.print();
+      setIsPrinting(false);
+    }, 250);
   };
 
   if (isLoading) {
@@ -149,29 +173,6 @@ export const HomeroomRankingPage = ({ classId, academicYearId, semester }: Homer
             </table>
         </div>
       </div>
-
-      {/* Hidden Print Iframe */}
-      <iframe 
-        ref={printFrameRef}
-        onLoad={() => setIframeBody(printFrameRef.current?.contentDocument?.body ?? null)}
-        className="fixed opacity-0 pointer-events-none"
-        title="Print Frame"
-        style={{ width: '0px', height: '0px', position: 'absolute', left: '-9999px' }}
-      />
-
-      {/* Portal Content */}
-      {iframeBody && createPortal(
-        <RankingPrintDocument 
-            className={data.className}
-            academicYear={data.academicYear}
-            semester={data.semester}
-            rankings={data.rankings}
-            principalName={data.principalName}
-            homeroomTeacherName={data.homeroomTeacher?.name || '-'}
-            titimangsa={titimangsa}
-        />,
-        iframeBody
-      )}
     </div>
   );
 };

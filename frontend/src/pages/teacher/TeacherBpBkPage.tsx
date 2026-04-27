@@ -509,7 +509,8 @@ export function TeacherBpBkPage() {
       </div>
 
       <div className="rounded-2xl border border-gray-200 bg-white">
-        <div className="flex flex-wrap gap-2 border-b border-gray-200 p-3">
+        <div className="border-b border-gray-200 px-4 pt-3">
+          <div className="flex overflow-x-auto gap-4 pb-1 scrollbar-hide">
           {tabItems.map((tab) => {
             const Icon = tab.icon;
             const active = activeTab === tab.key;
@@ -517,8 +518,10 @@ export function TeacherBpBkPage() {
               <Link
                 key={tab.key}
                 to={tab.path}
-                className={`inline-flex items-center gap-2 rounded-lg border px-3 py-2 text-sm font-medium transition ${
-                  active ? 'border-blue-200 bg-blue-50 text-blue-700' : 'border-gray-200 text-gray-600 hover:bg-gray-50'
+                className={`inline-flex items-center gap-2 border-b-2 px-4 py-3 whitespace-nowrap text-sm transition-colors ${
+                  active
+                    ? 'border-blue-600 text-blue-600 font-medium'
+                    : 'border-transparent text-gray-500 hover:text-gray-700 hover:border-gray-300'
                 }`}
               >
                 <Icon size={16} />
@@ -526,6 +529,7 @@ export function TeacherBpBkPage() {
               </Link>
             );
           })}
+          </div>
         </div>
 
         <div className="grid gap-3 border-b border-gray-100 p-4 md:grid-cols-4">

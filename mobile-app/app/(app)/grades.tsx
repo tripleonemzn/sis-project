@@ -563,7 +563,7 @@ export default function GradesScreen() {
         <View style={{ marginTop: 16, gap: 14 }}>
           <MobileMenuTabBar
             items={[
-              { key: 'PROGRAM', label: 'Nilai Program', iconName: 'layers' },
+              { key: 'PROGRAM', label: 'Nilai Program Ujian', iconName: 'layers' },
               { key: 'REPORT', label: 'Rapor Semester', iconName: 'file-text' },
             ]}
             activeKey={activeTab}
@@ -833,9 +833,19 @@ export default function GradesScreen() {
                 <Text style={{ color: colors.textMuted, marginTop: 6, fontSize: scaleFont(13), lineHeight: scaleLineHeight(20) }}>
                   Pilihan semester ini hanya mengubah tampilan rapor. Nilai Program Ujian tetap mengikuti semester aktif {overview.meta.semesterLabel}.
                 </Text>
-                <View style={{ marginTop: 12 }}>
+                <View style={{ marginTop: 12, flexDirection: 'row', alignItems: 'center', gap: 12 }}>
+                  <Text
+                    style={{
+                      color: colors.text,
+                      fontWeight: '700',
+                      fontSize: scaleFont(13),
+                      minWidth: 112,
+                    }}
+                  >
+                    Semester Rapor
+                  </Text>
+                  <View style={{ flex: 1 }}>
                   <MobileSelectField
-                    label="Semester Rapor"
                     value={effectiveReportSemester}
                     options={[
                       { label: 'Semester Ganjil', value: 'ODD' },
@@ -844,6 +854,7 @@ export default function GradesScreen() {
                     onChange={(value) => setSelectedReportSemester((value as ReportSemesterValue) || '')}
                     helperText="Pilihan ini hanya berlaku untuk tab Rapor Semester."
                   />
+                  </View>
                 </View>
               </View>
 

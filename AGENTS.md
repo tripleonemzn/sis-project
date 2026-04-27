@@ -152,6 +152,11 @@ Dokumen ini adalah policy kerja default untuk setiap sesi baru yang mengerjakan 
    - Hindari UI yang ambigu, terlalu teknis, atau berbeda makna antar platform.
    - Istilah yang sudah pernah dirapikan agar nyaman dibaca user harus dipertahankan konsisten.
    - Jika web menggunakan pola yang lebih jelas, mobile harus mengikuti arah yang sama, bukan membuat interpretasi baru sendiri.
+   - Untuk menu tab horizontal di web, gunakan gaya standar seperti tab pada `Kelola Ujian` Wakakur:
+     - garis bawah/`border-b-2` sebagai indikator aktif
+     - tanpa model kartu/pill tebal kecuali user meminta eksplisit
+     - tab harus tetap mudah discan secara horizontal dan konsisten antar role
+   - Untuk menu tab horizontal di mobile, gunakan komponen shared yang mengikuti hierarki visual tab web tersebut; jangan membuat gaya tab baru per screen yang maknanya berbeda.
    - Jika menambah fitur/input/aksi baru pada layar existing, jangan langsung ditempel terbuka di bawah konten utama. Gunakan popup/modal agar layout tetap rapi.
    - Untuk popup/modal, gunakan standar overlay yang tetap memperlihatkan konteks halaman di belakang secara halus; hindari backdrop hitam pekat yang membuat layar belakang “hilang”.
    - Gunakan pola visual popup yang konsisten dengan modal operasional utama project ini, terutama gaya popup seperti pada fitur `Buat Jadwal Ujian`: konten fokus, backdrop ringan, dan context halaman tetap terbaca.

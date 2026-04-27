@@ -21,6 +21,7 @@ import {
   type StudentSemesterReportData,
   type StudentSemesterReportSubjectRow,
 } from '../../services/grade.service';
+import { UnderlineTabBar } from '../../components/navigation/UnderlineTabBar';
 
 type StudentGradesOutletContext = {
   user?: {
@@ -99,72 +100,28 @@ function SummaryCard(props: {
   );
 }
 
-function TabButton(props: {
-  active: boolean;
-  label: string;
-  subtitle: string;
-  onClick: () => void;
-}) {
-  return (
-    <button
-      type="button"
-      onClick={props.onClick}
-      className={clsx(
-        'rounded-2xl border px-4 py-3 text-left transition',
-        props.active ? 'border-blue-200 bg-blue-50 text-blue-700' : 'border-slate-200 bg-white text-slate-600 hover:border-slate-300',
-      )}
-    >
-      <p className="text-sm font-semibold">{props.label}</p>
-      <p className={clsx('mt-1 text-xs', props.active ? 'text-blue-600' : 'text-slate-500')}>{props.subtitle}</p>
-    </button>
-  );
-}
+function getReportSubjectMeta(item: StudentSemesterReportSubjectRow) {
+  if (item.status === 'LOCKED') {
+    return {
+      label: 'Menunggu Rilis',
+      toneClassName: 'bg-amber-100 text-amber-700',
+      note: 'Detail rapor semester masih terkunci sampai tanggal rilis tiba.',
+    };
+  }
 
-function ReportSubjectCard({ item }: { item: StudentSemesterReportSubjectRow }) {
-  const isLocked = item.status === 'LOCKED';
+  if (item.status === 'PENDING') {
+    return {
+      label: 'Menunggu Input',
+      toneClassName: 'bg-slate-200 text-slate-600',
+      note: 'Nilai rapor untuk mapel ini belum lengkap dan masih menunggu sinkronisasi nilai akhir.',
+    };
+  }
 
-  return (
-    <div className="rounded-3xl border border-slate-200 bg-white p-5 shadow-sm">
-      <div className="flex flex-col gap-4 lg:flex-row lg:items-start lg:justify-between">
-        <div>
-          <h3 className="text-lg font-bold text-slate-900">{item.subject.name}</h3>
-          <p className="mt-1 text-sm text-slate-500">
-            {item.subject.code}
-            {item.teacher?.name ? ` • ${item.teacher.name}` : ''}
-          </p>
-        </div>
-        {isLocked ? (
-          <div className="rounded-2xl border border-amber-100 bg-amber-50/80 px-4 py-3 text-sm text-amber-700">
-            Nilai rapor untuk mapel ini akan tampil setelah rapor semester dirilis.
-          </div>
-        ) : (
-          <div className="grid gap-3 sm:grid-cols-3">
-            <div className="rounded-2xl border border-slate-200 bg-slate-50/80 px-4 py-3">
-              <p className="text-xs font-semibold uppercase tracking-[0.14em] text-slate-500">KKM</p>
-              <p className="mt-2 text-xl font-bold text-slate-900">{item.kkm}</p>
-            </div>
-            <div className="rounded-2xl border border-slate-200 bg-slate-50/80 px-4 py-3">
-              <p className="text-xs font-semibold uppercase tracking-[0.14em] text-slate-500">Nilai Akhir</p>
-              <p className="mt-2 text-xl font-bold text-slate-900">{formatScore(item.finalScore)}</p>
-            </div>
-            <div className="rounded-2xl border border-slate-200 bg-slate-50/80 px-4 py-3">
-              <p className="text-xs font-semibold uppercase tracking-[0.14em] text-slate-500">Predikat</p>
-              <p className="mt-2 text-xl font-bold text-slate-900">{item.predicate || '-'}</p>
-            </div>
-          </div>
-        )}
-      </div>
-
-      <div className="mt-4 rounded-2xl border border-slate-200 bg-slate-50/80 p-4">
-        <p className="text-xs font-semibold uppercase tracking-[0.14em] text-slate-500">
-          {isLocked ? 'Status Rilis' : 'Catatan Kompetensi'}
-        </p>
-        <p className="mt-2 text-sm leading-6 text-slate-700">
-          {isLocked ? 'Detail rapor semester masih terkunci sampai tanggal rilis tiba.' : item.description || 'Deskripsi rapor belum tersedia.'}
-        </p>
-      </div>
-    </div>
-  );
+  return {
+    label: 'Tersedia',
+    toneClassName: 'bg-emerald-100 text-emerald-700',
+    note: item.description || 'Deskripsi rapor belum tersedia.',
+  };
 }
 
 export default function StudentGradesPage() {
@@ -321,19 +278,23 @@ export default function StudentGradesPage() {
 
       {data ? (
         <>
-          <div className="grid gap-3 lg:grid-cols-2">
-            <TabButton
-              active={activeTab === 'PROGRAM'}
-              label="Nilai Program Ujian"
-              subtitle={programTabSubtitle}
-              onClick={() => setActiveTab('PROGRAM')}
-            />
-            <TabButton
-              active={activeTab === 'REPORT'}
-              label="Rapor Semester"
-              subtitle={reportTabSubtitle}
-              onClick={() => setActiveTab('REPORT')}
-            />
+          <div className="overflow-hidden rounded-3xl border border-slate-200 bg-white">
+            <div className="px-5 pt-5">
+              <UnderlineTabBar
+                items={[
+                  { id: 'PROGRAM', label: 'Nilai Program Ujian', icon: GraduationCap },
+                  { id: 'REPORT', label: 'Rapor Semester', icon: FileText },
+                ]}
+                activeId={activeTab}
+                onChange={(next) => setActiveTab(next as GradeTabKey)}
+                ariaLabel="Tab nilai siswa"
+              />
+            </div>
+            <div className="px-5 pb-5 pt-3">
+              <p className="text-sm text-slate-500">
+                {activeTab === 'PROGRAM' ? programTabSubtitle : reportTabSubtitle}
+              </p>
+            </div>
           </div>
 
           {activeTab === 'PROGRAM' ? (
@@ -539,12 +500,12 @@ export default function StudentGradesPage() {
                           Pilihan semester ini hanya mengubah tampilan rapor. Nilai Program Ujian tetap mengikuti semester aktif {data.meta.semesterLabel}.
                         </p>
                       </div>
-                      <label className="flex min-w-[220px] flex-col gap-2 text-sm text-slate-600">
-                        <span className="font-medium text-slate-700">Semester Rapor</span>
+                      <label className="flex min-w-[280px] items-center gap-3 text-sm text-slate-600">
+                        <span className="shrink-0 font-medium text-slate-700">Semester Rapor</span>
                         <select
                           value={effectiveReportSemester}
                           onChange={(event) => setSelectedReportSemester((event.target.value as ReportSemesterValue) || '')}
-                          className="rounded-2xl border border-slate-200 bg-white px-4 py-3 text-sm font-medium text-slate-700 outline-none transition focus:border-blue-400"
+                          className="min-w-0 flex-1 rounded-2xl border border-slate-200 bg-white px-4 py-3 text-sm font-medium text-slate-700 outline-none transition focus:border-blue-400"
                         >
                           <option value="ODD">Semester Ganjil</option>
                           <option value="EVEN">Semester Genap</option>
@@ -630,10 +591,58 @@ export default function StudentGradesPage() {
                   ) : null}
 
                   {reportCard.subjects.length > 0 ? (
-                    <div className="grid gap-5">
-                      {reportCard.subjects.map((subject) => (
-                        <ReportSubjectCard key={subject.subject.id} item={subject} />
-                      ))}
+                    <div className="overflow-hidden rounded-3xl border border-slate-200 bg-white">
+                      <div className="border-b border-slate-200 px-5 py-5">
+                        <h2 className="text-xl font-bold text-slate-900">Daftar Nilai Rapor Semester</h2>
+                        <p className="mt-1 text-sm text-slate-500">
+                          {reportCard.subjects.length} mata pelajaran semester {effectiveReportSemesterLabel.toLowerCase()} mengikuti status rilis rapor semester.
+                        </p>
+                      </div>
+                      <div className="overflow-x-auto">
+                        <table className="min-w-full text-sm">
+                          <thead className="bg-slate-50 text-slate-600">
+                            <tr>
+                              <th className="px-4 py-3 text-left font-semibold">Mata Pelajaran</th>
+                              <th className="px-4 py-3 text-left font-semibold">Guru</th>
+                              <th className="px-4 py-3 text-left font-semibold">KKM</th>
+                              <th className="px-4 py-3 text-left font-semibold">Nilai Akhir</th>
+                              <th className="px-4 py-3 text-left font-semibold">Predikat</th>
+                              <th className="px-4 py-3 text-left font-semibold">Status</th>
+                              <th className="px-4 py-3 text-left font-semibold">Keterangan</th>
+                            </tr>
+                          </thead>
+                          <tbody className="divide-y divide-slate-200 bg-white">
+                            {reportCard.subjects.map((subject) => {
+                              const statusMeta = getReportSubjectMeta(subject);
+                              const isLocked = subject.status === 'LOCKED';
+                              const isPending = subject.status === 'PENDING';
+
+                              return (
+                                <tr key={subject.subject.id} className="align-top">
+                                  <td className="px-4 py-3">
+                                    <div className="font-medium text-slate-900">{subject.subject.name}</div>
+                                    <div className="mt-1 text-xs text-slate-500">{subject.subject.code}</div>
+                                  </td>
+                                  <td className="px-4 py-3 text-slate-600">{subject.teacher?.name || '-'}</td>
+                                  <td className="px-4 py-3 text-slate-900">{subject.kkm}</td>
+                                  <td className="px-4 py-3 font-medium text-slate-900">
+                                    {isLocked || isPending ? '-' : formatScore(subject.finalScore)}
+                                  </td>
+                                  <td className="px-4 py-3 font-medium text-slate-900">
+                                    {isLocked || isPending ? '-' : subject.predicate || '-'}
+                                  </td>
+                                  <td className="px-4 py-3">
+                                    <span className={clsx('inline-flex rounded-full px-2.5 py-1 text-xs font-semibold', statusMeta.toneClassName)}>
+                                      {statusMeta.label}
+                                    </span>
+                                  </td>
+                                  <td className="px-4 py-3 text-slate-600">{statusMeta.note}</td>
+                                </tr>
+                              );
+                            })}
+                          </tbody>
+                        </table>
+                      </div>
                     </div>
                   ) : (
                     <div className="rounded-3xl border border-dashed border-slate-300 bg-white p-10 text-center">

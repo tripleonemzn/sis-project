@@ -98,14 +98,14 @@ export function MobileMenuTab({
           borderColor: active ? colors.primary : colors.borderSoft,
           backgroundColor: isPlainVariant
             ? 'transparent'
-            : active
-              ? (resolvedTheme === 'dark' ? colors.primarySoft : '#f8fbff')
-              : colors.surface,
+              : active
+                ? (resolvedTheme === 'dark' ? colors.primarySoft : '#f8fbff')
+                : colors.surface,
           borderRadius: isPlainVariant ? 0 : compact ? 16 : 18,
-          paddingHorizontal: isPlainVariant ? 4 : compact ? 10 : 12,
-          paddingTop: compact ? 9 : 11,
-          paddingBottom: compact ? 8 : 10,
-          alignItems: 'center',
+          paddingHorizontal: isPlainVariant ? 2 : compact ? 10 : 12,
+          paddingTop: isPlainVariant ? 11 : compact ? 9 : 11,
+          paddingBottom: isPlainVariant ? 10 : compact ? 8 : 10,
+          alignItems: isPlainVariant ? 'flex-start' : 'center',
           justifyContent: 'center',
           alignSelf: fill ? 'stretch' : 'flex-start',
           flex: fill ? 1 : undefined,
@@ -123,41 +123,81 @@ export function MobileMenuTab({
         style,
       ]}
     >
-      <View
-        style={{
-          width: compact ? 28 : 32,
-          height: compact ? 28 : 32,
-          borderRadius: compact ? 11 : 12,
-          alignItems: 'center',
-          justifyContent: 'center',
-          backgroundColor: hexToRgba(iconMeta.color, active ? 0.14 : 0.08),
-          marginBottom: compact ? 5 : 6,
-        }}
-      >
-        <Feather name={iconMeta.iconName} size={compact ? 15 : 16} color={active ? iconMeta.color : colors.textMuted} />
-      </View>
-      <Text
-        numberOfLines={2}
-        style={{
-          textAlign: 'center',
-          fontSize: compact ? fontSizes.caption : fontSizes.label,
-          lineHeight: compact ? typography.caption.lineHeight : typography.label.lineHeight,
-          fontWeight: active ? '700' : '600',
-          color: active ? colors.primary : isPlainVariant ? colors.textMuted : colors.text,
-          minHeight: compact ? typography.caption.lineHeight : typography.label.lineHeight,
-        }}
-      >
-        {label}
-      </Text>
-      <View
-        style={{
-          width: compact ? 22 : 28,
-          height: 2,
-          borderRadius: 999,
-          backgroundColor: active ? colors.primary : 'transparent',
-          marginTop: compact ? 5 : 6,
-        }}
-      />
+      {isPlainVariant ? (
+        <>
+          <View
+            style={{
+              flexDirection: 'row',
+              alignItems: 'center',
+              gap: 6,
+            }}
+          >
+            <Feather
+              name={iconMeta.iconName}
+              size={compact ? 15 : 16}
+              color={active ? colors.primary : colors.textMuted}
+            />
+            <Text
+              numberOfLines={1}
+              style={{
+                fontSize: compact ? fontSizes.caption : fontSizes.label,
+                lineHeight: compact ? typography.caption.lineHeight : typography.label.lineHeight,
+                fontWeight: active ? '700' : '600',
+                color: active ? colors.primary : colors.textMuted,
+              }}
+            >
+              {label}
+            </Text>
+          </View>
+          <View
+            style={{
+              width: '100%',
+              height: 2,
+              borderRadius: 999,
+              backgroundColor: active ? colors.primary : 'transparent',
+              marginTop: compact ? 8 : 9,
+            }}
+          />
+        </>
+      ) : (
+        <>
+          <View
+            style={{
+              width: compact ? 28 : 32,
+              height: compact ? 28 : 32,
+              borderRadius: compact ? 11 : 12,
+              alignItems: 'center',
+              justifyContent: 'center',
+              backgroundColor: hexToRgba(iconMeta.color, active ? 0.14 : 0.08),
+              marginBottom: compact ? 5 : 6,
+            }}
+          >
+            <Feather name={iconMeta.iconName} size={compact ? 15 : 16} color={active ? iconMeta.color : colors.textMuted} />
+          </View>
+          <Text
+            numberOfLines={2}
+            style={{
+              textAlign: 'center',
+              fontSize: compact ? fontSizes.caption : fontSizes.label,
+              lineHeight: compact ? typography.caption.lineHeight : typography.label.lineHeight,
+              fontWeight: active ? '700' : '600',
+              color: active ? colors.primary : colors.text,
+              minHeight: compact ? typography.caption.lineHeight : typography.label.lineHeight,
+            }}
+          >
+            {label}
+          </Text>
+          <View
+            style={{
+              width: compact ? 22 : 28,
+              height: 2,
+              borderRadius: 999,
+              backgroundColor: active ? colors.primary : 'transparent',
+              marginTop: compact ? 5 : 6,
+            }}
+          />
+        </>
+      )}
     </Pressable>
   );
 }

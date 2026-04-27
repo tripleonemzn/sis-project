@@ -25,6 +25,7 @@ import { HomeroomReportSatPage } from './HomeroomReportSatPage';
 import { HomeroomReportPage2 } from './HomeroomReportPage2';
 import { HomeroomReportP5Page } from './HomeroomReportP5Page';
 import { HomeroomResultPublicationPanel } from '../../../components/homeroom/HomeroomResultPublicationPanel';
+import { UnderlineTabBar } from '../../../components/navigation/UnderlineTabBar';
 
 type SemesterType = 'ODD' | 'EVEN';
 type HomeroomFinalTabId =
@@ -173,7 +174,6 @@ export const TeacherHomeroomFinalPage = ({
       { id: 'ledger', label: 'Leger Nilai', icon: FileText },
       { id: 'extracurriculars', label: 'Ekstrakurikuler', icon: Layers },
       { id: 'report-main', label: `Rapor ${resolvedProgramLabel}`, icon: FileBarChart },
-      { id: 'publication', label: 'Publikasi Nilai', icon: GraduationCap },
     ];
 
     if (isFinalProgram) {
@@ -184,6 +184,8 @@ export const TeacherHomeroomFinalPage = ({
     if (enableP5Tab) {
       dynamicTabs.push({ id: 'report-p5', label: 'Rapor P5', icon: BarChart3 });
     }
+
+    dynamicTabs.push({ id: 'publication', label: 'Publikasi Nilai', icon: GraduationCap });
 
     return dynamicTabs;
   }, [resolvedProgramLabel, isFinalProgram, enableP5Tab]);
@@ -223,28 +225,15 @@ export const TeacherHomeroomFinalPage = ({
       ) : (
         <div className="bg-white rounded-xl shadow-sm border border-gray-200 overflow-hidden min-h-[500px]">
           <div className="border-b border-gray-200 bg-gray-50 p-4 flex flex-col xl:flex-row xl:items-center justify-between gap-4">
-            <div className="flex space-x-1 bg-white p-1 rounded-lg border border-gray-200 overflow-x-auto">
-              {tabs.map((tab) => {
-                const Icon = tab.icon;
-                const isActive = activeTab === tab.id;
-
-                return (
-                  <button
-                    key={tab.id}
-                    onClick={() => handleTabChange(tab.id)}
-                    className={`
-                      px-4 py-2 text-sm font-medium rounded-md transition-colors whitespace-nowrap
-                      ${isActive ? 'bg-blue-50 text-blue-700' : 'text-gray-600 hover:text-gray-900 hover:bg-gray-50'}
-                    `}
-                  >
-                    <div className="flex items-center gap-2">
-                      <Icon className="w-4 h-4" />
-                      <span>{tab.label}</span>
-                    </div>
-                  </button>
-                );
-              })}
-            </div>
+            <UnderlineTabBar
+              items={tabs}
+              activeId={activeTab}
+              onChange={handleTabChange}
+              className="flex-1 border-transparent"
+              innerClassName="md:flex-wrap md:overflow-visible"
+              ariaLabel={`Tab rapor ${resolvedProgramLabel}`}
+              textSizeClassName="text-[13px]"
+            />
 
             {isSemesterLocked ? (
               <div className="flex items-center gap-2 px-3 py-1.5 rounded-lg bg-gray-100 text-gray-600 border border-gray-200 text-sm font-medium">
