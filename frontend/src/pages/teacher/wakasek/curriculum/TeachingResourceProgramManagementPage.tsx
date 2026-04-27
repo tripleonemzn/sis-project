@@ -69,6 +69,12 @@ type ColumnQuickPreset =
   | 'SYSTEM_SKILL_PROGRAM'
   | 'SYSTEM_TEACHER_NAME'
   | 'SYSTEM_PLACE_DATE';
+type SectionQuickPreset =
+  | 'SYSTEM_CONTEXT'
+  | 'REFERENCE_SOURCE_TABLE'
+  | 'REFERENCE_PICKER_TABLE'
+  | 'SIGNATURE_BLOCK'
+  | 'NARRATIVE_NOTE';
 
 const TARGET_CLASS_OPTIONS = [
   { value: 'X', label: 'X' },
@@ -288,6 +294,37 @@ const COLUMN_QUICK_PRESET_OPTIONS: Array<{
     label: 'Tempat dan Tanggal',
     description: 'Nilai sistem otomatis untuk tempat dan tanggal.',
     group: 'SYSTEM',
+  },
+];
+const SECTION_QUICK_PRESET_OPTIONS: Array<{
+  value: SectionQuickPreset;
+  label: string;
+  description: string;
+}> = [
+  {
+    value: 'SYSTEM_CONTEXT',
+    label: 'Info Konteks Sistem',
+    description: 'Mapel, tingkat, program keahlian, semester, dan tahun ajaran dari sistem aktif.',
+  },
+  {
+    value: 'REFERENCE_SOURCE_TABLE',
+    label: 'Tabel Sumber Referensi',
+    description: 'Untuk dokumen sumber yang akan dibaca dokumen lain lewat field inti.',
+  },
+  {
+    value: 'REFERENCE_PICKER_TABLE',
+    label: 'Tabel Pilih Referensi',
+    description: 'Untuk dokumen turunan yang memilih referensi lalu menarik field snapshot terkait.',
+  },
+  {
+    value: 'SIGNATURE_BLOCK',
+    label: 'Blok Pengesahan',
+    description: 'Bagian tanda tangan dengan tempat/tanggal dan nama guru otomatis.',
+  },
+  {
+    value: 'NARRATIVE_NOTE',
+    label: 'Catatan / Narasi',
+    description: 'Blok teks untuk pengantar, arahan, atau catatan akhir dokumen.',
   },
 ];
 
@@ -765,6 +802,235 @@ function getColumnBindingGuardLabels(binding: TeachingResourceFieldBinding | und
   if (binding.matchByActiveSemester) labels.push('semester');
   if (binding.allowManualOverride) labels.push('override manual');
   return labels;
+}
+
+function createColumnFromQuickPreset(
+  columnIndex: number,
+  preset: ColumnQuickPreset | null,
+  descriptor: {
+    key?: string;
+    label?: string;
+    fieldIdentity?: string;
+    semanticKey?: string;
+    placeholder?: string;
+    dataType?: TeachingResourceColumnDataType;
+    multiline?: boolean;
+    required?: boolean;
+  },
+): TeachingResourceProgramColumnSchema {
+  const baseColumn = createEmptyColumn(columnIndex);
+  const presetColumn = preset ? applyColumnQuickPreset(baseColumn, preset) : baseColumn;
+  const describedColumn = applyColumnDescriptorSuggestion(presetColumn, descriptor);
+  return {
+    ...describedColumn,
+    multiline: descriptor.multiline ?? describedColumn.multiline ?? false,
+    required: descriptor.required ?? describedColumn.required ?? false,
+  };
+}
+
+function createSectionFromQuickPreset(preset: SectionQuickPreset, index: number): TeachingResourceProgramSectionSchema {
+  if (preset === 'SYSTEM_CONTEXT') {
+    const section = createContextSection();
+    return {
+      ...section,
+      key: normalizeSchemaKey(section.key || `bagian_${index + 1}`, `bagian_${index + 1}`),
+      blockId: normalizeSchemaKey(section.blockId || section.key || `bagian_${index + 1}`, `bagian_${index + 1}`),
+      columns: [
+        createColumnFromQuickPreset(0, 'SYSTEM_SUBJECT', {
+          key: 'mata_pelajaran',
+          label: 'Mata Pelajaran',
+          fieldIdentity: 'mata_pelajaran',
+          semanticKey: 'mata_pelajaran',
+          placeholder: 'Mapel dari assignment',
+        }),
+        createColumnFromQuickPreset(1, 'SYSTEM_CLASS_LEVEL', {
+          key: 'tingkat',
+          label: 'Tingkat',
+          fieldIdentity: 'tingkat',
+          semanticKey: 'tingkat',
+          placeholder: 'Tingkat dari assignment',
+        }),
+        createColumnFromQuickPreset(2, 'SYSTEM_SKILL_PROGRAM', {
+          key: 'program_keahlian',
+          label: 'Program Keahlian',
+          fieldIdentity: 'program_keahlian',
+          semanticKey: 'program_keahlian',
+          placeholder: 'Program keahlian dari assignment',
+        }),
+        createColumnFromQuickPreset(3, 'SYSTEM_ACTIVE_SEMESTER', {
+          key: 'semester',
+          label: 'Semester',
+          fieldIdentity: 'semester',
+          semanticKey: 'semester',
+          placeholder: 'Semester aktif',
+          dataType: 'SEMESTER',
+        }),
+        createColumnFromQuickPreset(4, 'SYSTEM_ACTIVE_YEAR', {
+          key: 'tahun_ajaran',
+          label: 'Tahun Ajaran',
+          fieldIdentity: 'tahun_ajaran',
+          semanticKey: 'tahun_ajaran',
+          placeholder: 'Tahun ajaran aktif',
+        }),
+      ],
+    };
+  }
+
+  if (preset === 'REFERENCE_SOURCE_TABLE') {
+    return {
+      ...createEmptySection(index, 'TABLE'),
+      key: 'tabel_sumber_referensi',
+      label: 'Tabel Sumber Referensi',
+      description: 'Bagian ini dipakai untuk menyimpan field inti yang boleh dibaca dokumen lain.',
+      defaultRows: 3,
+      blockType: 'TABLE',
+      layout: 'TABLE',
+      columns: [
+        createColumnFromQuickPreset(0, null, {
+          key: 'no',
+          label: 'No',
+          fieldIdentity: 'no',
+          semanticKey: 'no',
+          placeholder: '1',
+        }),
+        createColumnFromQuickPreset(1, 'REFERENCE_SOURCE_CORE', {
+          key: 'kode_item',
+          label: 'Kode Item',
+          fieldIdentity: 'kode_item',
+          semanticKey: 'kode_item',
+          placeholder: 'Kode unik item',
+          required: true,
+        }),
+        createColumnFromQuickPreset(2, 'REFERENCE_SOURCE_CORE', {
+          key: 'nama_item',
+          label: 'Nama / Judul',
+          fieldIdentity: 'nama_item',
+          semanticKey: 'nama_item',
+          placeholder: 'Nama item yang akan dibaca dokumen lain',
+          multiline: true,
+          required: true,
+        }),
+        createColumnFromQuickPreset(3, 'REFERENCE_SOURCE_CORE', {
+          key: 'uraian_item',
+          label: 'Uraian',
+          fieldIdentity: 'uraian_item',
+          semanticKey: 'uraian_item',
+          placeholder: 'Deskripsi item',
+          dataType: 'TEXTAREA',
+          multiline: true,
+        }),
+        createColumnFromQuickPreset(4, null, {
+          key: 'catatan',
+          label: 'Catatan',
+          fieldIdentity: 'catatan',
+          semanticKey: 'catatan',
+          placeholder: 'Catatan tambahan',
+          dataType: 'TEXTAREA',
+          multiline: true,
+        }),
+      ],
+    };
+  }
+
+  if (preset === 'REFERENCE_PICKER_TABLE') {
+    return {
+      ...createEmptySection(index, 'TABLE'),
+      key: 'tabel_referensi_dan_turunan',
+      label: 'Tabel Pilih Referensi',
+      description: 'Bagian ini dipakai untuk memilih data dari dokumen sumber lalu mengisi field turunan secara otomatis.',
+      defaultRows: 3,
+      blockType: 'TABLE',
+      layout: 'TABLE',
+      columns: [
+        createColumnFromQuickPreset(0, null, {
+          key: 'no',
+          label: 'No',
+          fieldIdentity: 'no',
+          semanticKey: 'no',
+          placeholder: '1',
+        }),
+        createColumnFromQuickPreset(1, 'REFERENCE_PICKER_CONTEXTUAL', {
+          key: 'referensi_utama',
+          label: 'Pilih Referensi',
+          fieldIdentity: 'nama_item',
+          semanticKey: 'nama_item',
+          placeholder: 'Pilih data dari dokumen sumber',
+          multiline: true,
+          required: true,
+        }),
+        createColumnFromQuickPreset(2, 'SNAPSHOT_TARGET_CONTEXTUAL', {
+          key: 'kode_item',
+          label: 'Kode Item',
+          fieldIdentity: 'kode_item',
+          semanticKey: 'kode_item',
+          placeholder: 'Diisi dari referensi',
+        }),
+        createColumnFromQuickPreset(3, 'SNAPSHOT_TARGET_CONTEXTUAL', {
+          key: 'uraian_item',
+          label: 'Uraian',
+          fieldIdentity: 'uraian_item',
+          semanticKey: 'uraian_item',
+          placeholder: 'Diisi dari referensi',
+          dataType: 'TEXTAREA',
+          multiline: true,
+        }),
+        createColumnFromQuickPreset(4, null, {
+          key: 'keterangan',
+          label: 'Keterangan',
+          fieldIdentity: 'keterangan',
+          semanticKey: 'keterangan',
+          placeholder: 'Tambahan dari guru',
+          dataType: 'TEXTAREA',
+          multiline: true,
+        }),
+      ],
+    };
+  }
+
+  if (preset === 'SIGNATURE_BLOCK') {
+    const section = createSignatureSection();
+    return {
+      ...section,
+      key: normalizeSchemaKey(section.key || `bagian_${index + 1}`, `bagian_${index + 1}`),
+      blockId: normalizeSchemaKey(section.blockId || section.key || `bagian_${index + 1}`, `bagian_${index + 1}`),
+      columns: [
+        createColumnFromQuickPreset(0, 'SYSTEM_PLACE_DATE', {
+          key: 'tempat_tanggal',
+          label: 'Tempat, Tanggal',
+          fieldIdentity: 'tempat_tanggal',
+          semanticKey: 'tempat_tanggal',
+          placeholder: 'Tempat dan tanggal otomatis',
+        }),
+        createColumnFromQuickPreset(1, 'SYSTEM_TEACHER_NAME', {
+          key: 'guru_mapel',
+          label: 'Guru Mata Pelajaran',
+          fieldIdentity: 'guru_mapel',
+          semanticKey: 'guru_mapel',
+          placeholder: 'Nama guru login',
+        }),
+        createColumnFromQuickPreset(2, null, {
+          key: 'catatan_pengesahan',
+          label: 'Catatan Pengesahan',
+          fieldIdentity: 'catatan_pengesahan',
+          semanticKey: 'catatan_pengesahan',
+          placeholder: 'Catatan tambahan pengesahan',
+          dataType: 'TEXTAREA',
+          multiline: true,
+        }),
+      ],
+    };
+  }
+
+  return {
+    ...createEmptySection(index, 'TEXT'),
+    key: 'catatan_narasi',
+    label: 'Catatan / Narasi',
+    description: 'Gunakan bagian ini untuk pengantar, arahan kerja, atau catatan akhir dokumen.',
+    titlePlaceholder: 'Judul narasi',
+    bodyPlaceholder: 'Tuliskan catatan atau arahan dokumen...',
+    blockType: 'RICH_TEXT',
+    layout: 'STACK',
+  };
 }
 
 function applySchemaFoundationDefaults(
@@ -1488,6 +1754,13 @@ export default function TeachingResourceProgramManagementPage() {
     updateDraftSchema((schema) => ({
       ...schema,
       sections: [...schema.sections, createEmptySection(schema.sections.length, editorType)],
+    }));
+  };
+
+  const handleAddSectionQuickPreset = (preset: SectionQuickPreset) => {
+    updateDraftSchema((schema) => ({
+      ...schema,
+      sections: [...schema.sections, createSectionFromQuickPreset(preset, schema.sections.length)],
     }));
   };
 
@@ -2526,6 +2799,35 @@ export default function TeachingResourceProgramManagementPage() {
                   <div className="mb-4 rounded-xl border border-amber-200 bg-amber-50 p-4 text-xs leading-5 text-amber-800">
                     Mode Teknisi dipakai hanya saat Wakakur benar-benar perlu menyusun struktur detail seperti key kolom, binding,
                     semantic key, atau bagian dokumen yang belum bisa diwakili oleh Mode Siap Pakai.
+                  </div>
+
+                  <div className="mb-4 rounded-xl border border-sky-200 bg-sky-50 p-4">
+                    <div className="mb-3">
+                      <div className="text-sm font-semibold text-sky-900">Bagian Siap Pakai</div>
+                      <div className="text-xs leading-5 text-sky-800">
+                        Gunakan shortcut ini jika Wakakur ingin merakit dokumen dari blok operasional umum, tanpa harus membangun semua kolom dari nol.
+                      </div>
+                    </div>
+                    <div className="grid grid-cols-1 gap-3 xl:grid-cols-2">
+                      {SECTION_QUICK_PRESET_OPTIONS.map((option) => (
+                        <button
+                          key={`section-quick-preset-${option.value}`}
+                          type="button"
+                          onClick={() => handleAddSectionQuickPreset(option.value)}
+                          className="rounded-xl border border-sky-200 bg-white p-4 text-left transition hover:border-sky-300 hover:bg-sky-50"
+                        >
+                          <div className="flex items-start justify-between gap-3">
+                            <div>
+                              <div className="text-sm font-semibold text-gray-900">{option.label}</div>
+                              <div className="mt-1 text-xs leading-5 text-gray-600">{option.description}</div>
+                            </div>
+                            <span className="inline-flex rounded-full bg-sky-100 px-2 py-1 text-[11px] font-semibold text-sky-700">
+                              Tambah
+                            </span>
+                          </div>
+                        </button>
+                      ))}
+                    </div>
                   </div>
 
                   <div className="space-y-4">
